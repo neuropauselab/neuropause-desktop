@@ -55,15 +55,24 @@ interface RawTokenResponse {
 
 function parseScopes(scope: string | undefined, separator: string): string[] {
   if (!scope) return [];
-  return scope.split(separator.trim() === ',' ? ',' : /\s+/).map((s) => s.trim()).filter(Boolean);
+  return scope
+    .split(separator.trim() === ',' ? ',' : /\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 function normalizeTokens(raw: RawTokenResponse, oauth: OAuthEndpointConfig): OAuthTokens {
   if (!raw.access_token) {
-    throw new Error(raw.error_description || raw.error || 'Token endpoint returned no access token');
+    throw new Error(
+      raw.error_description || raw.error || 'Token endpoint returned no access token',
+    );
   }
   const externalId =
-    (raw.account_id ?? raw.sub ?? (raw.id !== undefined ? String(raw.id) : null) ?? raw.team?.id) ?? null;
+    raw.account_id ??
+    raw.sub ??
+    (raw.id !== undefined ? String(raw.id) : null) ??
+    raw.team?.id ??
+    null;
   const label = raw.workspace_name ?? raw.team?.name ?? null;
   return {
     accessToken: raw.access_token,
@@ -81,7 +90,11 @@ function tokenRequestInit(
   creds: ResolvedCredentials,
   params: Record<string, string>,
 ): RequestInit {
-  const body = new URLSearchParams({ client_id: creds.clientId, ...oauth.extraTokenParams, ...params });
+  const body = new URLSearchParams({
+    client_id: creds.clientId,
+    ...oauth.extraTokenParams,
+    ...params,
+  });
   const headers: Record<string, string> = {
     'Content-Type': 'application/x-www-form-urlencoded',
     Accept: 'application/json',
@@ -124,14 +137,18 @@ export const oauthEngine = {
 
     const pkce = oauth.usePkce ? createPkcePair() : null;
     const state = randomState();
-    const loopback = await startLoopbackServer({ port: oauth.loopbackPort });
+    const loopback = await startLoopbackServer({
+      port: oauth.loopbackPort,
+      callbackPath: oauth.callbackPath,
+    });
 
     try {
       const url = new URL(oauth.authorizeUrl);
       url.searchParams.set('response_type', 'code');
       url.searchParams.set('client_id', creds.clientId);
       url.searchParams.set('redirect_uri', loopback.redirectUri);
-      if (oauth.scopes.length > 0) url.searchParams.set('scope', oauth.scopes.join(oauth.scopeSeparator));
+      if (oauth.scopes.length > 0)
+        url.searchParams.set('scope', oauth.scopes.join(oauth.scopeSeparator));
       url.searchParams.set('state', state);
       if (pkce) {
         url.searchParams.set('code_challenge', pkce.challenge);
@@ -142,7 +159,8 @@ export const oauthEngine = {
       await shell.openExternal(url.toString());
       const result = await loopback.waitForResult(config.oauthTimeoutMs);
 
-      if (result.state !== state) throw new Error('State mismatch; sign-in was rejected for your safety');
+      if (result.state !== state)
+        throw new Error('State mismatch; sign-in was rejected for your safety');
       if (result.error) throw new Error(`Authorization failed: ${result.error}`);
       if (!result.code) throw new Error('No authorization code was returned');
 
@@ -170,7 +188,10 @@ export const oauthEngine = {
   ): Promise<OAuthTokens> {
     const oauth = manifest.oauth;
     if (!oauth) throw new Error(`${manifest.name} is not an OAuth connector`);
-    const params: Record<string, string> = { grant_type: 'refresh_token', refresh_token: refreshToken };
+    const params: Record<string, string> = {
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+    };
     if (oauth.scopes.length > 0) params.scope = oauth.scopes.join(oauth.scopeSeparator);
     const raw = await postToken(oauth.tokenUrl, tokenRequestInit(oauth, creds, params));
     const tokens = normalizeTokens(raw, oauth);
@@ -180,13 +201,20 @@ export const oauthEngine = {
   },
 
   /** Best-effort token revocation on disconnect. Never throws. */
-  async revoke(manifest: ConnectorManifest, creds: ResolvedCredentials, token: string): Promise<void> {
+  async revoke(
+    manifest: ConnectorManifest,
+    creds: ResolvedCredentials,
+    token: string,
+  ): Promise<void> {
     const oauth = manifest.oauth;
     if (!oauth?.revokeUrl) return;
     try {
       const body = new URLSearchParams({ token, client_id: creds.clientId });
-      if (creds.clientSecret && oauth.tokenAuthStyle === 'body') body.set('client_secret', creds.clientSecret);
-      const headers: Record<string, string> = { 'Content-Type': 'application/x-www-form-urlencoded' };
+      if (creds.clientSecret && oauth.tokenAuthStyle === 'body')
+        body.set('client_secret', creds.clientSecret);
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      };
       if (creds.clientSecret && oauth.tokenAuthStyle === 'basic') {
         headers.Authorization = `Basic ${Buffer.from(`${creds.clientId}:${creds.clientSecret}`).toString('base64')}`;
       }

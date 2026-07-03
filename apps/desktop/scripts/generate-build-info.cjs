@@ -36,6 +36,13 @@ function channelFromVersion(version) {
 const info = {
   // Backend URL baked into packaged builds (packaged apps have no env vars).
   backendUrl: process.env.NEUROPAUSE_BACKEND_URL || null,
+  // Public OAuth client ids for connectors, baked for packaged builds. The
+  // _CLIENT_ID suffix filter guarantees secrets are never captured.
+  connectorClientIds: Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([k, v]) => /^NEUROPAUSE_[A-Z0-9_]+_CLIENT_ID$/.test(k) && v,
+    ),
+  ),
   version: pkg.version,
   channel: process.env.NEUROPAUSE_CHANNEL || channelFromVersion(pkg.version),
   commit: process.env.NEUROPAUSE_BUILD_COMMIT || git('rev-parse --short HEAD') || 'unknown',

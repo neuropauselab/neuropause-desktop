@@ -10,6 +10,7 @@
  * the connector reports `unavailable` with a hint naming the variable to set.
  */
 import type { ConnectorManifest, OAuthEndpointConfig } from '@neuropause/shared';
+import { getBakedClientId } from '../buildInfo';
 
 export interface ResolvedCredentials {
   clientId: string;
@@ -26,7 +27,9 @@ function readEnv(name: string): string | null {
 export function resolveCredentials(manifest: ConnectorManifest): ResolvedCredentials | null {
   const oauth = manifest.oauth;
   if (!oauth) return null;
-  const clientId = readEnv(oauth.clientIdEnv);
+  // Runtime env wins; packaged builds fall back to the id baked at package
+  // time. Secrets have no baked fallback by design.
+  const clientId = readEnv(oauth.clientIdEnv) ?? getBakedClientId(oauth.clientIdEnv);
   if (!clientId) return null;
   if (oauth.clientSecretEnv) {
     const clientSecret = readEnv(oauth.clientSecretEnv);

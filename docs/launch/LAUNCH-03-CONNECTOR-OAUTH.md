@@ -27,8 +27,9 @@ per provider policy:
   (GitHub ignores the *port* for loopback but) **match the path** — a random
   path cannot match. → **Finding LAUNCH-03-2**: these three need a small
   engine option (fixed `/callback` path per manifest, random port + state +
-  PKCE retained). Queued as the next code increment; until it lands, treat
-  GitHub/Notion/Slack registration as *prepare now, connect after 03b*.
+  PKCE retained). **Shipped in LAUNCH-03b**: those three manifests now use a fixed
+  `/callback` path (random port, state, and PKCE unchanged) — register the
+  callback exactly as written below and connect.
 
 ## 2. Provider micro-steps
 
@@ -82,8 +83,8 @@ distribution of that connector).
 
 ## 4. Ledger
 
-**A5-2 — closed** (names enumerated above). **LAUNCH-03-1** — bake client IDs
-for packaged builds (code, queued). **LAUNCH-03-2** — fixed-callback-path
+**A5-2 — closed** (names enumerated above). **LAUNCH-03-1 — closed** (client ids bake via generate-build-info; secrets
+never — enforced by the `_CLIENT_ID` filter; tested). **LAUNCH-03-2** — fixed-callback-path
 option for exact-match providers; GitHub/Notion/Slack connect after it lands
 (code, queued). Google Calendar has **no blockers** — it is your first
 end-to-end connector today.

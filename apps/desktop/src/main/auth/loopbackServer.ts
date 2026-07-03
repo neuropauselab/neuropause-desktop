@@ -47,9 +47,12 @@ const RESPONSE_HTML = (ok: boolean): string => `<!doctype html>
   <p>You can close this tab and return to NeuroPause.</p>
 </div></body></html>`;
 
-export async function startLoopbackServer(options: { port?: number } = {}): Promise<LoopbackServer> {
-  // Unguessable callback path adds entropy beyond the random port.
-  const path = `/callback/${randomBytes(16).toString('hex')}`;
+export async function startLoopbackServer(
+  options: { port?: number; callbackPath?: string } = {},
+): Promise<LoopbackServer> {
+  // Unguessable random path by default; a fixed path only where the provider
+  // exact-matches the registered redirect URI (port stays random regardless).
+  const path = options.callbackPath ?? `/callback/${randomBytes(16).toString('hex')}`;
 
   let resolveResult: ((r: LoopbackResult) => void) | null = null;
   let settled = false;
@@ -84,7 +87,11 @@ export async function startLoopbackServer(options: { port?: number } = {}): Prom
   await new Promise<void>((resolve, reject) => {
     server.once('error', (err: NodeJS.ErrnoException) => {
       if (options.port && err.code === 'EADDRINUSE') {
-        reject(new Error(`Loopback port ${options.port} is in use. Close whatever is using it and try connecting again.`));
+        reject(
+          new Error(
+            `Loopback port ${options.port} is in use. Close whatever is using it and try connecting again.`,
+          ),
+        );
       } else {
         reject(err);
       }

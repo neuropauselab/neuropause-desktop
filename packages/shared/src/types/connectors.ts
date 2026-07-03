@@ -88,6 +88,13 @@ export interface OAuthEndpointConfig {
   extraAuthParams: Record<string, string>;
   /** Extra params appended to the token request body (e.g. audience). */
   extraTokenParams: Record<string, string>;
+  /**
+   * Fixed callback path (e.g. '/callback') for providers that exact-match the
+   * registered redirect URI path. Unset ⇒ an unguessable random path (preferred
+   * where policy allows, e.g. Google native apps). The port stays random either
+   * way; state + PKCE protections are unchanged.
+   */
+  callbackPath?: string;
   /** The config key (env var) that supplies the client id. */
   clientIdEnv: string;
   /** The config key (env var) that supplies the client secret, if confidential. */
@@ -126,12 +133,7 @@ export interface ConnectorManifest {
 
 /** Lifecycle state of a connector account. */
 export type ConnectorStatus =
-  | 'disconnected'
-  | 'connecting'
-  | 'connected'
-  | 'reauth_required'
-  | 'error'
-  | 'unavailable';
+  'disconnected' | 'connecting' | 'connected' | 'reauth_required' | 'error' | 'unavailable';
 
 /** Operational health of a connected account. */
 export type ConnectorHealth = 'healthy' | 'degraded' | 'down' | 'unknown';

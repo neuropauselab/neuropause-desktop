@@ -31,7 +31,9 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
     version: '1.0.0',
     authType: 'api_key',
     capabilities: ['conversations', 'activities'],
-    scopes: [{ id: 'api', label: 'API access', description: 'Read access via your OpenAI API key.' }],
+    scopes: [
+      { id: 'api', label: 'API access', description: 'Read access via your OpenAI API key.' },
+    ],
     oauth: null,
     multiAccount: true,
   },
@@ -47,7 +49,9 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
     version: '1.0.0',
     authType: 'api_key',
     capabilities: ['conversations', 'activities'],
-    scopes: [{ id: 'api', label: 'API access', description: 'Read access via your Anthropic API key.' }],
+    scopes: [
+      { id: 'api', label: 'API access', description: 'Read access via your Anthropic API key.' },
+    ],
     oauth: null,
     multiAccount: true,
   },
@@ -63,7 +67,9 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
     version: '1.0.0',
     authType: 'api_key',
     capabilities: ['conversations', 'activities'],
-    scopes: [{ id: 'api', label: 'API access', description: 'Read access via your Google AI Studio key.' }],
+    scopes: [
+      { id: 'api', label: 'API access', description: 'Read access via your Google AI Studio key.' },
+    ],
     oauth: null,
     multiAccount: true,
   },
@@ -79,7 +85,9 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
     version: '1.0.0',
     authType: 'api_key',
     capabilities: ['conversations', 'activities'],
-    scopes: [{ id: 'api', label: 'API access', description: 'Read access via your Perplexity API key.' }],
+    scopes: [
+      { id: 'api', label: 'API access', description: 'Read access via your Perplexity API key.' },
+    ],
     oauth: null,
     multiAccount: true,
   },
@@ -95,7 +103,9 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
     version: '1.0.0',
     authType: 'api_key',
     capabilities: ['activities'],
-    scopes: [{ id: 'api', label: 'API access', description: 'Read access via your Cursor API key.' }],
+    scopes: [
+      { id: 'api', label: 'API access', description: 'Read access via your Cursor API key.' },
+    ],
     oauth: null,
     multiAccount: false,
   },
@@ -128,6 +138,7 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
       tokenAuthStyle: 'body',
       extraAuthParams: {},
       extraTokenParams: {},
+      callbackPath: '/callback',
       clientIdEnv: 'NEUROPAUSE_GITHUB_CLIENT_ID',
       clientSecretEnv: 'NEUROPAUSE_GITHUB_CLIENT_SECRET',
       // GitHub OAuth Apps require an exact registered callback port, so pin one.
@@ -150,7 +161,9 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
     version: '1.0.0',
     authType: 'oauth2_confidential',
     capabilities: ['documents', 'projects', 'tasks'],
-    scopes: [{ id: 'workspace', label: 'Workspace', description: 'Read pages and databases you share.' }],
+    scopes: [
+      { id: 'workspace', label: 'Workspace', description: 'Read pages and databases you share.' },
+    ],
     oauth: {
       authorizeUrl: 'https://api.notion.com/v1/oauth/authorize',
       tokenUrl: 'https://api.notion.com/v1/oauth/token',
@@ -161,6 +174,7 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
       tokenAuthStyle: 'basic',
       extraAuthParams: { owner: 'user' },
       extraTokenParams: {},
+      callbackPath: '/callback',
       clientIdEnv: 'NEUROPAUSE_NOTION_CLIENT_ID',
       clientSecretEnv: 'NEUROPAUSE_NOTION_CLIENT_SECRET',
     },
@@ -182,7 +196,11 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
     capabilities: ['messages', 'conversations', 'notifications'],
     scopes: [
       { id: 'channels:read', label: 'Channels', description: 'Read channel metadata.' },
-      { id: 'channels:history', label: 'History', description: 'Read messages in channels you are in.' },
+      {
+        id: 'channels:history',
+        label: 'History',
+        description: 'Read messages in channels you are in.',
+      },
       { id: 'users:read', label: 'Users', description: 'Read user directory for names.' },
     ],
     oauth: {
@@ -195,6 +213,7 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
       tokenAuthStyle: 'body',
       extraAuthParams: {},
       extraTokenParams: {},
+      callbackPath: '/callback',
       clientIdEnv: 'NEUROPAUSE_SLACK_CLIENT_ID',
       clientSecretEnv: 'NEUROPAUSE_SLACK_CLIENT_SECRET',
     },
@@ -245,7 +264,9 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
     version: '1.0.0',
     authType: 'oauth2_confidential',
     capabilities: ['files', 'projects'],
-    scopes: [{ id: 'files:read', label: 'Files', description: 'Read your Figma files and projects.' }],
+    scopes: [
+      { id: 'files:read', label: 'Files', description: 'Read your Figma files and projects.' },
+    ],
     oauth: {
       authorizeUrl: 'https://www.figma.com/oauth',
       tokenUrl: 'https://api.figma.com/v1/oauth/token',
@@ -278,7 +299,11 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
     scopes: [
       { id: 'read:jira-work', label: 'Work', description: 'Read projects, issues, and boards.' },
       { id: 'read:jira-user', label: 'Users', description: 'Read user directory for names.' },
-      { id: 'offline_access', label: 'Offline', description: 'Keep the connection alive in the background.' },
+      {
+        id: 'offline_access',
+        label: 'Offline',
+        description: 'Keep the connection alive in the background.',
+      },
     ],
     oauth: {
       authorizeUrl: 'https://auth.atlassian.com/authorize',
@@ -367,7 +392,13 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
     version: '1.0.0',
     authType: 'oauth2_pkce',
     capabilities: ['files', 'documents'],
-    scopes: [{ id: 'drive.readonly', label: 'Drive (read-only)', description: 'Read file metadata and contents.' }],
+    scopes: [
+      {
+        id: 'drive.readonly',
+        label: 'Drive (read-only)',
+        description: 'Read file metadata and contents.',
+      },
+    ],
     oauth: {
       authorizeUrl: GOOGLE_AUTHORIZE,
       tokenUrl: GOOGLE_TOKEN,
@@ -395,7 +426,13 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
     version: '1.0.0',
     authType: 'oauth2_pkce',
     capabilities: ['calendar', 'events'],
-    scopes: [{ id: 'calendar.readonly', label: 'Calendar (read-only)', description: 'Read your events and calendars.' }],
+    scopes: [
+      {
+        id: 'calendar.readonly',
+        label: 'Calendar (read-only)',
+        description: 'Read your events and calendars.',
+      },
+    ],
     oauth: {
       authorizeUrl: GOOGLE_AUTHORIZE,
       tokenUrl: GOOGLE_TOKEN,
@@ -428,7 +465,11 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
       { id: 'Files.Read', label: 'Files', description: 'Read your OneDrive files.' },
       { id: 'Calendars.Read', label: 'Calendar', description: 'Read your calendar.' },
       { id: 'Mail.Read', label: 'Mail', description: 'Read your mail headers.' },
-      { id: 'offline_access', label: 'Offline', description: 'Keep the connection alive in the background.' },
+      {
+        id: 'offline_access',
+        label: 'Offline',
+        description: 'Keep the connection alive in the background.',
+      },
     ],
     oauth: {
       authorizeUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',

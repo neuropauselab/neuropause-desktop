@@ -17,6 +17,7 @@ import { resolveChannel } from './services/updater/updateChannels';
 interface GeneratedBuildInfo {
   commit?: string;
   backendUrl?: string | null;
+  connectorClientIds?: Record<string, string>;
   channel?: string;
   buildTime?: string;
 }
@@ -73,4 +74,9 @@ export function getBuildInfo(): BuildInfo {
 /** The backend URL baked at package time by generate-build-info (null in dev). */
 export function getBakedBackendUrl(): string | null {
   return generated.backendUrl ?? null;
+}
+
+/** Baked public OAuth client id for an env-var name (null in dev / when absent). */
+export function getBakedClientId(envName: string): string | null {
+  return generated.connectorClientIds?.[envName] ?? null;
 }
