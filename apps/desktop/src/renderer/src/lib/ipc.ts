@@ -1275,6 +1275,7 @@ export const ipc = {
       invoke(IpcChannel.FeedbackSubmit, { category, message, context }) as Promise<FeedbackEntry>,
     list: () => invoke(IpcChannel.FeedbackList) as Promise<FeedbackEntry[]>,
     exportAll: () => invoke(IpcChannel.FeedbackExport) as Promise<FeedbackExport>,
+    exportToFile: () => invoke(IpcChannel.FeedbackExportToFile) as Promise<string | null>,
     clear: () => invoke(IpcChannel.FeedbackClear) as Promise<number>,
   },
 

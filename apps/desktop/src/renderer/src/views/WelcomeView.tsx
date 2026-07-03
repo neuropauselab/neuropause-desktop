@@ -36,6 +36,7 @@ export function WelcomeView() {
   const [fbCategory, setFbCategory] = useState<FeedbackCategory>('idea');
   const [fbMessage, setFbMessage] = useState('');
   const [fbState, setFbState] = useState<'idle' | 'sending' | 'sent'>('idle');
+  const [exportMsg, setExportMsg] = useState('');
   const [pilot, setPilot] = useState<PilotStatus | null>(null);
 
   useEffect(() => {
@@ -156,7 +157,24 @@ export function WelcomeView() {
       </div>
 
       <div className="surface mt-4 rounded-2xl p-5">
-        <div className="mb-1 text-sm font-medium text-ink">Share feedback</div>
+        <div className="mb-1 flex items-center justify-between">
+          <span className="text-sm font-medium text-ink">Share feedback</span>
+          <span className="flex items-center gap-2">
+            <span className="text-xs text-muted">{exportMsg}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                ipc.feedback
+                  .exportToFile()
+                  .then((path) => setExportMsg(path ? 'Exported.' : ''))
+                  .catch((err) => log.warn('Could not export feedback', err));
+              }}
+            >
+              Export
+            </Button>
+          </span>
+        </div>
         <p className="mb-3 text-xs text-muted">
           Early-access feedback is saved locally and can be exported for support — nothing is sent
           anywhere automatically.

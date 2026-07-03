@@ -6,6 +6,8 @@
  * appVersion is accepted by the store but left null here until buildInfo is
  * threaded through (named follow-up).
  */
+import { promises as fs } from 'node:fs';
+import { dialog } from 'electron';
 import { EmptyRequest, FeedbackSubmitRequest, IpcChannel } from '@neuropause/shared';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { feedbackStore } from './feedbackInstance';
@@ -48,6 +50,21 @@ function buildHandlers(): SecureHandlerDef[] {
       schema: EmptyRequest,
       audit: true,
       handler: () => feedbackStore.clear(),
+    },
+    {
+      channel: IpcChannel.FeedbackExportToFile,
+      schema: EmptyRequest,
+      audit: true,
+      handler: async () => {
+        const { canceled, filePath } = await dialog.showSaveDialog({
+          title: 'Export feedback',
+          defaultPath: `neuropause-feedback-${new Date().toISOString().slice(0, 10)}.json`,
+          filters: [{ name: 'JSON', extensions: ['json'] }],
+        });
+        if (canceled || !filePath) return null;
+        await fs.writeFile(filePath, JSON.stringify(feedbackStore.exportAll(), null, 2), 'utf8');
+        return filePath;
+      },
     },
   ];
 }
