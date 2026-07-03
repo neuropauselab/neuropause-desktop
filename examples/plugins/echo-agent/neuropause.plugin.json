@@ -1,0 +1,12 @@
+{
+  "id": "echo-agent",
+  "name": "Echo Agent",
+  "version": "0.1.0",
+  "description": "A minimal AI agent plugin that exercises the local_models capability seam.",
+  "author": "NeuroPause",
+  "engine": { "neuropause": "^0.1.0" },
+  "kind": "ai_agent",
+  "main": "index.cjs",
+  "contributions": [],
+  "permissions": ["local_models"]
+}

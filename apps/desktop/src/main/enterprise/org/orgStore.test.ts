@@ -1,0 +1,117 @@
+import { afterEach, describe, expect, it } from 'vitest';
+import { promises as fs } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { OrgStore } from './orgStore';
+import { ORG_ID, OWNER_USER_ID, ROLE_TO_UNIT_ID, UNIT } from './seed';
+
+const opened: OrgStore[] = [];
+const paths: string[] = [];
+
+function tempPath(): string {
+  const p = join(tmpdir(), `nps-org-${randomUUID()}.json`);
+  paths.push(p);
+  return p;
+}
+
+async function newStore(path: string): Promise<OrgStore> {
+  const s = new OrgStore(path);
+  opened.push(s);
+  await s.load();
+  return s;
+}
+
+afterEach(async () => {
+  for (const s of opened.splice(0)) await s.flush();
+  for (const p of paths.splice(0)) await fs.rm(p, { force: true }).catch(() => undefined);
+});
+
+describe('OrgStore — seed', () => {
+  it('seeds a default org with a unit hierarchy, built-in roles, and an owner', async () => {
+    const s = await newStore(tempPath());
+    const org = s.defaultOrg();
+    expect(org.id).toBe(ORG_ID);
+    expect(org.name).toBe('NeuroPause');
+    expect(s.unitsFor(org.id).length).toBeGreaterThan(5);
+    expect(s.rolesFor(org.id).length).toBe(6);
+    const owner = s.user(OWNER_USER_ID);
+    expect(owner?.kind).toBe('human');
+    expect(owner?.roleIds.length).toBeGreaterThan(0);
+  });
+});
+
+describe('OrgStore — CRUD', () => {
+  it('creates, updates, and deletes units (re-parenting children)', async () => {
+    const s = await newStore(tempPath());
+    const child = s.createUnit({ orgId: ORG_ID, kind: 'team', name: 'New Team', parentId: UNIT.engineering });
+    expect(s.unit(child.id)?.name).toBe('New Team');
+    const updated = s.updateUnit(child.id, { name: 'Renamed Team' });
+    expect(updated?.name).toBe('Renamed Team');
+    expect(s.deleteUnit(child.id)).toBe(true);
+    expect(s.unit(child.id)).toBeNull();
+  });
+
+  it('creates and deletes human members but refuses to delete AI workers', async () => {
+    const s = await newStore(tempPath());
+    const human = s.createUser({ orgId: ORG_ID, name: 'Alex', title: 'Engineer', unitId: UNIT.platform });
+    expect(s.deleteUser(human.id)).toBe(true);
+
+    s.syncWorkers([{ id: 'w1', name: 'Eng AI', role: 'engineering' }], ROLE_TO_UNIT_ID);
+    const aiUser = s.usersFor(ORG_ID).find((u) => u.workerId === 'w1');
+    expect(aiUser).toBeDefined();
+    expect(s.deleteUser(aiUser!.id)).toBe(false);
+  });
+
+  it('refuses to delete built-in roles', async () => {
+    const s = await newStore(tempPath());
+    const builtIn = s.rolesFor(ORG_ID).find((r) => r.builtIn)!;
+    expect(s.deleteRole(builtIn.id)).toBe(false);
+    const custom = s.createRole({ orgId: ORG_ID, name: 'Auditor', description: '', permissions: ['org:read'] });
+    expect(s.deleteRole(custom.id)).toBe(true);
+  });
+});
+
+describe('OrgStore — syncWorkers', () => {
+  it('folds workers onto matching teams, is idempotent, and prunes departed workers', async () => {
+    const s = await newStore(tempPath());
+    const workers = [
+      { id: 'w-eng', name: 'Engineering AI', role: 'engineering' },
+      { id: 'w-fin', name: 'Finance AI', role: 'finance' },
+    ];
+    const added = s.syncWorkers(workers, ROLE_TO_UNIT_ID);
+    expect(added).toBe(2);
+    const eng = s.usersFor(ORG_ID).find((u) => u.workerId === 'w-eng');
+    expect(eng?.unitId).toBe(ROLE_TO_UNIT_ID['engineering']);
+
+    // Idempotent: same set adds nothing.
+    expect(s.syncWorkers(workers, ROLE_TO_UNIT_ID)).toBe(0);
+
+    // Prune: drop one worker → one change, member removed.
+    const changed = s.syncWorkers([workers[0]], ROLE_TO_UNIT_ID);
+    expect(changed).toBe(1);
+    expect(s.usersFor(ORG_ID).find((u) => u.workerId === 'w-fin')).toBeUndefined();
+  });
+
+  it('renames the owner via setOwnerIdentity', async () => {
+    const s = await newStore(tempPath());
+    s.setOwnerIdentity('Saurabh Patel', 'saurabh@example.com');
+    const owner = s.user(OWNER_USER_ID);
+    expect(owner?.name).toBe('Saurabh Patel');
+    expect(owner?.email).toBe('saurabh@example.com');
+  });
+});
+
+describe('OrgStore — persistence', () => {
+  it('persists across reloads', async () => {
+    const path = tempPath();
+    const s1 = await newStore(path);
+    s1.createUnit({ orgId: ORG_ID, kind: 'team', name: 'Persisted Team', parentId: UNIT.engineering });
+    s1.syncWorkers([{ id: 'w1', name: 'Ops AI', role: 'operations' }], ROLE_TO_UNIT_ID);
+    await s1.flush();
+
+    const s2 = await newStore(path);
+    expect(s2.unitsFor(ORG_ID).some((u) => u.name === 'Persisted Team')).toBe(true);
+    expect(s2.usersFor(ORG_ID).some((u) => u.workerId === 'w1')).toBe(true);
+  });
+});

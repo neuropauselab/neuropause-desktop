@@ -1,0 +1,225 @@
+import { lazy, Suspense, useEffect, useRef } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import type { Session } from '@neuropause/shared';
+import { useShell } from '@renderer/state/ShellProvider';
+import { useScale } from '@renderer/state/ScaleProvider';
+import { ErrorBoundary } from '@renderer/components/ErrorBoundary';
+import { Spinner } from '@renderer/components/Spinner';
+import { ipc } from '@renderer/lib/ipc';
+import { createLogger } from '@renderer/lib/logger';
+import { Toolbar } from './Toolbar';
+import { Sidebar } from './Sidebar';
+import { CommandPalette } from './CommandPalette';
+import { HomeView } from '@renderer/views/HomeView';
+import { OnboardingWizard } from '@renderer/onboarding/OnboardingWizard';
+import { SECTIONS, type SectionId } from './sections';
+
+const log = createLogger('shell');
+
+// Heavy / non-landing views are code-split so the initial bundle stays small
+// and cold start is fast. Home is eager because it's the default landing view.
+const WelcomeView = lazy(() =>
+  import('@renderer/views/WelcomeView').then((m) => ({ default: m.WelcomeView })),
+);
+const StoreView = lazy(() =>
+  import('@renderer/views/StoreView').then((m) => ({ default: m.StoreView })),
+);
+const WorkspaceView = lazy(() =>
+  import('@renderer/views/WorkspaceView').then((m) => ({ default: m.WorkspaceView })),
+);
+const OperationsView = lazy(() =>
+  import('@renderer/views/OperationsView').then((m) => ({ default: m.OperationsView })),
+);
+const ConnectorsView = lazy(() =>
+  import('@renderer/views/ConnectorsView').then((m) => ({ default: m.ConnectorsView })),
+);
+const MemoryView = lazy(() =>
+  import('@renderer/views/MemoryView').then((m) => ({ default: m.MemoryView })),
+);
+const WorkforceView = lazy(() =>
+  import('@renderer/views/WorkforceView').then((m) => ({ default: m.WorkforceView })),
+);
+const EnterpriseView = lazy(() =>
+  import('@renderer/views/EnterpriseView').then((m) => ({ default: m.EnterpriseView })),
+);
+const DeveloperView = lazy(() =>
+  import('@renderer/views/DeveloperView').then((m) => ({ default: m.DeveloperView })),
+);
+const EcosystemView = lazy(() =>
+  import('@renderer/views/EcosystemView').then((m) => ({ default: m.EcosystemView })),
+);
+const CloudView = lazy(() =>
+  import('@renderer/views/CloudView').then((m) => ({ default: m.CloudView })),
+);
+const OrganizationView = lazy(() =>
+  import('@renderer/views/OrganizationView').then((m) => ({ default: m.OrganizationView })),
+);
+const FederationView = lazy(() =>
+  import('@renderer/views/FederationView').then((m) => ({ default: m.FederationView })),
+);
+const NotificationsView = lazy(() =>
+  import('@renderer/views/NotificationsView').then((m) => ({ default: m.NotificationsView })),
+);
+const SettingsView = lazy(() =>
+  import('@renderer/views/SettingsView').then((m) => ({ default: m.SettingsView })),
+);
+
+function ViewFallback(): JSX.Element {
+  return (
+    <div className="flex h-full items-center justify-center">
+      <Spinner />
+    </div>
+  );
+}
+
+/**
+ * The authenticated application shell: full-width toolbar, resizable sidebar,
+ * an animated content region that lazy-loads each section behind an error
+ * boundary, and the command palette. Global keyboard shortcuts are delivered by
+ * the native menu (see main/menu.ts) and handled here.
+ */
+export function AppShell({ session }: { session: Session }): JSX.Element {
+  const {
+    activeSection,
+    commandOpen,
+    activeTabId,
+    setCommandOpen,
+    setSection,
+    navigateByIndex,
+    requestNewTab,
+    closeActiveTab,
+  } = useShell();
+  const { zoomIn, zoomOut, reset } = useScale();
+
+  // Live refs so the once-subscribed menu handler always sees current values.
+  const openRef = useRef(commandOpen);
+  openRef.current = commandOpen;
+  const goToSection = (id: SectionId): void => {
+    const index = SECTIONS.findIndex((s) => s.id === id);
+    if (index >= 0) navigateByIndex(index);
+  };
+
+  const sectionRef = useRef(activeSection);
+  sectionRef.current = activeSection;
+  const activeTabRef = useRef(activeTabId);
+  activeTabRef.current = activeTabId;
+
+  useEffect(() => {
+    const off = ipc.menu.onCommand((cmd) => {
+      switch (cmd.action) {
+        case 'command-palette':
+          setCommandOpen(!openRef.current);
+          break;
+        case 'open-settings':
+          setSection('settings');
+          break;
+        case 'navigate':
+          if (typeof cmd.index === 'number') navigateByIndex(cmd.index);
+          break;
+        case 'new-tab':
+          requestNewTab();
+          break;
+        case 'close-tab':
+          // Close the active workspace tab when viewing the Workspace; otherwise
+          // fall back to the conventional "close window".
+          if (sectionRef.current === 'workspace' && activeTabRef.current) {
+            closeActiveTab();
+          } else {
+            void ipc.app.closeWindow();
+          }
+          break;
+        case 'zoom-in':
+          zoomIn();
+          break;
+        case 'zoom-out':
+          zoomOut();
+          break;
+        case 'zoom-reset':
+          reset();
+          break;
+        default:
+          log.warn('Unhandled menu command', cmd);
+      }
+    });
+    return off;
+  }, [
+    setCommandOpen,
+    setSection,
+    navigateByIndex,
+    requestNewTab,
+    closeActiveTab,
+    zoomIn,
+    zoomOut,
+    reset,
+  ]);
+
+  const renderView = (): JSX.Element => {
+    switch (activeSection) {
+      case 'home':
+        return <HomeView session={session} />;
+      case 'welcome':
+        return <WelcomeView />;
+      case 'organization':
+        return <OrganizationView />;
+      case 'store':
+        return <StoreView />;
+      case 'workspace':
+        return <WorkspaceView />;
+      case 'operations':
+        return <OperationsView />;
+      case 'connectors':
+        return <ConnectorsView />;
+      case 'memory':
+        return <MemoryView />;
+      case 'enterprise':
+        return <EnterpriseView />;
+      case 'developer':
+        return <DeveloperView />;
+      case 'ecosystem':
+        return <EcosystemView />;
+      case 'cloud':
+        return <CloudView />;
+      case 'federation':
+        return <FederationView />;
+      case 'workforce':
+        return <WorkforceView />;
+      case 'automations':
+        return <WorkforceView initialTab="studio" />;
+      case 'notifications':
+        return <NotificationsView />;
+      case 'analytics':
+        return <WorkforceView initialTab="analytics" />;
+      case 'settings':
+        return <SettingsView session={session} />;
+      default:
+        return <HomeView session={session} />;
+    }
+  };
+
+  return (
+    <div className="app-bg flex h-full w-full flex-col text-ink">
+      <Toolbar session={session} />
+      <div className="flex min-h-0 flex-1">
+        <Sidebar />
+        <main className="min-w-0 flex-1 overflow-hidden">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeSection}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.16, ease: [0.2, 0.8, 0.2, 1] }}
+              className="h-full"
+            >
+              <ErrorBoundary inline name={activeSection}>
+                <Suspense fallback={<ViewFallback />}>{renderView()}</Suspense>
+              </ErrorBoundary>
+            </motion.div>
+          </AnimatePresence>
+        </main>
+      </div>
+      <CommandPalette />
+      <OnboardingWizard onGoTo={goToSection} />
+    </div>
+  );
+}

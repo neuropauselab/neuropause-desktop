@@ -1,0 +1,12 @@
+{
+  "id": "hello-automation",
+  "name": "Hello Automation",
+  "version": "0.1.0",
+  "description": "A minimal background plugin: emits a heartbeat and posts a notification.",
+  "author": "NeuroPause",
+  "engine": { "neuropause": ">=0.1.0 <1.0.0" },
+  "kind": "automation",
+  "main": "index.cjs",
+  "contributions": [],
+  "permissions": ["notifications", "background"]
+}

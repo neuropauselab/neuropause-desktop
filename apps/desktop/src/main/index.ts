@@ -1,0 +1,107 @@
+/**
+ * Main process entry point. Owns the application lifecycle, installs security
+ * policy, creates the window, wires IPC, and bridges main-process events
+ * (auth + theme) to the renderer.
+ */
+import { app, BrowserWindow, Menu, nativeTheme } from 'electron';
+import type { AuthStatus, ThemeSource } from '@neuropause/shared';
+import { IpcChannel } from '@neuropause/shared';
+import { config } from './config';
+import { createLogger } from './logger';
+import { installContentSecurityPolicy } from './security/csp';
+import { registerIpcHandlers, setAllowedSenderOrigins } from './ipc/router';
+import { authService } from './auth/authService';
+import { createMainWindow, rendererDevUrl } from './window';
+import { buildAppMenu } from './menu';
+import { initRuntimeCore } from './runtimeCore';
+
+const log = createLogger('main');
+
+let mainWindow: BrowserWindow | null = null;
+
+/** Sends a payload to the renderer if a window exists. */
+function broadcast(channel: string, payload: unknown): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, payload);
+  }
+}
+
+function wireEventBridges(): void {
+  // Auth state changes -> renderer.
+  authService.on('statusChanged', (status: AuthStatus) => {
+    broadcast(IpcChannel.AuthStatusChanged, status);
+  });
+
+  // OS / user theme changes -> renderer (covers system-appearance switches).
+  nativeTheme.on('updated', () => {
+    const source = nativeTheme.themeSource as ThemeSource;
+    broadcast(IpcChannel.ThemeChanged, { source });
+  });
+}
+
+async function bootstrap(): Promise<void> {
+  installContentSecurityPolicy();
+
+  // Restrict which origins may send us IPC (dev server in dev; file:// always).
+  const devUrl = rendererDevUrl();
+  setAllowedSenderOrigins(devUrl ? [new URL(devUrl).origin] : []);
+
+  registerIpcHandlers();
+  wireEventBridges();
+
+  mainWindow = createMainWindow();
+
+  // Native menu bar: its accelerators dispatch commands to the renderer.
+  Menu.setApplicationMenu(buildAppMenu((payload) => broadcast(IpcChannel.MenuCommand, payload)));
+
+  // Attempt to silently restore a prior session from the keychain.
+  await authService.restoreSession();
+
+  // Bring up the trusted execution layer: secure catalog IPC, the Local
+  // Application Registry, the NeuroPause Package Service, the runtime, and the
+  // background services. Failures here must not take down the window.
+  try {
+    await initRuntimeCore({ broadcast });
+  } catch (err) {
+    log.error('Runtime core failed to initialize', err);
+  }
+}
+
+// Enforce a single running instance; focus the existing window otherwise.
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+
+  app.whenReady().then(bootstrap).catch((err) => {
+    log.error('Fatal error during startup', err);
+    app.quit();
+  });
+
+  // macOS: re-create a window when the dock icon is clicked and none are open.
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      mainWindow = createMainWindow();
+    }
+  });
+
+  // Follow platform convention: stay resident on macOS until Cmd+Q.
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit();
+  });
+}
+
+// Harden: forbid creation of additional web contents we didn't intend.
+app.on('web-contents-created', (_event, contents) => {
+  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+});
+
+if (config.isDev) {
+  log.info('Starting in development mode', { backendUrl: config.backendUrl });
+}

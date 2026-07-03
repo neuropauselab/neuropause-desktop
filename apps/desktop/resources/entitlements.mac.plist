@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- V8 / Electron require a JIT-capable, writable-executable code region. -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <!-- Native node modules are signed separately; allow loading them. -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+  <!-- Outbound HTTPS to the backend, connectors, and the update feed. -->
+  <key>com.apple.security.network.client</key>
+  <true/>
+  <!-- Loopback HTTP listener used to receive the OAuth redirect. -->
+  <key>com.apple.security.network.server</key>
+  <true/>
+</dict>
+</plist>

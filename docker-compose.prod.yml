@@ -1,0 +1,66 @@
+# Production stack for the NeuroPause backend: the API plus its Postgres and Redis
+# dependencies, all in containers. This is distinct from docker-compose.yml, which
+# provides local-dev infrastructure only (dependencies in Docker, the API run via npm).
+#
+# Copy .env.example to .env and fill in the secrets, then:
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# DATABASE_URL and REDIS_URL are injected here to point at the service containers;
+# all other configuration (secrets, OAuth, billing) comes from .env.
+name: neuropause-prod
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-neuropause}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-neuropause}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-neuropause} -d ${POSTGRES_DB:-neuropause}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      # Point the backend at the service containers (overrides any values in .env).
+      DATABASE_URL: postgresql://${POSTGRES_USER:-neuropause}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-neuropause}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - '${BACKEND_PORT:-4000}:4000'
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:

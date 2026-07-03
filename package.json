@@ -1,0 +1,42 @@
+{
+  "name": "neuropause-desktop",
+  "version": "1.0.0-rc.1",
+  "private": true,
+  "description": "NeuroPause Desktop — an AI operating layer for discovering, launching, connecting, and remembering AI work.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "packageManager": "npm@10.5.0",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n backend,desktop -c blue,green \"npm:dev:backend\" \"npm:dev:desktop\"",
+    "dev:backend": "npm run dev -w @neuropause/backend",
+    "dev:desktop": "npm run dev -w @neuropause/desktop",
+    "build": "npm run build -w @neuropause/backend && npm run build -w @neuropause/desktop",
+    "db:migrate": "npm run db:migrate -w @neuropause/backend",
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down",
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "nps": "node tools/nps/cli.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.7",
+    "@typescript-eslint/eslint-plugin": "^8.62.0",
+    "@typescript-eslint/parser": "^8.62.0",
+    "concurrently": "^8.2.2",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-react": "^7.34.1",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "prettier": "^3.2.5",
+    "typescript": "^5.9.3"
+  }
+}

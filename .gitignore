@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+dist/
+out/
+build/
+*.tsbuildinfo
+
+# Electron packaging
+release/
+apps/desktop/out/
+apps/desktop/dist/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# Test coverage
+coverage/
+
+# Local infra data
+.docker-data/
+node_modules/
+.env
+out/
+dist/
+.DS_Store

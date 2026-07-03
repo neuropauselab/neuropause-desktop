@@ -1,0 +1,133 @@
+/**
+ * AI Workforce — jobs and workflows.
+ *
+ * A **Job** is one worker running one skill: the runtime executes the skill,
+ * records the (always read-only) summary + evidence, and turns each proposed
+ * action into a governed `JobProposal` carrying its `GovernanceVerdict`.
+ * Side-effecting proposals park as `awaiting_approval` until a human acts.
+ *
+ * A **Workflow** is a DAG of steps (worker runs and human-approval checkpoints)
+ * the orchestrator executes with dependencies, retry, timeout, and parallelism.
+ *
+ * Types-only. Built on worker.ts + workforceGovernance.ts.
+ */
+import type { ActionEvidence, GovernanceVerdict, RiskLevel } from './workforceGovernance';
+import type { WorkerRole } from './worker';
+
+export type JobStatus = 'queued' | 'running' | 'awaiting_approval' | 'succeeded' | 'failed' | 'cancelled';
+
+export type ApprovalDecision = 'approved' | 'rejected';
+
+export interface ProposalApproval {
+  decision: ApprovalDecision;
+  decidedBy: string;
+  decidedAt: string;
+  note: string | null;
+}
+
+export interface JobProposal {
+  id: string;
+  title: string;
+  summary: string;
+  sideEffects: boolean;
+  risk: RiskLevel;
+  evidence: ActionEvidence[];
+  payload: Record<string, unknown>;
+  /** The governance decision for this proposal. */
+  verdict: GovernanceVerdict;
+  /** Set once a human approves or rejects (for proposals that need it). */
+  approval: ProposalApproval | null;
+}
+
+export interface JobLogEntry {
+  at: string;
+  level: 'info' | 'warn' | 'error';
+  message: string;
+}
+
+export interface Job {
+  id: string;
+  workerId: string;
+  workerRole: WorkerRole;
+  skillId: string;
+  status: JobStatus;
+  input: Record<string, unknown>;
+  requestedBy: string;
+  /** The read-only result of the skill (always delivered). */
+  summary: string | null;
+  evidence: ActionEvidence[];
+  proposals: JobProposal[];
+  logs: JobLogEntry[];
+  error: string | null;
+  /** False when the worker had no connected data to act on. */
+  grounded: boolean;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  durationMs: number | null;
+}
+
+export interface JobSpec {
+  workerId: string;
+  skillId: string;
+  input?: Record<string, unknown>;
+  requestedBy?: string;
+  now?: string;
+}
+
+export interface JobPage {
+  jobs: Job[];
+  total: number;
+}
+
+/* ────────────────────────────── Workflows ───────────────────────────────── */
+
+export type WorkflowStepKind = 'worker' | 'approval';
+
+export interface WorkflowStep {
+  id: string;
+  kind: WorkflowStepKind;
+  /** For kind 'worker'. */
+  workerId?: string;
+  skillId?: string;
+  input?: Record<string, unknown>;
+  /** Step ids that must complete before this one runs. */
+  dependsOn: string[];
+  retry?: number;
+  timeoutMs?: number;
+  /** For kind 'approval' — the prompt shown at the human checkpoint. */
+  approvalPrompt?: string;
+}
+
+export interface WorkflowSpec {
+  id: string;
+  name: string;
+  description: string;
+  steps: WorkflowStep[];
+}
+
+export type WorkflowRunStatus =
+  | 'pending'
+  | 'running'
+  | 'awaiting_approval'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled';
+
+export interface WorkflowStepRun {
+  stepId: string;
+  status: JobStatus | 'pending' | 'skipped';
+  jobId: string | null;
+  attempts: number;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface WorkflowRun {
+  id: string;
+  workflowId: string;
+  status: WorkflowRunStatus;
+  stepRuns: WorkflowStepRun[];
+  startedAt: string;
+  finishedAt: string | null;
+}

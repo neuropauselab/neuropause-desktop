@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "include": [
+    "src/renderer/src/**/*",
+    "src/preload/index.d.ts"
+  ],
+  "compilerOptions": {
+    "noEmit": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": [],
+    "baseUrl": ".",
+    "paths": {
+      "@neuropause/shared": ["../../packages/shared/src/index.ts"],
+      "@renderer/*": ["src/renderer/src/*"]
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "id": "clock-mcp-server",
+  "name": "Clock MCP Server",
+  "version": "0.1.0",
+  "description": "A minimal MCP server exposing a current_time tool over stdio JSON-RPC.",
+  "author": "NeuroPause",
+  "engine": { "neuropause": ">=0.1.0 <1.0.0" },
+  "kind": "mcp_server",
+  "main": "server.cjs",
+  "contributions": [],
+  "permissions": []
+}

@@ -1,0 +1,34 @@
+NeuroPause — GitHub Connector Sprint, Increment 1 of 4
+======================================================
+Scope: Repository metadata enrichment (spec Part 2) + issue/PR -> repository
+containment relationship (spec Part 5). Pure mapping — NO new API calls, NO
+rate-limit exposure, NO new failure modes.
+
+MODIFIED (2):
+  apps/desktop/src/main/unified/sync/adapters/github.ts
+    - mapIssue now sets containerId = the repo's Unified ID (from the embedded
+      `repository` object), so the graph draws "repository contains issue/PR".
+      If the repo isn't synced, the projector skips the edge (safe).
+    - mapRepo now captures Part 2 fields: visibility, topics (as labels),
+      pushed_at, homepage, license, plus the existing stars/forks/default_branch.
+  apps/desktop/src/main/unified/sync/adapters/adapters.test.ts
+    - New test: issue->repo containment + rich repo metadata.
+
+Verified in-container: tsc node 0, 274/274 tests, lint 0.
+Source-only overlay. NO dependency changes, NO npm install required.
+
+Apply from the repo root:
+  unzip -o ~/Downloads/neuropause-github-inc1.zip
+
+NOTE: To SEE any of this you need real data. Create a test repo with an issue
+and a PR, then re-sync (Connectors -> GitHub -> sync icon). The issue/PR will
+then appear linked under the repo in Operations -> Knowledge, with full metadata.
+
+Remaining increments (built + verified one at a time, against your test repo):
+  Inc 2: Per-repo deep sync — releases, commits, milestones, labels; the
+         per-repo fan-out pattern with rate-limit/incremental handling.
+  Inc 3: Pull request reviews + review requests + GitHub Actions runs; per-entity
+         timeline events (issue opened/closed, PR merged, workflow passed/failed,
+         release published).
+  Inc 4: GitHub section in the Executive Mission Brief; connector-page UI
+         (orgs, repo list, sync progress, next sync).

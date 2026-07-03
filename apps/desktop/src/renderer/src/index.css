@@ -1,0 +1,230 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light dark;
+
+    /* Accent — Apple system indigo (light variant). */
+    --accent: 88 86 214;
+    --accent-hover: 99 97 224;
+    --accent-fg: 255 255 255;
+
+    /* Text */
+    --text: 29 29 31;
+    --text-2: 99 99 102;
+    --text-3: 142 142 147;
+
+    /* Apple system semantic colors (light) */
+    --c-blue: 0 122 255;
+    --c-green: 52 199 89;
+    --c-orange: 255 149 0;
+    --c-purple: 175 82 222;
+    --c-teal: 48 176 199;
+    --c-pink: 255 45 85;
+    --c-yellow: 255 184 0;
+
+    /* Window background gradient (fallback where vibrancy is unavailable) */
+    --bg-from: #f5f5f7;
+    --bg-to: #e9e9ef;
+
+    /* Translucent materials over the vibrancy */
+    --surface-1: rgba(255, 255, 255, 0.55);
+    --surface-2: rgba(255, 255, 255, 0.78);
+    --hairline: rgba(0, 0, 0, 0.08);
+    --hairline-strong: rgba(0, 0, 0, 0.12);
+    --fill-1: rgba(0, 0, 0, 0.04);
+    --fill-2: rgba(0, 0, 0, 0.07);
+    --glass: rgba(246, 246, 249, 0.72);
+    --sidebar: rgba(252, 252, 253, 0.45);
+  }
+
+  .dark {
+    --accent: 94 92 230;
+    --accent-hover: 110 108 240;
+    --accent-fg: 255 255 255;
+
+    --text: 245 245 247;
+    --text-2: 161 161 166;
+    --text-3: 122 122 130;
+
+    --c-blue: 10 132 255;
+    --c-green: 48 209 88;
+    --c-orange: 255 159 10;
+    --c-purple: 191 90 242;
+    --c-teal: 64 200 224;
+    --c-pink: 255 55 95;
+    --c-yellow: 255 214 10;
+
+    --bg-from: #0b0b0f;
+    --bg-to: #131318;
+
+    --surface-1: rgba(255, 255, 255, 0.05);
+    --surface-2: rgba(255, 255, 255, 0.09);
+    --hairline: rgba(255, 255, 255, 0.10);
+    --hairline-strong: rgba(255, 255, 255, 0.16);
+    --fill-1: rgba(255, 255, 255, 0.06);
+    --fill-2: rgba(255, 255, 255, 0.11);
+    --glass: rgba(28, 28, 32, 0.72);
+    --sidebar: rgba(22, 22, 26, 0.35);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    overflow: hidden;
+    background: transparent; /* let macOS vibrancy show through */
+    color: rgb(var(--text));
+    font-family:
+      'SF Pro Display', 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Helvetica Neue',
+      Helvetica, Arial, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    font-size: 13.5px;
+  }
+
+  /* Momentum scrolling (native overlay scrollbars are configured below). */
+  html,
+  body {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Respect reduced-motion globally. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* macOS draggable title-bar regions */
+  .app-drag {
+    -webkit-app-region: drag;
+  }
+  .app-no-drag {
+    -webkit-app-region: no-drag;
+  }
+
+  /* Fallback window background (used where vibrancy is unavailable). */
+  .app-bg {
+    background:
+      radial-gradient(1100px 560px at 50% -12%, rgb(var(--accent) / 0.12), transparent 62%),
+      linear-gradient(180deg, var(--bg-from), var(--bg-to));
+  }
+
+  /* Material: a standard translucent panel. */
+  .surface {
+    background: var(--surface-1);
+    border: 1px solid var(--hairline);
+  }
+  /* Material: a raised translucent panel (cards, popovers backdrop). */
+  .surface-raised {
+    background: var(--surface-2);
+    border: 1px solid var(--hairline);
+  }
+  /* Material: strong glass for floating UI (command palette, menus). */
+  .glass-panel {
+    background: var(--glass);
+    border: 1px solid var(--hairline);
+    backdrop-filter: blur(50px) saturate(190%);
+    -webkit-backdrop-filter: blur(50px) saturate(190%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.06),
+      0 24px 60px -20px rgba(0, 0, 0, 0.5);
+  }
+  /* Material: the sidebar's very light translucency. */
+  .sidebar-material {
+    background: var(--sidebar);
+  }
+
+  .hairline-b {
+    border-bottom: 1px solid var(--hairline);
+  }
+  .hairline-r {
+    border-right: 1px solid var(--hairline);
+  }
+  .hairline-t {
+    border-top: 1px solid var(--hairline);
+  }
+
+  /* Subtle interactive fills */
+  .fill-hover {
+    background: transparent;
+    transition: background-color 140ms ease;
+  }
+  .fill-hover:hover {
+    background: var(--fill-1);
+  }
+  .fill-active {
+    background: var(--fill-2);
+  }
+
+  .text-muted {
+    color: rgb(var(--text-2));
+  }
+  .text-faint {
+    color: rgb(var(--text-3));
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/*
+ * Native macOS overlay scrollbars: by leaving ::-webkit-scrollbar unstyled,
+ * Chromium defers to the OS, which draws overlay scrollbars that float over
+ * content and auto-hide per the user's system setting ("Show scroll bars").
+ * A thin fallback is provided only for non-Chromium engines.
+ */
+@supports not (selector(::-webkit-scrollbar)) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(128, 128, 128, 0.4) transparent;
+  }
+}
+
+/*
+ * Focus indicators: preserve default focus-visible rings for anything not
+ * explicitly styled, suppress the mouse-click outline, and give native form
+ * controls a clear accent ring.
+ */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid rgb(var(--accent) / 0.6);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* High-contrast: strengthen separators and secondary text. */
+@media (prefers-contrast: more) {
+  :root {
+    --hairline: rgba(0, 0, 0, 0.22);
+    --hairline-strong: rgba(0, 0, 0, 0.34);
+    --text-2: 55 55 60;
+    --text-3: 88 88 94;
+  }
+  .dark {
+    --hairline: rgba(255, 255, 255, 0.28);
+    --hairline-strong: rgba(255, 255, 255, 0.42);
+    --text-2: 205 205 212;
+    --text-3: 170 170 178;
+  }
+}

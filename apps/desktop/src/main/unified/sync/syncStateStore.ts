@@ -1,0 +1,138 @@
+/**
+ * Durable sync state: per-account, per-resource cursors (for incremental sync)
+ * plus the health metrics the Connector Health Dashboard reads (status, last/next
+ * sync, duration, entity count, errors, rate-limit window). Electron-free so it
+ * unit-tests against a temp path; the singleton lives in `syncStateInstance.ts`.
+ */
+import { EventEmitter } from 'node:events';
+import { promises as fs } from 'node:fs';
+import type { ConnectorSyncSnapshot } from '@neuropause/shared';
+import { createLogger } from '../../logger';
+
+const log = createLogger('sync-state');
+
+export interface ResourceCursor {
+  cursor: string | null;
+  lastSyncAt: string | null;
+}
+
+export interface AccountSyncState {
+  connectorId: string;
+  accountId: string;
+  status: ConnectorSyncSnapshot['status'];
+  lastSyncAt: string | null;
+  lastDurationMs: number | null;
+  nextSyncAt: string | null;
+  entityCount: number;
+  lastError: string | null;
+  consecutiveFailures: number;
+  rateLimitedUntil: string | null;
+  resources: Record<string, ResourceCursor>;
+}
+
+export type SyncStatePatch = Partial<Omit<AccountSyncState, 'connectorId' | 'accountId' | 'resources'>>;
+
+function key(connectorId: string, accountId: string): string {
+  return `${connectorId}::${accountId}`;
+}
+
+function defaultState(connectorId: string, accountId: string): AccountSyncState {
+  return {
+    connectorId,
+    accountId,
+    status: 'idle',
+    lastSyncAt: null,
+    lastDurationMs: null,
+    nextSyncAt: null,
+    entityCount: 0,
+    lastError: null,
+    consecutiveFailures: 0,
+    rateLimitedUntil: null,
+    resources: {},
+  };
+}
+
+/** Project a state plus a live queue depth into a dashboard snapshot. */
+export function stateToSnapshot(s: AccountSyncState, queueSize: number): ConnectorSyncSnapshot {
+  return {
+    connectorId: s.connectorId,
+    accountId: s.accountId,
+    status: s.status,
+    lastSyncAt: s.lastSyncAt,
+    lastDurationMs: s.lastDurationMs,
+    nextSyncAt: s.nextSyncAt,
+    entityCount: s.entityCount,
+    lastError: s.lastError,
+    consecutiveFailures: s.consecutiveFailures,
+    rateLimitedUntil: s.rateLimitedUntil,
+    queueSize,
+  };
+}
+
+export class SyncStateStore extends EventEmitter {
+  private states = new Map<string, AccountSyncState>();
+  private loaded = false;
+
+  constructor(private readonly filePath: string) {
+    super();
+  }
+
+  async load(): Promise<void> {
+    if (this.loaded) return;
+    try {
+      const raw = await fs.readFile(this.filePath, 'utf8');
+      const list = JSON.parse(raw) as AccountSyncState[];
+      if (Array.isArray(list)) {
+        for (const s of list) if (s && s.connectorId && s.accountId) this.states.set(key(s.connectorId, s.accountId), s);
+      }
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        log.warn('Failed to read sync state; starting empty', err);
+      }
+    }
+    this.loaded = true;
+    log.info('Sync state ready', { accounts: this.states.size });
+  }
+
+  private async persist(): Promise<void> {
+    const tmp = `${this.filePath}.tmp`;
+    await fs.writeFile(tmp, JSON.stringify([...this.states.values()]), { mode: 0o600 });
+    await fs.rename(tmp, this.filePath);
+  }
+
+  /** Current state for an account (defaults if never synced). */
+  get(connectorId: string, accountId: string): AccountSyncState {
+    return this.states.get(key(connectorId, accountId)) ?? defaultState(connectorId, accountId);
+  }
+
+  getCursor(connectorId: string, accountId: string, resourceId: string): string | null {
+    return this.get(connectorId, accountId).resources[resourceId]?.cursor ?? null;
+  }
+
+  async setCursor(connectorId: string, accountId: string, resourceId: string, cursor: string | null, at: string): Promise<void> {
+    const k = key(connectorId, accountId);
+    const state = this.states.get(k) ?? defaultState(connectorId, accountId);
+    state.resources[resourceId] = { cursor, lastSyncAt: at };
+    this.states.set(k, state);
+    await this.persist();
+  }
+
+  async recordRun(connectorId: string, accountId: string, patch: SyncStatePatch): Promise<void> {
+    const k = key(connectorId, accountId);
+    const state = this.states.get(k) ?? defaultState(connectorId, accountId);
+    Object.assign(state, patch);
+    this.states.set(k, state);
+    await this.persist();
+    this.emit('changed', { connectorId, accountId });
+  }
+
+  /** All known account states (optionally filtered to one connector). */
+  all(connectorId?: string): AccountSyncState[] {
+    const out: AccountSyncState[] = [];
+    for (const s of this.states.values()) {
+      if (connectorId && s.connectorId !== connectorId) continue;
+      out.push(s);
+    }
+    return out;
+  }
+}

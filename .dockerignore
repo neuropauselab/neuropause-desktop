@@ -1,0 +1,22 @@
+# Dependencies and build outputs are recreated inside the image.
+**/node_modules
+**/dist
+**/out
+**/release
+**/.turbo
+
+# VCS + local
+.git
+.gitignore
+*.log
+coverage
+.DS_Store
+
+# Secrets — never copy into the image.
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.vscode
+.idea

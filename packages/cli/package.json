@@ -1,0 +1,19 @@
+{
+  "name": "@neuropause/cli",
+  "version": "0.1.0",
+  "description": "NeuroPause CLI — manage API keys, inspect usage, and publish to the marketplace.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "bin": {
+    "neuropause": "./dist/cli.js"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@neuropause/sdk": "*",
+    "@neuropause/shared": "*"
+  }
+}
