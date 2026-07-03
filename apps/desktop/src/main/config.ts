@@ -4,6 +4,7 @@
  * backend) but always have safe local defaults.
  */
 import { app } from 'electron';
+import { getBakedBackendUrl } from './buildInfo';
 
 function readUrl(name: string, fallback: string): string {
   const raw = process.env[name];
@@ -19,7 +20,7 @@ function readUrl(name: string, fallback: string): string {
 
 export const config = {
   /** Base URL of the NeuroPause backend (must match the backend's PORT). */
-  backendUrl: readUrl('NEUROPAUSE_BACKEND_URL', 'http://127.0.0.1:4000'),
+  backendUrl: readUrl('NEUROPAUSE_BACKEND_URL', getBakedBackendUrl() ?? 'http://127.0.0.1:4000'),
 
   /** How long we wait for the user to complete the browser OAuth flow. */
   oauthTimeoutMs: 5 * 60 * 1000,

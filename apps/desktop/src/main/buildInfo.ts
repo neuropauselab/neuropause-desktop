@@ -16,6 +16,7 @@ import { resolveChannel } from './services/updater/updateChannels';
 
 interface GeneratedBuildInfo {
   commit?: string;
+  backendUrl?: string | null;
   channel?: string;
   buildTime?: string;
 }
@@ -67,4 +68,9 @@ export function getBuildInfo(): BuildInfo {
       v8: process.versions.v8 ?? 'unknown',
     },
   };
+}
+
+/** The backend URL baked at package time by generate-build-info (null in dev). */
+export function getBakedBackendUrl(): string | null {
+  return generated.backendUrl ?? null;
 }

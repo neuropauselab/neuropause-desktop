@@ -11,7 +11,9 @@ const { join } = require('node:path');
 
 function git(args) {
   try {
-    return execSync(`git ${args}`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    return execSync(`git ${args}`, { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim();
   } catch {
     return '';
   }
@@ -32,6 +34,8 @@ function channelFromVersion(version) {
 }
 
 const info = {
+  // Backend URL baked into packaged builds (packaged apps have no env vars).
+  backendUrl: process.env.NEUROPAUSE_BACKEND_URL || null,
   version: pkg.version,
   channel: process.env.NEUROPAUSE_CHANNEL || channelFromVersion(pkg.version),
   commit: process.env.NEUROPAUSE_BUILD_COMMIT || git('rev-parse --short HEAD') || 'unknown',
