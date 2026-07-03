@@ -1,6 +1,5 @@
 # Local development infrastructure for NeuroPause Desktop.
 # Postgres and Redis are used from Phase 1 (auth + sessions).
-# Meilisearch and Qdrant come online in later phases (search + AI memory);
 # they are defined now so the full local stack is one command away.
 services:
   postgres:
@@ -37,18 +36,6 @@ services:
       retries: 10
 
   # --- Reserved for later phases ---
-  meilisearch:
-    image: getmeili/meilisearch:v1.8
-    container_name: neuropause-meilisearch
-    restart: unless-stopped
-    environment:
-      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-neuropause_dev_master_key}
-      MEILI_ENV: development
-    ports:
-      - '7700:7700'
-    volumes:
-      - ./.docker-data/meili:/meili_data
-
   qdrant:
     image: qdrant/qdrant:v1.9.0
     container_name: neuropause-qdrant

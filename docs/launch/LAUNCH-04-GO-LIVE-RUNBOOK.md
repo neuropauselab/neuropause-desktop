@@ -10,17 +10,17 @@ LAUNCH-01 (server), LAUNCH-02 (packaging), LAUNCH-03/+03b (connectors).
 
 | ID | Finding | Status |
 | --- | --- | --- |
-| A1-1 | Undocumented env vars | Largely closed: backend schema (RC1-03 §3) is authoritative; desktop `NEUROPAUSE_*` + connector `*_CLIENT_ID/SECRET` enumerated (LAUNCH-02/03). Optional: fold into `.env.example` (§5). |
+| A1-1 | Undocumented env vars | **Closed** — backend schema authoritative (RC1-03 §3); desktop + connector names documented in `.env.example`. |
 | A1-2 | Version control | **Closed** — private remote live, history secret-free (developer-verified). |
 | A2-1 | Dual plan vocabularies on `subscriptions` | Documented (RC1-02). |
-| A2-2 / A3-1 | Meilisearch unused | **Confirmed** — optional removal in §5. |
+| A2-2 / A3-1 | Meilisearch unused | **Closed** — removed from the dev compose and `.env.example`. |
 | A2-3 | Qdrant verdict | **Closed — keep**: referenced by `unified/search`, `searchBackend`, `memory/memoryRetriever` (optional local search backend; graceful-absence check sits in the deferred A6 deep-dive). |
 | A3-2 | Store router: 23 endpoints, 0 tests | Open — post-launch quality item. |
 | A3-3 | Pin connector-accounts mount path in API ref | Open — doc nit. |
 | A4-1 / A4-2 / A5-3 | ~24 dead channels + legacy sim (`cloud-sync.json`) | Open — post-launch pruning, artifact list recorded. |
 | A5-1 | Honest capability claim | Adopted: "connects 16 services; live sync for GitHub, Notion, Slack, Google Calendar." |
 | A5-2 | Connector env names | **Closed** (LAUNCH-03). |
-| SEC-1 | Backend port published on all interfaces | Closed operationally (LAUNCH-01 step 6); optional repo commit in §5. |
+| SEC-1 | Backend port published on all interfaces | **Closed** — loopback binding in the runbook (server) and committed in `docker-compose.prod.yml`. |
 | 02-1 | "Packaging missing" claim | Correction recorded — it pre-existed. |
 | 02-2 | Backend URL in packaged builds | **Closed in code, tested.** |
 | 02-3 | App icon | Open — required before public release. |
