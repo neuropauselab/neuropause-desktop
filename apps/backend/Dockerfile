@@ -24,7 +24,9 @@ RUN npm ci
 COPY packages/shared packages/shared
 COPY apps/backend apps/backend
 RUN npm run build -w @neuropause/backend \
+# Seeds must ship beside the bundle (seed.ts resolves dist/seeds) — omission crashed fresh-DB prod boots; fixed 2026-07-03.
  && cp -r apps/backend/src/db/migrations apps/backend/dist/db/migrations \
+ && cp -r apps/backend/src/db/seeds apps/backend/dist/seeds \
  && npm prune --omit=dev
 
 # ---- Runtime ----
