@@ -43,3 +43,5 @@ export * from './types/executiveCenter';
 export * from './types/voice';
 export * from './voiceSession';
 export * from './voiceCommands';
+export * from './types/interaction';
+export * from './interactionRouter';
