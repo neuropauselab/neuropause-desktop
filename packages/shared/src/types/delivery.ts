@@ -35,6 +35,22 @@ export interface IntelligenceItem {
   deepLink?: string;
   /** ISO timestamp the item was produced. */
   producedAt: string;
+  /**
+   * Governance (never fabricated). When an item is a recommendation derived from
+   * real data, these carry the audit trail the UI/logs can show:
+   */
+  governance?: {
+    /** Human-readable evidence references (e.g. "PR #214", "CI run 3f8e1f0"). */
+    evidence: string[];
+    /** Which connected systems the evidence came from (e.g. ["github", "timeline"]). */
+    sourceSystems: string[];
+    /** 0..1 confidence in the finding. */
+    confidence: number;
+    /** Why this matters, in one line. */
+    reasoning: string;
+    /** The concrete next action suggested to the user. */
+    recommendedAction: string;
+  };
 }
 
 /** Cadence for a scheduled source. */

@@ -25,6 +25,7 @@ import { DeliveryEngine } from './deliveryEngine';
 import { unifiedStore } from '../unified/storeInstance';
 import { getEnterpriseTimeline } from '../timeline';
 import { generateBriefing } from '../intelligence/briefingGenerator';
+import { founderProactiveSource } from '../ai/founderProactive';
 
 const log = createLogger('delivery-root');
 
@@ -147,6 +148,9 @@ export async function initExecutiveDelivery(): Promise<void> {
 
   deliveryEngine.register(morningBrief);
   deliveryEngine.register(eveningSummary);
+  // V2.2: Founder AI proactive recommendations — same engine, distinct source.
+  // Fires with the morning brief; produces evidence-backed findings as items.
+  deliveryEngine.register(founderProactiveSource(prefs.morningBriefMinutes));
   deliveryEngine.start();
   log.info('Executive delivery initialized', { sources: deliveryEngine.listSources() });
 }
