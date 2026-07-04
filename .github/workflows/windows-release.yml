@@ -59,7 +59,8 @@ jobs:
           # Generic aliases as a fallback (a single cert used for both platforms).
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-        run: npm run package:win -w @neuropause/desktop
+        working-directory: apps/desktop
+        run: npm run package:win
 
       # Keep every build's output, tag or not, for inspection/download.
       - name: Upload build artifacts
