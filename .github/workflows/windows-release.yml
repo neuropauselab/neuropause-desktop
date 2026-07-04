@@ -53,14 +53,21 @@ jobs:
       - name: Package Windows
         env:
           NEUROPAUSE_BACKEND_URL: ${{ vars.NEUROPAUSE_BACKEND_URL || 'https://api.neuropause033.com' }}
-          # Windows-specific certificate aliases take precedence when present.
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-          # Generic aliases as a fallback (a single cert used for both platforms).
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
         working-directory: apps/desktop
-        run: npm run package:win
+        # Signing is opt-in. We export the certificate vars ONLY when the secret is
+        # non-empty, so an unset/blank secret yields a clean unsigned build instead
+        # of electron-builder failing on a non-resolvable cert path. When a real
+        # cert secret is added, signing turns on automatically with no further edit.
+        run: |
+          if [ -n "${{ secrets.WIN_CSC_LINK }}" ]; then
+            export WIN_CSC_LINK="${{ secrets.WIN_CSC_LINK }}"
+            export WIN_CSC_KEY_PASSWORD="${{ secrets.WIN_CSC_KEY_PASSWORD }}"
+            echo "Signing enabled (WIN_CSC_LINK present)."
+          else
+            echo "No signing certificate secret; producing an unsigned build."
+          fi
+          npm run package:win
+        shell: bash
 
       # Keep every build's output, tag or not, for inspection/download.
       - name: Upload build artifacts
