@@ -1,0 +1,1164 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NeuroPause — The AI Operating Layer for your work</title>
+    <meta
+      name="description"
+      content="NeuroPause is a desktop workspace that connects your AI tools, remembers your work, and briefs you every morning. Founder AI, Mission Brief, Executive Memory — one operating layer for macOS and Windows."
+    />
+    <meta property="og:title" content="NeuroPause — The AI Operating Layer" />
+    <meta
+      property="og:description"
+      content="Connect your AI tools, build a searchable memory of your work, and get an intelligent daily brief. For macOS and Windows."
+    />
+    <meta property="og:type" content="website" />
+    <style>
+      /*
+        NeuroPause — public site.
+        Design thesis: NeuroPause is cognitive infrastructure — a quiet operating
+        layer beneath your work. Palette is deep observatory ink with a single
+        signal-cyan; the hero's signature is a living activity stream (the memory
+        timeline the product is built on), not a stock number. Type pairs a wide
+        geometric display (Space Grotesk) with a clean humanist body (Inter).
+      */
+      @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;450;500;600&display=swap');
+
+      :root {
+        --ink: #0a0e14;
+        --ink-2: #10161f;
+        --panel: #141c28;
+        --line: #223041;
+        --fg: #e8eef5;
+        --fg-dim: #90a2b6;
+        --fg-mute: #5f7285;
+        --signal: #2ee6d6;
+        --signal-deep: #14b8ab;
+        --violet: #8b7cf6;
+        --amber: #f5b843;
+        --radius: 16px;
+        --maxw: 1120px;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+        * {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+      body {
+        background: var(--ink);
+        color: var(--fg);
+        font-family: 'Inter', system-ui, sans-serif;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
+      }
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+      .wrap {
+        max-width: var(--maxw);
+        margin: 0 auto;
+        padding: 0 24px;
+      }
+      .display {
+        font-family: 'Space Grotesk', sans-serif;
+        letter-spacing: -0.02em;
+        line-height: 1.05;
+      }
+      .eyebrow {
+        font-family: 'Space Grotesk', sans-serif;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--signal);
+      }
+
+      /* ── Nav ─────────────────────────────────────────────── */
+      nav {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        background: rgba(10, 14, 20, 0.72);
+        backdrop-filter: blur(16px);
+        border-bottom: 1px solid var(--line);
+      }
+      .nav-in {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 64px;
+      }
+      .logo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-family: 'Space Grotesk', sans-serif;
+        font-weight: 700;
+        font-size: 18px;
+        letter-spacing: -0.01em;
+      }
+      .logo .mark {
+        width: 22px;
+        height: 22px;
+        position: relative;
+      }
+      .logo .mark::before,
+      .logo .mark::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: 6px;
+      }
+      .logo .mark::before {
+        background: var(--signal);
+        opacity: 0.25;
+        transform: rotate(0deg);
+      }
+      .logo .mark::after {
+        border: 1.5px solid var(--signal);
+        border-radius: 6px;
+      }
+      .nav-links {
+        display: flex;
+        align-items: center;
+        gap: 30px;
+        font-size: 14.5px;
+        color: var(--fg-dim);
+      }
+      .nav-links a:hover {
+        color: var(--fg);
+      }
+      .nav-cta {
+        font-family: 'Space Grotesk', sans-serif;
+        font-weight: 600;
+        font-size: 14px;
+        color: var(--ink) !important;
+        background: var(--signal);
+        padding: 9px 18px;
+        border-radius: 10px;
+        transition: transform 0.15s ease;
+      }
+      .nav-cta:hover {
+        transform: translateY(-1px);
+      }
+      @media (max-width: 760px) {
+        .nav-links a:not(.nav-cta) {
+          display: none;
+        }
+      }
+
+      /* ── Hero ────────────────────────────────────────────── */
+      .hero {
+        position: relative;
+        padding: 96px 0 72px;
+        overflow: hidden;
+      }
+      .hero-glow {
+        position: absolute;
+        top: -180px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 900px;
+        height: 500px;
+        background: radial-gradient(ellipse at center, rgba(46, 230, 214, 0.14), transparent 62%);
+        pointer-events: none;
+      }
+      .hero-grid {
+        display: grid;
+        grid-template-columns: 1.05fr 0.95fr;
+        gap: 56px;
+        align-items: center;
+        position: relative;
+      }
+      @media (max-width: 900px) {
+        .hero-grid {
+          grid-template-columns: 1fr;
+          gap: 40px;
+        }
+      }
+      .hero h1 {
+        font-size: clamp(38px, 5.4vw, 62px);
+        font-weight: 600;
+        margin: 20px 0 22px;
+      }
+      .hero h1 .accent {
+        color: var(--signal);
+      }
+      .hero .lede {
+        font-size: clamp(17px, 2vw, 19px);
+        color: var(--fg-dim);
+        max-width: 30em;
+        margin-bottom: 32px;
+      }
+      .hero-cta {
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .btn {
+        font-family: 'Space Grotesk', sans-serif;
+        font-weight: 600;
+        font-size: 15px;
+        padding: 13px 22px;
+        border-radius: 12px;
+        border: 1px solid transparent;
+        cursor: pointer;
+        transition:
+          transform 0.15s ease,
+          background 0.15s ease,
+          border-color 0.15s ease;
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+      }
+      .btn-primary {
+        background: var(--signal);
+        color: var(--ink);
+      }
+      .btn-primary:hover {
+        transform: translateY(-2px);
+        background: #4af0e2;
+      }
+      .btn-ghost {
+        background: transparent;
+        color: var(--fg);
+        border-color: var(--line);
+      }
+      .btn-ghost:hover {
+        border-color: var(--signal);
+        color: var(--signal);
+      }
+      .hero-meta {
+        margin-top: 18px;
+        font-size: 13px;
+        color: var(--fg-mute);
+      }
+
+      /* Signature: the living activity stream */
+      .stream {
+        background: linear-gradient(180deg, var(--ink-2), var(--ink));
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        padding: 20px;
+        box-shadow: 0 40px 80px -30px rgba(0, 0, 0, 0.6);
+        position: relative;
+      }
+      .stream-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 4px 6px 16px;
+        border-bottom: 1px solid var(--line);
+      }
+      .stream-head .t {
+        font-family: 'Space Grotesk', sans-serif;
+        font-weight: 600;
+        font-size: 14px;
+      }
+      .stream-head .live {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 12px;
+        color: var(--fg-mute);
+      }
+      .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--signal);
+        box-shadow: 0 0 0 0 rgba(46, 230, 214, 0.5);
+        animation: pulse 2.4s infinite;
+      }
+      @keyframes pulse {
+        0% {
+          box-shadow: 0 0 0 0 rgba(46, 230, 214, 0.45);
+        }
+        70% {
+          box-shadow: 0 0 0 8px rgba(46, 230, 214, 0);
+        }
+        100% {
+          box-shadow: 0 0 0 0 rgba(46, 230, 214, 0);
+        }
+      }
+      .ev {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        gap: 12px;
+        align-items: center;
+        padding: 12px 6px;
+        border-bottom: 1px solid rgba(34, 48, 65, 0.5);
+        opacity: 0;
+        transform: translateY(8px);
+        animation: rise 0.6s ease forwards;
+      }
+      .ev:nth-child(1) {
+        animation-delay: 0.15s;
+      }
+      .ev:nth-child(2) {
+        animation-delay: 0.5s;
+      }
+      .ev:nth-child(3) {
+        animation-delay: 0.85s;
+      }
+      .ev:nth-child(4) {
+        animation-delay: 1.2s;
+      }
+      .ev:nth-child(5) {
+        animation-delay: 1.55s;
+      }
+      @keyframes rise {
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      .ev .ic {
+        width: 30px;
+        height: 30px;
+        border-radius: 9px;
+        display: grid;
+        place-items: center;
+        font-size: 14px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+      }
+      .ev .src {
+        font-size: 13.5px;
+        font-weight: 500;
+      }
+      .ev .desc {
+        font-size: 12.5px;
+        color: var(--fg-mute);
+      }
+      .ev .tm {
+        font-size: 11.5px;
+        color: var(--fg-mute);
+        font-variant-numeric: tabular-nums;
+      }
+      .stream-foot {
+        margin-top: 14px;
+        padding: 14px;
+        background: rgba(46, 230, 214, 0.06);
+        border: 1px solid rgba(46, 230, 214, 0.18);
+        border-radius: 12px;
+        font-size: 13px;
+        color: var(--fg-dim);
+      }
+      .stream-foot b {
+        color: var(--signal);
+        font-weight: 600;
+      }
+
+      /* ── Trust strip ─────────────────────────────────────── */
+      .strip {
+        border-top: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+        padding: 22px 0;
+      }
+      .strip-in {
+        display: flex;
+        gap: 40px;
+        align-items: center;
+        justify-content: center;
+        flex-wrap: wrap;
+        color: var(--fg-mute);
+        font-size: 13.5px;
+      }
+      .strip-in span {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      /* ── Sections ────────────────────────────────────────── */
+      section {
+        padding: 88px 0;
+      }
+      .sec-head {
+        max-width: 40em;
+        margin-bottom: 48px;
+      }
+      .sec-head h2 {
+        font-size: clamp(28px, 3.6vw, 40px);
+        font-weight: 600;
+        margin: 14px 0 14px;
+      }
+      .sec-head p {
+        color: var(--fg-dim);
+        font-size: 17px;
+      }
+
+      .features {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 20px;
+      }
+      @media (max-width: 900px) {
+        .features {
+          grid-template-columns: 1fr;
+        }
+      }
+      .card {
+        background: linear-gradient(180deg, var(--ink-2), var(--ink));
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 28px;
+        transition:
+          transform 0.2s ease,
+          border-color 0.2s ease;
+      }
+      .card:hover {
+        transform: translateY(-3px);
+        border-color: rgba(46, 230, 214, 0.4);
+      }
+      .card .ic {
+        width: 42px;
+        height: 42px;
+        border-radius: 11px;
+        display: grid;
+        place-items: center;
+        font-size: 19px;
+        margin-bottom: 18px;
+        background: rgba(46, 230, 214, 0.1);
+        border: 1px solid rgba(46, 230, 214, 0.22);
+      }
+      .card h3 {
+        font-family: 'Space Grotesk', sans-serif;
+        font-size: 18px;
+        font-weight: 600;
+        margin-bottom: 8px;
+      }
+      .card p {
+        color: var(--fg-dim);
+        font-size: 14.5px;
+      }
+      .card.violet .ic {
+        background: rgba(139, 124, 246, 0.12);
+        border-color: rgba(139, 124, 246, 0.28);
+      }
+      .card.amber .ic {
+        background: rgba(245, 184, 67, 0.12);
+        border-color: rgba(245, 184, 67, 0.28);
+      }
+
+      /* ── Pricing ─────────────────────────────────────────── */
+      .tiers {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+      }
+      @media (max-width: 980px) {
+        .tiers {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+      @media (max-width: 560px) {
+        .tiers {
+          grid-template-columns: 1fr;
+        }
+      }
+      .tier {
+        background: var(--ink-2);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 26px 22px;
+        display: flex;
+        flex-direction: column;
+      }
+      .tier.featured {
+        border-color: var(--signal);
+        background: linear-gradient(180deg, rgba(46, 230, 214, 0.07), var(--ink-2));
+        position: relative;
+      }
+      .tier.featured::before {
+        content: 'Most popular';
+        position: absolute;
+        top: -11px;
+        left: 22px;
+        font-family: 'Space Grotesk', sans-serif;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        color: var(--ink);
+        background: var(--signal);
+        padding: 3px 10px;
+        border-radius: 6px;
+      }
+      .tier .name {
+        font-family: 'Space Grotesk', sans-serif;
+        font-weight: 600;
+        font-size: 15px;
+        color: var(--fg-dim);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .tier .price {
+        font-family: 'Space Grotesk', sans-serif;
+        font-size: 34px;
+        font-weight: 700;
+        margin: 14px 0 2px;
+        letter-spacing: -0.02em;
+      }
+      .tier .price small {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--fg-mute);
+      }
+      .tier .who {
+        font-size: 13px;
+        color: var(--fg-mute);
+        min-height: 34px;
+        margin-bottom: 18px;
+      }
+      .tier ul {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        font-size: 13.5px;
+        color: var(--fg-dim);
+        margin-bottom: 22px;
+        flex: 1;
+      }
+      .tier li {
+        display: flex;
+        gap: 9px;
+        align-items: flex-start;
+      }
+      .tier li::before {
+        content: '';
+        width: 15px;
+        height: 15px;
+        margin-top: 3px;
+        flex-shrink: 0;
+        border-radius: 4px;
+        background: rgba(46, 230, 214, 0.15);
+        border: 1px solid rgba(46, 230, 214, 0.35);
+      }
+      .tier .btn {
+        width: 100%;
+        justify-content: center;
+        font-size: 14px;
+        padding: 11px;
+      }
+
+      /* ── Download ────────────────────────────────────────── */
+      .dl {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin-bottom: 28px;
+      }
+      @media (max-width: 760px) {
+        .dl {
+          grid-template-columns: 1fr;
+        }
+      }
+      .dl-card {
+        background: var(--ink-2);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 28px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .dl-card .os {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .dl-card .os .glyph {
+        font-size: 26px;
+      }
+      .dl-card .os .t {
+        font-family: 'Space Grotesk', sans-serif;
+        font-weight: 600;
+        font-size: 18px;
+      }
+      .dl-card .os .sub {
+        font-size: 12.5px;
+        color: var(--fg-mute);
+      }
+      .dl-note {
+        font-size: 12.5px;
+        color: var(--fg-mute);
+        line-height: 1.5;
+      }
+      .req {
+        background: var(--ink-2);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 24px 28px;
+        font-size: 13.5px;
+        color: var(--fg-dim);
+      }
+      .req h4 {
+        font-family: 'Space Grotesk', sans-serif;
+        font-size: 14px;
+        color: var(--fg);
+        margin-bottom: 12px;
+        letter-spacing: 0.02em;
+      }
+      .req code {
+        color: var(--signal);
+        font-size: 12.5px;
+      }
+      .req .row {
+        display: flex;
+        justify-content: space-between;
+        padding: 7px 0;
+        border-bottom: 1px solid rgba(34, 48, 65, 0.5);
+      }
+      .req .row:last-child {
+        border-bottom: none;
+      }
+
+      /* ── FAQ ─────────────────────────────────────────────── */
+      .faq {
+        display: grid;
+        gap: 12px;
+        max-width: 780px;
+      }
+      details {
+        background: var(--ink-2);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 18px 22px;
+      }
+      details summary {
+        cursor: pointer;
+        font-family: 'Space Grotesk', sans-serif;
+        font-weight: 500;
+        font-size: 15.5px;
+        list-style: none;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      details summary::-webkit-details-marker {
+        display: none;
+      }
+      details summary::after {
+        content: '+';
+        color: var(--signal);
+        font-size: 20px;
+        font-weight: 400;
+      }
+      details[open] summary::after {
+        content: '−';
+      }
+      details p {
+        color: var(--fg-dim);
+        font-size: 14.5px;
+        margin-top: 12px;
+      }
+
+      /* ── CTA + Footer ────────────────────────────────────── */
+      .cta-band {
+        text-align: center;
+        padding: 96px 0;
+        position: relative;
+      }
+      .cta-band .glow {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(ellipse at center, rgba(46, 230, 214, 0.1), transparent 60%);
+        pointer-events: none;
+      }
+      .cta-band h2 {
+        font-size: clamp(30px, 4.4vw, 48px);
+        font-weight: 600;
+        margin-bottom: 18px;
+      }
+      .cta-band p {
+        color: var(--fg-dim);
+        font-size: 18px;
+        margin-bottom: 32px;
+      }
+      footer {
+        border-top: 1px solid var(--line);
+        padding: 48px 0 40px;
+        color: var(--fg-mute);
+        font-size: 13.5px;
+      }
+      .foot-grid {
+        display: flex;
+        justify-content: space-between;
+        gap: 40px;
+        flex-wrap: wrap;
+        margin-bottom: 32px;
+      }
+      .foot-col h5 {
+        font-family: 'Space Grotesk', sans-serif;
+        font-size: 12px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--fg-dim);
+        margin-bottom: 14px;
+      }
+      .foot-col a {
+        display: block;
+        margin-bottom: 9px;
+        color: var(--fg-mute);
+      }
+      .foot-col a:hover {
+        color: var(--signal);
+      }
+      .foot-bottom {
+        border-top: 1px solid var(--line);
+        padding-top: 24px;
+        display: flex;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      .badge-rc {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 11.5px;
+        color: var(--amber);
+        background: rgba(245, 184, 67, 0.1);
+        border: 1px solid rgba(245, 184, 67, 0.25);
+        padding: 3px 10px;
+        border-radius: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <nav>
+      <div class="wrap nav-in">
+        <a href="#top" class="logo"><span class="mark"></span>NeuroPause</a>
+        <div class="nav-links">
+          <a href="#features">Features</a>
+          <a href="#pricing">Pricing</a>
+          <a href="#download">Download</a>
+          <a href="#faq">FAQ</a>
+          <a href="#download" class="nav-cta">Get NeuroPause</a>
+        </div>
+      </div>
+    </nav>
+
+    <header class="hero" id="top">
+      <div class="hero-glow"></div>
+      <div class="wrap hero-grid">
+        <div>
+          <span class="badge-rc">● Release Candidate 1.0 — early access</span>
+          <h1 class="display">
+            The AI operating layer<br />for <span class="accent">how you actually work.</span>
+          </h1>
+          <p class="lede">
+            NeuroPause connects your AI tools, quietly remembers what you do across them, and briefs
+            you every morning. Not another chatbot — the layer that ties them all together.
+          </p>
+          <div class="hero-cta">
+            <a href="#download" class="btn btn-primary">Download for macOS →</a>
+            <a href="#features" class="btn btn-ghost">See how it works</a>
+          </div>
+          <p class="hero-meta">
+            Apple Silicon &amp; Windows · Free to start · Your data stays on your machine
+          </p>
+        </div>
+
+        <!-- Signature element: the living memory timeline -->
+        <div class="stream" aria-hidden="true">
+          <div class="stream-head">
+            <span class="t">Your day, remembered</span>
+            <span class="live"><span class="dot"></span>live timeline</span>
+          </div>
+          <div class="ev">
+            <span class="ic">◆</span>
+            <span
+              ><span class="src">GitHub — merged PR #214</span><br /><span class="desc"
+                >auth-service · 3 files</span
+              ></span
+            >
+            <span class="tm">09:12</span>
+          </div>
+          <div class="ev">
+            <span class="ic">✳</span>
+            <span
+              ><span class="src">Claude — drafted launch email</span><br /><span class="desc"
+                >saved to memory</span
+              ></span
+            >
+            <span class="tm">10:38</span>
+          </div>
+          <div class="ev">
+            <span class="ic">▦</span>
+            <span
+              ><span class="src">Notion — spec updated</span><br /><span class="desc"
+                >Q3 roadmap</span
+              ></span
+            >
+            <span class="tm">11:20</span>
+          </div>
+          <div class="ev">
+            <span class="ic">◷</span>
+            <span
+              ><span class="src">Calendar — investor sync</span><br /><span class="desc"
+                >attended · 45m</span
+              ></span
+            >
+            <span class="tm">14:00</span>
+          </div>
+          <div class="ev">
+            <span class="ic">✎</span>
+            <span
+              ><span class="src">Slack — 2 threads need a reply</span><br /><span class="desc"
+                >flagged for tomorrow</span
+              ></span
+            >
+            <span class="tm">16:45</span>
+          </div>
+          <div class="stream-foot">
+            <b>Mission Brief · tomorrow</b> — Ship the auth fix, reply to the two Slack threads, and
+            prep the investor follow-up you drafted at 10:38.
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="strip">
+      <div class="wrap strip-in">
+        <span>◆ Works with 16 tools</span>
+        <span>✳ On-device AI via Ollama</span>
+        <span>▦ Encrypted local storage</span>
+        <span>◷ Permission-based tracking</span>
+      </div>
+    </div>
+
+    <section id="features">
+      <div class="wrap">
+        <div class="sec-head">
+          <span class="eyebrow">What it does</span>
+          <h2 class="display">One layer that sees your work, so nothing falls through.</h2>
+          <p>
+            Your AI tools don't talk to each other. NeuroPause is the connective tissue — it watches
+            only what you allow, remembers it, and turns it into something useful.
+          </p>
+        </div>
+        <div class="features">
+          <div class="card">
+            <div class="ic">✳</div>
+            <h3>Founder AI</h3>
+            <p>
+              Ask anything about your own work — "what did I ship this week?", "where did that
+              investor thread land?" — and get an answer grounded in your real activity.
+            </p>
+          </div>
+          <div class="card">
+            <div class="ic">◷</div>
+            <h3>Mission Brief</h3>
+            <p>
+              Every morning, a concise brief of what matters today — pulled from your calendar,
+              tasks, and the loose ends NeuroPause noticed yesterday.
+            </p>
+          </div>
+          <div class="card violet">
+            <div class="ic">◆</div>
+            <h3>Engineering AI</h3>
+            <p>
+              Purpose-built for builders: track PRs, incomplete tasks, and code work across your
+              tools without babysitting a dozen dashboards.
+            </p>
+          </div>
+          <div class="card">
+            <div class="ic">▦</div>
+            <h3>Executive Memory</h3>
+            <p>
+              A searchable memory of everything you've worked on. Ask in plain language and find the
+              document, conversation, or decision you're chasing.
+            </p>
+          </div>
+          <div class="card violet">
+            <div class="ic">⬡</div>
+            <h3>Organizations</h3>
+            <p>
+              Bring your team into one workspace with roles, invites, and shared context — so the
+              brief reflects the whole company, not just you.
+            </p>
+          </div>
+          <div class="card amber">
+            <div class="ic">⚿</div>
+            <h3>Private by design</h3>
+            <p>
+              Tracking is permission-based and your memory lives encrypted on your machine. Run the
+              AI fully on-device with Ollama — nothing leaves unless you say so.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="pricing" style="background: var(--ink-2)">
+      <div class="wrap">
+        <div class="sec-head">
+          <span class="eyebrow">Pricing</span>
+          <h2 class="display">Start free. Upgrade when it's doing your thinking for you.</h2>
+          <p>Every plan runs the full desktop app. Paid tiers add team scale and AI depth.</p>
+        </div>
+        <div class="tiers">
+          <div class="tier">
+            <span class="name">Free</span>
+            <div class="price">$0</div>
+            <p class="who">For individuals getting started.</p>
+            <ul>
+              <li>Full desktop workspace</li>
+              <li>Connect core tools</li>
+              <li>On-device AI (Ollama)</li>
+              <li>7-day memory timeline</li>
+            </ul>
+            <a href="#download" class="btn btn-ghost">Download free</a>
+          </div>
+          <div class="tier featured">
+            <span class="name">Professional</span>
+            <div class="price">$19 <small>/mo</small></div>
+            <p class="who">For power users who live in their tools.</p>
+            <ul>
+              <li>Everything in Free</li>
+              <li>All 16 connectors</li>
+              <li>Unlimited memory</li>
+              <li>Daily Mission Brief</li>
+              <li>Founder &amp; Engineering AI</li>
+            </ul>
+            <a href="#download" class="btn btn-primary">Start free trial</a>
+          </div>
+          <div class="tier">
+            <span class="name">Business</span>
+            <div class="price">$49 <small>/mo</small></div>
+            <p class="who">For teams that share context.</p>
+            <ul>
+              <li>Everything in Professional</li>
+              <li>Organizations &amp; roles</li>
+              <li>Shared team memory</li>
+              <li>Priority support</li>
+            </ul>
+            <a href="#download" class="btn btn-ghost">Start free trial</a>
+          </div>
+          <div class="tier">
+            <span class="name">Enterprise</span>
+            <div class="price">Custom</div>
+            <p class="who">For organizations with scale &amp; compliance needs.</p>
+            <ul>
+              <li>Everything in Business</li>
+              <li>SSO &amp; audit logging</li>
+              <li>Deployment support</li>
+              <li>Dedicated contact</li>
+            </ul>
+            <a href="#contact" class="btn btn-ghost">Contact sales</a>
+          </div>
+        </div>
+        <p style="font-size: 12.5px; color: var(--fg-mute); margin-top: 20px; text-align: center">
+          Prices shown for planning. Billing activates at general availability; early-access testers
+          use the free tier.
+        </p>
+      </div>
+    </section>
+
+    <section id="download">
+      <div class="wrap">
+        <div class="sec-head">
+          <span class="eyebrow">Download</span>
+          <h2 class="display">Get NeuroPause 1.0 RC</h2>
+          <p>
+            Pick your platform. The app connects to your NeuroPause account on first launch — sign
+            up right inside it.
+          </p>
+        </div>
+        <div class="dl">
+          <div class="dl-card">
+            <div class="os">
+              <span class="glyph"></span>
+              <span
+                ><span class="t">macOS</span><br /><span class="sub"
+                  >Apple Silicon (M1–M4) · .dmg</span
+                ></span
+              >
+            </div>
+            <a
+              href="https://github.com/dishantdobariya91-debug/neuropause-desktop/releases/latest"
+              class="btn btn-primary"
+              >Download for macOS</a
+            >
+            <p class="dl-note">
+              First launch: right-click the app → <b>Open</b> → <b>Open</b> (one time). The build is
+              notarization-ready; until it's signed you'll confirm once, then it opens normally.
+            </p>
+          </div>
+          <div class="dl-card">
+            <div class="os">
+              <span class="glyph">⊞</span>
+              <span
+                ><span class="t">Windows</span><br /><span class="sub"
+                  >Windows 10/11 · x64 · Setup.exe</span
+                ></span
+              >
+            </div>
+            <a
+              href="https://github.com/dishantdobariya91-debug/neuropause-desktop/releases/latest"
+              class="btn btn-primary"
+              >Download for Windows</a
+            >
+            <p class="dl-note">
+              First launch: SmartScreen → <b>More info</b> → <b>Run anyway</b> (one time, until the
+              installer is code-signed). Installs per-user, no admin needed.
+            </p>
+          </div>
+        </div>
+        <div class="req">
+          <h4>System requirements &amp; release info</h4>
+          <div class="row"><span>Version</span><code>1.0.0-rc.1</code></div>
+          <div class="row"><span>macOS</span><span>14 Sonoma or later · Apple Silicon</span></div>
+          <div class="row"><span>Windows</span><span>Windows 10 (1809+) or 11 · x64</span></div>
+          <div class="row"><span>Disk</span><span>~400 MB installed</span></div>
+          <div class="row"><span>Optional</span><span>Ollama for on-device AI</span></div>
+          <div class="row">
+            <span>SHA-256</span
+            ><span style="color: var(--fg-mute)">published on each GitHub Release</span>
+          </div>
+          <div class="row">
+            <span>Release notes</span
+            ><a
+              href="https://github.com/dishantdobariya91-debug/neuropause-desktop/releases"
+              style="color: var(--signal)"
+              >View on GitHub →</a
+            >
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="faq" style="background: var(--ink-2)">
+      <div class="wrap">
+        <div class="sec-head">
+          <span class="eyebrow">Questions</span>
+          <h2 class="display">Good to know</h2>
+        </div>
+        <div class="faq">
+          <details open>
+            <summary>Is NeuroPause just another AI chatbot?</summary>
+            <p>
+              No. It's an operating layer that sits above your existing AI tools and SaaS apps. It
+              connects them, remembers your work across them, and gives you a brief and a searchable
+              memory — the plumbing between your tools, not a replacement for them.
+            </p>
+          </details>
+          <details>
+            <summary>What can it actually see?</summary>
+            <p>
+              Only what you connect and authorize. Every connector uses official OAuth, and activity
+              tracking is permission-based. Your memory timeline is stored encrypted on your own
+              machine.
+            </p>
+          </details>
+          <details>
+            <summary>Do I need to send my data to the cloud?</summary>
+            <p>
+              No. NeuroPause can run its AI fully on-device using Ollama, and your memory stays
+              local. You choose what, if anything, leaves your machine.
+            </p>
+          </details>
+          <details>
+            <summary>Which tools does it connect to?</summary>
+            <p>
+              Sixteen, including GitHub, Notion, Slack, and Google Calendar with live sync today,
+              and OAuth-ready support for Claude, Gemini, Figma, Jira, Linear, Google Drive,
+              Microsoft 365 and more.
+            </p>
+          </details>
+          <details>
+            <summary>Why does the app show a warning on first launch?</summary>
+            <p>
+              The current release candidate isn't code-signed yet, so macOS and Windows ask you to
+              confirm once. It's the standard unsigned-app prompt — signing is on the roadmap for
+              general availability.
+            </p>
+          </details>
+          <details>
+            <summary>Is it really free?</summary>
+            <p>
+              Yes — the Free tier runs the full desktop app. Paid plans add all connectors,
+              unlimited memory, the daily brief, and team features. During early access, everyone's
+              on the free tier.
+            </p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <section class="cta-band" id="contact">
+      <div class="glow"></div>
+      <div class="wrap">
+        <h2 class="display">Stop switching tabs to remember your own work.</h2>
+        <p>Download NeuroPause and let the operating layer keep track for you.</p>
+        <a
+          href="https://github.com/dishantdobariya91-debug/neuropause-desktop/releases/latest"
+          class="btn btn-primary"
+          style="font-size: 16px; padding: 15px 30px"
+          >Get NeuroPause — free →</a
+        >
+      </div>
+    </section>
+
+    <footer>
+      <div class="wrap">
+        <div class="foot-grid">
+          <div class="foot-col" style="max-width: 260px">
+            <a href="#top" class="logo" style="margin-bottom: 14px"
+              ><span class="mark"></span>NeuroPause</a
+            >
+            <p style="color: var(--fg-mute); font-size: 13px">
+              The AI operating layer for how you actually work. macOS &amp; Windows.
+            </p>
+          </div>
+          <div class="foot-col">
+            <h5>Product</h5>
+            <a href="#features">Features</a>
+            <a href="#pricing">Pricing</a>
+            <a href="#download">Download</a>
+            <a href="#faq">FAQ</a>
+          </div>
+          <div class="foot-col">
+            <h5>Resources</h5>
+            <a href="https://github.com/dishantdobariya91-debug/neuropause-desktop/releases"
+              >Release notes</a
+            >
+            <a href="#download">Getting started</a>
+            <a href="#contact">Support</a>
+            <a href="#">Status</a>
+          </div>
+          <div class="foot-col">
+            <h5>Legal</h5>
+            <a href="#">Privacy</a>
+            <a href="#">Terms</a>
+            <a href="#">Security</a>
+          </div>
+        </div>
+        <div class="foot-bottom">
+          <span>© 2026 NeuroPause. All rights reserved.</span>
+          <span>Built for people who make things.</span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>
