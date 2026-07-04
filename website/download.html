@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Download NeuroPause</title>
+    <meta
+      name="description"
+      content="Download NeuroPause for macOS or Windows. One click, install, done."
+    />
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;450;500;600&display=swap');
+      :root {
+        --ink: #0a0e14;
+        --ink-2: #10161f;
+        --panel: #141c28;
+        --line: #223041;
+        --fg: #e8eef5;
+        --fg-dim: #90a2b6;
+        --fg-mute: #5f7285;
+        --signal: #2ee6d6;
+        --amber: #f5b843;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        background:
+          radial-gradient(
+            ellipse 900px 500px at 50% -10%,
+            rgba(46, 230, 214, 0.1),
+            transparent 60%
+          ),
+          var(--ink);
+        color: var(--fg);
+        font-family: 'Inter', system-ui, sans-serif;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 40px 24px;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+      }
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+      .logo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-family: 'Space Grotesk', sans-serif;
+        font-weight: 700;
+        font-size: 20px;
+        margin-bottom: 40px;
+      }
+      .logo .mark {
+        width: 24px;
+        height: 24px;
+        border: 1.5px solid var(--signal);
+        border-radius: 7px;
+        position: relative;
+      }
+      .logo .mark::after {
+        content: '';
+        position: absolute;
+        inset: 3px;
+        background: var(--signal);
+        opacity: 0.25;
+        border-radius: 3px;
+      }
+      .card {
+        width: 100%;
+        max-width: 520px;
+        text-align: center;
+      }
+      h1 {
+        font-family: 'Space Grotesk', sans-serif;
+        font-size: clamp(28px, 5vw, 40px);
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        margin-bottom: 10px;
+      }
+      .sub {
+        color: var(--fg-dim);
+        font-size: 17px;
+        margin-bottom: 36px;
+      }
+      /* Primary detected-OS button */
+      .primary {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        width: 100%;
+        background: var(--signal);
+        color: var(--ink);
+        font-family: 'Space Grotesk', sans-serif;
+        font-weight: 600;
+        font-size: 18px;
+        padding: 18px 28px;
+        border-radius: 14px;
+        transition:
+          transform 0.15s ease,
+          background 0.15s ease;
+        margin-bottom: 12px;
+      }
+      .primary:hover {
+        transform: translateY(-2px);
+        background: #4af0e2;
+      }
+      .primary .glyph {
+        font-size: 22px;
+      }
+      .primary small {
+        display: block;
+        font-family: 'Inter', sans-serif;
+        font-weight: 450;
+        font-size: 12.5px;
+        opacity: 0.7;
+        margin-top: 1px;
+      }
+      .other {
+        color: var(--fg-mute);
+        font-size: 14px;
+        margin-bottom: 40px;
+      }
+      .other a {
+        color: var(--signal);
+        border-bottom: 1px solid transparent;
+      }
+      .other a:hover {
+        border-color: var(--signal);
+      }
+      /* Steps */
+      .steps {
+        background: var(--ink-2);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 24px;
+        text-align: left;
+      }
+      .steps h2 {
+        font-family: 'Space Grotesk', sans-serif;
+        font-size: 14px;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--fg-dim);
+        margin-bottom: 18px;
+      }
+      .step {
+        display: grid;
+        grid-template-columns: 28px 1fr;
+        gap: 14px;
+        align-items: start;
+        margin-bottom: 16px;
+      }
+      .step:last-child {
+        margin-bottom: 0;
+      }
+      .step .n {
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        background: rgba(46, 230, 214, 0.1);
+        border: 1px solid rgba(46, 230, 214, 0.25);
+        color: var(--signal);
+        font-family: 'Space Grotesk', sans-serif;
+        font-weight: 600;
+        font-size: 14px;
+        display: grid;
+        place-items: center;
+      }
+      .step .txt {
+        font-size: 14.5px;
+        color: var(--fg-dim);
+        padding-top: 2px;
+      }
+      .step .txt b {
+        color: var(--fg);
+        font-weight: 600;
+      }
+      .safe {
+        margin-top: 18px;
+        padding: 12px 14px;
+        background: rgba(245, 184, 67, 0.08);
+        border: 1px solid rgba(245, 184, 67, 0.2);
+        border-radius: 10px;
+        font-size: 13px;
+        color: var(--fg-dim);
+      }
+      .safe b {
+        color: var(--amber);
+      }
+      .back {
+        margin-top: 32px;
+        font-size: 13.5px;
+        color: var(--fg-mute);
+      }
+      .back a {
+        color: var(--fg-dim);
+      }
+      .back a:hover {
+        color: var(--signal);
+      }
+    </style>
+  </head>
+  <body>
+    <a href="/" class="logo"><span class="mark"></span>NeuroPause</a>
+
+    <div class="card">
+      <h1 id="headline">Download NeuroPause</h1>
+      <p class="sub">One click. Install. Done.</p>
+
+      <!-- Primary button is rewritten by JS to the detected OS + direct asset -->
+      <a id="primary" class="primary" href="#">
+        <span class="glyph" id="glyph">⬇</span>
+        <span>Download<span small id="primary-sub"></span></span>
+      </a>
+      <p class="other" id="other"></p>
+
+      <div class="steps" id="steps"><!-- filled by JS per-OS --></div>
+
+      <p class="back"><a href="/">← Back to neuropause.com</a></p>
+    </div>
+
+    <script>
+      // Direct asset URLs. These resolve to the newest release's files once the
+      // repository (or a release mirror) is public. Until then they 404 for
+      // logged-out visitors — see DOWNLOAD-SETUP.md.
+      var BASE =
+        'https://github.com/dishantdobariya91-debug/neuropause-desktop/releases/latest/download/';
+      var RELEASES_PAGE =
+        'https://github.com/dishantdobariya91-debug/neuropause-desktop/releases/latest';
+
+      // Asset file names electron-builder produces (version-agnostic via /latest/download/).
+      var WIN_EXE = BASE + 'NeuroPause-Setup.exe';
+      var MAC_DMG = BASE + 'NeuroPause-arm64.dmg';
+
+      var ua = navigator.userAgent;
+      var isWin = /Windows/i.test(ua);
+      var isMac = /Macintosh|Mac OS X/i.test(ua);
+
+      var primary = document.getElementById('primary');
+      var glyph = document.getElementById('glyph');
+      var psub = document.getElementById('primary-sub');
+      var other = document.getElementById('other');
+      var steps = document.getElementById('steps');
+
+      function winSteps() {
+        return (
+          '<h2>Installing on Windows</h2>' +
+          '<div class="step"><span class="n">1</span><span class="txt">Click the button above — <b>NeuroPause-Setup.exe</b> downloads.</span></div>' +
+          '<div class="step"><span class="n">2</span><span class="txt">Open it. If Windows shows a blue <b>"Windows protected your PC"</b> box, click <b>More info</b>, then <b>Run anyway</b>.</span></div>' +
+          '<div class="step"><span class="n">3</span><span class="txt">The installer runs — no admin password needed. NeuroPause opens automatically.</span></div>' +
+          '<div class="safe"><b>Why the warning?</b> The app isn\'t code-signed yet, so Windows asks you to confirm once. It\'s safe — that prompt disappears in a future signed release.</div>'
+        );
+      }
+      function macSteps() {
+        return (
+          '<h2>Installing on macOS</h2>' +
+          '<div class="step"><span class="n">1</span><span class="txt">Click the button above — the <b>.dmg</b> downloads.</span></div>' +
+          '<div class="step"><span class="n">2</span><span class="txt">Open it and drag <b>NeuroPause</b> onto the <b>Applications</b> folder.</span></div>' +
+          '<div class="step"><span class="n">3</span><span class="txt">In Applications, <b>right-click NeuroPause → Open → Open</b> (just the first time).</span></div>' +
+          '<div class="safe"><b>Why right-click?</b> The app isn\'t notarized yet, so macOS asks you to confirm once. Double-clicking shows a block with no button — right-click → Open is the way in.</div>'
+        );
+      }
+
+      if (isWin) {
+        primary.href = WIN_EXE;
+        glyph.textContent = '⊞';
+        psub.textContent = ' for Windows';
+        other.innerHTML = 'On a Mac? <a href="' + MAC_DMG + '">Download for macOS</a>';
+        steps.innerHTML = winSteps();
+        document.getElementById('headline').textContent = 'Download NeuroPause for Windows';
+      } else if (isMac) {
+        primary.href = MAC_DMG;
+        glyph.textContent = '';
+        psub.textContent = ' for macOS';
+        other.innerHTML = 'On Windows? <a href="' + WIN_EXE + '">Download for Windows</a>';
+        steps.innerHTML = macSteps();
+        document.getElementById('headline').textContent = 'Download NeuroPause for Mac';
+      } else {
+        // Unknown OS — offer both, link the releases page.
+        primary.href = RELEASES_PAGE;
+        psub.textContent = ' — choose your platform';
+        other.innerHTML =
+          '<a href="' +
+          MAC_DMG +
+          '">macOS (.dmg)</a> &nbsp;·&nbsp; <a href="' +
+          WIN_EXE +
+          '">Windows (.exe)</a>';
+        steps.innerHTML = winSteps() + macSteps();
+      }
+    </script>
+  </body>
+</html>
