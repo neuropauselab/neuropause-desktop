@@ -74,10 +74,12 @@ jobs:
       # so it's served from neuropause033.com/downloads/ with no GitHub login.
       # Runs only if the deploy secrets are present, and never fails the build.
       - name: Publish installer to neuropause033.com
-        if: ${{ secrets.DEPLOY_SSH_KEY != '' }}
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        if: ${{ env.DEPLOY_SSH_KEY != '' }}
         shell: bash
         run: |
-          echo "${{ secrets.DEPLOY_SSH_KEY }}" > deploy_key
+          echo "$DEPLOY_SSH_KEY" > deploy_key
           chmod 600 deploy_key
           # Stable, version-agnostic name the download page links to.
           cp "apps/desktop/dist/NeuroPause-Setup.exe" "NeuroPause-Setup.exe" 2>/dev/null || \
