@@ -88,6 +88,7 @@ import {
   type BriefingPeriod,
   type Briefing,
   type ExecutiveCenterSnapshot,
+  type VoiceResponse,
   type RecommendationQuery,
   type RecommendationSet,
   type FounderAnswer,
@@ -615,6 +616,8 @@ export const ipc = {
       invoke(IpcChannel.BriefingGenerate, { period, now }) as Promise<Briefing>,
     executiveCenterSnapshot: () =>
       invoke(IpcChannel.ExecutiveCenterSnapshot) as Promise<ExecutiveCenterSnapshot>,
+    voiceTurn: (transcript: string, displayName?: string) =>
+      invoke(IpcChannel.VoiceTurn, { transcript, displayName }) as Promise<VoiceResponse>,
   },
 
   recommendations: {

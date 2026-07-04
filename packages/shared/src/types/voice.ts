@@ -48,8 +48,68 @@ export interface VoiceResponse {
   requiresApproval?: boolean;
 }
 
-/** The visual states of the floating voice UI (STEP 9). */
-export type VoiceState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'completed' | 'error';
+/** The visual + session states of the voice experience (STEP 5/8). */
+export type VoiceState =
+  | 'idle'
+  | 'wake'
+  | 'listening'
+  | 'recognizing'
+  | 'thinking'
+  | 'speaking'
+  | 'waiting'
+  | 'completed'
+  | 'error'
+  | 'muted'
+  | 'offline'
+  | 'permission-required'
+  | 'conversation-ended'
+  | 'conversation-timeout'
+  | 'conversation-cancelled';
+
+/** In-conversation control commands the user can speak (STEP 7). */
+export type VoiceCommand =
+  | 'stop'
+  | 'cancel'
+  | 'pause'
+  | 'continue'
+  | 'repeat'
+  | 'start-over'
+  | 'goodbye'
+  | 'thank-you'
+  | 'none';
+
+/** User-configurable voice settings (STEP 10). Persisted via existing settings. */
+export interface VoiceSettings {
+  wakeWordEnabled: boolean;
+  microphoneDeviceId: string | null;
+  speakerDeviceId: string | null;
+  voice: string | null;
+  speakingRate: number; // 0.5..2.0
+  wakeSensitivity: number; // 0..1
+  backgroundListening: boolean;
+  pushToTalk: boolean;
+  autoStartListening: boolean;
+  conversationTimeoutMs: number;
+  doNotDisturb: boolean;
+  privacyMode: boolean; // suppress on-screen transcript
+  storeAudioHistory: boolean; // default false — no raw audio kept
+}
+
+export const DEFAULT_VOICE_SETTINGS: VoiceSettings = {
+  wakeWordEnabled: true,
+  microphoneDeviceId: null,
+  speakerDeviceId: null,
+  voice: null,
+  speakingRate: 1.0,
+  wakeSensitivity: 0.5,
+  backgroundListening: false,
+  pushToTalk: false,
+  autoStartListening: true,
+  conversationTimeoutMs: 15_000,
+  doNotDisturb: false,
+  privacyMode: false,
+  storeAudioHistory: false,
+};
 
 /** A single turn kept for in-conversation context (STEP 8) — reuses Executive Memory downstream. */
 export interface VoiceTurn {

@@ -41,3 +41,5 @@ export * from './types/delivery';
 export * from './types/orgHealth';
 export * from './types/executiveCenter';
 export * from './types/voice';
+export * from './voiceSession';
+export * from './voiceCommands';
