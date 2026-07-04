@@ -1,0 +1,91 @@
+# Windows build + release pipeline for NeuroPause.
+#
+# This is the FIRST workflow in the repository (recon confirmed no prior
+# .github/workflows), so it cannot regress a macOS pipeline — there is none to
+# touch. It builds the Windows artifacts on a windows-latest runner and, on a
+# tag push, publishes them to a GitHub Release. Signing turns on automatically
+# when the certificate secrets are present and is skipped (unsigned build, no
+# failure) when they are absent — matching electron-builder's env-driven signing
+# verified in Phase 4.
+name: windows-release
+
+on:
+  # Manual runs (build + artifacts, no release) from the Actions tab.
+  workflow_dispatch:
+  # Tag pushes like v1.0.0-rc.2 build AND publish a GitHub Release.
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # required to create the GitHub Release and upload assets
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node (from .nvmrc)
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      # Package the Windows installer + portable + zip. The backend URL is baked
+      # into build-info.json by generate-build-info.cjs (same mechanism as macOS).
+      # Certificate env vars are passed through from secrets; electron-builder
+      # signs automatically if they resolve to real values, and produces an
+      # unsigned build (without failing) if the secrets are unset/empty.
+      - name: Package Windows
+        env:
+          NEUROPAUSE_BACKEND_URL: ${{ vars.NEUROPAUSE_BACKEND_URL || 'https://api.neuropause033.com' }}
+          # Windows-specific certificate aliases take precedence when present.
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          # Generic aliases as a fallback (a single cert used for both platforms).
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: npm run package:win -w @neuropause/desktop
+
+      # Keep every build's output, tag or not, for inspection/download.
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: neuropause-windows
+          path: |
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/*.zip
+            apps/desktop/dist/*.yml
+            apps/desktop/dist/*.blockmap
+          if-no-files-found: error
+          retention-days: 14
+
+      # Publish a GitHub Release only for tag pushes. softprops/action-gh-release
+      # attaches the installer, portable, zip, and the electron-updater feed file
+      # so auto-update works. Marked prerelease for -rc/-beta tags.
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/*.zip
+            apps/desktop/dist/latest*.yml
+            apps/desktop/dist/*.blockmap
+          prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') }}
+          generate_release_notes: true
+          fail_on_unmatched_files: false
