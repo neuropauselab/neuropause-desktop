@@ -78,8 +78,6 @@ describe('computeOrgHealth', () => {
 });
 
 describe('deriveOrgFindings', () => {
-  const now = new Date().toISOString();
-
   it('emits a critical finding for an invalid license', () => {
     const inputs: OrgHealthInputs = {
       licenseValid: false,

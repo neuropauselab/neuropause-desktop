@@ -16,6 +16,7 @@ import {
   type IntelligencePriority,
   type OrgHealthInputs,
   type OrgHealthScores,
+  type IntelligenceSource,
 } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import { connectorStore } from '../connectors/connectorStore';
@@ -279,9 +280,7 @@ export function buildOrgIntelligenceItems(): IntelligenceItem[] {
 }
 
 /** The Organization Intelligence source, ready to register on the delivery engine. */
-export function orgIntelligenceSource(
-  atMinutes: number,
-): import('@neuropause/shared').IntelligenceSource {
+export function orgIntelligenceSource(atMinutes: number): IntelligenceSource {
   return {
     key: 'organization-intelligence',
     label: 'Organization Intelligence',

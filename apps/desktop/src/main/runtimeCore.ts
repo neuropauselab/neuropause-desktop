@@ -81,6 +81,7 @@ import { initEnterpriseTimeline } from './timeline';
 import { initEnterpriseSearch } from './search';
 import { initDailyIntelligence } from './intelligence';
 import { initExecutiveCenter } from './enterprise/executiveCenterSubsystem';
+import { initVoice } from './voice/voiceSubsystem';
 import { initExecutiveDelivery } from './services/executiveDelivery';
 import { initRecommendations } from './recommendations';
 import { initFounderAI } from './founder';
@@ -150,6 +151,10 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // Executive Intelligence Center (V2.4): one snapshot composing existing
   // intelligence (founder proactive + org intelligence + org-health KPIs).
   const executiveCenter = initExecutiveCenter();
+
+  // Executive Voice Assistant (V2.6): routes recognized speech to existing
+  // intelligence and composes evidence-grounded spoken responses. No new AI.
+  const voice = initVoice();
 
   // Executive Intelligence Delivery: proactively delivers the already-built brief
   // (and future sources) on a schedule via the existing notification path. Reuses
@@ -731,6 +736,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...intelligence.handlers);
   defs.push(...recommendations.handlers);
   defs.push(...executiveCenter.handlers);
+  defs.push(...voice.handlers);
   defs.push(...founder.handlers);
   defs.push(...engineeringAI.handlers);
   defs.push(...founderAIv2.handlers);

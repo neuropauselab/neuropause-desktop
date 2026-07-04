@@ -40,3 +40,4 @@ export * from './types/aiEngine';
 export * from './types/delivery';
 export * from './types/orgHealth';
 export * from './types/executiveCenter';
+export * from './types/voice';
