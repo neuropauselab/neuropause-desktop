@@ -78,18 +78,37 @@ dmg:
       type: link
       path: /Applications
 
+# ── Windows (NSIS installer + ZIP + portable) ───────────────────────────────
+# Additive: does not touch the macOS block above. Built with `npm run
+# package:win` ON a Windows host or CI runner (electron-builder cannot emit a
+# Windows installer from macOS). Authenticode signing is optional and supplied
+# via WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD at build time (unset => unsigned .exe,
+# which installs behind a one-time SmartScreen "More info -> Run anyway").
+# NOTE: icon.ico is not yet present in resources/ - electron-builder falls back
+# to the default Electron icon until one is added (see WINDOWS-BUILD.md Icons).
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: zip # zip is what electron-updater downloads for Windows
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+  # icon: resources/icon.ico   # uncomment once the asset exists (256px master)
+
+nsis:
+  oneClick: false # show the wizard (dir choice, shortcuts) rather than silent one-click
+  perMachine: false # per-user install => no admin elevation required
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: NeuroPause
+
 # ── Future targets (structured but not built until enabled) ─────────────────
 # Intel macOS: add `- arch: [x64]` (or `universal`) to mac.target above.
-# Windows (NSIS):
-# win:
-#   target:
-#     - target: nsis
-#       arch: [x64]
-#   # Authenticode signing via WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD
-# nsis:
-#   oneClick: false
-#   perMachine: false
-#   allowToChangeInstallationDirectory: true
 # Linux (AppImage + deb):
 # linux:
 #   target:
