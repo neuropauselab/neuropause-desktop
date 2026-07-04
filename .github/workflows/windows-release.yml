@@ -70,6 +70,23 @@ jobs:
         shell: bash
 
       # Keep every build's output, tag or not, for inspection/download.
+      # Self-hosted download (Option C): copy the Windows installer to the droplet
+      # so it's served from neuropause033.com/downloads/ with no GitHub login.
+      # Runs only if the deploy secrets are present, and never fails the build.
+      - name: Publish installer to neuropause033.com
+        if: ${{ secrets.DEPLOY_SSH_KEY != '' }}
+        shell: bash
+        run: |
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > deploy_key
+          chmod 600 deploy_key
+          # Stable, version-agnostic name the download page links to.
+          cp "apps/desktop/dist/NeuroPause-Setup.exe" "NeuroPause-Setup.exe" 2>/dev/null || \
+            cp apps/desktop/dist/*Setup*.exe "NeuroPause-Setup.exe"
+          scp -o StrictHostKeyChecking=no -i deploy_key "NeuroPause-Setup.exe" \
+            root@64.227.128.218:/opt/neuropause-site/website/downloads/NeuroPause-Setup.exe
+          rm -f deploy_key
+          echo "Installer published to https://neuropause033.com/downloads/NeuroPause-Setup.exe"
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:

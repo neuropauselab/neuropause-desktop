@@ -1,60 +1,59 @@
-# DOWNLOAD-SETUP — making 1-click download actually work
+# DOWNLOAD-SETUP — Option C: self-hosted 1-click downloads
 
-This delivers the clean download experience you asked for: **one button →
-NeuroPause-Setup.exe → run**, with dead-simple on-screen steps and OS
-auto-detection. `website/download.html` is that page.
+Downloads are served from **your own domain** (`neuropause033.com/downloads/`),
+not GitHub. No repo visibility, no login wall — a stranger clicks one button and
+the installer downloads. Your source stays private.
 
-## What was built (customer-facing)
+## What was built
+- **`website/download.html`** — now links `https://neuropause033.com/downloads/
+  NeuroPause-Setup.exe` (and the `.dmg`). OS auto-detect + one button + plain
+  install steps (from the previous increment).
+- **`.github/workflows/windows-release.yml`** — a new step uploads each freshly
+  built installer to the droplet over SSH, so every future release auto-publishes
+  to your domain. It's gated on a `DEPLOY_SSH_KEY` secret and never fails the
+  build if the secret is absent.
 
-- **`website/download.html`** — a dedicated download page that:
-  - auto-detects Windows vs macOS and shows ONE big button for the right OS
-  - links the **direct installer file** (not the confusing multi-file Releases
-    page), so it's a true one-click download
-  - shows 3 plain-English steps + a friendly "why the warning?" note (no jargon)
-- **`electron-builder.yml`** — installer files now have **stable, space-free
-  names** (`NeuroPause-Setup.exe`, `NeuroPause-arm64.dmg`) so the button's direct
-  link always resolves to the newest release, regardless of version number.
-- **`index.html`** — the main site's Download buttons now point at this clean
-  page instead of the raw GitHub Releases list.
+## TWO things to do
 
-## The ONE thing only you can do: make Releases reachable
-
-The download links point at your GitHub Releases. **Your repository is private**,
-so a logged-out visitor who clicks Download gets a 404 / login wall — this is the
-"confusing" part you're hitting. A stranger cannot download from a private repo's
-Releases. Pick one:
-
-### Option A — make the repository public (simplest, free)
-GitHub → your repo → **Settings** → scroll to **Danger Zone** → **Change
-visibility** → **Make public**. Your code becomes visible, but the download
-"just works" for everyone, 1-click, no login. Best if the code being open is
-acceptable.
-
-### Option B — a public releases-only mirror (keeps code private)
-Create a **separate public repo** (e.g. `neuropause-releases`) that holds ONLY
-the built installers — no source. Change the CI publish target + the download
-page's `BASE` url to that repo. Customers download from the public mirror; your
-source stays private. A bit more setup; I can wire this for you.
-
-### Option C — host the installers on your own server
-You already run a droplet serving `neuropause033.com`. The CI could upload the
-`.exe`/`.dmg` to `/opt/neuropause-site/downloads/` and the button link at
-`https://neuropause033.com/downloads/NeuroPause-Setup.exe`. Fully self-hosted,
-no GitHub dependency for downloads. I can wire this too.
-
-**Recommendation:** Option A if open-source is fine (zero ongoing work), else
-Option C (you already own the infrastructure).
-
-## After you pick an option
-
-Rebuild once (tag a release) so the installers carry the new stable names, then
-the download page delivers the true 1-click experience. The only remaining
-first-launch friction is the unsigned-app prompt (macOS right-click-Open /
-Windows "Run anyway"), which a code-signing certificate removes — a separate,
-optional polish step.
-
-## Deploy the new page (same as the site)
+### A. Serve TODAY's installer right now (5 minutes, makes downloads work immediately)
+On your Mac — create the downloads folder on the droplet, then upload the .exe
+you already built (download it from your GitHub Release first, or use a local
+build). If you have the release .exe locally:
 ```
-scp website/download.html website/DOWNLOAD-SETUP.md root@64.227.128.218:/opt/neuropause-site/website/
+# make the served folder on the droplet
+ssh root@64.227.128.218 'mkdir -p /opt/neuropause-site/website/downloads'
+
+# upload the Windows installer (rename to the stable name the page expects)
+scp "~/Downloads/NeuroPause Setup 1.0.0-rc.1.exe" \
+  root@64.227.128.218:/opt/neuropause-site/website/downloads/NeuroPause-Setup.exe
+
+# (optional) upload the macOS dmg too
+scp ~/Desktop/neuropause-desktop/apps/desktop/dist/NeuroPause-*arm64.dmg \
+  root@64.227.128.218:/opt/neuropause-site/website/downloads/NeuroPause-arm64.dmg
 ```
-Then it's live at https://neuropause033.com/download.html
+Then verify: `curl -I https://neuropause033.com/downloads/NeuroPause-Setup.exe`
+→ `HTTP/2 200`. The download page is now fully functional for anyone.
+
+### B. Automate it for every future release (one GitHub secret)
+So CI uploads new installers automatically:
+1. Create an SSH key for CI on your Mac:
+   `ssh-keygen -t ed25519 -f ~/np-deploy -N ""`
+2. Authorize it on the droplet:
+   `ssh-copy-id -i ~/np-deploy.pub root@64.227.128.218`
+   (or append `~/np-deploy.pub` to the droplet's `~/.ssh/authorized_keys`)
+3. Add the **private** key as a GitHub secret: repo → Settings → Secrets and
+   variables → Actions → New secret → name `DEPLOY_SSH_KEY`, value = contents of
+   `~/np-deploy` (the file WITHOUT .pub). 
+4. Next tagged release auto-uploads to `neuropause033.com/downloads/`.
+
+## Deploy the updated page
+```
+scp website/download.html website/DOWNLOAD-SETUP.md \
+  root@64.227.128.218:/opt/neuropause-site/website/
+```
+
+## Result
+Visitor → neuropause033.com → Download → clean page → one OS-matched button →
+`.exe` downloads from your domain → run. No GitHub, no login, no confusion.
+The only first-launch step left is the unsigned-app "Run anyway" prompt, removed
+later by a code-signing certificate.
