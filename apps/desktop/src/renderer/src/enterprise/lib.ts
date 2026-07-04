@@ -5,11 +5,7 @@
  * configurable dashboards. Pure; reuses the Operations tone system so colours
  * stay consistent across the whole app.
  */
-import type {
-  ComplianceSeverity,
-  ComplianceStatus,
-  OrgGraphNodeKind,
-} from '@neuropause/shared';
+import type { ComplianceSeverity, ComplianceStatus, OrgGraphNodeKind } from '@neuropause/shared';
 import type { IconName } from '@renderer/components/ui/Icon';
 import { type OpsTone } from '@renderer/operations/lib';
 
@@ -24,6 +20,7 @@ export interface Meta {
 /** The eight surfaces of the Enterprise experience. */
 export type EnterpriseTab =
   | 'command'
+  | 'executive'
   | 'decision'
   | 'organization'
   | 'operations'

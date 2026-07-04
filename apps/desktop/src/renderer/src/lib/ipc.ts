@@ -87,6 +87,7 @@ import {
   type EnterpriseTimelineExport,
   type BriefingPeriod,
   type Briefing,
+  type ExecutiveCenterSnapshot,
   type RecommendationQuery,
   type RecommendationSet,
   type FounderAnswer,
@@ -612,6 +613,8 @@ export const ipc = {
   intelligence: {
     briefing: (period: BriefingPeriod, now?: string) =>
       invoke(IpcChannel.BriefingGenerate, { period, now }) as Promise<Briefing>,
+    executiveCenterSnapshot: () =>
+      invoke(IpcChannel.ExecutiveCenterSnapshot) as Promise<ExecutiveCenterSnapshot>,
   },
 
   recommendations: {

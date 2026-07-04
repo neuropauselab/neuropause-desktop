@@ -9,6 +9,7 @@ import { BusinessOpsPanel } from './BusinessOpsPanel';
 import { EnterpriseSearchPanel } from './EnterpriseSearchPanel';
 import { ExecutiveWorkspacePanel } from './ExecutiveWorkspacePanel';
 import { BriefingsPanel } from './BriefingsPanel';
+import { ExecutiveCenterPanel } from './ExecutiveCenterPanel';
 import { CustomizePanel } from './CustomizePanel';
 import { loadNavPrefs, type EnterpriseTab } from './lib';
 
@@ -20,6 +21,7 @@ interface TabDef {
 
 const TABS: TabDef[] = [
   { id: 'command', label: 'Command Center', icon: 'grid' },
+  { id: 'executive', label: 'Executive', icon: 'sparkles' },
   { id: 'decision', label: 'Decision Center', icon: 'shield' },
   { id: 'organization', label: 'Organization', icon: 'layers' },
   { id: 'operations', label: 'Operations', icon: 'gauge' },
@@ -30,7 +32,11 @@ const TABS: TabDef[] = [
 ];
 
 /** The Enterprise experience, mounted with its live data provider. */
-export function EnterpriseRoot({ initialTab = 'command' }: { initialTab?: EnterpriseTab }): JSX.Element {
+export function EnterpriseRoot({
+  initialTab = 'command',
+}: {
+  initialTab?: EnterpriseTab;
+}): JSX.Element {
   return (
     <EnterpriseProvider>
       <EnterpriseInner initialTab={initialTab} />
@@ -68,7 +74,11 @@ function EnterpriseInner({ initialTab }: { initialTab: EnterpriseTab }): JSX.Ele
   };
 
   const pendingApprovals = jobs.reduce(
-    (n, j) => n + (j.status === 'awaiting_approval' ? j.proposals.filter((p) => p.verdict.decision === 'require_approval' && !p.approval).length : 0),
+    (n, j) =>
+      n +
+      (j.status === 'awaiting_approval'
+        ? j.proposals.filter((p) => p.verdict.decision === 'require_approval' && !p.approval).length
+        : 0),
     0,
   );
 
@@ -79,18 +89,35 @@ function EnterpriseInner({ initialTab }: { initialTab: EnterpriseTab }): JSX.Ele
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Enterprise</h1>
             <p className="mt-1 text-md text-muted">
-              The operating system for your organization — command, decide, explore, and run the business with governed AI.
+              The operating system for your organization — command, decide, explore, and run the
+              business with governed AI.
             </p>
           </div>
           <div className="flex items-center gap-3">
             <span className="inline-flex items-center gap-1.5 text-xs font-medium text-faint">
               <span className="relative flex h-2 w-2">
-                <span className={cn('absolute inline-flex h-full w-full rounded-full', ready ? 'animate-ping bg-sysgreen opacity-60' : '')} />
-                <span className={cn('relative inline-flex h-2 w-2 rounded-full', ready ? 'bg-sysgreen' : 'bg-faint')} />
+                <span
+                  className={cn(
+                    'absolute inline-flex h-full w-full rounded-full',
+                    ready ? 'animate-ping bg-sysgreen opacity-60' : '',
+                  )}
+                />
+                <span
+                  className={cn(
+                    'relative inline-flex h-2 w-2 rounded-full',
+                    ready ? 'bg-sysgreen' : 'bg-faint',
+                  )}
+                />
               </span>
               {ready ? 'Live' : 'Connecting…'}
             </span>
-            <button type="button" aria-label="Refresh" title="Refresh" onClick={() => void refreshAll()} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted fill-hover hover:text-ink">
+            <button
+              type="button"
+              aria-label="Refresh"
+              title="Refresh"
+              onClick={() => void refreshAll()}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted fill-hover hover:text-ink"
+            >
               <Icon name="refresh" size={16} />
             </button>
           </div>
@@ -104,12 +131,17 @@ function EnterpriseInner({ initialTab }: { initialTab: EnterpriseTab }): JSX.Ele
                 key={t.id}
                 type="button"
                 onClick={() => navigate(t.id)}
-                className={cn('relative inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium outline-none transition focus-visible:shadow-focus', active ? 'surface-raised text-ink shadow-sm' : 'text-muted hover:text-ink')}
+                className={cn(
+                  'relative inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium outline-none transition focus-visible:shadow-focus',
+                  active ? 'surface-raised text-ink shadow-sm' : 'text-muted hover:text-ink',
+                )}
               >
                 <Icon name={t.icon} size={15} />
                 {t.label}
                 {t.id === 'decision' && pendingApprovals > 0 && (
-                  <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-sysorange px-1 text-2xs font-semibold text-white">{pendingApprovals}</span>
+                  <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-sysorange px-1 text-2xs font-semibold text-white">
+                    {pendingApprovals}
+                  </span>
                 )}
               </button>
             );
@@ -117,6 +149,7 @@ function EnterpriseInner({ initialTab }: { initialTab: EnterpriseTab }): JSX.Ele
         </nav>
 
         {tab === 'command' && <CommandCenterPanel onNavigate={navigate} />}
+        {tab === 'executive' && <ExecutiveCenterPanel />}
         {tab === 'decision' && <DecisionCenterPanel onNavigate={navigate} />}
         {tab === 'organization' && <OrganizationExplorerPanel />}
         {tab === 'operations' && <BusinessOpsPanel />}
