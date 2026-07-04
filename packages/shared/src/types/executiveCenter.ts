@@ -25,6 +25,17 @@ export interface ExecutiveKpi {
 }
 
 /** One card in the Center. Items are existing IntelligenceItems; detail lives elsewhere. */
+/** A weekly trend delta for a metric (STEP 3 — Weekly Trends). */
+export interface ExecutiveTrend {
+  key: string;
+  label: string;
+  current: number;
+  previous: number;
+  /** current - previous. */
+  delta: number;
+  direction: 'up' | 'down' | 'flat';
+}
+
 export interface ExecutiveCard {
   key: string;
   title: string;
@@ -49,6 +60,13 @@ export interface ExecutiveCenterSnapshot {
   organizationHealth: ExecutiveCard;
   engineeringHealth: ExecutiveCard;
   upcomingPriorities: ExecutiveCard;
+  /** V2.9 completion cards (STEP 3). Optional so older callers still typecheck. */
+  executiveTimeline?: ExecutiveCard;
+  recentDecisions?: ExecutiveCard;
+  recentDeliveries?: ExecutiveCard;
+  evidenceSummary?: ExecutiveCard;
+  /** Weekly trend deltas for the KPI-style header (STEP 3). */
+  weeklyTrends?: ExecutiveTrend[];
   /** Count of items by priority, for the "what requires attention" glance. */
   attentionCounts: { critical: number; high: number; normal: number };
 }

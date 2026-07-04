@@ -18,6 +18,7 @@ import {
   type ExecutiveCard,
   type ExecutiveKpi,
   type ExecutiveCenterSnapshot,
+  type ExecutiveTrend,
   type IntelligenceItem,
   type OrgHealthInputs,
   type OrgHealthScores,
@@ -29,6 +30,20 @@ export interface ExecutiveCenterSources {
   founderItems: () => IntelligenceItem[];
   orgItems: () => IntelligenceItem[];
   orgHealthInputs: (nowMs: number) => OrgHealthInputs;
+  /** V2.9: recent timeline entries for Timeline/Deliveries cards (optional). */
+  timelineEntries?: (nowMs: number) => TimelineEntryLite[];
+  /** V2.9: last week's org-health overall/engineering for Weekly Trends (optional). */
+  previousWeek?: () => { overall: number; engineering: number } | null;
+}
+
+/** The minimal timeline fields the composer reads (kept local; no new dep). */
+export interface TimelineEntryLite {
+  id: string;
+  at: string;
+  kind: string;
+  category: string;
+  title: string;
+  summary: string | null;
 }
 
 function card(
@@ -47,6 +62,19 @@ function byPriority(items: IntelligenceItem[]) {
   const high = items.filter((i) => i.priority === 'high');
   const normal = items.filter((i) => i.priority === 'normal' || i.priority === 'low');
   return { critical, high, normal };
+}
+
+/** Build a weekly trend delta. */
+function trend(key: string, label: string, current: number, previous: number): ExecutiveTrend {
+  const delta = current - previous;
+  return {
+    key,
+    label,
+    current,
+    previous,
+    delta,
+    direction: delta > 1 ? 'up' : delta < -1 ? 'down' : 'flat',
+  };
 }
 
 /** Build the KPI strip (STEP 4) purely from the org-health scores + raw inputs. */
@@ -143,6 +171,74 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
 
   const counts = byPriority(allItems);
 
+  // ── V2.9 completion cards (STEP 3) — all composed from existing data ──
+  const timeline = sources.timelineEntries?.(nowMs) ?? [];
+  const weekAgo = nowMs - 7 * 86_400_000;
+  const recentTimeline = timeline.filter((e) => new Date(e.at).getTime() >= weekAgo);
+
+  // Executive Timeline: the most recent activity across the org.
+  const timelineItems: IntelligenceItem[] = recentTimeline.slice(0, 8).map((e) => ({
+    id: `timeline:${e.id}`,
+    title: e.title,
+    body: e.summary ?? e.category,
+    priority: 'normal',
+    producedAt: e.at,
+  }));
+
+  // Recent Deliveries: timeline entries that represent shipped/completed work.
+  const deliveryItems: IntelligenceItem[] = recentTimeline
+    .filter((e) =>
+      /deploy|release|ship|complete|mer[g]e|deliver|done/i.test(
+        `${e.kind} ${e.category} ${e.title}`,
+      ),
+    )
+    .slice(0, 6)
+    .map((e) => ({
+      id: `delivery:${e.id}`,
+      title: e.title,
+      body: e.summary ?? e.category,
+      priority: 'normal',
+      producedAt: e.at,
+    }));
+
+  // Recent Decisions: decision-flavored timeline entries (or founder recommendations acted on).
+  const decisionItems: IntelligenceItem[] = recentTimeline
+    .filter((e) =>
+      /decision|approve|decide|chose|selected|sign-?off/i.test(
+        `${e.kind} ${e.category} ${e.title}`,
+      ),
+    )
+    .slice(0, 6)
+    .map((e) => ({
+      id: `decision:${e.id}`,
+      title: e.title,
+      body: e.summary ?? e.category,
+      priority: 'normal',
+      producedAt: e.at,
+    }));
+
+  // Evidence Summary: the governance evidence behind the current critical/high items.
+  const evidenceItems: IntelligenceItem[] = allItems
+    .filter((i) => (i.priority === 'critical' || i.priority === 'high') && i.governance)
+    .slice(0, 6)
+    .map((i) => ({
+      id: `evidence:${i.id}`,
+      title: i.title,
+      body: (i.governance?.evidence ?? []).slice(0, 3).join(' · ') || 'No evidence recorded',
+      priority: i.priority,
+      producedAt: i.producedAt,
+      governance: i.governance,
+    }));
+
+  // Weekly Trends: deltas vs last week for the headline metrics.
+  const prev = sources.previousWeek?.() ?? null;
+  const weeklyTrends = prev
+    ? [
+        trend('overall', 'Organization Health', scores.overall, prev.overall),
+        trend('engineering', 'Engineering Health', scores.engineering, prev.engineering),
+      ]
+    : undefined;
+
   return {
     generatedAt,
     kpis: buildKpis(scores, inputs),
@@ -187,5 +283,34 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
       high: counts.high.length,
       normal: counts.normal.length,
     },
+    executiveTimeline: card(
+      'executive-timeline',
+      'Executive Timeline',
+      timelineItems,
+      'enterprise/organization',
+      timelineItems.length === 0 ? 'No recent activity' : undefined,
+    ),
+    recentDecisions: card(
+      'recent-decisions',
+      'Recent Decisions',
+      decisionItems,
+      'enterprise/organization',
+      decisionItems.length === 0 ? 'No decisions recorded this week' : undefined,
+    ),
+    recentDeliveries: card(
+      'recent-deliveries',
+      'Recent Deliveries',
+      deliveryItems,
+      'ai-workforce/engineering',
+      deliveryItems.length === 0 ? 'No deliveries this week' : undefined,
+    ),
+    evidenceSummary: card(
+      'evidence-summary',
+      'Evidence Summary',
+      evidenceItems,
+      'notifications',
+      evidenceItems.length === 0 ? 'No evidence to summarize' : undefined,
+    ),
+    weeklyTrends,
   };
 }

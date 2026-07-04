@@ -119,4 +119,119 @@ describe('composeExecutiveSnapshot', () => {
     expect(snap.criticalAlerts.deepLink).toBe('notifications');
     expect(snap.upcomingPriorities.deepLink).toBe('enterprise/briefings');
   });
+
+  // ── V2.9 completion cards ──
+  it('builds an Executive Timeline from recent timeline entries', () => {
+    const snap = composeExecutiveSnapshot(
+      sources({
+        timelineEntries: () => [
+          {
+            id: 'e1',
+            at: new Date().toISOString(),
+            kind: 'commit',
+            category: 'engineering',
+            title: 'Merged PR #42',
+            summary: null,
+          },
+          {
+            id: 'e2',
+            at: new Date().toISOString(),
+            kind: 'doc',
+            category: 'ops',
+            title: 'Updated runbook',
+            summary: 'ops notes',
+          },
+        ],
+      }),
+    );
+    expect(snap.executiveTimeline?.items).toHaveLength(2);
+    expect(snap.executiveTimeline?.items[0].title).toBe('Merged PR #42');
+    expect(snap.executiveTimeline?.deepLink).toBe('enterprise/organization');
+  });
+
+  it('routes delivery-flavored entries into Recent Deliveries', () => {
+    const snap = composeExecutiveSnapshot(
+      sources({
+        timelineEntries: () => [
+          {
+            id: 'd1',
+            at: new Date().toISOString(),
+            kind: 'deploy',
+            category: 'release',
+            title: 'Deployed v1.2',
+            summary: null,
+          },
+          {
+            id: 'n1',
+            at: new Date().toISOString(),
+            kind: 'note',
+            category: 'misc',
+            title: 'Random note',
+            summary: null,
+          },
+        ],
+      }),
+    );
+    const titles = snap.recentDeliveries?.items.map((i) => i.title) ?? [];
+    expect(titles).toContain('Deployed v1.2');
+    expect(titles).not.toContain('Random note');
+  });
+
+  it('routes decision-flavored entries into Recent Decisions', () => {
+    const snap = composeExecutiveSnapshot(
+      sources({
+        timelineEntries: () => [
+          {
+            id: 'x1',
+            at: new Date().toISOString(),
+            kind: 'decision',
+            category: 'governance',
+            title: 'Approved Q3 budget',
+            summary: null,
+          },
+        ],
+      }),
+    );
+    expect(snap.recentDecisions?.items.map((i) => i.title)).toContain('Approved Q3 budget');
+  });
+
+  it('builds an Evidence Summary from governance-bearing critical/high items', () => {
+    const snap = composeExecutiveSnapshot(
+      sources({
+        orgItems: () => [
+          {
+            id: 'org:license:invalid',
+            title: 'License invalid',
+            body: 'b',
+            priority: 'critical',
+            producedAt: new Date().toISOString(),
+            governance: {
+              evidence: ['license.valid=false'],
+              sourceSystems: ['licensing'],
+              confidence: 0.95,
+              reasoning: 'r',
+              recommendedAction: 'a',
+            },
+          },
+        ],
+      }),
+    );
+    expect(snap.evidenceSummary?.items.length).toBeGreaterThan(0);
+    expect(snap.evidenceSummary?.items[0].body).toContain('license.valid=false');
+  });
+
+  it('computes Weekly Trends when previous-week data is available', () => {
+    const snap = composeExecutiveSnapshot(
+      sources({ previousWeek: () => ({ overall: 80, engineering: 90 }) }),
+    );
+    const overall = snap.weeklyTrends?.find((t) => t.key === 'overall');
+    expect(overall).toBeDefined();
+    expect(overall!.previous).toBe(80);
+    expect(['up', 'down', 'flat']).toContain(overall!.direction);
+  });
+
+  it('omits Weekly Trends when there is no previous-week data', () => {
+    const snap = composeExecutiveSnapshot(sources());
+    expect(snap.weeklyTrends).toBeUndefined();
+  });
 });

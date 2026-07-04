@@ -10,13 +10,28 @@ import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { buildFounderProactiveItems } from '../ai/founderProactive';
 import { buildOrgIntelligenceItems, collectOrgHealthInputs } from './orgIntelligence';
-import { composeExecutiveSnapshot } from './executiveCenter';
+import { composeExecutiveSnapshot, type TimelineEntryLite } from './executiveCenter';
+import { getEnterpriseTimeline } from '../timeline';
 
 const log = createLogger('executive-center');
 
 export interface ExecutiveCenterSubsystem {
   handlers: SecureHandlerDef[];
   snapshot: () => ExecutiveCenterSnapshot;
+}
+
+/** Read recent timeline entries in the composer's minimal shape (reuses the store). */
+function recentTimeline(): TimelineEntryLite[] {
+  const tl = getEnterpriseTimeline();
+  if (!tl) return [];
+  return tl.query({ limit: 200, order: 'desc' }).entries.map((e) => ({
+    id: e.id,
+    at: e.at,
+    kind: e.kind,
+    category: e.category,
+    title: e.title,
+    summary: e.summary,
+  }));
 }
 
 export function initExecutiveCenter(): ExecutiveCenterSubsystem {
@@ -26,6 +41,10 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       founderItems: () => buildFounderProactiveItems('morning'),
       orgItems: () => buildOrgIntelligenceItems(),
       orgHealthInputs: (nowMs) => collectOrgHealthInputs(nowMs),
+      timelineEntries: () => recentTimeline(),
+      // previousWeek history is not yet persisted; omitted → Weekly Trends hidden
+      // until a health-history store exists (documented follow-up).
+      previousWeek: () => null,
     });
 
   const handlers: SecureHandlerDef[] = [

@@ -111,7 +111,12 @@ export function ExecutiveCenterPanel(): JSX.Element {
     snapshot.organizationHealth,
     snapshot.engineeringHealth,
     snapshot.upcomingPriorities,
-  ];
+    // V2.9 completion cards (rendered when present).
+    snapshot.executiveTimeline,
+    snapshot.recentDecisions,
+    snapshot.recentDeliveries,
+    snapshot.evidenceSummary,
+  ].filter((c): c is ExecutiveCard => Boolean(c));
 
   return (
     <OpsPanel
