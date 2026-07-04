@@ -47,7 +47,9 @@ const STORE_TABLES = [
 ];
 
 async function isCatalogEmpty(): Promise<boolean> {
-  const { rows } = await pool.query<{ count: string }>('SELECT count(*)::int AS count FROM applications');
+  const { rows } = await pool.query<{ count: string }>(
+    'SELECT count(*)::int AS count FROM applications',
+  );
   return (rows[0]?.count ?? '0') === '0' || Number(rows[0]?.count) === 0;
 }
 
@@ -78,7 +80,11 @@ export async function seedStoreIfEmpty(): Promise<void> {
 }
 
 // Allow running directly: `tsx src/db/seed.ts` (forces a clean re-seed).
-if (require.main === module) {
+// Bundle-safe direct-CLI check: inside the tsup bundle, require.main IS the
+// bundle, so the classic guard misfires; require the entry's own filename.
+const isDirectCli =
+  require.main === module && /(^|[\\/])seed\.(ts|js)$/.test(require.main?.filename ?? '');
+if (isDirectCli) {
   seedStore({ reset: true })
     .then(() => pool.end())
     .then(() => {

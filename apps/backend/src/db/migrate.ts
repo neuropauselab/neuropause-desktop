@@ -56,7 +56,11 @@ export async function runMigrations(): Promise<void> {
 }
 
 // Allow running directly: `tsx src/db/migrate.ts`
-if (require.main === module) {
+// Bundle-safe direct-CLI check: inside the tsup bundle, require.main IS the
+// bundle, so the classic guard misfires; require the entry's own filename.
+const isDirectCli =
+  require.main === module && /(^|[\\/])migrate\.(ts|js)$/.test(require.main?.filename ?? '');
+if (isDirectCli) {
   runMigrations()
     .then(() => pool.end())
     .then(() => {
