@@ -37,3 +37,4 @@ export * from './types/maintenance';
 export * from './ipc/channels';
 export * from './ipc/contracts';
 export * from './types/aiEngine';
+export * from './types/delivery';

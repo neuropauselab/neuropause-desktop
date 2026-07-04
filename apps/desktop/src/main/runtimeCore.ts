@@ -80,6 +80,7 @@ import { initMemory } from './memory';
 import { initEnterpriseTimeline } from './timeline';
 import { initEnterpriseSearch } from './search';
 import { initDailyIntelligence } from './intelligence';
+import { initExecutiveDelivery } from './services/executiveDelivery';
 import { initRecommendations } from './recommendations';
 import { initFounderAI } from './founder';
 import { initEngineeringAI, initFounderAIv2 } from './ai';
@@ -144,6 +145,11 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // Daily Intelligence + Recommendations: evidence-grounded briefings and next-actions.
   const intelligence = initDailyIntelligence();
   const recommendations = initRecommendations();
+
+  // Executive Intelligence Delivery: proactively delivers the already-built brief
+  // (and future sources) on a schedule via the existing notification path. Reuses
+  // intelligence + scheduler + notifications; adds no new AI or scheduler.
+  await initExecutiveDelivery();
 
   // Founder AI: evidence-grounded Q&A that separates facts from suggestions.
   const founder = initFounderAI();
