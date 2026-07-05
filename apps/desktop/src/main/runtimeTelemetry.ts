@@ -42,10 +42,12 @@ export class RuntimeTelemetrySampler {
 
   private sampleMemory(): { usedMb: number; totalMb: number } {
     const m = process.memoryUsage();
-    // rss = resident set; heapTotal approximates the V8 budget. Report rss used
-    // against rss+external as a stable, honest "how much this process holds".
+    // usedMb is what this process resident-holds; totalMb is the HOST's memory, so
+    // the percentage reflects genuine host memory pressure. (Previously total was
+    // rss+external, which is ~rss, making the ratio a constant ~100% and falsely
+    // flagging the runtime as critical every tick.)
     const usedMb = Math.round(m.rss / 1024 / 1024);
-    const totalMb = Math.round((m.rss + m.external + m.arrayBuffers) / 1024 / 1024) || usedMb;
+    const totalMb = Math.round(totalSystemMemoryBytes() / 1024 / 1024) || usedMb;
     return { usedMb, totalMb };
   }
 
@@ -113,5 +115,13 @@ function cpuCount(): number {
     return require('node:os').cpus()?.length ?? 1;
   } catch {
     return 1;
+  }
+}
+
+function totalSystemMemoryBytes(): number {
+  try {
+    return require('node:os').totalmem() || 0;
+  } catch {
+    return 0;
   }
 }
