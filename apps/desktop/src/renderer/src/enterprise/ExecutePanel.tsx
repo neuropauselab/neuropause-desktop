@@ -45,6 +45,8 @@ function stateDot(state: ExecutionState): string {
       return 'bg-white/80 animate-pulse';
     case 'cancelled':
       return 'bg-white/30';
+    case 'interrupted':
+      return 'bg-white/50';
     default:
       return 'bg-white/40';
   }

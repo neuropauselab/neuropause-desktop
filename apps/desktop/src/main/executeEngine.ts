@@ -34,6 +34,8 @@ export interface ExecuteEngineDeps {
     priority?: string;
     metadata?: Record<string, string | number | boolean | null>;
   }) => void;
+  /** Durable persistence hook (V5.8). Engine stays unaware of the implementation. */
+  persist?: (session: ExecutionSession) => void;
   now?: () => number;
 }
 
@@ -80,6 +82,7 @@ export class ExecuteEngine {
     };
     if (session.steps[0]) session.steps[0].state = 'running';
     this.sessions.set(id, session);
+    this.deps.persist?.(session);
     const startedMs = this.now();
     this.emit('execution.started', 'normal', { kind: req.kind, label: session.label, id });
 
@@ -141,6 +144,7 @@ export class ExecuteEngine {
     this.sessions.delete(session.id);
     this.history.unshift({ ...session, steps: session.steps.map((s) => ({ ...s })) });
     if (this.history.length > MAX_HISTORY) this.history.length = MAX_HISTORY;
+    this.deps.persist?.(this.history[0]);
 
     this.emit(ok ? 'execution.completed' : 'execution.failed', ok ? 'normal' : 'high', {
       kind: session.kind,
@@ -174,8 +178,23 @@ export class ExecuteEngine {
     this.sessions.delete(id);
     this.history.unshift({ ...session });
     if (this.history.length > MAX_HISTORY) this.history.length = MAX_HISTORY;
+    this.deps.persist?.(this.history[0]);
     this.emit('execution.cancelled', 'normal', { kind: session.kind, id, label: session.label });
     return session;
+  }
+
+  /**
+   * Seed history from the durable store at startup (V5.8). Recovered sessions are
+   * shown in the dashboard exactly as persisted (terminal or interrupted); this
+   * never re-executes anything.
+   */
+  seedHistory(sessions: ExecutionSession[]): void {
+    for (const s of sessions) {
+      if (!this.history.some((h) => h.id === s.id)) this.history.push({ ...s });
+    }
+    // Newest first, bounded.
+    this.history.sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
+    if (this.history.length > MAX_HISTORY) this.history.length = MAX_HISTORY;
   }
 
   private emit(

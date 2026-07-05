@@ -25,7 +25,14 @@ export type ExecutionKind =
 
 /** Lifecycle state of a session or step. */
 export type ExecutionState =
-  'queued' | 'running' | 'waiting' | 'paused' | 'completed' | 'failed' | 'cancelled';
+  | 'queued'
+  | 'running'
+  | 'waiting'
+  | 'paused'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'interrupted';
 
 /** A request to execute something. Uniform across all subsystems. */
 export interface ExecutionRequest {
@@ -81,11 +88,33 @@ export interface ExecutionStats {
   averageRuntimeMs: number | null;
 }
 
-const TERMINAL: ExecutionState[] = ['completed', 'failed', 'cancelled'];
+const TERMINAL: ExecutionState[] = ['completed', 'failed', 'cancelled', 'interrupted'];
 
 /** Whether a state is terminal (no further transitions). Pure. */
 export function isTerminalState(state: ExecutionState): boolean {
   return TERMINAL.includes(state);
+}
+
+/**
+ * Mark any non-terminal session as interrupted — used at startup to recover
+ * sessions that were in-flight when the app stopped. Interrupted sessions are NOT
+ * rerun; they're recorded as recovered. Pure.
+ */
+export function recoverInterrupted(
+  sessions: ExecutionSession[],
+  nowIso: string,
+): ExecutionSession[] {
+  return sessions.map((s) =>
+    isTerminalState(s.state)
+      ? s
+      : {
+          ...s,
+          state: 'interrupted' as ExecutionState,
+          completedAt: s.completedAt ?? nowIso,
+          error: s.error ?? 'Interrupted by application restart',
+          currentStep: -1,
+        },
+  );
 }
 
 /** Per-kind step templates — meaningful stages, not fake progress. Pure. */

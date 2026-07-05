@@ -40,6 +40,7 @@ import {
   ExecuteRunRequest,
   ExecuteCancelRequest,
   primaryNextStatus,
+  recoverInterrupted,
   SlugRequest,
   InstanceRequest,
   OperationRequest,
@@ -68,6 +69,8 @@ import {
   OrgWorkspaceRequest,
   OrgUpdateWorkspaceRequest,
 } from '@neuropause/shared';
+import { app } from 'electron';
+import { join } from 'node:path';
 import { createLogger } from './logger';
 import { authService } from './auth/authService';
 import { catalogClient } from './catalog/catalogClient';
@@ -101,6 +104,7 @@ import {
 import { NeuroCore } from './neuroCore';
 import { RuntimeSupervisor } from './runtimeSupervisor';
 import { ExecuteEngine } from './executeEngine';
+import { ExecutionStore } from './executionStore';
 import {
   getVoiceRuntimeState,
   setVoiceRuntimeState,
@@ -888,7 +892,14 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // history + events. Executors ORCHESTRATE existing subsystem logic (founder AI,
   // automation runner) — no execution logic is duplicated. task + automation are
   // wired now; worker/decision/etc. register the same way as they expose callables.
-  const executeEngine = new ExecuteEngine({ publish: publishPlatform });
+  // V5.8: durable execution persistence. The store implements the engine's
+  // persist hook; the engine stays unaware of storage. Sessions in-flight at last
+  // shutdown are recovered as 'interrupted' (never rerun) and seeded into history.
+  const executionStore = new ExecutionStore(join(app.getPath('userData'), 'executions.json'));
+  const executeEngine = new ExecuteEngine({
+    publish: publishPlatform,
+    persist: (session) => void executionStore.save(session),
+  });
   executeEngine.register('task', async (req, ctx) => {
     ctx.setStep(1);
     const res = await founderAIv2.ask({ text: req.input ?? '', now: undefined });
@@ -988,6 +999,25 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       result: job,
     };
   });
+
+  // V5.8 startup recovery: load persisted sessions, mark any that were in-flight
+  // as interrupted (recovered, not rerun), persist the correction, and seed the
+  // engine's history so the dashboard shows durable history across restarts.
+  const persistedSessions = executionStore.loadAllSync();
+  if (persistedSessions.length > 0) {
+    const recovered = recoverInterrupted(persistedSessions, new Date().toISOString());
+    const interruptedCount = recovered.filter((s) => s.state === 'interrupted').length;
+    executeEngine.seedHistory(recovered);
+    if (interruptedCount > 0) {
+      void executionStore.replaceAll(recovered);
+      log.warn('Recovered interrupted executions from previous session', {
+        interrupted: interruptedCount,
+        total: recovered.length,
+      });
+    } else {
+      log.info('Loaded persisted execution history', { total: recovered.length });
+    }
+  }
 
   defs.push({
     channel: IpcChannel.ExecuteRun,
