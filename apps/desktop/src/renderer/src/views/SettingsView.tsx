@@ -3,7 +3,12 @@ import type { AppInfo, Session, ThemeSource } from '@neuropause/shared';
 import { ViewHeader, ViewScroll } from '@renderer/components/ui/Page';
 import { Card } from '@renderer/components/ui/Card';
 import { Button } from '@renderer/components/ui/Button';
-import { Avatar, SegmentedControl, type SegmentOption } from '@renderer/components/ui/controls';
+import {
+  Avatar,
+  SegmentedControl,
+  Toggle,
+  type SegmentOption,
+} from '@renderer/components/ui/controls';
 import { initials } from '@renderer/lib/format';
 import { useTheme } from '@renderer/providers/ThemeProvider';
 import { useAuth } from '@renderer/providers/AuthProvider';
@@ -49,6 +54,9 @@ export function SettingsView({ session }: { session: Session }): JSX.Element {
   const { scale, setScale, reset, min, max } = useScale();
   const { logout } = useAuth();
   const [info, setInfo] = useState<AppInfo | null>(null);
+  // V4.2 launch-at-login toggle, backed by the RuntimeService IPC.
+  const [loginAtStartup, setLoginAtStartup] = useState(false);
+  const [startupBusy, setStartupBusy] = useState(false);
   const { user } = session;
   const name = user.displayName ?? user.email.split('@')[0];
 
@@ -57,10 +65,26 @@ export function SettingsView({ session }: { session: Session }): JSX.Element {
     void ipc.app.getInfo().then((i) => {
       if (active) setInfo(i);
     });
+    void ipc.runtime.getLoginAtStartup().then((r) => {
+      if (active) setLoginAtStartup(r.enabled);
+    });
     return () => {
       active = false;
     };
   }, []);
+
+  const toggleLoginAtStartup = async (next: boolean): Promise<void> => {
+    setStartupBusy(true);
+    setLoginAtStartup(next); // optimistic
+    try {
+      const r = await ipc.runtime.setLoginAtStartup(next);
+      setLoginAtStartup(r.enabled);
+    } catch {
+      setLoginAtStartup(!next); // revert on failure
+    } finally {
+      setStartupBusy(false);
+    }
+  };
 
   const memberSince = new Date(user.createdAt).toLocaleDateString(undefined, {
     year: 'numeric',
@@ -79,7 +103,29 @@ export function SettingsView({ session }: { session: Session }): JSX.Element {
             label="Theme"
             description="Auto follows your macOS appearance."
             control={
-              <SegmentedControl options={THEME_OPTIONS} value={source} onChange={(v) => void setSource(v)} />
+              <SegmentedControl
+                options={THEME_OPTIONS}
+                value={source}
+                onChange={(v) => void setSource(v)}
+              />
+            }
+          />
+        </Card>
+      </section>
+
+      <section className="mb-7">
+        <SectionLabel>Startup</SectionLabel>
+        <Card className="py-1.5">
+          <SettingRow
+            label="Launch at login"
+            description="Start NeuroPause automatically when you sign in to your Mac. It opens quietly to the menu bar."
+            control={
+              <Toggle
+                checked={loginAtStartup}
+                onChange={(v) => void toggleLoginAtStartup(v)}
+                disabled={startupBusy}
+                label="Launch NeuroPause at login"
+              />
             }
           />
         </Card>
