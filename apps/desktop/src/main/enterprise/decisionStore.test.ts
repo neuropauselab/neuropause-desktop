@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { ExecutiveRecommendation } from '@neuropause/shared';
+import { primaryNextStatus, type ExecutiveRecommendation } from '@neuropause/shared';
 import {
   DecisionStore,
   canTransition,
@@ -132,5 +132,24 @@ describe('DecisionStore', () => {
     const reopened = new DecisionStore(join(dir, 'executive-decisions.json'));
     expect(reopened.all()).toHaveLength(1);
     expect(reopened.summary().pending).toBe(1);
+  });
+});
+
+describe('primaryNextStatus (V3.5)', () => {
+  it('advances along the lifecycle', () => {
+    expect(primaryNextStatus('suggested')).toEqual({ to: 'accepted', label: 'Accept' });
+    expect(primaryNextStatus('accepted')).toEqual({ to: 'in_progress', label: 'Start' });
+    expect(primaryNextStatus('in_progress')).toEqual({ to: 'completed', label: 'Complete' });
+  });
+  it('returns null for terminal states', () => {
+    expect(primaryNextStatus('completed')).toBeNull();
+    expect(primaryNextStatus('rejected')).toBeNull();
+    expect(primaryNextStatus('archived')).toBeNull();
+  });
+  it('every non-null primary transition is legal per the store', () => {
+    for (const st of ['draft', 'suggested', 'accepted', 'in_progress'] as const) {
+      const n = primaryNextStatus(st);
+      if (n) expect(canTransition(st, n.to)).toBe(true);
+    }
   });
 });

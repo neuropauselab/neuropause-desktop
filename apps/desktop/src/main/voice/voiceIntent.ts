@@ -50,6 +50,10 @@ const RULES: Array<{
     test: /\b(organi[sz]ation|org|company|business)\b.*(health|doing|status|how)|how.*\b(organi[sz]ation|company)\b/i,
   },
   {
+    intent: 'decisions-complete',
+    test: /(complete|finish|mark.*done|close).*(decision)|decision.*(complete|done|finished)/i,
+  },
+  {
     intent: 'decisions-pending',
     test: /decisions?.*(pending|open|waiting|to (make|decide))|pending decisions?|what needs (a )?decision/i,
   },

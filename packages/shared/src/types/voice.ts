@@ -20,6 +20,7 @@ export type VoiceIntent =
   | 'fix-first' // "What should I fix first?" / "highest priority issue"
   | 'decisions-pending' // "What decisions are pending?"
   | 'decisions-recent' // "What did we decide this week?"
+  | 'decisions-complete' // "Complete decision" / "mark decision done"
   | 'connector-status' // "Any connector issues?"
   | 'license-status' // "How's our license?"
   | 'summarize' // "Summarize everything"

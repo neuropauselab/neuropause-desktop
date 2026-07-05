@@ -40,6 +40,7 @@ describe('classifyVoiceIntent', () => {
   it('routes decision questions (V3.3)', () => {
     expect(classifyVoiceIntent('what decisions are pending').intent).toBe('decisions-pending');
     expect(classifyVoiceIntent('what did we decide this week').intent).toBe('decisions-recent');
+    expect(classifyVoiceIntent('complete decision').intent).toBe('decisions-complete');
   });
 
   it('resolves open-module targets', () => {

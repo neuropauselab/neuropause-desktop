@@ -212,6 +212,25 @@ export function composeVoiceResponse(
         deepLink: 'enterprise/executive',
       };
     }
+    case 'decisions-complete': {
+      // V3.5: point the user to the in-progress decision to complete. (Voice is
+      // read/navigate here; the actual state change is a card action to keep an
+      // explicit confirmation step for a mutating operation.)
+      const d = s.decisions;
+      const inProgress = d?.top.find((x) => x.status === 'in_progress');
+      if (!inProgress) {
+        return {
+          speech: 'There are no in-progress decisions to complete.',
+          intent,
+          deepLink: 'enterprise/executive',
+        };
+      }
+      return {
+        speech: `Ready to complete: ${inProgress.title}. Opening the Executive Center so you can confirm.`,
+        intent,
+        deepLink: 'enterprise/executive',
+      };
+    }
     case 'summarize': {
       // V3.2: lead with the executive summary when available.
       const sum = s.executiveSummary;

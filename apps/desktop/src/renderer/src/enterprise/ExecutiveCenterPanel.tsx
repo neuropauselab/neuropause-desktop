@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import type {
   ExecutiveCard,
   ExecutiveCenterSnapshot,
+  ExecutiveDecision,
   ExecutiveKpi,
   IntelligenceItem,
 } from '@neuropause/shared';
+import { primaryNextStatus } from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
 import { cn } from '@renderer/lib/cn';
 import { formatRelative } from '@renderer/lib/format';
@@ -143,6 +145,24 @@ export function ExecutiveCenterPanel(): JSX.Element {
 
   const dismissRec = (recommendationId: string): void => {
     setRecAction((prev) => ({ ...prev, [recommendationId]: 'dismissed' }));
+  };
+
+  // V3.5 — transition a decision's status via the existing V3.3 setStatus IPC
+  // (store enforces legal transitions). Optimistic refresh of the snapshot.
+  const [busyDecision, setBusyDecision] = useState<string | null>(null);
+  const transitionDecision = async (id: string, to: ExecutiveDecision['status']): Promise<void> => {
+    setBusyDecision(id);
+    try {
+      const { decision } = await ipc.decisions.setStatus(id, to);
+      if (decision) {
+        const s = await ipc.intelligence.executiveCenterSnapshot();
+        setSnapshot(s);
+      }
+    } catch {
+      /* transient failure — leave controls actionable for retry */
+    } finally {
+      setBusyDecision(null);
+    }
   };
 
   if (loading) {
@@ -475,6 +495,38 @@ export function ExecutiveCenterPanel(): JSX.Element {
                       {d.evidence.length} evidence · {ageDays}d old
                     </span>
                   </div>
+                  {/* V3.5 lifecycle controls — reuse the V3.3 setStatus IPC. */}
+                  {d.status !== 'archived' && (
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      {(() => {
+                        const next = primaryNextStatus(d.status);
+                        return next ? (
+                          <button
+                            onClick={() => void transitionDecision(d.id, next.to)}
+                            disabled={busyDecision === d.id}
+                            aria-label={`${next.label} decision: ${d.title}`}
+                            aria-busy={busyDecision === d.id || undefined}
+                            className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-[11px] font-semibold text-accent-fg transition hover:bg-accent-hover focus:outline-none focus-visible:shadow-focus disabled:opacity-50"
+                          >
+                            {busyDecision === d.id ? (
+                              <Spinner size={12} />
+                            ) : (
+                              <Icon name="arrow-right" className="h-3 w-3" />
+                            )}
+                            {next.label}
+                          </button>
+                        ) : null;
+                      })()}
+                      <button
+                        onClick={() => void transitionDecision(d.id, 'archived')}
+                        disabled={busyDecision === d.id}
+                        aria-label={`Archive decision: ${d.title}`}
+                        className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium text-white/50 transition hover:bg-white/5 hover:text-white/70 focus:outline-none focus-visible:shadow-focus disabled:opacity-50"
+                      >
+                        Archive
+                      </button>
+                    </div>
+                  )}
                 </Card>
               );
             })}

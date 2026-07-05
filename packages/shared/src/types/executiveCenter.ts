@@ -205,3 +205,25 @@ export interface DecisionSummaryView {
   /** The most impactful recent decisions, ranked. */
   top: ExecutiveDecision[];
 }
+
+/**
+ * The primary "next step" transition for a decision, for a one-click CTA on the
+ * card (V3.5). Pure + shared so main and renderer agree. Returns null when the
+ * decision is terminal (only archival remains, offered as a secondary action).
+ */
+export function primaryNextStatus(status: DecisionStatus): {
+  to: DecisionStatus;
+  label: string;
+} | null {
+  switch (status) {
+    case 'draft':
+    case 'suggested':
+      return { to: 'accepted', label: 'Accept' };
+    case 'accepted':
+      return { to: 'in_progress', label: 'Start' };
+    case 'in_progress':
+      return { to: 'completed', label: 'Complete' };
+    default:
+      return null; // completed / rejected / archived → no forward step
+  }
+}
