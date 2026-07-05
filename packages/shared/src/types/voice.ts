@@ -23,6 +23,7 @@ export type VoiceIntent =
   | 'decisions-complete' // "Complete decision" / "mark decision done"
   | 'decisions-overdue' // "What is overdue?"
   | 'decisions-blocked' // "What decisions are blocked?"
+  | 'executive-timeline' // "Show executive timeline" / "what happened today?"
   | 'connector-status' // "Any connector issues?"
   | 'license-status' // "How's our license?"
   | 'summarize' // "Summarize everything"

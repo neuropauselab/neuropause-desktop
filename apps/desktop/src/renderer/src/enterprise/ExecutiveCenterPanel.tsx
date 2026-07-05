@@ -15,6 +15,7 @@ import { Icon } from '@renderer/components/ui/Icon';
 import { Card } from '@renderer/components/ui/Card';
 import { EmptyState } from '@renderer/components/ui/EmptyState';
 import { Spinner } from '@renderer/components/Spinner';
+import { ExecutiveTimeline } from './ExecutiveTimeline';
 import { OpsPanel } from '../operations/primitives';
 import { TINT_TONE, TEXT_TONE, DOT_BG, type OpsTone } from '../operations/lib';
 import { deepLinkToSection } from './executiveCenterNav';
@@ -558,6 +559,15 @@ export function ExecutiveCenterPanel(): JSX.Element {
           </div>
         </div>
       )}
+
+      {/* Executive Timeline (V3.7) — chronological, filterable decision history.
+          Built purely from decision history via ipc.decisions.list. */}
+      <div className="mt-4">
+        <h3 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-white/50">
+          Executive Timeline
+        </h3>
+        <ExecutiveTimeline />
+      </div>
 
       {/* Section cards. Bold lives in the KPI strip; cards stay quiet + scannable. */}
       {/* NPDS A.3: migrated to <Card variant="flat"> — reproduces the prior inline

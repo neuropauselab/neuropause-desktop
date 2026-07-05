@@ -43,6 +43,8 @@ describe('classifyVoiceIntent', () => {
     expect(classifyVoiceIntent('complete decision').intent).toBe('decisions-complete');
     expect(classifyVoiceIntent('what is overdue').intent).toBe('decisions-overdue');
     expect(classifyVoiceIntent('what decisions are blocked').intent).toBe('decisions-blocked');
+    expect(classifyVoiceIntent('show executive timeline').intent).toBe('executive-timeline');
+    expect(classifyVoiceIntent('what happened today').intent).toBe('executive-timeline');
   });
 
   it('resolves open-module targets', () => {

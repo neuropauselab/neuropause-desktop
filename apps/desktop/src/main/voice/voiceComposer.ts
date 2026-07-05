@@ -190,6 +190,19 @@ export function composeVoiceResponse(
         deepLink: 'enterprise/executive',
       };
     }
+    case 'executive-timeline': {
+      // V3.7: navigate to the Executive Center where the timeline renders.
+      const d = s.decisions;
+      const active = d ? d.pending + d.accepted : 0;
+      return {
+        speech:
+          active > 0
+            ? `Opening the executive timeline. ${active} active decision${active === 1 ? '' : 's'} in flight.`
+            : 'Opening the executive timeline.',
+        intent,
+        deepLink: 'enterprise/executive',
+      };
+    }
     case 'decisions-recent': {
       // V3.3: recently accepted/completed decisions.
       const d = s.decisions;

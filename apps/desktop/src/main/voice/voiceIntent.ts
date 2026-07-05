@@ -66,6 +66,10 @@ const RULES: Array<{
     test: /decisions?.*(pending|open|waiting|to (make|decide))|pending decisions?|what needs (a )?decision/i,
   },
   {
+    intent: 'executive-timeline',
+    test: /\btimeline\b|what happened|show (me )?(today|yesterday|this week)|activity (feed|log)/i,
+  },
+  {
     intent: 'decisions-recent',
     test: /(decided|decisions?).*(this week|today|recently|lately)|what did we decide/i,
   },

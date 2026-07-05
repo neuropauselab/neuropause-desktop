@@ -299,3 +299,131 @@ export function isStale(d: ExecutiveDecision, nowMs: number, staleDays = 14): bo
   if (!isActiveDecision(d)) return false;
   return nowMs - Date.parse(d.updatedAt) > staleDays * 86_400_000;
 }
+
+/**
+ * A flattened Executive Timeline entry (V3.7) — one decision history event with
+ * enough decision context to render + filter without re-joining. Derived purely
+ * from ExecutiveDecision.history[]; no separate persistence.
+ */
+export interface ExecutiveTimelineEntry {
+  /** Stable id: decisionId + event index. */
+  id: string;
+  /** ISO timestamp of the event. */
+  at: string;
+  kind: DecisionEvent['kind'];
+  previousState?: DecisionStatus;
+  newState?: DecisionStatus;
+  actor: string;
+  reason?: string;
+  // ── decision context (for filtering + card display) ──
+  decisionId: string;
+  title: string;
+  category: DecisionCategory;
+  owner: string;
+  priority: DecisionPriority;
+  status: DecisionStatus;
+  businessImpact: string;
+  evidenceCount: number;
+  fromRecommendationId?: string;
+}
+
+/** Human label for a timeline event kind + state transition (V3.7). */
+export function timelineEventLabel(e: {
+  kind: DecisionEvent['kind'];
+  newState?: DecisionStatus;
+}): string {
+  switch (e.kind) {
+    case 'created':
+      return 'Decision created';
+    case 'owner_assigned':
+      return 'Owner assigned';
+    case 'due_set':
+      return 'Due date set';
+    case 'blocked':
+      return 'Blocked';
+    case 'resumed':
+      return 'Resumed';
+    case 'note':
+      return 'Note added';
+    case 'status_changed':
+      switch (e.newState) {
+        case 'accepted':
+          return 'Accepted';
+        case 'in_progress':
+          return 'Started';
+        case 'completed':
+          return 'Completed';
+        case 'rejected':
+          return 'Rejected';
+        case 'archived':
+          return 'Archived';
+        default:
+          return 'Status changed';
+      }
+    default:
+      return 'Event';
+  }
+}
+
+/**
+ * Build the Executive Timeline from decisions (V3.7). Flattens every decision's
+ * history into chronological entries, newest first. Pure + shared.
+ */
+export function buildDecisionTimeline(decisions: ExecutiveDecision[]): ExecutiveTimelineEntry[] {
+  const entries: ExecutiveTimelineEntry[] = [];
+  for (const d of decisions) {
+    const history = d.history ?? [];
+    history.forEach((ev, i) => {
+      entries.push({
+        id: `${d.id}#${i}`,
+        at: ev.at,
+        kind: ev.kind,
+        previousState: ev.previousState,
+        newState: ev.newState,
+        actor: ev.actor,
+        reason: ev.reason,
+        decisionId: d.id,
+        title: d.title,
+        category: d.category,
+        owner: d.owner,
+        priority: d.priority,
+        status: d.status,
+        businessImpact: d.businessImpact,
+        evidenceCount: d.evidence.length,
+        fromRecommendationId: d.fromRecommendationId,
+      });
+    });
+  }
+  return entries.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+}
+
+/** Timeline filter predicate inputs (V3.7). */
+export interface TimelineFilter {
+  owner?: string;
+  priority?: DecisionPriority;
+  status?: DecisionStatus;
+  /** Free-text over title + owner + label. */
+  query?: string;
+  /** Only entries at/after this ISO date. */
+  since?: string;
+}
+
+/** Apply timeline filters purely (V3.7). */
+export function filterTimeline(
+  entries: ExecutiveTimelineEntry[],
+  f: TimelineFilter,
+): ExecutiveTimelineEntry[] {
+  const q = f.query?.trim().toLowerCase();
+  const sinceMs = f.since ? Date.parse(f.since) : undefined;
+  return entries.filter((e) => {
+    if (f.owner && e.owner !== f.owner) return false;
+    if (f.priority && e.priority !== f.priority) return false;
+    if (f.status && e.status !== f.status) return false;
+    if (sinceMs !== undefined && Date.parse(e.at) < sinceMs) return false;
+    if (q) {
+      const hay = `${e.title} ${e.owner} ${timelineEventLabel(e)}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
