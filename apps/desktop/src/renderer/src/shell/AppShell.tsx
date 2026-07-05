@@ -219,9 +219,15 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
           </AnimatePresence>
         </main>
       </div>
-      <CommandPalette />
-      <VoiceWidget />
-      <OnboardingWizard onGoTo={goToSection} />
+      <ErrorBoundary inline name="command-palette">
+        <CommandPalette />
+      </ErrorBoundary>
+      <ErrorBoundary inline name="voice-assistant">
+        <VoiceWidget />
+      </ErrorBoundary>
+      <ErrorBoundary inline name="onboarding">
+        <OnboardingWizard onGoTo={goToSection} />
+      </ErrorBoundary>
     </div>
   );
 }
