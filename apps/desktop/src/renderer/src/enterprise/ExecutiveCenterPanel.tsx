@@ -17,6 +17,7 @@ import { EmptyState } from '@renderer/components/ui/EmptyState';
 import { Spinner } from '@renderer/components/Spinner';
 import { ExecutiveTimeline } from './ExecutiveTimeline';
 import { RuntimeHealthPanel } from './RuntimeHealthPanel';
+import { ErrorBoundary } from '@renderer/components/ErrorBoundary';
 import { OpsPanel } from '../operations/primitives';
 import { TINT_TONE, TEXT_TONE, DOT_BG, type OpsTone } from '../operations/lib';
 import { deepLinkToSection } from './executiveCenterNav';
@@ -208,8 +209,11 @@ export function ExecutiveCenterPanel(): JSX.Element {
       title="Executive Intelligence"
       subtitle={`${attentionCounts.critical} critical · ${attentionCounts.high} high · updated ${formatRelative(snapshot.generatedAt)}`}
     >
-      {/* NeuroCore system health (V5.0) — composed runtime/automation/voice/platform. */}
-      <RuntimeHealthPanel />
+      {/* NeuroCore system health (V5.0) — isolated so a telemetry failure can
+          never take down the executive dashboard (V5.2.1 fix). */}
+      <ErrorBoundary inline name="runtime-health">
+        <RuntimeHealthPanel />
+      </ErrorBoundary>
 
       {/* KPI strip — the instrument cluster. Each tile deep-links. */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">

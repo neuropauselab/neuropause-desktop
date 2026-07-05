@@ -40,14 +40,18 @@ export function RuntimeHealthPanel(): JSX.Element | null {
 
   useEffect(() => {
     let alive = true;
-    const load = () =>
-      ipc.system
-        .health()
-        .then((h) => {
+    const load = (): void => {
+      try {
+        const p = ipc.system?.health?.();
+        if (!p) return;
+        p.then((h) => {
           if (alive) setHealth(h);
-        })
-        .catch(() => {});
-    void load();
+        }).catch(() => {});
+      } catch {
+        /* telemetry is non-essential — it must never break the executive view */
+      }
+    };
+    load();
     const timer = setInterval(load, 5000);
     return () => {
       alive = false;
@@ -83,11 +87,12 @@ export function RuntimeHealthPanel(): JSX.Element | null {
         <div className="text-right text-[11px] text-white/40">
           <div>Uptime {fmtUptime(health.uptimeMs)}</div>
           <div>
-            CPU {health.telemetry.cpuPercent}% · RAM {health.telemetry.memoryUsedMb}MB
+            CPU {health.telemetry?.cpuPercent ?? '—'}% · RAM {health.telemetry?.memoryUsedMb ?? '—'}
+            MB
           </div>
           <div>
-            {health.throughput.eventsPerMinute}/min ·{' '}
-            {health.telemetry.backendLatencyMs !== null
+            {health.throughput?.eventsPerMinute ?? 0}/min ·{' '}
+            {health.telemetry?.backendLatencyMs != null
               ? `${health.telemetry.backendLatencyMs}ms API`
               : 'API —'}
           </div>
@@ -95,7 +100,7 @@ export function RuntimeHealthPanel(): JSX.Element | null {
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
-        {health.subsystems.map((s) => {
+        {(health.subsystems ?? []).map((s) => {
           const st = levelTone(s.level);
           return (
             <div
