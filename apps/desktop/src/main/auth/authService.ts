@@ -13,12 +13,7 @@
 import { EventEmitter } from 'node:events';
 import { createHash, randomBytes } from 'node:crypto';
 import { shell } from 'electron';
-import type {
-  AuthStatus,
-  AuthProviderId,
-  TokenPair,
-  User,
-} from '@neuropause/shared';
+import type { AuthStatus, AuthProviderId, TokenPair, User } from '@neuropause/shared';
 import { config } from '../config';
 import { createLogger } from '../logger';
 import { secureStore } from '../security/secureStore';
@@ -98,19 +93,48 @@ class AuthService extends EventEmitter {
       this.setStatus({ state: 'unauthenticated' });
       return;
     }
-    try {
-      const { tokens } = await backendClient.refresh(refreshToken);
-      await this.applyTokens(tokens);
-      const { user } = await backendClient.me(tokens.accessToken);
-      this.setStatus({
-        state: 'authenticated',
-        session: { user, accessTokenExpiresAt: tokens.accessTokenExpiresAt },
-      });
-      log.info('Restored session from stored credentials');
-    } catch (err) {
-      log.warn('Could not restore session; clearing stored credentials', messageFor(err));
-      await this.clearSession();
-      this.setStatus({ state: 'unauthenticated' });
+    // The desktop app and backend start together (npm run dev), so at boot the
+    // backend may not be reachable for a moment. A transient network failure must
+    // NOT log the user out — only a genuine auth rejection (invalid/expired
+    // credentials) should clear the session. Retry network failures with backoff.
+    const maxAttempts = 5;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const { tokens } = await backendClient.refresh(refreshToken);
+        await this.applyTokens(tokens);
+        const { user } = await backendClient.me(tokens.accessToken);
+        this.setStatus({
+          state: 'authenticated',
+          session: { user, accessTokenExpiresAt: tokens.accessTokenExpiresAt },
+        });
+        log.info('Restored session from stored credentials', { attempt });
+        return;
+      } catch (err) {
+        const isNetwork = err instanceof BackendError && err.status === 0;
+        if (isNetwork && attempt < maxAttempts) {
+          log.warn(
+            `Backend unreachable during session restore (attempt ${attempt}/${maxAttempts}); retrying`,
+            messageFor(err),
+          );
+          await new Promise((r) => setTimeout(r, 1000));
+          continue;
+        }
+        if (isNetwork) {
+          // Still unreachable after retries: keep credentials so a later launch (or
+          // reconnect) can restore the session. Do not clear — the session is valid.
+          log.warn(
+            'Backend still unreachable after retries; keeping credentials for a later attempt',
+            messageFor(err),
+          );
+          this.setStatus({ state: 'unauthenticated' });
+          return;
+        }
+        // Genuine auth failure — the stored session is invalid, so clear it.
+        log.warn('Stored session is invalid; clearing credentials', messageFor(err));
+        await this.clearSession();
+        this.setStatus({ state: 'unauthenticated' });
+        return;
+      }
     }
   }
 
