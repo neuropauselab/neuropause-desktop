@@ -348,6 +348,63 @@ export function ExecutiveCenterPanel(): JSX.Element {
         </div>
       )}
 
+      {/* Executive Decisions (V3.3) — first-class decisions with lifecycle status.
+          Reuses Card flat + tones. Renders only when decisions exist. */}
+      {snapshot.decisions && snapshot.decisions.total > 0 && (
+        <div className="mt-4">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-[11px] font-medium uppercase tracking-wide text-white/50">
+              Executive Decisions
+            </h3>
+            <span className="text-[10px] text-white/40">
+              {snapshot.decisions.pending} pending · {snapshot.decisions.accepted} active ·{' '}
+              {snapshot.decisions.completed} done
+            </span>
+          </div>
+          <div className="grid gap-3 lg:grid-cols-2">
+            {snapshot.decisions.top.map((d) => {
+              const tone: OpsTone =
+                d.priority === 'critical'
+                  ? 'red'
+                  : d.priority === 'high'
+                    ? 'orange'
+                    : d.priority === 'medium'
+                      ? 'blue'
+                      : 'gray';
+              const ageDays = Math.max(
+                0,
+                Math.floor((Date.now() - Date.parse(d.createdAt)) / 86_400_000),
+              );
+              return (
+                <Card key={d.id} variant="flat" flush className="p-3.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-xs font-semibold">{d.title}</span>
+                    <span
+                      className={cn(
+                        'shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium uppercase',
+                        TINT_TONE[tone],
+                        TEXT_TONE[tone],
+                      )}
+                    >
+                      {d.status.replace('_', ' ')}
+                    </span>
+                  </div>
+                  <p className="mt-1.5 text-xs text-white/55">{d.businessImpact}</p>
+                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-white/40">
+                    <span className={cn('font-medium', TEXT_TONE[tone])}>{d.priority}</span>
+                    <span>{Math.round(d.confidence * 100)}% confidence</span>
+                    <span>{d.owner}</span>
+                    <span>
+                      {d.evidence.length} evidence · {ageDays}d old
+                    </span>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Section cards. Bold lives in the KPI strip; cards stay quiet + scannable. */}
       {/* NPDS A.3: migrated to <Card variant="flat"> — reproduces the prior inline
           surface (rounded-2xl border-white/5 bg-white/[0.02]) verbatim; flush + p-4

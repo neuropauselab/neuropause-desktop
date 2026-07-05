@@ -13,6 +13,7 @@ import { buildOrgIntelligenceItems, collectOrgHealthInputs } from './orgIntellig
 import { composeExecutiveSnapshot, type TimelineEntryLite } from './executiveCenter';
 import { getEnterpriseTimeline } from '../timeline';
 import { healthHistoryStore } from './healthHistoryInstance';
+import { decisionStore } from './decisionInstance';
 import { buildExecutiveRecommendations, buildExecutiveSummary } from './executiveRecommendations';
 import type { MonthlyTrend } from '@neuropause/shared';
 
@@ -118,6 +119,8 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
     const recommendations = buildExecutiveRecommendations(snap);
     snap.recommendations = recommendations;
     snap.executiveSummary = buildExecutiveSummary(snap, recommendations);
+    // V3.3: attach the persisted decisions overview (read-only view; no new logic).
+    snap.decisions = decisionStore.summary();
     // Record today's datapoint. Fire-and-forget — persistence failure must never
     // break the snapshot response.
     void healthHistoryStore

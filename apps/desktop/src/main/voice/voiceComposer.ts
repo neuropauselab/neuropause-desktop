@@ -173,6 +173,45 @@ export function composeVoiceResponse(
         deepLink: 'enterprise/executive',
       };
     }
+    case 'decisions-pending': {
+      // V3.3: pending decisions from the persisted decision summary.
+      const d = s.decisions;
+      if (!d || d.pending === 0) {
+        return {
+          speech: 'There are no pending decisions right now.',
+          intent,
+          deepLink: 'enterprise/executive',
+        };
+      }
+      const first = d.top.find((x) => x.status === 'suggested' || x.status === 'draft');
+      return {
+        speech: `You have ${d.pending} pending decision${d.pending === 1 ? '' : 's'}.${first ? ` Top: ${first.title}.` : ''}`,
+        intent,
+        deepLink: 'enterprise/executive',
+      };
+    }
+    case 'decisions-recent': {
+      // V3.3: recently accepted/completed decisions.
+      const d = s.decisions;
+      const recent = d?.top.filter(
+        (x) => x.status === 'accepted' || x.status === 'in_progress' || x.status === 'completed',
+      );
+      if (!recent || recent.length === 0) {
+        return {
+          speech: 'No decisions have been accepted recently.',
+          intent,
+          deepLink: 'enterprise/executive',
+        };
+      }
+      return {
+        speech: `Recent decisions: ${recent
+          .slice(0, 3)
+          .map((x) => x.title)
+          .join('; ')}.`,
+        intent,
+        deepLink: 'enterprise/executive',
+      };
+    }
     case 'summarize': {
       // V3.2: lead with the executive summary when available.
       const sum = s.executiveSummary;

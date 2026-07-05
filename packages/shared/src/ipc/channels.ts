@@ -109,6 +109,9 @@ export const IpcChannel = {
   // ── platform core (event bus / timeline / diagnostics) ──
   PlatformEmit: 'platform:emit',
   ExecutiveCenterSnapshot: 'executiveCenter:snapshot',
+  DecisionList: 'decisions:list',
+  DecisionCreateFromRecommendation: 'decisions:createFromRecommendation',
+  DecisionSetStatus: 'decisions:setStatus',
   VoiceTurn: 'voice:turn',
   TimelineQuery: 'timeline:query',
   TimelineStats: 'timeline:stats',

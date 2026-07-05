@@ -96,6 +96,8 @@ export interface ExecutiveCenterSnapshot {
   recommendations?: ExecutiveRecommendation[];
   /** One-glance executive summary (V3.2). */
   executiveSummary?: ExecutiveSummary;
+  /** Executive decisions overview (V3.3). */
+  decisions?: DecisionSummaryView;
   /** Count of items by priority, for the "what requires attention" glance. */
   attentionCounts: { critical: number; high: number; normal: number };
 }
@@ -152,4 +154,54 @@ export interface ExecutiveSummary {
   topRecommendation: string;
   /** 0..100 composite executive score (org health tempered by open critical risks). */
   executiveScore: number;
+}
+
+/** Executive decision category (V3.3). */
+export type DecisionCategory =
+  'engineering' | 'organization' | 'governance' | 'operations' | 'growth' | 'other';
+
+/** Decision lifecycle status (V3.3). */
+export type DecisionStatus =
+  'draft' | 'suggested' | 'accepted' | 'in_progress' | 'completed' | 'rejected' | 'archived';
+
+/** Decision priority tier (reuses the exec priority vocabulary). */
+export type DecisionPriority = ExecRecoPriority;
+
+/**
+ * A first-class executive decision (V3.3). Persisted, lifecycle-tracked, and
+ * traceable back to the recommendation it originated from (if any). Reuses the
+ * recommendation vocabulary rather than inventing a parallel model.
+ */
+export interface ExecutiveDecision {
+  id: string;
+  title: string;
+  category: DecisionCategory;
+  description: string;
+  reasoning: string;
+  evidence: string[];
+  sourceSystems: string[];
+  /** 0..1 confidence. */
+  confidence: number;
+  businessImpact: string;
+  expectedOutcome: string;
+  owner: string;
+  priority: DecisionPriority;
+  status: DecisionStatus;
+  /** ISO created timestamp. */
+  createdAt: string;
+  /** ISO last-updated timestamp. */
+  updatedAt: string;
+  /** Back-reference to the originating recommendation id, for traceability. */
+  fromRecommendationId?: string;
+}
+
+/** Compact decision view for the Executive Center section (V3.3). */
+export interface DecisionSummaryView {
+  total: number;
+  pending: number;
+  accepted: number;
+  completed: number;
+  rejected: number;
+  /** The most impactful recent decisions, ranked. */
+  top: ExecutiveDecision[];
 }

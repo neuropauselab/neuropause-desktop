@@ -37,6 +37,11 @@ describe('classifyVoiceIntent', () => {
     expect(classifyVoiceIntent('what is the most urgent').intent).toBe('fix-first');
   });
 
+  it('routes decision questions (V3.3)', () => {
+    expect(classifyVoiceIntent('what decisions are pending').intent).toBe('decisions-pending');
+    expect(classifyVoiceIntent('what did we decide this week').intent).toBe('decisions-recent');
+  });
+
   it('resolves open-module targets', () => {
     const r = classifyVoiceIntent('open Founder AI');
     expect(r.intent).toBe('open-module');

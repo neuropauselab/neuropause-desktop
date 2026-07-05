@@ -28,6 +28,25 @@ export const SetThemeSourceRequest = z.object({
 // Empty-payload requests still get a schema so the router is uniform.
 export const EmptyRequest = z.object({}).strict();
 
+// V3.3 — Executive Decision Intelligence.
+export const DecisionCreateFromRecommendationRequest = z
+  .object({ recommendationId: z.string().trim().min(1).max(128) })
+  .strict();
+export const DecisionSetStatusRequest = z
+  .object({
+    id: z.string().trim().min(1).max(128),
+    status: z.enum([
+      'draft',
+      'suggested',
+      'accepted',
+      'in_progress',
+      'completed',
+      'rejected',
+      'archived',
+    ]),
+  })
+  .strict();
+
 export type LoginOAuthRequest = z.infer<typeof LoginOAuthRequest>;
 export type EmailCredentialsRequest = z.infer<typeof EmailCredentialsRequest>;
 export type SetThemeSourceRequest = z.infer<typeof SetThemeSourceRequest>;

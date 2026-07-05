@@ -18,6 +18,8 @@ export type VoiceIntent =
   | 'mission-brief' // "What's my brief / priorities?"
   | 'founder-recommendations' // "What do you recommend?"
   | 'fix-first' // "What should I fix first?" / "highest priority issue"
+  | 'decisions-pending' // "What decisions are pending?"
+  | 'decisions-recent' // "What did we decide this week?"
   | 'connector-status' // "Any connector issues?"
   | 'license-status' // "How's our license?"
   | 'summarize' // "Summarize everything"
