@@ -19,11 +19,7 @@ import { ipc } from '@renderer/lib/ipc';
 import { cn } from '@renderer/lib/cn';
 import { useShell } from '@renderer/state/ShellProvider';
 import { deepLinkToSection } from '@renderer/enterprise/executiveCenterNav';
-import {
-  INITIAL_SESSION,
-  isCapturing,
-  voiceSessionReducer,
-} from '@neuropause/shared';
+import { INITIAL_SESSION, isCapturing, voiceSessionReducer } from '@neuropause/shared';
 import { parseVoiceCommand, interruptsSpeech, endsSession } from '@neuropause/shared';
 import { WebSpeechRecognizer, WebSpeechSynthesizer, requestMicPermission } from './voiceAudio';
 
@@ -113,6 +109,16 @@ export function VoiceWidget(): JSX.Element | null {
     setReply('');
   }, []);
 
+  // V4.1: the runtime tray can start/pause listening from the menu bar. Wire its
+  // commands into the same start/close paths (no duplicate voice logic).
+  useEffect(() => {
+    const unsubscribe = ipc.tray.onCommand((payload) => {
+      if (payload.action === 'start-listening') void startTurn();
+      else if (payload.action === 'pause-listening') close();
+    });
+    return unsubscribe;
+  }, [startTurn, close]);
+
   const capturing = isCapturing(session.state);
 
   return (
@@ -127,7 +133,12 @@ export function VoiceWidget(): JSX.Element | null {
           capturing ? 'bg-red-500/80' : 'bg-white/10 hover:bg-white/20',
         )}
       >
-        <span className={cn('h-2.5 w-2.5 rounded-full', capturing ? 'animate-pulse bg-white' : 'bg-white/70')} />
+        <span
+          className={cn(
+            'h-2.5 w-2.5 rounded-full',
+            capturing ? 'animate-pulse bg-white' : 'bg-white/70',
+          )}
+        />
       </button>
 
       {/* Floating panel — appears while a conversation is open. */}
@@ -137,7 +148,11 @@ export function VoiceWidget(): JSX.Element | null {
             <span className="text-xs font-medium uppercase tracking-wide text-white/50">
               {stateLabel(session.state)}
             </span>
-            <button onClick={close} className="text-white/40 hover:text-white/80" aria-label="Close">
+            <button
+              onClick={close}
+              className="text-white/40 hover:text-white/80"
+              aria-label="Close"
+            >
               ✕
             </button>
           </div>
@@ -146,7 +161,9 @@ export function VoiceWidget(): JSX.Element | null {
           )}
           {reply && <p className="text-sm text-white">{reply}</p>}
           {!session.transcript && !reply && (
-            <p className="text-sm text-white/40">Listening… ask about engineering, org health, risks, or your brief.</p>
+            <p className="text-sm text-white/40">
+              Listening… ask about engineering, org health, risks, or your brief.
+            </p>
           )}
         </div>
       )}

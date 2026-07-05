@@ -45,3 +45,9 @@ export interface MenuCommandPayload {
   /** For 'navigate': the 1-based section index (⌘1–⌘9). */
   index?: number;
 }
+
+/** Tray → renderer runtime control commands (V4.0/V4.1). */
+export type TrayCommandAction = 'start-listening' | 'pause-listening';
+export interface TrayCommandPayload {
+  action: TrayCommandAction;
+}

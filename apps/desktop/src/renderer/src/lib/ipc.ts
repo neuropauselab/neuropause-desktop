@@ -11,6 +11,7 @@ import {
   type AuthProviderId,
   type AuthStatus,
   type MenuCommandPayload,
+  type TrayCommandPayload,
   type ThemeSource,
   type CategorySummary,
   type CollectionDto,
@@ -308,6 +309,11 @@ export const ipc = {
   menu: {
     onCommand: (cb: (payload: MenuCommandPayload) => void) =>
       subscribe(IpcChannel.MenuCommand, (p) => cb(p as MenuCommandPayload)),
+  },
+  tray: {
+    /** Subscribe to tray runtime commands (start/pause listening). V4.1. */
+    onCommand: (cb: (payload: TrayCommandPayload) => void) =>
+      subscribe(IpcChannel.TrayCommand, (p) => cb(p as TrayCommandPayload)),
   },
 
   /* ── Secure Catalog (proxied to the Store API in the main process) ── */

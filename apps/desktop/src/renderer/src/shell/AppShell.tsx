@@ -10,6 +10,7 @@ import { createLogger } from '@renderer/lib/logger';
 import { Toolbar } from './Toolbar';
 import { Sidebar } from './Sidebar';
 import { CommandPalette } from './CommandPalette';
+import { VoiceWidget } from '../voice/VoiceWidget';
 import { HomeView } from '@renderer/views/HomeView';
 import { OnboardingWizard } from '@renderer/onboarding/OnboardingWizard';
 import { SECTIONS, type SectionId } from './sections';
@@ -219,6 +220,7 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
         </main>
       </div>
       <CommandPalette />
+      <VoiceWidget />
       <OnboardingWizard onGoTo={goToSection} />
     </div>
   );

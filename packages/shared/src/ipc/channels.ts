@@ -453,6 +453,7 @@ export const SUBSCRIBABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.AuthStatusChanged,
   IpcChannel.ThemeChanged,
   IpcChannel.MenuCommand,
+  IpcChannel.TrayCommand,
 ];
 
 /** Runtime-core invokable channels (handled by the secure bridge). */
