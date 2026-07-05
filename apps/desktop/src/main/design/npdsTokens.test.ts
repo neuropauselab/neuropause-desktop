@@ -63,6 +63,16 @@ describe('NPDS theme + contracts (executed in main scope)', () => {
   it('Button contract matches the real component variants', () => {
     const button = componentContracts.find((c) => c.name === 'Button');
     expect(button?.variants?.variant).toEqual(['primary', 'secondary', 'ghost', 'danger']);
+    // A.2: loading is now a documented, standardized modifier.
+    expect(button?.modifiers).toContain('loading');
+  });
+
+  it('Card contract documents the A.2 surface + elevation variants', () => {
+    const card = componentContracts.find((c) => c.name === 'Card');
+    expect(card?.variants?.surface).toEqual(['base', 'raised', 'glass']);
+    expect(card?.variants?.elevation).toEqual(['card', 'pop', 'glass']);
+    // Backward-compat: interactive/flush remain.
+    expect(card?.modifiers).toContain('interactive');
   });
 
   it('lists not-yet-extracted primitives honestly', () => {

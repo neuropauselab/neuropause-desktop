@@ -29,16 +29,20 @@ export const componentContracts: ComponentContract[] = [
       variant: ['primary', 'secondary', 'ghost', 'danger'],
       size: ['sm', 'md'],
     },
-    modifiers: ['icon', 'disabled'],
+    modifiers: ['icon', 'loading', 'disabled'],
     notes:
-      "Defaults: variant='secondary', size='md'. Uses semantic classes (bg-accent, shadow-focus).",
+      "Defaults: variant='secondary', size='md'. loading shows the shared Spinner, sets aria-busy, and disables. Semantic classes (bg-accent, shadow-focus).",
   },
   {
     name: 'Card',
     file: 'components/ui/Card.tsx',
+    variants: {
+      surface: ['base', 'raised', 'glass'],
+      elevation: ['card', 'pop', 'glass'],
+    },
     modifiers: ['interactive', 'flush'],
     notes:
-      'surface-raised + rounded-2xl + shadow-card; interactive adds hover lift; flush removes padding.',
+      "Defaults surface='raised' + elevation='card' preserve the prior appearance exactly; interactive adds hover lift; flush removes padding.",
   },
   {
     name: 'EmptyState',
