@@ -33,6 +33,8 @@ function dayKey(ms: number): string {
 export class HealthHistoryStore {
   private points: HealthPoint[] = [];
   private loaded = false;
+  /** Serializes persists so concurrent record() calls can't race the temp file. */
+  private writeChain: Promise<void> = Promise.resolve();
 
   constructor(private readonly filePath: string) {}
 
@@ -48,9 +50,20 @@ export class HealthHistoryStore {
     }
   }
 
-  private async persist(): Promise<void> {
-    const tmp = `${this.filePath}.tmp`;
+  private persist(): Promise<void> {
+    // Chain writes so two same-tick records serialize instead of colliding on a
+    // shared temp path (which previously caused ENOENT on rename). The stored
+    // chain is always caught so one failure can't wedge later writes; the real
+    // result still propagates to the caller.
+    const run = this.writeChain.then(() => this.writeNow());
+    this.writeChain = run.catch(() => {});
+    return run;
+  }
+
+  private async writeNow(): Promise<void> {
     const file: HealthFile = { points: this.points };
+    // Unique temp per write so even overlapping writers never share a temp file.
+    const tmp = `${this.filePath}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
     await fs.mkdir(dirname(this.filePath), { recursive: true }).catch(() => {});
     await fs.writeFile(tmp, JSON.stringify(file), { mode: 0o600 });
     await fs.rename(tmp, this.filePath);

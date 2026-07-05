@@ -16,6 +16,18 @@ describe('HealthHistoryStore', () => {
   });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
+  it('survives concurrent records without a temp-file race (ENOENT regression)', async () => {
+    const base = Date.UTC(2026, 0, 10);
+    // Fire many records for different days in parallel — previously these raced on
+    // a shared .tmp path and one rename would fail with ENOENT.
+    await Promise.all(
+      Array.from({ length: 25 }, (_, i) => store.record(60 + i, 70 + i, base + i * DAY)),
+    );
+    // A reload must see a valid, fully-written file.
+    const reloaded = new HealthHistoryStore(join(dir, 'health-history.json'));
+    expect(reloaded.all().length).toBeGreaterThan(0);
+  });
+
   it('records a datapoint and reads it back', async () => {
     const now = Date.UTC(2026, 0, 10);
     await store.record(80, 90, now);
