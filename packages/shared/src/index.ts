@@ -40,6 +40,8 @@ export * from './types/aiEngine';
 export * from './types/delivery';
 export * from './types/orgHealth';
 export * from './types/executiveCenter';
+export * from './types/automation';
+export * from './automationEngine';
 export * from './types/voice';
 export * from './voiceSession';
 export * from './voiceCommands';
