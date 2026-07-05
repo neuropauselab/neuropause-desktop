@@ -5,6 +5,8 @@ import {
   type AutomationAction,
   type AutomationActionType,
   type AutomationCondition,
+  type AutomationMonitor,
+  type AutomationRunRecord,
   type AutomationRule,
   type AutomationTrigger,
   type AutomationTriggerType,
@@ -89,6 +91,9 @@ function newRule(): AutomationRule {
  */
 export function AutomationBuilder(): JSX.Element {
   const [rules, setRules] = useState<AutomationRule[] | null>(null);
+  const [monitor, setMonitor] = useState<AutomationMonitor | null>(null);
+  const [history, setHistory] = useState<AutomationRunRecord[]>([]);
+  const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<AutomationRule | null>(null);
   const [query, setQuery] = useState('');
   const [saving, setSaving] = useState(false);
@@ -96,16 +101,52 @@ export function AutomationBuilder(): JSX.Element {
 
   const refresh = useCallback(async () => {
     try {
-      const r = await ipc.automations.list();
-      setRules(r.rules);
+      const [list, mon, hist] = await Promise.all([
+        ipc.automations.list(),
+        ipc.automations.monitor(),
+        ipc.automations.history(),
+      ]);
+      setRules(list.rules);
+      setMonitor(mon.monitor);
+      setHistory(hist.records);
     } catch {
-      setRules([]);
+      setRules((prev) => prev ?? []);
     }
   }, []);
 
   useEffect(() => {
     void refresh();
+    // Live dashboard: refresh the monitor + history periodically (event-driven runs
+    // land in history; this keeps the view current without manual reload).
+    const timer = setInterval(() => {
+      void ipc.automations
+        .monitor()
+        .then((m) => setMonitor(m.monitor))
+        .catch(() => {});
+      void ipc.automations
+        .history()
+        .then((h) => setHistory(h.records))
+        .catch(() => {});
+    }, 5000);
+    return () => clearInterval(timer);
   }, [refresh]);
+
+  const runRule = useCallback(
+    async (id: string) => {
+      setRunningIds((s) => new Set(s).add(id));
+      try {
+        await ipc.automations.run(id);
+        await refresh();
+      } finally {
+        setRunningIds((s) => {
+          const next = new Set(s);
+          next.delete(id);
+          return next;
+        });
+      }
+    },
+    [refresh],
+  );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -174,6 +215,7 @@ export function AutomationBuilder(): JSX.Element {
         />
       ) : (
         <>
+          {monitor && <MonitorStrip monitor={monitor} total={rules.length} history={history} />}
           <div className="relative mb-3">
             <Icon
               name="search"
@@ -192,6 +234,8 @@ export function AutomationBuilder(): JSX.Element {
               <RuleRow
                 key={rule.id}
                 rule={rule}
+                running={runningIds.has(rule.id)}
+                onRun={() => void runRule(rule.id)}
                 onEdit={() => setEditing(rule)}
                 onToggle={async () => {
                   await ipc.automations.setStatus(
@@ -224,6 +268,7 @@ export function AutomationBuilder(): JSX.Element {
               </p>
             )}
           </div>
+          {history.length > 0 && <RunHistoryPanel history={history} />}
         </>
       )}
     </ViewScroll>
@@ -232,12 +277,16 @@ export function AutomationBuilder(): JSX.Element {
 
 function RuleRow({
   rule,
+  running,
+  onRun,
   onEdit,
   onToggle,
   onDuplicate,
   onDelete,
 }: {
   rule: AutomationRule;
+  running: boolean;
+  onRun: () => void;
   onEdit: () => void;
   onToggle: () => void;
   onDuplicate: () => void;
@@ -270,8 +319,20 @@ function RuleRow({
               ? ` · ${rule.conditions.length} condition${rule.conditions.length === 1 ? '' : 's'}`
               : ''}
           </p>
+          {rule.lastRun && (
+            <p className="mt-0.5 truncate text-[11px] text-white/30">
+              Last run {relativeTime(rule.lastRun.at)} ·{' '}
+              <span className={rule.lastRun.ok ? 'text-emerald-300/80' : 'text-rose-300/80'}>
+                {rule.lastRun.ok ? 'succeeded' : 'failed'}
+              </span>
+              {rule.lastRun.message ? ` · ${rule.lastRun.message}` : ''}
+            </p>
+          )}
         </button>
         <div className="flex shrink-0 items-center gap-1.5">
+          <Button variant="ghost" size="sm" loading={running} onClick={onRun}>
+            <Icon name="play" size={13} /> Run
+          </Button>
           <Toggle
             checked={rule.status === 'active'}
             onChange={onToggle}
@@ -751,5 +812,144 @@ function LabeledSelect({
         ))}
       </select>
     </label>
+  );
+}
+
+/** Compact relative-time formatter for run timestamps. */
+function relativeTime(iso: string): string {
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return '';
+  const diff = Date.now() - then;
+  const s = Math.round(diff / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.round(h / 24)}d ago`;
+}
+
+function fmtDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+/** Live runtime monitor strip (V4.9). Reuses the monitor + history IPC data. */
+function MonitorStrip({
+  monitor,
+  total,
+  history,
+}: {
+  monitor: AutomationMonitor;
+  total: number;
+  history: AutomationRunRecord[];
+}): JSX.Element {
+  const totalRuns = monitor.completed + monitor.failed;
+  const successRate = totalRuns > 0 ? Math.round((monitor.completed / totalRuns) * 100) : null;
+  const today = new Date().toDateString();
+  const todaysRuns = history.filter((r) => new Date(r.completedAt).toDateString() === today).length;
+
+  const stats: Array<{ label: string; value: string; tone?: OpsTone }> = [
+    { label: 'Active', value: String(total), tone: 'blue' },
+    { label: 'Completed', value: String(monitor.completed), tone: 'green' },
+    { label: 'Failed', value: String(monitor.failed), tone: monitor.failed > 0 ? 'red' : 'gray' },
+    { label: 'Paused', value: String(monitor.paused), tone: 'orange' },
+    { label: 'Success rate', value: successRate === null ? '—' : `${successRate}%` },
+    { label: "Today's runs", value: String(todaysRuns) },
+    {
+      label: 'Avg runtime',
+      value: monitor.averageRuntimeMs ? fmtDuration(monitor.averageRuntimeMs) : '—',
+    },
+    { label: 'Last run', value: monitor.lastExecution ? relativeTime(monitor.lastExecution) : '—' },
+  ];
+
+  return (
+    <Card variant="flat" flush className="mb-3 p-3">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 sm:grid-cols-4">
+        {stats.map((s) => (
+          <div key={s.label}>
+            <div className="text-[10px] uppercase tracking-wide text-white/35">{s.label}</div>
+            <div className={cn('text-lg font-semibold', s.tone ? TEXT_TONE[s.tone] : 'text-ink')}>
+              {s.value}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+/** Run history panel (V4.9) with search. Reuses ipc.automations.history data. */
+function RunHistoryPanel({ history }: { history: AutomationRunRecord[] }): JSX.Element {
+  const [q, setQ] = useState('');
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return history;
+    return history.filter(
+      (r) =>
+        r.ruleName.toLowerCase().includes(needle) ||
+        r.triggeredBy.toLowerCase().includes(needle) ||
+        (r.error ?? '').toLowerCase().includes(needle),
+    );
+  }, [history, q]);
+
+  return (
+    <section className="mt-6">
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+          Run history
+        </h3>
+        <div className="relative">
+          <Icon
+            name="search"
+            className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/30"
+          />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search runs…"
+            aria-label="Search run history"
+            className="w-44 rounded-lg border border-[var(--hairline)] [background:var(--fill-1)] py-1 pl-7 pr-2 text-xs text-ink outline-none placeholder:text-faint focus-visible:shadow-focus"
+          />
+        </div>
+      </div>
+      {filtered.length === 0 ? (
+        <p className="py-4 text-center text-xs text-white/30">No runs match your search.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {filtered.map((r) => (
+            <Card key={r.id} variant="flat" flush className="p-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={cn(
+                        'h-1.5 w-1.5 shrink-0 rounded-full',
+                        r.ok ? 'bg-emerald-400' : 'bg-rose-400',
+                      )}
+                      aria-hidden="true"
+                    />
+                    <span className="truncate text-xs font-medium text-ink">{r.ruleName}</span>
+                  </div>
+                  <p className="mt-0.5 truncate text-[10px] text-white/40">
+                    {relativeTime(r.completedAt)} · {r.triggeredBy} · {r.actions.length} action
+                    {r.actions.length === 1 ? '' : 's'} · {fmtDuration(r.durationMs)}
+                    {r.error ? ` · ${r.error}` : ''}
+                  </p>
+                </div>
+                <span
+                  className={cn(
+                    'shrink-0 rounded px-1.5 py-0.5 text-[9px] font-medium uppercase',
+                    r.ok ? 'text-emerald-300/80' : 'text-rose-300/80',
+                  )}
+                >
+                  {r.ok ? 'ok' : 'failed'}
+                </span>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
