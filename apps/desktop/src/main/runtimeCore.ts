@@ -39,6 +39,7 @@ import {
   SupervisorSetPolicyRequest,
   ExecuteRunRequest,
   ExecuteCancelRequest,
+  primaryNextStatus,
   SlugRequest,
   InstanceRequest,
   OperationRequest,
@@ -91,6 +92,7 @@ import { initEnterpriseSearch } from './search';
 import { initDailyIntelligence } from './intelligence';
 import { initExecutiveCenter } from './enterprise/executiveCenterSubsystem';
 import { initDecisions } from './enterprise/decisionSubsystem';
+import { decisionStore } from './enterprise/decisionInstance';
 import {
   initAutomations,
   getAutomationMonitor,
@@ -911,6 +913,19 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       summary: record.ok ? `${record.actions.length} action(s) run` : undefined,
       error: record.ok ? undefined : (record.error ?? 'Automation failed'),
     };
+  });
+  executeEngine.register('decision', async (req, ctx) => {
+    if (!req.targetId) return { ok: false, error: 'No decision id provided' };
+    const decision = decisionStore.all().find((d) => d.id === req.targetId);
+    if (!decision) return { ok: false, error: 'Decision not found' };
+    const next = primaryNextStatus(decision.status);
+    if (!next) {
+      return { ok: false, error: `Decision is ${decision.status} — no forward action` };
+    }
+    ctx.setStep(1);
+    await decisionStore.setStatus(decision.id, next.to, new Date().toISOString());
+    ctx.setStep(2);
+    return { ok: true, summary: `${next.label} → ${next.to}` };
   });
 
   defs.push({

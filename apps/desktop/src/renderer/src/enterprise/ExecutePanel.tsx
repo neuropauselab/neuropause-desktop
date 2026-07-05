@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { ExecutionSession, ExecutionState, ExecutionStats } from '@neuropause/shared';
+import type {
+  ExecutionRequest,
+  ExecutionSession,
+  ExecutionState,
+  ExecutionStats,
+} from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
 import { cn } from '@renderer/lib/cn';
 import { Icon } from '@renderer/components/ui/Icon';
@@ -45,14 +50,64 @@ function stateDot(state: ExecutionState): string {
   }
 }
 
+type ExecMode = 'task' | 'automation' | 'decision';
+
+interface PickTarget {
+  id: string;
+  label: string;
+  disabled?: boolean;
+}
+
 export function ExecutePanel(): JSX.Element {
+  const [mode, setMode] = useState<ExecMode>('task');
   const [task, setTask] = useState('');
+  const [targets, setTargets] = useState<PickTarget[]>([]);
+  const [selected, setSelected] = useState<string>('');
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<ExecutionSession | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState<ExecutionSession[]>([]);
   const [stats, setStats] = useState<ExecutionStats | null>(null);
   const [history, setHistory] = useState<ExecutionSession[]>([]);
+
+  // Load selectable targets when switching to a target-based mode.
+  useEffect(() => {
+    let alive = true;
+    if (mode === 'automation') {
+      ipc.automations
+        ?.list?.()
+        .then((r) => {
+          if (!alive) return;
+          const list = (r?.rules ?? []).map((x) => ({
+            id: x.id,
+            label: x.name,
+            disabled: x.status !== 'active',
+          }));
+          setTargets(list);
+          setSelected(list.find((t) => !t.disabled)?.id ?? '');
+        })
+        .catch(() => setTargets([]));
+    } else if (mode === 'decision') {
+      ipc.decisions
+        ?.list?.()
+        .then((r) => {
+          if (!alive) return;
+          const list = (r?.decisions ?? []).map((d) => ({
+            id: d.id,
+            label: `${d.title ?? 'Decision'} · ${d.status}`,
+          }));
+          setTargets(list);
+          setSelected(list[0]?.id ?? '');
+        })
+        .catch(() => setTargets([]));
+    } else {
+      setTargets([]);
+      setSelected('');
+    }
+    return () => {
+      alive = false;
+    };
+  }, [mode]);
 
   const refresh = useCallback(() => {
     ipc.execute
@@ -75,13 +130,25 @@ export function ExecutePanel(): JSX.Element {
   }, [refresh]);
 
   const execute = async (): Promise<void> => {
-    const text = task.trim();
-    if (!text || running) return;
+    if (running) return;
+    let req: ExecutionRequest | null = null;
+    if (mode === 'task') {
+      const text = task.trim();
+      if (!text) return;
+      req = { kind: 'task', input: text };
+    } else if (mode === 'automation') {
+      if (!selected) return;
+      req = { kind: 'automation', targetId: selected };
+    } else if (mode === 'decision') {
+      if (!selected) return;
+      req = { kind: 'decision', targetId: selected };
+    }
+    if (!req) return;
     setRunning(true);
     setError(null);
     setResult(null);
     try {
-      const session = await ipc.execute.run({ kind: 'task', input: text });
+      const session = await ipc.execute.run(req);
       setResult(session);
       refresh();
     } catch (e) {
@@ -90,6 +157,8 @@ export function ExecutePanel(): JSX.Element {
       setRunning(false);
     }
   };
+
+  const canExecute = mode === 'task' ? task.trim().length > 0 : selected.length > 0;
 
   const statCells = useMemo(
     () =>
@@ -113,27 +182,62 @@ export function ExecutePanel(): JSX.Element {
           <Icon name="bolt" size={14} />
         </span>
         <h3 className="text-sm font-semibold text-ink">Execute</h3>
-        <span className="text-xs text-faint">
-          One pipeline for every execution — type a task and it runs on your data.
-        </span>
+        <span className="text-xs text-faint">One pipeline for every execution.</span>
+      </div>
+
+      <div className="mb-2.5 inline-flex rounded-lg border border-[var(--hairline)] [background:var(--fill-2)] p-0.5">
+        {(['task', 'automation', 'decision'] as ExecMode[]).map((m) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => setMode(m)}
+            className={cn(
+              'rounded-md px-3 py-1 text-xs font-medium capitalize transition',
+              mode === m ? 'bg-white text-black' : 'text-white/50 hover:text-white',
+            )}
+          >
+            {m}
+          </button>
+        ))}
       </div>
 
       <div className="flex items-center gap-2">
-        <input
-          value={task}
-          onChange={(e) => setTask(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') void execute();
-          }}
-          placeholder="e.g. Summarize today's activity, draft the investor update, find open risks…"
-          aria-label="Task to execute"
-          disabled={running}
-          className="min-w-0 flex-1 rounded-xl border border-[var(--hairline)] [background:var(--fill-2)] px-3 py-2.5 text-sm text-ink outline-none placeholder:text-faint focus-visible:shadow-focus disabled:opacity-60"
-        />
+        {mode === 'task' ? (
+          <input
+            value={task}
+            onChange={(e) => setTask(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void execute();
+            }}
+            placeholder="e.g. Summarize today's activity, draft the investor update, find open risks…"
+            aria-label="Task to execute"
+            disabled={running}
+            className="min-w-0 flex-1 rounded-xl border border-[var(--hairline)] [background:var(--fill-2)] px-3 py-2.5 text-sm text-ink outline-none placeholder:text-faint focus-visible:shadow-focus disabled:opacity-60"
+          />
+        ) : (
+          <select
+            value={selected}
+            onChange={(e) => setSelected(e.target.value)}
+            disabled={running || targets.length === 0}
+            aria-label={`Select ${mode} to run`}
+            className="min-w-0 flex-1 rounded-xl border border-[var(--hairline)] [background:var(--fill-2)] px-3 py-2.5 text-sm text-ink outline-none focus-visible:shadow-focus disabled:opacity-60"
+          >
+            {targets.length === 0 ? (
+              <option value="">No {mode}s available</option>
+            ) : (
+              targets.map((t) => (
+                <option key={t.id} value={t.id} disabled={t.disabled}>
+                  {t.label}
+                  {t.disabled ? ' (inactive)' : ''}
+                </option>
+              ))
+            )}
+          </select>
+        )}
         <button
           type="button"
           onClick={() => void execute()}
-          disabled={running || task.trim().length === 0}
+          disabled={running || !canExecute}
           className={cn(
             'inline-flex shrink-0 items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold transition',
             'bg-white text-black hover:opacity-90 disabled:opacity-40',
