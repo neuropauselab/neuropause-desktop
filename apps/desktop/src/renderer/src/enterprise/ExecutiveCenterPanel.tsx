@@ -155,6 +155,34 @@ export function ExecutiveCenterPanel(): JSX.Element {
         ))}
       </div>
 
+      {/* Weekly Trends — week-over-week movement of the headline metrics.
+          Renders only when history exists (previousWeek populated). */}
+      {snapshot.weeklyTrends && snapshot.weeklyTrends.length > 0 && (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {snapshot.weeklyTrends.map((t) => {
+            const tone: OpsTone =
+              t.direction === 'up' ? 'green' : t.direction === 'down' ? 'red' : 'gray';
+            const arrow = t.direction === 'up' ? '↑' : t.direction === 'down' ? '↓' : '→';
+            const sign = t.delta > 0 ? '+' : '';
+            return (
+              <span
+                key={t.key}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-lg border border-white/5 px-2.5 py-1 text-xs',
+                  TINT_TONE[tone],
+                )}
+              >
+                <span className="text-white/50">{t.label} vs last week</span>
+                <span className={cn('font-semibold tabular-nums', TEXT_TONE[tone])}>
+                  {arrow} {sign}
+                  {t.delta}
+                </span>
+              </span>
+            );
+          })}
+        </div>
+      )}
+
       {/* Section cards. Bold lives in the KPI strip; cards stay quiet + scannable. */}
       {/* NPDS A.3: migrated to <Card variant="flat"> — reproduces the prior inline
           surface (rounded-2xl border-white/5 bg-white/[0.02]) verbatim; flush + p-4

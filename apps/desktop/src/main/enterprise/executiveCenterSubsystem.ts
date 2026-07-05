@@ -12,6 +12,7 @@ import { buildFounderProactiveItems } from '../ai/founderProactive';
 import { buildOrgIntelligenceItems, collectOrgHealthInputs } from './orgIntelligence';
 import { composeExecutiveSnapshot, type TimelineEntryLite } from './executiveCenter';
 import { getEnterpriseTimeline } from '../timeline';
+import { healthHistoryStore } from './healthHistoryInstance';
 
 const log = createLogger('executive-center');
 
@@ -35,17 +36,27 @@ function recentTimeline(): TimelineEntryLite[] {
 }
 
 export function initExecutiveCenter(): ExecutiveCenterSubsystem {
-  const snapshot = (): ExecutiveCenterSnapshot =>
-    composeExecutiveSnapshot({
+  const snapshot = (): ExecutiveCenterSnapshot => {
+    const snap = composeExecutiveSnapshot({
       now: () => new Date(),
       founderItems: () => buildFounderProactiveItems('morning'),
       orgItems: () => buildOrgIntelligenceItems(),
       orgHealthInputs: (nowMs) => collectOrgHealthInputs(nowMs),
       timelineEntries: () => recentTimeline(),
-      // previousWeek history is not yet persisted; omitted → Weekly Trends hidden
-      // until a health-history store exists (documented follow-up).
-      previousWeek: () => null,
+      // V3.0: feed last week's health from the persisted history store so Weekly
+      // Trends is live. Returns null until ≥1 older datapoint exists.
+      previousWeek: () => {
+        const p = healthHistoryStore.valueAround(7);
+        return p ? { overall: p.overall, engineering: p.engineering } : null;
+      },
     });
+    // Record today's datapoint (one per calendar day; last write wins). Fire-and-
+    // forget — persistence failure must never break the snapshot response.
+    void healthHistoryStore
+      .record(snap.orgHealth.overall, snap.orgHealth.engineering)
+      .catch((err) => log.warn('health-history record failed', { err: String(err) }));
+    return snap;
+  };
 
   const handlers: SecureHandlerDef[] = [
     {
