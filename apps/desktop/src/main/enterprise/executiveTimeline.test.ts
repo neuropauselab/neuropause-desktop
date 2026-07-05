@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildDecisionTimeline,
+  buildUnifiedTimeline,
   filterTimeline,
   timelineEventLabel,
   type ExecutiveDecision,
@@ -121,5 +122,83 @@ describe('timelineEventLabel (V3.7)', () => {
     expect(timelineEventLabel({ kind: 'status_changed', newState: 'in_progress' })).toBe('Started');
     expect(timelineEventLabel({ kind: 'blocked' })).toBe('Blocked');
     expect(timelineEventLabel({ kind: 'resumed' })).toBe('Resumed');
+  });
+});
+
+describe('buildUnifiedTimeline (V3.8)', () => {
+  it('merges decision + org + delivery + recommendation events chronologically', () => {
+    const dec = decision({
+      id: 'dec:x',
+      history: [
+        { at: '2026-01-10T00:00:00.000Z', actor: 'system', kind: 'created', newState: 'suggested' },
+      ],
+    });
+    const unified = buildUnifiedTimeline({
+      decisions: [dec],
+      organization: [
+        {
+          id: 'o1',
+          title: 'Org unit added',
+          body: 'x',
+          priority: 'medium',
+          producedAt: '2026-01-12T00:00:00.000Z',
+        },
+      ],
+      delivery: [
+        {
+          id: 'd1',
+          title: 'Brief delivered',
+          body: 'y',
+          priority: 'low',
+          producedAt: '2026-01-11T00:00:00.000Z',
+        },
+      ],
+      recommendations: [
+        {
+          id: 'r1',
+          title: 'Fix CI',
+          body: 'triage',
+          priority: 'critical',
+          producedAt: '2026-01-13T00:00:00.000Z',
+        },
+      ],
+    });
+    expect(unified).toHaveLength(4);
+    // newest first: recommendation (01-13) → org (01-12) → delivery (01-11) → decision (01-10)
+    expect(unified[0].source).toBe('recommendation');
+    expect(unified[1].source).toBe('organization');
+    expect(unified[2].source).toBe('delivery');
+    expect(unified[3].source).toBe('decision');
+  });
+
+  it('is filterable by source', () => {
+    const unified = buildUnifiedTimeline({
+      decisions: [],
+      organization: [
+        {
+          id: 'o1',
+          title: 'Org',
+          body: 'x',
+          priority: 'medium',
+          producedAt: '2026-01-12T00:00:00.000Z',
+        },
+      ],
+      recommendations: [
+        {
+          id: 'r1',
+          title: 'Rec',
+          body: 'y',
+          priority: 'high',
+          producedAt: '2026-01-13T00:00:00.000Z',
+        },
+      ],
+    });
+    expect(filterTimeline(unified, {}).filter((e) => e.source === 'organization')).toHaveLength(1);
+  });
+
+  it('labels item events by source', () => {
+    expect(timelineEventLabel({ kind: 'item', source: 'organization' })).toBe('Organization');
+    expect(timelineEventLabel({ kind: 'item', source: 'delivery' })).toBe('Delivery');
+    expect(timelineEventLabel({ kind: 'item', source: 'recommendation' })).toBe('Recommendation');
   });
 });

@@ -566,7 +566,7 @@ export function ExecutiveCenterPanel(): JSX.Element {
         <h3 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-white/50">
           Executive Timeline
         </h3>
-        <ExecutiveTimeline />
+        <ExecutiveTimeline entries={snapshot.unifiedTimeline} />
       </div>
 
       {/* Section cards. Bold lives in the KPI strip; cards stay quiet + scannable. */}

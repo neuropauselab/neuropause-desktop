@@ -45,15 +45,23 @@ const STATUSES: DecisionStatus[] = [
  * decision history (reuses ipc.decisions.list + the shared timeline builder). No
  * new persistence; no polling (one fetch on mount).
  */
-export function ExecutiveTimeline(): JSX.Element {
-  const [decisions, setDecisions] = useState<ExecutiveDecision[] | null>(null);
-  const [loading, setLoading] = useState(true);
+export function ExecutiveTimeline({
+  entries: providedEntries,
+}: {
+  entries?: ExecutiveTimelineEntry[];
+}): JSX.Element {
+  const [decisions, setDecisions] = useState<ExecutiveDecision[] | null>(
+    providedEntries ? [] : null,
+  );
+  const [loading, setLoading] = useState(!providedEntries);
   const [owner, setOwner] = useState<string>('');
   const [priority, setPriority] = useState<DecisionPriority | ''>('');
   const [status, setStatus] = useState<DecisionStatus | ''>('');
+  const [source, setSource] = useState<ExecutiveTimelineEntry['source'] | ''>('');
   const [query, setQuery] = useState('');
 
   useEffect(() => {
+    if (providedEntries) return;
     let alive = true;
     ipc.decisions
       .list()
@@ -69,15 +77,18 @@ export function ExecutiveTimeline(): JSX.Element {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [providedEntries]);
+
+  const entries = useMemo(
+    () => providedEntries ?? buildDecisionTimeline(decisions ?? []),
+    [providedEntries, decisions],
+  );
 
   const owners = useMemo(() => {
     const set = new Set<string>();
-    (decisions ?? []).forEach((d) => set.add(d.owner));
+    entries.forEach((e) => set.add(e.owner));
     return [...set].sort();
-  }, [decisions]);
-
-  const entries = useMemo(() => buildDecisionTimeline(decisions ?? []), [decisions]);
+  }, [entries]);
 
   const filtered = useMemo(
     () =>
@@ -86,8 +97,8 @@ export function ExecutiveTimeline(): JSX.Element {
         priority: priority || undefined,
         status: status || undefined,
         query: query || undefined,
-      }),
-    [entries, owner, priority, status, query],
+      }).filter((e) => (source ? e.source === source : true)),
+    [entries, owner, priority, status, source, query],
   );
 
   if (loading) {
@@ -108,7 +119,7 @@ export function ExecutiveTimeline(): JSX.Element {
     );
   }
 
-  const hasFilters = owner || priority || status || query;
+  const hasFilters = owner || priority || status || source || query;
 
   return (
     <div>
@@ -145,12 +156,24 @@ export function ExecutiveTimeline(): JSX.Element {
           label="Status"
           options={STATUSES.map((s) => ({ value: s, label: s.replace('_', ' ') }))}
         />
+        <FilterSelect
+          value={source}
+          onChange={(v) => setSource(v as ExecutiveTimelineEntry['source'] | '')}
+          label="Source"
+          options={[
+            { value: 'decision', label: 'decision' },
+            { value: 'organization', label: 'organization' },
+            { value: 'delivery', label: 'delivery' },
+            { value: 'recommendation', label: 'recommendation' },
+          ]}
+        />
         {hasFilters && (
           <button
             onClick={() => {
               setOwner('');
               setPriority('');
               setStatus('');
+              setSource('');
               setQuery('');
             }}
             className="rounded-lg px-2 py-1.5 text-xs text-white/50 transition hover:bg-white/5 hover:text-white/80 focus:outline-none focus-visible:shadow-focus"
@@ -181,7 +204,14 @@ export function ExecutiveTimeline(): JSX.Element {
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <span className={cn('text-xs font-semibold', TEXT_TONE[tone])}>
-                          {timelineEventLabel(e)}
+                          {timelineEventLabel({
+                            kind: e.kind,
+                            newState: e.newState,
+                            source: e.source,
+                          })}
+                        </span>
+                        <span className="rounded bg-white/5 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-white/40">
+                          {e.source}
                         </span>
                         <span className="truncate text-xs text-white/60">{e.title}</span>
                       </div>

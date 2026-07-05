@@ -98,6 +98,8 @@ export interface ExecutiveCenterSnapshot {
   executiveSummary?: ExecutiveSummary;
   /** Executive decisions overview (V3.3). */
   decisions?: DecisionSummaryView;
+  /** Unified executive event stream (V3.8): decisions + org + delivery + recs. */
+  unifiedTimeline?: ExecutiveTimelineEntry[];
   /** Count of items by priority, for the "what requires attention" glance. */
   attentionCounts: { critical: number; high: number; normal: number };
 }
@@ -306,32 +308,49 @@ export function isStale(d: ExecutiveDecision, nowMs: number, staleDays = 14): bo
  * from ExecutiveDecision.history[]; no separate persistence.
  */
 export interface ExecutiveTimelineEntry {
-  /** Stable id: decisionId + event index. */
+  /** Stable id: decisionId + event index, or item id. */
   id: string;
   /** ISO timestamp of the event. */
   at: string;
-  kind: DecisionEvent['kind'];
+  /** Origin system of the event (V3.8 unified stream). */
+  source: 'decision' | 'organization' | 'delivery' | 'recommendation';
+  kind: DecisionEvent['kind'] | 'item';
   previousState?: DecisionStatus;
   newState?: DecisionStatus;
   actor: string;
   reason?: string;
   // ── decision context (for filtering + card display) ──
-  decisionId: string;
+  decisionId?: string;
   title: string;
-  category: DecisionCategory;
+  category?: DecisionCategory;
   owner: string;
   priority: DecisionPriority;
-  status: DecisionStatus;
+  status?: DecisionStatus;
   businessImpact: string;
   evidenceCount: number;
   fromRecommendationId?: string;
+  /** Deep-link target for the entry, when it originates from an intelligence item. */
+  deepLink?: string;
 }
 
 /** Human label for a timeline event kind + state transition (V3.7). */
 export function timelineEventLabel(e: {
-  kind: DecisionEvent['kind'];
+  kind: DecisionEvent['kind'] | 'item';
   newState?: DecisionStatus;
+  source?: ExecutiveTimelineEntry['source'];
 }): string {
+  if (e.kind === 'item') {
+    switch (e.source) {
+      case 'organization':
+        return 'Organization';
+      case 'delivery':
+        return 'Delivery';
+      case 'recommendation':
+        return 'Recommendation';
+      default:
+        return 'Event';
+    }
+  }
   switch (e.kind) {
     case 'created':
       return 'Decision created';
@@ -377,6 +396,7 @@ export function buildDecisionTimeline(decisions: ExecutiveDecision[]): Executive
       entries.push({
         id: `${d.id}#${i}`,
         at: ev.at,
+        source: 'decision',
         kind: ev.kind,
         previousState: ev.previousState,
         newState: ev.newState,
@@ -394,6 +414,63 @@ export function buildDecisionTimeline(decisions: ExecutiveDecision[]): Executive
       });
     });
   }
+  return entries.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+}
+
+/** A lightweight intelligence-item shape the unified builder ingests (V3.8). */
+export interface UnifiedItemLite {
+  id: string;
+  title: string;
+  body: string;
+  priority: DecisionPriority;
+  producedAt: string;
+  deepLink?: string;
+  owner?: string;
+  evidenceCount?: number;
+  fromRecommendationId?: string;
+}
+
+/**
+ * Build the UNIFIED executive event stream (V3.8). Composes decision history with
+ * organization / delivery / recommendation intelligence items into ONE
+ * chronological stream. Pure; each source's data is passed in (no persistence
+ * here). Newest first.
+ */
+export function buildUnifiedTimeline(input: {
+  decisions: ExecutiveDecision[];
+  organization?: UnifiedItemLite[];
+  delivery?: UnifiedItemLite[];
+  recommendations?: UnifiedItemLite[];
+}): ExecutiveTimelineEntry[] {
+  const entries: ExecutiveTimelineEntry[] = buildDecisionTimeline(input.decisions);
+
+  const mapItems = (
+    items: UnifiedItemLite[] | undefined,
+    source: 'organization' | 'delivery' | 'recommendation',
+  ): void => {
+    (items ?? []).forEach((it) => {
+      entries.push({
+        id: `${source}:${it.id}`,
+        at: it.producedAt,
+        source,
+        kind: 'item',
+        actor: 'system',
+        reason: it.body,
+        title: it.title,
+        owner: it.owner ?? 'System',
+        priority: it.priority,
+        businessImpact: it.body,
+        evidenceCount: it.evidenceCount ?? 0,
+        fromRecommendationId: it.fromRecommendationId,
+        deepLink: it.deepLink,
+      });
+    });
+  };
+
+  mapItems(input.organization, 'organization');
+  mapItems(input.delivery, 'delivery');
+  mapItems(input.recommendations, 'recommendation');
+
   return entries.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
 }
 

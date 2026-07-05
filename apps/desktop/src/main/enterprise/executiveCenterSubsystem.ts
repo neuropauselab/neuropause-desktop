@@ -14,6 +14,7 @@ import { composeExecutiveSnapshot, type TimelineEntryLite } from './executiveCen
 import { getEnterpriseTimeline } from '../timeline';
 import { healthHistoryStore } from './healthHistoryInstance';
 import { decisionStore } from './decisionInstance';
+import { buildUnifiedTimeline, type UnifiedItemLite } from '@neuropause/shared';
 import { buildExecutiveRecommendations, buildExecutiveSummary } from './executiveRecommendations';
 import type { MonthlyTrend } from '@neuropause/shared';
 
@@ -121,6 +122,35 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
     snap.executiveSummary = buildExecutiveSummary(snap, recommendations);
     // V3.3: attach the persisted decisions overview (read-only view; no new logic).
     snap.decisions = decisionStore.summary();
+    // V3.8: compose the unified executive event stream from sources already in the
+    // snapshot + decision history. Pure; no new persistence.
+    const toLite = (card: typeof snap.executiveTimeline): UnifiedItemLite[] =>
+      (card?.items ?? []).map((it) => ({
+        id: it.id,
+        title: it.title,
+        body: it.body,
+        priority: (it.priority === 'normal'
+          ? 'medium'
+          : it.priority) as UnifiedItemLite['priority'],
+        producedAt: it.producedAt,
+        deepLink: it.deepLink,
+        evidenceCount: it.governance?.evidence.length ?? 0,
+      }));
+    snap.unifiedTimeline = buildUnifiedTimeline({
+      decisions: decisionStore.all(),
+      organization: toLite(snap.executiveTimeline),
+      delivery: toLite(snap.recentDeliveries),
+      recommendations: (snap.recommendations ?? []).map((r) => ({
+        id: r.id,
+        title: r.problem,
+        body: r.recommendedAction,
+        priority: r.priority,
+        producedAt: snap.generatedAt,
+        deepLink: 'enterprise/executive',
+        evidenceCount: r.evidence.length,
+        owner: r.owner,
+      })),
+    });
     // Record today's datapoint. Fire-and-forget — persistence failure must never
     // break the snapshot response.
     void healthHistoryStore
