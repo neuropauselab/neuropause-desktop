@@ -31,6 +31,13 @@ export const EmptyRequest = z.object({}).strict();
 // V4.2 — runtime launch-at-login toggle.
 export const SetLoginAtStartupRequest = z.object({ enabled: z.boolean() }).strict();
 
+// V5.2 — live voice runtime state from the renderer.
+export const VoiceStatusRequest = z
+  .object({
+    state: z.enum(['idle', 'listening', 'thinking', 'speaking', 'recovering', 'disconnected']),
+  })
+  .strict();
+
 // Module 9 — Automation Builder. The rule is validated in the store via the shared
 // engine; the contract only guards the transport shape.
 export const AutomationSaveRequest = z.object({ rule: z.record(z.unknown()) }).strict();

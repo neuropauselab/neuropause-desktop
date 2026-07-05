@@ -91,7 +91,14 @@ export type PlatformEventType =
   | 'runtime.backend.disconnected'
   | 'runtime.voice.changed'
   | 'runtime.health.changed'
-  | 'runtime.memory.warning';
+  | 'runtime.memory.warning'
+  // voice runtime (V5.2)
+  | 'voice.idle'
+  | 'voice.listening'
+  | 'voice.thinking'
+  | 'voice.speaking'
+  | 'voice.recovering'
+  | 'voice.disconnected';
 
 /** Who or what caused the event. */
 export interface EventActor {

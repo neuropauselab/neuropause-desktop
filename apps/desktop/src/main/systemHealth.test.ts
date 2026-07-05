@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   composeSystemHealth,
   levelFromDiagnostic,
+  voiceStateToRuntimeState,
   worstLevel,
   type SystemHealthInputs,
 } from '@neuropause/shared';
@@ -150,5 +151,20 @@ describe('composeSystemHealth (V5.0)', () => {
     const s = composeSystemHealth(inputs({ uptimeMs: 123_456 }));
     expect(s.uptimeMs).toBe(123_456);
     expect(s.automation.completed).toBe(5);
+  });
+});
+
+describe('voiceStateToRuntimeState (V5.2)', () => {
+  it('collapses fine-grained session states to runtime states', () => {
+    expect(voiceStateToRuntimeState('wake')).toBe('listening');
+    expect(voiceStateToRuntimeState('listening')).toBe('listening');
+    expect(voiceStateToRuntimeState('recognizing')).toBe('listening');
+    expect(voiceStateToRuntimeState('thinking')).toBe('thinking');
+    expect(voiceStateToRuntimeState('waiting')).toBe('thinking');
+    expect(voiceStateToRuntimeState('speaking')).toBe('speaking');
+    expect(voiceStateToRuntimeState('error')).toBe('disconnected');
+    expect(voiceStateToRuntimeState('idle')).toBe('idle');
+    expect(voiceStateToRuntimeState('muted')).toBe('idle');
+    expect(voiceStateToRuntimeState('completed')).toBe('idle');
   });
 });

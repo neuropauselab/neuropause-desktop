@@ -123,6 +123,8 @@ export const IpcChannel = {
   AutomationHistory: 'automations:history',
   /** NeuroCore system-health snapshot (V5.0). */
   SystemHealthSnapshot: 'neurocore:systemHealth',
+  /** Renderer → main: live voice runtime state (V5.2). */
+  VoiceStatus: 'voice:status',
   VoiceTurn: 'voice:turn',
   /** Main → renderer: tray quick-action commands (V4.0). */
   TrayCommand: 'tray:command',
@@ -551,6 +553,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.AutomationMonitor,
   IpcChannel.AutomationHistory,
   IpcChannel.SystemHealthSnapshot,
+  IpcChannel.VoiceStatus,
   IpcChannel.VoiceTurn,
   IpcChannel.TimelineQuery,
   IpcChannel.TimelineStats,

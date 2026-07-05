@@ -21,6 +21,7 @@ import { useShell } from '@renderer/state/ShellProvider';
 import { deepLinkToSection } from '@renderer/enterprise/executiveCenterNav';
 import { INITIAL_SESSION, isCapturing, voiceSessionReducer } from '@neuropause/shared';
 import { parseVoiceCommand, interruptsSpeech, endsSession } from '@neuropause/shared';
+import { voiceStateToRuntimeState } from '@neuropause/shared';
 import { WebSpeechRecognizer, WebSpeechSynthesizer, requestMicPermission } from './voiceAudio';
 
 /**
@@ -118,6 +119,12 @@ export function VoiceWidget(): JSX.Element | null {
     });
     return unsubscribe;
   }, [startTurn, close]);
+
+  // V5.2: report the live voice state up to main so NeuroCore's system-health
+  // dashboard reflects real voice activity (idle/listening/thinking/speaking).
+  useEffect(() => {
+    void ipc.voice.reportStatus(voiceStateToRuntimeState(session.state)).catch(() => {});
+  }, [session.state]);
 
   const capturing = isCapturing(session.state);
 

@@ -94,6 +94,7 @@ import {
   type AutomationMonitor,
   type AutomationRunRecord,
   type SystemHealthSnapshot,
+  type VoiceRuntimeState,
   type VoiceResponse,
   type RecommendationQuery,
   type RecommendationSet,
@@ -676,6 +677,12 @@ export const ipc = {
   system: {
     /** NeuroCore composed system-health snapshot (V5.0). */
     health: () => invoke(IpcChannel.SystemHealthSnapshot) as Promise<SystemHealthSnapshot>,
+  },
+
+  voice: {
+    /** Report the live voice runtime state to main for NeuroCore (V5.2). */
+    reportStatus: (state: VoiceRuntimeState) =>
+      invoke(IpcChannel.VoiceStatus, { state }) as Promise<{ ok: boolean }>,
   },
 
   recommendations: {

@@ -88,6 +88,28 @@ export interface SystemHealthInputs {
   telemetry: RuntimeTelemetry;
 }
 
+/** Map a fine-grained voice session state to the coarse runtime state. Pure. */
+export function voiceStateToRuntimeState(state: string): VoiceRuntimeState {
+  switch (state) {
+    case 'wake':
+    case 'listening':
+    case 'recognizing':
+      return 'listening';
+    case 'thinking':
+    case 'waiting':
+      return 'thinking';
+    case 'speaking':
+      return 'speaking';
+    case 'error':
+      return 'disconnected';
+    case 'muted':
+    case 'completed':
+    case 'idle':
+    default:
+      return 'idle';
+  }
+}
+
 /** Map a platform DiagnosticStatus onto the system health level. Pure. */
 export function levelFromDiagnostic(status: DiagnosticStatus): SystemHealthLevel {
   switch (status) {

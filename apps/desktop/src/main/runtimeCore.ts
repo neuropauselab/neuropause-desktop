@@ -26,10 +26,12 @@ import type {
   PluginInstallRequest as TPluginInstallRequest,
   PluginPermissionRequest as TPluginPermissionRequest,
   PluginContributionsRequest as TPluginContributionsRequest,
+  VoiceRuntimeState,
 } from '@neuropause/shared';
 import {
   IpcChannel,
   EmptyRequest,
+  VoiceStatusRequest,
   SlugRequest,
   InstanceRequest,
   OperationRequest,
@@ -84,6 +86,11 @@ import { initExecutiveCenter } from './enterprise/executiveCenterSubsystem';
 import { initDecisions } from './enterprise/decisionSubsystem';
 import { initAutomations, getAutomationMonitor } from './enterprise/automationSubsystem';
 import { NeuroCore } from './neuroCore';
+import {
+  getVoiceRuntimeState,
+  setVoiceRuntimeState,
+  onVoiceStateChange,
+} from './voiceRuntimeState';
 import { initVoice } from './voice/voiceSubsystem';
 import { initExecutiveDelivery } from './services/executiveDelivery';
 import { initRecommendations } from './recommendations';
@@ -754,30 +761,61 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...decisions.handlers);
   defs.push(...automations.handlers);
 
-  // NeuroCore (V5.0): composes system health from existing subsystem signals
-  // (platform diagnostics + automation monitor + uptime). Voice/backend live-state
-  // feeds are conservative defaults until those subsystems expose main-side state.
+  // NeuroCore (V5.0/V5.1/V5.2): composes system health from live subsystem signals
+  // — platform diagnostics, automation monitor, real CPU/memory + backend probe
+  // (V5.1), and now the live voice runtime state reported by the widget (V5.2).
+  const publishPlatform = (input: {
+    type: string;
+    category: string;
+    source: string;
+    priority?: string;
+    metadata?: Record<string, string | number | boolean | null>;
+  }): void => {
+    platform.api.publish({
+      type: input.type as Parameters<typeof platform.api.publish>[0]['type'],
+      category: input.category as Parameters<typeof platform.api.publish>[0]['category'],
+      source: input.source,
+      actor: { kind: 'system', id: null },
+      priority: (input.priority ?? 'normal') as Parameters<
+        typeof platform.api.publish
+      >[0]['priority'],
+      metadata: input.metadata,
+    });
+  };
+
   const neuroCore = new NeuroCore({
     diagnostics: () => platform.diagnostics(),
     automationMonitor: () => getAutomationMonitor(),
-    voiceState: () => 'idle',
+    voiceState: () => getVoiceRuntimeState(),
     startedAtMs: Date.now(),
-    publish: (input) =>
-      platform.api.publish({
-        type: input.type as Parameters<typeof platform.api.publish>[0]['type'],
-        category: input.category as Parameters<typeof platform.api.publish>[0]['category'],
-        source: input.source,
-        actor: { kind: 'system', id: null },
-        priority: (input.priority ?? 'normal') as Parameters<
-          typeof platform.api.publish
-        >[0]['priority'],
-        metadata: input.metadata,
-      }),
+    publish: publishPlatform,
   });
+
+  // V5.2: emit a voice.* platform event whenever the live voice state changes.
+  onVoiceStateChange((state) => {
+    publishPlatform({
+      type: `voice.${state}`,
+      category: 'runtime',
+      source: 'voice-runtime',
+      priority: state === 'disconnected' ? 'high' : 'normal',
+      metadata: { state },
+    });
+  });
+
   defs.push({
     channel: IpcChannel.SystemHealthSnapshot,
     schema: EmptyRequest,
     handler: () => neuroCore.snapshot(),
+  });
+  // V5.2: renderer → main live voice runtime state.
+  defs.push({
+    channel: IpcChannel.VoiceStatus,
+    schema: VoiceStatusRequest,
+    handler: (payload: unknown) => {
+      const { state } = payload as { state: VoiceRuntimeState };
+      setVoiceRuntimeState(state);
+      return { ok: true };
+    },
   });
   defs.push(...voice.handlers);
   defs.push(...founder.handlers);
