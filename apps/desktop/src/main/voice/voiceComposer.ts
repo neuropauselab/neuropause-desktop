@@ -138,6 +138,15 @@ export function composeVoiceResponse(
       };
     }
     case 'founder-recommendations': {
+      // V3.2: prefer the ranked recommendation engine; fall back to founder items.
+      const top = s.recommendations?.[0];
+      if (top) {
+        return {
+          speech: `I recommend: ${top.recommendedAction} (${top.problem})`,
+          intent,
+          deepLink: 'enterprise/executive',
+        };
+      }
       const items = s.founderRecommendations.items;
       return {
         speech:
@@ -148,7 +157,32 @@ export function composeVoiceResponse(
         deepLink: 'ai-workforce/founder',
       };
     }
+    case 'fix-first': {
+      // V3.2: answer "what should I fix first?" / "biggest risk" from the engine.
+      const top = s.recommendations?.[0];
+      if (!top) {
+        return {
+          speech: 'Nothing needs fixing right now — metrics are healthy.',
+          intent,
+          deepLink: 'enterprise/executive',
+        };
+      }
+      return {
+        speech: `Fix this first: ${top.problem} ${top.recommendedAction} Business impact: ${top.businessImpact}`,
+        intent,
+        deepLink: 'enterprise/executive',
+      };
+    }
     case 'summarize': {
+      // V3.2: lead with the executive summary when available.
+      const sum = s.executiveSummary;
+      if (sum) {
+        return {
+          speech: `Executive score ${sum.executiveScore}. Top risk: ${sum.topRisk}. Top recommendation: ${sum.topRecommendation}.`,
+          intent,
+          deepLink: 'enterprise/executive',
+        };
+      }
       const a = s.attentionCounts;
       return {
         speech: `Here's the overview. Organization health ${s.orgHealth.overall}, engineering ${s.orgHealth.engineering}. ${a.critical} critical and ${a.high} high-priority item${a.high === 1 ? '' : 's'} need attention.`,

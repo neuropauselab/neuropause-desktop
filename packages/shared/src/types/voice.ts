@@ -17,6 +17,7 @@ export type VoiceIntent =
   | 'critical-risks' // "Any critical risks?"
   | 'mission-brief' // "What's my brief / priorities?"
   | 'founder-recommendations' // "What do you recommend?"
+  | 'fix-first' // "What should I fix first?" / "highest priority issue"
   | 'connector-status' // "Any connector issues?"
   | 'license-status' // "How's our license?"
   | 'summarize' // "Summarize everything"

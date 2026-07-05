@@ -92,6 +92,64 @@ export interface ExecutiveCenterSnapshot {
   weeklyTrends?: ExecutiveTrend[];
   /** Rich 30-day trends per metric (V3.1). */
   monthlyTrends?: MonthlyTrend[];
+  /** Ranked executive recommendations (V3.2). */
+  recommendations?: ExecutiveRecommendation[];
+  /** One-glance executive summary (V3.2). */
+  executiveSummary?: ExecutiveSummary;
   /** Count of items by priority, for the "what requires attention" glance. */
   attentionCounts: { critical: number; high: number; normal: number };
+}
+
+/** Priority tier for an executive recommendation (V3.2). */
+export type ExecRecoPriority = 'critical' | 'high' | 'medium' | 'low';
+
+/** Lifecycle status of a recommendation. */
+export type ExecRecoStatus = 'open' | 'acknowledged' | 'resolved';
+
+/**
+ * An executive recommendation (V3.2) — the decision-support unit. Composed purely
+ * from existing snapshot data (org-health scores, trends, governance-bearing
+ * items); it explains a KPI rather than producing new intelligence.
+ */
+export interface ExecutiveRecommendation {
+  id: string;
+  /** The KPI/metric this concerns (e.g. 'engineering', 'license', 'adoption'). */
+  metric: string;
+  /** Icon name (NPDS IconName). */
+  icon: string;
+  /** What changed / the problem, in one line. */
+  problem: string;
+  /** Business impact statement. */
+  businessImpact: string;
+  /** Why it changed / root cause. */
+  rootCause: string;
+  priority: ExecRecoPriority;
+  /** 0..1 confidence in the recommendation. */
+  confidence: number;
+  /** What resolving it is expected to achieve. */
+  expectedOutcome: string;
+  /** Evidence references backing the recommendation. */
+  evidence: string[];
+  /** Systems the evidence came from. */
+  sourceSystems: string[];
+  /** The recommended action. */
+  recommendedAction: string;
+  /** Suggested owner role. */
+  owner: string;
+  /** Rough ETA label (e.g. 'today', 'this week'). */
+  eta: string;
+  status: ExecRecoStatus;
+  /** Composite ranking score (higher = more urgent). Internal, for ordering. */
+  score: number;
+}
+
+/** One-glance executive summary derived from the recommendations + snapshot (V3.2). */
+export interface ExecutiveSummary {
+  topOpportunity: string;
+  topRisk: string;
+  topWin: string;
+  topLoss: string;
+  topRecommendation: string;
+  /** 0..100 composite executive score (org health tempered by open critical risks). */
+  executiveScore: number;
 }

@@ -50,6 +50,10 @@ const RULES: Array<{
     test: /\b(organi[sz]ation|org|company|business)\b.*(health|doing|status|how)|how.*\b(organi[sz]ation|company)\b/i,
   },
   {
+    intent: 'fix-first',
+    test: /\bfix first\b|\bfix\b.*\bfirst\b|highest priority|top priority|most urgent|what should i fix|biggest (risk|issue|problem)/i,
+  },
+  {
     intent: 'critical-risks',
     test: /\bcritical\b|\brisks?\b|\balerts?\b|what.*wrong|anything.*attention/i,
   },

@@ -265,6 +265,89 @@ export function ExecutiveCenterPanel(): JSX.Element {
         </div>
       )}
 
+      {/* Executive Summary (V3.2) — one-glance decision header. */}
+      {snapshot.executiveSummary && (
+        <Card variant="flat" flush className="mt-4 p-3.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-medium uppercase tracking-wide text-white/50">
+              Executive Summary
+            </span>
+            <span className="text-xs font-semibold tabular-nums text-white/70">
+              Score {snapshot.executiveSummary.executiveScore}
+            </span>
+          </div>
+          <div className="mt-2 grid gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
+            <p className="text-white/60">
+              <span className="text-white/40">Top risk: </span>
+              {snapshot.executiveSummary.topRisk}
+            </p>
+            <p className="text-white/60">
+              <span className="text-white/40">Top recommendation: </span>
+              {snapshot.executiveSummary.topRecommendation}
+            </p>
+            <p className="text-white/60">
+              <span className="text-white/40">Top win: </span>
+              {snapshot.executiveSummary.topWin}
+            </p>
+            <p className="text-white/60">
+              <span className="text-white/40">Opportunity: </span>
+              {snapshot.executiveSummary.topOpportunity}
+            </p>
+          </div>
+        </Card>
+      )}
+
+      {/* Recommendation Cards (V3.2) — ranked decisions. Reuses Card flat + tones. */}
+      {snapshot.recommendations && snapshot.recommendations.length > 0 && (
+        <div className="mt-4">
+          <h3 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-white/50">
+            Recommendations
+          </h3>
+          <div className="grid gap-3 lg:grid-cols-2">
+            {snapshot.recommendations.slice(0, 6).map((r) => {
+              const tone: OpsTone =
+                r.priority === 'critical'
+                  ? 'red'
+                  : r.priority === 'high'
+                    ? 'orange'
+                    : r.priority === 'medium'
+                      ? 'blue'
+                      : 'gray';
+              return (
+                <Card key={r.id} variant="flat" flush className="p-3.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Icon name={r.icon as never} className="h-4 w-4 text-white/60" />
+                      <span className="text-xs font-semibold">{r.problem}</span>
+                    </div>
+                    <span
+                      className={cn(
+                        'shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase',
+                        TINT_TONE[tone],
+                        TEXT_TONE[tone],
+                      )}
+                    >
+                      {r.priority}
+                    </span>
+                  </div>
+                  <p className="mt-1.5 text-xs text-white/55">{r.businessImpact}</p>
+                  <p className="mt-1.5 text-xs text-white/70">
+                    <span className="text-white/40">Action: </span>
+                    {r.recommendedAction}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-white/40">
+                    <span>{Math.round(r.confidence * 100)}% confidence</span>
+                    <span>{r.owner}</span>
+                    <span>ETA {r.eta}</span>
+                    {r.evidence[0] && <span>{r.evidence.slice(0, 2).join(' · ')}</span>}
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Section cards. Bold lives in the KPI strip; cards stay quiet + scannable. */}
       {/* NPDS A.3: migrated to <Card variant="flat"> — reproduces the prior inline
           surface (rounded-2xl border-white/5 bg-white/[0.02]) verbatim; flush + p-4

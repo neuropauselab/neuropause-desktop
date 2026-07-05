@@ -30,6 +30,13 @@ describe('classifyVoiceIntent', () => {
     expect(classifyVoiceIntent('summarize everything').intent).toBe('summarize');
   });
 
+  it('routes fix-first / priority / biggest-risk questions (V3.2)', () => {
+    expect(classifyVoiceIntent('what should I fix first').intent).toBe('fix-first');
+    expect(classifyVoiceIntent('highest priority issue').intent).toBe('fix-first');
+    expect(classifyVoiceIntent("what's the biggest risk").intent).toBe('fix-first');
+    expect(classifyVoiceIntent('what is the most urgent').intent).toBe('fix-first');
+  });
+
   it('resolves open-module targets', () => {
     const r = classifyVoiceIntent('open Founder AI');
     expect(r.intent).toBe('open-module');

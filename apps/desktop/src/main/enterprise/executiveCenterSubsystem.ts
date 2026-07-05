@@ -13,6 +13,7 @@ import { buildOrgIntelligenceItems, collectOrgHealthInputs } from './orgIntellig
 import { composeExecutiveSnapshot, type TimelineEntryLite } from './executiveCenter';
 import { getEnterpriseTimeline } from '../timeline';
 import { healthHistoryStore } from './healthHistoryInstance';
+import { buildExecutiveRecommendations, buildExecutiveSummary } from './executiveRecommendations';
 import type { MonthlyTrend } from '@neuropause/shared';
 
 const log = createLogger('executive-center');
@@ -112,6 +113,11 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       },
     });
     composed = snap;
+    // V3.2: derive ranked recommendations + executive summary from the composed
+    // snapshot (pure; explains existing metrics — no new intelligence).
+    const recommendations = buildExecutiveRecommendations(snap);
+    snap.recommendations = recommendations;
+    snap.executiveSummary = buildExecutiveSummary(snap, recommendations);
     // Record today's datapoint. Fire-and-forget — persistence failure must never
     // break the snapshot response.
     void healthHistoryStore
