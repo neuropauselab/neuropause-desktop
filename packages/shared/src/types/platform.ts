@@ -104,7 +104,12 @@ export type PlatformEventType =
   | 'runtime.recovery.completed'
   | 'runtime.recovery.failed'
   | 'runtime.supervisor.warning'
-  | 'runtime.supervisor.critical';
+  | 'runtime.supervisor.critical'
+  // execute engine (V5.4)
+  | 'execution.started'
+  | 'execution.completed'
+  | 'execution.failed'
+  | 'execution.cancelled';
 
 /** Who or what caused the event. */
 export interface EventActor {

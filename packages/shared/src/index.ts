@@ -42,6 +42,7 @@ export * from './types/orgHealth';
 export * from './types/executiveCenter';
 export * from './types/systemHealth';
 export * from './types/runtimeSupervisor';
+export * from './types/executeEngine';
 export * from './types/automation';
 export * from './automationEngine';
 export * from './types/voice';

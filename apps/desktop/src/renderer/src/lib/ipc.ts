@@ -99,6 +99,9 @@ import {
   type RecoveryRecord,
   type SupervisedSubsystem,
   type RecoveryPolicy,
+  type ExecutionRequest,
+  type ExecutionSession,
+  type ExecutionStats,
   type VoiceResponse,
   type RecommendationQuery,
   type RecommendationSet,
@@ -691,6 +694,19 @@ export const ipc = {
       invoke(IpcChannel.SupervisorRecover, { subsystem }) as Promise<RecoveryRecord>,
     setPolicy: (subsystem: SupervisedSubsystem, policy: RecoveryPolicy) =>
       invoke(IpcChannel.SupervisorSetPolicy, { subsystem, policy }) as Promise<SupervisorStatus>,
+  },
+
+  execute: {
+    /** Run any executable through the unified Execute Engine (V5.4). */
+    run: (req: ExecutionRequest) => invoke(IpcChannel.ExecuteRun, req) as Promise<ExecutionSession>,
+    sessions: () =>
+      invoke(IpcChannel.ExecuteSessions) as Promise<{
+        sessions: ExecutionSession[];
+        stats: ExecutionStats;
+      }>,
+    history: () => invoke(IpcChannel.ExecuteHistory) as Promise<{ records: ExecutionSession[] }>,
+    cancel: (id: string) =>
+      invoke(IpcChannel.ExecuteCancel, { id }) as Promise<ExecutionSession | null>,
   },
 
   voice: {

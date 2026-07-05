@@ -31,6 +31,29 @@ export const EmptyRequest = z.object({}).strict();
 // V4.2 — runtime launch-at-login toggle.
 export const SetLoginAtStartupRequest = z.object({ enabled: z.boolean() }).strict();
 
+// V5.4 — Execute Engine.
+export const ExecuteRunRequest = z
+  .object({
+    kind: z.enum([
+      'task',
+      'worker',
+      'automation',
+      'decision',
+      'workflow',
+      'memory',
+      'connector',
+      'voice',
+      'runtime',
+      'executive',
+    ]),
+    targetId: z.string().max(200).optional(),
+    input: z.string().max(10_000).optional(),
+    label: z.string().max(200).optional(),
+  })
+  .strict();
+
+export const ExecuteCancelRequest = z.object({ id: z.string().max(200) }).strict();
+
 // V5.3 — runtime supervisor recovery + policy.
 export const SupervisorRecoverRequest = z
   .object({

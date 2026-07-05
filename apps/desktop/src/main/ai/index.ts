@@ -80,7 +80,9 @@ export function initEngineeringAI(): AiSubsystem {
   return { handlers, dispose: () => undefined };
 }
 
-export function initFounderAIv2(): AiSubsystem {
+export function initFounderAIv2(): AiSubsystem & {
+  ask: (req: TFounderAskV2Request) => Promise<FounderResponse>;
+} {
   const ask = (req: TFounderAskV2Request): Promise<FounderResponse> => {
     const now = req.now ?? new Date().toISOString();
     const entities = unifiedStore.query({ limit: 1_000_000, includeDeleted: false }).items;
@@ -137,5 +139,5 @@ export function initFounderAIv2(): AiSubsystem {
   founderLog.info('Founder AI v2 initialized', {
     provider: process.env.NEUROPAUSE_LLM_PROVIDER ?? 'claude',
   });
-  return { handlers, dispose: () => undefined };
+  return { handlers, dispose: () => undefined, ask };
 }

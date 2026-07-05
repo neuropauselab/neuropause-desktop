@@ -128,6 +128,11 @@ export const IpcChannel = {
   SupervisorHistory: 'supervisor:history',
   SupervisorRecover: 'supervisor:recover',
   SupervisorSetPolicy: 'supervisor:setPolicy',
+  /** Execute Engine (V5.4). */
+  ExecuteRun: 'execute:run',
+  ExecuteSessions: 'execute:sessions',
+  ExecuteHistory: 'execute:history',
+  ExecuteCancel: 'execute:cancel',
   /** Renderer → main: live voice runtime state (V5.2). */
   VoiceStatus: 'voice:status',
   VoiceTurn: 'voice:turn',
@@ -562,6 +567,10 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.SupervisorHistory,
   IpcChannel.SupervisorRecover,
   IpcChannel.SupervisorSetPolicy,
+  IpcChannel.ExecuteRun,
+  IpcChannel.ExecuteSessions,
+  IpcChannel.ExecuteHistory,
+  IpcChannel.ExecuteCancel,
   IpcChannel.VoiceStatus,
   IpcChannel.VoiceTurn,
   IpcChannel.TimelineQuery,

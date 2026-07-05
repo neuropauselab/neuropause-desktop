@@ -29,6 +29,7 @@ import type {
   VoiceRuntimeState,
   SupervisedSubsystem,
   RecoveryPolicy,
+  ExecutionRequest,
 } from '@neuropause/shared';
 import {
   IpcChannel,
@@ -36,6 +37,8 @@ import {
   VoiceStatusRequest,
   SupervisorRecoverRequest,
   SupervisorSetPolicyRequest,
+  ExecuteRunRequest,
+  ExecuteCancelRequest,
   SlugRequest,
   InstanceRequest,
   OperationRequest,
@@ -88,9 +91,14 @@ import { initEnterpriseSearch } from './search';
 import { initDailyIntelligence } from './intelligence';
 import { initExecutiveCenter } from './enterprise/executiveCenterSubsystem';
 import { initDecisions } from './enterprise/decisionSubsystem';
-import { initAutomations, getAutomationMonitor } from './enterprise/automationSubsystem';
+import {
+  initAutomations,
+  getAutomationMonitor,
+  getAutomationRunner,
+} from './enterprise/automationSubsystem';
 import { NeuroCore } from './neuroCore';
 import { RuntimeSupervisor } from './runtimeSupervisor';
+import { ExecuteEngine } from './executeEngine';
 import {
   getVoiceRuntimeState,
   setVoiceRuntimeState,
@@ -871,6 +879,59 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       runtimeSupervisor.setPolicy(subsystem, policy);
       return runtimeSupervisor.status();
     },
+  });
+
+  // Execute Engine (V5.4): the unified execution pipeline. Subsystems register
+  // their executor and every execution flows through one session lifecycle +
+  // history + events. Executors ORCHESTRATE existing subsystem logic (founder AI,
+  // automation runner) — no execution logic is duplicated. task + automation are
+  // wired now; worker/decision/etc. register the same way as they expose callables.
+  const executeEngine = new ExecuteEngine({ publish: publishPlatform });
+  executeEngine.register('task', async (req, ctx) => {
+    ctx.setStep(1);
+    const res = await founderAIv2.ask({ text: req.input ?? '', now: undefined });
+    ctx.setStep(2);
+    return {
+      ok: true,
+      summary: res.executiveSummary ?? res.clarification ?? 'Completed',
+    };
+  });
+  executeEngine.register('automation', async (req, ctx) => {
+    if (!req.targetId) return { ok: false, error: 'No automation id provided' };
+    ctx.setStep(1);
+    const record = await getAutomationRunner().runById(
+      req.targetId,
+      req.input ? { input: req.input } : {},
+      'manual',
+    );
+    ctx.setStep(2);
+    if (!record) return { ok: false, error: 'Automation not found or inactive' };
+    return {
+      ok: record.ok,
+      summary: record.ok ? `${record.actions.length} action(s) run` : undefined,
+      error: record.ok ? undefined : (record.error ?? 'Automation failed'),
+    };
+  });
+
+  defs.push({
+    channel: IpcChannel.ExecuteRun,
+    schema: ExecuteRunRequest,
+    handler: (payload: unknown) => executeEngine.execute(payload as ExecutionRequest),
+  });
+  defs.push({
+    channel: IpcChannel.ExecuteSessions,
+    schema: EmptyRequest,
+    handler: () => ({ sessions: executeEngine.activeSessions(), stats: executeEngine.stats() }),
+  });
+  defs.push({
+    channel: IpcChannel.ExecuteHistory,
+    schema: EmptyRequest,
+    handler: () => ({ records: executeEngine.getHistory() }),
+  });
+  defs.push({
+    channel: IpcChannel.ExecuteCancel,
+    schema: ExecuteCancelRequest,
+    handler: (payload: unknown) => executeEngine.cancel((payload as { id: string }).id),
   });
   // V5.2: renderer → main live voice runtime state.
   defs.push({
