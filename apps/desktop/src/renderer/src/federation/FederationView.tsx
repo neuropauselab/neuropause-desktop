@@ -96,7 +96,7 @@ function FederationInner({ initialTab }: { initialTab: FederationTab }): JSX.Ele
                 <Icon name={t.icon} size={15} />
                 {t.label}
                 {pendingInvites > 0 && t.id === 'runtime' && (
-                  <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-sysorange px-1 text-2xs font-semibold text-white">{pendingInvites}</span>
+                  <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-white px-1 text-2xs font-semibold text-black">{pendingInvites}</span>
                 )}
               </button>
             );

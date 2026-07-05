@@ -112,8 +112,11 @@ export function ExecutiveCenterPanel(): JSX.Element {
       .then((s) => {
         if (alive) setSnapshot(s);
       })
-      .catch(() => {
-        if (alive) setError('Executive intelligence is unavailable right now.');
+      .catch((e) => {
+        if (alive) {
+          const msg = e instanceof Error ? e.message : String(e);
+          setError(`Executive intelligence failed to load: ${msg}`);
+        }
       })
       .finally(() => {
         if (alive) setLoading(false);

@@ -68,6 +68,11 @@ export class ErrorBoundary extends Component<Props, State> {
             {this.props.name ? `The ${this.props.name} view` : 'This screen'} hit an unexpected
             error. You can try again, or reload the app.
           </p>
+          {this.state.error?.message && (
+            <pre className="mt-3 max-h-40 w-full overflow-auto whitespace-pre-wrap rounded-lg border border-white/10 bg-white/5 p-2.5 text-left text-[11px] text-white/70">
+              {this.state.error.message}
+            </pre>
+          )}
           <div className="mt-5 flex gap-2">
             <Button variant="secondary" onClick={this.reset}>
               Try again

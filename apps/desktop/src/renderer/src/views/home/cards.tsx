@@ -207,7 +207,7 @@ export const PendingTasksCard = memo(function PendingTasksCard({
                 <span
                   className={cn(
                     'mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border transition-colors',
-                    isDone ? 'border-sysgreen bg-sysgreen text-white' : 'border-[var(--hairline-strong)]',
+                    isDone ? 'border-white bg-white text-black' : 'border-[var(--hairline-strong)]',
                   )}
                 >
                   <AnimatePresence>

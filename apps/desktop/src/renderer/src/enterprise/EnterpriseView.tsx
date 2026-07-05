@@ -139,7 +139,7 @@ function EnterpriseInner({ initialTab }: { initialTab: EnterpriseTab }): JSX.Ele
                 <Icon name={t.icon} size={15} />
                 {t.label}
                 {t.id === 'decision' && pendingApprovals > 0 && (
-                  <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-sysorange px-1 text-2xs font-semibold text-white">
+                  <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-white px-1 text-2xs font-semibold text-black">
                     {pendingApprovals}
                   </span>
                 )}

@@ -14,35 +14,36 @@ import type {
 
 export type OpsTone = 'green' | 'orange' | 'red' | 'blue' | 'purple' | 'accent' | 'gray';
 
-/** Literal dot/background classes per tone (Tailwind needs full class names). */
+/** Monochrome tone system — deep black + clear white only. Status is conveyed by
+ *  brightness (critical brightest) and labels, not hue. */
 export const DOT_BG: Record<OpsTone, string> = {
-  green: 'bg-sysgreen',
-  orange: 'bg-sysorange',
-  red: 'bg-syspink',
-  blue: 'bg-sysblue',
-  purple: 'bg-syspurple',
-  accent: 'bg-accent',
-  gray: 'bg-faint',
+  green: 'bg-white/70',
+  orange: 'bg-white/85',
+  red: 'bg-white',
+  blue: 'bg-white/70',
+  purple: 'bg-white/70',
+  accent: 'bg-white',
+  gray: 'bg-white/30',
 };
 
 export const TEXT_TONE: Record<OpsTone, string> = {
-  green: 'text-sysgreen',
-  orange: 'text-sysorange',
-  red: 'text-syspink',
-  blue: 'text-sysblue',
-  purple: 'text-syspurple',
-  accent: 'text-accent',
-  gray: 'text-faint',
+  green: 'text-white/70',
+  orange: 'text-white/90',
+  red: 'text-white',
+  blue: 'text-white/80',
+  purple: 'text-white/80',
+  accent: 'text-white',
+  gray: 'text-white/40',
 };
 
 export const TINT_TONE: Record<OpsTone, string> = {
-  green: 'bg-sysgreen/15 text-sysgreen',
-  orange: 'bg-sysorange/15 text-sysorange',
-  red: 'bg-syspink/15 text-syspink',
-  blue: 'bg-sysblue/15 text-sysblue',
-  purple: 'bg-syspurple/15 text-syspurple',
-  accent: 'bg-accent/15 text-accent',
-  gray: '[background:var(--fill-2)] text-faint',
+  green: 'bg-white/[0.08] text-white/80',
+  orange: 'bg-white/[0.12] text-white/90',
+  red: 'bg-white/[0.18] text-white',
+  blue: 'bg-white/[0.08] text-white/80',
+  purple: 'bg-white/[0.08] text-white/80',
+  accent: 'bg-white/[0.14] text-white',
+  gray: 'bg-white/[0.05] text-white/40',
 };
 
 interface Meta {

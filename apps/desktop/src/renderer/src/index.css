@@ -4,70 +4,74 @@
 
 @layer base {
   :root {
-    color-scheme: light dark;
+    color-scheme: dark;
 
-    /* Accent — Apple system indigo (light variant). */
-    --accent: 88 86 214;
-    --accent-hover: 99 97 224;
-    --accent-fg: 255 255 255;
+    /* Deep-black + clear-white theme. Accent is white so primary UI reads as
+       black-on-white / white-on-black, per the single high-contrast palette. */
+    --accent: 255 255 255;
+    --accent-hover: 232 232 232;
+    --accent-fg: 0 0 0;
 
-    /* Text */
-    --text: 29 29 31;
-    --text-2: 99 99 102;
-    --text-3: 142 142 147;
+    /* Text — clear white with high-contrast secondaries (no faint greys). */
+    --text: 255 255 255;
+    --text-2: 198 198 203;
+    --text-3: 150 150 156;
 
-    /* Apple system semantic colors (light) */
-    --c-blue: 0 122 255;
-    --c-green: 52 199 89;
-    --c-orange: 255 149 0;
-    --c-purple: 175 82 222;
-    --c-teal: 48 176 199;
-    --c-pink: 255 45 85;
-    --c-yellow: 255 184 0;
+    /* Monochrome status tokens — deep black + clear white only. Status is conveyed
+       by brightness (critical brightest) + labels, never hue. */
+    --c-blue: 210 210 215;
+    --c-green: 200 200 205;
+    --c-orange: 235 235 238;
+    --c-purple: 210 210 215;
+    --c-teal: 210 210 215;
+    --c-pink: 255 255 255;
+    --c-yellow: 235 235 238;
 
-    /* Window background gradient (fallback where vibrancy is unavailable) */
-    --bg-from: #f5f5f7;
-    --bg-to: #e9e9ef;
+    /* Deep black window background (NOT transparent — no vibrancy dependency). */
+    --bg-from: #000000;
+    --bg-to: #050506;
 
-    /* Translucent materials over the vibrancy */
-    --surface-1: rgba(255, 255, 255, 0.55);
-    --surface-2: rgba(255, 255, 255, 0.78);
-    --hairline: rgba(0, 0, 0, 0.08);
-    --hairline-strong: rgba(0, 0, 0, 0.12);
-    --fill-1: rgba(0, 0, 0, 0.04);
-    --fill-2: rgba(0, 0, 0, 0.07);
-    --glass: rgba(246, 246, 249, 0.72);
-    --sidebar: rgba(252, 252, 253, 0.45);
+    /* Materials layered over deep black — subtle white overlays. */
+    --surface-1: rgba(255, 255, 255, 0.055);
+    --surface-2: rgba(255, 255, 255, 0.10);
+    --hairline: rgba(255, 255, 255, 0.14);
+    --hairline-strong: rgba(255, 255, 255, 0.22);
+    --fill-1: rgba(255, 255, 255, 0.06);
+    --fill-2: rgba(255, 255, 255, 0.12);
+    --glass: rgba(8, 8, 10, 0.86);
+    --sidebar: rgba(0, 0, 0, 0.55);
   }
 
+  /* .dark kept identical so the theme is always deep black regardless of the
+     system color scheme or the in-app toggle. */
   .dark {
-    --accent: 94 92 230;
-    --accent-hover: 110 108 240;
-    --accent-fg: 255 255 255;
+    --accent: 255 255 255;
+    --accent-hover: 232 232 232;
+    --accent-fg: 0 0 0;
 
-    --text: 245 245 247;
-    --text-2: 161 161 166;
-    --text-3: 122 122 130;
+    --text: 255 255 255;
+    --text-2: 198 198 203;
+    --text-3: 150 150 156;
 
-    --c-blue: 10 132 255;
-    --c-green: 48 209 88;
-    --c-orange: 255 159 10;
-    --c-purple: 191 90 242;
-    --c-teal: 64 200 224;
-    --c-pink: 255 55 95;
-    --c-yellow: 255 214 10;
+    --c-blue: 210 210 215;
+    --c-green: 200 200 205;
+    --c-orange: 235 235 238;
+    --c-purple: 210 210 215;
+    --c-teal: 210 210 215;
+    --c-pink: 255 255 255;
+    --c-yellow: 235 235 238;
 
-    --bg-from: #0b0b0f;
-    --bg-to: #131318;
+    --bg-from: #000000;
+    --bg-to: #050506;
 
-    --surface-1: rgba(255, 255, 255, 0.05);
-    --surface-2: rgba(255, 255, 255, 0.09);
-    --hairline: rgba(255, 255, 255, 0.10);
-    --hairline-strong: rgba(255, 255, 255, 0.16);
+    --surface-1: rgba(255, 255, 255, 0.055);
+    --surface-2: rgba(255, 255, 255, 0.10);
+    --hairline: rgba(255, 255, 255, 0.14);
+    --hairline-strong: rgba(255, 255, 255, 0.22);
     --fill-1: rgba(255, 255, 255, 0.06);
-    --fill-2: rgba(255, 255, 255, 0.11);
-    --glass: rgba(28, 28, 32, 0.72);
-    --sidebar: rgba(22, 22, 26, 0.35);
+    --fill-2: rgba(255, 255, 255, 0.12);
+    --glass: rgba(8, 8, 10, 0.86);
+    --sidebar: rgba(0, 0, 0, 0.55);
   }
 
   html,
@@ -79,7 +83,7 @@
   body {
     margin: 0;
     overflow: hidden;
-    background: transparent; /* let macOS vibrancy show through */
+    background: #000000; /* deep black — do not depend on macOS vibrancy */
     color: rgb(var(--text));
     font-family:
       'SF Pro Display', 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Helvetica Neue',

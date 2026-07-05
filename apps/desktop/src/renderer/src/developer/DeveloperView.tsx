@@ -94,7 +94,7 @@ function DeveloperInner({ initialTab }: { initialTab: DeveloperTab }): JSX.Eleme
                 <Icon name={t.icon} size={15} />
                 {t.label}
                 {t.id === 'marketplace' && pendingReview > 0 && (
-                  <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-sysorange px-1 text-2xs font-semibold text-white">{pendingReview}</span>
+                  <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-white px-1 text-2xs font-semibold text-black">{pendingReview}</span>
                 )}
               </button>
             );

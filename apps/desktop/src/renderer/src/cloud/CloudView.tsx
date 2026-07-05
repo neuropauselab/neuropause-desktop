@@ -93,7 +93,7 @@ function CloudInner({ initialTab }: { initialTab: CloudTab }): JSX.Element {
                 <Icon name={t.icon} size={15} />
                 {t.label}
                 {pending > 0 && t.id === 'sync' && (
-                  <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-sysorange px-1 text-2xs font-semibold text-white">{pending}</span>
+                  <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-white px-1 text-2xs font-semibold text-black">{pending}</span>
                 )}
               </button>
             );

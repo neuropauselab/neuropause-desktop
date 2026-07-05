@@ -22,6 +22,7 @@ import { deepLinkToSection } from '@renderer/enterprise/executiveCenterNav';
 import { INITIAL_SESSION, isCapturing, voiceSessionReducer } from '@neuropause/shared';
 import { parseVoiceCommand, interruptsSpeech, endsSession } from '@neuropause/shared';
 import { voiceStateToRuntimeState } from '@neuropause/shared';
+import { Icon } from '@renderer/components/ui/Icon';
 import { WebSpeechRecognizer, WebSpeechSynthesizer, requestMicPermission } from './voiceAudio';
 
 /**
@@ -130,22 +131,19 @@ export function VoiceWidget(): JSX.Element | null {
 
   return (
     <>
-      {/* Launcher — a small mic button pinned bottom-right. */}
+      {/* Launcher — a prominent mic button pinned bottom-right. */}
       <button
         onClick={() => (open ? close() : void startTurn())}
         aria-label={open ? 'Close voice assistant' : 'Talk to NeuroPause'}
         className={cn(
-          'fixed bottom-5 right-5 z-50 flex h-12 w-12 items-center justify-center rounded-full shadow-lg transition',
-          'border border-white/10 backdrop-blur focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30',
-          capturing ? 'bg-red-500/80' : 'bg-white/10 hover:bg-white/20',
+          'fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full shadow-xl transition',
+          'focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40',
+          capturing
+            ? 'animate-pulse bg-white text-black'
+            : 'bg-white text-black hover:scale-105 active:scale-95',
         )}
       >
-        <span
-          className={cn(
-            'h-2.5 w-2.5 rounded-full',
-            capturing ? 'animate-pulse bg-white' : 'bg-white/70',
-          )}
-        />
+        <Icon name={open ? 'close' : 'mic'} size={22} />
       </button>
 
       {/* Floating panel — appears while a conversation is open. */}

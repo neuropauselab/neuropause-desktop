@@ -124,11 +124,11 @@ export function RuntimeHealthPanel(): JSX.Element | null {
 }
 
 const DOT: Record<OpsTone, string> = {
-  green: 'bg-emerald-400',
-  orange: 'bg-amber-400',
-  red: 'bg-rose-400',
-  blue: 'bg-sky-400',
+  green: 'bg-white/70',
+  orange: 'bg-white/85',
+  red: 'bg-white',
+  blue: 'bg-white/70',
   gray: 'bg-white/30',
-  purple: 'bg-violet-400',
-  accent: 'bg-sky-400',
+  purple: 'bg-white/70',
+  accent: 'bg-white',
 };
