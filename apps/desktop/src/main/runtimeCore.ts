@@ -82,7 +82,8 @@ import { initEnterpriseSearch } from './search';
 import { initDailyIntelligence } from './intelligence';
 import { initExecutiveCenter } from './enterprise/executiveCenterSubsystem';
 import { initDecisions } from './enterprise/decisionSubsystem';
-import { initAutomations } from './enterprise/automationSubsystem';
+import { initAutomations, getAutomationMonitor } from './enterprise/automationSubsystem';
+import { NeuroCore } from './neuroCore';
 import { initVoice } from './voice/voiceSubsystem';
 import { initExecutiveDelivery } from './services/executiveDelivery';
 import { initRecommendations } from './recommendations';
@@ -752,6 +753,22 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...executiveCenter.handlers);
   defs.push(...decisions.handlers);
   defs.push(...automations.handlers);
+
+  // NeuroCore (V5.0): composes system health from existing subsystem signals
+  // (platform diagnostics + automation monitor + uptime). Voice/backend live-state
+  // feeds are conservative defaults until those subsystems expose main-side state.
+  const neuroCore = new NeuroCore({
+    diagnostics: () => platform.diagnostics(),
+    automationMonitor: () => getAutomationMonitor(),
+    voiceState: () => 'idle',
+    backendConnected: () => true,
+    startedAtMs: Date.now(),
+  });
+  defs.push({
+    channel: IpcChannel.SystemHealthSnapshot,
+    schema: EmptyRequest,
+    handler: () => neuroCore.snapshot(),
+  });
   defs.push(...voice.handlers);
   defs.push(...founder.handlers);
   defs.push(...engineeringAI.handlers);

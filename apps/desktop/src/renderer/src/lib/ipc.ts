@@ -93,6 +93,7 @@ import {
   type AutomationRule,
   type AutomationMonitor,
   type AutomationRunRecord,
+  type SystemHealthSnapshot,
   type VoiceResponse,
   type RecommendationQuery,
   type RecommendationSet,
@@ -670,6 +671,11 @@ export const ipc = {
     monitor: () => invoke(IpcChannel.AutomationMonitor) as Promise<{ monitor: AutomationMonitor }>,
     history: () =>
       invoke(IpcChannel.AutomationHistory) as Promise<{ records: AutomationRunRecord[] }>,
+  },
+
+  system: {
+    /** NeuroCore composed system-health snapshot (V5.0). */
+    health: () => invoke(IpcChannel.SystemHealthSnapshot) as Promise<SystemHealthSnapshot>,
   },
 
   recommendations: {

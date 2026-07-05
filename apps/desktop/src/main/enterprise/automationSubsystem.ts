@@ -61,6 +61,17 @@ export function getAutomationRunner(): AutomationRunner {
   return runner;
 }
 
+/** V5.0: the automation monitor rollup for NeuroCore's system-health composition. */
+export function getAutomationMonitor(): {
+  completed: number;
+  failed: number;
+  paused: number;
+  running: number;
+} {
+  const m = runHistory.monitor();
+  return { completed: m.completed, failed: m.failed, paused: m.paused, running: m.running };
+}
+
 export interface AutomationSubsystem {
   handlers: SecureHandlerDef[];
 }
