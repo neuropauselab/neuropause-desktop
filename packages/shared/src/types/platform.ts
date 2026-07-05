@@ -25,6 +25,7 @@ export type PlatformEventCategory =
   | 'diagnostics'
   | 'connector'
   | 'knowledge'
+  | 'automation'
   | 'system';
 
 /**
@@ -81,7 +82,10 @@ export type PlatformEventType =
   | 'knowledge.entity_deleted'
   // diagnostics / system
   | 'diagnostics.health_changed'
-  | 'system.ready';
+  | 'system.ready'
+  // automation (V4.8)
+  | 'automation.completed'
+  | 'automation.failed';
 
 /** Who or what caused the event. */
 export interface EventActor {

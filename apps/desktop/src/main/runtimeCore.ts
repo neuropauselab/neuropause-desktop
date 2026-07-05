@@ -159,7 +159,12 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   const decisions = initDecisions(() => executiveCenter.snapshot());
 
   // Automation Builder (Module 9): persists user Trigger→Condition→Action rules.
-  const automations = initAutomations();
+  // V4.8: wire platform publish + subscribe so automations fire on real events
+  // and completed runs surface on the timeline/activity bus.
+  const automations = initAutomations({
+    publish: platform.api.publish,
+    on: (types, handler) => platform.api.on(types, handler),
+  });
 
   // Executive Voice Assistant (V2.6): routes recognized speech to existing
   // intelligence and composes evidence-grounded spoken responses. No new AI.

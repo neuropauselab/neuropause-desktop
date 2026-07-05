@@ -20,16 +20,39 @@ import { automationStore } from './automationInstance';
 import { AutomationRunner } from './automationRunner';
 import { AutomationRunHistory } from './automationRunHistory';
 import { defaultActionExecutor } from './automationActions';
+import { wireAutomationProducers } from './automationProducer';
+import type { PlatformEvent, PlatformEventInput, PlatformEventType } from '@neuropause/shared';
 
 const log = createLogger('automations');
 
 // V4.7 runtime: bounded run history + the runner, wired to the store + the default
 // action executor. Completed runs are recorded on the rule and pushed to history.
 const runHistory = new AutomationRunHistory();
+
+// V4.8: the platform publisher, injected at init so completed runs emit events
+// into the Executive Timeline / Activity Intelligence. No-op until wired.
+let publishPlatformEvent: ((input: PlatformEventInput) => void) | null = null;
+
 const runner = new AutomationRunner(() => automationStore.activeRules(), {
   execute: defaultActionExecutor,
   recordRun: (ruleId, result) => automationStore.recordRun(ruleId, result),
-  emitCompleted: (record) => runHistory.add(record),
+  emitCompleted: (record) => {
+    runHistory.add(record);
+    // V4.8: surface completed automations on the platform bus (timeline/activity).
+    publishPlatformEvent?.({
+      type: 'automation.completed',
+      category: 'automation',
+      source: 'automation-runtime',
+      actor: { kind: 'system', id: null },
+      resource: { type: 'automation', id: record.ruleId, name: record.ruleName },
+      priority: 'normal',
+      metadata: {
+        durationMs: record.durationMs,
+        actions: record.actions.length,
+        triggeredBy: record.triggeredBy,
+      },
+    });
+  },
   now: Date.now,
 });
 
@@ -42,7 +65,22 @@ export interface AutomationSubsystem {
   handlers: SecureHandlerDef[];
 }
 
-export function initAutomations(): AutomationSubsystem {
+export interface AutomationInitDeps {
+  /** Publish a platform event (for completion events). */
+  publish?: (input: PlatformEventInput) => void;
+  /** Subscribe to platform event types (to wire automatic producers). */
+  on?: (
+    types: PlatformEventType[],
+    handler: (evt: PlatformEvent) => void,
+  ) => { dispose: () => void };
+}
+
+export function initAutomations(deps: AutomationInitDeps = {}): AutomationSubsystem {
+  publishPlatformEvent = deps.publish ?? null;
+  // V4.8: wire automatic event producers so saved rules fire on real events.
+  if (deps.on) {
+    wireAutomationProducers({ on: deps.on, runner });
+  }
   const handlers: SecureHandlerDef[] = [
     {
       channel: IpcChannel.AutomationList,
