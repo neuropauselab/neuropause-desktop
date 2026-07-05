@@ -31,6 +31,17 @@ export const EmptyRequest = z.object({}).strict();
 // V4.2 — runtime launch-at-login toggle.
 export const SetLoginAtStartupRequest = z.object({ enabled: z.boolean() }).strict();
 
+// Module 9 — Automation Builder. The rule is validated in the store via the shared
+// engine; the contract only guards the transport shape.
+export const AutomationSaveRequest = z.object({ rule: z.record(z.unknown()) }).strict();
+export const AutomationIdRequest = z.object({ id: z.string().trim().min(1).max(128) }).strict();
+export const AutomationSetStatusRequest = z
+  .object({
+    id: z.string().trim().min(1).max(128),
+    status: z.enum(['draft', 'active', 'paused', 'error']),
+  })
+  .strict();
+
 // V3.3 — Executive Decision Intelligence.
 export const DecisionCreateFromRecommendationRequest = z
   .object({ recommendationId: z.string().trim().min(1).max(128) })

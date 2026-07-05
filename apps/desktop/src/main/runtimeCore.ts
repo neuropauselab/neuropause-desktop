@@ -82,6 +82,7 @@ import { initEnterpriseSearch } from './search';
 import { initDailyIntelligence } from './intelligence';
 import { initExecutiveCenter } from './enterprise/executiveCenterSubsystem';
 import { initDecisions } from './enterprise/decisionSubsystem';
+import { initAutomations } from './enterprise/automationSubsystem';
 import { initVoice } from './voice/voiceSubsystem';
 import { initExecutiveDelivery } from './services/executiveDelivery';
 import { initRecommendations } from './recommendations';
@@ -156,6 +157,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // Executive Decision Intelligence (V3.3): persists + transitions decisions,
   // convertible from the executive center's recommendations (traceability).
   const decisions = initDecisions(() => executiveCenter.snapshot());
+
+  // Automation Builder (Module 9): persists user Trigger→Condition→Action rules.
+  const automations = initAutomations();
 
   // Executive Voice Assistant (V2.6): routes recognized speech to existing
   // intelligence and composes evidence-grounded spoken responses. No new AI.
@@ -742,6 +746,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...recommendations.handlers);
   defs.push(...executiveCenter.handlers);
   defs.push(...decisions.handlers);
+  defs.push(...automations.handlers);
   defs.push(...voice.handlers);
   defs.push(...founder.handlers);
   defs.push(...engineeringAI.handlers);

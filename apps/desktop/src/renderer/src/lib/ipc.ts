@@ -90,6 +90,7 @@ import {
   type Briefing,
   type ExecutiveCenterSnapshot,
   type ExecutiveDecision,
+  type AutomationRule,
   type VoiceResponse,
   type RecommendationQuery,
   type RecommendationSet,
@@ -642,6 +643,26 @@ export const ipc = {
       invoke(IpcChannel.DecisionSetStatus, { id, status }) as Promise<{
         decision: ExecutiveDecision | null;
       }>,
+  },
+
+  automations: {
+    list: () =>
+      invoke(IpcChannel.AutomationList) as Promise<{
+        rules: AutomationRule[];
+        summary: { total: number; active: number; paused: number; draft: number };
+      }>,
+    save: (rule: AutomationRule) =>
+      invoke(IpcChannel.AutomationSave, { rule }) as Promise<{
+        ok: boolean;
+        rule?: AutomationRule;
+        issues?: string[];
+      }>,
+    setStatus: (id: string, status: AutomationRule['status']) =>
+      invoke(IpcChannel.AutomationSetStatus, { id, status }) as Promise<{
+        rule: AutomationRule | null;
+      }>,
+    remove: (id: string) =>
+      invoke(IpcChannel.AutomationRemove, { id }) as Promise<{ removed: boolean }>,
   },
 
   recommendations: {
