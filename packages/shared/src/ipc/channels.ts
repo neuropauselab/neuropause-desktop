@@ -113,6 +113,8 @@ export const IpcChannel = {
   DecisionCreateFromRecommendation: 'decisions:createFromRecommendation',
   DecisionSetStatus: 'decisions:setStatus',
   VoiceTurn: 'voice:turn',
+  /** Main → renderer: tray quick-action commands (V4.0). */
+  TrayCommand: 'tray:command',
   TimelineQuery: 'timeline:query',
   TimelineStats: 'timeline:stats',
   TimelineExport: 'timeline:export',

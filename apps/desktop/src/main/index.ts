@@ -14,16 +14,29 @@ import { authService } from './auth/authService';
 import { createMainWindow, rendererDevUrl } from './window';
 import { buildAppMenu } from './menu';
 import { initRuntimeCore } from './runtimeCore';
+import { RuntimeTray } from './runtimeTray';
 
 const log = createLogger('main');
 
 let mainWindow: BrowserWindow | null = null;
+let runtimeTray: RuntimeTray | null = null;
 
 /** Sends a payload to the renderer if a window exists. */
 function broadcast(channel: string, payload: unknown): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(channel, payload);
   }
+}
+
+/** Show + focus the main window, recreating it if it was closed (macOS). */
+function showMainWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    mainWindow = createMainWindow();
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
 }
 
 function wireEventBridges(): void {
@@ -54,6 +67,35 @@ async function bootstrap(): Promise<void> {
   // Native menu bar: its accelerators dispatch commands to the renderer.
   Menu.setApplicationMenu(buildAppMenu((payload) => broadcast(IpcChannel.MenuCommand, payload)));
 
+  // Runtime tray (V4.0): always-on presence + quick actions. Navigation reuses the
+  // MenuCommand broadcast; listening/restart use a dedicated tray-command channel
+  // the renderer's voice widget can act on. Tray failures never block startup.
+  runtimeTray = new RuntimeTray({
+    openDashboard: () => {
+      showMainWindow();
+      broadcast(IpcChannel.MenuCommand, { action: 'navigate', index: 1 }); // Home
+    },
+    openExecutiveCenter: () => {
+      showMainWindow();
+      broadcast(IpcChannel.MenuCommand, { action: 'navigate', index: 3 }); // Enterprise
+    },
+    startListening: () => {
+      showMainWindow();
+      broadcast(IpcChannel.TrayCommand, { action: 'start-listening' });
+      runtimeTray?.setState({ listening: true });
+    },
+    pauseListening: () => {
+      broadcast(IpcChannel.TrayCommand, { action: 'pause-listening' });
+      runtimeTray?.setState({ listening: false });
+    },
+    restartRuntime: () => {
+      app.relaunch();
+      app.exit(0);
+    },
+    exit: () => app.quit(),
+  });
+  runtimeTray.init();
+
   // Attempt to silently restore a prior session from the keychain.
   await authService.restoreSession();
 
@@ -79,10 +121,13 @@ if (!gotLock) {
     }
   });
 
-  app.whenReady().then(bootstrap).catch((err) => {
-    log.error('Fatal error during startup', err);
-    app.quit();
-  });
+  app
+    .whenReady()
+    .then(bootstrap)
+    .catch((err) => {
+      log.error('Fatal error during startup', err);
+      app.quit();
+    });
 
   // macOS: re-create a window when the dock icon is clicked and none are open.
   app.on('activate', () => {
