@@ -231,6 +231,42 @@ export function composeVoiceResponse(
         deepLink: 'enterprise/executive',
       };
     }
+    case 'decisions-overdue': {
+      // V3.6: overdue decisions from the summary counts + top list.
+      const d = s.decisions;
+      if (!d || d.overdue === 0) {
+        return {
+          speech: 'Nothing is overdue right now.',
+          intent,
+          deepLink: 'enterprise/executive',
+        };
+      }
+      return {
+        speech: `You have ${d.overdue} overdue decision${d.overdue === 1 ? '' : 's'}. Opening the Executive Center.`,
+        intent,
+        deepLink: 'enterprise/executive',
+      };
+    }
+    case 'decisions-blocked': {
+      // V3.6: blocked decisions.
+      const d = s.decisions;
+      const blocked = d?.top.filter((x) => x.status === 'blocked');
+      if (!blocked || blocked.length === 0) {
+        return {
+          speech: 'No decisions are currently blocked.',
+          intent,
+          deepLink: 'enterprise/executive',
+        };
+      }
+      return {
+        speech: `${blocked.length} decision${blocked.length === 1 ? ' is' : 's are'} blocked: ${blocked
+          .slice(0, 3)
+          .map((x) => x.title)
+          .join('; ')}.`,
+        intent,
+        deepLink: 'enterprise/executive',
+      };
+    }
     case 'summarize': {
       // V3.2: lead with the executive summary when available.
       const sum = s.executiveSummary;

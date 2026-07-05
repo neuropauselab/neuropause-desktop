@@ -6,7 +6,7 @@ import type {
   ExecutiveKpi,
   IntelligenceItem,
 } from '@neuropause/shared';
-import { primaryNextStatus } from '@neuropause/shared';
+import { primaryNextStatus, isOverdue } from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
 import { cn } from '@renderer/lib/cn';
 import { formatRelative } from '@renderer/lib/format';
@@ -456,6 +456,16 @@ export function ExecutiveCenterPanel(): JSX.Element {
             <span className="text-[10px] text-white/40">
               {snapshot.decisions.pending} pending · {snapshot.decisions.accepted} active ·{' '}
               {snapshot.decisions.completed} done
+              {snapshot.decisions.overdue > 0 && (
+                <span className={cn('ml-1 font-medium', TEXT_TONE['red'])}>
+                  · {snapshot.decisions.overdue} overdue
+                </span>
+              )}
+              {snapshot.decisions.blocked > 0 && (
+                <span className={cn('ml-1 font-medium', TEXT_TONE['orange'])}>
+                  · {snapshot.decisions.blocked} blocked
+                </span>
+              )}
             </span>
           </div>
           <div className="grid gap-3 lg:grid-cols-2">
@@ -494,6 +504,21 @@ export function ExecutiveCenterPanel(): JSX.Element {
                     <span>
                       {d.evidence.length} evidence · {ageDays}d old
                     </span>
+                    {d.dueDate && (
+                      <span
+                        className={cn(
+                          isOverdue(d, Date.now()) ? cn('font-semibold', TEXT_TONE['red']) : '',
+                        )}
+                      >
+                        {isOverdue(d, Date.now()) ? 'overdue' : 'due'}{' '}
+                        {new Date(d.dueDate).toLocaleDateString()}
+                      </span>
+                    )}
+                    {d.status === 'blocked' && (
+                      <span className={cn('font-semibold', TEXT_TONE['orange'])}>
+                        blocked{d.blockedReason ? `: ${d.blockedReason}` : ''}
+                      </span>
+                    )}
                   </div>
                   {/* V3.5 lifecycle controls — reuse the V3.3 setStatus IPC. */}
                   {d.status !== 'archived' && (

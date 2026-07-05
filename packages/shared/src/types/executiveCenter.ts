@@ -162,7 +162,29 @@ export type DecisionCategory =
 
 /** Decision lifecycle status (V3.3). */
 export type DecisionStatus =
-  'draft' | 'suggested' | 'accepted' | 'in_progress' | 'completed' | 'rejected' | 'archived';
+  | 'draft'
+  | 'suggested'
+  | 'accepted'
+  | 'in_progress'
+  | 'blocked'
+  | 'completed'
+  | 'rejected'
+  | 'archived';
+
+/** A single decision history event (V3.6). */
+export interface DecisionEvent {
+  /** ISO timestamp of the event. */
+  at: string;
+  /** Who caused it (role/name or 'system'). */
+  actor: string;
+  /** Machine event kind. */
+  kind:
+    'created' | 'owner_assigned' | 'status_changed' | 'due_set' | 'blocked' | 'resumed' | 'note';
+  previousState?: DecisionStatus;
+  newState?: DecisionStatus;
+  /** Optional human-readable reason/detail. */
+  reason?: string;
+}
 
 /** Decision priority tier (reuses the exec priority vocabulary). */
 export type DecisionPriority = ExecRecoPriority;
@@ -193,15 +215,38 @@ export interface ExecutiveDecision {
   updatedAt: string;
   /** Back-reference to the originating recommendation id, for traceability. */
   fromRecommendationId?: string;
+  // ── V3.6 additions (all optional → backward compatible) ──
+  /** Who assigned the owner (role/name). */
+  assignedBy?: string;
+  /** ISO due date. */
+  dueDate?: string;
+  /** Why the decision is blocked (set when status === 'blocked'). */
+  blockedReason?: string;
+  /** ISO completion timestamp. */
+  completedAt?: string;
+  /** ISO archival timestamp. */
+  archivedAt?: string;
+  /** Append-only status/assignment history. */
+  history?: DecisionEvent[];
+  /** Related recommendation ids beyond the originating one. */
+  relatedRecommendations?: string[];
+  /** Related metric keys. */
+  relatedMetrics?: string[];
 }
 
-/** Compact decision view for the Executive Center section (V3.3). */
+/** Compact decision view for the Executive Center section (V3.3; V3.6 counts). */
 export interface DecisionSummaryView {
   total: number;
   pending: number;
   accepted: number;
   completed: number;
   rejected: number;
+  /** V3.6: decisions past their due date and not completed/archived. */
+  overdue: number;
+  /** V3.6: decisions currently blocked. */
+  blocked: number;
+  /** V3.6: active decisions with no update for a long time. */
+  stale: number;
   /** The most impactful recent decisions, ranked. */
   top: ExecutiveDecision[];
 }
@@ -223,7 +268,34 @@ export function primaryNextStatus(status: DecisionStatus): {
       return { to: 'in_progress', label: 'Start' };
     case 'in_progress':
       return { to: 'completed', label: 'Complete' };
+    case 'blocked':
+      return { to: 'in_progress', label: 'Resume' };
     default:
       return null; // completed / rejected / archived → no forward step
   }
+}
+
+/** Active (non-terminal) statuses for overdue/stale checks (V3.6). */
+const ACTIVE_STATUSES: DecisionStatus[] = [
+  'draft',
+  'suggested',
+  'accepted',
+  'in_progress',
+  'blocked',
+];
+
+export function isActiveDecision(d: ExecutiveDecision): boolean {
+  return ACTIVE_STATUSES.includes(d.status);
+}
+
+/** True if the decision has a due date in the past and is still active (V3.6). */
+export function isOverdue(d: ExecutiveDecision, nowMs: number): boolean {
+  if (!isActiveDecision(d) || !d.dueDate) return false;
+  return Date.parse(d.dueDate) < nowMs;
+}
+
+/** True if an active decision hasn't been updated in `staleDays` (V3.6). */
+export function isStale(d: ExecutiveDecision, nowMs: number, staleDays = 14): boolean {
+  if (!isActiveDecision(d)) return false;
+  return nowMs - Date.parse(d.updatedAt) > staleDays * 86_400_000;
 }

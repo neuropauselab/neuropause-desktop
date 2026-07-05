@@ -50,6 +50,14 @@ const RULES: Array<{
     test: /\b(organi[sz]ation|org|company|business)\b.*(health|doing|status|how)|how.*\b(organi[sz]ation|company)\b/i,
   },
   {
+    intent: 'decisions-overdue',
+    test: /\boverdue\b|past due|what.*(overdue|late)|behind schedule/i,
+  },
+  {
+    intent: 'decisions-blocked',
+    test: /\bblocked\b|blocking|stuck|what.*block/i,
+  },
+  {
     intent: 'decisions-complete',
     test: /(complete|finish|mark.*done|close).*(decision)|decision.*(complete|done|finished)/i,
   },

@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { primaryNextStatus, type ExecutiveRecommendation } from '@neuropause/shared';
+import {
+  primaryNextStatus,
+  isOverdue,
+  isStale,
+  type ExecutiveDecision,
+  type ExecutiveRecommendation,
+} from '@neuropause/shared';
 import {
   DecisionStore,
   canTransition,
@@ -151,5 +157,97 @@ describe('primaryNextStatus (V3.5)', () => {
       const n = primaryNextStatus(st);
       if (n) expect(canTransition(st, n.to)).toBe(true);
     }
+  });
+});
+
+describe('V3.6 decision model extensions', () => {
+  const DAY = 86_400_000;
+  let dir: string;
+  let store: DecisionStore;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'np-dec6-'));
+    store = new DecisionStore(join(dir, 'executive-decisions.json'));
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('records a created event on creation and status events on transition', async () => {
+    const d = decisionFromRecommendation(rec(), new Date().toISOString(), 'h1');
+    expect(d.history?.[0].kind).toBe('created');
+    await store.create(d);
+    await store.setStatus('dec:h1', 'accepted', new Date().toISOString(), { actor: 'CEO' });
+    const after = store.get('dec:h1')!;
+    expect(after.history).toHaveLength(2);
+    const last = after.history![1];
+    expect(last.kind).toBe('status_changed');
+    expect(last.previousState).toBe('suggested');
+    expect(last.newState).toBe('accepted');
+    expect(last.actor).toBe('CEO');
+  });
+
+  it('supports blocked → resumed with reason + timestamps', async () => {
+    const d = decisionFromRecommendation(rec(), new Date().toISOString(), 'h2');
+    await store.create(d);
+    await store.setStatus('dec:h2', 'accepted', new Date().toISOString());
+    await store.setStatus('dec:h2', 'in_progress', new Date().toISOString());
+    const blocked = await store.setStatus('dec:h2', 'blocked', new Date().toISOString(), {
+      reason: 'waiting on legal',
+    });
+    expect(blocked?.status).toBe('blocked');
+    expect(blocked?.blockedReason).toBe('waiting on legal');
+    expect(blocked?.history?.at(-1)?.kind).toBe('blocked');
+    const resumed = await store.setStatus('dec:h2', 'in_progress', new Date().toISOString());
+    expect(resumed?.blockedReason).toBeUndefined();
+    expect(resumed?.history?.at(-1)?.kind).toBe('resumed');
+  });
+
+  it('sets completedAt / archivedAt on terminal transitions', async () => {
+    const d = decisionFromRecommendation(rec(), new Date().toISOString(), 'h3');
+    await store.create(d);
+    await store.setStatus('dec:h3', 'accepted', new Date().toISOString());
+    const done = await store.setStatus('dec:h3', 'completed', new Date().toISOString());
+    expect(done?.completedAt).toBeTruthy();
+    const arch = await store.setStatus('dec:h3', 'archived', new Date().toISOString());
+    expect(arch?.archivedAt).toBeTruthy();
+  });
+
+  it('isOverdue / isStale detect the right decisions', () => {
+    const now = Date.UTC(2026, 1, 1);
+    const base = decisionFromRecommendation(rec(), new Date(now).toISOString(), 'o1');
+    const overdue: ExecutiveDecision = {
+      ...base,
+      status: 'in_progress',
+      dueDate: new Date(now - DAY).toISOString(),
+    };
+    const future: ExecutiveDecision = {
+      ...base,
+      status: 'in_progress',
+      dueDate: new Date(now + DAY).toISOString(),
+    };
+    const completed: ExecutiveDecision = { ...overdue, status: 'completed' };
+    expect(isOverdue(overdue, now)).toBe(true);
+    expect(isOverdue(future, now)).toBe(false);
+    expect(isOverdue(completed, now)).toBe(false); // terminal → not overdue
+    const stale: ExecutiveDecision = {
+      ...base,
+      status: 'accepted',
+      updatedAt: new Date(now - 20 * DAY).toISOString(),
+    };
+    expect(isStale(stale, now)).toBe(true);
+    expect(isStale(base, now)).toBe(false);
+  });
+
+  it('summary counts overdue and blocked', async () => {
+    const now = Date.now();
+    const a = decisionFromRecommendation(rec(), new Date(now).toISOString(), 's1');
+    await store.create({ ...a, status: 'in_progress', dueDate: new Date(now - DAY).toISOString() });
+    const b = decisionFromRecommendation(rec(), new Date(now).toISOString(), 's2');
+    await store.create({ ...b, status: 'blocked' });
+    const v = store.summary();
+    expect(v.overdue).toBe(1);
+    expect(v.blocked).toBe(1);
+  });
+
+  it('primaryNextStatus handles blocked → resume', () => {
+    expect(primaryNextStatus('blocked')).toEqual({ to: 'in_progress', label: 'Resume' });
   });
 });

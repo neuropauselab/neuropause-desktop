@@ -11,11 +11,13 @@ import { promises as fs, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type {
   DecisionCategory,
+  DecisionEvent,
   DecisionStatus,
   DecisionSummaryView,
   ExecutiveDecision,
   ExecutiveRecommendation,
 } from '@neuropause/shared';
+import { isOverdue, isStale } from '@neuropause/shared';
 
 interface DecisionFile {
   decisions: ExecutiveDecision[];
@@ -27,8 +29,9 @@ const MAX_DECISIONS = 500;
 const TRANSITIONS: Record<DecisionStatus, DecisionStatus[]> = {
   draft: ['suggested', 'accepted', 'rejected', 'archived'],
   suggested: ['accepted', 'rejected', 'archived'],
-  accepted: ['in_progress', 'completed', 'rejected', 'archived'],
-  in_progress: ['completed', 'rejected', 'archived'],
+  accepted: ['in_progress', 'blocked', 'completed', 'rejected', 'archived'],
+  in_progress: ['blocked', 'completed', 'rejected', 'archived'],
+  blocked: ['in_progress', 'rejected', 'archived'],
   completed: ['archived'],
   rejected: ['archived'],
   archived: [],
@@ -83,6 +86,16 @@ export function decisionFromRecommendation(
     createdAt: nowIso,
     updatedAt: nowIso,
     fromRecommendationId: rec.id,
+    relatedMetrics: [rec.metric],
+    history: [
+      {
+        at: nowIso,
+        actor: 'system',
+        kind: 'created',
+        newState: 'suggested',
+        reason: 'Created from recommendation.',
+      },
+    ],
   };
 }
 
@@ -94,7 +107,10 @@ const IMPACT_RANK: Record<ExecutiveDecision['priority'], number> = {
 };
 
 /** Build the compact section view (STEP 6). Pure over a decision list. */
-export function summarizeDecisions(decisions: ExecutiveDecision[]): DecisionSummaryView {
+export function summarizeDecisions(
+  decisions: ExecutiveDecision[],
+  nowMs: number = Date.now(),
+): DecisionSummaryView {
   const active = decisions.filter((d) => d.status !== 'archived');
   const pending = active.filter((d) => d.status === 'suggested' || d.status === 'draft').length;
   const accepted = active.filter(
@@ -102,6 +118,9 @@ export function summarizeDecisions(decisions: ExecutiveDecision[]): DecisionSumm
   ).length;
   const completed = active.filter((d) => d.status === 'completed').length;
   const rejected = active.filter((d) => d.status === 'rejected').length;
+  const overdue = active.filter((d) => isOverdue(d, nowMs)).length;
+  const blocked = active.filter((d) => d.status === 'blocked').length;
+  const stale = active.filter((d) => isStale(d, nowMs)).length;
   const top = [...active]
     .sort((a, b) => {
       const p = IMPACT_RANK[b.priority] - IMPACT_RANK[a.priority];
@@ -109,7 +128,17 @@ export function summarizeDecisions(decisions: ExecutiveDecision[]): DecisionSumm
       return b.createdAt < a.createdAt ? -1 : 1; // newer first
     })
     .slice(0, 6);
-  return { total: active.length, pending, accepted, completed, rejected, top };
+  return {
+    total: active.length,
+    pending,
+    accepted,
+    completed,
+    rejected,
+    overdue,
+    blocked,
+    stale,
+    top,
+  };
 }
 
 export class DecisionStore {
@@ -172,14 +201,32 @@ export class DecisionStore {
     id: string,
     to: DecisionStatus,
     nowIso: string,
+    opts?: { actor?: string; reason?: string },
   ): Promise<ExecutiveDecision | null> {
     this.load();
     const d = this.decisions.find((x) => x.id === id);
     if (!d) return null;
     if (d.status === to) return d;
     if (!canTransition(d.status, to)) return null;
+    const previousState = d.status;
     d.status = to;
     d.updatedAt = nowIso;
+    // V3.6: terminal + blocked side-effects.
+    if (to === 'completed') d.completedAt = nowIso;
+    if (to === 'archived') d.archivedAt = nowIso;
+    if (to === 'blocked' && opts?.reason) d.blockedReason = opts.reason;
+    if (to !== 'blocked') d.blockedReason = undefined;
+    // V3.6: append a history event.
+    const event: DecisionEvent = {
+      at: nowIso,
+      actor: opts?.actor ?? 'system',
+      kind:
+        to === 'blocked' ? 'blocked' : previousState === 'blocked' ? 'resumed' : 'status_changed',
+      previousState,
+      newState: to,
+      reason: opts?.reason,
+    };
+    d.history = [...(d.history ?? []), event];
     await this.persist();
     return d;
   }

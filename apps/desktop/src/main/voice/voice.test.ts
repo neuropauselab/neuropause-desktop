@@ -41,6 +41,8 @@ describe('classifyVoiceIntent', () => {
     expect(classifyVoiceIntent('what decisions are pending').intent).toBe('decisions-pending');
     expect(classifyVoiceIntent('what did we decide this week').intent).toBe('decisions-recent');
     expect(classifyVoiceIntent('complete decision').intent).toBe('decisions-complete');
+    expect(classifyVoiceIntent('what is overdue').intent).toBe('decisions-overdue');
+    expect(classifyVoiceIntent('what decisions are blocked').intent).toBe('decisions-blocked');
   });
 
   it('resolves open-module targets', () => {

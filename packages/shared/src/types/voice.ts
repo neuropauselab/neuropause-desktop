@@ -21,6 +21,8 @@ export type VoiceIntent =
   | 'decisions-pending' // "What decisions are pending?"
   | 'decisions-recent' // "What did we decide this week?"
   | 'decisions-complete' // "Complete decision" / "mark decision done"
+  | 'decisions-overdue' // "What is overdue?"
+  | 'decisions-blocked' // "What decisions are blocked?"
   | 'connector-status' // "Any connector issues?"
   | 'license-status' // "How's our license?"
   | 'summarize' // "Summarize everything"
