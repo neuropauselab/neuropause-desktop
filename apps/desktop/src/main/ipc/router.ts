@@ -14,6 +14,7 @@ import {
   IpcChannel,
   type IpcChannelName,
   EmptyRequest,
+  SetLoginAtStartupRequest,
   EmailCredentialsRequest,
   LoginOAuthRequest,
   SetThemeSourceRequest,
@@ -21,6 +22,7 @@ import {
 import { createLogger } from '../logger';
 import * as authHandlers from './handlers/auth';
 import * as appHandlers from './handlers/app';
+import { getActiveRuntimeService } from '../runtimeService';
 
 const log = createLogger('ipc');
 
@@ -56,6 +58,19 @@ const routes: Partial<Record<IpcChannelName, Route>> = {
   },
 
   [IpcChannel.WindowClose]: { schema: EmptyRequest, handle: () => appHandlers.closeWindow() },
+
+  [IpcChannel.RuntimeGetLoginAtStartup]: {
+    schema: EmptyRequest,
+    handle: () => ({ enabled: getActiveRuntimeService()?.getLoginAtStartup() ?? false }),
+  },
+  [IpcChannel.RuntimeSetLoginAtStartup]: {
+    schema: SetLoginAtStartupRequest,
+    handle: (p) => {
+      const { enabled } = p as { enabled: boolean };
+      getActiveRuntimeService()?.setLoginAtStartup(enabled);
+      return { enabled };
+    },
+  },
 
   // Broadcast-only channels are never invoked, but must exist in the map.
   [IpcChannel.AuthStatusChanged]: { schema: EmptyRequest, handle: () => undefined },

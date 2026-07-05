@@ -424,6 +424,11 @@ export const ipc = {
       invoke(IpcChannel.RuntimeLaunch, { slug }) as Promise<RuntimeInstanceDto>,
     stop: (instanceId: string) =>
       invoke(IpcChannel.RuntimeStop, { instanceId }) as Promise<{ ok: boolean }>,
+    /** Launch-at-login preference (V4.2). */
+    getLoginAtStartup: () =>
+      invoke(IpcChannel.RuntimeGetLoginAtStartup) as Promise<{ enabled: boolean }>,
+    setLoginAtStartup: (enabled: boolean) =>
+      invoke(IpcChannel.RuntimeSetLoginAtStartup, { enabled }) as Promise<{ enabled: boolean }>,
     suspend: (instanceId: string) =>
       invoke(IpcChannel.RuntimeSuspend, { instanceId }) as Promise<RuntimeInstanceDto>,
     resume: (instanceId: string) =>

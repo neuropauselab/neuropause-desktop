@@ -14,12 +14,12 @@ import { authService } from './auth/authService';
 import { createMainWindow, rendererDevUrl } from './window';
 import { buildAppMenu } from './menu';
 import { initRuntimeCore } from './runtimeCore';
-import { RuntimeTray } from './runtimeTray';
+import { RuntimeService, setActiveRuntimeService } from './runtimeService';
 
 const log = createLogger('main');
 
 let mainWindow: BrowserWindow | null = null;
-let runtimeTray: RuntimeTray | null = null;
+let runtimeService: RuntimeService | null = null;
 
 /** Sends a payload to the renderer if a window exists. */
 function broadcast(channel: string, payload: unknown): void {
@@ -67,34 +67,38 @@ async function bootstrap(): Promise<void> {
   // Native menu bar: its accelerators dispatch commands to the renderer.
   Menu.setApplicationMenu(buildAppMenu((payload) => broadcast(IpcChannel.MenuCommand, payload)));
 
-  // Runtime tray (V4.0): always-on presence + quick actions. Navigation reuses the
-  // MenuCommand broadcast; listening/restart use a dedicated tray-command channel
-  // the renderer's voice widget can act on. Tray failures never block startup.
-  runtimeTray = new RuntimeTray({
-    openDashboard: () => {
-      showMainWindow();
-      broadcast(IpcChannel.MenuCommand, { action: 'navigate', index: 1 }); // Home
+  // Runtime service (V4.2): owns the tray, power (sleep/resume/lock/unlock)
+  // recovery, and launch-at-login. Composes the V4.0 tray; no duplicated logic.
+  runtimeService = new RuntimeService({
+    broadcast,
+    trayActions: {
+      openDashboard: () => {
+        showMainWindow();
+        broadcast(IpcChannel.MenuCommand, { action: 'navigate', index: 1 }); // Home
+      },
+      openExecutiveCenter: () => {
+        showMainWindow();
+        broadcast(IpcChannel.MenuCommand, { action: 'navigate', index: 3 }); // Enterprise
+      },
+      startListening: () => {
+        showMainWindow();
+        broadcast(IpcChannel.TrayCommand, { action: 'start-listening' });
+        runtimeService?.updateStatus({ listening: true });
+      },
+      pauseListening: () => {
+        broadcast(IpcChannel.TrayCommand, { action: 'pause-listening' });
+        runtimeService?.updateStatus({ listening: false });
+      },
+      restartRuntime: () => {
+        app.relaunch();
+        app.exit(0);
+      },
+      exit: () => app.quit(),
     },
-    openExecutiveCenter: () => {
-      showMainWindow();
-      broadcast(IpcChannel.MenuCommand, { action: 'navigate', index: 3 }); // Enterprise
-    },
-    startListening: () => {
-      showMainWindow();
-      broadcast(IpcChannel.TrayCommand, { action: 'start-listening' });
-      runtimeTray?.setState({ listening: true });
-    },
-    pauseListening: () => {
-      broadcast(IpcChannel.TrayCommand, { action: 'pause-listening' });
-      runtimeTray?.setState({ listening: false });
-    },
-    restartRuntime: () => {
-      app.relaunch();
-      app.exit(0);
-    },
-    exit: () => app.quit(),
   });
-  runtimeTray.init();
+  runtimeService.start();
+  runtimeService.syncLoginAtStartup();
+  setActiveRuntimeService(runtimeService);
 
   // Attempt to silently restore a prior session from the keychain.
   await authService.restoreSession();

@@ -28,6 +28,9 @@ export const SetThemeSourceRequest = z.object({
 // Empty-payload requests still get a schema so the router is uniform.
 export const EmptyRequest = z.object({}).strict();
 
+// V4.2 — runtime launch-at-login toggle.
+export const SetLoginAtStartupRequest = z.object({ enabled: z.boolean() }).strict();
+
 // V3.3 — Executive Decision Intelligence.
 export const DecisionCreateFromRecommendationRequest = z
   .object({ recommendationId: z.string().trim().min(1).max(128) })

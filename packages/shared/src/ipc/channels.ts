@@ -115,6 +115,9 @@ export const IpcChannel = {
   VoiceTurn: 'voice:turn',
   /** Main → renderer: tray quick-action commands (V4.0). */
   TrayCommand: 'tray:command',
+  /** Runtime launch-at-login preference (V4.2). */
+  RuntimeGetLoginAtStartup: 'runtime:getLoginAtStartup',
+  RuntimeSetLoginAtStartup: 'runtime:setLoginAtStartup',
   TimelineQuery: 'timeline:query',
   TimelineStats: 'timeline:stats',
   TimelineExport: 'timeline:export',
@@ -446,6 +449,8 @@ export const INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.AppSetThemeSource,
   IpcChannel.AppGetThemeSource,
   IpcChannel.WindowClose,
+  IpcChannel.RuntimeGetLoginAtStartup,
+  IpcChannel.RuntimeSetLoginAtStartup,
 ];
 
 /** Legacy broadcasts the renderer may subscribe to. */
