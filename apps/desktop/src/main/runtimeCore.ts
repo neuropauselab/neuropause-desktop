@@ -1004,20 +1004,23 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // as interrupted (recovered, not rerun), persist the correction, and seed the
   // engine's history so the dashboard shows durable history across restarts.
   const persistedSessions = executionStore.loadAllSync();
-  if (persistedSessions.length > 0) {
-    const recovered = recoverInterrupted(persistedSessions, new Date().toISOString());
-    const interruptedCount = recovered.filter((s) => s.state === 'interrupted').length;
-    executeEngine.seedHistory(recovered);
-    if (interruptedCount > 0) {
-      void executionStore.replaceAll(recovered);
-      log.warn('Recovered interrupted executions from previous session', {
-        interrupted: interruptedCount,
-        total: recovered.length,
-      });
-    } else {
-      log.info('Loaded persisted execution history', { total: recovered.length });
-    }
+  const recovered = recoverInterrupted(persistedSessions, new Date().toISOString());
+  const interruptedCount = recovered.filter((s) => s.state === 'interrupted').length;
+  if (recovered.length > 0) executeEngine.seedHistory(recovered);
+  if (interruptedCount > 0) {
+    void executionStore.replaceAll(recovered);
+    log.warn('Recovered interrupted executions from previous session', {
+      interrupted: interruptedCount,
+      total: recovered.length,
+    });
   }
+  // Always announce readiness (like every peer store) so the recovery path is
+  // observable exactly when it fires — not silent until the day it matters.
+  const execStoreLog = createLogger('execution-store');
+  execStoreLog.info('Execution store ready', {
+    executions: recovered.length,
+    recovered: interruptedCount,
+  });
 
   defs.push({
     channel: IpcChannel.ExecuteRun,
