@@ -95,6 +95,10 @@ import {
   type AutomationRunRecord,
   type SystemHealthSnapshot,
   type VoiceRuntimeState,
+  type SupervisorStatus,
+  type RecoveryRecord,
+  type SupervisedSubsystem,
+  type RecoveryPolicy,
   type VoiceResponse,
   type RecommendationQuery,
   type RecommendationSet,
@@ -677,6 +681,16 @@ export const ipc = {
   system: {
     /** NeuroCore composed system-health snapshot (V5.0). */
     health: () => invoke(IpcChannel.SystemHealthSnapshot) as Promise<SystemHealthSnapshot>,
+  },
+
+  supervisor: {
+    /** Runtime supervisor status (V5.3). */
+    status: () => invoke(IpcChannel.SupervisorStatus) as Promise<SupervisorStatus>,
+    history: () => invoke(IpcChannel.SupervisorHistory) as Promise<{ records: RecoveryRecord[] }>,
+    recover: (subsystem: SupervisedSubsystem) =>
+      invoke(IpcChannel.SupervisorRecover, { subsystem }) as Promise<RecoveryRecord>,
+    setPolicy: (subsystem: SupervisedSubsystem, policy: RecoveryPolicy) =>
+      invoke(IpcChannel.SupervisorSetPolicy, { subsystem, policy }) as Promise<SupervisorStatus>,
   },
 
   voice: {

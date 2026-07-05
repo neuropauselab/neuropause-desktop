@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { SystemHealthLevel, SystemHealthSnapshot } from '@neuropause/shared';
+import type { SupervisorStatus, SystemHealthLevel, SystemHealthSnapshot } from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
 import { cn } from '@renderer/lib/cn';
 import { Card } from '@renderer/components/ui/Card';
@@ -30,6 +30,18 @@ function fmtUptime(ms: number): string {
   return `${Math.floor(h / 24)}d ${h % 24}h`;
 }
 
+function relativeTime(iso: string): string {
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return '';
+  const s = Math.round((Date.now() - then) / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.round(h / 24)}d ago`;
+}
+
 /**
  * NeuroCore Runtime Health panel (V5.0). Renders the composed system-health
  * snapshot — score, per-subsystem levels, throughput. Reuses ipc.system.health;
@@ -37,16 +49,24 @@ function fmtUptime(ms: number): string {
  */
 export function RuntimeHealthPanel(): JSX.Element | null {
   const [health, setHealth] = useState<SystemHealthSnapshot | null>(null);
+  const [supervisor, setSupervisor] = useState<SupervisorStatus | null>(null);
 
   useEffect(() => {
     let alive = true;
     const load = (): void => {
       try {
         const p = ipc.system?.health?.();
-        if (!p) return;
-        p.then((h) => {
-          if (alive) setHealth(h);
-        }).catch(() => {});
+        if (p) {
+          p.then((h) => {
+            if (alive) setHealth(h);
+          }).catch(() => {});
+        }
+        ipc.supervisor
+          ?.status?.()
+          .then((s) => {
+            if (alive) setSupervisor(s);
+          })
+          .catch(() => {});
       } catch {
         /* telemetry is non-essential — it must never break the executive view */
       }
@@ -119,6 +139,29 @@ export function RuntimeHealthPanel(): JSX.Element | null {
           );
         })}
       </div>
+
+      {supervisor && (
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-white/5 pt-2.5 text-[11px] text-white/40">
+          <span className="text-white/50">Auto-recovery</span>
+          {supervisor.recovering.length > 0 ? (
+            <span className="text-white/80">Recovering {supervisor.recovering.join(', ')}…</span>
+          ) : supervisor.lastRecovery ? (
+            <span>
+              Last: {supervisor.lastRecovery.subsystem}{' '}
+              <span className={supervisor.lastRecovery.ok ? 'text-white/70' : 'text-white'}>
+                {supervisor.lastRecovery.ok ? 'recovered' : 'failed'}
+              </span>{' '}
+              {relativeTime(supervisor.lastRecovery.startedAt)}
+            </span>
+          ) : (
+            <span>No recoveries needed</span>
+          )}
+          <span>· {supervisor.recoveryCount} total</span>
+          {supervisor.recentFailures > 0 && (
+            <span className="text-white">· {supervisor.recentFailures} recent failures</span>
+          )}
+        </div>
+      )}
     </Card>
   );
 }

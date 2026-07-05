@@ -143,4 +143,14 @@ export class NeuroCore {
   last(): SystemHealthSnapshot | null {
     return this.lastSnapshot;
   }
+
+  /**
+   * V5.3 recovery hook: force an immediate backend re-probe (bypassing the
+   * throttle) and report whether the backend is reachable again. Reused by the
+   * RuntimeSupervisor's backend recovery executor — no duplicate probe logic.
+   */
+  async forceBackendProbe(): Promise<boolean> {
+    await this.telemetry.probeBackend(0);
+    return this.telemetry.read().backendState === 'connected';
+  }
 }

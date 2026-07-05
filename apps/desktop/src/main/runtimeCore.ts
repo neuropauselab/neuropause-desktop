@@ -27,11 +27,15 @@ import type {
   PluginPermissionRequest as TPluginPermissionRequest,
   PluginContributionsRequest as TPluginContributionsRequest,
   VoiceRuntimeState,
+  SupervisedSubsystem,
+  RecoveryPolicy,
 } from '@neuropause/shared';
 import {
   IpcChannel,
   EmptyRequest,
   VoiceStatusRequest,
+  SupervisorRecoverRequest,
+  SupervisorSetPolicyRequest,
   SlugRequest,
   InstanceRequest,
   OperationRequest,
@@ -86,6 +90,7 @@ import { initExecutiveCenter } from './enterprise/executiveCenterSubsystem';
 import { initDecisions } from './enterprise/decisionSubsystem';
 import { initAutomations, getAutomationMonitor } from './enterprise/automationSubsystem';
 import { NeuroCore } from './neuroCore';
+import { RuntimeSupervisor } from './runtimeSupervisor';
 import {
   getVoiceRuntimeState,
   setVoiceRuntimeState,
@@ -806,6 +811,66 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     channel: IpcChannel.SystemHealthSnapshot,
     schema: EmptyRequest,
     handler: () => neuroCore.snapshot(),
+  });
+
+  // Runtime Supervisor (V5.3): autonomous recovery. Executors reuse existing
+  // subsystem capabilities — backend re-probe (real), voice-state reset (real),
+  // and a diagnostics refresh for platform/runtime. Automation restart is a
+  // structural hook until the dispatcher exposes a restart API.
+  const runtimeSupervisor = new RuntimeSupervisor({
+    snapshot: () => neuroCore.snapshot(),
+    publish: publishPlatform,
+    executors: {
+      backend: async () => {
+        const ok = await neuroCore.forceBackendProbe();
+        return { ok, detail: ok ? 'backend reachable' : 'still unreachable' };
+      },
+      voice: async () => {
+        // Clear a stuck voice state so the runtime returns to idle.
+        setVoiceRuntimeState('idle');
+        return { ok: true, detail: 'voice runtime reset to idle' };
+      },
+      platform: async () => {
+        await platform.diagnostics();
+        return { ok: true, detail: 'diagnostics refreshed' };
+      },
+      runtime: async () => {
+        await platform.diagnostics();
+        return { ok: true, detail: 'runtime diagnostics refreshed' };
+      },
+    },
+  });
+  runtimeSupervisor.start();
+
+  defs.push({
+    channel: IpcChannel.SupervisorStatus,
+    schema: EmptyRequest,
+    handler: () => runtimeSupervisor.status(),
+  });
+  defs.push({
+    channel: IpcChannel.SupervisorHistory,
+    schema: EmptyRequest,
+    handler: () => ({ records: runtimeSupervisor.getHistory() }),
+  });
+  defs.push({
+    channel: IpcChannel.SupervisorRecover,
+    schema: SupervisorRecoverRequest,
+    handler: async (payload: unknown) => {
+      const { subsystem } = payload as { subsystem: SupervisedSubsystem };
+      return runtimeSupervisor.recover(subsystem, 'manual');
+    },
+  });
+  defs.push({
+    channel: IpcChannel.SupervisorSetPolicy,
+    schema: SupervisorSetPolicyRequest,
+    handler: (payload: unknown) => {
+      const { subsystem, policy } = payload as {
+        subsystem: SupervisedSubsystem;
+        policy: RecoveryPolicy;
+      };
+      runtimeSupervisor.setPolicy(subsystem, policy);
+      return runtimeSupervisor.status();
+    },
   });
   // V5.2: renderer → main live voice runtime state.
   defs.push({

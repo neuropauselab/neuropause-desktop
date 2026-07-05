@@ -31,6 +31,20 @@ export const EmptyRequest = z.object({}).strict();
 // V4.2 — runtime launch-at-login toggle.
 export const SetLoginAtStartupRequest = z.object({ enabled: z.boolean() }).strict();
 
+// V5.3 — runtime supervisor recovery + policy.
+export const SupervisorRecoverRequest = z
+  .object({
+    subsystem: z.enum(['runtime', 'platform', 'automation', 'voice', 'backend']),
+  })
+  .strict();
+
+export const SupervisorSetPolicyRequest = z
+  .object({
+    subsystem: z.enum(['runtime', 'platform', 'automation', 'voice', 'backend']),
+    policy: z.enum(['automatic', 'manual', 'disabled']),
+  })
+  .strict();
+
 // V5.2 — live voice runtime state from the renderer.
 export const VoiceStatusRequest = z
   .object({

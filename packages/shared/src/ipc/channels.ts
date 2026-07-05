@@ -123,6 +123,11 @@ export const IpcChannel = {
   AutomationHistory: 'automations:history',
   /** NeuroCore system-health snapshot (V5.0). */
   SystemHealthSnapshot: 'neurocore:systemHealth',
+  /** Runtime supervisor status + history + recovery (V5.3). */
+  SupervisorStatus: 'supervisor:status',
+  SupervisorHistory: 'supervisor:history',
+  SupervisorRecover: 'supervisor:recover',
+  SupervisorSetPolicy: 'supervisor:setPolicy',
   /** Renderer → main: live voice runtime state (V5.2). */
   VoiceStatus: 'voice:status',
   VoiceTurn: 'voice:turn',
@@ -553,6 +558,10 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.AutomationMonitor,
   IpcChannel.AutomationHistory,
   IpcChannel.SystemHealthSnapshot,
+  IpcChannel.SupervisorStatus,
+  IpcChannel.SupervisorHistory,
+  IpcChannel.SupervisorRecover,
+  IpcChannel.SupervisorSetPolicy,
   IpcChannel.VoiceStatus,
   IpcChannel.VoiceTurn,
   IpcChannel.TimelineQuery,

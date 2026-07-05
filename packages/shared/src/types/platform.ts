@@ -98,7 +98,13 @@ export type PlatformEventType =
   | 'voice.thinking'
   | 'voice.speaking'
   | 'voice.recovering'
-  | 'voice.disconnected';
+  | 'voice.disconnected'
+  // runtime supervisor (V5.3)
+  | 'runtime.recovery.started'
+  | 'runtime.recovery.completed'
+  | 'runtime.recovery.failed'
+  | 'runtime.supervisor.warning'
+  | 'runtime.supervisor.critical';
 
 /** Who or what caused the event. */
 export interface EventActor {
