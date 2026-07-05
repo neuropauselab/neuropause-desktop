@@ -969,6 +969,25 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       result: snapshot,
     };
   });
+  // V5.7: worker executor — dispatches a worker's default skill as a real job via
+  // the workforce runtime. Skill resolution + governance stay in the subsystem.
+  executeEngine.register('worker', async (req, ctx) => {
+    if (!req.targetId) return { ok: false, error: 'No worker id provided' };
+    ctx.setStep(1);
+    const job = workforce.runWorker(req.targetId, req.input ? { input: req.input } : {});
+    if (!job) return { ok: false, error: 'Worker not found or has no runnable skill' };
+    ctx.setStep(2);
+    const ok = job.status === 'succeeded' || job.status === 'awaiting_approval';
+    return {
+      ok,
+      summary:
+        job.status === 'awaiting_approval'
+          ? `Proposal awaiting approval${job.summary ? ` — ${job.summary}` : ''}`
+          : (job.summary ?? job.status),
+      error: ok ? undefined : `Job ${job.status}`,
+      result: job,
+    };
+  });
 
   defs.push({
     channel: IpcChannel.ExecuteRun,

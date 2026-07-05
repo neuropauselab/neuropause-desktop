@@ -18,6 +18,7 @@ import type {
   WorkforceAuditRequest as TWorkforceAuditRequest,
   WorkforceJobGetRequest as TWorkforceJobGetRequest,
   WorkforceJobRunRequest as TWorkforceJobRunRequest,
+  Job,
   WorkforceJobsRequest as TWorkforceJobsRequest,
   WorkforceProposalDecideRequest as TWorkforceProposalDecideRequest,
   WorkforceWorkerGetRequest as TWorkforceWorkerGetRequest,
@@ -62,6 +63,8 @@ export interface WorkforceSubsystemDeps {
 export interface WorkforceSubsystem {
   handlers: SecureHandlerDef[];
   dispose: () => void;
+  /** V5.7: run a worker's default skill as a job (Execute Engine dispatch). */
+  runWorker: (workerId: string, input?: Record<string, unknown>) => Job | null;
 }
 
 export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<WorkforceSubsystem> {
@@ -118,7 +121,11 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
   jobStore.on('changed', onChange);
 
   const handlers: SecureHandlerDef[] = [
-    { channel: IpcChannel.WorkforceWorkers, schema: EmptyRequest, handler: () => workerRegistry.summaries() },
+    {
+      channel: IpcChannel.WorkforceWorkers,
+      schema: EmptyRequest,
+      handler: () => workerRegistry.summaries(),
+    },
     {
       channel: IpcChannel.WorkforceWorkerGet,
       schema: WorkforceWorkerGetRequest,
@@ -143,7 +150,12 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
       schema: WorkforceJobsRequest,
       handler: (p) => {
         const r = p as TWorkforceJobsRequest;
-        return runtime.listJobs({ workerId: r.workerId, status: r.status, limit: r.limit, offset: r.offset });
+        return runtime.listJobs({
+          workerId: r.workerId,
+          status: r.status,
+          limit: r.limit,
+          offset: r.offset,
+        });
       },
     },
     {
@@ -201,7 +213,13 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
         const r = p as TWorkforceWorkflowCheckpointRequest;
         const entry = workflowRuns.get(r.runId);
         if (!entry) return null;
-        entry.run = orchestrator.approveCheckpoint(entry.run, entry.spec, r.stepId, r.approved, r.now);
+        entry.run = orchestrator.approveCheckpoint(
+          entry.run,
+          entry.spec,
+          r.stepId,
+          r.approved,
+          r.now,
+        );
         return entry.run;
       },
     },
@@ -210,10 +228,19 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
       schema: WorkforceAuditRequest,
       handler: (p) => {
         const r = p as TWorkforceAuditRequest;
-        return governance.auditPage({ workerId: r.workerId, decision: r.decision, limit: r.limit, offset: r.offset });
+        return governance.auditPage({
+          workerId: r.workerId,
+          decision: r.decision,
+          limit: r.limit,
+          offset: r.offset,
+        });
       },
     },
-    { channel: IpcChannel.WorkforcePolicies, schema: EmptyRequest, handler: () => governance.listPolicies() },
+    {
+      channel: IpcChannel.WorkforcePolicies,
+      schema: EmptyRequest,
+      handler: () => governance.listPolicies(),
+    },
   ];
 
   log.info('AI Workforce initialized', {
@@ -230,5 +257,14 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
     jobStore.off('changed', onChange);
   };
 
-  return { handlers, dispose };
+  // V5.7: dispatch a worker's default (first) skill as a job. Skill resolution
+  // lives here (not in the Execute Engine); the engine only orchestrates.
+  const runWorker = (workerId: string, input?: Record<string, unknown>): Job | null => {
+    const workerSkills = skills.get(workerId);
+    if (!workerSkills || workerSkills.size === 0) return null;
+    const skillId = [...workerSkills.keys()][0];
+    return runtime.runJob({ workerId, skillId, input: input ?? {}, requestedBy: 'user' });
+  };
+
+  return { handlers, dispose, runWorker };
 }

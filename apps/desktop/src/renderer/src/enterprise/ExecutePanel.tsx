@@ -50,13 +50,15 @@ function stateDot(state: ExecutionState): string {
   }
 }
 
-type ExecMode = 'task' | 'automation' | 'decision' | 'memory' | 'voice' | 'executive' | 'runtime';
+type ExecMode =
+  'task' | 'worker' | 'automation' | 'decision' | 'memory' | 'voice' | 'executive' | 'runtime';
 
 /** How each mode collects its argument. */
 const MODE_INPUT: Record<ExecMode, 'text' | 'target' | 'none'> = {
   task: 'text',
   memory: 'text',
   voice: 'text',
+  worker: 'target',
   automation: 'target',
   decision: 'target',
   executive: 'none',
@@ -115,6 +117,20 @@ export function ExecutePanel(): JSX.Element {
           }));
           setTargets(list);
           setSelected(list[0]?.id ?? '');
+        })
+        .catch(() => setTargets([]));
+    } else if (mode === 'worker') {
+      ipc.workforce
+        ?.workers?.()
+        .then((workers) => {
+          if (!alive) return;
+          const list = (workers ?? []).map((w) => ({
+            id: w.id,
+            label: `${w.name} · ${w.lifecycle}`,
+            disabled: w.lifecycle === 'stopped' || w.lifecycle === 'errored',
+          }));
+          setTargets(list);
+          setSelected(list.find((t) => !t.disabled)?.id ?? '');
         })
         .catch(() => setTargets([]));
     } else {
@@ -210,6 +226,7 @@ export function ExecutePanel(): JSX.Element {
         {(
           [
             'task',
+            'worker',
             'automation',
             'decision',
             'memory',
