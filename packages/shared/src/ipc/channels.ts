@@ -117,6 +117,10 @@ export const IpcChannel = {
   AutomationSave: 'automations:save',
   AutomationSetStatus: 'automations:setStatus',
   AutomationRemove: 'automations:remove',
+  /** Automation runtime (V4.7): manual run + monitor/history. */
+  AutomationRun: 'automations:run',
+  AutomationMonitor: 'automations:monitor',
+  AutomationHistory: 'automations:history',
   VoiceTurn: 'voice:turn',
   /** Main → renderer: tray quick-action commands (V4.0). */
   TrayCommand: 'tray:command',
@@ -541,6 +545,9 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.AutomationSave,
   IpcChannel.AutomationSetStatus,
   IpcChannel.AutomationRemove,
+  IpcChannel.AutomationRun,
+  IpcChannel.AutomationMonitor,
+  IpcChannel.AutomationHistory,
   IpcChannel.VoiceTurn,
   IpcChannel.TimelineQuery,
   IpcChannel.TimelineStats,

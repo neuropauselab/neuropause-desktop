@@ -113,3 +113,39 @@ export interface AutomationPlanStep {
   label: string;
   actionId?: string;
 }
+
+/** How an automation run was initiated. */
+export type AutomationTriggerSource = 'connector' | 'manual' | 'schedule' | 'voice' | 'activity';
+
+/** The outcome of executing a single action. */
+export interface AutomationActionOutcome {
+  actionId: string;
+  type: AutomationActionType;
+  ok: boolean;
+  message?: string;
+  durationMs: number;
+}
+
+/** A complete execution record for the monitor + history. */
+export interface AutomationRunRecord {
+  id: string;
+  ruleId: string;
+  ruleName: string;
+  triggeredBy: AutomationTriggerSource;
+  startedAt: string;
+  completedAt: string;
+  ok: boolean;
+  durationMs: number;
+  actions: AutomationActionOutcome[];
+  error?: string;
+}
+
+/** Live monitor snapshot for the Automations screen. */
+export interface AutomationMonitor {
+  running: number;
+  completed: number;
+  failed: number;
+  paused: number;
+  lastExecution?: string;
+  averageRuntimeMs: number;
+}

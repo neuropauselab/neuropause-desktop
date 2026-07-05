@@ -95,6 +95,27 @@ export class AutomationStore {
     return rule;
   }
 
+  /** All active rules — the runner's working set. */
+  activeRules(): AutomationRule[] {
+    this.load();
+    return this.rules.filter((r) => r.status === 'active');
+  }
+
+  /** Record the outcome of a run onto the rule (lastRun). Returns the rule. */
+  async recordRun(
+    id: string,
+    result: { at: string; ok: boolean; message?: string },
+  ): Promise<AutomationRule | null> {
+    this.load();
+    const rule = this.rules.find((r) => r.id === id);
+    if (!rule) return null;
+    rule.lastRun = result;
+    rule.updatedAt = result.at;
+    if (!result.ok) rule.status = 'error';
+    await this.persist();
+    return rule;
+  }
+
   /** Delete a rule. Returns true if something was removed. */
   async remove(id: string): Promise<boolean> {
     this.load();

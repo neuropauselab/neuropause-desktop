@@ -91,6 +91,8 @@ import {
   type ExecutiveCenterSnapshot,
   type ExecutiveDecision,
   type AutomationRule,
+  type AutomationMonitor,
+  type AutomationRunRecord,
   type VoiceResponse,
   type RecommendationQuery,
   type RecommendationSet,
@@ -663,6 +665,11 @@ export const ipc = {
       }>,
     remove: (id: string) =>
       invoke(IpcChannel.AutomationRemove, { id }) as Promise<{ removed: boolean }>,
+    run: (id: string) =>
+      invoke(IpcChannel.AutomationRun, { id }) as Promise<{ record: AutomationRunRecord | null }>,
+    monitor: () => invoke(IpcChannel.AutomationMonitor) as Promise<{ monitor: AutomationMonitor }>,
+    history: () =>
+      invoke(IpcChannel.AutomationHistory) as Promise<{ records: AutomationRunRecord[] }>,
   },
 
   recommendations: {
