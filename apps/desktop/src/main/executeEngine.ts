@@ -24,7 +24,7 @@ const log = createLogger('execute-engine');
 export type ExecutionExecutor = (
   req: ExecutionRequest,
   ctx: { setStep: (index: number) => void },
-) => Promise<{ ok: boolean; summary?: string; error?: string }>;
+) => Promise<{ ok: boolean; summary?: string; result?: unknown; error?: string }>;
 
 export interface ExecuteEngineDeps {
   publish?: (input: {
@@ -76,6 +76,7 @@ export class ExecuteEngine {
       durationMs: null,
       error: null,
       resultSummary: null,
+      result: null,
     };
     if (session.steps[0]) session.steps[0].state = 'running';
     this.sessions.set(id, session);
@@ -104,6 +105,7 @@ export class ExecuteEngine {
         res.ok,
         res.ok ? (res.summary ?? null) : null,
         res.ok ? null : (res.error ?? 'Execution failed'),
+        res.ok ? (res.result ?? null) : null,
       );
     } catch (err) {
       this.finish(
@@ -123,11 +125,13 @@ export class ExecuteEngine {
     ok: boolean,
     summary: string | null,
     error: string | null,
+    result: unknown = null,
   ): void {
     session.state = ok ? 'completed' : 'failed';
     session.completedAt = new Date(this.now()).toISOString();
     session.durationMs = this.now() - startedMs;
     session.resultSummary = summary;
+    session.result = result;
     session.error = error;
     session.steps.forEach((s) => {
       if (s.state === 'running' || s.state === 'queued') s.state = ok ? 'completed' : 'failed';

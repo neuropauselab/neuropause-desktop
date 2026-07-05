@@ -50,7 +50,24 @@ function stateDot(state: ExecutionState): string {
   }
 }
 
-type ExecMode = 'task' | 'automation' | 'decision';
+type ExecMode = 'task' | 'automation' | 'decision' | 'memory' | 'voice' | 'executive' | 'runtime';
+
+/** How each mode collects its argument. */
+const MODE_INPUT: Record<ExecMode, 'text' | 'target' | 'none'> = {
+  task: 'text',
+  memory: 'text',
+  voice: 'text',
+  automation: 'target',
+  decision: 'target',
+  executive: 'none',
+  runtime: 'none',
+};
+
+const MODE_PLACEHOLDER: Partial<Record<ExecMode, string>> = {
+  task: "e.g. Summarize today's activity, draft the investor update…",
+  memory: 'e.g. what did I work on yesterday, find the investor deck…',
+  voice: 'Type a voice command, e.g. "open the executive center"…',
+};
 
 interface PickTarget {
   id: string;
@@ -131,19 +148,18 @@ export function ExecutePanel(): JSX.Element {
 
   const execute = async (): Promise<void> => {
     if (running) return;
+    const inputType = MODE_INPUT[mode];
     let req: ExecutionRequest | null = null;
-    if (mode === 'task') {
+    if (inputType === 'text') {
       const text = task.trim();
       if (!text) return;
-      req = { kind: 'task', input: text };
-    } else if (mode === 'automation') {
+      req = { kind: mode, input: text };
+    } else if (inputType === 'target') {
       if (!selected) return;
-      req = { kind: 'automation', targetId: selected };
-    } else if (mode === 'decision') {
-      if (!selected) return;
-      req = { kind: 'decision', targetId: selected };
+      req = { kind: mode, targetId: selected };
+    } else {
+      req = { kind: mode };
     }
-    if (!req) return;
     setRunning(true);
     setError(null);
     setResult(null);
@@ -158,7 +174,12 @@ export function ExecutePanel(): JSX.Element {
     }
   };
 
-  const canExecute = mode === 'task' ? task.trim().length > 0 : selected.length > 0;
+  const canExecute =
+    MODE_INPUT[mode] === 'text'
+      ? task.trim().length > 0
+      : MODE_INPUT[mode] === 'target'
+        ? selected.length > 0
+        : true;
 
   const statCells = useMemo(
     () =>
@@ -185,14 +206,24 @@ export function ExecutePanel(): JSX.Element {
         <span className="text-xs text-faint">One pipeline for every execution.</span>
       </div>
 
-      <div className="mb-2.5 inline-flex rounded-lg border border-[var(--hairline)] [background:var(--fill-2)] p-0.5">
-        {(['task', 'automation', 'decision'] as ExecMode[]).map((m) => (
+      <div className="mb-2.5 flex flex-wrap gap-1 rounded-lg border border-[var(--hairline)] [background:var(--fill-2)] p-0.5">
+        {(
+          [
+            'task',
+            'automation',
+            'decision',
+            'memory',
+            'voice',
+            'executive',
+            'runtime',
+          ] as ExecMode[]
+        ).map((m) => (
           <button
             key={m}
             type="button"
             onClick={() => setMode(m)}
             className={cn(
-              'rounded-md px-3 py-1 text-xs font-medium capitalize transition',
+              'rounded-md px-2.5 py-1 text-xs font-medium capitalize transition',
               mode === m ? 'bg-white text-black' : 'text-white/50 hover:text-white',
             )}
           >
@@ -202,19 +233,19 @@ export function ExecutePanel(): JSX.Element {
       </div>
 
       <div className="flex items-center gap-2">
-        {mode === 'task' ? (
+        {MODE_INPUT[mode] === 'text' ? (
           <input
             value={task}
             onChange={(e) => setTask(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') void execute();
             }}
-            placeholder="e.g. Summarize today's activity, draft the investor update, find open risks…"
-            aria-label="Task to execute"
+            placeholder={MODE_PLACEHOLDER[mode] ?? 'Enter input…'}
+            aria-label={`${mode} input`}
             disabled={running}
             className="min-w-0 flex-1 rounded-xl border border-[var(--hairline)] [background:var(--fill-2)] px-3 py-2.5 text-sm text-ink outline-none placeholder:text-faint focus-visible:shadow-focus disabled:opacity-60"
           />
-        ) : (
+        ) : MODE_INPUT[mode] === 'target' ? (
           <select
             value={selected}
             onChange={(e) => setSelected(e.target.value)}
@@ -233,6 +264,12 @@ export function ExecutePanel(): JSX.Element {
               ))
             )}
           </select>
+        ) : (
+          <div className="flex-1 rounded-xl border border-[var(--hairline)] [background:var(--fill-2)] px-3 py-2.5 text-sm text-faint">
+            {mode === 'executive'
+              ? 'Compose a fresh executive snapshot'
+              : 'Run a system-health snapshot'}
+          </div>
         )}
         <button
           type="button"

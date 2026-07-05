@@ -896,6 +896,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     return {
       ok: true,
       summary: res.executiveSummary ?? res.clarification ?? 'Completed',
+      result: res,
     };
   });
   executeEngine.register('automation', async (req, ctx) => {
@@ -912,6 +913,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       ok: record.ok,
       summary: record.ok ? `${record.actions.length} action(s) run` : undefined,
       error: record.ok ? undefined : (record.error ?? 'Automation failed'),
+      result: record,
     };
   });
   executeEngine.register('decision', async (req, ctx) => {
@@ -923,9 +925,49 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       return { ok: false, error: `Decision is ${decision.status} — no forward action` };
     }
     ctx.setStep(1);
-    await decisionStore.setStatus(decision.id, next.to, new Date().toISOString());
+    const updated = await decisionStore.setStatus(decision.id, next.to, new Date().toISOString());
     ctx.setStep(2);
-    return { ok: true, summary: `${next.label} → ${next.to}` };
+    return { ok: true, summary: `${next.label} → ${next.to}`, result: updated };
+  });
+  // V5.6: memory / voice / executive / runtime executors — each orchestrates the
+  // existing subsystem callable, preserves the full typed output, and reports steps.
+  executeEngine.register('memory', async (req, ctx) => {
+    ctx.setStep(1);
+    const result = await memoryStore.recall({ text: req.input?.trim() || undefined, limit: 50 });
+    return {
+      ok: true,
+      summary: `${result.total} ${result.total === 1 ? 'memory' : 'memories'} found`,
+      result,
+    };
+  });
+  executeEngine.register('voice', async (req) => {
+    if (!req.input?.trim()) return { ok: false, error: 'No voice command provided' };
+    const response = voice.answer(req.input.trim());
+    return {
+      ok: true,
+      summary: response.speech || 'Responded',
+      result: response,
+    };
+  });
+  executeEngine.register('executive', async (_req, ctx) => {
+    ctx.setStep(1);
+    const snapshot = await executiveCenter.snapshot();
+    return {
+      ok: true,
+      summary: snapshot.executiveSummary
+        ? `Executive score ${snapshot.executiveSummary.executiveScore}/100`
+        : 'Executive snapshot composed',
+      result: snapshot,
+    };
+  });
+  executeEngine.register('runtime', async (_req, ctx) => {
+    ctx.setStep(1);
+    const snapshot = await neuroCore.snapshot();
+    return {
+      ok: true,
+      summary: `System health ${snapshot.score}/100 (${snapshot.level})`,
+      result: snapshot,
+    };
   });
 
   defs.push({

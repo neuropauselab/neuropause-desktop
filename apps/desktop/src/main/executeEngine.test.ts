@@ -88,3 +88,71 @@ describe('computeExecutionStats (V5.4)', () => {
     expect(stats.averageRuntimeMs).toBeNull();
   });
 });
+
+import { ExecuteEngine } from './executeEngine';
+
+describe('ExecuteEngine class (V5.4/V5.6)', () => {
+  it('runs a registered executor and preserves the typed result', async () => {
+    const engine = new ExecuteEngine();
+    engine.register('memory', async () => ({
+      ok: true,
+      summary: '3 memories found',
+      result: { hits: [1, 2, 3], total: 3 },
+    }));
+    const s = await engine.execute({ kind: 'memory', input: 'yesterday' });
+    expect(s.state).toBe('completed');
+    expect(s.resultSummary).toBe('3 memories found');
+    expect(s.result).toEqual({ hits: [1, 2, 3], total: 3 });
+    // Landed in history, cleared from active.
+    expect(engine.getHistory().some((h) => h.id === s.id)).toBe(true);
+    expect(engine.activeSessions()).toHaveLength(0);
+  });
+
+  it('fails cleanly when no executor is registered for the kind', async () => {
+    const engine = new ExecuteEngine();
+    const s = await engine.execute({ kind: 'connector' });
+    expect(s.state).toBe('failed');
+    expect(s.error).toContain('No executor registered');
+  });
+
+  it('marks a session failed when the executor throws', async () => {
+    const engine = new ExecuteEngine();
+    engine.register('runtime', async () => {
+      throw new Error('boom');
+    });
+    const s = await engine.execute({ kind: 'runtime' });
+    expect(s.state).toBe('failed');
+    expect(s.error).toBe('boom');
+  });
+
+  it('reports registered kinds and computes stats', async () => {
+    const engine = new ExecuteEngine();
+    engine.register('executive', async () => ({ ok: true, summary: 'ok' }));
+    engine.register('runtime', async () => ({ ok: false, error: 'nope' }));
+    await engine.execute({ kind: 'executive' });
+    await engine.execute({ kind: 'runtime' });
+    expect(engine.registeredKinds().sort()).toEqual(['executive', 'runtime']);
+    const stats = engine.stats();
+    expect(stats.completed).toBe(1);
+    expect(stats.failed).toBe(1);
+    expect(stats.successRate).toBe(50);
+  });
+
+  it('cancels a running session (cooperative)', async () => {
+    const engine = new ExecuteEngine();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    engine.register('task', async () => {
+      await gate;
+      return { ok: true, summary: 'done' };
+    });
+    const running = engine.execute({ kind: 'task', input: 'x' });
+    // While pending, it should be an active session and cancellable.
+    const active = engine.activeSessions();
+    expect(active).toHaveLength(1);
+    const cancelled = engine.cancel(active[0].id);
+    expect(cancelled?.state).toBe('cancelled');
+    release();
+    await running;
+  });
+});

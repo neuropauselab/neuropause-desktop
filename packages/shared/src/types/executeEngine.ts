@@ -66,6 +66,8 @@ export interface ExecutionSession {
   error: string | null;
   /** Compact result summary for the dashboard. */
   resultSummary: string | null;
+  /** Full structured output preserved for the API (V5.6). Dashboard uses summary. */
+  result: unknown | null;
 }
 
 /** Aggregate stats for the Execute dashboard. */
