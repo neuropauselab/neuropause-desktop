@@ -37,12 +37,13 @@ export const componentContracts: ComponentContract[] = [
     name: 'Card',
     file: 'components/ui/Card.tsx',
     variants: {
+      variant: ['raised', 'flat', 'hairline', 'glass', 'floating', 'dashboard'],
       surface: ['base', 'raised', 'glass'],
       elevation: ['card', 'pop', 'glass'],
     },
     modifiers: ['interactive', 'flush'],
     notes:
-      "Defaults surface='raised' + elevation='card' preserve the prior appearance exactly; interactive adds hover lift; flush removes padding.",
+      'A.3: `variant` is a complete surface preset reproducing real styles verbatim (raised=default historical Card, flat=Executive cards, hairline=Decision/Org panels, glass/floating=overlays, dashboard=dense KPI). Legacy surface/elevation retained for backward-compat. Defaults render byte-identically.',
   },
   {
     name: 'EmptyState',

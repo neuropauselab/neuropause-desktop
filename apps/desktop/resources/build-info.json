@@ -1,8 +1,8 @@
 {
-  "backendUrl": "https://api.neuropause033.com",
+  "backendUrl": null,
   "connectorClientIds": {},
   "version": "1.0.0-rc.1",
   "channel": "beta",
-  "commit": "1bd0068",
-  "buildTime": "2026-07-04T07:02:13.056Z"
+  "commit": "be39052",
+  "buildTime": "2026-07-05T04:19:21.654Z"
 }

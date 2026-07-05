@@ -10,6 +10,7 @@ import { cn } from '@renderer/lib/cn';
 import { formatRelative } from '@renderer/lib/format';
 import { useShell } from '@renderer/state/ShellProvider';
 import { Icon } from '@renderer/components/ui/Icon';
+import { Card } from '@renderer/components/ui/Card';
 import { EmptyState } from '@renderer/components/ui/EmptyState';
 import { Spinner } from '@renderer/components/Spinner';
 import { OpsPanel } from '../operations/primitives';
@@ -155,9 +156,12 @@ export function ExecutiveCenterPanel(): JSX.Element {
       </div>
 
       {/* Section cards. Bold lives in the KPI strip; cards stay quiet + scannable. */}
+      {/* NPDS A.3: migrated to <Card variant="flat"> — reproduces the prior inline
+          surface (rounded-2xl border-white/5 bg-white/[0.02]) verbatim; flush + p-4
+          preserve the exact prior padding. Pixel-identical to the hand-rolled shell. */}
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
         {cards.map((card) => (
-          <section key={card.key} className="rounded-2xl border border-white/5 bg-white/[0.02] p-4">
+          <Card key={card.key} variant="flat" flush className="p-4">
             <header className="mb-3 flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-semibold tracking-tight">{card.title}</h3>
@@ -211,7 +215,7 @@ export function ExecutiveCenterPanel(): JSX.Element {
                 )}
               </ul>
             )}
-          </section>
+          </Card>
         ))}
       </div>
     </OpsPanel>

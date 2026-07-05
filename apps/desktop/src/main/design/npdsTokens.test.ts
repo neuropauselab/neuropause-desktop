@@ -67,11 +67,18 @@ describe('NPDS theme + contracts (executed in main scope)', () => {
     expect(button?.modifiers).toContain('loading');
   });
 
-  it('Card contract documents the A.2 surface + elevation variants', () => {
+  it('Card contract documents the A.3 variant catalog + legacy props', () => {
     const card = componentContracts.find((c) => c.name === 'Card');
+    expect(card?.variants?.variant).toEqual([
+      'raised',
+      'flat',
+      'hairline',
+      'glass',
+      'floating',
+      'dashboard',
+    ]);
+    // Backward-compat: legacy A.2 props retained.
     expect(card?.variants?.surface).toEqual(['base', 'raised', 'glass']);
-    expect(card?.variants?.elevation).toEqual(['card', 'pop', 'glass']);
-    // Backward-compat: interactive/flush remain.
     expect(card?.modifiers).toContain('interactive');
   });
 

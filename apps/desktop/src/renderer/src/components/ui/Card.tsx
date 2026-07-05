@@ -6,13 +6,44 @@ interface CardProps extends HTMLAttributes<HTMLDivElement> {
   interactive?: boolean;
   /** Removes default padding when you need full control of the interior. */
   flush?: boolean;
-  /** Surface material. Default 'raised' preserves the existing appearance. */
+  /**
+   * Complete surface preset. Each variant reproduces an existing hand-rolled
+   * surface style VERBATIM, so screens can migrate with zero visual change.
+   * Default 'raised' is the historical Card appearance (surface-raised + shadow-card).
+   * When set, `variant` fully defines the surface and takes precedence over the
+   * legacy `surface`/`elevation` props below.
+   */
+  variant?: CardVariant;
+  /** @deprecated Legacy A.2 prop; use `variant`. Retained for backward-compat. */
   surface?: 'base' | 'raised' | 'glass';
-  /** Resting shadow. Default 'card' preserves the existing appearance. */
+  /** @deprecated Legacy A.2 prop; use `variant`. Retained for backward-compat. */
   elevation?: 'card' | 'pop' | 'glass';
   children?: ReactNode;
 }
 
+export type CardVariant = 'raised' | 'flat' | 'hairline' | 'glass' | 'floating' | 'dashboard';
+
+/**
+ * Each variant's COMPLETE class string — reproducing a real surface used in the
+ * app today. Padding is applied separately (respecting `flush`), so these define
+ * only radius/border/background/shadow. Verified against the actual inline styles:
+ *   - raised    → the standard Card (surface-raised + shadow-card)
+ *   - flat      → Executive Center section cards (border-white/5 + bg-white/[0.02])
+ *   - hairline  → Decision/Org panels (hairline border + fill-1, no shadow)
+ *   - glass     → floating translucent panels (glass material + glass shadow)
+ *   - floating  → glass + stronger pop shadow (menus/popovers)
+ *   - dashboard → flat surface tuned for dense KPI grids (rounded-xl)
+ */
+const VARIANT_CLASS: Record<CardVariant, string> = {
+  raised: 'surface-raised rounded-2xl shadow-card',
+  flat: 'rounded-2xl border border-white/5 bg-white/[0.02]',
+  hairline: 'rounded-2xl border border-[var(--hairline)] [background:var(--fill-1)]',
+  glass: 'glass rounded-2xl shadow-glass',
+  floating: 'glass rounded-2xl shadow-pop',
+  dashboard: 'rounded-xl border border-white/5 bg-white/[0.02]',
+};
+
+// Legacy A.2 maps retained so existing surface/elevation callers keep working.
 const SURFACE_CLASS: Record<NonNullable<CardProps['surface']>, string> = {
   base: 'surface-base',
   raised: 'surface-raised',
@@ -29,18 +60,24 @@ const ELEVATION_CLASS: Record<NonNullable<CardProps['elevation']>, string> = {
 export function Card({
   interactive = false,
   flush = false,
-  surface = 'raised',
-  elevation = 'card',
+  variant,
+  surface,
+  elevation,
   className,
   children,
   ...rest
 }: CardProps): JSX.Element {
+  // Precedence: an explicit `variant` fully defines the surface. Otherwise fall
+  // back to the legacy surface/elevation props (defaulting to the historical
+  // raised Card), so every existing caller renders byte-identically.
+  const surfaceClasses = variant
+    ? VARIANT_CLASS[variant]
+    : cn(SURFACE_CLASS[surface ?? 'raised'], 'rounded-2xl', ELEVATION_CLASS[elevation ?? 'card']);
+
   return (
     <div
       className={cn(
-        SURFACE_CLASS[surface],
-        'rounded-2xl',
-        ELEVATION_CLASS[elevation],
+        surfaceClasses,
         !flush && 'p-5',
         interactive &&
           'cursor-pointer transition duration-150 ease-emphasized hover:-translate-y-0.5 hover:shadow-pop active:translate-y-0',
