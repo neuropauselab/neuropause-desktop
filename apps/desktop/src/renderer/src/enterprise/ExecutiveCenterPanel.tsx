@@ -94,6 +94,10 @@ export function ExecutiveCenterPanel(): JSX.Element {
   const [snapshot, setSnapshot] = useState<ExecutiveCenterSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // V3.4 decision flow: track per-recommendation action state locally so the card
+  // reflects Accept/Dismiss immediately without refetching the whole snapshot.
+  const [recAction, setRecAction] = useState<Record<string, 'accepted' | 'dismissed'>>({});
+  const [busyRec, setBusyRec] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -116,6 +120,29 @@ export function ExecutiveCenterPanel(): JSX.Element {
 
   const go = (deepLink: string | undefined): void => {
     setSection(deepLinkToSection(deepLink));
+  };
+
+  // V3.4 — Accept a recommendation as a decision (reuses the V3.3 decision IPC;
+  // no duplicate business logic — the engine builds the decision server-side).
+  const acceptDecision = async (recommendationId: string): Promise<void> => {
+    setBusyRec(recommendationId);
+    try {
+      const { decision } = await ipc.decisions.createFromRecommendation(recommendationId);
+      if (decision) {
+        setRecAction((prev) => ({ ...prev, [recommendationId]: 'accepted' }));
+        // Refresh the snapshot so the Decisions section reflects the new decision.
+        const s = await ipc.intelligence.executiveCenterSnapshot();
+        setSnapshot(s);
+      }
+    } catch {
+      /* leave the card actionable; a transient failure shouldn't block retry */
+    } finally {
+      setBusyRec(null);
+    }
+  };
+
+  const dismissRec = (recommendationId: string): void => {
+    setRecAction((prev) => ({ ...prev, [recommendationId]: 'dismissed' }));
   };
 
   if (loading) {
@@ -304,46 +331,96 @@ export function ExecutiveCenterPanel(): JSX.Element {
             Recommendations
           </h3>
           <div className="grid gap-3 lg:grid-cols-2">
-            {snapshot.recommendations.slice(0, 6).map((r) => {
-              const tone: OpsTone =
-                r.priority === 'critical'
-                  ? 'red'
-                  : r.priority === 'high'
-                    ? 'orange'
-                    : r.priority === 'medium'
-                      ? 'blue'
-                      : 'gray';
-              return (
-                <Card key={r.id} variant="flat" flush className="p-3.5">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <Icon name={r.icon as never} className="h-4 w-4 text-white/60" />
-                      <span className="text-xs font-semibold">{r.problem}</span>
+            {snapshot.recommendations
+              .filter((r) => recAction[r.id] !== 'dismissed')
+              .slice(0, 6)
+              .map((r) => {
+                const tone: OpsTone =
+                  r.priority === 'critical'
+                    ? 'red'
+                    : r.priority === 'high'
+                      ? 'orange'
+                      : r.priority === 'medium'
+                        ? 'blue'
+                        : 'gray';
+                return (
+                  <Card key={r.id} variant="flat" flush className="p-3.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Icon name={r.icon as never} className="h-4 w-4 text-white/60" />
+                        <span className="text-xs font-semibold">{r.problem}</span>
+                      </div>
+                      <span
+                        className={cn(
+                          'shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase',
+                          TINT_TONE[tone],
+                          TEXT_TONE[tone],
+                        )}
+                      >
+                        {r.priority}
+                      </span>
                     </div>
-                    <span
-                      className={cn(
-                        'shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase',
-                        TINT_TONE[tone],
-                        TEXT_TONE[tone],
+                    <p className="mt-1.5 text-xs text-white/55">{r.businessImpact}</p>
+                    <p className="mt-1.5 text-xs text-white/70">
+                      <span className="text-white/40">Action: </span>
+                      {r.recommendedAction}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-white/40">
+                      <span>{Math.round(r.confidence * 100)}% confidence</span>
+                      <span>{r.owner}</span>
+                      <span>ETA {r.eta}</span>
+                      {r.evidence[0] && <span>{r.evidence.slice(0, 2).join(' · ')}</span>}
+                    </div>
+                    {/* V3.4 Decision Flow — reuse the V3.3 decision IPC. */}
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      {recAction[r.id] === 'accepted' ? (
+                        <span
+                          className={cn(
+                            'inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium',
+                            TINT_TONE['green'],
+                            TEXT_TONE['green'],
+                          )}
+                        >
+                          <Icon name="check" className="h-3 w-3" /> Decision created
+                        </span>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => void acceptDecision(r.id)}
+                            disabled={busyRec === r.id}
+                            aria-label={`Accept decision: ${r.recommendedAction}`}
+                            aria-busy={busyRec === r.id || undefined}
+                            className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-[11px] font-semibold text-accent-fg transition hover:bg-accent-hover focus:outline-none focus-visible:shadow-focus disabled:opacity-50"
+                          >
+                            {busyRec === r.id ? (
+                              <Spinner size={12} />
+                            ) : (
+                              <Icon name="check" className="h-3 w-3" />
+                            )}
+                            Accept decision
+                          </button>
+                          <button
+                            onClick={() =>
+                              go(r.metric === 'governance' ? 'notifications' : undefined)
+                            }
+                            aria-label={`Investigate: ${r.problem}`}
+                            className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium text-white/60 transition hover:bg-white/5 hover:text-white/80 focus:outline-none focus-visible:shadow-focus"
+                          >
+                            <Icon name="search" className="h-3 w-3" /> Investigate
+                          </button>
+                          <button
+                            onClick={() => dismissRec(r.id)}
+                            aria-label={`Dismiss recommendation: ${r.problem}`}
+                            className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium text-white/50 transition hover:bg-white/5 hover:text-white/70 focus:outline-none focus-visible:shadow-focus"
+                          >
+                            Dismiss
+                          </button>
+                        </>
                       )}
-                    >
-                      {r.priority}
-                    </span>
-                  </div>
-                  <p className="mt-1.5 text-xs text-white/55">{r.businessImpact}</p>
-                  <p className="mt-1.5 text-xs text-white/70">
-                    <span className="text-white/40">Action: </span>
-                    {r.recommendedAction}
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-white/40">
-                    <span>{Math.round(r.confidence * 100)}% confidence</span>
-                    <span>{r.owner}</span>
-                    <span>ETA {r.eta}</span>
-                    {r.evidence[0] && <span>{r.evidence.slice(0, 2).join(' · ')}</span>}
-                  </div>
-                </Card>
-              );
-            })}
+                    </div>
+                  </Card>
+                );
+              })}
           </div>
         </div>
       )}

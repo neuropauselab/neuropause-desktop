@@ -88,6 +88,7 @@ import {
   type BriefingPeriod,
   type Briefing,
   type ExecutiveCenterSnapshot,
+  type ExecutiveDecision,
   type VoiceResponse,
   type RecommendationQuery,
   type RecommendationSet,
@@ -618,6 +619,18 @@ export const ipc = {
       invoke(IpcChannel.ExecutiveCenterSnapshot) as Promise<ExecutiveCenterSnapshot>,
     voiceTurn: (transcript: string, displayName?: string) =>
       invoke(IpcChannel.VoiceTurn, { transcript, displayName }) as Promise<VoiceResponse>,
+  },
+
+  decisions: {
+    list: () => invoke(IpcChannel.DecisionList) as Promise<{ decisions: ExecutiveDecision[] }>,
+    createFromRecommendation: (recommendationId: string) =>
+      invoke(IpcChannel.DecisionCreateFromRecommendation, {
+        recommendationId,
+      }) as Promise<{ decision: ExecutiveDecision | null }>,
+    setStatus: (id: string, status: ExecutiveDecision['status']) =>
+      invoke(IpcChannel.DecisionSetStatus, { id, status }) as Promise<{
+        decision: ExecutiveDecision | null;
+      }>,
   },
 
   recommendations: {
