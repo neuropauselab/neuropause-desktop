@@ -103,4 +103,44 @@ export class HealthHistoryStore {
     }
     return best;
   }
+
+  /**
+   * Rich stats for a metric over the trailing `days` window (V3.1). Pure over the
+   * already-loaded points — no extra persistence, no I/O. Returns null when there
+   * are no points in the window. `metric` selects overall vs engineering.
+   */
+  windowStats(
+    days: number,
+    metric: 'overall' | 'engineering',
+    nowMs: number = Date.now(),
+  ): {
+    values: number[];
+    current: number;
+    windowStart: number;
+    movingAverage: number;
+    highest: number;
+    lowest: number;
+    stddev: number;
+    count: number;
+  } | null {
+    this.load();
+    if (this.points.length === 0) return null;
+    const cutoff = nowMs - days * 86_400_000;
+    const inWindow = this.points.filter((p) => new Date(p.day).getTime() >= cutoff);
+    if (inWindow.length === 0) return null;
+    const values = inWindow.map((p) => p[metric]);
+    const sum = values.reduce((a, b) => a + b, 0);
+    const mean = sum / values.length;
+    const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length;
+    return {
+      values,
+      current: values[values.length - 1],
+      windowStart: values[0],
+      movingAverage: Math.round(mean),
+      highest: Math.max(...values),
+      lowest: Math.min(...values),
+      stddev: Math.sqrt(variance),
+      count: values.length,
+    };
+  }
 }

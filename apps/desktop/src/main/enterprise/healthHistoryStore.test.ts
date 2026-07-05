@@ -66,4 +66,40 @@ describe('HealthHistoryStore', () => {
     }
     expect(store.all().length).toBeLessThanOrEqual(90);
   });
+
+  it('windowStats returns null with no points in the window', () => {
+    const now = Date.UTC(2026, 0, 31);
+    expect(store.windowStats(30, 'overall', now)).toBeNull();
+  });
+
+  it('windowStats computes avg/high/low/current over the window', async () => {
+    const now = Date.UTC(2026, 1, 1);
+    await store.record(40, 40, now - 20 * DAY);
+    await store.record(60, 60, now - 10 * DAY);
+    await store.record(50, 50, now); // today, current
+    const s = store.windowStats(30, 'overall', now)!;
+    expect(s).not.toBeNull();
+    expect(s.count).toBe(3);
+    expect(s.current).toBe(50);
+    expect(s.highest).toBe(60);
+    expect(s.lowest).toBe(40);
+    expect(s.movingAverage).toBe(50);
+    expect(s.windowStart).toBe(40);
+  });
+
+  it('windowStats excludes points older than the window', async () => {
+    const now = Date.UTC(2026, 1, 1);
+    await store.record(10, 10, now - 40 * DAY); // outside 30d
+    await store.record(70, 70, now - 5 * DAY); // inside
+    const s = store.windowStats(30, 'overall', now)!;
+    expect(s.count).toBe(1);
+    expect(s.lowest).toBe(70);
+  });
+
+  it('windowStats stddev is 0 for a flat series (stable)', async () => {
+    const now = Date.UTC(2026, 1, 1);
+    for (let i = 5; i >= 0; i--) await store.record(80, 80, now - i * DAY);
+    const s = store.windowStats(30, 'overall', now)!;
+    expect(s.stddev).toBe(0);
+  });
 });

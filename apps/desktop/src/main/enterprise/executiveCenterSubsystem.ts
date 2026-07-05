@@ -13,6 +13,7 @@ import { buildOrgIntelligenceItems, collectOrgHealthInputs } from './orgIntellig
 import { composeExecutiveSnapshot, type TimelineEntryLite } from './executiveCenter';
 import { getEnterpriseTimeline } from '../timeline';
 import { healthHistoryStore } from './healthHistoryInstance';
+import type { MonthlyTrend } from '@neuropause/shared';
 
 const log = createLogger('executive-center');
 
@@ -35,25 +36,86 @@ function recentTimeline(): TimelineEntryLite[] {
   }));
 }
 
+/** Derive a MonthlyTrend for one metric from the store's 30-day windowStats. Pure. */
+function monthlyTrendFor(
+  key: MonthlyTrend['key'],
+  label: string,
+  metric: 'overall' | 'engineering',
+  current: number,
+): MonthlyTrend | null {
+  const s = healthHistoryStore.windowStats(30, metric);
+  if (!s) return null;
+  const monthAgo = s.windowStart;
+  const delta = current - monthAgo;
+  const percentChange = monthAgo === 0 ? 0 : Math.round((delta / monthAgo) * 100);
+  const direction: MonthlyTrend['direction'] = delta > 1 ? 'up' : delta < -1 ? 'down' : 'flat';
+  // Stability: low spread relative to the average ⇒ stable.
+  const stability: MonthlyTrend['stability'] = s.stddev <= 5 ? 'stable' : 'volatile';
+  // Confidence grows with datapoint count over the window.
+  const confidence: MonthlyTrend['confidence'] =
+    s.count >= 20 ? 'high' : s.count >= 7 ? 'medium' : 'low';
+  return {
+    key,
+    label,
+    current,
+    monthAgo,
+    delta,
+    percentChange,
+    direction,
+    movingAverage: s.movingAverage,
+    highest: s.highest,
+    lowest: s.lowest,
+    stability,
+    sparkline: s.values,
+    confidence,
+  };
+}
+
 export function initExecutiveCenter(): ExecutiveCenterSubsystem {
   const snapshot = (): ExecutiveCenterSnapshot => {
+    // Record today's datapoint FIRST (one per calendar day; last write wins) so the
+    // monthly-trends source sees today's value as "current". Compute the current
+    // scores once from the same inputs the composer will use.
+    const nowMs = Date.now();
+    const curInputs = collectOrgHealthInputs(nowMs);
+    // computeOrgHealth is what the composer uses; import lazily via the composer's
+    // own path would duplicate — instead record after compose but read current from
+    // the freshly-composed snapshot (below), and expose monthly via a closure that
+    // captures it. Simpler: compose first, then the monthly source reads the snap.
+    let composed: ExecutiveCenterSnapshot | null = null;
     const snap = composeExecutiveSnapshot({
-      now: () => new Date(),
+      now: () => new Date(nowMs),
       founderItems: () => buildFounderProactiveItems('morning'),
       orgItems: () => buildOrgIntelligenceItems(),
-      orgHealthInputs: (nowMs) => collectOrgHealthInputs(nowMs),
+      orgHealthInputs: () => curInputs,
       timelineEntries: () => recentTimeline(),
-      // V3.0: feed last week's health from the persisted history store so Weekly
+      // V2.9: feed last week's health from the persisted history store so Weekly
       // Trends is live. Returns null until ≥1 older datapoint exists.
       previousWeek: () => {
-        const p = healthHistoryStore.valueAround(7);
+        const p = healthHistoryStore.valueAround(7, nowMs);
         return p ? { overall: p.overall, engineering: p.engineering } : null;
       },
+      // V3.1: rich 30-day trends from the SAME store (no new persistence). Uses the
+      // current composed scores as "current" and the store window for history.
+      monthlyTrends: () => {
+        const cur = composed?.orgHealth;
+        const trends = [
+          monthlyTrendFor('overall', 'Organization Health', 'overall', cur?.overall ?? 0),
+          monthlyTrendFor(
+            'engineering',
+            'Engineering Health',
+            'engineering',
+            cur?.engineering ?? 0,
+          ),
+        ].filter((t): t is MonthlyTrend => t !== null);
+        return trends.length > 0 ? trends : undefined;
+      },
     });
-    // Record today's datapoint (one per calendar day; last write wins). Fire-and-
-    // forget — persistence failure must never break the snapshot response.
+    composed = snap;
+    // Record today's datapoint. Fire-and-forget — persistence failure must never
+    // break the snapshot response.
     void healthHistoryStore
-      .record(snap.orgHealth.overall, snap.orgHealth.engineering)
+      .record(snap.orgHealth.overall, snap.orgHealth.engineering, nowMs)
       .catch((err) => log.warn('health-history record failed', { err: String(err) }));
     return snap;
   };

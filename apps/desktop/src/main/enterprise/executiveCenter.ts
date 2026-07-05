@@ -19,6 +19,7 @@ import {
   type ExecutiveKpi,
   type ExecutiveCenterSnapshot,
   type ExecutiveTrend,
+  type MonthlyTrend,
   type IntelligenceItem,
   type OrgHealthInputs,
   type OrgHealthScores,
@@ -34,6 +35,8 @@ export interface ExecutiveCenterSources {
   timelineEntries?: (nowMs: number) => TimelineEntryLite[];
   /** V2.9: last week's org-health overall/engineering for Weekly Trends (optional). */
   previousWeek?: () => { overall: number; engineering: number } | null;
+  /** V3.1: rich 30-day monthly trends, computed from the history store (optional). */
+  monthlyTrends?: () => MonthlyTrend[] | undefined;
 }
 
 /** The minimal timeline fields the composer reads (kept local; no new dep). */
@@ -239,6 +242,8 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
       ]
     : undefined;
 
+  const monthlyTrends = sources.monthlyTrends?.();
+
   return {
     generatedAt,
     kpis: buildKpis(scores, inputs),
@@ -312,5 +317,6 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
       evidenceItems.length === 0 ? 'No evidence to summarize' : undefined,
     ),
     weeklyTrends,
+    monthlyTrends,
   };
 }

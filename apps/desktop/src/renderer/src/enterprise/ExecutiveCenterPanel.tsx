@@ -47,6 +47,41 @@ function priorityTone(p: IntelligenceItem['priority']): OpsTone {
   }
 }
 
+/** A tiny inline sparkline (pure SVG, no dependency). Reuses NPDS tone colors. */
+function Sparkline({ values, tone }: { values: number[]; tone: OpsTone }): JSX.Element | null {
+  if (values.length < 2) return null;
+  const w = 96;
+  const h = 28;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const pts = values
+    .map((v, i) => {
+      const x = (i / (values.length - 1)) * w;
+      const y = h - ((v - min) / span) * h;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(' ');
+  const stroke =
+    tone === 'green'
+      ? 'rgb(var(--c-green))'
+      : tone === 'red'
+        ? 'rgb(var(--c-pink))'
+        : 'rgb(var(--text-3))';
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="shrink-0" aria-hidden="true">
+      <polyline
+        points={pts}
+        fill="none"
+        stroke={stroke}
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 /**
  * The Executive Intelligence Center.
  *
@@ -180,6 +215,53 @@ export function ExecutiveCenterPanel(): JSX.Element {
               </span>
             );
           })}
+        </div>
+      )}
+
+      {/* Monthly Trends (V3.1) — rich 30-day view per metric: direction, %, moving
+          average, range, stability, confidence, and a sparkline. Reuses Card flat
+          variant + tone system. Renders only when history exists. */}
+      {snapshot.monthlyTrends && snapshot.monthlyTrends.length > 0 && (
+        <div className="mt-4">
+          <h3 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-white/50">
+            30-Day Trends
+          </h3>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {snapshot.monthlyTrends.map((m) => {
+              const tone: OpsTone =
+                m.direction === 'up' ? 'green' : m.direction === 'down' ? 'red' : 'gray';
+              const arrow = m.direction === 'up' ? '↑' : m.direction === 'down' ? '↓' : '→';
+              const sign = m.percentChange > 0 ? '+' : '';
+              return (
+                <Card key={m.key} variant="flat" flush className="p-3.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-white/70">{m.label}</span>
+                    <span
+                      className={cn(
+                        'inline-flex items-center gap-1 text-xs font-semibold tabular-nums',
+                        TEXT_TONE[tone],
+                      )}
+                    >
+                      {arrow} {sign}
+                      {m.percentChange}%
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-end justify-between gap-3">
+                    <span className="text-2xl font-semibold tabular-nums">{m.current}</span>
+                    <Sparkline values={m.sparkline} tone={tone} />
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-white/40">
+                    <span>avg {m.movingAverage}</span>
+                    <span>
+                      range {m.lowest}–{m.highest}
+                    </span>
+                    <span>{m.stability}</span>
+                    <span>{m.confidence} confidence</span>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
         </div>
       )}
 

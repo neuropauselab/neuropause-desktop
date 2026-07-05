@@ -36,6 +36,29 @@ export interface ExecutiveTrend {
   direction: 'up' | 'down' | 'flat';
 }
 
+/** A rich 30-day trend for a metric (V3.1 — Monthly Executive Trends). */
+export interface MonthlyTrend {
+  key: string;
+  label: string;
+  current: number;
+  /** Value ~30 days ago (closest available). */
+  monthAgo: number;
+  delta: number;
+  /** Percentage change vs monthAgo (0 when monthAgo is 0). */
+  percentChange: number;
+  direction: 'up' | 'down' | 'flat';
+  /** Mean over the window. */
+  movingAverage: number;
+  highest: number;
+  lowest: number;
+  /** 'stable' | 'volatile' — based on spread around the average. */
+  stability: 'stable' | 'volatile';
+  /** Ordered oldest→newest values for a sparkline. */
+  sparkline: number[];
+  /** 'low' | 'medium' | 'high' — grows with the number of datapoints. */
+  confidence: 'low' | 'medium' | 'high';
+}
+
 export interface ExecutiveCard {
   key: string;
   title: string;
@@ -67,6 +90,8 @@ export interface ExecutiveCenterSnapshot {
   evidenceSummary?: ExecutiveCard;
   /** Weekly trend deltas for the KPI-style header (STEP 3). */
   weeklyTrends?: ExecutiveTrend[];
+  /** Rich 30-day trends per metric (V3.1). */
+  monthlyTrends?: MonthlyTrend[];
   /** Count of items by priority, for the "what requires attention" glance. */
   attentionCounts: { critical: number; high: number; normal: number };
 }
