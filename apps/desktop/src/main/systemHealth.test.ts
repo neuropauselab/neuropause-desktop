@@ -20,6 +20,14 @@ function inputs(over: Partial<SystemHealthInputs> = {}): SystemHealthInputs {
     automation: { completed: 5, failed: 0, paused: 1, running: 0 },
     voice: 'idle',
     backendConnected: true,
+    telemetry: {
+      cpuPercent: 12,
+      memoryUsedMb: 180,
+      memoryTotalMb: 400,
+      processUptimeMs: 60_000,
+      backendLatencyMs: 20,
+      backendState: 'connected',
+    },
     ...over,
   };
 }
@@ -51,12 +59,63 @@ describe('composeSystemHealth (V5.0)', () => {
   });
 
   it('drops to critical when the backend is disconnected', () => {
-    const s = composeSystemHealth(inputs({ backendConnected: false }));
+    const s = composeSystemHealth(
+      inputs({
+        telemetry: {
+          cpuPercent: 5,
+          memoryUsedMb: 100,
+          memoryTotalMb: 400,
+          processUptimeMs: 1000,
+          backendLatencyMs: null,
+          backendState: 'disconnected',
+        },
+      }),
+    );
     expect(s.level).toBe('critical');
     expect(s.score).toBeLessThan(100);
     const backend = s.subsystems.find((x) => x.id === 'backend');
     expect(backend?.level).toBe('critical');
-    expect(backend?.detail).toBe('Disconnected');
+  });
+
+  it('shows backend recovering as degraded', () => {
+    const s = composeSystemHealth(
+      inputs({
+        telemetry: {
+          cpuPercent: 5,
+          memoryUsedMb: 100,
+          memoryTotalMb: 400,
+          processUptimeMs: 1000,
+          backendLatencyMs: null,
+          backendState: 'recovering',
+        },
+      }),
+    );
+    expect(s.subsystems.find((x) => x.id === 'backend')?.level).toBe('degraded');
+  });
+
+  it('degrades runtime under memory pressure', () => {
+    const s = composeSystemHealth(
+      inputs({
+        telemetry: {
+          cpuPercent: 5,
+          memoryUsedMb: 380,
+          memoryTotalMb: 400,
+          processUptimeMs: 1000,
+          backendLatencyMs: 10,
+          backendState: 'connected',
+        },
+      }),
+    );
+    // 95% memory → runtime critical.
+    expect(s.subsystems.find((x) => x.id === 'runtime')?.level).toBe('critical');
+  });
+
+  it('carries real telemetry through to the snapshot', () => {
+    const s = composeSystemHealth(inputs());
+    expect(s.telemetry.cpuPercent).toBe(12);
+    expect(s.telemetry.memoryUsedMb).toBe(180);
+    expect(s.telemetry.backendLatencyMs).toBe(20);
+    expect(s.subsystems.find((x) => x.id === 'backend')?.detail).toBe('20ms');
   });
 
   it('marks automation degraded on partial failures', () => {

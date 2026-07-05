@@ -85,7 +85,13 @@ export type PlatformEventType =
   | 'system.ready'
   // automation (V4.8)
   | 'automation.completed'
-  | 'automation.failed';
+  | 'automation.failed'
+  // runtime telemetry (V5.1)
+  | 'runtime.backend.connected'
+  | 'runtime.backend.disconnected'
+  | 'runtime.voice.changed'
+  | 'runtime.health.changed'
+  | 'runtime.memory.warning';
 
 /** Who or what caused the event. */
 export interface EventActor {

@@ -24,6 +24,19 @@ export interface SubsystemHealth {
   detail?: string;
 }
 
+/** Backend connectivity state (V5.1 live probe). */
+export type BackendState = 'connected' | 'disconnected' | 'recovering' | 'failed';
+
+/** Real process/runtime telemetry (V5.1). */
+export interface RuntimeTelemetry {
+  cpuPercent: number;
+  memoryUsedMb: number;
+  memoryTotalMb: number;
+  processUptimeMs: number;
+  backendLatencyMs: number | null;
+  backendState: BackendState;
+}
+
 /** The composed system-health snapshot NeuroCore exposes. */
 export interface SystemHealthSnapshot {
   generatedAt: string;
@@ -46,6 +59,8 @@ export interface SystemHealthSnapshot {
     running: number;
   };
   voice: VoiceRuntimeState;
+  /** Real OS/runtime telemetry (V5.1). */
+  telemetry: RuntimeTelemetry;
 }
 
 /** Inputs the composer needs — each already produced by an existing subsystem. */
@@ -69,6 +84,8 @@ export interface SystemHealthInputs {
   voice: VoiceRuntimeState;
   /** Backend reachability (from the runtime service). */
   backendConnected: boolean;
+  /** Real OS/runtime telemetry (V5.1). */
+  telemetry: RuntimeTelemetry;
 }
 
 /** Map a platform DiagnosticStatus onto the system health level. Pure. */
@@ -122,16 +139,35 @@ export function composeSystemHealth(input: SystemHealthInputs): SystemHealthSnap
         ? 'degraded'
         : 'healthy';
 
-  const backendLevel: SystemHealthLevel = input.backendConnected ? 'healthy' : 'critical';
-  // Runtime is a function of backend + platform (the core loop).
-  const runtimeLevel = worstLevel(platformLevel, backendLevel);
+  const backendLevel: SystemHealthLevel =
+    input.telemetry.backendState === 'connected'
+      ? 'healthy'
+      : input.telemetry.backendState === 'recovering'
+        ? 'degraded'
+        : input.telemetry.backendState === 'disconnected'
+          ? 'critical'
+          : 'offline';
+  // Runtime is a function of backend + platform (the core loop), and degrades
+  // under memory pressure (>85% of the sampled heap/rss budget).
+  const memPct =
+    input.telemetry.memoryTotalMb > 0
+      ? input.telemetry.memoryUsedMb / input.telemetry.memoryTotalMb
+      : 0;
+  const memoryLevel: SystemHealthLevel =
+    memPct > 0.9 ? 'critical' : memPct > 0.75 ? 'degraded' : 'healthy';
+  const runtimeLevel = worstLevel(worstLevel(platformLevel, backendLevel), memoryLevel);
 
   const subsystems: SubsystemHealth[] = [
     {
       id: 'runtime',
       label: 'Runtime',
       level: runtimeLevel,
-      detail: input.backendConnected ? undefined : 'Backend unreachable',
+      detail:
+        memoryLevel !== 'healthy'
+          ? `Memory ${Math.round(memPct * 100)}%`
+          : input.telemetry.backendState !== 'connected'
+            ? 'Backend unreachable'
+            : undefined,
     },
     { id: 'platform', label: 'Platform bus', level: platformLevel },
     {
@@ -145,7 +181,12 @@ export function composeSystemHealth(input: SystemHealthInputs): SystemHealthSnap
       id: 'backend',
       label: 'Backend',
       level: backendLevel,
-      detail: input.backendConnected ? undefined : 'Disconnected',
+      detail:
+        input.telemetry.backendState === 'connected'
+          ? input.telemetry.backendLatencyMs !== null
+            ? `${input.telemetry.backendLatencyMs}ms`
+            : undefined
+          : input.telemetry.backendState,
     },
   ];
 
@@ -170,5 +211,6 @@ export function composeSystemHealth(input: SystemHealthInputs): SystemHealthSnap
     },
     automation: input.automation,
     voice: input.voice,
+    telemetry: input.telemetry,
   };
 }

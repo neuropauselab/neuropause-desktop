@@ -82,7 +82,15 @@ export function RuntimeHealthPanel(): JSX.Element | null {
         </div>
         <div className="text-right text-[11px] text-white/40">
           <div>Uptime {fmtUptime(health.uptimeMs)}</div>
-          <div>{health.throughput.eventsPerMinute}/min events</div>
+          <div>
+            CPU {health.telemetry.cpuPercent}% · RAM {health.telemetry.memoryUsedMb}MB
+          </div>
+          <div>
+            {health.throughput.eventsPerMinute}/min ·{' '}
+            {health.telemetry.backendLatencyMs !== null
+              ? `${health.telemetry.backendLatencyMs}ms API`
+              : 'API —'}
+          </div>
         </div>
       </div>
 

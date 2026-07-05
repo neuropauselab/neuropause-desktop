@@ -761,8 +761,18 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     diagnostics: () => platform.diagnostics(),
     automationMonitor: () => getAutomationMonitor(),
     voiceState: () => 'idle',
-    backendConnected: () => true,
     startedAtMs: Date.now(),
+    publish: (input) =>
+      platform.api.publish({
+        type: input.type as Parameters<typeof platform.api.publish>[0]['type'],
+        category: input.category as Parameters<typeof platform.api.publish>[0]['category'],
+        source: input.source,
+        actor: { kind: 'system', id: null },
+        priority: (input.priority ?? 'normal') as Parameters<
+          typeof platform.api.publish
+        >[0]['priority'],
+        metadata: input.metadata,
+      }),
   });
   defs.push({
     channel: IpcChannel.SystemHealthSnapshot,
