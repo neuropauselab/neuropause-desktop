@@ -243,6 +243,7 @@ import type {
   LicenseValidationStatus,
   LicenseState,
   BillingPlanId,
+  Device,
   OnboardingStatus,
   OnboardingStepId,
   FeedbackCategory,
@@ -1376,6 +1377,15 @@ export const ipc = {
         subscriptionId: string;
         checkoutUrl: string;
       }>,
+  },
+
+  devices: {
+    /** Register THIS device against the org (identity assembled main-side) (V6.5). */
+    registerCurrent: (orgId: string) =>
+      invoke(IpcChannel.DevicesRegister, { orgId }) as Promise<{ device: Device }>,
+    list: (orgId: string) => invoke(IpcChannel.DevicesList, { orgId }) as Promise<Device[]>,
+    revoke: (orgId: string, deviceId: string) =>
+      invoke(IpcChannel.DevicesRevoke, { orgId, deviceId }) as Promise<{ device: Device }>,
   },
 
   onboarding: {

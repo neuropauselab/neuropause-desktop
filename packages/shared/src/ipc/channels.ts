@@ -129,6 +129,10 @@ export const IpcChannel = {
   LicenseReportHealth: 'license:reportHealth',
   /** Create a Razorpay subscription checkout for an org+plan (V6.4). */
   BillingCheckout: 'billing:checkout',
+  /** Register this device, list an org's devices, revoke a device (V6.5). */
+  DevicesRegister: 'devices:register',
+  DevicesList: 'devices:list',
+  DevicesRevoke: 'devices:revoke',
   SupervisorHistory: 'supervisor:history',
   SupervisorRecover: 'supervisor:recover',
   SupervisorSetPolicy: 'supervisor:setPolicy',
@@ -570,6 +574,9 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.SupervisorStatus,
   IpcChannel.LicenseReportHealth,
   IpcChannel.BillingCheckout,
+  IpcChannel.DevicesRegister,
+  IpcChannel.DevicesList,
+  IpcChannel.DevicesRevoke,
   IpcChannel.SupervisorHistory,
   IpcChannel.SupervisorRecover,
   IpcChannel.SupervisorSetPolicy,

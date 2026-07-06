@@ -43,6 +43,9 @@ import {
   ExecuteCancelRequest,
   LicenseReportHealthRequest,
   BillingCheckoutRequest,
+  DevicesRegisterRequest,
+  DevicesListRequest,
+  DevicesRevokeRequest,
   primaryNextStatus,
   recoverInterrupted,
   SlugRequest,
@@ -116,6 +119,7 @@ import {
 } from './voiceRuntimeState';
 import { getLicenseRuntimeState, setLicenseRuntimeState } from './licenseRuntimeState';
 import { billingClient } from './billing/billingClient';
+import { deviceClient } from './devices/deviceClient';
 import { initVoice } from './voice/voiceSubsystem';
 import { initExecutiveDelivery } from './services/executiveDelivery';
 import { initRecommendations } from './recommendations';
@@ -860,6 +864,29 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       const result = await billingClient.checkout(p.orgId, p.plan, p.seats);
       if (result.checkoutUrl) void shell.openExternal(result.checkoutUrl);
       return result;
+    },
+  });
+
+  // V6.5: device trust. The device identity is assembled main-side (livesync id +
+  // OS/arch + app version); the renderer supplies the active org. Membership +
+  // authorization are enforced server-side (reusing the org membership check).
+  defs.push({
+    channel: IpcChannel.DevicesRegister,
+    schema: DevicesRegisterRequest,
+    handler: (payload: unknown) =>
+      deviceClient.registerCurrent((payload as { orgId: string }).orgId),
+  });
+  defs.push({
+    channel: IpcChannel.DevicesList,
+    schema: DevicesListRequest,
+    handler: (payload: unknown) => deviceClient.list((payload as { orgId: string }).orgId),
+  });
+  defs.push({
+    channel: IpcChannel.DevicesRevoke,
+    schema: DevicesRevokeRequest,
+    handler: (payload: unknown) => {
+      const p = payload as { orgId: string; deviceId: string };
+      return deviceClient.revoke(p.orgId, p.deviceId);
     },
   });
 

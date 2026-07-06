@@ -54,6 +54,13 @@ export const ExecuteRunRequest = z
 
 export const ExecuteCancelRequest = z.object({ id: z.string().max(200) }).strict();
 
+// V6.5 — device trust: register this device / list / revoke.
+export const DevicesRegisterRequest = z.object({ orgId: z.string().min(1) }).strict();
+export const DevicesListRequest = z.object({ orgId: z.string().min(1) }).strict();
+export const DevicesRevokeRequest = z
+  .object({ orgId: z.string().min(1), deviceId: z.string().min(1) })
+  .strict();
+
 // V6.4 — create a subscription checkout for an org + plan.
 export const BillingCheckoutRequest = z
   .object({

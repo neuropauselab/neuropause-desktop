@@ -34,6 +34,11 @@ function loadOrCreateDeviceId(): string {
   return id;
 }
 
+/** The stable per-install device id (persisted under userData). Idempotent. */
+export function getDeviceId(): string {
+  return loadOrCreateDeviceId();
+}
+
 let activeOrgId: string | null = null;
 
 /** Set from the renderer when the active cloud org changes (null when signed out). */

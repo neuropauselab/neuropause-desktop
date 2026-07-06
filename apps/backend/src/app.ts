@@ -10,6 +10,8 @@ import { createAuthRouter } from './auth/router';
 import { createStoreRouter } from './store/router';
 import { createOrganizationsRouter } from './organizations/router';
 import { createPgOrgRepository } from './organizations/repository';
+import { createDevicesRouter } from './devices/router';
+import { createPgDeviceRepository } from './devices/repository';
 import { createBillingRouter } from './billing/router';
 import { createBillingWebhookHandler } from './billing/webhookHandler';
 import { createLicenseRouter } from './license/router';
@@ -100,6 +102,11 @@ export function createApp(): Express {
     return m && m.status === 'active' ? m.role : null;
   };
   app.use('/organizations', requireAuth, createOrganizationsRouter(orgRepo));
+  app.use(
+    '/devices',
+    requireAuth,
+    createDevicesRouter({ repo: createPgDeviceRepository(), getMemberRole }),
+  );
   const subscriptionRepo = createPgSubscriptionRepository();
   app.use(
     '/billing',
