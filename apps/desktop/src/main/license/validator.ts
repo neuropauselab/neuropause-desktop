@@ -40,12 +40,22 @@ export function createLicenseValidator(opts: {
   let data = emptyData();
   let loaded = false;
   const lastErrors = new Map<string, string>();
+  // Serialize persists so concurrent refresh() calls (e.g. StrictMode double-invoke,
+  // or multiple views) can't race on a shared temp path — the same ENOENT-on-rename
+  // fix proven in HealthHistoryStore/ExecutionStore.
+  let writeChain: Promise<void> = Promise.resolve();
 
-  async function persist(): Promise<void> {
-    const tmp = `${opts.filePath}.tmp`;
+  async function writeNow(): Promise<void> {
+    const tmp = `${opts.filePath}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
     await fs.mkdir(dirname(opts.filePath), { recursive: true });
     await fs.writeFile(tmp, JSON.stringify(data), { mode: 0o600 });
     await fs.rename(tmp, opts.filePath);
+  }
+
+  function persist(): Promise<void> {
+    const run = writeChain.then(() => writeNow());
+    writeChain = run.catch(() => {});
+    return run;
   }
 
   async function ensureLoaded(): Promise<void> {

@@ -53,6 +53,16 @@ describe('createLicenseValidator', () => {
     await fs.rm(`${filePath}.tmp`, { force: true });
   });
 
+  it('survives concurrent refreshes without a temp-file race (ENOENT regression)', async () => {
+    // Multiple orgs refreshed in parallel previously raced on a shared .tmp path,
+    // producing "ENOENT: rename license-status.json.tmp". Must not throw, and a
+    // reload must see a valid, fully-written file.
+    await Promise.all(Array.from({ length: 20 }, (_, i) => validator.refresh(`org-${i}`)));
+    const reloaded = createLicenseValidator({ filePath, transport, now: () => clock });
+    await reloaded.load();
+    expect(reloaded.getStatus('org-0').source).toBe('cache');
+  });
+
   it('reports none when nothing is stored', () => {
     const s = validator.getStatus('org-1');
     expect(s).toMatchObject({ source: 'none', snapshot: null, evaluation: null, checkedAt: null });

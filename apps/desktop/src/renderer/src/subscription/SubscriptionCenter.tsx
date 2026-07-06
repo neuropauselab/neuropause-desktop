@@ -302,7 +302,6 @@ export function SubscriptionCenter(): JSX.Element {
             {SOURCE_LABEL[status?.source ?? 'none']}
           </span>
           {status?.checkedAt && <span>· Last validated {fmtDate(status.checkedAt)}</span>}
-          {status?.lastError && <span className="text-white/70">· {status.lastError}</span>}
         </div>
       </div>
 
