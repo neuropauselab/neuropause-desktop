@@ -17,6 +17,7 @@ export * from './types/sync';
 export * from './types/featureFlags';
 export * from './types/license';
 export * from './types/device';
+export * from './types/memorySync';
 export * from './types/onboarding';
 export * from './types/feedback';
 export * from './types/pilot';
