@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!--
+    Inherited entitlements for Electron helper processes (Renderer / GPU /
+    Utility / Plugin helpers). Under Hardened Runtime these child executables
+    each need the JIT-capable, writable-executable code region that V8 requires,
+    and must be able to load the native modules that are signed separately.
+
+    These are code-signing capabilities only — NOT network or device
+    permissions. The main app's network client/server entitlements live in
+    entitlements.mac.plist; helpers do not need them.
+  -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+</dict>
+</plist>
