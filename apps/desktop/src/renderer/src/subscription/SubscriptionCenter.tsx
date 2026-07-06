@@ -139,14 +139,14 @@ export function SubscriptionCenter(): JSX.Element {
     return () => window.removeEventListener('focus', onFocus);
   }, [load]);
 
-  const upgrade = async (plan: BillingPlanId): Promise<void> => {
+  const upgrade = async (plan: BillingPlanId, seats?: number): Promise<void> => {
     if (!org || checkingOut) return;
     setCheckingOut(true);
     setCheckoutError(null);
     try {
       // Opens the Razorpay hosted checkout in the browser (main-side). Card data
       // never touches the desktop; the backend + webhook finalize the subscription.
-      await ipc.billing.checkout(org.orgId, plan);
+      await ipc.billing.checkout(org.orgId, plan, seats);
     } catch (e) {
       setCheckoutError(e instanceof Error ? e.message : 'Could not start checkout');
     } finally {
@@ -339,7 +339,7 @@ export function SubscriptionCenter(): JSX.Element {
             </div>
             <button
               type="button"
-              onClick={() => void upgrade('professional')}
+              onClick={() => void upgrade('professional', 1)}
               disabled={checkingOut}
               className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-xs font-semibold text-black hover:opacity-90 disabled:opacity-50"
             >
