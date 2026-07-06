@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
+  BillingPlanId,
   CloudOrganizationSummary,
   FeatureFlagState,
   LicenseSource,
@@ -90,6 +91,9 @@ export function SubscriptionCenter(): JSX.Element {
   const [orgName, setOrgName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  // Upgrade / checkout (V6.4)
+  const [checkingOut, setCheckingOut] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -126,6 +130,29 @@ export function SubscriptionCenter(): JSX.Element {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // When the user returns from the Razorpay checkout (window regains focus),
+  // re-check the license — the webhook may have activated the subscription.
+  useEffect(() => {
+    const onFocus = (): void => void load();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [load]);
+
+  const upgrade = async (plan: BillingPlanId): Promise<void> => {
+    if (!org || checkingOut) return;
+    setCheckingOut(true);
+    setCheckoutError(null);
+    try {
+      // Opens the Razorpay hosted checkout in the browser (main-side). Card data
+      // never touches the desktop; the backend + webhook finalize the subscription.
+      await ipc.billing.checkout(org.orgId, plan);
+    } catch (e) {
+      setCheckoutError(e instanceof Error ? e.message : 'Could not start checkout');
+    } finally {
+      setCheckingOut(false);
+    }
+  };
 
   const createOrg = async (): Promise<void> => {
     const name = orgName.trim();
@@ -303,6 +330,30 @@ export function SubscriptionCenter(): JSX.Element {
           </span>
           {status?.checkedAt && <span>· Last validated {fmtDate(status.checkedAt)}</span>}
         </div>
+
+        {(ev?.entitledPlan ?? snap?.planTier ?? 'free') === 'free' && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--hairline)] [background:var(--fill-2)] p-3">
+            <div className="text-xs text-white/70">
+              <span className="font-medium text-ink">Upgrade to Pro</span> — unlimited AI, Cloud
+              Sync, analytics, and more.
+            </div>
+            <button
+              type="button"
+              onClick={() => void upgrade('professional')}
+              disabled={checkingOut}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-xs font-semibold text-black hover:opacity-90 disabled:opacity-50"
+            >
+              {checkingOut ? (
+                <>
+                  <Icon name="refresh" size={13} className="animate-spin" /> Opening checkout…
+                </>
+              ) : (
+                <>Upgrade — ₹999/mo</>
+              )}
+            </button>
+          </div>
+        )}
+        {checkoutError && <p className="mt-2 text-xs text-white/70">{checkoutError}</p>}
       </div>
 
       <div className="rounded-2xl border border-[var(--hairline)] [background:var(--fill-1)] p-5">

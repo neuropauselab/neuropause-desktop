@@ -242,6 +242,7 @@ import type {
   FeatureFlagKey,
   LicenseValidationStatus,
   LicenseState,
+  BillingPlanId,
   OnboardingStatus,
   OnboardingStepId,
   FeedbackCategory,
@@ -1365,6 +1366,15 @@ export const ipc = {
     reportHealth: (state: LicenseState | null, graceDaysRemaining = 0) =>
       invoke(IpcChannel.LicenseReportHealth, { state, graceDaysRemaining }) as Promise<{
         ok: boolean;
+      }>,
+  },
+
+  billing: {
+    /** Create a Razorpay subscription checkout and open the hosted page (V6.4). */
+    checkout: (orgId: string, plan: BillingPlanId, seats?: number) =>
+      invoke(IpcChannel.BillingCheckout, { orgId, plan, seats }) as Promise<{
+        subscriptionId: string;
+        checkoutUrl: string;
       }>,
   },
 

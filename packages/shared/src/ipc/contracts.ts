@@ -54,6 +54,15 @@ export const ExecuteRunRequest = z
 
 export const ExecuteCancelRequest = z.object({ id: z.string().max(200) }).strict();
 
+// V6.4 — create a subscription checkout for an org + plan.
+export const BillingCheckoutRequest = z
+  .object({
+    orgId: z.string().min(1),
+    plan: z.enum(['trial', 'starter', 'professional', 'enterprise']),
+    seats: z.number().int().min(1).max(1000).optional(),
+  })
+  .strict();
+
 // V6.1 — renderer reports license health to main (for NeuroCore). Nullable via a
 // sentinel: absent state clears the signal.
 export const LicenseReportHealthRequest = z

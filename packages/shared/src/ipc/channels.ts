@@ -127,6 +127,8 @@ export const IpcChannel = {
   SupervisorStatus: 'supervisor:status',
   /** Renderer reports commercial license health for NeuroCore (V6.1). */
   LicenseReportHealth: 'license:reportHealth',
+  /** Create a Razorpay subscription checkout for an org+plan (V6.4). */
+  BillingCheckout: 'billing:checkout',
   SupervisorHistory: 'supervisor:history',
   SupervisorRecover: 'supervisor:recover',
   SupervisorSetPolicy: 'supervisor:setPolicy',
@@ -567,6 +569,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.SystemHealthSnapshot,
   IpcChannel.SupervisorStatus,
   IpcChannel.LicenseReportHealth,
+  IpcChannel.BillingCheckout,
   IpcChannel.SupervisorHistory,
   IpcChannel.SupervisorRecover,
   IpcChannel.SupervisorSetPolicy,

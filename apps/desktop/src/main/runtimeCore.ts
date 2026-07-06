@@ -31,6 +31,7 @@ import type {
   RecoveryPolicy,
   ExecutionRequest,
   LicenseState,
+  BillingPlanId,
 } from '@neuropause/shared';
 import {
   IpcChannel,
@@ -41,6 +42,7 @@ import {
   ExecuteRunRequest,
   ExecuteCancelRequest,
   LicenseReportHealthRequest,
+  BillingCheckoutRequest,
   primaryNextStatus,
   recoverInterrupted,
   SlugRequest,
@@ -71,7 +73,7 @@ import {
   OrgWorkspaceRequest,
   OrgUpdateWorkspaceRequest,
 } from '@neuropause/shared';
-import { app } from 'electron';
+import { app, shell } from 'electron';
 import { join } from 'node:path';
 import { createLogger } from './logger';
 import { authService } from './auth/authService';
@@ -113,6 +115,7 @@ import {
   onVoiceStateChange,
 } from './voiceRuntimeState';
 import { getLicenseRuntimeState, setLicenseRuntimeState } from './licenseRuntimeState';
+import { billingClient } from './billing/billingClient';
 import { initVoice } from './voice/voiceSubsystem';
 import { initExecutiveDelivery } from './services/executiveDelivery';
 import { initRecommendations } from './recommendations';
@@ -842,6 +845,21 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         p.state === null ? null : { state: p.state, graceDaysRemaining: p.graceDaysRemaining },
       );
       return { ok: true };
+    },
+  });
+
+  // V6.4: create a Razorpay subscription checkout for an org+plan and open the
+  // hosted checkout URL. The subscription/Razorpay/webhook work is all backend —
+  // this handler only invokes the existing endpoint and opens the returned URL.
+  // The desktop never handles card data (Razorpay hosts the payment page).
+  defs.push({
+    channel: IpcChannel.BillingCheckout,
+    schema: BillingCheckoutRequest,
+    handler: async (payload: unknown) => {
+      const p = payload as { orgId: string; plan: BillingPlanId; seats?: number };
+      const result = await billingClient.checkout(p.orgId, p.plan, p.seats);
+      if (result.checkoutUrl) void shell.openExternal(result.checkoutUrl);
+      return result;
     },
   });
 
