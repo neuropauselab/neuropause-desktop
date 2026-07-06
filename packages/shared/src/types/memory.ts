@@ -19,6 +19,8 @@
  * Types-only so the main process, renderer, and tests share them.
  */
 
+import type { MemoryVersion } from './memorySync';
+
 export type MemoryKind =
   | 'decision'
   | 'conversation'
@@ -51,6 +53,27 @@ export interface MemoryEvidence {
   id: string;
 }
 
+/**
+ * Synchronization state carried by a memory that participates in org-scoped
+ * cloud sync (V6.6.2). Optional: a memory with no `sync` is local-only and never
+ * leaves the device (personal-scoped, or pre-sync legacy items before backfill).
+ * These fields are exactly what the tested `resolveMemorySync` engine needs to
+ * reconstruct a `MemorySyncState`; the append-only `history` is the whole point —
+ * edits extend it, they never overwrite.
+ */
+export interface MemorySyncFields {
+  /** The org this memory syncs within. Sync is org-scoped; personal never syncs. */
+  orgId: string;
+  /** The current head version's id. */
+  versionId: string;
+  /** The head's parent version id; null for the first version. */
+  parentVersion: string | null;
+  /** The full append-only version history (includes the head). */
+  history: MemoryVersion[];
+  /** Soft-delete tombstone — a synced delete is a version, never a hard removal. */
+  deleted: boolean;
+}
+
 export interface MemoryItem {
   id: string;
   kind: MemoryKind;
@@ -71,6 +94,12 @@ export interface MemoryItem {
   updatedAt: string;
   evidence: MemoryEvidence | null;
   metadata: MemoryMeta;
+  /**
+   * Cloud-sync state (V6.6.2). Absent = local-only (personal scope or a legacy
+   * item awaiting backfill). Present = participates in org-scoped sync with an
+   * append-only version history.
+   */
+  sync?: MemorySyncFields;
 }
 
 /** Input for explicitly remembering something. */
