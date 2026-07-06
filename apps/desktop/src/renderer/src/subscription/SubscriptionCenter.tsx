@@ -102,7 +102,10 @@ export function SubscriptionCenter(): JSX.Element {
       setOrgLoaded(true);
       if (!active) return;
 
-      const s = await ipc.license.status(active.orgId);
+      // Fetch from the backend (refresh), not the local cache (status): a brand-new
+      // org has an empty cache, but the backend treats "no subscription" as a VALID
+      // free license. refresh falls back to cache on network failure.
+      const s = await ipc.license.refresh(active.orgId);
       setStatus(s);
       // Activate the V6.1 NeuroCore license signal.
       if (s?.evaluation) {
