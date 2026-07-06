@@ -124,6 +124,46 @@ export function verifyHistoryIntegrity(history: readonly MemoryVersion[]): boole
   return true;
 }
 
+// ── Versioning primitive ──
+
+/**
+ * Produce the next version of a memory from its current head (or null for the
+ * first version) plus an edit. Pure and deterministic: it chains `parentVersion`
+ * and `previousHash` to the parent and computes this version's `contentHash`, so
+ * every write extends the append-only chain correctly. This is the primitive the
+ * store's write paths (remember/update/forget) call to "version an edit" — it does
+ * NOT persist, merge, or decide anything; it just builds a well-formed version.
+ */
+export function nextMemoryVersion(
+  parent: MemoryVersion | null,
+  change: {
+    versionId: string;
+    memoryId: string;
+    orgId: string;
+    timestamp: string;
+    deviceId: string;
+    userId: string;
+    text: string;
+    metadata: Record<string, unknown> | null;
+    deleted?: boolean;
+  },
+): MemoryVersion {
+  return {
+    versionId: change.versionId,
+    memoryId: change.memoryId,
+    orgId: change.orgId,
+    timestamp: change.timestamp,
+    deviceId: change.deviceId,
+    userId: change.userId,
+    parentVersion: parent?.versionId ?? null,
+    previousHash: parent?.contentHash ?? null,
+    contentHash: hashMemoryContent(change.text, change.metadata),
+    text: change.text,
+    metadata: change.metadata,
+    deleted: change.deleted ?? false,
+  };
+}
+
 // ── Reconciliation ──
 
 function allVersions(state: MemoryState): MemoryVersion[] {

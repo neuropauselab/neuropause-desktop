@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   hashMemoryContent,
+  nextMemoryVersion,
   resolveMemorySync,
   verifyHistoryIntegrity,
   type MemoryState,
@@ -288,5 +289,96 @@ describe('verifyHistoryIntegrity', () => {
     const v2 = child(v1, { versionId: 'v2', timestamp: '2026-07-06T10:01:00.000Z' });
     const broken = { ...v2, previousHash: 'deadbeefdeadbeef' };
     expect(verifyHistoryIntegrity([v1, broken])).toBe(false);
+  });
+});
+
+describe('nextMemoryVersion — versioning primitive', () => {
+  const base = {
+    memoryId: 'mem-1',
+    orgId: 'org-1',
+    deviceId: 'devA',
+    userId: 'user-1',
+  };
+
+  it('first version (no parent) has null parent + null previousHash', () => {
+    const v = nextMemoryVersion(null, {
+      ...base,
+      versionId: 'v1',
+      timestamp: '2026-07-06T10:00:00.000Z',
+      text: 'hello',
+      metadata: null,
+    });
+    expect(v.parentVersion).toBeNull();
+    expect(v.previousHash).toBeNull();
+    expect(v.contentHash).toBe(hashMemoryContent('hello', null));
+  });
+
+  it('child version chains parentVersion + previousHash to its parent', () => {
+    const p = nextMemoryVersion(null, {
+      ...base,
+      versionId: 'v1',
+      timestamp: '2026-07-06T10:00:00.000Z',
+      text: 'hello',
+      metadata: null,
+    });
+    const c = nextMemoryVersion(p, {
+      ...base,
+      versionId: 'v2',
+      timestamp: '2026-07-06T10:01:00.000Z',
+      text: 'hello world',
+      metadata: null,
+    });
+    expect(c.parentVersion).toBe('v1');
+    expect(c.previousHash).toBe(p.contentHash);
+    expect(c.contentHash).toBe(hashMemoryContent('hello world', null));
+  });
+
+  it('a delete edit produces a chained tombstone', () => {
+    const p = nextMemoryVersion(null, {
+      ...base,
+      versionId: 'v1',
+      timestamp: '2026-07-06T10:00:00.000Z',
+      text: 'hello',
+      metadata: null,
+    });
+    const del = nextMemoryVersion(p, {
+      ...base,
+      versionId: 'v2',
+      timestamp: '2026-07-06T10:01:00.000Z',
+      text: 'hello',
+      metadata: null,
+      deleted: true,
+    });
+    expect(del.deleted).toBe(true);
+    expect(del.parentVersion).toBe('v1');
+  });
+
+  it('output chains pass verifyHistoryIntegrity', () => {
+    const v1 = nextMemoryVersion(null, {
+      ...base,
+      versionId: 'v1',
+      timestamp: '2026-07-06T10:00:00.000Z',
+      text: 'a',
+      metadata: null,
+    });
+    const v2 = nextMemoryVersion(v1, {
+      ...base,
+      versionId: 'v2',
+      timestamp: '2026-07-06T10:01:00.000Z',
+      text: 'b',
+      metadata: { pinned: true },
+    });
+    expect(verifyHistoryIntegrity([v1, v2])).toBe(true);
+  });
+
+  it('is deterministic (same inputs → same version)', () => {
+    const args = {
+      ...base,
+      versionId: 'v1',
+      timestamp: '2026-07-06T10:00:00.000Z',
+      text: 'x',
+      metadata: { a: 1 },
+    };
+    expect(nextMemoryVersion(null, args)).toEqual(nextMemoryVersion(null, args));
   });
 });
