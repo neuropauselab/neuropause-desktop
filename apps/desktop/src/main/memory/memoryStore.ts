@@ -447,4 +447,13 @@ export class MemoryStore extends EventEmitter {
     }
     return { total, byKind, byOrigin, lastBuiltAt: this.lastBuiltAt };
   }
+
+  /**
+   * All items participating in org-scoped sync (those carrying `sync` fields),
+   * including tombstoned ones — deletions must propagate. The LiveSync bridge reads
+   * this on 'changed' to know what to enqueue, since 'changed' carries no payload.
+   */
+  syncedItems(): MemoryItem[] {
+    return [...this.items.values()].filter((it) => it.sync);
+  }
 }
