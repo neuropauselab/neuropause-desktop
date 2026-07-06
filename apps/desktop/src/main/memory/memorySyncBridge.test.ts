@@ -125,3 +125,80 @@ describe('MemoryStore.remember — org scope (V6.6.2)', () => {
     expect(state?.head.text).toBe('shared');
   });
 });
+
+describe('MemoryStore.update — append version for synced items (V6.6.2)', () => {
+  let dir: string;
+  let path: string;
+  const opened: MemoryStore[] = [];
+
+  async function open(p: string): Promise<MemoryStore> {
+    const store = new MemoryStore(p);
+    await store.load();
+    opened.push(store);
+    return store;
+  }
+
+  beforeEach(async () => {
+    dir = await fs.mkdtemp(join(tmpdir(), 'memupd-'));
+    path = join(dir, 'memory.json');
+  });
+  afterEach(async () => {
+    await Promise.all(opened.map((s) => s.flush()));
+    opened.length = 0;
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  it('synced item + actor + content change appends a new version (never overwrites)', async () => {
+    const store = await open(path);
+    const m = store.remember({ kind: 'note', title: 'A', content: 'v1 text' }, NOW, SCOPE);
+    const firstVersionId = m.sync!.versionId;
+    const updated = store.update(m.id, { content: 'v2 text' }, '2026-07-06T01:00:00.000Z', {
+      deviceId: 'devA',
+      userId: 'user-1',
+    });
+    expect(updated?.sync?.history).toHaveLength(2);
+    expect(updated?.sync?.parentVersion).toBe(firstVersionId);
+    expect(updated?.sync?.versionId).not.toBe(firstVersionId);
+    // The original version is preserved — no data loss.
+    expect(updated?.sync?.history.some((v) => v.versionId === firstVersionId)).toBe(true);
+  });
+
+  it('the appended history stays a valid integrity-checked chain', async () => {
+    const store = await open(path);
+    const m = store.remember({ kind: 'note', title: 'A', content: 'v1' }, NOW, SCOPE);
+    const updated = store.update(m.id, { content: 'v2' }, '2026-07-06T01:00:00.000Z', {
+      deviceId: 'devA',
+      userId: 'user-1',
+    });
+    expect(verifyHistoryIntegrity(updated!.sync!.history)).toBe(true);
+  });
+
+  it('synced item + actor + NO content change does not append a redundant version', async () => {
+    const store = await open(path);
+    const m = store.remember({ kind: 'note', title: 'A', content: 'same' }, NOW, SCOPE);
+    const updated = store.update(m.id, { content: 'same' }, '2026-07-06T01:00:00.000Z', {
+      deviceId: 'devA',
+      userId: 'user-1',
+    });
+    expect(updated?.sync?.history).toHaveLength(1);
+  });
+
+  it('synced item WITHOUT actor patches locally and leaves history untouched', async () => {
+    const store = await open(path);
+    const m = store.remember({ kind: 'note', title: 'A', content: 'v1' }, NOW, SCOPE);
+    const updated = store.update(m.id, { metadata: { pinned: true } }, '2026-07-06T01:00:00.000Z');
+    expect(updated?.metadata.pinned).toBe(true);
+    expect(updated?.sync?.history).toHaveLength(1); // unchanged
+  });
+
+  it('non-synced item updates in place, unchanged behavior (no sync appears)', async () => {
+    const store = await open(path);
+    const m = store.remember({ kind: 'note', title: 'A', content: 'local' }, NOW);
+    const updated = store.update(m.id, { metadata: { pinned: true } }, '2026-07-06T01:00:00.000Z', {
+      deviceId: 'devA',
+      userId: 'user-1',
+    });
+    expect(updated?.metadata.pinned).toBe(true);
+    expect(updated?.sync).toBeUndefined();
+  });
+});

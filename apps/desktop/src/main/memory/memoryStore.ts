@@ -23,7 +23,7 @@ import type {
   MemoryRecallResult,
   MemoryWriteInput,
 } from '@neuropause/shared';
-import { nextMemoryVersion } from '@neuropause/shared';
+import { hashMemoryContent, nextMemoryVersion } from '@neuropause/shared';
 import { memoryVersionPayload } from './memorySyncAdapter';
 import { createLogger } from '../logger';
 import { LexicalMemoryRetriever, type MemoryRetriever } from './memoryRetriever';
@@ -184,11 +184,17 @@ export class MemoryStore extends EventEmitter {
    * Patch an existing item's metadata (and optionally title/content), bumping
    * updatedAt. Re-indexes and persists. Returns the updated item, or null if the
    * id is unknown. Used for executive-memory pin/resolve, which only touch metadata.
+   *
+   * For an org-scoped (synced) item with an `actor`, a syncable-content change
+   * APPENDS a new version — it never overwrites history — so concurrent edits
+   * across devices can both survive under resolveMemorySync. A synced edit without
+   * an actor patches locally without versioning (see Known limitations).
    */
   update(
     id: string,
     patch: { metadata?: MemoryMeta; title?: string; content?: string },
     now = new Date().toISOString(),
+    actor?: { deviceId: string; userId: string },
   ): MemoryItem | null {
     const item = this.items.get(id);
     if (!item) return null;
@@ -199,6 +205,34 @@ export class MemoryStore extends EventEmitter {
       metadata: patch.metadata ? { ...item.metadata, ...patch.metadata } : item.metadata,
       updatedAt: now,
     };
+    if (item.sync && actor) {
+      const currentHead =
+        item.sync.history.find((v) => v.versionId === item.sync!.versionId) ?? null;
+      const payload = memoryVersionPayload(next);
+      const newHash = hashMemoryContent(payload.text, payload.metadata);
+      // Only append when the syncable content actually changed — a no-op edit
+      // shouldn't bloat history or trigger a needless re-embed.
+      if (!currentHead || newHash !== currentHead.contentHash) {
+        const version = nextMemoryVersion(currentHead, {
+          versionId: randomUUID(),
+          memoryId: id,
+          orgId: item.sync.orgId,
+          timestamp: now,
+          deviceId: actor.deviceId,
+          userId: actor.userId,
+          text: payload.text,
+          metadata: payload.metadata,
+          deleted: item.sync.deleted,
+        });
+        next.sync = {
+          orgId: item.sync.orgId,
+          versionId: version.versionId,
+          parentVersion: currentHead?.versionId ?? null,
+          history: [...item.sync.history, version],
+          deleted: item.sync.deleted,
+        };
+      }
+    }
     this.items.set(id, next);
     this.mutated(null);
     return next;
