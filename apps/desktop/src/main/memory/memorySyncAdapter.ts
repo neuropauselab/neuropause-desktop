@@ -12,7 +12,13 @@
  * createdAt, origin, evidence, connectorId, source — are NOT versioned; they're
  * device/provenance state, not shared content.
  */
-import type { MemoryItem, MemoryMeta, MemoryState, MemoryVersion } from '@neuropause/shared';
+import type {
+  MemoryItem,
+  MemoryKind,
+  MemoryMeta,
+  MemoryState,
+  MemoryVersion,
+} from '@neuropause/shared';
 
 /** The syncable content of a memory, shaped for a MemoryVersion (text + metadata). */
 export function memoryVersionPayload(item: MemoryItem): {
@@ -40,6 +46,7 @@ export function memoryVersionPayload(item: MemoryItem): {
 export function memoryFieldsFromVersion(version: MemoryVersion): {
   content: string;
   title: string;
+  kind: MemoryKind;
   tags: string[];
   entityRefs: string[];
   occurredAt: string | null;
@@ -49,6 +56,7 @@ export function memoryFieldsFromVersion(version: MemoryVersion): {
   return {
     content: version.text,
     title: typeof m.title === 'string' ? m.title : '',
+    kind: (typeof m.kind === 'string' ? m.kind : 'note') as MemoryKind,
     tags: Array.isArray(m.tags) ? (m.tags as string[]) : [],
     entityRefs: Array.isArray(m.entityRefs) ? (m.entityRefs as string[]) : [],
     occurredAt: typeof m.occurredAt === 'string' ? m.occurredAt : null,

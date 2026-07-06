@@ -21,10 +21,12 @@ import type {
   MemoryMeta,
   MemoryRecallQuery,
   MemoryRecallResult,
+  MemoryState,
+  MemorySyncResult,
   MemoryWriteInput,
 } from '@neuropause/shared';
-import { hashMemoryContent, nextMemoryVersion } from '@neuropause/shared';
-import { memoryVersionPayload } from './memorySyncAdapter';
+import { hashMemoryContent, nextMemoryVersion, resolveMemorySync } from '@neuropause/shared';
+import { memoryFieldsFromVersion, memoryVersionPayload, toSyncState } from './memorySyncAdapter';
 import { createLogger } from '../logger';
 import { LexicalMemoryRetriever, type MemoryRetriever } from './memoryRetriever';
 
@@ -221,6 +223,86 @@ export class MemoryStore extends EventEmitter {
     }
     if (n > 0) this.mutated(null);
     return n;
+  }
+
+  /**
+   * Apply a remote memory state (from another device) into the local store via the
+   * tested resolveMemorySync engine. Never overwrites — concurrent edits are kept
+   * in history and the deterministic head becomes current; a memory this device
+   * hasn't seen adopts the remote head + history. Returns the merge result, whose
+   * `requiredEmbeddings` tells the caller what to re-embed locally. Emits 'changed'
+   * so the retriever + UI refresh. NOTE: authoring is not done here — no new
+   * version is created; only existing local/remote versions are reconciled.
+   */
+  applyMerged(remote: MemoryState, now = new Date().toISOString()): MemorySyncResult {
+    const local = this.items.get(remote.memoryId);
+    const localState = local ? toSyncState(local) : null;
+
+    if (!localState) {
+      // New-to-this-device memory (or a local item without sync): adopt the remote
+      // head + full history wholesale.
+      const head = remote.history.find((v) => v.versionId === remote.head.versionId) ?? remote.head;
+      const f = memoryFieldsFromVersion(head);
+      const item: MemoryItem = {
+        id: remote.memoryId,
+        kind: f.kind,
+        origin: 'explicit',
+        title: f.title,
+        content: f.content,
+        connectorId: null,
+        source: 'manual',
+        entityRefs: f.entityRefs,
+        tags: f.tags,
+        occurredAt: f.occurredAt,
+        createdAt: remote.history[0]?.timestamp ?? now,
+        updatedAt: head.timestamp,
+        evidence: null,
+        metadata: f.metadata,
+        sync: {
+          orgId: remote.orgId,
+          versionId: head.versionId,
+          parentVersion: head.parentVersion,
+          history: remote.history,
+          deleted: head.deleted,
+        },
+      };
+      this.items.set(item.id, item);
+      this.mutated(null);
+      return {
+        memoryId: remote.memoryId,
+        winner: head,
+        history: remote.history,
+        conflict: false,
+        mergeType: 'fast_forward',
+        requiredEmbeddings: [head.versionId],
+        syncActions: [{ type: 'apply_head', versionId: head.versionId }],
+      };
+    }
+
+    const result = resolveMemorySync(localState, remote);
+    const winner = result.winner;
+    const f = memoryFieldsFromVersion(winner);
+    const next: MemoryItem = {
+      ...local!,
+      kind: f.kind,
+      title: f.title,
+      content: f.content,
+      entityRefs: f.entityRefs,
+      tags: f.tags,
+      occurredAt: f.occurredAt,
+      metadata: f.metadata,
+      updatedAt: winner.timestamp,
+      sync: {
+        orgId: local!.sync!.orgId,
+        versionId: winner.versionId,
+        parentVersion: winner.parentVersion,
+        history: result.history,
+        deleted: winner.deleted,
+      },
+    };
+    this.items.set(remote.memoryId, next);
+    this.mutated(null);
+    return result;
   }
 
   get(id: string): MemoryItem | null {
