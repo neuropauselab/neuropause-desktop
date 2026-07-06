@@ -169,9 +169,56 @@ export class MemoryStore extends EventEmitter {
     return item;
   }
 
-  forget(ids: string[]): number {
+  /**
+   * Forget items. A local-only item is hard-deleted (unchanged behavior). A
+   * synced (org-scoped) item is SOFT-deleted: the delete becomes a new tombstone
+   * version, so the deletion propagates across devices and prior versions stay
+   * recoverable — a synced item is never physically removed here (that would lose
+   * its history). Uses `actor` for attribution, falling back to a local/system
+   * actor for programmatic deletes. Returns the number of items affected.
+   */
+  forget(
+    ids: string[],
+    now = new Date().toISOString(),
+    actor?: { deviceId: string; userId: string },
+  ): number {
     let n = 0;
-    for (const id of ids) if (this.items.delete(id)) n++;
+    const who = actor ?? { deviceId: 'local', userId: 'system' };
+    for (const id of ids) {
+      const item = this.items.get(id);
+      if (!item) continue;
+      if (item.sync) {
+        const currentHead =
+          item.sync.history.find((v) => v.versionId === item.sync!.versionId) ?? null;
+        if (currentHead?.deleted) continue; // already a tombstone — idempotent
+        const payload = memoryVersionPayload(item);
+        const version = nextMemoryVersion(currentHead, {
+          versionId: randomUUID(),
+          memoryId: id,
+          orgId: item.sync.orgId,
+          timestamp: now,
+          deviceId: who.deviceId,
+          userId: who.userId,
+          text: payload.text,
+          metadata: payload.metadata,
+          deleted: true,
+        });
+        this.items.set(id, {
+          ...item,
+          updatedAt: now,
+          sync: {
+            orgId: item.sync.orgId,
+            versionId: version.versionId,
+            parentVersion: currentHead?.versionId ?? null,
+            history: [...item.sync.history, version],
+            deleted: true,
+          },
+        });
+        n++;
+      } else if (this.items.delete(id)) {
+        n++;
+      }
+    }
     if (n > 0) this.mutated(null);
     return n;
   }
@@ -270,6 +317,7 @@ export class MemoryStore extends EventEmitter {
     const until = q.until ? Date.parse(q.until) : null;
 
     const passes = (it: MemoryItem): boolean => {
+      if (it.sync?.deleted) return false; // tombstoned — excluded from recall
       if (kinds && !kinds.has(it.kind)) return false;
       if (q.entityRef && !it.entityRefs.includes(q.entityRef)) return false;
       if (q.tag && !it.tags.includes(q.tag)) return false;
@@ -308,10 +356,13 @@ export class MemoryStore extends EventEmitter {
   counts(): MemoryCounts {
     const byKind: Record<string, number> = {};
     const byOrigin: Record<string, number> = {};
+    let total = 0;
     for (const it of this.items.values()) {
+      if (it.sync?.deleted) continue; // tombstoned — excluded from counts
+      total++;
       byKind[it.kind] = (byKind[it.kind] ?? 0) + 1;
       byOrigin[it.origin] = (byOrigin[it.origin] ?? 0) + 1;
     }
-    return { total: this.items.size, byKind, byOrigin, lastBuiltAt: this.lastBuiltAt };
+    return { total, byKind, byOrigin, lastBuiltAt: this.lastBuiltAt };
   }
 }

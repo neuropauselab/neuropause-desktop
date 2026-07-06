@@ -202,3 +202,88 @@ describe('MemoryStore.update — append version for synced items (V6.6.2)', () =
     expect(updated?.sync).toBeUndefined();
   });
 });
+
+describe('MemoryStore.forget — soft-delete for synced items (V6.6.2)', () => {
+  let dir: string;
+  let path: string;
+  const opened: MemoryStore[] = [];
+  const ACTOR = { deviceId: 'devA', userId: 'user-1' };
+
+  async function open(p: string): Promise<MemoryStore> {
+    const store = new MemoryStore(p);
+    await store.load();
+    opened.push(store);
+    return store;
+  }
+
+  beforeEach(async () => {
+    dir = await fs.mkdtemp(join(tmpdir(), 'memdel-'));
+    path = join(dir, 'memory.json');
+  });
+  afterEach(async () => {
+    await Promise.all(opened.map((s) => s.flush()));
+    opened.length = 0;
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  it('soft-deletes a synced item: it stays as a tombstone, not removed', async () => {
+    const store = await open(path);
+    const m = store.remember({ kind: 'note', title: 'A', content: 'shared' }, NOW, SCOPE);
+    const firstVersionId = m.sync!.versionId;
+    const n = store.forget([m.id], '2026-07-06T02:00:00.000Z', ACTOR);
+    expect(n).toBe(1);
+    const still = store.get(m.id);
+    expect(still).not.toBeNull();
+    expect(still?.sync?.deleted).toBe(true);
+    expect(still?.sync?.history).toHaveLength(2);
+    // The pre-delete version is preserved — recoverable, no data loss.
+    expect(still?.sync?.history.some((v) => v.versionId === firstVersionId && !v.deleted)).toBe(
+      true,
+    );
+  });
+
+  it('the tombstone is a valid chained delete version', async () => {
+    const store = await open(path);
+    const m = store.remember({ kind: 'note', title: 'A', content: 'shared' }, NOW, SCOPE);
+    store.forget([m.id], '2026-07-06T02:00:00.000Z', ACTOR);
+    const t = store.get(m.id)!;
+    const head = t.sync!.history.find((v) => v.versionId === t.sync!.versionId)!;
+    expect(head.deleted).toBe(true);
+    expect(verifyHistoryIntegrity(t.sync!.history)).toBe(true);
+  });
+
+  it('soft-deletes even without an actor (system fallback preserves history)', async () => {
+    const store = await open(path);
+    const m = store.remember({ kind: 'note', title: 'A', content: 'shared' }, NOW, SCOPE);
+    store.forget([m.id], '2026-07-06T02:00:00.000Z');
+    const still = store.get(m.id);
+    expect(still?.sync?.deleted).toBe(true);
+    expect(still?.sync?.history).toHaveLength(2);
+  });
+
+  it('hard-deletes a local-only item, unchanged behavior', async () => {
+    const store = await open(path);
+    const m = store.remember({ kind: 'note', title: 'A', content: 'local' }, NOW);
+    store.forget([m.id], '2026-07-06T02:00:00.000Z', ACTOR);
+    expect(store.get(m.id)).toBeNull();
+  });
+
+  it('tombstoned memory is excluded from recall and counts', async () => {
+    const store = await open(path);
+    const keep = store.remember({ kind: 'note', title: 'Keep', content: 'alpha' }, NOW, SCOPE);
+    const drop = store.remember({ kind: 'note', title: 'Drop', content: 'beta' }, NOW, SCOPE);
+    store.forget([drop.id], '2026-07-06T02:00:00.000Z', ACTOR);
+    const recalled = store.recall({ limit: 10 }).hits.map((h) => h.item.id);
+    expect(recalled).toContain(keep.id);
+    expect(recalled).not.toContain(drop.id);
+    expect(store.counts().total).toBe(1);
+  });
+
+  it('forgetting an already-tombstoned item is idempotent', async () => {
+    const store = await open(path);
+    const m = store.remember({ kind: 'note', title: 'A', content: 'shared' }, NOW, SCOPE);
+    store.forget([m.id], '2026-07-06T02:00:00.000Z', ACTOR);
+    store.forget([m.id], '2026-07-06T03:00:00.000Z', ACTOR);
+    expect(store.get(m.id)?.sync?.history).toHaveLength(2); // no duplicate tombstone
+  });
+});
