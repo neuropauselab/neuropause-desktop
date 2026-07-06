@@ -241,6 +241,7 @@ import type {
   FeatureFlagState,
   FeatureFlagKey,
   LicenseValidationStatus,
+  LicenseState,
   OnboardingStatus,
   OnboardingStepId,
   FeedbackCategory,
@@ -1360,6 +1361,11 @@ export const ipc = {
       invoke(IpcChannel.LicenseStatus, { orgId }) as Promise<LicenseValidationStatus>,
     refresh: (orgId: string) =>
       invoke(IpcChannel.LicenseRefresh, { orgId }) as Promise<LicenseValidationStatus>,
+    /** Report license health to main for NeuroCore (V6.1). Pass null state to clear. */
+    reportHealth: (state: LicenseState | null, graceDaysRemaining = 0) =>
+      invoke(IpcChannel.LicenseReportHealth, { state, graceDaysRemaining }) as Promise<{
+        ok: boolean;
+      }>,
   },
 
   onboarding: {

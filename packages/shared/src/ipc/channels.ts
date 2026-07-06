@@ -125,6 +125,8 @@ export const IpcChannel = {
   SystemHealthSnapshot: 'neurocore:systemHealth',
   /** Runtime supervisor status + history + recovery (V5.3). */
   SupervisorStatus: 'supervisor:status',
+  /** Renderer reports commercial license health for NeuroCore (V6.1). */
+  LicenseReportHealth: 'license:reportHealth',
   SupervisorHistory: 'supervisor:history',
   SupervisorRecover: 'supervisor:recover',
   SupervisorSetPolicy: 'supervisor:setPolicy',
@@ -564,6 +566,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.AutomationHistory,
   IpcChannel.SystemHealthSnapshot,
   IpcChannel.SupervisorStatus,
+  IpcChannel.LicenseReportHealth,
   IpcChannel.SupervisorHistory,
   IpcChannel.SupervisorRecover,
   IpcChannel.SupervisorSetPolicy,

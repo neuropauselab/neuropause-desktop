@@ -54,6 +54,15 @@ export const ExecuteRunRequest = z
 
 export const ExecuteCancelRequest = z.object({ id: z.string().max(200) }).strict();
 
+// V6.1 — renderer reports license health to main (for NeuroCore). Nullable via a
+// sentinel: absent state clears the signal.
+export const LicenseReportHealthRequest = z
+  .object({
+    state: z.enum(['valid', 'grace', 'invalid']).nullable(),
+    graceDaysRemaining: z.number().int().min(0).max(3660).default(0),
+  })
+  .strict();
+
 // V5.3 — runtime supervisor recovery + policy.
 export const SupervisorRecoverRequest = z
   .object({

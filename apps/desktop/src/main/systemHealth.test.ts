@@ -168,3 +168,30 @@ describe('voiceStateToRuntimeState (V5.2)', () => {
     expect(voiceStateToRuntimeState('completed')).toBe('idle');
   });
 });
+
+describe('composeSystemHealth — license subsystem (V6.1)', () => {
+  it('omits the license subsystem entirely when no signal is reported', () => {
+    const s = composeSystemHealth(inputs());
+    expect(s.subsystems.find((x) => x.id === 'license')).toBeUndefined();
+  });
+
+  it('reports a valid license as healthy', () => {
+    const s = composeSystemHealth(inputs({ license: { state: 'valid', graceDaysRemaining: 0 } }));
+    const lic = s.subsystems.find((x) => x.id === 'license');
+    expect(lic?.level).toBe('healthy');
+  });
+
+  it('reports a grace license as degraded with days remaining', () => {
+    const s = composeSystemHealth(inputs({ license: { state: 'grace', graceDaysRemaining: 3 } }));
+    const lic = s.subsystems.find((x) => x.id === 'license');
+    expect(lic?.level).toBe('degraded');
+    expect(lic?.detail).toContain('3');
+  });
+
+  it('reports an invalid license as critical and drags overall level', () => {
+    const s = composeSystemHealth(inputs({ license: { state: 'invalid', graceDaysRemaining: 0 } }));
+    const lic = s.subsystems.find((x) => x.id === 'license');
+    expect(lic?.level).toBe('critical');
+    expect(s.level).toBe('critical');
+  });
+});

@@ -30,6 +30,7 @@ import type {
   SupervisedSubsystem,
   RecoveryPolicy,
   ExecutionRequest,
+  LicenseState,
 } from '@neuropause/shared';
 import {
   IpcChannel,
@@ -39,6 +40,7 @@ import {
   SupervisorSetPolicyRequest,
   ExecuteRunRequest,
   ExecuteCancelRequest,
+  LicenseReportHealthRequest,
   primaryNextStatus,
   recoverInterrupted,
   SlugRequest,
@@ -110,6 +112,7 @@ import {
   setVoiceRuntimeState,
   onVoiceStateChange,
 } from './voiceRuntimeState';
+import { getLicenseRuntimeState, setLicenseRuntimeState } from './licenseRuntimeState';
 import { initVoice } from './voice/voiceSubsystem';
 import { initExecutiveDelivery } from './services/executiveDelivery';
 import { initRecommendations } from './recommendations';
@@ -806,6 +809,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     diagnostics: () => platform.diagnostics(),
     automationMonitor: () => getAutomationMonitor(),
     voiceState: () => getVoiceRuntimeState(),
+    licenseState: () => getLicenseRuntimeState(),
     startedAtMs: Date.now(),
     publish: publishPlatform,
   });
@@ -825,6 +829,20 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     channel: IpcChannel.SystemHealthSnapshot,
     schema: EmptyRequest,
     handler: () => neuroCore.snapshot(),
+  });
+
+  // V6.1: renderer reports license health (it holds the active org) so NeuroCore
+  // can compose it into system health without needing ambient org state in main.
+  defs.push({
+    channel: IpcChannel.LicenseReportHealth,
+    schema: LicenseReportHealthRequest,
+    handler: (payload: unknown) => {
+      const p = payload as { state: LicenseState | null; graceDaysRemaining: number };
+      setLicenseRuntimeState(
+        p.state === null ? null : { state: p.state, graceDaysRemaining: p.graceDaysRemaining },
+      );
+      return { ok: true };
+    },
   });
 
   // Runtime Supervisor (V5.3): autonomous recovery. Executors reuse existing

@@ -8,6 +8,7 @@
  * live here so they're shared + unit-tested; the wiring lives in main.
  */
 import type { DiagnosticStatus } from './platform';
+import type { LicenseState } from './license';
 
 /** Coarse health band for a subsystem or the whole system. */
 export type SystemHealthLevel = 'healthy' | 'degraded' | 'critical' | 'offline' | 'unknown';
@@ -18,7 +19,7 @@ export type VoiceRuntimeState =
 
 /** One subsystem's health line in the dashboard. */
 export interface SubsystemHealth {
-  id: 'platform' | 'automation' | 'voice' | 'runtime' | 'backend';
+  id: 'platform' | 'automation' | 'voice' | 'runtime' | 'backend' | 'license';
   label: string;
   level: SystemHealthLevel;
   detail?: string;
@@ -86,6 +87,14 @@ export interface SystemHealthInputs {
   backendConnected: boolean;
   /** Real OS/runtime telemetry (V5.1). */
   telemetry: RuntimeTelemetry;
+  /**
+   * Commercial license health (V6.1), reported by the renderer which holds the
+   * active org. Optional/nullable: when absent (not logged in, or not yet
+   * reported) the license subsystem is omitted entirely — it never contributes a
+   * false alarm, and it is deliberately NOT a supervised subsystem (an expired
+   * license is not recoverable by restarting anything).
+   */
+  license?: { state: LicenseState; graceDaysRemaining: number } | null;
 }
 
 /** Map a fine-grained voice session state to the coarse runtime state. Pure. */
@@ -211,6 +220,28 @@ export function composeSystemHealth(input: SystemHealthInputs): SystemHealthSnap
           : input.telemetry.backendState,
     },
   ];
+
+  // License (V6.1) — only when the renderer has reported a signal. Visible +
+  // scored, but not supervised (no recovery of an expired license).
+  if (input.license) {
+    const licenseLevel: SystemHealthLevel =
+      input.license.state === 'valid'
+        ? 'healthy'
+        : input.license.state === 'grace'
+          ? 'degraded'
+          : 'critical';
+    subsystems.push({
+      id: 'license',
+      label: 'License',
+      level: licenseLevel,
+      detail:
+        input.license.state === 'grace'
+          ? `Grace — ${input.license.graceDaysRemaining}d left`
+          : input.license.state === 'invalid'
+            ? 'Inactive'
+            : undefined,
+    });
+  }
 
   const score = Math.round(
     subsystems.reduce((sum, s) => sum + LEVEL_SCORE[s.level], 0) / subsystems.length,
