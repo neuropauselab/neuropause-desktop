@@ -14,6 +14,7 @@ import { useTheme } from '@renderer/providers/ThemeProvider';
 import { useAuth } from '@renderer/providers/AuthProvider';
 import { ipc } from '@renderer/lib/ipc';
 import { useScale } from '@renderer/state/ScaleProvider';
+import { SubscriptionCenter } from '@renderer/subscription/SubscriptionCenter';
 
 const THEME_OPTIONS: SegmentOption<ThemeSource>[] = [
   { value: 'system', label: 'Auto', icon: 'auto' },
@@ -179,6 +180,11 @@ export function SettingsView({ session }: { session: Session }): JSX.Element {
             </Button>
           </div>
         </Card>
+      </section>
+
+      <section className="mb-7">
+        <SectionLabel>Subscription</SectionLabel>
+        <SubscriptionCenter />
       </section>
 
       <section>

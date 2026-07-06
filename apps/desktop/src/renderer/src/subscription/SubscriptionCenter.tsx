@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
+  CloudOrganizationSummary,
   FeatureFlagState,
   LicenseSource,
   LicenseState,
@@ -10,19 +11,21 @@ import { cn } from '@renderer/lib/cn';
 import { Icon, type IconName } from '@renderer/components/ui/Icon';
 import { EmptyState } from '@renderer/components/ui/EmptyState';
 import { Skeleton } from '@renderer/components/ui/Skeleton';
-import { useCloudOrg } from '@renderer/organization/CloudOrgProvider';
 
 /**
  * Subscription Center (V6.2) — the user-facing view of the commercial platform.
  *
  * REUSES existing infrastructure and duplicates none of it: the license validator
- * (`ipc.license.status`), the feature gate (`ipc.flags.get`), and the org context
- * (`useCloudOrg`). As a side effect it reports license health to main
- * (`ipc.license.reportHealth`), which activates the V6.1 NeuroCore license signal.
+ * (ipc.license.status), the feature gate (ipc.flags.get), and the org list
+ * (ipc.org.list). It sources the active org directly via IPC rather than
+ * useCloudOrg, so it works anywhere — Settings is NOT inside CloudOrgProvider,
+ * and that hook throws outside it.
+ *
+ * As a side effect it reports license health to main (ipc.license.reportHealth),
+ * which activates the V6.1 NeuroCore license signal.
  *
  * Security: renders only commercial STATE (plan, dates, license state, flags).
- * `LicenseValidationStatus` carries no keys, tokens, or gateway secrets, and none
- * are requested here.
+ * LicenseValidationStatus carries no keys, tokens, or gateway secrets.
  */
 
 const STATE_LABEL: Record<LicenseState, string> = {
@@ -49,7 +52,6 @@ const SOURCE_LABEL: Record<LicenseSource, string> = {
   none: 'Not yet validated',
 };
 
-/** Human labels for the known feature-flag keys (falls back to the key). */
 const FEATURE_LABEL: Record<string, string> = {
   cloud_sync: 'Cloud Sync',
   automation_builder: 'Automation Builder',
@@ -77,37 +79,41 @@ function fmtDate(iso: string | null): string {
 }
 
 export function SubscriptionCenter(): JSX.Element {
-  const { activeOrg, activeOrgId } = useCloudOrg();
+  const [org, setOrg] = useState<CloudOrganizationSummary | null>(null);
+  const [orgLoaded, setOrgLoaded] = useState(false);
   const [status, setStatus] = useState<LicenseValidationStatus | null>(null);
   const [features, setFeatures] = useState<FeatureFlagState[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!activeOrgId) {
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     setError(null);
     try {
-      const s = await ipc.license.status(activeOrgId);
+      // Source the active org directly (Settings isn't under CloudOrgProvider).
+      const orgs = await ipc.org.list().catch(() => [] as CloudOrganizationSummary[]);
+      const active = orgs?.[0] ?? null;
+      setOrg(active);
+      setOrgLoaded(true);
+      if (!active) return;
+
+      const s = await ipc.license.status(active.orgId);
       setStatus(s);
-      // Activate the V6.1 NeuroCore license signal (the renderer holds the org).
+      // Activate the V6.1 NeuroCore license signal.
       if (s?.evaluation) {
         void ipc.license
           .reportHealth(s.evaluation.state, s.evaluation.graceDaysRemaining)
           .catch(() => {});
       }
       const plan = s?.evaluation?.entitledPlan ?? 'free';
-      const flags = await ipc.flags.get(plan);
+      const flags = await ipc.flags.get(plan).catch(() => [] as FeatureFlagState[]);
       setFeatures(flags ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load subscription');
     } finally {
       setLoading(false);
     }
-  }, [activeOrgId]);
+  }, []);
 
   useEffect(() => {
     void load();
@@ -124,22 +130,22 @@ export function SubscriptionCenter(): JSX.Element {
     return p.charAt(0).toUpperCase() + p.slice(1);
   }, [ev?.entitledPlan, snap?.planTier]);
 
-  if (!activeOrgId) {
-    return (
-      <EmptyState
-        icon="shield"
-        title="No organization selected"
-        description="Select or create an organization to see its subscription and license."
-      />
-    );
-  }
-
   if (loading) {
     return (
       <div className="space-y-3">
         <Skeleton className="h-40 w-full rounded-2xl" />
         <Skeleton className="h-24 w-full rounded-2xl" />
       </div>
+    );
+  }
+
+  if (orgLoaded && !org) {
+    return (
+      <EmptyState
+        icon="shield"
+        title="No organization yet"
+        description="Your subscription and license appear here once your account has an organization."
+      />
     );
   }
 
@@ -163,7 +169,6 @@ export function SubscriptionCenter(): JSX.Element {
 
   return (
     <div className="space-y-4">
-      {/* License card */}
       <div className="rounded-2xl border border-[var(--hairline)] [background:var(--fill-1)] p-5">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
@@ -176,7 +181,7 @@ export function SubscriptionCenter(): JSX.Element {
                 <span className={STATE_TONE[state]}>{STATE_LABEL[state]}</span>
               </span>
             </div>
-            <div className="text-sm text-white/60">{activeOrg?.name ?? 'Organization'}</div>
+            <div className="text-sm text-white/60">{org?.name ?? 'Organization'}</div>
           </div>
           {state === 'valid' && renewalDays !== null ? (
             <div className="text-right">
@@ -204,7 +209,7 @@ export function SubscriptionCenter(): JSX.Element {
           />
           <Field label="Renewal date" value={fmtDate(snap?.currentPeriodEnd ?? null)} />
           <Field label="Expires" value={fmtDate(ev?.expiresAt ?? null)} />
-          <Field label="Organization" value={activeOrg?.name ?? activeOrgId} />
+          <Field label="Organization" value={org?.name ?? '—'} />
         </dl>
 
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-white/5 pt-3 text-[11px] text-white/45">
@@ -217,7 +222,6 @@ export function SubscriptionCenter(): JSX.Element {
         </div>
       </div>
 
-      {/* Feature availability — derived from the FeatureGate, never hardcoded */}
       <div className="rounded-2xl border border-[var(--hairline)] [background:var(--fill-1)] p-5">
         <div className="mb-3 text-sm font-medium text-ink">Plan features</div>
         {features.length === 0 ? (
