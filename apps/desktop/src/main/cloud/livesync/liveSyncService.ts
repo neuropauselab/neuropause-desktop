@@ -7,7 +7,7 @@
  * supply a stub. This keeps the module free of Electron imports and testable end to
  * end; the Electron-specific wiring (lifecycle, connectivity, IPC) lives above it.
  */
-import type { SyncChange, SyncEntityType, SyncRecord } from '@neuropause/shared';
+import type { MergeOutcome, SyncChange, SyncEntityType, SyncRecord } from '@neuropause/shared';
 import { SyncEngine } from './engine';
 import { SyncScheduler } from './scheduler';
 import { createLocalSyncMirror } from './mirror';
@@ -22,6 +22,13 @@ export interface LiveSyncServiceOptions {
   getActiveOrgId: () => string | null;
   intervalMs?: number;
   onStatus?: (status: SyncStatus) => void;
+  /**
+   * Per-entity local appliers (V6.6.4). When an entity type is present here, a
+   * pulled change of that type is applied by its handler instead of the generic
+   * last-write-wins mirror. AI Memory uses this: it reconciles via its own
+   * append-only merge (resolveMemorySync), which the LWW mirror must never touch.
+   */
+  entityAppliers?: Partial<Record<SyncEntityType, (change: SyncChange) => Promise<MergeOutcome>>>;
 }
 
 export interface LiveSyncService {
@@ -41,7 +48,10 @@ export function createLiveSyncService(opts: LiveSyncServiceOptions): LiveSyncSer
   const mirror = createLocalSyncMirror({ filePath: opts.mirrorFilePath });
   const store = createPersistentSyncStore({
     filePath: opts.storeFilePath,
-    applyLocal: mirror.apply,
+    applyLocal: async (change) => {
+      const applier = opts.entityAppliers?.[change.entityType];
+      return applier ? applier(change) : mirror.apply(change);
+    },
   });
   const engine = new SyncEngine({ transport: opts.transport, store, deviceId: opts.deviceId });
   const scheduler = new SyncScheduler({

@@ -20,7 +20,10 @@
  * concurrent edits silently fail to converge across devices. That convergence-by-
  * re-push is exactly what only the two-device test can prove.
  */
-import type { MemoryState, MemorySyncResult, SyncChange } from '@neuropause/shared';
+import type { MemoryState, MemorySyncResult, MergeOutcome, SyncChange } from '@neuropause/shared';
+import type { MemoryStore } from './memoryStore';
+import { toSyncState } from './memorySyncAdapter';
+import { runtimeIdentity } from '../runtimeIdentity';
 
 /** Serialize a memory's sync state into a LiveSync change (opaque payload). */
 export function memoryStateToSyncChange(state: MemoryState): SyncChange {
@@ -93,5 +96,78 @@ export function createMemorySyncGuard(): MemorySyncGuard {
     size(): number {
       return applied.size;
     },
+  };
+}
+
+// ── Wiring (composed in liveSyncInstance; deps injected to avoid import cycles) ──
+
+/**
+ * Incoming: apply a pulled memory change into the local store via the tested
+ * resolveMemorySync (never the LWW mirror). Marks fast-forward/identical results in
+ * the guard so the outgoing listener won't echo them; a conflict merge is left
+ * unmarked so it re-enqueues and the peer converges. Returns a MergeOutcome for the
+ * sync engine's conflict tally. Embeddings: applyMerged already re-indexes the
+ * retriever via mutated(); result.requiredEmbeddings is where a Qdrant re-embed job
+ * would be enqueued (that pipeline swap is a later increment).
+ */
+export async function applyMemoryChange(
+  memoryStore: MemoryStore,
+  guard: MemorySyncGuard,
+  change: SyncChange,
+): Promise<MergeOutcome> {
+  const remote = syncChangeToMemoryState(change);
+  if (!remote) return 'ignored';
+  const result = memoryStore.applyMerged(remote);
+  guard.noteApplied(result);
+  return result.conflict ? 'conflict' : 'applied';
+}
+
+export interface MemoryEnqueueDeps {
+  memoryStore: MemoryStore;
+  liveSync: { enqueue: (orgId: string, change: SyncChange) => Promise<void> };
+  guard: MemorySyncGuard;
+  debounceMs?: number;
+}
+
+/**
+ * Outgoing: on memoryStore 'changed' (debounced), enqueue org-scoped memories whose
+ * syncable signal changed since last push. Org id comes from runtimeIdentity — if
+ * identity isn't ready, nothing is enqueued (personal/pre-login memory never
+ * leaves). The guard suppresses echoes of just-applied fast-forwards. Returns a
+ * disposer that removes the listener.
+ */
+export function startMemoryEnqueue(deps: MemoryEnqueueDeps): () => void {
+  const { memoryStore, liveSync, guard } = deps;
+  const debounceMs = deps.debounceMs ?? 400;
+  const lastEnqueued = new Map<string, string>();
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  const flush = (): void => {
+    const identity = runtimeIdentity.getCurrent();
+    if (!identity) return;
+    for (const item of memoryStore.syncedItems()) {
+      const state = toSyncState(item);
+      if (!state) continue;
+      const signal = memorySyncSignal(state);
+      // Loop guard: a just-applied fast-forward is recorded, not re-pushed.
+      if (guard.consumeEcho(state.head.versionId)) {
+        lastEnqueued.set(item.id, signal);
+        continue;
+      }
+      if (lastEnqueued.get(item.id) === signal) continue; // unchanged since last push
+      void liveSync.enqueue(identity.organizationId, memoryStateToSyncChange(state));
+      lastEnqueued.set(item.id, signal);
+    }
+  };
+
+  const onChanged = (): void => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(flush, debounceMs);
+  };
+
+  memoryStore.on('changed', onChanged);
+  return (): void => {
+    memoryStore.off('changed', onChanged);
+    if (timer) clearTimeout(timer);
   };
 }

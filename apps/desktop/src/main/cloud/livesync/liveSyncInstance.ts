@@ -14,6 +14,12 @@ import { createHttpSyncTransport } from './transport';
 import { createLiveSyncService, type LiveSyncService } from './liveSyncService';
 import { authService } from '../../auth/authService';
 import { runtimeIdentity } from '../../runtimeIdentity';
+import { memoryStore } from '../../memory/memoryInstance';
+import {
+  applyMemoryChange,
+  createMemorySyncGuard,
+  startMemoryEnqueue,
+} from '../../memory/memoryLiveSyncBridge';
 
 const log = createLogger('livesync');
 
@@ -78,6 +84,10 @@ export function getLiveSyncActiveOrg(): string | null {
 // active), logout clears it.
 authService.on('statusChanged', refreshRuntimeIdentity);
 
+// V6.6.4: the memory<->sync loop guard, shared between the incoming applier and the
+// outgoing enqueue listener.
+const memorySyncGuard = createMemorySyncGuard();
+
 /** The live sync service singleton, backed by userData. */
 export const liveSync: LiveSyncService = createLiveSyncService({
   deviceId: loadOrCreateDeviceId(),
@@ -85,4 +95,13 @@ export const liveSync: LiveSyncService = createLiveSyncService({
   mirrorFilePath: join(app.getPath('userData'), 'livesync-mirror.json'),
   transport: createHttpSyncTransport(),
   getActiveOrgId: () => activeOrgId,
+  // AI Memory reconciles via its own append-only merge, not the LWW mirror.
+  entityAppliers: {
+    memory: (change) => applyMemoryChange(memoryStore, memorySyncGuard, change),
+  },
 });
+
+// V6.6.4: outgoing bridge — enqueue org-scoped memory edits on change. Sources
+// org/user/device from runtimeIdentity, so nothing is passed by hand and personal
+// memory never leaves the device.
+startMemoryEnqueue({ memoryStore, liveSync, guard: memorySyncGuard });
