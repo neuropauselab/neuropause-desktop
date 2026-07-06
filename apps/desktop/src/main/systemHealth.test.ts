@@ -195,3 +195,28 @@ describe('composeSystemHealth — license subsystem (V6.1)', () => {
     expect(s.level).toBe('critical');
   });
 });
+
+describe('composeSystemHealth — device-trust subsystem (V6.5)', () => {
+  it('omits the device subsystem when no signal is reported', () => {
+    const s = composeSystemHealth(inputs());
+    expect(s.subsystems.find((x) => x.id === 'device')).toBeUndefined();
+  });
+
+  it('reports a trusted device as healthy', () => {
+    const s = composeSystemHealth(inputs({ device: { trustStatus: 'trusted' } }));
+    expect(s.subsystems.find((x) => x.id === 'device')?.level).toBe('healthy');
+  });
+
+  it('reports a revoked device as critical and drags overall level', () => {
+    const s = composeSystemHealth(inputs({ device: { trustStatus: 'revoked' } }));
+    const dev = s.subsystems.find((x) => x.id === 'device');
+    expect(dev?.level).toBe('critical');
+    expect(dev?.detail).toBe('Revoked');
+    expect(s.level).toBe('critical');
+  });
+
+  it('reports a blocked device as critical', () => {
+    const s = composeSystemHealth(inputs({ device: { trustStatus: 'blocked' } }));
+    expect(s.subsystems.find((x) => x.id === 'device')?.level).toBe('critical');
+  });
+});

@@ -32,6 +32,7 @@ import type {
   ExecutionRequest,
   LicenseState,
   BillingPlanId,
+  DeviceTrustStatus,
 } from '@neuropause/shared';
 import {
   IpcChannel,
@@ -46,6 +47,7 @@ import {
   DevicesRegisterRequest,
   DevicesListRequest,
   DevicesRevokeRequest,
+  DeviceReportHealthRequest,
   primaryNextStatus,
   recoverInterrupted,
   SlugRequest,
@@ -118,6 +120,7 @@ import {
   onVoiceStateChange,
 } from './voiceRuntimeState';
 import { getLicenseRuntimeState, setLicenseRuntimeState } from './licenseRuntimeState';
+import { getDeviceRuntimeState, setDeviceRuntimeState } from './deviceRuntimeState';
 import { billingClient } from './billing/billingClient';
 import { deviceClient } from './devices/deviceClient';
 import { initVoice } from './voice/voiceSubsystem';
@@ -817,6 +820,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     automationMonitor: () => getAutomationMonitor(),
     voiceState: () => getVoiceRuntimeState(),
     licenseState: () => getLicenseRuntimeState(),
+    deviceState: () => getDeviceRuntimeState(),
     startedAtMs: Date.now(),
     publish: publishPlatform,
   });
@@ -887,6 +891,17 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     handler: (payload: unknown) => {
       const p = payload as { orgId: string; deviceId: string };
       return deviceClient.revoke(p.orgId, p.deviceId);
+    },
+  });
+  // V6.5: renderer reports THIS device's trust status (it holds the active org)
+  // so NeuroCore can compose device trust into system health.
+  defs.push({
+    channel: IpcChannel.DeviceReportHealth,
+    schema: DeviceReportHealthRequest,
+    handler: (payload: unknown) => {
+      const p = payload as { trustStatus: DeviceTrustStatus | null };
+      setDeviceRuntimeState(p.trustStatus === null ? null : { trustStatus: p.trustStatus });
+      return { ok: true };
     },
   });
 

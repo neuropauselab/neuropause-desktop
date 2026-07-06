@@ -50,6 +50,8 @@ export function TrustedDevices(): JSX.Element {
       try {
         const { device } = await ipc.devices.registerCurrent(active.orgId);
         setCurrentId(device.deviceId);
+        // Activate the V6.5 NeuroCore device-trust signal for THIS device.
+        void ipc.devices.reportHealth(device.trustStatus).catch(() => {});
       } catch {
         // Registration failure shouldn't block showing the list.
       }

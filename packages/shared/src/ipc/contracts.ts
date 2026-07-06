@@ -54,6 +54,11 @@ export const ExecuteRunRequest = z
 
 export const ExecuteCancelRequest = z.object({ id: z.string().max(200) }).strict();
 
+// V6.5 — renderer reports this device's trust to main (for NeuroCore). Null clears.
+export const DeviceReportHealthRequest = z
+  .object({ trustStatus: z.enum(['trusted', 'blocked', 'revoked']).nullable() })
+  .strict();
+
 // V6.5 — device trust: register this device / list / revoke.
 export const DevicesRegisterRequest = z.object({ orgId: z.string().min(1) }).strict();
 export const DevicesListRequest = z.object({ orgId: z.string().min(1) }).strict();

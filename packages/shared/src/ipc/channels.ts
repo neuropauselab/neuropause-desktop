@@ -133,6 +133,8 @@ export const IpcChannel = {
   DevicesRegister: 'devices:register',
   DevicesList: 'devices:list',
   DevicesRevoke: 'devices:revoke',
+  /** Renderer reports this device's trust status for NeuroCore (V6.5). */
+  DeviceReportHealth: 'device:reportHealth',
   SupervisorHistory: 'supervisor:history',
   SupervisorRecover: 'supervisor:recover',
   SupervisorSetPolicy: 'supervisor:setPolicy',
@@ -577,6 +579,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.DevicesRegister,
   IpcChannel.DevicesList,
   IpcChannel.DevicesRevoke,
+  IpcChannel.DeviceReportHealth,
   IpcChannel.SupervisorHistory,
   IpcChannel.SupervisorRecover,
   IpcChannel.SupervisorSetPolicy,

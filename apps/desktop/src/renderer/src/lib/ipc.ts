@@ -244,6 +244,7 @@ import type {
   LicenseState,
   BillingPlanId,
   Device,
+  DeviceTrustStatus,
   OnboardingStatus,
   OnboardingStepId,
   FeedbackCategory,
@@ -1386,6 +1387,9 @@ export const ipc = {
     list: (orgId: string) => invoke(IpcChannel.DevicesList, { orgId }) as Promise<Device[]>,
     revoke: (orgId: string, deviceId: string) =>
       invoke(IpcChannel.DevicesRevoke, { orgId, deviceId }) as Promise<{ device: Device }>,
+    /** Report THIS device's trust status to main for NeuroCore (V6.5). */
+    reportHealth: (trustStatus: DeviceTrustStatus | null) =>
+      invoke(IpcChannel.DeviceReportHealth, { trustStatus }) as Promise<{ ok: boolean }>,
   },
 
   onboarding: {

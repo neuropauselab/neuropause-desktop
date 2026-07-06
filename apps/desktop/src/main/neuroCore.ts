@@ -13,6 +13,7 @@ import {
   type SystemHealthSnapshot,
   type VoiceRuntimeState,
   type LicenseState,
+  type DeviceTrustStatus,
 } from '@neuropause/shared';
 import { createLogger } from './logger';
 import { RuntimeTelemetrySampler } from './runtimeTelemetry';
@@ -33,6 +34,8 @@ export interface NeuroCoreDeps {
   voiceState: () => VoiceRuntimeState;
   /** Optional commercial license health signal (V6.1); null when unknown. */
   licenseState?: () => { state: LicenseState; graceDaysRemaining: number } | null;
+  /** Optional current-device trust signal (V6.5); null when unknown. */
+  deviceState?: () => { trustStatus: DeviceTrustStatus } | null;
   /** Process start time for uptime. */
   startedAtMs: number;
   /** Optional publisher for telemetry platform events (V5.1). */
@@ -80,6 +83,7 @@ export class NeuroCore {
       backendConnected: telemetry.backendState === 'connected',
       telemetry,
       license: this.deps.licenseState?.() ?? null,
+      device: this.deps.deviceState?.() ?? null,
     });
 
     this.emitTelemetryEvents(snap);

@@ -9,6 +9,7 @@
  */
 import type { DiagnosticStatus } from './platform';
 import type { LicenseState } from './license';
+import type { DeviceTrustStatus } from './device';
 
 /** Coarse health band for a subsystem or the whole system. */
 export type SystemHealthLevel = 'healthy' | 'degraded' | 'critical' | 'offline' | 'unknown';
@@ -19,7 +20,7 @@ export type VoiceRuntimeState =
 
 /** One subsystem's health line in the dashboard. */
 export interface SubsystemHealth {
-  id: 'platform' | 'automation' | 'voice' | 'runtime' | 'backend' | 'license';
+  id: 'platform' | 'automation' | 'voice' | 'runtime' | 'backend' | 'license' | 'device';
   label: string;
   level: SystemHealthLevel;
   detail?: string;
@@ -95,6 +96,13 @@ export interface SystemHealthInputs {
    * license is not recoverable by restarting anything).
    */
   license?: { state: LicenseState; graceDaysRemaining: number } | null;
+  /**
+   * Current device trust (V6.5), reported by the renderer which holds the active
+   * org. Optional/nullable: when absent the device subsystem is omitted — it never
+   * contributes a false alarm, and it is deliberately NOT supervised (a revoked or
+   * blocked device is not recoverable by restarting).
+   */
+  device?: { trustStatus: DeviceTrustStatus } | null;
 }
 
 /** Map a fine-grained voice session state to the coarse runtime state. Pure. */
@@ -239,6 +247,23 @@ export function composeSystemHealth(input: SystemHealthInputs): SystemHealthSnap
           ? `Grace — ${input.license.graceDaysRemaining}d left`
           : input.license.state === 'invalid'
             ? 'Inactive'
+            : undefined,
+    });
+  }
+
+  // Device trust (V6.5) — only when the renderer has reported this device's
+  // status. Visible + scored, but not supervised (a revoked/blocked device can't
+  // be recovered by restarting).
+  if (input.device) {
+    subsystems.push({
+      id: 'device',
+      label: 'Device trust',
+      level: input.device.trustStatus === 'trusted' ? 'healthy' : 'critical',
+      detail:
+        input.device.trustStatus === 'revoked'
+          ? 'Revoked'
+          : input.device.trustStatus === 'blocked'
+            ? 'Blocked'
             : undefined,
     });
   }
