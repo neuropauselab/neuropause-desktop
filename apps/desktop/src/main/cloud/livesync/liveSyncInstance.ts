@@ -12,6 +12,8 @@ import { app } from 'electron';
 import { createLogger } from '../../logger';
 import { createHttpSyncTransport } from './transport';
 import { createLiveSyncService, type LiveSyncService } from './liveSyncService';
+import { authService } from '../../auth/authService';
+import { runtimeIdentity } from '../../runtimeIdentity';
 
 const log = createLogger('livesync');
 
@@ -41,14 +43,40 @@ export function getDeviceId(): string {
 
 let activeOrgId: string | null = null;
 
+/**
+ * Recompute the runtime identity (V6.6.3) from the three real sources: the active
+ * cloud org (here), the authenticated user (authService), and the device id. Sets
+ * identity only when all three are known; clears it otherwise. Idempotent —
+ * runtimeIdentity suppresses no-op updates. This is the single wiring point that
+ * makes RuntimeIdentityContext live, so the memory-sync bridge can source
+ * org/user/device without threading them through every call.
+ */
+function refreshRuntimeIdentity(): void {
+  const status = authService.getStatus();
+  if (status.state === 'authenticated' && activeOrgId) {
+    runtimeIdentity.set({
+      organizationId: activeOrgId,
+      userId: status.session.user.id,
+      deviceId: getDeviceId(),
+    });
+  } else {
+    runtimeIdentity.clear();
+  }
+}
+
 /** Set from the renderer when the active cloud org changes (null when signed out). */
 export function setLiveSyncActiveOrg(orgId: string | null): void {
   activeOrgId = orgId;
+  refreshRuntimeIdentity();
 }
 
 export function getLiveSyncActiveOrg(): string | null {
   return activeOrgId;
 }
+
+// Keep identity in step with auth: login/restore populates it (once an org is
+// active), logout clears it.
+authService.on('statusChanged', refreshRuntimeIdentity);
 
 /** The live sync service singleton, backed by userData. */
 export const liveSync: LiveSyncService = createLiveSyncService({
