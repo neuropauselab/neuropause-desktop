@@ -23,6 +23,8 @@ import type {
   MemoryRecallResult,
   MemoryWriteInput,
 } from '@neuropause/shared';
+import { nextMemoryVersion } from '@neuropause/shared';
+import { memoryVersionPayload } from './memorySyncAdapter';
 import { createLogger } from '../logger';
 import { LexicalMemoryRetriever, type MemoryRetriever } from './memoryRetriever';
 
@@ -113,10 +115,20 @@ export class MemoryStore extends EventEmitter {
     this.emit('changed');
   }
 
-  /** Explicitly remember something (a decision, note, captured context). */
-  remember(input: MemoryWriteInput, now = new Date().toISOString()): MemoryItem {
+  /**
+   * Explicitly remember something (a decision, note, captured context). When a
+   * `scope` is given, the memory is created org-scoped: it gets an initial synced
+   * version (seeded via nextMemoryVersion) so it participates in append-only cloud
+   * sync. Without a scope it stays local-only (personal), exactly as before.
+   */
+  remember(
+    input: MemoryWriteInput,
+    now = new Date().toISOString(),
+    scope?: { orgId: string; deviceId: string; userId: string },
+  ): MemoryItem {
+    const id = `mem:explicit:${randomUUID()}`;
     const item: MemoryItem = {
-      id: `mem:explicit:${randomUUID()}`,
+      id,
       kind: input.kind,
       origin: 'explicit',
       title: input.title,
@@ -131,6 +143,27 @@ export class MemoryStore extends EventEmitter {
       evidence: null,
       metadata: input.metadata ?? {},
     };
+    if (scope) {
+      const payload = memoryVersionPayload(item);
+      const version = nextMemoryVersion(null, {
+        versionId: randomUUID(),
+        memoryId: id,
+        orgId: scope.orgId,
+        timestamp: now,
+        deviceId: scope.deviceId,
+        userId: scope.userId,
+        text: payload.text,
+        metadata: payload.metadata,
+        deleted: false,
+      });
+      item.sync = {
+        orgId: scope.orgId,
+        versionId: version.versionId,
+        parentVersion: null,
+        history: [version],
+        deleted: false,
+      };
+    }
     this.items.set(item.id, item);
     this.mutated(null);
     return item;
