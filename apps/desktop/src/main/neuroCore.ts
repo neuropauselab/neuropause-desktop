@@ -36,6 +36,13 @@ export interface NeuroCoreDeps {
   licenseState?: () => { state: LicenseState; graceDaysRemaining: number } | null;
   /** Optional current-device trust signal (V6.5); null when unknown. */
   deviceState?: () => { trustStatus: DeviceTrustStatus } | null;
+  /** Optional cloud-sync health from the livesync engine (V6.6); null when idle. */
+  cloudSyncState?: () => {
+    online: boolean;
+    pendingCount: number;
+    failures: number;
+    hasError: boolean;
+  } | null;
   /** Process start time for uptime. */
   startedAtMs: number;
   /** Optional publisher for telemetry platform events (V5.1). */
@@ -84,6 +91,7 @@ export class NeuroCore {
       telemetry,
       license: this.deps.licenseState?.() ?? null,
       device: this.deps.deviceState?.() ?? null,
+      cloudSync: this.deps.cloudSyncState?.() ?? null,
     });
 
     this.emitTelemetryEvents(snap);

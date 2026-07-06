@@ -121,6 +121,7 @@ import {
 } from './voiceRuntimeState';
 import { getLicenseRuntimeState, setLicenseRuntimeState } from './licenseRuntimeState';
 import { getDeviceRuntimeState, setDeviceRuntimeState } from './deviceRuntimeState';
+import { liveSync } from './cloud/livesync/liveSyncInstance';
 import { billingClient } from './billing/billingClient';
 import { deviceClient } from './devices/deviceClient';
 import { initVoice } from './voice/voiceSubsystem';
@@ -821,6 +822,19 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     voiceState: () => getVoiceRuntimeState(),
     licenseState: () => getLicenseRuntimeState(),
     deviceState: () => getDeviceRuntimeState(),
+    // V6.6: read cloud-sync health straight from the livesync engine (main-side —
+    // no IPC needed). Omitted when sync isn't running so it can't show a
+    // misleading "healthy" with nothing to sync.
+    cloudSyncState: () => {
+      if (!liveSync.isRunning()) return null;
+      const s = liveSync.getStatus();
+      return {
+        online: s.online,
+        pendingCount: s.pendingCount,
+        failures: s.failures,
+        hasError: s.lastError !== null,
+      };
+    },
     startedAtMs: Date.now(),
     publish: publishPlatform,
   });

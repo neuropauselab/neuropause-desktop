@@ -20,7 +20,7 @@ export type VoiceRuntimeState =
 
 /** One subsystem's health line in the dashboard. */
 export interface SubsystemHealth {
-  id: 'platform' | 'automation' | 'voice' | 'runtime' | 'backend' | 'license' | 'device';
+  id: 'platform' | 'automation' | 'voice' | 'runtime' | 'backend' | 'license' | 'device' | 'sync';
   label: string;
   level: SystemHealthLevel;
   detail?: string;
@@ -103,6 +103,14 @@ export interface SystemHealthInputs {
    * blocked device is not recoverable by restarting).
    */
   device?: { trustStatus: DeviceTrustStatus } | null;
+  /**
+   * Cloud sync health (V6.6), read directly from the livesync engine in main.
+   * Optional/nullable: null when sync isn't running (no active org / not started),
+   * so it's omitted rather than shown as a misleading "healthy". Report-only and
+   * NOT supervised — a sync backlog or offline period isn't a recoverable runtime
+   * fault, and the app works offline.
+   */
+  cloudSync?: { online: boolean; pendingCount: number; failures: number; hasError: boolean } | null;
 }
 
 /** Map a fine-grained voice session state to the coarse runtime state. Pure. */
@@ -264,6 +272,25 @@ export function composeSystemHealth(input: SystemHealthInputs): SystemHealthSnap
           ? 'Revoked'
           : input.device.trustStatus === 'blocked'
             ? 'Blocked'
+            : undefined,
+    });
+  }
+
+  // Cloud sync (V6.6) — only when the livesync engine is running. Report-only,
+  // not supervised: offline or a backlog degrades but never fails the runtime.
+  if (input.cloudSync) {
+    const online = input.cloudSync.online;
+    const trouble = input.cloudSync.failures > 0 || input.cloudSync.hasError;
+    subsystems.push({
+      id: 'sync',
+      label: 'Cloud sync',
+      level: !online || trouble ? 'degraded' : 'healthy',
+      detail: !online
+        ? 'Offline'
+        : trouble
+          ? 'Sync retrying'
+          : input.cloudSync.pendingCount > 0
+            ? `${input.cloudSync.pendingCount} pending`
             : undefined,
     });
   }

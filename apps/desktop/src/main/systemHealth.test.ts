@@ -220,3 +220,38 @@ describe('composeSystemHealth — device-trust subsystem (V6.5)', () => {
     expect(s.subsystems.find((x) => x.id === 'device')?.level).toBe('critical');
   });
 });
+
+describe('composeSystemHealth — cloud-sync subsystem (V6.6)', () => {
+  it('omits cloud sync when the engine is idle (null)', () => {
+    expect(composeSystemHealth(inputs()).subsystems.find((x) => x.id === 'sync')).toBeUndefined();
+  });
+
+  it('reports a healthy sync (online, no failures) as healthy', () => {
+    const s = composeSystemHealth(
+      inputs({ cloudSync: { online: true, pendingCount: 0, failures: 0, hasError: false } }),
+    );
+    expect(s.subsystems.find((x) => x.id === 'sync')?.level).toBe('healthy');
+  });
+
+  it('reports offline sync as degraded (never critical — app works offline)', () => {
+    const s = composeSystemHealth(
+      inputs({ cloudSync: { online: false, pendingCount: 3, failures: 0, hasError: false } }),
+    );
+    const sync = s.subsystems.find((x) => x.id === 'sync');
+    expect(sync?.level).toBe('degraded');
+    expect(sync?.detail).toBe('Offline');
+  });
+
+  it('reports failures as degraded and surfaces pending count when clean', () => {
+    expect(
+      composeSystemHealth(
+        inputs({ cloudSync: { online: true, pendingCount: 0, failures: 2, hasError: true } }),
+      ).subsystems.find((x) => x.id === 'sync')?.level,
+    ).toBe('degraded');
+    expect(
+      composeSystemHealth(
+        inputs({ cloudSync: { online: true, pendingCount: 5, failures: 0, hasError: false } }),
+      ).subsystems.find((x) => x.id === 'sync')?.detail,
+    ).toBe('5 pending');
+  });
+});
