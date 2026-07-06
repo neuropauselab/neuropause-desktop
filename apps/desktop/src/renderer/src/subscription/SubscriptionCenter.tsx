@@ -9,7 +9,6 @@ import type {
 import { ipc } from '@renderer/lib/ipc';
 import { cn } from '@renderer/lib/cn';
 import { Icon, type IconName } from '@renderer/components/ui/Icon';
-import { EmptyState } from '@renderer/components/ui/EmptyState';
 import { Skeleton } from '@renderer/components/ui/Skeleton';
 
 /**
@@ -85,6 +84,12 @@ export function SubscriptionCenter(): JSX.Element {
   const [features, setFeatures] = useState<FeatureFlagState[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Inline org creation (V6.3) — the lightweight first-run wizard, reusing
+  // ipc.org.create. Creating an org here activates the whole commercial chain.
+  const [creating, setCreating] = useState(false);
+  const [orgName, setOrgName] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -119,6 +124,25 @@ export function SubscriptionCenter(): JSX.Element {
     void load();
   }, [load]);
 
+  const createOrg = async (): Promise<void> => {
+    const name = orgName.trim();
+    if (!name || submitting) return;
+    setSubmitting(true);
+    setCreateError(null);
+    try {
+      await ipc.org.create({ name });
+      setCreating(false);
+      setOrgName('');
+      // Re-run the whole load: the new org resolves, license is fetched, and the
+      // V6.1 NeuroCore signal fires — the commercial chain comes online.
+      await load();
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : 'Could not create organization');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const ev = status?.evaluation ?? null;
   const snap = status?.snapshot ?? null;
   const state: LicenseState = ev?.state ?? 'invalid';
@@ -141,11 +165,68 @@ export function SubscriptionCenter(): JSX.Element {
 
   if (orgLoaded && !org) {
     return (
-      <EmptyState
-        icon="shield"
-        title="No organization yet"
-        description="Your subscription and license appear here once your account has an organization."
-      />
+      <div className="rounded-2xl border border-[var(--hairline)] [background:var(--fill-1)] p-6 text-center">
+        <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-white/10">
+          <Icon name="shield" size={20} />
+        </div>
+        <div className="mb-1 text-sm font-medium text-ink">No organization yet</div>
+        <p className="mx-auto mb-4 max-w-sm text-xs text-white/55">
+          Your subscription and license are organization-scoped. Create one to activate your
+          commercial plan and license.
+        </p>
+        {creating ? (
+          <div className="mx-auto max-w-xs space-y-2 text-left">
+            <input
+              value={orgName}
+              onChange={(e) => setOrgName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void createOrg();
+              }}
+              placeholder="Organization name"
+              aria-label="Organization name"
+              autoFocus
+              disabled={submitting}
+              className="w-full rounded-xl border border-[var(--hairline)] [background:var(--fill-2)] px-3 py-2.5 text-sm text-ink outline-none placeholder:text-faint focus-visible:shadow-focus disabled:opacity-60"
+            />
+            {createError && <p className="text-xs text-white/70">{createError}</p>}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void createOrg()}
+                disabled={submitting || orgName.trim().length === 0}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-xs font-semibold text-black hover:opacity-90 disabled:opacity-40"
+              >
+                {submitting ? (
+                  <>
+                    <Icon name="refresh" size={13} className="animate-spin" /> Creating…
+                  </>
+                ) : (
+                  'Create organization'
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCreating(false);
+                  setCreateError(null);
+                }}
+                disabled={submitting}
+                className="rounded-lg px-3 py-2 text-xs text-white/50 hover:text-white"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setCreating(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-white px-4 py-2 text-xs font-semibold text-black hover:opacity-90"
+          >
+            <Icon name="plus" size={13} /> Create organization
+          </button>
+        )}
+      </div>
     );
   }
 
