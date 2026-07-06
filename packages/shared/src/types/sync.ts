@@ -17,7 +17,8 @@ export type SyncEntityType =
   | 'workspace_settings'
   | 'connected_account'
   | 'connector_config'
-  | 'org_prefs';
+  | 'org_prefs'
+  | 'memory';
 
 export const SYNC_ENTITY_TYPES: readonly SyncEntityType[] = [
   'organization',
@@ -26,6 +27,7 @@ export const SYNC_ENTITY_TYPES: readonly SyncEntityType[] = [
   'connected_account',
   'connector_config',
   'org_prefs',
+  'memory',
 ];
 
 /** A monotonic high-water mark; the client has seen every change up to this value. */
