@@ -26,6 +26,15 @@ export interface RelatedMemoriesOptions {
   limit?: number;
   /** Ignore entity refs shared by more than this fraction of the corpus (too generic). Default 0.5. */
   maxEntityFrequency?: number;
+  /**
+   * V8.3 inc2 — activate the existing graph edges: given an entity ref, return
+   * graph-adjacent entity refs (e.g. via GraphStore.neighbors). When provided, a
+   * memory whose entity is a graph-neighbor of the source's entity also links, at
+   * reduced weight. Omitted ⇒ inc1 behavior (direct shared entities only).
+   */
+  expandEntities?: (entityId: string) => string[];
+  /** Weight of a graph-hop match relative to a direct shared entity. Default 0.5. */
+  graphHopWeight?: number;
 }
 
 /**
@@ -71,8 +80,22 @@ export function relatedMemories(
   // only entities shared by 3+ can be filtered as too generic (hub entities).
   const freqCap = Math.max(2, Math.floor(total * maxFreq));
 
-  // The source's discriminating entities (rare enough to be meaningful).
-  const sourceEntities = new Set(source.entityRefs.filter((ref) => (freq.get(ref) ?? 0) <= freqCap));
+  // The source's discriminating entities (rare enough to be meaningful), each with
+  // a weight: direct entities weight 1; graph-adjacent entities weight graphHopWeight.
+  const hopWeight = options.graphHopWeight ?? 0.5;
+  const sourceEntities = new Map<string, number>();
+  for (const ref of source.entityRefs) {
+    if ((freq.get(ref) ?? 0) <= freqCap) sourceEntities.set(ref, 1);
+  }
+  // Activate the graph: expand from the direct entities one hop, at reduced weight.
+  if (options.expandEntities) {
+    for (const ref of [...sourceEntities.keys()]) {
+      for (const neighbor of options.expandEntities(ref)) {
+        if (neighbor === ref || (freq.get(neighbor) ?? 0) > freqCap) continue;
+        if (!sourceEntities.has(neighbor)) sourceEntities.set(neighbor, hopWeight);
+      }
+    }
+  }
   if (sourceEntities.size === 0) return [];
 
   const results: RelatedMemory[] = [];
@@ -81,9 +104,10 @@ export function relatedMemories(
     const shared: string[] = [];
     let score = 0;
     for (const ref of new Set(m.entityRefs)) {
-      if (sourceEntities.has(ref)) {
+      const weight = sourceEntities.get(ref);
+      if (weight !== undefined) {
         shared.push(ref);
-        score += idf(freq.get(ref) ?? 1, total);
+        score += idf(freq.get(ref) ?? 1, total) * weight;
       }
     }
     if (shared.length > 0) results.push({ memoryId: m.id, score, sharedEntities: shared });

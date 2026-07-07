@@ -93,4 +93,30 @@ describe('relatedMemories', () => {
     const corpus = [mem('src', ['e']), ...Array.from({ length: 20 }, (_, i) => mem(`m${i}`, ['e']))];
     expect(relatedMemories('src', corpus, { limit: 5, maxEntityFrequency: 1 })).toHaveLength(5);
   });
+
+  it('links memories via a graph hop (entity-adjacent, not identical) at reduced weight', () => {
+    const corpus = [
+      mem('src', ['e1']),
+      mem('direct', ['e1']), // shares e1 directly
+      mem('viaGraph', ['e2']), // e2 is a graph-neighbor of e1
+      mem('unrelated', ['e9']),
+    ];
+    // Graph: e1 <-> e2.
+    const expandEntities = (id: string) => (id === 'e1' ? ['e2'] : id === 'e2' ? ['e1'] : []);
+    const rel = relatedMemories('src', corpus, { expandEntities, maxEntityFrequency: 1 });
+    const ids = rel.map((r) => r.memoryId);
+    expect(ids).toContain('direct');
+    expect(ids).toContain('viaGraph'); // now linked through the graph
+    expect(ids).not.toContain('unrelated');
+    // Direct shared entity outranks a graph-hop match.
+    const byId = Object.fromEntries(rel.map((r) => [r.memoryId, r.score]));
+    expect(byId['direct']).toBeGreaterThan(byId['viaGraph']);
+  });
+
+  it('without expandEntities, behavior is unchanged (graph-adjacent memories do NOT link)', () => {
+    const corpus = [mem('src', ['e1']), mem('viaGraph', ['e2'])];
+    // No expandEntities passed → e2 never reached → no link (inc1 behavior preserved).
+    expect(relatedMemories('src', corpus, { maxEntityFrequency: 1 })).toEqual([]);
+  });
+
 });
