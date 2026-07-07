@@ -89,6 +89,18 @@ export interface RecallRankingInput {
    * preserved by the caller without duplicating them here.
    */
   getItem: (memoryId: string) => MemoryItem | undefined;
+  /**
+   * Semantic (vector) hits from `semanticSearch` — memoryId + cosine 0..1 (V8.2).
+   * Omit or pass [] for lexical-only recall (unchanged behavior). When present, the
+   * merge carries each memory's vector score and the blend uses the vector weight,
+   * so the `semantic` factor and `semanticScore` become live.
+   */
+  semanticHits?: readonly RetrievalHit[];
+  /**
+   * Ranking weights override. Defaults: lexical-only (`vector: 0`) when no semantic
+   * hits are supplied; the engine's DEFAULT blend (vector included) when they are.
+   */
+  weights?: Partial<RankingWeights>;
   /** Reference time for recency decay; defaults to Date.now() inside the ranker. */
   now?: string;
 }
@@ -104,27 +116,49 @@ export function rankRecallHits(input: RecallRankingInput): MemoryHit[] {
     return item ? memoryCandidateMetadata(item) : null;
   };
 
-  const candidates = mergeRetrievalCandidates(input.lexicalHits, [], lookup);
+  const semanticHits = input.semanticHits ?? [];
+  const candidates = mergeRetrievalCandidates(input.lexicalHits, semanticHits, lookup);
+
+  // Lexical-only stays vector-zeroed; once semantic hits arrive, the engine's
+  // DEFAULT blend (which includes the vector weight) applies — unless the caller
+  // overrides. rankMemories merges this over DEFAULT_RANKING_WEIGHTS and normalizes.
+  const weights = input.weights ?? (semanticHits.length > 0 ? undefined : LEXICAL_RANKING_WEIGHTS);
+
   const ranked = rankMemories(
     {
-      weights: LEXICAL_RANKING_WEIGHTS,
+      weights,
       now: input.now,
       limit: input.query.limit,
     },
     candidates,
   );
 
+  // The merged candidates already hold each memory's lexical (keyword) and semantic
+  // (vector) sub-scores — rankMemories drops them at its return, so we join them
+  // back by memoryId here to expose them per hit. No re-ranking, no rescoring.
+  const subScores = new Map(
+    candidates.map((c) => [c.memoryId, { lexicalScore: c.keywordScore, semanticScore: c.vectorScore }]),
+  );
+
   const hits: MemoryHit[] = [];
   for (const r of ranked) {
     const item = input.getItem(r.memoryId);
     if (!item) continue; // resolvable at merge time but not now — skip defensively
-    // Carry the ranking metadata the engine already computed (V7.5). Top-level
-    // `score` stays the normalized 0..1 recall relevance (unchanged contract);
-    // `ranking.score` is the engine's explainable 0..100 score. No re-ranking.
+    const sub = subScores.get(r.memoryId);
+    // Carry the ranking metadata the engine already computed (V7.5) plus the
+    // lexical/semantic sub-scores (V8.2). Top-level `score` stays the normalized
+    // 0..1 recall relevance (unchanged contract); `ranking.score` is the engine's
+    // explainable 0..100 score. `semanticScore` is undefined for lexical-only hits.
     hits.push({
       item,
       score: Math.round((r.score / 100) * 1000) / 1000,
-      ranking: { score: r.score, confidence: r.confidence, reasons: r.reasons },
+      ranking: {
+        score: r.score,
+        confidence: r.confidence,
+        reasons: r.reasons,
+        lexicalScore: sub?.lexicalScore,
+        semanticScore: sub?.semanticScore,
+      },
     });
   }
   return hits;

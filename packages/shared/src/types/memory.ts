@@ -311,4 +311,8 @@ export interface MemoryRankingMetadata {
   confidence: number;
   /** Contributing factors, strongest first. */
   reasons: RankingReason[];
+  /** Lexical (keyword) relevance 0..1 that fed the blend (V8.2). */
+  lexicalScore?: number;
+  /** Semantic (vector) relevance 0..1 that fed the blend; absent for lexical-only hits (V8.2). */
+  semanticScore?: number;
 }
