@@ -238,6 +238,7 @@ export const IpcChannel = {
 
   // ── AI Workforce ──
   WorkforceWorkers: 'workforce:workers',
+  WorkforceIntelligence: 'workforce:intelligence',
   WorkforceWorkerGet: 'workforce:worker',
   WorkforceJobRun: 'workforce:job.run',
   WorkforceJobs: 'workforce:jobs',
@@ -627,6 +628,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.KnowledgeRelated,
   IpcChannel.KnowledgeTopics,
   IpcChannel.KnowledgeHealth,
+  IpcChannel.WorkforceIntelligence,
   IpcChannel.MemoryGet,
   IpcChannel.MemoryRemember,
   IpcChannel.MemoryForget,

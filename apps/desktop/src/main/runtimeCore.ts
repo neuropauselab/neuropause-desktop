@@ -100,6 +100,7 @@ import { initSync } from './unified/sync';
 import { initGraph } from './graph';
 import { initMemory } from './memory';
 import { initKnowledge } from './knowledge';
+import { initWorkforceIntelligence } from './workforce/intelligence';
 import { initEnterpriseTimeline } from './timeline';
 import { initEnterpriseSearch } from './search';
 import { initDailyIntelligence } from './intelligence';
@@ -170,6 +171,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // AI Memory: distills the UDM into a searchable organizational memory.
   const memory = await initMemory({ broadcast: deps.broadcast });
   const knowledge = initKnowledge();
+  const workforceIntel = initWorkforceIntelligence();
   // Enterprise Timeline: unified stream of platform events + UDM work-activity.
   const timeline = initEnterpriseTimeline({
     broadcast: deps.broadcast,
@@ -757,6 +759,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...graph.handlers);
   defs.push(...memory.handlers);
   defs.push(...knowledge.handlers);
+  defs.push(...workforceIntel.handlers);
   defs.push(...timeline.handlers);
   defs.push(...search.handlers);
   defs.push(...intelligence.handlers);
