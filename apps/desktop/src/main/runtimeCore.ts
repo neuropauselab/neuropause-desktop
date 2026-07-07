@@ -145,60 +145,45 @@ import { initPilot } from './pilot';
 import { aiMemoryProbe, knowledgeGraphProbe, ollamaProbe } from './platform/aiHealthProbes';
 import { memoryStore } from './memory/memoryInstance';
 import { graphStore } from './graph/graphInstance';
-
 const log = createLogger('runtime-core');
-
 export interface RuntimeCoreDeps {
   broadcast: (channel: string, payload: unknown) => void;
 }
-
 export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   await registry.load();
   await pluginManager.load();
-
   // Platform core: event bus + timeline + subscribers + diagnostics.
   const platform = await initPlatform({ broadcast: deps.broadcast });
-
   // Connector Framework (NCF): SDK + OAuth engine + registry + lifecycle runtime.
   const connectors = await initConnectors({
     broadcast: deps.broadcast,
     publish: platform.api.publish,
   });
-
   // Unified knowledge layer (UDM): canonical store + query engine + local search.
   const unified = await initUnified({ broadcast: deps.broadcast });
-
   // Sync engine: adapters → UDM, incremental + scheduled, wired to the event bus.
   const sync = await initSync({ publish: platform.api.publish, broadcast: deps.broadcast });
-
   // Enterprise Knowledge Graph: projects the UDM into a typed graph with
   // relationship history; the foundation the Phase 5 intelligence layer reads.
   const graph = await initGraph({ broadcast: deps.broadcast });
-
   // AI Memory: distills the UDM into a searchable organizational memory.
   const memory = await initMemory({ broadcast: deps.broadcast });
-
   // Enterprise Timeline: unified stream of platform events + UDM work-activity.
   const timeline = initEnterpriseTimeline({
     broadcast: deps.broadcast,
     platformQuery: (q) => platform.api.query(q),
   });
-
   // Enterprise Search: one federated search across entities, graph, memory, timeline.
   const search = initEnterpriseSearch();
-
   // Daily Intelligence + Recommendations: evidence-grounded briefings and next-actions.
   const intelligence = initDailyIntelligence();
   const recommendations = initRecommendations();
-
   // Executive Intelligence Center (V2.4): one snapshot composing existing
   // intelligence (founder proactive + org intelligence + org-health KPIs).
   const executiveCenter = initExecutiveCenter();
-
   // Executive Decision Intelligence (V3.3): persists + transitions decisions,
   // convertible from the executive center's recommendations (traceability).
   const decisions = initDecisions(() => executiveCenter.snapshot());
-
   // Automation Builder (Module 9): persists user Trigger→Condition→Action rules.
   // V4.8: wire platform publish + subscribe so automations fire on real events
   // and completed runs surface on the timeline/activity bus.
@@ -206,40 +191,33 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     publish: platform.api.publish,
     on: (types, handler) => platform.api.on(types, handler),
   });
-
   // Executive Voice Assistant (V2.6): routes recognized speech to existing
   // intelligence and composes evidence-grounded spoken responses. No new AI.
   const voice = initVoice();
-
   // Executive Intelligence Delivery: proactively delivers the already-built brief
   // (and future sources) on a schedule via the existing notification path. Reuses
   // intelligence + scheduler + notifications; adds no new AI or scheduler.
   await initExecutiveDelivery();
-
   // Founder AI: evidence-grounded Q&A that separates facts from suggestions.
   const founder = initFounderAI();
-
   // Engineering AI: AI Engine + Context Builder over live data, governed, with a
   // deterministic fallback when no model is reachable.
   const engineeringAI = initEngineeringAI();
-
   // Founder AI v2: executive intelligence — intent detection → context → engine →
   // governed executive answer, with deterministic findings as the offline fallback.
   const founderAIv2 = initFounderAIv2();
-
   // Traces: governance, context, and relationship explainability.
   const trace = initTrace();
-
   // AI Workforce: governed, evidence-grounded workers over the intelligence layer.
-  const workforce = await initWorkforce({ broadcast: deps.broadcast });
-
+  const workforce = await initWorkforce({
+    broadcast: deps.broadcast,
+    publish: platform.api.publish,
+  });
   // Enterprise Operating System: organization runtime + graph + governance +
   // multi-workspace isolation + the executive snapshot that rolls it all up.
   const enterprise = await initEnterprise({ broadcast: deps.broadcast });
-
   // Ecosystem Platform: developer portal + marketplace + API gateway + billing.
   const ecosystem = await initEcosystem({ broadcast: deps.broadcast });
-
   // Phase 9 · Stage 1 — Cloud Platform (multi-tenant, identity federation, sync, API platform, admin).
   const cloud = await initCloud({ broadcast: deps.broadcast });
   const featureFlags = await initFeatureFlags();
@@ -248,10 +226,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   const feedback = await initFeedback();
   const pilot = await initPilot();
   const federation = await initFederation({ broadcast: deps.broadcast });
-
   // Application self-update (electron-updater): channels + check/download/install + rollback prep.
   const updater = initUpdater({ broadcast: deps.broadcast });
-
   // Release Operations: migration, backup, crash reporting, release diagnostics,
   // Recovery Center actions, and support-bundle generation — one composition.
   const releaseOps = await initReleaseOps({
@@ -263,7 +239,6 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // Apply any pending data migrations before the app is used. The baseline stamps
   // the data version; future data-transforming migrations run here as well.
   await releaseOps.runStartupMigrations();
-
   const defs: SecureHandlerDef[] = [
     /* ── catalog (proxy to Store API) ── */
     {
@@ -362,7 +337,6 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         return res;
       },
     },
-
     /* ── cloud organizations (backend /organizations) ── */
     {
       channel: IpcChannel.OrgList,
@@ -471,7 +445,6 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         return orgClient.deleteWorkspace(r.orgId, r.workspaceId);
       },
     },
-
     /* ── local application registry ── */
     { channel: IpcChannel.RegistryList, schema: EmptyRequest, handler: () => registry.list() },
     {
@@ -508,7 +481,6 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       audit: true,
       handler: async () => ({ path: await registry.backup() }),
     },
-
     /* ── NeuroPause Package Service ── */
     {
       channel: IpcChannel.NpsInstall,
@@ -614,7 +586,6 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         ok: await packageService.cancel((p as TOperationRequest).operationId),
       }),
     },
-
     /* ── runtime ── */
     {
       channel: IpcChannel.RuntimeLaunch,
@@ -657,7 +628,6 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         return id ? supervisor.get(id) : supervisor.list();
       },
     },
-
     /* ── permissions ── */
     {
       channel: IpcChannel.PermsList,
@@ -686,7 +656,6 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         return res;
       },
     },
-
     /* ── plugin runtime ── */
     { channel: IpcChannel.PluginsList, schema: EmptyRequest, handler: () => pluginManager.list() },
     {
@@ -775,7 +744,6 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       handler: (p) => pluginManager.contributions((p as TPluginContributionsRequest).surface),
     },
   ];
-
   // Platform-core IPC (timeline query/stats/export, diagnostics, UI event emit).
   defs.push(...platform.handlers);
   // Connector Framework IPC (list/connect/disconnect/reconnect/refresh/sync/health/logs).
@@ -793,7 +761,6 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...executiveCenter.handlers);
   defs.push(...decisions.handlers);
   defs.push(...automations.handlers);
-
   // NeuroCore (V5.0/V5.1/V5.2): composes system health from live subsystem signals
   // — platform diagnostics, automation monitor, real CPU/memory + backend probe
   // (V5.1), and now the live voice runtime state reported by the widget (V5.2).
@@ -815,7 +782,6 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       metadata: input.metadata,
     });
   };
-
   const neuroCore = new NeuroCore({
     diagnostics: () => platform.diagnostics(),
     automationMonitor: () => getAutomationMonitor(),
@@ -838,7 +804,6 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     startedAtMs: Date.now(),
     publish: publishPlatform,
   });
-
   // V5.2: emit a voice.* platform event whenever the live voice state changes.
   onVoiceStateChange((state) => {
     publishPlatform({
@@ -849,13 +814,11 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       metadata: { state },
     });
   });
-
   defs.push({
     channel: IpcChannel.SystemHealthSnapshot,
     schema: EmptyRequest,
     handler: () => neuroCore.snapshot(),
   });
-
   // V6.1: renderer reports license health (it holds the active org) so NeuroCore
   // can compose it into system health without needing ambient org state in main.
   defs.push({
@@ -869,7 +832,6 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       return { ok: true };
     },
   });
-
   // V6.4: create a Razorpay subscription checkout for an org+plan and open the
   // hosted checkout URL. The subscription/Razorpay/webhook work is all backend —
   // this handler only invokes the existing endpoint and opens the returned URL.
@@ -884,7 +846,6 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       return result;
     },
   });
-
   // V6.5: device trust. The device identity is assembled main-side (livesync id +
   // OS/arch + app version); the renderer supplies the active org. Membership +
   // authorization are enforced server-side (reusing the org membership check).
@@ -918,7 +879,6 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       return { ok: true };
     },
   });
-
   // Runtime Supervisor (V5.3): autonomous recovery. Executors reuse existing
   // subsystem capabilities — backend re-probe (real), voice-state reset (real),
   // and a diagnostics refresh for platform/runtime. Automation restart is a
@@ -947,7 +907,6 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     },
   });
   runtimeSupervisor.start();
-
   defs.push({
     channel: IpcChannel.SupervisorStatus,
     schema: EmptyRequest,
@@ -978,7 +937,6 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       return runtimeSupervisor.status();
     },
   });
-
   // Execute Engine (V5.4): the unified execution pipeline. Subsystems register
   // their executor and every execution flows through one session lifecycle +
   // history + events. Executors ORCHESTRATE existing subsystem logic (founder AI,
@@ -1091,7 +1049,6 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       result: job,
     };
   });
-
   // V5.8 startup recovery: load persisted sessions, mark any that were in-flight
   // as interrupted (recovered, not rerun), persist the correction, and seed the
   // engine's history so the dashboard shows durable history across restarts.
@@ -1113,7 +1070,6 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     executions: recovered.length,
     recovered: interruptedCount,
   });
-
   defs.push({
     channel: IpcChannel.ExecuteRun,
     schema: ExecuteRunRequest,
@@ -1170,35 +1126,28 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...federation.handlers);
   defs.push(...updater.handlers);
   defs.push(...releaseOps.handlers);
-
   registerSecureHandlers(defs, {
     isAuthenticated: () => authService.getStatus().state === 'authenticated',
   });
-
   // Bridge runtime-core events to the renderer.
   packageService.on('progress', (e) => deps.broadcast(IpcChannel.NpsProgress, e));
   supervisor.on('event', (e) => deps.broadcast(IpcChannel.RuntimeEventBroadcast, e));
   supervisor.on('openApp', (req) => deps.broadcast(IpcChannel.RuntimeOpenApp, req));
   pluginHost.on('event', (e) => deps.broadcast(IpcChannel.PluginEventBroadcast, e));
-
   // Republish service signals onto the platform event bus.
   platform.wireProducers({ supervisor, packageService, pluginHost, authService });
-
   const safeMode = await releaseOps.safeModeState();
   if (safeMode.enabled)
     log.warn('Safe Mode active — starting with plugins disabled', { reason: safeMode.reason });
   serviceManager.startAll({ skip: safeMode.enabled ? ['plugin-loader'] : [] });
-
   platform.api.publish({
     type: 'system.ready',
     category: 'system',
     source: 'runtime-core',
     metadata: { installs: registry.list().length, plugins: pluginManager.list().length },
   });
-
   await selfCheck();
 }
-
 /** Confirms the layer is live: backend reachable + registry loaded. */
 async function selfCheck(): Promise<void> {
   let catalogMsg = 'catalog unreachable (will retry on demand)';

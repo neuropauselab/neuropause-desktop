@@ -15,6 +15,7 @@
 import type {
   WorkflowRun,
   WorkflowSpec,
+  PlatformEventInput,
   WorkforceAuditRequest as TWorkforceAuditRequest,
   WorkforceJobGetRequest as TWorkforceJobGetRequest,
   WorkforceJobRunRequest as TWorkforceJobRunRequest,
@@ -59,6 +60,12 @@ const log = createLogger('workforce');
 
 export interface WorkforceSubsystemDeps {
   broadcast: (channel: string, payload: unknown) => void;
+  /**
+   * V7.3.2: publish platform events (workflow lifecycle → timeline). Optional so
+   * the subsystem still runs standalone/in tests; the composition root passes
+   * `platform.api.publish`, exactly as connectors/sync/automations already do.
+   */
+  publish?: (event: PlatformEventInput) => void;
 }
 
 export interface WorkforceSubsystem {
@@ -109,6 +116,26 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
   // Workflow runs are ephemeral this stage (jobs are the durable record). We keep
   // the spec alongside each run so it can be resumed and its checkpoints resolved.
   const workflowRuns = new Map<string, { run: WorkflowRun; spec: WorkflowSpec }>();
+  // V7.3.2: emit a workflow lifecycle event so it flows onto the platform bus →
+  // timeline → Executive Center. `recovered` marks a run that came back via
+  // recover(); otherwise the type is derived from the run's terminal status.
+  const publishWorkflow = (run: WorkflowRun, spec: WorkflowSpec, recovered = false): void => {
+    if (!deps.publish) return;
+    const type: PlatformEventInput['type'] = recovered
+      ? 'workflow.recovered'
+      : run.status === 'succeeded'
+        ? 'workflow.completed'
+        : run.status === 'failed'
+          ? 'workflow.failed'
+          : 'workflow.started';
+    deps.publish({
+      type,
+      category: 'automation',
+      source: 'workforce',
+      resource: { type: 'workflow', id: run.id, name: spec.id },
+      metadata: { workflowId: spec.id, status: run.status, steps: spec.steps.length },
+    });
+  };
 
   const emitSnapshot = (): void => {
     deps.broadcast(IpcChannel.WorkforceEventBroadcast, {
@@ -188,6 +215,7 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
         const spec = r.spec as WorkflowSpec;
         const run = orchestrator.start(spec, r.now);
         workflowRuns.set(run.id, { run, spec });
+        publishWorkflow(run, spec);
         return run;
       },
     },
@@ -216,10 +244,11 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
         // branches (planRecovery), preserving completed work — instead of the prior
         // no-op (a failed run has nothing pending for resume() to advance). An
         // awaiting-approval run resumes exactly as before.
-        entry.run =
-          entry.run.status === 'failed'
-            ? orchestrator.recover(entry.run, entry.spec)
-            : orchestrator.resume(entry.run, entry.spec);
+        const wasFailed = entry.run.status === 'failed';
+        entry.run = wasFailed
+          ? orchestrator.recover(entry.run, entry.spec)
+          : orchestrator.resume(entry.run, entry.spec);
+        publishWorkflow(entry.run, entry.spec, wasFailed);
         return entry.run;
       },
     },

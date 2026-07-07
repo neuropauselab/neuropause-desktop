@@ -9,10 +9,8 @@
  * by the main process, the renderer, and unit tests without pulling in any
  * environment-specific code.
  */
-
 /** Routing/QoS hint. Higher-urgency events can be prioritized by subscribers. */
 export type EventPriority = 'low' | 'normal' | 'high' | 'critical';
-
 /** Broad family an event belongs to — used for coarse filtering and metrics. */
 export type PlatformEventCategory =
   | 'application'
@@ -27,7 +25,6 @@ export type PlatformEventCategory =
   | 'knowledge'
   | 'automation'
   | 'system';
-
 /**
  * The canonical, versioned set of event types. Adding a new type is additive;
  * changing the shape of an existing one bumps its `version`.
@@ -109,24 +106,25 @@ export type PlatformEventType =
   | 'execution.started'
   | 'execution.completed'
   | 'execution.failed'
-  | 'execution.cancelled';
-
+  | 'execution.cancelled'
+  // workflow orchestration (V7.3.2)
+  | 'workflow.started'
+  | 'workflow.completed'
+  | 'workflow.failed'
+  | 'workflow.recovered';
 /** Who or what caused the event. */
 export interface EventActor {
   kind: 'user' | 'system' | 'plugin' | 'connector';
   id: string | null;
 }
-
 /** The thing an event is about (an app, a plugin, an operation, …). */
 export interface EventResource {
   type: string;
   id: string;
   name: string | null;
 }
-
 /** Free-form, primitive-valued metadata. Kept flat for cheap serialization. */
 export type PlatformEventMeta = Record<string, string | number | boolean | null>;
-
 /** A fully materialized event as stored and delivered. */
 export interface PlatformEvent {
   /** Globally unique id for this event instance. */
@@ -148,7 +146,6 @@ export interface PlatformEvent {
   causationId: string | null;
   metadata: PlatformEventMeta;
 }
-
 /**
  * Input to `publish`. The bus fills in id/timestamp and sensible defaults for
  * version/priority/actor/correlation so producers stay terse.
@@ -165,9 +162,7 @@ export interface PlatformEventInput {
   correlationId?: string;
   causationId?: string | null;
 }
-
 /* ───────────────────────────── Timeline ─────────────────────────────────── */
-
 /** A query against the Timeline. All fields are optional and AND-combined. */
 export interface TimelineQuery {
   types?: PlatformEventType[];
@@ -188,14 +183,12 @@ export interface TimelineQuery {
   cursor?: string | null;
   order?: 'asc' | 'desc';
 }
-
 export interface TimelinePage {
   events: PlatformEvent[];
   nextCursor: string | null;
   /** Total matching events across all pages (best-effort over the live window). */
   total: number;
 }
-
 export interface TimelineStats {
   total: number;
   byCategory: Record<string, number>;
@@ -203,7 +196,6 @@ export interface TimelineStats {
   oldest: string | null;
   newest: string | null;
 }
-
 export interface TimelineExport {
   format: 'jsonl';
   generatedAt: string;
@@ -211,11 +203,8 @@ export interface TimelineExport {
   /** The exported events as newline-delimited JSON. */
   data: string;
 }
-
 /* ──────────────────────────── Diagnostics ───────────────────────────────── */
-
 export type DiagnosticStatus = 'ok' | 'degraded' | 'down' | 'unknown';
-
 export interface DiagnosticCheck {
   id: string;
   label: string;
@@ -226,7 +215,6 @@ export interface DiagnosticCheck {
   /** Actionable recovery hint shown when the check is not healthy. */
   recommendation: string | null;
 }
-
 export interface EventBusMetrics {
   eventsPublished: number;
   eventsPerMinute: number;
@@ -235,7 +223,6 @@ export interface EventBusMetrics {
   avgDispatchMs: number;
   bufferedEvents: number;
 }
-
 export interface SubscriberStatus {
   id: string;
   events: number;
@@ -243,7 +230,6 @@ export interface SubscriberStatus {
   lastError: string | null;
   avgMs: number;
 }
-
 export interface DiagnosticsReport {
   generatedAt: string;
   overall: DiagnosticStatus;
