@@ -591,6 +591,11 @@ export const ipc = {
   },
 
   knowledge: {
+    topics: () =>
+      invoke(IpcChannel.KnowledgeTopics) as Promise<{
+        topics: Array<{ id: string; label: string; memoryIds: string[]; entities: string[]; size: number }>;
+        total: number;
+      }>,
     related: (memoryId: string, limit?: number) =>
       invoke(IpcChannel.KnowledgeRelated, { memoryId, limit }) as Promise<{
         memoryId: string;

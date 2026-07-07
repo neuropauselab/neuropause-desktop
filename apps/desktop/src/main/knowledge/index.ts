@@ -4,7 +4,8 @@
  * copies no data. Registers the knowledge:related IPC handler over the secure
  * bridge, mirroring the memory subsystem's shape.
  */
-import { IpcChannel, KnowledgeRelatedRequest } from '@neuropause/shared';
+import { EmptyRequest, IpcChannel, KnowledgeRelatedRequest } from '@neuropause/shared';
+import { handleTopics } from './topicsHandler';
 import type { KnowledgeRelatedRequest as TKnowledgeRelatedRequest } from '@neuropause/shared';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { memoryStore } from '../memory/memoryInstance';
@@ -25,6 +26,11 @@ export function initKnowledge(): KnowledgeSubsystem {
           { listItems: () => memoryStore.allItems(), graph: graphStore },
           p as TKnowledgeRelatedRequest,
         ),
+    },
+    {
+      channel: IpcChannel.KnowledgeTopics,
+      schema: EmptyRequest,
+      handler: () => handleTopics({ listItems: () => memoryStore.allItems() }),
     },
   ];
   return { handlers };
