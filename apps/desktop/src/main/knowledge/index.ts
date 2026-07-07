@@ -6,6 +6,7 @@
  */
 import { EmptyRequest, IpcChannel, KnowledgeRelatedRequest } from '@neuropause/shared';
 import { handleTopics } from './topicsHandler';
+import { handleKnowledgeHealth } from './healthHandler';
 import type { KnowledgeRelatedRequest as TKnowledgeRelatedRequest } from '@neuropause/shared';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { memoryStore } from '../memory/memoryInstance';
@@ -31,6 +32,11 @@ export function initKnowledge(): KnowledgeSubsystem {
       channel: IpcChannel.KnowledgeTopics,
       schema: EmptyRequest,
       handler: () => handleTopics({ listItems: () => memoryStore.allItems() }),
+    },
+    {
+      channel: IpcChannel.KnowledgeHealth,
+      schema: EmptyRequest,
+      handler: () => handleKnowledgeHealth({ listItems: () => memoryStore.allItems() }),
     },
   ];
   return { handlers };
