@@ -539,6 +539,11 @@ export const MemoryRecallRequest = z.object({
   limit: z.number().int().min(1).max(200).optional(),
 });
 export const MemoryGetRequest = z.object({ id: z.string().trim().min(1).max(512) });
+export const KnowledgeRelatedRequest = z.object({
+  memoryId: z.string().trim().min(1).max(512),
+  limit: z.number().int().min(1).max(100).optional(),
+});
+export type KnowledgeRelatedRequest = z.infer<typeof KnowledgeRelatedRequest>;
 export const MemoryRememberRequest = z.object({
   kind: MemoryKindSchema,
   title: z.string().trim().min(1).max(300),
