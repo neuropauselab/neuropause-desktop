@@ -191,6 +191,7 @@ export const IpcChannel = {
 
   // ── AI memory + enterprise search ──
   MemoryRecall: 'memory:recall',
+  MemorySemanticRecall: 'memory:semantic-recall',
   MemoryGet: 'memory:get',
   MemoryRemember: 'memory:remember',
   MemoryForget: 'memory:forget',
@@ -617,6 +618,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.GraphHistory,
   IpcChannel.GraphRebuild,
   IpcChannel.MemoryRecall,
+  IpcChannel.MemorySemanticRecall,
   IpcChannel.MemoryGet,
   IpcChannel.MemoryRemember,
   IpcChannel.MemoryForget,

@@ -44,6 +44,9 @@ import {
 } from '../ai/conversationMemory';
 import { unifiedStore } from '../unified/storeInstance';
 import { memoryStore } from './memoryInstance';
+import { handleSemanticRecall } from './semanticRecallHandler';
+import { backendSemanticSearch } from '../backendsemantic/backendSemanticInstance';
+import { runtimeIdentity } from '../runtimeIdentity';
 import { memoryAuditLog } from './memoryAuditInstance';
 import { projectMemory } from './memoryProjector';
 
@@ -63,6 +66,9 @@ export interface MemorySubsystem {
 export async function initMemory(deps: MemorySubsystemDeps): Promise<MemorySubsystem> {
   await memoryStore.load();
   await memoryAuditLog.load();
+
+  // V8.2: wire the backend semantic source so recallSemantic can blend vector hits.
+  memoryStore.configureSemantic(backendSemanticSearch);
 
   const rebuild = (): void => {
     const now = new Date().toISOString();
@@ -109,6 +115,21 @@ export async function initMemory(deps: MemorySubsystemDeps): Promise<MemorySubsy
       channel: IpcChannel.MemoryRecall,
       schema: MemoryRecallRequest,
       handler: (p) => memoryStore.recall(p as TMemoryRecallRequest),
+    },
+    {
+      channel: IpcChannel.MemorySemanticRecall,
+      schema: MemoryRecallRequest,
+      handler: (p) =>
+        handleSemanticRecall(
+          {
+            recallSemantic: (query, orgId) => memoryStore.recallSemantic(query, orgId),
+            recall: (query) => memoryStore.recall(query),
+            getOrgId: () => runtimeIdentity.getCurrent()?.organizationId,
+            onSemanticError: (err) =>
+              log.warn('semantic recall failed; using lexical', { error: String(err) }),
+          },
+          p as TMemoryRecallRequest,
+        ),
     },
     {
       channel: IpcChannel.MemoryGet,
