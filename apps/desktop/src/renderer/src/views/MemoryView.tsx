@@ -8,6 +8,7 @@ import { ViewHeader, ViewScroll } from '@renderer/components/ui/Page';
 import { Spinner } from '@renderer/components/Spinner';
 import { explanationLabels } from './memoryExplanation';
 import { RelatedMemories } from './RelatedMemories';
+import { KnowledgeTopics } from './KnowledgeTopics';
 
 const KIND_LABEL: Record<MemoryKind, string> = {
   decision: 'Decisions',
@@ -119,6 +120,8 @@ export function MemoryView(): JSX.Element {
           </span>
         }
       />
+
+      <KnowledgeTopics onPick={(entity) => setQuery(entity)} />
 
       <div className="relative mb-3">
         <Icon
