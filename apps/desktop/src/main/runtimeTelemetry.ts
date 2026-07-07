@@ -111,7 +111,7 @@ export class RuntimeTelemetrySampler {
 function cpuCount(): number {
   try {
     // Lazy require so this module stays cheap to import.
-
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- keep the lazy synchronous builtin load
     return require('node:os').cpus()?.length ?? 1;
   } catch {
     return 1;
@@ -120,6 +120,7 @@ function cpuCount(): number {
 
 function totalSystemMemoryBytes(): number {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- keep the lazy synchronous builtin load
     return require('node:os').totalmem() || 0;
   } catch {
     return 0;

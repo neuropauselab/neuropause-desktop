@@ -86,7 +86,7 @@ export function MemoryView(): JSX.Element {
   }, [query, kind, recall]);
 
   const total = counts?.total ?? 0;
-  const byKind = counts?.byKind ?? {};
+  const byKind = useMemo(() => counts?.byKind ?? {}, [counts]);
 
   const filterChips = useMemo(
     () => [

@@ -264,7 +264,7 @@ export function SubscriptionCenter(): JSX.Element {
     return (
       <div className="rounded-2xl border border-[var(--hairline)] [background:var(--fill-1)] p-4">
         <div className="mb-2 flex items-center gap-2 text-sm text-ink">
-          <Icon name="info" size={15} /> Couldn't load subscription
+          <Icon name="info" size={15} /> Couldn&apos;t load subscription
         </div>
         <p className="mb-3 text-xs text-white/60">{error}</p>
         <button

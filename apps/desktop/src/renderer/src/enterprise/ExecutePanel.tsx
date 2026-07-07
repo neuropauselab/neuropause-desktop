@@ -313,7 +313,7 @@ export function ExecutePanel(): JSX.Element {
 
       {error && (
         <p className="mt-3 rounded-lg border border-white/10 bg-white/5 p-2.5 text-xs text-white/70">
-          Couldn't run that: {error}
+          Couldn&apos;t run that: {error}
         </p>
       )}
 
