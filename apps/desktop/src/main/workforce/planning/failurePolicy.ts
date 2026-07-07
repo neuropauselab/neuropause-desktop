@@ -29,7 +29,11 @@ const POLICIES: Record<FailureClass, FailurePolicy> = {
   authentication: { retryable: false, backoff: 'none', escalation: 'notify' }, // needs user re-auth
   validation: { retryable: false, backoff: 'none', escalation: 'notify' }, // deterministic input error
   user_error: { retryable: false, backoff: 'none', escalation: 'notify' },
-  internal: { retryable: false, backoff: 'none', escalation: 'block' }, // deterministic bug
+  // Unclassified / internal: may be transient (a race, a flaky dependency), so retry
+  // cautiously within budget. Misclassifying a transient failure as permanent — and
+  // giving up on work that would have succeeded — is worse than retrying a genuine
+  // bug a few times. Only CONFIDENTLY deterministic failures above skip retry.
+  internal: { retryable: true, backoff: 'exponential', escalation: 'notify' },
 };
 
 export function policyFor(cls: FailureClass): FailurePolicy {

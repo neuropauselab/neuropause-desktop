@@ -20,6 +20,9 @@ import type { WorkflowRun, WorkflowSpec, WorkflowStep, WorkflowStepRun } from '@
 import { createLogger } from '../../logger';
 import type { WorkerRuntime } from '../runtime';
 import { planWorkflow } from '../planning/workflowPlanning';
+import { analyzeWorkflowHealth } from '../planning/workflowAnalysis';
+import { classifyFailure, retryDecision, DEFAULT_RETRY_LIMITS } from '../planning/failurePolicy';
+import { planRecovery } from '../planning/recoveryPlanner';
 
 const log = createLogger('workforce-orchestrator');
 
@@ -71,7 +74,23 @@ export class Orchestrator {
       return run;
     }
 
-    log.info('Workflow started', { workflow: spec.id, steps: spec.steps.length });
+    // V7.2.2: structural health check — warn (do not block) on an unhealthy
+    // workflow so operators see risk before it runs. (Invalid DAGs were already
+    // rejected above; this covers over-parallelism, long chains, bottlenecks.)
+    const health = analyzeWorkflowHealth(spec);
+    if (health.issues.length > 0) {
+      log.warn('Workflow health issues detected', {
+        workflow: spec.id,
+        score: health.score,
+        issues: health.issues.map((i) => `${i.kind}(${i.severity})`),
+      });
+    }
+
+    log.info('Workflow started', {
+      workflow: spec.id,
+      steps: spec.steps.length,
+      healthScore: health.score,
+    });
     this.advance(run, spec, now);
     return run;
   }
@@ -95,6 +114,38 @@ export class Orchestrator {
       sr.status = approved ? 'succeeded' : 'failed';
       sr.finishedAt = now;
     }
+    this.advance(run, spec, now);
+    return run;
+  }
+
+  /**
+   * V7.2.2: recover a failed or interrupted run. Preserves every succeeded step and
+   * replays only the unfinished branches (via planRecovery), then advances.
+   * Completed work is never re-run — preserved steps stay 'succeeded', so advance
+   * skips them and only their unfinished dependents execute.
+   */
+  recover(run: WorkflowRun, spec: WorkflowSpec, now = this.clock()): WorkflowRun {
+    const recovery = planRecovery(spec, run);
+    if (!recovery.ok) {
+      log.warn('Recovery planning failed', { workflow: spec.id, error: recovery.error });
+      return run;
+    }
+    const replay = new Set(recovery.plan.toReplay);
+    for (const sr of run.stepRuns) {
+      if (replay.has(sr.stepId)) {
+        sr.status = 'pending';
+        sr.jobId = null;
+        sr.startedAt = null;
+        sr.finishedAt = null;
+      }
+    }
+    run.status = 'pending';
+    run.finishedAt = null;
+    log.info('Workflow recovery started', {
+      workflow: spec.id,
+      replay: recovery.plan.toReplay.length,
+      preserved: recovery.plan.preserved.length,
+    });
     this.advance(run, spec, now);
     return run;
   }
@@ -170,7 +221,19 @@ export class Orchestrator {
         return sr.status;
       }
       if (job.status === 'failed') {
-        if (attempt < maxAttempts) continue;
+        // V7.2.2: policy-driven retry. Classify the failure and consult the retry
+        // policy instead of blindly retrying to the budget. Deterministic failures
+        // (validation / auth / internal / user error) are NOT retried even with
+        // attempts remaining; transient failures retry within the budget. NOTE: the
+        // computed backoff delay is not applied here — a real delay needs an async
+        // retry path, which would change the orchestrator's synchronous contract
+        // (see KNOWN LIMITATIONS); eligibility + escalation are active now.
+        const failureClass = classifyFailure({ message: job.error ?? undefined });
+        const decision = retryDecision(failureClass, attempt, {
+          ...DEFAULT_RETRY_LIMITS,
+          maxAttempts,
+        });
+        if (decision.retry) continue;
         sr.status = 'failed';
         sr.finishedAt = now;
         return sr.status;

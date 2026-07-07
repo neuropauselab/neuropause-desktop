@@ -41,12 +41,14 @@ describe('retryDecision', () => {
     expect(last.escalation).toBe('notify');
   });
 
-  it('never retries deterministic failures (validation, user error, internal)', () => {
+  it('never retries confidently-deterministic failures (validation, user error)', () => {
     expect(retryDecision('validation', 1).retry).toBe(false);
     expect(retryDecision('user_error', 1).retry).toBe(false);
+  });
+
+  it('retries unknown/internal failures cautiously (they may be transient)', () => {
     const internal = retryDecision('internal', 1);
-    expect(internal.retry).toBe(false);
-    expect(internal.escalation).toBe('block');
+    expect(internal.retry).toBe(true);
   });
 
   it('does not retry authentication failures (needs user re-auth)', () => {
