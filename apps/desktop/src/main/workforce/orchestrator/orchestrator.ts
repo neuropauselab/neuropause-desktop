@@ -19,6 +19,7 @@ import { randomUUID } from 'node:crypto';
 import type { WorkflowRun, WorkflowSpec, WorkflowStep, WorkflowStepRun } from '@neuropause/shared';
 import { createLogger } from '../../logger';
 import type { WorkerRuntime } from '../runtime';
+import { planWorkflow } from '../planning/workflowPlanning';
 
 const log = createLogger('workforce-orchestrator');
 
@@ -54,6 +55,22 @@ export class Orchestrator {
       startedAt: now,
       finishedAt: null,
     };
+    // V7.1: validate the DAG up front via the goal planner — reject a cyclic or
+    // malformed workflow with a clear failure instead of stalling forever (its
+    // cyclic steps would never become ready under advance()).
+    const plan = planWorkflow(spec);
+    if (!plan.ok) {
+      log.warn('Workflow rejected: invalid plan', {
+        workflow: spec.id,
+        error: plan.error,
+        detail: plan.detail,
+      });
+      for (const sr of run.stepRuns) sr.status = 'skipped';
+      run.status = 'failed';
+      run.finishedAt = now;
+      return run;
+    }
+
     log.info('Workflow started', { workflow: spec.id, steps: spec.steps.length });
     this.advance(run, spec, now);
     return run;
