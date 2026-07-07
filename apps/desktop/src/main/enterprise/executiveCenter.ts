@@ -26,6 +26,8 @@ import {
   type WorkforceHealthSummary,
 } from '@neuropause/shared';
 import { workforceHealthKpi } from './workforceHealth';
+import { workforcePerformanceKpi } from '../workforce/intelligence/workforcePerformanceKpi';
+import type { WorkforceIntelligence } from '../workforce/intelligence/workforceIntelligence';
 
 /** The existing producers the Center composes. Injected for testability. */
 export interface ExecutiveCenterSources {
@@ -41,6 +43,7 @@ export interface ExecutiveCenterSources {
   monthlyTrends?: () => MonthlyTrend[] | undefined;
   /** V8.1: aggregate AI-workforce health (optional). */
   workforceHealth?: () => WorkforceHealthSummary | undefined;
+  workforceIntelligence?: () => WorkforceIntelligence | undefined;
 }
 
 /** The minimal timeline fields the composer reads (kept local; no new dep). */
@@ -248,12 +251,15 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
 
   const monthlyTrends = sources.monthlyTrends?.();
   const workforceHealth = sources.workforceHealth?.();
+  const workforceIntel = sources.workforceIntelligence?.();
 
   return {
     generatedAt,
-    kpis: workforceHealth
-      ? [...buildKpis(scores, inputs), workforceHealthKpi(workforceHealth)]
-      : buildKpis(scores, inputs),
+    kpis: [
+      ...buildKpis(scores, inputs),
+      ...(workforceHealth ? [workforceHealthKpi(workforceHealth)] : []),
+      ...(workforceIntel ? [workforcePerformanceKpi(workforceIntel)] : []),
+    ],
     orgHealth: scores,
     workforceHealth,
     criticalAlerts: card(
