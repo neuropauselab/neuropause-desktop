@@ -593,6 +593,8 @@ export const ipc = {
   memory: {
     recall: (q?: MemoryRecallQuery) =>
       invoke(IpcChannel.MemoryRecall, q ?? {}) as Promise<MemoryRecallResult>,
+    semanticRecall: (q?: MemoryRecallQuery) =>
+      invoke(IpcChannel.MemorySemanticRecall, q ?? {}) as Promise<MemoryRecallResult>,
     get: (id: string) => invoke(IpcChannel.MemoryGet, { id }) as Promise<MemoryItem | null>,
     remember: (input: MemoryWriteInput) =>
       invoke(IpcChannel.MemoryRemember, input) as Promise<MemoryItem>,

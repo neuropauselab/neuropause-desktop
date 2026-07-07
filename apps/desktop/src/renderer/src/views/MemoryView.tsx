@@ -60,11 +60,19 @@ export function MemoryView(): JSX.Element {
   const recall = useCallback(async (text: string, k: MemoryKind | 'all') => {
     setLoading(true);
     try {
-      const res = await ipc.memory.recall({
+      const params = {
         text: text.trim() || undefined,
         kinds: k === 'all' ? undefined : [k],
         limit: 50,
-      });
+      };
+      // Prefer semantic recall; fall back to lexical if it errors client-side
+      // (the main handler also degrades gracefully, but this covers IPC failures).
+      let res: Awaited<ReturnType<typeof ipc.memory.recall>>;
+      try {
+        res = await ipc.memory.semanticRecall(params);
+      } catch {
+        res = await ipc.memory.recall(params);
+      }
       setHits(res?.hits ?? []);
     } catch {
       setHits([]);
