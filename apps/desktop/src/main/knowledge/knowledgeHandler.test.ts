@@ -35,6 +35,8 @@ describe('handleRelatedMemories', () => {
     const out = handleRelatedMemories(deps(), { memoryId: 'a' });
     expect(out.memoryId).toBe('a');
     expect(out.related.map((r) => r.memoryId)).toEqual(['b']);
+    // Enriched with display fields from the memory (source of truth).
+    expect(out.related[0]).toMatchObject({ memoryId: 'b', title: 'b', kind: 'context' });
   });
 
   it('activates the graph: links a memory whose entity is a graph-neighbor', () => {

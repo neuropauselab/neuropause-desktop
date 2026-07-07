@@ -8,7 +8,7 @@
  * GraphStore.neighbors API — no new store, no duplicated logic.
  */
 import type { MemoryItem } from '@neuropause/shared';
-import { relatedMemories, type RelatedMemory } from './knowledgeLinks';
+import { relatedMemories } from './knowledgeLinks';
 
 /** The slice of GraphStore this handler needs (matches GraphStore.neighbors). */
 export interface KnowledgeGraph {
@@ -25,9 +25,19 @@ export interface KnowledgeHandlerDeps {
   neighborLimit?: number;
 }
 
+export interface RelatedMemoryView {
+  memoryId: string;
+  title: string;
+  kind: string;
+  /** Short excerpt for the UI. */
+  content: string;
+  score: number;
+  sharedEntities: string[];
+}
+
 export interface RelatedMemoriesResult {
   memoryId: string;
-  related: RelatedMemory[];
+  related: RelatedMemoryView[];
 }
 
 export function handleRelatedMemories(
@@ -49,5 +59,20 @@ export function handleRelatedMemories(
   };
 
   const related = relatedMemories(input.memoryId, memories, { limit: input.limit, expandEntities });
-  return { memoryId: input.memoryId, related };
+
+  // Enrich each related id with display fields from the memory (source of truth).
+  const byId = new Map(memories.map((m) => [m.id, m]));
+  const view: RelatedMemoryView[] = related.map((r) => {
+    const m = byId.get(r.memoryId);
+    return {
+      memoryId: r.memoryId,
+      title: m?.title ?? r.memoryId,
+      kind: m?.kind ?? 'context',
+      content: m?.content ?? '',
+      score: r.score,
+      sharedEntities: r.sharedEntities,
+    };
+  });
+
+  return { memoryId: input.memoryId, related: view };
 }

@@ -7,6 +7,7 @@ import { EmptyState } from '@renderer/components/ui/EmptyState';
 import { ViewHeader, ViewScroll } from '@renderer/components/ui/Page';
 import { Spinner } from '@renderer/components/Spinner';
 import { explanationLabels } from './memoryExplanation';
+import { RelatedMemories } from './RelatedMemories';
 
 const KIND_LABEL: Record<MemoryKind, string> = {
   decision: 'Decisions',
@@ -56,6 +57,7 @@ export function MemoryView(): JSX.Element {
   const [hits, setHits] = useState<MemoryHit[]>([]);
   const [counts, setCounts] = useState<MemoryCounts | null>(null);
   const [loading, setLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const recall = useCallback(async (text: string, k: MemoryKind | 'all') => {
     setLoading(true);
@@ -205,6 +207,14 @@ export function MemoryView(): JSX.Element {
                     {labels.length > 0 && (
                       <div className="mt-1 text-[10px] text-white/30">{labels.join(' • ')}</div>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => setExpandedId(expandedId === it.id ? null : it.id)}
+                      className="mt-2 text-[10px] text-white/40 transition hover:text-white/70"
+                    >
+                      {expandedId === it.id ? 'Hide related' : 'Related memories'}
+                    </button>
+                    {expandedId === it.id && <RelatedMemories memoryId={it.id} />}
                   </div>
                 </div>
               </div>

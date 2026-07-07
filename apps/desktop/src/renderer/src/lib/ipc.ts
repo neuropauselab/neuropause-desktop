@@ -590,6 +590,21 @@ export const ipc = {
       subscribe(IpcChannel.GraphEventBroadcast, (p) => cb(p as GraphCounts)),
   },
 
+  knowledge: {
+    related: (memoryId: string, limit?: number) =>
+      invoke(IpcChannel.KnowledgeRelated, { memoryId, limit }) as Promise<{
+        memoryId: string;
+        related: Array<{
+          memoryId: string;
+          title: string;
+          kind: string;
+          content: string;
+          score: number;
+          sharedEntities: string[];
+        }>;
+      }>,
+  },
+
   memory: {
     recall: (q?: MemoryRecallQuery) =>
       invoke(IpcChannel.MemoryRecall, q ?? {}) as Promise<MemoryRecallResult>,
