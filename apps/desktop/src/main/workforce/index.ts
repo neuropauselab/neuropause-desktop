@@ -51,6 +51,7 @@ import { jobStore } from './runtime/jobInstance';
 import { GovernanceRuntime } from './governance';
 import { Scheduler, WorkerRuntime } from './runtime';
 import { Orchestrator } from './orchestrator';
+import { analyzeWorkflowHealth, criticalPath } from './planning/workflowAnalysis';
 import { builtInSkills, registerBuiltInWorkers } from './workers';
 import type { WorkforceData, WorkforceNeighbor } from './sdk';
 
@@ -193,7 +194,16 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
     {
       channel: IpcChannel.WorkforceWorkflowRuns,
       schema: EmptyRequest,
-      handler: () => [...workflowRuns.values()].map((x) => x.run),
+      handler: () =>
+        // V7.3.1: attach live workflow intelligence to each run — a health score +
+        // issues (analyzeWorkflowHealth) and the critical path (bottlenecks, slack,
+        // estimated duration), both from the tested analyzers. Backward-compatible:
+        // these are extra fields; existing consumers reading WorkflowRun ignore them.
+        [...workflowRuns.values()].map((x) => ({
+          ...x.run,
+          health: analyzeWorkflowHealth(x.spec),
+          criticalPath: criticalPath(x.spec),
+        })),
     },
     {
       channel: IpcChannel.WorkforceWorkflowResume,
