@@ -6,6 +6,7 @@ import { Icon, type IconName } from '@renderer/components/ui/Icon';
 import { EmptyState } from '@renderer/components/ui/EmptyState';
 import { ViewHeader, ViewScroll } from '@renderer/components/ui/Page';
 import { Spinner } from '@renderer/components/Spinner';
+import { explanationLabels } from './memoryExplanation';
 
 const KIND_LABEL: Record<MemoryKind, string> = {
   decision: 'Decisions',
@@ -162,6 +163,7 @@ export function MemoryView(): JSX.Element {
             const it = h.item;
             if (!it) return null;
             const k = (it.kind as MemoryKind) ?? 'context';
+            const labels = explanationLabels(h.ranking);
             return (
               <div
                 key={it.id}
@@ -192,6 +194,9 @@ export function MemoryView(): JSX.Element {
                         </span>
                       ))}
                     </div>
+                    {labels.length > 0 && (
+                      <div className="mt-1 text-[10px] text-white/30">{labels.join(' • ')}</div>
+                    )}
                   </div>
                 </div>
               </div>

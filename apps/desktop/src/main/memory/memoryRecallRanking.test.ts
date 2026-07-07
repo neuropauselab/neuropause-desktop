@@ -312,4 +312,79 @@ describe("rankRecallHits", () => {
     expect(hit.item.title).toBe("Investor Deck");
     expect(hit.item.kind).toBe("note");
   });
+
+  // ── V7.5: explainable ranking metadata carried onto each hit ──
+  describe("ranking metadata", () => {
+    it("carries structured ranking metadata on every ranked hit", () => {
+      const items = [makeItem({ id: "a", occurredAt: iso(0) })];
+      const [hit] = rankRecallHits({
+        query: {},
+        lexicalHits: hits("a"),
+        getItem: itemLookup(items),
+        now: NOW,
+      });
+      expect(hit.ranking).toBeDefined();
+      expect(typeof hit.ranking!.confidence).toBe("number");
+      expect(Array.isArray(hit.ranking!.reasons)).toBe(true);
+    });
+
+    it("keeps top-level score in 0..1 and ranking.score in 0..100 (consistent)", () => {
+      const items = [makeItem({ id: "a", occurredAt: iso(0) })];
+      const [hit] = rankRecallHits({
+        query: {},
+        lexicalHits: hits("a"),
+        getItem: itemLookup(items),
+        now: NOW,
+      });
+      expect(hit.score).toBeGreaterThan(0);
+      expect(hit.score).toBeLessThanOrEqual(1);
+      expect(hit.ranking!.score).toBeGreaterThan(0);
+      expect(hit.ranking!.score).toBeLessThanOrEqual(100);
+      // The two scales agree within rounding.
+      expect(Math.abs(hit.ranking!.score / 100 - hit.score)).toBeLessThan(0.01);
+    });
+
+    it("includes a keyword reason for a keyword-matched hit", () => {
+      const items = [makeItem({ id: "a", occurredAt: iso(0) })];
+      const [hit] = rankRecallHits({
+        query: {},
+        lexicalHits: hits("a"),
+        getItem: itemLookup(items),
+        now: NOW,
+      });
+      expect(hit.ranking!.reasons.some((r) => r.factor === "keyword")).toBe(true);
+    });
+
+    it("includes a pinned reason for a pinned hit", () => {
+      const items = [
+        makeItem({ id: "p", occurredAt: iso(0), metadata: { pinned: true } }),
+      ];
+      const [hit] = rankRecallHits({
+        query: {},
+        lexicalHits: hits("p"),
+        getItem: itemLookup(items),
+        now: NOW,
+      });
+      expect(hit.ranking!.reasons.some((r) => r.factor === "pinned")).toBe(true);
+    });
+
+    it("orders reasons strongest-first (contribution descending)", () => {
+      const items = [
+        makeItem({
+          id: "a",
+          occurredAt: iso(0),
+          metadata: { pinned: true, importance: 0.9 },
+        }),
+      ];
+      const [hit] = rankRecallHits({
+        query: {},
+        lexicalHits: hits("a"),
+        getItem: itemLookup(items),
+        now: NOW,
+      });
+      const contributions = hit.ranking!.reasons.map((r) => r.contribution);
+      const sorted = [...contributions].sort((x, y) => y - x);
+      expect(contributions).toEqual(sorted);
+    });
+  });
 });

@@ -118,7 +118,14 @@ export function rankRecallHits(input: RecallRankingInput): MemoryHit[] {
   for (const r of ranked) {
     const item = input.getItem(r.memoryId);
     if (!item) continue; // resolvable at merge time but not now — skip defensively
-    hits.push({ item, score: Math.round((r.score / 100) * 1000) / 1000 });
+    // Carry the ranking metadata the engine already computed (V7.5). Top-level
+    // `score` stays the normalized 0..1 recall relevance (unchanged contract);
+    // `ranking.score` is the engine's explainable 0..100 score. No re-ranking.
+    hits.push({
+      item,
+      score: Math.round((r.score / 100) * 1000) / 1000,
+      ranking: { score: r.score, confidence: r.confidence, reasons: r.reasons },
+    });
   }
   return hits;
 }

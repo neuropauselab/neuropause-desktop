@@ -129,6 +129,8 @@ export interface MemoryHit {
   item: MemoryItem;
   /** Relevance in 0..1 (1 for pure filter/browse with no text query). */
   score: number;
+  /** Explainable ranking metadata (V7.5); present only for text-ranked hits. */
+  ranking?: MemoryRankingMetadata;
 }
 
 export interface MemoryRecallResult {
@@ -286,4 +288,27 @@ export interface FounderMemoryCapture {
 export interface MemoryAuditPage {
   entries: MemoryAuditEvent[];
   total: number;
+}
+
+/* --------------------------- Explainable ranking (V7.5) --------------------------- */
+
+/** A single ranking signal that contributed to a hit's position. */
+export type RankingFactor = 'keyword' | 'semantic' | 'recency' | 'importance' | 'pinned';
+
+export interface RankingReason {
+  factor: RankingFactor;
+  /** Points (of the 0..100 score) this factor contributed. */
+  contribution: number;
+  /** Engine-level label; the renderer derives its own display text from the factor. */
+  label: string;
+}
+
+/** Explainable ranking metadata for a recalled memory (V7.5); present only on text-ranked hits. */
+export interface MemoryRankingMetadata {
+  /** The ranking engine's explainable relevance score, 0..100. */
+  score: number;
+  /** How corroborated the match is, 0..1. */
+  confidence: number;
+  /** Contributing factors, strongest first. */
+  reasons: RankingReason[];
 }
