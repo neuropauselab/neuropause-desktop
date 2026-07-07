@@ -518,4 +518,9 @@ export class MemoryStore extends EventEmitter {
   syncedItems(): MemoryItem[] {
     return [...this.items.values()].filter((it) => it.sync);
   }
+
+  /** All non-tombstoned memories — the backfill source (V8.2). */
+  allItems(): MemoryItem[] {
+    return [...this.items.values()].filter((it) => !it.sync?.deleted);
+  }
 }
