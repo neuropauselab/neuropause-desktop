@@ -48,10 +48,12 @@ export async function httpJson<E extends RetryableError>(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), policy.timeoutMs);
     try {
+      const hasBody = method !== 'GET';
       const init = {
         method,
         headers: { 'content-type': 'application/json', ...headers },
-        body: body === undefined ? '' : JSON.stringify(body),
+        // undici forbids a body on GET — only include it for methods that carry one.
+        ...(hasBody ? { body: body === undefined ? '' : JSON.stringify(body) } : {}),
         signal: controller.signal,
       } as unknown as HttpRequestInit;
       const res = await fetchFn(url, init);

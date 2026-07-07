@@ -87,6 +87,20 @@ describe('QdrantVectorStore — org isolation (security-critical)', () => {
     expect(points[0].payload).toMatchObject({ orgId: 'org-1', memoryId: 'a', kind: 'note' });
     expect(points[1].payload).toMatchObject({ orgId: 'org-1', memoryId: 'b' });
   });
+
+  it('maps memoryId to a deterministic UUID point id (Qdrant rejects non-UUID ids)', async () => {
+    const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+    const run = async () => {
+      const { fn, calls } = capturing(() => res(200, { result: true }));
+      await new QdrantVectorStore(cfg(), fn).batchUpsert([{ id: 'm1', orgId: 'org-1', vector: [1, 0, 0] }]);
+      return (calls[0].body as { points: Array<{ id: string }> }).points[0].id;
+    };
+    const id1 = await run();
+    const id2 = await run();
+    expect(id1).toMatch(uuidRe); // valid UUID, not the raw "m1"
+    expect(id1).not.toBe('m1');
+    expect(id2).toBe(id1); // deterministic — same memoryId ⇒ same point (idempotent)
+  });
 });
 
 describe('QdrantVectorStore — search results + validation', () => {

@@ -18,6 +18,21 @@ import {
   type VectorSearchResult,
 } from './qdrantTypes';
 import type { FetchFn } from '../embedding/embeddingTypes';
+import { createHash } from 'node:crypto';
+
+/**
+ * Qdrant point IDs must be an unsigned integer or a UUID — memory IDs are neither.
+ * Derive a deterministic RFC-4122 UUID from the memoryId so the same memory always
+ * maps to the same point (preserving idempotent upsert + delete-by-id). The real
+ * memoryId is kept in the payload and returned as the hit id.
+ */
+function pointId(memoryId: string): string {
+  const h = createHash('sha256').update(memoryId).digest();
+  h[6] = (h[6] & 0x0f) | 0x50; // version 5
+  h[8] = (h[8] & 0x3f) | 0x80; // RFC-4122 variant
+  const x = h.subarray(0, 16).toString('hex');
+  return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20, 32)}`;
+}
 
 interface QdrantFilter {
   must: Array<{ key: string; match: { value: string } }>;
@@ -99,7 +114,7 @@ export class QdrantVectorStore {
         throw new QdrantError('invalid_response', `Vector for ${r.id} has ${r.vector.length} dims, expected ${this.config.dimensions}`);
       }
       // orgId is forced into the payload so the isolation filter always has a key to match.
-      return { id: r.id, vector: r.vector, payload: { ...r.payload, orgId: r.orgId, memoryId: r.id } };
+      return { id: pointId(r.id), vector: r.vector, payload: { ...r.payload, orgId: r.orgId, memoryId: r.id } };
     });
     await httpJson(
       this.fetchFn,
@@ -141,7 +156,7 @@ export class QdrantVectorStore {
 
   async health(): Promise<{ ok: boolean }> {
     try {
-      await httpJson(this.fetchFn, 'GET', this.url('/healthz'), undefined, this.headers, this.policy, (f) => this.fail(f));
+      await httpJson(this.fetchFn, 'GET', this.url('/'), undefined, this.headers, this.policy, (f) => this.fail(f));
       return { ok: true };
     } catch {
       return { ok: false };
