@@ -14,6 +14,8 @@ import { composeExecutiveSnapshot, type TimelineEntryLite } from './executiveCen
 import { getEnterpriseTimeline } from '../timeline';
 import { healthHistoryStore } from './healthHistoryInstance';
 import { decisionStore } from './decisionInstance';
+import { workerRegistry } from '../workforce/registry/registryInstance';
+import { summarizeWorkforceHealth } from './workforceHealth';
 import { buildUnifiedTimeline, type UnifiedItemLite } from '@neuropause/shared';
 import { buildExecutiveRecommendations, buildExecutiveSummary } from './executiveRecommendations';
 import type { MonthlyTrend } from '@neuropause/shared';
@@ -92,6 +94,7 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       orgItems: () => buildOrgIntelligenceItems(),
       orgHealthInputs: () => curInputs,
       timelineEntries: () => recentTimeline(),
+      workforceHealth: () => summarizeWorkforceHealth(workerRegistry.healthSummaries()),
       // V2.9: feed last week's health from the persisted history store so Weekly
       // Trends is live. Returns null until ≥1 older datapoint exists.
       previousWeek: () => {

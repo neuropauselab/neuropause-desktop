@@ -2,28 +2,21 @@
  * Workforce health aggregation (V8.1).
  *
  * A pure fold over the worker registry's existing per-worker health into one
- * workforce-level summary for the Executive Center. It introduces NO new
- * intelligence and NO new source of truth — it aggregates what the registry
- * already computes, and reuses the registry's own thresholds (successRate < 0.5 →
- * unhealthy, < 0.8 → degraded) so the rolled-up band never disagrees with the
- * per-worker states it summarizes.
+ * workforce-level summary for the Executive Center. Introduces NO new intelligence
+ * and NO new source of truth — it aggregates the health fields the registry already
+ * computes (exposed via WorkerRegistry.healthSummaries()), and reuses the
+ * registry's own thresholds (successRate < 0.5 → unhealthy, < 0.8 → degraded) so
+ * the rolled-up band never disagrees with the per-worker states it summarizes.
  *
- * It reads only the `health` fields it needs, via WorkerHealthLike; the registry's
- * `WorkerSummary` satisfies that structurally, so `registry.summaries()` is passed
- * directly at the call site while this module stays decoupled from the full shape.
- * Pure and Electron-free, so it unit-tests in isolation.
+ * Pure and Electron-free, so it unit-tests in isolation and can be called from the
+ * Executive Center composer without pulling in the registry singleton.
  */
-import type { WorkerHealthState, WorkforceHealthState, WorkforceHealthSummary } from '@neuropause/shared';
-
-/** The subset of a worker this aggregation reads. WorkerSummary satisfies it. */
-export interface WorkerHealthLike {
-  health: {
-    state: WorkerHealthState;
-    successRate: number; // 0..1
-    jobsRun: number;
-    jobsFailed: number;
-  };
-}
+import type {
+  ExecutiveKpi,
+  WorkforceHealthInput,
+  WorkforceHealthState,
+  WorkforceHealthSummary,
+} from '@neuropause/shared';
 
 function round3(n: number): number {
   return Math.round(n * 1000) / 1000;
@@ -39,7 +32,7 @@ const UNHEALTHY_BELOW = 0.5;
  * don't dilute the signal toward a misleading 100%.
  */
 export function summarizeWorkforceHealth(
-  workers: readonly WorkerHealthLike[],
+  workers: readonly WorkforceHealthInput[],
 ): WorkforceHealthSummary {
   let healthy = 0;
   let degraded = 0;
@@ -51,8 +44,7 @@ export function summarizeWorkforceHealth(
   let successCounted = 0;
 
   for (const w of workers) {
-    const h = w.health;
-    switch (h.state) {
+    switch (w.state) {
       case 'healthy':
         healthy += 1;
         break;
@@ -66,10 +58,10 @@ export function summarizeWorkforceHealth(
         unknown += 1;
         break;
     }
-    totalJobsRun += h.jobsRun;
-    totalJobsFailed += h.jobsFailed;
-    if (h.jobsRun > 0) {
-      successSum += h.successRate;
+    totalJobsRun += w.jobsRun;
+    totalJobsFailed += w.jobsFailed;
+    if (w.jobsRun > 0) {
+      successSum += w.successRate;
       successCounted += 1;
     }
   }
@@ -107,4 +99,36 @@ function rollUpState(x: {
   if (x.unhealthy > 0 || (x.hasActive && x.meanSuccessRate < UNHEALTHY_BELOW)) return 'unhealthy';
   if (x.degraded > 0 || (x.hasActive && x.meanSuccessRate < DEGRADED_BELOW)) return 'degraded';
   return 'healthy';
+}
+
+/** Band a WorkforceHealthState onto the ExecutiveKpi band vocabulary. Presentation-only. */
+export function workforceHealthBand(
+  state: WorkforceHealthState,
+): 'healthy' | 'watch' | 'at-risk' | 'critical' {
+  switch (state) {
+    case 'healthy':
+      return 'healthy';
+    case 'degraded':
+      return 'watch';
+    case 'unhealthy':
+      return 'critical';
+    default:
+      return 'watch';
+  }
+}
+
+/** Build the Workforce Health KPI for the Executive Center strip (V8.1). */
+export function workforceHealthKpi(summary: WorkforceHealthSummary): ExecutiveKpi {
+  const pct = Math.round(summary.meanSuccessRate * 100);
+  return {
+    key: 'workforce-health',
+    label: 'AI Workforce',
+    value: pct,
+    display:
+      summary.totalWorkers === 0
+        ? 'No workers'
+        : `${summary.healthy}/${summary.totalWorkers} healthy · ${pct}%`,
+    band: workforceHealthBand(summary.state),
+    deepLink: 'ai-workforce',
+  };
 }

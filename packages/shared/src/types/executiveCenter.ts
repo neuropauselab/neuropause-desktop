@@ -100,6 +100,8 @@ export interface ExecutiveCenterSnapshot {
   decisions?: DecisionSummaryView;
   /** Unified executive event stream (V3.8): decisions + org + delivery + recs. */
   unifiedTimeline?: ExecutiveTimelineEntry[];
+  /** Aggregate AI-workforce health (V8.1). */
+  workforceHealth?: WorkforceHealthSummary;
   /** Count of items by priority, for the "what requires attention" glance. */
   attentionCounts: { critical: number; high: number; normal: number };
 }
@@ -515,6 +517,16 @@ export type WorkforceHealthState = 'healthy' | 'degraded' | 'unhealthy' | 'unkno
  * registry's per-worker health for the Executive Center. Structured data only;
  * introduces no new intelligence.
  */
+/** Per-worker health projection the registry exposes for aggregation (V8.1). */
+export interface WorkforceHealthInput {
+  id: string;
+  name: string;
+  state: WorkforceHealthState;
+  successRate: number;
+  jobsRun: number;
+  jobsFailed: number;
+}
+
 export interface WorkforceHealthSummary {
   totalWorkers: number;
   healthy: number;

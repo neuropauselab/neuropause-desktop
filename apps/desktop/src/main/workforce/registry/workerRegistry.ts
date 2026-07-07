@@ -12,7 +12,13 @@
  */
 import { EventEmitter } from 'node:events';
 import { promises as fs } from 'node:fs';
-import type { Worker, WorkerHealthState, WorkerLifecycle, WorkerSummary } from '@neuropause/shared';
+import type {
+  Worker,
+  WorkerHealthState,
+  WorkerLifecycle,
+  WorkerSummary,
+  WorkforceHealthInput,
+} from '@neuropause/shared';
 import { toWorkerSummary } from '@neuropause/shared';
 import { createLogger } from '../../logger';
 import type { WorkerDefinition } from '../sdk';
@@ -126,6 +132,22 @@ export class WorkerRegistry extends EventEmitter {
 
   summaries(): WorkerSummary[] {
     return this.list().map(toWorkerSummary);
+  }
+
+  /**
+   * Per-worker health projection for workforce-health aggregation (V8.1). Exposes
+   * the success-rate fields toWorkerSummary omits, read from the same computed
+   * Worker.health — no new logic.
+   */
+  healthSummaries(): WorkforceHealthInput[] {
+    return this.list().map((w) => ({
+      id: w.identity.id,
+      name: w.identity.name,
+      state: w.health.state,
+      successRate: w.health.successRate,
+      jobsRun: w.health.jobsRun,
+      jobsFailed: w.health.jobsFailed,
+    }));
   }
 
   setLifecycle(id: string, lifecycle: WorkerLifecycle, now = new Date().toISOString()): Worker | null {
