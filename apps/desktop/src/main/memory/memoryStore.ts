@@ -30,6 +30,7 @@ import { memoryFieldsFromVersion, memoryVersionPayload, toSyncState } from './me
 import { createLogger } from '../logger';
 import { LexicalMemoryRetriever, type MemoryRetriever } from './memoryRetriever';
 import { rankRecallHits } from './memoryRecallRanking';
+import { hybridRecall, type SemanticSearchFn } from './memorySemanticRecall';
 
 const log = createLogger('memory-store');
 
@@ -52,6 +53,8 @@ export class MemoryStore extends EventEmitter {
   private lastPersist: Promise<void> = Promise.resolve();
   private persisting = false;
   private dirty = false;
+  /** V8.2: semantic hit source (backend client or local adapter); unset ⇒ lexical-only. */
+  private searchSemantic?: SemanticSearchFn;
 
   constructor(
     private readonly filePath: string,
@@ -392,6 +395,55 @@ export class MemoryStore extends EventEmitter {
     }
     this.mutated(at);
     return { added, updated, removed };
+  }
+
+  /** Wire a semantic hit source (V8.2). Until called, recallSemantic stays purely lexical. */
+  configureSemantic(searchSemantic: SemanticSearchFn): void {
+    this.searchSemantic = searchSemantic;
+  }
+
+  /**
+   * Semantic-aware recall (V8.2). Same result shape as `recall`. When a semantic
+   * source is configured and an org-scoped text query is given, it blends vector
+   * hits via the existing hybridRecall + ranker; otherwise returns exactly the sync
+   * `recall` result. `orgId` is the vector namespace, supplied by the caller.
+   */
+  async recallSemantic(q: MemoryRecallQuery, orgId?: string): Promise<MemoryRecallResult> {
+    const text = q.text?.trim();
+    if (!text || !this.searchSemantic || !orgId) return this.recall(q);
+
+    const kinds = q.kinds && q.kinds.length > 0 ? new Set(q.kinds) : null;
+    const since = q.since ? Date.parse(q.since) : null;
+    const until = q.until ? Date.parse(q.until) : null;
+    const passes = (it: MemoryItem): boolean => {
+      if (it.sync?.deleted) return false;
+      if (kinds && !kinds.has(it.kind)) return false;
+      if (q.entityRef && !it.entityRefs.includes(q.entityRef)) return false;
+      if (q.tag && !it.tags.includes(q.tag)) return false;
+      if (since !== null || until !== null) {
+        const ts = Date.parse(it.occurredAt ?? it.createdAt);
+        if (since !== null && ts < since) return false;
+        if (until !== null && ts > until) return false;
+      }
+      return true;
+    };
+
+    const limit = q.limit ?? 25;
+    const scored = this.retriever.search(text, Math.max(limit * 3, 50));
+    const hits = await hybridRecall(
+      { searchSemantic: this.searchSemantic },
+      {
+        text,
+        orgId,
+        limit,
+        lexicalHits: scored.map((s) => ({ memoryId: s.id, score: s.score })),
+        getItem: (id) => {
+          const it = this.items.get(id);
+          return it && passes(it) ? it : undefined;
+        },
+      },
+    );
+    return { hits, total: hits.length, retriever: `${this.retriever.name}+semantic` };
   }
 
   recall(q: MemoryRecallQuery): MemoryRecallResult {
