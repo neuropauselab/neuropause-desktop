@@ -29,6 +29,7 @@ import { hashMemoryContent, nextMemoryVersion, resolveMemorySync } from '@neurop
 import { memoryFieldsFromVersion, memoryVersionPayload, toSyncState } from './memorySyncAdapter';
 import { createLogger } from '../logger';
 import { LexicalMemoryRetriever, type MemoryRetriever } from './memoryRetriever';
+import { rankRecallHits } from './memoryRecallRanking';
 
 const log = createLogger('memory-store');
 
@@ -416,12 +417,21 @@ export class MemoryStore extends EventEmitter {
     const hits: MemoryRecallResult['hits'] = [];
 
     if (text) {
+      // Retrieve a wide lexical pool, then re-rank via the hybrid ranking engine
+      // (V6.7.0) so recency / importance / pinned influence order — not raw TF-IDF
+      // alone. Filters live in the getItem closure, preserving recall's existing
+      // kind / entity / tag / time / tombstone semantics. Semantic (vector) hits are
+      // omitted until Qdrant is wired (V6.9); the ranker treats them as absent.
       const scored = this.retriever.search(text, Math.max(limit * 3, 50));
-      for (const { id, score } of scored) {
-        const it = this.items.get(id);
-        if (it && passes(it)) hits.push({ item: it, score });
-        if (hits.length >= limit) break;
-      }
+      const ranked = rankRecallHits({
+        query: { limit },
+        lexicalHits: scored.map((s) => ({ memoryId: s.id, score: s.score })),
+        getItem: (id) => {
+          const it = this.items.get(id);
+          return it && passes(it) ? it : undefined;
+        },
+      });
+      for (const hit of ranked) hits.push(hit);
     } else {
       const pool = [...this.items.values()].filter(passes);
       pool.sort((a, b) => {
