@@ -202,7 +202,14 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
         const { runId } = p as TWorkforceWorkflowResumeRequest;
         const entry = workflowRuns.get(runId);
         if (!entry) return null;
-        entry.run = orchestrator.resume(entry.run, entry.spec);
+        // V7.3.1: resuming a FAILED run RECOVERS it — replay only the unfinished
+        // branches (planRecovery), preserving completed work — instead of the prior
+        // no-op (a failed run has nothing pending for resume() to advance). An
+        // awaiting-approval run resumes exactly as before.
+        entry.run =
+          entry.run.status === 'failed'
+            ? orchestrator.recover(entry.run, entry.spec)
+            : orchestrator.resume(entry.run, entry.spec);
         return entry.run;
       },
     },
