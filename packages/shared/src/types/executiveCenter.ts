@@ -504,3 +504,28 @@ export function filterTimeline(
     return true;
   });
 }
+
+/* --------------------------- Workforce health (V8.1) --------------------------- */
+
+/** Health state of a worker / the workforce overall. Mirrors WorkerHealthState. */
+export type WorkforceHealthState = 'healthy' | 'degraded' | 'unhealthy' | 'unknown';
+
+/**
+ * Aggregate operational health of the AI workforce, rolled up from the worker
+ * registry's per-worker health for the Executive Center. Structured data only;
+ * introduces no new intelligence.
+ */
+export interface WorkforceHealthSummary {
+  totalWorkers: number;
+  healthy: number;
+  degraded: number;
+  unhealthy: number;
+  /** Workers with no recorded jobs yet. */
+  unknown: number;
+  /** Mean success rate across workers that have run jobs, 0..1 (1 when none have). */
+  meanSuccessRate: number;
+  totalJobsRun: number;
+  totalJobsFailed: number;
+  /** Overall band, using the registry's own thresholds. */
+  state: WorkforceHealthState;
+}
