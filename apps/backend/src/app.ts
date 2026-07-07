@@ -10,6 +10,13 @@ import { createAuthRouter } from './auth/router';
 import { createStoreRouter } from './store/router';
 import { createOrganizationsRouter } from './organizations/router';
 import { createPgOrgRepository } from './organizations/repository';
+import { createEmbeddingProvider } from './semantic/embedding/embeddingProvider';
+import { loadEmbeddingConfig } from './semantic/embedding/embeddingConfig';
+import { QdrantVectorStore } from './semantic/qdrant/qdrantVectorStore';
+import { loadQdrantConfig } from './semantic/qdrant/qdrantConfig';
+import { createPgEmbeddingStateRepository } from './semantic/pipeline/embeddingStateRepository';
+import { createSemanticRouter } from './semantic/api/semanticRouter';
+import { createBackfillRouter } from './semantic/api/backfillRouter';
 import { createDevicesRouter } from './devices/router';
 import { createPgDeviceRepository } from './devices/repository';
 import { createBillingRouter } from './billing/router';
@@ -126,6 +133,23 @@ export function createApp(): Express {
     '/sync',
     requireAuth,
     createSyncRouter({ repo: createPgSyncRepository(), getMemberRole }),
+  );
+
+  // ── V8.2 semantic memory: search + backfill (backend embeds; desktop never hits Qdrant) ──
+  const embeddingProvider = createEmbeddingProvider(loadEmbeddingConfig(process.env), {
+    fetchFn: (url, init) => fetch(url, init),
+  });
+  const vectorStore = new QdrantVectorStore(loadQdrantConfig(process.env), (url, init) => fetch(url, init));
+  const embeddingStateRepo = createPgEmbeddingStateRepository();
+  app.use(
+    '/memory/semantic',
+    requireAuth,
+    createSemanticRouter({ embeddingProvider, vectorStore, getMemberRole }),
+  );
+  app.use(
+    '/memory/semantic',
+    requireAuth,
+    createBackfillRouter({ embeddingProvider, vectorStore, stateRepo: embeddingStateRepo, getMemberRole }),
   );
 
   app.use(notFoundHandler);
