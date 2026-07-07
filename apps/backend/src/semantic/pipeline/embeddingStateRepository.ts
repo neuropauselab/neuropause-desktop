@@ -1,10 +1,7 @@
 /**
- * Postgres EmbeddingStateRepository (V8.2 Part 1) — persistence for the embedding
- * pipeline's idempotency/resume state. Mirrors createPgSubscriptionRepository:
- * module-level `query`, snake_case row, COLS constant, mapper, factory.
- *
- * Delivered file (imports '../../db/pool' + 'pg'), verified by the backend gate;
- * the pipeline decision logic it feeds is unit-tested in embeddingPipeline.test.ts.
+ * Postgres EmbeddingStateRepository (V8.2) — persistence for the embedding
+ * pipeline's idempotency/resume state. Mirrors createPgSubscriptionRepository.
+ * V8.2 Part 2: adds countByOrg for semantic health coverage.
  */
 import { query } from '../../db/pool';
 import type { EmbeddingState, EmbeddingStateRepository } from './embeddingPipeline';
@@ -27,7 +24,10 @@ const toState = (r: EmbeddingStateRow): EmbeddingState => ({
   embeddedAt: r.embedded_at.toISOString(),
 });
 
-export function createPgEmbeddingStateRepository(): EmbeddingStateRepository {
+/** Pg repo plus countByOrg (coverage), exposed as a widened return type. */
+export function createPgEmbeddingStateRepository(): EmbeddingStateRepository & {
+  countByOrg(orgId: string): Promise<number>;
+} {
   return {
     async getMany(memoryIds: string[]): Promise<Map<string, EmbeddingState>> {
       const map = new Map<string, EmbeddingState>();
@@ -41,7 +41,6 @@ export function createPgEmbeddingStateRepository(): EmbeddingStateRepository {
     },
 
     async record(s: EmbeddingState): Promise<void> {
-      // Upsert so re-recording (idempotent pipeline) never conflicts.
       await query(
         `INSERT INTO embedding_state (memory_id, org_id, content_hash, embedding_version, embedded_at)
          VALUES ($1, $2, $3, $4, $5)
@@ -49,6 +48,14 @@ export function createPgEmbeddingStateRepository(): EmbeddingStateRepository {
          DO UPDATE SET org_id = $2, content_hash = $3, embedding_version = $4, embedded_at = $5`,
         [s.memoryId, s.orgId, s.contentHash, s.embeddingVersion, s.embeddedAt],
       );
+    },
+
+    async countByOrg(orgId: string): Promise<number> {
+      const { rows } = await query<{ count: string }>(
+        `SELECT COUNT(*)::int AS count FROM embedding_state WHERE org_id = $1`,
+        [orgId],
+      );
+      return rows[0] ? Number(rows[0].count) : 0;
     },
   };
 }
