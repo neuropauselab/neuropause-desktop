@@ -46,6 +46,8 @@ import { unifiedStore } from '../unified/storeInstance';
 import { memoryStore } from './memoryInstance';
 import { handleSemanticRecall } from './semanticRecallHandler';
 import { backendSemanticSearch } from '../backendsemantic/backendSemanticInstance';
+import { runMemoryBackfill } from './memoryBackfill';
+import { backendBackfill } from '../backendsemantic/backendBackfillInstance';
 import { runtimeIdentity } from '../runtimeIdentity';
 import { memoryAuditLog } from './memoryAuditInstance';
 import { projectMemory } from './memoryProjector';
@@ -145,6 +147,17 @@ export async function initMemory(deps: MemorySubsystemDeps): Promise<MemorySubsy
       channel: IpcChannel.MemoryForget,
       schema: MemoryForgetRequest,
       handler: (p) => ({ forgotten: memoryStore.forget((p as TMemoryForgetRequest).ids) }),
+    },
+    {
+      channel: IpcChannel.MemoryBackfill,
+      schema: EmptyRequest,
+      handler: () =>
+        runMemoryBackfill({
+          listItems: () => memoryStore.allItems(),
+          getOrgId: () => runtimeIdentity.getCurrent()?.organizationId,
+          backfill: (orgId, memories) => backendBackfill(orgId, memories),
+          onProgress: (p) => log.info('memory backfill progress', p),
+        }),
     },
     { channel: IpcChannel.MemoryCounts, schema: EmptyRequest, handler: () => memoryStore.counts() },
     {
