@@ -18,6 +18,8 @@ import { workerRegistry } from '../workforce/registry/registryInstance';
 import { summarizeWorkforceHealth } from './workforceHealth';
 import { workforceIntelligence } from '../workforce/intelligence/workforceIntelligence';
 import { knowledgeHealth } from '../knowledge/knowledgeHealth';
+import { enterpriseInsights } from './intelligence/enterpriseInsights';
+import { enterpriseRecommendations } from './intelligence/enterpriseRecommendations';
 import { memoryStore } from '../memory/memoryInstance';
 import { jobStore } from '../workforce/runtime/jobInstance';
 import { buildUnifiedTimeline, type UnifiedItemLite } from '@neuropause/shared';
@@ -127,7 +129,15 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
     composed = snap;
     // V3.2: derive ranked recommendations + executive summary from the composed
     // snapshot (pure; explains existing metrics — no new intelligence).
-    const recommendations = buildExecutiveRecommendations(snap);
+    const enterpriseSnapshot = enterpriseInsights({
+      knowledge: knowledgeHealth(memoryStore.allItems()),
+      memory: memoryStore.counts(),
+      workforce: workforceIntelligence(jobStore.page({ limit: 2000 }).jobs),
+    });
+    const recommendations = [
+      ...buildExecutiveRecommendations(snap),
+      ...enterpriseRecommendations(enterpriseSnapshot),
+    ];
     snap.recommendations = recommendations;
     snap.executiveSummary = buildExecutiveSummary(snap, recommendations);
     // V3.3: attach the persisted decisions overview (read-only view; no new logic).
