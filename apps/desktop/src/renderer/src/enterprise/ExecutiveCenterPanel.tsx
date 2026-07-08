@@ -357,6 +357,60 @@ export function ExecutiveCenterPanel(): JSX.Element {
       )}
 
       {/* Recommendation Cards (V3.2) — ranked decisions. Reuses Card flat + tones. */}
+      {/* Enterprise Intelligence (V8.5) — folds memory, knowledge, and workforce
+          signals into one org-level view. Insights only; enterprise recommendations
+          already surface in the Recommendations section. */}
+      {snapshot.enterprise && (
+        <div className="mt-4">
+          <h3 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-white/50">
+            Enterprise Intelligence
+          </h3>
+          <Card variant="flat" flush className="p-3.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-white/70">{snapshot.enterprise.headline}</span>
+              {(() => {
+                const b = snapshot.enterprise.band;
+                const tone: OpsTone =
+                  b === 'healthy' ? 'green' : b === 'watch' ? 'blue' : b === 'at-risk' ? 'orange' : 'red';
+                return (
+                  <span
+                    className={cn(
+                      'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+                      TINT_TONE[tone],
+                      TEXT_TONE[tone],
+                    )}
+                  >
+                    <span className={cn('h-1.5 w-1.5 rounded-full', DOT_BG[tone])} />
+                    {b}
+                  </span>
+                );
+              })()}
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-white/40">Memories</div>
+                <div className="text-lg font-semibold tabular-nums">{snapshot.enterprise.memoryTotal}</div>
+                <div className="text-[10px] text-white/40">{snapshot.enterprise.memoryKinds} kinds</div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-white/40">Knowledge</div>
+                <div className="text-lg font-semibold tabular-nums">{snapshot.enterprise.knowledgeCoveragePercent}%</div>
+                <div className="text-[10px] text-white/40">
+                  {snapshot.enterprise.knowledgeTopics} topics · {snapshot.enterprise.knowledgeOrphans} orphaned
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-white/40">Workforce</div>
+                <div className="text-lg font-semibold tabular-nums">{snapshot.enterprise.workforceSuccessPercent}%</div>
+                <div className="text-[10px] text-white/40">
+                  {snapshot.enterprise.workforceActiveWorkers} workers · {snapshot.enterprise.workforceBottlenecks} bottlenecks
+                </div>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
       {snapshot.recommendations && snapshot.recommendations.length > 0 && (
         <div className="mt-4">
           <h3 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-white/50">
