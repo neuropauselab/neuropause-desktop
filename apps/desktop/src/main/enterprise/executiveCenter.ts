@@ -18,9 +18,11 @@ import {
   customerInsightsToKpis,
   leadInsightsToKpis,
   orgHealthBand,
+  quoteInsightsToKpis,
   type CrmModuleInsights,
   type CustomerModuleInsights,
   type LeadModuleInsights,
+  type QuoteModuleInsights,
   type ExecutiveCard,
   type ExecutiveKpi,
   type ExecutiveCenterSnapshot,
@@ -64,6 +66,8 @@ export interface ExecutiveCenterSources {
   leadInsights?: () => LeadModuleInsights | undefined;
   /** CRM customer-account insights → Executive Center KPI tiles (optional). */
   customerInsights?: () => CustomerModuleInsights | undefined;
+  /** Sales quote-pipeline insights → Executive Center KPI tiles (optional). */
+  quoteInsights?: () => QuoteModuleInsights | undefined;
 }
 
 /** The minimal timeline fields the composer reads (kept local; no new dep). */
@@ -275,6 +279,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
   const crmInsightsForKpis = sources.crmInsights?.();
   const leadInsightsForKpis = sources.leadInsights?.();
   const customerInsightsForKpis = sources.customerInsights?.();
+  const quoteInsightsForKpis = sources.quoteInsights?.();
   const enterprise = enterpriseInsights({
     knowledge: sources.knowledgeHealth?.(),
     memory: sources.memoryCounts?.(),
@@ -291,6 +296,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
       ...(crmInsightsForKpis ? crmInsightsToKpis(crmInsightsForKpis) : []),
       ...(leadInsightsForKpis ? leadInsightsToKpis(leadInsightsForKpis) : []),
       ...(customerInsightsForKpis ? customerInsightsToKpis(customerInsightsForKpis) : []),
+      ...(quoteInsightsForKpis ? quoteInsightsToKpis(quoteInsightsForKpis) : []),
     ],
     enterprise,
     orgHealth: scores,

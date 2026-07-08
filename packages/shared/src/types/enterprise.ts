@@ -86,6 +86,8 @@ export type EnterprisePermission =
   | 'operations:manage'
   | 'crm:read'
   | 'crm:manage'
+  | 'sales:read'
+  | 'sales:manage'
   | 'dashboard:read';
 
 export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
@@ -105,6 +107,8 @@ export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   'operations:manage',
   'crm:read',
   'crm:manage',
+  'sales:read',
+  'sales:manage',
   'dashboard:read',
 ];
 

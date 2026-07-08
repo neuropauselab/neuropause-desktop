@@ -173,4 +173,12 @@ export const DEFAULT_PROMPTS: PromptTemplate[] = [
     user: 'CUSTOMER (authoritative facts + deterministic signals):\n{{customer}}\n\nLifetime value: {{ltv}} · Payment risk: {{paymentRisk}}/100 · Relationship health: {{health}}\n\nWrite the summary and executive explanation strictly from the facts above.',
     variables: ['customer', 'health', 'paymentRisk', 'ltv'],
   },
+  {
+    id: 'sales.quote-summary',
+    version: 1,
+    label: 'Sales — Quote Summary',
+    system: `${GROUNDING} You summarize a single sales quote for an executive. You are given the quote's authoritative facts plus DETERMINISTIC signals already computed — a margin, a discount-risk score, a win probability, a health band, an approval determination, and a pricing recommendation. NEVER change those numbers, the health band, the approval decision, or the recommendation; only explain them. Respond ONLY with a JSON object: summary (string — a few sentences covering what the quote is, its pricing/margin and discount risk, win probability, whether approval is required and why, and the recommended pricing action), executiveExplanation (string — one sentence on the deal's value and risk), confidence (number 0..1). Do not invent amounts, names, or terms beyond the facts given.`,
+    user: 'QUOTE (authoritative facts + deterministic signals):\n{{quote}}\n\nMargin: {{margin}}% · Discount risk: {{discountRisk}}/100 · Win probability: {{winProbability}}% · Health: {{health}}\n\nWrite the summary and executive explanation strictly from the facts above.',
+    variables: ['quote', 'margin', 'discountRisk', 'winProbability', 'health'],
+  },
 ];

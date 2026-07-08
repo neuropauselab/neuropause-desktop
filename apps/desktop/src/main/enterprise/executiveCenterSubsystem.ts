@@ -26,14 +26,17 @@ import {
   deriveCrmInsights,
   deriveCustomerInsights,
   deriveLeadInsights,
+  deriveQuoteInsights,
   contactFromRecord,
   customerFromRecord,
   leadFromRecord,
+  quoteFromRecord,
   type UnifiedItemLite,
 } from '@neuropause/shared';
 import { contactModule } from './modules/crm/contactModuleInstance';
 import { leadModule } from './modules/crm/leadModuleInstance';
 import { customerModule } from './modules/crm/customerModuleInstance';
+import { quoteModule } from './modules/sales/quoteModuleInstance';
 import { buildExecutiveRecommendations, buildExecutiveSummary } from './executiveRecommendations';
 import type { MonthlyTrend } from '@neuropause/shared';
 
@@ -133,6 +136,12 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       customerInsights: () =>
         deriveCustomerInsights(
           customerModule.store.list({ status: 'active', limit: 5000 }).map(customerFromRecord),
+          nowMs,
+        ),
+      // Sales quote-pipeline KPIs from the registered Quotes module.
+      quoteInsights: () =>
+        deriveQuoteInsights(
+          quoteModule.store.list({ status: 'active', limit: 5000 }).map(quoteFromRecord),
           nowMs,
         ),
       // V2.9: feed last week's health from the persisted history store so Weekly
