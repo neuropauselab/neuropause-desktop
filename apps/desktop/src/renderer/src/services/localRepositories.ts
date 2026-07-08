@@ -14,9 +14,18 @@
 import type { CatalogApp, DashboardData } from '@renderer/data/types';
 import { CATALOG, getApp } from '@renderer/data/catalog';
 import { SAMPLE_DASHBOARD } from '@renderer/data/sampleData';
+import { emptyDashboard } from '@renderer/data/emptyDashboard';
 import type { CatalogRepository, DashboardRepository, Services } from './repositories';
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Development-only switch to render the representative sample dashboard. Off by
+ * default, so production users never see fabricated activity. Enable locally with
+ * VITE_NP_SAMPLE_DASHBOARD=1 to preview the populated dashboard layout.
+ */
+const SHOW_SAMPLE_DASHBOARD =
+  import.meta.env.DEV && import.meta.env.VITE_NP_SAMPLE_DASHBOARD === '1';
 
 class LocalCatalogRepository implements CatalogRepository {
   async list(): Promise<CatalogApp[]> {
@@ -32,7 +41,11 @@ class LocalCatalogRepository implements CatalogRepository {
 class LocalDashboardRepository implements DashboardRepository {
   async getDashboard(): Promise<DashboardData> {
     await delay(180);
-    return structuredClone(SAMPLE_DASHBOARD);
+    // Real users get a truthful empty dashboard until a real activity source
+    // exists (Connectors + Activity Intelligence populate it). The fabricated
+    // sample payload is opt-in for development only, never shown to users.
+    if (SHOW_SAMPLE_DASHBOARD) return structuredClone(SAMPLE_DASHBOARD);
+    return emptyDashboard();
   }
 }
 

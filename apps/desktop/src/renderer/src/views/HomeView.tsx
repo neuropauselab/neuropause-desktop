@@ -2,10 +2,9 @@ import { useCallback, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import type { Session } from '@neuropause/shared';
 import { greeting } from '@renderer/lib/format';
-import { Icon } from '@renderer/components/ui/Icon';
-import { Badge } from '@renderer/components/ui/controls';
 import { Button } from '@renderer/components/ui/Button';
 import { EmptyState } from '@renderer/components/ui/EmptyState';
+import { isDashboardEmpty } from '@renderer/data/emptyDashboard';
 import { SkeletonHeader, SkeletonLines } from '@renderer/components/ui/Skeleton';
 import { useDashboard } from '@renderer/state/DashboardProvider';
 import { useShell } from '@renderer/state/ShellProvider';
@@ -69,13 +68,6 @@ export function HomeView({ session }: { session: Session }): JSX.Element {
       <div className="mx-auto max-w-[1240px] px-8 py-7">
         <div className="mb-6 flex items-end justify-between gap-4">
           <div>
-            <div className="mb-2">
-              <span title="Representative sample data. Your real activity appears here once you connect your AI accounts (Phase 4 onward).">
-                <Badge tone="neutral">
-                  <Icon name="info" size={12} /> Sample data
-                </Badge>
-              </span>
-            </div>
             <h1 className="text-3xl font-semibold tracking-tight">
               {greeting()}, {name}
             </h1>
@@ -98,6 +90,25 @@ export function HomeView({ session }: { session: Session }): JSX.Element {
           />
         ) : loading || !data ? (
           <HomeSkeleton />
+        ) : isDashboardEmpty(data) ? (
+          <EmptyState
+            icon="sparkles"
+            title="No activity yet"
+            description="NeuroPause builds your dashboard from real work. Connect an application, capture a memory, or start a workflow and this space fills with your own activity — nothing here is simulated."
+            action={
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button variant="primary" onClick={() => setSection('connectors')}>
+                  Connect your first application
+                </Button>
+                <Button variant="secondary" onClick={() => setSection('memory')}>
+                  Open AI Memory
+                </Button>
+                <Button variant="secondary" onClick={() => setSection('workforce')}>
+                  Open Workforce
+                </Button>
+              </div>
+            }
+          />
         ) : (
           <div className="columns-1 gap-5 md:columns-2 xl:columns-3">
             <MasonryItem index={0}>
