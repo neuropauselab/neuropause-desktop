@@ -14,7 +14,9 @@
  */
 import {
   computeOrgHealth,
+  crmInsightsToKpis,
   orgHealthBand,
+  type CrmModuleInsights,
   type ExecutiveCard,
   type ExecutiveKpi,
   type ExecutiveCenterSnapshot,
@@ -28,7 +30,11 @@ import {
 import { workforceHealthKpi } from './workforceHealth';
 import { workforcePerformanceKpi } from '../workforce/intelligence/workforcePerformanceKpi';
 import type { WorkforceIntelligence } from '../workforce/intelligence/workforceIntelligence';
-import { enterpriseInsights, type KnowledgeHealthLike, type MemoryCountsLike } from './intelligence/enterpriseInsights';
+import {
+  enterpriseInsights,
+  type KnowledgeHealthLike,
+  type MemoryCountsLike,
+} from './intelligence/enterpriseInsights';
 import { enterpriseInsightsKpi } from './intelligence/enterpriseKpi';
 
 /** The existing producers the Center composes. Injected for testability. */
@@ -48,6 +54,8 @@ export interface ExecutiveCenterSources {
   workforceIntelligence?: () => WorkforceIntelligence | undefined;
   knowledgeHealth?: () => KnowledgeHealthLike | undefined;
   memoryCounts?: () => MemoryCountsLike | undefined;
+  /** CRM module insights → Executive Center KPI tiles (optional). */
+  crmInsights?: () => CrmModuleInsights | undefined;
 }
 
 /** The minimal timeline fields the composer reads (kept local; no new dep). */
@@ -256,6 +264,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
   const monthlyTrends = sources.monthlyTrends?.();
   const workforceHealth = sources.workforceHealth?.();
   const workforceIntel = sources.workforceIntelligence?.();
+  const crmInsightsForKpis = sources.crmInsights?.();
   const enterprise = enterpriseInsights({
     knowledge: sources.knowledgeHealth?.(),
     memory: sources.memoryCounts?.(),
@@ -269,6 +278,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
       ...(workforceHealth ? [workforceHealthKpi(workforceHealth)] : []),
       ...(workforceIntel ? [workforcePerformanceKpi(workforceIntel)] : []),
       enterpriseInsightsKpi(enterprise),
+      ...(crmInsightsForKpis ? crmInsightsToKpis(crmInsightsForKpis) : []),
     ],
     enterprise,
     orgHealth: scores,

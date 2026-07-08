@@ -149,4 +149,12 @@ export const DEFAULT_PROMPTS: PromptTemplate[] = [
     user: 'INVOICE (authoritative facts):\n{{invoice}}\n\nComputed risk band: {{risk}} — {{riskReason}}\n\nWrite the summary and executive explanation strictly from the facts above.',
     variables: ['invoice', 'risk', 'riskReason'],
   },
+  {
+    id: 'crm.contact-summary',
+    version: 1,
+    label: 'CRM — Contact Summary',
+    system: `${GROUNDING} You summarize a single CRM contact for an executive. You are given the contact's authoritative facts and a DETERMINISTIC relationship-health band (already computed — never change it; only explain it). Respond ONLY with a JSON object: summary (string — one or two plain sentences covering who this contact is, a suggested follow-up, and any opportunity), executiveExplanation (string — one sentence on the relationship value and risk), confidence (number 0..1). Do not invent details beyond the facts given.`,
+    user: 'CONTACT (authoritative facts):\n{{contact}}\n\nComputed relationship health: {{health}} — {{healthReason}}\n\nWrite the summary and executive explanation strictly from the facts above.',
+    variables: ['contact', 'health', 'healthReason'],
+  },
 ];

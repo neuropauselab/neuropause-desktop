@@ -68,14 +68,26 @@ const READ_ONLY: EnterprisePermission[] = [
   'governance:read',
   'intelligence:read',
   'operations:read',
+  'crm:read',
   'dashboard:read',
 ];
 
 const MEMBER: EnterprisePermission[] = [...READ_ONLY, 'workforce:operate'];
 
-const MANAGER: EnterprisePermission[] = [...MEMBER, 'workforce:approve', 'people:manage', 'operations:manage'];
+const MANAGER: EnterprisePermission[] = [
+  ...MEMBER,
+  'workforce:approve',
+  'people:manage',
+  'operations:manage',
+  'crm:manage',
+];
 
-const ADMIN: EnterprisePermission[] = [...MANAGER, 'org:manage', 'governance:manage', 'workspace:manage'];
+const ADMIN: EnterprisePermission[] = [
+  ...MANAGER,
+  'org:manage',
+  'governance:manage',
+  'workspace:manage',
+];
 
 const AI_WORKER: EnterprisePermission[] = ['workforce:read', 'intelligence:read'];
 
@@ -91,13 +103,19 @@ export function buildSeed(now = new Date().toISOString()): Seed {
     id: ORG_ID,
     name: 'NeuroPause',
     slug: 'neuropause',
-    description: 'The default workspace organization. Rename it, restructure it, and add your people.',
+    description:
+      'The default workspace organization. Rename it, restructure it, and add your people.',
     createdAt: now,
     updatedAt: now,
     metadata: { seeded: true },
   };
 
-  const u = (id: string, kind: OrgUnit['kind'], name: string, parentId: string | null): OrgUnit => ({
+  const u = (
+    id: string,
+    kind: OrgUnit['kind'],
+    name: string,
+    parentId: string | null,
+  ): OrgUnit => ({
     id,
     orgId: ORG_ID,
     kind,
@@ -129,10 +147,21 @@ export function buildSeed(now = new Date().toISOString()): Seed {
     name: string,
     description: string,
     permissions: EnterprisePermission[],
-  ): OrgRole => ({ id, orgId: ORG_ID, name, description, permissions, builtIn: true, createdAt: now, updatedAt: now });
+  ): OrgRole => ({
+    id,
+    orgId: ORG_ID,
+    name,
+    description,
+    permissions,
+    builtIn: true,
+    createdAt: now,
+    updatedAt: now,
+  });
 
   const roles: OrgRole[] = [
-    r(ROLE.owner, 'Owner', 'Full control of the organization and every workspace.', [...ALL_ENTERPRISE_PERMISSIONS]),
+    r(ROLE.owner, 'Owner', 'Full control of the organization and every workspace.', [
+      ...ALL_ENTERPRISE_PERMISSIONS,
+    ]),
     r(ROLE.admin, 'Admin', 'Manage structure, people, and governance.', ADMIN),
     r(ROLE.manager, 'Manager', 'Operate the workforce, approve actions, manage a team.', MANAGER),
     r(ROLE.member, 'Member', 'Read access and the ability to run AI workers.', MEMBER),

@@ -21,7 +21,13 @@ import { knowledgeHealth } from '../knowledge/knowledgeHealth';
 import { enterpriseRecommendations } from './intelligence/enterpriseRecommendations';
 import { memoryStore } from '../memory/memoryInstance';
 import { jobStore } from '../workforce/runtime/jobInstance';
-import { buildUnifiedTimeline, type UnifiedItemLite } from '@neuropause/shared';
+import {
+  buildUnifiedTimeline,
+  deriveCrmInsights,
+  contactFromRecord,
+  type UnifiedItemLite,
+} from '@neuropause/shared';
+import { contactModule } from './modules/crm/contactModuleInstance';
 import { buildExecutiveRecommendations, buildExecutiveSummary } from './executiveRecommendations';
 import type { MonthlyTrend } from '@neuropause/shared';
 
@@ -103,6 +109,14 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       workforceIntelligence: () => workforceIntelligence(jobStore.page({ limit: 2000 }).jobs),
       knowledgeHealth: () => knowledgeHealth(memoryStore.allItems()),
       memoryCounts: () => memoryStore.counts(),
+      // CRM KPIs: read the registered CRM module's contacts (same pattern as the
+      // other domain sources above) and roll them into Active Contacts / New
+      // Leads / Customer Health / Follow-up Risk / High-Value Accounts.
+      crmInsights: () =>
+        deriveCrmInsights(
+          contactModule.store.list({ status: 'active', limit: 5000 }).map(contactFromRecord),
+          nowMs,
+        ),
       // V2.9: feed last week's health from the persisted history store so Weekly
       // Trends is live. Returns null until ≥1 older datapoint exists.
       previousWeek: () => {

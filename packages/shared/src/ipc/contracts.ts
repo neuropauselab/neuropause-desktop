@@ -832,6 +832,8 @@ export const EnterprisePermissionSchema = z.enum([
   'intelligence:read',
   'operations:read',
   'operations:manage',
+  'crm:read',
+  'crm:manage',
   'dashboard:read',
 ]);
 

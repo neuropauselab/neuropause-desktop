@@ -67,6 +67,7 @@ import {
 } from './authzGate';
 import { initEnterpriseModules, type EnterpriseModuleRegistry } from './framework';
 import { invoiceModule } from './modules/finance/invoiceModuleInstance';
+import { contactModule } from './modules/crm/contactModuleInstance';
 import { notificationScheduler } from '../services/notificationScheduler';
 import { buildOrgGraph, orgGraphNeighbors } from './graph/orgGraph';
 import { evaluateCompliance, type ComplianceInput } from './governance/enterpriseGovernance';
@@ -164,9 +165,10 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     actor: sessionEmail,
     now: () => new Date().toISOString(),
   });
-  // First ERP module: Finance → Invoices (the blueprint every later module follows).
-  modules.registry.register(invoiceModule);
-  await invoiceModule.store.load();
+  // ERP modules built on the foundation (each: descriptor + store + AI hook).
+  modules.registry.register(invoiceModule); // Finance → Invoices
+  modules.registry.register(contactModule); // CRM → Contacts
+  await Promise.all([invoiceModule.store.load(), contactModule.store.load()]);
 
   return {
     handlers: [...withEnterpriseAuthz(buildHandlers()), ...modules.handlers],

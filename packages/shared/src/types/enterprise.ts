@@ -84,6 +84,8 @@ export type EnterprisePermission =
   | 'intelligence:read'
   | 'operations:read'
   | 'operations:manage'
+  | 'crm:read'
+  | 'crm:manage'
   | 'dashboard:read';
 
 export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
@@ -101,6 +103,8 @@ export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   'intelligence:read',
   'operations:read',
   'operations:manage',
+  'crm:read',
+  'crm:manage',
   'dashboard:read',
 ];
 
@@ -146,14 +150,7 @@ export interface WorkspaceSummary {
 /* ─────────────────────────── Organization graph ───────────────────────── */
 
 export type OrgGraphNodeKind =
-  | 'organization'
-  | 'unit'
-  | 'user'
-  | 'worker'
-  | 'project'
-  | 'customer'
-  | 'document'
-  | 'connector';
+  'organization' | 'unit' | 'user' | 'worker' | 'project' | 'customer' | 'document' | 'connector';
 
 export type OrgGraphEdgeKind =
   | 'contains' // org → unit, unit → unit
@@ -209,11 +206,7 @@ export interface OrgGraphNeighbors {
 
 /** A trigger describing which kind of action an approval chain governs. */
 export type ApprovalTrigger =
-  | 'workforce_side_effect'
-  | 'governance_change'
-  | 'org_structure_change'
-  | 'spend'
-  | 'data_export';
+  'workforce_side_effect' | 'governance_change' | 'org_structure_change' | 'spend' | 'data_export';
 
 export interface ApprovalChainStep {
   id: string;
