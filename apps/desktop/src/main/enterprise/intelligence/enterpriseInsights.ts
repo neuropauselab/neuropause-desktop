@@ -13,6 +13,10 @@
  * tests from synthetic inputs; touches no runtime state.
  */
 
+import type { EnterpriseInsights, EnterpriseBand } from '@neuropause/shared';
+export type { EnterpriseInsights, EnterpriseBand } from '@neuropause/shared';
+
+
 /** Minimal shapes of the existing signals this deriver reads (structurally matched). */
 export interface KnowledgeHealthLike {
   totalMemories: number;
@@ -31,28 +35,6 @@ export interface WorkforceIntelLike {
   activeWorkers: number;
   overallSuccessRate: number;
   bottlenecks: unknown[];
-}
-
-export type EnterpriseBand = 'healthy' | 'watch' | 'at-risk' | 'critical';
-
-export interface EnterpriseInsights {
-  /** Memory footprint (from memoryStore.counts). */
-  memoryTotal: number;
-  memoryKinds: number;
-  memoryLastBuiltAt: string | null;
-  /** Knowledge structure (from knowledgeHealth). */
-  knowledgeTopics: number;
-  knowledgeCoveragePercent: number;
-  knowledgeOrphans: number;
-  /** Workforce (from workforceIntelligence). */
-  workforceJobs: number;
-  workforceActiveWorkers: number;
-  workforceSuccessPercent: number;
-  workforceBottlenecks: number;
-  /** Derived, explainable overall band across the signals present. */
-  band: EnterpriseBand;
-  /** One-line human summary of the enterprise state. */
-  headline: string;
 }
 
 export interface EnterpriseInsightsInput {

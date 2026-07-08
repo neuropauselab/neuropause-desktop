@@ -9,6 +9,7 @@
  */
 import type { IntelligenceItem } from './delivery';
 import type { OrgHealthScores } from './orgHealth';
+import type { EnterpriseInsights } from './enterpriseIntelligence';
 
 /** A KPI with a value, a qualitative band, and a trend indicator. */
 export interface ExecutiveKpi {
@@ -94,6 +95,8 @@ export interface ExecutiveCenterSnapshot {
   monthlyTrends?: MonthlyTrend[];
   /** Ranked executive recommendations (V3.2). */
   recommendations?: ExecutiveRecommendation[];
+  /** Enterprise insights snapshot (V8.5). */
+  enterprise?: EnterpriseInsights;
   /** One-glance executive summary (V3.2). */
   executiveSummary?: ExecutiveSummary;
   /** Executive decisions overview (V3.3). */

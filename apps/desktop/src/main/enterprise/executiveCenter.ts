@@ -270,6 +270,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
       ...(workforceIntel ? [workforcePerformanceKpi(workforceIntel)] : []),
       enterpriseInsightsKpi(enterprise),
     ],
+    enterprise,
     orgHealth: scores,
     workforceHealth,
     criticalAlerts: card(

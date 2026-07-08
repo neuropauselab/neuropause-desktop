@@ -18,7 +18,6 @@ import { workerRegistry } from '../workforce/registry/registryInstance';
 import { summarizeWorkforceHealth } from './workforceHealth';
 import { workforceIntelligence } from '../workforce/intelligence/workforceIntelligence';
 import { knowledgeHealth } from '../knowledge/knowledgeHealth';
-import { enterpriseInsights } from './intelligence/enterpriseInsights';
 import { enterpriseRecommendations } from './intelligence/enterpriseRecommendations';
 import { memoryStore } from '../memory/memoryInstance';
 import { jobStore } from '../workforce/runtime/jobInstance';
@@ -129,14 +128,9 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
     composed = snap;
     // V3.2: derive ranked recommendations + executive summary from the composed
     // snapshot (pure; explains existing metrics — no new intelligence).
-    const enterpriseSnapshot = enterpriseInsights({
-      knowledge: knowledgeHealth(memoryStore.allItems()),
-      memory: memoryStore.counts(),
-      workforce: workforceIntelligence(jobStore.page({ limit: 2000 }).jobs),
-    });
     const recommendations = [
       ...buildExecutiveRecommendations(snap),
-      ...enterpriseRecommendations(enterpriseSnapshot),
+      ...(snap.enterprise ? enterpriseRecommendations(snap.enterprise) : []),
     ];
     snap.recommendations = recommendations;
     snap.executiveSummary = buildExecutiveSummary(snap, recommendations);

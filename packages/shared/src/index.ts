@@ -28,6 +28,7 @@ export * from './types/trace';
 export * from './types/worker';
 export * from './types/workforceGovernance';
 export * from './types/workforceJobs';
+export * from './types/enterpriseIntelligence';
 export * from './types/enterprise';
 export * from './types/ecosystem';
 export * from './types/ecosystem-exchange';
