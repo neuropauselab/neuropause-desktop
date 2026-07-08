@@ -46,3 +46,5 @@ node_modules/
 out/
 dist/
 .DS_Store
+
+_to_delete/
