@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ConnectorCategory, ConnectorDto, ConnectorLogEntry, ConnectorStats } from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
-import { cn } from '@renderer/lib/cn';
 import { Icon } from '@renderer/components/ui/Icon';
+import { Chip } from '@renderer/components/ui/pillTabs';
 import { Stat } from '@renderer/operations/primitives';
 import { CATEGORY_LABEL } from './connectorLib';
 import { ConnectorCard } from './ConnectorCard';
@@ -252,16 +252,6 @@ export function ConnectorsPage(): JSX.Element {
 }
 
 function CategoryPill({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }): JSX.Element {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'shrink-0 whitespace-nowrap rounded-md px-2 py-1 text-2xs font-medium outline-none transition focus-visible:shadow-focus',
-        active ? 'surface-raised text-ink shadow-sm' : 'text-muted hover:text-ink',
-      )}
-    >
-      {label}
-    </button>
-  );
+  // CategoryPill now delegates to the shared pill Chip for one consistent look.
+  return <Chip label={label} active={active} onClick={onClick} />;
 }
