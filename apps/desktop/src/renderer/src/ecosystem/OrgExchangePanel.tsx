@@ -29,6 +29,10 @@ export function OrgExchangePanel(): JSX.Element {
         subtitle="Share and adopt curated packs across the organization network"
         actions={<Button size="sm" variant="primary" icon="upload" onClick={() => setPublishOpen(true)}>Publish a pack</Button>}
       >
+        <div className="mb-4 flex items-center gap-2 rounded-lg border border-[var(--hairline)] [background:var(--fill-1)] px-3 py-2 text-xs text-faint">
+          <Icon name="info" size={13} />
+          <span>Representative network. Packs shared from other organizations are example listings to illustrate the exchange — your own published packs are real. Live cross-organization exchange arrives with network sync.</span>
+        </div>
         <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
           <Stat icon="package" label="Packs" value={packsStats?.total ?? packs.length} tone="accent" />
           <Stat icon="upload" label="Published" value={packsStats?.published ?? mine.length} tone="purple" />

@@ -18,6 +18,10 @@ export function PartnersPanel(): JSX.Element {
   return (
     <div>
       <OpsPanel title="Partner Platform" subtitle="Technology partners, consulting partners, system integrators, and managed service providers">
+        <div className="mb-4 flex items-center gap-2 rounded-lg border border-[var(--hairline)] [background:var(--fill-1)] px-3 py-2 text-xs text-faint">
+          <Icon name="info" size={13} />
+          <span>Representative directory. These partner listings are examples that illustrate the partner network — not live partner accounts. A real partner directory arrives in a later release.</span>
+        </div>
         <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
           <Stat icon="verified" label="Partners" value={partnersStats?.total ?? partners.length} tone="accent" />
           <Stat icon="star-fill" label="Premier" value={partnersStats?.premier ?? 0} tone="purple" />
