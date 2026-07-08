@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import type { EnterprisePermission, OrgUnitKind, ThemeSource } from '@neuropause/shared';
-import { Icon, type IconName } from '@renderer/components/ui/Icon';
+import type { EnterprisePermission, OrgUnitKind } from '@neuropause/shared';
+import { Icon } from '@renderer/components/ui/Icon';
 import { OpsPanel } from '@renderer/operations/primitives';
-import { useTheme } from '@renderer/providers/ThemeProvider';
 import { cn } from '@renderer/lib/cn';
 import { useEnterprise } from './EnterpriseProvider';
 import {
@@ -25,12 +24,6 @@ const NAV: { id: string; label: string }[] = [
   { id: 'customize', label: 'Customize' },
 ];
 
-const THEMES: { value: ThemeSource; label: string; icon: IconName }[] = [
-  { value: 'system', label: 'Auto', icon: 'auto' },
-  { value: 'light', label: 'Light', icon: 'sun' },
-  { value: 'dark', label: 'Dark', icon: 'moon' },
-];
-
 const ROLE_PERMS: { id: EnterprisePermission; label: string }[] = [
   { id: 'org:read', label: 'View organization' },
   { id: 'people:read', label: 'View people' },
@@ -46,7 +39,6 @@ const UNIT_KINDS: OrgUnitKind[] = ['business_unit', 'department', 'team'];
 
 export function CustomizePanel(): JSX.Element {
   const { org, governance, createUnit, deleteUnit, createRole, setChain, setRule } = useEnterprise();
-  const { source, setSource } = useTheme();
 
   const [nav, setNav] = useState<Set<string>>(() => loadNavPrefs(NAV.map((n) => n.id)));
   const [unitName, setUnitName] = useState('');
@@ -117,18 +109,6 @@ export function CustomizePanel(): JSX.Element {
               );
             })}
           </div>
-        </OpsPanel>
-
-        {/* Theme */}
-        <OpsPanel title="Theme" subtitle="Appearance">
-          <div className="flex gap-2">
-            {THEMES.map((t) => (
-              <button key={t.value} type="button" onClick={() => setSource(t.value)} className={cn('inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition', source === t.value ? 'border-accent bg-accent/10 text-accent' : 'border-[var(--hairline)] text-muted hover:text-ink')}>
-                <Icon name={t.icon} size={15} /> {t.label}
-              </button>
-            ))}
-          </div>
-          <p className="mt-2 text-2xs text-faint">Applies across the whole app, matching the toolbar theme control.</p>
         </OpsPanel>
 
         {/* Branding */}
