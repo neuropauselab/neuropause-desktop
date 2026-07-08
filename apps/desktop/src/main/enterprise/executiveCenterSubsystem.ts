@@ -17,6 +17,8 @@ import { decisionStore } from './decisionInstance';
 import { workerRegistry } from '../workforce/registry/registryInstance';
 import { summarizeWorkforceHealth } from './workforceHealth';
 import { workforceIntelligence } from '../workforce/intelligence/workforceIntelligence';
+import { knowledgeHealth } from '../knowledge/knowledgeHealth';
+import { memoryStore } from '../memory/memoryInstance';
 import { jobStore } from '../workforce/runtime/jobInstance';
 import { buildUnifiedTimeline, type UnifiedItemLite } from '@neuropause/shared';
 import { buildExecutiveRecommendations, buildExecutiveSummary } from './executiveRecommendations';
@@ -98,6 +100,8 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       timelineEntries: () => recentTimeline(),
       workforceHealth: () => summarizeWorkforceHealth(workerRegistry.healthSummaries()),
       workforceIntelligence: () => workforceIntelligence(jobStore.page({ limit: 2000 }).jobs),
+      knowledgeHealth: () => knowledgeHealth(memoryStore.allItems()),
+      memoryCounts: () => memoryStore.counts(),
       // V2.9: feed last week's health from the persisted history store so Weekly
       // Trends is live. Returns null until ≥1 older datapoint exists.
       previousWeek: () => {

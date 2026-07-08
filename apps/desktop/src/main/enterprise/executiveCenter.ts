@@ -28,6 +28,8 @@ import {
 import { workforceHealthKpi } from './workforceHealth';
 import { workforcePerformanceKpi } from '../workforce/intelligence/workforcePerformanceKpi';
 import type { WorkforceIntelligence } from '../workforce/intelligence/workforceIntelligence';
+import { enterpriseInsights, type KnowledgeHealthLike, type MemoryCountsLike } from './intelligence/enterpriseInsights';
+import { enterpriseInsightsKpi } from './intelligence/enterpriseKpi';
 
 /** The existing producers the Center composes. Injected for testability. */
 export interface ExecutiveCenterSources {
@@ -44,6 +46,8 @@ export interface ExecutiveCenterSources {
   /** V8.1: aggregate AI-workforce health (optional). */
   workforceHealth?: () => WorkforceHealthSummary | undefined;
   workforceIntelligence?: () => WorkforceIntelligence | undefined;
+  knowledgeHealth?: () => KnowledgeHealthLike | undefined;
+  memoryCounts?: () => MemoryCountsLike | undefined;
 }
 
 /** The minimal timeline fields the composer reads (kept local; no new dep). */
@@ -252,6 +256,11 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
   const monthlyTrends = sources.monthlyTrends?.();
   const workforceHealth = sources.workforceHealth?.();
   const workforceIntel = sources.workforceIntelligence?.();
+  const enterprise = enterpriseInsights({
+    knowledge: sources.knowledgeHealth?.(),
+    memory: sources.memoryCounts?.(),
+    workforce: workforceIntel,
+  });
 
   return {
     generatedAt,
@@ -259,6 +268,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
       ...buildKpis(scores, inputs),
       ...(workforceHealth ? [workforceHealthKpi(workforceHealth)] : []),
       ...(workforceIntel ? [workforcePerformanceKpi(workforceIntel)] : []),
+      enterpriseInsightsKpi(enterprise),
     ],
     orgHealth: scores,
     workforceHealth,
