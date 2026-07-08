@@ -25,7 +25,10 @@ import {
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { connectorService } from './connectorService';
+import { connectorStore } from './connectorStore';
 import { MANIFEST_BY_ID } from './manifests';
+import { unifiedStore } from '../unified/storeInstance';
+import { createGitHubSyncRunner } from './adapters/github/githubSyncRunner';
 
 const log = createLogger('connectors');
 
@@ -78,6 +81,21 @@ function toPlatformEvent(e: ConnectorEvent): PlatformEventInput | null {
 }
 
 export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<ConnectorSubsystem> {
+  // Wire the GitHub data-sync runner into the connector lifecycle's sync() seam.
+  // Composes the vault-backed token accessor, the read-only fetch client, the pure
+  // normalizer, and the unified store. No new pipeline: memory, timeline, knowledge,
+  // and semantic all populate downstream from unifiedStore as they already do.
+  connectorService.setSyncRunner(
+    createGitHubSyncRunner({
+      getToken: (connectorId, accountId) =>
+        connectorService.getValidAccessToken(connectorId, accountId),
+      getLastSyncAt: (connectorId, accountId) =>
+        connectorStore.get(connectorId, accountId)?.lastSyncAt ?? null,
+      upsert: (entities) => unifiedStore.upsertMany(entities),
+      fetchImpl: (url, init) => fetch(url, init),
+    }),
+  );
+
   await connectorService.init();
 
   const onEvent = (e: ConnectorEvent): void => {
