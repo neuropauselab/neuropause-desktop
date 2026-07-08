@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { MemoryCounts, MemoryHit, MemoryKind } from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
-import { cn } from '@renderer/lib/cn';
 import { Icon, type IconName } from '@renderer/components/ui/Icon';
 import { EmptyState } from '@renderer/components/ui/EmptyState';
+import { Chip, ChipRow } from '@renderer/components/ui/pillTabs';
 import { ViewHeader, ViewScroll } from '@renderer/components/ui/Page';
 import { Spinner } from '@renderer/components/Spinner';
 import { explanationLabels } from './memoryExplanation';
@@ -137,23 +137,18 @@ export function MemoryView(): JSX.Element {
         />
       </div>
 
-      <div className="mb-4 flex flex-wrap gap-1.5">
-        {filterChips.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            onClick={() => setKind(c.id)}
-            className={cn(
-              'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition',
-              kind === c.id
-                ? 'border-transparent bg-white/15 text-white'
-                : 'border-[var(--hairline)] text-faint hover:text-ink',
-            )}
-          >
-            {c.label}
-            <span className="text-white/40">{c.count}</span>
-          </button>
-        ))}
+      <div className="mb-4">
+        <ChipRow>
+          {filterChips.map((c) => (
+            <Chip
+              key={c.id}
+              label={c.label}
+              count={c.count}
+              active={kind === c.id}
+              onClick={() => setKind(c.id)}
+            />
+          ))}
+        </ChipRow>
       </div>
 
       {loading ? (
