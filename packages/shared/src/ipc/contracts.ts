@@ -963,6 +963,10 @@ export const ModuleDeleteRequest = z.object({ moduleId: ModuleId, id: EntId }).s
 
 export const ModuleSummarizeRequest = z.object({ moduleId: ModuleId, id: EntId }).strict();
 
+export const ModuleActionRequest = z
+  .object({ moduleId: ModuleId, id: EntId, action: z.string().trim().min(1).max(64) })
+  .strict();
+
 export const ModuleSearchRequest = z
   .object({
     moduleId: ModuleId,
@@ -979,6 +983,7 @@ export type ModuleSetStatusRequest = z.infer<typeof ModuleSetStatusRequest>;
 export type ModuleDeleteRequest = z.infer<typeof ModuleDeleteRequest>;
 export type ModuleSearchRequest = z.infer<typeof ModuleSearchRequest>;
 export type ModuleSummarizeRequest = z.infer<typeof ModuleSummarizeRequest>;
+export type ModuleActionRequest = z.infer<typeof ModuleActionRequest>;
 
 /* ════════════════════════ Ecosystem Platform (Phase 8) ════════════════════ */
 

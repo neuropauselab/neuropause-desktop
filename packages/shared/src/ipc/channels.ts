@@ -291,6 +291,8 @@ export const IpcChannel = {
   EnterpriseModuleSearch: 'enterprise:module.search',
   /** AI-assisted summary + risk for one record (through the existing AI pipeline). */
   EnterpriseModuleSummarize: 'enterprise:module.summarize',
+  /** Run a module-defined record action (e.g. convert a lead). */
+  EnterpriseModuleAction: 'enterprise:module.action',
   /** Broadcast on any module record change (create/update/status/delete). */
   EnterpriseModuleEventBroadcast: 'enterprise:module.event',
 
@@ -715,6 +717,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.EnterpriseModuleDelete,
   IpcChannel.EnterpriseModuleSearch,
   IpcChannel.EnterpriseModuleSummarize,
+  IpcChannel.EnterpriseModuleAction,
 
   // ── Ecosystem Platform ──
   IpcChannel.EcosystemDeveloperDashboard,

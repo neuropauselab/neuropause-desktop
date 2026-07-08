@@ -17,8 +17,11 @@
  */
 import type {
   EnterpriseEntity,
+  EnterpriseModuleActionResult,
+  EnterpriseModuleLifecycleAction,
   EnterpriseModuleSummary,
   EnterpriseRecordSummary,
+  ModuleActionRequest as TAction,
   ModuleCreateRequest as TCreate,
   ModuleDeleteRequest as TDelete,
   ModuleGetRequest as TGet,
@@ -32,6 +35,7 @@ import type {
 import {
   EmptyRequest,
   IpcChannel,
+  ModuleActionRequest,
   ModuleCreateRequest,
   ModuleDeleteRequest,
   ModuleGetRequest,
@@ -44,9 +48,13 @@ import {
 } from '@neuropause/shared';
 import type { SecureHandlerDef } from '../../ipc/secureBridge';
 import { ENTERPRISE_CHANNEL_PERMISSIONS } from '../authzGate';
-import type { EnterpriseModule, EnterpriseModuleContext } from './enterpriseModule';
+import type {
+  EnterpriseModule,
+  EnterpriseModuleActionContext,
+  EnterpriseModuleContext,
+} from './enterpriseModule';
 
-type LifecycleAction = 'created' | 'updated' | 'status_changed' | 'deleted';
+type LifecycleAction = EnterpriseModuleLifecycleAction;
 
 export class EnterpriseModuleRegistry {
   private readonly modules = new Map<string, EnterpriseModule>();
@@ -80,6 +88,7 @@ export class EnterpriseModuleRegistry {
         recordCount: m.store.count(),
         activeCount: m.store.count('active'),
         aiSummary: Boolean(m.hooks.summarize),
+        actions: m.hooks.runAction ? (m.descriptor.actions ?? []) : [],
       });
     }
     return out;
@@ -91,6 +100,7 @@ const PLATFORM_TYPE: Record<LifecycleAction, PlatformEventInput['type']> = {
   updated: 'enterprise.record.updated',
   status_changed: 'enterprise.record.status_changed',
   deleted: 'enterprise.record.deleted',
+  converted: 'enterprise.record.converted',
 };
 
 const ACTION_VERB: Record<LifecycleAction, string> = {
@@ -98,6 +108,7 @@ const ACTION_VERB: Record<LifecycleAction, string> = {
   updated: 'Updated',
   status_changed: 'Changed status of',
   deleted: 'Deleted',
+  converted: 'Converted',
 };
 
 /**
@@ -319,6 +330,34 @@ export function buildModuleHandlers(
         if (!record) return { ok: false as const, errors: { _: 'Record not found.' } };
         emitLifecycle(ctx, module, 'deleted', record);
         return { ok: true as const, record };
+      },
+    },
+    {
+      channel: IpcChannel.EnterpriseModuleAction,
+      schema: ModuleActionRequest,
+      requireAuth: true,
+      audit: true,
+      handler: async (p): Promise<EnterpriseModuleActionResult> => {
+        const r = p as TAction;
+        const module = resolve(registry, r.moduleId);
+        // The action mutates the acting module — require its write scope. A
+        // cross-module action (e.g. conversion) may assert further scopes via
+        // `actionCtx.authorize`.
+        ctx.authorize(module.descriptor.permissions.write);
+        if (!module.hooks.runAction || !(module.descriptor.actions ?? []).some((a) => a.key === r.action)) {
+          return { ok: false, error: `Unknown action "${r.action}".` };
+        }
+        await module.store.load();
+        const record = module.store.get(r.id);
+        if (!record || record.status === 'deleted') return { ok: false, error: 'Record not found.' };
+        const actionCtx: EnterpriseModuleActionContext = {
+          actor: ctx.actor,
+          now: ctx.now,
+          authorize: ctx.authorize,
+          moduleFor: (id) => registry.get(id),
+          emit: (m, action, rec) => emitLifecycle(ctx, m, action, rec),
+        };
+        return module.hooks.runAction(r.action, record, actionCtx);
       },
     },
   ];

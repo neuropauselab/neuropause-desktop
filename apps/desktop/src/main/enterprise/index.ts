@@ -69,6 +69,7 @@ import { initEnterpriseModules, type EnterpriseModuleRegistry } from './framewor
 import { invoiceModule } from './modules/finance/invoiceModuleInstance';
 import { contactModule } from './modules/crm/contactModuleInstance';
 import { leadModule } from './modules/crm/leadModuleInstance';
+import { customerModule } from './modules/crm/customerModuleInstance';
 import { notificationScheduler } from '../services/notificationScheduler';
 import { buildOrgGraph, orgGraphNeighbors } from './graph/orgGraph';
 import { evaluateCompliance, type ComplianceInput } from './governance/enterpriseGovernance';
@@ -170,10 +171,12 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(invoiceModule); // Finance → Invoices
   modules.registry.register(contactModule); // CRM → Contacts
   modules.registry.register(leadModule); // CRM → Leads
+  modules.registry.register(customerModule); // CRM → Customers
   await Promise.all([
     invoiceModule.store.load(),
     contactModule.store.load(),
     leadModule.store.load(),
+    customerModule.store.load(),
   ]);
 
   return {

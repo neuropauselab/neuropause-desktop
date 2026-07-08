@@ -37,6 +37,7 @@ import {
   defineEnterpriseModule,
   type EnterpriseModule,
 } from '../../framework';
+import { CONVERT_ACTION, convertLeadToCustomer } from './conversion';
 
 /** The declarative description of a lead — drives store, CRUD, and the UI. */
 export const LEAD_DESCRIPTOR: EnterpriseModuleDescriptor = {
@@ -49,6 +50,7 @@ export const LEAD_DESCRIPTOR: EnterpriseModuleDescriptor = {
   group: 'CRM',
   titleField: 'name',
   permissions: { read: 'crm:read', write: 'crm:manage' },
+  actions: [{ key: CONVERT_ACTION, label: 'Convert to Customer', icon: 'arrow-right' }],
   fields: [
     { key: 'name', label: 'Lead Name', type: 'text', required: true, placeholder: 'Acme renewal' },
     { key: 'company', label: 'Company', type: 'text', placeholder: 'Acme Inc.' },
@@ -201,6 +203,13 @@ export function createLeadModule(storePath: string, aiRunner?: LeadAiRunner): En
           grounded: Boolean(ai?.grounded),
           model: ai?.model ?? 'none',
         };
+      },
+      // Lead Conversion — Convert Lead → Contact → Customer. Deterministic,
+      // idempotent, non-destructive (the lead is retained + cross-linked). The
+      // framework authorizes crm:manage before dispatching here.
+      runAction: async (action, record, actionCtx) => {
+        if (action === CONVERT_ACTION) return convertLeadToCustomer(record, actionCtx);
+        return { ok: false, error: `Unknown action "${action}".` };
       },
     },
   });

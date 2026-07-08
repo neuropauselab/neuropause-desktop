@@ -209,6 +209,7 @@ import type {
   EnterpriseRecordInput,
   EnterpriseRecordStatus,
   EnterpriseModuleMutationResult,
+  EnterpriseModuleActionResult,
   EnterpriseModuleEvent,
   EnterpriseRecordSummary,
 } from '@neuropause/shared';
@@ -1022,6 +1023,12 @@ export const ipc = {
         moduleId,
         id,
       }) as Promise<EnterpriseRecordSummary | null>,
+    action: (moduleId: string, id: string, action: string) =>
+      invoke(IpcChannel.EnterpriseModuleAction, {
+        moduleId,
+        id,
+        action,
+      }) as Promise<EnterpriseModuleActionResult>,
     onEvent: (cb: (e: EnterpriseModuleEvent) => void) =>
       subscribe(IpcChannel.EnterpriseModuleEventBroadcast, (p) => cb(p as EnterpriseModuleEvent)),
   },

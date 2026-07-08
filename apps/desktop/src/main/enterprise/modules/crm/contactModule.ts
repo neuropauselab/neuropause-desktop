@@ -98,6 +98,7 @@ export const CONTACT_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'gstNumber', label: 'GST Number', type: 'text', column: false },
     { key: 'industry', label: 'Industry', type: 'text', column: false },
     { key: 'website', label: 'Website', type: 'text', column: false },
+    { key: 'sourceLead', label: 'Source Lead', type: 'text', column: false, readOnly: true },
     { key: 'tags', label: 'Tags', type: 'text', column: false, placeholder: 'comma, separated' },
     {
       key: 'notes',

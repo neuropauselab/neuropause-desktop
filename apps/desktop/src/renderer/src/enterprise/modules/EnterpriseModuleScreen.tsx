@@ -292,6 +292,7 @@ export function EnterpriseModuleScreen({
             setDetail(null);
             void refresh();
           }}
+          onRefresh={() => void refresh()}
         />
       )}
     </div>
@@ -475,20 +476,41 @@ function RecordDetail({
   onClose,
   onEdit,
   onChanged,
+  onRefresh,
 }: {
   module: EnterpriseModuleSummary;
   record: EnterpriseEntity;
   onClose: () => void;
   onEdit: () => void;
   onChanged: () => void;
+  onRefresh?: () => void;
 }): JSX.Element {
   const [busy, setBusy] = useState(false);
+  const [actionMsg, setActionMsg] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
 
   const act = async (fn: () => Promise<unknown>): Promise<void> => {
     setBusy(true);
     try {
       await fn();
       onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Custom record actions (e.g. Convert Lead → Customer). The list is refreshed
+  // behind the modal, which stays open to show the deterministic result message.
+  const runAction = async (key: string): Promise<void> => {
+    setBusy(true);
+    setActionMsg(null);
+    try {
+      const res = await ipc.enterpriseModules.action(module.id, record.id, key);
+      setActionMsg(
+        res.ok
+          ? { tone: 'ok', text: res.message ?? 'Done.' }
+          : { tone: 'error', text: res.error ?? res.message ?? 'Action failed.' },
+      );
+      onRefresh?.();
     } finally {
       setBusy(false);
     }
@@ -502,6 +524,18 @@ function RecordDetail({
       subtitle={`${module.singular} · ${record.status}`}
       footer={
         <>
+          {record.status === 'active' &&
+            module.actions.map((a) => (
+              <Button
+                key={a.key}
+                variant="secondary"
+                icon={a.icon as IconName | undefined}
+                onClick={() => void runAction(a.key)}
+                disabled={busy}
+              >
+                {a.label}
+              </Button>
+            ))}
           {record.status === 'active' ? (
             <Button
               variant="ghost"
@@ -536,6 +570,17 @@ function RecordDetail({
         </>
       }
     >
+      {actionMsg && (
+        <div
+          className={`mb-3 rounded-md px-3 py-2 text-sm ${
+            actionMsg.tone === 'ok'
+              ? 'bg-emerald-500/10 text-emerald-300'
+              : 'bg-rose-500/10 text-rose-300'
+          }`}
+        >
+          {actionMsg.text}
+        </div>
+      )}
       {module.aiSummary && <AiSummarySection module={module} recordId={record.id} />}
       <dl className="space-y-3">
         {module.fields.map((f) => (

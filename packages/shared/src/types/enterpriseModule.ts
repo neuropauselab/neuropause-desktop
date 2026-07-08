@@ -129,6 +129,24 @@ export interface EnterpriseModuleDescriptor {
   titleField: string;
   /** The enterprise permissions a read / write on this module requires. */
   permissions: { read: EnterprisePermission; write: EnterprisePermission };
+  /** Custom record actions surfaced as buttons in the detail view (e.g. convert). */
+  actions?: EnterpriseRecordActionDef[];
+}
+
+/** A custom, module-defined action a user can run on one record. */
+export interface EnterpriseRecordActionDef {
+  key: string;
+  label: string;
+  /** Icon name (resolved by the renderer icon set). */
+  icon?: string;
+}
+
+/** The result of running a record action (create/convert/etc.). */
+export interface EnterpriseModuleActionResult {
+  ok: boolean;
+  message?: string;
+  /** field/record-level error message on failure. */
+  error?: string;
 }
 
 /** A module descriptor plus live counts — the payload of `enterprise:modules`. */
@@ -137,6 +155,8 @@ export interface EnterpriseModuleSummary extends EnterpriseModuleDescriptor {
   activeCount: number;
   /** True when the module exposes an AI record summary (a `summarize` hook). */
   aiSummary: boolean;
+  /** Record actions available on this module (empty when none). */
+  actions: EnterpriseRecordActionDef[];
 }
 
 /** Coarse risk band a module can attach to a record's AI summary. */
@@ -174,7 +194,12 @@ export interface EnterpriseModuleMutationResult {
   errors?: Record<string, string>;
 }
 
-export type EnterpriseModuleLifecycleAction = 'created' | 'updated' | 'status_changed' | 'deleted';
+export type EnterpriseModuleLifecycleAction =
+  | 'created'
+  | 'updated'
+  | 'status_changed'
+  | 'deleted'
+  | 'converted';
 
 /** The payload broadcast on `enterprise:module.event`. */
 export interface EnterpriseModuleEvent {

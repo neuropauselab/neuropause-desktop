@@ -11,7 +11,9 @@
  */
 import type {
   EnterpriseEntity,
+  EnterpriseModuleActionResult,
   EnterpriseModuleDescriptor,
+  EnterpriseModuleLifecycleAction,
   EnterprisePermission,
   EnterpriseRecordInput,
   EnterpriseRecordSummary,
@@ -42,6 +44,35 @@ export interface EnterpriseModuleContext {
   now: () => string;
 }
 
+/**
+ * The capabilities the framework injects into a module's `runAction` hook — the
+ * seam a custom record action (e.g. Lead → Customer conversion) uses to read and
+ * write OTHER registered modules and emit their lifecycle events, without wiring
+ * any of those services itself. The framework already authorized the acting
+ * module's write permission before calling the hook.
+ */
+export interface EnterpriseModuleActionContext {
+  /** The current actor's identity (email/id), for authorship + audit. */
+  actor: () => string | null;
+  /** Injected clock (tests pass a fixed value). */
+  now: () => string;
+  /** RBAC gate — throws if the actor lacks the permission (assert cross-module writes). */
+  authorize: (permission: EnterprisePermission) => void;
+  /** Resolve another registered module (Contacts, Customers, …) by id, or null. */
+  moduleFor: (moduleId: string) => EnterpriseModule | null;
+  /**
+   * Run the full lifecycle fan-out (audit + platform timeline + renderer
+   * broadcast + the target module's own `onChange`) for a record an action
+   * created or changed in another module — so cross-module writes are audited
+   * and surfaced identically to direct CRUD.
+   */
+  emit: (
+    module: EnterpriseModule,
+    action: EnterpriseModuleLifecycleAction,
+    record: EnterpriseEntity,
+  ) => void;
+}
+
 /** Optional per-module hooks. Defaults cover the common case. */
 export interface EnterpriseModuleHooks {
   /**
@@ -51,7 +82,7 @@ export interface EnterpriseModuleHooks {
   validate?: (input: EnterpriseRecordInput) => EnterpriseRecordValidation;
   /** Observe a record change after it is persisted (e.g. derive a projection). */
   onChange?: (event: {
-    action: 'created' | 'updated' | 'status_changed' | 'deleted';
+    action: EnterpriseModuleLifecycleAction;
     record: EnterpriseEntity;
   }) => void;
   /**
@@ -60,6 +91,18 @@ export interface EnterpriseModuleHooks {
    * automatically (`EnterpriseModuleSummary.aiSummary`), with no renderer changes.
    */
   summarize?: (record: EnterpriseEntity) => Promise<EnterpriseRecordSummary>;
+  /**
+   * Run a custom, module-declared record action (see `descriptor.actions`) — the
+   * generic `enterprise:module.action` handler dispatches here after authorizing
+   * the module's write permission and loading the record. Modules that provide
+   * it surface their `descriptor.actions` as buttons in the record detail, with
+   * no renderer changes.
+   */
+  runAction?: (
+    action: string,
+    record: EnterpriseEntity,
+    actionCtx: EnterpriseModuleActionContext,
+  ) => Promise<EnterpriseModuleActionResult>;
 }
 
 export interface EnterpriseModule {

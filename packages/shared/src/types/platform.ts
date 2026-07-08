@@ -117,7 +117,8 @@ export type PlatformEventType =
   | 'enterprise.record.created'
   | 'enterprise.record.updated'
   | 'enterprise.record.status_changed'
-  | 'enterprise.record.deleted';
+  | 'enterprise.record.deleted'
+  | 'enterprise.record.converted';
 /** Who or what caused the event. */
 export interface EventActor {
   kind: 'user' | 'system' | 'plugin' | 'connector';
