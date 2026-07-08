@@ -289,6 +289,8 @@ export const IpcChannel = {
   EnterpriseModuleSetStatus: 'enterprise:module.setStatus',
   EnterpriseModuleDelete: 'enterprise:module.delete',
   EnterpriseModuleSearch: 'enterprise:module.search',
+  /** AI-assisted summary + risk for one record (through the existing AI pipeline). */
+  EnterpriseModuleSummarize: 'enterprise:module.summarize',
   /** Broadcast on any module record change (create/update/status/delete). */
   EnterpriseModuleEventBroadcast: 'enterprise:module.event',
 
@@ -712,6 +714,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.EnterpriseModuleSetStatus,
   IpcChannel.EnterpriseModuleDelete,
   IpcChannel.EnterpriseModuleSearch,
+  IpcChannel.EnterpriseModuleSummarize,
 
   // ── Ecosystem Platform ──
   IpcChannel.EcosystemDeveloperDashboard,

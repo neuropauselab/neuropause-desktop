@@ -66,6 +66,7 @@ import {
   withEnterpriseAuthz,
 } from './authzGate';
 import { initEnterpriseModules, type EnterpriseModuleRegistry } from './framework';
+import { invoiceModule } from './modules/finance/invoiceModuleInstance';
 import { notificationScheduler } from '../services/notificationScheduler';
 import { buildOrgGraph, orgGraphNeighbors } from './graph/orgGraph';
 import { evaluateCompliance, type ComplianceInput } from './governance/enterpriseGovernance';
@@ -154,7 +155,6 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   // Enterprise Module Framework: the reusable ERP foundation. Every module
   // registered into this registry inherits RBAC, audit, timeline events,
   // renderer broadcasts, and the generic CRUD IPC surface — nothing per-module.
-  // No business modules are registered in this foundation release.
   const modules = initEnterpriseModules({
     authorize,
     audit: (e) => audit(e.action, e.target, e.summary),
@@ -164,6 +164,9 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     actor: sessionEmail,
     now: () => new Date().toISOString(),
   });
+  // First ERP module: Finance → Invoices (the blueprint every later module follows).
+  modules.registry.register(invoiceModule);
+  await invoiceModule.store.load();
 
   return {
     handlers: [...withEnterpriseAuthz(buildHandlers()), ...modules.handlers],

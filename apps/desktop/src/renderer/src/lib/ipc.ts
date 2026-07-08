@@ -210,6 +210,7 @@ import type {
   EnterpriseRecordStatus,
   EnterpriseModuleMutationResult,
   EnterpriseModuleEvent,
+  EnterpriseRecordSummary,
 } from '@neuropause/shared';
 
 type OAuthProviderId = Exclude<AuthProviderId, 'email'>;
@@ -1016,6 +1017,11 @@ export const ipc = {
         moduleId,
         id,
       }) as Promise<EnterpriseModuleMutationResult>,
+    summarize: (moduleId: string, id: string) =>
+      invoke(IpcChannel.EnterpriseModuleSummarize, {
+        moduleId,
+        id,
+      }) as Promise<EnterpriseRecordSummary | null>,
     onEvent: (cb: (e: EnterpriseModuleEvent) => void) =>
       subscribe(IpcChannel.EnterpriseModuleEventBroadcast, (p) => cb(p as EnterpriseModuleEvent)),
   },

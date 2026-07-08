@@ -126,6 +126,7 @@ export const DYNAMICALLY_AUTHORIZED_ENTERPRISE_CHANNELS: readonly IpcChannelName
   IpcChannel.EnterpriseModuleList,
   IpcChannel.EnterpriseModuleGet,
   IpcChannel.EnterpriseModuleSearch,
+  IpcChannel.EnterpriseModuleSummarize,
   IpcChannel.EnterpriseModuleCreate,
   IpcChannel.EnterpriseModuleUpdate,
   IpcChannel.EnterpriseModuleSetStatus,

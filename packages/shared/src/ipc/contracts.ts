@@ -959,6 +959,8 @@ export const ModuleSetStatusRequest = z
 
 export const ModuleDeleteRequest = z.object({ moduleId: ModuleId, id: EntId }).strict();
 
+export const ModuleSummarizeRequest = z.object({ moduleId: ModuleId, id: EntId }).strict();
+
 export const ModuleSearchRequest = z
   .object({
     moduleId: ModuleId,
@@ -974,6 +976,7 @@ export type ModuleUpdateRequest = z.infer<typeof ModuleUpdateRequest>;
 export type ModuleSetStatusRequest = z.infer<typeof ModuleSetStatusRequest>;
 export type ModuleDeleteRequest = z.infer<typeof ModuleDeleteRequest>;
 export type ModuleSearchRequest = z.infer<typeof ModuleSearchRequest>;
+export type ModuleSummarizeRequest = z.infer<typeof ModuleSummarizeRequest>;
 
 /* ════════════════════════ Ecosystem Platform (Phase 8) ════════════════════ */
 

@@ -14,6 +14,7 @@ import type {
   EnterpriseModuleDescriptor,
   EnterprisePermission,
   EnterpriseRecordInput,
+  EnterpriseRecordSummary,
   EnterpriseRecordValidation,
   PlatformEventInput,
 } from '@neuropause/shared';
@@ -53,6 +54,12 @@ export interface EnterpriseModuleHooks {
     action: 'created' | 'updated' | 'status_changed' | 'deleted';
     record: EnterpriseEntity;
   }) => void;
+  /**
+   * Produce an AI-assisted summary + risk for a record, through the existing AI
+   * pipeline. Optional — modules that provide it light up the AI Summary surface
+   * automatically (`EnterpriseModuleSummary.aiSummary`), with no renderer changes.
+   */
+  summarize?: (record: EnterpriseEntity) => Promise<EnterpriseRecordSummary>;
 }
 
 export interface EnterpriseModule {

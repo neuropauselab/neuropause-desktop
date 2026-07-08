@@ -72,7 +72,10 @@ export class PromptManager {
 
 /** Replace {{name}} with variables[name]; unknown tokens become empty strings. */
 export function interpolate(template: string, variables: Record<string, string>): string {
-  return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, name: string) => variables[name] ?? '');
+  return template.replace(
+    /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g,
+    (_match, name: string) => variables[name] ?? '',
+  );
 }
 
 /**
@@ -137,5 +140,13 @@ export const DEFAULT_PROMPTS: PromptTemplate[] = [
     system: `${GROUNDING} Summarize the provided context concisely. Respond ONLY with JSON: summary (string), confidence (number 0..1).`,
     user: 'CONTEXT:\n{{context}}\n\nSummarize.',
     variables: ['context'],
+  },
+  {
+    id: 'finance.invoice-summary',
+    version: 1,
+    label: 'Finance — Invoice Summary',
+    system: `${GROUNDING} You summarize a single invoice for an executive. You are given the invoice's authoritative facts and a DETERMINISTIC risk band (already computed — never change it; only explain it). Respond ONLY with a JSON object: summary (string — one or two plain sentences on what this invoice is and its state), executiveExplanation (string — one sentence on the cash/business impact), confidence (number 0..1). Do not invent amounts, dates, or names beyond the facts given.`,
+    user: 'INVOICE (authoritative facts):\n{{invoice}}\n\nComputed risk band: {{risk}} — {{riskReason}}\n\nWrite the summary and executive explanation strictly from the facts above.',
+    variables: ['invoice', 'risk', 'riskReason'],
   },
 ];

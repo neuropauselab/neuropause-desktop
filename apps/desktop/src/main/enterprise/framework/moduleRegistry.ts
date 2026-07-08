@@ -18,12 +18,14 @@
 import type {
   EnterpriseEntity,
   EnterpriseModuleSummary,
+  EnterpriseRecordSummary,
   ModuleCreateRequest as TCreate,
   ModuleDeleteRequest as TDelete,
   ModuleGetRequest as TGet,
   ModuleListRequest as TList,
   ModuleSearchRequest as TSearch,
   ModuleSetStatusRequest as TSetStatus,
+  ModuleSummarizeRequest as TSummarize,
   ModuleUpdateRequest as TUpdate,
   PlatformEventInput,
 } from '@neuropause/shared';
@@ -36,6 +38,7 @@ import {
   ModuleListRequest,
   ModuleSearchRequest,
   ModuleSetStatusRequest,
+  ModuleSummarizeRequest,
   ModuleUpdateRequest,
   deriveRecordTitle,
 } from '@neuropause/shared';
@@ -76,6 +79,7 @@ export class EnterpriseModuleRegistry {
         ...m.descriptor,
         recordCount: m.store.count(),
         activeCount: m.store.count('active'),
+        aiSummary: Boolean(m.hooks.summarize),
       });
     }
     return out;
@@ -188,6 +192,32 @@ export function buildModuleHandlers(
         ctx.authorize(module.descriptor.permissions.read);
         await module.store.load();
         return module.store.search(r.query, r.limit);
+      },
+    },
+    {
+      channel: IpcChannel.EnterpriseModuleSummarize,
+      schema: ModuleSummarizeRequest,
+      requireAuth: true,
+      handler: async (p): Promise<EnterpriseRecordSummary | null> => {
+        const r = p as TSummarize;
+        const module = resolve(registry, r.moduleId);
+        ctx.authorize(module.descriptor.permissions.read);
+        await module.store.load();
+        const record = module.store.get(r.id);
+        if (!record || record.status === 'deleted') return null;
+        if (module.hooks.summarize) return module.hooks.summarize(record);
+        // Modules without an AI hook still answer, honestly, with a plain summary.
+        return {
+          moduleId: module.descriptor.id,
+          recordId: record.id,
+          headline: record.title,
+          summary: `No AI summary is available for ${module.descriptor.plural}.`,
+          risk: 'low',
+          riskReason: 'Not assessed.',
+          executiveExplanation: '',
+          grounded: false,
+          model: 'none',
+        };
       },
     },
     {

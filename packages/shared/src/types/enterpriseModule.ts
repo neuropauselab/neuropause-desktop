@@ -74,6 +74,8 @@ export type EnterpriseFieldType = 'text' | 'textarea' | 'number' | 'select' | 'b
 export interface EnterpriseFieldOption {
   value: string;
   label: string;
+  /** Optional Badge tone for this option when rendered as a badge (renderer maps it). */
+  tone?: string;
 }
 
 /** A field a module's records carry — the unit of both validation and UI. */
@@ -89,8 +91,16 @@ export interface EnterpriseFieldDef {
   /** Numeric bounds for `number` fields. */
   min?: number;
   max?: number;
+  /** Default value applied when a create omits the field (form + validation). */
+  default?: EnterpriseFieldValue;
   /** Whether to show this field as a column in the list view (default: true). */
   column?: boolean;
+  /** Display formatting hint for the list/detail (generic renderer). */
+  format?: 'currency' | 'date';
+  /** Render a `select` field's value as a colored Badge (uses the option tone). */
+  badge?: boolean;
+  /** Offer this `select` field as a filter (chip row) in the list view. */
+  filterable?: boolean;
 }
 
 /**
@@ -120,6 +130,28 @@ export interface EnterpriseModuleDescriptor {
 export interface EnterpriseModuleSummary extends EnterpriseModuleDescriptor {
   recordCount: number;
   activeCount: number;
+  /** True when the module exposes an AI record summary (a `summarize` hook). */
+  aiSummary: boolean;
+}
+
+/** Coarse risk band a module can attach to a record's AI summary. */
+export type EnterpriseRiskLevel = 'low' | 'medium' | 'high';
+
+/**
+ * An AI-assisted record summary — the payload of `enterprise:module.summarize`.
+ * The risk band + reason are deterministic (grounded); `grounded` reports whether
+ * a real model produced the narrative or the deterministic fallback was used.
+ */
+export interface EnterpriseRecordSummary {
+  moduleId: string;
+  recordId: string;
+  headline: string;
+  summary: string;
+  risk: EnterpriseRiskLevel;
+  riskReason: string;
+  executiveExplanation: string;
+  grounded: boolean;
+  model: string;
 }
 
 /** Query for a module's record list. */
@@ -208,7 +240,10 @@ export function validateEnterpriseRecordInput(
   const raw = input.fields ?? {};
 
   for (const field of descriptor.fields) {
-    const value = coerceFieldValue(field, raw[field.key]);
+    let value = coerceFieldValue(field, raw[field.key]);
+    // Apply the field's default when the input omits it.
+    if (value === null && field.default !== undefined)
+      value = coerceFieldValue(field, field.default);
     if (field.required && (value === null || value === '')) {
       errors[field.key] = `${field.label} is required.`;
       values[field.key] = value;

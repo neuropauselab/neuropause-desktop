@@ -1,17 +1,19 @@
 /**
  * EnterpriseModuleScreen — the generic list + detail + form for ONE ERP module.
- * It is fully descriptor-driven: given a module summary (fetched over IPC) it
- * renders the record table, the create/edit form, and the detail view purely
- * from `module.fields` — so Finance, CRM, Sales, … all reuse this exact screen
- * with zero module-specific UI code.
+ * Fully descriptor-driven: given a module summary (fetched over IPC) it renders
+ * the record table (with formatting, status badges, filter chips, pagination),
+ * the create/edit form, and the detail view — plus an AI Summary panel when the
+ * module exposes one — purely from `module.fields`. Finance, CRM, Sales, … all
+ * reuse this exact screen with zero module-specific UI code.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type {
   EnterpriseEntity,
   EnterpriseFieldDef,
   EnterpriseFieldValue,
   EnterpriseModuleSummary,
   EnterpriseRecordInput,
+  EnterpriseRecordSummary,
 } from '@neuropause/shared';
 import { validateEnterpriseRecordInput } from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
@@ -19,6 +21,7 @@ import { cn } from '@renderer/lib/cn';
 import { Button } from '@renderer/components/ui/Button';
 import { Badge } from '@renderer/components/ui/controls';
 import { Toggle } from '@renderer/components/ui/controls';
+import { Chip, ChipRow } from '@renderer/components/ui/pillTabs';
 import { Modal } from '@renderer/components/ui/Modal';
 import { Field } from '@renderer/components/ui/Field';
 import { Input, Textarea, Select } from '@renderer/components/ui/Input';
@@ -26,14 +29,31 @@ import { EmptyState } from '@renderer/components/ui/EmptyState';
 import { Skeleton } from '@renderer/components/ui/Skeleton';
 import { Icon, type IconName } from '@renderer/components/ui/Icon';
 
+type BadgeTone = 'neutral' | 'accent' | 'blue' | 'green' | 'orange' | 'purple' | 'teal' | 'pink';
+const BADGE_TONES = new Set<BadgeTone>([
+  'neutral',
+  'accent',
+  'blue',
+  'green',
+  'orange',
+  'purple',
+  'teal',
+  'pink',
+]);
+function toTone(tone: string | undefined): BadgeTone {
+  return tone && BADGE_TONES.has(tone as BadgeTone) ? (tone as BadgeTone) : 'neutral';
+}
+
+const PAGE_SIZE = 20;
+
 type FormState = Record<string, string | boolean>;
 
 function toFormState(fields: EnterpriseFieldDef[], record?: EnterpriseEntity): FormState {
   const out: FormState = {};
   for (const f of fields) {
-    const v = record?.fields[f.key];
-    if (f.type === 'boolean') out[f.key] = v === true;
-    else out[f.key] = v === null || v === undefined ? '' : String(v);
+    const raw = record ? record.fields[f.key] : f.default;
+    if (f.type === 'boolean') out[f.key] = raw === true;
+    else out[f.key] = raw === null || raw === undefined ? '' : String(raw);
   }
   return out;
 }
@@ -45,12 +65,28 @@ function formToInput(fields: EnterpriseFieldDef[], state: FormState): Enterprise
   return { fields: values };
 }
 
-function displayValue(field: EnterpriseFieldDef, value: EnterpriseFieldValue): string {
+function formatValue(field: EnterpriseFieldDef, value: EnterpriseFieldValue): string {
   if (value === null || value === '') return '—';
   if (field.type === 'boolean') return value ? 'Yes' : 'No';
-  if (field.type === 'select')
+  if (field.format === 'currency' && typeof value === 'number') {
+    return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  if (field.format === 'date') {
+    const ms = Date.parse(String(value));
+    if (Number.isFinite(ms)) return new Date(ms).toLocaleDateString();
+  }
+  if (field.type === 'select') {
     return field.options?.find((o) => o.value === value)?.label ?? String(value);
+  }
   return String(value);
+}
+
+function renderCell(field: EnterpriseFieldDef, value: EnterpriseFieldValue): ReactNode {
+  if (field.type === 'select' && field.badge && value !== null && value !== '') {
+    const opt = field.options?.find((o) => o.value === value);
+    return <Badge tone={toTone(opt?.tone)}>{opt?.label ?? String(value)}</Badge>;
+  }
+  return formatValue(field, value);
 }
 
 export function EnterpriseModuleScreen({
@@ -61,17 +97,25 @@ export function EnterpriseModuleScreen({
   const [records, setRecords] = useState<EnterpriseEntity[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
+  const [filters, setFilters] = useState<Record<string, string>>({});
+  const [page, setPage] = useState(0);
   const [form, setForm] = useState<{ mode: 'create' | 'edit'; record?: EnterpriseEntity } | null>(
     null,
   );
   const [detail, setDetail] = useState<EnterpriseEntity | null>(null);
 
   const columns = useMemo(() => module.fields.filter((f) => f.column !== false), [module.fields]);
+  const filterFields = useMemo(
+    () => module.fields.filter((f) => f.type === 'select' && f.filterable),
+    [module.fields],
+  );
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      setRecords(await ipc.enterpriseModules.records(module.id, { search: query || undefined }));
+      setRecords(
+        await ipc.enterpriseModules.records(module.id, { search: query || undefined, limit: 1000 }),
+      );
     } finally {
       setLoading(false);
     }
@@ -84,6 +128,22 @@ export function EnterpriseModuleScreen({
     });
     return off;
   }, [refresh, module.id]);
+
+  // Client-side field filters (over the fetched, searched set).
+  const filtered = useMemo(() => {
+    const active = Object.entries(filters).filter(([, v]) => v);
+    if (active.length === 0) return records;
+    return records.filter((r) => active.every(([k, v]) => String(r.fields[k] ?? '') === v));
+  }, [records, filters]);
+
+  useEffect(() => setPage(0), [filters, query]);
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageStart = page * PAGE_SIZE;
+  const pageRows = filtered.slice(pageStart, pageStart + PAGE_SIZE);
+
+  const setFilter = (key: string, value: string): void =>
+    setFilters((f) => ({ ...f, [key]: f[key] === value ? '' : value }));
 
   return (
     <div>
@@ -104,59 +164,106 @@ export function EnterpriseModuleScreen({
         </Button>
       </div>
 
+      {filterFields.map((f) => (
+        <div key={f.key} className="mb-3">
+          <ChipRow>
+            <Chip label="All" active={!filters[f.key]} onClick={() => setFilter(f.key, '')} />
+            {f.options?.map((o) => (
+              <Chip
+                key={o.value}
+                label={o.label}
+                active={filters[f.key] === o.value}
+                onClick={() => setFilter(f.key, o.value)}
+              />
+            ))}
+          </ChipRow>
+        </div>
+      ))}
+
       {loading ? (
         <div className="space-y-2">
           <Skeleton className="h-10" />
           <Skeleton className="h-10" />
           <Skeleton className="h-10" />
         </div>
-      ) : records.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <EmptyState
           icon={(module.icon || 'grid') as IconName}
-          title={`No ${module.plural.toLowerCase()} yet`}
-          description={`Create your first ${module.singular.toLowerCase()} to get started.`}
+          title={records.length === 0 ? `No ${module.plural.toLowerCase()} yet` : 'No matches'}
+          description={
+            records.length === 0
+              ? `Create your first ${module.singular.toLowerCase()} to get started.`
+              : 'Try clearing a filter or search.'
+          }
           action={
-            <Button variant="primary" icon="plus" onClick={() => setForm({ mode: 'create' })}>
-              New {module.singular}
-            </Button>
+            records.length === 0 ? (
+              <Button variant="primary" icon="plus" onClick={() => setForm({ mode: 'create' })}>
+                New {module.singular}
+              </Button>
+            ) : undefined
           }
         />
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-[var(--hairline)] [background:var(--fill-1)]">
-          <table className="w-full text-left text-md">
-            <thead>
-              <tr className="border-b border-[var(--hairline)] text-xs uppercase tracking-wider text-faint">
-                {columns.map((c) => (
-                  <th key={c.key} className="px-4 py-2.5 font-semibold">
-                    {c.label}
-                  </th>
-                ))}
-                <th className="px-4 py-2.5 font-semibold">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {records.map((r) => (
-                <tr
-                  key={r.id}
-                  onClick={() => setDetail(r)}
-                  className="cursor-pointer border-b border-[var(--hairline)] last:border-0 transition fill-hover"
-                >
-                  {columns.map((c, i) => (
-                    <td
-                      key={c.key}
-                      className={cn('px-4 py-3', i === 0 ? 'font-medium text-ink' : 'text-muted')}
-                    >
-                      {displayValue(c, r.fields[c.key])}
-                    </td>
+        <>
+          <div className="overflow-hidden rounded-2xl border border-[var(--hairline)] [background:var(--fill-1)]">
+            <table className="w-full text-left text-md">
+              <thead>
+                <tr className="border-b border-[var(--hairline)] text-xs uppercase tracking-wider text-faint">
+                  {columns.map((c) => (
+                    <th key={c.key} className="px-4 py-2.5 font-semibold">
+                      {c.label}
+                    </th>
                   ))}
-                  <td className="px-4 py-3">
-                    <Badge tone={r.status === 'active' ? 'green' : 'orange'}>{r.status}</Badge>
-                  </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {pageRows.map((r) => (
+                  <tr
+                    key={r.id}
+                    onClick={() => setDetail(r)}
+                    className="cursor-pointer border-b border-[var(--hairline)] transition last:border-0 fill-hover"
+                  >
+                    {columns.map((c, i) => (
+                      <td
+                        key={c.key}
+                        className={cn('px-4 py-3', i === 0 ? 'font-medium text-ink' : 'text-muted')}
+                      >
+                        {renderCell(c, r.fields[c.key])}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-3 flex items-center justify-between text-sm text-faint">
+            <span>
+              Showing {pageStart + 1}–{Math.min(pageStart + PAGE_SIZE, filtered.length)} of{' '}
+              {filtered.length}
+            </span>
+            {pageCount > 1 && (
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon="chevron-left"
+                  disabled={page === 0}
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                >
+                  Prev
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={page >= pageCount - 1}
+                  onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+                >
+                  Next
+                </Button>
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {form && (
@@ -298,6 +405,68 @@ function ModuleForm({
   );
 }
 
+const RISK_TONE: Record<string, BadgeTone> = { low: 'green', medium: 'orange', high: 'pink' };
+
+function AiSummarySection({
+  module,
+  recordId,
+}: {
+  module: EnterpriseModuleSummary;
+  recordId: string;
+}): JSX.Element {
+  const [summary, setSummary] = useState<EnterpriseRecordSummary | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const generate = async (): Promise<void> => {
+    setLoading(true);
+    try {
+      setSummary(await ipc.enterpriseModules.summarize(module.id, recordId));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mb-4 rounded-xl border border-[var(--hairline)] [background:var(--fill-1)] p-3.5">
+      <div className="flex items-center justify-between">
+        <span className="flex items-center gap-1.5 text-sm font-semibold text-ink">
+          <Icon name="sparkles" size={14} />
+          AI Summary
+        </span>
+        {summary && <Badge tone={RISK_TONE[summary.risk] ?? 'neutral'}>{summary.risk} risk</Badge>}
+      </div>
+      {summary ? (
+        <div className="mt-2.5 space-y-2">
+          <p className="text-md text-ink">{summary.summary}</p>
+          {summary.executiveExplanation && (
+            <p className="text-sm text-muted">{summary.executiveExplanation}</p>
+          )}
+          <p className="text-xs text-faint">
+            {summary.riskReason} ·{' '}
+            {summary.grounded ? `Model: ${summary.model}` : 'Deterministic (no model configured)'}
+          </p>
+        </div>
+      ) : (
+        <div className="mt-2 flex items-center justify-between gap-3">
+          <p className="text-sm text-muted">
+            Generate an AI risk assessment and executive explanation for this{' '}
+            {module.singular.toLowerCase()}.
+          </p>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon="sparkles"
+            loading={loading}
+            onClick={() => void generate()}
+          >
+            Generate
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RecordDetail({
   module,
   record,
@@ -365,11 +534,12 @@ function RecordDetail({
         </>
       }
     >
+      {module.aiSummary && <AiSummarySection module={module} recordId={record.id} />}
       <dl className="space-y-3">
         {module.fields.map((f) => (
           <div key={f.key} className="flex items-start justify-between gap-6">
             <dt className="text-sm text-muted">{f.label}</dt>
-            <dd className="text-md text-ink text-right">{displayValue(f, record.fields[f.key])}</dd>
+            <dd className="text-right text-md text-ink">{renderCell(f, record.fields[f.key])}</dd>
           </div>
         ))}
       </dl>
