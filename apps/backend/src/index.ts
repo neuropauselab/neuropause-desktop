@@ -2,6 +2,7 @@ import 'dotenv/config';
 import type { Server } from 'node:http';
 import { createApp } from './app';
 import { loadEnv } from './config/env';
+import { enabledProviderIds } from './auth/providers/registry';
 import { logger } from './config/logger';
 import { runMigrations } from './db/migrate';
 import { seedStoreIfEmpty } from './db/seed';
@@ -30,6 +31,12 @@ async function main(): Promise<void> {
   const app = createApp();
   const server: Server = app.listen(env.PORT, () => {
     logger.info(`NeuroPause backend listening on ${env.PUBLIC_BACKEND_URL} (port ${env.PORT})`);
+    const oauthProviders = enabledProviderIds();
+    logger.info(
+      oauthProviders.length > 0
+        ? `OAuth providers enabled: ${oauthProviders.join(', ')}`
+        : 'OAuth providers enabled: none — set provider credentials (e.g. GOOGLE_CLIENT_ID/SECRET) to enable login',
+    );
   });
 
   const shutdown = (signal: string) => {
