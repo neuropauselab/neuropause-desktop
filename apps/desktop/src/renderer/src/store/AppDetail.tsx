@@ -241,7 +241,6 @@ export function AppDetail({ slug }: { slug: string }): JSX.Element {
               <div className="mt-4 space-y-1.5 border-t border-[var(--hairline)] pt-3">
                 {app.homepageUrl && <LinkRow icon="globe" label="Website" href={app.homepageUrl} />}
                 {app.repositoryUrl && <LinkRow icon="code" label="Source repository" href={app.repositoryUrl} />}
-                {app.homepageUrl && <LinkRow icon="doc" label="Documentation" href={app.homepageUrl} />}
               </div>
             </div>
 

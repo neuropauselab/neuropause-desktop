@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { CategorySummary, StoreAppCard as StoreAppCardDto } from '@neuropause/shared';
-import { cn } from '@renderer/lib/cn';
+import { Chip as PillChip } from '@renderer/components/ui/pillTabs';
 import { Icon } from '@renderer/components/ui/Icon';
 import { Button } from '@renderer/components/ui/Button';
 import { EmptyState } from '@renderer/components/ui/EmptyState';
@@ -103,6 +103,8 @@ export function MarketplaceHome(): JSX.Element {
   );
 }
 
+// Local Chip delegates to the shared pill Chip so the store matches every other
+// filter row. children is the label (a string in every call site here).
 function Chip({
   active,
   onClick,
@@ -112,18 +114,7 @@ function Chip({
   onClick: () => void;
   children: ReactNode;
 }): JSX.Element {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'rounded-full px-3 py-1 text-sm font-medium outline-none transition-colors focus-visible:shadow-focus',
-        active ? 'bg-accent text-accent-fg' : 'text-muted hover:text-ink [background:var(--fill-1)]',
-      )}
-    >
-      {children}
-    </button>
-  );
+  return <PillChip label={typeof children === 'string' ? children : String(children)} active={active} onClick={onClick} />;
 }
 
 /** Paginated search results grid. */
