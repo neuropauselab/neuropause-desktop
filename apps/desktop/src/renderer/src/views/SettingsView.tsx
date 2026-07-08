@@ -3,14 +3,10 @@ import type { AppInfo, Session, ThemeSource } from '@neuropause/shared';
 import { ViewHeader, ViewScroll } from '@renderer/components/ui/Page';
 import { Card } from '@renderer/components/ui/Card';
 import { Button } from '@renderer/components/ui/Button';
-import {
-  Avatar,
-  SegmentedControl,
-  Toggle,
-  type SegmentOption,
-} from '@renderer/components/ui/controls';
+import { Avatar, Toggle } from '@renderer/components/ui/controls';
 import { initials } from '@renderer/lib/format';
 import { useTheme } from '@renderer/providers/ThemeProvider';
+import { SegmentedTabs, type SegmentedTabItem } from '@renderer/components/ui/pillTabs';
 import { useAuth } from '@renderer/providers/AuthProvider';
 import { ipc } from '@renderer/lib/ipc';
 import { useScale } from '@renderer/state/ScaleProvider';
@@ -18,10 +14,9 @@ import { SubscriptionCenter } from '@renderer/subscription/SubscriptionCenter';
 import { TrustedDevices } from '@renderer/devices/TrustedDevices';
 import { EnterpriseOverview } from '@renderer/enterprise/EnterpriseOverview';
 
-const THEME_OPTIONS: SegmentOption<ThemeSource>[] = [
-  { value: 'system', label: 'Auto', icon: 'auto' },
-  { value: 'light', label: 'Light', icon: 'sun' },
-  { value: 'dark', label: 'Dark', icon: 'moon' },
+const THEME_OPTIONS: SegmentedTabItem<ThemeSource>[] = [
+  { id: 'system', label: 'Auto', icon: 'auto' },
+  { id: 'dark', label: 'Dark', icon: 'moon' },
 ];
 
 function SettingRow({
@@ -106,10 +101,11 @@ export function SettingsView({ session }: { session: Session }): JSX.Element {
             label="Theme"
             description="Auto follows your macOS appearance."
             control={
-              <SegmentedControl
-                options={THEME_OPTIONS}
-                value={source}
+              <SegmentedTabs
+                items={THEME_OPTIONS}
+                activeId={source === 'light' ? 'system' : source}
                 onChange={(v) => void setSource(v)}
+                ariaLabel="Theme"
               />
             }
           />

@@ -74,6 +74,56 @@
     --sidebar: rgba(0, 0, 0, 0.55);
   }
 
+
+  /* ── Pill tabs / chips (monochrome segmented controls) ── */
+  .np-pill-track {
+    padding: 3px;
+    background: var(--pill-track, rgba(255, 255, 255, 0.04));
+    border: 1px solid var(--hairline);
+    border-radius: 9999px;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 8px, #000 calc(100% - 8px), transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0, #000 8px, #000 calc(100% - 8px), transparent 100%);
+  }
+  .np-pill-track::-webkit-scrollbar { display: none; }
+
+  .np-pill-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 30px;
+    padding: 0 14px;
+    white-space: nowrap;
+    border-radius: 9999px;
+    font-size: 13px;
+    font-weight: 590;
+    letter-spacing: -0.01em;
+    color: var(--text-2);
+    background: transparent;
+    outline: none;
+    transition: background-color 150ms ease, color 150ms ease;
+  }
+  .np-pill-item:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+  .np-pill-item:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+  .np-pill-item--active,
+  .np-pill-item--active:hover { background: #fff; color: #000; font-weight: 600; }
+
+  .np-pill-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 16px;
+    padding: 0 6px;
+    border-radius: 9999px;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    background: rgba(255, 255, 255, 0.10);
+    color: var(--text-2);
+  }
+  .np-pill-count--active { background: rgba(0, 0, 0, 0.10); color: #000; }
+
   html,
   body,
   #root {
