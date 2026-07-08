@@ -68,6 +68,7 @@ import {
 import { initEnterpriseModules, type EnterpriseModuleRegistry } from './framework';
 import { invoiceModule } from './modules/finance/invoiceModuleInstance';
 import { contactModule } from './modules/crm/contactModuleInstance';
+import { leadModule } from './modules/crm/leadModuleInstance';
 import { notificationScheduler } from '../services/notificationScheduler';
 import { buildOrgGraph, orgGraphNeighbors } from './graph/orgGraph';
 import { evaluateCompliance, type ComplianceInput } from './governance/enterpriseGovernance';
@@ -168,7 +169,12 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   // ERP modules built on the foundation (each: descriptor + store + AI hook).
   modules.registry.register(invoiceModule); // Finance → Invoices
   modules.registry.register(contactModule); // CRM → Contacts
-  await Promise.all([invoiceModule.store.load(), contactModule.store.load()]);
+  modules.registry.register(leadModule); // CRM → Leads
+  await Promise.all([
+    invoiceModule.store.load(),
+    contactModule.store.load(),
+    leadModule.store.load(),
+  ]);
 
   return {
     handlers: [...withEnterpriseAuthz(buildHandlers()), ...modules.handlers],

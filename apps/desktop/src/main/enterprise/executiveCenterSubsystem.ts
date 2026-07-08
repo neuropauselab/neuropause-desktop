@@ -24,10 +24,13 @@ import { jobStore } from '../workforce/runtime/jobInstance';
 import {
   buildUnifiedTimeline,
   deriveCrmInsights,
+  deriveLeadInsights,
   contactFromRecord,
+  leadFromRecord,
   type UnifiedItemLite,
 } from '@neuropause/shared';
 import { contactModule } from './modules/crm/contactModuleInstance';
+import { leadModule } from './modules/crm/leadModuleInstance';
 import { buildExecutiveRecommendations, buildExecutiveSummary } from './executiveRecommendations';
 import type { MonthlyTrend } from '@neuropause/shared';
 
@@ -115,6 +118,12 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       crmInsights: () =>
         deriveCrmInsights(
           contactModule.store.list({ status: 'active', limit: 5000 }).map(contactFromRecord),
+          nowMs,
+        ),
+      // CRM lead-pipeline KPIs from the registered Leads module.
+      leadInsights: () =>
+        deriveLeadInsights(
+          leadModule.store.list({ status: 'active', limit: 5000 }).map(leadFromRecord),
           nowMs,
         ),
       // V2.9: feed last week's health from the persisted history store so Weekly

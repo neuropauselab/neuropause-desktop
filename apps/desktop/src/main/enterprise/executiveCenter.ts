@@ -15,8 +15,10 @@
 import {
   computeOrgHealth,
   crmInsightsToKpis,
+  leadInsightsToKpis,
   orgHealthBand,
   type CrmModuleInsights,
+  type LeadModuleInsights,
   type ExecutiveCard,
   type ExecutiveKpi,
   type ExecutiveCenterSnapshot,
@@ -56,6 +58,8 @@ export interface ExecutiveCenterSources {
   memoryCounts?: () => MemoryCountsLike | undefined;
   /** CRM module insights → Executive Center KPI tiles (optional). */
   crmInsights?: () => CrmModuleInsights | undefined;
+  /** CRM lead-pipeline insights → Executive Center KPI tiles (optional). */
+  leadInsights?: () => LeadModuleInsights | undefined;
 }
 
 /** The minimal timeline fields the composer reads (kept local; no new dep). */
@@ -265,6 +269,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
   const workforceHealth = sources.workforceHealth?.();
   const workforceIntel = sources.workforceIntelligence?.();
   const crmInsightsForKpis = sources.crmInsights?.();
+  const leadInsightsForKpis = sources.leadInsights?.();
   const enterprise = enterpriseInsights({
     knowledge: sources.knowledgeHealth?.(),
     memory: sources.memoryCounts?.(),
@@ -279,6 +284,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
       ...(workforceIntel ? [workforcePerformanceKpi(workforceIntel)] : []),
       enterpriseInsightsKpi(enterprise),
       ...(crmInsightsForKpis ? crmInsightsToKpis(crmInsightsForKpis) : []),
+      ...(leadInsightsForKpis ? leadInsightsToKpis(leadInsightsForKpis) : []),
     ],
     enterprise,
     orgHealth: scores,

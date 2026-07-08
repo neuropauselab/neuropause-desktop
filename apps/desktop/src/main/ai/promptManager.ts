@@ -157,4 +157,12 @@ export const DEFAULT_PROMPTS: PromptTemplate[] = [
     user: 'CONTACT (authoritative facts):\n{{contact}}\n\nComputed relationship health: {{health}} — {{healthReason}}\n\nWrite the summary and executive explanation strictly from the facts above.',
     variables: ['contact', 'health', 'healthReason'],
   },
+  {
+    id: 'crm.lead-summary',
+    version: 1,
+    label: 'CRM — Lead Summary',
+    system: `${GROUNDING} You summarize a single sales lead for an executive. You are given the lead's authoritative facts plus DETERMINISTIC signals already computed — a lead score, a conversion probability, a health band, and a next best action. NEVER change those numbers or the recommended action; only explain them. Respond ONLY with a JSON object: summary (string — a few sentences covering what the lead is, why the score/probability are what they are, the opportunity, and the recommended follow-up), executiveExplanation (string — one sentence on pipeline value and risk), confidence (number 0..1). Do not invent details beyond the facts given.`,
+    user: 'LEAD (authoritative facts + deterministic signals):\n{{lead}}\n\nScore: {{score}}/100 · Conversion probability: {{probability}}% · Health: {{health}}\n\nWrite the summary and executive explanation strictly from the facts above.',
+    variables: ['lead', 'score', 'probability', 'health'],
+  },
 ];

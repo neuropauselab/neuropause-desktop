@@ -359,47 +359,49 @@ function ModuleForm({
     >
       <div className="space-y-3.5">
         {errors._ && <p className="text-sm text-syspink">{errors._}</p>}
-        {module.fields.map((f) => (
-          <Field
-            key={f.key}
-            label={f.label}
-            htmlFor={`f-${f.key}`}
-            required={f.required}
-            help={f.help}
-            error={errors[f.key]}
-          >
-            {f.type === 'textarea' ? (
-              <Textarea
-                id={`f-${f.key}`}
-                value={String(state[f.key] ?? '')}
-                placeholder={f.placeholder}
-                onChange={(e) => set(f.key, e.target.value)}
-              />
-            ) : f.type === 'select' ? (
-              <Select
-                id={`f-${f.key}`}
-                value={String(state[f.key] ?? '')}
-                placeholder="Select…"
-                options={f.options ?? []}
-                onChange={(e) => set(f.key, e.target.value)}
-              />
-            ) : f.type === 'boolean' ? (
-              <Toggle
-                checked={Boolean(state[f.key])}
-                onChange={(v) => set(f.key, v)}
-                label={f.label}
-              />
-            ) : (
-              <Input
-                id={`f-${f.key}`}
-                type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
-                value={String(state[f.key] ?? '')}
-                placeholder={f.placeholder}
-                onChange={(e) => set(f.key, e.target.value)}
-              />
-            )}
-          </Field>
-        ))}
+        {module.fields
+          .filter((f) => !f.readOnly)
+          .map((f) => (
+            <Field
+              key={f.key}
+              label={f.label}
+              htmlFor={`f-${f.key}`}
+              required={f.required}
+              help={f.help}
+              error={errors[f.key]}
+            >
+              {f.type === 'textarea' ? (
+                <Textarea
+                  id={`f-${f.key}`}
+                  value={String(state[f.key] ?? '')}
+                  placeholder={f.placeholder}
+                  onChange={(e) => set(f.key, e.target.value)}
+                />
+              ) : f.type === 'select' ? (
+                <Select
+                  id={`f-${f.key}`}
+                  value={String(state[f.key] ?? '')}
+                  placeholder="Select…"
+                  options={f.options ?? []}
+                  onChange={(e) => set(f.key, e.target.value)}
+                />
+              ) : f.type === 'boolean' ? (
+                <Toggle
+                  checked={Boolean(state[f.key])}
+                  onChange={(v) => set(f.key, v)}
+                  label={f.label}
+                />
+              ) : (
+                <Input
+                  id={`f-${f.key}`}
+                  type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
+                  value={String(state[f.key] ?? '')}
+                  placeholder={f.placeholder}
+                  onChange={(e) => set(f.key, e.target.value)}
+                />
+              )}
+            </Field>
+          ))}
       </div>
     </Modal>
   );

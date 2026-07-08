@@ -101,6 +101,11 @@ export interface EnterpriseFieldDef {
   badge?: boolean;
   /** Offer this `select` field as a filter (chip row) in the list view. */
   filterable?: boolean;
+  /**
+   * A computed/display-only field: shown in the list + detail, but hidden from
+   * the create/edit form (its value is derived by the module, e.g. a lead score).
+   */
+  readOnly?: boolean;
 }
 
 /**
