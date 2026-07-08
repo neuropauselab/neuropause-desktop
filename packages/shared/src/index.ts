@@ -30,6 +30,7 @@ export * from './types/workforceGovernance';
 export * from './types/workforceJobs';
 export * from './types/enterpriseIntelligence';
 export * from './types/enterprise';
+export * from './types/enterpriseModule';
 export * from './types/ecosystem';
 export * from './types/ecosystem-exchange';
 export * from './types/cloud';

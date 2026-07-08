@@ -17,13 +17,14 @@ export interface Meta {
   tone: OpsTone;
 }
 
-/** The eight surfaces of the Enterprise experience. */
+/** The surfaces of the Enterprise experience. */
 export type EnterpriseTab =
   | 'command'
   | 'executive'
   | 'decision'
   | 'organization'
   | 'operations'
+  | 'modules'
   | 'search'
   | 'workspace'
   | 'briefings'

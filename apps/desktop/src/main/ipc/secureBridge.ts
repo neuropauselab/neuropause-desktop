@@ -4,10 +4,12 @@
  *
  *   1. Sender trust   — only our own renderer frame may invoke.
  *   2. Auth gate      — channels marked requireAuth need an authenticated user.
- *   3. Validation     — the payload is parsed against its Zod schema.
- *   4. Timeout        — handlers are bounded so a hung backend can't wedge IPC.
- *   5. Audit          — each call is recorded (channel, outcome, duration).
- *   6. Error shaping  — failures surface as clean, user-safe messages.
+ *   3. Permission     — channels declaring `permission` require the current
+ *                       actor to hold that enterprise permission (RBAC).
+ *   4. Validation     — the payload is parsed against its Zod schema.
+ *   5. Timeout        — handlers are bounded so a hung backend can't wedge IPC.
+ *   6. Audit          — each call is recorded (channel, outcome, duration).
+ *   7. Error shaping  — failures surface as clean, user-safe messages.
  *
  * This is the boundary the renderer never crosses: it speaks only these typed
  * channels, never the backend directly.
@@ -16,7 +18,7 @@ import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { app, ipcMain } from 'electron';
 import type { ZodSchema } from 'zod';
-import type { IpcChannelName } from '@neuropause/shared';
+import type { EnterprisePermission, IpcChannelName } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import { isTrustedSenderFrame } from './router';
 
@@ -28,6 +30,8 @@ export interface SecureHandlerDef {
   schema: ZodSchema;
   handler: (payload: unknown) => unknown | Promise<unknown>;
   requireAuth?: boolean;
+  /** RBAC: the enterprise permission the current actor must hold to invoke. */
+  permission?: EnterprisePermission;
   audit?: boolean;
   timeoutMs?: number;
 }
@@ -35,6 +39,11 @@ export interface SecureHandlerDef {
 export interface SecureBridgeDeps {
   /** Whether a user session is currently authenticated. */
   isAuthenticated: () => boolean;
+  /**
+   * Assert the current actor holds a permission; throws when they do not.
+   * A channel that declares `permission` fails closed if this dep is absent.
+   */
+  authorize?: (permission: EnterprisePermission) => void;
 }
 
 function auditPath(): string {
@@ -85,6 +94,12 @@ export function registerSecureHandlers(defs: SecureHandlerDef[], deps: SecureBri
         if (def.requireAuth && !deps.isAuthenticated()) {
           throw new IpcError('Sign in to continue.');
         }
+        if (def.permission) {
+          if (!deps.authorize) {
+            throw new IpcError('Authorization is not available.');
+          }
+          deps.authorize(def.permission);
+        }
         const parsed = def.schema.safeParse(rawPayload ?? {});
         if (!parsed.success) {
           log.warn('Invalid payload', { channel: def.channel, issues: parsed.error.issues.length });
@@ -104,7 +119,12 @@ export function registerSecureHandlers(defs: SecureHandlerDef[], deps: SecureBri
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unexpected error';
         if (def.audit) {
-          appendAudit({ channel: def.channel, ok: false, durationMs: Date.now() - started, error: message });
+          appendAudit({
+            channel: def.channel,
+            ok: false,
+            durationMs: Date.now() - started,
+            error: message,
+          });
         }
         log.warn('IPC handler error', { channel: def.channel, message });
         // Surface a clean message to the renderer (never internal stack detail).

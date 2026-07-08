@@ -204,6 +204,12 @@ import type {
   ComplianceFinding,
   EnterpriseAuditEntry,
   ExecutiveSnapshot,
+  EnterpriseModuleSummary,
+  EnterpriseEntity,
+  EnterpriseRecordInput,
+  EnterpriseRecordStatus,
+  EnterpriseModuleMutationResult,
+  EnterpriseModuleEvent,
 } from '@neuropause/shared';
 
 type OAuthProviderId = Exclude<AuthProviderId, 'email'>;
@@ -594,7 +600,13 @@ export const ipc = {
   knowledge: {
     topics: () =>
       invoke(IpcChannel.KnowledgeTopics) as Promise<{
-        topics: Array<{ id: string; label: string; memoryIds: string[]; entities: string[]; size: number }>;
+        topics: Array<{
+          id: string;
+          label: string;
+          memoryIds: string[];
+          entities: string[];
+          size: number;
+        }>;
         total: number;
       }>,
     related: (memoryId: string, limit?: number) =>
@@ -781,8 +793,7 @@ export const ipc = {
   },
 
   workforce: {
-    intelligence: () =>
-      invoke(IpcChannel.WorkforceIntelligence) as Promise<WorkforceIntelligence>,
+    intelligence: () => invoke(IpcChannel.WorkforceIntelligence) as Promise<WorkforceIntelligence>,
     workers: () => invoke(IpcChannel.WorkforceWorkers) as Promise<WorkerSummary[]>,
     worker: (workerId: string) =>
       invoke(IpcChannel.WorkforceWorkerGet, { workerId }) as Promise<Worker | null>,
@@ -967,6 +978,46 @@ export const ipc = {
 
     onEvent: (cb: (e: { kind: string; at: string }) => void) =>
       subscribe(IpcChannel.EnterpriseEventBroadcast, (p) => cb(p as { kind: string; at: string })),
+  },
+
+  /** Enterprise Module Framework — generic CRUD over any registered ERP module. */
+  enterpriseModules: {
+    list: () => invoke(IpcChannel.EnterpriseModulesList) as Promise<EnterpriseModuleSummary[]>,
+    records: (
+      moduleId: string,
+      opts?: { status?: EnterpriseRecordStatus; search?: string; limit?: number },
+    ) =>
+      invoke(IpcChannel.EnterpriseModuleList, { moduleId, ...opts }) as Promise<EnterpriseEntity[]>,
+    get: (moduleId: string, id: string) =>
+      invoke(IpcChannel.EnterpriseModuleGet, { moduleId, id }) as Promise<EnterpriseEntity | null>,
+    search: (moduleId: string, query: string, limit?: number) =>
+      invoke(IpcChannel.EnterpriseModuleSearch, { moduleId, query, limit }) as Promise<
+        EnterpriseEntity[]
+      >,
+    create: (moduleId: string, input: EnterpriseRecordInput) =>
+      invoke(IpcChannel.EnterpriseModuleCreate, {
+        moduleId,
+        ...input,
+      }) as Promise<EnterpriseModuleMutationResult>,
+    update: (moduleId: string, id: string, input: EnterpriseRecordInput) =>
+      invoke(IpcChannel.EnterpriseModuleUpdate, {
+        moduleId,
+        id,
+        ...input,
+      }) as Promise<EnterpriseModuleMutationResult>,
+    setStatus: (moduleId: string, id: string, status: EnterpriseRecordStatus) =>
+      invoke(IpcChannel.EnterpriseModuleSetStatus, {
+        moduleId,
+        id,
+        status,
+      }) as Promise<EnterpriseModuleMutationResult>,
+    remove: (moduleId: string, id: string) =>
+      invoke(IpcChannel.EnterpriseModuleDelete, {
+        moduleId,
+        id,
+      }) as Promise<EnterpriseModuleMutationResult>,
+    onEvent: (cb: (e: EnterpriseModuleEvent) => void) =>
+      subscribe(IpcChannel.EnterpriseModuleEventBroadcast, (p) => cb(p as EnterpriseModuleEvent)),
   },
 
   ecosystem: {

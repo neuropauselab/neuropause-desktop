@@ -912,6 +912,69 @@ export type EnterpriseGovernanceSetChainRequest = z.infer<
 export type EnterpriseGovernanceSetRuleRequest = z.infer<typeof EnterpriseGovernanceSetRuleRequest>;
 export type EnterpriseGovernanceAuditRequest = z.infer<typeof EnterpriseGovernanceAuditRequest>;
 
+/* ══════════════════ Enterprise Module Framework (ERP foundation) ═══════════ */
+
+const ModuleId = z.string().trim().min(1).max(64);
+const RecordStatus = z.enum(['active', 'archived', 'deleted']);
+const RecordFieldValue = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+const RecordFields = z.record(z.string().max(128), RecordFieldValue);
+const RecordMeta = z.record(z.string().max(128), RecordFieldValue);
+const RecordTags = z.array(z.string().trim().min(1).max(64)).max(50);
+
+export const ModuleListRequest = z
+  .object({
+    moduleId: ModuleId,
+    status: RecordStatus.optional(),
+    search: z.string().trim().max(200).optional(),
+    limit: z.number().int().min(1).max(1000).optional(),
+  })
+  .strict();
+
+export const ModuleGetRequest = z.object({ moduleId: ModuleId, id: EntId }).strict();
+
+export const ModuleCreateRequest = z
+  .object({
+    moduleId: ModuleId,
+    title: z.string().trim().max(400).optional(),
+    fields: RecordFields.optional(),
+    tags: RecordTags.optional(),
+    metadata: RecordMeta.optional(),
+  })
+  .strict();
+
+export const ModuleUpdateRequest = z
+  .object({
+    moduleId: ModuleId,
+    id: EntId,
+    title: z.string().trim().max(400).optional(),
+    fields: RecordFields.optional(),
+    tags: RecordTags.optional(),
+    metadata: RecordMeta.optional(),
+  })
+  .strict();
+
+export const ModuleSetStatusRequest = z
+  .object({ moduleId: ModuleId, id: EntId, status: RecordStatus })
+  .strict();
+
+export const ModuleDeleteRequest = z.object({ moduleId: ModuleId, id: EntId }).strict();
+
+export const ModuleSearchRequest = z
+  .object({
+    moduleId: ModuleId,
+    query: z.string().trim().max(200),
+    limit: z.number().int().min(1).max(1000).optional(),
+  })
+  .strict();
+
+export type ModuleListRequest = z.infer<typeof ModuleListRequest>;
+export type ModuleGetRequest = z.infer<typeof ModuleGetRequest>;
+export type ModuleCreateRequest = z.infer<typeof ModuleCreateRequest>;
+export type ModuleUpdateRequest = z.infer<typeof ModuleUpdateRequest>;
+export type ModuleSetStatusRequest = z.infer<typeof ModuleSetStatusRequest>;
+export type ModuleDeleteRequest = z.infer<typeof ModuleDeleteRequest>;
+export type ModuleSearchRequest = z.infer<typeof ModuleSearchRequest>;
+
 /* ════════════════════════ Ecosystem Platform (Phase 8) ════════════════════ */
 
 const EcoId = z.string().min(1).max(200);

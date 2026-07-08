@@ -24,6 +24,7 @@ export type PlatformEventCategory =
   | 'connector'
   | 'knowledge'
   | 'automation'
+  | 'enterprise'
   | 'system';
 /**
  * The canonical, versioned set of event types. Adding a new type is additive;
@@ -111,7 +112,12 @@ export type PlatformEventType =
   | 'workflow.started'
   | 'workflow.completed'
   | 'workflow.failed'
-  | 'workflow.recovered';
+  | 'workflow.recovered'
+  // enterprise module records (ERP foundation)
+  | 'enterprise.record.created'
+  | 'enterprise.record.updated'
+  | 'enterprise.record.status_changed'
+  | 'enterprise.record.deleted';
 /** Who or what caused the event. */
 export interface EventActor {
   kind: 'user' | 'system' | 'plugin' | 'connector';

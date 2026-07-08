@@ -8,10 +8,7 @@
  * recomputed on demand from the runtime plus the existing intelligence,
  * workforce, connector, and unified layers. Nothing here is fabricated.
  */
-import type {
-  EntityRef,
-  ConnectorRef,
-} from './graph/orgGraph';
+import type { EntityRef, ConnectorRef } from './graph/orgGraph';
 import type {
   EnterpriseOrgCreateUnitRequest as TCreateUnit,
   EnterpriseOrgUpdateUnitRequest as TUpdateUnit,
@@ -28,7 +25,10 @@ import type {
   EnterpriseGovernanceSetChainRequest as TSetChain,
   EnterpriseGovernanceSetRuleRequest as TSetRule,
   EnterpriseGovernanceAuditRequest as TAudit,
+  AuthStatus,
+  EnterprisePermission,
   Organization,
+  PlatformEventInput,
   WorkspaceSummary,
   GovernanceConfig,
   BusinessActivitySummary,
@@ -57,7 +57,16 @@ import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { orgStore } from './org/orgInstance';
 import { workspaceStore } from './workspace/workspaceInstance';
 import { governanceStore } from './governance/governanceInstance';
-import { ROLE_TO_UNIT_ID } from './org/seed';
+import { OWNER_USER_ID, ROLE_TO_UNIT_ID } from './org/seed';
+import {
+  canDeleteMember,
+  createAuthorize,
+  guardBuiltInRolePatch,
+  guardOwnerUserPatch,
+  withEnterpriseAuthz,
+} from './authzGate';
+import { initEnterpriseModules, type EnterpriseModuleRegistry } from './framework';
+import { notificationScheduler } from '../services/notificationScheduler';
 import { buildOrgGraph, orgGraphNeighbors } from './graph/orgGraph';
 import { evaluateCompliance, type ComplianceInput } from './governance/enterpriseGovernance';
 import { computeExecutiveSnapshot } from './dashboard/executiveDashboard';
@@ -76,10 +85,16 @@ const log = createLogger('enterprise');
 
 export interface EnterpriseDeps {
   broadcast: (channel: string, payload: unknown) => void;
+  /** Platform event publisher → timeline + Executive Center (module lifecycle). */
+  publish?: (input: PlatformEventInput) => void;
 }
 
 export interface EnterpriseSubsystem {
   handlers: SecureHandlerDef[];
+  /** RBAC gate for the secure bridge — resolves the session actor and asserts. */
+  authorize: (permission: EnterprisePermission) => void;
+  /** The ERP module registry — future modules register into this at boot. */
+  modules: EnterpriseModuleRegistry;
 }
 
 export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSubsystem> {
@@ -87,12 +102,18 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   await workspaceStore.load();
   await governanceStore.load();
 
-  // Bind the seeded owner to the signed-in account.
-  const status = authService.getStatus();
-  if (status.state === 'authenticated') {
+  // Bind the seeded owner to the signed-in account — at boot (restored session)
+  // and on every later sign-in, since a fresh login lands after this init ran.
+  const bindOwner = (status: AuthStatus): void => {
+    if (status.state !== 'authenticated') return;
     const u = status.session.user;
-    orgStore.setOwnerIdentity(u.displayName ?? u.email, u.email);
-  }
+    const name = u.displayName ?? u.email;
+    const owner = orgStore.user(OWNER_USER_ID);
+    if (owner && owner.name === name && owner.email === u.email) return; // already bound
+    orgStore.setOwnerIdentity(name, u.email);
+  };
+  bindOwner(authService.getStatus());
+  authService.on('statusChanged', bindOwner);
 
   // Fold the live AI workforce into the org chart, and keep it in sync.
   const syncWorkers = (): void => {
@@ -103,7 +124,8 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   workerRegistry.on('changed', syncWorkers);
 
   // Bridge store changes to the renderer as one enterprise event.
-  const emit = (kind: string): void => deps.broadcast(IpcChannel.EnterpriseEventBroadcast, { kind, at: new Date().toISOString() });
+  const emit = (kind: string): void =>
+    deps.broadcast(IpcChannel.EnterpriseEventBroadcast, { kind, at: new Date().toISOString() });
   orgStore.on('changed', () => emit('org'));
   workspaceStore.on('changed', () => emit('workspace'));
   governanceStore.on('changed', () => emit('governance'));
@@ -115,7 +137,39 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     workspaces: workspaceStore.list().length,
   });
 
-  return { handlers: buildHandlers() };
+  // RBAC: resolve the signed-in session to an org member and enforce the
+  // per-channel permissions declared in authzGate on every enterprise call.
+  const sessionEmail = (): string | null => {
+    const st = authService.getStatus();
+    return st.state === 'authenticated' ? st.session.user.email : null;
+  };
+  const authorize = createAuthorize({
+    sessionEmail,
+    activeOrgId: () => activeOrg().id,
+    usersFor: (orgId) => orgStore.usersFor(orgId),
+    rolesFor: (orgId) => orgStore.rolesFor(orgId),
+    ownerMember: () => orgStore.user(OWNER_USER_ID),
+  });
+
+  // Enterprise Module Framework: the reusable ERP foundation. Every module
+  // registered into this registry inherits RBAC, audit, timeline events,
+  // renderer broadcasts, and the generic CRUD IPC surface — nothing per-module.
+  // No business modules are registered in this foundation release.
+  const modules = initEnterpriseModules({
+    authorize,
+    audit: (e) => audit(e.action, e.target, e.summary),
+    publish: deps.publish,
+    broadcast: deps.broadcast,
+    notify: (title, body) => notificationScheduler.notifyNow(title, body),
+    actor: sessionEmail,
+    now: () => new Date().toISOString(),
+  });
+
+  return {
+    handlers: [...withEnterpriseAuthz(buildHandlers()), ...modules.handlers],
+    authorize,
+    modules: modules.registry,
+  };
 }
 
 /* ── shared helpers ── */
@@ -142,20 +196,31 @@ function orgBundle(): {
 
 function actorName(): string {
   const st = authService.getStatus();
-  return st.state === 'authenticated' ? st.session.user.displayName ?? st.session.user.email : 'owner';
+  return st.state === 'authenticated'
+    ? (st.session.user.displayName ?? st.session.user.email)
+    : 'owner';
 }
 
 function audit(action: string, target: string, summary: string): void {
-  governanceStore.record({ actor: actorName(), action, target, summary, workspaceId: workspaceStore.activeWorkspaceId() });
+  governanceStore.record({
+    actor: actorName(),
+    action,
+    target,
+    summary,
+    workspaceId: workspaceStore.activeWorkspaceId(),
+  });
 }
 
 function mapEntities(): EntityRef[] {
   const items = unifiedStore.query({ limit: 1_000_000, includeDeleted: false }).items;
   const out: EntityRef[] = [];
   for (const e of items) {
-    if (e.kind === 'project') out.push({ id: e.id, kind: 'project', title: e.title, connectorId: e.connectorId });
-    else if (e.kind === 'document' || e.kind === 'file') out.push({ id: e.id, kind: 'document', title: e.title, connectorId: e.connectorId });
-    else if (e.kind === 'organization' || e.kind === 'contact') out.push({ id: e.id, kind: 'customer', title: e.title, connectorId: e.connectorId });
+    if (e.kind === 'project')
+      out.push({ id: e.id, kind: 'project', title: e.title, connectorId: e.connectorId });
+    else if (e.kind === 'document' || e.kind === 'file')
+      out.push({ id: e.id, kind: 'document', title: e.title, connectorId: e.connectorId });
+    else if (e.kind === 'organization' || e.kind === 'contact')
+      out.push({ id: e.id, kind: 'customer', title: e.title, connectorId: e.connectorId });
   }
   return out;
 }
@@ -181,10 +246,16 @@ function buildComplianceInput(): ComplianceInput {
   return {
     units: orgStore.unitsFor(org.id),
     users: orgStore.usersFor(org.id),
-    workers: workerRegistry.summaries().map((w) => ({ id: w.id, name: w.name, healthState: w.healthState })),
+    workers: workerRegistry
+      .summaries()
+      .map((w) => ({ id: w.id, name: w.name, healthState: w.healthState })),
     jobs: jobs.map((j) => ({
       id: j.id,
-      proposals: j.proposals.map((p) => ({ id: p.id, verdict: { decision: p.verdict.decision }, approval: p.approval })),
+      proposals: j.proposals.map((p) => ({
+        id: p.id,
+        verdict: { decision: p.verdict.decision },
+        approval: p.approval,
+      })),
     })),
     auditCount: auditLog.size() + governanceStore.auditCount(),
     jobsRun: jobStore.size(),
@@ -283,7 +354,13 @@ function buildHandlers(): SecureHandlerDef[] {
       audit: true,
       handler: (p) => {
         const r = p as TCreateUnit;
-        const unit = orgStore.createUnit({ orgId: activeOrg().id, kind: r.kind, name: r.name, parentId: r.parentId ?? null, leadUserId: r.leadUserId ?? null });
+        const unit = orgStore.createUnit({
+          orgId: activeOrg().id,
+          kind: r.kind,
+          name: r.name,
+          parentId: r.parentId ?? null,
+          leadUserId: r.leadUserId ?? null,
+        });
         audit('unit.create', unit.id, `Created ${r.kind.replace('_', ' ')} "${r.name}"`);
         return orgBundle();
       },
@@ -294,7 +371,11 @@ function buildHandlers(): SecureHandlerDef[] {
       audit: true,
       handler: (p) => {
         const r = p as TUpdateUnit;
-        const unit = orgStore.updateUnit(r.id, { name: r.name, parentId: r.parentId, leadUserId: r.leadUserId });
+        const unit = orgStore.updateUnit(r.id, {
+          name: r.name,
+          parentId: r.parentId,
+          leadUserId: r.leadUserId,
+        });
         if (unit) audit('unit.update', unit.id, `Updated unit "${unit.name}"`);
         return orgBundle();
       },
@@ -317,7 +398,14 @@ function buildHandlers(): SecureHandlerDef[] {
       audit: true,
       handler: (p) => {
         const r = p as TCreateUser;
-        const user = orgStore.createUser({ orgId: activeOrg().id, name: r.name, email: r.email ?? null, title: r.title ?? 'Member', unitId: r.unitId ?? null, roleIds: r.roleIds ?? [] });
+        const user = orgStore.createUser({
+          orgId: activeOrg().id,
+          name: r.name,
+          email: r.email ?? null,
+          title: r.title ?? 'Member',
+          unitId: r.unitId ?? null,
+          roleIds: r.roleIds ?? [],
+        });
         audit('user.create', user.id, `Added member "${r.name}"`);
         return orgBundle();
       },
@@ -328,7 +416,16 @@ function buildHandlers(): SecureHandlerDef[] {
       audit: true,
       handler: (p) => {
         const r = p as TUpdateUser;
-        const user = orgStore.updateUser(r.id, { name: r.name, email: r.email, title: r.title, unitId: r.unitId, roleIds: r.roleIds, status: r.status });
+        // Root of trust: the seeded owner's roles/status are immutable.
+        const patch = guardOwnerUserPatch(r.id, OWNER_USER_ID, {
+          name: r.name,
+          email: r.email,
+          title: r.title,
+          unitId: r.unitId,
+          roleIds: r.roleIds,
+          status: r.status,
+        });
+        const user = orgStore.updateUser(r.id, patch);
         if (user) audit('user.update', user.id, `Updated member "${user.name}"`);
         return orgBundle();
       },
@@ -339,7 +436,8 @@ function buildHandlers(): SecureHandlerDef[] {
       audit: true,
       handler: (p) => {
         const r = p as TDeleteUser;
-        const ok = orgStore.deleteUser(r.id);
+        // Root of trust: the seeded owner can never be removed.
+        const ok = canDeleteMember(r.id, OWNER_USER_ID) && orgStore.deleteUser(r.id);
         if (ok) audit('user.delete', r.id, 'Removed member');
         return orgBundle();
       },
@@ -351,7 +449,12 @@ function buildHandlers(): SecureHandlerDef[] {
       audit: true,
       handler: (p) => {
         const r = p as TCreateRole;
-        const role = orgStore.createRole({ orgId: activeOrg().id, name: r.name, description: r.description ?? '', permissions: r.permissions });
+        const role = orgStore.createRole({
+          orgId: activeOrg().id,
+          name: r.name,
+          description: r.description ?? '',
+          permissions: r.permissions,
+        });
         audit('role.create', role.id, `Created role "${r.name}"`);
         return orgBundle();
       },
@@ -362,7 +465,13 @@ function buildHandlers(): SecureHandlerDef[] {
       audit: true,
       handler: (p) => {
         const r = p as TUpdateRole;
-        const role = orgStore.updateRole(r.id, { name: r.name, description: r.description, permissions: r.permissions });
+        // Built-in roles keep their calibrated permissions (Owner = all).
+        const patch = guardBuiltInRolePatch(orgStore.role(r.id), {
+          name: r.name,
+          description: r.description,
+          permissions: r.permissions,
+        });
+        const role = orgStore.updateRole(r.id, patch);
         if (role) audit('role.update', role.id, `Updated role "${role.name}"`);
         return orgBundle();
       },
@@ -379,8 +488,16 @@ function buildHandlers(): SecureHandlerDef[] {
       },
     },
 
-    { channel: IpcChannel.EnterpriseWorkspaceList, schema: EmptyRequest, handler: () => workspaceSummaries() },
-    { channel: IpcChannel.EnterpriseWorkspaceActive, schema: EmptyRequest, handler: () => workspaceStore.active() },
+    {
+      channel: IpcChannel.EnterpriseWorkspaceList,
+      schema: EmptyRequest,
+      handler: () => workspaceSummaries(),
+    },
+    {
+      channel: IpcChannel.EnterpriseWorkspaceActive,
+      schema: EmptyRequest,
+      handler: () => workspaceStore.active(),
+    },
     {
       channel: IpcChannel.EnterpriseWorkspaceCreate,
       schema: EnterpriseWorkspaceCreateRequest,
@@ -411,8 +528,16 @@ function buildHandlers(): SecureHandlerDef[] {
       handler: (p) => orgGraphNeighbors(buildGraph(), (p as TNeighbors).id),
     },
 
-    { channel: IpcChannel.EnterpriseGovernanceConfig, schema: EmptyRequest, handler: () => governanceConfig() },
-    { channel: IpcChannel.EnterpriseGovernanceCompliance, schema: EmptyRequest, handler: () => evaluateCompliance(governanceStore.rules(), buildComplianceInput()) },
+    {
+      channel: IpcChannel.EnterpriseGovernanceConfig,
+      schema: EmptyRequest,
+      handler: () => governanceConfig(),
+    },
+    {
+      channel: IpcChannel.EnterpriseGovernanceCompliance,
+      schema: EmptyRequest,
+      handler: () => evaluateCompliance(governanceStore.rules(), buildComplianceInput()),
+    },
     {
       channel: IpcChannel.EnterpriseGovernanceSetChain,
       schema: EnterpriseGovernanceSetChainRequest,
@@ -420,7 +545,12 @@ function buildHandlers(): SecureHandlerDef[] {
       handler: (p) => {
         const r = p as TSetChain;
         const c = governanceStore.setChainEnabled(r.id, r.enabled);
-        if (c) audit('governance.chain', c.id, `${r.enabled ? 'Enabled' : 'Disabled'} approval chain "${c.name}"`);
+        if (c)
+          audit(
+            'governance.chain',
+            c.id,
+            `${r.enabled ? 'Enabled' : 'Disabled'} approval chain "${c.name}"`,
+          );
         return governanceStore.chains();
       },
     },
@@ -431,7 +561,12 @@ function buildHandlers(): SecureHandlerDef[] {
       handler: (p) => {
         const r = p as TSetRule;
         const rule = governanceStore.setRuleEnabled(r.id, r.enabled);
-        if (rule) audit('governance.rule', rule.id, `${r.enabled ? 'Enabled' : 'Disabled'} compliance rule "${rule.name}"`);
+        if (rule)
+          audit(
+            'governance.rule',
+            rule.id,
+            `${r.enabled ? 'Enabled' : 'Disabled'} compliance rule "${rule.name}"`,
+          );
         return governanceStore.rules();
       },
     },
@@ -441,6 +576,10 @@ function buildHandlers(): SecureHandlerDef[] {
       handler: (p) => governanceStore.auditEntries((p as TAudit).limit ?? 100),
     },
 
-    { channel: IpcChannel.EnterpriseDashboard, schema: EmptyRequest, handler: () => buildSnapshot() },
+    {
+      channel: IpcChannel.EnterpriseDashboard,
+      schema: EmptyRequest,
+      handler: () => buildSnapshot(),
+    },
   ];
 }

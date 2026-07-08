@@ -278,6 +278,20 @@ export const IpcChannel = {
   EnterpriseDashboard: 'enterprise:dashboard',
   EnterpriseEventBroadcast: 'enterprise:event',
 
+  // ── Enterprise Module Framework (ERP foundation) ──
+  /** List the registered ERP modules + live record counts. */
+  EnterpriseModulesList: 'enterprise:modules',
+  /** Generic per-module record CRUD (module resolved from the payload). */
+  EnterpriseModuleList: 'enterprise:module.list',
+  EnterpriseModuleGet: 'enterprise:module.get',
+  EnterpriseModuleCreate: 'enterprise:module.create',
+  EnterpriseModuleUpdate: 'enterprise:module.update',
+  EnterpriseModuleSetStatus: 'enterprise:module.setStatus',
+  EnterpriseModuleDelete: 'enterprise:module.delete',
+  EnterpriseModuleSearch: 'enterprise:module.search',
+  /** Broadcast on any module record change (create/update/status/delete). */
+  EnterpriseModuleEventBroadcast: 'enterprise:module.event',
+
   // ── Ecosystem Platform (Phase 8) ──
   EcosystemDeveloperDashboard: 'ecosystem:developer.dashboard',
   EcosystemDeveloperAccount: 'ecosystem:developer.account',
@@ -690,6 +704,14 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.EnterpriseGovernanceSetRule,
   IpcChannel.EnterpriseGovernanceAudit,
   IpcChannel.EnterpriseDashboard,
+  IpcChannel.EnterpriseModulesList,
+  IpcChannel.EnterpriseModuleList,
+  IpcChannel.EnterpriseModuleGet,
+  IpcChannel.EnterpriseModuleCreate,
+  IpcChannel.EnterpriseModuleUpdate,
+  IpcChannel.EnterpriseModuleSetStatus,
+  IpcChannel.EnterpriseModuleDelete,
+  IpcChannel.EnterpriseModuleSearch,
 
   // ── Ecosystem Platform ──
   IpcChannel.EcosystemDeveloperDashboard,
@@ -894,6 +916,7 @@ export const RUNTIME_BROADCAST_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.EnterpriseTimelineEventBroadcast,
   IpcChannel.WorkforceEventBroadcast,
   IpcChannel.EnterpriseEventBroadcast,
+  IpcChannel.EnterpriseModuleEventBroadcast,
   IpcChannel.EcosystemEventBroadcast,
   IpcChannel.CloudEventBroadcast,
   IpcChannel.FedEventBroadcast,

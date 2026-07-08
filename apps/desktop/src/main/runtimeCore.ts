@@ -219,7 +219,10 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   });
   // Enterprise Operating System: organization runtime + graph + governance +
   // multi-workspace isolation + the executive snapshot that rolls it all up.
-  const enterprise = await initEnterprise({ broadcast: deps.broadcast });
+  const enterprise = await initEnterprise({
+    broadcast: deps.broadcast,
+    publish: platform.api.publish,
+  });
   // Ecosystem Platform: developer portal + marketplace + API gateway + billing.
   const ecosystem = await initEcosystem({ broadcast: deps.broadcast });
   // Phase 9 · Stage 1 — Cloud Platform (multi-tenant, identity federation, sync, API platform, admin).
@@ -1134,6 +1137,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...releaseOps.handlers);
   registerSecureHandlers(defs, {
     isAuthenticated: () => authService.getStatus().state === 'authenticated',
+    // RBAC: channels annotated with `permission` (the enterprise family) are
+    // asserted against the signed-in actor's org roles before dispatch.
+    authorize: enterprise.authorize,
   });
   // Bridge runtime-core events to the renderer.
   packageService.on('progress', (e) => deps.broadcast(IpcChannel.NpsProgress, e));
