@@ -7,7 +7,7 @@ import { WorkerGlyph } from './primitives';
 import { formatMs, formatPct, formatTrust, TEXT_TONE, trustTone } from './lib';
 
 export function AnalyticsPanel(): JSX.Element {
-  const { workers, jobs, audit } = useWorkforce();
+  const { workers, jobs, audit, intelligence } = useWorkforce();
   const [rate, setRate] = useState(2.5); // $/worker-hour — configurable, transparent
 
   const a = useMemo(() => {
@@ -59,6 +59,56 @@ export function AnalyticsPanel(): JSX.Element {
 
   return (
     <div>
+      {intelligence && (
+        <OpsPanel title="Workforce Intelligence" subtitle="Aggregated in the runtime from completed jobs — per-worker outcomes, goal analytics, and detected bottlenecks.">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <Stat icon="user" label="Active workers" value={intelligence.activeWorkers} tone="accent" />
+            <Stat icon="gauge" label="Success rate" value={formatPct(intelligence.overallSuccessRate)} tone="green" />
+            <Stat icon="checklist" label="Total jobs" value={intelligence.totalJobs} tone="blue" />
+            <Stat icon="clock" label="In flight" value={intelligence.inFlight} tone="orange" />
+          </div>
+          {intelligence.workers.length > 0 && (
+            <div className="mt-4 space-y-1.5">
+              <div className="text-[11px] uppercase tracking-wide text-faint">Worker performance</div>
+              {intelligence.workers.map((w) => (
+                <div key={w.workerId} className="flex items-center gap-3 rounded-lg border border-[var(--hairline)] [background:var(--fill-1)] p-2.5">
+                  <Icon name="user" size={16} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-sm text-ink">{w.workerId}</span>
+                      <span className="shrink-0 text-xs text-faint">{formatPct(w.successRate)} · {w.succeeded}✓ {w.failed}✗ · {formatMs(w.avgDurationMs)}</span>
+                    </div>
+                    <Bar value={w.successRate} tone={w.successRate >= 0.8 ? 'green' : 'orange'} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {intelligence.bottlenecks.length > 0 && (
+            <div className="mt-4 space-y-1.5">
+              <div className="text-[11px] uppercase tracking-wide text-faint">Bottlenecks</div>
+              {intelligence.bottlenecks.map((b, i) => (
+                <div key={`${b.scope}-${b.key}-${b.kind}-${i}`} className="flex items-center gap-2 rounded-lg border border-[var(--hairline)] [background:var(--fill-1)] p-2.5 text-sm">
+                  <Icon name="shield" size={14} />
+                  <span className="text-ink">{b.key}</span>
+                  <span className="text-faint">{b.reason}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {intelligence.execution.bySkill.length > 0 && (
+            <div className="mt-4 space-y-1.5">
+              <div className="text-[11px] uppercase tracking-wide text-faint">Goal analytics by skill</div>
+              {intelligence.execution.bySkill.map((s) => (
+                <div key={s.key} className="flex items-center justify-between rounded-lg border border-[var(--hairline)] [background:var(--fill-1)] p-2.5 text-sm">
+                  <span className="text-ink">{s.key}</span>
+                  <span className="text-faint">{s.total} jobs · {formatPct(s.successRate)} · {formatMs(s.avgDurationMs)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </OpsPanel>
+      )}
       <OpsPanel title="Workforce Analytics" subtitle="Measured from completed jobs and the governance audit trail — nothing estimated unless labelled.">
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
           <Stat icon="checklist" label="Jobs run" value={a.total} tone="accent" />

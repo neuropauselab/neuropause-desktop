@@ -5,6 +5,7 @@
  * every catalog/registry/NPS/runtime call goes through these channels into the
  * main process.
  */
+import type { WorkforceIntelligence } from '@renderer/workforce/intelligenceTypes';
 import {
   IpcChannel,
   type AppInfo,
@@ -780,6 +781,8 @@ export const ipc = {
   },
 
   workforce: {
+    intelligence: () =>
+      invoke(IpcChannel.WorkforceIntelligence) as Promise<WorkforceIntelligence>,
     workers: () => invoke(IpcChannel.WorkforceWorkers) as Promise<WorkerSummary[]>,
     worker: (workerId: string) =>
       invoke(IpcChannel.WorkforceWorkerGet, { workerId }) as Promise<Worker | null>,

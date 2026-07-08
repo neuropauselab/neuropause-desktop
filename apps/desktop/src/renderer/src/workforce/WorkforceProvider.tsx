@@ -28,11 +28,13 @@ import { ipc } from '@renderer/lib/ipc';
 import { createLogger } from '@renderer/lib/logger';
 
 const log = createLogger('workforce');
+import type { WorkforceIntelligence } from './intelligenceTypes';
 
 interface WorkforceContextValue {
   ready: boolean;
   workers: WorkerSummary[];
   jobs: Job[];
+  intelligence: WorkforceIntelligence | null;
   audit: WorkforceAuditEntry[];
   auditTotal: number;
   policies: PolicyRule[];
@@ -55,17 +57,20 @@ export function WorkforceProvider({ children }: { children: ReactNode }): JSX.El
   const [audit, setAudit] = useState<WorkforceAuditEntry[]>([]);
   const [auditTotal, setAuditTotal] = useState(0);
   const [policies, setPolicies] = useState<PolicyRule[]>([]);
+  const [intelligence, setIntelligence] = useState<WorkforceIntelligence | null>(null);
   const detailCache = useRef(new Map<string, Worker>());
 
   const refreshAll = useCallback(async () => {
     try {
-      const [w, j, a, p] = await Promise.all([
+      const [w, j, a, p, intel] = await Promise.all([
         ipc.workforce.workers(),
         ipc.workforce.jobs({ limit: 200 }),
         ipc.workforce.audit({ limit: 200 }),
         ipc.workforce.policies(),
+        ipc.workforce.intelligence(),
       ]);
       setWorkers(w);
+      setIntelligence(intel);
       setJobs(j.jobs);
       setAudit(a.entries);
       setAuditTotal(a.total);
@@ -170,6 +175,7 @@ export function WorkforceProvider({ children }: { children: ReactNode }): JSX.El
       ready,
       workers,
       jobs,
+      intelligence,
       audit,
       auditTotal,
       policies,
@@ -186,6 +192,7 @@ export function WorkforceProvider({ children }: { children: ReactNode }): JSX.El
       ready,
       workers,
       jobs,
+      intelligence,
       audit,
       auditTotal,
       policies,
