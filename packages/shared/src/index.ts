@@ -49,6 +49,7 @@ export * from './types/mrp';
 export * from './types/timePhasedMrp';
 export * from './types/capacityScheduler';
 export * from './types/routing';
+export * from './types/mes';
 export * from './types/ecosystem';
 export * from './types/ecosystem-exchange';
 export * from './types/cloud';

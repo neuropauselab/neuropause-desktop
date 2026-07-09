@@ -39,6 +39,7 @@ import {
   postReservationRelease,
 } from './manufacturingMovements';
 import { COMMIT_SCHEDULE_ACTION, commitScheduleForOrder } from './scheduleCommit';
+import { DISPATCH_ACTION, dispatchOrderToExecution } from './mesDispatch';
 
 export const PLAN_ACTION = 'plan';
 export const ALLOCATE_ACTION = 'allocate';
@@ -61,6 +62,7 @@ export const PRODUCTION_ORDER_DESCRIPTOR: EnterpriseModuleDescriptor = {
   actions: [
     { key: PLAN_ACTION, label: 'Plan', icon: 'calendar' },
     { key: COMMIT_SCHEDULE_ACTION, label: 'Commit Schedule', icon: 'calendar-check' },
+    { key: DISPATCH_ACTION, label: 'Dispatch to Execution', icon: 'send' },
     { key: ALLOCATE_ACTION, label: 'Allocate Material', icon: 'lock' },
     { key: START_ACTION, label: 'Start Production', icon: 'play' },
     { key: COMPLETE_ACTION, label: 'Complete', icon: 'check' },
@@ -98,6 +100,7 @@ export const PRODUCTION_ORDER_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'consumptionMovements', label: 'Consumption', type: 'textarea', column: false, readOnly: true },
     { key: 'outputMovement', label: 'Output Movement', type: 'text', column: false, readOnly: true },
     { key: 'scheduleCommitted', label: 'Committed Schedule', type: 'textarea', column: false, readOnly: true },
+    { key: 'executionDispatched', label: 'Dispatched Executions', type: 'textarea', column: false, readOnly: true },
   ],
 };
 
@@ -155,6 +158,9 @@ export function createProductionOrderModule(storePath: string, aiRunner?: Produc
         // Commit Schedule — the explicit, human-approved hand-off that persists real Production
         // Schedule records from the deterministic routing plan (reuses the shared engine).
         if (action === COMMIT_SCHEDULE_ACTION) return commitScheduleForOrder(record, ctx);
+
+        // Dispatch to Execution (MES) — turn the committed schedule into shop-floor executions.
+        if (action === DISPATCH_ACTION) return dispatchOrderToExecution(record, ctx);
 
         if (action === PLAN_ACTION) {
           if (order.status !== 'draft') return { ok: false, message: `Cannot plan an order that is ${order.status}.` };

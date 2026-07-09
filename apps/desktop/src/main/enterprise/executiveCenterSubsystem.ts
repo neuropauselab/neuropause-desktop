@@ -49,6 +49,9 @@ import {
   deriveRoutingInsights,
   routingRecommendations,
   routingFromRecord,
+  deriveMesInsights,
+  mesRecommendations,
+  mesExecutionFromRecord,
   contactFromRecord,
   customerFromRecord,
   goodsReceiptFromRecord,
@@ -112,6 +115,7 @@ import {
   qualityModule,
   costingModule,
   routingModule,
+  executionModule,
 } from './modules/manufacturing/manufacturingInstances';
 import {
   assetModule,
@@ -210,6 +214,9 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
     // routings are real master data; computed ONCE and reused for the routing KPIs + recommendations.
     const routings = routingModule.store.list({ status: 'active', limit: 5000 }).map(routingFromRecord);
     const routingSchedule = computeRoutingSchedule(planningInput, routings, nowMs);
+    // Manufacturing Execution (MES) — the shop-floor execution records (dispatched from committed
+    // schedules). Read once and reused for the execution KPIs + recommendations. Real records only.
+    const mesExecutions = executionModule.store.list({ status: 'active', limit: 5000 }).map(mesExecutionFromRecord);
     // computeOrgHealth is what the composer uses; import lazily via the composer's
     // own path would duplicate — instead record after compose but read current from
     // the freshly-composed snapshot (below), and expose monthly via a closure that
@@ -339,6 +346,8 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       capacityInsights: () => deriveCapacityInsights(capacitySchedule),
       // Routing-aware (APS) KPIs — operations routed onto qualified machines (precomputed).
       routingInsights: () => deriveRoutingInsights(routingSchedule),
+      // Manufacturing Execution (MES) KPIs — real shop-floor execution records (precomputed).
+      mesInsights: () => deriveMesInsights(mesExecutions),
       // V2.9: feed last week's health from the persisted history store so Weekly
       // Trends is live. Returns null until ≥1 older datapoint exists.
       previousWeek: () => {
@@ -380,6 +389,9 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       // Routing-aware (APS) recommendations (alternate-machine, blocked-by-maintenance,
       // routing-conflict, capability-mismatch, split-routing, reduce-queue, resequence).
       ...routingRecommendations(routingSchedule),
+      // MES execution recommendations (dispatch-delayed, machine-overloaded, inspection-backlog,
+      // material-shortage, high-scrap, operator-unavailable, maintenance-conflict, routing-violation).
+      ...mesRecommendations(mesExecutions),
     ];
     snap.recommendations = recommendations;
     snap.executiveSummary = buildExecutiveSummary(snap, recommendations);
