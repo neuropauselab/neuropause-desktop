@@ -27,6 +27,7 @@ import {
   manufacturingInsightsToKpis,
   maintenanceInsightsToKpis,
   fulfillmentInsightsToKpis,
+  planningInsightsToKpis,
   quoteInsightsToKpis,
   type CrmModuleInsights,
   type CustomerModuleInsights,
@@ -40,6 +41,7 @@ import {
   type ManufacturingModuleInsights,
   type MaintenanceModuleInsights,
   type FulfillmentModuleInsights,
+  type PlanningModuleInsights,
   type QuoteModuleInsights,
   type ExecutiveCard,
   type ExecutiveKpi,
@@ -104,6 +106,8 @@ export interface ExecutiveCenterSources {
   maintenanceInsights?: () => MaintenanceModuleInsights | undefined;
   /** Finished-goods fulfillment insights → Executive Center KPI tiles (optional). */
   fulfillmentInsights?: () => FulfillmentModuleInsights | undefined;
+  /** Enterprise planning insights → Executive Center KPI tiles (optional). */
+  planningInsights?: () => PlanningModuleInsights | undefined;
 }
 
 /** The minimal timeline fields the composer reads (kept local; no new dep). */
@@ -325,6 +329,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
   const manufacturingInsightsForKpis = sources.manufacturingInsights?.();
   const maintenanceInsightsForKpis = sources.maintenanceInsights?.();
   const fulfillmentInsightsForKpis = sources.fulfillmentInsights?.();
+  const planningInsightsForKpis = sources.planningInsights?.();
   const enterprise = enterpriseInsights({
     knowledge: sources.knowledgeHealth?.(),
     memory: sources.memoryCounts?.(),
@@ -351,6 +356,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
       ...(manufacturingInsightsForKpis ? manufacturingInsightsToKpis(manufacturingInsightsForKpis) : []),
       ...(maintenanceInsightsForKpis ? maintenanceInsightsToKpis(maintenanceInsightsForKpis) : []),
       ...(fulfillmentInsightsForKpis ? fulfillmentInsightsToKpis(fulfillmentInsightsForKpis) : []),
+      ...(planningInsightsForKpis ? planningInsightsToKpis(planningInsightsForKpis) : []),
     ],
     enterprise,
     orgHealth: scores,

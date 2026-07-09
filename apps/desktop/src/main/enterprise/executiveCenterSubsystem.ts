@@ -36,6 +36,8 @@ import {
   deriveManufacturingInsights,
   deriveMaintenanceInsights,
   deriveFulfillmentInsights,
+  derivePlanningInsights,
+  planningRecommendations,
   contactFromRecord,
   customerFromRecord,
   goodsReceiptFromRecord,
@@ -60,6 +62,7 @@ import {
   workCenterFromRecord,
   qualityInspectionFromRecord,
   productionCostingFromRecord,
+  bomFromRecord,
   assetFromRecord,
   workOrderFromRecord,
   preventiveMaintenanceFromRecord,
@@ -91,6 +94,7 @@ import {
   stockAdjustmentModule,
 } from './modules/warehouse/warehouseInstances';
 import {
+  bomModule,
   productionOrderModule,
   machineModule,
   workCenterModule,
@@ -170,6 +174,21 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
     // scores once from the same inputs the composer will use.
     const nowMs = Date.now();
     const curInputs = collectOrgHealthInputs(nowMs);
+    // Enterprise Planning — read-mostly cross-domain intelligence computed once from
+    // the operational stores, used for both the planning KPIs and the recommendations.
+    const planningInput = {
+      products: productModule.store.list({ status: 'active', limit: 5000 }).map(productFromRecord),
+      salesOrders: orderModule.store.list({ status: 'active', limit: 5000 }).map(orderFromRecord),
+      quotes: quoteModule.store.list({ status: 'active', limit: 5000 }).map(quoteFromRecord),
+      shipments: shippingModule.store.list({ status: 'active', limit: 5000 }).map(shippingFromRecord),
+      productionOrders: productionOrderModule.store.list({ status: 'active', limit: 5000 }).map(productionOrderFromRecord),
+      purchaseOrders: purchaseOrderModule.store.list({ status: 'active', limit: 5000 }).map(purchaseOrderFromRecord),
+      suppliers: supplierModule.store.list({ status: 'active', limit: 5000 }).map(supplierFromRecord),
+      boms: bomModule.store.list({ status: 'active', limit: 5000 }).map(bomFromRecord),
+      machines: machineModule.store.list({ status: 'active', limit: 5000 }).map(machineFromRecord),
+      invoices: invoiceModule.store.list({ status: 'active', limit: 5000 }).map(invoiceFromRecord),
+    };
+    const planningInsights = derivePlanningInsights(planningInput);
     // computeOrgHealth is what the composer uses; import lazily via the composer's
     // own path would duplicate — instead record after compose but read current from
     // the freshly-composed snapshot (below), and expose monthly via a closure that
@@ -289,6 +308,8 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
           pickLists: pickListModule.store.list({ status: 'active', limit: 5000 }).map(pickListFromRecord),
           shipments: shippingModule.store.list({ status: 'active', limit: 5000 }).map(shippingFromRecord),
         }),
+      // Enterprise Planning KPIs — deterministic cross-domain intelligence (precomputed).
+      planningInsights: () => planningInsights,
       // V2.9: feed last week's health from the persisted history store so Weekly
       // Trends is live. Returns null until ≥1 older datapoint exists.
       previousWeek: () => {
@@ -317,6 +338,9 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
     const recommendations = [
       ...buildExecutiveRecommendations(snap),
       ...(snap.enterprise ? enterpriseRecommendations(snap.enterprise) : []),
+      // Planning recommendations (MRP shortages, safety-stock, capacity) — deterministic,
+      // surfaced through the existing recommendation + timeline system.
+      ...planningRecommendations(planningInput),
     ];
     snap.recommendations = recommendations;
     snap.executiveSummary = buildExecutiveSummary(snap, recommendations);
