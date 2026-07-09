@@ -55,6 +55,7 @@ import {
   deriveEventInsights,
   eventRecommendations,
   manufacturingEventFromRecord,
+  assessDigitalTwin,
   contactFromRecord,
   customerFromRecord,
   goodsReceiptFromRecord,
@@ -224,6 +225,10 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
     // Shop-Floor Event Ledger — the immutable telemetry source of truth. Read once; execution
     // telemetry, machine/operator timelines, OEE, KPIs + recommendations all derive from these events.
     const manufacturingEvents = manufacturingEventModule.store.list({ status: 'active', limit: 20000 }).map(manufacturingEventFromRecord);
+    // Manufacturing Digital Twin — read-only what-if simulation over the REAL model. Runs the standard
+    // stress battery ONCE against a baseline computed ONCE (reuses the existing pure engines), for the
+    // resilience KPIs + the highest-impact what-if recommendations. Never mutates production data.
+    const digitalTwin = assessDigitalTwin(planningInput, routings, nowMs);
     // computeOrgHealth is what the composer uses; import lazily via the composer's
     // own path would duplicate — instead record after compose but read current from
     // the freshly-composed snapshot (below), and expose monthly via a closure that
@@ -357,6 +362,8 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       mesInsights: () => deriveMesInsights(mesExecutions),
       // Shop-Floor Event Ledger KPIs — telemetry derived from the immutable event stream (precomputed).
       eventInsights: () => deriveEventInsights(manufacturingEvents, nowMs),
+      // Digital-twin resilience KPIs — what-if stress battery over the real model (precomputed).
+      resilienceInsights: () => digitalTwin.resilience,
       // V2.9: feed last week's health from the persisted history store so Weekly
       // Trends is live. Returns null until ≥1 older datapoint exists.
       previousWeek: () => {
@@ -404,6 +411,8 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       // Shop-floor event-ledger recommendations (machine-idle, running-without-operator, high-downtime,
       // inspection-backlog, repeated-failures, long-pause, bottleneck, operator-overload, late-completion).
       ...eventRecommendations(manufacturingEvents, nowMs),
+      // Digital-twin what-if recommendations (highest-impact stress scenarios, each with predicted impact).
+      ...digitalTwin.recommendations,
     ];
     snap.recommendations = recommendations;
     snap.executiveSummary = buildExecutiveSummary(snap, recommendations);
