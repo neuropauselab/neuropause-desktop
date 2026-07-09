@@ -52,6 +52,7 @@ export * from './types/routing';
 export * from './types/mes';
 export * from './types/mesEvents';
 export * from './types/manufacturingDigitalTwin';
+export * from './types/enterpriseDecisionEngine';
 export * from './types/ecosystem';
 export * from './types/ecosystem-exchange';
 export * from './types/cloud';

@@ -56,6 +56,7 @@ import {
   eventRecommendations,
   manufacturingEventFromRecord,
   assessDigitalTwin,
+  assessDecisionEngine,
   contactFromRecord,
   customerFromRecord,
   goodsReceiptFromRecord,
@@ -229,6 +230,10 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
     // stress battery ONCE against a baseline computed ONCE (reuses the existing pure engines), for the
     // resilience KPIs + the highest-impact what-if recommendations. Never mutates production data.
     const digitalTwin = assessDigitalTwin(planningInput, routings, nowMs);
+    // Enterprise Decision Engine — analyzes the Twin's predictions into ranked, PENDING recovery plans
+    // + six executive scores. Reuses the Twin's cached baseline (no duplicate scheduling). Read-only;
+    // nothing executes — human approval remains mandatory.
+    const decisionEngine = assessDecisionEngine(planningInput, routings, nowMs, digitalTwin);
     // computeOrgHealth is what the composer uses; import lazily via the composer's
     // own path would duplicate — instead record after compose but read current from
     // the freshly-composed snapshot (below), and expose monthly via a closure that
@@ -364,6 +369,8 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       eventInsights: () => deriveEventInsights(manufacturingEvents, nowMs),
       // Digital-twin resilience KPIs — what-if stress battery over the real model (precomputed).
       resilienceInsights: () => digitalTwin.resilience,
+      // Enterprise Decision Engine KPIs — recovery-plan readiness + strategic scores (precomputed).
+      decisionInsights: () => decisionEngine.insights,
       // V2.9: feed last week's health from the persisted history store so Weekly
       // Trends is live. Returns null until ≥1 older datapoint exists.
       previousWeek: () => {
@@ -413,6 +420,8 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       ...eventRecommendations(manufacturingEvents, nowMs),
       // Digital-twin what-if recommendations (highest-impact stress scenarios, each with predicted impact).
       ...digitalTwin.recommendations,
+      // Enterprise Decision Engine recovery plans (PENDING) surfaced as ranked executive recommendations.
+      ...decisionEngine.recommendations,
     ];
     snap.recommendations = recommendations;
     snap.executiveSummary = buildExecutiveSummary(snap, recommendations);
