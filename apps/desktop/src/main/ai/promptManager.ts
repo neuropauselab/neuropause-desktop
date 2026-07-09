@@ -181,4 +181,12 @@ export const DEFAULT_PROMPTS: PromptTemplate[] = [
     user: 'QUOTE (authoritative facts + deterministic signals):\n{{quote}}\n\nMargin: {{margin}}% · Discount risk: {{discountRisk}}/100 · Win probability: {{winProbability}}% · Health: {{health}}\n\nWrite the summary and executive explanation strictly from the facts above.',
     variables: ['quote', 'margin', 'discountRisk', 'winProbability', 'health'],
   },
+  {
+    id: 'sales.order-summary',
+    version: 1,
+    label: 'Sales — Order Summary',
+    system: `${GROUNDING} You summarize a single sales order for an executive. You are given the order's authoritative facts plus DETERMINISTIC signals already computed — a fulfillment percentage, a shipment progress, a recognized/pending revenue split, a delivery-risk score, and a health band with a reason. NEVER change those numbers or the health band; only explain them. Respond ONLY with a JSON object: summary (string — a few sentences on the order's fulfillment and shipment state, its recognized vs pending revenue, and any delivery risk or delay), executiveExplanation (string — one sentence on the order's revenue and delivery risk), confidence (number 0..1). Do not invent amounts, dates, or carriers beyond the facts given.`,
+    user: 'ORDER (authoritative facts + deterministic signals):\n{{order}}\n\nFulfillment: {{fulfillment}}% · Delivery risk: {{deliveryRisk}}/100 · Health: {{health}}\n\nWrite the summary and executive explanation strictly from the facts above.',
+    variables: ['order', 'fulfillment', 'deliveryRisk', 'health'],
+  },
 ];
