@@ -36,6 +36,8 @@ import {
 } from '../../framework';
 import { postConsumption, postOutput } from './manufacturingMovements';
 import { postStockMovement } from '../inventory/postMovement';
+import { postManufacturingEvent } from './manufacturingEventLog';
+import type { ManufacturingEventType } from '@neuropause/shared';
 
 export const START_EXECUTION_ACTION = 'start';
 export const PAUSE_ACTION = 'pause';
@@ -174,6 +176,25 @@ export function createExecutionModule(storePath: string): EnterpriseModule {
     return { ok: true, ids };
   }
 
+  /** Append a shop-floor event to the immutable ledger (best-effort; no-op if the ledger is absent). */
+  async function emitEvent(
+    ctx: EnterpriseModuleActionContext,
+    e: MesExecution,
+    eventType: ManufacturingEventType,
+    extra: { quantity?: number; reason?: string } = {},
+  ): Promise<void> {
+    await postManufacturingEvent(ctx, {
+      eventType,
+      productionOrder: e.productionOrder,
+      execution: e.executionNumber,
+      operation: e.operation,
+      machine: e.machine,
+      workCenter: e.workCenter,
+      operator: e.operator,
+      ...extra,
+    });
+  }
+
   return defineEnterpriseModule({
     descriptor: PRODUCTION_EXECUTION_DESCRIPTOR,
     store,
@@ -217,36 +238,46 @@ export function createExecutionModule(storePath: string): EnterpriseModule {
             if (consumed.ids.length > 0) fields.materialMovements = consumed.ids.join(',');
           }
           emitSelf(store.update(record.id, { fields, actor: ctx.actor(), now: ctx.now() }), ctx);
+          if (e.machine) await emitEvent(ctx, e, 'machine_started');
+          if (e.operator) await emitEvent(ctx, e, 'operator_assigned');
+          if (e.firstOperation && fields.materialMovements) await emitEvent(ctx, e, 'material_issued');
+          await emitEvent(ctx, e, 'operation_started');
           return { ok: true, message: `Started ${e.executionNumber}${e.firstOperation ? ' (material issued)' : ''}.` };
         }
 
         if (action === PAUSE_ACTION) {
           if (e.status !== 'running') return { ok: false, message: `Cannot pause an execution that is ${e.status}.` };
           emitSelf(store.update(record.id, { fields: { status: 'paused' }, actor: ctx.actor(), now: ctx.now() }), ctx);
+          await emitEvent(ctx, e, 'operation_paused');
           return { ok: true, message: `Paused ${e.executionNumber}.` };
         }
 
         if (action === RESUME_ACTION) {
           if (e.status !== 'paused' && e.status !== 'blocked') return { ok: false, message: `Cannot resume an execution that is ${e.status}.` };
           emitSelf(store.update(record.id, { fields: { status: 'running', blockedReason: '' }, actor: ctx.actor(), now: ctx.now() }), ctx);
+          if (e.status === 'blocked') await emitEvent(ctx, e, 'downtime_ended');
+          await emitEvent(ctx, e, 'operation_resumed');
           return { ok: true, message: `Resumed ${e.executionNumber}.` };
         }
 
         if (action === BLOCK_ACTION) {
           if (e.status !== 'running' && e.status !== 'dispatched' && e.status !== 'waiting') return { ok: false, message: `Cannot block an execution that is ${e.status}.` };
           emitSelf(store.update(record.id, { fields: { status: 'blocked' }, actor: ctx.actor(), now: ctx.now() }), ctx);
+          await emitEvent(ctx, e, 'downtime_started', { reason: e.blockedReason });
           return { ok: true, message: `Blocked ${e.executionNumber}${e.blockedReason ? `: ${e.blockedReason}` : ''}.` };
         }
 
         if (action === INSPECT_ACTION) {
           if (e.status !== 'running' && e.status !== 'paused') return { ok: false, message: `Cannot send an execution that is ${e.status} to inspection.` };
           emitSelf(store.update(record.id, { fields: { status: 'inspection', inspectionResult: 'pending' }, actor: ctx.actor(), now: ctx.now() }), ctx);
+          await emitEvent(ctx, e, 'inspection_started');
           return { ok: true, message: `${e.executionNumber} sent to inspection.` };
         }
 
         if (action === INSPECT_PASS_ACTION) {
           if (e.status !== 'inspection') return { ok: false, message: `Only an execution in inspection can pass (it is ${e.status}).` };
           emitSelf(store.update(record.id, { fields: { status: 'running', inspectionResult: 'pass' }, actor: ctx.actor(), now: ctx.now() }), ctx);
+          await emitEvent(ctx, e, 'inspection_passed');
           return { ok: true, message: `${e.executionNumber} passed inspection.` };
         }
 
@@ -256,6 +287,7 @@ export function createExecutionModule(storePath: string): EnterpriseModule {
             store.update(record.id, { fields: { status: 'blocked', inspectionResult: 'fail', blockedReason: 'Inspection failed' }, actor: ctx.actor(), now: ctx.now() }),
             ctx,
           );
+          await emitEvent(ctx, e, 'inspection_failed', { reason: 'Inspection failed' });
           return { ok: true, message: `${e.executionNumber} failed inspection; blocked for rework.` };
         }
 
@@ -318,6 +350,12 @@ export function createExecutionModule(storePath: string): EnterpriseModule {
           }
 
           emitSelf(store.update(record.id, { fields, actor: ctx.actor(), now: ctx.now() }), ctx);
+          await emitEvent(ctx, e, 'operation_completed');
+          if (e.finalOperation) {
+            if (producedQty > 0) await emitEvent(ctx, e, 'finished_goods_posted', { quantity: good });
+            if (scrapQty > 0) await emitEvent(ctx, e, 'scrap_recorded', { quantity: scrapQty, reason: e.scrapReason });
+            await emitEvent(ctx, e, 'order_closed');
+          }
           return {
             ok: true,
             message: `Completed ${e.executionNumber}${e.finalOperation ? ` — produced ${good} of ${e.product}${e.scrapQuantity > 0 ? `, scrapped ${e.scrapQuantity}` : ''}` : ''}.`,
@@ -327,6 +365,7 @@ export function createExecutionModule(storePath: string): EnterpriseModule {
         if (action === CANCEL_EXECUTION_ACTION) {
           if (e.status === 'completed' || e.status === 'cancelled') return { ok: false, message: `Cannot cancel an execution that is ${e.status}.` };
           emitSelf(store.update(record.id, { fields: { status: 'cancelled' }, actor: ctx.actor(), now: ctx.now() }), ctx);
+          if (e.machine) await emitEvent(ctx, e, 'machine_stopped');
           return { ok: true, message: `Cancelled ${e.executionNumber}.` };
         }
 

@@ -52,6 +52,9 @@ import {
   deriveMesInsights,
   mesRecommendations,
   mesExecutionFromRecord,
+  deriveEventInsights,
+  eventRecommendations,
+  manufacturingEventFromRecord,
   contactFromRecord,
   customerFromRecord,
   goodsReceiptFromRecord,
@@ -116,6 +119,7 @@ import {
   costingModule,
   routingModule,
   executionModule,
+  manufacturingEventModule,
 } from './modules/manufacturing/manufacturingInstances';
 import {
   assetModule,
@@ -217,6 +221,9 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
     // Manufacturing Execution (MES) — the shop-floor execution records (dispatched from committed
     // schedules). Read once and reused for the execution KPIs + recommendations. Real records only.
     const mesExecutions = executionModule.store.list({ status: 'active', limit: 5000 }).map(mesExecutionFromRecord);
+    // Shop-Floor Event Ledger — the immutable telemetry source of truth. Read once; execution
+    // telemetry, machine/operator timelines, OEE, KPIs + recommendations all derive from these events.
+    const manufacturingEvents = manufacturingEventModule.store.list({ status: 'active', limit: 20000 }).map(manufacturingEventFromRecord);
     // computeOrgHealth is what the composer uses; import lazily via the composer's
     // own path would duplicate — instead record after compose but read current from
     // the freshly-composed snapshot (below), and expose monthly via a closure that
@@ -348,6 +355,8 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       routingInsights: () => deriveRoutingInsights(routingSchedule),
       // Manufacturing Execution (MES) KPIs — real shop-floor execution records (precomputed).
       mesInsights: () => deriveMesInsights(mesExecutions),
+      // Shop-Floor Event Ledger KPIs — telemetry derived from the immutable event stream (precomputed).
+      eventInsights: () => deriveEventInsights(manufacturingEvents, nowMs),
       // V2.9: feed last week's health from the persisted history store so Weekly
       // Trends is live. Returns null until ≥1 older datapoint exists.
       previousWeek: () => {
@@ -392,6 +401,9 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       // MES execution recommendations (dispatch-delayed, machine-overloaded, inspection-backlog,
       // material-shortage, high-scrap, operator-unavailable, maintenance-conflict, routing-violation).
       ...mesRecommendations(mesExecutions),
+      // Shop-floor event-ledger recommendations (machine-idle, running-without-operator, high-downtime,
+      // inspection-backlog, repeated-failures, long-pause, bottleneck, operator-overload, late-completion).
+      ...eventRecommendations(manufacturingEvents, nowMs),
     ];
     snap.recommendations = recommendations;
     snap.executiveSummary = buildExecutiveSummary(snap, recommendations);

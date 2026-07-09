@@ -19,6 +19,7 @@ import {
   validateEnterpriseRecordInput,
 } from '@neuropause/shared';
 import type { EnterpriseModuleActionContext } from '../../framework';
+import { postManufacturingEvent } from './manufacturingEventLog';
 
 export const DISPATCH_ACTION = 'dispatchExecution';
 
@@ -92,6 +93,15 @@ export async function dispatchOrderToExecution(
     });
     ctx.emit(executionModule, 'created', rec);
     createdIds.push(rec.id);
+    // Append an immutable "operation released" event to the shop-floor ledger (best-effort).
+    await postManufacturingEvent(ctx, {
+      eventType: 'operation_released',
+      productionOrder: order.orderNumber,
+      execution: String(fields.executionNumber),
+      operation: String(fields.operation),
+      machine: s.machine,
+      workCenter: s.workCenter,
+    });
   }
 
   const updated = ordersModule.store.update(orderRecord.id, {
