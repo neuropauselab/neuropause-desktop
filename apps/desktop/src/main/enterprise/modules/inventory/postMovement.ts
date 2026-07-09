@@ -15,6 +15,8 @@ export interface StockMovementInput {
   type: MovementType;
   product: string;
   warehouse: string;
+  /** Source location for a `transfer` leg (relocates on-hand `fromWarehouse` → `warehouse`). */
+  fromWarehouse?: string;
   quantity: number;
   unitCost?: number;
   referenceModule: string;
@@ -41,6 +43,7 @@ export async function postStockMovement(
       type: input.type,
       product: input.product,
       warehouse: input.warehouse,
+      fromWarehouse: input.fromWarehouse ?? '',
       quantity: input.quantity,
       unitCost: input.unitCost ?? 0,
       status: 'posted',

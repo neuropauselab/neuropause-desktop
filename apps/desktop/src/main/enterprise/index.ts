@@ -82,6 +82,16 @@ import {
   purchaseOrderModule,
   goodsReceiptModule,
 } from './modules/procurement/procurementInstances';
+import {
+  zoneModule,
+  binModule,
+  transferOrderModule,
+  pickListModule,
+  packingModule,
+  shippingModule,
+  cycleCountModule,
+  stockAdjustmentModule,
+} from './modules/warehouse/warehouseInstances';
 import { notificationScheduler } from '../services/notificationScheduler';
 import { buildOrgGraph, orgGraphNeighbors } from './graph/orgGraph';
 import { evaluateCompliance, type ComplianceInput } from './governance/enterpriseGovernance';
@@ -194,6 +204,14 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(purchaseRequestModule); // Procurement → Purchase Requests
   modules.registry.register(purchaseOrderModule); // Procurement → Purchase Orders
   modules.registry.register(goodsReceiptModule); // Procurement → Goods Receipts
+  modules.registry.register(zoneModule); // Warehouse → Zones
+  modules.registry.register(binModule); // Warehouse → Bins
+  modules.registry.register(transferOrderModule); // Warehouse → Transfer Orders
+  modules.registry.register(pickListModule); // Warehouse → Pick Lists
+  modules.registry.register(packingModule); // Warehouse → Packing
+  modules.registry.register(shippingModule); // Warehouse → Shipping
+  modules.registry.register(cycleCountModule); // Warehouse → Cycle Counts
+  modules.registry.register(stockAdjustmentModule); // Warehouse → Stock Adjustments
   await Promise.all([
     invoiceModule.store.load(),
     contactModule.store.load(),
@@ -209,6 +227,14 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     purchaseRequestModule.store.load(),
     purchaseOrderModule.store.load(),
     goodsReceiptModule.store.load(),
+    zoneModule.store.load(),
+    binModule.store.load(),
+    transferOrderModule.store.load(),
+    pickListModule.store.load(),
+    packingModule.store.load(),
+    shippingModule.store.load(),
+    cycleCountModule.store.load(),
+    stockAdjustmentModule.store.load(),
   ]);
 
   return {

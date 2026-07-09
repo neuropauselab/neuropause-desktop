@@ -32,6 +32,7 @@ import {
   derivePaymentInsights,
   deriveProcurementInsights,
   deriveQuoteInsights,
+  deriveWarehouseInsights,
   contactFromRecord,
   customerFromRecord,
   goodsReceiptFromRecord,
@@ -44,6 +45,13 @@ import {
   quoteFromRecord,
   supplierFromRecord,
   warehouseFromRecord,
+  binFromRecord,
+  transferOrderFromRecord,
+  pickListFromRecord,
+  packingFromRecord,
+  shippingFromRecord,
+  cycleCountFromRecord,
+  stockAdjustmentFromRecord,
   type UnifiedItemLite,
 } from '@neuropause/shared';
 import { contactModule } from './modules/crm/contactModuleInstance';
@@ -60,6 +68,15 @@ import {
   purchaseOrderModule,
   goodsReceiptModule,
 } from './modules/procurement/procurementInstances';
+import {
+  binModule,
+  transferOrderModule,
+  pickListModule,
+  packingModule,
+  shippingModule,
+  cycleCountModule,
+  stockAdjustmentModule,
+} from './modules/warehouse/warehouseInstances';
 import { buildExecutiveRecommendations, buildExecutiveSummary } from './executiveRecommendations';
 import type { MonthlyTrend } from '@neuropause/shared';
 
@@ -199,6 +216,19 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
           purchaseOrderModule.store.list({ status: 'active', limit: 5000 }).map(purchaseOrderFromRecord),
           goodsReceiptModule.store.list({ status: 'active', limit: 5000 }).map(goodsReceiptFromRecord),
         ),
+      // Warehouse KPIs — the execution layer's operational metrics (reuses inventory
+      // engine for utilization + turnover; products supply average on-hand).
+      warehouseInsights: () =>
+        deriveWarehouseInsights({
+          bins: binModule.store.list({ status: 'active', limit: 5000 }).map(binFromRecord),
+          transfers: transferOrderModule.store.list({ status: 'active', limit: 5000 }).map(transferOrderFromRecord),
+          picks: pickListModule.store.list({ status: 'active', limit: 5000 }).map(pickListFromRecord),
+          packings: packingModule.store.list({ status: 'active', limit: 5000 }).map(packingFromRecord),
+          shippings: shippingModule.store.list({ status: 'active', limit: 5000 }).map(shippingFromRecord),
+          cycleCounts: cycleCountModule.store.list({ status: 'active', limit: 5000 }).map(cycleCountFromRecord),
+          adjustments: stockAdjustmentModule.store.list({ status: 'active', limit: 5000 }).map(stockAdjustmentFromRecord),
+          products: productModule.store.list({ status: 'active', limit: 5000 }).map(productFromRecord),
+        }),
       // V2.9: feed last week's health from the persisted history store so Weekly
       // Trends is live. Returns null until ≥1 older datapoint exists.
       previousWeek: () => {

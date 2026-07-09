@@ -237,4 +237,28 @@ export const DEFAULT_PROMPTS: PromptTemplate[] = [
     user: 'GOODS RECEIPT (authoritative facts):\n{{receipt}}\n\nStatus: {{status}}\n\nWrite the summary and executive explanation strictly from the facts above.',
     variables: ['receipt', 'status'],
   },
+  {
+    id: 'warehouse.transfer-summary',
+    version: 1,
+    label: 'Warehouse — Transfer Order Summary',
+    system: `${GROUNDING} You summarize a stock transfer between warehouses for an executive from authoritative facts. The stock moves through paired ledger movements — never change quantities or locations; only explain them. Respond ONLY with JSON: summary (string), executiveExplanation (string), confidence (number 0..1). Do not invent quantities or warehouses beyond the facts.`,
+    user: 'TRANSFER ORDER (authoritative facts):\n{{transfer}}\n\nStatus: {{status}}\n\nWrite the summary and executive explanation strictly from the facts above.',
+    variables: ['transfer', 'status'],
+  },
+  {
+    id: 'warehouse.cycle-count-summary',
+    version: 1,
+    label: 'Warehouse — Cycle Count Summary',
+    system: `${GROUNDING} You summarize a stock cycle count for an executive from authoritative facts including a DETERMINISTIC variance (counted − system; never change it; only explain it). Respond ONLY with JSON: summary (string), executiveExplanation (string), confidence (number 0..1). Do not invent quantities beyond the facts.`,
+    user: 'CYCLE COUNT (authoritative facts):\n{{count}}\n\nVariance: {{variance}}\n\nWrite the summary and executive explanation strictly from the facts above.',
+    variables: ['count', 'variance'],
+  },
+  {
+    id: 'warehouse.adjustment-summary',
+    version: 1,
+    label: 'Warehouse — Stock Adjustment Summary',
+    system: `${GROUNDING} You summarize a stock adjustment for an executive from authoritative facts including a DETERMINISTIC value impact (never change it; only explain it). Respond ONLY with JSON: summary (string), executiveExplanation (string), confidence (number 0..1). Do not invent quantities or values beyond the facts.`,
+    user: 'STOCK ADJUSTMENT (authoritative facts):\n{{adjustment}}\n\nReason: {{reason}}\n\nWrite the summary and executive explanation strictly from the facts above.',
+    variables: ['adjustment', 'reason'],
+  },
 ];
