@@ -30,15 +30,19 @@ import {
   deriveLeadInsights,
   deriveOrderInsights,
   derivePaymentInsights,
+  deriveProcurementInsights,
   deriveQuoteInsights,
   contactFromRecord,
   customerFromRecord,
+  goodsReceiptFromRecord,
   invoiceFromRecord,
   leadFromRecord,
   orderFromRecord,
   paymentFromRecord,
   productFromRecord,
+  purchaseOrderFromRecord,
   quoteFromRecord,
+  supplierFromRecord,
   warehouseFromRecord,
   type UnifiedItemLite,
 } from '@neuropause/shared';
@@ -51,6 +55,11 @@ import { invoiceModule } from './modules/finance/invoiceModuleInstance';
 import { paymentModule } from './modules/finance/paymentModuleInstance';
 import { productModule } from './modules/inventory/productModuleInstance';
 import { warehouseModule } from './modules/inventory/warehouseModuleInstance';
+import {
+  supplierModule,
+  purchaseOrderModule,
+  goodsReceiptModule,
+} from './modules/procurement/procurementInstances';
 import { buildExecutiveRecommendations, buildExecutiveSummary } from './executiveRecommendations';
 import type { MonthlyTrend } from '@neuropause/shared';
 
@@ -182,6 +191,13 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
         deriveInventoryInsights(
           productModule.store.list({ status: 'active', limit: 5000 }).map(productFromRecord),
           warehouseModule.store.list({ status: 'active', limit: 5000 }).map(warehouseFromRecord),
+        ),
+      // Procurement KPIs — suppliers + purchase orders + goods receipts.
+      procurementInsights: () =>
+        deriveProcurementInsights(
+          supplierModule.store.list({ status: 'active', limit: 5000 }).map(supplierFromRecord),
+          purchaseOrderModule.store.list({ status: 'active', limit: 5000 }).map(purchaseOrderFromRecord),
+          goodsReceiptModule.store.list({ status: 'active', limit: 5000 }).map(goodsReceiptFromRecord),
         ),
       // V2.9: feed last week's health from the persisted history store so Weekly
       // Trends is live. Returns null until ≥1 older datapoint exists.

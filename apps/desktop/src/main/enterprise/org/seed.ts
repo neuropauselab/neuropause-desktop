@@ -71,6 +71,7 @@ const READ_ONLY: EnterprisePermission[] = [
   'crm:read',
   'sales:read',
   'inventory:read',
+  'procurement:read',
   'dashboard:read',
 ];
 
@@ -84,6 +85,7 @@ const MANAGER: EnterprisePermission[] = [
   'crm:manage',
   'sales:manage',
   'inventory:manage',
+  'procurement:manage',
 ];
 
 const ADMIN: EnterprisePermission[] = [

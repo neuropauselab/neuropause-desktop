@@ -10,14 +10,9 @@
  * `onChange` reconciler — the same machinery Payments uses to reconcile invoices.
  */
 import type { EnterpriseEntity } from '@neuropause/shared';
-import {
-  ORDERS_MODULE_ID,
-  STOCK_MOVEMENTS_MODULE_ID,
-  deriveRecordTitle,
-  movementFromRecord,
-  type MovementType,
-} from '@neuropause/shared';
+import { ORDERS_MODULE_ID, STOCK_MOVEMENTS_MODULE_ID, movementFromRecord, type MovementType } from '@neuropause/shared';
 import type { EnterpriseModuleActionContext } from '../../framework';
+import { postStockMovement } from '../inventory/postMovement';
 
 /** The descriptor action key the Orders module surfaces for reserving stock. */
 export const RESERVE_STOCK_ACTION = 'reserveStock';
@@ -57,41 +52,24 @@ function orderNetReserved(ctx: EnterpriseModuleActionContext, orderId: string): 
     }, 0);
 }
 
-/** Post one movement + reconcile the product (awaited) + emit for the Timeline. */
+/** Post one movement into the ledger for this order (via the shared seam). */
 async function postMovement(
   ctx: EnterpriseModuleActionContext,
   ref: OrderStockRef,
   type: MovementType,
   suffix: string,
 ): Promise<boolean> {
-  const mv = ctx.moduleFor(STOCK_MOVEMENTS_MODULE_ID);
-  if (!mv) return false;
-  ctx.authorize(mv.descriptor.permissions.write); // requires inventory:manage
-  await mv.store.load();
-  const validation = mv.hooks.validate({
-    fields: {
-      movementNumber: `MV-${ref.orderNumber}-${suffix}`,
-      type,
-      product: ref.product,
-      warehouse: ref.warehouse,
-      quantity: ref.qty,
-      status: 'posted',
-      referenceModule: ORDERS_MODULE_ID,
-      referenceRecord: ref.id,
-      reason: `Sales order ${ref.orderNumber}`,
-    },
+  const record = await postStockMovement(ctx, {
+    movementNumber: `MV-${ref.orderNumber}-${suffix}`,
+    type,
+    product: ref.product,
+    warehouse: ref.warehouse,
+    quantity: ref.qty,
+    referenceModule: ORDERS_MODULE_ID,
+    referenceRecord: ref.id,
+    reason: `Sales order ${ref.orderNumber}`,
   });
-  if (!validation.ok) return false;
-  const record = mv.store.create({
-    title: deriveRecordTitle(mv.descriptor, validation.values),
-    fields: validation.values,
-    actor: ctx.actor(),
-    now: ctx.now(),
-  });
-  // Reconcile the product's derived stock (awaited), then fan out for the Timeline.
-  await mv.hooks.onChange?.({ action: 'created', record }, ctx);
-  ctx.emit(mv, 'created', record);
-  return true;
+  return record !== null;
 }
 
 /** Reserve stock for an order (guarded; idempotent — no double reservation). */

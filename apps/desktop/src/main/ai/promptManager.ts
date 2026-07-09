@@ -213,4 +213,28 @@ export const DEFAULT_PROMPTS: PromptTemplate[] = [
     user: 'MOVEMENT (authoritative facts):\n{{movement}}\n\nType: {{type}}\n\nWrite the summary and executive explanation strictly from the facts above.',
     variables: ['movement', 'type'],
   },
+  {
+    id: 'procurement.supplier-summary',
+    version: 1,
+    label: 'Procurement — Supplier Summary',
+    system: `${GROUNDING} You summarize a supplier for an executive from authoritative facts and a DETERMINISTIC health band (never change it; only explain it). Respond ONLY with JSON: summary (string), executiveExplanation (string), confidence (number 0..1). Do not invent ratings, terms, or lead times beyond the facts.`,
+    user: 'SUPPLIER (authoritative facts):\n{{supplier}}\n\nHealth: {{health}} — {{healthReason}}\n\nWrite the summary and executive explanation strictly from the facts above.',
+    variables: ['supplier', 'health', 'healthReason'],
+  },
+  {
+    id: 'procurement.po-summary',
+    version: 1,
+    label: 'Procurement — Purchase Order Summary',
+    system: `${GROUNDING} You summarize a purchase order for an executive from authoritative facts including a DETERMINISTIC total (never change it; only explain it). Respond ONLY with JSON: summary (string), executiveExplanation (string), confidence (number 0..1). Do not invent amounts or quantities beyond the facts.`,
+    user: 'PURCHASE ORDER (authoritative facts):\n{{order}}\n\nStatus: {{status}}\n\nWrite the summary and executive explanation strictly from the facts above.',
+    variables: ['order', 'status'],
+  },
+  {
+    id: 'procurement.gr-summary',
+    version: 1,
+    label: 'Procurement — Goods Receipt Summary',
+    system: `${GROUNDING} You summarize a goods receipt for an executive from authoritative facts including a DETERMINISTIC accuracy (never change it; only explain it). Respond ONLY with JSON: summary (string), executiveExplanation (string), confidence (number 0..1). Do not invent quantities beyond the facts.`,
+    user: 'GOODS RECEIPT (authoritative facts):\n{{receipt}}\n\nStatus: {{status}}\n\nWrite the summary and executive explanation strictly from the facts above.',
+    variables: ['receipt', 'status'],
+  },
 ];
