@@ -215,6 +215,7 @@ import type {
   ProcessExplorerModel,
   ProcessExplorerFilter,
   ProcessCaseDetail,
+  ScheduleExploreModel,
 } from '@neuropause/shared';
 
 type OAuthProviderId = Exclude<AuthProviderId, 'email'>;
@@ -987,6 +988,9 @@ export const ipc = {
     /** Process Explorer — full detail for one reconstructed case. */
     processCase: (id: string) =>
       invoke(IpcChannel.EnterpriseProcessCase, { id }) as Promise<ProcessCaseDetail | null>,
+
+    /** Production Schedule — read-only routing schedule (Gantt + KPIs + violations + governance proposals). */
+    scheduleExplore: () => invoke(IpcChannel.EnterpriseScheduleExplore) as Promise<ScheduleExploreModel>,
 
     onEvent: (cb: (e: { kind: string; at: string }) => void) =>
       subscribe(IpcChannel.EnterpriseEventBroadcast, (p) => cb(p as { kind: string; at: string })),

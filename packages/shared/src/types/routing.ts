@@ -93,6 +93,14 @@ export interface RoutingOperation {
   inspectionTime: number;
   /** Move time to the next operation (added after this operation finishes). */
   transferTime: number;
+  /** Machine changeover hours before this operation (optional; charged like setup). Default 0. */
+  changeoverTime?: number;
+  /** Explicit predecessor operation sequences (optional; empty/absent ⇒ the sequential chain). */
+  dependsOn?: number[];
+  /** Alternate work centers this operation may fall back to (optional; entered as data). */
+  alternativeWorkCenters?: string[];
+  /** Operation priority (optional; lower runs earlier when otherwise tied). */
+  priority?: number;
 }
 
 export interface Routing {
@@ -128,7 +136,7 @@ export function parseRoutingOperations(raw: unknown): RoutingOperation[] {
             .split(',')
             .map((m) => m.trim())
             .filter((m) => m !== '');
-      return {
+      const op: RoutingOperation = {
         sequence: row.sequence === undefined || row.sequence === null || row.sequence === '' ? (i + 1) * 10 : num(row.sequence),
         operation: str(row.operation),
         workCenter: str(row.workCenter),
@@ -139,6 +147,17 @@ export function parseRoutingOperations(raw: unknown): RoutingOperation[] {
         inspectionTime: Math.max(0, num(row.inspectionTime)),
         transferTime: Math.max(0, num(row.transferTime)),
       };
+      // Optional routing-engine fields — only attached when present, so existing operations serialize
+      // identically (no behavioral or on-disk change for routings that don't use them).
+      if (row.changeoverTime !== undefined && row.changeoverTime !== null && row.changeoverTime !== '') op.changeoverTime = Math.max(0, num(row.changeoverTime));
+      if (row.priority !== undefined && row.priority !== null && row.priority !== '') op.priority = num(row.priority);
+      const deps = Array.isArray(row.dependsOn) ? row.dependsOn.map((d) => num(d)).filter((d) => Number.isFinite(d)) : [];
+      if (deps.length > 0) op.dependsOn = deps;
+      const altWc = Array.isArray(row.alternativeWorkCenters)
+        ? row.alternativeWorkCenters.map((w) => str(w)).filter((w) => w !== '')
+        : str(row.alternativeWorkCenters).split(',').map((w) => w.trim()).filter((w) => w !== '');
+      if (altWc.length > 0) op.alternativeWorkCenters = altWc;
+      return op;
     })
     .filter((o) => o.operation !== '' && o.workCenter !== '')
     .sort((a, b) => a.sequence - b.sequence);
@@ -220,6 +239,7 @@ export interface ScheduledRoutingOperation {
   /** Qualified machines including unavailable ones (for capability vs availability diagnosis). */
   qualifiedMachineCount: number;
   setupHours: number;
+  changeoverHours: number;
   runHours: number;
   inspectionHours: number;
   /** Routing queue + dynamic machine wait. */
@@ -354,9 +374,10 @@ function scheduleOneRouting(
   for (const op of routing.operations) {
     const group = eligibleFor(op, states, cache);
     const setupHours = op.setupTime;
+    const changeoverHours = Math.max(0, op.changeoverTime ?? 0);
     const runHours = Math.ceil(Math.max(0, job.quantity) * op.runTimePerUnit);
     const inspectionHours = op.inspectionTime;
-    const workHours = setupHours + runHours + inspectionHours;
+    const workHours = setupHours + changeoverHours + runHours + inspectionHours;
     const needFrom = earliestStart + op.queueTime;
 
     if (group.available.length === 0) {
@@ -369,6 +390,7 @@ function scheduleOneRouting(
         eligibleMachineCount: 0,
         qualifiedMachineCount: group.qualifiedCount,
         setupHours,
+        changeoverHours,
         runHours,
         inspectionHours,
         queueHours: op.queueTime,
@@ -412,6 +434,7 @@ function scheduleOneRouting(
       eligibleMachineCount: group.available.length,
       qualifiedMachineCount: group.qualifiedCount,
       setupHours,
+      changeoverHours,
       runHours,
       inspectionHours,
       queueHours: op.queueTime + t.machineWaitHours,

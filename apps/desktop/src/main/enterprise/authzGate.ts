@@ -113,6 +113,8 @@ export const ENTERPRISE_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Ente
     // Process Explorer: read-only projections of the mined processes (operations analytics).
     [IpcChannel.EnterpriseProcessExplore]: 'operations:read',
     [IpcChannel.EnterpriseProcessCase]: 'operations:read',
+    // Production Schedule Explorer: read-only projection of the routing schedule (manufacturing analytics).
+    [IpcChannel.EnterpriseScheduleExplore]: 'operations:read',
     // Enterprise Module Framework: listing which modules exist is metadata-only.
     [IpcChannel.EnterpriseModulesList]: 'operations:read',
   };

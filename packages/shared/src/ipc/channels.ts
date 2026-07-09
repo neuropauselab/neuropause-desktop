@@ -280,6 +280,8 @@ export const IpcChannel = {
   EnterpriseProcessExplore: 'enterprise:process.explore',
   /** Process Explorer — full detail for one reconstructed case (every stage + mined recommendations). */
   EnterpriseProcessCase: 'enterprise:process.case',
+  /** Production Schedule — read-only routing schedule (Gantt + KPIs + violations + governance proposals). */
+  EnterpriseScheduleExplore: 'enterprise:schedule.explore',
   EnterpriseEventBroadcast: 'enterprise:event',
 
   // ── Enterprise Module Framework (ERP foundation) ──
@@ -714,6 +716,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.EnterpriseDashboard,
   IpcChannel.EnterpriseProcessExplore,
   IpcChannel.EnterpriseProcessCase,
+  IpcChannel.EnterpriseScheduleExplore,
   IpcChannel.EnterpriseModulesList,
   IpcChannel.EnterpriseModuleList,
   IpcChannel.EnterpriseModuleGet,

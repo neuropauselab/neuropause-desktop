@@ -107,6 +107,7 @@ import {
   executionModule,
   qualityModule,
   costingModule,
+  scheduleProposalModule,
 } from './modules/manufacturing/manufacturingInstances';
 import {
   assetCategoryModule,
@@ -123,6 +124,7 @@ import {
 import { executiveDecisionModule } from './modules/executive/executiveDecisionInstance';
 import { executionProposalModule } from './modules/executive/executionProposalInstance';
 import { getProcessExplorerModel, getProcessCaseDetail } from './processMiningProvider';
+import { getScheduleExploreModel } from './scheduleExploreProvider';
 import { notificationScheduler } from '../services/notificationScheduler';
 import { buildOrgGraph, orgGraphNeighbors } from './graph/orgGraph';
 import { evaluateCompliance, type ComplianceInput } from './governance/enterpriseGovernance';
@@ -253,6 +255,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(executionModule); // Manufacturing → Production Execution
   modules.registry.register(qualityModule); // Manufacturing → Quality Inspection
   modules.registry.register(costingModule); // Manufacturing → Production Costing
+  modules.registry.register(scheduleProposalModule); // Manufacturing → Schedule Proposals (governance + commit)
   modules.registry.register(assetCategoryModule); // Maintenance → Asset Categories
   modules.registry.register(assetModule); // Maintenance → Assets
   modules.registry.register(maintenancePlanModule); // Maintenance → Maintenance Plans
@@ -298,6 +301,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     executionModule.store.load(),
     qualityModule.store.load(),
     costingModule.store.load(),
+    scheduleProposalModule.store.load(),
     assetCategoryModule.store.load(),
     assetModule.store.load(),
     maintenancePlanModule.store.load(),
@@ -740,6 +744,14 @@ function buildHandlers(): SecureHandlerDef[] {
       channel: IpcChannel.EnterpriseProcessCase,
       schema: EnterpriseProcessCaseRequest,
       handler: (p) => getProcessCaseDetail((p as TProcessCase).id),
+    },
+
+    // Production Schedule — read-only routing schedule (Gantt + KPIs + violations + governance proposals).
+    // No mining, no writes: commit happens only through the approved Schedule Proposal lifecycle.
+    {
+      channel: IpcChannel.EnterpriseScheduleExplore,
+      schema: EmptyRequest,
+      handler: () => getScheduleExploreModel(),
     },
   ];
 }

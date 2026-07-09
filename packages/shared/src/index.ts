@@ -49,6 +49,7 @@ export * from './types/mrp';
 export * from './types/timePhasedMrp';
 export * from './types/capacityScheduler';
 export * from './types/routing';
+export * from './types/productionScheduleCommit';
 export * from './types/mes';
 export * from './types/mesEvents';
 export * from './types/manufacturingDigitalTwin';

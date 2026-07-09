@@ -39,6 +39,9 @@ import {
   postReservationRelease,
 } from './manufacturingMovements';
 import { COMMIT_SCHEDULE_ACTION, commitScheduleForOrder } from './scheduleCommit';
+import { proposeScheduleForOrder } from './scheduleProposalLink';
+
+export const PROPOSE_SCHEDULE_ACTION = 'proposeSchedule';
 import { DISPATCH_ACTION, dispatchOrderToExecution } from './mesDispatch';
 
 export const PLAN_ACTION = 'plan';
@@ -61,6 +64,7 @@ export const PRODUCTION_ORDER_DESCRIPTOR: EnterpriseModuleDescriptor = {
   permissions: { read: 'manufacturing:read', write: 'manufacturing:manage' },
   actions: [
     { key: PLAN_ACTION, label: 'Plan', icon: 'calendar' },
+    { key: PROPOSE_SCHEDULE_ACTION, label: 'Propose Schedule', icon: 'clock' },
     { key: COMMIT_SCHEDULE_ACTION, label: 'Commit Schedule', icon: 'calendar-check' },
     { key: DISPATCH_ACTION, label: 'Dispatch to Execution', icon: 'send' },
     { key: ALLOCATE_ACTION, label: 'Allocate Material', icon: 'lock' },
@@ -157,6 +161,7 @@ export function createProductionOrderModule(storePath: string, aiRunner?: Produc
 
         // Commit Schedule — the explicit, human-approved hand-off that persists real Production
         // Schedule records from the deterministic routing plan (reuses the shared engine).
+        if (action === PROPOSE_SCHEDULE_ACTION) return proposeScheduleForOrder(record, ctx);
         if (action === COMMIT_SCHEDULE_ACTION) return commitScheduleForOrder(record, ctx);
 
         // Dispatch to Execution (MES) — turn the committed schedule into shop-floor executions.

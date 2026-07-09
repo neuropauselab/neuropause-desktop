@@ -25,6 +25,7 @@ export type EnterpriseTab =
   | 'organization'
   | 'operations'
   | 'process'
+  | 'schedule'
   | 'modules'
   | 'search'
   | 'workspace'

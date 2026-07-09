@@ -16,6 +16,7 @@ import {
   ROUTINGS_MODULE_ID,
   MANUFACTURING_EVENTS_MODULE_ID,
   WORK_CENTERS_MODULE_ID,
+  SCHEDULE_PROPOSALS_MODULE_ID,
 } from '@neuropause/shared';
 import { aiEngine } from '../../../ai/engineInstance';
 import { enterpriseModuleStorePath } from '../../framework';
@@ -29,6 +30,7 @@ import { createManufacturingEventModule } from './manufacturingEventModule';
 import { createExecutionModule } from './executionModule';
 import { createQualityModule } from './qualityModule';
 import { createCostingModule } from './costingModule';
+import { createScheduleProposalModule } from './scheduleProposalModule';
 import { runCostingAi, runProductionOrderAi, runQualityAi } from './manufacturingAi';
 
 const store = (id: string): string => enterpriseModuleStorePath(app.getPath('userData'), id);
@@ -43,3 +45,4 @@ export const manufacturingEventModule = createManufacturingEventModule(store(MAN
 export const executionModule = createExecutionModule(store(PRODUCTION_EXECUTIONS_MODULE_ID));
 export const qualityModule = createQualityModule(store(QUALITY_INSPECTIONS_MODULE_ID), (q) => runQualityAi(aiEngine, q));
 export const costingModule = createCostingModule(store(PRODUCTION_COSTINGS_MODULE_ID), (c) => runCostingAi(aiEngine, c));
+export const scheduleProposalModule = createScheduleProposalModule(store(SCHEDULE_PROPOSALS_MODULE_ID));

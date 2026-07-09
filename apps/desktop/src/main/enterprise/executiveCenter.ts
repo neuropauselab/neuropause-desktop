@@ -154,6 +154,8 @@ export interface ExecutiveCenterSources {
   processInsights?: () => ProcessInsights | undefined;
   /** Process Explorer KPIs (top bottleneck / slowest / fastest / most-automated / …) — pre-built tiles (optional). */
   processExplorerKpis?: () => ExecutiveKpi[] | undefined;
+  /** Production-schedule KPIs (schedule/machine utilization, queue, setup, efficiency, late ops, idle, violations) — pre-built (optional). */
+  schedulingKpis?: () => ExecutiveKpi[] | undefined;
 }
 
 /** The minimal timeline fields the composer reads (kept local; no new dep). */
@@ -388,6 +390,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
   const handoffInsightsForKpis = sources.handoffInsights?.();
   const processInsightsForKpis = sources.processInsights?.();
   const processExplorerKpisForKpis = sources.processExplorerKpis?.();
+  const schedulingKpisForKpis = sources.schedulingKpis?.();
   const enterprise = enterpriseInsights({
     knowledge: sources.knowledgeHealth?.(),
     memory: sources.memoryCounts?.(),
@@ -427,6 +430,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
       ...(handoffInsightsForKpis ? handoffInsightsToKpis(handoffInsightsForKpis) : []),
       ...(processInsightsForKpis ? processInsightsToKpis(processInsightsForKpis) : []),
       ...(processExplorerKpisForKpis ?? []),
+      ...(schedulingKpisForKpis ?? []),
     ],
     enterprise,
     orgHealth: scores,

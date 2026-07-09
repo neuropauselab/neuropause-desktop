@@ -61,6 +61,8 @@ import {
   deriveHandoffInsights,
   executionProposalFromRecord,
   deriveProcessExplorerKpis,
+  deriveSchedulingInsights,
+  schedulingInsightsToKpis,
   contactFromRecord,
   customerFromRecord,
   goodsReceiptFromRecord,
@@ -361,6 +363,9 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       capacityInsights: () => deriveCapacityInsights(capacitySchedule),
       // Routing-aware (APS) KPIs — operations routed onto qualified machines (precomputed).
       routingInsights: () => deriveRoutingInsights(routingSchedule),
+      // Production-schedule KPIs — the eight scheduling tiles (schedule/machine utilization, avg queue,
+      // avg setup, efficiency, late ops, idle capacity, routing violations) from the SAME routing schedule.
+      schedulingKpis: () => schedulingInsightsToKpis(deriveSchedulingInsights(routingSchedule)),
       // Manufacturing Execution (MES) KPIs — real shop-floor execution records (precomputed).
       mesInsights: () => deriveMesInsights(mesExecutions),
       // Shop-Floor Event Ledger KPIs — telemetry derived from the immutable event stream (precomputed).
