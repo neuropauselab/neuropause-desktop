@@ -80,11 +80,18 @@ export interface EnterpriseModuleHooks {
    * (`validateEnterpriseRecordInput`); override to add cross-field rules.
    */
   validate?: (input: EnterpriseRecordInput) => EnterpriseRecordValidation;
-  /** Observe a record change after it is persisted (e.g. derive a projection). */
-  onChange?: (event: {
-    action: EnterpriseModuleLifecycleAction;
-    record: EnterpriseEntity;
-  }) => void;
+  /**
+   * Observe a record change after it is persisted (e.g. derive a projection, or
+   * reconcile a related record in another module). Receives the same action
+   * context as `runAction` — so it can reach other modules (`moduleFor`) and emit
+   * their lifecycle (`emit`) — and may be async; the framework awaits it before
+   * the mutation returns, so a cross-module reconciliation completes atomically
+   * from the caller's perspective.
+   */
+  onChange?: (
+    event: { action: EnterpriseModuleLifecycleAction; record: EnterpriseEntity },
+    ctx: EnterpriseModuleActionContext,
+  ) => void | Promise<void>;
   /**
    * Produce an AI-assisted summary + risk for a record, through the existing AI
    * pipeline. Optional — modules that provide it light up the AI Summary surface

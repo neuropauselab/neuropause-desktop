@@ -28,12 +28,14 @@ import {
   deriveInvoiceInsights,
   deriveLeadInsights,
   deriveOrderInsights,
+  derivePaymentInsights,
   deriveQuoteInsights,
   contactFromRecord,
   customerFromRecord,
   invoiceFromRecord,
   leadFromRecord,
   orderFromRecord,
+  paymentFromRecord,
   quoteFromRecord,
   type UnifiedItemLite,
 } from '@neuropause/shared';
@@ -43,6 +45,7 @@ import { customerModule } from './modules/crm/customerModuleInstance';
 import { quoteModule } from './modules/sales/quoteModuleInstance';
 import { orderModule } from './modules/sales/orderModuleInstance';
 import { invoiceModule } from './modules/finance/invoiceModuleInstance';
+import { paymentModule } from './modules/finance/paymentModuleInstance';
 import { buildExecutiveRecommendations, buildExecutiveSummary } from './executiveRecommendations';
 import type { MonthlyTrend } from '@neuropause/shared';
 
@@ -159,6 +162,13 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       // Finance receivables KPIs from the registered Invoices module.
       invoiceInsights: () =>
         deriveInvoiceInsights(
+          invoiceModule.store.list({ status: 'active', limit: 5000 }).map(invoiceFromRecord),
+          nowMs,
+        ),
+      // Finance collection KPIs — the payment ledger joined to invoices.
+      paymentInsights: () =>
+        derivePaymentInsights(
+          paymentModule.store.list({ status: 'active', limit: 5000 }).map(paymentFromRecord),
           invoiceModule.store.list({ status: 'active', limit: 5000 }).map(invoiceFromRecord),
           nowMs,
         ),

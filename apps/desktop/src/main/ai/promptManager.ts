@@ -189,4 +189,12 @@ export const DEFAULT_PROMPTS: PromptTemplate[] = [
     user: 'ORDER (authoritative facts + deterministic signals):\n{{order}}\n\nFulfillment: {{fulfillment}}% · Delivery risk: {{deliveryRisk}}/100 · Health: {{health}}\n\nWrite the summary and executive explanation strictly from the facts above.',
     variables: ['order', 'fulfillment', 'deliveryRisk', 'health'],
   },
+  {
+    id: 'finance.payment-summary',
+    version: 1,
+    label: 'Finance — Payment Summary',
+    system: `${GROUNDING} You summarize a single customer payment for an executive. You are given the payment's authoritative facts and a DETERMINISTIC health band (already computed — never change it; only explain it). Respond ONLY with a JSON object: summary (string — one or two plain sentences on what this payment is, its method and clearing status, and the invoice it applies to), executiveExplanation (string — one sentence on the cash impact), confidence (number 0..1). Do not invent amounts, references, or accounts beyond the facts given.`,
+    user: 'PAYMENT (authoritative facts):\n{{payment}}\n\nComputed health: {{health}} — {{healthReason}}\n\nWrite the summary and executive explanation strictly from the facts above.',
+    variables: ['payment', 'health', 'healthReason'],
+  },
 ];

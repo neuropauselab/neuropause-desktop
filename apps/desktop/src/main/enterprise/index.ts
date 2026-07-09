@@ -67,6 +67,7 @@ import {
 } from './authzGate';
 import { initEnterpriseModules, type EnterpriseModuleRegistry } from './framework';
 import { invoiceModule } from './modules/finance/invoiceModuleInstance';
+import { paymentModule } from './modules/finance/paymentModuleInstance';
 import { contactModule } from './modules/crm/contactModuleInstance';
 import { leadModule } from './modules/crm/leadModuleInstance';
 import { customerModule } from './modules/crm/customerModuleInstance';
@@ -176,6 +177,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(customerModule); // CRM → Customers
   modules.registry.register(quoteModule); // Sales → Quotes
   modules.registry.register(orderModule); // Sales → Orders (conversion target)
+  modules.registry.register(paymentModule); // Finance → Payments
   await Promise.all([
     invoiceModule.store.load(),
     contactModule.store.load(),
@@ -183,6 +185,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     customerModule.store.load(),
     quoteModule.store.load(),
     orderModule.store.load(),
+    paymentModule.store.load(),
   ]);
 
   return {

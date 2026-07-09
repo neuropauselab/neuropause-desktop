@@ -37,6 +37,7 @@ export * from './types/leads';
 export * from './types/customers';
 export * from './types/quotes';
 export * from './types/orders';
+export * from './types/payments';
 export * from './types/ecosystem';
 export * from './types/ecosystem-exchange';
 export * from './types/cloud';

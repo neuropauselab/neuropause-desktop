@@ -56,9 +56,10 @@ export const INVOICE_DESCRIPTOR: EnterpriseModuleDescriptor = {
   titleField: 'number',
   // Reuses existing enterprise scopes: any member can read, managers+ can write.
   permissions: { read: 'operations:read', write: 'operations:manage' },
+  // Paying an invoice is done by recording a Payment (the source of truth), which
+  // reconciles this invoice's paid amount + status — there is no manual "mark paid".
   actions: [
     { key: 'issue', label: 'Issue', icon: 'upload' },
-    { key: 'markPaid', label: 'Mark Paid', icon: 'check' },
     { key: 'cancel', label: 'Cancel', icon: 'close' },
   ],
   fields: [
@@ -68,7 +69,7 @@ export const INVOICE_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'taxRate', label: 'Tax Rate %', type: 'number', min: 0, max: 100, column: false },
     { key: 'taxAmount', label: 'Tax', type: 'number', column: false, format: 'currency', readOnly: true },
     { key: 'total', label: 'Total', type: 'number', format: 'currency', readOnly: true },
-    { key: 'amountPaid', label: 'Amount Paid', type: 'number', min: 0, format: 'currency' },
+    { key: 'amountPaid', label: 'Amount Paid', type: 'number', min: 0, format: 'currency', readOnly: true },
     { key: 'outstandingBalance', label: 'Outstanding', type: 'number', format: 'currency', readOnly: true },
     {
       key: 'currency',

@@ -113,14 +113,17 @@ const ACTION_VERB: Record<LifecycleAction, string> = {
 
 /**
  * The single seam where a persisted record change fans out to audit, the
- * platform timeline, the renderer broadcast, and the module's own hook.
+ * platform timeline, the renderer broadcast, and the module's own hook. The
+ * `onChange` hook is awaited (with the shared action context) so a cross-module
+ * reconciliation completes before the originating mutation returns.
  */
-function emitLifecycle(
+async function emitLifecycle(
   ctx: EnterpriseModuleContext,
+  actionCtx: EnterpriseModuleActionContext,
   module: EnterpriseModule,
   action: LifecycleAction,
   record: EnterpriseEntity,
-): void {
+): Promise<void> {
   const { id, singular } = { id: module.descriptor.id, singular: module.descriptor.singular };
   ctx.audit({
     action: `module.${id}.${action}`,
@@ -142,7 +145,7 @@ function emitLifecycle(
     id: record.id,
     at: record.updatedAt,
   });
-  module.hooks.onChange?.({ action, record });
+  await module.hooks.onChange?.({ action, record }, actionCtx);
 }
 
 function resolve(registry: EnterpriseModuleRegistry, moduleId: string): EnterpriseModule {
@@ -160,6 +163,20 @@ export function buildModuleHandlers(
   registry: EnterpriseModuleRegistry,
   ctx: EnterpriseModuleContext,
 ): SecureHandlerDef[] {
+  // One shared action/onChange context: lets record actions and `onChange`
+  // reconcilers reach other modules (`moduleFor`) and fan out their lifecycle
+  // (`emit`), reusing the same identity + RBAC gate as the request.
+  const actionCtx: EnterpriseModuleActionContext = {
+    actor: ctx.actor,
+    now: ctx.now,
+    authorize: ctx.authorize,
+    moduleFor: (id) => registry.get(id),
+    emit: (m, action, rec) => {
+      void emitLifecycle(ctx, actionCtx, m, action, rec);
+    },
+  };
+  const fan = (module: EnterpriseModule, action: LifecycleAction, record: EnterpriseEntity) =>
+    emitLifecycle(ctx, actionCtx, module, action, record);
   return [
     {
       channel: IpcChannel.EnterpriseModulesList,
@@ -257,7 +274,7 @@ export function buildModuleHandlers(
           actor: ctx.actor(),
           now: ctx.now(),
         });
-        emitLifecycle(ctx, module, 'created', record);
+        await fan(module, 'created', record);
         return { ok: true as const, record };
       },
     },
@@ -293,7 +310,7 @@ export function buildModuleHandlers(
           now: ctx.now(),
         });
         if (!record) return { ok: false as const, errors: { _: 'Record not found.' } };
-        emitLifecycle(ctx, module, 'updated', record);
+        await fan(module, 'updated', record);
         return { ok: true as const, record };
       },
     },
@@ -312,7 +329,7 @@ export function buildModuleHandlers(
           now: ctx.now(),
         });
         if (!record) return { ok: false as const, errors: { _: 'Invalid status transition.' } };
-        emitLifecycle(ctx, module, r.status === 'deleted' ? 'deleted' : 'status_changed', record);
+        await fan(module, r.status === 'deleted' ? 'deleted' : 'status_changed', record);
         return { ok: true as const, record };
       },
     },
@@ -328,7 +345,7 @@ export function buildModuleHandlers(
         await module.store.load();
         const record = module.store.softDelete(r.id, { actor: ctx.actor(), now: ctx.now() });
         if (!record) return { ok: false as const, errors: { _: 'Record not found.' } };
-        emitLifecycle(ctx, module, 'deleted', record);
+        await fan(module, 'deleted', record);
         return { ok: true as const, record };
       },
     },
@@ -350,13 +367,6 @@ export function buildModuleHandlers(
         await module.store.load();
         const record = module.store.get(r.id);
         if (!record || record.status === 'deleted') return { ok: false, error: 'Record not found.' };
-        const actionCtx: EnterpriseModuleActionContext = {
-          actor: ctx.actor,
-          now: ctx.now,
-          authorize: ctx.authorize,
-          moduleFor: (id) => registry.get(id),
-          emit: (m, action, rec) => emitLifecycle(ctx, m, action, rec),
-        };
         return module.hooks.runAction(r.action, record, actionCtx);
       },
     },

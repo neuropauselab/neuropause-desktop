@@ -293,7 +293,7 @@ describe('RBAC', () => {
 });
 
 describe('lifecycle actions', () => {
-  it('issue → markPaid, stamping dates + amounts, with timeline', async () => {
+  it('issues a draft, stamping issue + due dates, with a timeline event', async () => {
     const created = await createIn('finance', {
       number: 'INV-1',
       customer: 'Acme',
@@ -303,25 +303,22 @@ describe('lifecycle actions', () => {
     const id = created.record?.id as string;
 
     expect((await act('finance', id, 'issue')).ok).toBe(true);
-    let inv = invoices.store.get(id);
+    const inv = invoices.store.get(id);
     expect(inv?.fields).toMatchObject({ status: 'issued', issueDate: '2026-07-08', dueDate: '2026-08-07' });
     expect(rec.publish.at(-1)).toMatchObject({
       type: 'enterprise.record.updated',
       source: 'enterprise:finance',
     });
-
-    expect((await act('finance', id, 'markPaid')).ok).toBe(true);
-    inv = invoices.store.get(id);
-    expect(inv?.fields).toMatchObject({ status: 'paid', amountPaid: 100, outstandingBalance: 0 });
   });
 
   it('rejects illegal transitions with a deterministic message', async () => {
     const created = await createIn('finance', { number: 'INV-1', customer: 'Acme', amount: 100 });
     const id = created.record?.id as string;
-    const res = await act('finance', id, 'markPaid'); // draft → markPaid illegal
+    await act('finance', id, 'cancel');
+    const res = await act('finance', id, 'issue'); // cancelled → issue illegal
     expect(res.ok).toBe(false);
-    expect(res.message).toMatch(/cannot mark paid an invoice that is draft/i);
-    expect(invoices.store.get(id)?.fields.status).toBe('draft');
+    expect(res.message).toMatch(/cannot issue an invoice that is cancelled/i);
+    expect(invoices.store.get(id)?.fields.status).toBe('cancelled');
   });
 
   it('cancels a draft and rejects an unknown action', async () => {
@@ -344,7 +341,7 @@ describe('AI summary', () => {
     }>;
     const fin = summaries.find((s) => s.id === 'finance');
     expect(fin).toMatchObject({ aiSummary: true });
-    expect(fin?.actions.map((a) => a.key)).toEqual(['issue', 'markPaid', 'cancel']);
+    expect(fin?.actions.map((a) => a.key)).toEqual(['issue', 'cancel']);
   });
 
   it('falls back to a deterministic risk when no AI narrative (overdue → high)', async () => {

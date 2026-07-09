@@ -20,12 +20,14 @@ import {
   leadInsightsToKpis,
   orderInsightsToKpis,
   orgHealthBand,
+  paymentInsightsToKpis,
   quoteInsightsToKpis,
   type CrmModuleInsights,
   type CustomerModuleInsights,
   type InvoiceModuleInsights,
   type LeadModuleInsights,
   type OrderModuleInsights,
+  type PaymentModuleInsights,
   type QuoteModuleInsights,
   type ExecutiveCard,
   type ExecutiveKpi,
@@ -76,6 +78,8 @@ export interface ExecutiveCenterSources {
   orderInsights?: () => OrderModuleInsights | undefined;
   /** Finance invoice-receivables insights → Executive Center KPI tiles (optional). */
   invoiceInsights?: () => InvoiceModuleInsights | undefined;
+  /** Finance payment-collection insights → Executive Center KPI tiles (optional). */
+  paymentInsights?: () => PaymentModuleInsights | undefined;
 }
 
 /** The minimal timeline fields the composer reads (kept local; no new dep). */
@@ -290,6 +294,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
   const quoteInsightsForKpis = sources.quoteInsights?.();
   const orderInsightsForKpis = sources.orderInsights?.();
   const invoiceInsightsForKpis = sources.invoiceInsights?.();
+  const paymentInsightsForKpis = sources.paymentInsights?.();
   const enterprise = enterpriseInsights({
     knowledge: sources.knowledgeHealth?.(),
     memory: sources.memoryCounts?.(),
@@ -309,6 +314,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
       ...(quoteInsightsForKpis ? quoteInsightsToKpis(quoteInsightsForKpis) : []),
       ...(orderInsightsForKpis ? orderInsightsToKpis(orderInsightsForKpis) : []),
       ...(invoiceInsightsForKpis ? invoiceInsightsToKpis(invoiceInsightsForKpis) : []),
+      ...(paymentInsightsForKpis ? paymentInsightsToKpis(paymentInsightsForKpis) : []),
     ],
     enterprise,
     orgHealth: scores,
