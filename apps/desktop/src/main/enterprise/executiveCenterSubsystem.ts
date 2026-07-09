@@ -42,6 +42,9 @@ import {
   mrpRecommendations,
   deriveTimePhasedInsights,
   timePhasedRecommendations,
+  computeCapacitySchedule,
+  deriveCapacityInsights,
+  capacityRecommendations,
   contactFromRecord,
   customerFromRecord,
   goodsReceiptFromRecord,
@@ -193,6 +196,10 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       invoices: invoiceModule.store.list({ status: 'active', limit: 5000 }).map(invoiceFromRecord),
     };
     const planningInsights = derivePlanningInsights(planningInput);
+    // Finite Capacity Scheduling (APS) — load the time-phased production plan onto the REAL
+    // machines (Manufacturing status + Maintenance windows). Computed ONCE here and reused for
+    // both the capacity KPIs and the scheduling recommendations (no duplicate scheduling pass).
+    const capacitySchedule = computeCapacitySchedule(planningInput, nowMs);
     // computeOrgHealth is what the composer uses; import lazily via the composer's
     // own path would duplicate — instead record after compose but read current from
     // the freshly-composed snapshot (below), and expose monthly via a closure that
@@ -318,6 +325,8 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       mrpInsights: () => deriveMrpInsights(planningInput),
       // Time-phased MRP KPIs — backward scheduling of the same plan against the clock.
       timePhasedInsights: () => deriveTimePhasedInsights(planningInput, nowMs),
+      // Finite-capacity (APS) KPIs — the time-phased plan loaded onto real machines (precomputed).
+      capacityInsights: () => deriveCapacityInsights(capacitySchedule),
       // V2.9: feed last week's health from the persisted history store so Weekly
       // Trends is live. Returns null until ≥1 older datapoint exists.
       previousWeek: () => {
@@ -353,6 +362,9 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       ...mrpRecommendations(planningInput),
       // Time-phased recommendations (release-now, late-risk, delay, bottleneck).
       ...timePhasedRecommendations(planningInput, nowMs),
+      // Finite-capacity (APS) recommendations (overloaded, move-to-machine, second-shift,
+      // split, avoid-maintenance-window, reschedule-queue, delay, capacity-available).
+      ...capacityRecommendations(capacitySchedule),
     ];
     snap.recommendations = recommendations;
     snap.executiveSummary = buildExecutiveSummary(snap, recommendations);

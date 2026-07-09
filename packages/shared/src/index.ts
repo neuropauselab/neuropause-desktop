@@ -47,6 +47,7 @@ export * from './types/fulfillment';
 export * from './types/planning';
 export * from './types/mrp';
 export * from './types/timePhasedMrp';
+export * from './types/capacityScheduler';
 export * from './types/ecosystem';
 export * from './types/ecosystem-exchange';
 export * from './types/cloud';
