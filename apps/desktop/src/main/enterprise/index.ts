@@ -116,6 +116,7 @@ import {
   sparePartModule,
   downtimeEventModule,
 } from './modules/maintenance/maintenanceInstances';
+import { executiveDecisionModule } from './modules/executive/executiveDecisionInstance';
 import { notificationScheduler } from '../services/notificationScheduler';
 import { buildOrgGraph, orgGraphNeighbors } from './graph/orgGraph';
 import { evaluateCompliance, type ComplianceInput } from './governance/enterpriseGovernance';
@@ -256,6 +257,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(maintenanceHistoryModule); // Maintenance → History
   modules.registry.register(sparePartModule); // Maintenance → Spare Parts
   modules.registry.register(downtimeEventModule); // Maintenance → Downtime Events
+  modules.registry.register(executiveDecisionModule); // Executive → Decision Approval (governance)
   await Promise.all([
     invoiceModule.store.load(),
     contactModule.store.load(),
@@ -299,6 +301,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     maintenanceHistoryModule.store.load(),
     sparePartModule.store.load(),
     downtimeEventModule.store.load(),
+    executiveDecisionModule.store.load(),
   ]);
 
   return {

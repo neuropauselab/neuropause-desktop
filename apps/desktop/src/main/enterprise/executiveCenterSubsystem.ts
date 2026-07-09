@@ -48,7 +48,6 @@ import {
   computeRoutingSchedule,
   deriveRoutingInsights,
   routingRecommendations,
-  routingFromRecord,
   deriveMesInsights,
   mesRecommendations,
   mesExecutionFromRecord,
@@ -57,6 +56,8 @@ import {
   manufacturingEventFromRecord,
   assessDigitalTwin,
   assessDecisionEngine,
+  deriveApprovalInsights,
+  executiveDecisionFromRecord,
   contactFromRecord,
   customerFromRecord,
   goodsReceiptFromRecord,
@@ -81,7 +82,6 @@ import {
   workCenterFromRecord,
   qualityInspectionFromRecord,
   productionCostingFromRecord,
-  bomFromRecord,
   assetFromRecord,
   workOrderFromRecord,
   preventiveMaintenanceFromRecord,
@@ -113,13 +113,11 @@ import {
   stockAdjustmentModule,
 } from './modules/warehouse/warehouseInstances';
 import {
-  bomModule,
   productionOrderModule,
   machineModule,
   workCenterModule,
   qualityModule,
   costingModule,
-  routingModule,
   executionModule,
   manufacturingEventModule,
 } from './modules/manufacturing/manufacturingInstances';
@@ -131,6 +129,8 @@ import {
   technicianModule,
 } from './modules/maintenance/maintenanceInstances';
 import { buildExecutiveRecommendations, buildExecutiveSummary } from './executiveRecommendations';
+import { collectPlanningModel } from './planningModel';
+import { executiveDecisionModule } from './modules/executive/executiveDecisionInstance';
 import type { MonthlyTrend } from '@neuropause/shared';
 
 const log = createLogger('executive-center');
@@ -196,29 +196,17 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
     // scores once from the same inputs the composer will use.
     const nowMs = Date.now();
     const curInputs = collectOrgHealthInputs(nowMs);
-    // Enterprise Planning — read-mostly cross-domain intelligence computed once from
-    // the operational stores, used for both the planning KPIs and the recommendations.
-    const planningInput = {
-      products: productModule.store.list({ status: 'active', limit: 5000 }).map(productFromRecord),
-      salesOrders: orderModule.store.list({ status: 'active', limit: 5000 }).map(orderFromRecord),
-      quotes: quoteModule.store.list({ status: 'active', limit: 5000 }).map(quoteFromRecord),
-      shipments: shippingModule.store.list({ status: 'active', limit: 5000 }).map(shippingFromRecord),
-      productionOrders: productionOrderModule.store.list({ status: 'active', limit: 5000 }).map(productionOrderFromRecord),
-      purchaseOrders: purchaseOrderModule.store.list({ status: 'active', limit: 5000 }).map(purchaseOrderFromRecord),
-      suppliers: supplierModule.store.list({ status: 'active', limit: 5000 }).map(supplierFromRecord),
-      boms: bomModule.store.list({ status: 'active', limit: 5000 }).map(bomFromRecord),
-      machines: machineModule.store.list({ status: 'active', limit: 5000 }).map(machineFromRecord),
-      invoices: invoiceModule.store.list({ status: 'active', limit: 5000 }).map(invoiceFromRecord),
-    };
+    // Enterprise Planning — read-mostly cross-domain intelligence computed once from the operational
+    // stores (assembled the ONE way, via the shared collector, also used by decision verification).
+    const { input: planningInput, routings } = collectPlanningModel();
     const planningInsights = derivePlanningInsights(planningInput);
     // Finite Capacity Scheduling (APS) — load the time-phased production plan onto the REAL
     // machines (Manufacturing status + Maintenance windows). Computed ONCE here and reused for
     // both the capacity KPIs and the scheduling recommendations (no duplicate scheduling pass).
     const capacitySchedule = computeCapacitySchedule(planningInput, nowMs);
     // Routing-Aware Scheduling (APS) — route each planned production order through its product's
-    // active routing onto QUALIFIED machines (work center + eligibility + availability). The
-    // routings are real master data; computed ONCE and reused for the routing KPIs + recommendations.
-    const routings = routingModule.store.list({ status: 'active', limit: 5000 }).map(routingFromRecord);
+    // active routing onto QUALIFIED machines (work center + eligibility + availability). `routings`
+    // comes from the shared collector above; computed ONCE and reused for KPIs + recommendations.
     const routingSchedule = computeRoutingSchedule(planningInput, routings, nowMs);
     // Manufacturing Execution (MES) — the shop-floor execution records (dispatched from committed
     // schedules). Read once and reused for the execution KPIs + recommendations. Real records only.
@@ -371,6 +359,9 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       resilienceInsights: () => digitalTwin.resilience,
       // Enterprise Decision Engine KPIs — recovery-plan readiness + strategic scores (precomputed).
       decisionInsights: () => decisionEngine.insights,
+      // Executive Decision Approval KPIs — governance state of the persisted recovery-plan records.
+      approvalInsights: () =>
+        deriveApprovalInsights(executiveDecisionModule.store.list({ status: 'active', limit: 5000 }).map(executiveDecisionFromRecord)),
       // V2.9: feed last week's health from the persisted history store so Weekly
       // Trends is live. Returns null until ≥1 older datapoint exists.
       previousWeek: () => {
