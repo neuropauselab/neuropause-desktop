@@ -35,6 +35,7 @@ import {
   deriveWarehouseInsights,
   deriveManufacturingInsights,
   deriveMaintenanceInsights,
+  deriveFulfillmentInsights,
   contactFromRecord,
   customerFromRecord,
   goodsReceiptFromRecord,
@@ -276,6 +277,17 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
           preventives: preventiveMaintenanceModule.store.list({ status: 'active', limit: 5000 }).map(preventiveMaintenanceFromRecord),
           downtimeEvents: downtimeEventModule.store.list({ status: 'active', limit: 5000 }).map(downtimeEventFromRecord),
           technicians: technicianModule.store.list({ status: 'active', limit: 5000 }).map(technicianFromRecord),
+        }),
+      // Fulfillment KPIs — the make → move → sell loop. Pure cross-domain analytics
+      // over products + production orders + sales orders + pick lists + shipments;
+      // owns no records and reads the single Inventory Ledger (no duplicate stock).
+      fulfillmentInsights: () =>
+        deriveFulfillmentInsights({
+          products: productModule.store.list({ status: 'active', limit: 5000 }).map(productFromRecord),
+          productionOrders: productionOrderModule.store.list({ status: 'active', limit: 5000 }).map(productionOrderFromRecord),
+          orders: orderModule.store.list({ status: 'active', limit: 5000 }).map(orderFromRecord),
+          pickLists: pickListModule.store.list({ status: 'active', limit: 5000 }).map(pickListFromRecord),
+          shipments: shippingModule.store.list({ status: 'active', limit: 5000 }).map(shippingFromRecord),
         }),
       // V2.9: feed last week's health from the persisted history store so Weekly
       // Trends is live. Returns null until ≥1 older datapoint exists.

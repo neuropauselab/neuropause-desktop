@@ -3,15 +3,22 @@
  * movement into the Inventory Ledger (stock physically leaves) and releases the
  * pick's held reservation, so on-hand and reserved both settle correctly — never by
  * editing stock. `deliver` closes the shipment. Idempotent; guarded.
+ *
+ * Closing the make → move → sell loop: when a shipment references a Sales Order,
+ * `ship` marks that order fulfilled — a status write only (the stock already issued
+ * here), so there is no double issue. The order write asserts `sales:manage`.
  */
 import type {
   EnterpriseEntity,
   EnterpriseModuleDescriptor,
 } from '@neuropause/shared';
 import {
+  ORDERS_MODULE_ID,
   PICK_LISTS_MODULE_ID,
   SHIPPING_MODULE_ID,
   SHIPPING_KIND,
+  orderComputedFields,
+  orderFromRecord,
   shippingFromRecord,
 } from '@neuropause/shared';
 import {
@@ -21,6 +28,27 @@ import {
   type EnterpriseModuleActionContext,
 } from '../../framework';
 import { netReserved, postIssue, postReservationRelease } from './warehouseMovements';
+
+/** Close the loop: mark the shipment's Sales Order fulfilled (status write only). */
+async function fulfillLinkedOrder(ctx: EnterpriseModuleActionContext, salesOrderId: string, quantity: number): Promise<void> {
+  if (!salesOrderId) return;
+  const ordersModule = ctx.moduleFor(ORDERS_MODULE_ID);
+  if (!ordersModule) return;
+  await ordersModule.store.load();
+  const rec = ordersModule.store.get(salesOrderId);
+  if (!rec || rec.status === 'deleted') return;
+  const order = orderFromRecord(rec);
+  if (order.status !== 'pending' && order.status !== 'shipped') return; // only open orders
+  ctx.authorize(ordersModule.descriptor.permissions.write); // requires sales:manage
+  const patch = { status: 'fulfilled', fulfilledQty: quantity || order.orderedQty, deliveredDate: ctx.now().slice(0, 10) };
+  const merged = orderFromRecord({ ...rec, fields: { ...rec.fields, ...patch } });
+  const updated = ordersModule.store.update(rec.id, {
+    fields: { ...patch, ...orderComputedFields(merged) },
+    actor: ctx.actor(),
+    now: ctx.now(),
+  });
+  if (updated) ctx.emit(ordersModule, 'updated', updated);
+}
 
 export const SHIP_ACTION = 'ship';
 export const DELIVER_ACTION = 'deliver';
@@ -121,6 +149,8 @@ export function createShippingModule(storePath: string): EnterpriseModule {
             }),
             ctx,
           );
+          // Close the loop — mark the linked Sales Order fulfilled (status only, no re-issue).
+          await fulfillLinkedOrder(ctx, shipment.salesOrder, shipment.quantity);
           return { ok: true, message: `Shipped ${shipment.quantity} of ${shipment.product} from ${shipment.warehouse}.` };
         }
 

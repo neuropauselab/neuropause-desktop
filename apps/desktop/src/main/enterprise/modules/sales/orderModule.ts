@@ -47,6 +47,7 @@ import {
   reserveOrderStock,
   shipOrderStock,
 } from './inventoryLink';
+import { CREATE_PICK_LIST_ACTION, createPickListFromOrder } from './fulfillmentLink';
 
 /** The declarative description of a sales order — drives store, CRUD, and the UI. */
 export const ORDER_DESCRIPTOR: EnterpriseModuleDescriptor = {
@@ -61,6 +62,7 @@ export const ORDER_DESCRIPTOR: EnterpriseModuleDescriptor = {
   permissions: { read: 'sales:read', write: 'sales:manage' },
   actions: [
     { key: RESERVE_STOCK_ACTION, label: 'Reserve Stock', icon: 'pin' },
+    { key: CREATE_PICK_LIST_ACTION, label: 'Fulfil from Warehouse', icon: 'check-square' },
     { key: 'ship', label: 'Ship', icon: 'upload' },
     { key: 'fulfill', label: 'Fulfill', icon: 'check' },
     { key: 'close', label: 'Close', icon: 'lock' },
@@ -121,6 +123,7 @@ export const ORDER_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'notes', label: 'Notes', type: 'textarea', column: false },
     { key: 'sourceQuote', label: 'Source Quote', type: 'text', column: false, readOnly: true },
     { key: 'convertedInvoice', label: 'Invoice', type: 'text', column: false, readOnly: true },
+    { key: 'pickList', label: 'Pick List', type: 'text', column: false, readOnly: true },
   ],
 };
 
@@ -217,6 +220,8 @@ export function createOrderModule(storePath: string, aiRunner?: OrderAiRunner): 
         if (action === CONVERT_TO_INVOICE_ACTION) return convertOrderToInvoice(record, actionCtx);
         // Cross-module: reserve stock in the inventory ledger (no status change).
         if (action === RESERVE_STOCK_ACTION) return reserveOrderStock(record, actionCtx);
+        // Cross-module: dispatch to the warehouse by raising a real pick list.
+        if (action === CREATE_PICK_LIST_ACTION) return createPickListFromOrder(record, actionCtx);
         const key = action as OrderAction;
         if (!ACTION_DONE[key]) return { ok: false, error: `Unknown action "${action}".` };
         const order = orderFromRecord(record);

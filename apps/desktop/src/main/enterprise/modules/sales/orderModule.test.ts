@@ -69,6 +69,7 @@ describe('descriptor', () => {
     }
     expect(ORDER_DESCRIPTOR.actions?.map((a) => a.key)).toEqual([
       'reserveStock',
+      'createPickList',
       'ship',
       'fulfill',
       'close',
@@ -412,6 +413,7 @@ describe('AI summary', () => {
     expect(o).toMatchObject({ aiSummary: true });
     expect(o?.actions.map((a) => a.key)).toEqual([
       'reserveStock',
+      'createPickList',
       'ship',
       'fulfill',
       'close',

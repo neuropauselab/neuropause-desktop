@@ -48,6 +48,8 @@ export interface SalesOrder {
   total: number;
   orderedQty: number;
   fulfilledQty: number;
+  product: string;
+  warehouse: string;
   orderDate: string;
   expectedDeliveryDate: string;
   shippedDate: string;
@@ -95,6 +97,8 @@ export function orderFromRecord(record: EnterpriseEntity): SalesOrder {
     total: num(f.total),
     orderedQty: num(f.orderedQty),
     fulfilledQty: num(f.fulfilledQty),
+    product: str(f.product),
+    warehouse: str(f.warehouse),
     orderDate: str(f.orderDate),
     expectedDeliveryDate: str(f.expectedDeliveryDate),
     shippedDate: str(f.shippedDate),

@@ -26,6 +26,7 @@ import {
   warehouseInsightsToKpis,
   manufacturingInsightsToKpis,
   maintenanceInsightsToKpis,
+  fulfillmentInsightsToKpis,
   quoteInsightsToKpis,
   type CrmModuleInsights,
   type CustomerModuleInsights,
@@ -38,6 +39,7 @@ import {
   type WarehouseModuleInsights,
   type ManufacturingModuleInsights,
   type MaintenanceModuleInsights,
+  type FulfillmentModuleInsights,
   type QuoteModuleInsights,
   type ExecutiveCard,
   type ExecutiveKpi,
@@ -100,6 +102,8 @@ export interface ExecutiveCenterSources {
   manufacturingInsights?: () => ManufacturingModuleInsights | undefined;
   /** Maintenance management insights → Executive Center KPI tiles (optional). */
   maintenanceInsights?: () => MaintenanceModuleInsights | undefined;
+  /** Finished-goods fulfillment insights → Executive Center KPI tiles (optional). */
+  fulfillmentInsights?: () => FulfillmentModuleInsights | undefined;
 }
 
 /** The minimal timeline fields the composer reads (kept local; no new dep). */
@@ -320,6 +324,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
   const warehouseInsightsForKpis = sources.warehouseInsights?.();
   const manufacturingInsightsForKpis = sources.manufacturingInsights?.();
   const maintenanceInsightsForKpis = sources.maintenanceInsights?.();
+  const fulfillmentInsightsForKpis = sources.fulfillmentInsights?.();
   const enterprise = enterpriseInsights({
     knowledge: sources.knowledgeHealth?.(),
     memory: sources.memoryCounts?.(),
@@ -345,6 +350,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
       ...(warehouseInsightsForKpis ? warehouseInsightsToKpis(warehouseInsightsForKpis) : []),
       ...(manufacturingInsightsForKpis ? manufacturingInsightsToKpis(manufacturingInsightsForKpis) : []),
       ...(maintenanceInsightsForKpis ? maintenanceInsightsToKpis(maintenanceInsightsForKpis) : []),
+      ...(fulfillmentInsightsForKpis ? fulfillmentInsightsToKpis(fulfillmentInsightsForKpis) : []),
     ],
     enterprise,
     orgHealth: scores,

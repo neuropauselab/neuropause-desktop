@@ -43,6 +43,7 @@ export * from './types/procurement';
 export * from './types/warehouse';
 export * from './types/manufacturing';
 export * from './types/maintenanceManagement';
+export * from './types/fulfillment';
 export * from './types/ecosystem';
 export * from './types/ecosystem-exchange';
 export * from './types/cloud';

@@ -43,7 +43,7 @@ export async function applyMachineDowntime(
   if (!mod || !rec) return null;
   ctx.authorize(mod.descriptor.permissions.write); // requires manufacturing:manage
   const machine = machineFromRecord(rec);
-  const fields: Record<string, unknown> = { downtime: Math.max(0, Math.round((machine.downtime + hours) * 10) / 10) };
+  const fields: Record<string, string | number> = { downtime: Math.max(0, Math.round((machine.downtime + hours) * 10) / 10) };
   if (status) fields.status = status;
   const updated = mod.store.update(rec.id, { fields, actor: ctx.actor(), now: ctx.now() });
   if (updated) ctx.emit(mod, 'updated', updated);
