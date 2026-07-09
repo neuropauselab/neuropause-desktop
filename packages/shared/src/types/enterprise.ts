@@ -101,6 +101,7 @@ export type EnterprisePermission =
   | 'executive:read'
   | 'executive:approve'
   | 'executive:verify'
+  | 'executive:execute'
   | 'dashboard:read';
 
 export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
@@ -135,6 +136,7 @@ export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   'executive:read',
   'executive:approve',
   'executive:verify',
+  'executive:execute',
   'dashboard:read',
 ];
 

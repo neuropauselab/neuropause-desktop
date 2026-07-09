@@ -58,6 +58,8 @@ import {
   assessDecisionEngine,
   deriveApprovalInsights,
   executiveDecisionFromRecord,
+  deriveHandoffInsights,
+  executionProposalFromRecord,
   contactFromRecord,
   customerFromRecord,
   goodsReceiptFromRecord,
@@ -131,6 +133,7 @@ import {
 import { buildExecutiveRecommendations, buildExecutiveSummary } from './executiveRecommendations';
 import { collectPlanningModel } from './planningModel';
 import { executiveDecisionModule } from './modules/executive/executiveDecisionInstance';
+import { executionProposalModule } from './modules/executive/executionProposalInstance';
 import type { MonthlyTrend } from '@neuropause/shared';
 
 const log = createLogger('executive-center');
@@ -362,6 +365,10 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       // Executive Decision Approval KPIs — governance state of the persisted recovery-plan records.
       approvalInsights: () =>
         deriveApprovalInsights(executiveDecisionModule.store.list({ status: 'active', limit: 5000 }).map(executiveDecisionFromRecord)),
+      // Decision Execution Handoff KPIs — the controlled proposal pipeline (pending / accepted /
+      // rejected / execution readiness / approval time / acceptance rate). Read-only over proposal records.
+      handoffInsights: () =>
+        deriveHandoffInsights(executionProposalModule.store.list({ status: 'active', limit: 5000 }).map(executionProposalFromRecord)),
       // V2.9: feed last week's health from the persisted history store so Weekly
       // Trends is live. Returns null until ≥1 older datapoint exists.
       previousWeek: () => {

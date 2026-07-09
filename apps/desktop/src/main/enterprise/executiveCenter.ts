@@ -37,6 +37,7 @@ import {
   resilienceInsightsToKpis,
   decisionInsightsToKpis,
   approvalInsightsToKpis,
+  handoffInsightsToKpis,
   quoteInsightsToKpis,
   type CrmModuleInsights,
   type CustomerModuleInsights,
@@ -60,6 +61,7 @@ import {
   type ResilienceInsights,
   type DecisionInsights,
   type ApprovalInsights,
+  type HandoffInsights,
   type QuoteModuleInsights,
   type ExecutiveCard,
   type ExecutiveKpi,
@@ -144,6 +146,8 @@ export interface ExecutiveCenterSources {
   decisionInsights?: () => DecisionInsights | undefined;
   /** Executive Decision Approval governance KPIs → Executive Center KPI tiles (optional). */
   approvalInsights?: () => ApprovalInsights | undefined;
+  /** Decision Execution Handoff proposal KPIs → Executive Center KPI tiles (optional). */
+  handoffInsights?: () => HandoffInsights | undefined;
 }
 
 /** The minimal timeline fields the composer reads (kept local; no new dep). */
@@ -375,6 +379,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
   const resilienceInsightsForKpis = sources.resilienceInsights?.();
   const decisionInsightsForKpis = sources.decisionInsights?.();
   const approvalInsightsForKpis = sources.approvalInsights?.();
+  const handoffInsightsForKpis = sources.handoffInsights?.();
   const enterprise = enterpriseInsights({
     knowledge: sources.knowledgeHealth?.(),
     memory: sources.memoryCounts?.(),
@@ -411,6 +416,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
       ...(resilienceInsightsForKpis ? resilienceInsightsToKpis(resilienceInsightsForKpis) : []),
       ...(decisionInsightsForKpis ? decisionInsightsToKpis(decisionInsightsForKpis) : []),
       ...(approvalInsightsForKpis ? approvalInsightsToKpis(approvalInsightsForKpis) : []),
+      ...(handoffInsightsForKpis ? handoffInsightsToKpis(handoffInsightsForKpis) : []),
     ],
     enterprise,
     orgHealth: scores,

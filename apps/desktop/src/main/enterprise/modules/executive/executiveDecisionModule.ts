@@ -19,11 +19,13 @@ import {
   executiveDecisionFromRecord,
 } from '@neuropause/shared';
 import { EnterpriseRecordStore, defineEnterpriseModule, type EnterpriseModule } from '../../framework';
+import { handoffToProposal } from './decisionHandoffLink';
 
 export const APPROVE_ACTION = 'approve';
 export const REJECT_ACTION = 'reject';
 export const VERIFY_ACTION = 'verify';
 export const ARCHIVE_ACTION = 'archive';
+export const HANDOFF_ACTION = 'handoff';
 
 export const EXECUTIVE_DECISION_DESCRIPTOR: EnterpriseModuleDescriptor = {
   id: EXECUTIVE_DECISIONS_MODULE_ID,
@@ -39,6 +41,7 @@ export const EXECUTIVE_DECISION_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: APPROVE_ACTION, label: 'Approve', icon: 'check' },
     { key: REJECT_ACTION, label: 'Reject', icon: 'close' },
     { key: VERIFY_ACTION, label: 'Verify', icon: 'activity' },
+    { key: HANDOFF_ACTION, label: 'Hand Off to Execution', icon: 'arrow-right' },
     { key: ARCHIVE_ACTION, label: 'Archive', icon: 'archive' },
   ],
   fields: [
@@ -83,6 +86,9 @@ export const EXECUTIVE_DECISION_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'verifiedBy', label: 'Verified By', type: 'text', column: false, readOnly: true },
     { key: 'verifiedAt', label: 'Verified At', type: 'text', column: false, readOnly: true },
     { key: 'verificationReport', label: 'Verification Report', type: 'textarea', column: false, readOnly: true },
+    { key: 'handedOff', label: 'Handed Off', type: 'text', column: false, readOnly: true },
+    { key: 'proposalNumber', label: 'Proposal #', type: 'text', column: false, readOnly: true },
+    { key: 'proposalId', label: 'Proposal Record', type: 'text', column: false, readOnly: true },
   ],
 };
 
@@ -117,14 +123,40 @@ export function createExecutiveDecisionModule(storePath: string, planningModel: 
       },
       runAction: async (action, record, ctx) => {
         const d = executiveDecisionFromRecord(record);
-        const target = decisionTransition(action as never, d.status);
-        if (!target) return { ok: false, message: `Cannot ${action} a decision that is ${d.status}.` };
         const actor = ctx.actor() ?? '';
         const now = ctx.now();
         const emitSelf = (rec: ReturnType<typeof store.update>): void => {
           const self = ctx.moduleFor(EXECUTIVE_DECISIONS_MODULE_ID);
           if (self && rec) ctx.emit(self, 'updated', rec);
         };
+
+        // Decision Execution Handoff — a VERIFIED decision creates ONE inert execution proposal (this is
+        // not a status transition; the decision stays 'verified'). Handled before the transition guard,
+        // gated on verification, and idempotent (the decision is stamped `handedOff` so it happens once).
+        if (action === HANDOFF_ACTION) {
+          if (d.status !== 'verified') {
+            return { ok: false, message: `Only a verified decision can be handed off to execution (this one is ${d.status}).` };
+          }
+          if (String(record.fields.handedOff ?? '') === 'true') {
+            return { ok: false, message: 'This decision has already been handed off to execution.' };
+          }
+          const result = await handoffToProposal(d, ctx);
+          if (!result.ok) return result;
+          emitSelf(
+            store.update(record.id, {
+              fields: { handedOff: 'true', proposalId: result.proposalId, proposalNumber: result.proposalNumber },
+              actor,
+              now,
+            }),
+          );
+          return {
+            ok: true,
+            message: `Handed off "${d.title}" → proposal ${result.proposalNumber} routed to ${result.targetModuleId}; awaiting human confirmation. Nothing executed.`,
+          };
+        }
+
+        const target = decisionTransition(action as never, d.status);
+        if (!target) return { ok: false, message: `Cannot ${action} a decision that is ${d.status}.` };
 
         if (action === APPROVE_ACTION) {
           if (!d.approvalReason.trim()) return { ok: false, message: 'An approval reason is required before approving.' };
