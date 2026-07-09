@@ -40,6 +40,8 @@ import {
   planningRecommendations,
   deriveMrpInsights,
   mrpRecommendations,
+  deriveTimePhasedInsights,
+  timePhasedRecommendations,
   contactFromRecord,
   customerFromRecord,
   goodsReceiptFromRecord,
@@ -314,6 +316,8 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       planningInsights: () => planningInsights,
       // Multi-level MRP KPIs — recursive BOM explosion over the same planning input.
       mrpInsights: () => deriveMrpInsights(planningInput),
+      // Time-phased MRP KPIs — backward scheduling of the same plan against the clock.
+      timePhasedInsights: () => deriveTimePhasedInsights(planningInput, nowMs),
       // V2.9: feed last week's health from the persisted history store so Weekly
       // Trends is live. Returns null until ≥1 older datapoint exists.
       previousWeek: () => {
@@ -347,6 +351,8 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       ...planningRecommendations(planningInput),
       // Multi-level MRP recommendations (dependent purchase/production, BOM cycles).
       ...mrpRecommendations(planningInput),
+      // Time-phased recommendations (release-now, late-risk, delay, bottleneck).
+      ...timePhasedRecommendations(planningInput, nowMs),
     ];
     snap.recommendations = recommendations;
     snap.executiveSummary = buildExecutiveSummary(snap, recommendations);
