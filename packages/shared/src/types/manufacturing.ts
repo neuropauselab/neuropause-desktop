@@ -42,7 +42,8 @@ export const PRODUCTION_COSTING_KIND = 'production-costing';
 export type BomStatus = 'draft' | 'active' | 'archived';
 export type ProductionOrderStatus = 'draft' | 'planned' | 'released' | 'running' | 'completed' | 'cancelled';
 export type WorkCenterStatus = 'active' | 'inactive';
-export type MachineStatus = 'running' | 'idle' | 'maintenance' | 'down';
+export type MachineStatus = 'running' | 'idle' | 'maintenance' | 'breakdown' | 'offline' | 'down';
+export const MACHINE_STATUSES: readonly MachineStatus[] = ['running', 'idle', 'maintenance', 'breakdown', 'offline', 'down'];
 export type ProductionScheduleStatus = 'scheduled' | 'in_progress' | 'done' | 'cancelled';
 export type ProductionExecutionStatus = 'running' | 'paused' | 'completed';
 export type QualityStage = 'incoming' | 'in_process' | 'final';
@@ -297,7 +298,7 @@ export function machineFromRecord(record: EnterpriseEntity): Machine {
     runtime: num(f.runtime),
     downtime: num(f.downtime),
     maintenanceDue: str(f.maintenanceDue),
-    status: oneOf<MachineStatus>(f.status, ['running', 'idle', 'maintenance', 'down'], 'idle'),
+    status: oneOf<MachineStatus>(f.status, MACHINE_STATUSES, 'idle'),
   };
 }
 

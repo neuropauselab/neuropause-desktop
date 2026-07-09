@@ -96,6 +96,8 @@ export type EnterprisePermission =
   | 'warehouse:manage'
   | 'manufacturing:read'
   | 'manufacturing:manage'
+  | 'maintenance:read'
+  | 'maintenance:manage'
   | 'dashboard:read';
 
 export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
@@ -125,6 +127,8 @@ export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   'warehouse:manage',
   'manufacturing:read',
   'manufacturing:manage',
+  'maintenance:read',
+  'maintenance:manage',
   'dashboard:read',
 ];
 

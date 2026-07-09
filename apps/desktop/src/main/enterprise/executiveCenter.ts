@@ -25,6 +25,7 @@ import {
   procurementInsightsToKpis,
   warehouseInsightsToKpis,
   manufacturingInsightsToKpis,
+  maintenanceInsightsToKpis,
   quoteInsightsToKpis,
   type CrmModuleInsights,
   type CustomerModuleInsights,
@@ -36,6 +37,7 @@ import {
   type ProcurementModuleInsights,
   type WarehouseModuleInsights,
   type ManufacturingModuleInsights,
+  type MaintenanceModuleInsights,
   type QuoteModuleInsights,
   type ExecutiveCard,
   type ExecutiveKpi,
@@ -96,6 +98,8 @@ export interface ExecutiveCenterSources {
   warehouseInsights?: () => WarehouseModuleInsights | undefined;
   /** Manufacturing execution insights → Executive Center KPI tiles (optional). */
   manufacturingInsights?: () => ManufacturingModuleInsights | undefined;
+  /** Maintenance management insights → Executive Center KPI tiles (optional). */
+  maintenanceInsights?: () => MaintenanceModuleInsights | undefined;
 }
 
 /** The minimal timeline fields the composer reads (kept local; no new dep). */
@@ -315,6 +319,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
   const procurementInsightsForKpis = sources.procurementInsights?.();
   const warehouseInsightsForKpis = sources.warehouseInsights?.();
   const manufacturingInsightsForKpis = sources.manufacturingInsights?.();
+  const maintenanceInsightsForKpis = sources.maintenanceInsights?.();
   const enterprise = enterpriseInsights({
     knowledge: sources.knowledgeHealth?.(),
     memory: sources.memoryCounts?.(),
@@ -339,6 +344,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
       ...(procurementInsightsForKpis ? procurementInsightsToKpis(procurementInsightsForKpis) : []),
       ...(warehouseInsightsForKpis ? warehouseInsightsToKpis(warehouseInsightsForKpis) : []),
       ...(manufacturingInsightsForKpis ? manufacturingInsightsToKpis(manufacturingInsightsForKpis) : []),
+      ...(maintenanceInsightsForKpis ? maintenanceInsightsToKpis(maintenanceInsightsForKpis) : []),
     ],
     enterprise,
     orgHealth: scores,

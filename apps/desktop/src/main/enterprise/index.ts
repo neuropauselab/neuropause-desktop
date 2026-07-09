@@ -102,6 +102,18 @@ import {
   qualityModule,
   costingModule,
 } from './modules/manufacturing/manufacturingInstances';
+import {
+  assetCategoryModule,
+  assetModule,
+  maintenancePlanModule,
+  preventiveMaintenanceModule,
+  correctiveMaintenanceModule,
+  workOrderModule,
+  technicianModule,
+  maintenanceHistoryModule,
+  sparePartModule,
+  downtimeEventModule,
+} from './modules/maintenance/maintenanceInstances';
 import { notificationScheduler } from '../services/notificationScheduler';
 import { buildOrgGraph, orgGraphNeighbors } from './graph/orgGraph';
 import { evaluateCompliance, type ComplianceInput } from './governance/enterpriseGovernance';
@@ -230,6 +242,16 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(executionModule); // Manufacturing → Production Execution
   modules.registry.register(qualityModule); // Manufacturing → Quality Inspection
   modules.registry.register(costingModule); // Manufacturing → Production Costing
+  modules.registry.register(assetCategoryModule); // Maintenance → Asset Categories
+  modules.registry.register(assetModule); // Maintenance → Assets
+  modules.registry.register(maintenancePlanModule); // Maintenance → Maintenance Plans
+  modules.registry.register(preventiveMaintenanceModule); // Maintenance → Preventive
+  modules.registry.register(correctiveMaintenanceModule); // Maintenance → Corrective
+  modules.registry.register(workOrderModule); // Maintenance → Work Orders
+  modules.registry.register(technicianModule); // Maintenance → Technicians
+  modules.registry.register(maintenanceHistoryModule); // Maintenance → History
+  modules.registry.register(sparePartModule); // Maintenance → Spare Parts
+  modules.registry.register(downtimeEventModule); // Maintenance → Downtime Events
   await Promise.all([
     invoiceModule.store.load(),
     contactModule.store.load(),
@@ -261,6 +283,16 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     executionModule.store.load(),
     qualityModule.store.load(),
     costingModule.store.load(),
+    assetCategoryModule.store.load(),
+    assetModule.store.load(),
+    maintenancePlanModule.store.load(),
+    preventiveMaintenanceModule.store.load(),
+    correctiveMaintenanceModule.store.load(),
+    workOrderModule.store.load(),
+    technicianModule.store.load(),
+    maintenanceHistoryModule.store.load(),
+    sparePartModule.store.load(),
+    downtimeEventModule.store.load(),
   ]);
 
   return {

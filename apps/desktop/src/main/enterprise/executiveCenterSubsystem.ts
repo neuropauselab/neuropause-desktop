@@ -34,6 +34,7 @@ import {
   deriveQuoteInsights,
   deriveWarehouseInsights,
   deriveManufacturingInsights,
+  deriveMaintenanceInsights,
   contactFromRecord,
   customerFromRecord,
   goodsReceiptFromRecord,
@@ -58,6 +59,11 @@ import {
   workCenterFromRecord,
   qualityInspectionFromRecord,
   productionCostingFromRecord,
+  assetFromRecord,
+  workOrderFromRecord,
+  preventiveMaintenanceFromRecord,
+  downtimeEventFromRecord,
+  technicianFromRecord,
   type UnifiedItemLite,
 } from '@neuropause/shared';
 import { contactModule } from './modules/crm/contactModuleInstance';
@@ -90,6 +96,13 @@ import {
   qualityModule,
   costingModule,
 } from './modules/manufacturing/manufacturingInstances';
+import {
+  assetModule,
+  workOrderModule,
+  preventiveMaintenanceModule,
+  downtimeEventModule,
+  technicianModule,
+} from './modules/maintenance/maintenanceInstances';
 import { buildExecutiveRecommendations, buildExecutiveSummary } from './executiveRecommendations';
 import type { MonthlyTrend } from '@neuropause/shared';
 
@@ -251,6 +264,18 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
           qualityInspections: qualityModule.store.list({ status: 'active', limit: 5000 }).map(qualityInspectionFromRecord),
           costings: costingModule.store.list({ status: 'active', limit: 5000 }).map(productionCostingFromRecord),
           workCenters: workCenterModule.store.list({ status: 'active', limit: 5000 }).map(workCenterFromRecord),
+        }),
+      // Maintenance KPIs — assets + work orders + preventive + downtime + technicians.
+      // Reuses the AUTHORITATIVE machine records (Manufacturing) for availability, so
+      // maintenance downtime flows into both Maintenance and Manufacturing KPIs.
+      maintenanceInsights: () =>
+        deriveMaintenanceInsights({
+          machines: machineModule.store.list({ status: 'active', limit: 5000 }).map(machineFromRecord),
+          assets: assetModule.store.list({ status: 'active', limit: 5000 }).map(assetFromRecord),
+          workOrders: workOrderModule.store.list({ status: 'active', limit: 5000 }).map(workOrderFromRecord),
+          preventives: preventiveMaintenanceModule.store.list({ status: 'active', limit: 5000 }).map(preventiveMaintenanceFromRecord),
+          downtimeEvents: downtimeEventModule.store.list({ status: 'active', limit: 5000 }).map(downtimeEventFromRecord),
+          technicians: technicianModule.store.list({ status: 'active', limit: 5000 }).map(technicianFromRecord),
         }),
       // V2.9: feed last week's health from the persisted history store so Weekly
       // Trends is live. Returns null until ≥1 older datapoint exists.

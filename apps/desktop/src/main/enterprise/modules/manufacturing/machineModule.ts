@@ -47,6 +47,8 @@ export const MACHINE_DESCRIPTOR: EnterpriseModuleDescriptor = {
         { value: 'running', label: 'Running', tone: 'green' },
         { value: 'idle', label: 'Idle', tone: 'neutral' },
         { value: 'maintenance', label: 'Maintenance', tone: 'blue' },
+        { value: 'breakdown', label: 'Breakdown', tone: 'orange' },
+        { value: 'offline', label: 'Offline', tone: 'neutral' },
         { value: 'down', label: 'Down', tone: 'orange' },
       ],
     },

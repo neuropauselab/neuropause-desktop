@@ -285,4 +285,28 @@ export const DEFAULT_PROMPTS: PromptTemplate[] = [
     user: 'PRODUCTION COSTING (authoritative facts):\n{{costing}}\n\nStatus: {{status}}\n\nWrite the summary and executive explanation strictly from the facts above.',
     variables: ['costing', 'status'],
   },
+  {
+    id: 'maintenance.work-order-summary',
+    version: 1,
+    label: 'Maintenance — Work Order Summary',
+    system: `${GROUNDING} You summarize a maintenance work order for an executive from authoritative facts including a DETERMINISTIC cost (never change it; only explain it). The repair restores a machine to service. Respond ONLY with JSON: summary (string), executiveExplanation (string), confidence (number 0..1). Do not invent costs or downtime beyond the facts.`,
+    user: 'WORK ORDER (authoritative facts):\n{{workOrder}}\n\nStatus: {{status}}\n\nWrite the summary and executive explanation strictly from the facts above.',
+    variables: ['workOrder', 'status'],
+  },
+  {
+    id: 'maintenance.asset-summary',
+    version: 1,
+    label: 'Maintenance — Asset Summary',
+    system: `${GROUNDING} You summarize a maintainable asset for an executive from authoritative facts and a DETERMINISTIC health band (never change it; only explain it). Respond ONLY with JSON: summary (string), executiveExplanation (string), confidence (number 0..1). Do not invent breakdowns or costs beyond the facts.`,
+    user: 'ASSET (authoritative facts):\n{{asset}}\n\nHealth: {{health}} — {{healthReason}}\n\nWrite the summary and executive explanation strictly from the facts above.',
+    variables: ['asset', 'health', 'healthReason'],
+  },
+  {
+    id: 'maintenance.downtime-summary',
+    version: 1,
+    label: 'Maintenance — Downtime Event Summary',
+    system: `${GROUNDING} You summarize a machine downtime event for an executive from authoritative facts. The downtime is real and affects machine availability — never change the duration; only explain it. Respond ONLY with JSON: summary (string), executiveExplanation (string), confidence (number 0..1). Do not invent durations beyond the facts.`,
+    user: 'DOWNTIME EVENT (authoritative facts):\n{{event}}\n\nType: {{type}}\n\nWrite the summary and executive explanation strictly from the facts above.',
+    variables: ['event', 'type'],
+  },
 ];
