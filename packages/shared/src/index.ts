@@ -41,6 +41,7 @@ export * from './types/payments';
 export * from './types/inventory';
 export * from './types/procurement';
 export * from './types/warehouse';
+export * from './types/manufacturing';
 export * from './types/ecosystem';
 export * from './types/ecosystem-exchange';
 export * from './types/cloud';

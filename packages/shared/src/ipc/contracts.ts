@@ -842,6 +842,8 @@ export const EnterprisePermissionSchema = z.enum([
   'procurement:manage',
   'warehouse:read',
   'warehouse:manage',
+  'manufacturing:read',
+  'manufacturing:manage',
   'dashboard:read',
 ]);
 

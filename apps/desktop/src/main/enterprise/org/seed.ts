@@ -73,6 +73,7 @@ const READ_ONLY: EnterprisePermission[] = [
   'inventory:read',
   'procurement:read',
   'warehouse:read',
+  'manufacturing:read',
   'dashboard:read',
 ];
 
@@ -88,6 +89,7 @@ const MANAGER: EnterprisePermission[] = [
   'inventory:manage',
   'procurement:manage',
   'warehouse:manage',
+  'manufacturing:manage',
 ];
 
 const ADMIN: EnterprisePermission[] = [

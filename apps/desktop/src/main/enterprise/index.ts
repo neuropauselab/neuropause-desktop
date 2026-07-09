@@ -92,6 +92,16 @@ import {
   cycleCountModule,
   stockAdjustmentModule,
 } from './modules/warehouse/warehouseInstances';
+import {
+  bomModule,
+  productionOrderModule,
+  workCenterModule,
+  machineModule,
+  scheduleModule,
+  executionModule,
+  qualityModule,
+  costingModule,
+} from './modules/manufacturing/manufacturingInstances';
 import { notificationScheduler } from '../services/notificationScheduler';
 import { buildOrgGraph, orgGraphNeighbors } from './graph/orgGraph';
 import { evaluateCompliance, type ComplianceInput } from './governance/enterpriseGovernance';
@@ -212,6 +222,14 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(shippingModule); // Warehouse → Shipping
   modules.registry.register(cycleCountModule); // Warehouse → Cycle Counts
   modules.registry.register(stockAdjustmentModule); // Warehouse → Stock Adjustments
+  modules.registry.register(bomModule); // Manufacturing → Bill of Materials
+  modules.registry.register(productionOrderModule); // Manufacturing → Production Orders
+  modules.registry.register(workCenterModule); // Manufacturing → Work Centers
+  modules.registry.register(machineModule); // Manufacturing → Machines
+  modules.registry.register(scheduleModule); // Manufacturing → Production Scheduling
+  modules.registry.register(executionModule); // Manufacturing → Production Execution
+  modules.registry.register(qualityModule); // Manufacturing → Quality Inspection
+  modules.registry.register(costingModule); // Manufacturing → Production Costing
   await Promise.all([
     invoiceModule.store.load(),
     contactModule.store.load(),
@@ -235,6 +253,14 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     shippingModule.store.load(),
     cycleCountModule.store.load(),
     stockAdjustmentModule.store.load(),
+    bomModule.store.load(),
+    productionOrderModule.store.load(),
+    workCenterModule.store.load(),
+    machineModule.store.load(),
+    scheduleModule.store.load(),
+    executionModule.store.load(),
+    qualityModule.store.load(),
+    costingModule.store.load(),
   ]);
 
   return {

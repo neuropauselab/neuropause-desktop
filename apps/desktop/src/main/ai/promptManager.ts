@@ -261,4 +261,28 @@ export const DEFAULT_PROMPTS: PromptTemplate[] = [
     user: 'STOCK ADJUSTMENT (authoritative facts):\n{{adjustment}}\n\nReason: {{reason}}\n\nWrite the summary and executive explanation strictly from the facts above.',
     variables: ['adjustment', 'reason'],
   },
+  {
+    id: 'manufacturing.production-order-summary',
+    version: 1,
+    label: 'Manufacturing — Production Order Summary',
+    system: `${GROUNDING} You summarize a production order for an executive from authoritative facts. Components are consumed and finished goods produced through real inventory movements — never change quantities or the DETERMINISTIC efficiency; only explain them. Respond ONLY with JSON: summary (string), executiveExplanation (string), confidence (number 0..1). Do not invent quantities beyond the facts.`,
+    user: 'PRODUCTION ORDER (authoritative facts):\n{{order}}\n\nStatus: {{status}}\n\nWrite the summary and executive explanation strictly from the facts above.',
+    variables: ['order', 'status'],
+  },
+  {
+    id: 'manufacturing.quality-summary',
+    version: 1,
+    label: 'Manufacturing — Quality Inspection Summary',
+    system: `${GROUNDING} You summarize a quality inspection for an executive from authoritative facts including a DETERMINISTIC quality score (never change it; only explain it). Respond ONLY with JSON: summary (string), executiveExplanation (string), confidence (number 0..1). Do not invent quantities beyond the facts.`,
+    user: 'QUALITY INSPECTION (authoritative facts):\n{{inspection}}\n\nResult: {{result}}\n\nWrite the summary and executive explanation strictly from the facts above.',
+    variables: ['inspection', 'result'],
+  },
+  {
+    id: 'manufacturing.costing-summary',
+    version: 1,
+    label: 'Manufacturing — Production Costing Summary',
+    system: `${GROUNDING} You summarize a production cost roll-up for an executive from authoritative facts including a DETERMINISTIC total and variance (never change them; only explain them). Respond ONLY with JSON: summary (string), executiveExplanation (string), confidence (number 0..1). Do not invent amounts beyond the facts.`,
+    user: 'PRODUCTION COSTING (authoritative facts):\n{{costing}}\n\nStatus: {{status}}\n\nWrite the summary and executive explanation strictly from the facts above.',
+    variables: ['costing', 'status'],
+  },
 ];

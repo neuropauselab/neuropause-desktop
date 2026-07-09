@@ -33,6 +33,7 @@ import {
   deriveProcurementInsights,
   deriveQuoteInsights,
   deriveWarehouseInsights,
+  deriveManufacturingInsights,
   contactFromRecord,
   customerFromRecord,
   goodsReceiptFromRecord,
@@ -52,6 +53,11 @@ import {
   shippingFromRecord,
   cycleCountFromRecord,
   stockAdjustmentFromRecord,
+  productionOrderFromRecord,
+  machineFromRecord,
+  workCenterFromRecord,
+  qualityInspectionFromRecord,
+  productionCostingFromRecord,
   type UnifiedItemLite,
 } from '@neuropause/shared';
 import { contactModule } from './modules/crm/contactModuleInstance';
@@ -77,6 +83,13 @@ import {
   cycleCountModule,
   stockAdjustmentModule,
 } from './modules/warehouse/warehouseInstances';
+import {
+  productionOrderModule,
+  machineModule,
+  workCenterModule,
+  qualityModule,
+  costingModule,
+} from './modules/manufacturing/manufacturingInstances';
 import { buildExecutiveRecommendations, buildExecutiveSummary } from './executiveRecommendations';
 import type { MonthlyTrend } from '@neuropause/shared';
 
@@ -228,6 +241,16 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
           cycleCounts: cycleCountModule.store.list({ status: 'active', limit: 5000 }).map(cycleCountFromRecord),
           adjustments: stockAdjustmentModule.store.list({ status: 'active', limit: 5000 }).map(stockAdjustmentFromRecord),
           products: productModule.store.list({ status: 'active', limit: 5000 }).map(productFromRecord),
+        }),
+      // Manufacturing KPIs — production orders + machines + quality + costing + work
+      // centers (finished goods + component consumption flow through the ledger).
+      manufacturingInsights: () =>
+        deriveManufacturingInsights({
+          orders: productionOrderModule.store.list({ status: 'active', limit: 5000 }).map(productionOrderFromRecord),
+          machines: machineModule.store.list({ status: 'active', limit: 5000 }).map(machineFromRecord),
+          qualityInspections: qualityModule.store.list({ status: 'active', limit: 5000 }).map(qualityInspectionFromRecord),
+          costings: costingModule.store.list({ status: 'active', limit: 5000 }).map(productionCostingFromRecord),
+          workCenters: workCenterModule.store.list({ status: 'active', limit: 5000 }).map(workCenterFromRecord),
         }),
       // V2.9: feed last week's health from the persisted history store so Weekly
       // Trends is live. Returns null until ≥1 older datapoint exists.
