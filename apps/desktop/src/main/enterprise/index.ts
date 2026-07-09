@@ -73,6 +73,9 @@ import { leadModule } from './modules/crm/leadModuleInstance';
 import { customerModule } from './modules/crm/customerModuleInstance';
 import { quoteModule } from './modules/sales/quoteModuleInstance';
 import { orderModule } from './modules/sales/orderModuleInstance';
+import { productModule } from './modules/inventory/productModuleInstance';
+import { warehouseModule } from './modules/inventory/warehouseModuleInstance';
+import { stockMovementModule } from './modules/inventory/stockMovementModuleInstance';
 import { notificationScheduler } from '../services/notificationScheduler';
 import { buildOrgGraph, orgGraphNeighbors } from './graph/orgGraph';
 import { evaluateCompliance, type ComplianceInput } from './governance/enterpriseGovernance';
@@ -178,6 +181,9 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(quoteModule); // Sales → Quotes
   modules.registry.register(orderModule); // Sales → Orders (conversion target)
   modules.registry.register(paymentModule); // Finance → Payments
+  modules.registry.register(productModule); // Inventory → Products
+  modules.registry.register(warehouseModule); // Inventory → Warehouses
+  modules.registry.register(stockMovementModule); // Inventory → Stock Movements (ledger)
   await Promise.all([
     invoiceModule.store.load(),
     contactModule.store.load(),
@@ -186,6 +192,9 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     quoteModule.store.load(),
     orderModule.store.load(),
     paymentModule.store.load(),
+    productModule.store.load(),
+    warehouseModule.store.load(),
+    stockMovementModule.store.load(),
   ]);
 
   return {

@@ -197,4 +197,20 @@ export const DEFAULT_PROMPTS: PromptTemplate[] = [
     user: 'PAYMENT (authoritative facts):\n{{payment}}\n\nComputed health: {{health}} — {{healthReason}}\n\nWrite the summary and executive explanation strictly from the facts above.',
     variables: ['payment', 'health', 'healthReason'],
   },
+  {
+    id: 'inventory.product-summary',
+    version: 1,
+    label: 'Inventory — Product Summary',
+    system: `${GROUNDING} You summarize a single inventory product for an executive. You are given the product's authoritative facts (all stock figures are DERIVED from the movement ledger) plus a DETERMINISTIC stock-health status and reorder requirement — never change those numbers; only explain them. Respond ONLY with a JSON object: summary (string — one or two plain sentences on the stock position, health, and whether reordering is needed), executiveExplanation (string — one sentence on the stock value and risk), confidence (number 0..1). Do not invent quantities or costs beyond the facts given.`,
+    user: 'PRODUCT (authoritative facts):\n{{product}}\n\nStock health: {{health}} — {{healthReason}}\n\nWrite the summary and executive explanation strictly from the facts above.',
+    variables: ['product', 'health', 'healthReason'],
+  },
+  {
+    id: 'inventory.movement-summary',
+    version: 1,
+    label: 'Inventory — Movement Summary',
+    system: `${GROUNDING} You summarize a single stock movement for an executive. You are given the movement's authoritative facts and its DETERMINISTIC on-hand effect — never change the effect; only explain it. Respond ONLY with a JSON object: summary (string — one plain sentence on what moved, where, and why), executiveExplanation (string — one sentence on the inventory impact), confidence (number 0..1). Do not invent quantities beyond the facts given.`,
+    user: 'MOVEMENT (authoritative facts):\n{{movement}}\n\nType: {{type}}\n\nWrite the summary and executive explanation strictly from the facts above.',
+    variables: ['movement', 'type'],
+  },
 ];

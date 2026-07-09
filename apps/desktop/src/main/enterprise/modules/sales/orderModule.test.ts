@@ -68,6 +68,7 @@ describe('descriptor', () => {
       expect(ORDER_DESCRIPTOR.fields.find((f) => f.key === key)?.readOnly).toBe(true);
     }
     expect(ORDER_DESCRIPTOR.actions?.map((a) => a.key)).toEqual([
+      'reserveStock',
       'ship',
       'fulfill',
       'close',
@@ -410,6 +411,7 @@ describe('AI summary', () => {
     const o = summaries.find((s) => s.id === 'sales-orders');
     expect(o).toMatchObject({ aiSummary: true });
     expect(o?.actions.map((a) => a.key)).toEqual([
+      'reserveStock',
       'ship',
       'fulfill',
       'close',

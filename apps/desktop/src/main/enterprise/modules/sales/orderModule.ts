@@ -41,6 +41,12 @@ import {
   type EnterpriseModule,
 } from '../../framework';
 import { CONVERT_TO_INVOICE_ACTION, convertOrderToInvoice } from './conversion';
+import {
+  RESERVE_STOCK_ACTION,
+  releaseOrderStock,
+  reserveOrderStock,
+  shipOrderStock,
+} from './inventoryLink';
 
 /** The declarative description of a sales order — drives store, CRUD, and the UI. */
 export const ORDER_DESCRIPTOR: EnterpriseModuleDescriptor = {
@@ -54,6 +60,7 @@ export const ORDER_DESCRIPTOR: EnterpriseModuleDescriptor = {
   titleField: 'orderNumber',
   permissions: { read: 'sales:read', write: 'sales:manage' },
   actions: [
+    { key: RESERVE_STOCK_ACTION, label: 'Reserve Stock', icon: 'pin' },
     { key: 'ship', label: 'Ship', icon: 'upload' },
     { key: 'fulfill', label: 'Fulfill', icon: 'check' },
     { key: 'close', label: 'Close', icon: 'lock' },
@@ -84,6 +91,8 @@ export const ORDER_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'expectedDeliveryDate', label: 'Expected Delivery', type: 'date', format: 'date' },
     { key: 'orderedQty', label: 'Ordered Qty', type: 'number', min: 0, column: false },
     { key: 'fulfilledQty', label: 'Fulfilled Qty', type: 'number', min: 0, column: false },
+    { key: 'product', label: 'Product (SKU)', type: 'text', column: false },
+    { key: 'warehouse', label: 'Warehouse', type: 'text', column: false },
     { key: 'fulfillmentPct', label: 'Fulfilled %', type: 'number', readOnly: true },
     { key: 'shipmentProgress', label: 'Shipment %', type: 'number', column: false, readOnly: true },
     {
@@ -206,6 +215,8 @@ export function createOrderModule(storePath: string, aiRunner?: OrderAiRunner): 
       runAction: async (action, record, actionCtx) => {
         // Cross-module: raise a Finance invoice from this order.
         if (action === CONVERT_TO_INVOICE_ACTION) return convertOrderToInvoice(record, actionCtx);
+        // Cross-module: reserve stock in the inventory ledger (no status change).
+        if (action === RESERVE_STOCK_ACTION) return reserveOrderStock(record, actionCtx);
         const key = action as OrderAction;
         if (!ACTION_DONE[key]) return { ok: false, error: `Unknown action "${action}".` };
         const order = orderFromRecord(record);
@@ -226,6 +237,9 @@ export function createOrderModule(storePath: string, aiRunner?: OrderAiRunner): 
         if (!updated) return { ok: false, error: 'Order not found.' };
         const self = actionCtx.moduleFor(ORDERS_MODULE_ID);
         if (self) actionCtx.emit(self, 'updated', updated);
+        // Inventory side-effects — post real stock movements (no-op without linkage).
+        if (key === 'ship') await shipOrderStock(updated, actionCtx);
+        else if (key === 'cancel') await releaseOrderStock(updated, actionCtx);
         return { ok: true, message: `Order ${order.orderNumber} ${ACTION_DONE[key]}.` };
       },
     },
