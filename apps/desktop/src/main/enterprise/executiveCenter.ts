@@ -152,6 +152,8 @@ export interface ExecutiveCenterSources {
   handoffInsights?: () => HandoffInsights | undefined;
   /** Process Mining KPIs (reconstructed process cycle/delay/health) → Executive Center tiles (optional). */
   processInsights?: () => ProcessInsights | undefined;
+  /** Process Explorer KPIs (top bottleneck / slowest / fastest / most-automated / …) — pre-built tiles (optional). */
+  processExplorerKpis?: () => ExecutiveKpi[] | undefined;
 }
 
 /** The minimal timeline fields the composer reads (kept local; no new dep). */
@@ -385,6 +387,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
   const approvalInsightsForKpis = sources.approvalInsights?.();
   const handoffInsightsForKpis = sources.handoffInsights?.();
   const processInsightsForKpis = sources.processInsights?.();
+  const processExplorerKpisForKpis = sources.processExplorerKpis?.();
   const enterprise = enterpriseInsights({
     knowledge: sources.knowledgeHealth?.(),
     memory: sources.memoryCounts?.(),
@@ -423,6 +426,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
       ...(approvalInsightsForKpis ? approvalInsightsToKpis(approvalInsightsForKpis) : []),
       ...(handoffInsightsForKpis ? handoffInsightsToKpis(handoffInsightsForKpis) : []),
       ...(processInsightsForKpis ? processInsightsToKpis(processInsightsForKpis) : []),
+      ...(processExplorerKpisForKpis ?? []),
     ],
     enterprise,
     orgHealth: scores,

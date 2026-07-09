@@ -60,7 +60,7 @@ import {
   executiveDecisionFromRecord,
   deriveHandoffInsights,
   executionProposalFromRecord,
-  assessProcessMining,
+  deriveProcessExplorerKpis,
   contactFromRecord,
   customerFromRecord,
   goodsReceiptFromRecord,
@@ -103,11 +103,9 @@ import { productModule } from './modules/inventory/productModuleInstance';
 import { warehouseModule } from './modules/inventory/warehouseModuleInstance';
 import {
   supplierModule,
-  purchaseRequestModule,
   purchaseOrderModule,
   goodsReceiptModule,
 } from './modules/procurement/procurementInstances';
-import { stockMovementModule } from './modules/inventory/stockMovementModuleInstance';
 import {
   binModule,
   transferOrderModule,
@@ -125,7 +123,6 @@ import {
   costingModule,
   executionModule,
   manufacturingEventModule,
-  scheduleModule,
 } from './modules/manufacturing/manufacturingInstances';
 import {
   assetModule,
@@ -138,6 +135,7 @@ import { buildExecutiveRecommendations, buildExecutiveSummary } from './executiv
 import { collectPlanningModel } from './planningModel';
 import { executiveDecisionModule } from './modules/executive/executiveDecisionInstance';
 import { executionProposalModule } from './modules/executive/executionProposalInstance';
+import { getProcessAssessment } from './processMiningProvider';
 import type { MonthlyTrend } from '@neuropause/shared';
 
 const log = createLogger('executive-center');
@@ -229,26 +227,11 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
     // + six executive scores. Reuses the Twin's cached baseline (no duplicate scheduling). Read-only;
     // nothing executes — human approval remains mandatory.
     const decisionEngine = assessDecisionEngine(planningInput, routings, nowMs, digitalTwin);
-    // Enterprise Process Mining — reconstruct the REAL end-to-end processes (order-to-cash, procure-to-pay,
-    // make-to-complete) from the production records the modules already persist, following ONLY the real
-    // cross-module link fields. Read-only, deterministic, single linear pass. Computed ONCE here and reused
-    // for the process KPIs + the process recommendations. Reuses the existing record reads; no new store.
-    const RM = 20000; // process-mining read window (bounded; the engine itself is linear beyond this)
-    const processMining = assessProcessMining({
-      leads: leadModule.store.list({ status: 'active', limit: RM }),
-      contacts: contactModule.store.list({ status: 'active', limit: RM }),
-      customers: customerModule.store.list({ status: 'active', limit: RM }),
-      quotes: quoteModule.store.list({ status: 'active', limit: RM }),
-      orders: orderModule.store.list({ status: 'active', limit: RM }),
-      invoices: invoiceModule.store.list({ status: 'active', limit: RM }),
-      payments: paymentModule.store.list({ status: 'active', limit: RM }),
-      purchaseRequests: purchaseRequestModule.store.list({ status: 'active', limit: RM }),
-      purchaseOrders: purchaseOrderModule.store.list({ status: 'active', limit: RM }),
-      goodsReceipts: goodsReceiptModule.store.list({ status: 'active', limit: RM }),
-      movements: stockMovementModule.store.list({ status: 'active', limit: RM }),
-      productionOrders: productionOrderModule.store.list({ status: 'active', limit: RM }),
-      schedules: scheduleModule.store.list({ status: 'active', limit: RM }),
-    });
+    // Enterprise Process Mining — the REAL end-to-end processes (order-to-cash, procure-to-pay,
+    // make-to-complete) reconstructed from the production records. Read through the CACHED provider so the
+    // assessment is computed one way and reused by both these KPIs and the Process Explorer queries — no
+    // duplicate mining, no rescanning. Read-only, deterministic.
+    const processMining = getProcessAssessment();
     // computeOrgHealth is what the composer uses; import lazily via the composer's
     // own path would duplicate — instead record after compose but read current from
     // the freshly-composed snapshot (below), and expose monthly via a closure that
@@ -396,6 +379,9 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       // Process Mining KPIs — reconstructed process cycle / waiting / approval-production-purchase-revenue
       // delays / health / automation coverage (precomputed; read-only over real records).
       processInsights: () => processMining.insights,
+      // Process Explorer KPIs — top bottleneck / slowest / fastest case / most-automated / delayed-approval
+      // / highest-rework, derived from the SAME cached assessment (nothing re-mined).
+      processExplorerKpis: () => deriveProcessExplorerKpis(processMining),
       // V2.9: feed last week's health from the persisted history store so Weekly
       // Trends is live. Returns null until ≥1 older datapoint exists.
       previousWeek: () => {

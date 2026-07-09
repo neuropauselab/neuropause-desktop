@@ -24,6 +24,7 @@ export type EnterpriseTab =
   | 'decision'
   | 'organization'
   | 'operations'
+  | 'process'
   | 'modules'
   | 'search'
   | 'workspace'

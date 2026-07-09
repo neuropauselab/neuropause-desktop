@@ -25,6 +25,8 @@ import type {
   EnterpriseGovernanceSetChainRequest as TSetChain,
   EnterpriseGovernanceSetRuleRequest as TSetRule,
   EnterpriseGovernanceAuditRequest as TAudit,
+  EnterpriseProcessExploreRequest as TProcessExplore,
+  EnterpriseProcessCaseRequest as TProcessCase,
   AuthStatus,
   EnterprisePermission,
   Organization,
@@ -51,6 +53,8 @@ import {
   EnterpriseGovernanceSetChainRequest,
   EnterpriseGovernanceSetRuleRequest,
   EnterpriseGovernanceAuditRequest,
+  EnterpriseProcessExploreRequest,
+  EnterpriseProcessCaseRequest,
 } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
@@ -118,6 +122,7 @@ import {
 } from './modules/maintenance/maintenanceInstances';
 import { executiveDecisionModule } from './modules/executive/executiveDecisionInstance';
 import { executionProposalModule } from './modules/executive/executionProposalInstance';
+import { getProcessExplorerModel, getProcessCaseDetail } from './processMiningProvider';
 import { notificationScheduler } from '../services/notificationScheduler';
 import { buildOrgGraph, orgGraphNeighbors } from './graph/orgGraph';
 import { evaluateCompliance, type ComplianceInput } from './governance/enterpriseGovernance';
@@ -722,6 +727,19 @@ function buildHandlers(): SecureHandlerDef[] {
       channel: IpcChannel.EnterpriseDashboard,
       schema: EmptyRequest,
       handler: () => buildSnapshot(),
+    },
+
+    // Process Explorer — read-only projections of the mined processes. No mining, no writes: both
+    // read through the cached Process Mining provider (reuses the one assessment; never rescans).
+    {
+      channel: IpcChannel.EnterpriseProcessExplore,
+      schema: EnterpriseProcessExploreRequest,
+      handler: (p) => getProcessExplorerModel(p as TProcessExplore),
+    },
+    {
+      channel: IpcChannel.EnterpriseProcessCase,
+      schema: EnterpriseProcessCaseRequest,
+      handler: (p) => getProcessCaseDetail((p as TProcessCase).id),
     },
   ];
 }

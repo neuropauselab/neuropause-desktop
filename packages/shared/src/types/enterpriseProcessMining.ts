@@ -703,3 +703,371 @@ export function assessProcessMining(input: ProcessMiningInput): ProcessMiningAss
   const narrative = summarizeProcessMining(insights, metrics);
   return { traces, graph, metrics, insights, recommendations, narrative };
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════════════
+ * Process EXPLORER projection — a pure, read-only VIEW over the mined assessment (the engine above is
+ * unchanged). It mines nothing new and recomputes no metric differently: it reshapes `assessProcessMining`
+ * output into a filterable case list, per-case detail, discovered-graph payload, business-dimension
+ * facets, and six explorer KPIs — joining each case's stages back to the real input records only to read
+ * their existing business dimensions (customer / supplier / product / machine / work-center / warehouse).
+ * Deterministic. Creates nothing, mutates nothing, executes nothing.
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════════ */
+
+export type ProcessRiskBand = 'low' | 'medium' | 'high';
+
+export interface ProcessDimensions {
+  customers: string[];
+  suppliers: string[];
+  products: string[];
+  machines: string[];
+  workCenters: string[];
+  warehouses: string[];
+}
+
+export interface ProcessCaseSummary {
+  caseId: string;
+  processType: ProcessType;
+  processLabel: string;
+  /** The most salient business key for the case (customer / supplier / product, else the first record). */
+  label: string;
+  status: string;
+  completed: boolean;
+  riskBand: ProcessRiskBand;
+  stageCount: number;
+  firstActivity: string;
+  lastActivity: string;
+  startedAtMs: number;
+  endedAtMs: number;
+  cycleHours: number;
+  waitingHours: number;
+  processingHours: number;
+  automationPct: number;
+  reworkCount: number;
+  resource: string;
+  dimensions: ProcessDimensions;
+}
+
+export interface ProcessCaseStage {
+  index: number;
+  activity: string;
+  moduleId: string;
+  recordId: string;
+  recordKey: string;
+  timestampMs: number;
+  timestampIso: string;
+  resource: string;
+  status: string;
+  automated: boolean;
+  approvalGate: boolean;
+  terminal: boolean;
+  waitFromPrevHours: number;
+  processingHours: number;
+}
+
+export interface ProcessCaseDetail {
+  summary: ProcessCaseSummary;
+  stages: ProcessCaseStage[];
+  /** The mined recommendations that concern this case's process (reused, not recomputed). */
+  recommendations: ExecutiveRecommendation[];
+  explanation: string;
+  rootCause: string;
+  optimizations: string[];
+  nextActions: string[];
+}
+
+export interface ProcessFacetValue {
+  value: string;
+  count: number;
+}
+export interface ProcessExplorerFacets {
+  processTypes: ProcessFacetValue[];
+  statuses: ProcessFacetValue[];
+  riskBands: ProcessFacetValue[];
+  customers: ProcessFacetValue[];
+  suppliers: ProcessFacetValue[];
+  products: ProcessFacetValue[];
+  machines: ProcessFacetValue[];
+  workCenters: ProcessFacetValue[];
+  warehouses: ProcessFacetValue[];
+}
+
+export interface ProcessExplorerFilter {
+  processType?: ProcessType;
+  status?: string;
+  riskBand?: ProcessRiskBand;
+  customer?: string;
+  supplier?: string;
+  product?: string;
+  machine?: string;
+  workCenter?: string;
+  warehouse?: string;
+  search?: string;
+  sinceMs?: number;
+  untilMs?: number;
+  limit?: number;
+  offset?: number;
+}
+
+export interface ProcessExplorerModel {
+  graph: ProcessGraph;
+  metrics: { byType: ProcessMetrics[]; overall: ProcessMetrics };
+  insights: ProcessInsights;
+  /** The nine existing process KPIs (reused). */
+  kpis: ExecutiveKpi[];
+  /** The six explorer KPIs (top bottleneck / slowest / fastest / most-automated / delayed-approval / rework). */
+  explorerKpis: ExecutiveKpi[];
+  narrative: ProcessMiningNarrative;
+  facets: ProcessExplorerFacets;
+  /** The filtered + paginated case summaries. */
+  cases: ProcessCaseSummary[];
+  /** Total cases matching the filter, before pagination (for virtualization). */
+  totalCases: number;
+}
+
+/* ── business-dimension index (read the real fields the records already carry) ────── */
+
+interface RecordDims {
+  customer?: string;
+  supplier?: string;
+  product?: string;
+  machine?: string;
+  workCenter?: string;
+  warehouse?: string;
+}
+
+function indexDimensions(input: ProcessMiningInput): Map<string, RecordDims> {
+  const dim = new Map<string, RecordDims>();
+  const g = (r: EnterpriseEntity, k: string): string => str(r.fields[k]);
+  for (const r of input.customers ?? []) dim.set(r.id, { customer: r.title });
+  for (const r of input.quotes ?? []) dim.set(r.id, { customer: g(r, 'customer'), product: g(r, 'product') });
+  for (const r of input.orders ?? []) dim.set(r.id, { customer: g(r, 'customer'), product: g(r, 'product'), warehouse: g(r, 'warehouse') });
+  for (const r of input.invoices ?? []) dim.set(r.id, { customer: g(r, 'customer') });
+  for (const r of input.purchaseRequests ?? []) dim.set(r.id, { product: g(r, 'product') });
+  for (const r of input.purchaseOrders ?? []) dim.set(r.id, { supplier: g(r, 'supplier'), product: g(r, 'product'), warehouse: g(r, 'warehouse') });
+  for (const r of input.goodsReceipts ?? []) dim.set(r.id, { supplier: g(r, 'supplier'), product: g(r, 'product'), warehouse: g(r, 'warehouse') });
+  for (const r of input.movements ?? []) dim.set(r.id, { product: g(r, 'product'), warehouse: g(r, 'warehouse') });
+  for (const r of input.productionOrders ?? []) dim.set(r.id, { product: g(r, 'product'), machine: g(r, 'machine'), workCenter: g(r, 'workCenter') });
+  for (const r of input.schedules ?? []) dim.set(r.id, { machine: g(r, 'machine'), workCenter: g(r, 'workCenter') });
+  return dim;
+}
+
+function caseRiskBand(trace: ProcessTrace): ProcessRiskBand {
+  const cycleHours = trace.cycleTimeMs / HOUR;
+  if (!trace.completed && cycleHours > 168) return 'high';
+  if (!trace.completed || trace.reworkCount > 0 || cycleHours > 72) return 'medium';
+  return 'low';
+}
+
+/** Build every case summary from the mined traces + the real business dimensions. Pure. */
+export function buildProcessCaseSummaries(assessment: ProcessMiningAssessment, input: ProcessMiningInput): ProcessCaseSummary[] {
+  const dim = indexDimensions(input);
+  return assessment.traces.map((trace) => {
+    const customers = new Set<string>();
+    const suppliers = new Set<string>();
+    const products = new Set<string>();
+    const machines = new Set<string>();
+    const workCenters = new Set<string>();
+    const warehouses = new Set<string>();
+    for (const st of trace.stages) {
+      const d = dim.get(st.recordId);
+      if (!d) continue;
+      if (d.customer) customers.add(d.customer);
+      if (d.supplier) suppliers.add(d.supplier);
+      if (d.product) products.add(d.product);
+      if (d.machine) machines.add(d.machine);
+      if (d.workCenter) workCenters.add(d.workCenter);
+      if (d.warehouse) warehouses.add(d.warehouse);
+    }
+    const first = trace.stages[0];
+    const last = trace.stages[trace.stages.length - 1];
+    const dimensions: ProcessDimensions = {
+      customers: [...customers], suppliers: [...suppliers], products: [...products],
+      machines: [...machines], workCenters: [...workCenters], warehouses: [...warehouses],
+    };
+    const label = dimensions.customers[0] ?? dimensions.suppliers[0] ?? dimensions.products[0] ?? first.recordKey;
+    return {
+      caseId: trace.caseId,
+      processType: trace.processType,
+      processLabel: PROCESS_TYPE_LABEL[trace.processType],
+      label,
+      status: trace.completed ? 'completed' : last.status || 'open',
+      completed: trace.completed,
+      riskBand: caseRiskBand(trace),
+      stageCount: trace.stages.length,
+      firstActivity: first.activity,
+      lastActivity: last.activity,
+      startedAtMs: trace.startedAtMs,
+      endedAtMs: trace.endedAtMs,
+      cycleHours: round(trace.cycleTimeMs / HOUR),
+      waitingHours: round(trace.waitingMs / HOUR),
+      processingHours: round(trace.processingMs / HOUR),
+      automationPct: trace.stages.length > 0 ? clamp(round((trace.stages.filter((s) => s.automated).length / trace.stages.length) * 100), 0, 100) : 0,
+      reworkCount: trace.reworkCount,
+      resource: first.resource,
+      dimensions,
+    };
+  });
+}
+
+function facet(values: string[]): ProcessFacetValue[] {
+  const counts = new Map<string, number>();
+  for (const v of values) if (v) counts.set(v, (counts.get(v) ?? 0) + 1);
+  return [...counts.entries()].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
+}
+
+/** Distinct filterable values (with case counts) across all case summaries. Pure. */
+export function buildProcessExplorerFacets(cases: ProcessCaseSummary[]): ProcessExplorerFacets {
+  const flat = (pick: (c: ProcessCaseSummary) => string[]): string[] => cases.flatMap((c) => [...new Set(pick(c))]);
+  return {
+    processTypes: facet(cases.map((c) => c.processLabel)),
+    statuses: facet(cases.map((c) => c.status)),
+    riskBands: facet(cases.map((c) => c.riskBand)),
+    customers: facet(flat((c) => c.dimensions.customers)),
+    suppliers: facet(flat((c) => c.dimensions.suppliers)),
+    products: facet(flat((c) => c.dimensions.products)),
+    machines: facet(flat((c) => c.dimensions.machines)),
+    workCenters: facet(flat((c) => c.dimensions.workCenters)),
+    warehouses: facet(flat((c) => c.dimensions.warehouses)),
+  };
+}
+
+/** Deterministically filter case summaries. Search matches label / caseId / activities / dimensions. Pure. */
+export function filterProcessCases(cases: ProcessCaseSummary[], filter: ProcessExplorerFilter = {}): ProcessCaseSummary[] {
+  const q = (filter.search ?? '').trim().toLowerCase();
+  const has = (arr: string[], v?: string): boolean => (v === undefined ? true : arr.includes(v));
+  return cases.filter((c) => {
+    if (filter.processType && c.processType !== filter.processType) return false;
+    if (filter.status && c.status !== filter.status) return false;
+    if (filter.riskBand && c.riskBand !== filter.riskBand) return false;
+    if (!has(c.dimensions.customers, filter.customer)) return false;
+    if (!has(c.dimensions.suppliers, filter.supplier)) return false;
+    if (!has(c.dimensions.products, filter.product)) return false;
+    if (!has(c.dimensions.machines, filter.machine)) return false;
+    if (!has(c.dimensions.workCenters, filter.workCenter)) return false;
+    if (!has(c.dimensions.warehouses, filter.warehouse)) return false;
+    if (filter.sinceMs !== undefined && c.endedAtMs < filter.sinceMs) return false;
+    if (filter.untilMs !== undefined && c.startedAtMs > filter.untilMs) return false;
+    if (q) {
+      const hay = [
+        c.label, c.caseId, c.processLabel, c.firstActivity, c.lastActivity, c.status,
+        ...c.dimensions.customers, ...c.dimensions.suppliers, ...c.dimensions.products,
+        ...c.dimensions.machines, ...c.dimensions.workCenters, ...c.dimensions.warehouses,
+      ].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+/** Build the detail view for one case: every stage + the mined recommendations + a deterministic AI read. */
+export function buildProcessCaseDetail(
+  assessment: ProcessMiningAssessment,
+  input: ProcessMiningInput,
+  caseId: string,
+  summaries?: ProcessCaseSummary[],
+): ProcessCaseDetail | null {
+  const trace = assessment.traces.find((t) => t.caseId === caseId);
+  if (!trace) return null;
+  const summary = (summaries ?? buildProcessCaseSummaries(assessment, input)).find((c) => c.caseId === caseId);
+  if (!summary) return null;
+
+  const stages: ProcessCaseStage[] = trace.stages.map((st, i) => ({
+    index: i,
+    activity: st.activity,
+    moduleId: st.moduleId,
+    recordId: st.recordId,
+    recordKey: st.recordKey,
+    timestampMs: st.enteredAtMs,
+    timestampIso: new Date(st.enteredAtMs).toISOString(),
+    resource: st.resource,
+    status: st.status,
+    automated: st.automated,
+    approvalGate: st.approvalGate,
+    terminal: st.terminal,
+    waitFromPrevHours: i === 0 ? 0 : round((st.enteredAtMs - trace.stages[i - 1].enteredAtMs) / HOUR),
+    processingHours: round(st.processingMs / HOUR),
+  }));
+
+  // The case's own longest transition (its internal bottleneck) — deterministic, from real timings.
+  let worst = { from: '', to: '', hours: 0 };
+  for (let i = 0; i < trace.stages.length - 1; i += 1) {
+    const gap = round((trace.stages[i + 1].enteredAtMs - trace.stages[i].enteredAtMs) / HOUR);
+    if (gap > worst.hours) worst = { from: trace.stages[i].activity, to: trace.stages[i + 1].activity, hours: gap };
+  }
+
+  const recommendations = assessment.recommendations.filter((r) => r.id.endsWith(trace.processType) || r.id === 'proc:completion');
+  const explanation =
+    `${summary.processLabel} case "${summary.label}" ran ${summary.stageCount} stage(s) over ${hoursDisplay(summary.cycleHours)}, ` +
+    `${summary.completed ? 'completed' : `open at "${summary.lastActivity}" (${summary.status})`}, automation ${summary.automationPct}%.`;
+  const rootCause =
+    worst.hours > 0
+      ? `The longest wait was ${worst.from} → ${worst.to} (${hoursDisplay(worst.hours)}).`
+      : 'No material waiting between stages was observed.';
+  const optimizations: string[] = [];
+  if (worst.hours > 24) optimizations.push(`Cut the ${worst.from} → ${worst.to} hand-off (${hoursDisplay(worst.hours)}).`);
+  if (summary.reworkCount > 0) optimizations.push(`Remove ${summary.reworkCount} rework loop(s) in this case.`);
+  if (summary.automationPct < 50) optimizations.push(`Automate more of this process (currently ${summary.automationPct}% system-posted).`);
+  if (optimizations.length === 0) optimizations.push('Case is efficient — no material optimization identified.');
+  const nextActions: string[] = summary.completed
+    ? ['None — the case reached a terminal stage.']
+    : [`Advance the case past "${summary.lastActivity}".`];
+
+  return { summary, stages, recommendations, explanation, rootCause, optimizations, nextActions };
+}
+
+/* ── the six explorer KPIs (derived from the mined assessment; never recomputed differently) ──────── */
+
+/** Top Bottleneck, Slowest Case, Fastest Case, Most Automated Process, Most Delayed Approval, Highest Rework. */
+export function deriveProcessExplorerKpis(assessment: ProcessMiningAssessment): ExecutiveKpi[] {
+  const dl = 'enterprise/executive';
+  const { graph, metrics, traces } = assessment;
+
+  const bottleneck = graph.edges.reduce<ProcessGraphEdge | null>((max, e) => (max === null || e.meanDurationMs > max.meanDurationMs ? e : max), null);
+  const bottleneckHours = bottleneck ? round(bottleneck.meanDurationMs / HOUR) : 0;
+
+  const withCycle = traces.filter((t) => t.cycleTimeMs > 0);
+  const slowest = withCycle.reduce<ProcessTrace | null>((max, t) => (max === null || t.cycleTimeMs > max.cycleTimeMs ? t : max), null);
+  const completedCycle = withCycle.filter((t) => t.completed);
+  const fastPool = completedCycle.length > 0 ? completedCycle : withCycle;
+  const fastest = fastPool.reduce<ProcessTrace | null>((min, t) => (min === null || t.cycleTimeMs < min.cycleTimeMs ? t : min), null);
+
+  const mostAutomated = metrics.byType.reduce<ProcessMetrics | null>((max, m) => (max === null || m.automationCoverage > max.automationCoverage ? m : max), null);
+  const mostApproval = metrics.byType.reduce<ProcessMetrics | null>((max, m) => (max === null || m.approvalDelayHours > max.approvalDelayHours ? m : max), null);
+  const mostRework = metrics.byType.reduce<ProcessMetrics | null>((max, m) => (max === null || m.reworkRate > max.reworkRate ? m : max), null);
+
+  const typeLabel = (m: ProcessMetrics | null): string => (m ? PROCESS_TYPE_LABEL[m.processType as ProcessType] : '—');
+  const traceLabel = (t: ProcessTrace | null): string => (t ? PROCESS_TYPE_LABEL[t.processType] : '—');
+
+  return [
+    { key: 'proc-top-bottleneck', label: 'Top Bottleneck', value: bottleneckHours, display: bottleneck ? `${bottleneck.from} → ${bottleneck.to} · ${hoursDisplay(bottleneckHours)}` : '—', band: delayBand(bottleneckHours), deepLink: dl },
+    { key: 'proc-slowest-case', label: 'Slowest Case', value: slowest ? round(slowest.cycleTimeMs / HOUR) : 0, display: slowest ? `${traceLabel(slowest)} · ${hoursDisplay(round(slowest.cycleTimeMs / HOUR))}` : '—', band: delayBand(slowest ? round(slowest.cycleTimeMs / HOUR) : 0), deepLink: dl },
+    { key: 'proc-fastest-case', label: 'Fastest Case', value: fastest ? round(fastest.cycleTimeMs / HOUR) : 0, display: fastest ? `${traceLabel(fastest)} · ${hoursDisplay(round(fastest.cycleTimeMs / HOUR))}` : '—', band: 'healthy', deepLink: dl },
+    { key: 'proc-most-automated', label: 'Most Automated Process', value: mostAutomated ? mostAutomated.automationCoverage : 0, display: mostAutomated ? `${typeLabel(mostAutomated)} · ${mostAutomated.automationCoverage}%` : '—', band: pctBand(mostAutomated ? mostAutomated.automationCoverage : 0), deepLink: dl },
+    { key: 'proc-most-delayed-approval', label: 'Most Delayed Approval', value: mostApproval ? mostApproval.approvalDelayHours : 0, display: mostApproval && mostApproval.approvalDelayHours > 0 ? `${typeLabel(mostApproval)} · ${hoursDisplay(mostApproval.approvalDelayHours)}` : '—', band: delayBand(mostApproval ? mostApproval.approvalDelayHours : 0), deepLink: dl },
+    { key: 'proc-highest-rework', label: 'Highest Rework Process', value: mostRework ? mostRework.reworkRate : 0, display: mostRework && mostRework.reworkRate > 0 ? `${typeLabel(mostRework)} · ${mostRework.reworkRate}%` : '—', band: mostRework && mostRework.reworkRate >= 20 ? 'at-risk' : 'healthy', deepLink: dl },
+  ];
+}
+
+/**
+ * Assemble the full Explorer model in one read-only pass: the discovered graph, the reused metrics /
+ * insights / KPIs / narrative, the business-dimension facets, and the filtered + paginated case list.
+ * Mines nothing new — it projects an existing `ProcessMiningAssessment`.
+ */
+export function buildProcessExplorerModel(assessment: ProcessMiningAssessment, input: ProcessMiningInput, filter: ProcessExplorerFilter = {}): ProcessExplorerModel {
+  const all = buildProcessCaseSummaries(assessment, input);
+  const facets = buildProcessExplorerFacets(all);
+  const filtered = filterProcessCases(all, filter).sort((a, b) => b.cycleHours - a.cycleHours || b.startedAtMs - a.startedAtMs);
+  const offset = Math.max(0, filter.offset ?? 0);
+  const limit = Math.max(1, Math.min(filter.limit ?? 100, 1000));
+  return {
+    graph: assessment.graph,
+    metrics: assessment.metrics,
+    insights: assessment.insights,
+    kpis: processInsightsToKpis(assessment.insights),
+    explorerKpis: deriveProcessExplorerKpis(assessment),
+    narrative: assessment.narrative,
+    facets,
+    cases: filtered.slice(offset, offset + limit),
+    totalCases: filtered.length,
+  };
+}

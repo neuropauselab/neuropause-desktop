@@ -110,6 +110,9 @@ export const ENTERPRISE_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Ente
     [IpcChannel.EnterpriseGovernanceSetChain]: 'governance:manage',
     [IpcChannel.EnterpriseGovernanceSetRule]: 'governance:manage',
     [IpcChannel.EnterpriseDashboard]: 'dashboard:read',
+    // Process Explorer: read-only projections of the mined processes (operations analytics).
+    [IpcChannel.EnterpriseProcessExplore]: 'operations:read',
+    [IpcChannel.EnterpriseProcessCase]: 'operations:read',
     // Enterprise Module Framework: listing which modules exist is metadata-only.
     [IpcChannel.EnterpriseModulesList]: 'operations:read',
   };

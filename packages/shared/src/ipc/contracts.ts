@@ -908,6 +908,27 @@ export const EnterpriseGovernanceAuditRequest = z.object({
   limit: z.number().int().min(1).max(500).optional(),
 });
 
+/** Process Explorer query — read-only filter over the mined cases (all fields optional). */
+export const EnterpriseProcessExploreRequest = z
+  .object({
+    processType: z.enum(['order_to_cash', 'procure_to_pay', 'make_to_complete']).optional(),
+    status: z.string().trim().max(64).optional(),
+    riskBand: z.enum(['low', 'medium', 'high']).optional(),
+    customer: z.string().trim().max(256).optional(),
+    supplier: z.string().trim().max(256).optional(),
+    product: z.string().trim().max(256).optional(),
+    machine: z.string().trim().max(256).optional(),
+    workCenter: z.string().trim().max(256).optional(),
+    warehouse: z.string().trim().max(256).optional(),
+    search: z.string().trim().max(256).optional(),
+    sinceMs: z.number().int().nonnegative().optional(),
+    untilMs: z.number().int().nonnegative().optional(),
+    limit: z.number().int().min(1).max(1000).optional(),
+    offset: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+export const EnterpriseProcessCaseRequest = z.object({ id: EntId }).strict();
+
 export type EnterpriseOrgCreateUnitRequest = z.infer<typeof EnterpriseOrgCreateUnitRequest>;
 export type EnterpriseOrgUpdateUnitRequest = z.infer<typeof EnterpriseOrgUpdateUnitRequest>;
 export type EnterpriseOrgDeleteUnitRequest = z.infer<typeof EnterpriseOrgDeleteUnitRequest>;
@@ -920,6 +941,8 @@ export type EnterpriseOrgDeleteRoleRequest = z.infer<typeof EnterpriseOrgDeleteR
 export type EnterpriseWorkspaceCreateRequest = z.infer<typeof EnterpriseWorkspaceCreateRequest>;
 export type EnterpriseWorkspaceSwitchRequest = z.infer<typeof EnterpriseWorkspaceSwitchRequest>;
 export type EnterpriseGraphNeighborsRequest = z.infer<typeof EnterpriseGraphNeighborsRequest>;
+export type EnterpriseProcessExploreRequest = z.infer<typeof EnterpriseProcessExploreRequest>;
+export type EnterpriseProcessCaseRequest = z.infer<typeof EnterpriseProcessCaseRequest>;
 export type EnterpriseGovernanceSetChainRequest = z.infer<
   typeof EnterpriseGovernanceSetChainRequest
 >;

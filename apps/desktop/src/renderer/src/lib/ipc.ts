@@ -212,6 +212,9 @@ import type {
   EnterpriseModuleActionResult,
   EnterpriseModuleEvent,
   EnterpriseRecordSummary,
+  ProcessExplorerModel,
+  ProcessExplorerFilter,
+  ProcessCaseDetail,
 } from '@neuropause/shared';
 
 type OAuthProviderId = Exclude<AuthProviderId, 'email'>;
@@ -977,6 +980,13 @@ export const ipc = {
       invoke(IpcChannel.EnterpriseGovernanceAudit, { limit }) as Promise<EnterpriseAuditEntry[]>,
 
     dashboard: () => invoke(IpcChannel.EnterpriseDashboard) as Promise<ExecutiveSnapshot>,
+
+    /** Process Explorer — read-only projection of the mined processes (graph + filtered case list + KPIs). */
+    processExplore: (filter?: ProcessExplorerFilter) =>
+      invoke(IpcChannel.EnterpriseProcessExplore, filter ?? {}) as Promise<ProcessExplorerModel>,
+    /** Process Explorer — full detail for one reconstructed case. */
+    processCase: (id: string) =>
+      invoke(IpcChannel.EnterpriseProcessCase, { id }) as Promise<ProcessCaseDetail | null>,
 
     onEvent: (cb: (e: { kind: string; at: string }) => void) =>
       subscribe(IpcChannel.EnterpriseEventBroadcast, (p) => cb(p as { kind: string; at: string })),

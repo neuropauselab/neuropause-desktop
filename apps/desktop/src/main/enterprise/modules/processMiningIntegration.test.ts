@@ -6,6 +6,8 @@ import { randomUUID } from 'node:crypto';
 import {
   IpcChannel,
   assessProcessMining,
+  buildProcessExplorerModel,
+  buildProcessCaseDetail,
   type EnterpriseEntity,
   type EnterprisePermission,
   type PlatformEventInput,
@@ -110,5 +112,37 @@ describe('Process Mining reconstructs from the SAME records that feed Timeline +
     // Two independent cases (a lone quote + a lone order), never merged.
     expect(assessment.traces).toHaveLength(2);
     expect(assessment.traces.every((t) => t.stages.length === 1)).toBe(true);
+  });
+});
+
+describe('Process Explorer projects the SAME live records (timeline + audit deep-links) and writes nothing', () => {
+  it('builds the explorer model + case detail from live records, and mining/projection emits nothing', async () => {
+    const quote = await createIn('sales-quotes', { quoteNumber: 'Q-1', customer: 'Acme' });
+    const order = await createIn('sales-orders', { orderNumber: 'SO-1', customer: 'Acme', sourceQuote: quote.record!.id });
+    await createIn('finance', { number: 'INV-1', customer: 'Acme', amount: 100, sourceOrder: order.record!.id });
+
+    const publishedBefore = rec.publish.length;
+    const auditBefore = rec.audit.length;
+    const countsBefore = [listOf('sales-quotes').length, listOf('sales-orders').length, listOf('finance').length];
+
+    const input = miningInput();
+    const assessment = assessProcessMining(input);
+    const model = buildProcessExplorerModel(assessment, input);
+
+    // Graph generated from the live records + a case surfaced with its business dimension (customer).
+    expect(model.graph.nodes.map((n) => n.activity)).toEqual(expect.arrayContaining(['Quote', 'Order', 'Invoice']));
+    expect(model.cases).toHaveLength(1);
+    expect(model.cases[0].dimensions.customers).toContain('Acme');
+
+    // Case detail carries the deep-link handles into the existing Timeline / Audit / Search: the SAME
+    // record ids that emitted the platform + audit events above.
+    const detail = buildProcessCaseDetail(assessment, input, model.cases[0].caseId);
+    expect(detail!.stages.map((s) => s.recordId)).toContain(order.record!.id);
+    expect(detail!.stages.every((s) => s.moduleId && s.recordKey)).toBe(true);
+
+    // Read-only proof: exploring emitted no timeline/audit events and changed no store.
+    expect(rec.publish.length).toBe(publishedBefore);
+    expect(rec.audit.length).toBe(auditBefore);
+    expect([listOf('sales-quotes').length, listOf('sales-orders').length, listOf('finance').length]).toEqual(countsBefore);
   });
 });

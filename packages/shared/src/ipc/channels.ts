@@ -276,6 +276,10 @@ export const IpcChannel = {
   EnterpriseGovernanceSetRule: 'enterprise:governance.setRule',
   EnterpriseGovernanceAudit: 'enterprise:governance.audit',
   EnterpriseDashboard: 'enterprise:dashboard',
+  /** Process Explorer — read-only projection of the mined processes (graph + filtered case list + KPIs). */
+  EnterpriseProcessExplore: 'enterprise:process.explore',
+  /** Process Explorer — full detail for one reconstructed case (every stage + mined recommendations). */
+  EnterpriseProcessCase: 'enterprise:process.case',
   EnterpriseEventBroadcast: 'enterprise:event',
 
   // ── Enterprise Module Framework (ERP foundation) ──
@@ -708,6 +712,8 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.EnterpriseGovernanceSetRule,
   IpcChannel.EnterpriseGovernanceAudit,
   IpcChannel.EnterpriseDashboard,
+  IpcChannel.EnterpriseProcessExplore,
+  IpcChannel.EnterpriseProcessCase,
   IpcChannel.EnterpriseModulesList,
   IpcChannel.EnterpriseModuleList,
   IpcChannel.EnterpriseModuleGet,
