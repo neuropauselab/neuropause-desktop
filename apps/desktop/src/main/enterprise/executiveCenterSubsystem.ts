@@ -38,6 +38,8 @@ import {
   deriveFulfillmentInsights,
   derivePlanningInsights,
   planningRecommendations,
+  deriveMrpInsights,
+  mrpRecommendations,
   contactFromRecord,
   customerFromRecord,
   goodsReceiptFromRecord,
@@ -310,6 +312,8 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
         }),
       // Enterprise Planning KPIs — deterministic cross-domain intelligence (precomputed).
       planningInsights: () => planningInsights,
+      // Multi-level MRP KPIs — recursive BOM explosion over the same planning input.
+      mrpInsights: () => deriveMrpInsights(planningInput),
       // V2.9: feed last week's health from the persisted history store so Weekly
       // Trends is live. Returns null until ≥1 older datapoint exists.
       previousWeek: () => {
@@ -341,6 +345,8 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       // Planning recommendations (MRP shortages, safety-stock, capacity) — deterministic,
       // surfaced through the existing recommendation + timeline system.
       ...planningRecommendations(planningInput),
+      // Multi-level MRP recommendations (dependent purchase/production, BOM cycles).
+      ...mrpRecommendations(planningInput),
     ];
     snap.recommendations = recommendations;
     snap.executiveSummary = buildExecutiveSummary(snap, recommendations);

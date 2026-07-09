@@ -28,6 +28,7 @@ import {
   maintenanceInsightsToKpis,
   fulfillmentInsightsToKpis,
   planningInsightsToKpis,
+  mrpInsightsToKpis,
   quoteInsightsToKpis,
   type CrmModuleInsights,
   type CustomerModuleInsights,
@@ -42,6 +43,7 @@ import {
   type MaintenanceModuleInsights,
   type FulfillmentModuleInsights,
   type PlanningModuleInsights,
+  type MrpModuleInsights,
   type QuoteModuleInsights,
   type ExecutiveCard,
   type ExecutiveKpi,
@@ -108,6 +110,8 @@ export interface ExecutiveCenterSources {
   fulfillmentInsights?: () => FulfillmentModuleInsights | undefined;
   /** Enterprise planning insights → Executive Center KPI tiles (optional). */
   planningInsights?: () => PlanningModuleInsights | undefined;
+  /** Multi-level MRP insights → Executive Center KPI tiles (optional). */
+  mrpInsights?: () => MrpModuleInsights | undefined;
 }
 
 /** The minimal timeline fields the composer reads (kept local; no new dep). */
@@ -330,6 +334,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
   const maintenanceInsightsForKpis = sources.maintenanceInsights?.();
   const fulfillmentInsightsForKpis = sources.fulfillmentInsights?.();
   const planningInsightsForKpis = sources.planningInsights?.();
+  const mrpInsightsForKpis = sources.mrpInsights?.();
   const enterprise = enterpriseInsights({
     knowledge: sources.knowledgeHealth?.(),
     memory: sources.memoryCounts?.(),
@@ -357,6 +362,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
       ...(maintenanceInsightsForKpis ? maintenanceInsightsToKpis(maintenanceInsightsForKpis) : []),
       ...(fulfillmentInsightsForKpis ? fulfillmentInsightsToKpis(fulfillmentInsightsForKpis) : []),
       ...(planningInsightsForKpis ? planningInsightsToKpis(planningInsightsForKpis) : []),
+      ...(mrpInsightsForKpis ? mrpInsightsToKpis(mrpInsightsForKpis) : []),
     ],
     enterprise,
     orgHealth: scores,
