@@ -40,6 +40,7 @@ import {
   defineEnterpriseModule,
   type EnterpriseModule,
 } from '../../framework';
+import { CONVERT_TO_INVOICE_ACTION, convertOrderToInvoice } from './conversion';
 
 /** The declarative description of a sales order — drives store, CRUD, and the UI. */
 export const ORDER_DESCRIPTOR: EnterpriseModuleDescriptor = {
@@ -57,6 +58,7 @@ export const ORDER_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'fulfill', label: 'Fulfill', icon: 'check' },
     { key: 'close', label: 'Close', icon: 'lock' },
     { key: 'cancel', label: 'Cancel', icon: 'close' },
+    { key: CONVERT_TO_INVOICE_ACTION, label: 'Generate Invoice', icon: 'doc' },
   ],
   fields: [
     { key: 'orderNumber', label: 'Order Number', type: 'text', required: true, placeholder: 'SO-0001' },
@@ -109,6 +111,7 @@ export const ORDER_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'deliveryTerms', label: 'Delivery Terms', type: 'text', column: false },
     { key: 'notes', label: 'Notes', type: 'textarea', column: false },
     { key: 'sourceQuote', label: 'Source Quote', type: 'text', column: false, readOnly: true },
+    { key: 'convertedInvoice', label: 'Invoice', type: 'text', column: false, readOnly: true },
   ],
 };
 
@@ -201,6 +204,8 @@ export function createOrderModule(storePath: string, aiRunner?: OrderAiRunner): 
       // fulfillment metrics) and emits the change to audit + Timeline. Illegal
       // transitions return a deterministic message, never a mutation.
       runAction: async (action, record, actionCtx) => {
+        // Cross-module: raise a Finance invoice from this order.
+        if (action === CONVERT_TO_INVOICE_ACTION) return convertOrderToInvoice(record, actionCtx);
         const key = action as OrderAction;
         if (!ACTION_DONE[key]) return { ok: false, error: `Unknown action "${action}".` };
         const order = orderFromRecord(record);

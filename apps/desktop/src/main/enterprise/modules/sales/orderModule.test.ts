@@ -72,6 +72,7 @@ describe('descriptor', () => {
       'fulfill',
       'close',
       'cancel',
+      'convertToInvoice',
     ]);
   });
 });
@@ -408,7 +409,13 @@ describe('AI summary', () => {
     }>;
     const o = summaries.find((s) => s.id === 'sales-orders');
     expect(o).toMatchObject({ aiSummary: true });
-    expect(o?.actions.map((a) => a.key)).toEqual(['ship', 'fulfill', 'close', 'cancel']);
+    expect(o?.actions.map((a) => a.key)).toEqual([
+      'ship',
+      'fulfill',
+      'close',
+      'cancel',
+      'convertToInvoice',
+    ]);
   });
 
   it('falls back to a deterministic summary; health stays deterministic', async () => {

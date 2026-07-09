@@ -17,16 +17,23 @@
  */
 import type { EnterpriseEntity, EnterpriseModuleActionResult } from '@neuropause/shared';
 import {
+  FINANCE_MODULE_ID,
   ORDERS_MODULE_ID,
   QUOTES_MODULE_ID,
   calculateQuoteTotal,
   deriveRecordTitle,
+  orderFromRecord,
   quoteFromRecord,
 } from '@neuropause/shared';
 import type { EnterpriseModuleActionContext } from '../../framework';
 
 /** The descriptor action key the Quotes module surfaces for conversion. */
 export const CONVERT_TO_ORDER_ACTION = 'convertToOrder';
+/** The descriptor action key the Orders module surfaces for invoicing. */
+export const CONVERT_TO_INVOICE_ACTION = 'convertToInvoice';
+
+/** Order statuses eligible to be invoiced (goods have at least shipped). */
+const INVOICEABLE_ORDER_STATUSES = new Set(['shipped', 'fulfilled', 'closed']);
 
 const str = (v: unknown): string => (v === null || v === undefined ? '' : String(v));
 
@@ -101,4 +108,81 @@ export async function convertQuoteToOrder(
   ctx.emit(quotesModule, 'converted', updatedQuote ?? quote);
 
   return { ok: true, message: `Converted to sales order "${order.title}".` };
+}
+
+/**
+ * Convert an eligible Sales Order into a Finance Invoice — the loop-closing step
+ * (Customer → Quote → Sales Order → **Invoice** → Payment). Resolves the Finance
+ * module from the action context and authorizes its own write scope
+ * (`operations:manage`), so a sales-only actor cannot mint invoices. Creates a
+ * draft invoice whose subtotal is the order total (the order total already
+ * reflects final pricing, so tax is not re-applied), cross-links both records
+ * (invoice `sourceOrder`; order `convertedInvoice`, moved to `converted`), and
+ * emits each lifecycle for audit + Timeline. Guarded (shipped/fulfilled/closed
+ * only), idempotent, and non-destructive (the order is retained).
+ */
+export async function convertOrderToInvoice(
+  order: EnterpriseEntity,
+  ctx: EnterpriseModuleActionContext,
+): Promise<EnterpriseModuleActionResult> {
+  // Already invoiced → no-op. Never raise a second invoice.
+  if (str(order.fields.convertedInvoice)) {
+    return { ok: false, message: 'This order has already been invoiced.' };
+  }
+  // Only an order whose goods have shipped/delivered may be invoiced.
+  if (!INVOICEABLE_ORDER_STATUSES.has(str(order.fields.status))) {
+    return { ok: false, message: 'Only a shipped, fulfilled, or closed order can be invoiced.' };
+  }
+
+  const ordersModule = ctx.moduleFor(ORDERS_MODULE_ID);
+  const invoiceModule = ctx.moduleFor(FINANCE_MODULE_ID);
+  if (!ordersModule || !invoiceModule) {
+    return { ok: false, error: 'Sales or Finance module is not available for conversion.' };
+  }
+
+  // Raising an invoice requires the Finance write scope, which is distinct from
+  // the Sales scope the action handler already asserted.
+  ctx.authorize(invoiceModule.descriptor.permissions.write);
+  await invoiceModule.store.load();
+
+  const o = orderFromRecord(order);
+
+  // Draft invoice, subtotal = order total (already final; tax not re-applied).
+  const validation = invoiceModule.hooks.validate({
+    fields: {
+      number: `INV-${o.orderNumber}`,
+      customer: o.customer,
+      amount: o.total,
+      taxRate: 0,
+      currency: o.currency,
+      status: 'draft',
+      paymentTerms: str(order.fields.paymentTerms) || 'net30',
+      sourceOrder: order.id,
+      notes: `Generated from sales order ${o.orderNumber}.`,
+    },
+  });
+  if (!validation.ok) {
+    const first = Object.values(validation.errors)[0] ?? 'invalid input';
+    return { ok: false, error: `Invoice: ${first}` };
+  }
+  const invoice = invoiceModule.store.create({
+    title: deriveRecordTitle(invoiceModule.descriptor, validation.values),
+    fields: validation.values,
+    actor: ctx.actor(),
+    now: ctx.now(),
+  });
+  ctx.emit(invoiceModule, 'created', invoice);
+
+  // Retain + cross-link the order (never delete): stamp the invoice ref. The
+  // order's fulfillment status is unchanged (an order can be fulfilled AND
+  // invoiced); the `converted` lifecycle event records the invoicing for
+  // audit + Timeline.
+  const updatedOrder = ordersModule.store.update(order.id, {
+    fields: { convertedInvoice: invoice.id },
+    actor: ctx.actor(),
+    now: ctx.now(),
+  });
+  ctx.emit(ordersModule, 'converted', updatedOrder ?? order);
+
+  return { ok: true, message: `Invoice "${invoice.title}" raised from ${o.orderNumber}.` };
 }

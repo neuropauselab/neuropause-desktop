@@ -11,7 +11,14 @@ import type {
   FinanceInvoice,
   InvoiceRisk,
 } from '@neuropause/shared';
-import { formatInvoiceAmount, invoiceStatusLabel } from '@neuropause/shared';
+import {
+  calculateCollectionRisk,
+  calculateInvoiceAmount,
+  calculateOutstandingBalance,
+  calculatePaymentStatus,
+  formatInvoiceAmount,
+  invoiceStatusLabel,
+} from '@neuropause/shared';
 import type { InvoiceAiNarrative } from './invoiceModule';
 
 /** The slice of the AI engine this module needs (keeps it decoupled + testable). */
@@ -24,14 +31,21 @@ export async function runInvoiceAi(
   invoice: FinanceInvoice,
   risk: InvoiceRisk,
 ): Promise<InvoiceAiNarrative | null> {
+  const nowMs = Date.now();
   const facts = [
     `Number: ${invoice.number}`,
     `Customer: ${invoice.customer || '(none)'}`,
-    `Amount: ${formatInvoiceAmount(invoice.amount, invoice.currency)}`,
-    `Status: ${invoiceStatusLabel(invoice.status)}`,
+    `Subtotal: ${formatInvoiceAmount(invoice.amount, invoice.currency)}`,
+    `Total (incl. tax): ${formatInvoiceAmount(calculateInvoiceAmount(invoice), invoice.currency)}`,
+    `Amount paid: ${formatInvoiceAmount(invoice.amountPaid, invoice.currency)}`,
+    `Outstanding: ${formatInvoiceAmount(calculateOutstandingBalance(invoice), invoice.currency)}`,
+    `Stored status: ${invoiceStatusLabel(invoice.status)}`,
+    `Effective status: ${invoiceStatusLabel(calculatePaymentStatus(invoice, nowMs))}`,
+    `Source order: ${invoice.sourceOrder || '(none)'}`,
     `Issued: ${invoice.issueDate ?? '(none)'}`,
     `Due: ${invoice.dueDate ?? '(none)'}`,
-    `Deterministic risk: ${risk.level} — ${risk.reason}`,
+    `Deterministic collection risk: ${calculateCollectionRisk(invoice, nowMs)}/100`,
+    `Deterministic risk band: ${risk.level} — ${risk.reason}`,
   ].join('\n');
 
   const res = await engine.run({

@@ -25,11 +25,13 @@ import {
   buildUnifiedTimeline,
   deriveCrmInsights,
   deriveCustomerInsights,
+  deriveInvoiceInsights,
   deriveLeadInsights,
   deriveOrderInsights,
   deriveQuoteInsights,
   contactFromRecord,
   customerFromRecord,
+  invoiceFromRecord,
   leadFromRecord,
   orderFromRecord,
   quoteFromRecord,
@@ -40,6 +42,7 @@ import { leadModule } from './modules/crm/leadModuleInstance';
 import { customerModule } from './modules/crm/customerModuleInstance';
 import { quoteModule } from './modules/sales/quoteModuleInstance';
 import { orderModule } from './modules/sales/orderModuleInstance';
+import { invoiceModule } from './modules/finance/invoiceModuleInstance';
 import { buildExecutiveRecommendations, buildExecutiveSummary } from './executiveRecommendations';
 import type { MonthlyTrend } from '@neuropause/shared';
 
@@ -151,6 +154,12 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       orderInsights: () =>
         deriveOrderInsights(
           orderModule.store.list({ status: 'active', limit: 5000 }).map(orderFromRecord),
+          nowMs,
+        ),
+      // Finance receivables KPIs from the registered Invoices module.
+      invoiceInsights: () =>
+        deriveInvoiceInsights(
+          invoiceModule.store.list({ status: 'active', limit: 5000 }).map(invoiceFromRecord),
           nowMs,
         ),
       // V2.9: feed last week's health from the persisted history store so Weekly
