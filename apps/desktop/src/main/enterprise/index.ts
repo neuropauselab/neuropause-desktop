@@ -98,6 +98,7 @@ import {
   workCenterModule,
   machineModule,
   scheduleModule,
+  routingModule,
   executionModule,
   qualityModule,
   costingModule,
@@ -239,6 +240,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(workCenterModule); // Manufacturing → Work Centers
   modules.registry.register(machineModule); // Manufacturing → Machines
   modules.registry.register(scheduleModule); // Manufacturing → Production Scheduling
+  modules.registry.register(routingModule); // Manufacturing → Routings
   modules.registry.register(executionModule); // Manufacturing → Production Execution
   modules.registry.register(qualityModule); // Manufacturing → Quality Inspection
   modules.registry.register(costingModule); // Manufacturing → Production Costing
@@ -280,6 +282,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     workCenterModule.store.load(),
     machineModule.store.load(),
     scheduleModule.store.load(),
+    routingModule.store.load(),
     executionModule.store.load(),
     qualityModule.store.load(),
     costingModule.store.load(),

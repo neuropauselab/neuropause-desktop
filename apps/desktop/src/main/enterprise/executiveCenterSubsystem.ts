@@ -45,6 +45,10 @@ import {
   computeCapacitySchedule,
   deriveCapacityInsights,
   capacityRecommendations,
+  computeRoutingSchedule,
+  deriveRoutingInsights,
+  routingRecommendations,
+  routingFromRecord,
   contactFromRecord,
   customerFromRecord,
   goodsReceiptFromRecord,
@@ -107,6 +111,7 @@ import {
   workCenterModule,
   qualityModule,
   costingModule,
+  routingModule,
 } from './modules/manufacturing/manufacturingInstances';
 import {
   assetModule,
@@ -200,6 +205,11 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
     // machines (Manufacturing status + Maintenance windows). Computed ONCE here and reused for
     // both the capacity KPIs and the scheduling recommendations (no duplicate scheduling pass).
     const capacitySchedule = computeCapacitySchedule(planningInput, nowMs);
+    // Routing-Aware Scheduling (APS) — route each planned production order through its product's
+    // active routing onto QUALIFIED machines (work center + eligibility + availability). The
+    // routings are real master data; computed ONCE and reused for the routing KPIs + recommendations.
+    const routings = routingModule.store.list({ status: 'active', limit: 5000 }).map(routingFromRecord);
+    const routingSchedule = computeRoutingSchedule(planningInput, routings, nowMs);
     // computeOrgHealth is what the composer uses; import lazily via the composer's
     // own path would duplicate — instead record after compose but read current from
     // the freshly-composed snapshot (below), and expose monthly via a closure that
@@ -327,6 +337,8 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       timePhasedInsights: () => deriveTimePhasedInsights(planningInput, nowMs),
       // Finite-capacity (APS) KPIs — the time-phased plan loaded onto real machines (precomputed).
       capacityInsights: () => deriveCapacityInsights(capacitySchedule),
+      // Routing-aware (APS) KPIs — operations routed onto qualified machines (precomputed).
+      routingInsights: () => deriveRoutingInsights(routingSchedule),
       // V2.9: feed last week's health from the persisted history store so Weekly
       // Trends is live. Returns null until ≥1 older datapoint exists.
       previousWeek: () => {
@@ -365,6 +377,9 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       // Finite-capacity (APS) recommendations (overloaded, move-to-machine, second-shift,
       // split, avoid-maintenance-window, reschedule-queue, delay, capacity-available).
       ...capacityRecommendations(capacitySchedule),
+      // Routing-aware (APS) recommendations (alternate-machine, blocked-by-maintenance,
+      // routing-conflict, capability-mismatch, split-routing, reduce-queue, resequence).
+      ...routingRecommendations(routingSchedule),
     ];
     snap.recommendations = recommendations;
     snap.executiveSummary = buildExecutiveSummary(snap, recommendations);

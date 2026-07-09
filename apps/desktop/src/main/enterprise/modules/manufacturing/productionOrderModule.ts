@@ -38,6 +38,7 @@ import {
   postReservation,
   postReservationRelease,
 } from './manufacturingMovements';
+import { COMMIT_SCHEDULE_ACTION, commitScheduleForOrder } from './scheduleCommit';
 
 export const PLAN_ACTION = 'plan';
 export const ALLOCATE_ACTION = 'allocate';
@@ -59,6 +60,7 @@ export const PRODUCTION_ORDER_DESCRIPTOR: EnterpriseModuleDescriptor = {
   permissions: { read: 'manufacturing:read', write: 'manufacturing:manage' },
   actions: [
     { key: PLAN_ACTION, label: 'Plan', icon: 'calendar' },
+    { key: COMMIT_SCHEDULE_ACTION, label: 'Commit Schedule', icon: 'calendar-check' },
     { key: ALLOCATE_ACTION, label: 'Allocate Material', icon: 'lock' },
     { key: START_ACTION, label: 'Start Production', icon: 'play' },
     { key: COMPLETE_ACTION, label: 'Complete', icon: 'check' },
@@ -95,6 +97,7 @@ export const PRODUCTION_ORDER_DESCRIPTOR: EnterpriseModuleDescriptor = {
     },
     { key: 'consumptionMovements', label: 'Consumption', type: 'textarea', column: false, readOnly: true },
     { key: 'outputMovement', label: 'Output Movement', type: 'text', column: false, readOnly: true },
+    { key: 'scheduleCommitted', label: 'Committed Schedule', type: 'textarea', column: false, readOnly: true },
   ],
 };
 
@@ -148,6 +151,10 @@ export function createProductionOrderModule(storePath: string, aiRunner?: Produc
       },
       runAction: async (action, record, ctx) => {
         const order = productionOrderFromRecord(record);
+
+        // Commit Schedule — the explicit, human-approved hand-off that persists real Production
+        // Schedule records from the deterministic routing plan (reuses the shared engine).
+        if (action === COMMIT_SCHEDULE_ACTION) return commitScheduleForOrder(record, ctx);
 
         if (action === PLAN_ACTION) {
           if (order.status !== 'draft') return { ok: false, message: `Cannot plan an order that is ${order.status}.` };
