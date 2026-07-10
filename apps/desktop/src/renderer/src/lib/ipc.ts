@@ -6,6 +6,7 @@
  * main process.
  */
 import type { WorkforceIntelligence } from '@renderer/workforce/intelligenceTypes';
+import { perfRecorder } from '@renderer/lib/perf/perfRecorder';
 import {
   IpcChannel,
   type AppInfo,
@@ -230,7 +231,19 @@ export interface ThemeChangedPayload {
 
 type Items<T> = { items: T[] };
 
-const invoke = window.neuropause.invoke;
+const rawInvoke = window.neuropause.invoke;
+/**
+ * The IPC entrypoint every namespace below uses. Wrapped to record REAL per-call round-trip latency and
+ * the in-flight count into perfRecorder (which feeds the runtime Performance overlay + Diagnostics). The
+ * wrapper is behavior-preserving: it returns the original promise unchanged, so all `as Promise<T>` casts
+ * and error propagation stay identical — it only observes timing on a detached branch.
+ */
+const invoke: typeof rawInvoke = (channel, payload) => {
+  const settle = perfRecorder.ipcStart(String(channel));
+  const promise = rawInvoke(channel, payload);
+  promise.then(settle, settle);
+  return promise;
+};
 import type {
   CloudRegion,
   CloudRegionId,

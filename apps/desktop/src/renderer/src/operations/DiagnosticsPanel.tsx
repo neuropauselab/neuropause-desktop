@@ -6,7 +6,9 @@ import { Button } from '@renderer/components/ui/Button';
 import { formatCount, formatRelative } from '@renderer/lib/format';
 import { OpsPanel, StatusBadge, StatusDot, Stat, OpsTable } from './primitives';
 import { DOT_BG, TINT_TONE, TEXT_TONE, formatUptime, type OpsTone } from './lib';
+import { formatBytesIEC, formatDurationMs } from '@neuropause/shared';
 import type { DiagnosticsReport, DiagnosticStatus } from '@neuropause/shared';
+import { usePerformance } from '@renderer/state/usePerformance';
 
 /** Map a diagnostic status onto the shared tone/label vocabulary. */
 function diagTone(s: DiagnosticStatus): OpsTone {
@@ -61,6 +63,7 @@ export function DiagnosticsPanel(): JSX.Element {
   const [live, setLive] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const perf = usePerformance();
   const liveRef = useRef(live);
   useEffect(() => {
     liveRef.current = live;
@@ -172,6 +175,78 @@ export function DiagnosticsPanel(): JSX.Element {
         <Stat icon="clock" label="Avg dispatch" value={`${m.avgDispatchMs}ms`} tone="green" />
         <Stat icon="list" label="Timeline" value={formatCount(report.timeline.total)} tone="orange" />
       </div>
+
+      {/* Runtime performance (renderer — real measurements) */}
+      <h3 className="mb-2 text-sm font-semibold text-muted">Runtime performance</h3>
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <Stat
+          icon="gauge"
+          label="Renderer FPS"
+          value={perf.fps.current || '—'}
+          tone={
+            perf.fps.current === 0
+              ? 'gray'
+              : perf.fps.current >= 55
+                ? 'green'
+                : perf.fps.current >= 45
+                  ? 'orange'
+                  : 'red'
+          }
+          hint={perf.fps.samples ? `avg ${perf.fps.average}` : undefined}
+        />
+        <Stat
+          icon="memory"
+          label="Renderer RAM"
+          value={perf.memory.supported ? formatBytesIEC(perf.memory.usedBytes) : 'n/a'}
+          tone="blue"
+          hint={perf.memory.usedPercent !== null ? `${perf.memory.usedPercent}% of heap` : undefined}
+        />
+        <Stat
+          icon="server"
+          label="IPC p95"
+          value={perf.ipc.count ? formatDurationMs(perf.ipc.p95Ms) : '—'}
+          tone={perf.ipc.count === 0 ? 'gray' : perf.ipc.p95Ms > 200 ? 'orange' : 'green'}
+          hint={perf.ipc.count ? `${perf.ipc.count} calls` : undefined}
+        />
+        <Stat
+          icon="bolt"
+          label="Pending async"
+          value={perf.ipc.pending}
+          tone={perf.ipc.pending >= 8 ? 'orange' : 'purple'}
+        />
+        <Stat
+          icon="activity"
+          label="Slow renders"
+          value={perf.slowRenders.length}
+          tone={perf.slowRenders.length ? 'orange' : 'green'}
+        />
+        <Stat
+          icon="clock"
+          label="Renderer uptime"
+          value={formatUptime(perf.rendererUptimeMs)}
+          tone="accent"
+        />
+      </div>
+      {perf.recommendations.length > 0 && (
+        <div className="mb-6 space-y-2">
+          {perf.recommendations.map((r) => (
+            <div
+              key={r.id}
+              className="flex items-start gap-2 rounded-2xl border border-[var(--hairline)] px-3.5 py-3 [background:var(--fill-1)]"
+            >
+              <Icon
+                name="lightbulb"
+                size={14}
+                className={cn('mt-0.5 shrink-0', r.severity === 'warning' ? 'text-syspink' : 'text-faint')}
+              />
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-ink">{r.title}</div>
+                <div className="text-xs text-faint">{r.detail}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Checks */}
       <h3 className="mb-2 text-sm font-semibold text-muted">Service checks</h3>

@@ -12,6 +12,8 @@ import { Toolbar } from './Toolbar';
 import { Sidebar } from './Sidebar';
 import { CommandPalette } from './CommandPalette';
 import { VoiceWidget } from '../voice/VoiceWidget';
+import { PerformanceOverlay } from './PerformanceOverlay';
+import { PerfSampler } from '@renderer/state/PerfSampler';
 import { HomeView } from '@renderer/views/HomeView';
 import { OnboardingWizard } from '@renderer/onboarding/OnboardingWizard';
 import { SECTIONS, type SectionId } from './sections';
@@ -228,6 +230,14 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
       </ErrorBoundary>
       <ErrorBoundary inline name="onboarding">
         <OnboardingWizard onGoTo={goToSection} />
+      </ErrorBoundary>
+      {/* Always-mounted invisible runtime performance collector (feeds Diagnostics + the dev overlay). */}
+      <ErrorBoundary inline name="perf-sampler">
+        <PerfSampler />
+      </ErrorBoundary>
+      {/* Developer-only performance HUD; renders null on packaged builds. */}
+      <ErrorBoundary inline name="perf-overlay">
+        <PerformanceOverlay />
       </ErrorBoundary>
     </div>
   );
