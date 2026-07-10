@@ -6,7 +6,7 @@
  * duration comes from a real `performance.now()` delta around a real IPC call, and the pending count is
  * the real number of in-flight invocations.
  */
-import type { IpcChannelStat, RenderSample } from '@neuropause/shared';
+import type { IpcChannelStat, RenderComponentStat, RenderSample } from '@neuropause/shared';
 
 /** How many recent IPC durations to keep for percentile math. */
 const IPC_RING = 200;
@@ -28,6 +28,7 @@ class PerfRecorder {
   private ipcPending = 0;
   private channels = new Map<string, ChannelAgg>();
   private renders: RenderSample[] = [];
+  private renderComponents = new Map<string, ChannelAgg>();
 
   /**
    * Mark an IPC call in-flight and return a settle callback. The wrapped IPC `invoke` calls this before
@@ -57,6 +58,11 @@ class PerfRecorder {
     if (!Number.isFinite(ms) || ms < 0) return;
     this.renders.push({ id, ms });
     if (this.renders.length > RENDER_RING) this.renders.shift();
+    const agg = this.renderComponents.get(id) ?? { count: 0, totalMs: 0, maxMs: 0 };
+    agg.count += 1;
+    agg.totalMs += ms;
+    agg.maxMs = Math.max(agg.maxMs, ms);
+    this.renderComponents.set(id, agg);
   }
 
   /** Snapshot the current raw buffers (copies) for the sampler to aggregate. */
@@ -65,6 +71,7 @@ class PerfRecorder {
     ipcPending: number;
     ipcChannels: IpcChannelStat[];
     renders: RenderSample[];
+    renderComponents: RenderComponentStat[];
   } {
     const ipcChannels: IpcChannelStat[] = [];
     this.channels.forEach((a, channel) => {
@@ -75,11 +82,21 @@ class PerfRecorder {
         maxMs: round1(a.maxMs),
       });
     });
+    const renderComponents: RenderComponentStat[] = [];
+    this.renderComponents.forEach((a, id) => {
+      renderComponents.push({
+        id,
+        count: a.count,
+        avgMs: a.count ? round1(a.totalMs / a.count) : 0,
+        maxMs: round1(a.maxMs),
+      });
+    });
     return {
       ipcDurationsMs: this.ipcDurations.slice(),
       ipcPending: this.ipcPending,
       ipcChannels,
       renders: this.renders.slice(),
+      renderComponents,
     };
   }
 }

@@ -61,6 +61,7 @@ export * from './types/errorReport';
 export * from './types/flagCatalog';
 export * from './types/releaseChannelMeta';
 export * from './types/perfMetrics';
+export * from './types/loadingModel';
 export * from './types/manufacturingDigitalTwin';
 export * from './types/enterpriseDecisionEngine';
 export * from './types/executiveDecisionApproval';

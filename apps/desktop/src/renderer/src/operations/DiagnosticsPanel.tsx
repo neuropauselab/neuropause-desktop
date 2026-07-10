@@ -227,6 +227,29 @@ export function DiagnosticsPanel(): JSX.Element {
           tone="accent"
         />
       </div>
+      {perf.slowestComponents.length > 0 && (
+        <div className="mb-4">
+          <div className="mb-1.5 text-2xs font-semibold uppercase tracking-wider text-faint">
+            Slowest components (max render)
+          </div>
+          <div className="overflow-hidden rounded-2xl border border-[var(--hairline)]">
+            {perf.slowestComponents.map((c, i) => (
+              <div
+                key={c.id}
+                className={cn(
+                  'flex items-center justify-between gap-3 px-3.5 py-2',
+                  i > 0 && 'border-t border-[var(--hairline)]',
+                )}
+              >
+                <span className="truncate text-sm font-medium text-ink">{c.id}</span>
+                <span className="shrink-0 tabular-nums text-2xs text-faint">
+                  {c.count}× · avg {formatDurationMs(c.avgMs)} · max {formatDurationMs(c.maxMs)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {perf.recommendations.length > 0 && (
         <div className="mb-6 space-y-2">
           {perf.recommendations.map((r) => (

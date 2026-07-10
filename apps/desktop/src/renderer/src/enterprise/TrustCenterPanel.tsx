@@ -18,7 +18,7 @@ import type {
 import { ipc } from '@renderer/lib/ipc';
 import { cn } from '@renderer/lib/cn';
 import { Icon, type IconName } from '@renderer/components/ui/Icon';
-import { Spinner } from '@renderer/components/Spinner';
+import { Loading } from '@renderer/components/ui/Loading';
 import { EmptyState } from '@renderer/components/ui/EmptyState';
 import { Button } from '@renderer/components/ui/Button';
 import { VirtualList } from '@renderer/components/ui/VirtualList';
@@ -189,7 +189,7 @@ export function TrustCenterPanel(): JSX.Element {
   }, [model]);
 
   if (loading && !model) {
-    return <OpsPanel title="Trust Center"><div className="flex items-center justify-center py-16"><Spinner size={20} /></div></OpsPanel>;
+    return <OpsPanel title="Trust Center"><Loading kind="panel" label="Loading trust center…" /></OpsPanel>;
   }
   if (error && !model) {
     return <OpsPanel title="Trust Center"><EmptyState icon="shield" title="Unavailable" description={error} /></OpsPanel>;

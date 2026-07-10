@@ -23,6 +23,14 @@ export interface IpcChannelStat {
   maxMs: number;
 }
 
+/** Rolled-up render cost for one profiled component/section over the session. */
+export interface RenderComponentStat {
+  id: string;
+  count: number;
+  avgMs: number;
+  maxMs: number;
+}
+
 /** Distribution summary for a set of durations (ms). */
 export interface DurationSummary {
   count: number;
@@ -88,6 +96,8 @@ export interface PerfInput {
   ipcChannels: IpcChannelStat[];
   /** Recent real React render durations. */
   renders: RenderSample[];
+  /** Cumulative per-component render stats (from the Profiler-fed recorder). */
+  renderComponents?: RenderComponentStat[];
   context: PerfContext;
 }
 
@@ -126,6 +136,8 @@ export interface PerfSnapshot {
   slowestChannels: IpcChannelStat[];
   render: DurationSummary;
   slowRenders: RenderSample[];
+  /** Profiled components ranked by worst render, for the diagnostics "slowest components" surface. */
+  slowestComponents: RenderComponentStat[];
   rendererUptimeMs: number;
   context: PerfContext;
   recommendations: PerfRecommendation[];
@@ -256,6 +268,11 @@ export function buildPerfSnapshot(
     .sort((a, b) => b.maxMs - a.maxMs)
     .slice(0, 5);
 
+  const slowestComponents = (input.renderComponents ?? [])
+    .slice()
+    .sort((a, b) => b.maxMs - a.maxMs)
+    .slice(0, 5);
+
   const render = summarizeDurations(input.renders.map((r) => r.ms));
   const slowRenders = input.renders
     .filter((r) => Number.isFinite(r.ms) && r.ms > thresholds.slowRenderMs)
@@ -275,6 +292,7 @@ export function buildPerfSnapshot(
     slowestChannels,
     render,
     slowRenders,
+    slowestComponents,
     rendererUptimeMs: Math.max(0, Math.round(input.rendererUptimeMs)),
     context: input.context,
     recommendations,

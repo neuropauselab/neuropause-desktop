@@ -14,7 +14,7 @@ import { PRODUCTION_ORDERS_MODULE_ID, SCHEDULE_PROPOSALS_MODULE_ID } from '@neur
 import { ipc } from '@renderer/lib/ipc';
 import { cn } from '@renderer/lib/cn';
 import { Icon } from '@renderer/components/ui/Icon';
-import { Spinner } from '@renderer/components/Spinner';
+import { Loading } from '@renderer/components/ui/Loading';
 import { EmptyState } from '@renderer/components/ui/EmptyState';
 import { Button } from '@renderer/components/ui/Button';
 import { VirtualList } from '@renderer/components/ui/VirtualList';
@@ -254,7 +254,7 @@ export function ProductionSchedulePanel(): JSX.Element {
   }, [model, machineFilter, search, lateOnly]);
 
   if (loading && !model) {
-    return <OpsPanel title="Production Schedule"><div className="flex items-center justify-center py-16"><Spinner size={20} /></div></OpsPanel>;
+    return <OpsPanel title="Production Schedule"><Loading kind="panel" label="Loading production schedule…" /></OpsPanel>;
   }
   if (error && !model) {
     return <OpsPanel title="Production Schedule"><EmptyState icon="clock" title="Schedule unavailable" description={error} /></OpsPanel>;

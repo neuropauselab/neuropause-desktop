@@ -20,7 +20,7 @@ import { relationshipNeighbors, dependencyTree, impactAnalysis } from '@neuropau
 import { ipc } from '@renderer/lib/ipc';
 import { cn } from '@renderer/lib/cn';
 import { Icon, type IconName } from '@renderer/components/ui/Icon';
-import { Spinner } from '@renderer/components/Spinner';
+import { Loading } from '@renderer/components/ui/Loading';
 import { EmptyState } from '@renderer/components/ui/EmptyState';
 import { Button } from '@renderer/components/ui/Button';
 import { VirtualList } from '@renderer/components/ui/VirtualList';
@@ -294,7 +294,7 @@ export function RelationshipIntelligencePanel(): JSX.Element {
   const ego = useMemo(() => (model && selected ? relationshipNeighbors(model, selected.id) : null), [model, selected]);
 
   if (loading && !model) {
-    return <OpsPanel title="Relationship Intelligence"><div className="flex items-center justify-center py-16"><Spinner size={20} /></div></OpsPanel>;
+    return <OpsPanel title="Relationship Intelligence"><Loading kind="panel" label="Loading relationship intelligence…" /></OpsPanel>;
   }
   if (error && !model) {
     return <OpsPanel title="Relationship Intelligence"><EmptyState icon="connectors" title="Unavailable" description={error} /></OpsPanel>;

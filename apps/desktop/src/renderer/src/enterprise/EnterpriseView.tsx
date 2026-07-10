@@ -19,6 +19,7 @@ import { ProductionSchedulePanel } from './ProductionSchedulePanel';
 import { OperatorConsolePanel } from './OperatorConsolePanel';
 import { RelationshipIntelligencePanel } from './RelationshipIntelligencePanel';
 import { TrustCenterPanel } from './TrustCenterPanel';
+import { ProfiledSection } from '@renderer/components/perf/ProfiledSection';
 import { CustomizePanel } from './CustomizePanel';
 import { EnterpriseModulesHub } from './modules/EnterpriseModulesHub';
 import { loadNavPrefs, type EnterpriseTab } from './lib';
@@ -241,15 +242,39 @@ function EnterpriseInner({ initialTab }: { initialTab: EnterpriseTab }): JSX.Ele
         </nav>
 
         {tab === 'command' && <CommandCenterPanel onNavigate={navigate} />}
-        {tab === 'executive' && <ExecutiveCenterPanel />}
+        {tab === 'executive' && (
+          <ProfiledSection id="enterprise:executive">
+            <ExecutiveCenterPanel />
+          </ProfiledSection>
+        )}
         {tab === 'decision' && <DecisionCenterPanel onNavigate={navigate} />}
         {tab === 'organization' && <OrganizationExplorerPanel />}
         {tab === 'operations' && <BusinessOpsPanel />}
-        {tab === 'process' && <ProcessExplorerPanel onNavigate={navigate} />}
-        {tab === 'schedule' && <ProductionSchedulePanel />}
-        {tab === 'execution' && <OperatorConsolePanel />}
-        {tab === 'relationship' && <RelationshipIntelligencePanel />}
-        {tab === 'trust' && <TrustCenterPanel />}
+        {tab === 'process' && (
+          <ProfiledSection id="enterprise:process">
+            <ProcessExplorerPanel onNavigate={navigate} />
+          </ProfiledSection>
+        )}
+        {tab === 'schedule' && (
+          <ProfiledSection id="enterprise:schedule">
+            <ProductionSchedulePanel />
+          </ProfiledSection>
+        )}
+        {tab === 'execution' && (
+          <ProfiledSection id="enterprise:execution">
+            <OperatorConsolePanel />
+          </ProfiledSection>
+        )}
+        {tab === 'relationship' && (
+          <ProfiledSection id="enterprise:relationship">
+            <RelationshipIntelligencePanel />
+          </ProfiledSection>
+        )}
+        {tab === 'trust' && (
+          <ProfiledSection id="enterprise:trust">
+            <TrustCenterPanel />
+          </ProfiledSection>
+        )}
         {tab === 'personalize' && <PersonalizationPanel state={personalization} onNavigate={navigate} onMutate={setPersonalization} />}
         {tab === 'modules' && <EnterpriseModulesHub />}
         {tab === 'search' && <EnterpriseSearchPanel key={searchQuery} initialQuery={searchQuery} />}

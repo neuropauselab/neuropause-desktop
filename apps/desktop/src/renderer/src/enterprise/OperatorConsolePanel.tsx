@@ -23,7 +23,7 @@ import { PRODUCTION_EXECUTIONS_MODULE_ID, MANUFACTURING_EVENTS_MODULE_ID } from 
 import { ipc } from '@renderer/lib/ipc';
 import { cn } from '@renderer/lib/cn';
 import { Icon, type IconName } from '@renderer/components/ui/Icon';
-import { Spinner } from '@renderer/components/Spinner';
+import { Loading } from '@renderer/components/ui/Loading';
 import { EmptyState } from '@renderer/components/ui/EmptyState';
 import { Button } from '@renderer/components/ui/Button';
 import { VirtualList } from '@renderer/components/ui/VirtualList';
@@ -457,7 +457,7 @@ export function OperatorConsolePanel(): JSX.Element {
   }, [model, search, statusFilter]);
 
   if (loading && !model) {
-    return <OpsPanel title="Operator Console"><div className="flex items-center justify-center py-16"><Spinner size={20} /></div></OpsPanel>;
+    return <OpsPanel title="Operator Console"><Loading kind="panel" label="Loading operator console…" /></OpsPanel>;
   }
   if (error && !model) {
     return <OpsPanel title="Operator Console"><EmptyState icon="activity" title="Console unavailable" description={error} /></OpsPanel>;

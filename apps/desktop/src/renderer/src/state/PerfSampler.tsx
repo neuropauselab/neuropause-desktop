@@ -118,6 +118,7 @@ export function PerfSampler(): JSX.Element | null {
           ipcPending: raw.ipcPending,
           ipcChannels: raw.ipcChannels,
           renders: raw.renders,
+          renderComponents: raw.renderComponents,
           context: contextRef.current,
         }),
       );

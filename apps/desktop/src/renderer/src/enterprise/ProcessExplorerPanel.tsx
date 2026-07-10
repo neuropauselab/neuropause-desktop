@@ -21,6 +21,7 @@ import { ipc } from '@renderer/lib/ipc';
 import { cn } from '@renderer/lib/cn';
 import { Icon } from '@renderer/components/ui/Icon';
 import { Spinner } from '@renderer/components/Spinner';
+import { Loading } from '@renderer/components/ui/Loading';
 import { EmptyState } from '@renderer/components/ui/EmptyState';
 import { Button } from '@renderer/components/ui/Button';
 import { VirtualList } from '@renderer/components/ui/VirtualList';
@@ -473,7 +474,7 @@ export function ProcessExplorerPanel({ onNavigate }: { onNavigate?: (tab: Enterp
   if (loading && !model) {
     return (
       <OpsPanel title="Process Explorer">
-        <div className="flex items-center justify-center py-16"><Spinner size={20} /></div>
+        <Loading kind="panel" label="Loading process explorer…" />
       </OpsPanel>
     );
   }

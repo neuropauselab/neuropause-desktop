@@ -14,7 +14,7 @@ import { formatRelative } from '@renderer/lib/format';
 import { Card } from '@renderer/components/ui/Card';
 import { Icon } from '@renderer/components/ui/Icon';
 import { EmptyState } from '@renderer/components/ui/EmptyState';
-import { Spinner } from '@renderer/components/Spinner';
+import { Loading } from '@renderer/components/ui/Loading';
 import { TINT_TONE, TEXT_TONE, DOT_BG, type OpsTone } from '../operations/lib';
 
 function priorityToTone(p: DecisionPriority): OpsTone {
@@ -102,11 +102,7 @@ export function ExecutiveTimeline({
   );
 
   if (loading) {
-    return (
-      <div className="flex items-center gap-2 py-6 text-xs text-white/40">
-        <Spinner size={14} /> Loading timeline…
-      </div>
-    );
+    return <Loading kind="list" rows={4} label="Loading timeline…" />;
   }
 
   if (entries.length === 0) {

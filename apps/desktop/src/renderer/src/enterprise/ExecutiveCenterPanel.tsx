@@ -15,6 +15,8 @@ import { Icon } from '@renderer/components/ui/Icon';
 import { Card } from '@renderer/components/ui/Card';
 import { EmptyState } from '@renderer/components/ui/EmptyState';
 import { Spinner } from '@renderer/components/Spinner';
+import { Loading } from '@renderer/components/ui/Loading';
+import { Deferred } from '@renderer/components/perf/Deferred';
 import { ExecutiveTimeline } from './ExecutiveTimeline';
 import { RuntimeHealthPanel } from './RuntimeHealthPanel';
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary';
@@ -174,9 +176,7 @@ export function ExecutiveCenterPanel(): JSX.Element {
   if (loading) {
     return (
       <OpsPanel title="Executive Intelligence" subtitle="Your organization at a glance">
-        <div className="flex items-center justify-center py-20">
-          <Spinner />
-        </div>
+        <Loading kind="panel" cards={6} label="Loading executive intelligence…" />
       </OpsPanel>
     );
   }
@@ -631,7 +631,9 @@ export function ExecutiveCenterPanel(): JSX.Element {
         <h3 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-white/50">
           Executive Timeline
         </h3>
-        <ExecutiveTimeline entries={snapshot.unifiedTimeline} />
+        <Deferred fallback={<Loading kind="list" rows={5} />}>
+          <ExecutiveTimeline entries={snapshot.unifiedTimeline} />
+        </Deferred>
       </div>
 
       {/* Section cards. Bold lives in the KPI strip; cards stay quiet + scannable. */}
