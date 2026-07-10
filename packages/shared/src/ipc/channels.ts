@@ -284,6 +284,8 @@ export const IpcChannel = {
   EnterpriseScheduleExplore: 'enterprise:schedule.explore',
   /** Operator Console (MES) — read-only shop-floor execution model (executions + operators + machines + quality + timeline + KPIs). */
   EnterpriseExecutionExplore: 'enterprise:execution.explore',
+  /** Relationship Intelligence — read-only ERP entity relationship graph (nodes + typed edges + health/risk + KPIs + narrative). */
+  EnterpriseRelationshipExplore: 'enterprise:relationship.explore',
   EnterpriseEventBroadcast: 'enterprise:event',
 
   // ── Enterprise Module Framework (ERP foundation) ──
@@ -720,6 +722,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.EnterpriseProcessCase,
   IpcChannel.EnterpriseScheduleExplore,
   IpcChannel.EnterpriseExecutionExplore,
+  IpcChannel.EnterpriseRelationshipExplore,
   IpcChannel.EnterpriseModulesList,
   IpcChannel.EnterpriseModuleList,
   IpcChannel.EnterpriseModuleGet,

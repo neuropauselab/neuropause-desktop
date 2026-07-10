@@ -217,6 +217,7 @@ import type {
   ProcessCaseDetail,
   ScheduleExploreModel,
   ExecutionConsoleModel,
+  RelationshipGraphModel,
 } from '@neuropause/shared';
 
 type OAuthProviderId = Exclude<AuthProviderId, 'email'>;
@@ -995,6 +996,9 @@ export const ipc = {
 
     /** Operator Console (MES) — read-only shop-floor execution model (executions + machines + operators + quality + timeline + KPIs). */
     executionExplore: () => invoke(IpcChannel.EnterpriseExecutionExplore) as Promise<ExecutionConsoleModel>,
+
+    /** Relationship Intelligence — read-only ERP entity relationship graph (nodes + typed edges + health/risk + KPIs + narrative). */
+    relationshipExplore: () => invoke(IpcChannel.EnterpriseRelationshipExplore) as Promise<RelationshipGraphModel>,
 
     onEvent: (cb: (e: { kind: string; at: string }) => void) =>
       subscribe(IpcChannel.EnterpriseEventBroadcast, (p) => cb(p as { kind: string; at: string })),

@@ -126,6 +126,7 @@ import { executionProposalModule } from './modules/executive/executionProposalIn
 import { getProcessExplorerModel, getProcessCaseDetail } from './processMiningProvider';
 import { getScheduleExploreModel } from './scheduleExploreProvider';
 import { getExecutionConsoleModel } from './executionConsoleProvider';
+import { getRelationshipModel } from './relationshipProvider';
 import { notificationScheduler } from '../services/notificationScheduler';
 import { buildOrgGraph, orgGraphNeighbors } from './graph/orgGraph';
 import { evaluateCompliance, type ComplianceInput } from './governance/enterpriseGovernance';
@@ -761,6 +762,14 @@ function buildHandlers(): SecureHandlerDef[] {
       channel: IpcChannel.EnterpriseExecutionExplore,
       schema: EmptyRequest,
       handler: () => getExecutionConsoleModel(),
+    },
+
+    // Relationship Intelligence — read-only ERP entity relationship graph (nodes + typed edges + health/risk +
+    // KPIs + narrative). No writes: every edge is a foreign-key link already present on the records.
+    {
+      channel: IpcChannel.EnterpriseRelationshipExplore,
+      schema: EmptyRequest,
+      handler: () => getRelationshipModel(),
     },
   ];
 }

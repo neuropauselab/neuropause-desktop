@@ -117,6 +117,8 @@ export const ENTERPRISE_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Ente
     [IpcChannel.EnterpriseScheduleExplore]: 'operations:read',
     // Operator Console (MES): read-only projection of shop-floor execution (manufacturing analytics).
     [IpcChannel.EnterpriseExecutionExplore]: 'operations:read',
+    // Relationship Intelligence: read-only ERP entity relationship graph (cross-domain analytics).
+    [IpcChannel.EnterpriseRelationshipExplore]: 'operations:read',
     // Enterprise Module Framework: listing which modules exist is metadata-only.
     [IpcChannel.EnterpriseModulesList]: 'operations:read',
   };

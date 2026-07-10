@@ -27,6 +27,7 @@ export type EnterpriseTab =
   | 'process'
   | 'schedule'
   | 'execution'
+  | 'relationship'
   | 'modules'
   | 'search'
   | 'workspace'

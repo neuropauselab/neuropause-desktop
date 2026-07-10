@@ -136,6 +136,7 @@ import {
 } from './modules/maintenance/maintenanceInstances';
 import { buildExecutiveRecommendations, buildExecutiveSummary } from './executiveRecommendations';
 import { collectPlanningModel } from './planningModel';
+import { getRelationshipKpis } from './relationshipProvider';
 import { executiveDecisionModule } from './modules/executive/executiveDecisionInstance';
 import { executionProposalModule } from './modules/executive/executionProposalInstance';
 import { getProcessAssessment } from './processMiningProvider';
@@ -372,6 +373,9 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       // Supplemental MES KPIs — Availability / Performance / Rework Rate (additive; the twelve-key
       // mesInsights source is never disturbed). Same execution snapshot; pre-built tiles.
       mesSupplementalKpis: () => mesSupplementalKpis(mesExecutions),
+      // Relationship-intelligence KPIs — the eight cross-domain relationship tiles (health, critical,
+      // disconnected, high-risk + supplier/customer/machine dependency, connectivity). Read-only; cached.
+      relationshipKpis: () => getRelationshipKpis(),
       // Shop-Floor Event Ledger KPIs — telemetry derived from the immutable event stream (precomputed).
       eventInsights: () => deriveEventInsights(manufacturingEvents, nowMs),
       // Digital-twin resilience KPIs — what-if stress battery over the real model (precomputed).
