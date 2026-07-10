@@ -55,6 +55,7 @@ export * from './types/mesEvents';
 export * from './types/mesConsole';
 export * from './types/enterpriseRelationship';
 export * from './types/trustEngine';
+export * from './types/personalization';
 export * from './types/manufacturingDigitalTwin';
 export * from './types/enterpriseDecisionEngine';
 export * from './types/executiveDecisionApproval';

@@ -29,6 +29,7 @@ export type EnterpriseTab =
   | 'execution'
   | 'relationship'
   | 'trust'
+  | 'personalize'
   | 'modules'
   | 'search'
   | 'workspace'

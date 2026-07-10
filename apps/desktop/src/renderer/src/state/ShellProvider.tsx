@@ -35,6 +35,8 @@ interface ShellState {
   newTabSignal: number;
   /** A one-shot deep-link target for an Operations sub-tab (set by the Command Center). */
   opsTab: string | null;
+  /** A one-shot deep-link target for an Enterprise sub-tab (set by the Command Palette / personalization). */
+  enterpriseTab: string | null;
 }
 
 type Action =
@@ -48,7 +50,9 @@ type Action =
   | { type: 'setActiveTab'; id: string }
   | { type: 'requestNewTab' }
   | { type: 'openOperations'; tab: string | null }
-  | { type: 'clearOpsTab' };
+  | { type: 'clearOpsTab' }
+  | { type: 'openEnterprise'; tab: string | null }
+  | { type: 'clearEnterpriseTab' };
 
 const clampWidth = (w: number): number => Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(w)));
 const isSectionId = (v: unknown): v is SectionId => SECTIONS.some((s) => s.id === v);
@@ -72,6 +76,7 @@ function init(): ShellState {
     activeTabId,
     newTabSignal: 0,
     opsTab: null,
+    enterpriseTab: null,
   };
 }
 
@@ -139,6 +144,12 @@ function reducer(state: ShellState, action: Action): ShellState {
     case 'clearOpsTab':
       return { ...state, opsTab: null };
 
+    case 'openEnterprise':
+      return { ...state, activeSection: 'enterprise', enterpriseTab: action.tab };
+
+    case 'clearEnterpriseTab':
+      return { ...state, enterpriseTab: null };
+
     default:
       return state;
   }
@@ -159,6 +170,8 @@ interface ShellContextValue extends ShellState {
   requestNewTab: () => void;
   openOperations: (tab?: string) => void;
   clearOpsTab: () => void;
+  openEnterprise: (tab?: string) => void;
+  clearEnterpriseTab: () => void;
 }
 
 const ShellContext = createContext<ShellContextValue | null>(null);
@@ -193,6 +206,8 @@ export function ShellProvider({ children }: { children: ReactNode }): JSX.Elemen
   const requestNewTab = useCallback(() => dispatch({ type: 'requestNewTab' }), []);
   const openOperations = useCallback((tab?: string) => dispatch({ type: 'openOperations', tab: tab ?? null }), []);
   const clearOpsTab = useCallback(() => dispatch({ type: 'clearOpsTab' }), []);
+  const openEnterprise = useCallback((tab?: string) => dispatch({ type: 'openEnterprise', tab: tab ?? null }), []);
+  const clearEnterpriseTab = useCallback(() => dispatch({ type: 'clearEnterpriseTab' }), []);
 
   const value = useMemo<ShellContextValue>(
     () => ({
@@ -211,6 +226,8 @@ export function ShellProvider({ children }: { children: ReactNode }): JSX.Elemen
       requestNewTab,
       openOperations,
       clearOpsTab,
+      openEnterprise,
+      clearEnterpriseTab,
     }),
     [
       state,
@@ -228,6 +245,8 @@ export function ShellProvider({ children }: { children: ReactNode }): JSX.Elemen
       requestNewTab,
       openOperations,
       clearOpsTab,
+      openEnterprise,
+      clearEnterpriseTab,
     ],
   );
 

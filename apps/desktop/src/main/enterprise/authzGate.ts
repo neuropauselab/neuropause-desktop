@@ -121,6 +121,15 @@ export const ENTERPRISE_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Ente
     [IpcChannel.EnterpriseRelationshipExplore]: 'operations:read',
     // Trust Engine: read-only per-entity deterministic trust model (cross-domain analytics).
     [IpcChannel.EnterpriseTrustExplore]: 'operations:read',
+    // Personalization: per-user favorites / recents / saved views. Every signed-in user may manage their
+    // OWN personalization (the actor is resolved server-side), so these are gated on the universal read scope.
+    [IpcChannel.EnterprisePersonalizationGet]: 'dashboard:read',
+    [IpcChannel.EnterprisePersonalizationFavorite]: 'dashboard:read',
+    [IpcChannel.EnterprisePersonalizationRecent]: 'dashboard:read',
+    [IpcChannel.EnterprisePersonalizationClearRecents]: 'dashboard:read',
+    [IpcChannel.EnterprisePersonalizationSaveView]: 'dashboard:read',
+    [IpcChannel.EnterprisePersonalizationDeleteView]: 'dashboard:read',
+    [IpcChannel.EnterprisePersonalizationRenameView]: 'dashboard:read',
     // Enterprise Module Framework: listing which modules exist is metadata-only.
     [IpcChannel.EnterpriseModulesList]: 'operations:read',
   };

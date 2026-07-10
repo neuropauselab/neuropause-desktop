@@ -929,6 +929,21 @@ export const EnterpriseProcessExploreRequest = z
   .strict();
 export const EnterpriseProcessCaseRequest = z.object({ id: EntId }).strict();
 
+/* Personalization (per-user Favorites / Recently-Opened / Saved Views). The actor is resolved server-side. */
+const EntTab = z.string().trim().min(1).max(64);
+const EntQuery = z.string().trim().max(256).optional();
+export const EnterprisePersonalizationFavoriteRequest = z
+  .object({ id: EntId, kind: z.string().trim().max(64).optional(), label: z.string().trim().max(200).optional(), tab: EntTab, query: EntQuery })
+  .strict();
+export const EnterprisePersonalizationRecentRequest = z
+  .object({ id: EntId, kind: z.string().trim().max(64).optional(), label: z.string().trim().max(200).optional(), tab: EntTab, query: EntQuery })
+  .strict();
+export const EnterprisePersonalizationSaveViewRequest = z
+  .object({ id: EntId.optional(), label: EntName, tab: EntTab, query: EntQuery, filters: z.string().max(8192).optional() })
+  .strict();
+export const EnterprisePersonalizationDeleteViewRequest = z.object({ id: EntId }).strict();
+export const EnterprisePersonalizationRenameViewRequest = z.object({ id: EntId, label: EntName }).strict();
+
 export type EnterpriseOrgCreateUnitRequest = z.infer<typeof EnterpriseOrgCreateUnitRequest>;
 export type EnterpriseOrgUpdateUnitRequest = z.infer<typeof EnterpriseOrgUpdateUnitRequest>;
 export type EnterpriseOrgDeleteUnitRequest = z.infer<typeof EnterpriseOrgDeleteUnitRequest>;
@@ -948,6 +963,11 @@ export type EnterpriseGovernanceSetChainRequest = z.infer<
 >;
 export type EnterpriseGovernanceSetRuleRequest = z.infer<typeof EnterpriseGovernanceSetRuleRequest>;
 export type EnterpriseGovernanceAuditRequest = z.infer<typeof EnterpriseGovernanceAuditRequest>;
+export type EnterprisePersonalizationFavoriteRequest = z.infer<typeof EnterprisePersonalizationFavoriteRequest>;
+export type EnterprisePersonalizationRecentRequest = z.infer<typeof EnterprisePersonalizationRecentRequest>;
+export type EnterprisePersonalizationSaveViewRequest = z.infer<typeof EnterprisePersonalizationSaveViewRequest>;
+export type EnterprisePersonalizationDeleteViewRequest = z.infer<typeof EnterprisePersonalizationDeleteViewRequest>;
+export type EnterprisePersonalizationRenameViewRequest = z.infer<typeof EnterprisePersonalizationRenameViewRequest>;
 
 /* ══════════════════ Enterprise Module Framework (ERP foundation) ═══════════ */
 

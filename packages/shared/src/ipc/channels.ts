@@ -288,6 +288,14 @@ export const IpcChannel = {
   EnterpriseRelationshipExplore: 'enterprise:relationship.explore',
   /** Trust Engine — read-only per-entity deterministic trust model (profiles + factors + trend + KPIs + narrative). */
   EnterpriseTrustExplore: 'enterprise:trust.explore',
+  /** Personalization (per-user Favorites / Recently-Opened / Saved Views) — actor-scoped, persisted. */
+  EnterprisePersonalizationGet: 'enterprise:personalization.get',
+  EnterprisePersonalizationFavorite: 'enterprise:personalization.favorite',
+  EnterprisePersonalizationRecent: 'enterprise:personalization.recent',
+  EnterprisePersonalizationClearRecents: 'enterprise:personalization.clearRecents',
+  EnterprisePersonalizationSaveView: 'enterprise:personalization.saveView',
+  EnterprisePersonalizationDeleteView: 'enterprise:personalization.deleteView',
+  EnterprisePersonalizationRenameView: 'enterprise:personalization.renameView',
   EnterpriseEventBroadcast: 'enterprise:event',
 
   // ── Enterprise Module Framework (ERP foundation) ──
@@ -726,6 +734,13 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.EnterpriseExecutionExplore,
   IpcChannel.EnterpriseRelationshipExplore,
   IpcChannel.EnterpriseTrustExplore,
+  IpcChannel.EnterprisePersonalizationGet,
+  IpcChannel.EnterprisePersonalizationFavorite,
+  IpcChannel.EnterprisePersonalizationRecent,
+  IpcChannel.EnterprisePersonalizationClearRecents,
+  IpcChannel.EnterprisePersonalizationSaveView,
+  IpcChannel.EnterprisePersonalizationDeleteView,
+  IpcChannel.EnterprisePersonalizationRenameView,
   IpcChannel.EnterpriseModulesList,
   IpcChannel.EnterpriseModuleList,
   IpcChannel.EnterpriseModuleGet,

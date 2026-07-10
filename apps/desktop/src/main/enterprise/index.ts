@@ -27,6 +27,11 @@ import type {
   EnterpriseGovernanceAuditRequest as TAudit,
   EnterpriseProcessExploreRequest as TProcessExplore,
   EnterpriseProcessCaseRequest as TProcessCase,
+  EnterprisePersonalizationFavoriteRequest as TPersFavorite,
+  EnterprisePersonalizationRecentRequest as TPersRecent,
+  EnterprisePersonalizationSaveViewRequest as TPersSaveView,
+  EnterprisePersonalizationDeleteViewRequest as TPersDeleteView,
+  EnterprisePersonalizationRenameViewRequest as TPersRenameView,
   AuthStatus,
   EnterprisePermission,
   Organization,
@@ -55,6 +60,11 @@ import {
   EnterpriseGovernanceAuditRequest,
   EnterpriseProcessExploreRequest,
   EnterpriseProcessCaseRequest,
+  EnterprisePersonalizationFavoriteRequest,
+  EnterprisePersonalizationRecentRequest,
+  EnterprisePersonalizationSaveViewRequest,
+  EnterprisePersonalizationDeleteViewRequest,
+  EnterprisePersonalizationRenameViewRequest,
 } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
@@ -128,6 +138,7 @@ import { getScheduleExploreModel } from './scheduleExploreProvider';
 import { getExecutionConsoleModel } from './executionConsoleProvider';
 import { getRelationshipModel } from './relationshipProvider';
 import { getTrustModel } from './trustProvider';
+import { personalizationStore } from './personalization/personalizationInstance';
 import { notificationScheduler } from '../services/notificationScheduler';
 import { buildOrgGraph, orgGraphNeighbors } from './graph/orgGraph';
 import { evaluateCompliance, type ComplianceInput } from './governance/enterpriseGovernance';
@@ -317,6 +328,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     downtimeEventModule.store.load(),
     executiveDecisionModule.store.load(),
     executionProposalModule.store.load(),
+    personalizationStore.load(),
   ]);
 
   return {
@@ -353,6 +365,12 @@ function actorName(): string {
   return st.state === 'authenticated'
     ? (st.session.user.displayName ?? st.session.user.email)
     : 'owner';
+}
+
+/** The stable per-user key for personalization — the signed-in account (never a renderer-supplied id). */
+function currentActorId(): string {
+  const st = authService.getStatus();
+  return st.state === 'authenticated' ? st.session.user.email : 'owner';
 }
 
 function audit(action: string, target: string, summary: string): void {
@@ -779,6 +797,45 @@ function buildHandlers(): SecureHandlerDef[] {
       channel: IpcChannel.EnterpriseTrustExplore,
       schema: EmptyRequest,
       handler: () => getTrustModel(),
+    },
+
+    // Personalization — per-user Favorites / Recently-Opened / Saved Views. Every mutation is applied to the
+    // CALLER's own actor-scoped document (resolved server-side), persisted under userData, and returns the
+    // fresh state. Deterministic list operations are reused from the shared engine; nothing is duplicated.
+    {
+      channel: IpcChannel.EnterprisePersonalizationGet,
+      schema: EmptyRequest,
+      handler: () => personalizationStore.forActor(currentActorId()),
+    },
+    {
+      channel: IpcChannel.EnterprisePersonalizationFavorite,
+      schema: EnterprisePersonalizationFavoriteRequest,
+      handler: (p) => personalizationStore.toggleFavorite(currentActorId(), p as TPersFavorite),
+    },
+    {
+      channel: IpcChannel.EnterprisePersonalizationRecent,
+      schema: EnterprisePersonalizationRecentRequest,
+      handler: (p) => personalizationStore.pushRecent(currentActorId(), p as TPersRecent),
+    },
+    {
+      channel: IpcChannel.EnterprisePersonalizationClearRecents,
+      schema: EmptyRequest,
+      handler: () => personalizationStore.clearRecents(currentActorId()),
+    },
+    {
+      channel: IpcChannel.EnterprisePersonalizationSaveView,
+      schema: EnterprisePersonalizationSaveViewRequest,
+      handler: (p) => personalizationStore.saveView(currentActorId(), p as TPersSaveView),
+    },
+    {
+      channel: IpcChannel.EnterprisePersonalizationDeleteView,
+      schema: EnterprisePersonalizationDeleteViewRequest,
+      handler: (p) => personalizationStore.deleteView(currentActorId(), (p as TPersDeleteView).id),
+    },
+    {
+      channel: IpcChannel.EnterprisePersonalizationRenameView,
+      schema: EnterprisePersonalizationRenameViewRequest,
+      handler: (p) => { const r = p as TPersRenameView; return personalizationStore.renameView(currentActorId(), r.id, r.label); },
     },
   ];
 }

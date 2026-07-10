@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { cn } from '@renderer/lib/cn';
 import { Icon, type IconName } from '@renderer/components/ui/Icon';
+import { ipc } from '@renderer/lib/ipc';
+import { useShell } from '@renderer/state/ShellProvider';
+import { emptyPersonalizationState, isFavorite, type PersonalizationState } from '@neuropause/shared';
 import { EnterpriseProvider, useEnterprise } from './EnterpriseProvider';
+import { PersonalizationPanel } from './PersonalizationPanel';
 import { CommandCenterPanel } from './CommandCenterPanel';
 import { DecisionCenterPanel } from './DecisionCenterPanel';
 import { OrganizationExplorerPanel } from './OrganizationExplorerPanel';
@@ -36,12 +40,15 @@ const TABS: TabDef[] = [
   { id: 'execution', label: 'Operator Console', icon: 'activity' },
   { id: 'relationship', label: 'Relationship Intelligence', icon: 'connectors' },
   { id: 'trust', label: 'Trust Center', icon: 'shield' },
+  { id: 'personalize', label: 'Favorites', icon: 'star' },
   { id: 'modules', label: 'Modules', icon: 'grid' },
   { id: 'search', label: 'Search', icon: 'search' },
   { id: 'workspace', label: 'Workspace', icon: 'cpu' },
   { id: 'briefings', label: 'Briefings', icon: 'sparkles' },
   { id: 'customize', label: 'Customize', icon: 'settings' },
 ];
+
+const TAB_LABEL: Record<string, string> = Object.fromEntries(TABS.map((t) => [t.id, t.label]));
 
 /** The Enterprise experience, mounted with its live data provider. */
 export function EnterpriseRoot({
@@ -58,15 +65,24 @@ export function EnterpriseRoot({
 
 function EnterpriseInner({ initialTab }: { initialTab: EnterpriseTab }): JSX.Element {
   const { ready, refreshAll, jobs } = useEnterprise();
+  const { enterpriseTab, clearEnterpriseTab } = useShell();
   const [tab, setTab] = useState<EnterpriseTab>(initialTab);
   const [searchQuery, setSearchQuery] = useState('');
   const [navVersion, setNavVersion] = useState(0);
+  const [personalization, setPersonalization] = useState<PersonalizationState>(emptyPersonalizationState());
 
   // Re-read navigation preferences when Customize changes them.
   useEffect(() => {
     const onNav = (): void => setNavVersion((v) => v + 1);
     window.addEventListener('np:nav', onNav);
     return () => window.removeEventListener('np:nav', onNav);
+  }, []);
+
+  // Load the persisted per-user personalization once (favorites / recents / saved views).
+  useEffect(() => {
+    let alive = true;
+    ipc.enterprise.personalization.get().then((p) => { if (alive) setPersonalization(p); }).catch(() => undefined);
+    return () => { alive = false; };
   }, []);
 
   const enabledTabs = useMemo(() => {
@@ -80,9 +96,51 @@ function EnterpriseInner({ initialTab }: { initialTab: EnterpriseTab }): JSX.Ele
     if (!enabledTabs.some((t) => t.id === tab)) setTab('command');
   }, [enabledTabs, tab]);
 
+  // Record a visit to the persisted recently-opened list (server-scoped to this user).
+  const trackVisit = (next: EnterpriseTab, query?: string): void => {
+    if (next === 'personalize') return;
+    ipc.enterprise.personalization
+      .recent({ id: `tab:${next}`, kind: 'surface', label: TAB_LABEL[next] ?? next, tab: next, query })
+      .then(setPersonalization)
+      .catch(() => undefined);
+  };
+
   const navigate = (next: EnterpriseTab, query?: string): void => {
     if (next === 'search' && query !== undefined) setSearchQuery(query);
     setTab(next);
+    trackVisit(next, next === 'search' ? (query ?? searchQuery) : undefined);
+  };
+
+  // Consume a one-shot deep-link from the command palette (navigate into an enterprise sub-tab).
+  useEffect(() => {
+    if (!enterpriseTab) return;
+    if (TABS.some((t) => t.id === enterpriseTab)) {
+      const next = enterpriseTab as EnterpriseTab;
+      setTab(next);
+      if (next !== 'personalize') {
+        ipc.enterprise.personalization
+          .recent({ id: `tab:${next}`, kind: 'surface', label: TAB_LABEL[next] ?? next, tab: next })
+          .then(setPersonalization)
+          .catch(() => undefined);
+      }
+    }
+    clearEnterpriseTab();
+  }, [enterpriseTab, clearEnterpriseTab]);
+
+  const canPersonalize = tab !== 'personalize';
+  const currentFavorited = isFavorite(personalization, `tab:${tab}`);
+  const toggleFavoriteCurrent = (): void => {
+    ipc.enterprise.personalization
+      .favorite({ id: `tab:${tab}`, kind: 'surface', label: TAB_LABEL[tab] ?? tab, tab, query: tab === 'search' ? searchQuery : undefined })
+      .then(setPersonalization)
+      .catch(() => undefined);
+  };
+  const saveCurrentView = (): void => {
+    const label = (TAB_LABEL[tab] ?? tab) + (tab === 'search' && searchQuery ? `: ${searchQuery}` : '');
+    ipc.enterprise.personalization
+      .saveView({ label, tab, query: tab === 'search' ? searchQuery : '', filters: '' })
+      .then(setPersonalization)
+      .catch(() => undefined);
   };
 
   const pendingApprovals = jobs.reduce(
@@ -123,6 +181,28 @@ function EnterpriseInner({ initialTab }: { initialTab: EnterpriseTab }): JSX.Ele
               </span>
               {ready ? 'Live' : 'Connecting…'}
             </span>
+            {canPersonalize && (
+              <>
+                <button
+                  type="button"
+                  aria-label={currentFavorited ? 'Remove from favorites' : 'Add to favorites'}
+                  title={currentFavorited ? 'Remove from favorites' : 'Favorite this surface'}
+                  onClick={toggleFavoriteCurrent}
+                  className={cn('flex h-8 w-8 items-center justify-center rounded-lg fill-hover', currentFavorited ? 'text-ink' : 'text-muted hover:text-ink')}
+                >
+                  <Icon name={currentFavorited ? 'star-fill' : 'star'} size={16} />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Save current view"
+                  title="Save current view"
+                  onClick={saveCurrentView}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-muted fill-hover hover:text-ink"
+                >
+                  <Icon name="pin" size={16} />
+                </button>
+              </>
+            )}
             <button
               type="button"
               aria-label="Refresh"
@@ -170,6 +250,7 @@ function EnterpriseInner({ initialTab }: { initialTab: EnterpriseTab }): JSX.Ele
         {tab === 'execution' && <OperatorConsolePanel />}
         {tab === 'relationship' && <RelationshipIntelligencePanel />}
         {tab === 'trust' && <TrustCenterPanel />}
+        {tab === 'personalize' && <PersonalizationPanel state={personalization} onNavigate={navigate} onMutate={setPersonalization} />}
         {tab === 'modules' && <EnterpriseModulesHub />}
         {tab === 'search' && <EnterpriseSearchPanel key={searchQuery} initialQuery={searchQuery} />}
         {tab === 'workspace' && <ExecutiveWorkspacePanel onNavigate={navigate} />}

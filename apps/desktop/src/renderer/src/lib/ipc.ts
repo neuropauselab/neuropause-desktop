@@ -219,6 +219,7 @@ import type {
   ExecutionConsoleModel,
   RelationshipGraphModel,
   EnterpriseTrustModel,
+  PersonalizationState,
 } from '@neuropause/shared';
 
 type OAuthProviderId = Exclude<AuthProviderId, 'email'>;
@@ -1003,6 +1004,20 @@ export const ipc = {
 
     /** Trust Engine — read-only per-entity deterministic trust model (profiles + factors + trend + KPIs + narrative). */
     trustExplore: () => invoke(IpcChannel.EnterpriseTrustExplore) as Promise<EnterpriseTrustModel>,
+
+    /** Personalization — per-user Favorites / Recently-Opened / Saved Views (actor resolved server-side). */
+    personalization: {
+      get: () => invoke(IpcChannel.EnterprisePersonalizationGet) as Promise<PersonalizationState>,
+      favorite: (input: { id: string; kind?: string; label?: string; tab: string; query?: string }) =>
+        invoke(IpcChannel.EnterprisePersonalizationFavorite, input) as Promise<PersonalizationState>,
+      recent: (input: { id: string; kind?: string; label?: string; tab: string; query?: string }) =>
+        invoke(IpcChannel.EnterprisePersonalizationRecent, input) as Promise<PersonalizationState>,
+      clearRecents: () => invoke(IpcChannel.EnterprisePersonalizationClearRecents) as Promise<PersonalizationState>,
+      saveView: (input: { id?: string; label: string; tab: string; query?: string; filters?: string }) =>
+        invoke(IpcChannel.EnterprisePersonalizationSaveView, input) as Promise<PersonalizationState>,
+      deleteView: (id: string) => invoke(IpcChannel.EnterprisePersonalizationDeleteView, { id }) as Promise<PersonalizationState>,
+      renameView: (id: string, label: string) => invoke(IpcChannel.EnterprisePersonalizationRenameView, { id, label }) as Promise<PersonalizationState>,
+    },
 
     onEvent: (cb: (e: { kind: string; at: string }) => void) =>
       subscribe(IpcChannel.EnterpriseEventBroadcast, (p) => cb(p as { kind: string; at: string })),

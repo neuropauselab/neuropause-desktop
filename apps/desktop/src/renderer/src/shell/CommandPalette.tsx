@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import type { NpsOperationDto, PluginDto, RuntimeInstanceDto } from '@neuropause/shared';
+import type { FavoriteItem, NpsOperationDto, PluginDto, RuntimeInstanceDto } from '@neuropause/shared';
 import { cn } from '@renderer/lib/cn';
 import { Icon, type IconName } from '@renderer/components/ui/Icon';
 import { Kbd } from '@renderer/components/ui/controls';
@@ -43,15 +43,31 @@ function score(query: string, text: string): number | null {
 const FILTER_ORDER: GroupKey[] = ['Applications', 'Plugins', 'Sessions', 'Downloads', 'Go to', 'Commands'];
 const RUNNING: string[] = ['running', 'starting', 'suspended'];
 
+/** Enterprise sub-tabs the palette can deep-link into (cross-module navigation). */
+const ENTERPRISE_TABS: { id: string; title: string; icon: IconName; kw: string }[] = [
+  { id: 'command', title: 'Command Center', icon: 'grid', kw: 'command home overview' },
+  { id: 'executive', title: 'Executive Center', icon: 'sparkles', kw: 'executive kpis scorecard' },
+  { id: 'decision', title: 'Decision Center', icon: 'shield', kw: 'decisions approvals governance' },
+  { id: 'process', title: 'Process Explorer', icon: 'activity', kw: 'process mining cases' },
+  { id: 'schedule', title: 'Production Schedule', icon: 'clock', kw: 'schedule aps gantt' },
+  { id: 'execution', title: 'Operator Console', icon: 'activity', kw: 'mes execution shop floor' },
+  { id: 'relationship', title: 'Relationship Intelligence', icon: 'connectors', kw: 'relationship graph entity' },
+  { id: 'trust', title: 'Trust Center', icon: 'shield', kw: 'trust score reliability' },
+  { id: 'personalize', title: 'Favorites & Saved Views', icon: 'star', kw: 'favorites recents saved views personalize workspace' },
+  { id: 'search', title: 'Enterprise Search', icon: 'search', kw: 'search find records' },
+  { id: 'modules', title: 'Enterprise Modules', icon: 'grid', kw: 'modules records erp crm sales' },
+];
+
 const initial2 = (s: string): string => s.replace(/[^a-z0-9]/gi, '').slice(0, 2).toUpperCase() || '??';
 
 export function CommandPalette(): JSX.Element {
-  const { commandOpen, setCommandOpen, setSection, openApp, openOperations, toggleSidebar } = useShell();
+  const { commandOpen, setCommandOpen, setSection, openApp, openOperations, openEnterprise, toggleSidebar } = useShell();
   const { source, setSource } = useTheme();
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const [live, setLive] = useState<{ plugins: PluginDto[]; instances: RuntimeInstanceDto[]; operations: NpsOperationDto[] }>({ plugins: [], instances: [], operations: [] });
   const [recents, setRecents] = useState<string[]>(() => prefs.read<string[]>(PrefKey.recentCommands, []));
+  const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -74,6 +90,8 @@ export function CommandPalette(): JSX.Element {
         ipc.nps.operations().catch(() => [] as NpsOperationDto[]),
       ]);
       if (active) setLive({ plugins, instances, operations });
+      const pers = await ipc.enterprise.personalization.get().catch(() => null);
+      if (active && pers) setFavorites(pers.favorites);
     })();
     return () => {
       active = false;
@@ -188,8 +206,28 @@ export function CommandPalette(): JSX.Element {
       },
     ];
 
-    return [...apps, ...plugins, ...sessions, ...downloads, ...sections, ...ops, ...commands];
-  }, [live, source, setSource, openApp, openOperations, setSection, toggleSidebar]);
+    const entNav: CommandItem[] = ENTERPRISE_TABS.map((t) => ({
+      id: `ent:${t.id}`,
+      group: 'Go to',
+      title: t.title,
+      subtitle: 'Enterprise',
+      icon: t.icon,
+      keywords: `enterprise ${t.kw}`,
+      run: () => openEnterprise(t.id),
+    }));
+
+    const entFavorites: CommandItem[] = favorites.map((f) => ({
+      id: `fav:${f.id}`,
+      group: 'Go to',
+      title: f.label,
+      subtitle: 'Favorite · Enterprise',
+      icon: 'star-fill',
+      keywords: `favorite pinned enterprise ${f.label} ${f.kind}`,
+      run: () => openEnterprise(f.tab),
+    }));
+
+    return [...apps, ...plugins, ...sessions, ...downloads, ...sections, ...ops, ...entNav, ...entFavorites, ...commands];
+  }, [live, favorites, source, setSource, openApp, openOperations, openEnterprise, setSection, toggleSidebar]);
 
   // Empty query → Recent + navigation. Typing → fuzzy search across every domain.
   const groups = useMemo(() => {
