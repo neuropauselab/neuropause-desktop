@@ -4,6 +4,7 @@ import type { Session } from '@neuropause/shared';
 import { useShell } from '@renderer/state/ShellProvider';
 import { useScale } from '@renderer/state/ScaleProvider';
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary';
+import { WorkspaceErrorBoundary } from '@renderer/components/WorkspaceErrorBoundary';
 import { Spinner } from '@renderer/components/Spinner';
 import { ipc } from '@renderer/lib/ipc';
 import { createLogger } from '@renderer/lib/logger';
@@ -212,9 +213,9 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
               transition={{ duration: 0.16, ease: [0.2, 0.8, 0.2, 1] }}
               className="h-full"
             >
-              <ErrorBoundary inline name={activeSection}>
+              <WorkspaceErrorBoundary name={activeSection}>
                 <Suspense fallback={<ViewFallback />}>{renderView()}</Suspense>
-              </ErrorBoundary>
+              </WorkspaceErrorBoundary>
             </motion.div>
           </AnimatePresence>
         </main>
