@@ -192,15 +192,32 @@ async function pullTeams(ctx: SyncContext): Promise<SyncPage> {
 
 /**
  * Wrap a pull so an unlicensed / unprovisioned module (403 Forbidden, 404 mailbox/drive not found) is
- * skipped with an empty page instead of failing the whole account sync. Other errors propagate.
+ * skipped with an empty page instead of failing the whole account sync. The empty page is tagged with a
+ * `degraded` reason (403 → unauthorized, 404 → unprovisioned) so the module surfaces in the UI as
+ * degraded rather than silently reading "0". Other errors (429/5xx/network, 410 delta-expiry) propagate.
  */
 function graceful(pull: (ctx: SyncContext) => Promise<SyncPage>): (ctx: SyncContext) => Promise<SyncPage> {
   return async (ctx: SyncContext): Promise<SyncPage> => {
     try {
       return await pull(ctx);
     } catch (err) {
-      if (err instanceof HttpError && (err.status === 403 || err.status === 404)) {
-        return { entities: [], deletedSourceIds: [], cursor: ctx.cursor, hasMore: false };
+      if (err instanceof HttpError && err.status === 403) {
+        return {
+          entities: [],
+          deletedSourceIds: [],
+          cursor: ctx.cursor,
+          hasMore: false,
+          degraded: { kind: 'unauthorized', reason: 'Missing Graph permission or module not licensed (403)' },
+        };
+      }
+      if (err instanceof HttpError && err.status === 404) {
+        return {
+          entities: [],
+          deletedSourceIds: [],
+          cursor: ctx.cursor,
+          hasMore: false,
+          degraded: { kind: 'unprovisioned', reason: 'Mailbox / OneDrive not provisioned yet (404)' },
+        };
       }
       throw err;
     }

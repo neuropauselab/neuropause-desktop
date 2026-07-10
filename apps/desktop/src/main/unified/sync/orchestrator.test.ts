@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { UnifiedStore } from '../unifiedStore';
-import { SyncStateStore } from './syncStateStore';
+import { SyncStateStore, stateToSnapshot } from './syncStateStore';
 import { RateLimiter } from './rateLimiter';
 import { SyncOrchestrator, type OrchestratorPorts } from './orchestrator';
 import { makeEntity, type ConnectorAdapter, type SyncContext, type SyncPage } from './adapterSdk';
@@ -92,6 +92,54 @@ describe('SyncOrchestrator', () => {
     expect(types).toContain('connector.sync_completed');
     expect(types).toContain('knowledge.entity_created');
     expect(state.get('github', 'a1').status).toBe('success');
+
+    // Per-module stats are recorded for the resource (drives the M365 module panel).
+    const res = state.get('github', 'a1').resources['items'];
+    expect(res.objectCount).toBe(3);
+    expect(res.status).toBe('ok');
+    expect(res.label).toBe('Items');
+    const snap = stateToSnapshot(state.get('github', 'a1'), 0);
+    expect(snap.modules?.find((m) => m.id === 'items')).toMatchObject({ objectCount: 3, status: 'ok' });
+  });
+
+  it('records a swallowed 403/404 as a degraded module and surfaces it in the snapshot', async () => {
+    const store = await newStore();
+    const state = await newState();
+    const adapter = fakeAdapter(async (ctx) => ({
+      entities: [],
+      cursor: ctx.cursor,
+      hasMore: false,
+      degraded: { kind: 'unauthorized', reason: 'Missing Graph permission or module not licensed (403)' },
+    }));
+    const orch = new SyncOrchestrator(ports(store, state, adapter, []));
+    const o = await orch.runAccountSync('github', 'a1');
+    orch.stop();
+
+    // The account sync still succeeds (graceful degradation never fails the run)…
+    expect(o.ok).toBe(true);
+    expect(o.created).toBe(0);
+    // …but the module is recorded as unauthorized with a reason and a zero count.
+    const res = state.get('github', 'a1').resources['items'];
+    expect(res.status).toBe('unauthorized');
+    expect(res.objectCount).toBe(0);
+    const mod = stateToSnapshot(state.get('github', 'a1'), 0).modules?.find((m) => m.id === 'items');
+    expect(mod?.status).toBe('unauthorized');
+    expect(mod?.reason).toContain('403');
+  });
+
+  it('keeps a resource cursor intact when recording module stats (incremental sync survives)', async () => {
+    const store = await newStore();
+    const state = await newState();
+    const adapter = fakeAdapter(async (ctx) => {
+      // First run pages once to a deltaLink; the recorded stats must not wipe that cursor.
+      if (ctx.cursor === null) return { entities: [ent('1', 'One', '2026-01-01T00:00:00.000Z', ctx.now)], cursor: 'DELTA', hasMore: false };
+      return { entities: [], cursor: ctx.cursor, hasMore: false };
+    });
+    const orch = new SyncOrchestrator(ports(store, state, adapter, []));
+    await orch.runAccountSync('github', 'a1');
+    orch.stop();
+    expect(state.getCursor('github', 'a1', 'items')).toBe('DELTA');
+    expect(state.get('github', 'a1').resources['items'].objectCount).toBe(1);
   });
 
   it('passes the stored cursor back on the next run (incremental sync)', async () => {

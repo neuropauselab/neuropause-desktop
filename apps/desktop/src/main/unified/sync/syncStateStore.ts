@@ -6,14 +6,21 @@
  */
 import { EventEmitter } from 'node:events';
 import { promises as fs } from 'node:fs';
-import type { ConnectorSyncSnapshot } from '@neuropause/shared';
+import type { ConnectorSyncSnapshot, ConnectorModuleStat, UnifiedEntityKind } from '@neuropause/shared';
 import { createLogger } from '../../logger';
 
 const log = createLogger('sync-state');
 
+/** Per-resource sync state: the incremental cursor plus the module stats the UI reads. */
 export interface ResourceCursor {
   cursor: string | null;
   lastSyncAt: string | null;
+  /** Module label/kind/count/status, recorded by the orchestrator each run (optional for back-compat). */
+  label?: string;
+  kind?: UnifiedEntityKind;
+  objectCount?: number;
+  status?: ConnectorModuleStat['status'];
+  reason?: string | null;
 }
 
 export interface AccountSyncState {
@@ -52,6 +59,24 @@ function defaultState(connectorId: string, accountId: string): AccountSyncState 
   };
 }
 
+/** Build the per-module stats from a state's recorded resources (those the orchestrator has tagged). */
+export function stateToModules(s: AccountSyncState): ConnectorModuleStat[] {
+  const out: ConnectorModuleStat[] = [];
+  for (const [id, r] of Object.entries(s.resources)) {
+    if (r.label === undefined) continue; // cursor-only entry, not yet stat-tagged
+    out.push({
+      id,
+      label: r.label,
+      kind: r.kind ?? 'activity',
+      objectCount: r.objectCount ?? 0,
+      status: r.status ?? 'ok',
+      reason: r.reason ?? null,
+      lastSyncAt: r.lastSyncAt,
+    });
+  }
+  return out;
+}
+
 /** Project a state plus a live queue depth into a dashboard snapshot. */
 export function stateToSnapshot(s: AccountSyncState, queueSize: number): ConnectorSyncSnapshot {
   return {
@@ -66,6 +91,7 @@ export function stateToSnapshot(s: AccountSyncState, queueSize: number): Connect
     consecutiveFailures: s.consecutiveFailures,
     rateLimitedUntil: s.rateLimitedUntil,
     queueSize,
+    modules: stateToModules(s),
   };
 }
 
@@ -112,7 +138,28 @@ export class SyncStateStore extends EventEmitter {
   async setCursor(connectorId: string, accountId: string, resourceId: string, cursor: string | null, at: string): Promise<void> {
     const k = key(connectorId, accountId);
     const state = this.states.get(k) ?? defaultState(connectorId, accountId);
-    state.resources[resourceId] = { cursor, lastSyncAt: at };
+    const prev = state.resources[resourceId];
+    // Preserve any module stats already recorded for this resource; only advance the cursor.
+    state.resources[resourceId] = { ...prev, cursor, lastSyncAt: at };
+    this.states.set(k, state);
+    await this.persist();
+  }
+
+  /**
+   * Record the per-module sync stats for one resource (label/kind/objectCount/status/reason),
+   * merging over the existing cursor entry so the incremental cursor is never lost. Called by the
+   * orchestrator after each resource's paging loop completes.
+   */
+  async recordResource(
+    connectorId: string,
+    accountId: string,
+    resourceId: string,
+    patch: Partial<Omit<ResourceCursor, 'cursor'>>,
+  ): Promise<void> {
+    const k = key(connectorId, accountId);
+    const state = this.states.get(k) ?? defaultState(connectorId, accountId);
+    const prev = state.resources[resourceId] ?? { cursor: null, lastSyncAt: null };
+    state.resources[resourceId] = { ...prev, ...patch };
     this.states.set(k, state);
     await this.persist();
   }

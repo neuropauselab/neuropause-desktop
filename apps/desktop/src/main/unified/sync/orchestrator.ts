@@ -15,7 +15,7 @@
 import type { PlatformEventInput, UnifiedEntity } from '@neuropause/shared';
 import { makeUnifiedId } from '../ids';
 import { AuthError, HttpClient, HttpError, NetworkError, RateLimitError, type RateGate } from './http';
-import type { ConnectorAdapter } from './adapterSdk';
+import type { ConnectorAdapter, SyncPage } from './adapterSdk';
 import { RetryQueue } from './retryQueue';
 import type { SyncStateStore } from './syncStateStore';
 import { syncEvents } from './events';
@@ -139,6 +139,9 @@ export class SyncOrchestrator {
       for (const resource of adapter.resources) {
         let cursor = this.ports.syncState.getCursor(connectorId, accountId, resource.id);
         let pages = 0;
+        let resCreated = 0;
+        let resDeleted = 0;
+        let degraded: SyncPage['degraded'];
         for (;;) {
           const page = await resource.pull({ connectorId, accountId, http, cursor, now: nowIso });
           if (page.entities.length > 0) {
@@ -146,16 +149,33 @@ export class SyncOrchestrator {
             created += r.created;
             updated += r.updated;
             conflicts += r.conflicts;
+            resCreated += r.created;
           }
           if (page.deletedSourceIds && page.deletedSourceIds.length > 0) {
             const ids = page.deletedSourceIds.map((sid) => makeUnifiedId(connectorId, accountId, resource.kind, sid));
-            deleted += await this.ports.markDeleted(ids, nowIso);
+            const d = await this.ports.markDeleted(ids, nowIso);
+            deleted += d;
+            resDeleted += d;
           }
+          if (page.degraded) degraded = page.degraded;
           cursor = page.cursor;
           await this.ports.syncState.setCursor(connectorId, accountId, resource.id, cursor, nowIso);
           pages += 1;
           if (!page.hasMore || pages >= MAX_PAGES_PER_RESOURCE) break;
         }
+        // Record per-module stats so the UI can show each resource's authorized/degraded status + count.
+        // objectCount is a running live total (created − deleted) attributed to this exact resource, so
+        // modules that share a kind (e.g. directory users vs M365 contacts) are never conflated.
+        const prevCount =
+          this.ports.syncState.get(connectorId, accountId).resources[resource.id]?.objectCount ?? 0;
+        await this.ports.syncState.recordResource(connectorId, accountId, resource.id, {
+          label: resource.label,
+          kind: resource.kind,
+          objectCount: Math.max(0, prevCount + resCreated - resDeleted),
+          status: degraded ? degraded.kind : 'ok',
+          reason: degraded ? degraded.reason : null,
+          lastSyncAt: nowIso,
+        });
       }
 
       if (this.offlineConnectors.delete(connectorId)) {

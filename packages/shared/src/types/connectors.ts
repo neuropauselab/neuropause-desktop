@@ -262,6 +262,35 @@ export interface ConnectorStats {
 }
 
 /**
+ * Per-resource ("module") sync stat for a connector account. A connector's adapter can
+ * pull several independent streams — e.g. the microsoft-entra connector rides Microsoft 365
+ * modules (Outlook Mail, Calendar, OneDrive, Contacts, Teams) on top of its directory streams.
+ * This lets the UI show, module by module, what actually synced and — critically — whether a
+ * module is silently degraded: a 403 (missing Graph permission / unlicensed) or 404 (mailbox or
+ * OneDrive not provisioned yet) that the adapter swallows so it never fails the whole account sync.
+ */
+export interface ConnectorModuleStat {
+  /** The adapter resource id (e.g. 'mail', 'calendar', 'drive', 'contacts', 'teams'). */
+  id: string;
+  /** Human label for the module (e.g. 'Outlook Mail'). */
+  label: string;
+  /** The unified entity kind this module produces. */
+  kind: string;
+  /** Live objects this module has synced into the store (cumulative created − deleted). */
+  objectCount: number;
+  /**
+   * ok            — synced normally (authorized + provisioned), whether or not it returned items.
+   * unauthorized  — a 403 was swallowed: missing Graph permission or the module is unlicensed.
+   * unprovisioned — a 404 was swallowed: the mailbox / OneDrive is not set up yet.
+   */
+  status: 'ok' | 'unauthorized' | 'unprovisioned';
+  /** Human explanation when the module is not `ok`. */
+  reason: string | null;
+  /** When this module last completed a pull (ISO), or null if it has never run. */
+  lastSyncAt: string | null;
+}
+
+/**
  * A point-in-time view of one account's sync health, surfaced to the Connector
  * Health Dashboard. Produced by the sync engine; safe to expose over IPC.
  */
@@ -277,4 +306,9 @@ export interface ConnectorSyncSnapshot {
   consecutiveFailures: number;
   rateLimitedUntil: string | null;
   queueSize: number;
+  /**
+   * Per-module breakdown, present once the account has synced under a stats-aware build.
+   * Older persisted state has no module stats, so consumers must treat this as optional.
+   */
+  modules?: ConnectorModuleStat[];
 }

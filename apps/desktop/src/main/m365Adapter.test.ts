@@ -78,15 +78,19 @@ describe('m365Adapter — resources + graceful degradation', () => {
     expect(page.deletedSourceIds).toEqual(['f2']);
   });
 
-  it('gracefully skips a module that returns 403 (unlicensed) without failing the sync', async () => {
+  it('gracefully skips a module that returns 403 (unlicensed) and tags it unauthorized', async () => {
     const page = await res('mail').pull(errCtx(403));
     expect(page.entities).toEqual([]);
     expect(page.hasMore).toBe(false);
+    expect(page.degraded?.kind).toBe('unauthorized');
+    expect(page.degraded?.reason).toContain('403');
   });
 
-  it('gracefully skips 404 (mailbox/OneDrive not provisioned)', async () => {
-    expect((await res('drive').pull(errCtx(404))).entities).toEqual([]);
-    expect((await res('teams').pull(errCtx(403))).entities).toEqual([]);
+  it('gracefully skips 404 (mailbox/OneDrive not provisioned) and tags it unprovisioned', async () => {
+    const drive = await res('drive').pull(errCtx(404));
+    expect(drive.entities).toEqual([]);
+    expect(drive.degraded?.kind).toBe('unprovisioned');
+    expect((await res('teams').pull(errCtx(403))).degraded?.kind).toBe('unauthorized');
   });
 
   it('propagates genuinely retryable errors (e.g. 500)', async () => {

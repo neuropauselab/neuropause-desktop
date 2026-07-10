@@ -458,46 +458,13 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
     },
     multiAccount: true,
   },
-  {
-    id: 'microsoft-365',
-    name: 'Microsoft 365',
-    provider: 'Microsoft',
-    description: 'Index files, mail, and calendar across Microsoft 365.',
-    category: 'storage',
-    website: 'https://microsoft365.com',
-    docsUrl: 'https://learn.microsoft.com/azure/active-directory/develop/v2-oauth2-auth-code-flow',
-    brandColor: '#D83B01',
-    version: '1.0.0',
-    authType: 'oauth2_pkce',
-    capabilities: ['files', 'documents', 'calendar', 'events', 'messages'],
-    scopes: [
-      { id: 'User.Read', label: 'Profile', description: 'Read your profile.' },
-      { id: 'Files.Read', label: 'Files', description: 'Read your OneDrive files.' },
-      { id: 'Calendars.Read', label: 'Calendar', description: 'Read your calendar.' },
-      { id: 'Mail.Read', label: 'Mail', description: 'Read your mail headers.' },
-      {
-        id: 'offline_access',
-        label: 'Offline',
-        description: 'Keep the connection alive in the background.',
-      },
-    ],
-    oauth: {
-      authorizeUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
-      tokenUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
-      revokeUrl: null,
-      scopes: ['User.Read', 'Files.Read', 'Calendars.Read', 'Mail.Read', 'offline_access'],
-      scopeSeparator: ' ',
-      usePkce: true,
-      tokenAuthStyle: 'body',
-      extraAuthParams: { prompt: 'select_account' },
-      extraTokenParams: {},
-      clientIdEnv: 'NEUROPAUSE_MICROSOFT_CLIENT_ID',
-      clientSecretEnv: null,
-    },
-    multiAccount: true,
-  },
-
   /* ─────────────── Identity / Directory ─────────────── */
+  /*
+   * NOTE: Microsoft 365 (Outlook Mail, Calendar, OneDrive, Contacts, Teams) is NOT a standalone
+   * connector. It rides the `microsoft-entra` connector below as additional Graph resources on the
+   * same authenticated token (see unified/sync/adapters/m365.ts), so there is deliberately no separate
+   * 'microsoft-365' manifest — that stub only confused users into a second, dead OAuth setup.
+   */
   {
     id: 'microsoft-entra',
     name: 'Microsoft Entra ID',

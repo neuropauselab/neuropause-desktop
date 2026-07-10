@@ -22,6 +22,14 @@ export const M365_READ_SCOPES: readonly string[] = [
   'Team.ReadBasic.All',
 ];
 
+/**
+ * The Microsoft 365 module (adapter resource) ids, in display order. These ride on the
+ * `microsoft-entra` connector as additional resources; the UI uses this list to pick the
+ * M365 modules out of the connector's per-resource sync stats.
+ */
+export const M365_MODULE_IDS = ['mail', 'calendar', 'drive', 'contacts', 'teams'] as const;
+export type M365ModuleId = (typeof M365_MODULE_IDS)[number];
+
 /* ── endpoint paths + $select field lists ─────────────────────────────────────────────── */
 
 export const MAIL_DELTA_URL =

@@ -41,6 +41,13 @@ export interface SyncPage {
   cursor: string | null;
   /** Whether more pages remain to pull right now. */
   hasMore: boolean;
+  /**
+   * Set when a resource returned an empty page because it was *gracefully skipped* rather than
+   * genuinely empty — a swallowed 403 (unauthorized: missing permission / unlicensed) or 404
+   * (unprovisioned: mailbox/OneDrive not set up yet). The orchestrator records this per resource so
+   * the UI can show the module as degraded instead of a bare "0". Absent on a normal successful pull.
+   */
+  degraded?: { kind: 'unauthorized' | 'unprovisioned'; reason: string };
 }
 
 /** One stream of data within an adapter (e.g. GitHub repos, issues, notifications). */
