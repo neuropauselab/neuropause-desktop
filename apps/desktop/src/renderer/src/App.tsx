@@ -6,6 +6,8 @@ import { ScaleProvider } from '@renderer/state/ScaleProvider';
 import { ServicesProvider } from '@renderer/services/ServicesProvider';
 import { ShellProvider } from '@renderer/state/ShellProvider';
 import { DashboardProvider } from '@renderer/state/DashboardProvider';
+import { ToastProvider } from '@renderer/state/ToastProvider';
+import { ConnectionProvider } from '@renderer/state/ConnectionProvider';
 import { AppShell } from '@renderer/shell/AppShell';
 
 /**
@@ -41,9 +43,13 @@ export default function App(): JSX.Element {
         <ServicesProvider>
           <ShellProvider>
             <DashboardProvider>
-              <ErrorBoundary name="shell">
-                <AppShell session={status.session} />
-              </ErrorBoundary>
+              <ToastProvider>
+                <ConnectionProvider>
+                  <ErrorBoundary name="shell">
+                    <AppShell session={status.session} />
+                  </ErrorBoundary>
+                </ConnectionProvider>
+              </ToastProvider>
             </DashboardProvider>
           </ShellProvider>
         </ServicesProvider>
