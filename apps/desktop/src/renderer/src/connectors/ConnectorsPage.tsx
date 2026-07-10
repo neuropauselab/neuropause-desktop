@@ -7,6 +7,7 @@ import { Stat } from '@renderer/operations/primitives';
 import { CATEGORY_LABEL } from './connectorLib';
 import { ConnectorCard } from './ConnectorCard';
 import { ConnectorDetail, type ConnectorActions, type DetailNotice } from './ConnectorDetail';
+import { IntegrationHealthPanel } from './IntegrationHealthPanel';
 
 /** A consistent display order for category pills. */
 const CATEGORY_ORDER: ConnectorCategory[] = [
@@ -195,6 +196,8 @@ export function ConnectorsPage(): JSX.Element {
           <Stat icon="user" label="Accounts" value={stats?.accounts ?? '—'} tone="blue" />
           <Stat icon="pulse" label="Need attention" value={issues} tone={issues > 0 ? 'orange' : 'gray'} />
         </div>
+
+        <IntegrationHealthPanel />
       </div>
 
       {/* Two-pane: list + detail */}
