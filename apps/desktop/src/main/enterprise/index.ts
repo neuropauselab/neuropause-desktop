@@ -125,6 +125,7 @@ import { executiveDecisionModule } from './modules/executive/executiveDecisionIn
 import { executionProposalModule } from './modules/executive/executionProposalInstance';
 import { getProcessExplorerModel, getProcessCaseDetail } from './processMiningProvider';
 import { getScheduleExploreModel } from './scheduleExploreProvider';
+import { getExecutionConsoleModel } from './executionConsoleProvider';
 import { notificationScheduler } from '../services/notificationScheduler';
 import { buildOrgGraph, orgGraphNeighbors } from './graph/orgGraph';
 import { evaluateCompliance, type ComplianceInput } from './governance/enterpriseGovernance';
@@ -752,6 +753,14 @@ function buildHandlers(): SecureHandlerDef[] {
       channel: IpcChannel.EnterpriseScheduleExplore,
       schema: EmptyRequest,
       handler: () => getScheduleExploreModel(),
+    },
+
+    // Operator Console (MES) — read-only shop-floor execution model (executions + operators + machines +
+    // quality + timeline + KPIs + narrative). No writes: lifecycle mutations go through the module actions.
+    {
+      channel: IpcChannel.EnterpriseExecutionExplore,
+      schema: EmptyRequest,
+      handler: () => getExecutionConsoleModel(),
     },
   ];
 }

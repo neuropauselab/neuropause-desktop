@@ -12,6 +12,7 @@ import { BriefingsPanel } from './BriefingsPanel';
 import { ExecutiveCenterPanel } from './ExecutiveCenterPanel';
 import { ProcessExplorerPanel } from './ProcessExplorerPanel';
 import { ProductionSchedulePanel } from './ProductionSchedulePanel';
+import { OperatorConsolePanel } from './OperatorConsolePanel';
 import { CustomizePanel } from './CustomizePanel';
 import { EnterpriseModulesHub } from './modules/EnterpriseModulesHub';
 import { loadNavPrefs, type EnterpriseTab } from './lib';
@@ -30,6 +31,7 @@ const TABS: TabDef[] = [
   { id: 'operations', label: 'Operations', icon: 'gauge' },
   { id: 'process', label: 'Process Explorer', icon: 'activity' },
   { id: 'schedule', label: 'Production Schedule', icon: 'clock' },
+  { id: 'execution', label: 'Operator Console', icon: 'activity' },
   { id: 'modules', label: 'Modules', icon: 'grid' },
   { id: 'search', label: 'Search', icon: 'search' },
   { id: 'workspace', label: 'Workspace', icon: 'cpu' },
@@ -161,6 +163,7 @@ function EnterpriseInner({ initialTab }: { initialTab: EnterpriseTab }): JSX.Ele
         {tab === 'operations' && <BusinessOpsPanel />}
         {tab === 'process' && <ProcessExplorerPanel onNavigate={navigate} />}
         {tab === 'schedule' && <ProductionSchedulePanel />}
+        {tab === 'execution' && <OperatorConsolePanel />}
         {tab === 'modules' && <EnterpriseModulesHub />}
         {tab === 'search' && <EnterpriseSearchPanel key={searchQuery} initialQuery={searchQuery} />}
         {tab === 'workspace' && <ExecutiveWorkspacePanel onNavigate={navigate} />}

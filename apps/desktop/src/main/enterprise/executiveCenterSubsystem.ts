@@ -49,6 +49,7 @@ import {
   deriveRoutingInsights,
   routingRecommendations,
   deriveMesInsights,
+  mesSupplementalKpis,
   mesRecommendations,
   mesExecutionFromRecord,
   deriveEventInsights,
@@ -368,6 +369,9 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       schedulingKpis: () => schedulingInsightsToKpis(deriveSchedulingInsights(routingSchedule)),
       // Manufacturing Execution (MES) KPIs — real shop-floor execution records (precomputed).
       mesInsights: () => deriveMesInsights(mesExecutions),
+      // Supplemental MES KPIs — Availability / Performance / Rework Rate (additive; the twelve-key
+      // mesInsights source is never disturbed). Same execution snapshot; pre-built tiles.
+      mesSupplementalKpis: () => mesSupplementalKpis(mesExecutions),
       // Shop-Floor Event Ledger KPIs — telemetry derived from the immutable event stream (precomputed).
       eventInsights: () => deriveEventInsights(manufacturingEvents, nowMs),
       // Digital-twin resilience KPIs — what-if stress battery over the real model (precomputed).

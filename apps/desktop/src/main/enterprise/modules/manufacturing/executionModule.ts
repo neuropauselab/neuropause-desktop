@@ -48,6 +48,10 @@ export const INSPECT_PASS_ACTION = 'inspectPass';
 export const INSPECT_FAIL_ACTION = 'inspectFail';
 export const COMPLETE_EXECUTION_ACTION = 'complete';
 export const CANCEL_EXECUTION_ACTION = 'cancel';
+export const SCRAP_ACTION = 'scrap';
+export const REWORK_ACTION = 'rework';
+export const QUALITY_HOLD_ACTION = 'qualityHold';
+export const ASSIGN_OPERATOR_ACTION = 'assignOperator';
 
 const str = (v: unknown): string => (v === null || v === undefined ? '' : String(v));
 
@@ -70,7 +74,11 @@ export const PRODUCTION_EXECUTION_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: INSPECT_PASS_ACTION, label: 'Inspection Passed', icon: 'check' },
     { key: INSPECT_FAIL_ACTION, label: 'Inspection Failed', icon: 'close' },
     { key: COMPLETE_EXECUTION_ACTION, label: 'Complete', icon: 'check' },
-    { key: CANCEL_EXECUTION_ACTION, label: 'Cancel', icon: 'close' },
+    { key: CANCEL_EXECUTION_ACTION, label: 'Abort', icon: 'close' },
+    { key: SCRAP_ACTION, label: 'Scrap Material', icon: 'trash' },
+    { key: REWORK_ACTION, label: 'Rework', icon: 'refresh' },
+    { key: QUALITY_HOLD_ACTION, label: 'Quality Hold', icon: 'shield' },
+    { key: ASSIGN_OPERATOR_ACTION, label: 'Assign Operator', icon: 'user' },
   ],
   fields: [
     { key: 'executionNumber', label: 'Execution #', type: 'text', required: true, placeholder: 'EX-0001' },
@@ -229,6 +237,15 @@ export function createExecutionModule(storePath: string): EnterpriseModule {
         }
 
         if (action === START_EXECUTION_ACTION) {
+          // No operation may execute without an approved, committed Production Schedule. The
+          // `schedule` reference is stamped only by dispatch from a committed schedule (mesDispatch);
+          // a hand-created execution with no schedule can never be started on the shop floor.
+          if (!e.schedule) {
+            return {
+              ok: false,
+              message: `Cannot start ${e.executionNumber}: no committed Production Schedule. Dispatch it from an approved schedule first.`,
+            };
+          }
           if (!STARTABLE.has(e.status)) return { ok: false, message: `Cannot start an execution that is ${e.status}.` };
           const fields: Record<string, string | number> = { status: 'running', startTime: ctx.now().slice(0, 10) };
           // First operation backflushes the material kit through the Inventory Ledger.
@@ -366,7 +383,62 @@ export function createExecutionModule(storePath: string): EnterpriseModule {
           if (e.status === 'completed' || e.status === 'cancelled') return { ok: false, message: `Cannot cancel an execution that is ${e.status}.` };
           emitSelf(store.update(record.id, { fields: { status: 'cancelled' }, actor: ctx.actor(), now: ctx.now() }), ctx);
           if (e.machine) await emitEvent(ctx, e, 'machine_stopped');
-          return { ok: true, message: `Cancelled ${e.executionNumber}.` };
+          return { ok: true, message: `Aborted ${e.executionNumber}.` };
+        }
+
+        // Scrap Material — record scrap on the operation (quantity set via update first) and append a
+        // `scrap_recorded` event to the immutable ledger. Stock is written off ONCE, at the final
+        // operation's completion (the existing complete path), so scrap is never double-counted here.
+        if (action === SCRAP_ACTION) {
+          const scrapQty = Math.max(0, e.scrapQuantity);
+          if (scrapQty <= 0) return { ok: false, message: `Set a scrap quantity on ${e.executionNumber} before recording scrap.` };
+          emitSelf(store.update(record.id, { fields: { scrapReason: e.scrapReason }, actor: ctx.actor(), now: ctx.now() }), ctx);
+          await emitEvent(ctx, e, 'scrap_recorded', { quantity: scrapQty, reason: e.scrapReason });
+          return {
+            ok: true,
+            message: `Recorded ${scrapQty} scrap on ${e.executionNumber}${e.scrapReason ? ` — ${e.scrapReason}` : ''}. Stock is written off when the final operation completes.`,
+          };
+        }
+
+        // Rework Operation — return an inspected-failed / held operation to running for rework
+        // (rework quantity set via update first). Never re-consumes material.
+        if (action === REWORK_ACTION) {
+          if (e.status !== 'blocked' && e.status !== 'inspection' && e.status !== 'paused') {
+            return { ok: false, message: `Cannot rework an execution that is ${e.status}.` };
+          }
+          const rework = Math.max(0, e.reworkQuantity);
+          emitSelf(
+            store.update(record.id, { fields: { status: 'running', inspectionResult: 'rework', blockedReason: '' }, actor: ctx.actor(), now: ctx.now() }),
+            ctx,
+          );
+          if (e.status === 'blocked') await emitEvent(ctx, e, 'downtime_ended');
+          await emitEvent(ctx, e, 'operation_resumed', { quantity: rework, reason: 'rework' });
+          return { ok: true, message: `${e.executionNumber} returned to rework${rework > 0 ? ` (${rework} unit(s))` : ''}.` };
+        }
+
+        // Quality Hold — a QA-driven stop, distinct from a machine hold (Block). Marks the operation
+        // blocked with a quality reason + a pending inspection, and logs downtime to the ledger. A
+        // later Resume / Rework clears it (emitting `downtime_ended`).
+        if (action === QUALITY_HOLD_ACTION) {
+          if (e.status !== 'running' && e.status !== 'paused' && e.status !== 'inspection') {
+            return { ok: false, message: `Cannot place a quality hold on an execution that is ${e.status}.` };
+          }
+          const reason = e.blockedReason || 'Quality hold';
+          emitSelf(
+            store.update(record.id, { fields: { status: 'blocked', blockedReason: reason, inspectionResult: 'pending' }, actor: ctx.actor(), now: ctx.now() }),
+            ctx,
+          );
+          await emitEvent(ctx, e, 'downtime_started', { reason });
+          return { ok: true, message: `${e.executionNumber} placed on quality hold${reason ? `: ${reason}` : ''}.` };
+        }
+
+        // Operator Assignment — bind an operator to the execution (operator set via update first) and
+        // append an `operator_assigned` event so the live operator timeline reflects the assignment.
+        if (action === ASSIGN_OPERATOR_ACTION) {
+          if (!e.operator) return { ok: false, message: `Set an operator on ${e.executionNumber} before assigning.` };
+          emitSelf(store.update(record.id, { fields: { operator: e.operator }, actor: ctx.actor(), now: ctx.now() }), ctx);
+          await emitEvent(ctx, e, 'operator_assigned');
+          return { ok: true, message: `Assigned ${e.operator} to ${e.executionNumber}.` };
         }
 
         return { ok: false, error: `Unknown action "${action}".` };

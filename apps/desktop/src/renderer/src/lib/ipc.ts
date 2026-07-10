@@ -216,6 +216,7 @@ import type {
   ProcessExplorerFilter,
   ProcessCaseDetail,
   ScheduleExploreModel,
+  ExecutionConsoleModel,
 } from '@neuropause/shared';
 
 type OAuthProviderId = Exclude<AuthProviderId, 'email'>;
@@ -991,6 +992,9 @@ export const ipc = {
 
     /** Production Schedule — read-only routing schedule (Gantt + KPIs + violations + governance proposals). */
     scheduleExplore: () => invoke(IpcChannel.EnterpriseScheduleExplore) as Promise<ScheduleExploreModel>,
+
+    /** Operator Console (MES) — read-only shop-floor execution model (executions + machines + operators + quality + timeline + KPIs). */
+    executionExplore: () => invoke(IpcChannel.EnterpriseExecutionExplore) as Promise<ExecutionConsoleModel>,
 
     onEvent: (cb: (e: { kind: string; at: string }) => void) =>
       subscribe(IpcChannel.EnterpriseEventBroadcast, (p) => cb(p as { kind: string; at: string })),

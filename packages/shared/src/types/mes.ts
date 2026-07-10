@@ -342,6 +342,56 @@ export function mesInsightsToKpis(insights: MesExecutionInsights): ExecutiveKpi[
   ];
 }
 
+/* ── supplemental execution KPIs (additive — never mutates the twelve above) ──── */
+
+/**
+ * The three MES KPIs the Executive Center adds ON TOP of the twelve `deriveMesInsights` tiles —
+ * Availability, Performance, and Rework Rate — kept in a SEPARATE additive source so the twelve-key
+ * `mesInsightsToKpis` contract (and its test) is never disturbed. Availability and Performance reuse
+ * the same aggregate arithmetic as the event-derived OEE (run vs run+downtime; produced vs planned);
+ * Rework Rate is reworked units over all produced units. Pure + deterministic.
+ */
+export interface MesSupplementalInsights {
+  availability: number;
+  performance: number;
+  reworkRate: number;
+}
+
+export function deriveMesSupplementalInsights(executions: MesExecution[]): MesSupplementalInsights {
+  const totalRun = executions.reduce((s, e) => s + Math.max(0, e.runMinutes), 0);
+  const totalDowntime = executions.reduce((s, e) => s + Math.max(0, e.downtimeMinutes), 0);
+  const availability = totalRun + totalDowntime <= 0 ? 0 : clamp(Math.round((totalRun / (totalRun + totalDowntime)) * 100), 0, 100);
+
+  const planned = executions.filter((e) => e.plannedQuantity > 0);
+  const totalPlanned = planned.reduce((s, e) => s + e.plannedQuantity, 0);
+  const totalProduced = planned.reduce((s, e) => s + Math.max(0, e.goodQuantity) + Math.max(0, e.scrapQuantity), 0);
+  const performance = totalPlanned <= 0 ? 0 : clamp(Math.round((totalProduced / totalPlanned) * 100), 0, 100);
+
+  const totalGood = executions.reduce((s, e) => s + Math.max(0, e.goodQuantity), 0);
+  const totalScrap = executions.reduce((s, e) => s + Math.max(0, e.scrapQuantity), 0);
+  const totalRework = executions.reduce((s, e) => s + Math.max(0, e.reworkQuantity), 0);
+  const producedBase = totalGood + totalScrap + totalRework;
+  const reworkRate = producedBase <= 0 ? 0 : clamp(Math.round((totalRework / producedBase) * 100), 0, 100);
+
+  return { availability, performance, reworkRate };
+}
+
+/** Map the supplemental insights to the three extra Executive Center KPI tiles. Pure. */
+export function mesSupplementalInsightsToKpis(insights: MesSupplementalInsights): ExecutiveKpi[] {
+  const pctBand = (v: number): ExecutiveKpi['band'] => (v >= 90 ? 'healthy' : v >= 75 ? 'watch' : 'at-risk');
+  const riskBand = (v: number): ExecutiveKpi['band'] => (v <= 10 ? 'healthy' : v <= 25 ? 'watch' : 'at-risk');
+  return [
+    { key: 'mes-availability', label: 'Availability', value: insights.availability, display: `${insights.availability}%`, band: pctBand(insights.availability), deepLink: 'enterprise/execution' },
+    { key: 'mes-performance', label: 'Performance', value: insights.performance, display: `${insights.performance}%`, band: pctBand(insights.performance), deepLink: 'enterprise/execution' },
+    { key: 'mes-rework', label: 'Rework Rate', value: insights.reworkRate, display: `${insights.reworkRate}%`, band: riskBand(insights.reworkRate), deepLink: 'enterprise/execution' },
+  ];
+}
+
+/** Convenience: the three supplemental MES KPI tiles straight from the execution records. Pure. */
+export function mesSupplementalKpis(executions: MesExecution[]): ExecutiveKpi[] {
+  return mesSupplementalInsightsToKpis(deriveMesSupplementalInsights(executions));
+}
+
 /* ── recommendations (flow into the existing Executive recommendation system) ── */
 
 /** Machine overload threshold — active executions on one machine at/above which it is overloaded. */

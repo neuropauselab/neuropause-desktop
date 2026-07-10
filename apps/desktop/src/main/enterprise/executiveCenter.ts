@@ -156,6 +156,8 @@ export interface ExecutiveCenterSources {
   processExplorerKpis?: () => ExecutiveKpi[] | undefined;
   /** Production-schedule KPIs (schedule/machine utilization, queue, setup, efficiency, late ops, idle, violations) — pre-built (optional). */
   schedulingKpis?: () => ExecutiveKpi[] | undefined;
+  /** Supplemental MES KPIs (Availability, Performance, Rework Rate) — pre-built tiles (optional). */
+  mesSupplementalKpis?: () => ExecutiveKpi[] | undefined;
 }
 
 /** The minimal timeline fields the composer reads (kept local; no new dep). */
@@ -391,6 +393,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
   const processInsightsForKpis = sources.processInsights?.();
   const processExplorerKpisForKpis = sources.processExplorerKpis?.();
   const schedulingKpisForKpis = sources.schedulingKpis?.();
+  const mesSupplementalKpisForKpis = sources.mesSupplementalKpis?.();
   const enterprise = enterpriseInsights({
     knowledge: sources.knowledgeHealth?.(),
     memory: sources.memoryCounts?.(),
@@ -431,6 +434,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
       ...(processInsightsForKpis ? processInsightsToKpis(processInsightsForKpis) : []),
       ...(processExplorerKpisForKpis ?? []),
       ...(schedulingKpisForKpis ?? []),
+      ...(mesSupplementalKpisForKpis ?? []),
     ],
     enterprise,
     orgHealth: scores,
