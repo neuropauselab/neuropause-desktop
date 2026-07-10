@@ -257,6 +257,9 @@ import type {
   LiveSyncStatus,
   FeatureFlagState,
   FeatureFlagKey,
+  UpdateStatus,
+  UpdateChannel,
+  UpdateEvent,
   LicenseValidationStatus,
   LicenseState,
   BillingPlanId,
@@ -1487,6 +1490,24 @@ export const ipc = {
       invoke(IpcChannel.FlagsSetOverride, { key, value, planTier }) as Promise<FeatureFlagState[]>,
     clearOverride: (key: FeatureFlagKey, planTier: PlanTier) =>
       invoke(IpcChannel.FlagsClearOverride, { key, planTier }) as Promise<FeatureFlagState[]>,
+  },
+
+  /**
+   * Application self-update (electron-updater), exposed over the existing `update:*` channels.
+   * Every method returns the full, serializable UpdateStatus the renderer renders from; `onEvent`
+   * subscribes to the main-side status broadcast (already on the runtime broadcast allowlist) and
+   * unwraps the `{ status }` envelope. No update behavior lives here — it is a thin, typed seam.
+   */
+  updater: {
+    getStatus: () => invoke(IpcChannel.UpdateGetStatus) as Promise<UpdateStatus>,
+    checkNow: () => invoke(IpcChannel.UpdateCheckNow) as Promise<UpdateStatus>,
+    download: () => invoke(IpcChannel.UpdateDownload) as Promise<UpdateStatus>,
+    installOnQuit: () => invoke(IpcChannel.UpdateInstallOnQuit) as Promise<UpdateStatus>,
+    setChannel: (channel: UpdateChannel) =>
+      invoke(IpcChannel.UpdateSetChannel, { channel }) as Promise<UpdateStatus>,
+    /** Subscribe to live updater status changes. Returns an unsubscribe handle. */
+    onEvent: (cb: (status: UpdateStatus) => void) =>
+      subscribe(IpcChannel.UpdateEventBroadcast, (p) => cb((p as UpdateEvent).status)),
   },
 
   license: {

@@ -13,6 +13,8 @@ import { useScale } from '@renderer/state/ScaleProvider';
 import { SubscriptionCenter } from '@renderer/subscription/SubscriptionCenter';
 import { TrustedDevices } from '@renderer/devices/TrustedDevices';
 import { EnterpriseOverview } from '@renderer/enterprise/EnterpriseOverview';
+import { FeatureFlagsCenter } from '@renderer/settings/FeatureFlagsCenter';
+import { ReleaseChannelCard } from '@renderer/settings/ReleaseChannelCard';
 
 const THEME_OPTIONS: SegmentedTabItem<ThemeSource>[] = [
   { id: 'system', label: 'Auto', icon: 'auto' },
@@ -193,6 +195,16 @@ export function SettingsView({ session }: { session: Session }): JSX.Element {
       <section className="mb-7">
         <SectionLabel>Enterprise Overview</SectionLabel>
         <EnterpriseOverview />
+      </section>
+
+      <section className="mb-7">
+        <SectionLabel>Feature Flags</SectionLabel>
+        <FeatureFlagsCenter />
+      </section>
+
+      <section className="mb-7">
+        <SectionLabel>Release Channel</SectionLabel>
+        <ReleaseChannelCard />
       </section>
 
       <section>
