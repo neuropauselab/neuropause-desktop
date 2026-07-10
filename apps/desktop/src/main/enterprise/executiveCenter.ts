@@ -160,6 +160,8 @@ export interface ExecutiveCenterSources {
   mesSupplementalKpis?: () => ExecutiveKpi[] | undefined;
   /** Relationship-intelligence KPIs (health, critical, disconnected, dependencies, connectivity) — pre-built (optional). */
   relationshipKpis?: () => ExecutiveKpi[] | undefined;
+  /** Trust KPIs (enterprise/customer/supplier/machine/knowledge/decision/process/operational/compliance trust) — pre-built (optional). */
+  trustKpis?: () => ExecutiveKpi[] | undefined;
 }
 
 /** The minimal timeline fields the composer reads (kept local; no new dep). */
@@ -397,6 +399,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
   const schedulingKpisForKpis = sources.schedulingKpis?.();
   const mesSupplementalKpisForKpis = sources.mesSupplementalKpis?.();
   const relationshipKpisForKpis = sources.relationshipKpis?.();
+  const trustKpisForKpis = sources.trustKpis?.();
   const enterprise = enterpriseInsights({
     knowledge: sources.knowledgeHealth?.(),
     memory: sources.memoryCounts?.(),
@@ -439,6 +442,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
       ...(schedulingKpisForKpis ?? []),
       ...(mesSupplementalKpisForKpis ?? []),
       ...(relationshipKpisForKpis ?? []),
+      ...(trustKpisForKpis ?? []),
     ],
     enterprise,
     orgHealth: scores,

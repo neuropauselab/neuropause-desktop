@@ -127,6 +127,7 @@ import { getProcessExplorerModel, getProcessCaseDetail } from './processMiningPr
 import { getScheduleExploreModel } from './scheduleExploreProvider';
 import { getExecutionConsoleModel } from './executionConsoleProvider';
 import { getRelationshipModel } from './relationshipProvider';
+import { getTrustModel } from './trustProvider';
 import { notificationScheduler } from '../services/notificationScheduler';
 import { buildOrgGraph, orgGraphNeighbors } from './graph/orgGraph';
 import { evaluateCompliance, type ComplianceInput } from './governance/enterpriseGovernance';
@@ -770,6 +771,14 @@ function buildHandlers(): SecureHandlerDef[] {
       channel: IpcChannel.EnterpriseRelationshipExplore,
       schema: EmptyRequest,
       handler: () => getRelationshipModel(),
+    },
+
+    // Trust Engine — read-only per-entity deterministic trust model (profiles + factors + trend + KPIs +
+    // narrative). No writes: trust is composed from existing subsystem outputs; AI only explains.
+    {
+      channel: IpcChannel.EnterpriseTrustExplore,
+      schema: EmptyRequest,
+      handler: () => getTrustModel(),
     },
   ];
 }

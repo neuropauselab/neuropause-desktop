@@ -218,6 +218,7 @@ import type {
   ScheduleExploreModel,
   ExecutionConsoleModel,
   RelationshipGraphModel,
+  EnterpriseTrustModel,
 } from '@neuropause/shared';
 
 type OAuthProviderId = Exclude<AuthProviderId, 'email'>;
@@ -999,6 +1000,9 @@ export const ipc = {
 
     /** Relationship Intelligence — read-only ERP entity relationship graph (nodes + typed edges + health/risk + KPIs + narrative). */
     relationshipExplore: () => invoke(IpcChannel.EnterpriseRelationshipExplore) as Promise<RelationshipGraphModel>,
+
+    /** Trust Engine — read-only per-entity deterministic trust model (profiles + factors + trend + KPIs + narrative). */
+    trustExplore: () => invoke(IpcChannel.EnterpriseTrustExplore) as Promise<EnterpriseTrustModel>,
 
     onEvent: (cb: (e: { kind: string; at: string }) => void) =>
       subscribe(IpcChannel.EnterpriseEventBroadcast, (p) => cb(p as { kind: string; at: string })),

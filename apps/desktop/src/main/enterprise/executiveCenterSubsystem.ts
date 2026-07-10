@@ -137,6 +137,7 @@ import {
 import { buildExecutiveRecommendations, buildExecutiveSummary } from './executiveRecommendations';
 import { collectPlanningModel } from './planningModel';
 import { getRelationshipKpis } from './relationshipProvider';
+import { getTrustKpis } from './trustProvider';
 import { executiveDecisionModule } from './modules/executive/executiveDecisionInstance';
 import { executionProposalModule } from './modules/executive/executionProposalInstance';
 import { getProcessAssessment } from './processMiningProvider';
@@ -376,6 +377,9 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       // Relationship-intelligence KPIs — the eight cross-domain relationship tiles (health, critical,
       // disconnected, high-risk + supplier/customer/machine dependency, connectivity). Read-only; cached.
       relationshipKpis: () => getRelationshipKpis(),
+      // Trust KPIs — the nine deterministic trust tiles (enterprise + customer/supplier/machine/knowledge/
+      // decision/process/operational/compliance trust), composed from existing signals. Read-only; cached.
+      trustKpis: () => getTrustKpis(),
       // Shop-Floor Event Ledger KPIs — telemetry derived from the immutable event stream (precomputed).
       eventInsights: () => deriveEventInsights(manufacturingEvents, nowMs),
       // Digital-twin resilience KPIs — what-if stress battery over the real model (precomputed).

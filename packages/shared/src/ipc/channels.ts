@@ -286,6 +286,8 @@ export const IpcChannel = {
   EnterpriseExecutionExplore: 'enterprise:execution.explore',
   /** Relationship Intelligence — read-only ERP entity relationship graph (nodes + typed edges + health/risk + KPIs + narrative). */
   EnterpriseRelationshipExplore: 'enterprise:relationship.explore',
+  /** Trust Engine — read-only per-entity deterministic trust model (profiles + factors + trend + KPIs + narrative). */
+  EnterpriseTrustExplore: 'enterprise:trust.explore',
   EnterpriseEventBroadcast: 'enterprise:event',
 
   // ── Enterprise Module Framework (ERP foundation) ──
@@ -723,6 +725,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.EnterpriseScheduleExplore,
   IpcChannel.EnterpriseExecutionExplore,
   IpcChannel.EnterpriseRelationshipExplore,
+  IpcChannel.EnterpriseTrustExplore,
   IpcChannel.EnterpriseModulesList,
   IpcChannel.EnterpriseModuleList,
   IpcChannel.EnterpriseModuleGet,

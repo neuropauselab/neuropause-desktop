@@ -119,6 +119,8 @@ export const ENTERPRISE_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Ente
     [IpcChannel.EnterpriseExecutionExplore]: 'operations:read',
     // Relationship Intelligence: read-only ERP entity relationship graph (cross-domain analytics).
     [IpcChannel.EnterpriseRelationshipExplore]: 'operations:read',
+    // Trust Engine: read-only per-entity deterministic trust model (cross-domain analytics).
+    [IpcChannel.EnterpriseTrustExplore]: 'operations:read',
     // Enterprise Module Framework: listing which modules exist is metadata-only.
     [IpcChannel.EnterpriseModulesList]: 'operations:read',
   };
