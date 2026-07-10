@@ -15,6 +15,7 @@ import { Icon } from '@renderer/components/ui/Icon';
 import { StatusDot } from '@renderer/operations/primitives';
 import type { OpsTone } from '@renderer/operations/lib';
 import { relativeTime } from './connectorLib';
+import { M365WritePanel } from './M365WritePanel';
 
 const STATE_TONE: Record<string, OpsTone> = {
   healthy: 'green',
@@ -197,6 +198,9 @@ export function EntraConnectorPanel({ dto }: { dto: ConnectorDto }): JSX.Element
         Graph scope wasn’t granted or the module isn’t licensed; “Provisioning…” means the mailbox or
         OneDrive isn’t set up yet.
       </p>
+
+      {/* P2.4 — audited, confirmation-gated Microsoft 365 writes + write-health */}
+      <M365WritePanel connectorId={dto.id} accountId={dto.accounts[0]?.id ?? null} snaps={snaps} />
 
       {/* Permission viewer (granted status) */}
       <Title>Directory permissions</Title>

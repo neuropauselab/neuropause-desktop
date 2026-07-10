@@ -34,6 +34,15 @@ const AUDIT_TYPES: Set<PlatformEventType> = new Set([
   'plugin.removed',
   'user.signed_in',
   'user.signed_out',
+  // Connector lifecycle events with security relevance (P2.2) — a connection grants directory access.
+  'connector.connected',
+  'connector.disconnected',
+  'connector.reauth_required',
+  'connector.error',
+  'connector.sync_failed',
+  // P2.4 — every Microsoft 365 write mutates the user's mailbox/calendar/files/chats; its outcome is audited.
+  'connector.write_completed',
+  'connector.write_failed',
 ]);
 
 /* ───────────────────────────── Analytics ───────────────────────────────── */

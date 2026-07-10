@@ -10,7 +10,11 @@
  */
 
 export class AuthError extends Error {
-  constructor(message = 'unauthorized') {
+  constructor(
+    message = 'unauthorized',
+    /** The HTTP status that produced this error: 401 = token rejected, 403 = forbidden / insufficient scope. */
+    public readonly status?: number,
+  ) {
     super(message);
     this.name = 'AuthError';
   }
@@ -98,6 +102,9 @@ function resetMs(headers: Record<string, string>): number {
   return 60_000;
 }
 
+/** The body type `fetch` accepts here — derived from fetch's own typing to avoid the DOM `BodyInit` lib type. */
+type FetchBody = NonNullable<Parameters<typeof fetch>[1]>['body'];
+
 export class HttpClient {
   constructor(
     private readonly key: string,
@@ -112,6 +119,72 @@ export class HttpClient {
 
   postJson<T>(url: string, body: unknown, opts?: HttpRequestOptions): Promise<HttpResponse<T>> {
     return this.request<T>('POST', url, body, opts);
+  }
+
+  patchJson<T>(url: string, body: unknown, opts?: HttpRequestOptions): Promise<HttpResponse<T>> {
+    return this.request<T>('PATCH', url, body, opts);
+  }
+
+  putJson<T>(url: string, body: unknown, opts?: HttpRequestOptions): Promise<HttpResponse<T>> {
+    return this.request<T>('PUT', url, body, opts);
+  }
+
+  deleteJson<T>(url: string, opts?: HttpRequestOptions): Promise<HttpResponse<T>> {
+    return this.request<T>('DELETE', url, undefined, opts);
+  }
+
+  /** Upload raw bytes (mail/event attachments, OneDrive content PUT, resumable chunks). Returns parsed JSON, if any. */
+  async sendBinary<T>(
+    method: string,
+    url: string,
+    bytes: Uint8Array,
+    contentType: string,
+    opts?: HttpRequestOptions,
+  ): Promise<HttpResponse<T>> {
+    await this.gate.acquire(this.key);
+    const token = await this.getToken();
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+      'Content-Type': contentType,
+      ...this.baseHeaders,
+      ...opts?.headers,
+    };
+    let res: Awaited<ReturnType<typeof fetch>>;
+    try {
+      res = await fetch(withQuery(url, opts?.query), { method, headers, body: bytes as unknown as FetchBody });
+    } catch (err) {
+      throw new NetworkError(err instanceof Error ? err.message : 'fetch failed');
+    }
+    const responseHeaders = headersToObject(res.headers);
+    this.throwForStatus(res.status, responseHeaders);
+    const text = await res.text();
+    const data = (text ? JSON.parse(text) : null) as T;
+    return { data, headers: responseHeaders, status: res.status };
+  }
+
+  /** Download raw bytes (attachment content, OneDrive file content). */
+  async getBinary(
+    url: string,
+    opts?: HttpRequestOptions,
+  ): Promise<{ bytes: Uint8Array; headers: Record<string, string>; status: number }> {
+    await this.gate.acquire(this.key);
+    const token = await this.getToken();
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${token}`,
+      ...this.baseHeaders,
+      ...opts?.headers,
+    };
+    let res: Awaited<ReturnType<typeof fetch>>;
+    try {
+      res = await fetch(withQuery(url, opts?.query), { method: 'GET', headers });
+    } catch (err) {
+      throw new NetworkError(err instanceof Error ? err.message : 'fetch failed');
+    }
+    const responseHeaders = headersToObject(res.headers);
+    this.throwForStatus(res.status, responseHeaders);
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    return { bytes, headers: responseHeaders, status: res.status };
   }
 
   private async request<T>(
@@ -142,25 +215,28 @@ export class HttpClient {
     }
 
     const responseHeaders = headersToObject(res.headers);
+    this.throwForStatus(res.status, responseHeaders);
+    const text = await res.text();
+    const data = (text ? JSON.parse(text) : null) as T;
+    return { data, headers: responseHeaders, status: res.status };
+  }
 
-    if (res.status === 403 && responseHeaders['x-ratelimit-remaining'] === '0') {
+  /** Translate an HTTP status into the typed error taxonomy (shared by the JSON + binary paths). */
+  private throwForStatus(status: number, responseHeaders: Record<string, string>): void {
+    if (status === 403 && responseHeaders['x-ratelimit-remaining'] === '0') {
       const ms = resetMs(responseHeaders);
       this.gate.penalize(this.key, ms);
       throw new RateLimitError(ms);
     }
-    if (res.status === 401 || res.status === 403) {
-      throw new AuthError(`HTTP ${res.status}`);
+    if (status === 401 || status === 403) {
+      throw new AuthError(`HTTP ${status}`, status);
     }
-    if (res.status === 429) {
+    if (status === 429) {
       const ms = retryAfterMs(responseHeaders);
       this.gate.penalize(this.key, ms);
       throw new RateLimitError(ms);
     }
-    if (res.status >= 500) throw new HttpError(res.status, `HTTP ${res.status}`, true);
-    if (res.status >= 400) throw new HttpError(res.status, `HTTP ${res.status}`, false);
-
-    const text = await res.text();
-    const data = (text ? JSON.parse(text) : null) as T;
-    return { data, headers: responseHeaders, status: res.status };
+    if (status >= 500) throw new HttpError(status, `HTTP ${status}`, true);
+    if (status >= 400) throw new HttpError(status, `HTTP ${status}`, false);
   }
 }

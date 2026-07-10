@@ -428,6 +428,15 @@ class ConnectorService extends EventEmitter {
     this.fire({ connectorId, accountId, type: 'log', status: null, health: null, syncState: null, message, at: entry.at });
   }
 
+  /**
+   * Public write-activity recorder (P2.4). Records an audited Microsoft 365 write to the connector
+   * activity feed under the `write` phase and fires a live event. Timeline/audit/health are recorded by
+   * the write executor; this is the connector-activity seam it calls.
+   */
+  recordWrite(connectorId: string, accountId: string, level: ConnectorLogEntry['level'], message: string): void {
+    this.log(connectorId, accountId, level, 'write', message);
+  }
+
   private connectFail(connectorId: string, message: string): ConnectorConnectResult {
     return { ok: false, connectorId, account: null, message };
   }

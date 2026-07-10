@@ -383,6 +383,27 @@ export type ConnectorAccountRequest = z.infer<typeof ConnectorAccountRequest>;
 export type ConnectorScopedRequest = z.infer<typeof ConnectorScopedRequest>;
 export type ConnectorLogsRequest = z.infer<typeof ConnectorLogsRequest>;
 
+/** P2.4 — execute an audited Microsoft 365 write action. `confirmed` MUST be true for mutating actions. */
+export const M365ActionExecuteRequest = z.object({
+  connectorId: ConnectorIdSchema,
+  accountId: AccountIdSchema,
+  actionId: z.string().trim().min(1).max(64),
+  params: z.record(z.unknown()).default({}),
+  confirmed: z.boolean().default(false),
+});
+
+/** P2.4 — ask the existing AI engine to draft/summarize (never sends; returns text for the user to confirm). */
+export const M365DraftRequest = z.object({
+  connectorId: ConnectorIdSchema,
+  accountId: AccountIdSchema,
+  kind: z.enum(['email', 'summary', 'agenda']),
+  instruction: z.string().trim().min(1).max(4000),
+  context: z.string().max(20000).optional(),
+});
+
+export type M365ActionExecuteRequest = z.infer<typeof M365ActionExecuteRequest>;
+export type M365DraftRequest = z.infer<typeof M365DraftRequest>;
+
 /* ─────────────────────── Unified Knowledge Layer (UDM) contracts ─────────── */
 
 const UnifiedEntityKindSchema = z.enum([

@@ -12,6 +12,8 @@ import type {
   ConnectorIdRequest as TConnectorIdRequest,
   ConnectorAccountRequest as TConnectorAccountRequest,
   ConnectorLogsRequest as TConnectorLogsRequest,
+  M365ActionExecuteRequest as TM365ActionExecuteRequest,
+  M365DraftRequest as TM365DraftRequest,
   PlatformEventInput,
 } from '@neuropause/shared';
 import {
@@ -21,6 +23,8 @@ import {
   ConnectorAccountRequest,
   ConnectorScopedRequest,
   ConnectorLogsRequest,
+  M365ActionExecuteRequest,
+  M365DraftRequest,
 } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
@@ -29,6 +33,10 @@ import { connectorStore } from './connectorStore';
 import { MANIFEST_BY_ID } from './manifests';
 import { unifiedStore } from '../unified/storeInstance';
 import { createGitHubSyncRunner } from './adapters/github/githubSyncRunner';
+import { syncStateStore } from '../unified/sync/syncStateInstance';
+import { RateLimiter } from '../unified/sync/rateLimiter';
+import { createM365Executor } from './m365';
+import { m365Draft } from './m365/aiDrafts';
 
 const log = createLogger('connectors');
 
@@ -105,6 +113,17 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
   };
   connectorService.on('event', onEvent);
 
+  // P2.4 — Microsoft 365 write executor: audited, confirmation-gated Graph writes on the same account/token.
+  const m365 = createM365Executor({
+    getToken: (c, a) => connectorService.getValidAccessToken(c, a),
+    publish: deps.publish,
+    rate: new RateLimiter(200),
+    recordActivity: (c, a, level, message) => connectorService.recordWrite(c, a, level, message),
+    health: syncStateStore,
+    manifestName: (c) => MANIFEST_BY_ID[c]?.name ?? c,
+    grantedScopes: (c, a) => connectorStore.get(c, a)?.grantedScopes ?? [],
+  });
+
   const handlers: SecureHandlerDef[] = [
     { channel: IpcChannel.ConnectorsList, schema: EmptyRequest, handler: () => connectorService.list() },
     {
@@ -170,6 +189,27 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
       channel: IpcChannel.ConnectorLogs,
       schema: ConnectorLogsRequest,
       handler: (p) => connectorService.logFeed((p as TConnectorLogsRequest).connectorId),
+    },
+    // P2.4 — Microsoft 365 write actions (audited, confirmation-gated) + AI drafting.
+    { channel: IpcChannel.M365ActionList, schema: EmptyRequest, handler: () => m365.list() },
+    {
+      channel: IpcChannel.M365ActionExecute,
+      schema: M365ActionExecuteRequest,
+      audit: true,
+      timeoutMs: SYNC_TIMEOUT_MS,
+      handler: (p) => {
+        const r = p as TM365ActionExecuteRequest;
+        return m365.execute(r.connectorId, r.accountId, r.actionId, r.params, r.confirmed);
+      },
+    },
+    {
+      channel: IpcChannel.M365Draft,
+      schema: M365DraftRequest,
+      timeoutMs: SYNC_TIMEOUT_MS,
+      handler: (p) => {
+        const r = p as TM365DraftRequest;
+        return m365Draft(r.kind, r.instruction, r.context);
+      },
     },
   ];
 

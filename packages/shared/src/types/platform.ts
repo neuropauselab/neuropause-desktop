@@ -74,6 +74,10 @@ export type PlatformEventType =
   | 'connector.online'
   | 'connector.conflict_detected'
   | 'connector.conflict_resolved'
+  // connector write operations (P2.4 — audited Microsoft 365 writes through Microsoft Graph)
+  | 'connector.write_started'
+  | 'connector.write_completed'
+  | 'connector.write_failed'
   // knowledge layer (UDM)
   | 'knowledge.entity_created'
   | 'knowledge.entity_updated'

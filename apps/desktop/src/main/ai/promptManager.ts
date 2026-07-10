@@ -309,4 +309,28 @@ export const DEFAULT_PROMPTS: PromptTemplate[] = [
     user: 'DOWNTIME EVENT (authoritative facts):\n{{event}}\n\nType: {{type}}\n\nWrite the summary and executive explanation strictly from the facts above.',
     variables: ['event', 'type'],
   },
+  {
+    id: 'm365.draft.email',
+    version: 1,
+    label: 'Microsoft 365 — Draft Email',
+    system: `${GROUNDING} You draft a professional email body for the user to REVIEW before they choose to send it — you never send anything and never take any action. Respond ONLY with a JSON object: text (string — the plain-text email body), confidence (number 0..1). Ground the content in the MATERIAL; do not invent facts, names, figures, or commitments beyond it.`,
+    user: 'INSTRUCTION: {{instruction}}\n\nMATERIAL (may be empty):\n{{material}}\n\nWrite the email body only (no subject line).',
+    variables: ['instruction', 'material'],
+  },
+  {
+    id: 'm365.draft.summary',
+    version: 1,
+    label: 'Microsoft 365 — Summarize',
+    system: `${GROUNDING} You summarize the provided MATERIAL (an email thread, a OneDrive document, or a Teams discussion) for the user. Respond ONLY with a JSON object: text (string — the summary), confidence (number 0..1). Summarize only what is in the material; never invent facts.`,
+    user: 'INSTRUCTION: {{instruction}}\n\nMATERIAL:\n{{material}}\n\nWrite the summary.',
+    variables: ['instruction', 'material'],
+  },
+  {
+    id: 'm365.draft.agenda',
+    version: 1,
+    label: 'Microsoft 365 — Meeting Agenda',
+    system: `${GROUNDING} You suggest a concise, well-structured meeting agenda for the user to review. Respond ONLY with a JSON object: text (string — the agenda), confidence (number 0..1). Base it on the INSTRUCTION and any MATERIAL; do not invent attendees, decisions, or facts.`,
+    user: 'INSTRUCTION: {{instruction}}\n\nMATERIAL (may be empty):\n{{material}}\n\nWrite the agenda.',
+    variables: ['instruction', 'material'],
+  },
 ];

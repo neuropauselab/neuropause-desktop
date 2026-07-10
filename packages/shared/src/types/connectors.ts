@@ -148,6 +148,7 @@ export type ConnectorLifecyclePhase =
   | 'refresh'
   | 'reconnect'
   | 'sync'
+  | 'write'
   | 'disconnect'
   | 'health_check'
   | 'error_recovery';
@@ -306,9 +307,39 @@ export interface ConnectorSyncSnapshot {
   consecutiveFailures: number;
   rateLimitedUntil: string | null;
   queueSize: number;
+  /** P2.4 write metrics — present once the account has performed writes (optional for older state). */
+  lastWriteAt?: string | null;
+  lastWriteAction?: string | null;
+  writeCount?: number;
+  failedWrites?: number;
+  pendingWrites?: number;
+  writeRetryDepth?: number;
+  lastWriteLatencyMs?: number | null;
+  apiQuotaRemaining?: number | null;
   /**
    * Per-module breakdown, present once the account has synced under a stats-aware build.
    * Older persisted state has no module stats, so consumers must treat this as optional.
    */
   modules?: ConnectorModuleStat[];
+}
+
+/** A Microsoft 365 write action the renderer can invoke (P2.4). Describes it; never carries a token. */
+export interface ConnectorWriteActionInfo {
+  id: string;
+  label: string;
+  domain: 'mail' | 'calendar' | 'drive' | 'teams' | 'contacts';
+  /** Graph scopes this action needs (for pre-flight validation + UI). */
+  scopes: string[];
+  /** Whether it mutates data and therefore requires explicit user confirmation. */
+  mutates: boolean;
+}
+
+/** Result of a Microsoft 365 write action (P2.4). Extends the generic action result with a payload. */
+export interface ConnectorWriteResult {
+  ok: boolean;
+  message: string | null;
+  /** True when the action was refused because explicit confirmation was not provided. */
+  requiresConfirmation?: boolean;
+  /** Non-sensitive result payload (ids, links, counts). */
+  data?: Record<string, string | number | boolean | null>;
 }

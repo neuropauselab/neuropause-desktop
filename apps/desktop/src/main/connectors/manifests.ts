@@ -515,6 +515,17 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
         'Files.Read',
         'Contacts.Read',
         'Team.ReadBasic.All',
+        // P2.4 — Microsoft 365 write scopes (audited, confirmation-gated). All delegated; the Teams
+        // channel scopes (ChannelMessage.Send / Channel.Create / ChannelMember.Read.All) need admin consent.
+        'Mail.ReadWrite',
+        'Mail.Send',
+        'Calendars.ReadWrite',
+        'Files.ReadWrite.All',
+        'Contacts.ReadWrite',
+        'Chat.ReadWrite',
+        'ChannelMessage.Send',
+        'Channel.Create',
+        'ChannelMember.Read.All',
       ],
       scopeSeparator: ' ',
       usePkce: true,

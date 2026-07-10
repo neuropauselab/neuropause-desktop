@@ -30,6 +30,13 @@ export interface IntegrationHealth {
   entityCount: number;
   consecutiveFailures: number;
   queueSize: number;
+  /** P2.4 write health (0 defaults when the account has never written). */
+  failedWrites: number;
+  pendingWrites: number;
+  writeRetryDepth: number;
+  lastWriteAt: string | null;
+  writeLatencyMs: number | null;
+  apiQuotaRemaining: number | null;
   errors: string[];
   warnings: string[];
 }
@@ -106,6 +113,11 @@ export function computeIntegrationHealth(
   const stale = lastSyncMs !== null && nowMs - lastSyncMs > staleAfterMs;
   if (stale) score -= 15;
   if (snapshot.queueSize > 100) score -= 5;
+  const failedWrites = snapshot.failedWrites ?? 0;
+  const pendingWrites = snapshot.pendingWrites ?? 0;
+  const writeRetryDepth = snapshot.writeRetryDepth ?? 0;
+  if (failedWrites > 0) score -= Math.min(20, failedWrites * 4);
+  if (writeRetryDepth > 5) score -= 5;
   score = clamp(Math.round(score), 0, 100);
 
   // Messages
@@ -119,6 +131,8 @@ export function computeIntegrationHealth(
     warnings.push(`${snapshot.consecutiveFailures} consecutive failure${snapshot.consecutiveFailures > 1 ? 's' : ''}`);
   }
   if (snapshot.queueSize > 100) warnings.push(`Large retry queue (${snapshot.queueSize})`);
+  if (failedWrites > 0) warnings.push(`${failedWrites} failed write${failedWrites > 1 ? 's' : ''}`);
+  if (writeRetryDepth > 0) warnings.push(`${writeRetryDepth} write${writeRetryDepth > 1 ? 's' : ''} awaiting retry`);
 
   // State
   let state: IntegrationHealthState;
@@ -141,6 +155,12 @@ export function computeIntegrationHealth(
     entityCount: snapshot.entityCount,
     consecutiveFailures: snapshot.consecutiveFailures,
     queueSize: snapshot.queueSize,
+    failedWrites,
+    pendingWrites,
+    writeRetryDepth,
+    lastWriteAt: snapshot.lastWriteAt ?? null,
+    writeLatencyMs: snapshot.lastWriteLatencyMs ?? null,
+    apiQuotaRemaining: snapshot.apiQuotaRemaining ?? null,
     errors,
     warnings,
   };

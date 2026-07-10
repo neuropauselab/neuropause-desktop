@@ -65,3 +65,23 @@ export const syncEvents = {
   online: (c: ConnectorId, n: string, a: string): PlatformEventInput =>
     evt(c, n, 'connector.online', 'connector', a),
 };
+
+/**
+ * Write-operation events (P2.4). Every audited Microsoft 365 write emits started → completed|failed on the
+ * SAME platform bus as sync, so writes land in the Timeline, Audit log, Diagnostics, and Executive Center by
+ * reuse. `action` is the write verb (e.g. `mail.send`), `meta` carries flat, non-sensitive descriptors only.
+ */
+export const writeEvents = {
+  started: (c: ConnectorId, n: string, a: string, action: string, meta: PlatformEventMeta = {}): PlatformEventInput =>
+    evt(c, n, 'connector.write_started', 'connector', a, { action, ...meta }),
+  completed: (c: ConnectorId, n: string, a: string, action: string, meta: PlatformEventMeta = {}): PlatformEventInput =>
+    evt(c, n, 'connector.write_completed', 'connector', a, { action, ...meta }),
+  failed: (
+    c: ConnectorId,
+    n: string,
+    a: string,
+    action: string,
+    error: string,
+    meta: PlatformEventMeta = {},
+  ): PlatformEventInput => evt(c, n, 'connector.write_failed', 'connector', a, { action, error, ...meta }, 'high'),
+};

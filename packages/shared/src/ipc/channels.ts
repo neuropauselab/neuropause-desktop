@@ -170,6 +170,10 @@ export const IpcChannel = {
   ConnectorLogs: 'connectors:logs',
   ConnectorSyncState: 'connectors:sync-state',
   ConnectorEventBroadcast: 'connectors:event',
+  // P2.4 — Microsoft 365 write actions (audited, confirmation-gated) + AI drafting.
+  M365ActionList: 'connectors:m365.actions',
+  M365ActionExecute: 'connectors:m365.execute',
+  M365Draft: 'connectors:m365.draft',
 
   // ── unified knowledge layer (UDM) ──
   UnifiedQuery: 'unified:query',
@@ -648,6 +652,9 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.ConnectorHealthCheck,
   IpcChannel.ConnectorLogs,
   IpcChannel.ConnectorSyncState,
+  IpcChannel.M365ActionList,
+  IpcChannel.M365ActionExecute,
+  IpcChannel.M365Draft,
   IpcChannel.UnifiedQuery,
   IpcChannel.UnifiedGet,
   IpcChannel.UnifiedCounts,
@@ -949,6 +956,10 @@ export const RUNTIME_BROADCAST_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.PluginEventBroadcast,
   IpcChannel.PlatformEventBroadcast,
   IpcChannel.ConnectorEventBroadcast,
+  // Main broadcasts live sync snapshots on this channel (unified/sync/index.ts); the Connector Health
+  // dashboard + Entra panel subscribe to it, so it must be on the subscribe allowlist too (it is also an
+  // invokable request channel for the initial pull).
+  IpcChannel.ConnectorSyncState,
   IpcChannel.UnifiedEventBroadcast,
   IpcChannel.GraphEventBroadcast,
   IpcChannel.MemoryEventBroadcast,

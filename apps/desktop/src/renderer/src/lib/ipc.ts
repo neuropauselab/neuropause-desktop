@@ -53,6 +53,8 @@ import {
   type ConnectorConnectResult,
   type ConnectorActionResult,
   type ConnectorSyncSnapshot,
+  type ConnectorWriteActionInfo,
+  type ConnectorWriteResult,
   type UnifiedEntity,
   type UnifiedQuery,
   type UnifiedQueryResult,
@@ -594,6 +596,31 @@ export const ipc = {
       >,
     onSyncState: (cb: (s: ConnectorSyncSnapshot[]) => void) =>
       subscribe(IpcChannel.ConnectorSyncState, (p) => cb(p as ConnectorSyncSnapshot[])),
+
+    /* ── P2.4 Microsoft 365 write actions (audited, confirmation-gated) + AI drafting ── */
+    m365Actions: () => invoke(IpcChannel.M365ActionList) as Promise<ConnectorWriteActionInfo[]>,
+    m365Execute: (
+      connectorId: string,
+      accountId: string,
+      actionId: string,
+      params: Record<string, unknown>,
+      confirmed: boolean,
+    ) =>
+      invoke(IpcChannel.M365ActionExecute, { connectorId, accountId, actionId, params, confirmed }) as Promise<ConnectorWriteResult>,
+    m365Draft: (
+      connectorId: string,
+      accountId: string,
+      kind: 'email' | 'summary' | 'agenda',
+      instruction: string,
+      context?: string,
+    ) =>
+      invoke(IpcChannel.M365Draft, { connectorId, accountId, kind, instruction, context }) as Promise<{
+        ok: boolean;
+        text: string;
+        model: string;
+        grounded: boolean;
+        confidence: number;
+      }>,
   },
 
   /* ── Unified Knowledge Layer (UDM) ── */

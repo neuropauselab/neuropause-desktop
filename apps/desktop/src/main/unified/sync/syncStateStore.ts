@@ -34,6 +34,15 @@ export interface AccountSyncState {
   lastError: string | null;
   consecutiveFailures: number;
   rateLimitedUntil: string | null;
+  // P2.4 write metrics (optional for state persisted before writes existed).
+  lastWriteAt?: string | null;
+  lastWriteAction?: string | null;
+  writeCount?: number;
+  failedWrites?: number;
+  pendingWrites?: number;
+  writeRetryDepth?: number;
+  lastWriteLatencyMs?: number | null;
+  apiQuotaRemaining?: number | null;
   resources: Record<string, ResourceCursor>;
 }
 
@@ -91,6 +100,14 @@ export function stateToSnapshot(s: AccountSyncState, queueSize: number): Connect
     consecutiveFailures: s.consecutiveFailures,
     rateLimitedUntil: s.rateLimitedUntil,
     queueSize,
+    lastWriteAt: s.lastWriteAt ?? null,
+    lastWriteAction: s.lastWriteAction ?? null,
+    writeCount: s.writeCount ?? 0,
+    failedWrites: s.failedWrites ?? 0,
+    pendingWrites: s.pendingWrites ?? 0,
+    writeRetryDepth: s.writeRetryDepth ?? 0,
+    lastWriteLatencyMs: s.lastWriteLatencyMs ?? null,
+    apiQuotaRemaining: s.apiQuotaRemaining ?? null,
     modules: stateToModules(s),
   };
 }
