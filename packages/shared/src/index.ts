@@ -67,6 +67,8 @@ export * from './types/integrationManifest';
 export * from './types/integrationCredential';
 export * from './types/integrationHealth';
 export * from './types/integrationRuntime';
+export * from './types/entraGraph';
+export * from './types/m365Graph';
 export * from './types/manufacturingDigitalTwin';
 export * from './types/enterpriseDecisionEngine';
 export * from './types/executiveDecisionApproval';

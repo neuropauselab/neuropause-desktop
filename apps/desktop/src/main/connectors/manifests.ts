@@ -17,6 +17,16 @@ const GOOGLE_AUTHORIZE = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN = 'https://oauth2.googleapis.com/token';
 const GOOGLE_REVOKE = 'https://oauth2.googleapis.com/revoke';
 
+/**
+ * Microsoft Entra ID authority. A single-tenant app registration must target its tenant id — `common`
+ * (the multi-tenant authority) is rejected by single-tenant apps (AADSTS50194). Set
+ * NEUROPAUSE_MICROSOFT_ENTRA_TENANT_ID to that GUID; it defaults to `common`. Read at runtime, exactly
+ * like the client credentials in credentials.ts.
+ */
+const ENTRA_TENANT_ENV = 'NEUROPAUSE_MICROSOFT_ENTRA_TENANT_ID';
+const ENTRA_TENANT = (process.env[ENTRA_TENANT_ENV] ?? '').trim() || 'common';
+const ENTRA_AUTHORITY = `https://login.microsoftonline.com/${ENTRA_TENANT}/oauth2/v2.0`;
+
 export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
   /* ─────────────── AI assistants (API key) ─────────────── */
   {
@@ -483,6 +493,76 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
       extraTokenParams: {},
       clientIdEnv: 'NEUROPAUSE_MICROSOFT_CLIENT_ID',
       clientSecretEnv: null,
+    },
+    multiAccount: true,
+  },
+
+  /* ─────────────── Identity / Directory ─────────────── */
+  {
+    id: 'microsoft-entra',
+    name: 'Microsoft Entra ID',
+    provider: 'Microsoft',
+    description:
+      'Sync your Microsoft Entra ID (Azure AD) directory plus Microsoft 365 — users, groups, mail, calendar, OneDrive, contacts, and Teams — via Microsoft Graph.',
+    category: 'developer',
+    website: 'https://www.microsoft.com/security/business/identity-access/microsoft-entra-id',
+    docsUrl: 'https://learn.microsoft.com/graph/api/overview',
+    brandColor: '#0067B8',
+    version: '1.0.0',
+    authType: 'oauth2_pkce',
+    capabilities: ['activities', 'messages', 'calendar', 'events', 'files'],
+    scopes: [
+      { id: 'User.Read.All', label: 'Users', description: "Read your organization's user directory." },
+      { id: 'Group.Read.All', label: 'Groups', description: "Read your organization's groups." },
+      {
+        id: 'Directory.Read.All',
+        label: 'Directory',
+        description: 'Read directory data (organization and memberships).',
+      },
+      { id: 'Mail.Read', label: 'Outlook Mail', description: 'Read your inbox mail (headers and preview).' },
+      { id: 'Calendars.Read', label: 'Calendar', description: 'Read your calendar events.' },
+      { id: 'Files.Read', label: 'OneDrive', description: 'Read your OneDrive files and folders.' },
+      { id: 'Contacts.Read', label: 'Contacts', description: 'Read your personal contacts.' },
+      { id: 'Team.ReadBasic.All', label: 'Teams', description: 'Read the Teams you belong to.' },
+      {
+        id: 'offline_access',
+        label: 'Offline',
+        description: 'Keep the connection alive in the background.',
+      },
+    ],
+    oauth: {
+      authorizeUrl: `${ENTRA_AUTHORITY}/authorize`,
+      tokenUrl: `${ENTRA_AUTHORITY}/token`,
+      revokeUrl: null,
+      scopes: [
+        'openid',
+        'profile',
+        'email',
+        'offline_access',
+        'User.Read',
+        'User.Read.All',
+        'Group.Read.All',
+        'Directory.Read.All',
+        'Mail.Read',
+        'Calendars.Read',
+        'Files.Read',
+        'Contacts.Read',
+        'Team.ReadBasic.All',
+      ],
+      scopeSeparator: ' ',
+      usePkce: true,
+      tokenAuthStyle: 'body',
+      extraAuthParams: { prompt: 'select_account' },
+      extraTokenParams: {},
+      callbackPath: '/callback',
+      clientIdEnv: 'NEUROPAUSE_MICROSOFT_ENTRA_CLIENT_ID',
+      // Public client (desktop loopback + PKCE): no secret is sent. The Entra app is registered under the
+      // "Mobile and desktop applications" platform, which makes it a public client — sending a client
+      // secret would fail with AADSTS700025. PKCE (usePkce) secures the code exchange instead.
+      clientSecretEnv: null,
+      // The loopback redirect must be registered exactly. Register http://127.0.0.1:42817/callback under
+      // the app's "Mobile and desktop applications" platform (Web platform rejects http + 127.0.0.1).
+      loopbackPort: 42817,
     },
     multiAccount: true,
   },

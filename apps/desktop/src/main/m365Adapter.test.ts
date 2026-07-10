@@ -1,0 +1,95 @@
+import { describe, expect, it } from 'vitest';
+import type { GraphMessage } from '@neuropause/shared';
+import { m365Resources, mapMessage, mapEvent, mapDriveItem, mapContact, mapTeam } from './unified/sync/adapters/m365';
+import type { SyncContext } from './unified/sync/adapterSdk';
+import { HttpError } from './unified/sync/http';
+import { makeUnifiedId } from './unified/ids';
+
+const NOW = '2026-07-10T00:00:00.000Z';
+const BASE = { connectorId: 'microsoft-entra', accountId: 'acct-1', now: NOW } as const;
+
+function stubCtx(response: unknown, cursor: string | null = null): SyncContext {
+  const http = {
+    getJson: () => Promise.resolve({ data: response, headers: {}, status: 200 }),
+    postJson: () => Promise.reject(new Error('unused')),
+  } as unknown as SyncContext['http'];
+  return { ...BASE, http, cursor };
+}
+
+function errCtx(status: number): SyncContext {
+  const http = {
+    getJson: () => Promise.reject(new HttpError(status, 'err', false)),
+    postJson: () => Promise.reject(new Error('unused')),
+  } as unknown as SyncContext['http'];
+  return { ...BASE, http, cursor: null };
+}
+
+const res = (id: string) => m365Resources.find((r) => r.id === id)!;
+
+describe('m365Adapter — mappers', () => {
+  it('maps a message to a message entity with a deterministic id', () => {
+    const e = mapMessage(stubCtx({}), {
+      id: 'm1',
+      subject: 'Hi',
+      from: { emailAddress: { address: 'a@b.com' } },
+      receivedDateTime: '2026-07-01T00:00:00Z',
+    } as GraphMessage);
+    expect(e.kind).toBe('message');
+    expect(e.id).toBe(makeUnifiedId('microsoft-entra', 'acct-1', 'message', 'm1'));
+    expect(e.title).toBe('Hi');
+    expect(e.author).toBe('a@b.com');
+    expect(e.metadata.module).toBe('outlook');
+  });
+
+  it('maps event/drive/contact/team to the right UDM kinds', () => {
+    expect(mapEvent(stubCtx({}), { id: 'e1', subject: 'S', start: { dateTime: '2026-07-10T09:00:00' } }).kind).toBe('calendar_event');
+    expect(mapDriveItem(stubCtx({}), { id: 'd1', name: 'f.txt' }).kind).toBe('file');
+    expect(mapContact(stubCtx({}), { id: 'c1', displayName: 'C' }).kind).toBe('contact');
+    expect(mapTeam(stubCtx({}), { id: 't1', displayName: 'T' }).kind).toBe('workspace');
+  });
+});
+
+describe('m365Adapter — resources + graceful degradation', () => {
+  it('registers all five modules', () => {
+    expect(m365Resources.map((r) => r.id)).toEqual(['mail', 'calendar', 'drive', 'contacts', 'teams']);
+  });
+
+  it('pulls mail via delta and captures the deltaLink', async () => {
+    const page = await res('mail').pull(
+      stubCtx({ value: [{ id: 'm1', subject: 'A', from: { emailAddress: { address: 'x@y.com' } } }], '@odata.deltaLink': 'D' }),
+    );
+    expect(page.entities.map((e) => e.sourceId)).toEqual(['m1']);
+    expect(page.hasMore).toBe(false);
+    expect(JSON.parse(page.cursor as string)).toEqual({ delta: 'D' });
+  });
+
+  it('skips the OneDrive root and reports deleted items', async () => {
+    const page = await res('drive').pull(
+      stubCtx({
+        value: [
+          { id: 'root', name: 'root' },
+          { id: 'f1', name: 'a.txt', parentReference: { id: 'root', path: '/drive/root:' } },
+          { id: 'f2', deleted: { state: 'deleted' } },
+        ],
+        '@odata.deltaLink': 'D',
+      }),
+    );
+    expect(page.entities.map((e) => e.sourceId)).toEqual(['f1']);
+    expect(page.deletedSourceIds).toEqual(['f2']);
+  });
+
+  it('gracefully skips a module that returns 403 (unlicensed) without failing the sync', async () => {
+    const page = await res('mail').pull(errCtx(403));
+    expect(page.entities).toEqual([]);
+    expect(page.hasMore).toBe(false);
+  });
+
+  it('gracefully skips 404 (mailbox/OneDrive not provisioned)', async () => {
+    expect((await res('drive').pull(errCtx(404))).entities).toEqual([]);
+    expect((await res('teams').pull(errCtx(403))).entities).toEqual([]);
+  });
+
+  it('propagates genuinely retryable errors (e.g. 500)', async () => {
+    await expect(res('teams').pull(errCtx(500))).rejects.toBeInstanceOf(HttpError);
+  });
+});
