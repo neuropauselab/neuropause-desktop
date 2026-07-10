@@ -98,6 +98,9 @@ export function stateToSnapshot(s: AccountSyncState, queueSize: number): Connect
 export class SyncStateStore extends EventEmitter {
   private states = new Map<string, AccountSyncState>();
   private loaded = false;
+  /** Serializes persistence so concurrent saves never race on the temp file (see persist()). */
+  private writeChain: Promise<void> = Promise.resolve();
+  private writeSeq = 0;
 
   constructor(private readonly filePath: string) {
     super();
@@ -120,8 +123,25 @@ export class SyncStateStore extends EventEmitter {
     log.info('Sync state ready', { accounts: this.states.size });
   }
 
-  private async persist(): Promise<void> {
-    const tmp = `${this.filePath}.tmp`;
+  /**
+   * Persist the full state atomically. Writes are SERIALIZED through a promise chain and each uses a
+   * UNIQUE temp filename (pid + counter), so overlapping saves — far more frequent now that every module
+   * records its own stats each sync — can never collide on a shared `.tmp` path and hit `ENOENT` on rename.
+   */
+  private persist(): Promise<void> {
+    const run = (): Promise<void> => this.writeAtomic();
+    const next = this.writeChain.then(run, run);
+    // Keep the chain alive even if one write rejects, but hand the real result back to the caller.
+    this.writeChain = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    return next;
+  }
+
+  private async writeAtomic(): Promise<void> {
+    this.writeSeq = (this.writeSeq + 1) % 1_000_000;
+    const tmp = `${this.filePath}.${process.pid}.${this.writeSeq}.tmp`;
     await fs.writeFile(tmp, JSON.stringify([...this.states.values()]), { mode: 0o600 });
     await fs.rename(tmp, this.filePath);
   }
