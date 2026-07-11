@@ -1,20 +1,47 @@
 /**
- * Webhook payload signing (P3.0, Increment 4) — HMAC-SHA256, dependency-free.
- * The platform signs each outbound body; the receiver verifies with the shared
- * secret. `verifyWebhook` is exported for parity/testing and mirrors what an SDK
- * consumer runs. Timing-safe comparison. Pure.
+ * Webhook payload signing (P3.0) — HMAC-SHA256 over `<timestamp>.<body>`, emitted as
+ * `t=<unix_ms>,v1=<hex>`. This is the SAME wire format the official SDK's
+ * `verifyWebhook` checks (timestamped to resist replay), so a delivery signed here
+ * verifies with the SDK unchanged. Dependency-free; timing-safe compare.
  */
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
-/** `sha256=<hex hmac>` over the raw request body. */
-export function signWebhook(secret: string, body: string): string {
-  return `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`;
+const DEFAULT_TOLERANCE_MS = 5 * 60_000;
+
+/** `t=<ms>,v1=<hex>` — the value for the `x-neuropause-signature` header. */
+export function signWebhook(secret: string, body: string, timestampMs: number = Date.now()): string {
+  const mac = createHmac('sha256', secret).update(`${timestampMs}.${body}`).digest('hex');
+  return `t=${timestampMs},v1=${mac}`;
 }
 
-/** Constant-time verification of a presented signature against the body. */
-export function verifyWebhook(secret: string, body: string, signature: string): boolean {
-  const expected = signWebhook(secret, body);
-  const a = Buffer.from(signature);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
+function parseHeader(header: string): { t: number; v1: string } | null {
+  const parts = header.split(',').reduce<Record<string, string>>((acc, kv) => {
+    const [k, v] = kv.split('=');
+    if (k && v) acc[k.trim()] = v.trim();
+    return acc;
+  }, {});
+  if (!parts.t || !parts.v1) return null;
+  const t = Number(parts.t);
+  return Number.isFinite(t) ? { t, v1: parts.v1 } : null;
+}
+
+/** Verify a `t=,v1=` signature over the body, within a freshness tolerance. Never throws. */
+export function verifyWebhook(
+  secret: string,
+  body: string,
+  header: string,
+  toleranceMs: number = DEFAULT_TOLERANCE_MS,
+  nowMs: number = Date.now(),
+): boolean {
+  const parsed = parseHeader(header);
+  if (!parsed) return false;
+  if (Math.abs(nowMs - parsed.t) > toleranceMs) return false;
+  const expected = createHmac('sha256', secret).update(`${parsed.t}.${body}`).digest();
+  let provided: Buffer;
+  try {
+    provided = Buffer.from(parsed.v1, 'hex');
+  } catch {
+    return false;
+  }
+  return provided.length === expected.length && timingSafeEqual(provided, expected);
 }

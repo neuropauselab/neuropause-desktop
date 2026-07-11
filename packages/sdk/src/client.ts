@@ -5,7 +5,15 @@
  */
 import type { ApiVersion } from '@neuropause/shared';
 import { HttpTransport, type FetchLike, type Transport } from './transport';
-import { BillingResource, ConnectorsResource, MarketplaceResource, UsageResource, WorkersResource } from './resources';
+import {
+  BillingResource,
+  ConnectorsResource,
+  MarketplaceResource,
+  OAuthResource,
+  UsageResource,
+  WorkersResource,
+} from './resources';
+import { EnterpriseResource } from './generated/enterprise';
 
 export interface NeuroPauseClientOptions {
   baseUrl?: string;
@@ -25,6 +33,10 @@ export class NeuroPauseClient {
   readonly connectors: ConnectorsResource;
   readonly usage: UsageResource;
   readonly billing: BillingResource;
+  /** OAuth 2.1 client-credentials token issuance (P3.0). */
+  readonly oauth: OAuthResource;
+  /** The Enterprise REST API — records, graph, timeline, context, search, automation (P3.0, generated). */
+  readonly enterprise: EnterpriseResource;
 
   constructor(options: NeuroPauseClientOptions = {}) {
     this.transport =
@@ -40,5 +52,7 @@ export class NeuroPauseClient {
     this.connectors = new ConnectorsResource(this.transport);
     this.usage = new UsageResource(this.transport);
     this.billing = new BillingResource(this.transport);
+    this.oauth = new OAuthResource(this.transport);
+    this.enterprise = new EnterpriseResource(this.transport);
   }
 }

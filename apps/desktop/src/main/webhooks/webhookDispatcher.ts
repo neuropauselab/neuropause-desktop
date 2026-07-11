@@ -83,7 +83,7 @@ export class WebhookDispatcher {
     const body = JSON.stringify(payload);
     const headers: Record<string, string> = {
       'content-type': 'application/json',
-      [WEBHOOK_SIGNATURE_HEADER]: signWebhook(secret, body),
+      [WEBHOOK_SIGNATURE_HEADER]: signWebhook(secret, body, now),
       [WEBHOOK_DELIVERY_HEADER]: delivery.id,
       [WEBHOOK_EVENT_HEADER]: delivery.eventType,
     };

@@ -14,6 +14,7 @@ export * from './types/enterpriseSearch';
 export * from './types/enterpriseTimeline';
 export * from './types/enterpriseContext';
 export * from './types/enterpriseApi';
+export * from './types/enterpriseApiManifest';
 export * from './types/openapi';
 export * from './types/apiAuth';
 export * from './types/webhook';

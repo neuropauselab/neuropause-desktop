@@ -46,7 +46,7 @@ describe('WebhookDispatcher', () => {
     const attempted = await dispatcher.tick();
     expect(attempted).toBe(1);
     expect(posts[0].url).toBe('https://example.test/hook');
-    expect(posts[0].headers[WEBHOOK_SIGNATURE_HEADER]).toMatch(/^sha256=/);
+    expect(posts[0].headers[WEBHOOK_SIGNATURE_HEADER]).toMatch(/^t=\d+,v1=[0-9a-f]{64}$/);
 
     const [d] = store.deliveriesFor({});
     expect(d.status).toBe('delivered');

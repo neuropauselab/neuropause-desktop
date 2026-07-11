@@ -10,10 +10,29 @@ import type {
   ListingVersion,
   MarketplaceListing,
   MarketplaceStats,
+  OAuthTokenResponse,
   Plan,
   ReviewDecision,
 } from '@neuropause/shared';
 import type { Transport } from './transport';
+
+/**
+ * OAuth 2.1 — obtain a machine access token via the client-credentials grant
+ * (P3.0). The returned `access_token` is a Bearer token: pass it as `apiKey` to a
+ * `NeuroPauseClient` to make authenticated calls as the service account.
+ */
+export class OAuthResource {
+  constructor(private readonly t: Transport) {}
+  token(input: { clientId: string; clientSecret: string; scope?: string }): Promise<OAuthTokenResponse> {
+    return this.t
+      .request<OAuthTokenResponse>({
+        method: 'POST',
+        path: '/oauth/token',
+        body: { grantType: 'client_credentials', clientId: input.clientId, clientSecret: input.clientSecret, scope: input.scope },
+      })
+      .then((r) => r.data);
+  }
+}
 
 export class MarketplaceResource {
   constructor(private readonly t: Transport) {}

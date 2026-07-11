@@ -11,7 +11,9 @@
     "./webhooks": "./src/webhooks.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "generate": "tsx scripts/generate.ts"
   },
   "dependencies": {
     "@neuropause/shared": "*"
