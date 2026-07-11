@@ -9,10 +9,32 @@
  * no runtime, no real gateway.
  */
 import { describe, expect, it, vi } from 'vitest';
-import type { GatewayDecision, GatewayRequestInput } from '@neuropause/shared';
+import type { GatewayAuditEntry, GatewayDecision, GatewayMetrics, GatewayRequestInput, SystemHealthSnapshot } from '@neuropause/shared';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { enterpriseApiRouteIndex, handleEnterpriseApiRequest, type ApiGatewayDeps } from './apiGateway';
 import { ENTERPRISE_API_ROUTES } from './routeRegistry';
+
+function healthStub(): SystemHealthSnapshot {
+  return {
+    generatedAt: '2026-01-01T00:00:00.000Z', score: 98, level: 'healthy', uptimeMs: 3_600_000,
+    subsystems: [{ id: 'runtime', label: 'Runtime', level: 'healthy' }, { id: 'backend', label: 'Backend', level: 'degraded' }],
+    throughput: { eventsPerMinute: 12, bufferedEvents: 0, avgDispatchMs: 2 },
+    automation: { completed: 5, failed: 1, paused: 0, running: 1 },
+    voice: 'idle',
+    telemetry: { cpuPercent: 10, memoryUsedMb: 200, memoryTotalMb: 1000, processUptimeMs: 3_600_000, backendLatencyMs: 20, backendState: 'connected' },
+  };
+}
+
+function auditStub(): GatewayAuditEntry[] {
+  return [
+    { id: 'gw_1', at: '2026-01-01T00:00:00.000Z', keyId: 'k', developerId: 'dev', method: 'GET', path: '/modules', version: 'v1', status: 200, reason: 'OK', latencyMs: 12 },
+    { id: 'gw_2', at: '2026-01-01T00:00:01.000Z', keyId: null, developerId: null, method: 'DELETE', path: '/modules/x/records/1', version: 'v1', status: 403, reason: 'forbidden', latencyMs: 4 },
+  ];
+}
+
+function metricsStub(): GatewayMetrics {
+  return { windowDays: 7, requests: 10, allowed: 8, denied: 2, rateLimited: 1, unauthorized: 1, byStatus: { '200': 8, '403': 2 }, byVersion: { v1: 10 }, p95LatencyMs: 42 };
+}
 
 function allow(over: Partial<GatewayDecision> = {}): GatewayDecision {
   return {
@@ -31,6 +53,8 @@ function makeDeps(over: Partial<ApiGatewayDeps> = {}): ApiGatewayDeps {
     resolveHandler: (channel) => ({ channel } as SecureHandlerDef),
     runHandler: async (def) => ({ echoedChannel: def.channel }),
     metrics: (windowDays) => ({ windowDays, requests: 0 }),
+    gatewayAudit: () => auditStub(),
+    health: async () => healthStub(),
     now: () => 0,
     ...over,
   };
@@ -132,6 +156,36 @@ describe('handleEnterpriseApiRequest', () => {
     expect(data.results[0].ok).toBe(true);
     expect(data.results[2].ok).toBe(false); // unknown op isolated
     expect(dispatched).toHaveLength(2); // create + delete dispatched; bogus never did
+  });
+
+  it('serves Prometheus metrics as text from gateway metrics + health', async () => {
+    const res = await handleEnterpriseApiRequest(
+      { method: 'GET', path: '/observability/metrics', apiKey: 'k' },
+      makeDeps({ metrics: () => metricsStub() }),
+    );
+    expect(res.status).toBe(200);
+    const text = res.data as string;
+    expect(text).toContain('# TYPE neuropause_gateway_requests_total counter');
+    expect(text).toContain('neuropause_gateway_requests_total 10');
+    expect(text).toContain('neuropause_health_score 98');
+    expect(text).toContain('neuropause_subsystem_up{subsystem="backend",level="degraded"} 1');
+  });
+
+  it('serves the health snapshot', async () => {
+    const res = await handleEnterpriseApiRequest({ method: 'GET', path: '/observability/health', apiKey: 'k' }, makeDeps());
+    expect((res.data as SystemHealthSnapshot).score).toBe(98);
+  });
+
+  it('projects gateway audit into OTLP spans and logs', async () => {
+    const spanRes = await handleEnterpriseApiRequest({ method: 'GET', path: '/observability/traces', query: { limit: 5 }, apiKey: 'k' }, makeDeps());
+    const spans = (spanRes.data as { resourceSpans: Array<{ scopeSpans: Array<{ spans: Array<{ name: string; status: { code: number } }> }> }> }).resourceSpans[0].scopeSpans[0].spans;
+    expect(spans).toHaveLength(2);
+    expect(spans[0].name).toBe('GET /modules');
+    expect(spans[1].status.code).toBe(2); // 403 → ERROR
+
+    const logRes = await handleEnterpriseApiRequest({ method: 'GET', path: '/observability/logs', apiKey: 'k' }, makeDeps());
+    const logs = (logRes.data as { resourceLogs: Array<{ scopeLogs: Array<{ logRecords: Array<{ severityText: string }> }> }> }).resourceLogs[0].scopeLogs[0].logRecords;
+    expect(logs[1].severityText).toBe('WARN'); // 403 → WARN
   });
 
   it('maps validation + permission errors onto 400 / 403', async () => {

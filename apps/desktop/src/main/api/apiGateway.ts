@@ -16,9 +16,11 @@ import type {
   ApiVersion,
   EnterpriseApiRequest,
   EnterpriseApiResponse,
+  GatewayAuditEntry,
   GatewayDecision,
   GatewayRequestInput,
   IpcChannelName,
+  SystemHealthSnapshot,
 } from '@neuropause/shared';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { ENTERPRISE_API_ROUTES } from './routeRegistry';
@@ -34,6 +36,10 @@ export interface ApiGatewayDeps {
   runHandler: (def: SecureHandlerDef, payload: unknown) => Promise<unknown>;
   /** Gateway request metrics (reused from the Ecosystem gateway store). */
   metrics: (windowDays: number) => unknown;
+  /** Recent gateway audit entries, newest first (reused for observability traces/logs). */
+  gatewayAudit: (limit: number) => GatewayAuditEntry[];
+  /** The live NeuroCore system-health snapshot (reused for observability health/metrics). */
+  health: () => Promise<SystemHealthSnapshot>;
   now: () => number;
 }
 
@@ -93,6 +99,8 @@ export async function handleEnterpriseApiRequest(
           return deps.runHandler(def, cleanPayload(payload));
         },
         metrics: deps.metrics,
+        gatewayAudit: deps.gatewayAudit,
+        health: deps.health,
         routeCount: ENTERPRISE_API_ROUTES.length,
         version,
         now: deps.now,

@@ -14,6 +14,7 @@ import type {
   ApiVersion,
   BillingSummary,
   DeveloperDashboard,
+  GatewayAuditEntry,
   GatewayDecision,
   GatewayRequestInput,
   OAuthTokenError,
@@ -323,6 +324,11 @@ export function runGateway(input: GatewayRequestInput): GatewayDecision {
 /** Gateway request metrics over a window (P3.0) — reused by the REST API `/metrics` route. */
 export function gatewayMetrics(windowDays: number): unknown {
   return gatewayStore.metrics(windowDays, Date.now());
+}
+
+/** Recent gateway audit entries, newest first (P3.0) — reused by the observability traces/logs routes. */
+export function gatewayAuditEntries(limit: number): GatewayAuditEntry[] {
+  return gatewayStore.auditEntries(limit);
 }
 
 export async function initEcosystem(deps: EcosystemDeps): Promise<EcosystemSubsystem> {

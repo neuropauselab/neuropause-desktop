@@ -25,7 +25,7 @@ export interface CliDeps {
   now?: () => number;
 }
 
-export const CLI_VERSION = '0.2.0';
+export const CLI_VERSION = '0.3.0';
 
 export const HELP = `neuropause <command>
 
@@ -57,6 +57,11 @@ Enterprise API
   automation [monitor]                                         Automation rules / monitor rollup
   health                                                       API liveness + version
   metrics [--windowDays <n>]                                   Gateway request metrics
+
+Observability
+  diagnostics [--windowDays <n>]                               System-health snapshot + gateway metrics
+  logs [--limit <n>]                                           Recent gateway requests as OpenTelemetry logs
+  traces [--limit <n>]                                         Recent gateway requests as OpenTelemetry spans
 
 Ecosystem
   marketplace list | stats                                     Browse the marketplace
@@ -122,6 +127,16 @@ export async function runCommand(argv: string[], deps: CliDeps): Promise<number>
         return print(deps, await ent.getHealth());
       case 'metrics':
         return print(deps, await ent.getMetrics(queryFromFlags(flags)));
+
+      /* ── Observability (P3.0, Increment 9) ── */
+      case 'diagnostics': {
+        const [health, metrics] = await Promise.all([ent.getObservabilityHealth(), ent.getMetrics(queryFromFlags(flags))]);
+        return print(deps, { health, metrics });
+      }
+      case 'logs':
+        return print(deps, await ent.getObservabilityLogs(queryFromFlags(flags)));
+      case 'traces':
+        return print(deps, await ent.getObservabilityTraces(queryFromFlags(flags)));
 
       /* ── Ecosystem ── */
       case 'marketplace': {

@@ -31,4 +31,8 @@ export const ENTERPRISE_API_ROUTE_MANIFEST: readonly ApiRouteInfo[] = [
   {"method":"GET","path":"/search","scope":"search:read","summary":"Cross-domain enterprise search","list":false},
   {"method":"GET","path":"/automation","scope":"automation:read","summary":"List automation rules + summary","list":false},
   {"method":"GET","path":"/automation/monitor","scope":"automation:read","summary":"Automation monitor rollup","list":false},
+  {"method":"GET","path":"/observability/metrics","scope":"observability:read","summary":"Prometheus exposition of gateway + runtime metrics (text/plain)","list":false},
+  {"method":"GET","path":"/observability/health","scope":"observability:read","summary":"System-health snapshot (score, subsystems, throughput, telemetry)","list":false},
+  {"method":"GET","path":"/observability/traces","scope":"observability:read","summary":"Recent gateway requests as OpenTelemetry spans (OTLP/JSON)","list":false},
+  {"method":"GET","path":"/observability/logs","scope":"observability:read","summary":"Recent gateway requests as OpenTelemetry logs (OTLP/JSON)","list":false},
 ];

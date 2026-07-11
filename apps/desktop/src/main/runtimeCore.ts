@@ -135,7 +135,7 @@ import { initEngineeringAI, initFounderAIv2 } from './ai';
 import { initTrace } from './trace';
 import { initWorkforce } from './workforce';
 import { initEnterprise } from './enterprise';
-import { initEcosystem, runGateway, gatewayMetrics } from './ecosystem';
+import { initEcosystem, runGateway, gatewayMetrics, gatewayAuditEntries } from './ecosystem';
 import { initEnterpriseApi } from './api';
 import { initWebhooks } from './webhooks';
 import { initCloud } from './cloud';
@@ -1178,6 +1178,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     resolveHandler: (channel) => handlerByChannel.get(channel),
     runHandler: (def, payload) => runSecureHandler(def, payload, secureBridgeDeps),
     metrics: (windowDays) => gatewayMetrics(windowDays),
+    gatewayAudit: (limit) => gatewayAuditEntries(limit),
+    health: () => neuroCore.snapshot(),
     now: () => Date.now(),
   });
   defs.push(...enterpriseApi.handlers);

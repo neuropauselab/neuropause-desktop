@@ -125,4 +125,24 @@ export class EnterpriseResource {
   getAutomationMonitor<T = unknown>(query?: Record<string, string | number | boolean | undefined>): Promise<T> {
     return this.t.request<T>({ method: 'GET', path: `/automation/monitor`, query, scope: 'automation:read' }).then((r) => r.data);
   }
+
+  /** GET /observability/metrics — Prometheus exposition of gateway + runtime metrics (text/plain) */
+  getObservabilityMetrics<T = unknown>(query?: Record<string, string | number | boolean | undefined>): Promise<T> {
+    return this.t.request<T>({ method: 'GET', path: `/observability/metrics`, query, scope: 'observability:read' }).then((r) => r.data);
+  }
+
+  /** GET /observability/health — System-health snapshot (score, subsystems, throughput, telemetry) */
+  getObservabilityHealth<T = unknown>(query?: Record<string, string | number | boolean | undefined>): Promise<T> {
+    return this.t.request<T>({ method: 'GET', path: `/observability/health`, query, scope: 'observability:read' }).then((r) => r.data);
+  }
+
+  /** GET /observability/traces — Recent gateway requests as OpenTelemetry spans (OTLP/JSON) */
+  getObservabilityTraces<T = unknown>(query?: Record<string, string | number | boolean | undefined>): Promise<T> {
+    return this.t.request<T>({ method: 'GET', path: `/observability/traces`, query, scope: 'observability:read' }).then((r) => r.data);
+  }
+
+  /** GET /observability/logs — Recent gateway requests as OpenTelemetry logs (OTLP/JSON) */
+  getObservabilityLogs<T = unknown>(query?: Record<string, string | number | boolean | undefined>): Promise<T> {
+    return this.t.request<T>({ method: 'GET', path: `/observability/logs`, query, scope: 'observability:read' }).then((r) => r.data);
+  }
 }

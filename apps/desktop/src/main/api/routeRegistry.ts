@@ -9,8 +9,16 @@
  * bulk) fan out over the same channels.
  */
 import { IpcChannel } from '@neuropause/shared';
-import type { IpcChannelName } from '@neuropause/shared';
+import type { GatewayMetrics, IpcChannelName } from '@neuropause/shared';
 import type { ApiRoute, RouteContext, SpecialRouteDeps } from './types';
+import { toPrometheus } from '../observability/prometheus';
+import { auditToTraceExport, auditToLogsExport } from '../observability/otel';
+
+/** Clamp an optional numeric query param into [1, max] with a default. */
+function clampLimit(v: unknown, def: number, max = 1000): number {
+  const n = numOpt(v);
+  return Math.min(max, Math.max(1, n ?? def));
+}
 
 function asObj(body: unknown): Record<string, unknown> {
   return body && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
@@ -202,4 +210,29 @@ export const ENTERPRISE_API_ROUTES: ApiRoute[] = [
   /* ── Automation ── */
   { kind: 'channel', method: 'GET', path: '/automation', scope: 'automation:read', list: false, summary: 'List automation rules + summary', channel: IpcChannel.AutomationList, buildPayload: () => ({}) },
   { kind: 'channel', method: 'GET', path: '/automation/monitor', scope: 'automation:read', list: false, summary: 'Automation monitor rollup', channel: IpcChannel.AutomationMonitor, buildPayload: () => ({}) },
+
+  /* ── Observability (P3.0, Increment 9) — reshape existing gateway audit + health telemetry ── */
+  {
+    kind: 'special', method: 'GET', path: '/observability/metrics', scope: 'observability:read', list: false,
+    summary: 'Prometheus exposition of gateway + runtime metrics (text/plain)',
+    query: [{ name: 'windowDays', type: 'integer', description: 'Metrics look-back window in days (default 7)' }],
+    run: async (ctx, d) => toPrometheus(d.metrics(numOpt(ctx.query.windowDays) ?? 7) as GatewayMetrics, await d.health()),
+  },
+  {
+    kind: 'special', method: 'GET', path: '/observability/health', scope: 'observability:read', list: false,
+    summary: 'System-health snapshot (score, subsystems, throughput, telemetry)',
+    run: (_ctx, d) => d.health(),
+  },
+  {
+    kind: 'special', method: 'GET', path: '/observability/traces', scope: 'observability:read', list: false,
+    summary: 'Recent gateway requests as OpenTelemetry spans (OTLP/JSON)',
+    query: [{ name: 'limit', type: 'integer', description: 'Max spans (1–1000, default 100)' }],
+    run: (ctx, d) => auditToTraceExport(d.gatewayAudit(clampLimit(ctx.query.limit, 100))),
+  },
+  {
+    kind: 'special', method: 'GET', path: '/observability/logs', scope: 'observability:read', list: false,
+    summary: 'Recent gateway requests as OpenTelemetry logs (OTLP/JSON)',
+    query: [{ name: 'limit', type: 'integer', description: 'Max log records (1–1000, default 100)' }],
+    run: (ctx, d) => auditToLogsExport(d.gatewayAudit(clampLimit(ctx.query.limit, 100))),
+  },
 ];

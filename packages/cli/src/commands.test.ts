@@ -149,6 +149,25 @@ describe('CLI — enterprise API', () => {
   });
 });
 
+describe('CLI — observability', () => {
+  it('fetches OTLP logs and traces with a limit', async () => {
+    const logs = harness({ resourceLogs: [] });
+    await runCommand(['logs', '--limit', '50'], logs.deps);
+    expect(logs.transport.calls[0]).toMatchObject({ path: '/observability/logs', query: { limit: 50 } });
+
+    const traces = harness({ resourceSpans: [] });
+    await runCommand(['traces'], traces.deps);
+    expect(traces.transport.calls[0]).toMatchObject({ path: '/observability/traces' });
+  });
+
+  it('diagnostics composes the health snapshot + gateway metrics', async () => {
+    const h = harness({ score: 90 });
+    expect(await runCommand(['diagnostics'], h.deps)).toBe(0);
+    expect(h.transport.calls.map((c) => c.path)).toEqual(['/observability/health', '/metrics']);
+    expect(JSON.parse(h.out.join('\n'))).toHaveProperty('health');
+  });
+});
+
 describe('CLI — auth', () => {
   it('stores an API key on login --api-key', async () => {
     const m = memStore();

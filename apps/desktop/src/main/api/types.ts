@@ -6,7 +6,7 @@
  * metrics, bulk). Nothing here re-implements business logic — `buildPayload`
  * only translates path params / query / body into the channel's existing payload.
  */
-import type { ApiListControls, ApiRouteInfo, IpcChannelName } from '@neuropause/shared';
+import type { ApiListControls, ApiRouteInfo, GatewayAuditEntry, IpcChannelName, SystemHealthSnapshot } from '@neuropause/shared';
 
 export interface RouteContext {
   params: Record<string, string>;
@@ -19,6 +19,10 @@ export interface RouteContext {
 export interface SpecialRouteDeps {
   dispatch: (channel: IpcChannelName, payload: Record<string, unknown>) => Promise<unknown>;
   metrics: (windowDays: number) => unknown;
+  /** Recent gateway audit entries, newest first (observability traces/logs). */
+  gatewayAudit: (limit: number) => GatewayAuditEntry[];
+  /** The live system-health snapshot (observability health + Prometheus metrics). */
+  health: () => Promise<SystemHealthSnapshot>;
   routeCount: number;
   version: string;
   now: () => number;

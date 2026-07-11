@@ -1,6 +1,6 @@
 {
   "name": "@neuropause/cli",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "NeuroPause CLI — manage credentials, drive the Enterprise API, inspect the graph/timeline/automation, and publish to the marketplace.",
   "license": "UNLICENSED",
   "type": "module",
