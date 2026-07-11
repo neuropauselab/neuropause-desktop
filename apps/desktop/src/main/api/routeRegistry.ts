@@ -78,6 +78,7 @@ export const ENTERPRISE_API_ROUTES: ApiRoute[] = [
   {
     kind: 'special', method: 'GET', path: '/metrics', scope: 'observability:read', list: false,
     summary: 'Gateway request metrics (requests, statuses, latency) over a window',
+    query: [{ name: 'windowDays', type: 'integer', description: 'Look-back window in days (default 7)' }],
     run: (ctx, d) => d.metrics(numOpt(ctx.query.windowDays) ?? 7),
   },
 
@@ -90,6 +91,10 @@ export const ENTERPRISE_API_ROUTES: ApiRoute[] = [
   {
     kind: 'list', method: 'GET', path: '/modules/:moduleId/records', scope: 'records:read', list: true,
     summary: 'List records in a module (filter by status/search; sort + cursor pagination)',
+    query: [
+      { name: 'status', type: 'string', description: 'Filter by record status', enum: ['active', 'archived', 'deleted'] },
+      { name: 'search', type: 'string', description: 'Free-text filter over the records' },
+    ],
     channel: IpcChannel.EnterpriseModuleList,
     buildPayload: (c) => ({ moduleId: c.params.moduleId, status: strOpt(c.query.status), search: strOpt(c.query.search), limit: 1000 }),
   },
@@ -126,6 +131,7 @@ export const ENTERPRISE_API_ROUTES: ApiRoute[] = [
   {
     kind: 'list', method: 'GET', path: '/modules/:moduleId/search', scope: 'records:read', list: true,
     summary: 'Search records within a module',
+    query: [{ name: 'q', type: 'string', description: 'Search query (alias: query)' }],
     channel: IpcChannel.EnterpriseModuleSearch, buildPayload: (c) => ({ moduleId: c.params.moduleId, query: strq(c.query.q ?? c.query.query), limit: 1000 }),
   },
   {
@@ -150,11 +156,19 @@ export const ENTERPRISE_API_ROUTES: ApiRoute[] = [
   {
     kind: 'channel', method: 'GET', path: '/graph/nodes/:id/neighbors', scope: 'graph:read', list: false,
     summary: 'Immediate neighbors of a node',
+    query: [
+      { name: 'direction', type: 'string', description: 'Edge direction', enum: ['both', 'out', 'in'] },
+      { name: 'limit', type: 'integer', description: 'Max neighbors (1–500)' },
+    ],
     channel: IpcChannel.GraphNeighbors, buildPayload: (c) => ({ id: c.params.id, direction: strOpt(c.query.direction), limit: numOpt(c.query.limit) }),
   },
   {
     kind: 'channel', method: 'GET', path: '/graph/nodes/:id/subgraph', scope: 'graph:read', list: false,
     summary: 'Ego subgraph around a node',
+    query: [
+      { name: 'depth', type: 'integer', description: 'Traversal depth (1–4)' },
+      { name: 'limit', type: 'integer', description: 'Max nodes (1–500)' },
+    ],
     channel: IpcChannel.GraphSubgraph, buildPayload: (c) => ({ id: c.params.id, depth: numOpt(c.query.depth), limit: numOpt(c.query.limit) }),
   },
 
@@ -165,12 +179,25 @@ export const ENTERPRISE_API_ROUTES: ApiRoute[] = [
   {
     kind: 'channel', method: 'GET', path: '/timeline', scope: 'timeline:read', list: false,
     summary: 'Query the unified enterprise timeline',
+    query: [
+      { name: 'q', type: 'string', description: 'Free-text filter' },
+      { name: 'entityRef', type: 'string', description: 'Only entries concerning this entity id' },
+      { name: 'limit', type: 'integer', description: 'Max entries (1–500)' },
+      { name: 'order', type: 'string', description: 'Chronological order', enum: ['asc', 'desc'] },
+    ],
     channel: IpcChannel.EnterpriseTimelineQuery,
     buildPayload: (c) => ({ text: strOpt(c.query.q), limit: numOpt(c.query.limit), order: c.query.order === 'asc' ? 'asc' : 'desc', entityRef: strOpt(c.query.entityRef) }),
   },
 
   /* ── Enterprise Search ── */
-  { kind: 'channel', method: 'GET', path: '/search', scope: 'search:read', list: false, summary: 'Cross-domain enterprise search', channel: IpcChannel.EnterpriseSearch, buildPayload: (c) => ({ text: strq(c.query.q ?? c.query.text), limit: numOpt(c.query.limit) }) },
+  {
+    kind: 'channel', method: 'GET', path: '/search', scope: 'search:read', list: false, summary: 'Cross-domain enterprise search',
+    query: [
+      { name: 'q', type: 'string', description: 'Search text (alias: text)' },
+      { name: 'limit', type: 'integer', description: 'Max results (1–50)' },
+    ],
+    channel: IpcChannel.EnterpriseSearch, buildPayload: (c) => ({ text: strq(c.query.q ?? c.query.text), limit: numOpt(c.query.limit) }),
+  },
 
   /* ── Automation ── */
   { kind: 'channel', method: 'GET', path: '/automation', scope: 'automation:read', list: false, summary: 'List automation rules + summary', channel: IpcChannel.AutomationList, buildPayload: () => ({}) },

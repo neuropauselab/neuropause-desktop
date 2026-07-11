@@ -298,6 +298,8 @@ export const IpcChannel = {
   EnterpriseApiRequest: 'api:request',
   /** Enterprise REST API (P3.0) — the static route index (drives docs + OpenAPI). */
   EnterpriseApiRoutes: 'api:routes',
+  /** Enterprise REST API (P3.0) — the generated OpenAPI 3.1 document (auto-synced from routes + Zod). */
+  EnterpriseApiOpenApi: 'api:openapi',
   /** Personalization (per-user Favorites / Recently-Opened / Saved Views) — actor-scoped, persisted. */
   EnterprisePersonalizationGet: 'enterprise:personalization.get',
   EnterprisePersonalizationFavorite: 'enterprise:personalization.favorite',
@@ -750,6 +752,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.EnterpriseContext,
   IpcChannel.EnterpriseApiRequest,
   IpcChannel.EnterpriseApiRoutes,
+  IpcChannel.EnterpriseApiOpenApi,
   IpcChannel.EnterprisePersonalizationGet,
   IpcChannel.EnterprisePersonalizationFavorite,
   IpcChannel.EnterprisePersonalizationRecent,

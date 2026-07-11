@@ -65,6 +65,14 @@ export interface ApiListControls {
   order: 'asc' | 'desc';
 }
 
+/** A documented query-string parameter a route accepts. */
+export interface ApiQueryParam {
+  name: string;
+  type: 'string' | 'integer' | 'boolean';
+  description: string;
+  enum?: string[];
+}
+
 /**
  * Static description of one route — drives the API index endpoint and the OpenAPI
  * generation in Increment 2. Kept free of any main-process/channel detail so it is
@@ -80,4 +88,6 @@ export interface ApiRouteInfo {
   summary: string;
   /** True when the success payload is an {@link ApiListPage}. */
   list: boolean;
+  /** Query params this route reads (beyond the standard list controls). */
+  query?: ApiQueryParam[];
 }
