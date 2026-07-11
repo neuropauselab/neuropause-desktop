@@ -341,6 +341,8 @@ export const IpcChannel = {
   SandboxDatasetCreate: 'sandbox:dataset.create',
   SandboxDatasetDelete: 'sandbox:dataset.delete',
   SandboxDashboard: 'sandbox:dashboard',
+  /** S6 Continuous Validation — read-only summary the Developer Portal consumes. */
+  SandboxValidationSummary: 'sandbox:validation.summary',
   /** Broadcast on any sandbox execution/queue change (renderer refresh). */
   SandboxEventBroadcast: 'sandbox:event',
   /** Personalization (per-user Favorites / Recently-Opened / Saved Views) — actor-scoped, persisted. */

@@ -144,8 +144,11 @@ import { initEnterpriseRunner } from './sandbox/enterprise';
 import { createRealEnterprisePlatform } from './sandbox/enterprise/realPlatform';
 import { createRealDesktopChannel } from './sandbox/enterprise/desktopChannel';
 import { createGatewaySdk, createGatewayCli } from './sandbox/enterprise/developerChannels';
-import { initAiQa, type QaExecutorBackend } from './sandbox/agent';
+import { initAiQa, createQaExecutor, type QaExecutorBackend } from './sandbox/agent';
 import { initPerfSecurityLab } from './sandbox/lab';
+import { initContinuousValidation } from './sandbox/validation';
+import { taskScheduler } from './services/taskScheduler';
+import { notificationScheduler } from './services/notificationScheduler';
 import { aiEngine } from './ai/engineInstance';
 import { handleEnterpriseApiRequest } from './api/apiGateway';
 import { collectPlanningModel } from './enterprise/planningModel';
@@ -1256,6 +1259,27 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   registerDiagnosticProbes([() => perfLab.diagnosticsProbe()]);
   log.info('Perf & Security Lab ready', { benchmarks: perfLab.benchmarks.count() });
 
+  // AI Sandbox S6 — Continuous Validation Platform. The orchestration layer that composes
+  // S1–S5 into named pipelines, fires them on the EXISTING scheduler, compares against the
+  // SAME benchmark store, records in the EXISTING memory, certifies, and notifies through
+  // the EXISTING notification path. Auto-schedules are OFF by default (runs mutate real
+  // data). Completes AI Sandbox v1.0. No new engine/scheduler/dashboard/report/memory.
+  const validation = await wireContinuousValidation({
+    handlerByChannel,
+    secureBridgeDeps,
+    runsPath: join(sandboxBaseDir, 'validation', 'runs.json'),
+    runQaSession: (goal) => aiQa.runSession({ text: goal }).then((o) => o.session),
+    runLab: (config) => perfLab.runLab(config),
+    benchmarks: perfLab.benchmarks,
+    health: async () => {
+      const s = await neuroCore.snapshot();
+      return { level: s.level, cpuPercent: s.telemetry.cpuPercent, memoryUsedMb: s.telemetry.memoryUsedMb };
+    },
+    kpis: () => executiveCenter.snapshot().kpis.map((k) => ({ key: k.key, value: k.value })),
+  });
+  defs.push(...validation.handlers);
+  log.info('Continuous Validation Platform ready — AI Sandbox v1.0 complete', { pipelines: validation.pipelines.length });
+
   registerSecureHandlers(defs, secureBridgeDeps);
   // Bridge runtime-core events to the renderer.
   packageService.on('progress', (e) => deps.broadcast(IpcChannel.NpsProgress, e));
@@ -1517,5 +1541,47 @@ async function wirePerfSecurityLab(cfg: SandboxSecureCfg & {
     executorBackend: backend,
     observers: { health: cfg.health, kpis: cfg.kpis, auditCount: cfg.auditCount, queueDepth },
     benchmarksPath: cfg.benchmarksPath,
+  });
+}
+
+/**
+ * Wire the AI Sandbox S6 (Continuous Validation Platform) — the capstone. It composes S1–S5
+ * into pipelines run through the SAME executor backend (→ S1 → S2/S3/S4/S5), fires them on
+ * the EXISTING `taskScheduler` (auto-schedules OFF by default), compares against the SAME S5
+ * benchmark store, records history in the EXISTING memory, certifies, and notifies through
+ * the EXISTING `notificationScheduler`. Exposes one read-only `sandbox:read` channel the
+ * Developer Portal consumes. No new engine/scheduler/dashboard/report/memory/security.
+ */
+async function wireContinuousValidation(cfg: SandboxSecureCfg & {
+  runsPath: string;
+  runQaSession: Parameters<typeof initContinuousValidation>[0]['executors']['runQaSession'];
+  runLab: Parameters<typeof initContinuousValidation>[0]['executors']['runLab'];
+  benchmarks: Parameters<typeof initContinuousValidation>[0]['benchmarks'];
+  health: () => Promise<{ level: string; cpuPercent: number; memoryUsedMb: number }>;
+  kpis: () => { key: string; value: number | null }[];
+}): Promise<Awaited<ReturnType<typeof initContinuousValidation>>> {
+  const { backend } = buildSandboxExecutorBackend(cfg);
+  const executor = createQaExecutor(backend, { now: Date.now, sleep: (ms) => new Promise((r) => setTimeout(r, ms)) });
+  return initContinuousValidation({
+    executors: { qaExecutor: executor, runQaSession: cfg.runQaSession, runLab: cfg.runLab },
+    benchmarks: cfg.benchmarks,
+    runsPath: cfg.runsPath,
+    enableSchedules: false,
+    scheduler: { every: (id, ms, fn) => taskScheduler.every(id, ms, fn), cancel: (id) => { taskScheduler.cancel(id); } },
+    notifier: {
+      notify: (n) => {
+        if (n.priority === 'high' || n.priority === 'critical') notificationScheduler.notifyNow(n.title, n.body);
+      },
+    },
+    history: {
+      remember: (i) => {
+        memoryStore.remember({ kind: 'note', title: i.title, content: i.content, tags: i.tags, metadata: i.metadata } as unknown as Parameters<typeof memoryStore.remember>[0]);
+      },
+      recall: (q) => {
+        const res = memoryStore.recall({ tag: q.tag, text: q.text, limit: q.limit } as unknown as Parameters<typeof memoryStore.recall>[0]) as unknown as { hits: { item: { title: string; content: string } }[] };
+        return res.hits.map((h) => ({ title: h.item.title, content: h.item.content }));
+      },
+    },
+    observers: { health: cfg.health, kpis: cfg.kpis },
   });
 }
