@@ -34,6 +34,8 @@ interface DevFile {
   keys: StoredKey[];
   apps: StoredApp[];
   usage: UsageRecord[];
+  /** P3.0 — revoked access-token jtis with their expiry (pruned once expired). */
+  revokedTokens: Array<{ jti: string; expMs: number }>;
   seeded: boolean;
 }
 
@@ -54,6 +56,8 @@ export class DeveloperStore extends EventEmitter {
   private keys = new Map<string, StoredKey>();
   private apps = new Map<string, StoredApp>();
   private usage: UsageRecord[] = [];
+  /** P3.0 — revoked access-token jtis → expiry (ms). Pruned on read + load. */
+  private revokedTokens = new Map<string, number>();
   private loaded = false;
   private persisting = false;
   private dirty = false;
@@ -71,6 +75,8 @@ export class DeveloperStore extends EventEmitter {
       for (const k of data.keys ?? []) if (k?.id) this.keys.set(k.id, k);
       for (const a of data.apps ?? []) if (a?.id) this.apps.set(a.id, a);
       this.usage = Array.isArray(data.usage) ? data.usage : [];
+      const now = Date.now();
+      for (const t of data.revokedTokens ?? []) if (t?.jti && t.expMs > now) this.revokedTokens.set(t.jti, t.expMs);
       if (!data.seeded || this.developers.size === 0) this.applySeed();
     } catch {
       this.applySeed();
@@ -101,6 +107,7 @@ export class DeveloperStore extends EventEmitter {
       keys: [...this.keys.values()],
       apps: [...this.apps.values()],
       usage: this.usage,
+      revokedTokens: [...this.revokedTokens.entries()].map(([jti, expMs]) => ({ jti, expMs })),
       seeded: true,
     };
     const tmp = `${this.filePath}.tmp`;
@@ -196,6 +203,19 @@ export class DeveloperStore extends EventEmitter {
     return strip(next);
   }
 
+  /**
+   * P3.0 — rotate a key: mint a fresh secret (a new key with the same name / scopes /
+   * expiry) and revoke the old one, so a leaked secret is cut over cleanly. Returns
+   * the new secret exactly once, like `createKey`.
+   */
+  rotateKey(id: string): ApiKeyWithSecret | null {
+    const k = this.keys.get(id);
+    if (!k || k.revokedAt) return null;
+    const rotated = this.createKey(k.developerId, k.name, k.scopes, k.expiresAt);
+    this.revokeKey(id);
+    return rotated;
+  }
+
   /** Resolve a presented raw token to its key, or null. Records last-used. */
   verifyKey(token: string): ApiKey | null {
     const hash = sha256(token);
@@ -247,6 +267,37 @@ export class DeveloperStore extends EventEmitter {
       this.emit('changed');
     }
     return ok;
+  }
+
+  /** P3.0 — verify an OAuth client's id + secret (for the client-credentials grant). */
+  verifyAppCredentials(clientId: string, secret: string): OAuthApplication | null {
+    const hash = sha256(secret);
+    for (const a of this.apps.values()) {
+      if (a.clientId === clientId && a.secretHash === hash) return stripApp(a);
+    }
+    return null;
+  }
+
+  /* ── access-token revocation (P3.0) ── */
+
+  /** Revoke an issued access token by jti until its natural expiry. */
+  revokeToken(jti: string, expMs: number): boolean {
+    if (this.revokedTokens.has(jti)) return false;
+    this.revokedTokens.set(jti, expMs);
+    this.schedulePersist();
+    this.emit('changed');
+    return true;
+  }
+
+  /** Whether a token jti is revoked. Prunes the entry once it has expired. */
+  isTokenRevoked(jti: string): boolean {
+    const exp = this.revokedTokens.get(jti);
+    if (exp === undefined) return false;
+    if (exp <= Date.now()) {
+      this.revokedTokens.delete(jti);
+      return false;
+    }
+    return true;
   }
 
   /* ── usage ── */

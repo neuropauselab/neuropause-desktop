@@ -1158,6 +1158,25 @@ export type EcosystemOAuthCreateRequest = z.infer<typeof EcosystemOAuthCreateReq
 export const EcosystemOAuthDeleteRequest = z.object({ id: EcoId });
 export type EcosystemOAuthDeleteRequest = z.infer<typeof EcosystemOAuthDeleteRequest>;
 
+/** P3.0 — rotate an API key (issue a new secret, revoke the old one). */
+export const EcosystemKeysRotateRequest = z.object({ id: EcoId });
+export type EcosystemKeysRotateRequest = z.infer<typeof EcosystemKeysRotateRequest>;
+
+/** P3.0 — OAuth 2.1 client-credentials token request. `scope` is space-delimited (RFC 6749). */
+export const EcosystemOAuthTokenRequest = z
+  .object({
+    grantType: z.literal('client_credentials'),
+    clientId: z.string().trim().min(1).max(128),
+    clientSecret: z.string().trim().min(1).max(256),
+    scope: z.string().trim().max(512).optional(),
+  })
+  .strict();
+export type EcosystemOAuthTokenRequest = z.infer<typeof EcosystemOAuthTokenRequest>;
+
+/** P3.0 — revoke a previously-issued access token by its jti. */
+export const EcosystemOAuthRevokeTokenRequest = z.object({ jti: z.string().trim().min(1).max(128) }).strict();
+export type EcosystemOAuthRevokeTokenRequest = z.infer<typeof EcosystemOAuthRevokeTokenRequest>;
+
 export const EcosystemUsageAnalyticsRequest = z.object({
   windowDays: z.number().int().min(1).max(90).optional(),
 });

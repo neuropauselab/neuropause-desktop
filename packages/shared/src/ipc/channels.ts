@@ -335,9 +335,15 @@ export const IpcChannel = {
   EcosystemKeysList: 'ecosystem:keys.list',
   EcosystemKeysCreate: 'ecosystem:keys.create',
   EcosystemKeysRevoke: 'ecosystem:keys.revoke',
+  /** P3.0 — rotate an API key: issue a fresh secret, revoke the old one. */
+  EcosystemKeysRotate: 'ecosystem:keys.rotate',
   EcosystemOAuthList: 'ecosystem:oauth.list',
   EcosystemOAuthCreate: 'ecosystem:oauth.create',
   EcosystemOAuthDelete: 'ecosystem:oauth.delete',
+  /** P3.0 — OAuth 2.1 client-credentials token endpoint (mints a Bearer access token). */
+  EcosystemOAuthToken: 'ecosystem:oauth.token',
+  /** P3.0 — revoke a previously-issued access token by its jti. */
+  EcosystemOAuthRevokeToken: 'ecosystem:oauth.revokeToken',
   EcosystemUsageAnalytics: 'ecosystem:usage.analytics',
   EcosystemSdks: 'ecosystem:sdks',
   EcosystemMarketplaceList: 'ecosystem:marketplace.list',
@@ -778,9 +784,12 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.EcosystemKeysList,
   IpcChannel.EcosystemKeysCreate,
   IpcChannel.EcosystemKeysRevoke,
+  IpcChannel.EcosystemKeysRotate,
   IpcChannel.EcosystemOAuthList,
   IpcChannel.EcosystemOAuthCreate,
   IpcChannel.EcosystemOAuthDelete,
+  IpcChannel.EcosystemOAuthToken,
+  IpcChannel.EcosystemOAuthRevokeToken,
   IpcChannel.EcosystemUsageAnalytics,
   IpcChannel.EcosystemSdks,
   IpcChannel.EcosystemMarketplaceList,

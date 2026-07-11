@@ -10,11 +10,13 @@
  * engine is what the public SDK and CLI exercise against a live endpoint.
  */
 import type {
+  ApiKey,
   ApiVersion,
   BillingSummary,
   DeveloperDashboard,
   GatewayDecision,
   GatewayRequestInput,
+  OAuthTokenError,
   Plan,
   PlanTier,
   SdkArtifact,
@@ -27,8 +29,11 @@ import {
   EcosystemDeveloperSetPlanRequest,
   EcosystemKeysCreateRequest,
   EcosystemKeysRevokeRequest,
+  EcosystemKeysRotateRequest,
   EcosystemOAuthCreateRequest,
   EcosystemOAuthDeleteRequest,
+  EcosystemOAuthTokenRequest,
+  EcosystemOAuthRevokeTokenRequest,
   EcosystemUsageAnalyticsRequest,
   EcosystemMarketplaceDetailRequest,
   EcosystemMarketplaceEventsRequest,
@@ -65,6 +70,10 @@ import { computeAnalytics } from './developer/analytics';
 import { marketplaceStore } from './marketplace/marketplaceInstance';
 import { gatewayStore } from './gateway/gatewayInstance';
 import { decideGateway, apiVersionInfo, allApiVersions } from './gateway/gateway';
+import { loadSigningSecret, signingSecret } from './auth/signingSecretInstance';
+import { issueClientCredentialsToken, resolveApiIdentity, toAccessTokenClaims } from './auth/tokenService';
+import { verifyJwt } from './auth/jwt';
+import { randomUUID } from 'node:crypto';
 import { billingStore } from './billing/billingInstance';
 import { PLAN_CATALOG, planFor, computeInvoice, billingSummary } from './billing/billing';
 import { installsStore } from './exchange/installsInstance';
@@ -234,7 +243,34 @@ function titleCaseRole(s: string): string {
  */
 export function runGateway(input: GatewayRequestInput): GatewayDecision {
   const start = Date.now();
-  const key = input.apiKey ? developerStore.verifyKey(input.apiKey) : null;
+  // P3.0 — resolve EITHER an API key OR an OAuth access token to one identity, then
+  // present it to the existing decision engine as an ApiKey-shaped value (unchanged).
+  const identity = resolveApiIdentity(input.apiKey, {
+    verifyKey: (raw) => developerStore.verifyKey(raw),
+    developerOrg: (devId) => developerStore.developer(devId)?.orgId ?? null,
+    verifyToken: (raw) => {
+      try {
+        return toAccessTokenClaims(verifyJwt(raw, signingSecret()));
+      } catch {
+        return null;
+      }
+    },
+    isTokenRevoked: (jti) => developerStore.isTokenRevoked(jti),
+  });
+  const key: ApiKey | null = identity
+    ? {
+        id: identity.credentialId,
+        developerId: identity.developerId,
+        name: identity.kind,
+        prefix: '',
+        last4: '',
+        scopes: identity.scopes,
+        createdAt: '',
+        lastUsedAt: null,
+        expiresAt: null,
+        revokedAt: null,
+      }
+    : null;
   const developer = key ? developerStore.developer(key.developerId) : null;
   const plan: Plan = planFor(developer?.planTier ?? 'free');
   const versionInfo = apiVersionInfo(input.version);
@@ -297,6 +333,8 @@ export async function initEcosystem(deps: EcosystemDeps): Promise<EcosystemSubsy
   await installsStore.load();
   await packsStore.load();
   await partnersStore.load();
+  // P3.0 — get-or-create the access-token signing secret so the gateway's sync path can read it.
+  await loadSigningSecret();
 
   // Bind the seeded developer/owner to the signed-in account.
   const status = authService.getStatus();
@@ -369,6 +407,16 @@ function buildHandlers(): SecureHandlerDef[] {
       audit: true,
       handler: (p) => developerStore.revokeKey((p as EcosystemKeysRevokeRequest).id),
     },
+    {
+      // P3.0 — rotate a key: returns the new secret once, revokes the old id.
+      channel: IpcChannel.EcosystemKeysRotate,
+      schema: EcosystemKeysRotateRequest,
+      audit: true,
+      handler: (p) => {
+        const rotated = developerStore.rotateKey((p as EcosystemKeysRotateRequest).id);
+        return rotated ?? { error: 'not_found', error_description: 'No such active key.' };
+      },
+    },
     { channel: IpcChannel.EcosystemOAuthList, schema: EmptyRequest, handler: () => developerStore.appsFor(devId()) },
     {
       channel: IpcChannel.EcosystemOAuthCreate,
@@ -384,6 +432,40 @@ function buildHandlers(): SecureHandlerDef[] {
       schema: EcosystemOAuthDeleteRequest,
       audit: true,
       handler: (p) => ({ deleted: developerStore.deleteApp((p as EcosystemOAuthDeleteRequest).id) }),
+    },
+    {
+      // P3.0 — OAuth 2.1 client-credentials token endpoint. Verifies the client id +
+      // secret, then mints a scoped, TTL-bounded HS256 access token (or an RFC 6749 error).
+      channel: IpcChannel.EcosystemOAuthToken,
+      schema: EcosystemOAuthTokenRequest,
+      audit: true,
+      handler: (p) => {
+        const r = p as EcosystemOAuthTokenRequest;
+        const app = developerStore.verifyAppCredentials(r.clientId, r.clientSecret);
+        if (!app) {
+          return { error: 'invalid_client', error_description: 'Unknown client or invalid secret.' } satisfies OAuthTokenError;
+        }
+        const orgId = developerStore.developer(app.developerId)?.orgId ?? ORG_ID;
+        const result = issueClientCredentialsToken({
+          app,
+          developerId: app.developerId,
+          orgId,
+          requestedScope: r.scope ?? null,
+          secret: signingSecret(),
+          nowMs: Date.now(),
+          jti: `tok_${randomUUID()}`,
+        });
+        return result.ok ? result.response : result.error;
+      },
+    },
+    {
+      // P3.0 — revoke an issued access token by jti (covers the max token lifetime).
+      channel: IpcChannel.EcosystemOAuthRevokeToken,
+      schema: EcosystemOAuthRevokeTokenRequest,
+      audit: true,
+      handler: (p) => ({
+        revoked: developerStore.revokeToken((p as EcosystemOAuthRevokeTokenRequest).jti, Date.now() + 24 * 60 * 60 * 1000),
+      }),
     },
     {
       channel: IpcChannel.EcosystemUsageAnalytics,
