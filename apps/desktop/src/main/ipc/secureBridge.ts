@@ -83,6 +83,39 @@ function withTimeout<T>(p: Promise<T>, ms: number, channel: string): Promise<T> 
   });
 }
 
+/**
+ * The transport-neutral core of the secure pipeline: auth gate → permission (RBAC)
+ * → Zod validation → bounded handler execution. It is deliberately free of the
+ * IPC-only sender-trust check and of auditing, so it can be reused by any front
+ * door that has already established sender trust (the IPC bridge below, and the
+ * P3.0 REST API gateway). Throws `IpcError` with a clean message on any failure.
+ */
+export async function runSecureHandler(
+  def: SecureHandlerDef,
+  rawPayload: unknown,
+  deps: SecureBridgeDeps,
+): Promise<unknown> {
+  if (def.requireAuth && !deps.isAuthenticated()) {
+    throw new IpcError('Sign in to continue.');
+  }
+  if (def.permission) {
+    if (!deps.authorize) {
+      throw new IpcError('Authorization is not available.');
+    }
+    deps.authorize(def.permission);
+  }
+  const parsed = def.schema.safeParse(rawPayload ?? {});
+  if (!parsed.success) {
+    log.warn('Invalid payload', { channel: def.channel, issues: parsed.error.issues.length });
+    throw new IpcError(`Invalid request for ${def.channel}`);
+  }
+  return withTimeout(
+    Promise.resolve(def.handler(parsed.data)),
+    def.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    def.channel,
+  );
+}
+
 export function registerSecureHandlers(defs: SecureHandlerDef[], deps: SecureBridgeDeps): void {
   for (const def of defs) {
     ipcMain.handle(def.channel, async (event, rawPayload: unknown) => {
@@ -91,26 +124,7 @@ export function registerSecureHandlers(defs: SecureHandlerDef[], deps: SecureBri
         if (!isTrustedSenderFrame(event)) {
           throw new IpcError('Untrusted sender');
         }
-        if (def.requireAuth && !deps.isAuthenticated()) {
-          throw new IpcError('Sign in to continue.');
-        }
-        if (def.permission) {
-          if (!deps.authorize) {
-            throw new IpcError('Authorization is not available.');
-          }
-          deps.authorize(def.permission);
-        }
-        const parsed = def.schema.safeParse(rawPayload ?? {});
-        if (!parsed.success) {
-          log.warn('Invalid payload', { channel: def.channel, issues: parsed.error.issues.length });
-          throw new IpcError(`Invalid request for ${def.channel}`);
-        }
-
-        const result = await withTimeout(
-          Promise.resolve(def.handler(parsed.data)),
-          def.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-          def.channel,
-        );
+        const result = await runSecureHandler(def, rawPayload, deps);
 
         if (def.audit) {
           appendAudit({ channel: def.channel, ok: true, durationMs: Date.now() - started });

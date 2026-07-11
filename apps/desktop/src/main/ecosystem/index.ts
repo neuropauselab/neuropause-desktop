@@ -227,8 +227,12 @@ function titleCaseRole(s: string): string {
     .join(' ');
 }
 
-/** The real gateway request path: resolve key → decide → meter → audit. */
-function runGateway(input: GatewayRequestInput): GatewayDecision {
+/**
+ * The real gateway request path: resolve key → decide → meter → audit.
+ * Exported (P3.0) so the Enterprise REST API dispatcher reuses the SAME gateway —
+ * no parallel auth/metering/audit.
+ */
+export function runGateway(input: GatewayRequestInput): GatewayDecision {
   const start = Date.now();
   const key = input.apiKey ? developerStore.verifyKey(input.apiKey) : null;
   const developer = key ? developerStore.developer(key.developerId) : null;
@@ -278,6 +282,11 @@ function runGateway(input: GatewayRequestInput): GatewayDecision {
     latencyMs,
   });
   return decision;
+}
+
+/** Gateway request metrics over a window (P3.0) — reused by the REST API `/metrics` route. */
+export function gatewayMetrics(windowDays: number): unknown {
+  return gatewayStore.metrics(windowDays, Date.now());
 }
 
 export async function initEcosystem(deps: EcosystemDeps): Promise<EcosystemSubsystem> {

@@ -950,6 +950,18 @@ export const EnterpriseProcessExploreRequest = z
   .strict();
 export const EnterpriseProcessCaseRequest = z.object({ id: EntId }).strict();
 
+/** Enterprise REST API (P3.0) — one gateway entrypoint; the method+path select the underlying route. */
+export const EnterpriseApiRequestRequest = z
+  .object({
+    method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']),
+    path: z.string().trim().min(1).max(512),
+    version: z.enum(['v1', 'v2']).optional(),
+    apiKey: z.string().trim().max(200).nullish(),
+    query: z.record(z.string().max(64), z.union([z.string(), z.number(), z.boolean()])).optional(),
+    body: z.unknown().optional(),
+  })
+  .strict();
+
 /** Context Engine (P2.5) — entity-360 for any unified-graph / ERP entity id. */
 export const EnterpriseContextRequest = z
   .object({
@@ -992,6 +1004,7 @@ export type EnterpriseGraphNeighborsRequest = z.infer<typeof EnterpriseGraphNeig
 export type EnterpriseProcessExploreRequest = z.infer<typeof EnterpriseProcessExploreRequest>;
 export type EnterpriseProcessCaseRequest = z.infer<typeof EnterpriseProcessCaseRequest>;
 export type EnterpriseContextRequest = z.infer<typeof EnterpriseContextRequest>;
+export type EnterpriseApiRequestRequest = z.infer<typeof EnterpriseApiRequestRequest>;
 export type EnterpriseGovernanceSetChainRequest = z.infer<
   typeof EnterpriseGovernanceSetChainRequest
 >;

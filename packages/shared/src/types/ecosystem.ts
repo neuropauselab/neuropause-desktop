@@ -20,7 +20,18 @@ export type ApiScope =
   | 'plugins:read'
   | 'plugins:manage'
   | 'usage:read'
-  | 'billing:read';
+  | 'billing:read'
+  // P3.0 — Enterprise REST API scopes. Read/write the ERP records surface, and read the
+  // cross-domain intelligence surfaces. Each maps a public route onto an existing handler;
+  // the underlying Enterprise RBAC permission still applies on top of the scope check.
+  | 'records:read'
+  | 'records:write'
+  | 'graph:read'
+  | 'timeline:read'
+  | 'context:read'
+  | 'search:read'
+  | 'automation:read'
+  | 'observability:read';
 
 export const ALL_API_SCOPES: readonly ApiScope[] = [
   'marketplace:read',
@@ -33,6 +44,14 @@ export const ALL_API_SCOPES: readonly ApiScope[] = [
   'plugins:manage',
   'usage:read',
   'billing:read',
+  'records:read',
+  'records:write',
+  'graph:read',
+  'timeline:read',
+  'context:read',
+  'search:read',
+  'automation:read',
+  'observability:read',
 ];
 
 export type DeveloperStatus = 'active' | 'suspended';

@@ -13,6 +13,7 @@ export * from './types/memory';
 export * from './types/enterpriseSearch';
 export * from './types/enterpriseTimeline';
 export * from './types/enterpriseContext';
+export * from './types/enterpriseApi';
 export * from './types/cloudOrg';
 export * from './types/billing';
 export * from './types/sync';

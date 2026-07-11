@@ -91,7 +91,7 @@ import { permissionManager } from './permissions/permissionManager';
 import { serviceManager } from './services/serviceManager';
 import { pluginManager } from './plugins/pluginManager';
 import { pluginHost } from './plugins/pluginHost';
-import { registerSecureHandlers, type SecureHandlerDef } from './ipc/secureBridge';
+import { registerSecureHandlers, runSecureHandler, type SecureHandlerDef } from './ipc/secureBridge';
 import { initPlatform, registerDiagnosticProbes } from './platform';
 import { build } from './platform/producers';
 import { initConnectors } from './connectors';
@@ -134,7 +134,8 @@ import { initEngineeringAI, initFounderAIv2 } from './ai';
 import { initTrace } from './trace';
 import { initWorkforce } from './workforce';
 import { initEnterprise } from './enterprise';
-import { initEcosystem } from './ecosystem';
+import { initEcosystem, runGateway, gatewayMetrics } from './ecosystem';
+import { initEnterpriseApi } from './api';
 import { initCloud } from './cloud';
 import { initFederation } from './federation';
 import { initUpdater } from './updater';
@@ -1142,12 +1143,31 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...federation.handlers);
   defs.push(...updater.handlers);
   defs.push(...releaseOps.handlers);
-  registerSecureHandlers(defs, {
+
+  // RBAC: channels annotated with `permission` (the enterprise family) are asserted
+  // against the signed-in actor's org roles before dispatch.
+  const secureBridgeDeps = {
     isAuthenticated: () => authService.getStatus().state === 'authenticated',
-    // RBAC: channels annotated with `permission` (the enterprise family) are
-    // asserted against the signed-in actor's org roles before dispatch.
     authorize: enterprise.authorize,
+  };
+
+  // P3.0 Increment 1 — Enterprise REST API. A gateway adapter over the SAME secure
+  // handler registry: it reuses the Ecosystem gateway (auth / scope / rate / quota /
+  // audit) and the shared secure-handler core (RBAC + Zod + the existing handler).
+  // No parallel REST layer, no duplicated business logic. Built after every other
+  // handler is assembled so it can resolve any of them by channel.
+  const handlerByChannel = new Map<string, SecureHandlerDef>();
+  for (const d of defs) handlerByChannel.set(d.channel, d);
+  const enterpriseApi = initEnterpriseApi({
+    decide: (input) => runGateway(input),
+    resolveHandler: (channel) => handlerByChannel.get(channel),
+    runHandler: (def, payload) => runSecureHandler(def, payload, secureBridgeDeps),
+    metrics: (windowDays) => gatewayMetrics(windowDays),
+    now: () => Date.now(),
   });
+  defs.push(...enterpriseApi.handlers);
+
+  registerSecureHandlers(defs, secureBridgeDeps);
   // Bridge runtime-core events to the renderer.
   packageService.on('progress', (e) => deps.broadcast(IpcChannel.NpsProgress, e));
   supervisor.on('event', (e) => deps.broadcast(IpcChannel.RuntimeEventBroadcast, e));
