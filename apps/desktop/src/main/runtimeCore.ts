@@ -139,6 +139,7 @@ import { initEcosystem, runGateway, gatewayMetrics, gatewayAuditEntries } from '
 import { initEnterpriseApi } from './api';
 import { initWebhooks } from './webhooks';
 import { initSandbox } from './sandbox';
+import { initDesktopAutomation } from './sandbox/desktop';
 import { initCloud } from './cloud';
 import { initFederation } from './federation';
 import { initUpdater } from './updater';
@@ -248,6 +249,14 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   const sandbox = await initSandbox({
     broadcast: deps.broadcast,
     baseDir: join(app.getPath('userData'), 'sandbox'),
+  });
+  // AI Sandbox S2 — Desktop Automation: register the FIRST real executor onto the S1
+  // engine. It launches a fresh, isolated instance of THIS app via Playwright and drives
+  // it. Real automation only — if Playwright isn't installed it fails a run cleanly.
+  initDesktopAutomation({
+    engine: sandbox.engine,
+    baseDir: join(app.getPath('userData'), 'sandbox'),
+    launchTarget: { executablePath: process.execPath, args: [app.getAppPath()], cwd: app.getAppPath() },
   });
   // Phase 9 · Stage 1 — Cloud Platform (multi-tenant, identity federation, sync, API platform, admin).
   const cloud = await initCloud({ broadcast: deps.broadcast });
