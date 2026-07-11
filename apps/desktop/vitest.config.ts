@@ -6,11 +6,16 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['src/main/**/*.test.ts'],
+    // Platform-core (main) tests, plus the renderer's PURE view-model logic under
+    // `renderer/src/sandbox` (the Sandbox workspace's derivations — no DOM, no React), so
+    // the Validation Experience's presentation logic is verified by the same Node gate.
+    include: ['src/main/**/*.test.ts', 'src/renderer/src/sandbox/**/*.test.ts'],
   },
   resolve: {
     alias: {
       '@neuropause/shared': resolve(process.cwd(), '../../packages/shared/src/index.ts'),
+      // Safety net so an accidental `@renderer/*` import in a collected test still resolves.
+      '@renderer': resolve(process.cwd(), 'src/renderer/src'),
     },
   },
 });

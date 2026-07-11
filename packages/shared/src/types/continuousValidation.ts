@@ -214,6 +214,26 @@ export interface ValidationSummary {
   totalRuns: number;
 }
 
+/** Rendered exports of a certification report (produced from the existing exporters). */
+export interface ValidationRunExports {
+  markdown: string;
+  html: string;
+  json: string;
+}
+
+/**
+ * A single validation run projected for the Validation Experience UI (P4). `run` is always
+ * present (from the persisted run store); `certification`/`regression`/`exports` are present
+ * for runs the orchestrator produced this session (held in a small bounded cache), and null
+ * for older persisted runs. No new store — this is a read projection over S6's own outputs.
+ */
+export interface ValidationRunDetail {
+  run: ValidationRun;
+  certification: CertificationReport | null;
+  regression: RegressionAnalysis | null;
+  exports: ValidationRunExports | null;
+}
+
 /* ─────────────────────────────── notifications (Step 9) ─────────────────────────────── */
 
 export type NotificationKind =

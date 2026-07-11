@@ -1874,3 +1874,20 @@ export const SandboxDatasetDeleteRequest = z.object({ id: EntId }).strict();
 export type SandboxDatasetDeleteRequest = z.infer<typeof SandboxDatasetDeleteRequest>;
 export const SandboxDashboardRequest = z.object({ workspaceId: EntId.optional() }).strict();
 export type SandboxDashboardRequest = z.infer<typeof SandboxDashboardRequest>;
+
+/* ── P4 Validation Experience — thin read/command seams over the S6 subsystem ── */
+const SANDBOX_PIPELINE_KINDS = [
+  'quick', 'smoke', 'regression', 'performance', 'security', 'enterprise', 'connector',
+  'plugin', 'sdk', 'cli', 'desktop', 'release-candidate', 'certification',
+] as const;
+const SANDBOX_TRIGGER_KINDS = [
+  'manual', 'scheduled', 'nightly', 'weekly', 'pre-release', 'post-upgrade', 'regression', 'certification',
+] as const;
+export const SandboxValidationRunRequest = z
+  .object({ pipeline: z.enum(SANDBOX_PIPELINE_KINDS), trigger: z.enum(SANDBOX_TRIGGER_KINDS).optional() })
+  .strict();
+export type SandboxValidationRunRequest = z.infer<typeof SandboxValidationRunRequest>;
+export const SandboxValidationRunGetRequest = z.object({ runId: EntId }).strict();
+export type SandboxValidationRunGetRequest = z.infer<typeof SandboxValidationRunGetRequest>;
+export const SandboxValidationScheduleSetRequest = z.object({ id: EntId, enabled: z.boolean() }).strict();
+export type SandboxValidationScheduleSetRequest = z.infer<typeof SandboxValidationScheduleSetRequest>;

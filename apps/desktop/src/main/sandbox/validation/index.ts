@@ -7,10 +7,23 @@
  * read-only `sandbox:read` channel the Developer Portal consumes. This completes AI Sandbox
  * v1.0. No new engine/scheduler/dashboard/report/memory/security.
  */
-import { EmptyRequest, IpcChannel, type PipelineKind, type TriggerKind, type ValidationDashboard, type ValidationPipeline, type ValidationSummary } from '@neuropause/shared';
+import {
+  EmptyRequest,
+  IpcChannel,
+  SandboxValidationRunGetRequest,
+  SandboxValidationRunRequest,
+  SandboxValidationScheduleSetRequest,
+  type PipelineKind,
+  type TriggerKind,
+  type ValidationDashboard,
+  type ValidationPipeline,
+  type ValidationRunDetail,
+  type ValidationSummary,
+} from '@neuropause/shared';
 import { createLogger } from '../../logger';
 import type { SecureHandlerDef } from '../../ipc/secureBridge';
 import { PIPELINE_LIST } from './pipelines';
+import { certificationToHtml, certificationToJson, certificationToMarkdown } from './certification';
 import { ValidationScheduler, defaultSchedules } from './scheduler';
 import { ValidationRunStore } from './runStore';
 import { runValidationPipeline, validationDashboard, validationSummary, type ValidationRunOutput } from './platform';
@@ -71,10 +84,43 @@ export async function initContinuousValidation(deps: ContinuousValidationDeps): 
     clock: deps.clock,
   });
 
+  // A small, bounded cache of the orchestrator's OWN recent outputs (run + certification +
+  // regression). This is NOT a new report/artifact store — it holds only what runValidationPipeline
+  // already produced, so the Validation Experience can render/export a run's certification without
+  // recomputing it. Older runs fall back to the persisted run (certification null). REUSE, not rebuild.
+  const outputs = new Map<string, ValidationRunOutput>();
+  const OUTPUTS_CAP = 30;
+  const rememberOutput = (out: ValidationRunOutput): void => {
+    outputs.set(out.run.id, out);
+    if (outputs.size > OUTPUTS_CAP) {
+      const oldest = outputs.keys().next().value;
+      if (oldest !== undefined) outputs.delete(oldest);
+    }
+  };
+  const buildRunDetail = (runId: string): ValidationRunDetail | { error: 'not_found' } => {
+    const cached = outputs.get(runId);
+    if (cached) {
+      const cert = cached.certification;
+      return {
+        run: cached.run,
+        certification: cert,
+        regression: cached.regression,
+        exports: cert
+          ? { markdown: certificationToMarkdown(cert), html: certificationToHtml(cert), json: certificationToJson(cert) }
+          : null,
+      };
+    }
+    const run = runStore.get(runId);
+    if (!run) return { error: 'not_found' };
+    return { run, certification: null, regression: null, exports: null };
+  };
+
   const run = async (pipeline: PipelineKind, trigger: TriggerKind = 'manual'): Promise<ValidationRunOutput> => {
     current = { runId: 'pending', pipeline, status: 'running' };
     try {
-      return await runValidationPipeline(pipeline, trigger, runDeps, runStore);
+      const out = await runValidationPipeline(pipeline, trigger, runDeps, runStore);
+      rememberOutput(out);
+      return out;
     } finally {
       current = null;
     }
@@ -96,6 +142,46 @@ export async function initContinuousValidation(deps: ContinuousValidationDeps): 
       requireAuth: true,
       permission: 'sandbox:read',
       handler: () => validationSummary(runStore, scheduler, now),
+    },
+    {
+      channel: IpcChannel.SandboxValidationDashboard,
+      schema: EmptyRequest,
+      requireAuth: true,
+      permission: 'sandbox:read',
+      handler: () => validationDashboard(runStore, scheduler, current, 0, now),
+    },
+    {
+      channel: IpcChannel.SandboxValidationRunGet,
+      schema: SandboxValidationRunGetRequest,
+      requireAuth: true,
+      permission: 'sandbox:read',
+      handler: (p) => buildRunDetail((p as SandboxValidationRunGetRequest).runId),
+    },
+    {
+      // Runs mutate real platform data (they exercise the live stack), so this is gated on
+      // `sandbox:manage` + authenticated + audited — identical to every other sandbox mutation.
+      channel: IpcChannel.SandboxValidationRun,
+      schema: SandboxValidationRunRequest,
+      requireAuth: true,
+      permission: 'sandbox:manage',
+      audit: true,
+      handler: async (p) => {
+        const r = p as SandboxValidationRunRequest;
+        const out = await run(r.pipeline, r.trigger ?? 'manual');
+        return buildRunDetail(out.run.id);
+      },
+    },
+    {
+      channel: IpcChannel.SandboxValidationScheduleSet,
+      schema: SandboxValidationScheduleSetRequest,
+      requireAuth: true,
+      permission: 'sandbox:manage',
+      audit: true,
+      handler: (p) => {
+        const r = p as SandboxValidationScheduleSetRequest;
+        scheduler.setEnabled(r.id, r.enabled);
+        return scheduler.list();
+      },
     },
   ];
 

@@ -343,6 +343,14 @@ export const IpcChannel = {
   SandboxDashboard: 'sandbox:dashboard',
   /** S6 Continuous Validation — read-only summary the Developer Portal consumes. */
   SandboxValidationSummary: 'sandbox:validation.summary',
+  /** P4 Validation Experience — live dashboard projection (read). */
+  SandboxValidationDashboard: 'sandbox:validation.dashboard',
+  /** P4 Validation Experience — run a validation pipeline (command, gated sandbox:manage). */
+  SandboxValidationRun: 'sandbox:validation.run',
+  /** P4 Validation Experience — a single run + certification + regression + exports (read). */
+  SandboxValidationRunGet: 'sandbox:validation.run.get',
+  /** P4 Validation Experience — enable/disable a registered schedule (command, gated sandbox:manage). */
+  SandboxValidationScheduleSet: 'sandbox:validation.schedule.set',
   /** Broadcast on any sandbox execution/queue change (renderer refresh). */
   SandboxEventBroadcast: 'sandbox:event',
   /** Personalization (per-user Favorites / Recently-Opened / Saved Views) — actor-scoped, persisted. */
@@ -840,6 +848,12 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.SandboxDatasetCreate,
   IpcChannel.SandboxDatasetDelete,
   IpcChannel.SandboxDashboard,
+  // AI Sandbox — Continuous Validation (S6 summary + P4 Validation Experience seams)
+  IpcChannel.SandboxValidationSummary,
+  IpcChannel.SandboxValidationDashboard,
+  IpcChannel.SandboxValidationRun,
+  IpcChannel.SandboxValidationRunGet,
+  IpcChannel.SandboxValidationScheduleSet,
   IpcChannel.EnterprisePersonalizationGet,
   IpcChannel.EnterprisePersonalizationFavorite,
   IpcChannel.EnterprisePersonalizationRecent,

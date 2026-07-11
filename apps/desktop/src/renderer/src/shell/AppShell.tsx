@@ -67,6 +67,9 @@ const NotificationsView = lazy(() =>
 const SettingsView = lazy(() =>
   import('@renderer/views/SettingsView').then((m) => ({ default: m.SettingsView })),
 );
+const SandboxView = lazy(() =>
+  import('@renderer/views/SandboxView').then((m) => ({ default: m.SandboxView })),
+);
 
 function ViewFallback(): JSX.Element {
   return (
@@ -193,6 +196,8 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
         return <NotificationsView />;
       case 'analytics':
         return <WorkforceView initialTab="analytics" />;
+      case 'sandbox':
+        return <SandboxView />;
       case 'settings':
         return <SettingsView session={session} />;
       default:

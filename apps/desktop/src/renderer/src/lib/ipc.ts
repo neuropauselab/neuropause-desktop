@@ -345,6 +345,32 @@ import type {
   ScalabilityReport,
 } from '@neuropause/shared';
 
+import type {
+  SandboxDashboard,
+  SandboxWorkspace,
+  Scenario,
+  ScenarioVersion,
+  Execution,
+  ExecutionStatus,
+  ExecutionTrigger,
+  ExecutionPriority,
+  ExecutionTimelineEntry,
+  ExecutionQueueState,
+  Artifact,
+  ArtifactKind,
+  RunResult,
+  SandboxReport,
+  Dataset,
+  RunHistoryPage,
+  SandboxEvent,
+  ValidationSummary,
+  ValidationDashboard,
+  ValidationRunDetail,
+  ScheduledValidation,
+  PipelineKind,
+  TriggerKind,
+} from '@neuropause/shared';
+
 const subscribe = window.neuropause.subscribe;
 
 export const ipc = {
@@ -1658,6 +1684,64 @@ export const ipc = {
     status: () => invoke(IpcChannel.PilotStatus) as Promise<PilotStatus>,
     setEnabled: (enabled: boolean) =>
       invoke(IpcChannel.PilotSetEnabled, { enabled }) as Promise<PilotStatus>,
+  },
+
+  /**
+   * AI Sandbox (S1–S6 backend) + the Validation Experience (P4). A thin, typed seam over the
+   * EXISTING sandbox channels — the renderer never reaches a new engine/store; it reads the
+   * S1 core (dashboard/scenarios/executions/artifacts/queue) and the S6 continuous-validation
+   * projections (summary/dashboard/run detail), and drives the two audited mutations the
+   * workspace needs (run a pipeline, toggle a schedule). Reads gate on `sandbox:read`,
+   * mutations on `sandbox:manage` (enforced in main).
+   */
+  sandbox: {
+    dashboard: (workspaceId?: string) =>
+      invoke(IpcChannel.SandboxDashboard, { workspaceId }) as Promise<SandboxDashboard>,
+    workspaces: () => invoke(IpcChannel.SandboxWorkspaceList, {}) as Promise<SandboxWorkspace[]>,
+    scenarios: (workspaceId?: string, includeArchived?: boolean) =>
+      invoke(IpcChannel.SandboxScenarioList, { workspaceId, includeArchived }) as Promise<Scenario[]>,
+    scenario: (id: string) => invoke(IpcChannel.SandboxScenarioGet, { id }) as Promise<Scenario | null>,
+    scenarioVersions: (scenarioId: string) =>
+      invoke(IpcChannel.SandboxScenarioVersions, { scenarioId }) as Promise<ScenarioVersion[]>,
+    executionHistory: (q?: {
+      workspaceId?: string;
+      scenarioId?: string;
+      status?: ExecutionStatus;
+      limit?: number;
+      cursor?: string | null;
+    }) => invoke(IpcChannel.SandboxExecutionHistory, q ?? {}) as Promise<RunHistoryPage>,
+    execution: (id: string) => invoke(IpcChannel.SandboxExecutionGet, { id }) as Promise<Execution | null>,
+    timeline: (executionId: string, limit?: number) =>
+      invoke(IpcChannel.SandboxExecutionTimeline, { executionId, limit }) as Promise<ExecutionTimelineEntry[]>,
+    queueState: (workspaceId?: string) =>
+      invoke(IpcChannel.SandboxQueueState, { workspaceId }) as Promise<ExecutionQueueState>,
+    artifacts: (executionId: string, kind?: ArtifactKind) =>
+      invoke(IpcChannel.SandboxArtifactList, { executionId, kind }) as Promise<Artifact[]>,
+    result: (executionId: string) =>
+      invoke(IpcChannel.SandboxResultGet, { executionId }) as Promise<RunResult | null>,
+    report: (executionId: string) =>
+      invoke(IpcChannel.SandboxReportGet, { executionId }) as Promise<SandboxReport | null>,
+    datasets: (workspaceId?: string) =>
+      invoke(IpcChannel.SandboxDatasetList, { workspaceId }) as Promise<Dataset[]>,
+    enqueue: (
+      scenarioId: string,
+      opts?: { version?: number; trigger?: ExecutionTrigger; priority?: ExecutionPriority; datasetId?: string },
+    ) => invoke(IpcChannel.SandboxExecutionEnqueue, { scenarioId, ...(opts ?? {}) }) as Promise<Execution>,
+    cancel: (id: string) => invoke(IpcChannel.SandboxExecutionCancel, { id }) as Promise<Execution | null>,
+    generateReport: (executionId: string) =>
+      invoke(IpcChannel.SandboxReportGenerate, { executionId }) as Promise<SandboxReport | { error: string }>,
+    validationSummary: () =>
+      invoke(IpcChannel.SandboxValidationSummary, {}) as Promise<ValidationSummary>,
+    validationDashboard: () =>
+      invoke(IpcChannel.SandboxValidationDashboard, {}) as Promise<ValidationDashboard>,
+    validationRun: (pipeline: PipelineKind, trigger?: TriggerKind) =>
+      invoke(IpcChannel.SandboxValidationRun, { pipeline, trigger }) as Promise<ValidationRunDetail>,
+    validationRunGet: (runId: string) =>
+      invoke(IpcChannel.SandboxValidationRunGet, { runId }) as Promise<ValidationRunDetail | { error: string }>,
+    setSchedule: (id: string, enabled: boolean) =>
+      invoke(IpcChannel.SandboxValidationScheduleSet, { id, enabled }) as Promise<ScheduledValidation[]>,
+    onEvent: (cb: (e: SandboxEvent) => void) =>
+      subscribe(IpcChannel.SandboxEventBroadcast, (p) => cb(p as SandboxEvent)),
   },
 };
 

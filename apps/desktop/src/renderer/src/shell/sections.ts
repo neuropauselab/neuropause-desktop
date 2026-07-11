@@ -17,6 +17,7 @@ export type SectionId =
   | 'automations'
   | 'notifications'
   | 'analytics'
+  | 'sandbox'
   | 'settings'
   | 'welcome';
 
@@ -47,6 +48,7 @@ export const SECTIONS: SectionDef[] = [
   { id: 'automations', label: 'Automations', icon: 'automations', phase: 6, placement: 'primary' },
   { id: 'notifications', label: 'Notifications', icon: 'bell', phase: 2, placement: 'primary' },
   { id: 'analytics', label: 'Analytics', icon: 'analytics', phase: 6, placement: 'primary' },
+  { id: 'sandbox', label: 'Sandbox', icon: 'beaker', phase: 12, placement: 'primary' },
   { id: 'welcome', label: 'Welcome', icon: 'home', phase: 2, placement: 'primary' },
   { id: 'settings', label: 'Settings', icon: 'settings', phase: 2, placement: 'footer' },
 ];
