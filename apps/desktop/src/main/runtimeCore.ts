@@ -145,6 +145,7 @@ import { createRealEnterprisePlatform } from './sandbox/enterprise/realPlatform'
 import { createRealDesktopChannel } from './sandbox/enterprise/desktopChannel';
 import { createGatewaySdk, createGatewayCli } from './sandbox/enterprise/developerChannels';
 import { initAiQa, type QaExecutorBackend } from './sandbox/agent';
+import { initPerfSecurityLab } from './sandbox/lab';
 import { aiEngine } from './ai/engineInstance';
 import { handleEnterpriseApiRequest } from './api/apiGateway';
 import { collectPlanningModel } from './enterprise/planningModel';
@@ -1237,6 +1238,24 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   const aiQa = wireAiQa({ handlerByChannel, secureBridgeDeps });
   log.info('AI QA agent ready', { agents: aiQa.agents.length, reasoner: aiQa.reasonerKind });
 
+  // AI Sandbox S5 — Performance & Security Lab. Validates performance/scalability/resilience/
+  // security of the REAL platform by running scenarios through the SAME executors and reading
+  // the EXISTING diagnostics (NeuroCore health), executive KPIs, and gateway audit. It
+  // surfaces its verdict through the existing diagnostics via a probe. No new monitoring.
+  const perfLab = await wirePerfSecurityLab({
+    handlerByChannel,
+    secureBridgeDeps,
+    benchmarksPath: join(sandboxBaseDir, 'lab', 'benchmarks.json'),
+    health: async () => {
+      const s = await neuroCore.snapshot();
+      return { level: s.level, cpuPercent: s.telemetry.cpuPercent, memoryUsedMb: s.telemetry.memoryUsedMb };
+    },
+    kpis: () => executiveCenter.snapshot().kpis.map((k) => ({ key: k.key, value: k.value })),
+    auditCount: () => gatewayAuditEntries(100).length,
+  });
+  registerDiagnosticProbes([() => perfLab.diagnosticsProbe()]);
+  log.info('Perf & Security Lab ready', { benchmarks: perfLab.benchmarks.count() });
+
   registerSecureHandlers(defs, secureBridgeDeps);
   // Bridge runtime-core events to the renderer.
   packageService.on('progress', (e) => deps.broadcast(IpcChannel.NpsProgress, e));
@@ -1407,10 +1426,14 @@ function wireSandboxRunners(cfg: {
  * directly). Learnings reuse the memory store; the optional LLM narrative reuses the AI
  * engine (deterministic when no model is configured). No new engine/memory/graph/timeline.
  */
-function wireAiQa(cfg: {
+type SandboxSecureCfg = {
   handlerByChannel: Map<string, SecureHandlerDef>;
   secureBridgeDeps: { isAuthenticated: () => boolean; authorize?: (p: EnterprisePermission) => void };
-}): ReturnType<typeof initAiQa> {
+};
+
+/** A dispatcher + `QaExecutorBackend` over the sandbox IPC channels — reused by S4 (AI QA)
+ *  and S5 (Perf & Security Lab). Runs through the SAME secure core → same RBAC. */
+function buildSandboxExecutorBackend(cfg: SandboxSecureCfg): { dispatch: (channel: string, payload: unknown) => Promise<unknown>; backend: QaExecutorBackend } {
   const dispatch = (channel: string, payload: unknown): Promise<unknown> => {
     const def = cfg.handlerByChannel.get(channel);
     if (!def) return Promise.reject(new Error(`channel not wired: ${channel}`));
@@ -1447,6 +1470,11 @@ function wireAiQa(cfg: {
     },
     isTerminal: (status) => isTerminalExecutionStatus(status as Parameters<typeof isTerminalExecutionStatus>[0]),
   };
+  return { dispatch, backend };
+}
+
+function wireAiQa(cfg: SandboxSecureCfg): ReturnType<typeof initAiQa> {
+  const { backend } = buildSandboxExecutorBackend(cfg);
 
   const generate = async (prompt: string): Promise<{ text: string; confidence: number; tokens: number; grounded: boolean }> => {
     try {
@@ -1464,5 +1492,30 @@ function wireAiQa(cfg: {
       recall: (q) => memoryStore.recall(q as unknown as Parameters<typeof memoryStore.recall>[0]) as unknown as { hits: { item: { id: string; title: string; content: string } }[] },
     },
     generate,
+  });
+}
+
+/**
+ * Wire the AI Sandbox S5 (Performance & Security Lab). The lab runs scenarios through the
+ * SAME sandbox executor backend S4 uses (→ S1 engine → S2/S3, same secure core → same
+ * RBAC) and OBSERVES through the EXISTING diagnostics (NeuroCore health), executive KPIs,
+ * gateway audit, and sandbox queue depth. It surfaces its verdict through the EXISTING
+ * diagnostics via a registered probe. No new diagnostics/monitoring/metrics/dashboard.
+ */
+async function wirePerfSecurityLab(cfg: SandboxSecureCfg & {
+  benchmarksPath: string;
+  health: () => Promise<{ level: string; cpuPercent: number; memoryUsedMb: number }>;
+  kpis: () => { key: string; value: number | null }[];
+  auditCount: () => number;
+}): Promise<Awaited<ReturnType<typeof initPerfSecurityLab>>> {
+  const { dispatch, backend } = buildSandboxExecutorBackend(cfg);
+  const queueDepth = async (): Promise<number> => {
+    const q = (await dispatch(IpcChannel.SandboxQueueState, {}).catch(() => ({ depth: 0 }))) as { depth?: number };
+    return q?.depth ?? 0;
+  };
+  return initPerfSecurityLab({
+    executorBackend: backend,
+    observers: { health: cfg.health, kpis: cfg.kpis, auditCount: cfg.auditCount, queueDepth },
+    benchmarksPath: cfg.benchmarksPath,
   });
 }

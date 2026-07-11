@@ -24,6 +24,7 @@ export * from './types/sandbox';
 export * from './types/sandboxDesktop';
 export * from './types/enterpriseScenario';
 export * from './types/aiQaAgent';
+export * from './types/perfSecurityLab';
 export * from './types/cloudOrg';
 export * from './types/billing';
 export * from './types/sync';
