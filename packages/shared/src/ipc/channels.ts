@@ -292,6 +292,8 @@ export const IpcChannel = {
   EnterpriseRelationshipExplore: 'enterprise:relationship.explore',
   /** Trust Engine — read-only per-entity deterministic trust model (profiles + factors + trend + KPIs + narrative). */
   EnterpriseTrustExplore: 'enterprise:trust.explore',
+  /** Context Engine (P2.5) — entity-360: unified-graph neighbors + ERP impact + timeline + memory for any entity. */
+  EnterpriseContext: 'enterprise:context',
   /** Personalization (per-user Favorites / Recently-Opened / Saved Views) — actor-scoped, persisted. */
   EnterprisePersonalizationGet: 'enterprise:personalization.get',
   EnterprisePersonalizationFavorite: 'enterprise:personalization.favorite',
@@ -741,6 +743,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.EnterpriseExecutionExplore,
   IpcChannel.EnterpriseRelationshipExplore,
   IpcChannel.EnterpriseTrustExplore,
+  IpcChannel.EnterpriseContext,
   IpcChannel.EnterprisePersonalizationGet,
   IpcChannel.EnterprisePersonalizationFavorite,
   IpcChannel.EnterprisePersonalizationRecent,

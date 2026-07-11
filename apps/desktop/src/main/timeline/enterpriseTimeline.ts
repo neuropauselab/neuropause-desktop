@@ -86,6 +86,7 @@ function mapEvent(e: PlatformEvent): EnterpriseTimelineEntry {
     actorId: e.actor.id,
     actorLabel: e.actor.kind,
     connectorId: connectorFromEvent(e),
+    sourceModule: e.resource?.type ?? (typeof e.source === 'string' ? e.source : null),
     resourceId: e.resource?.id ?? null,
     entityRefs: e.resource ? [e.resource.id] : [],
     url: null,
@@ -123,6 +124,7 @@ function mapEntity(e: UnifiedEntity, at: string): EnterpriseTimelineEntry {
     actorId: e.author ? `person:${e.connectorId}:${slug(e.author)}` : null,
     actorLabel: e.author ?? null,
     connectorId: e.connectorId,
+    sourceModule: e.connectorId,
     resourceId: e.id,
     entityRefs,
     url: e.url,
@@ -148,6 +150,7 @@ function matchEntry(e: EnterpriseTimelineEntry, q: EnterpriseTimelineQuery): boo
   if (q.categories && q.categories.length > 0 && !q.categories.includes(e.category)) return false;
   if (q.connectorId && e.connectorId !== q.connectorId) return false;
   if (q.actorId && e.actorId !== q.actorId) return false;
+  if (q.sourceModule && e.sourceModule !== q.sourceModule) return false;
   if (q.entityRef && !(e.entityRefs.includes(q.entityRef) || e.resourceId === q.entityRef)) return false;
   if (q.since && e.at < q.since) return false;
   if (q.until && e.at > q.until) return false;

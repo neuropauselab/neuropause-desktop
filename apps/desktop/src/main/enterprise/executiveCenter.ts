@@ -76,6 +76,12 @@ import {
   type WorkforceHealthSummary,
 } from '@neuropause/shared';
 import { workforceHealthKpi } from './workforceHealth';
+import {
+  automationSuccessKpi,
+  knowledgeGraphKpi,
+  type AutomationMonitorLike,
+  type GraphCountsLike,
+} from './workIntelligenceKpis';
 import { workforcePerformanceKpi } from '../workforce/intelligence/workforcePerformanceKpi';
 import type { WorkforceIntelligence } from '../workforce/intelligence/workforceIntelligence';
 import {
@@ -162,6 +168,10 @@ export interface ExecutiveCenterSources {
   relationshipKpis?: () => ExecutiveKpi[] | undefined;
   /** Trust KPIs (enterprise/customer/supplier/machine/knowledge/decision/process/operational/compliance trust) — pre-built (optional). */
   trustKpis?: () => ExecutiveKpi[] | undefined;
+  /** P2.5 — automation monitor rollup → confirmed automation success-rate KPI (optional). */
+  automationMonitor?: () => AutomationMonitorLike | undefined;
+  /** P2.5 — unified knowledge-graph counts → graph size/connectivity KPI (optional). */
+  graphCounts?: () => GraphCountsLike | undefined;
 }
 
 /** The minimal timeline fields the composer reads (kept local; no new dep). */
@@ -400,6 +410,9 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
   const mesSupplementalKpisForKpis = sources.mesSupplementalKpis?.();
   const relationshipKpisForKpis = sources.relationshipKpis?.();
   const trustKpisForKpis = sources.trustKpis?.();
+  // P2.5 — Enterprise Work Intelligence KPIs, grounded in the live monitor + unified graph counts.
+  const automationMonitorForKpis = sources.automationMonitor?.();
+  const graphCountsForKpis = sources.graphCounts?.();
   const enterprise = enterpriseInsights({
     knowledge: sources.knowledgeHealth?.(),
     memory: sources.memoryCounts?.(),
@@ -443,6 +456,8 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
       ...(mesSupplementalKpisForKpis ?? []),
       ...(relationshipKpisForKpis ?? []),
       ...(trustKpisForKpis ?? []),
+      ...(automationMonitorForKpis ? [automationSuccessKpi(automationMonitorForKpis)] : []),
+      ...(graphCountsForKpis ? [knowledgeGraphKpi(graphCountsForKpis)] : []),
     ],
     enterprise,
     orgHealth: scores,

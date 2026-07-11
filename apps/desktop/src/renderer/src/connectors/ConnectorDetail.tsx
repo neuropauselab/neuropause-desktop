@@ -4,6 +4,7 @@ import { cn } from '@renderer/lib/cn';
 import { Icon } from '@renderer/components/ui/Icon';
 import { Button } from '@renderer/components/ui/Button';
 import { StatusBadge, IconAction } from '@renderer/operations/primitives';
+import { EntraConnectorPanel } from './EntraConnectorPanel';
 import { DOT_BG, TEXT_TONE, type OpsTone } from '@renderer/operations/lib';
 import {
   AUTH_LABEL,
@@ -255,6 +256,9 @@ export function ConnectorDetail({
           </div>
           <p className="mt-2 text-2xs text-faint">All scopes are read-only — NeuroPause reads to build your timeline and memory, never writes.</p>
         </section>
+
+        {/* Microsoft Entra — connector-specific live directory/permissions/tokens */}
+        {dto.id === 'microsoft-entra' && <EntraConnectorPanel dto={dto} />}
 
         {/* Activity log */}
         <section>

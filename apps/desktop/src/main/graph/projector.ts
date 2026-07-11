@@ -17,14 +17,18 @@ import type {
   GraphMeta,
   GraphNode,
   GraphNodeType,
+  RelationshipGraphModel,
   UnifiedEntity,
 } from '@neuropause/shared';
+import { erpGraphBridge } from '@neuropause/shared';
 
 export interface ProjectionInput {
   entities: UnifiedEntity[];
   connectors: Array<{ id: string; name: string }>;
   applications: Array<{ slug: string; name: string }>;
   now: string;
+  /** P2.5 — the read-only ERP relationship model, merged into the same graph (derived from ERP records). */
+  erpModel?: RelationshipGraphModel | null;
 }
 
 export interface Projection {
@@ -146,6 +150,14 @@ export function projectGraph(input: ProjectionInput): Projection {
       const person = ensurePerson(e.connectorId, assignee);
       addEdge(e.id, person, 'assigned_to', ev);
     }
+  }
+
+  // P2.5 — merge the ERP business graph (customers, invoices, POs, machines, …) into the SAME graph.
+  // Derived from existing ERP records via the pure bridge; namespaced ids can't collide with UDM ids.
+  const erp = erpGraphBridge(input.erpModel, now);
+  for (const n of erp.nodes) addNode(n);
+  for (const ed of erp.edges) {
+    if (ed.from !== ed.to && !edges.has(ed.id)) edges.set(ed.id, ed);
   }
 
   return { nodes: [...nodes.values()], edges: [...edges.values()] };

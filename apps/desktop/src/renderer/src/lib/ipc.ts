@@ -222,6 +222,7 @@ import type {
   ExecutionConsoleModel,
   RelationshipGraphModel,
   EnterpriseTrustModel,
+  EnterpriseContext,
   PersonalizationState,
 } from '@neuropause/shared';
 
@@ -1047,6 +1048,15 @@ export const ipc = {
 
     /** Trust Engine — read-only per-entity deterministic trust model (profiles + factors + trend + KPIs + narrative). */
     trustExplore: () => invoke(IpcChannel.EnterpriseTrustExplore) as Promise<EnterpriseTrustModel>,
+
+    /** Context Engine (P2.5) — entity-360 for any unified-graph / ERP entity id (neighbors + impact + timeline + memory). */
+    context: (input: {
+      id: string;
+      neighborLimit?: number;
+      activityLimit?: number;
+      memoryLimit?: number;
+      impactDepth?: number;
+    }) => invoke(IpcChannel.EnterpriseContext, input) as Promise<EnterpriseContext>,
 
     /** Personalization — per-user Favorites / Recently-Opened / Saved Views (actor resolved server-side). */
     personalization: {

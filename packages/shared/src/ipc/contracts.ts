@@ -950,6 +950,18 @@ export const EnterpriseProcessExploreRequest = z
   .strict();
 export const EnterpriseProcessCaseRequest = z.object({ id: EntId }).strict();
 
+/** Context Engine (P2.5) — entity-360 for any unified-graph / ERP entity id. */
+export const EnterpriseContextRequest = z
+  .object({
+    /** Graph node id (`erp:`-prefixed for ERP entities) or a raw entity/record id. */
+    id: z.string().trim().min(1).max(256),
+    neighborLimit: z.number().int().min(1).max(200).optional(),
+    activityLimit: z.number().int().min(1).max(200).optional(),
+    memoryLimit: z.number().int().min(1).max(100).optional(),
+    impactDepth: z.number().int().min(1).max(6).optional(),
+  })
+  .strict();
+
 /* Personalization (per-user Favorites / Recently-Opened / Saved Views). The actor is resolved server-side. */
 const EntTab = z.string().trim().min(1).max(64);
 const EntQuery = z.string().trim().max(256).optional();
@@ -979,6 +991,7 @@ export type EnterpriseWorkspaceSwitchRequest = z.infer<typeof EnterpriseWorkspac
 export type EnterpriseGraphNeighborsRequest = z.infer<typeof EnterpriseGraphNeighborsRequest>;
 export type EnterpriseProcessExploreRequest = z.infer<typeof EnterpriseProcessExploreRequest>;
 export type EnterpriseProcessCaseRequest = z.infer<typeof EnterpriseProcessCaseRequest>;
+export type EnterpriseContextRequest = z.infer<typeof EnterpriseContextRequest>;
 export type EnterpriseGovernanceSetChainRequest = z.infer<
   typeof EnterpriseGovernanceSetChainRequest
 >;

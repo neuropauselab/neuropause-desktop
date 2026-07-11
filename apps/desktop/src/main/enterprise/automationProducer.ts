@@ -24,8 +24,17 @@ export const AUTOMATION_TRIGGER_EVENT_TYPES: PlatformEventType[] = [
   'connector.online',
   'connector.offline',
   'connector.conflict_detected',
+  // P2.5 — a completed connector write (e.g. a confirmed Microsoft 365 send) can drive downstream automations.
+  'connector.write_completed',
   'knowledge.entity_created',
   'knowledge.entity_updated',
+  // P2.5 — ERP business-record lifecycle events are first-class automation triggers (cross-system automation:
+  // a new order / status change / conversion can fan out to notifications, drafts, and downstream workflows).
+  'enterprise.record.created',
+  'enterprise.record.updated',
+  'enterprise.record.status_changed',
+  'enterprise.record.deleted',
+  'enterprise.record.converted',
   'workspace.opened',
   'workspace.closed',
   'runtime.health_changed',
@@ -34,7 +43,7 @@ export const AUTOMATION_TRIGGER_EVENT_TYPES: PlatformEventType[] = [
 /** Which automation trigger source a platform event type maps to. Pure. */
 export function sourceForEventType(type: PlatformEventType): AutomationTriggerSource {
   if (type.startsWith('connector.')) return 'connector';
-  if (type.startsWith('knowledge.') || type.startsWith('workspace.')) return 'activity';
+  // knowledge / workspace / enterprise-record lifecycle are all "activity" triggers.
   return 'activity';
 }
 

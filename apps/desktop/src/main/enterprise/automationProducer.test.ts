@@ -31,6 +31,43 @@ describe('sourceForEventType (V4.8)', () => {
     expect(sourceForEventType('knowledge.entity_created')).toBe('activity');
     expect(sourceForEventType('workspace.opened')).toBe('activity');
   });
+  it('P2.5 — maps connector.write_completed to connector and ERP record events to activity', () => {
+    expect(sourceForEventType('connector.write_completed')).toBe('connector');
+    expect(sourceForEventType('enterprise.record.created')).toBe('activity');
+    expect(sourceForEventType('enterprise.record.status_changed')).toBe('activity');
+    expect(sourceForEventType('enterprise.record.converted')).toBe('activity');
+  });
+});
+
+describe('AUTOMATION_TRIGGER_EVENT_TYPES (P2.5)', () => {
+  it('includes ERP record lifecycle + connector.write_completed as cross-system triggers', () => {
+    for (const t of [
+      'connector.write_completed',
+      'enterprise.record.created',
+      'enterprise.record.updated',
+      'enterprise.record.status_changed',
+      'enterprise.record.deleted',
+      'enterprise.record.converted',
+    ] as const) {
+      expect(AUTOMATION_TRIGGER_EVENT_TYPES).toContain(t);
+    }
+  });
+
+  it('an ERP record event maps into an activity trigger keyed on the event type', () => {
+    const e = toAutomationEvent(
+      platformEvent({
+        type: 'enterprise.record.created',
+        category: 'enterprise',
+        resource: { type: 'sales-orders', id: 'so_1', name: 'SO-1' },
+        metadata: { total: 50000 },
+      }),
+    );
+    expect(e.source).toBe('activity');
+    expect(e.connectorId).toBeUndefined();
+    expect(e.event).toBe('enterprise.record.created');
+    expect(e.payload.resourceType).toBe('sales-orders');
+    expect(e.payload.total).toBe(50000);
+  });
 });
 
 describe('toAutomationEvent (V4.8)', () => {

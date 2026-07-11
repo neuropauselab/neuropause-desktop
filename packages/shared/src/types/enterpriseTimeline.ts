@@ -37,6 +37,12 @@ export interface EnterpriseTimelineEntry {
   actorId: string | null;
   actorLabel: string | null;
   connectorId: string | null;
+  /**
+   * P2.5 — the domain the entry came from: the ERP module id for enterprise records
+   * (e.g. 'finance-invoices', 'maintenance-downtime'), the resource type otherwise. Makes the unified
+   * stream filterable per business domain instead of lumping every ERP event under 'enterprise'.
+   */
+  sourceModule: string | null;
   /** The primary entity/resource this entry concerns. */
   resourceId: string | null;
   /** All entity ids this entry references (for entity filtering). */
@@ -53,6 +59,8 @@ export interface EnterpriseTimelineQuery {
   categories?: string[];
   connectorId?: string;
   actorId?: string;
+  /** P2.5 — filter by business domain (ERP module id / resource type). */
+  sourceModule?: string;
   /** Only entries that concern this entity / resource id. */
   entityRef?: string;
   since?: string;

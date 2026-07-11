@@ -167,9 +167,16 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   const sync = await initSync({ publish: platform.api.publish, broadcast: deps.broadcast });
   // Enterprise Knowledge Graph: projects the UDM into a typed graph with
   // relationship history; the foundation the Phase 5 intelligence layer reads.
-  const graph = await initGraph({ broadcast: deps.broadcast });
+  const graph = await initGraph({
+    broadcast: deps.broadcast,
+    on: (types, handler) => platform.api.on([...types], handler),
+  });
   // AI Memory: distills the UDM into a searchable organizational memory.
-  const memory = await initMemory({ broadcast: deps.broadcast });
+  // P2.5 — also subscribes to ERP record + connector-write events to re-project business memory.
+  const memory = await initMemory({
+    broadcast: deps.broadcast,
+    on: (types, handler) => platform.api.on([...types], handler),
+  });
   const knowledge = initKnowledge();
   const workforceIntel = initWorkforceIntelligence();
   // Enterprise Timeline: unified stream of platform events + UDM work-activity.

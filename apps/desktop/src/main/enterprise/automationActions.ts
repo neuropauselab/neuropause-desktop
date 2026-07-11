@@ -11,6 +11,8 @@
 import { Notification } from 'electron';
 import { createLogger } from '../logger';
 import type { ActionExecutor } from './automationRunner';
+import { ALL_M365_ACTIONS } from '../connectors/m365';
+import { classifyConnectorWrite } from './automationConnectorWrite';
 
 const log = createLogger('automation-actions');
 
@@ -45,13 +47,20 @@ export const defaultActionExecutor: ActionExecutor = async (action) => {
       // AI action execution requires the AI runtime call path; recorded until wired.
       return { ok: true, message: `${action.type} recorded (AI runtime wiring pending)` };
 
-    case 'connector-write':
-      // Live connector write requires the connector action API (not yet exposed to
-      // the runtime). Recorded honestly rather than faked.
-      return {
-        ok: true,
-        message: `connector-write to ${action.connectorId ?? 'connector'} recorded (live write pending)`,
-      };
+    case 'connector-write': {
+      // P2.5 — an automation fires autonomously, so a connector write is NEVER executed
+      // here: it is classified against the real Microsoft 365 write registry and HELD for
+      // explicit user confirmation. This honors the hard rule "AI must never send/modify
+      // data automatically" while grounding the outcome in the executor's real capabilities.
+      const outcome = classifyConnectorWrite(action, ALL_M365_ACTIONS);
+      log.info('automation connector-write held for confirmation', {
+        label: action.label,
+        connectorId: action.connectorId,
+        mutates: outcome.mutates,
+        resolved: outcome.resolved,
+      });
+      return { ok: outcome.ok, message: outcome.message };
+    }
 
     default:
       return { ok: true, message: `${action.type} recorded` };

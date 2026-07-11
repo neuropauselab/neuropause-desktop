@@ -138,6 +138,8 @@ import { buildExecutiveRecommendations, buildExecutiveSummary } from './executiv
 import { collectPlanningModel } from './planningModel';
 import { getRelationshipKpis } from './relationshipProvider';
 import { getTrustKpis } from './trustProvider';
+import { getAutomationMonitor } from './automationSubsystem';
+import { graphStore } from '../graph/graphInstance';
 import { executiveDecisionModule } from './modules/executive/executiveDecisionInstance';
 import { executionProposalModule } from './modules/executive/executionProposalInstance';
 import { getProcessAssessment } from './processMiningProvider';
@@ -380,6 +382,10 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       // Trust KPIs — the nine deterministic trust tiles (enterprise + customer/supplier/machine/knowledge/
       // decision/process/operational/compliance trust), composed from existing signals. Read-only; cached.
       trustKpis: () => getTrustKpis(),
+      // P2.5 — Enterprise Work Intelligence KPIs. Confirmed automation success rate (live monitor rollup) +
+      // unified knowledge-graph size/connectivity (graph store counts). Grounded in existing subsystems.
+      automationMonitor: () => getAutomationMonitor(),
+      graphCounts: () => graphStore.counts(),
       // Shop-Floor Event Ledger KPIs — telemetry derived from the immutable event stream (precomputed).
       eventInsights: () => deriveEventInsights(manufacturingEvents, nowMs),
       // Digital-twin resilience KPIs — what-if stress battery over the real model (precomputed).

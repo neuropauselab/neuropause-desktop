@@ -51,11 +51,26 @@ import { backendBackfill } from '../backendsemantic/backendBackfillInstance';
 import { runtimeIdentity } from '../runtimeIdentity';
 import { memoryAuditLog } from './memoryAuditInstance';
 import { projectMemory } from './memoryProjector';
+import { projectBusinessMemory } from './businessMemoryProjector';
+import { getRelationshipModel } from '../enterprise/relationshipProvider';
+import type { PlatformEventType } from '@neuropause/shared';
 
 const log = createLogger('memory');
 
+/** P2.5 — ERP record + connector-write events that should re-project business memory (UDM 'changed' misses these). */
+const MEMORY_REBUILD_EVENTS: readonly PlatformEventType[] = [
+  'enterprise.record.created',
+  'enterprise.record.updated',
+  'enterprise.record.status_changed',
+  'enterprise.record.deleted',
+  'enterprise.record.converted',
+  'connector.write_completed',
+];
+
 export interface MemorySubsystemDeps {
   broadcast: (channel: string, payload: unknown) => void;
+  /** P2.5 — subscribe to platform events so ERP changes re-project business memory. */
+  on?: (types: readonly PlatformEventType[], handler: () => void) => void;
 }
 
 export interface MemorySubsystem {
@@ -75,7 +90,15 @@ export async function initMemory(deps: MemorySubsystemDeps): Promise<MemorySubsy
   const rebuild = (): void => {
     const now = new Date().toISOString();
     const entities = unifiedStore.query({ limit: 1_000_000, includeDeleted: false }).items;
-    const items = projectMemory(entities, now);
+    // P2.5 — the ERP relationship model, guarded so memory rebuilds never fail if ERP isn't ready.
+    let erpModel: ReturnType<typeof getRelationshipModel> | null = null;
+    try {
+      erpModel = getRelationshipModel();
+    } catch (err) {
+      log.warn('ERP relationship model unavailable for memory projection', { error: String(err) });
+    }
+    // P2.5 — UDM memory + ERP business memory in ONE projected set (single namespace, no parallel store).
+    const items = [...projectMemory(entities, now), ...projectBusinessMemory(erpModel, now)];
     const result = memoryStore.applyProjected(items, now);
     log.info('AI memory rebuilt', { projected: items.length, ...result });
   };
@@ -97,6 +120,8 @@ export async function initMemory(deps: MemorySubsystemDeps): Promise<MemorySubsy
     }, 800);
   };
   unifiedStore.on('changed', scheduleRebuild);
+  // P2.5 — ERP record + connector-write events also re-project business memory.
+  if (deps.on) deps.on(MEMORY_REBUILD_EVENTS, scheduleRebuild);
   const initialTimer = setTimeout(safeRebuild, 1600);
 
   const onChanged = (): void =>

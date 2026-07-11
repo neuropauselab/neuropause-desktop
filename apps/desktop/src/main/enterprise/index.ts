@@ -27,6 +27,7 @@ import type {
   EnterpriseGovernanceAuditRequest as TAudit,
   EnterpriseProcessExploreRequest as TProcessExplore,
   EnterpriseProcessCaseRequest as TProcessCase,
+  EnterpriseContextRequest as TContext,
   EnterprisePersonalizationFavoriteRequest as TPersFavorite,
   EnterprisePersonalizationRecentRequest as TPersRecent,
   EnterprisePersonalizationSaveViewRequest as TPersSaveView,
@@ -60,6 +61,7 @@ import {
   EnterpriseGovernanceAuditRequest,
   EnterpriseProcessExploreRequest,
   EnterpriseProcessCaseRequest,
+  EnterpriseContextRequest,
   EnterprisePersonalizationFavoriteRequest,
   EnterprisePersonalizationRecentRequest,
   EnterprisePersonalizationSaveViewRequest,
@@ -138,6 +140,9 @@ import { getScheduleExploreModel } from './scheduleExploreProvider';
 import { getExecutionConsoleModel } from './executionConsoleProvider';
 import { getRelationshipModel } from './relationshipProvider';
 import { getTrustModel } from './trustProvider';
+import { buildEnterpriseContext, type ContextEngineDeps } from './contextEngine';
+import { graphStore } from '../graph/graphInstance';
+import { memoryStore } from '../memory/memoryInstance';
 import { personalizationStore } from './personalization/personalizationInstance';
 import { notificationScheduler } from '../services/notificationScheduler';
 import { buildOrgGraph, orgGraphNeighbors } from './graph/orgGraph';
@@ -514,6 +519,31 @@ function buildSnapshot(): ReturnType<typeof computeExecutiveSnapshot> {
   });
 }
 
+/**
+ * Wire the Context Engine to the live read-only sources. The relationship model
+ * is guarded so a not-yet-ready ERP layer degrades to graph+timeline+memory
+ * rather than throwing; the timeline is optional at boot (returns []).
+ */
+function contextEngineDeps(): ContextEngineDeps {
+  return {
+    getNode: (id) => graphStore.getNode(id),
+    neighbors: (q) => graphStore.neighbors(q),
+    relationshipModel: () => {
+      try {
+        return getRelationshipModel();
+      } catch {
+        return null;
+      }
+    },
+    timeline: (entityRef, limit) => {
+      const tl = getEnterpriseTimeline();
+      return tl ? tl.query({ entityRef, limit, order: 'desc' }).entries : [];
+    },
+    memories: (entityRef, limit) => memoryStore.recall({ entityRef, limit }).hits.map((h) => h.item),
+    now: () => new Date().toISOString(),
+  };
+}
+
 /* ── handlers ── */
 
 function buildHandlers(): SecureHandlerDef[] {
@@ -797,6 +827,15 @@ function buildHandlers(): SecureHandlerDef[] {
       channel: IpcChannel.EnterpriseTrustExplore,
       schema: EmptyRequest,
       handler: () => getTrustModel(),
+    },
+
+    // Context Engine (P2.5) — entity-360 for any unified-graph / ERP entity: immediate graph neighbors
+    // (UDM + bridged ERP), transitive ERP impact/blast-radius, related timeline activity, and citing AI
+    // memories. Pure read: composes existing subsystems, derives nothing new, stores nothing.
+    {
+      channel: IpcChannel.EnterpriseContext,
+      schema: EnterpriseContextRequest,
+      handler: (p) => buildEnterpriseContext(contextEngineDeps(), p as TContext),
     },
 
     // Personalization — per-user Favorites / Recently-Opened / Saved Views. Every mutation is applied to the

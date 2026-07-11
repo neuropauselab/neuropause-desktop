@@ -30,18 +30,32 @@ import {
   GraphSubgraphRequest,
   IpcChannel,
 } from '@neuropause/shared';
+import type { PlatformEventType } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { connectorService } from '../connectors/connectorService';
 import { registry } from '../registry/registry';
 import { unifiedStore } from '../unified/storeInstance';
+import { getRelationshipModel } from '../enterprise/relationshipProvider';
 import { graphStore } from './graphInstance';
 import { projectGraph } from './projector';
 
 const log = createLogger('graph');
 
+/** P2.5 — ERP record + connector-write events that should re-project the graph (UDM 'changed' misses these). */
+const GRAPH_REBUILD_EVENTS: readonly PlatformEventType[] = [
+  'enterprise.record.created',
+  'enterprise.record.updated',
+  'enterprise.record.status_changed',
+  'enterprise.record.deleted',
+  'enterprise.record.converted',
+  'connector.write_completed',
+];
+
 export interface GraphSubsystemDeps {
   broadcast: (channel: string, payload: unknown) => void;
+  /** P2.5 — subscribe to platform events so ERP changes re-project the unified graph. */
+  on?: (types: readonly PlatformEventType[], handler: () => void) => void;
 }
 
 export interface GraphSubsystem {
@@ -59,7 +73,15 @@ export async function initGraph(deps: GraphSubsystemDeps): Promise<GraphSubsyste
     const entities = unifiedStore.query({ limit: 1_000_000, includeDeleted: false }).items;
     const connectors = connectorService.list().map((c) => ({ id: c.id, name: c.name }));
     const applications = registry.list().map((a) => ({ slug: a.slug, name: a.name }));
-    const projection = projectGraph({ entities, connectors, applications, now });
+    // P2.5 — unify the ERP business graph (customers, invoices, POs, machines, …) into the same projection.
+    // Read-only, cached, derived from ERP records; guarded so graph rebuilds never fail if ERP isn't ready.
+    let erpModel: ReturnType<typeof getRelationshipModel> | null = null;
+    try {
+      erpModel = getRelationshipModel();
+    } catch (err) {
+      log.warn('ERP relationship model unavailable for graph projection', { error: String(err) });
+    }
+    const projection = projectGraph({ entities, connectors, applications, now, erpModel });
     const result = graphStore.apply(projection.nodes, projection.edges, now);
     log.info('Knowledge graph rebuilt', {
       nodes: projection.nodes.length,
@@ -86,6 +108,8 @@ export async function initGraph(deps: GraphSubsystemDeps): Promise<GraphSubsyste
     }, 750);
   };
   unifiedStore.on('changed', scheduleRebuild);
+  // P2.5 — ERP record + connector-write events also re-project the unified graph.
+  if (deps.on) deps.on(GRAPH_REBUILD_EVENTS, scheduleRebuild);
 
   // First projection shortly after boot, once the store has settled.
   const initialTimer = setTimeout(safeRebuild, 1500);

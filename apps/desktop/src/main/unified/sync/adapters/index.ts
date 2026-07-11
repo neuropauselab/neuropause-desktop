@@ -7,10 +7,12 @@ import { githubAdapter } from './github';
 import { notionAdapter } from './notion';
 import { googleCalendarAdapter } from './googleCalendar';
 import { slackAdapter } from './slack';
+import { entraAdapter } from './entra';
 
 export function registerBuiltinAdapters(): void {
   registerAdapter(githubAdapter);
   registerAdapter(notionAdapter);
   registerAdapter(googleCalendarAdapter);
   registerAdapter(slackAdapter);
+  registerAdapter(entraAdapter);
 }

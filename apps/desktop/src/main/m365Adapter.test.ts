@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { GraphMessage } from '@neuropause/shared';
 import { m365Resources, mapMessage, mapEvent, mapDriveItem, mapContact, mapTeam } from './unified/sync/adapters/m365';
 import type { SyncContext } from './unified/sync/adapterSdk';
-import { HttpError } from './unified/sync/http';
+import { AuthError, HttpError } from './unified/sync/http';
 import { makeUnifiedId } from './unified/ids';
 
 const NOW = '2026-07-10T00:00:00.000Z';
@@ -17,8 +17,13 @@ function stubCtx(response: unknown, cursor: string | null = null): SyncContext {
 }
 
 function errCtx(status: number): SyncContext {
+  // Mirror the real http client's taxonomy: 401/403 → AuthError (NOT HttpError); other 4xx/5xx → HttpError.
+  const err =
+    status === 401 || status === 403
+      ? new AuthError(`HTTP ${status}`, status)
+      : new HttpError(status, 'err', status >= 500);
   const http = {
-    getJson: () => Promise.reject(new HttpError(status, 'err', false)),
+    getJson: () => Promise.reject(err),
     postJson: () => Promise.reject(new Error('unused')),
   } as unknown as SyncContext['http'];
   return { ...BASE, http, cursor: null };
@@ -95,5 +100,24 @@ describe('m365Adapter — resources + graceful degradation', () => {
 
   it('propagates genuinely retryable errors (e.g. 500)', async () => {
     await expect(res('teams').pull(errCtx(500))).rejects.toBeInstanceOf(HttpError);
+  });
+
+  it('propagates a 401 (token rejected) instead of masking it as a per-module gap', async () => {
+    // 401 is account-wide (reconnect required) — it must NOT be swallowed like a 403 module-permission gap.
+    await expect(res('mail').pull(errCtx(401))).rejects.toBeInstanceOf(AuthError);
+  });
+
+  it('degrades the real 403 path where the http client raises AuthError, not HttpError', async () => {
+    // Regression guard for the P2.3c bug: a 403 arrives as AuthError; graceful() must still degrade it.
+    const err = await res('mail')
+      .pull(errCtx(403))
+      .then(() => null)
+      .catch((e) => e);
+    expect(err).toBeNull(); // did NOT throw — it degraded
+    const page = await res('mail').pull(errCtx(403));
+    expect(page.degraded).toEqual({
+      kind: 'unauthorized',
+      reason: 'Missing Graph permission or module not licensed (403)',
+    });
   });
 });

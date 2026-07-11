@@ -31,12 +31,46 @@ export type GraphNodeType =
   | 'policy'
   | 'ai_worker'
   | 'connector'
-  | 'application';
+  | 'application'
+  // P2.5 — ERP business entities unified into the knowledge graph (derived from ERP records; no new store).
+  | 'product'
+  | 'warehouse'
+  | 'machine'
+  | 'work_center'
+  | 'asset'
+  | 'bom'
+  | 'production_order'
+  | 'production_schedule'
+  | 'production_execution'
+  | 'quality_inspection'
+  | 'sales_order'
+  | 'quote'
+  | 'invoice'
+  | 'payment'
+  | 'purchase_order'
+  | 'goods_receipt'
+  | 'work_order'
+  | 'downtime_event'
+  | 'decision'
+  | 'proposal';
 
 export const GRAPH_NODE_TYPES: readonly GraphNodeType[] = [
   'person', 'organization', 'team', 'department', 'project', 'task', 'document',
   'file', 'meeting', 'calendar_event', 'conversation', 'message', 'customer',
   'vendor', 'policy', 'ai_worker', 'connector', 'application',
+  // P2.5 ERP entities
+  'product', 'warehouse', 'machine', 'work_center', 'asset', 'bom', 'production_order',
+  'production_schedule', 'production_execution', 'quality_inspection', 'sales_order', 'quote',
+  'invoice', 'payment', 'purchase_order', 'goods_receipt', 'work_order', 'downtime_event',
+  'decision', 'proposal',
+] as const;
+
+/** P2.5 — the business node types added on top of the original collaboration set. */
+export const ERP_GRAPH_NODE_TYPES: readonly GraphNodeType[] = [
+  'product', 'warehouse', 'machine', 'work_center', 'asset', 'bom', 'production_order',
+  'production_schedule', 'production_execution', 'quality_inspection', 'sales_order', 'quote',
+  'invoice', 'payment', 'purchase_order', 'goods_receipt', 'work_order', 'downtime_event',
+  'decision', 'proposal', 'customer', 'vendor',
 ] as const;
 
 /** The relationship kinds the graph represents. */
