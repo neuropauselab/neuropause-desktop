@@ -18,6 +18,7 @@ export * from './types/enterpriseApiManifest';
 export * from './types/openapi';
 export * from './types/apiAuth';
 export * from './types/webhook';
+export * from './types/pluginExtension';
 export * from './types/cloudOrg';
 export * from './types/billing';
 export * from './types/sync';

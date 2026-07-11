@@ -91,6 +91,7 @@ import { permissionManager } from './permissions/permissionManager';
 import { serviceManager } from './services/serviceManager';
 import { pluginManager } from './plugins/pluginManager';
 import { pluginHost } from './plugins/pluginHost';
+import { pluginExtensionRegistry } from './plugins/extensionRegistry';
 import { registerSecureHandlers, runSecureHandler, type SecureHandlerDef } from './ipc/secureBridge';
 import { initPlatform, registerDiagnosticProbes } from './platform';
 import { build } from './platform/producers';
@@ -764,6 +765,12 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       channel: IpcChannel.PluginsContributions,
       schema: PluginContributionsRequest,
       handler: (p) => pluginManager.contributions((p as TPluginContributionsRequest).surface),
+    },
+    {
+      // Plugin SDK v2 — the extensions installed plugins have registered (ERP modules, KPIs, providers, …).
+      channel: IpcChannel.PluginsExtensions,
+      schema: EmptyRequest,
+      handler: () => pluginExtensionRegistry.all(),
     },
   ];
   // Platform-core IPC (timeline query/stats/export, diagnostics, UI event emit).

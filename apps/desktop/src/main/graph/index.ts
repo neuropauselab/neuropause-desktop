@@ -37,6 +37,8 @@ import { connectorService } from '../connectors/connectorService';
 import { registry } from '../registry/registry';
 import { unifiedStore } from '../unified/storeInstance';
 import { getRelationshipModel } from '../enterprise/relationshipProvider';
+import { pluginExtensionRegistry } from '../plugins/extensionRegistry';
+import { pluginGraphProjection } from '../plugins/pluginExtensionConsumers';
 import { graphStore } from './graphInstance';
 import { projectGraph } from './projector';
 
@@ -81,7 +83,13 @@ export async function initGraph(deps: GraphSubsystemDeps): Promise<GraphSubsyste
     } catch (err) {
       log.warn('ERP relationship model unavailable for graph projection', { error: String(err) });
     }
-    const projection = projectGraph({ entities, connectors, applications, now, erpModel });
+    // P3.0 — plugin-contributed graph nodes/edges (Plugin SDK v2), merged into the same graph.
+    const pluginExts = [
+      ...pluginExtensionRegistry.byKind('graph_node'),
+      ...pluginExtensionRegistry.byKind('graph_relationship'),
+    ];
+    const pluginProjection = pluginExts.length > 0 ? pluginGraphProjection(pluginExts, now) : null;
+    const projection = projectGraph({ entities, connectors, applications, now, erpModel, pluginProjection });
     const result = graphStore.apply(projection.nodes, projection.edges, now);
     log.info('Knowledge graph rebuilt', {
       nodes: projection.nodes.length,
@@ -110,6 +118,8 @@ export async function initGraph(deps: GraphSubsystemDeps): Promise<GraphSubsyste
   unifiedStore.on('changed', scheduleRebuild);
   // P2.5 — ERP record + connector-write events also re-project the unified graph.
   if (deps.on) deps.on(GRAPH_REBUILD_EVENTS, scheduleRebuild);
+  // P3.0 — a plugin registering/removing graph extensions re-projects the graph.
+  pluginExtensionRegistry.on('changed', scheduleRebuild);
 
   // First projection shortly after boot, once the store has settled.
   const initialTimer = setTimeout(safeRebuild, 1500);
@@ -166,6 +176,7 @@ export async function initGraph(deps: GraphSubsystemDeps): Promise<GraphSubsyste
     rebuild,
     dispose: () => {
       unifiedStore.off('changed', scheduleRebuild);
+      pluginExtensionRegistry.off('changed', scheduleRebuild);
       graphStore.off('changed', onChanged);
       if (timer) clearTimeout(timer);
       clearTimeout(initialTimer);

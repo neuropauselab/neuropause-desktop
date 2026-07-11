@@ -140,6 +140,8 @@ import { getRelationshipKpis } from './relationshipProvider';
 import { getTrustKpis } from './trustProvider';
 import { getAutomationMonitor } from './automationSubsystem';
 import { graphStore } from '../graph/graphInstance';
+import { pluginExtensionRegistry } from '../plugins/extensionRegistry';
+import { pluginExecutiveKpis } from '../plugins/pluginExtensionConsumers';
 import { executiveDecisionModule } from './modules/executive/executiveDecisionInstance';
 import { executionProposalModule } from './modules/executive/executionProposalInstance';
 import { getProcessAssessment } from './processMiningProvider';
@@ -386,6 +388,8 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       // unified knowledge-graph size/connectivity (graph store counts). Grounded in existing subsystems.
       automationMonitor: () => getAutomationMonitor(),
       graphCounts: () => graphStore.counts(),
+      // P3.0 — executive KPI tiles contributed by installed plugins (Plugin SDK v2).
+      pluginKpis: () => pluginExecutiveKpis(pluginExtensionRegistry.byKind('executive_kpi')),
       // Shop-Floor Event Ledger KPIs — telemetry derived from the immutable event stream (precomputed).
       eventInsights: () => deriveEventInsights(manufacturingEvents, nowMs),
       // Digital-twin resilience KPIs — what-if stress battery over the real model (precomputed).

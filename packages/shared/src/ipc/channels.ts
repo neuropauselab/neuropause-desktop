@@ -98,6 +98,8 @@ export const IpcChannel = {
   PluginsRemove: 'plugins:remove',
   PluginsGrant: 'plugins:grant',
   PluginsRevoke: 'plugins:revoke',
+  /** Plugin SDK v2 (P3.0) — list the extensions installed plugins have registered. */
+  PluginsExtensions: 'plugins:extensions',
   PluginsContributions: 'plugins:contributions',
 
   // ── runtime-core broadcasts (main → renderer) ──
@@ -633,6 +635,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.PluginsRemove,
   IpcChannel.PluginsGrant,
   IpcChannel.PluginsRevoke,
+  IpcChannel.PluginsExtensions,
   IpcChannel.PluginsContributions,
   IpcChannel.PlatformEmit,
   IpcChannel.ExecutiveCenterSnapshot,

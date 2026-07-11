@@ -29,6 +29,8 @@ export interface ProjectionInput {
   now: string;
   /** P2.5 — the read-only ERP relationship model, merged into the same graph (derived from ERP records). */
   erpModel?: RelationshipGraphModel | null;
+  /** P3.0 — plugin-contributed nodes/edges (Plugin SDK v2), merged into the same graph. */
+  pluginProjection?: { nodes: GraphNode[]; edges: GraphEdge[] } | null;
 }
 
 export interface Projection {
@@ -158,6 +160,14 @@ export function projectGraph(input: ProjectionInput): Projection {
   for (const n of erp.nodes) addNode(n);
   for (const ed of erp.edges) {
     if (ed.from !== ed.to && !edges.has(ed.id)) edges.set(ed.id, ed);
+  }
+
+  // P3.0 — plugin-contributed nodes/edges (Plugin SDK v2), namespaced so they can't collide.
+  if (input.pluginProjection) {
+    for (const n of input.pluginProjection.nodes) addNode(n);
+    for (const ed of input.pluginProjection.edges) {
+      if (ed.from !== ed.to && !edges.has(ed.id)) edges.set(ed.id, ed);
+    }
   }
 
   return { nodes: [...nodes.values()], edges: [...edges.values()] };

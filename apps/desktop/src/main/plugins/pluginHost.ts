@@ -17,11 +17,15 @@ import { EventEmitter } from 'node:events';
 import { app, Notification } from 'electron';
 import type { HealthStatus, PluginHostEvent, PluginManifest, RuntimePermissionKey, RuntimeStatus } from '@neuropause/shared';
 import { createLogger } from '../logger';
+import { pluginExtensionRegistry } from './extensionRegistry';
+import { applyExtensionCall } from './extensionHostCalls';
 
 const log = createLogger('plugin-host');
 
 interface HostProc {
   pluginId: string;
+  /** The plugin's manifest version — stamped onto every extension it registers. */
+  version: string;
   child: ChildProcess;
   status: RuntimeStatus;
   permissions: Set<RuntimePermissionKey>;
@@ -99,6 +103,7 @@ export class PluginHost extends EventEmitter {
 
     const proc: HostProc = {
       pluginId: manifest.id,
+      version: manifest.version,
       child,
       status: 'starting',
       permissions: new Set(grantedPermissions),
@@ -112,6 +117,8 @@ export class PluginHost extends EventEmitter {
     child.on('message', (msg: unknown) => void this.onMessage(proc, msg));
 
     child.on('exit', (code, signal) => {
+      // Hot-reload/cleanup: a stopped plugin's extensions leave the platform registries.
+      pluginExtensionRegistry.clearPlugin(manifest.id);
       if (proc.intentionalStop) {
         proc.status = 'stopped';
         this.emitEvent(manifest.id, 'lifecycle', { status: 'stopped', health: 'unknown', message: 'Stopped' });
@@ -191,6 +198,20 @@ export class PluginHost extends EventEmitter {
   }
 
   private async handleHostCall(proc: HostProc, method: string, args: Record<string, unknown>): Promise<unknown> {
+    // Plugin SDK v2 — capability registration (permission-gated inside applyExtensionCall).
+    if (method.startsWith('extension.')) {
+      return applyExtensionCall(
+        pluginExtensionRegistry,
+        {
+          pluginId: proc.pluginId,
+          pluginVersion: proc.version,
+          hasPermission: (perm) => proc.permissions.has(perm),
+          now: () => new Date().toISOString(),
+        },
+        method,
+        args,
+      );
+    }
     switch (method) {
       case 'notify': {
         this.requirePermission(proc, 'notifications');

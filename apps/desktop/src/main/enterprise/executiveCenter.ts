@@ -172,6 +172,8 @@ export interface ExecutiveCenterSources {
   automationMonitor?: () => AutomationMonitorLike | undefined;
   /** P2.5 — unified knowledge-graph counts → graph size/connectivity KPI (optional). */
   graphCounts?: () => GraphCountsLike | undefined;
+  /** P3.0 — executive KPI tiles contributed by plugins (Plugin SDK v2) — pre-built (optional). */
+  pluginKpis?: () => ExecutiveKpi[] | undefined;
 }
 
 /** The minimal timeline fields the composer reads (kept local; no new dep). */
@@ -413,6 +415,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
   // P2.5 — Enterprise Work Intelligence KPIs, grounded in the live monitor + unified graph counts.
   const automationMonitorForKpis = sources.automationMonitor?.();
   const graphCountsForKpis = sources.graphCounts?.();
+  const pluginKpisForKpis = sources.pluginKpis?.();
   const enterprise = enterpriseInsights({
     knowledge: sources.knowledgeHealth?.(),
     memory: sources.memoryCounts?.(),
@@ -458,6 +461,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
       ...(trustKpisForKpis ?? []),
       ...(automationMonitorForKpis ? [automationSuccessKpi(automationMonitorForKpis)] : []),
       ...(graphCountsForKpis ? [knowledgeGraphKpi(graphCountsForKpis)] : []),
+      ...(pluginKpisForKpis ?? []),
     ],
     enterprise,
     orgHealth: scores,
