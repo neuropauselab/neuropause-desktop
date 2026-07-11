@@ -144,6 +144,8 @@ import { initEnterpriseRunner } from './sandbox/enterprise';
 import { createRealEnterprisePlatform } from './sandbox/enterprise/realPlatform';
 import { createRealDesktopChannel } from './sandbox/enterprise/desktopChannel';
 import { createGatewaySdk, createGatewayCli } from './sandbox/enterprise/developerChannels';
+import { initAiQa, type QaExecutorBackend } from './sandbox/agent';
+import { aiEngine } from './ai/engineInstance';
 import { handleEnterpriseApiRequest } from './api/apiGateway';
 import { collectPlanningModel } from './enterprise/planningModel';
 import { connectorService } from './connectors/connectorService';
@@ -159,7 +161,7 @@ import { initPilot } from './pilot';
 import { aiMemoryProbe, knowledgeGraphProbe, ollamaProbe } from './platform/aiHealthProbes';
 import { memoryStore } from './memory/memoryInstance';
 import { graphStore } from './graph/graphInstance';
-import { runMrp, computeCapacitySchedule } from '@neuropause/shared';
+import { runMrp, computeCapacitySchedule, isTerminalExecutionStatus } from '@neuropause/shared';
 import type { ApiMethod, EnterprisePermission } from '@neuropause/shared';
 const log = createLogger('runtime-core');
 export interface RuntimeCoreDeps {
@@ -1228,6 +1230,13 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     executiveSnapshot: () => executiveCenter.snapshot(),
   });
 
+  // AI Sandbox S4 — AI QA Agent. A reasoning layer that plans QA goals and submits scenario
+  // specs to the EXISTING executors through the sandbox IPC channels (same secure core →
+  // same RBAC). It reuses the memory store for learnings and the AI engine for optional
+  // narrative enrichment (deterministic without a model). No new engine/memory/graph.
+  const aiQa = wireAiQa({ handlerByChannel, secureBridgeDeps });
+  log.info('AI QA agent ready', { agents: aiQa.agents.length, reasoner: aiQa.reasonerKind });
+
   registerSecureHandlers(defs, secureBridgeDeps);
   // Bridge runtime-core events to the renderer.
   packageService.on('progress', (e) => deps.broadcast(IpcChannel.NpsProgress, e));
@@ -1389,4 +1398,71 @@ function wireSandboxRunners(cfg: {
   });
 
   initEnterpriseRunner({ engine: cfg.engine, platform, desktopExecutor });
+}
+
+/**
+ * Wire the AI Sandbox S4 (AI QA Agent) runtime. The agent REASONS and submits scenario
+ * specs to the EXISTING executors through the sandbox IPC channels (`runSecureHandler`
+ * over the same secure core → same RBAC — it cannot bypass permissions or touch the ERP
+ * directly). Learnings reuse the memory store; the optional LLM narrative reuses the AI
+ * engine (deterministic when no model is configured). No new engine/memory/graph/timeline.
+ */
+function wireAiQa(cfg: {
+  handlerByChannel: Map<string, SecureHandlerDef>;
+  secureBridgeDeps: { isAuthenticated: () => boolean; authorize?: (p: EnterprisePermission) => void };
+}): ReturnType<typeof initAiQa> {
+  const dispatch = (channel: string, payload: unknown): Promise<unknown> => {
+    const def = cfg.handlerByChannel.get(channel);
+    if (!def) return Promise.reject(new Error(`channel not wired: ${channel}`));
+    return runSecureHandler(def, payload, cfg.secureBridgeDeps);
+  };
+
+  let workspaceId: string | null = null;
+  const backend: QaExecutorBackend = {
+    ensureWorkspace: async () => {
+      if (workspaceId) return workspaceId;
+      const list = (await dispatch(IpcChannel.SandboxWorkspaceList, {}).catch(() => [])) as { id?: string }[];
+      if (Array.isArray(list) && list[0]?.id) workspaceId = list[0].id;
+      else workspaceId = ((await dispatch(IpcChannel.SandboxWorkspaceCreate, { name: 'AI QA' })) as { id: string }).id;
+      return workspaceId;
+    },
+    createScenario: async (wsId, key, name) => ((await dispatch(IpcChannel.SandboxScenarioCreate, { workspaceId: wsId, key, name })) as { id: string }).id,
+    createVersion: async (scenarioId, spec) => { await dispatch(IpcChannel.SandboxScenarioVersionCreate, { scenarioId, spec }); },
+    enqueue: async (scenarioId) => ((await dispatch(IpcChannel.SandboxExecutionEnqueue, { scenarioId })) as { id: string }).id,
+    getExecution: async (id) => {
+      const e = (await dispatch(IpcChannel.SandboxExecutionGet, { id }).catch(() => null)) as { status?: string; error?: string | null } | null;
+      return e && e.status ? { status: e.status, error: e.error ?? null } : null;
+    },
+    getResult: async (id) => {
+      const r = (await dispatch(IpcChannel.SandboxResultGet, { executionId: id }).catch(() => null)) as { outcome?: 'pass' | 'fail' | 'error' | null; assertions?: { total: number; passed: number; failed: number }; metrics?: Record<string, number> } | null;
+      return r ? { outcome: r.outcome ?? null, assertions: r.assertions ?? { total: 0, passed: 0, failed: 0 }, metrics: r.metrics ?? {} } : null;
+    },
+    listArtifacts: async (id) => {
+      const a = (await dispatch(IpcChannel.SandboxArtifactList, { executionId: id }).catch(() => [])) as { name: string; kind: string; storageRef?: string | null }[];
+      return Array.isArray(a) ? a.map((x) => ({ name: x.name, kind: x.kind, ref: x.storageRef ?? null })) : [];
+    },
+    getTimeline: async (id) => {
+      const t = (await dispatch(IpcChannel.SandboxExecutionTimeline, { executionId: id }).catch(() => [])) as { phase: string }[];
+      return Array.isArray(t) ? t.map((x) => x.phase) : [];
+    },
+    isTerminal: (status) => isTerminalExecutionStatus(status as Parameters<typeof isTerminalExecutionStatus>[0]),
+  };
+
+  const generate = async (prompt: string): Promise<{ text: string; confidence: number; tokens: number; grounded: boolean }> => {
+    try {
+      const res = await aiEngine.run({ worker: 'diagnostic', promptId: 'generic.summary', variables: { content: prompt, input: prompt, text: prompt }, tier: 'fast', maxOutputTokens: 400 });
+      return { text: res.text, confidence: res.confidence, tokens: res.usage.inputTokens + res.usage.outputTokens, grounded: res.grounded };
+    } catch {
+      return { text: '', confidence: 0, tokens: 0, grounded: false };
+    }
+  };
+
+  return initAiQa({
+    executorBackend: backend,
+    memory: {
+      remember: (i) => memoryStore.remember(i as unknown as Parameters<typeof memoryStore.remember>[0]),
+      recall: (q) => memoryStore.recall(q as unknown as Parameters<typeof memoryStore.recall>[0]) as unknown as { hits: { item: { id: string; title: string; content: string } }[] },
+    },
+    generate,
+  });
 }
