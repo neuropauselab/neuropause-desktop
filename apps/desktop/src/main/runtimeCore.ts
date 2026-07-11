@@ -102,7 +102,7 @@ import { initGraph } from './graph';
 import { initMemory } from './memory';
 import { initKnowledge } from './knowledge';
 import { initWorkforceIntelligence } from './workforce/intelligence';
-import { initEnterpriseTimeline } from './timeline';
+import { initEnterpriseTimeline, getEnterpriseTimeline } from './timeline';
 import { initEnterpriseSearch } from './search';
 import { initDailyIntelligence } from './intelligence';
 import { initExecutiveCenter } from './enterprise/executiveCenterSubsystem';
@@ -139,7 +139,14 @@ import { initEcosystem, runGateway, gatewayMetrics, gatewayAuditEntries } from '
 import { initEnterpriseApi } from './api';
 import { initWebhooks } from './webhooks';
 import { initSandbox } from './sandbox';
-import { initDesktopAutomation } from './sandbox/desktop';
+import { createDesktopExecutor, PlaywrightDesktopDriver } from './sandbox/desktop';
+import { initEnterpriseRunner } from './sandbox/enterprise';
+import { createRealEnterprisePlatform } from './sandbox/enterprise/realPlatform';
+import { createRealDesktopChannel } from './sandbox/enterprise/desktopChannel';
+import { createGatewaySdk, createGatewayCli } from './sandbox/enterprise/developerChannels';
+import { handleEnterpriseApiRequest } from './api/apiGateway';
+import { collectPlanningModel } from './enterprise/planningModel';
+import { connectorService } from './connectors/connectorService';
 import { initCloud } from './cloud';
 import { initFederation } from './federation';
 import { initUpdater } from './updater';
@@ -152,6 +159,8 @@ import { initPilot } from './pilot';
 import { aiMemoryProbe, knowledgeGraphProbe, ollamaProbe } from './platform/aiHealthProbes';
 import { memoryStore } from './memory/memoryInstance';
 import { graphStore } from './graph/graphInstance';
+import { runMrp, computeCapacitySchedule } from '@neuropause/shared';
+import type { ApiMethod, EnterprisePermission } from '@neuropause/shared';
 const log = createLogger('runtime-core');
 export interface RuntimeCoreDeps {
   broadcast: (channel: string, payload: unknown) => void;
@@ -250,14 +259,12 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     broadcast: deps.broadcast,
     baseDir: join(app.getPath('userData'), 'sandbox'),
   });
-  // AI Sandbox S2 — Desktop Automation: register the FIRST real executor onto the S1
-  // engine. It launches a fresh, isolated instance of THIS app via Playwright and drives
-  // it. Real automation only — if Playwright isn't installed it fails a run cleanly.
-  initDesktopAutomation({
-    engine: sandbox.engine,
-    baseDir: join(app.getPath('userData'), 'sandbox'),
-    launchTarget: { executablePath: process.execPath, args: [app.getAppPath()], cwd: app.getAppPath() },
-  });
+  // AI Sandbox S2 (Desktop Automation) + S3 (Enterprise Scenario Runner) register their
+  // executors onto the S1 engine THROUGH a router, wired below (after the secure handler
+  // registry + REST gateway are assembled) so the enterprise runner can dispatch through
+  // the SAME secure core the IPC bridge + REST gateway use.
+  const sandboxBaseDir = join(app.getPath('userData'), 'sandbox');
+  const sandboxLaunchTarget = { executablePath: process.execPath, args: [app.getAppPath()], cwd: app.getAppPath() };
   // Phase 9 · Stage 1 — Cloud Platform (multi-tenant, identity federation, sync, API platform, admin).
   const cloud = await initCloud({ broadcast: deps.broadcast });
   const featureFlags = await initFeatureFlags();
@@ -1191,16 +1198,35 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // handler is assembled so it can resolve any of them by channel.
   const handlerByChannel = new Map<string, SecureHandlerDef>();
   for (const d of defs) handlerByChannel.set(d.channel, d);
-  const enterpriseApi = initEnterpriseApi({
-    decide: (input) => runGateway(input),
-    resolveHandler: (channel) => handlerByChannel.get(channel),
-    runHandler: (def, payload) => runSecureHandler(def, payload, secureBridgeDeps),
-    metrics: (windowDays) => gatewayMetrics(windowDays),
-    gatewayAudit: (limit) => gatewayAuditEntries(limit),
+  const apiGatewayDeps = {
+    decide: (input: Parameters<typeof runGateway>[0]) => runGateway(input),
+    resolveHandler: (channel: string) => handlerByChannel.get(channel),
+    runHandler: (def: SecureHandlerDef, payload: unknown) => runSecureHandler(def, payload, secureBridgeDeps),
+    metrics: (windowDays: number) => gatewayMetrics(windowDays),
+    gatewayAudit: (limit: number) => gatewayAuditEntries(limit),
     health: () => neuroCore.snapshot(),
     now: () => Date.now(),
-  });
+  };
+  const enterpriseApi = initEnterpriseApi(apiGatewayDeps);
   defs.push(...enterpriseApi.handlers);
+
+  // AI Sandbox S2 + S3 — register the Desktop Automation executor and the Enterprise
+  // Scenario Runner onto the S1 engine through a router. The runner drives REAL platform
+  // state: module CRUD/actions go through the SAME secure core the IPC bridge + REST
+  // gateway use (`runSecureHandler` over the live module registry), so it can never bypass
+  // RBAC. REST/SDK/CLI channels reuse the in-process REST gateway; desktop reuses S2.
+  wireSandboxRunners({
+    engine: sandbox.engine,
+    baseDir: sandboxBaseDir,
+    launchTarget: sandboxLaunchTarget,
+    handlerByChannel,
+    secureBridgeDeps,
+    apiGatewayDeps,
+    authorize: enterprise.authorize,
+    moduleRegistry: enterprise.modules,
+    graphRebuild: graph.rebuild,
+    executiveSnapshot: () => executiveCenter.snapshot(),
+  });
 
   registerSecureHandlers(defs, secureBridgeDeps);
   // Bridge runtime-core events to the renderer.
@@ -1234,4 +1260,133 @@ async function selfCheck(): Promise<void> {
   log.info(
     `Runtime core ready: ${catalogMsg}, registry loaded (${registry.list().length} installs), plugins (${pluginManager.list().length})`,
   );
+}
+
+/**
+ * Wire the AI Sandbox S2 (Desktop Automation) + S3 (Enterprise Scenario Runner) executors
+ * onto the S1 engine through a router. The enterprise runner talks to the REAL platform:
+ * module CRUD/actions dispatch through the SAME secure core the IPC bridge + REST gateway
+ * use (`runSecureHandler` over the live module registry) — so the runner is a client of
+ * the gated core and can never bypass RBAC or tenant isolation. REST/SDK/CLI channels
+ * reuse the in-process REST gateway; the desktop channel reuses the S2 session manager.
+ */
+function wireSandboxRunners(cfg: {
+  engine: Parameters<typeof initEnterpriseRunner>[0]['engine'];
+  baseDir: string;
+  launchTarget: { executablePath: string; args: string[]; cwd?: string };
+  handlerByChannel: Map<string, SecureHandlerDef>;
+  secureBridgeDeps: { isAuthenticated: () => boolean; authorize?: (p: EnterprisePermission) => void };
+  apiGatewayDeps: Parameters<typeof handleEnterpriseApiRequest>[1];
+  authorize: (p: EnterprisePermission) => void;
+  moduleRegistry: { get: (id: string) => unknown };
+  graphRebuild: () => unknown;
+  executiveSnapshot: () => { kpis: { key: string; label: string; value: number | null; display: string }[] };
+  webhookDelivered?: (ref: string) => boolean;
+}): void {
+  const restRaw = async (req: { method: string; path: string; body?: unknown; query?: Record<string, string | number | boolean>; apiKey?: string | null }): Promise<{ status: number; ok: boolean; data?: unknown; error?: string }> => {
+    const query = req.query ? Object.fromEntries(Object.entries(req.query).map(([k, v]) => [k, String(v)])) : undefined;
+    const res = await handleEnterpriseApiRequest({ method: req.method as ApiMethod, path: req.path, body: req.body, query, apiKey: req.apiKey ?? null }, cfg.apiGatewayDeps);
+    const out: { status: number; ok: boolean; data?: unknown; error?: string } = { status: res.status, ok: res.ok };
+    if (res.data !== undefined) out.data = res.data;
+    if (res.error !== undefined) out.error = res.error;
+    return out;
+  };
+
+  const desktopChannel = createRealDesktopChannel({
+    launchTarget: cfg.launchTarget,
+    profilesDir: join(cfg.baseDir, 'enterprise', 'profiles'),
+    artifactsBaseDir: join(cfg.baseDir, 'enterprise', 'artifacts'),
+  });
+
+  const platform = createRealEnterprisePlatform({
+    dispatch: (channel, payload) => {
+      const def = cfg.handlerByChannel.get(channel);
+      if (!def) throw new Error(`channel not wired: ${channel}`);
+      return runSecureHandler(def, payload, cfg.secureBridgeDeps);
+    },
+    restRaw,
+    sdkEnterprise: createGatewaySdk(restRaw),
+    cli: createGatewayCli(restRaw),
+    automationRun: async (ruleId, payload) => {
+      const rec = (await getAutomationRunner().runById(ruleId, payload, 'manual')) as { id?: string; ok?: boolean; actions?: unknown[] } | null;
+      return { ok: rec?.ok ?? false, ranId: rec?.id ?? null, actions: rec?.actions?.length ?? 0 };
+    },
+    automationMonitor: () => {
+      const m = getAutomationMonitor() as { completed: number; failed: number; running?: number };
+      return { completed: m.completed, failed: m.failed, running: m.running ?? 0 };
+    },
+    timelineQuery: (ref) => {
+      const tl = getEnterpriseTimeline();
+      if (!tl) return [];
+      const page = tl.query({ entityRef: ref, order: 'desc' }) as { entries: { id: string; kind: string; title: string; at: string; entityRefs: string[]; resourceId: string | null }[] };
+      return page.entries.map((e) => ({ id: e.id, kind: e.kind, title: e.title, at: e.at, entityRefs: e.entityRefs, resourceId: e.resourceId }));
+    },
+    graphGetNode: (id) => {
+      const n = graphStore.getNode(id) as { id: string; type?: string; label?: string } | null;
+      return n ? { id: n.id, type: n.type ?? 'node', label: n.label ?? n.id } : null;
+    },
+    graphNeighbors: (id) => {
+      const r = graphStore.neighbors({ id }) as { neighbors?: { node: { id: string; type?: string; label?: string } }[] } | null;
+      return (r?.neighbors ?? []).map((x) => ({ id: x.node.id, type: x.node.type ?? 'node', label: x.node.label ?? x.node.id }));
+    },
+    graphRebuild: async () => {
+      await cfg.graphRebuild();
+    },
+    memoryReferences: (ref) => {
+      try {
+        const q = { query: ref, limit: 10 } as unknown as Parameters<typeof memoryStore.recall>[0];
+        const res = memoryStore.recall(q) as unknown as { entries?: unknown[]; results?: unknown[]; items?: unknown[] };
+        const list = res.entries ?? res.results ?? res.items ?? [];
+        return Array.isArray(list) && list.length > 0;
+      } catch {
+        return false;
+      }
+    },
+    executiveKpis: () => cfg.executiveSnapshot().kpis.map((k) => ({ key: k.key, label: k.label, value: k.value, display: k.display })),
+    connectorSync: async (id, accountId) => {
+      const r = (await connectorService.sync(id, accountId)) as { ok: boolean; message?: string };
+      return { ok: r.ok, message: r.message ?? '' };
+    },
+    connectorState: (id) => {
+      const c = connectorService.get(id) as { status?: string; lastSync?: { at?: string } | null } | null;
+      return c ? { status: c.status ?? 'unknown', lastSyncAt: c.lastSync?.at ?? null, entityCount: 0, consecutiveFailures: 0 } : null;
+    },
+    planningRun: (kind) => {
+      const { input } = collectPlanningModel();
+      const summary: Record<string, number> = {};
+      if (kind === 'mrp') {
+        const r = runMrp(input) as { orders?: unknown[]; shortages?: unknown[] };
+        summary.plannedOrders = r.orders?.length ?? 0;
+        summary.shortages = r.shortages?.length ?? 0;
+      } else {
+        const s = computeCapacitySchedule(input, Date.now()) as { bottlenecks?: unknown[]; assignments?: unknown[] };
+        summary.bottlenecks = s.bottlenecks?.length ?? 0;
+        summary.scheduled = s.assignments?.length ?? 0;
+      }
+      return { kind, ok: true, summary };
+    },
+    pluginRun: () => Promise.resolve({ ok: false, error: 'plugin execution is not exposed to the embedded scenario runner' }),
+    pluginRegistered: (id) => pluginManager.list().some((p) => (p as { id?: string }).id === id),
+    webhookDelivered: (ref) => cfg.webhookDelivered?.(ref) ?? false,
+    moduleRegistered: (id) => cfg.moduleRegistry.get(id) != null,
+    can: (permission) => {
+      try {
+        cfg.authorize(permission as EnterprisePermission);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    desktop: desktopChannel,
+    now: () => Date.now(),
+  });
+
+  const desktopExecutor = createDesktopExecutor({
+    driver: new PlaywrightDesktopDriver(),
+    profilesDir: join(cfg.baseDir, 'profiles'),
+    artifactsBaseDir: join(cfg.baseDir, 'artifacts'),
+    launchTarget: cfg.launchTarget,
+  });
+
+  initEnterpriseRunner({ engine: cfg.engine, platform, desktopExecutor });
 }
