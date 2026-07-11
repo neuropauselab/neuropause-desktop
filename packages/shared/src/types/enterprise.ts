@@ -102,7 +102,9 @@ export type EnterprisePermission =
   | 'executive:approve'
   | 'executive:verify'
   | 'executive:execute'
-  | 'dashboard:read';
+  | 'dashboard:read'
+  | 'sandbox:read'
+  | 'sandbox:manage';
 
 export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   'org:read',
@@ -138,6 +140,8 @@ export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   'executive:verify',
   'executive:execute',
   'dashboard:read',
+  'sandbox:read',
+  'sandbox:manage',
 ];
 
 export interface OrgRole {

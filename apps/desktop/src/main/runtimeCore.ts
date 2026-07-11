@@ -138,6 +138,7 @@ import { initEnterprise } from './enterprise';
 import { initEcosystem, runGateway, gatewayMetrics, gatewayAuditEntries } from './ecosystem';
 import { initEnterpriseApi } from './api';
 import { initWebhooks } from './webhooks';
+import { initSandbox } from './sandbox';
 import { initCloud } from './cloud';
 import { initFederation } from './federation';
 import { initUpdater } from './updater';
@@ -240,6 +241,13 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   const webhooks = await initWebhooks({
     broadcast: deps.broadcast,
     subscribe: (handler) => platform.api.subscribe(handler),
+  });
+  // AI Sandbox — Sandbox Core (S1): the reusable execution substrate (workspaces,
+  // versioned scenarios, queue → run → status → timeline, artifacts/results/reports,
+  // datasets, dashboard). No executor is registered yet — a later stage plugs one in.
+  const sandbox = await initSandbox({
+    broadcast: deps.broadcast,
+    baseDir: join(app.getPath('userData'), 'sandbox'),
   });
   // Phase 9 · Stage 1 — Cloud Platform (multi-tenant, identity federation, sync, API platform, admin).
   const cloud = await initCloud({ broadcast: deps.broadcast });
@@ -1140,6 +1148,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...enterprise.handlers);
   defs.push(...ecosystem.handlers);
   defs.push(...webhooks.handlers);
+  defs.push(...sandbox.handlers);
   defs.push(...cloud.handlers);
   defs.push(...featureFlags.handlers);
   defs.push(...license.handlers);

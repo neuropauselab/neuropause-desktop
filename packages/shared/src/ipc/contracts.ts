@@ -1752,3 +1752,125 @@ export const RecoveryRunRequest = z.object({
   reason: z.string().max(300).optional(),
 });
 export type RecoveryRunRequest = z.infer<typeof RecoveryRunRequest>;
+
+/* ══════════════════ AI Sandbox — Sandbox Core (S1) ══════════════════ */
+
+const SbName = z.string().trim().min(1).max(160);
+const SbText = z.string().trim().max(2000);
+const SbKey = z.string().trim().min(1).max(120);
+const SbStatus = z.enum(['queued', 'running', 'passed', 'failed', 'error', 'cancelled', 'timed_out']);
+const SbLabels = z.record(z.string().max(64), z.string().max(512));
+const SbSpec = z.record(z.string().max(120), z.unknown());
+const SbMetadata = z
+  .object({
+    tags: z.array(z.string().trim().min(1).max(64)).max(50),
+    category: z.string().trim().max(64).nullable(),
+    owner: z.string().trim().max(120).nullable(),
+    labels: SbLabels,
+  })
+  .partial();
+const SbSettings = z
+  .object({
+    defaultTimeoutMs: z.number().int().min(1000).max(3_600_000),
+    maxConcurrency: z.number().int().min(1).max(32),
+    retentionDays: z.number().int().min(0).max(3650),
+  })
+  .partial();
+
+/* Workspace */
+export const SandboxWorkspaceCreateRequest = z
+  .object({ name: SbName, description: SbText.optional(), settings: SbSettings.optional() })
+  .strict();
+export type SandboxWorkspaceCreateRequest = z.infer<typeof SandboxWorkspaceCreateRequest>;
+export const SandboxWorkspaceUpdateRequest = z
+  .object({ id: EntId, name: SbName.optional(), description: SbText.optional(), settings: SbSettings.optional() })
+  .strict();
+export type SandboxWorkspaceUpdateRequest = z.infer<typeof SandboxWorkspaceUpdateRequest>;
+export const SandboxWorkspaceDeleteRequest = z.object({ id: EntId }).strict();
+export type SandboxWorkspaceDeleteRequest = z.infer<typeof SandboxWorkspaceDeleteRequest>;
+
+/* Scenario */
+export const SandboxScenarioCreateRequest = z
+  .object({ workspaceId: EntId, key: SbKey, name: SbName, description: SbText.optional(), metadata: SbMetadata.optional() })
+  .strict();
+export type SandboxScenarioCreateRequest = z.infer<typeof SandboxScenarioCreateRequest>;
+export const SandboxScenarioGetRequest = z.object({ id: EntId }).strict();
+export type SandboxScenarioGetRequest = z.infer<typeof SandboxScenarioGetRequest>;
+export const SandboxScenarioListRequest = z
+  .object({ workspaceId: EntId.optional(), includeArchived: z.boolean().optional() })
+  .strict();
+export type SandboxScenarioListRequest = z.infer<typeof SandboxScenarioListRequest>;
+export const SandboxScenarioUpdateRequest = z
+  .object({ id: EntId, name: SbName.optional(), description: SbText.optional(), metadata: SbMetadata.optional() })
+  .strict();
+export type SandboxScenarioUpdateRequest = z.infer<typeof SandboxScenarioUpdateRequest>;
+export const SandboxScenarioArchiveRequest = z.object({ id: EntId, archived: z.boolean() }).strict();
+export type SandboxScenarioArchiveRequest = z.infer<typeof SandboxScenarioArchiveRequest>;
+export const SandboxScenarioVersionCreateRequest = z
+  .object({ scenarioId: EntId, spec: SbSpec, changelog: SbText.optional() })
+  .strict();
+export type SandboxScenarioVersionCreateRequest = z.infer<typeof SandboxScenarioVersionCreateRequest>;
+export const SandboxScenarioVersionsRequest = z.object({ scenarioId: EntId }).strict();
+export type SandboxScenarioVersionsRequest = z.infer<typeof SandboxScenarioVersionsRequest>;
+
+/* Execution */
+export const SandboxExecutionEnqueueRequest = z
+  .object({
+    scenarioId: EntId,
+    version: z.number().int().min(1).optional(),
+    trigger: z.enum(['manual', 'api', 'scheduled', 'ci']).optional(),
+    priority: z.enum(['low', 'normal', 'high']).optional(),
+    datasetId: EntId.optional(),
+  })
+  .strict();
+export type SandboxExecutionEnqueueRequest = z.infer<typeof SandboxExecutionEnqueueRequest>;
+export const SandboxExecutionGetRequest = z.object({ id: EntId }).strict();
+export type SandboxExecutionGetRequest = z.infer<typeof SandboxExecutionGetRequest>;
+export const SandboxExecutionHistoryRequest = z
+  .object({
+    workspaceId: EntId.optional(),
+    scenarioId: EntId.optional(),
+    status: SbStatus.optional(),
+    limit: z.number().int().min(1).max(200).optional(),
+    cursor: z.string().max(256).nullable().optional(),
+  })
+  .strict();
+export type SandboxExecutionHistoryRequest = z.infer<typeof SandboxExecutionHistoryRequest>;
+export const SandboxExecutionCancelRequest = z.object({ id: EntId }).strict();
+export type SandboxExecutionCancelRequest = z.infer<typeof SandboxExecutionCancelRequest>;
+export const SandboxExecutionTimelineRequest = z
+  .object({ executionId: EntId, limit: z.number().int().min(1).max(1000).optional() })
+  .strict();
+export type SandboxExecutionTimelineRequest = z.infer<typeof SandboxExecutionTimelineRequest>;
+
+/* Queue / artifacts / result / report / dataset / dashboard */
+export const SandboxQueueStateRequest = z.object({ workspaceId: EntId.optional() }).strict();
+export type SandboxQueueStateRequest = z.infer<typeof SandboxQueueStateRequest>;
+export const SandboxArtifactListRequest = z
+  .object({
+    executionId: EntId,
+    kind: z.enum(['screenshot', 'video', 'log', 'report', 'result', 'trace', 'other']).optional(),
+  })
+  .strict();
+export type SandboxArtifactListRequest = z.infer<typeof SandboxArtifactListRequest>;
+export const SandboxArtifactGetRequest = z.object({ id: EntId }).strict();
+export type SandboxArtifactGetRequest = z.infer<typeof SandboxArtifactGetRequest>;
+export const SandboxExecutionRefRequest = z.object({ executionId: EntId }).strict();
+export type SandboxExecutionRefRequest = z.infer<typeof SandboxExecutionRefRequest>;
+export const SandboxDatasetListRequest = z.object({ workspaceId: EntId.optional() }).strict();
+export type SandboxDatasetListRequest = z.infer<typeof SandboxDatasetListRequest>;
+export const SandboxDatasetCreateRequest = z
+  .object({
+    workspaceId: EntId,
+    name: SbName,
+    description: SbText.optional(),
+    rows: z.number().int().min(0).max(1_000_000_000).optional(),
+    schema: z.array(z.string().trim().min(1).max(120)).max(200).optional(),
+    storageRef: z.string().trim().max(1024).nullable().optional(),
+  })
+  .strict();
+export type SandboxDatasetCreateRequest = z.infer<typeof SandboxDatasetCreateRequest>;
+export const SandboxDatasetDeleteRequest = z.object({ id: EntId }).strict();
+export type SandboxDatasetDeleteRequest = z.infer<typeof SandboxDatasetDeleteRequest>;
+export const SandboxDashboardRequest = z.object({ workspaceId: EntId.optional() }).strict();
+export type SandboxDashboardRequest = z.infer<typeof SandboxDashboardRequest>;

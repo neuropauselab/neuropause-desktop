@@ -20,6 +20,7 @@ export * from './types/apiAuth';
 export * from './types/webhook';
 export * from './types/pluginExtension';
 export * from './types/observability';
+export * from './types/sandbox';
 export * from './types/cloudOrg';
 export * from './types/billing';
 export * from './types/sync';
