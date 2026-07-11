@@ -23,9 +23,17 @@ import type {
   SystemHealthSnapshot,
 } from '@neuropause/shared';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
+import { createLogger } from '../logger';
 import { ENTERPRISE_API_ROUTES } from './routeRegistry';
 import { matchRoute, normalizePath, paginateAndSort, parseListControls } from './apiRouter';
 import type { RouteContext, SpecialRouteDeps } from './types';
+
+const log = createLogger('enterprise-api-gateway');
+
+/** Client-safe message for a 5xx — never leak internal error text/channel names. */
+function safeServerMessage(status: number): string {
+  return status === 504 ? 'Upstream timed out' : 'Internal server error';
+}
 
 export interface ApiGatewayDeps {
   /** The existing Ecosystem gateway: resolve key → decide → meter → audit. */
@@ -110,7 +118,10 @@ export async function handleEnterpriseApiRequest(
     }
 
     const def = deps.resolveHandler(route.channel);
-    if (!def) return { status: 500, ok: false, error: `Route ${route.path} is not wired`, headers };
+    if (!def) {
+      log.error('Route is not wired to a handler', { path: route.path, channel: route.channel });
+      return { status: 500, ok: false, error: safeServerMessage(500), headers };
+    }
     const result = await deps.runHandler(def, cleanPayload(route.buildPayload(ctx)));
 
     if (route.kind === 'list') {
@@ -120,7 +131,14 @@ export async function handleEnterpriseApiRequest(
     return { status: 200, ok: true, data: result, headers };
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unexpected error';
-    return { status: statusFromError(msg), ok: false, error: msg, headers };
+    const status = statusFromError(msg);
+    // 4xx are user-actionable (validation / auth / scope) and safe to return; 5xx could
+    // carry internal detail (channel names, stack messages) — log it, return a generic body.
+    if (status >= 500) {
+      log.warn('Enterprise API handler error', { method, path, status, error: msg });
+      return { status, ok: false, error: safeServerMessage(status), headers };
+    }
+    return { status, ok: false, error: msg, headers };
   }
 }
 

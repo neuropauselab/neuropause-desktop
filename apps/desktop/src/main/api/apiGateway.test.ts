@@ -200,6 +200,17 @@ describe('handleEnterpriseApiRequest', () => {
       makeDeps({ runHandler: async () => { throw new Error('Missing permission operations:manage'); } }),
     );
     expect(forbidden.status).toBe(403);
+    expect(forbidden.error).toMatch(/permission/i); // 4xx detail is preserved (user-actionable)
+  });
+
+  it('does not leak internal error text on 5xx', async () => {
+    const res = await handleEnterpriseApiRequest(
+      { method: 'GET', path: '/modules', apiKey: 'k' },
+      makeDeps({ runHandler: async () => { throw new Error('ECONNREFUSED sqlite:///Users/x/secret.db table gateway_secrets'); } }),
+    );
+    expect(res.status).toBe(500);
+    expect(res.error).toBe('Internal server error');
+    expect(res.error).not.toMatch(/sqlite|secret|ECONNREFUSED/);
   });
 });
 

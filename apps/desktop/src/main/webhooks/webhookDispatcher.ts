@@ -19,6 +19,7 @@ import { createLogger } from '../logger';
 import type { WebhookStore } from './webhookStore';
 import { applyAttemptResult, type AttemptResult } from './delivery';
 import { signWebhook } from './signing';
+import { classifyWebhookUrl } from './urlGuard';
 
 const log = createLogger('webhook-dispatcher');
 
@@ -78,6 +79,13 @@ export class WebhookDispatcher {
     const url = this.deps.store.get(webhookId)?.url;
     if (!secret || !url) {
       this.deps.store.update(applyAttemptResult(delivery, { ok: false, statusCode: null, error: 'endpoint removed' }, now));
+      return;
+    }
+    // Re-check egress at send time — defends against rows stored before the guard existed
+    // and against a target that resolves/redirects internally (SSRF defense-in-depth).
+    const verdict = classifyWebhookUrl(url);
+    if (!verdict.ok) {
+      this.deps.store.update(applyAttemptResult(delivery, { ok: false, statusCode: null, error: `blocked: ${verdict.reason}` }, now));
       return;
     }
     const body = JSON.stringify(payload);

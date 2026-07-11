@@ -48,4 +48,30 @@ describe('applyExtensionCall', () => {
     expect(applyExtensionCall(r, ctx(['background']), 'extension.unregister', { kind: 'executive_kpi', id: 'k' })).toEqual({ ok: true });
     expect(r.all()).toHaveLength(0);
   });
+
+  it('bounds oversized id / spec values / spec key-count (DoS guard)', () => {
+    const r = new PluginExtensionRegistry();
+    applyExtensionCall(r, ctx(['background']), 'extension.register', {
+      kind: 'executive_kpi',
+      id: 'x'.repeat(500),
+      spec: { big: 'y'.repeat(5000), ...Object.fromEntries(Array.from({ length: 200 }, (_, i) => [`k${i}`, i])) },
+    });
+    const [e] = r.byKind('executive_kpi');
+    expect(e.id.length).toBe(200);
+    expect((e.spec.big as string).length).toBe(2048);
+    expect(Object.keys(e.spec).length).toBeLessThanOrEqual(64);
+  });
+
+  it('caps extensions per plugin, still allowing replacement of an existing id', () => {
+    const r = new PluginExtensionRegistry();
+    for (let i = 0; i < 200; i += 1) {
+      applyExtensionCall(r, ctx(['background']), 'extension.register', { kind: 'executive_kpi', id: `k${i}` });
+    }
+    expect(r.byPlugin('p1')).toHaveLength(200);
+    // a NEW id past the cap is rejected...
+    expect(() => applyExtensionCall(r, ctx(['background']), 'extension.register', { kind: 'executive_kpi', id: 'k200' })).toThrow(/limit reached/);
+    // ...but replacing an existing (kind,id) is always allowed.
+    expect(applyExtensionCall(r, ctx(['background']), 'extension.register', { kind: 'executive_kpi', id: 'k5', label: 'updated' })).toEqual({ ok: true, id: 'k5' });
+    expect(r.byPlugin('p1')).toHaveLength(200);
+  });
 });

@@ -1,7 +1,7 @@
 /** P3.0 Increment 4 — pure delivery-state tests (attempt folding, due selection). */
 import { describe, expect, it } from 'vitest';
 import type { WebhookDelivery } from '@neuropause/shared';
-import { applyAttemptResult, dueDeliveries } from './delivery';
+import { applyAttemptResult, dueDeliveries, selectEvictions } from './delivery';
 import { WEBHOOK_MAX_ATTEMPTS } from './retry';
 
 function delivery(over: Partial<WebhookDelivery> = {}): WebhookDelivery {
@@ -12,6 +12,34 @@ function delivery(over: Partial<WebhookDelivery> = {}): WebhookDelivery {
     ...over,
   };
 }
+
+describe('selectEvictions (outbox hard cap)', () => {
+  const row = (id: string, status: 'delivered' | 'dead' | 'pending' | 'failed', createdAt: string) => ({ id, status, createdAt });
+
+  it('evicts nothing at or under the cap', () => {
+    expect(selectEvictions([row('a', 'pending', '1')], 5)).toEqual([]);
+  });
+
+  it('evicts terminal rows oldest-first before any non-terminal row', () => {
+    const rows = [
+      row('old-pending', 'pending', '2026-01-01'),
+      row('new-delivered', 'delivered', '2026-01-03'),
+      row('old-dead', 'dead', '2026-01-02'),
+    ];
+    // cap 2 → evict exactly 1: the oldest terminal (old-dead), never the pending row.
+    expect(selectEvictions(rows, 2)).toEqual(['old-dead']);
+  });
+
+  it('falls through to the oldest non-terminal rows when a backlog is still over cap', () => {
+    const rows = [
+      row('p1', 'pending', '2026-01-01'),
+      row('p2', 'failed', '2026-01-02'),
+      row('p3', 'pending', '2026-01-03'),
+    ];
+    // cap 1, no terminal rows → evict the 2 oldest non-terminal (p1, p2).
+    expect(selectEvictions(rows, 1)).toEqual(['p1', 'p2']);
+  });
+});
 
 describe('applyAttemptResult', () => {
   it('marks delivered on success', () => {

@@ -32,12 +32,13 @@ import { wireWebhookProducers } from './webhookProducer';
 
 const log = createLogger('webhooks');
 
-/** Timeout-bounded POST — the real delivery transport. */
+/** Timeout-bounded POST — the real delivery transport. Redirects are refused so a
+ *  302 to an internal target can't defeat the SSRF egress guard. */
 const httpPost: WebhookPoster = async (url, body, headers) => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);
   try {
-    const res = await fetch(url, { method: 'POST', body, headers, signal: controller.signal });
+    const res = await fetch(url, { method: 'POST', body, headers, signal: controller.signal, redirect: 'error' });
     return { status: res.status };
   } finally {
     clearTimeout(timer);
@@ -76,6 +77,8 @@ export async function initWebhooks(deps: WebhookSubsystemDeps): Promise<WebhookS
     {
       channel: IpcChannel.WebhookCreate,
       schema: WebhookCreateRequest,
+      requireAuth: true,
+      permission: 'governance:manage',
       audit: true,
       handler: (p) => {
         const r = p as TWebhookCreate;
@@ -85,10 +88,12 @@ export async function initWebhooks(deps: WebhookSubsystemDeps): Promise<WebhookS
         });
       },
     },
-    { channel: IpcChannel.WebhookList, schema: EmptyRequest, handler: () => webhookStore.list() },
+    { channel: IpcChannel.WebhookList, schema: EmptyRequest, requireAuth: true, permission: 'governance:read', handler: () => webhookStore.list() },
     {
       channel: IpcChannel.WebhookSetEnabled,
       schema: WebhookSetEnabledRequest,
+      requireAuth: true,
+      permission: 'governance:manage',
       audit: true,
       handler: (p) => {
         const r = p as TWebhookSetEnabled;
@@ -98,21 +103,27 @@ export async function initWebhooks(deps: WebhookSubsystemDeps): Promise<WebhookS
     {
       channel: IpcChannel.WebhookDelete,
       schema: WebhookIdRequest,
+      requireAuth: true,
+      permission: 'governance:manage',
       audit: true,
       handler: (p) => ({ deleted: webhookStore.delete((p as TWebhookId).id) }),
     },
     {
       channel: IpcChannel.WebhookDeliveries,
       schema: WebhookDeliveriesRequest,
+      requireAuth: true,
+      permission: 'governance:read',
       handler: (p) => {
         const r = p as TWebhookDeliveries;
         return webhookStore.deliveriesFor({ webhookId: r.webhookId, limit: r.limit });
       },
     },
-    { channel: IpcChannel.WebhookDeadLetters, schema: EmptyRequest, handler: () => webhookStore.deadLetters() },
+    { channel: IpcChannel.WebhookDeadLetters, schema: EmptyRequest, requireAuth: true, permission: 'governance:read', handler: () => webhookStore.deadLetters() },
     {
       channel: IpcChannel.WebhookReplay,
       schema: WebhookIdRequest,
+      requireAuth: true,
+      permission: 'governance:manage',
       audit: true,
       handler: (p) => {
         const replayed = webhookStore.replay((p as TWebhookId).id, Date.now());
@@ -120,7 +131,7 @@ export async function initWebhooks(deps: WebhookSubsystemDeps): Promise<WebhookS
         return replayed ?? { error: 'not_found' };
       },
     },
-    { channel: IpcChannel.WebhookStats, schema: EmptyRequest, handler: () => webhookStore.stats() },
+    { channel: IpcChannel.WebhookStats, schema: EmptyRequest, requireAuth: true, permission: 'governance:read', handler: () => webhookStore.stats() },
   ];
 
   log.info('Enterprise Webhooks initialized', { webhooks: webhookStore.list().length });

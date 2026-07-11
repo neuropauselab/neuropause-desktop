@@ -20,7 +20,8 @@ import type {
   WebhookWithSecret,
 } from '@neuropause/shared';
 import { createLogger } from '../logger';
-import { buildEventPayload, dueDeliveries } from './delivery';
+import { buildEventPayload, dueDeliveries, selectEvictions } from './delivery';
+import { assertSafeWebhookUrl } from './urlGuard';
 
 const log = createLogger('webhook-store');
 const DELIVERY_CAP = 5000;
@@ -101,6 +102,7 @@ export class WebhookStore extends EventEmitter {
   /* ── endpoints ── */
 
   create(label: string, url: string, subscription: WebhookSubscription): WebhookWithSecret {
+    assertSafeWebhookUrl(url); // SSRF guard — only public HTTPS endpoints (P3.0, Increment 10).
     const id = `wh_${randomUUID()}`;
     const secret = `whsec_${randomBytes(24).toString('base64url')}`;
     const stored: StoredWebhook = {
@@ -244,17 +246,15 @@ export class WebhookStore extends EventEmitter {
     return { total: this.deliveries.size, delivered, failed, pending, dead };
   }
 
-  /** Cap the log: drop the oldest terminal (delivered/dead) rows first. */
+  /**
+   * Hard-cap the outbox. Evicts terminal (delivered/dead) rows oldest-first, then —
+   * if a stuck backlog of pending/failed rows is still over the cap — the oldest
+   * non-terminal rows too, so the Map + persisted file can never grow without bound
+   * (a black-holed endpoint used to pin every delivery non-terminal for ~6h).
+   */
   private prune(): void {
-    if (this.deliveries.size <= DELIVERY_CAP) return;
-    const terminal = [...this.deliveries.values()]
-      .filter((d) => d.status === 'delivered' || d.status === 'dead')
-      .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
-    let over = this.deliveries.size - DELIVERY_CAP;
-    for (const d of terminal) {
-      if (over <= 0) break;
-      this.deliveries.delete(d.id);
-      over -= 1;
+    for (const id of selectEvictions([...this.deliveries.values()], DELIVERY_CAP)) {
+      this.deliveries.delete(id);
     }
   }
 }
