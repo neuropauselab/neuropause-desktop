@@ -136,6 +136,7 @@ import { initWorkforce } from './workforce';
 import { initEnterprise } from './enterprise';
 import { initEcosystem, runGateway, gatewayMetrics } from './ecosystem';
 import { initEnterpriseApi } from './api';
+import { initWebhooks } from './webhooks';
 import { initCloud } from './cloud';
 import { initFederation } from './federation';
 import { initUpdater } from './updater';
@@ -233,6 +234,12 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   });
   // Ecosystem Platform: developer portal + marketplace + API gateway + billing.
   const ecosystem = await initEcosystem({ broadcast: deps.broadcast });
+  // P3.0 Increment 4 — Enterprise Webhooks: fan the platform event bus out to signed,
+  // retried, dead-lettered HTTP deliveries. Reuses the bus (subscribe), owns an outbox.
+  const webhooks = await initWebhooks({
+    broadcast: deps.broadcast,
+    subscribe: (handler) => platform.api.subscribe(handler),
+  });
   // Phase 9 · Stage 1 — Cloud Platform (multi-tenant, identity federation, sync, API platform, admin).
   const cloud = await initCloud({ broadcast: deps.broadcast });
   const featureFlags = await initFeatureFlags();
@@ -1125,6 +1132,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...workforce.handlers);
   defs.push(...enterprise.handlers);
   defs.push(...ecosystem.handlers);
+  defs.push(...webhooks.handlers);
   defs.push(...cloud.handlers);
   defs.push(...featureFlags.handlers);
   defs.push(...license.handlers);

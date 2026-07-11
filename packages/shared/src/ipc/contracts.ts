@@ -962,6 +962,34 @@ export const EnterpriseApiRequestRequest = z
   })
   .strict();
 
+/* ══════════════════ Enterprise Webhooks (P3.0, Increment 4) ═══════════ */
+
+const WebhookCategory = z.enum([
+  'application', 'runtime', 'plugin', 'permission', 'download', 'update', 'session',
+  'diagnostics', 'connector', 'knowledge', 'automation', 'enterprise', 'system',
+]);
+
+export const WebhookCreateRequest = z
+  .object({
+    label: z.string().trim().min(1).max(120),
+    url: z.string().url().max(2048),
+    categories: z.array(WebhookCategory).max(20).optional(),
+    types: z.array(z.string().trim().min(1).max(80)).max(80).optional(),
+  })
+  .strict();
+export type WebhookCreateRequest = z.infer<typeof WebhookCreateRequest>;
+
+export const WebhookSetEnabledRequest = z.object({ id: EntId, enabled: z.boolean() }).strict();
+export type WebhookSetEnabledRequest = z.infer<typeof WebhookSetEnabledRequest>;
+
+export const WebhookIdRequest = z.object({ id: EntId }).strict();
+export type WebhookIdRequest = z.infer<typeof WebhookIdRequest>;
+
+export const WebhookDeliveriesRequest = z
+  .object({ webhookId: EntId.optional(), limit: z.number().int().min(1).max(500).optional() })
+  .strict();
+export type WebhookDeliveriesRequest = z.infer<typeof WebhookDeliveriesRequest>;
+
 /** Context Engine (P2.5) — entity-360 for any unified-graph / ERP entity id. */
 export const EnterpriseContextRequest = z
   .object({

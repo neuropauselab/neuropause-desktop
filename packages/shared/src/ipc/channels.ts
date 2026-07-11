@@ -300,6 +300,18 @@ export const IpcChannel = {
   EnterpriseApiRoutes: 'api:routes',
   /** Enterprise REST API (P3.0) — the generated OpenAPI 3.1 document (auto-synced from routes + Zod). */
   EnterpriseApiOpenApi: 'api:openapi',
+
+  // ── Enterprise Webhooks (P3.0, Increment 4) ──
+  WebhookCreate: 'webhooks:create',
+  WebhookList: 'webhooks:list',
+  WebhookSetEnabled: 'webhooks:setEnabled',
+  WebhookDelete: 'webhooks:delete',
+  WebhookDeliveries: 'webhooks:deliveries',
+  WebhookDeadLetters: 'webhooks:deadLetters',
+  WebhookReplay: 'webhooks:replay',
+  WebhookStats: 'webhooks:stats',
+  /** Broadcast on any webhook/delivery change (renderer refresh). */
+  WebhookEventBroadcast: 'webhooks:event',
   /** Personalization (per-user Favorites / Recently-Opened / Saved Views) — actor-scoped, persisted. */
   EnterprisePersonalizationGet: 'enterprise:personalization.get',
   EnterprisePersonalizationFavorite: 'enterprise:personalization.favorite',
@@ -759,6 +771,14 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.EnterpriseApiRequest,
   IpcChannel.EnterpriseApiRoutes,
   IpcChannel.EnterpriseApiOpenApi,
+  IpcChannel.WebhookCreate,
+  IpcChannel.WebhookList,
+  IpcChannel.WebhookSetEnabled,
+  IpcChannel.WebhookDelete,
+  IpcChannel.WebhookDeliveries,
+  IpcChannel.WebhookDeadLetters,
+  IpcChannel.WebhookReplay,
+  IpcChannel.WebhookStats,
   IpcChannel.EnterprisePersonalizationGet,
   IpcChannel.EnterprisePersonalizationFavorite,
   IpcChannel.EnterprisePersonalizationRecent,
@@ -992,6 +1012,7 @@ export const RUNTIME_BROADCAST_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.CloudEventBroadcast,
   IpcChannel.FedEventBroadcast,
   IpcChannel.UpdateEventBroadcast,
+  IpcChannel.WebhookEventBroadcast,
 ];
 
 /** The full set the preload bridge permits (legacy + runtime core). */
