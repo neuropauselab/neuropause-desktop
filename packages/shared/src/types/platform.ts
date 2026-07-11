@@ -26,6 +26,23 @@ export type PlatformEventCategory =
   | 'automation'
   | 'enterprise'
   | 'system';
+/** The canonical list of every event category — the single source of truth for
+ *  category pickers (e.g. the webhook subscription UI). Order is stable. */
+export const PLATFORM_EVENT_CATEGORIES: readonly PlatformEventCategory[] = [
+  'application',
+  'runtime',
+  'plugin',
+  'permission',
+  'download',
+  'update',
+  'session',
+  'diagnostics',
+  'connector',
+  'knowledge',
+  'automation',
+  'enterprise',
+  'system',
+];
 /**
  * The canonical, versioned set of event types. Adding a new type is additive;
  * changing the shape of an existing one bumps its `version`.

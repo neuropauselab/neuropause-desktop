@@ -8,6 +8,10 @@ import { MarketplacePanel } from './MarketplacePanel';
 import { GatewayPanel } from './GatewayPanel';
 import { BillingPanel } from './BillingPanel';
 import { SdkDocsPanel } from './SdkDocsPanel';
+import { ApiExplorerPanel } from './ApiExplorerPanel';
+import { ApiReferencePanel } from './ApiReferencePanel';
+import { WebhooksPanel } from './WebhooksPanel';
+import { ExtensionsPanel } from './ExtensionsPanel';
 import { loadNavPrefs, type DeveloperTab } from './lib';
 
 interface TabDef {
@@ -18,6 +22,10 @@ interface TabDef {
 
 const TABS: TabDef[] = [
   { id: 'dashboard', label: 'Dashboard', icon: 'grid' },
+  { id: 'explorer', label: 'API Explorer', icon: 'bolt' },
+  { id: 'reference', label: 'API Reference', icon: 'doc' },
+  { id: 'webhooks', label: 'Webhooks', icon: 'bell' },
+  { id: 'extensions', label: 'Extensions', icon: 'puzzle' },
   { id: 'apikeys', label: 'API Keys', icon: 'lock' },
   { id: 'marketplace', label: 'Marketplace', icon: 'store' },
   { id: 'gateway', label: 'API Gateway', icon: 'server' },
@@ -102,6 +110,10 @@ function DeveloperInner({ initialTab }: { initialTab: DeveloperTab }): JSX.Eleme
         </nav>
 
         {tab === 'dashboard' && <DeveloperDashboardPanel onNavigate={setTab} />}
+        {tab === 'explorer' && <ApiExplorerPanel />}
+        {tab === 'reference' && <ApiReferencePanel />}
+        {tab === 'webhooks' && <WebhooksPanel />}
+        {tab === 'extensions' && <ExtensionsPanel />}
         {tab === 'apikeys' && <ApiKeysPanel />}
         {tab === 'marketplace' && <MarketplacePanel />}
         {tab === 'gateway' && <GatewayPanel />}

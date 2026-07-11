@@ -41,6 +41,17 @@ import type {
   SdkArtifact,
   SeatAssignment,
   SubmissionEvent,
+  // Platform surfaces (P3.0, Increments 1–6)
+  ApiRouteInfo,
+  EnterpriseApiRequest,
+  EnterpriseApiResponse,
+  OpenApiDocument,
+  Webhook,
+  WebhookWithSecret,
+  WebhookDelivery,
+  WebhookDeliveryStats,
+  PlatformEventCategory,
+  PluginExtension,
 } from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
 import { createLogger } from '@renderer/lib/logger';
@@ -65,6 +76,12 @@ interface DeveloperContextValue {
   seats: SeatAssignment[];
   licenses: License[];
   purchases: MarketplacePurchase[];
+  // platform surfaces (P3.0)
+  routes: ApiRouteInfo[];
+  openapi: OpenApiDocument | null;
+  webhooks: Webhook[];
+  webhookStats: WebhookDeliveryStats | null;
+  extensions: PluginExtension[];
   refreshAll: () => Promise<void>;
   // developer
   setPlan: (tier: PlanTier) => Promise<void>;
@@ -88,6 +105,15 @@ interface DeveloperContextValue {
   assignSeat: (userId: string, userName: string) => Promise<SeatAssignment | { error: string }>;
   releaseSeat: (seatId: string) => Promise<void>;
   purchase: (listingId: string) => Promise<{ purchase: MarketplacePurchase; license: License } | { error: string }>;
+  // platform: Enterprise REST API (executes through the real gateway + audit)
+  runApiRequest: (req: EnterpriseApiRequest) => Promise<EnterpriseApiResponse>;
+  // platform: Enterprise Webhooks
+  createWebhook: (input: { label: string; url: string; categories?: PlatformEventCategory[]; types?: string[] }) => Promise<WebhookWithSecret>;
+  setWebhookEnabled: (id: string, enabled: boolean) => Promise<void>;
+  deleteWebhook: (id: string) => Promise<void>;
+  loadDeliveries: (webhookId?: string, limit?: number) => Promise<WebhookDelivery[]>;
+  loadDeadLetters: () => Promise<WebhookDelivery[]>;
+  replayDelivery: (id: string) => Promise<WebhookDelivery | { error: string }>;
 }
 
 const DeveloperContext = createContext<DeveloperContextValue | null>(null);
@@ -110,6 +136,11 @@ export function DeveloperProvider({ children }: { children: ReactNode }): JSX.El
   const [seats, setSeats] = useState<SeatAssignment[]>([]);
   const [licenses, setLicenses] = useState<License[]>([]);
   const [purchases, setPurchases] = useState<MarketplacePurchase[]>([]);
+  const [routes, setRoutes] = useState<ApiRouteInfo[]>([]);
+  const [openapi, setOpenapi] = useState<OpenApiDocument | null>(null);
+  const [webhooks, setWebhooks] = useState<Webhook[]>([]);
+  const [webhookStats, setWebhookStats] = useState<WebhookDeliveryStats | null>(null);
+  const [extensions, setExtensions] = useState<PluginExtension[]>([]);
 
   const refreshAll = useCallback(async () => {
     try {
@@ -147,6 +178,20 @@ export function DeveloperProvider({ children }: { children: ReactNode }): JSX.El
       setSeats(st);
       setLicenses(lic);
       setPurchases(pur);
+      // Platform surfaces (P3.0). Loaded in their own batch so a transient failure
+      // here never blanks the publishing surfaces above.
+      const [rt, oa, wh, ws, ex] = await Promise.all([
+        ipc.api.routes(),
+        ipc.api.openapi(),
+        ipc.webhooks.list(),
+        ipc.webhooks.stats(),
+        ipc.plugins.extensions(),
+      ]);
+      setRoutes(rt);
+      setOpenapi(oa);
+      setWebhooks(wh);
+      setWebhookStats(ws);
+      setExtensions(ex);
       setReady(true);
     } catch (err) {
       log.error('Failed to refresh developer portal', err);
@@ -184,6 +229,14 @@ export function DeveloperProvider({ children }: { children: ReactNode }): JSX.El
       setLicenses(lic);
       setPurchases(pur);
       setAnalytics(an);
+      const [wh, ws, ex] = await Promise.all([
+        ipc.webhooks.list(),
+        ipc.webhooks.stats(),
+        ipc.plugins.extensions(),
+      ]);
+      setWebhooks(wh);
+      setWebhookStats(ws);
+      setExtensions(ex);
     } catch (err) {
       log.error('Failed to refresh live slices', err);
     }
@@ -197,9 +250,16 @@ export function DeveloperProvider({ children }: { children: ReactNode }): JSX.El
       t = setTimeout(fn, 180);
     };
     const off = ipc.ecosystem.onEvent(() => debounced(() => void refreshLive()));
+    // Webhook delivery activity broadcasts its stats — keep the portal live off the
+    // same debounce so deliveries/dead-letters update as the dispatcher works.
+    const offWebhooks = ipc.webhooks.onEvent((stats) => {
+      setWebhookStats(stats);
+      debounced(() => void refreshLive());
+    });
     return () => {
       if (t) clearTimeout(t);
       off();
+      offWebhooks();
     };
   }, [refreshAll, refreshLive]);
 
@@ -245,6 +305,20 @@ export function DeveloperProvider({ children }: { children: ReactNode }): JSX.El
   const releaseSeat = useCallback(async (seatId: string) => { await ipc.ecosystem.releaseSeat(seatId); await refreshLive(); }, [refreshLive]);
   const purchase = useCallback(async (listingId: string) => { const r = await ipc.ecosystem.purchase(listingId); await refreshLive(); return r; }, [refreshLive]);
 
+  // Platform surfaces (P3.0). The API request runs through the real gateway (metering
+  // + audit), so refresh the live slices afterward to reflect the new gateway traffic.
+  const runApiRequest = useCallback(async (req: EnterpriseApiRequest) => { const r = await ipc.api.request(req); await refreshLive(); return r; }, [refreshLive]);
+  const createWebhook = useCallback(async (input: { label: string; url: string; categories?: PlatformEventCategory[]; types?: string[] }) => {
+    const res = await ipc.webhooks.create(input);
+    await refreshLive();
+    return res;
+  }, [refreshLive]);
+  const setWebhookEnabled = useCallback(async (id: string, enabled: boolean) => { await ipc.webhooks.setEnabled(id, enabled); await refreshLive(); }, [refreshLive]);
+  const deleteWebhook = useCallback(async (id: string) => { await ipc.webhooks.remove(id); await refreshLive(); }, [refreshLive]);
+  const loadDeliveries = useCallback((webhookId?: string, limit?: number) => ipc.webhooks.deliveries(webhookId, limit), []);
+  const loadDeadLetters = useCallback(() => ipc.webhooks.deadLetters(), []);
+  const replayDelivery = useCallback(async (id: string) => { const r = await ipc.webhooks.replay(id); await refreshLive(); return r; }, [refreshLive]);
+
   const value = useMemo<DeveloperContextValue>(
     () => ({
       ready,
@@ -264,6 +338,11 @@ export function DeveloperProvider({ children }: { children: ReactNode }): JSX.El
       seats,
       licenses,
       purchases,
+      routes,
+      openapi,
+      webhooks,
+      webhookStats,
+      extensions,
       refreshAll,
       setPlan,
       createKey,
@@ -283,13 +362,22 @@ export function DeveloperProvider({ children }: { children: ReactNode }): JSX.El
       assignSeat,
       releaseSeat,
       purchase,
+      runApiRequest,
+      createWebhook,
+      setWebhookEnabled,
+      deleteWebhook,
+      loadDeliveries,
+      loadDeadLetters,
+      replayDelivery,
     }),
     [
       ready, dashboard, keys, oauthApps, analytics, sdks, listings, marketplaceStats, events,
       gatewayVersions, gatewayMetrics, gatewayAudit, billing, plans, seats, licenses, purchases,
+      routes, openapi, webhooks, webhookStats, extensions,
       refreshAll, setPlan, createKey, revokeKey, createOAuthApp, deleteOAuthApp, listingDetail,
       createListing, createVersion, submit, review, publish, rollback, install, rate,
       runGatewayRequest, assignSeat, releaseSeat, purchase,
+      runApiRequest, createWebhook, setWebhookEnabled, deleteWebhook, loadDeliveries, loadDeadLetters, replayDelivery,
     ],
   );
 

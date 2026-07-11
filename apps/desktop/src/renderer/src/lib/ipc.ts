@@ -224,6 +224,17 @@ import type {
   EnterpriseTrustModel,
   EnterpriseContext,
   PersonalizationState,
+  // Developer Platform SDK & Public APIs (P3.0, Increments 1–6)
+  ApiRouteInfo,
+  EnterpriseApiRequest,
+  EnterpriseApiResponse,
+  OpenApiDocument,
+  Webhook,
+  WebhookWithSecret,
+  WebhookDelivery,
+  WebhookDeliveryStats,
+  PlatformEventCategory,
+  PluginExtension,
 } from '@neuropause/shared';
 
 type OAuthProviderId = Exclude<AuthProviderId, 'email'>;
@@ -525,6 +536,8 @@ export const ipc = {
       invoke(IpcChannel.PluginsRevoke, { id, permission }) as Promise<PluginDto>,
     contributions: (surface?: PluginSurfaceKind) =>
       invoke(IpcChannel.PluginsContributions, { surface }) as Promise<PluginContribution[]>,
+    /** Plugin SDK v2 (P3.0, Increment 6) — the declarative extensions plugins have registered. */
+    extensions: () => invoke(IpcChannel.PluginsExtensions) as Promise<PluginExtension[]>,
     onEvent: (cb: (e: PluginHostEvent) => void) =>
       subscribe(IpcChannel.PluginEventBroadcast, (p) => cb(p as PluginHostEvent)),
   },
@@ -1272,6 +1285,36 @@ export const ipc = {
 
     onEvent: (cb: (e: { kind: string; at: string }) => void) =>
       subscribe(IpcChannel.EcosystemEventBroadcast, (p) => cb(p as { kind: string; at: string })),
+  },
+
+  /* ── Enterprise REST API + OpenAPI (P3.0, Increments 1–3) ── */
+  api: {
+    /** The public route index (drives the API Explorer + reference docs). */
+    routes: () => invoke(IpcChannel.EnterpriseApiRoutes) as Promise<ApiRouteInfo[]>,
+    /** The live OpenAPI 3.1 document, generated from the route table + Zod contracts. */
+    openapi: () => invoke(IpcChannel.EnterpriseApiOpenApi) as Promise<OpenApiDocument>,
+    /** Execute a REST call through the real gateway (auth / scope / rate / quota + audit). */
+    request: (req: EnterpriseApiRequest) =>
+      invoke(IpcChannel.EnterpriseApiRequest, req) as Promise<EnterpriseApiResponse>,
+  },
+
+  /* ── Enterprise Webhooks (P3.0, Increment 4) ── */
+  webhooks: {
+    list: () => invoke(IpcChannel.WebhookList) as Promise<Webhook[]>,
+    create: (input: { label: string; url: string; categories?: PlatformEventCategory[]; types?: string[] }) =>
+      invoke(IpcChannel.WebhookCreate, input) as Promise<WebhookWithSecret>,
+    setEnabled: (id: string, enabled: boolean) =>
+      invoke(IpcChannel.WebhookSetEnabled, { id, enabled }) as Promise<Webhook | null>,
+    remove: (id: string) =>
+      invoke(IpcChannel.WebhookDelete, { id }) as Promise<{ deleted: boolean }>,
+    deliveries: (webhookId?: string, limit?: number) =>
+      invoke(IpcChannel.WebhookDeliveries, { webhookId, limit }) as Promise<WebhookDelivery[]>,
+    deadLetters: () => invoke(IpcChannel.WebhookDeadLetters) as Promise<WebhookDelivery[]>,
+    replay: (id: string) =>
+      invoke(IpcChannel.WebhookReplay, { id }) as Promise<WebhookDelivery | { error: string }>,
+    stats: () => invoke(IpcChannel.WebhookStats) as Promise<WebhookDeliveryStats>,
+    onEvent: (cb: (stats: WebhookDeliveryStats) => void) =>
+      subscribe(IpcChannel.WebhookEventBroadcast, (p) => cb(p as WebhookDeliveryStats)),
   },
 
   cloud: {

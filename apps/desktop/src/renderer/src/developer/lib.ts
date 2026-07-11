@@ -6,13 +6,16 @@
  * consistent across the app.
  */
 import type {
+  ApiMethod,
   ApiVersionInfo,
   ListingKind,
   ListingStatus,
   PlanTier,
+  PluginExtensionKind,
   ReviewDecision,
   ScanSeverity,
   ScanStatus,
+  WebhookDeliveryStatus,
 } from '@neuropause/shared';
 import type { IconName } from '@renderer/components/ui/Icon';
 import { type OpsTone } from '@renderer/operations/lib';
@@ -25,8 +28,20 @@ export interface Meta {
   tone: OpsTone;
 }
 
-/** The six surfaces of the Developer Portal. */
-export type DeveloperTab = 'dashboard' | 'apikeys' | 'marketplace' | 'gateway' | 'billing' | 'sdk';
+/** The surfaces of the Developer Portal. The first six are the ecosystem/publishing
+ *  surfaces; the last four are the platform surfaces added in P3.0 (Increment 7):
+ *  the API explorer, the OpenAPI reference, webhooks, and plugin extensions. */
+export type DeveloperTab =
+  | 'dashboard'
+  | 'apikeys'
+  | 'marketplace'
+  | 'gateway'
+  | 'billing'
+  | 'sdk'
+  | 'explorer'
+  | 'reference'
+  | 'webhooks'
+  | 'extensions';
 
 export function planMeta(tier: PlanTier): Meta {
   switch (tier) {
@@ -144,6 +159,55 @@ export function statusHttpTone(status: number): OpsTone {
   if (status === 429) return 'orange';
   if (status >= 400) return 'red';
   return 'gray';
+}
+
+/** Colour an HTTP method like the API tools people already know. */
+export function methodTone(method: ApiMethod): OpsTone {
+  switch (method) {
+    case 'GET':
+      return 'green';
+    case 'POST':
+      return 'blue';
+    case 'PUT':
+    case 'PATCH':
+      return 'orange';
+    case 'DELETE':
+      return 'red';
+    default:
+      return 'gray';
+  }
+}
+
+export function deliveryStatusMeta(status: WebhookDeliveryStatus): Meta {
+  switch (status) {
+    case 'delivered':
+      return { label: 'Delivered', tone: 'green' };
+    case 'pending':
+      return { label: 'Pending', tone: 'blue' };
+    case 'failed':
+      return { label: 'Failed', tone: 'orange' };
+    case 'dead':
+      return { label: 'Dead-lettered', tone: 'red' };
+    default:
+      return { label: status, tone: 'gray' };
+  }
+}
+
+const EXTENSION_KIND: Record<PluginExtensionKind, KindMeta> = {
+  erp_module: { label: 'ERP Module', icon: 'grid', tone: 'accent' },
+  executive_kpi: { label: 'Executive KPI', icon: 'gauge', tone: 'purple' },
+  timeline_provider: { label: 'Timeline Provider', icon: 'clock', tone: 'blue' },
+  graph_node: { label: 'Graph Node', icon: 'layers', tone: 'blue' },
+  graph_relationship: { label: 'Graph Relationship', icon: 'connectors', tone: 'blue' },
+  memory_projector: { label: 'Memory Projector', icon: 'memory', tone: 'green' },
+  automation_trigger: { label: 'Automation Trigger', icon: 'bolt', tone: 'orange' },
+  automation_action: { label: 'Automation Action', icon: 'automations', tone: 'orange' },
+  search_provider: { label: 'Search Provider', icon: 'search', tone: 'gray' },
+  context_provider: { label: 'Context Provider', icon: 'lightbulb', tone: 'accent' },
+};
+
+export function extensionKindMeta(kind: PluginExtensionKind): KindMeta {
+  return EXTENSION_KIND[kind] ?? { label: kind, icon: 'puzzle', tone: 'gray' };
 }
 
 export function formatMoney(amount: number, currency = 'USD'): string {
