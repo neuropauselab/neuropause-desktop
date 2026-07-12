@@ -94,6 +94,7 @@ export const CAPABILITY_LABEL: Record<ConnectorCapability, string> = {
   calendar: 'Calendar',
   repositories: 'Repositories',
   issues: 'Issues',
+  contacts: 'Contacts',
 };
 
 /** Two-letter glyph for a connector's brand chip. */

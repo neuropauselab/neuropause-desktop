@@ -51,7 +51,8 @@ export type ConnectorCapability =
   | 'activities'
   | 'calendar'
   | 'repositories'
-  | 'issues';
+  | 'issues'
+  | 'contacts';
 
 /** A human-readable permission/scope the connector requests at consent time. */
 export interface ConnectorScope {
