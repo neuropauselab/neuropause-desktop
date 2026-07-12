@@ -91,6 +91,26 @@ export interface EntityInput {
   metadata?: UnifiedMetadata;
 }
 
+/**
+ * A connector's synced surface, derived from its declared resources — the runtime's
+ * capability / schema report (P5 — Increment 1). Pure projection of what an adapter already
+ * declares; consumed by the sync subsystem's `capabilities()` and, later, the connector UI /
+ * marketplace so a connector's real streams and entity kinds are discoverable without guessing.
+ */
+export interface AdapterCapability {
+  connectorId: ConnectorId;
+  resources: Array<{ id: string; label: string; kind: UnifiedEntityKind }>;
+  /** Distinct entity kinds this connector produces, in first-seen order. */
+  kinds: UnifiedEntityKind[];
+}
+
+/** Project an adapter into its capability report (what streams + entity kinds it syncs). Pure. */
+export function describeAdapter(adapter: ConnectorAdapter): AdapterCapability {
+  const resources = adapter.resources.map((r) => ({ id: r.id, label: r.label, kind: r.kind }));
+  const kinds = [...new Set(resources.map((r) => r.kind))];
+  return { connectorId: adapter.connectorId, resources, kinds };
+}
+
 /** Build a canonical entity with a deterministic Unified Identifier. */
 export function makeEntity(i: EntityInput): UnifiedEntity {
   return {

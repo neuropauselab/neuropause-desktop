@@ -10,8 +10,8 @@
 import type { UnifiedEntity } from '@neuropause/shared';
 import type { ConnectorAdapter, SyncContext, SyncPage } from '../adapterSdk';
 import { makeEntity } from '../adapterSdk';
-import { HttpError } from '../http';
 import { parseJsonCursor, toJsonCursor, truncate } from './util';
+import { isExpiredCursorError } from './delta';
 
 const GCAL = 'https://www.googleapis.com/calendar/v3';
 /** How far back the very first sync reaches. */
@@ -116,8 +116,8 @@ async function pullEvents(ctx: SyncContext): Promise<SyncPage> {
   try {
     data = (await getEvents(ctx, mode, syncToken, pageToken)).data;
   } catch (err) {
-    if (err instanceof HttpError && err.status === 410) {
-      // Sync token expired — start a fresh bounded full resync.
+    if (isExpiredCursorError(err)) {
+      // Sync token expired (410 Gone) — start a fresh bounded full resync.
       mode = 'initial';
       syncToken = null;
       pageToken = undefined;

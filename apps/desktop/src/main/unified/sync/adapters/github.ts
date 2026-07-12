@@ -18,6 +18,7 @@
 import type { ConnectorAdapter, SyncContext, SyncPage } from '../adapterSdk';
 import { makeEntity } from '../adapterSdk';
 import { hasNextLink, maxIso, parseJsonCursor, toJsonCursor, truncate } from './util';
+import { conditionalGet } from './delta';
 import { makeUnifiedId } from '../../ids';
 
 const GH = 'https://api.github.com';
@@ -73,7 +74,19 @@ interface GhNotification {
 
 interface ReposCursor {
   page?: number;
+  /** ETag of page 1 from the last completed walk; sent as If-None-Match to skip an unchanged list. */
+  etag?: string | null;
+  /** ETag captured on page 1 of the CURRENT walk; promoted to `etag` when the walk finishes. */
+  pendingEtag?: string | null;
 }
+
+const REPOS_PER_PAGE = 100;
+const REPOS_QUERY = {
+  per_page: REPOS_PER_PAGE,
+  sort: 'updated',
+  direction: 'desc',
+  affiliation: 'owner,collaborator,organization_member',
+} as const;
 
 interface SinceCursor {
   since?: string | null;
@@ -168,15 +181,44 @@ export function mapNotification(ctx: SyncContext, n: GhNotification) {
   });
 }
 
+/**
+ * Next repos cursor. While there are more pages, keep the page-1 validator pending. At the end of a walk,
+ * persist the ETag ONLY when the list fit on a single, NON-FULL page (`pageCount < REPOS_PER_PAGE`).
+ * A non-full page proves the WHOLE collection is on page 1 with room to spare, so any repo added later —
+ * even an old one that sorts far down under `sort=updated` — must alter page 1's body and force a 200;
+ * a later page-1 `304` therefore provably means nothing changed. A FULL page (== per_page) might hide a
+ * newly-born page 2 that a page-1 304 cannot witness, so it stores no validator and re-walks next time.
+ * Multi-page walks likewise store nothing. This is what makes the conditional skip lossless.
+ */
+function nextReposCursor(page: number, more: boolean, pendingEtag: string | null, pageCount: number): string {
+  if (more) return toJsonCursor({ page: page + 1, pendingEtag });
+  const safelyComplete = page === 1 && pageCount < REPOS_PER_PAGE;
+  return toJsonCursor(safelyComplete && pendingEtag ? { etag: pendingEtag } : {});
+}
+
 async function pullRepos(ctx: SyncContext): Promise<SyncPage> {
-  const c = parseJsonCursor<ReposCursor>(ctx.cursor);
-  const page = c?.page ?? 1;
-  const resp = await ctx.http.getJson<GhRepo[]>(`${GH}/user/repos`, {
-    query: { per_page: 100, page, sort: 'updated', direction: 'desc', affiliation: 'owner,collaborator,organization_member' },
-  });
-  const entities = (resp.data ?? []).map((r) => mapRepo(ctx, r));
+  const c = parseJsonCursor<ReposCursor>(ctx.cursor) ?? {};
+  const page = c.page ?? 1;
+
+  // A stored `etag` is only ever written for a single, NON-FULL page (see nextReposCursor), so a page-1
+  // `304` provably means the whole list is unchanged → skip for ZERO primary-rate-limit cost (GitHub's
+  // recommended polling pattern). Full or multi-page lists carry no validator and re-walk fully.
+  if (page === 1 && c.etag) {
+    const cond = await conditionalGet<GhRepo[]>(ctx.http, `${GH}/user/repos`, c.etag, {
+      query: { ...REPOS_QUERY, page },
+    });
+    if (cond.notModified) return { entities: [], cursor: toJsonCursor({ etag: c.etag }), hasMore: false };
+    const rows = cond.data ?? [];
+    const more = hasNextLink(cond.headers['link']);
+    return { entities: rows.map((r) => mapRepo(ctx, r)), cursor: nextReposCursor(page, more, cond.etag, rows.length), hasMore: more };
+  }
+
+  const resp = await ctx.http.getJson<GhRepo[]>(`${GH}/user/repos`, { query: { ...REPOS_QUERY, page } });
+  const rows = resp.data ?? [];
   const more = hasNextLink(resp.headers['link']);
-  return { entities, cursor: more ? toJsonCursor({ page: page + 1 }) : null, hasMore: more };
+  // page 1 with no prior validator = first-ever sync: capture the head ETag so a single non-full page can skip next time.
+  const pendingEtag = page === 1 ? (resp.headers['etag'] ?? null) : (c.pendingEtag ?? null);
+  return { entities: rows.map((r) => mapRepo(ctx, r)), cursor: nextReposCursor(page, more, pendingEtag, rows.length), hasMore: more };
 }
 
 async function pullNotifications(ctx: SyncContext): Promise<SyncPage> {

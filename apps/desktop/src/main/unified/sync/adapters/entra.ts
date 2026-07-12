@@ -28,8 +28,8 @@ import {
 } from '@neuropause/shared';
 import type { ConnectorAdapter, SyncContext, SyncPage } from '../adapterSdk';
 import { makeEntity } from '../adapterSdk';
-import { HttpError } from '../http';
 import { parseJsonCursor, toJsonCursor, truncate } from './util';
+import { isExpiredCursorError } from './delta';
 import { m365Resources } from './m365';
 
 const USERS_DELTA = `${GRAPH_BASE_URL}/users/delta?$select=${ENTRA_USER_SELECT.join(',')}`;
@@ -108,7 +108,7 @@ async function pullDelta<T extends { id: string; '@removed'?: { reason?: string 
     data = (await ctx.http.getJson<GraphDeltaResponse<T>>(url)).data;
   } catch (err) {
     // An expired deltaLink returns 410 Gone — restart from a fresh full delta sync.
-    if (err instanceof HttpError && err.status === 410) {
+    if (isExpiredCursorError(err)) {
       data = (await ctx.http.getJson<GraphDeltaResponse<T>>(baseUrl)).data;
     } else {
       throw err;

@@ -21,8 +21,9 @@ import { stateToSnapshot } from './syncStateStore';
 import { SyncOrchestrator } from './orchestrator';
 import { RateLimiter } from './rateLimiter';
 import { SyncScheduler, SCHEDULER_INTERVAL_MS } from './scheduler';
-import { adapterConnectorIds, getAdapter } from './registry';
+import { adapterConnectorIds, describeAdapters, getAdapter } from './registry';
 import { registerBuiltinAdapters } from './adapters';
+import type { AdapterCapability } from './adapterSdk';
 
 const log = createLogger('sync');
 
@@ -41,6 +42,8 @@ export interface SyncSubsystem {
   snapshotFor: (connectorId: string, accountId: string) => ConnectorSyncSnapshot;
   /** P4.1 — subscribe to per-account snapshot changes; returns an unsubscribe handle. */
   onSnapshotChange: (cb: (connectorId: string, accountId: string) => void) => () => void;
+  /** P5 — capability/schema report for each registered adapter (what every connector syncs). */
+  capabilities: () => AdapterCapability[];
   dispose: () => void;
 }
 
@@ -109,13 +112,17 @@ export async function initSync(deps: SyncSubsystemDeps): Promise<SyncSubsystem> 
     return () => syncStateStore.off('changed', listener);
   };
 
-  log.info('Sync engine initialized', { adapters: adapterConnectorIds().length });
+  log.info('Sync engine initialized', {
+    adapters: adapterConnectorIds().length,
+    resources: describeAdapters().reduce((n, c) => n + c.resources.length, 0),
+  });
 
   return {
     handlers,
     snapshots,
     snapshotFor,
     onSnapshotChange,
+    capabilities: () => describeAdapters(),
     dispose: () => {
       scheduler.stop();
       orchestrator.stop();
