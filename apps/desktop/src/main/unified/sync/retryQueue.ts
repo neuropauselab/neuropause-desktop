@@ -23,17 +23,49 @@ function key(connectorId: string, accountId: string): string {
 export class RetryQueue {
   private items = new Map<string, QueueItem>();
   private timer: ReturnType<typeof setTimeout> | null = null;
+  /** Guards against re-entrant drains (a timer firing while a drain is suspended on `await run`). */
+  private draining = false;
 
   /**
-   * @param run     re-runs a sync; resolves true when it should be retried again.
-   * @param maxAttempts hard cap on attempts before giving up.
-   * @param baseDelayMs backoff base (doubles each attempt).
+   * @param run         re-runs a sync; resolves true when it should be retried again.
+   * @param opts.maxAttempts  hard cap on attempts before dead-lettering.
+   * @param opts.baseDelayMs  backoff base (doubles each attempt).
+   * @param opts.maxDelayMs   backoff cap — the exponential term never exceeds this (thundering-herd guard).
+   * @param opts.onExhausted  called once when an account exhausts its retry budget (→ dead-letter it).
+   * @param opts.rng          injectable RNG for the jitter (tests pass a deterministic value).
    */
   constructor(
     private readonly run: (connectorId: string, accountId: string) => Promise<boolean>,
-    private readonly maxAttempts = 5,
-    private readonly baseDelayMs = 2_000,
-  ) {}
+    opts: {
+      maxAttempts?: number;
+      baseDelayMs?: number;
+      maxDelayMs?: number;
+      onExhausted?: (connectorId: string, accountId: string, attempts: number) => void;
+      rng?: () => number;
+    } = {},
+  ) {
+    this.maxAttempts = opts.maxAttempts ?? 5;
+    this.baseDelayMs = opts.baseDelayMs ?? 2_000;
+    this.maxDelayMs = opts.maxDelayMs ?? 5 * 60_000;
+    this.onExhausted = opts.onExhausted;
+    this.rng = opts.rng ?? Math.random;
+  }
+
+  private readonly maxAttempts: number;
+  private readonly baseDelayMs: number;
+  private readonly maxDelayMs: number;
+  private readonly onExhausted?: (connectorId: string, accountId: string, attempts: number) => void;
+  private readonly rng: () => number;
+
+  /**
+   * The backoff for a given attempt: capped exponential with EQUAL JITTER — half fixed, half random in
+   * `[0, half)`. Capping bounds the wait; jitter de-synchronizes many accounts that rate-limit together.
+   */
+  backoffFor(attempt: number): number {
+    const exp = Math.min(this.maxDelayMs, this.baseDelayMs * 2 ** (attempt - 1));
+    const half = exp / 2;
+    return Math.round(half + this.rng() * half);
+  }
 
   /** Schedule (or reschedule) a retry. `delayMs` overrides the computed backoff. */
   enqueue(connectorId: string, accountId: string, delayMs?: number): void {
@@ -42,10 +74,11 @@ export class RetryQueue {
     const attempt = (prev?.attempt ?? 0) + 1;
     if (attempt > this.maxAttempts) {
       this.items.delete(k);
-      log.warn('Retry budget exhausted', { connectorId, accountId, attempt });
+      log.warn('Retry budget exhausted — dead-lettering', { connectorId, accountId, attempt });
+      this.onExhausted?.(connectorId, accountId, attempt - 1);
       return;
     }
-    const backoff = delayMs ?? this.baseDelayMs * 2 ** (attempt - 1);
+    const backoff = delayMs ?? this.backoffFor(attempt);
     this.items.set(k, { connectorId, accountId, attempt, runAt: Date.now() + backoff });
     this.schedule();
   }
@@ -79,23 +112,32 @@ export class RetryQueue {
   }
 
   private async drain(): Promise<void> {
-    const now = Date.now();
-    const due = [...this.items.values()].filter((i) => i.runAt <= now);
-    for (const item of due) {
-      const k = key(item.connectorId, item.accountId);
-      this.items.delete(k);
-      let again = false;
-      try {
-        again = await this.run(item.connectorId, item.accountId);
-      } catch (err) {
-        log.warn('Retry run threw', { connectorId: item.connectorId, err: String(err) });
-        again = true;
+    // A single drain at a time: a 0ms timer armed by a concurrent enqueue must not start a second
+    // drain over the same items while this one is suspended on `await run` (that could re-run an item
+    // and double-count attempts / double dead-letter).
+    if (this.draining) return;
+    this.draining = true;
+    try {
+      const now = Date.now();
+      const due = [...this.items.values()].filter((i) => i.runAt <= now);
+      for (const item of due) {
+        const k = key(item.connectorId, item.accountId);
+        this.items.delete(k);
+        let again = false;
+        try {
+          again = await this.run(item.connectorId, item.accountId);
+        } catch (err) {
+          log.warn('Retry run threw', { connectorId: item.connectorId, err: String(err) });
+          again = true;
+        }
+        if (again) {
+          // Re-enqueue preserving the attempt count progression.
+          this.items.set(k, { ...item });
+          this.enqueue(item.connectorId, item.accountId);
+        }
       }
-      if (again) {
-        // Re-enqueue preserving the attempt count progression.
-        this.items.set(k, { ...item });
-        this.enqueue(item.connectorId, item.accountId);
-      }
+    } finally {
+      this.draining = false;
     }
     this.schedule();
   }

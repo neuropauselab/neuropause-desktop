@@ -6,6 +6,7 @@ export * from './types/runtime';
 export * from './types/plugin';
 export * from './types/platform';
 export * from './types/connectors';
+export * from './types/connectorRuntime';
 export * from './types/unified';
 export * from './types/graph';
 export * from './types/erpGraphBridge';

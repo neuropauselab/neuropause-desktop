@@ -29,6 +29,9 @@ export interface AccountTokens {
 /** On disk: { [connectorId]: { [accountId]: base64Ciphertext } }. */
 type VaultFile = Record<string, Record<string, string>>;
 
+/** P4.1 — the encryption-scheme version. The rotation hook (`reencryptAll`) refreshes ciphertext in place. */
+export const CONNECTOR_VAULT_KEY_VERSION = 1;
+
 function vaultPath(): string {
   return join(app.getPath('userData'), 'connector-vault.bin');
 }
@@ -107,5 +110,35 @@ export const connectorVault = {
       delete vault[connectorId];
       await writeVault(vault);
     }
+  },
+
+  /**
+   * P4.1 key-rotation hook — re-encrypt every stored token with the CURRENT safeStorage key. Used after an
+   * OS key change (or a scheduled rotation) to refresh ciphertext in place. No plaintext is ever written;
+   * undecryptable entries are skipped. Returns the number of entries re-encrypted.
+   */
+  async reencryptAll(): Promise<number> {
+    if (!safeStorage.isEncryptionAvailable()) {
+      log.warn('Encryption unavailable; skipping vault re-encryption');
+      return 0;
+    }
+    const vault = await readVault();
+    let count = 0;
+    for (const [connectorId, accounts] of Object.entries(vault)) {
+      for (const [accountId, cipher] of Object.entries(accounts)) {
+        try {
+          const plain = safeStorage.decryptString(Buffer.from(cipher, 'base64'));
+          vault[connectorId][accountId] = safeStorage.encryptString(plain).toString('base64');
+          count += 1;
+        } catch (err) {
+          log.error('Skipping undecryptable entry during re-encryption', { connectorId, accountId, err });
+        }
+      }
+    }
+    if (count > 0) {
+      await writeVault(vault);
+      log.info('Re-encrypted connector vault under the current key', { count, keyVersion: CONNECTOR_VAULT_KEY_VERSION });
+    }
+    return count;
   },
 };

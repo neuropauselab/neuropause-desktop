@@ -24,6 +24,8 @@ import { syncEvents } from './events';
 const MAX_PAGES_PER_RESOURCE = 50;
 /** Default cadence between automatic syncs of an account. */
 export const SYNC_INTERVAL_MS = 15 * 60 * 1000;
+/** Bounded worker pool: max accounts synced concurrently per scheduler tick. */
+export const MAX_CONCURRENT_SYNCS = 4;
 
 /** Everything the orchestrator depends on, injected so it can be tested. */
 export interface OrchestratorPorts {
@@ -37,6 +39,8 @@ export interface OrchestratorPorts {
   listConnectedAccounts: () => Array<{ connectorId: string; accountId: string }>;
   publish: (e: PlatformEventInput) => void;
   rate: RateGate;
+  /** P4.1 — whether sync is suppressed for this account (paused / disabled). Optional; defaults to false. */
+  isSuppressed?: (connectorId: string, accountId: string) => boolean;
 }
 
 export interface AccountSyncOutcome {
@@ -57,12 +61,26 @@ export interface AccountSyncOutcome {
 export class SyncOrchestrator {
   private readonly retry: RetryQueue;
   private readonly offlineConnectors = new Set<string>();
+  /** P4.1 — per-account in-flight guard: a second sync of the same account coalesces onto the first. */
+  private readonly inFlight = new Map<string, Promise<AccountSyncOutcome>>();
 
   constructor(private readonly ports: OrchestratorPorts) {
-    this.retry = new RetryQueue(async (c, a) => {
-      const o = await this.runAccountSync(c, a);
-      return o.retryable;
-    });
+    this.retry = new RetryQueue(
+      async (c, a) => {
+        const o = await this.runAccountSync(c, a);
+        return o.retryable;
+      },
+      {
+        // P4.1 — a retry-budget exhaustion dead-letters the account (durable), instead of a silent drop.
+        onExhausted: (c, a, attempts) => {
+          void this.ports.syncState.recordDeadLetter(c, a, {
+            at: new Date().toISOString(),
+            attempts,
+            error: this.ports.syncState.get(c, a).lastError,
+          });
+        },
+      },
+    );
   }
 
   /** Live retry-queue depth, for the Health Dashboard. */
@@ -90,21 +108,57 @@ export class SyncOrchestrator {
     return { ok: o.ok, total: o.created + o.updated, hadAdapter: o.hadAdapter, error: o.error };
   }
 
-  /** Scheduler tick: sync every connected account whose next run is due. */
+  /** Scheduler tick: sync every due account, suppressed accounts skipped, through a bounded worker pool. */
   async tick(): Promise<void> {
     const now = Date.now();
+    const due: Array<{ connectorId: string; accountId: string }> = [];
     for (const { connectorId, accountId } of this.ports.listConnectedAccounts()) {
       if (!this.ports.getAdapter(connectorId)) continue;
+      if (this.ports.isSuppressed?.(connectorId, accountId)) continue; // paused / disabled
       const st = this.ports.syncState.get(connectorId, accountId);
       const rateLimitedUntil = st.rateLimitedUntil ? Date.parse(st.rateLimitedUntil) : 0;
       if (rateLimitedUntil > now) continue;
-      const due = !st.nextSyncAt || Date.parse(st.nextSyncAt) <= now;
-      if (due) await this.requestSync(connectorId, accountId);
+      const isDue = !st.nextSyncAt || Date.parse(st.nextSyncAt) <= now;
+      if (isDue) due.push({ connectorId, accountId });
     }
+    await this.runPool(due, MAX_CONCURRENT_SYNCS);
+  }
+
+  /** Run `items` through `requestSync` with at most `limit` in flight at once. */
+  private async runPool(items: Array<{ connectorId: string; accountId: string }>, limit: number): Promise<void> {
+    let i = 0;
+    const worker = async (): Promise<void> => {
+      while (i < items.length) {
+        const item = items[i++];
+        await this.requestSync(item.connectorId, item.accountId);
+      }
+    };
+    const n = Math.min(Math.max(1, limit), items.length);
+    await Promise.all(Array.from({ length: n }, () => worker()));
+  }
+
+  /**
+   * Run one account's full sync, guarded by a per-account mutex: a concurrent call for the SAME account
+   * (e.g. a manual sync landing during a scheduler tick) coalesces onto the in-flight run instead of
+   * double-pulling. Distinct accounts still run in parallel.
+   */
+  async runAccountSync(connectorId: string, accountId: string): Promise<AccountSyncOutcome> {
+    // P4.1 — single suppression choke point: paused/disabled accounts never pull, regardless of caller
+    // (scheduler tick, manual, or a queued RETRY). Returns a benign, non-retryable no-op so the retry
+    // queue drops the item instead of re-running it.
+    if (this.ports.isSuppressed?.(connectorId, accountId)) {
+      return { ok: true, hadAdapter: Boolean(this.ports.getAdapter(connectorId)), created: 0, updated: 0, deleted: 0, conflicts: 0, durationMs: 0, error: null, retryable: false, rateLimited: false, offline: false };
+    }
+    const k = `${connectorId}::${accountId}`;
+    const existing = this.inFlight.get(k);
+    if (existing) return existing;
+    const p = this.runAccountSyncInner(connectorId, accountId).finally(() => this.inFlight.delete(k));
+    this.inFlight.set(k, p);
+    return p;
   }
 
   /** Run one account's full sync across all its adapter resources. */
-  async runAccountSync(connectorId: string, accountId: string): Promise<AccountSyncOutcome> {
+  private async runAccountSyncInner(connectorId: string, accountId: string): Promise<AccountSyncOutcome> {
     const adapter = this.ports.getAdapter(connectorId);
     const name = this.ports.manifestName(connectorId);
     const zero = { created: 0, updated: 0, deleted: 0, conflicts: 0 };
@@ -116,8 +170,6 @@ export class SyncOrchestrator {
 
     const start = Date.now();
     const nowIso = new Date().toISOString();
-    this.ports.publish(syncEvents.started(connectorId, name, accountId));
-    await this.ports.syncState.recordRun(connectorId, accountId, { status: 'syncing' });
 
     const http = new HttpClient(
       connectorId,
@@ -136,6 +188,10 @@ export class SyncOrchestrator {
     let conflicts = 0;
 
     try {
+      // Inside the try so a persistence error still lands in the catch and records a terminal status
+      // (never leaves the account stranded as 'syncing').
+      this.ports.publish(syncEvents.started(connectorId, name, accountId));
+      await this.ports.syncState.recordRun(connectorId, accountId, { status: 'syncing' });
       for (const resource of adapter.resources) {
         let cursor = this.ports.syncState.getCursor(connectorId, accountId, resource.id);
         let pages = 0;
@@ -199,6 +255,7 @@ export class SyncOrchestrator {
         entityCount: this.ports.countForConnector(connectorId),
         nextSyncAt: new Date(Date.now() + SYNC_INTERVAL_MS).toISOString(),
         rateLimitedUntil: null,
+        deadLetter: null, // a successful sync clears any prior dead-letter (replay recovered)
       });
       this.ports.publish(syncEvents.completed(connectorId, name, accountId, { created, updated, deleted, durationMs }));
       return { ok: true, hadAdapter: true, created, updated, deleted, conflicts, durationMs, error: null, retryable: false, rateLimited: false, offline: false };
@@ -211,6 +268,7 @@ export class SyncOrchestrator {
         await this.ports.syncState.recordRun(connectorId, accountId, {
           status: 'rate_limited',
           lastDurationMs: durationMs,
+          lastError: 'rate limited', // so a dead-letter caused by repeated 429s carries a meaningful reason
           rateLimitedUntil: until,
           nextSyncAt: until,
         });

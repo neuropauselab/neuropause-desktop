@@ -346,6 +346,10 @@ import type {
 } from '@neuropause/shared';
 
 import type {
+  ConnectorInspection,
+  ConnectorRuntimeView,
+  ConnectorControlAction,
+  ConnectorLifecycleEvent,
   SandboxDashboard,
   SandboxWorkspace,
   Scenario,
@@ -636,6 +640,16 @@ export const ipc = {
       >,
     onSyncState: (cb: (s: ConnectorSyncSnapshot[]) => void) =>
       subscribe(IpcChannel.ConnectorSyncState, (p) => cb(p as ConnectorSyncSnapshot[])),
+
+    /* ── P4.1 Connector Runtime v2 — runtime state, operator controls, live inspector, lifecycle stream ── */
+    runtime: (connectorId?: string) =>
+      invoke(IpcChannel.ConnectorRuntime, { connectorId }) as Promise<ConnectorRuntimeView[]>,
+    inspect: (connectorId: string) =>
+      invoke(IpcChannel.ConnectorInspect, { connectorId }) as Promise<ConnectorInspection>,
+    control: (connectorId: string, action: ConnectorControlAction, accountId?: string | null) =>
+      invoke(IpcChannel.ConnectorControl, { connectorId, accountId, action }) as Promise<ConnectorRuntimeView>,
+    onLifecycle: (cb: (e: ConnectorLifecycleEvent) => void) =>
+      subscribe(IpcChannel.ConnectorLifecycleBroadcast, (p) => cb(p as ConnectorLifecycleEvent)),
 
     /* ── P2.4 Microsoft 365 write actions (audited, confirmation-gated) + AI drafting ── */
     m365Actions: () => invoke(IpcChannel.M365ActionList) as Promise<ConnectorWriteActionInfo[]>,

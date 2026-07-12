@@ -23,8 +23,10 @@ import type {
   ConnectorManifest,
   ConnectorStats,
   ConnectorStatus,
+  IntegrationCredentialMeta,
   SyncState,
 } from '@neuropause/shared';
+import { credentialAuthState } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import { CONNECTOR_MANIFESTS, MANIFEST_BY_ID } from './manifests';
 import { isConfigured, resolveCredentials, setupHintFor } from './credentials';
@@ -36,6 +38,8 @@ import { shortId } from './pkce';
 
 const log = createLogger('connectors');
 const REFRESH_SKEW_MS = 60 * 1000;
+/** P4.1 — proactively refresh a token when it will expire within this window (well before the lazy path). */
+const PROACTIVE_SKEW_MS = 5 * 60 * 1000;
 const LOG_CAP = 500;
 
 const now = (): string => new Date().toISOString();
@@ -53,13 +57,24 @@ export type SyncRunner = (
 
 class ConnectorService extends EventEmitter {
   private syncRunner: SyncRunner | null = null;
+  private controlGate: ((connectorId: string, accountId: string) => boolean) | null = null;
 
   /** Wire in the data-sync runner (called once by the sync subsystem at init). */
   setSyncRunner(runner: SyncRunner): void {
     this.syncRunner = runner;
   }
 
+  /**
+   * Wire the Runtime Supervisor's suppression check (P4.1): a paused account, or an account whose
+   * connector is disabled, skips a manual sync. Injected at init to avoid a supervisor↔service cycle.
+   */
+  setControlGate(gate: (connectorId: string, accountId: string) => boolean): void {
+    this.controlGate = gate;
+  }
+
   private logs: ConnectorLogEntry[] = [];
+  /** P4.1 — per-account in-flight token refresh, so concurrent refreshers coalesce onto one call. */
+  private readonly refreshInFlight = new Map<string, Promise<string | null>>();
 
   /** Loads persisted accounts. Call once at startup. */
   async init(): Promise<void> {
@@ -197,36 +212,19 @@ class ConnectorService extends EventEmitter {
     return { ok: true, message: null };
   }
 
-  /** Force a token refresh for one account. */
+  /** Force a token refresh for one account (coalesced — see `refreshTokens`). */
   async refresh(connectorId: string, accountId: string): Promise<ConnectorActionResult> {
     const manifest = MANIFEST_BY_ID[connectorId];
     const account = connectorStore.get(connectorId, accountId);
     if (!manifest || !account) return { ok: false, message: 'No such account' };
-    const creds = resolveCredentials(manifest);
-    const tokens = await connectorVault.get(connectorId, accountId);
-    if (!creds || !tokens) return { ok: false, message: 'Connector is not configured' };
-    if (!tokens.refreshToken) {
-      await this.markReauth(connectorId, accountId, 'No refresh token; reconnect required');
-      return { ok: false, message: 'No refresh token; reconnect required' };
-    }
-    try {
-      const fresh = await oauthEngine.refresh(manifest, creds, tokens.refreshToken);
-      await this.vaultTokens(connectorId, accountId, fresh);
-      await connectorStore.patch(connectorId, accountId, {
-        status: 'connected',
-        error: null,
-        health: 'healthy',
-        accessTokenExpiresAt: isoFromMs(fresh.expiresAt),
-      });
+    const token = await this.refreshTokens(connectorId, accountId);
+    if (token) {
       this.fireStatus(connectorId, accountId, 'connected', 'healthy', null);
       this.log(connectorId, accountId, 'info', 'refresh', 'Access token refreshed.');
       return { ok: true, message: null };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Refresh failed';
-      await this.markReauth(connectorId, accountId, message);
-      this.log(connectorId, accountId, 'error', 'refresh', message);
-      return { ok: false, message };
     }
+    this.log(connectorId, accountId, 'error', 'refresh', 'Refresh failed; reconnect may be required.');
+    return { ok: false, message: 'Refresh failed; reconnect may be required' };
   }
 
   /**
@@ -243,6 +241,10 @@ class ConnectorService extends EventEmitter {
 
     let okCount = 0;
     for (const acc of targets) {
+      if (this.controlGate?.(connectorId, acc.id)) {
+        this.log(connectorId, acc.id, 'info', 'sync', 'Synchronization is paused for this account.');
+        continue;
+      }
       this.setSync(connectorId, acc.id, 'syncing');
       this.log(connectorId, acc.id, 'info', 'sync', 'Verifying connection…');
       const token = await this.getValidAccessToken(connectorId, acc.id);
@@ -284,11 +286,14 @@ class ConnectorService extends EventEmitter {
         ? connectorStore.byConnector(manifest.id).filter((a) => a.id === accountId)
         : connectorStore.byConnector(manifest.id);
       for (const account of accounts) {
-        const h = accountHealth(account);
-        if (h !== account.health) {
-          await connectorStore.patch(manifest.id, account.id, { health: h });
-          this.fire({ connectorId: manifest.id, accountId: account.id, type: 'health', status: null, health: h, syncState: null, message: null, at: now() });
-          this.log(manifest.id, account.id, h === 'down' ? 'warn' : 'info', 'health_check', `Health is now ${h}.`);
+        // P4.1 — proactive credential rotation: refresh tokens nearing expiry before they lapse.
+        await this.maybeRotate(manifest.id, account);
+        const current = connectorStore.get(manifest.id, account.id) ?? account;
+        const h = accountHealth(current);
+        if (h !== current.health) {
+          await connectorStore.patch(manifest.id, current.id, { health: h });
+          this.fire({ connectorId: manifest.id, accountId: current.id, type: 'health', status: null, health: h, syncState: null, message: null, at: now() });
+          this.log(manifest.id, current.id, h === 'down' ? 'warn' : 'info', 'health_check', `Health is now ${h}.`);
         }
       }
     }
@@ -305,10 +310,29 @@ class ConnectorService extends EventEmitter {
     if (!tokens) return null;
     const fresh = !tokens.expiresAt || Date.now() < tokens.expiresAt - REFRESH_SKEW_MS;
     if (fresh) return tokens.accessToken;
+    return this.refreshTokens(connectorId, accountId);
+  }
 
+  /**
+   * P4.1 — force-refresh an account's tokens, COALESCING concurrent callers (getValidAccessToken, the
+   * proactive rotation pass, and the explicit refresh IPC) so a single-use refresh token is never sent to
+   * the provider twice at once — which, against providers that rotate refresh tokens on use, would
+   * spuriously invalidate a healthy account. Returns the new access token, or null (→ markReauth).
+   */
+  private refreshTokens(connectorId: string, accountId: string): Promise<string | null> {
+    const k = `${connectorId}::${accountId}`;
+    const inflight = this.refreshInFlight.get(k);
+    if (inflight) return inflight;
+    const p = this.doRefreshTokens(connectorId, accountId).finally(() => this.refreshInFlight.delete(k));
+    this.refreshInFlight.set(k, p);
+    return p;
+  }
+
+  private async doRefreshTokens(connectorId: string, accountId: string): Promise<string | null> {
     const manifest = MANIFEST_BY_ID[connectorId];
     const creds = manifest ? resolveCredentials(manifest) : null;
-    if (!manifest || !creds || !tokens.refreshToken) {
+    const tokens = await connectorVault.get(connectorId, accountId);
+    if (!manifest || !creds || !tokens || !tokens.refreshToken) {
       await this.markReauth(connectorId, accountId, 'Access token expired; reconnect required');
       return null;
     }
@@ -394,6 +418,33 @@ class ConnectorService extends EventEmitter {
   private async markReauth(connectorId: string, accountId: string, message: string): Promise<void> {
     await connectorStore.patch(connectorId, accountId, { status: 'reauth_required', error: message, health: 'down' });
     this.fireStatus(connectorId, accountId, 'reauth_required', 'down', message);
+  }
+
+  /**
+   * P4.1 — proactive credential rotation. Projects the account's credential metadata (never the secret)
+   * and, if the access token is within the proactive window (or already lapsed but refreshable), refreshes
+   * it via the existing `refresh()` — so tokens roll over before a sync would otherwise hit an expired one.
+   * A refresh failure routes through `markReauth`, exactly as the lazy path does. Reuses the credential
+   * lifecycle engine (`credentialAuthState`) and the existing OAuth refresh — no new token logic.
+   */
+  private async maybeRotate(connectorId: string, account: ConnectedAccount): Promise<void> {
+    if (account.status !== 'connected') return;
+    const meta: IntegrationCredentialMeta = {
+      kind: 'oauth_access',
+      connectorId,
+      accountId: account.id,
+      expiresAt: account.accessTokenExpiresAt ? Date.parse(account.accessTokenExpiresAt) : null,
+      issuedAt: null,
+      scopes: account.grantedScopes,
+      rotationIntervalMs: null,
+      lastRotatedAt: null,
+      fingerprint: null,
+    };
+    const state = credentialAuthState(meta, Date.now(), PROACTIVE_SKEW_MS);
+    if (state === 'expiring' || state === 'reauth_required') {
+      this.log(connectorId, account.id, 'info', 'refresh', 'Access token expiring soon — refreshing proactively.');
+      await this.refreshTokens(connectorId, account.id); // coalesced with any concurrent sync refresh
+    }
   }
 
   private setSync(connectorId: string, accountId: string, state: SyncState): void {

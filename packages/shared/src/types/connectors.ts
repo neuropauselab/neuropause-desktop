@@ -316,6 +316,10 @@ export interface ConnectorSyncSnapshot {
   writeRetryDepth?: number;
   lastWriteLatencyMs?: number | null;
   apiQuotaRemaining?: number | null;
+  /** P4.1 — true when the account's sync exhausted its retry budget and was dead-lettered (needs replay). */
+  deadLettered?: boolean;
+  /** P4.1 — the last error that caused the dead-letter, if any. */
+  deadLetterReason?: string | null;
   /**
    * Per-module breakdown, present once the account has synced under a stats-aware build.
    * Older persisted state has no module stats, so consumers must treat this as optional.

@@ -8,10 +8,14 @@
  */
 import type {
   ConnectorEvent,
+  EnterprisePermission,
   ConnectorScopedRequest as TConnectorScopedRequest,
   ConnectorIdRequest as TConnectorIdRequest,
   ConnectorAccountRequest as TConnectorAccountRequest,
   ConnectorLogsRequest as TConnectorLogsRequest,
+  ConnectorControlRequest as TConnectorControlRequest,
+  ConnectorRuntimeRequest as TConnectorRuntimeRequest,
+  ConnectorInspectRequest as TConnectorInspectRequest,
   M365ActionExecuteRequest as TM365ActionExecuteRequest,
   M365DraftRequest as TM365DraftRequest,
   PlatformEventInput,
@@ -23,6 +27,9 @@ import {
   ConnectorAccountRequest,
   ConnectorScopedRequest,
   ConnectorLogsRequest,
+  ConnectorControlRequest,
+  ConnectorRuntimeRequest,
+  ConnectorInspectRequest,
   M365ActionExecuteRequest,
   M365DraftRequest,
 } from '@neuropause/shared';
@@ -30,6 +37,9 @@ import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { connectorService } from './connectorService';
 import { connectorStore } from './connectorStore';
+import { connectorControlStore } from './connectorControlStore';
+import { ConnectorRuntimeSupervisor } from './connectorRuntimeSupervisor';
+import { isConfigured } from './credentials';
 import { MANIFEST_BY_ID } from './manifests';
 import { unifiedStore } from '../unified/storeInstance';
 import { createGitHubSyncRunner } from './adapters/github/githubSyncRunner';
@@ -51,6 +61,8 @@ export interface ConnectorSubsystemDeps {
 
 export interface ConnectorSubsystem {
   handlers: SecureHandlerDef[];
+  /** The P4.1 Runtime Supervisor — exposed so later increments can wire richer sync signals into it. */
+  supervisor: ConnectorRuntimeSupervisor;
   dispose: () => void;
 }
 
@@ -112,6 +124,27 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
     if (pe) deps.publish(pe);
   };
   connectorService.on('event', onEvent);
+
+  // P4.1 — the Runtime Supervisor: projects each account's runtime state off the SAME event stream,
+  // emits from→to lifecycle transitions, and owns operator controls (pause/resume/disable/enable).
+  // It observes ConnectorService; it does not replace it.
+  await connectorControlStore.load();
+  const supervisor = new ConnectorRuntimeSupervisor({
+    events: connectorService,
+    controls: connectorControlStore,
+    getAccount: (c, a) => connectorStore.get(c, a),
+    listAccounts: () => connectorStore.all(),
+    isConfigured: (id) => {
+      const m = MANIFEST_BY_ID[id];
+      return m ? isConfigured(m) : false;
+    },
+    getLogs: (id) => connectorService.logFeed(id),
+    broadcast: (evt) => deps.broadcast(IpcChannel.ConnectorLifecycleBroadcast, evt),
+  });
+  supervisor.prime();
+  // A paused account / disabled connector skips manual sync (scheduled-path enforcement lands with the
+  // orchestrator changes in Increment 3).
+  connectorService.setControlGate((c, a) => supervisor.isSyncSuppressed(c, a));
 
   // P2.4 — Microsoft 365 write executor: audited, confirmation-gated Graph writes on the same account/token.
   const m365 = createM365Executor({
@@ -190,6 +223,26 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
       schema: ConnectorLogsRequest,
       handler: (p) => connectorService.logFeed((p as TConnectorLogsRequest).connectorId),
     },
+    // P4.1 — runtime state read + operator controls (pause/resume/disable/enable).
+    {
+      channel: IpcChannel.ConnectorRuntime,
+      schema: ConnectorRuntimeRequest,
+      handler: (p) => supervisor.runtimeView((p as TConnectorRuntimeRequest).connectorId),
+    },
+    {
+      channel: IpcChannel.ConnectorControl,
+      schema: ConnectorControlRequest,
+      audit: true,
+      handler: (p) => {
+        const r = p as TConnectorControlRequest;
+        return supervisor.control(r.connectorId, r.accountId ?? null, r.action);
+      },
+    },
+    {
+      channel: IpcChannel.ConnectorInspect,
+      schema: ConnectorInspectRequest,
+      handler: (p) => supervisor.inspect((p as TConnectorInspectRequest).connectorId),
+    },
     // P2.4 — Microsoft 365 write actions (audited, confirmation-gated) + AI drafting.
     { channel: IpcChannel.M365ActionList, schema: EmptyRequest, handler: () => m365.list() },
     {
@@ -216,7 +269,38 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
   log.info('Connector subsystem initialized', { handlers: handlers.length });
 
   return {
-    handlers,
-    dispose: () => connectorService.off('event', onEvent),
+    handlers: gateConnectorHandlers(handlers),
+    supervisor,
+    dispose: () => {
+      supervisor.dispose();
+      connectorService.off('event', onEvent);
+    },
   };
+}
+
+/**
+ * P4.1 — connector RBAC. Reads require `connectors:read`; every mutation requires `connectors:manage`
+ * (fail-safe: an unclassified channel defaults to the stricter `manage`). Enforced by the secure bridge's
+ * injected authorizer — the seeded Owner holds both, and Viewer/Member get read, Manager+ get manage.
+ * Mirrors the enterprise `withEnterpriseAuthz` pattern; no bridge changes.
+ */
+const CONNECTOR_READ_CHANNELS = new Set<string>([
+  IpcChannel.ConnectorsList,
+  IpcChannel.ConnectorGet,
+  IpcChannel.ConnectorStats,
+  IpcChannel.ConnectorLogs,
+  IpcChannel.ConnectorRuntime,
+  IpcChannel.ConnectorInspect,
+  IpcChannel.M365ActionList,
+  IpcChannel.M365Draft,
+  // NOTE: ConnectorHealthCheck is intentionally NOT a read — it performs proactive token rotation
+  // (maybeRotate → refresh), a manage-level side effect, so it falls through to connectors:manage.
+]);
+
+function gateConnectorHandlers(defs: SecureHandlerDef[]): SecureHandlerDef[] {
+  return defs.map((d) => ({
+    ...d,
+    requireAuth: true,
+    permission: (CONNECTOR_READ_CHANNELS.has(d.channel) ? 'connectors:read' : 'connectors:manage') as EnterprisePermission,
+  }));
 }

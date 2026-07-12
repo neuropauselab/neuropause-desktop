@@ -77,6 +77,7 @@ const READ_ONLY: EnterprisePermission[] = [
   'maintenance:read',
   'dashboard:read',
   'sandbox:read',
+  'connectors:read',
 ];
 
 const MEMBER: EnterprisePermission[] = [...READ_ONLY, 'workforce:operate'];
@@ -94,6 +95,7 @@ const MANAGER: EnterprisePermission[] = [
   'manufacturing:manage',
   'maintenance:manage',
   'sandbox:manage',
+  'connectors:manage',
 ];
 
 const ADMIN: EnterprisePermission[] = [

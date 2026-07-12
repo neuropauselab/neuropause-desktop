@@ -404,6 +404,26 @@ export const M365DraftRequest = z.object({
 export type M365ActionExecuteRequest = z.infer<typeof M365ActionExecuteRequest>;
 export type M365DraftRequest = z.infer<typeof M365DraftRequest>;
 
+/** P4.1 — an operator control command over a connector (or one of its accounts). */
+export const ConnectorControlRequest = z.object({
+  connectorId: ConnectorIdSchema,
+  accountId: AccountIdSchema.nullable().optional(),
+  action: z.enum(['pause', 'resume', 'disable', 'enable']),
+});
+export type ConnectorControlRequest = z.infer<typeof ConnectorControlRequest>;
+
+/** P4.1 — read runtime state (+ control flags) for all connectors, or one. */
+export const ConnectorRuntimeRequest = z.object({
+  connectorId: ConnectorIdSchema.optional(),
+});
+export type ConnectorRuntimeRequest = z.infer<typeof ConnectorRuntimeRequest>;
+
+/** P4.1 — deep-inspect one connector (Live Connector Inspector). */
+export const ConnectorInspectRequest = z.object({
+  connectorId: ConnectorIdSchema,
+});
+export type ConnectorInspectRequest = z.infer<typeof ConnectorInspectRequest>;
+
 /* ─────────────────────── Unified Knowledge Layer (UDM) contracts ─────────── */
 
 const UnifiedEntityKindSchema = z.enum([

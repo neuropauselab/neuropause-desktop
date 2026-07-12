@@ -5,6 +5,7 @@ import { Icon } from '@renderer/components/ui/Icon';
 import { Button } from '@renderer/components/ui/Button';
 import { StatusBadge, IconAction } from '@renderer/operations/primitives';
 import { EntraConnectorPanel } from './EntraConnectorPanel';
+import { LiveConnectorInspector } from './LiveConnectorInspector';
 import { DOT_BG, TEXT_TONE, type OpsTone } from '@renderer/operations/lib';
 import {
   AUTH_LABEL,
@@ -226,6 +227,9 @@ export function ConnectorDetail({
             </div>
           )}
         </section>
+
+        {/* P4.1 — Live Connector Inspector: runtime state, per-account health, operator controls, lifecycle. */}
+        {dto.accounts.length > 0 && <LiveConnectorInspector connectorId={dto.id} />}
 
         {/* Capabilities */}
         <section className="mb-6">

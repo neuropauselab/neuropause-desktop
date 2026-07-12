@@ -172,6 +172,13 @@ export const IpcChannel = {
   ConnectorLogs: 'connectors:logs',
   ConnectorSyncState: 'connectors:sync-state',
   ConnectorEventBroadcast: 'connectors:event',
+  // P4.1 Connector Runtime v2 — operator controls (command), runtime-state read, and the
+  // lifecycle (from→to transition) broadcast the Runtime Supervisor emits.
+  ConnectorControl: 'connectors:control',
+  ConnectorRuntime: 'connectors:runtime',
+  ConnectorLifecycleBroadcast: 'connectors:lifecycle',
+  /** P4.1 — the Live Connector Inspector read (runtime + per-account snapshot/health + logs + lifecycle). */
+  ConnectorInspect: 'connectors:inspect',
   // P2.4 — Microsoft 365 write actions (audited, confirmation-gated) + AI drafting.
   M365ActionList: 'connectors:m365.actions',
   M365ActionExecute: 'connectors:m365.execute',
@@ -720,6 +727,9 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.ConnectorHealthCheck,
   IpcChannel.ConnectorLogs,
   IpcChannel.ConnectorSyncState,
+  IpcChannel.ConnectorControl,
+  IpcChannel.ConnectorRuntime,
+  IpcChannel.ConnectorInspect,
   IpcChannel.M365ActionList,
   IpcChannel.M365ActionExecute,
   IpcChannel.M365Draft,
@@ -1076,6 +1086,7 @@ export const RUNTIME_BROADCAST_CHANNELS: readonly IpcChannelName[] = [
   // dashboard + Entra panel subscribe to it, so it must be on the subscribe allowlist too (it is also an
   // invokable request channel for the initial pull).
   IpcChannel.ConnectorSyncState,
+  IpcChannel.ConnectorLifecycleBroadcast,
   IpcChannel.UnifiedEventBroadcast,
   IpcChannel.GraphEventBroadcast,
   IpcChannel.MemoryEventBroadcast,

@@ -105,6 +105,13 @@ function resetMs(headers: Record<string, string>): number {
 /** The body type `fetch` accepts here — derived from fetch's own typing to avoid the DOM `BodyInit` lib type. */
 type FetchBody = NonNullable<Parameters<typeof fetch>[1]>['body'];
 
+/**
+ * P4.1 — per-request timeout. Aborts a hung request so it fails fast as a NetworkError (→ offline/retry)
+ * and releases the orchestrator's per-account sync mutex, instead of stalling that account's syncs until
+ * the transport's own (~5 min) timeout.
+ */
+const REQUEST_TIMEOUT_MS = 60_000;
+
 export class HttpClient {
   constructor(
     private readonly key: string,
@@ -152,7 +159,7 @@ export class HttpClient {
     };
     let res: Awaited<ReturnType<typeof fetch>>;
     try {
-      res = await fetch(withQuery(url, opts?.query), { method, headers, body: bytes as unknown as FetchBody });
+      res = await fetch(withQuery(url, opts?.query), { method, headers, body: bytes as unknown as FetchBody, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
     } catch (err) {
       throw new NetworkError(err instanceof Error ? err.message : 'fetch failed');
     }
@@ -177,7 +184,7 @@ export class HttpClient {
     };
     let res: Awaited<ReturnType<typeof fetch>>;
     try {
-      res = await fetch(withQuery(url, opts?.query), { method: 'GET', headers });
+      res = await fetch(withQuery(url, opts?.query), { method: 'GET', headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
     } catch (err) {
       throw new NetworkError(err instanceof Error ? err.message : 'fetch failed');
     }
@@ -209,6 +216,7 @@ export class HttpClient {
         method,
         headers,
         body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
     } catch (err) {
       throw new NetworkError(err instanceof Error ? err.message : 'fetch failed');

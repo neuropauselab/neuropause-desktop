@@ -23,6 +23,13 @@ export interface ResourceCursor {
   reason?: string | null;
 }
 
+/** P4.1 — a dead-lettered sync (retry budget exhausted); persisted so it survives a restart. */
+export interface DeadLetterInfo {
+  at: string;
+  attempts: number;
+  error: string | null;
+}
+
 export interface AccountSyncState {
   connectorId: string;
   accountId: string;
@@ -43,6 +50,8 @@ export interface AccountSyncState {
   writeRetryDepth?: number;
   lastWriteLatencyMs?: number | null;
   apiQuotaRemaining?: number | null;
+  /** P4.1 — set when a sync exhausts its retry budget; cleared on the next successful sync. */
+  deadLetter?: DeadLetterInfo | null;
   resources: Record<string, ResourceCursor>;
 }
 
@@ -108,6 +117,8 @@ export function stateToSnapshot(s: AccountSyncState, queueSize: number): Connect
     writeRetryDepth: s.writeRetryDepth ?? 0,
     lastWriteLatencyMs: s.lastWriteLatencyMs ?? null,
     apiQuotaRemaining: s.apiQuotaRemaining ?? null,
+    deadLettered: !!s.deadLetter,
+    deadLetterReason: s.deadLetter?.error ?? null,
     modules: stateToModules(s),
   };
 }
@@ -208,6 +219,48 @@ export class SyncStateStore extends EventEmitter {
     this.states.set(k, state);
     await this.persist();
     this.emit('changed', { connectorId, accountId });
+  }
+
+  /** P4.1 — dead-letter an account's sync (retry budget exhausted). Durable + idempotent. */
+  async recordDeadLetter(connectorId: string, accountId: string, info: DeadLetterInfo): Promise<void> {
+    const k = key(connectorId, accountId);
+    const state = this.states.get(k) ?? defaultState(connectorId, accountId);
+    if (state.deadLetter) return; // already dead-lettered — no duplicate write/broadcast
+    state.deadLetter = info;
+    this.states.set(k, state);
+    await this.persist();
+    this.emit('changed', { connectorId, accountId });
+  }
+
+  /** P4.1 — clear a dead-letter (on a successful replay/sync). */
+  async clearDeadLetter(connectorId: string, accountId: string): Promise<void> {
+    const state = this.states.get(key(connectorId, accountId));
+    if (!state || !state.deadLetter) return;
+    state.deadLetter = null;
+    await this.persist();
+    this.emit('changed', { connectorId, accountId });
+  }
+
+  /** P4.1 — every account currently dead-lettered (for the DLQ view + reconciler). */
+  deadLettered(): AccountSyncState[] {
+    return [...this.states.values()].filter((s) => Boolean(s.deadLetter));
+  }
+
+  /**
+   * P4.1 — crash reconciler. An account persisted as `status:'syncing'` was interrupted by a crash
+   * (a clean run always leaves a terminal status), so reset it to `idle`; the scheduler re-picks it
+   * when due. Cursors and dead-letters are durable and left untouched. Returns how many were reset.
+   */
+  async reconcile(): Promise<{ reset: number }> {
+    let reset = 0;
+    for (const s of this.states.values()) {
+      if (s.status === 'syncing') {
+        s.status = 'idle';
+        reset += 1;
+      }
+    }
+    if (reset > 0) await this.persist();
+    return { reset };
   }
 
   /** All known account states (optionally filtered to one connector). */

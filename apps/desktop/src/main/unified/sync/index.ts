@@ -8,7 +8,7 @@
  * reads. In Part A the registry is empty, so this boots as `adapters: 0` and
  * every sync is verify-only until Part B registers the four adapters.
  */
-import type { ConnectorSyncStateRequest as TConnectorSyncStateRequest, PlatformEventInput } from '@neuropause/shared';
+import type { ConnectorSyncSnapshot, ConnectorSyncStateRequest as TConnectorSyncStateRequest, PlatformEventInput } from '@neuropause/shared';
 import { IpcChannel, ConnectorSyncStateRequest } from '@neuropause/shared';
 import { createLogger } from '../../logger';
 import type { SecureHandlerDef } from '../../ipc/secureBridge';
@@ -29,10 +29,18 @@ const log = createLogger('sync');
 export interface SyncSubsystemDeps {
   publish: (event: PlatformEventInput) => void;
   broadcast: (channel: string, payload: unknown) => void;
+  /** P4.1 — whether an account's sync is suppressed (paused / disabled). From the Runtime Supervisor. */
+  isSuppressed?: (connectorId: string, accountId: string) => boolean;
 }
 
 export interface SyncSubsystem {
   handlers: SecureHandlerDef[];
+  /** P4.1 — live sync snapshots (all connected accounts, or one connector) for the diagnostics probe. */
+  snapshots: (connectorId?: string) => ConnectorSyncSnapshot[];
+  /** P4.1 — a live sync snapshot for one account (the Runtime Supervisor's richer signal source). */
+  snapshotFor: (connectorId: string, accountId: string) => ConnectorSyncSnapshot;
+  /** P4.1 — subscribe to per-account snapshot changes; returns an unsubscribe handle. */
+  onSnapshotChange: (cb: (connectorId: string, accountId: string) => void) => () => void;
   dispose: () => void;
 }
 
@@ -48,6 +56,9 @@ function connectedAccounts(connectorId?: string): Array<{ connectorId: string; a
 
 export async function initSync(deps: SyncSubsystemDeps): Promise<SyncSubsystem> {
   await syncStateStore.load();
+  // P4.1 crash reconciler: reset any account left mid-sync by a crash before the scheduler starts.
+  const reconciled = await syncStateStore.reconcile();
+  if (reconciled.reset > 0) log.info('Reconciled interrupted syncs on startup', reconciled);
   registerBuiltinAdapters();
 
   const orchestrator = new SyncOrchestrator({
@@ -61,6 +72,7 @@ export async function initSync(deps: SyncSubsystemDeps): Promise<SyncSubsystem> 
     listConnectedAccounts: () => connectedAccounts(),
     publish: deps.publish,
     rate: new RateLimiter(200),
+    isSuppressed: deps.isSuppressed,
   });
 
   // Manual sync (the Connectors UI button / IPC) now runs adapters.
@@ -82,14 +94,28 @@ export async function initSync(deps: SyncSubsystemDeps): Promise<SyncSubsystem> 
     {
       channel: IpcChannel.ConnectorSyncState,
       schema: ConnectorSyncStateRequest,
+      requireAuth: true,
+      permission: 'connectors:read', // P4.1 RBAC
       handler: (p) => snapshots((p as TConnectorSyncStateRequest).connectorId),
     },
   ];
+
+  const snapshotFor = (c: string, a: string): ConnectorSyncSnapshot =>
+    stateToSnapshot(syncStateStore.get(c, a), orchestrator.retrySize(c, a));
+
+  const onSnapshotChange = (cb: (connectorId: string, accountId: string) => void): (() => void) => {
+    const listener = (p: { connectorId: string; accountId: string }): void => cb(p.connectorId, p.accountId);
+    syncStateStore.on('changed', listener);
+    return () => syncStateStore.off('changed', listener);
+  };
 
   log.info('Sync engine initialized', { adapters: adapterConnectorIds().length });
 
   return {
     handlers,
+    snapshots,
+    snapshotFor,
+    onSnapshotChange,
     dispose: () => {
       scheduler.stop();
       orchestrator.stop();

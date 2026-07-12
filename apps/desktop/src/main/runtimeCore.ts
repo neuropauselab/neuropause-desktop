@@ -163,6 +163,7 @@ import { initOnboarding } from './onboarding';
 import { initFeedback } from './feedback';
 import { initPilot } from './pilot';
 import { aiMemoryProbe, knowledgeGraphProbe, ollamaProbe } from './platform/aiHealthProbes';
+import { connectorHealthProbe } from './connectors/connectorDiagnostics';
 import { memoryStore } from './memory/memoryInstance';
 import { graphStore } from './graph/graphInstance';
 import { runMrp, computeCapacitySchedule, isTerminalExecutionStatus } from '@neuropause/shared';
@@ -184,7 +185,16 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // Unified knowledge layer (UDM): canonical store + query engine + local search.
   const unified = await initUnified({ broadcast: deps.broadcast });
   // Sync engine: adapters → UDM, incremental + scheduled, wired to the event bus.
-  const sync = await initSync({ publish: platform.api.publish, broadcast: deps.broadcast });
+  // P4.1 — the sync engine honours the Runtime Supervisor's suppression (scheduled-path pause/disable).
+  const sync = await initSync({
+    publish: platform.api.publish,
+    broadcast: deps.broadcast,
+    isSuppressed: (c, a) => connectors.supervisor.isSyncSuppressed(c, a),
+  });
+  // P4.1 — feed the Supervisor the richer sync signals (rate-limit / offline / retry depth) so the runtime
+  // state machine surfaces those sub-states, and re-project an account whenever its snapshot changes.
+  connectors.supervisor.setSnapshotSource(sync.snapshotFor);
+  sync.onSnapshotChange((c, a) => connectors.supervisor.notifySignalChange(c, a));
   // Enterprise Knowledge Graph: projects the UDM into a typed graph with
   // relationship history; the foundation the Phase 5 intelligence layer reads.
   const graph = await initGraph({
@@ -1181,6 +1191,15 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     // Mirrors OllamaModelClient's URL resolution (env override, then local default).
     ollamaProbe({ baseUrl: process.env.NEUROPAUSE_OLLAMA_URL ?? 'http://localhost:11434' }),
     aiMemoryProbe(() => memoryStore.counts().total),
+    // P4.1 — connector runtime health rolls into the existing diagnostics report; reauth/error accounts
+    // (excluded from the connected-only snapshots) surface via the attention count.
+    connectorHealthProbe(() => sync.snapshots(), {
+      attention: () =>
+        connectors.supervisor
+          .runtimeView()
+          .flatMap((v) => v.accounts)
+          .filter((a) => a.state === 'reauth_required' || a.state === 'error').length,
+    }),
     knowledgeGraphProbe(() => {
       const c = graphStore.counts();
       return { nodes: c.nodes, edges: c.edges };
