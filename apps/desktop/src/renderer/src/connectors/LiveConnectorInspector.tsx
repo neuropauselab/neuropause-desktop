@@ -20,6 +20,7 @@ import { Button } from '@renderer/components/ui/Button';
 import { StatusBadge, IconAction } from '@renderer/operations/primitives';
 import { DOT_BG, TEXT_TONE, type OpsTone } from '@renderer/operations/lib';
 import { relativeTime } from './connectorLib';
+import { serviceStatusMeta, summarizeServices } from './connectorCenterModel';
 
 const RUNTIME_TONE: Record<ReturnType<typeof runtimeStateSeverity>, OpsTone> = {
   off: 'gray',
@@ -158,6 +159,42 @@ export function LiveConnectorInspector({ connectorId }: { connectorId: string })
           );
         })}
       </div>
+
+      {/* Services — the runtime-declared per-service capabilities (never hardcoded): the sync layer
+          declares them (Google's scope catalog / an adapter's resources) and the Supervisor overlays
+          the live per-module status. */}
+      {data.services.length > 0 && (
+        <div className="mt-4">
+          <div className="mb-2 flex items-center justify-between">
+            <SectionTitle>Services</SectionTitle>
+            <span className="text-2xs text-faint">
+              {summarizeServices(data.services).available}/{data.services.length} available
+            </span>
+          </div>
+          <div className="divide-y divide-[var(--hairline)] overflow-hidden rounded-xl border border-[var(--hairline)]">
+            {data.services.map((s) => {
+              const meta = serviceStatusMeta(s.status);
+              return (
+                <div key={s.id} className="flex items-center gap-3 px-3.5 py-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-sm font-medium text-ink">{s.label}</span>
+                      {s.kind && <span className="shrink-0 text-2xs text-faint">{s.kind}</span>}
+                    </div>
+                    {s.reason && s.status !== 'available' && (
+                      <div className="mt-0.5 truncate text-2xs text-faint">{s.reason}</div>
+                    )}
+                  </div>
+                  {typeof s.objectCount === 'number' && s.objectCount > 0 && (
+                    <span className="shrink-0 text-2xs tabular-nums text-faint">{s.objectCount.toLocaleString()}</span>
+                  )}
+                  <StatusBadge tone={meta.tone} label={meta.label} />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Lifecycle trace */}
       {data.lifecycle.length > 0 && (

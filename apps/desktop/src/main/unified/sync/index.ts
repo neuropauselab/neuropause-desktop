@@ -8,7 +8,7 @@
  * reads. In Part A the registry is empty, so this boots as `adapters: 0` and
  * every sync is verify-only until Part B registers the four adapters.
  */
-import type { ConnectorSyncSnapshot, ConnectorSyncStateRequest as TConnectorSyncStateRequest, PlatformEventInput } from '@neuropause/shared';
+import type { ConnectorServiceDescriptor, ConnectorSyncSnapshot, ConnectorSyncStateRequest as TConnectorSyncStateRequest, PlatformEventInput } from '@neuropause/shared';
 import { IpcChannel, ConnectorSyncStateRequest } from '@neuropause/shared';
 import { createLogger } from '../../logger';
 import type { SecureHandlerDef } from '../../ipc/secureBridge';
@@ -23,7 +23,8 @@ import { RateLimiter } from './rateLimiter';
 import { SyncScheduler, SCHEDULER_INTERVAL_MS } from './scheduler';
 import { adapterConnectorIds, describeAdapters, getAdapter } from './registry';
 import { registerBuiltinAdapters } from './adapters';
-import type { AdapterCapability } from './adapterSdk';
+import { describeAdapter, type AdapterCapability } from './adapterSdk';
+import { googleServiceAvailability } from './adapters/googleWorkspace';
 
 const log = createLogger('sync');
 
@@ -44,6 +45,13 @@ export interface SyncSubsystem {
   onSnapshotChange: (cb: (connectorId: string, accountId: string) => void) => () => void;
   /** P5 — capability/schema report for each registered adapter (what every connector syncs). */
   capabilities: () => AdapterCapability[];
+  /**
+   * P5 — Increment 4: the runtime-declared per-service capability list for one connector, projected
+   * against an account's granted scopes. Google Workspace maps its scope catalog (per-service ✓/✗);
+   * every other adapter reports its declared resources (no per-service scope gating). The Supervisor
+   * overlays the live per-module runtime status onto this — so the Connector Center never hardcodes.
+   */
+  serviceCapabilities: (connectorId: string, grantedScopes: readonly string[]) => ConnectorServiceDescriptor[];
   dispose: () => void;
 }
 
@@ -123,6 +131,30 @@ export async function initSync(deps: SyncSubsystemDeps): Promise<SyncSubsystem> 
     snapshotFor,
     onSnapshotChange,
     capabilities: () => describeAdapters(),
+    serviceCapabilities: (connectorId, grantedScopes) => {
+      // Google Workspace is a scope-gated family: the runtime source of truth is its service catalog
+      // projected against the scopes Google actually granted (docs/sheets/slides ride the Drive scope).
+      if (connectorId === 'google-workspace') {
+        return googleServiceAvailability(grantedScopes).map((s) => ({
+          id: s.id,
+          label: s.label,
+          kind: null,
+          scope: s.scope,
+          scopeGranted: s.available,
+        }));
+      }
+      // Every other adapter: its declared resources are its services. No per-service scope gating — a
+      // module's real availability surfaces at runtime through the per-module stats the Supervisor overlays.
+      const adapter = getAdapter(connectorId);
+      if (!adapter) return [];
+      return describeAdapter(adapter).resources.map((r) => ({
+        id: r.id,
+        label: r.label,
+        kind: r.kind,
+        scope: null,
+        scopeGranted: true,
+      }));
+    },
     dispose: () => {
       scheduler.stop();
       orchestrator.stop();

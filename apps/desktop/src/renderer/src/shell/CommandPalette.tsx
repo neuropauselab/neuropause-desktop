@@ -61,7 +61,7 @@ const ENTERPRISE_TABS: { id: string; title: string; icon: IconName; kw: string }
 const initial2 = (s: string): string => s.replace(/[^a-z0-9]/gi, '').slice(0, 2).toUpperCase() || '??';
 
 export function CommandPalette(): JSX.Element {
-  const { commandOpen, setCommandOpen, setSection, openApp, openOperations, openEnterprise, toggleSidebar } = useShell();
+  const { commandOpen, setCommandOpen, setSection, openApp, openOperations, openEnterprise, openConnectors, toggleSidebar } = useShell();
   const { source, setSource } = useTheme();
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
@@ -206,6 +206,21 @@ export function CommandPalette(): JSX.Element {
       },
     ];
 
+    const connectorsTabs: { tab: string; title: string; icon: IconName; kw: string }[] = [
+      { tab: 'overview', title: 'Connector Center', icon: 'gauge', kw: 'connectors overview health integrations status' },
+      { tab: 'connections', title: 'Manage Connections', icon: 'connectors', kw: 'connectors connect accounts inspect services oauth' },
+      { tab: 'marketplace', title: 'Connector Marketplace', icon: 'store', kw: 'connectors marketplace install browse discover' },
+    ];
+    const conns: CommandItem[] = connectorsTabs.map((c) => ({
+      id: `conn:${c.tab}`,
+      group: 'Go to',
+      title: c.title,
+      subtitle: 'Connector Center',
+      icon: c.icon,
+      keywords: `connector center ${c.kw}`,
+      run: () => openConnectors(c.tab),
+    }));
+
     const entNav: CommandItem[] = ENTERPRISE_TABS.map((t) => ({
       id: `ent:${t.id}`,
       group: 'Go to',
@@ -226,8 +241,8 @@ export function CommandPalette(): JSX.Element {
       run: () => openEnterprise(f.tab),
     }));
 
-    return [...apps, ...plugins, ...sessions, ...downloads, ...sections, ...ops, ...entNav, ...entFavorites, ...commands];
-  }, [live, favorites, source, setSource, openApp, openOperations, openEnterprise, setSection, toggleSidebar]);
+    return [...apps, ...plugins, ...sessions, ...downloads, ...sections, ...ops, ...conns, ...entNav, ...entFavorites, ...commands];
+  }, [live, favorites, source, setSource, openApp, openOperations, openEnterprise, openConnectors, setSection, toggleSidebar]);
 
   // Empty query → Recent + navigation. Typing → fuzzy search across every domain.
   const groups = useMemo(() => {

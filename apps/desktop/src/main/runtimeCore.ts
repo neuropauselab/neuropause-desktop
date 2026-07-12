@@ -195,6 +195,10 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // state machine surfaces those sub-states, and re-project an account whenever its snapshot changes.
   connectors.supervisor.setSnapshotSource(sync.snapshotFor);
   sync.onSnapshotChange((c, a) => connectors.supervisor.notifySignalChange(c, a));
+  // P5 — Increment 4: feed the Supervisor the sync layer's runtime-declared per-service capability
+  // source, so the Enterprise Connector Center's Services view is discovered from the runtime (Google's
+  // scope catalog / an adapter's declared resources) and never hardcoded. Mirrors the snapshot seam above.
+  connectors.supervisor.setServiceCapabilitySource(sync.serviceCapabilities);
   // Enterprise Knowledge Graph: projects the UDM into a typed graph with
   // relationship history; the foundation the Phase 5 intelligence layer reads.
   const graph = await initGraph({

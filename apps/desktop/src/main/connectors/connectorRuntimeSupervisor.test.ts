@@ -5,7 +5,15 @@
  */
 import { EventEmitter } from 'node:events';
 import { describe, expect, it } from 'vitest';
-import type { ConnectedAccount, ConnectorEvent, ConnectorLifecycleEvent, SyncState } from '@neuropause/shared';
+import type {
+  ConnectedAccount,
+  ConnectorEvent,
+  ConnectorLifecycleEvent,
+  ConnectorModuleStat,
+  ConnectorServiceDescriptor,
+  ConnectorSyncSnapshot,
+  SyncState,
+} from '@neuropause/shared';
 import { ConnectorRuntimeSupervisor, type RuntimeControlPort } from './connectorRuntimeSupervisor';
 
 function acct(over: Partial<ConnectedAccount> = {}): ConnectedAccount {
@@ -168,5 +176,107 @@ describe('ConnectorRuntimeSupervisor — reads', () => {
     expect(insp.accounts[0].health.score).toBeGreaterThan(0);
     expect(insp.logs).toHaveLength(1);
     expect(insp.logs[0].message).toBe('synced');
+  });
+});
+
+/**
+ * P5 — Increment 4: the runtime-driven per-service capability projection. The Supervisor overlays a
+ * connected account's live per-module sync stats + the operator control flag onto the sync-layer's
+ * runtime-declared service descriptors. These tests inject a fake descriptor source + snapshot source
+ * (mirroring the runtime-core wiring) and assert the overlay precedence, never hardcoding a service list.
+ */
+describe('ConnectorRuntimeSupervisor — service capabilities (P5 Inc 4)', () => {
+  const snap = (modules: ConnectorModuleStat[]): ConnectorSyncSnapshot => ({
+    connectorId: 'google-workspace', accountId: 'a1', status: 'success', lastSyncAt: 't1', lastDurationMs: 10,
+    nextSyncAt: null, entityCount: 12, lastError: null, consecutiveFailures: 0, rateLimitedUntil: null,
+    queueSize: 0, modules,
+  });
+
+  it('reports no services when no capability source is wired (older builds)', () => {
+    const h = harness();
+    h.set(acct({ lastSyncAt: 'x', lastSyncState: 'success' }));
+    h.sup.prime();
+    expect(h.sup.inspect('github').services).toEqual([]);
+  });
+
+  it('overlays declared services with live module status + scope gating', () => {
+    const h = harness();
+    h.set(acct({ connectorId: 'google-workspace', id: 'a1', grantedScopes: ['scope.gmail', 'scope.drive'], lastSyncAt: 'x', lastSyncState: 'success' }));
+    const declared: ConnectorServiceDescriptor[] = [
+      { id: 'gmail', label: 'Gmail', kind: 'message', scope: 'scope.gmail', scopeGranted: true },
+      { id: 'calendar', label: 'Calendar', kind: 'calendar_event', scope: 'scope.cal', scopeGranted: false },
+      { id: 'drive', label: 'Drive', kind: 'file', scope: 'scope.drive', scopeGranted: true },
+    ];
+    h.sup.setServiceCapabilitySource(() => declared);
+    h.sup.setSnapshotSource(() => snap([
+      { id: 'gmail', label: 'Gmail', kind: 'message', objectCount: 12, status: 'ok', reason: null, lastSyncAt: 't1' },
+      { id: 'drive', label: 'Drive', kind: 'file', objectCount: 0, status: 'unprovisioned', reason: 'no Drive', lastSyncAt: null },
+    ]));
+
+    const byId = Object.fromEntries(h.sup.inspect('google-workspace').services.map((s) => [s.id, s]));
+    // Live 'ok' module → available, with its object count + kind + lastSyncAt surfaced.
+    expect(byId.gmail).toMatchObject({ status: 'available', objectCount: 12, kind: 'message', lastSyncAt: 't1' });
+    // No module + scope known-and-ungranted → requires_scope (objectCount null; never synced).
+    expect(byId.calendar).toMatchObject({ status: 'requires_scope', objectCount: null });
+    // Live 'unprovisioned' module → unprovisioned, with the swallowed-404 reason.
+    expect(byId.drive).toMatchObject({ status: 'unprovisioned', reason: 'no Drive' });
+  });
+
+  it('a swallowed 403 (module unauthorized) reads as requires_scope even when the scope was granted', () => {
+    const h = harness();
+    h.set(acct({ connectorId: 'google-workspace', id: 'a1', grantedScopes: ['scope.gmail'], lastSyncAt: 'x', lastSyncState: 'success' }));
+    h.sup.setServiceCapabilitySource(() => [{ id: 'gmail', label: 'Gmail', kind: 'message', scope: 'scope.gmail', scopeGranted: true }]);
+    h.sup.setSnapshotSource(() => snap([
+      { id: 'gmail', label: 'Gmail', kind: 'message', objectCount: 0, status: 'unauthorized', reason: 'API disabled (403)', lastSyncAt: null },
+    ]));
+    const [svc] = h.sup.inspect('google-workspace').services;
+    expect(svc.status).toBe('requires_scope');
+    expect(svc.reason).toBe('API disabled (403)'); // the live runtime truth wins over the declared scope flag
+  });
+
+  it('does not falsely mark a scope-gated service as requires_scope when the granted set is unknown', () => {
+    const h = harness();
+    h.set(acct({ connectorId: 'google-workspace', id: 'a1', grantedScopes: [], lastSyncAt: 'x', lastSyncState: 'success' }));
+    h.sup.setServiceCapabilitySource(() => [{ id: 'gmail', label: 'Gmail', kind: null, scope: 'scope.gmail', scopeGranted: false }]);
+    const [svc] = h.sup.inspect('google-workspace').services;
+    expect(svc.status).toBe('available'); // unknown granted set → catalog default, not a misleading 'requires_scope'
+  });
+
+  it('a disabled connector reports every service as disabled', async () => {
+    const h = harness();
+    h.set(acct({ connectorId: 'google-workspace', id: 'a1', grantedScopes: ['scope.gmail'], lastSyncAt: 'x', lastSyncState: 'success' }));
+    h.sup.setServiceCapabilitySource(() => [
+      { id: 'gmail', label: 'Gmail', kind: 'message', scope: 'scope.gmail', scopeGranted: true },
+      { id: 'drive', label: 'Drive', kind: 'file', scope: 'scope.drive', scopeGranted: false },
+    ]);
+    await h.sup.control('google-workspace', null, 'disable');
+    const services = h.sup.inspect('google-workspace').services;
+    expect(services).toHaveLength(2);
+    expect(services.every((s) => s.status === 'disabled')).toBe(true);
+  });
+
+  it('unions granted scopes across connected accounts (a service granted by ANY account is available)', () => {
+    const h = harness();
+    h.set(acct({ connectorId: 'google-workspace', id: 'a1', grantedScopes: ['scope.gmail'], lastSyncAt: 'x', lastSyncState: 'success' }));
+    h.set(acct({ connectorId: 'google-workspace', id: 'a2', grantedScopes: ['scope.gmail', 'scope.drive'], lastSyncAt: 'x', lastSyncState: 'success' }));
+    // A scope-aware source (like the real Google one) so the union across accounts actually matters.
+    h.sup.setServiceCapabilitySource((_c, scopes) => [
+      { id: 'gmail', label: 'Gmail', kind: 'message', scope: 'scope.gmail', scopeGranted: scopes.includes('scope.gmail') },
+      { id: 'drive', label: 'Drive', kind: 'file', scope: 'scope.drive', scopeGranted: scopes.includes('scope.drive') },
+    ]);
+    const byId = Object.fromEntries(h.sup.inspect('google-workspace').services.map((s) => [s.id, s]));
+    // 'drive' is granted only by a2 — with a single-account view it would read 'requires_scope';
+    // the union correctly reports it available for the connector family.
+    expect(byId.drive.status).toBe('available');
+    expect(byId.gmail.status).toBe('available');
+  });
+
+  it('reports no services when no account is connected (reauth/disconnected must not read as available)', () => {
+    const h = harness();
+    h.set(acct({ connectorId: 'google-workspace', id: 'a1', status: 'reauth_required', grantedScopes: ['scope.gmail'], lastSyncAt: 'x', lastSyncState: 'success' }));
+    h.sup.setServiceCapabilitySource(() => [{ id: 'gmail', label: 'Gmail', kind: 'message', scope: 'scope.gmail', scopeGranted: true }]);
+    // The account can't sync until it re-authenticates — asserting the service is "available" would
+    // contradict the connector's own reauth_required state, so the Services view stays empty.
+    expect(h.sup.inspect('google-workspace').services).toEqual([]);
   });
 });

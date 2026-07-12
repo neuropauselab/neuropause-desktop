@@ -301,15 +301,67 @@ export interface ConnectorAccountInspection {
 }
 
 /**
+ * P5 — Increment 4: the RUNTIME-DECLARED shape of one connector service, as reported by the sync
+ * layer. This is the source of truth the Enterprise Connector Center renders — never a hardcoded
+ * per-connector list. For a scope-gated family (Google Workspace) it is the service catalog projected
+ * against the account's granted OAuth scopes; for every other adapter it is the adapter's declared
+ * resources. The Supervisor overlays the live per-module runtime status onto this to produce a
+ * `ConnectorServiceCapability`. Carries no token, credential, or secret — only declared metadata.
+ */
+export interface ConnectorServiceDescriptor {
+  /** Stable service id (a Google service id, or an adapter resource id). */
+  id: string;
+  label: string;
+  /** The unified entity kind this service produces, when it maps to a sync resource (else null). */
+  kind: string | null;
+  /** The OAuth scope that unlocks this service, when scope-gated (else null). */
+  scope: string | null;
+  /** Whether the account's granted scopes include this service's scope (scope-gated services only). */
+  scopeGranted: boolean;
+}
+
+/**
+ * P5 — Increment 4: a connector service (capability) with its live availability, for the Enterprise
+ * Connector Center's per-service view. Produced by overlaying the connector account's live per-module
+ * runtime stats + the operator control flag onto the runtime-declared `ConnectorServiceDescriptor`.
+ * RUNTIME-DRIVEN end to end — the declared list comes from the sync layer, the availability from the
+ * account's granted scopes, and the status from the live module stats. Status/metrics only; no tokens.
+ */
+export interface ConnectorServiceCapability {
+  id: string;
+  label: string;
+  /** The unified entity kind this service produces (from the descriptor or the live module stat). */
+  kind: string | null;
+  /** The OAuth scope that unlocks this service, when scope-gated (else null). */
+  scope: string | null;
+  /**
+   * available      — granted and syncing normally (or the declared catalog default when idle).
+   * requires_scope — the account did not grant this scope, or the API returned a swallowed 403.
+   * unprovisioned  — the service is not set up for this account (a swallowed 404).
+   * disabled       — the operator disabled the whole connector.
+   */
+  status: 'available' | 'requires_scope' | 'unprovisioned' | 'disabled';
+  /** Objects this service has synced (from the live module stat), or null when it has never synced. */
+  objectCount: number | null;
+  /** When this service last completed a pull (ISO), or null. */
+  lastSyncAt: string | null;
+  /** Human-readable explanation when the service is not `available`. */
+  reason: string | null;
+}
+
+/**
  * P4.1 — the Live Connector Inspector projection for one connector: its runtime view, per-account
  * inspection (state + snapshot + health), recent activity logs, and recent lifecycle transitions.
  * Composed from EXISTING sources (Supervisor + sync snapshots + the integration-health engine +
  * the connector log feed) — a read model, never a new store. Status/metrics only; no secrets.
+ * P5 — Increment 4 adds `services`: the runtime-declared per-service capability list (never hardcoded).
  */
 export interface ConnectorInspection {
   connectorId: ConnectorId;
   runtime: ConnectorRuntimeView;
   accounts: ConnectorAccountInspection[];
+  /** P5 — the connector's per-service capabilities (declared by the sync layer, status overlaid live). */
+  services: ConnectorServiceCapability[];
   logs: ConnectorLogEntry[];
   lifecycle: ConnectorLifecycleEvent[];
   generatedAt: string;

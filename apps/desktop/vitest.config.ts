@@ -7,9 +7,14 @@ export default defineConfig({
   test: {
     environment: 'node',
     // Platform-core (main) tests, plus the renderer's PURE view-model logic under
-    // `renderer/src/sandbox` (the Sandbox workspace's derivations — no DOM, no React), so
-    // the Validation Experience's presentation logic is verified by the same Node gate.
-    include: ['src/main/**/*.test.ts', 'src/renderer/src/sandbox/**/*.test.ts'],
+    // `renderer/src/sandbox` (the Sandbox workspace's derivations) and `renderer/src/connectors`
+    // (the Enterprise Connector Center's view-model — no DOM, no React), so those presentation
+    // derivations are verified by the same Node gate.
+    include: [
+      'src/main/**/*.test.ts',
+      'src/renderer/src/sandbox/**/*.test.ts',
+      'src/renderer/src/connectors/**/*.test.ts',
+    ],
   },
   resolve: {
     alias: {

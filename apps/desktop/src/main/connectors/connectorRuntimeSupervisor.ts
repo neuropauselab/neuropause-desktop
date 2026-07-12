@@ -19,8 +19,11 @@ import type {
   ConnectorLifecycleEvent,
   ConnectorLifecyclePhase,
   ConnectorLogEntry,
+  ConnectorModuleStat,
   ConnectorRuntimeState,
   ConnectorRuntimeView,
+  ConnectorServiceCapability,
+  ConnectorServiceDescriptor,
   ConnectorSyncSnapshot,
   SyncState,
 } from '@neuropause/shared';
@@ -106,12 +109,84 @@ function syncStateToStatus(state: SyncState): ConnectorSyncSnapshot['status'] {
   }
 }
 
+/**
+ * P5 — Increment 4: overlay one account's live per-module runtime status onto a runtime-declared
+ * service descriptor. Precedence: operator-disabled wins; then the live module stat (a swallowed 403 →
+ * requires_scope, 404 → unprovisioned, ok → available); then — only when the granted-scope set is
+ * actually known — an ungranted scope-gated service → requires_scope; otherwise the declared catalog
+ * default (available). Pure. The live module stat always wins over the declared scope flag, so a scope
+ * Google granted whose API is nonetheless disabled (a runtime 403) still reads as requires_scope.
+ */
+function toServiceCapability(
+  d: ConnectorServiceDescriptor,
+  stat: ConnectorModuleStat | null,
+  opts: { disabled: boolean; scopesKnown: boolean },
+): ConnectorServiceCapability {
+  let status: ConnectorServiceCapability['status'] = 'available';
+  let reason: string | null = null;
+  if (opts.disabled) {
+    status = 'disabled';
+    reason = 'Connector disabled by the operator';
+  } else if (stat && stat.status === 'unauthorized') {
+    status = 'requires_scope';
+    reason = stat.reason;
+  } else if (stat && stat.status === 'unprovisioned') {
+    status = 'unprovisioned';
+    reason = stat.reason;
+  } else if (!stat && d.scope && opts.scopesKnown && !d.scopeGranted) {
+    status = 'requires_scope';
+    reason = "This service's OAuth scope was not granted for the connected account";
+  }
+  return {
+    id: d.id,
+    label: d.label,
+    kind: d.kind ?? stat?.kind ?? null,
+    scope: d.scope,
+    status,
+    objectCount: stat?.objectCount ?? null,
+    lastSyncAt: stat?.lastSyncAt ?? null,
+    reason,
+  };
+}
+
+/** The later of two ISO timestamps (nulls lose). ISO-8601 UTC strings order lexicographically. */
+function laterIso(a: string | null, b: string | null): string | null {
+  if (!a) return b;
+  if (!b) return a;
+  return a >= b ? a : b;
+}
+
+/**
+ * P5 — Increment 4: merge one account's module stat into the per-service connector-level view
+ * (best-status union): any 'ok' account means the service works, object counts sum, the latest sync
+ * wins, and a degradation reason is kept only while no account is 'ok'. Pure. Lets a connector family
+ * with several accounts (granular per-account consent) report a service as available if ANY account
+ * provides it, rather than collapsing to one account's view.
+ */
+function mergeModuleStat(into: Map<string, ConnectorModuleStat>, m: ConnectorModuleStat): void {
+  const prev = into.get(m.id);
+  if (!prev) {
+    into.set(m.id, { ...m });
+    return;
+  }
+  const status = prev.status === 'ok' || m.status === 'ok' ? 'ok' : prev.status;
+  into.set(m.id, {
+    ...prev,
+    status,
+    objectCount: prev.objectCount + m.objectCount,
+    lastSyncAt: laterIso(prev.lastSyncAt, m.lastSyncAt),
+    reason: status === 'ok' ? null : (prev.reason ?? m.reason),
+    kind: prev.kind || m.kind,
+  });
+}
+
 export class ConnectorRuntimeSupervisor {
   private readonly deps: ConnectorRuntimeSupervisorDeps;
   private readonly now: () => number;
   private readonly last = new Map<string, ConnectorRuntimeState>();
   private readonly historyRing: ConnectorLifecycleEvent[] = [];
   private snapshotFor?: (connectorId: string, accountId: string) => ConnectorSyncSnapshot | null;
+  private serviceSource?: (connectorId: string, grantedScopes: readonly string[]) => ConnectorServiceDescriptor[];
   private readonly onEvent = (e: ConnectorEvent): void => this.handleEvent(e);
 
   constructor(deps: ConnectorRuntimeSupervisorDeps) {
@@ -133,6 +208,17 @@ export class ConnectorRuntimeSupervisor {
   /** Late-inject the richer sync-signal source (rate-limit / retry / offline). Idempotent. */
   setSnapshotSource(fn: (connectorId: string, accountId: string) => ConnectorSyncSnapshot | null): void {
     this.snapshotFor = fn;
+  }
+
+  /**
+   * P5 — Increment 4: late-inject the sync layer's runtime-declared service source (the Connector
+   * Center's per-service capability list is projected from this — never hardcoded). Idempotent.
+   * Mirrors `setSnapshotSource`; wired at the runtime-core composition seam once both subsystems exist.
+   */
+  setServiceCapabilitySource(
+    fn: (connectorId: string, grantedScopes: readonly string[]) => ConnectorServiceDescriptor[],
+  ): void {
+    this.serviceSource = fn;
   }
 
   private key(connectorId: string, accountId: string): string {
@@ -289,10 +375,48 @@ export class ConnectorRuntimeSupervisor {
       connectorId,
       runtime,
       accounts,
+      services: this.computeServices(connectorId, runtime),
       logs: this.deps.getLogs(connectorId).slice(0, 50),
       lifecycle: this.history({ connectorId, limit: 50 }),
       generatedAt: new Date(nowMs).toISOString(),
     };
+  }
+
+  /**
+   * P5 — Increment 4: the connector's per-service capabilities. Runtime-driven end to end: the DECLARED
+   * service list comes from the injected sync-layer source (never hardcoded), and each service's live
+   * status is overlaid from the primary account's per-module sync stats + the operator control flag.
+   * Returns `[]` when no source is wired (older builds) or the connector declares no services.
+   */
+  private computeServices(connectorId: string, runtime: ConnectorRuntimeView): ConnectorServiceCapability[] {
+    if (!this.serviceSource) return [];
+    const disabled = this.deps.controls.isDisabled(connectorId);
+    // Only CONNECTED accounts can vouch for a service's live availability — a reauth_required /
+    // disconnected / error account must never report its services as "available". Union across all
+    // connected accounts (Google supports granular per-account consent, so a service is available to
+    // the connector if ANY connected account granted + syncs it).
+    const connectedAccounts = runtime.accounts
+      .map((a) => this.deps.getAccount(connectorId, a.accountId))
+      .filter((a): a is ConnectedAccount => a?.status === 'connected');
+
+    // Nothing connected and not disabled → we cannot assert per-service availability, so surface no
+    // services (the accounts section already shows the connect/reauth state). Prevents a misleading
+    // all-green list for a connector whose only account needs reauth or is disconnected.
+    if (connectedAccounts.length === 0 && !disabled) return [];
+
+    const grantedScopes = [...new Set(connectedAccounts.flatMap((a) => a.grantedScopes))];
+    const declared = this.serviceSource(connectorId, grantedScopes);
+    if (declared.length === 0) return [];
+
+    // Merge each service's live module stat across the connected accounts, so the connector-level
+    // report reflects the whole family (best status wins, counts sum, latest sync kept).
+    const merged = new Map<string, ConnectorModuleStat>();
+    for (const a of connectedAccounts) {
+      const snapshot = this.snapshotFor?.(connectorId, a.id) ?? null;
+      for (const m of snapshot?.modules ?? []) mergeModuleStat(merged, m);
+    }
+    const scopesKnown = grantedScopes.length > 0;
+    return declared.map((d) => toServiceCapability(d, merged.get(d.id) ?? null, { disabled, scopesKnown }));
   }
 
   /** The lifecycle transition history (newest first), optionally filtered. */

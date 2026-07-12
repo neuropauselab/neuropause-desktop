@@ -1,13 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ConnectorCategory, ConnectorDto, ConnectorLogEntry, ConnectorStats } from '@neuropause/shared';
+import { cn } from '@renderer/lib/cn';
 import { ipc } from '@renderer/lib/ipc';
-import { Icon } from '@renderer/components/ui/Icon';
+import { useShell } from '@renderer/state/ShellProvider';
+import { Icon, type IconName } from '@renderer/components/ui/Icon';
 import { Chip } from '@renderer/components/ui/pillTabs';
-import { Stat } from '@renderer/operations/primitives';
+import { Stat, StatusBadge } from '@renderer/operations/primitives';
+import { EcosystemProvider } from '@renderer/ecosystem/EcosystemProvider';
+import { ConnectorMarketplacePanel } from '@renderer/ecosystem/ConnectorMarketplacePanel';
 import { CATEGORY_LABEL } from './connectorLib';
 import { ConnectorCard } from './ConnectorCard';
 import { ConnectorDetail, type ConnectorActions, type DetailNotice } from './ConnectorDetail';
 import { IntegrationHealthPanel } from './IntegrationHealthPanel';
+import {
+  connectorNeedsAttention,
+  connectorStatusMeta,
+  filterConnectors,
+  overviewMetrics,
+  presentCategories,
+} from './connectorCenterModel';
 
 /** A consistent display order for category pills. */
 const CATEGORY_ORDER: ConnectorCategory[] = [
@@ -22,7 +33,32 @@ const CATEGORY_ORDER: ConnectorCategory[] = [
   'automation',
 ];
 
-export function ConnectorsPage(): JSX.Element {
+/** The three top-level surfaces of the Enterprise Connector Center. */
+export type ConnectorCenterTab = 'overview' | 'connections' | 'marketplace';
+
+interface CenterTabDef {
+  id: ConnectorCenterTab;
+  label: string;
+  icon: IconName;
+}
+
+const CENTER_TABS: CenterTabDef[] = [
+  { id: 'overview', label: 'Overview', icon: 'gauge' },
+  { id: 'connections', label: 'Connections', icon: 'connectors' },
+  { id: 'marketplace', label: 'Marketplace', icon: 'store' },
+];
+
+/**
+ * The Enterprise Connector Center — the single management experience for every connector family.
+ * One hub with three surfaces: an Overview roll-up of health across all families, the Connections
+ * two-pane (browse / connect / manage / inspect, including the runtime-driven per-service view), and
+ * the Connector Marketplace. It composes the EXISTING connector primitives (cards, detail, inspector,
+ * health panel, marketplace) — no parallel UI, no new runtime. Future connector families appear here
+ * automatically because the list, health, and per-service capabilities are all read from the runtime.
+ */
+export function ConnectorCenterRoot(): JSX.Element {
+  const { connectorsTab, clearConnectorsTab } = useShell();
+
   const [connectors, setConnectors] = useState<ConnectorDto[]>([]);
   const [stats, setStats] = useState<ConnectorStats | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -33,8 +69,19 @@ export function ConnectorsPage(): JSX.Element {
   const [pending, setPending] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [notice, setNotice] = useState<DetailNotice | null>(null);
+  const [tab, setTab] = useState<ConnectorCenterTab>(() =>
+    CENTER_TABS.some((t) => t.id === connectorsTab) ? (connectorsTab as ConnectorCenterTab) : 'overview',
+  );
 
   const selectedIdRef = useRef<string | null>(null);
+
+  // Honor a one-shot deep-link target from the Command Palette, then clear it.
+  useEffect(() => {
+    if (connectorsTab && CENTER_TABS.some((t) => t.id === connectorsTab)) {
+      setTab(connectorsTab as ConnectorCenterTab);
+      clearConnectorsTab();
+    }
+  }, [connectorsTab, clearConnectorsTab]);
 
   const reload = useCallback(async (): Promise<void> => {
     const [list, st] = await Promise.all([ipc.connectors.list(), ipc.connectors.stats()]);
@@ -77,19 +124,15 @@ export function ConnectorsPage(): JSX.Element {
     [connectors, selectedId],
   );
 
-  const categoriesPresent = useMemo(() => {
-    const present = new Set(connectors.map((c) => c.category));
-    return CATEGORY_ORDER.filter((c) => present.has(c));
-  }, [connectors]);
+  const categoriesPresent = useMemo(
+    () => presentCategories(connectors, CATEGORY_ORDER),
+    [connectors],
+  );
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return connectors.filter((c) => {
-      if (category !== 'all' && c.category !== category) return false;
-      if (!q) return true;
-      return c.name.toLowerCase().includes(q) || c.provider.toLowerCase().includes(q);
-    });
-  }, [connectors, query, category]);
+  const filtered = useMemo(
+    () => filterConnectors(connectors, { query, category }),
+    [connectors, query, category],
+  );
 
   /** Wraps an action: toggles busy state, surfaces a notice, then refreshes. */
   const runAction = useCallback(
@@ -166,17 +209,21 @@ export function ConnectorsPage(): JSX.Element {
     };
   }, [selected, runAction]);
 
-  const issues = stats ? stats.degraded + stats.down : 0;
+  /** Open a specific connector in the Connections pane (used by the Overview grid). */
+  const openConnector = useCallback((id: string) => {
+    setSelectedId(id);
+    setTab('connections');
+  }, []);
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header + stats */}
-      <div className="px-8 pb-5 pt-7">
+      {/* Header + sub-navigation */}
+      <div className="px-8 pb-0 pt-7">
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Connectors</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Connector Center</h1>
             <p className="mt-1 text-md text-muted">
-              Securely link your AI and SaaS accounts so NeuroPause can build your timeline and memory.
+              The single control center for every integration — connect, manage, inspect, and discover connector families.
             </p>
           </div>
           <button
@@ -190,65 +237,159 @@ export function ConnectorsPage(): JSX.Element {
           </button>
         </div>
 
+        <nav className="flex gap-1 overflow-x-auto rounded-xl border border-[var(--hairline)] [background:var(--fill-1)] p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {CENTER_TABS.map((t) => {
+            const active = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTab(t.id)}
+                className={cn(
+                  'inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium outline-none transition focus-visible:shadow-focus',
+                  active ? 'surface-raised text-ink shadow-sm' : 'text-muted hover:text-ink',
+                )}
+              >
+                <Icon name={t.icon} size={15} />
+                {t.label}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+
+      {/* Active surface */}
+      <div className="min-h-0 flex-1">
+        {tab === 'overview' && (
+          <ConnectorOverview connectors={connectors} stats={stats} loading={loading} onOpen={openConnector} />
+        )}
+
+        {tab === 'connections' && (
+          <div className="flex h-full border-t border-[var(--hairline)]">
+            <aside className="flex w-72 shrink-0 flex-col border-r border-[var(--hairline)]">
+              <div className="border-b border-[var(--hairline)] p-3">
+                <div className="flex items-center gap-2 rounded-lg [background:var(--fill-1)] px-2.5 py-1.5">
+                  <Icon name="search" size={14} className="text-faint" />
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search connectors"
+                    className="w-full bg-transparent text-sm outline-none placeholder:text-faint"
+                  />
+                </div>
+                <div className="mt-2 flex gap-1 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  <CategoryPill active={category === 'all'} label="All" onClick={() => setCategory('all')} />
+                  {categoriesPresent.map((c) => (
+                    <CategoryPill key={c} active={category === c} label={CATEGORY_LABEL[c]} onClick={() => setCategory(c)} />
+                  ))}
+                </div>
+              </div>
+              <div className="flex-1 space-y-1 overflow-y-auto p-2">
+                {loading ? (
+                  <div className="px-3 py-6 text-center text-2xs text-faint">Loading connectors…</div>
+                ) : filtered.length === 0 ? (
+                  <div className="px-3 py-6 text-center text-2xs text-faint">No connectors match.</div>
+                ) : (
+                  filtered.map((c) => (
+                    <ConnectorCard key={c.id} dto={c} selected={c.id === selectedId} onSelect={() => setSelectedId(c.id)} />
+                  ))
+                )}
+              </div>
+            </aside>
+
+            <main className="min-w-0 flex-1">
+              {selected ? (
+                <ConnectorDetail
+                  dto={selected}
+                  logs={logs}
+                  actions={actions}
+                  pending={pending}
+                  connecting={connecting}
+                  notice={notice}
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center text-sm text-faint">
+                  {loading ? '' : 'Select a connector to view details.'}
+                </div>
+              )}
+            </main>
+          </div>
+        )}
+
+        {tab === 'marketplace' && (
+          <div className="h-full overflow-y-auto border-t border-[var(--hairline)]">
+            <div className="px-8 py-6">
+              <EcosystemProvider>
+                <ConnectorMarketplacePanel />
+              </EcosystemProvider>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** The Overview surface — headline metrics, the integration-health roll-up, and an all-families grid. */
+function ConnectorOverview({
+  connectors,
+  stats,
+  loading,
+  onOpen,
+}: {
+  connectors: ConnectorDto[];
+  stats: ConnectorStats | null;
+  loading: boolean;
+  onOpen: (id: string) => void;
+}): JSX.Element {
+  const m = overviewMetrics(stats);
+  return (
+    <div className="h-full overflow-y-auto border-t border-[var(--hairline)]">
+      <div className="px-8 py-6">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Stat icon="connectors" label="Connectors" value={stats?.total ?? '—'} tone="accent" />
-          <Stat icon="check" label="Connected" value={stats?.connected ?? '—'} tone="green" hint={`${stats?.configured ?? 0} configured`} />
-          <Stat icon="user" label="Accounts" value={stats?.accounts ?? '—'} tone="blue" />
-          <Stat icon="pulse" label="Need attention" value={issues} tone={issues > 0 ? 'orange' : 'gray'} />
+          <Stat icon="connectors" label="Connectors" value={stats ? m.total : '—'} tone="accent" />
+          <Stat icon="check" label="Connected" value={stats ? m.connected : '—'} tone="green" hint={`${m.configured} configured`} />
+          <Stat icon="user" label="Accounts" value={stats ? m.accounts : '—'} tone="blue" />
+          <Stat icon="pulse" label="Need attention" value={m.attention} tone={m.attention > 0 ? 'orange' : 'gray'} />
         </div>
 
         <IntegrationHealthPanel />
-      </div>
 
-      {/* Two-pane: list + detail */}
-      <div className="flex min-h-0 flex-1 border-t border-[var(--hairline)]">
-        <aside className="flex w-72 shrink-0 flex-col border-r border-[var(--hairline)]">
-          <div className="border-b border-[var(--hairline)] p-3">
-            <div className="flex items-center gap-2 rounded-lg [background:var(--fill-1)] px-2.5 py-1.5">
-              <Icon name="search" size={14} className="text-faint" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search connectors"
-                className="w-full bg-transparent text-sm outline-none placeholder:text-faint"
-              />
-            </div>
-            <div className="mt-2 flex gap-1 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              <CategoryPill active={category === 'all'} label="All" onClick={() => setCategory('all')} />
-              {categoriesPresent.map((c) => (
-                <CategoryPill key={c} active={category === c} label={CATEGORY_LABEL[c]} onClick={() => setCategory(c)} />
-              ))}
-            </div>
-          </div>
-          <div className="flex-1 space-y-1 overflow-y-auto p-2">
-            {loading ? (
-              <div className="px-3 py-6 text-center text-2xs text-faint">Loading connectors…</div>
-            ) : filtered.length === 0 ? (
-              <div className="px-3 py-6 text-center text-2xs text-faint">No connectors match.</div>
-            ) : (
-              filtered.map((c) => (
-                <ConnectorCard key={c.id} dto={c} selected={c.id === selectedId} onSelect={() => setSelectedId(c.id)} />
-              ))
-            )}
-          </div>
-        </aside>
-
-        <main className="min-w-0 flex-1">
-          {selected ? (
-            <ConnectorDetail
-              dto={selected}
-              logs={logs}
-              actions={actions}
-              pending={pending}
-              connecting={connecting}
-              notice={notice}
-            />
+        <div className="mt-6">
+          <h2 className="mb-3 text-sm font-semibold tracking-tight">All connector families</h2>
+          {loading ? (
+            <div className="py-8 text-center text-2xs text-faint">Loading connectors…</div>
+          ) : connectors.length === 0 ? (
+            <div className="py-8 text-center text-2xs text-faint">No connectors registered.</div>
           ) : (
-            <div className="flex h-full items-center justify-center text-sm text-faint">
-              {loading ? '' : 'Select a connector to view details.'}
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {connectors.map((c) => {
+                const meta = connectorStatusMeta(c.status, c.health);
+                const attention = connectorNeedsAttention(c);
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => onOpen(c.id)}
+                    className={cn(
+                      'surface-raised flex items-center gap-3 rounded-xl border p-3 text-left shadow-card transition hover:shadow-pop focus-visible:shadow-focus',
+                      attention ? 'border-sysorange/40' : 'border-[var(--hairline)]',
+                    )}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-ink">{c.name}</div>
+                      <div className="mt-0.5 truncate text-2xs text-faint">
+                        {c.accounts.length} {c.accounts.length === 1 ? 'account' : 'accounts'}
+                        {c.lastSyncAt ? ' · synced' : c.configured ? ' · idle' : ' · not configured'}
+                      </div>
+                    </div>
+                    <StatusBadge tone={meta.tone} label={meta.label} />
+                  </button>
+                );
+              })}
             </div>
           )}
-        </main>
+        </div>
       </div>
     </div>
   );
