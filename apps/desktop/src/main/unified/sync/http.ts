@@ -231,8 +231,14 @@ export class HttpClient {
 
   /** Translate an HTTP status into the typed error taxonomy (shared by the JSON + binary paths). */
   private throwForStatus(status: number, responseHeaders: Record<string, string>): void {
-    if (status === 403 && responseHeaders['x-ratelimit-remaining'] === '0') {
-      const ms = resetMs(responseHeaders);
+    // A 403 signals rate-limiting in two shapes that must BOTH back off rather than read as an auth
+    // failure: PRIMARY exhaustion (x-ratelimit-remaining: 0) and a SECONDARY/abuse limit (a Retry-After
+    // header, with remaining possibly > 0 — GitHub's pattern). Honor Retry-After, then x-ratelimit-reset.
+    if (
+      status === 403 &&
+      (responseHeaders['x-ratelimit-remaining'] === '0' || responseHeaders['retry-after'] !== undefined)
+    ) {
+      const ms = retryAfterMs(responseHeaders);
       this.gate.penalize(this.key, ms);
       throw new RateLimitError(ms);
     }

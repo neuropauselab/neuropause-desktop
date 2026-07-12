@@ -53,15 +53,21 @@ interface RawTokenResponse {
   team?: { id?: string; name?: string };
 }
 
-function parseScopes(scope: string | undefined, separator: string): string[] {
+function parseScopes(scope: string | undefined): string[] {
   if (!scope) return [];
+  // Split on commas OR whitespace. Providers are inconsistent about the delimiter in the token
+  // response — notably GitHub returns comma-separated scopes even when the authorize request used
+  // spaces — and no OAuth scope value contains an internal comma or space, so accepting both is
+  // strictly more robust and never mis-splits a scope. (The request-side join still uses the
+  // manifest's `scopeSeparator`.) Without this, a GitHub grant lands as one joined pseudo-scope and
+  // breaks scope-gated capability discovery.
   return scope
-    .split(separator.trim() === ',' ? ',' : /\s+/)
+    .split(/[,\s]+/)
     .map((s) => s.trim())
     .filter(Boolean);
 }
 
-function normalizeTokens(raw: RawTokenResponse, oauth: OAuthEndpointConfig): OAuthTokens {
+function normalizeTokens(raw: RawTokenResponse): OAuthTokens {
   if (!raw.access_token) {
     throw new Error(
       raw.error_description || raw.error || 'Token endpoint returned no access token',
@@ -78,7 +84,7 @@ function normalizeTokens(raw: RawTokenResponse, oauth: OAuthEndpointConfig): OAu
     accessToken: raw.access_token,
     refreshToken: raw.refresh_token ?? null,
     expiresAt: typeof raw.expires_in === 'number' ? Date.now() + raw.expires_in * 1000 : null,
-    scopes: parseScopes(raw.scope, oauth.scopeSeparator),
+    scopes: parseScopes(raw.scope),
     tokenType: raw.token_type ?? 'Bearer',
     identity: { externalId, label },
   };
@@ -172,7 +178,7 @@ export const oauthEngine = {
       if (pkce) params.code_verifier = pkce.verifier;
 
       const raw = await postToken(oauth.tokenUrl, tokenRequestInit(oauth, creds, params));
-      const tokens = normalizeTokens(raw, oauth);
+      const tokens = normalizeTokens(raw);
       log.info('Authorization succeeded', { connector: manifest.id });
       return tokens;
     } finally {
@@ -194,7 +200,7 @@ export const oauthEngine = {
     };
     if (oauth.scopes.length > 0) params.scope = oauth.scopes.join(oauth.scopeSeparator);
     const raw = await postToken(oauth.tokenUrl, tokenRequestInit(oauth, creds, params));
-    const tokens = normalizeTokens(raw, oauth);
+    const tokens = normalizeTokens(raw);
     // Refresh responses frequently omit a new refresh token; keep the old one.
     if (!tokens.refreshToken) tokens.refreshToken = refreshToken;
     return tokens;

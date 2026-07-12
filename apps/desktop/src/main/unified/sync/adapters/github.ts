@@ -1,27 +1,54 @@
 /**
- * GitHub adapter. Maps the REST API into the UDM:
- *   repos          → project    (full list; the store dedups)
- *   repo_data      → task + activity  (per ACTIVE repo: open issues, open PRs,
- *                                      recent releases — see Increment 2 below)
- *   notifications  → notification (incremental via ?since=)
+ * The GitHub connector FAMILY (P5 — Increment 5).
  *
- * The `repo_data` resource is the insight-focused deep sync: instead of every
- * repo, it walks only "active" repos (recent push/activity or open issues/PRs)
- * and emits exactly the entities that move the Executive Mission Brief — open
- * work (as tasks the brief already surfaces) and releases (as activity).
+ * ONE connector (`github`) — one OAuth, one refresh, one vault record, one card, one health engine,
+ * one inspector — with each GitHub service mounted as an `AdapterResource` on the SAME authenticated
+ * session. This mirrors, exactly, how `microsoft-entra` hosts `m365Resources` and `google-workspace`
+ * hosts its service resources. Every resource is wrapped in the shared `graceful()` guard, so a service
+ * the user didn't grant (missing scope → 403) or that isn't provisioned (404) degrades to a tagged empty
+ * page instead of failing the whole family.
  *
- * Cursor encoding (opaque to the engine): repos use a plain page number; the
- * notifications cursor carries query baseline + page + a high-water `updated_at`
- * so reruns only pull what changed; `repo_data` carries its own two-phase
+ * Service resources → UDM:
+ *   repos          → project                    (full list, ETag conditional; the store dedups)
+ *   repo_data      → task + activity            (per ACTIVE repo: open issues, open PRs, recent
+ *                                                releases, recent workflow runs — a two-phase engine)
+ *   organizations  → organization               (the viewer's orgs, ETag conditional)
+ *   teams          → organization (githubKind:team, linked to its org)
+ *   notifications  → notification               (incremental via ?since=)
+ *
+ * Cursor encoding is opaque to the engine: list resources use a page + ETag validator (see
+ * `pullEtagList`); notifications carry a high-water `updated_at`; `repo_data` carries its own two-phase
  * (list → deep) state machine (see RepoDataCursor / pullRepoData).
+ *
+ * Capability discovery is runtime-driven: `githubServiceAvailability(grantedScopes)` projects the
+ * `GITHUB_SERVICES` catalog against the scopes GitHub actually granted (✓/✗), consumed by the
+ * Enterprise Connector Center. Nothing is hardcoded in the UI.
  */
-import type { ConnectorAdapter, SyncContext, SyncPage } from '../adapterSdk';
+import type { UnifiedEntity } from '@neuropause/shared';
+import type { AdapterResource, ConnectorAdapter, SyncContext, SyncPage } from '../adapterSdk';
 import { makeEntity } from '../adapterSdk';
 import { hasNextLink, maxIso, parseJsonCursor, toJsonCursor, truncate } from './util';
-import { conditionalGet } from './delta';
+import { conditionalGet, graceful } from './delta';
 import { makeUnifiedId } from '../../ids';
 
-const GH = 'https://api.github.com';
+/**
+ * The GitHub REST API base. Defaults to github.com; overridable via `NEUROPAUSE_GITHUB_API_BASE`
+ * so the SAME adapter can point at a GitHub Enterprise Server instance (e.g.
+ * `https://ghe.example.com/api/v3`) — the data-plane half of Enterprise Server support (the auth-plane
+ * OAuth host is a manifest concern). Mirrors the env-driven `ENTRA_TENANT` authority precedent.
+ */
+const GH = (process.env.NEUROPAUSE_GITHUB_API_BASE ?? '').trim().replace(/\/+$/, '') || 'https://api.github.com';
+
+/**
+ * GitHub's org/team LIST endpoints carry no source timestamps. Using the run clock (`ctx.now`) for an
+ * org/team `updatedAt` would re-classify every unchanged row as "updated" on every poll whenever the
+ * list is re-walked (a 100+ item list stores no ETag validator) — churning update events, search
+ * re-indexing, and `since` time-window queries. A STABLE baseline instead lets the unified store treat
+ * re-syncs as no-ops via its equal-timestamp content-signature check, while a real rename / description
+ * change still propagates (the signature differs → the store updates and emits). Recency ordering is not
+ * meaningful for these stable container entities, so a fixed sentinel is the honest, churn-free choice.
+ */
+const GH_LIST_STABLE_TS = '1970-01-01T00:00:00.000Z';
 
 interface GhRepo {
   id: number;
@@ -70,6 +97,26 @@ interface GhNotification {
   unread: boolean;
   subject: { title: string; url: string | null; type: string } | null;
   repository: { full_name: string } | null;
+}
+
+interface GhOrg {
+  id: number;
+  login: string;
+  url: string;
+  html_url?: string | null;
+  description: string | null;
+  name?: string | null;
+}
+
+interface GhTeam {
+  id: number;
+  name: string;
+  slug: string;
+  privacy?: string | null;
+  permission?: string | null;
+  html_url?: string | null;
+  description?: string | null;
+  organization?: { id: number; login: string } | null;
 }
 
 interface ReposCursor {
@@ -181,6 +228,65 @@ export function mapNotification(ctx: SyncContext, n: GhNotification) {
   });
 }
 
+/** GitHub organization → organization entity. */
+export function mapOrg(ctx: SyncContext, o: GhOrg) {
+  return makeEntity({
+    connectorId: ctx.connectorId,
+    accountId: ctx.accountId,
+    kind: 'organization',
+    sourceId: String(o.id),
+    now: ctx.now,
+    title: o.name || o.login,
+    url: o.html_url ?? `https://github.com/${o.login}`,
+    // No source timestamp on /user/orgs → a stable baseline avoids re-sync churn (see GH_LIST_STABLE_TS).
+    createdAt: GH_LIST_STABLE_TS,
+    updatedAt: GH_LIST_STABLE_TS,
+    body: truncate(o.description, 300),
+    status: 'active',
+    author: o.login,
+    metadata: {
+      githubKind: 'organization',
+      login: o.login,
+      description: o.description ?? null,
+    },
+  });
+}
+
+/**
+ * GitHub team → organization entity (a sub-org), linked to its parent org via `containerId`. The
+ * source id is prefixed `team-` so a team id can never collide with an org id under the shared
+ * `organization` kind.
+ */
+export function mapTeam(ctx: SyncContext, t: GhTeam) {
+  const org = t.organization?.login ?? null;
+  const containerId = t.organization
+    ? makeUnifiedId(ctx.connectorId, ctx.accountId, 'organization', String(t.organization.id))
+    : null;
+  return makeEntity({
+    connectorId: ctx.connectorId,
+    accountId: ctx.accountId,
+    kind: 'organization',
+    sourceId: `team-${t.id}`,
+    containerId,
+    now: ctx.now,
+    title: t.name,
+    url: t.html_url ?? (org ? `https://github.com/orgs/${org}/teams/${t.slug}` : null),
+    // No source timestamp on /user/teams → a stable baseline avoids re-sync churn (see GH_LIST_STABLE_TS).
+    createdAt: GH_LIST_STABLE_TS,
+    updatedAt: GH_LIST_STABLE_TS,
+    body: truncate(t.description ?? null, 300),
+    status: t.privacy ?? 'visible',
+    author: org,
+    metadata: {
+      githubKind: 'team',
+      slug: t.slug,
+      privacy: t.privacy ?? null,
+      permission: t.permission ?? null,
+      organization: org,
+    },
+  });
+}
+
 /**
  * Next repos cursor. While there are more pages, keep the page-1 validator pending. At the end of a walk,
  * persist the ETag ONLY when the list fit on a single, NON-FULL page (`pageCount < REPOS_PER_PAGE`).
@@ -236,6 +342,66 @@ async function pullNotifications(ctx: SyncContext): Promise<SyncPage> {
   const more = hasNextLink(resp.headers['link']);
   const cursor = more ? toJsonCursor({ page: page + 1, since, hw }) : toJsonCursor({ since: hw ?? since ?? null });
   return { entities: items.map((n) => mapNotification(ctx, n)), cursor, hasMore: more };
+}
+
+/* ── Organizations & Teams (ETag-conditional lists) ─────────────────────────── */
+
+const LIST_PER_PAGE = 100;
+
+interface EtagListCursor {
+  page?: number;
+  etag?: string | null;
+  pendingEtag?: string | null;
+}
+
+/**
+ * Next cursor for an ETag-conditional list — the SAME lossless-skip rule as `nextReposCursor`: persist
+ * a page-1 validator ONLY when the whole list fit on a single, non-full page, so a later page-1 `304`
+ * provably means nothing changed. Full or multi-page lists store no validator and re-walk next time.
+ */
+function nextEtagListCursor(page: number, more: boolean, pendingEtag: string | null, pageCount: number): string {
+  if (more) return toJsonCursor({ page: page + 1, pendingEtag });
+  const safelyComplete = page === 1 && pageCount < LIST_PER_PAGE;
+  return toJsonCursor(safelyComplete && pendingEtag ? { etag: pendingEtag } : {});
+}
+
+/**
+ * Generic ETag-conditional, Link-paginated list pull → entities. Reuses the incremental-sync foundation
+ * (`conditionalGet`) with the proven `pullRepos` lossless-skip semantics, so the organizations and teams
+ * services poll cheaply: an unchanged list returns 304 at zero primary-rate-limit cost.
+ */
+async function pullEtagList<T>(
+  ctx: SyncContext,
+  url: string,
+  map: (ctx: SyncContext, row: T) => UnifiedEntity,
+): Promise<SyncPage> {
+  const c = parseJsonCursor<EtagListCursor>(ctx.cursor) ?? {};
+  const page = c.page ?? 1;
+  const query = { per_page: LIST_PER_PAGE, page };
+
+  if (page === 1 && c.etag) {
+    const cond = await conditionalGet<T[]>(ctx.http, url, c.etag, { query });
+    if (cond.notModified) return { entities: [], cursor: toJsonCursor({ etag: c.etag }), hasMore: false };
+    const rows = cond.data ?? [];
+    const more = hasNextLink(cond.headers['link']);
+    return { entities: rows.map((r) => map(ctx, r)), cursor: nextEtagListCursor(page, more, cond.etag, rows.length), hasMore: more };
+  }
+
+  const resp = await ctx.http.getJson<T[]>(url, { query });
+  const rows = resp.data ?? [];
+  const more = hasNextLink(resp.headers['link']);
+  const pendingEtag = page === 1 ? (resp.headers['etag'] ?? null) : (c.pendingEtag ?? null);
+  return { entities: rows.map((r) => map(ctx, r)), cursor: nextEtagListCursor(page, more, pendingEtag, rows.length), hasMore: more };
+}
+
+/** Organizations the viewer belongs to (`GET /user/orgs`). */
+function pullOrganizations(ctx: SyncContext): Promise<SyncPage> {
+  return pullEtagList<GhOrg>(ctx, `${GH}/user/orgs`, mapOrg);
+}
+
+/** Teams the viewer belongs to across all orgs (`GET /user/teams`). */
+function pullTeams(ctx: SyncContext): Promise<SyncPage> {
+  return pullEtagList<GhTeam>(ctx, `${GH}/user/teams`, mapTeam);
 }
 
 // ─── Increment 2: deep sync of ACTIVE repositories ──────────────────────────
@@ -589,12 +755,71 @@ async function pullRepoData(ctx: SyncContext): Promise<SyncPage> {
   return { entities, cursor, hasMore: cursor != null };
 }
 
+const GITHUB_REASONS = {
+  unauthorized: 'Service not authorized — this GitHub scope was not granted, or the resource is SSO-restricted (403)',
+  unprovisioned: 'Resource not available for this GitHub account (404)',
+} as const;
+
+/** Wrap a service resource so one unavailable service degrades instead of failing the whole family. */
+function serviceResource(r: AdapterResource): AdapterResource {
+  return { ...r, pull: graceful(r.pull, GITHUB_REASONS) };
+}
+
+const githubResources: AdapterResource[] = [
+  { id: 'repos', label: 'Repositories', kind: 'project', pull: pullRepos },
+  { id: 'repo_data', label: 'Issues, PRs, Actions & releases (active repos)', kind: 'task', pull: pullRepoData },
+  { id: 'organizations', label: 'Organizations', kind: 'organization', pull: pullOrganizations },
+  { id: 'teams', label: 'Teams', kind: 'organization', pull: pullTeams },
+  { id: 'notifications', label: 'Notifications', kind: 'notification', pull: pullNotifications },
+];
+
 export const githubAdapter: ConnectorAdapter = {
   connectorId: 'github',
   baseHeaders: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
-  resources: [
-    { id: 'repos', label: 'Repositories', kind: 'project', pull: pullRepos },
-    { id: 'repo_data', label: 'Issues, PRs & releases (active repos)', kind: 'task', pull: pullRepoData },
-    { id: 'notifications', label: 'Notifications', kind: 'notification', pull: pullNotifications },
-  ],
+  resources: githubResources.map(serviceResource),
 };
+
+/* ── Runtime capability discovery ─────────────────────────────────────────────────────────── */
+
+/** A GitHub Workspace service and the OAuth scope that unlocks it. */
+export interface GitHubService {
+  id: string;
+  label: string;
+  /** The GitHub OAuth scope granting this service. */
+  scope: string;
+  /** How this service syncs (informational). */
+  sync: string;
+}
+
+/**
+ * The service catalog — the runtime source of truth for capability discovery. Consumed by the
+ * Enterprise Connector Center so the UI hardcodes no service list. Several services ride the single
+ * `repo` scope (issues/PRs/Actions/releases sync through the `repo_data` engine); the entities they
+ * produce are fully synced even though those services carry no independent per-service object count
+ * (exactly as Google's Docs/Sheets/Slides ride the Drive scope).
+ */
+export const GITHUB_SERVICES: GitHubService[] = [
+  { id: 'repos', label: 'Repositories', scope: 'repo', sync: 'ETag conditional' },
+  { id: 'issues', label: 'Issues', scope: 'repo', sync: 'Active-repo walk' },
+  { id: 'pull_requests', label: 'Pull Requests', scope: 'repo', sync: 'Active-repo walk' },
+  { id: 'actions', label: 'Actions', scope: 'repo', sync: 'Workflow runs' },
+  { id: 'releases', label: 'Releases', scope: 'repo', sync: 'Active-repo walk' },
+  { id: 'organizations', label: 'Organizations', scope: 'read:org', sync: 'ETag conditional' },
+  { id: 'teams', label: 'Teams', scope: 'read:org', sync: 'Membership list' },
+  { id: 'notifications', label: 'Notifications', scope: 'notifications', sync: 'Since cursor' },
+];
+
+/** A service plus whether the connected account actually granted its scope. */
+export interface GitHubServiceStatus extends GitHubService {
+  available: boolean;
+}
+
+/**
+ * Runtime capability discovery: which services are available given the scopes GitHub actually granted
+ * (`ConnectedAccount.grantedScopes`). Pure — the Enterprise Connector Center renders exactly this (✓/✗);
+ * nothing is hardcoded. Mirrors `googleServiceAvailability`.
+ */
+export function githubServiceAvailability(grantedScopes: readonly string[]): GitHubServiceStatus[] {
+  const granted = new Set(grantedScopes);
+  return GITHUB_SERVICES.map((s) => ({ ...s, available: granted.has(s.scope) }));
+}

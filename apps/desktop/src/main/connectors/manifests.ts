@@ -125,24 +125,27 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
     id: 'github',
     name: 'GitHub',
     provider: 'GitHub',
-    description: 'Sync repositories, issues, pull requests, and notifications.',
+    description: 'One GitHub connector family: repositories, issues, pull requests, Actions, releases, organizations, teams, and notifications.',
     category: 'developer',
     website: 'https://github.com',
     docsUrl: 'https://docs.github.com/apps/oauth-apps',
     brandColor: '#24292F',
-    version: '1.0.0',
+    version: '2.0.0',
     authType: 'oauth2_confidential',
-    capabilities: ['repositories', 'issues', 'activities', 'notifications'],
+    capabilities: ['repositories', 'issues', 'projects', 'activities', 'notifications'],
+    // One consent for the whole family; GitHub returns the granted subset → runtime capability discovery
+    // (githubServiceAvailability). Least-privilege, read-only: no write/workflow-management scopes.
     scopes: [
       { id: 'read:user', label: 'Profile', description: 'Read your GitHub profile.' },
-      { id: 'repo', label: 'Repositories', description: 'Read repository metadata and issues.' },
+      { id: 'repo', label: 'Repositories', description: 'Read repositories, issues, pull requests, Actions, and releases.' },
+      { id: 'read:org', label: 'Organizations & Teams', description: 'Read the organizations and teams you belong to.' },
       { id: 'notifications', label: 'Notifications', description: 'Read your notifications.' },
     ],
     oauth: {
       authorizeUrl: 'https://github.com/login/oauth/authorize',
       tokenUrl: 'https://github.com/login/oauth/access_token',
       revokeUrl: null,
-      scopes: ['read:user', 'repo', 'notifications'],
+      scopes: ['read:user', 'repo', 'read:org', 'notifications'],
       scopeSeparator: ' ',
       usePkce: false,
       tokenAuthStyle: 'body',
@@ -151,6 +154,9 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
       callbackPath: '/callback',
       clientIdEnv: 'NEUROPAUSE_GITHUB_CLIENT_ID',
       clientSecretEnv: 'NEUROPAUSE_GITHUB_CLIENT_SECRET',
+      // Optional: set this to verify inbound GitHub webhooks (X-Hub-Signature-256, HMAC-SHA256 over the
+      // raw body). Present-but-unset simply leaves live webhook delivery off; scheduled sync is unaffected.
+      webhookSecretEnv: 'NEUROPAUSE_GITHUB_WEBHOOK_SECRET',
       // GitHub OAuth Apps require an exact registered callback port, so pin one.
       // Register http://127.0.0.1:42813/callback as the Authorization callback URL.
       loopbackPort: 42813,

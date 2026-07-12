@@ -25,6 +25,7 @@ import { adapterConnectorIds, describeAdapters, getAdapter } from './registry';
 import { registerBuiltinAdapters } from './adapters';
 import { describeAdapter, type AdapterCapability } from './adapterSdk';
 import { googleServiceAvailability } from './adapters/googleWorkspace';
+import { githubServiceAvailability } from './adapters/github';
 
 const log = createLogger('sync');
 
@@ -136,6 +137,17 @@ export async function initSync(deps: SyncSubsystemDeps): Promise<SyncSubsystem> 
       // projected against the scopes Google actually granted (docs/sheets/slides ride the Drive scope).
       if (connectorId === 'google-workspace') {
         return googleServiceAvailability(grantedScopes).map((s) => ({
+          id: s.id,
+          label: s.label,
+          kind: null,
+          scope: s.scope,
+          scopeGranted: s.available,
+        }));
+      }
+      // GitHub is likewise a scope-gated family: project its service catalog against the granted scopes
+      // (repo / read:org / notifications) for correct pre-flight ✓/✗, exactly like Google Workspace.
+      if (connectorId === 'github') {
+        return githubServiceAvailability(grantedScopes).map((s) => ({
           id: s.id,
           label: s.label,
           kind: null,

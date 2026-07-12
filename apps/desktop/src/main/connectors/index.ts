@@ -43,8 +43,6 @@ import { isConfigured, resolveWebhookSecret } from './credentials';
 import { MANIFEST_BY_ID } from './manifests';
 import { InboundWebhookRouter } from './inbound/router';
 import { SlackSocketMode, type SocketLike } from './inbound/slackSocketMode';
-import { unifiedStore } from '../unified/storeInstance';
-import { createGitHubSyncRunner } from './adapters/github/githubSyncRunner';
 import { syncStateStore } from '../unified/sync/syncStateInstance';
 import { RateLimiter } from '../unified/sync/rateLimiter';
 import { createM365Executor } from './m365';
@@ -105,21 +103,10 @@ function toPlatformEvent(e: ConnectorEvent): PlatformEventInput | null {
 }
 
 export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<ConnectorSubsystem> {
-  // Wire the GitHub data-sync runner into the connector lifecycle's sync() seam.
-  // Composes the vault-backed token accessor, the read-only fetch client, the pure
-  // normalizer, and the unified store. No new pipeline: memory, timeline, knowledge,
-  // and semantic all populate downstream from unifiedStore as they already do.
-  connectorService.setSyncRunner(
-    createGitHubSyncRunner({
-      getToken: (connectorId, accountId) =>
-        connectorService.getValidAccessToken(connectorId, accountId),
-      getLastSyncAt: (connectorId, accountId) =>
-        connectorStore.get(connectorId, accountId)?.lastSyncAt ?? null,
-      upsert: (entities) => unifiedStore.upsertMany(entities),
-      fetchImpl: (url, init) => fetch(url, init),
-    }),
-  );
-
+  // The connector data-sync runner is wired later by initSync: the unified SyncOrchestrator drives
+  // EVERY connector adapter (GitHub included) through the one incremental-sync pipeline. Until then,
+  // connectorService.sync() is a guarded no-op. (A prior standalone GitHub runner here was dead code —
+  // initSync overwrote this same seam — and has been removed to keep one connector pipeline.)
   await connectorService.init();
 
   const onEvent = (e: ConnectorEvent): void => {
