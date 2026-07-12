@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConnectorManifest } from '@neuropause/shared';
-import { resolveCredentials } from './credentials';
+import { resolveCredentials, resolveWebhookSecret } from './credentials';
 
 // buildInfo imports electron; the baked lookup is stubbed here.
 vi.mock('../buildInfo', () => ({
@@ -45,5 +45,25 @@ describe('resolveCredentials', () => {
 
   it('returns null without an oauth block', () => {
     expect(resolveCredentials(manifest(null))).toBeNull();
+  });
+});
+
+const WEBHOOK_ENV = 'NEUROPAUSE_TESTPROV_WEBHOOK_SECRET';
+
+describe('resolveWebhookSecret', () => {
+  afterEach(() => {
+    delete process.env[WEBHOOK_ENV];
+  });
+
+  it('returns null when the manifest declares no webhookSecretEnv (or no oauth)', () => {
+    expect(resolveWebhookSecret(manifest({ clientIdEnv: ID_ENV }))).toBeNull();
+    expect(resolveWebhookSecret(manifest(null))).toBeNull();
+  });
+
+  it('reads the named env var, and null once it is unset', () => {
+    process.env[WEBHOOK_ENV] = 'wh-secret';
+    expect(resolveWebhookSecret(manifest({ webhookSecretEnv: WEBHOOK_ENV }))).toBe('wh-secret');
+    delete process.env[WEBHOOK_ENV];
+    expect(resolveWebhookSecret(manifest({ webhookSecretEnv: WEBHOOK_ENV }))).toBeNull();
   });
 });

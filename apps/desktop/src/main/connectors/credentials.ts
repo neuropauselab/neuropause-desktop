@@ -40,6 +40,16 @@ export function resolveCredentials(manifest: ConnectorManifest): ResolvedCredent
   return { clientId, clientSecret: null };
 }
 
+/**
+ * P5 — the inbound webhook secret for a connector (HMAC signing secret or Microsoft `clientState`),
+ * read from the env var named by the manifest. Null when the connector declares no `webhookSecretEnv`
+ * or the variable is unset — in which case inbound deliveries cannot be verified and are rejected.
+ */
+export function resolveWebhookSecret(manifest: ConnectorManifest): string | null {
+  const name = manifest.oauth?.webhookSecretEnv;
+  return name ? readEnv(name) : null;
+}
+
 /** Whether a connector has everything it needs to start an auth flow. */
 export function isConfigured(manifest: ConnectorManifest): boolean {
   if (manifest.authType === 'api_key') {

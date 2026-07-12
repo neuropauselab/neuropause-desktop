@@ -39,8 +39,10 @@ import { connectorService } from './connectorService';
 import { connectorStore } from './connectorStore';
 import { connectorControlStore } from './connectorControlStore';
 import { ConnectorRuntimeSupervisor } from './connectorRuntimeSupervisor';
-import { isConfigured } from './credentials';
+import { isConfigured, resolveWebhookSecret } from './credentials';
 import { MANIFEST_BY_ID } from './manifests';
+import { InboundWebhookRouter } from './inbound/router';
+import { SlackSocketMode, type SocketLike } from './inbound/slackSocketMode';
 import { unifiedStore } from '../unified/storeInstance';
 import { createGitHubSyncRunner } from './adapters/github/githubSyncRunner';
 import { syncStateStore } from '../unified/sync/syncStateInstance';
@@ -63,6 +65,8 @@ export interface ConnectorSubsystem {
   handlers: SecureHandlerDef[];
   /** The P4.1 Runtime Supervisor — exposed so later increments can wire richer sync signals into it. */
   supervisor: ConnectorRuntimeSupervisor;
+  /** P5 — the inbound webhook router; exposed so a relay/tunnel endpoint can hand it signed deliveries. */
+  inboundWebhooks: InboundWebhookRouter;
   dispose: () => void;
 }
 
@@ -156,6 +160,52 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
     manifestName: (c) => MANIFEST_BY_ID[c]?.name ?? c,
     grantedScopes: (c, a) => connectorStore.get(c, a)?.grantedScopes ?? [],
   });
+
+  // P5 — inbound webhook / realtime runtime. Verified deliveries (relay/tunnel) via handle() and
+  // pre-authenticated Socket Mode events via triggerSync() both funnel a targeted incremental sync
+  // through the EXISTING connector sync path — no new pipeline. The router is exposed on the subsystem
+  // so a later relay endpoint can hand it signed deliveries; Slack Socket Mode is the desktop-native
+  // transport and starts only when a Slack app-level token is configured (inert otherwise).
+  const inboundWebhooks = new InboundWebhookRouter({
+    resolveSecret: (connectorId) => {
+      const m = MANIFEST_BY_ID[connectorId];
+      return m ? resolveWebhookSecret(m) : null;
+    },
+    accountsFor: (connectorId) =>
+      connectorStore.byConnector(connectorId).filter((a) => a.status === 'connected').map((a) => a.id),
+    requestSync: (c, a) => connectorService.sync(c, a),
+    now: () => Date.now(),
+  });
+
+  const slackAppToken = process.env.NEUROPAUSE_SLACK_APP_TOKEN?.trim();
+  const WebSocketCtor = (globalThis as unknown as { WebSocket?: new (u: string) => SocketLike }).WebSocket;
+  let slackSocket: SlackSocketMode | null = null;
+  if (slackAppToken && WebSocketCtor) {
+    const makeSocket = WebSocketCtor; // narrowed capture for the connect closure
+    slackSocket = new SlackSocketMode({
+      appToken: slackAppToken,
+      openConnection: async (appToken) => {
+        const res = await fetch('https://slack.com/api/apps.connections.open', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${appToken}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+        });
+        const data = (await res.json()) as { ok: boolean; url?: string; error?: string };
+        if (!data.ok || !data.url) throw new Error(`apps.connections.open: ${data.error ?? 'no url'}`);
+        return data.url;
+      },
+      connect: (url) => new makeSocket(url),
+      onEvent: () => void inboundWebhooks.triggerSync('slack'),
+    });
+    void slackSocket.start();
+    log.info('Slack Socket Mode enabled');
+  } else if (slackAppToken) {
+    // Electron 30's main process (Node 20) exposes no global WebSocket unless launched with
+    // --experimental-websocket, and `ws` is not a dependency — so realtime Slack is opt-in at the
+    // RUNTIME level, not just by token. Verification + routing (handle()) still serve a relay/tunnel.
+    log.warn(
+      'Slack app-level token set, but this runtime has no WebSocket implementation; Socket Mode disabled. Add the "ws" package or launch with --experimental-websocket to enable realtime Slack.',
+    );
+  }
 
   const handlers: SecureHandlerDef[] = [
     { channel: IpcChannel.ConnectorsList, schema: EmptyRequest, handler: () => connectorService.list() },
@@ -271,7 +321,9 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
   return {
     handlers: gateConnectorHandlers(handlers),
     supervisor,
+    inboundWebhooks,
     dispose: () => {
+      slackSocket?.stop();
       supervisor.dispose();
       connectorService.off('event', onEvent);
     },

@@ -100,6 +100,12 @@ export interface OAuthEndpointConfig {
   /** The config key (env var) that supplies the client secret, if confidential. */
   clientSecretEnv: string | null;
   /**
+   * P5 — the config key (env var) that supplies this connector's INBOUND webhook secret: the HMAC
+   * signing secret (GitHub / Slack / Notion) or the opaque `clientState` (Microsoft Graph) used to
+   * verify deliveries. Optional; when unset the connector has no verifiable inbound path.
+   */
+  webhookSecretEnv?: string | null;
+  /**
    * Fixed loopback port for the OAuth redirect. Most providers honor RFC 8252's
    * "any port" loopback rule, so this is omitted and an ephemeral port is used.
    * Providers that require an exact registered callback port (e.g. GitHub OAuth
