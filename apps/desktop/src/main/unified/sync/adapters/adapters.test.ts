@@ -218,7 +218,7 @@ describe('Notion mapping', () => {
 
 describe('Google Calendar mapping', () => {
   it('maps an event to a calendar_event with start/end + attendees', () => {
-    const e = mapEvent(ctx('google-calendar'), {
+    const e = mapEvent(ctx('google-workspace'), {
       id: 'ev1', status: 'confirmed', summary: 'Standup', description: 'daily', htmlLink: 'https://cal/ev1',
       created: '2026-01-01T00:00:00Z', updated: '2026-05-01T00:00:00Z',
       start: { dateTime: '2026-06-02T09:00:00Z' }, end: { dateTime: '2026-06-02T09:15:00Z' },

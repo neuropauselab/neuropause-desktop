@@ -8,7 +8,7 @@
  * transparently falls back to a bounded full resync.
  */
 import type { UnifiedEntity } from '@neuropause/shared';
-import type { ConnectorAdapter, SyncContext, SyncPage } from '../adapterSdk';
+import type { AdapterResource, SyncContext, SyncPage } from '../adapterSdk';
 import { makeEntity } from '../adapterSdk';
 import { parseJsonCursor, toJsonCursor, truncate } from './util';
 import { isExpiredCursorError } from './delta';
@@ -142,7 +142,7 @@ async function pullEvents(ctx: SyncContext): Promise<SyncPage> {
   return { entities, deletedSourceIds, cursor, hasMore: more };
 }
 
-export const googleCalendarAdapter: ConnectorAdapter = {
-  connectorId: 'google-calendar',
-  resources: [{ id: 'events', label: 'Events', kind: 'calendar_event', pull: pullEvents }],
-};
+/** Calendar service resource(s), mounted on the google-workspace connector (one shared token). */
+export const googleCalendarResources: AdapterResource[] = [
+  { id: 'calendar', label: 'Calendar', kind: 'calendar_event', pull: pullEvents },
+];

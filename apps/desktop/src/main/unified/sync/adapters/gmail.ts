@@ -12,7 +12,7 @@
  * Bounded like the other adapters — initial enumeration is windowed; the history feed keeps it current.
  */
 import type { UnifiedEntity } from '@neuropause/shared';
-import type { ConnectorAdapter, SyncContext, SyncPage } from '../adapterSdk';
+import type { AdapterResource, SyncContext, SyncPage } from '../adapterSdk';
 import { makeEntity } from '../adapterSdk';
 import { makeUnifiedId } from '../../ids';
 import { isExpiredCursorError } from './delta';
@@ -180,7 +180,7 @@ async function pullMessages(ctx: SyncContext): Promise<SyncPage> {
   return { entities, cursor: toJsonCursor(cursor), hasMore: false };
 }
 
-export const gmailAdapter: ConnectorAdapter = {
-  connectorId: 'gmail',
-  resources: [{ id: 'messages', label: 'Messages', kind: 'message', pull: pullMessages }],
-};
+/** Gmail service resource(s), mounted on the google-workspace connector (one shared token). */
+export const gmailResources: AdapterResource[] = [
+  { id: 'gmail', label: 'Gmail', kind: 'message', pull: pullMessages },
+];

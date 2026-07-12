@@ -34,7 +34,8 @@ import {
 } from '@neuropause/shared';
 import type { AdapterResource, SyncContext, SyncPage } from '../adapterSdk';
 import { makeEntity } from '../adapterSdk';
-import { AuthError, HttpError } from '../http';
+import { HttpError } from '../http';
+import { graceful as gracefulBase } from './delta';
 import { parseJsonCursor, toJsonCursor, truncate } from './util';
 
 /* ── mappers (Graph object → UnifiedEntity). Pure given ctx. ──────────────────────────── */
@@ -191,48 +192,16 @@ async function pullTeams(ctx: SyncContext): Promise<SyncPage> {
 }
 
 /**
- * Extract the HTTP status from the sync error taxonomy. CRITICAL: the http client maps BOTH 401 and 403 to
- * `AuthError` (which is NOT an `HttpError`) and everything else 4xx/5xx to `HttpError`. So a real 403 is an
- * `AuthError`, and any check that only looks at `HttpError` will miss it — which is exactly the bug this
- * inspects both types to fix.
+ * M365 graceful degrade — the shared `graceful()` helper (promoted to delta.ts, used by both the M365 and
+ * Google Workspace families) with Microsoft-specific reason text. An unlicensed/unprovisioned module
+ * (403/404) is skipped as a tagged `degraded` page rather than failing the whole account sync.
  */
-function errorStatus(err: unknown): number | undefined {
-  if (err instanceof AuthError) return err.status;
-  if (err instanceof HttpError) return err.status;
-  return undefined;
-}
-
-/**
- * Wrap a pull so an unlicensed / unprovisioned module (403 Forbidden, 404 mailbox/drive not found) is
- * skipped with an empty page instead of failing the whole account sync. The empty page is tagged with a
- * `degraded` reason (403 → unauthorized, 404 → unprovisioned) so the module surfaces in the UI as
- * degraded rather than silently reading "0". A 401 (token rejected) and 429/5xx/network/410 propagate —
- * those are account-wide, not per-module.
- */
-function graceful(pull: (ctx: SyncContext) => Promise<SyncPage>): (ctx: SyncContext) => Promise<SyncPage> {
-  const skip = (ctx: SyncContext, degraded: NonNullable<SyncPage['degraded']>): SyncPage => ({
-    entities: [],
-    deletedSourceIds: [],
-    cursor: ctx.cursor,
-    hasMore: false,
-    degraded,
-  });
-  return async (ctx: SyncContext): Promise<SyncPage> => {
-    try {
-      return await pull(ctx);
-    } catch (err) {
-      const status = errorStatus(err);
-      // 403 arrives as AuthError — an HttpError-only check would let it crash the whole account sync.
-      if (status === 403) {
-        return skip(ctx, { kind: 'unauthorized', reason: 'Missing Graph permission or module not licensed (403)' });
-      }
-      if (status === 404) {
-        return skip(ctx, { kind: 'unprovisioned', reason: 'Mailbox / OneDrive not provisioned yet (404)' });
-      }
-      throw err;
-    }
-  };
-}
+const M365_REASONS = {
+  unauthorized: 'Missing Graph permission or module not licensed (403)',
+  unprovisioned: 'Mailbox / OneDrive not provisioned yet (404)',
+} as const;
+const graceful = (pull: (ctx: SyncContext) => Promise<SyncPage>): ((ctx: SyncContext) => Promise<SyncPage>) =>
+  gracefulBase(pull, M365_REASONS);
 
 /** The Microsoft 365 read/sync resources, added to the microsoft-entra adapter (same Graph token). */
 export const m365Resources: AdapterResource[] = [

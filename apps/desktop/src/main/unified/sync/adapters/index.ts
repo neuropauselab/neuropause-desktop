@@ -5,22 +5,16 @@
 import { registerAdapter } from '../registry';
 import { githubAdapter } from './github';
 import { notionAdapter } from './notion';
-import { googleCalendarAdapter } from './googleCalendar';
-import { gmailAdapter } from './gmail';
-import { googleDriveAdapter } from './googleDrive';
-import { googlePeopleAdapter } from './googlePeople';
-import { googleTasksAdapter } from './googleTasks';
+import { googleWorkspaceAdapter } from './googleWorkspace';
 import { slackAdapter } from './slack';
 import { entraAdapter } from './entra';
 
 export function registerBuiltinAdapters(): void {
   registerAdapter(githubAdapter);
   registerAdapter(notionAdapter);
-  registerAdapter(googleCalendarAdapter);
-  registerAdapter(gmailAdapter);
-  registerAdapter(googleDriveAdapter);
-  registerAdapter(googlePeopleAdapter);
-  registerAdapter(googleTasksAdapter);
+  // Google Workspace is one connector family (Gmail/Calendar/Drive/People/Tasks as service resources on
+  // one token), mirroring how microsoft-entra hosts the M365 services.
+  registerAdapter(googleWorkspaceAdapter);
   registerAdapter(slackAdapter);
   registerAdapter(entraAdapter);
 }

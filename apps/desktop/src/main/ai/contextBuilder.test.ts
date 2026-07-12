@@ -123,7 +123,7 @@ describe('ContextBuilder (unit, injected ports)', () => {
           hit({
             id: 'ca',
             source: 'entity',
-            connectorId: 'google-calendar',
+            connectorId: 'google-workspace',
             kind: 'calendar_event',
             title: 'mtg',
           }),

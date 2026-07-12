@@ -418,7 +418,7 @@ const CONNECTOR_SOURCE: Partial<Record<string, AiContextSource>> = {
   github: 'github',
   notion: 'notion',
   calendar: 'calendar',
-  'google-calendar': 'calendar',
+  'google-workspace': 'calendar',
   gcal: 'calendar',
   slack: 'slack',
 };

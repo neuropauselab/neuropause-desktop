@@ -7,7 +7,7 @@
  * transparently falls back to a full resync. Mirrors googleCalendar.ts's token/page cursor + reset.
  */
 import type { UnifiedEntity } from '@neuropause/shared';
-import type { ConnectorAdapter, SyncContext, SyncPage } from '../adapterSdk';
+import type { AdapterResource, SyncContext, SyncPage } from '../adapterSdk';
 import { makeEntity } from '../adapterSdk';
 import { isExpiredCursorError } from './delta';
 import { parseJsonCursor, toJsonCursor } from './util';
@@ -109,7 +109,7 @@ async function pullConnections(ctx: SyncContext): Promise<SyncPage> {
   return { entities, deletedSourceIds, cursor: toJsonCursor(cursor), hasMore: false };
 }
 
-export const googlePeopleAdapter: ConnectorAdapter = {
-  connectorId: 'google-people',
-  resources: [{ id: 'connections', label: 'Contacts', kind: 'contact', pull: pullConnections }],
-};
+/** People (Contacts) service resource(s), mounted on the google-workspace connector (one shared token). */
+export const googlePeopleResources: AdapterResource[] = [
+  { id: 'people', label: 'Contacts', kind: 'contact', pull: pullConnections },
+];

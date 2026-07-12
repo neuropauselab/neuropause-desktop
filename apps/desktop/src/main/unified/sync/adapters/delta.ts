@@ -22,7 +22,8 @@
  *     exactly once, replacing the hand-rolled `err instanceof HttpError && err.status === 410`
  *     check that previously lived in entra.ts and googleCalendar.ts.
  */
-import { HttpError, type HttpClient, type HttpRequestOptions } from '../http';
+import { AuthError, HttpError, type HttpClient, type HttpRequestOptions } from '../http';
+import type { SyncContext, SyncPage } from '../adapterSdk';
 
 /** Result of a conditional GET. `notModified` is true when the server answered `304`. */
 export interface ConditionalResult<T> {
@@ -70,4 +71,55 @@ export async function conditionalGet<T>(
  */
 export function isExpiredCursorError(err: unknown, statuses: readonly number[] = [410]): boolean {
   return err instanceof HttpError && statuses.includes(err.status);
+}
+
+/**
+ * Extract the HTTP status from the sync error taxonomy. The `HttpClient` maps BOTH 401 and 403 to
+ * `AuthError` (which is NOT an `HttpError`) and other 4xx/5xx to `HttpError` — so a real 403 arrives as
+ * an `AuthError`, and a check that only inspects `HttpError` would miss it.
+ */
+export function errorStatus(err: unknown): number | undefined {
+  if (err instanceof AuthError) return err.status;
+  if (err instanceof HttpError) return err.status;
+  return undefined;
+}
+
+/** Optional provider-specific text for a `graceful()` degrade (defaults are provider-neutral). */
+export interface GracefulReasons {
+  unauthorized?: string;
+  unprovisioned?: string;
+}
+
+/**
+ * Wrap a resource pull so an unavailable SERVICE — a scope not granted, API disabled, or module not
+ * licensed (403), or a resource not provisioned for this account (404) — is skipped with an empty
+ * `degraded` page instead of failing the whole connector's sync. This is the per-service
+ * graceful-degradation / capability mechanism shared by the Microsoft 365 and Google Workspace connector
+ * families: one service going dark never takes the family down, and it surfaces as a degraded module
+ * rather than a silent "0". A 401 (token rejected) and 429/5xx/network/410 (delta expiry) propagate —
+ * those are connector-wide, not per-service. Promoted from m365.ts so both families share one copy.
+ */
+export function graceful(
+  pull: (ctx: SyncContext) => Promise<SyncPage>,
+  reasons?: GracefulReasons,
+): (ctx: SyncContext) => Promise<SyncPage> {
+  const unauthorized = reasons?.unauthorized ?? 'Service unavailable — missing scope, API disabled, or not licensed (403)';
+  const unprovisioned = reasons?.unprovisioned ?? 'Service not provisioned for this account (404)';
+  const skip = (ctx: SyncContext, degraded: NonNullable<SyncPage['degraded']>): SyncPage => ({
+    entities: [],
+    deletedSourceIds: [],
+    cursor: ctx.cursor,
+    hasMore: false,
+    degraded,
+  });
+  return async (ctx: SyncContext): Promise<SyncPage> => {
+    try {
+      return await pull(ctx);
+    } catch (err) {
+      const status = errorStatus(err);
+      if (status === 403) return skip(ctx, { kind: 'unauthorized', reason: unauthorized });
+      if (status === 404) return skip(ctx, { kind: 'unprovisioned', reason: unprovisioned });
+      throw err;
+    }
+  };
 }

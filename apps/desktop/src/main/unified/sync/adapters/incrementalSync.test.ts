@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { githubAdapter } from './github';
-import { googleCalendarAdapter } from './googleCalendar';
+import { googleCalendarResources } from './googleCalendar';
 import type { SyncContext } from '../adapterSdk';
 import { HttpError, type HttpClient, type HttpRequestOptions, type HttpResponse } from '../http';
 
@@ -106,7 +106,7 @@ describe('GitHub repos — ETag conditional sync', () => {
 });
 
 describe('Google Calendar events — syncToken expiry (410) full-resync', () => {
-  const eventsResource = googleCalendarAdapter.resources.find((r) => r.id === 'events')!;
+  const eventsResource = googleCalendarResources.find((r) => r.id === 'calendar')!;
 
   /** Throws 410 once (expired syncToken), then returns a fresh page with a new nextSyncToken. */
   function stub410Then(final: HttpResponse<unknown>): HttpClient {
@@ -130,7 +130,7 @@ describe('Google Calendar events — syncToken expiry (410) full-resync', () => 
       headers: {},
       status: 200,
     });
-    const page = await eventsResource.pull({ connectorId: 'google-calendar', accountId: 'a1', http, cursor: JSON.stringify({ sync: 'STALE' }), now: NOW });
+    const page = await eventsResource.pull({ connectorId: 'google-workspace', accountId: 'a1', http, cursor: JSON.stringify({ sync: 'STALE' }), now: NOW });
     expect(page.entities.map((e) => e.sourceId)).toEqual(['ev1']);
     expect(JSON.parse(page.cursor as string)).toEqual({ sync: 'FRESH' });
   });

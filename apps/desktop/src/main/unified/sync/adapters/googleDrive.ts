@@ -12,7 +12,7 @@
  * Mirrors googleCalendar.ts's cursor/token-reset pattern; the engine is untouched.
  */
 import type { UnifiedEntity } from '@neuropause/shared';
-import type { ConnectorAdapter, SyncContext, SyncPage } from '../adapterSdk';
+import type { AdapterResource, SyncContext, SyncPage } from '../adapterSdk';
 import { makeEntity } from '../adapterSdk';
 import { makeUnifiedId } from '../../ids';
 import { isExpiredCursorError } from './delta';
@@ -157,7 +157,7 @@ async function pullFiles(ctx: SyncContext): Promise<SyncPage> {
   return { entities, cursor: toJsonCursor(cursor), hasMore: false };
 }
 
-export const googleDriveAdapter: ConnectorAdapter = {
-  connectorId: 'google-drive',
-  resources: [{ id: 'files', label: 'Files', kind: 'file', pull: pullFiles }],
-};
+/** Drive service resource(s) — also surfaces Docs/Sheets/Slides files. Mounted on google-workspace. */
+export const googleDriveResources: AdapterResource[] = [
+  { id: 'drive', label: 'Drive', kind: 'file', pull: pullFiles },
+];

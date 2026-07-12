@@ -9,7 +9,7 @@
  * the same bounded, resumable pattern as the Slack messages resource. No engine change.
  */
 import type { UnifiedEntity } from '@neuropause/shared';
-import type { ConnectorAdapter, SyncContext, SyncPage } from '../adapterSdk';
+import type { AdapterResource, SyncContext, SyncPage } from '../adapterSdk';
 import { makeEntity } from '../adapterSdk';
 import { makeUnifiedId } from '../../ids';
 import { HttpError } from '../http';
@@ -191,10 +191,8 @@ async function pullTasks(ctx: SyncContext): Promise<SyncPage> {
   return { entities, deletedSourceIds, cursor: toJsonCursor(cursor), hasMore: !done };
 }
 
-export const googleTasksAdapter: ConnectorAdapter = {
-  connectorId: 'google-tasks',
-  resources: [
-    { id: 'task_lists', label: 'Task lists', kind: 'project', pull: pullTaskLists },
-    { id: 'tasks', label: 'Tasks', kind: 'task', pull: pullTasks },
-  ],
-};
+/** Tasks service resource(s) — task lists (project) + tasks. Mounted on the google-workspace connector. */
+export const googleTasksResources: AdapterResource[] = [
+  { id: 'task_lists', label: 'Task lists', kind: 'project', pull: pullTaskLists },
+  { id: 'tasks', label: 'Tasks', kind: 'task', pull: pullTasks },
+];

@@ -251,7 +251,7 @@ function hitToSource(hit: EnterpriseSearchHit): AiContextSource {
     default:
       if (hit.connectorId === 'github') return 'github';
       if (hit.connectorId === 'notion') return 'notion';
-      if (hit.connectorId === 'google-calendar') return 'calendar';
+      if (hit.connectorId === 'google-workspace') return 'calendar';
       if (hit.connectorId === 'slack') return 'slack';
       return 'unified-model';
   }
