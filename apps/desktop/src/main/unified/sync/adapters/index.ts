@@ -10,6 +10,7 @@ import { slackAdapter } from './slack';
 import { atlassianAdapter } from './atlassian';
 import { salesforceAdapter } from './salesforce';
 import { hubspotAdapter } from './hubspot';
+import { servicenowAdapter } from './servicenow';
 import { entraAdapter } from './entra';
 
 export function registerBuiltinAdapters(): void {
@@ -27,5 +28,8 @@ export function registerBuiltinAdapters(): void {
   // HubSpot is one connector family (every CRM object as a graceful, Search-API-incremental service
   // resource on one OAuth token); per-object scopes drive runtime capability discovery.
   registerAdapter(hubspotAdapter);
+  // ServiceNow is one connector family (every ITSM/CMDB table as a graceful, Table-API-incremental service
+  // resource on one OAuth token); the instance host is env-configured, capability is role/runtime-driven.
+  registerAdapter(servicenowAdapter);
   registerAdapter(entraAdapter);
 }

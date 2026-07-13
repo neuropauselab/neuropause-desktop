@@ -27,6 +27,18 @@ const ENTRA_TENANT_ENV = 'NEUROPAUSE_MICROSOFT_ENTRA_TENANT_ID';
 const ENTRA_TENANT = (process.env[ENTRA_TENANT_ENV] ?? '').trim() || 'common';
 const ENTRA_AUTHORITY = `https://login.microsoftonline.com/${ENTRA_TENANT}/oauth2/v2.0`;
 
+/**
+ * ServiceNow instance base. Unlike every other provider, ServiceNow's OAuth endpoints AND its REST API all
+ * live on the CUSTOMER'S OWN instance host, so the instance subdomain must be known before OAuth. Set
+ * NEUROPAUSE_SERVICENOW_INSTANCE to it (e.g. `dev12345` or `acme`); read at runtime exactly like the Entra
+ * tenant above and the client credentials in credentials.ts. Unset ⇒ an obviously-invalid placeholder host
+ * so a misconfiguration fails loudly at connect (the connector is also `unavailable` until the client
+ * credentials are set). The adapter (servicenow.ts) reads the SAME env var for its data calls, so the auth
+ * host and the data host can never diverge.
+ */
+const SERVICENOW_INSTANCE_ENV = 'NEUROPAUSE_SERVICENOW_INSTANCE';
+const SERVICENOW_BASE = `https://${(process.env[SERVICENOW_INSTANCE_ENV] ?? '').trim() || 'INSTANCE'}.service-now.com`;
+
 export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
   /* ─────────────── AI assistants (API key) ─────────────── */
   {
@@ -656,6 +668,61 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
       loopbackPort: 42821,
     },
     multiAccount: true,
+  },
+
+  /* ─────────────── ITSM (connector family — one OAuth, many Table-API service adapters) ─────────────── */
+  {
+    // ONE ServiceNow family (ITSM + CMDB + Knowledge + Asset + Catalog). One card, one OAuth token, one
+    // vault record — with every table (Incidents, Problems, Change Requests, Requests, Knowledge, CMDB,
+    // Assets, Users, Groups, Catalog) mounted as a graceful Table-API service resource on the same
+    // authenticated session, exactly as microsoft-entra hosts M365 and salesforce/hubspot host their
+    // objects. The OAuth + REST endpoints all live on the customer's instance host, built from
+    // NEUROPAUSE_SERVICENOW_INSTANCE (see SERVICENOW_BASE). The token returns `expires_in` so the existing
+    // proactive-refresh path needs no synthesized TTL. Access is governed by the integration user's ROLES
+    // (not OAuth scopes), so which apps a plugin exposes is discovered at runtime from the per-module
+    // degrade (a missing table 400 → unprovisioned) — nothing hardcoded.
+    id: 'servicenow',
+    name: 'ServiceNow',
+    provider: 'ServiceNow',
+    description:
+      'One ServiceNow connector family: incidents, problems, change requests, requests, knowledge, CMDB, assets, users, groups, and catalog — synced through a single authenticated connection.',
+    category: 'productivity',
+    website: 'https://www.servicenow.com',
+    docsUrl: 'https://developer.servicenow.com/dev.do#!/reference/api/latest/rest/c_TableAPI',
+    brandColor: '#62D84E',
+    version: '1.0.0',
+    authType: 'oauth2_confidential',
+    capabilities: ['tasks', 'activities', 'contacts', 'documents'],
+    // ServiceNow OAuth has no per-object scopes: `useraccount` is the built-in global scope and access is
+    // governed by the integration user's ROLES/ACLs. Least-privilege is achieved by giving that user the
+    // read-only `snc_read_only` role plus the read roles for the tables synced — NOT via OAuth scope. The
+    // adapter only ever issues read-only Table-API GETs.
+    scopes: [
+      { id: 'useraccount', label: 'ServiceNow', description: 'Read ServiceNow records as the integration user (access is governed by that user\'s roles; use a read-only role).' },
+    ],
+    oauth: {
+      // Instance-hosted endpoints (built from NEUROPAUSE_SERVICENOW_INSTANCE).
+      authorizeUrl: `${SERVICENOW_BASE}/oauth_auth.do`,
+      tokenUrl: `${SERVICENOW_BASE}/oauth_token.do`,
+      revokeUrl: `${SERVICENOW_BASE}/oauth_revoke_token.do`,
+      // `useraccount` is ServiceNow's built-in global scope (a no-op for access control — roles govern that).
+      scopes: ['useraccount'],
+      scopeSeparator: ' ',
+      // Confidential flow (client secret at the token endpoint). ServiceNow's PKCE support is version-
+      // dependent, so rely on the secret (universally supported), like Salesforce/HubSpot.
+      usePkce: false,
+      tokenAuthStyle: 'body',
+      extraAuthParams: {},
+      extraTokenParams: {},
+      callbackPath: '/callback',
+      clientIdEnv: 'NEUROPAUSE_SERVICENOW_CLIENT_ID',
+      clientSecretEnv: 'NEUROPAUSE_SERVICENOW_CLIENT_SECRET',
+      // ServiceNow exact-matches the registered redirect URI; register http://127.0.0.1:42823/callback.
+      loopbackPort: 42823,
+      // ServiceNow returns expires_in (1800s) with a durable refresh token → existing refresh path; no TTL.
+    },
+    // One instance per deployment (the instance is a single env var), so a single connected account.
+    multiAccount: false,
   },
 ];
 
