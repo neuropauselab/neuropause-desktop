@@ -66,6 +66,22 @@ const ORACLE_SCOPE = (process.env['NEUROPAUSE_ORACLE_SCOPE'] ?? '').trim();
 /** Authorize/token scopes: the deployment resource scope (when configured) + `offline_access` for a refresh token. */
 const ORACLE_OAUTH_SCOPES = [ORACLE_SCOPE, 'offline_access'].filter(Boolean);
 
+/**
+ * Microsoft Dynamics 365 authenticates through Microsoft Entra ID — the SAME identity platform v2.0
+ * endpoints as the microsoft-entra connector — so the authority is built exactly like ENTRA_AUTHORITY (its
+ * own tenant env, defaulting to `common`). The ONLY Dynamics-specific piece is the per-org Dataverse URL in
+ * NEUROPAUSE_MICROSOFT_DYNAMICS_ORG_URL (e.g. `https://myorg.crm.dynamics.com`), which forms BOTH the OAuth
+ * resource scope (`{orgUrl}/user_impersonation`) here AND the Web API data host in dynamics.ts — read at
+ * manifest load, like the SAP/Oracle hosts, so auth and data never diverge.
+ */
+const DYNAMICS_ORG_URL_ENV = 'NEUROPAUSE_MICROSOFT_DYNAMICS_ORG_URL';
+const DYNAMICS_ORG_URL = (process.env[DYNAMICS_ORG_URL_ENV] ?? '').trim().replace(/\/+$/, '') || 'https://ORG.crm.dynamics.com';
+const DYNAMICS_TENANT_ENV = 'NEUROPAUSE_MICROSOFT_DYNAMICS_TENANT_ID';
+const DYNAMICS_TENANT = (process.env[DYNAMICS_TENANT_ENV] ?? '').trim() || 'common';
+const DYNAMICS_AUTHORITY = `https://login.microsoftonline.com/${DYNAMICS_TENANT}/oauth2/v2.0`;
+/** Delegated read scope: the per-org Dataverse resource scope + the OpenID scopes + `offline_access` (refresh). */
+const DYNAMICS_OAUTH_SCOPES = ['openid', 'profile', 'email', 'offline_access', `${DYNAMICS_ORG_URL}/user_impersonation`];
+
 export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
   /* ─────────────── AI assistants (API key) ─────────────── */
   {
@@ -865,6 +881,66 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
       // IDCS returns expires_in (3600) → existing refresh path; no synthesized TTL.
     },
     // One pod per deployment (the hosts are single env vars), so a single connected account.
+    multiAccount: false,
+  },
+
+  {
+    // ONE Microsoft Dynamics 365 family (Sales / Customer Service / Field Service / Project Operations +
+    // the core Dataverse tables). One card, one OAuth token, one vault record — with every table (Accounts,
+    // Contacts, Leads, Opportunities, Cases, Products, Sales Orders, Purchase Orders, Invoices, Projects,
+    // Assets, Users) mounted as a graceful Dataverse-Web-API service resource on the same authenticated
+    // session, exactly as microsoft-entra hosts M365 and salesforce/servicenow host their objects. Dynamics
+    // authenticates through Microsoft Entra ID — the SAME identity platform the microsoft-entra connector
+    // uses (PKCE public client, offline_access → refresh, expires_in → the existing proactive-refresh path,
+    // no synthesized TTL) — the only difference being the per-org Dataverse resource scope built from
+    // NEUROPAUSE_MICROSOFT_DYNAMICS_ORG_URL (which dynamics.ts also reads for the data host). Access is
+    // governed by the user's Dataverse security roles (not per-object OAuth scopes), so which apps a org
+    // exposes is discovered at runtime from the per-module degrade (a missing table's 404/403).
+    id: 'dynamics365',
+    name: 'Microsoft Dynamics 365',
+    provider: 'Microsoft',
+    description:
+      'One Microsoft Dynamics 365 connector family: accounts, contacts, leads, opportunities, cases, products, sales orders, purchase orders, invoices, projects, assets, and users — synced through a single authenticated connection.',
+    category: 'productivity',
+    website: 'https://www.microsoft.com/dynamics-365',
+    docsUrl: 'https://learn.microsoft.com/power-apps/developer/data-platform/webapi/overview',
+    brandColor: '#002050',
+    version: '1.0.0',
+    // PKCE public client on the desktop loopback — identical to microsoft-entra (no client secret).
+    authType: 'oauth2_pkce',
+    capabilities: ['contacts', 'tasks', 'activities', 'documents', 'projects'],
+    // Dynamics OAuth has no per-object scopes: the single Dataverse `user_impersonation` scope unlocks the
+    // whole Web API, and access is governed by the user's Dataverse security roles. Least-privilege = a
+    // read-only security role on the integration user. The adapter only issues read-only OData GETs.
+    scopes: [
+      { id: 'user_impersonation', label: 'Dynamics 365 data', description: 'Read your Dynamics 365 data as yourself (access is governed by your Dataverse security roles).' },
+      { id: 'offline_access', label: 'Offline', description: 'Keep the connection alive in the background.' },
+    ],
+    oauth: {
+      // Microsoft Entra ID v2.0 endpoints (built from the Dynamics tenant env), identical to microsoft-entra.
+      authorizeUrl: `${DYNAMICS_AUTHORITY}/authorize`,
+      tokenUrl: `${DYNAMICS_AUTHORITY}/token`,
+      // Entra tokens are revoked by the user in Entra/account settings, not a standard revoke POST the engine
+      // matches, so disconnect drops the vaulted token locally (like microsoft-entra).
+      revokeUrl: null,
+      // The per-org Dataverse resource scope + OpenID scopes + offline_access (built from the org URL env).
+      scopes: DYNAMICS_OAUTH_SCOPES,
+      scopeSeparator: ' ',
+      // Public client + PKCE (no secret), exactly like microsoft-entra — a desktop loopback confidential
+      // secret would trip AADSTS700025.
+      usePkce: true,
+      tokenAuthStyle: 'body',
+      extraAuthParams: { prompt: 'select_account' },
+      extraTokenParams: {},
+      callbackPath: '/callback',
+      clientIdEnv: 'NEUROPAUSE_MICROSOFT_DYNAMICS_CLIENT_ID',
+      clientSecretEnv: null,
+      // Entra exact-matches the redirect URI; register http://127.0.0.1:42829/callback under the app's
+      // "Mobile and desktop applications" platform.
+      loopbackPort: 42829,
+      // Entra returns expires_in → existing refresh path; no synthesized TTL.
+    },
+    // One org per deployment (the org URL is a single env var), so a single connected account.
     multiAccount: false,
   },
 ];

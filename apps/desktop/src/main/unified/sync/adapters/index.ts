@@ -13,6 +13,7 @@ import { hubspotAdapter } from './hubspot';
 import { servicenowAdapter } from './servicenow';
 import { sapAdapter } from './sap';
 import { oracleAdapter } from './oracle';
+import { dynamicsAdapter } from './dynamics';
 import { entraAdapter } from './entra';
 
 export function registerBuiltinAdapters(): void {
@@ -40,5 +41,9 @@ export function registerBuiltinAdapters(): void {
   // service resource on one OAuth token); OAuth (IDCS) + data (Fusion pod) hosts are env-configured,
   // capability is role/data-security/runtime-driven.
   registerAdapter(oracleAdapter);
+  // Microsoft Dynamics 365 is one connector family (every Dataverse table as a graceful, OData-v4-
+  // incremental service resource on one Microsoft Entra OAuth token — the same identity platform as
+  // microsoft-entra); the org URL is env-configured, capability is security-role/runtime-driven.
+  registerAdapter(dynamicsAdapter);
   registerAdapter(entraAdapter);
 }
