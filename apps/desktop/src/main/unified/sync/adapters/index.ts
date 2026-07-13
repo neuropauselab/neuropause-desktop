@@ -7,6 +7,7 @@ import { githubAdapter } from './github';
 import { notionAdapter } from './notion';
 import { googleWorkspaceAdapter } from './googleWorkspace';
 import { slackAdapter } from './slack';
+import { atlassianAdapter } from './atlassian';
 import { entraAdapter } from './entra';
 
 export function registerBuiltinAdapters(): void {
@@ -16,5 +17,7 @@ export function registerBuiltinAdapters(): void {
   // one token), mirroring how microsoft-entra hosts the M365 services.
   registerAdapter(googleWorkspaceAdapter);
   registerAdapter(slackAdapter);
+  // Atlassian is one connector family (Jira + Confluence service resources on one OAuth 3LO token).
+  registerAdapter(atlassianAdapter);
   registerAdapter(entraAdapter);
 }

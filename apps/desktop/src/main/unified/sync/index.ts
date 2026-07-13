@@ -27,6 +27,7 @@ import { describeAdapter, type AdapterCapability } from './adapterSdk';
 import { googleServiceAvailability } from './adapters/googleWorkspace';
 import { githubServiceAvailability } from './adapters/github';
 import { slackServiceAvailability } from './adapters/slack';
+import { atlassianServiceAvailability } from './adapters/atlassian';
 
 const log = createLogger('sync');
 
@@ -160,6 +161,17 @@ export async function initSync(deps: SyncSubsystemDeps): Promise<SyncSubsystem> 
       // (channels:read / channels:history / users:read / files:read) for ✓/✗, exactly like the above.
       if (connectorId === 'slack') {
         return slackServiceAvailability(grantedScopes).map((s) => ({
+          id: s.id,
+          label: s.label,
+          kind: null,
+          scope: s.scope,
+          scopeGranted: s.available,
+        }));
+      }
+      // Atlassian (Jira + Confluence) is a scope-gated family too: project its service catalog against
+      // the granted 3LO scopes (read:jira-work / read:confluence-*) for ✓/✗, exactly like the above.
+      if (connectorId === 'atlassian') {
+        return atlassianServiceAvailability(grantedScopes).map((s) => ({
           id: s.id,
           label: s.label,
           kind: null,

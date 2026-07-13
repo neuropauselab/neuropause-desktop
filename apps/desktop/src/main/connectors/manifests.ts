@@ -305,38 +305,44 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
 
   /* ─────────────── Project management ─────────────── */
   {
-    id: 'jira',
-    name: 'Jira',
+    // ONE Atlassian family (Jira Cloud + Confluence Cloud). Replaces the former standalone `jira` stub —
+    // one card, one OAuth 3LO consent, one vault record — with Jira + Confluence service adapters beneath.
+    id: 'atlassian',
+    name: 'Atlassian',
     provider: 'Atlassian',
-    description: 'Sync projects, issues, and your assigned work from Jira.',
+    description: 'One Atlassian connector family: Jira projects, issues, and boards, plus Confluence spaces and pages.',
     category: 'project_management',
     website: 'https://atlassian.com',
     docsUrl: 'https://developer.atlassian.com/cloud/jira/platform/oauth-2-3lo-apps/',
     brandColor: '#0052CC',
-    version: '1.0.0',
+    version: '2.0.0',
     authType: 'oauth2_confidential',
-    capabilities: ['projects', 'tasks', 'issues', 'activities'],
+    capabilities: ['projects', 'tasks', 'issues', 'documents', 'activities'],
+    // One consent for the family; Atlassian returns the granted scopes → runtime capability discovery
+    // (atlassianServiceAvailability). Least-privilege, read-only.
     scopes: [
-      { id: 'read:jira-work', label: 'Work', description: 'Read projects, issues, and boards.' },
-      { id: 'read:jira-user', label: 'Users', description: 'Read user directory for names.' },
-      {
-        id: 'offline_access',
-        label: 'Offline',
-        description: 'Keep the connection alive in the background.',
-      },
+      { id: 'read:jira-work', label: 'Jira', description: 'Read Jira projects, issues, and boards.' },
+      { id: 'read:jira-user', label: 'Jira Users', description: 'Read the Jira user directory for names.' },
+      { id: 'read:confluence-space.summary', label: 'Confluence Spaces', description: 'Read Confluence space metadata.' },
+      { id: 'read:confluence-content.all', label: 'Confluence Pages', description: 'Read Confluence pages and content.' },
+      { id: 'offline_access', label: 'Offline', description: 'Keep the connection alive in the background.' },
     ],
     oauth: {
       authorizeUrl: 'https://auth.atlassian.com/authorize',
       tokenUrl: 'https://auth.atlassian.com/oauth/token',
       revokeUrl: null,
-      scopes: ['read:jira-work', 'read:jira-user', 'offline_access'],
+      scopes: ['read:jira-work', 'read:jira-user', 'read:confluence-space.summary', 'read:confluence-content.all', 'offline_access'],
       scopeSeparator: ' ',
       usePkce: false,
       tokenAuthStyle: 'body',
       extraAuthParams: { audience: 'api.atlassian.com', prompt: 'consent' },
       extraTokenParams: {},
+      callbackPath: '/callback',
       clientIdEnv: 'NEUROPAUSE_ATLASSIAN_CLIENT_ID',
       clientSecretEnv: 'NEUROPAUSE_ATLASSIAN_CLIENT_SECRET',
+      // Atlassian 3LO requires an exact registered redirect URI, so pin a loopback port.
+      // Register http://127.0.0.1:42815/callback as the OAuth callback URL.
+      loopbackPort: 42815,
     },
     multiAccount: true,
   },
