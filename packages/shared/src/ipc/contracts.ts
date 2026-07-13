@@ -1924,3 +1924,28 @@ export const InfraDiscoverRequest = z
   .object({ platformId: z.string().min(1), accountId: z.string().optional() })
   .strict();
 export type InfraDiscoverRequest = z.infer<typeof InfraDiscoverRequest>;
+
+// P6.1 — automation actions + global search. The action catalog is a read (optional platform filter); an
+// action run is a scoped manage op whose `confirmed` flag MUST default false (a mutating action is refused
+// unless the caller sets it true from an explicit human confirmation — AI can never reach the mutation path).
+export const InfraActionsRequest = z.object({ platformId: z.string().optional() }).strict();
+export type InfraActionsRequest = z.infer<typeof InfraActionsRequest>;
+export const InfraActionRequest = z
+  .object({
+    platformId: z.string().min(1),
+    accountId: z.string().optional(),
+    actionId: z.string().min(1),
+    params: z.record(z.unknown()).default({}),
+    confirmed: z.boolean().default(false),
+  })
+  .strict();
+export type InfraActionRequest = z.infer<typeof InfraActionRequest>;
+export const InfraSearchRequest = z
+  .object({
+    query: z.string().min(1),
+    platformId: z.string().optional(),
+    domain: z.string().optional(),
+    limit: z.number().int().positive().max(200).optional(),
+  })
+  .strict();
+export type InfraSearchRequest = z.infer<typeof InfraSearchRequest>;

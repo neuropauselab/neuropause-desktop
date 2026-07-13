@@ -596,6 +596,9 @@ export const IpcChannel = {
   InfraResourceGraph: 'infra:resourceGraph',
   InfraResourceNeighbors: 'infra:resourceNeighbors',
   InfraDiscover: 'infra:discover',
+  InfraActions: 'infra:actions',
+  InfraAction: 'infra:action',
+  InfraSearch: 'infra:search',
   InfraEventBroadcast: 'infra:event',
 } as const;
 
@@ -1087,6 +1090,9 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.InfraResourceGraph,
   IpcChannel.InfraResourceNeighbors,
   IpcChannel.InfraDiscover,
+  IpcChannel.InfraActions,
+  IpcChannel.InfraAction,
+  IpcChannel.InfraSearch,
 ];
 
 /** Runtime-core broadcasts. */

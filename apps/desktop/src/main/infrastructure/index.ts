@@ -16,6 +16,9 @@ import {
   InfraResourceGraphRequest,
   InfraResourceNeighborsRequest,
   InfraDiscoverRequest,
+  InfraActionsRequest,
+  InfraActionRequest,
+  InfraSearchRequest,
   manifestToPlatformDto,
   resourceNeighbors,
   type CloudPlatformDto,
@@ -35,6 +38,11 @@ import { getPlatform } from './platformRegistry';
 import { ResourceStore } from './resourceStore';
 import { DiscoveryStateStore, type AccountDiscoveryState } from './discoveryState';
 import { InfrastructureDiscoveryEngine } from './discoveryEngine';
+import { registerAwsPlatform, makeAwsHttp } from './aws/awsAdapter';
+import { InfraActionExecutor } from './executor';
+import { awsActions } from './aws/awsActions';
+import type { DiscoveryHttp } from '@neuropause/shared';
+import { AuthError } from '../unified/sync/http';
 
 const log = createLogger('infrastructure');
 
@@ -79,16 +87,39 @@ export async function initInfrastructure(deps: InfrastructureDeps): Promise<Infr
   await state.reconcile();
 
   const rate = new RateLimiter();
+  // P6.1 — register the first concrete Cloud Platform (AWS) into the shared registry.
+  registerAwsPlatform();
+  // The signed transport for a platform+account. AWS is injected a SigV4-signing transport built from the
+  // credential profile; other platforms fall back to the generic bearer client (their adapters land later).
+  // An unconfigured AWS degrades every domain `unauthorized` with a clear reason rather than a hard error.
+  // This ONE builder is shared by discovery and automation — the executor never creates a second transport.
+  const makeHttp = (platformId: string, accountId: string): DiscoveryHttp => {
+    if (platformId === 'aws') {
+      return makeAwsHttp(rate, accountId) ?? unconfiguredAws();
+    }
+    return new HttpClient(platformId, async () => '', rate, getPlatform(platformId)?.baseHeaders ?? {});
+  };
   const engine = new InfrastructureDiscoveryEngine({
     getPlatform,
     state,
-    // Credential wiring (per-platform token/role) lands in P6.1; until an adapter + account exist, this is
-    // never invoked (discoverAccount returns early when no adapter is registered).
-    makeHttp: (platformId) => new HttpClient(platformId, async () => '', rate, getPlatform(platformId)?.baseHeaders ?? {}),
+    makeHttp,
     sink: (platformId, accountId, resources, deletedIds) => store.upsertMany(resources, deletedIds, { platformId, accountId }),
     publish: deps.publish,
     now,
   });
+
+  // P6.1 — the confirmation-gated automation executor (AWS high-privilege actions). It reuses `makeHttp`
+  // (the same signed discovery transport) and publishes started→completed|failed onto the same event bus, so
+  // every action lands in the ONE Timeline/Audit with no parallel runtime.
+  const executor = new InfraActionExecutor(
+    {
+      makeHttp,
+      publish: deps.publish,
+      regionFor: (platformId, accountId) => state.get(platformId, accountId).region,
+      now,
+    },
+    [...awsActions()],
+  );
 
   // Re-broadcast resource-store changes so the Cloud Platform Center refreshes live.
   store.on('changed', (e) => deps.broadcast(IpcChannel.InfraEventBroadcast, { kind: 'resources', ...e }));
@@ -194,6 +225,36 @@ export async function initInfrastructure(deps: InfrastructureDeps): Promise<Infr
         return engine.discoverAccount(req.platformId, req.accountId ?? 'default');
       },
     },
+    // P6.1 — automation action catalog (read) + a single confirmation-gated action run (manage + audited).
+    {
+      channel: IpcChannel.InfraActions,
+      schema: InfraActionsRequest,
+      requireAuth: true,
+      permission: 'connectors:read',
+      handler: (p) => executor.list((p as { platformId?: string }).platformId),
+    },
+    {
+      channel: IpcChannel.InfraAction,
+      schema: InfraActionRequest,
+      requireAuth: true,
+      permission: 'connectors:manage',
+      audit: true,
+      handler: async (p) => {
+        const req = p as { platformId: string; accountId?: string; actionId: string; params?: Record<string, unknown>; confirmed?: boolean };
+        return executor.execute(req.platformId, req.accountId ?? 'default', req.actionId, req.params ?? {}, req.confirmed === true);
+      },
+    },
+    // P6.1 — global infrastructure search across every discovered resource (read).
+    {
+      channel: IpcChannel.InfraSearch,
+      schema: InfraSearchRequest,
+      requireAuth: true,
+      permission: 'connectors:read',
+      handler: (p) => {
+        const req = p as { query: string; platformId?: string; domain?: string; limit?: number };
+        return store.search(req.query, { platformId: req.platformId, domain: req.domain }, req.limit);
+      },
+    },
   ];
 
   log.info('Infrastructure runtime ready', { platforms: CLOUD_PLATFORM_MANIFESTS.length, resources: store.all().length });
@@ -206,6 +267,14 @@ export async function initInfrastructure(deps: InfrastructureDeps): Promise<Infr
     probe,
     dispose: () => undefined,
   };
+}
+
+/** A transport for an AWS platform with no credential profile — every request degrades `unauthorized`. */
+function unconfiguredAws(): DiscoveryHttp {
+  const fail = async (): Promise<never> => {
+    throw new AuthError('AWS credentials are not configured (set NEUROPAUSE_AWS_ACCESS_KEY_ID / _SECRET_ACCESS_KEY)', 403);
+  };
+  return { getJson: fail, send: fail };
 }
 
 /** `app.getPath('userData')` guarded — returns null under a test/headless context where electron app is absent. */

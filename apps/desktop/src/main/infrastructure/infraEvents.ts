@@ -80,4 +80,38 @@ export const infraEvents = {
       metadata: { platformId: r.platformId, accountId: r.accountId, resourceType: r.resourceType, from, to },
     };
   },
+  /* ── automation actions (P6.1) — a high-privilege mutation, actor is the operator (not the system) ── */
+  actionStarted(platformId: string, accountId: string, actionId: string, label: string): PlatformEventInput {
+    return {
+      type: 'infrastructure.action_started',
+      category: 'infrastructure',
+      source: SOURCE,
+      actor: { kind: 'user', id: 'operator' },
+      resource: { type: 'platform', id: `${platformId}:${accountId}`, name: platformId },
+      priority: 'high',
+      metadata: { platformId, accountId, actionId, label },
+    };
+  },
+  actionCompleted(platformId: string, accountId: string, actionId: string, label: string, summary: string): PlatformEventInput {
+    return {
+      type: 'infrastructure.action_completed',
+      category: 'infrastructure',
+      source: SOURCE,
+      actor: { kind: 'user', id: 'operator' },
+      resource: { type: 'platform', id: `${platformId}:${accountId}`, name: platformId },
+      priority: 'high',
+      metadata: { platformId, accountId, actionId, label, summary },
+    };
+  },
+  actionFailed(platformId: string, accountId: string, actionId: string, label: string, reason: string): PlatformEventInput {
+    return {
+      type: 'infrastructure.action_failed',
+      category: 'infrastructure',
+      source: SOURCE,
+      actor: { kind: 'user', id: 'operator' },
+      resource: { type: 'platform', id: `${platformId}:${accountId}`, name: platformId },
+      priority: 'critical',
+      metadata: { platformId, accountId, actionId, label, reason },
+    };
+  },
 };

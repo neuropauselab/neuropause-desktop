@@ -16,8 +16,45 @@ import { promises as fs } from 'node:fs';
 import {
   buildResourceGraph,
   type CloudResource,
+  type InfraSearchHit,
+  type InfraSearchResult,
   type ResourceGraphModel,
 } from '@neuropause/shared';
+
+/** Does `q` (already lowercased) match this resource? Returns the matched field name, or null. Scans the
+ *  human-meaningful fields — name, native id, type, region, tag keys/values, and string attribute values. */
+function matchResource(r: CloudResource, q: string): string | null {
+  // Null-guarded: a corrupt / legacy persisted record (loaded with only an `id` check) must degrade to
+  // "no match" for that one resource, never throw and fail the whole search.
+  if ((r.name ?? '').toLowerCase().includes(q)) return 'name';
+  if ((r.nativeId ?? '').toLowerCase().includes(q)) return 'nativeId';
+  if ((r.resourceType ?? '').toLowerCase().includes(q)) return 'resourceType';
+  if (r.region && r.region.toLowerCase().includes(q)) return 'region';
+  for (const [k, v] of Object.entries(r.tags ?? {})) {
+    if (k.toLowerCase().includes(q) || String(v).toLowerCase().includes(q)) return `tag:${k}`;
+  }
+  for (const [k, v] of Object.entries(r.attributes ?? {})) {
+    if (v != null && String(v).toLowerCase().includes(q)) return `attr:${k}`;
+  }
+  return null;
+}
+
+function toSearchHit(r: CloudResource, matchedOn: string): InfraSearchHit {
+  return {
+    resourceId: r.id,
+    platformId: r.platformId,
+    provider: r.provider,
+    accountId: r.accountId,
+    domain: r.domain,
+    resourceType: r.resourceType,
+    nativeId: r.nativeId,
+    name: r.name ?? '',
+    region: r.region,
+    status: r.status,
+    health: r.health,
+    matchedOn,
+  };
+}
 
 export interface ResourceUpsertResult {
   created: number;
@@ -132,6 +169,27 @@ export class ResourceStore extends EventEmitter {
     if (filter?.platformId) list = list.filter((r) => r.platformId === filter.platformId);
     if (filter?.accountId) list = list.filter((r) => r.accountId === filter.accountId);
     return list;
+  }
+
+  /**
+   * Global infrastructure search across EVERY discovered resource (all platforms/accounts/domains) — the one
+   * search box in the Cloud Platform Center. Matches name / native id / type / region / tags / attributes,
+   * ranked name-matches first, capped at `limit` (with the true `total` reported for "N of M").
+   */
+  search(text: string, filter?: { platformId?: string; domain?: string }, limit = 50): InfraSearchResult {
+    const q = text.trim().toLowerCase();
+    if (!q) return { query: text, total: 0, hits: [] };
+    const matches: Array<{ hit: InfraSearchHit; nameHit: boolean }> = [];
+    for (const r of this.resources.values()) {
+      if (filter?.platformId && r.platformId !== filter.platformId) continue;
+      if (filter?.domain && r.domain !== filter.domain) continue;
+      const matchedOn = matchResource(r, q);
+      if (!matchedOn) continue;
+      matches.push({ hit: toSearchHit(r, matchedOn), nameHit: matchedOn === 'name' });
+    }
+    // Name matches are the most relevant; keep a stable order within each tier by name.
+    matches.sort((a, b) => (a.nameHit === b.nameHit ? a.hit.name.localeCompare(b.hit.name) : a.nameHit ? -1 : 1));
+    return { query: text, total: matches.length, hits: matches.slice(0, Math.max(0, limit)).map((m) => m.hit) };
   }
 
   /** How many resources belong to a platform (for the Cloud Platform Center counts). */

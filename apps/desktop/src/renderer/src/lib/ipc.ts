@@ -196,6 +196,9 @@ import type {
   CloudPlatformStats,
   ResourceGraphModel,
   ResourceEdgeToNode,
+  InfraActionInfo,
+  InfraActionResult,
+  InfraSearchResult,
   Organization,
   OrgUnit,
   OrgRole,
@@ -719,6 +722,13 @@ export const ipc = {
       invoke(IpcChannel.InfraResourceNeighbors, { resourceId }) as Promise<ResourceEdgeToNode[]>,
     discover: (platformId: string, accountId?: string) =>
       invoke(IpcChannel.InfraDiscover, { platformId, accountId }) as Promise<{ ok: boolean; hadAdapter: boolean; resources: number }>,
+    // P6.1 — automation actions + global search.
+    actions: (platformId?: string) =>
+      invoke(IpcChannel.InfraActions, platformId ? { platformId } : {}) as Promise<InfraActionInfo[]>,
+    action: (req: { platformId: string; accountId?: string; actionId: string; params?: Record<string, unknown>; confirmed?: boolean }) =>
+      invoke(IpcChannel.InfraAction, req) as Promise<InfraActionResult>,
+    search: (query: string, opts?: { platformId?: string; domain?: string; limit?: number }) =>
+      invoke(IpcChannel.InfraSearch, { query, ...opts }) as Promise<InfraSearchResult>,
     onEvent: (cb: (e: unknown) => void) => subscribe(IpcChannel.InfraEventBroadcast, cb),
   },
 

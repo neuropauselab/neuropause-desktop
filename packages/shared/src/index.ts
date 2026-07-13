@@ -118,3 +118,4 @@ export * from './infra/cloudPlatform';
 export * from './infra/resourceGraph';
 export * from './infra/discovery';
 export * from './infra/resourceGraphBridge';
+export * from './infra/action';

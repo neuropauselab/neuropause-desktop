@@ -152,7 +152,11 @@ export type PlatformEventType =
   | 'infrastructure.scaling'
   | 'infrastructure.health_changed'
   | 'infrastructure.alert_raised'
-  | 'infrastructure.failure_detected';
+  | 'infrastructure.failure_detected'
+  // P6.1 — high-privilege automation actions (confirmation-gated; audited on the one Timeline)
+  | 'infrastructure.action_started'
+  | 'infrastructure.action_completed'
+  | 'infrastructure.action_failed';
 /** Who or what caused the event. */
 export interface EventActor {
   kind: 'user' | 'system' | 'plugin' | 'connector';

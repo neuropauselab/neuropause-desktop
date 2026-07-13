@@ -24,6 +24,30 @@ export interface DiscoveryHttp {
     url: string,
     opts?: { query?: Record<string, string | number | boolean | undefined>; headers?: Record<string, string> },
   ): Promise<{ data: T; status: number; headers: Record<string, string> }>;
+  /**
+   * A lower-level signed request → raw text, for platforms whose APIs aren't plain bearer-token JSON GETs
+   * (AWS SigV4 + XML/JSON-RPC, for example). OPTIONAL and additive: bearer-token platforms and the existing
+   * fakes implement only `getJson`; the runtime injects a client that ALSO implements `send` for such
+   * platforms. The collector parses the `text` itself (XML or JSON). The transport handles auth/signing and
+   * rate-gating internally, so the collector stays credential-free.
+   */
+  send?(req: DiscoveryRequest): Promise<DiscoveryResponse>;
+}
+
+/** A raw request for `DiscoveryHttp.send` — the transport signs it and attaches auth. */
+export interface DiscoveryRequest {
+  method: string;
+  /** The full URL (scheme + host + path + query). The transport may derive signing scope from the host. */
+  url: string;
+  headers?: Record<string, string>;
+  body?: string;
+}
+
+/** The raw response from `DiscoveryHttp.send`. */
+export interface DiscoveryResponse {
+  status: number;
+  headers: Record<string, string>;
+  text: string;
 }
 
 /** Everything a collector needs to discover one page of one domain. Mirrors `SyncContext`. */
