@@ -50,6 +50,22 @@ const SAP_HOST_ENV = 'NEUROPAUSE_SAP_HOST';
 const SAP_BASE = `https://${(process.env[SAP_HOST_ENV] ?? '').trim() || 'HOST'}`;
 const SAP_CLIENT = (process.env['NEUROPAUSE_SAP_CLIENT'] ?? '').trim() || '100';
 
+/**
+ * Oracle Fusion Cloud ERP has TWO hosts: OAuth runs on the Oracle Identity Cloud Service (IDCS/IAM) host,
+ * the data API on the Fusion applications pod. Set NEUROPAUSE_ORACLE_IDCS_HOST to the IDCS host (e.g.
+ * `idcs-abc123.identity.oraclecloud.com`) for the authorize/token URLs, and NEUROPAUSE_ORACLE_FUSION_HOST
+ * to the pod host (e.g. `mytenant.fa.us2.oraclecloud.com`) — the adapter (oracle.ts) reads the latter for
+ * its data calls, so the auth host and data host stay independent, as the platform requires. The granted
+ * OAuth scope is the coarse, deployment-specific Fusion resource scope in NEUROPAUSE_ORACLE_SCOPE (access
+ * is then governed by the integration user's roles, not the scope). Read at manifest load, like the SAP
+ * tenant + the Entra tenant.
+ */
+const ORACLE_IDCS_HOST_ENV = 'NEUROPAUSE_ORACLE_IDCS_HOST';
+const ORACLE_IDCS_BASE = `https://${(process.env[ORACLE_IDCS_HOST_ENV] ?? '').trim() || 'IDCS_HOST'}`;
+const ORACLE_SCOPE = (process.env['NEUROPAUSE_ORACLE_SCOPE'] ?? '').trim();
+/** Authorize/token scopes: the deployment resource scope (when configured) + `offline_access` for a refresh token. */
+const ORACLE_OAUTH_SCOPES = [ORACLE_SCOPE, 'offline_access'].filter(Boolean);
+
 export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
   /* ─────────────── AI assistants (API key) ─────────────── */
   {
@@ -791,6 +807,64 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
       // SAP returns expires_in → existing refresh path; no synthesized TTL.
     },
     // One tenant per deployment (the host is a single env var), so a single connected account.
+    multiAccount: false,
+  },
+
+  {
+    // ONE Oracle Fusion Cloud ERP family (Financials / Procurement / Supply Chain / Manufacturing /
+    // Projects). One card, one OAuth token, one vault record — with every business object (Business Units,
+    // Suppliers, Customers, Items, Inventory, Purchase Orders, Receipts, Invoices, Payments, Projects, Work
+    // Orders) mounted as a graceful Fusion-REST service resource on the same authenticated session, exactly
+    // as microsoft-entra hosts M365 and servicenow/sap host their objects. Oracle splits OAuth (the IDCS/IAM
+    // host, NEUROPAUSE_ORACLE_IDCS_HOST) from the data API (the Fusion pod, NEUROPAUSE_ORACLE_FUSION_HOST,
+    // read by oracle.ts). The IDCS token endpoint takes HTTP Basic client auth and returns `expires_in`
+    // (3600s) + a refresh token (via offline_access), so the existing proactive-refresh path needs no
+    // synthesized TTL. Access is governed by the integration user's roles + data-security policies (not
+    // OAuth scopes), so which pillars a pod exposes is discovered at runtime from the per-module degrade.
+    id: 'oracle',
+    name: 'Oracle Fusion Cloud ERP',
+    provider: 'Oracle',
+    description:
+      'One Oracle Fusion Cloud ERP connector family: business units, suppliers, customers, items, inventory, purchase orders, receipts, invoices, payments, projects, and work orders — synced through a single authenticated connection.',
+    category: 'productivity',
+    website: 'https://www.oracle.com/erp/',
+    docsUrl: 'https://docs.oracle.com/en/cloud/saas/index.html',
+    brandColor: '#C74634',
+    version: '1.0.0',
+    authType: 'oauth2_confidential',
+    capabilities: ['tasks', 'activities', 'contacts', 'documents', 'projects'],
+    // Oracle Fusion OAuth has no per-object scopes: the granted scope is the coarse Fusion resource scope,
+    // and access is governed by the integration user's job/duty roles + data-security policies. Least-
+    // privilege = a read-only integration user with the relevant view duty roles. The adapter only issues
+    // read-only Fusion REST GETs against these objects.
+    scopes: [
+      { id: 'oracle', label: 'Oracle Fusion ERP', description: 'Read Oracle Fusion ERP data as the integration user (access is governed by that user\'s roles and data-security policies).' },
+    ],
+    oauth: {
+      // IDCS-hosted OAuth endpoints (built from NEUROPAUSE_ORACLE_IDCS_HOST), separate from the Fusion data
+      // pod. offline_access yields the refresh token; the resource scope comes from NEUROPAUSE_ORACLE_SCOPE.
+      authorizeUrl: `${ORACLE_IDCS_BASE}/oauth2/v1/authorize`,
+      tokenUrl: `${ORACLE_IDCS_BASE}/oauth2/v1/token`,
+      // IDCS revoke (/oauth2/v1/revoke) expects Basic-auth in a shape the engine's revoke POST doesn't match,
+      // so disconnect drops the vaulted token locally (like SAP / ServiceNow / HubSpot).
+      revokeUrl: null,
+      scopes: ORACLE_OAUTH_SCOPES,
+      scopeSeparator: ' ',
+      // Confidential flow; IDCS confidential clients authenticate at the token endpoint with HTTP Basic —
+      // the one auth-style difference from the body-credential ERP families.
+      usePkce: false,
+      tokenAuthStyle: 'basic',
+      extraAuthParams: {},
+      extraTokenParams: {},
+      callbackPath: '/callback',
+      clientIdEnv: 'NEUROPAUSE_ORACLE_CLIENT_ID',
+      clientSecretEnv: 'NEUROPAUSE_ORACLE_CLIENT_SECRET',
+      // IDCS exact-matches the registered redirect URI; register http://127.0.0.1:42827/callback as the
+      // confidential application's redirect URL.
+      loopbackPort: 42827,
+      // IDCS returns expires_in (3600) → existing refresh path; no synthesized TTL.
+    },
+    // One pod per deployment (the hosts are single env vars), so a single connected account.
     multiAccount: false,
   },
 ];

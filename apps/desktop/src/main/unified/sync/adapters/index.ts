@@ -12,6 +12,7 @@ import { salesforceAdapter } from './salesforce';
 import { hubspotAdapter } from './hubspot';
 import { servicenowAdapter } from './servicenow';
 import { sapAdapter } from './sap';
+import { oracleAdapter } from './oracle';
 import { entraAdapter } from './entra';
 
 export function registerBuiltinAdapters(): void {
@@ -35,5 +36,9 @@ export function registerBuiltinAdapters(): void {
   // SAP S/4HANA is one connector family (every ERP object as a graceful, OData-incremental service resource
   // on one OAuth token); the tenant host is env-configured, capability is role/arrangement/runtime-driven.
   registerAdapter(sapAdapter);
+  // Oracle Fusion Cloud ERP is one connector family (every Fusion object as a graceful, REST-incremental
+  // service resource on one OAuth token); OAuth (IDCS) + data (Fusion pod) hosts are env-configured,
+  // capability is role/data-security/runtime-driven.
+  registerAdapter(oracleAdapter);
   registerAdapter(entraAdapter);
 }
