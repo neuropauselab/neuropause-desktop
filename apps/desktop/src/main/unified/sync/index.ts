@@ -26,6 +26,7 @@ import { registerBuiltinAdapters } from './adapters';
 import { describeAdapter, type AdapterCapability } from './adapterSdk';
 import { googleServiceAvailability } from './adapters/googleWorkspace';
 import { githubServiceAvailability } from './adapters/github';
+import { slackServiceAvailability } from './adapters/slack';
 
 const log = createLogger('sync');
 
@@ -148,6 +149,17 @@ export async function initSync(deps: SyncSubsystemDeps): Promise<SyncSubsystem> 
       // (repo / read:org / notifications) for correct pre-flight ✓/✗, exactly like Google Workspace.
       if (connectorId === 'github') {
         return githubServiceAvailability(grantedScopes).map((s) => ({
+          id: s.id,
+          label: s.label,
+          kind: null,
+          scope: s.scope,
+          scopeGranted: s.available,
+        }));
+      }
+      // Slack is a scope-gated family too: project its service catalog against the granted BOT scopes
+      // (channels:read / channels:history / users:read / files:read) for ✓/✗, exactly like the above.
+      if (connectorId === 'slack') {
+        return slackServiceAvailability(grantedScopes).map((s) => ({
           id: s.id,
           label: s.label,
           kind: null,

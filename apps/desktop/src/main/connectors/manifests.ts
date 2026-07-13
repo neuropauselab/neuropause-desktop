@@ -202,28 +202,28 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
     id: 'slack',
     name: 'Slack',
     provider: 'Slack',
-    description: 'Bring channels, messages, and mentions into your activity feed.',
+    description: 'One Slack connector family: channels, messages, users, and files — with realtime Socket Mode sync.',
     category: 'communication',
     website: 'https://slack.com',
     docsUrl: 'https://api.slack.com/authentication/oauth-v2',
     brandColor: '#4A154B',
-    version: '1.0.0',
+    version: '2.0.0',
     authType: 'oauth2_confidential',
-    capabilities: ['messages', 'conversations', 'notifications'],
+    capabilities: ['conversations', 'messages', 'contacts', 'files'],
+    // One consent for the family; Slack returns the granted bot scopes → runtime capability discovery
+    // (slackServiceAvailability). Least-privilege, read-only. Private channels (groups:read/history) and
+    // search (a user token) are documented follow-ons.
     scopes: [
-      { id: 'channels:read', label: 'Channels', description: 'Read channel metadata.' },
-      {
-        id: 'channels:history',
-        label: 'History',
-        description: 'Read messages in channels you are in.',
-      },
-      { id: 'users:read', label: 'Users', description: 'Read user directory for names.' },
+      { id: 'channels:read', label: 'Channels', description: 'Read public channel metadata.' },
+      { id: 'channels:history', label: 'Messages', description: 'Read messages in public channels the app is in.' },
+      { id: 'users:read', label: 'Users', description: 'Read the workspace user directory.' },
+      { id: 'files:read', label: 'Files', description: 'Read files shared in the workspace.' },
     ],
     oauth: {
       authorizeUrl: 'https://slack.com/oauth/v2/authorize',
       tokenUrl: 'https://slack.com/api/oauth.v2.access',
       revokeUrl: 'https://slack.com/api/auth.revoke',
-      scopes: ['channels:read', 'channels:history', 'users:read'],
+      scopes: ['channels:read', 'channels:history', 'users:read', 'files:read'],
       scopeSeparator: ',',
       usePkce: false,
       tokenAuthStyle: 'body',
@@ -232,6 +232,10 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
       callbackPath: '/callback',
       clientIdEnv: 'NEUROPAUSE_SLACK_CLIENT_ID',
       clientSecretEnv: 'NEUROPAUSE_SLACK_CLIENT_SECRET',
+      // Optional: set to verify the signed HTTP Events inbound path (v0 HMAC over `v0:timestamp:body`).
+      // Socket Mode (NEUROPAUSE_SLACK_APP_TOKEN) works without it; present-but-unset leaves the signed
+      // relay path fail-closed while scheduled + Socket Mode sync are unaffected.
+      webhookSecretEnv: 'NEUROPAUSE_SLACK_SIGNING_SECRET',
     },
     multiAccount: true,
   },
