@@ -8,6 +8,7 @@ import { notionAdapter } from './notion';
 import { googleWorkspaceAdapter } from './googleWorkspace';
 import { slackAdapter } from './slack';
 import { atlassianAdapter } from './atlassian';
+import { salesforceAdapter } from './salesforce';
 import { entraAdapter } from './entra';
 
 export function registerBuiltinAdapters(): void {
@@ -19,5 +20,8 @@ export function registerBuiltinAdapters(): void {
   registerAdapter(slackAdapter);
   // Atlassian is one connector family (Jira + Confluence service resources on one OAuth 3LO token).
   registerAdapter(atlassianAdapter);
+  // Salesforce is one connector family (every CRM object as a graceful service resource on one OAuth
+  // token); the org's instance_url + queryable objects are resolved at runtime, not hardcoded.
+  registerAdapter(salesforceAdapter);
   registerAdapter(entraAdapter);
 }

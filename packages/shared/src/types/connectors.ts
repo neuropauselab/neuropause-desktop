@@ -113,6 +113,17 @@ export interface OAuthEndpointConfig {
    * Apps) pin a port here so the callback URL is deterministic.
    */
   loopbackPort?: number;
+  /**
+   * P5 — Increment 8: assumed access-token lifetime (seconds) for providers whose token endpoint issues
+   * SHORT-lived access tokens alongside a long-lived refresh token but OMITS `expires_in` — notably
+   * Salesforce. When set AND the token response carries no `expires_in`, the OAuth engine synthesizes
+   * `expiresAt = now + accessTokenTtlSeconds`. That single value arms the EXISTING proactive-refresh path
+   * (`getValidAccessToken` + `maybeRotate`, both of which no-op while `expiresAt` is null) so the access
+   * token is rolled over from the refresh token before it lapses — instead of the account silently
+   * stalling in `error` once the provider session expires and every request 401s with no refresh. Unset
+   * (all other connectors) ⇒ unchanged behavior: `expiresAt` stays null when `expires_in` is absent.
+   */
+  accessTokenTtlSeconds?: number | null;
 }
 
 /** The static definition of a connector. */

@@ -22,6 +22,7 @@ import { config } from '../config';
 import { createLogger } from '../logger';
 import { startLoopbackServer } from '../auth/loopbackServer';
 import { createPkcePair, randomState } from './pkce';
+import { computeExpiresAt } from './oauthTokens';
 import type { ResolvedCredentials } from './credentials';
 
 const log = createLogger('oauth-engine');
@@ -67,7 +68,7 @@ function parseScopes(scope: string | undefined): string[] {
     .filter(Boolean);
 }
 
-function normalizeTokens(raw: RawTokenResponse): OAuthTokens {
+function normalizeTokens(raw: RawTokenResponse, ttlSeconds: number | null = null): OAuthTokens {
   if (!raw.access_token) {
     throw new Error(
       raw.error_description || raw.error || 'Token endpoint returned no access token',
@@ -80,10 +81,11 @@ function normalizeTokens(raw: RawTokenResponse): OAuthTokens {
     raw.team?.id ??
     null;
   const label = raw.workspace_name ?? raw.team?.name ?? null;
+  const expiresAt = computeExpiresAt(raw.expires_in, ttlSeconds, Date.now());
   return {
     accessToken: raw.access_token,
     refreshToken: raw.refresh_token ?? null,
-    expiresAt: typeof raw.expires_in === 'number' ? Date.now() + raw.expires_in * 1000 : null,
+    expiresAt,
     scopes: parseScopes(raw.scope),
     tokenType: raw.token_type ?? 'Bearer',
     identity: { externalId, label },
@@ -178,7 +180,7 @@ export const oauthEngine = {
       if (pkce) params.code_verifier = pkce.verifier;
 
       const raw = await postToken(oauth.tokenUrl, tokenRequestInit(oauth, creds, params));
-      const tokens = normalizeTokens(raw);
+      const tokens = normalizeTokens(raw, oauth.accessTokenTtlSeconds ?? null);
       log.info('Authorization succeeded', { connector: manifest.id });
       return tokens;
     } finally {
@@ -200,7 +202,7 @@ export const oauthEngine = {
     };
     if (oauth.scopes.length > 0) params.scope = oauth.scopes.join(oauth.scopeSeparator);
     const raw = await postToken(oauth.tokenUrl, tokenRequestInit(oauth, creds, params));
-    const tokens = normalizeTokens(raw);
+    const tokens = normalizeTokens(raw, oauth.accessTokenTtlSeconds ?? null);
     // Refresh responses frequently omit a new refresh token; keep the old one.
     if (!tokens.refreshToken) tokens.refreshToken = refreshToken;
     return tokens;

@@ -537,6 +537,63 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
     },
     multiAccount: true,
   },
+
+  /* ─────────────── CRM (connector family — one OAuth, many sObject service adapters) ─────────────── */
+  {
+    // ONE Salesforce family (Sales Cloud + Service Cloud). One card, one OAuth token, one vault record —
+    // with each CRM object (Accounts, Contacts, Leads, Opportunities, Cases, Campaigns, Products, Users,
+    // Tasks, Events) mounted as a graceful service resource on the same authenticated session, exactly as
+    // microsoft-entra hosts M365 and atlassian hosts Jira + Confluence. There is no fixed API host: the
+    // adapter resolves the org's `instance_url` at sync time (OIDC userinfo) and which objects the org
+    // actually exposes via describeGlobal (runtime Sales/Service Cloud detection) — nothing hardcoded.
+    id: 'salesforce',
+    name: 'Salesforce',
+    provider: 'Salesforce',
+    description:
+      'One Salesforce connector family: accounts, contacts, leads, opportunities, cases, campaigns, products, users, tasks, and events — synced through a single authenticated connection.',
+    category: 'productivity',
+    website: 'https://salesforce.com',
+    docsUrl: 'https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/',
+    brandColor: '#00A1E0',
+    version: '1.0.0',
+    authType: 'oauth2_confidential',
+    capabilities: ['contacts', 'tasks', 'activities', 'events', 'calendar', 'documents', 'projects'],
+    // Salesforce OAuth scopes are coarse: `api` is the one scope that unlocks the data API for EVERY
+    // object (there is no per-object or read-only scope), `openid` lets us resolve the instance via the
+    // OIDC userinfo endpoint, and `refresh_token` keeps the connection alive. Per-object availability is
+    // therefore NOT a scope question — it is discovered at runtime (describeGlobal + per-module status).
+    // NeuroPause only ever issues read-only SOQL GETs against these objects.
+    scopes: [
+      { id: 'api', label: 'CRM Data', description: 'Read your Salesforce records (accounts, contacts, leads, opportunities, cases, and more).' },
+      { id: 'refresh_token', label: 'Offline', description: 'Keep the connection alive in the background.' },
+      { id: 'openid', label: 'Identity', description: 'Read your Salesforce identity to locate your org instance.' },
+    ],
+    oauth: {
+      authorizeUrl: 'https://login.salesforce.com/services/oauth2/authorize',
+      tokenUrl: 'https://login.salesforce.com/services/oauth2/token',
+      revokeUrl: 'https://login.salesforce.com/services/oauth2/revoke',
+      scopes: ['api', 'refresh_token', 'openid'],
+      scopeSeparator: ' ',
+      usePkce: true,
+      tokenAuthStyle: 'body',
+      extraAuthParams: {},
+      extraTokenParams: {},
+      callbackPath: '/callback',
+      clientIdEnv: 'NEUROPAUSE_SALESFORCE_CLIENT_ID',
+      clientSecretEnv: 'NEUROPAUSE_SALESFORCE_CLIENT_SECRET',
+      // Salesforce connected apps exact-match the callback URL, so pin a loopback port.
+      // Register http://127.0.0.1:42819/callback as the connected app's callback URL.
+      loopbackPort: 42819,
+      // Salesforce's token endpoint issues short-lived access tokens (the org session length, default 2h,
+      // often shortened) WITH a durable refresh token, but returns NO `expires_in`. Without a synthesized
+      // expiry the proactive-refresh path never fires and the account stalls the moment the session lapses.
+      // 600s (< the 15-min scheduler interval) makes `getValidAccessToken` mint a fresh token from the
+      // refresh token at the start of essentially every sync, so the token in use is never the stale one —
+      // safe for any org session length. The refresh token is long-lived, so this is cheap.
+      accessTokenTtlSeconds: 600,
+    },
+    multiAccount: true,
+  },
 ];
 
 /** Manifest lookup by id. */
