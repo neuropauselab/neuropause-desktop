@@ -82,6 +82,17 @@ const DYNAMICS_AUTHORITY = `https://login.microsoftonline.com/${DYNAMICS_TENANT}
 /** Delegated read scope: the per-org Dataverse resource scope + the OpenID scopes + `offline_access` (refresh). */
 const DYNAMICS_OAUTH_SCOPES = ['openid', 'profile', 'email', 'offline_access', `${DYNAMICS_ORG_URL}/user_impersonation`];
 
+/**
+ * Workday embeds BOTH a per-customer host AND a tenant short-name in every OAuth and REST URL
+ * (`https://{host}/ccx/oauth2/{tenant}/token`, `https://{host}/ccx/api/{service}/{version}/{tenant}/…`), so
+ * both must be known before OAuth. Set NEUROPAUSE_WORKDAY_HOST to the host (e.g. `wd2-impl-services1.workday.com`)
+ * and NEUROPAUSE_WORKDAY_TENANT to the tenant (e.g. `acme`). Read at manifest load, like the SAP host + client;
+ * the adapter (workday.ts) reads the SAME two env vars for its data calls so auth and data never diverge.
+ */
+const WORKDAY_HOST_ENV = 'NEUROPAUSE_WORKDAY_HOST';
+const WORKDAY_BASE = `https://${(process.env[WORKDAY_HOST_ENV] ?? '').trim() || 'HOST.workday.com'}`;
+const WORKDAY_TENANT = (process.env['NEUROPAUSE_WORKDAY_TENANT'] ?? '').trim() || 'TENANT';
+
 export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
   /* ─────────────── AI assistants (API key) ─────────────── */
   {
@@ -941,6 +952,64 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
       // Entra returns expires_in → existing refresh path; no synthesized TTL.
     },
     // One org per deployment (the org URL is a single env var), so a single connected account.
+    multiAccount: false,
+  },
+
+  {
+    // ONE Workday family (HR / Payroll / Benefits / Recruiting / Learning / Time Tracking / Absence /
+    // Compensation). One card, one OAuth token, one vault record — with every HCM object (Workers,
+    // Organizations, Positions, Jobs, Departments, Supervisory Organizations, Recruiting, Candidates,
+    // Benefits, Payroll, Learning, Time Off) mounted as a graceful REST service resource on the same
+    // authenticated session, exactly as microsoft-entra hosts M365 and servicenow/sap host their objects.
+    // The OAuth + REST endpoints all embed the customer's host + tenant, built from NEUROPAUSE_WORKDAY_HOST
+    // and NEUROPAUSE_WORKDAY_TENANT (which workday.ts also reads for the data calls). The token endpoint takes
+    // HTTP Basic client auth and returns `expires_in` (+ an optionally non-expiring refresh token), so the
+    // existing proactive-refresh path needs no synthesized TTL. Access is governed by the Integration System
+    // User's security groups (not per-object OAuth scopes), so which modules a tenant exposes is discovered
+    // at runtime from the per-module degrade.
+    id: 'workday',
+    name: 'Workday',
+    provider: 'Workday',
+    description:
+      'One Workday connector family: workers, organizations, positions, jobs, departments, supervisory organizations, recruiting, candidates, benefits, payroll, learning, and time off — synced through a single authenticated connection.',
+    category: 'productivity',
+    website: 'https://www.workday.com',
+    docsUrl: 'https://community.workday.com/rest-api',
+    brandColor: '#005CB9',
+    version: '1.0.0',
+    authType: 'oauth2_confidential',
+    capabilities: ['contacts', 'tasks', 'activities', 'documents', 'events'],
+    // Workday OAuth scopes are functional areas configured ON the API Client; the request-time scope set is
+    // empty because actual access is governed by the Integration System User's security groups + domain
+    // security policies (like SAP's role-governed model). Least-privilege = a read-only ISU with GET on only
+    // the domains synced. The adapter only issues read-only REST GETs.
+    scopes: [
+      { id: 'workday', label: 'Workday', description: 'Read Workday HCM data as the integration system user (access is governed by that user\'s security groups and domain policies).' },
+    ],
+    oauth: {
+      // Tenant-hosted OAuth endpoints (built from NEUROPAUSE_WORKDAY_HOST + NEUROPAUSE_WORKDAY_TENANT).
+      authorizeUrl: `${WORKDAY_BASE}/ccx/oauth2/${WORKDAY_TENANT}/authorize`,
+      tokenUrl: `${WORKDAY_BASE}/ccx/oauth2/${WORKDAY_TENANT}/token`,
+      // Workday has no standard OAuth revoke shape the engine's revoke POST matches, so disconnect drops the
+      // vaulted token locally (like SAP / ServiceNow / Oracle).
+      revokeUrl: null,
+      // No per-object request scopes — access is governed by the API Client's functional areas + the ISU's
+      // security groups, not OAuth scope strings.
+      scopes: [],
+      scopeSeparator: ' ',
+      // Confidential flow; the Workday token endpoint takes HTTP Basic client auth (the recommended method).
+      usePkce: false,
+      tokenAuthStyle: 'basic',
+      extraAuthParams: {},
+      extraTokenParams: {},
+      callbackPath: '/callback',
+      clientIdEnv: 'NEUROPAUSE_WORKDAY_CLIENT_ID',
+      clientSecretEnv: 'NEUROPAUSE_WORKDAY_CLIENT_SECRET',
+      // Workday API Clients exact-match the registered redirect URI; register http://127.0.0.1:42831/callback.
+      loopbackPort: 42831,
+      // Workday returns expires_in → existing refresh path; no synthesized TTL.
+    },
+    // One tenant per deployment (the host + tenant are single env vars), so a single connected account.
     multiAccount: false,
   },
 ];

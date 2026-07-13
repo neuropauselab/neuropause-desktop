@@ -14,6 +14,7 @@ import { servicenowAdapter } from './servicenow';
 import { sapAdapter } from './sap';
 import { oracleAdapter } from './oracle';
 import { dynamicsAdapter } from './dynamics';
+import { workdayAdapter } from './workday';
 import { entraAdapter } from './entra';
 
 export function registerBuiltinAdapters(): void {
@@ -45,5 +46,8 @@ export function registerBuiltinAdapters(): void {
   // incremental service resource on one Microsoft Entra OAuth token — the same identity platform as
   // microsoft-entra); the org URL is env-configured, capability is security-role/runtime-driven.
   registerAdapter(dynamicsAdapter);
+  // Workday is one connector family (every HCM object as a graceful, REST offset/limit full-list service
+  // resource on one OAuth token); host + tenant are env-configured, capability is ISU-security/runtime-driven.
+  registerAdapter(workdayAdapter);
   registerAdapter(entraAdapter);
 }
