@@ -11,6 +11,7 @@ import { atlassianAdapter } from './atlassian';
 import { salesforceAdapter } from './salesforce';
 import { hubspotAdapter } from './hubspot';
 import { servicenowAdapter } from './servicenow';
+import { sapAdapter } from './sap';
 import { entraAdapter } from './entra';
 
 export function registerBuiltinAdapters(): void {
@@ -31,5 +32,8 @@ export function registerBuiltinAdapters(): void {
   // ServiceNow is one connector family (every ITSM/CMDB table as a graceful, Table-API-incremental service
   // resource on one OAuth token); the instance host is env-configured, capability is role/runtime-driven.
   registerAdapter(servicenowAdapter);
+  // SAP S/4HANA is one connector family (every ERP object as a graceful, OData-incremental service resource
+  // on one OAuth token); the tenant host is env-configured, capability is role/arrangement/runtime-driven.
+  registerAdapter(sapAdapter);
   registerAdapter(entraAdapter);
 }

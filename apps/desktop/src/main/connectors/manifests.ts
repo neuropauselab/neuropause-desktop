@@ -39,6 +39,17 @@ const ENTRA_AUTHORITY = `https://login.microsoftonline.com/${ENTRA_TENANT}/oauth
 const SERVICENOW_INSTANCE_ENV = 'NEUROPAUSE_SERVICENOW_INSTANCE';
 const SERVICENOW_BASE = `https://${(process.env[SERVICENOW_INSTANCE_ENV] ?? '').trim() || 'INSTANCE'}.service-now.com`;
 
+/**
+ * SAP S/4HANA tenant host. Like ServiceNow, every SAP OAuth AND OData endpoint lives on the customer's own
+ * tenant host, so it must be known before OAuth. Set NEUROPAUSE_SAP_HOST to the API host (e.g.
+ * `mytenant-api.s4hana.cloud.sap`); NEUROPAUSE_SAP_CLIENT to the mandant/client (e.g. `100`, default `100`).
+ * Read at runtime, exactly like the Entra tenant + the client credentials in credentials.ts. The adapter
+ * (sap.ts) reads NEUROPAUSE_SAP_HOST for its data calls, so the auth host and data host never diverge.
+ */
+const SAP_HOST_ENV = 'NEUROPAUSE_SAP_HOST';
+const SAP_BASE = `https://${(process.env[SAP_HOST_ENV] ?? '').trim() || 'HOST'}`;
+const SAP_CLIENT = (process.env['NEUROPAUSE_SAP_CLIENT'] ?? '').trim() || '100';
+
 export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
   /* ─────────────── AI assistants (API key) ─────────────── */
   {
@@ -722,6 +733,64 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
       // ServiceNow returns expires_in (1800s) with a durable refresh token → existing refresh path; no TTL.
     },
     // One instance per deployment (the instance is a single env var), so a single connected account.
+    multiAccount: false,
+  },
+
+  /* ─────────────── ERP (connector family — one OAuth, many OData service adapters) ─────────────── */
+  {
+    // ONE SAP S/4HANA family (Finance / Procurement / Manufacturing / Sales / Inventory / Warehouse). One
+    // card, one OAuth token, one vault record — with every business object (Business Partners, Customers,
+    // Suppliers, Materials, Inventory, Sales/Purchase/Production Orders, Financials, Plants, Warehouses)
+    // mounted as a graceful OData service resource on the same authenticated session, exactly as
+    // microsoft-entra hosts M365 and servicenow hosts its tables. The OAuth + OData endpoints all live on
+    // the customer's tenant host, built from NEUROPAUSE_SAP_HOST (see SAP_BASE). The token returns
+    // `expires_in` so the existing proactive-refresh path needs no synthesized TTL. Access is governed by
+    // the tenant's Communication Arrangement + the user's roles (not OAuth scopes), so which modules a
+    // tenant exposes is discovered at runtime from the per-module degrade (a missing service 403/404).
+    id: 'sap',
+    name: 'SAP S/4HANA',
+    provider: 'SAP',
+    description:
+      'One SAP S/4HANA connector family: business partners, customers, suppliers, materials, inventory, sales/purchase/production orders, financials, plants, and warehouses — synced through a single authenticated connection.',
+    category: 'productivity',
+    website: 'https://www.sap.com',
+    docsUrl: 'https://api.sap.com/products/SAPS4HANACloud/apis',
+    brandColor: '#0FAAFF',
+    version: '1.0.0',
+    authType: 'oauth2_confidential',
+    capabilities: ['tasks', 'activities', 'contacts', 'documents'],
+    // SAP OAuth has no per-object scopes: access is governed by the integration (communication) user's
+    // roles + the tenant's Communication Arrangements. Least-privilege = a read-only communication user
+    // with only the arrangements for the synced APIs. The adapter only issues read-only OData GETs.
+    scopes: [
+      { id: 'sap', label: 'SAP S/4HANA', description: 'Read SAP business data as the integration user (access is governed by that user\'s roles and Communication Arrangements).' },
+    ],
+    oauth: {
+      // Tenant-hosted OAuth endpoints (built from NEUROPAUSE_SAP_HOST). The mandant (`sap-client`) is
+      // required on the authorize + token requests.
+      authorizeUrl: `${SAP_BASE}/sap/bc/sec/oauth2/authorize`,
+      tokenUrl: `${SAP_BASE}/sap/bc/sec/oauth2/token`,
+      // SAP has no standard OAuth token-revoke shape the engine's revoke POST matches, so disconnect drops
+      // the vaulted token locally.
+      revokeUrl: null,
+      // No per-object scopes — SAP governs access by role + Communication Arrangement, not OAuth scope.
+      scopes: [],
+      scopeSeparator: ' ',
+      // Confidential flow (client secret at the token endpoint), mirroring ServiceNow/Salesforce.
+      usePkce: false,
+      tokenAuthStyle: 'body',
+      // The mandant/client must accompany both the authorize and token requests.
+      extraAuthParams: { 'sap-client': SAP_CLIENT },
+      extraTokenParams: { 'sap-client': SAP_CLIENT },
+      callbackPath: '/callback',
+      clientIdEnv: 'NEUROPAUSE_SAP_CLIENT_ID',
+      clientSecretEnv: 'NEUROPAUSE_SAP_CLIENT_SECRET',
+      // SAP exact-matches the registered redirect URI; register http://127.0.0.1:42825/callback in the
+      // tenant's OAuth 2.0 client configuration.
+      loopbackPort: 42825,
+      // SAP returns expires_in → existing refresh path; no synthesized TTL.
+    },
+    // One tenant per deployment (the host is a single env var), so a single connected account.
     multiAccount: false,
   },
 ];
