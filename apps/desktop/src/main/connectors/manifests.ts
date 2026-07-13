@@ -594,6 +594,69 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
     },
     multiAccount: true,
   },
+
+  {
+    // ONE HubSpot family (Sales / Service / Commerce hubs). One card, one OAuth token, one vault record —
+    // with every CRM object (Contacts, Companies, Deals, Tickets, Products, Owners, Notes, Tasks, Meetings,
+    // Emails) mounted as a graceful service resource on the same authenticated session, exactly as
+    // microsoft-entra hosts M365 and salesforce hosts its CRM objects. Fixed API host (api.hubapi.com), so
+    // no per-org instance resolution; the token returns `expires_in` so the existing proactive-refresh
+    // path needs no synthesized TTL. Scopes are per-object, so which hubs a portal has is discovered at
+    // runtime from the granted scopes (see hubspotServiceAvailability) + per-module 403 degrade — nothing
+    // hardcoded.
+    id: 'hubspot',
+    name: 'HubSpot',
+    provider: 'HubSpot',
+    description:
+      'One HubSpot connector family: contacts, companies, deals, tickets, products, owners, notes, tasks, meetings, and emails — synced through a single authenticated connection.',
+    category: 'productivity',
+    website: 'https://www.hubspot.com',
+    docsUrl: 'https://developers.hubspot.com/docs/api/crm/understanding-the-crm',
+    brandColor: '#FF7A59',
+    version: '1.0.0',
+    authType: 'oauth2_confidential',
+    capabilities: ['contacts', 'tasks', 'activities', 'messages', 'events', 'calendar', 'documents'],
+    // HubSpot OAuth scopes are per-object and read-only here. The REQUIRED set is the granular, least-
+    // privilege `.read` scopes for the universal free-CRM objects (contacts/companies/deals/owners), so
+    // requiring them never blocks connect. Everything else is `optional_scope` — auto-dropped by HubSpot
+    // if the portal lacks the tool — so a portal without a given hub still connects and the granted set
+    // reveals, at runtime, which objects are available. `tickets` is optional AND is HubSpot's only
+    // tickets scope (there is no granular `crm.objects.tickets.read`); it is coarse (read+write), so
+    // requesting it optionally keeps the required grant strictly least-privilege read-only.
+    scopes: [
+      { id: 'crm.objects.contacts.read', label: 'Contacts', description: 'Read contacts, and the notes, tasks, meetings, and emails logged against them.' },
+      { id: 'crm.objects.companies.read', label: 'Companies', description: 'Read companies.' },
+      { id: 'crm.objects.deals.read', label: 'Deals', description: 'Read deals across your pipelines.' },
+      { id: 'crm.objects.owners.read', label: 'Owners', description: 'Read the owners (users) records are assigned to.' },
+      { id: 'tickets', label: 'Tickets', description: 'Read support tickets (optional; HubSpot offers no read-only tickets scope).' },
+      { id: 'e-commerce', label: 'Products', description: 'Read your product catalog (optional; Professional/Enterprise).' },
+      { id: 'sales-email-read', label: 'Email content', description: 'Read the body of logged emails (optional).' },
+    ],
+    oauth: {
+      authorizeUrl: 'https://app.hubspot.com/oauth/authorize',
+      tokenUrl: 'https://api.hubapi.com/oauth/v1/token',
+      // HubSpot has no standard token-revoke endpoint (a refresh token is deleted via a REST DELETE, a
+      // different shape than the engine's revoke POST), so disconnect drops the vaulted token locally.
+      revokeUrl: null,
+      // REQUIRED — granular, least-privilege `.read` scopes, all available to every account (free CRM), so
+      // requiring them never blocks connect.
+      scopes: ['crm.objects.contacts.read', 'crm.objects.companies.read', 'crm.objects.deals.read', 'crm.objects.owners.read'],
+      scopeSeparator: ' ',
+      // HubSpot is a pure confidential flow (client secret at the token endpoint); it does not support PKCE.
+      usePkce: false,
+      tokenAuthStyle: 'body',
+      // OPTIONAL scopes are auto-dropped by HubSpot if the portal lacks the tool, so auth still succeeds.
+      // `tickets` is here (not required) because it is HubSpot's only — and coarse — tickets scope.
+      extraAuthParams: { optional_scope: 'tickets e-commerce sales-email-read' },
+      extraTokenParams: {},
+      callbackPath: '/callback',
+      clientIdEnv: 'NEUROPAUSE_HUBSPOT_CLIENT_ID',
+      clientSecretEnv: 'NEUROPAUSE_HUBSPOT_CLIENT_SECRET',
+      // HubSpot exact-matches the registered redirect URI; register http://127.0.0.1:42821/callback.
+      loopbackPort: 42821,
+    },
+    multiAccount: true,
+  },
 ];
 
 /** Manifest lookup by id. */

@@ -9,6 +9,7 @@ import { googleWorkspaceAdapter } from './googleWorkspace';
 import { slackAdapter } from './slack';
 import { atlassianAdapter } from './atlassian';
 import { salesforceAdapter } from './salesforce';
+import { hubspotAdapter } from './hubspot';
 import { entraAdapter } from './entra';
 
 export function registerBuiltinAdapters(): void {
@@ -23,5 +24,8 @@ export function registerBuiltinAdapters(): void {
   // Salesforce is one connector family (every CRM object as a graceful service resource on one OAuth
   // token); the org's instance_url + queryable objects are resolved at runtime, not hardcoded.
   registerAdapter(salesforceAdapter);
+  // HubSpot is one connector family (every CRM object as a graceful, Search-API-incremental service
+  // resource on one OAuth token); per-object scopes drive runtime capability discovery.
+  registerAdapter(hubspotAdapter);
   registerAdapter(entraAdapter);
 }

@@ -28,6 +28,7 @@ import { googleServiceAvailability } from './adapters/googleWorkspace';
 import { githubServiceAvailability } from './adapters/github';
 import { slackServiceAvailability } from './adapters/slack';
 import { atlassianServiceAvailability } from './adapters/atlassian';
+import { hubspotServiceAvailability } from './adapters/hubspot';
 
 const log = createLogger('sync');
 
@@ -175,6 +176,18 @@ export async function initSync(deps: SyncSubsystemDeps): Promise<SyncSubsystem> 
           id: s.id,
           label: s.label,
           kind: null,
+          scope: s.scope,
+          scopeGranted: s.available,
+        }));
+      }
+      // HubSpot (Sales/Service/Commerce hubs) is a scope-gated family too: project its CRM-object service
+      // catalog against the granted per-object scopes (crm.objects.*.read / tickets / e-commerce) for ✓/✗,
+      // exactly like the above. Runtime hub detection with nothing hardcoded.
+      if (connectorId === 'hubspot') {
+        return hubspotServiceAvailability(grantedScopes).map((s) => ({
+          id: s.id,
+          label: s.label,
+          kind: s.kind,
           scope: s.scope,
           scopeGranted: s.available,
         }));
