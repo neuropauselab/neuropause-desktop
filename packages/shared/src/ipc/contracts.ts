@@ -1911,3 +1911,16 @@ export const SandboxValidationRunGetRequest = z.object({ runId: EntId }).strict(
 export type SandboxValidationRunGetRequest = z.infer<typeof SandboxValidationRunGetRequest>;
 export const SandboxValidationScheduleSetRequest = z.object({ id: EntId, enabled: z.boolean() }).strict();
 export type SandboxValidationScheduleSetRequest = z.infer<typeof SandboxValidationScheduleSetRequest>;
+
+// P6 — Cloud & Infrastructure Control Plane. Reads take no args (EmptyRequest); the graph/neighbors reads
+// take an optional platform / resource filter; discovery is a scoped manage op.
+export const InfraResourceGraphRequest = z
+  .object({ platformId: z.string().optional(), accountId: z.string().optional() })
+  .strict();
+export type InfraResourceGraphRequest = z.infer<typeof InfraResourceGraphRequest>;
+export const InfraResourceNeighborsRequest = z.object({ resourceId: z.string().min(1) }).strict();
+export type InfraResourceNeighborsRequest = z.infer<typeof InfraResourceNeighborsRequest>;
+export const InfraDiscoverRequest = z
+  .object({ platformId: z.string().min(1), accountId: z.string().optional() })
+  .strict();
+export type InfraDiscoverRequest = z.infer<typeof InfraDiscoverRequest>;

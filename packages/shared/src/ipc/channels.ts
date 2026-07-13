@@ -589,6 +589,14 @@ export const IpcChannel = {
   RecoverySafeModeStatus: 'recovery:safeModeStatus',
   RecoveryRun: 'recovery:run',
   SupportGenerateBundle: 'support:generateBundle',
+  // P6 — Cloud & Infrastructure Control Plane (the Cloud Platform Center reads these; discovery is a manage op).
+  InfraPlatforms: 'infra:platforms',
+  InfraStats: 'infra:stats',
+  InfraCapabilities: 'infra:capabilities',
+  InfraResourceGraph: 'infra:resourceGraph',
+  InfraResourceNeighbors: 'infra:resourceNeighbors',
+  InfraDiscover: 'infra:discover',
+  InfraEventBroadcast: 'infra:event',
 } as const;
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel];
@@ -1072,6 +1080,13 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.RecoverySafeModeStatus,
   IpcChannel.RecoveryRun,
   IpcChannel.SupportGenerateBundle,
+  // P6 — Cloud & Infrastructure Control Plane.
+  IpcChannel.InfraPlatforms,
+  IpcChannel.InfraStats,
+  IpcChannel.InfraCapabilities,
+  IpcChannel.InfraResourceGraph,
+  IpcChannel.InfraResourceNeighbors,
+  IpcChannel.InfraDiscover,
 ];
 
 /** Runtime-core broadcasts. */
@@ -1100,6 +1115,7 @@ export const RUNTIME_BROADCAST_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.UpdateEventBroadcast,
   IpcChannel.WebhookEventBroadcast,
   IpcChannel.SandboxEventBroadcast,
+  IpcChannel.InfraEventBroadcast,
 ];
 
 /** The full set the preload bridge permits (legacy + runtime core). */

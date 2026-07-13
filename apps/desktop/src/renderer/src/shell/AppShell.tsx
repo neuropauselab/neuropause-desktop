@@ -55,6 +55,9 @@ const EcosystemView = lazy(() =>
 const CloudView = lazy(() =>
   import('@renderer/views/CloudView').then((m) => ({ default: m.CloudView })),
 );
+const InfrastructureView = lazy(() =>
+  import('@renderer/views/InfrastructureView').then((m) => ({ default: m.InfrastructureView })),
+);
 const OrganizationView = lazy(() =>
   import('@renderer/views/OrganizationView').then((m) => ({ default: m.OrganizationView })),
 );
@@ -186,6 +189,8 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
         return <EcosystemView />;
       case 'cloud':
         return <CloudView />;
+      case 'infrastructure':
+        return <InfrastructureView />;
       case 'federation':
         return <FederationView />;
       case 'workforce':

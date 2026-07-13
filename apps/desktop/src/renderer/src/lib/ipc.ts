@@ -192,6 +192,10 @@ import {
   type CloudOrgRole,
 } from '@neuropause/shared';
 import type {
+  CloudPlatformDto,
+  CloudPlatformStats,
+  ResourceGraphModel,
+  ResourceEdgeToNode,
   Organization,
   OrgUnit,
   OrgRole,
@@ -702,6 +706,20 @@ export const ipc = {
     rebuild: () => invoke(IpcChannel.GraphRebuild) as Promise<GraphCounts>,
     onChange: (cb: (counts: GraphCounts) => void) =>
       subscribe(IpcChannel.GraphEventBroadcast, (p) => cb(p as GraphCounts)),
+  },
+
+  // P6 — Cloud & Infrastructure Control Plane (the Cloud Platform Center reads these).
+  infra: {
+    platforms: () => invoke(IpcChannel.InfraPlatforms) as Promise<CloudPlatformDto[]>,
+    stats: () => invoke(IpcChannel.InfraStats) as Promise<CloudPlatformStats>,
+    capabilities: () => invoke(IpcChannel.InfraCapabilities) as Promise<Array<{ platformId: string; provider: string; domains: string[]; configured: boolean }>>,
+    resourceGraph: (filter?: { platformId?: string; accountId?: string }) =>
+      invoke(IpcChannel.InfraResourceGraph, filter ?? {}) as Promise<ResourceGraphModel>,
+    resourceNeighbors: (resourceId: string) =>
+      invoke(IpcChannel.InfraResourceNeighbors, { resourceId }) as Promise<ResourceEdgeToNode[]>,
+    discover: (platformId: string, accountId?: string) =>
+      invoke(IpcChannel.InfraDiscover, { platformId, accountId }) as Promise<{ ok: boolean; hadAdapter: boolean; resources: number }>,
+    onEvent: (cb: (e: unknown) => void) => subscribe(IpcChannel.InfraEventBroadcast, cb),
   },
 
   knowledge: {

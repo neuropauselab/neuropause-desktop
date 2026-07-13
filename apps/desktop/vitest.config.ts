@@ -14,6 +14,8 @@ export default defineConfig({
       'src/main/**/*.test.ts',
       'src/renderer/src/sandbox/**/*.test.ts',
       'src/renderer/src/connectors/**/*.test.ts',
+      // P6 — the Cloud Platform Center's pure view-model (no DOM, no React).
+      'src/renderer/src/infrastructure/**/*.test.ts',
     ],
   },
   resolve: {

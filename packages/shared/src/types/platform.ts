@@ -25,6 +25,7 @@ export type PlatformEventCategory =
   | 'knowledge'
   | 'automation'
   | 'enterprise'
+  | 'infrastructure'
   | 'system';
 /** The canonical list of every event category — the single source of truth for
  *  category pickers (e.g. the webhook subscription UI). Order is stable. */
@@ -41,6 +42,7 @@ export const PLATFORM_EVENT_CATEGORIES: readonly PlatformEventCategory[] = [
   'knowledge',
   'automation',
   'enterprise',
+  'infrastructure',
   'system',
 ];
 /**
@@ -139,7 +141,18 @@ export type PlatformEventType =
   | 'enterprise.record.updated'
   | 'enterprise.record.status_changed'
   | 'enterprise.record.deleted'
-  | 'enterprise.record.converted';
+  | 'enterprise.record.converted'
+  // P6 — Cloud & Infrastructure Control Plane (discovery, topology, deployments, scaling, health, alerts)
+  | 'infrastructure.discovery_started'
+  | 'infrastructure.discovery_completed'
+  | 'infrastructure.discovery_failed'
+  | 'infrastructure.resource_changed'
+  | 'infrastructure.resource_removed'
+  | 'infrastructure.deployment'
+  | 'infrastructure.scaling'
+  | 'infrastructure.health_changed'
+  | 'infrastructure.alert_raised'
+  | 'infrastructure.failure_detected';
 /** Who or what caused the event. */
 export interface EventActor {
   kind: 'user' | 'system' | 'plugin' | 'connector';

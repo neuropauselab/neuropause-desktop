@@ -154,6 +154,7 @@ import { handleEnterpriseApiRequest } from './api/apiGateway';
 import { collectPlanningModel } from './enterprise/planningModel';
 import { connectorService } from './connectors/connectorService';
 import { initCloud } from './cloud';
+import { initInfrastructure } from './infrastructure';
 import { initFederation } from './federation';
 import { initUpdater } from './updater';
 import { initReleaseOps } from './releaseOps';
@@ -287,6 +288,10 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   const sandboxLaunchTarget = { executablePath: process.execPath, args: [app.getAppPath()], cwd: app.getAppPath() };
   // Phase 9 · Stage 1 — Cloud Platform (multi-tenant, identity federation, sync, API platform, admin).
   const cloud = await initCloud({ broadcast: deps.broadcast });
+  // P6 — Cloud & Infrastructure Control Plane (Cloud Platform abstraction, Discovery Engine, Resource Graph).
+  // Reuses the Platform Event Bus (Timeline), the diagnostics probe registry, the HttpClient/RateLimiter
+  // primitives, and the secure-bridge IPC — no parallel runtime.
+  const infrastructure = await initInfrastructure({ broadcast: deps.broadcast, publish: platform.api.publish });
   const featureFlags = await initFeatureFlags();
   const license = await initLicense();
   const onboarding = await initOnboarding();
@@ -1186,6 +1191,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...webhooks.handlers);
   defs.push(...sandbox.handlers);
   defs.push(...cloud.handlers);
+  defs.push(...infrastructure.handlers);
   defs.push(...featureFlags.handlers);
   defs.push(...license.handlers);
   defs.push(...onboarding.handlers);
@@ -1208,6 +1214,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       const c = graphStore.counts();
       return { nodes: c.nodes, edges: c.edges };
     }),
+    // P6 — Cloud & Infrastructure discovery health rolls into the existing diagnostics report.
+    infrastructure.probe,
   ]);
   defs.push(...federation.handlers);
   defs.push(...updater.handlers);

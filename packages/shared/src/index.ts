@@ -113,3 +113,8 @@ export * from './voiceSession';
 export * from './voiceCommands';
 export * from './types/interaction';
 export * from './interactionRouter';
+// P6 — Cloud & Infrastructure Control Plane (pure model; the runtime + Center consume these).
+export * from './infra/cloudPlatform';
+export * from './infra/resourceGraph';
+export * from './infra/discovery';
+export * from './infra/resourceGraphBridge';

@@ -52,7 +52,10 @@ export type GraphNodeType =
   | 'work_order'
   | 'downtime_event'
   | 'decision'
-  | 'proposal';
+  | 'proposal'
+  // P6 — cloud/infrastructure resources unified into the knowledge graph (derived from the Resource Graph
+  // via `resourceGraphBridge`; the specific provider resource type lives in node metadata).
+  | 'cloud_resource';
 
 export const GRAPH_NODE_TYPES: readonly GraphNodeType[] = [
   'person', 'organization', 'team', 'department', 'project', 'task', 'document',
@@ -63,6 +66,8 @@ export const GRAPH_NODE_TYPES: readonly GraphNodeType[] = [
   'production_schedule', 'production_execution', 'quality_inspection', 'sales_order', 'quote',
   'invoice', 'payment', 'purchase_order', 'goods_receipt', 'work_order', 'downtime_event',
   'decision', 'proposal',
+  // P6 infrastructure
+  'cloud_resource',
 ] as const;
 
 /** P2.5 — the business node types added on top of the original collaboration set. */
