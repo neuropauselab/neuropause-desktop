@@ -111,6 +111,20 @@ export const CLOUD_PLATFORM_MANIFESTS: CloudPlatformManifest[] = [
     multiAccount: true,
     accountNoun: 'Account',
   },
+  {
+    id: 'snowflake',
+    name: 'Snowflake',
+    provider: 'snowflake',
+    description: 'Discover Snowflake accounts across warehouses, databases, schemas, tables, roles, and data pipelines.',
+    website: 'https://www.snowflake.com',
+    docsUrl: 'https://docs.snowflake.com',
+    brandColor: '#29B5E8',
+    version: '0.1.0',
+    authKind: 'service_account',
+    domains: ['databases', 'compute', 'storage', 'serverless', 'identity', 'security'],
+    multiAccount: true,
+    accountNoun: 'Account',
+  },
 ];
 
 /** Catalog lookup by id. */
