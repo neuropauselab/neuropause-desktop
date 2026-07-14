@@ -41,10 +41,12 @@ import { InfrastructureDiscoveryEngine } from './discoveryEngine';
 import { registerAwsPlatform, makeAwsHttp } from './aws/awsAdapter';
 import { registerAzurePlatform, makeAzureHttp } from './azure/azureAdapter';
 import { registerGcpPlatform, makeGcpHttp } from './gcp/gcpAdapter';
+import { registerKubernetesPlatform, makeKubernetesHttp } from './kubernetes/kubernetesAdapter';
 import { InfraActionExecutor } from './executor';
 import { awsActions } from './aws/awsActions';
 import { azureActions } from './azure/azureActions';
 import { gcpActions } from './gcp/gcpActions';
+import { kubernetesActions } from './kubernetes/kubernetesActions';
 import type { DiscoveryHttp } from '@neuropause/shared';
 import { AuthError } from '../unified/sync/http';
 
@@ -97,6 +99,8 @@ export async function initInfrastructure(deps: InfrastructureDeps): Promise<Infr
   registerAzurePlatform();
   // P6.3 — register the third concrete Cloud Platform (Google Cloud). Same registry, same engine, no new runtime.
   registerGcpPlatform();
+  // P6.4 — register the fourth concrete Cloud Platform (Kubernetes). Same registry, same engine, no new runtime.
+  registerKubernetesPlatform();
   // The signed transport for a platform+account. AWS is injected a SigV4-signing transport built from the
   // credential profile; other platforms fall back to the generic bearer client (their adapters land later).
   // An unconfigured AWS degrades every domain `unauthorized` with a clear reason rather than a hard error.
@@ -112,6 +116,10 @@ export async function initInfrastructure(deps: InfrastructureDeps): Promise<Infr
     if (platformId === 'gcp') {
       // GCP is a bearer (service-account) transport; an unconfigured GCP degrades every domain `unauthorized`.
       return makeGcpHttp(rate, accountId) ?? unconfiguredGcp();
+    }
+    if (platformId === 'kubernetes') {
+      // Kubernetes is a server-pinned bearer transport (accountId = cluster); unconfigured degrades `unauthorized`.
+      return makeKubernetesHttp(rate, accountId) ?? unconfiguredKubernetes();
     }
     return new HttpClient(platformId, async () => '', rate, getPlatform(platformId)?.baseHeaders ?? {});
   };
@@ -134,7 +142,7 @@ export async function initInfrastructure(deps: InfrastructureDeps): Promise<Infr
       regionFor: (platformId, accountId) => state.get(platformId, accountId).region,
       now,
     },
-    [...awsActions(), ...azureActions(), ...gcpActions()],
+    [...awsActions(), ...azureActions(), ...gcpActions(), ...kubernetesActions()],
   );
 
   // Re-broadcast resource-store changes so the Cloud Platform Center refreshes live.
@@ -305,6 +313,14 @@ function unconfiguredAzure(): DiscoveryHttp {
 function unconfiguredGcp(): DiscoveryHttp {
   const fail = async (): Promise<never> => {
     throw new AuthError('GCP credentials are not configured (set NEUROPAUSE_GCP_SERVICE_ACCOUNT_JSON or NEUROPAUSE_GCP_CLIENT_EMAIL / _PRIVATE_KEY)', 403);
+  };
+  return { getJson: fail, send: fail };
+}
+
+/** A transport for a Kubernetes platform with no cluster profile — every request degrades `unauthorized`. */
+function unconfiguredKubernetes(): DiscoveryHttp {
+  const fail = async (): Promise<never> => {
+    throw new AuthError('Kubernetes cluster is not configured (set NEUROPAUSE_K8S_API_SERVER / NEUROPAUSE_K8S_TOKEN)', 403);
   };
   return { getJson: fail, send: fail };
 }
