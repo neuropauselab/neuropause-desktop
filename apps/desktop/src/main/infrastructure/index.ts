@@ -46,6 +46,7 @@ import { registerDockerPlatform, makeDockerHttp } from './docker/dockerAdapter';
 import { registerVmwarePlatform, makeVmwareHttp } from './vmware/vmwareAdapter';
 import { registerCloudflarePlatform, makeCloudflareHttp } from './cloudflare/cloudflareAdapter';
 import { registerSnowflakePlatform, makeSnowflakeHttp } from './snowflake/snowflakeAdapter';
+import { registerDatabricksPlatform, makeDatabricksHttp } from './databricks/databricksAdapter';
 import { InfraActionExecutor } from './executor';
 import { awsActions } from './aws/awsActions';
 import { azureActions } from './azure/azureActions';
@@ -55,6 +56,7 @@ import { dockerActions } from './docker/dockerActions';
 import { vmwareActions } from './vmware/vmwareActions';
 import { cloudflareActions } from './cloudflare/cloudflareActions';
 import { snowflakeActions } from './snowflake/snowflakeActions';
+import { databricksActions } from './databricks/databricksActions';
 import type { DiscoveryHttp } from '@neuropause/shared';
 import { AuthError } from '../unified/sync/http';
 
@@ -117,6 +119,8 @@ export async function initInfrastructure(deps: InfrastructureDeps): Promise<Infr
   registerCloudflarePlatform();
   // P6.8 — register the eighth concrete Cloud Platform (Snowflake). Same registry, same engine, no new runtime.
   registerSnowflakePlatform();
+  // P6.9 — register the ninth concrete Cloud Platform (Databricks). Same registry, same engine, no new runtime.
+  registerDatabricksPlatform();
   // The signed transport for a platform+account. AWS is injected a SigV4-signing transport built from the
   // credential profile; other platforms fall back to the generic bearer client (their adapters land later).
   // An unconfigured AWS degrades every domain `unauthorized` with a clear reason rather than a hard error.
@@ -153,6 +157,10 @@ export async function initInfrastructure(deps: InfrastructureDeps): Promise<Infr
       // Snowflake is a host-pinned key-pair-JWT SQL transport (accountId = account); unconfigured degrades `unauthorized`.
       return makeSnowflakeHttp(rate, accountId) ?? unconfiguredSnowflake();
     }
+    if (platformId === 'databricks') {
+      // Databricks is a host-pinned PAT-bearer transport (accountId = workspace); unconfigured degrades `unauthorized`.
+      return makeDatabricksHttp(rate, accountId) ?? unconfiguredDatabricks();
+    }
     return new HttpClient(platformId, async () => '', rate, getPlatform(platformId)?.baseHeaders ?? {});
   };
   const engine = new InfrastructureDiscoveryEngine({
@@ -174,7 +182,7 @@ export async function initInfrastructure(deps: InfrastructureDeps): Promise<Infr
       regionFor: (platformId, accountId) => state.get(platformId, accountId).region,
       now,
     },
-    [...awsActions(), ...azureActions(), ...gcpActions(), ...kubernetesActions(), ...dockerActions(), ...vmwareActions(), ...cloudflareActions(), ...snowflakeActions()],
+    [...awsActions(), ...azureActions(), ...gcpActions(), ...kubernetesActions(), ...dockerActions(), ...vmwareActions(), ...cloudflareActions(), ...snowflakeActions(), ...databricksActions()],
   );
 
   // Re-broadcast resource-store changes so the Cloud Platform Center refreshes live.
@@ -385,6 +393,14 @@ function unconfiguredCloudflare(): DiscoveryHttp {
 function unconfiguredSnowflake(): DiscoveryHttp {
   const fail = async (): Promise<never> => {
     throw new AuthError('Snowflake key-pair credentials are not configured (set NEUROPAUSE_SNOWFLAKE_ACCOUNT / NEUROPAUSE_SNOWFLAKE_USER / NEUROPAUSE_SNOWFLAKE_PRIVATE_KEY)', 403);
+  };
+  return { getJson: fail, send: fail };
+}
+
+/** A transport for a Databricks platform with no workspace profile — every request degrades `unauthorized`. */
+function unconfiguredDatabricks(): DiscoveryHttp {
+  const fail = async (): Promise<never> => {
+    throw new AuthError('Databricks workspace is not configured (set NEUROPAUSE_DATABRICKS_HOST / NEUROPAUSE_DATABRICKS_TOKEN)', 403);
   };
   return { getJson: fail, send: fail };
 }

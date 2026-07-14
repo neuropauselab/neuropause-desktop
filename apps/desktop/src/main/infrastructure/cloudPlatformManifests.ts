@@ -125,6 +125,20 @@ export const CLOUD_PLATFORM_MANIFESTS: CloudPlatformManifest[] = [
     multiAccount: true,
     accountNoun: 'Account',
   },
+  {
+    id: 'databricks',
+    name: 'Databricks',
+    provider: 'databricks',
+    description: 'Discover Databricks workspaces across clusters, SQL warehouses, jobs, Unity Catalog, notebooks, repos, and models.',
+    website: 'https://www.databricks.com',
+    docsUrl: 'https://docs.databricks.com/api',
+    brandColor: '#FF3621',
+    version: '0.1.0',
+    authKind: 'api_key',
+    domains: ['compute', 'databases', 'storage', 'security', 'serverless'],
+    multiAccount: true,
+    accountNoun: 'Workspace',
+  },
 ];
 
 /** Catalog lookup by id. */
