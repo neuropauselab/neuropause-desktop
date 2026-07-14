@@ -84,6 +84,11 @@ import {
   type MemoryAuditPage,
   type EnterpriseSearchQuery,
   type EnterpriseSearchResult,
+  type EnterpriseIntelligenceReport,
+  type ChangeImpactReport,
+  type RootCauseReport,
+  type EnterpriseIntelChangeImpactRequest,
+  type EnterpriseIntelRootCauseRequest,
   type EnterpriseTimelineQuery,
   type EnterpriseTimelinePage,
   type TimelineReplayQuery,
@@ -730,6 +735,18 @@ export const ipc = {
     search: (query: string, opts?: { platformId?: string; domain?: string; limit?: number }) =>
       invoke(IpcChannel.InfraSearch, { query, ...opts }) as Promise<InfraSearchResult>,
     onEvent: (cb: (e: unknown) => void) => subscribe(IpcChannel.InfraEventBroadcast, cb),
+  },
+
+  // P7.1 — Enterprise Intelligence (read-only). The unified report + the two
+  // targeted analyses (change-impact + root-cause). Every channel is RBAC-gated
+  // `intelligence:read` and cached ~3s server-side; the renderer never recomputes.
+  enterpriseIntel: {
+    report: () =>
+      invoke(IpcChannel.EnterpriseIntelReport) as Promise<EnterpriseIntelligenceReport>,
+    changeImpact: (req: EnterpriseIntelChangeImpactRequest) =>
+      invoke(IpcChannel.EnterpriseIntelChangeImpact, req) as Promise<ChangeImpactReport>,
+    rootCause: (req?: EnterpriseIntelRootCauseRequest) =>
+      invoke(IpcChannel.EnterpriseIntelRootCause, req ?? {}) as Promise<RootCauseReport>,
   },
 
   knowledge: {

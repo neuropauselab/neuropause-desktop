@@ -4,6 +4,7 @@ export type SectionId =
   | 'home'
   | 'organization'
   | 'enterprise'
+  | 'opscenter'
   | 'developer'
   | 'ecosystem'
   | 'cloud'
@@ -36,6 +37,7 @@ export const SECTIONS: SectionDef[] = [
   { id: 'home', label: 'Home', icon: 'home', phase: 2, placement: 'primary' },
   { id: 'organization', label: 'Organization', icon: 'user', phase: 10, placement: 'primary' },
   { id: 'enterprise', label: 'Enterprise', icon: 'grid', phase: 7, placement: 'primary' },
+  { id: 'opscenter', label: 'Ops Center', icon: 'pulse', phase: 7, placement: 'primary' },
   { id: 'developer', label: 'Developer', icon: 'code', phase: 8, placement: 'primary' },
   { id: 'ecosystem', label: 'Ecosystem', icon: 'globe', phase: 8, placement: 'primary' },
   { id: 'cloud', label: 'Cloud', icon: 'database', phase: 9, placement: 'primary' },

@@ -46,6 +46,9 @@ const WorkforceView = lazy(() =>
 const EnterpriseView = lazy(() =>
   import('@renderer/views/EnterpriseView').then((m) => ({ default: m.EnterpriseView })),
 );
+const OpsCenterView = lazy(() =>
+  import('@renderer/views/OpsCenterView').then((m) => ({ default: m.OpsCenterView })),
+);
 const DeveloperView = lazy(() =>
   import('@renderer/views/DeveloperView').then((m) => ({ default: m.DeveloperView })),
 );
@@ -183,6 +186,8 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
         return <MemoryView />;
       case 'enterprise':
         return <EnterpriseView />;
+      case 'opscenter':
+        return <OpsCenterView />;
       case 'developer':
         return <DeveloperView />;
       case 'ecosystem':
