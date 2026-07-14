@@ -43,12 +43,14 @@ import { registerAzurePlatform, makeAzureHttp } from './azure/azureAdapter';
 import { registerGcpPlatform, makeGcpHttp } from './gcp/gcpAdapter';
 import { registerKubernetesPlatform, makeKubernetesHttp } from './kubernetes/kubernetesAdapter';
 import { registerDockerPlatform, makeDockerHttp } from './docker/dockerAdapter';
+import { registerVmwarePlatform, makeVmwareHttp } from './vmware/vmwareAdapter';
 import { InfraActionExecutor } from './executor';
 import { awsActions } from './aws/awsActions';
 import { azureActions } from './azure/azureActions';
 import { gcpActions } from './gcp/gcpActions';
 import { kubernetesActions } from './kubernetes/kubernetesActions';
 import { dockerActions } from './docker/dockerActions';
+import { vmwareActions } from './vmware/vmwareActions';
 import type { DiscoveryHttp } from '@neuropause/shared';
 import { AuthError } from '../unified/sync/http';
 
@@ -105,6 +107,8 @@ export async function initInfrastructure(deps: InfrastructureDeps): Promise<Infr
   registerKubernetesPlatform();
   // P6.5 — register the fifth concrete Cloud Platform (Docker). Same registry, same engine, no new runtime.
   registerDockerPlatform();
+  // P6.6 — register the sixth concrete Cloud Platform (VMware vSphere). Same registry, same engine, no new runtime.
+  registerVmwarePlatform();
   // The signed transport for a platform+account. AWS is injected a SigV4-signing transport built from the
   // credential profile; other platforms fall back to the generic bearer client (their adapters land later).
   // An unconfigured AWS degrades every domain `unauthorized` with a clear reason rather than a hard error.
@@ -129,6 +133,10 @@ export async function initInfrastructure(deps: InfrastructureDeps): Promise<Infr
       // Docker is an engine-pinned socket/TCP/mTLS transport (accountId = engine); unconfigured degrades `unauthorized`.
       return makeDockerHttp(rate, accountId) ?? unconfiguredDocker();
     }
+    if (platformId === 'vmware') {
+      // VMware is a server-pinned vCenter session transport (accountId = vCenter); unconfigured degrades `unauthorized`.
+      return makeVmwareHttp(rate, accountId) ?? unconfiguredVmware();
+    }
     return new HttpClient(platformId, async () => '', rate, getPlatform(platformId)?.baseHeaders ?? {});
   };
   const engine = new InfrastructureDiscoveryEngine({
@@ -150,7 +158,7 @@ export async function initInfrastructure(deps: InfrastructureDeps): Promise<Infr
       regionFor: (platformId, accountId) => state.get(platformId, accountId).region,
       now,
     },
-    [...awsActions(), ...azureActions(), ...gcpActions(), ...kubernetesActions(), ...dockerActions()],
+    [...awsActions(), ...azureActions(), ...gcpActions(), ...kubernetesActions(), ...dockerActions(), ...vmwareActions()],
   );
 
   // Re-broadcast resource-store changes so the Cloud Platform Center refreshes live.
@@ -337,6 +345,14 @@ function unconfiguredKubernetes(): DiscoveryHttp {
 function unconfiguredDocker(): DiscoveryHttp {
   const fail = async (): Promise<never> => {
     throw new AuthError('Docker engine is not configured (set NEUROPAUSE_DOCKER_HOST, e.g. unix:///var/run/docker.sock or tcp://host:2376)', 403);
+  };
+  return { getJson: fail, send: fail };
+}
+
+/** A transport for a VMware platform with no vCenter profile — every request degrades `unauthorized`. */
+function unconfiguredVmware(): DiscoveryHttp {
+  const fail = async (): Promise<never> => {
+    throw new AuthError('vCenter is not configured (set NEUROPAUSE_VMWARE_HOST / NEUROPAUSE_VMWARE_USERNAME / NEUROPAUSE_VMWARE_PASSWORD)', 403);
   };
   return { getJson: fail, send: fail };
 }
