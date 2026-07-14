@@ -30,7 +30,7 @@ import {
   GraphSubgraphRequest,
   IpcChannel,
 } from '@neuropause/shared';
-import type { PlatformEventType } from '@neuropause/shared';
+import type { PlatformEventType, ResourceGraphModel } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { connectorService } from '../connectors/connectorService';
@@ -58,6 +58,10 @@ export interface GraphSubsystemDeps {
   broadcast: (channel: string, payload: unknown) => void;
   /** P2.5 — subscribe to platform events so ERP changes re-project the unified graph. */
   on?: (types: readonly PlatformEventType[], handler: () => void) => void;
+  /** P7 — the P6 Resource Graph, merged into the same projection (read-only, guarded, lazy). */
+  getResourceModel?: () => ResourceGraphModel | null;
+  /** P7 — subscribe to infrastructure discovery changes so cloud/infra re-projects into the unified graph. */
+  onResourceChanged?: (handler: () => void) => void;
 }
 
 export interface GraphSubsystem {
@@ -89,7 +93,15 @@ export async function initGraph(deps: GraphSubsystemDeps): Promise<GraphSubsyste
       ...pluginExtensionRegistry.byKind('graph_relationship'),
     ];
     const pluginProjection = pluginExts.length > 0 ? pluginGraphProjection(pluginExts, now) : null;
-    const projection = projectGraph({ entities, connectors, applications, now, erpModel, pluginProjection });
+    // P7 — merge the P6 Resource Graph (cloud/infra/identity) into the SAME projection. Guarded so a graph rebuild
+    // never fails if infrastructure isn't ready (discovery may not have run).
+    let resourceModel: ResourceGraphModel | null = null;
+    try {
+      resourceModel = deps.getResourceModel?.() ?? null;
+    } catch (err) {
+      log.warn('Resource graph unavailable for graph projection', { error: String(err) });
+    }
+    const projection = projectGraph({ entities, connectors, applications, now, erpModel, pluginProjection, resourceModel });
     const result = graphStore.apply(projection.nodes, projection.edges, now);
     log.info('Knowledge graph rebuilt', {
       nodes: projection.nodes.length,
@@ -120,6 +132,8 @@ export async function initGraph(deps: GraphSubsystemDeps): Promise<GraphSubsyste
   if (deps.on) deps.on(GRAPH_REBUILD_EVENTS, scheduleRebuild);
   // P3.0 — a plugin registering/removing graph extensions re-projects the graph.
   pluginExtensionRegistry.on('changed', scheduleRebuild);
+  // P7 — infrastructure discovery changes re-project the unified graph (debounced with the rest).
+  if (deps.onResourceChanged) deps.onResourceChanged(scheduleRebuild);
 
   // First projection shortly after boot, once the store has settled.
   const initialTimer = setTimeout(safeRebuild, 1500);

@@ -1949,3 +1949,12 @@ export const InfraSearchRequest = z
   })
   .strict();
 export type InfraSearchRequest = z.infer<typeof InfraSearchRequest>;
+
+// P7 — Enterprise Intelligence (read-only). Change-impact takes a unified graph node id; root-cause an optional
+// target resource + correlation window.
+export const EnterpriseIntelChangeImpactRequest = z.object({ nodeId: z.string().min(1) }).strict();
+export type EnterpriseIntelChangeImpactRequest = z.infer<typeof EnterpriseIntelChangeImpactRequest>;
+export const EnterpriseIntelRootCauseRequest = z
+  .object({ targetResourceId: z.string().min(1).optional(), windowMs: z.number().int().positive().max(2_592_000_000).optional() })
+  .strict();
+export type EnterpriseIntelRootCauseRequest = z.infer<typeof EnterpriseIntelRootCauseRequest>;

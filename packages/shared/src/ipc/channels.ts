@@ -600,6 +600,12 @@ export const IpcChannel = {
   InfraAction: 'infra:action',
   InfraSearch: 'infra:search',
   InfraEventBroadcast: 'infra:event',
+  // P7 — Enterprise Intelligence (read-only; RBAC-gated with intelligence:read via the SecureHandlerDef, mirroring
+  // the infra: channels — hence an `intel:` namespace rather than `enterprise:`, which is reserved for the ERP
+  // authz-gate registry).
+  EnterpriseIntelReport: 'intel:report',
+  EnterpriseIntelChangeImpact: 'intel:changeImpact',
+  EnterpriseIntelRootCause: 'intel:rootCause',
 } as const;
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel];
@@ -1093,6 +1099,10 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.InfraActions,
   IpcChannel.InfraAction,
   IpcChannel.InfraSearch,
+  // P7 — Enterprise Intelligence.
+  IpcChannel.EnterpriseIntelReport,
+  IpcChannel.EnterpriseIntelChangeImpact,
+  IpcChannel.EnterpriseIntelRootCause,
 ];
 
 /** Runtime-core broadcasts. */

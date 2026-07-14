@@ -18,9 +18,10 @@ import type {
   GraphNode,
   GraphNodeType,
   RelationshipGraphModel,
+  ResourceGraphModel,
   UnifiedEntity,
 } from '@neuropause/shared';
-import { erpGraphBridge } from '@neuropause/shared';
+import { erpGraphBridge, resourceGraphBridge } from '@neuropause/shared';
 
 export interface ProjectionInput {
   entities: UnifiedEntity[];
@@ -31,6 +32,8 @@ export interface ProjectionInput {
   erpModel?: RelationshipGraphModel | null;
   /** P3.0 — plugin-contributed nodes/edges (Plugin SDK v2), merged into the same graph. */
   pluginProjection?: { nodes: GraphNode[]; edges: GraphEdge[] } | null;
+  /** P7 — the P6 Resource Graph (cloud/infra/identity), merged into the SAME graph via the resource bridge. */
+  resourceModel?: ResourceGraphModel | null;
 }
 
 export interface Projection {
@@ -166,6 +169,17 @@ export function projectGraph(input: ProjectionInput): Projection {
   if (input.pluginProjection) {
     for (const n of input.pluginProjection.nodes) addNode(n);
     for (const ed of input.pluginProjection.edges) {
+      if (ed.from !== ed.to && !edges.has(ed.id)) edges.set(ed.id, ed);
+    }
+  }
+
+  // P7 — merge the P6 Resource Graph (cloud / infra / identity resources + their 9 typed relations) into the SAME
+  // Enterprise Knowledge Graph via the (already-tested) resource bridge, so infrastructure correlates with ERP +
+  // collaboration in the one graph and becomes visible to Search / Timeline / Memory / Executive Center for free.
+  if (input.resourceModel) {
+    const infra = resourceGraphBridge(input.resourceModel, now);
+    for (const n of infra.nodes) addNode(n);
+    for (const ed of infra.edges) {
       if (ed.from !== ed.to && !edges.has(ed.id)) edges.set(ed.id, ed);
     }
   }

@@ -119,3 +119,11 @@ export * from './infra/resourceGraph';
 export * from './infra/discovery';
 export * from './infra/resourceGraphBridge';
 export * from './infra/action';
+// P7 — Enterprise Intelligence (pure engines composed over the existing graphs/timeline; the runtime consumes these).
+export * from './intelligence/enterpriseGraph';
+export * from './intelligence/enterpriseHealth';
+export * from './intelligence/enterpriseDrift';
+export * from './intelligence/enterpriseCapacity';
+export * from './intelligence/enterpriseRootCause';
+export * from './intelligence/enterpriseRecommendation';
+export * from './intelligence/enterpriseIntelligence';

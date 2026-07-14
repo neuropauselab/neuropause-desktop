@@ -130,6 +130,8 @@ import { deviceClient } from './devices/deviceClient';
 import { initVoice } from './voice/voiceSubsystem';
 import { initExecutiveDelivery } from './services/executiveDelivery';
 import { initRecommendations } from './recommendations';
+import { initEnterpriseIntelligence, type RawTimelineEvent } from './enterprise/intelligence/enterpriseIntelligenceSubsystem';
+import { getRelationshipModel } from './enterprise/relationshipProvider';
 import { initFounderAI } from './founder';
 import { initEngineeringAI, initFounderAIv2 } from './ai';
 import { initTrace } from './trace';
@@ -168,7 +170,7 @@ import { connectorHealthProbe } from './connectors/connectorDiagnostics';
 import { memoryStore } from './memory/memoryInstance';
 import { graphStore } from './graph/graphInstance';
 import { runMrp, computeCapacitySchedule, isTerminalExecutionStatus } from '@neuropause/shared';
-import type { ApiMethod, EnterprisePermission } from '@neuropause/shared';
+import type { ApiMethod, EnterprisePermission, ResourceGraphModel } from '@neuropause/shared';
 const log = createLogger('runtime-core');
 export interface RuntimeCoreDeps {
   broadcast: (channel: string, payload: unknown) => void;
@@ -202,9 +204,22 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   connectors.supervisor.setServiceCapabilitySource(sync.serviceCapabilities);
   // Enterprise Knowledge Graph: projects the UDM into a typed graph with
   // relationship history; the foundation the Phase 5 intelligence layer reads.
+  // P7 — lazy handles so the graph projection can fold in the P6 Resource Graph once infrastructure inits (below).
+  let getInfraResourceModel: (() => ResourceGraphModel | null) | null = null;
+  let infraGraphRebuild: (() => void) | null = null;
   const graph = await initGraph({
     broadcast: deps.broadcast,
     on: (types, handler) => platform.api.on([...types], handler),
+    getResourceModel: () => {
+      try {
+        return getInfraResourceModel ? getInfraResourceModel() : null;
+      } catch {
+        return null;
+      }
+    },
+    onResourceChanged: (h) => {
+      infraGraphRebuild = h;
+    },
   });
   // AI Memory: distills the UDM into a searchable organizational memory.
   // P2.5 — also subscribes to ERP record + connector-write events to re-project business memory.
@@ -292,6 +307,36 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // Reuses the Platform Event Bus (Timeline), the diagnostics probe registry, the HttpClient/RateLimiter
   // primitives, and the secure-bridge IPC — no parallel runtime.
   const infrastructure = await initInfrastructure({ broadcast: deps.broadcast, publish: platform.api.publish });
+  // P7 — Enterprise Intelligence. Fold infra into the unified graph projection + re-project on discovery changes,
+  // and stand up the intelligence subsystem (composes the Resource Graph + ERP Relationship Graph + Timeline into
+  // health/risk/dependency/impact/drift/capacity/root-cause; reuses store/graph/timeline/diagnostics/RBAC).
+  getInfraResourceModel = () => infrastructure.store.graph(Date.now());
+  if (infraGraphRebuild) infrastructure.store.on('changed', infraGraphRebuild);
+  const enterpriseIntel = initEnterpriseIntelligence({
+    broadcast: deps.broadcast,
+    getResourceModel: () => {
+      try {
+        return infrastructure.store.graph(Date.now());
+      } catch {
+        return null;
+      }
+    },
+    getRelationshipModel: () => {
+      try {
+        return getRelationshipModel();
+      } catch {
+        return null;
+      }
+    },
+    getEvents: (since, limit) => {
+      try {
+        const page = platform.api.query({ since, limit }) as { events?: unknown };
+        return (Array.isArray(page.events) ? page.events : []) as unknown as RawTimelineEvent[];
+      } catch {
+        return [];
+      }
+    },
+  });
   const featureFlags = await initFeatureFlags();
   const license = await initLicense();
   const onboarding = await initOnboarding();
@@ -1192,6 +1237,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...sandbox.handlers);
   defs.push(...cloud.handlers);
   defs.push(...infrastructure.handlers);
+  defs.push(...enterpriseIntel.handlers);
   defs.push(...featureFlags.handlers);
   defs.push(...license.handlers);
   defs.push(...onboarding.handlers);
@@ -1216,6 +1262,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     }),
     // P6 — Cloud & Infrastructure discovery health rolls into the existing diagnostics report.
     infrastructure.probe,
+    // P7 — Enterprise Intelligence health (composite health/risk/incidents) rolls into the same report.
+    enterpriseIntel.probe,
   ]);
   defs.push(...federation.handlers);
   defs.push(...updater.handlers);
