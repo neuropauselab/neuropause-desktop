@@ -47,6 +47,8 @@ import { registerVmwarePlatform, makeVmwareHttp } from './vmware/vmwareAdapter';
 import { registerCloudflarePlatform, makeCloudflareHttp } from './cloudflare/cloudflareAdapter';
 import { registerSnowflakePlatform, makeSnowflakeHttp } from './snowflake/snowflakeAdapter';
 import { registerDatabricksPlatform, makeDatabricksHttp } from './databricks/databricksAdapter';
+import { registerIacPlatform, makeIacHttp } from './iac/iacAdapter';
+import type { IacTransport } from './iac/iacClient';
 import { InfraActionExecutor } from './executor';
 import { awsActions } from './aws/awsActions';
 import { azureActions } from './azure/azureActions';
@@ -57,6 +59,7 @@ import { vmwareActions } from './vmware/vmwareActions';
 import { cloudflareActions } from './cloudflare/cloudflareActions';
 import { snowflakeActions } from './snowflake/snowflakeActions';
 import { databricksActions } from './databricks/databricksActions';
+import { iacActions } from './iac/iacActions';
 import type { DiscoveryHttp } from '@neuropause/shared';
 import { AuthError } from '../unified/sync/http';
 
@@ -121,6 +124,8 @@ export async function initInfrastructure(deps: InfrastructureDeps): Promise<Infr
   registerSnowflakePlatform();
   // P6.9 — register the ninth concrete Cloud Platform (Databricks). Same registry, same engine, no new runtime.
   registerDatabricksPlatform();
+  // P6.10 — register the tenth concrete Cloud Platform (Infrastructure as Code: Terraform + OpenTofu + Pulumi).
+  registerIacPlatform();
   // The signed transport for a platform+account. AWS is injected a SigV4-signing transport built from the
   // credential profile; other platforms fall back to the generic bearer client (their adapters land later).
   // An unconfigured AWS degrades every domain `unauthorized` with a clear reason rather than a hard error.
@@ -161,6 +166,10 @@ export async function initInfrastructure(deps: InfrastructureDeps): Promise<Infr
       // Databricks is a host-pinned PAT-bearer transport (accountId = workspace); unconfigured degrades `unauthorized`.
       return makeDatabricksHttp(rate, accountId) ?? unconfiguredDatabricks();
     }
+    if (platformId === 'iac') {
+      // IaC is a flavor-aware host-pinned transport (accountId = backend flavor); unconfigured degrades `unauthorized`.
+      return makeIacHttp(rate, accountId) ?? unconfiguredIac();
+    }
     return new HttpClient(platformId, async () => '', rate, getPlatform(platformId)?.baseHeaders ?? {});
   };
   const engine = new InfrastructureDiscoveryEngine({
@@ -182,7 +191,7 @@ export async function initInfrastructure(deps: InfrastructureDeps): Promise<Infr
       regionFor: (platformId, accountId) => state.get(platformId, accountId).region,
       now,
     },
-    [...awsActions(), ...azureActions(), ...gcpActions(), ...kubernetesActions(), ...dockerActions(), ...vmwareActions(), ...cloudflareActions(), ...snowflakeActions(), ...databricksActions()],
+    [...awsActions(), ...azureActions(), ...gcpActions(), ...kubernetesActions(), ...dockerActions(), ...vmwareActions(), ...cloudflareActions(), ...snowflakeActions(), ...databricksActions(), ...iacActions()],
   );
 
   // Re-broadcast resource-store changes so the Cloud Platform Center refreshes live.
@@ -403,6 +412,16 @@ function unconfiguredDatabricks(): DiscoveryHttp {
     throw new AuthError('Databricks workspace is not configured (set NEUROPAUSE_DATABRICKS_HOST / NEUROPAUSE_DATABRICKS_TOKEN)', 403);
   };
   return { getJson: fail, send: fail };
+}
+
+/** A transport for an IaC platform with no backend configured — every request degrades `unauthorized`. The stub
+ *  carries a flavor so the collectors narrow it (via `asIac`) and then degrade on the first real request. */
+function unconfiguredIac(): DiscoveryHttp {
+  const fail = async (): Promise<never> => {
+    throw new AuthError('No IaC backend is configured (set NEUROPAUSE_IAC_TERRAFORM_TOKEN / _ORG, NEUROPAUSE_IAC_PULUMI_TOKEN / _ORG, or NEUROPAUSE_IAC_OPENTOFU_TOKEN / _ORG)', 403);
+  };
+  const stub: IacTransport = { flavor: 'terraform', organization: '', getJson: fail, send: fail, getArtifact: fail, getLocation: fail };
+  return stub;
 }
 
 /** `app.getPath('userData')` guarded — returns null under a test/headless context where electron app is absent. */

@@ -23,12 +23,13 @@ export type CloudProviderKind =
   | 'cloudflare'
   | 'snowflake'
   | 'databricks'
+  | 'iac'
   | 'oci'
   | 'digitalocean'
   | 'custom';
 
 export const CLOUD_PROVIDER_KINDS: readonly CloudProviderKind[] = [
-  'aws', 'azure', 'gcp', 'kubernetes', 'docker', 'vmware', 'cloudflare', 'snowflake', 'databricks', 'oci', 'digitalocean', 'custom',
+  'aws', 'azure', 'gcp', 'kubernetes', 'docker', 'vmware', 'cloudflare', 'snowflake', 'databricks', 'iac', 'oci', 'digitalocean', 'custom',
 ] as const;
 
 /**
@@ -51,11 +52,12 @@ export type InfrastructureDomain =
   | 'billing'
   | 'certificates'
   | 'dns'
-  | 'secrets';
+  | 'secrets'
+  | 'provisioning';
 
 export const INFRASTRUCTURE_DOMAINS: readonly InfrastructureDomain[] = [
   'identity', 'compute', 'networking', 'storage', 'databases', 'containers', 'serverless',
-  'messaging', 'monitoring', 'security', 'cost', 'billing', 'certificates', 'dns', 'secrets',
+  'messaging', 'monitoring', 'security', 'cost', 'billing', 'certificates', 'dns', 'secrets', 'provisioning',
 ] as const;
 
 /** Presentation metadata for a domain (label + icon + one-line description). */
@@ -84,6 +86,7 @@ export const INFRASTRUCTURE_DOMAIN_CATALOG: Record<InfrastructureDomain, Infrast
   certificates: { id: 'certificates', label: 'Certificates', description: 'TLS certificates and certificate authorities.', icon: 'shield' },
   dns: { id: 'dns', label: 'DNS', description: 'Hosted zones and DNS records.', icon: 'globe' },
   secrets: { id: 'secrets', label: 'Secrets', description: 'Secret stores, keys, and key vaults.', icon: 'shield' },
+  provisioning: { id: 'provisioning', label: 'Provisioning', description: 'Infrastructure-as-Code projects, workspaces, stacks, modules, providers, state, plans, and policies.', icon: 'layers' },
 };
 
 /**

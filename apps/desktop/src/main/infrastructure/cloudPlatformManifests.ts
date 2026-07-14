@@ -139,6 +139,20 @@ export const CLOUD_PLATFORM_MANIFESTS: CloudPlatformManifest[] = [
     multiAccount: true,
     accountNoun: 'Workspace',
   },
+  {
+    id: 'iac',
+    name: 'Infrastructure as Code',
+    provider: 'iac',
+    description: 'Discover Terraform, OpenTofu, and Pulumi across projects, workspaces, stacks, modules, providers, resources, state, plans, and policies — with drift analysis.',
+    website: 'https://www.terraform.io',
+    docsUrl: 'https://developer.hashicorp.com/terraform/cloud-docs/api-docs',
+    brandColor: '#7B42BC',
+    version: '0.1.0',
+    authKind: 'api_key',
+    domains: ['provisioning'],
+    multiAccount: true,
+    accountNoun: 'Backend',
+  },
 ];
 
 /** Catalog lookup by id. */

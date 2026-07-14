@@ -45,8 +45,8 @@ function topology(): CloudResource[] {
 }
 
 describe('Cloud Platform model — domains + manifest projection', () => {
-  it('has a presentation def for every one of the 15 infrastructure domains', () => {
-    expect(INFRASTRUCTURE_DOMAINS).toHaveLength(15);
+  it('has a presentation def for every one of the 16 infrastructure domains', () => {
+    expect(INFRASTRUCTURE_DOMAINS).toHaveLength(16);
     for (const d of INFRASTRUCTURE_DOMAINS) {
       expect(INFRASTRUCTURE_DOMAIN_CATALOG[d].label).toBeTruthy();
       expect(domainDef(d).id).toBe(d);
