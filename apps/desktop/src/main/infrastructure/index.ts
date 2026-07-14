@@ -39,8 +39,12 @@ import { ResourceStore } from './resourceStore';
 import { DiscoveryStateStore, type AccountDiscoveryState } from './discoveryState';
 import { InfrastructureDiscoveryEngine } from './discoveryEngine';
 import { registerAwsPlatform, makeAwsHttp } from './aws/awsAdapter';
+import { registerAzurePlatform, makeAzureHttp } from './azure/azureAdapter';
+import { registerGcpPlatform, makeGcpHttp } from './gcp/gcpAdapter';
 import { InfraActionExecutor } from './executor';
 import { awsActions } from './aws/awsActions';
+import { azureActions } from './azure/azureActions';
+import { gcpActions } from './gcp/gcpActions';
 import type { DiscoveryHttp } from '@neuropause/shared';
 import { AuthError } from '../unified/sync/http';
 
@@ -89,6 +93,10 @@ export async function initInfrastructure(deps: InfrastructureDeps): Promise<Infr
   const rate = new RateLimiter();
   // P6.1 — register the first concrete Cloud Platform (AWS) into the shared registry.
   registerAwsPlatform();
+  // P6.2 — register the second concrete Cloud Platform (Azure). Same registry, same engine, no new runtime.
+  registerAzurePlatform();
+  // P6.3 — register the third concrete Cloud Platform (Google Cloud). Same registry, same engine, no new runtime.
+  registerGcpPlatform();
   // The signed transport for a platform+account. AWS is injected a SigV4-signing transport built from the
   // credential profile; other platforms fall back to the generic bearer client (their adapters land later).
   // An unconfigured AWS degrades every domain `unauthorized` with a clear reason rather than a hard error.
@@ -96,6 +104,14 @@ export async function initInfrastructure(deps: InfrastructureDeps): Promise<Infr
   const makeHttp = (platformId: string, accountId: string): DiscoveryHttp => {
     if (platformId === 'aws') {
       return makeAwsHttp(rate, accountId) ?? unconfiguredAws();
+    }
+    if (platformId === 'azure') {
+      // Azure is a bearer (Entra) transport; an unconfigured Azure degrades every domain `unauthorized`.
+      return makeAzureHttp(rate, accountId) ?? unconfiguredAzure();
+    }
+    if (platformId === 'gcp') {
+      // GCP is a bearer (service-account) transport; an unconfigured GCP degrades every domain `unauthorized`.
+      return makeGcpHttp(rate, accountId) ?? unconfiguredGcp();
     }
     return new HttpClient(platformId, async () => '', rate, getPlatform(platformId)?.baseHeaders ?? {});
   };
@@ -118,7 +134,7 @@ export async function initInfrastructure(deps: InfrastructureDeps): Promise<Infr
       regionFor: (platformId, accountId) => state.get(platformId, accountId).region,
       now,
     },
-    [...awsActions()],
+    [...awsActions(), ...azureActions(), ...gcpActions()],
   );
 
   // Re-broadcast resource-store changes so the Cloud Platform Center refreshes live.
@@ -273,6 +289,22 @@ export async function initInfrastructure(deps: InfrastructureDeps): Promise<Infr
 function unconfiguredAws(): DiscoveryHttp {
   const fail = async (): Promise<never> => {
     throw new AuthError('AWS credentials are not configured (set NEUROPAUSE_AWS_ACCESS_KEY_ID / _SECRET_ACCESS_KEY)', 403);
+  };
+  return { getJson: fail, send: fail };
+}
+
+/** A transport for an Azure platform with no credential profile — every request degrades `unauthorized`. */
+function unconfiguredAzure(): DiscoveryHttp {
+  const fail = async (): Promise<never> => {
+    throw new AuthError('Azure credentials are not configured (set NEUROPAUSE_AZURE_TENANT_ID / _CLIENT_ID / _CLIENT_SECRET)', 403);
+  };
+  return { getJson: fail, send: fail };
+}
+
+/** A transport for a GCP platform with no credential profile — every request degrades `unauthorized`. */
+function unconfiguredGcp(): DiscoveryHttp {
+  const fail = async (): Promise<never> => {
+    throw new AuthError('GCP credentials are not configured (set NEUROPAUSE_GCP_SERVICE_ACCOUNT_JSON or NEUROPAUSE_GCP_CLIENT_EMAIL / _PRIVATE_KEY)', 403);
   };
   return { getJson: fail, send: fail };
 }
