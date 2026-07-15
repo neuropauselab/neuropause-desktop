@@ -136,6 +136,9 @@ import { initFounderAI } from './founder';
 import { initEngineeringAI, initFounderAIv2 } from './ai';
 import { initTrace } from './trace';
 import { initWorkforce } from './workforce';
+import { workforceProbe } from './workforce/workforceDiagnostics';
+import { workerRegistry } from './workforce/registry/registryInstance';
+import { jobStore } from './workforce/runtime/jobInstance';
 import { initEnterprise } from './enterprise';
 import { initEcosystem, runGateway, gatewayMetrics, gatewayAuditEntries } from './ecosystem';
 import { initEnterpriseApi } from './api';
@@ -1264,6 +1267,16 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     infrastructure.probe,
     // P7 — Enterprise Intelligence health (composite health/risk/incidents) rolls into the same report.
     enterpriseIntel.probe,
+    // P8.2 — AI Workforce runtime health (worker health/availability, queue, exec/failure
+    // rate, avg duration, pending approvals) rolls into the same report. Reads the live
+    // registry + job store singletons; lazy getters run at report() time.
+    workforceProbe({
+      workers: () => workerRegistry.summaries(),
+      health: () => workerRegistry.healthSummaries(),
+      jobs: () => jobStore.page({ limit: 500 }).jobs,
+      queued: () => jobStore.page({ status: 'queued', limit: 1 }).total,
+      storedJobs: () => jobStore.size(),
+    }),
   ]);
   defs.push(...federation.handlers);
   defs.push(...updater.handlers);

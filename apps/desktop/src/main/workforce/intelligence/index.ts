@@ -7,6 +7,7 @@
 import { EmptyRequest, IpcChannel } from '@neuropause/shared';
 import type { SecureHandlerDef } from '../../ipc/secureBridge';
 import { jobStore } from '../runtime/jobInstance';
+import { withWorkforceAuthz } from '../authzGate';
 import { workforceIntelligence } from './workforceIntelligence';
 
 export interface WorkforceIntelligenceSubsystem {
@@ -21,5 +22,6 @@ export function initWorkforceIntelligence(): WorkforceIntelligenceSubsystem {
       handler: () => workforceIntelligence(jobStore.page({ limit: 2000 }).jobs),
     },
   ];
-  return { handlers };
+  // P8.2 — gated to `workforce:read` via the shared classification map.
+  return { handlers: withWorkforceAuthz(handlers) };
 }

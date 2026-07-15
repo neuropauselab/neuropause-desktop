@@ -136,6 +136,14 @@ export type PlatformEventType =
   | 'workflow.completed'
   | 'workflow.failed'
   | 'workflow.recovered'
+  // P8.2 — AI Workforce worker/job lifecycle + human approval (category 'automation')
+  | 'worker.job_queued'
+  | 'worker.job_started'
+  | 'worker.job_awaiting_approval'
+  | 'worker.job_succeeded'
+  | 'worker.job_failed'
+  | 'approval.granted'
+  | 'approval.rejected'
   // enterprise module records (ERP foundation)
   | 'enterprise.record.created'
   | 'enterprise.record.updated'

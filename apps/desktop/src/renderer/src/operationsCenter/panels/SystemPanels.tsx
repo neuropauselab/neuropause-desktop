@@ -25,6 +25,8 @@ export function TimelinePanel({ nowMs }: PanelProps): JSX.Element {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(true);
   const reqRef = useRef(0);
+  const textRef = useRef('');
+  textRef.current = text;
 
   const load = async (query: string): Promise<void> => {
     const my = ++reqRef.current;
@@ -43,6 +45,21 @@ export function TimelinePanel({ nowMs }: PanelProps): JSX.Element {
 
   useEffect(() => {
     void load('');
+    // P8.2 — live-refresh on worker/approval/workflow events via the existing
+    // platform stream (no polling). Debounced so a burst coalesces into one query.
+    let timer: number | null = null;
+    const off = ipc.platform.onEvent((e) => {
+      if (!/^(worker\.|approval\.|workflow\.)/.test(e.type)) return;
+      if (timer != null) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        timer = null;
+        void load(textRef.current);
+      }, 800);
+    });
+    return () => {
+      off();
+      if (timer != null) window.clearTimeout(timer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

@@ -11,13 +11,14 @@
  * application wires the real singletons in the composition root.
  */
 import { randomUUID } from 'node:crypto';
-import type { Job, JobPage, JobSpec, WorkerRole } from '@neuropause/shared';
+import type { Job, JobPage, JobSpec, PlatformEventInput, WorkerRole } from '@neuropause/shared';
 import { createLogger } from '../../logger';
 import { scopeData, type SkillImpl, type WorkforceData } from '../sdk';
 import type { WorkerRegistry } from '../registry/workerRegistry';
 import type { GovernanceRuntime } from '../governance';
 import type { JobStore, JobQuery } from './jobStore';
 import { executeJob, pendingApprovalCount } from './executor';
+import { approvalDecisionEvent, jobLifecycleEvent, type WorkerJobEventKind } from './workerEvents';
 
 const log = createLogger('workforce-runtime');
 
@@ -31,6 +32,12 @@ export interface WorkerRuntimeDeps {
   skillsFor: (workerId: string) => Map<string, SkillImpl> | null;
   newId?: () => string;
   clock?: () => string;
+  /**
+   * P8.2 — publish worker/job lifecycle events onto the platform bus → timeline.
+   * Optional so the runtime still runs standalone/in tests; the composition root
+   * passes `platform.api.publish` (the same seam workflow lifecycle uses).
+   */
+  publish?: (event: PlatformEventInput) => void;
 }
 
 export class WorkerRuntime {
@@ -40,6 +47,25 @@ export class WorkerRuntime {
   constructor(private readonly deps: WorkerRuntimeDeps) {
     this.newId = deps.newId ?? randomUUID;
     this.clock = deps.clock ?? (() => new Date().toISOString());
+  }
+
+  /** Emit a worker job-lifecycle event (no-op when no publisher is wired). */
+  private emitJob(kind: WorkerJobEventKind, job: Job, correlationId: string): void {
+    if (!this.deps.publish) return;
+    this.deps.publish(
+      jobLifecycleEvent(kind, {
+        jobId: job.id,
+        workerId: job.workerId,
+        workerRole: job.workerRole,
+        skillId: job.skillId,
+        correlationId,
+        requestedBy: job.requestedBy,
+        summary: job.summary,
+        durationMs: job.durationMs,
+        error: job.error,
+        pendingApprovals: kind === 'awaiting_approval' ? pendingApprovalCount(job) : undefined,
+      }),
+    );
   }
 
   /** Run a job synchronously and return its terminal (or awaiting-approval) state. */
@@ -56,6 +82,7 @@ export class WorkerRuntime {
       workerId: spec.workerId,
       workerRole: worker?.identity.role ?? 'operations',
       skillId: spec.skillId,
+      correlationId: spec.correlationId ?? jobId,
       status: 'queued',
       input: spec.input ?? {},
       requestedBy: spec.requestedBy ?? 'system',
@@ -71,6 +98,7 @@ export class WorkerRuntime {
       durationMs: null,
     };
     this.deps.jobs.put(job);
+    this.emitJob('queued', job, spec.correlationId ?? jobId);
     return job;
   }
 
@@ -92,6 +120,20 @@ export class WorkerRuntime {
       return this.fail(jobId, spec, now, createdAt, `Worker "${spec.workerId}" has no skill "${spec.skillId}".`, worker.identity.role);
     }
 
+    const correlationId = spec.correlationId ?? jobId;
+    if (this.deps.publish) {
+      this.deps.publish(
+        jobLifecycleEvent('started', {
+          jobId,
+          workerId: worker.identity.id,
+          workerRole: worker.identity.role,
+          skillId: spec.skillId,
+          correlationId,
+          requestedBy,
+        }),
+      );
+    }
+
     const scoped = scopeData(this.deps.dataProvider(now), worker);
     const job = executeJob({
       jobId,
@@ -108,9 +150,17 @@ export class WorkerRuntime {
       },
     });
 
+    job.correlationId = correlationId;
     this.deps.jobs.put(job);
-    if (job.status === 'succeeded') this.deps.registry.recordOutcome(worker.identity.id, true, now);
-    else if (job.status === 'failed') this.deps.registry.recordOutcome(worker.identity.id, false, now);
+    if (job.status === 'succeeded') {
+      this.deps.registry.recordOutcome(worker.identity.id, true, now);
+      this.emitJob('succeeded', job, correlationId);
+    } else if (job.status === 'failed') {
+      this.deps.registry.recordOutcome(worker.identity.id, false, now);
+      this.emitJob('failed', job, correlationId);
+    } else if (job.status === 'awaiting_approval') {
+      this.emitJob('awaiting_approval', job, correlationId);
+    }
     return job;
   }
 
@@ -128,6 +178,7 @@ export class WorkerRuntime {
       workerId: spec.workerId,
       workerRole: role,
       skillId: spec.skillId,
+      correlationId: spec.correlationId ?? jobId,
       status: 'failed',
       input: spec.input ?? {},
       requestedBy: spec.requestedBy ?? 'system',
@@ -143,6 +194,7 @@ export class WorkerRuntime {
       durationMs: 0,
     };
     this.deps.jobs.put(job);
+    this.emitJob('failed', job, spec.correlationId ?? jobId);
     return job;
   }
 
@@ -180,13 +232,36 @@ export class WorkerRuntime {
     proposal.approval = { decision, decidedBy: by, decidedAt: now, note };
     job.logs.push({ at: now, level: 'info', message: `Proposal "${proposal.title}" ${decision} by ${by}.` });
 
-    if (job.status === 'awaiting_approval' && pendingApprovalCount(job) === 0) {
+    // The job carries its originating correlationId (falling back to its own id), so
+    // approval + completion events group with the rest of the job's lifecycle chain.
+    const correlationId = job.correlationId ?? job.id;
+    const completed = job.status === 'awaiting_approval' && pendingApprovalCount(job) === 0;
+    if (completed) {
       job.status = 'succeeded';
       job.finishedAt = now;
       this.deps.registry.recordOutcome(job.workerId, true, now);
     }
 
+    // Persist before emitting so a throwing subscriber can never leave the stored
+    // job behind the events (consistent with the execute() path).
     this.deps.jobs.put(job);
+
+    if (this.deps.publish) {
+      this.deps.publish(
+        approvalDecisionEvent(decision === 'approved' ? 'granted' : 'rejected', {
+          jobId: job.id,
+          workerId: job.workerId,
+          workerRole: job.workerRole,
+          proposalId: proposal.id,
+          proposalTitle: proposal.title,
+          by,
+          note,
+          correlationId,
+        }),
+      );
+    }
+    if (completed) this.emitJob('succeeded', job, correlationId);
+
     return job;
   }
 }

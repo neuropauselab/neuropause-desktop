@@ -50,6 +50,12 @@ export interface Job {
   workerId: string;
   workerRole: WorkerRole;
   skillId: string;
+  /**
+   * P8.2 — groups this job's timeline events into a larger chain (a goal/workflow
+   * run); defaults to the job's own id. Persisted so the approval path (which only
+   * has the stored Job) emits under the same correlation id as the job's lifecycle.
+   */
+  correlationId?: string;
   status: JobStatus;
   input: Record<string, unknown>;
   requestedBy: string;
@@ -73,6 +79,12 @@ export interface JobSpec {
   input?: Record<string, unknown>;
   requestedBy?: string;
   now?: string;
+  /**
+   * P8.2 — groups this job's timeline events into a larger chain (a goal or
+   * workflow run). Defaults to the job's own id when omitted, so a standalone job
+   * self-correlates. Observability metadata only; does not affect execution.
+   */
+  correlationId?: string;
 }
 
 export interface JobPage {

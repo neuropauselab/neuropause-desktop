@@ -56,6 +56,7 @@ import { Scheduler, WorkerRuntime } from './runtime';
 import { Orchestrator } from './orchestrator';
 import { analyzeWorkflowHealth, criticalPath } from './planning/workflowAnalysis';
 import { planDelegation } from './planning/delegation';
+import { withWorkforceAuthz } from './authzGate';
 import { builtInSkills, registerBuiltInWorkers } from './workers';
 import type { WorkforceData, WorkforceNeighbor } from './sdk';
 
@@ -111,6 +112,8 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
     jobs: jobStore,
     dataProvider,
     skillsFor: (workerId) => skills.get(workerId) ?? null,
+    // P8.2 — worker/job lifecycle events flow onto the platform bus → timeline.
+    publish: deps.publish,
   });
   const scheduler = new Scheduler(runtime);
   scheduler.start();
@@ -292,11 +295,10 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
     },
     {
       // P8 — plan the delegation of a goal's task graph across the live roster.
-      // Read-only (computes a plan; runs nothing), RBAC-gated to `workforce:read`.
+      // Read-only (computes a plan; runs nothing). Gated to `workforce:read` by
+      // withWorkforceAuthz below, alongside every other workforce handler.
       channel: IpcChannel.WorkforceDelegatePlan,
       schema: WorkforceDelegateRequest,
-      requireAuth: true,
-      permission: 'workforce:read',
       handler: (p) => planDelegation(p as TWorkforceDelegateRequest, workerRegistry.list(), Date.now()),
     },
   ];
@@ -324,5 +326,7 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
     return runtime.runJob({ workerId, skillId, input: input ?? {}, requestedBy: 'user' });
   };
 
-  return { handlers, dispose, runWorker };
+  // P8.2 — RBAC-gate every workforce handler (authn + authz + audit) via the
+  // classification map; throws at startup if any workforce channel is unclassified.
+  return { handlers: withWorkforceAuthz(handlers), dispose, runWorker };
 }
