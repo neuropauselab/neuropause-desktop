@@ -144,6 +144,13 @@ export type PlatformEventType =
   | 'worker.job_failed'
   | 'approval.granted'
   | 'approval.rejected'
+  // P8.5 — installable worker lifecycle (category 'automation')
+  | 'worker.installed'
+  | 'worker.updated'
+  | 'worker.enabled'
+  | 'worker.disabled'
+  | 'worker.uninstalled'
+  | 'worker.rolled_back'
   // enterprise module records (ERP foundation)
   | 'enterprise.record.created'
   | 'enterprise.record.updated'

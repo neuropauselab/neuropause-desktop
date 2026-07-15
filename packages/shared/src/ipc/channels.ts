@@ -266,6 +266,14 @@ export const IpcChannel = {
   WorkforcePolicies: 'workforce:policies',
   WorkforceDelegatePlan: 'workforce:delegate',
   WorkforceEventBroadcast: 'workforce:event',
+  // ── P8.5 — Installable Workers ──
+  WorkforceInstalls: 'workforce:installs',
+  WorkforceInstall: 'workforce:install',
+  WorkforceInstallUpdate: 'workforce:install.update',
+  WorkforceInstallEnable: 'workforce:install.enable',
+  WorkforceInstallDisable: 'workforce:install.disable',
+  WorkforceInstallRollback: 'workforce:install.rollback',
+  WorkforceUninstall: 'workforce:uninstall',
 
   // ── Enterprise Operating System ──
   EnterpriseOrgGet: 'enterprise:org.get',
@@ -810,6 +818,13 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.WorkforceAudit,
   IpcChannel.WorkforcePolicies,
   IpcChannel.WorkforceDelegatePlan,
+  IpcChannel.WorkforceInstalls,
+  IpcChannel.WorkforceInstall,
+  IpcChannel.WorkforceInstallUpdate,
+  IpcChannel.WorkforceInstallEnable,
+  IpcChannel.WorkforceInstallDisable,
+  IpcChannel.WorkforceInstallRollback,
+  IpcChannel.WorkforceUninstall,
   IpcChannel.EnterpriseOrgGet,
   IpcChannel.EnterpriseOrgCreateUnit,
   IpcChannel.EnterpriseOrgUpdateUnit,

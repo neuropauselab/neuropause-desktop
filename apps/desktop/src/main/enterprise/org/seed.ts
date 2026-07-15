@@ -103,6 +103,7 @@ const ADMIN: EnterprisePermission[] = [
   'org:manage',
   'governance:manage',
   'workspace:manage',
+  'workforce:manage',
 ];
 
 const AI_WORKER: EnterprisePermission[] = ['workforce:read', 'intelligence:read'];

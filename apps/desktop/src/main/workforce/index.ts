@@ -2,8 +2,9 @@
  * AI Workforce composition root.
  *
  * Loads the workforce stores (registry, audit, jobs), builds the Governance
- * Runtime over the default policies, registers the nine built-in workers, and
- * wires the Worker Runtime to the **live** intelligence layer: each job runs
+ * Runtime over the default policies, registers the built-in workers + restores any
+ * installed worker packages (P8.5), and wires the Worker Runtime to the **live**
+ * intelligence layer: each job runs
  * against a fresh, permission-scoped snapshot of the UDM, Enterprise Timeline,
  * AI Memory, and knowledge graph. A cooperative scheduler provides background
  * execution and the orchestrator runs multi-step workflows. Every capability is
@@ -30,6 +31,8 @@ import type {
   WorkforceWorkflowResumeRequest as TWorkforceWorkflowResumeRequest,
   WorkforceWorkflowCheckpointRequest as TWorkforceWorkflowCheckpointRequest,
   WorkforceDelegateRequest as TWorkforceDelegateRequest,
+  WorkforceInstallRequest as TWorkforceInstallRequest,
+  WorkforceInstallActionRequest as TWorkforceInstallActionRequest,
 } from '@neuropause/shared';
 import {
   EmptyRequest,
@@ -44,6 +47,8 @@ import {
   WorkforceWorkflowRunRequest,
   WorkforceWorkflowResumeRequest,
   WorkforceWorkflowCheckpointRequest,
+  WorkforceInstallRequest,
+  WorkforceInstallActionRequest,
 } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
@@ -62,7 +67,9 @@ import { planDelegation } from './planning/delegation';
 import { withWorkforceAuthz } from './authzGate';
 import { aggregateOutcome, bindingToRequest } from './execution/router';
 import { builtInSkills, registerBuiltInWorkers } from './workers';
-import type { WorkforceData, WorkforceNeighbor } from './sdk';
+import { WorkerInstallService } from './install/installService';
+import { workerInstallStore, workerSigningKey } from './install/installInstance';
+import type { SkillImpl, WorkforceData, WorkforceNeighbor } from './sdk';
 
 const log = createLogger('workforce');
 
@@ -74,6 +81,8 @@ export interface WorkforceSubsystemDeps {
    * `platform.api.publish`, exactly as connectors/sync/automations already do.
    */
   publish?: (event: PlatformEventInput) => void;
+  /** P8.5 — the running app/engine version, for worker-package compatibility checks. */
+  appVersion: string;
 }
 
 export interface WorkforceSubsystem {
@@ -95,6 +104,21 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
   const governance = new GovernanceRuntime(auditLog);
   const defs = registerBuiltInWorkers(workerRegistry);
   const skills = builtInSkills(defs);
+
+  // P8.5 — Installable workers. Register the first-party trust root, then restore any
+  // previously-installed worker packages (compose signed manifests → register into the
+  // SAME registry). Installed workers' skills merge into the single `skillsFor` seam
+  // below, so a disabled/uninstalled worker simply has no resolvable skills.
+  await workerSigningKey.ensure();
+  const installService = new WorkerInstallService({
+    store: workerInstallStore,
+    registry: workerRegistry,
+    appVersion: deps.appVersion,
+    publish: deps.publish,
+  });
+  await installService.load();
+  const resolveSkills = (workerId: string): Map<string, SkillImpl> | null =>
+    skills.get(workerId) ?? installService.skillsFor(workerId);
 
   // A live, permission-scoped snapshot of the intelligence layer for each run.
   const neighbors = (nodeId: string): WorkforceNeighbor[] => {
@@ -121,7 +145,7 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
     governance,
     jobs: jobStore,
     dataProvider,
-    skillsFor: (workerId) => skills.get(workerId) ?? null,
+    skillsFor: resolveSkills,
     // P8.2 — worker/job lifecycle events flow onto the platform bus → timeline.
     publish: deps.publish,
   });
@@ -206,6 +230,42 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
       channel: IpcChannel.WorkforceWorkerGet,
       schema: WorkforceWorkerGetRequest,
       handler: (p) => workerRegistry.get((p as TWorkforceWorkerGetRequest).workerId),
+    },
+    // ── P8.5 — Installable Workers (install/uninstall gated by workforce:manage) ──
+    {
+      channel: IpcChannel.WorkforceInstalls,
+      schema: EmptyRequest,
+      handler: () => installService.listInstalls(),
+    },
+    {
+      channel: IpcChannel.WorkforceInstall,
+      schema: WorkforceInstallRequest,
+      handler: (p) => installService.install((p as TWorkforceInstallRequest).package),
+    },
+    {
+      channel: IpcChannel.WorkforceInstallUpdate,
+      schema: WorkforceInstallRequest,
+      handler: (p) => installService.update((p as TWorkforceInstallRequest).package),
+    },
+    {
+      channel: IpcChannel.WorkforceInstallEnable,
+      schema: WorkforceInstallActionRequest,
+      handler: (p) => installService.enable((p as TWorkforceInstallActionRequest).workerId),
+    },
+    {
+      channel: IpcChannel.WorkforceInstallDisable,
+      schema: WorkforceInstallActionRequest,
+      handler: (p) => installService.disable((p as TWorkforceInstallActionRequest).workerId),
+    },
+    {
+      channel: IpcChannel.WorkforceInstallRollback,
+      schema: WorkforceInstallActionRequest,
+      handler: (p) => installService.rollback((p as TWorkforceInstallActionRequest).workerId),
+    },
+    {
+      channel: IpcChannel.WorkforceUninstall,
+      schema: WorkforceInstallActionRequest,
+      handler: (p) => installService.uninstall((p as TWorkforceInstallActionRequest).workerId),
     },
     {
       channel: IpcChannel.WorkforceJobRun,
@@ -362,7 +422,7 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
   // V5.7: dispatch a worker's default (first) skill as a job. Skill resolution
   // lives here (not in the Execute Engine); the engine only orchestrates.
   const runWorker = (workerId: string, input?: Record<string, unknown>): Job | null => {
-    const workerSkills = skills.get(workerId);
+    const workerSkills = resolveSkills(workerId);
     if (!workerSkills || workerSkills.size === 0) return null;
     const skillId = [...workerSkills.keys()][0];
     return runtime.runJob({ workerId, skillId, input: input ?? {}, requestedBy: 'user' });

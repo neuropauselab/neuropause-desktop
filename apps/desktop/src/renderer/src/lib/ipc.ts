@@ -134,6 +134,9 @@ import {
   type PolicyRule,
   type WorkforceDelegateRequest,
   type DelegationPlan,
+  type WorkerPackage,
+  type WorkerInstallSummary,
+  type WorkerInstallResult,
   type VerdictDecision,
   type DeveloperDashboard,
   type DeveloperAccount,
@@ -992,6 +995,20 @@ export const ipc = {
     // P8 — plan the delegation of a goal's task graph across the worker roster.
     delegate: (req: WorkforceDelegateRequest) =>
       invoke(IpcChannel.WorkforceDelegatePlan, req) as Promise<DelegationPlan>,
+    // P8.5 — Installable Workers (install/lifecycle gated by workforce:manage).
+    installs: () => invoke(IpcChannel.WorkforceInstalls) as Promise<WorkerInstallSummary[]>,
+    install: (pkg: WorkerPackage) =>
+      invoke(IpcChannel.WorkforceInstall, { package: pkg }) as Promise<WorkerInstallResult>,
+    updateInstall: (pkg: WorkerPackage) =>
+      invoke(IpcChannel.WorkforceInstallUpdate, { package: pkg }) as Promise<WorkerInstallResult>,
+    enableInstall: (workerId: string) =>
+      invoke(IpcChannel.WorkforceInstallEnable, { workerId }) as Promise<WorkerInstallResult>,
+    disableInstall: (workerId: string) =>
+      invoke(IpcChannel.WorkforceInstallDisable, { workerId }) as Promise<WorkerInstallResult>,
+    rollbackInstall: (workerId: string) =>
+      invoke(IpcChannel.WorkforceInstallRollback, { workerId }) as Promise<WorkerInstallResult>,
+    uninstall: (workerId: string) =>
+      invoke(IpcChannel.WorkforceUninstall, { workerId }) as Promise<WorkerInstallResult>,
     onEvent: (cb: (snapshot: { workers: number; jobs: number; audit: number }) => void) =>
       subscribe(IpcChannel.WorkforceEventBroadcast, (p) =>
         cb(p as { workers: number; jobs: number; audit: number }),

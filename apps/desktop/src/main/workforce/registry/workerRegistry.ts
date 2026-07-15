@@ -126,6 +126,18 @@ export class WorkerRegistry extends EventEmitter {
     return this.workers.has(id);
   }
 
+  /**
+   * P8.5 — remove a worker from the registry (used by worker-package uninstall).
+   * Returns true if a worker was removed. Built-in workers are re-seeded at every
+   * startup, so callers must guard against unregistering a built-in; this primitive
+   * itself is neutral.
+   */
+  unregister(id: string): boolean {
+    const removed = this.workers.delete(id);
+    if (removed) this.mutated();
+    return removed;
+  }
+
   list(): Worker[] {
     return [...this.workers.values()].sort((a, b) => a.identity.name.localeCompare(b.identity.name));
   }

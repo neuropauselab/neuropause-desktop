@@ -278,6 +278,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   const workforce = await initWorkforce({
     broadcast: deps.broadcast,
     publish: platform.api.publish,
+    appVersion: app.getVersion(),
   });
   // Enterprise Operating System: organization runtime + graph + governance +
   // multi-workspace isolation + the executive snapshot that rolls it all up.

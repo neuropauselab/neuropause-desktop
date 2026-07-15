@@ -851,6 +851,54 @@ export const WorkforceWorkflowCheckpointRequest = z.object({
 export type WorkforceWorkflowResumeRequest = z.infer<typeof WorkforceWorkflowResumeRequest>;
 export type WorkforceWorkflowCheckpointRequest = z.infer<typeof WorkforceWorkflowCheckpointRequest>;
 
+// ── P8.5 — Installable Workers ──
+const WorkerPackageRoleSchema = z.enum([
+  'founder', 'research', 'engineering', 'marketing', 'sales', 'finance', 'legal', 'operations', 'support',
+  'executive', 'infrastructure', 'hr', 'procurement',
+]);
+const WorkerPackageScopeSchema = z.enum([
+  'read:entities', 'read:graph', 'read:timeline', 'read:memory', 'read:health', 'read:connectors',
+  'write:memory', 'write:reminder', 'propose:draft', 'propose:message', 'execute:action',
+]);
+const WorkerSkillSpecSchema = z.object({
+  kind: z.enum(['advisory', 'draft', 'note', 'mail', 'infra']),
+  id: z.string().trim().min(1).max(128),
+  label: z.string().trim().min(1).max(200),
+  target: z.string().trim().max(64).optional(),
+  accountId: z.string().trim().max(200).optional(),
+  actionId: z.string().trim().max(128).optional(),
+  required: z.array(z.string().trim().min(1).max(64)).max(16).optional(),
+  optional: z.array(z.string().trim().min(1).max(64)).max(16).optional(),
+  refKey: z.string().trim().max(64).optional(),
+});
+const WorkerPackageManifestSchema = z.object({
+  id: z.string().trim().min(1).max(128),
+  name: z.string().trim().min(1).max(200),
+  version: z.string().trim().min(1).max(40),
+  author: z.string().trim().min(1).max(200),
+  description: z.string().trim().max(2000),
+  role: WorkerPackageRoleSchema,
+  memoryScope: z.enum(['none', 'self', 'team', 'org']).optional(),
+  goals: z.array(z.string().trim().min(1).max(400)).max(16),
+  capabilities: z.array(z.string().trim().min(1).max(120)).max(64),
+  permissions: z.array(WorkerPackageScopeSchema).max(16),
+  skills: z.array(WorkerSkillSpecSchema).min(1).max(32),
+  dependencies: z.array(z.string().trim().min(1).max(128)).max(32),
+  engine: z.object({ neuropause: z.string().trim().min(1).max(64) }),
+});
+export const WorkerPackageSchema = z.object({
+  manifest: WorkerPackageManifestSchema,
+  checksum: z.string().trim().min(1).max(128),
+  signatureKeyId: z.string().trim().max(200).nullable(),
+  signature: z.string().trim().max(1024).nullable(),
+});
+export const WorkforceInstallRequest = z.object({ package: WorkerPackageSchema });
+export const WorkforceInstallActionRequest = z.object({
+  workerId: z.string().trim().min(1).max(128),
+});
+export type WorkforceInstallRequest = z.infer<typeof WorkforceInstallRequest>;
+export type WorkforceInstallActionRequest = z.infer<typeof WorkforceInstallActionRequest>;
+
 // P8 — delegate a goal's task graph across the worker roster (read-only planning).
 const WorkerRoleSchema = z.enum([
   'founder', 'research', 'engineering', 'marketing', 'sales', 'finance', 'legal', 'operations', 'support',
@@ -895,6 +943,7 @@ export const EnterprisePermissionSchema = z.enum([
   'workforce:read',
   'workforce:operate',
   'workforce:approve',
+  'workforce:manage',
   'governance:read',
   'governance:manage',
   'intelligence:read',
