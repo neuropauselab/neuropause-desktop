@@ -264,6 +264,7 @@ export const IpcChannel = {
   WorkforceWorkflowCheckpoint: 'workforce:workflow.checkpoint',
   WorkforceAudit: 'workforce:audit',
   WorkforcePolicies: 'workforce:policies',
+  WorkforceDelegatePlan: 'workforce:delegate',
   WorkforceEventBroadcast: 'workforce:event',
 
   // ── Enterprise Operating System ──
@@ -808,6 +809,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.WorkforceWorkflowCheckpoint,
   IpcChannel.WorkforceAudit,
   IpcChannel.WorkforcePolicies,
+  IpcChannel.WorkforceDelegatePlan,
   IpcChannel.EnterpriseOrgGet,
   IpcChannel.EnterpriseOrgCreateUnit,
   IpcChannel.EnterpriseOrgUpdateUnit,

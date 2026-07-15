@@ -26,11 +26,13 @@ import type {
   WorkforceWorkflowRunRequest as TWorkforceWorkflowRunRequest,
   WorkforceWorkflowResumeRequest as TWorkforceWorkflowResumeRequest,
   WorkforceWorkflowCheckpointRequest as TWorkforceWorkflowCheckpointRequest,
+  WorkforceDelegateRequest as TWorkforceDelegateRequest,
 } from '@neuropause/shared';
 import {
   EmptyRequest,
   IpcChannel,
   WorkforceAuditRequest,
+  WorkforceDelegateRequest,
   WorkforceJobGetRequest,
   WorkforceJobRunRequest,
   WorkforceJobsRequest,
@@ -53,6 +55,7 @@ import { GovernanceRuntime } from './governance';
 import { Scheduler, WorkerRuntime } from './runtime';
 import { Orchestrator } from './orchestrator';
 import { analyzeWorkflowHealth, criticalPath } from './planning/workflowAnalysis';
+import { planDelegation } from './planning/delegation';
 import { builtInSkills, registerBuiltInWorkers } from './workers';
 import type { WorkforceData, WorkforceNeighbor } from './sdk';
 
@@ -286,6 +289,15 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
       channel: IpcChannel.WorkforcePolicies,
       schema: EmptyRequest,
       handler: () => governance.listPolicies(),
+    },
+    {
+      // P8 — plan the delegation of a goal's task graph across the live roster.
+      // Read-only (computes a plan; runs nothing), RBAC-gated to `workforce:read`.
+      channel: IpcChannel.WorkforceDelegatePlan,
+      schema: WorkforceDelegateRequest,
+      requireAuth: true,
+      permission: 'workforce:read',
+      handler: (p) => planDelegation(p as TWorkforceDelegateRequest, workerRegistry.list(), Date.now()),
     },
   ];
 

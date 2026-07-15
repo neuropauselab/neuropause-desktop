@@ -851,6 +851,33 @@ export const WorkforceWorkflowCheckpointRequest = z.object({
 export type WorkforceWorkflowResumeRequest = z.infer<typeof WorkforceWorkflowResumeRequest>;
 export type WorkforceWorkflowCheckpointRequest = z.infer<typeof WorkforceWorkflowCheckpointRequest>;
 
+// P8 — delegate a goal's task graph across the worker roster (read-only planning).
+const WorkerRoleSchema = z.enum([
+  'founder', 'research', 'engineering', 'marketing', 'sales', 'finance', 'legal', 'operations', 'support',
+]);
+const WorkerScopeSchema = z.enum([
+  'read:entities', 'read:graph', 'read:timeline', 'read:memory', 'read:health', 'read:connectors',
+  'write:memory', 'write:reminder', 'propose:draft', 'propose:message',
+]);
+export const WorkforceDelegateRequest = z.object({
+  id: z.string().trim().min(1).max(128),
+  title: z.string().trim().min(1).max(200),
+  tasks: z
+    .array(
+      z.object({
+        id: z.string().trim().min(1).max(128),
+        title: z.string().trim().min(1).max(300),
+        role: WorkerRoleSchema.optional(),
+        requiredScopes: z.array(WorkerScopeSchema).max(10).optional(),
+        dependsOn: z.array(z.string().trim().min(1).max(128)).max(200).optional(),
+        priority: z.number().int().min(-1000).max(1000).optional(),
+        effort: z.number().min(0).max(100000).optional(),
+      }),
+    )
+    .max(500),
+});
+export type WorkforceDelegateRequest = z.infer<typeof WorkforceDelegateRequest>;
+
 /* ── Enterprise Operating System ── */
 
 const EntId = z.string().trim().min(1).max(256);

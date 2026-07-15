@@ -42,6 +42,7 @@ export * from './types/recommendations';
 export * from './types/founder';
 export * from './types/trace';
 export * from './types/worker';
+export * from './types/workforceDelegation';
 export * from './types/workforceGovernance';
 export * from './types/workforceJobs';
 export * from './types/enterpriseIntelligence';

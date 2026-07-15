@@ -132,6 +132,8 @@ import {
   type WorkflowRun,
   type WorkforceAuditPage,
   type PolicyRule,
+  type WorkforceDelegateRequest,
+  type DelegationPlan,
   type VerdictDecision,
   type DeveloperDashboard,
   type DeveloperAccount,
@@ -987,6 +989,9 @@ export const ipc = {
       offset?: number;
     }) => invoke(IpcChannel.WorkforceAudit, q ?? {}) as Promise<WorkforceAuditPage>,
     policies: () => invoke(IpcChannel.WorkforcePolicies) as Promise<PolicyRule[]>,
+    // P8 — plan the delegation of a goal's task graph across the worker roster.
+    delegate: (req: WorkforceDelegateRequest) =>
+      invoke(IpcChannel.WorkforceDelegatePlan, req) as Promise<DelegationPlan>,
     onEvent: (cb: (snapshot: { workers: number; jobs: number; audit: number }) => void) =>
       subscribe(IpcChannel.WorkforceEventBroadcast, (p) =>
         cb(p as { workers: number; jobs: number; audit: number }),
