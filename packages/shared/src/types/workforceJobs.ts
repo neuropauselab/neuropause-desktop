@@ -25,6 +25,29 @@ export interface ProposalApproval {
   note: string | null;
 }
 
+/**
+ * P8.3 — which existing confirmation-gated executor runs an approved proposal.
+ * `infra` → InfraActionExecutor, `m365` → M365Executor, `automation` → AutomationRunner.
+ */
+export type ExecutorKind = 'infra' | 'm365' | 'automation';
+
+/**
+ * P8.3 — an OPTIONAL execution binding a skill declares on a proposal so its
+ * approved action actually runs through an existing executor. Advisory proposals
+ * omit it and stay on the synchronous "approved → succeeded" path (unchanged).
+ */
+export interface ExecutionBinding {
+  executor: ExecutorKind;
+  /** infra: platformId · m365: connectorId · automation: ruleId. */
+  target: string;
+  /** account/subscription scope (infra + m365); ignored for automation. */
+  accountId?: string;
+  /** InfraAction.id / WriteAction.id (ignored for automation). */
+  actionId?: string;
+  /** Parameters passed straight to the executor. */
+  params?: Record<string, unknown>;
+}
+
 export interface JobProposal {
   id: string;
   title: string;
@@ -37,6 +60,8 @@ export interface JobProposal {
   verdict: GovernanceVerdict;
   /** Set once a human approves or rejects (for proposals that need it). */
   approval: ProposalApproval | null;
+  /** P8.3 — optional binding to an existing executor; when present + approved, the action runs. */
+  execution?: ExecutionBinding;
 }
 
 export interface JobLogEntry {
@@ -71,6 +96,10 @@ export interface Job {
   startedAt: string | null;
   finishedAt: string | null;
   durationMs: number | null;
+  /** P8.3 — the ExecutionSession id when an approved action was executed (join to the execution history). */
+  executionId?: string;
+  /** P8.3 — which executor ran the approved action (infra/m365/automation). */
+  executor?: string;
 }
 
 export interface JobSpec {

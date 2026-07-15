@@ -53,8 +53,25 @@ export class JobStore extends EventEmitter {
     } catch {
       // First run — no jobs yet.
     }
+    // P8.3 — a job left 'running' by a crash mid-execution can never settle (the
+    // ExecuteEngine marks its session 'interrupted', but the Job is orphaned). Recover
+    // any such job to 'failed' so it is never stuck; persisted on the next write.
+    let recovered = 0;
+    const nowIso = new Date().toISOString();
+    for (const j of this.jobs.values()) {
+      if (j.status === 'running') {
+        j.status = 'failed';
+        j.error = j.error ?? 'Interrupted by application restart';
+        j.finishedAt = j.finishedAt ?? nowIso;
+        recovered += 1;
+      }
+    }
     this.loaded = true;
-    log.info('Workforce job store ready', { jobs: this.jobs.size });
+    if (recovered > 0) {
+      log.warn('Recovered interrupted running jobs', { recovered });
+      this.schedulePersist();
+    }
+    log.info('Workforce job store ready', { jobs: this.jobs.size, recovered });
   }
 
   private async persist(): Promise<void> {

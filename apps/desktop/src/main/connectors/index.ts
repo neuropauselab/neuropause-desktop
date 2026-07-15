@@ -45,7 +45,7 @@ import { InboundWebhookRouter } from './inbound/router';
 import { SlackSocketMode, type SocketLike } from './inbound/slackSocketMode';
 import { syncStateStore } from '../unified/sync/syncStateInstance';
 import { RateLimiter } from '../unified/sync/rateLimiter';
-import { createM365Executor } from './m365';
+import { createM365Executor, type M365Executor } from './m365';
 import { m365Draft } from './m365/aiDrafts';
 
 const log = createLogger('connectors');
@@ -65,6 +65,8 @@ export interface ConnectorSubsystem {
   supervisor: ConnectorRuntimeSupervisor;
   /** P5 — the inbound webhook router; exposed so a relay/tunnel endpoint can hand it signed deliveries. */
   inboundWebhooks: InboundWebhookRouter;
+  /** P8.3 — the confirmation-gated M365 write executor, for approved worker actions. */
+  m365Executor: M365Executor;
   dispose: () => void;
 }
 
@@ -309,6 +311,8 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
     handlers: gateConnectorHandlers(handlers),
     supervisor,
     inboundWebhooks,
+    // P8.3 — the confirmation-gated M365 write executor, so approved worker actions can run it.
+    m365Executor: m365,
     dispose: () => {
       slackSocket?.stop();
       supervisor.dispose();

@@ -16,6 +16,7 @@
 import type {
   ActionEvidence,
   EnterpriseTimelineEntry,
+  ExecutionBinding,
   MemoryItem,
   RiskLevel,
   UnifiedEntity,
@@ -51,6 +52,8 @@ export interface ProposedAction {
   risk: RiskLevel;
   evidence: ActionEvidence[];
   payload: Record<string, unknown>;
+  /** P8.3 — optional binding to an existing executor; when approved, the action runs. */
+  execution?: ExecutionBinding;
 }
 
 export interface SkillResult {

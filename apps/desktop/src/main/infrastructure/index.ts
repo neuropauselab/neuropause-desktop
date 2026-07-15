@@ -78,6 +78,8 @@ export interface InfrastructureSubsystem {
   state: DiscoveryStateStore;
   /** A diagnostics probe reporting discovery health (register it in runtimeCore). */
   probe: DiagnosticProbe;
+  /** P8.3 — the confirmation-gated action executor, for approved worker actions. */
+  actionExecutor: InfraActionExecutor;
   dispose: () => void;
 }
 
@@ -338,6 +340,8 @@ export async function initInfrastructure(deps: InfrastructureDeps): Promise<Infr
     store,
     state,
     probe,
+    // P8.3 — the confirmation-gated action executor, so approved worker actions can run it.
+    actionExecutor: executor,
     dispose: () => undefined,
   };
 }

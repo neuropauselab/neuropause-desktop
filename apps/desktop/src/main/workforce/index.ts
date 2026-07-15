@@ -16,6 +16,9 @@ import type {
   WorkflowRun,
   WorkflowSpec,
   PlatformEventInput,
+  ExecutionRequest,
+  ExecutionSession,
+  JobProposal,
   WorkforceAuditRequest as TWorkforceAuditRequest,
   WorkforceJobGetRequest as TWorkforceJobGetRequest,
   WorkforceJobRunRequest as TWorkforceJobRunRequest,
@@ -57,6 +60,7 @@ import { Orchestrator } from './orchestrator';
 import { analyzeWorkflowHealth, criticalPath } from './planning/workflowAnalysis';
 import { planDelegation } from './planning/delegation';
 import { withWorkforceAuthz } from './authzGate';
+import { aggregateOutcome, bindingToRequest } from './execution/router';
 import { builtInSkills, registerBuiltInWorkers } from './workers';
 import type { WorkforceData, WorkforceNeighbor } from './sdk';
 
@@ -77,6 +81,12 @@ export interface WorkforceSubsystem {
   dispose: () => void;
   /** V5.7: run a worker's default skill as a job (Execute Engine dispatch). */
   runWorker: (workerId: string, input?: Record<string, unknown>) => Job | null;
+  /**
+   * P8.3 — late-bind the ExecuteEngine so approved binding-carrying proposals run.
+   * The engine is constructed after the workforce; the composition root calls this
+   * with `(req) => executeEngine.execute(req)` once it exists.
+   */
+  setExecutionSubmit: (submit: (req: ExecutionRequest) => Promise<ExecutionSession>) => void;
 }
 
 export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<WorkforceSubsystem> {
@@ -115,6 +125,38 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
     // P8.2 — worker/job lifecycle events flow onto the platform bus → timeline.
     publish: deps.publish,
   });
+
+  // P8.3 — approved binding-carrying proposals execute through the ExecuteEngine.
+  // `submitExecution` is late-bound (the engine is built after the workforce); until
+  // it is set, approved actions stay advisory (job completes 'succeeded').
+  let submitExecution: ((req: ExecutionRequest) => Promise<ExecutionSession>) | null = null;
+  runtime.setDispatchApproved((job, proposals) => {
+    const bindings = proposals.filter((p: JobProposal) => p.execution);
+    if (bindings.length === 0) return;
+    const executor = bindings[0].execution!.executor;
+    const submit = submitExecution;
+    if (!submit) {
+      // The engine is not wired yet — settle failed so a 'running' job is NEVER
+      // stranded (makes "running ⇒ settled" a local guarantee, not an init-order accident).
+      runtime.settleExecution(job.id, { ok: false, summary: null, error: 'Execution engine not ready', executionId: '', executor });
+      return;
+    }
+    void Promise.all(bindings.map((p) => submit(bindingToRequest(job, p)!)))
+      .then((sessions) => runtime.settleExecution(job.id, aggregateOutcome(sessions, executor)))
+      .catch((err) =>
+        runtime.settleExecution(job.id, {
+          ok: false,
+          summary: null,
+          error: err instanceof Error ? err.message : String(err),
+          executionId: '',
+          executor,
+        }),
+      );
+  });
+  const setExecutionSubmit = (submit: (req: ExecutionRequest) => Promise<ExecutionSession>): void => {
+    submitExecution = submit;
+  };
+
   const scheduler = new Scheduler(runtime);
   scheduler.start();
   const orchestrator = new Orchestrator({ runtime });
@@ -328,5 +370,5 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
 
   // P8.2 — RBAC-gate every workforce handler (authn + authz + audit) via the
   // classification map; throws at startup if any workforce channel is unclassified.
-  return { handlers: withWorkforceAuthz(handlers), dispose, runWorker };
+  return { handlers: withWorkforceAuthz(handlers), dispose, runWorker, setExecutionSubmit };
 }

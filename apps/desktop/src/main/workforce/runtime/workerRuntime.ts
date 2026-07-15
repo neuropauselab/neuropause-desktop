@@ -11,7 +11,7 @@
  * application wires the real singletons in the composition root.
  */
 import { randomUUID } from 'node:crypto';
-import type { Job, JobPage, JobSpec, PlatformEventInput, WorkerRole } from '@neuropause/shared';
+import type { Job, JobPage, JobProposal, JobSpec, PlatformEventInput, WorkerRole } from '@neuropause/shared';
 import { createLogger } from '../../logger';
 import { scopeData, type SkillImpl, type WorkforceData } from '../sdk';
 import type { WorkerRegistry } from '../registry/workerRegistry';
@@ -19,6 +19,7 @@ import type { GovernanceRuntime } from '../governance';
 import type { JobStore, JobQuery } from './jobStore';
 import { executeJob, pendingApprovalCount } from './executor';
 import { approvalDecisionEvent, jobLifecycleEvent, type WorkerJobEventKind } from './workerEvents';
+import type { WorkforceExecutionOutcome } from '../execution/router';
 
 const log = createLogger('workforce-runtime');
 
@@ -40,13 +41,26 @@ export interface WorkerRuntimeDeps {
   publish?: (event: PlatformEventInput) => void;
 }
 
+/** P8.3 — dispatch an approved job's binding-carrying proposals into execution. */
+export type DispatchApproved = (job: Job, proposals: JobProposal[]) => void;
+
 export class WorkerRuntime {
   private readonly newId: () => string;
   private readonly clock: () => string;
+  /**
+   * P8.3 — set by the composition root after the ExecuteEngine exists (the engine
+   * is built after the workforce). null → approved actions stay advisory.
+   */
+  private dispatchApprovedFn: DispatchApproved | null = null;
 
   constructor(private readonly deps: WorkerRuntimeDeps) {
     this.newId = deps.newId ?? randomUUID;
     this.clock = deps.clock ?? (() => new Date().toISOString());
+  }
+
+  /** P8.3 — wire the approved-work dispatcher (late-bound; see initWorkforce). */
+  setDispatchApproved(fn: DispatchApproved): void {
+    this.dispatchApprovedFn = fn;
   }
 
   /** Emit a worker job-lifecycle event (no-op when no publisher is wired). */
@@ -236,10 +250,26 @@ export class WorkerRuntime {
     // approval + completion events group with the rest of the job's lifecycle chain.
     const correlationId = job.correlationId ?? job.id;
     const completed = job.status === 'awaiting_approval' && pendingApprovalCount(job) === 0;
+
+    // P8.3 — approved proposals carrying an execution binding RUN (through the
+    // ExecuteEngine); the job goes to 'running' and settles asynchronously via
+    // settleExecution(). Everything else keeps today's immediate 'succeeded'.
+    const executable = completed
+      ? job.proposals.filter((p) => p.approval?.decision === 'approved' && p.execution)
+      : [];
+    const willExecute = executable.length > 0 && this.dispatchApprovedFn != null;
+
     if (completed) {
-      job.status = 'succeeded';
-      job.finishedAt = now;
-      this.deps.registry.recordOutcome(job.workerId, true, now);
+      if (willExecute) {
+        job.status = 'running';
+        // Measure execution duration from dispatch (not the earlier skill run), so a
+        // long human approval wait doesn't inflate durationMs / the avg-duration metric.
+        job.startedAt = now;
+      } else {
+        job.status = 'succeeded';
+        job.finishedAt = now;
+        this.deps.registry.recordOutcome(job.workerId, true, now);
+      }
     }
 
     // Persist before emitting so a throwing subscriber can never leave the stored
@@ -260,8 +290,38 @@ export class WorkerRuntime {
         }),
       );
     }
-    if (completed) this.emitJob('succeeded', job, correlationId);
+    if (completed && !willExecute) this.emitJob('succeeded', job, correlationId);
+    if (completed && willExecute) this.dispatchApprovedFn!(job, executable);
 
     return job;
+  }
+
+  /**
+   * P8.3 — settle a 'running' job once the ExecuteEngine finishes its approved
+   * action. Idempotent (only a still-running job settles), records the executor +
+   * ExecutionSession id, updates trust/health, and emits the terminal worker event.
+   */
+  settleExecution(jobId: string, outcome: WorkforceExecutionOutcome): void {
+    const job = this.deps.jobs.get(jobId);
+    if (!job || job.status !== 'running') return;
+    const now = this.clock();
+    job.status = outcome.ok ? 'succeeded' : 'failed';
+    job.finishedAt = now;
+    job.durationMs = job.startedAt ? Math.max(0, Date.parse(now) - Date.parse(job.startedAt)) : job.durationMs;
+    if (outcome.executionId) job.executionId = outcome.executionId;
+    job.executor = outcome.executor;
+    if (outcome.ok) {
+      job.logs.push({ at: now, level: 'info', message: `Executed via ${outcome.executor}.` });
+    } else {
+      job.error = outcome.error;
+      job.logs.push({
+        at: now,
+        level: 'error',
+        message: `Execution via ${outcome.executor} failed: ${outcome.error ?? 'unknown error'}`,
+      });
+    }
+    this.deps.registry.recordOutcome(job.workerId, outcome.ok, now);
+    this.deps.jobs.put(job);
+    this.emitJob(outcome.ok ? 'succeeded' : 'failed', job, job.correlationId ?? job.id);
   }
 }

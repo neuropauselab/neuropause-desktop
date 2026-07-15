@@ -43,6 +43,20 @@ export interface ExecutionRequest {
   input?: string;
   /** Human-readable label; derived from the request when omitted. */
   label?: string;
+  /**
+   * P8.3 — structured params for kinds that carry more than free-form text (e.g. an
+   * approved worker action's execution binding). IN-PROCESS ONLY — the public
+   * `ExecuteRun` IPC schema does not accept this, so a renderer cannot supply it.
+   */
+  params?: Record<string, unknown>;
+  /**
+   * P8.3 — human-confirmation flag forwarded to the confirmation-gated executors.
+   * IN-PROCESS ONLY (never on the public IPC schema); set true solely by the trusted
+   * dispatcher after a human approval, so mutating executors still require confirmation.
+   */
+  confirmed?: boolean;
+  /** P8.3 — groups this execution's events into a larger chain (the originating job/goal id). */
+  correlationId?: string;
 }
 
 export interface ExecutionStep {
@@ -75,6 +89,8 @@ export interface ExecutionSession {
   resultSummary: string | null;
   /** Full structured output preserved for the API (V5.6). Dashboard uses summary. */
   result: unknown | null;
+  /** P8.3 — the chain id this session belongs to (the originating job/goal id), or null. */
+  correlationId?: string | null;
 }
 
 /** Aggregate stats for the Execute dashboard. */

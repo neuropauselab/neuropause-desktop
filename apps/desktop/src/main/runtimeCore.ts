@@ -139,6 +139,8 @@ import { initWorkforce } from './workforce';
 import { workforceProbe } from './workforce/workforceDiagnostics';
 import { workerRegistry } from './workforce/registry/registryInstance';
 import { jobStore } from './workforce/runtime/jobInstance';
+import { createWorkforceActionExecutor } from './workforce/execution/workforceActionExecutor';
+import type { ExecutionBinding } from '@neuropause/shared';
 import { initEnterprise } from './enterprise';
 import { initEcosystem, runGateway, gatewayMetrics, gatewayAuditEntries } from './ecosystem';
 import { initEnterpriseApi } from './api';
@@ -898,6 +900,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     source: string;
     priority?: string;
     metadata?: Record<string, string | number | boolean | null>;
+    correlationId?: string;
   }): void => {
     platform.api.publish({
       type: input.type as Parameters<typeof platform.api.publish>[0]['type'],
@@ -908,6 +911,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         typeof platform.api.publish
       >[0]['priority'],
       metadata: input.metadata,
+      // P8.3 — forward the chain id so execution.* events share the job/goal correlation.
+      ...(input.correlationId ? { correlationId: input.correlationId } : {}),
     });
   };
   const neuroCore = new NeuroCore({
@@ -1177,6 +1182,47 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       result: job,
     };
   });
+  // P8.3 — the workforce action executor: runs an APPROVED worker proposal's binding
+  // through the EXISTING confirmation-gated executors (infra / m365 / automation).
+  // `confirmed` is forwarded from the request — true only when the trusted in-process
+  // dispatcher set it after a human approval, so mutating actions still hit their gate.
+  const runBinding = async (
+    binding: ExecutionBinding,
+    confirmed: boolean,
+  ): Promise<{ ok: boolean; summary?: string; error?: string }> => {
+    switch (binding.executor) {
+      case 'infra': {
+        const r = await infrastructure.actionExecutor.execute(
+          binding.target,
+          binding.accountId ?? 'default',
+          binding.actionId ?? '',
+          binding.params ?? {},
+          confirmed,
+        );
+        return { ok: r.ok, summary: r.message, error: r.ok ? undefined : r.message };
+      }
+      case 'm365': {
+        const r = await connectors.m365Executor.execute(
+          binding.target,
+          binding.accountId ?? 'default',
+          binding.actionId ?? '',
+          binding.params ?? {},
+          confirmed,
+        );
+        return { ok: r.ok, summary: r.message ?? undefined, error: r.ok ? undefined : (r.message ?? undefined) };
+      }
+      case 'automation': {
+        const rec = await getAutomationRunner().runById(binding.target, binding.params ?? {}, 'manual');
+        if (!rec) return { ok: false, error: `Automation rule "${binding.target}" not found` };
+        return { ok: rec.ok, summary: rec.ok ? `Automation ${binding.target} ran` : undefined, error: rec.ok ? undefined : 'Automation failed' };
+      }
+      default:
+        return { ok: false, error: `Unknown executor "${(binding as { executor?: string }).executor ?? ''}"` };
+    }
+  };
+  executeEngine.register('connector', createWorkforceActionExecutor(runBinding));
+  // Late-bind the engine into the workforce so approved binding-carrying proposals execute.
+  workforce.setExecutionSubmit((req) => executeEngine.execute(req));
   // V5.8 startup recovery: load persisted sessions, mark any that were in-flight
   // as interrupted (recovered, not rerun), persist the correction, and seed the
   // engine's history so the dashboard shows durable history across restarts.

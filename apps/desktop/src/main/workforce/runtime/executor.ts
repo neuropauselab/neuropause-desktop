@@ -101,6 +101,8 @@ export function executeJob(args: ExecuteArgs): Job {
         payload: p.payload,
         verdict,
         approval: null,
+        // P8.3 — carry the optional execution binding so an approved action can run.
+        ...(p.execution ? { execution: p.execution } : {}),
       };
     });
 

@@ -33,6 +33,8 @@ export interface ExecuteEngineDeps {
     source: string;
     priority?: string;
     metadata?: Record<string, string | number | boolean | null>;
+    /** P8.3 — chain id so execution events share the originating job/goal correlation. */
+    correlationId?: string;
   }) => void;
   /** Durable persistence hook (V5.8). Engine stays unaware of the implementation. */
   persist?: (session: ExecutionSession) => void;
@@ -79,12 +81,13 @@ export class ExecuteEngine {
       error: null,
       resultSummary: null,
       result: null,
+      correlationId: req.correlationId ?? null,
     };
     if (session.steps[0]) session.steps[0].state = 'running';
     this.sessions.set(id, session);
     this.deps.persist?.(session);
     const startedMs = this.now();
-    this.emit('execution.started', 'normal', { kind: req.kind, label: session.label, id });
+    this.emit('execution.started', 'normal', { kind: req.kind, label: session.label, id }, session.correlationId);
 
     const setStep = (index: number): void => {
       if (session.state !== 'running') return;
@@ -146,13 +149,12 @@ export class ExecuteEngine {
     if (this.history.length > MAX_HISTORY) this.history.length = MAX_HISTORY;
     this.deps.persist?.(this.history[0]);
 
-    this.emit(ok ? 'execution.completed' : 'execution.failed', ok ? 'normal' : 'high', {
-      kind: session.kind,
-      label: session.label,
-      id: session.id,
-      durationMs: session.durationMs,
-      ok,
-    });
+    this.emit(
+      ok ? 'execution.completed' : 'execution.failed',
+      ok ? 'normal' : 'high',
+      { kind: session.kind, label: session.label, id: session.id, durationMs: session.durationMs, ok },
+      session.correlationId,
+    );
     log.info('execution finished', { kind: session.kind, ok, durationMs: session.durationMs });
   }
 
@@ -179,7 +181,7 @@ export class ExecuteEngine {
     this.history.unshift({ ...session });
     if (this.history.length > MAX_HISTORY) this.history.length = MAX_HISTORY;
     this.deps.persist?.(this.history[0]);
-    this.emit('execution.cancelled', 'normal', { kind: session.kind, id, label: session.label });
+    this.emit('execution.cancelled', 'normal', { kind: session.kind, id, label: session.label }, session.correlationId);
     return session;
   }
 
@@ -201,6 +203,7 @@ export class ExecuteEngine {
     type: string,
     priority: string,
     metadata: Record<string, string | number | boolean | null>,
+    correlationId?: string | null,
   ): void {
     // Label helps the timeline; ensure a value even when only a target id is set.
     if (!metadata.label && 'kind' in metadata) {
@@ -212,6 +215,7 @@ export class ExecuteEngine {
       source: 'execute-engine',
       priority,
       metadata,
+      ...(correlationId ? { correlationId } : {}),
     });
   }
 }
