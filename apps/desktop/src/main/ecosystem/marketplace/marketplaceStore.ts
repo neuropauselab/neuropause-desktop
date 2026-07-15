@@ -181,6 +181,10 @@ export class MarketplaceStore extends EventEmitter {
   list(): MarketplaceListing[] {
     return [...this.listings.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
+  /** P9 — all versions in one pass (lets the marketplace bucket by listing without O(N) detail() calls). */
+  allVersions(): ListingVersion[] {
+    return [...this.versions.values()];
+  }
   detail(id: string): ListingDetail | null {
     const listing = this.listings.get(id);
     if (!listing) return null;

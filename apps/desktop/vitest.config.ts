@@ -12,6 +12,8 @@ export default defineConfig({
     // derivations are verified by the same Node gate.
     include: [
       'src/main/**/*.test.ts',
+      // P9 — the Enterprise Marketplace's pure view-model (no DOM, no React).
+      'src/renderer/src/marketplace/**/*.test.ts',
       'src/renderer/src/sandbox/**/*.test.ts',
       'src/renderer/src/connectors/**/*.test.ts',
       // P6 — the Cloud Platform Center's pure view-model (no DOM, no React).

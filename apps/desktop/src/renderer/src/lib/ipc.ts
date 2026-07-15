@@ -138,6 +138,14 @@ import {
   type WorkerInstallSummary,
   type WorkerInstallDetail,
   type WorkerInstallResult,
+  type MarketplaceEntry,
+  type MarketplaceCatalogQuery,
+  type PublisherProfile,
+  type TrustReport,
+  type InstallPlan,
+  type MarketplaceAnalytics,
+  type OrgMarketplacePolicy,
+  type MarketplaceInstallResult,
   type VerdictDecision,
   type DeveloperDashboard,
   type DeveloperAccount,
@@ -1395,6 +1403,25 @@ export const ipc = {
 
     onEvent: (cb: (e: { kind: string; at: string }) => void) =>
       subscribe(IpcChannel.EcosystemEventBroadcast, (p) => cb(p as { kind: string; at: string })),
+  },
+
+  /* ── P9 — Enterprise Marketplace (governed catalog over the ecosystem) ── */
+  marketplace: {
+    catalog: (query: MarketplaceCatalogQuery = {}) =>
+      invoke(IpcChannel.MarketplaceCatalog, query) as Promise<MarketplaceEntry[]>,
+    entry: (listingId: string) =>
+      invoke(IpcChannel.MarketplaceEntry, { listingId }) as Promise<MarketplaceEntry | null>,
+    publishers: () => invoke(IpcChannel.MarketplacePublishers) as Promise<PublisherProfile[]>,
+    trust: (listingId: string) =>
+      invoke(IpcChannel.MarketplaceTrust, { listingId }) as Promise<TrustReport | null>,
+    plan: (listingId: string) => invoke(IpcChannel.MarketplacePlan, { listingId }) as Promise<InstallPlan>,
+    analytics: () => invoke(IpcChannel.MarketplaceAnalytics) as Promise<MarketplaceAnalytics>,
+    policy: () => invoke(IpcChannel.MarketplacePolicyGet) as Promise<OrgMarketplacePolicy>,
+    setPolicy: (policy: Omit<OrgMarketplacePolicy, 'updatedAt'>) =>
+      invoke(IpcChannel.MarketplacePolicySet, policy) as Promise<OrgMarketplacePolicy>,
+    install: (listingId: string, pkg?: WorkerPackage) =>
+      invoke(IpcChannel.MarketplaceInstall, { listingId, package: pkg }) as Promise<MarketplaceInstallResult>,
+    onEvent: (cb: () => void) => subscribe(IpcChannel.MarketplaceEventBroadcast, () => cb()),
   },
 
   /* ── Enterprise REST API + OpenAPI (P3.0, Increments 1–3) ── */

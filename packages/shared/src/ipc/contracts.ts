@@ -899,6 +899,44 @@ export const WorkforceInstallActionRequest = z.object({
 export type WorkforceInstallRequest = z.infer<typeof WorkforceInstallRequest>;
 export type WorkforceInstallActionRequest = z.infer<typeof WorkforceInstallActionRequest>;
 
+// ── P9 — Enterprise Marketplace ──
+const MarketplacePackageTypeSchema = z.enum([
+  'worker', 'connector', 'template', 'workflow_pack', 'knowledge_pack',
+  'automation_pack', 'dashboard_pack', 'policy_pack', 'blueprint', 'prompt_pack',
+]);
+const ReleaseChannelSchema = z.enum(['stable', 'beta', 'canary', 'lts']);
+const PublisherTierSchema = z.enum(['unverified', 'verified', 'trusted', 'official']);
+
+export const MarketplaceCatalogRequest = z.object({
+  q: z.string().trim().max(200).optional(),
+  type: MarketplacePackageTypeSchema.optional(),
+  category: z.string().trim().max(80).optional(),
+  channel: ReleaseChannelSchema.optional(),
+  verifiedOnly: z.boolean().optional(),
+  installedOnly: z.boolean().optional(),
+  updatesOnly: z.boolean().optional(),
+  collection: z.string().trim().max(80).optional(),
+  sort: z.enum(['relevance', 'trending', 'installs', 'rating', 'recent', 'trust']).optional(),
+});
+export const MarketplaceListingRequest = z.object({ listingId: z.string().trim().min(1).max(200) });
+export const MarketplacePolicySetRequest = z.object({
+  requireApproval: z.boolean(),
+  allowedPublishers: z.array(z.string().trim().min(1).max(200)).max(500),
+  blockedPublishers: z.array(z.string().trim().min(1).max(200)).max(500),
+  blockedTypes: z.array(MarketplacePackageTypeSchema).max(10),
+  minPublisherTier: PublisherTierSchema,
+  requireSignature: z.boolean(),
+});
+export const MarketplaceInstallRequest = z.object({
+  listingId: z.string().trim().min(1).max(200),
+  // For worker packages, the signed WorkerPackage payload routed to WorkerInstallService.
+  package: WorkerPackageSchema.optional(),
+});
+export type MarketplaceCatalogRequest = z.infer<typeof MarketplaceCatalogRequest>;
+export type MarketplaceListingRequest = z.infer<typeof MarketplaceListingRequest>;
+export type MarketplacePolicySetRequest = z.infer<typeof MarketplacePolicySetRequest>;
+export type MarketplaceInstallRequest = z.infer<typeof MarketplaceInstallRequest>;
+
 // P8 — delegate a goal's task graph across the worker roster (read-only planning).
 const WorkerRoleSchema = z.enum([
   'founder', 'research', 'engineering', 'marketing', 'sales', 'finance', 'legal', 'operations', 'support',
@@ -944,6 +982,8 @@ export const EnterprisePermissionSchema = z.enum([
   'workforce:operate',
   'workforce:approve',
   'workforce:manage',
+  'marketplace:read',
+  'marketplace:manage',
   'governance:read',
   'governance:manage',
   'intelligence:read',

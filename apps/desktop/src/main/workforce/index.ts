@@ -33,6 +33,8 @@ import type {
   WorkforceDelegateRequest as TWorkforceDelegateRequest,
   WorkforceInstallRequest as TWorkforceInstallRequest,
   WorkforceInstallActionRequest as TWorkforceInstallActionRequest,
+  WorkerPackage,
+  WorkerInstallResult,
 } from '@neuropause/shared';
 import {
   EmptyRequest,
@@ -96,6 +98,11 @@ export interface WorkforceSubsystem {
    * with `(req) => executeEngine.execute(req)` once it exists.
    */
   setExecutionSubmit: (submit: (req: ExecutionRequest) => Promise<ExecutionSession>) => void;
+  /**
+   * P9 — route a marketplace worker install to the EXISTING P8.5 install service. A thin
+   * passthrough (same authority as a direct worker install); the marketplace governs first.
+   */
+  installWorkerPackage: (pkg: WorkerPackage) => WorkerInstallResult;
 }
 
 export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<WorkforceSubsystem> {
@@ -435,5 +442,11 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
 
   // P8.2 — RBAC-gate every workforce handler (authn + authz + audit) via the
   // classification map; throws at startup if any workforce channel is unclassified.
-  return { handlers: withWorkforceAuthz(handlers), dispose, runWorker, setExecutionSubmit };
+  return {
+    handlers: withWorkforceAuthz(handlers),
+    dispose,
+    runWorker,
+    setExecutionSubmit,
+    installWorkerPackage: (pkg) => installService.install(pkg),
+  };
 }

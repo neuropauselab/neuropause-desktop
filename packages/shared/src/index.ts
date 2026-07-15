@@ -48,6 +48,7 @@ export * from './types/workforceGovernance';
 export * from './types/workforceJobs';
 export * from './types/enterpriseIntelligence';
 export * from './types/enterprise';
+export * from './types/marketplace';
 export * from './types/enterpriseModule';
 export * from './types/finance';
 export * from './types/crm';

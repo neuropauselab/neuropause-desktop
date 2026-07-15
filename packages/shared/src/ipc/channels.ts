@@ -461,6 +461,18 @@ export const IpcChannel = {
   EcosystemAnalytics: 'ecosystem:analytics',
   EcosystemEventBroadcast: 'ecosystem:event',
 
+  // ── P9 — Enterprise Marketplace (layer over the ecosystem marketplace) ──
+  MarketplaceCatalog: 'marketplace:catalog',
+  MarketplaceEntry: 'marketplace:entry',
+  MarketplacePublishers: 'marketplace:publishers',
+  MarketplaceTrust: 'marketplace:trust',
+  MarketplacePlan: 'marketplace:plan',
+  MarketplaceAnalytics: 'marketplace:analytics',
+  MarketplacePolicyGet: 'marketplace:policy',
+  MarketplacePolicySet: 'marketplace:policy.set',
+  MarketplaceInstall: 'marketplace:install',
+  MarketplaceEventBroadcast: 'marketplace:event',
+
   // ── Cloud & Federation · Cloud Platform (Phase 9 · Stage 1) ──
   CloudRegions: 'cloud:regions',
   CloudTenants: 'cloud:tenants.list',
@@ -977,6 +989,17 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.EcosystemPartnersStats,
   IpcChannel.EcosystemAnalytics,
 
+  // ── P9 — Enterprise Marketplace ──
+  IpcChannel.MarketplaceCatalog,
+  IpcChannel.MarketplaceEntry,
+  IpcChannel.MarketplacePublishers,
+  IpcChannel.MarketplaceTrust,
+  IpcChannel.MarketplacePlan,
+  IpcChannel.MarketplaceAnalytics,
+  IpcChannel.MarketplacePolicyGet,
+  IpcChannel.MarketplacePolicySet,
+  IpcChannel.MarketplaceInstall,
+
   // ── Cloud Platform (Stage 1) ──
   IpcChannel.CloudRegions,
   IpcChannel.CloudTenants,
@@ -1145,6 +1168,7 @@ export const RUNTIME_BROADCAST_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.EnterpriseEventBroadcast,
   IpcChannel.EnterpriseModuleEventBroadcast,
   IpcChannel.EcosystemEventBroadcast,
+  IpcChannel.MarketplaceEventBroadcast,
   IpcChannel.CloudEventBroadcast,
   IpcChannel.FedEventBroadcast,
   IpcChannel.UpdateEventBroadcast,

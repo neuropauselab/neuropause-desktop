@@ -143,6 +143,7 @@ import { createWorkforceActionExecutor } from './workforce/execution/workforceAc
 import type { ExecutionBinding } from '@neuropause/shared';
 import { initEnterprise } from './enterprise';
 import { initEcosystem, runGateway, gatewayMetrics, gatewayAuditEntries } from './ecosystem';
+import { initMarketplace } from './marketplace';
 import { initEnterpriseApi } from './api';
 import { initWebhooks } from './webhooks';
 import { initSandbox } from './sandbox';
@@ -288,6 +289,13 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   });
   // Ecosystem Platform: developer portal + marketplace + API gateway + billing.
   const ecosystem = await initEcosystem({ broadcast: deps.broadcast });
+  // P9 — Enterprise Marketplace: a governed, trusted, installing LAYER over the ecosystem
+  // marketplace. Routes approved worker installs to the existing P8.5 install service.
+  const marketplace = await initMarketplace({
+    broadcast: deps.broadcast,
+    appVersion: app.getVersion(),
+    installWorker: workforce.installWorkerPackage,
+  });
   // P3.0 Increment 4 — Enterprise Webhooks: fan the platform event bus out to signed,
   // retried, dead-lettered HTTP deliveries. Reuses the bus (subscribe), owns an outbox.
   const webhooks = await initWebhooks({
@@ -1283,6 +1291,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...workforce.handlers);
   defs.push(...enterprise.handlers);
   defs.push(...ecosystem.handlers);
+  defs.push(...marketplace.handlers);
   defs.push(...webhooks.handlers);
   defs.push(...sandbox.handlers);
   defs.push(...cloud.handlers);

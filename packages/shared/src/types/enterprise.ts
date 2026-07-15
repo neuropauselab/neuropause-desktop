@@ -80,6 +80,8 @@ export type EnterprisePermission =
   | 'workforce:operate'
   | 'workforce:approve'
   | 'workforce:manage'
+  | 'marketplace:read'
+  | 'marketplace:manage'
   | 'governance:read'
   | 'governance:manage'
   | 'intelligence:read'
@@ -120,6 +122,8 @@ export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   'workforce:operate',
   'workforce:approve',
   'workforce:manage',
+  'marketplace:read',
+  'marketplace:manage',
   'governance:read',
   'governance:manage',
   'intelligence:read',
