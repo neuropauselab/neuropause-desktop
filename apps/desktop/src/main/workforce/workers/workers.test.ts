@@ -35,9 +35,15 @@ function run(workerId: string, skillId: string, data: Partial<WorkforceData>): S
 }
 
 describe('built-in workers', () => {
-  it('builds nine valid workers, one per role', () => {
-    expect(defs).toHaveLength(9);
-    expect(defs.map((d) => d.worker.identity.role).sort()).toEqual([...WORKER_ROLES].sort());
+  it('builds the enterprise workforce: valid workers, unique ids, every role covered', () => {
+    // 9 original function workers + P8.4 (8 executive + 8 infrastructure + HR + Procurement).
+    expect(defs).toHaveLength(27);
+    const ids = defs.map((d) => d.worker.identity.id);
+    expect(new Set(ids).size).toBe(ids.length); // ids are unique
+    // Every worker's role is a known role, and every known role has ≥1 worker.
+    const rolesUsed = new Set(defs.map((d) => d.worker.identity.role));
+    for (const role of rolesUsed) expect(WORKER_ROLES).toContain(role);
+    for (const role of WORKER_ROLES) expect(rolesUsed.has(role)).toBe(true);
     for (const d of defs) {
       expect(d.worker.builtIn).toBe(true);
       expect(d.worker.identity.id.startsWith('worker:')).toBe(true);

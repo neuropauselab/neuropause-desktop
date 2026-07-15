@@ -134,6 +134,10 @@ const ROLE_ICONS: Record<WorkerRole, IconName> = {
   legal: 'shield',
   operations: 'pulse',
   support: 'bell',
+  executive: 'star',
+  infrastructure: 'server',
+  hr: 'user',
+  procurement: 'package',
 };
 
 export function roleIcon(role: WorkerRole): IconName {
@@ -150,6 +154,10 @@ const ROLE_TINT: Record<WorkerRole, OpsTone> = {
   legal: 'blue',
   operations: 'purple',
   support: 'orange',
+  executive: 'accent',
+  infrastructure: 'blue',
+  hr: 'purple',
+  procurement: 'green',
 };
 
 export function roleTone(role: WorkerRole): OpsTone {

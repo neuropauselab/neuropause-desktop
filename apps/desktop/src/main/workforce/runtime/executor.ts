@@ -21,6 +21,7 @@ import type {
   Job,
   JobLogEntry,
   JobProposal,
+  RiskLevel,
   Worker,
 } from '@neuropause/shared';
 import type { SkillImpl, WorkforceData } from '../sdk';
@@ -75,6 +76,15 @@ export function executeJob(args: ExecuteArgs): Job {
     evidence = result.evidence;
 
     proposals = result.proposals.map((p) => {
+      // P8.4 — a proposal that carries an execution binding is inherently
+      // side-effecting and at least high-risk, so governance ALWAYS gates it to
+      // require_approval and an approved action can never auto-run. This holds
+      // structurally even if a skill under-declared the proposal's risk. Built-in
+      // executable skills already declare high risk, so for them this is a no-op
+      // backstop; it only tightens a malformed/hand-written execution proposal.
+      const hasBinding = p.execution != null;
+      const sideEffects = p.sideEffects || hasBinding;
+      const risk: RiskLevel = hasBinding && p.risk !== 'critical' ? 'high' : p.risk;
       const request: ActionRequest = {
         id: deps.newId(),
         workerId: worker.identity.id,
@@ -82,9 +92,9 @@ export function executeJob(args: ExecuteArgs): Job {
         skillId: skill.id,
         title: p.title,
         summary: p.summary,
-        sideEffects: p.sideEffects,
+        sideEffects,
         permissions: p.permissions,
-        risk: p.risk,
+        risk,
         evidence: p.evidence,
         payload: p.payload,
         requestedAt: now,
@@ -95,8 +105,8 @@ export function executeJob(args: ExecuteArgs): Job {
         id: deps.newId(),
         title: p.title,
         summary: p.summary,
-        sideEffects: p.sideEffects,
-        risk: p.risk,
+        sideEffects,
+        risk,
         evidence: p.evidence,
         payload: p.payload,
         verdict,

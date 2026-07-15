@@ -20,10 +20,18 @@ export type WorkerRole =
   | 'finance'
   | 'legal'
   | 'operations'
-  | 'support';
+  | 'support'
+  // P8.4 — enterprise workforce tiers. A role is a coarse function/tier; the
+  // specific archetype (CEO, CTO, Cloud Engineer, …) is the individual worker,
+  // expressed in its identity.name + goals + metadata.
+  | 'executive'
+  | 'infrastructure'
+  | 'hr'
+  | 'procurement';
 
 export const WORKER_ROLES: readonly WorkerRole[] = [
   'founder', 'research', 'engineering', 'marketing', 'sales', 'finance', 'legal', 'operations', 'support',
+  'executive', 'infrastructure', 'hr', 'procurement',
 ] as const;
 
 /** Lifecycle states a worker moves through in the runtime. */
@@ -53,11 +61,16 @@ export type WorkerPermissionScope =
   | 'write:memory'
   | 'write:reminder'
   | 'propose:draft'
-  | 'propose:message';
+  | 'propose:message'
+  // P8.4 — authority to execute an approved, confirmation-gated action through
+  // the ExecuteEngine (P8.3). Least-privilege: only workers that actually act
+  // (infrastructure engineers, a few executives/departments) are granted it, and
+  // it never auto-allows — an execution proposal is always high-risk → approval.
+  | 'execute:action';
 
 export const PERMISSION_SCOPES: readonly WorkerPermissionScope[] = [
   'read:entities', 'read:graph', 'read:timeline', 'read:memory', 'read:health', 'read:connectors',
-  'write:memory', 'write:reminder', 'propose:draft', 'propose:message',
+  'write:memory', 'write:reminder', 'propose:draft', 'propose:message', 'execute:action',
 ] as const;
 
 export interface WorkerPermission {
