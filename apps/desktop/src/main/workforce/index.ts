@@ -238,6 +238,11 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
       handler: () => installService.listInstalls(),
     },
     {
+      channel: IpcChannel.WorkforceInstallGet,
+      schema: WorkforceInstallActionRequest,
+      handler: (p) => installService.installDetail((p as TWorkforceInstallActionRequest).workerId),
+    },
+    {
       channel: IpcChannel.WorkforceInstall,
       schema: WorkforceInstallRequest,
       handler: (p) => installService.install((p as TWorkforceInstallRequest).package),

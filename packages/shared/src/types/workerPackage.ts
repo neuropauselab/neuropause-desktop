@@ -96,3 +96,24 @@ export interface WorkerInstallSummary {
   installedAt: string;
   updatedAt: string;
 }
+
+/**
+ * P8.6 — the full install detail for the Workforce Center's Worker Details screen.
+ * Surfaces the manifest fields the summary omits (execution bindings via skill specs,
+ * connector usage, dependencies, signature/checksum, engine) — all already retained in
+ * the install store; this is a pure projection, no new data.
+ */
+export interface WorkerInstallDetail extends WorkerInstallSummary {
+  description: string;
+  memoryScope?: MemoryScope;
+  goals: string[];
+  skills: WorkerSkillSpec[];
+  dependencies: string[];
+  engine: { neuropause: string };
+  checksum: string;
+  signatureKeyId: string | null;
+  /** True when the package carries a verified-at-install signature. */
+  signed: boolean;
+  /** The retained prior version (rollback target), if any. */
+  previousVersion: string | null;
+}

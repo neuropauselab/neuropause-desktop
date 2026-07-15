@@ -43,6 +43,9 @@ const MemoryView = lazy(() =>
 const WorkforceView = lazy(() =>
   import('@renderer/views/WorkforceView').then((m) => ({ default: m.WorkforceView })),
 );
+const WorkforceCenterView = lazy(() =>
+  import('@renderer/workforceCenter/WorkforceCenterView').then((m) => ({ default: m.WorkforceCenterView })),
+);
 const EnterpriseView = lazy(() =>
   import('@renderer/views/EnterpriseView').then((m) => ({ default: m.EnterpriseView })),
 );
@@ -200,6 +203,8 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
         return <FederationView />;
       case 'workforce':
         return <WorkforceView />;
+      case 'workforce-center':
+        return <WorkforceCenterView />;
       case 'automations':
         return <WorkforceView initialTab="studio" />;
       case 'notifications':

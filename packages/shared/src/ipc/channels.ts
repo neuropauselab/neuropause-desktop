@@ -268,6 +268,7 @@ export const IpcChannel = {
   WorkforceEventBroadcast: 'workforce:event',
   // ── P8.5 — Installable Workers ──
   WorkforceInstalls: 'workforce:installs',
+  WorkforceInstallGet: 'workforce:install.get',
   WorkforceInstall: 'workforce:install',
   WorkforceInstallUpdate: 'workforce:install.update',
   WorkforceInstallEnable: 'workforce:install.enable',
@@ -819,6 +820,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.WorkforcePolicies,
   IpcChannel.WorkforceDelegatePlan,
   IpcChannel.WorkforceInstalls,
+  IpcChannel.WorkforceInstallGet,
   IpcChannel.WorkforceInstall,
   IpcChannel.WorkforceInstallUpdate,
   IpcChannel.WorkforceInstallEnable,

@@ -14,6 +14,7 @@ export type SectionId =
   | 'workspace'
   | 'operations'
   | 'workforce'
+  | 'workforce-center'
   | 'connectors'
   | 'memory'
   | 'automations'
@@ -47,6 +48,7 @@ export const SECTIONS: SectionDef[] = [
   { id: 'workspace', label: 'Workspace', icon: 'workspace', phase: 2, placement: 'primary' },
   { id: 'operations', label: 'Operations', icon: 'gauge', phase: 3, placement: 'primary' },
   { id: 'workforce', label: 'AI Workforce', icon: 'cpu', phase: 6, placement: 'primary' },
+  { id: 'workforce-center', label: 'Workforce Center', icon: 'checklist', phase: 8, placement: 'primary' },
   { id: 'connectors', label: 'Connectors', icon: 'connectors', phase: 4, placement: 'primary' },
   { id: 'memory', label: 'AI Memory', icon: 'memory', phase: 6, placement: 'primary' },
   { id: 'automations', label: 'Automations', icon: 'automations', phase: 6, placement: 'primary' },

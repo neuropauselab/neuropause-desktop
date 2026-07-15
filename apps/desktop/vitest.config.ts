@@ -18,6 +18,8 @@ export default defineConfig({
       'src/renderer/src/infrastructure/**/*.test.ts',
       // P7.1 — the Enterprise Operations Center's pure view-model (no DOM, no React).
       'src/renderer/src/operationsCenter/**/*.test.ts',
+      // P8.6 — the Enterprise Workforce Center's pure view-model (no DOM, no React).
+      'src/renderer/src/workforceCenter/**/*.test.ts',
     ],
   },
   resolve: {

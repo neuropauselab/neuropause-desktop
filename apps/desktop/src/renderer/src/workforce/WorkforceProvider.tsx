@@ -16,11 +16,17 @@ import {
   type ReactNode,
 } from 'react';
 import type {
+  DelegationPlan,
   Job,
   PolicyRule,
   Worker,
+  WorkerInstallDetail,
+  WorkerInstallResult,
+  WorkerInstallSummary,
+  WorkerPackage,
   WorkerSummary,
   WorkforceAuditEntry,
+  WorkforceDelegateRequest,
   WorkflowRun,
   WorkflowSpec,
 } from '@neuropause/shared';
@@ -38,6 +44,8 @@ interface WorkforceContextValue {
   audit: WorkforceAuditEntry[];
   auditTotal: number;
   policies: PolicyRule[];
+  /** P8.6 — installed worker packages (P8.5 install service). */
+  installs: WorkerInstallSummary[];
   refreshAll: () => Promise<void>;
   loadWorker: (id: string) => Promise<Worker | null>;
   runSkill: (workerId: string, skillId: string, input?: Record<string, unknown>) => Promise<Job | null>;
@@ -46,6 +54,15 @@ interface WorkforceContextValue {
   runWorkflow: (spec: WorkflowSpec) => Promise<WorkflowRun | null>;
   resumeWorkflow: (runId: string) => Promise<WorkflowRun | null>;
   approveCheckpoint: (runId: string, stepId: string, approved: boolean) => Promise<WorkflowRun | null>;
+  // P8.6 — install lifecycle (gated by workforce:manage server-side) + detail + delegation.
+  loadInstallDetail: (id: string) => Promise<WorkerInstallDetail | null>;
+  installWorker: (pkg: WorkerPackage) => Promise<WorkerInstallResult>;
+  updateWorker: (pkg: WorkerPackage) => Promise<WorkerInstallResult>;
+  enableWorker: (id: string) => Promise<WorkerInstallResult>;
+  disableWorker: (id: string) => Promise<WorkerInstallResult>;
+  rollbackWorker: (id: string) => Promise<WorkerInstallResult>;
+  uninstallWorker: (id: string) => Promise<WorkerInstallResult>;
+  delegate: (goal: WorkforceDelegateRequest) => Promise<DelegationPlan>;
 }
 
 const WorkforceContext = createContext<WorkforceContextValue | null>(null);
@@ -58,16 +75,18 @@ export function WorkforceProvider({ children }: { children: ReactNode }): JSX.El
   const [auditTotal, setAuditTotal] = useState(0);
   const [policies, setPolicies] = useState<PolicyRule[]>([]);
   const [intelligence, setIntelligence] = useState<WorkforceIntelligence | null>(null);
+  const [installs, setInstalls] = useState<WorkerInstallSummary[]>([]);
   const detailCache = useRef(new Map<string, Worker>());
 
   const refreshAll = useCallback(async () => {
     try {
-      const [w, j, a, p, intel] = await Promise.all([
+      const [w, j, a, p, intel, ins] = await Promise.all([
         ipc.workforce.workers(),
         ipc.workforce.jobs({ limit: 200 }),
         ipc.workforce.audit({ limit: 200 }),
         ipc.workforce.policies(),
         ipc.workforce.intelligence(),
+        ipc.workforce.installs().catch(() => [] as WorkerInstallSummary[]),
       ]);
       setWorkers(w);
       setIntelligence(intel);
@@ -75,9 +94,21 @@ export function WorkforceProvider({ children }: { children: ReactNode }): JSX.El
       setAudit(a.entries);
       setAuditTotal(a.total);
       setPolicies(p);
+      setInstalls(ins);
       setReady(true);
     } catch (err) {
       log.error('Failed to refresh workforce', err);
+    }
+  }, []);
+
+  // After a lifecycle action, refresh the installs + roster (a worker may appear/vanish).
+  const refreshInstalls = useCallback(async () => {
+    try {
+      const [ins, w] = await Promise.all([ipc.workforce.installs(), ipc.workforce.workers()]);
+      setInstalls(ins);
+      setWorkers(w);
+    } catch (err) {
+      log.error('Failed to refresh installs', err);
     }
   }, []);
 
@@ -170,6 +201,66 @@ export function WorkforceProvider({ children }: { children: ReactNode }): JSX.El
     [refreshJobs],
   );
 
+  const loadInstallDetail = useCallback(
+    (id: string): Promise<WorkerInstallDetail | null> => ipc.workforce.installDetail(id).catch(() => null),
+    [],
+  );
+
+  // Every lifecycle action is RBAC-gated (workforce:manage) server-side; the UI reports
+  // the structured result and refreshes. A rejected (unauthorized) call surfaces as an error.
+  const installWorker = useCallback(
+    async (pkg: WorkerPackage): Promise<WorkerInstallResult> => {
+      const r = await ipc.workforce.install(pkg);
+      await refreshInstalls();
+      return r;
+    },
+    [refreshInstalls],
+  );
+  const updateWorker = useCallback(
+    async (pkg: WorkerPackage): Promise<WorkerInstallResult> => {
+      const r = await ipc.workforce.updateInstall(pkg);
+      await refreshInstalls();
+      return r;
+    },
+    [refreshInstalls],
+  );
+  const enableWorker = useCallback(
+    async (id: string): Promise<WorkerInstallResult> => {
+      const r = await ipc.workforce.enableInstall(id);
+      await refreshInstalls();
+      return r;
+    },
+    [refreshInstalls],
+  );
+  const disableWorker = useCallback(
+    async (id: string): Promise<WorkerInstallResult> => {
+      const r = await ipc.workforce.disableInstall(id);
+      await refreshInstalls();
+      return r;
+    },
+    [refreshInstalls],
+  );
+  const rollbackWorker = useCallback(
+    async (id: string): Promise<WorkerInstallResult> => {
+      const r = await ipc.workforce.rollbackInstall(id);
+      await refreshInstalls();
+      return r;
+    },
+    [refreshInstalls],
+  );
+  const uninstallWorker = useCallback(
+    async (id: string): Promise<WorkerInstallResult> => {
+      const r = await ipc.workforce.uninstall(id);
+      await refreshInstalls();
+      return r;
+    },
+    [refreshInstalls],
+  );
+  const delegate = useCallback(
+    (goal: WorkforceDelegateRequest): Promise<DelegationPlan> => ipc.workforce.delegate(goal),
+    [],
+  );
+
   const value = useMemo<WorkforceContextValue>(
     () => ({
       ready,
@@ -179,6 +270,7 @@ export function WorkforceProvider({ children }: { children: ReactNode }): JSX.El
       audit,
       auditTotal,
       policies,
+      installs,
       refreshAll,
       loadWorker,
       runSkill,
@@ -187,6 +279,14 @@ export function WorkforceProvider({ children }: { children: ReactNode }): JSX.El
       runWorkflow,
       resumeWorkflow,
       approveCheckpoint,
+      loadInstallDetail,
+      installWorker,
+      updateWorker,
+      enableWorker,
+      disableWorker,
+      rollbackWorker,
+      uninstallWorker,
+      delegate,
     }),
     [
       ready,
@@ -196,6 +296,7 @@ export function WorkforceProvider({ children }: { children: ReactNode }): JSX.El
       audit,
       auditTotal,
       policies,
+      installs,
       refreshAll,
       loadWorker,
       runSkill,
@@ -204,6 +305,14 @@ export function WorkforceProvider({ children }: { children: ReactNode }): JSX.El
       runWorkflow,
       resumeWorkflow,
       approveCheckpoint,
+      loadInstallDetail,
+      installWorker,
+      updateWorker,
+      enableWorker,
+      disableWorker,
+      rollbackWorker,
+      uninstallWorker,
+      delegate,
     ],
   );
 

@@ -136,6 +136,7 @@ import {
   type DelegationPlan,
   type WorkerPackage,
   type WorkerInstallSummary,
+  type WorkerInstallDetail,
   type WorkerInstallResult,
   type VerdictDecision,
   type DeveloperDashboard,
@@ -997,6 +998,8 @@ export const ipc = {
       invoke(IpcChannel.WorkforceDelegatePlan, req) as Promise<DelegationPlan>,
     // P8.5 — Installable Workers (install/lifecycle gated by workforce:manage).
     installs: () => invoke(IpcChannel.WorkforceInstalls) as Promise<WorkerInstallSummary[]>,
+    installDetail: (workerId: string) =>
+      invoke(IpcChannel.WorkforceInstallGet, { workerId }) as Promise<WorkerInstallDetail | null>,
     install: (pkg: WorkerPackage) =>
       invoke(IpcChannel.WorkforceInstall, { package: pkg }) as Promise<WorkerInstallResult>,
     updateInstall: (pkg: WorkerPackage) =>

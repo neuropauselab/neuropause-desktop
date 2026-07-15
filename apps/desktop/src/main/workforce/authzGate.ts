@@ -31,6 +31,7 @@ export const WORKFORCE_CHANNEL_PERMISSIONS: Partial<Record<string, EnterprisePer
   [IpcChannel.WorkforcePolicies]: 'workforce:read',
   [IpcChannel.WorkforceDelegatePlan]: 'workforce:read',
   [IpcChannel.WorkforceInstalls]: 'workforce:read',
+  [IpcChannel.WorkforceInstallGet]: 'workforce:read',
   // Operate (run work).
   [IpcChannel.WorkforceJobRun]: 'workforce:operate',
   [IpcChannel.WorkforceWorkflowRun]: 'workforce:operate',

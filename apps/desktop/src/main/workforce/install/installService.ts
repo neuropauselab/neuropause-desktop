@@ -13,6 +13,7 @@
 import type {
   PlatformEventInput,
   PlatformEventType,
+  WorkerInstallDetail,
   WorkerInstallResult,
   WorkerInstallSummary,
   WorkerPackage,
@@ -247,6 +248,25 @@ export class WorkerInstallService {
 
   listInstalls(): WorkerInstallSummary[] {
     return this.deps.store.all().map((r) => this.toSummary(r));
+  }
+
+  /** P8.6 — full install detail (manifest skills/deps/signature/engine) for the Center. */
+  installDetail(id: string): WorkerInstallDetail | null {
+    const r = this.deps.store.get(id);
+    if (!r) return null;
+    return {
+      ...this.toSummary(r),
+      description: r.manifest.description,
+      memoryScope: r.manifest.memoryScope,
+      goals: r.manifest.goals,
+      skills: r.manifest.skills,
+      dependencies: r.manifest.dependencies,
+      engine: r.manifest.engine,
+      checksum: r.checksum,
+      signatureKeyId: r.signatureKeyId,
+      signed: r.signatureKeyId != null && r.signature != null,
+      previousVersion: r.previous?.version ?? null,
+    };
   }
 
   /* ── internals ─────────────────────────────────────────────────────────── */
