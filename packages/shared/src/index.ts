@@ -103,6 +103,7 @@ export * from './types/developerPlatform';
 export * from './types/industrySolution';
 export * from './types/strategyIntelligence';
 export * from './types/enterpriseTwin';
+export * from './types/enterpriseKnowledge';
 export * from './types/update';
 export * from './types/diagnostics';
 export * from './types/maintenance';

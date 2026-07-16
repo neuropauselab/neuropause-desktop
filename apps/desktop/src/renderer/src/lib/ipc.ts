@@ -218,6 +218,15 @@ import {
   type TwinScenarioCenter,
   type TwinImpact,
   type TwinCommandCenter,
+  // P16 — Enterprise Knowledge Fabric
+  type FabricOverview,
+  type FabricSourceCatalog,
+  type FabricRelationshipMap,
+  type FabricClassification,
+  type FabricLineage,
+  type FabricEvidenceReport,
+  type FabricGovernance,
+  type FabricAnalytics,
   // Release engineering (Increment 2 · Stage 2)
   type ReleaseDiagnostics,
   type CrashStatus,
@@ -1497,6 +1506,20 @@ export const ipc = {
     scenario: () => invoke(IpcChannel.TwinScenario) as Promise<TwinScenarioCenter>,
     impact: () => invoke(IpcChannel.TwinImpact) as Promise<TwinImpact>,
     executive: () => invoke(IpcChannel.TwinExecutive) as Promise<TwinCommandCenter>,
+    // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
+    onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
+  },
+
+  // ── P16 — Enterprise Knowledge Fabric (read-only knowledge projection over every system) ──
+  knowledgeFabric: {
+    overview: () => invoke(IpcChannel.FabricOverview) as Promise<FabricOverview>,
+    sources: () => invoke(IpcChannel.FabricSources) as Promise<FabricSourceCatalog>,
+    relationships: () => invoke(IpcChannel.FabricRelationships) as Promise<FabricRelationshipMap>,
+    classification: () => invoke(IpcChannel.FabricClassification) as Promise<FabricClassification>,
+    lineage: () => invoke(IpcChannel.FabricLineage) as Promise<FabricLineage>,
+    evidence: () => invoke(IpcChannel.FabricEvidence) as Promise<FabricEvidenceReport>,
+    governance: () => invoke(IpcChannel.FabricGovernance) as Promise<FabricGovernance>,
+    analytics: () => invoke(IpcChannel.FabricAnalytics) as Promise<FabricAnalytics>,
     // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
     onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
   },

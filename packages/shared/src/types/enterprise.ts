@@ -125,7 +125,9 @@ export type EnterprisePermission =
   // ── P14 — Autonomous Enterprise Intelligence: read the strategic intelligence layer. ──
   | 'strategy:read'
   // ── P15 — Enterprise Digital Twin: read the digital-twin visualization/composition layer. ──
-  | 'twin:read';
+  | 'twin:read'
+  // ── P16 — Enterprise Knowledge Fabric: read the knowledge-fabric projection layer. ──
+  | 'knowledge:read';
 
 export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   'org:read',
@@ -184,6 +186,8 @@ export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   'strategy:read',
   // ── P15 — Enterprise Digital Twin ──
   'twin:read',
+  // ── P16 — Enterprise Knowledge Fabric ──
+  'knowledge:read',
 ];
 
 export interface OrgRole {

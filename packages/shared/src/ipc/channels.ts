@@ -496,6 +496,16 @@ export const IpcChannel = {
   TwinImpact: 'twin:impact',
   TwinExecutive: 'twin:executive',
 
+  // ── P16 — Enterprise Knowledge Fabric (read-only knowledge-projection layer) ──
+  FabricOverview: 'fabric:overview',
+  FabricSources: 'fabric:sources',
+  FabricRelationships: 'fabric:relationships',
+  FabricClassification: 'fabric:classification',
+  FabricLineage: 'fabric:lineage',
+  FabricEvidence: 'fabric:evidence',
+  FabricGovernance: 'fabric:governance',
+  FabricAnalytics: 'fabric:analytics',
+
   EcosystemEventBroadcast: 'ecosystem:event',
 
   // ── P9 — Enterprise Marketplace (layer over the ecosystem marketplace) ──
@@ -1078,6 +1088,16 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.TwinScenario,
   IpcChannel.TwinImpact,
   IpcChannel.TwinExecutive,
+
+  // ── P16 — Enterprise Knowledge Fabric ──
+  IpcChannel.FabricOverview,
+  IpcChannel.FabricSources,
+  IpcChannel.FabricRelationships,
+  IpcChannel.FabricClassification,
+  IpcChannel.FabricLineage,
+  IpcChannel.FabricEvidence,
+  IpcChannel.FabricGovernance,
+  IpcChannel.FabricAnalytics,
 
   // ── P9 — Enterprise Marketplace ──
   IpcChannel.MarketplaceCatalog,

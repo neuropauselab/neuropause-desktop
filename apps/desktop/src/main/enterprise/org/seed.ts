@@ -85,6 +85,7 @@ const READ_ONLY: EnterprisePermission[] = [
   'industry:read',
   'strategy:read',
   'twin:read',
+  'knowledge:read',
 ];
 
 const MEMBER: EnterprisePermission[] = [...READ_ONLY, 'workforce:operate'];

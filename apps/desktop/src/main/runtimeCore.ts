@@ -173,6 +173,7 @@ import { withEcosystemAuthz } from './ecosystem/developerPlatform/ecosystemAuthz
 import { initIndustryPlatform } from './industry';
 import { initAutonomousIntelligence } from './strategy';
 import { initEnterpriseTwin } from './twin';
+import { initEnterpriseKnowledge } from './knowledgeFabric';
 import { initUpdater } from './updater';
 import { initReleaseOps } from './releaseOps';
 import { initFeatureFlags } from './featureFlags';
@@ -401,6 +402,17 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     deployments: () => controlPlane.service.deployments(),
     strategyOverview: () => autonomousIntel.service.overview(),
     simulation: () => autonomousIntel.service.simulation(),
+    queryTimeline: (q) => platform.api.query(q),
+  });
+  // P16 — Enterprise Knowledge Fabric: the read-only knowledge-enrichment layer that relates,
+  // classifies, traces lineage, and EXPLAINS enterprise objects by projecting the existing relationship
+  // graph, intelligence report, strategy, twin, timeline, and memory corpus. Reuses the shipped
+  // knowledge derivations; creates NO new graph, memory, search, or vector index; RBAC-gated
+  // (knowledge:read); executes nothing.
+  const enterpriseKnowledge = initEnterpriseKnowledge({
+    enterpriseReport: enterpriseIntel.report,
+    strategyOverview: () => autonomousIntel.service.overview(),
+    twinOverview: () => enterpriseTwin.service.overview(),
     queryTimeline: (q) => platform.api.query(q),
   });
   // Application self-update (electron-updater): channels + check/download/install + rollback prep.
@@ -1346,6 +1358,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...autonomousIntel.handlers);
   // P15 — Enterprise Digital Twin read handlers (self-gated with twin:read).
   defs.push(...enterpriseTwin.handlers);
+  // P16 — Enterprise Knowledge Fabric read handlers (self-gated with knowledge:read).
+  defs.push(...enterpriseKnowledge.handlers);
   defs.push(...marketplace.handlers);
   defs.push(...webhooks.handlers);
   defs.push(...sandbox.handlers);

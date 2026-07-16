@@ -34,6 +34,8 @@ export default defineConfig({
       'src/renderer/src/strategyCenter/**/*.test.ts',
       // P15 — the Digital Twin Center's pure view-model (no DOM, no React).
       'src/renderer/src/twinCenter/**/*.test.ts',
+      // P16 — the Knowledge Fabric Center's pure view-model (no DOM, no React).
+      'src/renderer/src/knowledgeCenter/**/*.test.ts',
     ],
   },
   resolve: {
