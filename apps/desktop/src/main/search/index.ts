@@ -11,6 +11,7 @@ import { unifiedStore } from '../unified/storeInstance';
 import { graphStore } from '../graph/graphInstance';
 import { memoryStore } from '../memory/memoryInstance';
 import { getEnterpriseTimeline } from '../timeline';
+import { getFederationSearcher } from '../federationPlatform/searcherInstance';
 import { runEnterpriseSearch } from './enterpriseSearch';
 
 const log = createLogger('search');
@@ -30,10 +31,12 @@ export function initEnterpriseSearch(): EnterpriseSearchSubsystem {
           graph: graphStore,
           memory: memoryStore,
           timeline: getEnterpriseTimeline() ?? undefined,
+          // P10 — federation orgs / packages / shared workers / policies, per the same seam.
+          federation: getFederationSearcher() ?? undefined,
         }),
     },
   ];
 
-  log.info('Enterprise search initialized', { sources: ['entity', 'graph', 'memory', 'timeline'] });
+  log.info('Enterprise search initialized', { sources: ['entity', 'graph', 'memory', 'timeline', 'federation (opt-in)'] });
   return { handlers };
 }

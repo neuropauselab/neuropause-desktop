@@ -97,6 +97,7 @@ export * from './types/ecosystem';
 export * from './types/ecosystem-exchange';
 export * from './types/cloud';
 export * from './types/federation';
+export * from './types/federationPlatform';
 export * from './types/update';
 export * from './types/diagnostics';
 export * from './types/maintenance';

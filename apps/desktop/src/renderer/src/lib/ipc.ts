@@ -369,6 +369,13 @@ import type {
   DrSummary,
   FedAdminOverview,
   ScalabilityReport,
+  FederationGraph,
+  FederationTimelineEntry,
+  OrgDirectoryEntry,
+  FederationAnalytics,
+  FederationOverview,
+  FederationSearchHit,
+  FederationSearchKind,
 } from '@neuropause/shared';
 
 import type {
@@ -1669,6 +1676,19 @@ export const ipc = {
 
     onEvent: (cb: (e: { kind: string; at: string }) => void) =>
       subscribe(IpcChannel.FedEventBroadcast, (p) => cb(p as { kind: string; at: string })),
+  },
+
+  // ── P10 — Federation Platform (intelligence/governance/integration layer) ──
+  federationPlatform: {
+    graph: () => invoke(IpcChannel.FederationGraph) as Promise<FederationGraph>,
+    timeline: () => invoke(IpcChannel.FederationTimeline) as Promise<FederationTimelineEntry[]>,
+    directory: () => invoke(IpcChannel.FederationDirectory) as Promise<OrgDirectoryEntry[]>,
+    analytics: () => invoke(IpcChannel.FederationAnalytics) as Promise<FederationAnalytics>,
+    overview: () => invoke(IpcChannel.FederationOverview) as Promise<FederationOverview>,
+    search: (text: string, kinds?: FederationSearchKind[], limit?: number) =>
+      invoke(IpcChannel.FederationSearch, { text, kinds, limit }) as Promise<FederationSearchHit[]>,
+    // Reuses the federation runtime's existing `fed:event` broadcast for liveness.
+    onEvent: (cb: () => void) => subscribe(IpcChannel.FedEventBroadcast, () => cb()),
   },
 
   // ── Release engineering: migration · backup · crash · diagnostics · recovery · support ──

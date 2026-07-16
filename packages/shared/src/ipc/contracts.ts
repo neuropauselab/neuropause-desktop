@@ -566,7 +566,7 @@ const MemoryKindSchema = z.enum([
   'relationship',
   'note',
 ]);
-const SearchSourceSchema = z.enum(['entity', 'graph', 'memory', 'timeline']);
+const SearchSourceSchema = z.enum(['entity', 'graph', 'memory', 'timeline', 'federation']);
 const MemoryMetaSchema = z.record(z.union([z.string(), z.number(), z.boolean(), z.null()]));
 const IsoString = z.string().datetime({ offset: true });
 
@@ -636,7 +636,7 @@ export const ExecMemoryAuditRequest = z.object({
 
 export const EnterpriseSearchRequest = z.object({
   text: z.string().trim().min(1).max(400),
-  sources: z.array(SearchSourceSchema).max(4).optional(),
+  sources: z.array(SearchSourceSchema).max(5).optional(),
   limit: z.number().int().min(1).max(50).optional(),
 });
 
@@ -1004,6 +1004,9 @@ export const EnterprisePermissionSchema = z.enum([
   'maintenance:read',
   'maintenance:manage',
   'dashboard:read',
+  'federation:read',
+  'federation:manage',
+  'federation:approve',
 ]);
 
 export const EnterpriseOrgCreateUnitRequest = z.object({
@@ -1767,6 +1770,16 @@ export type FedCreateBackupRequest = z.infer<typeof FedCreateBackupRequest>;
 
 export const FedRunValidationRequest = z.object({ backupId: FedId });
 export type FedRunValidationRequest = z.infer<typeof FedRunValidationRequest>;
+
+/* ───────────────────────── P10 — Federation Platform contracts ───────────── */
+
+export const FederationSearchKindSchema = z.enum(['organization', 'artifact', 'policy', 'shared_resource']);
+export const FederationSearchRequest = z.object({
+  text: z.string().trim().max(200),
+  kinds: z.array(FederationSearchKindSchema).max(4).optional(),
+  limit: z.number().int().min(1).max(50).optional(),
+});
+export type FederationSearchRequest = z.infer<typeof FederationSearchRequest>;
 
 /* ───────────────────────── Application self-update contracts ─────────────── */
 

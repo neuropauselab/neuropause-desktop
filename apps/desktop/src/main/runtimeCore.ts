@@ -164,6 +164,8 @@ import { connectorService } from './connectors/connectorService';
 import { initCloud } from './cloud';
 import { initInfrastructure } from './infrastructure';
 import { initFederation } from './federation';
+import { initFederationPlatform } from './federationPlatform';
+import { withFederationAuthz } from './federationPlatform/federationAuthz';
 import { initUpdater } from './updater';
 import { initReleaseOps } from './releaseOps';
 import { initFeatureFlags } from './featureFlags';
@@ -357,6 +359,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   const feedback = await initFeedback();
   const pilot = await initPilot();
   const federation = await initFederation({ broadcast: deps.broadcast });
+  // P10 — Federation Platform: the intelligence/governance/integration layer over the
+  // federation runtime (graph, unified timeline, search, directory, analytics + RBAC).
+  const federationPlatform = initFederationPlatform();
   // Application self-update (electron-updater): channels + check/download/install + rollback prep.
   const updater = initUpdater({ broadcast: deps.broadcast });
   // Release Operations: migration, backup, crash reporting, release diagnostics,
@@ -1334,7 +1339,10 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       storedJobs: () => jobStore.size(),
     }),
   ]);
-  defs.push(...federation.handlers);
+  // P10 — harden the previously-unguarded federation runtime handlers with RBAC (they shipped
+  // with only `audit: true`); every federation channel now requires a federation:* permission.
+  defs.push(...withFederationAuthz(federation.handlers));
+  defs.push(...federationPlatform.handlers);
   defs.push(...updater.handlers);
   defs.push(...releaseOps.handlers);
 

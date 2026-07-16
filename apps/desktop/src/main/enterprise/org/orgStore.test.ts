@@ -102,6 +102,43 @@ describe('OrgStore — syncWorkers', () => {
   });
 });
 
+describe('OrgStore — built-in role reconciliation', () => {
+  it('backfills new baseline scopes onto an existing install (upgrade path)', async () => {
+    const path = tempPath();
+    const T = '2026-01-01T00:00:00.000Z';
+    // A pre-P10 persisted install: seeded, but the built-in Owner role predates federation:*.
+    const stale = {
+      organizations: [{ id: ORG_ID, name: 'NeuroPause', slug: 'neuropause', description: '', createdAt: T, updatedAt: T, metadata: {} }],
+      units: [],
+      roles: [{ id: 'role-owner', orgId: ORG_ID, name: 'Owner', description: '', permissions: ['org:read'], builtIn: true, createdAt: T, updatedAt: T }],
+      users: [],
+      seeded: true,
+    };
+    await fs.writeFile(path, JSON.stringify(stale));
+    const s = await newStore(path);
+    const owner = s.rolesFor(ORG_ID).find((r) => r.id === 'role-owner')!;
+    expect(owner.permissions).toContain('federation:read');
+    expect(owner.permissions).toContain('federation:manage');
+    expect(owner.permissions).toContain('federation:approve');
+  });
+
+  it('leaves custom (non-built-in) roles untouched on load', async () => {
+    const path = tempPath();
+    const T = '2026-01-01T00:00:00.000Z';
+    const seeded = {
+      organizations: [{ id: ORG_ID, name: 'NeuroPause', slug: 'neuropause', description: '', createdAt: T, updatedAt: T, metadata: {} }],
+      units: [],
+      roles: [{ id: 'role-custom', orgId: ORG_ID, name: 'Auditor', description: '', permissions: ['org:read'], builtIn: false, createdAt: T, updatedAt: T }],
+      users: [],
+      seeded: true,
+    };
+    await fs.writeFile(path, JSON.stringify(seeded));
+    const s = await newStore(path);
+    const custom = s.rolesFor(ORG_ID).find((r) => r.id === 'role-custom')!;
+    expect(custom.permissions).toEqual(['org:read']);
+  });
+});
+
 describe('OrgStore — persistence', () => {
   it('persists across reloads', async () => {
     const path = tempPath();

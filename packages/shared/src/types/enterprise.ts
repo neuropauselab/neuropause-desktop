@@ -109,7 +109,11 @@ export type EnterprisePermission =
   | 'sandbox:read'
   | 'sandbox:manage'
   | 'connectors:read'
-  | 'connectors:manage';
+  | 'connectors:manage'
+  // ── P10 — Federation Platform: cross-org read, management, and delegated-approval authority. ──
+  | 'federation:read'
+  | 'federation:manage'
+  | 'federation:approve';
 
 export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   'org:read',
@@ -152,6 +156,10 @@ export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   'sandbox:manage',
   'connectors:read',
   'connectors:manage',
+  // ── P10 — Federation Platform ──
+  'federation:read',
+  'federation:manage',
+  'federation:approve',
 ];
 
 export interface OrgRole {

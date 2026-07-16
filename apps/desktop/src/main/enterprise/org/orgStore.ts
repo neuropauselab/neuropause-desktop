@@ -90,6 +90,7 @@ export class OrgStore extends EventEmitter {
       for (const r of data.roles ?? []) if (r?.id) this.roles.set(r.id, r);
       for (const u of data.users ?? []) if (u?.id) this.users.set(u.id, u);
       if (!data.seeded || this.organizations.size === 0) this.applySeed();
+      else this.reconcileBuiltInRoles();
     } catch {
       this.applySeed();
     }
@@ -109,6 +110,30 @@ export class OrgStore extends EventEmitter {
     for (const r of seed.roles) this.roles.set(r.id, r);
     for (const u of seed.users) this.users.set(u.id, u);
     this.schedulePersist();
+  }
+
+  /**
+   * Keep built-in roles' permission sets aligned with the current seed baseline. Built-in role
+   * permissions are the calibrated RBAC baseline (immutable via `guardBuiltInRolePatch`), so on
+   * load we refresh them from the seed. This backfills newly-added platform scopes (e.g. the P10
+   * `federation:*` scopes) onto EXISTING installs whose persisted roles predate them — without
+   * this, an upgraded install's Owner/Admin role would lack the new scope and the (now RBAC-gated)
+   * channels would lock out. Custom roles, role names/descriptions, and all other data are untouched.
+   */
+  private reconcileBuiltInRoles(): void {
+    let changed = false;
+    for (const seedRole of buildSeed().roles) {
+      const current = this.roles.get(seedRole.id);
+      if (!current || !current.builtIn) continue;
+      const same =
+        current.permissions.length === seedRole.permissions.length &&
+        seedRole.permissions.every((p) => current.permissions.includes(p));
+      if (!same) {
+        this.roles.set(seedRole.id, { ...current, permissions: [...seedRole.permissions] });
+        changed = true;
+      }
+    }
+    if (changed) this.schedulePersist();
   }
 
   private async persist(): Promise<void> {

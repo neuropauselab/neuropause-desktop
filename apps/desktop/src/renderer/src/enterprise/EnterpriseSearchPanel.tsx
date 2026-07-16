@@ -16,6 +16,7 @@ const SOURCE_META: Record<SearchSourceKind, { label: string; icon: IconName; ton
   graph: { label: 'Graph', icon: 'grid', tone: 'purple' },
   memory: { label: 'Memory', icon: 'memory', tone: 'accent' },
   timeline: { label: 'Timeline', icon: 'clock', tone: 'green' },
+  federation: { label: 'Federation', icon: 'globe', tone: 'orange' },
 };
 
 interface LocalHit {

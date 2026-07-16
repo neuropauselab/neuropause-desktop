@@ -11,10 +11,10 @@
  * Types-only.
  */
 
-export type SearchSourceKind = 'entity' | 'graph' | 'memory' | 'timeline';
+export type SearchSourceKind = 'entity' | 'graph' | 'memory' | 'timeline' | 'federation';
 
 export const SEARCH_SOURCE_KINDS: readonly SearchSourceKind[] = [
-  'entity', 'graph', 'memory', 'timeline',
+  'entity', 'graph', 'memory', 'timeline', 'federation',
 ] as const;
 
 export interface EnterpriseSearchHit {

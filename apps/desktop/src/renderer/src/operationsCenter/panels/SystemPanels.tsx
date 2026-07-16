@@ -120,7 +120,7 @@ export function TimelinePanel({ nowMs }: PanelProps): JSX.Element {
 
 /* ── Enterprise Search Results ──────────────────────────────────────────────── */
 
-const SOURCE_ICON = { entity: 'database', graph: 'connectors', memory: 'memory', timeline: 'clock' } as const;
+const SOURCE_ICON = { entity: 'database', graph: 'connectors', memory: 'memory', timeline: 'clock', federation: 'globe' } as const;
 
 export function SearchPanel(): JSX.Element {
   const [text, setText] = useState('');

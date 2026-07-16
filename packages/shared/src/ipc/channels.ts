@@ -568,6 +568,14 @@ export const IpcChannel = {
   FedScalability: 'fed:scalability.report',
   FedEventBroadcast: 'fed:event',
 
+  // ── P10 — Federation Platform (intelligence/governance/integration layer over the federation runtime) ──
+  FederationGraph: 'federation:graph',
+  FederationTimeline: 'federation:timeline',
+  FederationDirectory: 'federation:directory',
+  FederationAnalytics: 'federation:analytics',
+  FederationSearch: 'federation:search',
+  FederationOverview: 'federation:overview',
+
   // ── application self-update (electron-updater) ──
   UpdateGetStatus: 'update:getStatus',
   UpdateCheckNow: 'update:checkNow',
@@ -1092,6 +1100,14 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.FedCheckReplication,
   IpcChannel.FedAdminOverview,
   IpcChannel.FedScalability,
+
+  // ── P10 — Federation Platform ──
+  IpcChannel.FederationGraph,
+  IpcChannel.FederationTimeline,
+  IpcChannel.FederationDirectory,
+  IpcChannel.FederationAnalytics,
+  IpcChannel.FederationSearch,
+  IpcChannel.FederationOverview,
   IpcChannel.UpdateGetStatus,
   IpcChannel.UpdateCheckNow,
   IpcChannel.UpdateDownload,

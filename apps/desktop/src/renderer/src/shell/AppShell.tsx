@@ -49,6 +49,9 @@ const WorkforceCenterView = lazy(() =>
 const MarketplaceView = lazy(() =>
   import('@renderer/marketplace/MarketplaceView').then((m) => ({ default: m.MarketplaceView })),
 );
+const FederationCenterView = lazy(() =>
+  import('@renderer/federationCenter/FederationCenterView').then((m) => ({ default: m.FederationCenterView })),
+);
 const EnterpriseView = lazy(() =>
   import('@renderer/views/EnterpriseView').then((m) => ({ default: m.EnterpriseView })),
 );
@@ -210,6 +213,8 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
         return <WorkforceCenterView />;
       case 'marketplace':
         return <MarketplaceView />;
+      case 'federation-center':
+        return <FederationCenterView />;
       case 'automations':
         return <WorkforceView initialTab="studio" />;
       case 'notifications':

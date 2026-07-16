@@ -10,6 +10,7 @@ export type SectionId =
   | 'cloud'
   | 'infrastructure'
   | 'federation'
+  | 'federation-center'
   | 'store'
   | 'marketplace'
   | 'workspace'
@@ -45,6 +46,7 @@ export const SECTIONS: SectionDef[] = [
   { id: 'cloud', label: 'Cloud', icon: 'database', phase: 9, placement: 'primary' },
   { id: 'infrastructure', label: 'Infrastructure', icon: 'server', phase: 13, placement: 'primary' },
   { id: 'federation', label: 'Federation', icon: 'layers', phase: 9, placement: 'primary' },
+  { id: 'federation-center', label: 'Federation Center', icon: 'globe', phase: 10, placement: 'primary' },
   { id: 'store', label: 'AI Store', icon: 'store', phase: 3, placement: 'primary' },
   { id: 'marketplace', label: 'Marketplace', icon: 'store', phase: 9, placement: 'primary' },
   { id: 'workspace', label: 'Workspace', icon: 'workspace', phase: 2, placement: 'primary' },

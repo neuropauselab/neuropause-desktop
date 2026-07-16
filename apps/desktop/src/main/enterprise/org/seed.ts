@@ -79,6 +79,7 @@ const READ_ONLY: EnterprisePermission[] = [
   'sandbox:read',
   'connectors:read',
   'marketplace:read',
+  'federation:read',
 ];
 
 const MEMBER: EnterprisePermission[] = [...READ_ONLY, 'workforce:operate'];
@@ -106,6 +107,8 @@ const ADMIN: EnterprisePermission[] = [
   'workspace:manage',
   'workforce:manage',
   'marketplace:manage',
+  'federation:manage',
+  'federation:approve',
 ];
 
 const AI_WORKER: EnterprisePermission[] = ['workforce:read', 'intelligence:read'];

@@ -27,14 +27,29 @@ export interface TimelineSearcher {
   search(text: string, limit: number): EnterpriseTimelineEntry[];
 }
 
+/**
+ * P10 — the Federation source. Returns hits already in the common shape (tagged
+ * `source: 'federation'`); the engine normalizes their scores like every other source, so
+ * organizations, exchange packages, shared workers, and cross-org policies become searchable
+ * through the ONE search engine (no duplicate search).
+ */
+export interface FederationSearcher {
+  search(text: string, limit: number): EnterpriseSearchHit[];
+}
+
 export interface EnterpriseSearchSources {
   entity: SearchBackend;
   graph: GraphStore;
   memory: MemoryStore;
   /** Optional until the Enterprise Timeline is initialized. */
   timeline?: TimelineSearcher;
+  /** Optional until the Federation Platform is initialized (P10). */
+  federation?: FederationSearcher;
 }
 
+// Federation is an OPT-IN source (callers pass `sources: ['federation']`); it is intentionally
+// NOT in the default set, so cross-org metadata never flows through the broadly-reachable default
+// Enterprise Search — the gated `federation:read` Federation Center is the primary surface (P10).
 const DEFAULT_SOURCES: SearchSourceKind[] = ['entity', 'graph', 'memory', 'timeline'];
 
 function excerpt(s: string, n: number): string {
@@ -149,6 +164,12 @@ export function runEnterpriseSearch(
       })),
     );
     groups.push({ source: 'timeline', hits, total: hits.length });
+  }
+
+  if (sources.includes('federation') && sourcesApi.federation) {
+    backends.add('federation');
+    const hits = normalize(sourcesApi.federation.search(text, perLimit));
+    groups.push({ source: 'federation', hits, total: hits.length });
   }
 
   const merged = groups.flatMap((g) => g.hits).sort((a, b) => b.score - a.score);
