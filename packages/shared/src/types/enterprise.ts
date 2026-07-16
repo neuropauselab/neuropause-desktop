@@ -116,7 +116,10 @@ export type EnterprisePermission =
   | 'federation:approve'
   // ── P11 — Cloud Control Plane: read the global control plane, and manage/operate cloud resources. ──
   | 'cloud:read'
-  | 'cloud:manage';
+  | 'cloud:manage'
+  // ── P12 — Developer Platform: read the developer console, and manage keys/OAuth/publishing/billing. ──
+  | 'developer:read'
+  | 'developer:manage';
 
 export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   'org:read',
@@ -166,6 +169,9 @@ export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   // ── P11 — Cloud Control Plane ──
   'cloud:read',
   'cloud:manage',
+  // ── P12 — Developer Platform ──
+  'developer:read',
+  'developer:manage',
 ];
 
 export interface OrgRole {

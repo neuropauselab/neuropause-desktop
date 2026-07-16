@@ -459,6 +459,16 @@ export const IpcChannel = {
   EcosystemPartnersList: 'ecosystem:partners.list',
   EcosystemPartnersStats: 'ecosystem:partners.stats',
   EcosystemAnalytics: 'ecosystem:analytics',
+
+  // ── P12 — Developer Platform (registry/rollup layer over the ecosystem developer stack) ──
+  DevPlatformOverview: 'ecosystem:devplatform.overview',
+  DevPlatformConsole: 'ecosystem:devplatform.console',
+  DevPlatformSdks: 'ecosystem:devplatform.sdks',
+  DevPlatformApis: 'ecosystem:devplatform.apis',
+  DevPlatformTemplates: 'ecosystem:devplatform.templates',
+  DevPlatformPublishing: 'ecosystem:devplatform.publishing',
+  DevPlatformAnalytics: 'ecosystem:devplatform.analytics',
+
   EcosystemEventBroadcast: 'ecosystem:event',
 
   // ── P9 — Enterprise Marketplace (layer over the ecosystem marketplace) ──
@@ -1005,6 +1015,15 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.EcosystemPartnersList,
   IpcChannel.EcosystemPartnersStats,
   IpcChannel.EcosystemAnalytics,
+
+  // ── P12 — Developer Platform ──
+  IpcChannel.DevPlatformOverview,
+  IpcChannel.DevPlatformConsole,
+  IpcChannel.DevPlatformSdks,
+  IpcChannel.DevPlatformApis,
+  IpcChannel.DevPlatformTemplates,
+  IpcChannel.DevPlatformPublishing,
+  IpcChannel.DevPlatformAnalytics,
 
   // ── P9 — Enterprise Marketplace ──
   IpcChannel.MarketplaceCatalog,

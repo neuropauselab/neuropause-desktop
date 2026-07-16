@@ -26,6 +26,8 @@ export default defineConfig({
       'src/renderer/src/federationCenter/**/*.test.ts',
       // P11 — the Cloud Control Plane's pure view-model (no DOM, no React).
       'src/renderer/src/controlPlane/**/*.test.ts',
+      // P12 — the Developer Center's pure view-model (no DOM, no React).
+      'src/renderer/src/developerCenter/**/*.test.ts',
     ],
   },
   resolve: {

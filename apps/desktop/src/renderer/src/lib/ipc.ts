@@ -187,6 +187,13 @@ import {
   type Partner,
   type PartnerStats,
   type EcosystemAnalytics,
+  type DeveloperPlatformOverview,
+  type DeveloperConsole,
+  type SdkRegistry,
+  type ApiExplorer,
+  type TemplateRegistry,
+  type PublishingConsole,
+  type DeveloperPlatformAnalytics,
   // Release engineering (Increment 2 · Stage 2)
   type ReleaseDiagnostics,
   type CrashStatus,
@@ -1416,6 +1423,19 @@ export const ipc = {
 
     onEvent: (cb: (e: { kind: string; at: string }) => void) =>
       subscribe(IpcChannel.EcosystemEventBroadcast, (p) => cb(p as { kind: string; at: string })),
+  },
+
+  // ── P12 — Developer Platform (registry/rollup over the ecosystem developer stack) ──
+  developerPlatform: {
+    overview: () => invoke(IpcChannel.DevPlatformOverview) as Promise<DeveloperPlatformOverview>,
+    console: () => invoke(IpcChannel.DevPlatformConsole) as Promise<DeveloperConsole>,
+    sdks: () => invoke(IpcChannel.DevPlatformSdks) as Promise<SdkRegistry>,
+    apis: () => invoke(IpcChannel.DevPlatformApis) as Promise<ApiExplorer>,
+    templates: () => invoke(IpcChannel.DevPlatformTemplates) as Promise<TemplateRegistry>,
+    publishing: () => invoke(IpcChannel.DevPlatformPublishing) as Promise<PublishingConsole>,
+    analytics: () => invoke(IpcChannel.DevPlatformAnalytics) as Promise<DeveloperPlatformAnalytics>,
+    // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
+    onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
   },
 
   /* ── P9 — Enterprise Marketplace (governed catalog over the ecosystem) ── */

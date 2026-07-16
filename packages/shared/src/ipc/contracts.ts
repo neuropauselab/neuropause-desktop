@@ -1009,6 +1009,8 @@ export const EnterprisePermissionSchema = z.enum([
   'federation:approve',
   'cloud:read',
   'cloud:manage',
+  'developer:read',
+  'developer:manage',
 ]);
 
 export const EnterpriseOrgCreateUnitRequest = z.object({

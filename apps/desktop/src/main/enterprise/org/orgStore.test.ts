@@ -123,6 +123,10 @@ describe('OrgStore — built-in role reconciliation', () => {
     // P11 — the cloud control-plane scopes must backfill on the same upgrade path.
     expect(owner.permissions).toContain('cloud:read');
     expect(owner.permissions).toContain('cloud:manage');
+    // P12 — the developer-platform scopes must backfill on the same upgrade path (otherwise an
+    // upgraded install would be locked out of the now-RBAC-gated ecosystem:devplatform.* channels).
+    expect(owner.permissions).toContain('developer:read');
+    expect(owner.permissions).toContain('developer:manage');
   });
 
   it('leaves custom (non-built-in) roles untouched on load', async () => {

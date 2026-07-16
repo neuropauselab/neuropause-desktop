@@ -96,7 +96,7 @@ export interface EcosystemSubsystem {
 
 const SDK_VERSION = '0.1.0';
 
-const SDK_ARTIFACTS: SdkArtifact[] = [
+export const SDK_ARTIFACTS: SdkArtifact[] = [
   {
     language: 'typescript',
     name: 'NeuroPause SDK for JavaScript / TypeScript',

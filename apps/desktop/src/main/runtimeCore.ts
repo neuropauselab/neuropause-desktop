@@ -168,6 +168,8 @@ import { initFederationPlatform } from './federationPlatform';
 import { withFederationAuthz } from './federationPlatform/federationAuthz';
 import { initControlPlane } from './cloud/controlPlane';
 import { withCloudAuthz } from './cloud/controlPlane/cloudAuthz';
+import { initDeveloperPlatform } from './ecosystem/developerPlatform';
+import { withEcosystemAuthz } from './ecosystem/developerPlatform/ecosystemAuthz';
 import { initUpdater } from './updater';
 import { initReleaseOps } from './releaseOps';
 import { initFeatureFlags } from './featureFlags';
@@ -368,6 +370,10 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // subsystems (fleet, regions, tenants, deployments, usage) + RBAC on the cloud handlers.
   // Runs after cloud + federation init so every backing store is loaded.
   const controlPlane = initControlPlane();
+  // P12 — Developer Platform: the developer-experience layer over the ecosystem developer stack
+  // (developer console, SDK/API/template registries, publishing, analytics) + RBAC on the
+  // ecosystem handlers. Runs after ecosystem + cloud init so every backing store is loaded.
+  const developerPlatform = initDeveloperPlatform();
   // Application self-update (electron-updater): channels + check/download/install + rollback prep.
   const updater = initUpdater({ broadcast: deps.broadcast });
   // Release Operations: migration, backup, crash reporting, release diagnostics,
@@ -1301,7 +1307,10 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...trace.handlers);
   defs.push(...workforce.handlers);
   defs.push(...enterprise.handlers);
-  defs.push(...ecosystem.handlers);
+  // P12 — harden the previously-ungated ecosystem handlers with RBAC (they shipped with no
+  // requireAuth/permission); every ecosystem channel now requires a developer:* permission.
+  defs.push(...withEcosystemAuthz(ecosystem.handlers));
+  defs.push(...developerPlatform.handlers);
   defs.push(...marketplace.handlers);
   defs.push(...webhooks.handlers);
   defs.push(...sandbox.handlers);
