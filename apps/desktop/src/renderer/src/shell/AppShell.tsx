@@ -64,6 +64,9 @@ const IndustryCenterView = lazy(() =>
 const StrategyCenterView = lazy(() =>
   import('@renderer/strategyCenter/StrategyCenterView').then((m) => ({ default: m.StrategyCenterView })),
 );
+const TwinCenterView = lazy(() =>
+  import('@renderer/twinCenter/TwinCenterView').then((m) => ({ default: m.TwinCenterView })),
+);
 const EnterpriseView = lazy(() =>
   import('@renderer/views/EnterpriseView').then((m) => ({ default: m.EnterpriseView })),
 );
@@ -235,6 +238,8 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
         return <IndustryCenterView />;
       case 'strategy-center':
         return <StrategyCenterView />;
+      case 'twin-center':
+        return <TwinCenterView />;
       case 'automations':
         return <WorkforceView initialTab="studio" />;
       case 'notifications':

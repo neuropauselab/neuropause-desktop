@@ -209,6 +209,15 @@ import {
   type OptimizationEngine,
   type SimulationReport,
   type DecisionQueue,
+  // P15 — Enterprise Digital Twin
+  type EnterpriseTwinOverview,
+  type TwinDomains,
+  type TwinTopology,
+  type TwinHealthMap,
+  type TwinReplay,
+  type TwinScenarioCenter,
+  type TwinImpact,
+  type TwinCommandCenter,
   // Release engineering (Increment 2 · Stage 2)
   type ReleaseDiagnostics,
   type CrashStatus,
@@ -1474,6 +1483,20 @@ export const ipc = {
     optimization: () => invoke(IpcChannel.StrategyOptimization) as Promise<OptimizationEngine>,
     simulation: () => invoke(IpcChannel.StrategySimulation) as Promise<SimulationReport>,
     decisions: () => invoke(IpcChannel.StrategyDecisions) as Promise<DecisionQueue>,
+    // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
+    onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
+  },
+
+  // ── P15 — Enterprise Digital Twin (read-only living projection of the whole enterprise) ──
+  twin: {
+    overview: () => invoke(IpcChannel.TwinOverview) as Promise<EnterpriseTwinOverview>,
+    domains: () => invoke(IpcChannel.TwinDomains) as Promise<TwinDomains>,
+    topology: () => invoke(IpcChannel.TwinTopology) as Promise<TwinTopology>,
+    health: () => invoke(IpcChannel.TwinHealth) as Promise<TwinHealthMap>,
+    replay: () => invoke(IpcChannel.TwinReplay) as Promise<TwinReplay>,
+    scenario: () => invoke(IpcChannel.TwinScenario) as Promise<TwinScenarioCenter>,
+    impact: () => invoke(IpcChannel.TwinImpact) as Promise<TwinImpact>,
+    executive: () => invoke(IpcChannel.TwinExecutive) as Promise<TwinCommandCenter>,
     // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
     onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
   },

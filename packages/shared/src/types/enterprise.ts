@@ -123,7 +123,9 @@ export type EnterprisePermission =
   // ── P13 — Industry Solution Platform: read the industry solution-pack catalog + readiness. ──
   | 'industry:read'
   // ── P14 — Autonomous Enterprise Intelligence: read the strategic intelligence layer. ──
-  | 'strategy:read';
+  | 'strategy:read'
+  // ── P15 — Enterprise Digital Twin: read the digital-twin visualization/composition layer. ──
+  | 'twin:read';
 
 export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   'org:read',
@@ -180,6 +182,8 @@ export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   'industry:read',
   // ── P14 — Autonomous Enterprise Intelligence ──
   'strategy:read',
+  // ── P15 — Enterprise Digital Twin ──
+  'twin:read',
 ];
 
 export interface OrgRole {

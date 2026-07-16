@@ -486,6 +486,16 @@ export const IpcChannel = {
   StrategySimulation: 'strategy:simulation',
   StrategyDecisions: 'strategy:decisions',
 
+  // ── P15 — Enterprise Digital Twin (read-only visualization/composition layer) ──
+  TwinOverview: 'twin:overview',
+  TwinDomains: 'twin:domains',
+  TwinTopology: 'twin:topology',
+  TwinHealth: 'twin:health',
+  TwinReplay: 'twin:replay',
+  TwinScenario: 'twin:scenario',
+  TwinImpact: 'twin:impact',
+  TwinExecutive: 'twin:executive',
+
   EcosystemEventBroadcast: 'ecosystem:event',
 
   // ── P9 — Enterprise Marketplace (layer over the ecosystem marketplace) ──
@@ -1058,6 +1068,16 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.StrategyOptimization,
   IpcChannel.StrategySimulation,
   IpcChannel.StrategyDecisions,
+
+  // ── P15 — Enterprise Digital Twin ──
+  IpcChannel.TwinOverview,
+  IpcChannel.TwinDomains,
+  IpcChannel.TwinTopology,
+  IpcChannel.TwinHealth,
+  IpcChannel.TwinReplay,
+  IpcChannel.TwinScenario,
+  IpcChannel.TwinImpact,
+  IpcChannel.TwinExecutive,
 
   // ── P9 — Enterprise Marketplace ──
   IpcChannel.MarketplaceCatalog,

@@ -32,6 +32,8 @@ export default defineConfig({
       'src/renderer/src/industryCenter/**/*.test.ts',
       // P14 — the Strategy Center's pure view-model (no DOM, no React).
       'src/renderer/src/strategyCenter/**/*.test.ts',
+      // P15 — the Digital Twin Center's pure view-model (no DOM, no React).
+      'src/renderer/src/twinCenter/**/*.test.ts',
     ],
   },
   resolve: {

@@ -1013,6 +1013,7 @@ export const EnterprisePermissionSchema = z.enum([
   'developer:manage',
   'industry:read',
   'strategy:read',
+  'twin:read',
 ]);
 
 export const EnterpriseOrgCreateUnitRequest = z.object({

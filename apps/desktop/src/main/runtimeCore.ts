@@ -172,6 +172,7 @@ import { initDeveloperPlatform } from './ecosystem/developerPlatform';
 import { withEcosystemAuthz } from './ecosystem/developerPlatform/ecosystemAuthz';
 import { initIndustryPlatform } from './industry';
 import { initAutonomousIntelligence } from './strategy';
+import { initEnterpriseTwin } from './twin';
 import { initUpdater } from './updater';
 import { initReleaseOps } from './releaseOps';
 import { initFeatureFlags } from './featureFlags';
@@ -388,6 +389,19 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     enterpriseReport: enterpriseIntel.report,
     controlPlane: controlPlane.service,
     industry: industryPlatform.service,
+  });
+  // P15 — Enterprise Digital Twin: the read-only visualization/composition layer over the existing
+  // enterprise graph, timeline, cloud, workforce, connectors, marketplace, federation, and P14 strategy.
+  // Injects the already-computed handles + the platform timeline query (never re-creates a graph,
+  // timeline, or simulation engine); read-only, RBAC-gated (twin:read), executes nothing.
+  const enterpriseTwin = initEnterpriseTwin({
+    enterpriseReport: enterpriseIntel.report,
+    fleet: () => controlPlane.service.fleet(),
+    usage: () => controlPlane.service.usage(),
+    deployments: () => controlPlane.service.deployments(),
+    strategyOverview: () => autonomousIntel.service.overview(),
+    simulation: () => autonomousIntel.service.simulation(),
+    queryTimeline: (q) => platform.api.query(q),
   });
   // Application self-update (electron-updater): channels + check/download/install + rollback prep.
   const updater = initUpdater({ broadcast: deps.broadcast });
@@ -1330,6 +1344,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...industryPlatform.handlers);
   // P14 — Autonomous Enterprise Intelligence read handlers (self-gated with strategy:read).
   defs.push(...autonomousIntel.handlers);
+  // P15 — Enterprise Digital Twin read handlers (self-gated with twin:read).
+  defs.push(...enterpriseTwin.handlers);
   defs.push(...marketplace.handlers);
   defs.push(...webhooks.handlers);
   defs.push(...sandbox.handlers);
