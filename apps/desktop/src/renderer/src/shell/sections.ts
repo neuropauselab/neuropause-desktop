@@ -13,6 +13,7 @@ export type SectionId =
   | 'knowledge-center'
   | 'orchestration-center'
   | 'network-center'
+  | 'auto-ops-center'
   | 'ecosystem'
   | 'cloud'
   | 'control-plane'
@@ -57,6 +58,7 @@ export const SECTIONS: SectionDef[] = [
   { id: 'knowledge-center', label: 'Knowledge Fabric', icon: 'database', phase: 16, placement: 'primary' },
   { id: 'orchestration-center', label: 'Orchestration', icon: 'command', phase: 17, placement: 'primary' },
   { id: 'network-center', label: 'Intelligence Network', icon: 'globe', phase: 18, placement: 'primary' },
+  { id: 'auto-ops-center', label: 'Autonomous Operations', icon: 'command', phase: 19, placement: 'primary' },
   { id: 'ecosystem', label: 'Ecosystem', icon: 'globe', phase: 8, placement: 'primary' },
   { id: 'cloud', label: 'Cloud', icon: 'database', phase: 9, placement: 'primary' },
   { id: 'control-plane', label: 'Control Plane', icon: 'gauge', phase: 11, placement: 'primary' },

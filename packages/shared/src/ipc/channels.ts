@@ -526,6 +526,18 @@ export const IpcChannel = {
   NetworkCollective: 'network:collective',
   NetworkGovernance: 'network:governance',
 
+  // ── P19 — Autonomous Enterprise Operations (read-only closed-loop operations layer) ──
+  AutoOpsOverview: 'autonomousops:overview',
+  AutoOpsPlans: 'autonomousops:plans',
+  AutoOpsExecution: 'autonomousops:execution',
+  AutoOpsRecovery: 'autonomousops:recovery',
+  AutoOpsOptimization: 'autonomousops:optimization',
+  AutoOpsIncidents: 'autonomousops:incidents',
+  AutoOpsApprovals: 'autonomousops:approvals',
+  AutoOpsMonitoring: 'autonomousops:monitoring',
+  AutoOpsAnalytics: 'autonomousops:analytics',
+  AutoOpsGovernance: 'autonomousops:governance',
+
   EcosystemEventBroadcast: 'ecosystem:event',
 
   // ── P9 — Enterprise Marketplace (layer over the ecosystem marketplace) ──
@@ -1138,6 +1150,18 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.NetworkOrganizations,
   IpcChannel.NetworkCollective,
   IpcChannel.NetworkGovernance,
+
+  // ── P19 — Autonomous Enterprise Operations ──
+  IpcChannel.AutoOpsOverview,
+  IpcChannel.AutoOpsPlans,
+  IpcChannel.AutoOpsExecution,
+  IpcChannel.AutoOpsRecovery,
+  IpcChannel.AutoOpsOptimization,
+  IpcChannel.AutoOpsIncidents,
+  IpcChannel.AutoOpsApprovals,
+  IpcChannel.AutoOpsMonitoring,
+  IpcChannel.AutoOpsAnalytics,
+  IpcChannel.AutoOpsGovernance,
 
   // ── P9 — Enterprise Marketplace ──
   IpcChannel.MarketplaceCatalog,

@@ -131,7 +131,9 @@ export type EnterprisePermission =
   // ── P17 — Global AI Orchestration Platform: read the orchestration projection layer. ──
   | 'orchestration:read'
   // ── P18 — Enterprise Intelligence Network: read the intelligence-network projection layer. ──
-  | 'network:read';
+  | 'network:read'
+  // ── P19 — Autonomous Enterprise Operations: read the closed-loop operations projection layer. ──
+  | 'autonomousops:read';
 
 export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   'org:read',
@@ -196,6 +198,8 @@ export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   'orchestration:read',
   // ── P18 — Enterprise Intelligence Network ──
   'network:read',
+  // ── P19 — Autonomous Enterprise Operations ──
+  'autonomousops:read',
 ];
 
 export interface OrgRole {

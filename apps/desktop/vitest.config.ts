@@ -40,6 +40,8 @@ export default defineConfig({
       'src/renderer/src/orchestrationCenter/**/*.test.ts',
       // P18 — the Intelligence Network Center's pure view-model (no DOM, no React).
       'src/renderer/src/networkCenter/**/*.test.ts',
+      // P19 — the Autonomous Operations Center's pure view-model (no DOM, no React).
+      'src/renderer/src/autonomousOpsCenter/**/*.test.ts',
     ],
   },
   resolve: {

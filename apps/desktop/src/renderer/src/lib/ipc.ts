@@ -245,6 +245,17 @@ import {
   type IntelNetworkOrganizations,
   type IntelNetworkCollective,
   type IntelNetworkGovernance,
+  // P19 — Autonomous Enterprise Operations (closed-loop operations layer over the platform)
+  type AutoOpsOverview,
+  type AutoOpsPlans,
+  type AutoOpsExecution,
+  type AutoOpsRecovery,
+  type AutoOpsOptimization,
+  type AutoOpsIncidents,
+  type AutoOpsApprovals,
+  type AutoOpsMonitoring,
+  type AutoOpsAnalytics,
+  type AutoOpsGovernance,
   // Release engineering (Increment 2 · Stage 2)
   type ReleaseDiagnostics,
   type CrashStatus,
@@ -1566,6 +1577,22 @@ export const ipc = {
     organizations: () => invoke(IpcChannel.NetworkOrganizations) as Promise<IntelNetworkOrganizations>,
     collective: () => invoke(IpcChannel.NetworkCollective) as Promise<IntelNetworkCollective>,
     governance: () => invoke(IpcChannel.NetworkGovernance) as Promise<IntelNetworkGovernance>,
+    // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
+    onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
+  },
+
+  // ── P19 — Autonomous Enterprise Operations (read-only closed-loop operations; nothing executes here) ──
+  autoOps: {
+    overview: () => invoke(IpcChannel.AutoOpsOverview) as Promise<AutoOpsOverview>,
+    plans: () => invoke(IpcChannel.AutoOpsPlans) as Promise<AutoOpsPlans>,
+    execution: () => invoke(IpcChannel.AutoOpsExecution) as Promise<AutoOpsExecution>,
+    recovery: () => invoke(IpcChannel.AutoOpsRecovery) as Promise<AutoOpsRecovery>,
+    optimization: () => invoke(IpcChannel.AutoOpsOptimization) as Promise<AutoOpsOptimization>,
+    incidents: () => invoke(IpcChannel.AutoOpsIncidents) as Promise<AutoOpsIncidents>,
+    approvals: () => invoke(IpcChannel.AutoOpsApprovals) as Promise<AutoOpsApprovals>,
+    monitoring: () => invoke(IpcChannel.AutoOpsMonitoring) as Promise<AutoOpsMonitoring>,
+    analytics: () => invoke(IpcChannel.AutoOpsAnalytics) as Promise<AutoOpsAnalytics>,
+    governance: () => invoke(IpcChannel.AutoOpsGovernance) as Promise<AutoOpsGovernance>,
     // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
     onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
   },

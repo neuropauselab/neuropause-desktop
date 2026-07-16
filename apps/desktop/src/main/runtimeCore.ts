@@ -176,6 +176,7 @@ import { initEnterpriseTwin } from './twin';
 import { initEnterpriseKnowledge } from './knowledgeFabric';
 import { initGlobalOrchestration } from './orchestration';
 import { initEnterpriseIntelligenceNetwork } from './intelligenceNetwork';
+import { initAutonomousOperations } from './autonomousOps';
 import { initUpdater } from './updater';
 import { initReleaseOps } from './releaseOps';
 import { initFeatureFlags } from './featureFlags';
@@ -1390,6 +1391,26 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // requireAuth/permission); every ecosystem channel now requires a developer:* permission.
   defs.push(...withEcosystemAuthz(ecosystem.handlers));
   defs.push(...developerPlatform.handlers);
+  // P19 — Autonomous Enterprise Operations: the closed-loop operations projection LAYER. It OBSERVES the
+  // ExecuteEngine + Workforce runtime, the RuntimeSupervisor recovery signals, P7/P14/P16 intelligence, and
+  // the Cloud Control Plane, and RECOMMENDS operational/recovery/optimization plans — importing zero
+  // mutators, so it can never execute. Wired here because it reads executeEngine + runtimeSupervisor
+  // (constructed above); execution + approval still flow through the existing runtime + approval engine.
+  const autonomousOps = initAutonomousOperations({
+    enterpriseReport: enterpriseIntel.report,
+    strategyOverview: () => autonomousIntel.service.overview(),
+    twinOverview: () => enterpriseTwin.service.overview(),
+    orchestrationOverview: () => globalOrchestration.service.overview(),
+    knowledgeEvidence: () => enterpriseKnowledge.service.evidence(),
+    cloudUsage: () => controlPlane.service.usage(),
+    cloudDeployments: () => controlPlane.service.deployments(),
+    cloudRegions: () => controlPlane.service.regions(),
+    executionSessions: () => executeEngine.activeSessions(),
+    executionHistory: () => executeEngine.getHistory(),
+    executionStats: () => executeEngine.stats(),
+    supervisorStatus: () => runtimeSupervisor.status(),
+    supervisorHistory: () => runtimeSupervisor.getHistory(),
+  });
   // P13 — Industry Solution Platform read handlers (self-gated with industry:read).
   defs.push(...industryPlatform.handlers);
   // P14 — Autonomous Enterprise Intelligence read handlers (self-gated with strategy:read).
@@ -1402,6 +1423,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...globalOrchestration.handlers);
   // P18 — Enterprise Intelligence Network read handlers (self-gated with network:read).
   defs.push(...intelligenceNetwork.handlers);
+  // P19 — Autonomous Enterprise Operations read handlers (self-gated with autonomousops:read).
+  defs.push(...autonomousOps.handlers);
   defs.push(...marketplace.handlers);
   defs.push(...webhooks.handlers);
   defs.push(...sandbox.handlers);

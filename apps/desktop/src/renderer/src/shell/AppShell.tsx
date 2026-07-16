@@ -76,6 +76,9 @@ const OrchestrationCenterView = lazy(() =>
 const NetworkCenterView = lazy(() =>
   import('@renderer/networkCenter/NetworkCenterView').then((m) => ({ default: m.NetworkCenterView })),
 );
+const AutoOpsCenterView = lazy(() =>
+  import('@renderer/autonomousOpsCenter/AutoOpsCenterView').then((m) => ({ default: m.AutoOpsCenterView })),
+);
 const EnterpriseView = lazy(() =>
   import('@renderer/views/EnterpriseView').then((m) => ({ default: m.EnterpriseView })),
 );
@@ -255,6 +258,8 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
         return <OrchestrationCenterView />;
       case 'network-center':
         return <NetworkCenterView />;
+      case 'auto-ops-center':
+        return <AutoOpsCenterView />;
       case 'automations':
         return <WorkforceView initialTab="studio" />;
       case 'notifications':
