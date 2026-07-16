@@ -135,6 +135,8 @@ describe('OrgStore — built-in role reconciliation', () => {
     expect(owner.permissions).toContain('twin:read');
     // P16 — the knowledge-fabric read scope must backfill on the same upgrade path.
     expect(owner.permissions).toContain('knowledge:read');
+    // P17 — the global-orchestration read scope must backfill on the same upgrade path.
+    expect(owner.permissions).toContain('orchestration:read');
   });
 
   it('leaves custom (non-built-in) roles untouched on load', async () => {

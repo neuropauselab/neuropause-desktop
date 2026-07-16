@@ -174,6 +174,7 @@ import { initIndustryPlatform } from './industry';
 import { initAutonomousIntelligence } from './strategy';
 import { initEnterpriseTwin } from './twin';
 import { initEnterpriseKnowledge } from './knowledgeFabric';
+import { initGlobalOrchestration } from './orchestration';
 import { initUpdater } from './updater';
 import { initReleaseOps } from './releaseOps';
 import { initFeatureFlags } from './featureFlags';
@@ -414,6 +415,24 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     strategyOverview: () => autonomousIntel.service.overview(),
     twinOverview: () => enterpriseTwin.service.overview(),
     queryTimeline: (q) => platform.api.query(q),
+  });
+  // P17 — Global AI Orchestration Platform: the read-only coordination/routing layer that routes
+  // enterprise goals to existing worker capability pools (reusing the shipped delegation matcher), and
+  // coordinates workforce/cloud/knowledge/marketplace/federation by projecting over the existing
+  // Strategy planning, Workforce runtime, Cloud Control Plane, Knowledge Fabric, Marketplace, and
+  // Federation. Imports NO mutator/scheduler/ExecuteEngine — structurally unable to dispatch/execute;
+  // every route respects the existing approval chains. RBAC-gated (orchestration:read); executes nothing.
+  const globalOrchestration = initGlobalOrchestration({
+    enterpriseReport: enterpriseIntel.report,
+    strategyOverview: () => autonomousIntel.service.overview(),
+    knowledgeEvidence: () => enterpriseKnowledge.service.evidence(),
+    knowledgeLineage: () => enterpriseKnowledge.service.lineage(),
+    fleet: () => controlPlane.service.fleet(),
+    regions: () => controlPlane.service.regions(),
+    deployments: () => controlPlane.service.deployments(),
+    usage: () => controlPlane.service.usage(),
+    industryOverview: () => industryPlatform.service.overview(),
+    developerOverview: () => developerPlatform.service.overview(),
   });
   // Application self-update (electron-updater): channels + check/download/install + rollback prep.
   const updater = initUpdater({ broadcast: deps.broadcast });
@@ -1360,6 +1379,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...enterpriseTwin.handlers);
   // P16 — Enterprise Knowledge Fabric read handlers (self-gated with knowledge:read).
   defs.push(...enterpriseKnowledge.handlers);
+  // P17 — Global AI Orchestration read handlers (self-gated with orchestration:read).
+  defs.push(...globalOrchestration.handlers);
   defs.push(...marketplace.handlers);
   defs.push(...webhooks.handlers);
   defs.push(...sandbox.handlers);

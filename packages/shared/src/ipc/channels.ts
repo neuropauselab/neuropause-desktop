@@ -506,6 +506,16 @@ export const IpcChannel = {
   FabricGovernance: 'fabric:governance',
   FabricAnalytics: 'fabric:analytics',
 
+  // ── P17 — Global AI Orchestration Platform (read-only coordination/routing layer) ──
+  OrchestrationOverview: 'orchestration:overview',
+  OrchestrationGoals: 'orchestration:goals',
+  OrchestrationWorkforce: 'orchestration:workforce',
+  OrchestrationCloud: 'orchestration:cloud',
+  OrchestrationKnowledge: 'orchestration:knowledge',
+  OrchestrationFlows: 'orchestration:flows',
+  OrchestrationCoordination: 'orchestration:coordination',
+  OrchestrationGovernance: 'orchestration:governance',
+
   EcosystemEventBroadcast: 'ecosystem:event',
 
   // ── P9 — Enterprise Marketplace (layer over the ecosystem marketplace) ──
@@ -1098,6 +1108,16 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.FabricEvidence,
   IpcChannel.FabricGovernance,
   IpcChannel.FabricAnalytics,
+
+  // ── P17 — Global AI Orchestration Platform ──
+  IpcChannel.OrchestrationOverview,
+  IpcChannel.OrchestrationGoals,
+  IpcChannel.OrchestrationWorkforce,
+  IpcChannel.OrchestrationCloud,
+  IpcChannel.OrchestrationKnowledge,
+  IpcChannel.OrchestrationFlows,
+  IpcChannel.OrchestrationCoordination,
+  IpcChannel.OrchestrationGovernance,
 
   // ── P9 — Enterprise Marketplace ──
   IpcChannel.MarketplaceCatalog,

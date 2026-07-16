@@ -36,6 +36,8 @@ export default defineConfig({
       'src/renderer/src/twinCenter/**/*.test.ts',
       // P16 — the Knowledge Fabric Center's pure view-model (no DOM, no React).
       'src/renderer/src/knowledgeCenter/**/*.test.ts',
+      // P17 — the Global Orchestration Center's pure view-model (no DOM, no React).
+      'src/renderer/src/orchestrationCenter/**/*.test.ts',
     ],
   },
   resolve: {

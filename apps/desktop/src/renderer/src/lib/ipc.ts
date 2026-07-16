@@ -227,6 +227,15 @@ import {
   type FabricEvidenceReport,
   type FabricGovernance,
   type FabricAnalytics,
+  // P17 — Global AI Orchestration Platform
+  type OrchestrationOverview,
+  type OrchestrationGoalRouting,
+  type OrchestrationWorkforce,
+  type OrchestrationCloud,
+  type OrchestrationKnowledge,
+  type OrchestrationFlowReport,
+  type OrchestrationCoordination,
+  type OrchestrationGovernance,
   // Release engineering (Increment 2 · Stage 2)
   type ReleaseDiagnostics,
   type CrashStatus,
@@ -1520,6 +1529,20 @@ export const ipc = {
     evidence: () => invoke(IpcChannel.FabricEvidence) as Promise<FabricEvidenceReport>,
     governance: () => invoke(IpcChannel.FabricGovernance) as Promise<FabricGovernance>,
     analytics: () => invoke(IpcChannel.FabricAnalytics) as Promise<FabricAnalytics>,
+    // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
+    onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
+  },
+
+  // ── P17 — Global AI Orchestration Platform (read-only coordination/routing over every system) ──
+  orchestration: {
+    overview: () => invoke(IpcChannel.OrchestrationOverview) as Promise<OrchestrationOverview>,
+    goals: () => invoke(IpcChannel.OrchestrationGoals) as Promise<OrchestrationGoalRouting>,
+    workforce: () => invoke(IpcChannel.OrchestrationWorkforce) as Promise<OrchestrationWorkforce>,
+    cloud: () => invoke(IpcChannel.OrchestrationCloud) as Promise<OrchestrationCloud>,
+    knowledge: () => invoke(IpcChannel.OrchestrationKnowledge) as Promise<OrchestrationKnowledge>,
+    flows: () => invoke(IpcChannel.OrchestrationFlows) as Promise<OrchestrationFlowReport>,
+    coordination: () => invoke(IpcChannel.OrchestrationCoordination) as Promise<OrchestrationCoordination>,
+    governance: () => invoke(IpcChannel.OrchestrationGovernance) as Promise<OrchestrationGovernance>,
     // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
     onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
   },

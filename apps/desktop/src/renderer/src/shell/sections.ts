@@ -11,6 +11,7 @@ export type SectionId =
   | 'strategy-center'
   | 'twin-center'
   | 'knowledge-center'
+  | 'orchestration-center'
   | 'ecosystem'
   | 'cloud'
   | 'control-plane'
@@ -53,6 +54,7 @@ export const SECTIONS: SectionDef[] = [
   { id: 'strategy-center', label: 'Strategy Center', icon: 'sparkles', phase: 14, placement: 'primary' },
   { id: 'twin-center', label: 'Digital Twin Center', icon: 'layers', phase: 15, placement: 'primary' },
   { id: 'knowledge-center', label: 'Knowledge Fabric', icon: 'database', phase: 16, placement: 'primary' },
+  { id: 'orchestration-center', label: 'Orchestration', icon: 'command', phase: 17, placement: 'primary' },
   { id: 'ecosystem', label: 'Ecosystem', icon: 'globe', phase: 8, placement: 'primary' },
   { id: 'cloud', label: 'Cloud', icon: 'database', phase: 9, placement: 'primary' },
   { id: 'control-plane', label: 'Control Plane', icon: 'gauge', phase: 11, placement: 'primary' },
