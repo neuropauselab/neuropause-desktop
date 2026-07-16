@@ -105,6 +105,7 @@ export * from './types/strategyIntelligence';
 export * from './types/enterpriseTwin';
 export * from './types/enterpriseKnowledge';
 export * from './types/globalOrchestration';
+export * from './types/enterpriseIntelligenceNetwork';
 export * from './types/update';
 export * from './types/diagnostics';
 export * from './types/maintenance';

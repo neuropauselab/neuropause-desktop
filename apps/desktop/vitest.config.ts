@@ -38,6 +38,8 @@ export default defineConfig({
       'src/renderer/src/knowledgeCenter/**/*.test.ts',
       // P17 — the Global Orchestration Center's pure view-model (no DOM, no React).
       'src/renderer/src/orchestrationCenter/**/*.test.ts',
+      // P18 — the Intelligence Network Center's pure view-model (no DOM, no React).
+      'src/renderer/src/networkCenter/**/*.test.ts',
     ],
   },
   resolve: {

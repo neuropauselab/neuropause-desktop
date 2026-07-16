@@ -175,6 +175,7 @@ import { initAutonomousIntelligence } from './strategy';
 import { initEnterpriseTwin } from './twin';
 import { initEnterpriseKnowledge } from './knowledgeFabric';
 import { initGlobalOrchestration } from './orchestration';
+import { initEnterpriseIntelligenceNetwork } from './intelligenceNetwork';
 import { initUpdater } from './updater';
 import { initReleaseOps } from './releaseOps';
 import { initFeatureFlags } from './featureFlags';
@@ -433,6 +434,24 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     usage: () => controlPlane.service.usage(),
     industryOverview: () => industryPlatform.service.overview(),
     developerOverview: () => developerPlatform.service.overview(),
+  });
+  // P18 — Enterprise Intelligence Network: the read-only, governed intelligence-EXCHANGE layer that lets
+  // organizations share sanitized recommendations, patterns, benchmarks, and templates — WITHOUT any raw
+  // enterprise records — by projecting the already-redacted Knowledge Fabric, the Industry benchmark
+  // reference, the Twin/Orchestration aggregate metrics, and the EXISTING federation exchange substrate +
+  // trust/consent/policy. Imports NO exchange/publish/share mutator; RBAC-gated (network:read); shares
+  // nothing raw and executes nothing.
+  const intelligenceNetwork = initEnterpriseIntelligenceNetwork({
+    enterpriseReport: enterpriseIntel.report,
+    strategyOverview: () => autonomousIntel.service.overview(),
+    twinOverview: () => enterpriseTwin.service.overview(),
+    orchestrationOverview: () => globalOrchestration.service.overview(),
+    knowledgeEvidence: () => enterpriseKnowledge.service.evidence(),
+    knowledgeClassification: () => enterpriseKnowledge.service.classification(),
+    knowledgeAnalytics: () => enterpriseKnowledge.service.analytics(),
+    knowledgeGovernance: () => enterpriseKnowledge.service.governance(),
+    industryKpis: () => industryPlatform.service.kpis(),
+    industryReadiness: () => industryPlatform.service.readiness(),
   });
   // Application self-update (electron-updater): channels + check/download/install + rollback prep.
   const updater = initUpdater({ broadcast: deps.broadcast });
@@ -1381,6 +1400,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...enterpriseKnowledge.handlers);
   // P17 — Global AI Orchestration read handlers (self-gated with orchestration:read).
   defs.push(...globalOrchestration.handlers);
+  // P18 — Enterprise Intelligence Network read handlers (self-gated with network:read).
+  defs.push(...intelligenceNetwork.handlers);
   defs.push(...marketplace.handlers);
   defs.push(...webhooks.handlers);
   defs.push(...sandbox.handlers);

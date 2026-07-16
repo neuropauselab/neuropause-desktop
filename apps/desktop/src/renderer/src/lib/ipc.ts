@@ -236,6 +236,15 @@ import {
   type OrchestrationFlowReport,
   type OrchestrationCoordination,
   type OrchestrationGovernance,
+  // P18 — Enterprise Intelligence Network (governed intelligence exchange over the platform)
+  type IntelNetworkOverview,
+  type IntelNetworkExchange,
+  type IntelNetworkBenchmarks,
+  type IntelNetworkInsights,
+  type IntelNetworkTrust,
+  type IntelNetworkOrganizations,
+  type IntelNetworkCollective,
+  type IntelNetworkGovernance,
   // Release engineering (Increment 2 · Stage 2)
   type ReleaseDiagnostics,
   type CrashStatus,
@@ -1543,6 +1552,20 @@ export const ipc = {
     flows: () => invoke(IpcChannel.OrchestrationFlows) as Promise<OrchestrationFlowReport>,
     coordination: () => invoke(IpcChannel.OrchestrationCoordination) as Promise<OrchestrationCoordination>,
     governance: () => invoke(IpcChannel.OrchestrationGovernance) as Promise<OrchestrationGovernance>,
+    // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
+    onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
+  },
+
+  // ── P18 — Enterprise Intelligence Network (read-only governed intelligence exchange; no raw enterprise data) ──
+  network: {
+    overview: () => invoke(IpcChannel.NetworkOverview) as Promise<IntelNetworkOverview>,
+    exchange: () => invoke(IpcChannel.NetworkExchange) as Promise<IntelNetworkExchange>,
+    benchmarks: () => invoke(IpcChannel.NetworkBenchmarks) as Promise<IntelNetworkBenchmarks>,
+    insights: () => invoke(IpcChannel.NetworkInsights) as Promise<IntelNetworkInsights>,
+    trust: () => invoke(IpcChannel.NetworkTrust) as Promise<IntelNetworkTrust>,
+    organizations: () => invoke(IpcChannel.NetworkOrganizations) as Promise<IntelNetworkOrganizations>,
+    collective: () => invoke(IpcChannel.NetworkCollective) as Promise<IntelNetworkCollective>,
+    governance: () => invoke(IpcChannel.NetworkGovernance) as Promise<IntelNetworkGovernance>,
     // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
     onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
   },

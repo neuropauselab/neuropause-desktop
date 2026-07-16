@@ -516,6 +516,16 @@ export const IpcChannel = {
   OrchestrationCoordination: 'orchestration:coordination',
   OrchestrationGovernance: 'orchestration:governance',
 
+  // ── P18 — Enterprise Intelligence Network (read-only governed-intelligence exchange layer) ──
+  NetworkOverview: 'network:overview',
+  NetworkExchange: 'network:exchange',
+  NetworkBenchmarks: 'network:benchmarks',
+  NetworkInsights: 'network:insights',
+  NetworkTrust: 'network:trust',
+  NetworkOrganizations: 'network:organizations',
+  NetworkCollective: 'network:collective',
+  NetworkGovernance: 'network:governance',
+
   EcosystemEventBroadcast: 'ecosystem:event',
 
   // ── P9 — Enterprise Marketplace (layer over the ecosystem marketplace) ──
@@ -1118,6 +1128,16 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.OrchestrationFlows,
   IpcChannel.OrchestrationCoordination,
   IpcChannel.OrchestrationGovernance,
+
+  // ── P18 — Enterprise Intelligence Network ──
+  IpcChannel.NetworkOverview,
+  IpcChannel.NetworkExchange,
+  IpcChannel.NetworkBenchmarks,
+  IpcChannel.NetworkInsights,
+  IpcChannel.NetworkTrust,
+  IpcChannel.NetworkOrganizations,
+  IpcChannel.NetworkCollective,
+  IpcChannel.NetworkGovernance,
 
   // ── P9 — Enterprise Marketplace ──
   IpcChannel.MarketplaceCatalog,
