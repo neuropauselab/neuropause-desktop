@@ -201,6 +201,14 @@ import {
   type IndustryCollection,
   type IndustryReadinessReport,
   type ExecutiveKpi,
+  // P14 — Autonomous Enterprise Intelligence
+  type StrategyOverview,
+  type GoalManager,
+  type PlanningEngine,
+  type ReasoningReport,
+  type OptimizationEngine,
+  type SimulationReport,
+  type DecisionQueue,
   // Release engineering (Increment 2 · Stage 2)
   type ReleaseDiagnostics,
   type CrashStatus,
@@ -1453,6 +1461,19 @@ export const ipc = {
     compliance: () => invoke(IpcChannel.IndustryCompliance) as Promise<IndustryComplianceReport>,
     collections: () => invoke(IpcChannel.IndustryCollections) as Promise<IndustryCollection[]>,
     readiness: () => invoke(IpcChannel.IndustryReadiness) as Promise<IndustryReadinessReport>,
+    // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
+    onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
+  },
+
+  // ── P14 — Autonomous Enterprise Intelligence (read-only strategic reasoning/projection layer) ──
+  strategyPlatform: {
+    overview: () => invoke(IpcChannel.StrategyOverview) as Promise<StrategyOverview>,
+    goals: () => invoke(IpcChannel.StrategyGoals) as Promise<GoalManager>,
+    planning: () => invoke(IpcChannel.StrategyPlanning) as Promise<PlanningEngine>,
+    reasoning: () => invoke(IpcChannel.StrategyReasoning) as Promise<ReasoningReport>,
+    optimization: () => invoke(IpcChannel.StrategyOptimization) as Promise<OptimizationEngine>,
+    simulation: () => invoke(IpcChannel.StrategySimulation) as Promise<SimulationReport>,
+    decisions: () => invoke(IpcChannel.StrategyDecisions) as Promise<DecisionQueue>,
     // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
     onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
   },

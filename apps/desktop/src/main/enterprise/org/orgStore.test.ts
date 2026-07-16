@@ -129,6 +129,8 @@ describe('OrgStore — built-in role reconciliation', () => {
     expect(owner.permissions).toContain('developer:manage');
     // P13 — the industry-solution read scope must backfill on the same upgrade path.
     expect(owner.permissions).toContain('industry:read');
+    // P14 — the autonomous-intelligence (strategy) read scope must backfill on the same upgrade path.
+    expect(owner.permissions).toContain('strategy:read');
   });
 
   it('leaves custom (non-built-in) roles untouched on load', async () => {

@@ -477,6 +477,15 @@ export const IpcChannel = {
   IndustryCollections: 'industry:collections',
   IndustryReadiness: 'industry:readiness',
 
+  // ── P14 — Autonomous Enterprise Intelligence (read-only strategic reasoning/projection layer) ──
+  StrategyOverview: 'strategy:overview',
+  StrategyGoals: 'strategy:goals',
+  StrategyPlanning: 'strategy:planning',
+  StrategyReasoning: 'strategy:reasoning',
+  StrategyOptimization: 'strategy:optimization',
+  StrategySimulation: 'strategy:simulation',
+  StrategyDecisions: 'strategy:decisions',
+
   EcosystemEventBroadcast: 'ecosystem:event',
 
   // ── P9 — Enterprise Marketplace (layer over the ecosystem marketplace) ──
@@ -1040,6 +1049,15 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.IndustryCompliance,
   IpcChannel.IndustryCollections,
   IpcChannel.IndustryReadiness,
+
+  // ── P14 — Autonomous Enterprise Intelligence ──
+  IpcChannel.StrategyOverview,
+  IpcChannel.StrategyGoals,
+  IpcChannel.StrategyPlanning,
+  IpcChannel.StrategyReasoning,
+  IpcChannel.StrategyOptimization,
+  IpcChannel.StrategySimulation,
+  IpcChannel.StrategyDecisions,
 
   // ── P9 — Enterprise Marketplace ──
   IpcChannel.MarketplaceCatalog,

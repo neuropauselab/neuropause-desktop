@@ -30,6 +30,8 @@ export default defineConfig({
       'src/renderer/src/developerCenter/**/*.test.ts',
       // P13 — the Industry Center's pure view-model (no DOM, no React).
       'src/renderer/src/industryCenter/**/*.test.ts',
+      // P14 — the Strategy Center's pure view-model (no DOM, no React).
+      'src/renderer/src/strategyCenter/**/*.test.ts',
     ],
   },
   resolve: {

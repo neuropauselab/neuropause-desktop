@@ -171,6 +171,7 @@ import { withCloudAuthz } from './cloud/controlPlane/cloudAuthz';
 import { initDeveloperPlatform } from './ecosystem/developerPlatform';
 import { withEcosystemAuthz } from './ecosystem/developerPlatform/ecosystemAuthz';
 import { initIndustryPlatform } from './industry';
+import { initAutonomousIntelligence } from './strategy';
 import { initUpdater } from './updater';
 import { initReleaseOps } from './releaseOps';
 import { initFeatureFlags } from './featureFlags';
@@ -379,6 +380,15 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // the existing platform (workforce, connectors, governance, marketplace). Runs last so every
   // backing store is loaded; read-only, RBAC-gated (industry:read).
   const industryPlatform = initIndustryPlatform();
+  // P14 — Autonomous Enterprise Intelligence: the read-only strategic reasoning/projection layer over
+  // the existing intelligence report, cloud control plane, industry platform, workforce, connectors,
+  // marketplace, federation, and governance. Injects the already-computed handles (never re-creates a
+  // second intelligence/cloud/industry engine); read-only, RBAC-gated (strategy:read), executes nothing.
+  const autonomousIntel = initAutonomousIntelligence({
+    enterpriseReport: enterpriseIntel.report,
+    controlPlane: controlPlane.service,
+    industry: industryPlatform.service,
+  });
   // Application self-update (electron-updater): channels + check/download/install + rollback prep.
   const updater = initUpdater({ broadcast: deps.broadcast });
   // Release Operations: migration, backup, crash reporting, release diagnostics,
@@ -1318,6 +1328,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...developerPlatform.handlers);
   // P13 — Industry Solution Platform read handlers (self-gated with industry:read).
   defs.push(...industryPlatform.handlers);
+  // P14 — Autonomous Enterprise Intelligence read handlers (self-gated with strategy:read).
+  defs.push(...autonomousIntel.handlers);
   defs.push(...marketplace.handlers);
   defs.push(...webhooks.handlers);
   defs.push(...sandbox.handlers);

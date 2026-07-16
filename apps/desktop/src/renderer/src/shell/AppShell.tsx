@@ -61,6 +61,9 @@ const DeveloperCenterView = lazy(() =>
 const IndustryCenterView = lazy(() =>
   import('@renderer/industryCenter/IndustryCenterView').then((m) => ({ default: m.IndustryCenterView })),
 );
+const StrategyCenterView = lazy(() =>
+  import('@renderer/strategyCenter/StrategyCenterView').then((m) => ({ default: m.StrategyCenterView })),
+);
 const EnterpriseView = lazy(() =>
   import('@renderer/views/EnterpriseView').then((m) => ({ default: m.EnterpriseView })),
 );
@@ -230,6 +233,8 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
         return <DeveloperCenterView />;
       case 'industry-center':
         return <IndustryCenterView />;
+      case 'strategy-center':
+        return <StrategyCenterView />;
       case 'automations':
         return <WorkforceView initialTab="studio" />;
       case 'notifications':
