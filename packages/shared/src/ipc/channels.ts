@@ -538,6 +538,19 @@ export const IpcChannel = {
   AutoOpsAnalytics: 'autonomousops:analytics',
   AutoOpsGovernance: 'autonomousops:governance',
 
+  // ── P20 — NeuroPause Platform v2 (read-only commercial productization layer) ──
+  CommercialOverview: 'commercial:overview',
+  CommercialSubscription: 'commercial:subscription',
+  CommercialLicensing: 'commercial:licensing',
+  CommercialBilling: 'commercial:billing',
+  CommercialMetering: 'commercial:metering',
+  CommercialDeployment: 'commercial:deployment',
+  CommercialCustomers: 'commercial:customers',
+  CommercialAnalytics: 'commercial:analytics',
+  CommercialReleases: 'commercial:releases',
+  CommercialAdministration: 'commercial:administration',
+  CommercialGovernance: 'commercial:governance',
+
   EcosystemEventBroadcast: 'ecosystem:event',
 
   // ── P9 — Enterprise Marketplace (layer over the ecosystem marketplace) ──
@@ -1162,6 +1175,19 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.AutoOpsMonitoring,
   IpcChannel.AutoOpsAnalytics,
   IpcChannel.AutoOpsGovernance,
+
+  // ── P20 — NeuroPause Platform v2 (commercial productization) ──
+  IpcChannel.CommercialOverview,
+  IpcChannel.CommercialSubscription,
+  IpcChannel.CommercialLicensing,
+  IpcChannel.CommercialBilling,
+  IpcChannel.CommercialMetering,
+  IpcChannel.CommercialDeployment,
+  IpcChannel.CommercialCustomers,
+  IpcChannel.CommercialAnalytics,
+  IpcChannel.CommercialReleases,
+  IpcChannel.CommercialAdministration,
+  IpcChannel.CommercialGovernance,
 
   // ── P9 — Enterprise Marketplace ──
   IpcChannel.MarketplaceCatalog,

@@ -1018,6 +1018,7 @@ export const EnterprisePermissionSchema = z.enum([
   'orchestration:read',
   'network:read',
   'autonomousops:read',
+  'commercial:read',
 ]);
 
 export const EnterpriseOrgCreateUnitRequest = z.object({

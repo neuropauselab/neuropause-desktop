@@ -177,6 +177,7 @@ import { initEnterpriseKnowledge } from './knowledgeFabric';
 import { initGlobalOrchestration } from './orchestration';
 import { initEnterpriseIntelligenceNetwork } from './intelligenceNetwork';
 import { initAutonomousOperations } from './autonomousOps';
+import { initCommercialPlatform } from './commercial';
 import { initUpdater } from './updater';
 import { initReleaseOps } from './releaseOps';
 import { initFeatureFlags } from './featureFlags';
@@ -1411,6 +1412,16 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     supervisorStatus: () => runtimeSupervisor.status(),
     supervisorHistory: () => runtimeSupervisor.getHistory(),
   });
+  // P20 — NeuroPause Platform v2 (Commercial Productization): the read-only commercial projection LAYER. It
+  // unifies the EXISTING billing / license / cloud-tenancy / org-RBAC / usage-analytics / customer-health /
+  // release substrate into customer-facing commercial views — importing zero mutators, so it can neither
+  // change a plan, charge a card, assign a seat, nor provision a tenant; those flow through the existing
+  // billing engine + cloud control plane under their own manage scopes.
+  const commercial = initCommercialPlatform({
+    enterpriseReport: enterpriseIntel.report,
+    controlPlaneOverview: () => controlPlane.service.overview(),
+    strategyOptimization: () => autonomousIntel.service.optimization(),
+  });
   // P13 — Industry Solution Platform read handlers (self-gated with industry:read).
   defs.push(...industryPlatform.handlers);
   // P14 — Autonomous Enterprise Intelligence read handlers (self-gated with strategy:read).
@@ -1425,6 +1436,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...intelligenceNetwork.handlers);
   // P19 — Autonomous Enterprise Operations read handlers (self-gated with autonomousops:read).
   defs.push(...autonomousOps.handlers);
+  // P20 — NeuroPause Platform v2 commercial read handlers (self-gated with commercial:read).
+  defs.push(...commercial.handlers);
   defs.push(...marketplace.handlers);
   defs.push(...webhooks.handlers);
   defs.push(...sandbox.handlers);

@@ -89,6 +89,7 @@ const READ_ONLY: EnterprisePermission[] = [
   'orchestration:read',
   'network:read',
   'autonomousops:read',
+  'commercial:read',
 ];
 
 const MEMBER: EnterprisePermission[] = [...READ_ONLY, 'workforce:operate'];

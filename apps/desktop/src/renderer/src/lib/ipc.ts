@@ -256,6 +256,18 @@ import {
   type AutoOpsMonitoring,
   type AutoOpsAnalytics,
   type AutoOpsGovernance,
+  // P20 — NeuroPause Platform v2 (commercial productization layer)
+  type CommercialOverview,
+  type CommercialSubscription,
+  type CommercialLicensing,
+  type CommercialBilling,
+  type CommercialMetering,
+  type CommercialDeployment,
+  type CommercialCustomers,
+  type CommercialAnalytics,
+  type CommercialReleases,
+  type CommercialAdministration,
+  type CommercialGovernance,
   // Release engineering (Increment 2 · Stage 2)
   type ReleaseDiagnostics,
   type CrashStatus,
@@ -1593,6 +1605,23 @@ export const ipc = {
     monitoring: () => invoke(IpcChannel.AutoOpsMonitoring) as Promise<AutoOpsMonitoring>,
     analytics: () => invoke(IpcChannel.AutoOpsAnalytics) as Promise<AutoOpsAnalytics>,
     governance: () => invoke(IpcChannel.AutoOpsGovernance) as Promise<AutoOpsGovernance>,
+    // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
+    onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
+  },
+
+  // ── P20 — NeuroPause Platform v2 (read-only commercial productization; nothing transacts here) ──
+  commercial: {
+    overview: () => invoke(IpcChannel.CommercialOverview) as Promise<CommercialOverview>,
+    subscription: () => invoke(IpcChannel.CommercialSubscription) as Promise<CommercialSubscription>,
+    licensing: () => invoke(IpcChannel.CommercialLicensing) as Promise<CommercialLicensing>,
+    billing: () => invoke(IpcChannel.CommercialBilling) as Promise<CommercialBilling>,
+    metering: () => invoke(IpcChannel.CommercialMetering) as Promise<CommercialMetering>,
+    deployment: () => invoke(IpcChannel.CommercialDeployment) as Promise<CommercialDeployment>,
+    customers: () => invoke(IpcChannel.CommercialCustomers) as Promise<CommercialCustomers>,
+    analytics: () => invoke(IpcChannel.CommercialAnalytics) as Promise<CommercialAnalytics>,
+    releases: () => invoke(IpcChannel.CommercialReleases) as Promise<CommercialReleases>,
+    administration: () => invoke(IpcChannel.CommercialAdministration) as Promise<CommercialAdministration>,
+    governance: () => invoke(IpcChannel.CommercialGovernance) as Promise<CommercialGovernance>,
     // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
     onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
   },

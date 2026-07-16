@@ -42,6 +42,8 @@ export default defineConfig({
       'src/renderer/src/networkCenter/**/*.test.ts',
       // P19 — the Autonomous Operations Center's pure view-model (no DOM, no React).
       'src/renderer/src/autonomousOpsCenter/**/*.test.ts',
+      // P20 — the Commercial Center's pure view-model (no DOM, no React).
+      'src/renderer/src/commercialCenter/**/*.test.ts',
     ],
   },
   resolve: {

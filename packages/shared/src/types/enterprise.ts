@@ -133,7 +133,9 @@ export type EnterprisePermission =
   // ── P18 — Enterprise Intelligence Network: read the intelligence-network projection layer. ──
   | 'network:read'
   // ── P19 — Autonomous Enterprise Operations: read the closed-loop operations projection layer. ──
-  | 'autonomousops:read';
+  | 'autonomousops:read'
+  // ── P20 — NeuroPause Platform v2: read the commercial productization projection layer. ──
+  | 'commercial:read';
 
 export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   'org:read',
@@ -200,6 +202,8 @@ export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   'network:read',
   // ── P19 — Autonomous Enterprise Operations ──
   'autonomousops:read',
+  // ── P20 — NeuroPause Platform v2 (commercial productization) ──
+  'commercial:read',
 ];
 
 export interface OrgRole {
