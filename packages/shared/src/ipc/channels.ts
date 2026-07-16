@@ -520,6 +520,15 @@ export const IpcChannel = {
   CloudPublicApis: 'cloud:api.publicApis',
   CloudAdminOverview: 'cloud:admin.overview',
   CloudAdminCompliance: 'cloud:admin.compliance',
+
+  // ── P11 — Cloud Control Plane (management/orchestration rollup over the cloud subsystems) ──
+  ControlPlaneOverview: 'cloud:cp.overview',
+  ControlPlaneFleet: 'cloud:cp.fleet',
+  ControlPlaneRegions: 'cloud:cp.regions',
+  ControlPlaneTenants: 'cloud:cp.tenants',
+  ControlPlaneDeployments: 'cloud:cp.deployments',
+  ControlPlaneUsage: 'cloud:cp.usage',
+
   CloudEventBroadcast: 'cloud:event',
 
   // ── Cloud & Federation · Federation Platform (Phase 9 · Stage 2) ──
@@ -1055,6 +1064,14 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.CloudPublicApis,
   IpcChannel.CloudAdminOverview,
   IpcChannel.CloudAdminCompliance,
+
+  // ── P11 — Cloud Control Plane ──
+  IpcChannel.ControlPlaneOverview,
+  IpcChannel.ControlPlaneFleet,
+  IpcChannel.ControlPlaneRegions,
+  IpcChannel.ControlPlaneTenants,
+  IpcChannel.ControlPlaneDeployments,
+  IpcChannel.ControlPlaneUsage,
 
   // ── Federation Platform (Stage 2) ──
   IpcChannel.FedOrgs,

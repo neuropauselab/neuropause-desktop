@@ -52,6 +52,9 @@ const MarketplaceView = lazy(() =>
 const FederationCenterView = lazy(() =>
   import('@renderer/federationCenter/FederationCenterView').then((m) => ({ default: m.FederationCenterView })),
 );
+const ControlPlaneView = lazy(() =>
+  import('@renderer/controlPlane/ControlPlaneView').then((m) => ({ default: m.ControlPlaneView })),
+);
 const EnterpriseView = lazy(() =>
   import('@renderer/views/EnterpriseView').then((m) => ({ default: m.EnterpriseView })),
 );
@@ -215,6 +218,8 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
         return <MarketplaceView />;
       case 'federation-center':
         return <FederationCenterView />;
+      case 'control-plane':
+        return <ControlPlaneView />;
       case 'automations':
         return <WorkforceView initialTab="studio" />;
       case 'notifications':

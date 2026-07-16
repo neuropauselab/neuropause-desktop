@@ -24,6 +24,8 @@ export default defineConfig({
       'src/renderer/src/workforceCenter/**/*.test.ts',
       // P10 — the Federation Center's pure view-model (no DOM, no React).
       'src/renderer/src/federationCenter/**/*.test.ts',
+      // P11 — the Cloud Control Plane's pure view-model (no DOM, no React).
+      'src/renderer/src/controlPlane/**/*.test.ts',
     ],
   },
   resolve: {

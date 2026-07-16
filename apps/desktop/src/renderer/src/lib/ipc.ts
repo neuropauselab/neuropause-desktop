@@ -333,6 +333,12 @@ import type {
   ApiPlatformSummary,
   AdminOverview,
   ComplianceReport,
+  ControlPlaneOverview,
+  FleetOverview,
+  RegionStatus,
+  TenantDirectoryEntry,
+  DeploymentStatusEntry,
+  UsageOverview,
 } from '@neuropause/shared';
 
 import type {
@@ -1558,6 +1564,18 @@ export const ipc = {
 
     onEvent: (cb: (e: { kind: string; at: string }) => void) =>
       subscribe(IpcChannel.CloudEventBroadcast, (p) => cb(p as { kind: string; at: string })),
+  },
+
+  // ── P11 — Cloud Control Plane (management/orchestration rollup over the cloud subsystems) ──
+  controlPlane: {
+    overview: () => invoke(IpcChannel.ControlPlaneOverview) as Promise<ControlPlaneOverview>,
+    fleet: () => invoke(IpcChannel.ControlPlaneFleet) as Promise<FleetOverview>,
+    regions: () => invoke(IpcChannel.ControlPlaneRegions) as Promise<RegionStatus[]>,
+    tenants: () => invoke(IpcChannel.ControlPlaneTenants) as Promise<TenantDirectoryEntry[]>,
+    deployments: () => invoke(IpcChannel.ControlPlaneDeployments) as Promise<DeploymentStatusEntry[]>,
+    usage: () => invoke(IpcChannel.ControlPlaneUsage) as Promise<UsageOverview>,
+    // Reuses the cloud runtime's existing `cloud:event` broadcast for liveness.
+    onEvent: (cb: () => void) => subscribe(IpcChannel.CloudEventBroadcast, () => cb()),
   },
 
   federation: {

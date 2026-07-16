@@ -120,6 +120,9 @@ describe('OrgStore — built-in role reconciliation', () => {
     expect(owner.permissions).toContain('federation:read');
     expect(owner.permissions).toContain('federation:manage');
     expect(owner.permissions).toContain('federation:approve');
+    // P11 — the cloud control-plane scopes must backfill on the same upgrade path.
+    expect(owner.permissions).toContain('cloud:read');
+    expect(owner.permissions).toContain('cloud:manage');
   });
 
   it('leaves custom (non-built-in) roles untouched on load', async () => {

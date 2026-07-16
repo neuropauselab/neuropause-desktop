@@ -166,6 +166,8 @@ import { initInfrastructure } from './infrastructure';
 import { initFederation } from './federation';
 import { initFederationPlatform } from './federationPlatform';
 import { withFederationAuthz } from './federationPlatform/federationAuthz';
+import { initControlPlane } from './cloud/controlPlane';
+import { withCloudAuthz } from './cloud/controlPlane/cloudAuthz';
 import { initUpdater } from './updater';
 import { initReleaseOps } from './releaseOps';
 import { initFeatureFlags } from './featureFlags';
@@ -362,6 +364,10 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // P10 — Federation Platform: the intelligence/governance/integration layer over the
   // federation runtime (graph, unified timeline, search, directory, analytics + RBAC).
   const federationPlatform = initFederationPlatform();
+  // P11 — Cloud Control Plane: the global management/orchestration layer over the cloud
+  // subsystems (fleet, regions, tenants, deployments, usage) + RBAC on the cloud handlers.
+  // Runs after cloud + federation init so every backing store is loaded.
+  const controlPlane = initControlPlane();
   // Application self-update (electron-updater): channels + check/download/install + rollback prep.
   const updater = initUpdater({ broadcast: deps.broadcast });
   // Release Operations: migration, backup, crash reporting, release diagnostics,
@@ -1299,7 +1305,10 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...marketplace.handlers);
   defs.push(...webhooks.handlers);
   defs.push(...sandbox.handlers);
-  defs.push(...cloud.handlers);
+  // P11 — harden the previously-ungated cloud runtime handlers with RBAC (they shipped with no
+  // requireAuth/permission); every cloud channel now requires a cloud:* permission.
+  defs.push(...withCloudAuthz(cloud.handlers));
+  defs.push(...controlPlane.handlers);
   defs.push(...infrastructure.handlers);
   defs.push(...enterpriseIntel.handlers);
   defs.push(...featureFlags.handlers);
