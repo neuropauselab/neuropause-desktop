@@ -127,6 +127,8 @@ describe('OrgStore — built-in role reconciliation', () => {
     // upgraded install would be locked out of the now-RBAC-gated ecosystem:devplatform.* channels).
     expect(owner.permissions).toContain('developer:read');
     expect(owner.permissions).toContain('developer:manage');
+    // P13 — the industry-solution read scope must backfill on the same upgrade path.
+    expect(owner.permissions).toContain('industry:read');
   });
 
   it('leaves custom (non-built-in) roles untouched on load', async () => {

@@ -28,6 +28,8 @@ export default defineConfig({
       'src/renderer/src/controlPlane/**/*.test.ts',
       // P12 — the Developer Center's pure view-model (no DOM, no React).
       'src/renderer/src/developerCenter/**/*.test.ts',
+      // P13 — the Industry Center's pure view-model (no DOM, no React).
+      'src/renderer/src/industryCenter/**/*.test.ts',
     ],
   },
   resolve: {

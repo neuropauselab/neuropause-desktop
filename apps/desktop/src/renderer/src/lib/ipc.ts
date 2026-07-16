@@ -194,6 +194,13 @@ import {
   type TemplateRegistry,
   type PublishingConsole,
   type DeveloperPlatformAnalytics,
+  // P13 — Industry Solution Platform
+  type IndustryPlatformOverview,
+  type IndustrySuite,
+  type IndustryComplianceReport,
+  type IndustryCollection,
+  type IndustryReadinessReport,
+  type ExecutiveKpi,
   // Release engineering (Increment 2 · Stage 2)
   type ReleaseDiagnostics,
   type CrashStatus,
@@ -1434,6 +1441,18 @@ export const ipc = {
     templates: () => invoke(IpcChannel.DevPlatformTemplates) as Promise<TemplateRegistry>,
     publishing: () => invoke(IpcChannel.DevPlatformPublishing) as Promise<PublishingConsole>,
     analytics: () => invoke(IpcChannel.DevPlatformAnalytics) as Promise<DeveloperPlatformAnalytics>,
+    // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
+    onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
+  },
+
+  // ── P13 — Industry Solution Platform (curated solution-pack catalog + readiness projection) ──
+  industryPlatform: {
+    overview: () => invoke(IpcChannel.IndustryOverview) as Promise<IndustryPlatformOverview>,
+    suites: () => invoke(IpcChannel.IndustrySuites) as Promise<IndustrySuite[]>,
+    kpis: () => invoke(IpcChannel.IndustryKpis) as Promise<ExecutiveKpi[]>,
+    compliance: () => invoke(IpcChannel.IndustryCompliance) as Promise<IndustryComplianceReport>,
+    collections: () => invoke(IpcChannel.IndustryCollections) as Promise<IndustryCollection[]>,
+    readiness: () => invoke(IpcChannel.IndustryReadiness) as Promise<IndustryReadinessReport>,
     // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
     onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
   },

@@ -170,6 +170,7 @@ import { initControlPlane } from './cloud/controlPlane';
 import { withCloudAuthz } from './cloud/controlPlane/cloudAuthz';
 import { initDeveloperPlatform } from './ecosystem/developerPlatform';
 import { withEcosystemAuthz } from './ecosystem/developerPlatform/ecosystemAuthz';
+import { initIndustryPlatform } from './industry';
 import { initUpdater } from './updater';
 import { initReleaseOps } from './releaseOps';
 import { initFeatureFlags } from './featureFlags';
@@ -374,6 +375,10 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // (developer console, SDK/API/template registries, publishing, analytics) + RBAC on the
   // ecosystem handlers. Runs after ecosystem + cloud init so every backing store is loaded.
   const developerPlatform = initDeveloperPlatform();
+  // P13 — Industry Solution Platform: the curated solution-pack catalog + readiness projection over
+  // the existing platform (workforce, connectors, governance, marketplace). Runs last so every
+  // backing store is loaded; read-only, RBAC-gated (industry:read).
+  const industryPlatform = initIndustryPlatform();
   // Application self-update (electron-updater): channels + check/download/install + rollback prep.
   const updater = initUpdater({ broadcast: deps.broadcast });
   // Release Operations: migration, backup, crash reporting, release diagnostics,
@@ -1311,6 +1316,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // requireAuth/permission); every ecosystem channel now requires a developer:* permission.
   defs.push(...withEcosystemAuthz(ecosystem.handlers));
   defs.push(...developerPlatform.handlers);
+  // P13 — Industry Solution Platform read handlers (self-gated with industry:read).
+  defs.push(...industryPlatform.handlers);
   defs.push(...marketplace.handlers);
   defs.push(...webhooks.handlers);
   defs.push(...sandbox.handlers);

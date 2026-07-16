@@ -469,6 +469,14 @@ export const IpcChannel = {
   DevPlatformPublishing: 'ecosystem:devplatform.publishing',
   DevPlatformAnalytics: 'ecosystem:devplatform.analytics',
 
+  // ── P13 — Industry Solution Platform (curated solution-pack catalog + readiness projection) ──
+  IndustryOverview: 'industry:overview',
+  IndustrySuites: 'industry:suites',
+  IndustryKpis: 'industry:kpis',
+  IndustryCompliance: 'industry:compliance',
+  IndustryCollections: 'industry:collections',
+  IndustryReadiness: 'industry:readiness',
+
   EcosystemEventBroadcast: 'ecosystem:event',
 
   // ── P9 — Enterprise Marketplace (layer over the ecosystem marketplace) ──
@@ -1024,6 +1032,14 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.DevPlatformTemplates,
   IpcChannel.DevPlatformPublishing,
   IpcChannel.DevPlatformAnalytics,
+
+  // ── P13 — Industry Solution Platform ──
+  IpcChannel.IndustryOverview,
+  IpcChannel.IndustrySuites,
+  IpcChannel.IndustryKpis,
+  IpcChannel.IndustryCompliance,
+  IpcChannel.IndustryCollections,
+  IpcChannel.IndustryReadiness,
 
   // ── P9 — Enterprise Marketplace ──
   IpcChannel.MarketplaceCatalog,

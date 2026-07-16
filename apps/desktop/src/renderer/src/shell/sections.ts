@@ -7,6 +7,7 @@ export type SectionId =
   | 'opscenter'
   | 'developer'
   | 'developer-center'
+  | 'industry-center'
   | 'ecosystem'
   | 'cloud'
   | 'control-plane'
@@ -45,6 +46,7 @@ export const SECTIONS: SectionDef[] = [
   { id: 'opscenter', label: 'Ops Center', icon: 'pulse', phase: 7, placement: 'primary' },
   { id: 'developer', label: 'Developer', icon: 'code', phase: 8, placement: 'primary' },
   { id: 'developer-center', label: 'Developer Center', icon: 'puzzle', phase: 12, placement: 'primary' },
+  { id: 'industry-center', label: 'Industry Center', icon: 'package', phase: 13, placement: 'primary' },
   { id: 'ecosystem', label: 'Ecosystem', icon: 'globe', phase: 8, placement: 'primary' },
   { id: 'cloud', label: 'Cloud', icon: 'database', phase: 9, placement: 'primary' },
   { id: 'control-plane', label: 'Control Plane', icon: 'gauge', phase: 11, placement: 'primary' },

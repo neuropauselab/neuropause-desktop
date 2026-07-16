@@ -58,6 +58,9 @@ const ControlPlaneView = lazy(() =>
 const DeveloperCenterView = lazy(() =>
   import('@renderer/developerCenter/DeveloperCenterView').then((m) => ({ default: m.DeveloperCenterView })),
 );
+const IndustryCenterView = lazy(() =>
+  import('@renderer/industryCenter/IndustryCenterView').then((m) => ({ default: m.IndustryCenterView })),
+);
 const EnterpriseView = lazy(() =>
   import('@renderer/views/EnterpriseView').then((m) => ({ default: m.EnterpriseView })),
 );
@@ -225,6 +228,8 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
         return <ControlPlaneView />;
       case 'developer-center':
         return <DeveloperCenterView />;
+      case 'industry-center':
+        return <IndustryCenterView />;
       case 'automations':
         return <WorkforceView initialTab="studio" />;
       case 'notifications':

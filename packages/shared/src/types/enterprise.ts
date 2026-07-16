@@ -119,7 +119,9 @@ export type EnterprisePermission =
   | 'cloud:manage'
   // ── P12 — Developer Platform: read the developer console, and manage keys/OAuth/publishing/billing. ──
   | 'developer:read'
-  | 'developer:manage';
+  | 'developer:manage'
+  // ── P13 — Industry Solution Platform: read the industry solution-pack catalog + readiness. ──
+  | 'industry:read';
 
 export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   'org:read',
@@ -172,6 +174,8 @@ export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   // ── P12 — Developer Platform ──
   'developer:read',
   'developer:manage',
+  // ── P13 — Industry Solution Platform ──
+  'industry:read',
 ];
 
 export interface OrgRole {

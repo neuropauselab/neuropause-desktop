@@ -100,6 +100,7 @@ export * from './types/federation';
 export * from './types/federationPlatform';
 export * from './types/controlPlane';
 export * from './types/developerPlatform';
+export * from './types/industrySolution';
 export * from './types/update';
 export * from './types/diagnostics';
 export * from './types/maintenance';
