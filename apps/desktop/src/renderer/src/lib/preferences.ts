@@ -57,4 +57,7 @@ export const PrefKey = {
   ignoredVersions: 'ignoredVersions',
   autoUpdate: 'autoUpdate',
   recentCommands: 'recentCommands',
+  // Constitutional Settings v1.0 — Startup Experience Policy (backed by this same pref store).
+  startupMode: 'startupMode',
+  startupSection: 'startupSection',
 } as const;

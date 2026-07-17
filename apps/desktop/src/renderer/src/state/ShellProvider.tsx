@@ -10,6 +10,7 @@ import {
 import type { SectionId } from '@renderer/shell/sections';
 import { SECTIONS } from '@renderer/shell/sections';
 import { prefs, PrefKey } from '@renderer/lib/preferences';
+import { resolveStartupSection, type StartupMode } from '@renderer/shell/startupPolicy';
 
 /** A single open tab in the Workspace (an AI app instance). */
 export interface WorkspaceTab {
@@ -59,14 +60,9 @@ type Action =
   | { type: 'clearConnectorsTab' };
 
 const clampWidth = (w: number): number => Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(w)));
-// The canonical default landing is the intent-native home. A persisted section that is now hidden from nav
-// (a retired duplicate/placeholder) falls back here so a returning user never lands on a hidden surface.
-const DEFAULT_SECTION: SectionId = 'intent-home';
-const isVisibleSection = (v: unknown): v is SectionId => SECTIONS.some((s) => s.id === v && !s.hidden);
-
 /** Builds initial state, restoring persisted preferences where valid. */
 function init(): ShellState {
-  const persistedSection = prefs.read<string>(PrefKey.activeSection, DEFAULT_SECTION);
+  const persistedSection = prefs.read<string>(PrefKey.activeSection, 'intent-home');
   const persistedTabs = prefs.read<WorkspaceTab[]>(PrefKey.workspaceTabs, []);
   const persistedActiveTab = prefs.read<string | null>(PrefKey.activeTabId, null);
   const tabs = Array.isArray(persistedTabs) ? persistedTabs.filter((t) => t && t.id && t.appId) : [];
@@ -74,8 +70,18 @@ function init(): ShellState {
     ? persistedActiveTab
     : (tabs[tabs.length - 1]?.id ?? null);
 
+  // Startup Experience Policy — resolve the landing section from the user's real startup preference,
+  // validated against the section registry with a never-erroring fallback chain.
+  const startupMode = prefs.read<StartupMode>(PrefKey.startupMode, 'resume');
+  const startupSection = prefs.read<string>(PrefKey.startupSection, 'intent-home');
+
   return {
-    activeSection: isVisibleSection(persistedSection) ? persistedSection : DEFAULT_SECTION,
+    activeSection: resolveStartupSection({
+      mode: startupMode,
+      configuredSection: startupSection,
+      lastSection: persistedSection,
+      hasUnfinishedWork: tabs.length > 0,
+    }),
     sidebarCollapsed: prefs.read<boolean>(PrefKey.sidebarCollapsed, false),
     sidebarWidth: clampWidth(prefs.read<number>(PrefKey.sidebarWidth, SIDEBAR_DEFAULT)),
     commandOpen: false,

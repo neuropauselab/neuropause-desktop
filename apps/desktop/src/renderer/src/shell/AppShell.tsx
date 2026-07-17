@@ -115,8 +115,8 @@ const FederationView = lazy(() =>
 const NotificationsView = lazy(() =>
   import('@renderer/views/NotificationsView').then((m) => ({ default: m.NotificationsView })),
 );
-const SettingsView = lazy(() =>
-  import('@renderer/views/SettingsView').then((m) => ({ default: m.SettingsView })),
+const SettingsShell = lazy(() =>
+  import('@renderer/settings/SettingsShell').then((m) => ({ default: m.SettingsShell })),
 );
 const SandboxView = lazy(() =>
   import('@renderer/views/SandboxView').then((m) => ({ default: m.SandboxView })),
@@ -286,7 +286,7 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
       case 'sandbox':
         return <SandboxView />;
       case 'settings':
-        return <SettingsView session={session} />;
+        return <SettingsShell session={session} onOpenSection={(id) => goToSection(id as SectionId)} />;
       default:
         return <HomeView session={session} />;
     }
