@@ -54,6 +54,8 @@ export default defineConfig({
       'src/renderer/src/settings/**/*.test.ts',
       // Capability Completion v1.0 — the canonical capability registry (single source of truth).
       'src/renderer/src/capability/**/*.test.ts',
+      // Enterprise Business Suite v1.0 — the Business Workspace model (pure data: family grouping + KPIs).
+      'src/renderer/src/business/**/*.test.ts',
     ],
   },
   resolve: {

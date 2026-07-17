@@ -37,7 +37,8 @@ export const HIDDEN_STATES: CapabilityState[] = ['needs-ipc', 'needs-adapter', '
 
 export type CapabilityDomain =
   | 'identity' | 'security' | 'governance' | 'privacy' | 'ai' | 'workspace'
-  | 'organization' | 'integrations' | 'developer' | 'billing' | 'system' | 'platform';
+  | 'organization' | 'integrations' | 'developer' | 'billing' | 'system' | 'platform'
+  | 'business';
 
 export interface Capability {
   /** Canonical, dotted id — the key every subsystem references. */
@@ -136,6 +137,23 @@ export const CAPABILITY_REGISTRY: Capability[] = [
   { id: 'system.devices', label: 'Device management', domain: 'system', runtime: 'devices service', state: 'production-complete', permission: 'org:manage' },
   { id: 'system.infrastructure', label: 'Infrastructure discovery', domain: 'system', runtime: 'infrastructure adapters', state: 'managed', note: 'Real cloud discovery adapters (AWS SigV4 + fetch), credential-gated; surfaced in the Infrastructure section.' },
   { id: 'system.storage-metering', label: 'Storage usage metering', domain: 'system', runtime: 'support-bundle dirSize', state: 'needs-ipc', note: 'A real directory-size reader EXISTS but is not wired to a live disk figure or an IPC channel (deferred).' },
+
+  // ── Business (Enterprise Business Suite — the Business Workspace groups these real, registered modules) ──
+  // Each family is production-complete: real records on the enterprise module framework, RBAC-gated in the
+  // main process, audited via the lifecycle bus, searchable, and rendered by the generic module screen.
+  { id: 'business.finance', label: 'Finance (invoices, payments)', domain: 'business', runtime: 'enterprise module framework', state: 'production-complete', permission: 'operations:manage', audited: true, tested: true, note: 'Finance enforces the operations:* scope, not finance:* — recorded as enforced.' },
+  { id: 'business.sales', label: 'Sales (quotes, orders)', domain: 'business', runtime: 'enterprise module framework', state: 'production-complete', permission: 'sales:manage', audited: true, tested: true },
+  { id: 'business.crm', label: 'CRM (contacts, leads, customers)', domain: 'business', runtime: 'enterprise module framework', state: 'production-complete', permission: 'crm:manage', audited: true, tested: true },
+  { id: 'business.procurement', label: 'Procurement (suppliers, requests, POs, receipts)', domain: 'business', runtime: 'enterprise module framework', state: 'production-complete', permission: 'procurement:manage', audited: true, tested: true },
+  { id: 'business.inventory', label: 'Inventory (products, warehouses, movements)', domain: 'business', runtime: 'enterprise module framework', state: 'production-complete', permission: 'inventory:manage', audited: true, tested: true },
+  { id: 'business.warehouse', label: 'Warehouse (zones, bins, picking, packing, shipping)', domain: 'business', runtime: 'enterprise module framework', state: 'production-complete', permission: 'warehouse:manage', audited: true, tested: true },
+  { id: 'business.manufacturing', label: 'Manufacturing (BOMs, orders, scheduling, execution)', domain: 'business', runtime: 'enterprise module framework', state: 'production-complete', permission: 'manufacturing:manage', audited: true, tested: true },
+  { id: 'business.maintenance', label: 'Maintenance (assets, work orders, preventive plans)', domain: 'business', runtime: 'enterprise module framework', state: 'production-complete', permission: 'maintenance:manage', audited: true, tested: true },
+  { id: 'business.executive', label: 'Executive (decisions, execution proposals)', domain: 'business', runtime: 'enterprise module framework', state: 'production-complete', permission: 'executive:approve', audited: true, tested: true, note: 'Writes split across executive:approve / executive:execute scopes.' },
+  // Roadmap families the Business Workspace nav intentionally does NOT show as empty rooms — no modules yet.
+  { id: 'business.quality', label: 'Quality management', domain: 'business', runtime: 'enterprise module framework', state: 'future-release', note: 'Exists today only as the Manufacturing "Quality Inspection" module; a standalone Quality family has no dedicated modules yet.' },
+  { id: 'business.hr', label: 'Human Resources', domain: 'business', runtime: 'enterprise module framework', state: 'future-release', note: 'No HR modules are registered yet; planned for a future release.' },
+  { id: 'business.projects', label: 'Projects & portfolio', domain: 'business', runtime: 'enterprise module framework', state: 'future-release', note: 'No Projects modules are registered yet; planned for a future release.' },
 ];
 
 /* ── Derived views (surfaces read these; never redefine capability state elsewhere) ── */

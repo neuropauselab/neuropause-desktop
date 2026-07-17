@@ -91,6 +91,9 @@ const IntentHomeView = lazy(() =>
 const EnterpriseView = lazy(() =>
   import('@renderer/views/EnterpriseView').then((m) => ({ default: m.EnterpriseView })),
 );
+const BusinessView = lazy(() =>
+  import('@renderer/business/BusinessView').then((m) => ({ default: m.BusinessView })),
+);
 const OpsCenterView = lazy(() =>
   import('@renderer/views/OpsCenterView').then((m) => ({ default: m.OpsCenterView })),
 );
@@ -236,6 +239,8 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
         return <MemoryView />;
       case 'enterprise':
         return <EnterpriseView />;
+      case 'business':
+        return <BusinessView />;
       case 'opscenter':
         return <OpsCenterView />;
       case 'developer':

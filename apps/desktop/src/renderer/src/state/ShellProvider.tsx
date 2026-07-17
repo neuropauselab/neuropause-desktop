@@ -39,6 +39,8 @@ interface ShellState {
   enterpriseTab: string | null;
   /** A one-shot deep-link target for a Connector Center sub-tab (set by the Command Palette). */
   connectorsTab: string | null;
+  /** A one-shot deep-link target for a Business Workspace module (set by the Command Palette / search). */
+  businessTab: string | null;
 }
 
 type Action =
@@ -56,7 +58,9 @@ type Action =
   | { type: 'openEnterprise'; tab: string | null }
   | { type: 'clearEnterpriseTab' }
   | { type: 'openConnectors'; tab: string | null }
-  | { type: 'clearConnectorsTab' };
+  | { type: 'clearConnectorsTab' }
+  | { type: 'openBusiness'; tab: string | null }
+  | { type: 'clearBusinessTab' };
 
 const clampWidth = (w: number): number => Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(w)));
 /** Builds initial state, restoring persisted preferences where valid. */
@@ -90,6 +94,7 @@ function init(): ShellState {
     opsTab: null,
     enterpriseTab: null,
     connectorsTab: null,
+    businessTab: null,
   };
 }
 
@@ -169,6 +174,12 @@ function reducer(state: ShellState, action: Action): ShellState {
     case 'clearConnectorsTab':
       return { ...state, connectorsTab: null };
 
+    case 'openBusiness':
+      return { ...state, activeSection: 'business', businessTab: action.tab };
+
+    case 'clearBusinessTab':
+      return { ...state, businessTab: null };
+
     default:
       return state;
   }
@@ -192,6 +203,8 @@ interface ShellContextValue extends ShellState {
   clearEnterpriseTab: () => void;
   openConnectors: (tab?: string) => void;
   clearConnectorsTab: () => void;
+  openBusiness: (tab?: string) => void;
+  clearBusinessTab: () => void;
 }
 
 const ShellContext = createContext<ShellContextValue | null>(null);
@@ -226,6 +239,8 @@ export function ShellProvider({ children }: { children: ReactNode }): JSX.Elemen
   const clearEnterpriseTab = useCallback(() => dispatch({ type: 'clearEnterpriseTab' }), []);
   const openConnectors = useCallback((tab?: string) => dispatch({ type: 'openConnectors', tab: tab ?? null }), []);
   const clearConnectorsTab = useCallback(() => dispatch({ type: 'clearConnectorsTab' }), []);
+  const openBusiness = useCallback((tab?: string) => dispatch({ type: 'openBusiness', tab: tab ?? null }), []);
+  const clearBusinessTab = useCallback(() => dispatch({ type: 'clearBusinessTab' }), []);
 
   const value = useMemo<ShellContextValue>(
     () => ({
@@ -247,6 +262,8 @@ export function ShellProvider({ children }: { children: ReactNode }): JSX.Elemen
       clearEnterpriseTab,
       openConnectors,
       clearConnectorsTab,
+      openBusiness,
+      clearBusinessTab,
     }),
     [
       state,
@@ -267,6 +284,8 @@ export function ShellProvider({ children }: { children: ReactNode }): JSX.Elemen
       clearEnterpriseTab,
       openConnectors,
       clearConnectorsTab,
+      openBusiness,
+      clearBusinessTab,
     ],
   );
 

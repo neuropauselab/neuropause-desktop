@@ -26,6 +26,7 @@ export type SettingsDomainId =
   | 'ai'
   | 'workspace'
   | 'organization'
+  | 'business'
   | 'integrations'
   | 'developer'
   | 'billing'
@@ -48,6 +49,7 @@ export const SETTINGS_DOMAINS: SettingsDomain[] = [
   { id: 'ai', label: 'AI', icon: 'sparkles', summary: 'Provider, model, execution & approval policy' },
   { id: 'workspace', label: 'Workspace', icon: 'grid', summary: 'Appearance, scale, startup experience, layout' },
   { id: 'organization', label: 'Organization', icon: 'command', summary: 'Departments, teams, people, digital workers, licenses' },
+  { id: 'business', label: 'Business', icon: 'layers', summary: 'Finance, sales, CRM, procurement, inventory & operations areas' },
   { id: 'integrations', label: 'Integrations', icon: 'globe', summary: 'Connectors, OAuth, webhooks' },
   { id: 'developer', label: 'Developer', icon: 'package', summary: 'API keys, OAuth apps, plugins, sandbox, logs' },
   { id: 'billing', label: 'Billing', icon: 'store', summary: 'Subscription, licenses, usage, invoices' },
@@ -92,6 +94,11 @@ export const SETTINGS_SEARCH: SettingsSearchEntry[] = [
   { label: 'Startup experience', keywords: ['startup', 'launch', 'default page', 'landing', 'home', 'open to', 'change startup page'], domain: 'workspace', state: 'editable' },
   { label: 'Departments, teams & people', keywords: ['department', 'team', 'employee', 'people', 'member', 'org chart'], domain: 'organization', state: 'editable', targetSection: 'enterprise' },
   { label: 'Digital workers', keywords: ['worker', 'ai worker', 'workforce', 'agent', 'roster'], domain: 'organization', state: 'managed', targetSection: 'workforce' },
+  { label: 'Business workspace', keywords: ['business', 'erp', 'operations', 'modules', 'areas', 'records'], domain: 'business', state: 'editable', targetSection: 'business' },
+  { label: 'Finance', keywords: ['finance', 'invoice', 'payment', 'receivable', 'billing records'], domain: 'business', state: 'editable', targetSection: 'business' },
+  { label: 'Sales & CRM', keywords: ['sales', 'crm', 'quote', 'order', 'contact', 'lead', 'customer', 'pipeline'], domain: 'business', state: 'editable', targetSection: 'business' },
+  { label: 'Procurement', keywords: ['procurement', 'supplier', 'purchase order', 'po', 'requisition', 'goods receipt'], domain: 'business', state: 'editable', targetSection: 'business' },
+  { label: 'Inventory & warehouse', keywords: ['inventory', 'product', 'stock', 'warehouse', 'movement', 'bin', 'picking'], domain: 'business', state: 'editable', targetSection: 'business' },
   { label: 'Connectors', keywords: ['connector', 'integration', 'sync', 'github', 'slack', 'salesforce', 'notion'], domain: 'integrations', state: 'editable', targetSection: 'connectors' },
   { label: 'Webhooks', keywords: ['webhook', 'callback', 'event', 'egress'], domain: 'integrations', state: 'editable', targetSection: 'developer' },
   { label: 'API keys & OAuth apps', keywords: ['api key', 'oauth app', 'token', 'developer', 'sdk'], domain: 'developer', state: 'editable', targetSection: 'developer' },

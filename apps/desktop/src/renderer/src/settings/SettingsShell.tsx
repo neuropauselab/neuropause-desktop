@@ -34,7 +34,7 @@ import {
   SETTINGS_DOMAINS,
   type SettingsDomainId,
 } from '@renderer/settings/settingsCatalog';
-import { computeMaturity } from '@renderer/capability/capabilityRegistry';
+import { computeMaturity, CAPABILITY_REGISTRY } from '@renderer/capability/capabilityRegistry';
 
 const THEME_OPTIONS: SegmentedTabItem<ThemeSource>[] = [
   { id: 'system', label: 'Auto', icon: 'auto' },
@@ -440,12 +440,74 @@ function DomainContent({ domain, session, go }: { domain: SettingsDomainId; sess
         </>
       );
 
+    case 'business':
+      return <BusinessSettings go={go} />;
+
     case 'capabilities':
       return <CapabilitiesInventory />;
 
     default:
       return <DomainHeader id={domain} />;
   }
+}
+
+/** Business domain — the honest inventory of business areas: live areas (read-only here) + planned areas. */
+function BusinessSettings({ go }: { go: (id?: SectionId) => void }): JSX.Element {
+  const rows = CAPABILITY_REGISTRY.filter((c) => c.domain === 'business');
+  const live = rows.filter((c) => c.state === 'production-complete');
+  const planned = rows.filter((c) => c.state !== 'production-complete');
+  return (
+    <>
+      <DomainHeader id="business" />
+      <Group title="Business workspace">
+        <Card className="py-1.5">
+          <OpenRow
+            label="Open Business workspace"
+            description="Finance, sales, CRM, procurement, inventory and operations — grouped by area."
+            onOpen={() => go('business')}
+          />
+        </Card>
+      </Group>
+      <Group title={`Live areas (${live.length})`}>
+        <Card className="py-1.5">
+          {live.map((c, i) => (
+            <div key={c.id}>
+              {i > 0 && <Divider />}
+              <div className="flex items-start justify-between gap-4 py-3">
+                <div className="min-w-0">
+                  <div className="text-base font-medium">{c.label}</div>
+                  <div className="mt-0.5 text-sm text-faint">
+                    Real records on the enterprise module framework — RBAC-gated ({c.permission}), audited, searchable.
+                  </div>
+                </div>
+                <span className="shrink-0 rounded-full border border-[var(--hairline)] px-2 py-0.5 text-[10px] font-medium text-faint" title="Production-complete">
+                  Production
+                </span>
+              </div>
+            </div>
+          ))}
+        </Card>
+      </Group>
+      {planned.length > 0 && (
+        <Group title="Planned areas (not yet built)">
+          <Card className="py-1.5">
+            {planned.map((c, i) => (
+              <div key={c.id}>
+                {i > 0 && <Divider />}
+                <div className="py-3">
+                  <div className="flex items-center gap-2">
+                    <Icon name="lock" size={13} className="text-faint" />
+                    <span className="text-base font-medium">{c.label}</span>
+                  </div>
+                  <div className="mt-0.5 text-sm text-faint">{c.note}</div>
+                </div>
+              </div>
+            ))}
+          </Card>
+        </Group>
+      )}
+    </>
+  );
 }
 
 /** The honesty ledger — what is available, managed, or not yet built. */

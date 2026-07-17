@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import type { FavoriteItem, NpsOperationDto, PluginDto, RuntimeInstanceDto } from '@neuropause/shared';
+import type { EnterpriseModuleSummary, FavoriteItem, NpsOperationDto, PluginDto, RuntimeInstanceDto } from '@neuropause/shared';
 import { cn } from '@renderer/lib/cn';
 import { Icon, type IconName } from '@renderer/components/ui/Icon';
 import { Kbd } from '@renderer/components/ui/controls';
@@ -12,6 +12,7 @@ import { prefs, PrefKey } from '@renderer/lib/preferences';
 import { useShell } from '@renderer/state/ShellProvider';
 import { useTheme } from '@renderer/providers/ThemeProvider';
 import { SECTIONS } from './sections';
+import { BUSINESS_FAVORITE_KIND, moduleIdFromBusinessFavorite } from '@renderer/business/businessModel';
 
 type GroupKey = 'Recent' | 'Applications' | 'Plugins' | 'Sessions' | 'Downloads' | 'Go to' | 'Commands';
 
@@ -61,13 +62,14 @@ const ENTERPRISE_TABS: { id: string; title: string; icon: IconName; kw: string }
 const initial2 = (s: string): string => s.replace(/[^a-z0-9]/gi, '').slice(0, 2).toUpperCase() || '??';
 
 export function CommandPalette(): JSX.Element {
-  const { commandOpen, setCommandOpen, setSection, openApp, openOperations, openEnterprise, openConnectors, toggleSidebar } = useShell();
+  const { commandOpen, setCommandOpen, setSection, openApp, openOperations, openEnterprise, openBusiness, openConnectors, toggleSidebar } = useShell();
   const { source, setSource } = useTheme();
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const [live, setLive] = useState<{ plugins: PluginDto[]; instances: RuntimeInstanceDto[]; operations: NpsOperationDto[] }>({ plugins: [], instances: [], operations: [] });
   const [recents, setRecents] = useState<string[]>(() => prefs.read<string[]>(PrefKey.recentCommands, []));
   const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
+  const [businessModules, setBusinessModules] = useState<EnterpriseModuleSummary[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -92,6 +94,8 @@ export function CommandPalette(): JSX.Element {
       if (active) setLive({ plugins, instances, operations });
       const pers = await ipc.enterprise.personalization.get().catch(() => null);
       if (active && pers) setFavorites(pers.favorites);
+      const bizModules = await ipc.enterpriseModules.list().catch(() => [] as EnterpriseModuleSummary[]);
+      if (active) setBusinessModules(bizModules);
     })();
     return () => {
       active = false;
@@ -233,18 +237,32 @@ export function CommandPalette(): JSX.Element {
       run: () => openEnterprise(t.id),
     }));
 
-    const entFavorites: CommandItem[] = favorites.map((f) => ({
-      id: `fav:${f.id}`,
+    const entFavorites: CommandItem[] = favorites.map((f) => {
+      const isBusiness = f.kind === BUSINESS_FAVORITE_KIND;
+      return {
+        id: `fav:${f.id}`,
+        group: 'Go to',
+        title: f.label,
+        subtitle: isBusiness ? 'Favorite · Business' : 'Favorite · Enterprise',
+        icon: 'star-fill',
+        keywords: `favorite pinned ${isBusiness ? 'business' : 'enterprise'} ${f.label} ${f.kind}`,
+        run: isBusiness ? () => openBusiness(moduleIdFromBusinessFavorite(f.id)) : () => openEnterprise(f.tab),
+      };
+    });
+
+    // Business Workspace modules — deep-link straight to a family's records (reuses the existing registry).
+    const bizNav: CommandItem[] = businessModules.map((m) => ({
+      id: `biz:${m.id}`,
       group: 'Go to',
-      title: f.label,
-      subtitle: 'Favorite · Enterprise',
-      icon: 'star-fill',
-      keywords: `favorite pinned enterprise ${f.label} ${f.kind}`,
-      run: () => openEnterprise(f.tab),
+      title: m.title,
+      subtitle: `Business · ${m.group ?? 'Modules'}`,
+      icon: (m.icon || 'grid') as IconName,
+      keywords: `business ${m.group ?? ''} ${m.plural} ${m.singular} records erp`,
+      run: () => openBusiness(m.id),
     }));
 
-    return [...apps, ...plugins, ...sessions, ...downloads, ...sections, ...ops, ...conns, ...entNav, ...entFavorites, ...commands];
-  }, [live, favorites, source, setSource, openApp, openOperations, openEnterprise, openConnectors, setSection, toggleSidebar]);
+    return [...apps, ...plugins, ...sessions, ...downloads, ...sections, ...ops, ...conns, ...entNav, ...bizNav, ...entFavorites, ...commands];
+  }, [live, favorites, businessModules, source, setSource, openApp, openOperations, openEnterprise, openBusiness, openConnectors, setSection, toggleSidebar]);
 
   // Empty query → Recent + navigation. Typing → fuzzy search across every domain.
   const groups = useMemo(() => {

@@ -91,12 +91,18 @@ function renderCell(field: EnterpriseFieldDef, value: EnterpriseFieldValue): Rea
 
 export function EnterpriseModuleScreen({
   module,
+  initialCreate = false,
+  initialQuery = '',
 }: {
   module: EnterpriseModuleSummary;
+  /** Open the create form on mount (the Business Workspace "New …" quick action drives the REAL create flow). */
+  initialCreate?: boolean;
+  /** Seed the record search box (the Business Workspace search lands pre-filtered). */
+  initialQuery?: string;
 }): JSX.Element {
   const [records, setRecords] = useState<EnterpriseEntity[]>([]);
   const [loading, setLoading] = useState(true);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [page, setPage] = useState(0);
   const [form, setForm] = useState<{ mode: 'create' | 'edit'; record?: EnterpriseEntity } | null>(
@@ -128,6 +134,13 @@ export function EnterpriseModuleScreen({
     });
     return off;
   }, [refresh, module.id]);
+
+  // One-shot: open the create form when mounted with create intent (Business Workspace "New …").
+  useEffect(() => {
+    if (initialCreate) setForm({ mode: 'create' });
+    // Intentionally mount-only: the parent remounts (via key) for each new create intent.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Client-side field filters (over the fetched, searched set).
   const filtered = useMemo(() => {
