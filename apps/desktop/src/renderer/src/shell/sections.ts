@@ -35,6 +35,7 @@ export type SectionId =
   | 'sandbox'
   | 'settings'
   | 'decision-center'
+  | 'intent-home'
   | 'welcome';
 
 export interface SectionDef {
@@ -48,6 +49,7 @@ export interface SectionDef {
 }
 
 export const SECTIONS: SectionDef[] = [
+  { id: 'intent-home', label: "Today's Intent", icon: 'command', phase: 22, placement: 'primary' },
   { id: 'decision-center', label: 'Decision Center', icon: 'sparkles', phase: 21, placement: 'primary' },
   { id: 'home', label: 'Home', icon: 'home', phase: 2, placement: 'primary' },
   { id: 'organization', label: 'Organization', icon: 'user', phase: 10, placement: 'primary' },

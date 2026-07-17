@@ -274,6 +274,10 @@ import {
   type ExperienceSummaries,
   type ExperienceIntents,
   type ExperienceGovernance,
+  // Intent Experience Program v2.0 — the intent-native experience layer
+  type IntentBoard,
+  type IntentWorkspaces,
+  type IntentGovernance,
   // Release engineering (Increment 2 · Stage 2)
   type ReleaseDiagnostics,
   type CrashStatus,
@@ -1639,6 +1643,15 @@ export const ipc = {
     summaries: () => invoke(IpcChannel.ExperienceSummaries) as Promise<ExperienceSummaries>,
     intents: () => invoke(IpcChannel.ExperienceIntents) as Promise<ExperienceIntents>,
     governance: () => invoke(IpcChannel.ExperienceGovernance) as Promise<ExperienceGovernance>,
+    // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
+    onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
+  },
+
+  // ── Intent Experience Program v2.0 — Intent-Native Experience (read-only reprojection; nothing executes) ──
+  intent: {
+    board: () => invoke(IpcChannel.IntentBoard) as Promise<IntentBoard>,
+    workspaces: () => invoke(IpcChannel.IntentWorkspaces) as Promise<IntentWorkspaces>,
+    governance: () => invoke(IpcChannel.IntentGovernance) as Promise<IntentGovernance>,
     // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
     onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
   },

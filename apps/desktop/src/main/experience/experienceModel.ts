@@ -234,7 +234,10 @@ export const INTENTS: IntentItem[] = [
   { id: 'optimize-manufacturing', label: 'Optimize manufacturing', prompt: 'I want to optimize manufacturing', targetSection: 'industry-center', targetLabel: 'Industry Center', category: 'Operations', keywords: ['manufacturing', 'optimize', 'production', 'factory', 'supply chain', 'operations'], available: true },
   { id: 'improve-reliability', label: 'Improve reliability', prompt: 'I want to improve reliability', targetSection: 'auto-ops-center', targetLabel: 'Operations', category: 'Operations', keywords: ['reliability', 'uptime', 'incidents', 'recovery', 'stable', 'sla'], available: true },
   { id: 'build-erp', label: 'Build an ERP', prompt: 'I want to build an ERP', targetSection: 'enterprise', targetLabel: 'Enterprise', category: 'Build', keywords: ['erp', 'build', 'system', 'enterprise', 'modules', 'finance', 'inventory'], available: true },
-  { id: 'launch-product', label: 'Launch a product', prompt: 'I want to launch a product', targetSection: 'strategy-center', targetLabel: 'Strategy Center', category: 'Build', keywords: ['launch', 'product', 'ship', 'release', 'go to market', 'gtm'], available: false },
+  // AUTHENTICITY (Intent Experience v2.0): the former `launch-product` intent was removed. It advertised a
+  // routing target the platform does not back with a real workflow (`available: false` — a "coming soon"
+  // deception). Under the intent-native authenticity mandate, an intent must route to a real capability or
+  // not be shown at all; every remaining intent here routes to a section that genuinely does the work.
 ];
 
 export function buildExperienceIntents(): ExperienceIntents {

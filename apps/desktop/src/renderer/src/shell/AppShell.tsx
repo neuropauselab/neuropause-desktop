@@ -85,6 +85,9 @@ const CommercialCenterView = lazy(() =>
 const DecisionCenterView = lazy(() =>
   import('@renderer/decisionCenter/DecisionCenterView').then((m) => ({ default: m.DecisionCenterView })),
 );
+const IntentHomeView = lazy(() =>
+  import('@renderer/intentHome/IntentHomeView').then((m) => ({ default: m.IntentHomeView })),
+);
 const EnterpriseView = lazy(() =>
   import('@renderer/views/EnterpriseView').then((m) => ({ default: m.EnterpriseView })),
 );
@@ -210,6 +213,8 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
 
   const renderView = (): JSX.Element => {
     switch (activeSection) {
+      case 'intent-home':
+        return <IntentHomeView onOpenSection={(id) => goToSection(id as SectionId)} />;
       case 'decision-center':
         return <DecisionCenterView onOpenSection={(id) => goToSection(id as SectionId)} />;
       case 'home':

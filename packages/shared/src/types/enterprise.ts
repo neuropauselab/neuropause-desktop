@@ -137,7 +137,9 @@ export type EnterprisePermission =
   // ── P20 — NeuroPause Platform v2: read the commercial productization projection layer. ──
   | 'commercial:read'
   // ── Experience Program v1.0: read the decision-first experience/summary projection layer. ──
-  | 'experience:read';
+  | 'experience:read'
+  // ── Intent Experience Program v2.0: read the intent-native reprojection of the strategy goals. ──
+  | 'intent:read';
 
 export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   'org:read',
@@ -208,6 +210,8 @@ export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   'commercial:read',
   // ── Experience Program v1.0 (decision-first experience) ──
   'experience:read',
+  // ── Intent Experience Program v2.0 (intent-native experience) ──
+  'intent:read',
 ];
 
 export interface OrgRole {

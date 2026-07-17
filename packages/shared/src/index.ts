@@ -109,6 +109,7 @@ export * from './types/enterpriseIntelligenceNetwork';
 export * from './types/autonomousOperations';
 export * from './types/commercialPlatform';
 export * from './types/experience';
+export * from './types/intent';
 export * from './types/update';
 export * from './types/diagnostics';
 export * from './types/maintenance';

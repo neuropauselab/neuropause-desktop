@@ -145,6 +145,8 @@ describe('OrgStore — built-in role reconciliation', () => {
     expect(owner.permissions).toContain('commercial:read');
     // Experience Program v1.0 — the decision-first experience read scope must backfill too.
     expect(owner.permissions).toContain('experience:read');
+    // Intent Experience Program v2.0 — the intent-native read scope must backfill too.
+    expect(owner.permissions).toContain('intent:read');
   });
 
   it('leaves custom (non-built-in) roles untouched on load', async () => {

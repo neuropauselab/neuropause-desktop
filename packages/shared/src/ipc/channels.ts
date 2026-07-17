@@ -558,6 +558,11 @@ export const IpcChannel = {
   ExperienceIntents: 'experience:intents',
   ExperienceGovernance: 'experience:governance',
 
+  // ── Intent Experience Program v2.0 — Intent-Native Experience (read-only reprojection of P14 goals) ──
+  IntentBoard: 'intent:board',
+  IntentWorkspaces: 'intent:workspaces',
+  IntentGovernance: 'intent:governance',
+
   EcosystemEventBroadcast: 'ecosystem:event',
 
   // ── P9 — Enterprise Marketplace (layer over the ecosystem marketplace) ──
@@ -1202,6 +1207,11 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.ExperienceSummaries,
   IpcChannel.ExperienceIntents,
   IpcChannel.ExperienceGovernance,
+
+  // ── Intent Experience Program v2.0 — Intent-Native Experience ──
+  IpcChannel.IntentBoard,
+  IpcChannel.IntentWorkspaces,
+  IpcChannel.IntentGovernance,
 
   // ── P9 — Enterprise Marketplace ──
   IpcChannel.MarketplaceCatalog,

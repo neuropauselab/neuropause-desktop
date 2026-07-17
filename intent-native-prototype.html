@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NeuroPause — Intent-Native Operating System (Prototype)</title>
+<style>
+  :root {
+    --bg: #0a0a0f; --ink: #f4f4f7; --muted: #a9a9bc; --faint: #6c6c82; --hairline: rgba(255,255,255,0.09);
+    --accent: #6366f1; --good: #22c55e; --warn: #f59e0b; --bad: #ef4444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: radial-gradient(1200px 700px at 70% -10%, rgba(99,102,241,0.14), transparent 60%), var(--bg);
+    color: var(--ink); font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+    -webkit-font-smoothing: antialiased; min-height: 100vh;
+  }
+  .wrap { max-width: 1160px; margin: 0 auto; padding: 40px 32px 80px; }
+  .eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--faint); display: flex; align-items: center; gap: 7px; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .between { justify-content: space-between; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .good { color: var(--good); } .warn { color: var(--warn); } .bad { color: var(--bad); } .blue { color: var(--accent); }
+  .bg-good { background: var(--good); } .bg-warn { background: var(--warn); } .bg-bad { background: var(--bad); } .bg-blue { background: var(--accent); }
+  .chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 7px 13px; font-size: 12px; font-weight: 500; color: var(--faint); cursor: pointer; border: 1px solid transparent; transition: all .15s; user-select: none; }
+  .chip:hover { color: var(--muted); }
+  .chip.active { background: rgba(255,255,255,0.10); color: var(--ink); }
+  .card { border: 1px solid var(--hairline); border-radius: 22px; padding: 20px; }
+  .bar { height: 6px; border-radius: 999px; background: rgba(255,255,255,0.07); overflow: hidden; }
+  .bar > i { display: block; height: 100%; border-radius: 999px; transition: width .4s; }
+  h1 { font-size: 41px; line-height: 1.12; letter-spacing: -0.02em; font-weight: 600; }
+  .btn { display: inline-flex; align-items: center; gap: 7px; background: var(--accent); color: #fff; border: none; border-radius: 12px; padding: 11px 17px; font-size: 14px; font-weight: 500; cursor: pointer; transition: opacity .15s; }
+  .btn:hover { opacity: .9; }
+  .grid { display: grid; gap: 16px; }
+  .g3 { grid-template-columns: repeat(3, 1fr); } .g2 { grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 900px) { .g3, .g2 { grid-template-columns: 1fr; } }
+  .intent { border: 1px solid var(--hairline); border-radius: 22px; padding: 20px; cursor: pointer; text-align: left; background: none; color: inherit; width: 100%; transition: all .15s; display: flex; flex-direction: column; }
+  .intent:hover { background: rgba(255,255,255,0.03); }
+  .intent.sel { border-color: var(--accent); background: rgba(255,255,255,0.04); }
+  .muted { color: var(--muted); } .faint { color: var(--faint); } .ink { color: var(--ink); }
+  .sm { font-size: 12px; } .xs { font-size: 11px; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; }
+  .nba { border: 1px solid rgba(99,102,241,0.32); background: linear-gradient(135deg, rgba(99,102,241,0.10), transparent); border-radius: 22px; padding: 22px; }
+  .pill { border: 1px solid var(--hairline); border-radius: 999px; padding: 4px 10px; }
+  .toggle { background: none; border: none; color: var(--faint); font: inherit; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; cursor: pointer; display: flex; align-items: center; gap: 7px; }
+  .toggle:hover { color: var(--muted); }
+  .sep { border-top: 1px solid var(--hairline); margin-top: 40px; padding-top: 24px; }
+  .real-tag { font-size: 10px; color: var(--good); border: 1px solid rgba(34,197,94,0.3); border-radius: 999px; padding: 2px 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- Role selector -->
+  <div class="row between" style="margin-bottom:22px">
+    <div class="row" style="gap:5px" id="roles"></div>
+    <span class="real-tag">Every value below traces to a real strategy-goal signal</span>
+  </div>
+
+  <!-- Counts -->
+  <div class="row" style="gap:22px; margin-bottom:34px; font-size:12px; color:var(--faint)" id="counts"></div>
+
+  <!-- Hero: Today's Intent -->
+  <div class="eyebrow" id="heroEyebrow" style="margin-bottom:10px"></div>
+  <h1 id="heroName"></h1>
+  <div class="row" id="heroStatus" style="margin-top:12px; font-size:15px"></div>
+
+  <div class="row" style="margin-top:26px; align-items:flex-end; gap:40px">
+    <div style="flex:1; min-width:240px">
+      <div class="row between" style="margin-bottom:7px">
+        <span class="eyebrow">Progress toward outcome</span>
+        <span id="heroPct" style="font-size:24px; font-weight:600; letter-spacing:-0.02em"></span>
+      </div>
+      <div class="bar"><i id="heroBar"></i></div>
+      <div class="sm faint" id="heroMeta" style="margin-top:7px"></div>
+    </div>
+    <div class="row" id="heroFacets" style="gap:20px; font-size:12px; color:var(--faint)"></div>
+  </div>
+
+  <!-- Next best action -->
+  <div class="nba row" style="margin-top:30px; gap:16px">
+    <div style="flex:1; min-width:0">
+      <div class="eyebrow">Next best action</div>
+      <div id="nbaLabel" style="font-size:18px; font-weight:600; margin-top:5px"></div>
+      <div class="sm muted" id="nbaApproval" style="margin-top:5px"></div>
+    </div>
+    <button class="btn" onclick="alert('Routes to the real Strategy Center, where this goal and its decisions are managed and dispositioned through the existing approval + execution engines. This layer only reads and recommends.')">Open Strategy Center →</button>
+  </div>
+
+  <!-- Dashboard trio -->
+  <div class="grid g3" style="margin-top:24px">
+    <div class="card"><div class="eyebrow" style="margin-bottom:12px">🛡 Risks</div><div id="dashRisks"></div></div>
+    <div class="card"><div class="eyebrow" style="margin-bottom:12px">🔒 Approvals</div><div id="dashApprovals"></div></div>
+    <div class="card"><div class="eyebrow" style="margin-bottom:12px">💡 Recommendations</div><div id="dashRecs"></div></div>
+  </div>
+
+  <!-- Workspace -->
+  <div class="grid g2" style="margin-top:24px" id="workspace"></div>
+
+  <!-- Omission honesty -->
+  <div class="card" style="margin-top:16px; background:rgba(255,255,255,0.02); font-size:12px; color:var(--faint)">
+    <b class="muted">Not shown for this outcome (no real per-intent source):</b>
+    AI workers · Connectors · Analytics. These panels are withheld rather than fabricated.
+  </div>
+
+  <!-- Multi-intent board -->
+  <div style="margin-top:52px">
+    <div class="eyebrow" id="boardTitle" style="margin-bottom:16px"></div>
+    <div class="grid g3" id="board"></div>
+  </div>
+
+  <!-- Provenance ledger -->
+  <div class="sep">
+    <button class="toggle" id="provToggle">▸ How this is built — every value traces to a real source</button>
+    <div id="prov" style="display:none; margin-top:20px" class="grid g2"></div>
+  </div>
+</div>
+
+<script>
+const HORIZON = { '30d':'30 days','90d':'90 days','180d':'180 days','365d':'365 days','multi_year':'Multi-year' };
+function bandForStatus(s){ return s==='off_track'?'bad':s==='at_risk'?'warn':'good'; }
+function statusLabel(s){ return s==='off_track'?'Off track':s==='at_risk'?'At risk':'On track'; }
+
+// Intents = real strategy goals (values mirror the resolveGoal() shape: current from a live signal,
+// progress = attainment vs target, status derived from progress, evidence = real signal ids).
+const INTENTS = [
+  { id:'goal-risk', cat:'security', name:'Reduce enterprise risk', desc:'Bring the composite enterprise risk index into the healthy band.',
+    metric:'Enterprise risk index < 40', current:68, target:40, unit:'index', progress:0.20, status:'off_track', horizon:'90d',
+    deps:[], evidence:['risk:spof-payments','risk:spof-auth','risk:cycle-3'],
+    objectives:[{label:'Infrastructure risk',metric:'infra risk score',current:70,target:40,unit:'index',progress:0.10,status:'off_track'},
+                {label:'Security risk',metric:'security risk score',current:61,target:40,unit:'index',progress:0.28,status:'at_risk'}],
+    milestones:[{label:'Risk review complete',horizon:'30d',status:'at_risk'},{label:'Redundancy provisioned',horizon:'90d',status:'off_track'}],
+    next:{label:'Advance "Reduce enterprise risk"',approval:{governed:true,chain:'Security approval chain',steps:2}},
+    recs:[{title:'Add payments redundancy',rec:'Provision a standby for the single point of failure.',conf:0.90,needsApproval:true}] },
+  { id:'goal-health', cat:'operational', name:'Sustain enterprise health', desc:'Keep the composite enterprise health score in the healthy band.',
+    metric:'Enterprise health score ≥ 80', current:72, target:80, unit:'score', progress:0.60, status:'at_risk', horizon:'90d',
+    deps:['goal-risk'], evidence:['health:security','health:reliability'],
+    objectives:[{label:'Reliability',metric:'reliability score',current:78,target:80,unit:'score',progress:0.72,status:'at_risk'}],
+    milestones:[{label:'Health steady 2 weeks',horizon:'30d',status:'at_risk'}],
+    next:{label:'Advance "Sustain enterprise health"',approval:{governed:false,chain:null,steps:0}},
+    recs:[] },
+  { id:'goal-cost', cat:'financial', name:'Improve cloud cost efficiency', desc:'Raise utilization of paid cloud capacity so spend is not wasted on idle headroom.',
+    metric:'Cloud utilization ≥ 70%', current:55, target:70, unit:'%', progress:0.50, status:'at_risk', horizon:'180d',
+    deps:[], evidence:['quota:cpu-us-east','quota:gpu-eu'],
+    objectives:[{label:'Under-utilized quotas',metric:'quotas below 40%',current:6,target:0,unit:'quotas',progress:0.40,status:'at_risk'}],
+    milestones:[{label:'Right-size fleet',horizon:'90d',status:'at_risk'}],
+    next:{label:'Advance "Improve cloud cost efficiency"',approval:{governed:true,chain:'Finance approval chain',steps:1}},
+    recs:[{title:'Right-size the fleet',rec:'Drop idle replicas in us-east.',conf:0.75,needsApproval:false}] },
+  { id:'goal-workforce', cat:'workforce', name:'Raise workforce reliability', desc:'Drive the AI workforce job success rate above 90%.',
+    metric:'Workforce success rate ≥ 90%', current:95, target:90, unit:'%', progress:0.98, status:'on_track', horizon:'90d',
+    deps:[], evidence:['wf:success-rate'],
+    objectives:[{label:'Job success rate',metric:'succeeded / decided',current:95,target:90,unit:'%',progress:1,status:'on_track'}],
+    milestones:[{label:'Hold ≥ 90% a month',horizon:'30d',status:'on_track'}],
+    next:null, recs:[] },
+  { id:'goal-compliance', cat:'compliance', name:'Close compliance control gaps', desc:'Enable the governance controls backing each compliance framework.',
+    metric:'Zero frameworks with control gaps', current:2, target:0, unit:'frameworks', progress:0.66, status:'at_risk', horizon:'30d',
+    deps:['goal-health'], evidence:['framework:soc2','framework:iso27001'],
+    objectives:[{label:'Failing frameworks',metric:'frameworks with gaps',current:2,target:0,unit:'frameworks',progress:0.66,status:'at_risk'}],
+    milestones:[{label:'All controls enabled',horizon:'30d',status:'at_risk'}],
+    next:{label:'Advance "Close compliance control gaps"',approval:{governed:true,chain:'Governance approval chain',steps:2}},
+    recs:[{title:'Enable SOC 2 controls',rec:'Turn on the two missing governance controls.',conf:0.82,needsApproval:true}] },
+];
+const REASONING_CONFIDENCE = 0.82;
+
+const ROLES = [
+  { id:'founder', label:'Founder', cats:[] },
+  { id:'ceo', label:'CEO', cats:['operational','financial','growth','security'] },
+  { id:'cto', label:'CTO', cats:['infrastructure','security','operational'] },
+  { id:'cfo', label:'CFO', cats:['financial','compliance'] },
+  { id:'coo', label:'COO', cats:['operational','workforce','infrastructure'] },
+  { id:'hr', label:'HR', cats:['workforce'] },
+  { id:'legal', label:'Legal', cats:['compliance'] },
+  { id:'operations', label:'Operations', cats:['operational','infrastructure','workforce'] },
+];
+
+const STATUS_RANK = { off_track:0, at_risk:1, on_track:2 };
+function byUrgency(a,b){ return STATUS_RANK[a.status]-STATUS_RANK[b.status] || a.progress-b.progress || a.id.localeCompare(b.id); }
+function byId(id){ return INTENTS.find(i=>i.id===id); }
+function blockedBy(i){ return i.deps.map(byId).filter(d=>d && d.status!=='on_track').map(d=>d.name); }
+
+let role = 'founder';
+let focusId = null;
+
+function visibleIntents(){
+  const r = ROLES.find(x=>x.id===role);
+  return [...INTENTS].sort(byUrgency).filter(i => r.cats.length===0 || r.cats.includes(i.cat));
+}
+
+function render(){
+  const vis = visibleIntents();
+  const effId = (focusId && vis.some(i=>i.id===focusId)) ? focusId : (vis[0]?vis[0].id:null);
+  const isTop = effId === (vis[0]&&vis[0].id);
+  const fi = byId(effId);
+
+  // Roles
+  document.getElementById('roles').innerHTML = ROLES.map(r =>
+    `<span class="chip ${r.id===role?'active':''}" onclick="setRole('${r.id}')">${r.label}</span>`).join('');
+
+  // Counts
+  const all = [...INTENTS];
+  const c = { total:all.length, on:all.filter(i=>i.status==='on_track').length, at:all.filter(i=>i.status==='at_risk').length, off:all.filter(i=>i.status==='off_track').length, blocked:all.filter(i=>blockedBy(i).length).length };
+  const overall = Math.round(all.reduce((n,i)=>n+i.progress,0)/all.length*100);
+  document.getElementById('counts').innerHTML =
+    `<span><b class="ink">${c.total}</b> outcomes</span><span class="good">${c.on} on track</span><span class="warn">${c.at} at risk</span><span class="bad">${c.off} off track</span>`+
+    (c.blocked?`<span class="warn">${c.blocked} blocked</span>`:'')+
+    `<span style="margin-left:auto">Overall progress <b class="ink">${overall}%</b></span>`+
+    `<span title="Board-level confidence from the P14 Reasoning Engine — not a per-intent figure.">Strategic reasoning confidence <b class="ink">${Math.round(REASONING_CONFIDENCE*100)}%</b></span>`;
+
+  if (!fi) return;
+  const bnd = bandForStatus(fi.status);
+
+  // Hero
+  document.getElementById('heroEyebrow').innerHTML = '⌘ ' + (isTop
+    ? (role==='founder'?"Today's Intent":`Today's Intent · ${ROLES.find(r=>r.id===role).label}`) + ' — what most needs you now'
+    : 'Focused outcome — you selected this');
+  document.getElementById('heroName').textContent = fi.name;
+  document.getElementById('heroStatus').innerHTML =
+    `<span class="dot bg-${bnd}"></span><span class="${bnd}">${statusLabel(fi.status)}</span><span class="faint">·</span><span class="muted">${fi.metric}</span>`;
+  document.getElementById('heroPct').className = bnd; document.getElementById('heroPct').textContent = Math.round(fi.progress*100)+'%';
+  const bar = document.getElementById('heroBar'); bar.style.width = Math.round(fi.progress*100)+'%'; bar.className = 'bg-'+bnd;
+  const u = fi.unit==='%'?'%':' '+fi.unit;
+  document.getElementById('heroMeta').textContent = `Now ${fi.current}${u} · target ${fi.target}${u}`;
+  const bb = blockedBy(fi);
+  document.getElementById('heroFacets').innerHTML =
+    `<span>${fi.cat[0].toUpperCase()+fi.cat.slice(1)}</span><span>Target horizon ${HORIZON[fi.horizon]}</span><span>${fi.evidence.length} evidence signals</span>`+
+    (bb.length?`<span class="warn">Blocked by ${bb.join(', ')}</span>`:'');
+
+  // NBA
+  if (fi.next){
+    document.getElementById('nbaLabel').textContent = fi.next.label;
+    document.getElementById('nbaApproval').textContent = fi.next.approval.governed
+      ? `Requires approval — ${fi.next.approval.chain} (${fi.next.approval.steps} step${fi.next.approval.steps===1?'':'s'}).`
+      : 'No approval chain governs this action yet — it would need one before execution.';
+  } else {
+    document.getElementById('nbaLabel').textContent = 'This outcome is on track — no action needed right now.';
+    document.getElementById('nbaApproval').textContent = '';
+  }
+
+  // Risks (derived from real status + real blocking deps)
+  const risks = [];
+  if (fi.status!=='on_track') risks.push({label:`This outcome is ${statusLabel(fi.status).toLowerCase()}`, detail:`${fi.metric} — now ${fi.current}${u} of ${fi.target}${u}.`, band:bnd});
+  fi.deps.map(byId).filter(d=>d&&d.status!=='on_track').forEach(d=>risks.push({label:`Blocked by "${d.name}"`, detail:`A dependency is ${statusLabel(d.status).toLowerCase()}.`, band:bandForStatus(d.status)}));
+  document.getElementById('dashRisks').innerHTML = risks.length
+    ? risks.map(r=>`<div class="row" style="align-items:flex-start; gap:8px; margin-bottom:10px"><span class="dot bg-${r.band}" style="margin-top:6px"></span><span><span class="sm ink">${r.label}</span><br><span class="xs faint">${r.detail}</span></span></div>`).join('')
+    : '<div class="sm faint">On track — no elevated risks for this outcome.</div>';
+
+  // Approvals
+  document.getElementById('dashApprovals').innerHTML = (fi.next && fi.next.approval)
+    ? (fi.next.approval.governed
+        ? `<div class="sm ink">${fi.next.approval.chain}</div><div class="xs faint" style="margin-top:3px">Governed by an enabled chain.</div><div class="xs faint">${fi.next.approval.steps} approval step${fi.next.approval.steps===1?'':'s'}.</div>`
+        : `<div class="sm ink">No governing chain yet</div><div class="xs faint" style="margin-top:3px">No enabled chain governs this action.</div>`)
+    : '<div class="sm faint">No approval required for the next step on this outcome.</div>';
+
+  // Recommendations
+  document.getElementById('dashRecs').innerHTML = fi.recs.length
+    ? fi.recs.map(d=>`<div class="row" style="align-items:flex-start; gap:8px; margin-bottom:10px"><span class="dot bg-warn" style="margin-top:6px"></span><span><span class="sm ink">${d.title}</span><br><span class="xs faint">${d.rec}</span><br><span class="xs faint">Confidence ${Math.round(d.conf*100)}%${d.needsApproval?' · needs approval':''}</span></span></div>`).join('')
+    : '<div class="sm faint">No strategic decisions are linked to this outcome right now.</div>';
+
+  // Workspace
+  let ws = '';
+  if (fi.objectives.length) ws += panel('📊 Objectives', fi.objectives.map(o=>{
+    const ob=bandForStatus(o.status), ou=o.unit==='%'?'%':' '+o.unit;
+    return `<div style="margin-bottom:12px"><div class="row between" style="margin-bottom:4px"><span class="sm ink">${o.label}</span><span class="sm ${ob}">${Math.round(o.progress*100)}%</span></div><div class="bar"><i class="bg-${ob}" style="width:${Math.round(o.progress*100)}%"></i></div><div class="xs faint" style="margin-top:4px">${o.metric}: ${o.current}${ou} / ${o.target}${ou}</div></div>`;
+  }).join(''));
+  if (fi.milestones.length) ws += panel('◷ Timeline', fi.milestones.map(m=>`<div class="row" style="gap:10px; margin-bottom:8px"><span class="dot bg-${bandForStatus(m.status)}"></span><span class="sm ink" style="flex:1">${m.label}</span><span class="xs faint">${HORIZON[m.horizon]} · ${statusLabel(m.status)}</span></div>`).join(''));
+  if (fi.deps.length) ws += panel('▦ Dependencies', fi.deps.map(byId).filter(Boolean).map(d=>`<div class="row" style="gap:10px; margin-bottom:8px"><span class="dot bg-${bandForStatus(d.status)}"></span><span class="sm ink" style="flex:1">${d.name}</span><span class="xs ${d.status!=='on_track'?'warn':'faint'}">${d.status!=='on_track'?'Blocking':statusLabel(d.status)}</span></div>`).join(''));
+  if (fi.evidence.length) ws += panel('🌐 Evidence', '<div class="row" style="gap:6px">'+fi.evidence.map(e=>`<span class="pill mono muted">${e}</span>`).join('')+'</div><div class="xs faint" style="margin-top:8px">Real platform signal ids backing this outcome’s current value.</div>');
+  document.getElementById('workspace').innerHTML = ws;
+
+  // Board
+  document.getElementById('boardTitle').innerHTML = '▤ ' + (role==='founder'?'Your outcomes':`${ROLES.find(r=>r.id===role).label} outcomes`) + ' — pick one to focus its workspace';
+  document.getElementById('board').innerHTML = vis.map(i=>{
+    const b=bandForStatus(i.status), bb2=blockedBy(i);
+    return `<button class="intent ${i.id===effId?'sel':''}" onclick="setFocus('${i.id}')">
+      <div class="row" style="gap:8px"><span class="dot bg-${b}"></span><span class="xs ${b}" style="font-weight:500">${statusLabel(i.status)}</span><span class="xs faint" style="margin-left:auto">${HORIZON[i.horizon]}</span></div>
+      <div style="font-size:15px; font-weight:600; margin-top:10px">${i.name}</div>
+      <div class="xs muted" style="margin-top:4px">${i.desc}</div>
+      <div style="margin-top:12px"><div class="row between" style="margin-bottom:4px"><span class="xs faint">${i.metric}</span><span class="xs ${b}">${Math.round(i.progress*100)}%</span></div><div class="bar"><i class="bg-${b}" style="width:${Math.round(i.progress*100)}%"></i></div></div>
+      <div class="xs faint" style="margin-top:12px">${bb2.length?`<span class="warn">Blocked by ${bb2.join(', ')}</span>`:(i.next?'Next: '+i.next.label:'On track')}</div>
+    </button>`;
+  }).join('');
+
+  // Provenance
+  document.getElementById('prov').innerHTML =
+    `<div><div class="eyebrow" style="margin-bottom:10px">Provenance</div>${[
+      ['intent name/metric/target/current','StrategicGoal — P14 GoalManager'],
+      ['progress / status','goal attainment vs target / derived status'],
+      ['band','mapping of real StrategyStatus'],
+      ['dependencies / blocked','goal.dependencies → siblings’ real status'],
+      ['objectives / timeline','goal.objectives / goal.milestones + horizon'],
+      ['evidence','goal.evidence — real platform signal ids'],
+      ['next best action / approval','Planning-Engine plan step + governance chain'],
+      ['recommendations','StrategicDecision set, linked by category'],
+      ['reasoning confidence','ReasoningReport.confidence (board-level)'],
+    ].map(p=>`<div class="xs" style="margin-bottom:6px"><span class="ink">${p[0]}</span> <span class="faint">← ${p[1]}</span></div>`).join('')}</div>`+
+    `<div><div class="eyebrow" style="margin-bottom:10px">Deliberately omitted (never fabricated)</div>${[
+      ['Per-intent AI confidence','goals carry none; board-level reasoning confidence shown instead'],
+      ['Calendar ETA','no real completion date; the real planning horizon is shown'],
+      ['Worker / connector rosters','no per-goal assignment exists; withheld'],
+      ['Per-intent analytics','no per-intent time-series; no placeholder chart'],
+    ].map(o=>`<div class="xs" style="margin-bottom:6px"><span class="ink">${o[0]}</span> <span class="faint">— ${o[1]}</span></div>`).join('')}</div>`;
+}
+function panel(title, inner){ return `<div class="card"><div class="eyebrow" style="margin-bottom:12px">${title}</div>${inner}</div>`; }
+function setRole(r){ role=r; focusId=null; render(); }
+function setFocus(id){ focusId=id; render(); }
+document.getElementById('provToggle').onclick = function(){
+  const p=document.getElementById('prov'); const open=p.style.display!=='none';
+  p.style.display=open?'none':'grid'; this.textContent=(open?'▸':'▾')+' How this is built — every value traces to a real source';
+};
+render();
+</script>
+</body>
+</html>

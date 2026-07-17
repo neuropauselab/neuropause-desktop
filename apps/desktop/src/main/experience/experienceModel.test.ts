@@ -159,6 +159,10 @@ describe('summaries + intents + governance', () => {
     expect(cloud.keywords).toContain('cost');
     expect(cloud.available).toBe(true);
     for (const intent of i.intents) expect(intent.targetSection.length).toBeGreaterThan(0);
+    // AUTHENTICITY (Intent Experience v2.0): no intent may advertise an unbacked capability — the former
+    // `available:false` "launch-product" was removed; every remaining intent routes to a real workflow.
+    for (const intent of i.intents) expect(intent.available).toBe(true);
+    expect(i.intents.find((x) => x.id === 'launch-product')).toBeUndefined();
   });
 
   it('governance states the core UX law and reuses existing scopes', () => {

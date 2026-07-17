@@ -46,6 +46,8 @@ export default defineConfig({
       'src/renderer/src/commercialCenter/**/*.test.ts',
       // Experience Program v1.0 — the Decision Center's pure view-model (no DOM, no React).
       'src/renderer/src/decisionCenter/**/*.test.ts',
+      // Intent Experience Program v2.0 — the Intent Home's pure presentation mappings (no DOM, no React).
+      'src/renderer/src/intentHome/**/*.test.ts',
     ],
   },
   resolve: {

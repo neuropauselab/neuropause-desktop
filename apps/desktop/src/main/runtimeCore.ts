@@ -179,6 +179,7 @@ import { initEnterpriseIntelligenceNetwork } from './intelligenceNetwork';
 import { initAutonomousOperations } from './autonomousOps';
 import { initCommercialPlatform } from './commercial';
 import { initExperience } from './experience';
+import { initIntent } from './intent';
 import { initUpdater } from './updater';
 import { initReleaseOps } from './releaseOps';
 import { initFeatureFlags } from './featureFlags';
@@ -1437,6 +1438,13 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     knowledgeOverview: () => enterpriseKnowledge.service.overview(),
     commercialOverview: () => commercial.service.overview(),
   });
+  // Intent Experience Program v2.0 — the Intent-Native Experience LAYER. A read-only reprojection of the
+  // EXISTING P14 strategic goals as user outcomes ("intents"): a multi-intent board, Today's Intent
+  // dashboard, per-intent dynamic workspaces, role lenses, and the real next best action. Every value traces
+  // to a real strategy-goal signal; it imports zero mutators and adds no runtime/engine/store.
+  const intent = initIntent({
+    strategyOverview: () => autonomousIntel.service.overview(),
+  });
   // P13 — Industry Solution Platform read handlers (self-gated with industry:read).
   defs.push(...industryPlatform.handlers);
   // P14 — Autonomous Enterprise Intelligence read handlers (self-gated with strategy:read).
@@ -1455,6 +1463,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...commercial.handlers);
   // Experience Program v1.0 — decision-first experience read handlers (self-gated with experience:read).
   defs.push(...experience.handlers);
+  // Intent Experience Program v2.0 — intent-native experience read handlers (self-gated with intent:read).
+  defs.push(...intent.handlers);
   defs.push(...marketplace.handlers);
   defs.push(...webhooks.handlers);
   defs.push(...sandbox.handlers);
