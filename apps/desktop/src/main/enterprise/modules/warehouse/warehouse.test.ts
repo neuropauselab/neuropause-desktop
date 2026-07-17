@@ -352,3 +352,16 @@ describe('RBAC + AI summary surfaces', () => {
     expect(ai('warehouse-picks')).toBe(false);
   });
 });
+
+// Master-data module (generic CRUD only) — explicit per-module CRUD/validation smoke (certification).
+describe('Warehouse bins CRUD smoke (certification)', () => {
+  it('create persists a bin; a missing required warehouse is rejected without persisting', async () => {
+    const ok = await createIn('warehouse-bins', { code: 'BIN-A1', warehouse: 'WH-1' });
+    expect(ok.ok).toBe(true);
+    expect(ok.record?.fields).toMatchObject({ code: 'BIN-A1', warehouse: 'WH-1' });
+    const bad = await createIn('warehouse-bins', { code: 'BIN-A2' });
+    expect(bad.ok).toBe(false);
+    expect(bad.errors?.warehouse).toBeDefined();
+    expect(await listOf('warehouse-bins')).toHaveLength(1);
+  });
+});

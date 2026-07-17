@@ -336,3 +336,18 @@ describe('Sales integration (orders reserve + ship stock via movements)', () => 
     expect(productFromRecord(products.store.get(productId) as EnterpriseEntity).reservedStock).toBe(5);
   });
 });
+
+// Master-data module (generic CRUD only) — explicit per-module CRUD/validation smoke (certification).
+describe('Inventory warehouses CRUD smoke (certification)', () => {
+  it('create persists a warehouse; a missing required name is rejected without persisting', async () => {
+    const ok = await createIn('inventory-warehouses', { name: 'Central DC', code: 'WH-1' });
+    expect(ok.ok).toBe(true);
+    expect(ok.record?.fields.name).toBe('Central DC');
+    const bad = await createIn('inventory-warehouses', { code: 'WH-2' });
+    expect(bad.ok).toBe(false);
+    expect(bad.errors?.name).toBeDefined();
+    // the rejected create did not persist — only the valid warehouse is stored
+    const list = (await handler(IpcChannel.EnterpriseModuleList)({ moduleId: 'inventory-warehouses' })) as EnterpriseEntity[];
+    expect(list).toHaveLength(1);
+  });
+});

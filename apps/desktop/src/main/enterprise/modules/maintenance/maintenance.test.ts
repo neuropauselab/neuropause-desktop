@@ -305,3 +305,97 @@ describe('RBAC + AI summary surfaces', () => {
     expect(ai('maintenance-technicians')).toBe(false);
   });
 });
+
+// Certification hardening (Enterprise Module Certification v1.0): the preventive & corrective
+// modules declare real cross-module `runAction` workflows (raise-work-order / complete / resolve)
+// that were previously exercised only at construction. These lock their real behaviour.
+describe('Preventive Maintenance actions → Work Order (certification)', () => {
+  it('raiseWorkOrder creates a linked preventive work order, re-authorizes write, and is idempotent', async () => {
+    const pm = await createIn('maintenance-preventive', { pmNumber: 'PM-1', asset: 'AST-1', machine: 'CNC-1', scheduledDate: '2026-07-08' });
+    const pmId = pm.record?.id as string;
+    expect(pm.record?.fields.status).toBe('scheduled'); // required select applied its default
+
+    rec.authorized.length = 0;
+    const raised = await act('maintenance-preventive', pmId, 'raiseWorkOrder');
+    expect(raised.ok).toBe(true);
+    expect(rec.authorized).toContain('maintenance:manage'); // the raise seam re-authorizes the WO write scope
+
+    // a REAL preventive work order was created and cross-linked back onto the PM
+    const wos = await listOf('maintenance-work-orders');
+    expect(wos).toHaveLength(1);
+    expect(wos[0].fields).toMatchObject({ workOrderNumber: 'WO-PM-1', type: 'preventive', machine: 'CNC-1', asset: 'AST-1' });
+    expect(String((await getRec('maintenance-preventive', pmId)).fields.workOrder)).toBe(wos[0].id);
+
+    // idempotent: a PM that already has a work order refuses a second raise (no duplicate WO)
+    const again = await act('maintenance-preventive', pmId, 'raiseWorkOrder');
+    expect(again.ok).toBe(false);
+    expect(await listOf('maintenance-work-orders')).toHaveLength(1);
+  });
+
+  it('complete marks the PM completed with a completion date and rejects a double-complete', async () => {
+    const pm = await createIn('maintenance-preventive', { pmNumber: 'PM-2', machine: 'CNC-1' });
+    const pmId = pm.record?.id as string;
+    expect((await act('maintenance-preventive', pmId, 'complete')).ok).toBe(true);
+    const done = await getRec('maintenance-preventive', pmId);
+    expect(done.fields.status).toBe('completed');
+    expect(done.fields.completedDate).toBe('2026-07-08'); // stamped from ctx.now()
+    const again = await act('maintenance-preventive', pmId, 'complete');
+    expect(again.ok).toBe(false);
+    expect(again.message).toMatch(/already completed/i);
+  });
+});
+
+describe('Corrective Maintenance actions → Work Order (certification)', () => {
+  it('raiseWorkOrder creates a corrective work order, moves the fault to in_progress, and is idempotent', async () => {
+    const cm = await createIn('maintenance-corrective', { cmNumber: 'CM-1', asset: 'AST-1', machine: 'CNC-1', faultDescription: 'Bearing seized' });
+    const cmId = cm.record?.id as string;
+    expect(cm.record?.fields.status).toBe('open'); // default
+
+    const raised = await act('maintenance-corrective', cmId, 'raiseWorkOrder');
+    expect(raised.ok).toBe(true);
+    const wos = await listOf('maintenance-work-orders');
+    expect(wos).toHaveLength(1);
+    expect(wos[0].fields).toMatchObject({ workOrderNumber: 'WO-CM-1', type: 'corrective', priority: 'high' });
+
+    // the fault is cross-linked and advanced to in_progress
+    const linked = await getRec('maintenance-corrective', cmId);
+    expect(String(linked.fields.workOrder)).toBe(wos[0].id);
+    expect(linked.fields.status).toBe('in_progress');
+
+    const again = await act('maintenance-corrective', cmId, 'raiseWorkOrder');
+    expect(again.ok).toBe(false);
+    expect(await listOf('maintenance-work-orders')).toHaveLength(1);
+  });
+
+  it('resolve closes the fault and rejects a double-resolve', async () => {
+    const cm = await createIn('maintenance-corrective', { cmNumber: 'CM-2', machine: 'CNC-1' });
+    const cmId = cm.record?.id as string;
+    expect((await act('maintenance-corrective', cmId, 'resolve')).ok).toBe(true);
+    expect((await getRec('maintenance-corrective', cmId)).fields.status).toBe('resolved');
+    const again = await act('maintenance-corrective', cmId, 'resolve');
+    expect(again.ok).toBe(false);
+    expect(again.message).toMatch(/already resolved/i);
+  });
+});
+
+// Master-data modules (generic CRUD only, no custom actions) — explicit per-module CRUD/validation smoke.
+describe('Maintenance master-data CRUD smoke (certification)', () => {
+  it('asset categories: create persists; a missing required name is rejected without persisting', async () => {
+    const ok = await createIn('maintenance-asset-categories', { name: 'Rotating Equipment' });
+    expect(ok.ok).toBe(true);
+    expect(ok.record?.fields.name).toBe('Rotating Equipment');
+    const bad = await createIn('maintenance-asset-categories', {});
+    expect(bad.ok).toBe(false);
+    expect(bad.errors?.name).toBeDefined();
+    expect(await listOf('maintenance-asset-categories')).toHaveLength(1);
+  });
+
+  it('maintenance plans: create persists; a missing required plan number is rejected', async () => {
+    const ok = await createIn('maintenance-plans', { planNumber: 'MP-1' });
+    expect(ok.ok).toBe(true);
+    expect(ok.record?.fields.planNumber).toBe('MP-1');
+    const bad = await createIn('maintenance-plans', {});
+    expect(bad.ok).toBe(false);
+    expect(bad.errors?.planNumber).toBeDefined();
+  });
+});
