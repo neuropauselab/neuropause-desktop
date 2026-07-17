@@ -44,6 +44,8 @@ export default defineConfig({
       'src/renderer/src/autonomousOpsCenter/**/*.test.ts',
       // P20 — the Commercial Center's pure view-model (no DOM, no React).
       'src/renderer/src/commercialCenter/**/*.test.ts',
+      // Experience Program v1.0 — the Decision Center's pure view-model (no DOM, no React).
+      'src/renderer/src/decisionCenter/**/*.test.ts',
     ],
   },
   resolve: {

@@ -178,6 +178,7 @@ import { initGlobalOrchestration } from './orchestration';
 import { initEnterpriseIntelligenceNetwork } from './intelligenceNetwork';
 import { initAutonomousOperations } from './autonomousOps';
 import { initCommercialPlatform } from './commercial';
+import { initExperience } from './experience';
 import { initUpdater } from './updater';
 import { initReleaseOps } from './releaseOps';
 import { initFeatureFlags } from './featureFlags';
@@ -1422,6 +1423,20 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     controlPlaneOverview: () => controlPlane.service.overview(),
     strategyOptimization: () => autonomousIntel.service.optimization(),
   });
+  // Experience Program v1.0 — the Decision-First Experience LAYER. A read-only compression over the ENTIRE
+  // platform (P7/P14–P20 + workforce/connectors/marketplace) that distills it into the executive Decision
+  // Center — business health, today's mission, revenue, one decision/risk/approval. It imports zero mutators
+  // and changes only HOW humans interact with NeuroPause, not how it works.
+  const experience = initExperience({
+    enterpriseReport: enterpriseIntel.report,
+    strategyDecisions: () => autonomousIntel.service.decisions(),
+    strategyOverview: () => autonomousIntel.service.overview(),
+    opsOverview: () => autonomousOps.service.overview(),
+    opsApprovals: () => autonomousOps.service.approvals(),
+    twinOverview: () => enterpriseTwin.service.overview(),
+    knowledgeOverview: () => enterpriseKnowledge.service.overview(),
+    commercialOverview: () => commercial.service.overview(),
+  });
   // P13 — Industry Solution Platform read handlers (self-gated with industry:read).
   defs.push(...industryPlatform.handlers);
   // P14 — Autonomous Enterprise Intelligence read handlers (self-gated with strategy:read).
@@ -1438,6 +1453,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...autonomousOps.handlers);
   // P20 — NeuroPause Platform v2 commercial read handlers (self-gated with commercial:read).
   defs.push(...commercial.handlers);
+  // Experience Program v1.0 — decision-first experience read handlers (self-gated with experience:read).
+  defs.push(...experience.handlers);
   defs.push(...marketplace.handlers);
   defs.push(...webhooks.handlers);
   defs.push(...sandbox.handlers);

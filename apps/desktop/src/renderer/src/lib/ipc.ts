@@ -268,6 +268,12 @@ import {
   type CommercialReleases,
   type CommercialAdministration,
   type CommercialGovernance,
+  // Experience Program v1.0 — the decision-first experience layer
+  type ExperienceHome,
+  type ExperienceDecisions,
+  type ExperienceSummaries,
+  type ExperienceIntents,
+  type ExperienceGovernance,
   // Release engineering (Increment 2 · Stage 2)
   type ReleaseDiagnostics,
   type CrashStatus,
@@ -1622,6 +1628,17 @@ export const ipc = {
     releases: () => invoke(IpcChannel.CommercialReleases) as Promise<CommercialReleases>,
     administration: () => invoke(IpcChannel.CommercialAdministration) as Promise<CommercialAdministration>,
     governance: () => invoke(IpcChannel.CommercialGovernance) as Promise<CommercialGovernance>,
+    // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
+    onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
+  },
+
+  // ── Experience Program v1.0 — Decision-First Experience (read-only compression; nothing executes here) ──
+  experience: {
+    home: () => invoke(IpcChannel.ExperienceHome) as Promise<ExperienceHome>,
+    decisions: () => invoke(IpcChannel.ExperienceDecisions) as Promise<ExperienceDecisions>,
+    summaries: () => invoke(IpcChannel.ExperienceSummaries) as Promise<ExperienceSummaries>,
+    intents: () => invoke(IpcChannel.ExperienceIntents) as Promise<ExperienceIntents>,
+    governance: () => invoke(IpcChannel.ExperienceGovernance) as Promise<ExperienceGovernance>,
     // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
     onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
   },

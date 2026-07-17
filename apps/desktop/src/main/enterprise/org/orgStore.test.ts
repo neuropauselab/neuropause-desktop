@@ -143,6 +143,8 @@ describe('OrgStore — built-in role reconciliation', () => {
     expect(owner.permissions).toContain('autonomousops:read');
     // P20 — the commercial productization read scope must backfill on the same upgrade path.
     expect(owner.permissions).toContain('commercial:read');
+    // Experience Program v1.0 — the decision-first experience read scope must backfill too.
+    expect(owner.permissions).toContain('experience:read');
   });
 
   it('leaves custom (non-built-in) roles untouched on load', async () => {

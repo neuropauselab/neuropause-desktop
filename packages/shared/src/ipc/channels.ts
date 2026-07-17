@@ -551,6 +551,13 @@ export const IpcChannel = {
   CommercialAdministration: 'commercial:administration',
   CommercialGovernance: 'commercial:governance',
 
+  // ── Experience Program v1.0 — Decision-First Experience (read-only compression/summary layer) ──
+  ExperienceHome: 'experience:home',
+  ExperienceDecisions: 'experience:decisions',
+  ExperienceSummaries: 'experience:summaries',
+  ExperienceIntents: 'experience:intents',
+  ExperienceGovernance: 'experience:governance',
+
   EcosystemEventBroadcast: 'ecosystem:event',
 
   // ── P9 — Enterprise Marketplace (layer over the ecosystem marketplace) ──
@@ -1188,6 +1195,13 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.CommercialReleases,
   IpcChannel.CommercialAdministration,
   IpcChannel.CommercialGovernance,
+
+  // ── Experience Program v1.0 — Decision-First Experience ──
+  IpcChannel.ExperienceHome,
+  IpcChannel.ExperienceDecisions,
+  IpcChannel.ExperienceSummaries,
+  IpcChannel.ExperienceIntents,
+  IpcChannel.ExperienceGovernance,
 
   // ── P9 — Enterprise Marketplace ──
   IpcChannel.MarketplaceCatalog,

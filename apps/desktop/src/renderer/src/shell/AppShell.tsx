@@ -82,6 +82,9 @@ const AutoOpsCenterView = lazy(() =>
 const CommercialCenterView = lazy(() =>
   import('@renderer/commercialCenter/CommercialCenterView').then((m) => ({ default: m.CommercialCenterView })),
 );
+const DecisionCenterView = lazy(() =>
+  import('@renderer/decisionCenter/DecisionCenterView').then((m) => ({ default: m.DecisionCenterView })),
+);
 const EnterpriseView = lazy(() =>
   import('@renderer/views/EnterpriseView').then((m) => ({ default: m.EnterpriseView })),
 );
@@ -207,6 +210,8 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
 
   const renderView = (): JSX.Element => {
     switch (activeSection) {
+      case 'decision-center':
+        return <DecisionCenterView onOpenSection={(id) => goToSection(id as SectionId)} />;
       case 'home':
         return <HomeView session={session} />;
       case 'welcome':
