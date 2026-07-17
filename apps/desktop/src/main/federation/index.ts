@@ -38,6 +38,7 @@ import {
 } from '@neuropause/shared';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { createLogger } from '../logger';
+import { demoSeedsEnabled } from '../demoSeed';
 import { fedStore } from './runtime/fedInstance';
 import { exchangeStore } from './exchange/exchangeInstance';
 import { globalGovStore } from './governance/globalGovInstance';
@@ -123,7 +124,10 @@ function buildScalabilityInput(): ScalabilityInput {
     graphNodes: graphStore.counts().nodes,
     concurrentWorkers: workerRegistry.summaries().length,
     regions: CLOUD_REGIONS.length,
-    benchmarks: BENCHMARKS,
+    // BENCHMARKS are hardcoded "measured" numbers, not values sampled on this install, so a production build
+    // reports no benchmarks (empty list) rather than presenting fabricated figures as measured. They remain
+    // available for local demos behind the demo-seed flag.
+    benchmarks: demoSeedsEnabled() ? BENCHMARKS : [],
     now: Date.now(),
   };
 }

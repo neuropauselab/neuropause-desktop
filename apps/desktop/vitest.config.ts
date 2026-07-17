@@ -48,6 +48,8 @@ export default defineConfig({
       'src/renderer/src/decisionCenter/**/*.test.ts',
       // Intent Experience Program v2.0 — the Intent Home's pure presentation mappings (no DOM, no React).
       'src/renderer/src/intentHome/**/*.test.ts',
+      // Product Integrity v1.0 — navigation section registry (pure data: visibility/duplication guardrails).
+      'src/renderer/src/shell/**/*.test.ts',
     ],
   },
   resolve: {

@@ -9,6 +9,7 @@ import { promises as fs } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import type { Partner, PartnerStats, PartnerTier, PartnerType } from '@neuropause/shared';
 import { createLogger } from '../../logger';
+import { demoSeedsEnabled } from '../../demoSeed';
 
 const log = createLogger('ecosystem-partners');
 
@@ -123,6 +124,13 @@ export class PartnersStore extends EventEmitter {
   }
 
   private applySeed(): void {
+    // The partner directory below is a fabricated fixture (hardcoded listing counts, certifications, random
+    // join dates). A production install starts with an empty directory and fills it from real partners, so gate
+    // the fixtures behind the demo-seed flag (persist the empty seeded state).
+    if (!demoSeedsEnabled()) {
+      this.schedulePersist();
+      return;
+    }
     for (const s of SEED_PARTNERS) {
       if ([...this.partners.values()].some((p) => p.name === s.name)) continue;
       const id = `prt_${randomUUID()}`;

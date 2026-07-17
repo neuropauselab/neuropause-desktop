@@ -16,7 +16,7 @@ import { PerformanceOverlay } from './PerformanceOverlay';
 import { PerfSampler } from '@renderer/state/PerfSampler';
 import { HomeView } from '@renderer/views/HomeView';
 import { OnboardingWizard } from '@renderer/onboarding/OnboardingWizard';
-import { SECTIONS, type SectionId } from './sections';
+import { type SectionId } from './sections';
 
 const log = createLogger('shell');
 
@@ -152,9 +152,11 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
   // Live refs so the once-subscribed menu handler always sees current values.
   const openRef = useRef(commandOpen);
   openRef.current = commandOpen;
+  // Navigate straight to a section by id. (Previously this routed a 0-based findIndex through the 1-based
+  // navigateByIndex, landing one section early — which, once intent-home became the default and Home was
+  // hidden, sent the flagship CTAs and onboarding to the wrong/hidden surfaces.)
   const goToSection = (id: SectionId): void => {
-    const index = SECTIONS.findIndex((s) => s.id === id);
-    if (index >= 0) navigateByIndex(index);
+    setSection(id);
   };
 
   const sectionRef = useRef(activeSection);

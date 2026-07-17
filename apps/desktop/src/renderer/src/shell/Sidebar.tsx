@@ -60,8 +60,8 @@ function SidebarItem({
 export function Sidebar(): JSX.Element {
   const { sidebarCollapsed, sidebarWidth, setSidebarWidth } = useShell();
   const [resizing, setResizing] = useState(false);
-  const primary = SECTIONS.filter((s) => s.placement === 'primary');
-  const footer = SECTIONS.filter((s) => s.placement === 'footer');
+  const primary = SECTIONS.filter((s) => s.placement === 'primary' && !s.hidden);
+  const footer = SECTIONS.filter((s) => s.placement === 'footer' && !s.hidden);
 
   const startResize = (e: ReactPointerEvent): void => {
     if (sidebarCollapsed) return;

@@ -23,6 +23,7 @@ import type {
   TenantWorker,
 } from '@neuropause/shared';
 import { createLogger } from '../../logger';
+import { demoSeedsEnabled } from '../../demoSeed';
 
 const log = createLogger('cloud-tenancy');
 
@@ -134,6 +135,10 @@ export class TenancyStore extends EventEmitter {
 
   private applySeed(): void {
     const now = Date.now();
+    // Demo fixtures (sample remote tenants + sample home-storage figures) only exist when demo seeds are
+    // explicitly enabled. In a production install the home tenant is the ONLY tenant, created now, with a
+    // real (zero-until-measured) storage footprint — no fabricated tenants or storage numbers.
+    const demo = demoSeedsEnabled();
     // Home tenant from the local org
     const homeId = `tnt_${randomUUID()}`;
     this.tenants.set(homeId, {
@@ -146,7 +151,7 @@ export class TenancyStore extends EventEmitter {
       status: 'active',
       isHome: true,
       storageNamespace: `np-${this.localOrgId}`,
-      createdAt: new Date(now - 120 * 86_400_000).toISOString(),
+      createdAt: new Date(demo ? now - 120 * 86_400_000 : now).toISOString(),
     });
     this.isolation.set(homeId, {
       tenantId: homeId,
@@ -155,9 +160,14 @@ export class TenancyStore extends EventEmitter {
       encryptionKeyId: `kms_${randomUUID().slice(0, 12)}`,
       regionId: 'us-east',
       residency: 'us',
-      objects: 12_840,
-      bytes: 318_767_104,
+      objects: demo ? 12_840 : 0,
+      bytes: demo ? 318_767_104 : 0,
     });
+
+    if (!demo) {
+      this.schedulePersist();
+      return;
+    }
 
     for (const d of DEMO_TENANTS) {
       const id = `tnt_${randomUUID()}`;

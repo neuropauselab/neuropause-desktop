@@ -93,6 +93,12 @@ import { pluginManager } from './plugins/pluginManager';
 import { pluginHost } from './plugins/pluginHost';
 import { pluginExtensionRegistry } from './plugins/extensionRegistry';
 import { registerSecureHandlers, runSecureHandler, type SecureHandlerDef } from './ipc/secureBridge';
+import {
+  RUNTIME_CHANNEL_PERMISSIONS,
+  withRuntimeAuthz,
+  PUBLIC_CHANNELS,
+  assertAllChannelsClassified,
+} from './ipc/runtimeAuthz';
 import { initPlatform, registerDiagnosticProbes } from './platform';
 import { build } from './platform/producers';
 import { initConnectors } from './connectors';
@@ -192,7 +198,7 @@ import { connectorHealthProbe } from './connectors/connectorDiagnostics';
 import { memoryStore } from './memory/memoryInstance';
 import { graphStore } from './graph/graphInstance';
 import { runMrp, computeCapacitySchedule, isTerminalExecutionStatus } from '@neuropause/shared';
-import type { ApiMethod, EnterprisePermission, ResourceGraphModel } from '@neuropause/shared';
+import type { ApiMethod, EnterprisePermission, IpcChannelName, ResourceGraphModel } from '@neuropause/shared';
 const log = createLogger('runtime-core');
 export interface RuntimeCoreDeps {
   broadcast: (channel: string, payload: unknown) => void;
@@ -1518,6 +1524,30 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...updater.handlers);
   defs.push(...releaseOps.handlers);
 
+  // ── Close the sender-trust gap on privileged base/core channels ──────────────
+  // A class of privileged runtime channels (execute / plugin lifecycle / permission
+  // grants / automation mutations / runtime control / memory writes / decision
+  // mutations / feature-flag overrides / migration+backup+recovery+support / billing
+  // / device registration / supervisor recovery / registry import+backup / package
+  // rollback + org-intelligence reads) shipped WITHOUT a `permission`, riding on
+  // sender-trust alone because no authz annotator covered their namespace. Stamp
+  // requireAuth + the RBAC permission from RUNTIME_CHANNEL_PERMISSIONS onto exactly
+  // those channels, skipping any already gated by another withXAuthz annotator
+  // (never double-wrap). See ipc/runtimeAuthz.ts. Applied here, at the composition
+  // root, because these privileged channels are interleaved with genuinely-public
+  // ones inside shared subsystem handler arrays (memory / graph / automation /
+  // decision / feature-flags / releaseOps / trace / …); wrapping the whole arrays
+  // would trip withRuntimeAuthz's throw-on-unclassified guard on the public reads.
+  const runtimeGated = new Map(
+    withRuntimeAuthz(
+      defs.filter((d) => RUNTIME_CHANNEL_PERMISSIONS[d.channel] && !d.permission),
+    ).map((d) => [d.channel, d] as const),
+  );
+  for (let i = 0; i < defs.length; i += 1) {
+    const gated = runtimeGated.get(defs[i].channel);
+    if (gated) defs[i] = gated;
+  }
+
   // RBAC: channels annotated with `permission` (the enterprise family) are asserted
   // against the signed-in actor's org roles before dispatch.
   const secureBridgeDeps = {
@@ -1607,6 +1637,26 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   });
   defs.push(...validation.handlers);
   log.info('Continuous Validation Platform ready — AI Sandbox v1.0 complete', { pipelines: validation.pipelines.length });
+
+  // Startup invariant (fail-closed): with every def now assembled, no runtime-invokable
+  // channel may ride on sender-trust ALONE. Collect the channels that ended up gated —
+  // carrying a `permission` (RBAC, from every withXAuthz annotator's output) and/or
+  // `requireAuth` (authentication) — and require every remaining channel to be on the
+  // vetted PUBLIC_CHANNELS allowlist. A channel that is neither is refused loudly,
+  // mirroring the annotators' throw-on-unclassified-channel philosophy.
+  const gatedChannels = new Set<IpcChannelName>();
+  for (const d of defs) if (d.permission || d.requireAuth) gatedChannels.add(d.channel);
+  const ungatedChannels = assertAllChannelsClassified(gatedChannels, PUBLIC_CHANNELS);
+  if (ungatedChannels.length > 0) {
+    log.error('Ungated IPC channels — neither RBAC/auth-gated nor public-allowlisted', {
+      count: ungatedChannels.length,
+      channels: ungatedChannels,
+    });
+    throw new Error(
+      `Refusing to start: ${ungatedChannels.length} runtime IPC channel(s) ride on sender-trust alone ` +
+        `(classify in RUNTIME_CHANNEL_PERMISSIONS or allowlist in PUBLIC_CHANNELS): ${ungatedChannels.join(', ')}`,
+    );
+  }
 
   registerSecureHandlers(defs, secureBridgeDeps);
   // Bridge runtime-core events to the renderer.

@@ -9,6 +9,7 @@ import { promises as fs } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import type { SecurityEvent, SecuritySeverity, UsagePoint } from '@neuropause/shared';
 import { createLogger } from '../../logger';
+import { demoSeedsEnabled } from '../../demoSeed';
 
 const log = createLogger('federation-observability');
 
@@ -46,6 +47,13 @@ export class ObservabilityStore extends EventEmitter {
   }
 
   private applySeed(): void {
+    // The 14-day usage curve and the named security events (Okta, Aperture Capital, …) below are fabricated
+    // demo history. A production install starts with an empty usage series and security log and fills them from
+    // real runtime activity, so gate the fixtures behind the demo-seed flag (persist the empty seeded state).
+    if (!demoSeedsEnabled()) {
+      this.schedulePersist();
+      return;
+    }
     const now = Date.now();
     const day = 86_400_000;
     for (let i = 13; i >= 0; i -= 1) {

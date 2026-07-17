@@ -25,6 +25,7 @@ import type {
 import { EXCHANGE_KINDS } from '@neuropause/shared';
 import { signArtifact, verifyArtifact, type SignableManifest } from './signing';
 import { createLogger } from '../../logger';
+import { demoSeedsEnabled } from '../../demoSeed';
 
 const log = createLogger('federation-exchange');
 
@@ -112,6 +113,13 @@ export class ExchangeStore extends EventEmitter {
   }
 
   private applySeed(): void {
+    // The seeded artifacts below carry fabricated install counts and star ratings, so they must never appear in
+    // a production exchange — a fresh install shows an empty, honest marketplace. They remain available for
+    // local demos behind the demo-seed flag; persist the (empty) seeded state so the flag is recorded.
+    if (!demoSeedsEnabled()) {
+      this.schedulePersist();
+      return;
+    }
     const now = Date.now();
     for (const s of SEED_ARTIFACTS) {
       const id = `art_${randomUUID()}`;

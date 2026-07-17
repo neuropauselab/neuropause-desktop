@@ -350,14 +350,20 @@ function buildState(deps: AutonomousOperationsDeps): AutoOpsState {
   // ── Monitoring (reused read accessors, normalized health-oriented 0..100) ──
   const monitorSignals: MonitorInput[] = [];
   const execSuccess = execStats?.successRate; // already a 0..100 percent (or null)
-  monitorSignals.push({
-    dimension: 'execution',
-    label: 'Execution success',
-    value: execSuccess != null ? clampPct(execSuccess) : execution.active.length > 0 ? 60 : 80,
-    display: execSuccess != null ? `${Math.round(execSuccess)}%` : 'n/a',
-    detail: `${execution.active.length} active · ${execution.awaiting.length} awaiting approval`,
-    source: 'ExecuteEngine + Workforce Runtime',
-  });
+  // Only surface the execution-success gauge when there is REAL execution data. Previously a null success
+  // rate fell back to a fabricated 80 (idle) / 60 (active), which read as a green "healthy" gauge and was
+  // averaged into the monitoring overall — a false-healthy signal on a fresh install. When there is no data
+  // the dimension is simply omitted (honest), so the overall reflects only measured signals.
+  if (execSuccess != null) {
+    monitorSignals.push({
+      dimension: 'execution',
+      label: 'Execution success',
+      value: clampPct(execSuccess),
+      display: `${Math.round(execSuccess)}%`,
+      detail: `${execution.active.length} active · ${execution.awaiting.length} awaiting approval`,
+      source: 'ExecuteEngine + Workforce Runtime',
+    });
+  }
   const coordinationHealth = orchestration?.summary?.overallHealth ?? null;
   monitorSignals.push({
     dimension: 'health',

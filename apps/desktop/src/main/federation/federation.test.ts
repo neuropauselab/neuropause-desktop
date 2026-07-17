@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -13,6 +13,12 @@ import { buildObservability, type ObsInput } from './observability/observability
 import { ObservabilityStore } from './observability/observabilityStore';
 import { DrStore } from './dr/drStore';
 import { buildFedAdmin } from './admin/fedAdmin';
+
+// These suites exercise the DEMO-seeded federation fixtures (peer orgs, exchange artifacts, audit entries,
+// backups). Demo seeds are off by default in production; enable them here so the fixtures exist. The honest
+// production-empty behavior is asserted in *.prod.test.ts.
+beforeAll(() => { process.env.NP_DEMO_SEEDS = '1'; });
+afterAll(() => { delete process.env.NP_DEMO_SEEDS; });
 import { buildScalabilityReport } from './scalability/scalability';
 import type { FedPolicy } from '@neuropause/shared';
 

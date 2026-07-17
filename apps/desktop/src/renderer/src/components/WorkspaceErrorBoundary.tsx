@@ -109,7 +109,7 @@ function ErrorFallback({
     void navigator.clipboard.writeText(formatErrorReport(report)).then(() => success('Error details copied')).catch(() => toastError('Could not copy details'));
   };
   const openDiagnostics = (): void => openOperations('diagnostics');
-  const restartWorkspace = (): void => { onRetry(); setSection('home'); };
+  const restartWorkspace = (): void => { onRetry(); setSection('intent-home'); };
   const reportError = (): void => {
     void ipc.releaseOps
       .reportError({ kind: `workspace:${workspace}:userReport`, message: error.message, stack: error.stack })

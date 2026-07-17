@@ -72,20 +72,22 @@ export class SyncStore extends EventEmitter {
   }
 
   private applySeed(): void {
+    // Honest initial state for a fresh install: nothing has synced yet, so every domain starts at version 0
+    // with no last-sync timestamp. (Previously these were seeded to fabricated non-zero versions/timestamps,
+    // which inflated the sync-ops usage KPI on a brand-new install.)
     for (const domain of SYNC_DOMAINS) {
       if (this.states.has(domain)) continue;
-      const baseline = 20 + Math.floor(Math.random() * 40);
       this.states.set(domain, {
         domain,
-        localVersion: baseline,
-        remoteVersion: baseline,
+        localVersion: 0,
+        remoteVersion: 0,
         pendingChanges: 0,
         status: 'synced',
-        lastSyncedAt: new Date(Date.now() - Math.floor(Math.random() * 6) * 3_600_000).toISOString(),
-        cursor: `${domain}@${baseline}`,
+        lastSyncedAt: null,
+        cursor: `${domain}@0`,
       });
     }
-    this.lastFullSyncAt = new Date(Date.now() - 3_600_000).toISOString();
+    this.lastFullSyncAt = null;
     this.schedulePersist();
   }
 

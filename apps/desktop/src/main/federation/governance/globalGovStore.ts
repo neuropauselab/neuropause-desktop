@@ -21,6 +21,7 @@ import type {
 } from '@neuropause/shared';
 import { evaluateFederatedAction, buildFedCompliance, complianceScore, type ComplianceInput } from './globalGov';
 import { createLogger } from '../../logger';
+import { demoSeedsEnabled } from '../../demoSeed';
 
 const log = createLogger('federation-governance');
 
@@ -75,6 +76,13 @@ export class GlobalGovStore extends EventEmitter {
     policy('Public artifact publishing', 'Publishing public-scope artifacts to the marketplace is allowed.', 'all', 'allow', 'publish_public');
     policy('Untrusted policy import', 'Importing governance policies from peers is allowed only for trusted peers.', 'trusted', 'allow', 'import_policy');
 
+    // The policy definitions above are legitimate configuration (the governance rules themselves) and always
+    // seed. The audit entry and pending approval below are fabricated activity, so a production install starts
+    // with an empty audit trail and no pending approvals — gate them behind the demo-seed flag.
+    if (!demoSeedsEnabled()) {
+      this.schedulePersist();
+      return;
+    }
     // A representative resolved + pending audit/approval pair.
     this.audit.push({
       id: `faud_${randomUUID()}`,

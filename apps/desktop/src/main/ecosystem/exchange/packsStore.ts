@@ -13,6 +13,7 @@ import { promises as fs } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import type { ExchangePack, ExchangeStats, PackItem, PackKind } from '@neuropause/shared';
 import { createLogger } from '../../logger';
+import { demoSeedsEnabled } from '../../demoSeed';
 
 const log = createLogger('ecosystem-exchange');
 
@@ -98,6 +99,13 @@ export class PacksStore extends EventEmitter {
   }
 
   private applySeed(): void {
+    // The seeded packs are community fixtures published by external organizations, with Math.random-derived
+    // install counts; none are first-party. A production install shows an empty exchange until real packs are
+    // published or imported, so gate the fixtures behind the demo-seed flag (persist the empty seeded state).
+    if (!demoSeedsEnabled()) {
+      this.schedulePersist();
+      return;
+    }
     for (const s of SEED_PACKS) {
       if ([...this.packs.values()].some((p) => p.name === s.name)) continue;
       const pack: ExchangePack = {

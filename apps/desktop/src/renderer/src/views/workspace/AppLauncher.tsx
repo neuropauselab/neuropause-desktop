@@ -75,7 +75,7 @@ export function AppLauncher({
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
                   <span className="truncate text-base font-semibold">{app.name}</span>
-                  {app.connected && (
+                  {import.meta.env.DEV && app.connected && (
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-sysgreen" title="Connected" />
                   )}
                 </div>

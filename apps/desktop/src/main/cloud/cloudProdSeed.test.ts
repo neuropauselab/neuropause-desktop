@@ -1,0 +1,59 @@
+/**
+ * Product Integrity v1.0 — cloud authenticity guardrails. With demo seeds OFF (the production default), the
+ * cloud stores must contain ONLY real data: the single home tenant, zero fabricated remote tenants / SSO /
+ * deployments / usage. These tests lock that so fabricated fixtures can never silently return to production.
+ */
+import { beforeAll, describe, expect, it } from 'vitest';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { TenancyStore } from './tenancy/tenancyStore';
+import { FederationStore } from './identity/federationStore';
+import { ApiPlatformStore } from './apiplatform/apiPlatformStore';
+import { SyncStore } from './sync/syncStore';
+
+beforeAll(() => { delete process.env.NP_DEMO_SEEDS; }); // production default: no demo seeds
+
+const tmp = (name: string): string => join(tmpdir(), `np-prod-${randomUUID()}-${name}`);
+
+describe('cloud stores — production seed (no demo data)', () => {
+  it('TenancyStore seeds ONLY the home tenant, with a real (zero-until-measured) storage footprint', async () => {
+    const s = new TenancyStore(tmp('tenancy.json'), 'org-x', 'Acme');
+    await s.load();
+    const tenants = s.listTenants();
+    expect(tenants).toHaveLength(1);
+    expect(tenants[0].isHome).toBe(true);
+    const iso = s.listIsolation();
+    expect(iso).toHaveLength(1);
+    expect(iso[0].objects).toBe(0); // no fabricated 12,840-object storage figure
+    expect(iso[0].bytes).toBe(0);
+    expect(s.summary().tenants).toBe(1); // no Helios/Aperture/Northwind demo tenants
+  });
+
+  it('FederationStore (identity) seeds NO SSO connections (no fake active Okta)', async () => {
+    const s = new FederationStore(tmp('identity.json'));
+    await s.load('tnt_home');
+    expect(s.listConnections()).toHaveLength(0);
+    expect(s.summary().active).toBe(0);
+  });
+
+  it('ApiPlatformStore keeps rate-limit policies but seeds NO fabricated deployments/webhooks/APIs', async () => {
+    const s = new ApiPlatformStore(tmp('api.json'));
+    await s.load('tnt_home');
+    expect(s.listDeployments()).toHaveLength(0); // no fake 99.98% uptime fixtures
+    expect(s.listWebhooks()).toHaveLength(0); // no fake 1,284 deliveries
+    expect(s.listPublicApis()).toHaveLength(0); // no fake rps
+    expect(s.listPolicies().length).toBeGreaterThan(0); // policies are real config, kept
+  });
+
+  it('SyncStore seeds honest zero versions (no inflated usage baseline)', async () => {
+    const s = new SyncStore(tmp('sync.json'));
+    await s.load();
+    const states = s.states_();
+    expect(states.length).toBeGreaterThan(0);
+    for (const st of states) {
+      expect(st.localVersion).toBe(0);
+      expect(st.remoteVersion).toBe(0);
+    }
+  });
+});

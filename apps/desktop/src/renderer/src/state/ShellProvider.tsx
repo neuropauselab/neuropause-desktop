@@ -59,11 +59,14 @@ type Action =
   | { type: 'clearConnectorsTab' };
 
 const clampWidth = (w: number): number => Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(w)));
-const isSectionId = (v: unknown): v is SectionId => SECTIONS.some((s) => s.id === v);
+// The canonical default landing is the intent-native home. A persisted section that is now hidden from nav
+// (a retired duplicate/placeholder) falls back here so a returning user never lands on a hidden surface.
+const DEFAULT_SECTION: SectionId = 'intent-home';
+const isVisibleSection = (v: unknown): v is SectionId => SECTIONS.some((s) => s.id === v && !s.hidden);
 
 /** Builds initial state, restoring persisted preferences where valid. */
 function init(): ShellState {
-  const persistedSection = prefs.read<string>(PrefKey.activeSection, 'home');
+  const persistedSection = prefs.read<string>(PrefKey.activeSection, DEFAULT_SECTION);
   const persistedTabs = prefs.read<WorkspaceTab[]>(PrefKey.workspaceTabs, []);
   const persistedActiveTab = prefs.read<string | null>(PrefKey.activeTabId, null);
   const tabs = Array.isArray(persistedTabs) ? persistedTabs.filter((t) => t && t.id && t.appId) : [];
@@ -72,7 +75,7 @@ function init(): ShellState {
     : (tabs[tabs.length - 1]?.id ?? null);
 
   return {
-    activeSection: isSectionId(persistedSection) ? persistedSection : 'home',
+    activeSection: isVisibleSection(persistedSection) ? persistedSection : DEFAULT_SECTION,
     sidebarCollapsed: prefs.read<boolean>(PrefKey.sidebarCollapsed, false),
     sidebarWidth: clampWidth(prefs.read<number>(PrefKey.sidebarWidth, SIDEBAR_DEFAULT)),
     commandOpen: false,

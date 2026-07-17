@@ -24,6 +24,7 @@ import type {
   TrustRelationship,
 } from '@neuropause/shared';
 import { createLogger } from '../../logger';
+import { demoSeedsEnabled } from '../../demoSeed';
 
 const log = createLogger('federation-runtime');
 
@@ -100,6 +101,14 @@ export class FederationRuntimeStore extends EventEmitter {
       sharedOut: 0,
       sharedIn: 0,
     });
+    // The home organization above is real (the local org) and always seeds. Everything below — peer
+    // organizations, their trust records, pending invitations, and shared resources — is fabricated federation
+    // activity that must not appear in a production install (which starts with zero peers). Gate it behind the
+    // demo-seed flag.
+    if (!demoSeedsEnabled()) {
+      this.schedulePersist();
+      return;
+    }
     for (const p of SEED_PEERS) {
       this.orgs.set(p.id, {
         id: p.id,

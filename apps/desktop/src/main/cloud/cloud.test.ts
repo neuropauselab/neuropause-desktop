@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,6 +10,12 @@ import { planSync } from './sync/syncEngine';
 import { ApiPlatformStore } from './apiplatform/apiPlatformStore';
 import { buildAdminOverview, buildComplianceReport, type AdminInput } from './admin/admin';
 import type { CloudRegionId, DataResidency, MfaPolicy, SsoConnection, SyncDomainState } from '@neuropause/shared';
+
+// These suites exercise the DEMO-seeded store fixtures (sample tenants, SSO connections, deployments).
+// Demo seeds are off by default in production; enable them here so the fixtures exist. The honest
+// production-empty behavior (no demo data when the flag is off) is asserted in *.prod.test.ts.
+beforeAll(() => { process.env.NP_DEMO_SEEDS = '1'; });
+afterAll(() => { delete process.env.NP_DEMO_SEEDS; });
 
 let dir = '';
 const openStores: { flush: () => Promise<void> }[] = [];

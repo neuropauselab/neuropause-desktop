@@ -16,6 +16,7 @@ import type {
   SsoStatus,
 } from '@neuropause/shared';
 import { createLogger } from '../../logger';
+import { demoSeedsEnabled } from '../../demoSeed';
 
 const log = createLogger('cloud-identity');
 
@@ -60,6 +61,15 @@ export class FederationStore extends EventEmitter {
   private applySeed(): void {
     const t = this.homeTenantId;
     const now = new Date().toISOString();
+    // A fresh production install has NO configured SSO — the honest default is an empty connection list with
+    // SCIM/MFA off. The sample Okta/Entra connections below only exist when demo seeds are enabled; otherwise
+    // we seed just the (disabled) SCIM + MFA posture so the identity summary reads a truthful "none active".
+    if (!demoSeedsEnabled()) {
+      this.scim.set(t, { tenantId: t, status: 'disabled', tokenLast4: '', endpoint: 'https://cloud.neuropause.app/scim/v2', provisioned: 0, lastSyncAt: null });
+      this.mfa.set(t, { tenantId: t, required: false, methods: ['totp', 'webauthn'], graceDays: 7 });
+      this.schedulePersist();
+      return;
+    }
     const saml: SsoConnection = {
       id: `sso_${randomUUID()}`,
       tenantId: t,

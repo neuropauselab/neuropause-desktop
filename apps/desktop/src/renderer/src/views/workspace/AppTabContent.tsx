@@ -35,7 +35,7 @@ export function AppTabContent({ tab }: { tab: WorkspaceTab }): JSX.Element {
             {app.developer} · {app.category}
           </div>
           <div className="mt-3">
-            {app.connected ? (
+            {import.meta.env.DEV && app.connected ? (
               <Badge tone="green">
                 <span className="h-1.5 w-1.5 rounded-full bg-sysgreen" /> Connected
               </Badge>

@@ -19,7 +19,7 @@ import { useShell } from '@renderer/state/ShellProvider';
 import { ipc } from '@renderer/lib/ipc';
 import { createLogger } from '@renderer/lib/logger';
 import { Button } from '@renderer/components/ui/Button';
-import { SECTIONS, type SectionId } from '@renderer/shell/sections';
+import { type SectionId } from '@renderer/shell/sections';
 
 const log = createLogger('welcome');
 
@@ -30,7 +30,7 @@ const STEP_LINKS: Partial<Record<OnboardingStepId, SectionId>> = {
 };
 
 export function WelcomeView() {
-  const { navigateByIndex } = useShell();
+  const { setSection } = useShell();
   const [status, setStatus] = useState<OnboardingStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [fbCategory, setFbCategory] = useState<FeedbackCategory>('idea');
@@ -51,8 +51,7 @@ export function WelcomeView() {
   }, []);
 
   const goTo = (id: SectionId): void => {
-    const index = SECTIONS.findIndex((s) => s.id === id);
-    if (index >= 0) navigateByIndex(index);
+    setSection(id);
   };
 
   const complete = async (step: OnboardingStepId, section?: SectionId) => {

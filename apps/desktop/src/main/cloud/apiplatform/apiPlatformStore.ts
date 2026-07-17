@@ -21,6 +21,7 @@ import type {
   WebhookStatus,
 } from '@neuropause/shared';
 import { createLogger } from '../../logger';
+import { demoSeedsEnabled } from '../../demoSeed';
 
 const log = createLogger('cloud-apiplatform');
 
@@ -68,6 +69,21 @@ export class ApiPlatformStore extends EventEmitter {
 
   private applySeed(): void {
     const now = new Date().toISOString();
+    // Rate-limit policies are real default configuration (not fabricated telemetry) and always seed.
+    const policy = (name: string, scope: CloudRateLimitPolicy['scope'], windowSec: number, limit: number, burst: number): void => {
+      const id = `rlp_${randomUUID()}`;
+      this.policies.set(id, { id, name, scope, windowSec, limit, burst, enabled: true });
+    };
+    policy('Global ceiling', 'global', 60, 10_000, 2_000);
+    policy('Per-tenant', 'tenant', 60, 1_000, 200);
+    policy('Per-key default', 'key', 60, 100, 20);
+
+    // Deployments, the sample webhook, and the sample public APIs carry telemetry (uptime %, p95 latency,
+    // delivery counts, rps) that has NO real production source and was being surfaced — even relabeled
+    // "live" — through the control plane and the Digital Twin. They are demo fixtures only. A production
+    // install starts with no seeded deployments/webhooks/APIs (an honest empty state) until real ones exist.
+    if (!demoSeedsEnabled()) return;
+
     const deploy = (regionId: CloudRegionId, replicas: number, healthy: number, p95: number, uptime: number): void => {
       const id = `dep_${randomUUID()}`;
       this.deployments.set(id, {
@@ -86,14 +102,6 @@ export class ApiPlatformStore extends EventEmitter {
     deploy('us-east', 3, 3, 42, 99.98);
     deploy('eu-west', 2, 2, 51, 99.95);
     deploy('ap-south', 2, 1, 73, 99.71);
-
-    const policy = (name: string, scope: CloudRateLimitPolicy['scope'], windowSec: number, limit: number, burst: number): void => {
-      const id = `rlp_${randomUUID()}`;
-      this.policies.set(id, { id, name, scope, windowSec, limit, burst, enabled: true });
-    };
-    policy('Global ceiling', 'global', 60, 10_000, 2_000);
-    policy('Per-tenant', 'tenant', 60, 1_000, 200);
-    policy('Per-key default', 'key', 60, 100, 20);
 
     const wid = `whk_${randomUUID()}`;
     this.webhooks.set(wid, {

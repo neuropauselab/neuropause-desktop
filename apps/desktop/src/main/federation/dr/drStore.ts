@@ -22,6 +22,7 @@ import type {
   ReplicaState,
 } from '@neuropause/shared';
 import { createLogger } from '../../logger';
+import { demoSeedsEnabled } from '../../demoSeed';
 
 const log = createLogger('federation-dr');
 
@@ -33,9 +34,12 @@ interface DrFile {
   seeded: boolean;
 }
 
+// Honest defaults for a fresh install: high availability and multi-region are NOT configured until the
+// operator actually enables them, so they default off (claiming them on would inflate the continuity score
+// with capabilities the deployment does not yet have). The RPO/RTO values are legitimate target goals.
 const DEFAULT_POSTURE: ContinuityPosture = {
-  haEnabled: true,
-  multiRegion: true,
+  haEnabled: false,
+  multiRegion: false,
   rpoTargetSeconds: 300,
   rtoTargetSeconds: 900,
   lastDrillAt: null,
@@ -75,6 +79,14 @@ export class DrStore extends EventEmitter {
   }
 
   private applySeed(): void {
+    // Every record seeded here is fabricated DR activity: backups with Math.random-derived durations, modeled
+    // replica lag, a passed recovery validation, and a drill timestamp. A production install has no backups,
+    // replicas, or validations until it actually runs them; its continuity posture keeps the real (config)
+    // RPO/RTO targets with a null last-drill. Gate the fixtures behind the demo-seed flag.
+    if (!demoSeedsEnabled()) {
+      this.schedulePersist();
+      return;
+    }
     const now = Date.now();
     const day = 86_400_000;
     const mkBackup = (scope: BackupScope, daysAgo: number, regionId: CloudRegionId, sizeBytes: number, objects: number): void => {

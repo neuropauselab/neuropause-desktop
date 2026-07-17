@@ -117,7 +117,11 @@ const CONNECTOR_AVAILABLE = new Set([
 ]);
 
 export function connectionStatus(slug: string): ConnectionStatus {
-  if (DEMO_CONNECTED.has(slug)) return 'connected';
+  // Real per-app account linking arrives with Connectors (Phase 4). Until then, a production build must NOT
+  // claim any app is "connected" — showing a green Connected pill for an account that isn't linked is exactly
+  // the UI deception the integrity program forbids. The demo "connected" set is therefore dev-only; in a
+  // packaged build `import.meta.env.DEV` is false and these apps honestly read as merely "available".
+  if (import.meta.env.DEV && DEMO_CONNECTED.has(slug)) return 'connected';
   if (CONNECTOR_AVAILABLE.has(slug)) return 'available';
   return 'none';
 }

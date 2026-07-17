@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,6 +7,11 @@ import { InstallsStore } from './installsStore';
 import { PacksStore } from './packsStore';
 import { PartnersStore } from './partnersStore';
 import { PARTNER_TYPES } from '@neuropause/shared';
+
+// PacksStore/PartnersStore seed DEMO community packs + a sample partner directory (off by default in prod);
+// enable demo seeds so these fixtures exist. Production-empty behavior is asserted in *.prod.test.ts.
+beforeAll(() => { process.env.NP_DEMO_SEEDS = '1'; });
+afterAll(() => { delete process.env.NP_DEMO_SEEDS; });
 
 const paths: string[] = [];
 function tempPath(tag: string): string {
