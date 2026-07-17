@@ -16,7 +16,7 @@ import { PerformanceOverlay } from './PerformanceOverlay';
 import { PerfSampler } from '@renderer/state/PerfSampler';
 import { HomeView } from '@renderer/views/HomeView';
 import { OnboardingWizard } from '@renderer/onboarding/OnboardingWizard';
-import { type SectionId } from './sections';
+import { SECTIONS, type SectionId } from './sections';
 
 const log = createLogger('shell');
 
@@ -143,7 +143,6 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
     activeTabId,
     setCommandOpen,
     setSection,
-    navigateByIndex,
     requestNewTab,
     closeActiveTab,
   } = useShell();
@@ -152,9 +151,7 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
   // Live refs so the once-subscribed menu handler always sees current values.
   const openRef = useRef(commandOpen);
   openRef.current = commandOpen;
-  // Navigate straight to a section by id. (Previously this routed a 0-based findIndex through the 1-based
-  // navigateByIndex, landing one section early — which, once intent-home became the default and Home was
-  // hidden, sent the flagship CTAs and onboarding to the wrong/hidden surfaces.)
+  // Navigate straight to a section by id (used by in-renderer CTAs and onboarding).
   const goToSection = (id: SectionId): void => {
     setSection(id);
   };
@@ -173,8 +170,11 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
         case 'open-settings':
           setSection('settings');
           break;
-        case 'navigate':
-          if (typeof cmd.index === 'number') navigateByIndex(cmd.index);
+        case 'navigate-section':
+          // Navigate by section id (from the tray). Only honor a real, visible section — never a hidden one.
+          if (cmd.section && SECTIONS.some((s) => s.id === cmd.section && !s.hidden)) {
+            setSection(cmd.section as SectionId);
+          }
           break;
         case 'new-tab':
           requestNewTab();
@@ -205,7 +205,6 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
   }, [
     setCommandOpen,
     setSection,
-    navigateByIndex,
     requestNewTab,
     closeActiveTab,
     zoomIn,

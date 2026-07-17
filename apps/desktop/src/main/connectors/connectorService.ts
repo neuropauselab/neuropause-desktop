@@ -35,6 +35,7 @@ import { connectorVault, type AccountTokens } from './connectorVault';
 import { oauthEngine, type OAuthTokens } from './oauthEngine';
 import { accountHealth, aggregateHealth, aggregateStatus, latestSync } from './health';
 import { shortId } from './pkce';
+import { getAdapter } from '../unified/sync/registry';
 
 const log = createLogger('connectors');
 const REFRESH_SKEW_MS = 60 * 1000;
@@ -378,6 +379,9 @@ class ConnectorService extends EventEmitter {
       accounts,
       lastSyncAt: latestSync(accounts),
       setupHint: setupHintFor(manifest),
+      // Lifecycle is derived from REAL adapter presence, not credentials: a connector with no data adapter
+      // is 'preview' (shown in the catalog, not connectable), never offered as ready.
+      lifecycle: getAdapter(manifest.id) ? 'production' : 'preview',
     };
   }
 

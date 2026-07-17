@@ -1,0 +1,179 @@
+/**
+ * Capability Completion & Platform Maturity v1.0 — the Capability Registry (single source of truth).
+ *
+ * This is the ONE canonical record of what NeuroPause can actually do. It does not implement anything and it
+ * duplicates no runtime state — it is the design-time ledger every capability-aware surface reads (the
+ * Settings capability inventory derives from it; the connector lifecycle and navigation visibility reconcile
+ * to it). Every entry is classified into exactly one honest state, and read-but-not-settable / not-yet-built
+ * capabilities are recorded truthfully rather than faked. New capabilities are added here first.
+ *
+ * States (exactly one per capability):
+ *   production-complete — real backend + persistence + authz + audit; fully usable.
+ *   managed            — real value governed elsewhere (org policy / another runtime / environment); read-only.
+ *   read-only          — a real projection with no mutator by design.
+ *   needs-ipc          — full backing EXISTS but is not surfaced (would require a new IPC channel).
+ *   needs-adapter      — framework exists but the data adapter does not (e.g. a connector).
+ *   needs-backend      — requires a backend route/store that does not exist.
+ *   hidden             — no real production implementation; hidden from the UI.
+ *   future-release / deprecated / removed — roadmap / lifecycle bookkeeping.
+ */
+
+export type CapabilityState =
+  | 'production-complete'
+  | 'managed'
+  | 'read-only'
+  | 'needs-ipc'
+  | 'needs-adapter'
+  | 'needs-backend'
+  | 'hidden'
+  | 'future-release'
+  | 'deprecated'
+  | 'removed';
+
+/** States that represent a real, user-facing capability (surfaced today). */
+export const REAL_STATES: CapabilityState[] = ['production-complete', 'managed', 'read-only'];
+/** States that are intentionally NOT surfaced as interactive controls. */
+export const HIDDEN_STATES: CapabilityState[] = ['needs-ipc', 'needs-adapter', 'needs-backend', 'hidden', 'future-release', 'deprecated', 'removed'];
+
+export type CapabilityDomain =
+  | 'identity' | 'security' | 'governance' | 'privacy' | 'ai' | 'workspace'
+  | 'organization' | 'integrations' | 'developer' | 'billing' | 'system' | 'platform';
+
+export interface Capability {
+  /** Canonical, dotted id — the key every subsystem references. */
+  id: string;
+  label: string;
+  domain: CapabilityDomain;
+  /** The real runtime/service that backs (or would back) this capability. */
+  runtime: string;
+  state: CapabilityState;
+  /** RBAC permission gating the capability's mutation, if any. */
+  permission?: string;
+  /** True when the capability's write is recorded in a real audit trail. */
+  audited?: boolean;
+  /** True when a real automated test covers it. */
+  tested?: boolean;
+  /** Managed: the governing source. Not-real states: what is missing / why hidden. */
+  note?: string;
+}
+
+/**
+ * The registry. Grouped by domain for readability; order is not significant (surfaces sort/filter).
+ * Keep this the ONLY place capability state is defined.
+ */
+export const CAPABILITY_REGISTRY: Capability[] = [
+  // ── Identity ──
+  { id: 'identity.profile', label: 'Profile (name, email)', domain: 'identity', runtime: 'auth session / IdP', state: 'managed', note: 'Sourced from your authenticated account; edited at the identity provider.' },
+  { id: 'identity.organizations', label: 'Organizations & membership', domain: 'identity', runtime: 'enterprise org (cloud)', state: 'production-complete', permission: 'org:manage', audited: true, tested: true },
+  { id: 'identity.roles', label: 'Roles & permissions', domain: 'identity', runtime: 'enterprise governance', state: 'production-complete', permission: 'governance:manage', audited: true, tested: true },
+  { id: 'identity.connected-accounts', label: 'Connected accounts', domain: 'identity', runtime: 'connector service', state: 'production-complete', permission: 'connectors:manage', audited: true, tested: true },
+  { id: 'identity.neuroid', label: 'NeuroID / digital identity', domain: 'identity', runtime: '—', state: 'hidden', note: 'No such subsystem exists in production.' },
+
+  // ── Security ──
+  { id: 'security.mfa-policy', label: 'Two-factor (MFA) policy', domain: 'security', runtime: 'cloud identity', state: 'managed', permission: 'cloud:manage', audited: true, note: 'Organization-wide tenant policy, not personal enrollment.' },
+  { id: 'security.devices', label: 'Trusted devices', domain: 'security', runtime: 'devices service (backend)', state: 'production-complete', permission: 'org:manage', tested: true },
+  { id: 'security.recovery', label: 'Recovery & safe mode', domain: 'security', runtime: 'release-ops recovery', state: 'production-complete', permission: 'org:manage', audited: true, tested: true },
+  { id: 'security.password-change', label: 'In-app password change', domain: 'security', runtime: 'backend auth', state: 'needs-backend', note: 'Only email/token reset exists; no authenticated change-password route.' },
+  { id: 'security.passkeys', label: 'Passkeys / WebAuthn', domain: 'security', runtime: '—', state: 'needs-backend', note: 'No enrollment ceremony or credential store.' },
+  { id: 'security.sessions', label: 'Session list & revoke', domain: 'security', runtime: 'backend auth', state: 'needs-backend', note: 'Only self sign-out; no list/revoke API.' },
+  { id: 'security.login-history', label: 'Login history / security events', domain: 'security', runtime: '—', state: 'hidden', note: 'No real per-user event source.' },
+
+  // ── Governance ──
+  { id: 'governance.approval-chains', label: 'Approval chains', domain: 'governance', runtime: 'enterprise governance', state: 'production-complete', permission: 'governance:manage', audited: true, tested: true, note: 'Enable/disable (no create/delete).' },
+  { id: 'governance.compliance-rules', label: 'Compliance rules', domain: 'governance', runtime: 'enterprise governance', state: 'production-complete', permission: 'governance:manage', audited: true, tested: true },
+  { id: 'governance.feature-flags', label: 'Feature flags', domain: 'governance', runtime: 'feature-flag service', state: 'production-complete', permission: 'governance:manage', audited: true, tested: true },
+  { id: 'governance.federation-policies', label: 'Federation policies & delegated approvals', domain: 'governance', runtime: 'federation governance', state: 'production-complete', permission: 'federation:manage', audited: true, tested: true },
+  { id: 'governance.audit-trail', label: 'Audit trail', domain: 'governance', runtime: 'governance audit', state: 'read-only', permission: 'governance:read', note: 'Append-only by design.' },
+  { id: 'governance.compliance-frameworks', label: 'Compliance frameworks (SOC 2 / GDPR / ISO)', domain: 'governance', runtime: 'cloud admin', state: 'read-only', permission: 'cloud:read', note: 'Computed scorecard.' },
+  { id: 'governance.risk-thresholds', label: 'Risk thresholds / audit retention / escalation', domain: 'governance', runtime: '—', state: 'hidden', note: 'Code constants / fixed caps; no configuration surface.' },
+
+  // ── Privacy ──
+  { id: 'privacy.telemetry', label: 'Telemetry & crash reports', domain: 'privacy', runtime: 'release-ops crash reporter', state: 'production-complete', audited: true, tested: true },
+  { id: 'privacy.memory-data', label: 'Memory data (review & forget)', domain: 'privacy', runtime: 'memory runtime', state: 'production-complete', permission: 'operations:manage', tested: true },
+  { id: 'privacy.data-sharing', label: 'Data sharing (federation)', domain: 'privacy', runtime: 'federation runtime', state: 'production-complete', permission: 'federation:manage', audited: true },
+  { id: 'privacy.residency', label: 'Data residency', domain: 'privacy', runtime: 'cloud tenancy', state: 'managed', permission: 'cloud:read', note: 'Set at tenant provisioning; read-only.' },
+  { id: 'privacy.consent-retention', label: 'Consent, retention & account deletion', domain: 'privacy', runtime: '—', state: 'hidden', note: 'No production data-governance mutators exist.' },
+  { id: 'privacy.memory-scopes', label: 'Memory / knowledge permission scopes', domain: 'privacy', runtime: '—', state: 'hidden', note: 'No user-facing scope model; scopes are install-time worker fields.' },
+
+  // ── AI ──
+  { id: 'ai.provider-model', label: 'AI provider, model, routing, reasoning, token limits', domain: 'ai', runtime: 'AI runtime (environment)', state: 'managed', note: 'Environment/code-defined; no settable config surface.' },
+  { id: 'ai.auto-execution', label: 'Automatic execution policy', domain: 'ai', runtime: 'governance approvals', state: 'managed', note: 'Derived from federation governance allow-policies.' },
+  { id: 'ai.execution', label: 'Execution (run / cancel / history)', domain: 'ai', runtime: 'execute engine', state: 'production-complete', permission: 'workforce:operate', tested: true },
+  { id: 'ai.cost-controls', label: 'Cost & token controls', domain: 'ai', runtime: '—', state: 'hidden', note: 'Usage tracked in-memory only; no persisted budget/config.' },
+
+  // ── Workspace ──
+  { id: 'workspace.theme', label: 'Appearance / theme', domain: 'workspace', runtime: 'theme provider (nativeTheme)', state: 'production-complete', tested: false },
+  { id: 'workspace.scale', label: 'Interface scale', domain: 'workspace', runtime: 'scale provider (pref)', state: 'production-complete' },
+  { id: 'workspace.startup', label: 'Startup experience', domain: 'workspace', runtime: 'shell startup policy (pref)', state: 'production-complete', tested: true },
+  { id: 'workspace.a11y-i18n', label: 'Language, reduced-motion, high-contrast & density', domain: 'workspace', runtime: '—', state: 'hidden', note: 'No i18n system or these preference stores exist yet.' },
+  { id: 'workspace.notification-prefs', label: 'Notification delivery preferences', domain: 'workspace', runtime: 'executive delivery store', state: 'needs-ipc', note: 'A persisted delivery-preference store + mutator EXISTS but is not surfaced (would require a new IPC channel; deferred).' },
+
+  // ── Organization ──
+  { id: 'org.structure', label: 'Departments, teams & people', domain: 'organization', runtime: 'enterprise org', state: 'production-complete', permission: 'org:manage', audited: true, tested: true },
+  { id: 'org.workers', label: 'Digital-worker roster', domain: 'organization', runtime: 'workforce registry', state: 'managed', permission: 'workforce:read', note: 'Fixed built-in registry; lifecycle via install/enable.' },
+  { id: 'org.groups', label: 'Groups', domain: 'organization', runtime: '—', state: 'hidden', note: 'No group entity distinct from units/teams/roles.' },
+
+  // ── Integrations (connectors — see CONNECTOR_LIFECYCLE for per-connector state) ──
+  { id: 'integrations.connectors', label: 'Connectors (13 production adapters)', domain: 'integrations', runtime: 'connector service + sync adapters', state: 'production-complete', permission: 'connectors:manage', audited: true, tested: true },
+  { id: 'integrations.webhooks', label: 'Webhooks', domain: 'integrations', runtime: 'webhook service', state: 'production-complete', permission: 'governance:manage', audited: true },
+  { id: 'integrations.preview-connectors', label: 'Preview connectors (no adapter yet)', domain: 'integrations', runtime: 'connector manifests', state: 'needs-adapter', note: '9 connectors (ChatGPT/Claude/Gemini/Perplexity/Cursor/Canva/Figma/Linear/Zapier) have no data adapter; shown as Preview, not connectable.' },
+
+  // ── Developer ──
+  { id: 'developer.api-keys', label: 'API keys & OAuth apps', domain: 'developer', runtime: 'developer platform', state: 'production-complete', permission: 'developer:manage', audited: true, tested: true },
+  { id: 'developer.plugins', label: 'Plugins & extensions', domain: 'developer', runtime: 'plugin store', state: 'production-complete', permission: 'marketplace:manage', audited: true },
+  { id: 'developer.sandbox', label: 'Sandbox', domain: 'developer', runtime: 'sandbox subsystem', state: 'production-complete', permission: 'sandbox:manage', audited: true, tested: true },
+
+  // ── Billing ──
+  { id: 'billing.subscription', label: 'Subscription & plan', domain: 'billing', runtime: 'commercial + Razorpay', state: 'production-complete', permission: 'org:manage' },
+  { id: 'billing.licenses', label: 'Licenses', domain: 'billing', runtime: 'license runtime', state: 'managed', note: 'Read-only; changes via checkout.' },
+  { id: 'billing.usage-invoices', label: 'Usage & invoices', domain: 'billing', runtime: 'commercial projection', state: 'read-only', permission: 'commercial:read' },
+  { id: 'billing.payment-methods', label: 'Payment methods & credits', domain: 'billing', runtime: '—', state: 'hidden', note: 'Checkout is an external redirect; no in-app payment-method/credit store.' },
+
+  // ── System ──
+  { id: 'system.updates', label: 'Updates & release channel', domain: 'system', runtime: 'updater', state: 'production-complete', audited: true },
+  { id: 'system.backup-recovery', label: 'Backup & recovery', domain: 'system', runtime: 'release-ops', state: 'production-complete', permission: 'org:manage', audited: true, tested: true },
+  { id: 'system.health', label: 'Runtime health & diagnostics', domain: 'system', runtime: 'neurocore / supervisor', state: 'read-only', note: 'Live telemetry projections.' },
+  { id: 'system.devices', label: 'Device management', domain: 'system', runtime: 'devices service', state: 'production-complete', permission: 'org:manage' },
+  { id: 'system.infrastructure', label: 'Infrastructure discovery', domain: 'system', runtime: 'infrastructure adapters', state: 'managed', note: 'Real cloud discovery adapters (AWS SigV4 + fetch), credential-gated; surfaced in the Infrastructure section.' },
+  { id: 'system.storage-metering', label: 'Storage usage metering', domain: 'system', runtime: 'support-bundle dirSize', state: 'needs-ipc', note: 'A real directory-size reader EXISTS but is not wired to a live disk figure or an IPC channel (deferred).' },
+];
+
+/* ── Derived views (surfaces read these; never redefine capability state elsewhere) ── */
+
+export function capabilitiesByState(state: CapabilityState): Capability[] {
+  return CAPABILITY_REGISTRY.filter((c) => c.state === state);
+}
+
+export function isReal(c: Capability): boolean {
+  return REAL_STATES.includes(c.state);
+}
+
+export interface CapabilityMaturity {
+  total: number;
+  real: number;          // production-complete + managed + read-only
+  productionComplete: number;
+  managed: number;
+  hidden: number;        // everything not real
+  /** % of surveyed capabilities that are real (surfaced). */
+  maturityPct: number;
+  /** % that are fully production-complete (the strictest bar). */
+  completionPct: number;
+}
+
+export function computeMaturity(): CapabilityMaturity {
+  const total = CAPABILITY_REGISTRY.length;
+  const productionComplete = capabilitiesByState('production-complete').length;
+  const managed = capabilitiesByState('managed').length;
+  const readOnly = capabilitiesByState('read-only').length;
+  const real = productionComplete + managed + readOnly;
+  const hidden = total - real;
+  return {
+    total,
+    real,
+    productionComplete,
+    managed,
+    hidden,
+    maturityPct: total === 0 ? 0 : Math.round((real / total) * 100),
+    completionPct: total === 0 ? 0 : Math.round((productionComplete / total) * 100),
+  };
+}

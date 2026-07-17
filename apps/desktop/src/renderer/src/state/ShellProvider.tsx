@@ -8,7 +8,6 @@ import {
   type ReactNode,
 } from 'react';
 import type { SectionId } from '@renderer/shell/sections';
-import { SECTIONS } from '@renderer/shell/sections';
 import { prefs, PrefKey } from '@renderer/lib/preferences';
 import { resolveStartupSection, type StartupMode } from '@renderer/shell/startupPolicy';
 
@@ -177,7 +176,6 @@ function reducer(state: ShellState, action: Action): ShellState {
 
 interface ShellContextValue extends ShellState {
   setSection: (section: SectionId) => void;
-  navigateByIndex: (oneBasedIndex: number) => void;
   toggleSidebar: () => void;
   setSidebarWidth: (width: number) => void;
   openCommand: () => void;
@@ -209,10 +207,6 @@ export function ShellProvider({ children }: { children: ReactNode }): JSX.Elemen
   useEffect(() => prefs.write(PrefKey.activeTabId, state.activeTabId), [state.activeTabId]);
 
   const setSection = useCallback((section: SectionId) => dispatch({ type: 'setSection', section }), []);
-  const navigateByIndex = useCallback((oneBasedIndex: number) => {
-    const section = SECTIONS[oneBasedIndex - 1];
-    if (section) dispatch({ type: 'setSection', section: section.id });
-  }, []);
   const toggleSidebar = useCallback(() => dispatch({ type: 'toggleSidebar' }), []);
   const setSidebarWidth = useCallback((width: number) => dispatch({ type: 'setSidebarWidth', width }), []);
   const openCommand = useCallback(() => dispatch({ type: 'setCommandOpen', open: true }), []);
@@ -237,7 +231,6 @@ export function ShellProvider({ children }: { children: ReactNode }): JSX.Elemen
     () => ({
       ...state,
       setSection,
-      navigateByIndex,
       toggleSidebar,
       setSidebarWidth,
       openCommand,
@@ -258,7 +251,6 @@ export function ShellProvider({ children }: { children: ReactNode }): JSX.Elemen
     [
       state,
       setSection,
-      navigateByIndex,
       toggleSidebar,
       setSidebarWidth,
       openCommand,

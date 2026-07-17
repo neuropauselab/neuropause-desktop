@@ -14,6 +14,7 @@
  */
 import type { IconName } from '@renderer/components/ui/Icon';
 import type { SectionId } from '@renderer/shell/sections';
+import { CAPABILITY_REGISTRY } from '@renderer/capability/capabilityRegistry';
 
 export type VisibilityState = 'editable' | 'managed' | 'unavailable';
 
@@ -118,34 +119,22 @@ export interface CapabilityEntry {
   reason: string;
 }
 
-export const CAPABILITY_INVENTORY: CapabilityEntry[] = [
-  // ── Managed (real, governed elsewhere — shown read-only, not faked) ──
-  { domain: 'identity', capability: 'Profile (name, email)', state: 'managed', reason: 'Sourced from your authenticated account / SSO; edited at the identity provider.' },
-  { domain: 'security', capability: 'Two-factor (MFA) policy', state: 'managed', reason: 'Real, but an organization-wide tenant policy — not a personal enrollment.' },
-  { domain: 'governance', capability: 'Compliance frameworks (SOC 2 / GDPR / ISO)', state: 'managed', reason: 'Computed compliance scorecard; read-only projection.' },
-  { domain: 'governance', capability: 'Audit trail', state: 'managed', reason: 'Append-only governance audit; read-only by design.' },
-  { domain: 'privacy', capability: 'Data residency', state: 'managed', reason: 'Set at tenant provisioning; region → residency is read-only.' },
-  { domain: 'ai', capability: 'AI provider, model, routing, reasoning tier, token limits', state: 'managed', reason: 'Governed by the deployment environment and platform AI runtime; not user-configurable in this build.' },
-  { domain: 'ai', capability: 'Automatic execution', state: 'managed', reason: 'Derived from federation governance allow-policies; changed via governance approvals, not a toggle.' },
-  { domain: 'organization', capability: 'Digital-worker roster', state: 'managed', reason: 'Fixed built-in worker registry; roster is read-only (lifecycle via install/enable).' },
-  { domain: 'billing', capability: 'Licenses, usage, invoices', state: 'managed', reason: 'Read-only commercial projection; plan changes go through checkout.' },
-  { domain: 'system', capability: 'Runtime health, diagnostics, cloud sync state', state: 'managed', reason: 'Real read-only telemetry projections.' },
-  // ── Unavailable (no real production implementation — hidden, listed honestly) ──
-  { domain: 'identity', capability: 'NeuroID / digital identity', state: 'unavailable', reason: 'No such subsystem exists in production.' },
-  { domain: 'security', capability: 'In-app password change', state: 'unavailable', reason: 'Only email/token reset exists server-side; no authenticated in-app change.' },
-  { domain: 'security', capability: 'Passkeys / WebAuthn', state: 'unavailable', reason: 'No enrollment ceremony or credential store implemented.' },
-  { domain: 'security', capability: 'Session list & revoke', state: 'unavailable', reason: 'Only self sign-out exists; no session management API.' },
-  { domain: 'security', capability: 'Encryption status & certificates', state: 'unavailable', reason: 'Vault encryption is internal with no read surface; no certificate management.' },
-  { domain: 'security', capability: 'Login history / security events', state: 'unavailable', reason: 'No real per-user event source.' },
-  { domain: 'governance', capability: 'Risk thresholds, audit retention, escalation rules', state: 'unavailable', reason: 'Code constants / fixed caps; no configuration surface.' },
-  { domain: 'privacy', capability: 'Consent store, account deletion, retention config, knowledge scopes', state: 'unavailable', reason: 'No production data-governance mutators exist.' },
-  { domain: 'ai', capability: 'Provider/model selection, cost & token controls', state: 'unavailable', reason: 'Environment/code-defined; no settings surface exists.' },
-  { domain: 'workspace', capability: 'Language, reduced-motion & high-contrast toggles, notification & density prefs', state: 'unavailable', reason: 'No i18n system or these preference stores exist yet.' },
-  { domain: 'organization', capability: 'Groups', state: 'unavailable', reason: 'No group entity distinct from units/teams/roles.' },
-  { domain: 'integrations', capability: 'Connectors without adapters (Canva, Figma, Linear, Zapier)', state: 'unavailable', reason: 'OAuth manifest present but no data adapter; hidden until built.' },
-  { domain: 'billing', capability: 'Payment methods & credits', state: 'unavailable', reason: 'Checkout is an external redirect; no in-app payment-method or credit store.' },
-  { domain: 'system', capability: 'Storage usage & infrastructure discovery', state: 'unavailable', reason: 'No real disk-usage reader; discovery adapters unbuilt (P6.1).' },
-];
+/**
+ * DERIVED from the single-source-of-truth Capability Registry — this file no longer defines capability
+ * state. Every registry entry that is not a fully-editable production capability projects into the Settings
+ * inventory: real-but-read-only entries (managed or read-only) show as "Managed"; everything not yet real
+ * (needs-x, hidden, future) shows as "Unavailable". Correct by construction — if the registry changes, so
+ * does this. (This is where the two former inaccuracies were fixed: infrastructure discovery is now Managed,
+ * notification preferences are recorded as needs-ipc rather than "no store exists".)
+ */
+export const CAPABILITY_INVENTORY: CapabilityEntry[] = CAPABILITY_REGISTRY
+  .filter((c) => c.state !== 'production-complete')
+  .map((c) => ({
+    domain: c.domain as SettingsDomainId,
+    capability: c.label,
+    state: c.state === 'managed' || c.state === 'read-only' ? 'managed' : 'unavailable',
+    reason: c.note ?? 'Governed by the platform.',
+  }));
 
 /** Readiness summary over the whole constitution — how much is live vs. managed vs. not-yet-built. */
 export interface SettingsReadiness {

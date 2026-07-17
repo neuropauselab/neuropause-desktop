@@ -57,9 +57,10 @@ describe('capability inventory — the honesty ledger', () => {
     }
   });
 
-  it('honestly lists the AI provider/model stack and account-security gaps as not-yet-built', () => {
+  it('classifies AI provider/model as managed (env-governed) and account-security gaps as not-yet-built', () => {
+    const managed = CAPABILITY_INVENTORY.filter((c) => c.state === 'managed').map((c) => c.capability).join(' ').toLowerCase();
     const unavailable = CAPABILITY_INVENTORY.filter((c) => c.state === 'unavailable').map((c) => c.capability).join(' ').toLowerCase();
-    expect(unavailable).toMatch(/provider|model/);
+    expect(managed).toMatch(/provider|model/); // env-managed, shown read-only — not faked, not hidden
     expect(unavailable).toMatch(/password/);
     expect(unavailable).toMatch(/passkey/);
   });

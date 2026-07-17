@@ -33,7 +33,7 @@ export interface AppInfo {
 export type MenuCommandAction =
   | 'command-palette'
   | 'open-settings'
-  | 'navigate'
+  | 'navigate-section'
   | 'new-tab'
   | 'close-tab'
   | 'zoom-in'
@@ -42,8 +42,8 @@ export type MenuCommandAction =
 
 export interface MenuCommandPayload {
   action: MenuCommandAction;
-  /** For 'navigate': the 1-based section index (⌘1–⌘9). */
-  index?: number;
+  /** For 'navigate-section': the target section id (must be a real, visible section). */
+  section?: string;
 }
 
 /** Tray → renderer runtime control commands (V4.0/V4.1). */

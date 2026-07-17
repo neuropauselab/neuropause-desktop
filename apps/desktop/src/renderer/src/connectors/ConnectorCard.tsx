@@ -35,12 +35,17 @@ export function ConnectorCard({
         <span className="block truncate text-sm font-medium">{dto.name}</span>
         <span className="block truncate text-2xs text-faint">{dto.provider}</span>
       </span>
+      {dto.lifecycle === 'preview' && (
+        <span className="rounded-full border border-[var(--hairline)] px-1.5 py-0.5 text-[10px] font-medium text-faint" title="Preview — no data adapter yet">
+          Preview
+        </span>
+      )}
       {accountCount > 0 && (
         <span className="rounded-full [background:var(--fill-2)] px-1.5 py-0.5 text-2xs font-medium text-muted">
           {accountCount}
         </span>
       )}
-      <StatusDot tone={meta.tone} pulse={dto.status === 'connecting'} />
+      {dto.lifecycle === 'production' && <StatusDot tone={meta.tone} pulse={dto.status === 'connecting'} />}
     </button>
   );
 }

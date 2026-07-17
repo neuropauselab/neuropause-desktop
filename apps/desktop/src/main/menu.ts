@@ -11,19 +11,6 @@ import { config } from './config';
 
 const isMac = process.platform === 'darwin';
 
-/** Section order must match the renderer's sidebar (sections.ts). */
-const SECTIONS = [
-  'Home',
-  'AI Store',
-  'Workspace',
-  'Connectors',
-  'AI Memory',
-  'Automations',
-  'Notifications',
-  'Analytics',
-  'Settings',
-];
-
 export function buildAppMenu(send: (payload: MenuCommandPayload) => void): Menu {
   const appMenu: MenuItemConstructorOptions = {
     label: app.getName(),
@@ -114,15 +101,6 @@ export function buildAppMenu(send: (payload: MenuCommandPayload) => void): Menu 
     ],
   };
 
-  const goMenu: MenuItemConstructorOptions = {
-    label: 'Go',
-    submenu: SECTIONS.map((label, i) => ({
-      label,
-      accelerator: `CmdOrCtrl+${i + 1}`,
-      click: () => send({ action: 'navigate', index: i + 1 }),
-    })),
-  };
-
   const windowMenu: MenuItemConstructorOptions = {
     label: 'Window',
     submenu: [
@@ -149,7 +127,6 @@ export function buildAppMenu(send: (payload: MenuCommandPayload) => void): Menu 
     fileMenu,
     editMenu,
     viewMenu,
-    goMenu,
     windowMenu,
     helpMenu,
   ];

@@ -142,7 +142,9 @@ export function CommandPalette(): JSX.Element {
       run: () => openOperations('downloads'),
     }));
 
-    const sections: CommandItem[] = SECTIONS.map((sct) => ({
+    // Only offer navigation to VISIBLE sections — a retired/hidden section must never appear as a
+    // "Go to" command (a dead-end into a surface the sidebar deliberately hides).
+    const sections: CommandItem[] = SECTIONS.filter((sct) => !sct.hidden).map((sct) => ({
       id: `nav:${sct.id}`,
       group: 'Go to',
       title: sct.label,

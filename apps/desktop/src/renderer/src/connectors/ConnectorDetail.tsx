@@ -111,12 +111,16 @@ export function ConnectorDetail({
 }): JSX.Element {
   const meta = statusMeta(dto.status);
   const isApiKey = dto.authType === 'api_key';
+  const isPreview = dto.lifecycle === 'preview';
+  // A Preview connector has no data adapter yet — it must not be connectable (connecting would sync nothing).
   const canConnect =
-    dto.configured && !isApiKey && (dto.multiAccount || dto.accounts.length === 0) && !connecting && !pending;
+    !isPreview && dto.configured && !isApiKey && (dto.multiAccount || dto.accounts.length === 0) && !connecting && !pending;
 
   // The setup/seam banner (shown once, in priority order).
   let banner: DetailNotice | null = null;
-  if (isApiKey) {
+  if (isPreview) {
+    banner = { tone: 'blue', text: 'Preview — this connector is in the catalog but has no data adapter yet, so it can be browsed but not connected. Data sync arrives when its adapter ships.' };
+  } else if (isApiKey) {
     banner = { tone: 'blue', text: 'This connector authenticates with an API key. Key entry arrives with the Stage 2 sync adapters.' };
   } else if (!dto.configured && dto.setupHint) {
     banner = { tone: 'orange', text: dto.setupHint };

@@ -52,6 +52,8 @@ export default defineConfig({
       'src/renderer/src/shell/**/*.test.ts',
       // Constitutional Settings v1.0 — settings catalog + capability inventory (pure data).
       'src/renderer/src/settings/**/*.test.ts',
+      // Capability Completion v1.0 — the canonical capability registry (single source of truth).
+      'src/renderer/src/capability/**/*.test.ts',
     ],
   },
   resolve: {

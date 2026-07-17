@@ -34,6 +34,7 @@ import {
   SETTINGS_DOMAINS,
   type SettingsDomainId,
 } from '@renderer/settings/settingsCatalog';
+import { computeMaturity } from '@renderer/capability/capabilityRegistry';
 
 const THEME_OPTIONS: SegmentedTabItem<ThemeSource>[] = [
   { id: 'system', label: 'Auto', icon: 'auto' },
@@ -450,6 +451,7 @@ function DomainContent({ domain, session, go }: { domain: SettingsDomainId; sess
 /** The honesty ledger — what is available, managed, or not yet built. */
 function CapabilitiesInventory(): JSX.Element {
   const readiness = computeReadiness();
+  const maturity = computeMaturity();
   const managed = CAPABILITY_INVENTORY.filter((c) => c.state === 'managed');
   const unavailable = CAPABILITY_INVENTORY.filter((c) => c.state === 'unavailable');
   const domainLabel = (id: SettingsDomainId): string => SETTINGS_DOMAINS.find((d) => d.id === id)?.label ?? id;
@@ -469,7 +471,14 @@ function CapabilitiesInventory(): JSX.Element {
             <div>{readiness.unavailable} not yet built</div>
           </div>
         </div>
-        <p className="mt-3 text-xs text-faint">NeuroPause hides what it cannot really do. This page is the honest ledger of every capability the constitutional Settings layer surveyed — nothing here is a fake control.</p>
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-[var(--hairline)] pt-3 text-2xs text-faint">
+          <span>Capability registry: <span className="font-medium text-muted">{maturity.total}</span> capabilities</span>
+          <span className="text-[color:var(--good,#22c55e)]">{maturity.productionComplete} production-complete</span>
+          <span className="text-[color:var(--accent,#6366f1)]">{maturity.managed} managed</span>
+          <span>{maturity.hidden} not yet surfaced</span>
+          <span className="ml-auto">Platform maturity <span className="font-medium text-muted">{maturity.maturityPct}%</span></span>
+        </div>
+        <p className="mt-3 text-xs text-faint">NeuroPause hides what it cannot really do. This page is the honest ledger, derived from the single-source-of-truth capability registry — nothing here is a fake control.</p>
       </Card>
 
       <Group title="Managed elsewhere (real, read-only here)">

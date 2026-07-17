@@ -7,10 +7,11 @@ import type { SectionId } from '@renderer/shell/sections';
  *
  * The composition layer emits path-like deepLinks (e.g. 'enterprise/organization',
  * 'ai-workforce/founder'); we resolve the leading segment to a section the shell
- * already renders. Unknown links fall back to 'home' (never throws).
+ * already renders. Every target must be a VISIBLE section — unknown links fall back to the canonical
+ * 'intent-home' (never a retired/hidden section, never throws).
  */
 export function deepLinkToSection(deepLink: string | undefined): SectionId {
-  if (!deepLink) return 'home';
+  if (!deepLink) return 'intent-home';
   const head = deepLink.split('/')[0];
   switch (head) {
     case 'enterprise':
@@ -27,8 +28,9 @@ export function deepLinkToSection(deepLink: string | undefined): SectionId {
     case 'settings':
       return 'settings';
     case 'analytics':
-      return 'analytics';
+      // 'analytics' was a retired section (folded into the Ops Center analyst view).
+      return 'opscenter';
     default:
-      return 'home';
+      return 'intent-home';
   }
 }

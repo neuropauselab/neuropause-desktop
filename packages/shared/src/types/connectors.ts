@@ -225,7 +225,17 @@ export interface ConnectorDto {
   lastSyncAt: string | null;
   /** When unconfigured, a hint telling the operator which credential to set. */
   setupHint: string | null;
+  /** Lifecycle state derived from REAL data-adapter presence (Capability Completion v1.0). */
+  lifecycle: ConnectorLifecycleState;
 }
+
+/**
+ * A connector's capability lifecycle, derived from whether a real data adapter is registered — NOT from
+ * credentials. `production` = a real adapter exists (OAuth + sync + health work). `preview` = no data
+ * adapter yet, so the connector is shown as Preview in the catalog and is not connectable (connecting would
+ * sync nothing). This keeps the connector surface honest: unsupported connectors are never offered as ready.
+ */
+export type ConnectorLifecycleState = 'production' | 'preview';
 
 /** A connector log line, surfaced in the Connectors UI. */
 export interface ConnectorLogEntry {

@@ -74,11 +74,11 @@ async function bootstrap(): Promise<void> {
     trayActions: {
       openDashboard: () => {
         showMainWindow();
-        broadcast(IpcChannel.MenuCommand, { action: 'navigate', index: 1 }); // Home
+        broadcast(IpcChannel.MenuCommand, { action: 'navigate-section', section: 'intent-home' });
       },
       openExecutiveCenter: () => {
         showMainWindow();
-        broadcast(IpcChannel.MenuCommand, { action: 'navigate', index: 3 }); // Enterprise
+        broadcast(IpcChannel.MenuCommand, { action: 'navigate-section', section: 'enterprise' });
       },
       startListening: () => {
         showMainWindow();
