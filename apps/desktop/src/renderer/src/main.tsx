@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import { ThemeProvider } from '@renderer/providers/ThemeProvider';
 import { AuthProvider } from '@renderer/providers/AuthProvider';
+import { ErrorBoundary } from '@renderer/components/ErrorBoundary';
 import './index.css';
 
 const container = document.getElementById('root');
@@ -12,10 +13,12 @@ if (!container) {
 
 createRoot(container).render(
   <StrictMode>
-    <ThemeProvider>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
-    </ThemeProvider>
+    <ErrorBoundary name="app">
+      <ThemeProvider>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   </StrictMode>,
 );

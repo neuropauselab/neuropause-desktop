@@ -48,13 +48,7 @@ export function Kbd({ children }: { children: ReactNode }): JSX.Element {
 }
 
 /** Initials avatar with a stable accent gradient. */
-export function Avatar({
-  text,
-  size = 28,
-}: {
-  text: string;
-  size?: number;
-}): JSX.Element {
+export function Avatar({ text, size = 28 }: { text: string; size?: number }): JSX.Element {
   return (
     <span
       className="flex shrink-0 items-center justify-center rounded-full font-semibold text-white"
@@ -62,8 +56,7 @@ export function Avatar({
         width: size,
         height: size,
         fontSize: size * 0.4,
-        background:
-          'linear-gradient(135deg, rgb(var(--accent)), rgb(var(--c-purple)))',
+        background: 'linear-gradient(135deg, rgb(var(--accent)), rgb(var(--c-purple)))',
       }}
     >
       {text}
@@ -103,9 +96,7 @@ export function SegmentedControl<T extends string>({
             className={cn(
               'inline-flex items-center gap-1.5 rounded-[10px] font-medium outline-none transition duration-150 focus-visible:shadow-focus',
               pad,
-              selected
-                ? 'surface-raised text-ink shadow-sm'
-                : 'text-muted hover:text-ink',
+              selected ? 'surface-raised text-ink shadow-sm' : 'text-muted hover:text-ink',
             )}
           >
             {opt.icon && <Icon name={opt.icon} size={size === 'sm' ? 13 : 14} />}
@@ -114,5 +105,40 @@ export function SegmentedControl<T extends string>({
         );
       })}
     </div>
+  );
+}
+
+/** An accessible on/off switch. Reuses the design tokens; keyboard + SR friendly. */
+export function Toggle({
+  checked,
+  onChange,
+  disabled = false,
+  label,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+  label?: string;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={cn(
+        'relative inline-flex h-6 w-10 shrink-0 items-center rounded-full outline-none transition-colors duration-150 focus-visible:shadow-focus disabled:opacity-50',
+        checked ? 'bg-accent' : '[background:var(--fill-2)]',
+      )}
+    >
+      <span
+        className={cn(
+          'inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform duration-150',
+          checked ? 'translate-x-[18px]' : 'translate-x-0.5',
+        )}
+      />
+    </button>
   );
 }

@@ -60,6 +60,11 @@ export default defineConfig({
       'src/renderer/src/productOps/**/*.test.ts',
       // Enterprise Administration v1.0 — the admin lens model (pure data: tones, gaps, org/role summaries).
       'src/renderer/src/administration/**/*.test.ts',
+      // Phase 2 — reuse-only workspace models (Intelligence / Collaboration / Knowledge / Automation).
+      'src/renderer/src/intelligence/**/*.test.ts',
+      'src/renderer/src/collaboration/**/*.test.ts',
+      'src/renderer/src/knowledge2/**/*.test.ts',
+      'src/renderer/src/automationCenter/**/*.test.ts',
     ],
   },
   resolve: {

@@ -4,6 +4,7 @@ import { Kbd } from '@renderer/components/ui/controls';
 import { useShell } from '@renderer/state/ShellProvider';
 import { ThemeMenu } from './ThemeMenu';
 import { NotificationBell } from './NotificationBell';
+import { ConnectionIndicator } from './ConnectionIndicator';
 import { ProfileMenu } from './ProfileMenu';
 
 /**
@@ -50,6 +51,7 @@ export function Toolbar({ session }: { session: Session }): JSX.Element {
       </div>
 
       <div className="app-no-drag flex items-center gap-0.5">
+        <ConnectionIndicator />
         <NotificationBell />
         <ThemeMenu />
         <ProfileMenu session={session} />

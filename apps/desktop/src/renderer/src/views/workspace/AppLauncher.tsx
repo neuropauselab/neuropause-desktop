@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { cn } from '@renderer/lib/cn';
 import { Icon } from '@renderer/components/ui/Icon';
+import { Chip, ChipRow } from '@renderer/components/ui/pillTabs';
 import { Kbd } from '@renderer/components/ui/controls';
 import { AppGlyph } from '@renderer/components/ui/AppGlyph';
 import { CATALOG, CATEGORIES } from '@renderer/data/catalog';
@@ -52,22 +52,12 @@ export function AppLauncher({
           </div>
         </div>
 
-        <div className="mb-5 flex flex-wrap gap-1.5">
-          {(['All', ...CATEGORIES] as const).map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => setCategory(c)}
-              className={cn(
-                'rounded-full px-3 py-1 text-sm font-medium transition-colors',
-                category === c
-                  ? 'bg-accent text-accent-fg'
-                  : 'text-muted hover:text-ink [background:var(--fill-1)]',
-              )}
-            >
-              {c}
-            </button>
-          ))}
+        <div className="mb-5">
+          <ChipRow>
+            {(['All', ...CATEGORIES] as const).map((c) => (
+              <Chip key={c} label={c} active={category === c} onClick={() => setCategory(c)} />
+            ))}
+          </ChipRow>
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -85,7 +75,7 @@ export function AppLauncher({
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
                   <span className="truncate text-base font-semibold">{app.name}</span>
-                  {app.connected && (
+                  {import.meta.env.DEV && app.connected && (
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-sysgreen" title="Connected" />
                   )}
                 </div>

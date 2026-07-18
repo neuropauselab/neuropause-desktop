@@ -1,6 +1,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import { cn } from '@renderer/lib/cn';
 import { Icon, type IconName } from './Icon';
+import { Spinner } from '../Spinner';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
 type Size = 'sm' | 'md';
@@ -9,14 +10,14 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
   size?: Size;
   icon?: IconName;
+  /** Shows a spinner and disables interaction; preserves layout. Default false. */
+  loading?: boolean;
   children?: ReactNode;
 }
 
 const VARIANTS: Record<Variant, string> = {
-  primary:
-    'bg-accent text-accent-fg hover:bg-accent-hover shadow-sm focus-visible:shadow-focus',
-  secondary:
-    'surface text-ink hover:[background:var(--fill-1)] focus-visible:shadow-focus',
+  primary: 'bg-accent text-accent-fg hover:bg-accent-hover shadow-sm focus-visible:shadow-focus',
+  secondary: 'surface text-ink hover:[background:var(--fill-1)] focus-visible:shadow-focus',
   ghost: 'text-muted hover:text-ink fill-hover focus-visible:shadow-focus',
   danger: 'text-syspink hover:[background:rgb(var(--c-pink)/0.12)] focus-visible:shadow-focus',
 };
@@ -30,6 +31,8 @@ export function Button({
   variant = 'secondary',
   size = 'md',
   icon,
+  loading = false,
+  disabled,
   className,
   children,
   ...rest
@@ -42,9 +45,15 @@ export function Button({
         SIZES[size],
         className,
       )}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
       {...rest}
     >
-      {icon && <Icon name={icon} size={size === 'sm' ? 14 : 16} />}
+      {loading ? (
+        <Spinner size={size === 'sm' ? 14 : 16} />
+      ) : (
+        icon && <Icon name={icon} size={size === 'sm' ? 14 : 16} />
+      )}
       {children}
     </button>
   );
