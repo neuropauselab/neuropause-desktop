@@ -5,6 +5,7 @@ export type SectionId =
   | 'organization'
   | 'enterprise'
   | 'business'
+  | 'administration'
   | 'opscenter'
   | 'developer'
   | 'developer-center'
@@ -67,6 +68,8 @@ export const SECTIONS: SectionDef[] = [
   { id: 'enterprise', label: 'Enterprise', icon: 'grid', phase: 7, placement: 'primary' },
   // Business Workspace (EBS v1.0): a family-grouped presentation over the existing enterprise modules.
   { id: 'business', label: 'Business', icon: 'layers', phase: 7, placement: 'primary' },
+  // Enterprise Administration v1.0 — a reuse-only admin control center over existing services.
+  { id: 'administration', label: 'Administration', icon: 'shield', phase: 10, placement: 'primary' },
   { id: 'opscenter', label: 'Ops Center', icon: 'pulse', phase: 7, placement: 'primary' },
   { id: 'developer', label: 'Developer', icon: 'code', phase: 8, placement: 'primary' },
   { id: 'developer-center', label: 'Developer Center', icon: 'puzzle', phase: 12, placement: 'primary', hidden: true },

@@ -58,6 +58,8 @@ export default defineConfig({
       'src/renderer/src/business/**/*.test.ts',
       // Product Operations v1.0 — the Product Ops lens model (pure data: tones, gaps, deployment targets).
       'src/renderer/src/productOps/**/*.test.ts',
+      // Enterprise Administration v1.0 — the admin lens model (pure data: tones, gaps, org/role summaries).
+      'src/renderer/src/administration/**/*.test.ts',
     ],
   },
   resolve: {
