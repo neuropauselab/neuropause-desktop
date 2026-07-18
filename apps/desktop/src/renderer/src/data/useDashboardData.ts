@@ -1,50 +1,37 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AppNotification, DashboardData } from './types';
-import { useServices } from '@renderer/services/ServicesProvider';
-import { createLogger } from '@renderer/lib/logger';
-
-const log = createLogger('dashboard');
+import { SAMPLE_DASHBOARD } from './sampleData';
 
 export interface UseDashboardData {
   data: DashboardData | null;
   loading: boolean;
-  error: boolean;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
   unreadCount: number;
 }
 
 /**
- * Loads the dashboard payload from the DashboardRepository. The source is
- * resolved through the services layer, so this hook is unaware of whether the
- * data is local or networked.
+ * Loads the dashboard payload. Today it resolves the local sample data on a
+ * short delay to mirror an async fetch; in later phases the body is swapped for
+ * real IPC calls (e.g. ipc.activity.getDashboard()) with no change to callers.
  */
 export function useDashboardData(): UseDashboardData {
-  const { dashboard } = useServices();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
-    setError(false);
-    dashboard
-      .getDashboard()
-      .then((payload) => {
-        if (active) setData(payload);
-      })
-      .catch((err) => {
-        log.error('Failed to load dashboard', err);
-        if (active) setError(true);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+    const timer = setTimeout(() => {
+      if (!active) return;
+      // Clone so local mutations (mark-as-read) don't touch the source module.
+      setData(structuredClone(SAMPLE_DASHBOARD));
+      setLoading(false);
+    }, 180);
     return () => {
       active = false;
+      clearTimeout(timer);
     };
-  }, [dashboard]);
+  }, []);
 
   const updateNotifications = useCallback(
     (fn: (n: AppNotification[]) => AppNotification[]) => {
@@ -66,5 +53,5 @@ export function useDashboardData(): UseDashboardData {
 
   const unreadCount = data ? data.notifications.filter((n) => !n.read).length : 0;
 
-  return { data, loading, error, markNotificationRead, markAllNotificationsRead, unreadCount };
+  return { data, loading, markNotificationRead, markAllNotificationsRead, unreadCount };
 }

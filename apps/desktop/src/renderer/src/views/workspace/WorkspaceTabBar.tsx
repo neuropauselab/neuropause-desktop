@@ -1,4 +1,3 @@
-import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { cn } from '@renderer/lib/cn';
 import { Icon } from '@renderer/components/ui/Icon';
@@ -20,40 +19,11 @@ export function WorkspaceTabBar({
   onClose: (id: string) => void;
   onNew: () => void;
 }): JSX.Element {
-  const onTabKeyDown = (e: ReactKeyboardEvent, index: number): void => {
-    switch (e.key) {
-      case 'Enter':
-      case ' ':
-        e.preventDefault();
-        onSelect(tabs[index].id);
-        break;
-      case 'ArrowRight':
-        e.preventDefault();
-        onSelect(tabs[(index + 1) % tabs.length].id);
-        break;
-      case 'ArrowLeft':
-        e.preventDefault();
-        onSelect(tabs[(index - 1 + tabs.length) % tabs.length].id);
-        break;
-      case 'Backspace':
-      case 'Delete':
-        e.preventDefault();
-        onClose(tabs[index].id);
-        break;
-      default:
-        break;
-    }
-  };
-
   return (
-    <div
-      className="hairline-b flex h-10 shrink-0 items-center gap-1 px-2"
-      role="tablist"
-      aria-label="Open apps"
-    >
+    <div className="hairline-b flex h-10 shrink-0 items-center gap-1 px-2">
       <div className="flex flex-1 items-center gap-1 overflow-x-auto">
         <AnimatePresence initial={false}>
-          {tabs.map((tab, index) => {
+          {tabs.map((tab) => {
             const app = getAppOrFallback(tab.appId);
             const active = tab.id === activeTabId;
             return (
@@ -65,13 +35,10 @@ export function WorkspaceTabBar({
                 exit={{ opacity: 0, scale: 0.9 }}
                 transition={{ type: 'spring', stiffness: 520, damping: 40 }}
                 onClick={() => onSelect(tab.id)}
-                onKeyDown={(e) => onTabKeyDown(e, index)}
                 role="tab"
                 aria-selected={active}
-                aria-label={tab.title}
-                tabIndex={active ? 0 : -1}
                 className={cn(
-                  'group flex h-7 shrink-0 cursor-pointer items-center gap-2 rounded-lg pl-2 pr-1.5 outline-none transition-colors focus-visible:shadow-focus',
+                  'group flex h-7 shrink-0 cursor-pointer items-center gap-2 rounded-lg pl-2 pr-1.5 transition-colors',
                   active ? 'surface-raised text-ink shadow-sm' : 'text-muted hover:[background:var(--fill-1)]',
                 )}
               >
@@ -80,7 +47,6 @@ export function WorkspaceTabBar({
                 <button
                   type="button"
                   aria-label={`Close ${tab.title}`}
-                  tabIndex={-1}
                   onClick={(e) => {
                     e.stopPropagation();
                     onClose(tab.id);
@@ -100,9 +66,9 @@ export function WorkspaceTabBar({
       <button
         type="button"
         aria-label="Open an app"
-        title="Open an app (⌘T)"
+        title="Open an app"
         onClick={onNew}
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted outline-none transition hover:text-ink fill-hover focus-visible:shadow-focus active:scale-95"
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted transition hover:text-ink fill-hover active:scale-95"
       >
         <Icon name="plus" size={17} />
       </button>

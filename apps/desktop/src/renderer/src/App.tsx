@@ -1,13 +1,8 @@
 import { LoginScreen } from '@renderer/screens/LoginScreen';
 import { Spinner } from '@renderer/components/Spinner';
-import { ErrorBoundary } from '@renderer/components/ErrorBoundary';
 import { useAuth } from '@renderer/providers/AuthProvider';
-import { ScaleProvider } from '@renderer/state/ScaleProvider';
-import { ServicesProvider } from '@renderer/services/ServicesProvider';
 import { ShellProvider } from '@renderer/state/ShellProvider';
 import { DashboardProvider } from '@renderer/state/DashboardProvider';
-import { ToastProvider } from '@renderer/state/ToastProvider';
-import { ConnectionProvider } from '@renderer/state/ConnectionProvider';
 import { AppShell } from '@renderer/shell/AppShell';
 
 /**
@@ -17,10 +12,6 @@ import { AppShell } from '@renderer/shell/AppShell';
  *   - authenticated                     → the full application shell
  *   - anything else                     → the login screen (which also renders
  *     the "authenticating" and "error" states)
- *
- * Provider order: ScaleProvider (UI scaling) and ServicesProvider (data sources)
- * are outermost; DashboardProvider sits inside ServicesProvider because the
- * dashboard reads through the repository layer.
  */
 export default function App(): JSX.Element {
   const { status, initializing } = useAuth();
@@ -39,21 +30,11 @@ export default function App(): JSX.Element {
 
   if (status.state === 'authenticated') {
     return (
-      <ScaleProvider>
-        <ServicesProvider>
-          <ShellProvider>
-            <DashboardProvider>
-              <ToastProvider>
-                <ConnectionProvider>
-                  <ErrorBoundary name="shell">
-                    <AppShell session={status.session} />
-                  </ErrorBoundary>
-                </ConnectionProvider>
-              </ToastProvider>
-            </DashboardProvider>
-          </ShellProvider>
-        </ServicesProvider>
-      </ScaleProvider>
+      <ShellProvider>
+        <DashboardProvider>
+          <AppShell session={status.session} />
+        </DashboardProvider>
+      </ShellProvider>
     );
   }
 
