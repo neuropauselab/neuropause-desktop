@@ -49,6 +49,8 @@ services:
     environment:
       NODE_ENV: production
       PORT: 4000
+      # Production starts with an empty store catalog (no demo seed).
+      SEED_STORE_ON_BOOT: "false"
       # Point the backend at the service containers (overrides any values in .env).
       DATABASE_URL: postgresql://${POSTGRES_USER:-neuropause}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-neuropause}
       REDIS_URL: redis://redis:6379

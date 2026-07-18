@@ -10,7 +10,13 @@ describe('emptyDashboard', () => {
     expect(d.activity).toEqual([]);
     expect(d.recommendations).toEqual([]);
     expect(d.notifications).toEqual([]);
-    expect(d.productivity).toEqual({ focusMinutesToday: 0, deepWorkPercent: 0, sessionsToday: 0, tasksCompletedToday: 0 });
+    expect(d.productivity).toEqual({
+      focusMinutesToday: 0,
+      deepWorkPct: 0,
+      sessionsToday: 0,
+      tasksCompletedToday: 0,
+      weekly: [],
+    });
   });
   it('isDashboardEmpty is true for the empty twin', () => {
     expect(isDashboardEmpty(emptyDashboard())).toBe(true);

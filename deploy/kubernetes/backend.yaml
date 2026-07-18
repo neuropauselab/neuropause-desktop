@@ -37,6 +37,8 @@ data:
   MICROSOFT_TENANT: "common"
   # Migrations run as the one-off Job below, not on every pod boot.
   RUN_MIGRATIONS_ON_BOOT: "false"
+  # Never auto-seed the demo store catalog in production (empty catalog).
+  SEED_STORE_ON_BOOT: "false"
 ---
 apiVersion: batch/v1
 kind: Job

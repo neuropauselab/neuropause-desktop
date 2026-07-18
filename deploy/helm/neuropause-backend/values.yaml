@@ -19,6 +19,8 @@ config:
   MICROSOFT_TENANT: "common"
   # Migrations run as the one-off Job, not on every pod boot.
   RUN_MIGRATIONS_ON_BOOT: "false"
+  # Never auto-seed the demo store catalog in production.
+  SEED_STORE_ON_BOOT: "false"
 
 # Secret env. Production: create a Secret out-of-band and set `existingSecret`
 # (sealed-secrets / external-secrets recommended). The inline values below are for

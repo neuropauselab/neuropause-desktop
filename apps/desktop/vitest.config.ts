@@ -69,6 +69,11 @@ export default defineConfig({
       'src/renderer/src/aiOperations/**/*.test.ts',
       // Phase 5 — the Platform Ecosystem control plane's pure tab-lens models.
       'src/renderer/src/platformEcosystem/**/*.test.ts',
+      // Enterprise GA — previously-orphaned renderer model tests, now collected.
+      'src/renderer/src/data/**/*.test.ts',
+      'src/renderer/src/design/**/*.test.ts',
+      'src/renderer/src/developer/**/*.test.ts',
+      'src/renderer/src/enterprise/**/*.test.ts',
     ],
   },
   resolve: {

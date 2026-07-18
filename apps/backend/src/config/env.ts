@@ -17,6 +17,14 @@ const EnvSchema = z.object({
     .default('true')
     .transform((v) => v !== 'false'),
 
+  // When "false", the boot path does NOT seed the demo store catalog. Default true
+  // keeps a fresh dev checkout populated; production deployments set it false so the
+  // catalog starts empty (no fabricated apps / ratings / download counts).
+  SEED_STORE_ON_BOOT: z
+    .string()
+    .default('true')
+    .transform((v) => v !== 'false'),
+
   DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().url(),
 

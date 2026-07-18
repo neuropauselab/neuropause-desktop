@@ -22,7 +22,11 @@ async function main(): Promise<void> {
   } else if (await pingDatabase()) {
     try {
       await runMigrations();
-      await seedStoreIfEmpty();
+      if (env.SEED_STORE_ON_BOOT) {
+        await seedStoreIfEmpty();
+      } else {
+        logger.info('SEED_STORE_ON_BOOT=false — starting with an empty store catalog (no demo seed)');
+      }
     } catch (err) {
       logger.error({ err }, 'Migration on boot failed');
     }

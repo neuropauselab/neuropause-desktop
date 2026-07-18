@@ -4,17 +4,19 @@ An **AI Operating Layer** for the desktop — a native macOS workspace for
 discovering, launching, connecting, and remembering your AI tools. Not a
 chatbot; a place your AI work *lives*.
 
-> **Status: Phase 1 of 6 — Foundation.**
-> This repository currently contains the project architecture, the Electron +
-> React shell, the backend service, and a complete, secure **authentication**
-> system (Google / GitHub / Microsoft / Apple / email). The feature modules
-> (AI Store, Workspace, Connectors, Activity Intelligence, Reminders, Summaries,
-> AI Memory, Automation) are scaffolded as labelled "coming in Phase N"
-> placeholders in the UI and are built in later phases. See
-> [Roadmap](#roadmap).
+> **Status: 1.0.0-rc.1 — Enterprise Release Candidate.**
+> The full platform is implemented across desktop and backend: the Enterprise
+> Business, Administration, Intelligence, Knowledge, Automation, Collaboration,
+> Federation, Commercial and Developer platforms; the Enterprise AI Operating
+> layer; the Enterprise Runtime, Cloud & Deployment infrastructure; and the
+> Platform Ecosystem (Extensibility) control plane. This is a **Release
+> Candidate**, not yet Enterprise GA — the remaining gaps are documented
+> honestly in the [Enterprise GA Assessment](ENTERPRISE-GA-REPORT.md) and the
+> [caveats](#honest-caveats) below.
 
-This is an honest foundation, not a finished product. What is here is built to
-production standards; what is not here is clearly marked as not-here.
+Everything shipped is built to production standards and validated by real gates
+(typecheck, lint, ~3,800 tests, production build); anything modeled, partial, or
+absent is labelled as such — never fabricated.
 
 ---
 
@@ -146,46 +148,49 @@ Full detail and the configuration guide live in
 
 ## Roadmap
 
-| Phase | Scope | State |
-|-------|-------|-------|
-| **1** | Project init, architecture, Electron + React shell, DB, **Authentication** | ✅ This release |
-| 2 | Dashboard, Sidebar, Workspace, Navigation, Settings, Theme | ⏳ Planned |
-| 3 | AI Store, Search, Categories, Marketplace | ⏳ Planned |
-| 4 | OAuth connectors, Connector SDK, Plugin architecture | ⏳ Planned |
-| 5 | Activity Intelligence, Timeline, Daily Summary, Reminder Engine | ⏳ Planned |
-| 6 | Automation Builder, Notification Center, AI Memory, Analytics | ⏳ Planned |
-| 7 | Enterprise Operating System (org runtime, governance, executive surface) | ✅ Shipped |
-| 8 | **Ecosystem Platform** — Developer Portal, Marketplace, Public SDK + CLI, API Gateway, Billing | ✅ Shipped |
-| 9 | **Cloud & Federation** — multi-tenant cloud control plane (Stage 1) + cross-org Federation Platform (Stage 2) | ✅ Shipped |
+NeuroPause is delivered as a full platform; each layer ships with its own docs under [`docs/`](docs/).
 
-> Phases 2–9 are implemented incrementally; each subsystem has its own docs under
-> [`docs/`](docs/). The Phase 8 platform is documented in
-> [`docs/ecosystem/`](docs/ecosystem/README.md); the Phase 9 cloud and federation
-> layers in [`docs/cloud/`](docs/cloud/README.md) and
-> [`docs/federation/`](docs/federation/README.md). Phase 9 Stage 2 completes the
-> core platform architecture — see
-> [`docs/federation/final-platform-architecture.md`](docs/federation/final-platform-architecture.md).
+| Layer | State | Docs |
+|---|---|---|
+| Foundation, Experience, Authentication | ✅ Shipped | [`docs/AUTHENTICATION.md`](docs/AUTHENTICATION.md) |
+| Enterprise Business, Modules & Certification | ✅ Shipped | [`docs/enterprise/`](docs/enterprise/README.md) |
+| Product Operations, Administration, Intelligence | ✅ Shipped | [Administrator Guide](docs/guides/ADMINISTRATOR-GUIDE.md) |
+| Knowledge, Automation, Collaboration | ✅ Shipped | [`docs/`](docs/) |
+| Federation, Commercial, Developer platforms | ✅ Shipped | [`docs/ecosystem/`](docs/ecosystem/README.md), [`docs/federation/`](docs/federation/README.md) |
+| Enterprise AI Operating Platform | ✅ Shipped | [`PHASE-3-REPORT.md`](PHASE-3-REPORT.md) |
+| Enterprise Runtime, Cloud & Deployment | ✅ Shipped | [`deploy/README.md`](deploy/README.md), [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) |
+| Platform Ecosystem (Extensibility) | ✅ Shipped | [`PHASE-5-REPORT.md`](PHASE-5-REPORT.md) |
+| **Enterprise GA (production readiness)** | 🔶 **Release Candidate** | [`ENTERPRISE-GA-REPORT.md`](ENTERPRISE-GA-REPORT.md) |
+
+> The full, evidence-based production-readiness assessment — with real benchmarks and
+> an honest GA classification — is the [Enterprise GA Assessment](ENTERPRISE-GA-REPORT.md).
+> A per-layer documentation index is in [`docs/README.md`](docs/README.md).
 
 ---
 
-## Honest caveats for this phase
+## Honest caveats
 
-- The **feature module cards** on the home screen are intentional, labelled
-  placeholders — they do nothing yet by design.
-- **Apple sign-in** decodes but does **not yet verify** the `id_token`
-  signature against Apple's JWKS — a tracked TODO documented in
-  `docs/AUTHENTICATION.md`. Don't ship Apple to real users until that's done.
-- **Email verification / password reset** are not implemented yet.
-- **Code-signing & notarization** for macOS distribution are left to you
-  (`electron-builder.yml` is configured for `arm64` dmg/zip; signing identities
-  are not committed).
-- This was developed and statically reviewed but **the Electron app has not
-  been launched in this build environment** (no macOS GUI available here); run
-  it on your Mac per the steps above.
+The platform is a Release Candidate; these are the honest, tracked gaps (full detail
+in the [Enterprise GA Assessment](ENTERPRISE-GA-REPORT.md)):
+
+- **Apple sign-in** decodes but does **not yet verify** the `id_token` signature
+  against Apple's JWKS (`apps/backend/src/auth/providers/apple.ts`) — a tracked
+  hardening item and the top pre-GA security blocker. The other providers resolve
+  identity from authenticated userinfo/Graph endpoints and are unaffected.
+- **Marketplace app install** accepts unsigned packages when the publisher trust
+  store is empty; worker-package install is fail-closed. See the
+  [Security Guide](docs/guides/SECURITY-GUIDE.md).
+- **macOS code-signing/notarization** are configured but env-gated (unsigned builds
+  ship if secrets are absent), and macOS **release automation is not yet in CI**
+  (Windows is).
+- Enterprise day-2 disciplines — **alert routing, distributed tracing, capacity
+  forecasting** — are not implemented; **update rollback is advisory** (data-side
+  recovery is the real path) and **federation DR is modeled**.
+- The Electron desktop app is **not launched in headless/CI environments** — run it
+  on macOS per the steps above.
 
 ---
 
 ## License
 
-Proprietary — internal project scaffold. Add a license before any external
-distribution.
+Proprietary — All Rights Reserved. Copyright © 2026 NeuroPause. See [`LICENSE`](LICENSE).
