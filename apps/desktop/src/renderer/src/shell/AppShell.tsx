@@ -115,6 +115,9 @@ const AutomationCenterView = lazy(() =>
 const AiOperationsView = lazy(() =>
   import('@renderer/aiOperations/AiOperationsView').then((m) => ({ default: m.AiOperationsView })),
 );
+const PlatformEcosystemView = lazy(() =>
+  import('@renderer/platformEcosystem/PlatformEcosystemView').then((m) => ({ default: m.PlatformEcosystemView })),
+);
 const OpsCenterView = lazy(() =>
   import('@renderer/views/OpsCenterView').then((m) => ({ default: m.OpsCenterView })),
 );
@@ -276,6 +279,8 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
         return <AutomationCenterView />;
       case 'ai-operations':
         return <AiOperationsView />;
+      case 'extensibility':
+        return <PlatformEcosystemView />;
       case 'opscenter':
         return <OpsCenterView />;
       case 'developer':

@@ -67,6 +67,8 @@ export default defineConfig({
       'src/renderer/src/automationCenter/**/*.test.ts',
       // Phase 3 — the AI Operating Platform's pure tab-lens models (no DOM, no React).
       'src/renderer/src/aiOperations/**/*.test.ts',
+      // Phase 5 — the Platform Ecosystem control plane's pure tab-lens models.
+      'src/renderer/src/platformEcosystem/**/*.test.ts',
     ],
   },
   resolve: {
