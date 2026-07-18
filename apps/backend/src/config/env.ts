@@ -9,6 +9,14 @@ const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
   PUBLIC_BACKEND_URL: z.string().url().default('http://127.0.0.1:4000'),
 
+  // When "false", the server does NOT migrate on boot (e.g. Kubernetes runs the
+  // one-off migrate Job instead, so multiple replicas don't race). Default keeps
+  // single-instance / compose deploys one command away.
+  RUN_MIGRATIONS_ON_BOOT: z
+    .string()
+    .default('true')
+    .transform((v) => v !== 'false'),
+
   DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().url(),
 

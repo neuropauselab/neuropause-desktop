@@ -1,0 +1,196 @@
+# NeuroPause backend — core Kubernetes manifests.
+#
+# Deploys the REAL apps/backend service (built from apps/backend/Dockerfile) with
+# its real liveness (/live) and readiness (/health) probes, running migrations as a
+# separate one-off Job (the pattern the Dockerfile itself recommends for multi-replica
+# deploys). Postgres and Redis are expected to be MANAGED services (or run separately);
+# this manifest deliberately does not stand up a single-pod database and call it HA.
+#
+# Quickstart:
+#   kubectl apply -f deploy/kubernetes/secret.example.yaml   # after editing real values
+#   kubectl apply -f deploy/kubernetes/backend.yaml
+#   kubectl -n neuropause apply -f deploy/kubernetes/optional.yaml   # HPA + Ingress
+#
+# Image: build & push first, then set the tag:
+#   docker build -f apps/backend/Dockerfile -t <registry>/neuropause-backend:<tag> .
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: neuropause
+  labels:
+    app.kubernetes.io/name: neuropause
+    app.kubernetes.io/part-of: neuropause
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: neuropause-backend-config
+  namespace: neuropause
+  labels:
+    app.kubernetes.io/name: neuropause-backend
+    app.kubernetes.io/part-of: neuropause
+data:
+  NODE_ENV: "production"
+  PORT: "4000"
+  PUBLIC_BACKEND_URL: "https://api.neuropause.example"
+  MICROSOFT_TENANT: "common"
+  # Migrations run as the one-off Job below, not on every pod boot.
+  RUN_MIGRATIONS_ON_BOOT: "false"
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: neuropause-backend-migrate
+  namespace: neuropause
+  labels:
+    app.kubernetes.io/name: neuropause-backend
+    app.kubernetes.io/component: migrate
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: neuropause-backend
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: neuropause-backend:1.0.0
+          command: ["node", "dist/db/migrate.js"]
+          envFrom:
+            - configMapRef:
+                name: neuropause-backend-config
+            - secretRef:
+                name: neuropause-backend-secrets
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: neuropause-backend
+  namespace: neuropause
+  labels:
+    app.kubernetes.io/name: neuropause-backend
+    app.kubernetes.io/part-of: neuropause
+    app.kubernetes.io/component: api
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: neuropause-backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: neuropause-backend
+        app.kubernetes.io/part-of: neuropause
+        app.kubernetes.io/component: api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "4000"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: backend
+          image: neuropause-backend:1.0.0
+          # Dockerfile CMD is "migrate && serve"; in k8s migrations run as a Job
+          # (see above), so the pod only serves.
+          command: ["node", "dist/index.js"]
+          ports:
+            - name: http
+              containerPort: 4000
+          envFrom:
+            - configMapRef:
+                name: neuropause-backend-config
+            - secretRef:
+                name: neuropause-backend-secrets
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neuropause-backend
+  namespace: neuropause
+  labels:
+    app.kubernetes.io/name: neuropause-backend
+    app.kubernetes.io/part-of: neuropause
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: neuropause-backend
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

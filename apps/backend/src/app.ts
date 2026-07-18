@@ -33,8 +33,9 @@ import { createLoggingMailer } from './auth/mailer';
 import { hashPassword } from './auth/passwords';
 import { rateLimit } from './middleware/rateLimit';
 import { env } from './config/env';
-import { pingDatabase } from './db/pool';
+import { pingDatabase, pool } from './db/pool';
 import { pingRedis } from './cache/redis';
+import { recordHttpRequest, renderMetrics } from './observability/metrics';
 
 export function createApp(): Express {
   const app = express();
@@ -69,6 +70,14 @@ export function createApp(): Express {
     }),
   );
 
+  // Count real HTTP requests for /metrics (ops probes excluded to avoid self-noise).
+  app.use((req, res, next) => {
+    if (req.path !== '/metrics' && req.path !== '/health' && req.path !== '/live') {
+      res.on('finish', () => recordHttpRequest(req.method, res.statusCode));
+    }
+    next();
+  });
+
   // Liveness: is the process up? No dependency checks, so an orchestrator won't
   // restart the container for a transient database/redis blip. Use /health for
   // readiness (it checks dependencies).
@@ -84,6 +93,13 @@ export function createApp(): Express {
       components: { database: db ? 'up' : 'down', redis: cache ? 'up' : 'down' },
       uptime: process.uptime(),
     });
+  });
+
+  // Prometheus metrics exposition (aggregate, non-sensitive). Network-restrict in prod.
+  app.get('/metrics', (_req, res) => {
+    res
+      .type('text/plain; version=0.0.4; charset=utf-8')
+      .send(renderMetrics({ total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount }));
   });
 
   app.use('/auth', createAuthRouter());

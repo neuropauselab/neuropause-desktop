@@ -1,0 +1,15 @@
+apiVersion: v2
+name: neuropause-backend
+description: The NeuroPause backend API (Express + Postgres + Redis) — production Helm chart.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - neuropause
+  - backend
+  - api
+home: https://github.com/dishantdobariya91-debug/neuropause-desktop
+sources:
+  - https://github.com/dishantdobariya91-debug/neuropause-desktop
+maintainers:
+  - name: NeuroPause

@@ -1,0 +1,55 @@
+{{- if .Values.migrations.enabled }}
+# Forward-only DB migrations, run once before the pods serve. Helm installs
+# ConfigMaps and Secrets before Jobs, so the envFrom references resolve.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "neuropause-backend.fullname" . }}-migrate
+  labels:
+    {{- include "neuropause-backend.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        {{- include "neuropause-backend.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["node", "dist/db/migrate.js"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "neuropause-backend.fullname" . }}-config
+            - secretRef:
+                name: {{ include "neuropause-backend.secretName" . }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- end }}

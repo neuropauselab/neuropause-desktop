@@ -1,0 +1,44 @@
+name: deploy-validation
+
+on:
+  push:
+    paths:
+      - 'deploy/**'
+      - '.github/workflows/deploy-validation.yml'
+  pull_request:
+    paths:
+      - 'deploy/**'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: yamllint (raw manifests)
+        run: |
+          pip install yamllint
+          yamllint -d "{extends: relaxed, rules: {line-length: disable, comments: disable, document-start: disable}}" deploy/kubernetes
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.15.4
+
+      - name: helm lint
+        run: helm lint deploy/helm/neuropause-backend
+
+      - name: helm template
+        run: helm template np deploy/helm/neuropause-backend --namespace neuropause > /tmp/chart-rendered.yaml
+
+      - name: Install kubeconform
+        run: |
+          curl -sSLo /tmp/kc.tgz https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
+          tar -xzf /tmp/kc.tgz -C /tmp
+          sudo install -m 0755 /tmp/kubeconform /usr/local/bin/kubeconform
+
+      - name: kubeconform (raw manifests, strict)
+        run: kubeconform -strict -summary -kubernetes-version 1.29.0 deploy/kubernetes/backend.yaml deploy/kubernetes/optional.yaml deploy/kubernetes/secret.example.yaml
+
+      - name: kubeconform (rendered chart, strict)
+        run: kubeconform -strict -summary -kubernetes-version 1.29.0 /tmp/chart-rendered.yaml

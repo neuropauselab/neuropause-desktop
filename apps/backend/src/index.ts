@@ -12,9 +12,14 @@ import { closeRedis } from './cache/redis';
 async function main(): Promise<void> {
   const env = loadEnv();
 
-  // Apply migrations on boot in dev; in production prefer an explicit step,
-  // but running them here keeps a fresh checkout one command away.
-  if (await pingDatabase()) {
+  // Apply migrations on boot for single-instance / compose deploys. In a
+  // multi-replica orchestrator (k8s), set RUN_MIGRATIONS_ON_BOOT=false and run
+  // the one-off migrate Job instead so replicas don't race on migration.
+  if (!env.RUN_MIGRATIONS_ON_BOOT) {
+    logger.info(
+      'RUN_MIGRATIONS_ON_BOOT=false — skipping boot migrations (run them as a separate step, e.g. the k8s migrate Job)',
+    );
+  } else if (await pingDatabase()) {
     try {
       await runMigrations();
       await seedStoreIfEmpty();

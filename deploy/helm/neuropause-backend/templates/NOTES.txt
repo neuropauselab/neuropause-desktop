@@ -1,0 +1,17 @@
+NeuroPause backend release {{ .Release.Name }} deployed to namespace {{ .Release.Namespace }}.
+
+  Service:  {{ include "neuropause-backend.fullname" . }} (port {{ .Values.service.port }})
+  Probes:   liveness /live, readiness /health (checks Postgres + Redis)
+  Metrics:  GET /metrics (Prometheus text format — keep network-restricted)
+  Replicas: {{ if .Values.autoscaling.enabled }}autoscaled {{ .Values.autoscaling.minReplicas }}–{{ .Values.autoscaling.maxReplicas }}{{ else }}{{ .Values.replicaCount }}{{ end }}
+
+{{- if not .Values.existingSecret }}
+
+WARNING: this release rendered an in-chart Secret. For production, create a Secret
+out-of-band (or use sealed-secrets / external-secrets) and set `existingSecret`.
+DATABASE_URL, REDIS_URL and JWT_ACCESS_SECRET (>= 32 chars) are REQUIRED — the backend
+refuses to start without them. Point DATABASE_URL / REDIS_URL at managed, HA datastores.
+{{- end }}
+
+Check rollout:
+  kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "neuropause-backend.fullname" . }}

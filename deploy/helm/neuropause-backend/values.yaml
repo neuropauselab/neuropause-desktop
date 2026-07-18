@@ -1,0 +1,73 @@
+# Default values for the neuropause-backend chart.
+
+replicaCount: 2
+
+image:
+  repository: neuropause-backend
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Non-secret configuration (rendered into a ConfigMap, injected via envFrom).
+config:
+  NODE_ENV: "production"
+  PORT: "4000"
+  PUBLIC_BACKEND_URL: "https://api.neuropause.example"
+  MICROSOFT_TENANT: "common"
+  # Migrations run as the one-off Job, not on every pod boot.
+  RUN_MIGRATIONS_ON_BOOT: "false"
+
+# Secret env. Production: create a Secret out-of-band and set `existingSecret`
+# (sealed-secrets / external-secrets recommended). The inline values below are for
+# dev/demo only; DATABASE_URL, REDIS_URL and JWT_ACCESS_SECRET (>=32 chars) are
+# REQUIRED or the backend refuses to start.
+existingSecret: ""
+secretEnv:
+  DATABASE_URL: ""
+  REDIS_URL: ""
+  JWT_ACCESS_SECRET: ""
+
+# Run DB migrations as a one-off Job (forward-only, transactional migrator).
+migrations:
+  enabled: true
+
+service:
+  type: ClusterIP
+  port: 80
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+
+ingress:
+  enabled: false
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+  host: api.neuropause.example
+  tls:
+    enabled: true
+    secretName: neuropause-backend-tls
+
+# Prometheus scrape hints (the backend exposes GET /metrics).
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/path: "/metrics"
+  prometheus.io/port: "4000"
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
