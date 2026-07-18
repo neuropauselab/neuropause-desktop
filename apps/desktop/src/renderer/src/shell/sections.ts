@@ -16,6 +16,7 @@ export type SectionId =
   | 'network-center'
   | 'auto-ops-center'
   | 'commercial-center'
+  | 'product-ops'
   | 'ecosystem'
   | 'cloud'
   | 'control-plane'
@@ -77,6 +78,8 @@ export const SECTIONS: SectionDef[] = [
   { id: 'network-center', label: 'Intelligence Network', icon: 'globe', phase: 18, placement: 'primary' },
   { id: 'auto-ops-center', label: 'Autonomous Operations', icon: 'command', phase: 19, placement: 'primary' },
   { id: 'commercial-center', label: 'Platform v2', icon: 'store', phase: 20, placement: 'primary' },
+  // Product Operations & Release Management v1.0 — a read-only operations lens over existing services.
+  { id: 'product-ops', label: 'Product Ops', icon: 'gauge', phase: 20, placement: 'primary' },
   { id: 'ecosystem', label: 'Ecosystem', icon: 'globe', phase: 8, placement: 'primary' },
   { id: 'cloud', label: 'Cloud', icon: 'database', phase: 9, placement: 'primary' },
   { id: 'control-plane', label: 'Control Plane', icon: 'gauge', phase: 11, placement: 'primary', hidden: true },

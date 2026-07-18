@@ -94,6 +94,9 @@ const EnterpriseView = lazy(() =>
 const BusinessView = lazy(() =>
   import('@renderer/business/BusinessView').then((m) => ({ default: m.BusinessView })),
 );
+const ProductOpsView = lazy(() =>
+  import('@renderer/productOps/ProductOpsView').then((m) => ({ default: m.ProductOpsView })),
+);
 const OpsCenterView = lazy(() =>
   import('@renderer/views/OpsCenterView').then((m) => ({ default: m.OpsCenterView })),
 );
@@ -241,6 +244,8 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
         return <EnterpriseView />;
       case 'business':
         return <BusinessView />;
+      case 'product-ops':
+        return <ProductOpsView onOpenSection={(id) => goToSection(id as SectionId)} />;
       case 'opscenter':
         return <OpsCenterView />;
       case 'developer':

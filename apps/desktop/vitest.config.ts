@@ -56,6 +56,8 @@ export default defineConfig({
       'src/renderer/src/capability/**/*.test.ts',
       // Enterprise Business Suite v1.0 — the Business Workspace model (pure data: family grouping + KPIs).
       'src/renderer/src/business/**/*.test.ts',
+      // Product Operations v1.0 — the Product Ops lens model (pure data: tones, gaps, deployment targets).
+      'src/renderer/src/productOps/**/*.test.ts',
     ],
   },
   resolve: {
