@@ -112,6 +112,9 @@ const KnowledgeWorkspaceView = lazy(() =>
 const AutomationCenterView = lazy(() =>
   import('@renderer/automationCenter/AutomationCenterView').then((m) => ({ default: m.AutomationCenterView })),
 );
+const AiOperationsView = lazy(() =>
+  import('@renderer/aiOperations/AiOperationsView').then((m) => ({ default: m.AiOperationsView })),
+);
 const OpsCenterView = lazy(() =>
   import('@renderer/views/OpsCenterView').then((m) => ({ default: m.OpsCenterView })),
 );
@@ -271,6 +274,8 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
         return <KnowledgeWorkspaceView />;
       case 'automation-center':
         return <AutomationCenterView />;
+      case 'ai-operations':
+        return <AiOperationsView />;
       case 'opscenter':
         return <OpsCenterView />;
       case 'developer':

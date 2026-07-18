@@ -6,6 +6,7 @@ export type SectionId =
   | 'enterprise'
   | 'business'
   | 'administration'
+  | 'ai-operations'
   | 'intelligence'
   | 'collaboration'
   | 'knowledge'
@@ -79,6 +80,8 @@ export const SECTIONS: SectionDef[] = [
   { id: 'collaboration', label: 'Collaboration', icon: 'checklist', phase: 10, placement: 'primary' },
   { id: 'knowledge', label: 'Knowledge', icon: 'doc', phase: 10, placement: 'primary' },
   { id: 'automation-center', label: 'Automation', icon: 'bolt', phase: 10, placement: 'primary' },
+  // Phase 3 — the AI Operating Platform: a reuse-only operating layer over existing AI capabilities.
+  { id: 'ai-operations', label: 'AI Operations', icon: 'sparkles', phase: 10, placement: 'primary' },
   { id: 'opscenter', label: 'Ops Center', icon: 'pulse', phase: 7, placement: 'primary' },
   { id: 'developer', label: 'Developer', icon: 'code', phase: 8, placement: 'primary' },
   { id: 'developer-center', label: 'Developer Center', icon: 'puzzle', phase: 12, placement: 'primary', hidden: true },

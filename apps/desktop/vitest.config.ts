@@ -65,6 +65,8 @@ export default defineConfig({
       'src/renderer/src/collaboration/**/*.test.ts',
       'src/renderer/src/knowledge2/**/*.test.ts',
       'src/renderer/src/automationCenter/**/*.test.ts',
+      // Phase 3 — the AI Operating Platform's pure tab-lens models (no DOM, no React).
+      'src/renderer/src/aiOperations/**/*.test.ts',
     ],
   },
   resolve: {
