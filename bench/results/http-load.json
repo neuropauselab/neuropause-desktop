@@ -1,0 +1,112 @@
+{
+  "base": "http://127.0.0.1:4000",
+  "conc": 32,
+  "reqs": 3000,
+  "warmup": 300,
+  "results": [
+    {
+      "scenario": "GET /health (liveness, no DB)",
+      "requests": 3000,
+      "errors": 0,
+      "concurrency": 32,
+      "throughput_rps": 1221.27,
+      "mean_ms": 26.12,
+      "p50_ms": 21.96,
+      "p90_ms": 42.56,
+      "p95_ms": 51.49,
+      "p99_ms": 89.71,
+      "max_ms": 132.78
+    },
+    {
+      "scenario": "GET /live (readiness)",
+      "requests": 3000,
+      "errors": 0,
+      "concurrency": 32,
+      "throughput_rps": 2102.96,
+      "mean_ms": 15.16,
+      "p50_ms": 11.46,
+      "p90_ms": 27.83,
+      "p95_ms": 35.93,
+      "p99_ms": 64.14,
+      "max_ms": 78.6
+    },
+    {
+      "scenario": "GET /metrics (prometheus)",
+      "requests": 3000,
+      "errors": 0,
+      "concurrency": 32,
+      "throughput_rps": 1789.27,
+      "mean_ms": 17.78,
+      "p50_ms": 15.96,
+      "p90_ms": 29.54,
+      "p95_ms": 35.39,
+      "p99_ms": 46.65,
+      "max_ms": 71.35
+    },
+    {
+      "scenario": "GET /store/apps (DB list, 20 rows)",
+      "requests": 3000,
+      "errors": 0,
+      "concurrency": 32,
+      "throughput_rps": 610.29,
+      "mean_ms": 52.23,
+      "p50_ms": 51.87,
+      "p90_ms": 64.27,
+      "p95_ms": 68.51,
+      "p99_ms": 79.77,
+      "max_ms": 126.97
+    },
+    {
+      "scenario": "GET /store/apps?q=ai&sort=trending (DB filter+sort)",
+      "requests": 3000,
+      "errors": 0,
+      "concurrency": 32,
+      "throughput_rps": 639.48,
+      "mean_ms": 49.87,
+      "p50_ms": 49.1,
+      "p90_ms": 61.49,
+      "p95_ms": 68.2,
+      "p99_ms": 87.4,
+      "max_ms": 118.84
+    },
+    {
+      "scenario": "GET /store/featured (DB join)",
+      "requests": 3000,
+      "errors": 0,
+      "concurrency": 32,
+      "throughput_rps": 528.66,
+      "mean_ms": 60.3,
+      "p50_ms": 59.9,
+      "p90_ms": 69.07,
+      "p95_ms": 75.45,
+      "p99_ms": 93.87,
+      "max_ms": 120.47
+    },
+    {
+      "scenario": "GET /store/categories (DB agg)",
+      "requests": 3000,
+      "errors": 0,
+      "concurrency": 32,
+      "throughput_rps": 1558.96,
+      "mean_ms": 20.46,
+      "p50_ms": 19.05,
+      "p90_ms": 28.09,
+      "p95_ms": 32.86,
+      "p99_ms": 40.21,
+      "max_ms": 45.62
+    },
+    {
+      "scenario": "GET /store/apps/:slug (DB point read)",
+      "requests": 3000,
+      "errors": 0,
+      "concurrency": 32,
+      "throughput_rps": 423.72,
+      "mean_ms": 75.33,
+      "p50_ms": 72.19,
+      "p90_ms": 94.82,
+      "p95_ms": 104.35,
+      "p99_ms": 117.82,
+      "max_ms": 131.85
+    }
+  ]
+}

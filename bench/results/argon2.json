@@ -1,0 +1,6 @@
+{
+  "params": { "algorithm": "argon2id", "memoryCost_KiB": 19456, "timeCost": 2, "parallelism": 1 },
+  "n": 50,
+  "hash_ms": { "mean": 21.36, "p50": 19.66, "p95": 30.03, "max": 33.3 },
+  "verify_ms": { "mean": 20.06, "p50": 19.63, "p95": 24.44, "max": 25.55 }
+}

@@ -1,0 +1,10 @@
+{
+  "scenarios": [
+    {"id":"migration-idempotency","result":"PASS","evidence":"12 migrations applied; re-run applied 0 new (forward-only)"},
+    {"id":"backup-restore","result":"PASS","evidence":"pg_dump 136K -> fresh DB -> pg_restore; row counts match (applications 20, versions 40, categories 14)"},
+    {"id":"backend-restart-recovery","result":"PASS","evidence":"SIGTERM -> down -> restart -> healthy in 0.46s"},
+    {"id":"redis-down-fail-open","result":"PASS","evidence":"redis stopped; /store/apps served 200x5 (fail-open); /health reported degraded/redis:down; no crash"},
+    {"id":"db-down-degradation-autorecover","result":"PASS","evidence":"postgres stopped; process survived; /health degraded/database:down; DB-dependent read -> clean 500; on restart pool auto-reconnected without backend restart; /health ok"},
+    {"id":"offline-bundle","result":"PARTIAL","evidence":"scripts/build-offline-bundle.sh shellcheck CLEAN + documented air-gapped procedure; full docker save/load requires a Docker daemon (not available in this env)"}
+  ]
+}

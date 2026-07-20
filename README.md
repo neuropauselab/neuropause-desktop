@@ -161,10 +161,16 @@ NeuroPause is delivered as a full platform; each layer ships with its own docs u
 | Enterprise Runtime, Cloud & Deployment | ✅ Shipped | [`deploy/README.md`](deploy/README.md), [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) |
 | Platform Ecosystem (Extensibility) | ✅ Shipped | [`PHASE-5-REPORT.md`](PHASE-5-REPORT.md) |
 | **Enterprise GA (production readiness)** | 🔶 **Release Candidate** | [`ENTERPRISE-GA-REPORT.md`](ENTERPRISE-GA-REPORT.md) |
+| **Enterprise Validation Program (operational proof)** | 🔷 **Validated RC** | [`ENTERPRISE-VALIDATION-REPORT.md`](ENTERPRISE-VALIDATION-REPORT.md) |
 
 > The full, evidence-based production-readiness assessment — with real benchmarks and
 > an honest GA classification — is the [Enterprise GA Assessment](ENTERPRISE-GA-REPORT.md).
-> A per-layer documentation index is in [`docs/README.md`](docs/README.md).
+> The [Enterprise Validation Program](ENTERPRISE-VALIDATION-REPORT.md) then *executed*
+> that evidence — load tests, chaos/reliability runs, and deployment validation
+> (reproducible harnesses in [`bench/`](bench/), results in `bench/results/`,
+> narrative in [`docs/validation/`](docs/validation/)) — classifying the platform a
+> **Validated Release Candidate**. A per-layer documentation index is in
+> [`docs/README.md`](docs/README.md).
 
 ---
 

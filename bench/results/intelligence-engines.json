@@ -1,0 +1,10 @@
+{
+  "harness": "apps/desktop/src/main/__bench__/performance.test.ts",
+  "entities": 5000,
+  "regression_budget_ms": 2000,
+  "timings_ms": {
+    "graph.project": 92.84, "memory.project": 13.66, "memory.index": 74.37,
+    "memory.recall": 4.43, "search.index": 55.91, "search.query": 6.09,
+    "timeline.query": 76.80, "briefing.generate": 24.34, "recommendations.generate": 17.13
+  }
+}

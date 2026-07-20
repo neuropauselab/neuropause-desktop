@@ -1,0 +1,11 @@
+{
+  "captured": "2026-07-18",
+  "cpu_model": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+  "vcpus": 2,
+  "mem_total_kb": 8216340,
+  "node": "v22.22.2",
+  "os": "Ubuntu 24.04.4 LTS x86_64",
+  "postgres": "16.13",
+  "redis": "7.0.15",
+  "note": "single shared cloud container; HTTP load client co-located with backend (2 vCPU contention makes latency conservative). DB/intelligence/argon benches measured directly."
+}

@@ -1,0 +1,13 @@
+{
+  "resident_memory_bytes_under_load": 223260672,
+  "heap_used_bytes_under_load": 57694488,
+  "pg_pool_connections": {
+    "total": 10,
+    "idle": 10,
+    "waiting": 0
+  },
+  "http_requests_total": {
+    "GET_200": 8000
+  },
+  "note": "Captured by scraping /metrics after a bench/http-load.mjs burst. Real gauges; reproducible by re-running the load harness then cur/ing /metrics."
+}

@@ -1,0 +1,56 @@
+{
+  "db": "postgres://neuropause:***@127.0.0.1:5433/neuropause",
+  "iters": 2000,
+  "results": [
+    {
+      "query": "point read (application by slug)",
+      "iters": 2000,
+      "errors": 0,
+      "mean_ms": 0.3,
+      "p50_ms": 0.23,
+      "p95_ms": 0.46,
+      "p99_ms": 2.37,
+      "max_ms": 15.88
+    },
+    {
+      "query": "filtered list (published, limit 24)",
+      "iters": 2000,
+      "errors": 0,
+      "mean_ms": 0.2,
+      "p50_ms": 0.16,
+      "p95_ms": 0.26,
+      "p99_ms": 0.67,
+      "max_ms": 7.6
+    },
+    {
+      "query": "aggregate (count by status)",
+      "iters": 2000,
+      "errors": 0,
+      "mean_ms": 0.13,
+      "p50_ms": 0.12,
+      "p95_ms": 0.17,
+      "p99_ms": 0.23,
+      "max_ms": 5.76
+    },
+    {
+      "query": "join (app + latest version)",
+      "iters": 2000,
+      "errors": 0,
+      "mean_ms": 0.27,
+      "p50_ms": 0.24,
+      "p95_ms": 0.38,
+      "p99_ms": 0.55,
+      "max_ms": 5.23
+    },
+    {
+      "query": "index probe (pg_stat: 1 row)",
+      "iters": 2000,
+      "errors": 0,
+      "mean_ms": 0.07,
+      "p50_ms": 0.06,
+      "p95_ms": 0.1,
+      "p99_ms": 0.13,
+      "max_ms": 2.73
+    }
+  ]
+}

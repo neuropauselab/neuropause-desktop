@@ -1,0 +1,6 @@
+{
+  "shellcheck": "CLEAN (all scripts incl. build-offline-bundle.sh)",
+  "kubernetes_validate_strict": {"deploy/kubernetes/backend.yaml":"PASS","deploy/kubernetes/optional.yaml":"PASS"},
+  "yamllint": "clean except cosmetic line-length (>80) warnings",
+  "helm": "chart present (8 templates); local render N/A (helm CLI unavailable in env); rendered in CI"
+}
