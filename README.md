@@ -162,6 +162,7 @@ NeuroPause is delivered as a full platform; each layer ships with its own docs u
 | Platform Ecosystem (Extensibility) | ✅ Shipped | [`PHASE-5-REPORT.md`](PHASE-5-REPORT.md) |
 | **Enterprise GA (production readiness)** | 🔶 **Release Candidate** | [`ENTERPRISE-GA-REPORT.md`](ENTERPRISE-GA-REPORT.md) |
 | **Enterprise Validation Program (operational proof)** | 🔷 **Validated RC** | [`ENTERPRISE-VALIDATION-REPORT.md`](ENTERPRISE-VALIDATION-REPORT.md) |
+| **Scientific & Standards Program (formalization)** | 🔬 **Reference framework** | [`SCIENTIFIC-STANDARDS-REPORT.md`](SCIENTIFIC-STANDARDS-REPORT.md) |
 
 > The full, evidence-based production-readiness assessment — with real benchmarks and
 > an honest GA classification — is the [Enterprise GA Assessment](ENTERPRISE-GA-REPORT.md).
@@ -169,8 +170,11 @@ NeuroPause is delivered as a full platform; each layer ships with its own docs u
 > that evidence — load tests, chaos/reliability runs, and deployment validation
 > (reproducible harnesses in [`bench/`](bench/), results in `bench/results/`,
 > narrative in [`docs/validation/`](docs/validation/)) — classifying the platform a
-> **Validated Release Candidate**. A per-layer documentation index is in
-> [`docs/README.md`](docs/README.md).
+> **Validated Release Candidate**. The [Scientific & Standards Program](SCIENTIFIC-STANDARDS-REPORT.md)
+> then *formalized* that platform into an internal engineering-science reference
+> ([`docs/science/`](docs/science/README.md)) — every concept carrying an explicit
+> evidence level (L0 Proposed … L4 Validated), adding documentation only. A per-layer
+> documentation index is in [`docs/README.md`](docs/README.md).
 
 ---
 

@@ -40,4 +40,10 @@ The full, evidence-based readiness classification (**Release Candidate**) is in
 - **Deployment validation** with real tools (`kubernetes-validate` strict PASS, `shellcheck` clean) and five reference **vertical validation** packs (Manufacturing, Healthcare, Agriculture, Financial, Government) — reference deployments + protocols with compliance **self-assessment mappings only** (no certifications, no named customers).
 - Outcome: **Validated Release Candidate** (~76/100), documented in [`ENTERPRISE-VALIDATION-REPORT.md`](ENTERPRISE-VALIDATION-REPORT.md) with an evidence-tied path to GA. No features, no new platform.
 
+### Scientific & Standards Program (formalization)
+- Formalized the implemented platform into an internal **engineering-science reference** ([`docs/science/`](docs/science/README.md), 23 documents) — a documentation-only layer that adds no runtime and duplicates no system.
+- Introduced an **evidence ladder** (L0 Proposed · L1 Modeled · L2 Implemented · L3 Measured · L4 Validated) applied to every concept, plus five scientific matrices (Capability, Evidence, Measurement, Validation, Standards).
+- Eight framework sciences (Ontology, Observation, Measurement, Validation, Assurance, Prediction, Replication, Standards), a 65-row **reference-implementation matrix** (51 Implemented / 3 Partial / 2 Modeled / 8 Future / 1 not-claimed), a benchmark framework, and ten manuals.
+- Honesty-preserving throughout: **no fabricated proofs, benchmarks, peer review, or certifications**; prediction is honestly held mostly **L0** (no statistical forecasting engine); standards are adopted-external/internal-convention with **no certification claimed**. Full report: [`SCIENTIFIC-STANDARDS-REPORT.md`](SCIENTIFIC-STANDARDS-REPORT.md).
+
 [1.0.0-rc.1]: https://github.com/dishantdobariya91-debug/neuropause-desktop
