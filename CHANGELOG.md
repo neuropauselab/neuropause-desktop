@@ -13,6 +13,7 @@ partial, or absent is labelled honestly — see
 [`ENTERPRISE-GA-REPORT.md`](ENTERPRISE-GA-REPORT.md).
 
 ### Platform
+
 - **Foundation & Experience** — secure Electron shell, backend-brokered OAuth (PKCE/RFC 8252), intent-native home.
 - **Enterprise Business Platform, Modules & Certification** — family-grouped modules with a certification matrix.
 - **Product Operations, Enterprise Administration, Enterprise Intelligence** — reuse-only control surfaces.
@@ -22,11 +23,13 @@ partial, or absent is labelled honestly — see
 - **Enterprise Platform Ecosystem (Extensibility)** — the platform-extensibility control plane.
 
 ### Enterprise GA hardening (this RC)
+
 - **Security/authenticity:** gated the backend demo store seed behind `SEED_STORE_ON_BOOT` — production now starts with an empty catalog (no fabricated apps, ratings, or download counts).
 - **Testing:** collected previously-orphaned renderer model tests into the standard test gate and fixed a stale assertion.
 - **Documentation:** added the enterprise operator set — Administrator, Security, Operations, and Disaster Recovery guides, a release checklist, a documentation index, `LICENSE`, and a root `SECURITY.md` — and corrected a stale root `README` status.
 
 ### Known limitations (honest, pre-GA)
+
 - Apple `id_token` signature is not yet verified against JWKS; marketplace-app install accepts unsigned packages when the trust store is empty.
 - Update rollback is advisory (data-side recovery is the real path); federation disaster recovery is modeled.
 - No alert routing, distributed tracing, or capacity forecasting; no macOS release automation; no coverage instrumentation; renderer component/E2E and accessibility tests are absent.
@@ -35,15 +38,23 @@ The full, evidence-based readiness classification (**Release Candidate**) is in
 [`ENTERPRISE-GA-REPORT.md`](ENTERPRISE-GA-REPORT.md).
 
 ### Enterprise Validation Program (operational proof)
+
 - Executed the RC evidence: stood up the real backend against real Postgres + Redis and **measured** it — HTTP load (24,000 requests, 0 errors), sub-ms database latency, intelligence-engine timings, Argon2id cost, and cold-start/restart — with reproducible harnesses in [`bench/`](bench/) and raw results in `bench/results/`.
 - **Reliability/chaos** run against the live process: migration idempotency, exact backup/restore, restart recovery (0.46 s), Redis-down fail-open, and Postgres-down degrade-and-auto-reconnect — all passing.
 - **Deployment validation** with real tools (`kubernetes-validate` strict PASS, `shellcheck` clean) and five reference **vertical validation** packs (Manufacturing, Healthcare, Agriculture, Financial, Government) — reference deployments + protocols with compliance **self-assessment mappings only** (no certifications, no named customers).
 - Outcome: **Validated Release Candidate** (~76/100), documented in [`ENTERPRISE-VALIDATION-REPORT.md`](ENTERPRISE-VALIDATION-REPORT.md) with an evidence-tied path to GA. No features, no new platform.
 
 ### Scientific & Standards Program (formalization)
+
 - Formalized the implemented platform into an internal **engineering-science reference** ([`docs/science/`](docs/science/README.md), 23 documents) — a documentation-only layer that adds no runtime and duplicates no system.
 - Introduced an **evidence ladder** (L0 Proposed · L1 Modeled · L2 Implemented · L3 Measured · L4 Validated) applied to every concept, plus five scientific matrices (Capability, Evidence, Measurement, Validation, Standards).
 - Eight framework sciences (Ontology, Observation, Measurement, Validation, Assurance, Prediction, Replication, Standards), a 65-row **reference-implementation matrix** (51 Implemented / 3 Partial / 2 Modeled / 8 Future / 1 not-claimed), a benchmark framework, and ten manuals.
 - Honesty-preserving throughout: **no fabricated proofs, benchmarks, peer review, or certifications**; prediction is honestly held mostly **L0** (no statistical forecasting engine); standards are adopted-external/internal-convention with **no certification claimed**. Full report: [`SCIENTIFIC-STANDARDS-REPORT.md`](SCIENTIFIC-STANDARDS-REPORT.md).
+
+### Global Ecosystem & Adoption Program (enablement)
+
+- Built the **adoption surface** over the unchanged platform ([`docs/adoption/`](docs/adoption/README.md), 23 new artifacts) — eleven frameworks (Customer Success, Partner Ecosystem, Developer Ecosystem, Marketplace Growth, Research & Academic, Open-Source Strategy, Training & Education, Deployment Program, Documentation Architecture, Community Governance, Business Expansion) plus five adoption-readiness matrices.
+- Added real, actionable contributor artifacts: `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `GOVERNANCE.md`, `SUPPORT.md`, `CODEOWNERS`, and `.github/` issue + pull-request templates — grounded in the real quality gates and Conventional Commits.
+- Honesty-preserving and independently reviewed: **no invented customers, certifications, market share, revenue, community metrics, or published papers**; open source is an explicitly **proposed** path (the license is proprietary); pricing is a framework over the real `free/starter/professional/enterprise` tiers with no set prices; maturity stated as Validated RC. No platform code changed. Full report: [`GLOBAL-ADOPTION-REPORT.md`](GLOBAL-ADOPTION-REPORT.md).
 
 [1.0.0-rc.1]: https://github.com/dishantdobariya91-debug/neuropause-desktop

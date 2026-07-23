@@ -2,7 +2,7 @@
 
 An **AI Operating Layer** for the desktop — a native macOS workspace for
 discovering, launching, connecting, and remembering your AI tools. Not a
-chatbot; a place your AI work *lives*.
+chatbot; a place your AI work _lives_.
 
 > **Status: 1.0.0-rc.1 — Enterprise Release Candidate.**
 > The full platform is implemented across desktop and backend: the Enterprise
@@ -61,8 +61,8 @@ neuropause-desktop/
 
 - **Node.js ≥ 20.11** (an `.nvmrc` pins `20.11.0`; run `nvm use`).
 - **Docker** (for Postgres + Redis via `docker compose`).
-- **macOS on Apple Silicon** is the first-class target for *running the desktop
-  app*. The backend runs anywhere Node does.
+- **macOS on Apple Silicon** is the first-class target for _running the desktop
+  app_. The backend runs anywhere Node does.
 
 > **Note:** the Electron desktop app must be run on macOS — it cannot be
 > launched from a headless Linux environment, and several features assume a
@@ -111,18 +111,18 @@ a clean "provider not enabled" error rather than breaking the screen.
 
 Run from the repository root:
 
-| Script | What it does |
-|--------|--------------|
-| `npm run dev` | Backend + desktop together, hot-reload |
-| `npm run dev:backend` | Backend only |
-| `npm run dev:desktop` | Desktop only (expects a backend running) |
-| `npm run build` | Production build of backend then desktop |
-| `npm run db:migrate` | Apply forward-only DB migrations |
-| `npm run infra:up` / `infra:down` | Start / stop Postgres + Redis |
-| `npm run lint` | ESLint across the monorepo (zero-warning policy) |
-| `npm run format` / `format:check` | Prettier write / check |
-| `npm run typecheck` | TypeScript check across workspaces |
-| `npm run test` | Run workspace tests (Vitest) |
+| Script                            | What it does                                     |
+| --------------------------------- | ------------------------------------------------ |
+| `npm run dev`                     | Backend + desktop together, hot-reload           |
+| `npm run dev:backend`             | Backend only                                     |
+| `npm run dev:desktop`             | Desktop only (expects a backend running)         |
+| `npm run build`                   | Production build of backend then desktop         |
+| `npm run db:migrate`              | Apply forward-only DB migrations                 |
+| `npm run infra:up` / `infra:down` | Start / stop Postgres + Redis                    |
+| `npm run lint`                    | ESLint across the monorepo (zero-warning policy) |
+| `npm run format` / `format:check` | Prettier write / check                           |
+| `npm run typecheck`               | TypeScript check across workspaces               |
+| `npm run test`                    | Run workspace tests (Vitest)                     |
 
 ---
 
@@ -150,31 +150,39 @@ Full detail and the configuration guide live in
 
 NeuroPause is delivered as a full platform; each layer ships with its own docs under [`docs/`](docs/).
 
-| Layer | State | Docs |
-|---|---|---|
-| Foundation, Experience, Authentication | ✅ Shipped | [`docs/AUTHENTICATION.md`](docs/AUTHENTICATION.md) |
-| Enterprise Business, Modules & Certification | ✅ Shipped | [`docs/enterprise/`](docs/enterprise/README.md) |
-| Product Operations, Administration, Intelligence | ✅ Shipped | [Administrator Guide](docs/guides/ADMINISTRATOR-GUIDE.md) |
-| Knowledge, Automation, Collaboration | ✅ Shipped | [`docs/`](docs/) |
-| Federation, Commercial, Developer platforms | ✅ Shipped | [`docs/ecosystem/`](docs/ecosystem/README.md), [`docs/federation/`](docs/federation/README.md) |
-| Enterprise AI Operating Platform | ✅ Shipped | [`PHASE-3-REPORT.md`](PHASE-3-REPORT.md) |
-| Enterprise Runtime, Cloud & Deployment | ✅ Shipped | [`deploy/README.md`](deploy/README.md), [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) |
-| Platform Ecosystem (Extensibility) | ✅ Shipped | [`PHASE-5-REPORT.md`](PHASE-5-REPORT.md) |
-| **Enterprise GA (production readiness)** | 🔶 **Release Candidate** | [`ENTERPRISE-GA-REPORT.md`](ENTERPRISE-GA-REPORT.md) |
-| **Enterprise Validation Program (operational proof)** | 🔷 **Validated RC** | [`ENTERPRISE-VALIDATION-REPORT.md`](ENTERPRISE-VALIDATION-REPORT.md) |
-| **Scientific & Standards Program (formalization)** | 🔬 **Reference framework** | [`SCIENTIFIC-STANDARDS-REPORT.md`](SCIENTIFIC-STANDARDS-REPORT.md) |
+| Layer                                                 | State                      | Docs                                                                                           |
+| ----------------------------------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------- |
+| Foundation, Experience, Authentication                | ✅ Shipped                 | [`docs/AUTHENTICATION.md`](docs/AUTHENTICATION.md)                                             |
+| Enterprise Business, Modules & Certification          | ✅ Shipped                 | [`docs/enterprise/`](docs/enterprise/README.md)                                                |
+| Product Operations, Administration, Intelligence      | ✅ Shipped                 | [Administrator Guide](docs/guides/ADMINISTRATOR-GUIDE.md)                                      |
+| Knowledge, Automation, Collaboration                  | ✅ Shipped                 | [`docs/`](docs/)                                                                               |
+| Federation, Commercial, Developer platforms           | ✅ Shipped                 | [`docs/ecosystem/`](docs/ecosystem/README.md), [`docs/federation/`](docs/federation/README.md) |
+| Enterprise AI Operating Platform                      | ✅ Shipped                 | [`PHASE-3-REPORT.md`](PHASE-3-REPORT.md)                                                       |
+| Enterprise Runtime, Cloud & Deployment                | ✅ Shipped                 | [`deploy/README.md`](deploy/README.md), [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)             |
+| Platform Ecosystem (Extensibility)                    | ✅ Shipped                 | [`PHASE-5-REPORT.md`](PHASE-5-REPORT.md)                                                       |
+| **Enterprise GA (production readiness)**              | 🔶 **Release Candidate**   | [`ENTERPRISE-GA-REPORT.md`](ENTERPRISE-GA-REPORT.md)                                           |
+| **Enterprise Validation Program (operational proof)** | 🔷 **Validated RC**        | [`ENTERPRISE-VALIDATION-REPORT.md`](ENTERPRISE-VALIDATION-REPORT.md)                           |
+| **Scientific & Standards Program (formalization)**    | 🔬 **Reference framework** | [`SCIENTIFIC-STANDARDS-REPORT.md`](SCIENTIFIC-STANDARDS-REPORT.md)                             |
+| **Global Ecosystem & Adoption Program (enablement)**  | 🌐 **Adoption blueprint**  | [`GLOBAL-ADOPTION-REPORT.md`](GLOBAL-ADOPTION-REPORT.md)                                       |
 
 > The full, evidence-based production-readiness assessment — with real benchmarks and
 > an honest GA classification — is the [Enterprise GA Assessment](ENTERPRISE-GA-REPORT.md).
-> The [Enterprise Validation Program](ENTERPRISE-VALIDATION-REPORT.md) then *executed*
+> The [Enterprise Validation Program](ENTERPRISE-VALIDATION-REPORT.md) then _executed_
 > that evidence — load tests, chaos/reliability runs, and deployment validation
 > (reproducible harnesses in [`bench/`](bench/), results in `bench/results/`,
 > narrative in [`docs/validation/`](docs/validation/)) — classifying the platform a
 > **Validated Release Candidate**. The [Scientific & Standards Program](SCIENTIFIC-STANDARDS-REPORT.md)
-> then *formalized* that platform into an internal engineering-science reference
+> then _formalized_ that platform into an internal engineering-science reference
 > ([`docs/science/`](docs/science/README.md)) — every concept carrying an explicit
-> evidence level (L0 Proposed … L4 Validated), adding documentation only. A per-layer
-> documentation index is in [`docs/README.md`](docs/README.md).
+> evidence level (L0 Proposed … L4 Validated), adding documentation only. The
+> [Global Ecosystem & Adoption Program](GLOBAL-ADOPTION-REPORT.md) then built the
+> **adoption surface** — customer-success, partner, developer, marketplace, training,
+> deployment, documentation, community-governance and business frameworks
+> ([`docs/adoption/`](docs/adoption/README.md)) plus real contributor files
+> (`CONTRIBUTING`, `CODE_OF_CONDUCT`, `GOVERNANCE`, issue/PR templates) — with no
+> invented customers, certifications, or metrics (open source is a _proposed_ path;
+> the license is proprietary). A per-layer documentation index is in
+> [`docs/README.md`](docs/README.md).
 
 ---
 

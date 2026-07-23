@@ -1,0 +1,69 @@
+# CODEOWNERS — review ownership for NeuroPause
+#
+# Each line maps a path to the owner(s) who must approve changes to it.
+# Order matters: the LAST matching pattern wins. See
+# https://docs.github.com/repositories/managing-your-repositories-settings-and-features/customizing-your-repository/about-code-owners
+#
+# -----------------------------------------------------------------------------
+# PLACEHOLDER HANDLES — READ BEFORE USE
+# -----------------------------------------------------------------------------
+# Every @neuropause/* handle below is a PLACEHOLDER. No such GitHub teams are
+# guaranteed to exist yet, and this file names NO individuals. Repo
+# administrators MUST replace each placeholder with a real team slug or
+# @username before code-owner review is enforced; an unresolvable owner
+# silently disables enforcement for that path. Mapping of roles is described in
+# GOVERNANCE.md.
+# -----------------------------------------------------------------------------
+
+# Default owner for everything not matched more specifically (PLACEHOLDER).
+*                               @neuropause/maintainers
+
+# --- Applications ------------------------------------------------------------
+/apps/backend/                  @neuropause/backend-maintainers      # PLACEHOLDER
+/apps/desktop/                  @neuropause/desktop-maintainers      # PLACEHOLDER
+
+# Security-sensitive areas (auth, security, marketplace signing/trust) —
+# require the security owners in addition to the area owners (PLACEHOLDER).
+/apps/backend/src/auth/         @neuropause/backend-maintainers @neuropause/security   # PLACEHOLDER
+/apps/backend/src/middleware/   @neuropause/backend-maintainers @neuropause/security   # PLACEHOLDER
+/apps/backend/src/db/           @neuropause/backend-maintainers @neuropause/security   # PLACEHOLDER
+/apps/backend/src/billing/      @neuropause/backend-maintainers @neuropause/commerce    # PLACEHOLDER
+/apps/backend/src/store/        @neuropause/backend-maintainers @neuropause/marketplace # PLACEHOLDER
+/apps/desktop/src/main/security/    @neuropause/desktop-maintainers @neuropause/security    # PLACEHOLDER
+/apps/desktop/src/main/auth/        @neuropause/desktop-maintainers @neuropause/security    # PLACEHOLDER
+/apps/desktop/src/main/ipc/         @neuropause/desktop-maintainers @neuropause/security    # PLACEHOLDER
+/apps/desktop/src/main/marketplace/ @neuropause/desktop-maintainers @neuropause/marketplace # PLACEHOLDER
+/apps/desktop/src/main/nps/         @neuropause/desktop-maintainers @neuropause/marketplace # PLACEHOLDER
+/apps/desktop/src/preload/          @neuropause/desktop-maintainers @neuropause/security    # PLACEHOLDER
+
+# --- Shared packages ---------------------------------------------------------
+/packages/sdk/                  @neuropause/sdk-maintainers          # PLACEHOLDER
+/packages/cli/                  @neuropause/cli-maintainers          # PLACEHOLDER
+/packages/shared/               @neuropause/backend-maintainers @neuropause/desktop-maintainers  # PLACEHOLDER
+
+# --- Deployment & infrastructure ---------------------------------------------
+/deploy/                        @neuropause/devops                   # PLACEHOLDER
+/docker-compose.yml             @neuropause/devops                   # PLACEHOLDER
+/docker-compose.prod.yml        @neuropause/devops                   # PLACEHOLDER
+/scripts/                       @neuropause/devops                   # PLACEHOLDER
+/tools/                         @neuropause/devops                   # PLACEHOLDER
+/bench/                         @neuropause/devops @neuropause/backend-maintainers        # PLACEHOLDER
+
+# --- CI & repo configuration -------------------------------------------------
+/.github/                       @neuropause/maintainers @neuropause/devops   # PLACEHOLDER
+/.github/workflows/             @neuropause/devops                   # PLACEHOLDER
+
+# --- Documentation & website -------------------------------------------------
+/docs/                          @neuropause/docs                     # PLACEHOLDER
+/docs/adoption/                 @neuropause/docs @neuropause/adoption        # PLACEHOLDER
+/website/                       @neuropause/docs                     # PLACEHOLDER
+/examples/                      @neuropause/docs @neuropause/sdk-maintainers # PLACEHOLDER
+
+# --- Governance & community artifacts (require lead-maintainer review) --------
+/LICENSE                        @neuropause/leads                    # PLACEHOLDER
+/CONTRIBUTING.md                @neuropause/leads                    # PLACEHOLDER
+/GOVERNANCE.md                  @neuropause/leads                    # PLACEHOLDER
+/CODEOWNERS                     @neuropause/leads                    # PLACEHOLDER
+/SECURITY.md                    @neuropause/leads @neuropause/security       # PLACEHOLDER
+/CODE_OF_CONDUCT.md             @neuropause/leads                    # PLACEHOLDER
+/SUPPORT.md                     @neuropause/leads @neuropause/docs           # PLACEHOLDER
