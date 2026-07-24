@@ -150,22 +150,23 @@ Full detail and the configuration guide live in
 
 NeuroPause is delivered as a full platform; each layer ships with its own docs under [`docs/`](docs/).
 
-| Layer                                                  | State                      | Docs                                                                                           |
-| ------------------------------------------------------ | -------------------------- | ---------------------------------------------------------------------------------------------- |
-| Foundation, Experience, Authentication                 | ✅ Shipped                 | [`docs/AUTHENTICATION.md`](docs/AUTHENTICATION.md)                                             |
-| Enterprise Business, Modules & Certification           | ✅ Shipped                 | [`docs/enterprise/`](docs/enterprise/README.md)                                                |
-| Product Operations, Administration, Intelligence       | ✅ Shipped                 | [Administrator Guide](docs/guides/ADMINISTRATOR-GUIDE.md)                                      |
-| Knowledge, Automation, Collaboration                   | ✅ Shipped                 | [`docs/`](docs/)                                                                               |
-| Federation, Commercial, Developer platforms            | ✅ Shipped                 | [`docs/ecosystem/`](docs/ecosystem/README.md), [`docs/federation/`](docs/federation/README.md) |
-| Enterprise AI Operating Platform                       | ✅ Shipped                 | [`PHASE-3-REPORT.md`](PHASE-3-REPORT.md)                                                       |
-| Enterprise Runtime, Cloud & Deployment                 | ✅ Shipped                 | [`deploy/README.md`](deploy/README.md), [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)             |
-| Platform Ecosystem (Extensibility)                     | ✅ Shipped                 | [`PHASE-5-REPORT.md`](PHASE-5-REPORT.md)                                                       |
-| **Enterprise GA (production readiness)**               | 🔶 **Release Candidate**   | [`ENTERPRISE-GA-REPORT.md`](ENTERPRISE-GA-REPORT.md)                                           |
-| **Enterprise Validation Program (operational proof)**  | 🔷 **Validated RC**        | [`ENTERPRISE-VALIDATION-REPORT.md`](ENTERPRISE-VALIDATION-REPORT.md)                           |
-| **Scientific & Standards Program (formalization)**     | 🔬 **Reference framework** | [`SCIENTIFIC-STANDARDS-REPORT.md`](SCIENTIFIC-STANDARDS-REPORT.md)                             |
-| **Global Ecosystem & Adoption Program (enablement)**   | 🌐 **Adoption blueprint**  | [`GLOBAL-ADOPTION-REPORT.md`](GLOBAL-ADOPTION-REPORT.md)                                       |
-| **Enterprise Operations & Scale Program (operations)** | ⚙️ **Operating manual**    | [`ENTERPRISE-OPERATIONS-REPORT.md`](ENTERPRISE-OPERATIONS-REPORT.md)                           |
-| **Customer Deployment & Evidence Program (pilots)**    | 🧪 **Pilot manual**        | [`CUSTOMER-DEPLOYMENT-REPORT.md`](CUSTOMER-DEPLOYMENT-REPORT.md)                               |
+| Layer                                                           | State                      | Docs                                                                                           |
+| --------------------------------------------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------- |
+| Foundation, Experience, Authentication                          | ✅ Shipped                 | [`docs/AUTHENTICATION.md`](docs/AUTHENTICATION.md)                                             |
+| Enterprise Business, Modules & Certification                    | ✅ Shipped                 | [`docs/enterprise/`](docs/enterprise/README.md)                                                |
+| Product Operations, Administration, Intelligence                | ✅ Shipped                 | [Administrator Guide](docs/guides/ADMINISTRATOR-GUIDE.md)                                      |
+| Knowledge, Automation, Collaboration                            | ✅ Shipped                 | [`docs/`](docs/)                                                                               |
+| Federation, Commercial, Developer platforms                     | ✅ Shipped                 | [`docs/ecosystem/`](docs/ecosystem/README.md), [`docs/federation/`](docs/federation/README.md) |
+| Enterprise AI Operating Platform                                | ✅ Shipped                 | [`PHASE-3-REPORT.md`](PHASE-3-REPORT.md)                                                       |
+| Enterprise Runtime, Cloud & Deployment                          | ✅ Shipped                 | [`deploy/README.md`](deploy/README.md), [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)             |
+| Platform Ecosystem (Extensibility)                              | ✅ Shipped                 | [`PHASE-5-REPORT.md`](PHASE-5-REPORT.md)                                                       |
+| **Enterprise GA (production readiness)**                        | 🔶 **Release Candidate**   | [`ENTERPRISE-GA-REPORT.md`](ENTERPRISE-GA-REPORT.md)                                           |
+| **Enterprise Validation Program (operational proof)**           | 🔷 **Validated RC**        | [`ENTERPRISE-VALIDATION-REPORT.md`](ENTERPRISE-VALIDATION-REPORT.md)                           |
+| **Scientific & Standards Program (formalization)**              | 🔬 **Reference framework** | [`SCIENTIFIC-STANDARDS-REPORT.md`](SCIENTIFIC-STANDARDS-REPORT.md)                             |
+| **Global Ecosystem & Adoption Program (enablement)**            | 🌐 **Adoption blueprint**  | [`GLOBAL-ADOPTION-REPORT.md`](GLOBAL-ADOPTION-REPORT.md)                                       |
+| **Enterprise Operations & Scale Program (operations)**          | ⚙️ **Operating manual**    | [`ENTERPRISE-OPERATIONS-REPORT.md`](ENTERPRISE-OPERATIONS-REPORT.md)                           |
+| **Customer Deployment & Evidence Program (pilots)**             | 🧪 **Pilot manual**        | [`CUSTOMER-DEPLOYMENT-REPORT.md`](CUSTOMER-DEPLOYMENT-REPORT.md)                               |
+| **Product Evolution & Release Governance Program (governance)** | 🧭 **Governance manual**   | [`PRODUCT-GOVERNANCE-REPORT.md`](PRODUCT-GOVERNANCE-REPORT.md)                                 |
 
 > The full, evidence-based production-readiness assessment — with real benchmarks and
 > an honest GA classification — is the [Enterprise GA Assessment](ENTERPRISE-GA-REPORT.md).
@@ -195,8 +196,15 @@ NeuroPause is delivered as a full platform; each layer ships with its own docs u
 > wrapped in blank collection templates, feedback instruments, case-study templates,
 > and a knowledge base ([`docs/pilots/`](docs/pilots/README.md)) — so a real customer
 > deployment can produce measured evidence. No pilot has run: every customer value
-> ships blank, and nothing invents a customer, deployment, benchmark, or ROI. A
-> per-layer documentation index is in [`docs/README.md`](docs/README.md).
+> ships blank, and nothing invents a customer, deployment, benchmark, or ROI. The
+> [Product Evolution & Release Governance Program](PRODUCT-GOVERNANCE-REPORT.md)
+> then wrote the **governance manual** — product strategy, release/version policy,
+> a governed debt register (the real TD-1…TD-10), evidence-based prioritization,
+> roadmap and architecture stewardship, and a labelled 1.x/2.x vision
+> ([`docs/governance/`](docs/governance/README.md)) — for how NeuroPause evolves
+> after GA. Every roadmap item carries an honest label (Implemented · Validated ·
+> Proposed · Future Vision); GA is gated on closing the two High debts. A per-layer
+> documentation index is in [`docs/README.md`](docs/README.md).
 
 ---
 
