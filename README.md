@@ -165,6 +165,7 @@ NeuroPause is delivered as a full platform; each layer ships with its own docs u
 | **Scientific & Standards Program (formalization)**     | 🔬 **Reference framework** | [`SCIENTIFIC-STANDARDS-REPORT.md`](SCIENTIFIC-STANDARDS-REPORT.md)                             |
 | **Global Ecosystem & Adoption Program (enablement)**   | 🌐 **Adoption blueprint**  | [`GLOBAL-ADOPTION-REPORT.md`](GLOBAL-ADOPTION-REPORT.md)                                       |
 | **Enterprise Operations & Scale Program (operations)** | ⚙️ **Operating manual**    | [`ENTERPRISE-OPERATIONS-REPORT.md`](ENTERPRISE-OPERATIONS-REPORT.md)                           |
+| **Customer Deployment & Evidence Program (pilots)**    | 🧪 **Pilot manual**        | [`CUSTOMER-DEPLOYMENT-REPORT.md`](CUSTOMER-DEPLOYMENT-REPORT.md)                               |
 
 > The full, evidence-based production-readiness assessment — with real benchmarks and
 > an honest GA classification — is the [Enterprise GA Assessment](ENTERPRISE-GA-REPORT.md).
@@ -188,8 +189,14 @@ NeuroPause is delivered as a full platform; each layer ships with its own docs u
 > executive, scaling, compliance and continuous-improvement frameworks
 > ([`docs/operations/`](docs/operations/README.md)) — with capacity math from the
 > _measured_ benchmarks, SLOs as proposed targets, and no fabricated operational
-> metrics, uptime, or certifications (there is no production fleet yet). A per-layer
-> documentation index is in [`docs/README.md`](docs/README.md).
+> metrics, uptime, or certifications (there is no production fleet yet). The
+> [Customer Deployment & Evidence Program](CUSTOMER-DEPLOYMENT-REPORT.md) then wrote
+> the **pilot manual** — pilot methodology, a proven evidence-generation toolchain
+> wrapped in blank collection templates, feedback instruments, case-study templates,
+> and a knowledge base ([`docs/pilots/`](docs/pilots/README.md)) — so a real customer
+> deployment can produce measured evidence. No pilot has run: every customer value
+> ships blank, and nothing invents a customer, deployment, benchmark, or ROI. A
+> per-layer documentation index is in [`docs/README.md`](docs/README.md).
 
 ---
 
