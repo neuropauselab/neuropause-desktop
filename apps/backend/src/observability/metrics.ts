@@ -20,6 +20,20 @@ export function recordHttpRequest(method: string, status: number): void {
   httpRequests.set(key, (httpRequests.get(key) ?? 0) + 1);
 }
 
+/**
+ * Rate-limit fallback counter, keyed by bucket. Increments each time a request
+ * is served by the in-process fallback limiter because Redis was unavailable
+ * (TD-3). This is an operational ALERT signal: a nonzero rate means the
+ * distributed limiter is degraded (Redis down) and per-instance enforcement is
+ * in effect. Alert on `rate(neuropause_ratelimit_fallback_total[5m]) > 0`.
+ */
+const rateLimitFallbacks = new Map<string, number>();
+
+/** Record one request served by the rate-limit fallback path (Redis unavailable). */
+export function recordRateLimitFallback(bucket: string): void {
+  rateLimitFallbacks.set(bucket, (rateLimitFallbacks.get(bucket) ?? 0) + 1);
+}
+
 /** Live Postgres pool counts (node-postgres exposes these as plain numbers). */
 export interface PoolStats {
   total: number;
@@ -79,10 +93,19 @@ export function renderMetrics(poolStats?: PoolStats): string {
     out.push(metric('neuropause_http_requests_total', count, { method, status }));
   }
 
+  out.push(
+    '# HELP neuropause_ratelimit_fallback_total Requests served by the in-process rate-limit fallback because Redis was unavailable, by bucket.',
+  );
+  out.push('# TYPE neuropause_ratelimit_fallback_total counter');
+  for (const [bucket, count] of rateLimitFallbacks) {
+    out.push(metric('neuropause_ratelimit_fallback_total', count, { bucket }));
+  }
+
   return out.join('\n') + '\n';
 }
 
 /** Test helper — clears the request counters. */
 export function resetMetrics(): void {
   httpRequests.clear();
+  rateLimitFallbacks.clear();
 }
