@@ -1,13 +1,12 @@
 {
-  "resident_memory_bytes_under_load": 223260672,
-  "heap_used_bytes_under_load": 57694488,
+  "captured": "2026-07-24",
+  "resident_memory_bytes_under_load": 135286784,
+  "heap_used_bytes_under_load": 17922904,
   "pg_pool_connections": {
     "total": 10,
     "idle": 10,
     "waiting": 0
   },
-  "http_requests_total": {
-    "GET_200": 8000
-  },
-  "note": "Captured by scraping /metrics after a bench/http-load.mjs burst. Real gauges; reproducible by re-running the load harness then cur/ing /metrics."
+  "http_requests_total_200": 33000,
+  "note": "GA re-validation run: real /metrics gauges scraped after bench/http-load.mjs bursts, with the TD-1 (Apple JWKS) + TD-2 (fail-closed signing) fixes compiled into the running backend. Reproducible by re-running the load harness then scraping /metrics."
 }

@@ -102,12 +102,15 @@ Releases are governed by the **real, existing** process — not a proposed one:
 - **Versioning & changelog.** [SemVer](https://semver.org/) with `-rc.N` pre-GA;
   changes are recorded in [`CHANGELOG.md`](CHANGELOG.md) (Keep a Changelog),
   driven by Conventional Commits.
-- **Honest maturity.** The authoritative readiness classification is the
-  [Enterprise GA Assessment](ENTERPRISE-GA-REPORT.md); the platform is a
-  **Validated Release Candidate** ([`ENTERPRISE-VALIDATION-REPORT.md`](ENTERPRISE-VALIDATION-REPORT.md)),
-  **not GA**. Known limitations (Apple JWKS verification, unsigned marketplace
-  install when the trust store is empty, no macOS release automation in CI) are
-  disclosed in every release, never hidden.
+- **Honest maturity.** The authoritative readiness decision is the
+  [General Availability Report](GENERAL-AVAILABILITY-REPORT.md); the prior
+  RC-era assessment is [`ENTERPRISE-GA-REPORT.md`](ENTERPRISE-GA-REPORT.md) and the
+  validation record is [`ENTERPRISE-VALIDATION-REPORT.md`](ENTERPRISE-VALIDATION-REPORT.md).
+  The two former HIGH limitations (Apple JWKS verification, unsigned marketplace
+  install) and the macOS-release-automation gap were **closed in the GA Execution
+  Program** with passing tests; remaining honest limitations (e.g. day-2 alerting/tracing,
+  no first external customer pilot, macOS signing unverifiable without an Apple cert)
+  are disclosed in every release, never hidden.
 - **Sign-off.** The lead maintainer(s) own the go/no-go decision using the
   checklist output.
 

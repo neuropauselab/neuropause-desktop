@@ -1,0 +1,37 @@
+name: desktop-ci
+
+# TD-4a (GA blocker): per-PR desktop CI. The desktop test suite is headless
+# (Vitest unit/model tests for the main + renderer logic — not the Electron UI),
+# so it runs on ubuntu and gates every change to the desktop app or shared types.
+
+on:
+  push:
+    paths:
+      - 'apps/desktop/**'
+      - 'packages/shared/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/desktop-ci.yml'
+  pull_request:
+    paths:
+      - 'apps/desktop/**'
+      - 'packages/shared/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Typecheck (desktop)
+        run: npm run typecheck -w @neuropause/desktop
+      - name: Lint (desktop)
+        run: npx eslint apps/desktop --max-warnings 0
+      - name: Test (desktop)
+        run: npm run test -w @neuropause/desktop
+      - name: Build (desktop)
+        run: npm run build -w @neuropause/desktop

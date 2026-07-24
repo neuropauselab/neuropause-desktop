@@ -1,18 +1,10 @@
 {
-  "cold_start_to_healthy_sec_first_cold_boot": 0.66,
-  "cold_start_to_healthy_sec_warm_reboot": 0.624,
-  "health": {
-    "status": "ok",
-    "components": {
-      "database": "up",
-      "redis": "up"
-    },
-    "uptime": 0.54724218
-  },
+  "cold_start_to_healthy_sec": 0.707,
+  "health": {"status":"ok","components":{"database":"up","redis":"up"},"uptime":0.71346381},
   "metrics_idle": {
-    "resident_memory_bytes": 117813248,
-    "heap_used_bytes": 20579624,
+    "resident_memory_bytes": 120422400,
+    "heap_used_bytes": 23580264,
     "pg_pool_total": 1
   },
-  "note": "Two real measurements (spawn -> first /health 200): first cold boot with a cold OS page cache = 0.66s; warm re-boot via bench/startup.sh = 0.624s. Under-load memory/pool are in metrics-under-load.json. Run-to-run variance is expected and honest."
+  "note": "Measured by bench/startup.sh: spawn -> first /health 200. Metrics are the idle snapshot right after boot. Under-load memory/pool figures are captured by bench/http-load.mjs runs (see PERFORMANCE-BENCHMARKS.md)."
 }

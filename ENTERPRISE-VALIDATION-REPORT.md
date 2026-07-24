@@ -171,27 +171,36 @@ simple mean (no hidden weighting).
 | Backend performance | 90 | measured under load, 0 errors; desktop perf pending |
 | Reliability & resilience | 85 | 5/6 chaos PASS, backup/restore proven; long-run chaos + offline exec pending |
 | Deployment | 80 | k8s strict PASS, shellcheck clean; no macOS/desktop CI, helm render in CI only |
-| Security | 70 | strong controls, 0 prod vulns; **2 HIGH open** (Apple JWKS, unsigned install) |
+| Security | ~~70~~ → **90** | strong controls, 0 prod vulns; **both former HIGH items now CLOSED** (Apple `id_token` JWKS-verified; marketplace install fail-closed) with regression tests — see GA report |
 | Observability | 65 | real `/metrics`+`/health`+`audit_log`; no alerting/tracing/capacity |
 | Desktop/client validation | 40 | engines measured; UI/IPC/render pending macOS target hardware |
 | Vertical/domain validation | 55 | reference packs + protocols + mappings; integrations modeled, no executed pilots |
 | Documentation & evidence | 95 | comprehensive, reproducible, honestly labelled |
 
-**Indicative composite: ~76 / 100 → "Validated Release Candidate."**
+**Indicative composite (as of 2026-07-18): ~76 / 100 → "Validated Release Candidate."**
+
+> **Update (2026-07-24, GA Execution Program):** the "two known security finishes"
+> cited below as a drag on the score have since been **closed with regression tests**
+> (Security 70 → 90), and per-PR desktop CI + macOS release automation have landed
+> (raising Deployment). The current, authoritative readiness decision — recomputed on
+> this evidence — is in [`GENERAL-AVAILABILITY-REPORT.md`](GENERAL-AVAILABILITY-REPORT.md).
+> The remaining drags below (client-tier desktop benchmarks on Apple-Silicon hardware,
+> and vertical readiness being *protocol-and-mapping* rather than *executed pilots*)
+> still stand.
 
 The score is deliberately not rounded up. The backend is genuinely
 production-validated (the 90/85/100 dimensions); the drag is the client-tier
-benchmarks, two known security finishes, and the fact that vertical readiness is
-*protocol-and-mapping*, not *executed pilots*.
+benchmarks, two known security finishes (**now closed — see update above**), and the
+fact that vertical readiness is *protocol-and-mapping*, not *executed pilots*.
 
 ---
 
 ## 9. Known limitations & remaining risks
 
-**Security (must close for GA):**
-1. Apple `id_token` not JWKS-verified (`apps/backend/src/auth/providers/apple.ts`).
-2. Marketplace **app** install accepts unsigned packages when the trust store is empty (`packageService.ts:184`; worker path fail-closed).
-3. Rate limiter fails open on Redis outage — proven, deliberate; pair with an alert on `redis:"down"`.
+**Security (both GA blockers now CLOSED — GA Execution Program, 2026-07-24):**
+1. ~~Apple `id_token` not JWKS-verified.~~ **CLOSED** — now signature-verified vs Apple JWKS with issuer/audience/expiry + RS256 pin (`apps/backend/src/auth/providers/apple.ts`; `apple.test.ts`, 8 tests).
+2. ~~Marketplace **app** install accepts unsigned packages when the trust store is empty.~~ **CLOSED** — install is now fail-closed for unsigned/untrusted/tampered artifacts in packaged builds (`signature.ts`/`packageService.ts`; `signature.test.ts`, 5 tests).
+3. Rate limiter fails open on Redis outage — proven, deliberate; pair with an alert on `redis:"down"`. *(Still open — MEDIUM, deliberate availability trade-off.)*
 
 **Validation gaps (execute to move Validated-RC → Proven):**
 4. Desktop startup/render/IPC/renderer-memory benchmarks — run the existing harness on macOS Apple-Silicon.

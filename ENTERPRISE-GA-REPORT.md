@@ -5,6 +5,17 @@
 **Environment:** CI-equivalent Linux workspace (Node 22), full monorepo checkout
 **Classification:** **Release Candidate (RC)** — evidence below
 
+> **⚠️ SUPERSEDED FOR THE CLOSED ITEMS (2026-07-24).** This is the RC-era
+> assessment and is retained as the historical record. The **GA Execution Program**
+> has since **closed the two HIGH blockers and the desktop/mac CI gap** identified
+> below: TD-1 (Apple `id_token` now JWKS-verified), TD-2 (marketplace install now
+> fail-closed), and TD-4 (per-PR desktop CI + macOS release automation added) — each
+> with passing regression tests. The RC verdict and the "open item" language in the
+> prose below refer to the state **as of 2026-07-18**. For the current, authoritative
+> readiness decision see [`GENERAL-AVAILABILITY-REPORT.md`](GENERAL-AVAILABILITY-REPORT.md).
+> The Technical Debt and Production Risk matrices in §4–§5 have been updated in place
+> to mark the closed items.
+
 ---
 
 ## 1. Executive summary
@@ -116,7 +127,7 @@ are tested; not wired to a live external system).
 |---|---|---|---|---|
 | 1 | Desktop shell (Electron main/preload) | **Ready** | Context isolation, sandbox, nodeIntegration off, strict CSP, allow-listed Zod IPC router; tested | — |
 | 2 | Backend API (Express) | **Ready** | 263 unit/HTTP tests; request-id, validation, rate-limit, audit, error middleware | — |
-| 3 | Authentication (OAuth/PKCE) | **RC** | PKCE/RFC 8252, rotation + reuse detection, Argon2id — all tested | **Apple `id_token` not JWKS-verified** (HIGH) |
+| 3 | Authentication (OAuth/PKCE) | **Ready (GA)** | PKCE/RFC 8252, rotation + reuse detection, Argon2id — all tested; **Apple `id_token` now JWKS-verified (issuer/aud/expiry, RS256-pinned)**, `apple.test.ts` | — (TD-1 closed) |
 | 4 | Runtime (sandbox/engines) | **Ready** | Engine load, power controls, RBAC actor resolver; tested | Runtime latency benches on target HW |
 | 5 | Cloud / multi-tenant | **Modeled** | Schema, surfaces, sync core tested | Live tenant provisioning is modeled |
 | 6 | AI Operations platform | **Ready** | plan→reason→orchestrate→simulate→decide→govern→learn; audit log; tested | Live-model latency benches on target HW |
@@ -143,10 +154,10 @@ are tested; not wired to a live external system).
 
 | ID | Item | Location | Severity | Note |
 |---|---|---|---|---|
-| TD-1 | Apple `id_token` decoded, signature not verified against JWKS | `apps/backend/src/auth/providers/apple.ts:14-16,77` | **High** | Explicit `HARDENING TODO` in source; `jwt.decode` not `jwt.verify`. Other providers use authenticated userinfo/Graph and are unaffected |
-| TD-2 | Marketplace app install skips signature check when artifact is unsigned | `apps/desktop/src/main/nps/packageService.ts:184` | **High** | Fails closed only when `artifact.signature` present; empty trust store ⇒ unsigned installs. Worker-package path is fail-closed |
+| TD-1 | ~~Apple `id_token` decoded, signature not verified against JWKS~~ **CLOSED (GA)** | `apps/backend/src/auth/providers/apple.ts:50-70` | ~~High~~ **Closed** | `verifyAppleIdToken` now verifies signature vs Apple JWKS with issuer/audience/expiry and `algorithms:['RS256']` pin, on the live `fetchProfile` path; `jwt.decode` removed. Evidence: `apple.test.ts` (8 tests, incl. forged/expired/wrong-aud/wrong-iss/alg-confusion rejection) |
+| TD-2 | ~~Marketplace app install skips signature check when artifact is unsigned~~ **CLOSED (GA)** | `apps/desktop/src/main/nps/{signature.ts:68-87,packageService.ts:187-193,platform/index.ts:129}` | ~~High~~ **Closed** | Fail-closed policy: unsigned/untrusted/tampered artifacts refused before registry commit; `setAllowUnsignedInstalls(!app.isPackaged)` makes packaged builds fail-closed, dev permissive for the unsigned demo catalog. Evidence: `signature.test.ts` (5 tests) |
 | TD-3 | Rate limiter fails open when Redis is unavailable | `apps/backend/src/middleware/rateLimit.ts:37` | **Medium** | Deliberate availability-over-strictness choice, documented in source; acceptable but should be alertable |
-| TD-4 | No per-PR desktop test CI; no macOS release automation | `.github/workflows/` (backend, deploy, windows only) | **Medium** | Desktop's 3,548 tests are not gated per PR by CI; mac packaging is manual |
+| TD-4 | ~~No per-PR desktop test CI; no macOS release automation~~ **CLOSED (GA)** | `.github/workflows/{desktop-ci.yml,macos-release.yml}` | ~~Medium~~ **Closed** | Per-PR desktop CI (typecheck/lint/test/build) added (TD-4a); macOS build+release pipeline added (TD-4b). Residual: macOS code-signing/notarization activate only when Apple cert secrets are present and cannot be exercised without a Developer ID cert + macOS runner |
 | TD-5 | Update rollback advisory-only; federation DR modeled | update/rollback path; `docs/federation/disaster-recovery.md` | **Medium** | Real recovery is data-side restore; both honestly labelled |
 | TD-6 | No alert routing, distributed tracing, or capacity forecasting | observability layer | **Medium** | Day-2 operational absence, documented in Operations Guide |
 | TD-7 | Renderer component/E2E/a11y tests absent; no coverage instrumentation | `apps/desktop` test config | **Medium** | Model/logic layer is well covered; UI interaction layer is not |
@@ -163,10 +174,10 @@ action for GA.
 
 | ID | Risk | Likelihood | Impact | In-place mitigation | Residual action (GA) |
 |---|---|---|---|---|---|
-| PR-1 | Forged Apple `id_token` accepted (identity spoof) | Low–Med | **High** | Apple flow is backend-brokered; requires a crafted token | **Verify signature vs Apple JWKS** (TD-1) |
-| PR-2 | Malicious unsigned marketplace package installed | Low | **High** | Integrity hash always checked; signature enforced when present; worker path fail-closed | **Require signature / non-empty trust store to install** (TD-2) |
+| PR-1 | Forged Apple `id_token` accepted (identity spoof) | ~~Low–Med~~ **Mitigated** | **High** | Apple flow is backend-brokered **and the `id_token` is now signature-verified vs Apple JWKS (issuer/aud/expiry, RS256-pinned)** — a forged token is rejected | **Closed via TD-1** (`apple.test.ts` proves forged/expired/mis-scoped rejection) |
+| PR-2 | Malicious unsigned marketplace package installed | ~~Low~~ **Mitigated** | **High** | Integrity hash always checked; **install is now fail-closed — unsigned/untrusted/tampered artifacts are refused in packaged builds**; worker path fail-closed | **Closed via TD-2** (`signature.test.ts` proves refusal) |
 | PR-3 | Rate-limit bypass during Redis outage | Low | Med | Documented fail-open; auth still required | Alert on limiter fail-open (TD-3, TD-6) |
-| PR-4 | Regression ships because desktop tests not gated per PR | Med | Med | Full suite runs locally + this RC gate | **Add desktop CI** (TD-4) |
+| PR-4 | Regression ships because desktop tests not gated per PR | ~~Med~~ **Mitigated** | Med | Full suite runs locally **and is now gated per PR by `desktop-ci.yml`** | **Closed via TD-4a** |
 | PR-5 | Unsigned desktop build shipped | Low | Med | Signing configured; env-gated | Enforce signing in mac release CI (TD-4) |
 | PR-6 | Slow incident response (no alerting/tracing) | Med | Med | `/metrics` + structured logs exist to scrape | **Wire alert routing + tracing** (TD-6) |
 | PR-7 | Botched update with no clean rollback | Low | **High** | Data-side restore documented (DR Guide) | Promote rollback from advisory to automated (TD-5) |
@@ -203,10 +214,13 @@ outbound webhooks (tested); **Ed25519** supply-chain signing for manifests;
 audit + request-scoped logging with secret redaction; **`SEED_STORE_ON_BOOT`**
 gating so production ships no fabricated catalog data.
 
-**Open hardening items (both tracked, both HIGH):** Apple `id_token` JWKS
-verification (TD-1/PR-1) and marketplace unsigned-install enforcement
-(TD-2/PR-2). Details and the full backlog are in
-[`docs/guides/SECURITY-GUIDE.md`](docs/guides/SECURITY-GUIDE.md).
+**Former hardening items (both now CLOSED in the GA Execution Program):** Apple
+`id_token` JWKS verification (TD-1/PR-1) — now verified with issuer/audience/expiry
+and an RS256 pin (`apple.test.ts`, 8 tests) — and marketplace unsigned-install
+enforcement (TD-2/PR-2) — install is now fail-closed for unsigned/untrusted/tampered
+artifacts in packaged builds (`signature.test.ts`, 5 tests). Details and the full
+backlog are in [`docs/guides/SECURITY-GUIDE.md`](docs/guides/SECURITY-GUIDE.md); the
+GA decision is in [`GENERAL-AVAILABILITY-REPORT.md`](GENERAL-AVAILABILITY-REPORT.md).
 
 **Dependency posture:** **0 production vulnerabilities** (`npm audit
 --omit=dev`); the 11 advisories are entirely in build/test tooling.

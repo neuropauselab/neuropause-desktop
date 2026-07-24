@@ -210,24 +210,32 @@ NeuroPause is delivered as a full platform; each layer ships with its own docs u
 
 ## Honest caveats
 
-The platform is a Release Candidate; these are the honest, tracked gaps (full detail
-in the [Enterprise GA Assessment](ENTERPRISE-GA-REPORT.md)):
+These are the honest, tracked gaps (full detail in the
+[General Availability Report](GENERAL-AVAILABILITY-REPORT.md) and the
+[Enterprise GA Assessment](ENTERPRISE-GA-REPORT.md)). The two former High security
+blockers below are now **closed with tests** (GA Execution Program):
 
-- **Apple sign-in** decodes but does **not yet verify** the `id_token` signature
-  against Apple's JWKS (`apps/backend/src/auth/providers/apple.ts`) — a tracked
-  hardening item and the top pre-GA security blocker. The other providers resolve
-  identity from authenticated userinfo/Graph endpoints and are unaffected.
-- **Marketplace app install** accepts unsigned packages when the publisher trust
-  store is empty; worker-package install is fail-closed. See the
-  [Security Guide](docs/guides/SECURITY-GUIDE.md).
-- **macOS code-signing/notarization** are configured but env-gated (unsigned builds
-  ship if secrets are absent), and macOS **release automation is not yet in CI**
-  (Windows is).
+- **Apple sign-in** now **verifies** the `id_token` signature against Apple's JWKS
+  and checks issuer, audience, and expiry, with the algorithm pinned to RS256,
+  before any claim is trusted (`apps/backend/src/auth/providers/apple.ts`; regression
+  tests in `apple.test.ts`). *(Former top pre-GA blocker TD-1 — closed.)*
+- **Marketplace app install** is now **fail-closed** in packaged builds: unsigned or
+  untrusted packages are refused, and a tampered signature is always refused. Unsigned
+  installs are permitted only in unpackaged dev, where the demo catalog is unsigned
+  (`apps/desktop/src/main/nps/{signature,packageService}.ts`; tests in `signature.test.ts`).
+  *(Former blocker TD-2 — closed.)* See the [Security Guide](docs/guides/SECURITY-GUIDE.md).
+- **macOS release automation** is now in CI (`.github/workflows/macos-release.yml`,
+  alongside the Windows pipeline and per-PR desktop CI). Code-signing/notarization
+  remain env-gated (unsigned builds ship if the Apple certificate secrets are absent);
+  the signed/notarized path itself cannot be exercised without a Developer ID
+  certificate and a macOS runner, so it is verified only as far as the automation.
 - Enterprise day-2 disciplines — **alert routing, distributed tracing, capacity
   forecasting** — are not implemented; **update rollback is advisory** (data-side
   recovery is the real path) and **federation DR is modeled**.
 - The Electron desktop app is **not launched in headless/CI environments** — run it
   on macOS per the steps above.
+- **No first external customer pilot** has been run yet; deployment/reliability
+  evidence is from internal measured harnesses, not a production customer.
 
 ---
 

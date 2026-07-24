@@ -34,6 +34,7 @@ import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { catalogClient } from '../catalog/catalogClient';
 import { registry } from '../registry/registry';
 import { packageService } from '../nps/packageService';
+import { setAllowUnsignedInstalls } from '../nps/signature';
 import { pluginManager } from '../plugins/pluginManager';
 import { supervisor } from '../runtime/supervisor';
 import { EventBus } from './eventBus';
@@ -120,6 +121,12 @@ export async function initPlatform(deps: {
   broadcast: (channel: string, payload: unknown) => void;
 }): Promise<Platform> {
   const startedAt = Date.now();
+
+  // TD-2 (GA blocker): marketplace package installs are fail-closed in packaged
+  // (production) builds — unsigned/untrusted artifacts are refused. Unsigned
+  // installs are permitted only in unpackaged dev, where the demo catalog is
+  // unsigned. A tampered or untrusted-key signature is always refused.
+  setAllowUnsignedInstalls(!app.isPackaged);
 
   const bus = new EventBus({
     replayBufferSize: 500,

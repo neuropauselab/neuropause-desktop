@@ -51,6 +51,41 @@ export function verifySignature(
   }
 }
 
+/* ── Install signature policy (TD-2: GA blocker — fail closed) ────────────── */
+
+/**
+ * Package-install signature policy. **Secure by default (fail closed):** an
+ * artifact is refused unless its signature verifies against a trusted key. The
+ * one deliberate escape hatch is *genuinely unsigned* artifacts (`no_signature`),
+ * allowed only when `allowUnsignedInstalls` is explicitly enabled — used for
+ * local/dev where the demo catalog ships unsigned. A *present-but-invalid*
+ * signature (`bad_signature`) or an *untrusted key* (`no_trusted_key`) is ALWAYS
+ * refused, in every mode: those indicate tampering or an unknown publisher.
+ *
+ * Production/packaged builds must leave this false. The app bootstrap sets it
+ * from `app.isPackaged` (permissive only in unpackaged dev).
+ */
+let allowUnsignedInstalls = false;
+
+export function setAllowUnsignedInstalls(allow: boolean): void {
+  allowUnsignedInstalls = allow;
+}
+
+export function unsignedInstallsAllowed(): boolean {
+  return allowUnsignedInstalls;
+}
+
+/**
+ * Decides whether an install may proceed given a signature-verification result.
+ * `ok` → allow. `no_signature` → allow ONLY if unsigned installs are enabled.
+ * Everything else (`bad_signature`, `no_trusted_key`, `error`) → refuse.
+ */
+export function installAllowedForSignature(sig: SignatureResult): boolean {
+  if (sig.verified) return true;
+  if (sig.reason === 'no_signature') return allowUnsignedInstalls;
+  return false;
+}
+
 /* ── Signing helpers (used by the Developer SDK signing tool in Part B) ── */
 
 export interface KeyPairPem {

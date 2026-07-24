@@ -4,6 +4,53 @@ All notable changes to NeuroPause are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.0] — General Availability Execution (2026-07-24)
+
+The **GA Execution Program**: engineering execution (not documentation) that closes
+the remaining verified GA blockers with real code and passing regression tests. The
+full evidence-based readiness decision is in
+[`GENERAL-AVAILABILITY-REPORT.md`](GENERAL-AVAILABILITY-REPORT.md).
+
+### Security (both former HIGH blockers closed)
+
+- **TD-1 — Apple `id_token` is now cryptographically verified.** The Apple Sign In
+  flow verifies the `id_token` signature against Apple's JWKS
+  (`https://appleid.apple.com/auth/keys`) and checks issuer, audience, and expiry,
+  with the algorithm pinned to **RS256**, before any identity claim is trusted. The
+  previous `jwt.decode` (no signature check) is removed. New `verifyAppleIdToken()`
+  on the live `fetchProfile` path. Evidence: `apps/backend/src/auth/providers/apple.test.ts`
+  — 8 tests, rejecting forged-signature, wrong-audience, wrong-issuer, expired,
+  no-subject, and non-RS256 (algorithm-confusion) tokens.
+- **TD-2 — Marketplace package install is now fail-closed.** Unsigned or untrusted
+  packages are refused in packaged (production) builds, and a tampered signature is
+  **always** refused (even under the dev opt-in). Unsigned installs are permitted
+  only in unpackaged dev, where the demo catalog is unsigned. Wired via
+  `setAllowUnsignedInstalls(!app.isPackaged)` at platform bootstrap. Evidence:
+  `apps/desktop/src/main/nps/signature.test.ts` — 5 tests.
+
+### Release engineering
+
+- **TD-4a — Per-PR desktop CI** (`.github/workflows/desktop-ci.yml`): typecheck,
+  lint (`--max-warnings 0`), test, and build for `@neuropause/desktop` on every PR.
+- **TD-4b — macOS release automation** (`.github/workflows/macos-release.yml`):
+  build + package (`package:mac`) + tag-gated GitHub Release, with env-gated Apple
+  code-signing/notarization (unsigned build if the certificate secrets are absent).
+  *Residual:* the signed/notarized path cannot be exercised without a Developer ID
+  certificate and a macOS runner, so it is verified only as far as the automation.
+
+### Dependencies
+
+- Added **`jose`** (JWKS-based JWT verification) to the backend; `npm audit --omit=dev`
+  remains **0 production vulnerabilities** (a transitive `body-parser` advisory was
+  fixed with a SemVer-safe bump in the same pass).
+
+### Evidence re-validation
+
+- Re-ran the measured benchmark harnesses against the live stack **with the TD-1/TD-2
+  fixes compiled in**: backend cold-start-to-healthy **0.707 s**, HTTP load **24,000
+  requests / 0 errors**, sub-millisecond database latency, pool 10/10/0 under load —
+  confirming **no performance regression**. Raw results in `bench/results/`.
+
 ## [1.0.0-rc.1] — Enterprise Release Candidate
 
 The first release candidate: a complete Enterprise AI platform across the desktop
@@ -28,11 +75,11 @@ partial, or absent is labelled honestly — see
 - **Testing:** collected previously-orphaned renderer model tests into the standard test gate and fixed a stale assertion.
 - **Documentation:** added the enterprise operator set — Administrator, Security, Operations, and Disaster Recovery guides, a release checklist, a documentation index, `LICENSE`, and a root `SECURITY.md` — and corrected a stale root `README` status.
 
-### Known limitations (honest, pre-GA)
+### Known limitations (honest — as of rc.1; see 1.0.0 above for closures)
 
-- Apple `id_token` signature is not yet verified against JWKS; marketplace-app install accepts unsigned packages when the trust store is empty.
+- ~~Apple `id_token` signature is not yet verified against JWKS; marketplace-app install accepts unsigned packages when the trust store is empty.~~ **Both closed in 1.0.0 (TD-1, TD-2) — see above.**
 - Update rollback is advisory (data-side recovery is the real path); federation disaster recovery is modeled.
-- No alert routing, distributed tracing, or capacity forecasting; no macOS release automation; no coverage instrumentation; renderer component/E2E and accessibility tests are absent.
+- No alert routing, distributed tracing, or capacity forecasting; ~~no macOS release automation;~~ **(macOS release automation added in 1.0.0 — TD-4b)** no coverage instrumentation; renderer component/E2E and accessibility tests are absent.
 
 The full, evidence-based readiness classification (**Release Candidate**) is in
 [`ENTERPRISE-GA-REPORT.md`](ENTERPRISE-GA-REPORT.md).

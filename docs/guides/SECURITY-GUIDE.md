@@ -39,7 +39,7 @@ This guide walks each layer, then documents the gaps we know about.
 - **A forged inbound webhook.** Mitigated by per-provider HMAC verification with timing-safe comparison (`apps/desktop/src/main/connectors/inbound/verify.ts`).
 - **Supply-chain tampering** of extensions. Mitigated by Ed25519 signing + static scanning for first-party/worker artifacts (fail-closed for worker packages).
 
-**Explicitly out of scope / residual** (see the backlog for detail): DNS-rebinding across the SSRF check window, tampering (as opposed to corruption) of the AI-memory hash chain, and forged Apple `id_token`s. These are documented, not hidden.
+**Explicitly out of scope / residual** (see the backlog for detail): DNS-rebinding across the SSRF check window and tampering (as opposed to corruption) of the AI-memory hash chain. *(Forged Apple `id_token`s were previously listed here and are now mitigated — the `id_token` is signature-verified against Apple's JWKS; see backlog item 1, RESOLVED.)* These are documented, not hidden.
 
 ---
 
@@ -172,7 +172,7 @@ Worker packages are content-hashed (SHA-256 over the canonical manifest) and Ed2
 
 The Ed25519 trust store and verification primitive live in `apps/desktop/src/main/nps/signature.ts` (`verifySignature`, `:38-52`): a missing signature returns `no_signature` and an unregistered key returns `no_trusted_key`, both non-verifying.
 
-> **Note:** The *catalog-app* install path treats an absent signature differently from the worker-package path. See [Unsigned catalog-app install](#3-unsigned-catalog-app-install-when-the-trust-store-is-empty) in the backlog.
+> **Note:** The *catalog-app* install path is now fail-closed in packaged builds, matching the worker-package path (unsigned/untrusted/tampered artifacts are refused). See [Unsigned catalog-app install — RESOLVED](#3-unsigned-catalog-app-install--resolved-2026-07-24) in the backlog.
 
 ---
 
@@ -191,14 +191,13 @@ Beyond the network hardening above, the backend applies:
 
 ## Security Considerations & Hardening Backlog
 
-The following are **real, known gaps**, verified in source. They are documented here in the interest of honest disclosure; several are already annotated as hardening TODOs in the code itself. None of them is presented elsewhere in this guide as a protection the platform provides.
+The following are gaps verified in source. They are documented here in the interest of honest disclosure. **Items 1 and 3 were closed in the GA Execution Program (2026-07-24)** and are retained below marked ✅ RESOLVED with their fix and test evidence; the remainder are still-open, honestly-disclosed items.
 
-### 1. Apple `id_token` is decoded but its signature is not verified
+### 1. Apple `id_token` signature verification — ✅ RESOLVED (2026-07-24)
 
-For Sign in with Apple, the provider's `fetchProfile` calls `jwt.decode` on the returned `id_token` and trusts its `sub`/`email` claims **without verifying the token signature against Apple's JWKS** (`apps/backend/src/auth/providers/apple.ts:77`). The file carries an explicit `HARDENING TODO` to verify against `https://appleid.apple.com/auth/keys` before trusting claims (`:14-16`).
+**Previously:** For Sign in with Apple, the provider's `fetchProfile` called `jwt.decode` on the returned `id_token` and trusted its `sub`/`email` claims **without verifying the token signature against Apple's JWKS**, so a forged or altered `id_token` presented through this path would be trusted. (Always Apple-specific — Google, Microsoft, and GitHub resolve identity from the *authenticated* userinfo/Graph/API resource server and were never affected.)
 
-- **Impact / scope:** A forged or altered Apple `id_token` presented through this path would be trusted. This is **specific to Apple** — Google, Microsoft, and GitHub resolve identity from the *authenticated* userinfo/Graph/API resource server (see [Authentication](#authentication)), so they are unaffected by `id_token` forgery.
-- **Recommended fix:** Fetch and cache Apple's JWKS and verify the `id_token` (ES256, issuer `https://appleid.apple.com`, audience = the Services ID) before extracting claims.
+**Now:** `fetchProfile` calls `verifyAppleIdToken`, which verifies the `id_token` signature against Apple's JWKS (`https://appleid.apple.com/auth/keys`, via jose `createRemoteJWKSet`) and enforces issuer (`https://appleid.apple.com`), audience (the Services ID / `APPLE_CLIENT_ID`), expiry, and an `algorithms: ['RS256']` pin, throwing before any claim is trusted (`apps/backend/src/auth/providers/apple.ts:50-70,125-137`). The `jwt.decode` path and the `HARDENING TODO` are removed. **Evidence:** `apps/backend/src/auth/providers/apple.test.ts` — 8 tests: accepts a valid token; rejects forged-signature, wrong-audience, wrong-issuer, expired, missing-subject, and non-RS256 (algorithm-confusion) tokens; reports `email_verified` honestly.
 
 ### 2. Auth rate-limiting fails **open** on a Redis outage
 
@@ -206,12 +205,14 @@ The rate limiter is a Redis-backed fixed-window counter; if Redis is unreachable
 
 - **Recommended mitigation:** Add a local in-process fallback limiter, monitor/alert on Redis availability, and consider fail-closed behavior for the most sensitive buckets (e.g. password reset).
 
-### 3. Unsigned catalog-app install when the trust store is empty
+### 3. Unsigned catalog-app install — ✅ RESOLVED (2026-07-24)
 
-Unlike worker-package install (which is fail-closed), the **catalog/marketplace-app** install path only rejects a package when a signature is present *and* fails to verify: the guard is `if (artifact.signature && !sig.verified)` (`apps/desktop/src/main/nps/packageService.ts:184`). An **unsigned** artifact (no `artifact.signature`) skips signature verification entirely and installs. Because the Ed25519 trust store ships empty until a real signing pipeline is wired (`apps/desktop/src/main/nps/signature.ts:22`, documented at `:6-11`), signatures are not currently required for catalog apps.
+**Previously:** Unlike worker-package install (fail-closed), the **catalog/marketplace-app** install path only rejected a package when a signature was present *and* failed to verify (`if (artifact.signature && !sig.verified)`). An **unsigned** artifact skipped signature verification entirely and installed, and the Ed25519 trust store shipped empty — so signatures were not effectively required for catalog apps.
 
-- **Scope:** Limited to catalog-app install. Worker-package install remains fail-closed (`apps/desktop/src/main/workforce/install/packaging.ts:60`). Download **integrity** (SHA-256 vs. the catalog-declared hash) *is* still enforced on catalog apps (`apps/desktop/src/main/nps/packageService.ts:179-182`) — this gap is about *authenticity/signing*, not transport integrity.
-- **Recommended fix:** Once a signing pipeline and trusted publisher keys exist, require a verified signature for catalog-app install (reject absent signatures), matching the worker-package policy.
+**Now:** the install path is **fail-closed** by policy. The gate is `if (!installAllowedForSignature(sig)) throw …` (`apps/desktop/src/main/nps/packageService.ts:187-193`), evaluated **before** the package is committed to the registry. `installAllowedForSignature` (`signature.ts:83-87`) permits install only when the signature verifies against a trusted key; an **unsigned** artifact is allowed **only** when the dev/demo policy explicitly permits it, and a **tampered** (`bad_signature`) or **untrusted-key** (`no_trusted_key`) artifact is **always** refused — even under the dev opt-in. Production wiring: `setAllowUnsignedInstalls(!app.isPackaged)` (`platform/index.ts:129`) makes packaged builds fail-closed while leaving the unsigned demo catalog usable in unpackaged dev. The module default is `false` (fail-closed) even if the setter never runs. SHA-256 download integrity is still enforced as before.
+
+- **Scope:** catalog-app install now matches the fail-closed spirit of the worker-package path (which remains independently fail-closed at `workforce/install/packaging.ts:60`).
+- **Evidence:** `apps/desktop/src/main/nps/signature.test.ts` — 5 tests: valid-signature install; unsigned refused by default; unsigned allowed only under the explicit dev opt-in; tampered always refused (even permissive); untrusted-key always refused.
 
 ### 4. AI-memory integrity chain uses a non-cryptographic hash (FNV-1a)
 

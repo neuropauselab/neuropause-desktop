@@ -1,0 +1,134 @@
+# macOS build + release pipeline for NeuroPause.
+#
+# Mirror of windows-release.yml for the macOS target. It builds the macOS
+# artifacts (.dmg + .zip, arm64) on a macos-latest runner and, on a tag push,
+# publishes them to a GitHub Release. Signing and notarization turn on
+# automatically when the credential secrets are present and are skipped
+# (clean unsigned build, no failure) when they are absent — matching the
+# env-driven signing wired into electron-builder.yml and scripts/notarize.cjs.
+#
+# NOTE: macOS code-signing + notarization cannot be exercised in the NeuroPause
+# CI/dev environment (no Apple "Developer ID Application" certificate, no
+# app-specific password, no macOS runner available for local verification).
+# This workflow is therefore the *automation* for signing; the signed/notarized
+# path itself is only exercised once the secrets below are populated in a real
+# macos-latest run. Until then every run produces a verified UNSIGNED build.
+name: macos-release
+
+on:
+  # Manual runs (build + artifacts, no release) from the Actions tab.
+  workflow_dispatch:
+  # Tag pushes like v1.0.0-rc.2 build AND publish a GitHub Release.
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # required to create the GitHub Release and upload assets
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node (from .nvmrc)
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      # Package the macOS .dmg + .zip (arm64). The backend URL is baked into
+      # build-info.json by generate-build-info.cjs (same mechanism as Windows).
+      #
+      # Signing is opt-in and fail-open-to-unsigned:
+      #   * When APPLE_CSC_LINK (a base64 .p12 or file URL) is present we export
+      #     CSC_LINK / CSC_KEY_PASSWORD so electron-builder signs with the
+      #     "Developer ID Application" certificate.
+      #   * When it is absent we set CSC_IDENTITY_AUTO_DISCOVERY=false so
+      #     electron-builder produces a clean UNSIGNED build instead of failing
+      #     while hunting for a keychain identity that isn't there.
+      #   * APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID are passed
+      #     through for scripts/notarize.cjs, which no-ops (un-notarized build,
+      #     no failure) when any of the three is missing.
+      # Adding the real secrets later turns signing + notarization on with no
+      # further edit to this file.
+      - name: Package macOS
+        env:
+          NEUROPAUSE_BACKEND_URL: ${{ vars.NEUROPAUSE_BACKEND_URL || 'https://api.neuropause033.com' }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        working-directory: apps/desktop
+        run: |
+          if [ -n "${{ secrets.APPLE_CSC_LINK }}" ]; then
+            export CSC_LINK="${{ secrets.APPLE_CSC_LINK }}"
+            export CSC_KEY_PASSWORD="${{ secrets.APPLE_CSC_KEY_PASSWORD }}"
+            echo "Signing enabled (APPLE_CSC_LINK present)."
+          else
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+            echo "No signing certificate secret; producing an unsigned build."
+          fi
+          npm run package:mac
+        shell: bash
+
+      # Self-hosted download (Option C): copy the .dmg to the droplet so it's
+      # served from neuropause033.com/downloads/ with no GitHub login. Runs only
+      # if the deploy secret is present, and never fails the build.
+      - name: Publish installer to neuropause033.com
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        if: ${{ env.DEPLOY_SSH_KEY != '' }}
+        shell: bash
+        run: |
+          echo "$DEPLOY_SSH_KEY" > deploy_key
+          chmod 600 deploy_key
+          # Stable, version-agnostic name the download page links to.
+          cp apps/desktop/dist/NeuroPause-arm64.dmg "NeuroPause.dmg" 2>/dev/null || \
+            cp apps/desktop/dist/*.dmg "NeuroPause.dmg"
+          scp -o StrictHostKeyChecking=no -i deploy_key "NeuroPause.dmg" \
+            root@64.227.128.218:/opt/neuropause-site/website/downloads/NeuroPause.dmg
+          rm -f deploy_key
+          echo "Installer published to https://neuropause033.com/downloads/NeuroPause.dmg"
+
+      # Keep every build's output, tag or not, for inspection/download.
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: neuropause-macos
+          path: |
+            apps/desktop/dist/*.dmg
+            apps/desktop/dist/*.zip
+            apps/desktop/dist/*.yml
+            apps/desktop/dist/*.blockmap
+          if-no-files-found: error
+          retention-days: 14
+
+      # Publish a GitHub Release only for tag pushes. softprops/action-gh-release
+      # attaches the .dmg, .zip, and the electron-updater feed file so auto-update
+      # works. Marked prerelease for -rc/-beta tags.
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            apps/desktop/dist/*.dmg
+            apps/desktop/dist/*.zip
+            apps/desktop/dist/latest*.yml
+            apps/desktop/dist/*.blockmap
+          prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') }}
+          generate_release_notes: true
+          fail_on_unmatched_files: false

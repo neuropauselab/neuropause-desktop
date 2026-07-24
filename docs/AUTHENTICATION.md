@@ -182,11 +182,14 @@ The backend mints the Apple client secret JWT on demand from these values.
 Apple's callback is delivered as an HTML form POST (`response_mode=form_post`),
 which is why the callback route accepts both `GET` and `POST`.
 
-> **Security hardening TODO (tracked, not yet done):** the Apple path currently
-> *decodes* the returned `id_token` to read the subject/email but does **not yet
-> verify its signature** against Apple's JWKS. Before shipping Apple sign-in to
-> real users, add JWKS fetching + signature verification. This is called out
-> explicitly so it is not mistaken for finished work.
+> **Security hardening — ✅ DONE (2026-07-24):** the Apple path now **verifies the
+> `id_token` signature** against Apple's JWKS (`https://appleid.apple.com/auth/keys`)
+> and checks issuer, audience (the Services ID), and expiry, with the algorithm
+> pinned to **RS256**, before reading the subject/email (`verifyAppleIdToken` in
+> `apps/backend/src/auth/providers/apple.ts`). The earlier `jwt.decode`-only path is
+> removed. Regression tests: `apps/backend/src/auth/providers/apple.test.ts` (8 tests,
+> including forged-signature, wrong-audience/issuer, expired, and algorithm-confusion
+> rejection).
 
 ---
 
@@ -210,7 +213,7 @@ lockout tuning on the login endpoint (a basic rate limiter is already wired).
 
 Being honest about the edges so they are not mistaken for oversights:
 
-- **Apple `id_token` signature verification** — see the TODO above.
+- **Apple `id_token` signature verification** — ✅ done (see the hardening note above).
 - **Email verification & password reset** — not implemented yet.
 - **CSRF/login rate-limit tuning** — a limiter exists; the thresholds are
   development defaults.

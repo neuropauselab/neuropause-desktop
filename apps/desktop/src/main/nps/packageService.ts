@@ -29,7 +29,7 @@ import { registry, type RegistryEntry } from '../registry/registry';
 import { permissionManager } from '../permissions/permissionManager';
 import { downloadManager } from './downloadManager';
 import { verifyFileHash } from './integrity';
-import { verifySignature } from './signature';
+import { verifySignature, installAllowedForSignature } from './signature';
 
 const log = createLogger('nps');
 
@@ -180,9 +180,16 @@ class PackageService extends EventEmitter {
           const integrity = await verifyFileHash(result.path, artifact.sha256);
           if (!integrity.ok) throw new Error(`Integrity check failed (${integrity.reason})`);
         }
+        // TD-2 (GA blocker): fail closed. Install proceeds only if the signature
+        // verifies against a trusted key; genuinely-unsigned artifacts are allowed
+        // only when the dev/demo policy explicitly permits them; a present-but-bad
+        // signature or an untrusted key is always refused.
         const sig = verifySignature(Buffer.from(packageHash, 'hex'), artifact.signature, artifact.signatureKeyId);
-        if (artifact.signature && !sig.verified) {
-          throw new Error(`Signature verification failed (${sig.reason})`);
+        if (!installAllowedForSignature(sig)) {
+          throw new Error(
+            `Refusing to install "${args.slug}": package signature check failed (${sig.reason}). ` +
+              `Unsigned or untrusted packages are rejected.`,
+          );
         }
       }
 
