@@ -34,6 +34,19 @@ export function recordRateLimitFallback(bucket: string): void {
   rateLimitFallbacks.set(bucket, (rateLimitFallbacks.get(bucket) ?? 0) + 1);
 }
 
+/**
+ * Health-transition alert counter, keyed by component + new state. Increments
+ * each time a monitored dependency transitions up<->down (TD-6, edge-triggered).
+ * Operational signal: alert on `increase(neuropause_health_alerts_total{state="down"}[10m]) > 0`.
+ */
+const healthAlerts = new Map<string, number>();
+
+/** Record one health-state transition alert for a component (state = new state). */
+export function recordHealthAlert(component: string, state: string): void {
+  const key = `${component}|${state}`;
+  healthAlerts.set(key, (healthAlerts.get(key) ?? 0) + 1);
+}
+
 /** Live Postgres pool counts (node-postgres exposes these as plain numbers). */
 export interface PoolStats {
   total: number;
@@ -101,6 +114,15 @@ export function renderMetrics(poolStats?: PoolStats): string {
     out.push(metric('neuropause_ratelimit_fallback_total', count, { bucket }));
   }
 
+  out.push(
+    '# HELP neuropause_health_alerts_total Health-state transition alerts by component and new state (up/down).',
+  );
+  out.push('# TYPE neuropause_health_alerts_total counter');
+  for (const [key, count] of healthAlerts) {
+    const [component, state] = key.split('|');
+    out.push(metric('neuropause_health_alerts_total', count, { component, state }));
+  }
+
   return out.join('\n') + '\n';
 }
 
@@ -108,4 +130,5 @@ export function renderMetrics(poolStats?: PoolStats): string {
 export function resetMetrics(): void {
   httpRequests.clear();
   rateLimitFallbacks.clear();
+  healthAlerts.clear();
 }

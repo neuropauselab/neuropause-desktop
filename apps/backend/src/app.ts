@@ -36,6 +36,7 @@ import { env } from './config/env';
 import { pingDatabase, pool } from './db/pool';
 import { pingRedis } from './cache/redis';
 import { recordHttpRequest, renderMetrics } from './observability/metrics';
+import { reportHealthSnapshot } from './observability/healthAlerts';
 
 export function createApp(): Express {
   const app = express();
@@ -87,6 +88,9 @@ export function createApp(): Express {
 
   app.get('/health', async (_req, res) => {
     const [db, cache] = await Promise.all([pingDatabase(), pingRedis()]);
+    // TD-6: turn the polled dependency states into edge-triggered alerts
+    // (fires only when a component transitions up<->down, not on every poll).
+    reportHealthSnapshot({ database: db ? 'up' : 'down', redis: cache ? 'up' : 'down' });
     const healthy = db && cache;
     res.status(healthy ? 200 : 503).json({
       status: healthy ? 'ok' : 'degraded',
