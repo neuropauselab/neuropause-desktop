@@ -48,6 +48,14 @@ const EnvSchema = z.object({
   APPLE_KEY_ID: z.string().optional(),
   APPLE_PRIVATE_KEY: z.string().optional(),
 
+  // Optional operational alerting: when ALERT_WEBHOOK_URL is set, dependency
+  // health transitions (up<->down) are POSTed to it as generic JSON (with a
+  // human-readable `text` summary that renders in Slack/Discord-style webhooks).
+  // Unset by default — alerting stays log + Prometheus-metric only until an
+  // operator opts in. The URL is validated at boot.
+  ALERT_WEBHOOK_URL: z.string().url().optional(),
+  ALERT_WEBHOOK_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
+
   // Billing (Razorpay). All optional — billing is disabled until these are set.
   RAZORPAY_KEY_ID: z.string().optional(),
   RAZORPAY_KEY_SECRET: z.string().optional(),

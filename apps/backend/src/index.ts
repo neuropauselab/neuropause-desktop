@@ -8,9 +8,15 @@ import { runMigrations } from './db/migrate';
 import { seedStoreIfEmpty } from './db/seed';
 import { closePool, pingDatabase } from './db/pool';
 import { closeRedis } from './cache/redis';
+import { installWebhookAlertSink } from './observability/alertWebhookSink';
 
 async function main(): Promise<void> {
   const env = loadEnv();
+
+  // Optional operational alerting: route dependency health transitions to an
+  // external webhook when ALERT_WEBHOOK_URL is set (no-op otherwise). Registered
+  // before the server accepts traffic so the first /health poll is covered.
+  installWebhookAlertSink();
 
   // Apply migrations on boot for single-instance / compose deploys. In a
   // multi-replica orchestrator (k8s), set RUN_MIGRATIONS_ON_BOOT=false and run
