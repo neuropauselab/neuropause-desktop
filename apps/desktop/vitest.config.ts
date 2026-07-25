@@ -78,9 +78,12 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@neuropause/shared': resolve(process.cwd(), '../../packages/shared/src/index.ts'),
+      // Resolve from THIS config's directory, not the invocation cwd, so the aliases
+      // hold no matter where vitest is launched from — matching the `__dirname`
+      // convention already used in backend/vitest.config.ts and electron.vite.config.ts.
+      '@neuropause/shared': resolve(__dirname, '../../packages/shared/src/index.ts'),
       // Safety net so an accidental `@renderer/*` import in a collected test still resolves.
-      '@renderer': resolve(process.cwd(), 'src/renderer/src'),
+      '@renderer': resolve(__dirname, 'src/renderer/src'),
     },
   },
 });
