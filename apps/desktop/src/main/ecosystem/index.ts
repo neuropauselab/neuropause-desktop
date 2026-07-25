@@ -82,7 +82,9 @@ import { packsStore } from './exchange/packsInstance';
 import { partnersStore } from './exchange/partnersInstance';
 import { computeEcosystemAnalytics } from './exchange/analytics';
 import { workerRegistry } from '../workforce/registry/registryInstance';
-import { ORG_ID } from '../enterprise/org/seed';
+import { ORG_ID, OWNER_USER_ID } from '../enterprise/org/seed';
+import { orgStore } from '../enterprise/org/orgInstance';
+import { developerOwnerIdentity } from './developer/developerStore';
 
 const log = createLogger('ecosystem');
 
@@ -342,12 +344,18 @@ export async function initEcosystem(deps: EcosystemDeps): Promise<EcosystemSubsy
   // P3.0 — get-or-create the access-token signing secret so the gateway's sync path can read it.
   await loadSigningSecret();
 
-  // Bind the seeded developer/owner to the signed-in account.
-  const status = authService.getStatus();
-  if (status.state === 'authenticated') {
-    const u = status.session.user;
-    developerStore.setOwnerIdentity(u.displayName ?? u.email, u.email);
-  }
+  // The developer portal's single account mirrors the enterprise *claimed* owner
+  // (its documented source of truth), which initEnterprise resolves first via
+  // first-claim-wins. Refresh on sign-in so a first login is reflected without a
+  // restart; leave the seeded placeholder while the owner is unclaimed. Display
+  // metadata only — every ecosystem channel is gated by the enterprise RBAC spine
+  // (see ecosystemAuthz), never by this account's identity.
+  const mirrorDeveloperOwner = (): void => {
+    const identity = developerOwnerIdentity(orgStore.user(OWNER_USER_ID));
+    if (identity) developerStore.setOwnerIdentity(identity.name, identity.email);
+  };
+  mirrorDeveloperOwner();
+  authService.on('statusChanged', mirrorDeveloperOwner);
 
   // Keep the developer plan and billing subscription consistent at boot.
   const dev = developerStore.defaultDeveloper();

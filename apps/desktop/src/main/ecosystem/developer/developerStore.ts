@@ -51,6 +51,22 @@ function sha256(s: string): string {
   return createHash('sha256').update(s).digest('hex');
 }
 
+/**
+ * First-claim-wins coherence for the developer portal's owner label. The single
+ * `dev-owner` account's display identity mirrors the enterprise *claimed* owner
+ * (its documented source of truth — see the note in developerInstance). Returns
+ * the identity to apply, or `null` to keep the seeded placeholder while the
+ * workspace owner is still unclaimed (`email === null`). Display metadata only:
+ * access to every ecosystem channel is governed by the enterprise RBAC spine
+ * (see ecosystemAuthz), never by this account's identity.
+ */
+export function developerOwnerIdentity(
+  owner: { name: string; email: string | null } | null,
+): { name: string; email: string } | null {
+  if (!owner || owner.email === null) return null;
+  return { name: owner.name, email: owner.email };
+}
+
 export class DeveloperStore extends EventEmitter {
   private developers = new Map<string, DeveloperAccount>();
   private keys = new Map<string, StoredKey>();

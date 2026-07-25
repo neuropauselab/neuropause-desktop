@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID, createPublicKey } from 'node:crypto';
-import { DeveloperStore } from './developer/developerStore';
+import { DeveloperStore, developerOwnerIdentity } from './developer/developerStore';
 import { MarketplaceStore } from './marketplace/marketplaceStore';
 import { GatewayStore } from './gateway/gatewayStore';
 import { BillingStore } from './billing/billingStore';
@@ -56,6 +56,23 @@ describe('DeveloperStore', () => {
     s.recordUsage({ developerId: 'dev-test', apiKeyId: null, at: now, method: 'GET', path: '/v1/x', version: 'v1', status: 200, latencyMs: 5, computeUnits: 1 });
     expect(s.countSince('dev-test', Date.now() - 86_400_000)).toBe(1);
     await s.flush();
+  });
+});
+
+describe('developerOwnerIdentity (mirrors the enterprise claimed owner)', () => {
+  it('returns the owner identity once the workspace owner is claimed', () => {
+    expect(developerOwnerIdentity({ name: 'Ada', email: 'ada@np.dev' })).toEqual({
+      name: 'Ada',
+      email: 'ada@np.dev',
+    });
+  });
+
+  it('keeps the seeded placeholder while the owner is unclaimed (null email)', () => {
+    expect(developerOwnerIdentity({ name: 'Workspace Owner', email: null })).toBeNull();
+  });
+
+  it('keeps the placeholder when there is no owner record', () => {
+    expect(developerOwnerIdentity(null)).toBeNull();
   });
 });
 
