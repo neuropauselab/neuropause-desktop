@@ -63,6 +63,13 @@ export interface SectionDef {
    * user never meets a duplicate or placeholder screen. The canonical surface for each job stays visible.
    */
   hidden?: boolean;
+  /**
+   * Marks a not-yet-live Prototype/Vision surface (NRIA §3/§12 "Prototype-Model":
+   * real code, in-memory/seeded, no external effect). Rendered with a "Preview"
+   * affordance so a user can distinguish it from real production capability.
+   * Honest positioning, NOT a hide — the section stays fully visible and usable.
+   */
+  preview?: boolean;
 }
 
 export const SECTIONS: SectionDef[] = [
@@ -71,7 +78,7 @@ export const SECTIONS: SectionDef[] = [
   { id: 'decision-center', label: 'Decision Center', icon: 'sparkles', phase: 21, placement: 'primary', hidden: true },
   { id: 'home', label: 'Home', icon: 'home', phase: 2, placement: 'primary', hidden: true },
   { id: 'organization', label: 'Organization', icon: 'user', phase: 10, placement: 'primary' },
-  { id: 'enterprise', label: 'Enterprise', icon: 'grid', phase: 7, placement: 'primary' },
+  { id: 'enterprise', label: 'Enterprise', icon: 'grid', phase: 7, placement: 'primary', preview: true },
   // Business Workspace (EBS v1.0): a family-grouped presentation over the existing enterprise modules.
   { id: 'business', label: 'Business', icon: 'layers', phase: 7, placement: 'primary' },
   // Enterprise Administration v1.0 — a reuse-only admin control center over existing services.
@@ -88,24 +95,24 @@ export const SECTIONS: SectionDef[] = [
   { id: 'opscenter', label: 'Ops Center', icon: 'pulse', phase: 7, placement: 'primary' },
   { id: 'developer', label: 'Developer', icon: 'code', phase: 8, placement: 'primary' },
   { id: 'developer-center', label: 'Developer Center', icon: 'puzzle', phase: 12, placement: 'primary', hidden: true },
-  { id: 'industry-center', label: 'Industry Center', icon: 'package', phase: 13, placement: 'primary' },
-  { id: 'strategy-center', label: 'Strategy Center', icon: 'sparkles', phase: 14, placement: 'primary' },
-  { id: 'twin-center', label: 'Digital Twin Center', icon: 'layers', phase: 15, placement: 'primary' },
-  { id: 'knowledge-center', label: 'Knowledge Fabric', icon: 'database', phase: 16, placement: 'primary' },
-  { id: 'orchestration-center', label: 'Orchestration', icon: 'command', phase: 17, placement: 'primary' },
-  { id: 'network-center', label: 'Intelligence Network', icon: 'globe', phase: 18, placement: 'primary' },
-  { id: 'auto-ops-center', label: 'Autonomous Operations', icon: 'command', phase: 19, placement: 'primary' },
-  { id: 'commercial-center', label: 'Platform v2', icon: 'store', phase: 20, placement: 'primary' },
+  { id: 'industry-center', label: 'Industry Center', icon: 'package', phase: 13, placement: 'primary', preview: true },
+  { id: 'strategy-center', label: 'Strategy Center', icon: 'sparkles', phase: 14, placement: 'primary', preview: true },
+  { id: 'twin-center', label: 'Digital Twin Center', icon: 'layers', phase: 15, placement: 'primary', preview: true },
+  { id: 'knowledge-center', label: 'Knowledge Fabric', icon: 'database', phase: 16, placement: 'primary', preview: true },
+  { id: 'orchestration-center', label: 'Orchestration', icon: 'command', phase: 17, placement: 'primary', preview: true },
+  { id: 'network-center', label: 'Intelligence Network', icon: 'globe', phase: 18, placement: 'primary', preview: true },
+  { id: 'auto-ops-center', label: 'Autonomous Operations', icon: 'command', phase: 19, placement: 'primary', preview: true },
+  { id: 'commercial-center', label: 'Platform v2', icon: 'store', phase: 20, placement: 'primary', preview: true },
   // Product Operations & Release Management v1.0 — a read-only operations lens over existing services.
   { id: 'product-ops', label: 'Product Ops', icon: 'gauge', phase: 20, placement: 'primary' },
-  { id: 'ecosystem', label: 'Ecosystem', icon: 'globe', phase: 8, placement: 'primary' },
-  { id: 'cloud', label: 'Cloud', icon: 'database', phase: 9, placement: 'primary' },
+  { id: 'ecosystem', label: 'Ecosystem', icon: 'globe', phase: 8, placement: 'primary', preview: true },
+  { id: 'cloud', label: 'Cloud', icon: 'database', phase: 9, placement: 'primary', preview: true },
   { id: 'control-plane', label: 'Control Plane', icon: 'gauge', phase: 11, placement: 'primary', hidden: true },
   { id: 'infrastructure', label: 'Infrastructure', icon: 'server', phase: 13, placement: 'primary' },
-  { id: 'federation', label: 'Federation', icon: 'layers', phase: 9, placement: 'primary' },
+  { id: 'federation', label: 'Federation', icon: 'layers', phase: 9, placement: 'primary', preview: true },
   { id: 'federation-center', label: 'Federation Center', icon: 'globe', phase: 10, placement: 'primary', hidden: true },
   { id: 'store', label: 'AI Store', icon: 'store', phase: 3, placement: 'primary' },
-  { id: 'marketplace', label: 'Marketplace', icon: 'store', phase: 9, placement: 'primary' },
+  { id: 'marketplace', label: 'Marketplace', icon: 'store', phase: 9, placement: 'primary', preview: true },
   { id: 'workspace', label: 'Workspace', icon: 'workspace', phase: 2, placement: 'primary' },
   { id: 'operations', label: 'Operations', icon: 'gauge', phase: 3, placement: 'primary' },
   { id: 'workforce', label: 'AI Workforce', icon: 'cpu', phase: 6, placement: 'primary' },

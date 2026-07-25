@@ -45,4 +45,52 @@ describe('navigation sections — production visibility', () => {
   it('every hidden section is still defined (hide is reversible, not a deletion)', () => {
     for (const s of hidden) expect(s.label.length).toBeGreaterThan(0);
   });
+
+  // PEDP Cycle 1 — honest positioning: the NRIA §3/§12 "Prototype-Model" surfaces
+  // (real code, in-memory/seeded, no external effect) are labeled Preview so a user
+  // can tell them apart from real production capability. Labeling, not hiding.
+  it('marks exactly the NRIA Prototype-Model surfaces as preview', () => {
+    const previewIds = SECTIONS.filter((s) => s.preview).map((s) => s.id).sort();
+    expect(previewIds).toEqual(
+      [
+        'auto-ops-center',
+        'cloud',
+        'commercial-center',
+        'ecosystem',
+        'enterprise',
+        'federation',
+        'industry-center',
+        'knowledge-center',
+        'marketplace',
+        'network-center',
+        'orchestration-center',
+        'strategy-center',
+        'twin-center',
+      ].sort(),
+    );
+  });
+
+  it('does NOT mark real production surfaces as preview', () => {
+    const previewIds = new Set<string>(SECTIONS.filter((s) => s.preview).map((s) => s.id));
+    for (const id of [
+      'intent-home',
+      'connectors',
+      'memory',
+      'store',
+      'operations',
+      'workforce',
+      'organization',
+      'infrastructure',
+      'opscenter',
+      'settings',
+    ]) {
+      expect(previewIds.has(id)).toBe(false);
+    }
+  });
+
+  it('preview is a label, not a hide — every preview surface stays visible', () => {
+    const preview = SECTIONS.filter((s) => s.preview);
+    const previewVisible = preview.filter((s) => !s.hidden);
+    expect(previewVisible.length).toBe(preview.length);
+  });
 });

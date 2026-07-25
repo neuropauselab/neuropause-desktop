@@ -23,7 +23,7 @@ function SidebarItem({
       type="button"
       onClick={() => setSection(section.id)}
       title={collapsed ? section.label : undefined}
-      aria-label={section.label}
+      aria-label={section.preview ? `${section.label} — Preview` : section.label}
       aria-current={active ? 'page' : undefined}
       className={cn(
         'group relative flex h-9 w-full items-center rounded-xl outline-none transition-colors focus-visible:shadow-focus',
@@ -53,6 +53,14 @@ function SidebarItem({
           </motion.span>
         )}
       </AnimatePresence>
+      {!collapsed && section.preview && (
+        <span
+          aria-hidden="true"
+          className="relative z-10 ml-auto rounded-full border border-[var(--hairline)] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-faint"
+        >
+          Preview
+        </span>
+      )}
     </button>
   );
 }
