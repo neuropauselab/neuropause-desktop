@@ -8,10 +8,27 @@ import { EventEmitter } from 'node:events';
 import { promises as fs } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import type { GatewayAuditEntry, GatewayMetrics, QuotaPolicy, RateLimitPolicy } from '@neuropause/shared';
+import { AuditChain, type AuditChainSnapshot, type AuditVerifyResult } from '../../security/auditChain';
 import { createLogger } from '../../logger';
 
 const log = createLogger('api-gateway');
-const AUDIT_CAP = 10_000;
+const DEFAULT_AUDIT_CAP = 10_000;
+
+/** Deterministic serialization of a gateway audit entry (fixed key order) for hashing. */
+function canonicalGatewayEntry(e: GatewayAuditEntry): string {
+  return JSON.stringify({
+    at: e.at,
+    developerId: e.developerId,
+    id: e.id,
+    keyId: e.keyId,
+    latencyMs: e.latencyMs,
+    method: e.method,
+    path: e.path,
+    reason: e.reason,
+    status: e.status,
+    version: e.version,
+  });
+}
 
 interface RateState {
   windowStart: number;
@@ -23,6 +40,7 @@ interface QuotaState {
 }
 interface GatewayFile {
   audit: GatewayAuditEntry[];
+  integrity?: AuditChainSnapshot;
 }
 
 function periodKey(period: 'day' | 'month', now: number): string {
@@ -38,9 +56,15 @@ export class GatewayStore extends EventEmitter {
   private persisting = false;
   private dirty = false;
   private lastPersist: Promise<void> = Promise.resolve();
+  private readonly auditCap: number;
+  private readonly auditChain = new AuditChain<GatewayAuditEntry>(canonicalGatewayEntry, 'api-gateway');
 
-  constructor(private readonly filePath: string) {
+  constructor(
+    private readonly filePath: string,
+    opts: { auditCap?: number } = {},
+  ) {
     super();
+    this.auditCap = Math.max(1, opts.auditCap ?? DEFAULT_AUDIT_CAP);
   }
 
   async load(): Promise<void> {
@@ -48,8 +72,23 @@ export class GatewayStore extends EventEmitter {
     try {
       const data = JSON.parse(await fs.readFile(this.filePath, 'utf8')) as Partial<GatewayFile>;
       this.audit = Array.isArray(data.audit) ? data.audit : [];
+      if (this.auditChain.restore(data.integrity)) {
+        const report = this.auditChain.verify(this.audit);
+        if (!report.ok) {
+          log.error('API gateway audit integrity check FAILED on load', {
+            head: report.head.slice(0, 16),
+            recomputed: report.recomputed.slice(0, 16),
+            retained: report.retained,
+          });
+          this.emit('integrity-violation', report);
+        }
+      } else if (this.audit.length > 0) {
+        this.auditChain.rebuild(this.audit); // legacy (unchained) file — upgrade in place
+        this.schedulePersist();
+      }
     } catch {
       this.audit = [];
+      this.auditChain.rebuild([]);
     }
     this.loaded = true;
     log.info('API gateway ready', { audit: this.audit.length });
@@ -57,7 +96,8 @@ export class GatewayStore extends EventEmitter {
 
   private async persist(): Promise<void> {
     const tmp = `${this.filePath}.tmp`;
-    await fs.writeFile(tmp, JSON.stringify({ audit: this.audit } satisfies GatewayFile), { mode: 0o600 });
+    const file: GatewayFile = { audit: this.audit, integrity: this.auditChain.snapshot() };
+    await fs.writeFile(tmp, JSON.stringify(file), { mode: 0o600 });
     await fs.rename(tmp, this.filePath);
   }
   private schedulePersist(): void {
@@ -115,8 +155,12 @@ export class GatewayStore extends EventEmitter {
 
   record(entry: Omit<GatewayAuditEntry, 'id'>): GatewayAuditEntry {
     const full: GatewayAuditEntry = { id: `gw_${randomUUID()}`, ...entry };
+    this.auditChain.append(full);
     this.audit.push(full);
-    if (this.audit.length > AUDIT_CAP) this.audit = this.audit.slice(this.audit.length - AUDIT_CAP);
+    while (this.audit.length > this.auditCap) {
+      this.auditChain.dropOldest(this.audit[0]);
+      this.audit.shift();
+    }
     this.schedulePersist();
     this.emit('changed');
     return full;
@@ -124,6 +168,16 @@ export class GatewayStore extends EventEmitter {
 
   auditEntries(limit = 100): GatewayAuditEntry[] {
     return this.audit.slice(-limit).reverse();
+  }
+
+  /** Total audit entries ever recorded, including those rotated out of retention. */
+  totalAudit(): number {
+    return this.auditChain.totalAppended;
+  }
+
+  /** Recompute the audit hash-chain; `ok:false` means an entry was altered or removed. */
+  verifyAuditIntegrity(): AuditVerifyResult {
+    return this.auditChain.verify(this.audit);
   }
 
   metrics(windowDays: number, now: number): GatewayMetrics {

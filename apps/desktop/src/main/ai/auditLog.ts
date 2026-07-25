@@ -1,9 +1,11 @@
 /**
- * AI Audit Log. An append-only, in-memory ring of records — one per engine call.
+ * AI Audit Log. A bounded, in-memory ring of records (the newest `cap` are kept;
+ * older ones roll off) — one per engine call. Ephemeral by design: it is an
+ * in-process observability surface, not a durable audit trail, so it carries no
+ * on-disk integrity chain (unlike the persisted governance/gateway audit logs).
  * Each record carries tokens, cost, latency, model, prompt version, context
  * sources, confidence and outcome, but NEVER prompts, context text, responses,
- * or secrets. It is the governance/observability surface for everything the
- * engine does.
+ * or secrets.
  */
 import type { AiAuditRecord } from '@neuropause/shared';
 
