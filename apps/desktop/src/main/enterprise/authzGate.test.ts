@@ -17,6 +17,7 @@ import {
   ENTERPRISE_CHANNEL_PERMISSIONS,
   canDeleteMember,
   createAuthorize,
+  decideOwnerClaim,
   guardBuiltInRolePatch,
   guardOwnerUserPatch,
   resolveActor,
@@ -83,7 +84,8 @@ function depsOf(world: World): ActorResolverDeps {
   };
 }
 
-const owner = member('user-owner', 'owner@np.dev', ['role-owner']);
+const owner = member('user-owner', 'owner@np.dev', ['role-owner']); // a CLAIMED owner
+const unclaimedOwner = member('user-owner', null, ['role-owner']); // fresh install, not yet claimed
 
 describe('resolveActor', () => {
   it('returns null when there is no session', () => {
@@ -117,25 +119,75 @@ describe('resolveActor', () => {
     expect(resolveActor(depsOf(world))?.member.id).toBe('u-suspended');
   });
 
-  it('never matches AI-worker members by email', () => {
+  it('never matches AI-worker members by email (falls through to the owner)', () => {
     const ai = member('u-ai', 'ai@np.dev', ['role-viewer'], 'active', 'ai_worker');
     const world = {
       session: 'ai@np.dev',
-      users: [owner, ai],
+      users: [unclaimedOwner, ai],
       roles: [ownerRole, viewerRole],
-      owner,
+      owner: unclaimedOwner,
     };
-    expect(resolveActor(depsOf(world))?.member.id).toBe('user-owner'); // owner fallback
+    // The AI worker is never matched by email; on a fresh (unclaimed) install the
+    // owner fallback resolves instead — proving the AI member was skipped.
+    expect(resolveActor(depsOf(world))?.member.id).toBe('user-owner');
   });
 
-  it('falls back to the seeded owner when no member matches', () => {
-    const world = { session: 'someone@else.dev', users: [owner], roles: [ownerRole], owner };
+  it('falls back to the owner on a fresh unclaimed install (first-claim bootstrap)', () => {
+    const world = {
+      session: 'first@np.dev',
+      users: [unclaimedOwner],
+      roles: [ownerRole],
+      owner: unclaimedOwner,
+    };
     expect(resolveActor(depsOf(world))?.member.id).toBe('user-owner');
+  });
+
+  it('denies an unrecognized account once the owner is claimed (first-claim-wins)', () => {
+    // The owner has a non-null email → the workspace is already claimed. A
+    // different account matches no member and must NOT inherit ownership.
+    const world = { session: 'intruder@evil.dev', users: [owner], roles: [ownerRole], owner };
+    expect(resolveActor(depsOf(world))).toBeNull();
   });
 
   it('returns null when nothing matches and the owner record is gone', () => {
     const world = { session: 'someone@else.dev', users: [], roles: [ownerRole], owner: null };
     expect(resolveActor(depsOf(world))).toBeNull();
+  });
+});
+
+describe('decideOwnerClaim (first-claim-wins)', () => {
+  it('claims an unclaimed owner for the first account to sign in', () => {
+    expect(
+      decideOwnerClaim(
+        { name: 'Workspace Owner', email: null },
+        { name: 'Ada', email: 'ada@np.dev' },
+      ),
+    ).toEqual({ name: 'Ada', email: 'ada@np.dev' });
+  });
+
+  it('refreshes only the display name when the same account signs in (email preserved)', () => {
+    expect(
+      decideOwnerClaim(
+        { name: 'Ada', email: 'ada@np.dev' },
+        { name: 'Ada Lovelace', email: 'ADA@np.dev' },
+      ),
+    ).toEqual({ name: 'Ada Lovelace', email: 'ada@np.dev' });
+  });
+
+  it('does nothing when the same account signs in unchanged', () => {
+    expect(
+      decideOwnerClaim({ name: 'Ada', email: 'ada@np.dev' }, { name: 'Ada', email: 'ada@np.dev' }),
+    ).toBeNull();
+  });
+
+  it('never rebinds a claimed owner to a different account', () => {
+    expect(
+      decideOwnerClaim({ name: 'Ada', email: 'ada@np.dev' }, { name: 'Eve', email: 'eve@evil.dev' }),
+    ).toBeNull();
+  });
+
+  it('returns null when there is no owner record', () => {
+    expect(decideOwnerClaim(null, { name: 'Ada', email: 'ada@np.dev' })).toBeNull();
   });
 });
 
@@ -147,11 +199,32 @@ describe('createAuthorize', () => {
     expect(() => authorize('org:read')).toThrowError('Sign in to continue.');
   });
 
-  it('allows the owner-fallback actor everything (single-user install unchanged)', () => {
+  it('allows the owner everything on a fresh unclaimed install (single-user bootstrap)', () => {
     const authorize = createAuthorize(
-      depsOf({ session: 'fresh-login@np.dev', users: [owner], roles: [ownerRole], owner }),
+      depsOf({
+        session: 'fresh-login@np.dev',
+        users: [unclaimedOwner],
+        roles: [ownerRole],
+        owner: unclaimedOwner,
+      }),
     );
     for (const p of ALL_ENTERPRISE_PERMISSIONS) expect(() => authorize(p)).not.toThrow();
+  });
+
+  it('allows the claimed owner everything when signed in with the owning account', () => {
+    const authorize = createAuthorize(
+      depsOf({ session: 'owner@np.dev', users: [owner], roles: [ownerRole], owner }),
+    );
+    for (const p of ALL_ENTERPRISE_PERMISSIONS) expect(() => authorize(p)).not.toThrow();
+  });
+
+  it('denies a different account once ownership is claimed (no silent seizure)', () => {
+    const authorize = createAuthorize(
+      depsOf({ session: 'intruder@evil.dev', users: [owner], roles: [ownerRole], owner }),
+    );
+    expect(() => authorize('org:read')).toThrowError(
+      'No organization member is bound to this account.',
+    );
   });
 
   it('enforces the matched member’s own roles: reads pass, manage is denied', () => {

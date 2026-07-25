@@ -6,10 +6,12 @@
  *
  *  1. `resolveActor` — maps the signed-in session to an `OrgUser` + their org's
  *     roles. A session whose email matches a human member resolves to *that*
- *     member (their assigned roles decide what they may do). A signed-in
- *     account matching no member resolves to the seeded workspace owner — the
- *     desktop's existing trust model, where the machine's account holder owns
- *     the workspace. No session → no actor.
+ *     member (their assigned roles decide what they may do). When no member
+ *     matches, the seeded workspace owner is the fallback ONLY while it is still
+ *     unclaimed (`owner.email === null`): the first account to sign in bootstraps
+ *     a fresh single-user install as owner (first-claim-wins). Once the owner is
+ *     claimed, an unrecognized account resolves to no actor (fails closed) rather
+ *     than silently seizing ownership. No session → no actor.
  *  2. `createAuthorize` — builds the `authorize(permission)` dependency the
  *     secure bridge calls before dispatching a permission-annotated channel.
  *     Throws (never returns a verdict object) so the bridge's existing error
@@ -22,6 +24,11 @@
  * Suspension is deliberate: a session email that matches a suspended or
  * invited member resolves to that member (who holds no permissions) — it never
  * falls back to the owner, so suspending someone actually locks them out.
+ *
+ * Ownership is first-claim-wins: the seeded owner is claimed once, by the first
+ * account to sign in (see `decideOwnerClaim`), and handoff thereafter is an
+ * explicit admin action (an owner-email `updateUser` under `people:manage`),
+ * never an implicit consequence of a different account signing in.
  */
 import type { EnterprisePermission, IpcChannelName, OrgRole, OrgUser } from '@neuropause/shared';
 import { IpcChannel } from '@neuropause/shared';
@@ -49,6 +56,10 @@ export interface ActorResolverDeps {
  * Resolve the current session to an enterprise actor. Email matching is
  * case-insensitive and considers human members only (AI workers never invoke
  * renderer IPC; their actions are governed by the workforce policy engine).
+ *
+ * The owner fallback is load-bearing ONLY for a fresh, unclaimed install: once
+ * the owner has an email (it has been claimed — see `decideOwnerClaim`), a
+ * session matching no member fails closed instead of inheriting ownership.
  */
 export function resolveActor(deps: ActorResolverDeps): EnterpriseActor | null {
   const email = deps.sessionEmail();
@@ -61,7 +72,40 @@ export function resolveActor(deps: ActorResolverDeps): EnterpriseActor | null {
   if (matched) return { member: matched, roles: deps.rolesFor(matched.orgId) };
   const owner = deps.ownerMember();
   if (!owner) return null;
-  return { member: owner, roles: deps.rolesFor(owner.orgId) };
+  // First-claim-wins: fall back to the owner only while the workspace is
+  // unclaimed. A claimed owner (non-null email) that didn't match above means a
+  // *different* account is signing in — deny rather than hand it the workspace.
+  if (owner.email === null) return { member: owner, roles: deps.rolesFor(owner.orgId) };
+  return null;
+}
+
+/** The identity the seeded owner is bound to when first claimed. */
+export interface OwnerClaim {
+  name: string;
+  email: string;
+}
+
+/**
+ * First-claim-wins ownership. The seeded owner ships unclaimed (`email === null`);
+ * the FIRST account to sign in claims it and becomes the permanent local root of
+ * trust. Thereafter the SAME account only refreshes a changed display name, and a
+ * DIFFERENT account never rebinds the owner — so no one can silently seize a
+ * workspace by signing in. Ownership handoff is a deliberate admin action (an
+ * owner-email `updateUser` by someone holding `people:manage`), not a side effect
+ * of authentication.
+ *
+ * Pure and total: returns the identity to bind the owner to, or `null` to leave
+ * the owner untouched.
+ */
+export function decideOwnerClaim(
+  current: { name: string; email: string | null } | null,
+  session: { name: string; email: string },
+): OwnerClaim | null {
+  if (!current) return null;
+  if (current.email === null) return { name: session.name, email: session.email }; // unclaimed → first claim wins
+  const same = current.email.trim().toLowerCase() === session.email.trim().toLowerCase();
+  if (same && current.name !== session.name) return { name: session.name, email: current.email }; // same account → refresh name only
+  return null; // different account, or nothing changed → never rebind
 }
 
 /**

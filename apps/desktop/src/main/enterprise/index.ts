@@ -77,6 +77,7 @@ import { OWNER_USER_ID, ROLE_TO_UNIT_ID } from './org/seed';
 import {
   canDeleteMember,
   createAuthorize,
+  decideOwnerClaim,
   guardBuiltInRolePatch,
   guardOwnerUserPatch,
   withEnterpriseAuthz,
@@ -180,15 +181,20 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   await workspaceStore.load();
   await governanceStore.load();
 
-  // Bind the seeded owner to the signed-in account — at boot (restored session)
-  // and on every later sign-in, since a fresh login lands after this init ran.
+  // First-claim-wins ownership: the seeded owner ships unclaimed (email:null).
+  // The first account to sign in claims it; the SAME account later only refreshes
+  // a changed display name; a DIFFERENT account never rebinds it (it resolves to
+  // no actor and fails closed). Ownership handoff is an explicit admin action.
+  // Runs at boot (restored session) and on every later sign-in.
   const bindOwner = (status: AuthStatus): void => {
     if (status.state !== 'authenticated') return;
     const u = status.session.user;
-    const name = u.displayName ?? u.email;
     const owner = orgStore.user(OWNER_USER_ID);
-    if (owner && owner.name === name && owner.email === u.email) return; // already bound
-    orgStore.setOwnerIdentity(name, u.email);
+    const claim = decideOwnerClaim(
+      owner ? { name: owner.name, email: owner.email } : null,
+      { name: u.displayName ?? u.email, email: u.email },
+    );
+    if (claim) orgStore.setOwnerIdentity(claim.name, claim.email);
   };
   bindOwner(authService.getStatus());
   authService.on('statusChanged', bindOwner);
