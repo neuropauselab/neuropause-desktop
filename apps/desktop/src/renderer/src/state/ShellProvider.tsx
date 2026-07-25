@@ -10,14 +10,9 @@ import {
 import type { SectionId } from '@renderer/shell/sections';
 import { prefs, PrefKey } from '@renderer/lib/preferences';
 import { resolveStartupSection, type StartupMode } from '@renderer/shell/startupPolicy';
+import { openAppTab, closeTab as closeTabModel, restoreTabs, type WorkspaceTab } from './workspaceTabs';
 
-/** A single open tab in the Workspace (an AI app instance). */
-export interface WorkspaceTab {
-  id: string;
-  appId: string;
-  title: string;
-  openedAt: number;
-}
+export type { WorkspaceTab };
 
 export const SIDEBAR_MIN = 200;
 export const SIDEBAR_MAX = 360;
@@ -66,12 +61,9 @@ const clampWidth = (w: number): number => Math.min(SIDEBAR_MAX, Math.max(SIDEBAR
 /** Builds initial state, restoring persisted preferences where valid. */
 function init(): ShellState {
   const persistedSection = prefs.read<string>(PrefKey.activeSection, 'intent-home');
-  const persistedTabs = prefs.read<WorkspaceTab[]>(PrefKey.workspaceTabs, []);
-  const persistedActiveTab = prefs.read<string | null>(PrefKey.activeTabId, null);
-  const tabs = Array.isArray(persistedTabs) ? persistedTabs.filter((t) => t && t.id && t.appId) : [];
-  const activeTabId = tabs.some((t) => t.id === persistedActiveTab)
-    ? persistedActiveTab
-    : (tabs[tabs.length - 1]?.id ?? null);
+  const persistedTabs = prefs.read<unknown>(PrefKey.workspaceTabs, []);
+  const persistedActiveTab = prefs.read<unknown>(PrefKey.activeTabId, null);
+  const { tabs, activeTabId } = restoreTabs(persistedTabs, persistedActiveTab);
 
   // Startup Experience Policy — resolve the landing section from the user's real startup preference,
   // validated against the section registry with a never-erroring fallback chain.
@@ -116,39 +108,16 @@ function reducer(state: ShellState, action: Action): ShellState {
       return { ...state, commandOpen: action.open };
 
     case 'openApp': {
-      const existing = state.tabs.find((t) => t.appId === action.appId);
-      if (existing) {
-        return { ...state, activeSection: 'workspace', activeTabId: existing.id };
-      }
-      const tab: WorkspaceTab = {
-        id: nextTabId(),
-        appId: action.appId,
-        title: action.title,
-        openedAt: Date.now(),
-      };
-      return {
-        ...state,
-        activeSection: 'workspace',
-        tabs: [...state.tabs, tab],
-        activeTabId: tab.id,
-      };
+      const next = openAppTab(state, action.appId, action.title, nextTabId, Date.now());
+      return { ...state, activeSection: 'workspace', ...next };
     }
 
     case 'closeActiveTab':
       if (!state.activeTabId) return state;
       return reducer(state, { type: 'closeTab', id: state.activeTabId });
 
-    case 'closeTab': {
-      const idx = state.tabs.findIndex((t) => t.id === action.id);
-      if (idx === -1) return state;
-      const tabs = state.tabs.filter((t) => t.id !== action.id);
-      let activeTabId = state.activeTabId;
-      if (state.activeTabId === action.id) {
-        const neighbour = tabs[idx] ?? tabs[idx - 1] ?? null;
-        activeTabId = neighbour ? neighbour.id : null;
-      }
-      return { ...state, tabs, activeTabId };
-    }
+    case 'closeTab':
+      return { ...state, ...closeTabModel(state, action.id) };
 
     case 'setActiveTab':
       return { ...state, activeTabId: action.id };

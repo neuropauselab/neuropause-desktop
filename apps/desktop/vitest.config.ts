@@ -74,6 +74,8 @@ export default defineConfig({
       'src/renderer/src/design/**/*.test.ts',
       'src/renderer/src/developer/**/*.test.ts',
       'src/renderer/src/enterprise/**/*.test.ts',
+      // PEDP cycle 2 — shell state (the Workspace tab model) is now under test.
+      'src/renderer/src/state/**/*.test.ts',
     ],
   },
   resolve: {
