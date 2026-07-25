@@ -11,6 +11,10 @@ import type { BuildIdentity, InstalledModule, SupportBundleInfo } from '@neuropa
 
 /** Patterns that must never appear in a support bundle. */
 const REDACTIONS: { pattern: RegExp; replacement: string }[] = [
+  // Home-directory paths — strip the username component (personal identifier).
+  { pattern: /\/Users\/[^/\s]+/g, replacement: '/Users/<user>' },
+  { pattern: /\/home\/[^/\s]+/g, replacement: '/home/<user>' },
+  { pattern: /[A-Za-z]:\\Users\\[^\\/\s]+/g, replacement: 'C:\\Users\\<user>' },
   // JWTs (header.payload.signature).
   { pattern: /eyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}/g, replacement: '[REDACTED_JWT]' },
   // Authorization: Bearer <token>.
@@ -40,6 +44,7 @@ export const REDACTED_CATEGORIES = [
   'OAuth access & refresh tokens',
   'API keys & client secrets',
   'Email addresses & personal identifiers',
+  'Home-directory paths & usernames',
 ];
 
 /** Files under the data dir that are NEVER copied into a bundle. */

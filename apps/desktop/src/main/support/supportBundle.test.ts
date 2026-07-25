@@ -35,6 +35,12 @@ describe('redactText', () => {
     expect(redactText('user saurabh@example.com logged in')).not.toContain('saurabh@example.com');
   });
 
+  it('strips home-directory usernames from paths', () => {
+    expect(redactText('at /Users/alice/app/main.js')).toContain('/Users/<user>');
+    expect(redactText('at /Users/alice/app/main.js')).not.toContain('/Users/alice');
+    expect(redactText('/home/bob/np/index.ts')).toBe('/home/<user>/np/index.ts');
+  });
+
   it('leaves ordinary text untouched', () => {
     expect(redactText('worker started with 9 skills')).toBe('worker started with 9 skills');
   });

@@ -19,6 +19,18 @@ describe('errorReport — redaction', () => {
     expect(redactSensitive('Cannot read property x of undefined')).toBe('Cannot read property x of undefined');
     expect(redactSensitive('')).toBe('');
   });
+
+  it('strips JWTs, whole bearer tokens, and email addresses', () => {
+    const jwt = 'eyJhbGciOi.eyJzdWIiOiJ4.SflKxwRJSMeKKF2QT4';
+    expect(redactSensitive(`cookie ${jwt} end`)).not.toContain(jwt);
+    // The whole bearer token must be stripped, not just the word "Bearer".
+    const bearer = redactSensitive('Authorization: Bearer abc123.def-456');
+    expect(bearer).not.toContain('abc123.def-456');
+    expect(bearer).toContain('<redacted>');
+    expect(redactSensitive('from alice@example.com now')).toBe('from <redacted-email> now');
+    // Ordinary text with an @ that is not an email is left alone.
+    expect(redactSensitive('array@index position')).toBe('array@index position');
+  });
 });
 
 describe('errorReport — workspace labels', () => {

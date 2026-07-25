@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import { app, crashReporter as nativeCrashReporter } from 'electron';
 import type { CrashCategory, CrashRecord, CrashStatus, RecoveryRecommendation } from '@neuropause/shared';
 import { createLogger } from '../logger';
+import { buildCrashRecord } from './crashRecord';
 
 const log = createLogger('crash-reporter');
 
@@ -79,8 +80,9 @@ class CrashReporter {
   /** Record a fault. Categories beyond main/renderer/plugin come via the wiring layer. */
   report(category: CrashCategory, kind: string, message: string, stack?: string): void {
     this.count += 1;
-    const record: CrashRecord = { at: new Date().toISOString(), category, kind, message, stack: stack ?? null };
-    log.error('Crash captured', { category, kind, message });
+    // Scrub secrets/PII from message + stack before anything is persisted or logged.
+    const record: CrashRecord = buildCrashRecord(category, kind, message, stack, new Date().toISOString());
+    log.error('Crash captured', { category, kind, message: record.message });
     void fs
       .mkdir(join(app.getPath('userData'), 'logs'), { recursive: true })
       .then(() => fs.appendFile(this.logPath(), `${JSON.stringify(record)}\n`))

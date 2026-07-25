@@ -32,14 +32,28 @@ export function workspaceLabel(sectionId: string): string {
   return WORKSPACE_LABELS[sectionId] ?? (sectionId ? sectionId.charAt(0).toUpperCase() + sectionId.slice(1) : 'Workspace');
 }
 
-/** Strip user-identifying paths and secret-keyword values from free text. Deterministic. */
+/**
+ * Strip user-identifying paths and secret values from free text. Deterministic.
+ * Covers: home-directory usernames, JWTs, whole `Bearer` tokens, secret-keyword
+ * values (token/secret/password/api-key/authorization/bearer), and email
+ * addresses — so a copyable error report or an on-device crash record never
+ * carries a credential or personal identifier.
+ */
 export function redactSensitive(text: string): string {
   if (!text) return '';
   return text
+    // Home-directory paths — strip only the username component, keep the path shape.
     .replace(/\/Users\/[^/\s]+/g, '/Users/<user>')
     .replace(/\/home\/[^/\s]+/g, '/home/<user>')
     .replace(/[A-Za-z]:\\Users\\[^\\/\s]+/g, 'C:\\Users\\<user>')
-    .replace(/\b(token|secret|password|passwd|api[_-]?key|authorization|bearer)\b(\s*[=:]\s*)"?([^\s"']+)"?/gi, '$1$2<redacted>');
+    // JWTs (header.payload.signature).
+    .replace(/eyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}/g, '<redacted>')
+    // Authorization bearer tokens — the whole token, not just the keyword.
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer <redacted>')
+    // key/value secrets in env or JSON form.
+    .replace(/\b(token|secret|password|passwd|api[_-]?key|authorization|bearer)\b(\s*[=:]\s*)"?([^\s"']+)"?/gi, '$1$2<redacted>')
+    // Email addresses (personal identifiers).
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '<redacted-email>');
 }
 
 export interface ErrorReportInput {
