@@ -21,6 +21,7 @@ publish:
   channel: beta
 mac:
   category: public.app-category.productivity
+  icon: icon.icns
   target:
   - target: dmg
     arch:
@@ -43,6 +44,7 @@ dmg:
     path: /Applications
   artifactName: NeuroPause-${arch}.${ext}
 win:
+  icon: icon.ico
   target:
   - target: nsis
     arch:
