@@ -18,18 +18,30 @@ ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
 # npm ci validates EVERY workspace manifest against the lockfile, so all 47
 # workspaces must be present -- not the three this file used to copy.
 # .dockerignore keeps node_modules/dist/out/release/.git out of the context.
-COPY package.json package-lock.json ./
+# tsconfig.base.json is required: apps/backend/tsconfig.json declares
+#   "extends": "../../tsconfig.base.json"
+# Without it in the build context that target is absent inside /repo, esbuild
+# treats the unresolvable extends as non-fatal, and the bundle compiles under
+# the local compilerOptions alone. That is what happened in rc.1 and rc.2.
+COPY package.json package-lock.json tsconfig.base.json ./
 COPY packages packages
 COPY apps apps
 RUN npm ci
 
 # Build the backend (dist/index.js + dist/db/migrate.js), stage the SQL migrations
 # beside BOTH entrypoints and the seeds beside the bundle, then drop devDeps.
+# The trailing `rm -rf node_modules/@neuropause` deletes 47 workspace symlinks
+# whose targets (packages/, apps/) are never copied into the runtime stage, so
+# they arrive there dangling. The assertion below proves dist carries no
+# unbundled @neuropause/* requires, so nothing resolves them at runtime. A
+# dangling symlink and an absent file fail identically; removing them only
+# stops shipping 47 broken links.
 RUN npm run build -w @neuropause/backend \
  && cp -r apps/backend/src/db/migrations apps/backend/dist/db/migrations \
  && cp -r apps/backend/src/db/seeds apps/backend/dist/seeds \
  && cp -r apps/backend/src/db/migrations apps/backend/dist/migrations \
- && npm prune --omit=dev
+ && npm prune --omit=dev \
+ && rm -rf node_modules/@neuropause
 
 # Build-time assertion. Any surviving require() of a workspace package is a
 # guaranteed MODULE_NOT_FOUND at container start, because @neuropause/* resolve
