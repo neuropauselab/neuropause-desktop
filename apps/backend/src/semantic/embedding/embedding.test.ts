@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { loadEmbeddingConfig, type EmbeddingConfig } from './embeddingConfig';
-import { createEmbeddingProvider, OllamaEmbeddingProvider, OpenAIEmbeddingProvider } from './embeddingProvider';
+import {
+  createEmbeddingProvider,
+  OllamaEmbeddingProvider,
+  OpenAIEmbeddingProvider,
+} from './embeddingProvider';
 import { EmbeddingError, type FetchFn, type HttpResponse } from './embeddingTypes';
 
 function cfg(over: Partial<EmbeddingConfig> = {}): EmbeddingConfig {
@@ -50,23 +54,32 @@ describe('loadEmbeddingConfig', () => {
   });
 
   it('requires an API key for openai/voyage', () => {
-    expect(() => loadEmbeddingConfig({ EMBEDDING_PROVIDER: 'openai' })).toThrowError(/API_KEY is required/);
+    expect(() => loadEmbeddingConfig({ EMBEDDING_PROVIDER: 'openai' })).toThrowError(
+      /API_KEY is required/,
+    );
     const c = loadEmbeddingConfig({ EMBEDDING_PROVIDER: 'openai', EMBEDDING_API_KEY: 'sk-x' });
     expect(c.provider).toBe('openai');
     expect(c.apiKey).toBe('sk-x');
   });
 
   it('strips a trailing slash from the base url and validates integers', () => {
-    const c = loadEmbeddingConfig({ EMBEDDING_BASE_URL: 'http://host:1234/', EMBEDDING_DIMENSIONS: '512' });
+    const c = loadEmbeddingConfig({
+      EMBEDDING_BASE_URL: 'http://host:1234/',
+      EMBEDDING_DIMENSIONS: '512',
+    });
     expect(c.baseUrl).toBe('http://host:1234');
     expect(c.dimensions).toBe(512);
-    expect(() => loadEmbeddingConfig({ EMBEDDING_TIMEOUT_MS: 'abc' })).toThrowError(/positive integer/);
+    expect(() => loadEmbeddingConfig({ EMBEDDING_TIMEOUT_MS: 'abc' })).toThrowError(
+      /positive integer/,
+    );
   });
 });
 
 describe('OllamaEmbeddingProvider', () => {
   it('embeds a single text and reports its version', async () => {
-    const p = new OllamaEmbeddingProvider(cfg(), { fetchFn: seq([ok({ embedding: [0.1, 0.2, 0.3] })]) });
+    const p = new OllamaEmbeddingProvider(cfg(), {
+      fetchFn: seq([ok({ embedding: [0.1, 0.2, 0.3] })]),
+    });
     expect(await p.embed('hi')).toEqual([0.1, 0.2, 0.3]);
     expect(p.version).toEqual({ model: 'nomic-embed-text', dimensions: 3, revision: 1 });
   });
@@ -75,7 +88,10 @@ describe('OllamaEmbeddingProvider', () => {
     const p = new OllamaEmbeddingProvider(cfg(), {
       fetchFn: seq([ok({ embedding: [1, 0, 0] }), ok({ embedding: [0, 1, 0] })]),
     });
-    expect(await p.embedBatch(['a', 'b'])).toEqual([[1, 0, 0], [0, 1, 0]]);
+    expect(await p.embedBatch(['a', 'b'])).toEqual([
+      [1, 0, 0],
+      [0, 1, 0],
+    ]);
   });
 
   it('maps a timeout (AbortError) to a retryable provider_timeout and retries', async () => {
@@ -105,7 +121,9 @@ describe('OllamaEmbeddingProvider', () => {
   });
 
   it('rejects a dimension mismatch', async () => {
-    const p = new OllamaEmbeddingProvider(cfg({ dimensions: 4 }), { fetchFn: seq([ok({ embedding: [1, 2, 3] })]) });
+    const p = new OllamaEmbeddingProvider(cfg({ dimensions: 4 }), {
+      fetchFn: seq([ok({ embedding: [1, 2, 3] })]),
+    });
     await expect(p.embed('x')).rejects.toMatchObject({ code: 'invalid_response' });
   });
 });
@@ -163,7 +181,9 @@ function recorder(steps: Array<HttpResponse | Error>): { fetchFn: FetchFn; calls
  * Structural error capture: avoids importing EmbeddingError and avoids any
  * framework-specific mocking, so the assertions stay on `code` and `message`.
  */
-async function catchErr(p: Promise<unknown>): Promise<{ name: string; code: string; message: string }> {
+async function catchErr(
+  p: Promise<unknown>,
+): Promise<{ name: string; code: string; message: string }> {
   try {
     await p;
   } catch (e) {
@@ -187,16 +207,31 @@ describe('OpenAIEmbeddingProvider', () => {
   });
 
   it('exposes the configured version', () => {
-    const p = new OpenAIEmbeddingProvider(oaiCfg({ dimensions: 1536 }), { fetchFn: recorder([]).fetchFn });
+    const p = new OpenAIEmbeddingProvider(oaiCfg({ dimensions: 1536 }), {
+      fetchFn: recorder([]).fetchFn,
+    });
     expect(p.version).toEqual({ model: 'text-embedding-3-small', dimensions: 1536, revision: 1 });
   });
 
   it('sends ONE request for a batch and orders results by the response index', async () => {
     // Deliberately scrambled: array position 0 carries index 2.
-    const r = recorder([oaiOk([[7, 8, 9], [1, 2, 3], [4, 5, 6]], [2, 0, 1])]);
+    const r = recorder([
+      oaiOk(
+        [
+          [7, 8, 9],
+          [1, 2, 3],
+          [4, 5, 6],
+        ],
+        [2, 0, 1],
+      ),
+    ]);
     const p = new OpenAIEmbeddingProvider(oaiCfg(), { fetchFn: r.fetchFn });
 
-    expect(await p.embedBatch(['a', 'b', 'c'])).toEqual([[1, 2, 3], [4, 5, 6], [7, 8, 9]]);
+    expect(await p.embedBatch(['a', 'b', 'c'])).toEqual([
+      [1, 2, 3],
+      [4, 5, 6],
+      [7, 8, 9],
+    ]);
     expect(r.calls.length).toBe(1);
     expect(r.calls[0].body).toEqual({ model: 'text-embedding-3-small', input: ['a', 'b', 'c'] });
   });
@@ -216,21 +251,33 @@ describe('OpenAIEmbeddingProvider', () => {
   });
 
   it('rejects a response with no data array', async () => {
-    const p = new OpenAIEmbeddingProvider(oaiCfg(), { fetchFn: recorder([ok({ object: 'list' })]).fetchFn });
+    const p = new OpenAIEmbeddingProvider(oaiCfg(), {
+      fetchFn: recorder([ok({ object: 'list' })]).fetchFn,
+    });
     const e = await catchErr(p.embed('hello'));
     expect(e.code).toBe('invalid_response');
     expect(e.message).toMatch(/missing a "data" array/);
   });
 
   it('rejects the wrong number of embeddings', async () => {
-    const p = new OpenAIEmbeddingProvider(oaiCfg(), { fetchFn: recorder([oaiOk([[1, 2, 3]])]).fetchFn });
+    const p = new OpenAIEmbeddingProvider(oaiCfg(), {
+      fetchFn: recorder([oaiOk([[1, 2, 3]])]).fetchFn,
+    });
     const e = await catchErr(p.embedBatch(['a', 'b']));
     expect(e.code).toBe('invalid_response');
     expect(e.message).toMatch(/returned 1 embeddings, expected 2/);
   });
 
   it('rejects a repeated index', async () => {
-    const r = recorder([oaiOk([[1, 2, 3], [4, 5, 6]], [0, 0])]);
+    const r = recorder([
+      oaiOk(
+        [
+          [1, 2, 3],
+          [4, 5, 6],
+        ],
+        [0, 0],
+      ),
+    ]);
     const p = new OpenAIEmbeddingProvider(oaiCfg(), { fetchFn: r.fetchFn });
     const e = await catchErr(p.embedBatch(['a', 'b']));
     expect(e.code).toBe('invalid_response');
@@ -238,14 +285,18 @@ describe('OpenAIEmbeddingProvider', () => {
   });
 
   it('rejects an out-of-range index', async () => {
-    const p = new OpenAIEmbeddingProvider(oaiCfg(), { fetchFn: recorder([oaiOk([[1, 2, 3]], [5])]).fetchFn });
+    const p = new OpenAIEmbeddingProvider(oaiCfg(), {
+      fetchFn: recorder([oaiOk([[1, 2, 3]], [5])]).fetchFn,
+    });
     const e = await catchErr(p.embed('hello'));
     expect(e.code).toBe('invalid_response');
     expect(e.message).toMatch(/out-of-range index: 5/);
   });
 
   it('rejects a dimension mismatch', async () => {
-    const p = new OpenAIEmbeddingProvider(oaiCfg(), { fetchFn: recorder([oaiOk([[1, 2]])]).fetchFn });
+    const p = new OpenAIEmbeddingProvider(oaiCfg(), {
+      fetchFn: recorder([oaiOk([[1, 2]])]).fetchFn,
+    });
     const e = await catchErr(p.embed('hello'));
     expect(e.code).toBe('invalid_response');
     expect(e.message).toMatch(/expected 3, got 2/);
@@ -261,7 +312,8 @@ describe('OpenAIEmbeddingProvider', () => {
 
   it('refuses to construct without an API key', () => {
     expect(
-      () => new OpenAIEmbeddingProvider(oaiCfg({ apiKey: '   ' }), { fetchFn: recorder([]).fetchFn }),
+      () =>
+        new OpenAIEmbeddingProvider(oaiCfg({ apiKey: '   ' }), { fetchFn: recorder([]).fetchFn }),
     ).toThrowError(/EMBEDDING_API_KEY is required/);
   });
 
@@ -326,8 +378,8 @@ describe('createEmbeddingProvider', () => {
   });
 
   it('still throws a structured error for voyage', () => {
-    expect(() => createEmbeddingProvider(cfg({ provider: 'voyage' }), { fetchFn: seq([]) })).toThrowError(
-      /not implemented yet/,
-    );
+    expect(() =>
+      createEmbeddingProvider(cfg({ provider: 'voyage' }), { fetchFn: seq([]) }),
+    ).toThrowError(/not implemented yet/);
   });
 });

@@ -44,13 +44,27 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
     private readonly config: EmbeddingConfig,
     private readonly deps: ProviderDeps,
   ) {
-    this.version = { model: config.model, dimensions: config.dimensions, revision: EMBEDDING_REVISION };
-    this.policy = { timeoutMs: config.timeoutMs, retries: config.retries, backoffMs: config.backoffMs };
+    this.version = {
+      model: config.model,
+      dimensions: config.dimensions,
+      revision: EMBEDDING_REVISION,
+    };
+    this.policy = {
+      timeoutMs: config.timeoutMs,
+      retries: config.retries,
+      backoffMs: config.backoffMs,
+    };
   }
 
   async embed(text: string): Promise<Embedding> {
     const url = `${this.config.baseUrl}/api/embeddings`;
-    const body = await postJson(this.deps.fetchFn, url, { model: this.config.model, prompt: text }, {}, this.policy);
+    const body = await postJson(
+      this.deps.fetchFn,
+      url,
+      { model: this.config.model, prompt: text },
+      {},
+      this.policy,
+    );
     return this.parseEmbedding(body);
   }
 
@@ -65,7 +79,10 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
   private parseEmbedding(body: unknown): Embedding {
     const vec = (body as { embedding?: unknown } | null)?.embedding;
     if (!Array.isArray(vec) || vec.some((n) => typeof n !== 'number')) {
-      throw new EmbeddingError('invalid_response', 'Ollama response missing a numeric "embedding" array');
+      throw new EmbeddingError(
+        'invalid_response',
+        'Ollama response missing a numeric "embedding" array',
+      );
     }
     if (vec.length !== this.config.dimensions) {
       throw new EmbeddingError(
@@ -91,10 +108,21 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
     if (!key) {
       // loadEmbeddingConfig already enforces this (needsKey: true). Repeated here
       // so the class is also safe when constructed directly, e.g. from tests.
-      throw new EmbeddingError('config_invalid', 'EMBEDDING_API_KEY is required for provider "openai"');
+      throw new EmbeddingError(
+        'config_invalid',
+        'EMBEDDING_API_KEY is required for provider "openai"',
+      );
     }
-    this.version = { model: config.model, dimensions: config.dimensions, revision: EMBEDDING_REVISION };
-    this.policy = { timeoutMs: config.timeoutMs, retries: config.retries, backoffMs: config.backoffMs };
+    this.version = {
+      model: config.model,
+      dimensions: config.dimensions,
+      revision: EMBEDDING_REVISION,
+    };
+    this.policy = {
+      timeoutMs: config.timeoutMs,
+      retries: config.retries,
+      backoffMs: config.backoffMs,
+    };
     this.headers = { authorization: `Bearer ${key}` };
   }
 
@@ -147,7 +175,10 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
     for (const item of data) {
       const idx = (item as { index?: unknown } | null)?.index;
       if (typeof idx !== 'number' || !Number.isInteger(idx) || idx < 0 || idx >= expected) {
-        throw new EmbeddingError('invalid_response', `OpenAI response has an out-of-range index: ${String(idx)}`);
+        throw new EmbeddingError(
+          'invalid_response',
+          `OpenAI response has an out-of-range index: ${String(idx)}`,
+        );
       }
       if (out[idx] !== undefined) {
         throw new EmbeddingError('invalid_response', `OpenAI response repeats index ${idx}`);
@@ -181,7 +212,10 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
  * voyage is still declared so the switch is exhaustive and its absence is an
  * explicit, structured "not yet implemented" rather than a silent fallthrough.
  */
-export function createEmbeddingProvider(config: EmbeddingConfig, deps: ProviderDeps): EmbeddingProvider {
+export function createEmbeddingProvider(
+  config: EmbeddingConfig,
+  deps: ProviderDeps,
+): EmbeddingProvider {
   switch (config.provider) {
     case 'ollama':
       return new OllamaEmbeddingProvider(config, deps);
@@ -194,7 +228,10 @@ export function createEmbeddingProvider(config: EmbeddingConfig, deps: ProviderD
       );
     default: {
       const _exhaustive: never = config.provider;
-      throw new EmbeddingError('config_invalid', `Unknown embedding provider: ${String(_exhaustive)}`);
+      throw new EmbeddingError(
+        'config_invalid',
+        `Unknown embedding provider: ${String(_exhaustive)}`,
+      );
     }
   }
 }
