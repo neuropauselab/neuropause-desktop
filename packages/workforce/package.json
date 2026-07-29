@@ -1,0 +1,31 @@
+{
+  "name": "@neuropause/workforce",
+  "version": "0.0.0-preview.1",
+  "private": true,
+  "description": "NeuroPause Enterprise Management System — Wave 11 Enterprise AI Workforce Platform. Composes Waves 1-10 (unchanged) into a governed AI-native workforce: a workforce runtime and agent registry (lifecycle/identity/capabilities/permissions/sessions), department/business/industry AI workers, multi-agent collaboration, a planning engine, a reasoning engine (evidence collected from real sources — never fabricated), a governed tool runtime, enterprise memory, human collaboration (reuse Wave 4 HITL), an AI organization, autonomous workflows (governance-restricted), executive AI (real runtime data only), an AI marketplace, and a worker SDK. AI operates THROUGH the existing runtime, audit chain, HITL, execution engine, and business platform — it never replaces governance. Workforce runtime/registry/planning/reasoning/memory/collaboration/SDK/marketplace/governance are LIVE-VERIFIED in-process; external LLM/voice/translation/OCR providers are ADAPTER-VERIFIED; organization tasks/business work/AI conversations/enterprise knowledge are BUSINESS-DATA-PENDING (registries start empty; never fabricated); and autonomous financial approval, payroll, banking, tax filing, clinical decisions, and legal decisions are REGULATED-EXTERNAL — represented only, never executed autonomously. Every AI action is audited on the one chain with user/org/worker/evidence/reasoning/approval/replay id.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run" },
+  "dependencies": {
+    "@neuropause/runtime": "*",
+    "@neuropause/cloud-core": "*",
+    "@neuropause/shared-cloud": "*",
+    "@neuropause/security": "*",
+    "@neuropause/persistence": "*",
+    "@neuropause/connectors": "*",
+    "@neuropause/integrations": "*",
+    "@neuropause/ai-runtime": "*",
+    "@neuropause/nems": "*",
+    "@neuropause/connectivity": "*",
+    "@neuropause/intelligence": "*",
+    "@neuropause/automation": "*",
+    "@neuropause/execution": "*",
+    "@neuropause/federation": "*",
+    "@neuropause/cloudops": "*",
+    "@neuropause/business": "*",
+    "@neuropause/industry": "*",
+    "@neuropause/workplace": "*"
+  },
+  "devDependencies": { "typescript": "^5.9.3", "vitest": "^1.6.1" }
+}

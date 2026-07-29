@@ -8,8 +8,9 @@
  *   NEUROPAUSE_OLLAMA_URL   = Ollama base URL (default http://localhost:11434)
  *   ANTHROPIC_API_KEY       = required when provider is 'claude'
  *
- * Adding GPT/Gemini later is one more branch here plus one adapter — the engine,
- * the workers, and every other module are untouched.
+ * This module is deliberately PURE (no Electron): it is the synchronous, env-only
+ * boot path used at engine construction. Config- and Vault-aware construction (the
+ * runtime path) lives in providerManager.buildModelRouter().
  */
 import { ModelRouter } from './modelRouter';
 import { ClaudeModelClient } from './claudeClient';

@@ -17,6 +17,8 @@ const REDACTIONS: { pattern: RegExp; replacement: string }[] = [
   { pattern: /[A-Za-z]:\\Users\\[^\\/\s]+/g, replacement: 'C:\\Users\\<user>' },
   // JWTs (header.payload.signature).
   { pattern: /eyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}/g, replacement: '[REDACTED_JWT]' },
+  // Bare provider API keys (Anthropic sk-ant-…, OpenAI sk-…) even without a key= prefix.
+  { pattern: /\bsk-[A-Za-z0-9._-]{8,}/g, replacement: '[REDACTED_KEY]' },
   // Authorization: Bearer <token>.
   { pattern: /Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, replacement: 'Bearer [REDACTED]' },
   // key/value secrets in JSON or env form.

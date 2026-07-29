@@ -1,0 +1,10 @@
+{
+  "environment": "staging",
+  "featureFlags": { "aiWorkforce": true, "marketplace": true, "canaryUi": true, "betaFeatures": true },
+  "aiProviders": { "default": "ollama", "ollamaUrl": "http://ollama:11434", "external": { "enabled": false } },
+  "storage": { "objectStore": "minio", "bucket": "nems-staging", "endpointRef": "STORAGE_ENDPOINT" },
+  "database": { "engine": "postgres", "poolMax": 10, "sslMode": "require", "urlRef": "DATABASE_URL" },
+  "logging": { "level": "debug", "format": "json", "destination": "loki" },
+  "monitoring": { "metrics": "prometheus", "tracing": "otel", "endpointRef": "OTEL_EXPORTER_OTLP_ENDPOINT" },
+  "security": { "hsts": true, "csp": true, "secureCookies": true, "sessionTimeoutMinutes": 60, "mfaRequired": false }
+}

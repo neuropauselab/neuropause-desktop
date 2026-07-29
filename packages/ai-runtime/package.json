@@ -1,0 +1,25 @@
+{
+  "name": "@neuropause/ai-runtime",
+  "version": "0.0.0-preview.1",
+  "private": true,
+  "description": "NeuroPause Enterprise AI Runtime (NCEA 10.3) — governed AI execution on the Enterprise Runtime: providers, agents, workflows, tools, connectors, memory. Every AI action is audited and observable. PREVIEW foundation; no real LLM calls.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@neuropause/runtime": "*",
+    "@neuropause/cloud-core": "*",
+    "@neuropause/shared-cloud": "*",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^1.6.1"
+  }
+}

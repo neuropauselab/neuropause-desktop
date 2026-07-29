@@ -1,0 +1,26 @@
+# NEMS ConfigMap + Secret template. The Secret carries NO real values — keys are placeholders to be
+# injected by an external secrets manager / Vault. Never commit real secrets.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nems-config
+  namespace: nems-production
+data:
+  NODE_ENV: "production"
+  LOG_LEVEL: "info"
+  QDRANT_URL: "http://qdrant:6333"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nems-secrets
+  namespace: nems-production
+  annotations:
+    nems.io/managed-by: "vault"          # values injected at deploy time; not stored here
+type: Opaque
+stringData:
+  DATABASE_URL: "REPLACED_BY_VAULT"
+  REDIS_URL: "REPLACED_BY_VAULT"
+  JWT_SIGNING_KEY: "REPLACED_BY_VAULT"
+  ENCRYPTION_KEY: "REPLACED_BY_VAULT"

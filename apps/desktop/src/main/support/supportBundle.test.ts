@@ -35,6 +35,12 @@ describe('redactText', () => {
     expect(redactText('user saurabh@example.com logged in')).not.toContain('saurabh@example.com');
   });
 
+  it('redacts bare provider API keys', () => {
+    const key = 'sk-ant-api03-fixtureABCDEF123456';
+    expect(redactText(`auth ${key} end`)).not.toContain(key);
+    expect(redactText(`auth ${key} end`)).toContain('[REDACTED_KEY]');
+  });
+
   it('strips home-directory usernames from paths', () => {
     expect(redactText('at /Users/alice/app/main.js')).toContain('/Users/<user>');
     expect(redactText('at /Users/alice/app/main.js')).not.toContain('/Users/alice');

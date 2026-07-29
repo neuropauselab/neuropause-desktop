@@ -1895,6 +1895,22 @@ export const OnboardingCompleteStepRequest = z.object({
 });
 export type OnboardingCompleteStepRequest = z.infer<typeof OnboardingCompleteStepRequest>;
 
+// --- AI configuration (M6 writes) ---
+export const AiSetProviderRequest = z.object({ provider: z.enum(['claude', 'ollama']) }).strict();
+export type AiSetProviderRequest = z.infer<typeof AiSetProviderRequest>;
+export const AiSetModelRequest = z.object({ model: z.string() }).strict();
+export type AiSetModelRequest = z.infer<typeof AiSetModelRequest>;
+export const AiSetCredentialRequest = z
+  .object({ provider: z.literal('claude'), secret: z.string().min(1) })
+  .strict();
+export type AiSetCredentialRequest = z.infer<typeof AiSetCredentialRequest>;
+export const AiClearCredentialRequest = z.object({ provider: z.literal('claude') }).strict();
+export type AiClearCredentialRequest = z.infer<typeof AiClearCredentialRequest>;
+export const AiTestRequest = z
+  .object({ provider: z.enum(['claude', 'ollama']), secret: z.string().optional() })
+  .strict();
+export type AiTestRequest = z.infer<typeof AiTestRequest>;
+
 // --- Feedback ---
 export const FeedbackSubmitRequest = z.object({
   category: z.enum(['bug', 'idea', 'question', 'praise']),

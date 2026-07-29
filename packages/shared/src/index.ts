@@ -35,6 +35,7 @@ export * from './types/license';
 export * from './types/device';
 export * from './types/memorySync';
 export * from './types/onboarding';
+export * from './types/aiConfig';
 export * from './types/feedback';
 export * from './types/pilot';
 export * from './types/intelligence';

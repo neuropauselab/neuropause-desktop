@@ -1,0 +1,27 @@
+{
+  "name": "@neuropause/integrations",
+  "version": "0.0.0-preview.1",
+  "private": true,
+  "description": "NeuroPause Enterprise Integration & Live Provider Platform (NCEA 13.0) — production-capable adapters implementing the existing AiProvider + Connector SDK interfaces: AI providers, SaaS/OAuth connectors, database/storage connectors, sync engine, webhook framework, reliability (backoff/circuit-breaker), and observability. Every integration is labelled VERIFIED / ADAPTER-VERIFIED / INFRA-PENDING; live third-party calls need credentials + network and are not fabricated.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@neuropause/runtime": "*",
+    "@neuropause/ai-runtime": "*",
+    "@neuropause/connectors": "*",
+    "@neuropause/persistence": "*",
+    "@neuropause/cloud-core": "*",
+    "@neuropause/shared-cloud": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^1.6.1"
+  }
+}

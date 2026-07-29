@@ -76,6 +76,9 @@ export default defineConfig({
       'src/renderer/src/enterprise/**/*.test.ts',
       // PEDP cycle 2 — shell state (the Workspace tab model) is now under test.
       'src/renderer/src/state/**/*.test.ts',
+      // NCEA 11.0 — Mission Control's pure view-model (no DOM, no React): the
+      // unification command center over the existing sections + capability registries.
+      'src/renderer/src/missionControl/**/*.test.ts',
     ],
   },
   resolve: {

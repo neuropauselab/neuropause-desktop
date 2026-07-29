@@ -1,0 +1,28 @@
+{
+  "name": "@neuropause/business",
+  "version": "0.0.0-preview.1",
+  "private": true,
+  "description": "NeuroPause Enterprise Management System — Wave 8 Enterprise Business Platform & Enterprise Applications. Composes Waves 1-7 (unchanged) into a complete enterprise business operating system: CRM, sales, customer success, ERP core (double-entry posting engine), accounting, payroll, banking, tax, procurement, inventory, manufacturing, healthcare, HR, project portfolio, assets, and compliance — plus business AI integration, business automation, executive dashboards, and enterprise APIs. Domain runtimes and engines are LIVE-VERIFIED in-process over data supplied at runtime; external systems (SAP/Oracle/Dynamics/NetSuite/QuickBooks/Xero/Workday/ADP/Stripe/PayPal/Razorpay/Plaid/Epic/Cerner/FHIR/HL7/MES/SCADA) are ADAPTER-VERIFIED shapes never executed; real customers/revenue/invoices/inventory/projects/assets/financials/HR/payroll are BUSINESS-DATA-PENDING (registries start empty; never fabricated); payroll processing, government tax filing, bank transfers, healthcare EHR, insurance claims, manufacturing execution, legal filings, compliance certification, and payment settlement are REGULATED-EXTERNAL and never executed or claimed. One new additive package; every business operation is audited on the one chain with a replay id and evidence level.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run" },
+  "dependencies": {
+    "@neuropause/runtime": "*",
+    "@neuropause/cloud-core": "*",
+    "@neuropause/shared-cloud": "*",
+    "@neuropause/security": "*",
+    "@neuropause/persistence": "*",
+    "@neuropause/connectors": "*",
+    "@neuropause/integrations": "*",
+    "@neuropause/ai-runtime": "*",
+    "@neuropause/nems": "*",
+    "@neuropause/connectivity": "*",
+    "@neuropause/intelligence": "*",
+    "@neuropause/automation": "*",
+    "@neuropause/execution": "*",
+    "@neuropause/federation": "*",
+    "@neuropause/cloudops": "*"
+  },
+  "devDependencies": { "typescript": "^5.9.3", "vitest": "^1.6.1" }
+}

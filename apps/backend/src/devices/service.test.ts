@@ -8,6 +8,7 @@ import {
   revokeDevice,
   type DeviceServiceDeps,
 } from './service';
+import type { DomainEvent, DomainEventPublisher } from '../platform/events';
 
 function deps(role: string | null): DeviceServiceDeps {
   return {
@@ -88,5 +89,29 @@ describe('device service (V6.5)', () => {
     expect(revoked.trustStatus).toBe('revoked');
     await removeDevice(admin, { orgId: base.orgId, deviceId: base.deviceId, userId: base.userId });
     expect(await listDevices(admin, base.orgId, base.userId)).toHaveLength(0);
+  });
+
+  it('emits a device.registered domain event when a platform publisher is wired', async () => {
+    const events: DomainEvent[] = [];
+    const publish: DomainEventPublisher = {
+      async publish(e) {
+        events.push(e);
+      },
+    };
+    const d: DeviceServiceDeps = { ...deps('member'), publish };
+    await registerDevice(d, base);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: 'device.registered',
+      topic: 'devices',
+      partitionKey: base.orgId,
+      payload: { deviceId: 'dev-1', orgId: base.orgId },
+    });
+  });
+
+  it('does NOT require a publisher (backward compatible)', async () => {
+    // no publish wired — registration still succeeds unchanged
+    const device = await registerDevice(deps('member'), base);
+    expect(device.deviceId).toBe('dev-1');
   });
 });

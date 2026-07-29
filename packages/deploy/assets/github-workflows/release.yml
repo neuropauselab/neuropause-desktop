@@ -1,0 +1,39 @@
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Semantic version to release (e.g. 1.2.0)
+        required: true
+
+jobs:
+  release-candidate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: npm }
+      - run: npm ci
+      - name: Validate version
+        run: echo "${{ inputs.version }}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'
+      - name: Typecheck, lint, test
+        run: |
+          npx tsc -p tsconfig.base.json --noEmit
+          npx eslint packages --max-warnings 0
+          NODE_OPTIONS=--max-old-space-size=8192 npx vitest run packages
+      - name: Package artifacts
+        run: npm pack --workspaces || true
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nems-${{ inputs.version }}
+          path: "*.tgz"
+
+  production-release:
+    needs: release-candidate
+    runs-on: ubuntu-latest
+    environment: production        # requires a human approval gate on the environment
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish release notes
+        run: echo "Publishing ${{ inputs.version }} (gated by the production environment approval)"

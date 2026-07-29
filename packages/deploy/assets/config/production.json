@@ -1,0 +1,10 @@
+{
+  "environment": "production",
+  "featureFlags": { "aiWorkforce": true, "marketplace": true, "canaryUi": false, "betaFeatures": false },
+  "aiProviders": { "default": "ollama", "ollamaUrl": "http://ollama:11434", "external": { "enabled": false, "note": "adapter-verified until configured" } },
+  "storage": { "objectStore": "s3", "bucket": "nems-prod", "endpointRef": "STORAGE_ENDPOINT", "note": "credentials from secrets manager" },
+  "database": { "engine": "postgres", "poolMax": 20, "sslMode": "require", "urlRef": "DATABASE_URL" },
+  "logging": { "level": "info", "format": "json", "destination": "loki" },
+  "monitoring": { "metrics": "prometheus", "tracing": "otel", "endpointRef": "OTEL_EXPORTER_OTLP_ENDPOINT" },
+  "security": { "hsts": true, "csp": true, "secureCookies": true, "sessionTimeoutMinutes": 30, "mfaRequired": true }
+}

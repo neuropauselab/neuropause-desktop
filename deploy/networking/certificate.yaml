@@ -1,0 +1,12 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: api-neuropause033-tls
+  namespace: nems-prod
+spec:
+  secretName: api-neuropause033-tls
+  dnsNames:
+    - api.neuropause033.com
+  issuerRef:
+    name: letsencrypt-prod
+    kind: Issuer

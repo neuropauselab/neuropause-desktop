@@ -1,0 +1,18 @@
+{
+  "name": "@neuropause/operations",
+  "version": "0.0.0-preview.1",
+  "private": true,
+  "description": "NeuroPause Enterprise Reliability & Operations Platform (NCEA 15.0) — the one operations plane composed on the existing runtime: runtime health registry, centralized reliability policies (circuit breakers/bulkheads/retry/timeout/fallback reused from integrations), service coordination interfaces, job & queue reliability (retry/DLQ/poison/backpressure) on the existing scheduler, disaster-recovery drills over the persistence backup manager, distributed tracing + a unified observability dashboard on the one metrics registry, a performance/load framework, deployment strategies, operational security, and incident management wired to the one audit chain. Deterministic logic, real crypto/backup drills, and real memory/CPU sampling are VERIFIED; real clustering, load generators at scale, cloud DR, and live production deployment are INFRA-PENDING (never fabricated).",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run" },
+  "dependencies": {
+    "@neuropause/runtime": "*",
+    "@neuropause/cloud-core": "*",
+    "@neuropause/shared-cloud": "*",
+    "@neuropause/integrations": "*",
+    "@neuropause/persistence": "*"
+  },
+  "devDependencies": { "typescript": "^5.9.3", "vitest": "^1.6.1" }
+}

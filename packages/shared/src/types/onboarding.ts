@@ -32,7 +32,7 @@ export const ONBOARDING_STEPS: readonly OnboardingStepDefinition[] = [
   {
     id: 'ai_setup',
     title: 'Set up the AI engine',
-    description: 'Check the local AI engine and pick the model that will do the thinking.',
+    description: 'Choose your AI provider and add a key — or use local Ollama — in Settings.',
   },
   {
     id: 'pilot',

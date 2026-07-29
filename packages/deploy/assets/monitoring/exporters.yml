@@ -1,0 +1,15 @@
+# NEMS exporters — node, postgres, and redis exporters (represented compose fragment).
+services:
+  node-exporter:
+    image: prom/node-exporter:latest
+    ports: ["9100:9100"]
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:latest
+    environment:
+      DATA_SOURCE_NAME: "REPLACED_BY_SECRET"
+    ports: ["9187:9187"]
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+    ports: ["9121:9121"]

@@ -1,0 +1,36 @@
+# NEMS Job + CronJob — database migration (one-shot) and nightly backup.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nems-migrate
+  namespace: nems-production
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: ghcr.io/neuropause/nems-migration:latest
+          envFrom:
+            - secretRef: { name: nems-secrets }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nems-backup
+  namespace: nems-production
+spec:
+  schedule: "0 2 * * *"           # nightly at 02:00 — represents a job, not a completed backup
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: backup
+              image: ghcr.io/neuropause/nems-backup:latest
+              envFrom:
+                - secretRef: { name: nems-secrets }
+              args: ["--target", "database", "--retention-days", "30"]

@@ -164,6 +164,8 @@ import { initContinuousValidation } from './sandbox/validation';
 import { taskScheduler } from './services/taskScheduler';
 import { notificationScheduler } from './services/notificationScheduler';
 import { aiEngine } from './ai/engineInstance';
+import { engineManager } from './ai/engineManager';
+import { initAiConfig } from './ai/aiConfigIpc';
 import { handleEnterpriseApiRequest } from './api/apiGateway';
 import { collectPlanningModel } from './enterprise/planningModel';
 import { connectorService } from './connectors/connectorService';
@@ -295,6 +297,10 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // Founder AI v2: executive intelligence — intent detection → context → engine →
   // governed executive answer, with deterministic findings as the offline fallback.
   const founderAIv2 = initFounderAIv2();
+  // Upgrade the AI engine from its env-only boot router to the config + Vault-aware
+  // one (M4): async and non-blocking — the engine keeps working on the boot router
+  // if this never resolves; failures are logged, never fatal.
+  void engineManager.init();
   // Traces: governance, context, and relationship explainability.
   const trace = initTrace();
   // AI Workforce: governed, evidence-grounded workers over the intelligence layer.
@@ -376,6 +382,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   const featureFlags = await initFeatureFlags();
   const license = await initLicense();
   const onboarding = await initOnboarding();
+  // AI configuration IPC (M5, read-only surface: current provider/model, health, Ollama detect).
+  const aiConfig = initAiConfig();
   const feedback = await initFeedback();
   const pilot = await initPilot();
   const federation = await initFederation({ broadcast: deps.broadcast });
@@ -1483,6 +1491,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...featureFlags.handlers);
   defs.push(...license.handlers);
   defs.push(...onboarding.handlers);
+  defs.push(...aiConfig.handlers);
   defs.push(...feedback.handlers);
   defs.push(...pilot.handlers);
   registerDiagnosticProbes([

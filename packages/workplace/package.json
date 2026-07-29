@@ -1,0 +1,30 @@
+{
+  "name": "@neuropause/workplace",
+  "version": "0.0.0-preview.1",
+  "private": true,
+  "description": "NeuroPause Enterprise Management System — Wave 10 Enterprise Workspace & Digital Workplace Platform. Composes Waves 1-9 (unchanged) into the daily digital workplace for employees: universal workspaces, navigation, a unified inbox, documents, a knowledge platform, notes, tasks, calendar, chat, meetings, whiteboard, files, forms, workspace AI, a command center, workspace automation, dashboards, a marketplace, a workspace SDK, desktop/mobile experience, and a design system — every service composed on the existing platform (business/industry/AI/automation/governance) without duplicating functionality. Named packages/workplace (not packages/workspace, which already exists as a base package) to preserve the additive/immutable constraint. Workspace runtimes/documents/knowledge/notes/tasks/calendar/chat/whiteboard/files/forms/AI/command/dashboards/marketplace/SDK/governance are LIVE-VERIFIED in-process; email/calendar/video/storage providers and desktop/mobile capabilities are ADAPTER-VERIFIED until configured; real documents/chats/meetings/notes/knowledge/files are BUSINESS-DATA-PENDING (registries start empty; never fabricated); and legal retention, government archiving, compliance exports, and real email/video/storage/messaging infrastructure are REGULATED-EXTERNAL and never executed or claimed. One new additive package; every workspace operation is audited on the one chain with a replay id and evidence level.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run" },
+  "dependencies": {
+    "@neuropause/runtime": "*",
+    "@neuropause/cloud-core": "*",
+    "@neuropause/shared-cloud": "*",
+    "@neuropause/security": "*",
+    "@neuropause/persistence": "*",
+    "@neuropause/connectors": "*",
+    "@neuropause/integrations": "*",
+    "@neuropause/ai-runtime": "*",
+    "@neuropause/nems": "*",
+    "@neuropause/connectivity": "*",
+    "@neuropause/intelligence": "*",
+    "@neuropause/automation": "*",
+    "@neuropause/execution": "*",
+    "@neuropause/federation": "*",
+    "@neuropause/cloudops": "*",
+    "@neuropause/business": "*",
+    "@neuropause/industry": "*"
+  },
+  "devDependencies": { "typescript": "^5.9.3", "vitest": "^1.6.1" }
+}

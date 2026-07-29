@@ -87,7 +87,7 @@ export const SETTINGS_SEARCH: SettingsSearchEntry[] = [
   { label: 'Memory data', keywords: ['memory', 'forget', 'remember', 'data', 'knowledge'], domain: 'privacy', state: 'editable', targetSection: 'memory' },
   { label: 'Data sharing', keywords: ['share', 'sharing', 'federation', 'cross org'], domain: 'privacy', state: 'editable', targetSection: 'federation' },
   { label: 'Data residency', keywords: ['residency', 'region', 'data location', 'sovereignty'], domain: 'privacy', state: 'managed', targetSection: 'cloud' },
-  { label: 'AI provider & model', keywords: ['ai', 'claude', 'ollama', 'model', 'provider', 'llm', 'enable claude'], domain: 'ai', state: 'managed' },
+  { label: 'AI provider & model', keywords: ['ai', 'claude', 'ollama', 'model', 'provider', 'llm', 'enable claude', 'api key'], domain: 'ai', state: 'editable' },
   { label: 'Execution & approval policy', keywords: ['auto execution', 'automatic execution', 'auto exec', 'approval', 'autonomous'], domain: 'ai', state: 'managed', targetSection: 'auto-ops-center' },
   { label: 'Appearance', keywords: ['theme', 'dark', 'light', 'appearance', 'color'], domain: 'workspace', state: 'editable' },
   { label: 'Interface scale', keywords: ['scale', 'zoom', 'size', 'font', 'display'], domain: 'workspace', state: 'editable' },

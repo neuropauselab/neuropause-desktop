@@ -37,7 +37,7 @@ export interface AiEngineOptions {
 const DEFAULT_MAX_OUTPUT = 1024;
 
 export class AiEngine {
-  private readonly router: ModelRouter;
+  private router: ModelRouter;
   private readonly prompts: PromptManager;
   readonly audit: AiAuditLog;
   readonly usage: UsageTracker;
@@ -57,6 +57,16 @@ export class AiEngine {
 
   isConfigured(): boolean {
     return this.router.isConfigured();
+  }
+
+  /**
+   * Swap the active router in place (runtime reconfiguration). The engine instance,
+   * and with it the shared audit log and usage/cost tracking, is preserved — only
+   * the provider/model routing changes. In-flight run() calls already resolved
+   * their client, so a swap never disturbs a request already under way.
+   */
+  setRouter(router: ModelRouter): void {
+    this.router = router;
   }
 
   async run(req: AiEngineRequest): Promise<AiEngineResponse> {

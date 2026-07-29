@@ -1,0 +1,33 @@
+{
+  "name": "@neuropause/autonomous-ops",
+  "version": "0.0.0-preview.1",
+  "private": true,
+  "description": "NeuroPause Enterprise Management System — Wave 12 Enterprise Autonomous Operations Platform. Composes Waves 1-11 (unchanged) into a governed enterprise operations system that coordinates humans, AI workers, departments, business processes, projects, resources, facilities, and multiple organizations through one operational runtime: an operations runtime + mission registry, mission control, an enterprise command center, an enterprise digital twin, an orchestration engine, a mission planning engine, an operations scheduler, resource optimization, a simulation engine (projections only), predictive operations, business continuity, incident management, an SLA platform, AI workforce orchestration, an executive war room, enterprise intelligence, an operations SDK, and an operations marketplace. Named packages/autonomous-ops (not packages/operations, which already exists as a base package) to preserve the additive/immutable constraint. Operations runtime/mission-control/command-center/digital-twin-models/orchestration/scheduler/optimization/simulation/SDK/marketplace/governance are LIVE-VERIFIED in-process; external monitoring/incident/IoT/MES/ERP connectors are ADAPTER-VERIFIED; live missions/operational KPIs/capacity/workforce metrics are BUSINESS-DATA-PENDING (never fabricated; digital twin state reflects real business data only); and autonomous emergency response, financial operations, production control, healthcare decisions, and legal escalation are REGULATED-EXTERNAL — represented only. Simulations are clearly marked as projections; every operational action is audited on the one chain with a replay id.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run" },
+  "dependencies": {
+    "@neuropause/runtime": "*",
+    "@neuropause/cloud-core": "*",
+    "@neuropause/shared-cloud": "*",
+    "@neuropause/security": "*",
+    "@neuropause/persistence": "*",
+    "@neuropause/connectors": "*",
+    "@neuropause/integrations": "*",
+    "@neuropause/ai-runtime": "*",
+    "@neuropause/nems": "*",
+    "@neuropause/connectivity": "*",
+    "@neuropause/intelligence": "*",
+    "@neuropause/automation": "*",
+    "@neuropause/operations": "*",
+    "@neuropause/execution": "*",
+    "@neuropause/federation": "*",
+    "@neuropause/cloudops": "*",
+    "@neuropause/business": "*",
+    "@neuropause/industry": "*",
+    "@neuropause/workplace": "*",
+    "@neuropause/workforce": "*"
+  },
+  "devDependencies": { "typescript": "^5.9.3", "vitest": "^1.6.1" }
+}

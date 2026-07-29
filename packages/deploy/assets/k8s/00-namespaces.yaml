@@ -1,0 +1,19 @@
+# NEMS Kubernetes namespaces — development, staging, production.
+# Manifests only. These describe intended cluster state; no cluster is claimed to exist.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nems-development
+  labels: { app.kubernetes.io/part-of: nems, environment: development }
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nems-staging
+  labels: { app.kubernetes.io/part-of: nems, environment: staging }
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nems-production
+  labels: { app.kubernetes.io/part-of: nems, environment: production }

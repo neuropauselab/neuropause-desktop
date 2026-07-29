@@ -1,0 +1,26 @@
+# NEMS Ingress with TLS. The certificate is issued by cert-manager (represented); no real DNS/TLS
+# is provisioned by this manifest.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nems-ingress
+  namespace: nems-production
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "16m"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["app.nems.example.com"]
+      secretName: nems-tls
+  rules:
+    - host: app.nems.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nems-api
+                port: { number: 80 }

@@ -1,0 +1,23 @@
+{
+  "name": "@neuropause/runtime",
+  "version": "0.0.0-preview.1",
+  "private": true,
+  "description": "NeuroPause Enterprise Runtime (NCEA 10.2C) — one composition root: service registry, DI, lifecycle, event runtime, health, observability, scheduler, plugins. Reusable by backend, desktop, cloud, and future surfaces. PREVIEW foundation.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@neuropause/cloud-core": "*",
+    "@neuropause/shared-cloud": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^1.6.1"
+  }
+}

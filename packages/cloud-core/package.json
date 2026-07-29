@@ -1,0 +1,23 @@
+{
+  "name": "@neuropause/cloud-core",
+  "version": "0.0.0-preview.1",
+  "private": true,
+  "description": "NeuroPause shared cloud PLATFORM primitives (NCEA 10.2B) — event bus, sync framework, audit provenance, gateway, timeline, notifications, request signing, observability. Reusable by the backend, desktop, and future surfaces. PREVIEW foundation.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@neuropause/shared-cloud": "*",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^1.6.1"
+  }
+}

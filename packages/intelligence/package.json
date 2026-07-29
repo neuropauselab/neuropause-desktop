@@ -1,0 +1,23 @@
+{
+  "name": "@neuropause/intelligence",
+  "version": "0.0.0-preview.1",
+  "private": true,
+  "description": "NeuroPause Enterprise Management System — Wave 3 Enterprise Intelligence Platform. Composes the existing platform (runtime audit chain + event bus, ai-runtime InferencePipeline + governance + provider registry, security vault, persistence, connectors, integrations, NEMS, connectivity) into an intelligence layer: a unified knowledge graph over REAL enterprise data, persisted enterprise memory, a deterministic evidence-grounded reasoning engine, role-parameterized executive copilots, an AI workspace, a briefing engine, a unified timeline, intelligence services, model routing, search v2, and governance. Every AI answer references evidence, carries confidence metadata, is audited on the one chain, and never fabricates company information — the engine only reports what the data contains. Graph/memory/reasoning/timeline/intelligence run live over real NEMS + connectivity data; natural-language generation uses a deterministic provider (tested) with live LLM inference (Claude/GPT/Gemini/Ollama/Mistral/Qwen) adapter-verified and infra-pending on operator API keys. No automation, ERP, or predictive analytics — later waves.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run" },
+  "dependencies": {
+    "@neuropause/runtime": "*",
+    "@neuropause/cloud-core": "*",
+    "@neuropause/shared-cloud": "*",
+    "@neuropause/security": "*",
+    "@neuropause/persistence": "*",
+    "@neuropause/connectors": "*",
+    "@neuropause/integrations": "*",
+    "@neuropause/ai-runtime": "*",
+    "@neuropause/nems": "*",
+    "@neuropause/connectivity": "*"
+  },
+  "devDependencies": { "typescript": "^5.9.3", "vitest": "^1.6.1" }
+}

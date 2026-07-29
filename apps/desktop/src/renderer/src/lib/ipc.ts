@@ -410,6 +410,12 @@ import type {
   Device,
   DeviceTrustStatus,
   OnboardingStatus,
+  AiConfigDto,
+  AiHealthDto,
+  OllamaDetectDto,
+  AiProviderId,
+  AiTestResultDto,
+  MigrationStatusDto,
   OnboardingStepId,
   FeedbackCategory,
   FeedbackEntry,
@@ -2056,6 +2062,24 @@ export const ipc = {
       invoke(IpcChannel.OnboardingCompleteStep, { step }) as Promise<OnboardingStatus>,
     dismiss: () => invoke(IpcChannel.OnboardingDismiss) as Promise<OnboardingStatus>,
     reset: () => invoke(IpcChannel.OnboardingReset) as Promise<OnboardingStatus>,
+  },
+
+  aiConfig: {
+    get: () => invoke(IpcChannel.AiConfigGet) as Promise<AiConfigDto>,
+    health: () => invoke(IpcChannel.AiConfigHealth) as Promise<AiHealthDto>,
+    detectOllama: () => invoke(IpcChannel.AiConfigDetectOllama) as Promise<OllamaDetectDto>,
+    setProvider: (provider: AiProviderId) =>
+      invoke(IpcChannel.AiConfigSetProvider, { provider }) as Promise<AiConfigDto>,
+    setModel: (model: string) => invoke(IpcChannel.AiConfigSetModel, { model }) as Promise<AiConfigDto>,
+    setCredential: (secret: string) =>
+      invoke(IpcChannel.AiConfigSetCredential, { provider: 'claude', secret }) as Promise<AiConfigDto>,
+    clearCredential: () =>
+      invoke(IpcChannel.AiConfigClearCredential, { provider: 'claude' }) as Promise<AiConfigDto>,
+    test: (provider: AiProviderId, secret?: string) =>
+      invoke(IpcChannel.AiConfigTest, { provider, secret }) as Promise<AiTestResultDto>,
+    migrationStatus: () => invoke(IpcChannel.AiConfigMigrationStatus) as Promise<MigrationStatusDto>,
+    migrate: () => invoke(IpcChannel.AiConfigMigrate) as Promise<AiConfigDto>,
+    resetToEnv: () => invoke(IpcChannel.AiConfigResetToEnv) as Promise<AiConfigDto>,
   },
 
   feedback: {
