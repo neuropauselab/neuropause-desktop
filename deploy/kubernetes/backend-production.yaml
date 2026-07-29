@@ -77,7 +77,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: backend
-          image: registry.digitalocean.com/neuropause033/backend@sha256:9278a6ad2177782d16237f4c916ccd6cbdcc380b73f38ded4b086539d2e4b2de
+          image: registry.digitalocean.com/neuropause033/backend@sha256:997f87373f557655728a8be64d84a299de7b2f0952f2e2c090a20d231d00bbe6
           imagePullPolicy: IfNotPresent
           # Dockerfile CMD is "migrate && serve"; in k8s migrations are Task 4.6.
           command: ["node", "dist/index.js"]
