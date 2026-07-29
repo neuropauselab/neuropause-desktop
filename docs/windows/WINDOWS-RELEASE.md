@@ -8,7 +8,9 @@ and the macOS packaging docs.
 - A **Windows build machine or CI runner** (Phase 7 wires GitHub Actions
   `windows-latest` — the machine-free path). electron-builder cannot build
   Windows artifacts on macOS/Linux.
-- The live backend (already up: `https://api.neuropause033.com`).
+- A reachable backend at the baked URL (`https://api.neuropause033.com`).
+  **Not serving yet** — the Phase-4 backend deployment is in progress, so
+  sign-in will fail in any Windows build produced before it is live.
 - Optional but recommended: an **Authenticode code-signing certificate** (Phase
   4) to remove the SmartScreen warning.
 

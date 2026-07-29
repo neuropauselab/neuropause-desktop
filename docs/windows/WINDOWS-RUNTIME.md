@@ -31,7 +31,7 @@ uses, zero hardcoded roots).
 
 | # | Subsystem | Category | Evidence |
 | --- | --- | --- | --- |
-| 1 | Authentication | **A** | OAuth via RFC-8252 **loopback 127.0.0.1** (`auth/loopbackServer.ts:101`), no URI-scheme registration; tokens in `safeStorage` (DPAPI on Windows). Backend already live & remote. |
+| 1 | Authentication | **A** | OAuth via RFC-8252 **loopback 127.0.0.1** (`auth/loopbackServer.ts:101`), no URI-scheme registration; tokens in `safeStorage` (DPAPI on Windows). Backend is remote and not deployed yet (Phase 4). |
 | 2 | Organizations | **A** | Pure IPC → backend HTTP; no OS surface. Backend on `api.neuropause033.com`. |
 | 3 | Founder AI | **A** | `ai/founderAI.ts` — model calls + JSON persistence via getPath; no native/OS dep. |
 | 4 | Engineering AI | **A** | `ai/engineeringAI.ts` — same shape. |

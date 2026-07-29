@@ -53,9 +53,12 @@ NSIS supports silent/unattended install for MDM/scripted deployment:
    once the build is code-signed (Phase 4).
 3. The wizard installs per-user; shortcuts are created.
 4. Launching opens NeuroPause, which talks to the **baked backend URL**
-   (`https://api.neuropause033.com`) — the same live production backend the Mac
-   app uses. Sign-in, onboarding wizard, connectors (loopback OAuth), and secret
-   storage (safeStorage → Windows DPAPI) all work per the Phase-2 verification.
+   (`https://api.neuropause033.com`) — the same endpoint the Mac build targets.
+   That endpoint is **not serving yet** (Phase-4 backend deployment in
+   progress), so sign-in, the onboarding wizard, and connectors will fail in
+   any build produced today. These paths are shared with the Mac build and were
+   reviewed in Phase 2, but none of them has been exercised on Windows — no
+   `.exe` has been built yet.
 
 ## Portable build
 
