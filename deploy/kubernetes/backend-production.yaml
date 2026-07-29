@@ -84,6 +84,12 @@ spec:
           ports:
             - name: http
               containerPort: 4000
+          env:
+            # DO Managed PostgreSQL presents a per-project self-signed CA and
+            # pg-connection-string aliases sslmode=require to verify-full.
+            # Extends (does not replace) the default Mozilla bundle.
+            - name: NODE_EXTRA_CA_CERTS
+              value: /etc/nems/pg-ca/ca-certificate.crt
           envFrom:
             - configMapRef: { name: nems-backend-config }
             - secretRef:    { name: nems-embedding }
@@ -114,9 +120,18 @@ spec:
             capabilities:
               drop: ["ALL"]
           volumeMounts:
+            - name: pg-ca
+              mountPath: /etc/nems/pg-ca
+              readOnly: true
             - name: tmp
               mountPath: /tmp
       volumes:
+        - name: pg-ca
+          configMap:
+            name: nems-postgres-ca
+            items:
+              - key: ca-certificate.crt
+                path: ca-certificate.crt
         - name: tmp
           emptyDir: {}
 ---
