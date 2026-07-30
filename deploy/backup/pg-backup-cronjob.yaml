@@ -41,7 +41,7 @@ metadata:
 data:
   # Non-secret backup configuration. Bucket is operator-chosen; endpoint is the
   # Spaces region endpoint (nyc3 keeps backup traffic in-region with the cluster).
-  BUCKET: "REPLACE_WITH_BACKUP_BUCKET"
+  BUCKET: "neuropause-nems-backups"
   ENDPOINT: "https://nyc3.digitaloceanspaces.com"
   PG_PREFIX: "pg/nems-prod-pg"
 ---
