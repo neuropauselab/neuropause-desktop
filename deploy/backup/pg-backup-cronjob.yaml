@@ -1,0 +1,173 @@
+# NEMS Phase 5 — PostgreSQL logical backup automation.
+# ---------------------------------------------------------------------------
+# Takes a daily `pg_dump -Fc` (custom-format, compressed) of the managed
+# PostgreSQL and ships it to a DigitalOcean Spaces bucket. The job runs in the
+# `nems-prod` namespace so it egresses to the database over the VPC private
+# network — the database is NEVER exposed publicly for this to work.
+#
+# HONESTY / INTEGRITY NOTES (this file creates capability; it has NOT run):
+#   * The dump step proves the archive is well-formed with `pg_restore --list`
+#     (a truncated or corrupt dump fails that TOC read and the Job fails loudly).
+#   * The upload step re-reads the object with `head-object` and asserts the
+#     remote byte count equals the local byte count. A partial upload fails.
+#   * `set -euo pipefail` everywhere: any error aborts the Job non-zero. Nothing
+#     converts a failure into a silent success. kube-state-metrics exposes the
+#     Job failure, and kube-prometheus-stack's default `KubeJobFailed` alert
+#     will fire (see deploy/observability/) — so a broken backup pages, it does
+#     not pass quietly.
+#
+# OPERATOR PREREQUISITES (create out-of-band; NO secret values live in Git):
+#   # 1. PostgreSQL connection URI — use the *private* URI from the DO console
+#   #    for the specific database, so backup traffic stays on the VPC.
+#   kubectl -n nems-prod create secret generic nems-pg-backup \
+#     --from-literal=uri='postgresql://USER:PASS@private-nems-prod-pg-...:25060/DBNAME?sslmode=require'
+#
+#   # 2. Spaces (S3-compatible) access keys for the backup bucket.
+#   kubectl -n nems-prod create secret generic nems-spaces-backup \
+#     --from-literal=access_key_id='...' \
+#     --from-literal=secret_access_key='...'
+#
+#   # 3. Create the bucket first (once), and enable versioning + lifecycle
+#   #    (see spaces-lifecycle.json and README.md).
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nems-backup-config
+  namespace: nems-prod
+  labels:
+    app.kubernetes.io/part-of: neuropause
+    app.kubernetes.io/component: backup
+data:
+  # Non-secret backup configuration. Bucket is operator-chosen; endpoint is the
+  # Spaces region endpoint (nyc3 keeps backup traffic in-region with the cluster).
+  BUCKET: "REPLACE_WITH_BACKUP_BUCKET"
+  ENDPOINT: "https://nyc3.digitaloceanspaces.com"
+  PG_PREFIX: "pg/nems-prod-pg"
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nems-pg-backup
+  namespace: nems-prod
+  labels:
+    app.kubernetes.io/part-of: neuropause
+    app.kubernetes.io/component: backup
+spec:
+  schedule: "15 2 * * *"          # 02:15 UTC daily
+  timeZone: "Etc/UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 7
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/part-of: neuropause
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            fsGroup: 65532
+            seccompProfile: { type: RuntimeDefault }
+          volumes:
+            - name: work
+              emptyDir:
+                sizeLimit: 8Gi
+            - name: tmp
+              emptyDir:
+                sizeLimit: 256Mi
+          # --- Stage 1: dump + prove the archive is well-formed. ---
+          initContainers:
+            - name: pgdump
+              image: postgres:18-alpine
+              imagePullPolicy: IfNotPresent
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -euo pipefail
+                  echo "[pgdump] starting logical dump (custom format)"
+                  # -Fc: compressed custom format, restorable selectively with pg_restore.
+                  pg_dump "$PG_URI" -Fc --no-password -f /work/dump.pgc
+                  # Integrity gate: a valid archive lists its table of contents.
+                  # A truncated/corrupt dump fails here and the whole Job fails.
+                  pg_restore --list /work/dump.pgc > /work/toc.txt
+                  bytes=$(stat -c %s /work/dump.pgc)
+                  toc=$(wc -l < /work/toc.txt | tr -d ' ')
+                  echo "[pgdump] dump_bytes=${bytes} toc_entries=${toc}"
+                  test "$bytes" -gt 0
+                  test "$toc" -gt 0
+                  echo "[pgdump] OK"
+              env:
+                - name: PG_URI
+                  valueFrom:
+                    secretKeyRef: { name: nems-pg-backup, key: uri }
+                - name: HOME
+                  value: /tmp
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: ["ALL"] }
+              resources:
+                requests: { cpu: "100m", memory: "128Mi" }
+                limits: { cpu: "1", memory: "512Mi" }
+              volumeMounts:
+                - { name: work, mountPath: /work }
+                - { name: tmp, mountPath: /tmp }
+          # --- Stage 2: upload to Spaces + verify the object landed intact. ---
+          containers:
+            - name: upload
+              image: amazon/aws-cli:2.17.0
+              imagePullPolicy: IfNotPresent
+              command: ["/bin/bash", "-c"]
+              args:
+                - |
+                  set -euo pipefail
+                  test -s /work/dump.pgc
+                  KEY="${PG_PREFIX}/$(date -u +%Y/%m/%dT%H%M%SZ).dump"
+                  echo "[upload] target s3://${BUCKET}/${KEY}"
+                  aws s3 cp /work/dump.pgc "s3://${BUCKET}/${KEY}" \
+                    --endpoint-url "$ENDPOINT" --only-show-errors
+                  # Verify: remote ContentLength must equal the local size.
+                  want=$(stat -c %s /work/dump.pgc)
+                  got=$(aws s3api head-object --bucket "$BUCKET" --key "$KEY" \
+                        --endpoint-url "$ENDPOINT" --query ContentLength --output text)
+                  echo "[upload] local_bytes=${want} remote_bytes=${got} key=${KEY}"
+                  test -n "$got"
+                  test "$want" = "$got"
+                  echo "[upload] VERIFIED s3://${BUCKET}/${KEY}"
+              env:
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef: { name: nems-spaces-backup, key: access_key_id }
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef: { name: nems-spaces-backup, key: secret_access_key }
+                - name: AWS_DEFAULT_REGION
+                  value: us-east-1            # ignored by Spaces; endpoint-url governs
+                - name: AWS_EC2_METADATA_DISABLED
+                  value: "true"
+                - name: HOME
+                  value: /tmp
+                - name: BUCKET
+                  valueFrom: { configMapKeyRef: { name: nems-backup-config, key: BUCKET } }
+                - name: ENDPOINT
+                  valueFrom: { configMapKeyRef: { name: nems-backup-config, key: ENDPOINT } }
+                - name: PG_PREFIX
+                  valueFrom: { configMapKeyRef: { name: nems-backup-config, key: PG_PREFIX } }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: ["ALL"] }
+              resources:
+                requests: { cpu: "50m", memory: "128Mi" }
+                limits: { cpu: "500m", memory: "512Mi" }
+              volumeMounts:
+                - { name: work, mountPath: /work }
+                - { name: tmp, mountPath: /tmp }

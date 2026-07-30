@@ -1,0 +1,177 @@
+# NEMS Phase 5 — Qdrant (vector store) snapshot automation.
+# ---------------------------------------------------------------------------
+# Qdrant runs in-cluster (ClusterIP, nems-prod) with its own persistent volume,
+# so — unlike the managed PostgreSQL/Valkey — nothing else backs it up. This
+# CronJob calls Qdrant's full-snapshot API, downloads the snapshot, and ships it
+# to the same Spaces bucket under the `qdrant/` prefix.
+#
+#   >>> TEMPLATE: confirm QDRANT_URL (the real in-cluster service name + port)
+#   >>> and whether an API key is required before enabling. Everything else is
+#   >>> wired the same way as the PostgreSQL job (dump -> verify size -> upload
+#   >>> -> re-read and assert remote == local bytes; any error fails the Job).
+#
+# Depends on the shared `nems-backup-config` ConfigMap and `nems-spaces-backup`
+# secret created by pg-backup-cronjob.yaml — apply that first.
+#
+# HONESTY: not executed here. A real snapshot + restore drill (restore into a
+# scratch Qdrant) is part of the pre-Phase-6 validation.
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nems-qdrant-backup-config
+  namespace: nems-prod
+  labels:
+    app.kubernetes.io/part-of: neuropause
+    app.kubernetes.io/component: backup
+data:
+  QDRANT_URL: "http://REPLACE_WITH_QDRANT_SERVICE.nems-prod.svc:6333"
+  QDRANT_PREFIX: "qdrant/nems-prod"
+  snapshot.py: |
+    import json, os, sys, shutil, urllib.request, urllib.error
+
+    base = os.environ["QDRANT_URL"].rstrip("/")
+    api_key = os.environ.get("QDRANT_API_KEY", "")
+    out = "/work/qdrant.snapshot"
+
+    def call(method, path, timeout=900):
+        data = b"" if method == "POST" else None
+        r = urllib.request.Request(base + path, data=data, method=method)
+        r.add_header("Content-Type", "application/json")
+        if api_key:
+            r.add_header("api-key", api_key)
+        try:
+            return urllib.request.urlopen(r, timeout=timeout)
+        except urllib.error.HTTPError as e:
+            sys.exit("[qdrant] HTTP %s on %s %s: %s"
+                     % (e.code, method, path, e.read()[:200]))
+        except Exception as e:
+            sys.exit("[qdrant] request failed %s %s: %s" % (method, path, e))
+
+    print("[qdrant] creating full snapshot (wait=true)", flush=True)
+    body = json.load(call("POST", "/full-snapshots?wait=true"))
+    name = (body.get("result") or {}).get("name")
+    if not name:
+        sys.exit("[qdrant] no snapshot name in response: %s" % json.dumps(body)[:200])
+    print("[qdrant] snapshot=%s" % name, flush=True)
+
+    print("[qdrant] downloading", flush=True)
+    with open(out, "wb") as f:
+        shutil.copyfileobj(call("GET", "/full-snapshots/%s" % name), f)
+    size = os.path.getsize(out)
+    print("[qdrant] downloaded_bytes=%d" % size, flush=True)
+    if size <= 0:
+        sys.exit("[qdrant] snapshot is empty")
+    open("/work/name.txt", "w").write(name)
+    print("[qdrant] OK", flush=True)
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nems-qdrant-backup
+  namespace: nems-prod
+  labels:
+    app.kubernetes.io/part-of: neuropause
+    app.kubernetes.io/component: backup
+spec:
+  schedule: "45 2 * * *"          # 02:45 UTC daily (after PG)
+  timeZone: "Etc/UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 7
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/part-of: neuropause
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            fsGroup: 65532
+            seccompProfile: { type: RuntimeDefault }
+          volumes:
+            - name: work
+              emptyDir: { sizeLimit: 8Gi }
+            - name: tmp
+              emptyDir: { sizeLimit: 256Mi }
+            - name: script
+              configMap: { name: nems-qdrant-backup-config, items: [ { key: snapshot.py, path: snapshot.py } ] }
+          initContainers:
+            - name: snapshot
+              image: python:3.12-alpine
+              imagePullPolicy: IfNotPresent
+              command: ["python3", "/script/snapshot.py"]
+              env:
+                - name: QDRANT_URL
+                  valueFrom: { configMapKeyRef: { name: nems-qdrant-backup-config, key: QDRANT_URL } }
+                # Optional: create secret nems-qdrant-backup with key api_key if Qdrant requires it.
+                - name: QDRANT_API_KEY
+                  valueFrom:
+                    secretKeyRef: { name: nems-qdrant-backup, key: api_key, optional: true }
+                - name: HOME
+                  value: /tmp
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: ["ALL"] }
+              resources:
+                requests: { cpu: "50m", memory: "128Mi" }
+                limits: { cpu: "500m", memory: "512Mi" }
+              volumeMounts:
+                - { name: work, mountPath: /work }
+                - { name: tmp, mountPath: /tmp }
+                - { name: script, mountPath: /script, readOnly: true }
+          containers:
+            - name: upload
+              image: amazon/aws-cli:2.17.0
+              imagePullPolicy: IfNotPresent
+              command: ["/bin/bash", "-c"]
+              args:
+                - |
+                  set -euo pipefail
+                  test -s /work/qdrant.snapshot
+                  NAME=$(cat /work/name.txt)
+                  KEY="${QDRANT_PREFIX}/$(date -u +%Y/%m/%dT%H%M%SZ)-${NAME}"
+                  echo "[upload] target s3://${BUCKET}/${KEY}"
+                  aws s3 cp /work/qdrant.snapshot "s3://${BUCKET}/${KEY}" \
+                    --endpoint-url "$ENDPOINT" --only-show-errors
+                  want=$(stat -c %s /work/qdrant.snapshot)
+                  got=$(aws s3api head-object --bucket "$BUCKET" --key "$KEY" \
+                        --endpoint-url "$ENDPOINT" --query ContentLength --output text)
+                  echo "[upload] local_bytes=${want} remote_bytes=${got} key=${KEY}"
+                  test -n "$got"; test "$want" = "$got"
+                  echo "[upload] VERIFIED s3://${BUCKET}/${KEY}"
+              env:
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom: { secretKeyRef: { name: nems-spaces-backup, key: access_key_id } }
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom: { secretKeyRef: { name: nems-spaces-backup, key: secret_access_key } }
+                - name: AWS_DEFAULT_REGION
+                  value: us-east-1
+                - name: AWS_EC2_METADATA_DISABLED
+                  value: "true"
+                - name: HOME
+                  value: /tmp
+                - name: BUCKET
+                  valueFrom: { configMapKeyRef: { name: nems-backup-config, key: BUCKET } }
+                - name: ENDPOINT
+                  valueFrom: { configMapKeyRef: { name: nems-backup-config, key: ENDPOINT } }
+                - name: QDRANT_PREFIX
+                  valueFrom: { configMapKeyRef: { name: nems-qdrant-backup-config, key: QDRANT_PREFIX } }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: ["ALL"] }
+              resources:
+                requests: { cpu: "50m", memory: "128Mi" }
+                limits: { cpu: "500m", memory: "512Mi" }
+              volumeMounts:
+                - { name: work, mountPath: /work }
+                - { name: tmp, mountPath: /tmp }

@@ -1,0 +1,87 @@
+# NEMS Phase 5 — Alertmanager routing.
+# ---------------------------------------------------------------------------
+# Routing, grouping and inhibition are fully specified here. Delivery
+# DESTINATIONS are intentionally NOT hard-coded: each receiver reads its real
+# URL / routing key from a Kubernetes Secret the operator creates. Until those
+# secrets exist, Alertmanager will group and record alerts but delivery will
+# fail loudly - it will NOT silently claim to have paged anyone.
+#
+# Create the destination secret(s) out-of-band, e.g.:
+#   kubectl -n monitoring create secret generic alertmanager-slack \
+#     --from-literal=url='https://hooks.slack.com/services/XXX/YYY/ZZZ'
+#   kubectl -n monitoring create secret generic alertmanager-pagerduty \
+#     --from-literal=routingKey='<pd-events-v2-routing-key>'
+#
+# Then set `sendResolved`/channels/severity mapping to your team's conventions.
+# ---------------------------------------------------------------------------
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: nems-routing
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: neuropause
+    release: kube-prometheus-stack
+spec:
+  route:
+    receiver: nems-ticket           # default: warnings/tickets
+    groupBy: ["alertname", "namespace", "severity"]
+    groupWait: 30s
+    groupInterval: 5m
+    repeatInterval: 12h
+    routes:
+      - receiver: nems-page          # anything critical pages
+        matchers:
+          - name: severity
+            value: critical
+        repeatInterval: 1h
+        continue: false
+      - receiver: nems-ticket
+        matchers:
+          - name: severity
+            value: warning
+        repeatInterval: 12h
+  receivers:
+    - name: nems-page
+      # Primary paging path. PagerDuty routing key comes from a Secret.
+      pagerdutyConfigs:
+        - routingKey:
+            name: alertmanager-pagerduty
+            key: routingKey
+          sendResolved: true
+          description: '{{ .CommonAnnotations.summary }}'
+          severity: critical
+      # Secondary: a critical Slack channel (URL from a Secret).
+      slackConfigs:
+        - apiURL:
+            name: alertmanager-slack
+            key: url
+          channel: '#nems-oncall-critical'
+          sendResolved: true
+          title: '[CRITICAL] {{ .CommonLabels.alertname }}'
+          text: >-
+            {{ range .Alerts }}*{{ .Annotations.summary }}*
+            {{ .Annotations.description }}
+            Runbook: {{ .Annotations.runbook_url }}
+            {{ end }}
+    - name: nems-ticket
+      slackConfigs:
+        - apiURL:
+            name: alertmanager-slack
+            key: url
+          channel: '#nems-oncall'
+          sendResolved: true
+          title: '[{{ .CommonLabels.severity }}] {{ .CommonLabels.alertname }}'
+          text: >-
+            {{ range .Alerts }}{{ .Annotations.summary }} — {{ .Annotations.description }}
+            Runbook: {{ .Annotations.runbook_url }}
+            {{ end }}
+  inhibitRules:
+    # A firing critical for a service suppresses the matching warning for it.
+    - sourceMatch:
+        - name: severity
+          value: critical
+      targetMatch:
+        - name: severity
+          value: warning
+      equal: ["alertname", "service"]

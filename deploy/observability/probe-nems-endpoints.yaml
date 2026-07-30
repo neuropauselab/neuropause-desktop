@@ -1,0 +1,51 @@
+# NEMS Phase 5 — Probe objects: external SLIs for the real production endpoint.
+# probe_success / probe_http_duration_seconds / probe_ssl_earliest_cert_expiry
+# from these become the availability, latency and cert-expiry signals used by
+# the SLO rules, alerts and dashboards.
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: nems-edge-health
+  namespace: monitoring
+  labels: { app.kubernetes.io/part-of: neuropause, release: kube-prometheus-stack }
+spec:
+  interval: 30s
+  scrapeTimeout: 10s
+  module: http_2xx
+  prober:
+    url: blackbox-exporter.monitoring.svc:9115
+    scheme: http
+    path: /probe
+  targets:
+    staticConfig:
+      static:
+        - https://api.neuropause033.com/health
+        - https://api.neuropause033.com/live
+      labels:
+        service: nems-backend
+        tier: edge
+---
+# Default-deny assurance: /metrics must be answered by the Gateway proxy (404),
+# never reach the app publicly. probe_success==1 here means the 404 held.
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: nems-edge-denylist
+  namespace: monitoring
+  labels: { app.kubernetes.io/part-of: neuropause, release: kube-prometheus-stack }
+spec:
+  interval: 5m
+  scrapeTimeout: 10s
+  module: http_404
+  prober:
+    url: blackbox-exporter.monitoring.svc:9115
+    scheme: http
+    path: /probe
+  targets:
+    staticConfig:
+      static:
+        - https://api.neuropause033.com/metrics
+      labels:
+        service: nems-backend
+        tier: edge-denylist
