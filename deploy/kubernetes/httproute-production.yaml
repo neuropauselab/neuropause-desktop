@@ -1,0 +1,79 @@
+# NEMS Version 2.0 - Program 2
+# Production HTTPRoute: public HTTPS entry point for the NEMS backend.
+#
+# Every value below was measured from the live cluster in Task 4.5a, not assumed:
+#   parentRefs.name        nems-gateway
+#   parentRefs.namespace   nems-prod   (this route lives in the same namespace)
+#   parentRefs.sectionName https   (the HTTPS/443 listener, tls.mode Terminate)
+#   hostnames              api.neuropause033.com   (exact match to the listener hostname)
+#   backendRefs.port       80   (the Service port; the container listens on 4000)
+#
+# The listener sets allowedRoutes.namespaces.from: Same, so this route must
+# stay in nems-prod to attach. The Service is in the same namespace, so no
+# ReferenceGrant is required.
+#
+# Path prefixes are ENUMERATED, not a catch-all "/". This is a default-deny
+# surface: anything not listed here is answered by the Gateway, never reaching
+# the application. /metrics is unauthenticated and is deliberately absent, so
+# it is not publicly reachable. Adding a new public API prefix requires an
+# edit here and a redeploy.
+#
+# Rule layout: single rule with 10 matches (matches maxItems=64)
+#
+# The HTTP/80 listener is intentionally left unrouted. An HTTP-to-HTTPS
+# redirect is a separate, previously deferred change.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: nems-backend
+  namespace: nems-prod
+  labels:
+    app.kubernetes.io/name: nems-backend
+    app.kubernetes.io/component: route
+    app.kubernetes.io/part-of: neuropause
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: nems-gateway
+      namespace: nems-prod
+      sectionName: https
+  hostnames:
+    - api.neuropause033.com
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /auth
+        - path:
+            type: PathPrefix
+            value: /billing
+        - path:
+            type: PathPrefix
+            value: /devices
+        - path:
+            type: PathPrefix
+            value: /health
+        - path:
+            type: PathPrefix
+            value: /license
+        - path:
+            type: PathPrefix
+            value: /live
+        - path:
+            type: PathPrefix
+            value: /memory/semantic
+        - path:
+            type: PathPrefix
+            value: /organizations
+        - path:
+            type: PathPrefix
+            value: /store
+        - path:
+            type: PathPrefix
+            value: /sync
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: nems-backend
+          port: 80
