@@ -1,25 +1,40 @@
 {
-  "_comment": "NEMS Phase 5 — retention lifecycle for the backup Spaces bucket. Retention is enforced by the object store itself (the primary mechanism), independent of any in-cluster prune. Apply with the AWS CLI against the Spaces endpoint: aws s3api put-bucket-lifecycle-configuration --bucket <BACKUP_BUCKET> --endpoint-url https://nyc3.digitaloceanspaces.com --lifecycle-configuration file://spaces-lifecycle.json . Enable versioning first (see README) so NoncurrentVersionExpiration applies.",
   "Rules": [
     {
       "ID": "expire-pg-backups-30d",
-      "Filter": { "Prefix": "pg/" },
+      "Filter": {
+        "Prefix": "pg/"
+      },
       "Status": "Enabled",
-      "Expiration": { "Days": 30 },
-      "NoncurrentVersionExpiration": { "NoncurrentDays": 14 }
+      "Expiration": {
+        "Days": 30
+      },
+      "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 14
+      }
     },
     {
       "ID": "expire-qdrant-backups-30d",
-      "Filter": { "Prefix": "qdrant/" },
+      "Filter": {
+        "Prefix": "qdrant/"
+      },
       "Status": "Enabled",
-      "Expiration": { "Days": 30 },
-      "NoncurrentVersionExpiration": { "NoncurrentDays": 14 }
+      "Expiration": {
+        "Days": 30
+      },
+      "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 14
+      }
     },
     {
       "ID": "abort-incomplete-multipart-7d",
-      "Filter": { "Prefix": "" },
+      "Filter": {
+        "Prefix": ""
+      },
       "Status": "Enabled",
-      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 7 }
+      "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 7
+      }
     }
   ]
 }
