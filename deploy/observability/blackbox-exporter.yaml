@@ -4,7 +4,7 @@
 # minimal registry of gauges/counters, and the app code is a Phase 1-3 artifact
 # that Phase 5 must not modify). External availability and latency are therefore
 # measured by probing the real HTTPS endpoint from inside the cluster. This is a
-# genuine SLI source (probe_success, probe_http_duration_seconds,
+# genuine SLI source (probe_success, probe_duration_seconds,
 # probe_ssl_earliest_cert_expiry), not a mock.
 # ---------------------------------------------------------------------------
 apiVersion: v1

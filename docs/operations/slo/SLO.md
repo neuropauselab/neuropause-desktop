@@ -10,7 +10,7 @@ Phase 5 observability stack; the recording rules and burn-rate alerts live in
 | SLI | Definition | Source metric |
 |-----|------------|---------------|
 | Availability | fraction of external HTTPS health probes that succeed | blackbox `probe_success{tier="edge"}` |
-| Latency | fraction of external HTTP probes completing in ≤ 0.5s | blackbox `probe_http_duration_seconds{tier="edge"}` |
+| Latency | fraction of external HTTP probes completing in ≤ 0.5s | blackbox `probe_duration_seconds{tier="edge"}` |
 | Application success | fraction of backend responses that are not 5xx | `neuropause_http_requests_total{status}` |
 
 > Honest scope: latency is measured **at the edge from inside the cluster**

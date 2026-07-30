@@ -37,7 +37,7 @@ spec:
 
         # --- latency SLI: record the per-sample "fast" bool, then average it ---
         - record: nems:edge_probe_fast
-          expr: (probe_http_duration_seconds{tier="edge",service="nems-backend"} <= bool 0.5)
+          expr: (probe_duration_seconds{tier="edge",service="nems-backend"} <= bool 0.5)
         - record: nems:slo_edge_latency:ratio_rate30m
           expr: avg_over_time(nems:edge_probe_fast[30m])
         - record: nems:slo_edge_latency:ratio_rate6h

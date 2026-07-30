@@ -1,5 +1,5 @@
 # NEMS Phase 5 — Probe objects: external SLIs for the real production endpoint.
-# probe_success / probe_http_duration_seconds / probe_ssl_earliest_cert_expiry
+# probe_success / probe_duration_seconds / probe_ssl_earliest_cert_expiry
 # from these become the availability, latency and cert-expiry signals used by
 # the SLO rules, alerts and dashboards.
 ---

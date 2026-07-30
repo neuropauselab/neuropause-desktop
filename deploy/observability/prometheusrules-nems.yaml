@@ -86,23 +86,23 @@ spec:
             runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/backend-down.md"
 
         - alert: HighLatency
-          expr: avg_over_time(probe_http_duration_seconds{tier="edge"}[5m]) > 1
+          expr: avg_over_time(probe_duration_seconds{tier="edge"}[5m]) > 1
           for: 10m
           labels: { severity: warning, owner: platform-oncall, service: nems-backend }
           annotations:
             summary: "Edge HTTP latency high on {{ $labels.instance }}"
             description: "In-cluster blackbox HTTP duration to {{ $labels.instance }} averages {{ $value }}s over 5m (Prometheus and the edge are both in nyc3, so this is near-zero-RTT server time)."
-            threshold: "avg probe_http_duration_seconds > 1s for 10m"
+            threshold: "avg probe_duration_seconds > 1s for 10m"
             runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/high-latency.md"
 
         - alert: HighLatencyCritical
-          expr: avg_over_time(probe_http_duration_seconds{tier="edge"}[5m]) > 3
+          expr: avg_over_time(probe_duration_seconds{tier="edge"}[5m]) > 3
           for: 5m
           labels: { severity: critical, owner: platform-oncall, service: nems-backend }
           annotations:
             summary: "Edge HTTP latency critically high on {{ $labels.instance }}"
             description: "Blackbox HTTP duration to {{ $labels.instance }} averages {{ $value }}s over 5m."
-            threshold: "avg probe_http_duration_seconds > 3s for 5m"
+            threshold: "avg probe_duration_seconds > 3s for 5m"
             runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/high-latency.md"
 
     # ----------------------------------------------------------- resources/pods

@@ -66,7 +66,7 @@ Scraping is a separate, in-cluster path: Prometheus (`monitoring`) →
 | Backend + core deps | `/health`, `probe_success{tier="edge",instance=".../health"}` |
 | PostgreSQL | `neuropause_pg_pool_connections`, `neuropause_health_alerts_total{component="database"}` |
 | Valkey | `neuropause_ratelimit_fallback_total`, `neuropause_health_alerts_total{component="redis"}` |
-| Edge/TLS | `probe_success`, `probe_http_duration_seconds`, `probe_ssl_earliest_cert_expiry` |
+| Edge/TLS | `probe_success`, `probe_duration_seconds`, `probe_ssl_earliest_cert_expiry` |
 | Nodes | node-exporter + kube-state-metrics series |
 
 ## Known instrumentation gaps (do not invent data for these)

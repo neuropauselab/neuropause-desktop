@@ -2,17 +2,19 @@
 # ---------------------------------------------------------------------------
 # Routing, grouping and inhibition are fully specified here. Delivery
 # DESTINATIONS are intentionally NOT hard-coded: each receiver reads its real
-# URL / routing key from a Kubernetes Secret the operator creates. Until those
-# secrets exist, Alertmanager will group and record alerts but delivery will
-# fail loudly - it will NOT silently claim to have paged anyone.
+# webhook URL from a Kubernetes Secret the operator creates. Until that secret
+# exists, the prometheus-operator REJECTS this AlertmanagerConfig (visible as
+# the PrometheusOperatorRejectedResources alert) — delivery never silently
+# no-ops.
 #
-# Create the destination secret(s) out-of-band, e.g.:
+# Current delivery landscape (set during Phase 5 live validation): Slack only.
+# Both severity tiers deliver to Slack via one webhook secret:
 #   kubectl -n monitoring create secret generic alertmanager-slack \
 #     --from-literal=url='https://hooks.slack.com/services/XXX/YYY/ZZZ'
-#   kubectl -n monitoring create secret generic alertmanager-pagerduty \
-#     --from-literal=routingKey='<pd-events-v2-routing-key>'
-#
-# Then set `sendResolved`/channels/severity mapping to your team's conventions.
+# PagerDuty can be added later by restoring a pagerdutyConfigs block on the
+# nems-page receiver plus an alertmanager-pagerduty secret.
+# Note: modern Slack webhooks are bound to one channel; the channel fields
+# below only take effect with legacy configurable webhooks.
 # ---------------------------------------------------------------------------
 apiVersion: monitoring.coreos.com/v1alpha1
 kind: AlertmanagerConfig
@@ -43,15 +45,7 @@ spec:
         repeatInterval: 12h
   receivers:
     - name: nems-page
-      # Primary paging path. PagerDuty routing key comes from a Secret.
-      pagerdutyConfigs:
-        - routingKey:
-            name: alertmanager-pagerduty
-            key: routingKey
-          sendResolved: true
-          description: '{{ .CommonAnnotations.summary }}'
-          severity: critical
-      # Secondary: a critical Slack channel (URL from a Secret).
+      # Critical tier — Slack critical channel (URL from a Secret).
       slackConfigs:
         - apiURL:
             name: alertmanager-slack

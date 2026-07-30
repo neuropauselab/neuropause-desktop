@@ -11,7 +11,7 @@
 
 ## Detection
 
-- `HighLatency` (avg `probe_http_duration_seconds` > 1s) or `HighLatencyCritical` (> 3s); `SLOLatencyBudgetBurn`.
+- `HighLatency` (avg `probe_duration_seconds` > 1s) or `HighLatencyCritical` (> 3s); `SLOLatencyBudgetBurn`.
 
 ## Diagnosis
 
@@ -31,7 +31,7 @@
 
 ## Validation
 
-- `probe_http_duration_seconds` back under target; `nems:slo_edge_latency:ratio_rate30m` recovers ≥ 0.99; burn alert clears.
+- `probe_duration_seconds` back under target; `nems:slo_edge_latency:ratio_rate30m` recovers ≥ 0.99; burn alert clears.
 
 ## Escalation
 

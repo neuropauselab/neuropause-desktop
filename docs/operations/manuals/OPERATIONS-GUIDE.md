@@ -31,7 +31,7 @@ in the [Production Manual](./PRODUCTION-MANUAL.md).
 - **Edge availability** — `probe_success{tier="edge"}` (a failing `/health`
   probe = the service or a dependency is down).
 - **Error ratio** — 5xx over total (`neuropause_http_requests_total`).
-- **Latency** — `probe_http_duration_seconds` (whole-service; per-route is a
+- **Latency** — `probe_duration_seconds` (whole-service; per-route is a
   documented gap).
 - **Dependencies** — `neuropause_pg_pool_connections`,
   `neuropause_ratelimit_fallback_total`, `neuropause_health_alerts_total`.

@@ -259,7 +259,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "probe_http_duration_seconds{tier=\"edge\"}",
+          "expr": "probe_duration_seconds{tier=\"edge\"}",
           "legendFormat": "{{instance}}",
           "format": "time_series",
           "range": true

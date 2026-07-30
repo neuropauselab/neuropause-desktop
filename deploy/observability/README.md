@@ -18,7 +18,7 @@ Nothing here modifies a Phase 1–4 resource. The backend is scraped as-is via a
 | PostgreSQL pool | `neuropause_pg_pool_connections{state}` |
 | Dependency up/down transitions | `neuropause_health_alerts_total{component,state}` |
 | Redis degradation | `neuropause_ratelimit_fallback_total{bucket}` (fires when Redis is unavailable) + `neuropause_health_alerts_total{component="redis"}` |
-| External availability + latency | blackbox `probe_success`, `probe_http_duration_seconds`, `probe_duration_seconds` |
+| External availability + latency | blackbox `probe_success`, `probe_duration_seconds` |
 | TLS certificate expiry | blackbox `probe_ssl_earliest_cert_expiry` (and cert-manager metrics if scraped) |
 | Node resources | node-exporter `node_*` |
 | Pod resources / restarts / status | kube-state-metrics `kube_pod_*`, `kube_deployment_*`, `kube_node_*` + cAdvisor `container_*` |
