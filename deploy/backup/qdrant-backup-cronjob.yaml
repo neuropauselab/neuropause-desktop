@@ -49,7 +49,7 @@ data:
             sys.exit("[qdrant] request failed %s %s: %s" % (method, path, e))
 
     print("[qdrant] creating full snapshot (wait=true)", flush=True)
-    body = json.load(call("POST", "/full-snapshots?wait=true"))
+    body = json.load(call("POST", "/snapshots?wait=true"))
     name = (body.get("result") or {}).get("name")
     if not name:
         sys.exit("[qdrant] no snapshot name in response: %s" % json.dumps(body)[:200])
@@ -57,7 +57,7 @@ data:
 
     print("[qdrant] downloading", flush=True)
     with open(out, "wb") as f:
-        shutil.copyfileobj(call("GET", "/full-snapshots/%s" % name), f)
+        shutil.copyfileobj(call("GET", "/snapshots/%s" % name), f)
     size = os.path.getsize(out)
     print("[qdrant] downloaded_bytes=%d" % size, flush=True)
     if size <= 0:
