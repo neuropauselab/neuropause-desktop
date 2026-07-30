@@ -140,6 +140,8 @@ kind: Service
 metadata:
   name: nems-backend
   namespace: nems-prod
+  labels:
+    app.kubernetes.io/name: nems-backend
 spec:
   type: ClusterIP
   selector:

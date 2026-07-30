@@ -46,15 +46,15 @@ spec:
         # --- application success ratio (non-5xx) ---
         - record: nems:slo_app_errors:ratio_rate5m
           expr: |
-            sum(rate(neuropause_http_requests_total{status=~"5.."}[5m]))
+            (sum(rate(neuropause_http_requests_total{status=~"5.."}[5m])) or vector(0))
               / clamp_min(sum(rate(neuropause_http_requests_total[5m])), 0.001)
         - record: nems:slo_app_errors:ratio_rate1h
           expr: |
-            sum(rate(neuropause_http_requests_total{status=~"5.."}[1h]))
+            (sum(rate(neuropause_http_requests_total{status=~"5.."}[1h])) or vector(0))
               / clamp_min(sum(rate(neuropause_http_requests_total[1h])), 0.001)
         - record: nems:slo_app_errors:ratio_rate6h
           expr: |
-            sum(rate(neuropause_http_requests_total{status=~"5.."}[6h]))
+            (sum(rate(neuropause_http_requests_total{status=~"5.."}[6h])) or vector(0))
               / clamp_min(sum(rate(neuropause_http_requests_total[6h])), 0.001)
 
     - name: nems.slo.burn

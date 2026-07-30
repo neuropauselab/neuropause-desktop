@@ -83,7 +83,7 @@ avg_over_time(nems:edge_probe_fast[28d])
 
 # 28-day application success attainment
 1 - (
-  sum(increase(neuropause_http_requests_total{status=~"5.."}[28d]))
+  (sum(increase(neuropause_http_requests_total{status=~"5.."}[28d])) or vector(0))
   / clamp_min(sum(increase(neuropause_http_requests_total[28d])), 1)
 )
 

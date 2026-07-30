@@ -303,7 +303,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(neuropause_http_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(neuropause_http_requests_total[5m])),0.001)",
+          "expr": "(sum(rate(neuropause_http_requests_total{status=~\"5..\"}[5m])) or vector(0)) / clamp_min(sum(rate(neuropause_http_requests_total[5m])),0.001)",
           "legendFormat": "5xx ratio",
           "format": "time_series",
           "range": true
