@@ -25,7 +25,7 @@ metadata:
     app.kubernetes.io/part-of: neuropause
     app.kubernetes.io/component: backup
 data:
-  QDRANT_URL: "http://REPLACE_WITH_QDRANT_SERVICE.nems-prod.svc:6333"
+  QDRANT_URL: "http://qdrant.nems-prod.svc:6333"
   QDRANT_PREFIX: "qdrant/nems-prod"
   snapshot.py: |
     import json, os, sys, shutil, urllib.request, urllib.error
