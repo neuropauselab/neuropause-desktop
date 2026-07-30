@@ -12,6 +12,7 @@ import { prefs, PrefKey } from '@renderer/lib/preferences';
 import { useShell } from '@renderer/state/ShellProvider';
 import { useTheme } from '@renderer/providers/ThemeProvider';
 import { SECTIONS } from './sections';
+import { useWorkspaceContexts } from '@renderer/state/WorkspaceContextProvider';
 import { BUSINESS_FAVORITE_KIND, moduleIdFromBusinessFavorite } from '@renderer/business/businessModel';
 
 type GroupKey = 'Recent' | 'Applications' | 'Plugins' | 'Sessions' | 'Downloads' | 'Go to' | 'Commands';
@@ -102,6 +103,8 @@ export function CommandPalette(): JSX.Element {
     };
   }, [commandOpen]);
 
+  const { workspaces, activeId, switchWorkspace } = useWorkspaceContexts();
+
   // Every command the palette can run, across all domains.
   const all = useMemo<CommandItem[]>(() => {
     const apps: CommandItem[] = CATALOG.map((a) => ({
@@ -157,6 +160,19 @@ export function CommandPalette(): JSX.Element {
       keywords: `go open ${sct.label}`,
       run: () => setSection(sct.id),
     }));
+
+    // Phase 6 Stage 1 — switch between local workspace contexts.
+    const workspaceCmds: CommandItem[] = workspaces
+      .filter((w) => w.id !== activeId)
+      .map((w) => ({
+        id: `wsc:${w.id}`,
+        group: 'Commands',
+        title: `Switch workspace: ${w.name}`,
+        subtitle: 'Workspace context',
+        icon: 'workspace',
+        keywords: `workspace switch context ${w.name}`,
+        run: () => void switchWorkspace(w.id),
+      }));
 
     const opsTabs: { tab: string; title: string; icon: IconName; kw: string }[] = [
       { tab: 'installed', title: 'Installed Apps', icon: 'package', kw: 'registry apps installed' },
@@ -261,8 +277,8 @@ export function CommandPalette(): JSX.Element {
       run: () => openBusiness(m.id),
     }));
 
-    return [...apps, ...plugins, ...sessions, ...downloads, ...sections, ...ops, ...conns, ...entNav, ...bizNav, ...entFavorites, ...commands];
-  }, [live, favorites, businessModules, source, setSource, openApp, openOperations, openEnterprise, openBusiness, openConnectors, setSection, toggleSidebar]);
+    return [...apps, ...plugins, ...sessions, ...downloads, ...sections, ...workspaceCmds, ...ops, ...conns, ...entNav, ...bizNav, ...entFavorites, ...commands];
+  }, [live, favorites, businessModules, workspaces, activeId, switchWorkspace, source, setSource, openApp, openOperations, openEnterprise, openBusiness, openConnectors, setSection, toggleSidebar]);
 
   // Empty query → Recent + navigation. Typing → fuzzy search across every domain.
   const groups = useMemo(() => {

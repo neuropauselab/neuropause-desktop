@@ -22,6 +22,15 @@ export const IpcChannel = {
   ThemeChanged: 'app:themeChanged',
   MenuCommand: 'menu:command',
 
+  // ── workspace contexts (Phase 6 Stage 1 — local desktop workspaces; legacy router) ──
+  WorkspaceCtxBootstrap: 'workspace-ctx:bootstrap',
+  WorkspaceCtxList: 'workspace-ctx:list',
+  WorkspaceCtxCreate: 'workspace-ctx:create',
+  WorkspaceCtxRename: 'workspace-ctx:rename',
+  WorkspaceCtxDelete: 'workspace-ctx:delete',
+  WorkspaceCtxSwitch: 'workspace-ctx:switch',
+  WorkspaceCtxUpdateSnapshot: 'workspace-ctx:update-snapshot',
+
   // ── catalog (secure bridge → backend store API) ──
   CatalogFeatured: 'catalog:featured',
   CatalogCollections: 'catalog:collections',
@@ -777,6 +786,13 @@ export const INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.WindowClose,
   IpcChannel.RuntimeGetLoginAtStartup,
   IpcChannel.RuntimeSetLoginAtStartup,
+  IpcChannel.WorkspaceCtxBootstrap,
+  IpcChannel.WorkspaceCtxList,
+  IpcChannel.WorkspaceCtxCreate,
+  IpcChannel.WorkspaceCtxRename,
+  IpcChannel.WorkspaceCtxDelete,
+  IpcChannel.WorkspaceCtxSwitch,
+  IpcChannel.WorkspaceCtxUpdateSnapshot,
 ];
 
 /** Legacy broadcasts the renderer may subscribe to. */

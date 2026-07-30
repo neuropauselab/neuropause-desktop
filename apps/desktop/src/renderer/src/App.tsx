@@ -4,7 +4,7 @@ import { ErrorBoundary } from '@renderer/components/ErrorBoundary';
 import { useAuth } from '@renderer/providers/AuthProvider';
 import { ScaleProvider } from '@renderer/state/ScaleProvider';
 import { ServicesProvider } from '@renderer/services/ServicesProvider';
-import { ShellProvider } from '@renderer/state/ShellProvider';
+import { WorkspaceScopedShellProvider } from '@renderer/state/WorkspaceContextProvider';
 import { DashboardProvider } from '@renderer/state/DashboardProvider';
 import { ToastProvider } from '@renderer/state/ToastProvider';
 import { ConnectionProvider } from '@renderer/state/ConnectionProvider';
@@ -41,7 +41,7 @@ export default function App(): JSX.Element {
     return (
       <ScaleProvider>
         <ServicesProvider>
-          <ShellProvider>
+          <WorkspaceScopedShellProvider>
             <DashboardProvider>
               <ToastProvider>
                 <ConnectionProvider>
@@ -51,7 +51,7 @@ export default function App(): JSX.Element {
                 </ConnectionProvider>
               </ToastProvider>
             </DashboardProvider>
-          </ShellProvider>
+          </WorkspaceScopedShellProvider>
         </ServicesProvider>
       </ScaleProvider>
     );

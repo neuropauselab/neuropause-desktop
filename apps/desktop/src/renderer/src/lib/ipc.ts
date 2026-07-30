@@ -15,6 +15,9 @@ import {
   type MenuCommandPayload,
   type TrayCommandPayload,
   type ThemeSource,
+  type ShellSnapshotDto,
+  type WorkspaceContextStateDto,
+  type WorkspaceTemplateId,
   type CategorySummary,
   type CollectionDto,
   type FeaturedEntry,
@@ -897,6 +900,33 @@ export const ipc = {
           sharedEntities: string[];
         }>;
       }>,
+  },
+
+  /** Phase 6 Stage 1 — local workspace contexts (multi-workspace foundation). */
+  workspaceContexts: {
+    bootstrap: (legacySnapshot: unknown | null) =>
+      invoke(
+        IpcChannel.WorkspaceCtxBootstrap,
+        legacySnapshot == null ? {} : { legacySnapshot },
+      ) as Promise<WorkspaceContextStateDto>,
+    list: () => invoke(IpcChannel.WorkspaceCtxList) as Promise<WorkspaceContextStateDto>,
+    create: (name: string, template: WorkspaceTemplateId, color?: string) =>
+      invoke(IpcChannel.WorkspaceCtxCreate, {
+        name,
+        template,
+        ...(color ? { color } : {}),
+      }) as Promise<WorkspaceContextStateDto>,
+    rename: (id: string, name: string) =>
+      invoke(IpcChannel.WorkspaceCtxRename, { id, name }) as Promise<WorkspaceContextStateDto>,
+    remove: (id: string) =>
+      invoke(IpcChannel.WorkspaceCtxDelete, { id }) as Promise<WorkspaceContextStateDto>,
+    switch: (id: string) =>
+      invoke(IpcChannel.WorkspaceCtxSwitch, { id }) as Promise<WorkspaceContextStateDto>,
+    updateSnapshot: (id: string, snapshot: ShellSnapshotDto) =>
+      invoke(IpcChannel.WorkspaceCtxUpdateSnapshot, {
+        id,
+        snapshot,
+      }) as Promise<WorkspaceContextStateDto>,
   },
 
   memory: {

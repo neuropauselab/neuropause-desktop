@@ -18,10 +18,17 @@ import {
   EmailCredentialsRequest,
   LoginOAuthRequest,
   SetThemeSourceRequest,
+  WorkspaceCtxBootstrapRequest,
+  WorkspaceCtxCreateRequest,
+  WorkspaceCtxRenameRequest,
+  WorkspaceCtxDeleteRequest,
+  WorkspaceCtxSwitchRequest,
+  WorkspaceCtxUpdateSnapshotRequest,
 } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import * as authHandlers from './handlers/auth';
 import * as appHandlers from './handlers/app';
+import * as workspaceCtxHandlers from './handlers/workspaceContexts';
 import { getActiveRuntimeService } from '../runtimeService';
 
 const log = createLogger('ipc');
@@ -70,6 +77,33 @@ const routes: Partial<Record<IpcChannelName, Route>> = {
       getActiveRuntimeService()?.setLoginAtStartup(enabled);
       return { enabled };
     },
+  },
+
+  // Phase 6 Stage 1 — local workspace contexts (multi-workspace foundation).
+  [IpcChannel.WorkspaceCtxBootstrap]: {
+    schema: WorkspaceCtxBootstrapRequest,
+    handle: (p) => workspaceCtxHandlers.bootstrap(p as WorkspaceCtxBootstrapRequest),
+  },
+  [IpcChannel.WorkspaceCtxList]: { schema: EmptyRequest, handle: () => workspaceCtxHandlers.list() },
+  [IpcChannel.WorkspaceCtxCreate]: {
+    schema: WorkspaceCtxCreateRequest,
+    handle: (p) => workspaceCtxHandlers.create(p as WorkspaceCtxCreateRequest),
+  },
+  [IpcChannel.WorkspaceCtxRename]: {
+    schema: WorkspaceCtxRenameRequest,
+    handle: (p) => workspaceCtxHandlers.rename(p as WorkspaceCtxRenameRequest),
+  },
+  [IpcChannel.WorkspaceCtxDelete]: {
+    schema: WorkspaceCtxDeleteRequest,
+    handle: (p) => workspaceCtxHandlers.remove(p as WorkspaceCtxDeleteRequest),
+  },
+  [IpcChannel.WorkspaceCtxSwitch]: {
+    schema: WorkspaceCtxSwitchRequest,
+    handle: (p) => workspaceCtxHandlers.switchTo(p as WorkspaceCtxSwitchRequest),
+  },
+  [IpcChannel.WorkspaceCtxUpdateSnapshot]: {
+    schema: WorkspaceCtxUpdateSnapshotRequest,
+    handle: (p) => workspaceCtxHandlers.updateSnapshot(p as WorkspaceCtxUpdateSnapshotRequest),
   },
 
   // Broadcast-only channels are never invoked, but must exist in the map.

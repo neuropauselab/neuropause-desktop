@@ -31,6 +31,64 @@ export const EmptyRequest = z.object({}).strict();
 // V4.2 — runtime launch-at-login toggle.
 export const SetLoginAtStartupRequest = z.object({ enabled: z.boolean() }).strict();
 
+// Phase 6 Stage 1 — Workspace Contexts (local desktop workspaces).
+export const WorkspaceTemplateIdSchema = z.enum(['blank', 'operations', 'enterprise', 'research']);
+export const WorkspaceCtxSnapshotSchema = z
+  .object({
+    activeSection: z.string().min(1).max(100),
+    tabs: z
+      .array(
+        z.object({
+          id: z.string().min(1).max(128),
+          appId: z.string().min(1).max(256),
+          title: z.string().max(300),
+          openedAt: z.number(),
+        }),
+      )
+      .max(200),
+    activeTabId: z.string().max(128).nullable(),
+  })
+  .strict();
+export const WorkspaceCtxBootstrapRequest = z.object({ legacySnapshot: z.unknown().optional() }).strict();
+export const WorkspaceCtxCreateRequest = z
+  .object({
+    name: z.string().min(1).max(60),
+    template: WorkspaceTemplateIdSchema,
+    color: z.string().max(32).optional(),
+  })
+  .strict();
+export const WorkspaceCtxRenameRequest = z
+  .object({ id: z.string().min(1).max(64), name: z.string().min(1).max(60) })
+  .strict();
+export const WorkspaceCtxDeleteRequest = z.object({ id: z.string().min(1).max(64) }).strict();
+export const WorkspaceCtxSwitchRequest = z.object({ id: z.string().min(1).max(64) }).strict();
+export const WorkspaceCtxUpdateSnapshotRequest = z
+  .object({ id: z.string().min(1).max(64), snapshot: WorkspaceCtxSnapshotSchema })
+  .strict();
+export type WorkspaceTemplateId = z.infer<typeof WorkspaceTemplateIdSchema>;
+export type WorkspaceCtxBootstrapRequest = z.infer<typeof WorkspaceCtxBootstrapRequest>;
+export type WorkspaceCtxCreateRequest = z.infer<typeof WorkspaceCtxCreateRequest>;
+export type WorkspaceCtxRenameRequest = z.infer<typeof WorkspaceCtxRenameRequest>;
+export type WorkspaceCtxDeleteRequest = z.infer<typeof WorkspaceCtxDeleteRequest>;
+export type WorkspaceCtxSwitchRequest = z.infer<typeof WorkspaceCtxSwitchRequest>;
+export type WorkspaceCtxUpdateSnapshotRequest = z.infer<typeof WorkspaceCtxUpdateSnapshotRequest>;
+/** Snapshot DTO as stored and returned (sanitized in the main process). */
+export type ShellSnapshotDto = z.infer<typeof WorkspaceCtxSnapshotSchema>;
+export interface WorkspaceContextRecordDto {
+  id: string;
+  name: string;
+  color: string;
+  template: WorkspaceTemplateId;
+  createdAt: number;
+  lastOpenedAt: number;
+  snapshot: ShellSnapshotDto;
+}
+export interface WorkspaceContextStateDto {
+  workspaces: WorkspaceContextRecordDto[];
+  activeId: string;
+  activeSnapshot: ShellSnapshotDto;
+}
+
 // V5.4 — Execute Engine.
 export const ExecuteRunRequest = z
   .object({
