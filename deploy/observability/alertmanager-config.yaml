@@ -27,6 +27,14 @@ metadata:
 spec:
   route:
     receiver: nems-ticket           # default: warnings/tickets
+    # Scope (D5 fix, pairs with alertmanagerConfigMatcherStrategy None in the
+    # Helm values): only actionable severities enter this tree - ours AND the
+    # charts defaults (e.g. KubeJobFailed for backup failures). Watchdog and
+    # info-level alerts fall through to the global null receiver.
+    matchers:
+      - name: severity
+        matchType: "=~"
+        value: "critical|warning"
     groupBy: ["alertname", "namespace", "severity"]
     groupWait: 30s
     groupInterval: 5m

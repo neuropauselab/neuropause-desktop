@@ -62,6 +62,12 @@ prometheus:
 # --- Alertmanager -----------------------------------------------------------
 alertmanager:
   alertmanagerSpec:
+    # Phase 5 LV4 fix (D5): without this, the operator injects a
+    # namespace="monitoring" matcher into the AlertmanagerConfig route, so
+    # alerts from nems-prod / unlabeled alerts fall through to the null
+    # receiver and are never delivered. None applies our routing globally.
+    alertmanagerConfigMatcherStrategy:
+      type: None
     # Pick up AlertmanagerConfig CRs cluster-wide (see alertmanager-config.yaml).
     alertmanagerConfigSelector: {}
     alertmanagerConfigNamespaceSelector: {}
