@@ -26,7 +26,7 @@ service. These are the **objectives**; the *measured* column is filled by drills
 
 | Component | RPO objective | RTO objective | Measured |
 |-----------|---------------|---------------|----------|
-| PostgreSQL (primary data) | ≤ 24h from repo logical backups; ~minutes where DO managed PITR is available | ≤ 1h *(target — unvalidated)* | TBD (drill) |
+| PostgreSQL (primary data) | ≤ 24h from repo logical backups; ~minutes where DO managed PITR is available | ≤ 1h *(target — unvalidated)* | restore-test **12 s** / 36 tables (2026-07-30, [drill record](./recovery-evidence-2026-07-30-pg-restore-drill.md)) |
 | Qdrant (vector store) | ≤ 24h (daily snapshot) | ≤ 1h *(target — unvalidated)* | TBD (drill) |
 | Valkey (cache / rate-limit) | best-effort; loss tolerated (cold cache self-heals) | ≤ 30m *(target — unvalidated)* | TBD (drill) |
 | Backend workload (stateless) | n/a (image in DOCR + manifests in Git) | ≤ 30m *(target — unvalidated)* | TBD (drill) |
