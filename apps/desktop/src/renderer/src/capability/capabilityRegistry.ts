@@ -106,6 +106,8 @@ export const CAPABILITY_REGISTRY: Capability[] = [
   { id: 'workspace.theme', label: 'Appearance / theme', domain: 'workspace', runtime: 'theme provider (nativeTheme)', state: 'production-complete', tested: false },
   { id: 'workspace.scale', label: 'Interface scale', domain: 'workspace', runtime: 'scale provider (pref)', state: 'production-complete' },
   { id: 'workspace.startup', label: 'Startup experience', domain: 'workspace', runtime: 'shell startup policy (pref)', state: 'production-complete', tested: true },
+  // Phase 6 Stage 2 — the landing dashboard, wired to live IPC feeds with per-tile failure isolation.
+  { id: 'workspace.mission-control', label: 'Mission Control (landing dashboard)', domain: 'workspace', runtime: 'renderer feed over existing IPC projections', state: 'production-complete', tested: true, note: 'Each tile loads independently and degrades to an explicit unavailable state; no mocked data.' },
   { id: 'workspace.a11y-i18n', label: 'Language, reduced-motion, high-contrast & density', domain: 'workspace', runtime: '—', state: 'hidden', note: 'No i18n system or these preference stores exist yet.' },
   { id: 'workspace.notification-prefs', label: 'Notification delivery preferences', domain: 'workspace', runtime: 'executive delivery store', state: 'needs-ipc', note: 'A persisted delivery-preference store + mutator EXISTS but is not surfaced (would require a new IPC channel; deferred).' },
 

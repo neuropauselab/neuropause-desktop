@@ -1,6 +1,7 @@
 import type { IconName } from '@renderer/components/ui/Icon';
 
 export type SectionId =
+  | 'mission-control'
   | 'home'
   | 'organization'
   | 'enterprise'
@@ -73,6 +74,10 @@ export interface SectionDef {
 }
 
 export const SECTIONS: SectionDef[] = [
+  // Phase 6 Stage 2 — Mission Control: the live landing dashboard. A pure
+  // unification surface over EXISTING sections and IPC feeds (additive; every
+  // tile loads independently and degrades to an explicit unavailable state).
+  { id: 'mission-control', label: 'Mission Control', icon: 'gauge', phase: 23, placement: 'primary' },
   { id: 'intent-home', label: "Today's Intent", icon: 'command', phase: 22, placement: 'primary' },
   // Retired in favor of the canonical intent-native home (`intent-home`). Hidden from nav, still routable.
   { id: 'decision-center', label: 'Decision Center', icon: 'sparkles', phase: 21, placement: 'primary', hidden: true },

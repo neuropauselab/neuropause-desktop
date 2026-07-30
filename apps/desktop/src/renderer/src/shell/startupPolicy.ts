@@ -5,7 +5,12 @@
  * renderer pref store and validated against the real section registry (`SECTIONS`) — it never invents a
  * destination. The fallback chain guarantees the app NEVER shows an error because a configured startup
  * section was hidden, removed, or the user lost access to it: an ineligible destination automatically
- * redirects down a safe chain (Intent Home → Organization → Workspace → Settings).
+ * redirects down a safe chain (Mission Control → Intent Home → Organization → Workspace → Settings).
+ *
+ * v1.1 (Phase 6 Stage 2): Mission Control becomes the primary landing page — it heads the fallback
+ * chain, is the smart-mode destination when there is no unfinished work, and is the ultimate backstop.
+ * Explicit user choices are untouched: `resume` still reopens the last section and `section` mode still
+ * opens the user's configured pick.
  */
 import { SECTIONS, type SectionId } from './sections';
 
@@ -14,7 +19,7 @@ export type StartupMode = 'resume' | 'section' | 'smart';
 export const STARTUP_MODES: StartupMode[] = ['resume', 'section', 'smart'];
 
 /** The safe redirect chain, most-preferred first. Every entry is a real, always-present visible section. */
-export const STARTUP_FALLBACK_CHAIN: SectionId[] = ['intent-home', 'organization', 'workspace', 'settings'];
+export const STARTUP_FALLBACK_CHAIN: SectionId[] = ['mission-control', 'intent-home', 'organization', 'workspace', 'settings'];
 
 /**
  * A section is a valid startup destination only if it really exists in the registry AND is visible in nav.
@@ -47,7 +52,7 @@ export interface StartupContext {
 
 /**
  * Resolve the startup destination with automatic, never-erroring fallback. Returns the first eligible of:
- * the mode's preferred section, then the safe chain, then Intent Home as the ultimate backstop.
+ * the mode's preferred section, then the safe chain, then Mission Control as the ultimate backstop.
  */
 export function resolveStartupSection(ctx: StartupContext): SectionId {
   const allowed = (id: SectionId): boolean => isStartupEligible(id) && (ctx.canAccess ? ctx.canAccess(id) : true);
@@ -59,9 +64,9 @@ export function resolveStartupSection(ctx: StartupContext): SectionId {
         ? ctx.configuredSection
         : ctx.hasUnfinishedWork
           ? 'workspace'
-          : 'intent-home';
+          : 'mission-control';
 
   if (isStartupEligible(preferred) && allowed(preferred)) return preferred;
   for (const f of STARTUP_FALLBACK_CHAIN) if (allowed(f)) return f;
-  return 'intent-home';
+  return 'mission-control';
 }

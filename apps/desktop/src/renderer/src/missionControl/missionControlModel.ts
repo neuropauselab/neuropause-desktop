@@ -91,6 +91,13 @@ export interface AutomationMetricsLite {
 
 export interface GovernanceMetricsLite {
   auditValid: boolean;
+  /**
+   * Phase 6 Stage 2 — true only when the audit chain has actually been verified
+   * for this snapshot. When absent/false the UI must make NO validity claim
+   * (it shows the record count instead); `auditValid` is only meaningful with
+   * `auditChecked === true`. Optional and additive: pre-Stage-2 snapshots omit it.
+   */
+  auditChecked?: boolean;
   auditRecords: number;
   events: number;
   pendingApprovals: number;

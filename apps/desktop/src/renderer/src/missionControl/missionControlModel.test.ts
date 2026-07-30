@@ -187,3 +187,26 @@ describe('status bar', () => {
     expect(s.failures).toBe(1);
   });
 });
+
+describe('Phase 6 Stage 2 — section + governance additions', () => {
+  it('the registered mission-control section joins the command index (visible nav)', () => {
+    const commands = buildCommandIndex();
+    expect(commands.some((c) => c.id === 'nav:mission-control')).toBe(true);
+  });
+
+  it('mission-control is searchable as a command through the universal index', () => {
+    const index = buildSearchIndex(sampleSnapshot());
+    const hits = searchAll('mission control', index, { kind: 'command' });
+    expect(hits.some((h) => h.id === 'nav:mission-control')).toBe(true);
+  });
+
+  it('governance.auditChecked is optional and additive — existing rollups are unchanged', () => {
+    const snap = sampleSnapshot();
+    snap.governance = { ...snap.governance, auditChecked: true };
+    expect(statusBar(snap).auditValid).toBe(true);
+    expect(missionControlOverview(snap).governance.pendingApprovals).toBe(2);
+    // Absent auditChecked (the pre-Stage-2 shape) still typechecks and rolls up identically.
+    const legacy = sampleSnapshot();
+    expect(statusBar(legacy).auditValid).toBe(true);
+  });
+});
