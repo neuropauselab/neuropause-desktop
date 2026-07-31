@@ -64,6 +64,7 @@ import {
   resolveKnowledgeQuestion,
   resolveMeetingPrep,
   resolveOperationsQuestion,
+  resolveStrategyQuestion,
   resolveWorkSummary,
   type PlanTargets,
 } from './assistantModel';
@@ -165,6 +166,10 @@ export interface AssistantServiceDeps {
   automation?: (text: string, now: string) => AssistantStructuredReport | null;
   /** Phase 6 Stage 9 (D-8) — the Operations Platform port (ten questions). */
   operations?: (text: string, now: string) => AssistantStructuredReport | null;
+  /** Phase 6 Stage 10 (D-8) — the Strategy Platform port (eleven questions:
+   *  objectives, portfolio, value, planning, capabilities, risks, board brief).
+   *  Read-only; recommendations point at existing governed surfaces. */
+  strategy?: (text: string, now: string) => AssistantStructuredReport | null;
 }
 
 export interface AssistantAskInput {
@@ -287,7 +292,9 @@ export class AssistantService {
         // Phase 6 Stage 8 — the six automation questions likewise.
         resolveAutomationQuestion(input.text) !== null ||
         // Phase 6 Stage 9 — the ten operations questions likewise.
-        resolveOperationsQuestion(input.text) !== null);
+        resolveOperationsQuestion(input.text) !== null ||
+        // Phase 6 Stage 10 — the eleven strategy questions likewise.
+        resolveStrategyQuestion(input.text) !== null);
     if (
       !cfg.operational &&
       !productivityResolved &&
@@ -1058,6 +1065,40 @@ export class AssistantService {
           }
         } catch (err) {
           unavailable.push({ system: 'operations', reason: err instanceof Error ? err.message : String(err) });
+        }
+      }
+      return { findings, assumptions, unavailable, structured, narrativePrompt };
+    }
+
+    // Phase 6 Stage 10 (D-8): the eleven strategy questions resolve through the
+    // Enterprise Strategy Platform — deterministic, read-only. Objectives,
+    // portfolio state, business value, capability analysis, and risks are all
+    // COMPUTED from live composed views; focus items are Principle-C
+    // recommendations that POINT at existing gated flows. Nothing executes here.
+    if (resolveStrategyQuestion(text) !== null) {
+      const started = Date.now();
+      if (!this.deps.strategy) {
+        unavailable.push({ system: 'strategy', reason: 'strategy port not wired' });
+      } else {
+        try {
+          const reportOut = this.deps.strategy(text, now);
+          if (reportOut) {
+            structured = reportOut;
+            narrativePrompt = 'brief.executive-summary';
+            this.toolCall(toolCalls, correlationId, started, {
+              tool: 'brief',
+              label: 'Answer from the strategy platform',
+              purpose: 'Resolve the question against the composed objectives / portfolio / value / capability map / risks (reads only).',
+              reason: 'The question matches a strategy resolver; answers cite computed views, declare unavailability, and never invent measures.',
+              expectedOutput: 'An evidence-cited strategy report.',
+              outcome: 'ok',
+              detail: `${reportOut.sections.length} section(s) for “${reportOut.title}”`,
+            });
+          } else {
+            unavailable.push({ system: 'strategy', reason: 'resolver matched but produced no report' });
+          }
+        } catch (err) {
+          unavailable.push({ system: 'strategy', reason: err instanceof Error ? err.message : String(err) });
         }
       }
       return { findings, assumptions, unavailable, structured, narrativePrompt };

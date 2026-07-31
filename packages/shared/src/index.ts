@@ -133,6 +133,10 @@ export * from './types/knowledgeAssets';
 // rollback / schedule parsing / execution monitor / dashboard).
 export * from './types/automationPlatform';
 export * from './types/operationsPlatform';
+// Phase 6 Stage 10 — Enterprise Strategy Platform (objectives / initiative
+// portfolio / business value / planning / the Enterprise Capability Map /
+// strategy health / dashboard / board report — all computed views).
+export * from './types/strategyPlatform';
 export * from './types/delivery';
 export * from './types/orgHealth';
 export * from './types/executiveCenter';

@@ -122,6 +122,13 @@ import {
   type ReadinessAssessment,
   type ServiceCatalog,
   type SlaReport,
+  type BoardReport,
+  type BusinessValueReport,
+  type ObjectivesReport,
+  type PlanningReport,
+  type PortfolioReport,
+  type StrategyDashboard,
+  type StrategyHealthView,
   type EnterpriseIntelChangeImpactRequest,
   type EnterpriseIntelRootCauseRequest,
   type EnterpriseTimelineQuery,
@@ -966,6 +973,19 @@ export const ipc = {
     incidents: () => invoke(IpcChannel.EopsIncidents) as Promise<IncidentLifecycleReport>,
     continuity: () => invoke(IpcChannel.EopsContinuity) as Promise<ContinuityView>,
     dashboard: () => invoke(IpcChannel.EopsDashboard) as Promise<OperationsDashboard>,
+  },
+
+  /** Phase 6 Stage 10 — the Enterprise Strategy Platform (read-only; every
+   *  channel RBAC-gated `strategy:read` — the P14 read scope — and cached
+   *  ~3 s server-side; distinct from the P14 `strategy:*` cluster below). */
+  estrat: {
+    objectives: () => invoke(IpcChannel.EstratObjectives) as Promise<ObjectivesReport>,
+    portfolio: () =>
+      invoke(IpcChannel.EstratPortfolio) as Promise<{ portfolio: PortfolioReport; value: BusinessValueReport }>,
+    planning: () => invoke(IpcChannel.EstratPlanning) as Promise<PlanningReport>,
+    health: () => invoke(IpcChannel.EstratHealth) as Promise<StrategyHealthView>,
+    dashboard: () => invoke(IpcChannel.EstratDashboard) as Promise<StrategyDashboard>,
+    report: () => invoke(IpcChannel.EstratReport) as Promise<BoardReport>,
   },
 
   knowledge: {

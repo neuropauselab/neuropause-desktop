@@ -225,6 +225,10 @@ import { initAutomationPlatform, type AutomationPlatformSubsystem } from './auto
 // Phase 6 Stage 9 — the Enterprise Operations Platform (orchestration-layer
 // composition; no runtime/store/scheduler/executor of its own).
 import { initOperationsPlatform, type OperationsPlatformSubsystem } from './operationsPlatform';
+// Phase 6 Stage 10 — the Enterprise Strategy Platform (read-only composition
+// over Stages 1–9 + P14; six estrat:* channels; one strategy-watch source).
+import { initStrategyPlatform, type StrategyPlatformSubsystem } from './strategyPlatform';
+import { PLAYBOOK_REGISTRY } from './automationPlatform/automationRegistry';
 import { drStore } from './federation/dr/drInstance';
 import { detectBottlenecks } from './workforce/intelligence/bottlenecks';
 import { getProcessAssessment, getProcessExplorerKpis } from './enterprise/processMiningProvider';
@@ -1460,6 +1464,10 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // ten-question port (it reads the validation subsystem, so it initializes
   // after continuous validation below).
   let operationsRef: OperationsPlatformSubsystem | null = null;
+  // Phase 6 Stage 10 — same late-bound pattern for the Strategy Platform's
+  // eleven-question port (it composes the operations platform, so it
+  // initializes after the operations platform below).
+  let strategyRef: StrategyPlatformSubsystem | null = null;
   const assistant = initAssistant({
     broadcast: deps.broadcast,
     publish: publishPlatform,
@@ -1482,6 +1490,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     // Phase 6 Stage 9 (D-8) — the ten operations questions answer from the
     // Operations Platform through the same late-bound, read-only port.
     operationsAnswer: (text, now) => operationsRef?.answerQuestion(text, now) ?? null,
+    // Phase 6 Stage 10 (D-8) — the eleven strategy questions answer from the
+    // Strategy Platform through the same late-bound, read-only port.
+    strategyAnswer: (text, now) => strategyRef?.answerQuestion(text, now) ?? null,
   });
   defs.push(...assistant.handlers);
   // Phase 6 Stage 5 (D-8) — Notification Inbox: registers the notification-center
@@ -2115,6 +2126,104 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   });
   operationsRef = operationsPlatform;
   defs.push(...operationsPlatform.handlers);
+
+  // ── Phase 6 Stage 10 — the Enterprise Strategy Platform ─────────────────
+  // ONE composition subsystem over everything above: objectives measured by
+  // existing aggregates, the initiative portfolio over existing records, the
+  // decision→outcome value view, relative-horizon planning, the Enterprise
+  // Capability Map, strategy health (S6+S7+S8+S9+P14 — P14 composed as ONE
+  // injected input, never duplicated), the executive dashboard, and the board
+  // report. Six read-only estrat:* channels under the EXISTING strategy:read
+  // scope; one strategy-watch delivery source; zero mutation surface.
+  const strategyPlatform = initStrategyPlatform({
+    insightDomains: () =>
+      insightRef?.report().health.domains.map((d) => ({ key: d.key, band: d.band, score: d.score })) ?? null,
+    insightOverallBand: () => insightRef?.report().health.band ?? null,
+    insightIncidents: () => {
+      // Domain attribution rides the Stage 9 incident lifecycle (composed, not recomputed).
+      if (!operationsRef) return null;
+      return operationsRef.incidents().incidents.map((i) => ({ domain: i.domain, severity: i.incident.severity }));
+    },
+    insightOutcomes: () =>
+      insightRef?.report().recommendations.map((r) => ({ id: r.id, stage: r.outcome.stage })) ?? null,
+    executiveKpis: () =>
+      executiveCenter.snapshot().kpis.map((k) => ({
+        key: k.key,
+        label: k.label,
+        display: k.display,
+        ...(k.band ? { band: k.band } : {}),
+      })),
+    slaStatuses: () =>
+      operationsRef
+        ? operationsRef.sla().statuses.map((s) => ({ targetId: s.targetId, status: s.status, detail: s.detail }))
+        : [],
+    readiness: () =>
+      operationsRef
+        ? operationsRef
+            .readiness()
+            .dimensions.map((d) => ({ key: d.key, state: d.state, detail: d.detail, missing: d.missing }))
+        : [],
+    s9Services: () =>
+      operationsRef
+        ? operationsRef
+            .catalog()
+            .entries.map((e) => ({ serviceId: e.serviceId, state: e.state, stateDetail: e.stateDetail }))
+        : [],
+    capacityPressure: () => (operationsRef ? operationsRef.capacity().pressure : 'unknown'),
+    playbooks: () => PLAYBOOK_REGISTRY.map((p) => ({ id: p.id, version: p.version })),
+    apFindings: () =>
+      automationRef ? automationRef.monitor().findings.map((f) => ({ kind: f.kind, severity: f.severity })) : null,
+    knowledgeTotals: () => {
+      const d = knowledgeRef?.dashboard();
+      return d ? { assets: d.inventory.total, findings: d.quality.findings } : null;
+    },
+    knowledgeMatch: (refs) => {
+      const inv = knowledgeRef?.inventory();
+      if (!inv) return refs.map((ref) => ({ ref, matched: false }));
+      return refs.map((ref) => ({
+        ref,
+        matched: inv.assets.some((asset) => asset.recordId === ref || asset.topics.includes(ref)),
+      }));
+    },
+    p14Overview: () => {
+      const s = autonomousIntel.service.overview().summary;
+      return { goalsOnTrack: s.goalsOnTrack, goalsTotal: s.goalsTotal, healthBand: s.healthBand };
+    },
+    decisions: () =>
+      decisionStore.all().map((d) => ({
+        id: d.id,
+        title: d.title,
+        category: d.category,
+        status: d.status,
+        expectedOutcome: d.expectedOutcome,
+        businessImpact: d.businessImpact,
+        fromRecommendationId: d.fromRecommendationId ?? null,
+        createdAt: d.createdAt,
+        updatedAt: d.updatedAt,
+      })),
+    projects: () =>
+      unifiedStore
+        .query({ kinds: ['project'], limit: 100_000, includeDeleted: false })
+        .items.map((e) => ({ id: e.id, title: e.title, syncState: e.syncState, status: e.status ?? null })),
+    minedTypes: () =>
+      getProcessAssessment()
+        .metrics.byType.filter((m) => m.caseCount > 0)
+        .map((m) => m.processType),
+    compliance: () => enterprise.complianceFindings().map((f) => ({ status: f.status })),
+    units: () => {
+      const org = orgStore.defaultOrg();
+      return orgStore.unitsFor(org.id).map((u) => ({ id: u.id, name: u.name, leadUserId: u.leadUserId }));
+    },
+    users: () => {
+      const org = orgStore.defaultOrg();
+      return orgStore.usersFor(org.id).map((u) => ({ id: u.id, name: u.name }));
+    },
+    healthHistory: () =>
+      healthHistoryStore.all().map((h) => ({ day: h.day, overall: h.overall, engineering: h.engineering })),
+    registerSource: (source) => deliveryEngine.register(source),
+  });
+  strategyRef = strategyPlatform;
+  defs.push(...strategyPlatform.handlers);
 
   // Startup invariant (fail-closed): with every def now assembled, no runtime-invokable
   // channel may ride on sender-trust ALONE. Collect the channels that ended up gated —

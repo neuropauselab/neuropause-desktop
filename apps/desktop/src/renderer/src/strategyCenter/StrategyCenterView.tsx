@@ -3,8 +3,9 @@
  * (Enterprise Intelligence, Cloud Control Plane, AI Workforce, Connectors, Marketplace, Industry,
  * Federation, Governance). It reasons, plans, optimizes, simulates, and recommends — but never
  * executes: every output is advisory, evidence-backed, and approval-aware. Tabs: Overview, Goals,
- * Planning, Reasoning, Optimization, Simulation, and Decisions. Reads via `ipc.strategyPlatform.*`;
- * refreshes on the existing `ecosystem:event` broadcast.
+ * Planning, Reasoning, Optimization, Simulation, Decisions, and (Phase 6 Stage 10) Enterprise —
+ * the Enterprise Strategy Platform composition with its own read-only `estrat:*` reads.
+ * Reads via `ipc.strategyPlatform.*`; refreshes on the existing `ecosystem:event` broadcast.
  */
 import { useCallback, useEffect, useState } from 'react';
 import type {
@@ -21,6 +22,7 @@ import { Icon, type IconName } from '@renderer/components/ui/Icon';
 import { ipc } from '@renderer/lib/ipc';
 import { Bar, OpsPanel, Stat, StatusBadge, StatusDot } from '@renderer/operations/primitives';
 import { EmptyState, Grid, LoadingBlock } from '@renderer/operationsCenter/primitives';
+import { EstratPlatformTab } from '@renderer/strategyPlatform/EstratPlatformTab';
 import { Pill } from '@renderer/workforce/primitives';
 import {
   approvalTone,
@@ -37,7 +39,7 @@ import {
   statusTone,
 } from './strategyCenterModel';
 
-type Tab = 'overview' | 'goals' | 'planning' | 'reasoning' | 'optimization' | 'simulation' | 'decisions';
+type Tab = 'overview' | 'goals' | 'planning' | 'reasoning' | 'optimization' | 'simulation' | 'decisions' | 'enterprise';
 
 export function StrategyCenterView(): JSX.Element {
   const [ready, setReady] = useState(false);
@@ -68,6 +70,8 @@ export function StrategyCenterView(): JSX.Element {
     { id: 'optimization', label: 'Optimization', icon: 'bolt' },
     { id: 'simulation', label: 'Simulation', icon: 'beaker' },
     { id: 'decisions', label: 'Decisions', icon: 'clipboard' },
+    // Phase 6 Stage 10 — the Enterprise Strategy Platform (read-only estrat:* composition).
+    { id: 'enterprise', label: 'Enterprise', icon: 'globe' },
   ];
 
   return (
@@ -107,7 +111,10 @@ export function StrategyCenterView(): JSX.Element {
           ))}
         </nav>
 
-        {!ready ? (
+        {tab === 'enterprise' ? (
+          // Phase 6 Stage 10 — its own estrat:* reads; independent of the P14 overview fetch.
+          <EstratPlatformTab />
+        ) : !ready ? (
           <LoadingBlock label="Loading strategic intelligence…" />
         ) : !data ? (
           <EmptyState icon="lightbulb" title="Strategic intelligence unavailable" hint="No strategy data could be loaded." />

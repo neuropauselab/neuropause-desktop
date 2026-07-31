@@ -46,6 +46,8 @@ const MUTABLE_SOURCES: { key: string; label: string; detail: string }[] = [
   { key: 'automation-watch', label: 'Automation watch', detail: 'Daily stuck/failed/aging automation findings' },
   // Phase 6 Stage 9 — the Operations Platform's governed watch source.
   { key: 'operations-watch', label: 'Operations watch', detail: 'Daily SLA breaches, readiness regressions & critical incidents' },
+  // Phase 6 Stage 10 — the Strategy Platform's governed watch source.
+  { key: 'strategy-watch', label: 'Strategy watch', detail: 'Daily objective/initiative focus items (recommendations only)' },
 ];
 
 function minutesToTime(minutes: number): string {

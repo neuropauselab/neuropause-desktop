@@ -75,6 +75,8 @@ const DEEP_LINK_SECTIONS: Record<string, SectionId> = {
   intelligence: 'intelligence',
   // Phase 6 Stage 7 — knowledge-hygiene items land in the Knowledge workspace.
   knowledge: 'knowledge',
+  // Phase 6 Stage 10 — strategy-watch items land in the EXISTING Strategy Center.
+  strategy: 'strategy-center',
   assistant: 'assistant',
   search: 'search',
   notifications: 'notifications',
@@ -107,6 +109,7 @@ export function sourceLabel(sourceKey: string): string {
     'knowledge-hygiene': 'Knowledge Hygiene',
     'automation-watch': 'Automation Watch',
     'operations-watch': 'Operations Watch',
+    'strategy-watch': 'Strategy Watch',
     system: 'System',
   };
   return LABELS[sourceKey] ?? sourceKey;

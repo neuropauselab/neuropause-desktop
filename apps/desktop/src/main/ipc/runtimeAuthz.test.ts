@@ -196,6 +196,10 @@ describe('runtime IPC surface completeness (fail-closed startup safety net)', ()
     // every eops:* handler self-carries requireAuth + autonomousops:read (the
     // P19 read scope; locked by src/main/operationsPlatform/index.stage9.test.ts).
     'eops:',
+    // Phase 6 Stage 10 — the Enterprise Strategy Platform's read-only cluster:
+    // every estrat:* handler self-carries requireAuth + strategy:read (the P14
+    // read scope; locked by src/main/strategyPlatform/index.stage10.test.ts).
+    'estrat:',
     'marketplace:',
     'webhooks:',
     'sandbox:',

@@ -828,6 +828,19 @@ export const IpcChannel = {
   EopsIncidents: 'eops:incidents',
   EopsContinuity: 'eops:continuity',
   EopsDashboard: 'eops:dashboard',
+
+  // ── Phase 6 Stage 10 — the Enterprise Strategy Platform (read-only) ──
+  // Objectives / portfolio+value / planning / strategy health (capability map,
+  // risks, alignment) / executive dashboard / board report. The `estrat:*`
+  // namespace is DISTINCT from the P14 `strategy:*` cluster (which stays
+  // untouched); both read under the same `strategy:read` permission.
+  // Zero mutation surface.
+  EstratObjectives: 'estrat:objectives',
+  EstratPortfolio: 'estrat:portfolio',
+  EstratPlanning: 'estrat:planning',
+  EstratHealth: 'estrat:health',
+  EstratDashboard: 'estrat:dashboard',
+  EstratReport: 'estrat:report',
 } as const;
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel];
@@ -1508,6 +1521,12 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.EopsIncidents,
   IpcChannel.EopsContinuity,
   IpcChannel.EopsDashboard,
+  IpcChannel.EstratObjectives,
+  IpcChannel.EstratPortfolio,
+  IpcChannel.EstratPlanning,
+  IpcChannel.EstratHealth,
+  IpcChannel.EstratDashboard,
+  IpcChannel.EstratReport,
   // Phase 6 Stage 4 — Workspace Assistant.
   IpcChannel.AssistantAsk,
   IpcChannel.AssistantConversations,

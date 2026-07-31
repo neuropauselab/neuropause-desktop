@@ -27,7 +27,9 @@ import {
   IpcChannel,
   type AssistantStructuredReport,
   type CapacityBottleneck,
+  type CapacityView,
   type ContinuityView,
+  type IncidentLifecycleReport,
   type InsightReport,
   type IntelligenceItem,
   type IntelligenceSource,
@@ -111,6 +113,10 @@ export interface OperationsPlatformSubsystem {
   catalog: () => ServiceCatalog;
   readiness: () => ReadinessAssessment;
   sla: () => SlaReport;
+  /** Phase 6 Stage 10 seam (additive): the composed capacity view. */
+  capacity: () => CapacityView;
+  /** Phase 6 Stage 10 seam (additive): the incident lifecycle report. */
+  incidents: () => IncidentLifecycleReport;
   continuity: () => Promise<ContinuityView>;
   dashboard: () => Promise<OperationsDashboard>;
   /** Assistant port: answer one of the ten operations questions, or null. */
@@ -464,6 +470,9 @@ export function initOperationsPlatform(deps: OperationsPlatformDeps): Operations
     catalog: () => build().catalog,
     readiness: () => build().readiness,
     sla: () => build().sla,
+    // Phase 6 Stage 10 seams (additive read accessors; nothing else changes).
+    capacity: () => build().capacity,
+    incidents: () => build().incidents,
     continuity,
     dashboard,
     answerQuestion,
