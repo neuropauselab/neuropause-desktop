@@ -45,6 +45,7 @@ import { useShell } from '@renderer/state/ShellProvider';
 import { Icon, type IconName } from '@renderer/components/ui/Icon';
 import { OpsPanel, Stat, StatusBadge } from '@renderer/operations/primitives';
 import { EmptyState, Field, Grid, KpiCard, LoadingBlock, Meter } from '@renderer/operationsCenter/primitives';
+import { InsightCenterHost } from '@renderer/insightCenter/InsightCenterHost';
 import {
   INTELLIGENCE_GAPS,
   averageHealth,
@@ -60,7 +61,7 @@ import {
 } from './intelligenceModel';
 
 type Tab =
-  | 'overview' | 'executive' | 'business' | 'operations' | 'engineering'
+  | 'overview' | 'insight' | 'executive' | 'business' | 'operations' | 'engineering'
   | 'commercial' | 'security' | 'ai' | 'organization' | 'developer';
 
 interface Data {
@@ -152,6 +153,8 @@ export function IntelligenceView(): JSX.Element {
 
   const tabs: { id: Tab; label: string; icon: IconName }[] = [
     { id: 'overview', label: 'Overview', icon: 'gauge' },
+    // Phase 6 Stage 6 — the Executive Intelligence Dashboard (composed insight).
+    { id: 'insight', label: 'Intelligence Center', icon: 'sparkles' },
     { id: 'executive', label: 'Executive', icon: 'command' },
     { id: 'business', label: 'Business', icon: 'layers' },
     { id: 'operations', label: 'Operations', icon: 'pulse' },
@@ -204,6 +207,7 @@ export function IntelligenceView(): JSX.Element {
         ) : (
           <div className="mx-auto" style={{ maxWidth: 1120 }}>
             {tab === 'overview' && <OverviewTab d={d} />}
+            {tab === 'insight' && <InsightCenterHost onNavigate={(section) => setSection(section)} />}
             {tab === 'executive' && <ExecutiveTab d={d} go={go} />}
             {tab === 'business' && <BusinessTab d={d} go={go} />}
             {tab === 'operations' && <OperationsTab d={d} go={go} />}

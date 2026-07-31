@@ -121,6 +121,9 @@ export * from './types/aiEngine';
 export * from './types/assistant';
 // Phase 6 Stage 5 — Notification Inbox.
 export * from './types/notifications';
+// Phase 6 Stage 6 — Enterprise Intelligence Layer (signal registry / health framework /
+// predictions / dependency graph / confidence breakdown / outcome lifecycle).
+export * from './types/insight';
 export * from './types/delivery';
 export * from './types/orgHealth';
 export * from './types/executiveCenter';

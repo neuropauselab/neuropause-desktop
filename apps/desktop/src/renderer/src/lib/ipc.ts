@@ -96,6 +96,10 @@ import {
   type EnterpriseIntelligenceReport,
   type ChangeImpactReport,
   type RootCauseReport,
+  type InsightDashboard,
+  type InsightHealthFramework,
+  type InsightPrediction,
+  type InsightReport,
   type EnterpriseIntelChangeImpactRequest,
   type EnterpriseIntelRootCauseRequest,
   type EnterpriseTimelineQuery,
@@ -885,6 +889,18 @@ export const ipc = {
       invoke(IpcChannel.EnterpriseIntelChangeImpact, req) as Promise<ChangeImpactReport>,
     rootCause: (req?: EnterpriseIntelRootCauseRequest) =>
       invoke(IpcChannel.EnterpriseIntelRootCause, req ?? {}) as Promise<RootCauseReport>,
+  },
+
+  /** Phase 6 Stage 6 — the Enterprise Intelligence Layer (read-only; every
+   *  channel RBAC-gated `intelligence:read` and cached ~3 s server-side). */
+  insight: {
+    report: () => invoke(IpcChannel.InsightReport) as Promise<InsightReport>,
+    rootCause: (req?: EnterpriseIntelRootCauseRequest) =>
+      invoke(IpcChannel.InsightRootCause, req ?? {}) as Promise<RootCauseReport>,
+    health: () => invoke(IpcChannel.InsightHealth) as Promise<InsightHealthFramework>,
+    predictions: () =>
+      invoke(IpcChannel.InsightPredictions) as Promise<{ predictions: InsightPrediction[] }>,
+    dashboard: () => invoke(IpcChannel.InsightDashboard) as Promise<InsightDashboard>,
   },
 
   knowledge: {

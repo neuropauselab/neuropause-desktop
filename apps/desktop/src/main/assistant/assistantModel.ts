@@ -610,6 +610,13 @@ export function resolveWorkSummary(text: string): boolean {
   );
 }
 
+/* ── Phase 6 Stage 6 — enterprise intelligence resolver (pure re-export) ──── */
+
+// The ten-question matcher lives with the insight model (single source of
+// truth); the service imports it from here so the assistant's resolver surface
+// stays in one module, exactly like the Stage 5 resolvers above.
+export { resolveInsightQuestion } from '../insight/insightModel';
+
 /** Detect a meeting-preparation request (D-4). */
 export function resolveMeetingPrep(text: string): boolean {
   const t = ` ${text.toLowerCase()} `;

@@ -22,6 +22,7 @@ import {
   type MeetingRow,
   type NotificationRowModel,
   type ProductivityTimelineEntry,
+  type InsightTileModel,
   type RecommendationCard,
   type TaskBoard,
   type TileState,
@@ -86,6 +87,8 @@ export interface HubViewProps {
   conversations: TileState<AssistantConversationSummary[]>;
   summary: TileState<WorkSummaryTile>;
   executive: TileState<ExecHighlight[]>;
+  /** Phase 6 Stage 6 — the composed intelligence summary tile. */
+  insight: TileState<InsightTileModel>;
   decisions: TileState<{ id: string; title: string; status: string }[]>;
   onMarkNotificationRead: (id: string) => void;
   onPrepareMeeting: (query: string) => void;
@@ -472,6 +475,57 @@ export function HubView(p: HubViewProps): JSX.Element {
                   </ul>
                 )
               }
+            </Tile>
+
+            <Tile
+              icon="sparkles"
+              title="Enterprise intelligence"
+              tile={p.insight}
+              action={
+                <button
+                  type="button"
+                  onClick={() => go('intelligence')}
+                  className="text-2xs font-medium text-muted hover:text-ink"
+                >
+                  Open Intelligence Center
+                </button>
+              }
+            >
+              {(t) => (
+                <div>
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span
+                      className={`text-base font-semibold ${
+                        t.tone === 'ok' ? 'text-sysgreen' : t.tone === 'warn' ? 'text-sysorange' : t.tone === 'bad' ? 'text-syspink' : 'text-ink'
+                      }`}
+                    >
+                      {t.healthText}
+                    </span>
+                    <span className="text-2xs text-faint">{t.signalsText} · confidence {t.confidencePct}%</span>
+                  </div>
+                  <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                    <div className="rounded-xl border border-[var(--border)] p-2">
+                      <div className="text-sm font-semibold text-ink">{t.openIncidents}</div>
+                      <div className="text-2xs text-faint">incidents</div>
+                    </div>
+                    <div className="rounded-xl border border-[var(--border)] p-2">
+                      <div className="text-sm font-semibold text-ink">{t.predictions}</div>
+                      <div className="text-2xs text-faint">predictions</div>
+                    </div>
+                    <div className="rounded-xl border border-[var(--border)] p-2">
+                      <div className="text-sm font-semibold text-ink">{t.recentlyVerified}</div>
+                      <div className="text-2xs text-faint">verified</div>
+                    </div>
+                  </div>
+                  {t.topRecommendation ? (
+                    <p className="mt-2 truncate text-2xs text-muted" title={t.topRecommendation}>
+                      Top: {t.topRecommendation}
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-2xs text-faint">No recommendations right now.</p>
+                  )}
+                </div>
+              )}
             </Tile>
 
             <Tile icon="checklist" title="Recent decisions" tile={p.decisions}>

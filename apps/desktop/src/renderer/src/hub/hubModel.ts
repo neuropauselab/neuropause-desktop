@@ -23,6 +23,7 @@ import type {
   ExecutionSession,
   ExecutiveSnapshot,
   InboxNotification,
+  InsightDashboard,
   Recommendation,
   UnifiedEntity,
 } from '@neuropause/shared';
@@ -70,6 +71,8 @@ const DEEP_LINK_SECTIONS: Record<string, SectionId> = {
   automations: 'automation-center',
   'mission-control': 'mission-control',
   'enterprise/briefings': 'intelligence',
+  // Phase 6 Stage 6 — insight items land in the Intelligence workspace.
+  intelligence: 'intelligence',
   assistant: 'assistant',
   search: 'search',
   notifications: 'notifications',
@@ -97,6 +100,8 @@ export function sourceLabel(sourceKey: string): string {
     'connector-issue': 'Connectors',
     'risk-signal': 'Risk',
     'meeting-soon': 'Meetings',
+    'insight-monitor': 'Intelligence Monitor',
+    'insight-risk-trend': 'Risk Trend',
     system: 'System',
   };
   return LABELS[sourceKey] ?? sourceKey;
@@ -529,4 +534,40 @@ export function notificationRows(items: InboxNotification[], limit = 20): Notifi
     source: sourceLabel(n.sourceKey),
     section: sectionForDeepLink(n.deepLink),
   }));
+}
+
+/* ── Phase 6 Stage 6 — Executive intelligence tile (pure projection) ─────── */
+
+export interface InsightTileModel {
+  /** "82/100 (healthy)" or "unavailable" when nothing could be scored. */
+  healthText: string;
+  band: 'healthy' | 'watch' | 'at-risk' | 'critical' | 'unknown';
+  tone: 'ok' | 'warn' | 'bad' | 'muted';
+  openIncidents: number;
+  predictions: number;
+  /** Highest-ranked recommendation title, or null. */
+  topRecommendation: string | null;
+  /** Recommendations whose underlying condition verifiably cleared. */
+  recentlyVerified: number;
+  /** Signals available / total (the honesty strip). */
+  signalsText: string;
+  confidencePct: number;
+}
+
+/** Project the insight dashboard into the Hub's Executive tile. Pure. */
+export function insightTile(d: InsightDashboard): InsightTileModel {
+  const band = d.health.band;
+  const tone = band === 'healthy' ? 'ok' : band === 'watch' ? 'warn' : band === 'unknown' ? 'muted' : 'bad';
+  const available = d.signals.filter((s) => s.available).length;
+  return {
+    healthText: d.health.overall == null ? 'unavailable' : `${d.health.overall}/100 (${band})`,
+    band,
+    tone,
+    openIncidents: d.activeIncidents.length,
+    predictions: d.predictions.length,
+    topRecommendation: d.recommendations[0]?.title ?? null,
+    recentlyVerified: d.recentlyVerified.length,
+    signalsText: `${available}/${d.signals.length} signals`,
+    confidencePct: Math.round(d.confidence.overall * 100),
+  };
 }

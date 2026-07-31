@@ -180,6 +180,10 @@ describe('runtime IPC surface completeness (fail-closed startup safety net)', ()
     'connectors:',
     'infra:',
     'intel:',
+    // Phase 6 Stage 6 — the Enterprise Intelligence Layer's read-only cluster:
+    // every insight:* handler self-carries requireAuth + intelligence:read
+    // (locked by src/main/insight/index.stage6.test.ts).
+    'insight:',
     'marketplace:',
     'webhooks:',
     'sandbox:',

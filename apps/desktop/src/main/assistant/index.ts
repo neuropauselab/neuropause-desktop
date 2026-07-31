@@ -92,6 +92,9 @@ export interface AssistantSubsystemDeps {
   executionHistory?: () => { label: string; state: string; startedAt: string }[];
   /** Phase 6 Stage 5 — recent automation run records (Work Summary input). */
   automationRuns?: () => { ok: boolean; startedAt: string }[];
+  /** Phase 6 Stage 6 (D-5) — the Enterprise Intelligence Layer's ten-question
+   *  resolver (in-process port; read-only). Late-bound by the composition root. */
+  intelligenceAnswer?: (text: string, now: string) => AssistantStructuredReport | null;
 }
 
 export interface AssistantSubsystem {
@@ -402,6 +405,9 @@ export function initAssistant(deps: AssistantSubsystemDeps): AssistantSubsystem 
         memories,
       });
     },
+
+    // Phase 6 Stage 6 (D-5): the ten questions answer from the insight layer.
+    intelligence: (text, now) => deps.intelligenceAnswer?.(text, now) ?? null,
 
     // Stage 5 addition #2: descriptive Work Summary over existing metrics.
     workSummary: (now) => {

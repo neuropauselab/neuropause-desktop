@@ -135,7 +135,7 @@ import { liveSync } from './cloud/livesync/liveSyncInstance';
 import { billingClient } from './billing/billingClient';
 import { deviceClient } from './devices/deviceClient';
 import { initVoice } from './voice/voiceSubsystem';
-import { initExecutiveDelivery } from './services/executiveDelivery';
+import { deliveryEngine, initExecutiveDelivery } from './services/executiveDelivery';
 import { initRecommendations } from './recommendations';
 import { initEnterpriseIntelligence, type RawTimelineEvent } from './enterprise/intelligence/enterpriseIntelligenceSubsystem';
 import { getRelationshipModel } from './enterprise/relationshipProvider';
@@ -146,6 +146,16 @@ import { initAssistant } from './assistant';
 // Phase 6 Stage 5 — the Notification Inbox + preference surface (D-8): the
 // EXISTING delivery engine's notification-center channel made real.
 import { initNotifications } from './notifications';
+// Phase 6 Stage 6 — the Enterprise Intelligence Layer: signal projection into
+// the EXISTING P7 engines + composed health/predictions/dashboard (no engine,
+// no store, no executor; read-only insight:* IPC + delivery-engine sources).
+import { initInsight, type InsightSubsystem } from './insight';
+import { healthHistoryStore } from './enterprise/healthHistoryInstance';
+import { collectOrgHealthInputs } from './enterprise/orgIntelligence';
+import { summarizeWorkforceHealth } from './enterprise/workforceHealth';
+import { orgStore } from './enterprise/org/orgInstance';
+import { automationStore } from './enterprise/automationInstance';
+import { unifiedStore } from './unified/storeInstance';
 import { initTrace } from './trace';
 import { initWorkforce } from './workforce';
 import { workforceProbe } from './workforce/workforceDiagnostics';
@@ -153,6 +163,7 @@ import { workerRegistry } from './workforce/registry/registryInstance';
 import { jobStore } from './workforce/runtime/jobInstance';
 import { createWorkforceActionExecutor } from './workforce/execution/workforceActionExecutor';
 import type { ExecutionBinding } from '@neuropause/shared';
+import { computeOrgHealth } from '@neuropause/shared';
 import { initEnterprise } from './enterprise';
 import { initEcosystem, runGateway, gatewayMetrics, gatewayAuditEntries } from './ecosystem';
 import { initMarketplace } from './marketplace';
@@ -1413,6 +1424,10 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // through the ExecuteEngine (same governance as `execute:run`); one
   // correlation id (`asst_…`) threads every retrieval, AI audit record,
   // approval, execution session, and timeline event of a turn.
+  // Phase 6 Stage 6 — the insight subsystem initializes AFTER the assistant (it
+  // reads conversation summaries), while the assistant's ten-question port
+  // resolves through this late-bound handle (same precedent as setAuxPorts).
+  let insightRef: InsightSubsystem | null = null;
   const assistant = initAssistant({
     broadcast: deps.broadcast,
     publish: publishPlatform,
@@ -1423,6 +1438,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       executeEngine.getHistory().map((s) => ({ label: s.label, state: s.state, startedAt: s.startedAt })),
     automationRuns: () =>
       getAutomationRunRecords().map((r) => ({ ok: r.ok, startedAt: r.startedAt })),
+    // Phase 6 Stage 6 (D-5) — the ten enterprise questions answer from the
+    // Enterprise Intelligence Layer; unmatched questions fall through unchanged.
+    intelligenceAnswer: (text, now) => insightRef?.answerQuestion(text, now) ?? null,
   });
   defs.push(...assistant.handlers);
   // Phase 6 Stage 5 (D-8) — Notification Inbox: registers the notification-center
@@ -1433,6 +1451,66 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     on: (types, handler) => platform.api.on([...types], handler),
   });
   defs.push(...notifications.handlers);
+  // Phase 6 Stage 6 — the Enterprise Intelligence Layer. Every dep is a READ
+  // over an existing singleton (the same graph/timeline ports P7 uses, the
+  // operational stores, the existing health computations, the 90-day health
+  // history); the two monitor sources register on the EXISTING delivery engine
+  // and produce governed recommendation items only. Suggested recoveries run
+  // exclusively as approval-gated assistant plan steps through the ExecuteEngine.
+  const insight = initInsight({
+    getResourceModel: () => {
+      try {
+        return infrastructure.store.graph(Date.now());
+      } catch {
+        return null;
+      }
+    },
+    getRelationshipModel: () => {
+      try {
+        return getRelationshipModel();
+      } catch {
+        return null;
+      }
+    },
+    getEvents: (since, limit) => {
+      const page = platform.api.query({ since, limit }) as { events?: unknown };
+      return (Array.isArray(page.events) ? page.events : []) as unknown as RawTimelineEvent[];
+    },
+    entities: () => unifiedStore.query({ limit: 1_000_000, includeDeleted: false }).items,
+    jobs: () => jobStore.page({ limit: 500 }).jobs,
+    executions: () => executeEngine.getHistory(),
+    automationRuns: () => getAutomationRunRecords(),
+    automationRules: () => automationStore.all(),
+    connectors: () => connectorService.list(),
+    workers: () => workerRegistry.summaries().map((w) => ({ id: w.id, name: w.name, role: w.role })),
+    conversations: () => assistant.conversationSummaries(),
+    inbox: () => notifications.inboxItems().map((n) => ({ id: n.id, sourceKey: n.sourceKey, at: n.at, read: n.read })),
+    orgHealth: () => computeOrgHealth(collectOrgHealthInputs(Date.now())),
+    orgUnits: () => {
+      const org = orgStore.defaultOrg();
+      const units = orgStore.unitsFor(org.id);
+      const withLead = units.filter((u) => u.leadUserId).length;
+      return { units: units.length, leadershipCoverage: units.length > 0 ? withLead / units.length : null };
+    },
+    workforceHealth: () => summarizeWorkforceHealth(workerRegistry.healthSummaries()),
+    systemHealth: () => {
+      const snap = neuroCore.last();
+      return snap ? { score: snap.score, level: snap.level } : null;
+    },
+    automationMonitor: () => getAutomationMonitor(),
+    healthHistory: () => healthHistoryStore.all(),
+    decisions: () =>
+      decisionStore.all().map((d) => ({
+        id: d.id,
+        fromRecommendationId: d.fromRecommendationId ?? null,
+        status: d.status,
+        updatedAt: d.updatedAt,
+      })),
+    publish: publishPlatform,
+    registerSource: (source) => deliveryEngine.register(source),
+  });
+  insightRef = insight;
+  defs.push(...insight.handlers);
   // Phase 6 Stage 5 (D-7) — bind the recommendation engine's aux read ports now
   // that workforce + connectors + automations + assistant all exist. Late-bound
   // exactly like workforce.setExecutionSubmit; a failing port silences its rules.

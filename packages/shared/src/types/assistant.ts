@@ -305,7 +305,8 @@ export interface AssistantDraft {
  * empty state. Optional + additive.
  */
 export interface AssistantStructuredReport {
-  kind: 'brief' | 'meeting-brief' | 'work-summary';
+  // Phase 6 Stage 6 — 'intelligence' carries the ten-question answers (additive).
+  kind: 'brief' | 'meeting-brief' | 'work-summary' | 'intelligence';
   title: string;
   sections: { title: string; lines: string[] }[];
   grounded: boolean;

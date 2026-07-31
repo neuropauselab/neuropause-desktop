@@ -789,6 +789,15 @@ export const IpcChannel = {
   EnterpriseIntelReport: 'intel:report',
   EnterpriseIntelChangeImpact: 'intel:changeImpact',
   EnterpriseIntelRootCause: 'intel:rootCause',
+  // Phase 6 Stage 6 — Enterprise Intelligence Layer (read-only; RBAC-gated with
+  // intelligence:read via the SecureHandlerDef, the P7 `intel:` precedent). The
+  // composed report / targeted root cause / health framework / predictions /
+  // executive dashboard. Nothing here accepts an action.
+  InsightReport: 'insight:report',
+  InsightRootCause: 'insight:rootCause',
+  InsightHealth: 'insight:health',
+  InsightPredictions: 'insight:predictions',
+  InsightDashboard: 'insight:dashboard',
 } as const;
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel];
@@ -1443,6 +1452,12 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.EnterpriseIntelReport,
   IpcChannel.EnterpriseIntelChangeImpact,
   IpcChannel.EnterpriseIntelRootCause,
+  // Phase 6 Stage 6 — Enterprise Intelligence Layer (read-only insight cluster).
+  IpcChannel.InsightReport,
+  IpcChannel.InsightRootCause,
+  IpcChannel.InsightHealth,
+  IpcChannel.InsightPredictions,
+  IpcChannel.InsightDashboard,
   // Phase 6 Stage 4 — Workspace Assistant.
   IpcChannel.AssistantAsk,
   IpcChannel.AssistantConversations,

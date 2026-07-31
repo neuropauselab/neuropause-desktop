@@ -59,6 +59,7 @@ import {
   renderHistory,
   renderWorkspaceSnapshot,
   resolveBriefRequest,
+  resolveInsightQuestion,
   resolveMeetingPrep,
   resolveWorkSummary,
   type PlanTargets,
@@ -150,6 +151,9 @@ export interface AssistantServiceDeps {
   meetingPrep?: (requestText: string, now: string, correlationId: string) => AssistantStructuredReport | null;
   /** Stage 5 addition #2: descriptive daily Work Summary over existing metrics. */
   workSummary?: (now: string) => AssistantStructuredReport;
+  /** Phase 6 Stage 6 (D-5): the Enterprise Intelligence Layer's ten-question
+   *  resolver — deterministic, evidence-cited, read-only. Null = unmatched. */
+  intelligence?: (text: string, now: string) => AssistantStructuredReport | null;
 }
 
 export interface AssistantAskInput {
@@ -263,7 +267,10 @@ export class AssistantService {
       !cfg.operational &&
       (resolveBriefRequest(input.text) !== null ||
         resolveWorkSummary(input.text) ||
-        resolveMeetingPrep(input.text));
+        resolveMeetingPrep(input.text) ||
+        // Phase 6 Stage 6 — the ten enterprise intelligence questions are clear
+        // requests even when the generic intent rules score low.
+        resolveInsightQuestion(input.text) !== null);
     if (
       !cfg.operational &&
       !productivityResolved &&
@@ -907,6 +914,40 @@ export class AssistantService {
     }
 
     // ── Read-only report resolutions (most specific first). ──
+
+    // Phase 6 Stage 6 (D-5): the ten enterprise questions resolve through the
+    // Enterprise Intelligence Layer — deterministic, evidence-cited, read-only.
+    // Suggested recoveries stay suggestions; anything that acts still goes
+    // through a gated plan step, exactly like every other flow.
+    if (resolveInsightQuestion(text) !== null) {
+      const started = Date.now();
+      if (!this.deps.intelligence) {
+        unavailable.push({ system: 'intelligence', reason: 'intelligence port not wired' });
+      } else {
+        try {
+          const reportOut = this.deps.intelligence(text, now);
+          if (reportOut) {
+            structured = reportOut;
+            narrativePrompt = 'brief.executive-summary';
+            this.toolCall(toolCalls, correlationId, started, {
+              tool: 'brief',
+              label: 'Answer from enterprise intelligence',
+              purpose: 'Resolve the question against the composed intelligence report (signals → correlation → evidence).',
+              reason: 'The question matches an enterprise intelligence resolver; the answer cites real records with a confidence breakdown.',
+              expectedOutput: 'An evidence-cited intelligence report.',
+              outcome: 'ok',
+              detail: `${reportOut.sections.length} section(s) for “${reportOut.title}”`,
+            });
+          } else {
+            unavailable.push({ system: 'intelligence', reason: 'resolver matched but produced no report' });
+          }
+        } catch (err) {
+          unavailable.push({ system: 'intelligence', reason: err instanceof Error ? err.message : String(err) });
+        }
+      }
+      return { findings, assumptions, unavailable, structured, narrativePrompt };
+    }
+
     if (resolveMeetingPrep(text)) {
       const started = Date.now();
       if (!this.deps.meetingPrep) {

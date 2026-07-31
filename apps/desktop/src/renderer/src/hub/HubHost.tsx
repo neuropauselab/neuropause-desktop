@@ -12,6 +12,7 @@ import type {
   ExecutionSession,
   ExecutiveDecision,
   ExecutiveSnapshot,
+  InsightDashboard,
   Job,
   Recommendation,
   UnifiedEntity,
@@ -32,6 +33,7 @@ import {
   workSummaryTile,
   briefDisplay,
   execHighlights,
+  insightTile,
   type AssistantTaskRow,
   type HubTabId,
   type TileState,
@@ -49,6 +51,8 @@ export interface HubData {
   executive: TileState<ExecutiveSnapshot>;
   decisions: TileState<ExecutiveDecision[]>;
   assistantTasks: TileState<AssistantTaskRow[]>;
+  // Phase 6 Stage 6 — the Executive intelligence tile (insight dashboard).
+  insight: TileState<InsightDashboard>;
 }
 
 const LOADING: HubData = {
@@ -61,6 +65,7 @@ const LOADING: HubData = {
   executive: tileLoading(),
   decisions: tileLoading(),
   assistantTasks: tileLoading(),
+  insight: tileLoading(),
 };
 
 /** Project a ready tile through a pure mapper; loading/unavailable pass through. */
@@ -104,6 +109,10 @@ export function HubHost({ onNavigate }: { onNavigate?: (id: SectionId) => void }
     );
     void settleTile(() => ipc.decisions.list().then((r) => r.decisions)).then((t) =>
       setData((d) => ({ ...d, decisions: t })),
+    );
+    // Phase 6 Stage 6 — the composed insight dashboard (read-only insight:* IPC).
+    void settleTile(() => ipc.insight.dashboard()).then((t) =>
+      setData((d) => ({ ...d, insight: t })),
     );
     void settleTile(() =>
       ipc.memory
@@ -151,6 +160,7 @@ export function HubHost({ onNavigate }: { onNavigate?: (id: SectionId) => void }
   const brief = derive(data.brief, briefDisplay);
   const recs = derive(data.recommendations, (r) => recommendationCards(r));
   const executive = derive(data.executive, execHighlights);
+  const insight = derive(data.insight, insightTile);
   const timeline =
     data.conversations.state === 'ready' && data.executions.state === 'ready' && data.approvals.state === 'ready'
       ? {
@@ -220,6 +230,7 @@ export function HubHost({ onNavigate }: { onNavigate?: (id: SectionId) => void }
       conversations={data.conversations}
       summary={summary}
       executive={executive}
+      insight={insight}
       decisions={derive(data.decisions, (list) =>
         list.slice(0, 6).map((d) => ({ id: d.id, title: d.title, status: d.status })),
       )}

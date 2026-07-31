@@ -37,6 +37,9 @@ const MUTABLE_SOURCES: { key: string; label: string; detail: string }[] = [
   { key: 'work-complete', label: 'Work completed', detail: 'Jobs, automations, and workflows finishing' },
   { key: 'approval-needed', label: 'Approvals', detail: 'Proposals parked for your decision' },
   { key: 'connector-issue', label: 'Connector issues', detail: 'Sync failures and re-auth needs' },
+  // Phase 6 Stage 6 — the Enterprise Intelligence Layer's governed sources.
+  { key: 'insight-monitor', label: 'Intelligence monitor', detail: 'New high-priority insight recommendations (15-min watch)' },
+  { key: 'insight-risk-trend', label: 'Risk trend watch', detail: 'Daily health/risk trend deterioration' },
 ];
 
 function minutesToTime(minutes: number): string {

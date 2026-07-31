@@ -268,12 +268,14 @@ function AssistantReply({
       {env.structured && (
         <div className="rounded-2xl border border-[var(--hairline)] p-4">
           <div className="mb-2 flex items-center gap-2 text-2xs uppercase tracking-wide text-faint">
-            <Icon name={env.structured.kind === 'meeting-brief' ? 'clock' : 'doc'} size={12} />
+            <Icon name={env.structured.kind === 'meeting-brief' ? 'clock' : env.structured.kind === 'intelligence' ? 'sparkles' : 'doc'} size={12} />
             {env.structured.kind === 'brief'
               ? 'Brief'
               : env.structured.kind === 'meeting-brief'
                 ? 'Meeting prep'
-                : 'Work summary'}
+                : env.structured.kind === 'intelligence'
+                  ? 'Enterprise intelligence'
+                  : 'Work summary'}
             <span>computed from your data</span>
           </div>
           <div className="text-sm font-medium text-ink">{env.structured.title}</div>

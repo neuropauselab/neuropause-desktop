@@ -18,6 +18,7 @@ import { app } from 'electron';
 import type {
   DeliveryChannel,
   DeliveryPreferences,
+  InboxNotification,
   PlatformEvent,
   PlatformEventType,
   NotificationsListRequest as TNotificationsListRequest,
@@ -71,6 +72,8 @@ export interface NotificationsSubsystem {
   dispose: () => void;
   /** Live unread count (for peers that compose it, e.g. the Work Hub). */
   unreadCount: () => number;
+  /** Phase 6 Stage 6 — read-only inbox items for the insight signal read. */
+  inboxItems: () => InboxNotification[];
 }
 
 export function initNotifications(deps: NotificationsSubsystemDeps): NotificationsSubsystem {
@@ -187,5 +190,8 @@ export function initNotifications(deps: NotificationsSubsystemDeps): Notificatio
       deliveryEngine.unregister('meeting-soon');
     },
     unreadCount: () => store.unreadCount(),
+    // Phase 6 Stage 6 — read-only inbox accessor for the insight layer's
+    // signal-freshness read (mirrors assistant.conversationSummaries).
+    inboxItems: () => store.page(200).items,
   };
 }
