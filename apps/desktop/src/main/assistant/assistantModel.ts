@@ -621,6 +621,10 @@ export { resolveInsightQuestion } from '../insight/insightModel';
 
 export { resolveKnowledgeQuestion } from '../knowledgeAssets/knowledgeModel';
 
+/* ── Phase 6 Stage 8 — automation resolver (pure re-export, same pattern) ─── */
+
+export { resolveAutomationQuestion } from '../automationPlatform/automationModel';
+
 /** Detect a meeting-preparation request (D-4). */
 export function resolveMeetingPrep(text: string): boolean {
   const t = ` ${text.toLowerCase()} `;

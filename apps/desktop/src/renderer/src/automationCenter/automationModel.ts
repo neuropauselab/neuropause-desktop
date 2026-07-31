@@ -133,8 +133,13 @@ export const AUTOMATION_GAPS: AutomationGap[] = [
   {
     area: 'Triggers',
     capability: 'Schedule / cron triggers',
+    // Phase 6 Stage 8 — updated honestly: the Automation Platform's 1-minute tick (riding the
+    // EXISTING taskScheduler) now fires schedule rules whose labels parse in the deterministic
+    // subset ("daily 9am", "weekly monday 9am", "hourly", "every 15 minutes"). Cron expressions
+    // and free-form labels remain unsupported — they surface as `schedule-unparseable` findings
+    // on the Platform tab instead of silently never firing.
     reason:
-      'The `schedule` trigger type exists in the rule model, but no scheduler process fires scheduled rules — a scheduled rule never runs on its own.',
+      'Cron expressions and free-form schedule labels are still unsupported — only the deterministic label subset fires (via the Stage 8 platform tick); anything else is flagged on the Platform tab, never guessed.',
   },
   {
     area: 'Actions',
@@ -145,8 +150,11 @@ export const AUTOMATION_GAPS: AutomationGap[] = [
   {
     area: 'Rules',
     capability: 'Reusable automation templates',
+    // Phase 6 Stage 8 — scoped honestly: versioned PLAYBOOKS (code-shipped workflow templates
+    // compiled to the existing WorkflowSpec) now live on the Platform tab; what is still absent
+    // is a template/clone surface for trigger→condition→action RULES specifically.
     reason:
-      'There is no template catalog or clone-from-template surface; every rule is authored from scratch in the studio.',
+      'There is no rule-template catalog or clone-from-template surface; every rule is authored from scratch in the studio. (Versioned workflow playbooks are a Stage 8 Platform-tab capability, distinct from rule templates.)',
   },
   {
     area: 'Monitor',

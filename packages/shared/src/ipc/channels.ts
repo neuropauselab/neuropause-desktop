@@ -808,6 +808,16 @@ export const IpcChannel = {
   KbQuality: 'kb:quality',
   KbStandards: 'kb:standards',
   KbDashboard: 'kb:dashboard',
+  // Phase 6 Stage 8 — Enterprise Automation Platform (read-only; RBAC-gated
+  // with autonomousops:read via the SecureHandlerDef, the P19 precedent).
+  // Catalog / playbooks / compiled plan preview / policies / monitor /
+  // dashboard. Nothing here accepts an action (D-6/D-9).
+  ApCatalog: 'ap:catalog',
+  ApPlaybooks: 'ap:playbooks',
+  ApPlan: 'ap:plan',
+  ApPolicies: 'ap:policies',
+  ApMonitor: 'ap:monitor',
+  ApDashboard: 'ap:dashboard',
 } as const;
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel];
@@ -1475,6 +1485,13 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.KbQuality,
   IpcChannel.KbStandards,
   IpcChannel.KbDashboard,
+  // Phase 6 Stage 8 — Enterprise Automation Platform (read-only ap cluster).
+  IpcChannel.ApCatalog,
+  IpcChannel.ApPlaybooks,
+  IpcChannel.ApPlan,
+  IpcChannel.ApPolicies,
+  IpcChannel.ApMonitor,
+  IpcChannel.ApDashboard,
   // Phase 6 Stage 4 — Workspace Assistant.
   IpcChannel.AssistantAsk,
   IpcChannel.AssistantConversations,

@@ -108,6 +108,12 @@ import {
   type KnowledgeRelationshipMatrix,
   type KnowledgeSearchHit,
   type StandardsReport,
+  type AutomationCatalog,
+  type AutomationMonitorReport,
+  type AutomationPlan,
+  type AutomationPlatformDashboard,
+  type AutomationPoliciesView,
+  type PlaybookDefinition,
   type EnterpriseIntelChangeImpactRequest,
   type EnterpriseIntelRootCauseRequest,
   type EnterpriseTimelineQuery,
@@ -923,6 +929,19 @@ export const ipc = {
     quality: () => invoke(IpcChannel.KbQuality) as Promise<KnowledgeQualityReport>,
     standards: () => invoke(IpcChannel.KbStandards) as Promise<StandardsReport>,
     dashboard: () => invoke(IpcChannel.KbDashboard) as Promise<KnowledgeAssetDashboard>,
+  },
+
+  /** Phase 6 Stage 8 — the Enterprise Automation Platform (read-only; every
+   *  channel RBAC-gated `autonomousops:read` and cached ~3 s server-side). */
+  ap: {
+    catalog: () => invoke(IpcChannel.ApCatalog) as Promise<AutomationCatalog>,
+    playbooks: (id?: string) =>
+      invoke(IpcChannel.ApPlaybooks, id ? { id } : {}) as Promise<{ playbooks: PlaybookDefinition[] }>,
+    plan: (playbookId: string) =>
+      invoke(IpcChannel.ApPlan, { playbookId }) as Promise<AutomationPlan | { playbookId: string; found: false }>,
+    policies: () => invoke(IpcChannel.ApPolicies) as Promise<AutomationPoliciesView>,
+    monitor: () => invoke(IpcChannel.ApMonitor) as Promise<AutomationMonitorReport>,
+    dashboard: () => invoke(IpcChannel.ApDashboard) as Promise<AutomationPlatformDashboard>,
   },
 
   knowledge: {

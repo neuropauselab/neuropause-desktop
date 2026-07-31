@@ -59,6 +59,7 @@ import {
   renderHistory,
   renderWorkspaceSnapshot,
   resolveBriefRequest,
+  resolveAutomationQuestion,
   resolveInsightQuestion,
   resolveKnowledgeQuestion,
   resolveMeetingPrep,
@@ -158,6 +159,9 @@ export interface AssistantServiceDeps {
   /** Phase 6 Stage 7 (D-8): the Knowledge Platform's ten-question resolver —
    *  deterministic, evidence-cited, authority-stating, read-only. Null = unmatched. */
   knowledge?: (text: string, now: string) => AssistantStructuredReport | null;
+  /** Phase 6 Stage 8 (D-8): the Automation Platform's six-question resolver —
+   *  deterministic, read-only; execution stays behind the existing gates. */
+  automation?: (text: string, now: string) => AssistantStructuredReport | null;
 }
 
 export interface AssistantAskInput {
@@ -276,7 +280,9 @@ export class AssistantService {
         // requests even when the generic intent rules score low.
         resolveInsightQuestion(input.text) !== null ||
         // Phase 6 Stage 7 — the ten knowledge questions likewise.
-        resolveKnowledgeQuestion(input.text) !== null);
+        resolveKnowledgeQuestion(input.text) !== null ||
+        // Phase 6 Stage 8 — the six automation questions likewise.
+        resolveAutomationQuestion(input.text) !== null);
     if (
       !cfg.operational &&
       !productivityResolved &&
@@ -982,6 +988,39 @@ export class AssistantService {
           }
         } catch (err) {
           unavailable.push({ system: 'knowledge', reason: err instanceof Error ? err.message : String(err) });
+        }
+      }
+      return { findings, assumptions, unavailable, structured, narrativePrompt };
+    }
+
+    // Phase 6 Stage 8 (D-8): the six automation questions resolve through the
+    // Automation Platform — deterministic, read-only. Building saves through
+    // the EXISTING automations:save as a gated plan step; running a playbook
+    // stays behind the EXISTING workflow/approval flow. Nothing executes here.
+    if (resolveAutomationQuestion(text) !== null) {
+      const started = Date.now();
+      if (!this.deps.automation) {
+        unavailable.push({ system: 'automation', reason: 'automation port not wired' });
+      } else {
+        try {
+          const reportOut = this.deps.automation(text, now);
+          if (reportOut) {
+            structured = reportOut;
+            narrativePrompt = 'brief.executive-summary';
+            this.toolCall(toolCalls, correlationId, started, {
+              tool: 'brief',
+              label: 'Answer from the automation platform',
+              purpose: 'Resolve the question against the composed automation catalog/plan/monitor (orchestration reads only).',
+              reason: 'The question matches an automation resolver; plans expose why/evidence/conditions/outcome/rollback/confidence/affected systems.',
+              expectedOutput: 'An evidence-cited automation report.',
+              outcome: 'ok',
+              detail: `${reportOut.sections.length} section(s) for “${reportOut.title}”`,
+            });
+          } else {
+            unavailable.push({ system: 'automation', reason: 'resolver matched but produced no report' });
+          }
+        } catch (err) {
+          unavailable.push({ system: 'automation', reason: err instanceof Error ? err.message : String(err) });
         }
       }
       return { findings, assumptions, unavailable, structured, narrativePrompt };

@@ -23,6 +23,8 @@ import { useShell } from '@renderer/state/ShellProvider';
 import { Icon, type IconName } from '@renderer/components/ui/Icon';
 import { OpsPanel, Stat, StatusBadge } from '@renderer/operations/primitives';
 import { EmptyState, Grid, LoadingBlock, Meter } from '@renderer/operationsCenter/primitives';
+// Phase 6 Stage 8 — the Automation Platform tab (read-only ap:* composition).
+import { ApPlatformTab } from './ApPlatformTab';
 import {
   AUTOMATION_GAPS,
   AUTOMATION_GAP_STATUS,
@@ -40,7 +42,7 @@ import {
   triggerSourceLabel,
 } from './automationModel';
 
-type Tab = 'monitor' | 'rules' | 'business' | 'jobs';
+type Tab = 'monitor' | 'rules' | 'business' | 'jobs' | 'platform';
 
 interface Data {
   monitor: AutomationMonitor | null;
@@ -117,6 +119,8 @@ export function AutomationCenterView(): JSX.Element {
     { id: 'rules', label: 'Rules', icon: 'automations' },
     { id: 'business', label: 'Business Rules', icon: 'shield' },
     { id: 'jobs', label: 'AI Jobs', icon: 'cpu' },
+    // Phase 6 Stage 8 — the Enterprise Automation Platform (catalog · playbooks · policy · monitor).
+    { id: 'platform', label: 'Platform', icon: 'bolt' },
   ];
 
   return (
@@ -168,6 +172,7 @@ export function AutomationCenterView(): JSX.Element {
             {tab === 'rules' && <RulesTab d={d} go={go} />}
             {tab === 'business' && <BusinessTab d={d} go={go} />}
             {tab === 'jobs' && <JobsTab d={d} go={go} />}
+            {tab === 'platform' && <ApPlatformTab />}
           </div>
         )}
       </div>

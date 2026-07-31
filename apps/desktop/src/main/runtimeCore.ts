@@ -219,6 +219,13 @@ import { graphStore } from './graph/graphInstance';
 // Phase 6 Stage 7 — the Enterprise Knowledge & Decision Platform (read-only
 // composition over the stores wired above; no new store/graph/search/executor).
 import { initKnowledgeAssets, type KnowledgeAssetsSubsystem } from './knowledgeAssets';
+// Phase 6 Stage 8 — the Enterprise Automation Platform (orchestration-layer
+// composition; no runtime/store/scheduler-class/executor of its own).
+import { initAutomationPlatform, type AutomationPlatformSubsystem } from './automationPlatform';
+import { selectRulesForEvent } from './enterprise/automationRunner';
+// (taskScheduler is already imported above with the other service singletons.)
+import { globalGovStore } from './federation/governance/globalGovInstance';
+import { workerInstallStore } from './workforce/install/installInstance';
 import { governanceStore } from './enterprise/governance/governanceInstance';
 import { DEFAULT_PROMPTS } from './ai/promptManager';
 import { runEnterpriseSearch } from './search/enterpriseSearch';
@@ -1439,6 +1446,10 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // ten-question port (the knowledge subsystem reads conversation summaries,
   // so it initializes after the assistant, below).
   let knowledgeRef: KnowledgeAssetsSubsystem | null = null;
+  // Phase 6 Stage 8 — same late-bound pattern for the Automation Platform's
+  // six-question port (the platform reads workflow runs, so it initializes
+  // after the workforce handlers below).
+  let automationRef: AutomationPlatformSubsystem | null = null;
   const assistant = initAssistant({
     broadcast: deps.broadcast,
     publish: publishPlatform,
@@ -1455,6 +1466,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     // Phase 6 Stage 7 (D-8) — the ten knowledge questions answer from the
     // Knowledge Platform through the same late-bound, read-only port.
     knowledgeAnswer: (text, now) => knowledgeRef?.answerQuestion(text, now) ?? null,
+    // Phase 6 Stage 8 (D-8) — the six automation questions answer from the
+    // Automation Platform through the same late-bound, read-only port.
+    automationAnswer: (text, now) => automationRef?.answerQuestion(text, now) ?? null,
   });
   defs.push(...assistant.handlers);
   // Phase 6 Stage 5 (D-8) — Notification Inbox: registers the notification-center
@@ -1637,6 +1651,69 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   });
   knowledgeRef = knowledgeAssets;
   defs.push(...knowledgeAssets.handlers);
+  // Phase 6 Stage 8 — the Enterprise Automation Platform. Every dep is a READ
+  // over an existing singleton; the schedule tick (D-3) registers on the
+  // EXISTING taskScheduler and fires DUE schedule rules through the EXISTING
+  // automation runner path (trigger + condition checks via
+  // selectRulesForEvent, then runner.runRule) — the Builder's `schedule`
+  // trigger fires for the first time. Six read-only ap:* channels
+  // (autonomousops:read); one governed watch source; zero mutation surface;
+  // execution remains exclusively Assistant → Approval → ExecuteEngine →
+  // Workforce → Connector Executors.
+  const automationPlatform = initAutomationPlatform({
+    rules: () => automationStore.all(),
+    runRecords: () => getAutomationRunRecords(),
+    workflowRuns: () => workforce.workflowRunEntries(),
+    sessions: () =>
+      executeEngine
+        .getHistory()
+        .map((x) => ({ id: x.id, kind: x.kind, label: x.label, state: x.state, startedAt: x.startedAt })),
+    jobsAwaiting: () =>
+      jobStore.page({ status: 'awaiting_approval', limit: 200 }).jobs.map((j) => ({ id: j.id, createdAt: j.createdAt })),
+    chains: () => governanceStore.chains(),
+    orgRoles: () => {
+      const org = orgStore.defaultOrg();
+      return orgStore.rolesFor(org.id).map((r) => ({ id: r.id, name: r.name }));
+    },
+    globalPolicies: () =>
+      globalGovStore.listPolicies().map((pol) => ({
+        effect: (pol as { effect?: string }).effect ?? '',
+        enabled: (pol as { enabled?: boolean }).enabled ?? false,
+        action: (pol as { action?: string }).action ?? '',
+      })),
+    knownWorkers: () =>
+      workerRegistry.list().map((w) => ({ id: w.identity.id, skills: w.skills.map((sk) => sk.id) })),
+    installedWorkers: () =>
+      workerInstallStore.all().map((r) => ({ id: r.id, hasPreviousVersion: r.previous !== null })),
+    deliverySources: () => deliveryEngine.listSources().map((key) => ({ key })),
+    scheduledValidations: () => null,
+    autoOpsPlans: () => null,
+    sandboxHistory: () => null,
+    knowledgeMatch: (refs) => {
+      const inv = knowledgeRef?.inventory();
+      if (!inv) return refs.map((ref) => ({ ref, matched: false }));
+      return refs.map((ref) => ({
+        ref,
+        matched: inv.assets.some((asset) => asset.recordId === ref || asset.topics.includes(ref)),
+      }));
+    },
+    fireScheduledRule: async (ruleId, scheduledForIso) => {
+      const rule = automationStore.all().find((r) => r.id === ruleId && r.status === 'active');
+      if (!rule) return null;
+      const event = { source: 'schedule' as const, payload: { scheduledFor: scheduledForIso } };
+      // The EXISTING trigger + condition evaluation, then the EXISTING runner.
+      if (selectRulesForEvent([rule], event).length === 0) return null;
+      const record = await getAutomationRunner().runRule(rule, event);
+      return { ok: record.ok };
+    },
+    schedule: {
+      every: (id, ms, fn) => taskScheduler.every(id, ms, fn),
+      cancel: (id) => taskScheduler.cancel(id),
+    },
+    registerSource: (source) => deliveryEngine.register(source),
+  });
+  automationRef = automationPlatform;
+  defs.push(...automationPlatform.handlers);
   // Phase 6 Stage 5 (D-7) — bind the recommendation engine's aux read ports now
   // that workforce + connectors + automations + assistant all exist. Late-bound
   // exactly like workforce.setExecutionSubmit; a failing port silences its rules.

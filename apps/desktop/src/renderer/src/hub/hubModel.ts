@@ -105,6 +105,7 @@ export function sourceLabel(sourceKey: string): string {
     'insight-monitor': 'Intelligence Monitor',
     'insight-risk-trend': 'Risk Trend',
     'knowledge-hygiene': 'Knowledge Hygiene',
+    'automation-watch': 'Automation Watch',
     system: 'System',
   };
   return LABELS[sourceKey] ?? sourceKey;

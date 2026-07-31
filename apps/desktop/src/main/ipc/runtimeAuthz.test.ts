@@ -188,6 +188,10 @@ describe('runtime IPC surface completeness (fail-closed startup safety net)', ()
     // every kb:* handler self-carries requireAuth + knowledge:read (the P16
     // fabric precedent; locked by src/main/knowledgeAssets/index.stage7.test.ts).
     'kb:',
+    // Phase 6 Stage 8 — the Enterprise Automation Platform's read-only cluster:
+    // every ap:* handler self-carries requireAuth + autonomousops:read (the P19
+    // read scope; locked by src/main/automationPlatform/index.stage8.test.ts).
+    'ap:',
     'marketplace:',
     'webhooks:',
     'sandbox:',

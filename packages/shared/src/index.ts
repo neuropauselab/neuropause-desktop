@@ -128,6 +128,10 @@ export * from './types/insight';
 // authority precedence / relationship matrix + impact / decision lineage /
 // lifecycle derivation / quality / standards / coverage map / dashboard).
 export * from './types/knowledgeAssets';
+// Phase 6 Stage 8 — Enterprise Automation Platform (catalog / playbooks compiled
+// to the existing WorkflowSpec / policy resolution / approval preview / honest
+// rollback / schedule parsing / execution monitor / dashboard).
+export * from './types/automationPlatform';
 export * from './types/delivery';
 export * from './types/orgHealth';
 export * from './types/executiveCenter';

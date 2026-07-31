@@ -2299,3 +2299,15 @@ export const KbLineageRequest = z
   .object({ decisionId: z.string().trim().min(1).max(128).optional() })
   .strict();
 export type KbLineageRequest = z.infer<typeof KbLineageRequest>;
+
+// Phase 6 Stage 8 — Enterprise Automation Platform (read-only ap:* cluster).
+// Playbooks takes an optional id (detail); plan compiles one playbook into the
+// existing WorkflowSpec + policy/approval/rollback/simulation preview.
+export const ApPlaybooksRequest = z
+  .object({ id: z.string().trim().min(1).max(128).optional() })
+  .strict();
+export type ApPlaybooksRequest = z.infer<typeof ApPlaybooksRequest>;
+export const ApPlanRequest = z
+  .object({ playbookId: z.string().trim().min(1).max(128) })
+  .strict();
+export type ApPlanRequest = z.infer<typeof ApPlanRequest>;
