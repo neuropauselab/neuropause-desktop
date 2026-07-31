@@ -25,6 +25,7 @@ import {
   RecoveryRunRequest,
 } from '@neuropause/shared';
 import type {
+  BackupInfo,
   DiagnosticsReport,
   InstalledModule,
   MigrationReport,
@@ -69,6 +70,13 @@ export interface ReleaseOps {
   handlers: SecureHandlerDef[];
   safeModeState: () => Promise<SafeModeState>;
   runStartupMigrations: () => Promise<void>;
+  /**
+   * Phase 6 Stage 9 — a READ-ONLY accessor over the local backup manager's
+   * list, for the Operations Platform's continuity composition. Additive and
+   * side-effect-free: no channel, no mutation, no new state — the same list
+   * the existing recovery IPC already serves.
+   */
+  listBackups: () => Promise<BackupInfo[]>;
   dispose: () => void;
 }
 
@@ -344,6 +352,7 @@ export async function initReleaseOps(deps: ReleaseOpsDeps): Promise<ReleaseOps> 
     handlers,
     safeModeState: () => recovery.safeModeState(),
     runStartupMigrations,
+    listBackups: () => backup.list(),
     dispose: () => clearInterval(timer),
   };
 }

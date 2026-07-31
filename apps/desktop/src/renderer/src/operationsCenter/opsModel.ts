@@ -51,7 +51,9 @@ export type OpsCenterTab =
   | 'graph'
   | 'timeline'
   | 'search'
-  | 'diagnostics';
+  | 'diagnostics'
+  // Phase 6 Stage 9 — the Enterprise Operations Platform tab (read-only eops:* composition).
+  | 'platform';
 
 /** `ExecutiveKpi['band']` is optional; this is the non-null band union. */
 export type Band = NonNullable<ExecutiveKpi['band']>;

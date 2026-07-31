@@ -114,6 +114,14 @@ import {
   type AutomationPlatformDashboard,
   type AutomationPoliciesView,
   type PlaybookDefinition,
+  type BusinessProcessReport,
+  type ContinuityView,
+  type IncidentLifecycleReport,
+  type OperationalHealthView,
+  type OperationsDashboard,
+  type ReadinessAssessment,
+  type ServiceCatalog,
+  type SlaReport,
   type EnterpriseIntelChangeImpactRequest,
   type EnterpriseIntelRootCauseRequest,
   type EnterpriseTimelineQuery,
@@ -942,6 +950,22 @@ export const ipc = {
     policies: () => invoke(IpcChannel.ApPolicies) as Promise<AutomationPoliciesView>,
     monitor: () => invoke(IpcChannel.ApMonitor) as Promise<AutomationMonitorReport>,
     dashboard: () => invoke(IpcChannel.ApDashboard) as Promise<AutomationPlatformDashboard>,
+  },
+
+  /** Phase 6 Stage 9 — the Enterprise Operations Platform (read-only; every
+   *  channel RBAC-gated `autonomousops:read` and cached ~3 s server-side). */
+  eops: {
+    catalog: () => invoke(IpcChannel.EopsCatalog) as Promise<ServiceCatalog>,
+    health: () => invoke(IpcChannel.EopsHealth) as Promise<OperationalHealthView>,
+    readiness: () =>
+      invoke(IpcChannel.EopsReadiness) as Promise<{
+        readiness: ReadinessAssessment;
+        sla: SlaReport;
+        processes: BusinessProcessReport;
+      }>,
+    incidents: () => invoke(IpcChannel.EopsIncidents) as Promise<IncidentLifecycleReport>,
+    continuity: () => invoke(IpcChannel.EopsContinuity) as Promise<ContinuityView>,
+    dashboard: () => invoke(IpcChannel.EopsDashboard) as Promise<OperationsDashboard>,
   },
 
   knowledge: {

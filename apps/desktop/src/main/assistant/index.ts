@@ -101,6 +101,9 @@ export interface AssistantSubsystemDeps {
   /** Phase 6 Stage 8 (D-8) — the Automation Platform's six-question resolver
    *  (in-process port; read-only; execution stays behind the existing gates). */
   automationAnswer?: (text: string, now: string) => AssistantStructuredReport | null;
+  /** Phase 6 Stage 9 (D-8): the ten operations questions answer from the
+   *  Operations Platform composition — read-only, in-process. */
+  operationsAnswer?: (text: string, now: string) => AssistantStructuredReport | null;
 }
 
 export interface AssistantSubsystem {
@@ -422,6 +425,8 @@ export function initAssistant(deps: AssistantSubsystemDeps): AssistantSubsystem 
     // Phase 6 Stage 8 (D-8): the six automation questions answer from the
     // Automation Platform (same in-process port pattern; read-only).
     automation: (text, now) => deps.automationAnswer?.(text, now) ?? null,
+    // Phase 6 Stage 9 (D-8): the ten operations questions likewise.
+    operations: (text, now) => deps.operationsAnswer?.(text, now) ?? null,
 
     // Stage 5 addition #2: descriptive Work Summary over existing metrics.
     workSummary: (now) => {

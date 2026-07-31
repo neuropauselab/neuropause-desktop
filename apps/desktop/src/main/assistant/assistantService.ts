@@ -63,6 +63,7 @@ import {
   resolveInsightQuestion,
   resolveKnowledgeQuestion,
   resolveMeetingPrep,
+  resolveOperationsQuestion,
   resolveWorkSummary,
   type PlanTargets,
 } from './assistantModel';
@@ -162,6 +163,8 @@ export interface AssistantServiceDeps {
   /** Phase 6 Stage 8 (D-8): the Automation Platform's six-question resolver —
    *  deterministic, read-only; execution stays behind the existing gates. */
   automation?: (text: string, now: string) => AssistantStructuredReport | null;
+  /** Phase 6 Stage 9 (D-8) — the Operations Platform port (ten questions). */
+  operations?: (text: string, now: string) => AssistantStructuredReport | null;
 }
 
 export interface AssistantAskInput {
@@ -282,7 +285,9 @@ export class AssistantService {
         // Phase 6 Stage 7 — the ten knowledge questions likewise.
         resolveKnowledgeQuestion(input.text) !== null ||
         // Phase 6 Stage 8 — the six automation questions likewise.
-        resolveAutomationQuestion(input.text) !== null);
+        resolveAutomationQuestion(input.text) !== null ||
+        // Phase 6 Stage 9 — the ten operations questions likewise.
+        resolveOperationsQuestion(input.text) !== null);
     if (
       !cfg.operational &&
       !productivityResolved &&
@@ -1021,6 +1026,38 @@ export class AssistantService {
           }
         } catch (err) {
           unavailable.push({ system: 'automation', reason: err instanceof Error ? err.message : String(err) });
+        }
+      }
+      return { findings, assumptions, unavailable, structured, narrativePrompt };
+    }
+
+    // Phase 6 Stage 9 (D-8): the ten operations questions resolve through the
+    // Operations Platform — deterministic, read-only. Recommendations POINT to
+    // the existing gated flow; nothing executes here.
+    if (resolveOperationsQuestion(text) !== null) {
+      const started = Date.now();
+      if (!this.deps.operations) {
+        unavailable.push({ system: 'operations', reason: 'operations port not wired' });
+      } else {
+        try {
+          const reportOut = this.deps.operations(text, now);
+          if (reportOut) {
+            structured = reportOut;
+            narrativePrompt = 'brief.executive-summary';
+            this.toolCall(toolCalls, correlationId, started, {
+              tool: 'brief',
+              label: 'Answer from the operations platform',
+              purpose: 'Resolve the question against the composed service catalog / SLA / readiness / incidents / continuity (reads only).',
+              reason: 'The question matches an operations resolver; recommendations carry evidence, reasoning, confidence, affected systems, operational impact, expected outcome, and rollback implications.',
+              expectedOutput: 'An evidence-cited operations report.',
+              outcome: 'ok',
+              detail: `${reportOut.sections.length} section(s) for “${reportOut.title}”`,
+            });
+          } else {
+            unavailable.push({ system: 'operations', reason: 'resolver matched but produced no report' });
+          }
+        } catch (err) {
+          unavailable.push({ system: 'operations', reason: err instanceof Error ? err.message : String(err) });
         }
       }
       return { findings, assumptions, unavailable, structured, narrativePrompt };

@@ -132,6 +132,7 @@ export * from './types/knowledgeAssets';
 // to the existing WorkflowSpec / policy resolution / approval preview / honest
 // rollback / schedule parsing / execution monitor / dashboard).
 export * from './types/automationPlatform';
+export * from './types/operationsPlatform';
 export * from './types/delivery';
 export * from './types/orgHealth';
 export * from './types/executiveCenter';

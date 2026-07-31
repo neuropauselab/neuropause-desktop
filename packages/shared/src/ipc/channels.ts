@@ -818,6 +818,16 @@ export const IpcChannel = {
   ApPolicies: 'ap:policies',
   ApMonitor: 'ap:monitor',
   ApDashboard: 'ap:dashboard',
+
+  // ── Phase 6 Stage 9 — the Enterprise Operations Platform (read-only) ──
+  // Service catalog / operational health / readiness+SLA+processes /
+  // incident lifecycle / continuity / dashboard. Zero mutation surface.
+  EopsCatalog: 'eops:catalog',
+  EopsHealth: 'eops:health',
+  EopsReadiness: 'eops:readiness',
+  EopsIncidents: 'eops:incidents',
+  EopsContinuity: 'eops:continuity',
+  EopsDashboard: 'eops:dashboard',
 } as const;
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel];
@@ -1492,6 +1502,12 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.ApPolicies,
   IpcChannel.ApMonitor,
   IpcChannel.ApDashboard,
+  IpcChannel.EopsCatalog,
+  IpcChannel.EopsHealth,
+  IpcChannel.EopsReadiness,
+  IpcChannel.EopsIncidents,
+  IpcChannel.EopsContinuity,
+  IpcChannel.EopsDashboard,
   // Phase 6 Stage 4 — Workspace Assistant.
   IpcChannel.AssistantAsk,
   IpcChannel.AssistantConversations,

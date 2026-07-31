@@ -222,6 +222,12 @@ import { initKnowledgeAssets, type KnowledgeAssetsSubsystem } from './knowledgeA
 // Phase 6 Stage 8 — the Enterprise Automation Platform (orchestration-layer
 // composition; no runtime/store/scheduler-class/executor of its own).
 import { initAutomationPlatform, type AutomationPlatformSubsystem } from './automationPlatform';
+// Phase 6 Stage 9 — the Enterprise Operations Platform (orchestration-layer
+// composition; no runtime/store/scheduler/executor of its own).
+import { initOperationsPlatform, type OperationsPlatformSubsystem } from './operationsPlatform';
+import { drStore } from './federation/dr/drInstance';
+import { detectBottlenecks } from './workforce/intelligence/bottlenecks';
+import { getProcessAssessment, getProcessExplorerKpis } from './enterprise/processMiningProvider';
 import { selectRulesForEvent } from './enterprise/automationRunner';
 // (taskScheduler is already imported above with the other service singletons.)
 import { globalGovStore } from './federation/governance/globalGovInstance';
@@ -1450,6 +1456,10 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // six-question port (the platform reads workflow runs, so it initializes
   // after the workforce handlers below).
   let automationRef: AutomationPlatformSubsystem | null = null;
+  // Phase 6 Stage 9 — same late-bound pattern for the Operations Platform's
+  // ten-question port (it reads the validation subsystem, so it initializes
+  // after continuous validation below).
+  let operationsRef: OperationsPlatformSubsystem | null = null;
   const assistant = initAssistant({
     broadcast: deps.broadcast,
     publish: publishPlatform,
@@ -1469,6 +1479,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     // Phase 6 Stage 8 (D-8) — the six automation questions answer from the
     // Automation Platform through the same late-bound, read-only port.
     automationAnswer: (text, now) => automationRef?.answerQuestion(text, now) ?? null,
+    // Phase 6 Stage 9 (D-8) — the ten operations questions answer from the
+    // Operations Platform through the same late-bound, read-only port.
+    operationsAnswer: (text, now) => operationsRef?.answerQuestion(text, now) ?? null,
   });
   defs.push(...assistant.handlers);
   // Phase 6 Stage 5 (D-8) — Notification Inbox: registers the notification-center
@@ -1992,6 +2005,116 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   });
   defs.push(...validation.handlers);
   log.info('Continuous Validation Platform ready — AI Sandbox v1.0 complete', { pipelines: validation.pipelines.length });
+
+  // Phase 6 Stage 9 — the Enterprise Operations Platform. Every dep is a READ
+  // over an existing singleton/subsystem; the ONE async read is the local
+  // backup list (via the release-ops accessor). Six read-only eops:* channels
+  // (autonomousops:read); one governed operations-watch source; zero mutation
+  // surface; execution remains exclusively Assistant → Approval →
+  // ExecuteEngine → Workforce → Connector Executors.
+  const operationsPlatform = initOperationsPlatform({
+    insightReport: () => insightRef?.report() ?? null,
+    executionStats: () => executeEngine.stats(),
+    queuedJobsTotal: () => jobStore.page({ status: 'queued', limit: 1 }).total,
+    awaitingApprovals: () =>
+      jobStore.page({ status: 'awaiting_approval', limit: 200 }).jobs.map((j) => ({ id: j.id, createdAt: j.createdAt })),
+    bottlenecks: () =>
+      detectBottlenecks(jobStore.page({ limit: 500 }).jobs).map((b) => ({
+        scope: b.scope,
+        key: b.key,
+        kind: b.kind,
+        reason: b.reason,
+        value: b.value,
+        sampleSize: b.sampleSize,
+      })),
+    automationMonitor: () => getAutomationMonitor(),
+    automationErrorRules: () => automationStore.all().filter((r) => r.status === 'error').length,
+    connectors: () =>
+      connectorService.list().map((c) => ({ id: c.id, name: c.name, configured: c.configured, health: c.health })),
+    aiState: () => engineManager.status().state,
+    executiveKpis: () =>
+      executiveCenter.snapshot().kpis.map((k) => ({
+        key: k.key,
+        label: k.label,
+        display: k.display,
+        value: k.value,
+        ...(k.band ? { band: k.band } : {}),
+      })),
+    processKpis: () =>
+      getProcessExplorerKpis().map((k) => ({
+        key: k.key,
+        label: k.label,
+        display: k.display,
+        value: k.value,
+        ...(k.band ? { band: k.band } : {}),
+      })),
+    minedProcesses: () =>
+      getProcessAssessment().metrics.byType.map((m) => ({
+        type: m.processType,
+        cases: m.caseCount,
+        medianDurationMs: Number.isFinite(m.medianCycleHours) ? m.medianCycleHours * 3_600_000 : null,
+        onTimeRate: Number.isFinite(m.completionRate) ? m.completionRate : null,
+      })),
+    units: () => {
+      const org = orgStore.defaultOrg();
+      return orgStore.unitsFor(org.id).map((u) => ({ id: u.id, name: u.name, leadUserId: u.leadUserId }));
+    },
+    users: () => {
+      const org = orgStore.defaultOrg();
+      return orgStore.usersFor(org.id).map((u) => ({ id: u.id, name: u.name }));
+    },
+    compliance: () =>
+      enterprise
+        .complianceFindings()
+        .map((f) => ({ ruleId: f.ruleId, ruleName: f.ruleName, severity: f.severity, status: f.status })),
+    enabledChains: () => governanceStore.chains().filter((c) => c.enabled).length,
+    workforceHealth: () => {
+      const w = summarizeWorkforceHealth(workerRegistry.healthSummaries());
+      return { healthy: w.healthy, degraded: w.degraded, unhealthy: w.unhealthy, unknown: w.unknown };
+    },
+    systemHealth: () => {
+      const snap = neuroCore.last();
+      return snap ? { score: snap.score, level: snap.level } : null;
+    },
+    healthHistory: () => healthHistoryStore.all().map((h) => ({ day: h.day, overall: h.overall })),
+    validationSummary: () => {
+      const v = validation.summary();
+      return {
+        totalRuns: v.totalRuns,
+        certifies: v.pipelines.filter((x) => x.certifies).length,
+        latestCertification: v.latestCertification,
+      };
+    },
+    drPosture: () => drStore.continuity(),
+    drReplicas: () => drStore.listReplicas().map((r) => ({ status: r.status })),
+    drValidations: () =>
+      drStore.listValidations().map((v) => ({ status: v.status, rpoSeconds: v.rpoSeconds, validatedAt: v.validatedAt })),
+    localBackups: async () => {
+      const list = await releaseOps.listBackups();
+      return list.map((b) => ({ createdAt: b.createdAt, valid: b.valid }));
+    },
+    supervisor: () => {
+      const st = runtimeSupervisor.status();
+      return { recoveryCount: st.recoveryCount, recentFailures: st.recentFailures };
+    },
+    knowledgeMatch: (refs) => {
+      const inv = knowledgeRef?.inventory();
+      if (!inv) return refs.map((ref) => ({ ref, matched: false }));
+      return refs.map((ref) => ({
+        ref,
+        matched: inv.assets.some((asset) => asset.recordId === ref || asset.topics.includes(ref)),
+      }));
+    },
+    automationPlatform: () => {
+      if (!automationRef) return null;
+      const c = automationRef.catalog();
+      const m = automationRef.monitor();
+      return { entries: c.totals.entries, findings: m.totals.findings };
+    },
+    registerSource: (source) => deliveryEngine.register(source),
+  });
+  operationsRef = operationsPlatform;
+  defs.push(...operationsPlatform.handlers);
 
   // Startup invariant (fail-closed): with every def now assembled, no runtime-invokable
   // channel may ride on sender-trust ALONE. Collect the channels that ended up gated —
