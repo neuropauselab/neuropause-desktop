@@ -52,6 +52,8 @@ export function rangeFor(period: BriefingPeriod, now: string): { since: string; 
   const start = new Date(now);
   switch (period) {
     case 'morning':
+    // Phase 6 Stage 5 — the Afternoon Update shares the same-day window.
+    case 'afternoon':
     case 'evening':
       start.setHours(0, 0, 0, 0);
       break;

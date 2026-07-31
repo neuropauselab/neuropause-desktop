@@ -15,9 +15,13 @@ import { randomUUID } from 'node:crypto';
 import { app } from 'electron';
 import type {
   AssistantConversation,
+  AssistantStructuredReport,
+  Briefing,
   ExecutionRequest,
   ExecutionSession,
   FounderResponse,
+  MemoryItem,
+  UnifiedEntity,
   AssistantAskRequest as TAssistantAskRequest,
   AssistantCancelRequest as TAssistantCancelRequest,
   AssistantConversationBranchRequest as TAssistantConversationBranchRequest,
@@ -46,6 +50,7 @@ import { memoryStore } from '../memory/memoryInstance';
 import { memoryAuditLog } from '../memory/memoryAuditInstance';
 import { getEnterpriseTimeline } from '../timeline';
 import { generateBriefing } from '../intelligence/briefingGenerator';
+import { isCompleted } from '../intelligence/classify';
 import { createContextBuilder } from '../ai/contextBuilder';
 import { aiEngine } from '../ai/engineInstance';
 import {
@@ -59,6 +64,11 @@ import { automationStore } from '../enterprise/automationInstance';
 import { workerRegistry } from '../workforce/registry/registryInstance';
 import { jobStore } from '../workforce/runtime/jobInstance';
 import * as workspaceContexts from '../ipc/handlers/workspaceContexts';
+// Phase 6 Stage 5 — productivity wiring (existing singletons only).
+import { notificationScheduler } from '../services/notificationScheduler';
+import { decisionStore } from '../enterprise/decisionInstance';
+import { nameMatches } from './assistantModel';
+import { buildMeetingBrief, buildWorkSummary, selectMeeting } from './productivity';
 import { ConversationStore } from './conversationStore';
 import { AssistantService } from './assistantService';
 
@@ -78,11 +88,17 @@ export interface AssistantSubsystemDeps {
   execute: (req: ExecutionRequest) => Promise<ExecutionSession>;
   /** Live count of active ExecuteEngine sessions (for the workspace snapshot). */
   executionsActive: () => number;
+  /** Phase 6 Stage 5 — ExecuteEngine history (Work Summary aggregation input). */
+  executionHistory?: () => { label: string; state: string; startedAt: string }[];
+  /** Phase 6 Stage 5 — recent automation run records (Work Summary input). */
+  automationRuns?: () => { ok: boolean; startedAt: string }[];
 }
 
 export interface AssistantSubsystem {
   handlers: SecureHandlerDef[];
   dispose: () => void;
+  /** Phase 6 Stage 5 — conversation summaries for the recommendation aux port. */
+  conversationSummaries: () => { id: string; title: string; updatedAt: string; waitingSteps: number }[];
 }
 
 /** Conversation-memory deps over the live store, with every audit event tagged
@@ -100,6 +116,89 @@ function memoryDeps(correlationId: string): ConversationMemoryDeps {
 export function initAssistant(deps: AssistantSubsystemDeps): AssistantSubsystem {
   const store = new ConversationStore(join(app.getPath('userData'), 'assistant-conversations.json'));
   const loaded = store.loadAllSync();
+
+  /* ── Phase 6 Stage 5 — productivity ports over EXISTING singletons ─────── */
+
+  // D-3: assistant tasks are MemoryItems (kind 'task', tagged) in the EXISTING
+  // memory store — no task engine. Every write lands in the memory audit log
+  // with the turn's correlation id.
+  const ASSISTANT_TASK_TAG = 'assistant-task';
+  const taskFromMemory = (m: MemoryItem): {
+    id: string;
+    title: string;
+    status: string;
+    due: string | null;
+    priority: string;
+    createdAt: string;
+    updatedAt: string;
+  } => ({
+    id: m.id,
+    title: m.title,
+    status: typeof m.metadata['status'] === 'string' ? (m.metadata['status'] as string) : 'open',
+    due: typeof m.metadata['due'] === 'string' ? (m.metadata['due'] as string) : null,
+    priority: typeof m.metadata['priority'] === 'string' ? (m.metadata['priority'] as string) : 'normal',
+    createdAt: m.createdAt,
+    updatedAt: m.updatedAt,
+  });
+  const listAssistantTasks = (): ReturnType<typeof taskFromMemory>[] =>
+    memoryStore
+      .recall({ kinds: ['task'], tag: ASSISTANT_TASK_TAG, limit: 200 })
+      .hits.map((h) => taskFromMemory(h.item));
+
+  /** Connector problems, exactly as the workspace-snapshot port classifies them. */
+  const connectorProblemList = (): { id: string; reason: string }[] =>
+    connectorService
+      .list()
+      .map((c) => ({
+        id: c.id,
+        problem:
+          c.health === 'healthy' || !c.configured || c.health === 'unknown'
+            ? null
+            : `health ${c.health} (status ${c.status})`,
+      }))
+      .filter((c): c is { id: string; problem: string } => c.problem !== null)
+      .map((c) => ({ id: c.id, reason: c.problem }));
+
+  /** Small retrieval helper for the meeting-prep collector — the SAME context
+   *  builder + sources buildContext uses, with a fixed modest budget. */
+  const retrieveFor = (query: string, now: string): { source: string; text: string }[] => {
+    const entities = readEntities();
+    const tl = getEnterpriseTimeline();
+    const events = tl ? tl.query({ limit: 2000, order: 'desc' }).entries : [];
+    const brief = generateBriefing('morning', { entities, events, now });
+    const builder = createContextBuilder({
+      searchSources: { entity: unifiedStore.searchBackend, graph: graphStore, memory: memoryStore },
+      getBriefing: () => brief,
+    });
+    return builder
+      .build({ worker: 'assistant', query, maxItems: 8, maxChars: 3000, perSourceLimit: 6, now })
+      .map((it) => ({ source: it.source, text: it.text }));
+  };
+
+  // The read paths the productivity flows compose over (same reads the
+  // context builder / briefing generator already use).
+  const readEntities = (): UnifiedEntity[] =>
+    unifiedStore.query({ limit: 1_000_000, includeDeleted: false }).items;
+  const readTimeline = (limit: number): { at: string; kind: string; title: string }[] => {
+    const tl = getEnterpriseTimeline();
+    if (!tl) return [];
+    return tl.query({ limit, order: 'desc' }).entries.map((e) => ({ at: e.at, kind: e.kind, title: e.title }));
+  };
+
+  const briefingToReport = (briefing: Briefing): AssistantStructuredReport => {
+    const sections = briefing.sections
+      .filter((s) => !s.empty && s.items.length > 0)
+      .map((s) => ({
+        title: s.title,
+        lines: s.items.map((it) => (it.detail ? `${it.text} — ${it.detail}` : it.text)),
+      }));
+    return {
+      kind: 'brief',
+      title: briefing.headline,
+      sections,
+      grounded: briefing.grounded && sections.length > 0,
+    };
+  };
 
   const service = new AssistantService({
     store,
@@ -186,6 +285,163 @@ export function initAssistant(deps: AssistantSubsystemDeps): AssistantSubsystem 
     publish: deps.publish,
     broadcast: (event) => deps.broadcast(IpcChannel.AssistantEventBroadcast, event),
     newId: () => randomUUID(),
+
+    /* ── Phase 6 Stage 5 — productivity ports (D-2/D-3/D-4 + Work Summary) ── */
+
+    // D-3: tasks = MemoryItems in the EXISTING memory store; audited writes.
+    tasks: {
+      create: ({ title, due, priority, conversationId, correlationId, now }) => {
+        const item = memoryStore.remember(
+          {
+            kind: 'task',
+            title,
+            content: title,
+            tags: [ASSISTANT_TASK_TAG],
+            metadata: { status: 'open', priority, due, owner: 'me', conversationId, correlationId },
+          },
+          now,
+        );
+        memoryAuditLog.record({
+          id: `maud_${randomUUID()}`,
+          action: 'created',
+          memoryId: item.id,
+          at: now,
+          detail: `Assistant task created: ${title}`,
+          decision: null,
+          rejections: [],
+          correlationId,
+        });
+        return { id: item.id, title: item.title };
+      },
+      complete: (id, now, correlationId) => {
+        const updated = memoryStore.update(id, { metadata: { status: 'done', completedAt: now } }, now);
+        if (!updated) return null;
+        memoryAuditLog.record({
+          id: `maud_${randomUUID()}`,
+          action: 'updated',
+          memoryId: updated.id,
+          at: now,
+          detail: `Assistant task completed: ${updated.title}`,
+          decision: null,
+          rejections: [],
+          correlationId,
+        });
+        return { id: updated.id, title: updated.title };
+      },
+      list: listAssistantTasks,
+    },
+
+    // D-8: reminders through the EXISTING notification scheduler (local, auto-run).
+    scheduleReminder: ({ title, at, correlationId }) => {
+      const id = `asst-reminder-${randomUUID().slice(0, 8)}`;
+      notificationScheduler.schedule({ id, title: 'Reminder', body: title, at });
+      deps.publish({
+        type: 'assistant.reminder.scheduled',
+        category: 'runtime',
+        source: 'workspace-assistant',
+        metadata: { reminderId: id, at },
+        correlationId,
+      });
+      return { id };
+    },
+
+    // D-2: brief requests resolve to the EXISTING briefing generator.
+    briefing: (period, now) => {
+      const entities = readEntities();
+      const tl = getEnterpriseTimeline();
+      const events = tl ? tl.query({ limit: 2000, order: 'desc' }).entries : [];
+      return briefingToReport(generateBriefing(period, { entities, events, now }));
+    },
+
+    // D-4: deterministic meeting-prep collector — existing reads only.
+    meetingPrep: (requestText, now, _correlationId) => {
+      const entities = readEntities();
+      const meeting = selectMeeting(entities, now, requestText);
+      if (!meeting) return null;
+      const participants: string[] = [];
+      if (meeting.author) participants.push(meeting.author);
+      const rawAttendees = (meeting.metadata as Record<string, unknown>)['attendees'];
+      if (typeof rawAttendees === 'string') {
+        participants.push(...rawAttendees.split(/[;,]/).map((s) => s.trim()).filter(Boolean));
+      } else if (Array.isArray(rawAttendees)) {
+        for (const a of rawAttendees) if (typeof a === 'string' && a.trim()) participants.push(a.trim());
+      }
+      const unique = [...new Set(participants)];
+      const related = retrieveFor(`${meeting.title} ${unique.join(' ')}`.trim(), now).map((it) => ({
+        source: it.source,
+        title: it.text.length > 120 ? `${it.text.slice(0, 117)}…` : it.text,
+      }));
+      const timeline = readTimeline(200)
+        .filter(
+          (t) =>
+            nameMatches(t.title, meeting.title) ||
+            unique.some((p) => p.length >= 3 && t.title.toLowerCase().includes(p.toLowerCase())),
+        )
+        .slice(0, 6)
+        .map((t) => ({ at: t.at, title: t.title }));
+      const decisions = decisionStore
+        .all()
+        // "Open" for meeting prep = still undecided (not accepted/rejected/archived).
+        .filter((d) => d.status !== 'accepted' && d.status !== 'rejected' && d.status !== 'archived')
+        .slice(0, 5)
+        .map((d) => ({ title: d.title, status: d.status }));
+      const memories = memoryStore
+        .recall({ text: meeting.title, limit: 5 })
+        .hits.map((h) => ({ title: h.item.title }));
+      return buildMeetingBrief({
+        meeting: {
+          id: meeting.id,
+          title: meeting.title,
+          startsAt: meeting.timestamp,
+          organizer: meeting.author,
+        },
+        participants: unique,
+        related,
+        timeline,
+        decisions,
+        memories,
+      });
+    },
+
+    // Stage 5 addition #2: descriptive Work Summary over existing metrics.
+    workSummary: (now) => {
+      const entities = readEntities();
+      const today = now.slice(0, 10);
+      return buildWorkSummary({
+        nowIso: now,
+        assistantTasks: listAssistantTasks().map((t) => ({
+          title: t.title,
+          status: t.status,
+          updatedAt: t.updatedAt,
+        })),
+        connectorTasksCompletedToday: entities
+          .filter((e) => e.kind === 'task' && isCompleted(e) && e.updatedAt.slice(0, 10) === today)
+          .slice(0, 20)
+          .map((e) => e.title),
+        meetingsToday: entities
+          .filter(
+            (e) =>
+              (e.kind === 'calendar_event' || e.kind === 'event') &&
+              e.timestamp !== null &&
+              e.timestamp.slice(0, 10) === today,
+          )
+          .slice(0, 10)
+          .map((e) => e.title),
+        executionsToday: (deps.executionHistory?.() ?? [])
+          .filter((e) => e.startedAt.slice(0, 10) === today)
+          .map((e) => ({ label: e.label, state: e.state })),
+        automationRunsToday: (deps.automationRuns?.() ?? [])
+          .filter((r) => r.startedAt.slice(0, 10) === today)
+          .map((r) => ({ ok: r.ok })),
+        jobsToday: jobStore
+          .page({ limit: 200 })
+          .jobs.filter((j) => j.createdAt.slice(0, 10) === today).length,
+        pendingApprovals: jobStore.page({ status: 'awaiting_approval', limit: 1 }).total,
+        conversationsToday: store.list(null, 100).filter((c) => c.updatedAt.slice(0, 10) === today)
+          .length,
+        connectorProblems: connectorProblemList(),
+      });
+    },
   });
 
   const handlers: SecureHandlerDef[] = [
@@ -280,5 +536,16 @@ export function initAssistant(deps: AssistantSubsystemDeps): AssistantSubsystem 
     channels: handlers.length,
   });
 
-  return { handlers, dispose: () => undefined };
+  return {
+    handlers,
+    dispose: () => undefined,
+    // Phase 6 Stage 5 — feeds the followup_conversation recommendation rule.
+    conversationSummaries: () =>
+      store.list(null, 50).map((s) => ({
+        id: s.id,
+        title: s.title,
+        updatedAt: s.updatedAt,
+        waitingSteps: s.waitingSteps ?? 0,
+      })),
+  };
 }

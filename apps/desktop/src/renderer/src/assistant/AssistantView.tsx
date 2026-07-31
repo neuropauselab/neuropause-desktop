@@ -262,6 +262,45 @@ function AssistantReply({
         )}
       </div>
 
+      {/* Phase 6 Stage 5 — structured deterministic report (brief / meeting
+          prep / work summary). Sections are computed evidence; the honest empty
+          state renders when nothing was found. */}
+      {env.structured && (
+        <div className="rounded-2xl border border-[var(--hairline)] p-4">
+          <div className="mb-2 flex items-center gap-2 text-2xs uppercase tracking-wide text-faint">
+            <Icon name={env.structured.kind === 'meeting-brief' ? 'clock' : 'doc'} size={12} />
+            {env.structured.kind === 'brief'
+              ? 'Brief'
+              : env.structured.kind === 'meeting-brief'
+                ? 'Meeting prep'
+                : 'Work summary'}
+            <span>computed from your data</span>
+          </div>
+          <div className="text-sm font-medium text-ink">{env.structured.title}</div>
+          {env.structured.sections.length === 0 ? (
+            <p className="mt-1 text-sm text-muted">
+              Nothing to report — no evidence was found for this request.
+            </p>
+          ) : (
+            <div className="mt-2 space-y-2.5">
+              {env.structured.sections.map((s) => (
+                <div key={s.title}>
+                  <div className="text-2xs font-semibold uppercase tracking-wide text-faint">{s.title}</div>
+                  <ul className="mt-1 space-y-1">
+                    {s.lines.map((l, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-ink">
+                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-sysblue" />
+                        <span className="min-w-0 flex-1">{l}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Deterministic findings */}
       {env.findings.length > 0 && (
         <div className="rounded-2xl border border-[var(--hairline)] p-4">

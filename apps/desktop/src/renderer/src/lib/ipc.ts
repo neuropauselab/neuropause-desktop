@@ -361,6 +361,11 @@ import type {
   WebhookDeliveryStats,
   PlatformEventCategory,
   PluginExtension,
+  // Phase 6 Stage 5 (D-8) — Notification Inbox + delivery preferences.
+  NotificationInboxPage,
+  NotificationInboxEvent,
+  DeliveryPreferences,
+  NotificationsPrefsSetRequest,
 } from '@neuropause/shared';
 
 type OAuthProviderId = Exclude<AuthProviderId, 'email'>;
@@ -1100,6 +1105,26 @@ export const ipc = {
       invoke(IpcChannel.AssistantCancel, { conversationId }) as Promise<{ cancelled: boolean }>,
     onEvent: (cb: (event: AssistantEvent) => void) =>
       subscribe(IpcChannel.AssistantEventBroadcast, (p) => cb(p as AssistantEvent)),
+  },
+
+  /** Phase 6 Stage 5 (D-8) — the Notification Inbox over the EXISTING delivery
+   *  engine's notification-center channel, plus the surfaced preference store. */
+  notifications: {
+    list: (limit?: number) =>
+      invoke(
+        IpcChannel.NotificationsList,
+        limit === undefined ? {} : { limit },
+      ) as Promise<NotificationInboxPage>,
+    markRead: (ids: 'all' | string[]) =>
+      invoke(IpcChannel.NotificationsMarkRead, { ids }) as Promise<{
+        changed: number;
+        unread: number;
+      }>,
+    prefs: () => invoke(IpcChannel.NotificationsPrefsGet) as Promise<DeliveryPreferences>,
+    setPrefs: (patch: NotificationsPrefsSetRequest) =>
+      invoke(IpcChannel.NotificationsPrefsSet, patch) as Promise<DeliveryPreferences>,
+    onEvent: (cb: (event: NotificationInboxEvent) => void) =>
+      subscribe(IpcChannel.NotificationsEventBroadcast, (p) => cb(p as NotificationInboxEvent)),
   },
 
   engineering: {

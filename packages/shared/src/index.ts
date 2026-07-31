@@ -119,6 +119,8 @@ export * from './ipc/contracts';
 export * from './types/aiEngine';
 // Phase 6 Stage 4 — Workspace Assistant.
 export * from './types/assistant';
+// Phase 6 Stage 5 — Notification Inbox.
+export * from './types/notifications';
 export * from './types/delivery';
 export * from './types/orgHealth';
 export * from './types/executiveCenter';

@@ -86,6 +86,9 @@ export default defineConfig({
       // (approval cards + Session Inspector level filtering; no DOM, no React).
       // Main-side assistant tests are already covered by src/main/**.
       'src/renderer/src/assistant/**/*.test.ts',
+      // Phase 6 Stage 5 — the Work Hub's pure view-model (tiles, task board,
+      // email prioritization, productivity timeline, work summary; no DOM).
+      'src/renderer/src/hub/**/*.test.ts',
     ],
   },
   resolve: {

@@ -33,6 +33,11 @@ describe('navigation sections — production visibility', () => {
     expect(visible[3]?.id).toBe('assistant');
   });
 
+  it('the work hub is a visible primary surface right after the assistant (Phase 6 Stage 5)', () => {
+    const visible = SECTIONS.filter((s) => s.placement === 'primary' && !s.hidden);
+    expect(visible[4]?.id).toBe('hub');
+  });
+
   it('retired duplicate + pseudo-section surfaces are hidden from nav', () => {
     const hiddenIds = hidden.map((s) => s.id);
     for (const id of ['home', 'decision-center', 'welcome', 'developer-center', 'federation-center', 'control-plane', 'automations', 'analytics']) {
@@ -47,7 +52,7 @@ describe('navigation sections — production visibility', () => {
 
   it('canonical production surfaces remain visible', () => {
     const visibleIds = SECTIONS.filter((s) => !s.hidden).map((s) => s.id);
-    for (const id of ['mission-control', 'intent-home', 'search', 'assistant', 'organization', 'enterprise', 'operations', 'workforce', 'connectors', 'cloud', 'federation', 'marketplace', 'sandbox', 'settings']) {
+    for (const id of ['mission-control', 'intent-home', 'search', 'assistant', 'hub', 'organization', 'enterprise', 'operations', 'workforce', 'connectors', 'cloud', 'federation', 'marketplace', 'sandbox', 'settings']) {
       expect(visibleIds).toContain(id);
     }
   });
@@ -95,6 +100,7 @@ describe('navigation sections — production visibility', () => {
       'intent-home',
       'search',
       'assistant',
+      'hub',
       'connectors',
       'memory',
       'store',

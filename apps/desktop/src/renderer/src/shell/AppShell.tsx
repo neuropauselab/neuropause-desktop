@@ -102,6 +102,8 @@ const SearchHost = lazy(() =>
 const AssistantHost = lazy(() =>
   import('@renderer/assistant/AssistantHost').then((m) => ({ default: m.AssistantHost })),
 );
+// Phase 6 Stage 5 — the Work Hub: the personal workday surface (additive).
+const HubHost = lazy(() => import('@renderer/hub/HubHost').then((m) => ({ default: m.HubHost })));
 const EnterpriseView = lazy(() =>
   import('@renderer/views/EnterpriseView').then((m) => ({ default: m.EnterpriseView })),
 );
@@ -261,6 +263,8 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
         return <SearchHost onNavigate={(id) => goToSection(id)} />;
       case 'assistant':
         return <AssistantHost onNavigate={(id) => goToSection(id)} />;
+      case 'hub':
+        return <HubHost onNavigate={(id) => goToSection(id)} />;
       case 'intent-home':
         return <IntentHomeView onOpenSection={(id) => goToSection(id as SectionId)} />;
       case 'decision-center':

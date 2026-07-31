@@ -23,6 +23,16 @@ export interface RecommendationInput {
   entities: UnifiedEntity[];
   events: EnterpriseTimelineEntry[];
   now: string;
+  /* ── Phase 6 Stage 5 — additive aux inputs (all optional; rules that need an
+     absent input simply produce nothing — never a guess). ── */
+  /** Workforce proposals parked for a human. */
+  pendingApprovals?: { jobId: string; title: string; workerName: string; createdAt: string }[];
+  /** Connector runtime state (id + a problem string when unhealthy). */
+  connectors?: { id: string; problem: string | null }[];
+  /** Recent ExecuteEngine history (for repeated-manual-run detection). */
+  executionHistory?: { kind: string; targetId: string | null; label: string; startedAt: string; state: string }[];
+  /** Assistant conversation summaries (waiting plan steps = follow-up signal). */
+  conversations?: { id: string; title: string; updatedAt: string; waitingSteps: number }[];
 }
 
 const STALE_DAYS = 14;
@@ -130,6 +140,121 @@ export function generateRecommendations(
         ),
       );
     }
+  }
+
+  /* ── Phase 6 Stage 5 — additive productivity rules. Deterministic, evidence-
+     backed, and explainable: every one carries suggestedAction, affectedSystems,
+     and confidence (5.11). Absent aux inputs → the rule is silent. ── */
+
+  // Workforce proposals awaiting a human → open_approval.
+  for (const p of input.pendingApprovals ?? []) {
+    const age = daysBetween(p.createdAt, input.now);
+    recs.push({
+      id: `rec:open_approval:${p.jobId}`,
+      kind: 'open_approval',
+      title: `Approval waiting: ${p.title}`,
+      rationale: `${p.workerName} proposed this ${age < 1 ? 'today' : `${Math.floor(age)} day(s) ago`} and it is still parked for a decision.`,
+      priority: age > 2 ? 'high' : 'normal',
+      score: clamp01(0.65 + Math.min(age, 10) / 30),
+      connectorId: null,
+      entityRefs: [p.jobId],
+      evidence: [{ kind: 'job', id: p.jobId }],
+      suggestedAction: 'Review and approve or reject the proposal in the Approval Center.',
+      affectedSystems: ['workforce', 'approvals'],
+      confidence: 1,
+    });
+  }
+
+  // Unhealthy connectors → connector_issue.
+  for (const c of input.connectors ?? []) {
+    if (c.problem === null) continue;
+    recs.push({
+      id: `rec:connector_issue:${c.id}`,
+      kind: 'connector_issue',
+      title: `Connector problem: ${c.id}`,
+      rationale: c.problem,
+      priority: 'high',
+      score: clamp01(0.75),
+      connectorId: c.id,
+      entityRefs: [c.id],
+      evidence: [{ kind: 'connector', id: c.id }],
+      suggestedAction: 'Open Connections and re-check the connector (reconnect or re-sync).',
+      affectedSystems: ['connectors', 'sync'],
+      confidence: 1,
+    });
+  }
+
+  // The same automation run manually ≥3 times in 7 days → automation_opportunity.
+  const manualRuns = new Map<string, { label: string; count: number; last: string }>();
+  for (const h of input.executionHistory ?? []) {
+    if (h.kind !== 'automation' || !h.targetId || h.state !== 'completed') continue;
+    if (daysBetween(h.startedAt, input.now) > 7) continue;
+    const prev = manualRuns.get(h.targetId);
+    if (prev) {
+      prev.count += 1;
+      if (h.startedAt > prev.last) prev.last = h.startedAt;
+    } else {
+      manualRuns.set(h.targetId, { label: h.label, count: 1, last: h.startedAt });
+    }
+  }
+  for (const [ruleId, m] of manualRuns) {
+    if (m.count < 3) continue;
+    recs.push({
+      id: `rec:automation_opportunity:${ruleId}`,
+      kind: 'automation_opportunity',
+      title: `Schedule it: ${m.label}`,
+      rationale: `Run manually ${m.count} times in the last 7 days — a trigger or schedule would remove the repetition.`,
+      priority: 'normal',
+      score: clamp01(0.5 + m.count / 20),
+      connectorId: null,
+      entityRefs: [ruleId],
+      evidence: [{ kind: 'automation', id: ruleId }],
+      suggestedAction: 'Add a schedule or event trigger to this automation in the Automation Center.',
+      affectedSystems: ['automation', 'execute-engine'],
+      confidence: 0.9,
+    });
+  }
+
+  // Assistant conversations with plan steps still parked → followup_conversation.
+  for (const c of input.conversations ?? []) {
+    if (c.waitingSteps <= 0) continue;
+    const age = daysBetween(c.updatedAt, input.now);
+    recs.push({
+      id: `rec:followup_conversation:${c.id}`,
+      kind: 'followup_conversation',
+      title: `Follow up: ${c.title}`,
+      rationale: `${c.waitingSteps} plan step(s) are still waiting for your decision${age >= 1 ? ` (idle ${Math.floor(age)} day(s))` : ''}.`,
+      priority: age > 1 ? 'high' : 'normal',
+      score: clamp01(0.6 + Math.min(age, 10) / 25),
+      connectorId: null,
+      entityRefs: [c.id],
+      evidence: [{ kind: 'conversation', id: c.id }],
+      suggestedAction: 'Open the conversation in the Assistant and decide the waiting steps.',
+      affectedSystems: ['assistant', 'approvals'],
+      confidence: 1,
+    });
+  }
+
+  // Unread messages older than 2 days → unanswered_email.
+  for (const m of input.entities.filter(
+    (e) => e.kind === 'message' && classifyStatus(e.status) === 'unread',
+  )) {
+    const age = daysBetween(eventTime(m), input.now);
+    if (age < 2) continue;
+    recs.push({
+      id: `rec:unanswered_email:${m.id}`,
+      kind: 'unanswered_email',
+      title: `Unanswered: ${m.title}`,
+      rationale: `Unread for ${Math.floor(age)} day(s)${m.author ? ` (from ${m.author})` : ''}.`,
+      priority: age > 5 ? 'high' : 'normal',
+      score: clamp01(0.45 + Math.min(age, 14) / 40),
+      connectorId: m.connectorId,
+      entityRefs: [m.id],
+      evidence: [{ kind: 'message', id: m.id }],
+      suggestedAction: 'Ask the assistant to draft a reply for your review.',
+      affectedSystems: ['email'],
+      confidence: 0.9,
+    });
   }
 
   let out = recs;

@@ -35,6 +35,7 @@ import type {
   AssistantPlanStep,
   AssistantRetrievedItem,
   AssistantSourceRef,
+  AssistantStructuredReport,
   AssistantToolCall,
   AssistantUiContext,
   AssistantUnavailable,
@@ -53,11 +54,16 @@ import {
   INTENT_QUERIES,
   MODE_CONFIG,
   nameMatches,
+  parseTaskCommand,
   planStateFrom,
   renderHistory,
   renderWorkspaceSnapshot,
+  resolveBriefRequest,
+  resolveMeetingPrep,
+  resolveWorkSummary,
   type PlanTargets,
 } from './assistantModel';
+import { renderReportMaterial } from './productivity';
 import type { ConversationStore } from './conversationStore';
 
 /* ── Ports ─────────────────────────────────────────────────────────────────── */
@@ -117,6 +123,33 @@ export interface AssistantServiceDeps {
   broadcast?: (event: AssistantEvent) => void;
   newId?: () => string;
   now?: () => string;
+
+  /* ── Phase 6 Stage 5 — productivity ports (all optional; an absent port makes
+     its flow report an explicit unavailable reason — never a silent zero). ── */
+  /** D-3: the memory-store task lens (kind 'task'; auto-run local writes). */
+  tasks?: {
+    create: (input: {
+      title: string;
+      due: string | null;
+      priority: 'high' | 'normal';
+      conversationId: string;
+      correlationId: string;
+      now: string;
+    }) => { id: string; title: string };
+    complete: (id: string, now: string, correlationId: string) => { id: string; title: string } | null;
+    list: () => { id: string; title: string; status: string; due: string | null; priority: string; createdAt: string }[];
+  };
+  /** D-8: reminder via the EXISTING notificationScheduler.schedule (local, auto-run). */
+  scheduleReminder?: (r: { title: string; at: string; correlationId: string }) => { id: string };
+  /** D-2: the EXISTING briefing generator, shaped as a structured report. */
+  briefing?: (
+    period: 'morning' | 'afternoon' | 'evening' | 'weekly' | 'monthly',
+    now: string,
+  ) => AssistantStructuredReport;
+  /** D-4: the deterministic meeting-prep collector (existing reads only). */
+  meetingPrep?: (requestText: string, now: string, correlationId: string) => AssistantStructuredReport | null;
+  /** Stage 5 addition #2: descriptive daily Work Summary over existing metrics. */
+  workSummary?: (now: string) => AssistantStructuredReport;
 }
 
 export interface AssistantAskInput {
@@ -138,6 +171,15 @@ export interface AssistantDecideInput {
 }
 
 const EVENT_SOURCE = 'workspace-assistant';
+
+/** Phase 6 Stage 5 — outcome of the deterministic productivity resolutions. */
+interface ProductivityOutcome {
+  findings: AssistantFinding[];
+  assumptions: string[];
+  unavailable: AssistantUnavailable[];
+  structured: AssistantStructuredReport | null;
+  narrativePrompt: 'brief.executive-summary' | 'assistant.meeting-brief' | null;
+}
 
 let fallbackSeq = 0;
 
@@ -214,10 +256,44 @@ export class AssistantService {
     // ── Intent (deterministic; below the floor → clarification, nothing invented). ──
     const intent = classifyAssistantIntent(input.text);
     const cfg = MODE_CONFIG[mode];
-    if (!cfg.operational && (intent.intent === 'unclear' || intent.confidence < ASSISTANT_CONFIDENCE_FLOOR)) {
+    // Phase 6 Stage 5: a matched productivity resolver (brief / work summary /
+    // meeting prep) IS a clear request even when the intent rules score low
+    // (e.g. the bare "morning brief") — those turns proceed deterministically.
+    const productivityResolved =
+      !cfg.operational &&
+      (resolveBriefRequest(input.text) !== null ||
+        resolveWorkSummary(input.text) ||
+        resolveMeetingPrep(input.text));
+    if (
+      !cfg.operational &&
+      !productivityResolved &&
+      (intent.intent === 'unclear' || intent.confidence < ASSISTANT_CONFIDENCE_FLOOR)
+    ) {
       const envelope = baseEnvelope(correlationId, mode, intent, now, {
         clarification:
           "I'm not sure what you're asking. Try, for example: “summarize today's work”, “find overdue invoices”, “show connector problems”, “launch the onboarding automation”, or “draft a customer response”.",
+      });
+      envelope.trace.phases = phases;
+      const messageId = this.appendTurn(conversation, input.text, [], envelope, now);
+      publish('assistant.turn.clarification', { intent: intent.intent });
+      emitPhase('done');
+      this.inflight.delete(conversation.id);
+      await this.deps.store.upsert(conversation);
+      return { conversation, messageId };
+    }
+
+    // ── Phase 6 Stage 5 (D-3): task turns parse deterministically FIRST; an
+    // unparseable task request asks for clarification instead of guessing. ──
+    const taskCmd =
+      intent.intent === 'task' && !cfg.operational ? parseTaskCommand(input.text, now) : null;
+    if (
+      intent.intent === 'task' &&
+      !cfg.operational &&
+      (taskCmd === null || (taskCmd.action !== 'list' && taskCmd.title === null))
+    ) {
+      const envelope = baseEnvelope(correlationId, mode, intent, now, {
+        clarification:
+          'Tell me what to do with the task — for example: “add a task to send the Q3 deck tomorrow”, “remind me in 2 hours to call Sam”, “mark the deck task done”, or “show my open tasks”.',
       });
       envelope.trace.phases = phases;
       const messageId = this.appendTurn(conversation, input.text, [], envelope, now);
@@ -256,11 +332,23 @@ export class AssistantService {
       : buildPlan(intent.intent, mode, correlationId, targets, now);
     phases.push({ phase: 'planning', durationMs: Date.now() - t2 });
 
+    // ── Phase 6 Stage 5 — deterministic productivity flows (D-2/D-3/D-4 +
+    // Work Summary). Auto-run LOCAL operations recorded as tool calls; the
+    // structured report carries computed sections (grounded:false = honest
+    // empty). Precedence: meeting prep → work summary → brief (most specific
+    // first); tasks are handled on their own intent. ──
+    const productivity: ProductivityOutcome = cfg.operational
+      ? { findings: [], assumptions: [], unavailable: [], structured: null, narrativePrompt: null }
+      : this.runProductivityFlows(input.text, intent, taskCmd, conversation.id, correlationId, now, toolCalls);
+    findings.push(...productivity.findings);
+
     // ── Reasoning (mode-gated; grounded narrative over verified facts only). ──
     emitPhase('reasoning');
     const t3 = Date.now();
     let ai: AiEngineResponse | null = null;
-    if (cfg.reason) {
+    if (cfg.reason && productivity.structured && productivity.narrativePrompt) {
+      ai = await this.reasonOverReport(input.text, productivity.structured, productivity.narrativePrompt, cfg.tier, correlationId);
+    } else if (cfg.reason) {
       ai = await this.reason(input.text, mode, intent, conversation, snapshot, findings, retrieval.items, cfg.tier, correlationId);
     }
     phases.push({ phase: 'reasoning', durationMs: Date.now() - t3 });
@@ -280,16 +368,26 @@ export class AssistantService {
     envelope.plan = plan;
     envelope.draft = draft;
     envelope.findings = findings;
-    envelope.unavailable = [...snapshot.unavailable, ...retrieval.unavailable];
+    envelope.structured = productivity.structured;
+    envelope.unavailable = [...snapshot.unavailable, ...retrieval.unavailable, ...productivity.unavailable];
     envelope.navigation = targets.navigate ?? (intent.intent === 'search' && targets.searchQuery ? { section: 'search', query: targets.searchQuery } : null);
     envelope.sources = this.assembleSources(snapshot, retrieval.items, recalled.length);
+    if (productivity.structured) {
+      envelope.sources.push({
+        id: 'productivity-report',
+        label: productivity.structured.title,
+        kind: 'briefing',
+        count: productivity.structured.sections.length,
+      });
+    }
     envelope.toolCalls = toolCalls;
     envelope.assumptions = this.assembleAssumptions(intent, mode, targets, snapshot);
+    envelope.assumptions.push(...productivity.assumptions);
     if (ai) {
       envelope.grounded = ai.grounded;
       envelope.aiOffline = !ai.grounded;
       envelope.confidence = ai.grounded ? ai.confidence : 0;
-      envelope.text = readStr(ai.data, 'answer');
+      envelope.text = readStr(ai.data, 'answer') ?? readStr(ai.data, 'executiveSummary');
       envelope.recommendations = readStrArray(ai.data, 'recommendations');
       envelope.assumptions.push(...readStrArray(ai.data, 'assumptions'));
       envelope.reasoningSummary = ai.grounded
@@ -317,6 +415,12 @@ export class AssistantService {
       envelope.aiOffline = !cfg.reason;
       envelope.confidence = findings.length > 0 ? 0.9 : 0;
       if (cfg.operational) envelope.text = this.monitorText(snapshot);
+    }
+    // A grounded structured report keeps the turn grounded even when the model
+    // is offline — the sections themselves are computed evidence (Stage 5).
+    if (productivity.structured?.grounded) {
+      envelope.grounded = true;
+      if (envelope.confidence === 0) envelope.confidence = 0.9;
     }
     envelope.trace.phases = phases;
     envelope.trace.workspace = snapshot;
@@ -549,6 +653,11 @@ export class AssistantService {
   }
 
   private fallbackText(envelope: AssistantEnvelope): string {
+    if (envelope.structured) {
+      return envelope.structured.grounded
+        ? `${envelope.structured.title} — ${envelope.structured.sections.length} section${envelope.structured.sections.length === 1 ? '' : 's'} (details below).`
+        : `${envelope.structured.title} — nothing to report yet (no evidence found).`;
+    }
     if (envelope.findings.length > 0)
       return `${envelope.findings.length} verified finding${envelope.findings.length === 1 ? '' : 's'} (AI narrative offline).`;
     if (envelope.plan) return 'Plan prepared — review the steps below.';
@@ -745,6 +854,319 @@ export class AssistantService {
     return findings;
   }
 
+  /* ── Phase 6 Stage 5 — productivity flows (D-2/D-3/D-4 + Work Summary) ──── */
+
+  private toolCall(
+    toolCalls: AssistantToolCall[],
+    correlationId: string,
+    started: number,
+    fields: {
+      tool: string;
+      label: string;
+      purpose: string;
+      reason: string;
+      expectedOutput: string;
+      outcome: 'ok' | 'error' | 'skipped';
+      detail: string | null;
+    },
+  ): void {
+    toolCalls.push({
+      id: `tc_${this.newId()}`,
+      ...fields,
+      durationMs: Date.now() - started,
+      correlationId,
+    });
+  }
+
+  /**
+   * Run the deterministic productivity resolutions for this turn. Local task
+   * writes AUTO-RUN (workspace data, not external side effects — D-3) and are
+   * recorded as inspectable tool calls; briefs/meeting prep/work summary are
+   * read-only compositions returned as a structured report. Every failure or
+   * absent port becomes an explicit unavailable/assumption — never a guess.
+   */
+  private runProductivityFlows(
+    text: string,
+    intent: AssistantIntentResult,
+    taskCmd: ReturnType<typeof parseTaskCommand>,
+    conversationId: string,
+    correlationId: string,
+    now: string,
+    toolCalls: AssistantToolCall[],
+  ): ProductivityOutcome {
+    const findings: AssistantFinding[] = [];
+    const assumptions: string[] = [];
+    const unavailable: AssistantUnavailable[] = [];
+    let structured: AssistantStructuredReport | null = null;
+    let narrativePrompt: 'brief.executive-summary' | 'assistant.meeting-brief' | null = null;
+
+    // ── D-3: task commands (own intent). ──
+    if (intent.intent === 'task' && taskCmd) {
+      this.runTaskCommand(taskCmd, conversationId, correlationId, now, toolCalls, findings, assumptions, unavailable);
+      return { findings, assumptions, unavailable, structured, narrativePrompt };
+    }
+
+    // ── Read-only report resolutions (most specific first). ──
+    if (resolveMeetingPrep(text)) {
+      const started = Date.now();
+      if (!this.deps.meetingPrep) {
+        unavailable.push({ system: 'meeting-prep', reason: 'meeting-prep port not wired' });
+      } else {
+        try {
+          const report = this.deps.meetingPrep(text, now, correlationId);
+          if (report) {
+            structured = report;
+            narrativePrompt = 'assistant.meeting-brief';
+            this.toolCall(toolCalls, correlationId, started, {
+              tool: 'meeting-prep',
+              label: 'Prepare meeting brief',
+              purpose: 'Collect participants, related material, activity, decisions, and memory for the meeting.',
+              reason: 'You asked to be prepared; the collector reads existing systems only.',
+              expectedOutput: 'A sectioned meeting brief from real records.',
+              outcome: 'ok',
+              detail: `${report.sections.length} section(s) for “${report.title}”`,
+            });
+          } else {
+            this.toolCall(toolCalls, correlationId, started, {
+              tool: 'meeting-prep',
+              label: 'Prepare meeting brief',
+              purpose: 'Collect meeting material.',
+              reason: 'You asked to be prepared.',
+              expectedOutput: 'A sectioned meeting brief.',
+              outcome: 'skipped',
+              detail: 'No upcoming meeting found in the calendar (next 48 h).',
+            });
+            assumptions.push('No upcoming meeting was found in your calendar (next 48 h) — nothing was prepared.');
+          }
+        } catch (err) {
+          unavailable.push({ system: 'meeting-prep', reason: err instanceof Error ? err.message : String(err) });
+        }
+      }
+      return { findings, assumptions, unavailable, structured, narrativePrompt };
+    }
+
+    if (resolveWorkSummary(text)) {
+      const started = Date.now();
+      if (!this.deps.workSummary) {
+        unavailable.push({ system: 'work-summary', reason: 'work-summary port not wired' });
+      } else {
+        try {
+          structured = this.deps.workSummary(now);
+          narrativePrompt = 'brief.executive-summary';
+          this.toolCall(toolCalls, correlationId, started, {
+            tool: 'brief',
+            label: 'Compose work summary',
+            purpose: 'Aggregate today’s completed work, meetings, AI assistance, and open risks.',
+            reason: 'Descriptive overview of existing operational metrics — nothing is scored or invented.',
+            expectedOutput: 'A sectioned daily work summary.',
+            outcome: 'ok',
+            detail: `${structured.sections.length} section(s)`,
+          });
+        } catch (err) {
+          unavailable.push({ system: 'work-summary', reason: err instanceof Error ? err.message : String(err) });
+        }
+      }
+      return { findings, assumptions, unavailable, structured, narrativePrompt };
+    }
+
+    const briefPeriod = resolveBriefRequest(text);
+    if (briefPeriod) {
+      const started = Date.now();
+      if (!this.deps.briefing) {
+        unavailable.push({ system: 'briefing', reason: 'briefing port not wired' });
+      } else {
+        try {
+          structured = this.deps.briefing(briefPeriod, now);
+          narrativePrompt = 'brief.executive-summary';
+          this.toolCall(toolCalls, correlationId, started, {
+            tool: 'brief',
+            label: `Generate ${briefPeriod} brief`,
+            purpose: 'Compute the deterministic daily-intelligence brief for the requested period.',
+            reason: 'Brief requests resolve to the EXISTING briefing generator — same facts as the delivered brief.',
+            expectedOutput: 'Sectioned brief from real workspace data.',
+            outcome: 'ok',
+            detail: `${structured.sections.length} section(s)`,
+          });
+        } catch (err) {
+          unavailable.push({ system: 'briefing', reason: err instanceof Error ? err.message : String(err) });
+        }
+      }
+    }
+    return { findings, assumptions, unavailable, structured, narrativePrompt };
+  }
+
+  /** D-3: execute one parsed task command through the memory-store lens. */
+  private runTaskCommand(
+    cmd: NonNullable<ReturnType<typeof parseTaskCommand>>,
+    conversationId: string,
+    correlationId: string,
+    now: string,
+    toolCalls: AssistantToolCall[],
+    findings: AssistantFinding[],
+    assumptions: string[],
+    unavailable: AssistantUnavailable[],
+  ): void {
+    if (cmd.action === 'delegate') {
+      findings.push({
+        label: 'Delegation',
+        text: `Delegation prepared${cmd.title ? ` for “${cmd.title}”` : ''} — approve the worker step to dispatch it.`,
+        at: null,
+        connectorId: null,
+        evidence: [],
+      });
+      return; // the plan's gated worker step (built by buildPlan) carries the dispatch
+    }
+    if (!this.deps.tasks) {
+      unavailable.push({ system: 'tasks', reason: 'task port not wired' });
+      return;
+    }
+    const started = Date.now();
+    try {
+      if (cmd.action === 'create') {
+        const created = this.deps.tasks.create({
+          title: cmd.title as string,
+          due: cmd.due,
+          priority: cmd.priority,
+          conversationId,
+          correlationId,
+          now,
+        });
+        this.toolCall(toolCalls, correlationId, started, {
+          tool: 'task',
+          label: `Create task “${created.title}”`,
+          purpose: 'Record the task in the workspace memory store (kind: task).',
+          reason: 'Local workspace data write — auto-run, screened, audited, correlation-tagged.',
+          expectedOutput: 'A durable task visible in the Work Hub.',
+          outcome: 'ok',
+          detail: `${created.id}${cmd.due ? ` · due ${cmd.due}` : ''}${cmd.priority === 'high' ? ' · high priority' : ''}`,
+        });
+        findings.push({
+          label: 'Task created',
+          text: `“${created.title}”${cmd.due ? ` — due ${cmd.due.slice(0, 16).replace('T', ' ')}` : ''}${cmd.priority === 'high' ? ' (high priority)' : ''}`,
+          at: now,
+          connectorId: null,
+          evidence: [{ kind: 'memory', id: created.id }],
+        });
+        if (cmd.remind) {
+          if (!cmd.due) {
+            assumptions.push(
+              'No reminder time could be parsed — the task was created without a reminder (try “in 2 hours” or “tomorrow”).',
+            );
+          } else if (!this.deps.scheduleReminder) {
+            unavailable.push({ system: 'reminders', reason: 'reminder port not wired' });
+          } else {
+            const r = this.deps.scheduleReminder({ title: created.title, at: cmd.due, correlationId });
+            this.toolCall(toolCalls, correlationId, started, {
+              tool: 'reminder',
+              label: `Schedule reminder for “${created.title}”`,
+              purpose: 'Schedule a local reminder through the existing notification scheduler.',
+              reason: 'You asked to be reminded; the scheduler is the one notification path.',
+              expectedOutput: `A notification at ${cmd.due}.`,
+              outcome: 'ok',
+              detail: r.id,
+            });
+            findings.push({
+              label: 'Reminder scheduled',
+              text: `You'll be notified at ${cmd.due.slice(0, 16).replace('T', ' ')}.`,
+              at: now,
+              connectorId: null,
+              evidence: [],
+            });
+          }
+        }
+        return;
+      }
+      if (cmd.action === 'complete') {
+        const open = this.deps.tasks.list().filter((t) => t.status !== 'done');
+        const match = open.find((t) => nameMatches(cmd.title as string, t.title) || nameMatches(t.title, cmd.title as string));
+        if (!match) {
+          this.toolCall(toolCalls, correlationId, started, {
+            tool: 'task',
+            label: 'Complete task',
+            purpose: 'Mark the named task done.',
+            reason: 'Completion resolves by name against your open tasks.',
+            expectedOutput: 'The task marked done.',
+            outcome: 'skipped',
+            detail: `No open task matched “${cmd.title}”.`,
+          });
+          assumptions.push(`No open task matched “${cmd.title}” — nothing was changed.`);
+          return;
+        }
+        const done = this.deps.tasks.complete(match.id, now, correlationId);
+        this.toolCall(toolCalls, correlationId, started, {
+          tool: 'task',
+          label: `Complete task “${match.title}”`,
+          purpose: 'Mark the task done in the workspace memory store.',
+          reason: 'Local workspace data write — auto-run, audited, correlation-tagged.',
+          expectedOutput: 'The task marked done.',
+          outcome: done ? 'ok' : 'error',
+          detail: done ? match.id : 'The store did not return the updated task.',
+        });
+        if (done)
+          findings.push({
+            label: 'Task completed',
+            text: `“${match.title}” marked done.`,
+            at: now,
+            connectorId: null,
+            evidence: [{ kind: 'memory', id: match.id }],
+          });
+        return;
+      }
+      // list
+      const tasks = this.deps.tasks.list();
+      const open = tasks.filter((t) => t.status !== 'done');
+      this.toolCall(toolCalls, correlationId, started, {
+        tool: 'task',
+        label: 'List tasks',
+        purpose: 'Read your assistant tasks from the memory store.',
+        reason: 'Read-only.',
+        expectedOutput: 'Your open tasks.',
+        outcome: 'ok',
+        detail: `${open.length} open / ${tasks.length} total`,
+      });
+      if (open.length === 0) {
+        assumptions.push('You have no open assistant tasks. (Connector tasks live in the Work Hub.)');
+      }
+      for (const t of open.slice(0, 10)) {
+        findings.push({
+          label: 'Open task',
+          text: `${t.title}${t.due ? ` — due ${t.due.slice(0, 16).replace('T', ' ')}` : ''}${t.priority === 'high' ? ' (high)' : ''}`,
+          at: t.createdAt,
+          connectorId: null,
+          evidence: [{ kind: 'memory', id: t.id }],
+        });
+      }
+    } catch (err) {
+      unavailable.push({ system: 'tasks', reason: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  /** Narrative over a structured report — the report's sections ARE the context. */
+  private async reasonOverReport(
+    text: string,
+    report: AssistantStructuredReport,
+    promptId: 'brief.executive-summary' | 'assistant.meeting-brief',
+    tier: 'fast' | 'balanced' | 'deep',
+    correlationId: string,
+  ): Promise<AiEngineResponse> {
+    return this.deps.runAi({
+      worker: 'assistant',
+      promptId,
+      context: [
+        {
+          // The computed report IS deterministic daily-intelligence material —
+          // the same provenance class as the Mission Brief context source.
+          source: 'mission-brief',
+          text: renderReportMaterial(report),
+          evidence: [],
+        },
+      ],
+      variables: promptId === 'assistant.meeting-brief' ? { question: text } : {},
+      tier,
+      correlationId,
+    });
+  }
+
   private locateTargets(text: string, intent: AssistantIntentResult): PlanTargets {
     const targets: PlanTargets = {};
     if (intent.intent === 'automation' || intent.intent === 'workflow') {
@@ -755,9 +1177,12 @@ export class AssistantService {
         targets.automation = null;
       }
     }
-    if (intent.intent === 'execution' || intent.intent === 'connector-action') {
+    if (intent.intent === 'execution' || intent.intent === 'connector-action' || intent.intent === 'task') {
       try {
         const workers = this.deps.context.workers?.() ?? [];
+        // Phase 6 Stage 5 (D-3): a task DELEGATION locates its worker the same
+        // way — by name containment in the request text. Non-delegate task
+        // turns simply won't mention a worker, so nothing matches (no step).
         targets.worker = workers.find((w) => nameMatches(text, w.name)) ?? null;
       } catch {
         targets.worker = null;

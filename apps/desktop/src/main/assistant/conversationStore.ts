@@ -74,6 +74,14 @@ export class ConversationStore {
         break;
       }
     }
+    // Phase 6 Stage 5 — plan steps still parked for a human decision, across
+    // every message. Feeds the followup_conversation recommendation rule.
+    let waitingSteps = 0;
+    for (const m of c.messages) {
+      const plan = m.envelope?.plan;
+      if (!plan) continue;
+      for (const s of plan.steps) if (s.state === 'waiting') waitingSteps += 1;
+    }
     return {
       id: c.id,
       workspaceId: c.workspaceId,
@@ -82,6 +90,7 @@ export class ConversationStore {
       updatedAt: c.updatedAt,
       messageCount: c.messages.length,
       lastIntent,
+      waitingSteps,
     };
   }
 

@@ -341,6 +341,13 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   IpcChannel.AssistantConversationDelete,
   IpcChannel.AssistantConversationBranch,
   IpcChannel.AssistantCancel,
+  // ── Phase 6 Stage 5 (D-8) — Notification Inbox + delivery preferences
+  // (per-user local data, the AiConfig sender-trust precedent; zod-validated,
+  // and `notifications:prefs.set` is bridge-audited on its handler def) ──
+  IpcChannel.NotificationsList,
+  IpcChannel.NotificationsMarkRead,
+  IpcChannel.NotificationsPrefsGet,
+  IpcChannel.NotificationsPrefsSet,
   IpcChannel.FeedbackSubmit,
   IpcChannel.FeedbackList,
   IpcChannel.FeedbackExport,

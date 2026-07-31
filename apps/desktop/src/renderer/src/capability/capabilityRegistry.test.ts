@@ -54,10 +54,19 @@ describe('recon corrections are recorded truthfully', () => {
     expect(infra.state).toBe('managed');
   });
 
-  it('notification preferences are needs-ipc (backing exists, not surfaced) — not "no store exists"', () => {
+  it('notification preferences shipped in Stage 5 (D-8): production-complete via the documented notifications:* cluster', () => {
+    // Formerly the honest `needs-ipc` recon correction ("backing exists, not
+    // surfaced"). Phase 6 Stage 5 built exactly that pre-flagged surface, so the
+    // registry now records it as real — with the audit note preserved.
     const notif = CAPABILITY_REGISTRY.find((c) => c.id === 'workspace.notification-prefs')!;
-    expect(notif.state).toBe('needs-ipc');
-    expect(notif.note?.toLowerCase()).toMatch(/exists/);
+    expect(notif.state).toBe('production-complete');
+    expect(notif.audited).toBe(true);
+    expect(notif.note).toMatch(/notifications:/);
+  });
+
+  it('Stage 5 surfaces are registered as real: the Work Hub and the notification inbox', () => {
+    expect(CAPABILITY_REGISTRY.find((c) => c.id === 'workspace.work-hub')!.state).toBe('production-complete');
+    expect(CAPABILITY_REGISTRY.find((c) => c.id === 'workspace.notification-inbox')!.state).toBe('production-complete');
   });
 
   it('connectors: 13 real are production-complete; the 9 adapterless are preview/needs-adapter', () => {

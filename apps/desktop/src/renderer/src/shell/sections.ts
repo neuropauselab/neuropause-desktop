@@ -4,6 +4,7 @@ export type SectionId =
   | 'mission-control'
   | 'search'
   | 'assistant'
+  | 'hub'
   | 'home'
   | 'organization'
   | 'enterprise'
@@ -89,6 +90,12 @@ export const SECTIONS: SectionDef[] = [
   // existing engines (AI Engine + Context Builder + ExecuteEngine + workforce
   // approvals). Additive; placed after Search so every prior nav lock holds.
   { id: 'assistant', label: 'Assistant', icon: 'sparkles', phase: 25, placement: 'primary' },
+  // Phase 6 Stage 5 — Work Hub: the personal workday surface (Today + My Work +
+  // Executive tabs) composed from EXISTING feeds (briefing, tasks, recommendations,
+  // approvals, notifications, executive snapshot). Additive; placed after Assistant
+  // so every prior nav lock holds. Positioning: Mission Control = organizational
+  // operations landing; Today's Intent = strategy outcomes; Work Hub = YOUR day.
+  { id: 'hub', label: 'Work Hub', icon: 'checklist', phase: 26, placement: 'primary' },
   // Retired in favor of the canonical intent-native home (`intent-home`). Hidden from nav, still routable.
   { id: 'decision-center', label: 'Decision Center', icon: 'sparkles', phase: 21, placement: 'primary', hidden: true },
   { id: 'home', label: 'Home', icon: 'home', phase: 2, placement: 'primary', hidden: true },

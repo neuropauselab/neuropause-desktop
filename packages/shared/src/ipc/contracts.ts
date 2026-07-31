@@ -741,7 +741,8 @@ export type EnterpriseTimelineReplayRequest = z.infer<typeof EnterpriseTimelineR
 
 /* ──────────────────── Daily Intelligence + Recommendations ───────────────── */
 
-const BriefingPeriodSchema = z.enum(['morning', 'evening', 'weekly', 'monthly', 'quarterly']);
+// Phase 6 Stage 5 — 'afternoon' added additively (the Afternoon Update).
+const BriefingPeriodSchema = z.enum(['morning', 'afternoon', 'evening', 'weekly', 'monthly', 'quarterly']);
 const RecommendationKindSchema = z.enum([
   'next_task',
   'stale_task',
@@ -749,6 +750,12 @@ const RecommendationKindSchema = z.enum([
   'pending_document',
   'unanswered',
   'upcoming_deadline',
+  // Phase 6 Stage 5 — additive productivity kinds.
+  'open_approval',
+  'connector_issue',
+  'automation_opportunity',
+  'followup_conversation',
+  'unanswered_email',
 ]);
 
 export const BriefingRequest = z.object({
@@ -856,6 +863,35 @@ export const AssistantCancelRequest = z.object({
   conversationId: z.string().trim().min(1).max(80),
 });
 export type AssistantCancelRequest = z.infer<typeof AssistantCancelRequest>;
+
+/* ───────── Notification Inbox + delivery preferences (Phase 6 Stage 5) ───────── */
+
+export const NotificationsListRequest = z.object({
+  limit: z.number().int().min(1).max(200).optional(),
+});
+export type NotificationsListRequest = z.infer<typeof NotificationsListRequest>;
+
+export const NotificationsMarkReadRequest = z.object({
+  /** Specific inbox ids, or 'all'. */
+  ids: z.union([z.literal('all'), z.array(z.string().trim().min(1).max(200)).min(1).max(200)]),
+});
+export type NotificationsMarkReadRequest = z.infer<typeof NotificationsMarkReadRequest>;
+
+const IntelligencePrioritySchema = z.enum(['low', 'normal', 'high', 'critical']);
+
+/** Explicit, bounded patch over the EXISTING delivery preference store. */
+export const NotificationsPrefsSetRequest = z.object({
+  enabled: z.boolean().optional(),
+  doNotDisturb: z.boolean().optional(),
+  minPriority: IntelligencePrioritySchema.optional(),
+  timezoneOffsetMinutes: z.number().int().min(-14 * 60).max(14 * 60).nullable().optional(),
+  morningBriefMinutes: z.number().int().min(0).max(1439).optional(),
+  afternoonUpdateMinutes: z.number().int().min(0).max(1439).optional(),
+  eveningSummaryMinutes: z.number().int().min(0).max(1439).optional(),
+  weeklyReportDay: z.number().int().min(0).max(6).optional(),
+  mutedSources: z.array(z.string().trim().min(1).max(80)).max(50).optional(),
+});
+export type NotificationsPrefsSetRequest = z.infer<typeof NotificationsPrefsSetRequest>;
 
 /* ────────────────────────────────── Traces ──────────────────────────────── */
 

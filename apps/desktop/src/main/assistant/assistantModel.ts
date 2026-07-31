@@ -104,10 +104,41 @@ const INTENT_RULES: IntentRule[] = [
   {
     intent: 'planning',
     weight: 0.6,
-    re: /\b(prepare|plan|draft a plan|organi[sz]e|schedule out|get ready for)\b.{0,50}\b(meeting|week|launch|review|briefing|quarter|tomorrow)\b/,
+    // Phase 6 Stage 5: +day (\"plan my day\" is the canonical D-2 brief request).
+    re: /\b(prepare|plan|draft a plan|organi[sz]e|schedule out|get ready for)\b.{0,50}\b(meeting|week|day|launch|review|briefing|quarter|tomorrow)\b/,
     signal: 'prepare/plan',
   },
   { intent: 'planning', weight: 0.4, re: /\bwhat should (i|we) (do|work on|focus on)\b/, signal: 'what to do' },
+  // task management (Phase 6 Stage 5 — additive 12th class; D-3)
+  {
+    intent: 'task',
+    weight: 0.6,
+    re: /\b(add|create|make|new)\b.{0,30}\b(task|to-?dos?)\b/,
+    signal: 'create task',
+  },
+  { intent: 'task', weight: 0.6, re: /\bremind me\b/, signal: 'remind me' },
+  {
+    intent: 'task',
+    weight: 0.6,
+    re: /\bschedule\b.{0,30}\bfollow-?ups?\b/,
+    signal: 'schedule follow-up',
+  },
+  {
+    intent: 'task',
+    weight: 0.6,
+    re: /\b(mark|complete|finish|close)\b.{0,40}\b(task|to-?do|done|completed?|finished)\b/,
+    signal: 'complete task',
+  },
+  {
+    intent: 'task',
+    weight: 0.6,
+    re: /\b(delegate|assign)\b.{0,50}\bto\b/,
+    signal: 'delegate',
+  },
+  { intent: 'task', weight: 0.4, re: /\b(my|open|pending|overdue) tasks?\b/, signal: 'my tasks' },
+  // Weak corroborator: an explicit task/to-do noun tips ties toward the task
+  // intent (e.g. "create a task to draft the email reply" over connector-action).
+  { intent: 'task', weight: 0.25, re: /\b(tasks?|to-?dos?)\b/, signal: 'task noun' },
   // content creation
   {
     intent: 'content-creation',
@@ -245,6 +276,7 @@ export const INTENT_QUERIES: Record<AssistantIntentId, string> = {
   navigation: 'sections apps workspaces',
   'connector-action': 'connectors accounts sync status failures actions',
   workflow: 'workflows automation rules onboarding steps runs',
+  task: 'open tasks to-dos due dates owners status',
   unclear: 'status overview priorities',
 };
 
@@ -334,7 +366,9 @@ export function buildPlan(
     if (!a.active) steps[steps.length - 1].state = 'skipped';
   }
 
-  if ((intent === 'execution' || intent === 'connector-action') && targets.worker) {
+  // Phase 6 Stage 5 (D-3): delegating a task routes through the SAME gated
+  // worker dispatch — a delegate is a worker run, not a new execution path.
+  if ((intent === 'execution' || intent === 'connector-action' || intent === 'task') && targets.worker) {
     const w = targets.worker;
     const gate = gatedState();
     steps.push(
@@ -535,6 +569,190 @@ export function renderHistory(
     .join('\n');
   if (out.length > maxChars) out = `…${out.slice(-maxChars)}`;
   return out;
+}
+
+/* ── Phase 6 Stage 5 — productivity resolvers (pure, deterministic) ────────── */
+
+/**
+ * Detect a daily-intelligence request and resolve its period (D-2). Checked on
+ * planning/analysis/question-shaped turns; null means "not a brief request".
+ */
+export function resolveBriefRequest(
+  text: string,
+): 'morning' | 'afternoon' | 'evening' | 'weekly' | 'monthly' | null {
+  const t = ` ${text.toLowerCase()} `;
+  if (/\bweekly (report|brief(ing)?|summary)\b/.test(t) || /\bprepare (the |my )?weekly report\b/.test(t))
+    return 'weekly';
+  if (/\b(monthly|executive) (brief(ing)?|summary)\b/.test(t)) return 'monthly';
+  if (/\bafternoon (update|brief(ing)?|summary)\b/.test(t)) return 'afternoon';
+  if (/\b(evening|end.of.day|eod) (summary|brief(ing)?|update)\b/.test(t)) return 'evening';
+  if (
+    /\b(plan|prepare) my day\b/.test(t) ||
+    /\bmorning brief(ing)?\b/.test(t) ||
+    /\bprepare today'?s priorities\b/.test(t) ||
+    /\btoday'?s priorities\b/.test(t) ||
+    /\bsummari[sz]e (the )?overnight( activity)?\b/.test(t) ||
+    /\bdaily brief(ing)?\b/.test(t)
+  )
+    return 'morning';
+  return null;
+}
+
+/** Detect a Work Summary request ("what did I get done today") (Stage 5 addition #2). */
+export function resolveWorkSummary(text: string): boolean {
+  const t = ` ${text.toLowerCase()} `;
+  return (
+    /\bwork summary\b/.test(t) ||
+    /\bsummari[sz]e my (day|work)\b/.test(t) ||
+    /\bsummari[sz]e today'?s work\b/.test(t) ||
+    /\bwhat (did|have) (i|we) (get|got|gotten|done|accomplish(ed)?)\b/.test(t) ||
+    /\bhow was my day\b/.test(t)
+  );
+}
+
+/** Detect a meeting-preparation request (D-4). */
+export function resolveMeetingPrep(text: string): boolean {
+  const t = ` ${text.toLowerCase()} `;
+  return (
+    /\bmeeting prep\b/.test(t) ||
+    /\b(prep(are)?( me)?( for)?|get( me)? ready( for)?|brief me (on|for|before))\b.{0,40}\b(meeting|1:1|one.on.one|standup|stand-up|sync|call)\b/.test(
+      t,
+    )
+  );
+}
+
+/**
+ * Deterministic due-time parser (conservative — null when unsure, never a
+ * guess): "in N minutes/hours/days", "tomorrow", "next week". Pure over the
+ * injected clock.
+ */
+export function parseDueDate(text: string, nowIso: string): { at: string; phrase: string } | null {
+  const t = text.toLowerCase();
+  const nowMs = Date.parse(nowIso);
+  if (!Number.isFinite(nowMs)) return null;
+  const rel = /\bin (\d{1,3}) ?(minutes?|mins?|hours?|hrs?|days?)\b/.exec(t);
+  if (rel) {
+    const n = Number(rel[1]);
+    const unit = (rel[2] as string)[0]; // m | h | d
+    const ms = unit === 'm' ? n * 60_000 : unit === 'h' ? n * 3_600_000 : n * 86_400_000;
+    return { at: new Date(nowMs + ms).toISOString(), phrase: rel[0] };
+  }
+  const tomorrow = /\btomorrow\b/.exec(t);
+  if (tomorrow) return { at: new Date(nowMs + 86_400_000).toISOString(), phrase: tomorrow[0] };
+  const nextWeek = /\bnext week\b/.exec(t);
+  if (nextWeek) return { at: new Date(nowMs + 7 * 86_400_000).toISOString(), phrase: nextWeek[0] };
+  return null;
+}
+
+/** A parsed task command (D-3). `title: null` ⇒ the request needs clarification. */
+export interface TaskCommand {
+  action: 'create' | 'complete' | 'list' | 'delegate';
+  title: string | null;
+  /** ISO due/reminder time (create only; conservative parser). */
+  due: string | null;
+  /** True when the user asked to be reminded (reminder scheduled at `due`). */
+  remind: boolean;
+  priority: 'high' | 'normal';
+  /** Free-text worker hint (delegate only). */
+  workerHint: string | null;
+}
+
+function cleanTitle(raw: string, duePhrase: string | null): string | null {
+  let s = raw;
+  if (duePhrase) s = s.replace(duePhrase, ' ');
+  s = s
+    .replace(/\b(urgent|high[- ]priority|important|asap)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s:,-]+|[\s:,.!-]+$/g, '')
+    .trim();
+  if (s.length === 0) return null;
+  return s.length > 120 ? `${s.slice(0, 117)}…` : s;
+}
+
+/**
+ * Parse a task-intent turn into a deterministic command. Order matters:
+ * delegate → complete → create/remind → list. Anything unparseable returns
+ * null and the service asks for clarification instead of guessing.
+ */
+export function parseTaskCommand(text: string, nowIso: string): TaskCommand | null {
+  const t = text.replace(/\s+/g, ' ').trim();
+  const lower = t.toLowerCase();
+  const priority: TaskCommand['priority'] = /\b(urgent|high[- ]priority|important|asap)\b/.test(lower)
+    ? 'high'
+    : 'normal';
+  const due = parseDueDate(lower, nowIso);
+
+  const delegate = /\b(?:delegate|assign)\b\s+(?:the\s+)?(?:task\s+)?(.+?)\s+to\s+(.+)$/i.exec(t);
+  if (delegate) {
+    return {
+      action: 'delegate',
+      title: cleanTitle(delegate[1] as string, null),
+      due: null,
+      remind: false,
+      priority,
+      workerHint: cleanTitle(delegate[2] as string, null),
+    };
+  }
+
+  const markDone =
+    /\bmark\b\s+(?:the\s+)?(?:task\s+)?["“]?(.+?)["”]?\s+(?:as\s+)?(?:done|completed?|finished)\b/i.exec(t) ??
+    /\b(?:complete|finish|close)\b\s+(?:the\s+)?task\s+["“]?(.+?)["”]?\s*$/i.exec(t);
+  if (markDone) {
+    // "mark the Q3 deck task done" → the fragment is "Q3 deck", not "Q3 deck task".
+    const fragment = cleanTitle(markDone[1] as string, null)?.replace(/\s+(?:task|to-?do)$/i, '') ?? null;
+    return {
+      action: 'complete',
+      title: fragment,
+      due: null,
+      remind: false,
+      priority,
+      workerHint: null,
+    };
+  }
+
+  const remindMe = /\bremind me\b(?:\s+to\b)?\s*(.*)$/i.exec(t);
+  if (remindMe) {
+    return {
+      action: 'create',
+      title: cleanTitle(remindMe[1] as string, due?.phrase ?? null),
+      due: due?.at ?? null,
+      remind: true,
+      priority,
+      workerHint: null,
+    };
+  }
+
+  const followUp = /\bschedule\b.{0,30}\bfollow-?up\b(?:\s+(?:on|about|with|for))?\s*(.*)$/i.exec(t);
+  if (followUp) {
+    const rest = cleanTitle(followUp[1] as string, due?.phrase ?? null);
+    return {
+      action: 'create',
+      title: rest ? `Follow up: ${rest}` : 'Follow up',
+      due: due?.at ?? null,
+      remind: true,
+      priority,
+      workerHint: null,
+    };
+  }
+
+  const create = /\b(?:add|create|make)\b\s+(?:a\s+|new\s+)?(?:task|to-?do)\b(?:\s+(?:to|for|about|:))?\s*(.*)$/i.exec(
+    t,
+  );
+  if (create) {
+    return {
+      action: 'create',
+      title: cleanTitle(create[1] as string, due?.phrase ?? null),
+      due: due?.at ?? null,
+      remind: false,
+      priority,
+      workerHint: null,
+    };
+  }
+
+  if (/\b(my|open|pending|overdue|list|show( me)?|what are) .*tasks?\b/.test(lower) || /\btasks?\b/.test(lower)) {
+    return { action: 'list', title: null, due: null, remind: false, priority, workerHint: null };
+  }
+  return null;
 }
 
 /** Render the deterministic workspace snapshot for the {{workspace}} variable. Pure. */

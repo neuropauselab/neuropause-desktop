@@ -73,13 +73,15 @@ function buildHeadline(
   const lead =
     period === 'morning'
       ? 'Today'
-      : period === 'evening'
-        ? 'Today so far'
-        : period === 'weekly'
-          ? 'This week'
-          : period === 'monthly'
-            ? 'This month'
-            : 'This quarter';
+      : period === 'afternoon'
+        ? 'So far today'
+        : period === 'evening'
+          ? 'Today so far'
+          : period === 'weekly'
+            ? 'This week'
+            : period === 'monthly'
+              ? 'This month'
+              : 'This quarter';
   const parts: string[] = [];
   if (c.completed) parts.push(`${c.completed} completed`);
   if (c.inProgress) parts.push(`${c.inProgress} in progress`);

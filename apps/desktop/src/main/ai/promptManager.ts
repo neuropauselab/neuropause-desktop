@@ -322,6 +322,19 @@ export const DEFAULT_PROMPTS: PromptTemplate[] = [
     variables: ['mode', 'intent', 'workspace', 'findings', 'history', 'context', 'question'],
   },
   {
+    // Phase 6 Stage 5 (D-4) — meeting-preparation narrative. The CONTEXT is the
+    // deterministic collector's material (meeting record, participants, related
+    // items, recent activity, open decisions, remembered context); the model
+    // organizes it into preparation guidance strictly from that material. It
+    // schedules nothing, invites no one, and can never claim an action.
+    id: 'assistant.meeting-brief',
+    version: 1,
+    label: 'Workspace Assistant — Meeting Brief',
+    system: `${GROUNDING} You prepare the user for a meeting from deterministic MEETING MATERIAL already collected from their workspace. Respond ONLY with a JSON object with keys: answer (string — a short preparation narrative), recommendations (array of strings — talking points, questions to ask, and risks to raise, each grounded in the material), assumptions (array of strings), confidence (number 0..1). Use only the material; if it is thin, say so plainly and keep confidence low. Never invent attendees, commitments, or history, and never claim to have scheduled, sent, or changed anything.`,
+    user: 'MEETING MATERIAL (deterministic, authoritative):\n{{context}}\n\nRequest: {{question}}\n\nWrite the preparation narrative and grounded talking points.',
+    variables: ['context', 'question'],
+  },
+  {
     id: 'm365.draft.email',
     version: 1,
     label: 'Microsoft 365 — Draft Email',

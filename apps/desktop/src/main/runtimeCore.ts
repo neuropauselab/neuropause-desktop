@@ -118,6 +118,7 @@ import {
   initAutomations,
   getAutomationMonitor,
   getAutomationRunner,
+  getAutomationRunRecords,
 } from './enterprise/automationSubsystem';
 import { NeuroCore } from './neuroCore';
 import { RuntimeSupervisor } from './runtimeSupervisor';
@@ -142,6 +143,9 @@ import { initFounderAI } from './founder';
 import { initEngineeringAI, initFounderAIv2 } from './ai';
 // Phase 6 Stage 4 — the Workspace Assistant (composition over existing engines).
 import { initAssistant } from './assistant';
+// Phase 6 Stage 5 — the Notification Inbox + preference surface (D-8): the
+// EXISTING delivery engine's notification-center channel made real.
+import { initNotifications } from './notifications';
 import { initTrace } from './trace';
 import { initWorkforce } from './workforce';
 import { workforceProbe } from './workforce/workforceDiagnostics';
@@ -1414,8 +1418,54 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     publish: publishPlatform,
     execute: (req) => executeEngine.execute(req),
     executionsActive: () => executeEngine.activeSessions().length,
+    // Phase 6 Stage 5 — Work Summary aggregation inputs (existing histories).
+    executionHistory: () =>
+      executeEngine.getHistory().map((s) => ({ label: s.label, state: s.state, startedAt: s.startedAt })),
+    automationRuns: () =>
+      getAutomationRunRecords().map((r) => ({ ok: r.ok, startedAt: r.startedAt })),
   });
   defs.push(...assistant.handlers);
+  // Phase 6 Stage 5 (D-8) — Notification Inbox: registers the notification-center
+  // delivery channel, routes attention-worthy bus events through the SAME engine
+  // gates, adds the meeting-soon interval source, and exposes notifications:*.
+  const notifications = initNotifications({
+    broadcast: deps.broadcast,
+    on: (types, handler) => platform.api.on([...types], handler),
+  });
+  defs.push(...notifications.handlers);
+  // Phase 6 Stage 5 (D-7) — bind the recommendation engine's aux read ports now
+  // that workforce + connectors + automations + assistant all exist. Late-bound
+  // exactly like workforce.setExecutionSubmit; a failing port silences its rules.
+  recommendations.setAuxPorts({
+    pendingApprovals: () => {
+      const workers = new Map(workerRegistry.summaries().map((w) => [w.id, w.name]));
+      return jobStore.page({ status: 'awaiting_approval', limit: 50 }).jobs.map((j) => ({
+        jobId: j.id,
+        title: j.summary ?? j.skillId,
+        workerName: workers.get(j.workerId) ?? j.workerId,
+        createdAt: j.createdAt,
+      }));
+    },
+    connectors: () =>
+      connectorService.list().map((c) => ({
+        id: c.id,
+        problem:
+          c.health === 'healthy' || !c.configured || c.health === 'unknown'
+            ? null
+            : `health ${c.health} (status ${c.status})`,
+      })),
+    executionHistory: () =>
+      getAutomationRunRecords()
+        .filter((r) => r.triggeredBy === 'manual' && r.ok)
+        .map((r) => ({
+          kind: 'automation',
+          targetId: r.ruleId,
+          label: r.ruleName,
+          startedAt: r.startedAt,
+          state: 'completed',
+        })),
+    conversations: () => assistant.conversationSummaries(),
+  });
   defs.push(...trace.handlers);
   defs.push(...workforce.handlers);
   defs.push(...enterprise.handlers);

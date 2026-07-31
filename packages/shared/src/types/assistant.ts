@@ -58,6 +58,9 @@ export type AssistantIntentId =
   | 'navigation'
   | 'connector-action'
   | 'workflow'
+  // Phase 6 Stage 5 — task management verbs (create/update/complete/prioritize/
+  // delegate) over the EXISTING memory store; additive twelfth class.
+  | 'task'
   | 'unclear';
 
 export interface AssistantIntentResult {
@@ -87,7 +90,12 @@ export type AssistantStepTool =
   | 'execution' // ExecuteEngine, other kinds (memory/executive/runtime)
   | 'navigate' // shell navigation (renderer resolves)
   | 'search' // Universal Search hand-off
-  | 'draft'; // review-only content generation
+  | 'draft' // review-only content generation
+  // Phase 6 Stage 5 — additive productivity tools (local workspace operations).
+  | 'task' // memory-store task lens (create/update/complete/prioritize)
+  | 'reminder' // existing notificationScheduler.schedule
+  | 'brief' // existing generateBriefing (deterministic daily intelligence)
+  | 'meeting-prep'; // deterministic meeting collection over existing reads
 
 export interface AssistantPlanStep {
   id: string;
@@ -290,6 +298,19 @@ export interface AssistantDraft {
   note: string;
 }
 
+/**
+ * Phase 6 Stage 5 — a structured deterministic report carried on the envelope
+ * (daily/weekly briefs, meeting preparation). Sections are computed from real
+ * evidence by the EXISTING generators; `grounded:false` renders the honest
+ * empty state. Optional + additive.
+ */
+export interface AssistantStructuredReport {
+  kind: 'brief' | 'meeting-brief' | 'work-summary';
+  title: string;
+  sections: { title: string; lines: string[] }[];
+  grounded: boolean;
+}
+
 /** Renderer-only situation passed with an ask (`| undefined` matches the zod
  *  contract's inference under exactOptionalPropertyTypes). */
 export interface AssistantUiContext {
@@ -313,6 +334,8 @@ export interface AssistantEnvelope {
   draft: AssistantDraft | null;
   /** A navigation resolution the renderer executes (deep link into the shell). */
   navigation: { section: string; query: string | null } | null;
+  /** Phase 6 Stage 5 — structured deterministic report (brief / meeting prep). */
+  structured?: AssistantStructuredReport | null;
   plan: AssistantPlan | null;
   sources: AssistantSourceRef[];
   toolCalls: AssistantToolCall[];
@@ -363,6 +386,8 @@ export interface AssistantConversationSummary {
   updatedAt: string;
   messageCount: number;
   lastIntent: AssistantIntentId | null;
+  /** Phase 6 Stage 5 — plan steps still parked for approval (follow-up signal). */
+  waitingSteps?: number;
 }
 
 /* ── Streaming events (assistant:event broadcast) ──────────────────────────── */

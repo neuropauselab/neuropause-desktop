@@ -1,15 +1,21 @@
+/**
+ * Toolbar notification bell (Phase 6 Stage 5 — D-8): now reads the REAL
+ * notification inbox (`notifications:*`) instead of the dashboard placeholder
+ * feed. Unread count and list refresh live on the `notifications:event`
+ * broadcast; clicking an item marks it read and follows its deep link into the
+ * EXISTING section it points at.
+ */
 import { motion } from 'framer-motion';
 import { formatRelative } from '@renderer/lib/format';
 import { Icon } from '@renderer/components/ui/Icon';
 import { Menu, MenuItem, MenuSeparator } from '@renderer/components/ui/Menu';
-import { useDashboard } from '@renderer/state/DashboardProvider';
 import { useShell } from '@renderer/state/ShellProvider';
+import { useNotificationInbox } from '@renderer/hub/useNotificationInbox';
+import { sectionForDeepLink, sourceLabel } from '@renderer/hub/hubModel';
 
-/** Toolbar notification bell with an unread indicator and a quick list. */
 export function NotificationBell(): JSX.Element {
-  const { data, unreadCount, markNotificationRead, markAllNotificationsRead } = useDashboard();
+  const { items, unread, markRead } = useNotificationInbox(12);
   const { setSection } = useShell();
-  const notifications = data?.notifications ?? [];
 
   return (
     <Menu
@@ -25,7 +31,7 @@ export function NotificationBell(): JSX.Element {
           }`}
         >
           <Icon name="bell" size={18} />
-          {unreadCount > 0 && (
+          {unread > 0 && (
             <motion.span
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
@@ -37,10 +43,10 @@ export function NotificationBell(): JSX.Element {
     >
       <div className="flex items-center justify-between px-2.5 pb-1.5 pt-1">
         <span className="text-base font-semibold">Notifications</span>
-        {unreadCount > 0 && (
+        {unread > 0 && (
           <button
             type="button"
-            onClick={() => markAllNotificationsRead()}
+            onClick={() => markRead('all')}
             className="text-xs font-medium text-accent hover:text-accent-hover"
           >
             Mark all read
@@ -48,15 +54,19 @@ export function NotificationBell(): JSX.Element {
         )}
       </div>
       <MenuSeparator />
-      {notifications.length === 0 ? (
+      {items.length === 0 ? (
         <div className="px-2.5 py-6 text-center text-sm text-faint">You’re all caught up.</div>
       ) : (
         <div className="max-h-[320px] overflow-y-auto">
-          {notifications.map((n) => (
+          {items.map((n) => (
             <button
               key={n.id}
               type="button"
-              onClick={() => markNotificationRead(n.id)}
+              onClick={() => {
+                markRead([n.id]);
+                const section = sectionForDeepLink(n.deepLink);
+                if (section) setSection(section);
+              }}
               className="flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left fill-hover"
             >
               <span
@@ -69,7 +79,9 @@ export function NotificationBell(): JSX.Element {
                   <span className="truncate text-sm font-semibold text-ink">{n.title}</span>
                   <span className="shrink-0 text-2xs text-faint">{formatRelative(n.at)}</span>
                 </span>
-                <span className="mt-0.5 block text-xs leading-snug text-muted">{n.body}</span>
+                <span className="mt-0.5 block text-xs leading-snug text-muted">
+                  {sourceLabel(n.sourceKey)} · {n.body}
+                </span>
               </span>
             </button>
           ))}

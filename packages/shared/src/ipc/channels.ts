@@ -262,6 +262,15 @@ export const IpcChannel = {
   AssistantCancel: 'assistant:cancel',
   AssistantEventBroadcast: 'assistant:event',
 
+  // ── Notification Inbox + delivery preferences (Phase 6 Stage 5 — the D-8
+  // cluster; surfaces the EXISTING delivery preference store the capability
+  // registry had flagged as "deferred, needs an IPC channel") ──
+  NotificationsList: 'notifications:list',
+  NotificationsMarkRead: 'notifications:markRead',
+  NotificationsPrefsGet: 'notifications:prefs.get',
+  NotificationsPrefsSet: 'notifications:prefs.set',
+  NotificationsEventBroadcast: 'notifications:event',
+
   // ── Traces (governance / context / relationship) ──
   GovernanceList: 'governance:list',
   GovernanceTrace: 'governance:trace',
@@ -1443,6 +1452,11 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.AssistantConversationBranch,
   IpcChannel.AssistantPlanDecide,
   IpcChannel.AssistantCancel,
+  // Phase 6 Stage 5 — Notification Inbox + delivery preferences.
+  IpcChannel.NotificationsList,
+  IpcChannel.NotificationsMarkRead,
+  IpcChannel.NotificationsPrefsGet,
+  IpcChannel.NotificationsPrefsSet,
 ];
 
 /** Runtime-core broadcasts. */
@@ -1475,6 +1489,8 @@ export const RUNTIME_BROADCAST_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.InfraEventBroadcast,
   // Phase 6 Stage 4 — Workspace Assistant streaming progress.
   IpcChannel.AssistantEventBroadcast,
+  // Phase 6 Stage 5 — Notification Inbox refresh signal.
+  IpcChannel.NotificationsEventBroadcast,
 ];
 
 /** The full set the preload bridge permits (legacy + runtime core). */
