@@ -266,6 +266,9 @@ export interface MemoryAuditEvent {
   decision: MemoryDecision | null;
   /** Set on 'rejected' captures — the governance result. */
   rejections: MemoryRejection[];
+  /** Phase 6 Stage 4 — end-to-end trace id when the event came from a
+   *  correlation-tagged flow (e.g. an assistant turn). Optional + additive. */
+  correlationId?: string;
 }
 
 /**

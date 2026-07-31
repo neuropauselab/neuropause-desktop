@@ -15,6 +15,8 @@ import { SECTIONS } from './sections';
 import { useWorkspaceContexts } from '@renderer/state/WorkspaceContextProvider';
 import { BUSINESS_FAVORITE_KIND, moduleIdFromBusinessFavorite } from '@renderer/business/businessModel';
 import { setPendingSearchQuery } from '@renderer/search/searchHandoff';
+// Phase 6 Stage 4 — hand-off into the Workspace Assistant.
+import { setPendingAssistantQuery } from '@renderer/assistant/assistantHandoff';
 
 type GroupKey = 'Search' | 'Recent' | 'Applications' | 'Plugins' | 'Sessions' | 'Downloads' | 'Go to' | 'Commands';
 
@@ -330,6 +332,18 @@ export function CommandPalette(): JSX.Element {
         subtitle: 'Universal search · all indexes',
         icon: 'search',
         run: openSearch,
+      },
+      // Phase 6 Stage 4 — hand the typed request to the Workspace Assistant.
+      {
+        id: 'assistant:ask',
+        group: 'Search',
+        title: `Ask Assistant: “${query.trim()}”`,
+        subtitle: 'Workspace Assistant · grounded answer, actions gated by approval',
+        icon: 'sparkles',
+        run: () => {
+          setPendingAssistantQuery(query);
+          setSection('assistant');
+        },
       },
       ...searchHits.map((h): CommandItem => ({
         id: `search:${h.source}:${h.id}`,

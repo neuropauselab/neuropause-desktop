@@ -82,6 +82,10 @@ export default defineConfig({
       // Phase 6 Stage 3 — Universal Search's pure layers (planner, model,
       // pipeline, bench evidence; no DOM, no React).
       'src/renderer/src/search/**/*.test.ts',
+      // Phase 6 Stage 4 — the Workspace Assistant's pure renderer view-model
+      // (approval cards + Session Inspector level filtering; no DOM, no React).
+      // Main-side assistant tests are already covered by src/main/**.
+      'src/renderer/src/assistant/**/*.test.ts',
     ],
   },
   resolve: {

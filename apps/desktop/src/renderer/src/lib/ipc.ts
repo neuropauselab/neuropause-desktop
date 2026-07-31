@@ -9,6 +9,12 @@ import type { WorkforceIntelligence } from '@renderer/workforce/intelligenceType
 import { perfRecorder } from '@renderer/lib/perf/perfRecorder';
 import {
   IpcChannel,
+  // Phase 6 Stage 4 — Workspace Assistant.
+  type AssistantAskRequest,
+  type AssistantAskResult,
+  type AssistantConversation,
+  type AssistantConversationsResult,
+  type AssistantEvent,
   type AppInfo,
   type AuthProviderId,
   type AuthStatus,
@@ -1072,6 +1078,28 @@ export const ipc = {
       invoke(IpcChannel.FounderAskV2, { text, now }) as Promise<FounderResponse>,
     suggestions: (now?: string) =>
       invoke(IpcChannel.FounderSuggestions, { now }) as Promise<FounderSuggestedQuestion[]>,
+  },
+
+  /** Phase 6 Stage 4 — the Workspace Assistant (documented D-1 cluster). */
+  assistant: {
+    ask: (req: AssistantAskRequest) =>
+      invoke(IpcChannel.AssistantAsk, req) as Promise<AssistantAskResult>,
+    conversations: (workspaceId?: string | null, limit?: number) =>
+      invoke(IpcChannel.AssistantConversations, { workspaceId, limit }) as Promise<AssistantConversationsResult>,
+    conversation: (conversationId: string) =>
+      invoke(IpcChannel.AssistantConversationGet, { conversationId }) as Promise<AssistantConversation | null>,
+    save: (req: { conversationId: string; title?: string; pinned?: boolean }) =>
+      invoke(IpcChannel.AssistantConversationSave, req) as Promise<AssistantConversation | null>,
+    remove: (conversationId: string) =>
+      invoke(IpcChannel.AssistantConversationDelete, { conversationId }) as Promise<boolean>,
+    branch: (conversationId: string, messageId: string, now?: string) =>
+      invoke(IpcChannel.AssistantConversationBranch, { conversationId, messageId, now }) as Promise<AssistantConversation | null>,
+    decideStep: (req: { conversationId: string; messageId: string; stepId: string; decision: 'approve' | 'reject'; note?: string | null }) =>
+      invoke(IpcChannel.AssistantPlanDecide, req) as Promise<AssistantConversation | null>,
+    cancel: (conversationId: string) =>
+      invoke(IpcChannel.AssistantCancel, { conversationId }) as Promise<{ cancelled: boolean }>,
+    onEvent: (cb: (event: AssistantEvent) => void) =>
+      subscribe(IpcChannel.AssistantEventBroadcast, (p) => cb(p as AssistantEvent)),
   },
 
   engineering: {

@@ -26,6 +26,8 @@ import { SkeletonLines } from '@renderer/components/ui/Skeleton';
 import type { AppNotification } from '@renderer/data/types';
 import type { SectionId } from '../shell/sections';
 import { setPendingSearchQuery } from '../search/searchHandoff';
+// Phase 6 Stage 4 — sanctioned minimal hand-off into the Workspace Assistant.
+import { setPendingAssistantQuery } from '../assistant/assistantHandoff';
 import { useMissionControl, useMissionControlMeta } from './MissionControlProvider';
 import type { FeedTileState, HealthView, RecentFileItem, RunningWorkItem } from './missionControlFeed';
 import {
@@ -288,6 +290,19 @@ export function MissionControlView({ onNavigate, onOpenPalette, notificationsSto
               <Icon name="search" size={14} className="text-accent shrink-0" />
               <span className="min-w-0 flex-1 truncate text-ink">Search everywhere for “{query.trim()}”</span>
               <span className="text-faint shrink-0 text-2xs">↵</span>
+            </button>
+            {/* Phase 6 Stage 4 — hand-off row into the Workspace Assistant. */}
+            <button
+              type="button"
+              onClick={() => {
+                setPendingAssistantQuery(query);
+                setQuery('');
+                go('assistant');
+              }}
+              className="fill-hover flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm outline-none focus-visible:shadow-focus"
+            >
+              <Icon name="sparkles" size={14} className="text-accent shrink-0" />
+              <span className="min-w-0 flex-1 truncate text-ink">Ask Assistant: “{query.trim()}”</span>
             </button>
             {hits.map((h) => {
               const target = h.domain ? COMMAND_DOMAINS.find((d) => d.id === h.domain)?.section : undefined;

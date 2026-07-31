@@ -117,6 +117,8 @@ export * from './types/maintenance';
 export * from './ipc/channels';
 export * from './ipc/contracts';
 export * from './types/aiEngine';
+// Phase 6 Stage 4 — Workspace Assistant.
+export * from './types/assistant';
 export * from './types/delivery';
 export * from './types/orgHealth';
 export * from './types/executiveCenter';

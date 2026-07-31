@@ -3,6 +3,7 @@ import type { IconName } from '@renderer/components/ui/Icon';
 export type SectionId =
   | 'mission-control'
   | 'search'
+  | 'assistant'
   | 'home'
   | 'organization'
   | 'enterprise'
@@ -84,6 +85,10 @@ export const SECTIONS: SectionDef[] = [
   // (federated engine, app records, semantic memory, business modules). Additive;
   // placed after the two landing surfaces so their nav locks hold unchanged.
   { id: 'search', label: 'Search', icon: 'search', phase: 24, placement: 'primary' },
+  // Phase 6 Stage 4 — Workspace Assistant: the conversational interface over the
+  // existing engines (AI Engine + Context Builder + ExecuteEngine + workforce
+  // approvals). Additive; placed after Search so every prior nav lock holds.
+  { id: 'assistant', label: 'Assistant', icon: 'sparkles', phase: 25, placement: 'primary' },
   // Retired in favor of the canonical intent-native home (`intent-home`). Hidden from nav, still routable.
   { id: 'decision-center', label: 'Decision Center', icon: 'sparkles', phase: 21, placement: 'primary', hidden: true },
   { id: 'home', label: 'Home', icon: 'home', phase: 2, placement: 'primary', hidden: true },

@@ -98,6 +98,10 @@ const MissionControlHost = lazy(() =>
 const SearchHost = lazy(() =>
   import('@renderer/search/SearchHost').then((m) => ({ default: m.SearchHost })),
 );
+// Phase 6 Stage 4 — the Workspace Assistant (additive).
+const AssistantHost = lazy(() =>
+  import('@renderer/assistant/AssistantHost').then((m) => ({ default: m.AssistantHost })),
+);
 const EnterpriseView = lazy(() =>
   import('@renderer/views/EnterpriseView').then((m) => ({ default: m.EnterpriseView })),
 );
@@ -255,6 +259,8 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
         return <MissionControlHost onNavigate={(id) => goToSection(id)} />;
       case 'search':
         return <SearchHost onNavigate={(id) => goToSection(id)} />;
+      case 'assistant':
+        return <AssistantHost onNavigate={(id) => goToSection(id)} />;
       case 'intent-home':
         return <IntentHomeView onOpenSection={(id) => goToSection(id as SectionId)} />;
       case 'decision-center':

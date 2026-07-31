@@ -1,0 +1,964 @@
+/**
+ * Workspace Assistant Service (Phase 6 Stage 4) — the turn pipeline.
+ *
+ *   Conversation → Context → Retrieval → Reasoning → Planning → Approval →
+ *   Execution → Verification → Response
+ *
+ * A COMPOSITION over existing engines, all injected as ports: the Context
+ * Builder retrieves, the AI Engine reasons (never without context), the
+ * ExecuteEngine executes (only after an explicit human approval on a gated plan
+ * step), the conversation store persists, and the platform event bus +
+ * assistant broadcast carry progress. One Correlation ID (`asst_…`) is minted
+ * per turn and propagated into every retrieval trace, AI invocation (→ the AI
+ * audit record), approval, execution request (→ execution.* timeline events),
+ * assistant timeline event, and memory-audit record.
+ *
+ * Honesty contract (Stage 2/3 doctrine): every context collector settles
+ * independently — a failing subsystem becomes an explicit `unavailable`
+ * reason, never a silent zero; with no model the deterministic findings still
+ * answer (`aiOffline: true`); nothing side-effecting ever runs without an
+ * approval recorded on the step. Pure orchestration: unit-tests electron-free.
+ */
+import type {
+  AiContextItem,
+  AiEngineRequest,
+  AiEngineResponse,
+  AssistantConversation,
+  AssistantEnvelope,
+  AssistantEvent,
+  AssistantAskResult,
+  AssistantFinding,
+  AssistantIntentResult,
+  AssistantMessage,
+  AssistantMode,
+  AssistantPhaseTiming,
+  AssistantPlanStep,
+  AssistantRetrievedItem,
+  AssistantSourceRef,
+  AssistantToolCall,
+  AssistantUiContext,
+  AssistantUnavailable,
+  AssistantWorkspaceSnapshot,
+  ExecutionRequest,
+  ExecutionSession,
+  MemoryScreenResult,
+} from '@neuropause/shared';
+import {
+  ASSISTANT_CONFIDENCE_FLOOR,
+  baseEnvelope,
+  buildPlan,
+  classifyAssistantIntent,
+  conversationTitle,
+  emptyWorkspaceSnapshot,
+  INTENT_QUERIES,
+  MODE_CONFIG,
+  nameMatches,
+  planStateFrom,
+  renderHistory,
+  renderWorkspaceSnapshot,
+  type PlanTargets,
+} from './assistantModel';
+import type { ConversationStore } from './conversationStore';
+
+/* ── Ports ─────────────────────────────────────────────────────────────────── */
+
+export interface AssistantContextPorts {
+  /** Local workspace contexts (id/name/active). */
+  workspaces?: () => { active: { id: string; name: string } | null; count: number };
+  connectors?: () => { id: string; connected: boolean; problem: string | null }[];
+  executions?: () => { active: number };
+  pendingApprovals?: () => number;
+  automations?: () => { id: string; name: string; actionCount: number; active: boolean }[];
+  workers?: () => { id: string; name: string; role: string }[];
+  timeline?: (limit: number) => { id: string; at: string; kind: string; title: string }[];
+  memoryTotal?: () => number;
+}
+
+export interface AssistantServiceDeps {
+  store: Pick<ConversationStore, 'get' | 'upsert' | 'list' | 'delete'>;
+  context: AssistantContextPorts;
+  /** The EXISTING Context Builder (worker 'assistant'). */
+  buildContext: (req: {
+    worker: 'assistant';
+    query: string;
+    maxItems?: number;
+    maxChars?: number;
+    perSourceLimit?: number;
+    now?: string;
+  }) => AiContextItem[];
+  /** The EXISTING AI Engine. Never called without assembled context. */
+  runAi: (req: AiEngineRequest) => Promise<AiEngineResponse>;
+  /** Audited executive-memory recall; the correlation id tags its audit event. */
+  recallMemories?: (question: string, now: string, correlationId: string) => { title: string }[];
+  /** Capture the exchange through the EXISTING conversation-memory governance. */
+  captureMemory?: (args: {
+    question: string;
+    answerText: string | null;
+    grounded: boolean;
+    conversationId: string;
+    correlationId: string;
+    now: string;
+  }) => { outcome: string; type: string } | null;
+  /** Governance screen (secrets/PHI) applied BEFORE anything is stored or processed. */
+  screen: (text: string) => MemoryScreenResult;
+  /** The EXISTING ExecuteEngine — the ONLY execution path. */
+  execute: (req: ExecutionRequest) => Promise<ExecutionSession>;
+  cancelExecution?: (id: string) => unknown;
+  /** Platform event bus (→ enterprise timeline). */
+  publish?: (event: {
+    type: string;
+    category: string;
+    source: string;
+    priority?: string;
+    metadata?: Record<string, string | number | boolean | null>;
+    correlationId?: string;
+  }) => void;
+  /** assistant:event broadcast toward the renderer. */
+  broadcast?: (event: AssistantEvent) => void;
+  newId?: () => string;
+  now?: () => string;
+}
+
+export interface AssistantAskInput {
+  text: string;
+  mode?: AssistantMode;
+  conversationId?: string;
+  workspaceId?: string | null;
+  uiContext?: AssistantUiContext;
+  now?: string;
+}
+
+export interface AssistantDecideInput {
+  conversationId: string;
+  messageId: string;
+  stepId: string;
+  decision: 'approve' | 'reject';
+  note?: string | null;
+  now?: string;
+}
+
+const EVENT_SOURCE = 'workspace-assistant';
+
+let fallbackSeq = 0;
+
+export class AssistantService {
+  private readonly newId: () => string;
+  private readonly clock: () => string;
+  /** Correlation ids cancelled mid-flight (checked before late phases apply). */
+  private readonly cancelled = new Set<string>();
+  /** conversationId → the correlationId of its in-flight turn. */
+  private readonly inflight = new Map<string, string>();
+
+  constructor(private readonly deps: AssistantServiceDeps) {
+    this.newId = deps.newId ?? ((): string => `${Date.now().toString(36)}${(fallbackSeq++).toString(36)}`);
+    this.clock = deps.now ?? ((): string => new Date().toISOString());
+  }
+
+  /* ── The turn pipeline ─────────────────────────────────────────────────── */
+
+  async ask(input: AssistantAskInput): Promise<AssistantAskResult> {
+    const now = input.now ?? this.clock();
+    const mode: AssistantMode = input.mode ?? 'ask';
+    const correlationId = `asst_${this.newId()}`;
+    const phases: AssistantPhaseTiming[] = [];
+    const toolCalls: AssistantToolCall[] = [];
+    const timelineEventTypes: string[] = [];
+
+    const conversation = this.loadOrCreateConversation(input, now);
+    this.inflight.set(conversation.id, correlationId);
+    this.cancelled.delete(correlationId);
+
+    const emitPhase = (phase: AssistantEvent['phase']): void => {
+      this.deps.broadcast?.({
+        kind: 'phase',
+        correlationId,
+        conversationId: conversation.id,
+        at: this.clock(),
+        phase,
+      });
+    };
+    const publish = (type: string, metadata: Record<string, string | number | boolean | null>): void => {
+      timelineEventTypes.push(type);
+      this.deps.publish?.({
+        type,
+        category: 'runtime',
+        source: EVENT_SOURCE,
+        metadata,
+        correlationId,
+      });
+    };
+
+    publish('assistant.turn.started', { mode, conversationId: conversation.id });
+
+    // ── Governance screen FIRST: refuse to process or store secrets. ──
+    const screened = this.deps.screen(input.text);
+    if (!screened.allowed) {
+      const intent: AssistantIntentResult = { intent: 'unclear', confidence: 0, matched: [] };
+      const envelope = baseEnvelope(correlationId, mode, intent, now, {
+        clarification:
+          'That message appears to contain sensitive data (' +
+          screened.rejections.map((r) => r.category).join(', ') +
+          "). I won't store or process credentials or sensitive identifiers — remove them and ask again.",
+        assumptions: [],
+      });
+      envelope.trace.phases = phases;
+      const redactedText = `[redacted — refused: ${screened.rejections.map((r) => r.category).join(', ')}]`;
+      const messageId = this.appendTurn(conversation, redactedText, screened.rejections, envelope, now);
+      publish('assistant.turn.refused', { reason: 'sensitive-data' });
+      emitPhase('done');
+      this.inflight.delete(conversation.id);
+      await this.deps.store.upsert(conversation);
+      return { conversation, messageId };
+    }
+
+    // ── Intent (deterministic; below the floor → clarification, nothing invented). ──
+    const intent = classifyAssistantIntent(input.text);
+    const cfg = MODE_CONFIG[mode];
+    if (!cfg.operational && (intent.intent === 'unclear' || intent.confidence < ASSISTANT_CONFIDENCE_FLOOR)) {
+      const envelope = baseEnvelope(correlationId, mode, intent, now, {
+        clarification:
+          "I'm not sure what you're asking. Try, for example: “summarize today's work”, “find overdue invoices”, “show connector problems”, “launch the onboarding automation”, or “draft a customer response”.",
+      });
+      envelope.trace.phases = phases;
+      const messageId = this.appendTurn(conversation, input.text, [], envelope, now);
+      publish('assistant.turn.clarification', { intent: intent.intent });
+      emitPhase('done');
+      this.inflight.delete(conversation.id);
+      await this.deps.store.upsert(conversation);
+      return { conversation, messageId };
+    }
+
+    // ── Context collection (Stage 2 isolation: per-collector settle). ──
+    emitPhase('context');
+    const t0 = Date.now();
+    const snapshot = this.collectWorkspaceSnapshot(input.uiContext ?? null);
+    phases.push({ phase: 'context', durationMs: Date.now() - t0 });
+
+    // ── Retrieval (retrieve first — the model never answers without it). ──
+    emitPhase('retrieval');
+    const t1 = Date.now();
+    const retrieval = cfg.retrieval
+      ? this.retrieve(input.text, intent, cfg.retrieval, now, correlationId, toolCalls)
+      : { items: [] as AiContextItem[], unavailable: [] as AssistantUnavailable[] };
+    const recalled =
+      cfg.retrieval && this.deps.recallMemories ? this.safeRecall(input.text, now, correlationId) : [];
+    phases.push({ phase: 'retrieval', durationMs: Date.now() - t1 });
+
+    // ── Deterministic findings (always present; the offline floor). ──
+    const findings = this.assembleFindings(snapshot, retrieval.items);
+
+    // ── Planning (deterministic templates; locate targets from live records). ──
+    emitPhase('planning');
+    const t2 = Date.now();
+    const targets = this.locateTargets(input.text, intent);
+    const plan = cfg.operational
+      ? null
+      : buildPlan(intent.intent, mode, correlationId, targets, now);
+    phases.push({ phase: 'planning', durationMs: Date.now() - t2 });
+
+    // ── Reasoning (mode-gated; grounded narrative over verified facts only). ──
+    emitPhase('reasoning');
+    const t3 = Date.now();
+    let ai: AiEngineResponse | null = null;
+    if (cfg.reason) {
+      ai = await this.reason(input.text, mode, intent, conversation, snapshot, findings, retrieval.items, cfg.tier, correlationId);
+    }
+    phases.push({ phase: 'reasoning', durationMs: Date.now() - t3 });
+
+    if (this.cancelled.has(correlationId)) {
+      return this.finishCancelled(conversation, input.text, correlationId, mode, intent, now, phases, publish, emitPhase);
+    }
+
+    // ── Drafting (content-creation: review-only, never sent). ──
+    let draft: AssistantEnvelope['draft'] = null;
+    if (intent.intent === 'content-creation' && cfg.reason) {
+      draft = await this.draft(input.text, findings, retrieval.items, correlationId, toolCalls);
+    }
+
+    // ── Envelope assembly (explainability is structural). ──
+    const envelope = baseEnvelope(correlationId, mode, intent, now);
+    envelope.plan = plan;
+    envelope.draft = draft;
+    envelope.findings = findings;
+    envelope.unavailable = [...snapshot.unavailable, ...retrieval.unavailable];
+    envelope.navigation = targets.navigate ?? (intent.intent === 'search' && targets.searchQuery ? { section: 'search', query: targets.searchQuery } : null);
+    envelope.sources = this.assembleSources(snapshot, retrieval.items, recalled.length);
+    envelope.toolCalls = toolCalls;
+    envelope.assumptions = this.assembleAssumptions(intent, mode, targets, snapshot);
+    if (ai) {
+      envelope.grounded = ai.grounded;
+      envelope.aiOffline = !ai.grounded;
+      envelope.confidence = ai.grounded ? ai.confidence : 0;
+      envelope.text = readStr(ai.data, 'answer');
+      envelope.recommendations = readStrArray(ai.data, 'recommendations');
+      envelope.assumptions.push(...readStrArray(ai.data, 'assumptions'));
+      envelope.reasoningSummary = ai.grounded
+        ? `Narrative synthesized by ${ai.model} strictly over ${findings.length} deterministic finding${findings.length === 1 ? '' : 's'} and ${retrieval.items.length} retrieved item${retrieval.items.length === 1 ? '' : 's'}.`
+        : 'No model was reachable — showing deterministic findings only.';
+      envelope.trace.reasoning = {
+        promptId: ai.promptId,
+        promptVersion: ai.promptVersion,
+        model: ai.model,
+        grounded: ai.grounded,
+        confidence: ai.confidence,
+        latencyMs: ai.latencyMs,
+        contextSources: ai.contextSources,
+        inputTokens: ai.usage.inputTokens,
+        outputTokens: ai.usage.outputTokens,
+        costUsd: ai.usage.costUsd,
+        responseId: ai.responseId,
+      };
+      envelope.trace.audit.aiResponseId = ai.responseId;
+    } else {
+      envelope.reasoningSummary = cfg.operational
+        ? 'Monitor mode — deterministic operational snapshot; no model narrative by design.'
+        : 'Reasoning disabled for this mode.';
+      envelope.grounded = findings.length > 0;
+      envelope.aiOffline = !cfg.reason;
+      envelope.confidence = findings.length > 0 ? 0.9 : 0;
+      if (cfg.operational) envelope.text = this.monitorText(snapshot);
+    }
+    envelope.trace.phases = phases;
+    envelope.trace.workspace = snapshot;
+    envelope.trace.retrieved = retrieval.items.map(
+      (it): AssistantRetrievedItem => ({ source: it.source, text: it.text, evidence: it.evidence ?? [] }),
+    );
+    envelope.trace.recalledMemories = recalled.length;
+    envelope.trace.toolCalls = toolCalls;
+    envelope.trace.audit.timelineEventTypes = timelineEventTypes;
+
+    // ── Workspace memory capture (existing governance; correlation-tagged). ──
+    if (this.deps.captureMemory) {
+      envelope.memoryCapture = this.deps.captureMemory({
+        question: input.text,
+        answerText: envelope.text,
+        grounded: envelope.grounded,
+        conversationId: conversation.id,
+        correlationId,
+        now,
+      });
+    }
+
+    // ── Persist + respond. ──
+    const t4 = Date.now();
+    const messageId = this.appendTurn(conversation, input.text, [], envelope, now);
+    await this.deps.store.upsert(conversation);
+    phases.push({ phase: 'persistence', durationMs: Date.now() - t4 });
+    publish('assistant.turn.completed', {
+      intent: intent.intent,
+      grounded: envelope.grounded,
+      planSteps: plan ? plan.steps.length : 0,
+    });
+    emitPhase('done');
+    this.inflight.delete(conversation.id);
+    return { conversation, messageId };
+  }
+
+  /* ── Approval → dispatch (the ONLY execution path; ExecuteEngine only). ──── */
+
+  async decideStep(input: AssistantDecideInput): Promise<AssistantConversation | null> {
+    const now = input.now ?? this.clock();
+    const conversation = this.deps.store.get(input.conversationId);
+    if (!conversation) return null;
+    const message = conversation.messages.find((m) => m.id === input.messageId);
+    const plan = message?.envelope?.plan ?? null;
+    if (!message || !plan) return conversation;
+    const step = plan.steps.find((s) => s.id === input.stepId);
+    if (!step) return conversation;
+    // Idempotent: only a step still waiting for a human can be decided.
+    if (step.state !== 'waiting' || !step.needsApproval) return conversation;
+
+    const correlationId = plan.correlationId;
+    step.decidedBy = 'user';
+    step.decidedAt = now;
+    if (input.note) step.note = input.note;
+
+    const publish = (type: string, metadata: Record<string, string | number | boolean | null>): void => {
+      this.deps.publish?.({ type, category: 'runtime', source: EVENT_SOURCE, metadata, correlationId });
+    };
+    const emitStep = (state: AssistantPlanStep['state'], note?: string): void => {
+      this.deps.broadcast?.({
+        kind: 'step',
+        correlationId,
+        conversationId: conversation.id,
+        at: this.clock(),
+        stepId: step.id,
+        stepState: state,
+        ...(note ? { note } : {}),
+      });
+    };
+
+    if (input.decision === 'reject') {
+      step.state = 'rejected';
+      plan.state = planStateFrom(plan.steps);
+      plan.updatedAt = now;
+      publish('assistant.approval.rejected', { stepId: step.id, label: step.label });
+      emitStep('rejected');
+      await this.deps.store.upsert(conversation);
+      return conversation;
+    }
+
+    publish('assistant.approval.granted', { stepId: step.id, label: step.label });
+
+    // Plan mode: approvals are recorded but nothing dispatches by design.
+    if (!MODE_CONFIG[plan.mode].dispatchOnApproval) {
+      step.state = 'completed';
+      step.resultSummary = 'Approved (Plan mode) — nothing was dispatched by design.';
+      step.verification = 'No execution occurred; switch to Execute mode to run this step.';
+      plan.state = planStateFrom(plan.steps);
+      plan.updatedAt = now;
+      emitStep('completed', 'Plan mode: recorded, not dispatched');
+      await this.deps.store.upsert(conversation);
+      return conversation;
+    }
+
+    if (!step.executionKind || !step.targetId) {
+      step.state = 'failed';
+      step.error = 'Step carries no execution binding.';
+      plan.state = planStateFrom(plan.steps);
+      plan.updatedAt = now;
+      emitStep('failed');
+      await this.deps.store.upsert(conversation);
+      return conversation;
+    }
+
+    step.state = 'running';
+    plan.state = planStateFrom(plan.steps);
+    plan.updatedAt = now;
+    emitStep('running');
+    await this.deps.store.upsert(conversation);
+
+    try {
+      const session = await this.deps.execute({
+        kind: step.executionKind,
+        targetId: step.targetId,
+        ...(step.input ? { input: step.input } : {}),
+        label: step.label,
+        correlationId,
+      });
+      const ok = session.state === 'completed';
+      step.executionId = session.id;
+      step.state = ok ? 'completed' : 'failed';
+      step.resultSummary = session.resultSummary ?? (ok ? 'Completed' : null);
+      step.error = ok ? null : (session.error ?? `Execution ${session.state}`);
+      // Verification is read from the REAL session — never assumed.
+      step.verification = `ExecuteEngine session ${session.id} → ${session.state}${
+        session.durationMs !== null ? ` in ${session.durationMs}ms` : ''
+      }${session.resultSummary ? ` — ${session.resultSummary}` : ''}`;
+      if (message.envelope) {
+        message.envelope.trace.audit.executionIds.push(session.id);
+      }
+      publish(ok ? 'assistant.step.completed' : 'assistant.step.failed', {
+        stepId: step.id,
+        executionId: session.id,
+        ok,
+      });
+      emitStep(step.state);
+    } catch (err) {
+      step.state = 'failed';
+      step.error = err instanceof Error ? err.message : String(err);
+      publish('assistant.step.failed', { stepId: step.id, ok: false });
+      emitStep('failed');
+    }
+    plan.state = planStateFrom(plan.steps);
+    plan.updatedAt = this.clock();
+    await this.deps.store.upsert(conversation);
+    return conversation;
+  }
+
+  /* ── Interrupt / branch ────────────────────────────────────────────────── */
+
+  cancel(conversationId: string): { cancelled: boolean } {
+    const correlationId = this.inflight.get(conversationId);
+    if (!correlationId) return { cancelled: false };
+    this.cancelled.add(correlationId);
+    this.deps.publish?.({
+      type: 'assistant.turn.cancelled',
+      category: 'runtime',
+      source: EVENT_SOURCE,
+      metadata: { conversationId },
+      correlationId,
+    });
+    return { cancelled: true };
+  }
+
+  async branch(conversationId: string, messageId: string, now = this.clock()): Promise<AssistantConversation | null> {
+    const source = this.deps.store.get(conversationId);
+    if (!source) return null;
+    const idx = source.messages.findIndex((m) => m.id === messageId);
+    if (idx < 0) return null;
+    const branched: AssistantConversation = {
+      id: `conv_${this.newId()}`,
+      workspaceId: source.workspaceId,
+      title: `${source.title} (branch)`,
+      pinned: false,
+      createdAt: now,
+      updatedAt: now,
+      parent: { conversationId, messageId },
+      messages: source.messages.slice(0, idx + 1).map((m) => ({ ...m })),
+    };
+    await this.deps.store.upsert(branched);
+    return branched;
+  }
+
+  /* ── Pipeline internals ────────────────────────────────────────────────── */
+
+  private loadOrCreateConversation(input: AssistantAskInput, now: string): AssistantConversation {
+    if (input.conversationId) {
+      const existing = this.deps.store.get(input.conversationId);
+      if (existing) return existing;
+    }
+    return {
+      id: `conv_${this.newId()}`,
+      workspaceId: input.workspaceId ?? null,
+      title: conversationTitle(input.text),
+      pinned: false,
+      createdAt: now,
+      updatedAt: now,
+      parent: null,
+      messages: [],
+    };
+  }
+
+  private appendTurn(
+    conversation: AssistantConversation,
+    userText: string,
+    redactions: AssistantMessage['redactions'],
+    envelope: AssistantEnvelope,
+    now: string,
+  ): string {
+    const userMsg: AssistantMessage = {
+      id: `msg_${this.newId()}`,
+      role: 'user',
+      at: now,
+      text: userText,
+      envelope: null,
+      redactions,
+    };
+    const assistantMsg: AssistantMessage = {
+      id: `msg_${this.newId()}`,
+      role: 'assistant',
+      at: this.clock(),
+      text: envelope.clarification ?? envelope.text ?? this.fallbackText(envelope),
+      envelope,
+      redactions: [],
+    };
+    conversation.messages.push(userMsg, assistantMsg);
+    conversation.updatedAt = this.clock();
+    return assistantMsg.id;
+  }
+
+  private fallbackText(envelope: AssistantEnvelope): string {
+    if (envelope.findings.length > 0)
+      return `${envelope.findings.length} verified finding${envelope.findings.length === 1 ? '' : 's'} (AI narrative offline).`;
+    if (envelope.plan) return 'Plan prepared — review the steps below.';
+    if (envelope.navigation) return `Opening ${envelope.navigation.section}.`;
+    return 'No evidence available to answer confidently.';
+  }
+
+  /** Every collector settles independently; failures become explicit reasons. */
+  private collectWorkspaceSnapshot(uiContext: AssistantUiContext | null): AssistantWorkspaceSnapshot {
+    const s = emptyWorkspaceSnapshot();
+    s.uiContext = uiContext;
+    const c = this.deps.context;
+    const tryCollect = (system: string, fn: (() => void) | undefined, missing: string): void => {
+      if (!fn) {
+        s.unavailable.push({ system, reason: missing });
+        return;
+      }
+      try {
+        fn();
+      } catch (err) {
+        s.unavailable.push({ system, reason: err instanceof Error ? err.message : String(err) });
+      }
+    };
+    tryCollect(
+      'workspaces',
+      c.workspaces
+        ? (): void => {
+            const w = c.workspaces!();
+            s.workspace = w.active;
+            s.workspaceCount = w.count;
+          }
+        : undefined,
+      'workspace port not wired',
+    );
+    tryCollect(
+      'connectors',
+      c.connectors
+        ? (): void => {
+            const list = c.connectors!();
+            s.connectors = {
+              total: list.length,
+              connected: list.filter((x) => x.connected).length,
+              problems: list
+                .filter((x) => x.problem !== null)
+                .slice(0, 8)
+                .map((x) => ({ id: x.id, reason: x.problem as string })),
+            };
+          }
+        : undefined,
+      'connector port not wired',
+    );
+    tryCollect(
+      'executions',
+      c.executions
+        ? (): void => {
+            s.activeExecutions = c.executions!().active;
+          }
+        : undefined,
+      'execution port not wired',
+    );
+    tryCollect(
+      'approvals',
+      c.pendingApprovals
+        ? (): void => {
+            s.pendingApprovals = c.pendingApprovals!();
+          }
+        : undefined,
+      'workforce port not wired',
+    );
+    tryCollect(
+      'automations',
+      c.automations
+        ? (): void => {
+            const rules = c.automations!();
+            s.automations = { total: rules.length, active: rules.filter((r) => r.active).length };
+          }
+        : undefined,
+      'automation port not wired',
+    );
+    tryCollect(
+      'timeline',
+      c.timeline
+        ? (): void => {
+            s.recentTimeline = c.timeline!(6);
+          }
+        : undefined,
+      'timeline port not wired',
+    );
+    tryCollect(
+      'memory',
+      c.memoryTotal
+        ? (): void => {
+            s.memoryTotal = c.memoryTotal!();
+          }
+        : undefined,
+      'memory port not wired',
+    );
+    return s;
+  }
+
+  private retrieve(
+    text: string,
+    intent: AssistantIntentResult,
+    budget: { maxItems: number; maxChars: number; perSourceLimit: number },
+    now: string,
+    correlationId: string,
+    toolCalls: AssistantToolCall[],
+  ): { items: AiContextItem[]; unavailable: AssistantUnavailable[] } {
+    const started = Date.now();
+    const query = `${text} ${INTENT_QUERIES[intent.intent]}`.trim();
+    try {
+      const items = this.deps.buildContext({
+        worker: 'assistant',
+        query,
+        maxItems: budget.maxItems,
+        maxChars: budget.maxChars,
+        perSourceLimit: budget.perSourceLimit,
+        now,
+      });
+      toolCalls.push({
+        id: `tc_${this.newId()}`,
+        tool: 'retrieval',
+        label: 'Enterprise retrieval (Context Builder)',
+        purpose: 'Gather the evidence the answer must be grounded in.',
+        reason: 'Retrieve first, reason second — the model never answers without context.',
+        expectedOutput: `Up to ${budget.maxItems} evidence-tagged context items.`,
+        outcome: 'ok',
+        detail: `${items.length} item(s) across ${new Set(items.map((i) => i.source)).size} source(s)`,
+        durationMs: Date.now() - started,
+        correlationId,
+      });
+      return { items, unavailable: [] };
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      toolCalls.push({
+        id: `tc_${this.newId()}`,
+        tool: 'retrieval',
+        label: 'Enterprise retrieval (Context Builder)',
+        purpose: 'Gather the evidence the answer must be grounded in.',
+        reason: 'Retrieve first, reason second.',
+        expectedOutput: 'Evidence-tagged context items.',
+        outcome: 'error',
+        detail: reason,
+        durationMs: Date.now() - started,
+        correlationId,
+      });
+      return { items: [], unavailable: [{ system: 'retrieval', reason }] };
+    }
+  }
+
+  private safeRecall(text: string, now: string, correlationId: string): { title: string }[] {
+    try {
+      return this.deps.recallMemories!(text, now, correlationId);
+    } catch {
+      return [];
+    }
+  }
+
+  /** Deterministic findings: operational facts + top retrieved evidence. */
+  private assembleFindings(
+    snapshot: AssistantWorkspaceSnapshot,
+    items: AiContextItem[],
+  ): AssistantFinding[] {
+    const findings: AssistantFinding[] = [];
+    if (snapshot.connectors && snapshot.connectors.problems.length > 0) {
+      for (const p of snapshot.connectors.problems.slice(0, 4)) {
+        findings.push({
+          label: 'Connector problem',
+          text: `${p.id}: ${p.reason}`,
+          at: null,
+          connectorId: p.id,
+          evidence: [{ kind: 'connector', id: p.id }],
+        });
+      }
+    }
+    if (snapshot.pendingApprovals !== null && snapshot.pendingApprovals > 0) {
+      findings.push({
+        label: 'Approvals',
+        text: `${snapshot.pendingApprovals} proposal(s) awaiting your approval in the workforce.`,
+        at: null,
+        connectorId: null,
+        evidence: [{ kind: 'workforce', id: 'awaiting_approval' }],
+      });
+    }
+    for (const item of items.slice(0, 8)) {
+      findings.push({
+        label: item.source,
+        text: item.text.length > 220 ? `${item.text.slice(0, 217)}…` : item.text,
+        at: null,
+        connectorId: null,
+        evidence: item.evidence ?? [],
+      });
+    }
+    return findings;
+  }
+
+  private locateTargets(text: string, intent: AssistantIntentResult): PlanTargets {
+    const targets: PlanTargets = {};
+    if (intent.intent === 'automation' || intent.intent === 'workflow') {
+      try {
+        const rules = this.deps.context.automations?.() ?? [];
+        targets.automation = rules.find((r) => nameMatches(text, r.name)) ?? null;
+      } catch {
+        targets.automation = null;
+      }
+    }
+    if (intent.intent === 'execution' || intent.intent === 'connector-action') {
+      try {
+        const workers = this.deps.context.workers?.() ?? [];
+        targets.worker = workers.find((w) => nameMatches(text, w.name)) ?? null;
+      } catch {
+        targets.worker = null;
+      }
+    }
+    if (intent.intent === 'navigation') {
+      targets.navigate = resolveNavigation(text);
+    }
+    if (intent.intent === 'search') {
+      targets.searchQuery = text.trim();
+    }
+    return targets;
+  }
+
+  private async reason(
+    text: string,
+    mode: AssistantMode,
+    intent: AssistantIntentResult,
+    conversation: AssistantConversation,
+    snapshot: AssistantWorkspaceSnapshot,
+    findings: AssistantFinding[],
+    items: AiContextItem[],
+    tier: 'fast' | 'balanced' | 'deep',
+    correlationId: string,
+  ): Promise<AiEngineResponse> {
+    const history = renderHistory(
+      conversation.messages.map((m) => ({ role: m.role, text: m.text })),
+    );
+    return this.deps.runAi({
+      worker: 'assistant',
+      promptId: 'assistant.workspace',
+      context: items,
+      variables: {
+        mode,
+        intent: intent.intent,
+        question: text,
+        findings: findings.length
+          ? findings.map((f) => `- [${f.label}] ${f.text}`).join('\n')
+          : '(no deterministic findings)',
+        history,
+        workspace: renderWorkspaceSnapshot(snapshot),
+      },
+      tier,
+      correlationId,
+    });
+  }
+
+  private async draft(
+    text: string,
+    findings: AssistantFinding[],
+    items: AiContextItem[],
+    correlationId: string,
+    toolCalls: AssistantToolCall[],
+  ): Promise<AssistantEnvelope['draft']> {
+    const wantsAgenda = /\b(agenda|meeting)\b/i.test(text);
+    const promptId = wantsAgenda ? 'm365.draft.agenda' : 'm365.draft.email';
+    const material = [
+      ...findings.map((f) => `- ${f.text}`),
+      ...items.slice(0, 6).map((i) => `- ${i.text}`),
+    ].join('\n');
+    const started = Date.now();
+    const resp = await this.deps.runAi({
+      worker: 'assistant',
+      promptId,
+      variables: { instruction: text, material: material || '(no material)' },
+      tier: 'balanced',
+      correlationId,
+    });
+    toolCalls.push({
+      id: `tc_${this.newId()}`,
+      tool: 'draft',
+      label: wantsAgenda ? 'Draft meeting agenda' : 'Draft email body',
+      purpose: 'Produce review-only content from the retrieved material.',
+      reason: 'Content requests generate drafts; nothing is ever sent by the assistant.',
+      expectedOutput: 'A draft for your review.',
+      outcome: resp.grounded ? 'ok' : 'skipped',
+      detail: resp.grounded ? null : 'AI offline — no draft produced.',
+      durationMs: Date.now() - started,
+      correlationId,
+    });
+    const draftText = readStr(resp.data, 'text');
+    if (!resp.grounded || !draftText) return null;
+    return {
+      kind: wantsAgenda ? 'agenda' : 'email',
+      text: draftText,
+      note: 'Draft only — review before using. The assistant never sends anything.',
+    };
+  }
+
+  private assembleSources(
+    snapshot: AssistantWorkspaceSnapshot,
+    items: AiContextItem[],
+    recalledCount: number,
+  ): AssistantSourceRef[] {
+    const sources: AssistantSourceRef[] = [];
+    const bySource = new Map<string, number>();
+    for (const it of items) bySource.set(it.source, (bySource.get(it.source) ?? 0) + 1);
+    for (const [id, count] of bySource) {
+      sources.push({ id, label: id, kind: id === 'mission-brief' ? 'briefing' : 'index', count });
+    }
+    if (recalledCount > 0)
+      sources.push({ id: 'executive-memory', label: 'Executive memory', kind: 'memory', count: recalledCount });
+    if (snapshot.unavailable.length < 7)
+      sources.push({ id: 'workspace-snapshot', label: 'Workspace snapshot', kind: 'operational', count: null });
+    if (snapshot.uiContext)
+      sources.push({ id: 'ui-context', label: 'Current screen', kind: 'ui', count: null });
+    return sources;
+  }
+
+  private assembleAssumptions(
+    intent: AssistantIntentResult,
+    mode: AssistantMode,
+    targets: PlanTargets,
+    snapshot: AssistantWorkspaceSnapshot,
+  ): string[] {
+    const assumptions: string[] = [];
+    if ((intent.intent === 'automation' || intent.intent === 'workflow') && !targets.automation) {
+      assumptions.push('No saved automation matched the request by name — nothing was selected to run.');
+    }
+    if ((intent.intent === 'execution' || intent.intent === 'connector-action') && !targets.worker) {
+      assumptions.push('No AI worker matched the request by name — nothing was selected to run.');
+    }
+    if (/\b(me|my|mine)\b/i.test(intent.matched.join(' '))) {
+      // conservative: only when a matched signal carried a personal pronoun
+      assumptions.push('“me/my” is not yet resolved to your account — results are not person-filtered.');
+    }
+    if (snapshot.unavailable.length > 0) {
+      assumptions.push(
+        `${snapshot.unavailable.length} context source(s) were unavailable — the answer does not include them.`,
+      );
+    }
+    if (!MODE_CONFIG[mode].allowSideEffects && (intent.intent === 'automation' || intent.intent === 'workflow' || intent.intent === 'execution' || intent.intent === 'connector-action')) {
+      assumptions.push(`${mode.charAt(0).toUpperCase() + mode.slice(1)} mode offers no actions — switch to Execute mode to run things.`);
+    }
+    return assumptions;
+  }
+
+  private monitorText(s: AssistantWorkspaceSnapshot): string {
+    const bits: string[] = [];
+    bits.push(`${s.activeExecutions ?? 0} active execution(s)`);
+    if (s.pendingApprovals !== null) bits.push(`${s.pendingApprovals} pending approval(s)`);
+    if (s.connectors) bits.push(`${s.connectors.connected}/${s.connectors.total} connectors connected${s.connectors.problems.length > 0 ? ` (${s.connectors.problems.length} with problems)` : ''}`);
+    if (s.automations) bits.push(`${s.automations.active} active automation(s)`);
+    return `Operational snapshot: ${bits.join(' · ')}.`;
+  }
+
+  private async finishCancelled(
+    conversation: AssistantConversation,
+    text: string,
+    correlationId: string,
+    mode: AssistantMode,
+    intent: AssistantIntentResult,
+    now: string,
+    phases: AssistantPhaseTiming[],
+    publish: (type: string, metadata: Record<string, string | number | boolean | null>) => void,
+    emitPhase: (phase: AssistantEvent['phase']) => void,
+  ): Promise<AssistantAskResult> {
+    const envelope = baseEnvelope(correlationId, mode, intent, now, {
+      clarification: 'Stopped — this turn was interrupted before it completed.',
+    });
+    envelope.trace.phases = phases;
+    const messageId = this.appendTurn(conversation, text, [], envelope, now);
+    publish('assistant.turn.interrupted', { conversationId: conversation.id });
+    emitPhase('done');
+    this.inflight.delete(conversation.id);
+    await this.deps.store.upsert(conversation);
+    return { conversation, messageId };
+  }
+}
+
+/* ── Small pure helpers ────────────────────────────────────────────────────── */
+
+const NAV_TARGETS: { re: RegExp; section: string }[] = [
+  { re: /\bmission control\b/, section: 'mission-control' },
+  { re: /\bsearch\b/, section: 'search' },
+  { re: /\bmemory\b/, section: 'memory' },
+  { re: /\bconnectors?|connections\b/, section: 'connections' },
+  { re: /\btimeline|ops ?center\b/, section: 'opscenter' },
+  { re: /\borganization\b/, section: 'organization' },
+  { re: /\bworkspaces?\b/, section: 'workspace' },
+  { re: /\bstore|apps\b/, section: 'store' },
+  { re: /\bsettings\b/, section: 'settings' },
+];
+
+export function resolveNavigation(text: string): { section: string; query: string | null } | null {
+  const t = text.toLowerCase();
+  for (const target of NAV_TARGETS) {
+    if (target.re.test(t)) return { section: target.section, query: null };
+  }
+  return null;
+}
+
+function readStr(data: Record<string, unknown> | null, key: string): string | null {
+  if (!data) return null;
+  const v = data[key];
+  return typeof v === 'string' && v.trim().length > 0 ? v.trim() : null;
+}
+
+function readStrArray(data: Record<string, unknown> | null, key: string): string[] {
+  if (!data) return [];
+  const v = data[key];
+  if (!Array.isArray(v)) return [];
+  return v.filter((x): x is string => typeof x === 'string' && x.trim().length > 0).map((x) => x.trim());
+}

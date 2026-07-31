@@ -140,6 +140,8 @@ import { initEnterpriseIntelligence, type RawTimelineEvent } from './enterprise/
 import { getRelationshipModel } from './enterprise/relationshipProvider';
 import { initFounderAI } from './founder';
 import { initEngineeringAI, initFounderAIv2 } from './ai';
+// Phase 6 Stage 4 — the Workspace Assistant (composition over existing engines).
+import { initAssistant } from './assistant';
 import { initTrace } from './trace';
 import { initWorkforce } from './workforce';
 import { workforceProbe } from './workforce/workforceDiagnostics';
@@ -1401,6 +1403,19 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...founder.handlers);
   defs.push(...engineeringAI.handlers);
   defs.push(...founderAIv2.handlers);
+  // Phase 6 Stage 4 — Workspace Assistant: conversation → context → retrieval →
+  // reasoning → planning → approval → execution → verification → response, as a
+  // COMPOSITION over the engines wired above. Execution flows EXCLUSIVELY
+  // through the ExecuteEngine (same governance as `execute:run`); one
+  // correlation id (`asst_…`) threads every retrieval, AI audit record,
+  // approval, execution session, and timeline event of a turn.
+  const assistant = initAssistant({
+    broadcast: deps.broadcast,
+    publish: publishPlatform,
+    execute: (req) => executeEngine.execute(req),
+    executionsActive: () => executeEngine.activeSessions().length,
+  });
+  defs.push(...assistant.handlers);
   defs.push(...trace.handlers);
   defs.push(...workforce.handlers);
   defs.push(...enterprise.handlers);

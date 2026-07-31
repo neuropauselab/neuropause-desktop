@@ -251,6 +251,17 @@ export const IpcChannel = {
   // ── Engineering AI ──
   EngineeringAnalyze: 'ai:engineering-analyze',
 
+  // ── Workspace Assistant (Phase 6 Stage 4 — the documented D-1 cluster) ──
+  AssistantAsk: 'assistant:ask',
+  AssistantConversations: 'assistant:conversations',
+  AssistantConversationGet: 'assistant:conversation',
+  AssistantConversationSave: 'assistant:conversation.save',
+  AssistantConversationDelete: 'assistant:conversation.delete',
+  AssistantConversationBranch: 'assistant:conversation.branch',
+  AssistantPlanDecide: 'assistant:plan.decide',
+  AssistantCancel: 'assistant:cancel',
+  AssistantEventBroadcast: 'assistant:event',
+
   // ── Traces (governance / context / relationship) ──
   GovernanceList: 'governance:list',
   GovernanceTrace: 'governance:trace',
@@ -1423,6 +1434,15 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.EnterpriseIntelReport,
   IpcChannel.EnterpriseIntelChangeImpact,
   IpcChannel.EnterpriseIntelRootCause,
+  // Phase 6 Stage 4 — Workspace Assistant.
+  IpcChannel.AssistantAsk,
+  IpcChannel.AssistantConversations,
+  IpcChannel.AssistantConversationGet,
+  IpcChannel.AssistantConversationSave,
+  IpcChannel.AssistantConversationDelete,
+  IpcChannel.AssistantConversationBranch,
+  IpcChannel.AssistantPlanDecide,
+  IpcChannel.AssistantCancel,
 ];
 
 /** Runtime-core broadcasts. */
@@ -1453,6 +1473,8 @@ export const RUNTIME_BROADCAST_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.WebhookEventBroadcast,
   IpcChannel.SandboxEventBroadcast,
   IpcChannel.InfraEventBroadcast,
+  // Phase 6 Stage 4 — Workspace Assistant streaming progress.
+  IpcChannel.AssistantEventBroadcast,
 ];
 
 /** The full set the preload bridge permits (legacy + runtime core). */

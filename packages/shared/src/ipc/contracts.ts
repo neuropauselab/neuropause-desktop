@@ -791,6 +791,72 @@ export const EngineeringAiRequest = z.object({
 });
 export type EngineeringAiRequest = z.infer<typeof EngineeringAiRequest>;
 
+/* ─────────────── Workspace Assistant (Phase 6 Stage 4, D-1 cluster) ─────────────── */
+
+export const AssistantModeSchema = z.enum(['ask', 'analyze', 'plan', 'execute', 'monitor']);
+
+export const AssistantUiContextSchema = z.object({
+  section: z.string().trim().max(60).optional(),
+  workspaceLabel: z.string().trim().max(120).optional(),
+  tabCount: z.number().int().min(0).max(10_000).optional(),
+  query: z.string().trim().max(400).optional(),
+});
+
+export const AssistantAskRequest = z.object({
+  text: z.string().trim().min(1).max(4000),
+  mode: AssistantModeSchema.optional(),
+  conversationId: z.string().trim().min(1).max(80).optional(),
+  workspaceId: z.string().trim().min(1).max(80).nullable().optional(),
+  uiContext: AssistantUiContextSchema.optional(),
+  now: IsoString.optional(),
+});
+export type AssistantAskRequest = z.infer<typeof AssistantAskRequest>;
+
+export const AssistantConversationsRequest = z.object({
+  workspaceId: z.string().trim().min(1).max(80).nullable().optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+});
+export type AssistantConversationsRequest = z.infer<typeof AssistantConversationsRequest>;
+
+export const AssistantConversationGetRequest = z.object({
+  conversationId: z.string().trim().min(1).max(80),
+});
+export type AssistantConversationGetRequest = z.infer<typeof AssistantConversationGetRequest>;
+
+export const AssistantConversationSaveRequest = z.object({
+  conversationId: z.string().trim().min(1).max(80),
+  title: z.string().trim().min(1).max(120).optional(),
+  pinned: z.boolean().optional(),
+});
+export type AssistantConversationSaveRequest = z.infer<typeof AssistantConversationSaveRequest>;
+
+export const AssistantConversationDeleteRequest = z.object({
+  conversationId: z.string().trim().min(1).max(80),
+});
+export type AssistantConversationDeleteRequest = z.infer<typeof AssistantConversationDeleteRequest>;
+
+export const AssistantConversationBranchRequest = z.object({
+  conversationId: z.string().trim().min(1).max(80),
+  messageId: z.string().trim().min(1).max(80),
+  now: IsoString.optional(),
+});
+export type AssistantConversationBranchRequest = z.infer<typeof AssistantConversationBranchRequest>;
+
+export const AssistantPlanDecideRequest = z.object({
+  conversationId: z.string().trim().min(1).max(80),
+  messageId: z.string().trim().min(1).max(80),
+  stepId: z.string().trim().min(1).max(80),
+  decision: z.enum(['approve', 'reject']),
+  note: z.string().trim().max(500).nullable().optional(),
+  now: IsoString.optional(),
+});
+export type AssistantPlanDecideRequest = z.infer<typeof AssistantPlanDecideRequest>;
+
+export const AssistantCancelRequest = z.object({
+  conversationId: z.string().trim().min(1).max(80),
+});
+export type AssistantCancelRequest = z.infer<typeof AssistantCancelRequest>;
+
 /* ────────────────────────────────── Traces ──────────────────────────────── */
 
 export const GovernanceTraceListRequest = z.object({

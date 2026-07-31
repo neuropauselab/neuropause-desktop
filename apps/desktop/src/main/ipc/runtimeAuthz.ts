@@ -155,6 +155,10 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
   // Founder AI ask (reasons over the whole org corpus).
   [IpcChannel.FounderAsk]: 'intelligence:read',
 
+  // Phase 6 Stage 4 — approving an assistant plan step re-enters the
+  // ExecuteEngine exactly like `execute:run`, so it takes the same scope.
+  [IpcChannel.AssistantPlanDecide]: 'workforce:operate',
+
   // Executive Center snapshot (rolls every layer into one live view).
   [IpcChannel.ExecutiveCenterSnapshot]: 'intelligence:read',
 
@@ -325,6 +329,18 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   IpcChannel.AiConfigMigrationStatus,
   IpcChannel.AiConfigMigrate,
   IpcChannel.AiConfigResetToEnv,
+  // ── Phase 6 Stage 4 — Workspace Assistant (per-user desktop surface, same
+  // sender-trust model as FounderAskV2 + the ExecMemory reads; the one channel
+  // that dispatches execution — assistant:plan.decide — is RBAC-gated in
+  // RUNTIME_CHANNEL_PERMISSIONS above, and conversation save/delete are
+  // bridge-audited on their handler defs) ──
+  IpcChannel.AssistantAsk,
+  IpcChannel.AssistantConversations,
+  IpcChannel.AssistantConversationGet,
+  IpcChannel.AssistantConversationSave,
+  IpcChannel.AssistantConversationDelete,
+  IpcChannel.AssistantConversationBranch,
+  IpcChannel.AssistantCancel,
   IpcChannel.FeedbackSubmit,
   IpcChannel.FeedbackList,
   IpcChannel.FeedbackExport,
