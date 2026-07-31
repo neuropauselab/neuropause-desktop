@@ -108,6 +108,8 @@ export const CAPABILITY_REGISTRY: Capability[] = [
   { id: 'workspace.startup', label: 'Startup experience', domain: 'workspace', runtime: 'shell startup policy (pref)', state: 'production-complete', tested: true },
   // Phase 6 Stage 2 — the landing dashboard, wired to live IPC feeds with per-tile failure isolation.
   { id: 'workspace.mission-control', label: 'Mission Control (landing dashboard)', domain: 'workspace', runtime: 'renderer feed over existing IPC projections', state: 'production-complete', tested: true, note: 'Each tile loads independently and degrades to an explicit unavailable state; no mocked data.' },
+  // Phase 6 Stage 3 — universal search over the EXISTING indexes (federated engine, UDM, memory+semantic, timeline, records, ERP modules). No new index, no new IPC.
+  { id: 'platform.universal-search', label: 'Universal search (all indexes)', domain: 'platform', runtime: 'renderer pipeline over existing search IPC', state: 'production-complete', tested: true, note: 'Deterministic query planner + scope selector + explainable ranking; every source degrades honestly (per-source unavailable reasons).' },
   { id: 'workspace.a11y-i18n', label: 'Language, reduced-motion, high-contrast & density', domain: 'workspace', runtime: '—', state: 'hidden', note: 'No i18n system or these preference stores exist yet.' },
   { id: 'workspace.notification-prefs', label: 'Notification delivery preferences', domain: 'workspace', runtime: 'executive delivery store', state: 'needs-ipc', note: 'A persisted delivery-preference store + mutator EXISTS but is not surfaced (would require a new IPC channel; deferred).' },
 

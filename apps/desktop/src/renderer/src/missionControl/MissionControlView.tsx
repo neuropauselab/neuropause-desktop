@@ -25,6 +25,7 @@ import { EmptyState } from '@renderer/components/ui/EmptyState';
 import { SkeletonLines } from '@renderer/components/ui/Skeleton';
 import type { AppNotification } from '@renderer/data/types';
 import type { SectionId } from '../shell/sections';
+import { setPendingSearchQuery } from '../search/searchHandoff';
 import { useMissionControl, useMissionControlMeta } from './MissionControlProvider';
 import type { FeedTileState, HealthView, RecentFileItem, RunningWorkItem } from './missionControlFeed';
 import {
@@ -253,6 +254,14 @@ export function MissionControlView({ onNavigate, onOpenPalette, notificationsSto
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                // Phase 6 Stage 3 — minimal hand-off into the full Search experience.
+                if (e.key === 'Enter' && query.trim()) {
+                  setPendingSearchQuery(query);
+                  setQuery('');
+                  onNavigate?.('search');
+                }
+              }}
               placeholder="Search organizations, people, AI employees, connectors, events…"
               aria-label="Universal search"
               className="w-full rounded-xl border border-[var(--hairline)] [background:var(--fill-1)] py-2 pl-9 pr-3 text-base text-ink outline-none placeholder:text-faint focus-visible:shadow-focus"
@@ -266,6 +275,20 @@ export function MissionControlView({ onNavigate, onOpenPalette, notificationsSto
         </div>
         {hits.length > 0 && (
           <Card variant="floating" flush className="absolute z-20 mt-1.5 max-h-80 w-full overflow-y-auto p-1">
+            {/* Phase 6 Stage 3 — hand-off row into the full Search section. */}
+            <button
+              type="button"
+              onClick={() => {
+                setPendingSearchQuery(query);
+                setQuery('');
+                go('search');
+              }}
+              className="fill-hover flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm outline-none focus-visible:shadow-focus"
+            >
+              <Icon name="search" size={14} className="text-accent shrink-0" />
+              <span className="min-w-0 flex-1 truncate text-ink">Search everywhere for “{query.trim()}”</span>
+              <span className="text-faint shrink-0 text-2xs">↵</span>
+            </button>
             {hits.map((h) => {
               const target = h.domain ? COMMAND_DOMAINS.find((d) => d.id === h.domain)?.section : undefined;
               return (

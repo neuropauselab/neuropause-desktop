@@ -94,6 +94,10 @@ const IntentHomeView = lazy(() =>
 const MissionControlHost = lazy(() =>
   import('@renderer/missionControl/MissionControlHost').then((m) => ({ default: m.MissionControlHost })),
 );
+// Phase 6 Stage 3 — Universal Search over every existing index (additive).
+const SearchHost = lazy(() =>
+  import('@renderer/search/SearchHost').then((m) => ({ default: m.SearchHost })),
+);
 const EnterpriseView = lazy(() =>
   import('@renderer/views/EnterpriseView').then((m) => ({ default: m.EnterpriseView })),
 );
@@ -249,6 +253,8 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
     switch (activeSection) {
       case 'mission-control':
         return <MissionControlHost onNavigate={(id) => goToSection(id)} />;
+      case 'search':
+        return <SearchHost onNavigate={(id) => goToSection(id)} />;
       case 'intent-home':
         return <IntentHomeView onOpenSection={(id) => goToSection(id as SectionId)} />;
       case 'decision-center':

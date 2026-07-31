@@ -79,6 +79,9 @@ export default defineConfig({
       // NCEA 11.0 — Mission Control's pure view-model (no DOM, no React): the
       // unification command center over the existing sections + capability registries.
       'src/renderer/src/missionControl/**/*.test.ts',
+      // Phase 6 Stage 3 — Universal Search's pure layers (planner, model,
+      // pipeline, bench evidence; no DOM, no React).
+      'src/renderer/src/search/**/*.test.ts',
     ],
   },
   resolve: {

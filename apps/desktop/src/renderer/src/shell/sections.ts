@@ -2,6 +2,7 @@ import type { IconName } from '@renderer/components/ui/Icon';
 
 export type SectionId =
   | 'mission-control'
+  | 'search'
   | 'home'
   | 'organization'
   | 'enterprise'
@@ -79,6 +80,10 @@ export const SECTIONS: SectionDef[] = [
   // tile loads independently and degrades to an explicit unavailable state).
   { id: 'mission-control', label: 'Mission Control', icon: 'gauge', phase: 23, placement: 'primary' },
   { id: 'intent-home', label: "Today's Intent", icon: 'command', phase: 22, placement: 'primary' },
+  // Phase 6 Stage 3 — Universal Search: one query across every existing index
+  // (federated engine, app records, semantic memory, business modules). Additive;
+  // placed after the two landing surfaces so their nav locks hold unchanged.
+  { id: 'search', label: 'Search', icon: 'search', phase: 24, placement: 'primary' },
   // Retired in favor of the canonical intent-native home (`intent-home`). Hidden from nav, still routable.
   { id: 'decision-center', label: 'Decision Center', icon: 'sparkles', phase: 21, placement: 'primary', hidden: true },
   { id: 'home', label: 'Home', icon: 'home', phase: 2, placement: 'primary', hidden: true },

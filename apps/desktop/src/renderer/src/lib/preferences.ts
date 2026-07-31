@@ -60,4 +60,7 @@ export const PrefKey = {
   // Constitutional Settings v1.0 — Startup Experience Policy (backed by this same pref store).
   startupMode: 'startupMode',
   startupSection: 'startupSection',
+  // Phase 6 Stage 3 — Universal Search local history (saved/pinned searches live
+  // in the enterprise personalization store; only the recency list is local).
+  searchHistory: 'searchHistory',
 } as const;
