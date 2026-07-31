@@ -60,6 +60,7 @@ import {
   renderWorkspaceSnapshot,
   resolveBriefRequest,
   resolveInsightQuestion,
+  resolveKnowledgeQuestion,
   resolveMeetingPrep,
   resolveWorkSummary,
   type PlanTargets,
@@ -154,6 +155,9 @@ export interface AssistantServiceDeps {
   /** Phase 6 Stage 6 (D-5): the Enterprise Intelligence Layer's ten-question
    *  resolver — deterministic, evidence-cited, read-only. Null = unmatched. */
   intelligence?: (text: string, now: string) => AssistantStructuredReport | null;
+  /** Phase 6 Stage 7 (D-8): the Knowledge Platform's ten-question resolver —
+   *  deterministic, evidence-cited, authority-stating, read-only. Null = unmatched. */
+  knowledge?: (text: string, now: string) => AssistantStructuredReport | null;
 }
 
 export interface AssistantAskInput {
@@ -270,7 +274,9 @@ export class AssistantService {
         resolveMeetingPrep(input.text) ||
         // Phase 6 Stage 6 — the ten enterprise intelligence questions are clear
         // requests even when the generic intent rules score low.
-        resolveInsightQuestion(input.text) !== null);
+        resolveInsightQuestion(input.text) !== null ||
+        // Phase 6 Stage 7 — the ten knowledge questions likewise.
+        resolveKnowledgeQuestion(input.text) !== null);
     if (
       !cfg.operational &&
       !productivityResolved &&
@@ -943,6 +949,39 @@ export class AssistantService {
           }
         } catch (err) {
           unavailable.push({ system: 'intelligence', reason: err instanceof Error ? err.message : String(err) });
+        }
+      }
+      return { findings, assumptions, unavailable, structured, narrativePrompt };
+    }
+
+    // Phase 6 Stage 7 (D-8): the ten knowledge questions resolve through the
+    // Knowledge Platform — deterministic, evidence-cited, authority-stating,
+    // read-only. Answers ride the existing 'intelligence' structured-report
+    // kind; anything that would CHANGE knowledge stays a gated plan step.
+    if (resolveKnowledgeQuestion(text) !== null) {
+      const started = Date.now();
+      if (!this.deps.knowledge) {
+        unavailable.push({ system: 'knowledge', reason: 'knowledge port not wired' });
+      } else {
+        try {
+          const reportOut = this.deps.knowledge(text, now);
+          if (reportOut) {
+            structured = reportOut;
+            narrativePrompt = 'brief.executive-summary';
+            this.toolCall(toolCalls, correlationId, started, {
+              tool: 'brief',
+              label: 'Answer from the knowledge platform',
+              purpose: 'Resolve the question against the composed knowledge inventory (assets → authority → evidence).',
+              reason: 'The question matches a knowledge resolver; the answer cites real records, states its authority, and declares uncertainty.',
+              expectedOutput: 'An evidence-cited knowledge report.',
+              outcome: 'ok',
+              detail: `${reportOut.sections.length} section(s) for “${reportOut.title}”`,
+            });
+          } else {
+            unavailable.push({ system: 'knowledge', reason: 'resolver matched but produced no report' });
+          }
+        } catch (err) {
+          unavailable.push({ system: 'knowledge', reason: err instanceof Error ? err.message : String(err) });
         }
       }
       return { findings, assumptions, unavailable, structured, narrativePrompt };

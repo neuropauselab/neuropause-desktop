@@ -2277,3 +2277,25 @@ export const EnterpriseIntelRootCauseRequest = z
   .object({ targetResourceId: z.string().min(1).optional(), windowMs: z.number().int().positive().max(2_592_000_000).optional() })
   .strict();
 export type EnterpriseIntelRootCauseRequest = z.infer<typeof EnterpriseIntelRootCauseRequest>;
+
+// Phase 6 Stage 7 — Enterprise Knowledge & Decision Platform (read-only kb:* cluster).
+// Inventory accepts optional class/authority/lifecycle filters + a text query the
+// search LENS joins over the EXISTING federated search; matrix takes an optional
+// asset/record ref (present → impact analysis); lineage an optional decision id.
+export const KbInventoryRequest = z
+  .object({
+    classId: z.string().trim().min(1).max(64).optional(),
+    authority: z.string().trim().min(1).max(64).optional(),
+    lifecycle: z.string().trim().min(1).max(32).optional(),
+    text: z.string().trim().max(200).optional(),
+  })
+  .strict();
+export type KbInventoryRequest = z.infer<typeof KbInventoryRequest>;
+export const KbMatrixRequest = z
+  .object({ assetId: z.string().trim().min(1).max(256).optional() })
+  .strict();
+export type KbMatrixRequest = z.infer<typeof KbMatrixRequest>;
+export const KbLineageRequest = z
+  .object({ decisionId: z.string().trim().min(1).max(128).optional() })
+  .strict();
+export type KbLineageRequest = z.infer<typeof KbLineageRequest>;

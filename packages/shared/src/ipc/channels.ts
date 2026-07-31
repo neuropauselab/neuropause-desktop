@@ -798,6 +798,16 @@ export const IpcChannel = {
   InsightHealth: 'insight:health',
   InsightPredictions: 'insight:predictions',
   InsightDashboard: 'insight:dashboard',
+  // Phase 6 Stage 7 — Enterprise Knowledge & Decision Platform (read-only;
+  // RBAC-gated with knowledge:read via the SecureHandlerDef, the P16 `fabric:`
+  // precedent). Inventory / relationship matrix + impact / decision lineage /
+  // quality / standards / dashboard. Nothing here accepts an action.
+  KbInventory: 'kb:inventory',
+  KbMatrix: 'kb:matrix',
+  KbLineage: 'kb:lineage',
+  KbQuality: 'kb:quality',
+  KbStandards: 'kb:standards',
+  KbDashboard: 'kb:dashboard',
 } as const;
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel];
@@ -1458,6 +1468,13 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.InsightHealth,
   IpcChannel.InsightPredictions,
   IpcChannel.InsightDashboard,
+  // Phase 6 Stage 7 — Enterprise Knowledge & Decision Platform (read-only kb cluster).
+  IpcChannel.KbInventory,
+  IpcChannel.KbMatrix,
+  IpcChannel.KbLineage,
+  IpcChannel.KbQuality,
+  IpcChannel.KbStandards,
+  IpcChannel.KbDashboard,
   // Phase 6 Stage 4 — Workspace Assistant.
   IpcChannel.AssistantAsk,
   IpcChannel.AssistantConversations,

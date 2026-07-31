@@ -184,6 +184,10 @@ describe('runtime IPC surface completeness (fail-closed startup safety net)', ()
     // every insight:* handler self-carries requireAuth + intelligence:read
     // (locked by src/main/insight/index.stage6.test.ts).
     'insight:',
+    // Phase 6 Stage 7 — the Enterprise Knowledge Platform's read-only cluster:
+    // every kb:* handler self-carries requireAuth + knowledge:read (the P16
+    // fabric precedent; locked by src/main/knowledgeAssets/index.stage7.test.ts).
+    'kb:',
     'marketplace:',
     'webhooks:',
     'sandbox:',

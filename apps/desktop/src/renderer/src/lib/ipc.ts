@@ -100,6 +100,14 @@ import {
   type InsightHealthFramework,
   type InsightPrediction,
   type InsightReport,
+  type DecisionLineage,
+  type KnowledgeAssetDashboard,
+  type KnowledgeImpactAnalysis,
+  type KnowledgeInventory,
+  type KnowledgeQualityReport,
+  type KnowledgeRelationshipMatrix,
+  type KnowledgeSearchHit,
+  type StandardsReport,
   type EnterpriseIntelChangeImpactRequest,
   type EnterpriseIntelRootCauseRequest,
   type EnterpriseTimelineQuery,
@@ -901,6 +909,20 @@ export const ipc = {
     predictions: () =>
       invoke(IpcChannel.InsightPredictions) as Promise<{ predictions: InsightPrediction[] }>,
     dashboard: () => invoke(IpcChannel.InsightDashboard) as Promise<InsightDashboard>,
+  },
+
+  /** Phase 6 Stage 7 — the Enterprise Knowledge Platform (read-only; every
+   *  channel RBAC-gated `knowledge:read` and cached ~3 s server-side). */
+  kb: {
+    inventory: (req?: { classId?: string; authority?: string; lifecycle?: string; text?: string }) =>
+      invoke(IpcChannel.KbInventory, req ?? {}) as Promise<KnowledgeInventory & { hits: KnowledgeSearchHit[] | null }>,
+    matrix: () => invoke(IpcChannel.KbMatrix, {}) as Promise<KnowledgeRelationshipMatrix>,
+    impact: (assetId: string) => invoke(IpcChannel.KbMatrix, { assetId }) as Promise<KnowledgeImpactAnalysis>,
+    lineage: (decisionId?: string) =>
+      invoke(IpcChannel.KbLineage, decisionId ? { decisionId } : {}) as Promise<{ lineages: DecisionLineage[] }>,
+    quality: () => invoke(IpcChannel.KbQuality) as Promise<KnowledgeQualityReport>,
+    standards: () => invoke(IpcChannel.KbStandards) as Promise<StandardsReport>,
+    dashboard: () => invoke(IpcChannel.KbDashboard) as Promise<KnowledgeAssetDashboard>,
   },
 
   knowledge: {

@@ -216,6 +216,13 @@ import { aiMemoryProbe, knowledgeGraphProbe, ollamaProbe } from './platform/aiHe
 import { connectorHealthProbe } from './connectors/connectorDiagnostics';
 import { memoryStore } from './memory/memoryInstance';
 import { graphStore } from './graph/graphInstance';
+// Phase 6 Stage 7 — the Enterprise Knowledge & Decision Platform (read-only
+// composition over the stores wired above; no new store/graph/search/executor).
+import { initKnowledgeAssets, type KnowledgeAssetsSubsystem } from './knowledgeAssets';
+import { governanceStore } from './enterprise/governance/governanceInstance';
+import { DEFAULT_PROMPTS } from './ai/promptManager';
+import { runEnterpriseSearch } from './search/enterpriseSearch';
+import { getFederationSearcher } from './federationPlatform/searcherInstance';
 import { runMrp, computeCapacitySchedule, isTerminalExecutionStatus } from '@neuropause/shared';
 import type { ApiMethod, EnterprisePermission, IpcChannelName, ResourceGraphModel } from '@neuropause/shared';
 const log = createLogger('runtime-core');
@@ -1428,6 +1435,10 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // reads conversation summaries), while the assistant's ten-question port
   // resolves through this late-bound handle (same precedent as setAuxPorts).
   let insightRef: InsightSubsystem | null = null;
+  // Phase 6 Stage 7 — same late-bound pattern for the Knowledge Platform's
+  // ten-question port (the knowledge subsystem reads conversation summaries,
+  // so it initializes after the assistant, below).
+  let knowledgeRef: KnowledgeAssetsSubsystem | null = null;
   const assistant = initAssistant({
     broadcast: deps.broadcast,
     publish: publishPlatform,
@@ -1441,6 +1452,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     // Phase 6 Stage 6 (D-5) — the ten enterprise questions answer from the
     // Enterprise Intelligence Layer; unmatched questions fall through unchanged.
     intelligenceAnswer: (text, now) => insightRef?.answerQuestion(text, now) ?? null,
+    // Phase 6 Stage 7 (D-8) — the ten knowledge questions answer from the
+    // Knowledge Platform through the same late-bound, read-only port.
+    knowledgeAnswer: (text, now) => knowledgeRef?.answerQuestion(text, now) ?? null,
   });
   defs.push(...assistant.handlers);
   // Phase 6 Stage 5 (D-8) — Notification Inbox: registers the notification-center
@@ -1511,6 +1525,118 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   });
   insightRef = insight;
   defs.push(...insight.handlers);
+  // Phase 6 Stage 7 — the Enterprise Knowledge & Decision Platform. Every dep
+  // is a READ over an existing singleton (decision store, governance store,
+  // the versioned prompt registry, the UDM, the memory corpus, connector
+  // service, org store, job store, the knowledge graph, the timeline, the
+  // Stage 6 insight report, the P16 fabric, the federated search); the one
+  // hygiene source registers on the EXISTING delivery engine and produces
+  // governed recommendation items only. Six read-only kb:* channels
+  // (knowledge:read); zero new persistence; no lifecycle executor — state
+  // changes stay behind the existing governed writes.
+  const knowledgeAssets = initKnowledgeAssets({
+    decisions: () => decisionStore.all(),
+    chains: () => governanceStore.chains(),
+    rules: () => governanceStore.rules(),
+    prompts: () => {
+      const latest = new Map<string, { id: string; version: number; label: string }>();
+      for (const p of DEFAULT_PROMPTS) {
+        const cur = latest.get(p.id);
+        if (!cur || p.version > cur.version) latest.set(p.id, { id: p.id, version: p.version, label: p.label });
+      }
+      return [...latest.values()];
+    },
+    entities: () => unifiedStore.query({ limit: 1_000_000, includeDeleted: false }).items,
+    memories: () => memoryStore.allItems(),
+    connectors: () => connectorService.list(),
+    org: () => {
+      const org = orgStore.defaultOrg();
+      return {
+        org: { id: org.id, name: org.name },
+        units: orgStore.unitsFor(org.id).map((u) => ({ id: u.id, name: u.name, leadUserId: u.leadUserId })),
+        users: orgStore.usersFor(org.id).map((u) => ({ id: u.id, name: u.name, unitId: u.unitId })),
+      };
+    },
+    jobs: () =>
+      jobStore.page({ limit: 500 }).jobs.map((j) => ({
+        id: j.id,
+        skillId: j.skillId,
+        status: j.status,
+        requestedBy: j.requestedBy,
+        createdAt: j.createdAt,
+        finishedAt: j.finishedAt,
+        correlationId: j.correlationId ?? null,
+      })),
+    conversations: () => assistant.conversationSummaries().map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt })),
+    executions: () =>
+      executeEngine.getHistory().map((s) => ({ label: s.label, state: s.state, startedAt: s.startedAt })),
+    getEvents: (since, limit) => {
+      const page = platform.api.query({ since, limit }) as { events?: unknown };
+      const events = Array.isArray(page.events) ? page.events : [];
+      return events as { id: string; type: string; timestamp: string; correlationId?: string | null; metadata?: Record<string, unknown> | null }[];
+    },
+    graphEdgesFor: (recordIds) => {
+      const out: {
+        type: string;
+        fromSourceId: string | null;
+        toSourceId: string | null;
+        fromLabel: string;
+        toLabel: string;
+        at: string | null;
+        evidenceId: string | null;
+      }[] = [];
+      for (const rid of recordIds) {
+        if (out.length >= 2000) break;
+        if (!graphStore.getNode(rid)) continue;
+        const n = graphStore.neighbors({ id: rid, limit: 50 });
+        if (!n) continue;
+        for (const en of n.neighbors) {
+          out.push({
+            type: en.edge.type,
+            fromSourceId: en.edge.from,
+            toSourceId: en.edge.to,
+            fromLabel: en.direction === 'out' ? n.node.label : en.node.label,
+            toLabel: en.direction === 'out' ? en.node.label : n.node.label,
+            at: en.edge.updatedAt,
+            evidenceId: en.edge.evidence?.id ?? null,
+          });
+        }
+      }
+      return out;
+    },
+    graphDiscussedIn: (recordId) => {
+      if (!graphStore.getNode(recordId)) return [];
+      const n = graphStore.neighbors({ id: recordId, edgeTypes: ['discussed_in'], limit: 20 });
+      return n ? n.neighbors.map((en) => ({ id: en.node.id, label: en.node.label, at: en.edge.updatedAt })) : [];
+    },
+    graphHistoryFor: (recordIds) => {
+      const out: { at: string; action: string; label: string }[] = [];
+      for (const rid of recordIds) {
+        if (out.length >= 20) break;
+        for (const ev of graphStore.historyFor({ id: rid, limit: 5 })) {
+          out.push({ at: ev.at, action: ev.change, label: `${ev.type}: ${ev.from} → ${ev.to}` });
+        }
+      }
+      return out;
+    },
+    insightRecommendations: () =>
+      insight.report().recommendations.map((r) => ({ id: r.id, title: r.title, evidence: r.evidence })),
+    fabricGeneratedAt: () => enterpriseKnowledge.service.overview().summary.generatedAt,
+    search: (text) =>
+      runEnterpriseSearch(
+        { text, limit: 10 },
+        {
+          entity: unifiedStore.searchBackend,
+          graph: graphStore,
+          memory: memoryStore,
+          timeline: getEnterpriseTimeline() ?? undefined,
+          federation: getFederationSearcher() ?? undefined,
+        },
+      ).hits.map((h) => ({ source: h.source, id: h.id, kind: h.kind, title: h.title, snippet: h.snippet, score: h.score })),
+    registerSource: (source) => deliveryEngine.register(source),
+  });
+  knowledgeRef = knowledgeAssets;
+  defs.push(...knowledgeAssets.handlers);
   // Phase 6 Stage 5 (D-7) — bind the recommendation engine's aux read ports now
   // that workforce + connectors + automations + assistant all exist. Late-bound
   // exactly like workforce.setExecutionSubmit; a failing port silences its rules.

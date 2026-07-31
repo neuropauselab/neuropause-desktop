@@ -617,6 +617,10 @@ export function resolveWorkSummary(text: string): boolean {
 // stays in one module, exactly like the Stage 5 resolvers above.
 export { resolveInsightQuestion } from '../insight/insightModel';
 
+/* ── Phase 6 Stage 7 — knowledge resolver (pure re-export, same pattern) ──── */
+
+export { resolveKnowledgeQuestion } from '../knowledgeAssets/knowledgeModel';
+
 /** Detect a meeting-preparation request (D-4). */
 export function resolveMeetingPrep(text: string): boolean {
   const t = ` ${text.toLowerCase()} `;

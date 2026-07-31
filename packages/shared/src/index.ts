@@ -124,6 +124,10 @@ export * from './types/notifications';
 // Phase 6 Stage 6 — Enterprise Intelligence Layer (signal registry / health framework /
 // predictions / dependency graph / confidence breakdown / outcome lifecycle).
 export * from './types/insight';
+// Phase 6 Stage 7 — Enterprise Knowledge & Decision Platform (asset inventory /
+// authority precedence / relationship matrix + impact / decision lineage /
+// lifecycle derivation / quality / standards / coverage map / dashboard).
+export * from './types/knowledgeAssets';
 export * from './types/delivery';
 export * from './types/orgHealth';
 export * from './types/executiveCenter';

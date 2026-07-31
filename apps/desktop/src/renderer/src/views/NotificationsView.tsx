@@ -40,6 +40,8 @@ const MUTABLE_SOURCES: { key: string; label: string; detail: string }[] = [
   // Phase 6 Stage 6 — the Enterprise Intelligence Layer's governed sources.
   { key: 'insight-monitor', label: 'Intelligence monitor', detail: 'New high-priority insight recommendations (15-min watch)' },
   { key: 'insight-risk-trend', label: 'Risk trend watch', detail: 'Daily health/risk trend deterioration' },
+  // Phase 6 Stage 7 — the Knowledge Platform's governed hygiene source.
+  { key: 'knowledge-hygiene', label: 'Knowledge hygiene', detail: 'Daily outdated/conflicting/unowned knowledge findings' },
 ];
 
 function minutesToTime(minutes: number): string {
