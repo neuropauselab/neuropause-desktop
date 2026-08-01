@@ -204,6 +204,10 @@ describe('runtime IPC surface completeness (fail-closed startup safety net)', ()
     // every efed:* handler self-carries requireAuth + federation:read (the P10
     // read scope; locked by src/main/enterpriseFederation/index.stage11.test.ts).
     'efed:',
+    // Phase 6 Stage 12 — the Enterprise Analytics Platform's read-only cluster:
+    // every eana:* handler self-carries requireAuth + intelligence:read (the
+    // Stage 6 read scope; locked by src/main/analyticsPlatform/index.stage12.test.ts).
+    'eana:',
     'marketplace:',
     'webhooks:',
     'sandbox:',

@@ -141,6 +141,11 @@ export * from './types/strategyPlatform';
 // organization exchange × local records / shared S7–S10 layers / dashboard /
 // federation report — all computed views over the EXISTING federation stores).
 export * from './types/enterpriseFederation';
+// Phase 6 Stage 12 — Enterprise Analytics Platform (unified KPI catalog /
+// recorded-window trends / forecast-capability inventory / decision
+// intelligence / executive analytics dashboard + report — pure COMPOSITION
+// over the existing producers; no analytics computed here).
+export * from './types/enterpriseAnalytics';
 export * from './types/delivery';
 export * from './types/orgHealth';
 export * from './types/executiveCenter';

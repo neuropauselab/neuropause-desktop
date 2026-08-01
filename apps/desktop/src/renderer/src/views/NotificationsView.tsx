@@ -50,6 +50,8 @@ const MUTABLE_SOURCES: { key: string; label: string; detail: string }[] = [
   { key: 'strategy-watch', label: 'Strategy watch', detail: 'Daily objective/initiative focus items (recommendations only)' },
   // Phase 6 Stage 11 — the Federation Platform's governed watch source.
   { key: 'federation-watch', label: 'Federation watch', detail: 'Daily trust divergence, unsigned artifacts & partner-facing exposure items' },
+  // Phase 6 Stage 12 — the Analytics Platform's governed watch source.
+  { key: 'analytics-watch', label: 'Analytics watch', detail: 'Daily regressing recorded series & attention-band KPI items (recommendations only)' },
 ];
 
 function minutesToTime(minutes: number): string {

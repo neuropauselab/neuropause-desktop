@@ -110,6 +110,9 @@ export interface AssistantSubsystemDeps {
   /** Phase 6 Stage 11 (D-8): the ten federation questions answer from the
    *  Enterprise Federation composition — read-only, in-process. */
   federationAnswer?: (text: string, now: string) => AssistantStructuredReport | null;
+  /** Phase 6 Stage 12 (D-8): the ten analytics questions answer from the
+   *  Enterprise Analytics composition — read-only, in-process. */
+  analyticsAnswer?: (text: string, now: string) => AssistantStructuredReport | null;
 }
 
 export interface AssistantSubsystem {
@@ -437,6 +440,8 @@ export function initAssistant(deps: AssistantSubsystemDeps): AssistantSubsystem 
     strategy: (text, now) => deps.strategyAnswer?.(text, now) ?? null,
     // Phase 6 Stage 11 (D-8): the ten federation questions likewise.
     federation: (text, now) => deps.federationAnswer?.(text, now) ?? null,
+    // Phase 6 Stage 12 (D-8): the ten analytics questions likewise.
+    analytics: (text, now) => deps.analyticsAnswer?.(text, now) ?? null,
 
     // Stage 5 addition #2: descriptive Work Summary over existing metrics.
     workSummary: (now) => {

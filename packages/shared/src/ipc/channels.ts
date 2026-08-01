@@ -854,6 +854,20 @@ export const IpcChannel = {
   EfedSharing: 'efed:sharing',
   EfedDashboard: 'efed:dashboard',
   EfedReport: 'efed:report',
+
+  // ── Phase 6 Stage 12 — the Enterprise Analytics Platform (read-only) ──
+  // Unified KPI catalog / recorded-window trends / forecast-capability
+  // inventory / decision intelligence / executive analytics dashboard /
+  // analytics report. Pure COMPOSITION over the existing analytics producers —
+  // the `eana:*` namespace computes no analytics of its own. Reads ride the
+  // existing `intelligence:read` permission (the Stage 6 insight cluster's).
+  // Zero mutation surface.
+  EanaKpis: 'eana:kpis',
+  EanaTrends: 'eana:trends',
+  EanaForecasts: 'eana:forecasts',
+  EanaDecisions: 'eana:decisions',
+  EanaDashboard: 'eana:dashboard',
+  EanaReport: 'eana:report',
 } as const;
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel];
@@ -1546,6 +1560,12 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.EfedSharing,
   IpcChannel.EfedDashboard,
   IpcChannel.EfedReport,
+  IpcChannel.EanaKpis,
+  IpcChannel.EanaTrends,
+  IpcChannel.EanaForecasts,
+  IpcChannel.EanaDecisions,
+  IpcChannel.EanaDashboard,
+  IpcChannel.EanaReport,
   // Phase 6 Stage 4 — Workspace Assistant.
   IpcChannel.AssistantAsk,
   IpcChannel.AssistantConversations,

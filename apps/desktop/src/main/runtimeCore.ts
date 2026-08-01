@@ -232,6 +232,7 @@ import { initStrategyPlatform, type StrategyPlatformSubsystem } from './strategy
 // over the P9-S2 federation stores + P18 + Stages 7–10; six efed:* channels;
 // one federation-watch source).
 import { initEnterpriseFederation, type EnterpriseFederationSubsystem } from './enterpriseFederation';
+import { initAnalyticsPlatform, type AnalyticsPlatformSubsystem } from './analyticsPlatform';
 import { fedStore } from './federation/runtime/fedInstance';
 import { exchangeStore } from './federation/exchange/exchangeInstance';
 import { PLAYBOOK_REGISTRY } from './automationPlatform/automationRegistry';
@@ -1478,6 +1479,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // ten-question port (it composes the strategy platform, so it initializes
   // after the strategy platform below).
   let efedRef: EnterpriseFederationSubsystem | null = null;
+  let analyticsRef: AnalyticsPlatformSubsystem | null = null;
   const assistant = initAssistant({
     broadcast: deps.broadcast,
     publish: publishPlatform,
@@ -1506,6 +1508,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     // Phase 6 Stage 11 (D-8) — the ten federation questions answer from the
     // Enterprise Federation composition through the same late-bound port.
     federationAnswer: (text, now) => efedRef?.answerQuestion(text, now) ?? null,
+    // Phase 6 Stage 12 (D-8) — the ten analytics questions answer from the
+    // Enterprise Analytics composition through the same late-bound port.
+    analyticsAnswer: (text, now) => analyticsRef?.answerQuestion(text, now) ?? null,
   });
   defs.push(...assistant.handlers);
   // Phase 6 Stage 5 (D-8) — Notification Inbox: registers the notification-center
@@ -2338,6 +2343,116 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   });
   efedRef = enterpriseFederation;
   defs.push(...enterpriseFederation.handlers);
+
+  // ── Phase 6 Stage 12 — the Enterprise Analytics Platform ────────────────
+  // ONE composition subsystem over the analytics the platform ALREADY
+  // computes: every KPI feed source-attributed into one catalog (producers
+  // authoritative — nothing recomputed), deterministic trends over RECORDED
+  // windows only, the forecast-capability inventory (registers the Stage 6
+  // heuristics + P14 scenarios; adds zero forecasting), the decision-
+  // intelligence rollup, and the cross-domain executive dashboard/report
+  // (S8–S11 dashboards composed as PRE-BUILT slices; P18 benchmarks as ONE
+  // input). Six read-only eana:* channels under the EXISTING
+  // intelligence:read scope; one analytics-watch delivery source; zero
+  // mutation surface.
+  const analyticsPlatform = initAnalyticsPlatform({
+    executiveKpis: () =>
+      executiveCenter.snapshot().kpis.map((k) => ({
+        key: k.key,
+        label: k.label,
+        display: k.display,
+        value: k.value,
+        ...(k.band ? { band: k.band } : {}),
+      })),
+    processKpis: () =>
+      getProcessExplorerKpis().map((k) => ({
+        key: k.key,
+        label: k.label,
+        display: k.display,
+        value: k.value,
+        ...(k.band ? { band: k.band } : {}),
+      })),
+    p14Kpis: () =>
+      autonomousIntel.service.overview().kpis.map((k) => ({
+        key: k.key,
+        label: k.label,
+        display: k.display,
+        value: k.value,
+        ...(k.band ? { band: k.band } : {}),
+      })),
+    p18Kpis: () =>
+      intelligenceNetwork.service.overview().kpis.map((k) => ({
+        key: k.key,
+        label: k.label,
+        display: k.display,
+        value: k.value,
+        ...(k.band ? { band: k.band } : {}),
+      })),
+    healthHistory: () =>
+      healthHistoryStore.all().map((h) => ({ day: h.day, overall: h.overall, engineering: h.engineering })),
+    valueDeltas: () =>
+      strategyPlatform.value().decisions.map((d) => ({
+        decisionId: d.decisionId,
+        title: d.title,
+        deltas: d.deltas.map((x) => ({ label: x.label, before: x.before, after: x.after })),
+      })),
+    valueTotals: () => strategyPlatform.value().totals,
+    insightPredictions: () => {
+      if (!insightRef) throw new Error('insight subsystem not initialized');
+      return insightRef.report().predictions.map((p) => ({ kind: p.kind, likelihood: p.likelihood }));
+    },
+    p14Simulation: () => ({ scenarios: autonomousIntel.service.overview().simulation.scenarios.length }),
+    capacityPressure: () => (operationsRef ? operationsRef.capacity().pressure : 'unknown'),
+    decisions: () =>
+      decisionStore.all().map((d) => ({ id: d.id, status: d.status, fromRecommendationId: d.fromRecommendationId ?? null })),
+    insightOutcomes: () => {
+      if (!insightRef) throw new Error('insight subsystem not initialized');
+      return insightRef.report().recommendations.map((r) => ({ id: r.id, stage: r.outcome.stage }));
+    },
+    strategyRecs: () => {
+      const recs = strategyPlatform.dashboard().recommendations;
+      return { count: recs.length, criticalOrHigh: recs.filter((r) => r.priority === 'critical' || r.priority === 'high').length };
+    },
+    federationRecs: () => {
+      const recs = enterpriseFederation.dashboard().recommendations;
+      return { count: recs.length, criticalOrHigh: recs.filter((r) => r.priority === 'critical' || r.priority === 'high').length };
+    },
+    s8Monitor: () => {
+      if (!automationRef) return null;
+      const findings = automationRef.monitor().findings;
+      return {
+        findings: findings.length,
+        criticalOrHigh: findings.filter((f) => f.severity === 'critical' || f.severity === 'high').length,
+      };
+    },
+    s9Slices: () => {
+      if (!operationsRef) return null;
+      const sla = operationsRef.sla().statuses;
+      const dims = operationsRef.readiness().dimensions;
+      return {
+        slaTargets: sla.length,
+        slaMet: sla.filter((s) => s.status === 'met').length,
+        slaBreached: sla.filter((s) => s.status === 'breached').length,
+        readinessReady: dims.filter((d) => d.state === 'ready').length,
+        readinessNotReady: dims.filter((d) => d.state === 'not-ready').length,
+      };
+    },
+    s10Totals: () => {
+      const d = strategyPlatform.dashboard();
+      return { offTrack: d.objectives.offTrack, atRisk: d.objectives.atRisk, blocked: d.portfolio.blocked };
+    },
+    s11Totals: () => {
+      const d = enterpriseFederation.dashboard();
+      return { partners: d.partners.total, declaredAboveEvidence: d.trust.declaredAboveEvidence };
+    },
+    p18Benchmark: () => {
+      const s = intelligenceNetwork.service.overview().summary;
+      return { position: s.benchmarkPosition, healthBand: s.healthBand };
+    },
+    registerSource: (source) => deliveryEngine.register(source),
+  });
+  analyticsRef = analyticsPlatform;
+  defs.push(...analyticsPlatform.handlers);
 
   // Startup invariant (fail-closed): with every def now assembled, no runtime-invokable
   // channel may ride on sender-trust ALONE. Collect the channels that ended up gated —

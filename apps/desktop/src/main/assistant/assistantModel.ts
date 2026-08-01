@@ -633,6 +633,9 @@ export { resolveStrategyQuestion } from '../strategyPlatform/strategyModel';
 // Phase 6 Stage 11 — the ten federation questions (D-8): same pattern;
 // seven-way disjointness is test-locked.
 export { resolveFederationQuestion } from '../enterpriseFederation/federationModel';
+// Phase 6 Stage 12 — the ten analytics questions (D-8): same pattern;
+// eight-way disjointness is test-locked.
+export { resolveAnalyticsQuestion } from '../analyticsPlatform/analyticsModel';
 
 /** Detect a meeting-preparation request (D-4). */
 export function resolveMeetingPrep(text: string): boolean {

@@ -129,6 +129,12 @@ import {
   type PortfolioReport,
   type StrategyDashboard,
   type StrategyHealthView,
+  type EanaDashboard,
+  type EanaDecisionReport,
+  type EanaForecastInventory,
+  type EanaKpiCatalog,
+  type EanaReport,
+  type EanaTrendReport,
   type EfedBoardReport,
   type EfedDashboard,
   type EfedExchangeReport,
@@ -1004,6 +1010,18 @@ export const ipc = {
     sharing: () => invoke(IpcChannel.EfedSharing) as Promise<EfedSharingReport>,
     dashboard: () => invoke(IpcChannel.EfedDashboard) as Promise<EfedDashboard>,
     report: () => invoke(IpcChannel.EfedReport) as Promise<EfedBoardReport>,
+  },
+
+  /** Phase 6 Stage 12 — the Enterprise Analytics Platform (read-only; every
+   *  channel RBAC-gated `intelligence:read` — the Stage 6 read scope — and
+   *  cached ~3 s server-side; pure composition over the existing producers). */
+  eana: {
+    kpis: () => invoke(IpcChannel.EanaKpis) as Promise<EanaKpiCatalog>,
+    trends: () => invoke(IpcChannel.EanaTrends) as Promise<EanaTrendReport>,
+    forecasts: () => invoke(IpcChannel.EanaForecasts) as Promise<EanaForecastInventory>,
+    decisions: () => invoke(IpcChannel.EanaDecisions) as Promise<EanaDecisionReport>,
+    dashboard: () => invoke(IpcChannel.EanaDashboard) as Promise<EanaDashboard>,
+    report: () => invoke(IpcChannel.EanaReport) as Promise<EanaReport>,
   },
 
   knowledge: {

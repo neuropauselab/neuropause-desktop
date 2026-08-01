@@ -59,6 +59,7 @@ import {
   renderHistory,
   renderWorkspaceSnapshot,
   resolveBriefRequest,
+  resolveAnalyticsQuestion,
   resolveAutomationQuestion,
   resolveFederationQuestion,
   resolveInsightQuestion,
@@ -175,6 +176,11 @@ export interface AssistantServiceDeps {
    *  partners, trust evidence, exchange, shared layers, governance, network,
    *  federation report). Read-only; composes RECORDS, never networking. */
   federation?: (text: string, now: string) => AssistantStructuredReport | null;
+  /** Phase 6 Stage 12 (D-8) — the Analytics Platform port (ten questions:
+   *  KPI catalog/health, trends, regressions, forecast capability, decision
+   *  intelligence, benchmarks, coverage, analytics report). Read-only;
+   *  COMPOSES the existing producers — computes no analytics of its own. */
+  analytics?: (text: string, now: string) => AssistantStructuredReport | null;
 }
 
 export interface AssistantAskInput {
@@ -301,7 +307,9 @@ export class AssistantService {
         // Phase 6 Stage 10 — the eleven strategy questions likewise.
         resolveStrategyQuestion(input.text) !== null ||
         // Phase 6 Stage 11 — the ten federation questions likewise.
-        resolveFederationQuestion(input.text) !== null);
+        resolveFederationQuestion(input.text) !== null ||
+        // Phase 6 Stage 12 — the ten analytics questions likewise.
+        resolveAnalyticsQuestion(input.text) !== null);
     if (
       !cfg.operational &&
       !productivityResolved &&
@@ -1141,6 +1149,41 @@ export class AssistantService {
           }
         } catch (err) {
           unavailable.push({ system: 'federation', reason: err instanceof Error ? err.message : String(err) });
+        }
+      }
+      return { findings, assumptions, unavailable, structured, narrativePrompt };
+    }
+
+    // Phase 6 Stage 12 (D-8): the ten analytics questions resolve through the
+    // Enterprise Analytics Platform — deterministic, read-only. The KPI
+    // catalog, trends, forecast inventory, and decision rollup are COMPOSED
+    // from the producers the platform already runs (never recomputed, never
+    // extrapolated); recommendations POINT at the existing governed surfaces.
+    // Nothing executes here.
+    if (resolveAnalyticsQuestion(text) !== null) {
+      const started = Date.now();
+      if (!this.deps.analytics) {
+        unavailable.push({ system: 'analytics', reason: 'analytics port not wired' });
+      } else {
+        try {
+          const reportOut = this.deps.analytics(text, now);
+          if (reportOut) {
+            structured = reportOut;
+            narrativePrompt = 'brief.executive-summary';
+            this.toolCall(toolCalls, correlationId, started, {
+              tool: 'brief',
+              label: 'Answer from the analytics platform',
+              purpose: 'Resolve the question against the composed KPI catalog / trends / forecast inventory / decision rollup (reads only).',
+              reason: 'The question matches an analytics resolver; answers cite the producers verbatim, declare unavailability, and never extrapolate.',
+              expectedOutput: 'An evidence-cited analytics report.',
+              outcome: 'ok',
+              detail: `${reportOut.sections.length} section(s) for “${reportOut.title}”`,
+            });
+          } else {
+            unavailable.push({ system: 'analytics', reason: 'resolver matched but produced no report' });
+          }
+        } catch (err) {
+          unavailable.push({ system: 'analytics', reason: err instanceof Error ? err.message : String(err) });
         }
       }
       return { findings, assumptions, unavailable, structured, narrativePrompt };

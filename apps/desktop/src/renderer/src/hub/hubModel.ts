@@ -113,6 +113,7 @@ export function sourceLabel(sourceKey: string): string {
     'operations-watch': 'Operations Watch',
     'strategy-watch': 'Strategy Watch',
     'federation-watch': 'Federation Watch',
+    'analytics-watch': 'Analytics Watch',
     system: 'System',
   };
   return LABELS[sourceKey] ?? sourceKey;
