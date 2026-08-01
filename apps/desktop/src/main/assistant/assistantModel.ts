@@ -636,6 +636,21 @@ export { resolveFederationQuestion } from '../enterpriseFederation/federationMod
 // Phase 6 Stage 12 — the ten analytics questions (D-8): same pattern;
 // eight-way disjointness is test-locked.
 export { resolveAnalyticsQuestion } from '../analyticsPlatform/analyticsModel';
+// Phase 6 Stage 13 — the ten Digital Twin Platform questions (D-8): same
+// pattern; NINE-way disjointness is test-locked twice over — at the resolver
+// level in `digitalTwinPlatform/twinPlatformModel.stage13.test.ts` and at the
+// service level in `assistantTwin.stage13.test.ts`.
+//
+// `resolveTwinQuestion` carries no `Etwin` prefix while every Stage 13 type
+// does. That asymmetry is deliberate and narrow: the prefix exists to keep the
+// SHARED type surface clear of P15's `Twin*` and the manufacturing twin's
+// `Twin*`, and this function is not shared — it is imported by path, and its
+// re-export here is the assistant's single resolver surface. The name is free:
+// no other `resolve*Question` in the tree matches it, and the audit records
+// that none of the eight existing assistant ports is a twin port. Five earlier
+// stages do keep phrasings that READ like twin questions and are not Stage
+// 13's; each is locked as a named overlap (FINDING #3 is one of them).
+export { resolveTwinQuestion } from '../digitalTwinPlatform/twinPlatformModel';
 
 /** Detect a meeting-preparation request (D-4). */
 export function resolveMeetingPrep(text: string): boolean {

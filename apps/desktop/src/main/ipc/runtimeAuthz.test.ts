@@ -208,6 +208,11 @@ describe('runtime IPC surface completeness (fail-closed startup safety net)', ()
     // every eana:* handler self-carries requireAuth + intelligence:read (the
     // Stage 6 read scope; locked by src/main/analyticsPlatform/index.stage12.test.ts).
     'eana:',
+    // Phase 6 Stage 13 — the Enterprise Digital Twin Platform's read-only
+    // cluster: every etwin:* handler self-carries requireAuth + twin:read
+    // (P15's OWN scope, reused rather than re-minted; locked by
+    // src/main/digitalTwinPlatform/index.stage13.test.ts).
+    'etwin:',
     'marketplace:',
     'webhooks:',
     'sandbox:',

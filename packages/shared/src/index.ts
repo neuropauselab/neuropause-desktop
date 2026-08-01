@@ -146,6 +146,13 @@ export * from './types/enterpriseFederation';
 // intelligence / executive analytics dashboard + report — pure COMPOSITION
 // over the existing producers; no analytics computed here).
 export * from './types/enterpriseAnalytics';
+// Phase 6 Stage 13 — Enterprise Digital Twin Platform (runtime/execution twin /
+// Stage 6–12 platform twins / enterprise state-coverage map / simulation
+// inventory / recorded-history view / platform dashboard + report — the
+// additive COMPOSITION layer over the P15 Enterprise Digital Twin, which stays
+// authoritative and untouched). Every exported name carries the `Etwin` prefix
+// so nothing collides with P15's `Twin*` or the manufacturing twin's `Twin*`.
+export * from './types/enterpriseTwinPlatform';
 export * from './types/delivery';
 export * from './types/orgHealth';
 export * from './types/executiveCenter';

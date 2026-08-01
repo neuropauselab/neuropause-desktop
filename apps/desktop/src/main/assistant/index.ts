@@ -113,6 +113,12 @@ export interface AssistantSubsystemDeps {
   /** Phase 6 Stage 12 (D-8): the ten analytics questions answer from the
    *  Enterprise Analytics composition — read-only, in-process. */
   analyticsAnswer?: (text: string, now: string) => AssistantStructuredReport | null;
+  /** Phase 6 Stage 13 (D-8): the ten digital-twin questions answer from the
+   *  Enterprise Digital Twin Platform composition — read-only, in-process.
+   *  Supplied by `initDigitalTwinPlatform(...).answerQuestion`; absent until
+   *  that subsystem is constructed, which the service reports as an explicit
+   *  unavailable rather than as an empty twin. */
+  twinAnswer?: (text: string, now: string) => AssistantStructuredReport | null;
 }
 
 export interface AssistantSubsystem {
@@ -442,6 +448,9 @@ export function initAssistant(deps: AssistantSubsystemDeps): AssistantSubsystem 
     federation: (text, now) => deps.federationAnswer?.(text, now) ?? null,
     // Phase 6 Stage 12 (D-8): the ten analytics questions likewise.
     analytics: (text, now) => deps.analyticsAnswer?.(text, now) ?? null,
+    // Phase 6 Stage 13 (D-8): the ten digital-twin questions likewise — the
+    // ninth port. Composition over the P15 twin; P15 is never modified.
+    twin: (text, now) => deps.twinAnswer?.(text, now) ?? null,
 
     // Stage 5 addition #2: descriptive Work Summary over existing metrics.
     workSummary: (now) => {

@@ -52,6 +52,8 @@ const MUTABLE_SOURCES: { key: string; label: string; detail: string }[] = [
   { key: 'federation-watch', label: 'Federation watch', detail: 'Daily trust divergence, unsigned artifacts & partner-facing exposure items' },
   // Phase 6 Stage 12 — the Analytics Platform's governed watch source.
   { key: 'analytics-watch', label: 'Analytics watch', detail: 'Daily regressing recorded series & attention-band KPI items (recommendations only)' },
+  // Phase 6 Stage 13 — the Enterprise Digital Twin Platform's governed watch source.
+  { key: 'twin-watch', label: 'Twin watch', detail: 'Daily twin coverage gaps, failed executions & supervisor recovery items (recommendations only)' },
 ];
 
 function minutesToTime(minutes: number): string {

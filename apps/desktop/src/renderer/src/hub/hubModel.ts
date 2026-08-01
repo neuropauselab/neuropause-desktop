@@ -79,6 +79,9 @@ const DEEP_LINK_SECTIONS: Record<string, SectionId> = {
   strategy: 'strategy-center',
   // Phase 6 Stage 11 — federation-watch items land in the EXISTING Federation Center.
   federation: 'federation-center',
+  // Phase 6 Stage 13 — twin-watch items land in the EXISTING P15 Digital Twin
+  // Center (its Enterprise Platform tab). No new section is introduced.
+  twin: 'twin-center',
   assistant: 'assistant',
   search: 'search',
   notifications: 'notifications',
@@ -114,6 +117,7 @@ export function sourceLabel(sourceKey: string): string {
     'strategy-watch': 'Strategy Watch',
     'federation-watch': 'Federation Watch',
     'analytics-watch': 'Analytics Watch',
+    'twin-watch': 'Twin Watch',
     system: 'System',
   };
   return LABELS[sourceKey] ?? sourceKey;

@@ -233,6 +233,11 @@ import { initStrategyPlatform, type StrategyPlatformSubsystem } from './strategy
 // one federation-watch source).
 import { initEnterpriseFederation, type EnterpriseFederationSubsystem } from './enterpriseFederation';
 import { initAnalyticsPlatform, type AnalyticsPlatformSubsystem } from './analyticsPlatform';
+// Phase 6 Stage 13 — the Enterprise Digital Twin Platform (read-only composition
+// over the P15 twin + Execute Engine + Runtime Supervisor + Stages 6–12; seven
+// etwin:* channels under P15's EXISTING twin:read scope; one twin-watch source).
+// P15 stays authoritative — this composes it and never modifies it.
+import { initDigitalTwinPlatform, type EtwinPlatformSubsystem } from './digitalTwinPlatform';
 import { fedStore } from './federation/runtime/fedInstance';
 import { exchangeStore } from './federation/exchange/exchangeInstance';
 import { PLAYBOOK_REGISTRY } from './automationPlatform/automationRegistry';
@@ -1480,6 +1485,10 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // after the strategy platform below).
   let efedRef: EnterpriseFederationSubsystem | null = null;
   let analyticsRef: AnalyticsPlatformSubsystem | null = null;
+  // Phase 6 Stage 13 — same late-bound pattern for the Digital Twin Platform's
+  // ten-question port (it composes the analytics platform, so it initializes
+  // after the analytics platform below).
+  let twinRef: EtwinPlatformSubsystem | null = null;
   const assistant = initAssistant({
     broadcast: deps.broadcast,
     publish: publishPlatform,
@@ -1511,6 +1520,10 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     // Phase 6 Stage 12 (D-8) — the ten analytics questions answer from the
     // Enterprise Analytics composition through the same late-bound port.
     analyticsAnswer: (text, now) => analyticsRef?.answerQuestion(text, now) ?? null,
+    // Phase 6 Stage 13 (D-8) — the ten digital-twin questions answer from the
+    // Enterprise Digital Twin Platform composition through the same late-bound
+    // port. The ninth resolver; P15's twin:* surface is composed, never changed.
+    twinAnswer: (text, now) => twinRef?.answerQuestion(text, now) ?? null,
   });
   defs.push(...assistant.handlers);
   // Phase 6 Stage 5 (D-8) — Notification Inbox: registers the notification-center
@@ -2453,6 +2466,91 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   });
   analyticsRef = analyticsPlatform;
   defs.push(...analyticsPlatform.handlers);
+
+  // ── Phase 6 Stage 13 — the Enterprise Digital Twin Platform ─────────────
+  // ONE composition subsystem over the twin the platform ALREADY has: P15's
+  // summary and nine domains composed VERBATIM (D-1 — P15 stays authoritative
+  // and is never modified), the runtime/execution twin over the Execute Engine
+  // and Runtime Supervisor, the Stage 6–12 platform twins built from each
+  // platform's own published slice, the enterprise state-coverage map, the
+  // simulation inventory (every entry registered-never-invoked), the
+  // recorded-history view over Stage 12 trends, and the dashboard/report.
+  // Seven read-only etwin:* channels under P15's EXISTING twin:read scope
+  // (D-3 — no new RBAC scope is minted); one twin-watch delivery source; zero
+  // mutation surface.
+  //
+  // Every dep is SYNCHRONOUS by contract, which is why the Stage 9 slice reads
+  // `capacity()` and not `dashboard()`: Stage 9's dashboard is a Promise
+  // (continuity awaits the local-backup list), and `capacity()` publishes both
+  // the posture and its bottleneck count from one snapshot.
+  const digitalTwinPlatform = initDigitalTwinPlatform({
+    // P15, composed verbatim. `safeRead` inside the subsystem turns a throw
+    // into a reported failure, so these stay direct reads.
+    twinSummary: () => enterpriseTwin.service.overview().summary,
+    twinDomains: () => enterpriseTwin.service.domains(),
+    // The Execute Engine's own reads — Stage 13 tracks no session state.
+    executionKinds: () => executeEngine.registeredKinds(),
+    executionActive: () => executeEngine.activeSessions(),
+    executionHistory: () => executeEngine.getHistory(),
+    executionStats: () => executeEngine.stats(),
+    // The Runtime Supervisor's own reads — no recovery is started or policied.
+    supervisorStatus: () => runtimeSupervisor.status(),
+    supervisorHistory: () => runtimeSupervisor.getHistory(),
+    // The seven Stage 6–12 slices, each taken from what that platform already
+    // publishes. A platform that has not initialized yet returns null, which
+    // the composition reports as `unknown` — never as a steady zero.
+    s6Insight: () => {
+      if (!insightRef) return null;
+      const recs = insightRef.report().recommendations;
+      return {
+        findings: recs.length,
+        criticalOrHigh: recs.filter((r) => r.priority === 'critical' || r.priority === 'high').length,
+      };
+    },
+    s7Knowledge: () => {
+      if (!knowledgeRef) return null;
+      const inv = knowledgeRef.inventory();
+      return { assets: inv.totals.assets, gaps: inv.gaps.length };
+    },
+    s8Automation: () => {
+      if (!automationRef) return null;
+      // `failed-run` only — a stuck execution or an unparseable schedule is a
+      // finding Stage 8 raised, not a run that failed.
+      const failed = automationRef.monitor().findings.filter((f) => f.kind === 'failed-run').length;
+      return { automations: automationRef.catalog().totals.entries, failures: failed };
+    },
+    s9Operations: () => {
+      if (!operationsRef) return null;
+      const cap = operationsRef.capacity();
+      return { posture: cap.pressure, bottlenecks: cap.bottlenecks.length };
+    },
+    s10Strategy: () => {
+      const o = strategyPlatform.dashboard().objectives;
+      return { objectives: o.company + o.departments, atRisk: o.atRisk };
+    },
+    s11Federation: () => {
+      const d = enterpriseFederation.dashboard();
+      // `declaredAboveEvidence` is Stage 11's own degradation signal: a partner
+      // claiming more trust than the recorded evidence supports.
+      return { partners: d.partners.total, degraded: d.trust.declaredAboveEvidence };
+    },
+    s12Analytics: () => ({
+      kpis: analyticsPlatform.kpis().totals.total,
+      regressing: analyticsPlatform.trends().totals.regressing,
+    }),
+    // Stage 12 owns delta computation; its report is composed verbatim.
+    s12Trends: () => analyticsPlatform.trends(),
+    // The recorded-evidence footprint — counts only, never the records.
+    recordedDays: () => healthHistoryStore.all().length,
+    recordedDecisions: () => decisionStore.all().length,
+    // Existing simulation capability, registered but never invoked.
+    insightPredictions: () => (insightRef ? insightRef.report().predictions.map((p) => ({ kind: p.kind })) : null),
+    p14Scenarios: () => ({ count: autonomousIntel.service.overview().simulation.scenarios.length }),
+    s12Forecasts: () => ({ registered: analyticsPlatform.forecasts().totals.registered }),
+    registerSource: (source) => deliveryEngine.register(source),
+  });
+  twinRef = digitalTwinPlatform;
+  defs.push(...digitalTwinPlatform.handlers);
 
   // Startup invariant (fail-closed): with every def now assembled, no runtime-invokable
   // channel may ride on sender-trust ALONE. Collect the channels that ended up gated —

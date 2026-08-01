@@ -868,6 +868,34 @@ export const IpcChannel = {
   EanaDecisions: 'eana:decisions',
   EanaDashboard: 'eana:dashboard',
   EanaReport: 'eana:report',
+
+  // ── Phase 6 Stage 13 — the Enterprise Digital Twin Platform (read-only) ──
+  // The additive COMPOSITION layer over the P15 Enterprise Digital Twin: the
+  // runtime/execution twin, the Stage 6–12 platform twins, the enterprise
+  // state-coverage map, the simulation inventory, the recorded-history view, the
+  // platform dashboard and the executive report. `twin:*` (P15) stays
+  // authoritative and untouched — `etwin:*` composes it and never replaces it.
+  // Reads ride the EXISTING `twin:read` permission (P15's own; no new RBAC
+  // scope). Zero mutation surface — there is no `etwin:*` write channel and
+  // never will be.
+  //
+  // Seven channels, not the six the Stage 13 audit tabulated (§5.3). The audit
+  // gave `etwin:dashboard` the cell "Composed dashboard + report" while every
+  // sibling platform — `estrat:`, `efed:`, `eana:` — publishes the dashboard and
+  // the report on SEPARATE channels, and `EtwinDashboard`/`EtwinReport` are two
+  // distinct types. Serving both from one channel would have made this the only
+  // composite payload in the table; leaving the report off IPC left it
+  // unreachable from the renderer (FINDING #5). The seventh channel is the
+  // sibling shape: a pure read, the same `EmptyRequest`, the same `twin:read`,
+  // no new namespace and no new scope. The count changed; the architecture did
+  // not.
+  EtwinRuntime: 'etwin:runtime',
+  EtwinPlatforms: 'etwin:platforms',
+  EtwinCoverage: 'etwin:coverage',
+  EtwinSimulation: 'etwin:simulation',
+  EtwinHistory: 'etwin:history',
+  EtwinDashboard: 'etwin:dashboard',
+  EtwinReport: 'etwin:report',
 } as const;
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel];
@@ -1566,6 +1594,13 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.EanaDecisions,
   IpcChannel.EanaDashboard,
   IpcChannel.EanaReport,
+  IpcChannel.EtwinRuntime,
+  IpcChannel.EtwinPlatforms,
+  IpcChannel.EtwinCoverage,
+  IpcChannel.EtwinSimulation,
+  IpcChannel.EtwinHistory,
+  IpcChannel.EtwinDashboard,
+  IpcChannel.EtwinReport,
   // Phase 6 Stage 4 — Workspace Assistant.
   IpcChannel.AssistantAsk,
   IpcChannel.AssistantConversations,

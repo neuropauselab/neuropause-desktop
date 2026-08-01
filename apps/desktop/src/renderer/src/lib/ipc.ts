@@ -141,6 +141,13 @@ import {
   type EfedPartnersReport,
   type EfedSharingReport,
   type EfedTrustReport,
+  type EtwinCoverageMap,
+  type EtwinDashboard,
+  type EtwinHistoryView,
+  type EtwinPlatformTwins,
+  type EtwinReport,
+  type EtwinRuntimeTwin,
+  type EtwinSimulationInventory,
   type EnterpriseIntelChangeImpactRequest,
   type EnterpriseIntelRootCauseRequest,
   type EnterpriseTimelineQuery,
@@ -1022,6 +1029,21 @@ export const ipc = {
     decisions: () => invoke(IpcChannel.EanaDecisions) as Promise<EanaDecisionReport>,
     dashboard: () => invoke(IpcChannel.EanaDashboard) as Promise<EanaDashboard>,
     report: () => invoke(IpcChannel.EanaReport) as Promise<EanaReport>,
+  },
+
+  /** Phase 6 Stage 13 — the Enterprise Digital Twin Platform (read-only; every
+   *  channel RBAC-gated `twin:read` — P15's OWN read scope, no new permission —
+   *  and cached ~3 s server-side). Composition over P15, the Execute Engine,
+   *  the Runtime Supervisor and the Stage 6–12 platforms: distinct from the
+   *  `twin:*` cluster below, which stays authoritative and is untouched. */
+  etwin: {
+    runtime: () => invoke(IpcChannel.EtwinRuntime) as Promise<EtwinRuntimeTwin>,
+    platforms: () => invoke(IpcChannel.EtwinPlatforms) as Promise<EtwinPlatformTwins>,
+    coverage: () => invoke(IpcChannel.EtwinCoverage) as Promise<EtwinCoverageMap>,
+    simulation: () => invoke(IpcChannel.EtwinSimulation) as Promise<EtwinSimulationInventory>,
+    history: () => invoke(IpcChannel.EtwinHistory) as Promise<EtwinHistoryView>,
+    dashboard: () => invoke(IpcChannel.EtwinDashboard) as Promise<EtwinDashboard>,
+    report: () => invoke(IpcChannel.EtwinReport) as Promise<EtwinReport>,
   },
 
   knowledge: {

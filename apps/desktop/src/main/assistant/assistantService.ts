@@ -67,6 +67,7 @@ import {
   resolveMeetingPrep,
   resolveOperationsQuestion,
   resolveStrategyQuestion,
+  resolveTwinQuestion,
   resolveWorkSummary,
   type PlanTargets,
 } from './assistantModel';
@@ -181,6 +182,13 @@ export interface AssistantServiceDeps {
    *  intelligence, benchmarks, coverage, analytics report). Read-only;
    *  COMPOSES the existing producers — computes no analytics of its own. */
   analytics?: (text: string, now: string) => AssistantStructuredReport | null;
+  /** Phase 6 Stage 13 (D-8) — the Digital Twin Platform port (ten questions:
+   *  twin status, runtime/execution twin, the S6–S12 platform twins, state
+   *  coverage, simulation capability, recorded history, drift, dashboard,
+   *  platform report). Read-only; COMPOSES the P15 Enterprise Digital Twin,
+   *  which stays authoritative and untouched — nothing here mutates it, and
+   *  an unreadable input is reported unreadable rather than composed as zero. */
+  twin?: (text: string, now: string) => AssistantStructuredReport | null;
 }
 
 export interface AssistantAskInput {
@@ -309,7 +317,9 @@ export class AssistantService {
         // Phase 6 Stage 11 — the ten federation questions likewise.
         resolveFederationQuestion(input.text) !== null ||
         // Phase 6 Stage 12 — the ten analytics questions likewise.
-        resolveAnalyticsQuestion(input.text) !== null);
+        resolveAnalyticsQuestion(input.text) !== null ||
+        // Phase 6 Stage 13 — the ten digital-twin questions likewise.
+        resolveTwinQuestion(input.text) !== null);
     if (
       !cfg.operational &&
       !productivityResolved &&
@@ -1184,6 +1194,45 @@ export class AssistantService {
           }
         } catch (err) {
           unavailable.push({ system: 'analytics', reason: err instanceof Error ? err.message : String(err) });
+        }
+      }
+      return { findings, assumptions, unavailable, structured, narrativePrompt };
+    }
+
+    // Phase 6 Stage 13 (D-8): the ten digital-twin questions resolve through
+    // the Enterprise Digital Twin Platform — deterministic, read-only. The
+    // runtime/execution twin, the S6–S12 platform twins, the state-coverage
+    // map, the simulation inventory and the recorded history are COMPOSED over
+    // the P15 twin and the engines it already runs; P15 stays authoritative and
+    // is never modified. A read that fails is reported unreadable — never
+    // formatted as a zero — and every simulation is described as registered,
+    // never invoked. Nothing executes here.
+    if (resolveTwinQuestion(text) !== null) {
+      const started = Date.now();
+      if (!this.deps.twin) {
+        unavailable.push({ system: 'twin', reason: 'twin platform port not wired' });
+      } else {
+        try {
+          const reportOut = this.deps.twin(text, now);
+          if (reportOut) {
+            structured = reportOut;
+            narrativePrompt = 'brief.executive-summary';
+            this.toolCall(toolCalls, correlationId, started, {
+              tool: 'brief',
+              label: 'Answer from the digital twin platform',
+              purpose:
+                'Resolve the question against the composed runtime twin / platform twins / state-coverage map / simulation inventory / recorded history (reads only).',
+              reason:
+                'The question matches a twin resolver; answers compose the authoritative P15 twin without modifying it, report unreadable inputs as unreadable rather than as zeros, and never claim a simulation was invoked.',
+              expectedOutput: 'An evidence-cited digital twin report.',
+              outcome: 'ok',
+              detail: `${reportOut.sections.length} section(s) for “${reportOut.title}”`,
+            });
+          } else {
+            unavailable.push({ system: 'twin', reason: 'resolver matched but produced no report' });
+          }
+        } catch (err) {
+          unavailable.push({ system: 'twin', reason: err instanceof Error ? err.message : String(err) });
         }
       }
       return { findings, assumptions, unavailable, structured, narrativePrompt };
