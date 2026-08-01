@@ -60,6 +60,7 @@ import {
   renderWorkspaceSnapshot,
   resolveBriefRequest,
   resolveAutomationQuestion,
+  resolveFederationQuestion,
   resolveInsightQuestion,
   resolveKnowledgeQuestion,
   resolveMeetingPrep,
@@ -170,6 +171,10 @@ export interface AssistantServiceDeps {
    *  objectives, portfolio, value, planning, capabilities, risks, board brief).
    *  Read-only; recommendations point at existing governed surfaces. */
   strategy?: (text: string, now: string) => AssistantStructuredReport | null;
+  /** Phase 6 Stage 11 (D-8) — the Federation Platform port (ten questions:
+   *  partners, trust evidence, exchange, shared layers, governance, network,
+   *  federation report). Read-only; composes RECORDS, never networking. */
+  federation?: (text: string, now: string) => AssistantStructuredReport | null;
 }
 
 export interface AssistantAskInput {
@@ -294,7 +299,9 @@ export class AssistantService {
         // Phase 6 Stage 9 — the ten operations questions likewise.
         resolveOperationsQuestion(input.text) !== null ||
         // Phase 6 Stage 10 — the eleven strategy questions likewise.
-        resolveStrategyQuestion(input.text) !== null);
+        resolveStrategyQuestion(input.text) !== null ||
+        // Phase 6 Stage 11 — the ten federation questions likewise.
+        resolveFederationQuestion(input.text) !== null);
     if (
       !cfg.operational &&
       !productivityResolved &&
@@ -1099,6 +1106,41 @@ export class AssistantService {
           }
         } catch (err) {
           unavailable.push({ system: 'strategy', reason: err instanceof Error ? err.message : String(err) });
+        }
+      }
+      return { findings, assumptions, unavailable, structured, narrativePrompt };
+    }
+
+    // Phase 6 Stage 11 (D-8): the ten federation questions resolve through the
+    // Enterprise Federation Platform — deterministic, read-only. Partners,
+    // trust evidence, the exchange, and shared layers are COMPUTED from the
+    // records the federation stores already hold (never live networking);
+    // recommendations POINT at the existing governed fed:* surfaces. Nothing
+    // executes here.
+    if (resolveFederationQuestion(text) !== null) {
+      const started = Date.now();
+      if (!this.deps.federation) {
+        unavailable.push({ system: 'federation', reason: 'federation port not wired' });
+      } else {
+        try {
+          const reportOut = this.deps.federation(text, now);
+          if (reportOut) {
+            structured = reportOut;
+            narrativePrompt = 'brief.executive-summary';
+            this.toolCall(toolCalls, correlationId, started, {
+              tool: 'brief',
+              label: 'Answer from the federation platform',
+              purpose: 'Resolve the question against the composed partners / trust evidence / exchange / shared layers (reads only).',
+              reason: 'The question matches a federation resolver; answers cite recorded federation state, declare unavailability, and never claim live connectivity.',
+              expectedOutput: 'An evidence-cited federation report.',
+              outcome: 'ok',
+              detail: `${reportOut.sections.length} section(s) for “${reportOut.title}”`,
+            });
+          } else {
+            unavailable.push({ system: 'federation', reason: 'resolver matched but produced no report' });
+          }
+        } catch (err) {
+          unavailable.push({ system: 'federation', reason: err instanceof Error ? err.message : String(err) });
         }
       }
       return { findings, assumptions, unavailable, structured, narrativePrompt };

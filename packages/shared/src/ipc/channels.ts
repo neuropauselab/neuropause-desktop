@@ -841,6 +841,19 @@ export const IpcChannel = {
   EstratHealth: 'estrat:health',
   EstratDashboard: 'estrat:dashboard',
   EstratReport: 'estrat:report',
+
+  // ── Phase 6 Stage 11 — the Enterprise Federation Platform (read-only) ──
+  // Partners / trust evidence / organization exchange / shared layers /
+  // executive dashboard / federation report. The `efed:*` namespace is
+  // DISTINCT from the P9-S2 `fed:*` and P10 `federation:*` clusters (which
+  // stay untouched); reads ride the same `federation:read` permission.
+  // Zero mutation surface.
+  EfedPartners: 'efed:partners',
+  EfedTrust: 'efed:trust',
+  EfedExchange: 'efed:exchange',
+  EfedSharing: 'efed:sharing',
+  EfedDashboard: 'efed:dashboard',
+  EfedReport: 'efed:report',
 } as const;
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel];
@@ -1527,6 +1540,12 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.EstratHealth,
   IpcChannel.EstratDashboard,
   IpcChannel.EstratReport,
+  IpcChannel.EfedPartners,
+  IpcChannel.EfedTrust,
+  IpcChannel.EfedExchange,
+  IpcChannel.EfedSharing,
+  IpcChannel.EfedDashboard,
+  IpcChannel.EfedReport,
   // Phase 6 Stage 4 — Workspace Assistant.
   IpcChannel.AssistantAsk,
   IpcChannel.AssistantConversations,

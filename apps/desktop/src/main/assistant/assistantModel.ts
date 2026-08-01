@@ -630,6 +630,9 @@ export { resolveOperationsQuestion } from '../operationsPlatform/operationsModel
 // Phase 6 Stage 10 — the eleven strategy-platform questions (D-8): same
 // pattern; disjointness against every earlier resolver is test-locked.
 export { resolveStrategyQuestion } from '../strategyPlatform/strategyModel';
+// Phase 6 Stage 11 — the ten federation questions (D-8): same pattern;
+// seven-way disjointness is test-locked.
+export { resolveFederationQuestion } from '../enterpriseFederation/federationModel';
 
 /** Detect a meeting-preparation request (D-4). */
 export function resolveMeetingPrep(text: string): boolean {

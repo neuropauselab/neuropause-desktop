@@ -228,6 +228,12 @@ import { initOperationsPlatform, type OperationsPlatformSubsystem } from './oper
 // Phase 6 Stage 10 — the Enterprise Strategy Platform (read-only composition
 // over Stages 1–9 + P14; six estrat:* channels; one strategy-watch source).
 import { initStrategyPlatform, type StrategyPlatformSubsystem } from './strategyPlatform';
+// Phase 6 Stage 11 — the Enterprise Federation Platform (read-only composition
+// over the P9-S2 federation stores + P18 + Stages 7–10; six efed:* channels;
+// one federation-watch source).
+import { initEnterpriseFederation, type EnterpriseFederationSubsystem } from './enterpriseFederation';
+import { fedStore } from './federation/runtime/fedInstance';
+import { exchangeStore } from './federation/exchange/exchangeInstance';
 import { PLAYBOOK_REGISTRY } from './automationPlatform/automationRegistry';
 import { drStore } from './federation/dr/drInstance';
 import { detectBottlenecks } from './workforce/intelligence/bottlenecks';
@@ -1468,6 +1474,10 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // eleven-question port (it composes the operations platform, so it
   // initializes after the operations platform below).
   let strategyRef: StrategyPlatformSubsystem | null = null;
+  // Phase 6 Stage 11 — same late-bound pattern for the Federation Platform's
+  // ten-question port (it composes the strategy platform, so it initializes
+  // after the strategy platform below).
+  let efedRef: EnterpriseFederationSubsystem | null = null;
   const assistant = initAssistant({
     broadcast: deps.broadcast,
     publish: publishPlatform,
@@ -1493,6 +1503,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     // Phase 6 Stage 10 (D-8) — the eleven strategy questions answer from the
     // Strategy Platform through the same late-bound, read-only port.
     strategyAnswer: (text, now) => strategyRef?.answerQuestion(text, now) ?? null,
+    // Phase 6 Stage 11 (D-8) — the ten federation questions answer from the
+    // Enterprise Federation composition through the same late-bound port.
+    federationAnswer: (text, now) => efedRef?.answerQuestion(text, now) ?? null,
   });
   defs.push(...assistant.handlers);
   // Phase 6 Stage 5 (D-8) — Notification Inbox: registers the notification-center
@@ -2224,6 +2237,107 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   });
   strategyRef = strategyPlatform;
   defs.push(...strategyPlatform.handlers);
+
+  // ── Phase 6 Stage 11 — the Enterprise Federation Platform ───────────────
+  // ONE composition subsystem over the EXISTING federation stores (P9-S2:
+  // peers/trust/shares/exchange/governance — all authoritative and untouched),
+  // the P18 sanitized network summary, and the Stage 7–10 platforms. Six
+  // read-only efed:* channels under the EXISTING federation:read scope; one
+  // federation-watch delivery source; zero mutation surface. Everything
+  // cross-org here is a RECORD in the local stores — no live connectivity
+  // exists and none is claimed.
+  const enterpriseFederation = initEnterpriseFederation({
+    fedHome: () => {
+      const h = fedStore.homeOrg();
+      return h ? { id: h.id, name: h.name, regionId: h.regionId } : null;
+    },
+    fedPeers: () =>
+      fedStore.peers().map((p) => ({
+        id: p.id,
+        name: p.name,
+        role: p.role,
+        status: p.status,
+        regionId: p.regionId,
+        trustLevel: p.trustLevel,
+        joinedAt: p.joinedAt,
+        sharedOut: p.sharedOut,
+        sharedIn: p.sharedIn,
+      })),
+    fedInvitations: () =>
+      fedStore.listInvitations().map((i) => ({ toOrg: i.toOrg, fromOrg: i.fromOrg, direction: i.direction, status: i.status })),
+    fedTrusts: () =>
+      fedStore.listTrust().map((t) => ({
+        peerOrg: t.peerOrg,
+        peerOrgName: t.peerOrgName,
+        trustLevel: t.trustLevel,
+        delegatedApproval: t.delegatedApproval,
+        canShareWorkers: t.canShareWorkers,
+        canShareData: t.canShareData,
+      })),
+    fedShares: () =>
+      fedStore.listShared().map((s) => ({
+        kind: s.kind,
+        name: s.name,
+        peerOrg: s.peerOrg,
+        peerOrgName: s.peerOrgName,
+        direction: s.direction,
+        access: s.access,
+      })),
+    fedSummary: () => fedStore.summary(),
+    artifacts: () =>
+      exchangeStore.listArtifacts().map((a) => ({
+        id: a.id,
+        kind: a.kind,
+        name: a.name,
+        publisherOrg: a.publisherOrg,
+        publisherOrgName: a.publisherOrgName,
+        scope: a.scope,
+        verification: a.verification,
+        installs: a.installs,
+        signaturesEd25519: a.versions.every((v) => v.signature.algorithm === 'ed25519'),
+      })),
+    govPolicies: () => globalGovStore.listPolicies().map((p) => ({ id: p.id, name: p.name, action: p.action, enabled: p.enabled })),
+    govApprovals: () => globalGovStore.listApprovals().map((a) => ({ status: a.status })),
+    govAudit: () => globalGovStore.listAudit().map((e) => ({ peerOrg: e.peerOrg })),
+    p18Summary: () => {
+      const s = intelligenceNetwork.service.overview().summary;
+      return { shareableIntelligence: s.shareableIntelligence, publishedInsights: s.publishedInsights, healthBand: s.healthBand };
+    },
+    knowledgeAssets: () => {
+      const inv = knowledgeRef?.inventory();
+      return inv ? inv.assets.map((a) => ({ id: a.id, title: a.title, topics: a.topics })) : null;
+    },
+    playbooks: () => PLAYBOOK_REGISTRY.map((p) => ({ id: p.id, name: p.name, version: p.version })),
+    apFindings: () => (automationRef ? automationRef.monitor().findings.map((f) => ({ severity: f.severity })) : null),
+    connectors: () => connectorService.list().map((c) => ({ id: c.id, name: c.name })),
+    workers: () => workerRegistry.summaries().map((w) => ({ id: w.id, name: w.name })),
+    s9Services: () =>
+      operationsRef ? operationsRef.catalog().entries.map((e) => ({ serviceId: e.serviceId, state: e.state })) : [],
+    slaStatuses: () =>
+      operationsRef
+        ? operationsRef.sla().statuses.map((s) => ({ targetId: s.targetId, serviceId: s.serviceId, status: s.status }))
+        : [],
+    readiness: () => (operationsRef ? operationsRef.readiness().dimensions.map((d) => ({ state: d.state })) : []),
+    capacityPressure: () => (operationsRef ? operationsRef.capacity().pressure : 'unknown'),
+    strategyInitiatives: () =>
+      strategyRef
+        ? strategyRef.portfolio().initiatives.map((i) => ({ id: i.id, label: i.label, state: i.state, capabilityKeys: [...i.capabilityKeys] }))
+        : [],
+    strategyCapabilities: () =>
+      strategyRef
+        ? strategyRef.capabilityMap().capabilities.map((c) => ({ key: c.key, label: c.label, condition: c.condition }))
+        : [],
+    executiveKpis: () =>
+      executiveCenter.snapshot().kpis.map((k) => ({
+        key: k.key,
+        label: k.label,
+        display: k.display,
+        ...(k.band ? { band: k.band } : {}),
+      })),
+    registerSource: (source) => deliveryEngine.register(source),
+  });
+  efedRef = enterpriseFederation;
+  defs.push(...enterpriseFederation.handlers);
 
   // Startup invariant (fail-closed): with every def now assembled, no runtime-invokable
   // channel may ride on sender-trust ALONE. Collect the channels that ended up gated —

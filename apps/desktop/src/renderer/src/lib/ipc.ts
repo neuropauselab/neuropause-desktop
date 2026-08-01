@@ -129,6 +129,12 @@ import {
   type PortfolioReport,
   type StrategyDashboard,
   type StrategyHealthView,
+  type EfedBoardReport,
+  type EfedDashboard,
+  type EfedExchangeReport,
+  type EfedPartnersReport,
+  type EfedSharingReport,
+  type EfedTrustReport,
   type EnterpriseIntelChangeImpactRequest,
   type EnterpriseIntelRootCauseRequest,
   type EnterpriseTimelineQuery,
@@ -986,6 +992,18 @@ export const ipc = {
     health: () => invoke(IpcChannel.EstratHealth) as Promise<StrategyHealthView>,
     dashboard: () => invoke(IpcChannel.EstratDashboard) as Promise<StrategyDashboard>,
     report: () => invoke(IpcChannel.EstratReport) as Promise<BoardReport>,
+  },
+
+  /** Phase 6 Stage 11 — the Enterprise Federation Platform (read-only; every
+   *  channel RBAC-gated `federation:read` — the P10 read scope — and cached
+   *  ~3 s server-side; distinct from the `fed:*` / `federation:*` clusters). */
+  efed: {
+    partners: () => invoke(IpcChannel.EfedPartners) as Promise<EfedPartnersReport>,
+    trust: () => invoke(IpcChannel.EfedTrust) as Promise<EfedTrustReport>,
+    exchange: () => invoke(IpcChannel.EfedExchange) as Promise<EfedExchangeReport>,
+    sharing: () => invoke(IpcChannel.EfedSharing) as Promise<EfedSharingReport>,
+    dashboard: () => invoke(IpcChannel.EfedDashboard) as Promise<EfedDashboard>,
+    report: () => invoke(IpcChannel.EfedReport) as Promise<EfedBoardReport>,
   },
 
   knowledge: {

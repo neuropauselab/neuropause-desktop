@@ -3,9 +3,10 @@
  * governed view over the EXISTING federation runtime (peers, trust, signed exchange, cross-org
  * governance), built from house primitives + the P8.6 VirtualList. Tabs: Overview (analytics +
  * recent activity), Directory (organization health + trust), Graph (the federation graph
- * projection), Timeline (the unified cross-org timeline), and Search (federated discovery).
- * Reads via `ipc.federationPlatform.*`; refreshes on the existing `fed:event` broadcast. No new
- * runtime, graph, search, or governance engine.
+ * projection), Timeline (the unified cross-org timeline), Search (federated discovery), and
+ * (Phase 6 Stage 11) Enterprise — the Enterprise Federation Platform composition with its own
+ * read-only `efed:*` reads. Reads via `ipc.federationPlatform.*`; refreshes on the existing
+ * `fed:event` broadcast. No new runtime, graph, search, or governance engine.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
@@ -22,6 +23,7 @@ import { Bar, OpsPanel, Stat, StatusBadge } from '@renderer/operations/primitive
 import { EmptyState, Field, Grid, LoadingBlock } from '@renderer/operationsCenter/primitives';
 import { Pill } from '@renderer/workforce/primitives';
 import { VirtualList } from '@renderer/workforceCenter/VirtualList';
+import { EfedPlatformTab } from '@renderer/enterpriseFederation/EfedPlatformTab';
 import {
   decisionLabel,
   decisionTone,
@@ -38,7 +40,7 @@ import {
   trustTone,
 } from './federationCenterModel';
 
-type Tab = 'overview' | 'directory' | 'graph' | 'timeline' | 'search';
+type Tab = 'overview' | 'directory' | 'graph' | 'timeline' | 'search' | 'enterprise';
 
 function fmtTime(at: string): string {
   const d = new Date(at);
@@ -66,12 +68,14 @@ export function FederationCenterView(): JSX.Element {
     return off;
   }, [refresh]);
 
-  const tabs: { id: Tab; label: string; icon: 'gauge' | 'globe' | 'grid' | 'pulse' | 'search' }[] = [
+  const tabs: { id: Tab; label: string; icon: 'gauge' | 'globe' | 'grid' | 'pulse' | 'search' | 'checklist' }[] = [
     { id: 'overview', label: 'Overview', icon: 'gauge' },
     { id: 'directory', label: 'Directory', icon: 'globe' },
     { id: 'graph', label: 'Graph', icon: 'grid' },
     { id: 'timeline', label: 'Timeline', icon: 'pulse' },
     { id: 'search', label: 'Search', icon: 'search' },
+    // Phase 6 Stage 11 — the Enterprise Federation Platform (read-only efed:* composition).
+    { id: 'enterprise', label: 'Enterprise', icon: 'checklist' },
   ];
 
   return (
@@ -111,7 +115,10 @@ export function FederationCenterView(): JSX.Element {
           ))}
         </nav>
 
-        {!ready ? (
+        {tab === 'enterprise' ? (
+          // Phase 6 Stage 11 — its own efed:* reads; independent of the P10 overview fetch.
+          <EfedPlatformTab />
+        ) : !ready ? (
           <LoadingBlock label="Loading federation…" />
         ) : !overview ? (
           <EmptyState icon="globe" title="Federation unavailable" hint="No federation data could be loaded." />

@@ -77,6 +77,8 @@ const DEEP_LINK_SECTIONS: Record<string, SectionId> = {
   knowledge: 'knowledge',
   // Phase 6 Stage 10 — strategy-watch items land in the EXISTING Strategy Center.
   strategy: 'strategy-center',
+  // Phase 6 Stage 11 — federation-watch items land in the EXISTING Federation Center.
+  federation: 'federation-center',
   assistant: 'assistant',
   search: 'search',
   notifications: 'notifications',
@@ -110,6 +112,7 @@ export function sourceLabel(sourceKey: string): string {
     'automation-watch': 'Automation Watch',
     'operations-watch': 'Operations Watch',
     'strategy-watch': 'Strategy Watch',
+    'federation-watch': 'Federation Watch',
     system: 'System',
   };
   return LABELS[sourceKey] ?? sourceKey;

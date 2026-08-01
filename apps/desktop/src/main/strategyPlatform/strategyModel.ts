@@ -23,7 +23,9 @@ import type {
 export function resolveStrategyQuestion(text: string): StrategyQuestionKey | null {
   const t = text.trim().toLowerCase();
   if (t.length === 0) return null;
-  if (/\bboard (brief|report|pack)\b/.test(t)) return 'board-brief';
+  // Phase 6 Stage 11: a FEDERATION board brief belongs to the federation
+  // resolver — excluded here to keep the seven-way disjointness airtight.
+  if (/\bboard (brief|report|pack)\b/.test(t) && !/\bfederation\b/.test(t)) return 'board-brief';
   if (/\b(business )?capabilit(y|ies)\b/.test(t)) return 'capability-analysis';
   if (/\bstrategic risks?\b/.test(t) || /\bboard attention\b/.test(t)) return 'strategic-risks';
   if (/\bbusiness value\b/.test(t) || /\bwhich decisions (produced|delivered|created)\b/.test(t)) return 'business-value';
@@ -32,7 +34,10 @@ export function resolveStrategyQuestion(text: string): StrategyQuestionKey | nul
   // "operational objectives" belongs to the Stage 9 ops-planning resolver —
   // excluded here to keep the six-way resolver disjointness airtight.
   if ((/\bobjectives?\b/.test(t) || /\bokrs?\b/.test(t)) && !/\boperational objectives?\b/.test(t)) return 'objectives-at-risk';
-  if (/\binitiatives?\b/.test(t)) return 'initiative-portfolio';
+  // Phase 6 Stage 11: joint/federated/partner/shared initiatives belong to the
+  // federation resolver — excluded here (the Stage 9 'operational objectives'
+  // precedent, applied forward).
+  if (/\binitiatives?\b/.test(t) && !/\b(joint|federated|partner|shared) initiatives?\b/.test(t)) return 'initiative-portfolio';
   if (/\broadmap\b/.test(t)) return 'roadmap-outlook';
   if (/\b(executive|leadership) focus\b/.test(t) || /\bfocus (on )?(this|next) quarter\b/.test(t) || /\bwhat should (the )?(executive team|leadership) focus\b/.test(t))
     return 'executive-focus';

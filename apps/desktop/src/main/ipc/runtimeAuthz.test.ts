@@ -200,6 +200,10 @@ describe('runtime IPC surface completeness (fail-closed startup safety net)', ()
     // every estrat:* handler self-carries requireAuth + strategy:read (the P14
     // read scope; locked by src/main/strategyPlatform/index.stage10.test.ts).
     'estrat:',
+    // Phase 6 Stage 11 — the Enterprise Federation Platform's read-only cluster:
+    // every efed:* handler self-carries requireAuth + federation:read (the P10
+    // read scope; locked by src/main/enterpriseFederation/index.stage11.test.ts).
+    'efed:',
     'marketplace:',
     'webhooks:',
     'sandbox:',

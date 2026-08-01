@@ -137,6 +137,10 @@ export * from './types/operationsPlatform';
 // portfolio / business value / planning / the Enterprise Capability Map /
 // strategy health / dashboard / board report — all computed views).
 export * from './types/strategyPlatform';
+// Phase 6 Stage 11 — Enterprise Federation Platform (partners / trust evidence /
+// organization exchange × local records / shared S7–S10 layers / dashboard /
+// federation report — all computed views over the EXISTING federation stores).
+export * from './types/enterpriseFederation';
 export * from './types/delivery';
 export * from './types/orgHealth';
 export * from './types/executiveCenter';
