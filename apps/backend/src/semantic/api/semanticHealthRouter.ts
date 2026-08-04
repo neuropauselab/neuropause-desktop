@@ -14,6 +14,7 @@
  */
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import { forbidden, unauthorized } from '../../middleware/error';
+import { logger } from '../../config/logger';
 import { semanticHealth, type SemanticHealthDeps } from './semanticHealthService';
 
 export interface SemanticHealthRouterDeps {
@@ -55,6 +56,14 @@ export function createSemanticHealthRouter(deps: SemanticHealthRouterDeps): Rout
             const total = Number.isFinite(totalRaw) && totalRaw >= 0 ? totalRaw : embedded;
             return { embedded, total };
           },
+          // The service reports a probe failure to the caller as a stable code,
+          // because the raw upstream message carries the provider's base URL and
+          // response body and this route is open to any org member. The detail is
+          // exactly what an operator needs, so it goes here instead of nowhere.
+          // `warn`, not `error`: an unreachable dependency reported by a probe that
+          // did its job is not a server fault, and this route can be polled.
+          onProbeFailure: (probe, err) =>
+            logger.warn({ err, probe, orgId, requestId: req.id }, 'Semantic health probe failed'),
         },
         orgId,
       );

@@ -7,11 +7,24 @@
  */
 import type { Embedding, EmbeddingVersion } from '../embedding/embeddingTypes';
 
+/** Which isolated probe failed — the argument to `onProbeFailure`. */
+export type SemanticHealthProbe = 'provider' | 'vectorStore' | 'coverage';
+
 export interface SemanticHealthDeps {
   embeddingProvider: { version: EmbeddingVersion; embed(text: string): Promise<Embedding> };
   vectorStore: { health(): Promise<{ ok: boolean }> };
   /** embedded vs total memories for the org (backend counts embedded; total may be supplied by the caller). */
   getCoverage: (orgId: string) => Promise<{ embedded: number; total: number }>;
+  /**
+   * Notified with the *raw* failure whenever a probe fails, so the detail this
+   * function deliberately keeps out of its result still reaches an operator.
+   *
+   * A callback rather than a logger import so the module stays pure and unit-
+   * testable without infra, matching how the desktop's resilient retrieval path
+   * surfaces its failures (`resilientSemanticSearch`'s `onOutcome`,
+   * `memory/index.ts`'s `onSemanticError`). The router supplies the logger.
+   */
+  onProbeFailure?: (probe: SemanticHealthProbe, err: unknown) => void;
 }
 
 export interface SemanticHealthResult {
@@ -25,6 +38,31 @@ export interface SemanticHealthResult {
 
 const PROBE = 'health probe';
 
+/**
+ * A stable, client-safe classifier for a failed probe — never the raw message.
+ *
+ * This response goes to any *member* of the org, and the upstream messages are
+ * not member-safe: `embeddingHttp.ts` builds them as `HTTP ${status} from ${url}:
+ * ${detail}` and `Request to ${url} failed: ${e.message}`, so the raw text carries
+ * the embedding provider's base URL (an internal host for a self-hosted Ollama)
+ * and the upstream response body verbatim. Returning `err.code` instead gives an
+ * operator everything actionable — `provider_unavailable` vs `config_invalid` vs
+ * `invalid_response` are different problems with different fixes — while the
+ * URL and body go to `onProbeFailure`, which is server-side.
+ *
+ * The code is read structurally rather than via `instanceof EmbeddingError`, so
+ * an injected provider from another layer that follows the same
+ * `{ code }` convention (`QdrantError`, `SemanticError`) classifies correctly
+ * without this module importing all of them.
+ */
+function classifyProbeError(err: unknown): string {
+  if (typeof err === 'object' && err !== null) {
+    const code = (err as { code?: unknown }).code;
+    if (typeof code === 'string' && code.length > 0) return code;
+  }
+  return 'probe_failed';
+}
+
 export async function semanticHealth(deps: SemanticHealthDeps, orgId: string): Promise<SemanticHealthResult> {
   const version = deps.embeddingProvider.version;
 
@@ -34,11 +72,12 @@ export async function semanticHealth(deps: SemanticHealthDeps, orgId: string): P
     await deps.embeddingProvider.embed(PROBE);
     provider = { ok: true, model: version.model, dimensions: version.dimensions };
   } catch (err) {
+    deps.onProbeFailure?.('provider', err);
     provider = {
       ok: false,
       model: version.model,
       dimensions: version.dimensions,
-      error: err instanceof Error ? err.message : String(err),
+      error: classifyProbeError(err),
     };
   }
 
@@ -48,7 +87,8 @@ export async function semanticHealth(deps: SemanticHealthDeps, orgId: string): P
     const h = await deps.vectorStore.health();
     vectorStore = { ok: h.ok };
   } catch (err) {
-    vectorStore = { ok: false, error: err instanceof Error ? err.message : String(err) };
+    deps.onProbeFailure?.('vectorStore', err);
+    vectorStore = { ok: false, error: classifyProbeError(err) };
   }
 
   // Coverage (isolated).
@@ -58,7 +98,8 @@ export async function semanticHealth(deps: SemanticHealthDeps, orgId: string): P
     const total = Math.max(0, c.total);
     const embedded = Math.max(0, Math.min(c.embedded, total || c.embedded));
     coverage = { embedded, total, percent: total > 0 ? Math.round((embedded / total) * 100) : 100 };
-  } catch {
+  } catch (err) {
+    deps.onProbeFailure?.('coverage', err);
     coverage = { embedded: 0, total: 0, percent: 0 };
   }
 

@@ -141,6 +141,104 @@ describe('failure isolation + honest degradation', () => {
     expect(result.availability.engine.state).toBe('ready');
   });
 
+  /* ── A6: a RESOLVED semantic call that did not actually retrieve ─────────
+   *
+   * The whole class of bug this increment closes. Every case below has the
+   * recall promise fulfilling normally — the failure is inside the payload,
+   * which is exactly why it used to render as a healthy source.
+   */
+
+  const withRetrieval = (retrieval: unknown, hits: unknown[] = []): Partial<SearchIo> => ({
+    semanticRecall: () => Promise.resolve({ hits, total: hits.length, retriever: 'lexical', retrieval }),
+  });
+
+  const LEXICAL_HIT = {
+    item: { id: 'lx1', title: 'Rollout notes', content: 'kubernetes rollout', kind: 'decision', occurredAt: '2026-07-28T10:00:00Z', connectorId: null },
+    score: 0.4,
+  };
+
+  it('a degraded retrieval reports unavailable, not a healthy source', async () => {
+    // Before A6 this answered `ready` with `note: 'retriever: lexical'`, and
+    // SearchView renders a ready note only as a hover tooltip — so a user saw
+    // results and no indication that vector search was down.
+    const io = makeIo(
+      withRetrieval({
+        mode: 'degraded',
+        semantic: { state: 'failed', kind: 'dependency_down', retryable: true, code: 'qdrant_unavailable', detail: 'Vector store returned 503.', latencyMs: 91 },
+      }),
+    );
+    const result = await runUnifiedSearch(rp('contract'), io).done;
+    const st = result.availability.semantic;
+    expect(st.state).toBe('unavailable');
+    expect(st.state === 'unavailable' && st.reason).toContain('temporarily unavailable');
+    expect(st.state === 'unavailable' && st.reason).toContain('Vector store returned 503.');
+  });
+
+  it('still merges the lexical hits a degraded retrieval DID return', async () => {
+    // `unavailable` describes the source's health, not its output. Dropping the
+    // results it managed to produce would turn an honest warning into real data
+    // loss — the user would be told less AND shown less.
+    const io = makeIo(
+      withRetrieval(
+        { mode: 'degraded', semantic: { state: 'skipped', reason: 'circuit_open' } },
+        [LEXICAL_HIT],
+      ),
+    );
+    const result = await runUnifiedSearch(rp('contract'), io).done;
+    expect(result.availability.semantic.state).toBe('unavailable');
+    expect(result.items.some((i) => i.id.includes('lx1'))).toBe(true);
+  });
+
+  it('streams the degraded state to the caller like any other source update', async () => {
+    const io = makeIo(
+      withRetrieval({ mode: 'degraded', semantic: { state: 'failed', kind: 'timeout', retryable: true, code: 'deadline', detail: '', latencyMs: 4000 } }, [LEXICAL_HIT]),
+    );
+    const updates: SearchRunUpdate[] = [];
+    await runUnifiedSearch(rp('contract'), io, { onUpdate: (u) => updates.push(u) }).done;
+    const semantic = updates.find((u) => u.source === 'semantic');
+    expect(semantic?.state.state).toBe('unavailable');
+    expect(semantic?.items.length).toBe(1); // items still stream, alongside the warning
+  });
+
+  it('a healthy hybrid retrieval stays ready', async () => {
+    const io = makeIo(
+      withRetrieval({ mode: 'hybrid', semantic: { state: 'ok', hits: 1, latencyMs: 120 } }, [LEXICAL_HIT]),
+    );
+    const result = await runUnifiedSearch(rp('contract'), io).done;
+    expect(result.availability.semantic.state).toBe('ready');
+  });
+
+  it('a by-design lexical mode stays ready — it is not a failure', async () => {
+    // `not_configured` is the common single-user case. Reporting it as an outage
+    // would put a permanent orange warning on a correctly-working install.
+    const io = makeIo(
+      withRetrieval({ mode: 'lexical', semantic: { state: 'skipped', reason: 'not_configured' } }, [LEXICAL_HIT]),
+    );
+    const result = await runUnifiedSearch(rp('contract'), io).done;
+    const st = result.availability.semantic;
+    expect(st.state).toBe('ready');
+    expect(st.state === 'ready' && st.note).toContain('not configured');
+  });
+
+  it('ignores a malformed envelope instead of degrading on it', async () => {
+    // Defensive: a shape this build cannot read is not evidence of an outage.
+    for (const bad of [null, 'degraded', { mode: 'degraded' }, { mode: 'weird', semantic: { state: 'failed' } }, { semantic: { state: 'nope' } }]) {
+      const io = makeIo(withRetrieval(bad, [LEXICAL_HIT]));
+      const result = await runUnifiedSearch(rp('contract'), io).done;
+      clearSearchCache();
+      expect(result.availability.semantic.state).toBe('ready');
+    }
+  });
+
+  it('an absent envelope behaves exactly as it did before A6', async () => {
+    // Backward compatibility: makeIo()'s default semanticRecall carries no
+    // `retrieval` field, so it doubles as a pre-A6 producer.
+    const result = await runUnifiedSearch(rp('contract'), makeIo()).done;
+    const st = result.availability.semantic;
+    expect(st.state).toBe('ready');
+    expect(st.state === 'ready' && st.note).toBe('retriever: qdrant');
+  });
+
   it('partial records failures keep the source alive with an honest note', async () => {
     const io = makeIo({ decisionsList: reject('decision store locked') });
     const result = await runUnifiedSearch(rp('contract'), io).done;

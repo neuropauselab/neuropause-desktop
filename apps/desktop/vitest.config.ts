@@ -93,6 +93,12 @@ export default defineConfig({
       // Phase 6 Stage 5 — the Work Hub's pure view-model (tiles, task board,
       // email prioritization, productivity timeline, work summary; no DOM).
       'src/renderer/src/hub/**/*.test.ts',
+      // A6 — the renderer's cross-cutting pure leaves under lib/ (retrieval-status
+      // wording, shared by Universal Search and the Memory view; no DOM, no React).
+      // This directory previously held only untested helpers, so it was never
+      // collected; the pattern is directory-wide like every entry above, so a
+      // future test beside format.ts/cn.ts is picked up without another edit here.
+      'src/renderer/src/lib/**/*.test.ts',
     ],
   },
   resolve: {

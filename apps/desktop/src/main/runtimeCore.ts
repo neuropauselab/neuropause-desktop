@@ -254,9 +254,10 @@ import { runEnterpriseSearch } from './search/enterpriseSearch';
 import { getFederationSearcher } from './federationPlatform/searcherInstance';
 import { runMrp, computeCapacitySchedule, isTerminalExecutionStatus } from '@neuropause/shared';
 import type { ApiMethod, EnterprisePermission, IpcChannelName, ResourceGraphModel } from '@neuropause/shared';
+import type { IpcBroadcaster } from '@neuropause/shared';
 const log = createLogger('runtime-core');
 export interface RuntimeCoreDeps {
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: IpcBroadcaster;
 }
 export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   await registry.load();
@@ -1899,6 +1900,13 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     // Mirrors OllamaModelClient's URL resolution (env override, then local default).
     ollamaProbe({ baseUrl: process.env.NEUROPAUSE_OLLAMA_URL ?? 'http://localhost:11434' }),
     aiMemoryProbe(() => memoryStore.counts().total),
+    // A6 — semantic retrieval health. `aiMemoryProbe` above only counts what is
+    // indexed; it stays `ok` while the semantic leg is dead, because the items
+    // are still there. This reports whether recall can actually *reach* them.
+    // Exposed by the subsystem rather than built here, because the tracker lives
+    // inside the resilient decorator `initMemory` wires — the same idiom as
+    // `infrastructure.probe` / `enterpriseIntel.probe` below.
+    memory.probe,
     // P4.1 — connector runtime health rolls into the existing diagnostics report; reauth/error accounts
     // (excluded from the connected-only snapshots) surface via the attention count.
     connectorHealthProbe(() => sync.snapshots(), {

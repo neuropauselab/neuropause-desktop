@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { semanticHealth, type SemanticHealthDeps } from './semanticHealthService';
-import type { EmbeddingVersion } from '../embedding/embeddingTypes';
+import { EmbeddingError, type EmbeddingVersion } from '../embedding/embeddingTypes';
+import { QdrantError } from '../qdrant/qdrantTypes';
 
 const VERSION: EmbeddingVersion = { model: 'nomic-embed-text', dimensions: 768, revision: 1 };
 
@@ -22,19 +23,55 @@ describe('semanticHealth', () => {
     expect(out.coverage).toEqual({ embedded: 8, total: 10, percent: 80 });
   });
 
-  it('marks unhealthy and captures the error when the provider is down (but still probes the rest)', async () => {
-    const d = deps({ embeddingProvider: { version: VERSION, embed: vi.fn(async () => { throw new Error('ollama down'); }) } });
+  it('marks unhealthy and classifies the error when the provider is down (but still probes the rest)', async () => {
+    // A6: `error` is the failure's stable code, not its message. This response is
+    // served to any org member, and the provider's messages are built as
+    // `HTTP ${status} from ${url}: ${detail}` (embeddingHttp.ts) — the raw text
+    // carries the embedding host and the upstream body.
+    const d = deps({
+      embeddingProvider: {
+        version: VERSION,
+        embed: vi.fn(async () => {
+          throw new EmbeddingError(
+            'provider_unavailable',
+            'Request to http://ollama.internal:11434/api/embeddings failed: ECONNREFUSED',
+            { retryable: true },
+          );
+        }),
+      },
+    });
     const out = await semanticHealth(d, 'org-1');
-    expect(out.provider).toMatchObject({ ok: false, error: 'ollama down' });
+    expect(out.provider).toMatchObject({ ok: false, error: 'provider_unavailable' });
+    expect(JSON.stringify(out)).not.toContain('ollama.internal');
     expect(out.vectorStore.ok).toBe(true); // isolated — still checked
     expect(out.healthy).toBe(false);
   });
 
+  it('hands the raw failure to onProbeFailure, so the detail reaches an operator', async () => {
+    // The classification above is only safe because the detail is not simply
+    // discarded; without this the endpoint would be a quieter silent failure.
+    const upstream = new EmbeddingError('provider_timeout', 'Request to http://ollama.internal:11434 timed out');
+    const onProbeFailure = vi.fn();
+    const d = deps({
+      embeddingProvider: { version: VERSION, embed: vi.fn(async () => { throw upstream; }) },
+      onProbeFailure,
+    });
+    await semanticHealth(d, 'org-1');
+    expect(onProbeFailure).toHaveBeenCalledWith('provider', upstream);
+  });
+
+  it('falls back to a generic code for a failure that carries none', async () => {
+    const d = deps({ embeddingProvider: { version: VERSION, embed: vi.fn(async () => { throw new Error('ollama down'); }) } });
+    const out = await semanticHealth(d, 'org-1');
+    expect(out.provider.error).toBe('probe_failed');
+  });
+
   it('marks unhealthy when Qdrant is unreachable', async () => {
-    const d = deps({ vectorStore: { health: vi.fn(async () => { throw new Error('qdrant refused'); }) } });
+    const d = deps({ vectorStore: { health: vi.fn(async () => { throw new QdrantError('unavailable', 'Qdrant unreachable: http://qdrant.internal:6333', { retryable: true }); }) } });
     const out = await semanticHealth(d, 'org-1');
     expect(out.provider.ok).toBe(true);
-    expect(out.vectorStore).toMatchObject({ ok: false, error: 'qdrant refused' });
+    expect(out.vectorStore).toMatchObject({ ok: false, error: 'unavailable' });
+    expect(JSON.stringify(out)).not.toContain('qdrant.internal');
     expect(out.healthy).toBe(false);
   });
 

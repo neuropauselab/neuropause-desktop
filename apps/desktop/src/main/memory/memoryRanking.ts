@@ -85,7 +85,13 @@ export interface RankedMemory {
   memoryId: string;
   /** Overall relevance, 0..100. */
   score: number;
-  /** 0..1 — how corroborated the match is (more/stronger signals ⇒ higher). */
+  /**
+   * 0..1 — how corroborated the match is across the relevance signals the query
+   * expected. A signal that was expected but never observed (semantic degraded,
+   * or simply no vector hit for this candidate) lowers it; supplying one can only
+   * raise it. Deliberately *not* comparable to `score`: a keyword-only match can
+   * rank first and still be poorly corroborated.
+   */
   confidence: number;
   /** Why it ranked, strongest factor first. */
   reasons: RankingReason[];
@@ -146,11 +152,45 @@ function passesFilters(c: RankingCandidate, f: RankingFilters | undefined): bool
   return true;
 }
 
-/** Confidence = mean of present relevance signals (keyword always; vector when given). */
-function computeConfidence(c: RankingCandidate): number {
-  const signals = [clamp01(c.keywordScore)];
-  if (c.vectorScore != null) signals.push(clamp01(c.vectorScore));
-  return round2(signals.reduce((s, v) => s + v, 0) / signals.length);
+/**
+ * Confidence — how corroborated the match is, over the relevance signals this
+ * query *expected*, not merely the ones that arrived.
+ *
+ * A6 replaced a mean of the present signals. A mean is invariant to how many
+ * terms it has, which inverted the meaning of the number in the one situation
+ * where it matters most. The lexical retriever normalizes against the best hit
+ * in the set (`memoryRetriever.ts:87-91`, `raw / max`), so the top lexical
+ * candidate scores exactly `1.0` *by construction* — however thin the underlying
+ * match. Under the mean:
+ *
+ *   - semantic unavailable → `mean([1.0])            = 1.00`
+ *   - semantic healthy     → `mean([1.0, 0.8])       = 0.90`
+ *
+ * so losing the vector store *raised* confidence, and the top hit of every
+ * degraded recall was guaranteed to clear the renderer's "High Confidence"
+ * threshold (`memoryExplanation.ts:12`, 0.8). Exactly backwards, and reliably so.
+ *
+ * The fix keeps the missing signal in the denominator: an unobserved signal
+ * contributes no evidence, rather than being excluded from the average as if it
+ * had never been expected. The two relevance weights supply the ratio, so the
+ * penalty is proportional to how much this query actually relied on semantic —
+ * a caller that sets `vector: 0` is not asking for corroboration and is not
+ * docked for its absence. Reusing the ranking weights also keeps this in step
+ * with the score automatically; a second table of constants would drift.
+ *
+ * Monotone by construction: supplying a vector score can only raise confidence
+ * (by `w_v · vector / (w_k + w_v)`, which is never negative), and can never
+ * lower it. That single property is what the old formula violated.
+ */
+function computeConfidence(c: RankingCandidate, weights: RankingWeights): number {
+  const expected = weights.keyword + weights.vector;
+  // Both relevance weights zeroed — the query ranks purely on recency/importance/
+  // pinned, so no relevance evidence was sought and none can be claimed.
+  if (!(expected > 0)) return 0;
+  const observed =
+    weights.keyword * clamp01(c.keywordScore) +
+    (c.vectorScore != null ? weights.vector * clamp01(c.vectorScore) : 0);
+  return round2(observed / expected);
 }
 
 interface Scored {
@@ -204,7 +244,12 @@ export function rankMemories(query: RankingQuery, candidates: RankingCandidate[]
         }));
       return {
         candidate: c,
-        ranked: { memoryId: c.memoryId, score, confidence: computeConfidence(c), reasons },
+        ranked: {
+          memoryId: c.memoryId,
+          score,
+          confidence: computeConfidence(c, weights),
+          reasons,
+        },
       };
     });
 

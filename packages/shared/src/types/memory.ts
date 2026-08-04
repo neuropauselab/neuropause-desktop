@@ -133,11 +133,113 @@ export interface MemoryHit {
   ranking?: MemoryRankingMetadata;
 }
 
+/* ──────────────────────────────────────────────────────────────────────────
+ * Retrieval diagnostics (A6)
+ *
+ * The `retriever` string below says WHICH retriever answered but not WHY. Five
+ * different conditions all produce `'lexical'` — no active org, no semantic
+ * source, empty query text, a backend/Qdrant/embedding failure, and an open
+ * circuit breaker — so a consumer reading it cannot tell "search worked and
+ * this is what there is" from "vector search is down and you are seeing a
+ * keyword-only approximation". These types make that distinction explicit and
+ * machine-readable. `retriever` is unchanged and still authoritative for its
+ * original meaning; this is purely additive.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/** Why the semantic (vector) leg of a hybrid recall did not contribute. */
+export type SemanticSkipReason =
+  /** No active organization — org-scoped vector search is never run against a guessed org. */
+  | 'no_org'
+  /** No semantic source is configured in this build/runtime. */
+  | 'not_configured'
+  /** The query carried no free text, so there was nothing to embed. */
+  | 'no_query_text'
+  /** The circuit breaker is open after repeated failures; the call was not attempted. */
+  | 'circuit_open';
+
+/** How a semantic attempt failed, classified so callers can branch without string-matching. */
+export type SemanticFailureKind =
+  /** The request did not reach the backend (DNS, refused, offline). */
+  | 'network'
+  /** The attempt exceeded its deadline and was aborted. */
+  | 'timeout'
+  /** Not signed in, or the session was rejected (401/403). */
+  | 'auth'
+  /** The backend cannot serve retrieval right now — 5xx, or throttled. Retryable. */
+  | 'dependency_down'
+  /** The backend answered with an error that is not expected to succeed on retry. */
+  | 'backend_error'
+  /** The response was not the shape this client understands. */
+  | 'malformed_response';
+
+/** The outcome of the semantic leg of one recall. */
+export type SemanticOutcome =
+  | { state: 'ok'; hits: number; latencyMs: number }
+  | { state: 'skipped'; reason: SemanticSkipReason }
+  | {
+      state: 'failed';
+      kind: SemanticFailureKind;
+      /** Whether a later attempt could plausibly succeed. Drives breaker + UI wording. */
+      retryable: boolean;
+      /** Backend error code where one was returned, else the transport-level code. */
+      code: string;
+      /** Human-readable detail, safe to show. Never contains a token or a URL query. */
+      detail: string;
+      latencyMs: number;
+    };
+
+/**
+ * Per-query retrieval diagnostics. Attached to every `MemoryRecallResult` from
+ * the semantic path; absent on the purely lexical `memory:recall` channel, which
+ * has no semantic leg to report on.
+ */
+export interface RetrievalDiagnostics {
+  /**
+   * `hybrid` — both legs contributed.
+   * `lexical` — only the keyword leg ran, by design (see `semantic.reason`).
+   * `degraded` — the semantic leg was attempted or wanted and could not serve, so
+   *   these results are a keyword-only approximation of a hybrid answer.
+   */
+  mode: 'hybrid' | 'lexical' | 'degraded';
+  semantic: SemanticOutcome;
+  /**
+   * Lexical hits considered before ranking — the pool the answer was drawn from.
+   * Optional because a producer that did not run the retriever itself cannot see
+   * the pool; omitting it says "not measured", which `0` ("lexical found nothing")
+   * would misreport.
+   */
+  lexicalCandidates?: number;
+}
+
 export interface MemoryRecallResult {
   hits: MemoryHit[];
   total: number;
   /** Which retriever answered: 'lexical' now; 'qdrant' later. */
   retriever: string;
+  /**
+   * A6 — why this result looks the way it does. Optional for backward
+   * compatibility: consumers written before A6 ignore it and behave exactly as
+   * they did, and the lexical-only `memory:recall` channel omits it entirely.
+   */
+  retrieval?: RetrievalDiagnostics;
+}
+
+/** Live operational state of the semantic retrieval path (diagnostics + health). */
+export interface RetrievalHealthSnapshot {
+  /** `closed` — serving. `open` — failing fast. `half_open` — one trial call allowed. */
+  breaker: 'closed' | 'open' | 'half_open';
+  /** Consecutive failures observed since the last success. */
+  consecutiveFailures: number;
+  /** When the breaker will next admit a trial call (ISO), when open. */
+  retryAt: string | null;
+  /** The most recent semantic outcome, whatever it was. */
+  lastOutcome: SemanticOutcome | null;
+  /** When `lastOutcome` was recorded (ISO). */
+  lastOutcomeAt: string | null;
+  /** Counters since process start. */
+  totals: { attempts: number; successes: number; failures: number; skipped: number };
+  /** Mean latency of successful attempts since process start, ms. */
+  avgSuccessLatencyMs: number | null;
 }
 
 export interface MemoryCounts {

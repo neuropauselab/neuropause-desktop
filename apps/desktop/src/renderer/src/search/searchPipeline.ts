@@ -12,6 +12,8 @@
  * All I/O goes through the injected `SearchIo`, so this file is fully
  * unit-testable under node with fakes.
  */
+import type { RetrievalDiagnostics } from '@neuropause/shared';
+import { describeRetrieval, retrievalStatusLine } from '../lib/retrievalStatus';
 import type { PipelineSourceKey } from './queryPlanner';
 import {
   fromApp,
@@ -69,7 +71,14 @@ export interface SearchIo {
   listSections(): unknown[];
 }
 
-/* ── plumbing (self-contained; no imports from other feature modules) ────── */
+/* ── plumbing (self-contained; no imports from other feature modules) ──────
+ *
+ * A6 adds the one exception: `lib/retrievalStatus`, which is a pure leaf in the
+ * renderer's shared `lib/` (like `format.ts`), not a feature module. It is
+ * imported rather than copied because the Memory view must describe a degraded
+ * retrieval with exactly the same words — two spellings of "semantic search is
+ * down" is how a UI starts lying in one of them.
+ */
 
 function failureReason(err: unknown): string {
   const raw = err instanceof Error ? err.message : typeof err === 'string' ? err : String(err);
@@ -287,7 +296,56 @@ async function runSemantic(rp: ResolvedPlan, io: SearchIo, timeoutMs: number): P
     const mapped = fromSemanticHit(h, retriever);
     if (mapped) items.push(mapped);
   }
-  return { key: 'semantic', ok: true, items, reason: null, note: `retriever: ${retriever}` };
+
+  // A6 — the call RESOLVING does not mean semantic retrieval RAN. When the
+  // vector leg is unavailable the recall path still answers, with lexical hits
+  // and a `retrieval` envelope saying so. Before this, that answered as
+  // `ready` + `retriever: lexical`, and `ready.note` renders only as a hover
+  // tooltip in SearchView — so the user saw plausible results and no signal
+  // that they were a keyword-only approximation. That is the silent success
+  // A6 exists to remove.
+  //
+  // A degraded leg is therefore reported `ok: false`, which the runner maps to
+  // `unavailable(reason)` and renders visibly. The mapped items are returned
+  // ANYWAY: `runUnifiedSearch` collects `outcome.items` regardless of `ok`, so
+  // the user still gets every result the lexical leg found while being told the
+  // source is impaired. `ok` in this file means "is the source healthy", not
+  // "did it produce output" (runEngine already returns ok:true with no items).
+  const status = describeRetrieval(retrievalOf(r.value));
+  if (status?.degraded) {
+    return { key: 'semantic', ok: false, items, reason: retrievalStatusLine(status), note: null };
+  }
+  // No envelope (a pre-A6 producer, or the lexical-only channel) → `status` is
+  // null and behaviour is byte-identical to before this increment.
+  return {
+    key: 'semantic',
+    ok: true,
+    items,
+    reason: null,
+    note: status ? `${status.message} (retriever: ${retriever})` : `retriever: ${retriever}`,
+  };
+}
+
+/**
+ * Read the optional A6 diagnostics off an untyped recall response.
+ *
+ * Structural rather than a cast: everything crossing the IPC boundary is
+ * validated defensively in this file (see `isRecord`/`asArray`/`str` above), and
+ * `describeRetrieval` branches on `semantic.state`, so a malformed envelope must
+ * be dropped here rather than reaching it. The narrow checks below are exactly
+ * the fields `describeRetrieval` dispatches on.
+ */
+function retrievalOf(value: unknown): RetrievalDiagnostics | undefined {
+  if (!isRecord(value)) return undefined;
+  const r = value.retrieval;
+  if (!isRecord(r)) return undefined;
+  const mode = r.mode;
+  if (mode !== 'hybrid' && mode !== 'lexical' && mode !== 'degraded') return undefined;
+  const semantic = r.semantic;
+  if (!isRecord(semantic)) return undefined;
+  const state = semantic.state;
+  if (state !== 'ok' && state !== 'skipped' && state !== 'failed') return undefined;
+  return r as unknown as RetrievalDiagnostics;
 }
 
 async function runModules(rp: ResolvedPlan, io: SearchIo, timeoutMs: number): Promise<Omit<SourceOutcome, 'ms'>> {

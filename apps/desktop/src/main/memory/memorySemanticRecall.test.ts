@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import type { SemanticOutcome } from '@neuropause/shared';
 import type { MemoryItem } from '@neuropause/shared';
 import { hybridRecall, localSemanticSearch } from './memorySemanticRecall';
 import { createInMemoryVectorStore, type Embedding } from './vectorStore';
@@ -112,5 +113,121 @@ describe('hybridRecall — semantic activation (V8.2)', () => {
       { text: 'q', orgId: ORG, limit: 10, lexicalHits: [hit('a', 0.2)], getItem: itemLookup(items), now: NOW },
     );
     expect(hits[0].item.id).toBe('b');
+  });
+});
+
+describe('hybridRecall — outcome reporting (A6)', () => {
+  const ITEMS = [makeItem('a')];
+
+  /** Run a recall, collecting every outcome the orchestrator reported. */
+  async function reportedOutcomes(
+    deps: Parameters<typeof hybridRecall>[0],
+    over: Partial<Parameters<typeof hybridRecall>[1]> = {},
+  ): Promise<SemanticOutcome[]> {
+    const seen: SemanticOutcome[] = [];
+    await hybridRecall(deps, {
+      text: 'q',
+      orgId: ORG,
+      limit: 10,
+      lexicalHits: [hit('a', 0.5)],
+      getItem: itemLookup(ITEMS),
+      now: NOW,
+      onSemanticOutcome: (o) => seen.push(o),
+      ...over,
+    });
+    return seen;
+  }
+
+  it('reports not_configured rather than silently returning a lexical answer', async () => {
+    expect(await reportedOutcomes({})).toEqual([{ state: 'skipped', reason: 'not_configured' }]);
+  });
+
+  it('reports no_org when the personal-only path skips semantic', async () => {
+    const seen = await reportedOutcomes({ searchSemantic: async () => [] }, { orgId: undefined });
+    expect(seen).toEqual([{ state: 'skipped', reason: 'no_org' }]);
+  });
+
+  it('reports no_query_text for a whitespace-only query', async () => {
+    const seen = await reportedOutcomes({ searchSemantic: async () => [] }, { text: '  ' });
+    expect(seen).toEqual([{ state: 'skipped', reason: 'no_query_text' }]);
+  });
+
+  it('does not call the source at all when it decides to skip', async () => {
+    const searchSemantic = vi.fn(async () => []);
+    await reportedOutcomes({ searchSemantic }, { orgId: undefined });
+    expect(searchSemantic).not.toHaveBeenCalled();
+  });
+
+  it('forwards the source’s own verdict verbatim — the source measured it, not this frame', async () => {
+    const outcome: SemanticOutcome = {
+      state: 'failed',
+      kind: 'timeout',
+      retryable: true,
+      code: 'timeout',
+      detail: 'deadline elapsed',
+      latencyMs: 4_000,
+    };
+    const seen = await reportedOutcomes({
+      searchSemantic: async (_q, options) => {
+        options?.onOutcome?.(outcome);
+        return [];
+      },
+    });
+    expect(seen).toEqual([outcome]);
+  });
+
+  it('synthesises an ok outcome for a pre-A6 source that ignores the options argument', async () => {
+    // `localSemanticSearch` and every other one-parameter source predates the
+    // options bag. It still returned, and the hit count and elapsed time are both
+    // known here, so "reported exactly once" holds for old sources too.
+    const seen = await reportedOutcomes({
+      searchSemantic: async () => [hit('a', 0.8), hit('b', 0.4)],
+    });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ state: 'ok', hits: 2 });
+    expect(seen[0].state === 'ok' ? seen[0].latencyMs : -1).toBeGreaterThanOrEqual(0);
+  });
+
+  it('reports exactly once even when the source also reports', async () => {
+    const seen = await reportedOutcomes({
+      searchSemantic: async (_q, options) => {
+        options?.onOutcome?.({ state: 'ok', hits: 1, latencyMs: 5 });
+        return [hit('a', 0.9)];
+      },
+    });
+    expect(seen).toEqual([{ state: 'ok', hits: 1, latencyMs: 5 }]);
+  });
+
+  it('lets a source failure propagate — absorbing it is the store’s job, not the orchestrator’s', async () => {
+    const seen: SemanticOutcome[] = [];
+    await expect(
+      hybridRecall(
+        {
+          searchSemantic: async () => {
+            throw new Error('backend 503');
+          },
+        },
+        {
+          text: 'q',
+          orgId: ORG,
+          limit: 10,
+          lexicalHits: [hit('a', 0.5)],
+          getItem: itemLookup(ITEMS),
+          now: NOW,
+          onSemanticOutcome: (o) => seen.push(o),
+        },
+      ),
+    ).rejects.toThrow('backend 503');
+    // The source never reported, and the orchestrator does not invent a verdict
+    // for a call that did not return — classification belongs to the catch.
+    expect(seen).toEqual([]);
+  });
+
+  it('stays exactly as it was pre-A6 when no observer is supplied', async () => {
+    const hits = await hybridRecall(
+      { searchSemantic: async () => [hit('a', 0.9)] },
+      { text: 'q', orgId: ORG, limit: 10, lexicalHits: [hit('a', 0.5)], getItem: itemLookup(ITEMS), now: NOW },
+    );
+    expect(hits.map((h) => h.item.id)).toEqual(['a']);
   });
 });

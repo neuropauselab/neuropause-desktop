@@ -131,6 +131,15 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
 
   // AI memory recall (returns remembered org content).
   [IpcChannel.MemoryRecall]: 'intelligence:read',
+  // A6 — the semantic sibling returns the *same* remembered org content, plus a
+  // vector search scoped by organization id. It sat in `PUBLIC_CHANNELS` while
+  // `MemoryRecall` directly above required `intelligence:read`, so the stricter
+  // gate could be sidestepped by calling the richer channel. Both now carry the
+  // same permission, which is the point: the gate belongs to the data, not to
+  // the retrieval strategy. `intelligence:read` is part of the READ_ONLY base
+  // role (`enterprise/org/seed.ts:63-72`), so every role that could already
+  // reach `MemoryRecall` reaches this unchanged.
+  [IpcChannel.MemorySemanticRecall]: 'intelligence:read',
 
   // Unified knowledge queries across every connected source.
   [IpcChannel.UnifiedQuery]: 'intelligence:read',
@@ -256,7 +265,8 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   IpcChannel.UnifiedGet,
   IpcChannel.UnifiedCounts,
   // ── AI memory read projections + executive conversation memory ──
-  IpcChannel.MemorySemanticRecall,
+  // (A6 moved MemorySemanticRecall to `intelligence:read`, alongside the
+  // MemoryRecall channel it mirrors.)
   IpcChannel.MemoryGet,
   IpcChannel.MemoryCounts,
   IpcChannel.ExecMemorySearch,
