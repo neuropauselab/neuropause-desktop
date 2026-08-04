@@ -85,6 +85,14 @@ jobs:
           npm run package:mac
         shell: bash
 
+      # Fail fast if the packaged output is incomplete or the auto-update feed
+      # does not match the built binaries — BEFORE anything is published. Reads
+      # only apps/desktop/dist (no certs, secrets, or network).
+      - name: Verify release artifacts
+        working-directory: apps/desktop
+        run: node scripts/verify-release-artifacts.cjs --platform mac
+        shell: bash
+
       # Self-hosted download (Option C): copy the .dmg to the droplet so it's
       # served from neuropause033.com/downloads/ with no GitHub login. Runs only
       # if the deploy secret is present, and never fails the build.
@@ -124,10 +132,13 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          # *.yml (not latest*.yml): with publish.channel=beta electron-builder
+          # emits the update feed as beta-mac.yml, so a latest*.yml glob would
+          # attach no feed and auto-update would have nothing to read.
           files: |
             apps/desktop/dist/*.dmg
             apps/desktop/dist/*.zip
-            apps/desktop/dist/latest*.yml
+            apps/desktop/dist/*.yml
             apps/desktop/dist/*.blockmap
           prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') }}
           generate_release_notes: true
