@@ -69,6 +69,16 @@ retries, scheduling) is already production-shaped and tested.
   sim stores); **`sync-state.json` belongs to the active unified sync layer**
   and is not legacy. A4-2's retirement item stands, with the corrected file
   list. This audit corrects itself when the code says so.
+- **A3-3 (closed) — connector-accounts mount path, pinned.** Verified against
+  `apps/backend/src/app.ts`: the cloud-side connector-accounts module
+  (`apps/backend/src/connectorAccounts/` — service + Postgres/memory
+  repositories over the `connector_accounts` table from migration 0006) is
+  **not mounted on any HTTP route in rc.1**. There is no
+  `/organizations/:id/connector-accounts` (or any other) endpoint; the desktop
+  never calls one, and connector account state remains desktop-authoritative
+  (`connectors/` store + vault). Any API reference that implies a served
+  connector-accounts endpoint is wrong until a router is added and mounted in
+  `app.ts`; when that happens, this line is the one to update.
 
 Next increment: **A6 — AI chain audit** (engine, context builder, memory,
 graph, timeline, Ollama client, Founder/Engineering AI; Qdrant verdict).
