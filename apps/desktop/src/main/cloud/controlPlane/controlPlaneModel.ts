@@ -25,12 +25,12 @@ import type {
   FleetOverview,
   FleetTotals,
   IdentitySummary,
+  LiveSyncStatus,
   QuotaRow,
   RegionReplication,
   RegionStatus,
   ReplicaState,
   StorageIsolation,
-  SyncSummary,
   TenantDirectoryEntry,
   TenantStatus,
   TenantSummary,
@@ -64,7 +64,7 @@ export interface ControlPlaneState {
   tenantSummary: TenantSummary;
   deployments: ApiDeployment[];
   apiSummary: ApiPlatformSummary;
-  syncSummary: SyncSummary;
+  liveSync: LiveSyncStatus;
   identitySummary: IdentitySummary;
   federationSummary: FederationSummary;
   drSummary: DrSummary;
@@ -105,10 +105,19 @@ export function buildFleetOverview(s: ControlPlaneState): FleetOverview {
     {
       id: 'sync',
       label: 'Cloud sync',
-      status: !s.syncSummary.online ? 'down' : s.syncSummary.conflicts > 0 || s.syncSummary.pending > 0 ? 'degraded' : 'healthy',
-      metric: s.syncSummary.pending,
+      // Real engine status: offline/error is down, queued work or recent failures is
+      // degraded, an idle empty queue is healthy.
+      status:
+        !s.liveSync.online || s.liveSync.state === 'error'
+          ? 'down'
+          : s.liveSync.pendingCount > 0 || s.liveSync.failures > 0
+            ? 'degraded'
+            : 'healthy',
+      metric: s.liveSync.pendingCount,
       unit: 'pending',
-      detail: s.syncSummary.online ? `${s.syncSummary.synced}/${s.syncSummary.domains} domains synced` : 'offline',
+      detail: s.liveSync.online
+        ? `${s.liveSync.state} · ${s.liveSync.cursor} ops applied`
+        : 'offline',
     },
     {
       id: 'identity',

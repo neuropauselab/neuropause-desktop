@@ -20,16 +20,24 @@ class StubEngine implements SyncEngineLike {
   retryDelay = 0;
   syncCalls = 0;
   syncedOrgs: string[] = [];
+  /** Mirrors the real engine: paused refuses cycles and reports offline. */
+  paused = false;
+  pauseCalls: boolean[] = [];
   async syncOnce(orgId: string): Promise<SyncStatus> {
+    if (this.paused) return this.getStatus();
     this.syncCalls += 1;
     this.syncedOrgs.push(orgId);
     return this.current;
   }
   getStatus(): SyncStatus {
-    return this.current;
+    return this.paused ? { ...this.current, state: 'offline', online: false } : this.current;
   }
   nextRetryDelay(): number {
     return this.retryDelay;
+  }
+  setPaused(paused: boolean): void {
+    this.paused = paused;
+    this.pauseCalls.push(paused);
   }
 }
 
@@ -123,21 +131,59 @@ describe('SyncScheduler', () => {
     expect(scheduled).toBeNull();
   });
 
-  it('setOnline(true) triggers a sync while running', async () => {
+  it('resuming after a pause triggers a sync while running', async () => {
+    const s = make('org-1');
+    s.start();
+    s.setOnline(false);
+    engine.syncCalls = 0;
+    s.setOnline(true);
+    await flush();
+    expect(engine.syncCalls).toBeGreaterThanOrEqual(1);
+    expect(s.isPaused()).toBe(false);
+  });
+
+  it('setOnline is idempotent — re-asserting the current mode does nothing', async () => {
     const s = make('org-1');
     s.start();
     engine.syncCalls = 0;
     s.setOnline(true);
     await flush();
-    expect(engine.syncCalls).toBeGreaterThanOrEqual(1);
+    expect(engine.syncCalls).toBe(0);
+    expect(engine.pauseCalls).toEqual([]);
   });
 
-  it('setOnline(false) does not trigger a sync', async () => {
+  it('setOnline(false) pauses the engine, cancels the timer, and does not sync', async () => {
     const s = make('org-1');
     s.start();
     engine.syncCalls = 0;
     s.setOnline(false);
     await flush();
     expect(engine.syncCalls).toBe(0);
+    expect(engine.pauseCalls).toEqual([true]);
+    expect(s.isPaused()).toBe(true);
+    expect(scheduled).toBeNull();
+  });
+
+  it('a paused scheduler refuses cycles and reports the paused status', async () => {
+    const s = make('org-1');
+    s.start();
+    s.setOnline(false);
+    engine.syncCalls = 0;
+    statuses = [];
+    const result = await s.syncNow();
+    expect(engine.syncCalls).toBe(0);
+    expect(result.state).toBe('offline');
+    expect(result.online).toBe(false);
+    expect(statuses).toHaveLength(1);
+    expect(scheduled).toBeNull();
+  });
+
+  it('start() on a paused scheduler does not schedule a cycle', () => {
+    const s = make('org-1');
+    s.setOnline(false);
+    s.start();
+    expect(s.isRunning()).toBe(true);
+    expect(s.isPaused()).toBe(true);
+    expect(scheduled).toBeNull();
   });
 });

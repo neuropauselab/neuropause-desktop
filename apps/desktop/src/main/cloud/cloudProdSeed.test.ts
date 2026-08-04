@@ -10,7 +10,6 @@ import { randomUUID } from 'node:crypto';
 import { TenancyStore } from './tenancy/tenancyStore';
 import { FederationStore } from './identity/federationStore';
 import { ApiPlatformStore } from './apiplatform/apiPlatformStore';
-import { SyncStore } from './sync/syncStore';
 
 beforeAll(() => { delete process.env.NP_DEMO_SEEDS; }); // production default: no demo seeds
 
@@ -44,16 +43,5 @@ describe('cloud stores — production seed (no demo data)', () => {
     expect(s.listWebhooks()).toHaveLength(0); // no fake 1,284 deliveries
     expect(s.listPublicApis()).toHaveLength(0); // no fake rps
     expect(s.listPolicies().length).toBeGreaterThan(0); // policies are real config, kept
-  });
-
-  it('SyncStore seeds honest zero versions (no inflated usage baseline)', async () => {
-    const s = new SyncStore(tmp('sync.json'));
-    await s.load();
-    const states = s.states_();
-    expect(states.length).toBeGreaterThan(0);
-    for (const st of states) {
-      expect(st.localVersion).toBe(0);
-      expect(st.remoteVersion).toBe(0);
-    }
   });
 });

@@ -26,11 +26,8 @@ import {
   CloudTestSsoRequest,
   CloudSetScimRequest,
   CloudSetMfaRequest,
-  CloudSyncDomainRequest,
-  CloudSyncSetOnlineRequest,
   LiveSyncSetOnlineRequest,
   LiveSyncSetActiveOrgRequest,
-  CloudSyncRecordChangeRequest,
   CloudSetPolicyEnabledRequest,
   CloudCreateWebhookRequest,
   CloudSetWebhookStatusRequest,
@@ -40,12 +37,12 @@ import {
   type DataResidency,
   type FederationResult,
 } from '@neuropause/shared';
+import type { IpcBroadcaster } from '@neuropause/shared';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { createLogger } from '../logger';
 import { tenancyStore, CLOUD_REGIONS } from './tenancy/tenancyInstance';
 import { federationStore } from './identity/federationInstance';
-import { syncStore } from './sync/syncInstance';
-import { liveSync, setLiveSyncActiveOrg } from './livesync/liveSyncInstance';
+import { liveSync, onLiveSyncStatus, setLiveSyncActiveOrg } from './livesync/liveSyncInstance';
 import { apiPlatformStore } from './apiplatform/apiPlatformInstance';
 import { evaluateFederation, buildTestAssertion } from './identity/federation';
 import {
@@ -64,7 +61,7 @@ import { ORG_ID } from '../enterprise/org/seed';
 const log = createLogger('cloud');
 
 export interface CloudDeps {
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: IpcBroadcaster;
 }
 
 export interface CloudSubsystem {
@@ -100,7 +97,9 @@ function buildAdminInput(): AdminInput {
     homeMonthly: homeMonthly(),
     identity: federationStore.summary(),
     apiRequests30d: gatewayStore.metrics(30, Date.now()).requests,
-    syncOps30d: syncStore.states_().reduce((n, s) => n + s.localVersion, 0),
+    // Real applied-operation counter from the live sync engine (its cursor is a
+    // monotonically increasing sequence of applied changes). Honest zero offline.
+    syncOps30d: liveSync.getStatus().cursor,
     activeWorkers: workerRegistry.summaries().length,
     regionResidency: REGION_RESIDENCY,
     now: Date.now(),
@@ -119,7 +118,6 @@ export async function initCloud(deps: CloudDeps): Promise<CloudSubsystem> {
 
   await federationStore.load(homeId);
   await apiPlatformStore.load(homeId);
-  await syncStore.load();
   await liveSync.init();
   liveSync.start();
 
@@ -127,7 +125,7 @@ export async function initCloud(deps: CloudDeps): Promise<CloudSubsystem> {
     deps.broadcast(IpcChannel.CloudEventBroadcast, { kind, at: new Date().toISOString() });
   tenancyStore.on('changed', () => emit('tenancy'));
   federationStore.on('changed', () => emit('identity'));
-  syncStore.on('changed', () => emit('sync'));
+  onLiveSyncStatus(() => emit('sync'));
   apiPlatformStore.on('changed', () => emit('apiplatform'));
 
   log.info('Cloud platform ready', {
@@ -138,9 +136,8 @@ export async function initCloud(deps: CloudDeps): Promise<CloudSubsystem> {
   });
   log.info('Cloud services ready', {
     deployments: apiPlatformStore.listDeployments().length,
-    syncDomains: syncStore.states_().length,
     sso: federationStore.listConnections().length,
-    online: syncStore.isOnline(),
+    liveSync: liveSync.getStatus().state,
   });
 
   return { handlers: buildHandlers() };
@@ -331,51 +328,19 @@ function buildHandlers(): SecureHandlerDef[] {
       handler: (p) => federationStore.setMfa(p as CloudSetMfaRequest),
     },
 
-    /* ── Cloud synchronization ── */
-    {
-      channel: IpcChannel.CloudSyncStates,
-      schema: EmptyRequest,
-      handler: () => syncStore.states_(),
-    },
-    {
-      channel: IpcChannel.CloudSyncSummary,
-      schema: EmptyRequest,
-      handler: () => syncStore.summary(),
-    },
-    {
-      channel: IpcChannel.CloudSyncConflicts,
-      schema: EmptyRequest,
-      handler: () => syncStore.listConflicts(),
-    },
-    {
-      channel: IpcChannel.CloudSyncDomain,
-      schema: CloudSyncDomainRequest,
-      handler: (p) => syncStore.syncDomain((p as CloudSyncDomainRequest).domain),
-    },
-    { channel: IpcChannel.CloudSyncAll, schema: EmptyRequest, handler: () => syncStore.syncAll() },
-    {
-      channel: IpcChannel.CloudSyncSetOnline,
-      schema: CloudSyncSetOnlineRequest,
-      handler: (p) => {
-        syncStore.setOnline((p as { online: boolean }).online);
-        return syncStore.summary();
-      },
-    },
-    {
-      channel: IpcChannel.CloudSyncRecordChange,
-      schema: CloudSyncRecordChangeRequest,
-      handler: (p) => {
-        const r = p as CloudSyncRecordChangeRequest;
-        syncStore.recordLocalChange(r.domain, r.count ?? 1);
-        return syncStore.summary();
-      },
-    },
-
-    // Live cloud sync (real record-level sync engine).
+    /* ── Cloud synchronization — the real record-level live sync engine ──
+       (The pre-livesync domain simulator and its cloud:sync.* channels were
+       retired per audit findings A4-2/A5-3; `cloud-sync.json` in userData is
+       its orphaned store file and is no longer read.) */
     {
       channel: IpcChannel.LiveSyncStatus,
       schema: EmptyRequest,
       handler: () => liveSync.getStatus(),
+    },
+    {
+      channel: IpcChannel.LiveSyncDetail,
+      schema: EmptyRequest,
+      handler: () => liveSync.getDetail(),
     },
     { channel: IpcChannel.LiveSyncNow, schema: EmptyRequest, handler: () => liveSync.syncNow() },
     {

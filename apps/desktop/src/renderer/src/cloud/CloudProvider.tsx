@@ -1,9 +1,9 @@
 /**
  * The Cloud Platform data provider. Loads the multi-tenant runtime (regions,
  * tenants, projects, teams, workers, storage isolation), identity federation
- * (SSO connections, SCIM, MFA), cloud sync (per-domain state, summary,
- * conflicts), the API platform (deployments, policies, webhooks, public APIs),
- * and the admin overview — then subscribes to the cloud broadcast to stay live.
+ * (SSO connections, SCIM, MFA), the real live-sync engine's status + per-entity
+ * detail, the API platform (deployments, policies, webhooks, public APIs), and
+ * the admin overview — then subscribes to the cloud broadcast to stay live.
  *
  * Every side effect is a typed IPC call validated in the main process.
  */
@@ -19,6 +19,7 @@ import type {
   CloudTenant,
   FederationResult,
   IdentitySummary,
+  LiveSyncDetail,
   MfaMethod,
   MfaPolicy,
   PublicApi,
@@ -27,10 +28,6 @@ import type {
   SsoProtocol,
   SsoStatus,
   StorageIsolation,
-  SyncConflict,
-  SyncDomain,
-  SyncDomainState,
-  SyncSummary,
   TenantStatus,
   TenantSummary,
   TenantTier,
@@ -58,10 +55,9 @@ interface CloudContextValue {
   identitySummary: IdentitySummary | null;
   scim: ScimConfig | null;
   mfa: MfaPolicy | null;
-  // sync
-  syncStates: SyncDomainState[];
-  syncSummary: SyncSummary | null;
-  syncConflicts: SyncConflict[];
+  /** The live-sync engine's real state: status, per-entity queue/mirror counts,
+   *  and the resolved-conflict log. Null until the first load completes. */
+  liveSync: LiveSyncDetail | null;
   // api platform
   deployments: ApiDeployment[];
   apiSummary: ApiPlatformSummary | null;
@@ -86,11 +82,9 @@ interface CloudContextValue {
   setScim: (enabled: boolean) => Promise<void>;
   scimSync: () => Promise<void>;
   setMfa: (input: { required?: boolean; methods?: MfaMethod[]; graceDays?: number }) => Promise<void>;
-  // sync actions
-  syncDomain: (domain: SyncDomain) => Promise<void>;
-  syncAll: () => Promise<void>;
-  setOnline: (online: boolean) => Promise<void>;
-  recordChange: (domain: SyncDomain) => Promise<void>;
+  // sync actions (the real engine)
+  syncNow: () => Promise<void>;
+  setSyncOnline: (online: boolean) => Promise<void>;
   // api platform actions
   setPolicyEnabled: (id: string, enabled: boolean) => Promise<void>;
   createWebhook: (input: { url: string; events: string[] }) => Promise<void>;
@@ -114,9 +108,7 @@ export function CloudProvider({ children }: { children: ReactNode }): JSX.Elemen
   const [identitySummary, setIdentitySummary] = useState<IdentitySummary | null>(null);
   const [scim, setScimState] = useState<ScimConfig | null>(null);
   const [mfa, setMfaState] = useState<MfaPolicy | null>(null);
-  const [syncStates, setSyncStates] = useState<SyncDomainState[]>([]);
-  const [syncSummary, setSyncSummary] = useState<SyncSummary | null>(null);
-  const [syncConflicts, setSyncConflicts] = useState<SyncConflict[]>([]);
+  const [liveSync, setLiveSync] = useState<LiveSyncDetail | null>(null);
   const [deployments, setDeployments] = useState<ApiDeployment[]>([]);
   const [apiSummary, setApiSummary] = useState<ApiPlatformSummary | null>(null);
   const [policies, setPolicies] = useState<CloudRateLimitPolicy[]>([]);
@@ -126,7 +118,7 @@ export function CloudProvider({ children }: { children: ReactNode }): JSX.Elemen
 
   const refreshAll = useCallback(async () => {
     try {
-      const [rg, tn, ts, pj, tm, wk, iso, sso, idn, sc, mf, ss, sus, cfl, dep, asum, pol, wh, api, adm] = await Promise.all([
+      const [rg, tn, ts, pj, tm, wk, iso, sso, idn, sc, mf, sync, dep, asum, pol, wh, api, adm] = await Promise.all([
         ipc.cloud.regions(),
         ipc.cloud.tenants(),
         ipc.cloud.tenantSummary(),
@@ -138,9 +130,7 @@ export function CloudProvider({ children }: { children: ReactNode }): JSX.Elemen
         ipc.cloud.identitySummary(),
         ipc.cloud.scim(),
         ipc.cloud.mfa(),
-        ipc.cloud.syncStates(),
-        ipc.cloud.syncSummary(),
-        ipc.cloud.syncConflicts(),
+        ipc.cloud.liveSyncDetail(),
         ipc.cloud.deployments(),
         ipc.cloud.apiSummary(),
         ipc.cloud.ratePolicies(),
@@ -159,9 +149,7 @@ export function CloudProvider({ children }: { children: ReactNode }): JSX.Elemen
       setIdentitySummary(idn);
       setScimState(sc);
       setMfaState(mf);
-      setSyncStates(ss);
-      setSyncSummary(sus);
-      setSyncConflicts(cfl);
+      setLiveSync(sync);
       setDeployments(dep);
       setApiSummary(asum);
       setPolicies(pol);
@@ -176,16 +164,14 @@ export function CloudProvider({ children }: { children: ReactNode }): JSX.Elemen
 
   const refreshLive = useCallback(async () => {
     try {
-      const [tn, ts, sso, idn, sc, mf, ss, sus, cfl, dep, asum, pol, wh, adm] = await Promise.all([
+      const [tn, ts, sso, idn, sc, mf, sync, dep, asum, pol, wh, adm] = await Promise.all([
         ipc.cloud.tenants(),
         ipc.cloud.tenantSummary(),
         ipc.cloud.ssoConnections(),
         ipc.cloud.identitySummary(),
         ipc.cloud.scim(),
         ipc.cloud.mfa(),
-        ipc.cloud.syncStates(),
-        ipc.cloud.syncSummary(),
-        ipc.cloud.syncConflicts(),
+        ipc.cloud.liveSyncDetail(),
         ipc.cloud.deployments(),
         ipc.cloud.apiSummary(),
         ipc.cloud.ratePolicies(),
@@ -198,9 +184,7 @@ export function CloudProvider({ children }: { children: ReactNode }): JSX.Elemen
       setIdentitySummary(idn);
       setScimState(sc);
       setMfaState(mf);
-      setSyncStates(ss);
-      setSyncSummary(sus);
-      setSyncConflicts(cfl);
+      setLiveSync(sync);
       setDeployments(dep);
       setApiSummary(asum);
       setPolicies(pol);
@@ -245,10 +229,14 @@ export function CloudProvider({ children }: { children: ReactNode }): JSX.Elemen
   const scimSync = useCallback(async () => { await ipc.cloud.scimSync(); await refreshLive(); }, [refreshLive]);
   const setMfa = useCallback(async (input: { required?: boolean; methods?: MfaMethod[]; graceDays?: number }) => { await ipc.cloud.setMfa(input); await refreshLive(); }, [refreshLive]);
 
-  const syncDomain = useCallback(async (domain: SyncDomain) => { await ipc.cloud.syncDomain(domain); await refreshLive(); }, [refreshLive]);
-  const syncAll = useCallback(async () => { await ipc.cloud.syncAll(); await refreshLive(); }, [refreshLive]);
-  const setOnline = useCallback(async (online: boolean) => { await ipc.cloud.setOnline(online); await refreshLive(); }, [refreshLive]);
-  const recordChange = useCallback(async (domain: SyncDomain) => { await ipc.cloud.recordChange(domain); await refreshLive(); }, [refreshLive]);
+  // The real engine: a cycle now, and pause/resume. Both broadcast a cloud 'sync'
+  // event from main, but we refresh the detail directly so the panel updates without
+  // waiting on the debounce.
+  const refreshSync = useCallback(async () => {
+    setLiveSync(await ipc.cloud.liveSyncDetail());
+  }, []);
+  const syncNow = useCallback(async () => { await ipc.cloud.liveSyncNow(); await refreshSync(); }, [refreshSync]);
+  const setSyncOnline = useCallback(async (online: boolean) => { await ipc.cloud.liveSyncSetOnline(online); await refreshSync(); }, [refreshSync]);
 
   const setPolicyEnabled = useCallback(async (id: string, enabled: boolean) => { await ipc.cloud.setPolicyEnabled(id, enabled); await refreshLive(); }, [refreshLive]);
   const createWebhook = useCallback(async (input: { url: string; events: string[] }) => { await ipc.cloud.createWebhook(input); await refreshLive(); }, [refreshLive]);
@@ -261,22 +249,22 @@ export function CloudProvider({ children }: { children: ReactNode }): JSX.Elemen
       ready,
       regions, tenants, tenantSummary, projects, teams, workers, isolation,
       ssoConnections, identitySummary, scim, mfa,
-      syncStates, syncSummary, syncConflicts,
+      liveSync,
       deployments, apiSummary, policies, webhooks, publicApis,
       admin,
       refreshAll,
       createTenant, setTenantStatus, createProject, deleteProject, createTeam,
       createSso, updateSso, deleteSso, testSso, setScim, scimSync, setMfa,
-      syncDomain, syncAll, setOnline, recordChange,
+      syncNow, setSyncOnline,
       setPolicyEnabled, createWebhook, setWebhookStatus, deleteWebhook, testWebhook,
     }),
     [
       ready, regions, tenants, tenantSummary, projects, teams, workers, isolation,
-      ssoConnections, identitySummary, scim, mfa, syncStates, syncSummary, syncConflicts,
+      ssoConnections, identitySummary, scim, mfa, liveSync,
       deployments, apiSummary, policies, webhooks, publicApis, admin,
       refreshAll, createTenant, setTenantStatus, createProject, deleteProject, createTeam,
       createSso, updateSso, deleteSso, testSso, setScim, scimSync, setMfa,
-      syncDomain, syncAll, setOnline, recordChange,
+      syncNow, setSyncOnline,
       setPolicyEnabled, createWebhook, setWebhookStatus, deleteWebhook, testWebhook,
     ],
   );

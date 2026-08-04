@@ -13,8 +13,8 @@ import type {
   FederationSummary,
   IdentitySummary,
   ReplicaState,
+  LiveSyncStatus,
   StorageIsolation,
-  SyncSummary,
   TenantSummary,
 } from '@neuropause/shared';
 import {
@@ -67,7 +67,7 @@ function replica(over: Partial<ReplicaState> = {}): ReplicaState {
 
 const TENANT_SUMMARY: TenantSummary = { tenants: 4, active: 4, regions: 3, projects: 6, teams: 3, workers: 9 };
 const API_SUMMARY: ApiPlatformSummary = { deployments: 3, healthy: 2, regions: 3, replicas: 7, uptimePct: 99.9, requests30d: 1_200_000, webhooks: 2, publicApis: 3 };
-const SYNC_SUMMARY: SyncSummary = { domains: 8, synced: 8, pending: 0, conflicts: 0, online: true, lastFullSyncAt: NOW };
+const LIVE_SYNC: LiveSyncStatus = { state: 'idle', online: true, pendingCount: 0, failures: 0, lastError: null, lastSyncedAt: NOW, cursor: 3400 };
 const IDENTITY_SUMMARY: IdentitySummary = { connections: 2, active: 1, enforced: true, scimEnabled: true, mfaRequired: true, provisionedUsers: 12 };
 const FED_SUMMARY: FederationSummary = { orgs: 4, peers: 3, activePeers: 3, pendingInvites: 1, trustedPeers: 2, sharedOut: 2, sharedIn: 1 };
 const DR_SUMMARY: DrSummary = { backups: 5, lastBackupAt: NOW, replicas: 3, inSync: 3, lastValidationAt: NOW, continuityScore: 92 };
@@ -80,7 +80,7 @@ function state(over: Partial<ControlPlaneState> = {}): ControlPlaneState {
     tenantSummary: TENANT_SUMMARY,
     deployments: [deployment(), deployment({ id: 'dep-2', regionId: 'eu-west', replicas: 2, healthyReplicas: 2 }), deployment({ id: 'dep-3', regionId: 'ap-south', replicas: 2, healthyReplicas: 1, status: 'degraded', uptimePct: 98.2 })],
     apiSummary: API_SUMMARY,
-    syncSummary: SYNC_SUMMARY,
+    liveSync: LIVE_SYNC,
     identitySummary: IDENTITY_SUMMARY,
     federationSummary: FED_SUMMARY,
     drSummary: DR_SUMMARY,
@@ -135,7 +135,7 @@ describe('buildFleetOverview', () => {
   });
 
   it('goes down (worst-of) when a subsystem is down', () => {
-    const f = buildFleetOverview(state({ syncSummary: { ...SYNC_SUMMARY, online: false } }));
+    const f = buildFleetOverview(state({ liveSync: { ...LIVE_SYNC, online: false } }));
     expect(f.subsystems.find((x) => x.id === 'sync')!.status).toBe('down');
     expect(f.status).toBe('down');
   });

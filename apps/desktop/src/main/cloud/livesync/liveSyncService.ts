@@ -7,11 +7,18 @@
  * supply a stub. This keeps the module free of Electron imports and testable end to
  * end; the Electron-specific wiring (lifecycle, connectivity, IPC) lives above it.
  */
-import type { MergeOutcome, SyncChange, SyncEntityType, SyncRecord } from '@neuropause/shared';
+import type {
+  LiveSyncDetail,
+  MergeOutcome,
+  SyncChange,
+  SyncEntityType,
+  SyncRecord,
+} from '@neuropause/shared';
 import { SyncEngine } from './engine';
 import { SyncScheduler } from './scheduler';
 import { createLocalSyncMirror } from './mirror';
 import { createPersistentSyncStore } from './store';
+import { projectLiveSyncDetail } from './detail';
 import type { SyncStatus, SyncTransport } from './types';
 
 export interface LiveSyncServiceOptions {
@@ -38,6 +45,8 @@ export interface LiveSyncService {
   isRunning(): boolean;
   syncNow(): Promise<SyncStatus>;
   getStatus(): SyncStatus;
+  /** The per-entity + conflict view of the engine's real state (see detail.ts). */
+  getDetail(): LiveSyncDetail;
   setOnline(online: boolean): void;
   enqueue(orgId: string, change: SyncChange): Promise<void>;
   read(orgId: string, entityType: SyncEntityType, entityId: string): SyncRecord | null;
@@ -61,6 +70,14 @@ export function createLiveSyncService(opts: LiveSyncServiceOptions): LiveSyncSer
     onStatus: opts.onStatus,
   });
 
+  // The engine only recounts pending after a cycle; the durable queue knows the truth
+  // right now, so a change enqueued a moment ago is reflected immediately.
+  const readStatus = (): SyncStatus => {
+    const orgId = opts.getActiveOrgId();
+    const status = engine.getStatus();
+    return orgId ? { ...status, pendingCount: store.pendingCount(orgId) } : status;
+  };
+
   return {
     async init(): Promise<void> {
       await mirror.load();
@@ -79,7 +96,18 @@ export function createLiveSyncService(opts: LiveSyncServiceOptions): LiveSyncSer
       return scheduler.syncNow();
     },
     getStatus(): SyncStatus {
-      return engine.getStatus();
+      return readStatus();
+    },
+    getDetail(): LiveSyncDetail {
+      const orgId = opts.getActiveOrgId();
+      return projectLiveSyncDetail({
+        status: readStatus(),
+        orgId,
+        deviceId: opts.deviceId,
+        pending: orgId ? store.pendingSnapshot(orgId) : [],
+        mirrored: orgId ? mirror.list(orgId) : [],
+        conflicts: engine.getConflicts(),
+      });
     },
     setOnline(online: boolean): void {
       scheduler.setOnline(online);

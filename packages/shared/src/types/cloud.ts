@@ -148,71 +148,11 @@ export interface IdentitySummary {
   provisionedUsers: number;
 }
 
-/* ════════════════════════════ Cloud synchronization ═══════════════════════ */
-
-export type SyncDomain =
-  | 'knowledge_graph'
-  | 'ai_memory'
-  | 'timeline'
-  | 'governance'
-  | 'ai_workers'
-  | 'templates'
-  | 'connectors'
-  | 'marketplace';
-
-export const SYNC_DOMAINS: readonly SyncDomain[] = [
-  'knowledge_graph',
-  'ai_memory',
-  'timeline',
-  'governance',
-  'ai_workers',
-  'templates',
-  'connectors',
-  'marketplace',
-];
-
-export type SyncStatus = 'synced' | 'pending' | 'syncing' | 'offline' | 'conflict';
-
-export interface SyncDomainState {
-  domain: SyncDomain;
-  localVersion: number;
-  remoteVersion: number;
-  pendingChanges: number;
-  status: SyncStatus;
-  lastSyncedAt: string | null;
-  cursor: string | null;
-}
-
-export interface SyncConflict {
-  id: string;
-  domain: SyncDomain;
-  entityId: string;
-  field: string;
-  localValue: string;
-  remoteValue: string;
-  resolution: 'local' | 'remote' | 'merged';
-  resolvedAt: string;
-}
-
-export interface SyncResult {
-  domain: SyncDomain;
-  pushed: number;
-  pulled: number;
-  conflicts: SyncConflict[];
-  fromVersion: number;
-  toVersion: number;
-  cursor: string;
-  durationMs: number;
-}
-
-export interface SyncSummary {
-  domains: number;
-  synced: number;
-  pending: number;
-  conflicts: number;
-  online: boolean;
-  lastFullSyncAt: string | null;
-}
+/* ═══════════════ Cloud synchronization ═══════════════
+   The pre-livesync domain-simulator types (SyncDomain, SyncDomainState,
+   SyncSummary, SyncConflict, SyncResult) were retired with the simulator
+   (audit findings A4-2/A5-3). The real engine's status contract is
+   `LiveSyncStatus` in ipc/contracts.ts. */
 
 /* ════════════════════════════ Enterprise API platform ═════════════════════ */
 

@@ -37,6 +37,8 @@ export interface PersistentSyncStore extends SyncStore {
   load(): Promise<void>;
   enqueue(orgId: string, change: SyncChange): Promise<QueuedChange>;
   pendingCount(orgId: string): number;
+  /** Synchronous read of the in-memory queue, for status projections. */
+  pendingSnapshot(orgId: string): QueuedChange[];
 }
 
 export function createPersistentSyncStore(opts: PersistentSyncStoreOptions): PersistentSyncStore {
@@ -77,6 +79,10 @@ export function createPersistentSyncStore(opts: PersistentSyncStoreOptions): Per
 
     pendingCount(orgId): number {
       return data.queues[orgId]?.length ?? 0;
+    },
+
+    pendingSnapshot(orgId): QueuedChange[] {
+      return [...(data.queues[orgId] ?? [])];
     },
 
     async listPending(orgId): Promise<QueuedChange[]> {
