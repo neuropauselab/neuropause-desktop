@@ -32,6 +32,7 @@ import {
   NotificationsMarkReadRequest,
   NotificationsPrefsSetRequest,
 } from '@neuropause/shared';
+import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { unifiedStore } from '../unified/storeInstance';
@@ -59,7 +60,7 @@ const REDELIVERY_COOLDOWN_MS = 30 * 60_000;
 const MEETING_SCAN_EVERY_MS = 5 * 60_000;
 
 export interface NotificationsSubsystemDeps {
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: IpcBroadcaster;
   /** Typed subscription on the EXISTING platform event bus. */
   on: (
     types: PlatformEventType[],

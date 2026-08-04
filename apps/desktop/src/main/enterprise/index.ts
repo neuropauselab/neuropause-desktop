@@ -69,6 +69,7 @@ import {
   EnterprisePersonalizationDeleteViewRequest,
   EnterprisePersonalizationRenameViewRequest,
 } from '@neuropause/shared';
+import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { orgStore } from './org/orgInstance';
@@ -164,7 +165,7 @@ import { generateRecommendations } from '../recommendations/recommendationEngine
 const log = createLogger('enterprise');
 
 export interface EnterpriseDeps {
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: IpcBroadcaster;
   /** Platform event publisher → timeline + Executive Center (module lifecycle). */
   publish?: (input: PlatformEventInput) => void;
 }

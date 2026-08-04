@@ -27,6 +27,7 @@
 import {
   EmptyRequest,
   IpcChannel,
+  KbImpactRequest,
   KbInventoryRequest,
   KbLineageRequest,
   KbMatrixRequest,
@@ -45,9 +46,9 @@ import {
   type MemoryItem,
   type StandardsReport,
   type UnifiedEntity,
+  type KbImpactRequest as TKbImpactRequest,
   type KbInventoryRequest as TKbInventoryRequest,
   type KbLineageRequest as TKbLineageRequest,
-  type KbMatrixRequest as TKbMatrixRequest,
 } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
@@ -454,11 +455,21 @@ export function initKnowledgeAssets(deps: KnowledgeAssetsDeps): KnowledgeAssetsS
       schema: KbMatrixRequest,
       requireAuth: true,
       permission: 'knowledge:read',
+      handler: () => build().matrixBuild.matrix,
+    },
+    {
+      // A7 — split out of `kb:matrix`, which branched on an optional `assetId` and
+      // returned either the relationship matrix or an impact analysis. `assetId` is
+      // required here, so the "no id → silently get the matrix back under an impact
+      // analysis type" path no longer exists.
+      channel: IpcChannel.KbImpact,
+      schema: KbImpactRequest,
+      requireAuth: true,
+      permission: 'knowledge:read',
       handler: (p) => {
-        const req = p as TKbMatrixRequest;
+        const req = p as TKbImpactRequest;
         const b = build();
-        if (req.assetId) return analyzeImpact(req.assetId, b.matrixBuild, b.insightRecos);
-        return b.matrixBuild.matrix;
+        return analyzeImpact(req.assetId, b.matrixBuild, b.insightRecos);
       },
     },
     {

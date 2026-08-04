@@ -60,7 +60,8 @@ async function writeKv(id: string, kv: Record<string, unknown>): Promise<void> {
   await fs.writeFile(path, JSON.stringify(kv), { mode: 0o600 });
 }
 
-export class PluginHost extends EventEmitter {
+/** A7 — `event` carries a checked `PluginHostEvent`; it used to be `any`. */
+export class PluginHost extends EventEmitter<{ event: [PluginHostEvent] }> {
   private procs = new Map<string, HostProc>();
 
   isRunning(pluginId: string): boolean {

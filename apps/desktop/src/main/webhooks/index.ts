@@ -24,6 +24,7 @@ import type {
   WebhookIdRequest as TWebhookId,
   WebhookSetEnabledRequest as TWebhookSetEnabled,
 } from '@neuropause/shared';
+import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { webhookStore } from './webhookInstance';
@@ -46,7 +47,7 @@ const httpPost: WebhookPoster = async (url, body, headers) => {
 };
 
 export interface WebhookSubsystemDeps {
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: IpcBroadcaster;
   /** Subscribe to every platform event (the bus). */
   subscribe: (handler: (e: PlatformEvent) => void) => { dispose: () => void };
   /** Override the delivery transport (tests). */

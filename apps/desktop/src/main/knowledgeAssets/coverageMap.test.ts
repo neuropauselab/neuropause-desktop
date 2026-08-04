@@ -4,7 +4,7 @@
  * gaps as gaps (no padding, no storage), and degrades honestly without an org.
  */
 import { describe, expect, it } from 'vitest';
-import type { KnowledgeAsset, StandardsReport } from '@neuropause/shared';
+import type { KnowledgeAsset } from '@neuropause/shared';
 import { STANDARD_DOMAINS } from '@neuropause/shared';
 import { rankOf } from './assetRegistry';
 import { buildCoverageMap } from './coverageMap';

@@ -42,6 +42,7 @@ import {
   AssistantPlanDecideRequest,
   IpcChannel,
 } from '@neuropause/shared';
+import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { unifiedStore } from '../unified/storeInstance';
@@ -75,7 +76,7 @@ import { AssistantService } from './assistantService';
 const log = createLogger('workspace-assistant');
 
 export interface AssistantSubsystemDeps {
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: IpcBroadcaster;
   publish: (event: {
     type: string;
     category: string;

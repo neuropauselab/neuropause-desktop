@@ -52,6 +52,7 @@ import {
   WorkforceInstallRequest,
   WorkforceInstallActionRequest,
 } from '@neuropause/shared';
+import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { unifiedStore } from '../unified/storeInstance';
@@ -76,7 +77,7 @@ import type { SkillImpl, WorkforceData, WorkforceNeighbor } from './sdk';
 const log = createLogger('workforce');
 
 export interface WorkforceSubsystemDeps {
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: IpcBroadcaster;
   /**
    * V7.3.2: publish platform events (workflow lifecycle → timeline). Optional so
    * the subsystem still runs standalone/in tests; the composition root passes

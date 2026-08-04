@@ -41,7 +41,13 @@ interface OpInternal extends NpsOperationDto {
   cancelled: boolean;
 }
 
-class PackageService extends EventEmitter {
+/**
+ * A7 — the event map is declared, so `progress` carries a checked `NpsProgressEvent`
+ * rather than `any`. Untyped, `.on('progress', (e) => …)` handed every listener an
+ * `any`, and the one that forwards to the renderer laundered it straight through the
+ * `unknown` broadcast port with nothing in between ever looking at the shape.
+ */
+class PackageService extends EventEmitter<{ progress: [NpsProgressEvent] }> {
   private ops = new Map<string, OpInternal>();
   private busy = new Set<string>();
 

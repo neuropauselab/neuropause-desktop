@@ -4,7 +4,12 @@
  * (auth + theme) to the renderer.
  */
 import { app, BrowserWindow, Menu, nativeTheme } from 'electron';
-import type { AuthStatus, ThemeSource } from '@neuropause/shared';
+import type {
+  AuthStatus,
+  IpcBroadcastChannelName,
+  IpcBroadcastOf,
+  ThemeSource,
+} from '@neuropause/shared';
 import { IpcChannel } from '@neuropause/shared';
 import { config } from './config';
 import { createLogger } from './logger';
@@ -21,8 +26,23 @@ const log = createLogger('main');
 let mainWindow: BrowserWindow | null = null;
 let runtimeService: RuntimeService | null = null;
 
-/** Sends a payload to the renderer if a window exists. */
-function broadcast(channel: string, payload: unknown): void {
+/**
+ * Sends a payload to the renderer if a window exists.
+ *
+ * The only `webContents.send` in the process: every subsystem receives this as an
+ * `IpcBroadcaster` dependency rather than reaching for the window, so the window
+ * stays owned here and there is exactly one place a push can originate.
+ *
+ * A7 — this took `(channel: string, payload: unknown)`, which made the push half of
+ * the IPC boundary undescribed: any string was a channel, any value was a payload,
+ * and the renderer's `subscribe` asserted a shape that nothing here had to agree
+ * with. `IpcBroadcastMap` is now that agreement — the channel must be one the map
+ * declares, and the payload must be what it declares for that channel.
+ */
+function broadcast<C extends IpcBroadcastChannelName>(
+  channel: C,
+  payload: IpcBroadcastOf<C>,
+): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(channel, payload);
   }

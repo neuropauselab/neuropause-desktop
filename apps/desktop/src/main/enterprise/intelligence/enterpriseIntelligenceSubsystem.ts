@@ -22,6 +22,7 @@ import {
   type ResourceGraphModel,
 } from '@neuropause/shared';
 import type { EnterpriseIntelChangeImpactRequest as TChangeImpactReq, EnterpriseIntelRootCauseRequest as TRootCauseReq } from '@neuropause/shared';
+import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../../logger';
 import { makeCheck, type DiagnosticProbe } from '../../platform/diagnostics';
 import type { SecureHandlerDef } from '../../ipc/secureBridge';
@@ -43,7 +44,7 @@ export interface RawTimelineEvent {
 }
 
 export interface EnterpriseIntelligenceDeps {
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: IpcBroadcaster;
   /** Read the P6 Resource Graph (cloud/infra/identity). Guarded — returns null when infra isn't ready. */
   getResourceModel: () => ResourceGraphModel | null;
   /** Read the ERP Relationship Graph (business/CRM/finance). Guarded — returns null when ERP isn't ready. */

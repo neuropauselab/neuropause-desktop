@@ -72,7 +72,18 @@ function signature(r: CloudResource): string {
   ]);
 }
 
-export class ResourceStore extends EventEmitter {
+/** Which resources moved in the write that just landed. */
+export interface ResourceChangedEvent {
+  ids: string[];
+}
+
+/**
+ * A7 — `changed` was `any`, and the infrastructure subsystem forwards it to the
+ * renderer as `{ kind: 'resources', ...e }`. Spreading an `any` collapses the whole
+ * literal to `any`, so even the `kind` discriminant written down right there was
+ * unchecked. Declaring the payload restores the literal's type.
+ */
+export class ResourceStore extends EventEmitter<{ changed: [ResourceChangedEvent] }> {
   private resources = new Map<string, CloudResource>();
   private loaded = false;
   private graphCache: { model: ResourceGraphModel; at: number } | null = null;

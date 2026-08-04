@@ -12,6 +12,7 @@
  */
 import { app, powerMonitor } from 'electron';
 import { IpcChannel } from '@neuropause/shared';
+import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from './logger';
 import { RuntimeTray, type RuntimeTrayActions, type RuntimeTrayState } from './runtimeTray';
 import { loadLoginAtStartup, persistLoginAtStartup } from './runtimePreferences';
@@ -24,7 +25,7 @@ const log = createLogger('runtime-service');
 export interface RuntimeServiceDeps {
   trayActions: RuntimeTrayActions;
   /** Broadcast a payload to the renderer (reuses the main→renderer bridge). */
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: IpcBroadcaster;
 }
 
 export class RuntimeService {

@@ -31,6 +31,7 @@ import {
   IpcChannel,
 } from '@neuropause/shared';
 import type { PlatformEventType, ResourceGraphModel } from '@neuropause/shared';
+import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { connectorService } from '../connectors/connectorService';
@@ -55,7 +56,7 @@ const GRAPH_REBUILD_EVENTS: readonly PlatformEventType[] = [
 ];
 
 export interface GraphSubsystemDeps {
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: IpcBroadcaster;
   /** P2.5 — subscribe to platform events so ERP changes re-project the unified graph. */
   on?: (types: readonly PlatformEventType[], handler: () => void) => void;
   /** P7 — the P6 Resource Graph, merged into the same projection (read-only, guarded, lazy). */

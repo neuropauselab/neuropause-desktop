@@ -21,6 +21,7 @@ import type {
   PlatformEventInput,
 } from '@neuropause/shared';
 import { validateEnterpriseRecordInput, validateModuleDescriptor } from '@neuropause/shared';
+import type { IpcBroadcaster } from '@neuropause/shared';
 import type { EnterpriseRecordStore } from './enterpriseRecordStore';
 
 /**
@@ -35,7 +36,7 @@ export interface EnterpriseModuleContext {
   /** Publish a platform event → timeline + Executive Center (no-op if absent). */
   publish?: (input: PlatformEventInput) => void;
   /** Broadcast a change to the renderer. */
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: IpcBroadcaster;
   /** Raise a native notification (modules opt in). */
   notify?: (title: string, body: string) => void;
   /** The current actor's identity (email/id/name), for audit + record authorship. */

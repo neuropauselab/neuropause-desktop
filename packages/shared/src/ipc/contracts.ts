@@ -1,4 +1,6 @@
 import { z } from 'zod';
+// Type-only (erased at compile time, so no runtime cycle with ../types).
+import type { ConflictStrategy, SyncEntityType } from '../types/sync';
 
 /**
  * Zod contracts for every IPC payload. The main process validates *all*
@@ -1677,16 +1679,6 @@ const CloudTenantStatusZ = z.enum(['active', 'suspended', 'provisioning']);
 const CloudSsoProtocolZ = z.enum(['saml', 'oidc']);
 const CloudSsoStatusZ = z.enum(['active', 'disabled', 'error']);
 const CloudMfaMethodZ = z.enum(['totp', 'webauthn', 'sms']);
-const CloudSyncDomainZ = z.enum([
-  'knowledge_graph',
-  'ai_memory',
-  'timeline',
-  'governance',
-  'ai_workers',
-  'templates',
-  'connectors',
-  'marketplace',
-]);
 const CloudWebhookStatusZ = z.enum(['active', 'paused', 'failing']);
 
 const ByTenant = z.object({ tenantId: z.string().optional() });
@@ -1763,12 +1755,6 @@ export const CloudSetMfaRequest = z.object({
 });
 export type CloudSetMfaRequest = z.infer<typeof CloudSetMfaRequest>;
 
-export const CloudSyncDomainRequest = z.object({ domain: CloudSyncDomainZ });
-export type CloudSyncDomainRequest = z.infer<typeof CloudSyncDomainRequest>;
-
-export const CloudSyncSetOnlineRequest = z.object({ online: z.boolean() });
-export type CloudSyncSetOnlineRequest = z.infer<typeof CloudSyncSetOnlineRequest>;
-
 // --- Live cloud sync (real record-level sync) ---
 export const LiveSyncSetOnlineRequest = z.object({ online: z.boolean() });
 export type LiveSyncSetOnlineRequest = z.infer<typeof LiveSyncSetOnlineRequest>;
@@ -1787,11 +1773,47 @@ export interface LiveSyncStatus {
   cursor: number;
 }
 
-export const CloudSyncRecordChangeRequest = z.object({
-  domain: CloudSyncDomainZ,
-  count: z.number().int().min(1).max(100).optional(),
-});
-export type CloudSyncRecordChangeRequest = z.infer<typeof CloudSyncRecordChangeRequest>;
+/**
+ * One syncable entity type's real local state: outbound changes still queued on this
+ * device and records already reconciled into the local mirror. Projected from the
+ * engine's own queue + mirror — nothing is estimated.
+ */
+export interface LiveSyncEntityState {
+  entityType: SyncEntityType;
+  /** Local edits queued for the next push. */
+  pending: number;
+  /** Records held in the local mirror for the active org. */
+  synced: number;
+  /** Newest `updatedAt` across the queued and mirrored records, or null when empty. */
+  lastChangeAt: string | null;
+}
+
+/**
+ * A conflict the engine actually resolved during a sync cycle. `direction` records
+ * which leg surfaced it: `push` when the server reported a conflicting write,
+ * `pull` when an incoming change tied with the local copy.
+ */
+export interface LiveSyncConflict {
+  entityType: SyncEntityType;
+  entityId: string;
+  direction: 'push' | 'pull';
+  resolution: ConflictStrategy;
+  at: string;
+}
+
+/**
+ * The full live-sync view the Cloud → Sync panel renders: engine status, the active
+ * org and device the engine is bound to, the per-entity breakdown, and the bounded
+ * resolved-conflict log (newest first).
+ */
+export interface LiveSyncDetail {
+  status: LiveSyncStatus;
+  /** The org the engine is currently syncing, or null when signed out / no org selected. */
+  orgId: string | null;
+  deviceId: string;
+  entities: LiveSyncEntityState[];
+  conflicts: LiveSyncConflict[];
+}
 
 export const CloudSetPolicyEnabledRequest = z.object({ id: CloudId, enabled: z.boolean() });
 export type CloudSetPolicyEnabledRequest = z.infer<typeof CloudSetPolicyEnabledRequest>;
@@ -2280,8 +2302,8 @@ export type EnterpriseIntelRootCauseRequest = z.infer<typeof EnterpriseIntelRoot
 
 // Phase 6 Stage 7 — Enterprise Knowledge & Decision Platform (read-only kb:* cluster).
 // Inventory accepts optional class/authority/lifecycle filters + a text query the
-// search LENS joins over the EXISTING federated search; matrix takes an optional
-// asset/record ref (present → impact analysis); lineage an optional decision id.
+// search LENS joins over the EXISTING federated search; matrix takes no arguments
+// and impact a required asset ref; lineage an optional decision id.
 export const KbInventoryRequest = z
   .object({
     classId: z.string().trim().min(1).max(64).optional(),
@@ -2291,10 +2313,20 @@ export const KbInventoryRequest = z
   })
   .strict();
 export type KbInventoryRequest = z.infer<typeof KbInventoryRequest>;
-export const KbMatrixRequest = z
-  .object({ assetId: z.string().trim().min(1).max(256).optional() })
-  .strict();
+/**
+ * A7 — `assetId` moved out of this schema and into `KbImpactRequest`. `kb:matrix`
+ * used to accept an optional assetId and, when it was present, return an impact
+ * analysis instead of the relationship matrix: one channel, two unrelated shapes.
+ * Impact analysis is now its own channel, so this request takes no arguments and a
+ * stray `{ assetId }` fails validation loudly instead of quietly swapping the
+ * response out from under the caller's type.
+ */
+export const KbMatrixRequest = z.object({}).strict();
 export type KbMatrixRequest = z.infer<typeof KbMatrixRequest>;
+export const KbImpactRequest = z
+  .object({ assetId: z.string().trim().min(1).max(256) })
+  .strict();
+export type KbImpactRequest = z.infer<typeof KbImpactRequest>;
 export const KbLineageRequest = z
   .object({ decisionId: z.string().trim().min(1).max(128).optional() })
   .strict();

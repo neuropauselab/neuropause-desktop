@@ -10,6 +10,7 @@
  */
 import type { ConnectorServiceDescriptor, ConnectorSyncSnapshot, ConnectorSyncStateRequest as TConnectorSyncStateRequest, PlatformEventInput } from '@neuropause/shared';
 import { IpcChannel, ConnectorSyncStateRequest } from '@neuropause/shared';
+import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../../logger';
 import type { SecureHandlerDef } from '../../ipc/secureBridge';
 import { connectorService } from '../../connectors/connectorService';
@@ -34,7 +35,7 @@ const log = createLogger('sync');
 
 export interface SyncSubsystemDeps {
   publish: (event: PlatformEventInput) => void;
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: IpcBroadcaster;
   /** P4.1 — whether an account's sync is suppressed (paused / disabled). From the Runtime Supervisor. */
   isSuppressed?: (connectorId: string, accountId: string) => boolean;
 }

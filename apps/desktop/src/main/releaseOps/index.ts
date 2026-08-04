@@ -32,6 +32,7 @@ import type {
   MigrationStatus,
   SafeModeState,
 } from '@neuropause/shared';
+import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { getBuildInfo } from '../buildInfo';
@@ -59,7 +60,7 @@ const SCHEDULED_BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const SCHEDULED_BACKUP_KEEP = 10;
 
 export interface ReleaseOpsDeps {
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: IpcBroadcaster;
   /** The platform's authoritative component/database/connector health report. */
   platformDiagnostics: () => Promise<DiagnosticsReport>;
   rebuildGraph: () => void;

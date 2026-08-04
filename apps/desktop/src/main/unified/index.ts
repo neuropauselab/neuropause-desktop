@@ -19,6 +19,7 @@ import {
   UnifiedQueryRequest,
   UnifiedSearchRequest,
 } from '@neuropause/shared';
+import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { unifiedStore } from './storeInstance';
@@ -27,7 +28,7 @@ import { unifiedSearch } from './search';
 const log = createLogger('unified');
 
 export interface UnifiedSubsystemDeps {
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: IpcBroadcaster;
 }
 
 export interface UnifiedSubsystem {

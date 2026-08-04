@@ -4,7 +4,7 @@
  * requireAuth + knowledge:read — the completeness-lock justification), the 3 s
  * TTL cache, per-source unavailable isolation, the hygiene source producing
  * governed ITEMS only (no actions, deduped), the assistant question port, the
- * search-lens join on kb:inventory, impact analysis via kb:matrix, and the
+ * search-lens join on kb:inventory, impact analysis via kb:impact, and the
  * structural no-mutation guarantee.
  */
 import { describe, expect, it } from 'vitest';
@@ -180,12 +180,13 @@ function handlerFor(sub: ReturnType<typeof initKnowledgeAssets>, channel: string
   return def;
 }
 
-describe('the six read-only kb:* handlers', () => {
-  it('exposes exactly the six approved channels, every one requireAuth + knowledge:read', () => {
+describe('the seven read-only kb:* handlers', () => {
+  it('exposes exactly the seven approved channels, every one requireAuth + knowledge:read', () => {
     const sub = initKnowledgeAssets(mkHarness().deps);
     expect(sub.handlers.map((h) => h.channel).sort()).toEqual(
       [
         IpcChannel.KbDashboard,
+        IpcChannel.KbImpact,
         IpcChannel.KbInventory,
         IpcChannel.KbLineage,
         IpcChannel.KbMatrix,
@@ -213,12 +214,12 @@ describe('the six read-only kb:* handlers', () => {
     expect(searched.hits[0].asset?.classId).toBe('governed-document');
   });
 
-  it('kb:matrix returns the computed-only matrix; with assetId it returns the impact analysis (enhancement #3)', () => {
+  it('kb:matrix returns the computed-only matrix; kb:impact returns the impact analysis (enhancement #3)', () => {
     const sub = initKnowledgeAssets(mkHarness().deps);
     const matrix = handlerFor(sub, IpcChannel.KbMatrix).handler({}) as KnowledgeRelationshipMatrix;
     expect(matrix.computedOnly).toBe(true);
     expect(matrix.totalRelations).toBeGreaterThan(0);
-    const impact = handlerFor(sub, IpcChannel.KbMatrix).handler({ assetId: 'doc-1' }) as KnowledgeImpactAnalysis;
+    const impact = handlerFor(sub, IpcChannel.KbImpact).handler({ assetId: 'doc-1' }) as KnowledgeImpactAnalysis;
     expect(impact.found).toBe(true);
     expect(impact.entries.some((e) => e.kind === 'decision')).toBe(true);
     expect(impact.entries.some((e) => e.kind === 'intelligence')).toBe(true);

@@ -46,6 +46,9 @@ export * from './types/worker';
 export * from './types/workerPackage';
 export * from './types/workforceDelegation';
 export * from './types/workforceGovernance';
+// A7 — the `workforce:intelligence` response contract, previously declared once in
+// the main process and again in the renderer. Canonical here; both sides re-export.
+export * from './types/workforceIntelligence';
 export * from './types/workforceJobs';
 export * from './types/enterpriseIntelligence';
 export * from './types/enterprise';
@@ -116,6 +119,13 @@ export * from './types/diagnostics';
 export * from './types/maintenance';
 export * from './ipc/channels';
 export * from './ipc/contracts';
+// A7 — the response half of the IPC contract (channel -> resolved shape). Types
+// only; nothing here is emitted to JavaScript.
+export * from './ipc/responses';
+// A7 — the push half (channel -> broadcast payload). Types, plus the one value
+// `BROADCAST_CHANNELS`, which lets a test compare the map against the preload's
+// subscribe allowlist; see the note on it.
+export * from './ipc/broadcasts';
 export * from './types/aiEngine';
 // Phase 6 Stage 4 — Workspace Assistant.
 export * from './types/assistant';

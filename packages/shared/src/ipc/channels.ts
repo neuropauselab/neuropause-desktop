@@ -630,14 +630,8 @@ export const IpcChannel = {
   CloudScimSync: 'cloud:identity.scimSync',
   CloudMfa: 'cloud:identity.mfa',
   CloudSetMfa: 'cloud:identity.setMfa',
-  CloudSyncStates: 'cloud:sync.states',
-  CloudSyncSummary: 'cloud:sync.summary',
-  CloudSyncConflicts: 'cloud:sync.conflicts',
-  CloudSyncDomain: 'cloud:sync.syncDomain',
-  CloudSyncAll: 'cloud:sync.syncAll',
-  CloudSyncSetOnline: 'cloud:sync.setOnline',
-  CloudSyncRecordChange: 'cloud:sync.recordChange',
   LiveSyncStatus: 'livesync:status',
+  LiveSyncDetail: 'livesync:detail',
   LiveSyncNow: 'livesync:now',
   LiveSyncSetOnline: 'livesync:setOnline',
   LiveSyncSetActiveOrg: 'livesync:setActiveOrg',
@@ -804,6 +798,12 @@ export const IpcChannel = {
   // quality / standards / dashboard. Nothing here accepts an action.
   KbInventory: 'kb:inventory',
   KbMatrix: 'kb:matrix',
+  // A7 — impact analysis was previously served by `kb:matrix` itself, branching on
+  // an optional `assetId`: one channel, two unrelated response shapes. That made the
+  // channel's response type unstateable (and meant `kb.impact()` called without an
+  // assetId silently returned the relationship matrix typed as an impact analysis).
+  // One channel, one shape.
+  KbImpact: 'kb:impact',
   KbLineage: 'kb:lineage',
   KbQuality: 'kb:quality',
   KbStandards: 'kb:standards',
@@ -1402,14 +1402,8 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.CloudScimSync,
   IpcChannel.CloudMfa,
   IpcChannel.CloudSetMfa,
-  IpcChannel.CloudSyncStates,
-  IpcChannel.CloudSyncSummary,
-  IpcChannel.CloudSyncConflicts,
-  IpcChannel.CloudSyncDomain,
-  IpcChannel.CloudSyncAll,
-  IpcChannel.CloudSyncSetOnline,
-  IpcChannel.CloudSyncRecordChange,
   IpcChannel.LiveSyncStatus,
+  IpcChannel.LiveSyncDetail,
   IpcChannel.LiveSyncNow,
   IpcChannel.LiveSyncSetOnline,
   IpcChannel.LiveSyncSetActiveOrg,
@@ -1559,6 +1553,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   // Phase 6 Stage 7 — Enterprise Knowledge & Decision Platform (read-only kb cluster).
   IpcChannel.KbInventory,
   IpcChannel.KbMatrix,
+  IpcChannel.KbImpact,
   IpcChannel.KbLineage,
   IpcChannel.KbQuality,
   IpcChannel.KbStandards,

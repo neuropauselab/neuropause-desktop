@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { STRATEGY_QUESTION_KEYS } from '@neuropause/shared';
 import { buildCapabilityMap } from './capabilityMap';
-import { buildRiskViews, buildStrategyHealth } from './strategyHealth';
+import { buildStrategyHealth } from './strategyHealth';
 import { composeBoardReport, composeStrategyDashboard, type DashboardInputs } from './executiveDashboard';
 import { answerStrategyQuestion, resolveStrategyQuestion, type StrategyQuestionContext } from './strategyModel';
 import type { BusinessValueReport, ObjectivesReport, PlanningReport, PortfolioReport } from '@neuropause/shared';

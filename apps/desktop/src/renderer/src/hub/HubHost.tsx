@@ -144,7 +144,12 @@ export function HubHost({ onNavigate }: { onNavigate?: (id: SectionId) => void }
     refresh();
   }, [refresh]);
 
-  const nowIso = useMemo(() => new Date().toISOString(), [data.entities]);
+  // Re-stamped whenever a new entity snapshot lands, so "today" and the overdue
+  // windows below are measured against the time of the data rather than of mount.
+  const nowIso = useMemo(() => {
+    void data.entities;
+    return new Date().toISOString();
+  }, [data.entities]);
 
   // ── Derived tile models (pure projections; unavailable propagates as-is). ──
   const meetings = derive(data.entities, (e) => meetingsToday(e, nowIso));

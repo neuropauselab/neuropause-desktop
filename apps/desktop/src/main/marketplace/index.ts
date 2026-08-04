@@ -11,6 +11,7 @@
 import { createPublicKey, type KeyObject } from 'node:crypto';
 import type {
   EnterprisePermission,
+  IpcChannelName,
   ListingVersion,
   MarketplaceListing,
   PublisherProfile,
@@ -29,8 +30,9 @@ import {
   MarketplaceListingRequest,
   MarketplacePolicySetRequest,
 } from '@neuropause/shared';
+import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../logger';
-import type { SecureHandlerDef } from '../ipc/secureBridge';
+import type { SecureHandlerDef, SecureHandlerDefFor } from '../ipc/secureBridge';
 import { ORG_ID } from '../enterprise/org/seed';
 import { marketplaceStore } from '../ecosystem/marketplace/marketplaceInstance';
 import { developerStore } from '../ecosystem/developer/developerInstance';
@@ -43,7 +45,7 @@ import { MarketplaceService, type CatalogSource, type ListingMeta } from './mark
 const log = createLogger('marketplace');
 
 export interface MarketplaceSubsystemDeps {
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: IpcBroadcaster;
   appVersion: string;
   /** Route an approved worker install to the EXISTING P8.5 install service. */
   installWorker: (pkg: WorkerPackage) => WorkerInstallResult;
@@ -162,8 +164,22 @@ const MANAGE: EnterprisePermission = 'marketplace:manage';
 // install (no privilege escalation via the marketplace).
 const INSTALL: EnterprisePermission = 'workforce:manage';
 
-function read(channel: string, schema: SecureHandlerDef['schema'], handler: SecureHandlerDef['handler']): SecureHandlerDef {
-  return { channel: channel as SecureHandlerDef['channel'], schema, handler, requireAuth: true, permission: READ };
+/**
+ * The seven read routes differ only in channel, schema and body, so they are built by
+ * this helper rather than repeating `requireAuth`/`permission` seven times — one place
+ * decides that a marketplace read is authenticated and gated on `marketplace:read`.
+ *
+ * A7 — generic over the channel. It used to take `channel: string` and cast it back to
+ * the channel union, which discarded exactly the information the response contract
+ * needs: with `C` bound, `handler` is checked against what THAT channel promises the
+ * renderer, and the cast is gone.
+ */
+function read<C extends IpcChannelName>(
+  channel: C,
+  schema: SecureHandlerDefFor<C>['schema'],
+  handler: SecureHandlerDefFor<C>['handler'],
+): SecureHandlerDefFor<C> {
+  return { channel, schema, handler, requireAuth: true, permission: READ };
 }
 
 export async function initMarketplace(deps: MarketplaceSubsystemDeps): Promise<MarketplaceSubsystem> {
