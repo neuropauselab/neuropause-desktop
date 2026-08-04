@@ -18,9 +18,33 @@ export interface AssetDescriptor {
   format: AssetFormat;
 }
 
-/** The assets directory, resolved from the workspace root (where the test runner and CI run). */
+/**
+ * The assets directory, resolved from THIS module's location rather than the
+ * invocation cwd, so the path holds no matter where the process was launched.
+ *
+ * It previously read `resolve(process.cwd(), 'packages', 'deploy', 'assets')`,
+ * whose comment claimed cwd is "the workspace root (where the test runner and CI
+ * run)". That is not where CI runs: the root `test` script is
+ * `npm run test --workspaces`, and npm sets cwd to each PACKAGE directory, so the
+ * expression resolved to `packages/deploy/packages/deploy/assets` and every
+ * asset-reading test in @neuropause/deploy and @neuropause/infrastructure threw
+ * "assets directory not found" — including under `.github/workflows/
+ * macos-release.yml` and `windows-release.yml`, both of which run `npm test`.
+ *
+ * `__dirname` is the convention this repository already uses for repo-relative
+ * paths that must survive an arbitrary cwd — see
+ * `packages/reliability/src/hardening.ts:70` (`resolve(__dirname, '..','..','..')`)
+ * and the `resolve(__dirname, …)` aliases in every vitest.config.ts here. It is
+ * safe in this package: @neuropause/deploy is consumed only by Node-side
+ * packages (infrastructure, customer-deployment, reliability, release,
+ * deployment-orchestrator) and never by the desktop renderer, so this module is
+ * never bundled into a browser ESM context that lacks `__dirname`.
+ *
+ * Behaviour is unchanged when cwd IS the workspace root: both expressions
+ * resolve to the same absolute path.
+ */
 export function assetsDir(): string {
-  return resolve(process.cwd(), 'packages', 'deploy', 'assets');
+  return resolve(__dirname, '..', 'assets');
 }
 
 function classify(rel: string): { kind: AssetKind; epic: string; format: AssetFormat } {
