@@ -58,6 +58,11 @@ export * from './types/finance';
 // Finance → General Ledger (Chart of Accounts + Journal) — pure GL domain rules,
 // the module-layer projection of the packages/business ErpCore posting kernel.
 export * from './types/generalLedger';
+// Finance → W1.6–W1.8: bank reconciliation matching, budget-vs-actual variance,
+// and the payable mirror (vendor bills + AP aging) — pure domain rules only.
+export * from './types/bankReconciliation';
+export * from './types/budgets';
+export * from './types/vendorBills';
 export * from './types/crm';
 export * from './types/leads';
 export * from './types/customers';

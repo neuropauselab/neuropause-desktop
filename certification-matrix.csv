@@ -6,6 +6,10 @@ finance-journal-entries,Finance,journalEntry,12,3,Enterprise Ready,7.36,9,9,7,8,
 finance-periods,Finance,accountingPeriod,7,3,Enterprise Ready,7.0,9,9,7,8,8,6,6,2,8,3,8,9,7,8,none,2,dedicated
 finance-tax-reports,Finance,taxReport,11,3,Enterprise Ready,7.21,9,9,7,5,8,6,6,2,9,8,8,9,7,8,none,0,dedicated
 finance-ar-aging,Finance,arAgingReport,12,3,Enterprise Ready,7.21,9,9,7,5,8,6,6,2,9,8,8,9,7,8,none,0,dedicated
+finance-bank-statements,Finance,bankStatement,13,3,Enterprise Ready,7.36,9,9,7,8,8,6,6,2,8,8,8,9,7,8,none,2,dedicated
+finance-budgets,Finance,budget,10,3,Enterprise Ready,7.0,9,9,7,8,8,6,6,2,8,3,8,9,7,8,none,1,dedicated
+finance-vendor-bills,Finance,vendorBill,17,3,Enterprise Ready,7.36,9,9,7,8,8,6,6,2,8,8,8,9,7,8,none,3,dedicated
+finance-ap-aging,Finance,apAgingReport,12,3,Enterprise Ready,7.21,9,9,7,5,8,6,6,2,9,8,8,9,7,8,none,0,dedicated
 sales-orders,Sales,order,30,5,Reference,8.07,9,9,9,8,8,6,6,9,8,8,8,9,7,9,runner,1,dedicated
 sales-quotes,Sales,quote,24,5,Reference,8.07,9,9,9,8,8,6,6,9,8,8,8,9,7,9,runner,1,dedicated
 crm-leads,CRM,lead,19,5,Reference,8.07,9,9,9,8,8,6,6,9,8,8,8,9,7,9,runner,1,dedicated

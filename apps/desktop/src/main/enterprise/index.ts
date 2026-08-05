@@ -92,6 +92,10 @@ import { journalEntryModule } from './modules/finance/journalEntryModuleInstance
 import { accountingPeriodModule } from './modules/finance/accountingPeriodModuleInstance';
 import { taxReportModule } from './modules/finance/taxReportModuleInstance';
 import { arAgingModule } from './modules/finance/arAgingModuleInstance';
+import { bankStatementModule } from './modules/finance/bankStatementModuleInstance';
+import { budgetModule } from './modules/finance/budgetModuleInstance';
+import { vendorBillModule } from './modules/finance/vendorBillModuleInstance';
+import { apAgingModule } from './modules/finance/apAgingModuleInstance';
 import { contactModule } from './modules/crm/contactModuleInstance';
 import { leadModule } from './modules/crm/leadModuleInstance';
 import { customerModule } from './modules/crm/customerModuleInstance';
@@ -274,6 +278,10 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(accountingPeriodModule); // Finance → Accounting Periods (close guard)
   modules.registry.register(taxReportModule); // Finance → Tax Reports (GST snapshots from posted books)
   modules.registry.register(arAgingModule); // Finance → Receivables Aging (open AR bucketed by days past due)
+  modules.registry.register(bankStatementModule); // Finance → Bank Statements (deterministic reconciliation)
+  modules.registry.register(budgetModule); // Finance → Budgets (measured against posted books only)
+  modules.registry.register(vendorBillModule); // Finance → Vendor Bills (payable mirror; books AP via GL seam)
+  modules.registry.register(apAgingModule); // Finance → Payables Aging (open AP bucketed by days past due)
   modules.registry.register(productModule); // Inventory → Products
   modules.registry.register(warehouseModule); // Inventory → Warehouses
   modules.registry.register(stockMovementModule); // Inventory → Stock Movements (ledger)

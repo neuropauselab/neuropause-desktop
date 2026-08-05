@@ -21,10 +21,15 @@
 import type { EnterpriseEntity } from '@neuropause/shared';
 import {
   GL_CONTROL_ACCOUNTS,
+  GL_PAYABLE_CONTROL_ACCOUNTS,
   JOURNAL_ENTRIES_MODULE_ID,
   LEDGER_ACCOUNTS_MODULE_ID,
   calculateInvoiceAmount,
   calculateTaxAmount,
+  glBillEntryNumber,
+  glBillExpectedLines,
+  glBillPaymentEntryNumber,
+  glBillPaymentExpectedLines,
   glDecideAdjustment,
   glDecideInvoicePostings,
   glDecidePaymentPostings,
@@ -35,6 +40,7 @@ import {
   glPaymentExpectedLines,
   invoiceFromRecord,
   paymentFromRecord,
+  vendorBillFromRecord,
   type GlDerivedEntry,
   type GlJournalLine,
 } from '@neuropause/shared';
@@ -51,7 +57,10 @@ async function seedControlAccountsIfEmpty(
 ): Promise<void> {
   await accounts.store.load();
   if (accounts.store.count() > 0) return;
-  for (const control of Object.values(GL_CONTROL_ACCOUNTS)) {
+  for (const control of [
+    ...Object.values(GL_CONTROL_ACCOUNTS),
+    ...Object.values(GL_PAYABLE_CONTROL_ACCOUNTS),
+  ]) {
     const v = accounts.hooks.validate({
       fields: { code: control.code, name: control.name, class: control.accountClass, currency: 'USD' },
     });
@@ -210,6 +219,74 @@ export async function handleInvoiceChangeForGl(
     sourceModule: event.record.moduleId,
     sourceRef: event.record.id,
   });
+  await applyDerivedEntries(decisions, ctx);
+}
+
+/**
+ * Vendor-bill lifecycle → derived GL work. Two independent legs, each with the
+ * same idempotent base/adjust/reverse machinery: APPROVAL books
+ * Dr Operating Expense (+ Dr GST Input Credit) / Cr Accounts Payable, and
+ * SETTLEMENT books Dr Accounts Payable / Cr Cash. Cancellation or deletion
+ * reverses whichever legs were booked, cumulatively.
+ */
+export async function handleVendorBillChangeForGl(
+  event: { record: EnterpriseEntity },
+  ctx: EnterpriseModuleActionContext,
+): Promise<void> {
+  const journalModule = ctx.moduleFor(JOURNAL_ENTRIES_MODULE_ID);
+  if (!journalModule) return; // GL not wired — no-op
+  const bill = vendorBillFromRecord(event.record);
+  const number = bill.billNumber;
+  if (!number || bill.total <= 0) return;
+  const deleted = event.record.status === 'deleted';
+  const revoked = deleted || bill.status === 'cancelled';
+  const journal = await existingJournal(ctx);
+  const revokedReason = deleted ? `Bill ${number} deleted` : `Bill ${number} cancelled`;
+
+  const leg = (input: {
+    live: boolean;
+    base: string;
+    memo: string;
+    expected: GlJournalLine[];
+  }): GlDerivedEntry[] =>
+    decideLifecycle({
+      live: input.live,
+      revoked,
+      baseEntryNumber: input.base,
+      memoSubject: `Bill ${number}`,
+      revokedReason,
+      baseDecisions:
+        input.live && !journal.numbers.has(input.base)
+          ? [
+              {
+                entryNumber: input.base,
+                memo: input.memo,
+                lines: input.expected,
+                sourceModule: event.record.moduleId,
+                sourceRef: event.record.id,
+              },
+            ]
+          : [],
+      expectedLines: input.expected,
+      journal,
+      sourceModule: event.record.moduleId,
+      sourceRef: event.record.id,
+    });
+
+  const decisions = [
+    ...leg({
+      live: bill.status === 'approved' || bill.status === 'paid',
+      base: glBillEntryNumber(number),
+      memo: `Bill ${number} approved`,
+      expected: glBillExpectedLines(bill.amount, bill.taxAmount, bill.total),
+    }),
+    ...leg({
+      live: bill.status === 'paid',
+      base: glBillPaymentEntryNumber(number),
+      memo: `Bill ${number} paid`,
+      expected: glBillPaymentExpectedLines(bill.total),
+    }),
+  ];
   await applyDerivedEntries(decisions, ctx);
 }
 
