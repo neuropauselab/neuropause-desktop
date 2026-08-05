@@ -56,3 +56,6 @@ id_dsa*
 *.pfx
 *.jks
 *.keystore
+
+# Generated at package time by generate-build-info.cjs; never commit
+apps/desktop/resources/build-info.json
