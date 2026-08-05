@@ -25,11 +25,18 @@ import {
   LEDGER_ACCOUNTS_MODULE_ID,
   calculateInvoiceAmount,
   calculateTaxAmount,
+  glDecideAdjustment,
+  glDecideInvoicePostings,
+  glDecidePaymentPostings,
+  glInvoiceEntryNumber,
+  glInvoiceExpectedLines,
+  glJournalEntryFromRecord,
+  glPaymentEntryNumber,
+  glPaymentExpectedLines,
   invoiceFromRecord,
   paymentFromRecord,
   type GlDerivedEntry,
-  glDecideInvoicePostings,
-  glDecidePaymentPostings,
+  type GlJournalLine,
 } from '@neuropause/shared';
 import type { EnterpriseModule, EnterpriseModuleActionContext } from '../../framework';
 
@@ -104,12 +111,67 @@ async function applyDerivedEntries(
   }
 }
 
-/** The set of auto-entry numbers already in the journal (loaded). */
-async function existingEntryNumbers(ctx: EnterpriseModuleActionContext): Promise<Set<string>> {
+/** The journal's current entries — numbers plus parsed lines (loaded). */
+async function existingJournal(
+  ctx: EnterpriseModuleActionContext,
+): Promise<{ numbers: Set<string>; entries: { entryNumber: string; lines: GlJournalLine[] }[] }> {
   const journal = ctx.moduleFor(JOURNAL_ENTRIES_MODULE_ID);
-  if (!journal) return new Set();
+  if (!journal) return { numbers: new Set(), entries: [] };
   await journal.store.load();
-  return new Set(journal.store.list().map((r) => str(r.fields.entryNumber)).filter(Boolean));
+  const entries = journal.store
+    .list()
+    .map((r) => {
+      const view = glJournalEntryFromRecord(r);
+      return { entryNumber: view.entryNumber, lines: view.lines };
+    })
+    .filter((e) => e.entryNumber.length > 0);
+  return { numbers: new Set(entries.map((e) => e.entryNumber)), entries };
+}
+
+/**
+ * Shared revocation + drift logic: on revocation, one cumulative `-REV` entry
+ * mirrors EVERYTHING booked for the record (base + adjustments — never a stale
+ * base-only mirror); while live, a delta `-ADJn` entry brings the books to the
+ * record's current amounts. Both idempotent, both balanced by construction.
+ */
+function decideLifecycle(input: {
+  live: boolean;
+  revoked: boolean;
+  baseEntryNumber: string;
+  memoSubject: string;
+  revokedReason: string;
+  baseDecisions: GlDerivedEntry[];
+  expectedLines: GlJournalLine[];
+  journal: { numbers: Set<string>; entries: { entryNumber: string; lines: GlJournalLine[] }[] };
+  sourceModule: string;
+  sourceRef: string;
+}): GlDerivedEntry[] {
+  const { baseEntryNumber: base, journal } = input;
+  if (input.revoked) {
+    if (!journal.numbers.has(base) || journal.numbers.has(`${base}-REV`)) return [];
+    return glDecideAdjustment({
+      baseEntryNumber: base,
+      memoSubject: input.memoSubject,
+      expectedLines: [],
+      existingEntries: journal.entries,
+      sourceModule: input.sourceModule,
+      sourceRef: input.sourceRef,
+      entryNumber: `${base}-REV`,
+      memo: `${input.revokedReason} — reversal of ${base}`,
+    });
+  }
+  if (!input.live) return [];
+  return [
+    ...input.baseDecisions,
+    ...glDecideAdjustment({
+      baseEntryNumber: base,
+      memoSubject: input.memoSubject,
+      expectedLines: input.expectedLines,
+      existingEntries: journal.entries,
+      sourceModule: input.sourceModule,
+      sourceRef: input.sourceRef,
+    }),
+  ];
 }
 
 /** Invoice lifecycle → derived GL work. Wired as the invoice module's onChange. */
@@ -117,19 +179,36 @@ export async function handleInvoiceChangeForGl(
   event: { record: EnterpriseEntity },
   ctx: EnterpriseModuleActionContext,
 ): Promise<void> {
-  const journal = ctx.moduleFor(JOURNAL_ENTRIES_MODULE_ID);
-  if (!journal) return; // GL not wired — no-op
+  const journalModule = ctx.moduleFor(JOURNAL_ENTRIES_MODULE_ID);
+  if (!journalModule) return; // GL not wired — no-op
   const invoice = invoiceFromRecord(event.record);
-  const decisions = glDecideInvoicePostings({
-    invoiceId: event.record.id,
-    invoiceNumber: invoice.number,
-    status: invoice.status,
-    subtotal: invoice.amount,
-    taxAmount: calculateTaxAmount(invoice),
-    total: calculateInvoiceAmount(invoice),
-    deleted: event.record.status === 'deleted',
-    existingEntryNumbers: await existingEntryNumbers(ctx),
+  const number = invoice.number.trim();
+  const total = calculateInvoiceAmount(invoice);
+  if (!number || total <= 0) return;
+  const deleted = event.record.status === 'deleted';
+  const revoked = deleted || invoice.status === 'cancelled';
+  const journal = await existingJournal(ctx);
+  const decisions = decideLifecycle({
+    live: !revoked && invoice.status !== 'draft',
+    revoked,
+    baseEntryNumber: glInvoiceEntryNumber(number),
+    memoSubject: `Invoice ${number}`,
+    revokedReason: deleted ? `Invoice ${number} deleted` : `Invoice ${number} cancelled`,
+    baseDecisions: glDecideInvoicePostings({
+      invoiceId: event.record.id,
+      invoiceNumber: number,
+      status: invoice.status,
+      subtotal: invoice.amount,
+      taxAmount: calculateTaxAmount(invoice),
+      total,
+      deleted,
+      existingEntryNumbers: journal.numbers,
+      sourceModule: event.record.moduleId,
+    }),
+    expectedLines: glInvoiceExpectedLines(invoice.amount, calculateTaxAmount(invoice), total),
+    journal,
     sourceModule: event.record.moduleId,
+    sourceRef: event.record.id,
   });
   await applyDerivedEntries(decisions, ctx);
 }
@@ -139,17 +218,33 @@ export async function handlePaymentChangeForGl(
   event: { record: EnterpriseEntity },
   ctx: EnterpriseModuleActionContext,
 ): Promise<void> {
-  const journal = ctx.moduleFor(JOURNAL_ENTRIES_MODULE_ID);
-  if (!journal) return; // GL not wired — no-op
+  const journalModule = ctx.moduleFor(JOURNAL_ENTRIES_MODULE_ID);
+  if (!journalModule) return; // GL not wired — no-op
   const payment = paymentFromRecord(event.record);
-  const decisions = glDecidePaymentPostings({
-    paymentId: event.record.id,
-    paymentNumber: payment.paymentNumber,
-    status: payment.status,
-    amount: payment.amount,
-    deleted: event.record.status === 'deleted',
-    existingEntryNumbers: await existingEntryNumbers(ctx),
+  const number = payment.paymentNumber.trim();
+  if (!number || payment.amount <= 0) return;
+  const deleted = event.record.status === 'deleted';
+  const revoked = deleted || payment.status === 'void';
+  const journal = await existingJournal(ctx);
+  const decisions = decideLifecycle({
+    live: !revoked && payment.status === 'cleared',
+    revoked,
+    baseEntryNumber: glPaymentEntryNumber(number),
+    memoSubject: `Payment ${number}`,
+    revokedReason: deleted ? `Payment ${number} deleted` : `Payment ${number} voided`,
+    baseDecisions: glDecidePaymentPostings({
+      paymentId: event.record.id,
+      paymentNumber: number,
+      status: payment.status,
+      amount: payment.amount,
+      deleted,
+      existingEntryNumbers: journal.numbers,
+      sourceModule: event.record.moduleId,
+    }),
+    expectedLines: glPaymentExpectedLines(payment.amount),
+    journal,
     sourceModule: event.record.moduleId,
+    sourceRef: event.record.id,
   });
   await applyDerivedEntries(decisions, ctx);
 }

@@ -353,6 +353,71 @@ export function glJournalSummaryFallback(entry: GlJournalEntry): {
   };
 }
 
+/* ── accounting periods: the close guard's domain ── */
+
+/** The Accounting Periods module id + record kind (the framework store key). */
+export const ACCOUNTING_PERIODS_MODULE_ID = 'finance-periods';
+export const ACCOUNTING_PERIOD_KIND = 'accountingPeriod';
+
+/** A typed view over an accounting-period record's flat fields (+ envelope). */
+export interface GlAccountingPeriod {
+  id: string;
+  periodKey: string;
+  label: string;
+  startDate: string;
+  endDate: string;
+  closed: boolean;
+  closedAt: string;
+  closedBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Monthly period key (YYYY-MM) for an ISO date string; '' when unparseable. */
+export function glPeriodKeyForDate(date: string): string {
+  const m = /^(\d{4})-(\d{2})/.exec(str(date).trim());
+  return m ? `${m[1]}-${m[2]}` : '';
+}
+
+export function isGlPeriodKey(value: unknown): boolean {
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(str(value));
+}
+
+/** First/last day of a period key's month — the seeded period boundaries. */
+export function glPeriodBounds(periodKey: string): { startDate: string; endDate: string } {
+  const [y, m] = periodKey.split('-').map(Number);
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const mm = String(m).padStart(2, '0');
+  return { startDate: `${periodKey}-01`, endDate: `${y}-${mm}-${String(last).padStart(2, '0')}` };
+}
+
+/** Project an accounting-period record into its typed view. */
+export function glPeriodFromRecord(record: EnterpriseEntity): GlAccountingPeriod {
+  const f = record.fields;
+  return {
+    id: record.id,
+    periodKey: str(f.periodKey).trim(),
+    label: str(f.label),
+    startDate: str(f.startDate),
+    endDate: str(f.endDate),
+    closed: str(f.status) === 'closed',
+    closedAt: str(f.closedAt),
+    closedBy: str(f.closedBy),
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
+/**
+ * The close guard: a date is locked when ANY period record covering its key is
+ * closed (conservative on duplicates — one closed record locks the month).
+ */
+export function glDateInClosedPeriod(date: string, periods: readonly GlAccountingPeriod[]): boolean {
+  const key = glPeriodKeyForDate(date);
+  if (!key) return false;
+  return periods.some((p) => p.periodKey === key && p.closed);
+}
+
 /* ── auto-posting: the deterministic bookkeeping derived from commercial records ── */
 
 /**
@@ -421,17 +486,10 @@ export function glDecideInvoicePostings(input: {
   const base = glInvoiceEntryNumber(number);
   const issued = !input.deleted && input.status !== 'draft' && input.status !== 'cancelled';
   const revoked = input.deleted || input.status === 'cancelled';
-  const ar = GL_CONTROL_ACCOUNTS.accountsReceivable.code;
-  const revenue = GL_CONTROL_ACCOUNTS.salesRevenue.code;
-  const tax = GL_CONTROL_ACCOUNTS.taxPayable.code;
   const entry: GlDerivedEntry = {
     entryNumber: base,
     memo: `Invoice ${number} issued`,
-    lines: [
-      { account: ar, debit: input.total, credit: 0 },
-      { account: revenue, debit: 0, credit: input.subtotal },
-      ...(input.taxAmount > 0 ? [{ account: tax, debit: 0, credit: input.taxAmount }] : []),
-    ],
+    lines: glInvoiceExpectedLines(input.subtotal, input.taxAmount, input.total),
     sourceModule: input.sourceModule,
     sourceRef: input.invoiceId,
   };
@@ -465,10 +523,7 @@ export function glDecidePaymentPostings(input: {
   const entry: GlDerivedEntry = {
     entryNumber: base,
     memo: `Payment ${number} cleared`,
-    lines: [
-      { account: GL_CONTROL_ACCOUNTS.cash.code, debit: input.amount, credit: 0 },
-      { account: GL_CONTROL_ACCOUNTS.accountsReceivable.code, debit: 0, credit: input.amount },
-    ],
+    lines: glPaymentExpectedLines(input.amount),
     sourceModule: input.sourceModule,
     sourceRef: input.paymentId,
   };
@@ -478,4 +533,81 @@ export function glDecidePaymentPostings(input: {
     out.push(reversalOf(entry, input.deleted ? `Payment ${number} deleted` : `Payment ${number} voided`));
   }
   return out;
+}
+
+/** The cumulative lines an issued invoice's CURRENT amounts imply. */
+export function glInvoiceExpectedLines(subtotal: number, taxAmount: number, total: number): GlJournalLine[] {
+  return [
+    { account: GL_CONTROL_ACCOUNTS.accountsReceivable.code, debit: total, credit: 0 },
+    { account: GL_CONTROL_ACCOUNTS.salesRevenue.code, debit: 0, credit: subtotal },
+    ...(taxAmount > 0 ? [{ account: GL_CONTROL_ACCOUNTS.taxPayable.code, debit: 0, credit: taxAmount }] : []),
+  ];
+}
+
+/** The cumulative lines a cleared payment's CURRENT amount implies. */
+export function glPaymentExpectedLines(amount: number): GlJournalLine[] {
+  return [
+    { account: GL_CONTROL_ACCOUNTS.cash.code, debit: amount, credit: 0 },
+    { account: GL_CONTROL_ACCOUNTS.accountsReceivable.code, debit: 0, credit: amount },
+  ];
+}
+
+/** Net signed (debit − credit) amount per account across a set of lines. */
+function netByAccount(lines: readonly GlJournalLine[]): Map<string, number> {
+  const net = new Map<string, number>();
+  for (const l of lines) net.set(l.account, (net.get(l.account) ?? 0) + l.debit - l.credit);
+  return net;
+}
+
+/**
+ * Decide the ADJUSTMENT entry (if any) that brings the books in line with a
+ * source record whose amounts changed AFTER its base entry was booked — the
+ * amount-edit gap W1.2 documented. Pure and idempotent: once booked, the
+ * cumulative ledger equals the expectation, so the next call decides nothing.
+ * Skipped entirely when the base entry is absent (nothing issued yet) or a
+ * reversal exists (the cancel/void path owns the record). Balanced by
+ * construction: expectation and booked entries are each balanced, so their
+ * difference is too.
+ */
+export function glDecideAdjustment(input: {
+  baseEntryNumber: string;
+  memoSubject: string;
+  expectedLines: readonly GlJournalLine[];
+  existingEntries: readonly { entryNumber: string; lines: readonly GlJournalLine[] }[];
+  sourceModule: string;
+  sourceRef: string;
+  /** Override the derived entry number (the revocation path emits `-REV`). */
+  entryNumber?: string;
+  /** Override the derived memo. */
+  memo?: string;
+}): GlDerivedEntry[] {
+  const base = input.baseEntryNumber;
+  const related = input.existingEntries.filter(
+    (e) =>
+      e.entryNumber === base ||
+      e.entryNumber === `${base}-REV` ||
+      e.entryNumber.startsWith(`${base}-ADJ`),
+  );
+  if (!related.some((e) => e.entryNumber === base)) return [];
+
+  const expected = netByAccount(input.expectedLines);
+  const booked = netByAccount(related.flatMap((e) => [...e.lines]));
+  const accounts = new Set([...expected.keys(), ...booked.keys()]);
+  const lines: GlJournalLine[] = [];
+  for (const account of accounts) {
+    const delta = (expected.get(account) ?? 0) - (booked.get(account) ?? 0);
+    if (Math.round(delta * 100) === 0) continue;
+    lines.push(delta > 0 ? { account, debit: delta, credit: 0 } : { account, debit: 0, credit: -delta });
+  }
+  if (lines.length === 0) return [];
+  const index = related.filter((e) => e.entryNumber.startsWith(`${base}-ADJ`)).length + 1;
+  return [
+    {
+      entryNumber: input.entryNumber ?? `${base}-ADJ${index}`,
+      memo: input.memo ?? `${input.memoSubject} amount adjusted`,
+      lines,
+      sourceModule: input.sourceModule,
+      sourceRef: input.sourceRef,
+    },
+  ];
 }

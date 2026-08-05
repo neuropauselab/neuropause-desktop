@@ -27,6 +27,7 @@ import type {
   GlJournalLine,
 } from '@neuropause/shared';
 import {
+  ACCOUNTING_PERIODS_MODULE_ID,
   JOURNAL_ENTRIES_MODULE_ID,
   JOURNAL_ENTRY_KIND,
   LEDGER_ACCOUNTS_MODULE_ID,
@@ -34,9 +35,12 @@ import {
   glAccountBalance,
   glAccountFromRecord,
   glAccountLedgerTotals,
+  glDateInClosedPeriod,
   glJournalEntryFromRecord,
   glJournalSummaryFallback,
   glJournalTotals,
+  glPeriodFromRecord,
+  glPeriodKeyForDate,
   isBalancedGlJournal,
   parseGlJournalLines,
   validateEnterpriseRecordInput,
@@ -275,9 +279,38 @@ export function createJournalEntryModule(
               message: `Unbalanced entry: debits ${totals.debits} != credits ${totals.credits}.`,
             };
           }
+          // Close guard: the booked date (entryDate, stamped to today when empty)
+          // must not fall in a CLOSED accounting period. A month with no period
+          // record is auto-created OPEN so the guard is visible, never implicit.
+          const bookedDate = str(record.fields.entryDate) || actionCtx.now().slice(0, 10);
+          const periodsModule = actionCtx.moduleFor(ACCOUNTING_PERIODS_MODULE_ID);
+          if (periodsModule) {
+            await periodsModule.store.load();
+            const periods = periodsModule.store.list().map(glPeriodFromRecord);
+            if (glDateInClosedPeriod(bookedDate, periods)) {
+              return {
+                ok: false,
+                message: `Period ${glPeriodKeyForDate(bookedDate)} is closed — reopen it or move the entry date.`,
+              };
+            }
+            const key = glPeriodKeyForDate(bookedDate);
+            if (key && !periods.some((p) => p.periodKey === key)) {
+              const v = periodsModule.hooks.validate({ fields: { periodKey: key } });
+              if (v.ok) {
+                const createdPeriod = periodsModule.store.create({
+                  title: key,
+                  fields: v.values,
+                  actor: 'system:gl-periods',
+                  now: actionCtx.now(),
+                });
+                actionCtx.emit(periodsModule, 'created', createdPeriod);
+              }
+            }
+          }
           const updated = store.update(record.id, {
             fields: {
               postedAt: actionCtx.now(),
+              entryDate: bookedDate,
               status: 'posted',
               totalDebits: totals.debits,
               totalCredits: totals.credits,

@@ -206,4 +206,38 @@ describe('GL auto-posting through the real modules', () => {
     );
     expect(journal.store.count()).toBe(0);
   });
+
+  it('books a balanced ADJ entry when an issued invoice amount changes, idempotently', async () => {
+    const record = invoiceRecord({ number: 'INV-8', customer: 'Acme', amount: 100, taxRate: 0, status: 'issued' });
+    await handleInvoiceChangeForGl({ record }, ctx);
+    expect(balanceOf('1100')).toBe(100);
+    // Amount edited AFTER issue: 100 → 150. The next lifecycle event books the delta.
+    const edited = invoiceRecord({ number: 'INV-8', customer: 'Acme', amount: 150, taxRate: 0, status: 'issued' });
+    await handleInvoiceChangeForGl({ record: edited }, ctx);
+    const adj = journal.store.list().find((r) => r.fields.entryNumber === 'JE-INV-INV-8-ADJ1');
+    expect(adj).toBeDefined();
+    expect(glJournalEntryFromRecord(adj!).posted).toBe(true);
+    expect(balanceOf('1100')).toBe(150);
+    expect(balanceOf('4000')).toBe(150);
+    // Re-firing with the same amounts books nothing further.
+    await handleInvoiceChangeForGl({ record: edited }, ctx);
+    expect(journal.store.count()).toBe(2);
+  });
+
+  it('cancelling after an adjustment reverses the CUMULATIVE booking, not just the base entry', async () => {
+    const record = invoiceRecord({ number: 'INV-9', customer: 'Acme', amount: 100, taxRate: 0, status: 'issued' });
+    await handleInvoiceChangeForGl({ record }, ctx);
+    const edited = invoiceRecord({ number: 'INV-9', customer: 'Acme', amount: 150, taxRate: 0, status: 'issued' });
+    await handleInvoiceChangeForGl({ record: edited }, ctx);
+    expect(balanceOf('1100')).toBe(150);
+    const cancelled = invoiceRecord({ number: 'INV-9', customer: 'Acme', amount: 150, taxRate: 0, status: 'cancelled' });
+    await handleInvoiceChangeForGl({ record: cancelled }, ctx);
+    const rev = journal.store.list().find((r) => r.fields.entryNumber === 'JE-INV-INV-9-REV');
+    expect(rev).toBeDefined();
+    expect(balanceOf('1100')).toBe(0); // base + ADJ fully unwound — no drift
+    expect(balanceOf('4000')).toBe(0);
+    // Re-firing the cancellation books nothing further.
+    await handleInvoiceChangeForGl({ record: cancelled }, ctx);
+    expect(journal.store.list().filter((r) => String(r.fields.entryNumber).startsWith('JE-INV-INV-9')).length).toBe(3);
+  });
 });

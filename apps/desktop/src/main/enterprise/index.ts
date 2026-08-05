@@ -89,6 +89,7 @@ import { invoiceModule } from './modules/finance/invoiceModuleInstance';
 import { paymentModule } from './modules/finance/paymentModuleInstance';
 import { ledgerAccountModule } from './modules/finance/ledgerAccountModuleInstance';
 import { journalEntryModule } from './modules/finance/journalEntryModuleInstance';
+import { accountingPeriodModule } from './modules/finance/accountingPeriodModuleInstance';
 import { contactModule } from './modules/crm/contactModuleInstance';
 import { leadModule } from './modules/crm/leadModuleInstance';
 import { customerModule } from './modules/crm/customerModuleInstance';
@@ -268,6 +269,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(paymentModule); // Finance → Payments
   modules.registry.register(ledgerAccountModule); // Finance → Chart of Accounts (GL)
   modules.registry.register(journalEntryModule); // Finance → Journal (GL double-entry)
+  modules.registry.register(accountingPeriodModule); // Finance → Accounting Periods (close guard)
   modules.registry.register(productModule); // Inventory → Products
   modules.registry.register(warehouseModule); // Inventory → Warehouses
   modules.registry.register(stockMovementModule); // Inventory → Stock Movements (ledger)
