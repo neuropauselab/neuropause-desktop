@@ -1,15 +1,15 @@
 /**
  * Enterprise Module Certification v1.0 — the registry-wide descriptor lock.
  *
- * A QUALITY gate, not a feature: it runs every one of the 45 REAL registered module descriptors through the
+ * A QUALITY gate, not a feature: it runs every one of the 47 REAL registered module descriptors through the
  * framework's own `validateModuleDescriptor`, and locks the certified inventory (count, unique ids, family
- * distribution, RBAC scopes, title fields). Before this test the 45 real descriptors were validated only
+ * distribution, RBAC scopes, title fields). Before this test the real descriptors were validated only
  * implicitly at construction; this makes the guarantee explicit.
  *
  * SCOPE (stated honestly): the lock is over the enumerated `CERTIFIED` list below. It catches a descriptor
  * REGRESSION (bad id, dup field, wrong group/scope, dup id/action) and a REMOVAL or RENAME of a `*_DESCRIPTOR`
  * export (the import breaks → the file goes red). It does NOT read the live runtime registry, so ADDING a new
- * (46th) registered module does not fail this test until this list is updated — which is the intended,
+ * (48th) registered module does not fail this test until this list is updated — which is the intended,
  * deliberate re-certification checkpoint for a new module.
  *
  * Reuse-only: it imports the standalone descriptor consts (Electron-free — no store, no app runtime) and the
@@ -18,9 +18,11 @@
 import { describe, expect, it } from 'vitest';
 import { validateModuleDescriptor, type EnterpriseModuleDescriptor } from '@neuropause/shared';
 
-// Finance (2)
+// Finance (4)
 import { INVOICE_DESCRIPTOR } from './finance/invoiceModule';
 import { PAYMENT_DESCRIPTOR } from './finance/paymentModule';
+import { LEDGER_ACCOUNT_DESCRIPTOR } from './finance/ledgerAccountModule';
+import { JOURNAL_ENTRY_DESCRIPTOR } from './finance/journalEntryModule';
 // Sales (2)
 import { QUOTE_DESCRIPTOR } from './sales/quoteModule';
 import { ORDER_DESCRIPTOR } from './sales/orderModule';
@@ -75,7 +77,7 @@ import { EXECUTION_PROPOSAL_DESCRIPTOR } from './executive/executionProposalModu
 
 /** The certified inventory, grouped by family. Adding/removing a real module must update this + the counts. */
 const CERTIFIED: Record<string, EnterpriseModuleDescriptor[]> = {
-  Finance: [INVOICE_DESCRIPTOR, PAYMENT_DESCRIPTOR],
+  Finance: [INVOICE_DESCRIPTOR, PAYMENT_DESCRIPTOR, LEDGER_ACCOUNT_DESCRIPTOR, JOURNAL_ENTRY_DESCRIPTOR],
   Sales: [QUOTE_DESCRIPTOR, ORDER_DESCRIPTOR],
   CRM: [CONTACT_DESCRIPTOR, LEAD_DESCRIPTOR, CUSTOMER_DESCRIPTOR],
   Procurement: [SUPPLIER_DESCRIPTOR, PURCHASE_REQUEST_DESCRIPTOR, PURCHASE_ORDER_DESCRIPTOR, GOODS_RECEIPT_DESCRIPTOR],
@@ -99,7 +101,7 @@ const CERTIFIED: Record<string, EnterpriseModuleDescriptor[]> = {
 
 /** The certified per-family module counts (verified from the registration site, enterprise/index.ts). */
 const CERTIFIED_COUNTS: Record<string, number> = {
-  Finance: 2, Sales: 2, CRM: 3, Procurement: 4, Inventory: 3, Warehouse: 8, Manufacturing: 11, Maintenance: 10, Executive: 2,
+  Finance: 4, Sales: 2, CRM: 3, Procurement: 4, Inventory: 3, Warehouse: 8, Manufacturing: 11, Maintenance: 10, Executive: 2,
 };
 
 const ALL = Object.values(CERTIFIED).flat();
@@ -112,13 +114,13 @@ const FAMILY_WRITE_SCOPE: Record<string, string> = {
 };
 
 describe('Enterprise Module Certification — registry lock', () => {
-  it('certifies exactly 45 modules across the 9 production families', () => {
-    expect(ALL).toHaveLength(45);
+  it('certifies exactly 47 modules across the 9 production families', () => {
+    expect(ALL).toHaveLength(47);
     for (const fam of KNOWN_FAMILIES) {
       expect(CERTIFIED[fam]).toHaveLength(CERTIFIED_COUNTS[fam]);
     }
     const total = Object.values(CERTIFIED_COUNTS).reduce((a, b) => a + b, 0);
-    expect(total).toBe(45);
+    expect(total).toBe(47);
   });
 
   it('every real descriptor passes the framework validator (validateModuleDescriptor)', () => {
