@@ -23,6 +23,7 @@ import { createJournalEntryModule } from './journalEntryModule';
 import { createBankStatementModule } from './bankStatementModule';
 import { createBudgetModule } from './budgetModule';
 import { createVendorBillModule } from './vendorBillModule';
+import { createVendorPaymentModule } from './vendorPaymentModule';
 import { createApAgingModule } from './apAgingModule';
 import { createPaymentModule } from './paymentModule';
 import { createInvoiceModule } from './invoiceModule';
@@ -226,22 +227,28 @@ describe('W1.6–W1.8 modules over real stores', () => {
       expect(agingV.values.totalOutstanding).toBe(118);
       expect(agingV.values.days31to60).toBe(118);
     }
-    // markPaid → settlement booked; aging empties.
-    const paid = await bills.hooks.runAction!('markPaid', bills.store.get(rec.id)!, ctx);
-    expect(paid.ok, JSON.stringify(paid)).toBe(true);
-    await bills.hooks.onChange!({ action: 'updated', record: bills.store.get(rec.id)! }, ctx);
+    // Settlement since W1.11 goes through Vendor Payments (the source of truth).
+    const vpay = createVendorPaymentModule(join(dir, 'vpay.json'), bills.store);
+    await vpay.store.load();
+    const pv = vpay.hooks.validate({ fields: { paymentNumber: 'VPAY-1', billRef: 'BILL-1', amount: 118, currency: 'USD', method: 'bank_transfer', status: 'cleared' } });
+    expect(pv.ok, JSON.stringify('errors' in pv ? pv.errors : {})).toBe(true);
+    if (!pv.ok) throw new Error('unreachable');
+    const payRec = vpay.store.create({ title: 'VPAY-1', fields: pv.values, actor: 't@np', now: T0 });
+    await vpay.hooks.onChange!({ action: 'created', record: payRec }, ctx);
     expect(balanceOf('2000')).toBe(0);
     expect(balanceOf('1000')).toBe(-118); // cash out
+    expect(vendorBillFromRecord(bills.store.get(rec.id)!).status).toBe('paid'); // reconciled from the ledger
     const agingAfter = apAging.hooks.validate({ fields: { asOfDate: '2026-08-05' } });
     if (agingAfter.ok) expect(agingAfter.values.totalOutstanding).toBe(0);
-    // Cancel after payment → BOTH legs reversed, books net to zero.
+    // Cancel after payment → the bill's approval leg reverses; the payment
+    // stays booked (cash really left) so AP honestly shows the vendor owing back.
     const cancelled = await bills.hooks.runAction!('cancel', bills.store.get(rec.id)!, ctx);
     expect(cancelled.ok).toBe(true);
     await bills.hooks.onChange!({ action: 'updated', record: bills.store.get(rec.id)! }, ctx);
-    expect(balanceOf('2000')).toBe(0);
+    expect(balanceOf('2000')).toBe(-118); // over-settled — recoverable from the vendor
     expect(balanceOf('5000')).toBe(0);
     expect(balanceOf('1200')).toBe(0);
-    expect(balanceOf('1000')).toBe(0);
+    expect(balanceOf('1000')).toBe(-118);
     expect(vendorBillFromRecord(bills.store.get(rec.id)!).status).toBe('cancelled');
   });
 

@@ -99,6 +99,7 @@ import { apAgingModule } from './modules/finance/apAgingModuleInstance';
 import { fixedAssetModule } from './modules/finance/fixedAssetModuleInstance';
 import { creditNoteModule } from './modules/finance/creditNoteModuleInstance';
 import { debitNoteModule } from './modules/finance/debitNoteModuleInstance';
+import { vendorPaymentModule } from './modules/finance/vendorPaymentModuleInstance';
 import { contactModule } from './modules/crm/contactModuleInstance';
 import { leadModule } from './modules/crm/leadModuleInstance';
 import { customerModule } from './modules/crm/customerModuleInstance';
@@ -288,6 +289,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(fixedAssetModule); // Finance → Fixed Assets (capitalization, depreciation, disposal)
   modules.registry.register(creditNoteModule); // Finance → Credit Notes (invoice adjustments, revenue/tax reversal)
   modules.registry.register(debitNoteModule); // Finance → Debit Notes (bill adjustments, AP/input-credit reversal)
+  modules.registry.register(vendorPaymentModule); // Finance → Vendor Payments (partial-capable AP settlement)
   modules.registry.register(productModule); // Inventory → Products
   modules.registry.register(warehouseModule); // Inventory → Warehouses
   modules.registry.register(stockMovementModule); // Inventory → Stock Movements (ledger)

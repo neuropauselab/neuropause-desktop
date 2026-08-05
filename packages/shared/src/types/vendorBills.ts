@@ -49,6 +49,10 @@ export interface VendorBill {
   paidDate: string;
   paymentReference: string;
   sourcePurchaseOrder: string;
+  /** Σ cleared vendor payments — reconciled from the payment ledger, never typed. */
+  amountPaid: number;
+  /** total − amountPaid, floored at zero. */
+  outstanding: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -77,6 +81,8 @@ export function vendorBillFromRecord(record: EnterpriseEntity): VendorBill {
   const taxRate = num(f.taxRate);
   const taxAmount = calculateBillTax(amount, taxRate);
   const status = isVendorBillStatus(f.status) ? f.status : 'draft';
+  const total = Math.round((amount + taxAmount) * 100) / 100;
+  const amountPaid = num(f.amountPaid);
   return {
     id: record.id,
     billNumber: str(f.billNumber).trim(),
@@ -85,7 +91,7 @@ export function vendorBillFromRecord(record: EnterpriseEntity): VendorBill {
     amount,
     taxRate,
     taxAmount,
-    total: Math.round((amount + taxAmount) * 100) / 100,
+    total,
     currency: str(f.currency) || 'USD',
     status,
     billDate: str(f.billDate),
@@ -93,6 +99,8 @@ export function vendorBillFromRecord(record: EnterpriseEntity): VendorBill {
     paidDate: str(f.paidDate),
     paymentReference: str(f.paymentReference),
     sourcePurchaseOrder: str(f.sourcePurchaseOrder),
+    amountPaid,
+    outstanding: Math.max(0, Math.round((total - amountPaid) * 100) / 100),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };
@@ -168,7 +176,9 @@ export function deriveApAging(bills: readonly VendorBill[], nowMs: number): ApAg
   const rows: ApAgingRow[] = [];
   for (const bill of bills) {
     if (bill.status !== 'approved') continue;
-    if (bill.total <= 0) continue;
+    // Since W1.11, partial vendor payments reduce what ages: the OUTSTANDING
+    // remainder is the open payable, not the gross total.
+    if (bill.outstanding <= 0) continue;
     let daysOverdue = 0;
     if (bill.dueDate) {
       const due = Date.parse(bill.dueDate);
@@ -178,7 +188,7 @@ export function deriveApAging(bills: readonly VendorBill[], nowMs: number): ApAg
       billNumber: bill.billNumber,
       vendor: bill.vendor,
       dueDate: bill.dueDate,
-      outstanding: bill.total,
+      outstanding: bill.outstanding,
       daysOverdue,
       bucket: apBucketFor(daysOverdue),
     });

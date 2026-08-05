@@ -67,6 +67,8 @@ export * from './types/vendorBills';
 export * from './types/fixedAssets';
 // Finance → W1.10: credit/debit notes — receivable + payable adjustment documents.
 export * from './types/adjustmentNotes';
+// Finance → W1.11: vendor payments — payable settlement as the source of truth.
+export * from './types/vendorPayments';
 export * from './types/crm';
 export * from './types/leads';
 export * from './types/customers';

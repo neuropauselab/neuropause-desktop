@@ -50,9 +50,10 @@ export const VENDOR_BILL_DESCRIPTOR: EnterpriseModuleDescriptor = {
   titleField: 'billNumber',
   // Reuses the certified Finance scopes: any member can read, managers+ can write.
   permissions: { read: 'operations:read', write: 'operations:manage' },
+  // Settlement is recorded through Vendor Payments (the source of truth since
+  // W1.11) — there is no manual "mark paid".
   actions: [
     { key: 'approve', label: 'Approve', icon: 'upload' },
-    { key: 'markPaid', label: 'Mark Paid', icon: 'download' },
     { key: 'cancel', label: 'Cancel', icon: 'close' },
   ],
   fields: [
@@ -63,6 +64,7 @@ export const VENDOR_BILL_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'taxRate', label: 'Tax Rate %', type: 'number', min: 0, max: 100, column: false },
     { key: 'taxAmount', label: 'Tax', type: 'number', readOnly: true, format: 'currency', column: false },
     { key: 'total', label: 'Total', type: 'number', readOnly: true, format: 'currency' },
+    { key: 'amountPaid', label: 'Amount Paid', type: 'number', readOnly: true, format: 'currency', default: 0 },
     {
       key: 'currency',
       label: 'Currency',
@@ -177,12 +179,6 @@ export function createVendorBillModule(storePath: string): EnterpriseModule {
           const updated = stampAndEmit({ approvedAt: actionCtx.now() });
           if (!updated) return { ok: false, error: 'Bill not found.' };
           return { ok: true, message: `Bill ${bill.billNumber} approved — payable booked.` };
-        }
-        if (action === 'markPaid') {
-          if (bill.status !== 'approved') return { ok: false, message: `Cannot mark a ${bill.status} bill paid — approve it first.` };
-          const updated = stampAndEmit({ paidDate: actionCtx.now().slice(0, 10) });
-          if (!updated) return { ok: false, error: 'Bill not found.' };
-          return { ok: true, message: `Bill ${bill.billNumber} marked paid — settlement booked.` };
         }
         if (action === 'cancel') {
           if (bill.status === 'cancelled') return { ok: false, message: 'Already cancelled.' };

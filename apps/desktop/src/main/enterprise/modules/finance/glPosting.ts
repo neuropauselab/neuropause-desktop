@@ -29,7 +29,6 @@ import {
   calculateTaxAmount,
   glBillEntryNumber,
   glBillExpectedLines,
-  glBillPaymentEntryNumber,
   glBillPaymentExpectedLines,
   glDecideAdjustment,
   glDecideInvoicePostings,
@@ -39,9 +38,11 @@ import {
   glJournalEntryFromRecord,
   glPaymentEntryNumber,
   glPaymentExpectedLines,
+  glVendorPaymentEntryNumber,
   invoiceFromRecord,
   paymentFromRecord,
   vendorBillFromRecord,
+  vendorPaymentFromRecord,
   type GlDerivedEntry,
   type GlJournalLine,
 } from '@neuropause/shared';
@@ -275,20 +276,60 @@ export async function handleVendorBillChangeForGl(
       sourceRef: event.record.id,
     });
 
-  const decisions = [
-    ...leg({
-      live: bill.status === 'approved' || bill.status === 'paid',
-      base: glBillEntryNumber(number),
-      memo: `Bill ${number} approved`,
-      expected: glBillExpectedLines(bill.amount, bill.taxAmount, bill.total),
-    }),
-    ...leg({
-      live: bill.status === 'paid',
-      base: glBillPaymentEntryNumber(number),
-      memo: `Bill ${number} paid`,
-      expected: glBillPaymentExpectedLines(bill.total),
-    }),
-  ];
+  // Since W1.11, SETTLEMENT is booked by Vendor Payments (JE-VPAY-*, one entry
+  // per payment, partial-capable) — the bill carries only the approval leg.
+  const decisions = leg({
+    live: bill.status === 'approved' || bill.status === 'paid',
+    base: glBillEntryNumber(number),
+    memo: `Bill ${number} approved`,
+    expected: glBillExpectedLines(bill.amount, bill.taxAmount, bill.total),
+  });
+  await applyGlDerivedEntries(decisions, ctx);
+}
+
+/**
+ * Vendor-payment lifecycle → derived GL work. A CLEARED payment books
+ * Dr Accounts Payable / Cr Cash for ITS amount (partial settlements each carry
+ * their own entry); void or deletion reverses; amount edits book ADJ deltas —
+ * the same idempotent machinery as every other flow.
+ */
+export async function handleVendorPaymentChangeForGl(
+  event: { record: EnterpriseEntity },
+  ctx: EnterpriseModuleActionContext,
+): Promise<void> {
+  const journalModule = ctx.moduleFor(JOURNAL_ENTRIES_MODULE_ID);
+  if (!journalModule) return; // GL not wired — no-op
+  const payment = vendorPaymentFromRecord(event.record);
+  const number = payment.paymentNumber;
+  if (!number || payment.amount <= 0) return;
+  const deleted = event.record.status === 'deleted';
+  const revoked = deleted || payment.status === 'void';
+  const journal = await existingJournal(ctx);
+  const base = glVendorPaymentEntryNumber(number);
+  const expected = glBillPaymentExpectedLines(payment.amount);
+  const decisions = decideLifecycle({
+    live: !revoked && payment.status === 'cleared',
+    revoked,
+    baseEntryNumber: base,
+    memoSubject: `Vendor payment ${number}`,
+    revokedReason: deleted ? `Vendor payment ${number} deleted` : `Vendor payment ${number} voided`,
+    baseDecisions:
+      !revoked && payment.status === 'cleared' && !journal.numbers.has(base)
+        ? [
+            {
+              entryNumber: base,
+              memo: `Vendor payment ${number} cleared — bill ${payment.billRef}`,
+              lines: expected,
+              sourceModule: event.record.moduleId,
+              sourceRef: event.record.id,
+            },
+          ]
+        : [],
+    expectedLines: expected,
+    journal,
+    sourceModule: event.record.moduleId,
+    sourceRef: event.record.id,
+  });
   await applyGlDerivedEntries(decisions, ctx);
 }
 
