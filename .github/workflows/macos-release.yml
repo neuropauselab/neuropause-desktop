@@ -39,6 +39,25 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
+      # A tag release must ship the version it claims: fail fast when the tag
+      # (e.g. v1.0.0-rc.14) does not equal apps/desktop/package.json "version".
+      # Tags are unique, so this also makes publishing the same app version
+      # twice impossible — the historical rc.2…rc.13 tags all shipped as
+      # "1.0.0-rc.1" because nothing enforced this.
+      - name: Verify tag matches package version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          node -e '
+            const v = require("./apps/desktop/package.json").version;
+            const tag = (process.env.GITHUB_REF_NAME || "").replace(/^v/, "");
+            if (tag !== v) {
+              console.error("Tag " + tag + " does not match package version " + v + " - bump both package.json versions before tagging.");
+              process.exit(1);
+            }
+            console.log("Tag matches package version " + v);
+          '
+
       - name: Install dependencies
         run: npm ci
 
@@ -111,6 +130,32 @@ jobs:
             root@64.227.128.218:/opt/neuropause-site/website/downloads/NeuroPause.dmg
           rm -f deploy_key
           echo "Installer published to https://neuropause033.com/downloads/NeuroPause.dmg"
+
+      # Auto-update feed (generic provider): copy the electron-updater feed and
+      # the update payloads to the droplet path served at
+      # https://neuropause033.com/updates/ — the URL baked into the app via
+      # electron-builder.yml `publish`. While every build is a pre-release the
+      # feed is emitted as beta-mac.yml; alias it to latest-mac.yml so the
+      # in-app "stable" channel resolves as well. Runs only when the deploy
+      # secret is present; the trailing curl proves the feed is actually
+      # reachable over HTTPS (fails the release if the server hides /updates/).
+      - name: Publish update feed to neuropause033.com
+        if: ${{ env.DEPLOY_SSH_KEY != '' && startsWith(github.ref, 'refs/tags/') }}
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        shell: bash
+        run: |
+          echo "$DEPLOY_SSH_KEY" > deploy_key
+          chmod 600 deploy_key
+          ssh -o StrictHostKeyChecking=no -i deploy_key root@64.227.128.218 \
+            "mkdir -p /opt/neuropause-site/website/updates"
+          scp -o StrictHostKeyChecking=no -i deploy_key \
+            apps/desktop/dist/beta*.yml apps/desktop/dist/*-mac.zip apps/desktop/dist/*.blockmap \
+            root@64.227.128.218:/opt/neuropause-site/website/updates/
+          ssh -o StrictHostKeyChecking=no -i deploy_key root@64.227.128.218 \
+            "cd /opt/neuropause-site/website/updates && cp -f beta-mac.yml latest-mac.yml"
+          rm -f deploy_key
+          curl -fsS https://neuropause033.com/updates/beta-mac.yml | head -n 3
 
       # Keep every build's output, tag or not, for inspection/download.
       - name: Upload build artifacts
