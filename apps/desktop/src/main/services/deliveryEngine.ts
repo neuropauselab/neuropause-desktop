@@ -96,6 +96,8 @@ export class DeliveryEngine {
     if (!prefs.enabled) return;
     const now = this.deps.now();
     for (const source of this.sources.values()) {
+      // Phase 6 Stage 5 — per-source mute (user preference; additive).
+      if (prefs.mutedSources?.includes(source.key)) continue;
       if (this.cadenceMatches(source, now, prefs)) {
         const stamp = `${source.key}@${this.minuteStamp(now)}`;
         if (this.lastFiredKeyMinute.get(source.key) === stamp) continue; // already fired this minute
@@ -151,7 +153,9 @@ export class DeliveryEngine {
     const delivered = items.filter((it) => this.shouldDeliver(it, prefs));
     // Highest-impact first so the most important notification surfaces last-in/most-recent.
     delivered.sort((a, b) => scoreImpact(a.impact) - scoreImpact(b.impact));
-    for (const it of delivered) await this.deliver(it);
+    // Phase 6 Stage 5 — stamp the source key so channels (e.g. the Notification
+    // Inbox) know which source an item was delivered under.
+    for (const it of delivered) await this.deliver({ ...it, sourceKey: source.key });
     log.info('Source fired', {
       key: source.key,
       produced: items.length,
@@ -186,5 +190,21 @@ export class DeliveryEngine {
   /** For tests/inspection. */
   listSources(): string[] {
     return [...this.sources.keys()];
+  }
+
+  /**
+   * Phase 6 Stage 5 — deliver an EVENT-DRIVEN item immediately through the SAME
+   * gates a scheduled item passes (enabled, per-source mute, priority threshold,
+   * DND with critical bypass) and the same channels. Used by the notification
+   * subsystem's bus-driven sources (approval-needed, workflow-complete,
+   * connector-failed, meeting-soon, …). Returns true when it was delivered.
+   */
+  async deliverNow(sourceKey: string, item: IntelligenceItem): Promise<boolean> {
+    const prefs = this.deps.getPreferences();
+    if (!prefs.enabled) return false;
+    if (prefs.mutedSources?.includes(sourceKey)) return false;
+    if (!this.shouldDeliver(item, prefs)) return false;
+    await this.deliver({ ...item, sourceKey });
+    return true;
   }
 }

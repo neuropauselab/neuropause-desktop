@@ -185,10 +185,18 @@ export class MarketplaceStore extends EventEmitter {
   allVersions(): ListingVersion[] {
     return [...this.versions.values()];
   }
+  /**
+   * The detail view of a listing already in hand. `detail(id)` is the lookup form and
+   * must admit `null` for an id that names nothing; this form cannot fail, so a caller
+   * holding a listing it just created does not have to handle an impossible miss.
+   */
+  detailFor(listing: MarketplaceListing): ListingDetail {
+    return { listing, versions: [...this.versions.values()].filter((v) => v.listingId === listing.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) };
+  }
   detail(id: string): ListingDetail | null {
     const listing = this.listings.get(id);
     if (!listing) return null;
-    return { listing, versions: [...this.versions.values()].filter((v) => v.listingId === id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) };
+    return this.detailFor(listing);
   }
   eventsFor(listingId: string, limit = 50): SubmissionEvent[] {
     return this.events.filter((e) => e.listingId === listingId).slice(-limit).reverse();

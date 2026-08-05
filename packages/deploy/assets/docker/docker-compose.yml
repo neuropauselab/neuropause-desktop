@@ -1,0 +1,81 @@
+# NeuroPause NEMS — development docker-compose.
+# Brings up the full local stack: PostgreSQL, Redis, Qdrant, Ollama, Nginx, API, and Workers.
+# Represents a real local topology; no production data.
+name: nems-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: nems
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
+      POSTGRES_DB: nems
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nems"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports: ["6379:6379"]
+    volumes: ["redisdata:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports: ["6333:6333"]
+    volumes: ["qdrantdata:/qdrant/storage"]
+
+  ollama:
+    image: ollama/ollama:latest
+    ports: ["11434:11434"]
+    volumes: ["ollamadata:/root/.ollama"]
+
+  api:
+    build:
+      context: ../../../..
+      dockerfile: packages/deploy/assets/docker/Dockerfile
+      target: development
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgres://nems:${POSTGRES_PASSWORD:-devpassword}@postgres:5432/nems
+      REDIS_URL: redis://redis:6379
+      QDRANT_URL: http://qdrant:6333
+      OLLAMA_URL: http://ollama:11434
+    ports: ["8080:8080", "9229:9229"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  workers:
+    build:
+      context: ../../../..
+      dockerfile: packages/deploy/assets/docker/Dockerfile
+      target: worker
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgres://nems:${POSTGRES_PASSWORD:-devpassword}@postgres:5432/nems
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports: ["80:80"]
+    volumes: ["../network/nginx.conf:/etc/nginx/nginx.conf:ro"]
+    depends_on: [api]
+
+volumes:
+  pgdata:
+  redisdata:
+  qdrantdata:
+  ollamadata:

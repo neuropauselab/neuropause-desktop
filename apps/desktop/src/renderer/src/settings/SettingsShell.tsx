@@ -16,6 +16,7 @@ import { Button } from '@renderer/components/ui/Button';
 import { Icon } from '@renderer/components/ui/Icon';
 import { Avatar, Toggle } from '@renderer/components/ui/controls';
 import { SegmentedTabs, type SegmentedTabItem } from '@renderer/components/ui/pillTabs';
+import { AiSettingsPanel } from './AiSettingsPanel';
 import { initials } from '@renderer/lib/format';
 import { useTheme } from '@renderer/providers/ThemeProvider';
 import { useScale } from '@renderer/state/ScaleProvider';
@@ -312,7 +313,7 @@ function DomainContent({ domain, session, go }: { domain: SettingsDomainId; sess
           <DomainHeader id="ai" />
           <Group title="Model & provider">
             <Card className="py-1.5">
-              <ManagedRow label="AI provider & model" value="Deployment-managed" source="Provider, model routing, reasoning tier and token limits are set by the deployment environment and platform AI runtime." />
+              <AiSettingsPanel />
               <Divider />
               <ManagedRow label="Automatic execution" value="Governance-controlled" source="Auto-execution is derived from governance approval policies." />
             </Card>

@@ -87,8 +87,12 @@ export const slackChannelStub: DeliveryChannel = {
 };
 
 // ── Mission Brief as an intelligence source (reuses generateBriefing) ─────────
-/** Builds today's brief exactly as initDailyIntelligence does, then adapts to an item. */
-function buildMissionBriefItem(period: 'morning' | 'evening'): IntelligenceItem[] {
+/** Builds today's brief exactly as initDailyIntelligence does, then adapts to an item.
+ *  Phase 6 Stage 5: extended additively to the afternoon/weekly/monthly periods
+ *  (same generator, same honesty — an empty brief produces nothing). */
+function buildMissionBriefItem(
+  period: 'morning' | 'afternoon' | 'evening' | 'weekly' | 'monthly',
+): IntelligenceItem[] {
   const now = new Date().toISOString();
   const entities = unifiedStore.query({ limit: 1_000_000, includeDeleted: false }).items;
   const tl = getEnterpriseTimeline();
@@ -101,28 +105,49 @@ function buildMissionBriefItem(period: 'morning' | 'evening'): IntelligenceItem[
     : 0;
   if (sectionCount === 0) return [];
 
-  const label = period === 'morning' ? 'Mission Brief' : 'Evening Summary';
+  const LABEL: Record<typeof period, string> = {
+    morning: 'Mission Brief',
+    afternoon: 'Afternoon Update',
+    evening: 'Evening Summary',
+    weekly: 'Weekly Brief',
+    monthly: 'Monthly Executive Summary',
+  };
+  const BODY: Record<typeof period, string> = {
+    morning: 'Your priorities for today are ready.',
+    afternoon: 'Your mid-day check-in is ready.',
+    evening: "Here's what moved today and what's still open.",
+    weekly: 'Your weekly brief is ready.',
+    monthly: 'Your monthly executive summary is ready.',
+  };
   return [
     {
       id: `mission-brief:${period}`,
-      title: `${label} — ${sectionCount} update${sectionCount === 1 ? '' : 's'}`,
-      body:
-        period === 'morning'
-          ? 'Your priorities for today are ready.'
-          : "Here's what moved today and what's still open.",
+      title: `${LABEL[period]} — ${sectionCount} update${sectionCount === 1 ? '' : 's'}`,
+      body: BODY[period],
       priority: 'high',
       impact: { business: 0.6, urgency: period === 'morning' ? 0.7 : 0.4, confidence: 0.9 },
-      deepLink: 'enterprise/briefings',
+      deepLink: period === 'morning' || period === 'evening' ? 'enterprise/briefings' : 'hub',
       producedAt: now,
     },
   ];
 }
 
 // ── The engine singleton ──────────────────────────────────────────────────────
+/** The live channel list. Phase 6 Stage 5: mutable so the Notification Inbox can
+ *  register itself as the (always-typed, now real) `notification-center` channel. */
+const deliveryChannels: DeliveryChannel[] = [desktopChannel, emailChannelStub, slackChannelStub];
+
+/** Register an additional delivery channel (idempotent by key). Additive. */
+export function registerDeliveryChannel(channel: DeliveryChannel): void {
+  const idx = deliveryChannels.findIndex((c) => c.key === channel.key);
+  if (idx >= 0) deliveryChannels[idx] = channel;
+  else deliveryChannels.push(channel);
+}
+
 export const deliveryEngine = new DeliveryEngine({
   now: () => new Date(),
   scheduler: taskScheduler,
-  channels: [desktopChannel, emailChannelStub, slackChannelStub],
+  channels: deliveryChannels,
   getPreferences: getPreferencesSync,
 });
 
@@ -131,9 +156,13 @@ export const deliveryEngine = new DeliveryEngine({
  * morning + evening today; Founder AI / Engineering alerts register here later),
  * and start the engine. Call once at boot.
  */
-export async function initExecutiveDelivery(): Promise<void> {
-  const prefs = await loadDeliveryPreferences();
-
+/**
+ * (Re)register every cadence-scheduled source from the CURRENT preferences.
+ * Idempotent (register replaces by key), so the notification preferences IPC
+ * (Phase 6 Stage 5) calls this after a save and new times take effect live —
+ * no restart needed.
+ */
+export function reregisterScheduledSources(prefs: DeliveryPreferences): void {
   const morningBrief: IntelligenceSource = {
     key: 'mission-brief-morning',
     label: 'Morning Mission Brief',
@@ -146,15 +175,43 @@ export async function initExecutiveDelivery(): Promise<void> {
     cadence: { kind: 'daily', atMinutes: prefs.eveningSummaryMinutes },
     produce: () => buildMissionBriefItem('evening'),
   };
+  // Phase 6 Stage 5 — the remaining Daily Intelligence cadences (5.2), reusing
+  // the SAME generator. Default afternoon slot 13:30 when unset.
+  const afternoonUpdate: IntelligenceSource = {
+    key: 'work-afternoon',
+    label: 'Afternoon Update',
+    cadence: { kind: 'daily', atMinutes: prefs.afternoonUpdateMinutes ?? 13 * 60 + 30 },
+    produce: () => buildMissionBriefItem('afternoon'),
+  };
+  const weeklyBrief: IntelligenceSource = {
+    key: 'work-weekly',
+    label: 'Weekly Brief',
+    cadence: { kind: 'weekly', dayOfWeek: prefs.weeklyReportDay, atMinutes: prefs.morningBriefMinutes },
+    produce: () => buildMissionBriefItem('weekly'),
+  };
+  const monthlySummary: IntelligenceSource = {
+    key: 'work-monthly',
+    label: 'Monthly Executive Summary',
+    cadence: { kind: 'monthly', dayOfMonth: 1, atMinutes: prefs.morningBriefMinutes },
+    produce: () => buildMissionBriefItem('monthly'),
+  };
 
   deliveryEngine.register(morningBrief);
   deliveryEngine.register(eveningSummary);
+  deliveryEngine.register(afternoonUpdate);
+  deliveryEngine.register(weeklyBrief);
+  deliveryEngine.register(monthlySummary);
   // V2.2: Founder AI proactive recommendations — same engine, distinct source.
   // Fires with the morning brief; produces evidence-backed findings as items.
   deliveryEngine.register(founderProactiveSource(prefs.morningBriefMinutes));
   // V2.3: Organization Intelligence — computes org-health and emits governance-
   // complete findings (license, connectors, adoption, inactivity, engineering).
   deliveryEngine.register(orgIntelligenceSource(prefs.morningBriefMinutes));
+}
+
+export async function initExecutiveDelivery(): Promise<void> {
+  const prefs = await loadDeliveryPreferences();
+  reregisterScheduledSources(prefs);
   deliveryEngine.start();
   log.info('Executive delivery initialized', { sources: deliveryEngine.listSources() });
 }

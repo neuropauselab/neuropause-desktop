@@ -1,0 +1,24 @@
+{
+  "name": "@neuropause/execution",
+  "version": "0.0.0-preview.1",
+  "private": true,
+  "description": "NeuroPause Enterprise Management System — Wave 5 Enterprise Execution & Universal Connector Platform. Composes the existing platform (runtime audit chain + event bus, security envelope-encryption vault, integrations transport/OAuth/reliability/webhooks/observability, connectors registry, ai-runtime, connectivity, automation HITL) into a production execution platform: a universal connector runtime (22 connector descriptors), a connector execution engine (policy → HITL/approval → rate limit → circuit breaker → retry/backoff/timeout → transport → observe → govern → evidence), an OAuth lifecycle manager, a secret rotation platform, credential vault extensions, connector health monitoring, a retry/recovery engine with dead-letter queues, a rate limiter, a webhook runtime (real HMAC verification/dedup/DLQ/replay), an event streaming platform, a universal API gateway, connector observability, enterprise policy enforcement, external execution governance, analytics, and production dashboards. The execution pipeline is live-verified over REAL HTTP against a local server (a real execution occurs); the 22 SaaS connectors are adapter-verified with live execution infra-pending on operator OAuth — no external SaaS execution is claimed unless it actually occurred. Everything tenant-aware, replayable, observable, policy-enforced; automation never bypasses governance. No ERP/CRM/procurement/finance/HR/autonomous-agents/cloud-federation — later waves.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run" },
+  "dependencies": {
+    "@neuropause/runtime": "*",
+    "@neuropause/cloud-core": "*",
+    "@neuropause/shared-cloud": "*",
+    "@neuropause/security": "*",
+    "@neuropause/persistence": "*",
+    "@neuropause/connectors": "*",
+    "@neuropause/integrations": "*",
+    "@neuropause/ai-runtime": "*",
+    "@neuropause/nems": "*",
+    "@neuropause/connectivity": "*",
+    "@neuropause/automation": "*"
+  },
+  "devDependencies": { "typescript": "^5.9.3", "vitest": "^1.6.1" }
+}

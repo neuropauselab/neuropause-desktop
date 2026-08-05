@@ -33,6 +33,7 @@ import {
   M365ActionExecuteRequest,
   M365DraftRequest,
 } from '@neuropause/shared';
+import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { connectorService } from './connectorService';
@@ -55,7 +56,7 @@ const OAUTH_TIMEOUT_MS = 6 * 60 * 1000;
 const SYNC_TIMEOUT_MS = 2 * 60 * 1000;
 
 export interface ConnectorSubsystemDeps {
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: IpcBroadcaster;
   publish: (event: PlatformEventInput) => void;
 }
 

@@ -15,7 +15,7 @@ import type { SecureHandlerDef } from '../../ipc/secureBridge';
 import { createLogger } from '../../logger';
 import { tenancyStore } from '../tenancy/tenancyInstance';
 import { apiPlatformStore } from '../apiplatform/apiPlatformInstance';
-import { syncStore } from '../sync/syncInstance';
+import { liveSync, onLiveSyncStatus } from '../livesync/liveSyncInstance';
 import { federationStore } from '../identity/federationInstance';
 import { gatewayStore } from '../../ecosystem/gateway/gatewayInstance';
 import { workerRegistry } from '../../workforce/registry/registryInstance';
@@ -49,7 +49,7 @@ function readState(): ControlPlaneState {
     tenantSummary: tenancyStore.summary(),
     deployments: apiPlatformStore.listDeployments(),
     apiSummary: apiPlatformStore.summary(requests30d),
-    syncSummary: syncStore.summary(),
+    liveSync: liveSync.getStatus(),
     identitySummary: federationStore.summary(),
     federationSummary: fedStore.summary(),
     drSummary: drStore.summary(),
@@ -57,7 +57,7 @@ function readState(): ControlPlaneState {
     organizations: orgStore.listOrganizations().length,
     workers: workerRegistry.summaries().length,
     requests30d,
-    syncOps30d: syncStore.states_().reduce((n, s) => n + s.localVersion, 0),
+    syncOps30d: liveSync.getStatus().cursor,
     monthlySpend,
     currency: 'USD',
   };
@@ -73,7 +73,7 @@ export function initControlPlane(): ControlPlaneSubsystem {
   // org count) goes stale — the memo invalidates on any backing-store change.
   tenancyStore.on('changed', invalidate);
   apiPlatformStore.on('changed', invalidate);
-  syncStore.on('changed', invalidate);
+  const offLiveSync = onLiveSyncStatus(invalidate);
   federationStore.on('changed', invalidate);
   fedStore.on('changed', invalidate);
   drStore.on('changed', invalidate);
@@ -95,7 +95,7 @@ export function initControlPlane(): ControlPlaneSubsystem {
   const dispose = (): void => {
     tenancyStore.off('changed', invalidate);
     apiPlatformStore.off('changed', invalidate);
-    syncStore.off('changed', invalidate);
+    offLiveSync();
     federationStore.off('changed', invalidate);
     fedStore.off('changed', invalidate);
     drStore.off('changed', invalidate);

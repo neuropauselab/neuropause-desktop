@@ -46,15 +46,9 @@ export const CLOUD_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpris
   [IpcChannel.CloudMfa]: READ,
   [IpcChannel.CloudSetMfa]: MANAGE,
 
-  /* ── Cloud synchronization ── */
-  [IpcChannel.CloudSyncStates]: READ,
-  [IpcChannel.CloudSyncSummary]: READ,
-  [IpcChannel.CloudSyncConflicts]: READ,
-  [IpcChannel.CloudSyncDomain]: MANAGE,
-  [IpcChannel.CloudSyncAll]: MANAGE,
-  [IpcChannel.CloudSyncSetOnline]: MANAGE,
-  [IpcChannel.CloudSyncRecordChange]: MANAGE,
+  /* ── Cloud synchronization (real live-sync engine) ── */
   [IpcChannel.LiveSyncStatus]: READ,
+  [IpcChannel.LiveSyncDetail]: READ,
   [IpcChannel.LiveSyncNow]: MANAGE,
   [IpcChannel.LiveSyncSetOnline]: MANAGE,
   [IpcChannel.LiveSyncSetActiveOrg]: MANAGE,

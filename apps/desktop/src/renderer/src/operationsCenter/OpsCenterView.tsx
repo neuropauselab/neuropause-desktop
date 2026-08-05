@@ -9,6 +9,8 @@ import { HealthPanel, HomePanel, IntelligencePanel } from './panels/DashboardPan
 import { CapacityPanel, IncidentPanel, RecommendationPanel, RiskPanel } from './panels/CenterPanels';
 import { ChangeImpactPanel, DependencyPanel, GraphPanel, RootCausePanel } from './panels/ExplorerPanels';
 import { DiagnosticsPanel, SearchPanel, TimelinePanel } from './panels/SystemPanels';
+// Phase 6 Stage 9 — the Enterprise Operations Platform tab (read-only eops:* composition).
+import { EopsPlatformTab } from '../operationsPlatform/EopsPlatformTab';
 
 /** The Operations Center, mounted with its live intelligence provider. */
 export function OpsCenterRoot(): JSX.Element {
@@ -41,6 +43,8 @@ function OpsCenterInner(): JSX.Element {
       { id: 'timeline', label: 'Timeline', icon: 'clock' },
       { id: 'search', label: 'Search', icon: 'filter' },
       { id: 'diagnostics', label: 'Diagnostics', icon: 'activity' },
+      // Phase 6 Stage 9 — services · SLA · readiness · incidents · continuity.
+      { id: 'platform', label: 'Platform', icon: 'server' },
     ];
   }, [report]);
 
@@ -98,6 +102,9 @@ function OpsCenterInner(): JSX.Element {
             {tab === 'diagnostics' && <DiagnosticsPanel report={report} nowMs={nowMs} />}
           </>
         )}
+        {/* Phase 6 Stage 9 — the Platform tab loads its own eops:* reads and
+            renders even when the P7 report is unavailable (honest isolation). */}
+        {tab === 'platform' && <EopsPlatformTab />}
       </div>
     </div>
   );

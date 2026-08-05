@@ -262,7 +262,7 @@ export function ConnectorDetail({
               </div>
             ))}
           </div>
-          <p className="mt-2 text-2xs text-faint">All scopes are read-only — NeuroPause reads to build your timeline and memory, never writes.</p>
+          <p className="mt-2 text-2xs text-faint">NeuroPause requests least-privilege scopes — read-oriented, to build your timeline and memory. Where a connector also grants write access (for example Microsoft mail and calendar), it is used only for actions you explicitly take.</p>
         </section>
 
         {/* Microsoft Entra — connector-specific live directory/permissions/tokens */}

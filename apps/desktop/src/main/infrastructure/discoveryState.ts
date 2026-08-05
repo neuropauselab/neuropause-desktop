@@ -66,7 +66,17 @@ function defaultState(platformId: string, accountId: string): AccountDiscoverySt
   };
 }
 
-export class DiscoveryStateStore extends EventEmitter implements DiscoveryStatePort {
+/** Which account's discovery state was just written. */
+export interface DiscoveryChangedEvent {
+  platformId: string;
+  accountId: string;
+}
+
+/** A7 — `changed` carries a checked payload; see the note on `ResourceStore`. */
+export class DiscoveryStateStore
+  extends EventEmitter<{ changed: [DiscoveryChangedEvent] }>
+  implements DiscoveryStatePort
+{
   private states = new Map<string, AccountDiscoveryState>();
   private loaded = false;
 

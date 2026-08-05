@@ -25,12 +25,14 @@ import {
   RecoveryRunRequest,
 } from '@neuropause/shared';
 import type {
+  BackupInfo,
   DiagnosticsReport,
   InstalledModule,
   MigrationReport,
   MigrationStatus,
   SafeModeState,
 } from '@neuropause/shared';
+import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { getBuildInfo } from '../buildInfo';
@@ -58,7 +60,7 @@ const SCHEDULED_BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const SCHEDULED_BACKUP_KEEP = 10;
 
 export interface ReleaseOpsDeps {
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: IpcBroadcaster;
   /** The platform's authoritative component/database/connector health report. */
   platformDiagnostics: () => Promise<DiagnosticsReport>;
   rebuildGraph: () => void;
@@ -69,6 +71,13 @@ export interface ReleaseOps {
   handlers: SecureHandlerDef[];
   safeModeState: () => Promise<SafeModeState>;
   runStartupMigrations: () => Promise<void>;
+  /**
+   * Phase 6 Stage 9 — a READ-ONLY accessor over the local backup manager's
+   * list, for the Operations Platform's continuity composition. Additive and
+   * side-effect-free: no channel, no mutation, no new state — the same list
+   * the existing recovery IPC already serves.
+   */
+  listBackups: () => Promise<BackupInfo[]>;
   dispose: () => void;
 }
 
@@ -344,6 +353,7 @@ export async function initReleaseOps(deps: ReleaseOpsDeps): Promise<ReleaseOps> 
     handlers,
     safeModeState: () => recovery.safeModeState(),
     runStartupMigrations,
+    listBackups: () => backup.list(),
     dispose: () => clearInterval(timer),
   };
 }

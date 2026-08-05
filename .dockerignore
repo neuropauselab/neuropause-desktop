@@ -20,3 +20,19 @@ coverage
 # Editor / OS
 .vscode
 .idea
+# Local database bind-mounts written by docker-compose (see docker-compose.yml
+# lines 16/31/47). Measured at 130.67 MiB / 1,651 files on 2026-07-29 -- 86% of
+# the build context. Nothing here can enter the image, since the backend
+# Dockerfile copies only the two manifests plus packages/ and apps/, but
+# BuildKit still streams every byte to the daemon and may read heap pages that
+# a running postgres is concurrently writing.
+.docker-data
+
+# Local archive artifacts (snapshots, npm pack output, exports). Root-anchored
+# by docker's pattern rules, so nothing under packages/ or apps/ is affected.
+*.tgz
+*.tar
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.zip

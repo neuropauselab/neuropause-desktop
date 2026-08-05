@@ -37,7 +37,7 @@ export interface AiEngineOptions {
 const DEFAULT_MAX_OUTPUT = 1024;
 
 export class AiEngine {
-  private readonly router: ModelRouter;
+  private router: ModelRouter;
   private readonly prompts: PromptManager;
   readonly audit: AiAuditLog;
   readonly usage: UsageTracker;
@@ -59,6 +59,16 @@ export class AiEngine {
     return this.router.isConfigured();
   }
 
+  /**
+   * Swap the active router in place (runtime reconfiguration). The engine instance,
+   * and with it the shared audit log and usage/cost tracking, is preserved — only
+   * the provider/model routing changes. In-flight run() calls already resolved
+   * their client, so a swap never disturbs a request already under way.
+   */
+  setRouter(router: ModelRouter): void {
+    this.router = router;
+  }
+
   async run(req: AiEngineRequest): Promise<AiEngineResponse> {
     const started = Date.now();
     const rendered = this.prompts.render(req.promptId, {
@@ -72,7 +82,7 @@ export class AiEngine {
     // No configured model → deterministic fallback (keeps the app working).
     if (!client.isConfigured()) {
       const resp = this.fallback(req, rendered.version, contextSources, contextEvidence, started);
-      this.writeAudit(resp, 'fallback');
+      this.writeAudit(resp, 'fallback', undefined, req.correlationId);
       return resp;
     }
 
@@ -108,13 +118,13 @@ export class AiEngine {
         outputTokens: result.outputTokens,
         costUsd,
       });
-      this.writeAudit(resp, 'ok');
+      this.writeAudit(resp, 'ok', undefined, req.correlationId);
       return resp;
     } catch (err) {
       const reason = err instanceof Error ? err.message : 'unknown error';
       this.log('ai.run.error', { worker: req.worker, promptId: req.promptId });
       const resp = this.fallback(req, rendered.version, contextSources, contextEvidence, started);
-      this.writeAudit(resp, 'error', reason);
+      this.writeAudit(resp, 'error', reason, req.correlationId);
       return resp;
     }
   }
@@ -147,7 +157,13 @@ export class AiEngine {
     };
   }
 
-  private writeAudit(resp: AiEngineResponse, outcome: AiAuditRecord['outcome'], error?: string): void {
+  private writeAudit(
+    resp: AiEngineResponse,
+    outcome: AiAuditRecord['outcome'],
+    error?: string,
+    // Phase 6 Stage 4 — the caller's end-to-end trace id (e.g. an assistant turn).
+    correlationId?: string,
+  ): void {
     const rec: AiAuditRecord = {
       id: this.newId(),
       timestamp: this.now(),
@@ -164,6 +180,7 @@ export class AiEngine {
       confidence: resp.confidence,
       outcome,
       ...(error ? { error } : {}),
+      ...(correlationId ? { correlationId } : {}),
     };
     this.audit.record(rec);
   }

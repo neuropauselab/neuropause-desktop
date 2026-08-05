@@ -1,0 +1,16 @@
+{
+  "note": "Storage adapters are represented; credentials come from the secrets manager. No bucket is created here.",
+  "objectStorage": {
+    "adapters": [
+      { "provider": "aws-s3", "evidence": "adapter-verified" },
+      { "provider": "azure-blob", "evidence": "adapter-verified" },
+      { "provider": "google-storage", "evidence": "adapter-verified" },
+      { "provider": "minio", "evidence": "adapter-verified" }
+    ],
+    "default": "minio"
+  },
+  "fileStorage": { "volume": "nems-files", "class": "nems-ssd" },
+  "cacheStorage": { "backend": "redis" },
+  "temporaryStorage": { "path": "/tmp/nems", "ttlMinutes": 60 },
+  "persistentStorage": { "claim": "nems-pg-pvc", "size": "50Gi" }
+}

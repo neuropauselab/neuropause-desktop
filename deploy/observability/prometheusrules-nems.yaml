@@ -1,0 +1,302 @@
+# NEMS Phase 5 — production alert rules.
+# ---------------------------------------------------------------------------
+# Every rule targets a metric that ACTUALLY exists in this deployment: the
+# backend's own /metrics, node-exporter, kube-state-metrics, cAdvisor, or the
+# blackbox probes. Each alert carries: severity, an explicit threshold (in the
+# expression and the `threshold` annotation), a runbook_url, and an owner.
+#
+# Thresholds are documented starting points, chosen conservatively; they should
+# be tuned once a few weeks of real baseline data exist (Prometheus retention is
+# 30d). Tuning a threshold is expected operations, not a defect.
+#
+# Deliberately NOT present (no backing metric — would be fabricated):
+#   * Queue-failure alerts — the backend runs no instrumented job queue.
+#   * OAuth-specific failure alerts — neuropause_http_requests_total has no route
+#     label, so OAuth 5xx cannot be isolated from other 5xx. The generic
+#     HighErrorRate alert covers auth-inclusive 5xx; an OAuth-specific alert
+#     needs a backend counter (see the observability README gaps section).
+# ---------------------------------------------------------------------------
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: nems-production-alerts
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: neuropause
+    release: kube-prometheus-stack
+spec:
+  groups:
+    # ----------------------------------------------------------------- backend
+    - name: nems-backend.availability
+      rules:
+        - alert: BackendNoHealthyReplicas
+          expr: kube_deployment_status_replicas_available{namespace="nems-prod",deployment="nems-backend"} == 0
+          for: 1m
+          labels: { severity: critical, owner: platform-oncall, service: nems-backend }
+          annotations:
+            summary: "nems-backend has zero available replicas"
+            description: "Deployment nems-backend in nems-prod reports 0 available replicas for >1m. The API is down."
+            threshold: "available replicas == 0 for 1m"
+            runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/backend-down.md"
+
+        - alert: BackendTargetDown
+          expr: up{job="nems-backend"} == 0
+          for: 3m
+          labels: { severity: critical, owner: platform-oncall, service: nems-backend }
+          annotations:
+            summary: "Prometheus cannot scrape nems-backend"
+            description: "The nems-backend metrics target has been down for >3m. Either the pods are gone or /metrics is unreachable; correlate with BackendNoHealthyReplicas."
+            threshold: "up == 0 for 3m"
+            runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/backend-down.md"
+
+        - alert: EdgeDown
+          expr: probe_success{tier="edge"} == 0
+          for: 2m
+          labels: { severity: critical, owner: platform-oncall, service: nems-backend }
+          annotations:
+            summary: "Public HTTPS endpoint {{ $labels.instance }} is failing"
+            description: "The external blackbox probe to {{ $labels.instance }} has failed for >2m. Users cannot reach the API through the Gateway."
+            threshold: "probe_success == 0 for 2m"
+            runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/gateway-failure.md"
+
+    - name: nems-backend.quality
+      rules:
+        - alert: HighErrorRate
+          expr: |
+            sum(rate(neuropause_http_requests_total{status=~"5.."}[5m]))
+              / clamp_min(sum(rate(neuropause_http_requests_total[5m])), 0.001) > 0.05
+          for: 10m
+          labels: { severity: warning, owner: platform-oncall, service: nems-backend }
+          annotations:
+            summary: "Backend 5xx error ratio above 5%"
+            description: "5xx responses are {{ $value | humanizePercentage }} of all requests over 5m."
+            threshold: "5xx ratio > 5% for 10m"
+            runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/backend-down.md"
+
+        - alert: HighErrorRateCritical
+          expr: |
+            sum(rate(neuropause_http_requests_total{status=~"5.."}[5m]))
+              / clamp_min(sum(rate(neuropause_http_requests_total[5m])), 0.001) > 0.15
+          for: 5m
+          labels: { severity: critical, owner: platform-oncall, service: nems-backend }
+          annotations:
+            summary: "Backend 5xx error ratio above 15%"
+            description: "5xx responses are {{ $value | humanizePercentage }} of all requests over 5m — sustained failure."
+            threshold: "5xx ratio > 15% for 5m"
+            runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/backend-down.md"
+
+        - alert: HighLatency
+          expr: avg_over_time(probe_duration_seconds{tier="edge"}[5m]) > 1
+          for: 10m
+          labels: { severity: warning, owner: platform-oncall, service: nems-backend }
+          annotations:
+            summary: "Edge HTTP latency high on {{ $labels.instance }}"
+            description: "In-cluster blackbox HTTP duration to {{ $labels.instance }} averages {{ $value }}s over 5m (Prometheus and the edge are both in nyc3, so this is near-zero-RTT server time)."
+            threshold: "avg probe_duration_seconds > 1s for 10m"
+            runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/high-latency.md"
+
+        - alert: HighLatencyCritical
+          expr: avg_over_time(probe_duration_seconds{tier="edge"}[5m]) > 3
+          for: 5m
+          labels: { severity: critical, owner: platform-oncall, service: nems-backend }
+          annotations:
+            summary: "Edge HTTP latency critically high on {{ $labels.instance }}"
+            description: "Blackbox HTTP duration to {{ $labels.instance }} averages {{ $value }}s over 5m."
+            threshold: "avg probe_duration_seconds > 3s for 5m"
+            runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/high-latency.md"
+
+    # ----------------------------------------------------------- resources/pods
+    - name: nems-backend.resources
+      rules:
+        - alert: BackendHighMemory
+          expr: |
+            max by (pod) (container_memory_working_set_bytes{namespace="nems-prod",container="backend"})
+              / on (pod) group_left
+              max by (pod) (kube_pod_container_resource_limits{namespace="nems-prod",container="backend",resource="memory"})
+              > 0.90
+          for: 10m
+          labels: { severity: warning, owner: platform-oncall, service: nems-backend }
+          annotations:
+            summary: "Backend pod {{ $labels.pod }} memory > 90% of limit"
+            description: "Working set is {{ $value | humanizePercentage }} of the 512Mi limit for >10m. Sustained growth toward the limit is the memory-leak signal; OOMKilled is the terminal one."
+            threshold: "working_set / mem limit > 90% for 10m"
+            runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/memory-exhaustion.md"
+
+        - alert: BackendOOMKilled
+          expr: kube_pod_container_status_last_terminated_reason{namespace="nems-prod",container="backend",reason="OOMKilled"} == 1
+          for: 1m
+          labels: { severity: critical, owner: platform-oncall, service: nems-backend }
+          annotations:
+            summary: "Backend pod {{ $labels.pod }} was OOMKilled"
+            description: "A backend container's last termination reason is OOMKilled. Memory limit (512Mi) was exceeded."
+            threshold: "last_terminated_reason == OOMKilled"
+            runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/memory-exhaustion.md"
+
+        - alert: BackendCPUSaturation
+          expr: |
+            sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="nems-prod",container="backend"}[5m]))
+              / on (pod) group_left
+              max by (pod) (kube_pod_container_resource_limits{namespace="nems-prod",container="backend",resource="cpu"})
+              > 0.90
+          for: 15m
+          labels: { severity: warning, owner: platform-oncall, service: nems-backend }
+          annotations:
+            summary: "Backend pod {{ $labels.pod }} CPU > 90% of limit"
+            description: "CPU usage is {{ $value | humanizePercentage }} of the 1-core limit for >15m; requests may be throttled."
+            threshold: "cpu usage / cpu limit > 90% for 15m"
+            runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/high-latency.md"
+
+        - alert: BackendCrashLooping
+          expr: kube_pod_container_status_waiting_reason{namespace="nems-prod",container="backend",reason="CrashLoopBackOff"} == 1
+          for: 5m
+          labels: { severity: critical, owner: platform-oncall, service: nems-backend }
+          annotations:
+            summary: "Backend pod {{ $labels.pod }} is CrashLoopBackOff"
+            description: "A backend container has been restarting in a crash loop for >5m."
+            threshold: "waiting_reason == CrashLoopBackOff for 5m"
+            runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/backend-down.md"
+
+    # ------------------------------------------------------------- dependencies
+    - name: nems.dependencies
+      rules:
+        - alert: DatabaseUnavailable
+          expr: increase(neuropause_health_alerts_total{component="database",state="down"}[10m]) > 0
+          for: 0m
+          labels: { severity: critical, owner: platform-oncall, service: postgresql }
+          annotations:
+            summary: "Backend reports PostgreSQL DOWN"
+            description: "The backend's edge-triggered health detector recorded a database up->down transition in the last 10m (nems-prod-pg unreachable from the app)."
+            threshold: "health_alerts{component=database,state=down} increase > 0"
+            runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/database-down.md"
+
+        - alert: DatabasePoolSaturated
+          expr: neuropause_pg_pool_connections{state="waiting"} > 0
+          for: 10m
+          labels: { severity: warning, owner: platform-oncall, service: postgresql }
+          annotations:
+            summary: "PostgreSQL pool has waiting acquisitions"
+            description: "{{ $value }} connection acquisitions are queued (pool max 10) for >10m; the app is connection-starved."
+            threshold: "pg_pool_connections{state=waiting} > 0 for 10m"
+            runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/database-down.md"
+
+        - alert: RedisUnavailable
+          expr: increase(neuropause_health_alerts_total{component="redis",state="down"}[10m]) > 0
+          for: 0m
+          labels: { severity: critical, owner: platform-oncall, service: valkey }
+          annotations:
+            summary: "Backend reports Redis/Valkey DOWN"
+            description: "The backend recorded a redis up->down transition in the last 10m (nems-prod-cache unreachable)."
+            threshold: "health_alerts{component=redis,state=down} increase > 0"
+            runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/redis-down.md"
+
+        - alert: RedisFallbackEngaged
+          expr: increase(neuropause_ratelimit_fallback_total[10m]) > 0
+          for: 0m
+          labels: { severity: warning, owner: platform-oncall, service: valkey }
+          annotations:
+            summary: "Rate-limit fallback engaged (Redis degraded)"
+            description: "Requests were served by the in-process rate-limit fallback in the last 10m, which only happens when Valkey is unavailable. Brute-force protection is now per-instance."
+            threshold: "ratelimit_fallback_total increase > 0"
+            runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/redis-down.md"
+
+    # ---------------------------------------------------------------- edge/cert
+    - name: nems.edge
+      rules:
+        - alert: CertificateExpiringSoon
+          expr: (min(probe_ssl_earliest_cert_expiry{tier="edge"}) - time()) < (21 * 24 * 3600)
+          for: 1h
+          labels: { severity: warning, owner: platform-oncall, service: tls }
+          annotations:
+            summary: "api.neuropause033.com TLS cert expires in < 21 days"
+            description: "Earliest cert expiry is {{ $value | humanizeDuration }} away. cert-manager renews at 30 days before expiry, so a fire means renewal is not completing."
+            threshold: "cert expiry - now < 21d"
+            runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/certificate-expiry.md"
+
+        - alert: CertificateExpiringCritical
+          expr: (min(probe_ssl_earliest_cert_expiry{tier="edge"}) - time()) < (7 * 24 * 3600)
+          for: 30m
+          labels: { severity: critical, owner: platform-oncall, service: tls }
+          annotations:
+            summary: "api.neuropause033.com TLS cert expires in < 7 days"
+            description: "Earliest cert expiry is {{ $value | humanizeDuration }} away and cert-manager has not renewed it."
+            threshold: "cert expiry - now < 7d"
+            runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/certificate-expiry.md"
+
+        - alert: DenylistLeak
+          expr: probe_success{tier="edge-denylist"} == 0
+          for: 5m
+          labels: { severity: warning, owner: platform-oncall, service: nems-backend }
+          annotations:
+            summary: "/metrics is no longer returning 404 at the edge"
+            description: "The default-deny probe expects /metrics to 404 from the Gateway. It is not — the public surface may have changed. Investigate the HTTPRoute."
+            threshold: "http_404 probe_success == 0 for 5m"
+            runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/gateway-failure.md"
+
+    # ------------------------------------------------------------- nodes/disk
+    - name: nems.nodes
+      rules:
+        - alert: NodeNotReady
+          expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+          for: 5m
+          labels: { severity: critical, owner: platform-oncall, service: kubernetes }
+          annotations:
+            summary: "Node {{ $labels.node }} is NotReady"
+            description: "Node {{ $labels.node }} has been NotReady for >5m."
+            threshold: "Ready condition != true for 5m"
+            runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/node-failure.md"
+
+        - alert: NodeDiskPressure
+          expr: kube_node_status_condition{condition="DiskPressure",status="true"} == 1
+          for: 5m
+          labels: { severity: critical, owner: platform-oncall, service: kubernetes }
+          annotations:
+            summary: "Node {{ $labels.node }} under DiskPressure"
+            description: "The kubelet reports DiskPressure on {{ $labels.node }} for >5m; pods may be evicted."
+            threshold: "DiskPressure condition == true for 5m"
+            runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/disk-full.md"
+
+        - alert: NodeFilesystemLow
+          expr: |
+            (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) < 0.15
+          for: 10m
+          labels: { severity: warning, owner: platform-oncall, service: kubernetes }
+          annotations:
+            summary: "Node {{ $labels.instance }} filesystem < 15% free"
+            description: "{{ $labels.mountpoint }} on {{ $labels.instance }} has {{ $value | humanizePercentage }} free for >10m."
+            threshold: "fs avail / size < 15% for 10m"
+            runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/disk-full.md"
+
+        - alert: PersistentVolumeFillingUp
+          expr: |
+            (kubelet_volume_stats_available_bytes / kubelet_volume_stats_capacity_bytes) < 0.15
+          for: 10m
+          labels: { severity: warning, owner: platform-oncall, service: kubernetes }
+          annotations:
+            summary: "PVC {{ $labels.persistentvolumeclaim }} < 15% free"
+            description: "PVC {{ $labels.persistentvolumeclaim }} in {{ $labels.namespace }} has {{ $value | humanizePercentage }} free (e.g. Prometheus/Grafana storage)."
+            threshold: "pvc avail / capacity < 15% for 10m"
+            runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/disk-full.md"
+
+        - alert: NodeCPUSaturation
+          expr: |
+            (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m]))) > 0.90
+          for: 15m
+          labels: { severity: warning, owner: platform-oncall, service: kubernetes }
+          annotations:
+            summary: "Node {{ $labels.instance }} CPU > 90%"
+            description: "Node-wide CPU utilisation is {{ $value | humanizePercentage }} for >15m."
+            threshold: "1 - idle rate > 90% for 15m"
+            runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/node-failure.md"
+
+    # ------------------------------------------------------- monitoring health
+    - name: nems.monitoring-meta
+      rules:
+        - alert: PrometheusTargetMissing
+          expr: up{job=~"nems-backend|blackbox.*"} == 0
+          for: 5m
+          labels: { severity: warning, owner: platform-oncall, service: monitoring }
+          annotations:
+            summary: "Monitoring target {{ $labels.job }} is down"
+            description: "A monitoring target has been down for >5m; alerts derived from it are blind. This alert is the watcher-of-the-watcher."
+            threshold: "up == 0 for 5m"
+            runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/backend-down.md"

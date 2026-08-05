@@ -16,6 +16,7 @@ import { QdrantVectorStore } from './semantic/qdrant/qdrantVectorStore';
 import { loadQdrantConfig } from './semantic/qdrant/qdrantConfig';
 import { createPgEmbeddingStateRepository } from './semantic/pipeline/embeddingStateRepository';
 import { createSemanticRouter } from './semantic/api/semanticRouter';
+import { createSemanticHealthRouter } from './semantic/api/semanticHealthRouter';
 import { createBackfillRouter } from './semantic/api/backfillRouter';
 import { createDevicesRouter } from './devices/router';
 import { createPgDeviceRepository } from './devices/repository';
@@ -170,6 +171,33 @@ export function createApp(): Express {
     '/memory/semantic',
     requireAuth,
     createBackfillRouter({ embeddingProvider, vectorStore, stateRepo: embeddingStateRepo, getMemberRole }),
+  );
+  // A6. `GET /memory/semantic/:orgId/health` — written and unit-tested in V8.2
+  // Part 2 but never mounted, so the one endpoint that can say *why* semantic
+  // retrieval is unavailable (embedder reachable? Qdrant reachable? how much of
+  // the org is actually embedded?) was unreachable in production. The desktop
+  // probe can see that its calls fail; only this can distinguish "nothing is
+  // indexed yet" from "the vector store is down". Every dependency it needs is
+  // already constructed above — no new infrastructure, just the missing edge.
+  //
+  // Rate-limited, unlike its two siblings above, because the health probe embeds
+  // a string on every call (`semanticHealthService.ts`'s `'health probe'`) — so
+  // each request is a billable upstream API call, which search and backfill also
+  // are but only in service of work the user asked for. Polling this route is
+  // free to the caller and metered to the operator. 30/min per IP is far above
+  // what a desktop poller or a human clicking "diagnose" needs, and it reuses the
+  // existing limiter (Redis-backed, with the in-process fallback from TD-3)
+  // rather than introducing a second throttling mechanism.
+  app.use(
+    '/memory/semantic',
+    requireAuth,
+    rateLimit({ bucket: 'semantic_health', windowSeconds: 60, max: 30 }),
+    createSemanticHealthRouter({
+      embeddingProvider,
+      vectorStore,
+      countEmbedded: (orgId) => embeddingStateRepo.countByOrg(orgId),
+      getMemberRole,
+    }),
   );
 
   app.use(notFoundHandler);

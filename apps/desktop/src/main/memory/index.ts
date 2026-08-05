@@ -45,6 +45,9 @@ import {
 import { unifiedStore } from '../unified/storeInstance';
 import { memoryStore } from './memoryInstance';
 import { handleSemanticRecall } from './semanticRecallHandler';
+import { createResilientSemanticSearch } from './resilientSemanticSearch';
+import { retrievalProbe } from '../platform/aiHealthProbes';
+import type { DiagnosticProbe } from '../platform/diagnostics';
 import { backendSemanticSearch } from '../backendsemantic/backendSemanticInstance';
 import { runMemoryBackfill } from './memoryBackfill';
 import { backendBackfill } from '../backendsemantic/backendBackfillInstance';
@@ -54,6 +57,7 @@ import { projectMemory } from './memoryProjector';
 import { projectBusinessMemory } from './businessMemoryProjector';
 import { getRelationshipModel } from '../enterprise/relationshipProvider';
 import type { PlatformEventType } from '@neuropause/shared';
+import type { IpcBroadcaster } from '@neuropause/shared';
 
 const log = createLogger('memory');
 
@@ -68,7 +72,7 @@ const MEMORY_REBUILD_EVENTS: readonly PlatformEventType[] = [
 ];
 
 export interface MemorySubsystemDeps {
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: IpcBroadcaster;
   /** P2.5 — subscribe to platform events so ERP changes re-project business memory. */
   on?: (types: readonly PlatformEventType[], handler: () => void) => void;
 }
@@ -77,6 +81,8 @@ export interface MemorySubsystem {
   handlers: SecureHandlerDef[];
   /** Re-index organizational memory on demand (Recovery Center). */
   rebuild: () => void;
+  /** A6 — semantic retrieval health for the existing diagnostics report. */
+  probe: DiagnosticProbe;
   dispose: () => void;
 }
 
@@ -85,7 +91,29 @@ export async function initMemory(deps: MemorySubsystemDeps): Promise<MemorySubsy
   await memoryAuditLog.load();
 
   // V8.2: wire the backend semantic source so recallSemantic can blend vector hits.
-  memoryStore.configureSemantic(backendSemanticSearch);
+  // A6: through the resilient decorator, which adds a deadline (the raw client had
+  // none, so a black-holed connection stalled recall until the 30 s IPC timeout at
+  // `secureBridge.ts:26`), a breaker (MemoryView debounces at 200 ms, so a dead
+  // backend was otherwise re-dialled on every keystroke), and classification. The
+  // decorated function has the same `SemanticSearchFn` shape, so nothing downstream
+  // changes — `configureSemantic` is still the one injection seam.
+  const semantic = createResilientSemanticSearch(backendSemanticSearch, {
+    // The store now absorbs semantic failures to serve a degraded answer, so this
+    // is the only remaining place a failure can be recorded in the logs. Skips are
+    // deliberately not logged: they are by design, and the probe reports them.
+    // Failures are self-limiting — after three the breaker suspends the leg.
+    onOutcome: (outcome) => {
+      if (outcome.state !== 'failed') return;
+      log.warn('semantic retrieval failed; recall degraded to lexical', {
+        kind: outcome.kind,
+        code: outcome.code,
+        retryable: outcome.retryable,
+        latencyMs: outcome.latencyMs,
+        detail: outcome.detail,
+      });
+    },
+  });
+  memoryStore.configureSemantic(semantic.search);
 
   const rebuild = (): void => {
     const now = new Date().toISOString();
@@ -152,8 +180,17 @@ export async function initMemory(deps: MemorySubsystemDeps): Promise<MemorySubsy
             recallSemantic: (query, orgId) => memoryStore.recallSemantic(query, orgId),
             recall: (query) => memoryStore.recall(query),
             getOrgId: () => runtimeIdentity.getCurrent()?.organizationId,
+            // A6 raised this from `warn` to `error`. Pre-A6 it fired for every
+            // backend hiccup, so `warn` was right — the noise was expected. Now
+            // `recallSemantic` absorbs and labels every retrieval failure itself
+            // (and the decorator above logs those), so anything that still
+            // escapes to this backstop came from ranking or the store: a defect,
+            // not a degradation, and it should not sit at the same level as a
+            // transient 503.
             onSemanticError: (err) =>
-              log.warn('semantic recall failed; using lexical', { error: String(err) }),
+              log.error('semantic recall threw past its own degradation path', {
+                error: String(err),
+              }),
           },
           p as TMemoryRecallRequest,
         ),
@@ -238,6 +275,10 @@ export async function initMemory(deps: MemorySubsystemDeps): Promise<MemorySubsy
   return {
     handlers,
     rebuild,
+    // A6 — the tracker inside the decorator is the only live account of the
+    // semantic leg's health, so the probe reads it directly rather than any
+    // subsystem re-deriving one from logs.
+    probe: retrievalProbe(semantic.health),
     dispose: () => {
       unifiedStore.off('changed', scheduleRebuild);
       memoryStore.off('changed', onChanged);

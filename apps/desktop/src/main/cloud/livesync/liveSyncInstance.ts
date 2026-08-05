@@ -12,6 +12,7 @@ import { app } from 'electron';
 import { createLogger } from '../../logger';
 import { createHttpSyncTransport } from './transport';
 import { createLiveSyncService, type LiveSyncService } from './liveSyncService';
+import type { SyncStatus } from './types';
 import { authService } from '../../auth/authService';
 import { runtimeIdentity } from '../../runtimeIdentity';
 import { memoryStore } from '../../memory/memoryInstance';
@@ -88,6 +89,16 @@ authService.on('statusChanged', refreshRuntimeIdentity);
 // outgoing enqueue listener.
 const memorySyncGuard = createMemorySyncGuard();
 
+// Status fan-out: subsystems (cloud broadcast, control-plane memo invalidation)
+// subscribe here instead of polling. Listeners must never throw into the engine.
+const statusListeners = new Set<(status: SyncStatus) => void>();
+
+/** Subscribe to live-sync status changes. Returns the unsubscribe function. */
+export function onLiveSyncStatus(listener: (status: SyncStatus) => void): () => void {
+  statusListeners.add(listener);
+  return () => statusListeners.delete(listener);
+}
+
 /** The live sync service singleton, backed by userData. */
 export const liveSync: LiveSyncService = createLiveSyncService({
   deviceId: loadOrCreateDeviceId(),
@@ -95,6 +106,15 @@ export const liveSync: LiveSyncService = createLiveSyncService({
   mirrorFilePath: join(app.getPath('userData'), 'livesync-mirror.json'),
   transport: createHttpSyncTransport(),
   getActiveOrgId: () => activeOrgId,
+  onStatus: (status) => {
+    for (const listener of statusListeners) {
+      try {
+        listener(status);
+      } catch (err) {
+        log.warn('Live-sync status listener failed', { error: String(err) });
+      }
+    }
+  },
   // AI Memory reconciles via its own append-only merge, not the LWW mirror.
   entityAppliers: {
     memory: (change) => applyMemoryChange(memoryStore, memorySyncGuard, change),

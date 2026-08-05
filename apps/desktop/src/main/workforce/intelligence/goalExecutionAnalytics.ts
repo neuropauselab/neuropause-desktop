@@ -7,27 +7,19 @@
  * caller passes jobStore.page(...).jobs. Does not duplicate workerPerformance
  * (per-worker) or workforceHealth (registry health) — this is the per-skill/role cut.
  */
-import type { Job, JobStatus } from '@neuropause/shared';
+import type {
+  ExecutionStat,
+  GoalExecutionAnalytics,
+  Job,
+  JobStatus,
+} from '@neuropause/shared';
 
-export interface ExecutionStat {
-  /** The grouping key value (a skillId or a workerRole). */
-  key: string;
-  total: number;
-  succeeded: number;
-  failed: number;
-  cancelled: number;
-  inFlight: number;
-  /** succeeded / (succeeded + failed); 0 when none decided. */
-  successRate: number;
-  avgDurationMs: number | null;
-  ungroundedRate: number;
-}
-
-export interface GoalExecutionAnalytics {
-  bySkill: ExecutionStat[];
-  byRole: ExecutionStat[];
-  totals: ExecutionStat;
-}
+/**
+ * A7 — both shapes cross the IPC boundary inside the `workforce:intelligence`
+ * response, so they are declared once in @neuropause/shared. Re-exported here so
+ * every existing `from './goalExecutionAnalytics'` import keeps resolving unchanged.
+ */
+export type { ExecutionStat, GoalExecutionAnalytics };
 
 const TERMINAL: ReadonlySet<JobStatus> = new Set<JobStatus>(['succeeded', 'failed', 'cancelled']);
 

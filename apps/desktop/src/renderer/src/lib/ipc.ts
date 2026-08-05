@@ -5,612 +5,338 @@
  * every catalog/registry/NPS/runtime call goes through these channels into the
  * main process.
  */
-import type { WorkforceIntelligence } from '@renderer/workforce/intelligenceTypes';
 import { perfRecorder } from '@renderer/lib/perf/perfRecorder';
+import { createLogger } from '@renderer/lib/logger';
+// A7 — channel attribution for a rejected call. See `./ipcError.ts`.
+import { attributeIpcChannel, describeIpcFailure } from '@renderer/lib/ipcError';
 import {
   IpcChannel,
-  type AppInfo,
+  // A7 — the response half of the IPC contract. See `packages/shared/src/ipc/responses.ts`.
+  type IpcResponseChannelName,
+  type IpcResponseOf,
+  // A7 — the push half. See `packages/shared/src/ipc/broadcasts.ts`.
+  type IpcBroadcastChannelName,
+  type IpcBroadcastOf,
+  type InfraChangedEvent,
+  type IpcStoreChangedEvent,
+  type ThemeChangedEvent,
+  type WorkforceCountsEvent,
+  // Phase 6 Stage 4 — Workspace Assistant.
+  type AssistantAskRequest,
+  type AssistantEvent,
   type AuthProviderId,
   type AuthStatus,
   type MenuCommandPayload,
   type TrayCommandPayload,
   type ThemeSource,
-  type CategorySummary,
-  type CollectionDto,
-  type FeaturedEntry,
+  type ShellSnapshotDto,
+  type WorkspaceTemplateId,
   type InstallationDto,
-  type Paginated,
-  type ReviewDto,
-  type StoreAppCard,
-  type StoreAppDetail,
   type StoreSearchParams,
-  type UpdateCheck,
-  type RegistryEntryDto,
-  type RegistryStats,
-  type NpsOperationDto,
   type NpsProgressEvent,
-  type InstallResultDto,
-  type RuntimeInstanceDto,
   type RuntimeEvent,
   type OpenAppRequest,
-  type PermissionGrant,
   type RuntimePermissionKey,
-  type PluginDto,
-  type PluginContribution,
   type PluginHostEvent,
-  type PluginInstallResult,
   type PluginSurfaceKind,
   type PlatformEvent,
   type TimelineQuery,
-  type TimelinePage,
-  type TimelineStats,
-  type TimelineExport,
-  type DiagnosticsReport,
-  type ConnectorDto,
-  type ConnectorStats,
   type ConnectorEvent,
-  type ConnectorLogEntry,
-  type ConnectorConnectResult,
-  type ConnectorActionResult,
   type ConnectorSyncSnapshot,
-  type ConnectorWriteActionInfo,
-  type ConnectorWriteResult,
-  type UnifiedEntity,
   type UnifiedQuery,
-  type UnifiedQueryResult,
   type UnifiedCounts,
   type SearchQuery,
-  type SearchResult,
   type GraphCounts,
-  type GraphNode,
   type GraphNodesQuery,
-  type GraphNeighbors,
   type GraphNeighborsQuery,
-  type GraphSubgraph,
   type GraphSubgraphQuery,
   type GraphPathQuery,
-  type GraphPathResult,
-  type GraphEdgeEvent,
   type GraphHistoryQuery,
-  type MemoryItem,
   type MemoryRecallQuery,
-  type MemoryRecallResult,
   type MemoryWriteInput,
   type MemoryCounts,
   type ExecutiveMemoryQuery,
-  type ExecutiveMemoryView,
   type ExecutiveMemoryStatus,
   type MemoryAuditAction,
-  type MemoryAuditPage,
   type EnterpriseSearchQuery,
-  type EnterpriseSearchResult,
-  type EnterpriseIntelligenceReport,
-  type ChangeImpactReport,
-  type RootCauseReport,
   type EnterpriseIntelChangeImpactRequest,
   type EnterpriseIntelRootCauseRequest,
   type EnterpriseTimelineQuery,
-  type EnterpriseTimelinePage,
   type TimelineReplayQuery,
-  type TimelineReplay,
   type EnterpriseTimelineStats,
-  type EnterpriseTimelineExport,
   type BriefingPeriod,
-  type Briefing,
-  type ExecutiveCenterSnapshot,
   type ExecutiveDecision,
   type AutomationRule,
-  type AutomationMonitor,
-  type AutomationRunRecord,
-  type SystemHealthSnapshot,
   type VoiceRuntimeState,
-  type SupervisorStatus,
-  type RecoveryRecord,
   type SupervisedSubsystem,
   type RecoveryPolicy,
   type ExecutionRequest,
-  type ExecutionSession,
-  type ExecutionStats,
-  type VoiceResponse,
   type RecommendationQuery,
-  type RecommendationSet,
-  type FounderAnswer,
-  type FounderResponse,
-  type FounderSuggestedQuestion,
-  type EngineeringAnalysis,
-  type GovernanceTraceList,
-  type GovernanceTrace,
-  type ContextTrace,
-  type RelationshipTrace,
-  type RelationshipPath,
-  type WorkerSummary,
-  type Worker,
-  type Job,
-  type JobPage,
   type JobStatus,
   type WorkflowSpec,
-  type WorkflowRun,
-  type WorkforceAuditPage,
-  type PolicyRule,
   type WorkforceDelegateRequest,
-  type DelegationPlan,
   type WorkerPackage,
-  type WorkerInstallSummary,
-  type WorkerInstallDetail,
-  type WorkerInstallResult,
-  type MarketplaceEntry,
   type MarketplaceCatalogQuery,
-  type PublisherProfile,
-  type TrustReport,
-  type InstallPlan,
-  type MarketplaceAnalytics,
   type OrgMarketplacePolicy,
-  type MarketplaceInstallResult,
   type VerdictDecision,
-  type DeveloperDashboard,
-  type DeveloperAccount,
-  type DeveloperAnalytics,
   type PlanTier,
-  type ApiKey,
-  type ApiKeyWithSecret,
   type ApiScope,
-  type OAuthApplication,
-  type OAuthApplicationWithSecret,
   type OAuthGrantType,
-  type SdkArtifact,
-  type MarketplaceListing,
-  type ListingDetail,
-  type MarketplaceStats,
-  type SubmissionEvent,
   type ListingKind,
   type ListingPricing,
   type ListingManifest,
-  type ListingVersion,
   type ReviewDecision,
   type ApiVersion,
-  type ApiVersionInfo,
-  type GatewayDecision,
-  type GatewayAuditEntry,
-  type GatewayMetrics,
-  type BillingSummary,
-  type Plan,
-  type Invoice,
-  type SeatAssignment,
-  type License,
-  type MarketplacePurchase,
-  type Installation,
-  type InstallSummary,
-  type ExchangePack,
-  type ExchangeStats,
   type PackKind,
   type PackItem,
-  type Partner,
-  type PartnerStats,
-  type EcosystemAnalytics,
-  type DeveloperPlatformOverview,
-  type DeveloperConsole,
-  type SdkRegistry,
-  type ApiExplorer,
-  type TemplateRegistry,
-  type PublishingConsole,
-  type DeveloperPlatformAnalytics,
-  // P13 — Industry Solution Platform
-  type IndustryPlatformOverview,
-  type IndustrySuite,
-  type IndustryComplianceReport,
-  type IndustryCollection,
-  type IndustryReadinessReport,
-  type ExecutiveKpi,
-  // P14 — Autonomous Enterprise Intelligence
-  type StrategyOverview,
-  type GoalManager,
-  type PlanningEngine,
-  type ReasoningReport,
-  type OptimizationEngine,
-  type SimulationReport,
-  type DecisionQueue,
-  // P15 — Enterprise Digital Twin
-  type EnterpriseTwinOverview,
-  type TwinDomains,
-  type TwinTopology,
-  type TwinHealthMap,
-  type TwinReplay,
-  type TwinScenarioCenter,
-  type TwinImpact,
-  type TwinCommandCenter,
-  // P16 — Enterprise Knowledge Fabric
-  type FabricOverview,
-  type FabricSourceCatalog,
-  type FabricRelationshipMap,
-  type FabricClassification,
-  type FabricLineage,
-  type FabricEvidenceReport,
-  type FabricGovernance,
-  type FabricAnalytics,
-  // P17 — Global AI Orchestration Platform
-  type OrchestrationOverview,
-  type OrchestrationGoalRouting,
-  type OrchestrationWorkforce,
-  type OrchestrationCloud,
-  type OrchestrationKnowledge,
-  type OrchestrationFlowReport,
-  type OrchestrationCoordination,
-  type OrchestrationGovernance,
-  // P18 — Enterprise Intelligence Network (governed intelligence exchange over the platform)
-  type IntelNetworkOverview,
-  type IntelNetworkExchange,
-  type IntelNetworkBenchmarks,
-  type IntelNetworkInsights,
-  type IntelNetworkTrust,
-  type IntelNetworkOrganizations,
-  type IntelNetworkCollective,
-  type IntelNetworkGovernance,
-  // P19 — Autonomous Enterprise Operations (closed-loop operations layer over the platform)
-  type AutoOpsOverview,
-  type AutoOpsPlans,
-  type AutoOpsExecution,
-  type AutoOpsRecovery,
-  type AutoOpsOptimization,
-  type AutoOpsIncidents,
-  type AutoOpsApprovals,
-  type AutoOpsMonitoring,
-  type AutoOpsAnalytics,
-  type AutoOpsGovernance,
-  // P20 — NeuroPause Platform v2 (commercial productization layer)
-  type CommercialOverview,
-  type CommercialSubscription,
-  type CommercialLicensing,
-  type CommercialBilling,
-  type CommercialMetering,
-  type CommercialDeployment,
-  type CommercialCustomers,
-  type CommercialAnalytics,
-  type CommercialReleases,
-  type CommercialAdministration,
-  type CommercialGovernance,
-  // Experience Program v1.0 — the decision-first experience layer
-  type ExperienceHome,
-  type ExperienceDecisions,
-  type ExperienceSummaries,
-  type ExperienceIntents,
-  type ExperienceGovernance,
-  // Intent Experience Program v2.0 — the intent-native experience layer
-  type IntentBoard,
-  type IntentWorkspaces,
-  type IntentGovernance,
-  // Release engineering (Increment 2 · Stage 2)
-  type ReleaseDiagnostics,
-  type CrashStatus,
-  type CrashRecord,
-  type RecoveryRecommendation,
-  type MigrationStatus,
-  type MigrationReport,
-  type BackupInfo,
-  type BackupValidation,
-  type RestoreResult,
-  type RecoveryActionResult,
-  type SafeModeState,
-  type SupportBundleInfo,
   type MaintenanceDomain,
   type RecoveryAction,
-  type CloudOrganizationSummary,
-  type CloudOrganization,
-  type CloudMembership,
-  type CloudWorkspace,
-  type CloudOrgCreateResult,
-  type CloudInviteResult,
   type CloudOrgRole,
 } from '@neuropause/shared';
 import type {
-  CloudPlatformDto,
-  CloudPlatformStats,
-  ResourceGraphModel,
-  ResourceEdgeToNode,
-  InfraActionInfo,
-  InfraActionResult,
-  InfraSearchResult,
-  Organization,
-  OrgUnit,
-  OrgRole,
-  OrgUser,
   OrgUnitKind,
   OrgUserStatus,
   EnterprisePermission,
-  Workspace,
-  WorkspaceSummary,
-  OrgGraph,
-  OrgGraphNeighbors,
-  GovernanceConfig,
-  ComplianceFinding,
-  EnterpriseAuditEntry,
-  ExecutiveSnapshot,
-  EnterpriseModuleSummary,
-  EnterpriseEntity,
   EnterpriseRecordInput,
   EnterpriseRecordStatus,
-  EnterpriseModuleMutationResult,
-  EnterpriseModuleActionResult,
   EnterpriseModuleEvent,
-  EnterpriseRecordSummary,
-  ProcessExplorerModel,
   ProcessExplorerFilter,
-  ProcessCaseDetail,
-  ScheduleExploreModel,
-  ExecutionConsoleModel,
-  RelationshipGraphModel,
-  EnterpriseTrustModel,
-  EnterpriseContext,
-  PersonalizationState,
-  // Developer Platform SDK & Public APIs (P3.0, Increments 1–6)
-  ApiRouteInfo,
   EnterpriseApiRequest,
-  EnterpriseApiResponse,
-  OpenApiDocument,
-  Webhook,
-  WebhookWithSecret,
-  WebhookDelivery,
   WebhookDeliveryStats,
   PlatformEventCategory,
-  PluginExtension,
+  NotificationInboxEvent,
+  NotificationsPrefsSetRequest,
 } from '@neuropause/shared';
 
 type OAuthProviderId = Exclude<AuthProviderId, 'email'>;
 
-export interface ThemeChangedPayload {
-  source: ThemeSource;
-}
+/**
+ * @deprecated A7 — the theme payload is now described once, in `@neuropause/shared`,
+ * where the main process's `broadcast` reads it too. This alias is retained so any
+ * existing importer keeps compiling; it names the same type.
+ */
+export type ThemeChangedPayload = ThemeChangedEvent;
 
-type Items<T> = { items: T[] };
+const log = createLogger('ipc');
+
+/**
+ * Channels whose first failure has already been logged.
+ *
+ * A7 — the log below exists so a console or a support bundle shows WHICH channel
+ * failed, which the message alone never says. Logging every rejection would be a
+ * spam risk rather than a diagnostic: several surfaces poll on an interval and
+ * swallow the failure deliberately (`.catch(() => undefined)`), so a main process
+ * that is down would emit a line per channel per tick, forever. First failure per
+ * channel per session bounds the output at one line per channel while still
+ * recording that the channel failed at all. Recurrence is not lost — the call
+ * sites surface every failure to the user; this is the trail nobody else leaves.
+ */
+const loggedFailures = new Set<string>();
 
 const rawInvoke = window.neuropause.invoke;
 /**
- * The IPC entrypoint every namespace below uses. Wrapped to record REAL per-call round-trip latency and
- * the in-flight count into perfRecorder (which feeds the runtime Performance overlay + Diagnostics). The
- * wrapper is behavior-preserving: it returns the original promise unchanged, so all `as Promise<T>` casts
- * and error propagation stay identical — it only observes timing on a detached branch.
+ * The IPC entrypoint every namespace below uses.
+ *
+ * Two jobs. It records REAL per-call round-trip latency and the in-flight count into
+ * perfRecorder (which feeds the runtime Performance overlay + Diagnostics), on a
+ * detached branch that cannot affect the returned promise or its rejection.
+ *
+ * And it is where the response contract is applied. A7 — the preload bridge returns
+ * `Promise<unknown>`, because that is the honest type of a message coming back over
+ * an Electron channel. Until now every one of the 636 call sites below recovered a
+ * type by asserting one (`as Promise<Foo>`): 636 independent claims about what the
+ * main process sends, none of them checked against the handler that actually sends
+ * it. They are gone. The type now comes from `IpcResponseMap` in @neuropause/shared,
+ * which the main process's `SecureHandlerDef` reads too — so a handler and its
+ * caller can no longer disagree without one of them failing to compile.
+ *
+ * The single `as` below is the whole conversion, and it is the honest kind: exactly
+ * one place where `unknown` off the wire becomes the declared contract, rather than
+ * 636 places each quietly asserting something different.
+ *
+ * A7 also gave it a third job, on the failure path. The secure bridge strips a
+ * rejection down to a clean message before it crosses the boundary, and Electron
+ * serializes only that message, so a denial arrives as `Not authorized` with no
+ * indication of what was denied. This is the last frame that still knows which
+ * channel was called, so it records that on the way out. The rejection is
+ * otherwise untouched — same object, same message, same stack — so the call sites
+ * that render `err.message` are unaffected.
  */
-const invoke: typeof rawInvoke = (channel, payload) => {
+function invoke<C extends IpcResponseChannelName>(
+  channel: C,
+  payload?: unknown,
+): Promise<IpcResponseOf<C>> {
   const settle = perfRecorder.ipcStart(String(channel));
-  const promise = rawInvoke(channel, payload);
+  const promise = rawInvoke(channel, payload) as Promise<IpcResponseOf<C>>;
   promise.then(settle, settle);
-  return promise;
-};
+  // Attribution has to be a link in the returned chain, not another detached
+  // branch: a detached handler would race the caller's own `.catch`, and the
+  // whole point is that the caller sees the attributed error.
+  return promise.catch((err: unknown) => {
+    const attributed = attributeIpcChannel(err, String(channel));
+    if (!loggedFailures.has(String(channel))) {
+      loggedFailures.add(String(channel));
+      log.warn(`IPC call failed — ${describeIpcFailure(attributed)}`);
+    }
+    throw attributed;
+  });
+}
 import type {
-  CloudRegion,
   CloudRegionId,
-  CloudTenant,
-  CloudProject,
-  CloudTeam,
-  TenantWorker,
-  StorageIsolation,
-  TenantSummary,
   TenantTier,
   TenantStatus,
-  SsoConnection,
   SsoProtocol,
   SsoStatus,
-  ScimConfig,
-  MfaPolicy,
   MfaMethod,
-  IdentitySummary,
-  FederationResult,
-  SyncDomain,
-  SyncDomainState,
-  SyncSummary,
-  SyncConflict,
-  LiveSyncStatus,
-  FeatureFlagState,
   FeatureFlagKey,
   UpdateStatus,
   UpdateChannel,
-  UpdateEvent,
-  LicenseValidationStatus,
   LicenseState,
   BillingPlanId,
-  Device,
   DeviceTrustStatus,
-  OnboardingStatus,
+  AiProviderId,
   OnboardingStepId,
   FeedbackCategory,
-  FeedbackEntry,
-  FeedbackExport,
-  PilotStatus,
-  SyncResult,
-  ApiDeployment,
-  CloudRateLimitPolicy,
-  WebhookEndpoint,
   WebhookStatus,
-  PublicApi,
-  ApiPlatformSummary,
-  AdminOverview,
-  ComplianceReport,
-  ControlPlaneOverview,
-  FleetOverview,
-  RegionStatus,
-  TenantDirectoryEntry,
-  DeploymentStatusEntry,
-  UsageOverview,
 } from '@neuropause/shared';
 
 import type {
-  FederatedOrg,
-  FederationSummary,
-  OrgInvitation,
-  TrustRelationship,
-  SharedResource,
   TrustLevel,
   SharedResourceKind,
   ShareAccess,
-  ExchangeArtifact,
-  ExchangeSummary,
   ExchangeKind,
   ExchangeScope,
   VerificationStatus,
-  MarketplaceScopeSummary,
-  FedPolicy,
   FedPolicyScope,
   FedPolicyEffect,
-  GlobalGovSummary,
-  DelegatedApproval,
-  FedAuditEntry,
-  FedComplianceRule,
-  FedActionEvaluation,
-  ObservabilityOverview,
-  UsagePoint,
-  SecurityEvent,
-  Backup,
   BackupScope,
-  ReplicaState,
-  RecoveryValidation,
-  ContinuityPosture,
-  DrSummary,
-  FedAdminOverview,
-  ScalabilityReport,
-  FederationGraph,
-  FederationTimelineEntry,
-  OrgDirectoryEntry,
-  FederationAnalytics,
-  FederationOverview,
-  FederationSearchHit,
   FederationSearchKind,
 } from '@neuropause/shared';
 
 import type {
-  ConnectorInspection,
-  ConnectorRuntimeView,
   ConnectorControlAction,
   ConnectorLifecycleEvent,
-  SandboxDashboard,
-  SandboxWorkspace,
-  Scenario,
-  ScenarioVersion,
-  Execution,
   ExecutionStatus,
   ExecutionTrigger,
   ExecutionPriority,
-  ExecutionTimelineEntry,
-  ExecutionQueueState,
-  Artifact,
   ArtifactKind,
-  RunResult,
-  SandboxReport,
-  Dataset,
-  RunHistoryPage,
   SandboxEvent,
-  ValidationSummary,
-  ValidationDashboard,
-  ValidationRunDetail,
-  ScheduledValidation,
   PipelineKind,
   TriggerKind,
 } from '@neuropause/shared';
 
-const subscribe = window.neuropause.subscribe;
+const rawSubscribe = window.neuropause.subscribe;
+/**
+ * The push-side counterpart to `invoke`, and the same argument.
+ *
+ * A7 — the preload bridge hands a listener `unknown`, which is the honest type of a
+ * value that arrived over an Electron channel. Every subscription below used to
+ * recover a type by asserting one (`(p) => cb(p as RuntimeEvent)`) — an independent
+ * claim per channel, none of them checked against the main process that does the
+ * sending, and several of them asserting a shape onto a value that reached
+ * `webContents.send` as `any` in the first place. The type now comes from
+ * `IpcBroadcastMap` in @neuropause/shared, which `broadcast` in the main process is
+ * declared against, so sender and listener cannot disagree without one failing to
+ * compile.
+ *
+ * The one `as` here is the whole conversion: the single place `unknown` off the wire
+ * becomes the declared contract. It is a cast on the *listener*, not on the payload —
+ * we are handing a stricter function to a looser port, which is sound; the payload
+ * itself is never asserted about.
+ */
+function subscribe<C extends IpcBroadcastChannelName>(
+  channel: C,
+  listener: (payload: IpcBroadcastOf<C>) => void,
+): () => void {
+  return rawSubscribe(channel, listener as (payload: unknown) => void);
+}
 
 export const ipc = {
   auth: {
-    getStatus: () => invoke(IpcChannel.AuthGetStatus) as Promise<AuthStatus>,
-    loginOAuth: (provider: OAuthProviderId) =>
-      invoke(IpcChannel.AuthLoginOAuth, { provider }) as Promise<AuthStatus>,
+    getStatus: () => invoke(IpcChannel.AuthGetStatus),
+    loginOAuth: (provider: OAuthProviderId) => invoke(IpcChannel.AuthLoginOAuth, { provider }),
     loginEmail: (email: string, password: string) =>
-      invoke(IpcChannel.AuthLoginEmail, { email, password }) as Promise<AuthStatus>,
+      invoke(IpcChannel.AuthLoginEmail, { email, password }),
     registerEmail: (email: string, password: string) =>
-      invoke(IpcChannel.AuthRegisterEmail, { email, password }) as Promise<AuthStatus>,
-    logout: () => invoke(IpcChannel.AuthLogout) as Promise<AuthStatus>,
+      invoke(IpcChannel.AuthRegisterEmail, { email, password }),
+    logout: () => invoke(IpcChannel.AuthLogout),
     onStatusChanged: (cb: (status: AuthStatus) => void) =>
-      subscribe(IpcChannel.AuthStatusChanged, (p) => cb(p as AuthStatus)),
+      subscribe(IpcChannel.AuthStatusChanged, cb),
   },
   app: {
-    getInfo: () => invoke(IpcChannel.AppGetInfo) as Promise<AppInfo>,
-    getThemeSource: () => invoke(IpcChannel.AppGetThemeSource) as Promise<ThemeSource>,
-    setThemeSource: (source: ThemeSource) =>
-      invoke(IpcChannel.AppSetThemeSource, { source }) as Promise<ThemeSource>,
-    onThemeChanged: (cb: (payload: ThemeChangedPayload) => void) =>
-      subscribe(IpcChannel.ThemeChanged, (p) => cb(p as ThemeChangedPayload)),
-    closeWindow: () => invoke(IpcChannel.WindowClose) as Promise<void>,
+    getInfo: () => invoke(IpcChannel.AppGetInfo),
+    getThemeSource: () => invoke(IpcChannel.AppGetThemeSource),
+    setThemeSource: (source: ThemeSource) => invoke(IpcChannel.AppSetThemeSource, { source }),
+    onThemeChanged: (cb: (payload: ThemeChangedEvent) => void) =>
+      subscribe(IpcChannel.ThemeChanged, cb),
+    closeWindow: () => invoke(IpcChannel.WindowClose),
   },
   menu: {
-    onCommand: (cb: (payload: MenuCommandPayload) => void) =>
-      subscribe(IpcChannel.MenuCommand, (p) => cb(p as MenuCommandPayload)),
+    onCommand: (cb: (payload: MenuCommandPayload) => void) => subscribe(IpcChannel.MenuCommand, cb),
   },
   tray: {
     /** Subscribe to tray runtime commands (start/pause listening). V4.1. */
-    onCommand: (cb: (payload: TrayCommandPayload) => void) =>
-      subscribe(IpcChannel.TrayCommand, (p) => cb(p as TrayCommandPayload)),
+    onCommand: (cb: (payload: TrayCommandPayload) => void) => subscribe(IpcChannel.TrayCommand, cb),
   },
 
   /* ── Secure Catalog (proxied to the Store API in the main process) ── */
   catalog: {
-    featured: () => invoke(IpcChannel.CatalogFeatured) as Promise<Items<FeaturedEntry>>,
-    collections: () => invoke(IpcChannel.CatalogCollections) as Promise<Items<CollectionDto>>,
+    featured: () => invoke(IpcChannel.CatalogFeatured),
+    collections: () => invoke(IpcChannel.CatalogCollections),
     sections: (key: string, page?: number, pageSize?: number) =>
-      invoke(IpcChannel.CatalogSections, { key, page, pageSize }) as Promise<
-        Paginated<StoreAppCard>
-      >,
-    search: (params: StoreSearchParams) =>
-      invoke(IpcChannel.CatalogSearch, params) as Promise<Paginated<StoreAppCard>>,
-    app: (slug: string) => invoke(IpcChannel.CatalogApp, { slug }) as Promise<StoreAppDetail>,
+      invoke(IpcChannel.CatalogSections, { key, page, pageSize }),
+    search: (params: StoreSearchParams) => invoke(IpcChannel.CatalogSearch, params),
+    app: (slug: string) => invoke(IpcChannel.CatalogApp, { slug }),
     reviews: (slug: string, page?: number, pageSize?: number) =>
-      invoke(IpcChannel.CatalogReviews, { slug, page, pageSize }) as Promise<Paginated<ReviewDto>>,
-    developer: (slug: string) => invoke(IpcChannel.CatalogDeveloper, { slug }) as Promise<unknown>,
-    categories: () => invoke(IpcChannel.CatalogCategories) as Promise<Items<CategorySummary>>,
-    bookmarks: () => invoke(IpcChannel.CatalogBookmarks) as Promise<Items<StoreAppCard>>,
+      invoke(IpcChannel.CatalogReviews, { slug, page, pageSize }),
+    developer: (slug: string) => invoke(IpcChannel.CatalogDeveloper, { slug }),
+    categories: () => invoke(IpcChannel.CatalogCategories),
+    bookmarks: () => invoke(IpcChannel.CatalogBookmarks),
     toggleBookmark: (slug: string, bookmarked: boolean) =>
-      invoke(IpcChannel.CatalogToggleBookmark, { slug, bookmarked }) as Promise<{
-        bookmarked: boolean;
-      }>,
+      invoke(IpcChannel.CatalogToggleBookmark, { slug, bookmarked }),
     submitReview: (slug: string, body: { rating: number; title?: string; body?: string }) =>
-      invoke(IpcChannel.CatalogSubmitReview, { slug, ...body }) as Promise<ReviewDto>,
-    recommendations: () =>
-      invoke(IpcChannel.CatalogRecommendations) as Promise<Items<StoreAppCard>>,
-    checkUpdate: (slug: string) =>
-      invoke(IpcChannel.CatalogCheckUpdate, { slug }) as Promise<UpdateCheck>,
+      invoke(IpcChannel.CatalogSubmitReview, { slug, ...body }),
+    recommendations: () => invoke(IpcChannel.CatalogRecommendations),
+    checkUpdate: (slug: string) => invoke(IpcChannel.CatalogCheckUpdate, { slug }),
   },
 
   /* ── Cloud Organizations ── */
   org: {
-    list: () => invoke(IpcChannel.OrgList) as Promise<CloudOrganizationSummary[]>,
-    create: (body: { name: string; slug?: string }) =>
-      invoke(IpcChannel.OrgCreate, body) as Promise<CloudOrgCreateResult>,
-    get: (orgId: string) => invoke(IpcChannel.OrgGet, { orgId }) as Promise<CloudOrganization>,
-    update: (orgId: string, name: string) =>
-      invoke(IpcChannel.OrgUpdate, { orgId, name }) as Promise<CloudOrganization>,
-    members: (orgId: string) =>
-      invoke(IpcChannel.OrgMembers, { orgId }) as Promise<CloudMembership[]>,
+    list: () => invoke(IpcChannel.OrgList),
+    create: (body: { name: string; slug?: string }) => invoke(IpcChannel.OrgCreate, body),
+    get: (orgId: string) => invoke(IpcChannel.OrgGet, { orgId }),
+    update: (orgId: string, name: string) => invoke(IpcChannel.OrgUpdate, { orgId, name }),
+    members: (orgId: string) => invoke(IpcChannel.OrgMembers, { orgId }),
     invite: (orgId: string, email: string, role: CloudOrgRole) =>
-      invoke(IpcChannel.OrgInvite, { orgId, email, role }) as Promise<CloudInviteResult>,
-    acceptInvite: (token: string) =>
-      invoke(IpcChannel.OrgAcceptInvite, { token }) as Promise<CloudMembership>,
+      invoke(IpcChannel.OrgInvite, { orgId, email, role }),
+    acceptInvite: (token: string) => invoke(IpcChannel.OrgAcceptInvite, { token }),
     changeRole: (orgId: string, membershipId: string, role: CloudOrgRole) =>
-      invoke(IpcChannel.OrgChangeRole, { orgId, membershipId, role }) as Promise<CloudMembership>,
+      invoke(IpcChannel.OrgChangeRole, { orgId, membershipId, role }),
     removeMember: (orgId: string, membershipId: string) =>
-      invoke(IpcChannel.OrgRemoveMember, { orgId, membershipId }) as Promise<void>,
-    workspaces: (orgId: string) =>
-      invoke(IpcChannel.OrgWorkspaces, { orgId }) as Promise<CloudWorkspace[]>,
+      invoke(IpcChannel.OrgRemoveMember, { orgId, membershipId }),
+    workspaces: (orgId: string) => invoke(IpcChannel.OrgWorkspaces, { orgId }),
     createWorkspace: (orgId: string, name: string) =>
-      invoke(IpcChannel.OrgCreateWorkspace, { orgId, name }) as Promise<CloudWorkspace>,
+      invoke(IpcChannel.OrgCreateWorkspace, { orgId, name }),
     updateWorkspace: (orgId: string, workspaceId: string, name: string) =>
       invoke(IpcChannel.OrgUpdateWorkspace, {
         orgId,
         workspaceId,
         name,
-      }) as Promise<CloudWorkspace>,
+      }),
     deleteWorkspace: (orgId: string, workspaceId: string) =>
-      invoke(IpcChannel.OrgDeleteWorkspace, { orgId, workspaceId }) as Promise<void>,
+      invoke(IpcChannel.OrgDeleteWorkspace, { orgId, workspaceId }),
   },
 
   /* ── Local Application Registry ── */
   registry: {
-    list: () => invoke(IpcChannel.RegistryList) as Promise<RegistryEntryDto[]>,
-    get: (slug: string) =>
-      invoke(IpcChannel.RegistryGet, { slug }) as Promise<RegistryEntryDto | null>,
+    list: () => invoke(IpcChannel.RegistryList),
+    get: (slug: string) => invoke(IpcChannel.RegistryGet, { slug }),
     setFlags: (slug: string, flags: { pinned?: boolean; favorite?: boolean }) =>
-      invoke(IpcChannel.RegistrySetFlags, { slug, ...flags }) as Promise<RegistryEntryDto | null>,
-    stats: () => invoke(IpcChannel.RegistryStats) as Promise<RegistryStats>,
-    export: () => invoke(IpcChannel.RegistryExport) as Promise<{ data: string }>,
-    import: (data: string) =>
-      invoke(IpcChannel.RegistryImport, { data }) as Promise<{ count: number }>,
-    backup: () => invoke(IpcChannel.RegistryBackup) as Promise<{ path: string }>,
+      invoke(IpcChannel.RegistrySetFlags, { slug, ...flags }),
+    stats: () => invoke(IpcChannel.RegistryStats),
+    export: () => invoke(IpcChannel.RegistryExport),
+    import: (data: string) => invoke(IpcChannel.RegistryImport, { data }),
+    backup: () => invoke(IpcChannel.RegistryBackup),
   },
 
   /* ── NeuroPause Package Service ── */
@@ -620,93 +346,70 @@ export const ipc = {
       channel?: string;
       grantedPermissions?: RuntimePermissionKey[];
       installLocation?: string;
-    }) => invoke(IpcChannel.NpsInstall, req) as Promise<InstallResultDto>,
-    uninstall: (slug: string) =>
-      invoke(IpcChannel.NpsUninstall, { slug }) as Promise<{ ok: boolean; message: string | null }>,
-    update: (slug: string) => invoke(IpcChannel.NpsUpdate, { slug }) as Promise<InstallResultDto>,
-    rollback: (slug: string) =>
-      invoke(IpcChannel.NpsRollback, { slug }) as Promise<{ ok: boolean; message: string | null }>,
-    repair: (slug: string) =>
-      invoke(IpcChannel.NpsRepair, { slug }) as Promise<{ ok: boolean; message: string | null }>,
-    verify: (slug: string) =>
-      invoke(IpcChannel.NpsVerify, { slug }) as Promise<{ ok: boolean; reason: string | null }>,
-    operations: () => invoke(IpcChannel.NpsOperations) as Promise<NpsOperationDto[]>,
-    pause: (operationId: string) =>
-      invoke(IpcChannel.NpsPause, { operationId }) as Promise<{ ok: boolean }>,
-    resume: (operationId: string) =>
-      invoke(IpcChannel.NpsResume, { operationId }) as Promise<{ ok: boolean }>,
-    cancel: (operationId: string) =>
-      invoke(IpcChannel.NpsCancel, { operationId }) as Promise<{ ok: boolean }>,
-    onProgress: (cb: (e: NpsProgressEvent) => void) =>
-      subscribe(IpcChannel.NpsProgress, (p) => cb(p as NpsProgressEvent)),
+    }) => invoke(IpcChannel.NpsInstall, req),
+    uninstall: (slug: string) => invoke(IpcChannel.NpsUninstall, { slug }),
+    update: (slug: string) => invoke(IpcChannel.NpsUpdate, { slug }),
+    rollback: (slug: string) => invoke(IpcChannel.NpsRollback, { slug }),
+    repair: (slug: string) => invoke(IpcChannel.NpsRepair, { slug }),
+    verify: (slug: string) => invoke(IpcChannel.NpsVerify, { slug }),
+    operations: () => invoke(IpcChannel.NpsOperations),
+    pause: (operationId: string) => invoke(IpcChannel.NpsPause, { operationId }),
+    resume: (operationId: string) => invoke(IpcChannel.NpsResume, { operationId }),
+    cancel: (operationId: string) => invoke(IpcChannel.NpsCancel, { operationId }),
+    onProgress: (cb: (e: NpsProgressEvent) => void) => subscribe(IpcChannel.NpsProgress, cb),
   },
 
   /* ── Runtime ── */
   runtime: {
-    launch: (slug: string) =>
-      invoke(IpcChannel.RuntimeLaunch, { slug }) as Promise<RuntimeInstanceDto>,
-    stop: (instanceId: string) =>
-      invoke(IpcChannel.RuntimeStop, { instanceId }) as Promise<{ ok: boolean }>,
+    launch: (slug: string) => invoke(IpcChannel.RuntimeLaunch, { slug }),
+    stop: (instanceId: string) => invoke(IpcChannel.RuntimeStop, { instanceId }),
     /** Launch-at-login preference (V4.2). */
-    getLoginAtStartup: () =>
-      invoke(IpcChannel.RuntimeGetLoginAtStartup) as Promise<{ enabled: boolean }>,
+    getLoginAtStartup: () => invoke(IpcChannel.RuntimeGetLoginAtStartup),
     setLoginAtStartup: (enabled: boolean) =>
-      invoke(IpcChannel.RuntimeSetLoginAtStartup, { enabled }) as Promise<{ enabled: boolean }>,
-    suspend: (instanceId: string) =>
-      invoke(IpcChannel.RuntimeSuspend, { instanceId }) as Promise<RuntimeInstanceDto>,
-    resume: (instanceId: string) =>
-      invoke(IpcChannel.RuntimeResume, { instanceId }) as Promise<RuntimeInstanceDto>,
-    restart: (instanceId: string) =>
-      invoke(IpcChannel.RuntimeRestart, { instanceId }) as Promise<RuntimeInstanceDto>,
-    list: () => invoke(IpcChannel.RuntimeList) as Promise<RuntimeInstanceDto[]>,
-    health: (instanceId?: string) =>
-      invoke(IpcChannel.RuntimeHealth, { instanceId }) as Promise<
-        RuntimeInstanceDto | RuntimeInstanceDto[] | null
-      >,
-    onEvent: (cb: (e: RuntimeEvent) => void) =>
-      subscribe(IpcChannel.RuntimeEventBroadcast, (p) => cb(p as RuntimeEvent)),
-    onOpenApp: (cb: (req: OpenAppRequest) => void) =>
-      subscribe(IpcChannel.RuntimeOpenApp, (p) => cb(p as OpenAppRequest)),
+      invoke(IpcChannel.RuntimeSetLoginAtStartup, { enabled }),
+    suspend: (instanceId: string) => invoke(IpcChannel.RuntimeSuspend, { instanceId }),
+    resume: (instanceId: string) => invoke(IpcChannel.RuntimeResume, { instanceId }),
+    restart: (instanceId: string) => invoke(IpcChannel.RuntimeRestart, { instanceId }),
+    list: () => invoke(IpcChannel.RuntimeList),
+    health: (instanceId?: string) => invoke(IpcChannel.RuntimeHealth, { instanceId }),
+    onEvent: (cb: (e: RuntimeEvent) => void) => subscribe(IpcChannel.RuntimeEventBroadcast, cb),
+    onOpenApp: (cb: (req: OpenAppRequest) => void) => subscribe(IpcChannel.RuntimeOpenApp, cb),
   },
 
   /* ── Permissions ── */
   perms: {
-    list: (slug: string) => invoke(IpcChannel.PermsList, { slug }) as Promise<PermissionGrant[]>,
+    list: (slug: string) => invoke(IpcChannel.PermsList, { slug }),
     grant: (slug: string, permission: RuntimePermissionKey) =>
-      invoke(IpcChannel.PermsGrant, { slug, permission }) as Promise<PermissionGrant[]>,
+      invoke(IpcChannel.PermsGrant, { slug, permission }),
     revoke: (slug: string, permission: RuntimePermissionKey) =>
-      invoke(IpcChannel.PermsRevoke, { slug, permission }) as Promise<PermissionGrant[]>,
+      invoke(IpcChannel.PermsRevoke, { slug, permission }),
   },
 
   /* ── Plugin Runtime ── */
   plugins: {
-    list: () => invoke(IpcChannel.PluginsList) as Promise<PluginDto[]>,
-    get: (id: string) => invoke(IpcChannel.PluginsGet, { id }) as Promise<PluginDto | null>,
-    install: (source: string) =>
-      invoke(IpcChannel.PluginsInstall, { source }) as Promise<PluginInstallResult>,
-    enable: (id: string) => invoke(IpcChannel.PluginsEnable, { id }) as Promise<PluginDto>,
-    disable: (id: string) => invoke(IpcChannel.PluginsDisable, { id }) as Promise<PluginDto>,
-    reload: (id: string) => invoke(IpcChannel.PluginsReload, { id }) as Promise<PluginDto>,
-    update: (id: string) =>
-      invoke(IpcChannel.PluginsUpdate, { id }) as Promise<PluginInstallResult>,
-    remove: (id: string) => invoke(IpcChannel.PluginsRemove, { id }) as Promise<{ ok: boolean }>,
+    list: () => invoke(IpcChannel.PluginsList),
+    get: (id: string) => invoke(IpcChannel.PluginsGet, { id }),
+    install: (source: string) => invoke(IpcChannel.PluginsInstall, { source }),
+    enable: (id: string) => invoke(IpcChannel.PluginsEnable, { id }),
+    disable: (id: string) => invoke(IpcChannel.PluginsDisable, { id }),
+    reload: (id: string) => invoke(IpcChannel.PluginsReload, { id }),
+    update: (id: string) => invoke(IpcChannel.PluginsUpdate, { id }),
+    remove: (id: string) => invoke(IpcChannel.PluginsRemove, { id }),
     grant: (id: string, permission: RuntimePermissionKey) =>
-      invoke(IpcChannel.PluginsGrant, { id, permission }) as Promise<PluginDto>,
+      invoke(IpcChannel.PluginsGrant, { id, permission }),
     revoke: (id: string, permission: RuntimePermissionKey) =>
-      invoke(IpcChannel.PluginsRevoke, { id, permission }) as Promise<PluginDto>,
+      invoke(IpcChannel.PluginsRevoke, { id, permission }),
     contributions: (surface?: PluginSurfaceKind) =>
-      invoke(IpcChannel.PluginsContributions, { surface }) as Promise<PluginContribution[]>,
+      invoke(IpcChannel.PluginsContributions, { surface }),
     /** Plugin SDK v2 (P3.0, Increment 6) — the declarative extensions plugins have registered. */
-    extensions: () => invoke(IpcChannel.PluginsExtensions) as Promise<PluginExtension[]>,
-    onEvent: (cb: (e: PluginHostEvent) => void) =>
-      subscribe(IpcChannel.PluginEventBroadcast, (p) => cb(p as PluginHostEvent)),
+    extensions: () => invoke(IpcChannel.PluginsExtensions),
+    onEvent: (cb: (e: PluginHostEvent) => void) => subscribe(IpcChannel.PluginEventBroadcast, cb),
   },
 
   /* ── Platform Core (event bus / timeline / diagnostics) ── */
   platform: {
     /** Subscribe to the unified live Platform Event stream. */
-    onEvent: (cb: (e: PlatformEvent) => void) =>
-      subscribe(IpcChannel.PlatformEventBroadcast, (p) => cb(p as PlatformEvent)),
+    onEvent: (cb: (e: PlatformEvent) => void) => subscribe(IpcChannel.PlatformEventBroadcast, cb),
     /** Publish a UI-origin event (workspace open/close). */
     emit: (
       type: 'workspace.opened' | 'workspace.closed',
@@ -716,73 +419,62 @@ export const ipc = {
         type,
         resourceId: resource?.id,
         resourceName: resource?.name,
-      }) as Promise<{ ok: boolean }>,
+      }),
   },
   timeline: {
-    query: (q?: TimelineQuery) =>
-      invoke(IpcChannel.TimelineQuery, q ?? {}) as Promise<TimelinePage>,
-    stats: () => invoke(IpcChannel.TimelineStats) as Promise<TimelineStats>,
-    export: () => invoke(IpcChannel.TimelineExport) as Promise<TimelineExport>,
+    query: (q?: TimelineQuery) => invoke(IpcChannel.TimelineQuery, q ?? {}),
+    stats: () => invoke(IpcChannel.TimelineStats),
+    export: () => invoke(IpcChannel.TimelineExport),
   },
   diagnostics: {
-    get: () => invoke(IpcChannel.DiagnosticsGet) as Promise<DiagnosticsReport>,
+    get: () => invoke(IpcChannel.DiagnosticsGet),
   },
 
   /* ── Connector Framework (NCF) ── */
   connectors: {
-    list: () => invoke(IpcChannel.ConnectorsList) as Promise<ConnectorDto[]>,
-    get: (connectorId: string) =>
-      invoke(IpcChannel.ConnectorGet, { connectorId }) as Promise<ConnectorDto | null>,
-    stats: () => invoke(IpcChannel.ConnectorStats) as Promise<ConnectorStats>,
-    connect: (connectorId: string) =>
-      invoke(IpcChannel.ConnectorConnect, { connectorId }) as Promise<ConnectorConnectResult>,
+    list: () => invoke(IpcChannel.ConnectorsList),
+    get: (connectorId: string) => invoke(IpcChannel.ConnectorGet, { connectorId }),
+    stats: () => invoke(IpcChannel.ConnectorStats),
+    connect: (connectorId: string) => invoke(IpcChannel.ConnectorConnect, { connectorId }),
     disconnect: (connectorId: string, accountId: string) =>
       invoke(IpcChannel.ConnectorDisconnect, {
         connectorId,
         accountId,
-      }) as Promise<ConnectorActionResult>,
+      }),
     reconnect: (connectorId: string, accountId: string) =>
       invoke(IpcChannel.ConnectorReconnect, {
         connectorId,
         accountId,
-      }) as Promise<ConnectorConnectResult>,
+      }),
     refresh: (connectorId: string, accountId: string) =>
       invoke(IpcChannel.ConnectorRefresh, {
         connectorId,
         accountId,
-      }) as Promise<ConnectorActionResult>,
+      }),
     sync: (connectorId: string, accountId?: string | null) =>
       invoke(IpcChannel.ConnectorSync, {
         connectorId,
         accountId,
-      }) as Promise<ConnectorActionResult>,
+      }),
     checkHealth: (connectorId: string, accountId?: string | null) =>
-      invoke(IpcChannel.ConnectorHealthCheck, { connectorId, accountId }) as Promise<
-        ConnectorDto[]
-      >,
-    logs: (connectorId?: string) =>
-      invoke(IpcChannel.ConnectorLogs, { connectorId }) as Promise<ConnectorLogEntry[]>,
-    onEvent: (cb: (e: ConnectorEvent) => void) =>
-      subscribe(IpcChannel.ConnectorEventBroadcast, (p) => cb(p as ConnectorEvent)),
+      invoke(IpcChannel.ConnectorHealthCheck, { connectorId, accountId }),
+    logs: (connectorId?: string) => invoke(IpcChannel.ConnectorLogs, { connectorId }),
+    onEvent: (cb: (e: ConnectorEvent) => void) => subscribe(IpcChannel.ConnectorEventBroadcast, cb),
     syncState: (connectorId?: string) =>
-      invoke(IpcChannel.ConnectorSyncState, connectorId ? { connectorId } : {}) as Promise<
-        ConnectorSyncSnapshot[]
-      >,
+      invoke(IpcChannel.ConnectorSyncState, connectorId ? { connectorId } : {}),
     onSyncState: (cb: (s: ConnectorSyncSnapshot[]) => void) =>
-      subscribe(IpcChannel.ConnectorSyncState, (p) => cb(p as ConnectorSyncSnapshot[])),
+      subscribe(IpcChannel.ConnectorSyncState, cb),
 
     /* ── P4.1 Connector Runtime v2 — runtime state, operator controls, live inspector, lifecycle stream ── */
-    runtime: (connectorId?: string) =>
-      invoke(IpcChannel.ConnectorRuntime, { connectorId }) as Promise<ConnectorRuntimeView[]>,
-    inspect: (connectorId: string) =>
-      invoke(IpcChannel.ConnectorInspect, { connectorId }) as Promise<ConnectorInspection>,
+    runtime: (connectorId?: string) => invoke(IpcChannel.ConnectorRuntime, { connectorId }),
+    inspect: (connectorId: string) => invoke(IpcChannel.ConnectorInspect, { connectorId }),
     control: (connectorId: string, action: ConnectorControlAction, accountId?: string | null) =>
-      invoke(IpcChannel.ConnectorControl, { connectorId, accountId, action }) as Promise<ConnectorRuntimeView>,
+      invoke(IpcChannel.ConnectorControl, { connectorId, accountId, action }),
     onLifecycle: (cb: (e: ConnectorLifecycleEvent) => void) =>
-      subscribe(IpcChannel.ConnectorLifecycleBroadcast, (p) => cb(p as ConnectorLifecycleEvent)),
+      subscribe(IpcChannel.ConnectorLifecycleBroadcast, cb),
 
     /* ── P2.4 Microsoft 365 write actions (audited, confirmation-gated) + AI drafting ── */
-    m365Actions: () => invoke(IpcChannel.M365ActionList) as Promise<ConnectorWriteActionInfo[]>,
+    m365Actions: () => invoke(IpcChannel.M365ActionList),
     m365Execute: (
       connectorId: string,
       accountId: string,
@@ -790,398 +482,434 @@ export const ipc = {
       params: Record<string, unknown>,
       confirmed: boolean,
     ) =>
-      invoke(IpcChannel.M365ActionExecute, { connectorId, accountId, actionId, params, confirmed }) as Promise<ConnectorWriteResult>,
+      invoke(IpcChannel.M365ActionExecute, { connectorId, accountId, actionId, params, confirmed }),
     m365Draft: (
       connectorId: string,
       accountId: string,
       kind: 'email' | 'summary' | 'agenda',
       instruction: string,
       context?: string,
-    ) =>
-      invoke(IpcChannel.M365Draft, { connectorId, accountId, kind, instruction, context }) as Promise<{
-        ok: boolean;
-        text: string;
-        model: string;
-        grounded: boolean;
-        confidence: number;
-      }>,
+    ) => invoke(IpcChannel.M365Draft, { connectorId, accountId, kind, instruction, context }),
   },
 
   /* ── Unified Knowledge Layer (UDM) ── */
   unified: {
-    query: (q?: UnifiedQuery) =>
-      invoke(IpcChannel.UnifiedQuery, q ?? {}) as Promise<UnifiedQueryResult>,
-    get: (id: string) => invoke(IpcChannel.UnifiedGet, { id }) as Promise<UnifiedEntity | null>,
-    counts: () => invoke(IpcChannel.UnifiedCounts) as Promise<UnifiedCounts>,
-    search: (q: SearchQuery) => invoke(IpcChannel.UnifiedSearch, q) as Promise<SearchResult>,
+    query: (q?: UnifiedQuery) => invoke(IpcChannel.UnifiedQuery, q ?? {}),
+    get: (id: string) => invoke(IpcChannel.UnifiedGet, { id }),
+    counts: () => invoke(IpcChannel.UnifiedCounts),
+    search: (q: SearchQuery) => invoke(IpcChannel.UnifiedSearch, q),
     onChange: (cb: (counts: UnifiedCounts) => void) =>
-      subscribe(IpcChannel.UnifiedEventBroadcast, (p) => cb(p as UnifiedCounts)),
+      subscribe(IpcChannel.UnifiedEventBroadcast, cb),
   },
 
   graph: {
-    counts: () => invoke(IpcChannel.GraphCounts) as Promise<GraphCounts>,
-    node: (id: string) => invoke(IpcChannel.GraphNode, { id }) as Promise<GraphNode | null>,
-    nodes: (q?: GraphNodesQuery) => invoke(IpcChannel.GraphNodes, q ?? {}) as Promise<GraphNode[]>,
-    neighbors: (q: GraphNeighborsQuery) =>
-      invoke(IpcChannel.GraphNeighbors, q) as Promise<GraphNeighbors | null>,
-    subgraph: (q: GraphSubgraphQuery) =>
-      invoke(IpcChannel.GraphSubgraph, q) as Promise<GraphSubgraph | null>,
-    path: (q: GraphPathQuery) => invoke(IpcChannel.GraphPath, q) as Promise<GraphPathResult>,
-    history: (q: GraphHistoryQuery) =>
-      invoke(IpcChannel.GraphHistory, q) as Promise<GraphEdgeEvent[]>,
-    rebuild: () => invoke(IpcChannel.GraphRebuild) as Promise<GraphCounts>,
-    onChange: (cb: (counts: GraphCounts) => void) =>
-      subscribe(IpcChannel.GraphEventBroadcast, (p) => cb(p as GraphCounts)),
+    counts: () => invoke(IpcChannel.GraphCounts),
+    node: (id: string) => invoke(IpcChannel.GraphNode, { id }),
+    nodes: (q?: GraphNodesQuery) => invoke(IpcChannel.GraphNodes, q ?? {}),
+    neighbors: (q: GraphNeighborsQuery) => invoke(IpcChannel.GraphNeighbors, q),
+    subgraph: (q: GraphSubgraphQuery) => invoke(IpcChannel.GraphSubgraph, q),
+    path: (q: GraphPathQuery) => invoke(IpcChannel.GraphPath, q),
+    history: (q: GraphHistoryQuery) => invoke(IpcChannel.GraphHistory, q),
+    rebuild: () => invoke(IpcChannel.GraphRebuild),
+    onChange: (cb: (counts: GraphCounts) => void) => subscribe(IpcChannel.GraphEventBroadcast, cb),
   },
 
   // P6 — Cloud & Infrastructure Control Plane (the Cloud Platform Center reads these).
   infra: {
-    platforms: () => invoke(IpcChannel.InfraPlatforms) as Promise<CloudPlatformDto[]>,
-    stats: () => invoke(IpcChannel.InfraStats) as Promise<CloudPlatformStats>,
-    capabilities: () => invoke(IpcChannel.InfraCapabilities) as Promise<Array<{ platformId: string; provider: string; domains: string[]; configured: boolean }>>,
+    platforms: () => invoke(IpcChannel.InfraPlatforms),
+    stats: () => invoke(IpcChannel.InfraStats),
+    capabilities: () => invoke(IpcChannel.InfraCapabilities),
     resourceGraph: (filter?: { platformId?: string; accountId?: string }) =>
-      invoke(IpcChannel.InfraResourceGraph, filter ?? {}) as Promise<ResourceGraphModel>,
+      invoke(IpcChannel.InfraResourceGraph, filter ?? {}),
     resourceNeighbors: (resourceId: string) =>
-      invoke(IpcChannel.InfraResourceNeighbors, { resourceId }) as Promise<ResourceEdgeToNode[]>,
+      invoke(IpcChannel.InfraResourceNeighbors, { resourceId }),
     discover: (platformId: string, accountId?: string) =>
-      invoke(IpcChannel.InfraDiscover, { platformId, accountId }) as Promise<{ ok: boolean; hadAdapter: boolean; resources: number }>,
+      invoke(IpcChannel.InfraDiscover, { platformId, accountId }),
     // P6.1 — automation actions + global search.
     actions: (platformId?: string) =>
-      invoke(IpcChannel.InfraActions, platformId ? { platformId } : {}) as Promise<InfraActionInfo[]>,
+      invoke(IpcChannel.InfraActions, platformId ? { platformId } : {}),
     action: (req: { platformId: string; accountId?: string; actionId: string; params?: Record<string, unknown>; confirmed?: boolean }) =>
-      invoke(IpcChannel.InfraAction, req) as Promise<InfraActionResult>,
+      invoke(IpcChannel.InfraAction, req),
     search: (query: string, opts?: { platformId?: string; domain?: string; limit?: number }) =>
-      invoke(IpcChannel.InfraSearch, { query, ...opts }) as Promise<InfraSearchResult>,
-    onEvent: (cb: (e: unknown) => void) => subscribe(IpcChannel.InfraEventBroadcast, cb),
+      invoke(IpcChannel.InfraSearch, { query, ...opts }),
+    onEvent: (cb: (e: InfraChangedEvent) => void) => subscribe(IpcChannel.InfraEventBroadcast, cb),
   },
 
   // P7.1 — Enterprise Intelligence (read-only). The unified report + the two
   // targeted analyses (change-impact + root-cause). Every channel is RBAC-gated
   // `intelligence:read` and cached ~3s server-side; the renderer never recomputes.
   enterpriseIntel: {
-    report: () =>
-      invoke(IpcChannel.EnterpriseIntelReport) as Promise<EnterpriseIntelligenceReport>,
+    report: () => invoke(IpcChannel.EnterpriseIntelReport),
     changeImpact: (req: EnterpriseIntelChangeImpactRequest) =>
-      invoke(IpcChannel.EnterpriseIntelChangeImpact, req) as Promise<ChangeImpactReport>,
+      invoke(IpcChannel.EnterpriseIntelChangeImpact, req),
     rootCause: (req?: EnterpriseIntelRootCauseRequest) =>
-      invoke(IpcChannel.EnterpriseIntelRootCause, req ?? {}) as Promise<RootCauseReport>,
+      invoke(IpcChannel.EnterpriseIntelRootCause, req ?? {}),
+  },
+
+  /** Phase 6 Stage 6 — the Enterprise Intelligence Layer (read-only; every
+   *  channel RBAC-gated `intelligence:read` and cached ~3 s server-side). */
+  insight: {
+    report: () => invoke(IpcChannel.InsightReport),
+    rootCause: (req?: EnterpriseIntelRootCauseRequest) =>
+      invoke(IpcChannel.InsightRootCause, req ?? {}),
+    health: () => invoke(IpcChannel.InsightHealth),
+    predictions: () => invoke(IpcChannel.InsightPredictions),
+    dashboard: () => invoke(IpcChannel.InsightDashboard),
+  },
+
+  /** Phase 6 Stage 7 — the Enterprise Knowledge Platform (read-only; every
+   *  channel RBAC-gated `knowledge:read` and cached ~3 s server-side). */
+  kb: {
+    inventory: (req?: { classId?: string; authority?: string; lifecycle?: string; text?: string }) =>
+      invoke(IpcChannel.KbInventory, req ?? {}),
+    matrix: () => invoke(IpcChannel.KbMatrix, {}),
+    impact: (assetId: string) => invoke(IpcChannel.KbImpact, { assetId }),
+    lineage: (decisionId?: string) =>
+      invoke(IpcChannel.KbLineage, decisionId ? { decisionId } : {}),
+    quality: () => invoke(IpcChannel.KbQuality),
+    standards: () => invoke(IpcChannel.KbStandards),
+    dashboard: () => invoke(IpcChannel.KbDashboard),
+  },
+
+  /** Phase 6 Stage 8 — the Enterprise Automation Platform (read-only; every
+   *  channel RBAC-gated `autonomousops:read` and cached ~3 s server-side). */
+  ap: {
+    catalog: () => invoke(IpcChannel.ApCatalog),
+    playbooks: (id?: string) => invoke(IpcChannel.ApPlaybooks, id ? { id } : {}),
+    plan: (playbookId: string) => invoke(IpcChannel.ApPlan, { playbookId }),
+    policies: () => invoke(IpcChannel.ApPolicies),
+    monitor: () => invoke(IpcChannel.ApMonitor),
+    dashboard: () => invoke(IpcChannel.ApDashboard),
+  },
+
+  /** Phase 6 Stage 9 — the Enterprise Operations Platform (read-only; every
+   *  channel RBAC-gated `autonomousops:read` and cached ~3 s server-side). */
+  eops: {
+    catalog: () => invoke(IpcChannel.EopsCatalog),
+    health: () => invoke(IpcChannel.EopsHealth),
+    readiness: () => invoke(IpcChannel.EopsReadiness),
+    incidents: () => invoke(IpcChannel.EopsIncidents),
+    continuity: () => invoke(IpcChannel.EopsContinuity),
+    dashboard: () => invoke(IpcChannel.EopsDashboard),
+  },
+
+  /** Phase 6 Stage 10 — the Enterprise Strategy Platform (read-only; every
+   *  channel RBAC-gated `strategy:read` — the P14 read scope — and cached
+   *  ~3 s server-side; distinct from the P14 `strategy:*` cluster below). */
+  estrat: {
+    objectives: () => invoke(IpcChannel.EstratObjectives),
+    portfolio: () => invoke(IpcChannel.EstratPortfolio),
+    planning: () => invoke(IpcChannel.EstratPlanning),
+    health: () => invoke(IpcChannel.EstratHealth),
+    dashboard: () => invoke(IpcChannel.EstratDashboard),
+    report: () => invoke(IpcChannel.EstratReport),
+  },
+
+  /** Phase 6 Stage 11 — the Enterprise Federation Platform (read-only; every
+   *  channel RBAC-gated `federation:read` — the P10 read scope — and cached
+   *  ~3 s server-side; distinct from the `fed:*` / `federation:*` clusters). */
+  efed: {
+    partners: () => invoke(IpcChannel.EfedPartners),
+    trust: () => invoke(IpcChannel.EfedTrust),
+    exchange: () => invoke(IpcChannel.EfedExchange),
+    sharing: () => invoke(IpcChannel.EfedSharing),
+    dashboard: () => invoke(IpcChannel.EfedDashboard),
+    report: () => invoke(IpcChannel.EfedReport),
+  },
+
+  /** Phase 6 Stage 12 — the Enterprise Analytics Platform (read-only; every
+   *  channel RBAC-gated `intelligence:read` — the Stage 6 read scope — and
+   *  cached ~3 s server-side; pure composition over the existing producers). */
+  eana: {
+    kpis: () => invoke(IpcChannel.EanaKpis),
+    trends: () => invoke(IpcChannel.EanaTrends),
+    forecasts: () => invoke(IpcChannel.EanaForecasts),
+    decisions: () => invoke(IpcChannel.EanaDecisions),
+    dashboard: () => invoke(IpcChannel.EanaDashboard),
+    report: () => invoke(IpcChannel.EanaReport),
+  },
+
+  /** Phase 6 Stage 13 — the Enterprise Digital Twin Platform (read-only; every
+   *  channel RBAC-gated `twin:read` — P15's OWN read scope, no new permission —
+   *  and cached ~3 s server-side). Composition over P15, the Execute Engine,
+   *  the Runtime Supervisor and the Stage 6–12 platforms: distinct from the
+   *  `twin:*` cluster below, which stays authoritative and is untouched. */
+  etwin: {
+    runtime: () => invoke(IpcChannel.EtwinRuntime),
+    platforms: () => invoke(IpcChannel.EtwinPlatforms),
+    coverage: () => invoke(IpcChannel.EtwinCoverage),
+    simulation: () => invoke(IpcChannel.EtwinSimulation),
+    history: () => invoke(IpcChannel.EtwinHistory),
+    dashboard: () => invoke(IpcChannel.EtwinDashboard),
+    report: () => invoke(IpcChannel.EtwinReport),
   },
 
   knowledge: {
-    topics: () =>
-      invoke(IpcChannel.KnowledgeTopics) as Promise<{
-        topics: Array<{
-          id: string;
-          label: string;
-          memoryIds: string[];
-          entities: string[];
-          size: number;
-        }>;
-        total: number;
-      }>,
+    topics: () => invoke(IpcChannel.KnowledgeTopics),
     related: (memoryId: string, limit?: number) =>
-      invoke(IpcChannel.KnowledgeRelated, { memoryId, limit }) as Promise<{
-        memoryId: string;
-        related: Array<{
-          memoryId: string;
-          title: string;
-          kind: string;
-          content: string;
-          score: number;
-          sharedEntities: string[];
-        }>;
-      }>,
+      invoke(IpcChannel.KnowledgeRelated, { memoryId, limit }),
+  },
+
+  /** Phase 6 Stage 1 — local workspace contexts (multi-workspace foundation). */
+  workspaceContexts: {
+    bootstrap: (legacySnapshot: unknown | null) =>
+      invoke(IpcChannel.WorkspaceCtxBootstrap, legacySnapshot == null ? {} : { legacySnapshot }),
+    list: () => invoke(IpcChannel.WorkspaceCtxList),
+    create: (name: string, template: WorkspaceTemplateId, color?: string) =>
+      invoke(IpcChannel.WorkspaceCtxCreate, {
+        name,
+        template,
+        ...(color ? { color } : {}),
+      }),
+    rename: (id: string, name: string) => invoke(IpcChannel.WorkspaceCtxRename, { id, name }),
+    remove: (id: string) => invoke(IpcChannel.WorkspaceCtxDelete, { id }),
+    switch: (id: string) => invoke(IpcChannel.WorkspaceCtxSwitch, { id }),
+    updateSnapshot: (id: string, snapshot: ShellSnapshotDto) =>
+      invoke(IpcChannel.WorkspaceCtxUpdateSnapshot, {
+        id,
+        snapshot,
+      }),
   },
 
   memory: {
-    recall: (q?: MemoryRecallQuery) =>
-      invoke(IpcChannel.MemoryRecall, q ?? {}) as Promise<MemoryRecallResult>,
-    semanticRecall: (q?: MemoryRecallQuery) =>
-      invoke(IpcChannel.MemorySemanticRecall, q ?? {}) as Promise<MemoryRecallResult>,
-    get: (id: string) => invoke(IpcChannel.MemoryGet, { id }) as Promise<MemoryItem | null>,
-    remember: (input: MemoryWriteInput) =>
-      invoke(IpcChannel.MemoryRemember, input) as Promise<MemoryItem>,
-    forget: (ids: string[]) =>
-      invoke(IpcChannel.MemoryForget, { ids }) as Promise<{ forgotten: number }>,
-    counts: () => invoke(IpcChannel.MemoryCounts) as Promise<MemoryCounts>,
-    rebuild: () => invoke(IpcChannel.MemoryRebuild) as Promise<MemoryCounts>,
+    recall: (q?: MemoryRecallQuery) => invoke(IpcChannel.MemoryRecall, q ?? {}),
+    semanticRecall: (q?: MemoryRecallQuery) => invoke(IpcChannel.MemorySemanticRecall, q ?? {}),
+    get: (id: string) => invoke(IpcChannel.MemoryGet, { id }),
+    remember: (input: MemoryWriteInput) => invoke(IpcChannel.MemoryRemember, input),
+    forget: (ids: string[]) => invoke(IpcChannel.MemoryForget, { ids }),
+    counts: () => invoke(IpcChannel.MemoryCounts),
+    rebuild: () => invoke(IpcChannel.MemoryRebuild),
     onChange: (cb: (counts: MemoryCounts) => void) =>
-      subscribe(IpcChannel.MemoryEventBroadcast, (p) => cb(p as MemoryCounts)),
+      subscribe(IpcChannel.MemoryEventBroadcast, cb),
   },
 
   execMemory: {
-    search: (q?: ExecutiveMemoryQuery) =>
-      invoke(IpcChannel.ExecMemorySearch, q ?? {}) as Promise<ExecutiveMemoryView[]>,
-    forget: (id: string) =>
-      invoke(IpcChannel.ExecMemoryForget, { id }) as Promise<{ forgotten: boolean }>,
-    pin: (id: string, pinned: boolean) =>
-      invoke(IpcChannel.ExecMemoryPin, { id, pinned }) as Promise<ExecutiveMemoryView | null>,
+    search: (q?: ExecutiveMemoryQuery) => invoke(IpcChannel.ExecMemorySearch, q ?? {}),
+    forget: (id: string) => invoke(IpcChannel.ExecMemoryForget, { id }),
+    pin: (id: string, pinned: boolean) => invoke(IpcChannel.ExecMemoryPin, { id, pinned }),
     resolve: (id: string, status: ExecutiveMemoryStatus) =>
-      invoke(IpcChannel.ExecMemoryResolve, { id, status }) as Promise<ExecutiveMemoryView | null>,
+      invoke(IpcChannel.ExecMemoryResolve, { id, status }),
     audit: (q?: {
       limit?: number;
       offset?: number;
       action?: MemoryAuditAction;
       memoryId?: string;
-    }) => invoke(IpcChannel.ExecMemoryAudit, q ?? {}) as Promise<MemoryAuditPage>,
+    }) => invoke(IpcChannel.ExecMemoryAudit, q ?? {}),
   },
 
   search: {
-    enterprise: (q: EnterpriseSearchQuery) =>
-      invoke(IpcChannel.EnterpriseSearch, q) as Promise<EnterpriseSearchResult>,
+    enterprise: (q: EnterpriseSearchQuery) => invoke(IpcChannel.EnterpriseSearch, q),
   },
 
   enterpriseTimeline: {
-    query: (q?: EnterpriseTimelineQuery) =>
-      invoke(IpcChannel.EnterpriseTimelineQuery, q ?? {}) as Promise<EnterpriseTimelinePage>,
-    replay: (q?: TimelineReplayQuery) =>
-      invoke(IpcChannel.EnterpriseTimelineReplay, q ?? {}) as Promise<TimelineReplay>,
-    stats: () => invoke(IpcChannel.EnterpriseTimelineStats) as Promise<EnterpriseTimelineStats>,
-    export: () => invoke(IpcChannel.EnterpriseTimelineExport) as Promise<EnterpriseTimelineExport>,
+    query: (q?: EnterpriseTimelineQuery) => invoke(IpcChannel.EnterpriseTimelineQuery, q ?? {}),
+    replay: (q?: TimelineReplayQuery) => invoke(IpcChannel.EnterpriseTimelineReplay, q ?? {}),
+    stats: () => invoke(IpcChannel.EnterpriseTimelineStats),
+    export: () => invoke(IpcChannel.EnterpriseTimelineExport),
     onChange: (cb: (stats: EnterpriseTimelineStats) => void) =>
-      subscribe(IpcChannel.EnterpriseTimelineEventBroadcast, (p) =>
-        cb(p as EnterpriseTimelineStats),
-      ),
+      subscribe(IpcChannel.EnterpriseTimelineEventBroadcast, cb),
   },
 
   intelligence: {
     briefing: (period: BriefingPeriod, now?: string) =>
-      invoke(IpcChannel.BriefingGenerate, { period, now }) as Promise<Briefing>,
-    executiveCenterSnapshot: () =>
-      invoke(IpcChannel.ExecutiveCenterSnapshot) as Promise<ExecutiveCenterSnapshot>,
+      invoke(IpcChannel.BriefingGenerate, { period, now }),
+    executiveCenterSnapshot: () => invoke(IpcChannel.ExecutiveCenterSnapshot),
     voiceTurn: (transcript: string, displayName?: string) =>
-      invoke(IpcChannel.VoiceTurn, { transcript, displayName }) as Promise<VoiceResponse>,
+      invoke(IpcChannel.VoiceTurn, { transcript, displayName }),
   },
 
   decisions: {
-    list: () => invoke(IpcChannel.DecisionList) as Promise<{ decisions: ExecutiveDecision[] }>,
+    list: () => invoke(IpcChannel.DecisionList),
     createFromRecommendation: (recommendationId: string) =>
       invoke(IpcChannel.DecisionCreateFromRecommendation, {
         recommendationId,
-      }) as Promise<{ decision: ExecutiveDecision | null }>,
+      }),
     setStatus: (id: string, status: ExecutiveDecision['status']) =>
-      invoke(IpcChannel.DecisionSetStatus, { id, status }) as Promise<{
-        decision: ExecutiveDecision | null;
-      }>,
+      invoke(IpcChannel.DecisionSetStatus, { id, status }),
   },
 
   automations: {
-    list: () =>
-      invoke(IpcChannel.AutomationList) as Promise<{
-        rules: AutomationRule[];
-        summary: { total: number; active: number; paused: number; draft: number };
-      }>,
-    save: (rule: AutomationRule) =>
-      invoke(IpcChannel.AutomationSave, { rule }) as Promise<{
-        ok: boolean;
-        rule?: AutomationRule;
-        issues?: string[];
-      }>,
+    list: () => invoke(IpcChannel.AutomationList),
+    save: (rule: AutomationRule) => invoke(IpcChannel.AutomationSave, { rule }),
     setStatus: (id: string, status: AutomationRule['status']) =>
-      invoke(IpcChannel.AutomationSetStatus, { id, status }) as Promise<{
-        rule: AutomationRule | null;
-      }>,
-    remove: (id: string) =>
-      invoke(IpcChannel.AutomationRemove, { id }) as Promise<{ removed: boolean }>,
-    run: (id: string) =>
-      invoke(IpcChannel.AutomationRun, { id }) as Promise<{ record: AutomationRunRecord | null }>,
-    monitor: () => invoke(IpcChannel.AutomationMonitor) as Promise<{ monitor: AutomationMonitor }>,
-    history: () =>
-      invoke(IpcChannel.AutomationHistory) as Promise<{ records: AutomationRunRecord[] }>,
+      invoke(IpcChannel.AutomationSetStatus, { id, status }),
+    remove: (id: string) => invoke(IpcChannel.AutomationRemove, { id }),
+    run: (id: string) => invoke(IpcChannel.AutomationRun, { id }),
+    monitor: () => invoke(IpcChannel.AutomationMonitor),
+    history: () => invoke(IpcChannel.AutomationHistory),
   },
 
   system: {
     /** NeuroCore composed system-health snapshot (V5.0). */
-    health: () => invoke(IpcChannel.SystemHealthSnapshot) as Promise<SystemHealthSnapshot>,
+    health: () => invoke(IpcChannel.SystemHealthSnapshot),
   },
 
   supervisor: {
     /** Runtime supervisor status (V5.3). */
-    status: () => invoke(IpcChannel.SupervisorStatus) as Promise<SupervisorStatus>,
-    history: () => invoke(IpcChannel.SupervisorHistory) as Promise<{ records: RecoveryRecord[] }>,
+    status: () => invoke(IpcChannel.SupervisorStatus),
+    history: () => invoke(IpcChannel.SupervisorHistory),
     recover: (subsystem: SupervisedSubsystem) =>
-      invoke(IpcChannel.SupervisorRecover, { subsystem }) as Promise<RecoveryRecord>,
+      invoke(IpcChannel.SupervisorRecover, { subsystem }),
     setPolicy: (subsystem: SupervisedSubsystem, policy: RecoveryPolicy) =>
-      invoke(IpcChannel.SupervisorSetPolicy, { subsystem, policy }) as Promise<SupervisorStatus>,
+      invoke(IpcChannel.SupervisorSetPolicy, { subsystem, policy }),
   },
 
   execute: {
     /** Run any executable through the unified Execute Engine (V5.4). */
-    run: (req: ExecutionRequest) => invoke(IpcChannel.ExecuteRun, req) as Promise<ExecutionSession>,
-    sessions: () =>
-      invoke(IpcChannel.ExecuteSessions) as Promise<{
-        sessions: ExecutionSession[];
-        stats: ExecutionStats;
-      }>,
-    history: () => invoke(IpcChannel.ExecuteHistory) as Promise<{ records: ExecutionSession[] }>,
-    cancel: (id: string) =>
-      invoke(IpcChannel.ExecuteCancel, { id }) as Promise<ExecutionSession | null>,
+    run: (req: ExecutionRequest) => invoke(IpcChannel.ExecuteRun, req),
+    sessions: () => invoke(IpcChannel.ExecuteSessions),
+    history: () => invoke(IpcChannel.ExecuteHistory),
+    cancel: (id: string) => invoke(IpcChannel.ExecuteCancel, { id }),
   },
 
   voice: {
     /** Report the live voice runtime state to main for NeuroCore (V5.2). */
-    reportStatus: (state: VoiceRuntimeState) =>
-      invoke(IpcChannel.VoiceStatus, { state }) as Promise<{ ok: boolean }>,
+    reportStatus: (state: VoiceRuntimeState) => invoke(IpcChannel.VoiceStatus, { state }),
   },
 
   recommendations: {
-    generate: (q?: RecommendationQuery) =>
-      invoke(IpcChannel.RecommendationsGenerate, q ?? {}) as Promise<RecommendationSet>,
+    generate: (q?: RecommendationQuery) => invoke(IpcChannel.RecommendationsGenerate, q ?? {}),
   },
 
   founderAI: {
-    ask: (text: string, now?: string) =>
-      invoke(IpcChannel.FounderAsk, { text, now }) as Promise<FounderAnswer>,
-    askV2: (text: string, now?: string) =>
-      invoke(IpcChannel.FounderAskV2, { text, now }) as Promise<FounderResponse>,
-    suggestions: (now?: string) =>
-      invoke(IpcChannel.FounderSuggestions, { now }) as Promise<FounderSuggestedQuestion[]>,
+    ask: (text: string, now?: string) => invoke(IpcChannel.FounderAsk, { text, now }),
+    askV2: (text: string, now?: string) => invoke(IpcChannel.FounderAskV2, { text, now }),
+    suggestions: (now?: string) => invoke(IpcChannel.FounderSuggestions, { now }),
+  },
+
+  /** Phase 6 Stage 4 — the Workspace Assistant (documented D-1 cluster). */
+  assistant: {
+    ask: (req: AssistantAskRequest) => invoke(IpcChannel.AssistantAsk, req),
+    conversations: (workspaceId?: string | null, limit?: number) =>
+      invoke(IpcChannel.AssistantConversations, { workspaceId, limit }),
+    conversation: (conversationId: string) =>
+      invoke(IpcChannel.AssistantConversationGet, { conversationId }),
+    save: (req: { conversationId: string; title?: string; pinned?: boolean }) =>
+      invoke(IpcChannel.AssistantConversationSave, req),
+    remove: (conversationId: string) =>
+      invoke(IpcChannel.AssistantConversationDelete, { conversationId }),
+    branch: (conversationId: string, messageId: string, now?: string) =>
+      invoke(IpcChannel.AssistantConversationBranch, { conversationId, messageId, now }),
+    decideStep: (req: { conversationId: string; messageId: string; stepId: string; decision: 'approve' | 'reject'; note?: string | null }) =>
+      invoke(IpcChannel.AssistantPlanDecide, req),
+    cancel: (conversationId: string) => invoke(IpcChannel.AssistantCancel, { conversationId }),
+    onEvent: (cb: (event: AssistantEvent) => void) =>
+      subscribe(IpcChannel.AssistantEventBroadcast, cb),
+  },
+
+  /** Phase 6 Stage 5 (D-8) — the Notification Inbox over the EXISTING delivery
+   *  engine's notification-center channel, plus the surfaced preference store. */
+  notifications: {
+    list: (limit?: number) =>
+      invoke(IpcChannel.NotificationsList, limit === undefined ? {} : { limit }),
+    markRead: (ids: 'all' | string[]) => invoke(IpcChannel.NotificationsMarkRead, { ids }),
+    prefs: () => invoke(IpcChannel.NotificationsPrefsGet),
+    setPrefs: (patch: NotificationsPrefsSetRequest) =>
+      invoke(IpcChannel.NotificationsPrefsSet, patch),
+    onEvent: (cb: (event: NotificationInboxEvent) => void) =>
+      subscribe(IpcChannel.NotificationsEventBroadcast, cb),
   },
 
   engineering: {
-    analyze: (now?: string) =>
-      invoke(IpcChannel.EngineeringAnalyze, { now }) as Promise<EngineeringAnalysis>,
+    analyze: (now?: string) => invoke(IpcChannel.EngineeringAnalyze, { now }),
   },
 
   governance: {
-    list: (text?: string, limit?: number) =>
-      invoke(IpcChannel.GovernanceList, { text, limit }) as Promise<GovernanceTraceList>,
-    trace: (decisionId: string) =>
-      invoke(IpcChannel.GovernanceTrace, { decisionId }) as Promise<GovernanceTrace | null>,
+    list: (text?: string, limit?: number) => invoke(IpcChannel.GovernanceList, { text, limit }),
+    trace: (decisionId: string) => invoke(IpcChannel.GovernanceTrace, { decisionId }),
   },
 
   context: {
     trace: (entityRef: string, limit?: number) =>
-      invoke(IpcChannel.ContextTrace, { entityRef, limit }) as Promise<ContextTrace>,
+      invoke(IpcChannel.ContextTrace, { entityRef, limit }),
   },
 
   relationship: {
     trace: (nodeId: string, limit?: number) =>
-      invoke(IpcChannel.RelationshipTrace, { nodeId, limit }) as Promise<RelationshipTrace>,
-    path: (from: string, to: string) =>
-      invoke(IpcChannel.RelationshipPath, { from, to }) as Promise<RelationshipPath>,
+      invoke(IpcChannel.RelationshipTrace, { nodeId, limit }),
+    path: (from: string, to: string) => invoke(IpcChannel.RelationshipPath, { from, to }),
   },
 
   workforce: {
-    intelligence: () => invoke(IpcChannel.WorkforceIntelligence) as Promise<WorkforceIntelligence>,
-    workers: () => invoke(IpcChannel.WorkforceWorkers) as Promise<WorkerSummary[]>,
-    worker: (workerId: string) =>
-      invoke(IpcChannel.WorkforceWorkerGet, { workerId }) as Promise<Worker | null>,
+    intelligence: () => invoke(IpcChannel.WorkforceIntelligence),
+    workers: () => invoke(IpcChannel.WorkforceWorkers),
+    worker: (workerId: string) => invoke(IpcChannel.WorkforceWorkerGet, { workerId }),
     runJob: (workerId: string, skillId: string, input?: Record<string, unknown>, now?: string) =>
-      invoke(IpcChannel.WorkforceJobRun, { workerId, skillId, input, now }) as Promise<Job>,
+      invoke(IpcChannel.WorkforceJobRun, { workerId, skillId, input, now }),
     jobs: (q?: { workerId?: string; status?: JobStatus; limit?: number; offset?: number }) =>
-      invoke(IpcChannel.WorkforceJobs, q ?? {}) as Promise<JobPage>,
-    job: (jobId: string) => invoke(IpcChannel.WorkforceJobGet, { jobId }) as Promise<Job | null>,
+      invoke(IpcChannel.WorkforceJobs, q ?? {}),
+    job: (jobId: string) => invoke(IpcChannel.WorkforceJobGet, { jobId }),
     approve: (jobId: string, proposalId: string, note?: string, now?: string) =>
       invoke(IpcChannel.WorkforceProposalApprove, {
         jobId,
         proposalId,
         note,
         now,
-      }) as Promise<Job | null>,
+      }),
     reject: (jobId: string, proposalId: string, note?: string, now?: string) =>
       invoke(IpcChannel.WorkforceProposalReject, {
         jobId,
         proposalId,
         note,
         now,
-      }) as Promise<Job | null>,
+      }),
     runWorkflow: (spec: WorkflowSpec, now?: string) =>
-      invoke(IpcChannel.WorkforceWorkflowRun, { spec, now }) as Promise<WorkflowRun>,
-    workflowRuns: () => invoke(IpcChannel.WorkforceWorkflowRuns) as Promise<WorkflowRun[]>,
-    resumeWorkflow: (runId: string) =>
-      invoke(IpcChannel.WorkforceWorkflowResume, { runId }) as Promise<WorkflowRun | null>,
+      invoke(IpcChannel.WorkforceWorkflowRun, { spec, now }),
+    workflowRuns: () => invoke(IpcChannel.WorkforceWorkflowRuns),
+    resumeWorkflow: (runId: string) => invoke(IpcChannel.WorkforceWorkflowResume, { runId }),
     approveCheckpoint: (runId: string, stepId: string, approved: boolean, now?: string) =>
       invoke(IpcChannel.WorkforceWorkflowCheckpoint, {
         runId,
         stepId,
         approved,
         now,
-      }) as Promise<WorkflowRun | null>,
+      }),
     audit: (q?: {
       workerId?: string;
       decision?: VerdictDecision;
       limit?: number;
       offset?: number;
-    }) => invoke(IpcChannel.WorkforceAudit, q ?? {}) as Promise<WorkforceAuditPage>,
-    policies: () => invoke(IpcChannel.WorkforcePolicies) as Promise<PolicyRule[]>,
+    }) => invoke(IpcChannel.WorkforceAudit, q ?? {}),
+    policies: () => invoke(IpcChannel.WorkforcePolicies),
     // P8 — plan the delegation of a goal's task graph across the worker roster.
-    delegate: (req: WorkforceDelegateRequest) =>
-      invoke(IpcChannel.WorkforceDelegatePlan, req) as Promise<DelegationPlan>,
+    delegate: (req: WorkforceDelegateRequest) => invoke(IpcChannel.WorkforceDelegatePlan, req),
     // P8.5 — Installable Workers (install/lifecycle gated by workforce:manage).
-    installs: () => invoke(IpcChannel.WorkforceInstalls) as Promise<WorkerInstallSummary[]>,
-    installDetail: (workerId: string) =>
-      invoke(IpcChannel.WorkforceInstallGet, { workerId }) as Promise<WorkerInstallDetail | null>,
-    install: (pkg: WorkerPackage) =>
-      invoke(IpcChannel.WorkforceInstall, { package: pkg }) as Promise<WorkerInstallResult>,
+    installs: () => invoke(IpcChannel.WorkforceInstalls),
+    installDetail: (workerId: string) => invoke(IpcChannel.WorkforceInstallGet, { workerId }),
+    install: (pkg: WorkerPackage) => invoke(IpcChannel.WorkforceInstall, { package: pkg }),
     updateInstall: (pkg: WorkerPackage) =>
-      invoke(IpcChannel.WorkforceInstallUpdate, { package: pkg }) as Promise<WorkerInstallResult>,
-    enableInstall: (workerId: string) =>
-      invoke(IpcChannel.WorkforceInstallEnable, { workerId }) as Promise<WorkerInstallResult>,
-    disableInstall: (workerId: string) =>
-      invoke(IpcChannel.WorkforceInstallDisable, { workerId }) as Promise<WorkerInstallResult>,
+      invoke(IpcChannel.WorkforceInstallUpdate, { package: pkg }),
+    enableInstall: (workerId: string) => invoke(IpcChannel.WorkforceInstallEnable, { workerId }),
+    disableInstall: (workerId: string) => invoke(IpcChannel.WorkforceInstallDisable, { workerId }),
     rollbackInstall: (workerId: string) =>
-      invoke(IpcChannel.WorkforceInstallRollback, { workerId }) as Promise<WorkerInstallResult>,
-    uninstall: (workerId: string) =>
-      invoke(IpcChannel.WorkforceUninstall, { workerId }) as Promise<WorkerInstallResult>,
-    onEvent: (cb: (snapshot: { workers: number; jobs: number; audit: number }) => void) =>
-      subscribe(IpcChannel.WorkforceEventBroadcast, (p) =>
-        cb(p as { workers: number; jobs: number; audit: number }),
-      ),
+      invoke(IpcChannel.WorkforceInstallRollback, { workerId }),
+    uninstall: (workerId: string) => invoke(IpcChannel.WorkforceUninstall, { workerId }),
+    onEvent: (cb: (snapshot: WorkforceCountsEvent) => void) =>
+      subscribe(IpcChannel.WorkforceEventBroadcast, cb),
   },
 
   enterprise: {
-    org: () =>
-      invoke(IpcChannel.EnterpriseOrgGet) as Promise<{
-        organization: Organization;
-        units: OrgUnit[];
-        roles: OrgRole[];
-        users: OrgUser[];
-      }>,
+    org: () => invoke(IpcChannel.EnterpriseOrgGet),
     createUnit: (input: {
       kind: OrgUnitKind;
       name: string;
       parentId?: string | null;
       leadUserId?: string | null;
-    }) =>
-      invoke(IpcChannel.EnterpriseOrgCreateUnit, input) as Promise<{
-        organization: Organization;
-        units: OrgUnit[];
-        roles: OrgRole[];
-        users: OrgUser[];
-      }>,
+    }) => invoke(IpcChannel.EnterpriseOrgCreateUnit, input),
     updateUnit: (input: {
       id: string;
       name?: string;
       parentId?: string | null;
       leadUserId?: string | null;
-    }) =>
-      invoke(IpcChannel.EnterpriseOrgUpdateUnit, input) as Promise<{
-        organization: Organization;
-        units: OrgUnit[];
-        roles: OrgRole[];
-        users: OrgUser[];
-      }>,
-    deleteUnit: (id: string) =>
-      invoke(IpcChannel.EnterpriseOrgDeleteUnit, { id }) as Promise<{
-        organization: Organization;
-        units: OrgUnit[];
-        roles: OrgRole[];
-        users: OrgUser[];
-      }>,
+    }) => invoke(IpcChannel.EnterpriseOrgUpdateUnit, input),
+    deleteUnit: (id: string) => invoke(IpcChannel.EnterpriseOrgDeleteUnit, { id }),
     createUser: (input: {
       name: string;
       email?: string | null;
       title?: string;
       unitId?: string | null;
       roleIds?: string[];
-    }) =>
-      invoke(IpcChannel.EnterpriseOrgCreateUser, input) as Promise<{
-        organization: Organization;
-        units: OrgUnit[];
-        roles: OrgRole[];
-        users: OrgUser[];
-      }>,
+    }) => invoke(IpcChannel.EnterpriseOrgCreateUser, input),
     updateUser: (input: {
       id: string;
       name?: string;
@@ -1190,99 +918,57 @@ export const ipc = {
       unitId?: string | null;
       roleIds?: string[];
       status?: OrgUserStatus;
-    }) =>
-      invoke(IpcChannel.EnterpriseOrgUpdateUser, input) as Promise<{
-        organization: Organization;
-        units: OrgUnit[];
-        roles: OrgRole[];
-        users: OrgUser[];
-      }>,
-    deleteUser: (id: string) =>
-      invoke(IpcChannel.EnterpriseOrgDeleteUser, { id }) as Promise<{
-        organization: Organization;
-        units: OrgUnit[];
-        roles: OrgRole[];
-        users: OrgUser[];
-      }>,
+    }) => invoke(IpcChannel.EnterpriseOrgUpdateUser, input),
+    deleteUser: (id: string) => invoke(IpcChannel.EnterpriseOrgDeleteUser, { id }),
     createRole: (input: {
       name: string;
       description?: string;
       permissions: EnterprisePermission[];
-    }) =>
-      invoke(IpcChannel.EnterpriseOrgCreateRole, input) as Promise<{
-        organization: Organization;
-        units: OrgUnit[];
-        roles: OrgRole[];
-        users: OrgUser[];
-      }>,
+    }) => invoke(IpcChannel.EnterpriseOrgCreateRole, input),
     updateRole: (input: {
       id: string;
       name?: string;
       description?: string;
       permissions?: EnterprisePermission[];
-    }) =>
-      invoke(IpcChannel.EnterpriseOrgUpdateRole, input) as Promise<{
-        organization: Organization;
-        units: OrgUnit[];
-        roles: OrgRole[];
-        users: OrgUser[];
-      }>,
-    deleteRole: (id: string) =>
-      invoke(IpcChannel.EnterpriseOrgDeleteRole, { id }) as Promise<{
-        organization: Organization;
-        units: OrgUnit[];
-        roles: OrgRole[];
-        users: OrgUser[];
-      }>,
+    }) => invoke(IpcChannel.EnterpriseOrgUpdateRole, input),
+    deleteRole: (id: string) => invoke(IpcChannel.EnterpriseOrgDeleteRole, { id }),
 
-    workspaces: () => invoke(IpcChannel.EnterpriseWorkspaceList) as Promise<WorkspaceSummary[]>,
-    activeWorkspace: () => invoke(IpcChannel.EnterpriseWorkspaceActive) as Promise<Workspace>,
+    workspaces: () => invoke(IpcChannel.EnterpriseWorkspaceList),
+    activeWorkspace: () => invoke(IpcChannel.EnterpriseWorkspaceActive),
     createWorkspace: (name: string, organizationId?: string) =>
-      invoke(IpcChannel.EnterpriseWorkspaceCreate, { name, organizationId }) as Promise<
-        WorkspaceSummary[]
-      >,
-    switchWorkspace: (id: string) =>
-      invoke(IpcChannel.EnterpriseWorkspaceSwitch, { id }) as Promise<Workspace>,
+      invoke(IpcChannel.EnterpriseWorkspaceCreate, { name, organizationId }),
+    switchWorkspace: (id: string) => invoke(IpcChannel.EnterpriseWorkspaceSwitch, { id }),
 
-    graph: () => invoke(IpcChannel.EnterpriseGraph) as Promise<OrgGraph>,
-    graphNeighbors: (id: string) =>
-      invoke(IpcChannel.EnterpriseGraphNeighbors, { id }) as Promise<OrgGraphNeighbors | null>,
+    graph: () => invoke(IpcChannel.EnterpriseGraph),
+    graphNeighbors: (id: string) => invoke(IpcChannel.EnterpriseGraphNeighbors, { id }),
 
-    governanceConfig: () =>
-      invoke(IpcChannel.EnterpriseGovernanceConfig) as Promise<GovernanceConfig>,
-    compliance: () =>
-      invoke(IpcChannel.EnterpriseGovernanceCompliance) as Promise<ComplianceFinding[]>,
+    governanceConfig: () => invoke(IpcChannel.EnterpriseGovernanceConfig),
+    compliance: () => invoke(IpcChannel.EnterpriseGovernanceCompliance),
     setChain: (id: string, enabled: boolean) =>
-      invoke(IpcChannel.EnterpriseGovernanceSetChain, { id, enabled }) as Promise<
-        GovernanceConfig['approvalChains']
-      >,
+      invoke(IpcChannel.EnterpriseGovernanceSetChain, { id, enabled }),
     setRule: (id: string, enabled: boolean) =>
-      invoke(IpcChannel.EnterpriseGovernanceSetRule, { id, enabled }) as Promise<
-        GovernanceConfig['complianceRules']
-      >,
-    audit: (limit?: number) =>
-      invoke(IpcChannel.EnterpriseGovernanceAudit, { limit }) as Promise<EnterpriseAuditEntry[]>,
+      invoke(IpcChannel.EnterpriseGovernanceSetRule, { id, enabled }),
+    audit: (limit?: number) => invoke(IpcChannel.EnterpriseGovernanceAudit, { limit }),
 
-    dashboard: () => invoke(IpcChannel.EnterpriseDashboard) as Promise<ExecutiveSnapshot>,
+    dashboard: () => invoke(IpcChannel.EnterpriseDashboard),
 
     /** Process Explorer — read-only projection of the mined processes (graph + filtered case list + KPIs). */
     processExplore: (filter?: ProcessExplorerFilter) =>
-      invoke(IpcChannel.EnterpriseProcessExplore, filter ?? {}) as Promise<ProcessExplorerModel>,
+      invoke(IpcChannel.EnterpriseProcessExplore, filter ?? {}),
     /** Process Explorer — full detail for one reconstructed case. */
-    processCase: (id: string) =>
-      invoke(IpcChannel.EnterpriseProcessCase, { id }) as Promise<ProcessCaseDetail | null>,
+    processCase: (id: string) => invoke(IpcChannel.EnterpriseProcessCase, { id }),
 
     /** Production Schedule — read-only routing schedule (Gantt + KPIs + violations + governance proposals). */
-    scheduleExplore: () => invoke(IpcChannel.EnterpriseScheduleExplore) as Promise<ScheduleExploreModel>,
+    scheduleExplore: () => invoke(IpcChannel.EnterpriseScheduleExplore),
 
     /** Operator Console (MES) — read-only shop-floor execution model (executions + machines + operators + quality + timeline + KPIs). */
-    executionExplore: () => invoke(IpcChannel.EnterpriseExecutionExplore) as Promise<ExecutionConsoleModel>,
+    executionExplore: () => invoke(IpcChannel.EnterpriseExecutionExplore),
 
     /** Relationship Intelligence — read-only ERP entity relationship graph (nodes + typed edges + health/risk + KPIs + narrative). */
-    relationshipExplore: () => invoke(IpcChannel.EnterpriseRelationshipExplore) as Promise<RelationshipGraphModel>,
+    relationshipExplore: () => invoke(IpcChannel.EnterpriseRelationshipExplore),
 
     /** Trust Engine — read-only per-entity deterministic trust model (profiles + factors + trend + KPIs + narrative). */
-    trustExplore: () => invoke(IpcChannel.EnterpriseTrustExplore) as Promise<EnterpriseTrustModel>,
+    trustExplore: () => invoke(IpcChannel.EnterpriseTrustExplore),
 
     /** Context Engine (P2.5) — entity-360 for any unified-graph / ERP entity id (neighbors + impact + timeline + memory). */
     context: (input: {
@@ -1291,113 +977,101 @@ export const ipc = {
       activityLimit?: number;
       memoryLimit?: number;
       impactDepth?: number;
-    }) => invoke(IpcChannel.EnterpriseContext, input) as Promise<EnterpriseContext>,
+    }) => invoke(IpcChannel.EnterpriseContext, input),
 
     /** Personalization — per-user Favorites / Recently-Opened / Saved Views (actor resolved server-side). */
     personalization: {
-      get: () => invoke(IpcChannel.EnterprisePersonalizationGet) as Promise<PersonalizationState>,
+      get: () => invoke(IpcChannel.EnterprisePersonalizationGet),
       favorite: (input: { id: string; kind?: string; label?: string; tab: string; query?: string }) =>
-        invoke(IpcChannel.EnterprisePersonalizationFavorite, input) as Promise<PersonalizationState>,
+        invoke(IpcChannel.EnterprisePersonalizationFavorite, input),
       recent: (input: { id: string; kind?: string; label?: string; tab: string; query?: string }) =>
-        invoke(IpcChannel.EnterprisePersonalizationRecent, input) as Promise<PersonalizationState>,
-      clearRecents: () => invoke(IpcChannel.EnterprisePersonalizationClearRecents) as Promise<PersonalizationState>,
+        invoke(IpcChannel.EnterprisePersonalizationRecent, input),
+      clearRecents: () => invoke(IpcChannel.EnterprisePersonalizationClearRecents),
       saveView: (input: { id?: string; label: string; tab: string; query?: string; filters?: string }) =>
-        invoke(IpcChannel.EnterprisePersonalizationSaveView, input) as Promise<PersonalizationState>,
-      deleteView: (id: string) => invoke(IpcChannel.EnterprisePersonalizationDeleteView, { id }) as Promise<PersonalizationState>,
-      renameView: (id: string, label: string) => invoke(IpcChannel.EnterprisePersonalizationRenameView, { id, label }) as Promise<PersonalizationState>,
+        invoke(IpcChannel.EnterprisePersonalizationSaveView, input),
+      deleteView: (id: string) => invoke(IpcChannel.EnterprisePersonalizationDeleteView, { id }),
+      renameView: (id: string, label: string) => invoke(IpcChannel.EnterprisePersonalizationRenameView, { id, label }),
     },
 
-    onEvent: (cb: (e: { kind: string; at: string }) => void) =>
-      subscribe(IpcChannel.EnterpriseEventBroadcast, (p) => cb(p as { kind: string; at: string })),
+    onEvent: (cb: (e: IpcStoreChangedEvent) => void) =>
+      subscribe(IpcChannel.EnterpriseEventBroadcast, cb),
   },
 
   /** Enterprise Module Framework — generic CRUD over any registered ERP module. */
   enterpriseModules: {
-    list: () => invoke(IpcChannel.EnterpriseModulesList) as Promise<EnterpriseModuleSummary[]>,
+    list: () => invoke(IpcChannel.EnterpriseModulesList),
     records: (
       moduleId: string,
       opts?: { status?: EnterpriseRecordStatus; search?: string; limit?: number },
-    ) =>
-      invoke(IpcChannel.EnterpriseModuleList, { moduleId, ...opts }) as Promise<EnterpriseEntity[]>,
-    get: (moduleId: string, id: string) =>
-      invoke(IpcChannel.EnterpriseModuleGet, { moduleId, id }) as Promise<EnterpriseEntity | null>,
+    ) => invoke(IpcChannel.EnterpriseModuleList, { moduleId, ...opts }),
+    get: (moduleId: string, id: string) => invoke(IpcChannel.EnterpriseModuleGet, { moduleId, id }),
     search: (moduleId: string, query: string, limit?: number) =>
-      invoke(IpcChannel.EnterpriseModuleSearch, { moduleId, query, limit }) as Promise<
-        EnterpriseEntity[]
-      >,
+      invoke(IpcChannel.EnterpriseModuleSearch, { moduleId, query, limit }),
     create: (moduleId: string, input: EnterpriseRecordInput) =>
       invoke(IpcChannel.EnterpriseModuleCreate, {
         moduleId,
         ...input,
-      }) as Promise<EnterpriseModuleMutationResult>,
+      }),
     update: (moduleId: string, id: string, input: EnterpriseRecordInput) =>
       invoke(IpcChannel.EnterpriseModuleUpdate, {
         moduleId,
         id,
         ...input,
-      }) as Promise<EnterpriseModuleMutationResult>,
+      }),
     setStatus: (moduleId: string, id: string, status: EnterpriseRecordStatus) =>
       invoke(IpcChannel.EnterpriseModuleSetStatus, {
         moduleId,
         id,
         status,
-      }) as Promise<EnterpriseModuleMutationResult>,
+      }),
     remove: (moduleId: string, id: string) =>
       invoke(IpcChannel.EnterpriseModuleDelete, {
         moduleId,
         id,
-      }) as Promise<EnterpriseModuleMutationResult>,
+      }),
     summarize: (moduleId: string, id: string) =>
       invoke(IpcChannel.EnterpriseModuleSummarize, {
         moduleId,
         id,
-      }) as Promise<EnterpriseRecordSummary | null>,
+      }),
     action: (moduleId: string, id: string, action: string) =>
       invoke(IpcChannel.EnterpriseModuleAction, {
         moduleId,
         id,
         action,
-      }) as Promise<EnterpriseModuleActionResult>,
+      }),
     onEvent: (cb: (e: EnterpriseModuleEvent) => void) =>
-      subscribe(IpcChannel.EnterpriseModuleEventBroadcast, (p) => cb(p as EnterpriseModuleEvent)),
+      subscribe(IpcChannel.EnterpriseModuleEventBroadcast, cb),
   },
 
   ecosystem: {
-    dashboard: () => invoke(IpcChannel.EcosystemDeveloperDashboard) as Promise<DeveloperDashboard>,
-    account: () => invoke(IpcChannel.EcosystemDeveloperAccount) as Promise<DeveloperAccount>,
-    setPlan: (planTier: PlanTier) =>
-      invoke(IpcChannel.EcosystemDeveloperSetPlan, { planTier }) as Promise<DeveloperDashboard>,
-    keys: () => invoke(IpcChannel.EcosystemKeysList) as Promise<ApiKey[]>,
+    dashboard: () => invoke(IpcChannel.EcosystemDeveloperDashboard),
+    account: () => invoke(IpcChannel.EcosystemDeveloperAccount),
+    setPlan: (planTier: PlanTier) => invoke(IpcChannel.EcosystemDeveloperSetPlan, { planTier }),
+    keys: () => invoke(IpcChannel.EcosystemKeysList),
     createKey: (name: string, scopes: ApiScope[], expiresAt?: string | null) =>
       invoke(IpcChannel.EcosystemKeysCreate, {
         name,
         scopes,
         expiresAt,
-      }) as Promise<ApiKeyWithSecret>,
-    revokeKey: (id: string) =>
-      invoke(IpcChannel.EcosystemKeysRevoke, { id }) as Promise<ApiKey | null>,
-    oauthApps: () => invoke(IpcChannel.EcosystemOAuthList) as Promise<OAuthApplication[]>,
+      }),
+    revokeKey: (id: string) => invoke(IpcChannel.EcosystemKeysRevoke, { id }),
+    oauthApps: () => invoke(IpcChannel.EcosystemOAuthList),
     createOAuthApp: (input: {
       name: string;
       redirectUris: string[];
       scopes: ApiScope[];
       grantTypes: OAuthGrantType[];
-    }) => invoke(IpcChannel.EcosystemOAuthCreate, input) as Promise<OAuthApplicationWithSecret>,
-    deleteOAuthApp: (id: string) =>
-      invoke(IpcChannel.EcosystemOAuthDelete, { id }) as Promise<{ deleted: boolean }>,
-    usage: (windowDays?: number) =>
-      invoke(IpcChannel.EcosystemUsageAnalytics, { windowDays }) as Promise<DeveloperAnalytics>,
-    sdks: () => invoke(IpcChannel.EcosystemSdks) as Promise<SdkArtifact[]>,
+    }) => invoke(IpcChannel.EcosystemOAuthCreate, input),
+    deleteOAuthApp: (id: string) => invoke(IpcChannel.EcosystemOAuthDelete, { id }),
+    usage: (windowDays?: number) => invoke(IpcChannel.EcosystemUsageAnalytics, { windowDays }),
+    sdks: () => invoke(IpcChannel.EcosystemSdks),
 
-    listings: () => invoke(IpcChannel.EcosystemMarketplaceList) as Promise<MarketplaceListing[]>,
-    listing: (id: string) =>
-      invoke(IpcChannel.EcosystemMarketplaceDetail, { id }) as Promise<ListingDetail | null>,
-    marketplaceStats: () =>
-      invoke(IpcChannel.EcosystemMarketplaceStats) as Promise<MarketplaceStats>,
+    listings: () => invoke(IpcChannel.EcosystemMarketplaceList),
+    listing: (id: string) => invoke(IpcChannel.EcosystemMarketplaceDetail, { id }),
+    marketplaceStats: () => invoke(IpcChannel.EcosystemMarketplaceStats),
     submissionEvents: (listingId?: string, limit?: number) =>
-      invoke(IpcChannel.EcosystemMarketplaceEvents, { listingId, limit }) as Promise<
-        SubmissionEvent[]
-      >,
+      invoke(IpcChannel.EcosystemMarketplaceEvents, { listingId, limit }),
     createListing: (input: {
       kind: ListingKind;
       slug: string;
@@ -1406,331 +1080,297 @@ export const ipc = {
       category: string;
       pricing: ListingPricing;
       certified?: boolean;
-    }) => invoke(IpcChannel.EcosystemListingCreate, input) as Promise<MarketplaceListing>,
+    }) => invoke(IpcChannel.EcosystemListingCreate, input),
     createVersion: (listingId: string, manifest: ListingManifest, changelog: string) =>
       invoke(IpcChannel.EcosystemVersionCreate, {
         listingId,
         manifest,
         changelog,
-      }) as Promise<ListingVersion | null>,
-    submit: (versionId: string) =>
-      invoke(IpcChannel.EcosystemListingSubmit, { versionId }) as Promise<ListingVersion | null>,
+      }),
+    submit: (versionId: string) => invoke(IpcChannel.EcosystemListingSubmit, { versionId }),
     review: (versionId: string, decision: ReviewDecision, notes?: string) =>
       invoke(IpcChannel.EcosystemListingReview, {
         versionId,
         decision,
         notes,
-      }) as Promise<ListingVersion | null>,
-    publish: (versionId: string) =>
-      invoke(IpcChannel.EcosystemListingPublish, { versionId }) as Promise<ListingVersion | null>,
+      }),
+    publish: (versionId: string) => invoke(IpcChannel.EcosystemListingPublish, { versionId }),
     rollback: (listingId: string) =>
       invoke(IpcChannel.EcosystemListingRollback, {
         listingId,
-      }) as Promise<MarketplaceListing | null>,
+      }),
     install: (listingId: string) =>
       invoke(IpcChannel.EcosystemListingInstall, {
         listingId,
-      }) as Promise<MarketplaceListing | null>,
+      }),
     rate: (listingId: string, stars: number) =>
       invoke(IpcChannel.EcosystemListingRate, {
         listingId,
         stars,
-      }) as Promise<MarketplaceListing | null>,
+      }),
 
-    gatewayVersions: () => invoke(IpcChannel.EcosystemGatewayVersions) as Promise<ApiVersionInfo[]>,
+    gatewayVersions: () => invoke(IpcChannel.EcosystemGatewayVersions),
     gatewayRequest: (input: {
       apiKey?: string | null;
       method: string;
       path: string;
       version: ApiVersion;
       scope?: ApiScope | null;
-    }) => invoke(IpcChannel.EcosystemGatewayRequest, input) as Promise<GatewayDecision>,
-    gatewayAudit: (limit?: number) =>
-      invoke(IpcChannel.EcosystemGatewayAudit, { limit }) as Promise<GatewayAuditEntry[]>,
+    }) => invoke(IpcChannel.EcosystemGatewayRequest, input),
+    gatewayAudit: (limit?: number) => invoke(IpcChannel.EcosystemGatewayAudit, { limit }),
     gatewayMetrics: (windowDays?: number) =>
-      invoke(IpcChannel.EcosystemGatewayMetrics, { windowDays }) as Promise<GatewayMetrics>,
+      invoke(IpcChannel.EcosystemGatewayMetrics, { windowDays }),
 
-    billingSummary: () => invoke(IpcChannel.EcosystemBillingSummary) as Promise<BillingSummary>,
-    plans: () => invoke(IpcChannel.EcosystemBillingPlans) as Promise<Plan[]>,
+    billingSummary: () => invoke(IpcChannel.EcosystemBillingSummary),
+    plans: () => invoke(IpcChannel.EcosystemBillingPlans),
     setBillingPlan: (planTier: PlanTier) =>
-      invoke(IpcChannel.EcosystemBillingSetPlan, { planTier }) as Promise<BillingSummary>,
-    invoice: (period?: string) =>
-      invoke(IpcChannel.EcosystemBillingInvoice, { period }) as Promise<Invoice>,
-    seats: () => invoke(IpcChannel.EcosystemBillingSeats) as Promise<SeatAssignment[]>,
+      invoke(IpcChannel.EcosystemBillingSetPlan, { planTier }),
+    invoice: (period?: string) => invoke(IpcChannel.EcosystemBillingInvoice, { period }),
+    seats: () => invoke(IpcChannel.EcosystemBillingSeats),
     assignSeat: (userId: string, userName: string) =>
-      invoke(IpcChannel.EcosystemBillingAssignSeat, { userId, userName }) as Promise<
-        SeatAssignment | { error: string }
-      >,
-    releaseSeat: (seatId: string) =>
-      invoke(IpcChannel.EcosystemBillingReleaseSeat, { seatId }) as Promise<{ released: boolean }>,
-    licenses: () => invoke(IpcChannel.EcosystemBillingLicenses) as Promise<License[]>,
-    purchase: (listingId: string) =>
-      invoke(IpcChannel.EcosystemBillingPurchase, { listingId }) as Promise<
-        { purchase: MarketplacePurchase; license: License } | { error: string }
-      >,
-    purchases: () => invoke(IpcChannel.EcosystemBillingPurchases) as Promise<MarketplacePurchase[]>,
+      invoke(IpcChannel.EcosystemBillingAssignSeat, { userId, userName }),
+    releaseSeat: (seatId: string) => invoke(IpcChannel.EcosystemBillingReleaseSeat, { seatId }),
+    licenses: () => invoke(IpcChannel.EcosystemBillingLicenses),
+    purchase: (listingId: string) => invoke(IpcChannel.EcosystemBillingPurchase, { listingId }),
+    purchases: () => invoke(IpcChannel.EcosystemBillingPurchases),
 
-    installs: () => invoke(IpcChannel.EcosystemInstallsList) as Promise<Installation[]>,
-    installSummary: () => invoke(IpcChannel.EcosystemInstallsSummary) as Promise<InstallSummary>,
-    installListing: (listingId: string) =>
-      invoke(IpcChannel.EcosystemInstall, { listingId }) as Promise<
-        Installation | { error: string }
-      >,
+    installs: () => invoke(IpcChannel.EcosystemInstallsList),
+    installSummary: () => invoke(IpcChannel.EcosystemInstallsSummary),
+    installListing: (listingId: string) => invoke(IpcChannel.EcosystemInstall, { listingId }),
     updateInstall: (installationId: string) =>
-      invoke(IpcChannel.EcosystemInstallUpdate, { installationId }) as Promise<
-        Installation | { error: string }
-      >,
+      invoke(IpcChannel.EcosystemInstallUpdate, { installationId }),
     setInstallEnabled: (installationId: string, enabled: boolean) =>
       invoke(IpcChannel.EcosystemInstallSetEnabled, {
         installationId,
         enabled,
-      }) as Promise<Installation | null>,
+      }),
     uninstall: (installationId: string) =>
-      invoke(IpcChannel.EcosystemUninstall, { installationId }) as Promise<{
-        uninstalled: boolean;
-      }>,
-    shareWorker: (workerId: string) =>
-      invoke(IpcChannel.EcosystemShareWorker, { workerId }) as Promise<
-        ListingDetail | { error: string }
-      >,
-    packs: () => invoke(IpcChannel.EcosystemPacksList) as Promise<ExchangePack[]>,
-    packsStats: () => invoke(IpcChannel.EcosystemPacksStats) as Promise<ExchangeStats>,
+      invoke(IpcChannel.EcosystemUninstall, { installationId }),
+    shareWorker: (workerId: string) => invoke(IpcChannel.EcosystemShareWorker, { workerId }),
+    packs: () => invoke(IpcChannel.EcosystemPacksList),
+    packsStats: () => invoke(IpcChannel.EcosystemPacksStats),
     publishPack: (input: { name: string; summary: string; kind: PackKind; items: PackItem[] }) =>
-      invoke(IpcChannel.EcosystemPackPublish, input) as Promise<ExchangePack>,
-    importPack: (id: string) =>
-      invoke(IpcChannel.EcosystemPackImport, { id }) as Promise<ExchangePack | null>,
-    removePack: (id: string) =>
-      invoke(IpcChannel.EcosystemPackRemove, { id }) as Promise<{ removed: boolean }>,
-    partners: () => invoke(IpcChannel.EcosystemPartnersList) as Promise<Partner[]>,
-    partnersStats: () => invoke(IpcChannel.EcosystemPartnersStats) as Promise<PartnerStats>,
-    analytics: () => invoke(IpcChannel.EcosystemAnalytics) as Promise<EcosystemAnalytics>,
+      invoke(IpcChannel.EcosystemPackPublish, input),
+    importPack: (id: string) => invoke(IpcChannel.EcosystemPackImport, { id }),
+    removePack: (id: string) => invoke(IpcChannel.EcosystemPackRemove, { id }),
+    partners: () => invoke(IpcChannel.EcosystemPartnersList),
+    partnersStats: () => invoke(IpcChannel.EcosystemPartnersStats),
+    analytics: () => invoke(IpcChannel.EcosystemAnalytics),
 
-    onEvent: (cb: (e: { kind: string; at: string }) => void) =>
-      subscribe(IpcChannel.EcosystemEventBroadcast, (p) => cb(p as { kind: string; at: string })),
+    onEvent: (cb: (e: IpcStoreChangedEvent) => void) =>
+      subscribe(IpcChannel.EcosystemEventBroadcast, cb),
   },
 
   // ── P12 — Developer Platform (registry/rollup over the ecosystem developer stack) ──
   developerPlatform: {
-    overview: () => invoke(IpcChannel.DevPlatformOverview) as Promise<DeveloperPlatformOverview>,
-    console: () => invoke(IpcChannel.DevPlatformConsole) as Promise<DeveloperConsole>,
-    sdks: () => invoke(IpcChannel.DevPlatformSdks) as Promise<SdkRegistry>,
-    apis: () => invoke(IpcChannel.DevPlatformApis) as Promise<ApiExplorer>,
-    templates: () => invoke(IpcChannel.DevPlatformTemplates) as Promise<TemplateRegistry>,
-    publishing: () => invoke(IpcChannel.DevPlatformPublishing) as Promise<PublishingConsole>,
-    analytics: () => invoke(IpcChannel.DevPlatformAnalytics) as Promise<DeveloperPlatformAnalytics>,
+    overview: () => invoke(IpcChannel.DevPlatformOverview),
+    console: () => invoke(IpcChannel.DevPlatformConsole),
+    sdks: () => invoke(IpcChannel.DevPlatformSdks),
+    apis: () => invoke(IpcChannel.DevPlatformApis),
+    templates: () => invoke(IpcChannel.DevPlatformTemplates),
+    publishing: () => invoke(IpcChannel.DevPlatformPublishing),
+    analytics: () => invoke(IpcChannel.DevPlatformAnalytics),
     // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
     onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
   },
 
   // ── P13 — Industry Solution Platform (curated solution-pack catalog + readiness projection) ──
   industryPlatform: {
-    overview: () => invoke(IpcChannel.IndustryOverview) as Promise<IndustryPlatformOverview>,
-    suites: () => invoke(IpcChannel.IndustrySuites) as Promise<IndustrySuite[]>,
-    kpis: () => invoke(IpcChannel.IndustryKpis) as Promise<ExecutiveKpi[]>,
-    compliance: () => invoke(IpcChannel.IndustryCompliance) as Promise<IndustryComplianceReport>,
-    collections: () => invoke(IpcChannel.IndustryCollections) as Promise<IndustryCollection[]>,
-    readiness: () => invoke(IpcChannel.IndustryReadiness) as Promise<IndustryReadinessReport>,
+    overview: () => invoke(IpcChannel.IndustryOverview),
+    suites: () => invoke(IpcChannel.IndustrySuites),
+    kpis: () => invoke(IpcChannel.IndustryKpis),
+    compliance: () => invoke(IpcChannel.IndustryCompliance),
+    collections: () => invoke(IpcChannel.IndustryCollections),
+    readiness: () => invoke(IpcChannel.IndustryReadiness),
     // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
     onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
   },
 
   // ── P14 — Autonomous Enterprise Intelligence (read-only strategic reasoning/projection layer) ──
   strategyPlatform: {
-    overview: () => invoke(IpcChannel.StrategyOverview) as Promise<StrategyOverview>,
-    goals: () => invoke(IpcChannel.StrategyGoals) as Promise<GoalManager>,
-    planning: () => invoke(IpcChannel.StrategyPlanning) as Promise<PlanningEngine>,
-    reasoning: () => invoke(IpcChannel.StrategyReasoning) as Promise<ReasoningReport>,
-    optimization: () => invoke(IpcChannel.StrategyOptimization) as Promise<OptimizationEngine>,
-    simulation: () => invoke(IpcChannel.StrategySimulation) as Promise<SimulationReport>,
-    decisions: () => invoke(IpcChannel.StrategyDecisions) as Promise<DecisionQueue>,
+    overview: () => invoke(IpcChannel.StrategyOverview),
+    goals: () => invoke(IpcChannel.StrategyGoals),
+    planning: () => invoke(IpcChannel.StrategyPlanning),
+    reasoning: () => invoke(IpcChannel.StrategyReasoning),
+    optimization: () => invoke(IpcChannel.StrategyOptimization),
+    simulation: () => invoke(IpcChannel.StrategySimulation),
+    decisions: () => invoke(IpcChannel.StrategyDecisions),
     // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
     onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
   },
 
   // ── P15 — Enterprise Digital Twin (read-only living projection of the whole enterprise) ──
   twin: {
-    overview: () => invoke(IpcChannel.TwinOverview) as Promise<EnterpriseTwinOverview>,
-    domains: () => invoke(IpcChannel.TwinDomains) as Promise<TwinDomains>,
-    topology: () => invoke(IpcChannel.TwinTopology) as Promise<TwinTopology>,
-    health: () => invoke(IpcChannel.TwinHealth) as Promise<TwinHealthMap>,
-    replay: () => invoke(IpcChannel.TwinReplay) as Promise<TwinReplay>,
-    scenario: () => invoke(IpcChannel.TwinScenario) as Promise<TwinScenarioCenter>,
-    impact: () => invoke(IpcChannel.TwinImpact) as Promise<TwinImpact>,
-    executive: () => invoke(IpcChannel.TwinExecutive) as Promise<TwinCommandCenter>,
+    overview: () => invoke(IpcChannel.TwinOverview),
+    domains: () => invoke(IpcChannel.TwinDomains),
+    topology: () => invoke(IpcChannel.TwinTopology),
+    health: () => invoke(IpcChannel.TwinHealth),
+    replay: () => invoke(IpcChannel.TwinReplay),
+    scenario: () => invoke(IpcChannel.TwinScenario),
+    impact: () => invoke(IpcChannel.TwinImpact),
+    executive: () => invoke(IpcChannel.TwinExecutive),
     // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
     onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
   },
 
   // ── P16 — Enterprise Knowledge Fabric (read-only knowledge projection over every system) ──
   knowledgeFabric: {
-    overview: () => invoke(IpcChannel.FabricOverview) as Promise<FabricOverview>,
-    sources: () => invoke(IpcChannel.FabricSources) as Promise<FabricSourceCatalog>,
-    relationships: () => invoke(IpcChannel.FabricRelationships) as Promise<FabricRelationshipMap>,
-    classification: () => invoke(IpcChannel.FabricClassification) as Promise<FabricClassification>,
-    lineage: () => invoke(IpcChannel.FabricLineage) as Promise<FabricLineage>,
-    evidence: () => invoke(IpcChannel.FabricEvidence) as Promise<FabricEvidenceReport>,
-    governance: () => invoke(IpcChannel.FabricGovernance) as Promise<FabricGovernance>,
-    analytics: () => invoke(IpcChannel.FabricAnalytics) as Promise<FabricAnalytics>,
+    overview: () => invoke(IpcChannel.FabricOverview),
+    sources: () => invoke(IpcChannel.FabricSources),
+    relationships: () => invoke(IpcChannel.FabricRelationships),
+    classification: () => invoke(IpcChannel.FabricClassification),
+    lineage: () => invoke(IpcChannel.FabricLineage),
+    evidence: () => invoke(IpcChannel.FabricEvidence),
+    governance: () => invoke(IpcChannel.FabricGovernance),
+    analytics: () => invoke(IpcChannel.FabricAnalytics),
     // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
     onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
   },
 
   // ── P17 — Global AI Orchestration Platform (read-only coordination/routing over every system) ──
   orchestration: {
-    overview: () => invoke(IpcChannel.OrchestrationOverview) as Promise<OrchestrationOverview>,
-    goals: () => invoke(IpcChannel.OrchestrationGoals) as Promise<OrchestrationGoalRouting>,
-    workforce: () => invoke(IpcChannel.OrchestrationWorkforce) as Promise<OrchestrationWorkforce>,
-    cloud: () => invoke(IpcChannel.OrchestrationCloud) as Promise<OrchestrationCloud>,
-    knowledge: () => invoke(IpcChannel.OrchestrationKnowledge) as Promise<OrchestrationKnowledge>,
-    flows: () => invoke(IpcChannel.OrchestrationFlows) as Promise<OrchestrationFlowReport>,
-    coordination: () => invoke(IpcChannel.OrchestrationCoordination) as Promise<OrchestrationCoordination>,
-    governance: () => invoke(IpcChannel.OrchestrationGovernance) as Promise<OrchestrationGovernance>,
+    overview: () => invoke(IpcChannel.OrchestrationOverview),
+    goals: () => invoke(IpcChannel.OrchestrationGoals),
+    workforce: () => invoke(IpcChannel.OrchestrationWorkforce),
+    cloud: () => invoke(IpcChannel.OrchestrationCloud),
+    knowledge: () => invoke(IpcChannel.OrchestrationKnowledge),
+    flows: () => invoke(IpcChannel.OrchestrationFlows),
+    coordination: () => invoke(IpcChannel.OrchestrationCoordination),
+    governance: () => invoke(IpcChannel.OrchestrationGovernance),
     // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
     onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
   },
 
   // ── P18 — Enterprise Intelligence Network (read-only governed intelligence exchange; no raw enterprise data) ──
   network: {
-    overview: () => invoke(IpcChannel.NetworkOverview) as Promise<IntelNetworkOverview>,
-    exchange: () => invoke(IpcChannel.NetworkExchange) as Promise<IntelNetworkExchange>,
-    benchmarks: () => invoke(IpcChannel.NetworkBenchmarks) as Promise<IntelNetworkBenchmarks>,
-    insights: () => invoke(IpcChannel.NetworkInsights) as Promise<IntelNetworkInsights>,
-    trust: () => invoke(IpcChannel.NetworkTrust) as Promise<IntelNetworkTrust>,
-    organizations: () => invoke(IpcChannel.NetworkOrganizations) as Promise<IntelNetworkOrganizations>,
-    collective: () => invoke(IpcChannel.NetworkCollective) as Promise<IntelNetworkCollective>,
-    governance: () => invoke(IpcChannel.NetworkGovernance) as Promise<IntelNetworkGovernance>,
+    overview: () => invoke(IpcChannel.NetworkOverview),
+    exchange: () => invoke(IpcChannel.NetworkExchange),
+    benchmarks: () => invoke(IpcChannel.NetworkBenchmarks),
+    insights: () => invoke(IpcChannel.NetworkInsights),
+    trust: () => invoke(IpcChannel.NetworkTrust),
+    organizations: () => invoke(IpcChannel.NetworkOrganizations),
+    collective: () => invoke(IpcChannel.NetworkCollective),
+    governance: () => invoke(IpcChannel.NetworkGovernance),
     // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
     onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
   },
 
   // ── P19 — Autonomous Enterprise Operations (read-only closed-loop operations; nothing executes here) ──
   autoOps: {
-    overview: () => invoke(IpcChannel.AutoOpsOverview) as Promise<AutoOpsOverview>,
-    plans: () => invoke(IpcChannel.AutoOpsPlans) as Promise<AutoOpsPlans>,
-    execution: () => invoke(IpcChannel.AutoOpsExecution) as Promise<AutoOpsExecution>,
-    recovery: () => invoke(IpcChannel.AutoOpsRecovery) as Promise<AutoOpsRecovery>,
-    optimization: () => invoke(IpcChannel.AutoOpsOptimization) as Promise<AutoOpsOptimization>,
-    incidents: () => invoke(IpcChannel.AutoOpsIncidents) as Promise<AutoOpsIncidents>,
-    approvals: () => invoke(IpcChannel.AutoOpsApprovals) as Promise<AutoOpsApprovals>,
-    monitoring: () => invoke(IpcChannel.AutoOpsMonitoring) as Promise<AutoOpsMonitoring>,
-    analytics: () => invoke(IpcChannel.AutoOpsAnalytics) as Promise<AutoOpsAnalytics>,
-    governance: () => invoke(IpcChannel.AutoOpsGovernance) as Promise<AutoOpsGovernance>,
+    overview: () => invoke(IpcChannel.AutoOpsOverview),
+    plans: () => invoke(IpcChannel.AutoOpsPlans),
+    execution: () => invoke(IpcChannel.AutoOpsExecution),
+    recovery: () => invoke(IpcChannel.AutoOpsRecovery),
+    optimization: () => invoke(IpcChannel.AutoOpsOptimization),
+    incidents: () => invoke(IpcChannel.AutoOpsIncidents),
+    approvals: () => invoke(IpcChannel.AutoOpsApprovals),
+    monitoring: () => invoke(IpcChannel.AutoOpsMonitoring),
+    analytics: () => invoke(IpcChannel.AutoOpsAnalytics),
+    governance: () => invoke(IpcChannel.AutoOpsGovernance),
     // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
     onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
   },
 
   // ── P20 — NeuroPause Platform v2 (read-only commercial productization; nothing transacts here) ──
   commercial: {
-    overview: () => invoke(IpcChannel.CommercialOverview) as Promise<CommercialOverview>,
-    subscription: () => invoke(IpcChannel.CommercialSubscription) as Promise<CommercialSubscription>,
-    licensing: () => invoke(IpcChannel.CommercialLicensing) as Promise<CommercialLicensing>,
-    billing: () => invoke(IpcChannel.CommercialBilling) as Promise<CommercialBilling>,
-    metering: () => invoke(IpcChannel.CommercialMetering) as Promise<CommercialMetering>,
-    deployment: () => invoke(IpcChannel.CommercialDeployment) as Promise<CommercialDeployment>,
-    customers: () => invoke(IpcChannel.CommercialCustomers) as Promise<CommercialCustomers>,
-    analytics: () => invoke(IpcChannel.CommercialAnalytics) as Promise<CommercialAnalytics>,
-    releases: () => invoke(IpcChannel.CommercialReleases) as Promise<CommercialReleases>,
-    administration: () => invoke(IpcChannel.CommercialAdministration) as Promise<CommercialAdministration>,
-    governance: () => invoke(IpcChannel.CommercialGovernance) as Promise<CommercialGovernance>,
+    overview: () => invoke(IpcChannel.CommercialOverview),
+    subscription: () => invoke(IpcChannel.CommercialSubscription),
+    licensing: () => invoke(IpcChannel.CommercialLicensing),
+    billing: () => invoke(IpcChannel.CommercialBilling),
+    metering: () => invoke(IpcChannel.CommercialMetering),
+    deployment: () => invoke(IpcChannel.CommercialDeployment),
+    customers: () => invoke(IpcChannel.CommercialCustomers),
+    analytics: () => invoke(IpcChannel.CommercialAnalytics),
+    releases: () => invoke(IpcChannel.CommercialReleases),
+    administration: () => invoke(IpcChannel.CommercialAdministration),
+    governance: () => invoke(IpcChannel.CommercialGovernance),
     // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
     onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
   },
 
   // ── Experience Program v1.0 — Decision-First Experience (read-only compression; nothing executes here) ──
   experience: {
-    home: () => invoke(IpcChannel.ExperienceHome) as Promise<ExperienceHome>,
-    decisions: () => invoke(IpcChannel.ExperienceDecisions) as Promise<ExperienceDecisions>,
-    summaries: () => invoke(IpcChannel.ExperienceSummaries) as Promise<ExperienceSummaries>,
-    intents: () => invoke(IpcChannel.ExperienceIntents) as Promise<ExperienceIntents>,
-    governance: () => invoke(IpcChannel.ExperienceGovernance) as Promise<ExperienceGovernance>,
+    home: () => invoke(IpcChannel.ExperienceHome),
+    decisions: () => invoke(IpcChannel.ExperienceDecisions),
+    summaries: () => invoke(IpcChannel.ExperienceSummaries),
+    intents: () => invoke(IpcChannel.ExperienceIntents),
+    governance: () => invoke(IpcChannel.ExperienceGovernance),
     // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
     onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
   },
 
   // ── Intent Experience Program v2.0 — Intent-Native Experience (read-only reprojection; nothing executes) ──
   intent: {
-    board: () => invoke(IpcChannel.IntentBoard) as Promise<IntentBoard>,
-    workspaces: () => invoke(IpcChannel.IntentWorkspaces) as Promise<IntentWorkspaces>,
-    governance: () => invoke(IpcChannel.IntentGovernance) as Promise<IntentGovernance>,
+    board: () => invoke(IpcChannel.IntentBoard),
+    workspaces: () => invoke(IpcChannel.IntentWorkspaces),
+    governance: () => invoke(IpcChannel.IntentGovernance),
     // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
     onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
   },
 
   /* ── P9 — Enterprise Marketplace (governed catalog over the ecosystem) ── */
   marketplace: {
-    catalog: (query: MarketplaceCatalogQuery = {}) =>
-      invoke(IpcChannel.MarketplaceCatalog, query) as Promise<MarketplaceEntry[]>,
-    entry: (listingId: string) =>
-      invoke(IpcChannel.MarketplaceEntry, { listingId }) as Promise<MarketplaceEntry | null>,
-    publishers: () => invoke(IpcChannel.MarketplacePublishers) as Promise<PublisherProfile[]>,
-    trust: (listingId: string) =>
-      invoke(IpcChannel.MarketplaceTrust, { listingId }) as Promise<TrustReport | null>,
-    plan: (listingId: string) => invoke(IpcChannel.MarketplacePlan, { listingId }) as Promise<InstallPlan>,
-    analytics: () => invoke(IpcChannel.MarketplaceAnalytics) as Promise<MarketplaceAnalytics>,
-    policy: () => invoke(IpcChannel.MarketplacePolicyGet) as Promise<OrgMarketplacePolicy>,
+    catalog: (query: MarketplaceCatalogQuery = {}) => invoke(IpcChannel.MarketplaceCatalog, query),
+    entry: (listingId: string) => invoke(IpcChannel.MarketplaceEntry, { listingId }),
+    publishers: () => invoke(IpcChannel.MarketplacePublishers),
+    trust: (listingId: string) => invoke(IpcChannel.MarketplaceTrust, { listingId }),
+    plan: (listingId: string) => invoke(IpcChannel.MarketplacePlan, { listingId }),
+    analytics: () => invoke(IpcChannel.MarketplaceAnalytics),
+    policy: () => invoke(IpcChannel.MarketplacePolicyGet),
     setPolicy: (policy: Omit<OrgMarketplacePolicy, 'updatedAt'>) =>
-      invoke(IpcChannel.MarketplacePolicySet, policy) as Promise<OrgMarketplacePolicy>,
+      invoke(IpcChannel.MarketplacePolicySet, policy),
     install: (listingId: string, pkg?: WorkerPackage) =>
-      invoke(IpcChannel.MarketplaceInstall, { listingId, package: pkg }) as Promise<MarketplaceInstallResult>,
+      invoke(IpcChannel.MarketplaceInstall, { listingId, package: pkg }),
     onEvent: (cb: () => void) => subscribe(IpcChannel.MarketplaceEventBroadcast, () => cb()),
   },
 
   /* ── Enterprise REST API + OpenAPI (P3.0, Increments 1–3) ── */
   api: {
     /** The public route index (drives the API Explorer + reference docs). */
-    routes: () => invoke(IpcChannel.EnterpriseApiRoutes) as Promise<ApiRouteInfo[]>,
+    routes: () => invoke(IpcChannel.EnterpriseApiRoutes),
     /** The live OpenAPI 3.1 document, generated from the route table + Zod contracts. */
-    openapi: () => invoke(IpcChannel.EnterpriseApiOpenApi) as Promise<OpenApiDocument>,
+    openapi: () => invoke(IpcChannel.EnterpriseApiOpenApi),
     /** Execute a REST call through the real gateway (auth / scope / rate / quota + audit). */
-    request: (req: EnterpriseApiRequest) =>
-      invoke(IpcChannel.EnterpriseApiRequest, req) as Promise<EnterpriseApiResponse>,
+    request: (req: EnterpriseApiRequest) => invoke(IpcChannel.EnterpriseApiRequest, req),
   },
 
   /* ── Enterprise Webhooks (P3.0, Increment 4) ── */
   webhooks: {
-    list: () => invoke(IpcChannel.WebhookList) as Promise<Webhook[]>,
+    list: () => invoke(IpcChannel.WebhookList),
     create: (input: { label: string; url: string; categories?: PlatformEventCategory[]; types?: string[] }) =>
-      invoke(IpcChannel.WebhookCreate, input) as Promise<WebhookWithSecret>,
+      invoke(IpcChannel.WebhookCreate, input),
     setEnabled: (id: string, enabled: boolean) =>
-      invoke(IpcChannel.WebhookSetEnabled, { id, enabled }) as Promise<Webhook | null>,
-    remove: (id: string) =>
-      invoke(IpcChannel.WebhookDelete, { id }) as Promise<{ deleted: boolean }>,
+      invoke(IpcChannel.WebhookSetEnabled, { id, enabled }),
+    remove: (id: string) => invoke(IpcChannel.WebhookDelete, { id }),
     deliveries: (webhookId?: string, limit?: number) =>
-      invoke(IpcChannel.WebhookDeliveries, { webhookId, limit }) as Promise<WebhookDelivery[]>,
-    deadLetters: () => invoke(IpcChannel.WebhookDeadLetters) as Promise<WebhookDelivery[]>,
-    replay: (id: string) =>
-      invoke(IpcChannel.WebhookReplay, { id }) as Promise<WebhookDelivery | { error: string }>,
-    stats: () => invoke(IpcChannel.WebhookStats) as Promise<WebhookDeliveryStats>,
+      invoke(IpcChannel.WebhookDeliveries, { webhookId, limit }),
+    deadLetters: () => invoke(IpcChannel.WebhookDeadLetters),
+    replay: (id: string) => invoke(IpcChannel.WebhookReplay, { id }),
+    stats: () => invoke(IpcChannel.WebhookStats),
     onEvent: (cb: (stats: WebhookDeliveryStats) => void) =>
-      subscribe(IpcChannel.WebhookEventBroadcast, (p) => cb(p as WebhookDeliveryStats)),
+      subscribe(IpcChannel.WebhookEventBroadcast, cb),
   },
 
   cloud: {
-    regions: () => invoke(IpcChannel.CloudRegions) as Promise<CloudRegion[]>,
-    tenants: () => invoke(IpcChannel.CloudTenants) as Promise<CloudTenant[]>,
-    tenantSummary: () => invoke(IpcChannel.CloudTenantSummary) as Promise<TenantSummary>,
+    regions: () => invoke(IpcChannel.CloudRegions),
+    tenants: () => invoke(IpcChannel.CloudTenants),
+    tenantSummary: () => invoke(IpcChannel.CloudTenantSummary),
     createTenant: (input: { name: string; regionId: CloudRegionId; tier: TenantTier }) =>
-      invoke(IpcChannel.CloudCreateTenant, input) as Promise<CloudTenant>,
+      invoke(IpcChannel.CloudCreateTenant, input),
     setTenantStatus: (tenantId: string, status: TenantStatus) =>
-      invoke(IpcChannel.CloudSetTenantStatus, { tenantId, status }) as Promise<
-        CloudTenant | { error: string }
-      >,
-    projects: (tenantId?: string) =>
-      invoke(IpcChannel.CloudProjects, { tenantId }) as Promise<CloudProject[]>,
+      invoke(IpcChannel.CloudSetTenantStatus, { tenantId, status }),
+    projects: (tenantId?: string) => invoke(IpcChannel.CloudProjects, { tenantId }),
     createProject: (input: { tenantId: string; name: string; description?: string }) =>
-      invoke(IpcChannel.CloudCreateProject, input) as Promise<CloudProject | { error: string }>,
-    deleteProject: (id: string) =>
-      invoke(IpcChannel.CloudDeleteProject, { id }) as Promise<{ deleted: boolean }>,
-    teams: (tenantId?: string) =>
-      invoke(IpcChannel.CloudTeams, { tenantId }) as Promise<CloudTeam[]>,
+      invoke(IpcChannel.CloudCreateProject, input),
+    deleteProject: (id: string) => invoke(IpcChannel.CloudDeleteProject, { id }),
+    teams: (tenantId?: string) => invoke(IpcChannel.CloudTeams, { tenantId }),
     createTeam: (input: { tenantId: string; name: string }) =>
-      invoke(IpcChannel.CloudCreateTeam, input) as Promise<CloudTeam | { error: string }>,
-    tenantWorkers: (tenantId?: string) =>
-      invoke(IpcChannel.CloudTenantWorkers, { tenantId }) as Promise<TenantWorker[]>,
-    storageIsolation: () => invoke(IpcChannel.CloudStorageIsolation) as Promise<StorageIsolation[]>,
+      invoke(IpcChannel.CloudCreateTeam, input),
+    tenantWorkers: (tenantId?: string) => invoke(IpcChannel.CloudTenantWorkers, { tenantId }),
+    storageIsolation: () => invoke(IpcChannel.CloudStorageIsolation),
 
-    ssoConnections: () => invoke(IpcChannel.CloudSsoConnections) as Promise<SsoConnection[]>,
-    identitySummary: () => invoke(IpcChannel.CloudIdentitySummary) as Promise<IdentitySummary>,
+    ssoConnections: () => invoke(IpcChannel.CloudSsoConnections),
+    identitySummary: () => invoke(IpcChannel.CloudIdentitySummary),
     createSso: (input: {
       name: string;
       protocol: SsoProtocol;
@@ -1740,262 +1380,206 @@ export const ipc = {
       clientId?: string;
       domains: string[];
       attributeMapping?: Record<string, string>;
-    }) => invoke(IpcChannel.CloudCreateSso, input) as Promise<SsoConnection>,
+    }) => invoke(IpcChannel.CloudCreateSso, input),
     updateSso: (input: {
       id: string;
       status?: SsoStatus;
       enforced?: boolean;
       domains?: string[];
       name?: string;
-    }) => invoke(IpcChannel.CloudUpdateSso, input) as Promise<SsoConnection | { error: string }>,
-    deleteSso: (id: string) =>
-      invoke(IpcChannel.CloudDeleteSso, { id }) as Promise<{ deleted: boolean }>,
-    testSso: (id: string) => invoke(IpcChannel.CloudTestSso, { id }) as Promise<FederationResult>,
-    scim: () => invoke(IpcChannel.CloudScim) as Promise<ScimConfig | null>,
-    setScim: (enabled: boolean) =>
-      invoke(IpcChannel.CloudSetScim, { enabled }) as Promise<ScimConfig>,
-    scimSync: () => invoke(IpcChannel.CloudScimSync) as Promise<ScimConfig | { error: string }>,
-    mfa: () => invoke(IpcChannel.CloudMfa) as Promise<MfaPolicy | null>,
+    }) => invoke(IpcChannel.CloudUpdateSso, input),
+    deleteSso: (id: string) => invoke(IpcChannel.CloudDeleteSso, { id }),
+    testSso: (id: string) => invoke(IpcChannel.CloudTestSso, { id }),
+    scim: () => invoke(IpcChannel.CloudScim),
+    setScim: (enabled: boolean) => invoke(IpcChannel.CloudSetScim, { enabled }),
+    scimSync: () => invoke(IpcChannel.CloudScimSync),
+    mfa: () => invoke(IpcChannel.CloudMfa),
     setMfa: (input: { required?: boolean; methods?: MfaMethod[]; graceDays?: number }) =>
-      invoke(IpcChannel.CloudSetMfa, input) as Promise<MfaPolicy>,
+      invoke(IpcChannel.CloudSetMfa, input),
 
-    syncStates: () => invoke(IpcChannel.CloudSyncStates) as Promise<SyncDomainState[]>,
-    syncSummary: () => invoke(IpcChannel.CloudSyncSummary) as Promise<SyncSummary>,
-    syncConflicts: () => invoke(IpcChannel.CloudSyncConflicts) as Promise<SyncConflict[]>,
-    syncDomain: (domain: SyncDomain) =>
-      invoke(IpcChannel.CloudSyncDomain, { domain }) as Promise<SyncResult | { offline: true }>,
-    syncAll: () => invoke(IpcChannel.CloudSyncAll) as Promise<SyncResult[]>,
-    setOnline: (online: boolean) =>
-      invoke(IpcChannel.CloudSyncSetOnline, { online }) as Promise<SyncSummary>,
-    recordChange: (domain: SyncDomain, count?: number) =>
-      invoke(IpcChannel.CloudSyncRecordChange, { domain, count }) as Promise<SyncSummary>,
-
-    liveSyncStatus: () => invoke(IpcChannel.LiveSyncStatus) as Promise<LiveSyncStatus>,
-    liveSyncNow: () => invoke(IpcChannel.LiveSyncNow) as Promise<LiveSyncStatus>,
-    liveSyncSetOnline: (online: boolean) =>
-      invoke(IpcChannel.LiveSyncSetOnline, { online }) as Promise<LiveSyncStatus>,
+    liveSyncStatus: () => invoke(IpcChannel.LiveSyncStatus),
+    liveSyncDetail: () => invoke(IpcChannel.LiveSyncDetail),
+    liveSyncNow: () => invoke(IpcChannel.LiveSyncNow),
+    liveSyncSetOnline: (online: boolean) => invoke(IpcChannel.LiveSyncSetOnline, { online }),
     liveSyncSetActiveOrg: (orgId: string | null) =>
-      invoke(IpcChannel.LiveSyncSetActiveOrg, { orgId }) as Promise<LiveSyncStatus>,
+      invoke(IpcChannel.LiveSyncSetActiveOrg, { orgId }),
 
-    deployments: () => invoke(IpcChannel.CloudDeployments) as Promise<ApiDeployment[]>,
-    apiSummary: () => invoke(IpcChannel.CloudApiSummary) as Promise<ApiPlatformSummary>,
-    ratePolicies: () => invoke(IpcChannel.CloudRatePolicies) as Promise<CloudRateLimitPolicy[]>,
+    deployments: () => invoke(IpcChannel.CloudDeployments),
+    apiSummary: () => invoke(IpcChannel.CloudApiSummary),
+    ratePolicies: () => invoke(IpcChannel.CloudRatePolicies),
     setPolicyEnabled: (id: string, enabled: boolean) =>
-      invoke(IpcChannel.CloudSetPolicyEnabled, { id, enabled }) as Promise<
-        CloudRateLimitPolicy | { error: string }
-      >,
-    webhooks: () => invoke(IpcChannel.CloudWebhooks) as Promise<WebhookEndpoint[]>,
+      invoke(IpcChannel.CloudSetPolicyEnabled, { id, enabled }),
+    webhooks: () => invoke(IpcChannel.CloudWebhooks),
     createWebhook: (input: { url: string; events: string[] }) =>
-      invoke(IpcChannel.CloudCreateWebhook, input) as Promise<WebhookEndpoint>,
+      invoke(IpcChannel.CloudCreateWebhook, input),
     setWebhookStatus: (id: string, status: WebhookStatus) =>
-      invoke(IpcChannel.CloudSetWebhookStatus, { id, status }) as Promise<
-        WebhookEndpoint | { error: string }
-      >,
-    deleteWebhook: (id: string) =>
-      invoke(IpcChannel.CloudDeleteWebhook, { id }) as Promise<{ deleted: boolean }>,
-    testWebhook: (id: string) =>
-      invoke(IpcChannel.CloudTestWebhook, { id }) as Promise<WebhookEndpoint | { error: string }>,
-    publicApis: () => invoke(IpcChannel.CloudPublicApis) as Promise<PublicApi[]>,
+      invoke(IpcChannel.CloudSetWebhookStatus, { id, status }),
+    deleteWebhook: (id: string) => invoke(IpcChannel.CloudDeleteWebhook, { id }),
+    testWebhook: (id: string) => invoke(IpcChannel.CloudTestWebhook, { id }),
+    publicApis: () => invoke(IpcChannel.CloudPublicApis),
 
-    adminOverview: () => invoke(IpcChannel.CloudAdminOverview) as Promise<AdminOverview>,
-    adminCompliance: () => invoke(IpcChannel.CloudAdminCompliance) as Promise<ComplianceReport>,
+    adminOverview: () => invoke(IpcChannel.CloudAdminOverview),
+    adminCompliance: () => invoke(IpcChannel.CloudAdminCompliance),
 
-    onEvent: (cb: (e: { kind: string; at: string }) => void) =>
-      subscribe(IpcChannel.CloudEventBroadcast, (p) => cb(p as { kind: string; at: string })),
+    onEvent: (cb: (e: IpcStoreChangedEvent) => void) =>
+      subscribe(IpcChannel.CloudEventBroadcast, cb),
   },
 
   // ── P11 — Cloud Control Plane (management/orchestration rollup over the cloud subsystems) ──
   controlPlane: {
-    overview: () => invoke(IpcChannel.ControlPlaneOverview) as Promise<ControlPlaneOverview>,
-    fleet: () => invoke(IpcChannel.ControlPlaneFleet) as Promise<FleetOverview>,
-    regions: () => invoke(IpcChannel.ControlPlaneRegions) as Promise<RegionStatus[]>,
-    tenants: () => invoke(IpcChannel.ControlPlaneTenants) as Promise<TenantDirectoryEntry[]>,
-    deployments: () => invoke(IpcChannel.ControlPlaneDeployments) as Promise<DeploymentStatusEntry[]>,
-    usage: () => invoke(IpcChannel.ControlPlaneUsage) as Promise<UsageOverview>,
+    overview: () => invoke(IpcChannel.ControlPlaneOverview),
+    fleet: () => invoke(IpcChannel.ControlPlaneFleet),
+    regions: () => invoke(IpcChannel.ControlPlaneRegions),
+    tenants: () => invoke(IpcChannel.ControlPlaneTenants),
+    deployments: () => invoke(IpcChannel.ControlPlaneDeployments),
+    usage: () => invoke(IpcChannel.ControlPlaneUsage),
     // Reuses the cloud runtime's existing `cloud:event` broadcast for liveness.
     onEvent: (cb: () => void) => subscribe(IpcChannel.CloudEventBroadcast, () => cb()),
   },
 
   federation: {
-    orgs: () => invoke(IpcChannel.FedOrgs) as Promise<FederatedOrg[]>,
-    summary: () => invoke(IpcChannel.FedSummary) as Promise<FederationSummary>,
-    invitations: () => invoke(IpcChannel.FedInvitations) as Promise<OrgInvitation[]>,
-    trust: () => invoke(IpcChannel.FedTrust) as Promise<TrustRelationship[]>,
-    shared: () => invoke(IpcChannel.FedShared) as Promise<SharedResource[]>,
+    orgs: () => invoke(IpcChannel.FedOrgs),
+    summary: () => invoke(IpcChannel.FedSummary),
+    invitations: () => invoke(IpcChannel.FedInvitations),
+    trust: () => invoke(IpcChannel.FedTrust),
+    shared: () => invoke(IpcChannel.FedShared),
     inviteOrg: (input: { name: string; trustLevel: TrustLevel; message?: string }) =>
-      invoke(IpcChannel.FedInviteOrg, input) as Promise<OrgInvitation>,
+      invoke(IpcChannel.FedInviteOrg, input),
     respondInvite: (id: string, accept: boolean) =>
-      invoke(IpcChannel.FedRespondInvite, { id, accept }) as Promise<
-        OrgInvitation | { error: string }
-      >,
+      invoke(IpcChannel.FedRespondInvite, { id, accept }),
     setTrust: (input: {
       peerOrg: string;
       trustLevel?: TrustLevel;
       delegatedApproval?: boolean;
       canShareWorkers?: boolean;
       canShareData?: boolean;
-    }) => invoke(IpcChannel.FedSetTrust, input) as Promise<TrustRelationship | { error: string }>,
+    }) => invoke(IpcChannel.FedSetTrust, input),
     shareResource: (input: {
       kind: SharedResourceKind;
       name: string;
       peerOrg: string;
       access: ShareAccess;
-    }) => invoke(IpcChannel.FedShareResource, input) as Promise<SharedResource | { error: string }>,
-    revokeShare: (id: string) =>
-      invoke(IpcChannel.FedRevokeShare, { id }) as Promise<{ ok: boolean }>,
+    }) => invoke(IpcChannel.FedShareResource, input),
+    revokeShare: (id: string) => invoke(IpcChannel.FedRevokeShare, { id }),
 
-    artifacts: () => invoke(IpcChannel.FedArtifacts) as Promise<ExchangeArtifact[]>,
-    exchangeSummary: () => invoke(IpcChannel.FedExchangeSummary) as Promise<ExchangeSummary>,
+    artifacts: () => invoke(IpcChannel.FedArtifacts),
+    exchangeSummary: () => invoke(IpcChannel.FedExchangeSummary),
     publishArtifact: (input: {
       kind: ExchangeKind;
       name: string;
       summary: string;
       scope: ExchangeScope;
       regionId?: CloudRegionId | null;
-    }) => invoke(IpcChannel.FedPublishArtifact, input) as Promise<ExchangeArtifact>,
+    }) => invoke(IpcChannel.FedPublishArtifact, input),
     publishVersion: (input: { artifactId: string; version: string; changelog: string }) =>
-      invoke(IpcChannel.FedPublishVersion, input) as Promise<ExchangeArtifact | { error: string }>,
+      invoke(IpcChannel.FedPublishVersion, input),
     rate: (artifactId: string, stars: number) =>
-      invoke(IpcChannel.FedRateArtifact, { artifactId, stars }) as Promise<
-        ExchangeArtifact | { error: string }
-      >,
+      invoke(IpcChannel.FedRateArtifact, { artifactId, stars }),
     setVerification: (artifactId: string, verification: VerificationStatus) =>
-      invoke(IpcChannel.FedSetVerification, { artifactId, verification }) as Promise<
-        ExchangeArtifact | { error: string }
-      >,
-    rollback: (artifactId: string) =>
-      invoke(IpcChannel.FedRollbackArtifact, { artifactId }) as Promise<
-        ExchangeArtifact | { error: string }
-      >,
-    install: (artifactId: string) =>
-      invoke(IpcChannel.FedInstallArtifact, { artifactId }) as Promise<
-        ExchangeArtifact | { error: string }
-      >,
+      invoke(IpcChannel.FedSetVerification, { artifactId, verification }),
+    rollback: (artifactId: string) => invoke(IpcChannel.FedRollbackArtifact, { artifactId }),
+    install: (artifactId: string) => invoke(IpcChannel.FedInstallArtifact, { artifactId }),
     verifyVersion: (artifactId: string, versionId: string) =>
-      invoke(IpcChannel.FedVerifyVersion, { artifactId, versionId }) as Promise<{
-        verified: boolean;
-      }>,
+      invoke(IpcChannel.FedVerifyVersion, { artifactId, versionId }),
 
-    scopeSummary: () => invoke(IpcChannel.FedScopeSummary) as Promise<MarketplaceScopeSummary[]>,
+    scopeSummary: () => invoke(IpcChannel.FedScopeSummary),
     setScope: (artifactId: string, scope: ExchangeScope) =>
-      invoke(IpcChannel.FedSetScope, { artifactId, scope }) as Promise<
-        ExchangeArtifact | { error: string }
-      >,
+      invoke(IpcChannel.FedSetScope, { artifactId, scope }),
 
-    policies: () => invoke(IpcChannel.FedPolicies) as Promise<FedPolicy[]>,
-    govSummary: () => invoke(IpcChannel.FedGovSummary) as Promise<GlobalGovSummary>,
+    policies: () => invoke(IpcChannel.FedPolicies),
+    govSummary: () => invoke(IpcChannel.FedGovSummary),
     addPolicy: (input: {
       name: string;
       description: string;
       scope: FedPolicyScope;
       effect: FedPolicyEffect;
       action: string;
-    }) => invoke(IpcChannel.FedAddPolicy, input) as Promise<FedPolicy>,
+    }) => invoke(IpcChannel.FedAddPolicy, input),
     setPolicyEnabled: (id: string, enabled: boolean) =>
-      invoke(IpcChannel.FedSetPolicyEnabled, { id, enabled }) as Promise<
-        FedPolicy | { error: string }
-      >,
-    approvals: () => invoke(IpcChannel.FedApprovals) as Promise<DelegatedApproval[]>,
+      invoke(IpcChannel.FedSetPolicyEnabled, { id, enabled }),
+    approvals: () => invoke(IpcChannel.FedApprovals),
     resolveApproval: (id: string, approve: boolean) =>
-      invoke(IpcChannel.FedResolveApproval, { id, approve }) as Promise<
-        DelegatedApproval | { error: string }
-      >,
-    audit: () => invoke(IpcChannel.FedAuditTrail) as Promise<FedAuditEntry[]>,
-    compliance: () => invoke(IpcChannel.FedCompliance) as Promise<FedComplianceRule[]>,
+      invoke(IpcChannel.FedResolveApproval, { id, approve }),
+    audit: () => invoke(IpcChannel.FedAuditTrail),
+    compliance: () => invoke(IpcChannel.FedCompliance),
     recordAction: (input: {
       action: string;
       peerOrg: string;
       peerOrgName: string;
       trustLevel: TrustLevel;
       detail: string;
-    }) => invoke(IpcChannel.FedRecordAction, input) as Promise<FedActionEvaluation>,
+    }) => invoke(IpcChannel.FedRecordAction, input),
 
-    observability: () => invoke(IpcChannel.FedObservability) as Promise<ObservabilityOverview>,
-    usageSeries: () => invoke(IpcChannel.FedUsageSeries) as Promise<UsagePoint[]>,
-    securityEvents: () => invoke(IpcChannel.FedSecurityEvents) as Promise<SecurityEvent[]>,
+    observability: () => invoke(IpcChannel.FedObservability),
+    usageSeries: () => invoke(IpcChannel.FedUsageSeries),
+    securityEvents: () => invoke(IpcChannel.FedSecurityEvents),
 
-    backups: () => invoke(IpcChannel.FedBackups) as Promise<Backup[]>,
-    replicas: () => invoke(IpcChannel.FedReplicas) as Promise<ReplicaState[]>,
-    validations: () => invoke(IpcChannel.FedValidations) as Promise<RecoveryValidation[]>,
-    continuity: () => invoke(IpcChannel.FedContinuity) as Promise<ContinuityPosture>,
-    drSummary: () => invoke(IpcChannel.FedDrSummary) as Promise<DrSummary>,
-    createBackup: (scope: BackupScope) =>
-      invoke(IpcChannel.FedCreateBackup, { scope }) as Promise<Backup>,
-    runValidation: (backupId: string) =>
-      invoke(IpcChannel.FedRunValidation, { backupId }) as Promise<
-        RecoveryValidation | { error: string }
-      >,
-    checkReplication: () => invoke(IpcChannel.FedCheckReplication) as Promise<ReplicaState[]>,
+    backups: () => invoke(IpcChannel.FedBackups),
+    replicas: () => invoke(IpcChannel.FedReplicas),
+    validations: () => invoke(IpcChannel.FedValidations),
+    continuity: () => invoke(IpcChannel.FedContinuity),
+    drSummary: () => invoke(IpcChannel.FedDrSummary),
+    createBackup: (scope: BackupScope) => invoke(IpcChannel.FedCreateBackup, { scope }),
+    runValidation: (backupId: string) => invoke(IpcChannel.FedRunValidation, { backupId }),
+    checkReplication: () => invoke(IpcChannel.FedCheckReplication),
 
-    adminOverview: () => invoke(IpcChannel.FedAdminOverview) as Promise<FedAdminOverview>,
-    scalability: () => invoke(IpcChannel.FedScalability) as Promise<ScalabilityReport>,
+    adminOverview: () => invoke(IpcChannel.FedAdminOverview),
+    scalability: () => invoke(IpcChannel.FedScalability),
 
-    onEvent: (cb: (e: { kind: string; at: string }) => void) =>
-      subscribe(IpcChannel.FedEventBroadcast, (p) => cb(p as { kind: string; at: string })),
+    onEvent: (cb: (e: IpcStoreChangedEvent) => void) => subscribe(IpcChannel.FedEventBroadcast, cb),
   },
 
   // ── P10 — Federation Platform (intelligence/governance/integration layer) ──
   federationPlatform: {
-    graph: () => invoke(IpcChannel.FederationGraph) as Promise<FederationGraph>,
-    timeline: () => invoke(IpcChannel.FederationTimeline) as Promise<FederationTimelineEntry[]>,
-    directory: () => invoke(IpcChannel.FederationDirectory) as Promise<OrgDirectoryEntry[]>,
-    analytics: () => invoke(IpcChannel.FederationAnalytics) as Promise<FederationAnalytics>,
-    overview: () => invoke(IpcChannel.FederationOverview) as Promise<FederationOverview>,
+    graph: () => invoke(IpcChannel.FederationGraph),
+    timeline: () => invoke(IpcChannel.FederationTimeline),
+    directory: () => invoke(IpcChannel.FederationDirectory),
+    analytics: () => invoke(IpcChannel.FederationAnalytics),
+    overview: () => invoke(IpcChannel.FederationOverview),
     search: (text: string, kinds?: FederationSearchKind[], limit?: number) =>
-      invoke(IpcChannel.FederationSearch, { text, kinds, limit }) as Promise<FederationSearchHit[]>,
+      invoke(IpcChannel.FederationSearch, { text, kinds, limit }),
     // Reuses the federation runtime's existing `fed:event` broadcast for liveness.
     onEvent: (cb: () => void) => subscribe(IpcChannel.FedEventBroadcast, () => cb()),
   },
 
   // ── Release engineering: migration · backup · crash · diagnostics · recovery · support ──
   releaseOps: {
-    migrationStatus: () => invoke(IpcChannel.MigrationStatus) as Promise<MigrationStatus>,
-    runMigration: (dryRun?: boolean) =>
-      invoke(IpcChannel.MigrationRun, { dryRun }) as Promise<MigrationReport>,
+    migrationStatus: () => invoke(IpcChannel.MigrationStatus),
+    runMigration: (dryRun?: boolean) => invoke(IpcChannel.MigrationRun, { dryRun }),
 
-    listBackups: () => invoke(IpcChannel.BackupList) as Promise<BackupInfo[]>,
+    listBackups: () => invoke(IpcChannel.BackupList),
     createBackup: (domains?: MaintenanceDomain[]) =>
-      invoke(IpcChannel.BackupCreate, { trigger: 'manual', domains }) as Promise<BackupInfo>,
-    validateBackup: (id: string) =>
-      invoke(IpcChannel.BackupValidate, { id }) as Promise<BackupValidation>,
+      invoke(IpcChannel.BackupCreate, { trigger: 'manual', domains }),
+    validateBackup: (id: string) => invoke(IpcChannel.BackupValidate, { id }),
     restoreBackup: (id: string, domains?: MaintenanceDomain[]) =>
-      invoke(IpcChannel.BackupRestore, { id, domains }) as Promise<RestoreResult>,
-    deleteBackup: (id: string) => invoke(IpcChannel.BackupDelete, { id }) as Promise<boolean>,
+      invoke(IpcChannel.BackupRestore, { id, domains }),
+    deleteBackup: (id: string) => invoke(IpcChannel.BackupDelete, { id }),
 
-    crashStatus: () => invoke(IpcChannel.CrashGetStatus) as Promise<CrashStatus>,
-    setCrashOptIn: (optedIn: boolean) =>
-      invoke(IpcChannel.CrashSetOptIn, { optedIn }) as Promise<CrashStatus>,
-    exportCrashes: () => invoke(IpcChannel.CrashExport) as Promise<CrashRecord[]>,
-    crashRecommendations: () =>
-      invoke(IpcChannel.CrashRecommendations) as Promise<RecoveryRecommendation[]>,
+    crashStatus: () => invoke(IpcChannel.CrashGetStatus),
+    setCrashOptIn: (optedIn: boolean) => invoke(IpcChannel.CrashSetOptIn, { optedIn }),
+    exportCrashes: () => invoke(IpcChannel.CrashExport),
+    crashRecommendations: () => invoke(IpcChannel.CrashRecommendations),
     reportError: (input: { kind: string; message: string; stack?: string }) =>
-      invoke(IpcChannel.CrashReport, input) as Promise<CrashStatus>,
+      invoke(IpcChannel.CrashReport, input),
 
-    diagnostics: () => invoke(IpcChannel.ReleaseDiagnosticsGet) as Promise<ReleaseDiagnostics>,
-    exportDiagnostics: () =>
-      invoke(IpcChannel.ReleaseDiagnosticsExport) as Promise<{
-        report: ReleaseDiagnostics;
-        text: string;
-      }>,
+    diagnostics: () => invoke(IpcChannel.ReleaseDiagnosticsGet),
+    exportDiagnostics: () => invoke(IpcChannel.ReleaseDiagnosticsExport),
 
-    safeModeStatus: () => invoke(IpcChannel.RecoverySafeModeStatus) as Promise<SafeModeState>,
+    safeModeStatus: () => invoke(IpcChannel.RecoverySafeModeStatus),
     runRecovery: (
       action: RecoveryAction,
       opts?: { backupId?: string; domains?: MaintenanceDomain[]; reason?: string },
-    ) =>
-      invoke(IpcChannel.RecoveryRun, { action, ...(opts ?? {}) }) as Promise<RecoveryActionResult>,
+    ) => invoke(IpcChannel.RecoveryRun, { action, ...(opts ?? {}) }),
 
-    generateSupportBundle: () =>
-      invoke(IpcChannel.SupportGenerateBundle) as Promise<SupportBundleInfo>,
+    generateSupportBundle: () => invoke(IpcChannel.SupportGenerateBundle),
   },
 
   flags: {
-    get: (planTier: PlanTier) =>
-      invoke(IpcChannel.FlagsGet, { planTier }) as Promise<FeatureFlagState[]>,
+    get: (planTier: PlanTier) => invoke(IpcChannel.FlagsGet, { planTier }),
     setOverride: (key: FeatureFlagKey, value: boolean, planTier: PlanTier) =>
-      invoke(IpcChannel.FlagsSetOverride, { key, value, planTier }) as Promise<FeatureFlagState[]>,
+      invoke(IpcChannel.FlagsSetOverride, { key, value, planTier }),
     clearOverride: (key: FeatureFlagKey, planTier: PlanTier) =>
-      invoke(IpcChannel.FlagsClearOverride, { key, planTier }) as Promise<FeatureFlagState[]>,
+      invoke(IpcChannel.FlagsClearOverride, { key, planTier }),
   },
 
   /**
@@ -2005,72 +1589,77 @@ export const ipc = {
    * unwraps the `{ status }` envelope. No update behavior lives here — it is a thin, typed seam.
    */
   updater: {
-    getStatus: () => invoke(IpcChannel.UpdateGetStatus) as Promise<UpdateStatus>,
-    checkNow: () => invoke(IpcChannel.UpdateCheckNow) as Promise<UpdateStatus>,
-    download: () => invoke(IpcChannel.UpdateDownload) as Promise<UpdateStatus>,
-    installOnQuit: () => invoke(IpcChannel.UpdateInstallOnQuit) as Promise<UpdateStatus>,
-    setChannel: (channel: UpdateChannel) =>
-      invoke(IpcChannel.UpdateSetChannel, { channel }) as Promise<UpdateStatus>,
+    getStatus: () => invoke(IpcChannel.UpdateGetStatus),
+    checkNow: () => invoke(IpcChannel.UpdateCheckNow),
+    download: () => invoke(IpcChannel.UpdateDownload),
+    installOnQuit: () => invoke(IpcChannel.UpdateInstallOnQuit),
+    setChannel: (channel: UpdateChannel) => invoke(IpcChannel.UpdateSetChannel, { channel }),
     /** Subscribe to live updater status changes. Returns an unsubscribe handle. */
     onEvent: (cb: (status: UpdateStatus) => void) =>
-      subscribe(IpcChannel.UpdateEventBroadcast, (p) => cb((p as UpdateEvent).status)),
+      subscribe(IpcChannel.UpdateEventBroadcast, (p) => cb(p.status)),
   },
 
   license: {
-    status: (orgId: string) =>
-      invoke(IpcChannel.LicenseStatus, { orgId }) as Promise<LicenseValidationStatus>,
-    refresh: (orgId: string) =>
-      invoke(IpcChannel.LicenseRefresh, { orgId }) as Promise<LicenseValidationStatus>,
+    status: (orgId: string) => invoke(IpcChannel.LicenseStatus, { orgId }),
+    refresh: (orgId: string) => invoke(IpcChannel.LicenseRefresh, { orgId }),
     /** Report license health to main for NeuroCore (V6.1). Pass null state to clear. */
     reportHealth: (state: LicenseState | null, graceDaysRemaining = 0) =>
-      invoke(IpcChannel.LicenseReportHealth, { state, graceDaysRemaining }) as Promise<{
-        ok: boolean;
-      }>,
+      invoke(IpcChannel.LicenseReportHealth, { state, graceDaysRemaining }),
   },
 
   billing: {
     /** Create a Razorpay subscription checkout and open the hosted page (V6.4). */
     checkout: (orgId: string, plan: BillingPlanId, seats?: number) =>
-      invoke(IpcChannel.BillingCheckout, { orgId, plan, seats }) as Promise<{
-        subscriptionId: string;
-        checkoutUrl: string;
-      }>,
+      invoke(IpcChannel.BillingCheckout, { orgId, plan, seats }),
   },
 
   devices: {
     /** Register THIS device against the org (identity assembled main-side) (V6.5). */
-    registerCurrent: (orgId: string) =>
-      invoke(IpcChannel.DevicesRegister, { orgId }) as Promise<{ device: Device }>,
-    list: (orgId: string) => invoke(IpcChannel.DevicesList, { orgId }) as Promise<Device[]>,
+    registerCurrent: (orgId: string) => invoke(IpcChannel.DevicesRegister, { orgId }),
+    list: (orgId: string) => invoke(IpcChannel.DevicesList, { orgId }),
     revoke: (orgId: string, deviceId: string) =>
-      invoke(IpcChannel.DevicesRevoke, { orgId, deviceId }) as Promise<{ device: Device }>,
+      invoke(IpcChannel.DevicesRevoke, { orgId, deviceId }),
     /** Report THIS device's trust status to main for NeuroCore (V6.5). */
     reportHealth: (trustStatus: DeviceTrustStatus | null) =>
-      invoke(IpcChannel.DeviceReportHealth, { trustStatus }) as Promise<{ ok: boolean }>,
+      invoke(IpcChannel.DeviceReportHealth, { trustStatus }),
   },
 
   onboarding: {
-    status: () => invoke(IpcChannel.OnboardingStatus) as Promise<OnboardingStatus>,
-    start: () => invoke(IpcChannel.OnboardingStart) as Promise<OnboardingStatus>,
-    completeStep: (step: OnboardingStepId) =>
-      invoke(IpcChannel.OnboardingCompleteStep, { step }) as Promise<OnboardingStatus>,
-    dismiss: () => invoke(IpcChannel.OnboardingDismiss) as Promise<OnboardingStatus>,
-    reset: () => invoke(IpcChannel.OnboardingReset) as Promise<OnboardingStatus>,
+    status: () => invoke(IpcChannel.OnboardingStatus),
+    start: () => invoke(IpcChannel.OnboardingStart),
+    completeStep: (step: OnboardingStepId) => invoke(IpcChannel.OnboardingCompleteStep, { step }),
+    dismiss: () => invoke(IpcChannel.OnboardingDismiss),
+    reset: () => invoke(IpcChannel.OnboardingReset),
+  },
+
+  aiConfig: {
+    get: () => invoke(IpcChannel.AiConfigGet),
+    health: () => invoke(IpcChannel.AiConfigHealth),
+    detectOllama: () => invoke(IpcChannel.AiConfigDetectOllama),
+    setProvider: (provider: AiProviderId) => invoke(IpcChannel.AiConfigSetProvider, { provider }),
+    setModel: (model: string) => invoke(IpcChannel.AiConfigSetModel, { model }),
+    setCredential: (secret: string) =>
+      invoke(IpcChannel.AiConfigSetCredential, { provider: 'claude', secret }),
+    clearCredential: () => invoke(IpcChannel.AiConfigClearCredential, { provider: 'claude' }),
+    test: (provider: AiProviderId, secret?: string) =>
+      invoke(IpcChannel.AiConfigTest, { provider, secret }),
+    migrationStatus: () => invoke(IpcChannel.AiConfigMigrationStatus),
+    migrate: () => invoke(IpcChannel.AiConfigMigrate),
+    resetToEnv: () => invoke(IpcChannel.AiConfigResetToEnv),
   },
 
   feedback: {
     submit: (category: FeedbackCategory, message: string, context?: string) =>
-      invoke(IpcChannel.FeedbackSubmit, { category, message, context }) as Promise<FeedbackEntry>,
-    list: () => invoke(IpcChannel.FeedbackList) as Promise<FeedbackEntry[]>,
-    exportAll: () => invoke(IpcChannel.FeedbackExport) as Promise<FeedbackExport>,
-    exportToFile: () => invoke(IpcChannel.FeedbackExportToFile) as Promise<string | null>,
-    clear: () => invoke(IpcChannel.FeedbackClear) as Promise<number>,
+      invoke(IpcChannel.FeedbackSubmit, { category, message, context }),
+    list: () => invoke(IpcChannel.FeedbackList),
+    exportAll: () => invoke(IpcChannel.FeedbackExport),
+    exportToFile: () => invoke(IpcChannel.FeedbackExportToFile),
+    clear: () => invoke(IpcChannel.FeedbackClear),
   },
 
   pilot: {
-    status: () => invoke(IpcChannel.PilotStatus) as Promise<PilotStatus>,
-    setEnabled: (enabled: boolean) =>
-      invoke(IpcChannel.PilotSetEnabled, { enabled }) as Promise<PilotStatus>,
+    status: () => invoke(IpcChannel.PilotStatus),
+    setEnabled: (enabled: boolean) => invoke(IpcChannel.PilotSetEnabled, { enabled }),
   },
 
   /**
@@ -2082,53 +1671,44 @@ export const ipc = {
    * mutations on `sandbox:manage` (enforced in main).
    */
   sandbox: {
-    dashboard: (workspaceId?: string) =>
-      invoke(IpcChannel.SandboxDashboard, { workspaceId }) as Promise<SandboxDashboard>,
-    workspaces: () => invoke(IpcChannel.SandboxWorkspaceList, {}) as Promise<SandboxWorkspace[]>,
+    dashboard: (workspaceId?: string) => invoke(IpcChannel.SandboxDashboard, { workspaceId }),
+    workspaces: () => invoke(IpcChannel.SandboxWorkspaceList, {}),
     scenarios: (workspaceId?: string, includeArchived?: boolean) =>
-      invoke(IpcChannel.SandboxScenarioList, { workspaceId, includeArchived }) as Promise<Scenario[]>,
-    scenario: (id: string) => invoke(IpcChannel.SandboxScenarioGet, { id }) as Promise<Scenario | null>,
+      invoke(IpcChannel.SandboxScenarioList, { workspaceId, includeArchived }),
+    scenario: (id: string) => invoke(IpcChannel.SandboxScenarioGet, { id }),
     scenarioVersions: (scenarioId: string) =>
-      invoke(IpcChannel.SandboxScenarioVersions, { scenarioId }) as Promise<ScenarioVersion[]>,
+      invoke(IpcChannel.SandboxScenarioVersions, { scenarioId }),
     executionHistory: (q?: {
       workspaceId?: string;
       scenarioId?: string;
       status?: ExecutionStatus;
       limit?: number;
       cursor?: string | null;
-    }) => invoke(IpcChannel.SandboxExecutionHistory, q ?? {}) as Promise<RunHistoryPage>,
-    execution: (id: string) => invoke(IpcChannel.SandboxExecutionGet, { id }) as Promise<Execution | null>,
+    }) => invoke(IpcChannel.SandboxExecutionHistory, q ?? {}),
+    execution: (id: string) => invoke(IpcChannel.SandboxExecutionGet, { id }),
     timeline: (executionId: string, limit?: number) =>
-      invoke(IpcChannel.SandboxExecutionTimeline, { executionId, limit }) as Promise<ExecutionTimelineEntry[]>,
-    queueState: (workspaceId?: string) =>
-      invoke(IpcChannel.SandboxQueueState, { workspaceId }) as Promise<ExecutionQueueState>,
+      invoke(IpcChannel.SandboxExecutionTimeline, { executionId, limit }),
+    queueState: (workspaceId?: string) => invoke(IpcChannel.SandboxQueueState, { workspaceId }),
     artifacts: (executionId: string, kind?: ArtifactKind) =>
-      invoke(IpcChannel.SandboxArtifactList, { executionId, kind }) as Promise<Artifact[]>,
-    result: (executionId: string) =>
-      invoke(IpcChannel.SandboxResultGet, { executionId }) as Promise<RunResult | null>,
-    report: (executionId: string) =>
-      invoke(IpcChannel.SandboxReportGet, { executionId }) as Promise<SandboxReport | null>,
-    datasets: (workspaceId?: string) =>
-      invoke(IpcChannel.SandboxDatasetList, { workspaceId }) as Promise<Dataset[]>,
+      invoke(IpcChannel.SandboxArtifactList, { executionId, kind }),
+    result: (executionId: string) => invoke(IpcChannel.SandboxResultGet, { executionId }),
+    report: (executionId: string) => invoke(IpcChannel.SandboxReportGet, { executionId }),
+    datasets: (workspaceId?: string) => invoke(IpcChannel.SandboxDatasetList, { workspaceId }),
     enqueue: (
       scenarioId: string,
       opts?: { version?: number; trigger?: ExecutionTrigger; priority?: ExecutionPriority; datasetId?: string },
-    ) => invoke(IpcChannel.SandboxExecutionEnqueue, { scenarioId, ...(opts ?? {}) }) as Promise<Execution>,
-    cancel: (id: string) => invoke(IpcChannel.SandboxExecutionCancel, { id }) as Promise<Execution | null>,
+    ) => invoke(IpcChannel.SandboxExecutionEnqueue, { scenarioId, ...(opts ?? {}) }),
+    cancel: (id: string) => invoke(IpcChannel.SandboxExecutionCancel, { id }),
     generateReport: (executionId: string) =>
-      invoke(IpcChannel.SandboxReportGenerate, { executionId }) as Promise<SandboxReport | { error: string }>,
-    validationSummary: () =>
-      invoke(IpcChannel.SandboxValidationSummary, {}) as Promise<ValidationSummary>,
-    validationDashboard: () =>
-      invoke(IpcChannel.SandboxValidationDashboard, {}) as Promise<ValidationDashboard>,
+      invoke(IpcChannel.SandboxReportGenerate, { executionId }),
+    validationSummary: () => invoke(IpcChannel.SandboxValidationSummary, {}),
+    validationDashboard: () => invoke(IpcChannel.SandboxValidationDashboard, {}),
     validationRun: (pipeline: PipelineKind, trigger?: TriggerKind) =>
-      invoke(IpcChannel.SandboxValidationRun, { pipeline, trigger }) as Promise<ValidationRunDetail>,
-    validationRunGet: (runId: string) =>
-      invoke(IpcChannel.SandboxValidationRunGet, { runId }) as Promise<ValidationRunDetail | { error: string }>,
+      invoke(IpcChannel.SandboxValidationRun, { pipeline, trigger }),
+    validationRunGet: (runId: string) => invoke(IpcChannel.SandboxValidationRunGet, { runId }),
     setSchedule: (id: string, enabled: boolean) =>
-      invoke(IpcChannel.SandboxValidationScheduleSet, { id, enabled }) as Promise<ScheduledValidation[]>,
-    onEvent: (cb: (e: SandboxEvent) => void) =>
-      subscribe(IpcChannel.SandboxEventBroadcast, (p) => cb(p as SandboxEvent)),
+      invoke(IpcChannel.SandboxValidationScheduleSet, { id, enabled }),
+    onEvent: (cb: (e: SandboxEvent) => void) => subscribe(IpcChannel.SandboxEventBroadcast, cb),
   },
 };
 

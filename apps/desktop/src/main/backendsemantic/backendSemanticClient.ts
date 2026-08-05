@@ -10,8 +10,20 @@
  * authService/config/fetch (verified by the gate, not the sandbox).
  */
 import type { RetrievalHit } from '../memory/memoryHybridSearch';
-import type { SemanticSearchFn, SemanticSearchRequest } from '../memory/memorySemanticRecall';
+import type {
+  SemanticSearchFn,
+  SemanticSearchOptions,
+  SemanticSearchRequest,
+} from '../memory/memorySemanticRecall';
+import { isAbortError } from '../memory/semanticFailure';
 
+/**
+ * An HTTP-level semantic failure: the status the backend gave and the error code
+ * from its body. It deliberately carries no `kind`/`retryable` verdict of its own —
+ * `classifySemanticError` (`memory/semanticFailure.ts`) is the single place that
+ * maps status → kind, and a second copy on this class would be two sources of
+ * truth for the same table. This throws the *facts*; that module renders the verdict.
+ */
 export class BackendSemanticError extends Error {
   constructor(
     readonly status: number,
@@ -30,7 +42,18 @@ export interface FetchResponse {
 }
 export type FetchLike = (
   url: string,
-  init: { method: string; headers: Record<string, string>; body?: string },
+  init: {
+    method: string;
+    headers: Record<string, string>;
+    body?: string;
+    /**
+     * Forwarded from `SemanticSearchOptions.signal` (A6). Before A6 nothing in this
+     * chain carried a deadline, so a black-holed connection held the recall open
+     * until the 30 s IPC timeout at `secureBridge.ts:26`; now the socket is released
+     * when the caller's deadline elapses.
+     */
+    signal?: AbortSignal;
+  },
 ) => Promise<FetchResponse>;
 
 export interface BackendSemanticDeps {
@@ -41,7 +64,13 @@ export interface BackendSemanticDeps {
 
 /** Build a SemanticSearchFn that queries POST /memory/semantic/:orgId/search. */
 export function createBackendSemanticSearch(deps: BackendSemanticDeps): SemanticSearchFn {
-  return async (query: SemanticSearchRequest): Promise<RetrievalHit[]> => {
+  return async (
+    query: SemanticSearchRequest,
+    options?: SemanticSearchOptions,
+  ): Promise<RetrievalHit[]> => {
+    // Already cancelled: don't spend a token refresh or a socket on a dead call.
+    options?.signal?.throwIfAborted();
+
     const token = await deps.getValidAccessToken();
     if (!token) {
       throw new BackendSemanticError(401, 'not_authenticated', 'Sign in to use semantic search.');
@@ -58,24 +87,66 @@ export function createBackendSemanticSearch(deps: BackendSemanticDeps): Semantic
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ text: query.text, limit: query.topK }),
+        ...(options?.signal ? { signal: options.signal } : {}),
       });
     } catch (err) {
-      throw new BackendSemanticError(0, 'network_error', (err as Error).message || 'Network request failed');
-    }
-
-    const text = await res.text();
-    const json = text ? (JSON.parse(text) as unknown) : undefined;
-
-    if (!res.ok) {
-      const body = (json ?? {}) as { error?: { code?: string; message?: string } };
+      if (isAbortError(err)) throw err;
       throw new BackendSemanticError(
-        res.status,
-        body.error?.code ?? 'request_failed',
-        body.error?.message ?? `Semantic search failed with status ${res.status}`,
+        0,
+        'network_error',
+        (err as Error).message || 'Network request failed',
       );
     }
 
-    return parseHits(json);
+    // Reading the body can fail independently of the request: a connection dropped
+    // mid-response, or the deadline elapsing between headers and body.
+    let text: string;
+    try {
+      text = await res.text();
+    } catch (err) {
+      if (isAbortError(err)) throw err;
+      throw new BackendSemanticError(
+        0,
+        'network_error',
+        (err as Error).message || 'Response body could not be read',
+      );
+    }
+
+    if (!res.ok) {
+      // The status is authoritative here, so an unreadable error body must not
+      // mask it: a proxy's HTML 502 is a retryable outage, and parsing it before
+      // the status check (as this did pre-A6) surfaced a bare `SyntaxError`
+      // instead — read downstream as a permanent, non-retryable malformed response.
+      const body = parseErrorBody(text);
+      throw new BackendSemanticError(
+        res.status,
+        body.code ?? 'request_failed',
+        body.message ?? `Semantic search failed with status ${res.status}`,
+      );
+    }
+
+    // On a 2xx the body must parse. A `SyntaxError` escaping here is the honest
+    // signal — `classifySemanticError` reads it as `malformed_response`, which is
+    // exactly what a success status carrying an unreadable payload is.
+    return parseHits(text ? (JSON.parse(text) as unknown) : undefined);
+  };
+}
+
+/** Best-effort read of the API's `{ error: { code, message } }` envelope. */
+function parseErrorBody(text: string): { code?: string; message?: string } {
+  if (!text) return {};
+  let json: unknown;
+  try {
+    json = JSON.parse(text) as unknown;
+  } catch {
+    return {};
+  }
+  const error = (json as { error?: unknown } | null)?.error;
+  if (typeof error !== 'object' || error === null) return {};
+  const { code, message } = error as { code?: unknown; message?: unknown };
+  return {
+    ...(typeof code === 'string' ? { code } : {}),
+    ...(typeof message === 'string' ? { message } : {}),
   };
 }
 

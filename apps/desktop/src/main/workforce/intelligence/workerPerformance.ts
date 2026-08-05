@@ -12,29 +12,15 @@
  * Pure and I/O-free: the caller passes jobStore.page(...).jobs (or a filtered slice)
  * and this returns metrics. Unit-tests from synthetic jobs; touches no runtime state.
  */
-import type { Job, JobStatus } from '@neuropause/shared';
+import type { Job, JobStatus, WorkerPerformance } from '@neuropause/shared';
 
-export interface WorkerPerformance {
-  workerId: string;
-  /** Most recent role seen for this worker (roles are stable per worker). */
-  workerRole: string;
-  total: number;
-  succeeded: number;
-  failed: number;
-  cancelled: number;
-  /** Jobs still queued/running/awaiting approval at snapshot time. */
-  inFlight: number;
-  /** succeeded / (succeeded + failed); 0 when none have terminated. */
-  successRate: number;
-  /** Mean durationMs over terminated jobs that recorded a duration. */
-  avgDurationMs: number | null;
-  /** Median (p50) durationMs over the same set. */
-  p50DurationMs: number | null;
-  /** Fraction of terminated jobs where the worker had no connected data. */
-  ungroundedRate: number;
-  /** Latest finishedAt (ISO) across this worker's jobs, or null. */
-  lastActiveAt: string | null;
-}
+/**
+ * A7 — `WorkerPerformance` crosses the IPC boundary inside the
+ * `workforce:intelligence` response, so its declaration now lives once in
+ * @neuropause/shared alongside the rest of that contract. Re-exported here so every
+ * existing `from './workerPerformance'` import keeps resolving unchanged.
+ */
+export type { WorkerPerformance };
 
 const TERMINAL: ReadonlySet<JobStatus> = new Set<JobStatus>(['succeeded', 'failed', 'cancelled']);
 

@@ -15,10 +15,17 @@ export type RecommendationKind =
   | 'blocked_project'
   | 'pending_document'
   | 'unanswered'
-  | 'upcoming_deadline';
+  | 'upcoming_deadline'
+  // Phase 6 Stage 5 — additive productivity kinds (deterministic, evidence-backed).
+  | 'open_approval'
+  | 'connector_issue'
+  | 'automation_opportunity'
+  | 'followup_conversation'
+  | 'unanswered_email';
 
 export const RECOMMENDATION_KINDS: readonly RecommendationKind[] = [
   'next_task', 'stale_task', 'blocked_project', 'pending_document', 'unanswered', 'upcoming_deadline',
+  'open_approval', 'connector_issue', 'automation_opportunity', 'followup_conversation', 'unanswered_email',
 ] as const;
 
 export type RecommendationPriority = 'low' | 'normal' | 'high';
@@ -40,6 +47,13 @@ export interface Recommendation {
   connectorId: string | null;
   entityRefs: string[];
   evidence: RecommendationEvidence[];
+  /* ── Phase 6 Stage 5 — explainability additions (5.11; optional + additive). ── */
+  /** The concrete next step this recommendation suggests. */
+  suggestedAction?: string;
+  /** The systems/surfaces this touches (e.g. ['workforce','approvals']). */
+  affectedSystems?: string[];
+  /** 0..1 confidence in the underlying evidence. */
+  confidence?: number;
 }
 
 export interface RecommendationQuery {

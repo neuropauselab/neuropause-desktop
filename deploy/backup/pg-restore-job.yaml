@@ -1,0 +1,140 @@
+# NEMS Phase 5 — PostgreSQL restore-test Job (manual, template).
+# ---------------------------------------------------------------------------
+# This is the tool that turns a backup from "a file in a bucket" into a proven,
+# restorable artifact. It downloads ONE chosen dump from Spaces and restores it
+# into a TARGET database, then validates that user tables materialised.
+#
+#   >>> SAFETY: By default this restores into a SCRATCH / VERIFY database, NOT
+#   >>> production. Restoring into production is a destructive recovery action
+#   >>> that belongs to an incident with an explicit human decision (see
+#   >>> docs/operations/runbooks/database-down.md). The target is a SEPARATE
+#   >>> secret (`nems-pg-restore-target`) precisely so a routine restore-test
+#   >>> can never accidentally overwrite prod.
+#
+# HONESTY: this manifest has NOT been run. Running it and recording the real
+# output (restored table count, timing) is the drill required before Phase 6.
+#
+# USAGE:
+#   1. Provision a scratch database (a cheap separate DO database, or a fresh
+#      database inside the same cluster) and put its connection URI in a secret:
+#        kubectl -n nems-prod create secret generic nems-pg-restore-target \
+#          --from-literal=uri='postgresql://USER:PASS@HOST:PORT/scratchdb?sslmode=require'
+#   2. Pick the backup key to restore (verify-backup.sh lists them), then:
+#        kubectl -n nems-prod delete job nems-pg-restore --ignore-not-found
+#        sed 's#REPLACE_WITH_BACKUP_KEY#pg/nems-prod-pg/2026/07/08T021500Z.dump#' \
+#          deploy/backup/pg-restore-job.yaml | kubectl apply -f -
+#        kubectl -n nems-prod logs -f job/nems-pg-restore
+# ---------------------------------------------------------------------------
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nems-pg-restore
+  namespace: nems-prod
+  labels:
+    app.kubernetes.io/part-of: neuropause
+    app.kubernetes.io/component: backup-restore-test
+spec:
+  backoffLimit: 0                 # a restore-test should not silently retry
+  activeDeadlineSeconds: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: neuropause
+        app.kubernetes.io/component: backup-restore-test
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+        seccompProfile: { type: RuntimeDefault }
+      volumes:
+        - name: work
+          emptyDir: { sizeLimit: 8Gi }
+        - name: tmp
+          emptyDir: { sizeLimit: 256Mi }
+      # --- Stage 1: fetch the chosen dump from Spaces + verify size. ---
+      initContainers:
+        - name: fetch
+          image: amazon/aws-cli:2.17.0
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              test -n "$BACKUP_KEY"
+              echo "[fetch] s3://${BUCKET}/${BACKUP_KEY}"
+              want=$(aws s3api head-object --bucket "$BUCKET" --key "$BACKUP_KEY" \
+                     --endpoint-url "$ENDPOINT" --query ContentLength --output text)
+              test -n "$want"; test "$want" -gt 0
+              aws s3 cp "s3://${BUCKET}/${BACKUP_KEY}" /work/dump.pgc \
+                --endpoint-url "$ENDPOINT" --only-show-errors
+              got=$(stat -c %s /work/dump.pgc)
+              echo "[fetch] remote_bytes=${want} local_bytes=${got}"
+              test "$want" = "$got"
+              echo "[fetch] OK"
+          env:
+            - name: BACKUP_KEY
+              value: "REPLACE_WITH_BACKUP_KEY"
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom: { secretKeyRef: { name: nems-spaces-backup, key: access_key_id } }
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom: { secretKeyRef: { name: nems-spaces-backup, key: secret_access_key } }
+            - name: AWS_DEFAULT_REGION
+              value: us-east-1
+            - name: AWS_EC2_METADATA_DISABLED
+              value: "true"
+            - name: HOME
+              value: /tmp
+            - name: BUCKET
+              valueFrom: { configMapKeyRef: { name: nems-backup-config, key: BUCKET } }
+            - name: ENDPOINT
+              valueFrom: { configMapKeyRef: { name: nems-backup-config, key: ENDPOINT } }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: "50m", memory: "128Mi" }
+            limits: { cpu: "500m", memory: "512Mi" }
+          volumeMounts:
+            - { name: work, mountPath: /work }
+            - { name: tmp, mountPath: /tmp }
+      # --- Stage 2: restore into the scratch target + validate objects exist. ---
+      containers:
+        - name: restore
+          image: postgres:18-alpine
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              test -s /work/dump.pgc
+              echo "[restore] validating archive TOC before restore"
+              pg_restore --list /work/dump.pgc > /work/toc.txt
+              echo "[restore] restoring into target (no-owner, clean/if-exists)"
+              # --no-owner/--no-privileges: restore is portable across roles.
+              # --clean --if-exists: idempotent re-runs into the scratch db.
+              pg_restore --no-owner --no-privileges --clean --if-exists \
+                --exit-on-error --dbname "$TARGET_URI" /work/dump.pgc
+              echo "[restore] validating restored content"
+              n=$(psql "$TARGET_URI" -Atqc \
+                "select count(*) from pg_tables where schemaname not in ('pg_catalog','information_schema');")
+              echo "[restore] user_tables_after_restore=${n}"
+              test "$n" -gt 0
+              echo "[restore] RESTORE-TEST PASSED (record ${n} tables + timing in the DR log)"
+          env:
+            - name: TARGET_URI
+              valueFrom: { secretKeyRef: { name: nems-pg-restore-target, key: uri } }
+            - name: HOME
+              value: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits: { cpu: "1", memory: "1Gi" }
+          volumeMounts:
+            - { name: work, mountPath: /work }
+            - { name: tmp, mountPath: /tmp }

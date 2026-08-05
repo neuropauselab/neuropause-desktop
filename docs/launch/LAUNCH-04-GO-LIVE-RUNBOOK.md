@@ -15,9 +15,9 @@ LAUNCH-01 (server), LAUNCH-02 (packaging), LAUNCH-03/+03b (connectors).
 | A2-1 | Dual plan vocabularies on `subscriptions` | Documented (RC1-02). |
 | A2-2 / A3-1 | Meilisearch unused | **Closed** — removed from the dev compose and `.env.example`. |
 | A2-3 | Qdrant verdict | **Closed — keep**: referenced by `unified/search`, `searchBackend`, `memory/memoryRetriever` (optional local search backend; graceful-absence check sits in the deferred A6 deep-dive). |
-| A3-2 | Store router: 23 endpoints, 0 tests | Open — post-launch quality item. |
-| A3-3 | Pin connector-accounts mount path in API ref | Open — doc nit. |
-| A4-1 / A4-2 / A5-3 | ~24 dead channels + legacy sim (`cloud-sync.json`) | Open — post-launch pruning, artifact list recorded. |
+| A3-2 | Store router: 23 endpoints, 0 tests | **Closed** — `store/router.test.ts`: 58 HTTP tests over a real Express app (real service + JWT auth path, repository mocked); covers all 23 endpoints, auth gating, validation, personalization, and error codes. |
+| A3-3 | Pin connector-accounts mount path in API ref | **Closed** — pinned in RC1-05 §4: the cloud-side module is **unmounted in rc.1** (no HTTP route exists; desktop-side state is authoritative). |
+| A4-1 / A4-2 / A5-3 | ~24 dead channels + legacy sim (`cloud-sync.json`) | **Closed** — see §1a. Channel registry audited to **0 unreachable** of 678; the pre-livesync sync simulator is deleted and the Cloud → Sync console now renders the real engine. |
 | A5-1 | Honest capability claim | Adopted: "connects 16 services; live sync for GitHub, Notion, Slack, Google Calendar." |
 | A5-2 | Connector env names | **Closed** (LAUNCH-03). |
 | SEC-1 | Backend port published on all interfaces | **Closed** — loopback binding in the runbook (server) and committed in `docker-compose.prod.yml`. |
@@ -27,6 +27,43 @@ LAUNCH-01 (server), LAUNCH-02 (packaging), LAUNCH-03/+03b (connectors).
 | 02-4 | Update-feed host placeholder | Open — after your first dmg. |
 | 03-1 | Client-id baking (never secrets) | **Closed in code, tested** (suffix filter makes secret-baking impossible). |
 | 03-2 | Fixed callback path for exact-match providers | **Closed in code, tested.** |
+
+### 1a. A4-1 / A4-2 / A5-3 — closure evidence
+
+**A4-1 (dead channels).** The IPC surface is now 678 declared channels with
+**zero unreachable**: 625 are handler-backed (`channel: IpcChannel.X` in a
+`SecureHandlerDef`), 21 more are routed through the `ipc/router.ts` map, and the
+remainder are broadcast-only channels that appear in `SUBSCRIBABLE_CHANNELS` and
+are emitted from main. Every cloud channel additionally carries an explicit
+permission classification — `withCloudAuthz` throws at startup if one does not,
+so a channel cannot be added without being classified.
+
+**A4-2 / A5-3 (legacy sync simulator).** `apps/desktop/src/main/cloud/sync/`
+(the domain-level `planSync` simulator, its `SyncStore`, and the seven
+`cloud:sync.*` channels) is deleted, along with the `SyncDomain`,
+`SyncDomainState`, `SyncSummary`, `SyncConflict`, and `SyncResult` types in
+`packages/shared`. Nothing simulated remains in the sync path: the Cloud → Sync
+console is now a console for the **real** live-sync engine, reading a new
+RBAC-gated `livesync:detail` channel (READ) that projects the engine's own two
+sources of truth — the durable outbound queue and the local mirror of reconciled
+records — into one row per `SyncEntityType`, plus the engine's bounded log of
+conflicts it actually resolved. Pause is a real pause (the scheduler cancels its
+timer and the engine refuses cycles, so edits stay queued on the device), and
+"Sync now" runs a real cycle. The federation observability "Synchronization"
+tile was migrated off the simulator in the same increment and now reports real
+mirrored-record counts, the real backlog, and the real engine state.
+
+`cloud-sync.json` in `userData` is the simulator's orphaned store file. It is no
+longer read or written by any code path; existing installs may still have one on
+disk and it is safe to delete. No migration is required — the live-sync engine
+keeps its own queue, cursor, and mirror.
+
+**Verification.** `npm run typecheck` (all workspaces) and `npm run lint`
+(repo-wide, `--max-warnings 0`) clean; `npm run test` green across every
+workspace, desktop at 548 files / 5094 tests, including new coverage for the
+detail projection, the engine's conflict log and pause semantics, the
+scheduler's pause/idempotence, and the observability tile's sync states;
+`npm run build` green.
 
 ## 2. Go-live checklist — ordered, all yours, each with a paste-back
 
@@ -81,8 +118,8 @@ then commit. Add the enumerated env names to `.env.example` as comments.
 ## 6. Deferred, named plainly
 
 A6 deep-dive (retrieval quality, Qdrant-absent degradation), A3-2 store smoke
-tests, A4-1/A4-2 channel + legacy-sim pruning, app icon, update-feed hosting,
-Windows.
+tests, app icon, update-feed hosting, Windows. (A4-1 / A4-2 / A5-3 are no longer
+deferred — closed with evidence in §1a.)
 
 ## 7. Audit-deliverable cross-reference
 

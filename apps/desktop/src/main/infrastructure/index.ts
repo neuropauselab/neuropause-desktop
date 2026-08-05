@@ -61,12 +61,13 @@ import { snowflakeActions } from './snowflake/snowflakeActions';
 import { databricksActions } from './databricks/databricksActions';
 import { iacActions } from './iac/iacActions';
 import type { DiscoveryHttp } from '@neuropause/shared';
+import type { IpcBroadcaster } from '@neuropause/shared';
 import { AuthError } from '../unified/sync/http';
 
 const log = createLogger('infrastructure');
 
 export interface InfrastructureDeps {
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: IpcBroadcaster;
   publish: (e: PlatformEventInput) => void;
   now?: () => string;
 }

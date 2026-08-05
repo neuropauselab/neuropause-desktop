@@ -1,8 +1,11 @@
 /**
- * Product Integrity v1.0 — navigation guardrails. Locks the consolidated nav: intent-home is the single
- * canonical landing, the retired duplicate/superseded experiences and empty placeholders are hidden from the
- * sidebar (but retained + routable, so the change is reversible), and the real production surfaces stay
- * visible. This prevents a duplicate or placeholder screen from silently reappearing in navigation.
+ * Product Integrity v1.0 — navigation guardrails. Locks the consolidated nav: the retired
+ * duplicate/superseded experiences and empty placeholders are hidden from the sidebar (but retained +
+ * routable, so the change is reversible), and the real production surfaces stay visible. This prevents a
+ * duplicate or placeholder screen from silently reappearing in navigation.
+ *
+ * Phase 6 Stage 2: `mission-control` is the canonical landing surface and leads the visible nav;
+ * `intent-home` remains visible directly beneath it (complementary, not a duplicate).
  */
 import { describe, expect, it } from 'vitest';
 import { SECTIONS } from './sections';
@@ -10,9 +13,29 @@ import { SECTIONS } from './sections';
 describe('navigation sections — production visibility', () => {
   const hidden = SECTIONS.filter((s) => s.hidden);
 
-  it('intent-home is the canonical, visible first primary section', () => {
+  it('mission-control is the canonical, visible first primary section (Phase 6 Stage 2 landing)', () => {
     const firstVisible = SECTIONS.find((s) => s.placement === 'primary' && !s.hidden);
-    expect(firstVisible?.id).toBe('intent-home');
+    expect(firstVisible?.id).toBe('mission-control');
+  });
+
+  it('intent-home stays visible right after the landing surface (complementary, not retired)', () => {
+    const visible = SECTIONS.filter((s) => s.placement === 'primary' && !s.hidden);
+    expect(visible[1]?.id).toBe('intent-home');
+  });
+
+  it('universal search is a visible primary surface right after the landing pair (Phase 6 Stage 3)', () => {
+    const visible = SECTIONS.filter((s) => s.placement === 'primary' && !s.hidden);
+    expect(visible[2]?.id).toBe('search');
+  });
+
+  it('the workspace assistant is a visible primary surface right after search (Phase 6 Stage 4)', () => {
+    const visible = SECTIONS.filter((s) => s.placement === 'primary' && !s.hidden);
+    expect(visible[3]?.id).toBe('assistant');
+  });
+
+  it('the work hub is a visible primary surface right after the assistant (Phase 6 Stage 5)', () => {
+    const visible = SECTIONS.filter((s) => s.placement === 'primary' && !s.hidden);
+    expect(visible[4]?.id).toBe('hub');
   });
 
   it('retired duplicate + pseudo-section surfaces are hidden from nav', () => {
@@ -29,7 +52,7 @@ describe('navigation sections — production visibility', () => {
 
   it('canonical production surfaces remain visible', () => {
     const visibleIds = SECTIONS.filter((s) => !s.hidden).map((s) => s.id);
-    for (const id of ['intent-home', 'organization', 'enterprise', 'operations', 'workforce', 'connectors', 'cloud', 'federation', 'marketplace', 'sandbox', 'settings']) {
+    for (const id of ['mission-control', 'intent-home', 'search', 'assistant', 'hub', 'organization', 'enterprise', 'operations', 'workforce', 'connectors', 'cloud', 'federation', 'marketplace', 'sandbox', 'settings']) {
       expect(visibleIds).toContain(id);
     }
   });
@@ -73,7 +96,11 @@ describe('navigation sections — production visibility', () => {
   it('does NOT mark real production surfaces as preview', () => {
     const previewIds = new Set<string>(SECTIONS.filter((s) => s.preview).map((s) => s.id));
     for (const id of [
+      'mission-control',
       'intent-home',
+      'search',
+      'assistant',
+      'hub',
       'connectors',
       'memory',
       'store',

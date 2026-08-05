@@ -9,10 +9,17 @@
  * Types-only.
  */
 
-export type BriefingPeriod = 'morning' | 'evening' | 'weekly' | 'monthly' | 'quarterly';
+export type BriefingPeriod =
+  | 'morning'
+  // Phase 6 Stage 5 — the Afternoon Update (same-day window, additive).
+  | 'afternoon'
+  | 'evening'
+  | 'weekly'
+  | 'monthly'
+  | 'quarterly';
 
 export const BRIEFING_PERIODS: readonly BriefingPeriod[] = [
-  'morning', 'evening', 'weekly', 'monthly', 'quarterly',
+  'morning', 'afternoon', 'evening', 'weekly', 'monthly', 'quarterly',
 ] as const;
 
 /** A back-pointer to the evidence a briefing line is grounded in. */

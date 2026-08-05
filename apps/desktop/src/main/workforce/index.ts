@@ -52,6 +52,7 @@ import {
   WorkforceInstallRequest,
   WorkforceInstallActionRequest,
 } from '@neuropause/shared';
+import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { unifiedStore } from '../unified/storeInstance';
@@ -76,7 +77,7 @@ import type { SkillImpl, WorkforceData, WorkforceNeighbor } from './sdk';
 const log = createLogger('workforce');
 
 export interface WorkforceSubsystemDeps {
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: IpcBroadcaster;
   /**
    * V7.3.2: publish platform events (workflow lifecycle → timeline). Optional so
    * the subsystem still runs standalone/in tests; the composition root passes
@@ -103,6 +104,13 @@ export interface WorkforceSubsystem {
    * passthrough (same authority as a direct worker install); the marketplace governs first.
    */
   installWorkerPackage: (pkg: WorkerPackage) => WorkerInstallResult;
+  /**
+   * Phase 6 Stage 8 — a READ-ONLY snapshot of the in-memory workflow-run map
+   * ({run, spec} pairs) for the Automation Platform's computed catalog/monitor.
+   * Additive and side-effect-free: no channel, no mutation, no new state — the
+   * platform documents (rather than changes) the map's restart semantics.
+   */
+  workflowRunEntries: () => { run: WorkflowRun; spec: WorkflowSpec }[];
 }
 
 export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<WorkforceSubsystem> {
@@ -448,5 +456,6 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
     runWorker,
     setExecutionSubmit,
     installWorkerPackage: (pkg) => installService.install(pkg),
+    workflowRunEntries: () => [...workflowRuns.values()].map((x) => ({ run: x.run, spec: x.spec })),
   };
 }

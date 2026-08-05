@@ -6,11 +6,18 @@
  * this increment; this covers registration, listing, heartbeat, and revoke.
  */
 import { DeviceError, type Device, type DeviceRepository, type RegisterDeviceInput } from './types';
+import type { DomainEventPublisher } from '../platform/events';
 
 export interface DeviceServiceDeps {
   repo: DeviceRepository;
   /** Reused from the organizations module; returns the caller's role or null. */
   getMemberRole: (orgId: string, userId: string) => Promise<string | null>;
+  /**
+   * OPTIONAL shared-platform event publisher (NCEA 10.2B). When present,
+   * registration emits a `device.registered` domain event onto the shared bus.
+   * Absent by default, so existing behavior and callers are unchanged.
+   */
+  publish?: DomainEventPublisher;
 }
 
 async function assertMember(
@@ -32,7 +39,16 @@ export async function registerDevice(
   input: RegisterDeviceInput,
 ): Promise<Device> {
   await assertMember(deps, input.orgId, input.userId);
-  return deps.repo.upsert(input);
+  const device = await deps.repo.upsert(input);
+  // Additive: emit a domain event only when a publisher is wired (default off).
+  await deps.publish?.publish({
+    type: 'device.registered',
+    topic: 'devices',
+    partitionKey: device.orgId,
+    version: 1,
+    payload: { orgId: device.orgId, deviceId: device.deviceId, userId: device.userId },
+  });
+  return device;
 }
 
 export async function listDevices(

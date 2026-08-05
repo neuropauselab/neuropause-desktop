@@ -1,0 +1,15 @@
+# Development overrides.
+replicaCount: 1
+image:
+  tag: latest
+  pullPolicy: Always
+ingress:
+  enabled: false
+autoscaling:
+  enabled: false
+resources:
+  requests: { cpu: 100m, memory: 256Mi }
+  limits: { cpu: 500m, memory: 512Mi }
+config:
+  nodeEnv: development
+  logLevel: debug

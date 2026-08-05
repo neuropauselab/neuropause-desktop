@@ -27,9 +27,10 @@ import { ipc } from '@renderer/lib/ipc';
 import { Bar, OpsPanel, Stat, StatusBadge, StatusDot } from '@renderer/operations/primitives';
 import { EmptyState, Grid, LoadingBlock } from '@renderer/operationsCenter/primitives';
 import { Pill } from '@renderer/workforce/primitives';
+import { EtwinPlatformTab } from '@renderer/digitalTwinPlatform/EtwinPlatformTab';
 import { bandLabel, bandTone, domainIcon, execTwinIcon, priorityTone, replayIcon } from './twinCenterModel';
 
-type Tab = 'twins' | 'topology' | 'health' | 'impact' | 'replay' | 'scenario' | 'executive';
+type Tab = 'twins' | 'topology' | 'health' | 'impact' | 'replay' | 'scenario' | 'executive' | 'platform';
 
 export function TwinCenterView(): JSX.Element {
   const [ready, setReady] = useState(false);
@@ -65,6 +66,12 @@ export function TwinCenterView(): JSX.Element {
     { id: 'replay', label: 'Replay', icon: 'clock' },
     { id: 'scenario', label: 'Scenarios', icon: 'beaker' },
     { id: 'executive', label: 'Command Center', icon: 'star' },
+    // Phase 6 Stage 13 — the Enterprise Digital Twin Platform (read-only etwin:* composition).
+    // `server`, not `grid`: Twins above already holds `grid`, and both sibling stages that
+    // appended a platform tab picked an icon unused in that strip (S10 `globe` into
+    // strategyCenter, S11 `checklist` into federationCenter). Two tabs sharing a glyph is a
+    // strip a reader has to disambiguate by label alone.
+    { id: 'platform', label: 'Platform', icon: 'server' },
   ];
 
   return (
@@ -104,7 +111,13 @@ export function TwinCenterView(): JSX.Element {
           ))}
         </nav>
 
-        {!ready ? (
+        {tab === 'platform' ? (
+          // Phase 6 Stage 13 — its own etwin:* reads; deliberately checked BEFORE
+          // the `!ready` / `!overview` guards, so an unreadable P15 overview does
+          // not blank a composition that reads seven other channels. Same shape as
+          // the Stage 10/11/12 platform tabs in their Centers.
+          <EtwinPlatformTab />
+        ) : !ready ? (
           <LoadingBlock label="Composing the enterprise twin…" />
         ) : !overview ? (
           <EmptyState icon="grid" title="Digital twin unavailable" hint="No twin data could be loaded." />

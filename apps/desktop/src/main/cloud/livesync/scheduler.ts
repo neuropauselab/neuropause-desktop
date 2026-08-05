@@ -3,6 +3,9 @@
  * syncs on demand or when connectivity returns. Timer functions are injected (real
  * defaults) so the loop is unit-testable without real timers. Deciding *what* to do
  * lives here; *when* to call `syncOnce` and the retry math come from the engine.
+ *
+ * Pausing is real: `setOnline(false)` cancels the pending timer and pauses the
+ * engine, so no cycle runs and local edits stay queued on the device until resume.
  */
 import type { SyncStatus } from './types';
 
@@ -13,6 +16,8 @@ export interface SyncEngineLike {
   syncOnce(orgId: string): Promise<SyncStatus>;
   getStatus(): SyncStatus;
   nextRetryDelay(): number;
+  /** Pause/resume: while paused the engine refuses cycles and reports offline. */
+  setPaused(paused: boolean): void;
 }
 
 export interface SyncSchedulerOptions {
@@ -49,6 +54,7 @@ export class SyncScheduler {
 
   private handle: ReturnType<typeof setTimeout> | null = null;
   private running = false;
+  private paused = false;
 
   constructor(opts: SyncSchedulerOptions) {
     this.engine = opts.engine;
@@ -62,7 +68,7 @@ export class SyncScheduler {
   start(): void {
     if (this.running) return;
     this.running = true;
-    this.scheduleNext(0);
+    if (!this.paused) this.scheduleNext(0);
   }
 
   stop(): void {
@@ -77,17 +83,43 @@ export class SyncScheduler {
     return this.running;
   }
 
+  isPaused(): boolean {
+    return this.paused;
+  }
+
   /** Run a cycle now (a manual trigger). Reschedules the loop if running. */
   async syncNow(): Promise<SyncStatus> {
     return this.runCycle();
   }
 
-  /** React to connectivity: sync immediately when coming back online. */
+  /**
+   * Pause or resume syncing. Pausing cancels the pending timer and pauses the engine
+   * (queued edits stay local); resuming syncs immediately and restarts the loop.
+   * Idempotent — re-asserting the current mode does nothing.
+   */
   setOnline(online: boolean): void {
-    if (online && this.running) void this.syncNow();
+    const paused = !online;
+    if (paused === this.paused) return;
+    this.paused = paused;
+    this.engine.setPaused(paused);
+    if (paused) {
+      if (this.handle !== null) {
+        this.clearTimer(this.handle);
+        this.handle = null;
+      }
+      this.onStatus?.(this.engine.getStatus());
+      return;
+    }
+    if (this.running) void this.syncNow();
+    else this.onStatus?.(this.engine.getStatus());
   }
 
   private async runCycle(): Promise<SyncStatus> {
+    if (this.paused) {
+      const status = this.engine.getStatus();
+      this.onStatus?.(status);
+      return status;
+    }
     const orgId = this.getActiveOrgId();
     if (!orgId) {
       const status = this.engine.getStatus();
@@ -97,7 +129,7 @@ export class SyncScheduler {
     }
     const status = await this.engine.syncOnce(orgId);
     this.onStatus?.(status);
-    if (this.running) {
+    if (this.running && !this.paused) {
       this.scheduleNext(computeNextDelay(status, this.intervalMs, this.engine.nextRetryDelay()));
     }
     return status;

@@ -1,0 +1,18 @@
+{
+  "name": "@neuropause/nems",
+  "version": "0.0.0-preview.1",
+  "private": true,
+  "description": "NeuroPause Enterprise Management System — Wave 1 Foundation Platform (NEMS). The production multi-tenant foundation of the internal operating system, composed on the existing platform: real persistence (one database via the persistence SqlDriver), real identity/authorization/sessions (reusing Phase-14 security), the one audit chain and event bus (runtime), and tenant-aware organization/user/dashboard/OKR/settings services. No demo data in the runtime; every mutation is audited and published; every entity is tenant-scoped. No external integrations, AI agents, or billing — those are later waves.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run" },
+  "dependencies": {
+    "@neuropause/runtime": "*",
+    "@neuropause/cloud-core": "*",
+    "@neuropause/shared-cloud": "*",
+    "@neuropause/security": "*",
+    "@neuropause/persistence": "*"
+  },
+  "devDependencies": { "typescript": "^5.9.3", "vitest": "^1.6.1" }
+}

@@ -6,6 +6,7 @@
  */
 import { IpcChannel, EmptyRequest, UpdateSetChannelRequest } from '@neuropause/shared';
 import type { UpdateSetChannelRequest as TUpdateSetChannelRequest } from '@neuropause/shared';
+import type { IpcBroadcaster } from '@neuropause/shared';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { createLogger } from '../logger';
 import { appUpdater } from '../services/appUpdater';
@@ -13,7 +14,7 @@ import { appUpdater } from '../services/appUpdater';
 const log = createLogger('updater');
 
 export interface UpdaterDeps {
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: IpcBroadcaster;
 }
 
 export interface UpdaterModule {

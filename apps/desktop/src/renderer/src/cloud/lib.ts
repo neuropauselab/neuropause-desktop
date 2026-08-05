@@ -10,10 +10,11 @@ import type {
   CloudComplianceStatus,
   DataResidency,
   DeploymentStatus,
+  LiveSyncStatus,
   MfaMethod,
   SsoProtocol,
   SsoStatus,
-  SyncStatus,
+  SyncEntityType,
   TenantStatus,
   TenantTier,
   WebhookStatus,
@@ -73,19 +74,41 @@ export function ssoStatusMeta(status: SsoStatus): Meta {
   }
 }
 
-export function syncStatusMeta(status: SyncStatus): Meta {
-  switch (status) {
-    case 'synced':
+/** Tone + label for the real live-sync engine's cycle state. */
+export function liveSyncStateMeta(state: LiveSyncStatus['state']): Meta {
+  switch (state) {
+    case 'idle':
       return { tone: 'green', label: 'Synced' };
     case 'syncing':
       return { tone: 'blue', label: 'Syncing' };
-    case 'pending':
-      return { tone: 'orange', label: 'Pending' };
-    case 'conflict':
-      return { tone: 'red', label: 'Conflict' };
+    case 'error':
+      return { tone: 'red', label: 'Error' };
     default:
-      return { tone: 'gray', label: 'Offline' };
+      return { tone: 'gray', label: 'Paused' };
   }
+}
+
+/** Per-entity row status, derived from the engine's own queue + mirror counts. */
+export function syncEntityMeta(entity: { pending: number; synced: number }): Meta {
+  if (entity.pending > 0) return { tone: 'orange', label: 'Pending' };
+  if (entity.synced > 0) return { tone: 'green', label: 'Synced' };
+  return { tone: 'gray', label: 'Empty' };
+}
+
+const ENTITY_LABEL: Record<SyncEntityType, string> = {
+  organization: 'Organization',
+  membership: 'Memberships',
+  workspace_settings: 'Workspace settings',
+  connected_account: 'Connected accounts',
+  connector_config: 'Connector configuration',
+  org_prefs: 'Organization preferences',
+  memory: 'AI memory',
+};
+
+/** Human label for a syncable entity type. Total by construction — adding a type to
+ *  SYNC_ENTITY_TYPES without labelling it here is a compile error, never a blank cell. */
+export function syncEntityLabel(entityType: SyncEntityType): string {
+  return ENTITY_LABEL[entityType];
 }
 
 export function deploymentStatusMeta(status: DeploymentStatus): Meta {

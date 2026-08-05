@@ -33,7 +33,7 @@ export function CloudRoot({ initialTab = 'tenants' }: { initialTab?: CloudTab })
 }
 
 function CloudInner({ initialTab }: { initialTab: CloudTab }): JSX.Element {
-  const { ready, refreshAll, syncSummary } = useCloud();
+  const { ready, refreshAll, liveSync } = useCloud();
   const [tab, setTab] = useState<CloudTab>(initialTab);
   const [navVersion, setNavVersion] = useState(0);
 
@@ -53,8 +53,8 @@ function CloudInner({ initialTab }: { initialTab: CloudTab }): JSX.Element {
     if (!enabledTabs.some((t) => t.id === tab)) setTab('tenants');
   }, [enabledTabs, tab]);
 
-  const pending = syncSummary?.pending ?? 0;
-  const offline = syncSummary ? !syncSummary.online : false;
+  const pending = liveSync?.status.pendingCount ?? 0;
+  const offline = liveSync ? !liveSync.status.online : false;
 
   return (
     <div className="h-full overflow-y-auto">

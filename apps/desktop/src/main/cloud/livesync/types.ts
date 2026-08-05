@@ -60,9 +60,23 @@ export interface SyncStatus {
   cursor: number;
 }
 
+/**
+ * Identity of a conflict resolved during a cycle. `direction` records which leg
+ * surfaced it: `push` when the server reported a conflicting write, `pull` when an
+ * incoming change tied with the local copy. Timestamping is left to the engine,
+ * which owns the clock.
+ */
+export interface SyncConflictRef {
+  entityType: SyncEntityType;
+  entityId: string;
+  direction: 'push' | 'pull';
+}
+
 export interface SyncCycleResult {
   pushed: number;
   pulled: number;
+  /** Always `conflictRefs.length`; kept as a scalar for callers that only count. */
   conflicts: number;
   cursor: number;
+  conflictRefs: SyncConflictRef[];
 }

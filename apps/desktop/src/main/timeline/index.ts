@@ -17,6 +17,7 @@ import {
   EnterpriseTimelineReplayRequest,
   IpcChannel,
 } from '@neuropause/shared';
+import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { unifiedStore } from '../unified/storeInstance';
@@ -31,7 +32,7 @@ export function getEnterpriseTimeline(): EnterpriseTimeline | null {
 }
 
 export interface EnterpriseTimelineDeps {
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: IpcBroadcaster;
   platformQuery: (q: TimelineQuery) => TimelinePage;
 }
 

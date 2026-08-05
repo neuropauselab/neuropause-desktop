@@ -7,23 +7,27 @@
  * A "bottleneck" is evidence-based and explainable — each carries the reason and
  * the numbers behind it, never a fabricated score.
  */
-import type { Job, JobStatus } from '@neuropause/shared';
+import type {
+  Job,
+  JobStatus,
+  WorkforceBottleneck,
+  WorkforceBottleneckKind,
+  WorkforceBottleneckScope,
+} from '@neuropause/shared';
 
-export type BottleneckKind = 'high_failure' | 'backlog' | 'ungrounded';
-export type BottleneckScope = 'worker' | 'skill';
-
-export interface Bottleneck {
-  scope: BottleneckScope;
-  /** workerId or skillId. */
-  key: string;
-  kind: BottleneckKind;
-  /** Human-readable explanation of why this was flagged. */
-  reason: string;
-  /** The metric that tripped the threshold (0..1 for rates, a count for backlog). */
-  value: number;
-  /** Sample size behind the metric. */
-  sampleSize: number;
-}
+/**
+ * A7 — the bottleneck shape and its two unions cross the IPC boundary inside the
+ * `workforce:intelligence` response, so they are declared once in
+ * @neuropause/shared. They carry a `Workforce` prefix there because the package
+ * already exports an unrelated `Bottleneck` (the enterprise-graph node); this
+ * module keeps the short local spellings it has always used, so every existing
+ * `from './bottlenecks'` import keeps resolving unchanged. `BottleneckOptions`
+ * below stays local: it is a detector tuning input, never part of the wire
+ * contract.
+ */
+export type BottleneckKind = WorkforceBottleneckKind;
+export type BottleneckScope = WorkforceBottleneckScope;
+export type Bottleneck = WorkforceBottleneck;
 
 export interface BottleneckOptions {
   /** Failure-rate threshold to flag (over decided jobs). Default 0.4. */

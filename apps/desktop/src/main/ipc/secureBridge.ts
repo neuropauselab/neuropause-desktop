@@ -18,19 +18,66 @@ import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { app, ipcMain } from 'electron';
 import type { ZodSchema } from 'zod';
-import type { EnterprisePermission, IpcChannelName } from '@neuropause/shared';
+import type { EnterprisePermission, IpcChannelName, IpcResponseMap } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import { isTrustedSenderFrame } from './router';
 
 const log = createLogger('secure-ipc');
 const DEFAULT_TIMEOUT_MS = 30_000;
 
-export interface SecureHandlerDef {
+/**
+ * One registration, bound to the channel it registers.
+ *
+ * A7 — `handler` used to return `unknown`, which meant the response side of every
+ * channel was undescribed: the main process could return anything, the renderer
+ * asserted a shape at the call site, and nothing compared the two. `IpcResponseMap`
+ * (in @neuropause/shared) is now that description, and this type is what makes the
+ * main process answer to it — for a channel with a contract, the handler must return
+ * the shape the renderer will read, or it does not compile.
+ *
+ * Channels absent from the map — broadcast-only channels, and anything the renderer
+ * never invokes — keep the loose return. Absence is honest here: there is no caller
+ * whose expectations a return type could disagree with.
+ */
+export interface SecureHandlerDefFor<C extends IpcChannelName> {
+  channel: C;
+  schema: ZodSchema;
+  handler: C extends keyof IpcResponseMap
+    ? (payload: unknown) => IpcResponseMap[C] | Promise<IpcResponseMap[C]>
+    : (payload: unknown) => unknown | Promise<unknown>;
+  requireAuth?: boolean;
+  /** RBAC: the enterprise permission the current actor must hold to invoke. */
+  permission?: EnterprisePermission;
+  audit?: boolean;
+  timeoutMs?: number;
+}
+
+/**
+ * The registration type every module's `handlers` array is annotated with. It is a
+ * union discriminated by `channel`, so an element written as
+ * `{ channel: IpcChannel.KbMatrix, ... }` is checked against that channel's contract
+ * specifically — the ~24 existing `const handlers: SecureHandlerDef[] = [...]`
+ * annotation sites gained response checking without a single edit.
+ */
+export type SecureHandlerDef = {
+  [C in IpcChannelName]: SecureHandlerDefFor<C>;
+}[IpcChannelName];
+
+/**
+ * The same registration with its channel binding erased.
+ *
+ * The bridge machinery below is channel-agnostic on purpose: it validates, times,
+ * audits and shapes errors identically for every channel and never looks at what a
+ * handler returns. Given the discriminated union it would have to call a union of
+ * ~675 signatures to do that, so it takes this instead. Every `SecureHandlerDef` is
+ * assignable to it — the erasure is one-way, and it happens after the contract has
+ * already been enforced at the registration site.
+ */
+export interface AnySecureHandlerDef {
   channel: IpcChannelName;
   schema: ZodSchema;
   handler: (payload: unknown) => unknown | Promise<unknown>;
   requireAuth?: boolean;
-  /** RBAC: the enterprise permission the current actor must hold to invoke. */
   permission?: EnterprisePermission;
   audit?: boolean;
   timeoutMs?: number;
@@ -91,7 +138,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, channel: string): Promise<T> 
  * P3.0 REST API gateway). Throws `IpcError` with a clean message on any failure.
  */
 export async function runSecureHandler(
-  def: SecureHandlerDef,
+  def: AnySecureHandlerDef,
   rawPayload: unknown,
   deps: SecureBridgeDeps,
 ): Promise<unknown> {
@@ -116,7 +163,7 @@ export async function runSecureHandler(
   );
 }
 
-export function registerSecureHandlers(defs: SecureHandlerDef[], deps: SecureBridgeDeps): void {
+export function registerSecureHandlers(defs: AnySecureHandlerDef[], deps: SecureBridgeDeps): void {
   for (const def of defs) {
     ipcMain.handle(def.channel, async (event, rawPayload: unknown) => {
       const started = Date.now();

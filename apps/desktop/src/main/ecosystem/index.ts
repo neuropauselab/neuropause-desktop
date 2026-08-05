@@ -63,6 +63,7 @@ import {
   EcosystemPackImportRequest,
   EcosystemPackRemoveRequest,
 } from '@neuropause/shared';
+import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { authService } from '../auth/authService';
@@ -89,7 +90,7 @@ import { developerOwnerIdentity } from './developer/developerStore';
 const log = createLogger('ecosystem');
 
 export interface EcosystemDeps {
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: IpcBroadcaster;
 }
 
 export interface EcosystemSubsystem {
@@ -727,7 +728,11 @@ function buildHandlers(): SecureHandlerDef[] {
           `Shared from workforce: ${worker.identity.name}`,
         );
         if (version) marketplaceStore.submit(version.id, ownerName());
-        return marketplaceStore.detail(listing.id);
+        // A7 — built from the listing `createListing` just returned, not looked up again
+        // by id. `detail(id)` is the lookup form and returns null for an unknown id, so
+        // re-fetching a listing created three statements earlier widened this handler's
+        // response to include a `null` the renderer's declared type never admitted.
+        return marketplaceStore.detailFor(listing);
       },
     },
 

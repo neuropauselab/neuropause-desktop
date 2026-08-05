@@ -8,6 +8,8 @@ export default defineConfig({
   outDir: 'dist',
   clean: true,
   sourcemap: true,
-  // Bundle the workspace shared package (raw TS) into the output.
-  noExternal: [/@neuropause\/shared/],
+  // ANCHORED. The previous /@neuropause\/shared/ matched @neuropause/shared and
+  // @neuropause/shared-cloud but NOT @neuropause/cloud-core or @neuropause/runtime,
+  // leaving those as external requires that dangle in the runtime image.
+  noExternal: [/^@neuropause\//],
 });

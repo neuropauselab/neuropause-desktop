@@ -1,9 +1,11 @@
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MemoryItem } from '@neuropause/shared';
 import { MemoryStore } from './memoryStore';
+import { SemanticUnavailableError } from './semanticFailure';
+import type { SemanticSearchFn } from './memorySemanticRecall';
 
 const NOW = '2026-01-01T00:00:00.000Z';
 
@@ -148,5 +150,137 @@ describe('MemoryStore', () => {
     expect(reopened.counts().total).toBe(1);
     expect(reopened.get(a.id)).toBeNull();
     expect(reopened.recall({ text: 'second' }).hits.length).toBe(1);
+  });
+});
+
+describe('MemoryStore.recallSemantic — retrieval diagnostics (A6)', () => {
+  const ORG = 'org-1';
+  const QUERY = { text: 'postgres datastore', limit: 25 };
+  let dir: string;
+  let store: MemoryStore;
+  let seeded: MemoryItem;
+
+  beforeEach(async () => {
+    dir = await fs.mkdtemp(join(tmpdir(), 'mem-sem-'));
+    store = new MemoryStore(join(dir, 'memory.json'));
+    await store.load();
+    seeded = store.remember({
+      kind: 'decision',
+      title: 'Adopt Postgres',
+      content: 'We will use Postgres as the primary datastore for the platform',
+    });
+  });
+  afterEach(async () => {
+    await store.flush();
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  describe('the gate — semantic declines to run', () => {
+    it('labels an unconfigured build lexical, not degraded, and counts the pool it did search', async () => {
+      const res = await store.recallSemantic(QUERY, ORG);
+      expect(res.retriever).toBe('lexical');
+      expect(res.retrieval?.mode).toBe('lexical');
+      expect(res.retrieval?.semantic).toEqual({ state: 'skipped', reason: 'not_configured' });
+      expect(res.retrieval?.lexicalCandidates).toBeGreaterThan(0);
+      expect(res.hits[0]?.item.id).toBe(seeded.id);
+    });
+
+    it('never queries semantic against an absent org', async () => {
+      const searchSemantic = vi.fn(async () => []);
+      store.configureSemantic(searchSemantic);
+      const res = await store.recallSemantic(QUERY, undefined);
+      expect(searchSemantic).not.toHaveBeenCalled();
+      expect(res.retrieval?.semantic).toEqual({ state: 'skipped', reason: 'no_org' });
+      expect(res.retrieval?.mode).toBe('lexical');
+    });
+
+    it('skips an empty query and still browses, reporting the browse pool size', async () => {
+      store.configureSemantic(async () => []);
+      const res = await store.recallSemantic({ limit: 25 }, ORG);
+      expect(res.retrieval?.semantic).toEqual({ state: 'skipped', reason: 'no_query_text' });
+      expect(res.retrieval?.lexicalCandidates).toBe(1);
+      expect(res.hits).toHaveLength(1);
+    });
+  });
+
+  describe('the healthy path', () => {
+    it('claims the semantic retriever only when the semantic leg actually served', async () => {
+      store.configureSemantic(async (_q, options) => {
+        options?.onOutcome?.({ state: 'ok', hits: 1, latencyMs: 11 });
+        return [{ memoryId: seeded.id, score: 0.95 }];
+      });
+      const res = await store.recallSemantic(QUERY, ORG);
+      expect(res.retriever).toBe('lexical+semantic');
+      expect(res.retrieval?.mode).toBe('hybrid');
+      expect(res.retrieval?.semantic).toEqual({ state: 'ok', hits: 1, latencyMs: 11 });
+      expect(res.retrieval?.lexicalCandidates).toBeGreaterThan(0);
+    });
+
+    it('passes the org through as the vector namespace and asks for a wider net than it returns', async () => {
+      const searchSemantic = vi.fn(async () => []);
+      store.configureSemantic(searchSemantic);
+      await store.recallSemantic({ text: 'postgres', limit: 5 }, ORG);
+      expect(searchSemantic.mock.calls[0][0]).toMatchObject({ orgId: ORG, text: 'postgres' });
+      expect(searchSemantic.mock.calls[0][0].topK).toBeGreaterThanOrEqual(5);
+    });
+  });
+
+  describe('degradation — the semantic leg fails', () => {
+    const boom: SemanticSearchFn = async () => {
+      throw new Error('backend 503');
+    };
+
+    it('absorbs the failure and answers from the pool it already retrieved', async () => {
+      store.configureSemantic(boom);
+      const res = await store.recallSemantic(QUERY, ORG);
+      expect(res.retriever).toBe('lexical');
+      expect(res.hits[0]?.item.id).toBe(seeded.id);
+      expect(res.retrieval?.mode).toBe('degraded');
+      expect(res.retrieval?.semantic.state).toBe('failed');
+      // Present, and drawn from the single lexical pass this recall already made:
+      // pre-A6 the throw escaped to the handler, which re-ran the retriever from
+      // scratch — a second full lexical pass on every semantic failure.
+      expect(res.retrieval?.lexicalCandidates).toBeGreaterThan(0);
+    });
+
+    it('prefers the source’s own classified verdict over re-deriving one', async () => {
+      const outcome = {
+        state: 'failed',
+        kind: 'auth',
+        retryable: false,
+        code: 'not_authenticated',
+        detail: 'Sign in to use semantic search.',
+        latencyMs: 3,
+      } as const;
+      store.configureSemantic(async (_q, options) => {
+        options?.onOutcome?.(outcome);
+        throw new SemanticUnavailableError(outcome);
+      });
+      const res = await store.recallSemantic(QUERY, ORG);
+      expect(res.retrieval?.semantic).toEqual(outcome);
+    });
+
+    it('classifies for a source that throws without reporting', async () => {
+      store.configureSemantic(boom);
+      const semantic = (await store.recallSemantic(QUERY, ORG)).retrieval?.semantic;
+      expect(semantic).toMatchObject({ state: 'failed', kind: 'network', code: 'unknown_error' });
+    });
+
+    it('re-throws when the semantic leg already succeeded — that is a defect, not a degradation', async () => {
+      // A throw *after* a reported success cannot have come from retrieval, so
+      // absorbing it would disguise a real bug as a degraded answer.
+      store.configureSemantic(async (_q, options) => {
+        options?.onOutcome?.({ state: 'ok', hits: 1, latencyMs: 2 });
+        throw new Error('ranker blew up');
+      });
+      await expect(store.recallSemantic(QUERY, ORG)).rejects.toThrow('ranker blew up');
+    });
+  });
+
+  it('leaves the synchronous recall envelope-free, exactly as it was pre-A6', () => {
+    const res = store.recall(QUERY);
+    expect(res.retriever).toBe('lexical');
+    expect(res.retrieval).toBeUndefined();
+    expect(res.hits[0]?.item.id).toBe(seeded.id);
   });
 });

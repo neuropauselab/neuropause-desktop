@@ -1,0 +1,21 @@
+{
+  "name": "@neuropause/cloud",
+  "version": "0.0.0-preview.1",
+  "private": true,
+  "description": "NeuroPause Cloud Foundation (NCEA Phase 10.2) — PREVIEW scaffold. Infrastructure services only; governance stays in NeuroPause OS. Not production-ready.",
+  "main": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@neuropause/cloud-core": "*",
+    "@neuropause/cloud-sdk": "*",
+    "@neuropause/shared-cloud": "*",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^1.6.1"
+  }
+}

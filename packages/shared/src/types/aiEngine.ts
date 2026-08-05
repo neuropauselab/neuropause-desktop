@@ -17,7 +17,9 @@ export type AiWorkerId =
   | 'marketing'
   | 'support'
   | 'mission-brief'
-  | 'diagnostic';
+  | 'diagnostic'
+  // Phase 6 Stage 4 — the Workspace Assistant (additive).
+  | 'assistant';
 
 /** Provider-agnostic model tier the router maps to a concrete model. */
 export type AiModelTier = 'fast' | 'balanced' | 'deep';
@@ -62,6 +64,11 @@ export interface AiEngineRequest {
   tier?: AiModelTier;
   /** Hard cap on output tokens. */
   maxOutputTokens?: number;
+  /**
+   * Phase 6 Stage 4 — end-to-end trace id (e.g. `asst_…`) propagated by the
+   * caller; copied verbatim onto the call's audit record. Optional + additive.
+   */
+  correlationId?: string;
 }
 
 /** Token accounting for one call. */
@@ -118,6 +125,8 @@ export interface AiAuditRecord {
   outcome: AiCallOutcome;
   /** Present only when outcome === 'error'; a redacted, human-readable reason. */
   error?: string;
+  /** Phase 6 Stage 4 — the caller's end-to-end trace id, when supplied. */
+  correlationId?: string;
 }
 
 /** Rolled-up usage for cost/budget surfaces. */

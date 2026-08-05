@@ -36,6 +36,14 @@ export interface IntelligenceItem {
   /** ISO timestamp the item was produced. */
   producedAt: string;
   /**
+   * Phase 6 Stage 5 — the source key this item was delivered under. Stamped by
+   * the delivery engine at deliver time (channels like the Notification Inbox
+   * read it for per-source display/mute affordances). Producers may omit it.
+   */
+  sourceKey?: string;
+  /** Phase 6 Stage 5 — end-to-end trace id when the item came from a correlated flow. */
+  correlationId?: string;
+  /**
    * Governance (never fabricated). When an item is a recommendation derived from
    * real data, these carry the audit trail the UI/logs can show:
    */
@@ -91,6 +99,11 @@ export interface DeliveryPreferences {
   doNotDisturb: boolean;
   /** Minimum priority to deliver. */
   minPriority: IntelligencePriority;
+  /* ── Phase 6 Stage 5 — additive preference fields (optional; absent = defaults). ── */
+  /** Source keys the user muted (per-source opt-out, checked by the engine). */
+  mutedSources?: string[];
+  /** Afternoon Update time (minutes past local midnight). Absent → 13:30. */
+  afternoonUpdateMinutes?: number;
 }
 
 export const DEFAULT_DELIVERY_PREFERENCES: DeliveryPreferences = {

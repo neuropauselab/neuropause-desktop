@@ -10,7 +10,10 @@ build/
 *.tsbuildinfo
 
 # Electron packaging
-release/
+# ANCHORED: bare `release/` also matched packages/release — a real workspace that
+# 8 other workspaces depend on — hiding all 33 of its files from git status entirely.
+/release/
+apps/*/release/
 apps/desktop/out/
 apps/desktop/dist/
 
@@ -39,3 +42,17 @@ coverage/
 
 # Delivery/build artifacts — packaged zips are exports of in-tree source; never commit them
 *.zip
+*.tgz
+*.tar.gz
+
+# Key material — never commit. Defence in depth; nothing matching these exists today.
+id_rsa*
+id_ed25519*
+id_ecdsa*
+id_dsa*
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore

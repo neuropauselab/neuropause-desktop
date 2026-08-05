@@ -52,7 +52,8 @@ function mapProgress(p: ProgressInfo): UpdateStatus['progress'] {
   return { percent: p.percent, bytesPerSecond: p.bytesPerSecond, transferred: p.transferred, total: p.total };
 }
 
-class AppUpdater extends EventEmitter {
+/** A7 — `status` carries a checked `UpdateStatus`; it used to be `any`. */
+class AppUpdater extends EventEmitter<{ status: [UpdateStatus] }> {
   readonly name = 'app-updater';
   private phase: UpdatePhase = 'idle';
   private channel: UpdateChannel = 'stable';

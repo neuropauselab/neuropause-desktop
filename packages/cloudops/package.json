@@ -1,0 +1,27 @@
+{
+  "name": "@neuropause/cloudops",
+  "version": "0.0.0-preview.1",
+  "private": true,
+  "description": "NeuroPause Enterprise Management System — Wave 7 Enterprise Cloud Operations Platform. Composes Waves 1-6 (unchanged) into a cloud operations platform: a cloud operations runtime (cloud/deployment/environment registries + infrastructure inventory), an environment manager (dev/test/qa/staging/production), a deployment manager, Kubernetes operations (manifest descriptors for 11 resource kinds), a GitOps platform (desired state, drift detection, promotion; ArgoCD/Flux adapters), a configuration platform (over the reused encrypted vault), secret operations (references + rotation metadata; Vault/AWS/Azure/GCP adapters), a release platform (rolling/blue-green/canary/progressive), an infrastructure policy engine, an observability platform (Prometheus/Grafana/Loki/Tempo/OTel adapters), backup & disaster recovery (RPO/RTO), fleet management, cloud operations dashboards, and runtime APIs. Cloud-ops runtime/registries/policy/config/fleet/governance are LIVE-VERIFIED in-process over real runtime data; Kubernetes manifests, GitOps/secret/observability/cloud-provider adapters are ADAPTER-VERIFIED (shapes only, never applied); real Kubernetes apply, GitOps reconciliation, live telemetry, live secret synchronization, production failover, disaster recovery execution, and multi-region deployment are INFRA-PENDING and never executed or fabricated. One new additive package; every cloud operation is audited on the one chain with a replay id and evidence level.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run" },
+  "dependencies": {
+    "@neuropause/runtime": "*",
+    "@neuropause/cloud-core": "*",
+    "@neuropause/shared-cloud": "*",
+    "@neuropause/security": "*",
+    "@neuropause/persistence": "*",
+    "@neuropause/connectors": "*",
+    "@neuropause/integrations": "*",
+    "@neuropause/ai-runtime": "*",
+    "@neuropause/nems": "*",
+    "@neuropause/connectivity": "*",
+    "@neuropause/intelligence": "*",
+    "@neuropause/automation": "*",
+    "@neuropause/execution": "*",
+    "@neuropause/federation": "*"
+  },
+  "devDependencies": { "typescript": "^5.9.3", "vitest": "^1.6.1" }
+}

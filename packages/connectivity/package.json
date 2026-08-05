@@ -1,0 +1,22 @@
+{
+  "name": "@neuropause/connectivity",
+  "version": "0.0.0-preview.1",
+  "private": true,
+  "description": "NeuroPause Enterprise Management System — Wave 2 Enterprise Connectivity Platform. Composes the existing platform (runtime audit chain + event bus, security envelope-encryption vault, persistence SqlDriver, connector SDK/registry/executor/governance, integration transport/OAuth/reliability/sync/webhooks) into the NEMS connectivity layer: a tenant-aware connector lifecycle, an encrypted credential platform, a synchronization engine (retry queue + dead-letter queue + background workers), seven provider adapters (GitHub/Gmail/Calendar/Slack/Jira/Notion/PostgreSQL) built against a pluggable HTTP transport, unified enterprise search, a connector dashboard, and per-sync governance. Every sync is audited and published; every credential is encrypted at rest; every connector is tenant-aware. Adapters are verified against simulated provider responses through the transport seam; live provider execution requires operator-supplied OAuth credentials + network and is marked infra-pending, never fabricated. No AI copilot, knowledge-graph reasoning, automation, or ERP — those are later waves.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run" },
+  "dependencies": {
+    "@neuropause/runtime": "*",
+    "@neuropause/cloud-core": "*",
+    "@neuropause/shared-cloud": "*",
+    "@neuropause/security": "*",
+    "@neuropause/persistence": "*",
+    "@neuropause/connectors": "*",
+    "@neuropause/integrations": "*",
+    "@neuropause/ai-runtime": "*",
+    "@neuropause/nems": "*"
+  },
+  "devDependencies": { "typescript": "^5.9.3", "vitest": "^1.6.1" }
+}

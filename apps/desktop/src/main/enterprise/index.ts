@@ -40,6 +40,7 @@ import type {
   WorkspaceSummary,
   GovernanceConfig,
   BusinessActivitySummary,
+  ComplianceFinding,
 } from '@neuropause/shared';
 import {
   IpcChannel,
@@ -68,6 +69,7 @@ import {
   EnterprisePersonalizationDeleteViewRequest,
   EnterprisePersonalizationRenameViewRequest,
 } from '@neuropause/shared';
+import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { orgStore } from './org/orgInstance';
@@ -163,7 +165,7 @@ import { generateRecommendations } from '../recommendations/recommendationEngine
 const log = createLogger('enterprise');
 
 export interface EnterpriseDeps {
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: IpcBroadcaster;
   /** Platform event publisher → timeline + Executive Center (module lifecycle). */
   publish?: (input: PlatformEventInput) => void;
 }
@@ -174,6 +176,13 @@ export interface EnterpriseSubsystem {
   authorize: (permission: EnterprisePermission) => void;
   /** The ERP module registry — future modules register into this at boot. */
   modules: EnterpriseModuleRegistry;
+  /**
+   * Phase 6 Stage 9 — a READ-ONLY accessor over the EXISTING compliance
+   * evaluation (the same computation the EnterpriseCompliance channel serves),
+   * for the Operations Platform's readiness composition. Additive; no channel,
+   * no mutation, no new state.
+   */
+  complianceFindings: () => ComplianceFinding[];
 }
 
 export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSubsystem> {
@@ -346,6 +355,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     handlers: [...withEnterpriseAuthz(buildHandlers()), ...modules.handlers],
     authorize,
     modules: modules.registry,
+    complianceFindings: () => evaluateCompliance(governanceStore.rules(), buildComplianceInput()),
   };
 }
 

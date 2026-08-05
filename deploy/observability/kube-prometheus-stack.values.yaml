@@ -1,0 +1,145 @@
+# NEMS Phase 5 — kube-prometheus-stack Helm values
+# ---------------------------------------------------------------------------
+# Deploys Prometheus (Operator), Grafana, Alertmanager, node-exporter and
+# kube-state-metrics into the `monitoring` namespace of the existing
+# nems-prod-cluster (DOKS nyc3, ID 7750e61a-2636-4220-85ea-aec4120bae40).
+#
+# This does NOT modify any Phase 1-4 resource. It scrapes the already-running
+# nems-backend (which is annotated prometheus.io/path=/metrics, port=4000 and
+# is selected by the committed ServiceMonitor in this directory).
+#
+# Install:
+#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#   helm upgrade --install kube-prometheus-stack \
+#     prometheus-community/kube-prometheus-stack \
+#     -n monitoring --create-namespace \
+#     -f deploy/observability/kube-prometheus-stack.values.yaml
+#
+# The chart's CRDs (ServiceMonitor, PodMonitor, PrometheusRule, Probe,
+# AlertmanagerConfig) are what the other files in this directory rely on.
+# ---------------------------------------------------------------------------
+
+fullnameOverride: kps
+
+# --- Prometheus -------------------------------------------------------------
+prometheus:
+  prometheusSpec:
+    # Watch selectors cluster-wide so the committed ServiceMonitor / Probe /
+    # PrometheusRule objects in nems-prod and monitoring are all picked up,
+    # regardless of Helm-managed labels.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    serviceMonitorNamespaceSelector: {}   # all namespaces
+    probeNamespaceSelector: {}
+    ruleNamespaceSelector: {}
+
+    retention: 30d
+    retentionSize: 40GB
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+
+    # External URL is used for alert/console links back to this Prometheus.
+    # Set to the ingress/port-forward address you expose Prometheus on.
+    externalLabels:
+      cluster: nems-prod
+      region: nyc3
+
+    resources:
+      requests: { cpu: 250m, memory: 1Gi }
+      limits:   { cpu: "1",  memory: 2Gi }
+
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: do-block-storage
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 50Gi
+
+# --- Alertmanager -----------------------------------------------------------
+alertmanager:
+  alertmanagerSpec:
+    # Phase 5 LV4 fix (D5): without this, the operator injects a
+    # namespace="monitoring" matcher into the AlertmanagerConfig route, so
+    # alerts from nems-prod / unlabeled alerts fall through to the null
+    # receiver and are never delivered. None applies our routing globally.
+    alertmanagerConfigMatcherStrategy:
+      type: None
+    # Pick up AlertmanagerConfig CRs cluster-wide (see alertmanager-config.yaml).
+    alertmanagerConfigSelector: {}
+    alertmanagerConfigNamespaceSelector: {}
+    retention: 120h
+    resources:
+      requests: { cpu: 50m,  memory: 128Mi }
+      limits:   { cpu: 200m, memory: 256Mi }
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: do-block-storage
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+  # The default root route is overridden by the committed AlertmanagerConfig.
+  # This inline config is a safe fallback that drops nothing silently: it routes
+  # everything to a "null" receiver ONLY until you apply alertmanager-config.yaml
+  # with real receivers. It never claims to have paged anyone.
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: "null"
+      group_by: ["alertname", "severity", "namespace"]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+    receivers:
+      - name: "null"
+
+# --- Grafana ----------------------------------------------------------------
+grafana:
+  # Set a real admin password out-of-band (kubectl create secret ...), do not
+  # bake one into git. Referencing an existing secret keeps it out of this file.
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  defaultDashboardsEnabled: true      # the stack's k8s/node dashboards
+  persistence:
+    enabled: true
+    storageClassName: do-block-storage
+    size: 5Gi
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+  # The dashboard sidecar imports any ConfigMap labeled grafana_dashboard=1.
+  # The NEMS dashboards in ./dashboards are shipped as such ConfigMaps by
+  # dashboards-configmap.yaml.
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      searchNamespace: ALL
+    datasources:
+      enabled: true
+
+# --- Exporters --------------------------------------------------------------
+nodeExporter:
+  enabled: true
+kube-state-metrics:
+  enabled: true
+
+# DOKS runs the control plane; scraping etcd/scheduler/controller-manager/
+# kube-proxy from a managed control plane is not available, so disable those
+# scrape jobs to avoid permanently-down targets that would mask real alerts.
+kubeEtcd:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeProxy:
+  enabled: false

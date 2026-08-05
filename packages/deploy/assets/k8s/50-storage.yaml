@@ -1,0 +1,22 @@
+# NEMS storage — PersistentVolume (represented) + PersistentVolumeClaim.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nems-pg-pv
+  labels: { app.kubernetes.io/part-of: nems }
+spec:
+  capacity: { storage: 50Gi }
+  accessModes: ["ReadWriteOnce"]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: nems-ssd
+  hostPath: { path: /data/nems/pg }   # represented; real clusters use a CSI driver
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nems-pg-pvc
+  namespace: nems-production
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: nems-ssd
+  resources: { requests: { storage: 50Gi } }

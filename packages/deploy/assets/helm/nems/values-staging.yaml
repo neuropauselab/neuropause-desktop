@@ -1,0 +1,15 @@
+# Staging overrides.
+replicaCount: 2
+image:
+  tag: rc
+ingress:
+  enabled: true
+  host: staging.nems.example.com
+  tls: true
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+config:
+  nodeEnv: production
+  logLevel: debug

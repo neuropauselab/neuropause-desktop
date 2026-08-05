@@ -12,10 +12,20 @@ import {
   type BackoffOptions,
   type SyncErrorKind,
 } from './backoff';
-import type { SyncCycleResult, SyncState, SyncStatus, SyncStore, SyncTransport } from './types';
+import type { LiveSyncConflict } from '@neuropause/shared';
+import type {
+  SyncConflictRef,
+  SyncCycleResult,
+  SyncState,
+  SyncStatus,
+  SyncStore,
+  SyncTransport,
+} from './types';
 
 const PULL_LIMIT = 200;
 const MAX_PULL_PAGES = 50;
+/** Newest-first cap on the in-memory resolved-conflict log surfaced to the UI. */
+const MAX_CONFLICT_LOG = 50;
 
 /**
  * Run one full sync cycle: push pending outbound changes, then pull and apply remote
@@ -28,7 +38,7 @@ export async function runSyncCycle(
   deviceId: string,
 ): Promise<SyncCycleResult> {
   let pushed = 0;
-  let conflicts = 0;
+  const conflictRefs: SyncConflictRef[] = [];
 
   const pending = await store.listPending(orgId);
   if (pending.length > 0) {
@@ -37,7 +47,11 @@ export async function runSyncCycle(
       deviceId,
       pending.map((p) => p.change),
     );
-    conflicts += resp.results.filter((r) => r.status === 'conflict').length;
+    for (const r of resp.results) {
+      if (r.status === 'conflict') {
+        conflictRefs.push({ entityType: r.entityType, entityId: r.entityId, direction: 'push' });
+      }
+    }
     pushed = pending.length;
     // All pushed items are acknowledged; any stale/conflict is corrected on pull.
     await store.removePending(
@@ -52,7 +66,13 @@ export async function runSyncCycle(
     const resp = await transport.pull(orgId, cursor, { deviceId, limit: PULL_LIMIT });
     for (const change of resp.changes) {
       const outcome = await store.applyRemote(change);
-      if (outcome === 'conflict') conflicts += 1;
+      if (outcome === 'conflict') {
+        conflictRefs.push({
+          entityType: change.entityType,
+          entityId: change.entityId,
+          direction: 'pull',
+        });
+      }
       pulled += 1;
     }
     cursor = resp.cursor;
@@ -60,7 +80,7 @@ export async function runSyncCycle(
     if (!resp.hasMore) break;
   }
 
-  return { pushed, pulled, conflicts, cursor };
+  return { pushed, pulled, conflicts: conflictRefs.length, cursor, conflictRefs };
 }
 
 export interface SyncEngineOptions {
@@ -85,6 +105,10 @@ export class SyncEngine {
   private lastSyncedAt: string | null = null;
   private cursor = 0;
   private pendingCount = 0;
+  /** User-requested pause. Distinct from `state`, which only tracks cycle outcomes. */
+  private paused = false;
+  /** Newest-first log of conflicts this engine actually resolved (bounded). */
+  private conflictLog: LiveSyncConflict[] = [];
 
   constructor(opts: SyncEngineOptions) {
     this.transport = opts.transport;
@@ -95,15 +119,35 @@ export class SyncEngine {
   }
 
   getStatus(): SyncStatus {
+    // A user pause reads as offline without discarding the underlying cycle state,
+    // so resuming restores whatever the last cycle actually reported.
+    const state: SyncState = this.paused ? 'offline' : this.state;
     return {
-      state: this.state,
-      online: this.state !== 'offline',
+      state,
+      online: state !== 'offline',
       pendingCount: this.pendingCount,
       failures: this.failures,
       lastError: this.lastError,
       lastSyncedAt: this.lastSyncedAt,
       cursor: this.cursor,
     };
+  }
+
+  /**
+   * Pause or resume syncing. While paused, `syncOnce` is a no-op, so local edits
+   * stay queued on the device and nothing is pushed or pulled.
+   */
+  setPaused(paused: boolean): void {
+    this.paused = paused;
+  }
+
+  isPaused(): boolean {
+    return this.paused;
+  }
+
+  /** The conflicts this engine resolved, newest first (bounded to MAX_CONFLICT_LOG). */
+  getConflicts(): LiveSyncConflict[] {
+    return [...this.conflictLog];
   }
 
   /** The last error's kind, or null after a success. Lets the scheduler decide
@@ -123,10 +167,11 @@ export class SyncEngine {
    * already in progress is a no-op that returns current status.
    */
   async syncOnce(orgId: string): Promise<SyncStatus> {
-    if (this.state === 'syncing') return this.getStatus();
+    if (this.paused || this.state === 'syncing') return this.getStatus();
     this.state = 'syncing';
     try {
       const result = await runSyncCycle(this.transport, this.store, orgId, this.deviceId);
+      this.recordConflicts(result.conflictRefs);
       this.cursor = result.cursor;
       this.pendingCount = (await this.store.listPending(orgId)).length;
       this.failures = 0;
@@ -142,5 +187,17 @@ export class SyncEngine {
       this.state = kind === 'network' ? 'offline' : 'error';
     }
     return this.getStatus();
+  }
+
+  /** Prepend this cycle's resolved conflicts to the log, newest first, and cap it. */
+  private recordConflicts(refs: readonly SyncConflictRef[]): void {
+    if (refs.length === 0) return;
+    const at = new Date(this.now()).toISOString();
+    const entries: LiveSyncConflict[] = refs.map((ref) => ({
+      ...ref,
+      resolution: 'last_write_wins',
+      at,
+    }));
+    this.conflictLog = [...entries.reverse(), ...this.conflictLog].slice(0, MAX_CONFLICT_LOG);
   }
 }

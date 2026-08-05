@@ -1,6 +1,10 @@
 import type { IconName } from '@renderer/components/ui/Icon';
 
 export type SectionId =
+  | 'mission-control'
+  | 'search'
+  | 'assistant'
+  | 'hub'
   | 'home'
   | 'organization'
   | 'enterprise'
@@ -73,7 +77,25 @@ export interface SectionDef {
 }
 
 export const SECTIONS: SectionDef[] = [
+  // Phase 6 Stage 2 — Mission Control: the live landing dashboard. A pure
+  // unification surface over EXISTING sections and IPC feeds (additive; every
+  // tile loads independently and degrades to an explicit unavailable state).
+  { id: 'mission-control', label: 'Mission Control', icon: 'gauge', phase: 23, placement: 'primary' },
   { id: 'intent-home', label: "Today's Intent", icon: 'command', phase: 22, placement: 'primary' },
+  // Phase 6 Stage 3 — Universal Search: one query across every existing index
+  // (federated engine, app records, semantic memory, business modules). Additive;
+  // placed after the two landing surfaces so their nav locks hold unchanged.
+  { id: 'search', label: 'Search', icon: 'search', phase: 24, placement: 'primary' },
+  // Phase 6 Stage 4 — Workspace Assistant: the conversational interface over the
+  // existing engines (AI Engine + Context Builder + ExecuteEngine + workforce
+  // approvals). Additive; placed after Search so every prior nav lock holds.
+  { id: 'assistant', label: 'Assistant', icon: 'sparkles', phase: 25, placement: 'primary' },
+  // Phase 6 Stage 5 — Work Hub: the personal workday surface (Today + My Work +
+  // Executive tabs) composed from EXISTING feeds (briefing, tasks, recommendations,
+  // approvals, notifications, executive snapshot). Additive; placed after Assistant
+  // so every prior nav lock holds. Positioning: Mission Control = organizational
+  // operations landing; Today's Intent = strategy outcomes; Work Hub = YOUR day.
+  { id: 'hub', label: 'Work Hub', icon: 'checklist', phase: 26, placement: 'primary' },
   // Retired in favor of the canonical intent-native home (`intent-home`). Hidden from nav, still routable.
   { id: 'decision-center', label: 'Decision Center', icon: 'sparkles', phase: 21, placement: 'primary', hidden: true },
   { id: 'home', label: 'Home', icon: 'home', phase: 2, placement: 'primary', hidden: true },

@@ -180,6 +180,39 @@ describe('runtime IPC surface completeness (fail-closed startup safety net)', ()
     'connectors:',
     'infra:',
     'intel:',
+    // Phase 6 Stage 6 — the Enterprise Intelligence Layer's read-only cluster:
+    // every insight:* handler self-carries requireAuth + intelligence:read
+    // (locked by src/main/insight/index.stage6.test.ts).
+    'insight:',
+    // Phase 6 Stage 7 — the Enterprise Knowledge Platform's read-only cluster:
+    // every kb:* handler self-carries requireAuth + knowledge:read (the P16
+    // fabric precedent; locked by src/main/knowledgeAssets/index.stage7.test.ts).
+    'kb:',
+    // Phase 6 Stage 8 — the Enterprise Automation Platform's read-only cluster:
+    // every ap:* handler self-carries requireAuth + autonomousops:read (the P19
+    // read scope; locked by src/main/automationPlatform/index.stage8.test.ts).
+    'ap:',
+    // Phase 6 Stage 9 — the Enterprise Operations Platform's read-only cluster:
+    // every eops:* handler self-carries requireAuth + autonomousops:read (the
+    // P19 read scope; locked by src/main/operationsPlatform/index.stage9.test.ts).
+    'eops:',
+    // Phase 6 Stage 10 — the Enterprise Strategy Platform's read-only cluster:
+    // every estrat:* handler self-carries requireAuth + strategy:read (the P14
+    // read scope; locked by src/main/strategyPlatform/index.stage10.test.ts).
+    'estrat:',
+    // Phase 6 Stage 11 — the Enterprise Federation Platform's read-only cluster:
+    // every efed:* handler self-carries requireAuth + federation:read (the P10
+    // read scope; locked by src/main/enterpriseFederation/index.stage11.test.ts).
+    'efed:',
+    // Phase 6 Stage 12 — the Enterprise Analytics Platform's read-only cluster:
+    // every eana:* handler self-carries requireAuth + intelligence:read (the
+    // Stage 6 read scope; locked by src/main/analyticsPlatform/index.stage12.test.ts).
+    'eana:',
+    // Phase 6 Stage 13 — the Enterprise Digital Twin Platform's read-only
+    // cluster: every etwin:* handler self-carries requireAuth + twin:read
+    // (P15's OWN scope, reused rather than re-minted; locked by
+    // src/main/digitalTwinPlatform/index.stage13.test.ts).
+    'etwin:',
     'marketplace:',
     'webhooks:',
     'sandbox:',

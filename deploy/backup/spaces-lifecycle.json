@@ -1,0 +1,40 @@
+{
+  "Rules": [
+    {
+      "ID": "expire-pg-backups-30d",
+      "Filter": {
+        "Prefix": "pg/"
+      },
+      "Status": "Enabled",
+      "Expiration": {
+        "Days": 30
+      },
+      "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 14
+      }
+    },
+    {
+      "ID": "expire-qdrant-backups-30d",
+      "Filter": {
+        "Prefix": "qdrant/"
+      },
+      "Status": "Enabled",
+      "Expiration": {
+        "Days": 30
+      },
+      "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 14
+      }
+    },
+    {
+      "ID": "abort-incomplete-multipart-7d",
+      "Filter": {
+        "Prefix": ""
+      },
+      "Status": "Enabled",
+      "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 7
+      }
+    }
+  ]
+}

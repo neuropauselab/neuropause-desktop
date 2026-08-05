@@ -1,0 +1,153 @@
+# ---------------------------------------------------------------------------
+# NeuroPause backend — PRODUCTION manifest for namespace nems-prod on the
+# DOKS cluster nems-prod-cluster (nyc3, 7750e61a-2636-4220-85ea-aec4120bae40).
+#
+# This file describes REAL infrastructure. It is the environment-specific
+# sibling of deploy/kubernetes/backend.yaml, which stays generic and unchanged.
+# Same precedent as deploy/networking/{issuer,gateway,certificate}.yaml, which
+# already name nems-prod and api.neuropause033.com.
+#
+# Adapted from deploy/kubernetes/backend.yaml @ backend-v0.1.0-rc.3.
+# CHANGED from that file, and why:
+#   Namespace object dropped ......... nems-prod exists and is PSA-hardened
+#   ConfigMap object dropped ......... nems-backend-config exists (8 keys)
+#   neuropause-backend ............... -> nems-backend, matching every other
+#                                        object in this cluster
+#   image tag ........................ -> digest-pinned DOCR reference
+#   one secretRef .................... -> seven, proven collision-free by
+#                                        computation (35 distinct keys, 0 dupes)
+#   imagePullSecrets ................. added: nems-docr-pull
+#   serviceAccountName ............... added: nems-backend
+#   imagePullPolicy .................. added: IfNotPresent (safe, digest-pinned)
+#   terminationGracePeriodSeconds .... set explicitly; equals the default, and
+#                                        documents the 10s force-exit at
+#                                        src/index.ts:64
+#   automountServiceAccountToken ..... added: false. REDUNDANT — the
+#                                        ServiceAccount nems-backend already
+#                                        sets this, so admission behaviour is
+#                                        unchanged. Kept as intent-at-the-pod
+#                                        in case the SA is ever edited. The
+#                                        backend never calls the k8s API.
+#
+# NOT in this file: the migration Job. Migrations are Task 4.6 and live in a
+# separate manifest, so re-applying this file can never re-run them.
+#
+# Migrations do not run on boot either: the container command overrides the
+# Dockerfile CMD ("migrate && serve"), and RUN_MIGRATIONS_ON_BOOT is false.
+# ---------------------------------------------------------------------------
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nems-backend
+  namespace: nems-prod
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nems-backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nems-backend
+        app.kubernetes.io/part-of: neuropause
+        app.kubernetes.io/component: api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "4000"
+    spec:
+      serviceAccountName: nems-backend
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      imagePullSecrets:
+        - name: nems-docr-pull
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: backend
+          image: registry.digitalocean.com/neuropause033/backend@sha256:997f87373f557655728a8be64d84a299de7b2f0952f2e2c090a20d231d00bbe6
+          imagePullPolicy: IfNotPresent
+          # Dockerfile CMD is "migrate && serve"; in k8s migrations are Task 4.6.
+          command: ["node", "dist/index.js"]
+          ports:
+            - name: http
+              containerPort: 4000
+          env:
+            # DO Managed PostgreSQL presents a per-project self-signed CA and
+            # pg-connection-string aliases sslmode=require to verify-full.
+            # Extends (does not replace) the default Mozilla bundle.
+            - name: NODE_EXTRA_CA_CERTS
+              value: /etc/nems/pg-ca/ca-certificate.crt
+          envFrom:
+            - configMapRef: { name: nems-backend-config }
+            - secretRef:    { name: nems-embedding }
+            - secretRef:    { name: nems-jwt }
+            - secretRef:    { name: nems-oauth }
+            - secretRef:    { name: nems-postgres }
+            - secretRef:    { name: nems-qdrant }
+            - secretRef:    { name: nems-spaces-app }
+            - secretRef:    { name: nems-valkey }
+          livenessProbe:
+            httpGet: { path: /live, port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits:   { cpu: "1",  memory: 512Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: pg-ca
+              mountPath: /etc/nems/pg-ca
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: pg-ca
+          configMap:
+            name: nems-postgres-ca
+            items:
+              - key: ca-certificate.crt
+                path: ca-certificate.crt
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nems-backend
+  namespace: nems-prod
+  labels:
+    app.kubernetes.io/name: nems-backend
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: nems-backend
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

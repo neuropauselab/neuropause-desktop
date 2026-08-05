@@ -36,6 +36,7 @@ import {
   FedRunValidationRequest,
   type ScalabilityBenchmark,
 } from '@neuropause/shared';
+import type { IpcBroadcaster } from '@neuropause/shared';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { createLogger } from '../logger';
 import { demoSeedsEnabled } from '../demoSeed';
@@ -49,7 +50,7 @@ import { buildFedAdmin } from './admin/fedAdmin';
 import { buildScalabilityReport, type ScalabilityInput } from './scalability/scalability';
 import { workerRegistry } from '../workforce/registry/registryInstance';
 import { connectorService } from '../connectors/connectorService';
-import { syncStore } from '../cloud/sync/syncInstance';
+import { liveSync } from '../cloud/livesync/liveSyncInstance';
 import { apiPlatformStore } from '../cloud/apiplatform/apiPlatformInstance';
 import { tenancyStore, CLOUD_REGIONS } from '../cloud/tenancy/tenancyInstance';
 import { gatewayStore } from '../ecosystem/gateway/gatewayInstance';
@@ -59,7 +60,7 @@ import { ORG_ID } from '../enterprise/org/seed';
 const log = createLogger('federation');
 
 export interface FederationDeps {
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: IpcBroadcaster;
 }
 
 export interface FederationSubsystem {
@@ -91,7 +92,7 @@ function complianceInputs() {
 function buildObsInput(): ObsInput {
   const summaries = workerRegistry.summaries();
   const connectors = connectorService.stats();
-  const sync = syncStore.summary();
+  const sync = liveSync.getDetail();
   const requests30d = gatewayStore.metrics(30, Date.now()).requests;
   const api = apiPlatformStore.summary(requests30d);
   const fedSummary = fedStore.summary();
@@ -104,9 +105,9 @@ function buildObsInput(): ObsInput {
     connectorsHealthy: connectors.healthy,
     connectorsDegraded: connectors.degraded,
     connectorsDown: connectors.down,
-    syncDomains: sync.domains,
-    syncPending: sync.pending,
-    syncOnline: sync.online,
+    syncRecords: sync.entities.reduce((total, e) => total + e.synced, 0),
+    syncPending: sync.status.pendingCount,
+    syncState: sync.status.state,
     apiReplicas: api.replicas,
     apiHealthy: api.healthy,
     apiUptimePct: api.uptimePct,

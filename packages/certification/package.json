@@ -1,0 +1,24 @@
+{
+  "name": "@neuropause/certification",
+  "version": "0.0.0-preview.1",
+  "private": true,
+  "description": "NeuroPause Enterprise Validation & Production Certification harness (NCEA 16.0). VALIDATION TOOLING ONLY — it introduces no runtime or platform feature and no new subsystem. It composes the existing eleven packages to record actual cross-package evidence: an end-to-end integration proof, upgrade/migration/rollback validation against real Postgres, a real in-process benchmark harness (startup, memory, audit/crypto/DB/recovery latency), and a four-tier evidence matrix (VERIFIED / ARCHITECTURE-READY / INFRA-PENDING / PILOT-VERIFIED). Anything needing customer infrastructure, cloud services, production traffic, or external audit is INFRA-PENDING or PILOT-VERIFIED — never fabricated as VERIFIED.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run" },
+  "dependencies": {
+    "@neuropause/runtime": "*",
+    "@neuropause/cloud-core": "*",
+    "@neuropause/shared-cloud": "*",
+    "@neuropause/ai-runtime": "*",
+    "@neuropause/connectors": "*",
+    "@neuropause/persistence": "*",
+    "@neuropause/workspace": "*",
+    "@neuropause/ckdl": "*",
+    "@neuropause/security": "*",
+    "@neuropause/operations": "*",
+    "@neuropause/integrations": "*"
+  },
+  "devDependencies": { "typescript": "^5.9.3", "vitest": "^1.6.1" }
+}

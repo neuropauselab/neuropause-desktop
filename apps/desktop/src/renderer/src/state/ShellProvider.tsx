@@ -58,11 +58,23 @@ type Action =
   | { type: 'clearBusinessTab' };
 
 const clampWidth = (w: number): number => Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(w)));
-/** Builds initial state, restoring persisted preferences where valid. */
-function init(): ShellState {
-  const persistedSection = prefs.read<string>(PrefKey.activeSection, 'intent-home');
-  const persistedTabs = prefs.read<unknown>(PrefKey.workspaceTabs, []);
-  const persistedActiveTab = prefs.read<unknown>(PrefKey.activeTabId, null);
+/** The per-workspace snapshot seed the workspace-context layer provides. */
+export interface ShellSnapshotSeed {
+  activeSection: string;
+  tabs: unknown;
+  activeTabId: unknown;
+}
+
+/**
+ * Builds initial state. When a workspace snapshot seed is provided (Phase 6
+ * Stage 1 — the workspace-scoped shell), it wins; otherwise the legacy
+ * single-context preferences restore, preserving pre-Stage-1 behaviour.
+ */
+function init(seed?: ShellSnapshotSeed | null): ShellState {
+  const persistedSection =
+    seed != null ? seed.activeSection : prefs.read<string>(PrefKey.activeSection, 'intent-home');
+  const persistedTabs = seed != null ? seed.tabs : prefs.read<unknown>(PrefKey.workspaceTabs, []);
+  const persistedActiveTab = seed != null ? seed.activeTabId : prefs.read<unknown>(PrefKey.activeTabId, null);
   const { tabs, activeTabId } = restoreTabs(persistedTabs, persistedActiveTab);
 
   // Startup Experience Policy — resolve the landing section from the user's real startup preference,
@@ -178,8 +190,22 @@ interface ShellContextValue extends ShellState {
 
 const ShellContext = createContext<ShellContextValue | null>(null);
 
-export function ShellProvider({ children }: { children: ReactNode }): JSX.Element {
-  const [state, dispatch] = useReducer(reducer, undefined, init);
+export function ShellProvider({
+  children,
+  initialSnapshot,
+  onSnapshotChange,
+}: {
+  children: ReactNode;
+  /** Per-workspace snapshot seed (Phase 6 Stage 1); omit for legacy behaviour. */
+  initialSnapshot?: ShellSnapshotSeed | null;
+  /** Durable shell changes stream here so the active workspace persists them. */
+  onSnapshotChange?: (snapshot: {
+    activeSection: SectionId;
+    tabs: WorkspaceTab[];
+    activeTabId: string | null;
+  }) => void;
+}): JSX.Element {
+  const [state, dispatch] = useReducer(reducer, initialSnapshot, init);
 
   // Persist the durable slices whenever they change.
   useEffect(() => prefs.write(PrefKey.activeSection, state.activeSection), [state.activeSection]);
@@ -187,6 +213,14 @@ export function ShellProvider({ children }: { children: ReactNode }): JSX.Elemen
   useEffect(() => prefs.write(PrefKey.sidebarWidth, state.sidebarWidth), [state.sidebarWidth]);
   useEffect(() => prefs.write(PrefKey.workspaceTabs, state.tabs), [state.tabs]);
   useEffect(() => prefs.write(PrefKey.activeTabId, state.activeTabId), [state.activeTabId]);
+  // Phase 6 Stage 1 — stream the durable slice to the active workspace context.
+  useEffect(() => {
+    onSnapshotChange?.({
+      activeSection: state.activeSection,
+      tabs: state.tabs,
+      activeTabId: state.activeTabId,
+    });
+  }, [state.activeSection, state.tabs, state.activeTabId, onSnapshotChange]);
 
   const setSection = useCallback((section: SectionId) => dispatch({ type: 'setSection', section }), []);
   const toggleSidebar = useCallback(() => dispatch({ type: 'toggleSidebar' }), []);

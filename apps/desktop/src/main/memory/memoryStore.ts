@@ -17,6 +17,7 @@ import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import type {
   MemoryCounts,
+  MemoryHit,
   MemoryItem,
   MemoryMeta,
   MemoryRecallQuery,
@@ -24,6 +25,7 @@ import type {
   MemoryState,
   MemorySyncResult,
   MemoryWriteInput,
+  SemanticOutcome,
 } from '@neuropause/shared';
 import { hashMemoryContent, nextMemoryVersion, resolveMemorySync } from '@neuropause/shared';
 import { memoryFieldsFromVersion, memoryVersionPayload, toSyncState } from './memorySyncAdapter';
@@ -31,6 +33,9 @@ import { createLogger } from '../logger';
 import { LexicalMemoryRetriever, type MemoryRetriever } from './memoryRetriever';
 import { rankRecallHits } from './memoryRecallRanking';
 import { hybridRecall, type SemanticSearchFn } from './memorySemanticRecall';
+import type { RetrievalHit } from './memoryHybridSearch';
+import { buildRetrievalDiagnostics, semanticSkipReason } from './retrievalDiagnostics';
+import { classifySemanticError } from './semanticFailure';
 
 const log = createLogger('memory-store');
 
@@ -403,55 +408,141 @@ export class MemoryStore extends EventEmitter {
   }
 
   /**
-   * Semantic-aware recall (V8.2). Same result shape as `recall`. When a semantic
-   * source is configured and an org-scoped text query is given, it blends vector
-   * hits via the existing hybridRecall + ranker; otherwise returns exactly the sync
-   * `recall` result. `orgId` is the vector namespace, supplied by the caller.
+   * Semantic-aware recall (V8.2; hardened in A6). Same result shape as `recall`,
+   * plus the optional `retrieval` envelope saying what the semantic leg actually
+   * did — so a hybrid answer and a degraded one stop looking identical.
+   *
+   * A6 makes this method **total with respect to the semantic leg**: a source that
+   * fails, times out, or is short-circuited by its breaker no longer propagates
+   * out of here. It degrades to the lexical ranking of the pool that was *already*
+   * retrieved; before A6 the failure escaped to `semanticRecallHandler.ts:36`,
+   * which called `recall` and re-ran `this.retriever.search` from scratch — a
+   * second full lexical pass on every single semantic failure. That handler's
+   * try/catch is kept as a genuine backstop for anything that is not the semantic
+   * leg (see the rethrow below).
+   *
+   * `orgId` is the vector namespace, supplied by the caller.
    */
   async recallSemantic(q: MemoryRecallQuery, orgId?: string): Promise<MemoryRecallResult> {
-    const text = q.text?.trim();
-    if (!text || !this.searchSemantic || !orgId) return this.recall(q);
+    const text = q.text?.trim() ?? '';
+    const source = this.searchSemantic;
+    const skip = semanticSkipReason({ hasSource: Boolean(source), orgId, text });
 
-    const kinds = q.kinds && q.kinds.length > 0 ? new Set(q.kinds) : null;
-    const since = q.since ? Date.parse(q.since) : null;
-    const until = q.until ? Date.parse(q.until) : null;
-    const passes = (it: MemoryItem): boolean => {
-      if (it.sync?.deleted) return false;
-      if (kinds && !kinds.has(it.kind)) return false;
-      if (q.entityRef && !it.entityRefs.includes(q.entityRef)) return false;
-      if (q.tag && !it.tags.includes(q.tag)) return false;
-      if (since !== null || until !== null) {
-        const ts = Date.parse(it.occurredAt ?? it.createdAt);
-        if (since !== null && ts < since) return false;
-        if (until !== null && ts > until) return false;
-      }
-      return true;
-    };
+    if (skip !== null || source === undefined || orgId === undefined) {
+      // `skip` is already non-null whenever either of the other two conditions
+      // holds; they are repeated only to narrow the types for the compiler, not
+      // to express a second opinion about when semantic runs.
+      const lexical = this.lexicalRecall(q);
+      return {
+        hits: lexical.hits,
+        total: lexical.hits.length,
+        retriever: this.retriever.name,
+        retrieval: buildRetrievalDiagnostics(
+          { state: 'skipped', reason: skip ?? 'not_configured' },
+          lexical.candidates,
+        ),
+      };
+    }
 
     const limit = q.limit ?? 25;
-    const scored = this.retriever.search(text, Math.max(limit * 3, 50));
-    const hits = await hybridRecall(
-      { searchSemantic: this.searchSemantic },
-      {
-        text,
-        orgId,
-        limit,
-        lexicalHits: scored.map((s) => ({ memoryId: s.id, score: s.score })),
-        getItem: (id) => {
-          const it = this.items.get(id);
-          return it && passes(it) ? it : undefined;
+    const getItem = this.itemResolver(this.filterFor(q));
+    const lexicalHits = this.lexicalPool(text, limit);
+    const startedAt = Date.now();
+    let reported: SemanticOutcome | undefined;
+
+    try {
+      const hits = await hybridRecall(
+        { searchSemantic: source },
+        {
+          text,
+          orgId,
+          limit,
+          lexicalHits,
+          getItem,
+          onSemanticOutcome: (outcome) => {
+            reported = outcome;
+          },
         },
-      },
-    );
-    return { hits, total: hits.length, retriever: `${this.retriever.name}+semantic` };
+      );
+      const outcome = reported;
+      return {
+        hits,
+        total: hits.length,
+        // Only claim the semantic retriever when the semantic leg actually served.
+        retriever:
+          outcome?.state === 'ok' ? `${this.retriever.name}+semantic` : this.retriever.name,
+        // Absent rather than invented if the source broke the report-once contract:
+        // `retrieval` is optional precisely so "no diagnostics" stays sayable.
+        ...(outcome ? { retrieval: buildRetrievalDiagnostics(outcome, lexicalHits.length) } : {}),
+      };
+    } catch (err) {
+      // Only the semantic leg is absorbed here. If the source already reported
+      // success then the throw came from ranking — a defect, not a degradation —
+      // and it belongs to the handler's backstop rather than to this fallback.
+      const outcome = reported;
+      if (outcome?.state === 'ok') throw err;
+
+      const ranked = rankRecallHits({ query: { limit }, lexicalHits, getItem });
+      return {
+        hits: ranked,
+        total: ranked.length,
+        retriever: this.retriever.name,
+        retrieval: buildRetrievalDiagnostics(
+          // Prefer the source's own verdict: it measured the latency and knows the
+          // cause. Classify here only when the source threw without reporting.
+          outcome ?? classifySemanticError(err, Date.now() - startedAt),
+          lexicalHits.length,
+        ),
+      };
+    }
   }
 
   recall(q: MemoryRecallQuery): MemoryRecallResult {
+    const { hits } = this.lexicalRecall(q);
+    return { hits, total: hits.length, retriever: this.retriever.name };
+  }
+
+  /**
+   * The lexical half of recall, plus the size of the candidate pool it ranked.
+   * `recall` and `recallSemantic`'s degraded path both go through it, so the two
+   * can never drift apart and a degradation costs no extra retrieval work (A6).
+   */
+  private lexicalRecall(q: MemoryRecallQuery): { hits: MemoryHit[]; candidates: number } {
+    const passes = this.filterFor(q);
+    const limit = q.limit ?? 25;
+    const text = q.text?.trim();
+
+    if (text) {
+      // Retrieve a wide lexical pool, then re-rank via the hybrid ranking engine
+      // (V6.7.0) so recency / importance / pinned influence order — not raw TF-IDF
+      // alone. Filters live in the getItem closure, preserving recall's existing
+      // kind / entity / tag / time / tombstone semantics.
+      const lexicalHits = this.lexicalPool(text, limit);
+      return {
+        hits: rankRecallHits({ query: { limit }, lexicalHits, getItem: this.itemResolver(passes) }),
+        candidates: lexicalHits.length,
+      };
+    }
+
+    const pool = [...this.items.values()].filter(passes);
+    pool.sort((a, b) => {
+      const ta = a.occurredAt ?? a.createdAt;
+      const tb = b.occurredAt ?? b.createdAt;
+      return ta < tb ? 1 : ta > tb ? -1 : 0;
+    });
+    return {
+      hits: pool.slice(0, limit).map((item) => ({ item, score: 1 })),
+      candidates: pool.length,
+    };
+  }
+
+  /** Recall's kind / entity / tag / time / tombstone filter, as a reusable predicate. */
+  private filterFor(q: MemoryRecallQuery): (it: MemoryItem) => boolean {
     const kinds = q.kinds && q.kinds.length > 0 ? new Set(q.kinds) : null;
     const since = q.since ? Date.parse(q.since) : null;
     const until = q.until ? Date.parse(q.until) : null;
 
-    const passes = (it: MemoryItem): boolean => {
+    return (it: MemoryItem): boolean => {
       if (it.sync?.deleted) return false; // tombstoned — excluded from recall
       if (kinds && !kinds.has(it.kind)) return false;
       if (q.entityRef && !it.entityRefs.includes(q.entityRef)) return false;
@@ -463,38 +554,23 @@ export class MemoryStore extends EventEmitter {
       }
       return true;
     };
+  }
 
-    const limit = q.limit ?? 25;
-    const text = q.text?.trim();
-    const hits: MemoryRecallResult['hits'] = [];
+  /** The wide lexical candidate pool for a text query, in the ranker's input shape. */
+  private lexicalPool(text: string, limit: number): RetrievalHit[] {
+    return this.retriever
+      .search(text, Math.max(limit * 3, 50))
+      .map((s) => ({ memoryId: s.id, score: s.score }));
+  }
 
-    if (text) {
-      // Retrieve a wide lexical pool, then re-rank via the hybrid ranking engine
-      // (V6.7.0) so recency / importance / pinned influence order — not raw TF-IDF
-      // alone. Filters live in the getItem closure, preserving recall's existing
-      // kind / entity / tag / time / tombstone semantics. Semantic (vector) hits are
-      // omitted until Qdrant is wired (V6.9); the ranker treats them as absent.
-      const scored = this.retriever.search(text, Math.max(limit * 3, 50));
-      const ranked = rankRecallHits({
-        query: { limit },
-        lexicalHits: scored.map((s) => ({ memoryId: s.id, score: s.score })),
-        getItem: (id) => {
-          const it = this.items.get(id);
-          return it && passes(it) ? it : undefined;
-        },
-      });
-      for (const hit of ranked) hits.push(hit);
-    } else {
-      const pool = [...this.items.values()].filter(passes);
-      pool.sort((a, b) => {
-        const ta = a.occurredAt ?? a.createdAt;
-        const tb = b.occurredAt ?? b.createdAt;
-        return ta < tb ? 1 : ta > tb ? -1 : 0;
-      });
-      for (const item of pool.slice(0, limit)) hits.push({ item, score: 1 });
-    }
-
-    return { hits, total: hits.length, retriever: this.retriever.name };
+  /** Resolve a memoryId to its item, preserving recall's filter semantics. */
+  private itemResolver(
+    passes: (it: MemoryItem) => boolean,
+  ): (memoryId: string) => MemoryItem | undefined {
+    return (memoryId: string): MemoryItem | undefined => {
+      const it = this.items.get(memoryId);
+      return it && passes(it) ? it : undefined;
+    };
   }
 
   counts(): MemoryCounts {

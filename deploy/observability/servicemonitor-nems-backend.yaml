@@ -1,0 +1,33 @@
+# NEMS Phase 5 — ServiceMonitor for the production backend.
+# Scrapes the already-running nems-backend Service (nems-prod) at /metrics.
+# The backend Service exposes port name `http` (80 -> containerPort 4000), and
+# /metrics is served on 4000, so the endpoint below resolves to each ready pod's
+# 4000/metrics. Nothing about the backend is modified.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: nems-backend
+  namespace: nems-prod
+  labels:
+    app.kubernetes.io/name: nems-backend
+    app.kubernetes.io/part-of: neuropause
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames: ["nems-prod"]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nems-backend
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      scheme: http
+      # Relabel so every backend series carries a stable job + pod identity that
+      # the dashboards and rules in this directory reference.
+      relabelings:
+        - action: replace
+          targetLabel: job
+          replacement: nems-backend
+      metricRelabelings: []

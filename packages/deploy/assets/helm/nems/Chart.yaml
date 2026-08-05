@@ -1,0 +1,9 @@
+apiVersion: v2
+name: nems
+description: NeuroPause Enterprise Management System — production Helm chart
+type: application
+version: 0.1.0
+appVersion: "0.0.0-preview.1"
+keywords: [nems, enterprise, platform]
+maintainers:
+  - name: NeuroPause Platform Engineering

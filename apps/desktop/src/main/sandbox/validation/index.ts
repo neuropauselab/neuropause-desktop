@@ -97,19 +97,24 @@ export async function initContinuousValidation(deps: ContinuousValidationDeps): 
       if (oldest !== undefined) outputs.delete(oldest);
     }
   };
+  /**
+   * The detail view of a run whose output is in hand. Total by construction — an
+   * output carries its own run, so there is nothing to look up and nothing to miss.
+   */
+  const detailFromOutput = (out: ValidationRunOutput): ValidationRunDetail => {
+    const cert = out.certification;
+    return {
+      run: out.run,
+      certification: cert,
+      regression: out.regression,
+      exports: cert
+        ? { markdown: certificationToMarkdown(cert), html: certificationToHtml(cert), json: certificationToJson(cert) }
+        : null,
+    };
+  };
   const buildRunDetail = (runId: string): ValidationRunDetail | { error: 'not_found' } => {
     const cached = outputs.get(runId);
-    if (cached) {
-      const cert = cached.certification;
-      return {
-        run: cached.run,
-        certification: cert,
-        regression: cached.regression,
-        exports: cert
-          ? { markdown: certificationToMarkdown(cert), html: certificationToHtml(cert), json: certificationToJson(cert) }
-          : null,
-      };
-    }
+    if (cached) return detailFromOutput(cached);
     const run = runStore.get(runId);
     if (!run) return { error: 'not_found' };
     return { run, certification: null, regression: null, exports: null };
@@ -168,7 +173,12 @@ export async function initContinuousValidation(deps: ContinuousValidationDeps): 
       handler: async (p) => {
         const r = p as SandboxValidationRunRequest;
         const out = await run(r.pipeline, r.trigger ?? 'manual');
-        return buildRunDetail(out.run.id);
+        // A7 — built from the output directly, not re-fetched by id. Going back through
+        // `buildRunDetail` reintroduced a `{ error: 'not_found' }` branch for a run this
+        // line had just finished executing: unreachable, but the renderer's declared
+        // response for `sandbox:validation.run` is `ValidationRunDetail`, so the branch
+        // was a lie the old `as` cast covered up. The output IS the detail; nothing to miss.
+        return detailFromOutput(out);
       },
     },
     {

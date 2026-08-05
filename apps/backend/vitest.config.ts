@@ -5,6 +5,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@neuropause/shared': resolve(__dirname, '../../packages/shared/src/index.ts'),
+      '@neuropause/cloud-core': resolve(__dirname, '../../packages/cloud-core/src/index.ts'),
+      '@neuropause/shared-cloud': resolve(__dirname, '../../packages/shared-cloud/src/index.ts'),
+      '@neuropause/runtime': resolve(__dirname, '../../packages/runtime/src/index.ts'),
     },
   },
   test: {

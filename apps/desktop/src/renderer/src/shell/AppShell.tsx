@@ -21,7 +21,8 @@ import { SECTIONS, type SectionId } from './sections';
 const log = createLogger('shell');
 
 // Heavy / non-landing views are code-split so the initial bundle stays small
-// and cold start is fast. Home is eager because it's the default landing view.
+// and cold start is fast. (HomeView predates the split and stays eager; the
+// landing surface is Mission Control — see startupPolicy.ts, Phase 6 Stage 2.)
 const WelcomeView = lazy(() =>
   import('@renderer/views/WelcomeView').then((m) => ({ default: m.WelcomeView })),
 );
@@ -88,6 +89,21 @@ const DecisionCenterView = lazy(() =>
 const IntentHomeView = lazy(() =>
   import('@renderer/intentHome/IntentHomeView').then((m) => ({ default: m.IntentHomeView })),
 );
+// Phase 6 Stage 2 — Mission Control, the live landing dashboard. Lazy like the
+// other landing surfaces so the initial bundle stays small.
+const MissionControlHost = lazy(() =>
+  import('@renderer/missionControl/MissionControlHost').then((m) => ({ default: m.MissionControlHost })),
+);
+// Phase 6 Stage 3 — Universal Search over every existing index (additive).
+const SearchHost = lazy(() =>
+  import('@renderer/search/SearchHost').then((m) => ({ default: m.SearchHost })),
+);
+// Phase 6 Stage 4 — the Workspace Assistant (additive).
+const AssistantHost = lazy(() =>
+  import('@renderer/assistant/AssistantHost').then((m) => ({ default: m.AssistantHost })),
+);
+// Phase 6 Stage 5 — the Work Hub: the personal workday surface (additive).
+const HubHost = lazy(() => import('@renderer/hub/HubHost').then((m) => ({ default: m.HubHost })));
 const EnterpriseView = lazy(() =>
   import('@renderer/views/EnterpriseView').then((m) => ({ default: m.EnterpriseView })),
 );
@@ -241,6 +257,14 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
 
   const renderView = (): JSX.Element => {
     switch (activeSection) {
+      case 'mission-control':
+        return <MissionControlHost onNavigate={(id) => goToSection(id)} />;
+      case 'search':
+        return <SearchHost onNavigate={(id) => goToSection(id)} />;
+      case 'assistant':
+        return <AssistantHost onNavigate={(id) => goToSection(id)} />;
+      case 'hub':
+        return <HubHost onNavigate={(id) => goToSection(id)} />;
       case 'intent-home':
         return <IntentHomeView onOpenSection={(id) => goToSection(id as SectionId)} />;
       case 'decision-center':

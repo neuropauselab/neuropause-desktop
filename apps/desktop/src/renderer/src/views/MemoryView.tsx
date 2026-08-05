@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { MemoryCounts, MemoryHit, MemoryKind } from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
+import {
+  describeRetrieval,
+  retrievalStatusForIpcFailure,
+  type RetrievalStatus,
+} from '@renderer/lib/retrievalStatus';
 import { Icon, type IconName } from '@renderer/components/ui/Icon';
 import { EmptyState } from '@renderer/components/ui/EmptyState';
 import { Chip, ChipRow } from '@renderer/components/ui/pillTabs';
@@ -59,6 +64,10 @@ export function MemoryView(): JSX.Element {
   const [counts, setCounts] = useState<MemoryCounts | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  /** A6 — what retrieval actually did. `null` means "nothing to report". */
+  const [retrieval, setRetrieval] = useState<RetrievalStatus | null>(null);
+  /** A6 — set when recall produced NO answer at all, as distinct from an empty one. */
+  const [failure, setFailure] = useState<string | null>(null);
 
   const recall = useCallback(async (text: string, k: MemoryKind | 'all') => {
     setLoading(true);
@@ -70,15 +79,35 @@ export function MemoryView(): JSX.Element {
       };
       // Prefer semantic recall; fall back to lexical if it errors client-side
       // (the main handler also degrades gracefully, but this covers IPC failures).
+      //
+      // A6 — the fallback is kept, but it is no longer SILENT. The catch below
+      // used to swallow every client-side rejection, including the RBAC denial
+      // on `memory:semanticRecall` ('intelligence:read'): a user without that
+      // permission got keyword-only results presented as a complete answer,
+      // forever, with nothing anywhere saying why. What the fallback protects
+      // (results keep appearing) is right; what it hid is not.
       let res: Awaited<ReturnType<typeof ipc.memory.recall>>;
+      let status: RetrievalStatus | null;
       try {
         res = await ipc.memory.semanticRecall(params);
-      } catch {
+        // The call resolving is not proof retrieval ran — read the envelope.
+        status = describeRetrieval(res?.retrieval);
+      } catch (err) {
         res = await ipc.memory.recall(params);
+        // Keep the reason the semantic attempt failed; the lexical channel has
+        // no envelope of its own to describe (it has no semantic leg).
+        status = retrievalStatusForIpcFailure(err);
       }
       setHits(res?.hits ?? []);
-    } catch {
+      setRetrieval(status);
+      setFailure(null);
+    } catch (err) {
+      // Nothing answered. Previously this rendered the "No memories match that"
+      // empty state — a claim about the user's data made from a failure to read
+      // it. Say what happened instead.
       setHits([]);
+      setRetrieval(null);
+      setFailure(retrievalStatusForIpcFailure(err).detail ?? 'Memory search is unavailable.');
     } finally {
       setLoading(false);
     }
@@ -151,10 +180,39 @@ export function MemoryView(): JSX.Element {
         </ChipRow>
       </div>
 
+      {/* A6 — shown only for a genuine degradation, so it stays meaningful. A
+          by-design lexical mode (no org, not configured, empty query) is normal
+          operation and says nothing; a warning on every browse would train the
+          user to ignore the one case that matters. */}
+      {!loading && retrieval?.degraded && (
+        <div
+          role="status"
+          className="mb-3 flex items-start gap-2.5 rounded-xl border border-[var(--hairline)] [background:var(--fill-1)] p-3.5"
+        >
+          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-sysorange/15">
+            <Icon name="info" size={14} className="text-sysorange" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-ink">{retrieval.message}</p>
+            {retrieval.detail && (
+              <p className="mt-1 break-words text-[10px] text-white/40">{retrieval.detail}</p>
+            )}
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center justify-center py-16">
           <Spinner />
         </div>
+      ) : failure ? (
+        /* Distinct from "no matches": memory could not be read, so we know
+           nothing about whether matches exist. */
+        <EmptyState
+          icon="memory"
+          title="Couldn’t search your memory"
+          description={failure}
+        />
       ) : hits.length === 0 ? (
         <EmptyState
           icon="memory"

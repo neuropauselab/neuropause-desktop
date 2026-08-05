@@ -35,6 +35,7 @@ export * from './types/license';
 export * from './types/device';
 export * from './types/memorySync';
 export * from './types/onboarding';
+export * from './types/aiConfig';
 export * from './types/feedback';
 export * from './types/pilot';
 export * from './types/intelligence';
@@ -45,6 +46,9 @@ export * from './types/worker';
 export * from './types/workerPackage';
 export * from './types/workforceDelegation';
 export * from './types/workforceGovernance';
+// A7 — the `workforce:intelligence` response contract, previously declared once in
+// the main process and again in the renderer. Canonical here; both sides re-export.
+export * from './types/workforceIntelligence';
 export * from './types/workforceJobs';
 export * from './types/enterpriseIntelligence';
 export * from './types/enterprise';
@@ -115,7 +119,50 @@ export * from './types/diagnostics';
 export * from './types/maintenance';
 export * from './ipc/channels';
 export * from './ipc/contracts';
+// A7 — the response half of the IPC contract (channel -> resolved shape). Types
+// only; nothing here is emitted to JavaScript.
+export * from './ipc/responses';
+// A7 — the push half (channel -> broadcast payload). Types, plus the one value
+// `BROADCAST_CHANNELS`, which lets a test compare the map against the preload's
+// subscribe allowlist; see the note on it.
+export * from './ipc/broadcasts';
 export * from './types/aiEngine';
+// Phase 6 Stage 4 — Workspace Assistant.
+export * from './types/assistant';
+// Phase 6 Stage 5 — Notification Inbox.
+export * from './types/notifications';
+// Phase 6 Stage 6 — Enterprise Intelligence Layer (signal registry / health framework /
+// predictions / dependency graph / confidence breakdown / outcome lifecycle).
+export * from './types/insight';
+// Phase 6 Stage 7 — Enterprise Knowledge & Decision Platform (asset inventory /
+// authority precedence / relationship matrix + impact / decision lineage /
+// lifecycle derivation / quality / standards / coverage map / dashboard).
+export * from './types/knowledgeAssets';
+// Phase 6 Stage 8 — Enterprise Automation Platform (catalog / playbooks compiled
+// to the existing WorkflowSpec / policy resolution / approval preview / honest
+// rollback / schedule parsing / execution monitor / dashboard).
+export * from './types/automationPlatform';
+export * from './types/operationsPlatform';
+// Phase 6 Stage 10 — Enterprise Strategy Platform (objectives / initiative
+// portfolio / business value / planning / the Enterprise Capability Map /
+// strategy health / dashboard / board report — all computed views).
+export * from './types/strategyPlatform';
+// Phase 6 Stage 11 — Enterprise Federation Platform (partners / trust evidence /
+// organization exchange × local records / shared S7–S10 layers / dashboard /
+// federation report — all computed views over the EXISTING federation stores).
+export * from './types/enterpriseFederation';
+// Phase 6 Stage 12 — Enterprise Analytics Platform (unified KPI catalog /
+// recorded-window trends / forecast-capability inventory / decision
+// intelligence / executive analytics dashboard + report — pure COMPOSITION
+// over the existing producers; no analytics computed here).
+export * from './types/enterpriseAnalytics';
+// Phase 6 Stage 13 — Enterprise Digital Twin Platform (runtime/execution twin /
+// Stage 6–12 platform twins / enterprise state-coverage map / simulation
+// inventory / recorded-history view / platform dashboard + report — the
+// additive COMPOSITION layer over the P15 Enterprise Digital Twin, which stays
+// authoritative and untouched). Every exported name carries the `Etwin` prefix
+// so nothing collides with P15's `Twin*` or the manufacturing twin's `Twin*`.
+export * from './types/enterpriseTwinPlatform';
 export * from './types/delivery';
 export * from './types/orgHealth';
 export * from './types/executiveCenter';

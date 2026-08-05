@@ -54,6 +54,10 @@ export default defineConfig({
       'src/renderer/src/settings/**/*.test.ts',
       // Capability Completion v1.0 — the canonical capability registry (single source of truth).
       'src/renderer/src/capability/**/*.test.ts',
+      // Phase 6 Stage 6 — the Intelligence Center's pure view-model (no DOM, no React).
+      'src/renderer/src/insightCenter/**/*.test.ts',
+      // Phase 6 Stage 7 — the Knowledge Platform tab's pure view-model (no DOM, no React).
+      'src/renderer/src/knowledgeAssets/**/*.test.ts',
       // Enterprise Business Suite v1.0 — the Business Workspace model (pure data: family grouping + KPIs).
       'src/renderer/src/business/**/*.test.ts',
       // Product Operations v1.0 — the Product Ops lens model (pure data: tones, gaps, deployment targets).
@@ -76,6 +80,25 @@ export default defineConfig({
       'src/renderer/src/enterprise/**/*.test.ts',
       // PEDP cycle 2 — shell state (the Workspace tab model) is now under test.
       'src/renderer/src/state/**/*.test.ts',
+      // NCEA 11.0 — Mission Control's pure view-model (no DOM, no React): the
+      // unification command center over the existing sections + capability registries.
+      'src/renderer/src/missionControl/**/*.test.ts',
+      // Phase 6 Stage 3 — Universal Search's pure layers (planner, model,
+      // pipeline, bench evidence; no DOM, no React).
+      'src/renderer/src/search/**/*.test.ts',
+      // Phase 6 Stage 4 — the Workspace Assistant's pure renderer view-model
+      // (approval cards + Session Inspector level filtering; no DOM, no React).
+      // Main-side assistant tests are already covered by src/main/**.
+      'src/renderer/src/assistant/**/*.test.ts',
+      // Phase 6 Stage 5 — the Work Hub's pure view-model (tiles, task board,
+      // email prioritization, productivity timeline, work summary; no DOM).
+      'src/renderer/src/hub/**/*.test.ts',
+      // A6 — the renderer's cross-cutting pure leaves under lib/ (retrieval-status
+      // wording, shared by Universal Search and the Memory view; no DOM, no React).
+      // This directory previously held only untested helpers, so it was never
+      // collected; the pattern is directory-wide like every entry above, so a
+      // future test beside format.ts/cn.ts is picked up without another edit here.
+      'src/renderer/src/lib/**/*.test.ts',
     ],
   },
   resolve: {

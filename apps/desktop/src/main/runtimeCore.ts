@@ -118,6 +118,7 @@ import {
   initAutomations,
   getAutomationMonitor,
   getAutomationRunner,
+  getAutomationRunRecords,
 } from './enterprise/automationSubsystem';
 import { NeuroCore } from './neuroCore';
 import { RuntimeSupervisor } from './runtimeSupervisor';
@@ -134,12 +135,27 @@ import { liveSync } from './cloud/livesync/liveSyncInstance';
 import { billingClient } from './billing/billingClient';
 import { deviceClient } from './devices/deviceClient';
 import { initVoice } from './voice/voiceSubsystem';
-import { initExecutiveDelivery } from './services/executiveDelivery';
+import { deliveryEngine, initExecutiveDelivery } from './services/executiveDelivery';
 import { initRecommendations } from './recommendations';
 import { initEnterpriseIntelligence, type RawTimelineEvent } from './enterprise/intelligence/enterpriseIntelligenceSubsystem';
 import { getRelationshipModel } from './enterprise/relationshipProvider';
 import { initFounderAI } from './founder';
 import { initEngineeringAI, initFounderAIv2 } from './ai';
+// Phase 6 Stage 4 — the Workspace Assistant (composition over existing engines).
+import { initAssistant } from './assistant';
+// Phase 6 Stage 5 — the Notification Inbox + preference surface (D-8): the
+// EXISTING delivery engine's notification-center channel made real.
+import { initNotifications } from './notifications';
+// Phase 6 Stage 6 — the Enterprise Intelligence Layer: signal projection into
+// the EXISTING P7 engines + composed health/predictions/dashboard (no engine,
+// no store, no executor; read-only insight:* IPC + delivery-engine sources).
+import { initInsight, type InsightSubsystem } from './insight';
+import { healthHistoryStore } from './enterprise/healthHistoryInstance';
+import { collectOrgHealthInputs } from './enterprise/orgIntelligence';
+import { summarizeWorkforceHealth } from './enterprise/workforceHealth';
+import { orgStore } from './enterprise/org/orgInstance';
+import { automationStore } from './enterprise/automationInstance';
+import { unifiedStore } from './unified/storeInstance';
 import { initTrace } from './trace';
 import { initWorkforce } from './workforce';
 import { workforceProbe } from './workforce/workforceDiagnostics';
@@ -147,6 +163,7 @@ import { workerRegistry } from './workforce/registry/registryInstance';
 import { jobStore } from './workforce/runtime/jobInstance';
 import { createWorkforceActionExecutor } from './workforce/execution/workforceActionExecutor';
 import type { ExecutionBinding } from '@neuropause/shared';
+import { computeOrgHealth } from '@neuropause/shared';
 import { initEnterprise } from './enterprise';
 import { initEcosystem, runGateway, gatewayMetrics, gatewayAuditEntries } from './ecosystem';
 import { initMarketplace } from './marketplace';
@@ -164,6 +181,8 @@ import { initContinuousValidation } from './sandbox/validation';
 import { taskScheduler } from './services/taskScheduler';
 import { notificationScheduler } from './services/notificationScheduler';
 import { aiEngine } from './ai/engineInstance';
+import { engineManager } from './ai/engineManager';
+import { initAiConfig } from './ai/aiConfigIpc';
 import { handleEnterpriseApiRequest } from './api/apiGateway';
 import { collectPlanningModel } from './enterprise/planningModel';
 import { connectorService } from './connectors/connectorService';
@@ -197,11 +216,48 @@ import { aiMemoryProbe, knowledgeGraphProbe, ollamaProbe } from './platform/aiHe
 import { connectorHealthProbe } from './connectors/connectorDiagnostics';
 import { memoryStore } from './memory/memoryInstance';
 import { graphStore } from './graph/graphInstance';
+// Phase 6 Stage 7 — the Enterprise Knowledge & Decision Platform (read-only
+// composition over the stores wired above; no new store/graph/search/executor).
+import { initKnowledgeAssets, type KnowledgeAssetsSubsystem } from './knowledgeAssets';
+// Phase 6 Stage 8 — the Enterprise Automation Platform (orchestration-layer
+// composition; no runtime/store/scheduler-class/executor of its own).
+import { initAutomationPlatform, type AutomationPlatformSubsystem } from './automationPlatform';
+// Phase 6 Stage 9 — the Enterprise Operations Platform (orchestration-layer
+// composition; no runtime/store/scheduler/executor of its own).
+import { initOperationsPlatform, type OperationsPlatformSubsystem } from './operationsPlatform';
+// Phase 6 Stage 10 — the Enterprise Strategy Platform (read-only composition
+// over Stages 1–9 + P14; six estrat:* channels; one strategy-watch source).
+import { initStrategyPlatform, type StrategyPlatformSubsystem } from './strategyPlatform';
+// Phase 6 Stage 11 — the Enterprise Federation Platform (read-only composition
+// over the P9-S2 federation stores + P18 + Stages 7–10; six efed:* channels;
+// one federation-watch source).
+import { initEnterpriseFederation, type EnterpriseFederationSubsystem } from './enterpriseFederation';
+import { initAnalyticsPlatform, type AnalyticsPlatformSubsystem } from './analyticsPlatform';
+// Phase 6 Stage 13 — the Enterprise Digital Twin Platform (read-only composition
+// over the P15 twin + Execute Engine + Runtime Supervisor + Stages 6–12; seven
+// etwin:* channels under P15's EXISTING twin:read scope; one twin-watch source).
+// P15 stays authoritative — this composes it and never modifies it.
+import { initDigitalTwinPlatform, type EtwinPlatformSubsystem } from './digitalTwinPlatform';
+import { fedStore } from './federation/runtime/fedInstance';
+import { exchangeStore } from './federation/exchange/exchangeInstance';
+import { PLAYBOOK_REGISTRY } from './automationPlatform/automationRegistry';
+import { drStore } from './federation/dr/drInstance';
+import { detectBottlenecks } from './workforce/intelligence/bottlenecks';
+import { getProcessAssessment, getProcessExplorerKpis } from './enterprise/processMiningProvider';
+import { selectRulesForEvent } from './enterprise/automationRunner';
+// (taskScheduler is already imported above with the other service singletons.)
+import { globalGovStore } from './federation/governance/globalGovInstance';
+import { workerInstallStore } from './workforce/install/installInstance';
+import { governanceStore } from './enterprise/governance/governanceInstance';
+import { DEFAULT_PROMPTS } from './ai/promptManager';
+import { runEnterpriseSearch } from './search/enterpriseSearch';
+import { getFederationSearcher } from './federationPlatform/searcherInstance';
 import { runMrp, computeCapacitySchedule, isTerminalExecutionStatus } from '@neuropause/shared';
 import type { ApiMethod, EnterprisePermission, IpcChannelName, ResourceGraphModel } from '@neuropause/shared';
+import type { IpcBroadcaster } from '@neuropause/shared';
 const log = createLogger('runtime-core');
 export interface RuntimeCoreDeps {
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: IpcBroadcaster;
 }
 export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   await registry.load();
@@ -295,6 +351,10 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // Founder AI v2: executive intelligence — intent detection → context → engine →
   // governed executive answer, with deterministic findings as the offline fallback.
   const founderAIv2 = initFounderAIv2();
+  // Upgrade the AI engine from its env-only boot router to the config + Vault-aware
+  // one (M4): async and non-blocking — the engine keeps working on the boot router
+  // if this never resolves; failures are logged, never fatal.
+  void engineManager.init();
   // Traces: governance, context, and relationship explainability.
   const trace = initTrace();
   // AI Workforce: governed, evidence-grounded workers over the intelligence layer.
@@ -376,6 +436,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   const featureFlags = await initFeatureFlags();
   const license = await initLicense();
   const onboarding = await initOnboarding();
+  // AI configuration IPC (M5, read-only surface: current provider/model, health, Ollama detect).
+  const aiConfig = initAiConfig();
   const feedback = await initFeedback();
   const pilot = await initPilot();
   const federation = await initFederation({ broadcast: deps.broadcast });
@@ -1393,6 +1455,354 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...founder.handlers);
   defs.push(...engineeringAI.handlers);
   defs.push(...founderAIv2.handlers);
+  // Phase 6 Stage 4 — Workspace Assistant: conversation → context → retrieval →
+  // reasoning → planning → approval → execution → verification → response, as a
+  // COMPOSITION over the engines wired above. Execution flows EXCLUSIVELY
+  // through the ExecuteEngine (same governance as `execute:run`); one
+  // correlation id (`asst_…`) threads every retrieval, AI audit record,
+  // approval, execution session, and timeline event of a turn.
+  // Phase 6 Stage 6 — the insight subsystem initializes AFTER the assistant (it
+  // reads conversation summaries), while the assistant's ten-question port
+  // resolves through this late-bound handle (same precedent as setAuxPorts).
+  let insightRef: InsightSubsystem | null = null;
+  // Phase 6 Stage 7 — same late-bound pattern for the Knowledge Platform's
+  // ten-question port (the knowledge subsystem reads conversation summaries,
+  // so it initializes after the assistant, below).
+  let knowledgeRef: KnowledgeAssetsSubsystem | null = null;
+  // Phase 6 Stage 8 — same late-bound pattern for the Automation Platform's
+  // six-question port (the platform reads workflow runs, so it initializes
+  // after the workforce handlers below).
+  let automationRef: AutomationPlatformSubsystem | null = null;
+  // Phase 6 Stage 9 — same late-bound pattern for the Operations Platform's
+  // ten-question port (it reads the validation subsystem, so it initializes
+  // after continuous validation below).
+  let operationsRef: OperationsPlatformSubsystem | null = null;
+  // Phase 6 Stage 10 — same late-bound pattern for the Strategy Platform's
+  // eleven-question port (it composes the operations platform, so it
+  // initializes after the operations platform below).
+  let strategyRef: StrategyPlatformSubsystem | null = null;
+  // Phase 6 Stage 11 — same late-bound pattern for the Federation Platform's
+  // ten-question port (it composes the strategy platform, so it initializes
+  // after the strategy platform below).
+  let efedRef: EnterpriseFederationSubsystem | null = null;
+  let analyticsRef: AnalyticsPlatformSubsystem | null = null;
+  // Phase 6 Stage 13 — same late-bound pattern for the Digital Twin Platform's
+  // ten-question port (it composes the analytics platform, so it initializes
+  // after the analytics platform below).
+  let twinRef: EtwinPlatformSubsystem | null = null;
+  const assistant = initAssistant({
+    broadcast: deps.broadcast,
+    publish: publishPlatform,
+    execute: (req) => executeEngine.execute(req),
+    executionsActive: () => executeEngine.activeSessions().length,
+    // Phase 6 Stage 5 — Work Summary aggregation inputs (existing histories).
+    executionHistory: () =>
+      executeEngine.getHistory().map((s) => ({ label: s.label, state: s.state, startedAt: s.startedAt })),
+    automationRuns: () =>
+      getAutomationRunRecords().map((r) => ({ ok: r.ok, startedAt: r.startedAt })),
+    // Phase 6 Stage 6 (D-5) — the ten enterprise questions answer from the
+    // Enterprise Intelligence Layer; unmatched questions fall through unchanged.
+    intelligenceAnswer: (text, now) => insightRef?.answerQuestion(text, now) ?? null,
+    // Phase 6 Stage 7 (D-8) — the ten knowledge questions answer from the
+    // Knowledge Platform through the same late-bound, read-only port.
+    knowledgeAnswer: (text, now) => knowledgeRef?.answerQuestion(text, now) ?? null,
+    // Phase 6 Stage 8 (D-8) — the six automation questions answer from the
+    // Automation Platform through the same late-bound, read-only port.
+    automationAnswer: (text, now) => automationRef?.answerQuestion(text, now) ?? null,
+    // Phase 6 Stage 9 (D-8) — the ten operations questions answer from the
+    // Operations Platform through the same late-bound, read-only port.
+    operationsAnswer: (text, now) => operationsRef?.answerQuestion(text, now) ?? null,
+    // Phase 6 Stage 10 (D-8) — the eleven strategy questions answer from the
+    // Strategy Platform through the same late-bound, read-only port.
+    strategyAnswer: (text, now) => strategyRef?.answerQuestion(text, now) ?? null,
+    // Phase 6 Stage 11 (D-8) — the ten federation questions answer from the
+    // Enterprise Federation composition through the same late-bound port.
+    federationAnswer: (text, now) => efedRef?.answerQuestion(text, now) ?? null,
+    // Phase 6 Stage 12 (D-8) — the ten analytics questions answer from the
+    // Enterprise Analytics composition through the same late-bound port.
+    analyticsAnswer: (text, now) => analyticsRef?.answerQuestion(text, now) ?? null,
+    // Phase 6 Stage 13 (D-8) — the ten digital-twin questions answer from the
+    // Enterprise Digital Twin Platform composition through the same late-bound
+    // port. The ninth resolver; P15's twin:* surface is composed, never changed.
+    twinAnswer: (text, now) => twinRef?.answerQuestion(text, now) ?? null,
+  });
+  defs.push(...assistant.handlers);
+  // Phase 6 Stage 5 (D-8) — Notification Inbox: registers the notification-center
+  // delivery channel, routes attention-worthy bus events through the SAME engine
+  // gates, adds the meeting-soon interval source, and exposes notifications:*.
+  const notifications = initNotifications({
+    broadcast: deps.broadcast,
+    on: (types, handler) => platform.api.on([...types], handler),
+  });
+  defs.push(...notifications.handlers);
+  // Phase 6 Stage 6 — the Enterprise Intelligence Layer. Every dep is a READ
+  // over an existing singleton (the same graph/timeline ports P7 uses, the
+  // operational stores, the existing health computations, the 90-day health
+  // history); the two monitor sources register on the EXISTING delivery engine
+  // and produce governed recommendation items only. Suggested recoveries run
+  // exclusively as approval-gated assistant plan steps through the ExecuteEngine.
+  const insight = initInsight({
+    getResourceModel: () => {
+      try {
+        return infrastructure.store.graph(Date.now());
+      } catch {
+        return null;
+      }
+    },
+    getRelationshipModel: () => {
+      try {
+        return getRelationshipModel();
+      } catch {
+        return null;
+      }
+    },
+    getEvents: (since, limit) => {
+      const page = platform.api.query({ since, limit }) as { events?: unknown };
+      return (Array.isArray(page.events) ? page.events : []) as unknown as RawTimelineEvent[];
+    },
+    entities: () => unifiedStore.query({ limit: 1_000_000, includeDeleted: false }).items,
+    jobs: () => jobStore.page({ limit: 500 }).jobs,
+    executions: () => executeEngine.getHistory(),
+    automationRuns: () => getAutomationRunRecords(),
+    automationRules: () => automationStore.all(),
+    connectors: () => connectorService.list(),
+    workers: () => workerRegistry.summaries().map((w) => ({ id: w.id, name: w.name, role: w.role })),
+    conversations: () => assistant.conversationSummaries(),
+    inbox: () => notifications.inboxItems().map((n) => ({ id: n.id, sourceKey: n.sourceKey, at: n.at, read: n.read })),
+    orgHealth: () => computeOrgHealth(collectOrgHealthInputs(Date.now())),
+    orgUnits: () => {
+      const org = orgStore.defaultOrg();
+      const units = orgStore.unitsFor(org.id);
+      const withLead = units.filter((u) => u.leadUserId).length;
+      return { units: units.length, leadershipCoverage: units.length > 0 ? withLead / units.length : null };
+    },
+    workforceHealth: () => summarizeWorkforceHealth(workerRegistry.healthSummaries()),
+    systemHealth: () => {
+      const snap = neuroCore.last();
+      return snap ? { score: snap.score, level: snap.level } : null;
+    },
+    automationMonitor: () => getAutomationMonitor(),
+    healthHistory: () => healthHistoryStore.all(),
+    decisions: () =>
+      decisionStore.all().map((d) => ({
+        id: d.id,
+        fromRecommendationId: d.fromRecommendationId ?? null,
+        status: d.status,
+        updatedAt: d.updatedAt,
+      })),
+    publish: publishPlatform,
+    registerSource: (source) => deliveryEngine.register(source),
+  });
+  insightRef = insight;
+  defs.push(...insight.handlers);
+  // Phase 6 Stage 7 — the Enterprise Knowledge & Decision Platform. Every dep
+  // is a READ over an existing singleton (decision store, governance store,
+  // the versioned prompt registry, the UDM, the memory corpus, connector
+  // service, org store, job store, the knowledge graph, the timeline, the
+  // Stage 6 insight report, the P16 fabric, the federated search); the one
+  // hygiene source registers on the EXISTING delivery engine and produces
+  // governed recommendation items only. Six read-only kb:* channels
+  // (knowledge:read); zero new persistence; no lifecycle executor — state
+  // changes stay behind the existing governed writes.
+  const knowledgeAssets = initKnowledgeAssets({
+    decisions: () => decisionStore.all(),
+    chains: () => governanceStore.chains(),
+    rules: () => governanceStore.rules(),
+    prompts: () => {
+      const latest = new Map<string, { id: string; version: number; label: string }>();
+      for (const p of DEFAULT_PROMPTS) {
+        const cur = latest.get(p.id);
+        if (!cur || p.version > cur.version) latest.set(p.id, { id: p.id, version: p.version, label: p.label });
+      }
+      return [...latest.values()];
+    },
+    entities: () => unifiedStore.query({ limit: 1_000_000, includeDeleted: false }).items,
+    memories: () => memoryStore.allItems(),
+    connectors: () => connectorService.list(),
+    org: () => {
+      const org = orgStore.defaultOrg();
+      return {
+        org: { id: org.id, name: org.name },
+        units: orgStore.unitsFor(org.id).map((u) => ({ id: u.id, name: u.name, leadUserId: u.leadUserId })),
+        users: orgStore.usersFor(org.id).map((u) => ({ id: u.id, name: u.name, unitId: u.unitId })),
+      };
+    },
+    jobs: () =>
+      jobStore.page({ limit: 500 }).jobs.map((j) => ({
+        id: j.id,
+        skillId: j.skillId,
+        status: j.status,
+        requestedBy: j.requestedBy,
+        createdAt: j.createdAt,
+        finishedAt: j.finishedAt,
+        correlationId: j.correlationId ?? null,
+      })),
+    conversations: () => assistant.conversationSummaries().map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt })),
+    executions: () =>
+      executeEngine.getHistory().map((s) => ({ label: s.label, state: s.state, startedAt: s.startedAt })),
+    getEvents: (since, limit) => {
+      const page = platform.api.query({ since, limit }) as { events?: unknown };
+      const events = Array.isArray(page.events) ? page.events : [];
+      return events as { id: string; type: string; timestamp: string; correlationId?: string | null; metadata?: Record<string, unknown> | null }[];
+    },
+    graphEdgesFor: (recordIds) => {
+      const out: {
+        type: string;
+        fromSourceId: string | null;
+        toSourceId: string | null;
+        fromLabel: string;
+        toLabel: string;
+        at: string | null;
+        evidenceId: string | null;
+      }[] = [];
+      for (const rid of recordIds) {
+        if (out.length >= 2000) break;
+        if (!graphStore.getNode(rid)) continue;
+        const n = graphStore.neighbors({ id: rid, limit: 50 });
+        if (!n) continue;
+        for (const en of n.neighbors) {
+          out.push({
+            type: en.edge.type,
+            fromSourceId: en.edge.from,
+            toSourceId: en.edge.to,
+            fromLabel: en.direction === 'out' ? n.node.label : en.node.label,
+            toLabel: en.direction === 'out' ? en.node.label : n.node.label,
+            at: en.edge.updatedAt,
+            evidenceId: en.edge.evidence?.id ?? null,
+          });
+        }
+      }
+      return out;
+    },
+    graphDiscussedIn: (recordId) => {
+      if (!graphStore.getNode(recordId)) return [];
+      const n = graphStore.neighbors({ id: recordId, edgeTypes: ['discussed_in'], limit: 20 });
+      return n ? n.neighbors.map((en) => ({ id: en.node.id, label: en.node.label, at: en.edge.updatedAt })) : [];
+    },
+    graphHistoryFor: (recordIds) => {
+      const out: { at: string; action: string; label: string }[] = [];
+      for (const rid of recordIds) {
+        if (out.length >= 20) break;
+        for (const ev of graphStore.historyFor({ id: rid, limit: 5 })) {
+          out.push({ at: ev.at, action: ev.change, label: `${ev.type}: ${ev.from} → ${ev.to}` });
+        }
+      }
+      return out;
+    },
+    insightRecommendations: () =>
+      insight.report().recommendations.map((r) => ({ id: r.id, title: r.title, evidence: r.evidence })),
+    fabricGeneratedAt: () => enterpriseKnowledge.service.overview().summary.generatedAt,
+    search: (text) =>
+      runEnterpriseSearch(
+        { text, limit: 10 },
+        {
+          entity: unifiedStore.searchBackend,
+          graph: graphStore,
+          memory: memoryStore,
+          timeline: getEnterpriseTimeline() ?? undefined,
+          federation: getFederationSearcher() ?? undefined,
+        },
+      ).hits.map((h) => ({ source: h.source, id: h.id, kind: h.kind, title: h.title, snippet: h.snippet, score: h.score })),
+    registerSource: (source) => deliveryEngine.register(source),
+  });
+  knowledgeRef = knowledgeAssets;
+  defs.push(...knowledgeAssets.handlers);
+  // Phase 6 Stage 8 — the Enterprise Automation Platform. Every dep is a READ
+  // over an existing singleton; the schedule tick (D-3) registers on the
+  // EXISTING taskScheduler and fires DUE schedule rules through the EXISTING
+  // automation runner path (trigger + condition checks via
+  // selectRulesForEvent, then runner.runRule) — the Builder's `schedule`
+  // trigger fires for the first time. Six read-only ap:* channels
+  // (autonomousops:read); one governed watch source; zero mutation surface;
+  // execution remains exclusively Assistant → Approval → ExecuteEngine →
+  // Workforce → Connector Executors.
+  const automationPlatform = initAutomationPlatform({
+    rules: () => automationStore.all(),
+    runRecords: () => getAutomationRunRecords(),
+    workflowRuns: () => workforce.workflowRunEntries(),
+    sessions: () =>
+      executeEngine
+        .getHistory()
+        .map((x) => ({ id: x.id, kind: x.kind, label: x.label, state: x.state, startedAt: x.startedAt })),
+    jobsAwaiting: () =>
+      jobStore.page({ status: 'awaiting_approval', limit: 200 }).jobs.map((j) => ({ id: j.id, createdAt: j.createdAt })),
+    chains: () => governanceStore.chains(),
+    orgRoles: () => {
+      const org = orgStore.defaultOrg();
+      return orgStore.rolesFor(org.id).map((r) => ({ id: r.id, name: r.name }));
+    },
+    globalPolicies: () =>
+      globalGovStore.listPolicies().map((pol) => ({
+        effect: (pol as { effect?: string }).effect ?? '',
+        enabled: (pol as { enabled?: boolean }).enabled ?? false,
+        action: (pol as { action?: string }).action ?? '',
+      })),
+    knownWorkers: () =>
+      workerRegistry.list().map((w) => ({ id: w.identity.id, skills: w.skills.map((sk) => sk.id) })),
+    installedWorkers: () =>
+      workerInstallStore.all().map((r) => ({ id: r.id, hasPreviousVersion: r.previous !== null })),
+    deliverySources: () => deliveryEngine.listSources().map((key) => ({ key })),
+    scheduledValidations: () => null,
+    autoOpsPlans: () => null,
+    sandboxHistory: () => null,
+    knowledgeMatch: (refs) => {
+      const inv = knowledgeRef?.inventory();
+      if (!inv) return refs.map((ref) => ({ ref, matched: false }));
+      return refs.map((ref) => ({
+        ref,
+        matched: inv.assets.some((asset) => asset.recordId === ref || asset.topics.includes(ref)),
+      }));
+    },
+    fireScheduledRule: async (ruleId, scheduledForIso) => {
+      const rule = automationStore.all().find((r) => r.id === ruleId && r.status === 'active');
+      if (!rule) return null;
+      const event = { source: 'schedule' as const, payload: { scheduledFor: scheduledForIso } };
+      // The EXISTING trigger + condition evaluation, then the EXISTING runner.
+      if (selectRulesForEvent([rule], event).length === 0) return null;
+      const record = await getAutomationRunner().runRule(rule, event);
+      return { ok: record.ok };
+    },
+    schedule: {
+      every: (id, ms, fn) => taskScheduler.every(id, ms, fn),
+      cancel: (id) => taskScheduler.cancel(id),
+    },
+    registerSource: (source) => deliveryEngine.register(source),
+  });
+  automationRef = automationPlatform;
+  defs.push(...automationPlatform.handlers);
+  // Phase 6 Stage 5 (D-7) — bind the recommendation engine's aux read ports now
+  // that workforce + connectors + automations + assistant all exist. Late-bound
+  // exactly like workforce.setExecutionSubmit; a failing port silences its rules.
+  recommendations.setAuxPorts({
+    pendingApprovals: () => {
+      const workers = new Map(workerRegistry.summaries().map((w) => [w.id, w.name]));
+      return jobStore.page({ status: 'awaiting_approval', limit: 50 }).jobs.map((j) => ({
+        jobId: j.id,
+        title: j.summary ?? j.skillId,
+        workerName: workers.get(j.workerId) ?? j.workerId,
+        createdAt: j.createdAt,
+      }));
+    },
+    connectors: () =>
+      connectorService.list().map((c) => ({
+        id: c.id,
+        problem:
+          c.health === 'healthy' || !c.configured || c.health === 'unknown'
+            ? null
+            : `health ${c.health} (status ${c.status})`,
+      })),
+    executionHistory: () =>
+      getAutomationRunRecords()
+        .filter((r) => r.triggeredBy === 'manual' && r.ok)
+        .map((r) => ({
+          kind: 'automation',
+          targetId: r.ruleId,
+          label: r.ruleName,
+          startedAt: r.startedAt,
+          state: 'completed',
+        })),
+    conversations: () => assistant.conversationSummaries(),
+  });
   defs.push(...trace.handlers);
   defs.push(...workforce.handlers);
   defs.push(...enterprise.handlers);
@@ -1483,12 +1893,20 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...featureFlags.handlers);
   defs.push(...license.handlers);
   defs.push(...onboarding.handlers);
+  defs.push(...aiConfig.handlers);
   defs.push(...feedback.handlers);
   defs.push(...pilot.handlers);
   registerDiagnosticProbes([
     // Mirrors OllamaModelClient's URL resolution (env override, then local default).
     ollamaProbe({ baseUrl: process.env.NEUROPAUSE_OLLAMA_URL ?? 'http://localhost:11434' }),
     aiMemoryProbe(() => memoryStore.counts().total),
+    // A6 — semantic retrieval health. `aiMemoryProbe` above only counts what is
+    // indexed; it stays `ok` while the semantic leg is dead, because the items
+    // are still there. This reports whether recall can actually *reach* them.
+    // Exposed by the subsystem rather than built here, because the tracker lives
+    // inside the resilient decorator `initMemory` wires — the same idiom as
+    // `infrastructure.probe` / `enterpriseIntel.probe` below.
+    memory.probe,
     // P4.1 — connector runtime health rolls into the existing diagnostics report; reauth/error accounts
     // (excluded from the connected-only snapshots) surface via the attention count.
     connectorHealthProbe(() => sync.snapshots(), {
@@ -1637,6 +2055,510 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   });
   defs.push(...validation.handlers);
   log.info('Continuous Validation Platform ready — AI Sandbox v1.0 complete', { pipelines: validation.pipelines.length });
+
+  // Phase 6 Stage 9 — the Enterprise Operations Platform. Every dep is a READ
+  // over an existing singleton/subsystem; the ONE async read is the local
+  // backup list (via the release-ops accessor). Six read-only eops:* channels
+  // (autonomousops:read); one governed operations-watch source; zero mutation
+  // surface; execution remains exclusively Assistant → Approval →
+  // ExecuteEngine → Workforce → Connector Executors.
+  const operationsPlatform = initOperationsPlatform({
+    insightReport: () => insightRef?.report() ?? null,
+    executionStats: () => executeEngine.stats(),
+    queuedJobsTotal: () => jobStore.page({ status: 'queued', limit: 1 }).total,
+    awaitingApprovals: () =>
+      jobStore.page({ status: 'awaiting_approval', limit: 200 }).jobs.map((j) => ({ id: j.id, createdAt: j.createdAt })),
+    bottlenecks: () =>
+      detectBottlenecks(jobStore.page({ limit: 500 }).jobs).map((b) => ({
+        scope: b.scope,
+        key: b.key,
+        kind: b.kind,
+        reason: b.reason,
+        value: b.value,
+        sampleSize: b.sampleSize,
+      })),
+    automationMonitor: () => getAutomationMonitor(),
+    automationErrorRules: () => automationStore.all().filter((r) => r.status === 'error').length,
+    connectors: () =>
+      connectorService.list().map((c) => ({ id: c.id, name: c.name, configured: c.configured, health: c.health })),
+    aiState: () => engineManager.status().state,
+    executiveKpis: () =>
+      executiveCenter.snapshot().kpis.map((k) => ({
+        key: k.key,
+        label: k.label,
+        display: k.display,
+        value: k.value,
+        ...(k.band ? { band: k.band } : {}),
+      })),
+    processKpis: () =>
+      getProcessExplorerKpis().map((k) => ({
+        key: k.key,
+        label: k.label,
+        display: k.display,
+        value: k.value,
+        ...(k.band ? { band: k.band } : {}),
+      })),
+    minedProcesses: () =>
+      getProcessAssessment().metrics.byType.map((m) => ({
+        type: m.processType,
+        cases: m.caseCount,
+        medianDurationMs: Number.isFinite(m.medianCycleHours) ? m.medianCycleHours * 3_600_000 : null,
+        onTimeRate: Number.isFinite(m.completionRate) ? m.completionRate : null,
+      })),
+    units: () => {
+      const org = orgStore.defaultOrg();
+      return orgStore.unitsFor(org.id).map((u) => ({ id: u.id, name: u.name, leadUserId: u.leadUserId }));
+    },
+    users: () => {
+      const org = orgStore.defaultOrg();
+      return orgStore.usersFor(org.id).map((u) => ({ id: u.id, name: u.name }));
+    },
+    compliance: () =>
+      enterprise
+        .complianceFindings()
+        .map((f) => ({ ruleId: f.ruleId, ruleName: f.ruleName, severity: f.severity, status: f.status })),
+    enabledChains: () => governanceStore.chains().filter((c) => c.enabled).length,
+    workforceHealth: () => {
+      const w = summarizeWorkforceHealth(workerRegistry.healthSummaries());
+      return { healthy: w.healthy, degraded: w.degraded, unhealthy: w.unhealthy, unknown: w.unknown };
+    },
+    systemHealth: () => {
+      const snap = neuroCore.last();
+      return snap ? { score: snap.score, level: snap.level } : null;
+    },
+    healthHistory: () => healthHistoryStore.all().map((h) => ({ day: h.day, overall: h.overall })),
+    validationSummary: () => {
+      const v = validation.summary();
+      return {
+        totalRuns: v.totalRuns,
+        certifies: v.pipelines.filter((x) => x.certifies).length,
+        latestCertification: v.latestCertification,
+      };
+    },
+    drPosture: () => drStore.continuity(),
+    drReplicas: () => drStore.listReplicas().map((r) => ({ status: r.status })),
+    drValidations: () =>
+      drStore.listValidations().map((v) => ({ status: v.status, rpoSeconds: v.rpoSeconds, validatedAt: v.validatedAt })),
+    localBackups: async () => {
+      const list = await releaseOps.listBackups();
+      return list.map((b) => ({ createdAt: b.createdAt, valid: b.valid }));
+    },
+    supervisor: () => {
+      const st = runtimeSupervisor.status();
+      return { recoveryCount: st.recoveryCount, recentFailures: st.recentFailures };
+    },
+    knowledgeMatch: (refs) => {
+      const inv = knowledgeRef?.inventory();
+      if (!inv) return refs.map((ref) => ({ ref, matched: false }));
+      return refs.map((ref) => ({
+        ref,
+        matched: inv.assets.some((asset) => asset.recordId === ref || asset.topics.includes(ref)),
+      }));
+    },
+    automationPlatform: () => {
+      if (!automationRef) return null;
+      const c = automationRef.catalog();
+      const m = automationRef.monitor();
+      return { entries: c.totals.entries, findings: m.totals.findings };
+    },
+    registerSource: (source) => deliveryEngine.register(source),
+  });
+  operationsRef = operationsPlatform;
+  defs.push(...operationsPlatform.handlers);
+
+  // ── Phase 6 Stage 10 — the Enterprise Strategy Platform ─────────────────
+  // ONE composition subsystem over everything above: objectives measured by
+  // existing aggregates, the initiative portfolio over existing records, the
+  // decision→outcome value view, relative-horizon planning, the Enterprise
+  // Capability Map, strategy health (S6+S7+S8+S9+P14 — P14 composed as ONE
+  // injected input, never duplicated), the executive dashboard, and the board
+  // report. Six read-only estrat:* channels under the EXISTING strategy:read
+  // scope; one strategy-watch delivery source; zero mutation surface.
+  const strategyPlatform = initStrategyPlatform({
+    insightDomains: () =>
+      insightRef?.report().health.domains.map((d) => ({ key: d.key, band: d.band, score: d.score })) ?? null,
+    insightOverallBand: () => insightRef?.report().health.band ?? null,
+    insightIncidents: () => {
+      // Domain attribution rides the Stage 9 incident lifecycle (composed, not recomputed).
+      if (!operationsRef) return null;
+      return operationsRef.incidents().incidents.map((i) => ({ domain: i.domain, severity: i.incident.severity }));
+    },
+    insightOutcomes: () =>
+      insightRef?.report().recommendations.map((r) => ({ id: r.id, stage: r.outcome.stage })) ?? null,
+    executiveKpis: () =>
+      executiveCenter.snapshot().kpis.map((k) => ({
+        key: k.key,
+        label: k.label,
+        display: k.display,
+        ...(k.band ? { band: k.band } : {}),
+      })),
+    slaStatuses: () =>
+      operationsRef
+        ? operationsRef.sla().statuses.map((s) => ({ targetId: s.targetId, status: s.status, detail: s.detail }))
+        : [],
+    readiness: () =>
+      operationsRef
+        ? operationsRef
+            .readiness()
+            .dimensions.map((d) => ({ key: d.key, state: d.state, detail: d.detail, missing: d.missing }))
+        : [],
+    s9Services: () =>
+      operationsRef
+        ? operationsRef
+            .catalog()
+            .entries.map((e) => ({ serviceId: e.serviceId, state: e.state, stateDetail: e.stateDetail }))
+        : [],
+    capacityPressure: () => (operationsRef ? operationsRef.capacity().pressure : 'unknown'),
+    playbooks: () => PLAYBOOK_REGISTRY.map((p) => ({ id: p.id, version: p.version })),
+    apFindings: () =>
+      automationRef ? automationRef.monitor().findings.map((f) => ({ kind: f.kind, severity: f.severity })) : null,
+    knowledgeTotals: () => {
+      const d = knowledgeRef?.dashboard();
+      return d ? { assets: d.inventory.total, findings: d.quality.findings } : null;
+    },
+    knowledgeMatch: (refs) => {
+      const inv = knowledgeRef?.inventory();
+      if (!inv) return refs.map((ref) => ({ ref, matched: false }));
+      return refs.map((ref) => ({
+        ref,
+        matched: inv.assets.some((asset) => asset.recordId === ref || asset.topics.includes(ref)),
+      }));
+    },
+    p14Overview: () => {
+      const s = autonomousIntel.service.overview().summary;
+      return { goalsOnTrack: s.goalsOnTrack, goalsTotal: s.goalsTotal, healthBand: s.healthBand };
+    },
+    decisions: () =>
+      decisionStore.all().map((d) => ({
+        id: d.id,
+        title: d.title,
+        category: d.category,
+        status: d.status,
+        expectedOutcome: d.expectedOutcome,
+        businessImpact: d.businessImpact,
+        fromRecommendationId: d.fromRecommendationId ?? null,
+        createdAt: d.createdAt,
+        updatedAt: d.updatedAt,
+      })),
+    projects: () =>
+      unifiedStore
+        .query({ kinds: ['project'], limit: 100_000, includeDeleted: false })
+        .items.map((e) => ({ id: e.id, title: e.title, syncState: e.syncState, status: e.status ?? null })),
+    minedTypes: () =>
+      getProcessAssessment()
+        .metrics.byType.filter((m) => m.caseCount > 0)
+        .map((m) => m.processType),
+    compliance: () => enterprise.complianceFindings().map((f) => ({ status: f.status })),
+    units: () => {
+      const org = orgStore.defaultOrg();
+      return orgStore.unitsFor(org.id).map((u) => ({ id: u.id, name: u.name, leadUserId: u.leadUserId }));
+    },
+    users: () => {
+      const org = orgStore.defaultOrg();
+      return orgStore.usersFor(org.id).map((u) => ({ id: u.id, name: u.name }));
+    },
+    healthHistory: () =>
+      healthHistoryStore.all().map((h) => ({ day: h.day, overall: h.overall, engineering: h.engineering })),
+    registerSource: (source) => deliveryEngine.register(source),
+  });
+  strategyRef = strategyPlatform;
+  defs.push(...strategyPlatform.handlers);
+
+  // ── Phase 6 Stage 11 — the Enterprise Federation Platform ───────────────
+  // ONE composition subsystem over the EXISTING federation stores (P9-S2:
+  // peers/trust/shares/exchange/governance — all authoritative and untouched),
+  // the P18 sanitized network summary, and the Stage 7–10 platforms. Six
+  // read-only efed:* channels under the EXISTING federation:read scope; one
+  // federation-watch delivery source; zero mutation surface. Everything
+  // cross-org here is a RECORD in the local stores — no live connectivity
+  // exists and none is claimed.
+  const enterpriseFederation = initEnterpriseFederation({
+    fedHome: () => {
+      const h = fedStore.homeOrg();
+      return h ? { id: h.id, name: h.name, regionId: h.regionId } : null;
+    },
+    fedPeers: () =>
+      fedStore.peers().map((p) => ({
+        id: p.id,
+        name: p.name,
+        role: p.role,
+        status: p.status,
+        regionId: p.regionId,
+        trustLevel: p.trustLevel,
+        joinedAt: p.joinedAt,
+        sharedOut: p.sharedOut,
+        sharedIn: p.sharedIn,
+      })),
+    fedInvitations: () =>
+      fedStore.listInvitations().map((i) => ({ toOrg: i.toOrg, fromOrg: i.fromOrg, direction: i.direction, status: i.status })),
+    fedTrusts: () =>
+      fedStore.listTrust().map((t) => ({
+        peerOrg: t.peerOrg,
+        peerOrgName: t.peerOrgName,
+        trustLevel: t.trustLevel,
+        delegatedApproval: t.delegatedApproval,
+        canShareWorkers: t.canShareWorkers,
+        canShareData: t.canShareData,
+      })),
+    fedShares: () =>
+      fedStore.listShared().map((s) => ({
+        kind: s.kind,
+        name: s.name,
+        peerOrg: s.peerOrg,
+        peerOrgName: s.peerOrgName,
+        direction: s.direction,
+        access: s.access,
+      })),
+    fedSummary: () => fedStore.summary(),
+    artifacts: () =>
+      exchangeStore.listArtifacts().map((a) => ({
+        id: a.id,
+        kind: a.kind,
+        name: a.name,
+        publisherOrg: a.publisherOrg,
+        publisherOrgName: a.publisherOrgName,
+        scope: a.scope,
+        verification: a.verification,
+        installs: a.installs,
+        signaturesEd25519: a.versions.every((v) => v.signature.algorithm === 'ed25519'),
+      })),
+    govPolicies: () => globalGovStore.listPolicies().map((p) => ({ id: p.id, name: p.name, action: p.action, enabled: p.enabled })),
+    govApprovals: () => globalGovStore.listApprovals().map((a) => ({ status: a.status })),
+    govAudit: () => globalGovStore.listAudit().map((e) => ({ peerOrg: e.peerOrg })),
+    p18Summary: () => {
+      const s = intelligenceNetwork.service.overview().summary;
+      return { shareableIntelligence: s.shareableIntelligence, publishedInsights: s.publishedInsights, healthBand: s.healthBand };
+    },
+    knowledgeAssets: () => {
+      const inv = knowledgeRef?.inventory();
+      return inv ? inv.assets.map((a) => ({ id: a.id, title: a.title, topics: a.topics })) : null;
+    },
+    playbooks: () => PLAYBOOK_REGISTRY.map((p) => ({ id: p.id, name: p.name, version: p.version })),
+    apFindings: () => (automationRef ? automationRef.monitor().findings.map((f) => ({ severity: f.severity })) : null),
+    connectors: () => connectorService.list().map((c) => ({ id: c.id, name: c.name })),
+    workers: () => workerRegistry.summaries().map((w) => ({ id: w.id, name: w.name })),
+    s9Services: () =>
+      operationsRef ? operationsRef.catalog().entries.map((e) => ({ serviceId: e.serviceId, state: e.state })) : [],
+    slaStatuses: () =>
+      operationsRef
+        ? operationsRef.sla().statuses.map((s) => ({ targetId: s.targetId, serviceId: s.serviceId, status: s.status }))
+        : [],
+    readiness: () => (operationsRef ? operationsRef.readiness().dimensions.map((d) => ({ state: d.state })) : []),
+    capacityPressure: () => (operationsRef ? operationsRef.capacity().pressure : 'unknown'),
+    strategyInitiatives: () =>
+      strategyRef
+        ? strategyRef.portfolio().initiatives.map((i) => ({ id: i.id, label: i.label, state: i.state, capabilityKeys: [...i.capabilityKeys] }))
+        : [],
+    strategyCapabilities: () =>
+      strategyRef
+        ? strategyRef.capabilityMap().capabilities.map((c) => ({ key: c.key, label: c.label, condition: c.condition }))
+        : [],
+    executiveKpis: () =>
+      executiveCenter.snapshot().kpis.map((k) => ({
+        key: k.key,
+        label: k.label,
+        display: k.display,
+        ...(k.band ? { band: k.band } : {}),
+      })),
+    registerSource: (source) => deliveryEngine.register(source),
+  });
+  efedRef = enterpriseFederation;
+  defs.push(...enterpriseFederation.handlers);
+
+  // ── Phase 6 Stage 12 — the Enterprise Analytics Platform ────────────────
+  // ONE composition subsystem over the analytics the platform ALREADY
+  // computes: every KPI feed source-attributed into one catalog (producers
+  // authoritative — nothing recomputed), deterministic trends over RECORDED
+  // windows only, the forecast-capability inventory (registers the Stage 6
+  // heuristics + P14 scenarios; adds zero forecasting), the decision-
+  // intelligence rollup, and the cross-domain executive dashboard/report
+  // (S8–S11 dashboards composed as PRE-BUILT slices; P18 benchmarks as ONE
+  // input). Six read-only eana:* channels under the EXISTING
+  // intelligence:read scope; one analytics-watch delivery source; zero
+  // mutation surface.
+  const analyticsPlatform = initAnalyticsPlatform({
+    executiveKpis: () =>
+      executiveCenter.snapshot().kpis.map((k) => ({
+        key: k.key,
+        label: k.label,
+        display: k.display,
+        value: k.value,
+        ...(k.band ? { band: k.band } : {}),
+      })),
+    processKpis: () =>
+      getProcessExplorerKpis().map((k) => ({
+        key: k.key,
+        label: k.label,
+        display: k.display,
+        value: k.value,
+        ...(k.band ? { band: k.band } : {}),
+      })),
+    p14Kpis: () =>
+      autonomousIntel.service.overview().kpis.map((k) => ({
+        key: k.key,
+        label: k.label,
+        display: k.display,
+        value: k.value,
+        ...(k.band ? { band: k.band } : {}),
+      })),
+    p18Kpis: () =>
+      intelligenceNetwork.service.overview().kpis.map((k) => ({
+        key: k.key,
+        label: k.label,
+        display: k.display,
+        value: k.value,
+        ...(k.band ? { band: k.band } : {}),
+      })),
+    healthHistory: () =>
+      healthHistoryStore.all().map((h) => ({ day: h.day, overall: h.overall, engineering: h.engineering })),
+    valueDeltas: () =>
+      strategyPlatform.value().decisions.map((d) => ({
+        decisionId: d.decisionId,
+        title: d.title,
+        deltas: d.deltas.map((x) => ({ label: x.label, before: x.before, after: x.after })),
+      })),
+    valueTotals: () => strategyPlatform.value().totals,
+    insightPredictions: () => {
+      if (!insightRef) throw new Error('insight subsystem not initialized');
+      return insightRef.report().predictions.map((p) => ({ kind: p.kind, likelihood: p.likelihood }));
+    },
+    p14Simulation: () => ({ scenarios: autonomousIntel.service.overview().simulation.scenarios.length }),
+    capacityPressure: () => (operationsRef ? operationsRef.capacity().pressure : 'unknown'),
+    decisions: () =>
+      decisionStore.all().map((d) => ({ id: d.id, status: d.status, fromRecommendationId: d.fromRecommendationId ?? null })),
+    insightOutcomes: () => {
+      if (!insightRef) throw new Error('insight subsystem not initialized');
+      return insightRef.report().recommendations.map((r) => ({ id: r.id, stage: r.outcome.stage }));
+    },
+    strategyRecs: () => {
+      const recs = strategyPlatform.dashboard().recommendations;
+      return { count: recs.length, criticalOrHigh: recs.filter((r) => r.priority === 'critical' || r.priority === 'high').length };
+    },
+    federationRecs: () => {
+      const recs = enterpriseFederation.dashboard().recommendations;
+      return { count: recs.length, criticalOrHigh: recs.filter((r) => r.priority === 'critical' || r.priority === 'high').length };
+    },
+    s8Monitor: () => {
+      if (!automationRef) return null;
+      const findings = automationRef.monitor().findings;
+      return {
+        findings: findings.length,
+        criticalOrHigh: findings.filter((f) => f.severity === 'critical' || f.severity === 'high').length,
+      };
+    },
+    s9Slices: () => {
+      if (!operationsRef) return null;
+      const sla = operationsRef.sla().statuses;
+      const dims = operationsRef.readiness().dimensions;
+      return {
+        slaTargets: sla.length,
+        slaMet: sla.filter((s) => s.status === 'met').length,
+        slaBreached: sla.filter((s) => s.status === 'breached').length,
+        readinessReady: dims.filter((d) => d.state === 'ready').length,
+        readinessNotReady: dims.filter((d) => d.state === 'not-ready').length,
+      };
+    },
+    s10Totals: () => {
+      const d = strategyPlatform.dashboard();
+      return { offTrack: d.objectives.offTrack, atRisk: d.objectives.atRisk, blocked: d.portfolio.blocked };
+    },
+    s11Totals: () => {
+      const d = enterpriseFederation.dashboard();
+      return { partners: d.partners.total, declaredAboveEvidence: d.trust.declaredAboveEvidence };
+    },
+    p18Benchmark: () => {
+      const s = intelligenceNetwork.service.overview().summary;
+      return { position: s.benchmarkPosition, healthBand: s.healthBand };
+    },
+    registerSource: (source) => deliveryEngine.register(source),
+  });
+  analyticsRef = analyticsPlatform;
+  defs.push(...analyticsPlatform.handlers);
+
+  // ── Phase 6 Stage 13 — the Enterprise Digital Twin Platform ─────────────
+  // ONE composition subsystem over the twin the platform ALREADY has: P15's
+  // summary and nine domains composed VERBATIM (D-1 — P15 stays authoritative
+  // and is never modified), the runtime/execution twin over the Execute Engine
+  // and Runtime Supervisor, the Stage 6–12 platform twins built from each
+  // platform's own published slice, the enterprise state-coverage map, the
+  // simulation inventory (every entry registered-never-invoked), the
+  // recorded-history view over Stage 12 trends, and the dashboard/report.
+  // Seven read-only etwin:* channels under P15's EXISTING twin:read scope
+  // (D-3 — no new RBAC scope is minted); one twin-watch delivery source; zero
+  // mutation surface.
+  //
+  // Every dep is SYNCHRONOUS by contract, which is why the Stage 9 slice reads
+  // `capacity()` and not `dashboard()`: Stage 9's dashboard is a Promise
+  // (continuity awaits the local-backup list), and `capacity()` publishes both
+  // the posture and its bottleneck count from one snapshot.
+  const digitalTwinPlatform = initDigitalTwinPlatform({
+    // P15, composed verbatim. `safeRead` inside the subsystem turns a throw
+    // into a reported failure, so these stay direct reads.
+    twinSummary: () => enterpriseTwin.service.overview().summary,
+    twinDomains: () => enterpriseTwin.service.domains(),
+    // The Execute Engine's own reads — Stage 13 tracks no session state.
+    executionKinds: () => executeEngine.registeredKinds(),
+    executionActive: () => executeEngine.activeSessions(),
+    executionHistory: () => executeEngine.getHistory(),
+    executionStats: () => executeEngine.stats(),
+    // The Runtime Supervisor's own reads — no recovery is started or policied.
+    supervisorStatus: () => runtimeSupervisor.status(),
+    supervisorHistory: () => runtimeSupervisor.getHistory(),
+    // The seven Stage 6–12 slices, each taken from what that platform already
+    // publishes. A platform that has not initialized yet returns null, which
+    // the composition reports as `unknown` — never as a steady zero.
+    s6Insight: () => {
+      if (!insightRef) return null;
+      const recs = insightRef.report().recommendations;
+      return {
+        findings: recs.length,
+        criticalOrHigh: recs.filter((r) => r.priority === 'critical' || r.priority === 'high').length,
+      };
+    },
+    s7Knowledge: () => {
+      if (!knowledgeRef) return null;
+      const inv = knowledgeRef.inventory();
+      return { assets: inv.totals.assets, gaps: inv.gaps.length };
+    },
+    s8Automation: () => {
+      if (!automationRef) return null;
+      // `failed-run` only — a stuck execution or an unparseable schedule is a
+      // finding Stage 8 raised, not a run that failed.
+      const failed = automationRef.monitor().findings.filter((f) => f.kind === 'failed-run').length;
+      return { automations: automationRef.catalog().totals.entries, failures: failed };
+    },
+    s9Operations: () => {
+      if (!operationsRef) return null;
+      const cap = operationsRef.capacity();
+      return { posture: cap.pressure, bottlenecks: cap.bottlenecks.length };
+    },
+    s10Strategy: () => {
+      const o = strategyPlatform.dashboard().objectives;
+      return { objectives: o.company + o.departments, atRisk: o.atRisk };
+    },
+    s11Federation: () => {
+      const d = enterpriseFederation.dashboard();
+      // `declaredAboveEvidence` is Stage 11's own degradation signal: a partner
+      // claiming more trust than the recorded evidence supports.
+      return { partners: d.partners.total, degraded: d.trust.declaredAboveEvidence };
+    },
+    s12Analytics: () => ({
+      kpis: analyticsPlatform.kpis().totals.total,
+      regressing: analyticsPlatform.trends().totals.regressing,
+    }),
+    // Stage 12 owns delta computation; its report is composed verbatim.
+    s12Trends: () => analyticsPlatform.trends(),
+    // The recorded-evidence footprint — counts only, never the records.
+    recordedDays: () => healthHistoryStore.all().length,
+    recordedDecisions: () => decisionStore.all().length,
+    // Existing simulation capability, registered but never invoked.
+    insightPredictions: () => (insightRef ? insightRef.report().predictions.map((p) => ({ kind: p.kind })) : null),
+    p14Scenarios: () => ({ count: autonomousIntel.service.overview().simulation.scenarios.length }),
+    s12Forecasts: () => ({ registered: analyticsPlatform.forecasts().totals.registered }),
+    registerSource: (source) => deliveryEngine.register(source),
+  });
+  twinRef = digitalTwinPlatform;
+  defs.push(...digitalTwinPlatform.handlers);
 
   // Startup invariant (fail-closed): with every def now assembled, no runtime-invokable
   // channel may ride on sender-trust ALONE. Collect the channels that ended up gated —

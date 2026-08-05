@@ -10,7 +10,7 @@ import type {
   DrSummary,
   FederationSummary,
   IdentitySummary,
-  SyncSummary,
+  LiveSyncStatus,
   TenantSummary,
 } from '@neuropause/shared';
 import { ControlPlaneService } from './controlPlaneService';
@@ -24,7 +24,7 @@ const REGIONS: CloudRegion[] = [
 const HOME: CloudTenant = { id: 'tnt-home', name: 'NeuroPause', slug: 'neuropause', organizationId: 'org-default', regionId: 'us-east', tier: 'enterprise', status: 'active', isHome: true, storageNamespace: 'ns', createdAt: NOW };
 const TENANT_SUMMARY: TenantSummary = { tenants: 2, active: 2, regions: 2, projects: 3, teams: 2, workers: 5 };
 const API_SUMMARY: ApiPlatformSummary = { deployments: 2, healthy: 2, regions: 2, replicas: 5, uptimePct: 99.9, requests30d: 900_000, webhooks: 1, publicApis: 3 };
-const SYNC_SUMMARY: SyncSummary = { domains: 8, synced: 8, pending: 0, conflicts: 0, online: true, lastFullSyncAt: NOW };
+const LIVE_SYNC: LiveSyncStatus = { state: 'idle', online: true, pendingCount: 0, failures: 0, lastError: null, lastSyncedAt: NOW, cursor: 1200 };
 const IDENTITY: IdentitySummary = { connections: 1, active: 1, enforced: true, scimEnabled: true, mfaRequired: true, provisionedUsers: 7 };
 const FED: FederationSummary = { orgs: 2, peers: 1, activePeers: 1, pendingInvites: 0, trustedPeers: 1, sharedOut: 1, sharedIn: 0 };
 const DR: DrSummary = { backups: 3, lastBackupAt: NOW, replicas: 2, inSync: 2, lastValidationAt: NOW, continuityScore: 90 };
@@ -37,7 +37,7 @@ function baseState(over: Partial<ControlPlaneState> = {}): ControlPlaneState {
     tenantSummary: TENANT_SUMMARY,
     deployments: [{ id: 'd1', service: 'api-gateway', regionId: 'us-east', replicas: 3, healthyReplicas: 3, status: 'healthy', version: 'v1', uptimePct: 99.9, p95LatencyMs: 40, deployedAt: NOW }],
     apiSummary: API_SUMMARY,
-    syncSummary: SYNC_SUMMARY,
+    liveSync: LIVE_SYNC,
     identitySummary: IDENTITY,
     federationSummary: FED,
     drSummary: DR,

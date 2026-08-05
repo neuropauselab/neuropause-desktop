@@ -1,0 +1,26 @@
+{
+  "name": "@neuropause/federation",
+  "version": "0.0.0-preview.1",
+  "private": true,
+  "description": "NeuroPause Enterprise Management System — Wave 6 Enterprise Federation & Cloud Platform. Composes Waves 1-5 (unchanged) into a multi-organization enterprise platform: a federation runtime (organization registry, federation lifecycle, trust), an organization manager, multi-tenant federation, a trust engine, region/cluster registries, a deployment runtime (descriptors for Local/Docker/Kubernetes/Air-gap/AWS/Azure/GCP), cross-organization exchange, a marketplace runtime, global search, federation observability, global governance, analytics, and executive dashboards. Federation runtime/registry/APIs/marketplace/search/governance/analytics/dashboards are LIVE-VERIFIED in-process over real runtime data; cloud deployment descriptors are ADAPTER-VERIFIED (shapes only, never applied); real clusters, cloud deployments, cross-region replication, multi-cloud sync, failover, DR, and live marketplace distribution are INFRA-PENDING and never executed or fabricated. One new additive package; every federation operation is audited on the one chain with a replay id and evidence level.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run" },
+  "dependencies": {
+    "@neuropause/runtime": "*",
+    "@neuropause/cloud-core": "*",
+    "@neuropause/shared-cloud": "*",
+    "@neuropause/security": "*",
+    "@neuropause/persistence": "*",
+    "@neuropause/connectors": "*",
+    "@neuropause/integrations": "*",
+    "@neuropause/ai-runtime": "*",
+    "@neuropause/nems": "*",
+    "@neuropause/connectivity": "*",
+    "@neuropause/intelligence": "*",
+    "@neuropause/automation": "*",
+    "@neuropause/execution": "*"
+  },
+  "devDependencies": { "typescript": "^5.9.3", "vitest": "^1.6.1" }
+}

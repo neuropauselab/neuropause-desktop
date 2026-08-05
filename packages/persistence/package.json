@@ -1,0 +1,25 @@
+{
+  "name": "@neuropause/persistence",
+  "version": "0.0.0-preview.1",
+  "private": true,
+  "description": "NeuroPause Enterprise Persistence Platform (NCEA 12.0) — the one durable storage layer: relational (PostgreSQL), knowledge graph, append-only event store, object storage, cache, versioned/reversible migrations, backup & recovery, and multi-tenant isolation. Validated against a real embedded Postgres (PGlite); networked Postgres, Redis, and S3 are production drivers behind the same interfaces.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@neuropause/cloud-core": "*",
+    "@neuropause/shared-cloud": "*",
+    "@neuropause/runtime": "*",
+    "@electric-sql/pglite": "^0.2.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^1.6.1"
+  }
+}

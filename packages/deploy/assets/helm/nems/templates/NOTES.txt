@@ -1,0 +1,10 @@
+NEMS has been rendered by Helm (release: {{ .Release.Name }}).
+
+This chart renders Kubernetes manifests only. It does NOT provision a cluster, DNS, or TLS —
+those are supplied by your real infrastructure once configured.
+
+1. Verify the rendered manifests:  helm template {{ .Release.Name }} .
+2. Diff before upgrading:          helm diff upgrade {{ .Release.Name }} .
+3. Roll back if needed:            helm rollback {{ .Release.Name }} <REVISION>
+
+Secrets are injected from '{{ .Values.existingSecret }}' (Vault / sealed-secrets); none are stored in this chart.

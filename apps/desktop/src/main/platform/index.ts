@@ -29,6 +29,7 @@ import {
   TimelineQueryRequest,
   PlatformEmitRequest,
 } from '@neuropause/shared';
+import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { catalogClient } from '../catalog/catalogClient';
@@ -118,7 +119,7 @@ const TITLES: Partial<Record<PlatformEvent['type'], string>> = {
 };
 
 export async function initPlatform(deps: {
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: IpcBroadcaster;
 }): Promise<Platform> {
   const startedAt = Date.now();
 

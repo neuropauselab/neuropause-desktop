@@ -7,6 +7,7 @@ import {
   SIDEBAR_COLLAPSED,
 } from '@renderer/state/ShellProvider';
 import { SECTIONS, type SectionDef } from './sections';
+import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 
 function SidebarItem({
   section,
@@ -97,7 +98,10 @@ export function Sidebar(): JSX.Element {
       className="sidebar-material hairline-r relative flex shrink-0 flex-col overflow-hidden"
       aria-label="Primary navigation"
     >
-      <nav className="flex flex-1 flex-col gap-0.5 px-3 pt-3" role="navigation">
+      <div className="px-3 pt-3">
+        <WorkspaceSwitcher collapsed={sidebarCollapsed} />
+      </div>
+      <nav className="flex flex-1 flex-col gap-0.5 px-3 pt-2" role="navigation">
         {primary.map((s) => (
           <SidebarItem key={s.id} section={s} collapsed={sidebarCollapsed} />
         ))}

@@ -93,6 +93,20 @@ const DEFAULT_SOURCES: Record<AiWorkerId, AiContextSource[]> = {
   support: ['unified-model', 'ai-memory', 'timeline'],
   'mission-brief': ['mission-brief', 'github', 'timeline', 'knowledge-graph'],
   diagnostic: ALL_SOURCES,
+  // Phase 6 Stage 4 — the Workspace Assistant draws on the founder's breadth
+  // plus the unified model (it answers about any workspace object).
+  assistant: [
+    'mission-brief',
+    'knowledge-graph',
+    'ai-memory',
+    'previous-decisions',
+    'timeline',
+    'unified-model',
+    'github',
+    'notion',
+    'calendar',
+    'slack',
+  ],
 };
 
 /** Higher = surface sooner. Engineering risk / CI lead; routine activity trails. */

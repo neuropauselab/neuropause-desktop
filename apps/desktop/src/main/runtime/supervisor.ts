@@ -28,7 +28,12 @@ import { ProcessRuntimeAdapter } from './adapters/processAdapter';
 const log = createLogger('runtime');
 const MAX_RESTARTS = 3;
 
-class RuntimeSupervisor extends EventEmitter {
+/**
+ * A7 — both outbound events are declared here so their payloads are real types at
+ * every listener, including the two that forward them to the renderer. Previously
+ * `event` and `openApp` were `any` from the emitter outward.
+ */
+class RuntimeSupervisor extends EventEmitter<{ event: [RuntimeEvent]; openApp: [OpenAppRequest] }> {
   private instances = new Map<string, RuntimeInstance>();
   private adapters: RuntimeAdapter[] = [new WebRuntimeAdapter(), new ProcessRuntimeAdapter()];
   private launchUrlCache = new Map<string, string | null>();

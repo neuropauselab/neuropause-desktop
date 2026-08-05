@@ -30,6 +30,7 @@ import { useShell } from '@renderer/state/ShellProvider';
 import { Icon, type IconName } from '@renderer/components/ui/Icon';
 import { OpsPanel, Stat, StatusBadge } from '@renderer/operations/primitives';
 import { EmptyState, Field, Grid, KpiCard, LoadingBlock, Meter } from '@renderer/operationsCenter/primitives';
+import { KnowledgeAssetsHost } from '@renderer/knowledgeAssets/KnowledgeAssetsHost';
 import {
   KNOWLEDGE_GAPS,
   bandTone,
@@ -44,7 +45,7 @@ import {
 
 type KnowledgeTopics = Awaited<ReturnType<typeof ipc.knowledge.topics>>;
 
-type Tab = 'overview' | 'search' | 'memory' | 'graph' | 'fabric' | 'decisions' | 'policies';
+type Tab = 'overview' | 'search' | 'memory' | 'graph' | 'fabric' | 'platform' | 'decisions' | 'policies';
 
 interface Data {
   memory: MemoryCounts | null;
@@ -126,6 +127,9 @@ export function KnowledgeWorkspaceView(): JSX.Element {
     { id: 'memory', label: 'Memory', icon: 'memory' },
     { id: 'graph', label: 'Graph', icon: 'database' },
     { id: 'fabric', label: 'Knowledge Fabric', icon: 'layers' },
+    // Phase 6 Stage 7 — the Knowledge Platform tab (asset inventory / quality /
+    // standards / coverage / hygiene), read-only over the kb:* cluster.
+    { id: 'platform', label: 'Knowledge Platform', icon: 'grid' },
     { id: 'decisions', label: 'Decisions', icon: 'sparkles' },
     { id: 'policies', label: 'Policies', icon: 'shield' },
   ];
@@ -174,6 +178,7 @@ export function KnowledgeWorkspaceView(): JSX.Element {
             {tab === 'memory' && <MemoryTab d={d} go={go} />}
             {tab === 'graph' && <GraphTab d={d} go={go} />}
             {tab === 'fabric' && <FabricTab d={d} go={go} />}
+            {tab === 'platform' && <KnowledgeAssetsHost />}
             {tab === 'decisions' && <DecisionsTab d={d} go={go} />}
             {tab === 'policies' && <PoliciesTab d={d} go={go} />}
           </div>

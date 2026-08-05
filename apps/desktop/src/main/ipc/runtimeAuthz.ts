@@ -131,6 +131,15 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
 
   // AI memory recall (returns remembered org content).
   [IpcChannel.MemoryRecall]: 'intelligence:read',
+  // A6 — the semantic sibling returns the *same* remembered org content, plus a
+  // vector search scoped by organization id. It sat in `PUBLIC_CHANNELS` while
+  // `MemoryRecall` directly above required `intelligence:read`, so the stricter
+  // gate could be sidestepped by calling the richer channel. Both now carry the
+  // same permission, which is the point: the gate belongs to the data, not to
+  // the retrieval strategy. `intelligence:read` is part of the READ_ONLY base
+  // role (`enterprise/org/seed.ts:63-72`), so every role that could already
+  // reach `MemoryRecall` reaches this unchanged.
+  [IpcChannel.MemorySemanticRecall]: 'intelligence:read',
 
   // Unified knowledge queries across every connected source.
   [IpcChannel.UnifiedQuery]: 'intelligence:read',
@@ -154,6 +163,10 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
 
   // Founder AI ask (reasons over the whole org corpus).
   [IpcChannel.FounderAsk]: 'intelligence:read',
+
+  // Phase 6 Stage 4 — approving an assistant plan step re-enters the
+  // ExecuteEngine exactly like `execute:run`, so it takes the same scope.
+  [IpcChannel.AssistantPlanDecide]: 'workforce:operate',
 
   // Executive Center snapshot (rolls every layer into one live view).
   [IpcChannel.ExecutiveCenterSnapshot]: 'intelligence:read',
@@ -252,7 +265,8 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   IpcChannel.UnifiedGet,
   IpcChannel.UnifiedCounts,
   // ── AI memory read projections + executive conversation memory ──
-  IpcChannel.MemorySemanticRecall,
+  // (A6 moved MemorySemanticRecall to `intelligence:read`, alongside the
+  // MemoryRecall channel it mirrors.)
   IpcChannel.MemoryGet,
   IpcChannel.MemoryCounts,
   IpcChannel.ExecMemorySearch,
@@ -314,6 +328,36 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   IpcChannel.OnboardingCompleteStep,
   IpcChannel.OnboardingDismiss,
   IpcChannel.OnboardingReset,
+  IpcChannel.AiConfigGet,
+  IpcChannel.AiConfigHealth,
+  IpcChannel.AiConfigDetectOllama,
+  IpcChannel.AiConfigSetProvider,
+  IpcChannel.AiConfigSetModel,
+  IpcChannel.AiConfigSetCredential,
+  IpcChannel.AiConfigClearCredential,
+  IpcChannel.AiConfigTest,
+  IpcChannel.AiConfigMigrationStatus,
+  IpcChannel.AiConfigMigrate,
+  IpcChannel.AiConfigResetToEnv,
+  // ── Phase 6 Stage 4 — Workspace Assistant (per-user desktop surface, same
+  // sender-trust model as FounderAskV2 + the ExecMemory reads; the one channel
+  // that dispatches execution — assistant:plan.decide — is RBAC-gated in
+  // RUNTIME_CHANNEL_PERMISSIONS above, and conversation save/delete are
+  // bridge-audited on their handler defs) ──
+  IpcChannel.AssistantAsk,
+  IpcChannel.AssistantConversations,
+  IpcChannel.AssistantConversationGet,
+  IpcChannel.AssistantConversationSave,
+  IpcChannel.AssistantConversationDelete,
+  IpcChannel.AssistantConversationBranch,
+  IpcChannel.AssistantCancel,
+  // ── Phase 6 Stage 5 (D-8) — Notification Inbox + delivery preferences
+  // (per-user local data, the AiConfig sender-trust precedent; zod-validated,
+  // and `notifications:prefs.set` is bridge-audited on its handler def) ──
+  IpcChannel.NotificationsList,
+  IpcChannel.NotificationsMarkRead,
+  IpcChannel.NotificationsPrefsGet,
+  IpcChannel.NotificationsPrefsSet,
   IpcChannel.FeedbackSubmit,
   IpcChannel.FeedbackList,
   IpcChannel.FeedbackExport,

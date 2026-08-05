@@ -22,6 +22,15 @@ export const IpcChannel = {
   ThemeChanged: 'app:themeChanged',
   MenuCommand: 'menu:command',
 
+  // ── workspace contexts (Phase 6 Stage 1 — local desktop workspaces; legacy router) ──
+  WorkspaceCtxBootstrap: 'workspace-ctx:bootstrap',
+  WorkspaceCtxList: 'workspace-ctx:list',
+  WorkspaceCtxCreate: 'workspace-ctx:create',
+  WorkspaceCtxRename: 'workspace-ctx:rename',
+  WorkspaceCtxDelete: 'workspace-ctx:delete',
+  WorkspaceCtxSwitch: 'workspace-ctx:switch',
+  WorkspaceCtxUpdateSnapshot: 'workspace-ctx:update-snapshot',
+
   // ── catalog (secure bridge → backend store API) ──
   CatalogFeatured: 'catalog:featured',
   CatalogCollections: 'catalog:collections',
@@ -241,6 +250,26 @@ export const IpcChannel = {
 
   // ── Engineering AI ──
   EngineeringAnalyze: 'ai:engineering-analyze',
+
+  // ── Workspace Assistant (Phase 6 Stage 4 — the documented D-1 cluster) ──
+  AssistantAsk: 'assistant:ask',
+  AssistantConversations: 'assistant:conversations',
+  AssistantConversationGet: 'assistant:conversation',
+  AssistantConversationSave: 'assistant:conversation.save',
+  AssistantConversationDelete: 'assistant:conversation.delete',
+  AssistantConversationBranch: 'assistant:conversation.branch',
+  AssistantPlanDecide: 'assistant:plan.decide',
+  AssistantCancel: 'assistant:cancel',
+  AssistantEventBroadcast: 'assistant:event',
+
+  // ── Notification Inbox + delivery preferences (Phase 6 Stage 5 — the D-8
+  // cluster; surfaces the EXISTING delivery preference store the capability
+  // registry had flagged as "deferred, needs an IPC channel") ──
+  NotificationsList: 'notifications:list',
+  NotificationsMarkRead: 'notifications:markRead',
+  NotificationsPrefsGet: 'notifications:prefs.get',
+  NotificationsPrefsSet: 'notifications:prefs.set',
+  NotificationsEventBroadcast: 'notifications:event',
 
   // ── Traces (governance / context / relationship) ──
   GovernanceList: 'governance:list',
@@ -601,14 +630,8 @@ export const IpcChannel = {
   CloudScimSync: 'cloud:identity.scimSync',
   CloudMfa: 'cloud:identity.mfa',
   CloudSetMfa: 'cloud:identity.setMfa',
-  CloudSyncStates: 'cloud:sync.states',
-  CloudSyncSummary: 'cloud:sync.summary',
-  CloudSyncConflicts: 'cloud:sync.conflicts',
-  CloudSyncDomain: 'cloud:sync.syncDomain',
-  CloudSyncAll: 'cloud:sync.syncAll',
-  CloudSyncSetOnline: 'cloud:sync.setOnline',
-  CloudSyncRecordChange: 'cloud:sync.recordChange',
   LiveSyncStatus: 'livesync:status',
+  LiveSyncDetail: 'livesync:detail',
   LiveSyncNow: 'livesync:now',
   LiveSyncSetOnline: 'livesync:setOnline',
   LiveSyncSetActiveOrg: 'livesync:setActiveOrg',
@@ -720,6 +743,17 @@ export const IpcChannel = {
   OnboardingCompleteStep: 'onboarding:completeStep',
   OnboardingDismiss: 'onboarding:dismiss',
   OnboardingReset: 'onboarding:reset',
+  AiConfigGet: 'aiConfig:get',
+  AiConfigHealth: 'aiConfig:health',
+  AiConfigDetectOllama: 'aiConfig:detectOllama',
+  AiConfigSetProvider: 'aiConfig:setProvider',
+  AiConfigSetModel: 'aiConfig:setModel',
+  AiConfigSetCredential: 'aiConfig:setCredential',
+  AiConfigClearCredential: 'aiConfig:clearCredential',
+  AiConfigTest: 'aiConfig:test',
+  AiConfigMigrationStatus: 'aiConfig:migrationStatus',
+  AiConfigMigrate: 'aiConfig:migrate',
+  AiConfigResetToEnv: 'aiConfig:resetToEnv',
   FeedbackSubmit: 'feedback:submit',
   FeedbackList: 'feedback:list',
   FeedbackExport: 'feedback:export',
@@ -749,6 +783,119 @@ export const IpcChannel = {
   EnterpriseIntelReport: 'intel:report',
   EnterpriseIntelChangeImpact: 'intel:changeImpact',
   EnterpriseIntelRootCause: 'intel:rootCause',
+  // Phase 6 Stage 6 — Enterprise Intelligence Layer (read-only; RBAC-gated with
+  // intelligence:read via the SecureHandlerDef, the P7 `intel:` precedent). The
+  // composed report / targeted root cause / health framework / predictions /
+  // executive dashboard. Nothing here accepts an action.
+  InsightReport: 'insight:report',
+  InsightRootCause: 'insight:rootCause',
+  InsightHealth: 'insight:health',
+  InsightPredictions: 'insight:predictions',
+  InsightDashboard: 'insight:dashboard',
+  // Phase 6 Stage 7 — Enterprise Knowledge & Decision Platform (read-only;
+  // RBAC-gated with knowledge:read via the SecureHandlerDef, the P16 `fabric:`
+  // precedent). Inventory / relationship matrix + impact / decision lineage /
+  // quality / standards / dashboard. Nothing here accepts an action.
+  KbInventory: 'kb:inventory',
+  KbMatrix: 'kb:matrix',
+  // A7 — impact analysis was previously served by `kb:matrix` itself, branching on
+  // an optional `assetId`: one channel, two unrelated response shapes. That made the
+  // channel's response type unstateable (and meant `kb.impact()` called without an
+  // assetId silently returned the relationship matrix typed as an impact analysis).
+  // One channel, one shape.
+  KbImpact: 'kb:impact',
+  KbLineage: 'kb:lineage',
+  KbQuality: 'kb:quality',
+  KbStandards: 'kb:standards',
+  KbDashboard: 'kb:dashboard',
+  // Phase 6 Stage 8 — Enterprise Automation Platform (read-only; RBAC-gated
+  // with autonomousops:read via the SecureHandlerDef, the P19 precedent).
+  // Catalog / playbooks / compiled plan preview / policies / monitor /
+  // dashboard. Nothing here accepts an action (D-6/D-9).
+  ApCatalog: 'ap:catalog',
+  ApPlaybooks: 'ap:playbooks',
+  ApPlan: 'ap:plan',
+  ApPolicies: 'ap:policies',
+  ApMonitor: 'ap:monitor',
+  ApDashboard: 'ap:dashboard',
+
+  // ── Phase 6 Stage 9 — the Enterprise Operations Platform (read-only) ──
+  // Service catalog / operational health / readiness+SLA+processes /
+  // incident lifecycle / continuity / dashboard. Zero mutation surface.
+  EopsCatalog: 'eops:catalog',
+  EopsHealth: 'eops:health',
+  EopsReadiness: 'eops:readiness',
+  EopsIncidents: 'eops:incidents',
+  EopsContinuity: 'eops:continuity',
+  EopsDashboard: 'eops:dashboard',
+
+  // ── Phase 6 Stage 10 — the Enterprise Strategy Platform (read-only) ──
+  // Objectives / portfolio+value / planning / strategy health (capability map,
+  // risks, alignment) / executive dashboard / board report. The `estrat:*`
+  // namespace is DISTINCT from the P14 `strategy:*` cluster (which stays
+  // untouched); both read under the same `strategy:read` permission.
+  // Zero mutation surface.
+  EstratObjectives: 'estrat:objectives',
+  EstratPortfolio: 'estrat:portfolio',
+  EstratPlanning: 'estrat:planning',
+  EstratHealth: 'estrat:health',
+  EstratDashboard: 'estrat:dashboard',
+  EstratReport: 'estrat:report',
+
+  // ── Phase 6 Stage 11 — the Enterprise Federation Platform (read-only) ──
+  // Partners / trust evidence / organization exchange / shared layers /
+  // executive dashboard / federation report. The `efed:*` namespace is
+  // DISTINCT from the P9-S2 `fed:*` and P10 `federation:*` clusters (which
+  // stay untouched); reads ride the same `federation:read` permission.
+  // Zero mutation surface.
+  EfedPartners: 'efed:partners',
+  EfedTrust: 'efed:trust',
+  EfedExchange: 'efed:exchange',
+  EfedSharing: 'efed:sharing',
+  EfedDashboard: 'efed:dashboard',
+  EfedReport: 'efed:report',
+
+  // ── Phase 6 Stage 12 — the Enterprise Analytics Platform (read-only) ──
+  // Unified KPI catalog / recorded-window trends / forecast-capability
+  // inventory / decision intelligence / executive analytics dashboard /
+  // analytics report. Pure COMPOSITION over the existing analytics producers —
+  // the `eana:*` namespace computes no analytics of its own. Reads ride the
+  // existing `intelligence:read` permission (the Stage 6 insight cluster's).
+  // Zero mutation surface.
+  EanaKpis: 'eana:kpis',
+  EanaTrends: 'eana:trends',
+  EanaForecasts: 'eana:forecasts',
+  EanaDecisions: 'eana:decisions',
+  EanaDashboard: 'eana:dashboard',
+  EanaReport: 'eana:report',
+
+  // ── Phase 6 Stage 13 — the Enterprise Digital Twin Platform (read-only) ──
+  // The additive COMPOSITION layer over the P15 Enterprise Digital Twin: the
+  // runtime/execution twin, the Stage 6–12 platform twins, the enterprise
+  // state-coverage map, the simulation inventory, the recorded-history view, the
+  // platform dashboard and the executive report. `twin:*` (P15) stays
+  // authoritative and untouched — `etwin:*` composes it and never replaces it.
+  // Reads ride the EXISTING `twin:read` permission (P15's own; no new RBAC
+  // scope). Zero mutation surface — there is no `etwin:*` write channel and
+  // never will be.
+  //
+  // Seven channels, not the six the Stage 13 audit tabulated (§5.3). The audit
+  // gave `etwin:dashboard` the cell "Composed dashboard + report" while every
+  // sibling platform — `estrat:`, `efed:`, `eana:` — publishes the dashboard and
+  // the report on SEPARATE channels, and `EtwinDashboard`/`EtwinReport` are two
+  // distinct types. Serving both from one channel would have made this the only
+  // composite payload in the table; leaving the report off IPC left it
+  // unreachable from the renderer (FINDING #5). The seventh channel is the
+  // sibling shape: a pure read, the same `EmptyRequest`, the same `twin:read`,
+  // no new namespace and no new scope. The count changed; the architecture did
+  // not.
+  EtwinRuntime: 'etwin:runtime',
+  EtwinPlatforms: 'etwin:platforms',
+  EtwinCoverage: 'etwin:coverage',
+  EtwinSimulation: 'etwin:simulation',
+  EtwinHistory: 'etwin:history',
+  EtwinDashboard: 'etwin:dashboard',
+  EtwinReport: 'etwin:report',
 } as const;
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel];
@@ -766,6 +913,13 @@ export const INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.WindowClose,
   IpcChannel.RuntimeGetLoginAtStartup,
   IpcChannel.RuntimeSetLoginAtStartup,
+  IpcChannel.WorkspaceCtxBootstrap,
+  IpcChannel.WorkspaceCtxList,
+  IpcChannel.WorkspaceCtxCreate,
+  IpcChannel.WorkspaceCtxRename,
+  IpcChannel.WorkspaceCtxDelete,
+  IpcChannel.WorkspaceCtxSwitch,
+  IpcChannel.WorkspaceCtxUpdateSnapshot,
 ];
 
 /** Legacy broadcasts the renderer may subscribe to. */
@@ -1248,14 +1402,8 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.CloudScimSync,
   IpcChannel.CloudMfa,
   IpcChannel.CloudSetMfa,
-  IpcChannel.CloudSyncStates,
-  IpcChannel.CloudSyncSummary,
-  IpcChannel.CloudSyncConflicts,
-  IpcChannel.CloudSyncDomain,
-  IpcChannel.CloudSyncAll,
-  IpcChannel.CloudSyncSetOnline,
-  IpcChannel.CloudSyncRecordChange,
   IpcChannel.LiveSyncStatus,
+  IpcChannel.LiveSyncDetail,
   IpcChannel.LiveSyncNow,
   IpcChannel.LiveSyncSetOnline,
   IpcChannel.LiveSyncSetActiveOrg,
@@ -1359,6 +1507,17 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.OnboardingCompleteStep,
   IpcChannel.OnboardingDismiss,
   IpcChannel.OnboardingReset,
+  IpcChannel.AiConfigGet,
+  IpcChannel.AiConfigHealth,
+  IpcChannel.AiConfigDetectOllama,
+  IpcChannel.AiConfigSetProvider,
+  IpcChannel.AiConfigSetModel,
+  IpcChannel.AiConfigSetCredential,
+  IpcChannel.AiConfigClearCredential,
+  IpcChannel.AiConfigTest,
+  IpcChannel.AiConfigMigrationStatus,
+  IpcChannel.AiConfigMigrate,
+  IpcChannel.AiConfigResetToEnv,
   IpcChannel.FeedbackSubmit,
   IpcChannel.FeedbackList,
   IpcChannel.FeedbackExport,
@@ -1385,6 +1544,72 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.EnterpriseIntelReport,
   IpcChannel.EnterpriseIntelChangeImpact,
   IpcChannel.EnterpriseIntelRootCause,
+  // Phase 6 Stage 6 — Enterprise Intelligence Layer (read-only insight cluster).
+  IpcChannel.InsightReport,
+  IpcChannel.InsightRootCause,
+  IpcChannel.InsightHealth,
+  IpcChannel.InsightPredictions,
+  IpcChannel.InsightDashboard,
+  // Phase 6 Stage 7 — Enterprise Knowledge & Decision Platform (read-only kb cluster).
+  IpcChannel.KbInventory,
+  IpcChannel.KbMatrix,
+  IpcChannel.KbImpact,
+  IpcChannel.KbLineage,
+  IpcChannel.KbQuality,
+  IpcChannel.KbStandards,
+  IpcChannel.KbDashboard,
+  // Phase 6 Stage 8 — Enterprise Automation Platform (read-only ap cluster).
+  IpcChannel.ApCatalog,
+  IpcChannel.ApPlaybooks,
+  IpcChannel.ApPlan,
+  IpcChannel.ApPolicies,
+  IpcChannel.ApMonitor,
+  IpcChannel.ApDashboard,
+  IpcChannel.EopsCatalog,
+  IpcChannel.EopsHealth,
+  IpcChannel.EopsReadiness,
+  IpcChannel.EopsIncidents,
+  IpcChannel.EopsContinuity,
+  IpcChannel.EopsDashboard,
+  IpcChannel.EstratObjectives,
+  IpcChannel.EstratPortfolio,
+  IpcChannel.EstratPlanning,
+  IpcChannel.EstratHealth,
+  IpcChannel.EstratDashboard,
+  IpcChannel.EstratReport,
+  IpcChannel.EfedPartners,
+  IpcChannel.EfedTrust,
+  IpcChannel.EfedExchange,
+  IpcChannel.EfedSharing,
+  IpcChannel.EfedDashboard,
+  IpcChannel.EfedReport,
+  IpcChannel.EanaKpis,
+  IpcChannel.EanaTrends,
+  IpcChannel.EanaForecasts,
+  IpcChannel.EanaDecisions,
+  IpcChannel.EanaDashboard,
+  IpcChannel.EanaReport,
+  IpcChannel.EtwinRuntime,
+  IpcChannel.EtwinPlatforms,
+  IpcChannel.EtwinCoverage,
+  IpcChannel.EtwinSimulation,
+  IpcChannel.EtwinHistory,
+  IpcChannel.EtwinDashboard,
+  IpcChannel.EtwinReport,
+  // Phase 6 Stage 4 — Workspace Assistant.
+  IpcChannel.AssistantAsk,
+  IpcChannel.AssistantConversations,
+  IpcChannel.AssistantConversationGet,
+  IpcChannel.AssistantConversationSave,
+  IpcChannel.AssistantConversationDelete,
+  IpcChannel.AssistantConversationBranch,
+  IpcChannel.AssistantPlanDecide,
+  IpcChannel.AssistantCancel,
+  // Phase 6 Stage 5 — Notification Inbox + delivery preferences.
+  IpcChannel.NotificationsList,
+  IpcChannel.NotificationsMarkRead,
+  IpcChannel.NotificationsPrefsGet,
+  IpcChannel.NotificationsPrefsSet,
 ];
 
 /** Runtime-core broadcasts. */
@@ -1415,6 +1640,10 @@ export const RUNTIME_BROADCAST_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.WebhookEventBroadcast,
   IpcChannel.SandboxEventBroadcast,
   IpcChannel.InfraEventBroadcast,
+  // Phase 6 Stage 4 — Workspace Assistant streaming progress.
+  IpcChannel.AssistantEventBroadcast,
+  // Phase 6 Stage 5 — Notification Inbox refresh signal.
+  IpcChannel.NotificationsEventBroadcast,
 ];
 
 /** The full set the preload bridge permits (legacy + runtime core). */

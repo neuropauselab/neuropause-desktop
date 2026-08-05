@@ -21,7 +21,7 @@ const log = createLogger('onboarding');
 const STEP_LINKS: Partial<Record<OnboardingStepId, { section: SectionId; label: string }>> = {
   organization: { section: 'organization', label: 'Open Organization' },
   connectors: { section: 'connectors', label: 'Open Connectors' },
-  ai_setup: { section: 'operations', label: 'Open Operations' },
+  ai_setup: { section: 'settings', label: 'Open Settings' },
 };
 
 export function OnboardingWizard({ onGoTo }: { onGoTo: (section: SectionId) => void }) {

@@ -21,7 +21,7 @@ missing.
 | Notifications | Electron `new Notification().show()` — cross-platform | `platform/index.ts:105` | ✅ (Windows shows native toast; app id set by installer) |
 | Deep links / OAuth callback | **Loopback `127.0.0.1` random port (RFC 8252)** — NOT a custom URL scheme | `auth/loopbackServer.ts:101` | ✅ zero OS registration needed; the hardest cross-platform OAuth problem is already solved |
 | Local storage | atomic JSON under `app.getPath('userData')` (per-OS correct dir) | 46-file ledger (RC1-04) | ✅ resolves to `%APPDATA%` on Windows |
-| Database paths | Postgres/Redis are the **backend's** concern (already live, remote); the desktop holds no DB path | RC1-02/03 | ✅ N/A to Windows client |
+| Database paths | Postgres/Redis are the **backend's** concern (remote; not deployed yet — Phase 4); the desktop holds no DB path | RC1-02/03 | ✅ N/A to Windows client |
 | Logging | pino to userData; path via getPath | RC1-04 | ✅ |
 | Crash reporting | local export store, path-safe | RC1-04, Part 6 | ✅ |
 | `process.platform === 'darwin'` guards | **Correctly branched, not blocking**: `index.ts:96` (quit-on-close only off-Mac — standard), `menu.ts:12` (`isMac` menu shape), `signingStatus.ts:31` (returns non-mac cleanly) | grep (20 hits, all conditional) | ✅ these are cross-platform *correctness*, not macOS lock-in |

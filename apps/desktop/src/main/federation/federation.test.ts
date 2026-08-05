@@ -263,9 +263,9 @@ describe('observability', () => {
     connectorsHealthy: 16,
     connectorsDegraded: 0,
     connectorsDown: 0,
-    syncDomains: 8,
+    syncRecords: 128,
     syncPending: 0,
-    syncOnline: true,
+    syncState: 'idle',
     apiReplicas: 3,
     apiHealthy: 3,
     apiUptimePct: 99.9,
@@ -287,13 +287,36 @@ describe('observability', () => {
     const o = buildObservability({
       ...base,
       connectorsDown: 1,
-      syncOnline: false,
+      syncState: 'offline',
       security: obs.securityEvents().map((e) => ({ ...e, severity: 'critical' as const })),
     });
     const byId = Object.fromEntries(o.subsystems.map((s) => [s.id, s.status]));
     expect(byId.connectors).toBe('down');
     expect(byId.sync).toBe('down');
     expect(o.criticalEvents).toBeGreaterThan(0);
+  });
+
+  it('takes sync down when the engine is failing and names the failure', async () => {
+    const o = buildObservability({ ...base, syncState: 'error', syncPending: 3 });
+    const sync = o.subsystems.find((s) => s.id === 'sync')!;
+    expect(sync.status).toBe('down');
+    expect(sync.detail).toContain('Sync failing');
+    expect(sync.detail).toContain('3');
+  });
+
+  it('degrades sync on a backlog while the engine is still healthy', async () => {
+    const o = buildObservability({ ...base, syncPending: 5 });
+    const sync = o.subsystems.find((s) => s.id === 'sync')!;
+    expect(sync.status).toBe('degraded');
+    expect(sync.metric).toBe(base.syncRecords);
+    expect(sync.unit).toBe('records');
+  });
+
+  it('explains a user pause rather than reporting a failure', async () => {
+    const o = buildObservability({ ...base, syncState: 'offline', syncPending: 2 });
+    const sync = o.subsystems.find((s) => s.id === 'sync')!;
+    expect(sync.status).toBe('down');
+    expect(sync.detail).toContain('Paused');
   });
 });
 

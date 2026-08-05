@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import type { EnterpriseModuleSummary, FavoriteItem, NpsOperationDto, PluginDto, RuntimeInstanceDto } from '@neuropause/shared';
+import type { EnterpriseModuleSummary, EnterpriseSearchHit, FavoriteItem, NpsOperationDto, PluginDto, RuntimeInstanceDto } from '@neuropause/shared';
 import { cn } from '@renderer/lib/cn';
 import { Icon, type IconName } from '@renderer/components/ui/Icon';
 import { Kbd } from '@renderer/components/ui/controls';
@@ -12,9 +12,13 @@ import { prefs, PrefKey } from '@renderer/lib/preferences';
 import { useShell } from '@renderer/state/ShellProvider';
 import { useTheme } from '@renderer/providers/ThemeProvider';
 import { SECTIONS } from './sections';
+import { useWorkspaceContexts } from '@renderer/state/WorkspaceContextProvider';
 import { BUSINESS_FAVORITE_KIND, moduleIdFromBusinessFavorite } from '@renderer/business/businessModel';
+import { setPendingSearchQuery } from '@renderer/search/searchHandoff';
+// Phase 6 Stage 4 — hand-off into the Workspace Assistant.
+import { setPendingAssistantQuery } from '@renderer/assistant/assistantHandoff';
 
-type GroupKey = 'Recent' | 'Applications' | 'Plugins' | 'Sessions' | 'Downloads' | 'Go to' | 'Commands';
+type GroupKey = 'Search' | 'Recent' | 'Applications' | 'Plugins' | 'Sessions' | 'Downloads' | 'Go to' | 'Commands';
 
 interface CommandItem {
   id: string;
@@ -70,6 +74,8 @@ export function CommandPalette(): JSX.Element {
   const [recents, setRecents] = useState<string[]>(() => prefs.read<string[]>(PrefKey.recentCommands, []));
   const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
   const [businessModules, setBusinessModules] = useState<EnterpriseModuleSummary[]>([]);
+  // Phase 6 Stage 3 — instant content results (debounced; isolated; never blocks the palette).
+  const [searchHits, setSearchHits] = useState<EnterpriseSearchHit[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -101,6 +107,28 @@ export function CommandPalette(): JSX.Element {
       active = false;
     };
   }, [commandOpen]);
+
+  const { workspaces, activeId, switchWorkspace } = useWorkspaceContexts();
+
+  // Debounced universal-search preview while typing (Phase 6 Stage 3). A failed
+  // or slow engine call degrades to no preview — the palette itself never breaks.
+  useEffect(() => {
+    if (!commandOpen || query.trim().length < 2) {
+      setSearchHits([]);
+      return;
+    }
+    let active = true;
+    const timer = setTimeout(() => {
+      void ipc.search
+        .enterprise({ text: query.trim(), limit: 4 })
+        .then((r) => { if (active) setSearchHits(r.hits.slice(0, 4)); })
+        .catch(() => { if (active) setSearchHits([]); });
+    }, 250);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [query, commandOpen]);
 
   // Every command the palette can run, across all domains.
   const all = useMemo<CommandItem[]>(() => {
@@ -157,6 +185,19 @@ export function CommandPalette(): JSX.Element {
       keywords: `go open ${sct.label}`,
       run: () => setSection(sct.id),
     }));
+
+    // Phase 6 Stage 1 — switch between local workspace contexts.
+    const workspaceCmds: CommandItem[] = workspaces
+      .filter((w) => w.id !== activeId)
+      .map((w) => ({
+        id: `wsc:${w.id}`,
+        group: 'Commands',
+        title: `Switch workspace: ${w.name}`,
+        subtitle: 'Workspace context',
+        icon: 'workspace',
+        keywords: `workspace switch context ${w.name}`,
+        run: () => void switchWorkspace(w.id),
+      }));
 
     const opsTabs: { tab: string; title: string; icon: IconName; kw: string }[] = [
       { tab: 'installed', title: 'Installed Apps', icon: 'package', kw: 'registry apps installed' },
@@ -261,8 +302,8 @@ export function CommandPalette(): JSX.Element {
       run: () => openBusiness(m.id),
     }));
 
-    return [...apps, ...plugins, ...sessions, ...downloads, ...sections, ...ops, ...conns, ...entNav, ...bizNav, ...entFavorites, ...commands];
-  }, [live, favorites, businessModules, source, setSource, openApp, openOperations, openEnterprise, openBusiness, openConnectors, setSection, toggleSidebar]);
+    return [...apps, ...plugins, ...sessions, ...downloads, ...sections, ...workspaceCmds, ...ops, ...conns, ...entNav, ...bizNav, ...entFavorites, ...commands];
+  }, [live, favorites, businessModules, workspaces, activeId, switchWorkspace, source, setSource, openApp, openOperations, openEnterprise, openBusiness, openConnectors, setSection, toggleSidebar]);
 
   // Empty query → Recent + navigation. Typing → fuzzy search across every domain.
   const groups = useMemo(() => {
@@ -275,6 +316,53 @@ export function CommandPalette(): JSX.Element {
       return out;
     }
     const out: { group: GroupKey; items: CommandItem[] }[] = [];
+
+    // Phase 6 Stage 3 — content results lead when typing: a hand-off into the
+    // full Search section, plus the debounced top hits from the live engine.
+    const SEARCH_HIT_ICON: Record<string, IconName> = { entity: 'doc', graph: 'grid', memory: 'memory', timeline: 'clock', federation: 'globe' };
+    const openSearch = (): void => {
+      setPendingSearchQuery(query);
+      setSection('search');
+    };
+    const searchItems: CommandItem[] = [
+      {
+        id: 'search:everywhere',
+        group: 'Search',
+        title: `Search everywhere for “${query.trim()}”`,
+        subtitle: 'Universal search · all indexes',
+        icon: 'search',
+        run: openSearch,
+      },
+      // Phase 6 Stage 4 — hand the typed request to the Workspace Assistant.
+      {
+        id: 'assistant:ask',
+        group: 'Search',
+        title: `Ask Assistant: “${query.trim()}”`,
+        subtitle: 'Workspace Assistant · grounded answer, actions gated by approval',
+        icon: 'sparkles',
+        run: () => {
+          setPendingAssistantQuery(query);
+          setSection('assistant');
+        },
+      },
+      ...searchHits.map((h): CommandItem => ({
+        id: `search:${h.source}:${h.id}`,
+        group: 'Search',
+        title: h.title,
+        subtitle: `${h.kind} · ${h.source}${h.connectorId ? ` · ${h.connectorId}` : ''}`,
+        icon: SEARCH_HIT_ICON[h.source] ?? 'search',
+        run:
+          h.source === 'memory'
+            ? () => setSection('memory')
+            : h.source === 'timeline'
+              ? () => setSection('opscenter')
+              : h.source === 'graph'
+                ? () => openEnterprise('relationship')
+                : openSearch,
+      })),
+    ];
+    out.push({ group: 'Search', items: searchItems });
+
     for (const group of FILTER_ORDER) {
       const items = all
         .filter((c) => c.group === group)
@@ -285,7 +373,7 @@ export function CommandPalette(): JSX.Element {
       if (items.length) out.push({ group, items });
     }
     return out;
-  }, [all, query, recents]);
+  }, [all, query, recents, searchHits, setSection, openEnterprise]);
 
   const flat = useMemo(() => groups.flatMap((g) => g.items), [groups]);
 
@@ -360,7 +448,7 @@ export function CommandPalette(): JSX.Element {
                 ref={inputRef}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search apps, plugins, sessions, commands…"
+                placeholder="Search everything — content, records, apps, commands…"
                 className="flex-1 bg-transparent text-md text-ink outline-none placeholder:text-faint"
                 spellCheck={false}
                 autoComplete="off"

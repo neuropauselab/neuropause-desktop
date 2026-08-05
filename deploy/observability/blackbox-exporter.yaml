@@ -1,0 +1,92 @@
+# NEMS Phase 5 — blackbox-exporter for external availability + latency SLIs.
+# ---------------------------------------------------------------------------
+# The backend does NOT emit a request-duration histogram (its /metrics is a
+# minimal registry of gauges/counters, and the app code is a Phase 1-3 artifact
+# that Phase 5 must not modify). External availability and latency are therefore
+# measured by probing the real HTTPS endpoint from inside the cluster. This is a
+# genuine SLI source (probe_success, probe_duration_seconds,
+# probe_ssl_earliest_cert_expiry), not a mock.
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blackbox-exporter
+  namespace: monitoring
+  labels: { app.kubernetes.io/name: blackbox-exporter, app.kubernetes.io/part-of: neuropause }
+data:
+  blackbox.yml: |
+    modules:
+      # Expect a 200 over TLSv1.2+ with certificate verification on.
+      http_2xx:
+        prober: http
+        timeout: 8s
+        http:
+          method: GET
+          valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+          valid_status_codes: [200]
+          fail_if_not_ssl: true
+          preferred_ip_protocol: ip4
+          tls_config:
+            insecure_skip_verify: false
+      # For default-deny checks: a path that must NOT reach the app should 404.
+      http_404:
+        prober: http
+        timeout: 8s
+        http:
+          method: GET
+          valid_status_codes: [404]
+          fail_if_not_ssl: true
+          preferred_ip_protocol: ip4
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: blackbox-exporter
+  namespace: monitoring
+  labels: { app.kubernetes.io/name: blackbox-exporter, app.kubernetes.io/part-of: neuropause }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: blackbox-exporter }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: blackbox-exporter }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: blackbox-exporter
+          image: quay.io/prometheus/blackbox-exporter:v0.25.0
+          args: ["--config.file=/etc/blackbox/blackbox.yml"]
+          ports:
+            - name: http
+              containerPort: 9115
+          resources:
+            requests: { cpu: 25m, memory: 32Mi }
+            limits:   { cpu: 100m, memory: 64Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - name: config
+              mountPath: /etc/blackbox
+              readOnly: true
+      volumes:
+        - name: config
+          configMap: { name: blackbox-exporter }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: blackbox-exporter
+  namespace: monitoring
+  labels: { app.kubernetes.io/name: blackbox-exporter, app.kubernetes.io/part-of: neuropause }
+spec:
+  selector: { app.kubernetes.io/name: blackbox-exporter }
+  ports:
+    - name: http
+      port: 9115
+      targetPort: http

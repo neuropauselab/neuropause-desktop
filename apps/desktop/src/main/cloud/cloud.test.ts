@@ -5,11 +5,9 @@ import { join } from 'node:path';
 import { TenancyStore } from './tenancy/tenancyStore';
 import { FederationStore } from './identity/federationStore';
 import { evaluateFederation, buildTestAssertion, type IdpAssertion } from './identity/federation';
-import { SyncStore } from './sync/syncStore';
-import { planSync } from './sync/syncEngine';
 import { ApiPlatformStore } from './apiplatform/apiPlatformStore';
 import { buildAdminOverview, buildComplianceReport, type AdminInput } from './admin/admin';
-import type { CloudRegionId, DataResidency, MfaPolicy, SsoConnection, SyncDomainState } from '@neuropause/shared';
+import type { CloudRegionId, DataResidency, MfaPolicy, SsoConnection } from '@neuropause/shared';
 
 // These suites exercise the DEMO-seeded store fixtures (sample tenants, SSO connections, deployments).
 // Demo seeds are off by default in production; enable them here so the fixtures exist. The honest
@@ -237,84 +235,6 @@ describe('FederationStore', () => {
     expect(next.required).toBe(true);
     expect(next.methods).toEqual(['webauthn']);
     expect(s.summary().mfaRequired).toBe(true);
-  });
-});
-
-/* ════════════════════════════ Cloud synchronization ═══════════════════════ */
-
-describe('sync engine (pure)', () => {
-  it('pushes pending, pulls remote, resolves conflicts server-side, advances version', () => {
-    const state: SyncDomainState = { domain: 'ai_memory', localVersion: 10, remoteVersion: 10, pendingChanges: 3, status: 'pending', lastSyncedAt: null, cursor: 'ai_memory@10' };
-    const result = planSync({
-      state,
-      localPending: 3,
-      remoteChanges: 2,
-      conflicts: [{ entityId: 'item-1', field: 'updatedAt', localValue: 'a', remoteValue: 'b' }],
-      now: Date.now(),
-    });
-    expect(result.pushed).toBe(3);
-    expect(result.pulled).toBe(2);
-    expect(result.fromVersion).toBe(10);
-    expect(result.toVersion).toBe(15);
-    expect(result.conflicts).toHaveLength(1);
-    expect(result.conflicts[0]?.resolution).toBe('remote');
-    expect(result.cursor).toBe('ai_memory@15');
-  });
-});
-
-describe('SyncStore', () => {
-  async function make(): Promise<SyncStore> {
-    const s = new SyncStore(join(dir, 'sync.json'));
-    await s.load();
-    openStores.push(s);
-    return s;
-  }
-
-  it('seeds all eight domains synced', async () => {
-    const s = await make();
-    const states = s.states_();
-    expect(states.length).toBe(8);
-    expect(states.every((x) => x.status === 'synced')).toBe(true);
-    expect(s.summary().domains).toBe(8);
-  });
-
-  it('records a local change as pending, then clears it on sync', async () => {
-    const s = await make();
-    s.recordLocalChange('templates', 2);
-    const before = s.states_().find((x) => x.domain === 'templates')!;
-    expect(before.pendingChanges).toBe(2);
-    expect(before.status).toBe('pending');
-    const result = s.syncDomain('templates');
-    expect('offline' in result).toBe(false);
-    const after = s.states_().find((x) => x.domain === 'templates')!;
-    expect(after.pendingChanges).toBe(0);
-    expect(after.status).toBe('synced');
-  });
-
-  it('queues sync while offline and resumes online', async () => {
-    const s = await make();
-    s.setOnline(false);
-    expect(s.summary().online).toBe(false);
-    s.recordLocalChange('governance', 1);
-    const offline = s.syncDomain('governance');
-    expect('offline' in offline).toBe(true);
-    s.setOnline(true);
-    const result = s.syncDomain('governance');
-    expect('offline' in result).toBe(false);
-  });
-
-  it('records a conflict when local and remote both changed', async () => {
-    const s = await make();
-    s.recordLocalChange('ai_memory', 1);
-    s.syncDomain('ai_memory'); // tick 0→1, remoteDelta>0 for this domain index
-    expect(s.listConflicts().length).toBeGreaterThanOrEqual(1);
-  });
-
-  it('runs a full sync and stamps lastFullSyncAt', async () => {
-    const s = await make();
-    const results = s.syncAll();
-    expect(results.length).toBe(8);
-    expect(s.summary().lastFullSyncAt).not.toBeNull();
   });
 });
 

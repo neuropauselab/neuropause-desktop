@@ -1,0 +1,28 @@
+# NEMS Phase 5 — ServiceMonitor for Cilium / Gateway metrics.
+# ---------------------------------------------------------------------------
+# HONEST CAVEAT: this only produces data if Cilium metrics are ENABLED on the
+# cluster (helm value `prometheus.enabled=true` on the Cilium install, exposing
+# a `cilium-agent`/`hubble-metrics` Service with a `metrics` port). On a stock
+# DOKS Cilium install that is off by default, so this ServiceMonitor is a no-op
+# until metrics are enabled - it will simply select nothing. It is committed so
+# that enabling Cilium metrics later requires no new object. Edge/gateway
+# availability does NOT depend on this: it is covered by the blackbox Probe.
+# ---------------------------------------------------------------------------
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cilium-gateway
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: neuropause
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames: ["kube-system"]
+  selector:
+    matchLabels:
+      k8s-app: cilium
+  endpoints:
+    - port: metrics
+      interval: 30s
+      honorLabels: true

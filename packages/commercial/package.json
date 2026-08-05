@@ -1,0 +1,33 @@
+{
+  "name": "@neuropause/commercial",
+  "version": "0.0.0-preview.1",
+  "private": true,
+  "description": "NeuroPause Enterprise Management System — Wave 13 Enterprise Commercial Platform. Composes Waves 1-12 (unchanged) into a commercial, multi-tenant SaaS product organizations can purchase, provision, operate, and scale: a commercial runtime + customer/tenant registry, multi-tenant provisioning (reusing Wave 6 federation), customer onboarding, a licensing platform, subscription representation, usage metering, feature flags, white-labeling, a deployment manager (reusing Wave 7 cloud-ops), an upgrade manager, marketplace commerce (reusing the Wave 6 federation marketplace), customer administration, a customer-success platform (reusing the Wave 8 business customer-success runtime), a support platform, observability (reusing the operations base package), commercial analytics (real data only), an enterprise API surface, and an SDK. Tenant runtime/provisioning/licensing/feature-flags/white-label/deployment-manager/upgrade-manager/marketplace-commerce/support/SDK/governance are LIVE-VERIFIED in-process; external payment/marketplace providers (Stripe/Razorpay/PayPal/Azure/AWS/GCP marketplaces) are ADAPTER-VERIFIED until configured; customers/revenue/contracts/billing/renewals/usage are BUSINESS-DATA-PENDING (never fabricated; analytics show real commercial data only); and live payment settlement, tax remittance, marketplace payouts, and banking reconciliation are REGULATED-EXTERNAL — represented only. Every commercial action is audited on the one chain with a replay id.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run" },
+  "dependencies": {
+    "@neuropause/runtime": "*",
+    "@neuropause/cloud-core": "*",
+    "@neuropause/shared-cloud": "*",
+    "@neuropause/security": "*",
+    "@neuropause/persistence": "*",
+    "@neuropause/connectors": "*",
+    "@neuropause/integrations": "*",
+    "@neuropause/ai-runtime": "*",
+    "@neuropause/nems": "*",
+    "@neuropause/connectivity": "*",
+    "@neuropause/intelligence": "*",
+    "@neuropause/automation": "*",
+    "@neuropause/operations": "*",
+    "@neuropause/execution": "*",
+    "@neuropause/federation": "*",
+    "@neuropause/cloudops": "*",
+    "@neuropause/business": "*",
+    "@neuropause/industry": "*",
+    "@neuropause/workplace": "*",
+    "@neuropause/workforce": "*"
+  },
+  "devDependencies": { "typescript": "^5.9.3", "vitest": "^1.6.1" }
+}

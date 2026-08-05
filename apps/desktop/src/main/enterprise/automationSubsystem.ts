@@ -72,6 +72,15 @@ export function getAutomationMonitor(): {
   return { completed: m.completed, failed: m.failed, paused: m.paused, running: m.running };
 }
 
+/**
+ * Phase 6 Stage 5 — recent run records for read-only composition (the
+ * recommendation engine's automation-opportunity rule and the assistant's Work
+ * Summary). The SAME bounded history the AutomationRunsRecent channel serves.
+ */
+export function getAutomationRunRecords(limit = 200): AutomationRunRecord[] {
+  return runHistory.list(limit);
+}
+
 export interface AutomationSubsystem {
   handlers: SecureHandlerDef[];
 }

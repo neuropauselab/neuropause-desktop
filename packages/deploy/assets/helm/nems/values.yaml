@@ -1,0 +1,38 @@
+# Default values for the NEMS chart. Overridden by values-<environment>.yaml.
+replicaCount: 2
+
+image:
+  repository: ghcr.io/neuropause/nems
+  tag: latest
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+ingress:
+  enabled: false
+  className: nginx
+  host: app.nems.example.com
+  tls: true
+
+resources:
+  requests: { cpu: 250m, memory: 512Mi }
+  limits: { cpu: 1000m, memory: 1Gi }
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+config:
+  nodeEnv: production
+  logLevel: info
+
+# Secrets are supplied externally (Vault / sealed-secrets). No secret values live in this chart.
+existingSecret: nems-secrets

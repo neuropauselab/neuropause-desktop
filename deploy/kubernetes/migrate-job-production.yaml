@@ -1,0 +1,162 @@
+# ---------------------------------------------------------------------------
+# NeuroPause backend - PRODUCTION database migration Job.
+#
+# Namespace nems-prod, DOKS cluster nems-prod-cluster
+# (nyc3, 7750e61a-2636-4220-85ea-aec4120bae40). This file describes REAL
+# infrastructure. It is the environment-specific sibling of the generic Job in
+# deploy/kubernetes/backend.yaml, which stays unchanged (Decision 2).
+#
+# Derived field-by-field from the LIVE Deployment nems-backend (generation 3)
+# and from deploy/kubernetes/backend-production.yaml @ 02a9bbe.
+#
+# CHANGED from the generic Job in deploy/kubernetes/backend.yaml, and why:
+#   name ......................... neuropause-backend-migrate ->
+#                                  nems-backend-migrate, matching the nems-
+#                                  convention used by every object in this
+#                                  cluster (Decision 1).
+#   pod labels ................... app.kubernetes.io/name is
+#                                  nems-backend-migrate, NOT nems-backend.
+#                                  The Service nems-backend selects exactly
+#                                  app.kubernetes.io/name=nems-backend; a
+#                                  migrate pod carrying that label would be
+#                                  enrolled as a production endpoint and sent
+#                                  live traffic on port 4000 that it cannot
+#                                  serve. Computed against the live Service in
+#                                  4.6g, not assumed.
+#   image ........................ digest-pinned DOCR reference, byte-identical
+#                                  to the digest both running backend pods are
+#                                  on. Same binary, same 12 migration files.
+#   envFrom ...................... 1 configMapRef + 1 secretRef -> 1 + 7.
+#                                  src/db/pool.ts calls loadEnv() at MODULE
+#                                  LOAD, so one missing required key kills
+#                                  dist/db/migrate.js before it ever opens a
+#                                  connection. Proven collision-free by
+#                                  computation: 35 distinct keys, 0 duplicates.
+#   DATABASE_URL ................. remapped to the DIRECT port. An explicit env
+#                                  entry takes precedence over envFrom, so this
+#                                  reads secret nems-postgres key
+#                                  DATABASE_URL_DIRECT (port 25060, database
+#                                  nems) instead of the PgBouncer pooler (port
+#                                  25061, database nems-pool). Transaction-mode
+#                                  pooling breaks session-scoped DDL state,
+#                                  cross-transaction advisory locks and
+#                                  server-side prepared statements.
+#   NODE_EXTRA_CA_CERTS .......... added. DO Managed PostgreSQL presents a
+#                                  per-project self-signed CA and
+#                                  pg-connection-string 2.14.0 aliases
+#                                  sslmode=require to verify-full, so the
+#                                  bundled Mozilla roots are not sufficient.
+#   imagePullSecrets ............. added: nems-docr-pull.
+#   serviceAccountName ........... added: nems-backend.
+#   automountServiceAccountToken . added: false. The migrator never calls the
+#                                  Kubernetes API.
+#   ttlSecondsAfterFinished ...... 600 -> 86400. DELIBERATE DEVIATION. At 600s
+#                                  the Job and its pod are garbage-collected
+#                                  ten minutes after completion, taking the
+#                                  logs with them. This run is evidence for
+#                                  Task 4.12 and must survive long enough to be
+#                                  collected.
+#   activeDeadlineSeconds ........ 900. DELIBERATE DEVIATION, absent from the
+#                                  generic Job. Measured SQL time for all 12
+#                                  migrations in the 4.6f rehearsal was 653 ms,
+#                                  so this is ~1400x headroom; it exists only
+#                                  to bound a hung connection, not normal work.
+#
+# UNCHANGED, and deliberately so:
+#   command ...................... ["node", "dist/db/migrate.js"] overrides the
+#                                  Dockerfile CMD, which is
+#                                  ["sh","-c","node dist/db/migrate.js && node
+#                                  dist/index.js"] and would otherwise start a
+#                                  second HTTP server inside a Job that then
+#                                  never exits.
+#   restartPolicy / backoffLimit . Never / 3. Retry is safe: migrate.ts records
+#                                  each applied file in schema_migrations and
+#                                  resumes from that ledger.
+#   securityContext .............. identical to the generic Job and to the live
+#                                  Deployment; required by Pod Security
+#                                  Admission on nems-prod, which is
+#                                  enforce=restricted, enforce-version=latest.
+#
+# NO elevated database credential is used. Secret nems-postgres-admin is
+# deliberately not referenced: the 4.6f rollback-safe rehearsal proved nems_app
+# alone created pgcrypto 1.4, citext 1.8 and pg_trgm 1.6 and applied all 12
+# migrations inside a single transaction, so elevation is not required.
+# ---------------------------------------------------------------------------
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nems-backend-migrate
+  namespace: nems-prod
+  labels:
+    app.kubernetes.io/name: nems-backend-migrate
+    app.kubernetes.io/part-of: neuropause
+    app.kubernetes.io/component: migrate
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 900
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nems-backend-migrate
+        app.kubernetes.io/part-of: neuropause
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      serviceAccountName: nems-backend
+      automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: nems-docr-pull
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: registry.digitalocean.com/neuropause033/backend@sha256:997f87373f557655728a8be64d84a299de7b2f0952f2e2c090a20d231d00bbe6
+          imagePullPolicy: IfNotPresent
+          command: ["node", "dist/db/migrate.js"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nems-postgres
+                  key: DATABASE_URL_DIRECT
+            - name: NODE_EXTRA_CA_CERTS
+              value: /etc/nems/pg-ca/ca-certificate.crt
+          envFrom:
+            - configMapRef: { name: nems-backend-config }
+            - secretRef:    { name: nems-embedding }
+            - secretRef:    { name: nems-jwt }
+            - secretRef:    { name: nems-oauth }
+            - secretRef:    { name: nems-postgres }
+            - secretRef:    { name: nems-qdrant }
+            - secretRef:    { name: nems-spaces-app }
+            - secretRef:    { name: nems-valkey }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits:   { cpu: 500m, memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: pg-ca
+              mountPath: /etc/nems/pg-ca
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: pg-ca
+          configMap:
+            name: nems-postgres-ca
+            items:
+              - key: ca-certificate.crt
+                path: ca-certificate.crt
+        - name: tmp
+          emptyDir: {}

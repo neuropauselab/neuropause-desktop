@@ -1,0 +1,110 @@
+# NEMS Phase 5 — SLI/SLO recording rules and multi-window burn-rate alerts.
+# ---------------------------------------------------------------------------
+# SLIs are computed from metrics that exist:
+#   * Availability SLI = fraction of successful edge blackbox probes.
+#   * Latency SLI      = fraction of edge probes with HTTP duration <= 0.5s.
+#   * App-success SLI  = fraction of backend responses that are not 5xx.
+#
+# SLO targets (see docs/operations/slo/SLO.md):
+#   Availability 99.9%   Latency 99.0% <= 0.5s   App-success 99.5%
+#
+# Burn-rate alerting follows the Google SRE multi-window method: a fast page
+# (2% of a 28d budget in 1h) and a slow ticket (5% in 6h). Error-budget and
+# 28d/30d reporting queries are in SLO.md (run ad hoc / in Grafana rather than as
+# expensive per-scrape recording rules).
+# ---------------------------------------------------------------------------
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: nems-slo
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: neuropause
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: nems.slo.sli
+      rules:
+        # --- availability error ratio over several windows ---
+        - record: nems:slo_edge_errors:ratio_rate5m
+          expr: 1 - avg_over_time(probe_success{tier="edge",service="nems-backend"}[5m])
+        - record: nems:slo_edge_errors:ratio_rate30m
+          expr: 1 - avg_over_time(probe_success{tier="edge",service="nems-backend"}[30m])
+        - record: nems:slo_edge_errors:ratio_rate1h
+          expr: 1 - avg_over_time(probe_success{tier="edge",service="nems-backend"}[1h])
+        - record: nems:slo_edge_errors:ratio_rate6h
+          expr: 1 - avg_over_time(probe_success{tier="edge",service="nems-backend"}[6h])
+
+        # --- latency SLI: record the per-sample "fast" bool, then average it ---
+        - record: nems:edge_probe_fast
+          expr: (probe_duration_seconds{tier="edge",service="nems-backend"} <= bool 0.5)
+        - record: nems:slo_edge_latency:ratio_rate30m
+          expr: avg_over_time(nems:edge_probe_fast[30m])
+        - record: nems:slo_edge_latency:ratio_rate6h
+          expr: avg_over_time(nems:edge_probe_fast[6h])
+
+        # --- application success ratio (non-5xx) ---
+        - record: nems:slo_app_errors:ratio_rate5m
+          expr: |
+            (sum(rate(neuropause_http_requests_total{status=~"5.."}[5m])) or vector(0))
+              / clamp_min(sum(rate(neuropause_http_requests_total[5m])), 0.001)
+        - record: nems:slo_app_errors:ratio_rate1h
+          expr: |
+            (sum(rate(neuropause_http_requests_total{status=~"5.."}[1h])) or vector(0))
+              / clamp_min(sum(rate(neuropause_http_requests_total[1h])), 0.001)
+        - record: nems:slo_app_errors:ratio_rate6h
+          expr: |
+            (sum(rate(neuropause_http_requests_total{status=~"5.."}[6h])) or vector(0))
+              / clamp_min(sum(rate(neuropause_http_requests_total[6h])), 0.001)
+
+    - name: nems.slo.burn
+      rules:
+        # Availability SLO 99.9% -> budget 0.001. Fast page: 14.4x burn.
+        - alert: SLOAvailabilityFastBurn
+          expr: |
+            nems:slo_edge_errors:ratio_rate5m > (14.4 * 0.001)
+            and nems:slo_edge_errors:ratio_rate1h > (14.4 * 0.001)
+          for: 2m
+          labels: { severity: critical, owner: platform-oncall, slo: availability }
+          annotations:
+            summary: "Availability error budget burning fast (14.4x)"
+            description: "Edge availability is burning the 99.9% SLO budget at >14.4x over 5m and 1h. At this rate ~2% of the 28d budget is gone in an hour."
+            threshold: "5m & 1h error ratio > 1.44%"
+            runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/backend-down.md"
+
+        # Slow ticket: 6x burn over 30m & 6h.
+        - alert: SLOAvailabilitySlowBurn
+          expr: |
+            nems:slo_edge_errors:ratio_rate30m > (6 * 0.001)
+            and nems:slo_edge_errors:ratio_rate6h > (6 * 0.001)
+          for: 15m
+          labels: { severity: warning, owner: platform-oncall, slo: availability }
+          annotations:
+            summary: "Availability error budget burning (6x)"
+            description: "Edge availability is burning the 99.9% SLO budget at >6x over 30m and 6h. Open a ticket and investigate before the budget is exhausted."
+            threshold: "30m & 6h error ratio > 0.6%"
+            runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/backend-down.md"
+
+        # App-success SLO 99.5% -> budget 0.005. Fast page: 14.4x.
+        - alert: SLOAppSuccessFastBurn
+          expr: |
+            nems:slo_app_errors:ratio_rate5m > (14.4 * 0.005)
+            and nems:slo_app_errors:ratio_rate1h > (14.4 * 0.005)
+          for: 2m
+          labels: { severity: critical, owner: platform-oncall, slo: app-success }
+          annotations:
+            summary: "Application error budget burning fast (14.4x)"
+            description: "The 5xx ratio is burning the 99.5% app-success SLO at >14.4x over 5m and 1h."
+            threshold: "5m & 1h 5xx ratio > 7.2%"
+            runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/backend-down.md"
+
+        # Latency SLO 99% <= 0.5s. Alert when the fast fraction dips.
+        - alert: SLOLatencyBudgetBurn
+          expr: nems:slo_edge_latency:ratio_rate30m < 0.99 and nems:slo_edge_latency:ratio_rate6h < 0.99
+          for: 15m
+          labels: { severity: warning, owner: platform-oncall, slo: latency }
+          annotations:
+            summary: "Latency SLO (99% <= 0.5s) at risk"
+            description: "The fraction of edge probes under 0.5s is {{ $value | humanizePercentage }} over 30m and 6h, below the 99% objective."
+            threshold: "fast-probe fraction < 99% over 30m & 6h"
+            runbook_url: "https://github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/high-latency.md"

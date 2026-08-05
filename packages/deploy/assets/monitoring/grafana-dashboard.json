@@ -1,0 +1,13 @@
+{
+  "title": "NEMS Platform Overview",
+  "schemaVersion": 39,
+  "editable": true,
+  "panels": [
+    { "id": 1, "title": "API request rate", "type": "timeseries", "datasource": "prometheus", "targets": [{ "expr": "sum(rate(nems_http_requests_total[5m]))" }] },
+    { "id": 2, "title": "API p95 latency", "type": "timeseries", "datasource": "prometheus", "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(nems_http_request_duration_seconds_bucket[5m])) by (le))" }] },
+    { "id": 3, "title": "Error rate", "type": "stat", "datasource": "prometheus", "targets": [{ "expr": "sum(rate(nems_http_requests_total{status=~\"5..\"}[5m]))" }] },
+    { "id": 4, "title": "Pod CPU", "type": "timeseries", "datasource": "prometheus", "targets": [{ "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"nems-production\"}[5m])) by (pod)" }] }
+  ],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" }
+}

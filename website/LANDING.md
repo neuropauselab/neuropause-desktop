@@ -26,7 +26,8 @@ Windows) · FAQ · CTA band · Footer.
 ## Copy stance
 Positions against "just another chatbot" — the operating-layer thesis in the
 hero, reinforced in the FAQ. Every claim is true to the shipped product (16
-connectors, on-device Ollama, permission-based tracking, encrypted local memory).
+connectors, on-device Ollama, permission-based tracking, local-first memory with
+OS-keychain-encrypted credentials).
 
 ## To host
 Any static host: Netlify/Vercel drop, GitHub Pages, Cloudflare Pages, or the

@@ -171,7 +171,14 @@ export type PlatformEventType =
   // P6.1 — high-privilege automation actions (confirmation-gated; audited on the one Timeline)
   | 'infrastructure.action_started'
   | 'infrastructure.action_completed'
-  | 'infrastructure.action_failed';
+  | 'infrastructure.action_failed'
+  // Phase 6 Stage 6 — Enterprise Intelligence Layer chain events (category 'enterprise').
+  // One `ins_…` correlation id threads detected → recommended → approval_requested →
+  // outcome_verified; approval/execution events already exist and join by id.
+  | 'insight.detected'
+  | 'insight.recommended'
+  | 'insight.approval_requested'
+  | 'insight.outcome_verified';
 /** Who or what caused the event. */
 export interface EventActor {
   kind: 'user' | 'system' | 'plugin' | 'connector';

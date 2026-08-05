@@ -1,0 +1,16 @@
+{
+  "name": "@neuropause/security",
+  "version": "0.0.0-preview.1",
+  "private": true,
+  "description": "NeuroPause Enterprise Identity, Security & Governance Platform (NCEA 14.0) — the one identity/authorization/policy/governance plane: identity registry, enterprise authentication factors (TOTP/PKCE/WebAuthn/tokens/recovery), sessions, RBAC+ABAC authorization, a centralized policy engine, tenant isolation, envelope encryption + key management, AI governance, compliance readiness, security primitives, and a signed tamper-evident audit — composed on the existing runtime, audit chain, and secret vault. Real crypto is VERIFIED; live enterprise IdPs, KMS/HSM, and certification are INFRA-PENDING (never fabricated).",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run" },
+  "dependencies": {
+    "@neuropause/runtime": "*",
+    "@neuropause/cloud-core": "*",
+    "@neuropause/shared-cloud": "*"
+  },
+  "devDependencies": { "typescript": "^5.9.3", "vitest": "^1.6.1" }
+}

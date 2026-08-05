@@ -1,4 +1,6 @@
 import { z } from 'zod';
+// Type-only (erased at compile time, so no runtime cycle with ../types).
+import type { ConflictStrategy, SyncEntityType } from '../types/sync';
 
 /**
  * Zod contracts for every IPC payload. The main process validates *all*
@@ -30,6 +32,64 @@ export const EmptyRequest = z.object({}).strict();
 
 // V4.2 — runtime launch-at-login toggle.
 export const SetLoginAtStartupRequest = z.object({ enabled: z.boolean() }).strict();
+
+// Phase 6 Stage 1 — Workspace Contexts (local desktop workspaces).
+export const WorkspaceTemplateIdSchema = z.enum(['blank', 'operations', 'enterprise', 'research']);
+export const WorkspaceCtxSnapshotSchema = z
+  .object({
+    activeSection: z.string().min(1).max(100),
+    tabs: z
+      .array(
+        z.object({
+          id: z.string().min(1).max(128),
+          appId: z.string().min(1).max(256),
+          title: z.string().max(300),
+          openedAt: z.number(),
+        }),
+      )
+      .max(200),
+    activeTabId: z.string().max(128).nullable(),
+  })
+  .strict();
+export const WorkspaceCtxBootstrapRequest = z.object({ legacySnapshot: z.unknown().optional() }).strict();
+export const WorkspaceCtxCreateRequest = z
+  .object({
+    name: z.string().min(1).max(60),
+    template: WorkspaceTemplateIdSchema,
+    color: z.string().max(32).optional(),
+  })
+  .strict();
+export const WorkspaceCtxRenameRequest = z
+  .object({ id: z.string().min(1).max(64), name: z.string().min(1).max(60) })
+  .strict();
+export const WorkspaceCtxDeleteRequest = z.object({ id: z.string().min(1).max(64) }).strict();
+export const WorkspaceCtxSwitchRequest = z.object({ id: z.string().min(1).max(64) }).strict();
+export const WorkspaceCtxUpdateSnapshotRequest = z
+  .object({ id: z.string().min(1).max(64), snapshot: WorkspaceCtxSnapshotSchema })
+  .strict();
+export type WorkspaceTemplateId = z.infer<typeof WorkspaceTemplateIdSchema>;
+export type WorkspaceCtxBootstrapRequest = z.infer<typeof WorkspaceCtxBootstrapRequest>;
+export type WorkspaceCtxCreateRequest = z.infer<typeof WorkspaceCtxCreateRequest>;
+export type WorkspaceCtxRenameRequest = z.infer<typeof WorkspaceCtxRenameRequest>;
+export type WorkspaceCtxDeleteRequest = z.infer<typeof WorkspaceCtxDeleteRequest>;
+export type WorkspaceCtxSwitchRequest = z.infer<typeof WorkspaceCtxSwitchRequest>;
+export type WorkspaceCtxUpdateSnapshotRequest = z.infer<typeof WorkspaceCtxUpdateSnapshotRequest>;
+/** Snapshot DTO as stored and returned (sanitized in the main process). */
+export type ShellSnapshotDto = z.infer<typeof WorkspaceCtxSnapshotSchema>;
+export interface WorkspaceContextRecordDto {
+  id: string;
+  name: string;
+  color: string;
+  template: WorkspaceTemplateId;
+  createdAt: number;
+  lastOpenedAt: number;
+  snapshot: ShellSnapshotDto;
+}
+export interface WorkspaceContextStateDto {
+  workspaces: WorkspaceContextRecordDto[];
+  activeId: string;
+  activeSnapshot: ShellSnapshotDto;
+}
 
 // V5.4 — Execute Engine.
 export const ExecuteRunRequest = z
@@ -683,7 +743,8 @@ export type EnterpriseTimelineReplayRequest = z.infer<typeof EnterpriseTimelineR
 
 /* ──────────────────── Daily Intelligence + Recommendations ───────────────── */
 
-const BriefingPeriodSchema = z.enum(['morning', 'evening', 'weekly', 'monthly', 'quarterly']);
+// Phase 6 Stage 5 — 'afternoon' added additively (the Afternoon Update).
+const BriefingPeriodSchema = z.enum(['morning', 'afternoon', 'evening', 'weekly', 'monthly', 'quarterly']);
 const RecommendationKindSchema = z.enum([
   'next_task',
   'stale_task',
@@ -691,6 +752,12 @@ const RecommendationKindSchema = z.enum([
   'pending_document',
   'unanswered',
   'upcoming_deadline',
+  // Phase 6 Stage 5 — additive productivity kinds.
+  'open_approval',
+  'connector_issue',
+  'automation_opportunity',
+  'followup_conversation',
+  'unanswered_email',
 ]);
 
 export const BriefingRequest = z.object({
@@ -732,6 +799,101 @@ export const EngineeringAiRequest = z.object({
   now: IsoString.optional(),
 });
 export type EngineeringAiRequest = z.infer<typeof EngineeringAiRequest>;
+
+/* ─────────────── Workspace Assistant (Phase 6 Stage 4, D-1 cluster) ─────────────── */
+
+export const AssistantModeSchema = z.enum(['ask', 'analyze', 'plan', 'execute', 'monitor']);
+
+export const AssistantUiContextSchema = z.object({
+  section: z.string().trim().max(60).optional(),
+  workspaceLabel: z.string().trim().max(120).optional(),
+  tabCount: z.number().int().min(0).max(10_000).optional(),
+  query: z.string().trim().max(400).optional(),
+});
+
+export const AssistantAskRequest = z.object({
+  text: z.string().trim().min(1).max(4000),
+  mode: AssistantModeSchema.optional(),
+  conversationId: z.string().trim().min(1).max(80).optional(),
+  workspaceId: z.string().trim().min(1).max(80).nullable().optional(),
+  uiContext: AssistantUiContextSchema.optional(),
+  now: IsoString.optional(),
+});
+export type AssistantAskRequest = z.infer<typeof AssistantAskRequest>;
+
+export const AssistantConversationsRequest = z.object({
+  workspaceId: z.string().trim().min(1).max(80).nullable().optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+});
+export type AssistantConversationsRequest = z.infer<typeof AssistantConversationsRequest>;
+
+export const AssistantConversationGetRequest = z.object({
+  conversationId: z.string().trim().min(1).max(80),
+});
+export type AssistantConversationGetRequest = z.infer<typeof AssistantConversationGetRequest>;
+
+export const AssistantConversationSaveRequest = z.object({
+  conversationId: z.string().trim().min(1).max(80),
+  title: z.string().trim().min(1).max(120).optional(),
+  pinned: z.boolean().optional(),
+});
+export type AssistantConversationSaveRequest = z.infer<typeof AssistantConversationSaveRequest>;
+
+export const AssistantConversationDeleteRequest = z.object({
+  conversationId: z.string().trim().min(1).max(80),
+});
+export type AssistantConversationDeleteRequest = z.infer<typeof AssistantConversationDeleteRequest>;
+
+export const AssistantConversationBranchRequest = z.object({
+  conversationId: z.string().trim().min(1).max(80),
+  messageId: z.string().trim().min(1).max(80),
+  now: IsoString.optional(),
+});
+export type AssistantConversationBranchRequest = z.infer<typeof AssistantConversationBranchRequest>;
+
+export const AssistantPlanDecideRequest = z.object({
+  conversationId: z.string().trim().min(1).max(80),
+  messageId: z.string().trim().min(1).max(80),
+  stepId: z.string().trim().min(1).max(80),
+  decision: z.enum(['approve', 'reject']),
+  note: z.string().trim().max(500).nullable().optional(),
+  now: IsoString.optional(),
+});
+export type AssistantPlanDecideRequest = z.infer<typeof AssistantPlanDecideRequest>;
+
+export const AssistantCancelRequest = z.object({
+  conversationId: z.string().trim().min(1).max(80),
+});
+export type AssistantCancelRequest = z.infer<typeof AssistantCancelRequest>;
+
+/* ───────── Notification Inbox + delivery preferences (Phase 6 Stage 5) ───────── */
+
+export const NotificationsListRequest = z.object({
+  limit: z.number().int().min(1).max(200).optional(),
+});
+export type NotificationsListRequest = z.infer<typeof NotificationsListRequest>;
+
+export const NotificationsMarkReadRequest = z.object({
+  /** Specific inbox ids, or 'all'. */
+  ids: z.union([z.literal('all'), z.array(z.string().trim().min(1).max(200)).min(1).max(200)]),
+});
+export type NotificationsMarkReadRequest = z.infer<typeof NotificationsMarkReadRequest>;
+
+const IntelligencePrioritySchema = z.enum(['low', 'normal', 'high', 'critical']);
+
+/** Explicit, bounded patch over the EXISTING delivery preference store. */
+export const NotificationsPrefsSetRequest = z.object({
+  enabled: z.boolean().optional(),
+  doNotDisturb: z.boolean().optional(),
+  minPriority: IntelligencePrioritySchema.optional(),
+  timezoneOffsetMinutes: z.number().int().min(-14 * 60).max(14 * 60).nullable().optional(),
+  morningBriefMinutes: z.number().int().min(0).max(1439).optional(),
+  afternoonUpdateMinutes: z.number().int().min(0).max(1439).optional(),
+  eveningSummaryMinutes: z.number().int().min(0).max(1439).optional(),
+  weeklyReportDay: z.number().int().min(0).max(6).optional(),
+  mutedSources: z.array(z.string().trim().min(1).max(80)).max(50).optional(),
+});
+export type NotificationsPrefsSetRequest = z.infer<typeof NotificationsPrefsSetRequest>;
 
 /* ────────────────────────────────── Traces ──────────────────────────────── */
 
@@ -1517,16 +1679,6 @@ const CloudTenantStatusZ = z.enum(['active', 'suspended', 'provisioning']);
 const CloudSsoProtocolZ = z.enum(['saml', 'oidc']);
 const CloudSsoStatusZ = z.enum(['active', 'disabled', 'error']);
 const CloudMfaMethodZ = z.enum(['totp', 'webauthn', 'sms']);
-const CloudSyncDomainZ = z.enum([
-  'knowledge_graph',
-  'ai_memory',
-  'timeline',
-  'governance',
-  'ai_workers',
-  'templates',
-  'connectors',
-  'marketplace',
-]);
 const CloudWebhookStatusZ = z.enum(['active', 'paused', 'failing']);
 
 const ByTenant = z.object({ tenantId: z.string().optional() });
@@ -1603,12 +1755,6 @@ export const CloudSetMfaRequest = z.object({
 });
 export type CloudSetMfaRequest = z.infer<typeof CloudSetMfaRequest>;
 
-export const CloudSyncDomainRequest = z.object({ domain: CloudSyncDomainZ });
-export type CloudSyncDomainRequest = z.infer<typeof CloudSyncDomainRequest>;
-
-export const CloudSyncSetOnlineRequest = z.object({ online: z.boolean() });
-export type CloudSyncSetOnlineRequest = z.infer<typeof CloudSyncSetOnlineRequest>;
-
 // --- Live cloud sync (real record-level sync) ---
 export const LiveSyncSetOnlineRequest = z.object({ online: z.boolean() });
 export type LiveSyncSetOnlineRequest = z.infer<typeof LiveSyncSetOnlineRequest>;
@@ -1627,11 +1773,47 @@ export interface LiveSyncStatus {
   cursor: number;
 }
 
-export const CloudSyncRecordChangeRequest = z.object({
-  domain: CloudSyncDomainZ,
-  count: z.number().int().min(1).max(100).optional(),
-});
-export type CloudSyncRecordChangeRequest = z.infer<typeof CloudSyncRecordChangeRequest>;
+/**
+ * One syncable entity type's real local state: outbound changes still queued on this
+ * device and records already reconciled into the local mirror. Projected from the
+ * engine's own queue + mirror — nothing is estimated.
+ */
+export interface LiveSyncEntityState {
+  entityType: SyncEntityType;
+  /** Local edits queued for the next push. */
+  pending: number;
+  /** Records held in the local mirror for the active org. */
+  synced: number;
+  /** Newest `updatedAt` across the queued and mirrored records, or null when empty. */
+  lastChangeAt: string | null;
+}
+
+/**
+ * A conflict the engine actually resolved during a sync cycle. `direction` records
+ * which leg surfaced it: `push` when the server reported a conflicting write,
+ * `pull` when an incoming change tied with the local copy.
+ */
+export interface LiveSyncConflict {
+  entityType: SyncEntityType;
+  entityId: string;
+  direction: 'push' | 'pull';
+  resolution: ConflictStrategy;
+  at: string;
+}
+
+/**
+ * The full live-sync view the Cloud → Sync panel renders: engine status, the active
+ * org and device the engine is bound to, the per-entity breakdown, and the bounded
+ * resolved-conflict log (newest first).
+ */
+export interface LiveSyncDetail {
+  status: LiveSyncStatus;
+  /** The org the engine is currently syncing, or null when signed out / no org selected. */
+  orgId: string | null;
+  deviceId: string;
+  entities: LiveSyncEntityState[];
+  conflicts: LiveSyncConflict[];
+}
 
 export const CloudSetPolicyEnabledRequest = z.object({ id: CloudId, enabled: z.boolean() });
 export type CloudSetPolicyEnabledRequest = z.infer<typeof CloudSetPolicyEnabledRequest>;
@@ -1895,6 +2077,22 @@ export const OnboardingCompleteStepRequest = z.object({
 });
 export type OnboardingCompleteStepRequest = z.infer<typeof OnboardingCompleteStepRequest>;
 
+// --- AI configuration (M6 writes) ---
+export const AiSetProviderRequest = z.object({ provider: z.enum(['claude', 'ollama']) }).strict();
+export type AiSetProviderRequest = z.infer<typeof AiSetProviderRequest>;
+export const AiSetModelRequest = z.object({ model: z.string() }).strict();
+export type AiSetModelRequest = z.infer<typeof AiSetModelRequest>;
+export const AiSetCredentialRequest = z
+  .object({ provider: z.literal('claude'), secret: z.string().min(1) })
+  .strict();
+export type AiSetCredentialRequest = z.infer<typeof AiSetCredentialRequest>;
+export const AiClearCredentialRequest = z.object({ provider: z.literal('claude') }).strict();
+export type AiClearCredentialRequest = z.infer<typeof AiClearCredentialRequest>;
+export const AiTestRequest = z
+  .object({ provider: z.enum(['claude', 'ollama']), secret: z.string().optional() })
+  .strict();
+export type AiTestRequest = z.infer<typeof AiTestRequest>;
+
 // --- Feedback ---
 export const FeedbackSubmitRequest = z.object({
   category: z.enum(['bug', 'idea', 'question', 'praise']),
@@ -2101,3 +2299,47 @@ export const EnterpriseIntelRootCauseRequest = z
   .object({ targetResourceId: z.string().min(1).optional(), windowMs: z.number().int().positive().max(2_592_000_000).optional() })
   .strict();
 export type EnterpriseIntelRootCauseRequest = z.infer<typeof EnterpriseIntelRootCauseRequest>;
+
+// Phase 6 Stage 7 — Enterprise Knowledge & Decision Platform (read-only kb:* cluster).
+// Inventory accepts optional class/authority/lifecycle filters + a text query the
+// search LENS joins over the EXISTING federated search; matrix takes no arguments
+// and impact a required asset ref; lineage an optional decision id.
+export const KbInventoryRequest = z
+  .object({
+    classId: z.string().trim().min(1).max(64).optional(),
+    authority: z.string().trim().min(1).max(64).optional(),
+    lifecycle: z.string().trim().min(1).max(32).optional(),
+    text: z.string().trim().max(200).optional(),
+  })
+  .strict();
+export type KbInventoryRequest = z.infer<typeof KbInventoryRequest>;
+/**
+ * A7 — `assetId` moved out of this schema and into `KbImpactRequest`. `kb:matrix`
+ * used to accept an optional assetId and, when it was present, return an impact
+ * analysis instead of the relationship matrix: one channel, two unrelated shapes.
+ * Impact analysis is now its own channel, so this request takes no arguments and a
+ * stray `{ assetId }` fails validation loudly instead of quietly swapping the
+ * response out from under the caller's type.
+ */
+export const KbMatrixRequest = z.object({}).strict();
+export type KbMatrixRequest = z.infer<typeof KbMatrixRequest>;
+export const KbImpactRequest = z
+  .object({ assetId: z.string().trim().min(1).max(256) })
+  .strict();
+export type KbImpactRequest = z.infer<typeof KbImpactRequest>;
+export const KbLineageRequest = z
+  .object({ decisionId: z.string().trim().min(1).max(128).optional() })
+  .strict();
+export type KbLineageRequest = z.infer<typeof KbLineageRequest>;
+
+// Phase 6 Stage 8 — Enterprise Automation Platform (read-only ap:* cluster).
+// Playbooks takes an optional id (detail); plan compiles one playbook into the
+// existing WorkflowSpec + policy/approval/rollback/simulation preview.
+export const ApPlaybooksRequest = z
+  .object({ id: z.string().trim().min(1).max(128).optional() })
+  .strict();
+export type ApPlaybooksRequest = z.infer<typeof ApPlaybooksRequest>;
+export const ApPlanRequest = z
+  .object({ playbookId: z.string().trim().min(1).max(128) })
+  .strict();
+export type ApPlanRequest = z.infer<typeof ApPlanRequest>;

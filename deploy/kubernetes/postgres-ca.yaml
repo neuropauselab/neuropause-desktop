@@ -1,0 +1,42 @@
+# DigitalOcean Managed PostgreSQL project CA for cluster nems-prod-pg.
+# PUBLIC certificate material - presented in every TLS handshake, not a secret.
+# Subject == Issuer (self-signed root), CA:TRUE pathlen:0.
+# SHA-256 fingerprint: 6C:1E:EF:6B:BB:BB:DD:29:F1:FE:CA:5B:1C:7B:A3:CE:F1:26:76:EC:F0:52:00:6B:C7:9E:8D:85:59:29:3A:DA
+# Retrieved with: doctl databases get-ca 406985e0-bb6d-49b2-bcae-6d996acd5843
+# Consumed via NODE_EXTRA_CA_CERTS in backend-production.yaml; without it the
+# backend fails TLS with SELF_SIGNED_CERT_IN_CHAIN and /health reports database down.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nems-postgres-ca
+  namespace: nems-prod
+  labels:
+    app.kubernetes.io/name: nems-postgres-ca
+    app.kubernetes.io/component: database-tls
+data:
+  ca-certificate.crt: |
+    -----BEGIN CERTIFICATE-----
+    MIIERDCCAqygAwIBAgIUc1WLVCZgO9jxqT34rotnFuWMBTwwDQYJKoZIhvcNAQEM
+    BQAwOjE4MDYGA1UEAwwvYjAyYzI1YjgtZWIwNy00ZjNhLWJhYTQtY2YwNGNiYWVm
+    MGQ5IFByb2plY3QgQ0EwHhcNMjYwNzI4MTkwMDM0WhcNMzYwNzI1MTkwMDM0WjA6
+    MTgwNgYDVQQDDC9iMDJjMjViOC1lYjA3LTRmM2EtYmFhNC1jZjA0Y2JhZWYwZDkg
+    UHJvamVjdCBDQTCCAaIwDQYJKoZIhvcNAQEBBQADggGPADCCAYoCggGBALs1CWyg
+    n0dPnug3Ydl39C2Y5Eah/BhXVnRE4nWFikPHekYx+y/UwNp52fYbk6//qP/7oV+6
+    AQ2F0ktsNnSi/0p2ieB8nczXxnrtC1ZKheqL9IFmBWeA4HRIv9ImrPuNTEhSB3VW
+    z0XSpMrBBL+pd6n700HY8+gYXoTEzUxQsYiQnxPIKjeoIqhbcWzBpVk5wxVuBp5U
+    9IyA5cT1+Rtefp0HybUaEgJquj06kHYh8lNQG96fTabUsIUfi4JBjfLTx//UifxG
+    +rOtMlr26zR21xFGgEpugR6bn362AncCZ0bFbgdxDdasRCAnzQzAPSWtiuXFrzCz
+    Ew9TQEMC3QQO2tG8kElZq/ovPub28YTF1Nn1M2ArkA+xUvawXQa/izHTPYdwPogb
+    QYf6dmZaeQ9JrppuiZWDd1695ROqJmigwaMb8M0quk1aOLDmNuw2+kU4Go2mXYi8
+    KzsMb+9BmbQ7+7ba1s2B1xigMtP0nWeRZT+Gst+2H7yyT4Gvgkqw81oujwIDAQAB
+    o0IwQDAdBgNVHQ4EFgQUvJnko6yiKJRyIlqEf+KgUvAaFYswEgYDVR0TAQH/BAgw
+    BgEB/wIBADALBgNVHQ8EBAMCAQYwDQYJKoZIhvcNAQEMBQADggGBAA7pWd5SFt26
+    vZCuvQCqW25No0SPy5w08TAKW3jqnQ+74HLdYdgvBcOCWQBvb0RNzf851slngOyg
+    GmK9ZVkfGXLmvDRsrAhp+jryUfdT97y6LLL4tVrXMbd/z8Qd/+kBhlg9csSLzPd1
+    oIyf5ggU3k5e43kIa8osfZqeJVzkoa+GNV2EhjKIpADd49wLN3crdfE7iqr3450d
+    pdeKoxYVA5RL7S5zLV3Rcq7jG/SarqOuYoshu6ZNWen+iHXzxQuNHyhmbd626T3i
+    QUff15g5DrOY0A5m/Cp5DvBKB0MVnv9h7m7ZRWr0uuZMdVTyIaf1Yw9gF4uP+R2E
+    6XiUxzYBYozITpM2AFRjBKJTg8Bxi7O5AdE+wcJPXVbVwz8qDG/Xx8ta47L8Sni7
+    K7ZIaApWA4twgW+9cKrYz76Ld9qo3a9eldN0q47hNld1WrSGzXpIIDqpXesD/jL+
+    OnlQ22znD37GgQ3HrCMRnmnybkR6iBhlXH0sWc2kK8H+4XCmRSqnIA==
+    -----END CERTIFICATE-----

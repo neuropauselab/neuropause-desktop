@@ -62,6 +62,7 @@ import type {
   SandboxWorkspaceDeleteRequest as TWorkspaceDelete,
   SandboxWorkspaceUpdateRequest as TWorkspaceUpdate,
 } from '@neuropause/shared';
+import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { SandboxWorkspaceStore } from './workspaceStore';
@@ -76,7 +77,7 @@ import { buildDashboard } from './dashboard';
 const log = createLogger('sandbox');
 
 export interface SandboxDeps {
-  broadcast: (channel: string, payload: unknown) => void;
+  broadcast: IpcBroadcaster;
   /** Directory the sandbox stores live under (e.g. <userData>/sandbox). */
   baseDir: string;
   now?: () => number;
