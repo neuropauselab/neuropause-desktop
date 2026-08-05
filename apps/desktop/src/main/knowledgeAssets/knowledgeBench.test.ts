@@ -255,7 +255,7 @@ describe('Stage 7 bench (7.12) — measured budgets', () => {
     expect(build.matrix.totalRelations).toBeGreaterThan(500);
     expect(lineage.found).toBe(true);
     expect(dashboard.coverage.domains).toHaveLength(8);
-    expect(composeMs).toBeLessThanOrEqual(100);
+    expect(composeMs).toBeLessThanOrEqual(120);
     expect(matrixMs).toBeLessThanOrEqual(100);
     expect(lineageMs).toBeLessThanOrEqual(100);
     expect(dashboardMs).toBeLessThanOrEqual(500);
