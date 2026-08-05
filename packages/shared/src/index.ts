@@ -71,6 +71,8 @@ export * from './types/adjustmentNotes';
 export * from './types/vendorPayments';
 export * from './types/crm';
 export * from './types/leads';
+// CRM → W2.1: opportunities — the qualified-deal pipeline between Leads and Quotes.
+export * from './types/opportunities';
 export * from './types/customers';
 export * from './types/quotes';
 export * from './types/orders';
