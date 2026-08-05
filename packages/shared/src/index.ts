@@ -63,6 +63,8 @@ export * from './types/generalLedger';
 export * from './types/bankReconciliation';
 export * from './types/budgets';
 export * from './types/vendorBills';
+// Finance → W1.9: fixed-asset register + exact straight-line depreciation.
+export * from './types/fixedAssets';
 export * from './types/crm';
 export * from './types/leads';
 export * from './types/customers';

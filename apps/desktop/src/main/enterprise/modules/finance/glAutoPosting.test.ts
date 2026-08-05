@@ -145,7 +145,7 @@ describe('GL auto-posting through the real modules', () => {
   it('seeds an empty chart, posts the issue entry, and books AR/Revenue/Tax', async () => {
     const record = invoiceRecord({ number: 'INV-7', customer: 'Acme', amount: 100, taxRate: 18, status: 'issued' });
     await handleInvoiceChangeForGl({ record }, ctx);
-    expect(accounts.store.count()).toBe(7); // seeded control chart (4 receivable-side + 3 payable-side controls since W1.8)
+    expect(accounts.store.count()).toBe(12); // seeded control chart (4 receivable + 3 payable since W1.8 + 5 asset-side since W1.9)
     const je = journal.store.list().find((r) => r.fields.entryNumber === 'JE-INV-INV-7');
     expect(je).toBeDefined();
     expect(glJournalEntryFromRecord(je!).posted).toBe(true);

@@ -96,6 +96,7 @@ import { bankStatementModule } from './modules/finance/bankStatementModuleInstan
 import { budgetModule } from './modules/finance/budgetModuleInstance';
 import { vendorBillModule } from './modules/finance/vendorBillModuleInstance';
 import { apAgingModule } from './modules/finance/apAgingModuleInstance';
+import { fixedAssetModule } from './modules/finance/fixedAssetModuleInstance';
 import { contactModule } from './modules/crm/contactModuleInstance';
 import { leadModule } from './modules/crm/leadModuleInstance';
 import { customerModule } from './modules/crm/customerModuleInstance';
@@ -282,6 +283,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(budgetModule); // Finance → Budgets (measured against posted books only)
   modules.registry.register(vendorBillModule); // Finance → Vendor Bills (payable mirror; books AP via GL seam)
   modules.registry.register(apAgingModule); // Finance → Payables Aging (open AP bucketed by days past due)
+  modules.registry.register(fixedAssetModule); // Finance → Fixed Assets (capitalization, depreciation, disposal)
   modules.registry.register(productModule); // Inventory → Products
   modules.registry.register(warehouseModule); // Inventory → Warehouses
   modules.registry.register(stockMovementModule); // Inventory → Stock Movements (ledger)

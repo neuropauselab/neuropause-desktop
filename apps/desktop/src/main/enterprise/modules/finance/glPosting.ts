@@ -20,6 +20,7 @@
  */
 import type { EnterpriseEntity } from '@neuropause/shared';
 import {
+  GL_ASSET_CONTROL_ACCOUNTS,
   GL_CONTROL_ACCOUNTS,
   GL_PAYABLE_CONTROL_ACCOUNTS,
   JOURNAL_ENTRIES_MODULE_ID,
@@ -60,6 +61,7 @@ async function seedControlAccountsIfEmpty(
   for (const control of [
     ...Object.values(GL_CONTROL_ACCOUNTS),
     ...Object.values(GL_PAYABLE_CONTROL_ACCOUNTS),
+    ...Object.values(GL_ASSET_CONTROL_ACCOUNTS),
   ]) {
     const v = accounts.hooks.validate({
       fields: { code: control.code, name: control.name, class: control.accountClass, currency: 'USD' },
@@ -82,7 +84,7 @@ async function seedControlAccountsIfEmpty(
  * derived entry whose lines cannot validate (missing control account in a
  * customized chart) is skipped — recorded nowhere, retried on the next event.
  */
-async function applyDerivedEntries(
+export async function applyGlDerivedEntries(
   entries: readonly GlDerivedEntry[],
   ctx: EnterpriseModuleActionContext,
 ): Promise<void> {
@@ -219,7 +221,7 @@ export async function handleInvoiceChangeForGl(
     sourceModule: event.record.moduleId,
     sourceRef: event.record.id,
   });
-  await applyDerivedEntries(decisions, ctx);
+  await applyGlDerivedEntries(decisions, ctx);
 }
 
 /**
@@ -287,7 +289,7 @@ export async function handleVendorBillChangeForGl(
       expected: glBillPaymentExpectedLines(bill.total),
     }),
   ];
-  await applyDerivedEntries(decisions, ctx);
+  await applyGlDerivedEntries(decisions, ctx);
 }
 
 /** Payment lifecycle → derived GL work. Called from the payment module's onChange. */
@@ -323,5 +325,5 @@ export async function handlePaymentChangeForGl(
     sourceModule: event.record.moduleId,
     sourceRef: event.record.id,
   });
-  await applyDerivedEntries(decisions, ctx);
+  await applyGlDerivedEntries(decisions, ctx);
 }
