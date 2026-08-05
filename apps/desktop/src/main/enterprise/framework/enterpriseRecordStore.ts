@@ -78,11 +78,23 @@ export class EnterpriseRecordStore extends EventEmitter {
     this.loaded = true;
   }
 
-  private async persist(): Promise<void> {
+ private async persist(): Promise<void> {
     const file: RecordFile = { moduleId: this.moduleId, records: [...this.records.values()] };
     const tmp = `${this.filePath}.tmp`;
     await fs.writeFile(tmp, JSON.stringify(file), { mode: 0o600 });
-    await fs.rename(tmp, this.filePath);
+    // Windows: antivirus/indexer can briefly hold the destination, failing rename
+    // with EPERM/EACCES/EBUSY. Retry with short backoff before giving up.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await fs.rename(tmp, this.filePath);
+        return;
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        const retryable = code === 'EPERM' || code === 'EACCES' || code === 'EBUSY';
+        if (!retryable || attempt >= 5) throw err;
+        await new Promise((r) => setTimeout(r, 20 * attempt));
+      }
+    }
   }
 
   private schedulePersist(): void {
