@@ -418,6 +418,133 @@ export function glDateInClosedPeriod(date: string, periods: readonly GlAccountin
   return periods.some((p) => p.periodKey === key && p.closed);
 }
 
+/* ── tax reporting: period snapshots derived from POSTED books only ── */
+
+/** The Tax Reports module id + record kind (the framework store key). */
+export const TAX_REPORTS_MODULE_ID = 'finance-tax-reports';
+export const TAX_REPORT_KIND = 'taxReport';
+
+/** One invoice's books-derived row in a period tax report. */
+export interface GlTaxReportLine {
+  invoiceNumber: string;
+  customer: string;
+  customerGstin: string;
+  /** Net amounts BOOKED for this invoice in the period (base + ADJ − REV). */
+  bookedRevenue: number;
+  bookedTax: number;
+  /** The invoice record's own declared amounts — the cross-check side. */
+  declaredSubtotal: number;
+  declaredTax: number;
+}
+
+export interface GlTaxReport {
+  periodKey: string;
+  /** Net credit to the Tax Payable control account across the period's posted entries. */
+  taxCollected: number;
+  /** Net credit to the Sales Revenue control account across the period's posted entries. */
+  taxableRevenue: number;
+  invoiceCount: number;
+  /** Σ declared invoice tax for the period's booked invoices. */
+  declaredTax: number;
+  /** taxCollected − declaredTax — non-zero is surfaced, never hidden. */
+  discrepancy: number;
+  lines: GlTaxReportLine[];
+  note: string;
+}
+
+/** Net credit booked to one account across posted entries dated in a period. */
+function periodNetCredit(
+  accountCode: string,
+  periodKey: string,
+  entries: readonly GlJournalEntry[],
+): number {
+  let net = 0;
+  for (const e of entries) {
+    if (!e.posted || glPeriodKeyForDate(e.entryDate) !== periodKey) continue;
+    for (const l of e.lines) if (l.account === accountCode) net += l.credit - l.debit;
+  }
+  return net;
+}
+
+/**
+ * Compute a period's tax report FROM THE POSTED BOOKS. Attribution is
+ * books-driven: an invoice appears when its auto-entries (`JE-INV-*`) posted
+ * with an entry date inside the period; its booked figures are the NET of those
+ * entries' Revenue/Tax lines (base + adjustments − reversal). The invoice
+ * record's own declared amounts sit beside the booked figures, and any
+ * difference between books-level tax and declared tax is reported as a
+ * discrepancy — surfaced, never reconciled silently. Report generation only;
+ * filing remains a human act.
+ */
+export function glTaxReportForPeriod(input: {
+  periodKey: string;
+  entries: readonly GlJournalEntry[];
+  invoices: readonly {
+    number: string;
+    customer: string;
+    customerGstin: string;
+    subtotal: number;
+    taxAmount: number;
+  }[];
+}): GlTaxReport {
+  const { periodKey } = input;
+  const taxCode = GL_CONTROL_ACCOUNTS.taxPayable.code;
+  const revenueCode = GL_CONTROL_ACCOUNTS.salesRevenue.code;
+  const taxCollected = periodNetCredit(taxCode, periodKey, input.entries);
+  const taxableRevenue = periodNetCredit(revenueCode, periodKey, input.entries);
+
+  const lines: GlTaxReportLine[] = [];
+  for (const inv of input.invoices) {
+    const number = inv.number.trim();
+    if (!number) continue;
+    const base = glInvoiceEntryNumber(number);
+    const related = input.entries.filter(
+      (e) =>
+        e.posted &&
+        glPeriodKeyForDate(e.entryDate) === periodKey &&
+        (e.entryNumber === base ||
+          e.entryNumber === `${base}-REV` ||
+          e.entryNumber.startsWith(`${base}-ADJ`)),
+    );
+    if (related.length === 0) continue;
+    let bookedRevenue = 0;
+    let bookedTax = 0;
+    for (const e of related) {
+      for (const l of e.lines) {
+        if (l.account === revenueCode) bookedRevenue += l.credit - l.debit;
+        if (l.account === taxCode) bookedTax += l.credit - l.debit;
+      }
+    }
+    lines.push({
+      invoiceNumber: number,
+      customer: inv.customer,
+      customerGstin: inv.customerGstin,
+      bookedRevenue,
+      bookedTax,
+      declaredSubtotal: inv.subtotal,
+      declaredTax: inv.taxAmount,
+    });
+  }
+  lines.sort((a, b) => (a.invoiceNumber < b.invoiceNumber ? -1 : 1));
+  const declaredTax = lines.reduce((s, l) => s + l.declaredTax, 0);
+  const discrepancy = Math.round((taxCollected - declaredTax) * 100) / 100;
+  const hasData = taxCollected !== 0 || taxableRevenue !== 0 || lines.length > 0;
+  return {
+    periodKey,
+    taxCollected,
+    taxableRevenue,
+    invoiceCount: lines.length,
+    declaredTax,
+    discrepancy,
+    lines,
+    note: hasData
+      ? discrepancy === 0
+        ? 'derived from real posted journal entries; books and declared invoice tax agree'
+        : `derived from real posted journal entries; books differ from declared invoice tax by ${discrepancy} — review before filing`
+      : 'no posted tax activity in this period — the report is empty, not fabricated',
+  };
+}
+
 /* ── auto-posting: the deterministic bookkeeping derived from commercial records ── */
 
 /**

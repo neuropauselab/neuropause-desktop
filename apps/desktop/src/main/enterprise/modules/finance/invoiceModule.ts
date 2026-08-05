@@ -66,6 +66,7 @@ export const INVOICE_DESCRIPTOR: EnterpriseModuleDescriptor = {
   fields: [
     { key: 'number', label: 'Invoice #', type: 'text', required: true, placeholder: 'INV-0001' },
     { key: 'customer', label: 'Customer', type: 'text', required: true, placeholder: 'Acme Inc.' },
+    { key: 'customerGstin', label: 'Customer GSTIN', type: 'text', column: false, placeholder: '22AAAAA0000A1Z5' },
     { key: 'amount', label: 'Subtotal', type: 'number', required: true, min: 0, format: 'currency' },
     { key: 'taxRate', label: 'Tax Rate %', type: 'number', min: 0, max: 100, column: false },
     { key: 'taxAmount', label: 'Tax', type: 'number', column: false, format: 'currency', readOnly: true },
