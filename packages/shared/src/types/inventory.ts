@@ -329,7 +329,7 @@ export interface LedgerBalance {
 export function deriveStockLedger(movements: StockMovement[]): LedgerBalance[] {
   const map = new Map<string, LedgerBalance>();
   const cell = (product: string, warehouse: string): LedgerBalance => {
-    const key = `${product} ${warehouse}`;
+    const key = `${product}\u0000${warehouse}`;
     let b = map.get(key);
     if (!b) {
       b = { product, warehouse, onHand: 0, reserved: 0, available: 0 };
