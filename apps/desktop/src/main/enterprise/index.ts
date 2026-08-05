@@ -91,6 +91,7 @@ import { ledgerAccountModule } from './modules/finance/ledgerAccountModuleInstan
 import { journalEntryModule } from './modules/finance/journalEntryModuleInstance';
 import { accountingPeriodModule } from './modules/finance/accountingPeriodModuleInstance';
 import { taxReportModule } from './modules/finance/taxReportModuleInstance';
+import { arAgingModule } from './modules/finance/arAgingModuleInstance';
 import { contactModule } from './modules/crm/contactModuleInstance';
 import { leadModule } from './modules/crm/leadModuleInstance';
 import { customerModule } from './modules/crm/customerModuleInstance';
@@ -272,6 +273,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(journalEntryModule); // Finance → Journal (GL double-entry)
   modules.registry.register(accountingPeriodModule); // Finance → Accounting Periods (close guard)
   modules.registry.register(taxReportModule); // Finance → Tax Reports (GST snapshots from posted books)
+  modules.registry.register(arAgingModule); // Finance → Receivables Aging (open AR bucketed by days past due)
   modules.registry.register(productModule); // Inventory → Products
   modules.registry.register(warehouseModule); // Inventory → Warehouses
   modules.registry.register(stockMovementModule); // Inventory → Stock Movements (ledger)

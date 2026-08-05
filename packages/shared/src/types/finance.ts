@@ -419,3 +419,89 @@ export function invoiceInsightsToKpis(insights: InvoiceModuleInsights): Executiv
     { key: 'inv-payment-time', label: 'Avg Payment Time', value: insights.averagePaymentDays, display: `${insights.averagePaymentDays}d`, deepLink: 'enterprise/modules' },
   ];
 }
+
+/* ── receivables aging (W1.5) — pure bucketing over open invoices ── */
+
+/** The Receivables Aging module id + record kind (the framework store key). */
+export const AR_AGING_MODULE_ID = 'finance-ar-aging';
+export const AR_AGING_KIND = 'arAgingReport';
+
+export type ArAgingBucket = 'current' | 'days1to30' | 'days31to60' | 'days61to90' | 'days90plus';
+
+/** One open invoice's row in an aging view. */
+export interface ArAgingRow {
+  invoiceNumber: string;
+  customer: string;
+  dueDate: string;
+  outstanding: number;
+  daysOverdue: number;
+  bucket: ArAgingBucket;
+}
+
+export interface ArAging {
+  totalOutstanding: number;
+  current: number;
+  days1to30: number;
+  days31to60: number;
+  days61to90: number;
+  days90plus: number;
+  invoiceCount: number;
+  rows: ArAgingRow[];
+}
+
+/** Bucket a days-overdue count (≤0 — including no due date — is current). */
+export function arAgingBucketFor(daysOverdue: number): ArAgingBucket {
+  if (daysOverdue <= 0) return 'current';
+  if (daysOverdue <= 30) return 'days1to30';
+  if (daysOverdue <= 60) return 'days31to60';
+  if (daysOverdue <= 90) return 'days61to90';
+  return 'days90plus';
+}
+
+/**
+ * Derive the receivables aging view at a moment in time. DETERMINISTIC and
+ * pure: only issued-side invoices with a real outstanding balance appear
+ * (drafts, cancelled, and settled invoices never age), days-overdue counts
+ * whole days past the due date at `nowMs`, and an invoice without a due date
+ * sits in `current` (it cannot be overdue by a date it does not have). Payables
+ * aging deliberately does not exist yet — there is no vendor-bill module to age
+ * — and is added with Procurement completion, not faked here.
+ */
+export function deriveArAging(invoices: readonly FinanceInvoice[], nowMs: number): ArAging {
+  const rows: ArAgingRow[] = [];
+  for (const inv of invoices) {
+    const effective = calculatePaymentStatus(inv, nowMs);
+    if (effective === 'draft' || effective === 'cancelled' || effective === 'paid') continue;
+    const outstanding = calculateOutstandingBalance(inv);
+    if (outstanding <= 0) continue;
+    let daysOverdue = 0;
+    if (inv.dueDate) {
+      const due = Date.parse(inv.dueDate);
+      if (Number.isFinite(due)) daysOverdue = Math.max(0, Math.floor((nowMs - due) / DAY_MS));
+    }
+    rows.push({
+      invoiceNumber: inv.number,
+      customer: inv.customer,
+      dueDate: inv.dueDate ?? '',
+      outstanding,
+      daysOverdue,
+      bucket: arAgingBucketFor(daysOverdue),
+    });
+  }
+  rows.sort((a, b) => b.daysOverdue - a.daysOverdue || b.outstanding - a.outstanding);
+  const sum = (bucket: ArAgingBucket): number =>
+    rows.filter((r) => r.bucket === bucket).reduce((s, r) => s + r.outstanding, 0);
+  const buckets = {
+    current: sum('current'),
+    days1to30: sum('days1to30'),
+    days31to60: sum('days31to60'),
+    days61to90: sum('days61to90'),
+    days90plus: sum('days90plus'),
+  };
+  return {
+    totalOutstanding: buckets.current + buckets.days1to30 + buckets.days31to60 + buckets.days61to90 + buckets.days90plus,
+    ...buckets,
+    invoiceCount: rows.length,
+    rows,
+  };
+}
