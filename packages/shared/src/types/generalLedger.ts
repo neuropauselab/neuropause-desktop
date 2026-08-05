@@ -352,3 +352,130 @@ export function glJournalSummaryFallback(entry: GlJournalEntry): {
       : 'Drafts may be edited freely; posting enforces the double-entry rule (debits must equal credits).',
   };
 }
+
+/* ── auto-posting: the deterministic bookkeeping derived from commercial records ── */
+
+/**
+ * The seeded control accounts auto-posting resolves against, by CODE. The seed
+ * creates them only into an EMPTY Chart of Accounts; a customized chart is never
+ * overwritten — an unresolvable code simply leaves the derived entry as a
+ * visible, unposted draft in the Journal.
+ */
+export const GL_CONTROL_ACCOUNTS = {
+  cash: { code: '1000', name: 'Cash', accountClass: 'asset' as GlAccountClass },
+  accountsReceivable: { code: '1100', name: 'Accounts Receivable', accountClass: 'asset' as GlAccountClass },
+  taxPayable: { code: '2100', name: 'Tax Payable', accountClass: 'liability' as GlAccountClass },
+  salesRevenue: { code: '4000', name: 'Sales Revenue', accountClass: 'revenue' as GlAccountClass },
+} as const;
+
+/** One derived journal entry the auto-posting layer should create (and post). */
+export interface GlDerivedEntry {
+  entryNumber: string;
+  memo: string;
+  lines: GlJournalLine[];
+  sourceModule: string;
+  sourceRef: string;
+}
+
+/** Deterministic entry numbers — the idempotency keys of auto-posting. */
+export function glInvoiceEntryNumber(invoiceNumber: string): string {
+  return `JE-INV-${invoiceNumber}`;
+}
+export function glPaymentEntryNumber(paymentNumber: string): string {
+  return `JE-PAY-${paymentNumber}`;
+}
+
+function reversalOf(entry: GlDerivedEntry, reason: string): GlDerivedEntry {
+  return {
+    entryNumber: `${entry.entryNumber}-REV`,
+    memo: `${reason} — reversal of ${entry.entryNumber}`,
+    lines: entry.lines.map((l) => ({ account: l.account, debit: l.credit, credit: l.debit })),
+    sourceModule: entry.sourceModule,
+    sourceRef: entry.sourceRef,
+  };
+}
+
+/**
+ * Decide the journal work an invoice's CURRENT state implies, given which
+ * auto-entry numbers already exist. Pure and idempotent: fired twice, the
+ * second call decides nothing. Issue (any post-draft, non-cancelled state)
+ * derives Dr AR / Cr Revenue (+ Cr Tax Payable when taxed); cancellation or
+ * deletion AFTER issue derives the mirrored reversal. Amount edits after issue
+ * do NOT retro-adjust the books in this increment — adjustment entries are the
+ * period-close scope (W1.3) and the gap is visible by comparing the entry to
+ * the invoice.
+ */
+export function glDecideInvoicePostings(input: {
+  invoiceId: string;
+  invoiceNumber: string;
+  status: string;
+  subtotal: number;
+  taxAmount: number;
+  total: number;
+  deleted: boolean;
+  existingEntryNumbers: ReadonlySet<string>;
+  sourceModule: string;
+}): GlDerivedEntry[] {
+  const number = input.invoiceNumber.trim();
+  if (!number || input.total <= 0) return [];
+  const base = glInvoiceEntryNumber(number);
+  const issued = !input.deleted && input.status !== 'draft' && input.status !== 'cancelled';
+  const revoked = input.deleted || input.status === 'cancelled';
+  const ar = GL_CONTROL_ACCOUNTS.accountsReceivable.code;
+  const revenue = GL_CONTROL_ACCOUNTS.salesRevenue.code;
+  const tax = GL_CONTROL_ACCOUNTS.taxPayable.code;
+  const entry: GlDerivedEntry = {
+    entryNumber: base,
+    memo: `Invoice ${number} issued`,
+    lines: [
+      { account: ar, debit: input.total, credit: 0 },
+      { account: revenue, debit: 0, credit: input.subtotal },
+      ...(input.taxAmount > 0 ? [{ account: tax, debit: 0, credit: input.taxAmount }] : []),
+    ],
+    sourceModule: input.sourceModule,
+    sourceRef: input.invoiceId,
+  };
+  const out: GlDerivedEntry[] = [];
+  if (issued && !input.existingEntryNumbers.has(base)) out.push(entry);
+  if (revoked && input.existingEntryNumbers.has(base) && !input.existingEntryNumbers.has(`${base}-REV`)) {
+    out.push(reversalOf(entry, input.deleted ? `Invoice ${number} deleted` : `Invoice ${number} cancelled`));
+  }
+  return out;
+}
+
+/**
+ * Decide the journal work a payment's CURRENT state implies. Cleared derives
+ * Dr Cash / Cr Accounts Receivable; void or deletion AFTER clearing derives the
+ * mirrored reversal. Pure and idempotent, same contract as invoices.
+ */
+export function glDecidePaymentPostings(input: {
+  paymentId: string;
+  paymentNumber: string;
+  status: string;
+  amount: number;
+  deleted: boolean;
+  existingEntryNumbers: ReadonlySet<string>;
+  sourceModule: string;
+}): GlDerivedEntry[] {
+  const number = input.paymentNumber.trim();
+  if (!number || input.amount <= 0) return [];
+  const base = glPaymentEntryNumber(number);
+  const cleared = !input.deleted && input.status === 'cleared';
+  const revoked = input.deleted || input.status === 'void';
+  const entry: GlDerivedEntry = {
+    entryNumber: base,
+    memo: `Payment ${number} cleared`,
+    lines: [
+      { account: GL_CONTROL_ACCOUNTS.cash.code, debit: input.amount, credit: 0 },
+      { account: GL_CONTROL_ACCOUNTS.accountsReceivable.code, debit: 0, credit: input.amount },
+    ],
+    sourceModule: input.sourceModule,
+    sourceRef: input.paymentId,
+  };
+  const out: GlDerivedEntry[] = [];
+  if (cleared && !input.existingEntryNumbers.has(base)) out.push(entry);
+  if (revoked && input.existingEntryNumbers.has(base) && !input.existingEntryNumbers.has(`${base}-REV`)) {
+    out.push(reversalOf(entry, input.deleted ? `Payment ${number} deleted` : `Payment ${number} voided`));
+  }
+  return out;
+}

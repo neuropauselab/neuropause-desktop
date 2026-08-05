@@ -43,6 +43,7 @@ import {
   defineEnterpriseModule,
   type EnterpriseModule,
 } from '../../framework';
+import { handleInvoiceChangeForGl } from './glPosting';
 
 /** The declarative description of an invoice — drives store, CRUD, and the UI. */
 export const INVOICE_DESCRIPTOR: EnterpriseModuleDescriptor = {
@@ -184,6 +185,12 @@ export function createInvoiceModule(storePath: string, aiRunner?: InvoiceAiRunne
           result.values.status = deriveStoredInvoiceStatus(invoice.status, invoice);
         }
         return result;
+      },
+      // Bookkeeping is derived, never manual: issuing, cancelling, or deleting an
+      // invoice flows into the General Ledger through the idempotent auto-posting
+      // seam (a no-op when the GL modules are not wired, e.g. module-local tests).
+      onChange: async (event, ctx) => {
+        await handleInvoiceChangeForGl(event, ctx);
       },
       summarize: async (record): Promise<EnterpriseRecordSummary> => {
         const invoice = invoiceFromRecord(record);
