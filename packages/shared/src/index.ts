@@ -73,6 +73,8 @@ export * from './types/crm';
 export * from './types/leads';
 // CRM → W2.1: opportunities — the qualified-deal pipeline between Leads and Quotes.
 export * from './types/opportunities';
+// CRM → W2.2: activities — the sales activity stream (calls/emails/meetings/tasks/notes).
+export * from './types/activities';
 export * from './types/customers';
 export * from './types/quotes';
 export * from './types/orders';

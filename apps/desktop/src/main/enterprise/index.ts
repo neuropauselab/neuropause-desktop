@@ -104,6 +104,7 @@ import { contactModule } from './modules/crm/contactModuleInstance';
 import { leadModule } from './modules/crm/leadModuleInstance';
 import { customerModule } from './modules/crm/customerModuleInstance';
 import { opportunityModule } from './modules/crm/opportunityModuleInstance';
+import { activityModule } from './modules/crm/activityModuleInstance';
 import { quoteModule } from './modules/sales/quoteModuleInstance';
 import { orderModule } from './modules/sales/orderModuleInstance';
 import { productModule } from './modules/inventory/productModuleInstance';
@@ -276,6 +277,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(leadModule); // CRM → Leads
   modules.registry.register(customerModule); // CRM → Customers
   modules.registry.register(opportunityModule); // CRM → Opportunities (qualified-deal pipeline)
+  modules.registry.register(activityModule); // CRM → Activities (calls/emails/meetings/tasks/notes stream)
   modules.registry.register(quoteModule); // Sales → Quotes
   modules.registry.register(orderModule); // Sales → Orders (conversion target)
   modules.registry.register(paymentModule); // Finance → Payments
