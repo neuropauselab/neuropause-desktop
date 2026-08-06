@@ -1,0 +1,20 @@
+/**
+ * The process-wide HR module singletons — bind the Electron-free modules to
+ * `userData` (via the framework's canonical path), mirroring the
+ * `*Instances.ts` pattern. Payroll reads the employee store; its GL posting
+ * goes through the runtime action context (the W1 seam).
+ */
+import { app } from 'electron';
+import { EMPLOYEES_MODULE_ID, PAYROLL_RUNS_MODULE_ID } from '@neuropause/shared';
+import { enterpriseModuleStorePath } from '../../framework';
+import { createEmployeeModule } from './employeeModule';
+import { createPayrollRunModule } from './payrollRunModule';
+
+const store = (id: string): string => enterpriseModuleStorePath(app.getPath('userData'), id);
+
+export const employeeModule = createEmployeeModule(store(EMPLOYEES_MODULE_ID));
+
+export const payrollRunModule = createPayrollRunModule(
+  store(PAYROLL_RUNS_MODULE_ID),
+  employeeModule.store,
+);

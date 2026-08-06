@@ -153,6 +153,7 @@ import {
 } from './modules/manufacturing/manufacturingInstances';
 import { bomExplosionModule } from './modules/manufacturing/bomExplosionModuleInstance';
 import { billingRunModule, projectModule, projectTaskModule, timeEntryModule } from './modules/projects/projectsInstances';
+import { employeeModule, payrollRunModule } from './modules/hr/hrInstances';
 import {
   assetCategoryModule,
   assetModule,
@@ -341,6 +342,8 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(projectTaskModule); // Projects → Tasks (the kanban board)
   modules.registry.register(timeEntryModule); // Projects → Time Entries (billable record)
   modules.registry.register(billingRunModule); // Projects → Billing Runs (time → real W1 invoices)
+  modules.registry.register(employeeModule); // HR → Employees (work-scoped, cycle-guarded org chain)
+  modules.registry.register(payrollRunModule); // HR → Payroll Runs (GL-posted accruals)
   modules.registry.register(productionOrderModule); // Manufacturing → Production Orders
   modules.registry.register(workCenterModule); // Manufacturing → Work Centers
   modules.registry.register(machineModule); // Manufacturing → Machines

@@ -101,6 +101,8 @@ export * from './types/bomExplosion';
 export * from './types/projects';
 // Projects → W4.2: time entries + billing runs — unbilled time into real W1 invoices.
 export * from './types/projectBilling';
+// HR → W4.3/W4.4: employees + payroll runs — work-scoped records and GL-posted accruals.
+export * from './types/hr';
 export * from './types/customers';
 export * from './types/quotes';
 export * from './types/orders';
