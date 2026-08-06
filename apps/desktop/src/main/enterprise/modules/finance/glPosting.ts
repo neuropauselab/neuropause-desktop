@@ -31,6 +31,7 @@ import {
   VENDOR_BILLS_MODULE_ID,
   calculateInvoiceAmount,
   calculateTaxAmount,
+  cashRevaluationLines,
   realizedPayableFxLines,
   realizedReceivableFxLines,
   reverseFxLines,
@@ -498,6 +499,22 @@ export async function handlePaymentChangeForGl(
  * record's stored deltas drive the lines; deterministic entry numbers mean a
  * re-fired change never double-posts. A zero-exposure revaluation posts nothing.
  */
+/** Parse the stored cash-revaluation items into {accountCode, delta} adjustments (W6-C1). */
+function parseFxCashAdjustments(raw: unknown): Array<{ accountCode: string; delta: number }> {
+  try {
+    const arr: unknown = JSON.parse(str(raw));
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .map((x) => {
+        const item = (x ?? {}) as { account?: unknown; delta?: unknown };
+        return { accountCode: str(item.account), delta: Number(item.delta ?? 0) };
+      })
+      .filter((a) => a.accountCode !== '' && a.delta !== 0);
+  } catch {
+    return [];
+  }
+}
+
 export async function handleFxRevaluationChangeForGl(
   event: { record: EnterpriseEntity },
   ctx: EnterpriseModuleActionContext,
@@ -513,7 +530,15 @@ export async function handleFxRevaluationChangeForGl(
     payableCode: GL_PAYABLE_CONTROL_ACCOUNTS.accountsPayable.code,
     fxCode: FX_UNREALIZED_ACCOUNT.code,
   });
-  if (revalLines.length === 0) return; // no FX exposure — nothing to post
+  // W6-C1: append foreign-cash revaluation lines from the record's stored per-account
+  // adjustments, so ONE period-end entry covers AR + AP + foreign cash (all balancing to
+  // 7811) and reverses as one.
+  const cashLines = cashRevaluationLines({
+    adjustments: parseFxCashAdjustments(f.cashItems),
+    fxCode: FX_UNREALIZED_ACCOUNT.code,
+  });
+  const allLines = [...revalLines, ...cashLines];
+  if (allLines.length === 0) return; // no FX exposure — nothing to post
   await ensureUnrealizedFxAccount(ctx);
   const period = str(f.period);
   const entries: GlDerivedEntry[] = [
@@ -521,7 +546,7 @@ export async function handleFxRevaluationChangeForGl(
       entryNumber: str(f.revalEntryNumber),
       memo: `Unrealized FX revaluation ${period}`,
       entryDate: str(f.revalDate),
-      lines: revalLines,
+      lines: allLines,
       sourceModule: event.record.moduleId,
       sourceRef: event.record.id,
     },
@@ -529,7 +554,7 @@ export async function handleFxRevaluationChangeForGl(
       entryNumber: str(f.reversalEntryNumber),
       memo: `Reversal of unrealized FX revaluation ${period}`,
       entryDate: str(f.reversalDate),
-      lines: reverseFxLines(revalLines),
+      lines: reverseFxLines(allLines),
       sourceModule: event.record.moduleId,
       sourceRef: event.record.id,
     },

@@ -29,10 +29,15 @@ import {
   FX_FUNCTIONAL_CURRENCY,
   FX_REVALUATION_MODULE_ID,
   FX_REVALUATION_KIND,
+  GL_CONTROL_ACCOUNTS,
+  deriveCashRevaluation,
   derivePayableRevaluation,
   deriveReceivableRevaluation,
   exchangeRateFromRecord,
+  glAccountForeignTotals,
+  glAccountFromRecord,
   glFxRevaluationEntryNumber,
+  glJournalEntryFromRecord,
   glNextPeriodKey,
   glPeriodBounds,
   glPeriodFromRecord,
@@ -67,10 +72,12 @@ export const FX_REVALUATION_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'functionalCurrency', label: 'Functional Ccy', type: 'text', readOnly: true, column: false },
     { key: 'receivableDelta', label: 'AR Adjustment', type: 'number', readOnly: true, format: 'currency', default: 0 },
     { key: 'payableDelta', label: 'AP Adjustment', type: 'number', readOnly: true, format: 'currency', default: 0, column: false },
+    { key: 'cashDelta', label: 'Cash Adjustment', type: 'number', readOnly: true, format: 'currency', default: 0, column: false },
     { key: 'unrealizedGainLoss', label: 'Unrealized G/L', type: 'number', readOnly: true, format: 'currency', default: 0 },
     { key: 'revaluedCount', label: 'Items Revalued', type: 'number', readOnly: true, default: 0 },
     { key: 'skippedNoRate', label: 'Skipped (no rate)', type: 'number', readOnly: true, default: 0, column: false },
     { key: 'items', label: 'Audit Trail', type: 'textarea', readOnly: true, column: false },
+    { key: 'cashItems', label: 'Cash Audit Trail', type: 'textarea', readOnly: true, column: false },
     { key: 'revalEntryNumber', label: 'Revaluation JE', type: 'text', readOnly: true, column: false },
     { key: 'reversalEntryNumber', label: 'Reversal JE', type: 'text', readOnly: true, column: false },
     { key: 'note', label: 'Note', type: 'textarea', readOnly: true, column: false },
@@ -96,6 +103,8 @@ export function createFxRevaluationModule(
   exchangeRateStore: EnterpriseRecordStore,
   accountingPeriodStore: EnterpriseRecordStore,
   vendorBillStore?: EnterpriseRecordStore,
+  accountStore?: EnterpriseRecordStore,
+  journalStore?: EnterpriseRecordStore,
 ): EnterpriseModule {
   const store = new EnterpriseRecordStore(storePath, FX_REVALUATION_MODULE_ID, FX_REVALUATION_KIND);
   return defineEnterpriseModule({
@@ -136,9 +145,38 @@ export function createFxRevaluationModule(
           ? vendorBillStore.list().filter((r) => r.status !== 'deleted').map(vendorBillFromRecord)
           : [];
         const payable = derivePayableRevaluation({ bills, rates, asOfDate: revalDate, functionalCurrency: FX_FUNCTIONAL_CURRENCY });
-        const revaluedCount = reval.revaluedCount + payable.revaluedCount;
-        const skippedNoRate = reval.skippedNoRate + payable.skippedNoRate;
-        const combinedGl = Math.round((reval.unrealizedGainLoss + payable.unrealizedGainLoss) * 100) / 100;
+        // W6-C1: revalue foreign CASH/bank accounts from their own-currency balances,
+        // derived straight from the posted ledger (single source of truth). Needs both the
+        // accounts + journal stores; without them (receivables-only unit tests) cash is empty.
+        const cashAccounts: Array<{ account: string; currency: string; foreignBalance: number; functionalBalance: number }> = [];
+        if (accountStore && journalStore) {
+          const posted = journalStore
+            .list()
+            .filter((r) => r.status !== 'deleted')
+            .map(glJournalEntryFromRecord)
+            .filter((e) => e.posted);
+          for (const rec of accountStore.list()) {
+            if (rec.status === 'deleted') continue;
+            const account = glAccountFromRecord(rec);
+            const tag = str(rec.fields.cashFlowCategory).trim().toLowerCase();
+            // Cash-account test mirrors the certified cashFlowModule: an explicit 'cash'
+            // tag, or the seeded cash control (1000) when untagged/auto.
+            const isCash = tag === 'cash' || ((tag === '' || tag === 'auto') && account.code === GL_CONTROL_ACCOUNTS.cash.code);
+            if (!isCash) continue;
+            const currency = (account.currency || FX_FUNCTIONAL_CURRENCY).toUpperCase();
+            if (currency === FX_FUNCTIONAL_CURRENCY) continue; // only foreign cash carries FX exposure
+            cashAccounts.push({
+              account: account.code,
+              currency,
+              foreignBalance: glAccountForeignTotals(account.code, posted).balance,
+              functionalBalance: account.balance,
+            });
+          }
+        }
+        const cash = deriveCashRevaluation({ accounts: cashAccounts, rates, asOfDate: revalDate, functionalCurrency: FX_FUNCTIONAL_CURRENCY });
+        const revaluedCount = reval.revaluedCount + payable.revaluedCount + cash.revaluedCount;
+        const skippedNoRate = reval.skippedNoRate + payable.skippedNoRate + cash.skippedNoRate;
+        const combinedGl = Math.round((reval.unrealizedGainLoss + payable.unrealizedGainLoss + cash.unrealizedGainLoss) * 100) / 100;
         const priorCount = store.list().filter((r) => str(r.fields.period) === period).length;
 
         result.values.period = period;
@@ -148,18 +186,20 @@ export function createFxRevaluationModule(
         result.values.functionalCurrency = FX_FUNCTIONAL_CURRENCY;
         result.values.receivableDelta = reval.receivableDelta;
         result.values.payableDelta = payable.payableDelta;
+        result.values.cashDelta = cash.cashDelta;
         result.values.unrealizedGainLoss = combinedGl;
         result.values.revaluedCount = revaluedCount;
         result.values.skippedNoRate = skippedNoRate;
         result.values.items = JSON.stringify([...reval.items, ...payable.items]);
+        result.values.cashItems = JSON.stringify(cash.items);
         result.values.revalEntryNumber = glFxRevaluationEntryNumber(period);
         result.values.reversalEntryNumber = `${glFxRevaluationEntryNumber(period)}-REV`;
         result.values.note =
           revaluedCount === 0
             ? skippedNoRate > 0
               ? `${skippedNoRate} open foreign-currency item(s) had no ${period}-end rate — none revalued; add period-end rates and regenerate`
-              : `no open foreign-currency receivables or payables — nothing to revalue for ${period}`
-            : `revalued ${reval.revaluedCount} receivable(s) + ${payable.revaluedCount} payable(s) at the ${period}-end rate; unrealized ` +
+              : `no open foreign-currency receivables, payables or cash — nothing to revalue for ${period}`
+            : `revalued ${reval.revaluedCount} receivable(s) + ${payable.revaluedCount} payable(s) + ${cash.revaluedCount} cash account(s) at the ${period}-end rate; unrealized ` +
               `${combinedGl >= 0 ? 'gain' : 'loss'} ${money(Math.abs(combinedGl))} posts to 7811 and reverses on ${reversalDate}` +
               (skippedNoRate > 0 ? `; ${skippedNoRate} skipped (no ${period}-end rate)` : '') +
               '.';
