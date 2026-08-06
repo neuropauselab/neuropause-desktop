@@ -151,6 +151,7 @@ import {
   costingModule,
   scheduleProposalModule,
 } from './modules/manufacturing/manufacturingInstances';
+import { bomExplosionModule } from './modules/manufacturing/bomExplosionModuleInstance';
 import {
   assetCategoryModule,
   assetModule,
@@ -334,6 +335,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(cycleCountModule); // Warehouse → Cycle Counts
   modules.registry.register(stockAdjustmentModule); // Warehouse → Stock Adjustments
   modules.registry.register(bomModule); // Manufacturing → Bill of Materials
+  modules.registry.register(bomExplosionModule); // Manufacturing → BOM Explosions (multi-level requirements)
   modules.registry.register(productionOrderModule); // Manufacturing → Production Orders
   modules.registry.register(workCenterModule); // Manufacturing → Work Centers
   modules.registry.register(machineModule); // Manufacturing → Machines

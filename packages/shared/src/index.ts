@@ -95,6 +95,8 @@ export * from './types/lots';
 export * from './types/reservations';
 // Inventory → W3.5: valuation — immutable standard-cost registers over the ledger.
 export * from './types/inventoryValuation';
+// Manufacturing → W3.6: BOM explosion — multi-level requirements with cycle detection.
+export * from './types/bomExplosion';
 export * from './types/customers';
 export * from './types/quotes';
 export * from './types/orders';

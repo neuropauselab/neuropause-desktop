@@ -58,6 +58,7 @@ manufacturing-events,Manufacturing,manufacturingEvent,14,3,Enterprise Ready,7.14
 manufacturing-machines,Manufacturing,machine,7,3,Enterprise Ready,6.89,9,9,6,5,8,6,6,6,8,3,8,9,7,6.5,deterministic,0,basic
 manufacturing-routings,Manufacturing,routing,5,2,Business Ready,6.5,9,9,5,5,8,6,6,2,5,3,8,9,7,9,none,0,dedicated
 manufacturing-bom,Manufacturing,bom,9,2,Business Ready,6.46,9,9,7,5,8,6,6,2,5,3,8,9,7,6.5,none,0,basic
+manufacturing-bom-explosions,Manufacturing,bomExplosion,11,3,Enterprise Ready,7.21,9,9,7,5,8,6,6,2,9,8,8,9,7,8,none,0,dedicated
 manufacturing-work-centers,Manufacturing,workCenter,7,2,Business Ready,6.39,9,9,6,5,8,6,6,2,5,3,8,9,7,6.5,none,0,basic
 maintenance-work-orders,Maintenance,workOrder,15,4,Production Certified,8,9,9,9,8,8,6,6,9,8,8,8,9,7,8,runner,1,family
 maintenance-downtime,Maintenance,downtimeEvent,9,4,Production Certified,7.86,9,9,7,8,8,6,6,9,8,8,8,9,7,8,runner,1,family
