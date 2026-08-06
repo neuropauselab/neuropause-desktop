@@ -122,6 +122,7 @@ import {
   purchaseRequestModule,
   purchaseOrderModule,
   goodsReceiptModule,
+  rfqModule,
 } from './modules/procurement/procurementInstances';
 import {
   zoneModule,
@@ -315,6 +316,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(purchaseRequestModule); // Procurement → Purchase Requests
   modules.registry.register(purchaseOrderModule); // Procurement → Purchase Orders
   modules.registry.register(goodsReceiptModule); // Procurement → Goods Receipts
+  modules.registry.register(rfqModule); // Procurement → RFQs (quotation cycle → PO award)
   modules.registry.register(zoneModule); // Warehouse → Zones
   modules.registry.register(binModule); // Warehouse → Bins
   modules.registry.register(transferOrderModule); // Warehouse → Transfer Orders
