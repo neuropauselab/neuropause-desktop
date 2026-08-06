@@ -125,6 +125,8 @@ export * from './types/payslips';
 export * from './types/payrollRegister';
 // Inventory → W6-C2: serial units — per-unit serialized tracking.
 export * from './types/serials';
+// Finance → W6-B1: exchange rates — effective-dated FX table + conversion engine.
+export * from './types/exchangeRates';
 // HR → W6-A7: statutory filings — ECR/ESI/PT/24Q filing data from posted runs.
 export * from './types/statutoryFilings';
 export * from './types/customers';

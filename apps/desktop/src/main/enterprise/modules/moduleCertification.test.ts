@@ -1,7 +1,7 @@
 /**
  * Enterprise Module Certification v1.0 — the registry-wide descriptor lock.
  *
- * A QUALITY gate, not a feature: it runs every one of the 90 REAL registered module descriptors through the
+ * A QUALITY gate, not a feature: it runs every one of the 91 REAL registered module descriptors through the
  * framework's own `validateModuleDescriptor`, and locks the certified inventory (count, unique ids, family
  * distribution, RBAC scopes, title fields). Before this test the real descriptors were validated only
  * implicitly at construction; this makes the guarantee explicit.
@@ -18,7 +18,7 @@
 import { describe, expect, it } from 'vitest';
 import { validateModuleDescriptor, type EnterpriseModuleDescriptor } from '@neuropause/shared';
 
-// Finance (15)
+// Finance (16)
 import { INVOICE_DESCRIPTOR } from './finance/invoiceModule';
 import { PAYMENT_DESCRIPTOR } from './finance/paymentModule';
 import { LEDGER_ACCOUNT_DESCRIPTOR } from './finance/ledgerAccountModule';
@@ -34,6 +34,7 @@ import { FIXED_ASSET_DESCRIPTOR } from './finance/fixedAssetModule';
 import { CREDIT_NOTE_DESCRIPTOR } from './finance/creditNoteModule';
 import { DEBIT_NOTE_DESCRIPTOR } from './finance/debitNoteModule';
 import { VENDOR_PAYMENT_DESCRIPTOR } from './finance/vendorPaymentModule';
+import { EXCHANGE_RATE_DESCRIPTOR } from './finance/exchangeRateModule';
 // Sales (7)
 import { QUOTE_DESCRIPTOR } from './sales/quoteModule';
 import { ORDER_DESCRIPTOR } from './sales/orderModule';
@@ -128,6 +129,7 @@ const CERTIFIED: Record<string, EnterpriseModuleDescriptor[]> = {
     ACCOUNTING_PERIOD_DESCRIPTOR, TAX_REPORT_DESCRIPTOR, AR_AGING_DESCRIPTOR,
     BANK_STATEMENT_DESCRIPTOR, BUDGET_DESCRIPTOR, VENDOR_BILL_DESCRIPTOR, AP_AGING_DESCRIPTOR,
     FIXED_ASSET_DESCRIPTOR, CREDIT_NOTE_DESCRIPTOR, DEBIT_NOTE_DESCRIPTOR, VENDOR_PAYMENT_DESCRIPTOR,
+    EXCHANGE_RATE_DESCRIPTOR,
   ],
   Sales: [
     QUOTE_DESCRIPTOR, ORDER_DESCRIPTOR, CONTRACT_DESCRIPTOR, PRICING_RULE_DESCRIPTOR,
@@ -168,7 +170,7 @@ const CERTIFIED: Record<string, EnterpriseModuleDescriptor[]> = {
 
 /** The certified per-family module counts (verified from the registration site, enterprise/index.ts). */
 const CERTIFIED_COUNTS: Record<string, number> = {
-  Finance: 15, Sales: 7, CRM: 8, Procurement: 6, Inventory: 7, Warehouse: 8, Manufacturing: 12, Maintenance: 10, Projects: 4, HR: 8, Helpdesk: 1, Documents: 1, Executive: 3,
+  Finance: 16, Sales: 7, CRM: 8, Procurement: 6, Inventory: 7, Warehouse: 8, Manufacturing: 12, Maintenance: 10, Projects: 4, HR: 8, Helpdesk: 1, Documents: 1, Executive: 3,
 };
 
 const ALL = Object.values(CERTIFIED).flat();
@@ -182,13 +184,13 @@ const FAMILY_WRITE_SCOPE: Record<string, string> = {
 };
 
 describe('Enterprise Module Certification — registry lock', () => {
-  it('certifies exactly 90 modules across the 13 production families', () => {
-    expect(ALL).toHaveLength(90);
+  it('certifies exactly 91 modules across the 13 production families', () => {
+    expect(ALL).toHaveLength(91);
     for (const fam of KNOWN_FAMILIES) {
       expect(CERTIFIED[fam]).toHaveLength(CERTIFIED_COUNTS[fam]);
     }
     const total = Object.values(CERTIFIED_COUNTS).reduce((a, b) => a + b, 0);
-    expect(total).toBe(90);
+    expect(total).toBe(91);
   });
 
   it('every real descriptor passes the framework validator (validateModuleDescriptor)', () => {
