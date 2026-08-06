@@ -153,7 +153,7 @@ import {
 } from './modules/manufacturing/manufacturingInstances';
 import { bomExplosionModule } from './modules/manufacturing/bomExplosionModuleInstance';
 import { billingRunModule, projectModule, projectTaskModule, timeEntryModule } from './modules/projects/projectsInstances';
-import { employeeModule, payrollRunModule, salaryStructureModule, statutoryRuleModule } from './modules/hr/hrInstances';
+import { employeeModule, payrollRunModule, salaryDisbursementModule, salaryStructureModule, statutoryRuleModule } from './modules/hr/hrInstances';
 import { ticketModule } from './modules/helpdesk/helpdeskInstances';
 import { campaignModule } from './modules/crm/campaignModuleInstance';
 import { documentModule } from './modules/documents/documentsInstances';
@@ -350,6 +350,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(payrollRunModule); // HR → Payroll Runs (GL-posted accruals)
   modules.registry.register(salaryStructureModule); // HR → Salary Structures (templates + statutory wage bases)
   modules.registry.register(statutoryRuleModule); // HR → Statutory Rules (effective-dated PF/ESI/PT/TDS tables)
+  modules.registry.register(salaryDisbursementModule); // HR → Salary Disbursements (net-pay clearing + bank advice)
   modules.registry.register(ticketModule); // Helpdesk → Tickets (SLA service desk)
   modules.registry.register(campaignModule); // CRM → Campaigns (live lead attribution)
   modules.registry.register(documentModule); // Documents → Registry (append-only versioning)

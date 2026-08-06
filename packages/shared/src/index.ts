@@ -117,6 +117,8 @@ export * from './types/salaryStructures';
 export * from './types/statutoryRules';
 // HR → W6-A3: statutory payroll processing — gross-to-net engine + balanced accrual lines.
 export * from './types/payrollProcessing';
+// HR → W6-A4: salary disbursement — net-pay clearing + deterministic bank advice.
+export * from './types/salaryDisbursement';
 export * from './types/customers';
 export * from './types/quotes';
 export * from './types/orders';

@@ -28,6 +28,7 @@ import type {
 import {
   EMPLOYEES_MODULE_ID,
   EMPLOYEE_KIND,
+  IFSC_PATTERN,
   employeeFromRecord,
   managerChainCycle,
   validateEnterpriseRecordInput,
@@ -67,6 +68,9 @@ export const EMPLOYEE_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'salaryStructureRef', label: 'Salary Structure', type: 'text', column: false, placeholder: 'Salary structure id (optional)' },
     { key: 'basicSalary', label: 'Basic (Monthly)', type: 'number', min: 0, format: 'currency', column: false },
     { key: 'workState', label: 'Work State', type: 'text', column: false, placeholder: 'GJ (drives professional tax)' },
+    { key: 'bankAccountNumber', label: 'Bank Account', type: 'text', column: false, placeholder: 'Salary credit account' },
+    { key: 'bankIfsc', label: 'IFSC', type: 'text', column: false, placeholder: 'HDFC0001234' },
+    { key: 'bankName', label: 'Bank', type: 'text', column: false, placeholder: 'Optional bank/branch label' },
     {
       key: 'status',
       label: 'Status',
@@ -148,6 +152,12 @@ export function createEmployeeModule(
           if (basic <= 0) {
             errors.basicSalary = 'A structure-assigned employee needs a positive basic salary — the template scales from it.';
           }
+        }
+        // IFSC is well-defined (11 chars) — validate it loudly when present; a
+        // bad IFSC would silently strand the employee as "unbanked" at payout.
+        const ifsc = str(result.values.bankIfsc).trim().toUpperCase();
+        if (ifsc && !IFSC_PATTERN.test(ifsc)) {
+          errors.bankIfsc = 'IFSC must be 11 characters: 4 bank letters, a 0, then 6 alphanumeric (e.g. HDFC0001234).';
         }
         result.values.status = 'active';
         if (Object.keys(errors).length > 0) return { ok: false, errors, values: result.values };
