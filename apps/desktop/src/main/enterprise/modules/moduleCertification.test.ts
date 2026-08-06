@@ -1,7 +1,7 @@
 /**
  * Enterprise Module Certification v1.0 — the registry-wide descriptor lock.
  *
- * A QUALITY gate, not a feature: it runs every one of the 89 REAL registered module descriptors through the
+ * A QUALITY gate, not a feature: it runs every one of the 90 REAL registered module descriptors through the
  * framework's own `validateModuleDescriptor`, and locks the certified inventory (count, unique ids, family
  * distribution, RBAC scopes, title fields). Before this test the real descriptors were validated only
  * implicitly at construction; this makes the guarantee explicit.
@@ -58,11 +58,12 @@ import { PURCHASE_ORDER_DESCRIPTOR } from './procurement/purchaseOrderModule';
 import { GOODS_RECEIPT_DESCRIPTOR } from './procurement/goodsReceiptModule';
 import { RFQ_DESCRIPTOR } from './procurement/rfqModule';
 import { SUPPLIER_PERFORMANCE_DESCRIPTOR } from './procurement/supplierPerformanceModule';
-// Inventory (6)
+// Inventory (7)
 import { PRODUCT_DESCRIPTOR } from './inventory/productModule';
 import { LOT_DESCRIPTOR } from './inventory/lotModule';
 import { RESERVATION_DESCRIPTOR } from './inventory/reservationModule';
 import { INVENTORY_VALUATION_DESCRIPTOR } from './inventory/inventoryValuationModule';
+import { SERIAL_DESCRIPTOR } from './inventory/serialModule';
 import { WAREHOUSE_DESCRIPTOR } from './inventory/warehouseModule';
 import { STOCK_MOVEMENT_DESCRIPTOR } from './inventory/stockMovementModule';
 // Warehouse (8)
@@ -142,7 +143,7 @@ const CERTIFIED: Record<string, EnterpriseModuleDescriptor[]> = {
   ],
   Inventory: [
     PRODUCT_DESCRIPTOR, WAREHOUSE_DESCRIPTOR, STOCK_MOVEMENT_DESCRIPTOR,
-    LOT_DESCRIPTOR, RESERVATION_DESCRIPTOR, INVENTORY_VALUATION_DESCRIPTOR,
+    LOT_DESCRIPTOR, RESERVATION_DESCRIPTOR, INVENTORY_VALUATION_DESCRIPTOR, SERIAL_DESCRIPTOR,
   ],
   Warehouse: [
     WAREHOUSE_ZONE_DESCRIPTOR, WAREHOUSE_BIN_DESCRIPTOR, TRANSFER_ORDER_DESCRIPTOR, PICK_LIST_DESCRIPTOR,
@@ -167,7 +168,7 @@ const CERTIFIED: Record<string, EnterpriseModuleDescriptor[]> = {
 
 /** The certified per-family module counts (verified from the registration site, enterprise/index.ts). */
 const CERTIFIED_COUNTS: Record<string, number> = {
-  Finance: 15, Sales: 7, CRM: 8, Procurement: 6, Inventory: 6, Warehouse: 8, Manufacturing: 12, Maintenance: 10, Projects: 4, HR: 8, Helpdesk: 1, Documents: 1, Executive: 3,
+  Finance: 15, Sales: 7, CRM: 8, Procurement: 6, Inventory: 7, Warehouse: 8, Manufacturing: 12, Maintenance: 10, Projects: 4, HR: 8, Helpdesk: 1, Documents: 1, Executive: 3,
 };
 
 const ALL = Object.values(CERTIFIED).flat();
@@ -181,13 +182,13 @@ const FAMILY_WRITE_SCOPE: Record<string, string> = {
 };
 
 describe('Enterprise Module Certification — registry lock', () => {
-  it('certifies exactly 89 modules across the 13 production families', () => {
-    expect(ALL).toHaveLength(89);
+  it('certifies exactly 90 modules across the 13 production families', () => {
+    expect(ALL).toHaveLength(90);
     for (const fam of KNOWN_FAMILIES) {
       expect(CERTIFIED[fam]).toHaveLength(CERTIFIED_COUNTS[fam]);
     }
     const total = Object.values(CERTIFIED_COUNTS).reduce((a, b) => a + b, 0);
-    expect(total).toBe(89);
+    expect(total).toBe(90);
   });
 
   it('every real descriptor passes the framework validator (validateModuleDescriptor)', () => {

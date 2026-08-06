@@ -120,6 +120,7 @@ import { stockMovementModule } from './modules/inventory/stockMovementModuleInst
 import { lotModule } from './modules/inventory/lotModuleInstance';
 import { reservationModule } from './modules/inventory/reservationModuleInstance';
 import { inventoryValuationModule } from './modules/inventory/inventoryValuationModuleInstance';
+import { serialModule } from './modules/inventory/serialModuleInstance';
 import {
   supplierModule,
   purchaseRequestModule,
@@ -326,6 +327,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(lotModule); // Inventory → Lots (batch traceability + code payloads)
   modules.registry.register(reservationModule); // Inventory → Reservations (holds posting ledger movements)
   modules.registry.register(inventoryValuationModule); // Inventory → Valuation (standard-cost registers)
+  modules.registry.register(serialModule); // Inventory → Serial Units (per-unit serialized tracking)
   modules.registry.register(supplierModule); // Procurement → Suppliers
   modules.registry.register(purchaseRequestModule); // Procurement → Purchase Requests
   modules.registry.register(purchaseOrderModule); // Procurement → Purchase Orders
