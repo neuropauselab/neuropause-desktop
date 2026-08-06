@@ -99,6 +99,8 @@ export * from './types/inventoryValuation';
 export * from './types/bomExplosion';
 // Projects → W4.1: projects + tasks — delivery containers with a derived-progress task board.
 export * from './types/projects';
+// Projects → W4.2: time entries + billing runs — unbilled time into real W1 invoices.
+export * from './types/projectBilling';
 export * from './types/customers';
 export * from './types/quotes';
 export * from './types/orders';
