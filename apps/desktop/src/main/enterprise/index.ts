@@ -104,6 +104,7 @@ import { exchangeRateModule } from './modules/finance/exchangeRateModuleInstance
 import { financialRatiosModule } from './modules/finance/financialRatiosModuleInstance';
 import { cashFlowModule } from './modules/finance/cashFlowModuleInstance';
 import { fxRevaluationModule } from './modules/finance/fxRevaluationModuleInstance';
+import { fxExposureModule } from './modules/finance/fxExposureModuleInstance';
 import { contactModule } from './modules/crm/contactModuleInstance';
 import { leadModule } from './modules/crm/leadModuleInstance';
 import { customerModule } from './modules/crm/customerModuleInstance';
@@ -329,6 +330,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(financialRatiosModule); // Finance → Financial Ratios (GL-derived ratio registers)
   modules.registry.register(cashFlowModule); // Finance → Cash Flow Statement (direct-method over posted GL entries)
   modules.registry.register(fxRevaluationModule); // Finance → FX Revaluation (period-end unrealized revaluation, reversing entries)
+  modules.registry.register(fxExposureModule); // Finance → FX Exposure (immutable point-in-time open-position exposure snapshots)
   modules.registry.register(productModule); // Inventory → Products
   modules.registry.register(warehouseModule); // Inventory → Warehouses
   modules.registry.register(stockMovementModule); // Inventory → Stock Movements (ledger)

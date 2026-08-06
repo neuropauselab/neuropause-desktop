@@ -38,6 +38,7 @@ import { EXCHANGE_RATE_DESCRIPTOR } from './finance/exchangeRateModule';
 import { FINANCIAL_RATIOS_DESCRIPTOR } from './finance/financialRatiosModule';
 import { CASH_FLOW_DESCRIPTOR } from './finance/cashFlowModule';
 import { FX_REVALUATION_DESCRIPTOR } from './finance/fxRevaluationModule';
+import { FX_EXPOSURE_DESCRIPTOR } from './finance/fxExposureModule';
 // Sales (7)
 import { QUOTE_DESCRIPTOR } from './sales/quoteModule';
 import { ORDER_DESCRIPTOR } from './sales/orderModule';
@@ -132,7 +133,7 @@ const CERTIFIED: Record<string, EnterpriseModuleDescriptor[]> = {
     ACCOUNTING_PERIOD_DESCRIPTOR, TAX_REPORT_DESCRIPTOR, AR_AGING_DESCRIPTOR,
     BANK_STATEMENT_DESCRIPTOR, BUDGET_DESCRIPTOR, VENDOR_BILL_DESCRIPTOR, AP_AGING_DESCRIPTOR,
     FIXED_ASSET_DESCRIPTOR, CREDIT_NOTE_DESCRIPTOR, DEBIT_NOTE_DESCRIPTOR, VENDOR_PAYMENT_DESCRIPTOR,
-    EXCHANGE_RATE_DESCRIPTOR, FINANCIAL_RATIOS_DESCRIPTOR, CASH_FLOW_DESCRIPTOR, FX_REVALUATION_DESCRIPTOR,
+    EXCHANGE_RATE_DESCRIPTOR, FINANCIAL_RATIOS_DESCRIPTOR, CASH_FLOW_DESCRIPTOR, FX_REVALUATION_DESCRIPTOR, FX_EXPOSURE_DESCRIPTOR,
   ],
   Sales: [
     QUOTE_DESCRIPTOR, ORDER_DESCRIPTOR, CONTRACT_DESCRIPTOR, PRICING_RULE_DESCRIPTOR,
@@ -173,7 +174,7 @@ const CERTIFIED: Record<string, EnterpriseModuleDescriptor[]> = {
 
 /** The certified per-family module counts (verified from the registration site, enterprise/index.ts). */
 const CERTIFIED_COUNTS: Record<string, number> = {
-  Finance: 19, Sales: 7, CRM: 8, Procurement: 6, Inventory: 7, Warehouse: 8, Manufacturing: 12, Maintenance: 10, Projects: 4, HR: 8, Helpdesk: 1, Documents: 1, Executive: 3,
+  Finance: 20, Sales: 7, CRM: 8, Procurement: 6, Inventory: 7, Warehouse: 8, Manufacturing: 12, Maintenance: 10, Projects: 4, HR: 8, Helpdesk: 1, Documents: 1, Executive: 3,
 };
 
 const ALL = Object.values(CERTIFIED).flat();
@@ -188,12 +189,12 @@ const FAMILY_WRITE_SCOPE: Record<string, string> = {
 
 describe('Enterprise Module Certification — registry lock', () => {
   it('certifies exactly 94 modules across the 13 production families', () => {
-    expect(ALL).toHaveLength(94);
+    expect(ALL).toHaveLength(95);
     for (const fam of KNOWN_FAMILIES) {
       expect(CERTIFIED[fam]).toHaveLength(CERTIFIED_COUNTS[fam]);
     }
     const total = Object.values(CERTIFIED_COUNTS).reduce((a, b) => a + b, 0);
-    expect(total).toBe(94);
+    expect(total).toBe(95);
   });
 
   it('every real descriptor passes the framework validator (validateModuleDescriptor)', () => {
