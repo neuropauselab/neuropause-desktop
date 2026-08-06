@@ -197,6 +197,14 @@ export async function handleInvoiceChangeForGl(
   const number = invoice.number.trim();
   const total = calculateInvoiceAmount(invoice);
   if (!number || total <= 0) return;
+  // W6-B2 multi-currency: the GL always posts the FUNCTIONAL amount. Each
+  // component is converted at the invoice's rate (default 1 → functional ==
+  // original, so single-currency posting is byte-identical). Component-wise
+  // rounding keeps Dr == Cr.
+  const rate = invoice.exchangeRate > 0 ? invoice.exchangeRate : 1;
+  const fxSubtotal = Math.round(Math.max(0, invoice.amount) * rate);
+  const fxTax = Math.round(calculateTaxAmount(invoice) * rate);
+  const fxTotal = fxSubtotal + fxTax;
   const deleted = event.record.status === 'deleted';
   const revoked = deleted || invoice.status === 'cancelled';
   const journal = await existingJournal(ctx);
@@ -210,14 +218,14 @@ export async function handleInvoiceChangeForGl(
       invoiceId: event.record.id,
       invoiceNumber: number,
       status: invoice.status,
-      subtotal: invoice.amount,
-      taxAmount: calculateTaxAmount(invoice),
-      total,
+      subtotal: fxSubtotal,
+      taxAmount: fxTax,
+      total: fxTotal,
       deleted,
       existingEntryNumbers: journal.numbers,
       sourceModule: event.record.moduleId,
     }),
-    expectedLines: glInvoiceExpectedLines(invoice.amount, calculateTaxAmount(invoice), total),
+    expectedLines: glInvoiceExpectedLines(fxSubtotal, fxTax, fxTotal),
     journal,
     sourceModule: event.record.moduleId,
     sourceRef: event.record.id,

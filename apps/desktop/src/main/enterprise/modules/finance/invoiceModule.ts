@@ -71,6 +71,8 @@ export const INVOICE_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'taxRate', label: 'Tax Rate %', type: 'number', min: 0, max: 100, column: false },
     { key: 'taxAmount', label: 'Tax', type: 'number', column: false, format: 'currency', readOnly: true },
     { key: 'total', label: 'Total', type: 'number', format: 'currency', readOnly: true },
+    { key: 'exchangeRate', label: 'Exchange Rate', type: 'number', min: 0, default: 1, column: false },
+    { key: 'functionalTotal', label: 'Functional Total', type: 'number', format: 'currency', readOnly: true, column: false },
     { key: 'amountPaid', label: 'Amount Paid', type: 'number', min: 0, format: 'currency', readOnly: true },
     { key: 'outstandingBalance', label: 'Outstanding', type: 'number', format: 'currency', readOnly: true },
     {

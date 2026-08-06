@@ -69,6 +69,12 @@ export interface FinanceInvoice {
   taxRate: number;
   amountPaid: number;
   currency: string;
+  /**
+   * W6-B2: units of functional currency per one unit of `currency`. Defaults to
+   * 1 — a single-currency invoice is unchanged, and the functional amount then
+   * equals the original. The GL always posts the FUNCTIONAL amount.
+   */
+  exchangeRate: number;
   status: InvoiceStatus;
   paymentTerms: string;
   issueDate: string | null;
@@ -115,6 +121,7 @@ export function invoiceFromRecord(record: EnterpriseEntity): FinanceInvoice {
     taxRate: num(f.taxRate),
     amountPaid: num(f.amountPaid),
     currency: asString(f.currency) || 'USD',
+    exchangeRate: num(f.exchangeRate) || 1,
     status: asStatus(f.status),
     paymentTerms: asString(f.paymentTerms),
     issueDate: asString(f.issueDate) || null,
@@ -232,11 +239,26 @@ export function formatInvoiceAmount(amount: number, currency: string): string {
 
 /** The now-independent computed fields stamped onto every invoice write. */
 export function invoiceComputedFields(invoice: FinanceInvoice): Record<string, EnterpriseFieldValue> {
+  const rate = invoice.exchangeRate > 0 ? invoice.exchangeRate : 1;
   return {
     taxAmount: calculateTaxAmount(invoice),
     total: calculateInvoiceAmount(invoice),
     outstandingBalance: calculateOutstandingBalance(invoice),
+    // W6-B2: normalized rate + the functional-currency total the GL posts.
+    // Rate 1 (single-currency) → functionalTotal === total, so nothing changes.
+    exchangeRate: rate,
+    functionalTotal: functionalInvoiceTotal(invoice),
   };
+}
+
+/**
+ * The invoice total in FUNCTIONAL currency (W6-B2): each component converted at
+ * the invoice's rate, then summed — component-wise rounding matches the GL
+ * posting exactly, so the booked entry is balanced to the unit.
+ */
+export function functionalInvoiceTotal(invoice: FinanceInvoice): number {
+  const rate = invoice.exchangeRate > 0 ? invoice.exchangeRate : 1;
+  return Math.round(Math.max(0, invoice.amount) * rate) + Math.round(calculateTaxAmount(invoice) * rate);
 }
 
 /**
