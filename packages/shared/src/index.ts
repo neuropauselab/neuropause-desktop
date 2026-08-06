@@ -103,6 +103,10 @@ export * from './types/projects';
 export * from './types/projectBilling';
 // HR → W4.3/W4.4: employees + payroll runs — work-scoped records and GL-posted accruals.
 export * from './types/hr';
+// Helpdesk → W5.1: tickets — priority-derived SLA with time-derived breach.
+export * from './types/helpdesk';
+// CRM → W5.1: campaigns — live lead attribution by the existing campaign field.
+export * from './types/marketing';
 export * from './types/customers';
 export * from './types/quotes';
 export * from './types/orders';

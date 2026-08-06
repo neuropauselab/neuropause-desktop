@@ -154,6 +154,8 @@ import {
 import { bomExplosionModule } from './modules/manufacturing/bomExplosionModuleInstance';
 import { billingRunModule, projectModule, projectTaskModule, timeEntryModule } from './modules/projects/projectsInstances';
 import { employeeModule, payrollRunModule } from './modules/hr/hrInstances';
+import { ticketModule } from './modules/helpdesk/helpdeskInstances';
+import { campaignModule } from './modules/crm/campaignModuleInstance';
 import {
   assetCategoryModule,
   assetModule,
@@ -344,6 +346,8 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(billingRunModule); // Projects → Billing Runs (time → real W1 invoices)
   modules.registry.register(employeeModule); // HR → Employees (work-scoped, cycle-guarded org chain)
   modules.registry.register(payrollRunModule); // HR → Payroll Runs (GL-posted accruals)
+  modules.registry.register(ticketModule); // Helpdesk → Tickets (SLA service desk)
+  modules.registry.register(campaignModule); // CRM → Campaigns (live lead attribution)
   modules.registry.register(productionOrderModule); // Manufacturing → Production Orders
   modules.registry.register(workCenterModule); // Manufacturing → Work Centers
   modules.registry.register(machineModule); // Manufacturing → Machines
