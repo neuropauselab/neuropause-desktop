@@ -79,6 +79,10 @@ export * from './types/activities';
 export * from './types/contracts';
 // Sales → W2.4: pricing rules — the discount-policy rule book + pure engine.
 export * from './types/pricingRules';
+// Sales → W2.5: commissions — plan book + immutable bookings-based statements.
+export * from './types/commissions';
+// Sales → W2.6: revenue forecast — immutable weighted-pipeline snapshots.
+export * from './types/revenueForecast';
 export * from './types/customers';
 export * from './types/quotes';
 export * from './types/orders';

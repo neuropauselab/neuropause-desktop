@@ -109,6 +109,9 @@ import { quoteModule } from './modules/sales/quoteModuleInstance';
 import { orderModule } from './modules/sales/orderModuleInstance';
 import { contractModule } from './modules/sales/contractModuleInstance';
 import { pricingRuleModule } from './modules/sales/pricingRuleModuleInstance';
+import { commissionPlanModule } from './modules/sales/commissionPlanModuleInstance';
+import { commissionStatementModule } from './modules/sales/commissionStatementModuleInstance';
+import { revenueForecastModule } from './modules/sales/revenueForecastModuleInstance';
 import { productModule } from './modules/inventory/productModuleInstance';
 import { warehouseModule } from './modules/inventory/warehouseModuleInstance';
 import { stockMovementModule } from './modules/inventory/stockMovementModuleInstance';
@@ -284,6 +287,9 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(orderModule); // Sales → Orders (conversion target)
   modules.registry.register(contractModule); // Sales → Contracts (activate/terminate/renew lifecycle)
   modules.registry.register(pricingRuleModule); // Sales → Pricing Rules (the discount-policy rule book)
+  modules.registry.register(commissionPlanModule); // Sales → Commission Plans (the commission rule book)
+  modules.registry.register(commissionStatementModule); // Sales → Commission Statements (immutable per-period payouts)
+  modules.registry.register(revenueForecastModule); // Sales → Revenue Forecast (immutable pipeline snapshots)
   modules.registry.register(paymentModule); // Finance → Payments
   modules.registry.register(ledgerAccountModule); // Finance → Chart of Accounts (GL)
   modules.registry.register(journalEntryModule); // Finance → Journal (GL double-entry)

@@ -1,7 +1,7 @@
 /**
  * Enterprise Module Certification v1.0 — the registry-wide descriptor lock.
  *
- * A QUALITY gate, not a feature: it runs every one of the 62 REAL registered module descriptors through the
+ * A QUALITY gate, not a feature: it runs every one of the 65 REAL registered module descriptors through the
  * framework's own `validateModuleDescriptor`, and locks the certified inventory (count, unique ids, family
  * distribution, RBAC scopes, title fields). Before this test the real descriptors were validated only
  * implicitly at construction; this makes the guarantee explicit.
@@ -9,7 +9,7 @@
  * SCOPE (stated honestly): the lock is over the enumerated `CERTIFIED` list below. It catches a descriptor
  * REGRESSION (bad id, dup field, wrong group/scope, dup id/action) and a REMOVAL or RENAME of a `*_DESCRIPTOR`
  * export (the import breaks → the file goes red). It does NOT read the live runtime registry, so ADDING a new
- * (63rd) registered module does not fail this test until this list is updated — which is the intended,
+ * (66th) registered module does not fail this test until this list is updated — which is the intended,
  * deliberate re-certification checkpoint for a new module.
  *
  * Reuse-only: it imports the standalone descriptor consts (Electron-free — no store, no app runtime) and the
@@ -34,11 +34,14 @@ import { FIXED_ASSET_DESCRIPTOR } from './finance/fixedAssetModule';
 import { CREDIT_NOTE_DESCRIPTOR } from './finance/creditNoteModule';
 import { DEBIT_NOTE_DESCRIPTOR } from './finance/debitNoteModule';
 import { VENDOR_PAYMENT_DESCRIPTOR } from './finance/vendorPaymentModule';
-// Sales (4)
+// Sales (7)
 import { QUOTE_DESCRIPTOR } from './sales/quoteModule';
 import { ORDER_DESCRIPTOR } from './sales/orderModule';
 import { CONTRACT_DESCRIPTOR } from './sales/contractModule';
 import { PRICING_RULE_DESCRIPTOR } from './sales/pricingRuleModule';
+import { COMMISSION_PLAN_DESCRIPTOR } from './sales/commissionPlanModule';
+import { COMMISSION_STATEMENT_DESCRIPTOR } from './sales/commissionStatementModule';
+import { REVENUE_FORECAST_DESCRIPTOR } from './sales/revenueForecastModule';
 // CRM (5)
 import { CONTACT_DESCRIPTOR } from './crm/contactModule';
 import { LEAD_DESCRIPTOR } from './crm/leadModule';
@@ -98,7 +101,10 @@ const CERTIFIED: Record<string, EnterpriseModuleDescriptor[]> = {
     BANK_STATEMENT_DESCRIPTOR, BUDGET_DESCRIPTOR, VENDOR_BILL_DESCRIPTOR, AP_AGING_DESCRIPTOR,
     FIXED_ASSET_DESCRIPTOR, CREDIT_NOTE_DESCRIPTOR, DEBIT_NOTE_DESCRIPTOR, VENDOR_PAYMENT_DESCRIPTOR,
   ],
-  Sales: [QUOTE_DESCRIPTOR, ORDER_DESCRIPTOR, CONTRACT_DESCRIPTOR, PRICING_RULE_DESCRIPTOR],
+  Sales: [
+    QUOTE_DESCRIPTOR, ORDER_DESCRIPTOR, CONTRACT_DESCRIPTOR, PRICING_RULE_DESCRIPTOR,
+    COMMISSION_PLAN_DESCRIPTOR, COMMISSION_STATEMENT_DESCRIPTOR, REVENUE_FORECAST_DESCRIPTOR,
+  ],
   CRM: [CONTACT_DESCRIPTOR, LEAD_DESCRIPTOR, CUSTOMER_DESCRIPTOR, OPPORTUNITY_DESCRIPTOR, ACTIVITY_DESCRIPTOR],
   Procurement: [SUPPLIER_DESCRIPTOR, PURCHASE_REQUEST_DESCRIPTOR, PURCHASE_ORDER_DESCRIPTOR, GOODS_RECEIPT_DESCRIPTOR],
   Inventory: [PRODUCT_DESCRIPTOR, WAREHOUSE_DESCRIPTOR, STOCK_MOVEMENT_DESCRIPTOR],
@@ -121,7 +127,7 @@ const CERTIFIED: Record<string, EnterpriseModuleDescriptor[]> = {
 
 /** The certified per-family module counts (verified from the registration site, enterprise/index.ts). */
 const CERTIFIED_COUNTS: Record<string, number> = {
-  Finance: 15, Sales: 4, CRM: 5, Procurement: 4, Inventory: 3, Warehouse: 8, Manufacturing: 11, Maintenance: 10, Executive: 2,
+  Finance: 15, Sales: 7, CRM: 5, Procurement: 4, Inventory: 3, Warehouse: 8, Manufacturing: 11, Maintenance: 10, Executive: 2,
 };
 
 const ALL = Object.values(CERTIFIED).flat();
@@ -134,13 +140,13 @@ const FAMILY_WRITE_SCOPE: Record<string, string> = {
 };
 
 describe('Enterprise Module Certification — registry lock', () => {
-  it('certifies exactly 62 modules across the 9 production families', () => {
-    expect(ALL).toHaveLength(62);
+  it('certifies exactly 65 modules across the 9 production families', () => {
+    expect(ALL).toHaveLength(65);
     for (const fam of KNOWN_FAMILIES) {
       expect(CERTIFIED[fam]).toHaveLength(CERTIFIED_COUNTS[fam]);
     }
     const total = Object.values(CERTIFIED_COUNTS).reduce((a, b) => a + b, 0);
-    expect(total).toBe(62);
+    expect(total).toBe(65);
   });
 
   it('every real descriptor passes the framework validator (validateModuleDescriptor)', () => {
