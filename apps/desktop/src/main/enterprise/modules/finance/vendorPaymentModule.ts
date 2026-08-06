@@ -73,6 +73,7 @@ export const VENDOR_PAYMENT_DESCRIPTOR: EnterpriseModuleDescriptor = {
         { value: 'INR', label: 'INR' },
       ],
     },
+    { key: 'exchangeRate', label: 'Exchange Rate', type: 'number', min: 0, default: 1, column: false },
     {
       key: 'method',
       label: 'Method',

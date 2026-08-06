@@ -174,3 +174,34 @@ export function unrealizedRevaluationLines(input: {
 export function reverseFxLines(lines: readonly GlJournalLine[]): GlJournalLine[] {
   return lines.map((l) => ({ account: l.account, debit: l.credit, credit: l.debit, ...(l.memo ? { memo: l.memo } : {}) }));
 }
+
+/**
+ * Build the balanced journal lines for a settled PAYABLE (vendor payment) — the
+ * mirror of `realizedReceivableFxLines` (W6-B8): Dr AP at its booked functional
+ * value (clearing the liability as booked), Cr Cash at the settlement functional
+ * value (the actual cash paid), and the exchange difference to the FX account —
+ * a Dr (loss) when MORE functional cash is paid than was booked, a Cr (gain)
+ * when less. Zero difference → the classic two lines, so single-currency is
+ * byte-identical. Dr always equals Cr.
+ */
+export function realizedPayableFxLines(input: {
+  functionalSettled: number;
+  functionalBooked: number;
+  cashCode: string;
+  payableCode: string;
+  fxCode: string;
+}): GlJournalLine[] {
+  const settled = round2(input.functionalSettled);
+  const booked = round2(input.functionalBooked);
+  const diff = round2(settled - booked);
+  const lines: GlJournalLine[] = [
+    { account: input.payableCode, debit: booked, credit: 0 },
+    { account: input.cashCode, debit: 0, credit: settled },
+  ];
+  if (diff > 0) {
+    lines.push({ account: input.fxCode, debit: diff, credit: 0 }); // paid more functional than booked → loss
+  } else if (diff < 0) {
+    lines.push({ account: input.fxCode, debit: 0, credit: round2(-diff) }); // paid less → gain
+  }
+  return lines;
+}

@@ -43,6 +43,12 @@ export interface VendorBill {
   taxAmount: number;
   total: number;
   currency: string;
+  /**
+   * W6-B8: units of functional currency per one unit of `currency`. Defaults to
+   * 1 — a single-currency bill is unchanged, and the functional amount then
+   * equals the original. The GL always posts the FUNCTIONAL amount.
+   */
+  exchangeRate: number;
   status: VendorBillStatus;
   billDate: string;
   dueDate: string;
@@ -93,6 +99,7 @@ export function vendorBillFromRecord(record: EnterpriseEntity): VendorBill {
     taxAmount,
     total,
     currency: str(f.currency) || 'USD',
+    exchangeRate: num(f.exchangeRate) || 1,
     status,
     billDate: str(f.billDate),
     dueDate: str(f.dueDate),
@@ -104,6 +111,12 @@ export function vendorBillFromRecord(record: EnterpriseEntity): VendorBill {
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };
+}
+
+/** W6-B8: the bill's tax-inclusive total in FUNCTIONAL currency (component-wise rounded, mirrors the invoice). */
+export function functionalBillTotal(bill: VendorBill): number {
+  const rate = bill.exchangeRate > 0 ? bill.exchangeRate : 1;
+  return Math.round(bill.amount * rate) + Math.round(bill.taxAmount * rate);
 }
 
 /** Deterministic entry numbers — the idempotency keys of bill auto-posting. */

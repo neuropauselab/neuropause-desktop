@@ -28,14 +28,15 @@ import {
   GL_PAYABLE_CONTROL_ACCOUNTS,
   JOURNAL_ENTRIES_MODULE_ID,
   LEDGER_ACCOUNTS_MODULE_ID,
+  VENDOR_BILLS_MODULE_ID,
   calculateInvoiceAmount,
   calculateTaxAmount,
+  realizedPayableFxLines,
   realizedReceivableFxLines,
   reverseFxLines,
   unrealizedRevaluationLines,
   glBillEntryNumber,
   glBillExpectedLines,
-  glBillPaymentExpectedLines,
   glDecideAdjustment,
   glDecideInvoicePostings,
   glDecidePaymentPostings,
@@ -337,13 +338,20 @@ export async function handleVendorBillChangeForGl(
       sourceRef: event.record.id,
     });
 
+  // W6-B8 multi-currency: the GL posts the FUNCTIONAL amount. Rate default 1 →
+  // functional == original (single-currency byte-identical); component-wise
+  // rounding keeps Dr == Cr, mirroring the invoice.
+  const rate = bill.exchangeRate > 0 ? bill.exchangeRate : 1;
+  const fxSubtotal = rate === 1 ? bill.amount : Math.round(bill.amount * rate);
+  const fxTax = rate === 1 ? bill.taxAmount : Math.round(bill.taxAmount * rate);
+  const fxTotal = rate === 1 ? bill.total : fxSubtotal + fxTax;
   // Since W1.11, SETTLEMENT is booked by Vendor Payments (JE-VPAY-*, one entry
   // per payment, partial-capable) — the bill carries only the approval leg.
   const decisions = leg({
     live: bill.status === 'approved' || bill.status === 'paid',
     base: glBillEntryNumber(number),
     memo: `Bill ${number} approved`,
-    expected: glBillExpectedLines(bill.amount, bill.taxAmount, bill.total),
+    expected: glBillExpectedLines(fxSubtotal, fxTax, fxTotal),
   });
   await applyGlDerivedEntries(decisions, ctx);
 }
@@ -367,7 +375,31 @@ export async function handleVendorPaymentChangeForGl(
   const revoked = deleted || payment.status === 'void';
   const journal = await existingJournal(ctx);
   const base = glVendorPaymentEntryNumber(number);
-  const expected = glBillPaymentExpectedLines(payment.amount);
+  // W6-B8 multi-currency settlement: clear AP in FUNCTIONAL at the bill's booking
+  // rate, pay Cash in functional at the settlement rate, and book the realized
+  // exchange difference to P&L. Single currency (both rates 1) → functionalSettled
+  // === functionalBooked → the classic two-line entry, byte-identical.
+  const billModule = ctx.moduleFor(VENDOR_BILLS_MODULE_ID);
+  let bookingRate = 1;
+  if (billModule) {
+    await billModule.store.load();
+    const billRecord =
+      billModule.store.get(payment.billRef) ??
+      billModule.store.list().find((r) => str(r.fields.billNumber) === payment.billRef) ??
+      null;
+    if (billRecord && billRecord.status !== 'deleted') bookingRate = vendorBillFromRecord(billRecord).exchangeRate;
+  }
+  const settlementRate = payment.exchangeRate > 0 ? payment.exchangeRate : 1;
+  const functionalSettled = Math.round(payment.amount * settlementRate);
+  const functionalBooked = Math.round(payment.amount * bookingRate);
+  const expected = realizedPayableFxLines({
+    functionalSettled,
+    functionalBooked,
+    cashCode: GL_CONTROL_ACCOUNTS.cash.code,
+    payableCode: GL_PAYABLE_CONTROL_ACCOUNTS.accountsPayable.code,
+    fxCode: FX_GAINLOSS_ACCOUNT.code,
+  });
+  if (expected.length > 2) await ensureFxAccount(ctx); // realized FX difference → 7810 must exist
   const decisions = decideLifecycle({
     live: !revoked && payment.status === 'cleared',
     revoked,

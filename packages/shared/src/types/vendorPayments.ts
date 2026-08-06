@@ -29,6 +29,12 @@ export interface VendorPayment {
   vendor: string;
   amount: number;
   currency: string;
+  /**
+   * W6-B8: units of functional currency per one unit of `currency` at
+   * settlement. Defaults to 1 — a single-currency payment is unchanged. The
+   * realized FX difference vs the bill's booking rate posts to P&L.
+   */
+  exchangeRate: number;
   method: string;
   status: VendorPaymentStatus;
   paidDate: string;
@@ -57,6 +63,7 @@ export function vendorPaymentFromRecord(record: EnterpriseEntity): VendorPayment
     vendor: str(f.vendor),
     amount: num(f.amount),
     currency: str(f.currency) || 'USD',
+    exchangeRate: num(f.exchangeRate) || 1,
     method: str(f.method) || 'bank_transfer',
     status: status === 'pending' || status === 'void' ? status : 'cleared',
     paidDate: str(f.paidDate),

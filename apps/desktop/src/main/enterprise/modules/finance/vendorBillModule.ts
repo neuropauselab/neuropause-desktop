@@ -64,6 +64,7 @@ export const VENDOR_BILL_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'taxRate', label: 'Tax Rate %', type: 'number', min: 0, max: 100, column: false },
     { key: 'taxAmount', label: 'Tax', type: 'number', readOnly: true, format: 'currency', column: false },
     { key: 'total', label: 'Total', type: 'number', readOnly: true, format: 'currency' },
+    { key: 'functionalTotal', label: 'Functional Total', type: 'number', readOnly: true, format: 'currency', column: false },
     { key: 'amountPaid', label: 'Amount Paid', type: 'number', readOnly: true, format: 'currency', default: 0 },
     {
       key: 'currency',
@@ -79,6 +80,7 @@ export const VENDOR_BILL_DESCRIPTOR: EnterpriseModuleDescriptor = {
         { value: 'INR', label: 'INR' },
       ],
     },
+    { key: 'exchangeRate', label: 'Exchange Rate', type: 'number', min: 0, default: 1, column: false },
     {
       key: 'status',
       label: 'Status',
@@ -134,6 +136,9 @@ export function createVendorBillModule(storePath: string): EnterpriseModule {
         const taxAmount = calculateBillTax(amount, taxRate);
         result.values.taxAmount = taxAmount;
         result.values.total = Math.round((amount + taxAmount) * 100) / 100;
+        // W6-B8: stamp the functional-currency total the GL posts (rate default 1 → equals total).
+        const billRate = Number(result.values.exchangeRate ?? 1) > 0 ? Number(result.values.exchangeRate ?? 1) : 1;
+        result.values.functionalTotal = Math.round(amount * billRate) + Math.round(taxAmount * billRate);
         result.values.status = deriveStatus(result.values);
         if (Object.keys(errors).length > 0) return { ok: false, errors, values: result.values };
         return result;
