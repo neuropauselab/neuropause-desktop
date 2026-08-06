@@ -97,6 +97,8 @@ export * from './types/reservations';
 export * from './types/inventoryValuation';
 // Manufacturing → W3.6: BOM explosion — multi-level requirements with cycle detection.
 export * from './types/bomExplosion';
+// Projects → W4.1: projects + tasks — delivery containers with a derived-progress task board.
+export * from './types/projects';
 export * from './types/customers';
 export * from './types/quotes';
 export * from './types/orders';

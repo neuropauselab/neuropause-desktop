@@ -152,6 +152,7 @@ import {
   scheduleProposalModule,
 } from './modules/manufacturing/manufacturingInstances';
 import { bomExplosionModule } from './modules/manufacturing/bomExplosionModuleInstance';
+import { projectModule, projectTaskModule } from './modules/projects/projectsInstances';
 import {
   assetCategoryModule,
   assetModule,
@@ -336,6 +337,8 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(stockAdjustmentModule); // Warehouse → Stock Adjustments
   modules.registry.register(bomModule); // Manufacturing → Bill of Materials
   modules.registry.register(bomExplosionModule); // Manufacturing → BOM Explosions (multi-level requirements)
+  modules.registry.register(projectModule); // Projects → Projects (delivery containers)
+  modules.registry.register(projectTaskModule); // Projects → Tasks (the kanban board)
   modules.registry.register(productionOrderModule); // Manufacturing → Production Orders
   modules.registry.register(workCenterModule); // Manufacturing → Work Centers
   modules.registry.register(machineModule); // Manufacturing → Machines
