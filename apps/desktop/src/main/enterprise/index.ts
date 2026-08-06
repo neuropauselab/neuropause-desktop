@@ -101,6 +101,7 @@ import { creditNoteModule } from './modules/finance/creditNoteModuleInstance';
 import { debitNoteModule } from './modules/finance/debitNoteModuleInstance';
 import { vendorPaymentModule } from './modules/finance/vendorPaymentModuleInstance';
 import { exchangeRateModule } from './modules/finance/exchangeRateModuleInstance';
+import { financialRatiosModule } from './modules/finance/financialRatiosModuleInstance';
 import { contactModule } from './modules/crm/contactModuleInstance';
 import { leadModule } from './modules/crm/leadModuleInstance';
 import { customerModule } from './modules/crm/customerModuleInstance';
@@ -323,6 +324,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(debitNoteModule); // Finance → Debit Notes (bill adjustments, AP/input-credit reversal)
   modules.registry.register(vendorPaymentModule); // Finance → Vendor Payments (partial-capable AP settlement)
   modules.registry.register(exchangeRateModule); // Finance → Exchange Rates (effective-dated FX rate table)
+  modules.registry.register(financialRatiosModule); // Finance → Financial Ratios (GL-derived ratio registers)
   modules.registry.register(productModule); // Inventory → Products
   modules.registry.register(warehouseModule); // Inventory → Warehouses
   modules.registry.register(stockMovementModule); // Inventory → Stock Movements (ledger)

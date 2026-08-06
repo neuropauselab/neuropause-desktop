@@ -129,6 +129,8 @@ export * from './types/serials';
 export * from './types/exchangeRates';
 // Finance → W6-B3: FX gain/loss — realized/unrealized exchange-difference engine.
 export * from './types/fxGainLoss';
+// Finance → W6-B5: financial ratios — GL-derived class-total ratio engine.
+export * from './types/financialRatios';
 // HR → W6-A7: statutory filings — ECR/ESI/PT/24Q filing data from posted runs.
 export * from './types/statutoryFilings';
 export * from './types/customers';
