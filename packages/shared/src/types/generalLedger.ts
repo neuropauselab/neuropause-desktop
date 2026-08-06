@@ -391,6 +391,14 @@ export function glPeriodBounds(periodKey: string): { startDate: string; endDate:
   return { startDate: `${periodKey}-01`, endDate: `${y}-${mm}-${String(last).padStart(2, '0')}` };
 }
 
+/** The month key following a `YYYY-MM` key (rolls the year over at December). */
+export function glNextPeriodKey(periodKey: string): string {
+  const [y, m] = periodKey.split('-').map(Number);
+  const year = m >= 12 ? y + 1 : y;
+  const month = m >= 12 ? 1 : m + 1;
+  return `${year}-${String(month).padStart(2, '0')}`;
+}
+
 /** Project an accounting-period record into its typed view. */
 export function glPeriodFromRecord(record: EnterpriseEntity): GlAccountingPeriod {
   const f = record.fields;
@@ -567,6 +575,13 @@ export interface GlDerivedEntry {
   lines: GlJournalLine[];
   sourceModule: string;
   sourceRef: string;
+  /**
+   * W6-B7 (additive, optional): the posting date `YYYY-MM-DD`. Omitted for every
+   * document-driven entry (invoice/payment/bill) — those keep dating at the time
+   * of the change. Period-end work (FX revaluation + its next-period reversal)
+   * sets it explicitly so the entry lands in the correct accounting period.
+   */
+  entryDate?: string;
 }
 
 /** Deterministic entry numbers — the idempotency keys of auto-posting. */
@@ -575,6 +590,10 @@ export function glInvoiceEntryNumber(invoiceNumber: string): string {
 }
 export function glPaymentEntryNumber(paymentNumber: string): string {
   return `JE-PAY-${paymentNumber}`;
+}
+/** W6-B7: the deterministic entry number for a period's FX revaluation (its reversal appends `-REV`). */
+export function glFxRevaluationEntryNumber(periodKey: string): string {
+  return `JE-FXREVAL-${periodKey}`;
 }
 
 function reversalOf(entry: GlDerivedEntry, reason: string): GlDerivedEntry {

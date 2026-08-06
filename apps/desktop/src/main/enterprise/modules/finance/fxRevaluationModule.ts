@@ -1,0 +1,187 @@
+/**
+ * Finance → Unrealized FX Revaluation — immutable period-end revaluation
+ * statements that BOOK real, reversing journal entries (W6-B7). CRUD (generate +
+ * read), RBAC (`operations:read` / `operations:manage` — the Finance family's
+ * certified scopes), audit, timeline, search, offline persistence, and the UI
+ * are all inherited.
+ *
+ * CREATING a revaluation generates it: validate reads the injected Invoices +
+ * Exchange Rates + Accounting Periods stores, refuses a CLOSED period (period
+ * lock) and a duplicate period, revalues every open foreign-currency receivable
+ * at the period-end rate through the pure `deriveReceivableRevaluation`, and
+ * stamps the aggregate deltas + a per-document audit trail. The record's
+ * `onChange` then posts TWO real journal entries through the certified
+ * auto-posting seam: the revaluation (Dr/Cr AR vs 7811) dated the period end,
+ * and its exact reversal dated the first day of the next period (IAS 21). A
+ * generated statement is immutable (the W1 snapshot marker).
+ *
+ * Functional currency stays the source of truth; single-currency books never
+ * revalue (nothing is denominated in a non-functional currency), so existing
+ * behaviour is untouched. Electron-free (store paths injected) for unit testing.
+ */
+import type {
+  EnterpriseModuleDescriptor,
+  EnterpriseRecordInput,
+  EnterpriseRecordSummary,
+  EnterpriseRecordValidation,
+} from '@neuropause/shared';
+import {
+  FX_FUNCTIONAL_CURRENCY,
+  FX_REVALUATION_MODULE_ID,
+  FX_REVALUATION_KIND,
+  deriveReceivableRevaluation,
+  exchangeRateFromRecord,
+  glFxRevaluationEntryNumber,
+  glNextPeriodKey,
+  glPeriodBounds,
+  glPeriodFromRecord,
+  invoiceFromRecord,
+  validateEnterpriseRecordInput,
+} from '@neuropause/shared';
+import {
+  EnterpriseRecordStore,
+  defineEnterpriseModule,
+  type EnterpriseModule,
+} from '../../framework';
+import { handleFxRevaluationChangeForGl } from './glPosting';
+
+/** The declarative description of an FX revaluation — drives store, CRUD, and the UI. */
+export const FX_REVALUATION_DESCRIPTOR: EnterpriseModuleDescriptor = {
+  id: FX_REVALUATION_MODULE_ID,
+  title: 'FX Revaluation',
+  singular: 'FX Revaluation',
+  plural: 'FX Revaluations',
+  icon: 'refresh-cw',
+  description:
+    'Immutable period-end revaluation of open foreign-currency receivables at the period-end rate — books a real unrealized gain/loss to 7811 that reverses on the first day of the next period (IAS 21).',
+  group: 'Finance',
+  titleField: 'reportNumber',
+  permissions: { read: 'operations:read', write: 'operations:manage' },
+  fields: [
+    { key: 'reportNumber', label: 'Revaluation #', type: 'text', readOnly: true },
+    { key: 'period', label: 'Period', type: 'text', placeholder: 'YYYY-MM — defaults to current month' },
+    { key: 'revalDate', label: 'Revalued At', type: 'text', readOnly: true, column: false },
+    { key: 'reversalDate', label: 'Reverses On', type: 'text', readOnly: true, column: false },
+    { key: 'functionalCurrency', label: 'Functional Ccy', type: 'text', readOnly: true, column: false },
+    { key: 'receivableDelta', label: 'AR Adjustment', type: 'number', readOnly: true, format: 'currency', default: 0 },
+    { key: 'payableDelta', label: 'AP Adjustment', type: 'number', readOnly: true, format: 'currency', default: 0, column: false },
+    { key: 'unrealizedGainLoss', label: 'Unrealized G/L', type: 'number', readOnly: true, format: 'currency', default: 0 },
+    { key: 'revaluedCount', label: 'Items Revalued', type: 'number', readOnly: true, default: 0 },
+    { key: 'skippedNoRate', label: 'Skipped (no rate)', type: 'number', readOnly: true, default: 0, column: false },
+    { key: 'items', label: 'Audit Trail', type: 'textarea', readOnly: true, column: false },
+    { key: 'revalEntryNumber', label: 'Revaluation JE', type: 'text', readOnly: true, column: false },
+    { key: 'reversalEntryNumber', label: 'Reversal JE', type: 'text', readOnly: true, column: false },
+    { key: 'note', label: 'Note', type: 'textarea', readOnly: true, column: false },
+    { key: 'generatedAt', label: 'Generated At', type: 'text', readOnly: true, column: false },
+  ],
+};
+
+function str(v: unknown): string {
+  return v === null || v === undefined ? '' : String(v);
+}
+const money = (v: number): string => v.toLocaleString('en-US', { maximumFractionDigits: 0 });
+
+/**
+ * Build the FX Revaluation module. The Invoices + Exchange Rates + Accounting
+ * Periods stores are injected so generation revalues the real open receivables
+ * at real registered rates and honours the period lock.
+ */
+export function createFxRevaluationModule(
+  storePath: string,
+  invoiceStore: EnterpriseRecordStore,
+  exchangeRateStore: EnterpriseRecordStore,
+  accountingPeriodStore: EnterpriseRecordStore,
+): EnterpriseModule {
+  const store = new EnterpriseRecordStore(storePath, FX_REVALUATION_MODULE_ID, FX_REVALUATION_KIND);
+  return defineEnterpriseModule({
+    descriptor: FX_REVALUATION_DESCRIPTOR,
+    store,
+    hooks: {
+      // Creating a revaluation IS generating it; a generated revaluation is immutable.
+      validate: (input: EnterpriseRecordInput): EnterpriseRecordValidation => {
+        const result = validateEnterpriseRecordInput(FX_REVALUATION_DESCRIPTOR, input);
+        if (!result.ok) return result;
+        if (str(result.values.generatedAt)) {
+          return {
+            ok: false,
+            errors: { _: 'FX revaluations are immutable snapshots — generate a new revaluation instead.' },
+            values: result.values,
+          };
+        }
+        const period = str(result.values.period).trim() || new Date().toISOString().slice(0, 7);
+        if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) {
+          return { ok: false, errors: { period: 'Period must be a month in YYYY-MM form.' }, values: result.values };
+        }
+        // Period lock: a closed period cannot be revalued (reopen it first).
+        const periodRecord = accountingPeriodStore.list().map(glPeriodFromRecord).find((p) => p.periodKey === period);
+        if (periodRecord && periodRecord.closed) {
+          return { ok: false, errors: { period: `Period ${period} is closed — reopen it before revaluing.` }, values: result.values };
+        }
+        // One generated revaluation per period (its entries are idempotent regardless).
+        if (store.list().some((r) => str(r.fields.period) === period && str(r.fields.generatedAt))) {
+          return { ok: false, errors: { period: `Period ${period} is already revalued — reverse or reopen to redo.` }, values: result.values };
+        }
+
+        const revalDate = glPeriodBounds(period).endDate;
+        const reversalDate = glPeriodBounds(glNextPeriodKey(period)).startDate;
+        const rates = exchangeRateStore.list().map(exchangeRateFromRecord);
+        const invoices = invoiceStore.list().filter((r) => r.status !== 'deleted').map(invoiceFromRecord);
+        const reval = deriveReceivableRevaluation({ invoices, rates, asOfDate: revalDate, functionalCurrency: FX_FUNCTIONAL_CURRENCY });
+        const priorCount = store.list().filter((r) => str(r.fields.period) === period).length;
+
+        result.values.period = period;
+        result.values.reportNumber = `FXR-${period}-${priorCount + 1}`;
+        result.values.revalDate = revalDate;
+        result.values.reversalDate = reversalDate;
+        result.values.functionalCurrency = FX_FUNCTIONAL_CURRENCY;
+        result.values.receivableDelta = reval.receivableDelta;
+        result.values.payableDelta = 0;
+        result.values.unrealizedGainLoss = reval.unrealizedGainLoss;
+        result.values.revaluedCount = reval.revaluedCount;
+        result.values.skippedNoRate = reval.skippedNoRate;
+        result.values.items = JSON.stringify(reval.items);
+        result.values.revalEntryNumber = glFxRevaluationEntryNumber(period);
+        result.values.reversalEntryNumber = `${glFxRevaluationEntryNumber(period)}-REV`;
+        result.values.note =
+          reval.revaluedCount === 0
+            ? reval.skippedNoRate > 0
+              ? `${reval.skippedNoRate} open foreign-currency receivable(s) had no ${period}-end rate — none revalued; add period-end rates and regenerate`
+              : `no open foreign-currency receivables — nothing to revalue for ${period}`
+            : `revalued ${reval.revaluedCount} open FX receivable(s) at the ${period}-end rate; unrealized ` +
+              `${reval.unrealizedGainLoss >= 0 ? 'gain' : 'loss'} ${money(Math.abs(reval.unrealizedGainLoss))} posts to 7811 and reverses on ${reversalDate}` +
+              (reval.skippedNoRate > 0 ? `; ${reval.skippedNoRate} skipped (no ${period}-end rate)` : '') +
+              '. Payables excluded — vendor bills are not yet multi-currency.';
+        result.values.generatedAt = new Date().toISOString();
+        return result;
+      },
+      // A generated revaluation books its revaluation + reversing entries through
+      // the certified auto-posting seam (a no-op when the GL is not wired).
+      onChange: async (event, ctx) => {
+        await handleFxRevaluationChangeForGl(event, ctx);
+      },
+      summarize: async (record): Promise<EnterpriseRecordSummary> => {
+        const f = record.fields;
+        const gl = Number(f.unrealizedGainLoss ?? 0);
+        const revalued = Number(f.revaluedCount ?? 0);
+        const skipped = Number(f.skippedNoRate ?? 0);
+        return {
+          moduleId: FX_REVALUATION_MODULE_ID,
+          recordId: record.id,
+          headline: `${str(f.reportNumber)} · unrealized ${gl >= 0 ? 'gain' : 'loss'} ${money(Math.abs(gl))} · ${revalued} item(s)`,
+          summary:
+            `Period ${str(f.period)} revalued at ${str(f.revalDate)}: AR adjustment ${money(Number(f.receivableDelta ?? 0))}, ` +
+            `unrealized gain/loss ${money(gl)} to 7811, reversing ${str(f.reversalDate)}. ${str(f.note)}.`,
+          risk: skipped > 0 ? 'medium' : 'low',
+          riskReason:
+            skipped > 0
+              ? 'Some open FX receivables had no period-end rate and were not revalued — the exposure is understated until rates are added.'
+              : 'Every open FX receivable was revalued against a real period-end rate; the entry reverses next period.',
+          executiveExplanation:
+            'Open foreign-currency receivables are remeasured at the period-end rate; the unrealized difference is booked to a separate P&L account and automatically reversed as the next period opens, so it is never double-counted when the invoice is later paid.',
+          grounded: false,
+          model: 'none',
+        };
+      },
+    },
+  });
+}

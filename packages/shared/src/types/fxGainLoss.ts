@@ -122,3 +122,55 @@ export function realizedReceivableFxLines(input: {
   }
   return lines;
 }
+
+/**
+ * The P&L account UNREALIZED (period-end revaluation) exchange differences post
+ * to (W6-B7) — kept DISTINCT from realized 7810 so the books separate cash-backed
+ * differences from mark-to-market ones, and so the reversing entry unwinds only
+ * the unrealized side. A NET account like 7810 (debit balance = net loss, credit
+ * = net gain).
+ */
+export const FX_UNREALIZED_ACCOUNT = { code: '7811', name: 'Unrealized Foreign Exchange Gain/Loss', type: 'expense' } as const;
+
+/**
+ * The company functional (base / reporting) currency — the currency the GL's
+ * control accounts are denominated in and every posted amount is expressed in.
+ * A fixed company setting, NOT a rate: revaluation resolves each foreign balance
+ * back to THIS currency at the period-end rate (the rates themselves always come
+ * from the effective-dated register). The single place to change if the company's
+ * functional currency is not USD.
+ */
+export const FX_FUNCTIONAL_CURRENCY = 'USD';
+
+/**
+ * Build the balanced journal lines for a period-end UNREALIZED revaluation of the
+ * AR / AP control accounts against the unrealized-FX P&L account. `receivableDelta`
+ * / `payableDelta` are the SIGNED change in each control account's functional
+ * carrying value (period-end value − booked value). Asset up (Δ>0) debits AR;
+ * liability up (Δ>0) credits AP; the FX account takes the single balancing line so
+ * Dr always equals Cr. Both zero → no lines (nothing to revalue).
+ */
+export function unrealizedRevaluationLines(input: {
+  receivableDelta: number;
+  payableDelta: number;
+  receivableCode: string;
+  payableCode: string;
+  fxCode: string;
+}): GlJournalLine[] {
+  const recv = round2(input.receivableDelta);
+  const pay = round2(input.payableDelta);
+  const lines: GlJournalLine[] = [];
+  if (recv !== 0) lines.push({ account: input.receivableCode, debit: recv > 0 ? recv : 0, credit: recv < 0 ? round2(-recv) : 0 });
+  if (pay !== 0) lines.push({ account: input.payableCode, debit: pay < 0 ? round2(-pay) : 0, credit: pay > 0 ? pay : 0 });
+  const totalDebit = round2(lines.reduce((s, l) => s + l.debit, 0));
+  const totalCredit = round2(lines.reduce((s, l) => s + l.credit, 0));
+  const balance = round2(totalDebit - totalCredit);
+  if (balance > 0) lines.push({ account: input.fxCode, debit: 0, credit: balance });
+  else if (balance < 0) lines.push({ account: input.fxCode, debit: round2(-balance), credit: 0 });
+  return lines;
+}
+
+/** The exact inverse of a set of lines (swap debit/credit) — a reversing entry. */
+export function reverseFxLines(lines: readonly GlJournalLine[]): GlJournalLine[] {
+  return lines.map((l) => ({ account: l.account, debit: l.credit, credit: l.debit, ...(l.memo ? { memo: l.memo } : {}) }));
+}

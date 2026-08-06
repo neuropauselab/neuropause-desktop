@@ -133,6 +133,8 @@ export * from './types/fxGainLoss';
 export * from './types/financialRatios';
 // Finance → W6-B6: cash flow statement — direct-method engine over posted GL entries.
 export * from './types/cashFlow';
+// Finance → W6-B7: unrealized FX revaluation — period-end receivables revaluation engine.
+export * from './types/fxRevaluation';
 // HR → W6-A7: statutory filings — ECR/ESI/PT/24Q filing data from posted runs.
 export * from './types/statutoryFilings';
 export * from './types/customers';

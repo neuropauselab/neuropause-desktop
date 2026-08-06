@@ -22,6 +22,7 @@ import type { EnterpriseEntity } from '@neuropause/shared';
 import {
   FINANCE_MODULE_ID,
   FX_GAINLOSS_ACCOUNT,
+  FX_UNREALIZED_ACCOUNT,
   GL_ASSET_CONTROL_ACCOUNTS,
   GL_CONTROL_ACCOUNTS,
   GL_PAYABLE_CONTROL_ACCOUNTS,
@@ -30,6 +31,8 @@ import {
   calculateInvoiceAmount,
   calculateTaxAmount,
   realizedReceivableFxLines,
+  reverseFxLines,
+  unrealizedRevaluationLines,
   glBillEntryNumber,
   glBillExpectedLines,
   glBillPaymentExpectedLines,
@@ -105,6 +108,30 @@ async function ensureFxAccount(ctx: EnterpriseModuleActionContext): Promise<void
 }
 
 /**
+ * Ensure the UNREALIZED FX Gain/Loss P&L account (7811) exists before a
+ * period-end revaluation posts (W6-B7) — the same lazy-ensure as the realized
+ * 7810 account, kept separate so revaluation and its reversal never touch the
+ * realized ledger.
+ */
+async function ensureUnrealizedFxAccount(ctx: EnterpriseModuleActionContext): Promise<void> {
+  const accounts = ctx.moduleFor(LEDGER_ACCOUNTS_MODULE_ID);
+  if (!accounts) return;
+  await accounts.store.load();
+  if (accounts.store.list().some((r) => str(r.fields.code) === FX_UNREALIZED_ACCOUNT.code)) return;
+  const v = accounts.hooks.validate({
+    fields: { code: FX_UNREALIZED_ACCOUNT.code, name: FX_UNREALIZED_ACCOUNT.name, class: FX_UNREALIZED_ACCOUNT.type, currency: 'USD' },
+  });
+  if (!v.ok) return;
+  const record = accounts.store.create({
+    title: FX_UNREALIZED_ACCOUNT.code,
+    fields: v.values,
+    actor: 'system:gl-fx-unrealized',
+    now: ctx.now(),
+  });
+  ctx.emit(accounts, 'created', record);
+}
+
+/**
  * Create the derived entries as drafts and post each through the Journal
  * module's own action, so every guard, audit entry, timeline event, broadcast,
  * and account reconciliation applies exactly as if a human had done it. A
@@ -130,7 +157,7 @@ export async function applyGlDerivedEntries(
       fields: {
         entryNumber: derived.entryNumber,
         memo: derived.memo,
-        entryDate: ctx.now().slice(0, 10),
+        entryDate: derived.entryDate ?? ctx.now().slice(0, 10),
         lines: JSON.stringify(derived.lines),
         status: 'draft',
         sourceModule: derived.sourceModule,
@@ -428,4 +455,52 @@ export async function handlePaymentChangeForGl(
     sourceRef: event.record.id,
   });
   await applyGlDerivedEntries(decisions, ctx);
+}
+
+/**
+ * FX revaluation lifecycle → derived GL work (W6-B7). A generated revaluation
+ * record posts TWO real journal entries through the same idempotent seam: the
+ * period-end revaluation (Dr/Cr AR vs 7811) dated the period end, and its exact
+ * reversal dated the first day of the next period — so the unrealized difference
+ * is recognised at close and unwound as the next period opens (IAS 21). The
+ * record's stored deltas drive the lines; deterministic entry numbers mean a
+ * re-fired change never double-posts. A zero-exposure revaluation posts nothing.
+ */
+export async function handleFxRevaluationChangeForGl(
+  event: { record: EnterpriseEntity },
+  ctx: EnterpriseModuleActionContext,
+): Promise<void> {
+  const journalModule = ctx.moduleFor(JOURNAL_ENTRIES_MODULE_ID);
+  if (!journalModule) return; // GL not wired — no-op
+  if (event.record.status === 'deleted') return; // immutable snapshot — no auto-reversal in this increment
+  const f = event.record.fields;
+  const revalLines = unrealizedRevaluationLines({
+    receivableDelta: Number(f.receivableDelta ?? 0),
+    payableDelta: Number(f.payableDelta ?? 0),
+    receivableCode: GL_CONTROL_ACCOUNTS.accountsReceivable.code,
+    payableCode: GL_PAYABLE_CONTROL_ACCOUNTS.accountsPayable.code,
+    fxCode: FX_UNREALIZED_ACCOUNT.code,
+  });
+  if (revalLines.length === 0) return; // no FX exposure — nothing to post
+  await ensureUnrealizedFxAccount(ctx);
+  const period = str(f.period);
+  const entries: GlDerivedEntry[] = [
+    {
+      entryNumber: str(f.revalEntryNumber),
+      memo: `Unrealized FX revaluation ${period}`,
+      entryDate: str(f.revalDate),
+      lines: revalLines,
+      sourceModule: event.record.moduleId,
+      sourceRef: event.record.id,
+    },
+    {
+      entryNumber: str(f.reversalEntryNumber),
+      memo: `Reversal of unrealized FX revaluation ${period}`,
+      entryDate: str(f.reversalDate),
+      lines: reverseFxLines(revalLines),
+      sourceModule: event.record.moduleId,
+      sourceRef: event.record.id,
+    },
+  ];
+  await applyGlDerivedEntries(entries, ctx);
 }
