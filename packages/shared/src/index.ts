@@ -113,6 +113,8 @@ export * from './types/documents';
 export * from './types/biReports';
 // HR → W6-A1: salary structures — contractual templates + derived statutory wage bases.
 export * from './types/salaryStructures';
+// HR → W6-A2: statutory rules — effective-dated PF/ESI/PT/TDS tables + pure calculators.
+export * from './types/statutoryRules';
 export * from './types/customers';
 export * from './types/quotes';
 export * from './types/orders';

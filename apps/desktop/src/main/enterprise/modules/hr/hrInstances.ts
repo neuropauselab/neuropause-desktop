@@ -10,15 +10,19 @@ import {
   EMPLOYEES_MODULE_ID,
   PAYROLL_RUNS_MODULE_ID,
   SALARY_STRUCTURES_MODULE_ID,
+  STATUTORY_RULES_MODULE_ID,
 } from '@neuropause/shared';
 import { enterpriseModuleStorePath } from '../../framework';
 import { createEmployeeModule } from './employeeModule';
 import { createPayrollRunModule } from './payrollRunModule';
 import { createSalaryStructureModule } from './salaryStructureModule';
+import { createStatutoryRuleModule } from './statutoryRuleModule';
 
 const store = (id: string): string => enterpriseModuleStorePath(app.getPath('userData'), id);
 
 export const salaryStructureModule = createSalaryStructureModule(store(SALARY_STRUCTURES_MODULE_ID));
+
+export const statutoryRuleModule = createStatutoryRuleModule(store(STATUTORY_RULES_MODULE_ID));
 
 export const employeeModule = createEmployeeModule(
   store(EMPLOYEES_MODULE_ID),
