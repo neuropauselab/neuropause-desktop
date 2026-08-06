@@ -133,7 +133,8 @@ function str(v: unknown): string {
 }
 
 function money(value: number): string {
-  return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  // Locale pinned — deterministic across machines (the W1 Finance convention).
+  return value.toLocaleString('en-US', { maximumFractionDigits: 0 });
 }
 
 /** Resolve a quote by record id or by its quote number (the payments-module rule). */

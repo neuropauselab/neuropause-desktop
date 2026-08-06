@@ -215,7 +215,9 @@ export function opportunityNextAction(opp: CrmOpportunity, health: OpportunityHe
 }
 
 function formatMoney(value: number): string {
-  return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  // Locale pinned: unpinned formatting is machine-dependent (en-IN lakh grouping
+  // renders 120000 as "1,20,000"), which breaks deterministic summaries + tests.
+  return value.toLocaleString('en-US', { maximumFractionDigits: 0 });
 }
 
 /** Deterministic summary + weighted-pipeline explanation — the no-model fallback. */
