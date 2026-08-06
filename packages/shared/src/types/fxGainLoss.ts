@@ -170,6 +170,34 @@ export function unrealizedRevaluationLines(input: {
   return lines;
 }
 
+/**
+ * Build the balanced journal lines for a period-end UNREALIZED revaluation of one or
+ * more foreign CASH / bank control accounts against the unrealized-FX P&L account
+ * (W6-C1). Each `adjustments` entry is the SIGNED change in that account's functional
+ * carrying value (period-end value − booked value). Cash is an asset, so Δ>0 debits
+ * the account (a gain) and Δ<0 credits it (a loss); the FX account takes the single
+ * balancing line so Dr always equals Cr. Zero-delta accounts contribute no line; an
+ * all-zero (or empty) set → no lines. Mirrors `unrealizedRevaluationLines` for the
+ * AR/AP side, generalized to N accounts, and reverses cleanly via `reverseFxLines`.
+ */
+export function cashRevaluationLines(input: {
+  adjustments: readonly { accountCode: string; delta: number }[];
+  fxCode: string;
+}): GlJournalLine[] {
+  const lines: GlJournalLine[] = [];
+  for (const a of input.adjustments) {
+    const d = round2(a.delta);
+    if (d === 0) continue;
+    lines.push({ account: a.accountCode, debit: d > 0 ? d : 0, credit: d < 0 ? round2(-d) : 0 });
+  }
+  const totalDebit = round2(lines.reduce((s, l) => s + l.debit, 0));
+  const totalCredit = round2(lines.reduce((s, l) => s + l.credit, 0));
+  const balance = round2(totalDebit - totalCredit);
+  if (balance > 0) lines.push({ account: input.fxCode, debit: 0, credit: balance });
+  else if (balance < 0) lines.push({ account: input.fxCode, debit: round2(-balance), credit: 0 });
+  return lines;
+}
+
 /** The exact inverse of a set of lines (swap debit/credit) — a reversing entry. */
 export function reverseFxLines(lines: readonly GlJournalLine[]): GlJournalLine[] {
   return lines.map((l) => ({ account: l.account, debit: l.credit, credit: l.debit, ...(l.memo ? { memo: l.memo } : {}) }));

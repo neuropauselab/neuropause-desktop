@@ -171,3 +171,75 @@ export function derivePayableRevaluation(input: {
   }
   return { items, payableDelta, unrealizedGainLoss, revaluedCount: items.length, skippedNoRate };
 }
+
+/** One revalued foreign cash/bank account — the audit row (W6-C1). */
+export interface FxCashRevaluationItem {
+  /** The ledger account code (a foreign-denominated cash/bank account). */
+  account: string;
+  currency: string;
+  /** The account's own-currency balance, derived from the posted ledger. */
+  foreignBalance: number;
+  /** The account's current functional carrying value (historical cost — revals reverse). */
+  functionalBooked: number;
+  /** Functional units per one unit of `currency`, at the period-end date. */
+  revalRate: number;
+  /** foreignBalance × revalRate. */
+  functionalCurrent: number;
+  /** functionalCurrent − functionalBooked (signed; the cash carrying-value change). */
+  delta: number;
+}
+
+export interface FxCashRevaluationResult {
+  items: FxCashRevaluationItem[];
+  /** Σ delta over revalued cash accounts (functional) — the cash adjustment. */
+  cashDelta: number;
+  /** Σ IAS 21 gain(+)/loss(−); cash is an asset, so this equals cashDelta. */
+  unrealizedGainLoss: number;
+  revaluedCount: number;
+  /** Foreign cash accounts with NO period-end rate available — NOT revalued (never faked 1:1). */
+  skippedNoRate: number;
+}
+
+/**
+ * Revalue foreign-currency CASH / bank accounts as of `asOfDate` — the monetary-item
+ * mirror of the receivable/payable revaluations for held cash (W6-C1). Each account
+ * carries its OWN-currency balance (derived from the posted ledger via
+ * `glAccountForeignTotals`) and its current functional carrying value (historical
+ * cost, because revaluations reverse). The unrealized adjustment restates the cash
+ * to the period-end rate: `delta = foreignBalance × revalRate − functionalBooked`.
+ * Cash is an asset, so a higher rate is a GAIN. A functional-currency account has no
+ * exposure (skipped); a zero own-currency balance has nothing to revalue (skipped);
+ * and when no rate governs the period end the account is skipped and counted — never
+ * revalued at a fabricated 1:1. Pure (no I/O): the module injects the balances.
+ */
+export function deriveCashRevaluation(input: {
+  accounts: readonly { account: string; currency: string; foreignBalance: number; functionalBalance: number }[];
+  rates: readonly ExchangeRate[];
+  asOfDate: string;
+  functionalCurrency?: string;
+}): FxCashRevaluationResult {
+  const functional = (input.functionalCurrency || FX_FUNCTIONAL_CURRENCY).toUpperCase();
+  const rates = input.rates as ExchangeRate[];
+  const items: FxCashRevaluationItem[] = [];
+  let cashDelta = 0;
+  let unrealizedGainLoss = 0;
+  let skippedNoRate = 0;
+  for (const acc of input.accounts) {
+    const currency = (acc.currency || functional).toUpperCase();
+    if (currency === functional) continue; // no FX exposure
+    const foreignBalance = round2(acc.foreignBalance);
+    if (foreignBalance === 0) continue; // nothing held → no unrealized exposure
+    const revalRate = resolveExchangeRate(rates, currency, functional, input.asOfDate);
+    if (revalRate === null) {
+      skippedNoRate += 1;
+      continue;
+    }
+    const functionalBooked = round2(acc.functionalBalance);
+    const functionalCurrent = round2(foreignBalance * revalRate);
+    const delta = round2(functionalCurrent - functionalBooked);
+    items.push({ account: acc.account, currency, foreignBalance, functionalBooked, revalRate, functionalCurrent, delta });
+    cashDelta = round2(cashDelta + delta);
+    unrealizedGainLoss = round2(unrealizedGainLoss + delta); // asset: gain(+)/loss(−) equals the carrying change
+  }
+  return { items, cashDelta, unrealizedGainLoss, revaluedCount: items.length, skippedNoRate };
+}
