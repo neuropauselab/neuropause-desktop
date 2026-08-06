@@ -107,6 +107,7 @@ import { opportunityModule } from './modules/crm/opportunityModuleInstance';
 import { activityModule } from './modules/crm/activityModuleInstance';
 import { quoteModule } from './modules/sales/quoteModuleInstance';
 import { orderModule } from './modules/sales/orderModuleInstance';
+import { contractModule } from './modules/sales/contractModuleInstance';
 import { productModule } from './modules/inventory/productModuleInstance';
 import { warehouseModule } from './modules/inventory/warehouseModuleInstance';
 import { stockMovementModule } from './modules/inventory/stockMovementModuleInstance';
@@ -280,6 +281,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(activityModule); // CRM → Activities (calls/emails/meetings/tasks/notes stream)
   modules.registry.register(quoteModule); // Sales → Quotes
   modules.registry.register(orderModule); // Sales → Orders (conversion target)
+  modules.registry.register(contractModule); // Sales → Contracts (activate/terminate/renew lifecycle)
   modules.registry.register(paymentModule); // Finance → Payments
   modules.registry.register(ledgerAccountModule); // Finance → Chart of Accounts (GL)
   modules.registry.register(journalEntryModule); // Finance → Journal (GL double-entry)

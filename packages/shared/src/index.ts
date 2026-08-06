@@ -75,6 +75,8 @@ export * from './types/leads';
 export * from './types/opportunities';
 // CRM → W2.2: activities — the sales activity stream (calls/emails/meetings/tasks/notes).
 export * from './types/activities';
+// Sales → W2.3: contracts — marker lifecycle, time-derived expiry, renewal chain.
+export * from './types/contracts';
 export * from './types/customers';
 export * from './types/quotes';
 export * from './types/orders';
