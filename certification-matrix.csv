@@ -24,7 +24,7 @@ sales-revenue-forecast,Sales,revenueForecast,10,3,Enterprise Ready,7.21,9,9,7,5,
 crm-leads,CRM,lead,19,5,Reference,8.07,9,9,9,8,8,6,6,9,8,8,8,9,7,9,runner,1,dedicated
 crm,CRM,contact,19,4,Production Certified,7.5,9,9,9,5,8,6,6,9,8,3,8,9,7,9,runner,0,dedicated
 crm-customers,CRM,customer,24,4,Production Certified,7.5,9,9,9,5,8,6,6,9,8,3,8,9,7,9,runner,0,dedicated
-crm-opportunities,CRM,opportunity,14,3,Enterprise Ready,7.36,9,9,7,8,8,6,6,2,8,8,8,9,7,8,none,3,dedicated
+crm-opportunities,CRM,opportunity,14,3,Enterprise Ready,7.43,9,9,7,8,8,6,6,2,9,8,8,9,7,8,none,3,dedicated
 crm-activities,CRM,crmActivity,15,3,Enterprise Ready,7.36,9,9,7,8,8,6,6,2,8,8,8,9,7,8,none,2,dedicated
 crm-customer-health,CRM,customerHealthReport,11,3,Enterprise Ready,7.21,9,9,7,5,8,6,6,2,9,8,8,9,7,8,none,0,dedicated
 crm-customer-timeline,CRM,customerTimeline,7,3,Enterprise Ready,7.21,9,9,7,5,8,6,6,2,9,8,8,9,7,8,none,0,dedicated

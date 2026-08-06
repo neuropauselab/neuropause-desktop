@@ -19,6 +19,7 @@
  * chain (W1). Pure (no I/O), so it is shared by the backend hooks and the tests.
  */
 import type { EnterpriseEntity, EnterpriseRiskLevel } from './enterpriseModule';
+import type { ExecutiveKpi } from './executiveCenter';
 
 /** The pipeline stage of an opportunity (kernel-parity values — see header). */
 export type OpportunityStage =
@@ -237,4 +238,102 @@ export function opportunitySummaryFallback(
         ? 'Lost — no pipeline value retained.'
         : `${formatMoney(opp.weightedValue)} weighted pipeline (${formatMoney(opp.amount)} at ${opp.probability}%); risk is ${health.level}.`;
   return { summary, executiveExplanation };
+}
+
+/* ── aggregate insights (Executive Center) — W2.8 ─────────────────────────── */
+
+export interface OpportunityPipelineInsights {
+  openDeals: number;
+  openValue: number;
+  weightedPipeline: number;
+  wonValue: number;
+  /** Won / (won + lost), 0..100; 0 when nothing has closed yet. */
+  winRate: number;
+  /** Open deals whose health is high (stale or past expected close). */
+  staleDeals: number;
+}
+
+/** Roll the opportunity pipeline into the Executive Center KPIs. Pure. */
+export function deriveOpportunityPipeline(
+  opportunities: CrmOpportunity[],
+  nowMs: number,
+): OpportunityPipelineInsights {
+  let openDeals = 0;
+  let openValue = 0;
+  let weightedPipeline = 0;
+  let wonValue = 0;
+  let won = 0;
+  let lost = 0;
+  let staleDeals = 0;
+  for (const opp of opportunities) {
+    if (opp.outcome === 'won') {
+      won += 1;
+      wonValue += opp.amount;
+      continue;
+    }
+    if (opp.outcome === 'lost') {
+      lost += 1;
+      continue;
+    }
+    openDeals += 1;
+    openValue += opp.amount;
+    weightedPipeline += opp.weightedValue;
+    if (assessOpportunityHealth(opp, nowMs).level === 'high') staleDeals += 1;
+  }
+  const closed = won + lost;
+  return {
+    openDeals,
+    openValue: Math.round(openValue * 100) / 100,
+    weightedPipeline: Math.round(weightedPipeline * 100) / 100,
+    wonValue: Math.round(wonValue * 100) / 100,
+    winRate: closed === 0 ? 0 : Math.round((won / closed) * 100),
+    staleDeals,
+  };
+}
+
+/** Map pipeline insights to Executive Center KPI tiles (reuses the existing KPI type). */
+export function opportunityPipelineToKpis(insights: OpportunityPipelineInsights): ExecutiveKpi[] {
+  const staleBand: ExecutiveKpi['band'] =
+    insights.staleDeals === 0 ? 'healthy' : insights.staleDeals <= 3 ? 'watch' : 'at-risk';
+  const winBand: ExecutiveKpi['band'] =
+    insights.winRate >= 40 ? 'healthy' : insights.winRate >= 20 ? 'watch' : 'at-risk';
+  return [
+    {
+      key: 'opp-open-deals',
+      label: 'Open Deals',
+      value: null,
+      display: String(insights.openDeals),
+      deepLink: 'enterprise/modules',
+    },
+    {
+      key: 'opp-pipeline-value',
+      label: 'Deal Pipeline',
+      value: null,
+      display: formatMoney(insights.openValue),
+      deepLink: 'enterprise/modules',
+    },
+    {
+      key: 'opp-weighted-pipeline',
+      label: 'Weighted Pipeline',
+      value: null,
+      display: formatMoney(insights.weightedPipeline),
+      deepLink: 'enterprise/modules',
+    },
+    {
+      key: 'opp-win-rate',
+      label: 'Deal Win Rate',
+      value: insights.winRate,
+      display: `${insights.winRate}%`,
+      band: winBand,
+      deepLink: 'enterprise/modules',
+    },
+    {
+      key: 'opp-stale-deals',
+      label: 'Stale Deals',
+      value: null,
+      display: `${insights.staleDeals} at risk`,
+      band: staleBand,
+      deepLink: 'enterprise/modules',
+    },
+  ];
 }

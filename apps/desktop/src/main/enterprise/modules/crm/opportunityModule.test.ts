@@ -12,7 +12,9 @@ import {
   clampOpportunityProbability,
   leadFromRecord,
   nextOpportunityStage,
+  deriveOpportunityPipeline,
   opportunityFromRecord,
+  opportunityPipelineToKpis,
   opportunityWeightedValue,
   type EnterpriseEntity,
 } from '@neuropause/shared';
@@ -48,6 +50,31 @@ describe('opportunity domain rules (pure)', () => {
     expect(opportunityWeightedValue(33.33, 25)).toBe(8.33);
     expect(opportunityWeightedValue(100000, 75)).toBe(75000);
     expect(opportunityWeightedValue(0, 50)).toBe(0);
+  });
+
+  it('rolls the pipeline into Executive Center insights + KPI tiles (W2.8)', () => {
+    const T = '2026-08-06T00:00:00.000Z';
+    const base = {
+      id: 'o', name: 'D', account: '', sourceLeadRef: '', quoteRef: '', stage: 'proposal' as const,
+      amount: 20000, probability: 50, weightedValue: 10000, expectedCloseDate: '2026-09-15',
+      assignedTo: '', closedAt: null, outcome: null, lostReason: '', createdAt: T, updatedAt: T,
+    };
+    const nowMs = Date.parse(T);
+    const insights = deriveOpportunityPipeline([
+      base,
+      { ...base, id: 'o2', expectedCloseDate: '2026-07-01' }, // past expected close → stale
+      { ...base, id: 'o3', stage: 'closed-won' as const, outcome: 'won' as const, closedAt: T, amount: 40000 },
+      { ...base, id: 'o4', stage: 'closed-lost' as const, outcome: 'lost' as const, closedAt: T },
+    ], nowMs);
+    expect(insights).toMatchObject({
+      openDeals: 2, openValue: 40000, weightedPipeline: 20000, wonValue: 40000, winRate: 50, staleDeals: 1,
+    });
+    const kpis = opportunityPipelineToKpis(insights);
+    expect(kpis.map((k) => k.key)).toEqual([
+      'opp-open-deals', 'opp-pipeline-value', 'opp-weighted-pipeline', 'opp-win-rate', 'opp-stale-deals',
+    ]);
+    expect(kpis.find((k) => k.key === 'opp-win-rate')).toMatchObject({ display: '50%', band: 'healthy' });
+    expect(deriveOpportunityPipeline([], nowMs).winRate).toBe(0); // nothing closed → 0, not fabricated
   });
 });
 

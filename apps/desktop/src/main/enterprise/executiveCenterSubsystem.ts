@@ -28,6 +28,7 @@ import {
   deriveInventoryInsights,
   deriveInvoiceInsights,
   deriveLeadInsights,
+  deriveOpportunityPipeline,
   deriveOrderInsights,
   derivePaymentInsights,
   deriveProcurementInsights,
@@ -69,6 +70,7 @@ import {
   goodsReceiptFromRecord,
   invoiceFromRecord,
   leadFromRecord,
+  opportunityFromRecord,
   orderFromRecord,
   paymentFromRecord,
   productFromRecord,
@@ -97,6 +99,7 @@ import {
 } from '@neuropause/shared';
 import { contactModule } from './modules/crm/contactModuleInstance';
 import { leadModule } from './modules/crm/leadModuleInstance';
+import { opportunityModule } from './modules/crm/opportunityModuleInstance';
 import { customerModule } from './modules/crm/customerModuleInstance';
 import { quoteModule } from './modules/sales/quoteModuleInstance';
 import { orderModule } from './modules/sales/orderModuleInstance';
@@ -268,6 +271,12 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       leadInsights: () =>
         deriveLeadInsights(
           leadModule.store.list({ status: 'active', limit: 5000 }).map(leadFromRecord),
+          nowMs,
+        ),
+      // CRM opportunity-pipeline KPIs from the registered Opportunities module (W2.8).
+      opportunityInsights: () =>
+        deriveOpportunityPipeline(
+          opportunityModule.store.list({ status: 'active', limit: 5000 }).map(opportunityFromRecord),
           nowMs,
         ),
       // CRM customer-account KPIs from the registered Customers module.
