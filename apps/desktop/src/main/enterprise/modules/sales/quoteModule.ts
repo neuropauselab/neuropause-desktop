@@ -11,6 +11,12 @@
  * on every write, so those numbers are always current and consistent. The
  * `summarize` hook hands the model those signals to EXPLAIN — it never sets them.
  *
+ * W2.4 — the discount POLICY ceiling: when the Pricing Rules store is injected,
+ * validate also stamps the read-only `policyDiscount` (the best applicable rule,
+ * via the pure discount engine) and FORCES `approvalStatus = required` whenever
+ * the manual discount exceeds policy. Policy only ever TIGHTENS approval — the
+ * existing risk-based rule is never loosened.
+ *
  * Electron-free (store path + AI runner injected), so it unit-tests without the
  * app runtime.
  */
@@ -29,6 +35,8 @@ import {
   calculateQuoteMargin,
   calculateQuoteTotal,
   computeQuoteSignals,
+  evaluatePricingRules,
+  pricingRuleFromRecord,
   quoteApprovalStatus,
   quoteFromRecord,
   quoteStatusLabel,
@@ -102,6 +110,7 @@ export const QUOTE_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'total', label: 'Total', type: 'number', format: 'currency', readOnly: true },
     { key: 'marginPct', label: 'Margin %', type: 'number', readOnly: true },
     { key: 'discountRisk', label: 'Discount Risk', type: 'number', readOnly: true },
+    { key: 'policyDiscount', label: 'Policy Discount', type: 'number', readOnly: true, format: 'currency', column: false },
     {
       key: 'approvalStatus',
       label: 'Approval',
@@ -177,9 +186,15 @@ function projectValues(values: EnterpriseRecordInput['fields']): SalesQuote {
 /**
  * Build the Quotes module. `total`, `marginPct`, `discountRisk`, and
  * `approvalStatus` are stamped deterministically by the validate hook on every
- * write. The AI runner is optional (offline → deterministic fallback).
+ * write; with the Pricing Rules store injected, `policyDiscount` is stamped too
+ * and over-policy discounts force approval. The AI runner is optional
+ * (offline → deterministic fallback).
  */
-export function createQuoteModule(storePath: string, aiRunner?: QuoteAiRunner): EnterpriseModule {
+export function createQuoteModule(
+  storePath: string,
+  aiRunner?: QuoteAiRunner,
+  pricingRuleStore?: EnterpriseRecordStore,
+): EnterpriseModule {
   const store = new EnterpriseRecordStore(storePath, QUOTES_MODULE_ID, QUOTE_KIND);
   return defineEnterpriseModule({
     descriptor: QUOTE_DESCRIPTOR,
@@ -195,6 +210,28 @@ export function createQuoteModule(storePath: string, aiRunner?: QuoteAiRunner): 
           result.values.marginPct = calculateQuoteMargin(quote).percent;
           result.values.discountRisk = calculateDiscountRisk(quote);
           result.values.approvalStatus = quoteApprovalStatus(quote);
+          // W2.4 — the discount POLICY ceiling: stamp the best applicable rule's
+          // grant, and force approval when the manual discount exceeds it. The
+          // engine reads the quote's OWN issue date (never the wall clock), so
+          // validation stays reproducible. Policy only ever TIGHTENS approval.
+          if (pricingRuleStore) {
+            const rules = pricingRuleStore.list().map(pricingRuleFromRecord);
+            // The policy regime activates only once the rule book has its first
+            // rule RECORD — an org that never wrote rules keeps the pre-policy
+            // behavior. Deactivating every rule keeps the regime with zero
+            // grants; deleting every rule abolishes it.
+            if (rules.length > 0) {
+              const policy = evaluatePricingRules(rules, {
+                customer: quote.customer,
+                subtotal: quote.subtotal,
+                issueDate: quote.issueDate || null,
+              });
+              result.values.policyDiscount = policy.discount;
+              if (quote.discount > policy.discount) {
+                result.values.approvalStatus = 'required';
+              }
+            }
+          }
         }
         return result;
       },

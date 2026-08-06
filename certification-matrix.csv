@@ -15,8 +15,9 @@ finance-credit-notes,Finance,creditNote,13,3,Enterprise Ready,7.36,9,9,7,8,8,6,6
 finance-debit-notes,Finance,debitNote,13,3,Enterprise Ready,7.36,9,9,7,8,8,6,6,2,8,8,8,9,7,8,none,2,dedicated
 finance-vendor-payments,Finance,vendorPayment,11,3,Enterprise Ready,7.36,9,9,7,8,8,6,6,2,8,8,8,9,7,8,none,0,dedicated
 sales-orders,Sales,order,30,5,Reference,8.07,9,9,9,8,8,6,6,9,8,8,8,9,7,9,runner,1,dedicated
-sales-quotes,Sales,quote,24,5,Reference,8.07,9,9,9,8,8,6,6,9,8,8,8,9,7,9,runner,1,dedicated
+sales-quotes,Sales,quote,25,5,Reference,8.07,9,9,9,8,8,6,6,9,8,8,8,9,7,9,runner,1,dedicated
 sales-contracts,Sales,contract,17,3,Enterprise Ready,7.36,9,9,7,8,8,6,6,2,8,8,8,9,7,8,none,3,dedicated
+sales-pricing-rules,Sales,pricingRule,11,3,Enterprise Ready,7.14,9,9,7,5,8,6,6,2,8,8,8,9,7,8,none,0,dedicated
 crm-leads,CRM,lead,19,5,Reference,8.07,9,9,9,8,8,6,6,9,8,8,8,9,7,9,runner,1,dedicated
 crm,CRM,contact,19,4,Production Certified,7.5,9,9,9,5,8,6,6,9,8,3,8,9,7,9,runner,0,dedicated
 crm-customers,CRM,customer,24,4,Production Certified,7.5,9,9,9,5,8,6,6,9,8,3,8,9,7,9,runner,0,dedicated

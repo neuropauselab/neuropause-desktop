@@ -77,6 +77,8 @@ export * from './types/opportunities';
 export * from './types/activities';
 // Sales → W2.3: contracts — marker lifecycle, time-derived expiry, renewal chain.
 export * from './types/contracts';
+// Sales → W2.4: pricing rules — the discount-policy rule book + pure engine.
+export * from './types/pricingRules';
 export * from './types/customers';
 export * from './types/quotes';
 export * from './types/orders';
