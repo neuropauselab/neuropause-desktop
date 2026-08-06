@@ -47,6 +47,13 @@ export const DEDUCTIONS_PAYABLE_ACCOUNT = { code: '2250', name: 'Employee Deduct
 
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
+/** One itemized component amount on a payroll line (drives the payslip). */
+export interface PayComponentLine {
+  code: string;
+  name: string;
+  amount: number;
+}
+
 /** One employee's fully computed line on a statutory payroll run. */
 export interface StatutoryPayrollLine {
   employee: string;
@@ -54,6 +61,10 @@ export interface StatutoryPayrollLine {
   mode: 'statutory' | 'flat';
   gross: number;
   basic: number;
+  /** Itemized earnings incl. Basic — the payslip's earnings block (W6-A5). */
+  earnings: PayComponentLine[];
+  /** Itemized non-statutory (contractual) deductions — the payslip's other-deductions block. */
+  contractualDeductions: PayComponentLine[];
   pfEmployee: number;
   pfEmployerTotal: number;
   pfEdli: number;
@@ -127,6 +138,12 @@ export function deriveStatutoryPayrollRun(
         mode: 'statutory',
         gross: breakup.grossEarnings,
         basic: round2(basic),
+        earnings: breakup.lines
+          .filter((l) => l.kind === 'earning')
+          .map((l) => ({ code: l.code, name: l.name, amount: l.amount })),
+        contractualDeductions: breakup.lines
+          .filter((l) => l.kind === 'deduction')
+          .map((l) => ({ code: l.code, name: l.name, amount: l.amount })),
         pfEmployee: pf.employee,
         pfEmployerTotal: pf.employerTotal,
         pfEdli: pf.edli,
@@ -152,6 +169,8 @@ export function deriveStatutoryPayrollRun(
         mode: 'flat',
         gross: round2(e.monthlySalary),
         basic: 0,
+        earnings: [{ code: 'GROSS', name: 'Gross Salary', amount: round2(e.monthlySalary) }],
+        contractualDeductions: [],
         pfEmployee: 0,
         pfEmployerTotal: 0,
         pfEdli: 0,

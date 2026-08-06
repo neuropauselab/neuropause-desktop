@@ -119,6 +119,8 @@ export * from './types/statutoryRules';
 export * from './types/payrollProcessing';
 // HR → W6-A4: salary disbursement — net-pay clearing + deterministic bank advice.
 export * from './types/salaryDisbursement';
+// HR → W6-A5: payslips — immutable per-employee statements from posted runs.
+export * from './types/payslips';
 export * from './types/customers';
 export * from './types/quotes';
 export * from './types/orders';

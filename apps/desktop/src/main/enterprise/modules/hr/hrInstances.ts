@@ -9,6 +9,7 @@ import { app } from 'electron';
 import {
   EMPLOYEES_MODULE_ID,
   PAYROLL_RUNS_MODULE_ID,
+  PAYSLIPS_MODULE_ID,
   SALARY_DISBURSEMENTS_MODULE_ID,
   SALARY_STRUCTURES_MODULE_ID,
   STATUTORY_RULES_MODULE_ID,
@@ -16,6 +17,7 @@ import {
 import { enterpriseModuleStorePath } from '../../framework';
 import { createEmployeeModule } from './employeeModule';
 import { createPayrollRunModule } from './payrollRunModule';
+import { createPayslipModule } from './payslipModule';
 import { createSalaryDisbursementModule } from './salaryDisbursementModule';
 import { createSalaryStructureModule } from './salaryStructureModule';
 import { createStatutoryRuleModule } from './statutoryRuleModule';
@@ -37,6 +39,8 @@ export const payrollRunModule = createPayrollRunModule(
   salaryStructureModule.store,
   statutoryRuleModule.store,
 );
+
+export const payslipModule = createPayslipModule(store(PAYSLIPS_MODULE_ID));
 
 export const salaryDisbursementModule = createSalaryDisbursementModule(
   store(SALARY_DISBURSEMENTS_MODULE_ID),

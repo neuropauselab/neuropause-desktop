@@ -75,10 +75,11 @@ projects-tasks,Projects,projectTask,9,3,Enterprise Ready,7.14,9,9,7,5,8,6,6,2,8,
 projects-time-entries,Projects,timeEntry,9,3,Enterprise Ready,7.14,9,9,7,5,8,6,6,2,8,8,8,9,7,8,none,0,dedicated
 projects-billing-runs,Projects,billingRun,14,3,Enterprise Ready,7.36,9,9,7,8,8,6,6,2,8,8,8,9,7,8,none,1,dedicated
 hr-employees,HR,employee,17,3,Enterprise Ready,7.14,9,9,7,5,8,6,6,2,8,8,8,9,7,8,none,1,dedicated
-hr-payroll-runs,HR,payrollRun,17,4,Production Certified,7.57,9,9,9,8,8,6,6,2,8,8,8,9,7,9,none,1,dedicated
+hr-payroll-runs,HR,payrollRun,17,4,Production Certified,7.57,9,9,9,8,8,6,6,2,8,8,8,9,7,9,none,2,dedicated
 hr-salary-structures,HR,salaryStructure,7,3,Enterprise Ready,7.36,9,9,7,8,8,6,6,2,8,8,8,9,7,8,none,1,dedicated
 hr-statutory-rules,HR,statutoryRuleSet,9,3,Enterprise Ready,7.36,9,9,7,8,8,6,6,2,8,8,8,9,7,8,none,1,dedicated
 hr-salary-disbursements,HR,salaryDisbursement,17,4,Production Certified,7.57,9,9,9,8,8,6,6,2,8,8,8,9,7,9,none,1,dedicated
+hr-payslips,HR,payslip,23,4,Production Certified,7.5,9,9,9,8,8,6,6,2,8,8,8,9,7,9,none,0,dedicated
 helpdesk-tickets,Helpdesk,ticket,14,3,Enterprise Ready,7.36,9,9,7,8,8,6,6,2,8,8,8,9,7,8,none,2,dedicated
 crm-campaigns,CRM,campaign,10,3,Enterprise Ready,7.21,9,9,7,5,8,6,6,2,9,8,8,9,7,8,none,1,dedicated
 documents-registry,Documents,document,11,3,Enterprise Ready,7.36,9,9,7,8,8,6,6,2,8,8,8,9,7,8,none,2,dedicated

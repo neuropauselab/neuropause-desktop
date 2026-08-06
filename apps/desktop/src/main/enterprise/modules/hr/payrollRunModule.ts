@@ -44,6 +44,8 @@ import {
   PF_PAYABLE_ACCOUNT,
   PT_PAYABLE_ACCOUNT,
   TDS_PAYABLE_ACCOUNT,
+  PAYSLIPS_MODULE_ID,
+  buildPayslipFields,
   derivePayrollRun,
   deriveRecordTitle,
   deriveStatutoryPayrollRun,
@@ -52,6 +54,7 @@ import {
   parseSalaryComponents,
   payrollAccrualLines,
   payrollEntryNumber,
+  payslipNumber,
   resolveStatutoryRuleSet,
   statutoryAccrualLines,
   validateEnterpriseRecordInput,
@@ -66,8 +69,9 @@ import {
 } from '../../framework';
 import { applyGlDerivedEntries } from '../finance/glPosting';
 
-/** The descriptor action key the Payroll Runs module surfaces. */
+/** The descriptor action keys the Payroll Runs module surfaces. */
 export const POST_PAYROLL_ACTION = 'post';
+export const GENERATE_PAYSLIPS_ACTION = 'generatePayslips';
 
 /** The declarative description of a payroll run — drives store, CRUD, and the UI. */
 export const PAYROLL_RUN_DESCRIPTOR: EnterpriseModuleDescriptor = {
@@ -81,7 +85,10 @@ export const PAYROLL_RUN_DESCRIPTOR: EnterpriseModuleDescriptor = {
   group: 'HR',
   titleField: 'runNumber',
   permissions: { read: 'operations:read', write: 'operations:manage' },
-  actions: [{ key: POST_PAYROLL_ACTION, label: 'Post to GL', icon: 'check' }],
+  actions: [
+    { key: POST_PAYROLL_ACTION, label: 'Post to GL', icon: 'check' },
+    { key: GENERATE_PAYSLIPS_ACTION, label: 'Generate Payslips', icon: 'file-text' },
+  ],
   fields: [
     { key: 'runNumber', label: 'Run #', type: 'text', readOnly: true },
     { key: 'periodKey', label: 'Period', type: 'text', required: true, placeholder: '2026-08' },
@@ -271,6 +278,56 @@ export function createPayrollRunModule(
       },
       // The real thing: ensure the accounts, book the balanced accrual, freeze the run.
       runAction: async (action, record, actionCtx) => {
+        if (action === GENERATE_PAYSLIPS_ACTION) {
+          const rf = record.fields;
+          if (!str(rf.postedAt)) return { ok: false, error: 'Generate payslips only after the run is posted.' };
+          let run: StatutoryPayrollRun | null = null;
+          const raw = str(rf.statutoryJson);
+          if (raw) {
+            try {
+              run = JSON.parse(raw) as StatutoryPayrollRun;
+            } catch {
+              return { ok: false, error: 'The run’s processed detail is unreadable — re-preview before generating payslips.' };
+            }
+          }
+          if (!run) {
+            return { ok: false, error: 'This run has no processed detail (pre-W6 accrual) — payslips need the statutory breakdown.' };
+          }
+          const payslips = actionCtx.moduleFor(PAYSLIPS_MODULE_ID);
+          if (!payslips) return { ok: false, error: 'The Payslips module is not available to receive the generated slips.' };
+          await payslips.store.load();
+          const runNumber = str(rf.runNumber);
+          const periodKey = str(rf.periodKey);
+          const empNumberById = new Map(
+            employeeStore.list().map((r) => [r.id, str(r.fields.employeeNumber) || r.id] as const),
+          );
+          let generated = 0;
+          let skipped = 0;
+          for (const line of run.lines) {
+            const exists = payslips.store
+              .list()
+              .some((r) => str(r.fields.runNumber) === runNumber && str(r.fields.employee) === line.employee);
+            if (exists) {
+              skipped += 1;
+              continue;
+            }
+            const employeeNumber = empNumberById.get(line.employee) ?? line.employee;
+            const created = payslips.store.create({
+              title: payslipNumber(runNumber, employeeNumber),
+              fields: buildPayslipFields(line, { runNumber, periodKey, employeeNumber, generatedAt: actionCtx.now() }),
+              actor: actionCtx.actor(),
+              now: actionCtx.now(),
+            });
+            actionCtx.emit(payslips, 'created', created);
+            generated += 1;
+          }
+          return {
+            ok: true,
+            message:
+              `Generated ${generated} payslip(s) for ${runNumber}` +
+              (skipped > 0 ? `; skipped ${skipped} already generated (idempotent).` : '.'),
+          };
+        }
         if (action !== POST_PAYROLL_ACTION) return { ok: false, error: `Unknown action "${action}".` };
         const f = record.fields;
         if (str(f.postedAt)) return { ok: false, error: 'This run has already posted its accrual.' };
