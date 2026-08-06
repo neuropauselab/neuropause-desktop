@@ -121,6 +121,8 @@ export * from './types/payrollProcessing';
 export * from './types/salaryDisbursement';
 // HR → W6-A5: payslips — immutable per-employee statements from posted runs.
 export * from './types/payslips';
+// HR → W6-A6: payroll register — immutable management summary over posted runs.
+export * from './types/payrollRegister';
 export * from './types/customers';
 export * from './types/quotes';
 export * from './types/orders';

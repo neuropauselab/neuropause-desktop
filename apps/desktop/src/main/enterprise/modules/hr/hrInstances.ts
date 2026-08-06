@@ -8,6 +8,7 @@
 import { app } from 'electron';
 import {
   EMPLOYEES_MODULE_ID,
+  PAYROLL_REGISTER_MODULE_ID,
   PAYROLL_RUNS_MODULE_ID,
   PAYSLIPS_MODULE_ID,
   SALARY_DISBURSEMENTS_MODULE_ID,
@@ -16,6 +17,7 @@ import {
 } from '@neuropause/shared';
 import { enterpriseModuleStorePath } from '../../framework';
 import { createEmployeeModule } from './employeeModule';
+import { createPayrollRegisterModule } from './payrollRegisterModule';
 import { createPayrollRunModule } from './payrollRunModule';
 import { createPayslipModule } from './payslipModule';
 import { createSalaryDisbursementModule } from './salaryDisbursementModule';
@@ -41,6 +43,11 @@ export const payrollRunModule = createPayrollRunModule(
 );
 
 export const payslipModule = createPayslipModule(store(PAYSLIPS_MODULE_ID));
+
+export const payrollRegisterModule = createPayrollRegisterModule(
+  store(PAYROLL_REGISTER_MODULE_ID),
+  payrollRunModule.store,
+);
 
 export const salaryDisbursementModule = createSalaryDisbursementModule(
   store(SALARY_DISBURSEMENTS_MODULE_ID),
