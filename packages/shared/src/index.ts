@@ -111,6 +111,8 @@ export * from './types/marketing';
 export * from './types/documents';
 // Executive → W5.2: BI reports — saved aggregations over any registered module.
 export * from './types/biReports';
+// HR → W6-A1: salary structures — contractual templates + derived statutory wage bases.
+export * from './types/salaryStructures';
 export * from './types/customers';
 export * from './types/quotes';
 export * from './types/orders';

@@ -153,7 +153,7 @@ import {
 } from './modules/manufacturing/manufacturingInstances';
 import { bomExplosionModule } from './modules/manufacturing/bomExplosionModuleInstance';
 import { billingRunModule, projectModule, projectTaskModule, timeEntryModule } from './modules/projects/projectsInstances';
-import { employeeModule, payrollRunModule } from './modules/hr/hrInstances';
+import { employeeModule, payrollRunModule, salaryStructureModule } from './modules/hr/hrInstances';
 import { ticketModule } from './modules/helpdesk/helpdeskInstances';
 import { campaignModule } from './modules/crm/campaignModuleInstance';
 import { documentModule } from './modules/documents/documentsInstances';
@@ -348,6 +348,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(billingRunModule); // Projects → Billing Runs (time → real W1 invoices)
   modules.registry.register(employeeModule); // HR → Employees (work-scoped, cycle-guarded org chain)
   modules.registry.register(payrollRunModule); // HR → Payroll Runs (GL-posted accruals)
+  modules.registry.register(salaryStructureModule); // HR → Salary Structures (templates + statutory wage bases)
   modules.registry.register(ticketModule); // Helpdesk → Tickets (SLA service desk)
   modules.registry.register(campaignModule); // CRM → Campaigns (live lead attribution)
   modules.registry.register(documentModule); // Documents → Registry (append-only versioning)

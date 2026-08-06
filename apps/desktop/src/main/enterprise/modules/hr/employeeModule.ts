@@ -11,6 +11,12 @@
  * the W1 marker pattern — exited employees are immutable history and leave
  * payroll and the org chart automatically.
  *
+ * W6-A1 (ADDITIVE): `salaryStructureRef` + `basicSalary` assign a contractual
+ * salary-structure template scaled from this employee's own basic. The
+ * reference is guarded against the injected structure store (must exist, must
+ * not be archived); `monthlySalary` keeps its W4 meaning — the flat gross the
+ * lite payroll run pays — until statutory processing supersedes it.
+ *
  * Electron-free (store paths injected), so it unit-tests without the app runtime.
  */
 import type {
@@ -58,6 +64,8 @@ export const EMPLOYEE_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'workEmail', label: 'Work Email', type: 'text', column: false },
     { key: 'joinDate', label: 'Joined', type: 'date', format: 'date', column: false },
     { key: 'monthlySalary', label: 'Monthly Salary', type: 'number', min: 0, format: 'currency', column: false },
+    { key: 'salaryStructureRef', label: 'Salary Structure', type: 'text', column: false, placeholder: 'Salary structure id (optional)' },
+    { key: 'basicSalary', label: 'Basic (Monthly)', type: 'number', min: 0, format: 'currency', column: false },
     {
       key: 'status',
       label: 'Status',
@@ -80,8 +88,15 @@ function str(v: unknown): string {
   return v === null || v === undefined ? '' : String(v);
 }
 
-/** Build the Employees module — the org chain guards against its own store. */
-export function createEmployeeModule(storePath: string): EnterpriseModule {
+/**
+ * Build the Employees module — the org chain guards against its own store;
+ * the OPTIONAL salary-structure store guards template assignment (W6-A1,
+ * additive: omitting it leaves every W4 behavior untouched).
+ */
+export function createEmployeeModule(
+  storePath: string,
+  salaryStructureStore?: EnterpriseRecordStore,
+): EnterpriseModule {
   const store = new EnterpriseRecordStore(storePath, EMPLOYEES_MODULE_ID, EMPLOYEE_KIND);
   return defineEnterpriseModule({
     descriptor: EMPLOYEE_DESCRIPTOR,
@@ -116,6 +131,15 @@ export function createEmployeeModule(storePath: string): EnterpriseModule {
                 errors.managerRef = `That manager assignment creates a cycle in the org chain (${cycle.length} hop(s)).`;
               }
             }
+          }
+        }
+        const structureRef = str(result.values.salaryStructureRef);
+        if (structureRef && salaryStructureStore) {
+          const structure = salaryStructureStore.get(structureRef);
+          if (!structure || structure.status === 'deleted') {
+            errors.salaryStructureRef = `No salary structure with id "${structureRef}" was found.`;
+          } else if (str(structure.fields.archivedAt)) {
+            errors.salaryStructureRef = 'That salary structure is archived — assign an active template.';
           }
         }
         result.values.status = 'active';
