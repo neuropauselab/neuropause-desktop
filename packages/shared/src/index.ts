@@ -107,6 +107,10 @@ export * from './types/hr';
 export * from './types/helpdesk';
 // CRM → W5.1: campaigns — live lead attribution by the existing campaign field.
 export * from './types/marketing';
+// Documents → W5.2: registry — append-only check-in versioning over external refs.
+export * from './types/documents';
+// Executive → W5.2: BI reports — saved aggregations over any registered module.
+export * from './types/biReports';
 export * from './types/customers';
 export * from './types/quotes';
 export * from './types/orders';

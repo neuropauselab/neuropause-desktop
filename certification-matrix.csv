@@ -78,5 +78,7 @@ hr-employees,HR,employee,11,3,Enterprise Ready,7.14,9,9,7,5,8,6,6,2,8,8,8,9,7,8,
 hr-payroll-runs,HR,payrollRun,11,3,Enterprise Ready,7.36,9,9,7,8,8,6,6,2,8,8,8,9,7,8,none,1,dedicated
 helpdesk-tickets,Helpdesk,ticket,14,3,Enterprise Ready,7.36,9,9,7,8,8,6,6,2,8,8,8,9,7,8,none,2,dedicated
 crm-campaigns,CRM,campaign,10,3,Enterprise Ready,7.21,9,9,7,5,8,6,6,2,9,8,8,9,7,8,none,1,dedicated
+documents-registry,Documents,document,11,3,Enterprise Ready,7.36,9,9,7,8,8,6,6,2,8,8,8,9,7,8,none,2,dedicated
+executive-report-definitions,Executive,reportDefinition,10,3,Enterprise Ready,7.21,9,9,7,5,8,6,6,2,9,8,8,9,7,8,none,1,dedicated
 execution-proposals,Executive,executionProposal,21,5,Reference,8,9,9,9,9,8,6,6,6,8,9,8,9,7,9,deterministic,1,dedicated
 executive-decisions,Executive,executiveDecision,29,5,Reference,8,9,9,9,9,8,6,6,6,8,9,8,9,7,9,deterministic,1,dedicated
