@@ -77,6 +77,22 @@ export interface GlJournalLine {
   debit: number;
   credit: number;
   memo?: string;
+  /**
+   * W6-C1 (additive, optional) — the transaction (original) currency this line was
+   * denominated in, when it differs from the functional currency. Omitted on every
+   * single-currency line, so existing entries stay byte-identical. The functional
+   * amount is `debit`/`credit`; the fields below are the transaction-currency view,
+   * making the GL the single source of truth for foreign balances (W6-C1).
+   */
+  txnCurrency?: string;
+  /** W6-C1 — the amount in `txnCurrency`, on the SAME side as the functional debit/credit. */
+  txnAmount?: number;
+  /** W6-C1 — functional units per one `txnCurrency` unit used to book this line. */
+  exchangeRate?: number;
+  /** W6-C1 — the effective date of the rate used (audit trail). */
+  rateDate?: string;
+  /** W6-C1 — provenance of the rate, e.g. 'register' | 'manual' (audit trail). */
+  rateSource?: string;
 }
 
 export interface GlJournalTotals {
@@ -158,7 +174,22 @@ export function parseGlJournalLines(raw: string): GlJournalLinesParse {
       return { ok: false, error: `Line ${i + 1}: a line must carry a debit or a credit.` };
     }
     const memo = str(item.memo).trim();
-    lines.push(memo ? { account, debit, credit, memo } : { account, debit, credit });
+    const line: GlJournalLine = memo ? { account, debit, credit, memo } : { account, debit, credit };
+    // W6-C1: preserve the optional transaction-currency view when a foreign line supplies
+    // it (currency + positive amount). Single-currency lines omit it and parse byte-identically.
+    const txnCurrency = str(item.txnCurrency).trim().toUpperCase();
+    const txnAmount = num(item.txnAmount);
+    if (txnCurrency && txnAmount > 0) {
+      line.txnCurrency = txnCurrency;
+      line.txnAmount = Math.round(txnAmount * 100) / 100;
+      const exchangeRate = num(item.exchangeRate);
+      if (exchangeRate > 0) line.exchangeRate = exchangeRate;
+      const rateDate = str(item.rateDate).trim();
+      if (rateDate) line.rateDate = rateDate;
+      const rateSource = str(item.rateSource).trim();
+      if (rateSource) line.rateSource = rateSource;
+    }
+    lines.push(line);
   }
   return { ok: true, lines };
 }
@@ -194,6 +225,49 @@ export function glAccountLedgerTotals(
     }
   }
   return { debitTotal, creditTotal };
+}
+
+/** The own-currency (transaction-currency) totals for one account — W6-C1. */
+export interface GlForeignTotals {
+  /** The account's transaction currency as seen on its posted lines ('' when it has none). */
+  currency: string;
+  txnDebit: number;
+  txnCredit: number;
+  /** txnDebit − txnCredit, in the account's own currency (a debit-normal signed balance). */
+  balance: number;
+  /** How many posted lines carried a transaction amount (0 → a single-currency account). */
+  lineCount: number;
+}
+
+/**
+ * Fold an account's OWN-CURRENCY totals from the posted lines that carry a
+ * transaction amount (W6-C1). The GL stores functional amounts; this derives the
+ * foreign-currency balance a foreign cash/bank account actually holds, straight
+ * from the posted ledger — no parallel balance store to drift. An account with no
+ * transaction-tagged lines returns a zero balance and `lineCount` 0.
+ */
+export function glAccountForeignTotals(
+  accountCode: string,
+  postedEntries: readonly GlJournalEntry[],
+): GlForeignTotals {
+  let txnDebit = 0;
+  let txnCredit = 0;
+  let lineCount = 0;
+  let currency = '';
+  for (const e of postedEntries) {
+    if (!e.posted) continue;
+    for (const l of e.lines) {
+      if (l.account !== accountCode) continue;
+      const amount = typeof l.txnAmount === 'number' ? l.txnAmount : 0;
+      if (!l.txnCurrency || amount <= 0) continue;
+      currency = l.txnCurrency;
+      if (l.debit > 0) txnDebit += amount;
+      else txnCredit += amount;
+      lineCount += 1;
+    }
+  }
+  const r2 = (n: number): number => Math.round(n * 100) / 100;
+  return { currency, txnDebit: r2(txnDebit), txnCredit: r2(txnCredit), balance: r2(txnDebit - txnCredit), lineCount };
 }
 
 /** Signed balance in the account's normal direction (kernel: `accountBalance`). */
