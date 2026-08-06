@@ -26,6 +26,8 @@ crm,CRM,contact,19,4,Production Certified,7.5,9,9,9,5,8,6,6,9,8,3,8,9,7,9,runner
 crm-customers,CRM,customer,24,4,Production Certified,7.5,9,9,9,5,8,6,6,9,8,3,8,9,7,9,runner,0,dedicated
 crm-opportunities,CRM,opportunity,14,3,Enterprise Ready,7.36,9,9,7,8,8,6,6,2,8,8,8,9,7,8,none,3,dedicated
 crm-activities,CRM,crmActivity,15,3,Enterprise Ready,7.36,9,9,7,8,8,6,6,2,8,8,8,9,7,8,none,2,dedicated
+crm-customer-health,CRM,customerHealthReport,11,3,Enterprise Ready,7.21,9,9,7,5,8,6,6,2,9,8,8,9,7,8,none,0,dedicated
+crm-customer-timeline,CRM,customerTimeline,7,3,Enterprise Ready,7.21,9,9,7,5,8,6,6,2,9,8,8,9,7,8,none,0,dedicated
 procurement-orders,Procurement,purchaseOrder,20,4,Production Certified,8,9,9,9,8,8,6,6,9,8,8,8,9,7,8,runner,1,family
 procurement-receipts,Procurement,goodsReceipt,12,4,Production Certified,7.86,9,9,7,8,8,6,6,9,8,8,8,9,7,8,runner,1,family
 procurement-requests,Procurement,purchaseRequest,13,3,Enterprise Ready,7.36,9,9,7,8,8,6,6,2,8,8,8,9,7,8,none,1,family

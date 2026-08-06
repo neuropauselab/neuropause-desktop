@@ -105,6 +105,8 @@ import { leadModule } from './modules/crm/leadModuleInstance';
 import { customerModule } from './modules/crm/customerModuleInstance';
 import { opportunityModule } from './modules/crm/opportunityModuleInstance';
 import { activityModule } from './modules/crm/activityModuleInstance';
+import { customerHealthModule } from './modules/crm/customerHealthModuleInstance';
+import { customerTimelineModule } from './modules/crm/customerTimelineModuleInstance';
 import { quoteModule } from './modules/sales/quoteModuleInstance';
 import { orderModule } from './modules/sales/orderModuleInstance';
 import { contractModule } from './modules/sales/contractModuleInstance';
@@ -283,6 +285,8 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(customerModule); // CRM → Customers
   modules.registry.register(opportunityModule); // CRM → Opportunities (qualified-deal pipeline)
   modules.registry.register(activityModule); // CRM → Activities (calls/emails/meetings/tasks/notes stream)
+  modules.registry.register(customerHealthModule); // CRM → Customer Health (cross-module registers)
+  modules.registry.register(customerTimelineModule); // CRM → Customer Timelines (one-account chronologies)
   modules.registry.register(quoteModule); // Sales → Quotes
   modules.registry.register(orderModule); // Sales → Orders (conversion target)
   modules.registry.register(contractModule); // Sales → Contracts (activate/terminate/renew lifecycle)

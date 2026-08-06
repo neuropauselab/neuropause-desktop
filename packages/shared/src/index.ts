@@ -83,6 +83,8 @@ export * from './types/pricingRules';
 export * from './types/commissions';
 // Sales → W2.6: revenue forecast — immutable weighted-pipeline snapshots.
 export * from './types/revenueForecast';
+// CRM → W2.7: customer insights — cross-module health registers + one-account timelines.
+export * from './types/customerInsights';
 export * from './types/customers';
 export * from './types/quotes';
 export * from './types/orders';
