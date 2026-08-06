@@ -78,6 +78,18 @@ describe('W6-B4 realized FX gain/loss on customer payment settlement', () => {
     return rec;
   };
 
+  it('B4.5 wiring: a customer payment through the module onChange now posts to the GL', async () => {
+    await issueInvoice({ number: 'INV-W', amount: 100, currency: 'USD' });
+    expect(balance('1100')).toBe(100); // AR booked by the invoice
+    const v = payments.hooks.validate({ fields: { paymentNumber: 'PAY-W', invoiceRef: 'INV-W', amount: 100, status: 'cleared' } });
+    if (!v.ok) throw new Error('unreachable');
+    const rec = payments.store.create({ title: 'PAY-W', fields: v.values, actor: 't@np', now: T0 });
+    // The wired onChange (reconcile → post) clears AR — previously it only reconciled.
+    await payments.hooks.onChange!({ action: 'created', record: rec }, ctx);
+    expect(balance('1100')).toBe(0);
+    expect(balance('1000')).toBe(100); // customer cash now booked in the ledger
+  });
+
   it('single-currency settlement is unchanged — Dr Cash / Cr AR, no FX account touched', async () => {
     await issueInvoice({ number: 'INV-USD', amount: 100, currency: 'USD' });
     expect(balance('1100')).toBe(100); // AR booked
