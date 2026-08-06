@@ -101,7 +101,7 @@ async function ensurePayrollAccounts(ctx: EnterpriseModuleActionContext): Promis
     const exists = accounts.store.list().some((r) => str(r.fields.code) === def.code);
     if (exists) continue;
     const validation = accounts.hooks.validate({
-      fields: { code: def.code, name: def.name, type: def.type, currency: 'USD' },
+      fields: { code: def.code, name: def.name, class: def.type, currency: 'USD' },
     });
     if (!validation.ok) return false;
     const record = accounts.store.create({
