@@ -1,7 +1,7 @@
 /**
  * Enterprise Module Certification v1.0 — the registry-wide descriptor lock.
  *
- * A QUALITY gate, not a feature: it runs every one of the 69 REAL registered module descriptors through the
+ * A QUALITY gate, not a feature: it runs every one of the 72 REAL registered module descriptors through the
  * framework's own `validateModuleDescriptor`, and locks the certified inventory (count, unique ids, family
  * distribution, RBAC scopes, title fields). Before this test the real descriptors were validated only
  * implicitly at construction; this makes the guarantee explicit.
@@ -9,7 +9,7 @@
  * SCOPE (stated honestly): the lock is over the enumerated `CERTIFIED` list below. It catches a descriptor
  * REGRESSION (bad id, dup field, wrong group/scope, dup id/action) and a REMOVAL or RENAME of a `*_DESCRIPTOR`
  * export (the import breaks → the file goes red). It does NOT read the live runtime registry, so ADDING a new
- * (70th) registered module does not fail this test until this list is updated — which is the intended,
+ * (73rd) registered module does not fail this test until this list is updated — which is the intended,
  * deliberate re-certification checkpoint for a new module.
  *
  * Reuse-only: it imports the standalone descriptor consts (Electron-free — no store, no app runtime) and the
@@ -57,8 +57,11 @@ import { PURCHASE_ORDER_DESCRIPTOR } from './procurement/purchaseOrderModule';
 import { GOODS_RECEIPT_DESCRIPTOR } from './procurement/goodsReceiptModule';
 import { RFQ_DESCRIPTOR } from './procurement/rfqModule';
 import { SUPPLIER_PERFORMANCE_DESCRIPTOR } from './procurement/supplierPerformanceModule';
-// Inventory (3)
+// Inventory (6)
 import { PRODUCT_DESCRIPTOR } from './inventory/productModule';
+import { LOT_DESCRIPTOR } from './inventory/lotModule';
+import { RESERVATION_DESCRIPTOR } from './inventory/reservationModule';
+import { INVENTORY_VALUATION_DESCRIPTOR } from './inventory/inventoryValuationModule';
 import { WAREHOUSE_DESCRIPTOR } from './inventory/warehouseModule';
 import { STOCK_MOVEMENT_DESCRIPTOR } from './inventory/stockMovementModule';
 // Warehouse (8)
@@ -117,7 +120,10 @@ const CERTIFIED: Record<string, EnterpriseModuleDescriptor[]> = {
     SUPPLIER_DESCRIPTOR, PURCHASE_REQUEST_DESCRIPTOR, PURCHASE_ORDER_DESCRIPTOR, GOODS_RECEIPT_DESCRIPTOR,
     RFQ_DESCRIPTOR, SUPPLIER_PERFORMANCE_DESCRIPTOR,
   ],
-  Inventory: [PRODUCT_DESCRIPTOR, WAREHOUSE_DESCRIPTOR, STOCK_MOVEMENT_DESCRIPTOR],
+  Inventory: [
+    PRODUCT_DESCRIPTOR, WAREHOUSE_DESCRIPTOR, STOCK_MOVEMENT_DESCRIPTOR,
+    LOT_DESCRIPTOR, RESERVATION_DESCRIPTOR, INVENTORY_VALUATION_DESCRIPTOR,
+  ],
   Warehouse: [
     WAREHOUSE_ZONE_DESCRIPTOR, WAREHOUSE_BIN_DESCRIPTOR, TRANSFER_ORDER_DESCRIPTOR, PICK_LIST_DESCRIPTOR,
     PACKING_DESCRIPTOR, SHIPPING_DESCRIPTOR, CYCLE_COUNT_DESCRIPTOR, STOCK_ADJUSTMENT_DESCRIPTOR,
@@ -137,7 +143,7 @@ const CERTIFIED: Record<string, EnterpriseModuleDescriptor[]> = {
 
 /** The certified per-family module counts (verified from the registration site, enterprise/index.ts). */
 const CERTIFIED_COUNTS: Record<string, number> = {
-  Finance: 15, Sales: 7, CRM: 7, Procurement: 6, Inventory: 3, Warehouse: 8, Manufacturing: 11, Maintenance: 10, Executive: 2,
+  Finance: 15, Sales: 7, CRM: 7, Procurement: 6, Inventory: 6, Warehouse: 8, Manufacturing: 11, Maintenance: 10, Executive: 2,
 };
 
 const ALL = Object.values(CERTIFIED).flat();
@@ -150,13 +156,13 @@ const FAMILY_WRITE_SCOPE: Record<string, string> = {
 };
 
 describe('Enterprise Module Certification — registry lock', () => {
-  it('certifies exactly 69 modules across the 9 production families', () => {
-    expect(ALL).toHaveLength(69);
+  it('certifies exactly 72 modules across the 9 production families', () => {
+    expect(ALL).toHaveLength(72);
     for (const fam of KNOWN_FAMILIES) {
       expect(CERTIFIED[fam]).toHaveLength(CERTIFIED_COUNTS[fam]);
     }
     const total = Object.values(CERTIFIED_COUNTS).reduce((a, b) => a + b, 0);
-    expect(total).toBe(69);
+    expect(total).toBe(72);
   });
 
   it('every real descriptor passes the framework validator (validateModuleDescriptor)', () => {

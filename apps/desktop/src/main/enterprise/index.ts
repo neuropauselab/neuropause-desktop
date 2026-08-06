@@ -117,6 +117,9 @@ import { revenueForecastModule } from './modules/sales/revenueForecastModuleInst
 import { productModule } from './modules/inventory/productModuleInstance';
 import { warehouseModule } from './modules/inventory/warehouseModuleInstance';
 import { stockMovementModule } from './modules/inventory/stockMovementModuleInstance';
+import { lotModule } from './modules/inventory/lotModuleInstance';
+import { reservationModule } from './modules/inventory/reservationModuleInstance';
+import { inventoryValuationModule } from './modules/inventory/inventoryValuationModuleInstance';
 import {
   supplierModule,
   purchaseRequestModule,
@@ -313,6 +316,9 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(productModule); // Inventory → Products
   modules.registry.register(warehouseModule); // Inventory → Warehouses
   modules.registry.register(stockMovementModule); // Inventory → Stock Movements (ledger)
+  modules.registry.register(lotModule); // Inventory → Lots (batch traceability + code payloads)
+  modules.registry.register(reservationModule); // Inventory → Reservations (holds posting ledger movements)
+  modules.registry.register(inventoryValuationModule); // Inventory → Valuation (standard-cost registers)
   modules.registry.register(supplierModule); // Procurement → Suppliers
   modules.registry.register(purchaseRequestModule); // Procurement → Purchase Requests
   modules.registry.register(purchaseOrderModule); // Procurement → Purchase Orders

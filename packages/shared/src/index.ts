@@ -89,6 +89,12 @@ export * from './types/customerInsights';
 export * from './types/rfq';
 // Procurement → W3.2: supplier performance — evidence-based scorecard registers.
 export * from './types/supplierPerformance';
+// Inventory → W3.3: lots — batch traceability with deterministic code payloads.
+export * from './types/lots';
+// Inventory → W3.4: reservations — hold documents posting real ledger movements.
+export * from './types/reservations';
+// Inventory → W3.5: valuation — immutable standard-cost registers over the ledger.
+export * from './types/inventoryValuation';
 export * from './types/customers';
 export * from './types/quotes';
 export * from './types/orders';

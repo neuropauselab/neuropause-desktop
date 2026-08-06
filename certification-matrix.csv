@@ -37,6 +37,9 @@ procurement-supplier-performance,Procurement,supplierScorecard,11,3,Enterprise R
 inventory-products,Inventory,product,16,4,Production Certified,7.43,9,9,9,5,8,6,6,9,8,3,8,9,7,8,runner,0,family
 inventory-movements,Inventory,stockMovement,11,3,Enterprise Ready,7.29,9,9,7,5,8,6,6,9,8,3,8,9,7,8,runner,0,family
 inventory-warehouses,Inventory,warehouse,8,2,Business Ready,6.39,9,9,6,5,8,6,6,2,5,3,8,9,7,6.5,none,0,basic
+inventory-lots,Inventory,lot,10,3,Enterprise Ready,7.36,9,9,7,8,8,6,6,2,8,8,8,9,7,8,none,1,dedicated
+inventory-reservations,Inventory,stockReservation,13,3,Enterprise Ready,7.36,9,9,7,8,8,6,6,2,8,8,8,9,7,8,none,2,dedicated
+inventory-valuation,Inventory,valuationReport,9,3,Enterprise Ready,7.21,9,9,7,5,8,6,6,2,9,8,8,9,7,8,none,0,dedicated
 warehouse-cycle-counts,Warehouse,cycleCount,9,4,Production Certified,7.86,9,9,7,8,8,6,6,9,8,8,8,9,7,8,runner,1,family
 warehouse-adjustments,Warehouse,stockAdjustment,9,4,Production Certified,7.86,9,9,7,8,8,6,6,9,8,8,8,9,7,8,runner,1,family
 warehouse-transfers,Warehouse,transferOrder,12,4,Production Certified,7.86,9,9,7,8,8,6,6,9,8,8,8,9,7,8,runner,1,family
