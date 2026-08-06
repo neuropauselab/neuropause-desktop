@@ -123,6 +123,8 @@ export * from './types/salaryDisbursement';
 export * from './types/payslips';
 // HR → W6-A6: payroll register — immutable management summary over posted runs.
 export * from './types/payrollRegister';
+// HR → W6-A7: statutory filings — ECR/ESI/PT/24Q filing data from posted runs.
+export * from './types/statutoryFilings';
 export * from './types/customers';
 export * from './types/quotes';
 export * from './types/orders';

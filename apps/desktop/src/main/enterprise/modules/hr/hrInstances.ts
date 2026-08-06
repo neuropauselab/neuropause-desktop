@@ -13,6 +13,7 @@ import {
   PAYSLIPS_MODULE_ID,
   SALARY_DISBURSEMENTS_MODULE_ID,
   SALARY_STRUCTURES_MODULE_ID,
+  STATUTORY_FILINGS_MODULE_ID,
   STATUTORY_RULES_MODULE_ID,
 } from '@neuropause/shared';
 import { enterpriseModuleStorePath } from '../../framework';
@@ -22,6 +23,7 @@ import { createPayrollRunModule } from './payrollRunModule';
 import { createPayslipModule } from './payslipModule';
 import { createSalaryDisbursementModule } from './salaryDisbursementModule';
 import { createSalaryStructureModule } from './salaryStructureModule';
+import { createStatutoryFilingModule } from './statutoryFilingModule';
 import { createStatutoryRuleModule } from './statutoryRuleModule';
 
 const store = (id: string): string => enterpriseModuleStorePath(app.getPath('userData'), id);
@@ -47,6 +49,12 @@ export const payslipModule = createPayslipModule(store(PAYSLIPS_MODULE_ID));
 export const payrollRegisterModule = createPayrollRegisterModule(
   store(PAYROLL_REGISTER_MODULE_ID),
   payrollRunModule.store,
+);
+
+export const statutoryFilingModule = createStatutoryFilingModule(
+  store(STATUTORY_FILINGS_MODULE_ID),
+  payrollRunModule.store,
+  employeeModule.store,
 );
 
 export const salaryDisbursementModule = createSalaryDisbursementModule(

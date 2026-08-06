@@ -28,7 +28,10 @@ import type {
 import {
   EMPLOYEES_MODULE_ID,
   EMPLOYEE_KIND,
+  ESIC_IP_PATTERN,
   IFSC_PATTERN,
+  PAN_PATTERN,
+  UAN_PATTERN,
   employeeFromRecord,
   managerChainCycle,
   validateEnterpriseRecordInput,
@@ -71,6 +74,9 @@ export const EMPLOYEE_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'bankAccountNumber', label: 'Bank Account', type: 'text', column: false, placeholder: 'Salary credit account' },
     { key: 'bankIfsc', label: 'IFSC', type: 'text', column: false, placeholder: 'HDFC0001234' },
     { key: 'bankName', label: 'Bank', type: 'text', column: false, placeholder: 'Optional bank/branch label' },
+    { key: 'uan', label: 'UAN (PF)', type: 'text', column: false, placeholder: '12-digit Universal Account Number' },
+    { key: 'esicNumber', label: 'ESIC IP Number', type: 'text', column: false, placeholder: 'ESIC Insurance/IP number' },
+    { key: 'pan', label: 'PAN (TDS)', type: 'text', column: false, placeholder: 'ABCDE1234F' },
     {
       key: 'status',
       label: 'Status',
@@ -158,6 +164,20 @@ export function createEmployeeModule(
         const ifsc = str(result.values.bankIfsc).trim().toUpperCase();
         if (ifsc && !IFSC_PATTERN.test(ifsc)) {
           errors.bankIfsc = 'IFSC must be 11 characters: 4 bank letters, a 0, then 6 alphanumeric (e.g. HDFC0001234).';
+        }
+        // Statutory identifiers — validated when present; a wrong id silently
+        // drops the member from their government filing (W6-A7).
+        const uan = str(result.values.uan).trim();
+        if (uan && !UAN_PATTERN.test(uan)) {
+          errors.uan = 'UAN must be exactly 12 digits.';
+        }
+        const pan = str(result.values.pan).trim().toUpperCase();
+        if (pan && !PAN_PATTERN.test(pan)) {
+          errors.pan = 'PAN must be 5 letters, 4 digits, then a letter (e.g. ABCDE1234F).';
+        }
+        const esicNumber = str(result.values.esicNumber).trim();
+        if (esicNumber && !ESIC_IP_PATTERN.test(esicNumber)) {
+          errors.esicNumber = 'ESIC IP number must be 10–17 digits.';
         }
         result.values.status = 'active';
         if (Object.keys(errors).length > 0) return { ok: false, errors, values: result.values };

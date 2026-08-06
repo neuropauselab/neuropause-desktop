@@ -81,6 +81,7 @@ hr-statutory-rules,HR,statutoryRuleSet,9,3,Enterprise Ready,7.36,9,9,7,8,8,6,6,2
 hr-salary-disbursements,HR,salaryDisbursement,17,4,Production Certified,7.57,9,9,9,8,8,6,6,2,8,8,8,9,7,9,none,1,dedicated
 hr-payslips,HR,payslip,23,4,Production Certified,7.5,9,9,9,8,8,6,6,2,8,8,8,9,7,9,none,0,dedicated
 hr-payroll-register,HR,payrollRegister,17,4,Production Certified,7.5,9,9,9,8,8,6,6,2,8,8,8,9,7,9,none,0,dedicated
+hr-statutory-filings,HR,statutoryFiling,20,4,Production Certified,7.5,9,9,9,8,8,6,6,2,8,8,8,9,7,9,none,0,dedicated
 helpdesk-tickets,Helpdesk,ticket,14,3,Enterprise Ready,7.36,9,9,7,8,8,6,6,2,8,8,8,9,7,8,none,2,dedicated
 crm-campaigns,CRM,campaign,10,3,Enterprise Ready,7.21,9,9,7,5,8,6,6,2,9,8,8,9,7,8,none,1,dedicated
 documents-registry,Documents,document,11,3,Enterprise Ready,7.36,9,9,7,8,8,6,6,2,8,8,8,9,7,8,none,2,dedicated

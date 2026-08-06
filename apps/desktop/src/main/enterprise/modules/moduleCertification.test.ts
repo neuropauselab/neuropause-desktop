@@ -1,7 +1,7 @@
 /**
  * Enterprise Module Certification v1.0 — the registry-wide descriptor lock.
  *
- * A QUALITY gate, not a feature: it runs every one of the 88 REAL registered module descriptors through the
+ * A QUALITY gate, not a feature: it runs every one of the 89 REAL registered module descriptors through the
  * framework's own `validateModuleDescriptor`, and locks the certified inventory (count, unique ids, family
  * distribution, RBAC scopes, title fields). Before this test the real descriptors were validated only
  * implicitly at construction; this makes the guarantee explicit.
@@ -103,7 +103,7 @@ import { PROJECT_DESCRIPTOR } from './projects/projectModule';
 import { PROJECT_TASK_DESCRIPTOR } from './projects/projectTaskModule';
 import { TIME_ENTRY_DESCRIPTOR } from './projects/timeEntryModule';
 import { BILLING_RUN_DESCRIPTOR } from './projects/billingRunModule';
-// HR (7)
+// HR (8)
 import { TICKET_DESCRIPTOR } from './helpdesk/ticketModule';
 import { EMPLOYEE_DESCRIPTOR } from './hr/employeeModule';
 import { PAYROLL_RUN_DESCRIPTOR } from './hr/payrollRunModule';
@@ -112,6 +112,7 @@ import { STATUTORY_RULE_DESCRIPTOR } from './hr/statutoryRuleModule';
 import { SALARY_DISBURSEMENT_DESCRIPTOR } from './hr/salaryDisbursementModule';
 import { PAYSLIP_DESCRIPTOR } from './hr/payslipModule';
 import { PAYROLL_REGISTER_DESCRIPTOR } from './hr/payrollRegisterModule';
+import { STATUTORY_FILING_DESCRIPTOR } from './hr/statutoryFilingModule';
 // Documents (1)
 import { DOCUMENT_DESCRIPTOR } from './documents/documentModule';
 // Executive (3)
@@ -158,7 +159,7 @@ const CERTIFIED: Record<string, EnterpriseModuleDescriptor[]> = {
     SPARE_PART_DESCRIPTOR, DOWNTIME_EVENT_DESCRIPTOR,
   ],
   Projects: [PROJECT_DESCRIPTOR, PROJECT_TASK_DESCRIPTOR, TIME_ENTRY_DESCRIPTOR, BILLING_RUN_DESCRIPTOR],
-  HR: [EMPLOYEE_DESCRIPTOR, PAYROLL_RUN_DESCRIPTOR, SALARY_STRUCTURE_DESCRIPTOR, STATUTORY_RULE_DESCRIPTOR, SALARY_DISBURSEMENT_DESCRIPTOR, PAYSLIP_DESCRIPTOR, PAYROLL_REGISTER_DESCRIPTOR],
+  HR: [EMPLOYEE_DESCRIPTOR, PAYROLL_RUN_DESCRIPTOR, SALARY_STRUCTURE_DESCRIPTOR, STATUTORY_RULE_DESCRIPTOR, SALARY_DISBURSEMENT_DESCRIPTOR, PAYSLIP_DESCRIPTOR, PAYROLL_REGISTER_DESCRIPTOR, STATUTORY_FILING_DESCRIPTOR],
   Helpdesk: [TICKET_DESCRIPTOR],
   Documents: [DOCUMENT_DESCRIPTOR],
   Executive: [EXECUTIVE_DECISION_DESCRIPTOR, EXECUTION_PROPOSAL_DESCRIPTOR, BI_REPORT_DESCRIPTOR],
@@ -166,7 +167,7 @@ const CERTIFIED: Record<string, EnterpriseModuleDescriptor[]> = {
 
 /** The certified per-family module counts (verified from the registration site, enterprise/index.ts). */
 const CERTIFIED_COUNTS: Record<string, number> = {
-  Finance: 15, Sales: 7, CRM: 8, Procurement: 6, Inventory: 6, Warehouse: 8, Manufacturing: 12, Maintenance: 10, Projects: 4, HR: 7, Helpdesk: 1, Documents: 1, Executive: 3,
+  Finance: 15, Sales: 7, CRM: 8, Procurement: 6, Inventory: 6, Warehouse: 8, Manufacturing: 12, Maintenance: 10, Projects: 4, HR: 8, Helpdesk: 1, Documents: 1, Executive: 3,
 };
 
 const ALL = Object.values(CERTIFIED).flat();
@@ -180,13 +181,13 @@ const FAMILY_WRITE_SCOPE: Record<string, string> = {
 };
 
 describe('Enterprise Module Certification — registry lock', () => {
-  it('certifies exactly 88 modules across the 13 production families', () => {
-    expect(ALL).toHaveLength(88);
+  it('certifies exactly 89 modules across the 13 production families', () => {
+    expect(ALL).toHaveLength(89);
     for (const fam of KNOWN_FAMILIES) {
       expect(CERTIFIED[fam]).toHaveLength(CERTIFIED_COUNTS[fam]);
     }
     const total = Object.values(CERTIFIED_COUNTS).reduce((a, b) => a + b, 0);
-    expect(total).toBe(88);
+    expect(total).toBe(89);
   });
 
   it('every real descriptor passes the framework validator (validateModuleDescriptor)', () => {

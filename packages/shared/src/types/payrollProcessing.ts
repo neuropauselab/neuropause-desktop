@@ -65,6 +65,13 @@ export interface StatutoryPayrollLine {
   earnings: PayComponentLine[];
   /** Itemized non-statutory (contractual) deductions — the payslip's other-deductions block. */
   contractualDeductions: PayComponentLine[];
+  /** PF filing detail — the wage bases + employer EPS/EPF split ECR needs (W6-A7). */
+  pfWageBase: number;
+  pfCappedBase: number;
+  pfEmployerEps: number;
+  pfEmployerEpf: number;
+  /** ESI filing wage base (0 when not ESI-eligible). */
+  esiWageBase: number;
   pfEmployee: number;
   pfEmployerTotal: number;
   pfEdli: number;
@@ -144,6 +151,11 @@ export function deriveStatutoryPayrollRun(
         contractualDeductions: breakup.lines
           .filter((l) => l.kind === 'deduction')
           .map((l) => ({ code: l.code, name: l.name, amount: l.amount })),
+        pfWageBase: pf.contributionBase,
+        pfCappedBase: pf.cappedBase,
+        pfEmployerEps: pf.employerEps,
+        pfEmployerEpf: pf.employerEpf,
+        esiWageBase: esi.eligible ? breakup.esiWageBase : 0,
         pfEmployee: pf.employee,
         pfEmployerTotal: pf.employerTotal,
         pfEdli: pf.edli,
@@ -171,6 +183,11 @@ export function deriveStatutoryPayrollRun(
         basic: 0,
         earnings: [{ code: 'GROSS', name: 'Gross Salary', amount: round2(e.monthlySalary) }],
         contractualDeductions: [],
+        pfWageBase: 0,
+        pfCappedBase: 0,
+        pfEmployerEps: 0,
+        pfEmployerEpf: 0,
+        esiWageBase: 0,
         pfEmployee: 0,
         pfEmployerTotal: 0,
         pfEdli: 0,
