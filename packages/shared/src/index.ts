@@ -87,6 +87,8 @@ export * from './types/revenueForecast';
 export * from './types/customerInsights';
 // Procurement → W3.1: RFQs — multi-supplier quotation cycle + deterministic comparison.
 export * from './types/rfq';
+// Procurement → W3.2: supplier performance — evidence-based scorecard registers.
+export * from './types/supplierPerformance';
 export * from './types/customers';
 export * from './types/quotes';
 export * from './types/orders';

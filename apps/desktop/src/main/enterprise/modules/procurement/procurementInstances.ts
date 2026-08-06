@@ -8,6 +8,7 @@ import {
   PURCHASE_ORDERS_MODULE_ID,
   PURCHASE_REQUESTS_MODULE_ID,
   RFQS_MODULE_ID,
+  SUPPLIER_PERFORMANCE_MODULE_ID,
   SUPPLIERS_MODULE_ID,
 } from '@neuropause/shared';
 import { aiEngine } from '../../../ai/engineInstance';
@@ -17,6 +18,7 @@ import { createPurchaseRequestModule } from './purchaseRequestModule';
 import { createPurchaseOrderModule } from './purchaseOrderModule';
 import { createGoodsReceiptModule } from './goodsReceiptModule';
 import { createRfqModule } from './rfqModule';
+import { createSupplierPerformanceModule } from './supplierPerformanceModule';
 import { runGoodsReceiptAi, runPurchaseOrderAi, runSupplierAi } from './procurementAi';
 
 const store = (id: string): string => enterpriseModuleStorePath(app.getPath('userData'), id);
@@ -27,3 +29,9 @@ export const purchaseOrderModule = createPurchaseOrderModule(store(PURCHASE_ORDE
 export const goodsReceiptModule = createGoodsReceiptModule(store(GOODS_RECEIPTS_MODULE_ID), (r) => runGoodsReceiptAi(aiEngine, r));
 // W3.1 — RFQs: multi-supplier quotation cycle; quotes validated against the Suppliers register.
 export const rfqModule = createRfqModule(store(RFQS_MODULE_ID), supplierModule.store);
+// W3.2 — Supplier Performance: immutable scorecards from goods-receipt evidence.
+export const supplierPerformanceModule = createSupplierPerformanceModule(
+  store(SUPPLIER_PERFORMANCE_MODULE_ID),
+  goodsReceiptModule.store,
+  supplierModule.store,
+);
