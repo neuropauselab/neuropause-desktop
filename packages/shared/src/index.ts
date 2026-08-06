@@ -115,6 +115,8 @@ export * from './types/biReports';
 export * from './types/salaryStructures';
 // HR → W6-A2: statutory rules — effective-dated PF/ESI/PT/TDS tables + pure calculators.
 export * from './types/statutoryRules';
+// HR → W6-A3: statutory payroll processing — gross-to-net engine + balanced accrual lines.
+export * from './types/payrollProcessing';
 export * from './types/customers';
 export * from './types/quotes';
 export * from './types/orders';

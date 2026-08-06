@@ -48,6 +48,11 @@ export interface Employee {
   exitedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** W6-A3 additions — OPTIONAL so every W4 construction stays valid. */
+  salaryStructureRef?: string;
+  basicSalary?: number;
+  /** State code for professional tax (state-legislated), e.g. GJ. */
+  workState?: string;
 }
 
 function str(v: unknown): string {
@@ -74,6 +79,9 @@ export function employeeFromRecord(record: EnterpriseEntity): Employee {
     exitedAt: str(f.exitedAt) || null,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
+    salaryStructureRef: str(f.salaryStructureRef),
+    basicSalary: num(f.basicSalary),
+    workState: str(f.workState).trim().toUpperCase(),
   };
 }
 

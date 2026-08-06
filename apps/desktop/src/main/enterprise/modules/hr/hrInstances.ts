@@ -32,4 +32,6 @@ export const employeeModule = createEmployeeModule(
 export const payrollRunModule = createPayrollRunModule(
   store(PAYROLL_RUNS_MODULE_ID),
   employeeModule.store,
+  salaryStructureModule.store,
+  statutoryRuleModule.store,
 );

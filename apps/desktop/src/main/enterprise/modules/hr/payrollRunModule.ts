@@ -12,9 +12,16 @@
  * journal's own post action. The two payroll accounts are ENSURED (created if
  * missing) through the Ledger Accounts module before posting.
  *
- * LITE, stated honestly: statutory payroll (PF/ESI/TDS) and salary
- * DISBURSEMENT (Dr Payable / Cr Cash) are deliberately out of scope — named,
- * never faked. One run per month; posted runs are immutable history.
+ * W6-A3 (ADDITIVE): with the salary-structure + statutory-rule stores
+ * injected, the preview becomes the FULL STATUTORY ENGINE — structure-assigned
+ * employees get gross-to-net (PF/ESI/PT/TDS from the period's resolved
+ * effective-dated rule set), legacy flat-salary employees stay on the W4
+ * accrual path (counted + named, never silently mixed), and posting books one
+ * BALANCED multi-line accrual across expenses and every statutory payable.
+ * With structured employees present and NO rule set resolving, the run
+ * REFUSES to preview — broken/missing tables block payroll loudly. Omitting
+ * the new stores leaves every W4 behavior untouched. Salary DISBURSEMENT
+ * (Dr Payable / Cr Cash) remains out of scope — named, never faked.
  *
  * Electron-free (store paths injected), so it unit-tests without the app runtime.
  */
@@ -25,18 +32,31 @@ import type {
   EnterpriseRecordValidation,
 } from '@neuropause/shared';
 import {
+  DEDUCTIONS_PAYABLE_ACCOUNT,
+  ESI_PAYABLE_ACCOUNT,
   LEDGER_ACCOUNTS_MODULE_ID,
+  PAYROLL_EMPLOYER_ESI_ACCOUNT,
+  PAYROLL_EMPLOYER_PF_ACCOUNT,
   PAYROLL_EXPENSE_ACCOUNT,
   PAYROLL_LIABILITY_ACCOUNT,
   PAYROLL_RUNS_MODULE_ID,
   PAYROLL_RUN_KIND,
+  PF_PAYABLE_ACCOUNT,
+  PT_PAYABLE_ACCOUNT,
+  TDS_PAYABLE_ACCOUNT,
   derivePayrollRun,
   deriveRecordTitle,
+  deriveStatutoryPayrollRun,
   employeeFromRecord,
   isGlPeriodKey,
+  parseSalaryComponents,
   payrollAccrualLines,
   payrollEntryNumber,
+  resolveStatutoryRuleSet,
+  statutoryAccrualLines,
   validateEnterpriseRecordInput,
+  type SalaryComponent,
+  type StatutoryPayrollRun,
 } from '@neuropause/shared';
 import {
   EnterpriseRecordStore,
@@ -68,7 +88,12 @@ export const PAYROLL_RUN_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'employeeCount', label: 'Employees', type: 'number', readOnly: true, default: 0 },
     { key: 'totalGross', label: 'Gross', type: 'number', readOnly: true, format: 'currency', default: 0 },
     { key: 'unsalariedCount', label: 'Unsalaried', type: 'number', readOnly: true, default: 0, column: false },
+    { key: 'totalNet', label: 'Net', type: 'number', readOnly: true, format: 'currency', default: 0 },
+    { key: 'statutoryCount', label: 'Statutory', type: 'number', readOnly: true, default: 0, column: false },
+    { key: 'flatCount', label: 'Flat', type: 'number', readOnly: true, default: 0, column: false },
+    { key: 'ruleSetCode', label: 'Rule Set', type: 'text', readOnly: true, column: false },
     { key: 'lines', label: 'Lines', type: 'textarea', readOnly: true, column: false },
+    { key: 'statutoryJson', label: 'Statutory Detail', type: 'textarea', readOnly: true, column: false },
     {
       key: 'status',
       label: 'Status',
@@ -93,11 +118,14 @@ function str(v: unknown): string {
 }
 
 /** Ensure the payroll accrual accounts exist — created through the module, once. */
-async function ensurePayrollAccounts(ctx: EnterpriseModuleActionContext): Promise<boolean> {
+async function ensurePayrollAccounts(
+  ctx: EnterpriseModuleActionContext,
+  defs: ReadonlyArray<{ code: string; name: string; type: string }>,
+): Promise<boolean> {
   const accounts = ctx.moduleFor(LEDGER_ACCOUNTS_MODULE_ID);
   if (!accounts) return false;
   await accounts.store.load();
-  for (const def of [PAYROLL_EXPENSE_ACCOUNT, PAYROLL_LIABILITY_ACCOUNT]) {
+  for (const def of defs) {
     const exists = accounts.store.list().some((r) => str(r.fields.code) === def.code);
     if (exists) continue;
     const validation = accounts.hooks.validate({
@@ -117,13 +145,26 @@ async function ensurePayrollAccounts(ctx: EnterpriseModuleActionContext): Promis
 
 /**
  * Build the Payroll Runs module. The Employees store backs the preview; the
- * GL posting goes through the runtime action context (the W1 seam).
+ * GL posting goes through the runtime action context (the W1 seam). The
+ * OPTIONAL structure + statutory stores (W6-A3, additive) switch the preview
+ * to the full statutory engine — omitting them preserves W4 exactly.
  */
 export function createPayrollRunModule(
   storePath: string,
   employeeStore: EnterpriseRecordStore,
+  structureStore?: EnterpriseRecordStore,
+  statutoryStore?: EnterpriseRecordStore,
 ): EnterpriseModule {
   const store = new EnterpriseRecordStore(storePath, PAYROLL_RUNS_MODULE_ID, PAYROLL_RUN_KIND);
+  const structuresById = (): Map<string, SalaryComponent[]> => {
+    const map = new Map<string, SalaryComponent[]>();
+    if (!structureStore) return map;
+    for (const r of structureStore.list()) {
+      if (r.status === 'deleted') continue;
+      map.set(r.id, parseSalaryComponents(r.fields.componentsJson).components);
+    }
+    return map;
+  };
   return defineEnterpriseModule({
     descriptor: PAYROLL_RUN_DESCRIPTOR,
     store,
@@ -158,14 +199,48 @@ export function createPayrollRunModule(
             values: result.values,
           };
         }
-        const run = derivePayrollRun(employeeStore.list().map(employeeFromRecord));
+        const employees = employeeStore.list().map(employeeFromRecord);
         const priorCount = store.list().filter((r) => str(r.fields.periodKey) === periodKey).length;
         result.values.runNumber = `PAY-${periodKey}-${priorCount + 1}`;
+        result.values.status = 'preview';
+        if (structureStore && statutoryStore) {
+          const anyStructured = employees.some((e) => !e.exitedAt && (e.salaryStructureRef ?? '') && (e.basicSalary ?? 0) > 0);
+          const resolution = resolveStatutoryRuleSet(statutoryStore.list(), periodKey);
+          if (anyStructured && !resolution.ruleSet) {
+            return {
+              ok: false,
+              errors: {
+                periodKey:
+                  resolution.errors.length > 0
+                    ? `The rule set governing ${periodKey} fails to parse — payroll refuses rather than paying wrong amounts: ${resolution.errors[0]}`
+                    : `No statutory rule set covers ${periodKey} — create one (the verified seed is the default) before running payroll.`,
+              },
+              values: result.values,
+            };
+          }
+          const run = deriveStatutoryPayrollRun(employees, structuresById(), resolution.ruleSet, periodKey);
+          result.values.employeeCount = run.employeeCount;
+          result.values.totalGross = run.totalGross;
+          result.values.totalNet = run.totalNet;
+          result.values.unsalariedCount = run.unsalariedCount;
+          result.values.statutoryCount = run.statutoryCount;
+          result.values.flatCount = run.flatCount;
+          result.values.ruleSetCode = run.ruleSetCode ?? '';
+          result.values.lines = JSON.stringify(run.lines.map((l) => ({ employee: l.employee, name: l.name, monthlySalary: l.gross })));
+          result.values.statutoryJson = JSON.stringify(run);
+          result.values.note =
+            run.employeeCount === 0
+              ? 'no active salaried employees — the preview is empty, not fabricated'
+              : `${run.statutoryCount} statutory (rule set ${run.ruleSetCode ?? '—'}), ${run.flatCount} flat-legacy (no statutory computed, stated)` +
+                (run.ptSkippedCount > 0 ? `; PT skipped on ${run.ptSkippedCount} line(s) — work state missing or not in the table` : '') +
+                (run.unsalariedCount > 0 ? `; ${run.unsalariedCount} active employee(s) unpaid — no structure and no salary` : '');
+          return result;
+        }
+        const run = derivePayrollRun(employees);
         result.values.employeeCount = run.employeeCount;
         result.values.totalGross = run.totalGross;
         result.values.unsalariedCount = run.unsalariedCount;
         result.values.lines = JSON.stringify(run.lines);
-        result.values.status = 'preview';
         result.values.note =
           run.employeeCount === 0
             ? 'no active salaried employees — the preview is empty, not fabricated'
@@ -179,7 +254,10 @@ export function createPayrollRunModule(
           moduleId: PAYROLL_RUNS_MODULE_ID,
           recordId: record.id,
           headline: `${str(f.runNumber)} · ${str(f.status)} · gross ${Number(f.totalGross ?? 0).toLocaleString('en-US')}`,
-          summary: `${str(f.periodKey)}: ${Number(f.employeeCount ?? 0)} employee(s), gross ${Number(f.totalGross ?? 0).toLocaleString('en-US')}. ${str(f.note)}.`,
+          summary:
+            `${str(f.periodKey)}: ${Number(f.employeeCount ?? 0)} employee(s), gross ${Number(f.totalGross ?? 0).toLocaleString('en-US')}` +
+            (Number(f.totalNet ?? 0) > 0 ? `, net ${Number(f.totalNet ?? 0).toLocaleString('en-US')}` : '') +
+            `. ${str(f.note)}.`,
           risk: Number(f.unsalariedCount ?? 0) > 0 ? 'medium' : 'low',
           riskReason:
             Number(f.unsalariedCount ?? 0) > 0
@@ -191,7 +269,7 @@ export function createPayrollRunModule(
           model: 'none',
         };
       },
-      // The real thing: ensure the accounts, book the accrual, freeze the run.
+      // The real thing: ensure the accounts, book the balanced accrual, freeze the run.
       runAction: async (action, record, actionCtx) => {
         if (action !== POST_PAYROLL_ACTION) return { ok: false, error: `Unknown action "${action}".` };
         const f = record.fields;
@@ -199,14 +277,34 @@ export function createPayrollRunModule(
         const totalGross = Number(f.totalGross ?? 0);
         if (totalGross <= 0) return { ok: false, error: 'Nothing to post — the run gathered no salaried employees.' };
         const periodKey = str(f.periodKey);
-        const ready = await ensurePayrollAccounts(actionCtx);
+        let statutoryRun: StatutoryPayrollRun | null = null;
+        if (str(f.statutoryJson)) {
+          try {
+            statutoryRun = JSON.parse(str(f.statutoryJson)) as StatutoryPayrollRun;
+          } catch {
+            return { ok: false, error: 'The stored statutory detail is unreadable — re-preview the run before posting.' };
+          }
+        }
+        const statutory = statutoryRun !== null && statutoryRun.statutoryCount > 0;
+        const accountDefs = statutory
+          ? [
+              PAYROLL_EXPENSE_ACCOUNT, PAYROLL_LIABILITY_ACCOUNT, PAYROLL_EMPLOYER_PF_ACCOUNT, PAYROLL_EMPLOYER_ESI_ACCOUNT,
+              PF_PAYABLE_ACCOUNT, ESI_PAYABLE_ACCOUNT, PT_PAYABLE_ACCOUNT, TDS_PAYABLE_ACCOUNT, DEDUCTIONS_PAYABLE_ACCOUNT,
+            ]
+          : [PAYROLL_EXPENSE_ACCOUNT, PAYROLL_LIABILITY_ACCOUNT];
+        const ready = await ensurePayrollAccounts(actionCtx, accountDefs);
         if (!ready) return { ok: false, error: 'The Ledger Accounts module is not available to ensure the payroll accounts.' };
+        const lines = statutory
+          ? statutoryAccrualLines(statutoryRun!, PAYROLL_EXPENSE_ACCOUNT.code, PAYROLL_LIABILITY_ACCOUNT.code)
+          : payrollAccrualLines(totalGross);
         await applyGlDerivedEntries(
           [
             {
               entryNumber: payrollEntryNumber(periodKey),
-              memo: `Payroll accrual ${periodKey} — ${Number(f.employeeCount ?? 0)} employee(s), gross ${totalGross}`,
-              lines: payrollAccrualLines(totalGross),
+              memo: statutory
+                ? `Statutory payroll accrual ${periodKey} — ${Number(f.employeeCount ?? 0)} employee(s), gross ${totalGross}, net ${Number(f.totalNet ?? 0)}, rule set ${str(f.ruleSetCode) || '—'}`
+                : `Payroll accrual ${periodKey} — ${Number(f.employeeCount ?? 0)} employee(s), gross ${totalGross}`,
+              lines,
               sourceModule: PAYROLL_RUNS_MODULE_ID,
               sourceRef: record.id,
             },
@@ -220,7 +318,9 @@ export function createPayrollRunModule(
         });
         return {
           ok: true,
-          message: `Accrual ${payrollEntryNumber(periodKey)} posted — Dr Salaries Expense / Cr Salaries Payable ${totalGross}. Disbursement (Cr Cash) is a future wave, stated.`,
+          message: statutory
+            ? `Accrual ${payrollEntryNumber(periodKey)} posted BALANCED across ${lines.length} line(s) — gross + employer contributions vs net payable + PF/ESI/PT/TDS/deduction payables. Disbursement clears 2200 in W6-A4.`
+            : `Accrual ${payrollEntryNumber(periodKey)} posted — Dr Salaries Expense / Cr Salaries Payable ${totalGross}. Disbursement (Cr Cash) is a future wave, stated.`,
         };
       },
     },

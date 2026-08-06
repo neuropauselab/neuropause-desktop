@@ -66,6 +66,7 @@ export const EMPLOYEE_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'monthlySalary', label: 'Monthly Salary', type: 'number', min: 0, format: 'currency', column: false },
     { key: 'salaryStructureRef', label: 'Salary Structure', type: 'text', column: false, placeholder: 'Salary structure id (optional)' },
     { key: 'basicSalary', label: 'Basic (Monthly)', type: 'number', min: 0, format: 'currency', column: false },
+    { key: 'workState', label: 'Work State', type: 'text', column: false, placeholder: 'GJ (drives professional tax)' },
     {
       key: 'status',
       label: 'Status',
@@ -140,6 +141,12 @@ export function createEmployeeModule(
             errors.salaryStructureRef = `No salary structure with id "${structureRef}" was found.`;
           } else if (str(structure.fields.archivedAt)) {
             errors.salaryStructureRef = 'That salary structure is archived — assign an active template.';
+          }
+        }
+        if (structureRef) {
+          const basic = typeof result.values.basicSalary === 'number' ? result.values.basicSalary : 0;
+          if (basic <= 0) {
+            errors.basicSalary = 'A structure-assigned employee needs a positive basic salary — the template scales from it.';
           }
         }
         result.values.status = 'active';
