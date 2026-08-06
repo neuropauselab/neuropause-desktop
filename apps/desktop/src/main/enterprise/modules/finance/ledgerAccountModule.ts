@@ -81,6 +81,25 @@ export const LEDGER_ACCOUNT_DESCRIPTOR: EnterpriseModuleDescriptor = {
         { value: 'INR', label: 'INR' },
       ],
     },
+    {
+      // Additive (W6-B6): how this account's cash movement is classified in the direct-method
+      // Cash Flow Statement. `auto` (the default) falls back to the class rule — equity → financing,
+      // everything else → operating — so existing accounts need no change. Tag cash/bank accounts as
+      // `cash` (the movement being explained), and fixed-asset / long-term-debt accounts as
+      // investing / financing to make the split exact. Never a posting rule — reporting classification only.
+      key: 'cashFlowCategory',
+      label: 'Cash Flow Category',
+      type: 'select',
+      default: 'auto',
+      column: false,
+      options: [
+        { value: 'auto', label: 'Auto (by class)' },
+        { value: 'cash', label: 'Cash & Equivalents' },
+        { value: 'operating', label: 'Operating' },
+        { value: 'investing', label: 'Investing' },
+        { value: 'financing', label: 'Financing' },
+      ],
+    },
     { key: 'debitTotal', label: 'Debits', type: 'number', readOnly: true, format: 'currency', default: 0 },
     { key: 'creditTotal', label: 'Credits', type: 'number', readOnly: true, format: 'currency', default: 0 },
     { key: 'balance', label: 'Balance', type: 'number', readOnly: true, format: 'currency', default: 0 },

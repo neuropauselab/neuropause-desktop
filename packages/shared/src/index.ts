@@ -131,6 +131,8 @@ export * from './types/exchangeRates';
 export * from './types/fxGainLoss';
 // Finance → W6-B5: financial ratios — GL-derived class-total ratio engine.
 export * from './types/financialRatios';
+// Finance → W6-B6: cash flow statement — direct-method engine over posted GL entries.
+export * from './types/cashFlow';
 // HR → W6-A7: statutory filings — ECR/ESI/PT/24Q filing data from posted runs.
 export * from './types/statutoryFilings';
 export * from './types/customers';
