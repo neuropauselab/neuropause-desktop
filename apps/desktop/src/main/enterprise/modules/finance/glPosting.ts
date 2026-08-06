@@ -20,6 +20,8 @@
  */
 import type { EnterpriseEntity } from '@neuropause/shared';
 import {
+  FINANCE_MODULE_ID,
+  FX_GAINLOSS_ACCOUNT,
   GL_ASSET_CONTROL_ACCOUNTS,
   GL_CONTROL_ACCOUNTS,
   GL_PAYABLE_CONTROL_ACCOUNTS,
@@ -27,6 +29,7 @@ import {
   LEDGER_ACCOUNTS_MODULE_ID,
   calculateInvoiceAmount,
   calculateTaxAmount,
+  realizedReceivableFxLines,
   glBillEntryNumber,
   glBillExpectedLines,
   glBillPaymentExpectedLines,
@@ -37,7 +40,6 @@ import {
   glInvoiceExpectedLines,
   glJournalEntryFromRecord,
   glPaymentEntryNumber,
-  glPaymentExpectedLines,
   glVendorPaymentEntryNumber,
   invoiceFromRecord,
   paymentFromRecord,
@@ -76,6 +78,30 @@ async function seedControlAccountsIfEmpty(
     });
     ctx.emit(accounts, 'created', record);
   }
+}
+
+/**
+ * Ensure the FX Gain/Loss P&L account exists before a realized-FX entry posts
+ * (W6-B4). `seedControlAccountsIfEmpty` only seeds an EMPTY chart, so a foreign
+ * settlement in a live chart lazily ensures 7810 here — mirroring the payroll
+ * account-ensure pattern (validated via the module, `class` = the account type).
+ */
+async function ensureFxAccount(ctx: EnterpriseModuleActionContext): Promise<void> {
+  const accounts = ctx.moduleFor(LEDGER_ACCOUNTS_MODULE_ID);
+  if (!accounts) return;
+  await accounts.store.load();
+  if (accounts.store.list().some((r) => str(r.fields.code) === FX_GAINLOSS_ACCOUNT.code)) return;
+  const v = accounts.hooks.validate({
+    fields: { code: FX_GAINLOSS_ACCOUNT.code, name: FX_GAINLOSS_ACCOUNT.name, class: FX_GAINLOSS_ACCOUNT.type, currency: 'USD' },
+  });
+  if (!v.ok) return;
+  const record = accounts.store.create({
+    title: FX_GAINLOSS_ACCOUNT.code,
+    fields: v.values,
+    actor: 'system:gl-fx',
+    now: ctx.now(),
+  });
+  ctx.emit(accounts, 'created', record);
 }
 
 /**
@@ -351,6 +377,32 @@ export async function handlePaymentChangeForGl(
   const payment = paymentFromRecord(event.record);
   const number = payment.paymentNumber.trim();
   if (!number || payment.amount <= 0) return;
+  // W6-B4 multi-currency settlement: clear AR in FUNCTIONAL at the invoice's
+  // booking rate, receive Cash in functional at the settlement rate, and book
+  // the realized exchange difference to P&L. Single currency (both rates 1) →
+  // functionalSettled === functionalBooked → the classic two-line entry, so
+  // existing behavior is byte-identical.
+  const finance = ctx.moduleFor(FINANCE_MODULE_ID);
+  let bookingRate = 1;
+  if (finance) {
+    await finance.store.load();
+    const invRecord =
+      finance.store.get(payment.invoiceRef) ??
+      finance.store.list().find((r) => str(r.fields.number) === payment.invoiceRef) ??
+      null;
+    if (invRecord && invRecord.status !== 'deleted') bookingRate = invoiceFromRecord(invRecord).exchangeRate;
+  }
+  const settlementRate = payment.exchangeRate > 0 ? payment.exchangeRate : 1;
+  const functionalSettled = Math.round(payment.amount * settlementRate);
+  const functionalBooked = Math.round(payment.amount * bookingRate);
+  const fxLines = realizedReceivableFxLines({
+    functionalSettled,
+    functionalBooked,
+    cashCode: GL_CONTROL_ACCOUNTS.cash.code,
+    receivableCode: GL_CONTROL_ACCOUNTS.accountsReceivable.code,
+    fxCode: FX_GAINLOSS_ACCOUNT.code,
+  });
+  if (fxLines.length > 2) await ensureFxAccount(ctx); // realized FX difference → 7810 must exist
   const deleted = event.record.status === 'deleted';
   const revoked = deleted || payment.status === 'void';
   const journal = await existingJournal(ctx);
@@ -368,8 +420,9 @@ export async function handlePaymentChangeForGl(
       deleted,
       existingEntryNumbers: journal.numbers,
       sourceModule: event.record.moduleId,
+      lines: fxLines,
     }),
-    expectedLines: glPaymentExpectedLines(payment.amount),
+    expectedLines: fxLines,
     journal,
     sourceModule: event.record.moduleId,
     sourceRef: event.record.id,

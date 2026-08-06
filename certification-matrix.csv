@@ -1,6 +1,6 @@
 module_id,family,name,fields,level,level_name,overall,Architecture,Security,BusinessCompleteness,Workflow,UserExperience,Performance,Accessibility,AI,Reporting,Automation,EnterpriseReadiness,Maintainability,Documentation,Testing,ai,actions,test_tier
 finance,Finance,invoice,20,5,Reference,8.07,9,9,9,8,8,6,6,9,8,8,8,9,7,9,runner,1,dedicated
-finance-payments,Finance,payment,11,3,Enterprise Ready,7.36,9,9,7,5,8,6,6,9,8,3,8,9,7,9,runner,0,dedicated
+finance-payments,Finance,payment,12,3,Enterprise Ready,7.36,9,9,7,5,8,6,6,9,8,3,8,9,7,9,runner,0,dedicated
 finance-exchange-rates,Finance,exchangeRate,9,3,Enterprise Ready,7.36,9,9,7,8,8,6,6,2,8,8,8,9,7,9,none,1,dedicated
 finance-ledger-accounts,Finance,ledgerAccount,10,2,Business Ready,6.79,9,9,7,5,8,6,6,2,8,3,8,9,7,8,none,0,dedicated
 finance-journal-entries,Finance,journalEntry,12,3,Enterprise Ready,7.36,9,9,7,8,8,6,6,2,8,8,8,9,7,8,none,2,dedicated

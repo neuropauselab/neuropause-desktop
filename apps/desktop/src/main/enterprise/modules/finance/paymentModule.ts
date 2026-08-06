@@ -47,7 +47,6 @@ import {
   type EnterpriseModule,
   type EnterpriseModuleActionContext,
 } from '../../framework';
-import { handlePaymentChangeForGl } from './glPosting';
 
 /** The declarative description of a payment — drives store, CRUD, and the UI. */
 export const PAYMENT_DESCRIPTOR: EnterpriseModuleDescriptor = {
@@ -79,6 +78,7 @@ export const PAYMENT_DESCRIPTOR: EnterpriseModuleDescriptor = {
         { value: 'INR', label: 'INR' },
       ],
     },
+    { key: 'exchangeRate', label: 'Exchange Rate', type: 'number', min: 0, default: 1, column: false },
     {
       key: 'method',
       label: 'Method',
@@ -243,12 +243,9 @@ export function createPaymentModule(
         return result;
       },
       // The source-of-truth inversion: on every payment change, reconcile the
-      // invoice's paid amount + status from the real ledger — then flow the
-      // cleared/voided/deleted payment into the General Ledger through the
-      // idempotent auto-posting seam (a no-op when GL is not wired).
+      // invoice's paid amount + status from the real ledger.
       onChange: async (_event, ctx) => {
         await reconcileInvoice(str(_event.record.fields.invoiceRef), ctx);
-        await handlePaymentChangeForGl(_event, ctx);
       },
       summarize: async (record): Promise<EnterpriseRecordSummary> => {
         const payment = paymentFromRecord(record);

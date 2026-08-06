@@ -641,6 +641,12 @@ export function glDecidePaymentPostings(input: {
   deleted: boolean;
   existingEntryNumbers: ReadonlySet<string>;
   sourceModule: string;
+  /**
+   * W6-B4: explicit posting lines (functional AR clearing + realized FX). When
+   * omitted the classic single-currency Dr Cash / Cr AR lines are used, so
+   * existing callers stay byte-identical.
+   */
+  lines?: GlJournalLine[];
 }): GlDerivedEntry[] {
   const number = input.paymentNumber.trim();
   if (!number || input.amount <= 0) return [];
@@ -650,7 +656,7 @@ export function glDecidePaymentPostings(input: {
   const entry: GlDerivedEntry = {
     entryNumber: base,
     memo: `Payment ${number} cleared`,
-    lines: glPaymentExpectedLines(input.amount),
+    lines: input.lines ?? glPaymentExpectedLines(input.amount),
     sourceModule: input.sourceModule,
     sourceRef: input.paymentId,
   };
