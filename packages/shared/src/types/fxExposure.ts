@@ -54,10 +54,27 @@ export interface FxExposureByCurrency {
   unrealizedDelta: number;
 }
 
+/** One party's (customer for AR / vendor for AP) open FX position in one currency (W6-C2). */
+export interface FxExposureParty {
+  party: string;
+  currency: string;
+  foreignOutstanding: number;
+  functionalBooked: number;
+  latestRate: number;
+  rateResolved: boolean;
+  functionalCurrent: number;
+  /** functionalCurrent − functionalBooked (0 when no rate) — change in the position's functional value. */
+  unrealizedDelta: number;
+}
+
 export interface FxExposureResult {
   asOfDate: string;
   functionalCurrency: string;
   byCurrency: FxExposureByCurrency[];
+  /** Open AR exposure by customer + currency (W6-C2). */
+  byCustomer: FxExposureParty[];
+  /** Open AP exposure by vendor + currency (W6-C2). */
+  byVendor: FxExposureParty[];
   /** Σ functionalCurrent across currencies — the net functional exposure. */
   totalFunctionalCurrent: number;
   /** Σ functionalBooked. */
@@ -74,6 +91,13 @@ interface CurrencyAccumulator {
   receivableForeign: number;
   payableForeign: number;
   cashForeign: number;
+  functionalBooked: number;
+}
+
+interface PartyAccumulator {
+  party: string;
+  currency: string;
+  foreignOutstanding: number;
   functionalBooked: number;
 }
 
@@ -103,6 +127,16 @@ export function deriveFxExposure(input: {
     }
     return a;
   };
+  // W6-C2: party-level accumulation (customer for AR, vendor for AP), keyed by name + currency.
+  const custMap = new Map<string, PartyAccumulator>();
+  const vendMap = new Map<string, PartyAccumulator>();
+  const bump = (m: Map<string, PartyAccumulator>, party: string, currency: string, foreign: number, booked: number): void => {
+    const key = JSON.stringify([party, currency]);
+    const p = m.get(key) ?? { party, currency, foreignOutstanding: 0, functionalBooked: 0 };
+    p.foreignOutstanding = round2(p.foreignOutstanding + foreign);
+    p.functionalBooked = round2(p.functionalBooked + booked);
+    m.set(key, p);
+  };
 
   for (const inv of input.invoices ?? []) {
     if (inv.status === 'draft' || inv.status === 'cancelled') continue;
@@ -116,6 +150,7 @@ export function deriveFxExposure(input: {
     const a = ensure(currency);
     a.receivableForeign = round2(a.receivableForeign + outstanding);
     a.functionalBooked = round2(a.functionalBooked + outstanding * bookedRate); // AR: +asset
+    bump(custMap, (inv.customer || '').trim() || '(unnamed)', currency, outstanding, round2(outstanding * bookedRate));
   }
 
   for (const bill of input.bills ?? []) {
@@ -130,6 +165,7 @@ export function deriveFxExposure(input: {
     const a = ensure(currency);
     a.payableForeign = round2(a.payableForeign + outstanding);
     a.functionalBooked = round2(a.functionalBooked - outstanding * bookedRate); // AP: −liability
+    bump(vendMap, (bill.vendor || '').trim() || '(unnamed)', currency, outstanding, round2(outstanding * bookedRate));
   }
 
   for (const c of input.cash ?? []) {
@@ -172,10 +208,33 @@ export function deriveFxExposure(input: {
     totalUnrealizedDelta = round2(totalUnrealizedDelta + unrealizedDelta);
   }
 
+  const buildParties = (m: Map<string, PartyAccumulator>): FxExposureParty[] =>
+    [...m.values()]
+      .sort((x, y) => x.party.localeCompare(y.party) || x.currency.localeCompare(y.currency))
+      .map((p) => {
+        const resolved = resolveExchangeRate(rates, p.currency, functional, input.asOfDate);
+        const rateResolved = resolved !== null;
+        const latestRate = resolved ?? 0;
+        const functionalCurrent = rateResolved ? round2(p.foreignOutstanding * latestRate) : p.functionalBooked;
+        const unrealizedDelta = rateResolved ? round2(functionalCurrent - p.functionalBooked) : 0;
+        return {
+          party: p.party,
+          currency: p.currency,
+          foreignOutstanding: p.foreignOutstanding,
+          functionalBooked: p.functionalBooked,
+          latestRate,
+          rateResolved,
+          functionalCurrent,
+          unrealizedDelta,
+        };
+      });
+
   return {
     asOfDate: input.asOfDate,
     functionalCurrency: functional,
     byCurrency,
+    byCustomer: buildParties(custMap),
+    byVendor: buildParties(vendMap),
     totalFunctionalCurrent,
     totalFunctionalBooked,
     totalUnrealizedDelta,

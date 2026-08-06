@@ -154,3 +154,31 @@ describe('FX exposure engine (pure, W6-C2)', () => {
     expect(res.functionalCurrency).toBe('USD');
   });
 });
+
+describe('FX exposure by customer + vendor (W6-C2)', () => {
+  it('breaks AR exposure out by customer + currency, marked to market, sorted', () => {
+    const res = deriveFxExposure({
+      invoices: [
+        mkInvoice({ number: 'INV-A', customer: 'Acme', currency: 'EUR', amount: 1000, exchangeRate: 1.1 }), // booked 1100 → 1250
+        mkInvoice({ number: 'INV-B', customer: 'Beta', currency: 'EUR', amount: 400, exchangeRate: 1.2 }), // booked 480 → 500
+      ],
+      rates: [mkRate('EUR', 'USD', 1.25, '2026-08-01')],
+      asOfDate: '2026-08-31',
+    });
+    expect(res.byCustomer.map((c) => c.party)).toEqual(['Acme', 'Beta']); // sorted by party
+    expect(res.byCustomer[0]).toMatchObject({ party: 'Acme', currency: 'EUR', foreignOutstanding: 1000, functionalBooked: 1100, functionalCurrent: 1250, unrealizedDelta: 150 });
+    expect(res.byCustomer[1]).toMatchObject({ party: 'Beta', currency: 'EUR', foreignOutstanding: 400, functionalBooked: 480, functionalCurrent: 500, unrealizedDelta: 20 });
+    expect(res.byVendor).toEqual([]);
+  });
+
+  it('breaks AP exposure out by vendor + currency', () => {
+    const res = deriveFxExposure({
+      bills: [mkBill({ billNumber: 'B-1', vendor: 'Supplies Co', currency: 'EUR', outstanding: 500, exchangeRate: 1.2, status: 'approved' })], // booked 600 → 625
+      rates: [mkRate('EUR', 'USD', 1.25, '2026-08-01')],
+      asOfDate: '2026-08-31',
+    });
+    expect(res.byVendor).toHaveLength(1);
+    expect(res.byVendor[0]).toMatchObject({ party: 'Supplies Co', currency: 'EUR', foreignOutstanding: 500, functionalBooked: 600, functionalCurrent: 625, unrealizedDelta: 25 });
+    expect(res.byCustomer).toEqual([]);
+  });
+});
