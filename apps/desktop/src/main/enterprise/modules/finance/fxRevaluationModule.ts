@@ -29,6 +29,7 @@ import {
   FX_FUNCTIONAL_CURRENCY,
   FX_REVALUATION_MODULE_ID,
   FX_REVALUATION_KIND,
+  derivePayableRevaluation,
   deriveReceivableRevaluation,
   exchangeRateFromRecord,
   glFxRevaluationEntryNumber,
@@ -37,6 +38,7 @@ import {
   glPeriodFromRecord,
   invoiceFromRecord,
   validateEnterpriseRecordInput,
+  vendorBillFromRecord,
 } from '@neuropause/shared';
 import {
   EnterpriseRecordStore,
@@ -83,14 +85,17 @@ const money = (v: number): string => v.toLocaleString('en-US', { maximumFraction
 
 /**
  * Build the FX Revaluation module. The Invoices + Exchange Rates + Accounting
- * Periods stores are injected so generation revalues the real open receivables
- * at real registered rates and honours the period lock.
+ * Periods stores (and, W6-B9, the Vendor Bills store) are injected so generation
+ * revalues the real open receivables AND payables at real registered rates and
+ * honours the period lock. `vendorBillStore` is optional so the receivables-only
+ * unit tests still construct the module with no payables source.
  */
 export function createFxRevaluationModule(
   storePath: string,
   invoiceStore: EnterpriseRecordStore,
   exchangeRateStore: EnterpriseRecordStore,
   accountingPeriodStore: EnterpriseRecordStore,
+  vendorBillStore?: EnterpriseRecordStore,
 ): EnterpriseModule {
   const store = new EnterpriseRecordStore(storePath, FX_REVALUATION_MODULE_ID, FX_REVALUATION_KIND);
   return defineEnterpriseModule({
@@ -127,6 +132,13 @@ export function createFxRevaluationModule(
         const rates = exchangeRateStore.list().map(exchangeRateFromRecord);
         const invoices = invoiceStore.list().filter((r) => r.status !== 'deleted').map(invoiceFromRecord);
         const reval = deriveReceivableRevaluation({ invoices, rates, asOfDate: revalDate, functionalCurrency: FX_FUNCTIONAL_CURRENCY });
+        const bills = vendorBillStore
+          ? vendorBillStore.list().filter((r) => r.status !== 'deleted').map(vendorBillFromRecord)
+          : [];
+        const payable = derivePayableRevaluation({ bills, rates, asOfDate: revalDate, functionalCurrency: FX_FUNCTIONAL_CURRENCY });
+        const revaluedCount = reval.revaluedCount + payable.revaluedCount;
+        const skippedNoRate = reval.skippedNoRate + payable.skippedNoRate;
+        const combinedGl = Math.round((reval.unrealizedGainLoss + payable.unrealizedGainLoss) * 100) / 100;
         const priorCount = store.list().filter((r) => str(r.fields.period) === period).length;
 
         result.values.period = period;
@@ -135,22 +147,22 @@ export function createFxRevaluationModule(
         result.values.reversalDate = reversalDate;
         result.values.functionalCurrency = FX_FUNCTIONAL_CURRENCY;
         result.values.receivableDelta = reval.receivableDelta;
-        result.values.payableDelta = 0;
-        result.values.unrealizedGainLoss = reval.unrealizedGainLoss;
-        result.values.revaluedCount = reval.revaluedCount;
-        result.values.skippedNoRate = reval.skippedNoRate;
-        result.values.items = JSON.stringify(reval.items);
+        result.values.payableDelta = payable.payableDelta;
+        result.values.unrealizedGainLoss = combinedGl;
+        result.values.revaluedCount = revaluedCount;
+        result.values.skippedNoRate = skippedNoRate;
+        result.values.items = JSON.stringify([...reval.items, ...payable.items]);
         result.values.revalEntryNumber = glFxRevaluationEntryNumber(period);
         result.values.reversalEntryNumber = `${glFxRevaluationEntryNumber(period)}-REV`;
         result.values.note =
-          reval.revaluedCount === 0
-            ? reval.skippedNoRate > 0
-              ? `${reval.skippedNoRate} open foreign-currency receivable(s) had no ${period}-end rate — none revalued; add period-end rates and regenerate`
-              : `no open foreign-currency receivables — nothing to revalue for ${period}`
-            : `revalued ${reval.revaluedCount} open FX receivable(s) at the ${period}-end rate; unrealized ` +
-              `${reval.unrealizedGainLoss >= 0 ? 'gain' : 'loss'} ${money(Math.abs(reval.unrealizedGainLoss))} posts to 7811 and reverses on ${reversalDate}` +
-              (reval.skippedNoRate > 0 ? `; ${reval.skippedNoRate} skipped (no ${period}-end rate)` : '') +
-              '. Payables excluded — vendor bills are not yet multi-currency.';
+          revaluedCount === 0
+            ? skippedNoRate > 0
+              ? `${skippedNoRate} open foreign-currency item(s) had no ${period}-end rate — none revalued; add period-end rates and regenerate`
+              : `no open foreign-currency receivables or payables — nothing to revalue for ${period}`
+            : `revalued ${reval.revaluedCount} receivable(s) + ${payable.revaluedCount} payable(s) at the ${period}-end rate; unrealized ` +
+              `${combinedGl >= 0 ? 'gain' : 'loss'} ${money(Math.abs(combinedGl))} posts to 7811 and reverses on ${reversalDate}` +
+              (skippedNoRate > 0 ? `; ${skippedNoRate} skipped (no ${period}-end rate)` : '') +
+              '.';
         result.values.generatedAt = new Date().toISOString();
         return result;
       },

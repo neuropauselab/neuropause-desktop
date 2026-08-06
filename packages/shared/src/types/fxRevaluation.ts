@@ -19,6 +19,7 @@ import type { ExchangeRate } from './exchangeRates';
 import { resolveExchangeRate } from './exchangeRates';
 import type { FinanceInvoice } from './finance';
 import { calculateInvoiceAmount } from './finance';
+import type { VendorBill } from './vendorBills';
 import { FX_FUNCTIONAL_CURRENCY, computeUnrealizedFxGainLoss } from './fxGainLoss';
 
 /** The FX Revaluation module id + record kind (the framework store key). */
@@ -106,4 +107,67 @@ export function deriveReceivableRevaluation(input: {
     unrealizedGainLoss = round2(unrealizedGainLoss + fx.gainLoss);
   }
   return { items, receivableDelta, unrealizedGainLoss, revaluedCount: items.length, skippedNoRate };
+}
+
+export interface FxPayableRevaluationResult {
+  items: FxRevaluationItem[];
+  /** Σ delta over revalued payables (functional) — the AP adjustment (signed, current − booked). */
+  payableDelta: number;
+  /** Σ IAS 21 gain(+)/loss(−); for liabilities a higher rate is a LOSS. */
+  unrealizedGainLoss: number;
+  revaluedCount: number;
+  /** Open FX payables with NO period-end rate available — NOT revalued (never faked 1:1). */
+  skippedNoRate: number;
+}
+
+/**
+ * Revalue every open foreign-currency PAYABLE (an APPROVED, still-outstanding
+ * vendor bill) as of `asOfDate` — the mirror of `deriveReceivableRevaluation`
+ * (W6-B9). Same scope rules (booked, outstanding, non-functional, positive
+ * booked rate, dated on/before the period end, resolvable period-end rate);
+ * the monetary class is `liability`, so a higher period-end rate is a LOSS.
+ * `payableDelta` is the signed change in the AP carrying value.
+ */
+export function derivePayableRevaluation(input: {
+  bills: readonly VendorBill[];
+  rates: readonly ExchangeRate[];
+  asOfDate: string;
+  functionalCurrency?: string;
+}): FxPayableRevaluationResult {
+  const functional = (input.functionalCurrency || FX_FUNCTIONAL_CURRENCY).toUpperCase();
+  const rates = input.rates as ExchangeRate[];
+  const items: FxRevaluationItem[] = [];
+  let payableDelta = 0;
+  let unrealizedGainLoss = 0;
+  let skippedNoRate = 0;
+  for (const bill of input.bills) {
+    if (bill.status !== 'approved') continue; // only open payables age (draft/paid/cancelled don't)
+    const outstanding = round2(Math.max(0, bill.outstanding));
+    if (outstanding <= 0) continue;
+    const currency = (bill.currency || functional).toUpperCase();
+    if (currency === functional) continue; // no FX exposure
+    const bookedRate = bill.exchangeRate > 0 ? bill.exchangeRate : 0;
+    if (bookedRate <= 0) continue;
+    if (bill.billDate && bill.billDate > input.asOfDate) continue; // not yet in the period-end balance
+    const revalRate = resolveExchangeRate(rates, currency, functional, input.asOfDate);
+    if (revalRate === null) {
+      skippedNoRate += 1;
+      continue;
+    }
+    const fx = computeUnrealizedFxGainLoss({ amount: outstanding, bookedRate, revalRate, monetaryClass: 'liability' });
+    const delta = round2(fx.functionalCurrent - fx.functionalBooked);
+    items.push({
+      document: bill.billNumber,
+      currency,
+      outstanding,
+      bookedRate,
+      revalRate,
+      functionalBooked: fx.functionalBooked,
+      functionalCurrent: fx.functionalCurrent,
+      delta,
+    });
+    payableDelta = round2(payableDelta + delta);
+    unrealizedGainLoss = round2(unrealizedGainLoss + fx.gainLoss);
+  }
+  return { items, payableDelta, unrealizedGainLoss, revaluedCount: items.length, skippedNoRate };
 }

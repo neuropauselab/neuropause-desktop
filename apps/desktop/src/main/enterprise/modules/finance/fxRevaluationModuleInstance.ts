@@ -11,6 +11,7 @@ import { enterpriseModuleStorePath } from '../../framework';
 import { invoiceModule } from './invoiceModuleInstance';
 import { exchangeRateModule } from './exchangeRateModuleInstance';
 import { accountingPeriodModule } from './accountingPeriodModuleInstance';
+import { vendorBillModule } from './vendorBillModuleInstance';
 import { createFxRevaluationModule } from './fxRevaluationModule';
 
 export const fxRevaluationModule = createFxRevaluationModule(
@@ -18,4 +19,5 @@ export const fxRevaluationModule = createFxRevaluationModule(
   invoiceModule.store,
   exchangeRateModule.store,
   accountingPeriodModule.store,
+  vendorBillModule.store,
 );
