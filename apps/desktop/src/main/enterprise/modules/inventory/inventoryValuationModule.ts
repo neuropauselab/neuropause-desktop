@@ -8,11 +8,13 @@
  * CRUD, RBAC (`inventory:read` / `inventory:manage`), audit, timeline,
  * search, offline persistence, and the UI are all inherited.
  *
- * METHOD stated on every register: STANDARD COST — transparent on-hand ×
- * standard cost. FIFO/weighted-average layering is a deliberate future
- * method, not faked. Cells without a costed product are valued 0 AND counted
- * as unvalued. Registers are IMMUTABLE and never superseded — the sequence is
- * how inventory value TRENDS between counts.
+ * METHOD is chosen per register (W6-C1 completes the family):
+ * - standard-cost — on-hand × the product's standard cost, per product@warehouse.
+ * - fifo / weighted-average / moving-average — actual cost from the receipt
+ *   history, per product (see the engine header for the stated granularity).
+ * Cells/products without a captured cost are counted as unvalued/uncosted, not
+ * hidden. Registers are IMMUTABLE and never superseded — the sequence is how
+ * inventory value TRENDS between counts.
  *
  * Electron-free (store paths injected), so it unit-tests without the app runtime.
  */
@@ -21,10 +23,12 @@ import type {
   EnterpriseRecordInput,
   EnterpriseRecordSummary,
   EnterpriseRecordValidation,
+  CostValuationMethod,
 } from '@neuropause/shared';
 import {
   INVENTORY_VALUATION_MODULE_ID,
   INVENTORY_VALUATION_KIND,
+  deriveCostValuation,
   deriveInventoryValuation,
   productFromRecord,
   movementFromRecord,
@@ -51,7 +55,20 @@ export const INVENTORY_VALUATION_DESCRIPTOR: EnterpriseModuleDescriptor = {
   fields: [
     { key: 'reportNumber', label: 'Register #', type: 'text', readOnly: true },
     { key: 'asOfDate', label: 'As Of', type: 'date', format: 'date', placeholder: 'Defaults to today' },
-    { key: 'method', label: 'Method', type: 'text', readOnly: true },
+    {
+      key: 'method',
+      label: 'Method',
+      type: 'select',
+      default: 'standard-cost',
+      badge: true,
+      filterable: true,
+      options: [
+        { value: 'standard-cost', label: 'Standard Cost', tone: 'blue' },
+        { value: 'fifo', label: 'FIFO', tone: 'teal' },
+        { value: 'weighted-average', label: 'Weighted Average', tone: 'purple' },
+        { value: 'moving-average', label: 'Moving Average', tone: 'orange' },
+      ],
+    },
     { key: 'cellCount', label: 'Stock Cells', type: 'number', readOnly: true, default: 0 },
     { key: 'unvaluedCount', label: 'Unvalued', type: 'number', readOnly: true, default: 0 },
     { key: 'totalValue', label: 'Total Value', type: 'number', readOnly: true, format: 'currency', default: 0 },
@@ -102,25 +119,38 @@ export function createInventoryValuationModule(
             values: result.values,
           };
         }
-        const valuation = deriveInventoryValuation(
-          movementStore.list().map(movementFromRecord),
-          productStore.list().map(productFromRecord),
-        );
+        const movements = movementStore.list().map(movementFromRecord);
         const priorCount = store.list().filter((r) => str(r.fields.asOfDate) === asOfDate).length;
         result.values.asOfDate = asOfDate;
         result.values.reportNumber = `IV-${asOfDate}-${priorCount + 1}`;
-        result.values.method = 'standard-cost';
-        result.values.cellCount = valuation.cellCount;
-        result.values.unvaluedCount = valuation.unvaluedCount;
-        result.values.totalValue = valuation.totalValue;
-        result.values.rows = JSON.stringify(valuation.rows);
-        result.values.note =
-          valuation.cellCount === 0
-            ? 'no stock on hand in the ledger — the register is empty, not fabricated'
-            : `method: on-hand × standard cost per product@warehouse; FIFO/weighted-average is a future method, not faked` +
-              (valuation.unvaluedCount > 0
-                ? `; ${valuation.unvaluedCount} cell(s) have no standard cost — valued 0, counted here`
-                : '');
+        const method = str(result.values.method) || 'standard-cost';
+        if (method === 'fifo' || method === 'weighted-average' || method === 'moving-average') {
+          const cv = deriveCostValuation(movements, method as CostValuationMethod);
+          result.values.method = method;
+          result.values.cellCount = cv.cellCount;
+          result.values.unvaluedCount = cv.uncostedCount;
+          result.values.totalValue = cv.totalValue;
+          result.values.rows = JSON.stringify(cv.rows);
+          result.values.note =
+            cv.cellCount === 0
+              ? 'no stock on hand in the ledger — the register is empty, not fabricated'
+              : `method: ${method} actual cost from receipt history, per product (transfers are net-zero to product cost; per-warehouse layering is a stated future refinement)` +
+                (cv.uncostedCount > 0 ? `; ${cv.uncostedCount} product(s) have uncosted remaining stock — counted here` : '');
+        } else {
+          const valuation = deriveInventoryValuation(movements, productStore.list().map(productFromRecord));
+          result.values.method = 'standard-cost';
+          result.values.cellCount = valuation.cellCount;
+          result.values.unvaluedCount = valuation.unvaluedCount;
+          result.values.totalValue = valuation.totalValue;
+          result.values.rows = JSON.stringify(valuation.rows);
+          result.values.note =
+            valuation.cellCount === 0
+              ? 'no stock on hand in the ledger — the register is empty, not fabricated'
+              : `method: on-hand × standard cost per product@warehouse; FIFO / weighted-average / moving-average are available as method options` +
+                (valuation.unvaluedCount > 0
+                  ? `; ${valuation.unvaluedCount} cell(s) have no standard cost — valued 0, counted here`
+                  : '');
+        }
         result.values.generatedAt = new Date().toISOString();
         return result;
       },
@@ -130,15 +160,15 @@ export function createInventoryValuationModule(
         return {
           moduleId: INVENTORY_VALUATION_MODULE_ID,
           recordId: record.id,
-          headline: `${str(f.reportNumber)} · ${Number(f.totalValue ?? 0).toLocaleString('en-US')} across ${Number(f.cellCount ?? 0)} cell(s)`,
-          summary: `As of ${str(f.asOfDate)}: ${Number(f.totalValue ?? 0).toLocaleString('en-US')} of stock at standard cost. ${str(f.note)}.`,
+          headline: `${str(f.reportNumber)} · ${str(f.method)} · ${Number(f.totalValue ?? 0).toLocaleString('en-US')} across ${Number(f.cellCount ?? 0)} cell(s)`,
+          summary: `As of ${str(f.asOfDate)}: ${Number(f.totalValue ?? 0).toLocaleString('en-US')} of stock (${str(f.method)}). ${str(f.note)}.`,
           risk: unvalued > 0 ? 'medium' : 'low',
           riskReason:
             unvalued > 0
-              ? 'Uncosted stock cells understate the register — set standard costs on those products.'
-              : 'Every stock cell carries a standard cost.',
+              ? 'Uncosted stock understates the register — set standard costs, or capture receipt costs for the actual-cost methods.'
+              : 'Every valued line carries a cost under the chosen method.',
           executiveExplanation:
-            'Valuation registers are immutable snapshots of ledger quantities × the cost book — the register sequence is the value trend between counts.',
+            'Valuation registers are immutable snapshots of ledger quantities costed by the chosen method (standard cost, or FIFO/weighted-average/moving-average from receipt history) — the register sequence is the value trend between counts.',
           grounded: false,
           model: 'none',
         };
