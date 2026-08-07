@@ -1,7 +1,7 @@
 /**
  * Enterprise Module Certification v1.0 — the registry-wide descriptor lock.
  *
- * A QUALITY gate, not a feature: it runs every one of the 100 REAL registered module descriptors through the
+ * A QUALITY gate, not a feature: it runs every one of the 101 REAL registered module descriptors through the
  * framework's own `validateModuleDescriptor`, and locks the certified inventory (count, unique ids, family
  * distribution, RBAC scopes, title fields). Before this test the real descriptors were validated only
  * implicitly at construction; this makes the guarantee explicit.
@@ -9,7 +9,7 @@
  * SCOPE (stated honestly): the lock is over the enumerated `CERTIFIED` list below. It catches a descriptor
  * REGRESSION (bad id, dup field, wrong group/scope, dup id/action) and a REMOVAL or RENAME of a `*_DESCRIPTOR`
  * export (the import breaks → the file goes red). It does NOT read the live runtime registry, so ADDING a new
- * (101st) registered module does not fail this test until this list is updated — which is the intended,
+ * (102nd) registered module does not fail this test until this list is updated — which is the intended,
  * deliberate re-certification checkpoint for a new module.
  *
  * Reuse-only: it imports the standalone descriptor consts (Electron-free — no store, no app runtime) and the
@@ -56,8 +56,9 @@ import { ACTIVITY_DESCRIPTOR } from './crm/activityModule';
 import { CUSTOMER_HEALTH_DESCRIPTOR } from './crm/customerHealthModule';
 import { CUSTOMER_TIMELINE_DESCRIPTOR } from './crm/customerTimelineModule';
 import { CAMPAIGN_DESCRIPTOR } from './crm/campaignModule';
-// Procurement (6)
+// Procurement (7)
 import { SUPPLIER_DESCRIPTOR } from './procurement/supplierModule';
+import { VENDOR_CONTRACT_DESCRIPTOR } from './procurement/vendorContractModule';
 import { PURCHASE_REQUEST_DESCRIPTOR } from './procurement/purchaseRequestModule';
 import { PURCHASE_ORDER_DESCRIPTOR } from './procurement/purchaseOrderModule';
 import { GOODS_RECEIPT_DESCRIPTOR } from './procurement/goodsReceiptModule';
@@ -149,8 +150,8 @@ const CERTIFIED: Record<string, EnterpriseModuleDescriptor[]> = {
     CUSTOMER_HEALTH_DESCRIPTOR, CUSTOMER_TIMELINE_DESCRIPTOR, CAMPAIGN_DESCRIPTOR,
   ],
   Procurement: [
-    SUPPLIER_DESCRIPTOR, PURCHASE_REQUEST_DESCRIPTOR, PURCHASE_ORDER_DESCRIPTOR, GOODS_RECEIPT_DESCRIPTOR,
-    RFQ_DESCRIPTOR, SUPPLIER_PERFORMANCE_DESCRIPTOR,
+    SUPPLIER_DESCRIPTOR, VENDOR_CONTRACT_DESCRIPTOR, PURCHASE_REQUEST_DESCRIPTOR, PURCHASE_ORDER_DESCRIPTOR,
+    GOODS_RECEIPT_DESCRIPTOR, RFQ_DESCRIPTOR, SUPPLIER_PERFORMANCE_DESCRIPTOR,
   ],
   Inventory: [
     PRODUCT_DESCRIPTOR, WAREHOUSE_DESCRIPTOR, STOCK_MOVEMENT_DESCRIPTOR,
@@ -179,7 +180,7 @@ const CERTIFIED: Record<string, EnterpriseModuleDescriptor[]> = {
 
 /** The certified per-family module counts (verified from the registration site, enterprise/index.ts). */
 const CERTIFIED_COUNTS: Record<string, number> = {
-  Finance: 20, Sales: 7, CRM: 8, Procurement: 6, Inventory: 7, Warehouse: 8, Manufacturing: 12, Maintenance: 10, Projects: 4, HR: 13, Helpdesk: 1, Documents: 1, Executive: 3,
+  Finance: 20, Sales: 7, CRM: 8, Procurement: 7, Inventory: 7, Warehouse: 8, Manufacturing: 12, Maintenance: 10, Projects: 4, HR: 13, Helpdesk: 1, Documents: 1, Executive: 3,
 };
 
 const ALL = Object.values(CERTIFIED).flat();
@@ -193,13 +194,13 @@ const FAMILY_WRITE_SCOPE: Record<string, string> = {
 };
 
 describe('Enterprise Module Certification — registry lock', () => {
-  it('certifies exactly 100 modules across the 13 production families', () => {
-    expect(ALL).toHaveLength(100);
+  it('certifies exactly 101 modules across the 13 production families', () => {
+    expect(ALL).toHaveLength(101);
     for (const fam of KNOWN_FAMILIES) {
       expect(CERTIFIED[fam]).toHaveLength(CERTIFIED_COUNTS[fam]);
     }
     const total = Object.values(CERTIFIED_COUNTS).reduce((a, b) => a + b, 0);
-    expect(total).toBe(100);
+    expect(total).toBe(101);
   });
 
   it('every real descriptor passes the framework validator (validateModuleDescriptor)', () => {

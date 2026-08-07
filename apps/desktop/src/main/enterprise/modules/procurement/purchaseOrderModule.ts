@@ -17,6 +17,7 @@ import {
   PURCHASE_ORDER_KIND,
   calculatePurchaseTotal,
   evaluateBudgetControl,
+  evaluateContractGate,
   purchaseOrderFromRecord,
   purchaseOrderSummaryFallback,
   validateEnterpriseRecordInput,
@@ -60,6 +61,8 @@ export const PURCHASE_ORDER_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'budget', label: 'Budget', type: 'number', min: 0, format: 'currency', column: false },
     { key: 'budgetRef', label: 'Budget Control', type: 'text', column: false, placeholder: 'Finance budget id (optional — governs approval)' },
     { key: 'budgetCheck', label: 'Budget Check', type: 'text', readOnly: true, column: false },
+    { key: 'contractRef', label: 'Vendor Contract', type: 'text', column: false, placeholder: 'Vendor contract id (optional — governs approval)' },
+    { key: 'contractCheck', label: 'Contract Check', type: 'text', readOnly: true, column: false },
     {
       key: 'currency',
       label: 'Currency',
@@ -120,7 +123,12 @@ function projectValues(values: EnterpriseRecordInput['fields']): PurchaseOrder {
   return purchaseOrderFromRecord(record);
 }
 
-export function createPurchaseOrderModule(storePath: string, aiRunner?: PurchaseOrderAiRunner, budgetStore?: EnterpriseRecordStore): EnterpriseModule {
+export function createPurchaseOrderModule(
+  storePath: string,
+  aiRunner?: PurchaseOrderAiRunner,
+  budgetStore?: EnterpriseRecordStore,
+  contractStore?: EnterpriseRecordStore,
+): EnterpriseModule {
   const store = new EnterpriseRecordStore(storePath, PURCHASE_ORDERS_MODULE_ID, PURCHASE_ORDER_KIND);
   return defineEnterpriseModule({
     descriptor: PURCHASE_ORDER_DESCRIPTOR,
@@ -170,11 +178,36 @@ export function createPurchaseOrderModule(storePath: string, aiRunner?: Purchase
             now: ctx.now(),
           });
         }
+        // FW-7 (ADDITIVE): approval consults the named vendor contract — it must
+        // be live, activated, inside its window today, and for this supplier.
+        // No contractRef, or no contract store wired = uncontrolled, as before.
+        let contractNote = '';
+        if (action === 'approve' && contractStore && str(record.fields.contractRef).trim()) {
+          const gate = evaluateContractGate({
+            contractRef: str(record.fields.contractRef),
+            supplierName: str(record.fields.supplier),
+            onDate: ctx.now(),
+            contracts: contractStore.list(),
+          });
+          if (!gate.allowed) return { ok: false, error: gate.note };
+          contractNote = gate.note;
+          store.update(record.id, {
+            fields: { contractCheck: gate.note },
+            actor: ctx.actor(),
+            now: ctx.now(),
+          });
+        }
         const updated = store.update(record.id, { fields: { status: target }, actor: ctx.actor(), now: ctx.now() });
         if (!updated) return { ok: false, error: 'Purchase order not found.' };
         const self = ctx.moduleFor(PURCHASE_ORDERS_MODULE_ID);
         if (self) ctx.emit(self, 'updated', updated);
-        return { ok: true, message: `Purchase order ${str(record.fields.poNumber)} ${target}.` + (budgetNote ? ` ${budgetNote}` : '') };
+        return {
+          ok: true,
+          message:
+            `Purchase order ${str(record.fields.poNumber)} ${target}.` +
+            (budgetNote ? ` ${budgetNote}` : '') +
+            (contractNote ? ` ${contractNote}` : ''),
+        };
       },
     },
   });

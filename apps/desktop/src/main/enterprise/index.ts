@@ -128,6 +128,7 @@ import { inventoryValuationModule } from './modules/inventory/inventoryValuation
 import { serialModule } from './modules/inventory/serialModuleInstance';
 import {
   supplierModule,
+  vendorContractModule,
   purchaseRequestModule,
   purchaseOrderModule,
   goodsReceiptModule,
@@ -339,6 +340,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(inventoryValuationModule); // Inventory → Valuation (standard-cost registers)
   modules.registry.register(serialModule); // Inventory → Serial Units (per-unit serialized tracking)
   modules.registry.register(supplierModule); // Procurement → Suppliers
+  modules.registry.register(vendorContractModule); // Procurement → Vendor Contracts (FW-7: dated agreements gate PO approval — 101st registered module)
   modules.registry.register(purchaseRequestModule); // Procurement → Purchase Requests
   modules.registry.register(purchaseOrderModule); // Procurement → Purchase Orders
   modules.registry.register(goodsReceiptModule); // Procurement → Goods Receipts

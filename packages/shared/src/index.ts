@@ -129,6 +129,8 @@ export * from './types/shifts';
 export * from './types/budgetControls';
 // Inventory ↔ Procurement → FW-6: auto-reordering — min–max replenishment on the inventory position.
 export * from './types/autoReorder';
+// Procurement → FW-7: vendor contracts — dated agreements whose open window gates PO approval.
+export * from './types/vendorContracts';
 // HR → W6-A4: salary disbursement — net-pay clearing + deterministic bank advice.
 export * from './types/salaryDisbursement';
 // HR → W6-A5: payslips — immutable per-employee statements from posted runs.
