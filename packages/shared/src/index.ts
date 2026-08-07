@@ -121,6 +121,8 @@ export * from './types/payrollProcessing';
 export * from './types/attendance';
 // HR → FW-2: leave + holiday calendar — approved paid leave never docks pay; unpaid leave (minus holidays) is LOP.
 export * from './types/leave';
+// HR → FW-3: expense claims — approval books a real Dr 5330 / Cr 2260 accrual, idempotent per claim.
+export * from './types/expenseClaims';
 // HR → W6-A4: salary disbursement — net-pay clearing + deterministic bank advice.
 export * from './types/salaryDisbursement';
 // HR → W6-A5: payslips — immutable per-employee statements from posted runs.

@@ -9,6 +9,7 @@ import { app } from 'electron';
 import {
   ATTENDANCE_MODULE_ID,
   EMPLOYEES_MODULE_ID,
+  EXPENSE_CLAIMS_MODULE_ID,
   HOLIDAYS_MODULE_ID,
   LEAVE_MODULE_ID,
   PAYROLL_REGISTER_MODULE_ID,
@@ -22,6 +23,7 @@ import {
 import { enterpriseModuleStorePath } from '../../framework';
 import { createAttendanceModule } from './attendanceModule';
 import { createEmployeeModule } from './employeeModule';
+import { createExpenseClaimModule } from './expenseClaimModule';
 import { createHolidayModule } from './holidayModule';
 import { createLeaveModule } from './leaveModule';
 import { createPayrollRegisterModule } from './payrollRegisterModule';
@@ -44,6 +46,11 @@ export const employeeModule = createEmployeeModule(
 );
 
 export const holidayModule = createHolidayModule(store(HOLIDAYS_MODULE_ID));
+
+export const expenseClaimModule = createExpenseClaimModule(
+  store(EXPENSE_CLAIMS_MODULE_ID),
+  employeeModule.store,
+);
 
 export const leaveModule = createLeaveModule(
   store(LEAVE_MODULE_ID),

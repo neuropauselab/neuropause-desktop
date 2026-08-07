@@ -159,7 +159,7 @@ import {
 } from './modules/manufacturing/manufacturingInstances';
 import { bomExplosionModule } from './modules/manufacturing/bomExplosionModuleInstance';
 import { billingRunModule, projectModule, projectTaskModule, timeEntryModule } from './modules/projects/projectsInstances';
-import { attendanceModule, employeeModule, holidayModule, leaveModule, payrollRegisterModule, payrollRunModule, payslipModule, salaryDisbursementModule, salaryStructureModule, statutoryFilingModule, statutoryRuleModule } from './modules/hr/hrInstances';
+import { attendanceModule, employeeModule, expenseClaimModule, holidayModule, leaveModule, payrollRegisterModule, payrollRunModule, payslipModule, salaryDisbursementModule, salaryStructureModule, statutoryFilingModule, statutoryRuleModule } from './modules/hr/hrInstances';
 import { ticketModule } from './modules/helpdesk/helpdeskInstances';
 import { campaignModule } from './modules/crm/campaignModuleInstance';
 import { documentModule } from './modules/documents/documentsInstances';
@@ -369,6 +369,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(attendanceModule); // HR → Attendance Periods (confirmed LOP → payroll proration + ECR NCP)
   modules.registry.register(leaveModule); // HR → Leave Requests (human-approved; unpaid → LOP via attendance import)
   modules.registry.register(holidayModule); // HR → Holiday Calendar (declared holidays never dock pay)
+  modules.registry.register(expenseClaimModule); // HR → Expense Claims (approval books Dr 5330 / Cr 2260, idempotent)
   modules.registry.register(ticketModule); // Helpdesk → Tickets (SLA service desk)
   modules.registry.register(campaignModule); // CRM → Campaigns (live lead attribution)
   modules.registry.register(documentModule); // Documents → Registry (append-only versioning)
