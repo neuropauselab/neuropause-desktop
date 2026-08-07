@@ -17,6 +17,7 @@ import {
   PAYSLIPS_MODULE_ID,
   SALARY_DISBURSEMENTS_MODULE_ID,
   SALARY_STRUCTURES_MODULE_ID,
+  SHIFTS_MODULE_ID,
   STATUTORY_FILINGS_MODULE_ID,
   STATUTORY_RULES_MODULE_ID,
 } from '@neuropause/shared';
@@ -31,6 +32,7 @@ import { createPayrollRunModule } from './payrollRunModule';
 import { createPayslipModule } from './payslipModule';
 import { createSalaryDisbursementModule } from './salaryDisbursementModule';
 import { createSalaryStructureModule } from './salaryStructureModule';
+import { createShiftModule } from './shiftModule';
 import { createStatutoryFilingModule } from './statutoryFilingModule';
 import { createStatutoryRuleModule } from './statutoryRuleModule';
 
@@ -40,9 +42,12 @@ export const salaryStructureModule = createSalaryStructureModule(store(SALARY_ST
 
 export const statutoryRuleModule = createStatutoryRuleModule(store(STATUTORY_RULES_MODULE_ID));
 
+export const shiftModule = createShiftModule(store(SHIFTS_MODULE_ID));
+
 export const employeeModule = createEmployeeModule(
   store(EMPLOYEES_MODULE_ID),
   salaryStructureModule.store,
+  shiftModule.store,
 );
 
 export const holidayModule = createHolidayModule(store(HOLIDAYS_MODULE_ID));
@@ -62,6 +67,7 @@ export const attendanceModule = createAttendanceModule(
   employeeModule.store,
   leaveModule.store,
   holidayModule.store,
+  shiftModule.store,
 );
 
 export const payrollRunModule = createPayrollRunModule(

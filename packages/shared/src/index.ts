@@ -123,6 +123,8 @@ export * from './types/attendance';
 export * from './types/leave';
 // HR → FW-3: expense claims — approval books a real Dr 5330 / Cr 2260 accrual, idempotent per claim.
 export * from './types/expenseClaims';
+// HR → FW-4: shifts — working patterns; expected working days power attendance prefill.
+export * from './types/shifts';
 // HR → W6-A4: salary disbursement — net-pay clearing + deterministic bank advice.
 export * from './types/salaryDisbursement';
 // HR → W6-A5: payslips — immutable per-employee statements from posted runs.

@@ -71,6 +71,7 @@ export const EMPLOYEE_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'salaryStructureRef', label: 'Salary Structure', type: 'text', column: false, placeholder: 'Salary structure id (optional)' },
     { key: 'basicSalary', label: 'Basic (Monthly)', type: 'number', min: 0, format: 'currency', column: false },
     { key: 'workState', label: 'Work State', type: 'text', column: false, placeholder: 'GJ (drives professional tax)' },
+    { key: 'shiftRef', label: 'Shift', type: 'text', column: false, placeholder: 'Shift id (optional — enables attendance prefill)' },
     { key: 'bankAccountNumber', label: 'Bank Account', type: 'text', column: false, placeholder: 'Salary credit account' },
     { key: 'bankIfsc', label: 'IFSC', type: 'text', column: false, placeholder: 'HDFC0001234' },
     { key: 'bankName', label: 'Bank', type: 'text', column: false, placeholder: 'Optional bank/branch label' },
@@ -101,12 +102,14 @@ function str(v: unknown): string {
 
 /**
  * Build the Employees module — the org chain guards against its own store;
- * the OPTIONAL salary-structure store guards template assignment (W6-A1,
- * additive: omitting it leaves every W4 behavior untouched).
+ * the OPTIONAL salary-structure store guards template assignment (W6-A1) and
+ * the OPTIONAL shift store guards shift assignment (FW-4) — both additive:
+ * omitting them leaves every prior behavior untouched.
  */
 export function createEmployeeModule(
   storePath: string,
   salaryStructureStore?: EnterpriseRecordStore,
+  shiftStore?: EnterpriseRecordStore,
 ): EnterpriseModule {
   const store = new EnterpriseRecordStore(storePath, EMPLOYEES_MODULE_ID, EMPLOYEE_KIND);
   return defineEnterpriseModule({
@@ -142,6 +145,13 @@ export function createEmployeeModule(
                 errors.managerRef = `That manager assignment creates a cycle in the org chain (${cycle.length} hop(s)).`;
               }
             }
+          }
+        }
+        const shiftRef = str(result.values.shiftRef);
+        if (shiftRef && shiftStore) {
+          const shift = shiftStore.get(shiftRef);
+          if (!shift || shift.status === 'deleted') {
+            errors.shiftRef = `No shift with id "${shiftRef}" was found — assign a live shift template.`;
           }
         }
         const structureRef = str(result.values.salaryStructureRef);

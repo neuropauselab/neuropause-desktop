@@ -27,9 +27,11 @@ import {
   ATTENDANCE_MODULE_ID,
   daysInPeriod,
   deriveLeavePeriodSummary,
+  expectedWorkingDays,
   holidayDateSet,
   isGlPeriodKey,
   validateEnterpriseRecordInput,
+  weeklyOffsForShift,
 } from '@neuropause/shared';
 import {
   EnterpriseRecordStore,
@@ -104,6 +106,7 @@ export function createAttendanceModule(
   employeeStore: EnterpriseRecordStore,
   leaveStore?: EnterpriseRecordStore,
   holidayStore?: EnterpriseRecordStore,
+  shiftStore?: EnterpriseRecordStore,
 ): EnterpriseModule {
   const store = new EnterpriseRecordStore(storePath, ATTENDANCE_MODULE_ID, ATTENDANCE_KIND);
   return defineEnterpriseModule({
@@ -223,14 +226,25 @@ export function createAttendanceModule(
           const monthDays = daysInPeriod(period);
           const lop = Math.min(summary.unpaidLeaveDays, monthDays);
           const paidLeave = Math.min(summary.paidLeaveDays, monthDays - lop);
+          // FW-4: an assigned shift makes expected present days computable —
+          // workingDays(offs + holidays excluded) − paidLeave − LOP, clamped.
+          // No shift (or no shift store) = no prefill, FW-2 behavior exactly.
+          const employeeRec = employeeStore.list().find((r) => r.id === employeeId);
+          const offs = shiftStore ? weeklyOffsForShift(shiftStore.list(), str(employeeRec?.fields.shiftRef)) : null;
+          const prefillPresent =
+            offs !== null ? Math.max(expectedWorkingDays(period, offs, holidays) - paidLeave - lop, 0) : null;
           store.update(record.id, {
             fields: {
               paidLeaveDays: paidLeave,
               lopDays: lop,
+              ...(prefillPresent !== null ? { presentDays: prefillPresent } : {}),
               note:
-                summary.requestCount === 0
+                (summary.requestCount === 0
                   ? `No approved leave found for ${period} — statement left as entered.`
-                  : `Imported from ${summary.requestCount} approved request(s): ${paidLeave} paid leave day(s), ${lop} unpaid (LOP) day(s); declared holidays excluded from LOP.`,
+                  : `Imported from ${summary.requestCount} approved request(s): ${paidLeave} paid leave day(s), ${lop} unpaid (LOP) day(s); declared holidays excluded from LOP.`) +
+                (prefillPresent !== null
+                  ? ` Present days prefilled to ${prefillPresent} from the assigned shift's working pattern.`
+                  : ''),
             },
             actor: actionCtx.actor(),
             now: actionCtx.now(),
@@ -238,9 +252,12 @@ export function createAttendanceModule(
           return {
             ok: true,
             message:
-              summary.requestCount === 0
+              (summary.requestCount === 0
                 ? `No approved leave for ${period} — nothing imported (drafted days unchanged at 0 unless you set them).`
-                : `Imported ${summary.requestCount} approved request(s) → ${paidLeave} paid leave day(s), ${lop} LOP day(s). Review present days, then Confirm.`,
+                : `Imported ${summary.requestCount} approved request(s) → ${paidLeave} paid leave day(s), ${lop} LOP day(s).`) +
+              (prefillPresent !== null
+                ? ` Present days prefilled to ${prefillPresent} from the shift pattern. Review, then Confirm.`
+                : ' Review present days, then Confirm.'),
           };
         }
         if (action !== CONFIRM_ATTENDANCE_ACTION) return { ok: false, error: `Unknown action "${action}".` };
