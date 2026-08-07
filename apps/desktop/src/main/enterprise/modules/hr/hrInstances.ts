@@ -8,6 +8,7 @@
 import { app } from 'electron';
 import {
   ATTENDANCE_MODULE_ID,
+  CANDIDATES_MODULE_ID,
   EMPLOYEES_MODULE_ID,
   EXPENSE_CLAIMS_MODULE_ID,
   HOLIDAYS_MODULE_ID,
@@ -23,6 +24,7 @@ import {
 } from '@neuropause/shared';
 import { enterpriseModuleStorePath } from '../../framework';
 import { createAttendanceModule } from './attendanceModule';
+import { createCandidateModule } from './candidateModule';
 import { createEmployeeModule } from './employeeModule';
 import { createExpenseClaimModule } from './expenseClaimModule';
 import { createHolidayModule } from './holidayModule';
@@ -51,6 +53,9 @@ export const employeeModule = createEmployeeModule(
 );
 
 export const holidayModule = createHolidayModule(store(HOLIDAYS_MODULE_ID));
+
+// FW-10 — recruitment pipeline; Hire resolves the Employees module from the runtime action context.
+export const candidateModule = createCandidateModule(store(CANDIDATES_MODULE_ID));
 
 export const expenseClaimModule = createExpenseClaimModule(
   store(EXPENSE_CLAIMS_MODULE_ID),
