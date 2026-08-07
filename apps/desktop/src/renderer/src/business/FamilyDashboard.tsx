@@ -17,7 +17,7 @@ import { EmptyState } from '@renderer/components/ui/EmptyState';
 import { SkeletonLines } from '@renderer/components/ui/Skeleton';
 import { ChartCard, NpBars, NpDonut, NpLine, TrendCard } from '@renderer/components/charts/ChartKit';
 import type { BusinessFamilyGroup } from './businessModel';
-import { buildFamilyDashboard, type FamilyDashboardData } from './familyDashboardModel';
+import { buildFamilyDashboard, type FamilyDashboardData } from '@neuropause/shared';
 
 /** Per-module fetch ceiling — local-first volumes; honest, not sampled silently. */
 const RECORD_LIMIT = 400;

@@ -1,5 +1,8 @@
 /**
- * Family Dashboard model (Phase 7.2) — pure data; no React, no I/O; tested.
+ * Family Dashboard model (Phase 7.2; lifted renderer → shared in Mobile M1-01).
+ * Pure data; no React, no I/O, no Node — portable to the desktop renderer, the
+ * main-process Companion Gateway, and the mobile app alike. Tested from
+ * apps/desktop (release gate): renderer/src/business/familyDashboardModel.test.ts.
  *
  * Turns a family's LIVE module records (fetched through the existing generic
  * `enterprise:module.*` IPC) into dashboard widgets. Everything here is
@@ -15,7 +18,7 @@
  * NOTHING is fabricated: a widget with no backing records reports itself
  * empty and the view renders the honest empty state instead of a chart.
  */
-import type { EnterpriseEntity, EnterpriseFieldDef, EnterpriseModuleSummary } from '@neuropause/shared';
+import type { EnterpriseEntity, EnterpriseFieldDef, EnterpriseModuleSummary } from '../types/enterpriseModule';
 
 /* ── tiny helpers ─────────────────────────────────────────────────────────── */
 

@@ -3,6 +3,10 @@
  * every widget is derived from real records (createdAt buckets, descriptor
  * status options, verified accent fields), deleted records never count, and
  * a family with no records reports hasRecords=false instead of inventing data.
+ *
+ * Mobile M1-01: the model was lifted into @neuropause/shared (consumed by the
+ * renderer, the Companion Gateway, and the mobile app); this test stays in the
+ * desktop release gate and now locks the shared implementation.
  */
 import { describe, expect, it } from 'vitest';
 import type { EnterpriseEntity, EnterpriseFieldValue, EnterpriseModuleSummary } from '@neuropause/shared';
@@ -12,7 +16,7 @@ import {
   countByStatusOptions,
   lastMonths,
   statusFieldOf,
-} from './familyDashboardModel';
+} from '@neuropause/shared';
 
 const NOW = '2026-08-07T12:00:00.000Z';
 
