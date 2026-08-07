@@ -12,7 +12,10 @@
  * amount±3-day window; ambiguity stays UNMATCHED (never guessed, never
  * auto-cleared) and withdrawals stay unmatched until the vendor-payment side
  * exists. Reconcile is idempotent and re-runnable while the statement is open;
- * FINALIZE locks the statement (immutable snapshot, the period-close pattern).
+ * FINALIZE locks the statement (immutable snapshot, the period-close pattern)
+ * and — FW-8 — WRITES BACK: each matched payment is stamped bankReconciledAt +
+ * bankStatementRef from the stored (human-reviewed) matches, becomes immutable,
+ * and never competes as a match candidate again.
  *
  * Electron-free (store paths injected), so it unit-tests without the app runtime.
  */
@@ -25,6 +28,7 @@ import type {
 import {
   BANK_STATEMENTS_MODULE_ID,
   BANK_STATEMENT_KIND,
+  PAYMENTS_MODULE_ID,
   matchBankStatement,
   parseBankStatementLines,
   paymentFromRecord,
@@ -109,6 +113,9 @@ export function createBankStatementModule(
   const clearedCandidates = (): BankMatchCandidate[] =>
     paymentStore
       .list()
+      // FW-8: a payment already bank-reconciled by a FINALIZED statement is
+      // evidenced exactly once — it never competes as a candidate again.
+      .filter((r) => !str(r.fields.bankReconciledAt))
       .map(paymentFromRecord)
       .filter((p) => p.status === 'cleared')
       .map((p) => ({
@@ -216,6 +223,44 @@ export function createBankStatementModule(
           if (status !== 'reconciled') {
             return { ok: false, message: 'Reconcile the statement before finalizing it.' };
           }
+          // FW-8 (write-back): finalizing turns the reviewed matches into bank
+          // EVIDENCE on the payments themselves — each matched payment is
+          // stamped bankReconciledAt + bankStatementRef, becomes immutable,
+          // and stops competing as a candidate for future statements. The
+          // stamps come from the STORED matches (exactly what the human
+          // reviewed), never a fresh re-match.
+          let stamped = 0;
+          let skipped = 0;
+          const statementNumber = str(record.fields.statementNumber);
+          try {
+            const matchedNumbers = (JSON.parse(str(record.fields.matches) || '[]') as Array<{ paymentNumber?: unknown }>)
+              .map((l) => str(l.paymentNumber))
+              .filter((n) => n !== '');
+            await paymentStore.load();
+            const paymentsModule = actionCtx.moduleFor(PAYMENTS_MODULE_ID);
+            for (const paymentNumber of matchedNumbers) {
+              const payment = paymentStore
+                .list()
+                .find((r) => r.status !== 'deleted' && str(r.fields.paymentNumber) === paymentNumber);
+              // Vanished since reconcile, or already evidenced by another
+              // statement — skipped and SAID, never silently restamped.
+              if (!payment || str(payment.fields.bankReconciledAt)) {
+                skipped += 1;
+                continue;
+              }
+              const stampedPayment = paymentStore.update(payment.id, {
+                fields: { bankReconciledAt: actionCtx.now(), bankStatementRef: statementNumber },
+                actor: actionCtx.actor(),
+                now: actionCtx.now(),
+              });
+              if (stampedPayment) {
+                stamped += 1;
+                if (paymentsModule) actionCtx.emit(paymentsModule, 'updated', stampedPayment);
+              }
+            }
+          } catch {
+            return { ok: false, error: 'Stored match results are unreadable — re-run Reconcile, then finalize.' };
+          }
           const updated = store.update(record.id, {
             fields: { status: 'finalized', finalizedAt: actionCtx.now() },
             actor: actionCtx.actor(),
@@ -224,7 +269,13 @@ export function createBankStatementModule(
           if (!updated) return { ok: false, error: 'Statement not found.' };
           const self = actionCtx.moduleFor(BANK_STATEMENTS_MODULE_ID);
           if (self) actionCtx.emit(self, 'updated', updated);
-          return { ok: true, message: `Statement ${str(record.fields.statementNumber)} finalized.` };
+          return {
+            ok: true,
+            message:
+              `Statement ${statementNumber} finalized — ${stamped} payment(s) stamped as bank-reconciled` +
+              (skipped > 0 ? `; ${skipped} match(es) skipped (payment missing or already evidenced elsewhere)` : '') +
+              '.',
+          };
         }
 
         return { ok: false, error: `Unknown action "${action}".` };

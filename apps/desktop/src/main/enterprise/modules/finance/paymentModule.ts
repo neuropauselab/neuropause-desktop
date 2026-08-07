@@ -112,6 +112,10 @@ export const PAYMENT_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'receivedDate', label: 'Received', type: 'date', format: 'date' },
     { key: 'transactionRef', label: 'Transaction Ref', type: 'text', column: false },
     { key: 'bankAccount', label: 'Bank Account', type: 'text', column: false },
+    // FW-8 (ADDITIVE): stamped by the Bank Statements module when a FINALIZED
+    // statement's matched line evidences this payment — never user-edited.
+    { key: 'bankReconciledAt', label: 'Bank Reconciled', type: 'text', readOnly: true, column: false },
+    { key: 'bankStatementRef', label: 'Bank Statement', type: 'text', readOnly: true, column: false },
     { key: 'notes', label: 'Notes', type: 'textarea', column: false, placeholder: 'Optional notes…' },
   ],
 };
@@ -208,6 +212,15 @@ export function createPaymentModule(
       validate: (input: EnterpriseRecordInput): EnterpriseRecordValidation => {
         const result = validateEnterpriseRecordInput(PAYMENT_DESCRIPTOR, input);
         if (!result.ok) return result;
+        // FW-8: a bank-reconciled payment is bank-evidenced settled fact — a
+        // finalized statement line vouches for it. Immutable through edits.
+        if (String(input.fields?.bankReconciledAt ?? '')) {
+          return {
+            ok: false,
+            errors: { _: 'This payment is bank-reconciled against a finalized statement — bank-evidenced payments are immutable.' },
+            values: result.values,
+          };
+        }
         const payment = projectValues(result.values);
         const errors: Record<string, string> = {};
 
