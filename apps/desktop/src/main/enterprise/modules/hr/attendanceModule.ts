@@ -26,6 +26,8 @@ import {
   ATTENDANCE_KIND,
   ATTENDANCE_MODULE_ID,
   daysInPeriod,
+  deriveLeavePeriodSummary,
+  holidayDateSet,
   isGlPeriodKey,
   validateEnterpriseRecordInput,
 } from '@neuropause/shared';
@@ -37,6 +39,8 @@ import {
 
 /** The descriptor action key that turns a draft into the payroll-consumed statement. */
 export const CONFIRM_ATTENDANCE_ACTION = 'confirm';
+/** FW-2: prefill a DRAFT statement from approved leave + the holiday calendar. */
+export const IMPORT_LEAVE_ACTION = 'importLeave';
 
 /** The declarative description of an attendance period — drives store, CRUD, and the UI. */
 export const ATTENDANCE_DESCRIPTOR: EnterpriseModuleDescriptor = {
@@ -50,7 +54,10 @@ export const ATTENDANCE_DESCRIPTOR: EnterpriseModuleDescriptor = {
   group: 'HR',
   titleField: 'statementNumber',
   permissions: { read: 'operations:read', write: 'operations:manage' },
-  actions: [{ key: CONFIRM_ATTENDANCE_ACTION, label: 'Confirm Statement', icon: 'check' }],
+  actions: [
+    { key: IMPORT_LEAVE_ACTION, label: 'Import Leave', icon: 'download' },
+    { key: CONFIRM_ATTENDANCE_ACTION, label: 'Confirm Statement', icon: 'check' },
+  ],
   fields: [
     { key: 'statementNumber', label: 'Statement #', type: 'text', readOnly: true },
     { key: 'employee', label: 'Employee', type: 'text', required: true, placeholder: 'employee record id' },
@@ -88,11 +95,15 @@ function num(v: unknown): number {
 
 /**
  * Build the Attendance Periods module. The Employees store backs the
- * employee-exists guard (injected, so tests run Electron-free).
+ * employee-exists guard; the OPTIONAL leave + holiday stores (FW-2, additive)
+ * power the Import Leave action — omitting them preserves FW-1 exactly.
+ * (Injected, so tests run Electron-free.)
  */
 export function createAttendanceModule(
   storePath: string,
   employeeStore: EnterpriseRecordStore,
+  leaveStore?: EnterpriseRecordStore,
+  holidayStore?: EnterpriseRecordStore,
 ): EnterpriseModule {
   const store = new EnterpriseRecordStore(storePath, ATTENDANCE_MODULE_ID, ATTENDANCE_KIND);
   return defineEnterpriseModule({
@@ -197,6 +208,41 @@ export function createAttendanceModule(
         };
       },
       runAction: async (action, record, actionCtx) => {
+        if (action === IMPORT_LEAVE_ACTION) {
+          const f = record.fields;
+          if (str(f.status) === 'confirmed') {
+            return { ok: false, error: 'This statement is confirmed — import leave into drafts only.' };
+          }
+          if (!leaveStore) {
+            return { ok: false, error: 'The Leave Requests module is not wired — nothing to import.' };
+          }
+          const period = str(f.period).trim();
+          const employeeId = str(f.employee).trim();
+          const holidays = holidayStore ? holidayDateSet(holidayStore.list()) : new Set<string>();
+          const summary = deriveLeavePeriodSummary(leaveStore.list(), holidays, employeeId, period);
+          const monthDays = daysInPeriod(period);
+          const lop = Math.min(summary.unpaidLeaveDays, monthDays);
+          const paidLeave = Math.min(summary.paidLeaveDays, monthDays - lop);
+          store.update(record.id, {
+            fields: {
+              paidLeaveDays: paidLeave,
+              lopDays: lop,
+              note:
+                summary.requestCount === 0
+                  ? `No approved leave found for ${period} — statement left as entered.`
+                  : `Imported from ${summary.requestCount} approved request(s): ${paidLeave} paid leave day(s), ${lop} unpaid (LOP) day(s); declared holidays excluded from LOP.`,
+            },
+            actor: actionCtx.actor(),
+            now: actionCtx.now(),
+          });
+          return {
+            ok: true,
+            message:
+              summary.requestCount === 0
+                ? `No approved leave for ${period} — nothing imported (drafted days unchanged at 0 unless you set them).`
+                : `Imported ${summary.requestCount} approved request(s) → ${paidLeave} paid leave day(s), ${lop} LOP day(s). Review present days, then Confirm.`,
+          };
+        }
         if (action !== CONFIRM_ATTENDANCE_ACTION) return { ok: false, error: `Unknown action "${action}".` };
         const f = record.fields;
         if (str(f.status) === 'confirmed') return { ok: false, error: 'This statement is already confirmed.' };

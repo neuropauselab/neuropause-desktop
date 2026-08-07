@@ -119,6 +119,8 @@ export * from './types/statutoryRules';
 export * from './types/payrollProcessing';
 // HR → FW-1: attendance — calendar-day LOP proration feeding payroll + ECR NCP days.
 export * from './types/attendance';
+// HR → FW-2: leave + holiday calendar — approved paid leave never docks pay; unpaid leave (minus holidays) is LOP.
+export * from './types/leave';
 // HR → W6-A4: salary disbursement — net-pay clearing + deterministic bank advice.
 export * from './types/salaryDisbursement';
 // HR → W6-A5: payslips — immutable per-employee statements from posted runs.

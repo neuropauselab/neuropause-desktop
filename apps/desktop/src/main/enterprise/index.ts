@@ -159,7 +159,7 @@ import {
 } from './modules/manufacturing/manufacturingInstances';
 import { bomExplosionModule } from './modules/manufacturing/bomExplosionModuleInstance';
 import { billingRunModule, projectModule, projectTaskModule, timeEntryModule } from './modules/projects/projectsInstances';
-import { attendanceModule, employeeModule, payrollRegisterModule, payrollRunModule, payslipModule, salaryDisbursementModule, salaryStructureModule, statutoryFilingModule, statutoryRuleModule } from './modules/hr/hrInstances';
+import { attendanceModule, employeeModule, holidayModule, leaveModule, payrollRegisterModule, payrollRunModule, payslipModule, salaryDisbursementModule, salaryStructureModule, statutoryFilingModule, statutoryRuleModule } from './modules/hr/hrInstances';
 import { ticketModule } from './modules/helpdesk/helpdeskInstances';
 import { campaignModule } from './modules/crm/campaignModuleInstance';
 import { documentModule } from './modules/documents/documentsInstances';
@@ -367,6 +367,8 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(payrollRegisterModule); // HR → Payroll Register (immutable period summary over posted runs)
   modules.registry.register(statutoryFilingModule); // HR → Statutory Filings (ECR/ESI/PT/24Q filing data)
   modules.registry.register(attendanceModule); // HR → Attendance Periods (confirmed LOP → payroll proration + ECR NCP)
+  modules.registry.register(leaveModule); // HR → Leave Requests (human-approved; unpaid → LOP via attendance import)
+  modules.registry.register(holidayModule); // HR → Holiday Calendar (declared holidays never dock pay)
   modules.registry.register(ticketModule); // Helpdesk → Tickets (SLA service desk)
   modules.registry.register(campaignModule); // CRM → Campaigns (live lead attribution)
   modules.registry.register(documentModule); // Documents → Registry (append-only versioning)
