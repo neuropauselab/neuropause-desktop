@@ -30,6 +30,7 @@ import type {
 import { hashMemoryContent, nextMemoryVersion, resolveMemorySync } from '@neuropause/shared';
 import { memoryFieldsFromVersion, memoryVersionPayload, toSyncState } from './memorySyncAdapter';
 import { createLogger } from '../logger';
+import { envelopeStamp, readStoreFile } from '../storage/storeEnvelope';
 import { LexicalMemoryRetriever, type MemoryRetriever } from './memoryRetriever';
 import { rankRecallHits } from './memoryRecallRanking';
 import { hybridRecall, type SemanticSearchFn } from './memorySemanticRecall';
@@ -40,6 +41,8 @@ import { classifySemanticError } from './semanticFailure';
 const log = createLogger('memory-store');
 
 interface MemoryFile {
+  /** Phase 9: store schema stamp — absent on legacy files (= v1). */
+  schemaVersion?: number;
   items: MemoryItem[];
   lastBuiltAt: string | null;
 }
@@ -71,25 +74,33 @@ export class MemoryStore extends EventEmitter {
 
   async load(): Promise<void> {
     if (this.loaded) return;
-    try {
-      const raw = await fs.readFile(this.filePath, 'utf8');
-      const data = JSON.parse(raw) as Partial<MemoryFile>;
+    // Phase 9 (certification fix): envelope read — a corrupt memory.json is
+    // QUARANTINED beside itself (bytes preserved), never silently treated as
+    // first run and overwritten. Closes the audit finding that AI Memory sat
+    // outside the Phase 8 quarantine protection.
+    const result = await readStoreFile<Partial<MemoryFile>>(this.filePath);
+    if (result.state === 'loaded' && result.data) {
+      const data = result.data;
       for (const it of data.items ?? []) if (it && it.id) this.items.set(it.id, it);
       this.lastBuiltAt = data.lastBuiltAt ?? null;
-    } catch {
-      // First run — empty memory.
+    } else if (result.state !== 'first-run') {
+      this.quarantinedTo = result.quarantinedTo;
+      log.warn('AI memory store quarantined at load', { quarantinedTo: result.quarantinedTo });
     }
     this.reindex();
     this.loaded = true;
     log.info('AI memory ready', { items: this.items.size });
   }
 
+  /** Where a corrupt/newer store file was preserved at load, if any. */
+  quarantinedTo: string | null = null;
+
   private reindex(): void {
     this.retriever.index([...this.items.values()]);
   }
 
   private async persist(): Promise<void> {
-    const file: MemoryFile = { items: [...this.items.values()], lastBuiltAt: this.lastBuiltAt };
+    const file: MemoryFile = { ...envelopeStamp(), items: [...this.items.values()], lastBuiltAt: this.lastBuiltAt };
     const tmp = `${this.filePath}.tmp`;
     await fs.writeFile(tmp, JSON.stringify(file), { mode: 0o600 });
     await fs.rename(tmp, this.filePath);

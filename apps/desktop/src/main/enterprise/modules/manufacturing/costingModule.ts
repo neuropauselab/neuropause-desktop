@@ -67,7 +67,17 @@ export interface CostingAiNarrative {
 }
 export type CostingAiRunner = (costing: ProductionCosting) => Promise<CostingAiNarrative | null>;
 
-export function createCostingModule(storePath: string, aiRunner?: CostingAiRunner): EnterpriseModule {
+/**
+ * Phase 9 (certification fix): the OPTIONAL production-order store closes the
+ * dangling-reference hole — every peer module validates its upstream ref
+ * (opportunity←lead, payment←bill, disbursement←run); costing now does too.
+ * Omitting the store preserves prior behavior exactly.
+ */
+export function createCostingModule(
+  storePath: string,
+  aiRunner?: CostingAiRunner,
+  productionOrderStore?: EnterpriseRecordStore,
+): EnterpriseModule {
   const store = new EnterpriseRecordStore(storePath, PRODUCTION_COSTINGS_MODULE_ID, PRODUCTION_COSTING_KIND);
   return defineEnterpriseModule({
     descriptor: PRODUCTION_COSTING_DESCRIPTOR,
@@ -75,6 +85,26 @@ export function createCostingModule(storePath: string, aiRunner?: CostingAiRunne
     hooks: {
       validate: (input: EnterpriseRecordInput) => {
         const result = validateEnterpriseRecordInput(PRODUCTION_COSTING_DESCRIPTOR, input);
+        if (result.ok && productionOrderStore) {
+          // A named production order must be REAL — by record id or order number.
+          const ref = String(result.values.productionOrder ?? '').trim();
+          if (ref) {
+            const found = productionOrderStore
+              .list()
+              .some(
+                (r) =>
+                  r.status !== 'deleted' &&
+                  (r.id === ref || String(r.fields.orderNumber ?? '').trim() === ref),
+              );
+            if (!found) {
+              return {
+                ok: false,
+                errors: { productionOrder: `No production order "${ref}" was found — reference a real order id or number, or leave it empty.` },
+                values: result.values,
+              };
+            }
+          }
+        }
         if (result.ok) {
           const total = calculateManufacturingCost({
             materialCost: num(result.values.materialCost),

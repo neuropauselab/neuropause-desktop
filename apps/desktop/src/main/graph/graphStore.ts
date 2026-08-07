@@ -28,6 +28,7 @@ import type {
   GraphSubgraphQuery,
 } from '@neuropause/shared';
 import { createLogger } from '../logger';
+import { envelopeStamp, readStoreFile } from '../storage/storeEnvelope';
 
 const log = createLogger('graph-store');
 
@@ -35,6 +36,8 @@ const log = createLogger('graph-store');
 const HISTORY_CAP = 5000;
 
 interface GraphFile {
+  /** Phase 9: store schema stamp — absent on legacy files (= v1). */
+  schemaVersion?: number;
   nodes: GraphNode[];
   edges: GraphEdge[];
   history: GraphEdgeEvent[];
@@ -69,23 +72,32 @@ export class GraphStore extends EventEmitter {
 
   async load(): Promise<void> {
     if (this.loaded) return;
-    try {
-      const raw = await fs.readFile(this.filePath, 'utf8');
-      const data = JSON.parse(raw) as Partial<GraphFile>;
+    // Phase 9 (certification fix): envelope read — a corrupt graph.json is
+    // QUARANTINED beside itself (bytes preserved), never silently treated as
+    // first run and overwritten. Closes the audit finding that the Knowledge
+    // Graph sat outside the Phase 8 quarantine protection.
+    const result = await readStoreFile<Partial<GraphFile>>(this.filePath);
+    if (result.state === 'loaded' && result.data) {
+      const data = result.data;
       for (const n of data.nodes ?? []) if (n && n.id) this.nodes.set(n.id, n);
       for (const e of data.edges ?? []) if (e && e.id) this.edges.set(e.id, e);
       this.history = Array.isArray(data.history) ? data.history : [];
       this.lastBuiltAt = data.lastBuiltAt ?? null;
       for (const e of this.edges.values()) this.indexEdge(e);
-    } catch {
-      // First run — empty graph.
+    } else if (result.state !== 'first-run') {
+      this.quarantinedTo = result.quarantinedTo;
+      log.warn('Knowledge graph store quarantined at load', { quarantinedTo: result.quarantinedTo });
     }
     this.loaded = true;
     log.info('Knowledge graph ready', { nodes: this.nodes.size, edges: this.edges.size });
   }
 
+  /** Where a corrupt/newer store file was preserved at load, if any. */
+  quarantinedTo: string | null = null;
+
   private async persist(): Promise<void> {
     const file: GraphFile = {
+      ...envelopeStamp(),
       nodes: [...this.nodes.values()],
       edges: [...this.edges.values()],
       history: this.history,

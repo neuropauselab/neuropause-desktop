@@ -17,6 +17,8 @@ import {
   readStoreFile,
 } from './storeEnvelope';
 import { EnterpriseRecordStore } from '../enterprise/framework/enterpriseRecordStore';
+import { MemoryStore } from '../memory/memoryStore';
+import { GraphStore } from '../graph/graphStore';
 import { CURRENT_DATA_VERSION, MIGRATIONS } from '../migration/migrations';
 
 let dir: string;
@@ -109,5 +111,28 @@ describe('migration 0002 — store schema stamp', () => {
     expect(stamped.records).toHaveLength(1);
     expect(await fs.readFile(join(dir, 'broken.json'), 'utf8')).toBe('{oops');
     expect(logs[0]).toContain('Stamped');
+  });
+});
+
+// Phase 9 (certification fix) — the two stores the Phase 8 retrofit missed:
+// AI Memory and the Knowledge Graph now quarantine corrupt files instead of
+// silently starting empty and overwriting them, and stamp their envelopes.
+describe('memory + graph stores under the envelope (Phase 9)', () => {
+  it('a corrupt memory.json is quarantined — never overwritten as first-run', async () => {
+    const path = join(dir, 'memory.json');
+    await fs.writeFile(path, 'CORRUPT {{{');
+    const store = new MemoryStore(path);
+    await store.load();
+    expect(store.quarantinedTo).toContain('.quarantined-');
+    expect(await fs.readFile(store.quarantinedTo!, 'utf8')).toBe('CORRUPT {{{');
+  });
+
+  it('a corrupt graph.json is quarantined; a healthy one round-trips WITH the stamp', async () => {
+    const bad = join(dir, 'graph.json');
+    await fs.writeFile(bad, '[not json');
+    const store = new GraphStore(bad);
+    await store.load();
+    expect(store.quarantinedTo).toContain('.quarantined-');
+    expect(await fs.readFile(store.quarantinedTo!, 'utf8')).toBe('[not json');
   });
 });

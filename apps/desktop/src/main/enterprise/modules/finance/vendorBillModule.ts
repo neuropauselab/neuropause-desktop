@@ -100,7 +100,11 @@ export const VENDOR_BILL_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'dueDate', label: 'Due', type: 'date', format: 'date' },
     { key: 'paymentReference', label: 'Payment Ref', type: 'text', column: false },
     { key: 'paidDate', label: 'Paid', type: 'date', format: 'date', readOnly: true, column: false },
-    { key: 'sourcePurchaseOrder', label: 'Source PO', type: 'text', column: false, readOnly: true },
+    // Phase 9 (certification fix): this field was declared readOnly with NO
+    // writer anywhere — permanently empty, severing the PO↔bill audit trail.
+    // Now human-writable and guarded: when present it must resolve to a real
+    // purchase order (by record id or PO number).
+    { key: 'sourcePurchaseOrder', label: 'Source PO', type: 'text', column: false, placeholder: 'Purchase order id or PO number (optional)' },
     { key: 'approvedAt', label: 'Approved At', type: 'text', readOnly: true, column: false },
     { key: 'cancelledAt', label: 'Cancelled At', type: 'text', readOnly: true, column: false },
     { key: 'notes', label: 'Notes', type: 'textarea', column: false, placeholder: 'Optional notes…' },
@@ -120,7 +124,10 @@ function deriveStatus(values: Record<string, unknown>): string {
 }
 
 /** Build the Vendor Bills module. */
-export function createVendorBillModule(storePath: string): EnterpriseModule {
+export function createVendorBillModule(
+  storePath: string,
+  purchaseOrderStore?: EnterpriseRecordStore,
+): EnterpriseModule {
   const store = new EnterpriseRecordStore(storePath, VENDOR_BILLS_MODULE_ID, VENDOR_BILL_KIND);
   return defineEnterpriseModule({
     descriptor: VENDOR_BILL_DESCRIPTOR,
@@ -129,6 +136,26 @@ export function createVendorBillModule(storePath: string): EnterpriseModule {
       validate: (input: EnterpriseRecordInput): EnterpriseRecordValidation => {
         const result = validateEnterpriseRecordInput(VENDOR_BILL_DESCRIPTOR, input);
         if (!result.ok) return result;
+        // Phase 9: a named source PO must be REAL (id or PO number).
+        if (purchaseOrderStore) {
+          const ref = String(result.values.sourcePurchaseOrder ?? '').trim();
+          if (ref) {
+            const found = purchaseOrderStore
+              .list()
+              .some(
+                (r) =>
+                  r.status !== 'deleted' &&
+                  (r.id === ref || String(r.fields.poNumber ?? '').trim() === ref),
+              );
+            if (!found) {
+              return {
+                ok: false,
+                errors: { sourcePurchaseOrder: `No purchase order "${ref}" was found — reference a real PO id or number, or leave it empty.` },
+                values: result.values,
+              };
+            }
+          }
+        }
         const errors: Record<string, string> = {};
         const amount = Number(result.values.amount ?? 0);
         if (amount <= 0) errors.amount = 'Subtotal must be greater than zero.';

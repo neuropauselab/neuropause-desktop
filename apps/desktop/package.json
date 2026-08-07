@@ -14,7 +14,7 @@
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "lint": "eslint . --max-warnings 0",
     "package": "node scripts/generate-notices.cjs && node scripts/generate-build-info.cjs && electron-vite build && electron-builder --mac --arm64 --publish never && npm run verify:release",
-    "package:dir": "node scripts/generate-build-info.cjs && electron-vite build && electron-builder --dir",
+    "package:dir": "node scripts/generate-notices.cjs && node scripts/generate-build-info.cjs && electron-vite build && electron-builder --dir",
     "test": "vitest run",
     "test:watch": "vitest",
     "generate:build-info": "node scripts/generate-build-info.cjs",
