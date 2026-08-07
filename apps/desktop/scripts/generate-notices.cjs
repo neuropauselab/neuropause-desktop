@@ -24,14 +24,19 @@ const REPO_ROOT = join(APP_DIR, '..', '..');
 
 /** Production dependency tree via npm's own resolver (tolerates warnings). */
 function prodTree() {
+  // Windows: `npm` is npm.cmd — spawnSync needs a shell there or it silently
+  // finds nothing (the rc.15 windows-release failure). Fixed args, no user
+  // input, so the shell is safe.
   const result = spawnSync('npm', ['ls', '--omit=dev', '--all', '--json'], {
     cwd: APP_DIR,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
+    shell: process.platform === 'win32',
   });
   const raw = (result.stdout || '').trim();
   if (!raw) {
-    console.error('generate-notices: `npm ls` produced no output — run npm install first.');
+    const detail = result.error ? ` (spawn error: ${result.error.message})` : '';
+    console.error(`generate-notices: \`npm ls\` produced no output${detail} — is node_modules installed?`);
     process.exit(1);
   }
   return JSON.parse(raw);
