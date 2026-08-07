@@ -38,11 +38,20 @@ describe('navigation sections — production visibility', () => {
     expect(visible[4]?.id).toBe('hub');
   });
 
+  // Phase 7: `welcome` left this lock — the onboarding wizard hands off to the
+  // getting-started checklist, and a hidden section is unreachable from both
+  // the sidebar and the palette, so that documented hand-off dead-ended.
   it('retired duplicate + pseudo-section surfaces are hidden from nav', () => {
     const hiddenIds = hidden.map((s) => s.id);
-    for (const id of ['home', 'decision-center', 'welcome', 'developer-center', 'federation-center', 'control-plane', 'automations', 'analytics']) {
+    for (const id of ['home', 'decision-center', 'developer-center', 'federation-center', 'control-plane', 'automations', 'analytics']) {
       expect(hiddenIds).toContain(id);
     }
+  });
+
+  it('the getting-started checklist is visible (Phase 7 — the wizard hands off to it)', () => {
+    const welcome = SECTIONS.find((s) => s.id === 'welcome');
+    expect(welcome?.hidden).toBeUndefined();
+    expect(welcome?.group).toBe('system');
   });
 
   it('notifications stays visible (honest empty state + live toolbar-bell entry point)', () => {
@@ -67,6 +76,15 @@ describe('navigation sections — production visibility', () => {
 
   it('every hidden section is still defined (hide is reversible, not a deletion)', () => {
     for (const s of hidden) expect(s.label.length).toBeGreaterThan(0);
+  });
+
+  // Phase 7 (Product Experience) — grouped navigation. Grouping is a render
+  // concern; the SECTIONS array order is untouched, so every lock above holds.
+  it('every visible primary section carries a sidebar group', () => {
+    const visiblePrimary = SECTIONS.filter((s) => s.placement === 'primary' && !s.hidden);
+    for (const s of visiblePrimary) {
+      expect(s.group, `section "${s.id}" needs a sidebar group`).toBeTruthy();
+    }
   });
 
   // PEDP Cycle 1 — honest positioning: the NRIA §3/§12 "Prototype-Model" surfaces

@@ -6,7 +6,13 @@ import {
   useShell,
   SIDEBAR_COLLAPSED,
 } from '@renderer/state/ShellProvider';
-import { SECTIONS, type SectionDef } from './sections';
+import {
+  SECTIONS,
+  SECTION_GROUPS,
+  SECTION_GROUP_LABELS,
+  type SectionDef,
+  type SectionGroup,
+} from './sections';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 
 function SidebarItem({
@@ -71,6 +77,13 @@ export function Sidebar(): JSX.Element {
   const [resizing, setResizing] = useState(false);
   const primary = SECTIONS.filter((s) => s.placement === 'primary' && !s.hidden);
   const footer = SECTIONS.filter((s) => s.placement === 'footer' && !s.hidden);
+  // Phase 7 — grouped navigation: bucket the visible primaries into the five
+  // stable groups, preserving SECTIONS order within each. Pure presentation;
+  // the array (and every nav lock over it) is untouched.
+  const grouped: { group: SectionGroup; sections: SectionDef[] }[] = SECTION_GROUPS.map((group) => ({
+    group,
+    sections: primary.filter((s) => (s.group ?? 'workspace') === group),
+  })).filter((g) => g.sections.length > 0);
 
   const startResize = (e: ReactPointerEvent): void => {
     if (sidebarCollapsed) return;
@@ -101,9 +114,25 @@ export function Sidebar(): JSX.Element {
       <div className="px-3 pt-3">
         <WorkspaceSwitcher collapsed={sidebarCollapsed} />
       </div>
-      <nav className="flex flex-1 flex-col gap-0.5 px-3 pt-2" role="navigation">
-        {primary.map((s) => (
-          <SidebarItem key={s.id} section={s} collapsed={sidebarCollapsed} />
+      <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 pt-2" role="navigation">
+        {grouped.map(({ group, sections }, index) => (
+          <div key={group} role="group" aria-label={SECTION_GROUP_LABELS[group]} className="flex flex-col gap-0.5">
+            {sidebarCollapsed ? (
+              index > 0 && <div aria-hidden="true" className="mx-2 my-1.5 h-px bg-[var(--hairline)]" />
+            ) : (
+              <div
+                className={cn(
+                  'px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-faint',
+                  index === 0 ? 'pt-1' : 'pt-4',
+                )}
+              >
+                {SECTION_GROUP_LABELS[group]}
+              </div>
+            )}
+            {sections.map((s) => (
+              <SidebarItem key={s.id} section={s} collapsed={sidebarCollapsed} />
+            ))}
+          </div>
         ))}
       </nav>
       <div className="px-3 pb-3">

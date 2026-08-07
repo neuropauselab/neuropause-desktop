@@ -17,15 +17,18 @@
     --text-2: 198 198 203;
     --text-3: 150 150 156;
 
-    /* Monochrome status tokens — deep black + clear white only. Status is conveyed
-       by brightness (critical brightest) + labels, never hue. */
-    --c-blue: 210 210 215;
-    --c-green: 200 200 205;
-    --c-orange: 235 235 238;
-    --c-purple: 210 210 215;
-    --c-teal: 210 210 215;
-    --c-pink: 255 255 255;
-    --c-yellow: 235 235 238;
+    /* Status tokens — Phase 7 (Product Experience): status regains HUE while the
+       base identity (black window, white text/accent) stays monochrome. Every
+       dashboard, badge, KPI and trend indicator distinguishes states by color
+       again; labels remain alongside hue for accessibility (never hue alone).
+       Values are the macOS dark-mode system palette, legible on deep black. */
+    --c-blue: 64 156 255;
+    --c-green: 48 209 88;
+    --c-orange: 255 159 10;
+    --c-purple: 191 90 242;
+    --c-teal: 100 210 255;
+    --c-pink: 255 55 95;
+    --c-yellow: 255 214 10;
 
     /* Deep black window background (NOT transparent — no vibrancy dependency). */
     --bg-from: #000000;
@@ -53,13 +56,13 @@
     --text-2: 198 198 203;
     --text-3: 150 150 156;
 
-    --c-blue: 210 210 215;
-    --c-green: 200 200 205;
-    --c-orange: 235 235 238;
-    --c-purple: 210 210 215;
-    --c-teal: 210 210 215;
-    --c-pink: 255 255 255;
-    --c-yellow: 235 235 238;
+    --c-blue: 64 156 255;
+    --c-green: 48 209 88;
+    --c-orange: 255 159 10;
+    --c-purple: 191 90 242;
+    --c-teal: 100 210 255;
+    --c-pink: 255 55 95;
+    --c-yellow: 255 214 10;
 
     --bg-from: #000000;
     --bg-to: #050506;

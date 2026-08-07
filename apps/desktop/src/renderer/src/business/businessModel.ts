@@ -8,8 +8,9 @@
  * ordered, labelled, and counted for display.
  *
  * AUTHENTICITY: a family appears here ONLY when at least one real module carries its `descriptor.group`
- * label. Families the product plans but has not built (Quality, HR, Projects) have no modules, so they never
- * render as empty rooms — they are recorded honestly in the Capability Registry as `future-release` instead.
+ * label. Quality is the one roadmap family still absent (it lives today only as the `manufacturing-quality`
+ * module inside Manufacturing) — it stays out until a module carries the group, recorded in the Capability
+ * Registry as `future-release` instead of rendering as an empty room.
  */
 import type { EnterpriseModuleSummary } from '@neuropause/shared';
 import type { IconName } from '@renderer/components/ui/Icon';
@@ -30,9 +31,10 @@ export interface BusinessFamilyMeta {
 
 /**
  * The canonical family order shown in the Business Workspace rail. Every entry here is backed by ≥1 real
- * registered module (verified from source). The three families the user's roadmap also names — Quality, HR,
- * Projects — are deliberately absent because no module carries those groups yet (Quality lives today only as
- * the `manufacturing-quality` module inside Manufacturing). They live in the Capability Registry as future.
+ * registered module (verified from source). Phase 7 (Product Experience): HR (15 modules — employees through
+ * payroll, attendance, leave, recruitment, OKRs), Projects (4), Helpdesk (1) and Documents (1) joined the
+ * registry during the Final Wave; their fall-through to generic fallback metadata was registry drift, fixed
+ * here. Quality remains the one roadmap family with no module carrying its group.
  */
 export const BUSINESS_FAMILIES: BusinessFamilyMeta[] = [
   { group: 'Finance', label: 'Finance', icon: 'grid', blurb: 'Invoices, payments and receivables.', permission: 'operations:manage' },
@@ -43,6 +45,11 @@ export const BUSINESS_FAMILIES: BusinessFamilyMeta[] = [
   { group: 'Warehouse', label: 'Warehouse', icon: 'layers', blurb: 'Zones, bins, picking, packing and shipping.', permission: 'warehouse:manage' },
   { group: 'Manufacturing', label: 'Manufacturing', icon: 'cpu', blurb: 'BOMs, work orders, scheduling and execution.', permission: 'manufacturing:manage' },
   { group: 'Maintenance', label: 'Maintenance', icon: 'pulse', blurb: 'Assets, work orders and preventive plans.', permission: 'maintenance:manage' },
+  // HR intentionally reads `operations:*` (the Finance/Projects reuse precedent) — recorded truthfully.
+  { group: 'HR', label: 'HR & Payroll', icon: 'user', blurb: 'Employees, attendance, leave, payroll, recruitment and OKRs.', permission: 'operations:manage' },
+  { group: 'Projects', label: 'Projects', icon: 'checklist', blurb: 'Projects, tasks, time entries and billing runs.', permission: 'operations:manage' },
+  { group: 'Helpdesk', label: 'Helpdesk', icon: 'bell', blurb: 'Support tickets and service requests.', permission: 'operations:manage' },
+  { group: 'Documents', label: 'Documents', icon: 'doc', blurb: 'Controlled business documents.', permission: 'operations:manage' },
   // Executive is a mixed-scope family: decisions enforce executive:approve, execution proposals executive:execute.
   { group: 'Executive', label: 'Executive', icon: 'sparkles', blurb: 'Decisions and execution proposals.', permission: 'executive:approve / execute' },
 ];
