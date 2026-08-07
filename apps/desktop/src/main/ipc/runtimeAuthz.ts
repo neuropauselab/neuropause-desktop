@@ -246,6 +246,9 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   IpcChannel.NpsResume,
   IpcChannel.NpsCancel,
   // ── Runtime reads ──
+  // Phase 8 (8.14): bundled-docs help surface — fixed catalog, fail-closed enum.
+  IpcChannel.HelpListDocs,
+  IpcChannel.HelpOpenDoc,
   IpcChannel.RuntimeList,
   IpcChannel.RuntimeHealth,
   // ── Permission read ──

@@ -1,62 +1,21 @@
-# NeuroPause Desktop — Quick Start Guide
+# NeuroPause Quick Start
 
-A 10-minute tour to get productive in Release Candidate 1.
+**Current as of v1.0.0-rc.14 lineage · Phase 8 (2026-08-07).** Ten minutes to oriented.
 
-## 1. Sign in
+## The sidebar is your map — six groups
 
-Launch NeuroPause and sign in with Google, GitHub, Microsoft, Apple, or email.
-Your session is stored securely on your device.
+**Today** — Mission Control (the landing dashboard), Today's Intent, Search, Assistant, Work Hub (your day). **Business** — Organization, Enterprise, **Business** (the ERP workspace — start here for real work), Administration. **Workspace** — Intelligence, Collaboration, Knowledge, Automation, AI Store, Marketplace, Workspace, Connectors, AI Memory. **AI & Operations** — AI Operations, Ops Center, Operations, AI Workforce, Workforce Center, Sandbox. **Platform** — developer and platform surfaces (several marked *Preview* — real code, honestly labeled as not yet production capability). **System** — Notifications, Getting Started (checklist + documentation), Settings.
 
-## 2. Get your bearings
+`⌘K` opens the command palette from anywhere: jump to any section, any business module, search records, launch apps.
 
-The sidebar is your map:
+## Your first ten minutes
 
-- **Home** — your dashboard and starting point.
-- **AI Store** — discover and install AI products by category.
-- **Workspace** — launch and work across AI products in tabs.
-- **Connectors** — link your AI and SaaS accounts.
-- **AI Memory** — a searchable memory of your work.
-- **AI Workforce** — workers that propose work for your approval.
-- **Operations** — the command center for everything installed, running, and
-  managed (including **Release** diagnostics and **Recovery**).
-- **Settings** — preferences and themes (light/dark).
+Start in **Business**. It presents thirteen families — Finance, Sales, CRM, Procurement, Inventory, Warehouse, Manufacturing, Maintenance, HR & Payroll, Projects, Helpdesk, Documents, Executive — each with a live dashboard drawn from your actual records (empty until you create some, and it says so honestly).
 
-Open the **command palette** (⌘K) to jump anywhere or search quickly.
+Pick the family that matches your job and use a **quick action** to create your first record — a customer, a product, an employee, an invoice. The generic record screen (list → detail → form) is identical across all 104 modules, so learning one is learning all of them. Every record carries its own audit trail and timeline automatically.
 
-## 3. Connect an account
+Then let the flows connect: an invoice's payment reconciles to the ledger; a purchase order checks its budget and vendor contract at approval; a confirmed attendance statement prorates payroll; a product below its reorder level drafts its own purchase request. The per-family getting-started guides (Getting Started → Documentation) walk each flow step by step.
 
-Go to **Connectors**, pick a service (e.g. GitHub, Notion, Slack, Google Drive),
-and authorize it. NeuroPause uses each provider's official OAuth flow and only
-the permissions you grant — it never bypasses authentication or collects data
-without your authorization. You can review and revoke access anytime.
+## Where things are
 
-## 4. Explore your AI Memory
-
-As authorized activity flows in, NeuroPause builds a **timeline**, a **knowledge
-graph**, and an **AI Memory** you can search in natural language ("what did I work
-on yesterday?"). This analysis runs **on your device** and is deterministic — no
-content is sent to a model.
-
-## 5. Try the AI Workforce
-
-In **AI Workforce**, workers can take on tasks and **propose** actions. Anything
-with a side effect (sending, posting, changing) is held for your **approval** in
-the Human Approval Center — nothing acts on your behalf without a yes.
-
-## 6. Know where Recovery lives
-
-Open **Operations → Recovery** once so you know it's there. From it you can:
-- create and restore **backups** of your data,
-- enter **Safe Mode** (launch with plugins disabled) if something misbehaves,
-- run repairs and rebuilds.
-
-And **Operations → Release** shows your build's health and can generate a
-**support bundle** to attach to feedback.
-
-## What to focus on as a pilot tester
-
-Try a representative slice of your real workflow: connect the tools you actually
-use, let NeuroPause build memory from a day or two of activity, run a workforce
-proposal end-to-end through approval, and exercise a backup + restore. Note
-anything that's confusing, slow, missing, or wrong — and see the **Feedback
-Program** for how to report it.
+Settings (`⌘,`) — appearance, release channel, crash-report consent, feature flags. Operations → Recovery Center — backups (they cover *all* your business records). Operations → Release Diagnostics — build identity, what's new, support bundles. Getting Started — the onboarding checklist, pilot join/leave, feedback, and every bundled guide.

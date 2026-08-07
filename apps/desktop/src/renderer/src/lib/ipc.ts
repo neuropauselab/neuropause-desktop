@@ -94,6 +94,7 @@ import {
   type CloudOrgRole,
 } from '@neuropause/shared';
 import type {
+  HelpDocId,
   OrgUnitKind,
   OrgUserStatus,
   EnterprisePermission,
@@ -1000,6 +1001,12 @@ export const ipc = {
   },
 
   /** Enterprise Module Framework — generic CRUD over any registered ERP module. */
+  // Phase 8 (8.14): bundled in-app documentation.
+  help: {
+    list: () => invoke(IpcChannel.HelpListDocs),
+    open: (doc: HelpDocId) => invoke(IpcChannel.HelpOpenDoc, { doc }),
+  },
+
   enterpriseModules: {
     list: () => invoke(IpcChannel.EnterpriseModulesList),
     records: (

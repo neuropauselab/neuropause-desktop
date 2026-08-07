@@ -5,7 +5,7 @@
  * uses the existing Connectors flow, the AI step the existing local AI stack —
  * rather than duplicating them.
  */
-export type OnboardingStepId = 'welcome' | 'organization' | 'connectors' | 'ai_setup' | 'pilot';
+export type OnboardingStepId = 'welcome' | 'organization' | 'connectors' | 'ai_setup' | 'legal' | 'pilot';
 
 export interface OnboardingStepDefinition {
   id: OnboardingStepId;
@@ -18,6 +18,14 @@ export const ONBOARDING_STEPS: readonly OnboardingStepDefinition[] = [
     id: 'welcome',
     title: 'Welcome to NeuroPause',
     description: 'A quick tour of the workspace and what early access includes.',
+  },
+  {
+    // Phase 8 (8.13): the license + privacy notice, presented at first run.
+    // Completing this step records that the documents were shown and
+    // acknowledged (timestamped in the onboarding store).
+    id: 'legal',
+    title: 'Review the license & privacy notice',
+    description: 'Read the EULA and the privacy notice bundled with this build, then mark them reviewed.',
   },
   {
     id: 'organization',

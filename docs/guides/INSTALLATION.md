@@ -1,59 +1,39 @@
-# NeuroPause Desktop — Installation Guide
+# Installing NeuroPause Desktop
 
-Release Candidate 1 (`1.0.0-rc.1`) · macOS on Apple Silicon.
+**Current as of v1.0.0-rc.14 lineage · Phase 8 (2026-08-07).** This guide is truthful about the signing state of the build you were given — ask your pilot contact which case applies.
 
-## Requirements
+## What you need
 
-- A Mac with **Apple Silicon** (M1 or newer).
-- **macOS 12 (Monterey)** or later.
-- ~300 MB of free disk space.
-- Internet access for sign-in and updates (the app also starts offline; see the
-  Troubleshooting guide).
+A Mac with Apple Silicon (M-series). The current pilot artifact is built for arm64 (`NeuroPause-arm64.dmg`); an Intel build is produced only on request (`package:mac:universal`). macOS 13 or later recommended.
 
 ## Install
 
-1. Download **`NeuroPause-1.0.0-rc.1-arm64.dmg`** from the link your pilot contact
-   sent you.
-2. Double-click the `.dmg` to open it.
-3. Drag the **NeuroPause** icon into the **Applications** folder.
-4. Eject the disk image.
-5. Open **Applications** and double-click **NeuroPause**.
+Open the DMG and drag **NeuroPause** into **Applications**. Eject the DMG.
 
-Because this build is **signed and notarized by Apple**, macOS opens it normally.
-The first launch may show a one-time "downloaded from the Internet" confirmation —
-click **Open**.
+## First launch — read this part
 
-> If you ever see an "unidentified developer" block, the build you have is not the
-> notarized one — please request the correct DMG from your pilot contact.
+**If your build is signed and notarized** (your pilot contact will say so explicitly — the pipeline signs only when Apple credentials are configured), macOS opens it normally. Skip ahead.
 
-## First launch
+**If your build is UNSIGNED** — the default for pilot builds until the Apple Developer ID certificate is installed in CI — macOS Gatekeeper will refuse the first launch with "cannot be opened because the developer cannot be verified." This is expected, not a defect. To open it anyway:
 
-On first launch NeuroPause:
-- initializes your local data store and stamps the data version,
-- shows the sign-in screen.
+1. In **Finder → Applications**, **right-click (or Control-click) NeuroPause → Open**.
+2. In the dialog, click **Open**. (The right-click menu shows an Open button that the double-click dialog does not.)
+3. If macOS still refuses: **System Settings → Privacy & Security**, scroll to the message about NeuroPause, click **Open Anyway**, then repeat step 1.
 
-Sign in with Google, GitHub, Microsoft, Apple, or email. See the **Quick Start
-Guide** for what to do next.
+You only need to do this once — subsequent launches are normal.
+
+## First run
+
+The app starts with the onboarding wizard: review the bundled license and privacy notice, set up your organization, optionally connect accounts, and join the pilot. Everything runs locally — the app is offline-first and creates its data under your user Library. The **Getting Started** section (sidebar → System) keeps the checklist and the bundled documentation one click away.
 
 ## Updates
 
-NeuroPause is on the **Release Candidate** update channel and checks for updates
-automatically. When an update is available you'll be notified; downloading and
-installing are your choice (updates never install silently). You can review update
-status anytime in **Operations → Release → Updates**.
+Updates are manual-consent: the app checks, tells you, and installs only when you choose restart-and-install. Channel selection is in Settings → Release Channel (Stable or Beta — both feeds are published by the release pipeline).
 
 ## Uninstall
 
-1. Quit NeuroPause.
-2. Move **NeuroPause** from Applications to the Trash.
-3. (Optional) Remove local data at
-   `~/Library/Application Support/neuropause-desktop`.
+Quit the app, delete **/Applications/NeuroPause.app**. Your data lives in `~/Library/Application Support/neuropause-desktop` — delete it only if you also want to remove all local records (consider **Operations → Recovery Center → Create backup** first).
 
-Before uninstalling, you can export a support bundle or create a backup from
-**Operations → Recovery** if you want to preserve diagnostics or data.
+## Trouble?
 
-## Backend (optional, for full functionality)
-
-Some features (such as the AI Store catalog) talk to a backend service. If your
-pilot includes it, your contact will share its address. The local surfaces —
-diagnostics, recovery, workspace, memory — work without the backend.
+Open **Getting Started → Documentation → Troubleshooting**, or generate a support bundle (Operations → Release Diagnostics → Generate bundle — it reveals the file in Finder) and send it to your pilot contact. Bundles are redacted (no tokens, no connector secrets) before anything is written.

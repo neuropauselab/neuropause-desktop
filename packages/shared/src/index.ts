@@ -131,6 +131,8 @@ export * from './types/budgetControls';
 export * from './types/autoReorder';
 // Procurement → FW-7: vendor contracts — dated agreements whose open window gates PO approval.
 export * from './types/vendorContracts';
+// Phase 8 (8.14): the fixed in-app help/documentation catalog.
+export * from './types/helpDocs';
 // HR → FW-10: recruitment — staged candidate pipeline; hire creates a real Employee.
 export * from './types/recruitment';
 // HR → FW-11: OKRs — objectives with measurable key results; progress is arithmetic.

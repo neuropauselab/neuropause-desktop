@@ -27,6 +27,7 @@
  * a second hand-maintained description of ~2,000 shapes that already have exactly
  * one description in TypeScript, and two descriptions of one thing drift.
  */
+import type { HelpDocMeta } from '../types/helpDocs';
 import type { IpcChannelName } from './channels';
 import type {
   AdminOverview,
@@ -1118,6 +1119,8 @@ export interface IpcResponseMap {
   'federation:overview': FederationOverview;
 
   // ── update ──
+  'help:openDoc': { ok: boolean; error?: string };
+  'help:listDocs': HelpDocMeta[];
   'update:getStatus': UpdateStatus;
   'update:checkNow': UpdateStatus;
   'update:download': UpdateStatus;

@@ -19,6 +19,7 @@ import { Button } from '@renderer/components/ui/Button';
 const log = createLogger('onboarding');
 
 const STEP_LINKS: Partial<Record<OnboardingStepId, { section: SectionId; label: string }>> = {
+  legal: { section: 'welcome', label: 'Open documents' },
   organization: { section: 'organization', label: 'Open Organization' },
   connectors: { section: 'connectors', label: 'Open Connectors' },
   ai_setup: { section: 'settings', label: 'Open Settings' },

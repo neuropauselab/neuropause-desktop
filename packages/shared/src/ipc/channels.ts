@@ -720,6 +720,10 @@ export const IpcChannel = {
   UpdateSetChannel: 'update:setChannel',
   UpdateEventBroadcast: 'update:event',
 
+  // ── in-app help (Phase 8: bundled documentation) ──
+  HelpOpenDoc: 'help:openDoc',
+  HelpListDocs: 'help:listDocs',
+
   // ── release engineering: migration / backup / crash / diagnostics / recovery / support ──
   MigrationStatus: 'migration:status',
   MigrationRun: 'migration:run',
@@ -1480,6 +1484,9 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.FederationAnalytics,
   IpcChannel.FederationSearch,
   IpcChannel.FederationOverview,
+  // Phase 8 (8.14): in-app help over the bundled documentation set.
+  IpcChannel.HelpListDocs,
+  IpcChannel.HelpOpenDoc,
   IpcChannel.UpdateGetStatus,
   IpcChannel.UpdateCheckNow,
   IpcChannel.UpdateDownload,

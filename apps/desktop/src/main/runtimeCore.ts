@@ -206,6 +206,7 @@ import { initCommercialPlatform } from './commercial';
 import { initExperience } from './experience';
 import { initIntent } from './intent';
 import { initUpdater } from './updater';
+import { initHelp } from './help';
 import { initReleaseOps } from './releaseOps';
 import { initFeatureFlags } from './featureFlags';
 import { initLicense } from './license';
@@ -1940,6 +1941,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...withFederationAuthz(federation.handlers));
   defs.push(...federationPlatform.handlers);
   defs.push(...updater.handlers);
+  // Phase 8 (8.14): in-app help over the bundled documentation set.
+  defs.push(...initHelp().handlers);
   defs.push(...releaseOps.handlers);
 
   // ── Close the sender-trust gap on privileged base/core channels ──────────────

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { HELP_DOC_IDS } from '../types/helpDocs';
 // Type-only (erased at compile time, so no runtime cycle with ../types).
 import type { ConflictStrategy, SyncEntityType } from '../types/sync';
 
@@ -1981,6 +1982,9 @@ export type FederationSearchRequest = z.infer<typeof FederationSearchRequest>;
 
 export const UpdateChannelSchema = z.enum(['stable', 'beta', 'internal']);
 export type UpdateChannelName = z.infer<typeof UpdateChannelSchema>;
+
+export const HelpOpenDocRequest = z.object({ doc: z.enum(HELP_DOC_IDS) });
+export type HelpOpenDocRequest = z.infer<typeof HelpOpenDocRequest>;
 
 export const UpdateSetChannelRequest = z.object({ channel: UpdateChannelSchema });
 export type UpdateSetChannelRequest = z.infer<typeof UpdateSetChannelRequest>;
