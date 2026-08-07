@@ -648,6 +648,8 @@ export const ipc = {
     topics: () => invoke(IpcChannel.KnowledgeTopics),
     related: (memoryId: string, limit?: number) =>
       invoke(IpcChannel.KnowledgeRelated, { memoryId, limit }),
+    /** Registered in main since P6-Stage7 but previously missing from this facade. */
+    health: () => invoke(IpcChannel.KnowledgeHealth),
   },
 
   /** Phase 6 Stage 1 — local workspace contexts (multi-workspace foundation). */

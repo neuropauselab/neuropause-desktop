@@ -7,6 +7,7 @@
  */
 import { app } from 'electron';
 import {
+  ATTENDANCE_MODULE_ID,
   EMPLOYEES_MODULE_ID,
   PAYROLL_REGISTER_MODULE_ID,
   PAYROLL_RUNS_MODULE_ID,
@@ -17,6 +18,7 @@ import {
   STATUTORY_RULES_MODULE_ID,
 } from '@neuropause/shared';
 import { enterpriseModuleStorePath } from '../../framework';
+import { createAttendanceModule } from './attendanceModule';
 import { createEmployeeModule } from './employeeModule';
 import { createPayrollRegisterModule } from './payrollRegisterModule';
 import { createPayrollRunModule } from './payrollRunModule';
@@ -37,11 +39,17 @@ export const employeeModule = createEmployeeModule(
   salaryStructureModule.store,
 );
 
+export const attendanceModule = createAttendanceModule(
+  store(ATTENDANCE_MODULE_ID),
+  employeeModule.store,
+);
+
 export const payrollRunModule = createPayrollRunModule(
   store(PAYROLL_RUNS_MODULE_ID),
   employeeModule.store,
   salaryStructureModule.store,
   statutoryRuleModule.store,
+  attendanceModule.store,
 );
 
 export const payslipModule = createPayslipModule(store(PAYSLIPS_MODULE_ID));

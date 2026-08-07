@@ -33,6 +33,7 @@ import type {
 } from '@neuropause/shared';
 import {
   DEDUCTIONS_PAYABLE_ACCOUNT,
+  deriveAttendanceByEmployee,
   ESI_PAYABLE_ACCOUNT,
   LEDGER_ACCOUNTS_MODULE_ID,
   PAYROLL_EMPLOYER_ESI_ACCOUNT,
@@ -161,6 +162,7 @@ export function createPayrollRunModule(
   employeeStore: EnterpriseRecordStore,
   structureStore?: EnterpriseRecordStore,
   statutoryStore?: EnterpriseRecordStore,
+  attendanceStore?: EnterpriseRecordStore,
 ): EnterpriseModule {
   const store = new EnterpriseRecordStore(storePath, PAYROLL_RUNS_MODULE_ID, PAYROLL_RUN_KIND);
   const structuresById = (): Map<string, SalaryComponent[]> => {
@@ -225,7 +227,12 @@ export function createPayrollRunModule(
               values: result.values,
             };
           }
-          const run = deriveStatutoryPayrollRun(employees, structuresById(), resolution.ruleSet, periodKey);
+          // FW-1: confirmed attendance statements for the period prorate pay;
+          // no attendance store (or no confirmed statements) = full-month, stated.
+          const attendance = attendanceStore
+            ? deriveAttendanceByEmployee(attendanceStore.list(), periodKey)
+            : undefined;
+          const run = deriveStatutoryPayrollRun(employees, structuresById(), resolution.ruleSet, periodKey, attendance);
           result.values.employeeCount = run.employeeCount;
           result.values.totalGross = run.totalGross;
           result.values.totalNet = run.totalNet;
@@ -235,12 +242,21 @@ export function createPayrollRunModule(
           result.values.ruleSetCode = run.ruleSetCode ?? '';
           result.values.lines = JSON.stringify(run.lines.map((l) => ({ employee: l.employee, name: l.name, monthlySalary: l.gross })));
           result.values.statutoryJson = JSON.stringify(run);
+          const lopNote =
+            attendance === undefined
+              ? ''
+              : (run.lopAppliedCount ?? 0) > 0
+                ? `; attendance applied — ${run.lopAppliedCount} employee(s) prorated, ${run.totalLopDays} LOP day(s) total`
+                : attendance.size > 0
+                  ? '; attendance confirmed with no LOP — full-month pay on the record'
+                  : '; no confirmed attendance for this period — full-month pay (stated)';
           result.values.note =
             run.employeeCount === 0
               ? 'no active salaried employees — the preview is empty, not fabricated'
               : `${run.statutoryCount} statutory (rule set ${run.ruleSetCode ?? '—'}), ${run.flatCount} flat-legacy (no statutory computed, stated)` +
                 (run.ptSkippedCount > 0 ? `; PT skipped on ${run.ptSkippedCount} line(s) — work state missing or not in the table` : '') +
-                (run.unsalariedCount > 0 ? `; ${run.unsalariedCount} active employee(s) unpaid — no structure and no salary` : '');
+                (run.unsalariedCount > 0 ? `; ${run.unsalariedCount} active employee(s) unpaid — no structure and no salary` : '') +
+                lopNote;
           return result;
         }
         const run = derivePayrollRun(employees);

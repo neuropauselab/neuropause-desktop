@@ -668,6 +668,8 @@ export interface IpcResponseMap {
   // ── knowledge ──
   'knowledge:related': { memoryId: string; related: Array<{ memoryId: string; title: string; kind: string; content: string; score: number; sharedEntities: string[]; }>; };
   'knowledge:topics': { topics: Array<{ id: string; label: string; memoryIds: string[]; entities: string[]; size: number; }>; total: number; };
+  // FW-1: registered in main since P6-Stage7; typing it here completes the A7 contract so the renderer facade can reach it.
+  'knowledge:health': { totalMemories: number; memoriesWithEntities: number; avgEntitiesPerMemory: number; topicCount: number; memoriesInTopics: number; orphanCount: number; coveragePercent: number; largestTopicSize: number; };
 
   // ── memory ──
   'memory:get': MemoryItem | null;

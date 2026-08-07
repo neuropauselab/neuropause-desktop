@@ -165,7 +165,7 @@ export function createStatutoryFilingModule(
             ? `no posted payroll run for ${periodKey} — filings are empty, not fabricated. `
             : `from ${runs.length} posted run(s). `) +
           (gaps.length > 0 ? `EXCLUDED (identifier missing): ${gaps.join('; ')}. ` : 'All members have their statutory identifiers. ') +
-          `ECR delimiter '${delimiter}' — confirm against the EPFO portal. NCP days are 0 (attendance/LOP not tracked). ` +
+          `ECR delimiter '${delimiter}' — confirm against the EPFO portal. NCP days come from confirmed attendance statements (0 where none exists for the period). ` +
           `24Q FVU generation via Protean RPU is out of scope — the data here is correct, the FVU export is named future work.`;
         result.values.generatedAt = new Date().toISOString();
         return result;

@@ -1,7 +1,7 @@
 /**
  * Enterprise Module Certification v1.0 — the registry-wide descriptor lock.
  *
- * A QUALITY gate, not a feature: it runs every one of the 94 REAL registered module descriptors through the
+ * A QUALITY gate, not a feature: it runs every one of the 96 REAL registered module descriptors through the
  * framework's own `validateModuleDescriptor`, and locks the certified inventory (count, unique ids, family
  * distribution, RBAC scopes, title fields). Before this test the real descriptors were validated only
  * implicitly at construction; this makes the guarantee explicit.
@@ -9,7 +9,7 @@
  * SCOPE (stated honestly): the lock is over the enumerated `CERTIFIED` list below. It catches a descriptor
  * REGRESSION (bad id, dup field, wrong group/scope, dup id/action) and a REMOVAL or RENAME of a `*_DESCRIPTOR`
  * export (the import breaks → the file goes red). It does NOT read the live runtime registry, so ADDING a new
- * (84th) registered module does not fail this test until this list is updated — which is the intended,
+ * (97th) registered module does not fail this test until this list is updated — which is the intended,
  * deliberate re-certification checkpoint for a new module.
  *
  * Reuse-only: it imports the standalone descriptor consts (Electron-free — no store, no app runtime) and the
@@ -18,7 +18,7 @@
 import { describe, expect, it } from 'vitest';
 import { validateModuleDescriptor, type EnterpriseModuleDescriptor } from '@neuropause/shared';
 
-// Finance (19)
+// Finance (20)
 import { INVOICE_DESCRIPTOR } from './finance/invoiceModule';
 import { PAYMENT_DESCRIPTOR } from './finance/paymentModule';
 import { LEDGER_ACCOUNT_DESCRIPTOR } from './finance/ledgerAccountModule';
@@ -109,8 +109,9 @@ import { PROJECT_DESCRIPTOR } from './projects/projectModule';
 import { PROJECT_TASK_DESCRIPTOR } from './projects/projectTaskModule';
 import { TIME_ENTRY_DESCRIPTOR } from './projects/timeEntryModule';
 import { BILLING_RUN_DESCRIPTOR } from './projects/billingRunModule';
-// HR (8)
+// HR (9)
 import { TICKET_DESCRIPTOR } from './helpdesk/ticketModule';
+import { ATTENDANCE_DESCRIPTOR } from './hr/attendanceModule';
 import { EMPLOYEE_DESCRIPTOR } from './hr/employeeModule';
 import { PAYROLL_RUN_DESCRIPTOR } from './hr/payrollRunModule';
 import { SALARY_STRUCTURE_DESCRIPTOR } from './hr/salaryStructureModule';
@@ -166,7 +167,7 @@ const CERTIFIED: Record<string, EnterpriseModuleDescriptor[]> = {
     SPARE_PART_DESCRIPTOR, DOWNTIME_EVENT_DESCRIPTOR,
   ],
   Projects: [PROJECT_DESCRIPTOR, PROJECT_TASK_DESCRIPTOR, TIME_ENTRY_DESCRIPTOR, BILLING_RUN_DESCRIPTOR],
-  HR: [EMPLOYEE_DESCRIPTOR, PAYROLL_RUN_DESCRIPTOR, SALARY_STRUCTURE_DESCRIPTOR, STATUTORY_RULE_DESCRIPTOR, SALARY_DISBURSEMENT_DESCRIPTOR, PAYSLIP_DESCRIPTOR, PAYROLL_REGISTER_DESCRIPTOR, STATUTORY_FILING_DESCRIPTOR],
+  HR: [EMPLOYEE_DESCRIPTOR, PAYROLL_RUN_DESCRIPTOR, SALARY_STRUCTURE_DESCRIPTOR, STATUTORY_RULE_DESCRIPTOR, SALARY_DISBURSEMENT_DESCRIPTOR, PAYSLIP_DESCRIPTOR, PAYROLL_REGISTER_DESCRIPTOR, STATUTORY_FILING_DESCRIPTOR, ATTENDANCE_DESCRIPTOR],
   Helpdesk: [TICKET_DESCRIPTOR],
   Documents: [DOCUMENT_DESCRIPTOR],
   Executive: [EXECUTIVE_DECISION_DESCRIPTOR, EXECUTION_PROPOSAL_DESCRIPTOR, BI_REPORT_DESCRIPTOR],
@@ -174,7 +175,7 @@ const CERTIFIED: Record<string, EnterpriseModuleDescriptor[]> = {
 
 /** The certified per-family module counts (verified from the registration site, enterprise/index.ts). */
 const CERTIFIED_COUNTS: Record<string, number> = {
-  Finance: 20, Sales: 7, CRM: 8, Procurement: 6, Inventory: 7, Warehouse: 8, Manufacturing: 12, Maintenance: 10, Projects: 4, HR: 8, Helpdesk: 1, Documents: 1, Executive: 3,
+  Finance: 20, Sales: 7, CRM: 8, Procurement: 6, Inventory: 7, Warehouse: 8, Manufacturing: 12, Maintenance: 10, Projects: 4, HR: 9, Helpdesk: 1, Documents: 1, Executive: 3,
 };
 
 const ALL = Object.values(CERTIFIED).flat();
@@ -188,13 +189,13 @@ const FAMILY_WRITE_SCOPE: Record<string, string> = {
 };
 
 describe('Enterprise Module Certification — registry lock', () => {
-  it('certifies exactly 94 modules across the 13 production families', () => {
-    expect(ALL).toHaveLength(95);
+  it('certifies exactly 96 modules across the 13 production families', () => {
+    expect(ALL).toHaveLength(96);
     for (const fam of KNOWN_FAMILIES) {
       expect(CERTIFIED[fam]).toHaveLength(CERTIFIED_COUNTS[fam]);
     }
     const total = Object.values(CERTIFIED_COUNTS).reduce((a, b) => a + b, 0);
-    expect(total).toBe(95);
+    expect(total).toBe(96);
   });
 
   it('every real descriptor passes the framework validator (validateModuleDescriptor)', () => {

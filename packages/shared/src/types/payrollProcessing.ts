@@ -23,6 +23,7 @@
  *
  * Pure (no I/O), so it is shared by the backend hooks and the tests.
  */
+import { daysInPeriod, prorationFactor, type AttendanceSummary } from './attendance';
 import type { GlJournalLine } from './generalLedger';
 import type { Employee } from './hr';
 import type { SalaryComponent } from './salaryStructures';
@@ -85,6 +86,11 @@ export interface StatutoryPayrollLine {
   otherDeductions: number;
   netPay: number;
   note: string;
+  /** FW-1 attendance (OPTIONAL so every pre-attendance line stays valid). */
+  /** Loss-of-pay days applied to this line (ECR NCP days). Absent = full month. */
+  lopDays?: number;
+  /** Days paid: daysInMonth − lopDays. Absent = full month. */
+  paidDays?: number;
 }
 
 export interface StatutoryPayrollRun {
@@ -107,28 +113,58 @@ export interface StatutoryPayrollRun {
   totalTds: number;
   totalOtherDeductions: number;
   ruleSetCode: string | null;
+  /** FW-1 attendance rollups (OPTIONAL — absent on pre-attendance runs). */
+  /** Lines that had a confirmed attendance statement with LOP applied. */
+  lopAppliedCount?: number;
+  /** Total loss-of-pay days across the run. */
+  totalLopDays?: number;
 }
 
 /**
  * Derive the full statutory run. Employees with a resolvable structure, a
  * positive basic, AND a rule set compute statutory; everyone else with a flat
  * salary stays legacy-flat; the rest are unsalaried — every bucket counted.
+ *
+ * FW-1 (ADDITIVE): pass the period's confirmed `attendance` map and lines
+ * with loss-of-pay days prorate on the calendar-day factor — the STATUTORY
+ * chain runs on the prorated wages (PF/ESI/PT/TDS on what is actually paid,
+ * the ECR-correct reading) and the line carries lopDays/paidDays for filings.
+ * Omitting the map preserves every prior run byte-identically.
  */
 export function deriveStatutoryPayrollRun(
   employees: Employee[],
   structuresById: Map<string, SalaryComponent[]>,
   ruleSet: StatutoryRuleSet | null,
   periodKey: string,
+  attendance?: Map<string, AttendanceSummary>,
 ): StatutoryPayrollRun {
   const month = Number(periodKey.slice(5, 7)) || 0;
+  const monthDays = daysInPeriod(periodKey);
   const active = employees.filter((e) => !e.exitedAt);
   const lines: StatutoryPayrollLine[] = [];
   let unsalariedCount = 0;
+  /** Attendance for one employee → proration factor + note fragment + line fields. */
+  const attendanceFor = (
+    employeeId: string,
+  ): { factor: number; lopDays?: number; paidDays?: number; note: string } => {
+    const a = attendance?.get(employeeId);
+    if (!a || monthDays <= 0) return { factor: 1, note: '' };
+    const lop = Math.min(Math.max(a.lopDays, 0), monthDays);
+    const factor = prorationFactor(monthDays, lop);
+    return {
+      factor,
+      lopDays: lop,
+      paidDays: monthDays - lop,
+      note: lop > 0 ? `LOP ${lop} day(s) — prorated ${monthDays - lop}/${monthDays}` : '',
+    };
+  };
   for (const e of active) {
     const ref = e.salaryStructureRef ?? '';
-    const basic = e.basicSalary ?? 0;
+    const att = attendanceFor(e.id);
+    const rawBasic = e.basicSalary ?? 0;
+    const basic = round2(rawBasic * att.factor);
     const components = ref ? structuresById.get(ref) : undefined;
-    if (ruleSet && ref && components && basic > 0) {
+    if (ruleSet && ref && components && rawBasic > 0) {
       const breakup = computeSalaryBreakup(components, basic);
       const pf = calculatePf(ruleSet.pf, breakup.pfWageBase);
       const esi = calculateEsi(ruleSet.esi, breakup.esiWageBase);
@@ -168,20 +204,27 @@ export function deriveStatutoryPayrollRun(
         tdsMonthly: tds.monthlyTds,
         otherDeductions: breakup.totalDeductions,
         netPay,
-        note: ptSkipped
-          ? state
-            ? `PT skipped: state "${state}" is not in the rule table`
-            : 'PT skipped: no work state on the employee'
-          : '',
+        note: [
+          ptSkipped
+            ? state
+              ? `PT skipped: state "${state}" is not in the rule table`
+              : 'PT skipped: no work state on the employee'
+            : '',
+          att.note,
+        ]
+          .filter(Boolean)
+          .join('; '),
+        ...(att.lopDays !== undefined ? { lopDays: att.lopDays, paidDays: att.paidDays } : {}),
       });
     } else if (e.monthlySalary > 0) {
+      const flatGross = round2(e.monthlySalary * att.factor);
       lines.push({
         employee: e.id,
         name: e.name,
         mode: 'flat',
-        gross: round2(e.monthlySalary),
+        gross: flatGross,
         basic: 0,
-        earnings: [{ code: 'GROSS', name: 'Gross Salary', amount: round2(e.monthlySalary) }],
+        earnings: [{ code: 'GROSS', name: 'Gross Salary', amount: flatGross }],
         contractualDeductions: [],
         pfWageBase: 0,
         pfCappedBase: 0,
@@ -199,13 +242,18 @@ export function deriveStatutoryPayrollRun(
         ptSkipped: false,
         tdsMonthly: 0,
         otherDeductions: 0,
-        netPay: round2(e.monthlySalary),
-        note:
-          ref && basic > 0 && !components
+        netPay: flatGross,
+        note: [
+          ref && rawBasic > 0 && !components
             ? 'flat: assigned structure not found — repair the assignment'
-            : ref && basic <= 0
+            : ref && rawBasic <= 0
               ? 'flat: structure assigned but basic is not positive'
               : 'flat: no structure assigned — statutory not computed, stated',
+          att.note,
+        ]
+          .filter(Boolean)
+          .join('; '),
+        ...(att.lopDays !== undefined ? { lopDays: att.lopDays, paidDays: att.paidDays } : {}),
       });
     } else {
       unsalariedCount += 1;
@@ -233,6 +281,14 @@ export function deriveStatutoryPayrollRun(
     totalTds: sum((l) => l.tdsMonthly),
     totalOtherDeductions: sum((l) => l.otherDeductions),
     ruleSetCode: ruleSet ? ruleSet.ruleSetCode : null,
+    // FW-1: rollups appear only when an attendance map was supplied, so every
+    // pre-attendance caller's run object stays byte-identical.
+    ...(attendance
+      ? {
+          lopAppliedCount: lines.filter((l) => (l.lopDays ?? 0) > 0).length,
+          totalLopDays: lines.reduce((s, l) => s + (l.lopDays ?? 0), 0),
+        }
+      : {}),
   };
 }
 

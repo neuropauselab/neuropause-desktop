@@ -99,7 +99,9 @@ export function buildEcrRows(
         epfContribution: round2(line.pfEmployee),
         epsContribution: round2(line.pfEmployerEps),
         epfEpsDiff: round2(line.pfEmployerEpf),
-        ncpDays: 0,
+        // FW-1: real NCP days from the run line's confirmed attendance (0 when
+        // attendance was not tracked for the period — the pre-FW-1 reading).
+        ncpDays: line.lopDays ?? 0,
         refundOfAdvances: 0,
       });
     }
