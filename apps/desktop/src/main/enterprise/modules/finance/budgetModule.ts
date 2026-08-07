@@ -56,6 +56,18 @@ export const BUDGET_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'periodKey', label: 'Period', type: 'text', required: true, placeholder: '2026-08' },
     { key: 'accountCode', label: 'Account', type: 'text', required: true, placeholder: '5000' },
     { key: 'budgetAmount', label: 'Budget', type: 'number', required: true, min: 0, format: 'currency' },
+    {
+      key: 'commitmentPolicy',
+      label: 'PO Control',
+      type: 'select',
+      default: 'warn',
+      column: false,
+      options: [
+        { value: 'off', label: 'Off (informational)' },
+        { value: 'warn', label: 'Warn on overrun' },
+        { value: 'block', label: 'Block on overrun' },
+      ],
+    },
     { key: 'actualAmount', label: 'Actual (books)', type: 'number', readOnly: true, format: 'currency', default: 0 },
     { key: 'variance', label: 'Variance', type: 'number', readOnly: true, format: 'currency', default: 0 },
     { key: 'variancePercent', label: 'Var %', type: 'number', readOnly: true, default: 0, column: false },

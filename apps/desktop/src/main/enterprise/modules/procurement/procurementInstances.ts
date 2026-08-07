@@ -12,6 +12,7 @@ import {
   SUPPLIERS_MODULE_ID,
 } from '@neuropause/shared';
 import { aiEngine } from '../../../ai/engineInstance';
+import { budgetModule } from '../finance/budgetModuleInstance';
 import { enterpriseModuleStorePath } from '../../framework';
 import { createSupplierModule } from './supplierModule';
 import { createPurchaseRequestModule } from './purchaseRequestModule';
@@ -25,7 +26,8 @@ const store = (id: string): string => enterpriseModuleStorePath(app.getPath('use
 
 export const supplierModule = createSupplierModule(store(SUPPLIERS_MODULE_ID), (s, h) => runSupplierAi(aiEngine, s, h));
 export const purchaseRequestModule = createPurchaseRequestModule(store(PURCHASE_REQUESTS_MODULE_ID));
-export const purchaseOrderModule = createPurchaseOrderModule(store(PURCHASE_ORDERS_MODULE_ID), (o) => runPurchaseOrderAi(aiEngine, o));
+// FW-5 — approval consults the named Finance budget (off/warn/block commitment policy).
+export const purchaseOrderModule = createPurchaseOrderModule(store(PURCHASE_ORDERS_MODULE_ID), (o) => runPurchaseOrderAi(aiEngine, o), budgetModule.store);
 export const goodsReceiptModule = createGoodsReceiptModule(store(GOODS_RECEIPTS_MODULE_ID), (r) => runGoodsReceiptAi(aiEngine, r));
 // W3.1 — RFQs: multi-supplier quotation cycle; quotes validated against the Suppliers register.
 export const rfqModule = createRfqModule(store(RFQS_MODULE_ID), supplierModule.store);

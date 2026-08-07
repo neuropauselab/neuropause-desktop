@@ -16,6 +16,7 @@ import {
   PURCHASE_ORDERS_MODULE_ID,
   PURCHASE_ORDER_KIND,
   calculatePurchaseTotal,
+  evaluateBudgetControl,
   purchaseOrderFromRecord,
   purchaseOrderSummaryFallback,
   validateEnterpriseRecordInput,
@@ -57,6 +58,8 @@ export const PURCHASE_ORDER_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'tax', label: 'Tax', type: 'number', min: 0, format: 'currency', column: false },
     { key: 'total', label: 'Total', type: 'number', format: 'currency', readOnly: true },
     { key: 'budget', label: 'Budget', type: 'number', min: 0, format: 'currency', column: false },
+    { key: 'budgetRef', label: 'Budget Control', type: 'text', column: false, placeholder: 'Finance budget id (optional — governs approval)' },
+    { key: 'budgetCheck', label: 'Budget Check', type: 'text', readOnly: true, column: false },
     {
       key: 'currency',
       label: 'Currency',
@@ -117,7 +120,7 @@ function projectValues(values: EnterpriseRecordInput['fields']): PurchaseOrder {
   return purchaseOrderFromRecord(record);
 }
 
-export function createPurchaseOrderModule(storePath: string, aiRunner?: PurchaseOrderAiRunner): EnterpriseModule {
+export function createPurchaseOrderModule(storePath: string, aiRunner?: PurchaseOrderAiRunner, budgetStore?: EnterpriseRecordStore): EnterpriseModule {
   const store = new EnterpriseRecordStore(storePath, PURCHASE_ORDERS_MODULE_ID, PURCHASE_ORDER_KIND);
   return defineEnterpriseModule({
     descriptor: PURCHASE_ORDER_DESCRIPTOR,
@@ -148,11 +151,30 @@ export function createPurchaseOrderModule(storePath: string, aiRunner?: Purchase
         if (action === RECEIVE_GOODS_ACTION) return convertPurchaseOrderToReceipt(record, ctx);
         const target = poTransition(action, str(record.fields.status));
         if (!target) return { ok: false, message: `Cannot ${action} a purchase order that is ${str(record.fields.status)}.` };
+        // FW-5 (ADDITIVE): approval consults the named Finance budget. No
+        // budgetRef, or no budget store wired = uncontrolled, exactly as before.
+        let budgetNote = '';
+        if (action === 'approve' && budgetStore && str(record.fields.budgetRef).trim()) {
+          const decision = evaluateBudgetControl({
+            orderId: record.id,
+            orderTotal: Number(record.fields.total ?? 0),
+            budgetRef: str(record.fields.budgetRef),
+            budgets: budgetStore.list(),
+            purchaseOrders: store.list(),
+          });
+          if (!decision.allowed) return { ok: false, error: decision.note };
+          budgetNote = decision.note;
+          store.update(record.id, {
+            fields: { budgetCheck: decision.note },
+            actor: ctx.actor(),
+            now: ctx.now(),
+          });
+        }
         const updated = store.update(record.id, { fields: { status: target }, actor: ctx.actor(), now: ctx.now() });
         if (!updated) return { ok: false, error: 'Purchase order not found.' };
         const self = ctx.moduleFor(PURCHASE_ORDERS_MODULE_ID);
         if (self) ctx.emit(self, 'updated', updated);
-        return { ok: true, message: `Purchase order ${str(record.fields.poNumber)} ${target}.` };
+        return { ok: true, message: `Purchase order ${str(record.fields.poNumber)} ${target}.` + (budgetNote ? ` ${budgetNote}` : '') };
       },
     },
   });
