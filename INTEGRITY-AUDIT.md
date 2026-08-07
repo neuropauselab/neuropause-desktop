@@ -1,5 +1,12 @@
 # NeuroPause Product Integrity & Production Readiness — Repository Audit v1.0
 
+> **Historical snapshot — superseded facts.** This report was written in the
+> `1.0.0-rc.1` era (bulk pass of 2026-07-24) and is retained as program history.
+> Authoritative current facts: **104 certified modules across 13 families**
+> (locked by `apps/desktop/src/main/enterprise/modules/moduleCertification.test.ts`),
+> version lineage `1.0.0-rc.14`. See `PHASE7-COMPLETION-REPORT.md` and the
+> Phase 8 reports for current state. Banner added by Phase 8 (8.11).
+
 **Program:** Product Integrity & Production Readiness v1.0 · Production Enterprise Release
 **Phase:** Complete repository audit (no code changed — this is the pre-remediation audit the program mandates first)
 **Date:** 2026-07-17

@@ -1,5 +1,12 @@
 # NeuroPause Product Integrity & Production Readiness Program v1.0 — Final Report
 
+> **Historical snapshot — superseded facts.** This report was written in the
+> `1.0.0-rc.1` era (bulk pass of 2026-07-24) and is retained as program history.
+> Authoritative current facts: **104 certified modules across 13 families**
+> (locked by `apps/desktop/src/main/enterprise/modules/moduleCertification.test.ts`),
+> version lineage `1.0.0-rc.14`. See `PHASE7-COMPLETION-REPORT.md` and the
+> Phase 8 reports for current state. Banner added by Phase 8 (8.11).
+
 **Program:** Product Integrity & Production Readiness v1.0 · Production Enterprise Release
 **Scope:** Make every existing feature complete, consistent, trustworthy, and authentic — no new runtime/engine/AI/database. Audit-first, remediate-under-sign-off.
 **Status:** Complete. All six validation gates green; independent adversarial review returned **SHIP** (after catching and fixing one navigation defect). Remediation executed under explicit sign-off: fabricated data dev-gated (hidden in prod), privileged IPC gated, duplicate navigation hidden with intent-home canonical.

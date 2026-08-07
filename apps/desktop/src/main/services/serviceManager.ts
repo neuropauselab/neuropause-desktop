@@ -3,7 +3,7 @@
  * healthy and current run behind a single manager that starts and stops them
  * together. Part A ships the two the runtime depends on directly — the Health
  * Monitor (liveness + resource sampling) and the Update Checker (release
- * polling). The remaining services (telemetry, crash reporter, task and
+ * polling). The remaining services (crash reporter, task and
  * notification schedulers, plugin loader) plug into this same manager in Part B.
  *
  * The Download Manager and Runtime Supervisor are also "services" in spirit but
@@ -16,7 +16,6 @@ import { registry } from '../registry/registry';
 import { catalogClient } from '../catalog/catalogClient';
 import { supervisor } from '../runtime/supervisor';
 import { crashReporter } from './crashReporter';
-import { telemetry } from './telemetry';
 import { taskScheduler } from './taskScheduler';
 import { notificationScheduler } from './notificationScheduler';
 import { pluginLoader } from './pluginLoader';
@@ -104,7 +103,6 @@ class ServiceManager {
     // the monitors, and the plugin loader last (it enables plugins).
     this.services = [
       crashReporter,
-      telemetry,
       taskScheduler,
       notificationScheduler,
       this.healthMonitor,

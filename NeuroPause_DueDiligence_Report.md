@@ -1,5 +1,11 @@
 # NeuroPause Desktop — Technical Architecture & Due-Diligence Report
 
+> **Snapshot notice (Phase 8, 2026-08-07):** this report was produced at
+> HEAD `804e30c` (95 modules / 13 families). The repository has since advanced
+> — 104 certified modules, Phase 7 product-experience batches, and Phase 8 RC
+> hardening. Its method and findings remain valid for its snapshot; verify any
+> figure against the current certification test before reuse.
+
 **Prepared:** 6 August 2026  
 **Repository:** `neuropause-desktop` · branch `phase6-stage13-enterprise-digital-twin-platform` · HEAD `804e30c`  
 **Basis:** Forensic reconstruction grounded in the repository — ~445,000 LOC across 48 workspaces, 866 test files. Recon by 13 parallel agents mapping the code via the terminal on the source machine; synthesis by 6 section-writers; an adversarial auditor verified grounding (Appendix A).  

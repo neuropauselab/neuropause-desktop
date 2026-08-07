@@ -13,6 +13,7 @@ import { dirname } from 'node:path';
 import type { LicenseValidationStatus, OrgLicense } from '@neuropause/shared';
 import { evaluateLicense } from '@neuropause/shared';
 import type { LicenseTransport } from './types';
+import { readStoreFile } from '../storage/storeEnvelope';
 
 interface LicenseFileData {
   version: 1;
@@ -60,12 +61,13 @@ export function createLicenseValidator(opts: {
 
   async function ensureLoaded(): Promise<void> {
     if (loaded) return;
-    try {
-      const raw = JSON.parse(await fs.readFile(opts.filePath, 'utf8')) as Partial<LicenseFileData>;
-      data = { version: 1, licenses: raw.licenses ?? {} };
-    } catch {
-      data = emptyData();
-    }
+    // Phase 8 (8.3/8.20): envelope read — the last-known-good entitlement
+    // snapshot is quarantined (preserved) on corruption, never silently reset.
+    const result = await readStoreFile<Partial<LicenseFileData>>(opts.filePath);
+    data =
+      result.state === 'loaded' && result.data
+        ? { version: 1, licenses: result.data.licenses ?? {} }
+        : emptyData();
     loaded = true;
   }
 

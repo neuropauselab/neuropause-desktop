@@ -1,5 +1,12 @@
 # NeuroPause Enterprise Business Suite (EBS) Program v1.0 — Final Report
 
+> **Historical snapshot — superseded facts.** This report was written in the
+> `1.0.0-rc.1` era (bulk pass of 2026-07-24) and is retained as program history.
+> Authoritative current facts: **104 certified modules across 13 families**
+> (locked by `apps/desktop/src/main/enterprise/modules/moduleCertification.test.ts`),
+> version lineage `1.0.0-rc.14`. See `PHASE7-COMPLETION-REPORT.md` and the
+> Phase 8 reports for current state. Banner added by Phase 8 (8.11).
+
 **Program:** Enterprise Business Suite v1.0 · Enterprise Business Runtime Foundation — the Business Workspace
 **Type:** Recon + reuse-only presentation layer — NO new runtime, engine, store, IPC channel, AI path, governance, identity, capability-registry runtime, or duplicate module.
 **Status:** Complete. All six validation gates green; independent adversarial review returned **SHIP** with zero must-fix findings (two nice-to-haves raised and both fixed). Every business area shown is real; the three areas without modules are recorded honestly as future, not faked.

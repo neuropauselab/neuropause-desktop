@@ -56,13 +56,13 @@ jobs:
         run: npm ci
 
       - name: Typecheck
-        run: npm run typecheck
+        run: npm run typecheck:release
 
       - name: Lint
-        run: npm run lint
+        run: npm run lint:release
 
       - name: Test
-        run: npm test
+        run: npm run test:release
 
       # Package the Windows installer + portable + zip. The backend URL is baked
       # into build-info.json by generate-build-info.cjs (same mechanism as macOS).

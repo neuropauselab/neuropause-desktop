@@ -1,5 +1,12 @@
 # NeuroPause Enterprise Administration Platform v1.0 — Final Report
 
+> **Historical snapshot — superseded facts.** This report was written in the
+> `1.0.0-rc.1` era (bulk pass of 2026-07-24) and is retained as program history.
+> Authoritative current facts: **104 certified modules across 13 families**
+> (locked by `apps/desktop/src/main/enterprise/modules/moduleCertification.test.ts`),
+> version lineage `1.0.0-rc.14`. See `PHASE7-COMPLETION-REPORT.md` and the
+> Phase 8 reports for current state. Banner added by Phase 8 (8.11).
+
 **Program:** Enterprise Administration & Organization Control Center
 **Type:** Reuse-only administrative presentation layer. NO new runtime, identity platform, RBAC system, governance engine, workflow engine, notification system, search engine, AI platform, marketplace, enterprise framework, or duplicate administration system. **Zero new main-process code, zero new IPC channels, zero mutations** — a renderer-only aggregation that reads existing services and deep-links to their existing editors.
 **Status:** Complete. All six validation gates green; independent adversarial review returned **SHIP** with zero must-fix findings (one real ordering bug in a tone helper caught by tests and fixed; three nice-to-haves addressed).

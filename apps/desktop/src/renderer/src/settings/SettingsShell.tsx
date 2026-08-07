@@ -104,7 +104,7 @@ function Divider(): JSX.Element {
   return <div className="h-px [background:var(--hairline)]" />;
 }
 
-/** Telemetry/crash consent — a REAL opt-in toggle over the existing release-ops IPC. */
+/** Crash-report consent — a REAL opt-in toggle over the existing release-ops IPC. (Phase 8: relabeled — there is no usage telemetry in this product; this toggle governs crash records only.) */
 function CrashConsentRow(): JSX.Element {
   const [optedIn, setOptedIn] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
@@ -290,7 +290,7 @@ function DomainContent({ domain, session, go }: { domain: SettingsDomainId; sess
       return (
         <>
           <DomainHeader id="privacy" />
-          <Group title="Telemetry">
+          <Group title="Crash reports">
             <Card className="py-1.5">
               <CrashConsentRow />
             </Card>
