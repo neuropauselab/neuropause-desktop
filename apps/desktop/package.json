@@ -24,7 +24,8 @@
   },
   "dependencies": {
     "@neuropause/shared": "*",
-    "electron-updater": "^6.8.9"
+    "electron-updater": "^6.8.9",
+    "recharts": "^2.15.1"
   },
   "devDependencies": {
     "@electron/notarize": "^2.5.0",
