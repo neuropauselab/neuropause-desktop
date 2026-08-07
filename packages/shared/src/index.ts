@@ -127,6 +127,8 @@ export * from './types/expenseClaims';
 export * from './types/shifts';
 // Procurement ↔ Finance → FW-5: budget controls — PO approval consults the named budget (off/warn/block).
 export * from './types/budgetControls';
+// Inventory ↔ Procurement → FW-6: auto-reordering — min–max replenishment on the inventory position.
+export * from './types/autoReorder';
 // HR → W6-A4: salary disbursement — net-pay clearing + deterministic bank advice.
 export * from './types/salaryDisbursement';
 // HR → W6-A5: payslips — immutable per-employee statements from posted runs.
