@@ -13,8 +13,16 @@ export const UPDATE_CHANNELS: readonly UpdateChannel[] = ['stable', 'beta', 'int
 
 export const DEFAULT_CHANNEL: UpdateChannel = 'stable';
 
-/** Coerce arbitrary input to a known channel, defaulting to stable. */
+/**
+ * Coerce arbitrary input to a known channel, defaulting to stable.
+ * Phase 8 (RC hardening 8.5): a persisted `internal` preference is remapped
+ * to `beta` — the release pipeline has never published an internal feed, so
+ * any install that selected it was in permanent silent update failure. The
+ * remap heals those installs onto the nearest published track. `internal`
+ * returns as a resolvable channel if/when its feed is actually published.
+ */
 export function resolveChannel(input: unknown): UpdateChannel {
+  if (input === 'internal') return 'beta';
   return UPDATE_CHANNELS.includes(input as UpdateChannel) ? (input as UpdateChannel) : DEFAULT_CHANNEL;
 }
 

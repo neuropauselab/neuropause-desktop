@@ -18,6 +18,8 @@ export interface BuildIdentity {
   arch: string;
   packaged: boolean;
   runtime: { electron: string; node: string; chrome: string; v8: string };
+  /** Phase 8 (8.6): this build's own CHANGELOG section, baked at build time (null when absent). */
+  releaseNotes?: string | null;
 }
 
 export type SigningState =

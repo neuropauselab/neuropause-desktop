@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import {
-  orderedReleaseChannels,
+  selectableReleaseChannels,
   releaseChannelLabel,
   releaseChannelDescription,
   updatePhaseLabel,
@@ -155,7 +155,9 @@ export function ReleaseChannelCard(): JSX.Element {
     );
   }
 
-  const channels = orderedReleaseChannels();
+  // Phase 8 (8.5): only channels with a PUBLISHED feed are offered —
+  // `internal` had none, stranding anyone who picked it in silent failure.
+  const channels = selectableReleaseChannels();
   const pct = status.progress ? formatUpdateProgressPercent(status.progress.percent) : '0%';
 
   return (

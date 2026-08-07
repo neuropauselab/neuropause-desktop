@@ -17,6 +17,7 @@ import type {
   SigningStatus,
   UpdateStatus,
 } from '@neuropause/shared';
+import { formatStartupLines, startupMetrics } from './startupMetrics';
 
 export interface ReleaseDiagnosticsDeps {
   build: () => BuildIdentity;
@@ -73,6 +74,18 @@ export function formatDiagnosticsText(d: ReleaseDiagnostics): string {
   lines.push(`Platform:       ${b.platform}/${b.arch}`);
   lines.push(`Packaged:       ${b.packaged ? 'yes' : 'no (development)'}`);
   lines.push(`Runtime:        Electron ${b.runtime.electron} · Node ${b.runtime.node} · Chrome ${b.runtime.chrome} · V8 ${b.runtime.v8}`);
+  if (b.releaseNotes) {
+    // Phase 8 (8.6): the generic update feed carries no notes — the build does.
+    lines.push('');
+    lines.push("## What's new in this build");
+    lines.push(b.releaseNotes);
+  }
+  // Phase 8 (8.16): boot-phase timings — launch time, finally measured.
+  const startup = formatStartupLines(startupMetrics.snapshot());
+  if (startup.length > 0) {
+    lines.push('');
+    lines.push(...startup);
+  }
   lines.push('');
   lines.push('## Signing');
   lines.push(`Status:         ${signingLine(d.signing)}`);

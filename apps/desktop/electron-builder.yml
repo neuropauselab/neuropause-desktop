@@ -13,6 +13,18 @@ files:
 extraResources:
 - from: resources/build-info.json
   to: build-info.json
+# Phase 8 (8.8): OSS attribution ships inside every distributed binary.
+- from: resources/THIRD-PARTY-NOTICES.md
+  to: THIRD-PARTY-NOTICES.md
+# Phase 8 (8.14): bundle the pilot documentation set (in-app help opens these).
+- from: ../../docs/guides
+  to: docs/guides
+- from: ../../docs/user
+  to: docs/user
+- from: ../../docs/legal
+  to: docs/legal
+- from: resources/THIRD-PARTY-NOTICES.md
+  to: docs/THIRD-PARTY-NOTICES.md
 afterSign: scripts/notarize.cjs
 # Auto-update feed: generic HTTPS provider on our own server. The GitHub repo is
 # private, so customer updaters can never read its Releases anonymously — the
