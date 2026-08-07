@@ -13,6 +13,7 @@ import {
   EXPENSE_CLAIMS_MODULE_ID,
   HOLIDAYS_MODULE_ID,
   LEAVE_MODULE_ID,
+  OKRS_MODULE_ID,
   PAYROLL_REGISTER_MODULE_ID,
   PAYROLL_RUNS_MODULE_ID,
   PAYSLIPS_MODULE_ID,
@@ -28,6 +29,7 @@ import { createCandidateModule } from './candidateModule';
 import { createEmployeeModule } from './employeeModule';
 import { createExpenseClaimModule } from './expenseClaimModule';
 import { createHolidayModule } from './holidayModule';
+import { createOkrModule } from './okrModule';
 import { createLeaveModule } from './leaveModule';
 import { createPayrollRegisterModule } from './payrollRegisterModule';
 import { createPayrollRunModule } from './payrollRunModule';
@@ -53,6 +55,9 @@ export const employeeModule = createEmployeeModule(
 );
 
 export const holidayModule = createHolidayModule(store(HOLIDAYS_MODULE_ID));
+
+// FW-11 — OKRs; the employee store backs the live-owner guard.
+export const okrModule = createOkrModule(store(OKRS_MODULE_ID), employeeModule.store);
 
 // FW-10 — recruitment pipeline; Hire resolves the Employees module from the runtime action context.
 export const candidateModule = createCandidateModule(store(CANDIDATES_MODULE_ID));

@@ -133,6 +133,8 @@ export * from './types/autoReorder';
 export * from './types/vendorContracts';
 // HR → FW-10: recruitment — staged candidate pipeline; hire creates a real Employee.
 export * from './types/recruitment';
+// HR → FW-11: OKRs — objectives with measurable key results; progress is arithmetic.
+export * from './types/okrs';
 // HR → W6-A4: salary disbursement — net-pay clearing + deterministic bank advice.
 export * from './types/salaryDisbursement';
 // HR → W6-A5: payslips — immutable per-employee statements from posted runs.

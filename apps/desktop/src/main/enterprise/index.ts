@@ -160,7 +160,7 @@ import {
 } from './modules/manufacturing/manufacturingInstances';
 import { bomExplosionModule } from './modules/manufacturing/bomExplosionModuleInstance';
 import { billingRunModule, projectModule, projectTaskModule, timeEntryModule } from './modules/projects/projectsInstances';
-import { attendanceModule, candidateModule, employeeModule, expenseClaimModule, holidayModule, leaveModule, shiftModule, payrollRegisterModule, payrollRunModule, payslipModule, salaryDisbursementModule, salaryStructureModule, statutoryFilingModule, statutoryRuleModule } from './modules/hr/hrInstances';
+import { attendanceModule, candidateModule, employeeModule, okrModule, expenseClaimModule, holidayModule, leaveModule, shiftModule, payrollRegisterModule, payrollRunModule, payslipModule, salaryDisbursementModule, salaryStructureModule, statutoryFilingModule, statutoryRuleModule } from './modules/hr/hrInstances';
 import { ticketModule } from './modules/helpdesk/helpdeskInstances';
 import { campaignModule } from './modules/crm/campaignModuleInstance';
 import { documentModule } from './modules/documents/documentsInstances';
@@ -372,6 +372,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   modules.registry.register(leaveModule); // HR → Leave Requests (human-approved; unpaid → LOP via attendance import)
   modules.registry.register(holidayModule); // HR → Holiday Calendar (declared holidays never dock pay)
   modules.registry.register(candidateModule); // HR → Candidates (FW-10: recruitment pipeline; hire creates the employee — 102nd registered module)
+  modules.registry.register(okrModule); // HR → OKRs (FW-11: derived-progress objectives per owner + quarter — 103rd registered module)
   modules.registry.register(expenseClaimModule); // HR → Expense Claims (approval books Dr 5330 / Cr 2260, idempotent)
   modules.registry.register(shiftModule); // HR → Shifts (working patterns → attendance present-day prefill)
   modules.registry.register(ticketModule); // Helpdesk → Tickets (SLA service desk)
