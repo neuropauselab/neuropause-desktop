@@ -8,6 +8,7 @@ import { promises as fs } from 'node:fs';
 import { dirname } from 'node:path';
 import type { FeatureFlagKey, FeatureFlagState, PlanTier } from '@neuropause/shared';
 import { evaluateFlag, featureFlag, FEATURE_FLAGS } from '@neuropause/shared';
+import { readStoreFile } from '../storage/storeEnvelope';
 
 interface FlagFileData {
   version: 1;
@@ -41,12 +42,12 @@ export function createFlagService(opts: { filePath: string }): FlagService {
 
   async function ensureLoaded(): Promise<void> {
     if (loaded) return;
-    try {
-      const raw = JSON.parse(await fs.readFile(opts.filePath, 'utf8')) as Partial<FlagFileData>;
-      data = { version: 1, overrides: raw.overrides ?? {} };
-    } catch {
-      data = emptyData();
-    }
+    // Phase 8 (8.3): envelope read — quarantine-not-reset on corrupt files.
+    const result = await readStoreFile<Partial<FlagFileData>>(opts.filePath);
+    data =
+      result.state === 'loaded' && result.data
+        ? { version: 1, overrides: result.data.overrides ?? {} }
+        : emptyData();
     loaded = true;
   }
 

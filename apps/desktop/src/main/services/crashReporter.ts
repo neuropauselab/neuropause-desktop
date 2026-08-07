@@ -12,6 +12,7 @@
  */
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
+import { createBoundedLog } from '../storage/boundedLog';
 import { app, crashReporter as nativeCrashReporter } from 'electron';
 import type { CrashCategory, CrashRecord, CrashStatus, RecoveryRecommendation } from '@neuropause/shared';
 import { createLogger } from '../logger';
@@ -28,6 +29,8 @@ class CrashReporter {
   private count = 0;
   private optedIn = false;
   private nativeActive = false;
+  /** Phase 8 (8.4): rotating sink for crashes.log — 2 MiB per generation, 2 kept. */
+  private readonly crashLog = createBoundedLog(() => this.logPath(), { maxBytes: 2 * 1024 * 1024, keep: 2 });
 
   private onUncaught = (err: Error): void => this.report('main', 'uncaughtException', err.message, err.stack);
   private onRejection = (reason: unknown): void =>
@@ -83,10 +86,9 @@ class CrashReporter {
     // Scrub secrets/PII from message + stack before anything is persisted or logged.
     const record: CrashRecord = buildCrashRecord(category, kind, message, stack, new Date().toISOString());
     log.error('Crash captured', { category, kind, message: record.message });
-    void fs
-      .mkdir(join(app.getPath('userData'), 'logs'), { recursive: true })
-      .then(() => fs.appendFile(this.logPath(), `${JSON.stringify(record)}\n`))
-      .catch(() => undefined);
+    // Phase 8 (8.4): bounded append — a crash loop can no longer grow this
+    // file without limit (rotations remain in logs/ for the support bundle).
+    this.crashLog.append(JSON.stringify(record));
   }
 
   async setOptIn(optedIn: boolean): Promise<CrashStatus> {

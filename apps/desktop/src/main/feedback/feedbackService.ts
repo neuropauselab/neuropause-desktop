@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { dirname } from 'node:path';
 import type { FeedbackCategory, FeedbackEntry, FeedbackExport } from '@neuropause/shared';
+import { readStoreFile } from '../storage/storeEnvelope';
 
 interface FeedbackFileData {
   version: 1;
@@ -51,12 +52,12 @@ export function createFeedbackStore(opts: {
 
   async function ensureLoaded(): Promise<void> {
     if (loaded) return;
-    try {
-      const raw = JSON.parse(await fs.readFile(opts.filePath, 'utf8')) as Partial<FeedbackFileData>;
-      data = { version: 1, entries: raw.entries ?? [] };
-    } catch {
-      data = { version: 1, entries: [] };
-    }
+    // Phase 8 (8.3): envelope read — quarantine-not-reset on corrupt files.
+    const result = await readStoreFile<Partial<FeedbackFileData>>(opts.filePath);
+    data =
+      result.state === 'loaded' && result.data
+        ? { version: 1, entries: result.data.entries ?? [] }
+        : { version: 1, entries: [] };
     loaded = true;
   }
 

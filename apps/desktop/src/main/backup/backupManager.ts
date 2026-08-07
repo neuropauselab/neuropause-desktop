@@ -19,29 +19,19 @@ import type {
   MaintenanceDomain,
   RestoreResult,
 } from '@neuropause/shared';
+import { DOMAIN_FILES, LOCAL_DOMAINS, isPrefixEntry } from '../storage/storePaths';
 
 /**
- * Which local files/directories belong to each protected domain. Paths are
- * relative to the data directory; entries that don't exist on a given install
- * are simply skipped. The backend database is server-side and intentionally not
- * a local-backup domain.
+ * Phase 8 (8.2): the domain → files map lives in the store-path REGISTRY
+ * (../storage/storePaths) — one source of truth shared by backup, the
+ * pre-migration snapshot, and restore. Re-exported here so existing importers
+ * keep working. Prefix entries (trailing `*`, e.g. `enterprise-module-*`)
+ * resolve against the live data directory at snapshot time, so every
+ * certified module store — present and future — is covered automatically.
  */
-export const DOMAIN_FILES: Record<MaintenanceDomain, string[]> = {
-  database: [],
-  registry: ['registry.json'],
-  configuration: ['telemetry.json', 'crash-reporting.json', 'update-prefs.json', 'window-state.json', 'connectors.json'],
-  workspace: ['enterprise-workspaces.json', 'enterprise-org.json'],
-  knowledgeGraph: ['graph.json', 'unified-store.json'],
-  aiWorker: ['workforce-registry.json', 'workforce-jobs.json', 'workforce-audit.json'],
-  plugin: ['plugins.json', 'plugins', 'plugin-data'],
-  aiMemory: ['memory.json'],
-  timeline: ['timeline'],
-};
+export { DOMAIN_FILES, LOCAL_DOMAINS };
 
 const ALL_DOMAINS = Object.keys(DOMAIN_FILES) as MaintenanceDomain[];
-
-/** Domains that have at least one local file (everything except `database`). */
-export const LOCAL_DOMAINS = ALL_DOMAINS.filter((d) => DOMAIN_FILES[d].length > 0);
 
 export interface BackupManagerDeps {
   dataDir: string;
@@ -67,6 +57,17 @@ async function sha256(path: string): Promise<string> {
 
 /** Resolve a domain's configured paths to the concrete files that exist. */
 async function filesForPath(dataDir: string, rel: string): Promise<string[]> {
+  // Prefix pattern (Phase 8): `enterprise-module-*` → every top-level entry
+  // of the data directory that starts with the prefix, resolved live.
+  if (isPrefixEntry(rel)) {
+    const prefix = rel.slice(0, -1);
+    if (!(await exists(dataDir))) return [];
+    const out: string[] = [];
+    for (const name of await fs.readdir(dataDir)) {
+      if (name.startsWith(prefix)) out.push(...(await filesForPath(dataDir, name)));
+    }
+    return out;
+  }
   const abs = join(dataDir, rel);
   if (!(await exists(abs))) return [];
   const stat = await fs.stat(abs);

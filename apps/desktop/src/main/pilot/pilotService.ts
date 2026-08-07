@@ -9,6 +9,7 @@
 import { promises as fs } from 'node:fs';
 import { dirname } from 'node:path';
 import type { PilotStatus } from '@neuropause/shared';
+import { readStoreFile } from '../storage/storeEnvelope';
 
 interface PilotFileData {
   version: 1;
@@ -41,15 +42,17 @@ export function createPilotService(opts: { filePath: string; now?: () => Date })
 
   async function ensureLoaded(): Promise<void> {
     if (loaded) return;
-    try {
-      const raw = JSON.parse(await fs.readFile(opts.filePath, 'utf8')) as Partial<PilotFileData>;
+    // Phase 8 (8.3): envelope read — quarantine-not-reset on corrupt files.
+    const result = await readStoreFile<Partial<PilotFileData>>(opts.filePath);
+    if (result.state === 'loaded' && result.data) {
+      const raw = result.data;
       data = {
         version: 1,
         enabled: raw.enabled ?? false,
         joinedAt: raw.joinedAt ?? null,
         leftAt: raw.leftAt ?? null,
       };
-    } catch {
+    } else {
       data = emptyData();
     }
     loaded = true;

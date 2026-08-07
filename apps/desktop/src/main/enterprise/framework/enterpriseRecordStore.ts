@@ -20,8 +20,11 @@ import type {
   EnterpriseRecordStatus,
 } from '@neuropause/shared';
 import { canTransitionRecordStatus, matchesRecordSearch } from '@neuropause/shared';
+import { envelopeStamp, readStoreFile } from '../../storage/storeEnvelope';
 
 interface RecordFile {
+  /** Phase 8 (8.3): store schema stamp — absent on legacy files (= v1). */
+  schemaVersion?: number;
   moduleId: string;
   records: EnterpriseEntity[];
 }
@@ -68,18 +71,24 @@ export class EnterpriseRecordStore extends EventEmitter {
 
   async load(): Promise<void> {
     if (this.loaded) return;
-    try {
-      const raw = await fs.readFile(this.filePath, 'utf8');
-      const data = JSON.parse(raw) as Partial<RecordFile>;
-      for (const r of data.records ?? []) if (r?.id) this.records.set(r.id, r);
-    } catch {
-      /* first run — empty store */
+    // Phase 8 (8.3): envelope read — ENOENT is the only "empty" signal; a
+    // corrupt or future-versioned file is QUARANTINED beside itself (bytes
+    // preserved for recovery) instead of being silently treated as first-run.
+    const result = await readStoreFile<Partial<RecordFile>>(this.filePath);
+    if (result.state === 'loaded' && result.data) {
+      for (const r of result.data.records ?? []) if (r?.id) this.records.set(r.id, r);
+    } else if (result.state !== 'first-run') {
+      this.quarantinedTo = result.quarantinedTo;
+      this.emit('quarantined', { moduleId: this.moduleId, path: result.quarantinedTo });
     }
     this.loaded = true;
   }
 
+  /** Where a corrupt/newer store file was preserved at load, if any. */
+  quarantinedTo: string | null = null;
+
  private async persist(): Promise<void> {
-    const file: RecordFile = { moduleId: this.moduleId, records: [...this.records.values()] };
+    const file: RecordFile = { ...envelopeStamp(), moduleId: this.moduleId, records: [...this.records.values()] };
     const tmp = `${this.filePath}.tmp`;
     await fs.writeFile(tmp, JSON.stringify(file), { mode: 0o600 });
     // Windows: antivirus/indexer can briefly hold the destination, failing rename

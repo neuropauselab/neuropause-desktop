@@ -25,7 +25,12 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "nps": "node tools/nps/cli.mjs"
+    "nps": "node tools/nps/cli.mjs",
+    "version:bump": "node scripts/bump-version.cjs",
+    "typecheck:release": "npm run typecheck -w @neuropause/shared -w @neuropause/cloud-core -w @neuropause/shared-cloud -w @neuropause/backend -w @neuropause/desktop --if-present",
+    "test:release": "npm run test -w @neuropause/shared -w @neuropause/cloud-core -w @neuropause/shared-cloud -w @neuropause/backend -w @neuropause/desktop --if-present",
+    "lint:release": "eslint apps/desktop apps/backend packages/shared packages/cloud-core packages/shared-cloud --max-warnings 0",
+    "bootstrap:env": "node scripts/bootstrap-env.cjs"
   },
   "devDependencies": {
     "@types/node": "^20.12.7",
@@ -38,8 +43,5 @@
     "eslint-plugin-react-hooks": "^4.6.0",
     "prettier": "^3.2.5",
     "typescript": "^5.9.3"
-  },
-  "dependencies": {
-    "recharts": "^3.10.1"
   }
 }

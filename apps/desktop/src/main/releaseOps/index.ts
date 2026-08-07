@@ -12,7 +12,7 @@
  */
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import { app } from 'electron';
+import { app, shell } from 'electron';
 import {
   BackupCreateRequest,
   BackupIdRequest,
@@ -340,7 +340,13 @@ export async function initReleaseOps(deps: ReleaseOpsDeps): Promise<ReleaseOps> 
       schema: EmptyRequest,
       audit: true,
       timeoutMs: HEAVY_TIMEOUT_MS,
-      handler: () => support.generate(),
+      // Phase 8 (8.4): reveal the generated bundle in the file manager — the
+      // user was previously told a path and left to find it by hand.
+      handler: async () => {
+        const info = await support.generate();
+        shell.showItemInFolder(info.path);
+        return info;
+      },
     },
   ];
 

@@ -3,6 +3,7 @@
  * policy, creates the window, wires IPC, and bridges main-process events
  * (auth + theme) to the renderer.
  */
+import { join } from 'node:path';
 import { app, BrowserWindow, Menu, nativeTheme } from 'electron';
 import type {
   AuthStatus,
@@ -12,13 +13,15 @@ import type {
 } from '@neuropause/shared';
 import { IpcChannel } from '@neuropause/shared';
 import { config } from './config';
-import { createLogger } from './logger';
+import { attachLogFileSink, createLogger } from './logger';
+import { createBoundedLog } from './storage/boundedLog';
 import { installContentSecurityPolicy } from './security/csp';
 import { registerIpcHandlers, setAllowedSenderOrigins } from './ipc/router';
 import { authService } from './auth/authService';
 import { createMainWindow, rendererDevUrl } from './window';
 import { buildAppMenu } from './menu';
 import { initRuntimeCore } from './runtimeCore';
+import { startupMetrics } from './diagnostics/startupMetrics';
 import { RuntimeService, setActiveRuntimeService } from './runtimeService';
 
 const log = createLogger('main');
@@ -52,6 +55,7 @@ function broadcast<C extends IpcBroadcastChannelName>(
 function showMainWindow(): void {
   if (!mainWindow || mainWindow.isDestroyed()) {
     mainWindow = createMainWindow();
+  startupMetrics.mark('window-created');
     return;
   }
   if (mainWindow.isMinimized()) mainWindow.restore();
@@ -73,6 +77,7 @@ function wireEventBridges(): void {
 }
 
 async function bootstrap(): Promise<void> {
+  startupMetrics.mark('app-ready');
   installContentSecurityPolicy();
 
   // Restrict which origins may send us IPC (dev server in dev; file:// always).
@@ -128,6 +133,8 @@ async function bootstrap(): Promise<void> {
   // background services. Failures here must not take down the window.
   try {
     await initRuntimeCore({ broadcast });
+    startupMetrics.mark('runtime-core-ready');
+    log.info('Startup complete', startupMetrics.snapshot());
   } catch (err) {
     log.error('Runtime core failed to initialize', err);
   }
@@ -147,7 +154,17 @@ if (!gotLock) {
 
   app
     .whenReady()
-    .then(bootstrap)
+    .then(() => {
+      // Phase 8 (8.4): rotating application log — packaged builds have no
+      // console, and support bundles copy logs/, so app.log is what a field
+      // diagnosis actually reads. Attached before bootstrap so startup lines land.
+      const appLog = createBoundedLog(() => join(app.getPath('userData'), 'logs', 'app.log'), {
+        maxBytes: 5 * 1024 * 1024,
+        keep: 2,
+      });
+      attachLogFileSink((line) => appLog.append(line));
+      return bootstrap();
+    })
     .catch((err) => {
       log.error('Fatal error during startup', err);
       app.quit();

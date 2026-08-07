@@ -30,6 +30,27 @@ async function write(rel: string, content: string): Promise<void> {
 }
 
 describe('BackupManager', () => {
+  // Phase 8 (8.2): the business domain's prefix pattern captures every
+  // enterprise-module store live at snapshot time — and restore brings the
+  // records back byte-for-byte. This is the data-loss-class fix under test.
+  it('backs up and restores ALL enterprise-module stores via the business prefix', async () => {
+    await write('enterprise-module-finance.json', '{"records":[{"id":"inv-1"}]}');
+    await write('enterprise-module-hr-employees.json', '{"records":[{"id":"emp-1"}]}');
+    await write('unrelated.json', '{}'); // not covered — never captured
+    const info = await manager().create('manual', ['business']);
+    expect(info.domains).toEqual(['business']);
+    const listedFiles = (await manager().validate(info.id)).checked;
+    expect(listedFiles).toBe(2);
+    // Simulate the failure mode Phase 8 exists to prevent: business data wiped.
+    await write('enterprise-module-finance.json', '{"records":[]}');
+    // Later clock: the pre-restore safety snapshot must get its own id, not
+    // collide with (and overwrite) the backup being restored.
+    const result = await manager(() => 1_700_000_100_000).restore(info.id, ['business']);
+    expect(result.ok).toBe(true);
+    const restored = await fs.readFile(join(dataDir, 'enterprise-module-finance.json'), 'utf8');
+    expect(restored).toContain('inv-1');
+  });
+
   it('snapshots only the files that exist and records them in the manifest', async () => {
     await write('registry.json', '{"installs":[]}');
     await write('graph.json', '{"nodes":[]}');
