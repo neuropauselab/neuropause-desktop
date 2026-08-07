@@ -135,6 +135,8 @@ export * from './types/vendorContracts';
 export * from './types/recruitment';
 // HR → FW-11: OKRs — objectives with measurable key results; progress is arithmetic.
 export * from './types/okrs';
+// Finance → FW-12: treasury — the derived cash position (cash + AR − AP), never typed.
+export * from './types/treasury';
 // HR → W6-A4: salary disbursement — net-pay clearing + deterministic bank advice.
 export * from './types/salaryDisbursement';
 // HR → W6-A5: payslips — immutable per-employee statements from posted runs.

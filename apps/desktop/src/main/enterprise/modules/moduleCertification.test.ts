@@ -1,7 +1,7 @@
 /**
  * Enterprise Module Certification v1.0 — the registry-wide descriptor lock.
  *
- * A QUALITY gate, not a feature: it runs every one of the 103 REAL registered module descriptors through the
+ * A QUALITY gate, not a feature: it runs every one of the 104 REAL registered module descriptors through the
  * framework's own `validateModuleDescriptor`, and locks the certified inventory (count, unique ids, family
  * distribution, RBAC scopes, title fields). Before this test the real descriptors were validated only
  * implicitly at construction; this makes the guarantee explicit.
@@ -9,7 +9,7 @@
  * SCOPE (stated honestly): the lock is over the enumerated `CERTIFIED` list below. It catches a descriptor
  * REGRESSION (bad id, dup field, wrong group/scope, dup id/action) and a REMOVAL or RENAME of a `*_DESCRIPTOR`
  * export (the import breaks → the file goes red). It does NOT read the live runtime registry, so ADDING a new
- * (104th) registered module does not fail this test until this list is updated — which is the intended,
+ * (105th) registered module does not fail this test until this list is updated — which is the intended,
  * deliberate re-certification checkpoint for a new module.
  *
  * Reuse-only: it imports the standalone descriptor consts (Electron-free — no store, no app runtime) and the
@@ -18,7 +18,7 @@
 import { describe, expect, it } from 'vitest';
 import { validateModuleDescriptor, type EnterpriseModuleDescriptor } from '@neuropause/shared';
 
-// Finance (20)
+// Finance (21)
 import { INVOICE_DESCRIPTOR } from './finance/invoiceModule';
 import { PAYMENT_DESCRIPTOR } from './finance/paymentModule';
 import { LEDGER_ACCOUNT_DESCRIPTOR } from './finance/ledgerAccountModule';
@@ -31,6 +31,7 @@ import { BUDGET_DESCRIPTOR } from './finance/budgetModule';
 import { VENDOR_BILL_DESCRIPTOR } from './finance/vendorBillModule';
 import { AP_AGING_DESCRIPTOR } from './finance/apAgingModule';
 import { FIXED_ASSET_DESCRIPTOR } from './finance/fixedAssetModule';
+import { TREASURY_POSITION_DESCRIPTOR } from './finance/treasuryPositionModule';
 import { CREDIT_NOTE_DESCRIPTOR } from './finance/creditNoteModule';
 import { DEBIT_NOTE_DESCRIPTOR } from './finance/debitNoteModule';
 import { VENDOR_PAYMENT_DESCRIPTOR } from './finance/vendorPaymentModule';
@@ -142,6 +143,7 @@ const CERTIFIED: Record<string, EnterpriseModuleDescriptor[]> = {
     BANK_STATEMENT_DESCRIPTOR, BUDGET_DESCRIPTOR, VENDOR_BILL_DESCRIPTOR, AP_AGING_DESCRIPTOR,
     FIXED_ASSET_DESCRIPTOR, CREDIT_NOTE_DESCRIPTOR, DEBIT_NOTE_DESCRIPTOR, VENDOR_PAYMENT_DESCRIPTOR,
     EXCHANGE_RATE_DESCRIPTOR, FINANCIAL_RATIOS_DESCRIPTOR, CASH_FLOW_DESCRIPTOR, FX_REVALUATION_DESCRIPTOR, FX_EXPOSURE_DESCRIPTOR,
+    TREASURY_POSITION_DESCRIPTOR,
   ],
   Sales: [
     QUOTE_DESCRIPTOR, ORDER_DESCRIPTOR, CONTRACT_DESCRIPTOR, PRICING_RULE_DESCRIPTOR,
@@ -182,7 +184,7 @@ const CERTIFIED: Record<string, EnterpriseModuleDescriptor[]> = {
 
 /** The certified per-family module counts (verified from the registration site, enterprise/index.ts). */
 const CERTIFIED_COUNTS: Record<string, number> = {
-  Finance: 20, Sales: 7, CRM: 8, Procurement: 7, Inventory: 7, Warehouse: 8, Manufacturing: 12, Maintenance: 10, Projects: 4, HR: 15, Helpdesk: 1, Documents: 1, Executive: 3,
+  Finance: 21, Sales: 7, CRM: 8, Procurement: 7, Inventory: 7, Warehouse: 8, Manufacturing: 12, Maintenance: 10, Projects: 4, HR: 15, Helpdesk: 1, Documents: 1, Executive: 3,
 };
 
 const ALL = Object.values(CERTIFIED).flat();
@@ -196,13 +198,13 @@ const FAMILY_WRITE_SCOPE: Record<string, string> = {
 };
 
 describe('Enterprise Module Certification — registry lock', () => {
-  it('certifies exactly 103 modules across the 13 production families', () => {
-    expect(ALL).toHaveLength(103);
+  it('certifies exactly 104 modules across the 13 production families', () => {
+    expect(ALL).toHaveLength(104);
     for (const fam of KNOWN_FAMILIES) {
       expect(CERTIFIED[fam]).toHaveLength(CERTIFIED_COUNTS[fam]);
     }
     const total = Object.values(CERTIFIED_COUNTS).reduce((a, b) => a + b, 0);
-    expect(total).toBe(103);
+    expect(total).toBe(104);
   });
 
   it('every real descriptor passes the framework validator (validateModuleDescriptor)', () => {
