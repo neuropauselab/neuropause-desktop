@@ -10,8 +10,14 @@
  * remainder so accumulated depreciation lands EXACTLY on cost − salvage.
  * Capitalization, monthly depreciation, and disposal each derive journal
  * entries (idempotent by entry number) through the same auto-posting seam the
- * commercial modules use; disposal books the exact gain or loss. One method,
- * done right — declining-balance arrives as its own increment, not as a stub.
+ * commercial modules use; disposal books the exact gain or loss.
+ *
+ * TWO methods, each done right (FW-9): straight-line, and declining-balance
+ * (written-down value) at a declared annual rate on the month-start book
+ * value — clamped so accumulated depreciation can never breach salvage, with
+ * the FINAL month closing the schedule EXACTLY on cost − salvage (the same
+ * exact-termination guarantee straight-line has). An asset that never chose a
+ * method is straight-line, byte-identically as before.
  * Pure (no I/O); the AI explains the schedule, never sets it.
  */
 import type { EnterpriseEntity } from './enterpriseModule';
@@ -33,6 +39,10 @@ export const GL_ASSET_CONTROL_ACCOUNTS = {
 
 export type FixedAssetStatus = 'draft' | 'capitalized' | 'disposed';
 
+/** The supported depreciation methods (FW-9 adds declining balance). */
+export const DEPRECIATION_METHODS = ['straight_line', 'declining_balance'] as const;
+export type DepreciationMethod = (typeof DEPRECIATION_METHODS)[number];
+
 /** A typed view over a fixed-asset record's flat fields (+ envelope). */
 export interface FixedAsset {
   id: string;
@@ -43,6 +53,10 @@ export interface FixedAsset {
   acquisitionDate: string;
   usefulLifeMonths: number;
   salvageValue: number;
+  /** straight_line unless the asset declared declining_balance (FW-9). */
+  depreciationMethod: DepreciationMethod;
+  /** Annual declining-balance rate in percent (used only by that method). */
+  decliningRatePct: number;
   accumulatedDepreciation: number;
   bookValue: number;
   depreciatedThroughPeriod: string;
@@ -75,6 +89,7 @@ export function fixedAssetFromRecord(record: EnterpriseEntity): FixedAsset {
   const accumulated = num(f.accumulatedDepreciation);
   const disposedAt = str(f.disposedAt);
   const capitalizedAt = str(f.capitalizedAt);
+  const methodRaw = str(f.depreciationMethod).trim();
   return {
     id: record.id,
     assetNumber: str(f.assetNumber).trim(),
@@ -84,6 +99,10 @@ export function fixedAssetFromRecord(record: EnterpriseEntity): FixedAsset {
     acquisitionDate: str(f.acquisitionDate),
     usefulLifeMonths: Math.max(0, Math.floor(num(f.usefulLifeMonths))),
     salvageValue: num(f.salvageValue),
+    depreciationMethod: (DEPRECIATION_METHODS as readonly string[]).includes(methodRaw)
+      ? (methodRaw as DepreciationMethod)
+      : 'straight_line',
+    decliningRatePct: num(f.decliningRatePct),
     accumulatedDepreciation: accumulated,
     bookValue: round2(cost - accumulated),
     depreciatedThroughPeriod: str(f.depreciatedThroughPeriod),
@@ -113,6 +132,62 @@ export function straightLineSchedule(input: {
   const allButLast = round2(monthly * (usefulLifeMonths - 1));
   schedule[usefulLifeMonths - 1] = round2(depreciable - allButLast);
   return schedule;
+}
+
+/**
+ * The declining-balance (written-down value) schedule: each month depreciates
+ * bookValue × (annualRatePct / 12)%, clamped so the running book value never
+ * dips below salvage; the FINAL month closes the schedule exactly on
+ * cost − salvage. Same exact-termination contract as straight-line — a
+ * declining schedule that never terminated would strand book value above
+ * salvage forever, so the tail is swept deliberately and visibly into the
+ * last month.
+ */
+export function decliningBalanceSchedule(input: {
+  acquisitionCost: number;
+  salvageValue: number;
+  usefulLifeMonths: number;
+  annualRatePct: number;
+}): number[] {
+  const { usefulLifeMonths } = input;
+  if (usefulLifeMonths <= 0) return [];
+  const depreciable = round2(input.acquisitionCost - input.salvageValue);
+  if (depreciable <= 0) return new Array<number>(usefulLifeMonths).fill(0);
+  const monthlyRate = Math.max(input.annualRatePct, 0) / 100 / 12;
+  const schedule: number[] = [];
+  let bookValue = input.acquisitionCost;
+  for (let month = 0; month < usefulLifeMonths - 1; month++) {
+    const headroom = round2(bookValue - input.salvageValue);
+    const amount = Math.min(round2(bookValue * monthlyRate), Math.max(headroom, 0));
+    schedule.push(amount);
+    bookValue = round2(bookValue - amount);
+  }
+  // The final month lands accumulated depreciation EXACTLY on cost − salvage.
+  schedule.push(round2(bookValue - input.salvageValue));
+  return schedule;
+}
+
+/**
+ * The asset's schedule under ITS OWN method — the single dispatch every
+ * consumer (posting decision, summaries, tests) shares. An asset without a
+ * declared method is straight-line, byte-identically as before FW-9.
+ */
+export function depreciationSchedule(asset: {
+  acquisitionCost: number;
+  salvageValue: number;
+  usefulLifeMonths: number;
+  depreciationMethod?: DepreciationMethod;
+  decliningRatePct?: number;
+}): number[] {
+  if (asset.depreciationMethod === 'declining_balance') {
+    return decliningBalanceSchedule({
+      acquisitionCost: asset.acquisitionCost,
+      salvageValue: asset.salvageValue,
+      usefulLifeMonths: asset.usefulLifeMonths,
+      annualRatePct: asset.decliningRatePct ?? 0,
+    });
+  }
+  return straightLineSchedule(asset);
 }
 
 /** The next YYYY-MM after a YYYY-MM key ('' input → the acquisition month). */
@@ -149,7 +224,9 @@ export function nextDepreciation(asset: FixedAsset): NextDepreciation {
   const none = (reason: string): NextDepreciation => ({ ok: false, periodKey: '', monthIndex: -1, amount: 0, reason });
   if (asset.status === 'draft') return none('Asset is not capitalized yet.');
   if (asset.status === 'disposed') return none('Asset is disposed — its schedule is closed.');
-  const schedule = straightLineSchedule(asset);
+  // FW-9: the asset's own method decides the schedule; the posting mechanics
+  // (prefix-sum month derivation, exact termination) are method-agnostic.
+  const schedule = depreciationSchedule(asset);
   if (schedule.length === 0) return none('Useful life must be at least one month.');
   // Count of months already posted = index of the next one.
   const monthIndex = (() => {

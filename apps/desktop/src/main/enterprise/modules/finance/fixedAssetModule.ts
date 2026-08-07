@@ -6,8 +6,11 @@
  * timeline, search, offline persistence, and the entire list/detail/form UI
  * are all inherited.
  *
- * DETERMINISTIC: the straight-line schedule is arithmetic with an exact total
- * (`straightLineSchedule`); `status` derives from action-stamped markers and a
+ * DETERMINISTIC: both schedules — straight-line and (FW-9) declining balance
+ * at a declared annual rate — are arithmetic with an exact total
+ * (`depreciationSchedule` dispatches on the asset's own method, defaulting
+ * straight-line for assets that never chose); `status` derives from
+ * action-stamped markers and a
  * CAPITALIZED asset's financial fields are immutable through the validated
  * path (dispose it or leave it — a mutated schedule would corrupt the books).
  * Every action books real journal entries through the shared auto-posting
@@ -28,6 +31,7 @@ import type {
 import {
   FIXED_ASSETS_MODULE_ID,
   FIXED_ASSET_KIND,
+  depreciationSchedule,
   faCapEntryNumber,
   faCapitalizationLines,
   faDepEntryNumber,
@@ -36,7 +40,6 @@ import {
   faDisposalLines,
   fixedAssetFromRecord,
   nextDepreciation,
-  straightLineSchedule,
   validateEnterpriseRecordInput,
 } from '@neuropause/shared';
 import {
@@ -53,7 +56,7 @@ export const FIXED_ASSET_DESCRIPTOR: EnterpriseModuleDescriptor = {
   singular: 'Fixed Asset',
   plural: 'Fixed Assets',
   icon: 'database',
-  description: 'Asset register — capitalization, monthly straight-line depreciation, and disposal, all booked in the journal.',
+  description: 'Asset register — capitalization, monthly depreciation (straight-line or declining balance), and disposal, all booked in the journal.',
   group: 'Finance',
   titleField: 'assetNumber',
   permissions: { read: 'operations:read', write: 'operations:manage' },
@@ -70,6 +73,28 @@ export const FIXED_ASSET_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'acquisitionDate', label: 'Acquired', type: 'date', required: true, format: 'date' },
     { key: 'usefulLifeMonths', label: 'Life (months)', type: 'number', required: true, min: 1, column: false },
     { key: 'salvageValue', label: 'Salvage', type: 'number', min: 0, default: 0, format: 'currency', column: false },
+    {
+      // FW-9 (ADDITIVE): the depreciation method — assets that never chose one
+      // are straight-line, byte-identically as before.
+      key: 'depreciationMethod',
+      label: 'Method',
+      type: 'select',
+      default: 'straight_line',
+      column: false,
+      options: [
+        { value: 'straight_line', label: 'Straight Line' },
+        { value: 'declining_balance', label: 'Declining Balance' },
+      ],
+    },
+    {
+      key: 'decliningRatePct',
+      label: 'DB Rate (%/year)',
+      type: 'number',
+      min: 0,
+      default: 0,
+      column: false,
+      help: 'Declining balance only: annual rate applied to the month-start book value (e.g. 40).',
+    },
     { key: 'accumulatedDepreciation', label: 'Accum. Depr.', type: 'number', readOnly: true, format: 'currency', default: 0 },
     { key: 'bookValue', label: 'Book Value', type: 'number', readOnly: true, format: 'currency', default: 0 },
     { key: 'depreciatedThroughPeriod', label: 'Depreciated Through', type: 'text', readOnly: true, column: false },
@@ -128,6 +153,14 @@ export function createFixedAssetModule(storePath: string): EnterpriseModule {
         if (life < 1 || !Number.isInteger(life)) errors.usefulLifeMonths = 'Life must be a whole number of months (≥ 1).';
         if (salvage < 0) errors.salvageValue = 'Salvage cannot be negative.';
         if (salvage >= cost && cost > 0) errors.salvageValue = 'Salvage must be below the acquisition cost.';
+        // FW-9: declining balance is meaningless without a real rate — refuse
+        // instead of silently depreciating nothing until the final-month sweep.
+        if (str(result.values.depreciationMethod) === 'declining_balance') {
+          const rate = Number(result.values.decliningRatePct ?? 0);
+          if (rate <= 0 || rate > 100) {
+            errors.decliningRatePct = 'Declining balance needs an annual rate between 0 (exclusive) and 100 (e.g. 40).';
+          }
+        }
 
         result.values.status = 'draft'; // derived, never user-forged
         result.values.accumulatedDepreciation = 0;
@@ -139,7 +172,8 @@ export function createFixedAssetModule(storePath: string): EnterpriseModule {
       },
       summarize: async (record): Promise<EnterpriseRecordSummary> => {
         const asset = fixedAssetFromRecord(record);
-        const schedule = straightLineSchedule(asset);
+        // FW-9: the asset's own method decides the schedule the summary explains.
+        const schedule = depreciationSchedule(asset);
         const depreciable = schedule.reduce((s, m) => s + m, 0);
         const pct = depreciable === 0 ? 0 : Math.round((asset.accumulatedDepreciation / depreciable) * 100);
         const next = nextDepreciation(asset);
