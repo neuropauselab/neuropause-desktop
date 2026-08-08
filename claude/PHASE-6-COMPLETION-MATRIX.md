@@ -1,6 +1,6 @@
 # NeuroPause — Phase 6 Completion Matrix
 
-**Date:** 2026-08-08 · **Build:** `1.0.0-rc.15` · **Gate:** 5,838 tests / 635 files green
+**Date:** 2026-08-08 · **Build:** `1.0.0-rc.15` · **Gate:** 5,862 / 5,863 (sole failure = known env-sensitive perf bench RB-13; passes on the dev Mac)
 
 **Status vocabulary — exactly one per item, no ambiguity:**
 `VERIFIED COMPLETE` · `COMPLETE BUT DEVICE UNVERIFIED` · `PARTIAL` · `EXTERNAL DEPENDENCY` · `NOT IMPLEMENTED`
@@ -43,7 +43,9 @@
 | WIP + production variance | **VERIFIED COMPLETE** | in 48 |
 | Approval engine (single/multi-step/threshold/role/department) | **VERIFIED COMPLETE** | in 48 |
 | Segregation of duties (4 configurable rules) | **VERIFIED COMPLETE** | in 48 |
-| **Wiring the above into the 104 live ERP modules** | **NOT IMPLEMENTED** — engines are complete and tested; the module-level adoption (replacing flat fields with lines, calling posting rules from module `onChange`) is the next step | — |
+| ERP document adapter (reusable adoption seam) | **VERIFIED COMPLETE** — composes onto existing `onChange`; no-op for unspecced modules; idempotent posting | 25 |
+| Document specs for 8 live modules (PO, GR, Bill, Delivery, Production, Quote, SO, Invoice) | **VERIFIED COMPLETE** — written + tested | in 25 |
+| **Registering the adapter into the running app** | **NOT IMPLEMENTED** — one contained edit in the enterprise composition root binding `postJournal` to the live GL path; deliberately not applied without a device-verified run. See `claude/PHASE-6-ERP-ADOPTION-MATRIX.md`. | — |
 | Sales → Finance posting chain | **PARTIAL** — invoice→GL already existed; COGS derivation now exists; not yet joined at module level | — |
 | Manufacturing costing methods | **PARTIAL** — `weighted_average` and `standard` implemented and named; FIFO **NOT IMPLEMENTED** and not claimed | in 48 |
 
