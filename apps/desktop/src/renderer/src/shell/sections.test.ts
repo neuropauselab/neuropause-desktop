@@ -243,6 +243,43 @@ describe('Phase 2 IA — Today landings & Sandbox', () => {
   });
 });
 
+// Phase 2 IA — progressive disclosure (tiers). Advanced surfaces collapse behind the
+// sidebar's "Advanced" disclosure; this is cognitive-load reduction, NOT feature removal.
+describe('Phase 2 IA — progressive disclosure tiers', () => {
+  const byId = (id: string): (typeof SECTIONS)[number] | undefined => SECTIONS.find((s) => s.id === id);
+
+  it('marks the platform-heavy / preview / developer surfaces as advanced', () => {
+    for (const id of [
+      'industry-center', 'strategy-center', 'twin-center', 'knowledge-center', 'orchestration-center',
+      'network-center', 'auto-ops-center', 'commercial-center', 'ecosystem', 'federation', 'developer',
+      'extensibility', 'product-ops', 'cloud', 'infrastructure', 'operations', 'sandbox', 'workforce-center',
+    ]) {
+      expect(byId(id)?.tier, `section "${id}" should be advanced`).toBe('advanced');
+    }
+  });
+
+  it('never collapses a daily / core surface behind Advanced', () => {
+    for (const id of [
+      'mission-control', 'intent-home', 'search', 'assistant', 'hub', 'enterprise', 'business',
+      'organization', 'knowledge', 'memory', 'store', 'connectors', 'workforce', 'opscenter',
+      'notifications', 'settings',
+    ]) {
+      expect(byId(id)?.tier === 'advanced', `section "${id}" must stay in the default sidebar`).toBe(false);
+    }
+  });
+
+  it('advanced sections stay non-hidden, so the command palette + search still expose every route', () => {
+    const advanced = SECTIONS.filter((s) => s.tier === 'advanced');
+    expect(advanced.length).toBeGreaterThan(0);
+    for (const s of advanced) expect(s.hidden).toBeFalsy();
+  });
+
+  it('the locked top-5 primary order is unaffected by tiering', () => {
+    const visible = SECTIONS.filter((s) => s.placement === 'primary' && !s.hidden);
+    expect(visible.slice(0, 5).map((s) => s.id)).toEqual(['mission-control', 'intent-home', 'search', 'assistant', 'hub']);
+  });
+});
+
 // Phase 2 IA — standing coherence guardrail: no two VISIBLE sections may share a
 // label, so the sidebar and command palette never show two identically-named
 // destinations. (Hidden/retired routes are exempt — they aren't shown.)

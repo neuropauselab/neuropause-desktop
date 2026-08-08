@@ -102,6 +102,14 @@ export interface SectionDef {
    * architecture. Purely presentational — no route, id, or lock depends on it.
    */
   description?: string;
+  /**
+   * Progressive-disclosure tier (Phase 2). `advanced` sections are collapsed behind the
+   * sidebar's "Advanced" disclosure so the default pilot sidebar stays focused; `primary`
+   * / `secondary` (or unset) render in their normal group. Purely a RENDER concern — the
+   * command palette and universal search still expose every non-hidden section, and the
+   * SECTIONS array order (and every nav lock over it) is untouched.
+   */
+  tier?: 'primary' | 'secondary' | 'advanced';
 }
 
 export const SECTIONS: SectionDef[] = [
@@ -141,32 +149,32 @@ export const SECTIONS: SectionDef[] = [
   // Phase 3 — the AI Operating Platform: a reuse-only operating layer over existing AI capabilities.
   { id: 'ai-operations', label: 'AI Operations', icon: 'sparkles', phase: 10, placement: 'primary', group: 'ai', description: 'The AI operating loop — plan, reason, orchestrate, decide, govern, and optimize across every AI capability.' },
   // Phase 5 — the Platform Ecosystem control plane (extensibility over existing surfaces).
-  { id: 'extensibility', label: 'Extensibility', icon: 'puzzle', phase: 10, placement: 'primary', group: 'platform', description: 'Extensions, developer platform, connectors, and partners — how the platform extends.' },
+  { id: 'extensibility', label: 'Extensibility', icon: 'puzzle', phase: 10, placement: 'primary', group: 'platform', description: 'Extensions, developer platform, connectors, and partners — how the platform extends.', tier: 'advanced' },
   { id: 'opscenter', label: 'Operations', icon: 'pulse', phase: 7, placement: 'primary', group: 'ai', description: 'Enterprise operational health, risk, dependencies, incidents, and recommendations.' },
-  { id: 'developer', label: 'Developer', icon: 'code', phase: 8, placement: 'primary', group: 'platform' },
+  { id: 'developer', label: 'Developer', icon: 'code', phase: 8, placement: 'primary', group: 'platform', tier: 'advanced', description: 'Build on NeuroPause — APIs, SDKs, keys, and the developer portal.' },
   { id: 'developer-center', label: 'Developer Center', icon: 'puzzle', phase: 12, placement: 'primary', group: 'platform', hidden: true },
-  { id: 'industry-center', label: 'Industry Center', icon: 'package', phase: 13, placement: 'primary', group: 'platform', preview: true },
-  { id: 'strategy-center', label: 'Strategy Center', icon: 'sparkles', phase: 14, placement: 'primary', group: 'platform', preview: true },
-  { id: 'twin-center', label: 'Digital Twin Center', icon: 'layers', phase: 15, placement: 'primary', group: 'platform', preview: true },
-  { id: 'knowledge-center', label: 'Enterprise Knowledge', icon: 'database', phase: 16, placement: 'primary', group: 'platform', preview: true, description: 'Explore the enterprise knowledge fabric — relationships, lineage, evidence, and governance.' },
-  { id: 'orchestration-center', label: 'Orchestration', icon: 'command', phase: 17, placement: 'primary', group: 'platform', preview: true },
-  { id: 'network-center', label: 'Intelligence Network', icon: 'globe', phase: 18, placement: 'primary', group: 'platform', preview: true },
-  { id: 'auto-ops-center', label: 'Autonomous Operations', icon: 'command', phase: 19, placement: 'primary', group: 'platform', preview: true, description: 'Closed-loop autonomous operations — plans, coordination, and governance; every action stays approval-gated.' },
-  { id: 'commercial-center', label: 'Commercial Center', icon: 'store', phase: 20, placement: 'primary', group: 'platform', preview: true, description: 'Commercial operations — pricing, packaging, billing, and go-to-market.' },
+  { id: 'industry-center', label: 'Industry Center', icon: 'package', phase: 13, placement: 'primary', group: 'platform', preview: true, tier: 'advanced', description: 'Industry solution packs — vertical templates, workflows, and compliance.' },
+  { id: 'strategy-center', label: 'Strategy Center', icon: 'sparkles', phase: 14, placement: 'primary', group: 'platform', preview: true, tier: 'advanced', description: 'Strategic planning, scenarios, and outcome tracking.' },
+  { id: 'twin-center', label: 'Digital Twin Center', icon: 'layers', phase: 15, placement: 'primary', group: 'platform', preview: true, tier: 'advanced', description: 'The enterprise digital twin — model, simulate, and analyze the organization.' },
+  { id: 'knowledge-center', label: 'Enterprise Knowledge', icon: 'database', phase: 16, placement: 'primary', group: 'platform', preview: true, description: 'Explore the enterprise knowledge fabric — relationships, lineage, evidence, and governance.', tier: 'advanced' },
+  { id: 'orchestration-center', label: 'Orchestration', icon: 'command', phase: 17, placement: 'primary', group: 'platform', preview: true, tier: 'advanced', description: 'Coordinate cross-system workflows and long-running processes.' },
+  { id: 'network-center', label: 'Intelligence Network', icon: 'globe', phase: 18, placement: 'primary', group: 'platform', preview: true, tier: 'advanced', description: 'The intelligence network — shareable patterns across the federation.' },
+  { id: 'auto-ops-center', label: 'Autonomous Operations', icon: 'command', phase: 19, placement: 'primary', group: 'platform', preview: true, description: 'Closed-loop autonomous operations — plans, coordination, and governance; every action stays approval-gated.', tier: 'advanced' },
+  { id: 'commercial-center', label: 'Commercial Center', icon: 'store', phase: 20, placement: 'primary', group: 'platform', preview: true, description: 'Commercial operations — pricing, packaging, billing, and go-to-market.', tier: 'advanced' },
   // Product Operations & Release Management v1.0 — a read-only operations lens over existing services.
-  { id: 'product-ops', label: 'Release Ops', icon: 'package', phase: 20, placement: 'primary', group: 'platform', description: 'Shipping the product — releases, build health, quality, deployment, and commercial metrics.' },
-  { id: 'ecosystem', label: 'Ecosystem', icon: 'globe', phase: 8, placement: 'primary', group: 'platform', preview: true, description: 'The org-facing storefront for workers, connectors, templates, and partners.' },
-  { id: 'cloud', label: 'Cloud', icon: 'database', phase: 9, placement: 'primary', group: 'platform', preview: true, description: 'NeuroPause cloud — tenants, identity federation, sync, and the API gateway.' },
+  { id: 'product-ops', label: 'Release Ops', icon: 'package', phase: 20, placement: 'primary', group: 'platform', description: 'Shipping the product — releases, build health, quality, deployment, and commercial metrics.', tier: 'advanced' },
+  { id: 'ecosystem', label: 'Ecosystem', icon: 'globe', phase: 8, placement: 'primary', group: 'platform', preview: true, description: 'The org-facing storefront for workers, connectors, templates, and partners.', tier: 'advanced' },
+  { id: 'cloud', label: 'Cloud', icon: 'database', phase: 9, placement: 'primary', group: 'platform', preview: true, description: 'NeuroPause cloud — tenants, identity federation, sync, and the API gateway.', tier: 'advanced' },
   { id: 'control-plane', label: 'Control Plane', icon: 'gauge', phase: 11, placement: 'primary', group: 'platform', hidden: true },
-  { id: 'infrastructure', label: 'Infrastructure', icon: 'server', phase: 13, placement: 'primary', group: 'platform', description: 'Discover and map your external cloud platforms, resources, and topology.' },
-  { id: 'federation', label: 'Federation', icon: 'layers', phase: 9, placement: 'primary', group: 'platform', preview: true },
+  { id: 'infrastructure', label: 'Infrastructure', icon: 'server', phase: 13, placement: 'primary', group: 'platform', description: 'Discover and map your external cloud platforms, resources, and topology.', tier: 'advanced' },
+  { id: 'federation', label: 'Federation', icon: 'layers', phase: 9, placement: 'primary', group: 'platform', preview: true, tier: 'advanced', description: 'Cross-organization federation — trust, sharing, and exchange.' },
   { id: 'federation-center', label: 'Federation Center', icon: 'globe', phase: 10, placement: 'primary', group: 'platform', hidden: true },
   { id: 'store', label: 'AI Store', icon: 'store', phase: 3, placement: 'primary', group: 'workspace', description: 'Discover, install, and launch AI apps.' },
   { id: 'marketplace', label: 'Enterprise Marketplace', icon: 'store', phase: 9, placement: 'primary', group: 'workspace', preview: true, description: 'Signed, governed packages — workers, connectors, templates, and packs.' },
   { id: 'workspace', label: 'Workspace', icon: 'workspace', phase: 2, placement: 'primary', group: 'workspace' },
-  { id: 'operations', label: 'Runtime', icon: 'cpu', phase: 3, placement: 'primary', group: 'platform', description: 'Installed apps, plugins, runtime sessions, downloads, updates, and permissions.' },
+  { id: 'operations', label: 'Runtime', icon: 'cpu', phase: 3, placement: 'primary', group: 'platform', description: 'Installed apps, plugins, runtime sessions, downloads, updates, and permissions.', tier: 'advanced' },
   { id: 'workforce', label: 'AI Workforce', icon: 'cpu', phase: 6, placement: 'primary', group: 'ai', description: 'Run and supervise AI workers — approvals, automations, and the executive assistant.' },
-  { id: 'workforce-center', label: 'Workforce Admin', icon: 'checklist', phase: 8, placement: 'primary', group: 'ai', description: 'Install, configure, and manage AI workers — health, delegation, and execution history.' },
+  { id: 'workforce-center', label: 'Workforce Admin', icon: 'checklist', phase: 8, placement: 'primary', group: 'ai', description: 'Install, configure, and manage AI workers — health, delegation, and execution history.', tier: 'advanced' },
   { id: 'connectors', label: 'Connectors', icon: 'connectors', phase: 4, placement: 'primary', group: 'workspace' },
   { id: 'memory', label: 'AI Memory', icon: 'memory', phase: 6, placement: 'primary', group: 'workspace', description: 'Your AI memory — conversations, notes, and everything you have saved.' },
   // `automations` + `analytics` are just AI Workforce tabs, not distinct surfaces — hidden from nav.
@@ -175,7 +183,7 @@ export const SECTIONS: SectionDef[] = [
   { id: 'automations', label: 'Automations', icon: 'automations', phase: 6, placement: 'primary', group: 'ai', hidden: true },
   { id: 'notifications', label: 'Notifications', icon: 'bell', phase: 2, placement: 'primary', group: 'system' },
   { id: 'analytics', label: 'Analytics', icon: 'analytics', phase: 6, placement: 'primary', group: 'ai', hidden: true },
-  { id: 'sandbox', label: 'Sandbox', icon: 'beaker', phase: 12, placement: 'primary', group: 'platform', description: 'A safe space to test workflows and validate changes before rollout.' },
+  { id: 'sandbox', label: 'Sandbox', icon: 'beaker', phase: 12, placement: 'primary', group: 'platform', description: 'A safe space to test workflows and validate changes before rollout.', tier: 'advanced' },
   // Phase 7 (Product Experience) — UN-hidden: the onboarding wizard's docstring says "the welcome
   // checklist picks up whatever remains", but a hidden section is excluded from the sidebar AND the
   // command palette, so that hand-off dead-ended. The getting-started checklist is now reachable

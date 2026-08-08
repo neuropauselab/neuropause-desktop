@@ -72,17 +72,72 @@ function SidebarItem({
   );
 }
 
+function AdvancedNav({
+  sections,
+  open,
+  onToggle,
+  collapsed,
+}: {
+  sections: SectionDef[];
+  open: boolean;
+  onToggle: () => void;
+  collapsed: boolean;
+}): JSX.Element {
+  return (
+    <div role="group" aria-label="Advanced" className="mt-2 flex flex-col gap-0.5">
+      {collapsed && <div aria-hidden="true" className="mx-2 my-1.5 h-px bg-[var(--hairline)]" />}
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-controls="sidebar-advanced-list"
+        title={collapsed ? 'Advanced' : undefined}
+        className={cn(
+          'group relative flex h-9 w-full items-center rounded-xl text-muted outline-none transition-colors hover:text-ink focus-visible:shadow-focus',
+          collapsed ? 'justify-center px-0' : 'gap-3 px-3',
+        )}
+      >
+        <span className="absolute inset-0 rounded-xl fill-hover" />
+        <Icon name="layers" size={19} className="relative z-10" />
+        {!collapsed && (
+          <>
+            <span className="relative z-10 whitespace-nowrap text-base font-medium">Advanced</span>
+            <Icon
+              name="arrow-right"
+              size={14}
+              className={cn('relative z-10 ml-auto transition-transform', open ? 'rotate-90' : '')}
+            />
+          </>
+        )}
+      </button>
+      {open && (
+        <div id="sidebar-advanced-list" className="flex flex-col gap-0.5">
+          {sections.map((s) => (
+            <SidebarItem key={s.id} section={s} collapsed={collapsed} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Sidebar(): JSX.Element {
   const { sidebarCollapsed, sidebarWidth, setSidebarWidth } = useShell();
   const [resizing, setResizing] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const primary = SECTIONS.filter((s) => s.placement === 'primary' && !s.hidden);
   const footer = SECTIONS.filter((s) => s.placement === 'footer' && !s.hidden);
-  // Phase 7 — grouped navigation: bucket the visible primaries into the five
-  // stable groups, preserving SECTIONS order within each. Pure presentation;
-  // the array (and every nav lock over it) is untouched.
+  // Phase 2 (progressive disclosure): the default sidebar shows the focused set;
+  // `tier: 'advanced'` surfaces collapse behind the "Advanced" disclosure below. Pure
+  // presentation — the command palette + universal search still expose EVERY section,
+  // and the SECTIONS array order (and every nav lock over it) is untouched.
+  const mainPrimary = primary.filter((s) => s.tier !== 'advanced');
+  const advanced = primary.filter((s) => s.tier === 'advanced');
+  // Phase 7 — grouped navigation: bucket the visible primaries into the stable
+  // groups, preserving SECTIONS order within each.
   const grouped: { group: SectionGroup; sections: SectionDef[] }[] = SECTION_GROUPS.map((group) => ({
     group,
-    sections: primary.filter((s) => (s.group ?? 'workspace') === group),
+    sections: mainPrimary.filter((s) => (s.group ?? 'workspace') === group),
   })).filter((g) => g.sections.length > 0);
 
   const startResize = (e: ReactPointerEvent): void => {
@@ -134,6 +189,14 @@ export function Sidebar(): JSX.Element {
             ))}
           </div>
         ))}
+        {advanced.length > 0 && (
+          <AdvancedNav
+            sections={advanced}
+            open={advancedOpen}
+            onToggle={() => setAdvancedOpen((v) => !v)}
+            collapsed={sidebarCollapsed}
+          />
+        )}
       </nav>
       <div className="px-3 pb-3">
         {footer.map((s) => (
