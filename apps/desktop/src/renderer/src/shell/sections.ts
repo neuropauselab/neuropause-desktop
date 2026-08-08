@@ -127,16 +127,16 @@ export const SECTIONS: SectionDef[] = [
   // Retired in favor of the canonical intent-native home (`intent-home`). Hidden from nav, still routable.
   { id: 'decision-center', label: 'Decision Center', icon: 'sparkles', phase: 21, placement: 'primary', group: 'today', hidden: true },
   { id: 'home', label: 'Home', icon: 'home', phase: 2, placement: 'primary', group: 'today', hidden: true },
-  { id: 'organization', label: 'Organization', icon: 'user', phase: 10, placement: 'primary', group: 'business' },
-  { id: 'enterprise', label: 'Enterprise', icon: 'grid', phase: 7, placement: 'primary', group: 'business', preview: true },
+  { id: 'organization', label: 'Organization', icon: 'user', phase: 10, placement: 'primary', group: 'business', description: 'Manage your organization — members, workspaces, and roles.' },
+  { id: 'enterprise', label: 'Enterprise', icon: 'grid', phase: 7, placement: 'primary', group: 'business', preview: true, description: 'The executive command center — decisions, org, operations, and governed AI.' },
   // Business Workspace (EBS v1.0): a family-grouped presentation over the existing enterprise modules.
-  { id: 'business', label: 'Business', icon: 'layers', phase: 7, placement: 'primary', group: 'business' },
+  { id: 'business', label: 'Business', icon: 'layers', phase: 7, placement: 'primary', group: 'business', description: 'Your business modules — finance, sales, CRM, HR, projects, and more.' },
   // Enterprise Administration v1.0 — a reuse-only admin control center over existing services.
-  { id: 'administration', label: 'Administration', icon: 'shield', phase: 10, placement: 'primary', group: 'business' },
+  { id: 'administration', label: 'Administration', icon: 'shield', phase: 10, placement: 'primary', group: 'business', description: 'Security, identity, compliance, licensing, and configuration.' },
   // Phase 2 — reuse-only workspaces (Intelligence / Collaboration / Knowledge / Automation).
   { id: 'intelligence', label: 'Intelligence', icon: 'lightbulb', phase: 10, placement: 'primary', group: 'workspace' },
   { id: 'collaboration', label: 'Collaboration', icon: 'checklist', phase: 10, placement: 'primary', group: 'workspace' },
-  { id: 'knowledge', label: 'Knowledge', icon: 'doc', phase: 10, placement: 'primary', group: 'workspace' },
+  { id: 'knowledge', label: 'Knowledge', icon: 'doc', phase: 10, placement: 'primary', group: 'workspace', description: 'Search, AI memory, the knowledge graph, and enterprise knowledge in one lens.' },
   { id: 'automation-center', label: 'Automation', icon: 'bolt', phase: 10, placement: 'primary', group: 'workspace' },
   // Phase 3 — the AI Operating Platform: a reuse-only operating layer over existing AI capabilities.
   { id: 'ai-operations', label: 'AI Operations', icon: 'sparkles', phase: 10, placement: 'primary', group: 'ai', description: 'The AI operating loop — plan, reason, orchestrate, decide, govern, and optimize across every AI capability.' },
@@ -148,7 +148,7 @@ export const SECTIONS: SectionDef[] = [
   { id: 'industry-center', label: 'Industry Center', icon: 'package', phase: 13, placement: 'primary', group: 'platform', preview: true },
   { id: 'strategy-center', label: 'Strategy Center', icon: 'sparkles', phase: 14, placement: 'primary', group: 'platform', preview: true },
   { id: 'twin-center', label: 'Digital Twin Center', icon: 'layers', phase: 15, placement: 'primary', group: 'platform', preview: true },
-  { id: 'knowledge-center', label: 'Knowledge Fabric', icon: 'database', phase: 16, placement: 'primary', group: 'platform', preview: true },
+  { id: 'knowledge-center', label: 'Enterprise Knowledge', icon: 'database', phase: 16, placement: 'primary', group: 'platform', preview: true, description: 'Explore the enterprise knowledge fabric — relationships, lineage, evidence, and governance.' },
   { id: 'orchestration-center', label: 'Orchestration', icon: 'command', phase: 17, placement: 'primary', group: 'platform', preview: true },
   { id: 'network-center', label: 'Intelligence Network', icon: 'globe', phase: 18, placement: 'primary', group: 'platform', preview: true },
   { id: 'auto-ops-center', label: 'Autonomous Operations', icon: 'command', phase: 19, placement: 'primary', group: 'platform', preview: true, description: 'Closed-loop autonomous operations — plans, coordination, and governance; every action stays approval-gated.' },
@@ -165,10 +165,10 @@ export const SECTIONS: SectionDef[] = [
   { id: 'marketplace', label: 'Marketplace', icon: 'store', phase: 9, placement: 'primary', group: 'workspace', preview: true },
   { id: 'workspace', label: 'Workspace', icon: 'workspace', phase: 2, placement: 'primary', group: 'workspace' },
   { id: 'operations', label: 'Runtime', icon: 'cpu', phase: 3, placement: 'primary', group: 'platform', description: 'Installed apps, plugins, runtime sessions, downloads, updates, and permissions.' },
-  { id: 'workforce', label: 'AI Workforce', icon: 'cpu', phase: 6, placement: 'primary', group: 'ai' },
-  { id: 'workforce-center', label: 'Workforce Center', icon: 'checklist', phase: 8, placement: 'primary', group: 'ai' },
+  { id: 'workforce', label: 'AI Workforce', icon: 'cpu', phase: 6, placement: 'primary', group: 'ai', description: 'Run and supervise AI workers — approvals, automations, and the executive assistant.' },
+  { id: 'workforce-center', label: 'Workforce Admin', icon: 'checklist', phase: 8, placement: 'primary', group: 'ai', description: 'Install, configure, and manage AI workers — health, delegation, and execution history.' },
   { id: 'connectors', label: 'Connectors', icon: 'connectors', phase: 4, placement: 'primary', group: 'workspace' },
-  { id: 'memory', label: 'AI Memory', icon: 'memory', phase: 6, placement: 'primary', group: 'workspace' },
+  { id: 'memory', label: 'AI Memory', icon: 'memory', phase: 6, placement: 'primary', group: 'workspace', description: 'Your AI memory — conversations, notes, and everything you have saved.' },
   // `automations` + `analytics` are just AI Workforce tabs, not distinct surfaces — hidden from nav.
   // `notifications` stays visible: it renders an honest "you're all caught up" empty state and is the target
   // of the always-visible toolbar bell, so it needs a real destination (no fabrication, just an empty feed).

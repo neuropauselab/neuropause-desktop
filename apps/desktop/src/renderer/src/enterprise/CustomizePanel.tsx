@@ -16,7 +16,7 @@ import {
 const NAV: { id: string; label: string }[] = [
   { id: 'command', label: 'Command Center' },
   { id: 'decision', label: 'Decision Center' },
-  { id: 'organization', label: 'Organization' },
+  { id: 'organization', label: 'Org Structure' },
   { id: 'operations', label: 'Operations' },
   { id: 'search', label: 'Search' },
   { id: 'workspace', label: 'Workspace' },

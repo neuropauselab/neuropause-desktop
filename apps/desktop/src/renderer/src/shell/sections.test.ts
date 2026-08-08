@@ -166,6 +166,28 @@ describe('Phase 2 IA — Operations cluster (P0)', () => {
   });
 });
 
+// Phase 2 IA — Workforce / Knowledge / Business clarity (P1).
+describe('Phase 2 IA — Workforce / Knowledge / Business (P1)', () => {
+  const byId = (id: string): (typeof SECTIONS)[number] | undefined => SECTIONS.find((s) => s.id === id);
+
+  it('workforce splits into operate ("AI Workforce") and administer ("Workforce Admin")', () => {
+    expect(byId('workforce')?.label).toBe('AI Workforce');
+    expect(byId('workforce-center')?.label).toBe('Workforce Admin');
+  });
+
+  it('the deep fabric explorer is "Enterprise Knowledge"; the umbrella stays "Knowledge"', () => {
+    expect(byId('knowledge')?.label).toBe('Knowledge');
+    expect(byId('knowledge-center')?.label).toBe('Enterprise Knowledge');
+  });
+
+  it('the P1 clusters carry user-facing descriptions', () => {
+    for (const id of ['workforce', 'workforce-center', 'knowledge', 'knowledge-center', 'memory', 'enterprise', 'business', 'organization', 'administration']) {
+      const desc = byId(id)?.description ?? '';
+      expect(desc.length, `section "${id}" needs a description`).toBeGreaterThan(0);
+    }
+  });
+});
+
 // Phase 2 IA — standing coherence guardrail: no two VISIBLE sections may share a
 // label, so the sidebar and command palette never show two identically-named
 // destinations. (Hidden/retired routes are exempt — they aren't shown.)

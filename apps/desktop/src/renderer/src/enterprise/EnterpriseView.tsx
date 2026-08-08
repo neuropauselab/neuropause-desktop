@@ -34,7 +34,7 @@ const TABS: TabDef[] = [
   { id: 'command', label: 'Command Center', icon: 'grid' },
   { id: 'executive', label: 'Executive', icon: 'sparkles' },
   { id: 'decision', label: 'Decision Center', icon: 'shield' },
-  { id: 'organization', label: 'Organization', icon: 'layers' },
+  { id: 'organization', label: 'Org Structure', icon: 'layers' },
   { id: 'operations', label: 'Operations', icon: 'gauge' },
   { id: 'process', label: 'Process Explorer', icon: 'activity' },
   { id: 'schedule', label: 'Production Schedule', icon: 'clock' },

@@ -81,7 +81,7 @@ export function KnowledgeCenterView(): JSX.Element {
       <div className="mx-auto px-8 py-7" style={{ maxWidth: 1320 }}>
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Knowledge Fabric</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Enterprise Knowledge</h1>
             <p className="mt-1 text-md text-muted">
               A living, read-only knowledge fabric — every enterprise object related, classified, traced, and explained by composing the existing graph, timeline, strategy, twin, and memory. It enriches and explains; it never executes and adds no new graph, memory, or search.
             </p>

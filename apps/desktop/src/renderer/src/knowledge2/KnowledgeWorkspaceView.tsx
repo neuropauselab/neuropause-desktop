@@ -126,7 +126,7 @@ export function KnowledgeWorkspaceView(): JSX.Element {
     { id: 'search', label: 'Search', icon: 'search' },
     { id: 'memory', label: 'Memory', icon: 'memory' },
     { id: 'graph', label: 'Graph', icon: 'database' },
-    { id: 'fabric', label: 'Knowledge Fabric', icon: 'layers' },
+    { id: 'fabric', label: 'Enterprise Knowledge', icon: 'layers' },
     // Phase 6 Stage 7 — the Knowledge Platform tab (asset inventory / quality /
     // standards / coverage / hygiene), read-only over the kb:* cluster.
     { id: 'platform', label: 'Knowledge Platform', icon: 'grid' },
@@ -440,7 +440,7 @@ function GraphTab({ d, go }: { d: Data; go: Go }): JSX.Element {
       <OpsPanel
         title="Knowledge Graph (EKG)"
         subtitle="The typed graph projected from the Unified Data Model"
-        actions={<DeepLink label="Open Knowledge Fabric" onClick={() => go.setSection('knowledge-center')} />}
+        actions={<DeepLink label="Open Enterprise Knowledge" onClick={() => go.setSection('knowledge-center')} />}
       >
         <Grid cols={4}>
           <Stat icon="database" label="Nodes" value={(d.graph?.nodes ?? 0).toLocaleString()} />
@@ -477,15 +477,15 @@ function GraphTab({ d, go }: { d: Data; go: Go }): JSX.Element {
 function FabricTab({ d, go }: { d: Data; go: Go }): JSX.Element {
   const f = d.fabric;
   if (!f) {
-    return <EmptyState icon="layers" title="Knowledge Fabric unavailable" hint="The fabric overview could not be loaded." />;
+    return <EmptyState icon="layers" title="Enterprise Knowledge unavailable" hint="The fabric overview could not be loaded." />;
   }
   const s = f.summary;
   return (
     <>
       <OpsPanel
-        title="Knowledge Fabric"
+        title="Enterprise Knowledge"
         subtitle="A unified, explainable projection over the platform's knowledge systems"
-        actions={<DeepLink label="Open Knowledge Fabric" onClick={() => go.setSection('knowledge-center')} />}
+        actions={<DeepLink label="Open Enterprise Knowledge" onClick={() => go.setSection('knowledge-center')} />}
       >
         <Grid cols={4}>
           <Stat icon="database" label="Entities" value={s.totalEntities.toLocaleString()} />
