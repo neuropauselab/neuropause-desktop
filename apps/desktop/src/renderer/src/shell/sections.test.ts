@@ -139,3 +139,40 @@ describe('navigation sections — production visibility', () => {
     expect(previewVisible.length).toBe(preview.length);
   });
 });
+
+// Phase 2 IA — the Operations-cluster disambiguation (P0). These lock the job-based
+// labels so a future edit can't silently reintroduce the "Operations / Ops Center /
+// AI Operations" collision, and add a standing no-duplicate-label guardrail.
+describe('Phase 2 IA — Operations cluster (P0)', () => {
+  const byId = (id: string): (typeof SECTIONS)[number] | undefined => SECTIONS.find((s) => s.id === id);
+
+  it('the enterprise operations center owns the plain "Operations" label', () => {
+    expect(byId('opscenter')?.label).toBe('Operations');
+  });
+
+  it('the local runtime/app control panel is "Runtime" (not the enterprise "Operations")', () => {
+    expect(byId('operations')?.label).toBe('Runtime');
+  });
+
+  it('the product/release lens is "Release Ops" (not the generic "Product Ops")', () => {
+    expect(byId('product-ops')?.label).toBe('Release Ops');
+  });
+
+  it('every Operations-cluster section carries a user-facing description', () => {
+    for (const id of ['operations', 'opscenter', 'ai-operations', 'product-ops', 'auto-ops-center']) {
+      const desc = byId(id)?.description ?? '';
+      expect(desc.length, `section "${id}" needs a description`).toBeGreaterThan(0);
+    }
+  });
+});
+
+// Phase 2 IA — standing coherence guardrail: no two VISIBLE sections may share a
+// label, so the sidebar and command palette never show two identically-named
+// destinations. (Hidden/retired routes are exempt — they aren't shown.)
+describe('Phase 2 IA — navigation label coherence', () => {
+  it('no two visible sections share the same label', () => {
+    const labels = SECTIONS.filter((s) => !s.hidden).map((s) => s.label);
+    const dupes = [...new Set(labels.filter((l, i) => labels.indexOf(l) !== i))];
+    expect(dupes, `duplicate visible labels: ${dupes.join(', ')}`).toEqual([]);
+  });
+});

@@ -452,7 +452,7 @@ function OperationsTab({ d, go }: { d: Data; go: Go }): JSX.Element {
   const sup = d.supervisor;
   return (
     <>
-      <OpsPanel title="Runtime health" subtitle="NeuroCore composed system health" actions={<DeepLink label="Open Ops Center" onClick={() => go.setSection('opscenter')} />}>
+      <OpsPanel title="Runtime health" subtitle="NeuroCore composed system health" actions={<DeepLink label="Open Operations" onClick={() => go.setSection('opscenter')} />}>
         {sys ? (
           <>
             <Grid cols={4}>

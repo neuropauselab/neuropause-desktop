@@ -112,7 +112,7 @@ function OperationsInner(): JSX.Element {
       <div className="mx-auto px-8 py-7" style={{ maxWidth: 1240 }}>
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Operations</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Runtime</h1>
             <p className="mt-1 text-md text-muted">
               The command center for everything installed, running, and managed by NeuroPause.
             </p>

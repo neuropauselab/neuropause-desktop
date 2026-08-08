@@ -180,9 +180,9 @@ export function CommandPalette(): JSX.Element {
       id: `nav:${sct.id}`,
       group: 'Go to',
       title: sct.label,
-      subtitle: 'Go to section',
+      subtitle: sct.description ?? 'Go to section',
       icon: sct.icon,
-      keywords: `go open ${sct.label}`,
+      keywords: `go open ${sct.label} ${sct.description ?? ''}`,
       run: () => setSection(sct.id),
     }));
 
@@ -218,9 +218,9 @@ export function CommandPalette(): JSX.Element {
       id: `ops:${o.tab}`,
       group: 'Go to',
       title: o.title,
-      subtitle: 'Operations',
+      subtitle: 'Runtime',
       icon: o.icon,
-      keywords: `operations ${o.kw}`,
+      keywords: `runtime operations ${o.kw}`,
       run: () => openOperations(o.tab),
     }));
 

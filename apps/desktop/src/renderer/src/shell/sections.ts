@@ -95,6 +95,13 @@ export interface SectionDef {
    * Honest positioning, NOT a hide — the section stays fully visible and usable.
    */
   preview?: boolean;
+  /**
+   * A short, user-facing description of the section's job (Phase 2 IA). Rendered as
+   * the sidebar row tooltip and the command-palette "Go to" subtitle so a user can
+   * tell adjacent or similarly-named surfaces apart without learning the internal
+   * architecture. Purely presentational — no route, id, or lock depends on it.
+   */
+  description?: string;
 }
 
 export const SECTIONS: SectionDef[] = [
@@ -132,10 +139,10 @@ export const SECTIONS: SectionDef[] = [
   { id: 'knowledge', label: 'Knowledge', icon: 'doc', phase: 10, placement: 'primary', group: 'workspace' },
   { id: 'automation-center', label: 'Automation', icon: 'bolt', phase: 10, placement: 'primary', group: 'workspace' },
   // Phase 3 — the AI Operating Platform: a reuse-only operating layer over existing AI capabilities.
-  { id: 'ai-operations', label: 'AI Operations', icon: 'sparkles', phase: 10, placement: 'primary', group: 'ai' },
+  { id: 'ai-operations', label: 'AI Operations', icon: 'sparkles', phase: 10, placement: 'primary', group: 'ai', description: 'The AI operating loop — plan, reason, orchestrate, decide, govern, and optimize across every AI capability.' },
   // Phase 5 — the Platform Ecosystem control plane (extensibility over existing surfaces).
   { id: 'extensibility', label: 'Extensibility', icon: 'puzzle', phase: 10, placement: 'primary', group: 'platform' },
-  { id: 'opscenter', label: 'Ops Center', icon: 'pulse', phase: 7, placement: 'primary', group: 'ai' },
+  { id: 'opscenter', label: 'Operations', icon: 'pulse', phase: 7, placement: 'primary', group: 'ai', description: 'Enterprise operational health, risk, dependencies, incidents, and recommendations.' },
   { id: 'developer', label: 'Developer', icon: 'code', phase: 8, placement: 'primary', group: 'platform' },
   { id: 'developer-center', label: 'Developer Center', icon: 'puzzle', phase: 12, placement: 'primary', group: 'platform', hidden: true },
   { id: 'industry-center', label: 'Industry Center', icon: 'package', phase: 13, placement: 'primary', group: 'platform', preview: true },
@@ -144,10 +151,10 @@ export const SECTIONS: SectionDef[] = [
   { id: 'knowledge-center', label: 'Knowledge Fabric', icon: 'database', phase: 16, placement: 'primary', group: 'platform', preview: true },
   { id: 'orchestration-center', label: 'Orchestration', icon: 'command', phase: 17, placement: 'primary', group: 'platform', preview: true },
   { id: 'network-center', label: 'Intelligence Network', icon: 'globe', phase: 18, placement: 'primary', group: 'platform', preview: true },
-  { id: 'auto-ops-center', label: 'Autonomous Operations', icon: 'command', phase: 19, placement: 'primary', group: 'platform', preview: true },
+  { id: 'auto-ops-center', label: 'Autonomous Operations', icon: 'command', phase: 19, placement: 'primary', group: 'platform', preview: true, description: 'Closed-loop autonomous operations — plans, coordination, and governance; every action stays approval-gated.' },
   { id: 'commercial-center', label: 'Platform v2', icon: 'store', phase: 20, placement: 'primary', group: 'platform', preview: true },
   // Product Operations & Release Management v1.0 — a read-only operations lens over existing services.
-  { id: 'product-ops', label: 'Product Ops', icon: 'gauge', phase: 20, placement: 'primary', group: 'platform' },
+  { id: 'product-ops', label: 'Release Ops', icon: 'package', phase: 20, placement: 'primary', group: 'platform', description: 'Shipping the product — releases, build health, quality, deployment, and commercial metrics.' },
   { id: 'ecosystem', label: 'Ecosystem', icon: 'globe', phase: 8, placement: 'primary', group: 'platform', preview: true },
   { id: 'cloud', label: 'Cloud', icon: 'database', phase: 9, placement: 'primary', group: 'platform', preview: true },
   { id: 'control-plane', label: 'Control Plane', icon: 'gauge', phase: 11, placement: 'primary', group: 'platform', hidden: true },
@@ -157,7 +164,7 @@ export const SECTIONS: SectionDef[] = [
   { id: 'store', label: 'AI Store', icon: 'store', phase: 3, placement: 'primary', group: 'workspace' },
   { id: 'marketplace', label: 'Marketplace', icon: 'store', phase: 9, placement: 'primary', group: 'workspace', preview: true },
   { id: 'workspace', label: 'Workspace', icon: 'workspace', phase: 2, placement: 'primary', group: 'workspace' },
-  { id: 'operations', label: 'Operations', icon: 'gauge', phase: 3, placement: 'primary', group: 'ai' },
+  { id: 'operations', label: 'Runtime', icon: 'cpu', phase: 3, placement: 'primary', group: 'platform', description: 'Installed apps, plugins, runtime sessions, downloads, updates, and permissions.' },
   { id: 'workforce', label: 'AI Workforce', icon: 'cpu', phase: 6, placement: 'primary', group: 'ai' },
   { id: 'workforce-center', label: 'Workforce Center', icon: 'checklist', phase: 8, placement: 'primary', group: 'ai' },
   { id: 'connectors', label: 'Connectors', icon: 'connectors', phase: 4, placement: 'primary', group: 'workspace' },

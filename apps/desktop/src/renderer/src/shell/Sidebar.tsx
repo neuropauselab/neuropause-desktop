@@ -29,7 +29,7 @@ function SidebarItem({
     <button
       type="button"
       onClick={() => setSection(section.id)}
-      title={collapsed ? section.label : undefined}
+      title={collapsed ? section.label : section.description}
       aria-label={section.preview ? `${section.label} — Preview` : section.label}
       aria-current={active ? 'page' : undefined}
       className={cn(

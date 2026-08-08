@@ -588,10 +588,10 @@ function ConfigTab({ d, go }: { d: Data; go: Go }): JSX.Element {
         <Grid cols={3}>
           <Stat icon="globe" label="Regions" value={d.regions.length || '—'} hint={`${d.regions.filter((r) => r.available).length} available`} />
           <Stat icon="lock" label="SSO domains" value={d.identity?.connections ?? 0} hint="via SSO connections" />
-          <Stat icon="gauge" label="Deployment" value="Cloud + Desktop" hint="see Product Ops" />
+          <Stat icon="gauge" label="Deployment" value="Cloud + Desktop" hint="see Release Ops" />
         </Grid>
         <div className="mt-3">
-          <DeepLink label="Deployment in Product Ops" onClick={() => go.setSection('product-ops')} />
+          <DeepLink label="Deployment in Release Ops" onClick={() => go.setSection('product-ops')} />
         </div>
       </OpsPanel>
       <GapsPanel filter={(a) => a === 'Configuration'} />
