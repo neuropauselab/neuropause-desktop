@@ -20,6 +20,7 @@ import { taskScheduler } from './taskScheduler';
 import { notificationScheduler } from './notificationScheduler';
 import { pluginLoader } from './pluginLoader';
 import { appUpdater } from './appUpdater';
+import { companionGatewayService } from '../companion/gatewayService';
 
 const log = createLogger('services');
 
@@ -109,6 +110,9 @@ class ServiceManager {
       this.updateChecker,
       appUpdater,
       pluginLoader,
+      // Mobile M1-03 — the companion LAN gateway (no-op until initCompanion binds it
+      // and only listens when the user has enabled it in Settings).
+      companionGatewayService,
     ];
   }
 

@@ -5,7 +5,13 @@
  * and per-message uniqueness of nonce + ephemeral key (forward secrecy).
  */
 import { describe, expect, it } from 'vitest';
-import { generateIdentityKeyPair, seal, unseal, SealedEnvelopeSchema } from './envelope';
+import {
+  generateIdentityKeyPair,
+  publicKeyFromPrivateKey,
+  seal,
+  unseal,
+  SealedEnvelopeSchema,
+} from './envelope';
 import { CompanionProtocolError } from './errors';
 
 const desktop = generateIdentityKeyPair();
@@ -48,6 +54,11 @@ describe('seal → unseal', () => {
       recipientPublicKey: desktop.publicKey,
     });
     expect(unseal({ envelope: env, recipientKeys: desktop }).body).toBeNull();
+  });
+
+  it('recomputes the public key from a stored private key (identity reload)', () => {
+    const pair = generateIdentityKeyPair();
+    expect(publicKeyFromPrivateKey(pair.privateKey)).toEqual(pair.publicKey);
   });
 
   it('mints a fresh nonce and a fresh ephemeral key per message', () => {

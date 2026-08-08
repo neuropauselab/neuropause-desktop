@@ -52,7 +52,9 @@ export const WorkspaceCtxSnapshotSchema = z
     activeTabId: z.string().max(128).nullable(),
   })
   .strict();
-export const WorkspaceCtxBootstrapRequest = z.object({ legacySnapshot: z.unknown().optional() }).strict();
+export const WorkspaceCtxBootstrapRequest = z
+  .object({ legacySnapshot: z.unknown().optional() })
+  .strict();
 export const WorkspaceCtxCreateRequest = z
   .object({
     name: z.string().min(1).max(60),
@@ -745,7 +747,14 @@ export type EnterpriseTimelineReplayRequest = z.infer<typeof EnterpriseTimelineR
 /* ──────────────────── Daily Intelligence + Recommendations ───────────────── */
 
 // Phase 6 Stage 5 — 'afternoon' added additively (the Afternoon Update).
-const BriefingPeriodSchema = z.enum(['morning', 'afternoon', 'evening', 'weekly', 'monthly', 'quarterly']);
+const BriefingPeriodSchema = z.enum([
+  'morning',
+  'afternoon',
+  'evening',
+  'weekly',
+  'monthly',
+  'quarterly',
+]);
 const RecommendationKindSchema = z.enum([
   'next_task',
   'stale_task',
@@ -887,7 +896,13 @@ export const NotificationsPrefsSetRequest = z.object({
   enabled: z.boolean().optional(),
   doNotDisturb: z.boolean().optional(),
   minPriority: IntelligencePrioritySchema.optional(),
-  timezoneOffsetMinutes: z.number().int().min(-14 * 60).max(14 * 60).nullable().optional(),
+  timezoneOffsetMinutes: z
+    .number()
+    .int()
+    .min(-14 * 60)
+    .max(14 * 60)
+    .nullable()
+    .optional(),
   morningBriefMinutes: z.number().int().min(0).max(1439).optional(),
   afternoonUpdateMinutes: z.number().int().min(0).max(1439).optional(),
   eveningSummaryMinutes: z.number().int().min(0).max(1439).optional(),
@@ -895,6 +910,18 @@ export const NotificationsPrefsSetRequest = z.object({
   mutedSources: z.array(z.string().trim().min(1).max(80)).max(50).optional(),
 });
 export type NotificationsPrefsSetRequest = z.infer<typeof NotificationsPrefsSetRequest>;
+
+/* ───────── Companion (mobile) gateway management (Mobile M1-03) ───────── */
+
+/** Turn the LAN companion gateway on or off. */
+export const CompanionEnableRequest = z.object({ enabled: z.boolean() }).strict();
+export type CompanionEnableRequest = z.infer<typeof CompanionEnableRequest>;
+
+/** Revoke (unpair) a specific device by its registry id. */
+export const CompanionRevokeRequest = z
+  .object({ deviceId: z.string().trim().min(1).max(200) })
+  .strict();
+export type CompanionRevokeRequest = z.infer<typeof CompanionRevokeRequest>;
 
 /* ────────────────────────────────── Traces ──────────────────────────────── */
 
@@ -1016,12 +1043,32 @@ export type WorkforceWorkflowCheckpointRequest = z.infer<typeof WorkforceWorkflo
 
 // ── P8.5 — Installable Workers ──
 const WorkerPackageRoleSchema = z.enum([
-  'founder', 'research', 'engineering', 'marketing', 'sales', 'finance', 'legal', 'operations', 'support',
-  'executive', 'infrastructure', 'hr', 'procurement',
+  'founder',
+  'research',
+  'engineering',
+  'marketing',
+  'sales',
+  'finance',
+  'legal',
+  'operations',
+  'support',
+  'executive',
+  'infrastructure',
+  'hr',
+  'procurement',
 ]);
 const WorkerPackageScopeSchema = z.enum([
-  'read:entities', 'read:graph', 'read:timeline', 'read:memory', 'read:health', 'read:connectors',
-  'write:memory', 'write:reminder', 'propose:draft', 'propose:message', 'execute:action',
+  'read:entities',
+  'read:graph',
+  'read:timeline',
+  'read:memory',
+  'read:health',
+  'read:connectors',
+  'write:memory',
+  'write:reminder',
+  'propose:draft',
+  'propose:message',
+  'execute:action',
 ]);
 const WorkerSkillSpecSchema = z.object({
   kind: z.enum(['advisory', 'draft', 'note', 'mail', 'infra']),
@@ -1064,8 +1111,16 @@ export type WorkforceInstallActionRequest = z.infer<typeof WorkforceInstallActio
 
 // ── P9 — Enterprise Marketplace ──
 const MarketplacePackageTypeSchema = z.enum([
-  'worker', 'connector', 'template', 'workflow_pack', 'knowledge_pack',
-  'automation_pack', 'dashboard_pack', 'policy_pack', 'blueprint', 'prompt_pack',
+  'worker',
+  'connector',
+  'template',
+  'workflow_pack',
+  'knowledge_pack',
+  'automation_pack',
+  'dashboard_pack',
+  'policy_pack',
+  'blueprint',
+  'prompt_pack',
 ]);
 const ReleaseChannelSchema = z.enum(['stable', 'beta', 'canary', 'lts']);
 const PublisherTierSchema = z.enum(['unverified', 'verified', 'trusted', 'official']);
@@ -1102,11 +1157,27 @@ export type MarketplaceInstallRequest = z.infer<typeof MarketplaceInstallRequest
 
 // P8 — delegate a goal's task graph across the worker roster (read-only planning).
 const WorkerRoleSchema = z.enum([
-  'founder', 'research', 'engineering', 'marketing', 'sales', 'finance', 'legal', 'operations', 'support',
+  'founder',
+  'research',
+  'engineering',
+  'marketing',
+  'sales',
+  'finance',
+  'legal',
+  'operations',
+  'support',
 ]);
 const WorkerScopeSchema = z.enum([
-  'read:entities', 'read:graph', 'read:timeline', 'read:memory', 'read:health', 'read:connectors',
-  'write:memory', 'write:reminder', 'propose:draft', 'propose:message',
+  'read:entities',
+  'read:graph',
+  'read:timeline',
+  'read:memory',
+  'read:health',
+  'read:connectors',
+  'write:memory',
+  'write:reminder',
+  'propose:draft',
+  'propose:message',
 ]);
 export const WorkforceDelegateRequest = z.object({
   id: z.string().trim().min(1).max(128),
@@ -1281,8 +1352,19 @@ export const EnterpriseApiRequestRequest = z
 /* ══════════════════ Enterprise Webhooks (P3.0, Increment 4) ═══════════ */
 
 const WebhookCategory = z.enum([
-  'application', 'runtime', 'plugin', 'permission', 'download', 'update', 'session',
-  'diagnostics', 'connector', 'knowledge', 'automation', 'enterprise', 'system',
+  'application',
+  'runtime',
+  'plugin',
+  'permission',
+  'download',
+  'update',
+  'session',
+  'diagnostics',
+  'connector',
+  'knowledge',
+  'automation',
+  'enterprise',
+  'system',
 ]);
 
 export const WebhookCreateRequest = z
@@ -1322,16 +1404,36 @@ export const EnterpriseContextRequest = z
 const EntTab = z.string().trim().min(1).max(64);
 const EntQuery = z.string().trim().max(256).optional();
 export const EnterprisePersonalizationFavoriteRequest = z
-  .object({ id: EntId, kind: z.string().trim().max(64).optional(), label: z.string().trim().max(200).optional(), tab: EntTab, query: EntQuery })
+  .object({
+    id: EntId,
+    kind: z.string().trim().max(64).optional(),
+    label: z.string().trim().max(200).optional(),
+    tab: EntTab,
+    query: EntQuery,
+  })
   .strict();
 export const EnterprisePersonalizationRecentRequest = z
-  .object({ id: EntId, kind: z.string().trim().max(64).optional(), label: z.string().trim().max(200).optional(), tab: EntTab, query: EntQuery })
+  .object({
+    id: EntId,
+    kind: z.string().trim().max(64).optional(),
+    label: z.string().trim().max(200).optional(),
+    tab: EntTab,
+    query: EntQuery,
+  })
   .strict();
 export const EnterprisePersonalizationSaveViewRequest = z
-  .object({ id: EntId.optional(), label: EntName, tab: EntTab, query: EntQuery, filters: z.string().max(8192).optional() })
+  .object({
+    id: EntId.optional(),
+    label: EntName,
+    tab: EntTab,
+    query: EntQuery,
+    filters: z.string().max(8192).optional(),
+  })
   .strict();
 export const EnterprisePersonalizationDeleteViewRequest = z.object({ id: EntId }).strict();
-export const EnterprisePersonalizationRenameViewRequest = z.object({ id: EntId, label: EntName }).strict();
+export const EnterprisePersonalizationRenameViewRequest = z
+  .object({ id: EntId, label: EntName })
+  .strict();
 
 export type EnterpriseOrgCreateUnitRequest = z.infer<typeof EnterpriseOrgCreateUnitRequest>;
 export type EnterpriseOrgUpdateUnitRequest = z.infer<typeof EnterpriseOrgUpdateUnitRequest>;
@@ -1354,11 +1456,21 @@ export type EnterpriseGovernanceSetChainRequest = z.infer<
 >;
 export type EnterpriseGovernanceSetRuleRequest = z.infer<typeof EnterpriseGovernanceSetRuleRequest>;
 export type EnterpriseGovernanceAuditRequest = z.infer<typeof EnterpriseGovernanceAuditRequest>;
-export type EnterprisePersonalizationFavoriteRequest = z.infer<typeof EnterprisePersonalizationFavoriteRequest>;
-export type EnterprisePersonalizationRecentRequest = z.infer<typeof EnterprisePersonalizationRecentRequest>;
-export type EnterprisePersonalizationSaveViewRequest = z.infer<typeof EnterprisePersonalizationSaveViewRequest>;
-export type EnterprisePersonalizationDeleteViewRequest = z.infer<typeof EnterprisePersonalizationDeleteViewRequest>;
-export type EnterprisePersonalizationRenameViewRequest = z.infer<typeof EnterprisePersonalizationRenameViewRequest>;
+export type EnterprisePersonalizationFavoriteRequest = z.infer<
+  typeof EnterprisePersonalizationFavoriteRequest
+>;
+export type EnterprisePersonalizationRecentRequest = z.infer<
+  typeof EnterprisePersonalizationRecentRequest
+>;
+export type EnterprisePersonalizationSaveViewRequest = z.infer<
+  typeof EnterprisePersonalizationSaveViewRequest
+>;
+export type EnterprisePersonalizationDeleteViewRequest = z.infer<
+  typeof EnterprisePersonalizationDeleteViewRequest
+>;
+export type EnterprisePersonalizationRenameViewRequest = z.infer<
+  typeof EnterprisePersonalizationRenameViewRequest
+>;
 
 /* ══════════════════ Enterprise Module Framework (ERP foundation) ═══════════ */
 
@@ -1518,7 +1630,9 @@ export const EcosystemOAuthTokenRequest = z
 export type EcosystemOAuthTokenRequest = z.infer<typeof EcosystemOAuthTokenRequest>;
 
 /** P3.0 — revoke a previously-issued access token by its jti. */
-export const EcosystemOAuthRevokeTokenRequest = z.object({ jti: z.string().trim().min(1).max(128) }).strict();
+export const EcosystemOAuthRevokeTokenRequest = z
+  .object({ jti: z.string().trim().min(1).max(128) })
+  .strict();
 export type EcosystemOAuthRevokeTokenRequest = z.infer<typeof EcosystemOAuthRevokeTokenRequest>;
 
 export const EcosystemUsageAnalyticsRequest = z.object({
@@ -1970,7 +2084,12 @@ export type FedRunValidationRequest = z.infer<typeof FedRunValidationRequest>;
 
 /* ───────────────────────── P10 — Federation Platform contracts ───────────── */
 
-export const FederationSearchKindSchema = z.enum(['organization', 'artifact', 'policy', 'shared_resource']);
+export const FederationSearchKindSchema = z.enum([
+  'organization',
+  'artifact',
+  'policy',
+  'shared_resource',
+]);
 export const FederationSearchRequest = z.object({
   text: z.string().trim().max(200),
   kinds: z.array(FederationSearchKindSchema).max(4).optional(),
@@ -2123,7 +2242,15 @@ export type RecoveryRunRequest = z.infer<typeof RecoveryRunRequest>;
 const SbName = z.string().trim().min(1).max(160);
 const SbText = z.string().trim().max(2000);
 const SbKey = z.string().trim().min(1).max(120);
-const SbStatus = z.enum(['queued', 'running', 'passed', 'failed', 'error', 'cancelled', 'timed_out']);
+const SbStatus = z.enum([
+  'queued',
+  'running',
+  'passed',
+  'failed',
+  'error',
+  'cancelled',
+  'timed_out',
+]);
 const SbLabels = z.record(z.string().max(64), z.string().max(512));
 const SbSpec = z.record(z.string().max(120), z.unknown());
 const SbMetadata = z
@@ -2148,7 +2275,12 @@ export const SandboxWorkspaceCreateRequest = z
   .strict();
 export type SandboxWorkspaceCreateRequest = z.infer<typeof SandboxWorkspaceCreateRequest>;
 export const SandboxWorkspaceUpdateRequest = z
-  .object({ id: EntId, name: SbName.optional(), description: SbText.optional(), settings: SbSettings.optional() })
+  .object({
+    id: EntId,
+    name: SbName.optional(),
+    description: SbText.optional(),
+    settings: SbSettings.optional(),
+  })
   .strict();
 export type SandboxWorkspaceUpdateRequest = z.infer<typeof SandboxWorkspaceUpdateRequest>;
 export const SandboxWorkspaceDeleteRequest = z.object({ id: EntId }).strict();
@@ -2156,7 +2288,13 @@ export type SandboxWorkspaceDeleteRequest = z.infer<typeof SandboxWorkspaceDelet
 
 /* Scenario */
 export const SandboxScenarioCreateRequest = z
-  .object({ workspaceId: EntId, key: SbKey, name: SbName, description: SbText.optional(), metadata: SbMetadata.optional() })
+  .object({
+    workspaceId: EntId,
+    key: SbKey,
+    name: SbName,
+    description: SbText.optional(),
+    metadata: SbMetadata.optional(),
+  })
   .strict();
 export type SandboxScenarioCreateRequest = z.infer<typeof SandboxScenarioCreateRequest>;
 export const SandboxScenarioGetRequest = z.object({ id: EntId }).strict();
@@ -2166,15 +2304,24 @@ export const SandboxScenarioListRequest = z
   .strict();
 export type SandboxScenarioListRequest = z.infer<typeof SandboxScenarioListRequest>;
 export const SandboxScenarioUpdateRequest = z
-  .object({ id: EntId, name: SbName.optional(), description: SbText.optional(), metadata: SbMetadata.optional() })
+  .object({
+    id: EntId,
+    name: SbName.optional(),
+    description: SbText.optional(),
+    metadata: SbMetadata.optional(),
+  })
   .strict();
 export type SandboxScenarioUpdateRequest = z.infer<typeof SandboxScenarioUpdateRequest>;
-export const SandboxScenarioArchiveRequest = z.object({ id: EntId, archived: z.boolean() }).strict();
+export const SandboxScenarioArchiveRequest = z
+  .object({ id: EntId, archived: z.boolean() })
+  .strict();
 export type SandboxScenarioArchiveRequest = z.infer<typeof SandboxScenarioArchiveRequest>;
 export const SandboxScenarioVersionCreateRequest = z
   .object({ scenarioId: EntId, spec: SbSpec, changelog: SbText.optional() })
   .strict();
-export type SandboxScenarioVersionCreateRequest = z.infer<typeof SandboxScenarioVersionCreateRequest>;
+export type SandboxScenarioVersionCreateRequest = z.infer<
+  typeof SandboxScenarioVersionCreateRequest
+>;
 export const SandboxScenarioVersionsRequest = z.object({ scenarioId: EntId }).strict();
 export type SandboxScenarioVersionsRequest = z.infer<typeof SandboxScenarioVersionsRequest>;
 
@@ -2242,20 +2389,45 @@ export type SandboxDashboardRequest = z.infer<typeof SandboxDashboardRequest>;
 
 /* ── P4 Validation Experience — thin read/command seams over the S6 subsystem ── */
 const SANDBOX_PIPELINE_KINDS = [
-  'quick', 'smoke', 'regression', 'performance', 'security', 'enterprise', 'connector',
-  'plugin', 'sdk', 'cli', 'desktop', 'release-candidate', 'certification',
+  'quick',
+  'smoke',
+  'regression',
+  'performance',
+  'security',
+  'enterprise',
+  'connector',
+  'plugin',
+  'sdk',
+  'cli',
+  'desktop',
+  'release-candidate',
+  'certification',
 ] as const;
 const SANDBOX_TRIGGER_KINDS = [
-  'manual', 'scheduled', 'nightly', 'weekly', 'pre-release', 'post-upgrade', 'regression', 'certification',
+  'manual',
+  'scheduled',
+  'nightly',
+  'weekly',
+  'pre-release',
+  'post-upgrade',
+  'regression',
+  'certification',
 ] as const;
 export const SandboxValidationRunRequest = z
-  .object({ pipeline: z.enum(SANDBOX_PIPELINE_KINDS), trigger: z.enum(SANDBOX_TRIGGER_KINDS).optional() })
+  .object({
+    pipeline: z.enum(SANDBOX_PIPELINE_KINDS),
+    trigger: z.enum(SANDBOX_TRIGGER_KINDS).optional(),
+  })
   .strict();
 export type SandboxValidationRunRequest = z.infer<typeof SandboxValidationRunRequest>;
 export const SandboxValidationRunGetRequest = z.object({ runId: EntId }).strict();
 export type SandboxValidationRunGetRequest = z.infer<typeof SandboxValidationRunGetRequest>;
-export const SandboxValidationScheduleSetRequest = z.object({ id: EntId, enabled: z.boolean() }).strict();
-export type SandboxValidationScheduleSetRequest = z.infer<typeof SandboxValidationScheduleSetRequest>;
+export const SandboxValidationScheduleSetRequest = z
+  .object({ id: EntId, enabled: z.boolean() })
+  .strict();
+export type SandboxValidationScheduleSetRequest = z.infer<
+  typeof SandboxValidationScheduleSetRequest
+>;
 
 // P6 — Cloud & Infrastructure Control Plane. Reads take no args (EmptyRequest); the graph/neighbors reads
 // take an optional platform / resource filter; discovery is a scoped manage op.
@@ -2300,7 +2472,10 @@ export type InfraSearchRequest = z.infer<typeof InfraSearchRequest>;
 export const EnterpriseIntelChangeImpactRequest = z.object({ nodeId: z.string().min(1) }).strict();
 export type EnterpriseIntelChangeImpactRequest = z.infer<typeof EnterpriseIntelChangeImpactRequest>;
 export const EnterpriseIntelRootCauseRequest = z
-  .object({ targetResourceId: z.string().min(1).optional(), windowMs: z.number().int().positive().max(2_592_000_000).optional() })
+  .object({
+    targetResourceId: z.string().min(1).optional(),
+    windowMs: z.number().int().positive().max(2_592_000_000).optional(),
+  })
   .strict();
 export type EnterpriseIntelRootCauseRequest = z.infer<typeof EnterpriseIntelRootCauseRequest>;
 
@@ -2327,9 +2502,7 @@ export type KbInventoryRequest = z.infer<typeof KbInventoryRequest>;
  */
 export const KbMatrixRequest = z.object({}).strict();
 export type KbMatrixRequest = z.infer<typeof KbMatrixRequest>;
-export const KbImpactRequest = z
-  .object({ assetId: z.string().trim().min(1).max(256) })
-  .strict();
+export const KbImpactRequest = z.object({ assetId: z.string().trim().min(1).max(256) }).strict();
 export type KbImpactRequest = z.infer<typeof KbImpactRequest>;
 export const KbLineageRequest = z
   .object({ decisionId: z.string().trim().min(1).max(128).optional() })
@@ -2343,7 +2516,5 @@ export const ApPlaybooksRequest = z
   .object({ id: z.string().trim().min(1).max(128).optional() })
   .strict();
 export type ApPlaybooksRequest = z.infer<typeof ApPlaybooksRequest>;
-export const ApPlanRequest = z
-  .object({ playbookId: z.string().trim().min(1).max(128) })
-  .strict();
+export const ApPlanRequest = z.object({ playbookId: z.string().trim().min(1).max(128) }).strict();
 export type ApPlanRequest = z.infer<typeof ApPlanRequest>;

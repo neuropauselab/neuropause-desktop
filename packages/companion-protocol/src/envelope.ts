@@ -42,6 +42,15 @@ export function generateIdentityKeyPair(): CompanionKeyPair {
   return { privateKey, publicKey: x25519.getPublicKey(privateKey) };
 }
 
+/**
+ * Derive the X25519 public key for a stored private key. Used when reloading a
+ * persisted identity (only the private key is kept in the OS keychain) — the
+ * public half is recomputed rather than stored twice.
+ */
+export function publicKeyFromPrivateKey(privateKey: Uint8Array): Uint8Array {
+  return x25519.getPublicKey(privateKey);
+}
+
 /** The wire form — every field base64url, safe for JSON/QR/HTTP bodies. */
 export const SealedEnvelopeSchema = z
   .object({

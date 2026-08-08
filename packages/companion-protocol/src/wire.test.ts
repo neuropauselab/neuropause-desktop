@@ -50,7 +50,10 @@ describe('framing schemas', () => {
         error: { code: 'made-up', message: 'x' },
       }).success,
     ).toBe(false);
-    expect(CompanionResponseSchema.safeParse({ id: 'r1', ok: true }).success).toBe(false);
+    expect(CompanionResponseSchema.safeParse({ ok: true, result: 1 }).success).toBe(false); // missing id
+    expect(
+      CompanionResponseSchema.safeParse({ id: 'r1', ok: true, result: 1, extra: 2 }).success,
+    ).toBe(false); // strict: no extra keys
   });
 });
 

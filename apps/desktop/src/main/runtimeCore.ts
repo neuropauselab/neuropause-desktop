@@ -92,7 +92,11 @@ import { serviceManager } from './services/serviceManager';
 import { pluginManager } from './plugins/pluginManager';
 import { pluginHost } from './plugins/pluginHost';
 import { pluginExtensionRegistry } from './plugins/extensionRegistry';
-import { registerSecureHandlers, runSecureHandler, type SecureHandlerDef } from './ipc/secureBridge';
+import {
+  registerSecureHandlers,
+  runSecureHandler,
+  type SecureHandlerDef,
+} from './ipc/secureBridge';
 import {
   RUNTIME_CHANNEL_PERMISSIONS,
   withRuntimeAuthz,
@@ -137,7 +141,10 @@ import { deviceClient } from './devices/deviceClient';
 import { initVoice } from './voice/voiceSubsystem';
 import { deliveryEngine, initExecutiveDelivery } from './services/executiveDelivery';
 import { initRecommendations } from './recommendations';
-import { initEnterpriseIntelligence, type RawTimelineEvent } from './enterprise/intelligence/enterpriseIntelligenceSubsystem';
+import {
+  initEnterpriseIntelligence,
+  type RawTimelineEvent,
+} from './enterprise/intelligence/enterpriseIntelligenceSubsystem';
 import { getRelationshipModel } from './enterprise/relationshipProvider';
 import { initFounderAI } from './founder';
 import { initEngineeringAI, initFounderAIv2 } from './ai';
@@ -168,6 +175,7 @@ import { initEnterprise } from './enterprise';
 import { initEcosystem, runGateway, gatewayMetrics, gatewayAuditEntries } from './ecosystem';
 import { initMarketplace } from './marketplace';
 import { initEnterpriseApi } from './api';
+import { initCompanion } from './companion';
 import { initWebhooks } from './webhooks';
 import { initSandbox } from './sandbox';
 import { createDesktopExecutor, PlaywrightDesktopDriver } from './sandbox/desktop';
@@ -232,7 +240,10 @@ import { initStrategyPlatform, type StrategyPlatformSubsystem } from './strategy
 // Phase 6 Stage 11 — the Enterprise Federation Platform (read-only composition
 // over the P9-S2 federation stores + P18 + Stages 7–10; six efed:* channels;
 // one federation-watch source).
-import { initEnterpriseFederation, type EnterpriseFederationSubsystem } from './enterpriseFederation';
+import {
+  initEnterpriseFederation,
+  type EnterpriseFederationSubsystem,
+} from './enterpriseFederation';
 import { initAnalyticsPlatform, type AnalyticsPlatformSubsystem } from './analyticsPlatform';
 // Phase 6 Stage 13 — the Enterprise Digital Twin Platform (read-only composition
 // over the P15 twin + Execute Engine + Runtime Supervisor + Stages 6–12; seven
@@ -254,7 +265,12 @@ import { DEFAULT_PROMPTS } from './ai/promptManager';
 import { runEnterpriseSearch } from './search/enterpriseSearch';
 import { getFederationSearcher } from './federationPlatform/searcherInstance';
 import { runMrp, computeCapacitySchedule, isTerminalExecutionStatus } from '@neuropause/shared';
-import type { ApiMethod, EnterprisePermission, IpcChannelName, ResourceGraphModel } from '@neuropause/shared';
+import type {
+  ApiMethod,
+  EnterprisePermission,
+  IpcChannelName,
+  ResourceGraphModel,
+} from '@neuropause/shared';
 import type { IpcBroadcaster } from '@neuropause/shared';
 const log = createLogger('runtime-core');
 export interface RuntimeCoreDeps {
@@ -397,13 +413,20 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // registry + REST gateway are assembled) so the enterprise runner can dispatch through
   // the SAME secure core the IPC bridge + REST gateway use.
   const sandboxBaseDir = join(app.getPath('userData'), 'sandbox');
-  const sandboxLaunchTarget = { executablePath: process.execPath, args: [app.getAppPath()], cwd: app.getAppPath() };
+  const sandboxLaunchTarget = {
+    executablePath: process.execPath,
+    args: [app.getAppPath()],
+    cwd: app.getAppPath(),
+  };
   // Phase 9 · Stage 1 — Cloud Platform (multi-tenant, identity federation, sync, API platform, admin).
   const cloud = await initCloud({ broadcast: deps.broadcast });
   // P6 — Cloud & Infrastructure Control Plane (Cloud Platform abstraction, Discovery Engine, Resource Graph).
   // Reuses the Platform Event Bus (Timeline), the diagnostics probe registry, the HttpClient/RateLimiter
   // primitives, and the secure-bridge IPC — no parallel runtime.
-  const infrastructure = await initInfrastructure({ broadcast: deps.broadcast, publish: platform.api.publish });
+  const infrastructure = await initInfrastructure({
+    broadcast: deps.broadcast,
+    publish: platform.api.publish,
+  });
   // P7 — Enterprise Intelligence. Fold infra into the unified graph projection + re-project on discovery changes,
   // and stand up the intelligence subsystem (composes the Resource Graph + ERP Relationship Graph + Timeline into
   // health/risk/dependency/impact/drift/capacity/root-cause; reuses store/graph/timeline/diagnostics/RBAC).
@@ -1387,15 +1410,30 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
           binding.params ?? {},
           confirmed,
         );
-        return { ok: r.ok, summary: r.message ?? undefined, error: r.ok ? undefined : (r.message ?? undefined) };
+        return {
+          ok: r.ok,
+          summary: r.message ?? undefined,
+          error: r.ok ? undefined : (r.message ?? undefined),
+        };
       }
       case 'automation': {
-        const rec = await getAutomationRunner().runById(binding.target, binding.params ?? {}, 'manual');
+        const rec = await getAutomationRunner().runById(
+          binding.target,
+          binding.params ?? {},
+          'manual',
+        );
         if (!rec) return { ok: false, error: `Automation rule "${binding.target}" not found` };
-        return { ok: rec.ok, summary: rec.ok ? `Automation ${binding.target} ran` : undefined, error: rec.ok ? undefined : 'Automation failed' };
+        return {
+          ok: rec.ok,
+          summary: rec.ok ? `Automation ${binding.target} ran` : undefined,
+          error: rec.ok ? undefined : 'Automation failed',
+        };
       }
       default:
-        return { ok: false, error: `Unknown executor "${(binding as { executor?: string }).executor ?? ''}"` };
+        return {
+          ok: false,
+          error: `Unknown executor "${(binding as { executor?: string }).executor ?? ''}"`,
+        };
     }
   };
   executeEngine.register('connector', createWorkforceActionExecutor(runBinding));
@@ -1498,7 +1536,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     executionsActive: () => executeEngine.activeSessions().length,
     // Phase 6 Stage 5 — Work Summary aggregation inputs (existing histories).
     executionHistory: () =>
-      executeEngine.getHistory().map((s) => ({ label: s.label, state: s.state, startedAt: s.startedAt })),
+      executeEngine
+        .getHistory()
+        .map((s) => ({ label: s.label, state: s.state, startedAt: s.startedAt })),
     automationRuns: () =>
       getAutomationRunRecords().map((r) => ({ ok: r.ok, startedAt: r.startedAt })),
     // Phase 6 Stage 6 (D-5) — the ten enterprise questions answer from the
@@ -1567,15 +1607,22 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     automationRuns: () => getAutomationRunRecords(),
     automationRules: () => automationStore.all(),
     connectors: () => connectorService.list(),
-    workers: () => workerRegistry.summaries().map((w) => ({ id: w.id, name: w.name, role: w.role })),
+    workers: () =>
+      workerRegistry.summaries().map((w) => ({ id: w.id, name: w.name, role: w.role })),
     conversations: () => assistant.conversationSummaries(),
-    inbox: () => notifications.inboxItems().map((n) => ({ id: n.id, sourceKey: n.sourceKey, at: n.at, read: n.read })),
+    inbox: () =>
+      notifications
+        .inboxItems()
+        .map((n) => ({ id: n.id, sourceKey: n.sourceKey, at: n.at, read: n.read })),
     orgHealth: () => computeOrgHealth(collectOrgHealthInputs(Date.now())),
     orgUnits: () => {
       const org = orgStore.defaultOrg();
       const units = orgStore.unitsFor(org.id);
       const withLead = units.filter((u) => u.leadUserId).length;
-      return { units: units.length, leadershipCoverage: units.length > 0 ? withLead / units.length : null };
+      return {
+        units: units.length,
+        leadershipCoverage: units.length > 0 ? withLead / units.length : null,
+      };
     },
     workforceHealth: () => summarizeWorkforceHealth(workerRegistry.healthSummaries()),
     systemHealth: () => {
@@ -1613,7 +1660,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       const latest = new Map<string, { id: string; version: number; label: string }>();
       for (const p of DEFAULT_PROMPTS) {
         const cur = latest.get(p.id);
-        if (!cur || p.version > cur.version) latest.set(p.id, { id: p.id, version: p.version, label: p.label });
+        if (!cur || p.version > cur.version)
+          latest.set(p.id, { id: p.id, version: p.version, label: p.label });
       }
       return [...latest.values()];
     },
@@ -1624,7 +1672,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       const org = orgStore.defaultOrg();
       return {
         org: { id: org.id, name: org.name },
-        units: orgStore.unitsFor(org.id).map((u) => ({ id: u.id, name: u.name, leadUserId: u.leadUserId })),
+        units: orgStore
+          .unitsFor(org.id)
+          .map((u) => ({ id: u.id, name: u.name, leadUserId: u.leadUserId })),
         users: orgStore.usersFor(org.id).map((u) => ({ id: u.id, name: u.name, unitId: u.unitId })),
       };
     },
@@ -1638,13 +1688,24 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         finishedAt: j.finishedAt,
         correlationId: j.correlationId ?? null,
       })),
-    conversations: () => assistant.conversationSummaries().map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt })),
+    conversations: () =>
+      assistant
+        .conversationSummaries()
+        .map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt })),
     executions: () =>
-      executeEngine.getHistory().map((s) => ({ label: s.label, state: s.state, startedAt: s.startedAt })),
+      executeEngine
+        .getHistory()
+        .map((s) => ({ label: s.label, state: s.state, startedAt: s.startedAt })),
     getEvents: (since, limit) => {
       const page = platform.api.query({ since, limit }) as { events?: unknown };
       const events = Array.isArray(page.events) ? page.events : [];
-      return events as { id: string; type: string; timestamp: string; correlationId?: string | null; metadata?: Record<string, unknown> | null }[];
+      return events as {
+        id: string;
+        type: string;
+        timestamp: string;
+        correlationId?: string | null;
+        metadata?: Record<string, unknown> | null;
+      }[];
     },
     graphEdgesFor: (recordIds) => {
       const out: {
@@ -1678,7 +1739,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     graphDiscussedIn: (recordId) => {
       if (!graphStore.getNode(recordId)) return [];
       const n = graphStore.neighbors({ id: recordId, edgeTypes: ['discussed_in'], limit: 20 });
-      return n ? n.neighbors.map((en) => ({ id: en.node.id, label: en.node.label, at: en.edge.updatedAt })) : [];
+      return n
+        ? n.neighbors.map((en) => ({ id: en.node.id, label: en.node.label, at: en.edge.updatedAt }))
+        : [];
     },
     graphHistoryFor: (recordIds) => {
       const out: { at: string; action: string; label: string }[] = [];
@@ -1691,7 +1754,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       return out;
     },
     insightRecommendations: () =>
-      insight.report().recommendations.map((r) => ({ id: r.id, title: r.title, evidence: r.evidence })),
+      insight
+        .report()
+        .recommendations.map((r) => ({ id: r.id, title: r.title, evidence: r.evidence })),
     fabricGeneratedAt: () => enterpriseKnowledge.service.overview().summary.generatedAt,
     search: (text) =>
       runEnterpriseSearch(
@@ -1703,7 +1768,14 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
           timeline: getEnterpriseTimeline() ?? undefined,
           federation: getFederationSearcher() ?? undefined,
         },
-      ).hits.map((h) => ({ source: h.source, id: h.id, kind: h.kind, title: h.title, snippet: h.snippet, score: h.score })),
+      ).hits.map((h) => ({
+        source: h.source,
+        id: h.id,
+        kind: h.kind,
+        title: h.title,
+        snippet: h.snippet,
+        score: h.score,
+      })),
     registerSource: (source) => deliveryEngine.register(source),
   });
   knowledgeRef = knowledgeAssets;
@@ -1722,11 +1794,17 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     runRecords: () => getAutomationRunRecords(),
     workflowRuns: () => workforce.workflowRunEntries(),
     sessions: () =>
-      executeEngine
-        .getHistory()
-        .map((x) => ({ id: x.id, kind: x.kind, label: x.label, state: x.state, startedAt: x.startedAt })),
+      executeEngine.getHistory().map((x) => ({
+        id: x.id,
+        kind: x.kind,
+        label: x.label,
+        state: x.state,
+        startedAt: x.startedAt,
+      })),
     jobsAwaiting: () =>
-      jobStore.page({ status: 'awaiting_approval', limit: 200 }).jobs.map((j) => ({ id: j.id, createdAt: j.createdAt })),
+      jobStore
+        .page({ status: 'awaiting_approval', limit: 200 })
+        .jobs.map((j) => ({ id: j.id, createdAt: j.createdAt })),
     chains: () => governanceStore.chains(),
     orgRoles: () => {
       const org = orgStore.defaultOrg();
@@ -1739,7 +1817,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         action: (pol as { action?: string }).action ?? '',
       })),
     knownWorkers: () =>
-      workerRegistry.list().map((w) => ({ id: w.identity.id, skills: w.skills.map((sk) => sk.id) })),
+      workerRegistry
+        .list()
+        .map((w) => ({ id: w.identity.id, skills: w.skills.map((sk) => sk.id) })),
     installedWorkers: () =>
       workerInstallStore.all().map((r) => ({ id: r.id, hasPreviousVersion: r.previous !== null })),
     deliverySources: () => deliveryEngine.listSources().map((key) => ({ key })),
@@ -1945,6 +2025,25 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...initHelp().handlers);
   defs.push(...releaseOps.handlers);
 
+  // Mobile M1-03 — Companion Gateway (desktop side of the mobile companion): a LAN
+  // server a paired phone reaches over end-to-end sealed frames, off by default,
+  // hosting view-models only and dispatching through the same secure core as
+  // IPC/REST. Wired before the sender-trust stamping below so its org:manage-gated
+  // management channels (enable / revoke / pairingQr) are classified with the rest.
+  const companion = await initCompanion({
+    isSignedIn: () => authService.getStatus().state === 'authenticated',
+    sessionEmail: () => {
+      const st = authService.getStatus();
+      return st.state === 'authenticated' ? st.session.user.email : null;
+    },
+    orgName: () => orgStore.defaultOrg().name,
+    modules: enterprise.modules,
+    executiveSnapshot: () => executiveCenter.snapshot(),
+    subscribe: (types, handler) => platform.api.on(types, handler),
+    broadcast: deps.broadcast,
+  });
+  defs.push(...companion.handlers);
+
   // ── Close the sender-trust gap on privileged base/core channels ──────────────
   // A class of privileged runtime channels (execute / plugin lifecycle / permission
   // grants / automation mutations / runtime control / memory writes / decision
@@ -1983,10 +2082,18 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // handler is assembled so it can resolve any of them by channel.
   const handlerByChannel = new Map<string, SecureHandlerDef>();
   for (const d of defs) handlerByChannel.set(d.channel, d);
+  // Mobile M1-05 — let the companion write path (approvals.act) dispatch module
+  // actions through the SAME secure core (RBAC + Zod + module guards + audit).
+  companion.bindDispatch((channel, payload) => {
+    const def = handlerByChannel.get(channel);
+    if (!def) throw new Error(`Companion dispatch: no handler for channel "${channel}"`);
+    return runSecureHandler(def, payload, secureBridgeDeps);
+  });
   const apiGatewayDeps = {
     decide: (input: Parameters<typeof runGateway>[0]) => runGateway(input),
     resolveHandler: (channel: string) => handlerByChannel.get(channel),
-    runHandler: (def: SecureHandlerDef, payload: unknown) => runSecureHandler(def, payload, secureBridgeDeps),
+    runHandler: (def: SecureHandlerDef, payload: unknown) =>
+      runSecureHandler(def, payload, secureBridgeDeps),
     metrics: (windowDays: number) => gatewayMetrics(windowDays),
     gatewayAudit: (limit: number) => gatewayAuditEntries(limit),
     health: () => neuroCore.snapshot(),
@@ -2030,7 +2137,11 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     benchmarksPath: join(sandboxBaseDir, 'lab', 'benchmarks.json'),
     health: async () => {
       const s = await neuroCore.snapshot();
-      return { level: s.level, cpuPercent: s.telemetry.cpuPercent, memoryUsedMb: s.telemetry.memoryUsedMb };
+      return {
+        level: s.level,
+        cpuPercent: s.telemetry.cpuPercent,
+        memoryUsedMb: s.telemetry.memoryUsedMb,
+      };
     },
     kpis: () => executiveCenter.snapshot().kpis.map((k) => ({ key: k.key, value: k.value })),
     auditCount: () => gatewayAuditEntries(100).length,
@@ -2052,12 +2163,18 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     benchmarks: perfLab.benchmarks,
     health: async () => {
       const s = await neuroCore.snapshot();
-      return { level: s.level, cpuPercent: s.telemetry.cpuPercent, memoryUsedMb: s.telemetry.memoryUsedMb };
+      return {
+        level: s.level,
+        cpuPercent: s.telemetry.cpuPercent,
+        memoryUsedMb: s.telemetry.memoryUsedMb,
+      };
     },
     kpis: () => executiveCenter.snapshot().kpis.map((k) => ({ key: k.key, value: k.value })),
   });
   defs.push(...validation.handlers);
-  log.info('Continuous Validation Platform ready — AI Sandbox v1.0 complete', { pipelines: validation.pipelines.length });
+  log.info('Continuous Validation Platform ready — AI Sandbox v1.0 complete', {
+    pipelines: validation.pipelines.length,
+  });
 
   // Phase 6 Stage 9 — the Enterprise Operations Platform. Every dep is a READ
   // over an existing singleton/subsystem; the ONE async read is the local
@@ -2070,7 +2187,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     executionStats: () => executeEngine.stats(),
     queuedJobsTotal: () => jobStore.page({ status: 'queued', limit: 1 }).total,
     awaitingApprovals: () =>
-      jobStore.page({ status: 'awaiting_approval', limit: 200 }).jobs.map((j) => ({ id: j.id, createdAt: j.createdAt })),
+      jobStore
+        .page({ status: 'awaiting_approval', limit: 200 })
+        .jobs.map((j) => ({ id: j.id, createdAt: j.createdAt })),
     bottlenecks: () =>
       detectBottlenecks(jobStore.page({ limit: 500 }).jobs).map((b) => ({
         scope: b.scope,
@@ -2083,7 +2202,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     automationMonitor: () => getAutomationMonitor(),
     automationErrorRules: () => automationStore.all().filter((r) => r.status === 'error').length,
     connectors: () =>
-      connectorService.list().map((c) => ({ id: c.id, name: c.name, configured: c.configured, health: c.health })),
+      connectorService
+        .list()
+        .map((c) => ({ id: c.id, name: c.name, configured: c.configured, health: c.health })),
     aiState: () => engineManager.status().state,
     executiveKpis: () =>
       executiveCenter.snapshot().kpis.map((k) => ({
@@ -2105,25 +2226,37 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       getProcessAssessment().metrics.byType.map((m) => ({
         type: m.processType,
         cases: m.caseCount,
-        medianDurationMs: Number.isFinite(m.medianCycleHours) ? m.medianCycleHours * 3_600_000 : null,
+        medianDurationMs: Number.isFinite(m.medianCycleHours)
+          ? m.medianCycleHours * 3_600_000
+          : null,
         onTimeRate: Number.isFinite(m.completionRate) ? m.completionRate : null,
       })),
     units: () => {
       const org = orgStore.defaultOrg();
-      return orgStore.unitsFor(org.id).map((u) => ({ id: u.id, name: u.name, leadUserId: u.leadUserId }));
+      return orgStore
+        .unitsFor(org.id)
+        .map((u) => ({ id: u.id, name: u.name, leadUserId: u.leadUserId }));
     },
     users: () => {
       const org = orgStore.defaultOrg();
       return orgStore.usersFor(org.id).map((u) => ({ id: u.id, name: u.name }));
     },
     compliance: () =>
-      enterprise
-        .complianceFindings()
-        .map((f) => ({ ruleId: f.ruleId, ruleName: f.ruleName, severity: f.severity, status: f.status })),
+      enterprise.complianceFindings().map((f) => ({
+        ruleId: f.ruleId,
+        ruleName: f.ruleName,
+        severity: f.severity,
+        status: f.status,
+      })),
     enabledChains: () => governanceStore.chains().filter((c) => c.enabled).length,
     workforceHealth: () => {
       const w = summarizeWorkforceHealth(workerRegistry.healthSummaries());
-      return { healthy: w.healthy, degraded: w.degraded, unhealthy: w.unhealthy, unknown: w.unknown };
+      return {
+        healthy: w.healthy,
+        degraded: w.degraded,
+        unhealthy: w.unhealthy,
+        unknown: w.unknown,
+      };
     },
     systemHealth: () => {
       const snap = neuroCore.last();
@@ -2141,7 +2274,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     drPosture: () => drStore.continuity(),
     drReplicas: () => drStore.listReplicas().map((r) => ({ status: r.status })),
     drValidations: () =>
-      drStore.listValidations().map((v) => ({ status: v.status, rpoSeconds: v.rpoSeconds, validatedAt: v.validatedAt })),
+      drStore
+        .listValidations()
+        .map((v) => ({ status: v.status, rpoSeconds: v.rpoSeconds, validatedAt: v.validatedAt })),
     localBackups: async () => {
       const list = await releaseOps.listBackups();
       return list.map((b) => ({ createdAt: b.createdAt, valid: b.valid }));
@@ -2179,15 +2314,20 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // scope; one strategy-watch delivery source; zero mutation surface.
   const strategyPlatform = initStrategyPlatform({
     insightDomains: () =>
-      insightRef?.report().health.domains.map((d) => ({ key: d.key, band: d.band, score: d.score })) ?? null,
+      insightRef
+        ?.report()
+        .health.domains.map((d) => ({ key: d.key, band: d.band, score: d.score })) ?? null,
     insightOverallBand: () => insightRef?.report().health.band ?? null,
     insightIncidents: () => {
       // Domain attribution rides the Stage 9 incident lifecycle (composed, not recomputed).
       if (!operationsRef) return null;
-      return operationsRef.incidents().incidents.map((i) => ({ domain: i.domain, severity: i.incident.severity }));
+      return operationsRef
+        .incidents()
+        .incidents.map((i) => ({ domain: i.domain, severity: i.incident.severity }));
     },
     insightOutcomes: () =>
-      insightRef?.report().recommendations.map((r) => ({ id: r.id, stage: r.outcome.stage })) ?? null,
+      insightRef?.report().recommendations.map((r) => ({ id: r.id, stage: r.outcome.stage })) ??
+      null,
     executiveKpis: () =>
       executiveCenter.snapshot().kpis.map((k) => ({
         key: k.key,
@@ -2197,24 +2337,33 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       })),
     slaStatuses: () =>
       operationsRef
-        ? operationsRef.sla().statuses.map((s) => ({ targetId: s.targetId, status: s.status, detail: s.detail }))
+        ? operationsRef
+            .sla()
+            .statuses.map((s) => ({ targetId: s.targetId, status: s.status, detail: s.detail }))
         : [],
     readiness: () =>
       operationsRef
-        ? operationsRef
-            .readiness()
-            .dimensions.map((d) => ({ key: d.key, state: d.state, detail: d.detail, missing: d.missing }))
+        ? operationsRef.readiness().dimensions.map((d) => ({
+            key: d.key,
+            state: d.state,
+            detail: d.detail,
+            missing: d.missing,
+          }))
         : [],
     s9Services: () =>
       operationsRef
-        ? operationsRef
-            .catalog()
-            .entries.map((e) => ({ serviceId: e.serviceId, state: e.state, stateDetail: e.stateDetail }))
+        ? operationsRef.catalog().entries.map((e) => ({
+            serviceId: e.serviceId,
+            state: e.state,
+            stateDetail: e.stateDetail,
+          }))
         : [],
     capacityPressure: () => (operationsRef ? operationsRef.capacity().pressure : 'unknown'),
     playbooks: () => PLAYBOOK_REGISTRY.map((p) => ({ id: p.id, version: p.version })),
     apFindings: () =>
-      automationRef ? automationRef.monitor().findings.map((f) => ({ kind: f.kind, severity: f.severity })) : null,
+      automationRef
+        ? automationRef.monitor().findings.map((f) => ({ kind: f.kind, severity: f.severity }))
+        : null,
     knowledgeTotals: () => {
       const d = knowledgeRef?.dashboard();
       return d ? { assets: d.inventory.total, findings: d.quality.findings } : null;
@@ -2246,7 +2395,12 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     projects: () =>
       unifiedStore
         .query({ kinds: ['project'], limit: 100_000, includeDeleted: false })
-        .items.map((e) => ({ id: e.id, title: e.title, syncState: e.syncState, status: e.status ?? null })),
+        .items.map((e) => ({
+          id: e.id,
+          title: e.title,
+          syncState: e.syncState,
+          status: e.status ?? null,
+        })),
     minedTypes: () =>
       getProcessAssessment()
         .metrics.byType.filter((m) => m.caseCount > 0)
@@ -2254,14 +2408,18 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     compliance: () => enterprise.complianceFindings().map((f) => ({ status: f.status })),
     units: () => {
       const org = orgStore.defaultOrg();
-      return orgStore.unitsFor(org.id).map((u) => ({ id: u.id, name: u.name, leadUserId: u.leadUserId }));
+      return orgStore
+        .unitsFor(org.id)
+        .map((u) => ({ id: u.id, name: u.name, leadUserId: u.leadUserId }));
     },
     users: () => {
       const org = orgStore.defaultOrg();
       return orgStore.usersFor(org.id).map((u) => ({ id: u.id, name: u.name }));
     },
     healthHistory: () =>
-      healthHistoryStore.all().map((h) => ({ day: h.day, overall: h.overall, engineering: h.engineering })),
+      healthHistoryStore
+        .all()
+        .map((h) => ({ day: h.day, overall: h.overall, engineering: h.engineering })),
     registerSource: (source) => deliveryEngine.register(source),
   });
   strategyRef = strategyPlatform;
@@ -2293,7 +2451,12 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         sharedIn: p.sharedIn,
       })),
     fedInvitations: () =>
-      fedStore.listInvitations().map((i) => ({ toOrg: i.toOrg, fromOrg: i.fromOrg, direction: i.direction, status: i.status })),
+      fedStore.listInvitations().map((i) => ({
+        toOrg: i.toOrg,
+        fromOrg: i.fromOrg,
+        direction: i.direction,
+        status: i.status,
+      })),
     fedTrusts: () =>
       fedStore.listTrust().map((t) => ({
         peerOrg: t.peerOrg,
@@ -2325,36 +2488,60 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         installs: a.installs,
         signaturesEd25519: a.versions.every((v) => v.signature.algorithm === 'ed25519'),
       })),
-    govPolicies: () => globalGovStore.listPolicies().map((p) => ({ id: p.id, name: p.name, action: p.action, enabled: p.enabled })),
+    govPolicies: () =>
+      globalGovStore
+        .listPolicies()
+        .map((p) => ({ id: p.id, name: p.name, action: p.action, enabled: p.enabled })),
     govApprovals: () => globalGovStore.listApprovals().map((a) => ({ status: a.status })),
     govAudit: () => globalGovStore.listAudit().map((e) => ({ peerOrg: e.peerOrg })),
     p18Summary: () => {
       const s = intelligenceNetwork.service.overview().summary;
-      return { shareableIntelligence: s.shareableIntelligence, publishedInsights: s.publishedInsights, healthBand: s.healthBand };
+      return {
+        shareableIntelligence: s.shareableIntelligence,
+        publishedInsights: s.publishedInsights,
+        healthBand: s.healthBand,
+      };
     },
     knowledgeAssets: () => {
       const inv = knowledgeRef?.inventory();
       return inv ? inv.assets.map((a) => ({ id: a.id, title: a.title, topics: a.topics })) : null;
     },
     playbooks: () => PLAYBOOK_REGISTRY.map((p) => ({ id: p.id, name: p.name, version: p.version })),
-    apFindings: () => (automationRef ? automationRef.monitor().findings.map((f) => ({ severity: f.severity })) : null),
+    apFindings: () =>
+      automationRef
+        ? automationRef.monitor().findings.map((f) => ({ severity: f.severity }))
+        : null,
     connectors: () => connectorService.list().map((c) => ({ id: c.id, name: c.name })),
     workers: () => workerRegistry.summaries().map((w) => ({ id: w.id, name: w.name })),
     s9Services: () =>
-      operationsRef ? operationsRef.catalog().entries.map((e) => ({ serviceId: e.serviceId, state: e.state })) : [],
+      operationsRef
+        ? operationsRef.catalog().entries.map((e) => ({ serviceId: e.serviceId, state: e.state }))
+        : [],
     slaStatuses: () =>
       operationsRef
-        ? operationsRef.sla().statuses.map((s) => ({ targetId: s.targetId, serviceId: s.serviceId, status: s.status }))
+        ? operationsRef.sla().statuses.map((s) => ({
+            targetId: s.targetId,
+            serviceId: s.serviceId,
+            status: s.status,
+          }))
         : [],
-    readiness: () => (operationsRef ? operationsRef.readiness().dimensions.map((d) => ({ state: d.state })) : []),
+    readiness: () =>
+      operationsRef ? operationsRef.readiness().dimensions.map((d) => ({ state: d.state })) : [],
     capacityPressure: () => (operationsRef ? operationsRef.capacity().pressure : 'unknown'),
     strategyInitiatives: () =>
       strategyRef
-        ? strategyRef.portfolio().initiatives.map((i) => ({ id: i.id, label: i.label, state: i.state, capabilityKeys: [...i.capabilityKeys] }))
+        ? strategyRef.portfolio().initiatives.map((i) => ({
+            id: i.id,
+            label: i.label,
+            state: i.state,
+            capabilityKeys: [...i.capabilityKeys],
+          }))
         : [],
     strategyCapabilities: () =>
       strategyRef
-        ? strategyRef.capabilityMap().capabilities.map((c) => ({ key: c.key, label: c.label, condition: c.condition }))
+        ? strategyRef
+            .capabilityMap()
+            .capabilities.map((c) => ({ key: c.key, label: c.label, condition: c.condition }))
         : [],
     executiveKpis: () =>
       executiveCenter.snapshot().kpis.map((k) => ({
@@ -2413,7 +2600,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         ...(k.band ? { band: k.band } : {}),
       })),
     healthHistory: () =>
-      healthHistoryStore.all().map((h) => ({ day: h.day, overall: h.overall, engineering: h.engineering })),
+      healthHistoryStore
+        .all()
+        .map((h) => ({ day: h.day, overall: h.overall, engineering: h.engineering })),
     valueDeltas: () =>
       strategyPlatform.value().decisions.map((d) => ({
         decisionId: d.decisionId,
@@ -2423,30 +2612,47 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     valueTotals: () => strategyPlatform.value().totals,
     insightPredictions: () => {
       if (!insightRef) throw new Error('insight subsystem not initialized');
-      return insightRef.report().predictions.map((p) => ({ kind: p.kind, likelihood: p.likelihood }));
+      return insightRef
+        .report()
+        .predictions.map((p) => ({ kind: p.kind, likelihood: p.likelihood }));
     },
-    p14Simulation: () => ({ scenarios: autonomousIntel.service.overview().simulation.scenarios.length }),
+    p14Simulation: () => ({
+      scenarios: autonomousIntel.service.overview().simulation.scenarios.length,
+    }),
     capacityPressure: () => (operationsRef ? operationsRef.capacity().pressure : 'unknown'),
     decisions: () =>
-      decisionStore.all().map((d) => ({ id: d.id, status: d.status, fromRecommendationId: d.fromRecommendationId ?? null })),
+      decisionStore.all().map((d) => ({
+        id: d.id,
+        status: d.status,
+        fromRecommendationId: d.fromRecommendationId ?? null,
+      })),
     insightOutcomes: () => {
       if (!insightRef) throw new Error('insight subsystem not initialized');
       return insightRef.report().recommendations.map((r) => ({ id: r.id, stage: r.outcome.stage }));
     },
     strategyRecs: () => {
       const recs = strategyPlatform.dashboard().recommendations;
-      return { count: recs.length, criticalOrHigh: recs.filter((r) => r.priority === 'critical' || r.priority === 'high').length };
+      return {
+        count: recs.length,
+        criticalOrHigh: recs.filter((r) => r.priority === 'critical' || r.priority === 'high')
+          .length,
+      };
     },
     federationRecs: () => {
       const recs = enterpriseFederation.dashboard().recommendations;
-      return { count: recs.length, criticalOrHigh: recs.filter((r) => r.priority === 'critical' || r.priority === 'high').length };
+      return {
+        count: recs.length,
+        criticalOrHigh: recs.filter((r) => r.priority === 'critical' || r.priority === 'high')
+          .length,
+      };
     },
     s8Monitor: () => {
       if (!automationRef) return null;
       const findings = automationRef.monitor().findings;
       return {
         findings: findings.length,
-        criticalOrHigh: findings.filter((f) => f.severity === 'critical' || f.severity === 'high').length,
+        criticalOrHigh: findings.filter((f) => f.severity === 'critical' || f.severity === 'high')
+          .length,
       };
     },
     s9Slices: () => {
@@ -2463,7 +2669,11 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     },
     s10Totals: () => {
       const d = strategyPlatform.dashboard();
-      return { offTrack: d.objectives.offTrack, atRisk: d.objectives.atRisk, blocked: d.portfolio.blocked };
+      return {
+        offTrack: d.objectives.offTrack,
+        atRisk: d.objectives.atRisk,
+        blocked: d.portfolio.blocked,
+      };
     },
     s11Totals: () => {
       const d = enterpriseFederation.dashboard();
@@ -2515,7 +2725,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       const recs = insightRef.report().recommendations;
       return {
         findings: recs.length,
-        criticalOrHigh: recs.filter((r) => r.priority === 'critical' || r.priority === 'high').length,
+        criticalOrHigh: recs.filter((r) => r.priority === 'critical' || r.priority === 'high')
+          .length,
       };
     },
     s7Knowledge: () => {
@@ -2555,7 +2766,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     recordedDays: () => healthHistoryStore.all().length,
     recordedDecisions: () => decisionStore.all().length,
     // Existing simulation capability, registered but never invoked.
-    insightPredictions: () => (insightRef ? insightRef.report().predictions.map((p) => ({ kind: p.kind })) : null),
+    insightPredictions: () =>
+      insightRef ? insightRef.report().predictions.map((p) => ({ kind: p.kind })) : null,
     p14Scenarios: () => ({ count: autonomousIntel.service.overview().simulation.scenarios.length }),
     s12Forecasts: () => ({ registered: analyticsPlatform.forecasts().totals.registered }),
     registerSource: (source) => deliveryEngine.register(source),
@@ -2630,18 +2842,43 @@ function wireSandboxRunners(cfg: {
   baseDir: string;
   launchTarget: { executablePath: string; args: string[]; cwd?: string };
   handlerByChannel: Map<string, SecureHandlerDef>;
-  secureBridgeDeps: { isAuthenticated: () => boolean; authorize?: (p: EnterprisePermission) => void };
+  secureBridgeDeps: {
+    isAuthenticated: () => boolean;
+    authorize?: (p: EnterprisePermission) => void;
+  };
   apiGatewayDeps: Parameters<typeof handleEnterpriseApiRequest>[1];
   authorize: (p: EnterprisePermission) => void;
   moduleRegistry: { get: (id: string) => unknown };
   graphRebuild: () => unknown;
-  executiveSnapshot: () => { kpis: { key: string; label: string; value: number | null; display: string }[] };
+  executiveSnapshot: () => {
+    kpis: { key: string; label: string; value: number | null; display: string }[];
+  };
   webhookDelivered?: (ref: string) => boolean;
 }): void {
-  const restRaw = async (req: { method: string; path: string; body?: unknown; query?: Record<string, string | number | boolean>; apiKey?: string | null }): Promise<{ status: number; ok: boolean; data?: unknown; error?: string }> => {
-    const query = req.query ? Object.fromEntries(Object.entries(req.query).map(([k, v]) => [k, String(v)])) : undefined;
-    const res = await handleEnterpriseApiRequest({ method: req.method as ApiMethod, path: req.path, body: req.body, query, apiKey: req.apiKey ?? null }, cfg.apiGatewayDeps);
-    const out: { status: number; ok: boolean; data?: unknown; error?: string } = { status: res.status, ok: res.ok };
+  const restRaw = async (req: {
+    method: string;
+    path: string;
+    body?: unknown;
+    query?: Record<string, string | number | boolean>;
+    apiKey?: string | null;
+  }): Promise<{ status: number; ok: boolean; data?: unknown; error?: string }> => {
+    const query = req.query
+      ? Object.fromEntries(Object.entries(req.query).map(([k, v]) => [k, String(v)]))
+      : undefined;
+    const res = await handleEnterpriseApiRequest(
+      {
+        method: req.method as ApiMethod,
+        path: req.path,
+        body: req.body,
+        query,
+        apiKey: req.apiKey ?? null,
+      },
+      cfg.apiGatewayDeps,
+    );
+    const out: { status: number; ok: boolean; data?: unknown; error?: string } = {
+      status: res.status,
+      ok: res.ok,
+    };
     if (res.data !== undefined) out.data = res.data;
     if (res.error !== undefined) out.error = res.error;
     return out;
@@ -2663,7 +2900,11 @@ function wireSandboxRunners(cfg: {
     sdkEnterprise: createGatewaySdk(restRaw),
     cli: createGatewayCli(restRaw),
     automationRun: async (ruleId, payload) => {
-      const rec = (await getAutomationRunner().runById(ruleId, payload, 'manual')) as { id?: string; ok?: boolean; actions?: unknown[] } | null;
+      const rec = (await getAutomationRunner().runById(ruleId, payload, 'manual')) as {
+        id?: string;
+        ok?: boolean;
+        actions?: unknown[];
+      } | null;
       return { ok: rec?.ok ?? false, ranId: rec?.id ?? null, actions: rec?.actions?.length ?? 0 };
     },
     automationMonitor: () => {
@@ -2673,16 +2914,38 @@ function wireSandboxRunners(cfg: {
     timelineQuery: (ref) => {
       const tl = getEnterpriseTimeline();
       if (!tl) return [];
-      const page = tl.query({ entityRef: ref, order: 'desc' }) as { entries: { id: string; kind: string; title: string; at: string; entityRefs: string[]; resourceId: string | null }[] };
-      return page.entries.map((e) => ({ id: e.id, kind: e.kind, title: e.title, at: e.at, entityRefs: e.entityRefs, resourceId: e.resourceId }));
+      const page = tl.query({ entityRef: ref, order: 'desc' }) as {
+        entries: {
+          id: string;
+          kind: string;
+          title: string;
+          at: string;
+          entityRefs: string[];
+          resourceId: string | null;
+        }[];
+      };
+      return page.entries.map((e) => ({
+        id: e.id,
+        kind: e.kind,
+        title: e.title,
+        at: e.at,
+        entityRefs: e.entityRefs,
+        resourceId: e.resourceId,
+      }));
     },
     graphGetNode: (id) => {
       const n = graphStore.getNode(id) as { id: string; type?: string; label?: string } | null;
       return n ? { id: n.id, type: n.type ?? 'node', label: n.label ?? n.id } : null;
     },
     graphNeighbors: (id) => {
-      const r = graphStore.neighbors({ id }) as { neighbors?: { node: { id: string; type?: string; label?: string } }[] } | null;
-      return (r?.neighbors ?? []).map((x) => ({ id: x.node.id, type: x.node.type ?? 'node', label: x.node.label ?? x.node.id }));
+      const r = graphStore.neighbors({ id }) as {
+        neighbors?: { node: { id: string; type?: string; label?: string } }[];
+      } | null;
+      return (r?.neighbors ?? []).map((x) => ({
+        id: x.node.id,
+        type: x.node.type ?? 'node',
+        label: x.node.label ?? x.node.id,
+      }));
     },
     graphRebuild: async () => {
       await cfg.graphRebuild();
@@ -2690,21 +2953,38 @@ function wireSandboxRunners(cfg: {
     memoryReferences: (ref) => {
       try {
         const q = { query: ref, limit: 10 } as unknown as Parameters<typeof memoryStore.recall>[0];
-        const res = memoryStore.recall(q) as unknown as { entries?: unknown[]; results?: unknown[]; items?: unknown[] };
+        const res = memoryStore.recall(q) as unknown as {
+          entries?: unknown[];
+          results?: unknown[];
+          items?: unknown[];
+        };
         const list = res.entries ?? res.results ?? res.items ?? [];
         return Array.isArray(list) && list.length > 0;
       } catch {
         return false;
       }
     },
-    executiveKpis: () => cfg.executiveSnapshot().kpis.map((k) => ({ key: k.key, label: k.label, value: k.value, display: k.display })),
+    executiveKpis: () =>
+      cfg
+        .executiveSnapshot()
+        .kpis.map((k) => ({ key: k.key, label: k.label, value: k.value, display: k.display })),
     connectorSync: async (id, accountId) => {
       const r = (await connectorService.sync(id, accountId)) as { ok: boolean; message?: string };
       return { ok: r.ok, message: r.message ?? '' };
     },
     connectorState: (id) => {
-      const c = connectorService.get(id) as { status?: string; lastSync?: { at?: string } | null } | null;
-      return c ? { status: c.status ?? 'unknown', lastSyncAt: c.lastSync?.at ?? null, entityCount: 0, consecutiveFailures: 0 } : null;
+      const c = connectorService.get(id) as {
+        status?: string;
+        lastSync?: { at?: string } | null;
+      } | null;
+      return c
+        ? {
+            status: c.status ?? 'unknown',
+            lastSyncAt: c.lastSync?.at ?? null,
+            entityCount: 0,
+            consecutiveFailures: 0,
+          }
+        : null;
     },
     planningRun: (kind) => {
       const { input } = collectPlanningModel();
@@ -2714,13 +2994,20 @@ function wireSandboxRunners(cfg: {
         summary.plannedOrders = r.orders?.length ?? 0;
         summary.shortages = r.shortages?.length ?? 0;
       } else {
-        const s = computeCapacitySchedule(input, Date.now()) as { bottlenecks?: unknown[]; assignments?: unknown[] };
+        const s = computeCapacitySchedule(input, Date.now()) as {
+          bottlenecks?: unknown[];
+          assignments?: unknown[];
+        };
         summary.bottlenecks = s.bottlenecks?.length ?? 0;
         summary.scheduled = s.assignments?.length ?? 0;
       }
       return { kind, ok: true, summary };
     },
-    pluginRun: () => Promise.resolve({ ok: false, error: 'plugin execution is not exposed to the embedded scenario runner' }),
+    pluginRun: () =>
+      Promise.resolve({
+        ok: false,
+        error: 'plugin execution is not exposed to the embedded scenario runner',
+      }),
     pluginRegistered: (id) => pluginManager.list().some((p) => (p as { id?: string }).id === id),
     webhookDelivered: (ref) => cfg.webhookDelivered?.(ref) ?? false,
     moduleRegistered: (id) => cfg.moduleRegistry.get(id) != null,
@@ -2755,12 +3042,18 @@ function wireSandboxRunners(cfg: {
  */
 type SandboxSecureCfg = {
   handlerByChannel: Map<string, SecureHandlerDef>;
-  secureBridgeDeps: { isAuthenticated: () => boolean; authorize?: (p: EnterprisePermission) => void };
+  secureBridgeDeps: {
+    isAuthenticated: () => boolean;
+    authorize?: (p: EnterprisePermission) => void;
+  };
 };
 
 /** A dispatcher + `QaExecutorBackend` over the sandbox IPC channels — reused by S4 (AI QA)
  *  and S5 (Perf & Security Lab). Runs through the SAME secure core → same RBAC. */
-function buildSandboxExecutorBackend(cfg: SandboxSecureCfg): { dispatch: (channel: string, payload: unknown) => Promise<unknown>; backend: QaExecutorBackend } {
+function buildSandboxExecutorBackend(cfg: SandboxSecureCfg): {
+  dispatch: (channel: string, payload: unknown) => Promise<unknown>;
+  backend: QaExecutorBackend;
+} {
   const dispatch = (channel: string, payload: unknown): Promise<unknown> => {
     const def = cfg.handlerByChannel.get(channel);
     if (!def) return Promise.reject(new Error(`channel not wired: ${channel}`));
@@ -2771,31 +3064,66 @@ function buildSandboxExecutorBackend(cfg: SandboxSecureCfg): { dispatch: (channe
   const backend: QaExecutorBackend = {
     ensureWorkspace: async () => {
       if (workspaceId) return workspaceId;
-      const list = (await dispatch(IpcChannel.SandboxWorkspaceList, {}).catch(() => [])) as { id?: string }[];
+      const list = (await dispatch(IpcChannel.SandboxWorkspaceList, {}).catch(() => [])) as {
+        id?: string;
+      }[];
       if (Array.isArray(list) && list[0]?.id) workspaceId = list[0].id;
-      else workspaceId = ((await dispatch(IpcChannel.SandboxWorkspaceCreate, { name: 'AI QA' })) as { id: string }).id;
+      else
+        workspaceId = (
+          (await dispatch(IpcChannel.SandboxWorkspaceCreate, { name: 'AI QA' })) as { id: string }
+        ).id;
       return workspaceId;
     },
-    createScenario: async (wsId, key, name) => ((await dispatch(IpcChannel.SandboxScenarioCreate, { workspaceId: wsId, key, name })) as { id: string }).id,
-    createVersion: async (scenarioId, spec) => { await dispatch(IpcChannel.SandboxScenarioVersionCreate, { scenarioId, spec }); },
-    enqueue: async (scenarioId) => ((await dispatch(IpcChannel.SandboxExecutionEnqueue, { scenarioId })) as { id: string }).id,
+    createScenario: async (wsId, key, name) =>
+      (
+        (await dispatch(IpcChannel.SandboxScenarioCreate, { workspaceId: wsId, key, name })) as {
+          id: string;
+        }
+      ).id,
+    createVersion: async (scenarioId, spec) => {
+      await dispatch(IpcChannel.SandboxScenarioVersionCreate, { scenarioId, spec });
+    },
+    enqueue: async (scenarioId) =>
+      ((await dispatch(IpcChannel.SandboxExecutionEnqueue, { scenarioId })) as { id: string }).id,
     getExecution: async (id) => {
-      const e = (await dispatch(IpcChannel.SandboxExecutionGet, { id }).catch(() => null)) as { status?: string; error?: string | null } | null;
+      const e = (await dispatch(IpcChannel.SandboxExecutionGet, { id }).catch(() => null)) as {
+        status?: string;
+        error?: string | null;
+      } | null;
       return e && e.status ? { status: e.status, error: e.error ?? null } : null;
     },
     getResult: async (id) => {
-      const r = (await dispatch(IpcChannel.SandboxResultGet, { executionId: id }).catch(() => null)) as { outcome?: 'pass' | 'fail' | 'error' | null; assertions?: { total: number; passed: number; failed: number }; metrics?: Record<string, number> } | null;
-      return r ? { outcome: r.outcome ?? null, assertions: r.assertions ?? { total: 0, passed: 0, failed: 0 }, metrics: r.metrics ?? {} } : null;
+      const r = (await dispatch(IpcChannel.SandboxResultGet, { executionId: id }).catch(
+        () => null,
+      )) as {
+        outcome?: 'pass' | 'fail' | 'error' | null;
+        assertions?: { total: number; passed: number; failed: number };
+        metrics?: Record<string, number>;
+      } | null;
+      return r
+        ? {
+            outcome: r.outcome ?? null,
+            assertions: r.assertions ?? { total: 0, passed: 0, failed: 0 },
+            metrics: r.metrics ?? {},
+          }
+        : null;
     },
     listArtifacts: async (id) => {
-      const a = (await dispatch(IpcChannel.SandboxArtifactList, { executionId: id }).catch(() => [])) as { name: string; kind: string; storageRef?: string | null }[];
-      return Array.isArray(a) ? a.map((x) => ({ name: x.name, kind: x.kind, ref: x.storageRef ?? null })) : [];
+      const a = (await dispatch(IpcChannel.SandboxArtifactList, { executionId: id }).catch(
+        () => [],
+      )) as { name: string; kind: string; storageRef?: string | null }[];
+      return Array.isArray(a)
+        ? a.map((x) => ({ name: x.name, kind: x.kind, ref: x.storageRef ?? null }))
+        : [];
     },
     getTimeline: async (id) => {
-      const t = (await dispatch(IpcChannel.SandboxExecutionTimeline, { executionId: id }).catch(() => [])) as { phase: string }[];
+      const t = (await dispatch(IpcChannel.SandboxExecutionTimeline, { executionId: id }).catch(
+        () => [],
+      )) as { phase: string }[];
       return Array.isArray(t) ? t.map((x) => x.phase) : [];
     },
-    isTerminal: (status) => isTerminalExecutionStatus(status as Parameters<typeof isTerminalExecutionStatus>[0]),
+    isTerminal: (status) =>
+      isTerminalExecutionStatus(status as Parameters<typeof isTerminalExecutionStatus>[0]),
   };
   return { dispatch, backend };
 }
@@ -2803,10 +3131,23 @@ function buildSandboxExecutorBackend(cfg: SandboxSecureCfg): { dispatch: (channe
 function wireAiQa(cfg: SandboxSecureCfg): ReturnType<typeof initAiQa> {
   const { backend } = buildSandboxExecutorBackend(cfg);
 
-  const generate = async (prompt: string): Promise<{ text: string; confidence: number; tokens: number; grounded: boolean }> => {
+  const generate = async (
+    prompt: string,
+  ): Promise<{ text: string; confidence: number; tokens: number; grounded: boolean }> => {
     try {
-      const res = await aiEngine.run({ worker: 'diagnostic', promptId: 'generic.summary', variables: { content: prompt, input: prompt, text: prompt }, tier: 'fast', maxOutputTokens: 400 });
-      return { text: res.text, confidence: res.confidence, tokens: res.usage.inputTokens + res.usage.outputTokens, grounded: res.grounded };
+      const res = await aiEngine.run({
+        worker: 'diagnostic',
+        promptId: 'generic.summary',
+        variables: { content: prompt, input: prompt, text: prompt },
+        tier: 'fast',
+        maxOutputTokens: 400,
+      });
+      return {
+        text: res.text,
+        confidence: res.confidence,
+        tokens: res.usage.inputTokens + res.usage.outputTokens,
+        grounded: res.grounded,
+      };
     } catch {
       return { text: '', confidence: 0, tokens: 0, grounded: false };
     }
@@ -2815,8 +3156,12 @@ function wireAiQa(cfg: SandboxSecureCfg): ReturnType<typeof initAiQa> {
   return initAiQa({
     executorBackend: backend,
     memory: {
-      remember: (i) => memoryStore.remember(i as unknown as Parameters<typeof memoryStore.remember>[0]),
-      recall: (q) => memoryStore.recall(q as unknown as Parameters<typeof memoryStore.recall>[0]) as unknown as { hits: { item: { id: string; title: string; content: string } }[] },
+      remember: (i) =>
+        memoryStore.remember(i as unknown as Parameters<typeof memoryStore.remember>[0]),
+      recall: (q) =>
+        memoryStore.recall(q as unknown as Parameters<typeof memoryStore.recall>[0]) as unknown as {
+          hits: { item: { id: string; title: string; content: string } }[];
+        },
     },
     generate,
   });
@@ -2829,15 +3174,19 @@ function wireAiQa(cfg: SandboxSecureCfg): ReturnType<typeof initAiQa> {
  * gateway audit, and sandbox queue depth. It surfaces its verdict through the EXISTING
  * diagnostics via a registered probe. No new diagnostics/monitoring/metrics/dashboard.
  */
-async function wirePerfSecurityLab(cfg: SandboxSecureCfg & {
-  benchmarksPath: string;
-  health: () => Promise<{ level: string; cpuPercent: number; memoryUsedMb: number }>;
-  kpis: () => { key: string; value: number | null }[];
-  auditCount: () => number;
-}): Promise<Awaited<ReturnType<typeof initPerfSecurityLab>>> {
+async function wirePerfSecurityLab(
+  cfg: SandboxSecureCfg & {
+    benchmarksPath: string;
+    health: () => Promise<{ level: string; cpuPercent: number; memoryUsedMb: number }>;
+    kpis: () => { key: string; value: number | null }[];
+    auditCount: () => number;
+  },
+): Promise<Awaited<ReturnType<typeof initPerfSecurityLab>>> {
   const { dispatch, backend } = buildSandboxExecutorBackend(cfg);
   const queueDepth = async (): Promise<number> => {
-    const q = (await dispatch(IpcChannel.SandboxQueueState, {}).catch(() => ({ depth: 0 }))) as { depth?: number };
+    const q = (await dispatch(IpcChannel.SandboxQueueState, {}).catch(() => ({ depth: 0 }))) as {
+      depth?: number;
+    };
     return q?.depth ?? 0;
   };
   return initPerfSecurityLab({
@@ -2855,33 +3204,56 @@ async function wirePerfSecurityLab(cfg: SandboxSecureCfg & {
  * the EXISTING `notificationScheduler`. Exposes one read-only `sandbox:read` channel the
  * Developer Portal consumes. No new engine/scheduler/dashboard/report/memory/security.
  */
-async function wireContinuousValidation(cfg: SandboxSecureCfg & {
-  runsPath: string;
-  runQaSession: Parameters<typeof initContinuousValidation>[0]['executors']['runQaSession'];
-  runLab: Parameters<typeof initContinuousValidation>[0]['executors']['runLab'];
-  benchmarks: Parameters<typeof initContinuousValidation>[0]['benchmarks'];
-  health: () => Promise<{ level: string; cpuPercent: number; memoryUsedMb: number }>;
-  kpis: () => { key: string; value: number | null }[];
-}): Promise<Awaited<ReturnType<typeof initContinuousValidation>>> {
+async function wireContinuousValidation(
+  cfg: SandboxSecureCfg & {
+    runsPath: string;
+    runQaSession: Parameters<typeof initContinuousValidation>[0]['executors']['runQaSession'];
+    runLab: Parameters<typeof initContinuousValidation>[0]['executors']['runLab'];
+    benchmarks: Parameters<typeof initContinuousValidation>[0]['benchmarks'];
+    health: () => Promise<{ level: string; cpuPercent: number; memoryUsedMb: number }>;
+    kpis: () => { key: string; value: number | null }[];
+  },
+): Promise<Awaited<ReturnType<typeof initContinuousValidation>>> {
   const { backend } = buildSandboxExecutorBackend(cfg);
-  const executor = createQaExecutor(backend, { now: Date.now, sleep: (ms) => new Promise((r) => setTimeout(r, ms)) });
+  const executor = createQaExecutor(backend, {
+    now: Date.now,
+    sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+  });
   return initContinuousValidation({
     executors: { qaExecutor: executor, runQaSession: cfg.runQaSession, runLab: cfg.runLab },
     benchmarks: cfg.benchmarks,
     runsPath: cfg.runsPath,
     enableSchedules: false,
-    scheduler: { every: (id, ms, fn) => taskScheduler.every(id, ms, fn), cancel: (id) => { taskScheduler.cancel(id); } },
+    scheduler: {
+      every: (id, ms, fn) => taskScheduler.every(id, ms, fn),
+      cancel: (id) => {
+        taskScheduler.cancel(id);
+      },
+    },
     notifier: {
       notify: (n) => {
-        if (n.priority === 'high' || n.priority === 'critical') notificationScheduler.notifyNow(n.title, n.body);
+        if (n.priority === 'high' || n.priority === 'critical')
+          notificationScheduler.notifyNow(n.title, n.body);
       },
     },
     history: {
       remember: (i) => {
-        memoryStore.remember({ kind: 'note', title: i.title, content: i.content, tags: i.tags, metadata: i.metadata } as unknown as Parameters<typeof memoryStore.remember>[0]);
+        memoryStore.remember({
+          kind: 'note',
+          title: i.title,
+          content: i.content,
+          tags: i.tags,
+          metadata: i.metadata,
+        } as unknown as Parameters<typeof memoryStore.remember>[0]);
       },
       recall: (q) => {
-        const res = memoryStore.recall({ tag: q.tag, text: q.text, limit: q.limit } as unknown as Parameters<typeof memoryStore.recall>[0]) as unknown as { hits: { item: { title: string; content: string } }[] };
+        const res = memoryStore.recall({
+          tag: q.tag,
+          text: q.text,
+          limit: q.limit,
+        } as unknown as Parameters<typeof memoryStore.recall>[0]) as unknown as {
+          hits: { item: { title: string; content: string } }[];
+        };
         return res.hits.map((h) => ({ title: h.item.title, content: h.item.content }));
       },
     },

@@ -17,6 +17,8 @@ import {
   // A7 — the push half. See `packages/shared/src/ipc/broadcasts.ts`.
   type IpcBroadcastChannelName,
   type IpcBroadcastOf,
+  // Mobile M1-03 — Companion gateway status/device change signal.
+  type CompanionGatewayEvent,
   type InfraChangedEvent,
   type IpcStoreChangedEvent,
   type ThemeChangedEvent,
@@ -529,8 +531,13 @@ export const ipc = {
     // P6.1 — automation actions + global search.
     actions: (platformId?: string) =>
       invoke(IpcChannel.InfraActions, platformId ? { platformId } : {}),
-    action: (req: { platformId: string; accountId?: string; actionId: string; params?: Record<string, unknown>; confirmed?: boolean }) =>
-      invoke(IpcChannel.InfraAction, req),
+    action: (req: {
+      platformId: string;
+      accountId?: string;
+      actionId: string;
+      params?: Record<string, unknown>;
+      confirmed?: boolean;
+    }) => invoke(IpcChannel.InfraAction, req),
     search: (query: string, opts?: { platformId?: string; domain?: string; limit?: number }) =>
       invoke(IpcChannel.InfraSearch, { query, ...opts }),
     onEvent: (cb: (e: InfraChangedEvent) => void) => subscribe(IpcChannel.InfraEventBroadcast, cb),
@@ -561,8 +568,12 @@ export const ipc = {
   /** Phase 6 Stage 7 — the Enterprise Knowledge Platform (read-only; every
    *  channel RBAC-gated `knowledge:read` and cached ~3 s server-side). */
   kb: {
-    inventory: (req?: { classId?: string; authority?: string; lifecycle?: string; text?: string }) =>
-      invoke(IpcChannel.KbInventory, req ?? {}),
+    inventory: (req?: {
+      classId?: string;
+      authority?: string;
+      lifecycle?: string;
+      text?: string;
+    }) => invoke(IpcChannel.KbInventory, req ?? {}),
     matrix: () => invoke(IpcChannel.KbMatrix, {}),
     impact: (assetId: string) => invoke(IpcChannel.KbImpact, { assetId }),
     lineage: (decisionId?: string) =>
@@ -793,8 +804,13 @@ export const ipc = {
       invoke(IpcChannel.AssistantConversationDelete, { conversationId }),
     branch: (conversationId: string, messageId: string, now?: string) =>
       invoke(IpcChannel.AssistantConversationBranch, { conversationId, messageId, now }),
-    decideStep: (req: { conversationId: string; messageId: string; stepId: string; decision: 'approve' | 'reject'; note?: string | null }) =>
-      invoke(IpcChannel.AssistantPlanDecide, req),
+    decideStep: (req: {
+      conversationId: string;
+      messageId: string;
+      stepId: string;
+      decision: 'approve' | 'reject';
+      note?: string | null;
+    }) => invoke(IpcChannel.AssistantPlanDecide, req),
     cancel: (conversationId: string) => invoke(IpcChannel.AssistantCancel, { conversationId }),
     onEvent: (cb: (event: AssistantEvent) => void) =>
       subscribe(IpcChannel.AssistantEventBroadcast, cb),
@@ -811,6 +827,17 @@ export const ipc = {
       invoke(IpcChannel.NotificationsPrefsSet, patch),
     onEvent: (cb: (event: NotificationInboxEvent) => void) =>
       subscribe(IpcChannel.NotificationsEventBroadcast, cb),
+  },
+
+  /** Mobile M1-03 — the desktop Companion Gateway management surface (Settings → Companion). */
+  companion: {
+    status: () => invoke(IpcChannel.CompanionStatus),
+    devices: () => invoke(IpcChannel.CompanionDevices),
+    enable: (enabled: boolean) => invoke(IpcChannel.CompanionEnable, { enabled }),
+    revoke: (deviceId: string) => invoke(IpcChannel.CompanionRevoke, { deviceId }),
+    pairingQr: () => invoke(IpcChannel.CompanionPairingQr),
+    onEvent: (cb: (event: CompanionGatewayEvent) => void) =>
+      subscribe(IpcChannel.CompanionEventBroadcast, cb),
   },
 
   engineering: {
@@ -985,15 +1012,26 @@ export const ipc = {
     /** Personalization — per-user Favorites / Recently-Opened / Saved Views (actor resolved server-side). */
     personalization: {
       get: () => invoke(IpcChannel.EnterprisePersonalizationGet),
-      favorite: (input: { id: string; kind?: string; label?: string; tab: string; query?: string }) =>
-        invoke(IpcChannel.EnterprisePersonalizationFavorite, input),
+      favorite: (input: {
+        id: string;
+        kind?: string;
+        label?: string;
+        tab: string;
+        query?: string;
+      }) => invoke(IpcChannel.EnterprisePersonalizationFavorite, input),
       recent: (input: { id: string; kind?: string; label?: string; tab: string; query?: string }) =>
         invoke(IpcChannel.EnterprisePersonalizationRecent, input),
       clearRecents: () => invoke(IpcChannel.EnterprisePersonalizationClearRecents),
-      saveView: (input: { id?: string; label: string; tab: string; query?: string; filters?: string }) =>
-        invoke(IpcChannel.EnterprisePersonalizationSaveView, input),
+      saveView: (input: {
+        id?: string;
+        label: string;
+        tab: string;
+        query?: string;
+        filters?: string;
+      }) => invoke(IpcChannel.EnterprisePersonalizationSaveView, input),
       deleteView: (id: string) => invoke(IpcChannel.EnterprisePersonalizationDeleteView, { id }),
-      renameView: (id: string, label: string) => invoke(IpcChannel.EnterprisePersonalizationRenameView, { id, label }),
+      renameView: (id: string, label: string) =>
+        invoke(IpcChannel.EnterprisePersonalizationRenameView, { id, label }),
     },
 
     onEvent: (cb: (e: IpcStoreChangedEvent) => void) =>
@@ -1346,8 +1384,12 @@ export const ipc = {
   /* ── Enterprise Webhooks (P3.0, Increment 4) ── */
   webhooks: {
     list: () => invoke(IpcChannel.WebhookList),
-    create: (input: { label: string; url: string; categories?: PlatformEventCategory[]; types?: string[] }) =>
-      invoke(IpcChannel.WebhookCreate, input),
+    create: (input: {
+      label: string;
+      url: string;
+      categories?: PlatformEventCategory[];
+      types?: string[];
+    }) => invoke(IpcChannel.WebhookCreate, input),
     setEnabled: (id: string, enabled: boolean) =>
       invoke(IpcChannel.WebhookSetEnabled, { id, enabled }),
     remove: (id: string) => invoke(IpcChannel.WebhookDelete, { id }),
@@ -1705,7 +1747,12 @@ export const ipc = {
     datasets: (workspaceId?: string) => invoke(IpcChannel.SandboxDatasetList, { workspaceId }),
     enqueue: (
       scenarioId: string,
-      opts?: { version?: number; trigger?: ExecutionTrigger; priority?: ExecutionPriority; datasetId?: string },
+      opts?: {
+        version?: number;
+        trigger?: ExecutionTrigger;
+        priority?: ExecutionPriority;
+        datasetId?: string;
+      },
     ) => invoke(IpcChannel.SandboxExecutionEnqueue, { scenarioId, ...(opts ?? {}) }),
     cancel: (id: string) => invoke(IpcChannel.SandboxExecutionCancel, { id }),
     generateReport: (executionId: string) =>

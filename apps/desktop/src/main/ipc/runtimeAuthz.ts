@@ -108,6 +108,12 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
   [IpcChannel.BillingCheckout]: 'org:manage',
   [IpcChannel.DevicesRegister]: 'org:manage',
   [IpcChannel.DevicesRevoke]: 'org:manage',
+  // Mobile M1-03 — companion device-trust administration (mirror device revoke):
+  // enabling the gateway, minting a pairing token, and unpairing all mutate the
+  // set of devices that can reach enterprise data, so they need org:manage.
+  [IpcChannel.CompanionEnable]: 'org:manage',
+  [IpcChannel.CompanionRevoke]: 'org:manage',
+  [IpcChannel.CompanionPairingQr]: 'org:manage',
 
   // Runtime Supervisor recovery + policy changes.
   [IpcChannel.SupervisorRecover]: 'operations:manage',
@@ -304,6 +310,9 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   IpcChannel.VoiceStatus,
   IpcChannel.VoiceTurn,
   IpcChannel.DevicesList,
+  // Mobile M1-03 — companion gateway status + paired-device list are local reads.
+  IpcChannel.CompanionStatus,
+  IpcChannel.CompanionDevices,
   IpcChannel.SupervisorStatus,
   IpcChannel.SupervisorHistory,
   IpcChannel.ExecuteSessions,

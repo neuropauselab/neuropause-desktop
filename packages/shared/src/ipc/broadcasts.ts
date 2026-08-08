@@ -31,6 +31,7 @@ import type { AuthStatus } from '../types/auth';
 import type { MenuCommandPayload, TrayCommandPayload } from '../types/app';
 import type { ConnectorEvent, ConnectorSyncSnapshot } from '../types/connectors';
 import type { ConnectorLifecycleEvent } from '../types/connectorRuntime';
+import type { CompanionGatewayEvent } from '../types/companion';
 import type { ThemeSource } from './contracts';
 import type { EnterpriseModuleEvent } from '../types/enterpriseModule';
 import type { EnterpriseTimelineStats } from '../types/enterpriseTimeline';
@@ -108,6 +109,7 @@ export interface IpcBroadcastMap {
   'auth:statusChanged': AuthStatus;
   'app:themeChanged': ThemeChangedEvent;
   'cloud:event': IpcStoreChangedEvent;
+  'companion:event': CompanionGatewayEvent;
   'connectors:event': ConnectorEvent;
   'connectors:lifecycle': ConnectorLifecycleEvent;
   'connectors:sync-state': ConnectorSyncSnapshot[];
@@ -191,6 +193,7 @@ const BROADCAST_CHANNEL_WITNESS: Record<keyof IpcBroadcastMap, true> = {
   'auth:statusChanged': true,
   'app:themeChanged': true,
   'cloud:event': true,
+  'companion:event': true,
   'connectors:event': true,
   'connectors:lifecycle': true,
   'connectors:sync-state': true,

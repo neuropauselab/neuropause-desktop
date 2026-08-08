@@ -40,6 +40,8 @@ export const DOMAIN_FILES: Record<MaintenanceDomain, string[]> = {
     'feature-flags.json',
     'pilot.json',
     'license-status.json',
+    // Mobile M1-03 — paired companion devices + gateway on/off (envelope-backed).
+    'companion-devices.json',
   ],
   workspace: ['enterprise-workspaces.json', 'enterprise-org.json'],
   knowledgeGraph: ['graph.json', 'unified-store.json'],

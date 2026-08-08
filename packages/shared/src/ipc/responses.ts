@@ -100,6 +100,9 @@ import type {
   CommercialOverview,
   CommercialReleases,
   CommercialSubscription,
+  CompanionDeviceDto,
+  CompanionPairingQrDto,
+  CompanionStatusDto,
   ComplianceFinding,
   ComplianceReport,
   ConnectorActionResult,
@@ -491,7 +494,7 @@ export interface IpcResponseMap {
   'catalog:developer': unknown;
   'catalog:categories': Items<CategorySummary>;
   'catalog:bookmarks': Items<StoreAppCard>;
-  'catalog:toggleBookmark': { bookmarked: boolean; };
+  'catalog:toggleBookmark': { bookmarked: boolean };
   'catalog:submitReview': ReviewDto;
   'catalog:recommendations': Items<StoreAppCard>;
   'catalog:checkUpdate': UpdateCheck;
@@ -569,12 +572,15 @@ export interface IpcResponseMap {
   // ── decisions ──
   'decisions:list': { decisions: ExecutiveDecision[] };
   'decisions:createFromRecommendation': { decision: ExecutiveDecision | null };
-  'decisions:setStatus': { decision: ExecutiveDecision | null; };
+  'decisions:setStatus': { decision: ExecutiveDecision | null };
 
   // ── automations ──
-  'automations:list': { rules: AutomationRule[]; summary: { total: number; active: number; paused: number; draft: number }; };
-  'automations:save': { ok: boolean; rule?: AutomationRule; issues?: string[]; };
-  'automations:setStatus': { rule: AutomationRule | null; };
+  'automations:list': {
+    rules: AutomationRule[];
+    summary: { total: number; active: number; paused: number; draft: number };
+  };
+  'automations:save': { ok: boolean; rule?: AutomationRule; issues?: string[] };
+  'automations:setStatus': { rule: AutomationRule | null };
   'automations:remove': { removed: boolean };
   'automations:run': { record: AutomationRunRecord | null };
   'automations:monitor': { monitor: AutomationMonitor };
@@ -587,10 +593,10 @@ export interface IpcResponseMap {
   'supervisor:status': SupervisorStatus;
 
   // ── license ──
-  'license:reportHealth': { ok: boolean; };
+  'license:reportHealth': { ok: boolean };
 
   // ── billing ──
-  'billing:checkout': { subscriptionId: string; checkoutUrl: string; };
+  'billing:checkout': { subscriptionId: string; checkoutUrl: string };
 
   // ── devices ──
   'devices:register': { device: Device };
@@ -607,7 +613,7 @@ export interface IpcResponseMap {
 
   // ── execute ──
   'execute:run': ExecutionSession;
-  'execute:sessions': { sessions: ExecutionSession[]; stats: ExecutionStats; };
+  'execute:sessions': { sessions: ExecutionSession[]; stats: ExecutionStats };
   'execute:history': { records: ExecutionSession[] };
   'execute:cancel': ExecutionSession | null;
 
@@ -644,7 +650,13 @@ export interface IpcResponseMap {
   'connectors:inspect': ConnectorInspection;
   'connectors:m365.actions': ConnectorWriteActionInfo[];
   'connectors:m365.execute': ConnectorWriteResult;
-  'connectors:m365.draft': { ok: boolean; text: string; model: string; grounded: boolean; confidence: number; };
+  'connectors:m365.draft': {
+    ok: boolean;
+    text: string;
+    model: string;
+    grounded: boolean;
+    confidence: number;
+  };
 
   // ── unified ──
   'unified:query': UnifiedQueryResult;
@@ -667,10 +679,38 @@ export interface IpcResponseMap {
   'memory:semantic-recall': MemoryRecallResult;
 
   // ── knowledge ──
-  'knowledge:related': { memoryId: string; related: Array<{ memoryId: string; title: string; kind: string; content: string; score: number; sharedEntities: string[]; }>; };
-  'knowledge:topics': { topics: Array<{ id: string; label: string; memoryIds: string[]; entities: string[]; size: number; }>; total: number; };
+  'knowledge:related': {
+    memoryId: string;
+    related: Array<{
+      memoryId: string;
+      title: string;
+      kind: string;
+      content: string;
+      score: number;
+      sharedEntities: string[];
+    }>;
+  };
+  'knowledge:topics': {
+    topics: Array<{
+      id: string;
+      label: string;
+      memoryIds: string[];
+      entities: string[];
+      size: number;
+    }>;
+    total: number;
+  };
   // FW-1: registered in main since P6-Stage7; typing it here completes the A7 contract so the renderer facade can reach it.
-  'knowledge:health': { totalMemories: number; memoriesWithEntities: number; avgEntitiesPerMemory: number; topicCount: number; memoriesInTopics: number; orphanCount: number; coveragePercent: number; largestTopicSize: number; };
+  'knowledge:health': {
+    totalMemories: number;
+    memoriesWithEntities: number;
+    avgEntitiesPerMemory: number;
+    topicCount: number;
+    memoriesInTopics: number;
+    orphanCount: number;
+    coveragePercent: number;
+    largestTopicSize: number;
+  };
 
   // ── memory ──
   'memory:get': MemoryItem | null;
@@ -719,9 +759,16 @@ export interface IpcResponseMap {
 
   // ── notifications ──
   'notifications:list': NotificationInboxPage;
-  'notifications:markRead': { changed: number; unread: number; };
+  'notifications:markRead': { changed: number; unread: number };
   'notifications:prefs.get': DeliveryPreferences;
   'notifications:prefs.set': DeliveryPreferences;
+
+  // ── companion (mobile) gateway management (Mobile M1-03) ──
+  'companion:status': CompanionStatusDto;
+  'companion:devices': CompanionDeviceDto[];
+  'companion:enable': CompanionStatusDto;
+  'companion:revoke': { ok: boolean };
+  'companion:pairingQr': CompanionPairingQrDto;
 
   // ── governance ──
   'governance:list': GovernanceTraceList;
@@ -760,16 +807,66 @@ export interface IpcResponseMap {
   'workforce:uninstall': WorkerInstallResult;
 
   // ── enterprise ──
-  'enterprise:org.get': { organization: Organization; units: OrgUnit[]; roles: OrgRole[]; users: OrgUser[]; };
-  'enterprise:org.createUnit': { organization: Organization; units: OrgUnit[]; roles: OrgRole[]; users: OrgUser[]; };
-  'enterprise:org.updateUnit': { organization: Organization; units: OrgUnit[]; roles: OrgRole[]; users: OrgUser[]; };
-  'enterprise:org.deleteUnit': { organization: Organization; units: OrgUnit[]; roles: OrgRole[]; users: OrgUser[]; };
-  'enterprise:org.createUser': { organization: Organization; units: OrgUnit[]; roles: OrgRole[]; users: OrgUser[]; };
-  'enterprise:org.updateUser': { organization: Organization; units: OrgUnit[]; roles: OrgRole[]; users: OrgUser[]; };
-  'enterprise:org.deleteUser': { organization: Organization; units: OrgUnit[]; roles: OrgRole[]; users: OrgUser[]; };
-  'enterprise:org.createRole': { organization: Organization; units: OrgUnit[]; roles: OrgRole[]; users: OrgUser[]; };
-  'enterprise:org.updateRole': { organization: Organization; units: OrgUnit[]; roles: OrgRole[]; users: OrgUser[]; };
-  'enterprise:org.deleteRole': { organization: Organization; units: OrgUnit[]; roles: OrgRole[]; users: OrgUser[]; };
+  'enterprise:org.get': {
+    organization: Organization;
+    units: OrgUnit[];
+    roles: OrgRole[];
+    users: OrgUser[];
+  };
+  'enterprise:org.createUnit': {
+    organization: Organization;
+    units: OrgUnit[];
+    roles: OrgRole[];
+    users: OrgUser[];
+  };
+  'enterprise:org.updateUnit': {
+    organization: Organization;
+    units: OrgUnit[];
+    roles: OrgRole[];
+    users: OrgUser[];
+  };
+  'enterprise:org.deleteUnit': {
+    organization: Organization;
+    units: OrgUnit[];
+    roles: OrgRole[];
+    users: OrgUser[];
+  };
+  'enterprise:org.createUser': {
+    organization: Organization;
+    units: OrgUnit[];
+    roles: OrgRole[];
+    users: OrgUser[];
+  };
+  'enterprise:org.updateUser': {
+    organization: Organization;
+    units: OrgUnit[];
+    roles: OrgRole[];
+    users: OrgUser[];
+  };
+  'enterprise:org.deleteUser': {
+    organization: Organization;
+    units: OrgUnit[];
+    roles: OrgRole[];
+    users: OrgUser[];
+  };
+  'enterprise:org.createRole': {
+    organization: Organization;
+    units: OrgUnit[];
+    roles: OrgRole[];
+    users: OrgUser[];
+  };
+  'enterprise:org.updateRole': {
+    organization: Organization;
+    units: OrgUnit[];
+    roles: OrgRole[];
+    users: OrgUser[];
+  };
+  'enterprise:org.deleteRole': {
+    organization: Organization;
+    units: OrgUnit[];
+    roles: OrgRole[];
+    users: OrgUser[];
+  };
   'enterprise:workspace.list': WorkspaceSummary[];
   'enterprise:workspace.active': Workspace;
   'enterprise:workspace.create': WorkspaceSummary[];
@@ -883,14 +980,15 @@ export interface IpcResponseMap {
   'ecosystem:billing.assignSeat': SeatAssignment | { error: string };
   'ecosystem:billing.releaseSeat': { released: boolean };
   'ecosystem:billing.licenses': License[];
-  'ecosystem:billing.purchase': { purchase: MarketplacePurchase; license: License } | { error: string };
+  'ecosystem:billing.purchase':
+    { purchase: MarketplacePurchase; license: License } | { error: string };
   'ecosystem:billing.purchases': MarketplacePurchase[];
   'ecosystem:installs.list': Installation[];
   'ecosystem:installs.summary': InstallSummary;
   'ecosystem:installs.install': Installation | { error: string };
   'ecosystem:installs.update': Installation | { error: string };
   'ecosystem:installs.setEnabled': Installation | null;
-  'ecosystem:installs.uninstall': { uninstalled: boolean; };
+  'ecosystem:installs.uninstall': { uninstalled: boolean };
   'ecosystem:workers.share': ListingDetail | { error: string };
   'ecosystem:packs.list': ExchangePack[];
   'ecosystem:packs.stats': ExchangeStats;
@@ -1084,7 +1182,7 @@ export interface IpcResponseMap {
   'fed:exchange.setVerification': ExchangeArtifact | { error: string };
   'fed:exchange.rollback': ExchangeArtifact | { error: string };
   'fed:exchange.install': ExchangeArtifact | { error: string };
-  'fed:exchange.verifyVersion': { verified: boolean; };
+  'fed:exchange.verifyVersion': { verified: boolean };
   'fed:marketplace.scopes': MarketplaceScopeSummary[];
   'fed:marketplace.setScope': ExchangeArtifact | { error: string };
   'fed:gov.policies': FedPolicy[];
@@ -1187,7 +1285,7 @@ export interface IpcResponseMap {
 
   // ── releaseDiagnostics ──
   'releaseDiagnostics:get': ReleaseDiagnostics;
-  'releaseDiagnostics:export': { report: ReleaseDiagnostics; text: string; };
+  'releaseDiagnostics:export': { report: ReleaseDiagnostics; text: string };
 
   // ── recovery ──
   'recovery:safeModeStatus': SafeModeState;
@@ -1199,7 +1297,12 @@ export interface IpcResponseMap {
   // ── infra ──
   'infra:platforms': CloudPlatformDto[];
   'infra:stats': CloudPlatformStats;
-  'infra:capabilities': Array<{ platformId: string; provider: string; domains: string[]; configured: boolean }>;
+  'infra:capabilities': Array<{
+    platformId: string;
+    provider: string;
+    domains: string[];
+    configured: boolean;
+  }>;
   'infra:resourceGraph': ResourceGraphModel;
   'infra:resourceNeighbors': ResourceEdgeToNode[];
   'infra:discover': { ok: boolean; hadAdapter: boolean; resources: number };
@@ -1239,7 +1342,11 @@ export interface IpcResponseMap {
   // ── eops ──
   'eops:catalog': ServiceCatalog;
   'eops:health': OperationalHealthView;
-  'eops:readiness': { readiness: ReadinessAssessment; sla: SlaReport; processes: BusinessProcessReport; };
+  'eops:readiness': {
+    readiness: ReadinessAssessment;
+    sla: SlaReport;
+    processes: BusinessProcessReport;
+  };
   'eops:incidents': IncidentLifecycleReport;
   'eops:continuity': ContinuityView;
   'eops:dashboard': OperationsDashboard;

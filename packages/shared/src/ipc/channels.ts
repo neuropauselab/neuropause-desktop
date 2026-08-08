@@ -271,6 +271,17 @@ export const IpcChannel = {
   NotificationsPrefsSet: 'notifications:prefs.set',
   NotificationsEventBroadcast: 'notifications:event',
 
+  // ── Companion (mobile) gateway — local management surface (Mobile M1-03).
+  // The desktop hosts a LAN gateway a paired phone reaches over end-to-end
+  // sealed frames; these channels are the DESKTOP Settings pane's controls, not
+  // the phone's transport (that is @neuropause/companion-protocol over HTTP). ──
+  CompanionStatus: 'companion:status',
+  CompanionDevices: 'companion:devices',
+  CompanionEnable: 'companion:enable',
+  CompanionRevoke: 'companion:revoke',
+  CompanionPairingQr: 'companion:pairingQr',
+  CompanionEventBroadcast: 'companion:event',
+
   // ── Traces (governance / context / relationship) ──
   GovernanceList: 'governance:list',
   GovernanceTrace: 'governance:trace',
@@ -1617,6 +1628,12 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.NotificationsMarkRead,
   IpcChannel.NotificationsPrefsGet,
   IpcChannel.NotificationsPrefsSet,
+  // Mobile M1-03 — Companion gateway management (Settings pane).
+  IpcChannel.CompanionStatus,
+  IpcChannel.CompanionDevices,
+  IpcChannel.CompanionEnable,
+  IpcChannel.CompanionRevoke,
+  IpcChannel.CompanionPairingQr,
 ];
 
 /** Runtime-core broadcasts. */
@@ -1651,6 +1668,8 @@ export const RUNTIME_BROADCAST_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.AssistantEventBroadcast,
   // Phase 6 Stage 5 — Notification Inbox refresh signal.
   IpcChannel.NotificationsEventBroadcast,
+  // Mobile M1-03 — Companion gateway status/device refresh signal.
+  IpcChannel.CompanionEventBroadcast,
 ];
 
 /** The full set the preload bridge permits (legacy + runtime core). */
