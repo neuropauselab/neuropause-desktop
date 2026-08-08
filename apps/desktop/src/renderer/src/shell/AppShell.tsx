@@ -366,6 +366,14 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
   // still shows the honest preview context.
   const activeMeta = SECTIONS.find((s) => s.id === activeSection);
 
+  // Phase 2 (IA) — reflect the active section in the window/document title so the OS
+  // window chrome matches the sidebar and page heading. Single source of truth: the
+  // section registry label; no breadcrumb system, no duplicate page-title chrome.
+  useEffect(() => {
+    const meta = SECTIONS.find((s) => s.id === activeSection);
+    document.title = meta?.label ? `NeuroPause — ${meta.label}` : 'NeuroPause';
+  }, [activeSection]);
+
   return (
     <div className="app-bg flex h-full w-full flex-col text-ink">
       <Toolbar session={session} />
