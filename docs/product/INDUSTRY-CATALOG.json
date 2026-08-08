@@ -1,0 +1,41 @@
+{
+  "$schema": "https://neuropause.dev/schemas/industry-catalog.v1.json",
+  "generatedBy": "NeuroPause Global Product RC — Phase 4 documentation",
+  "productVersion": "1.0.0-rc.15",
+  "productBaseline": "0a040e2",
+  "generatedAt": "2026-08-08",
+  "industryCatalogVersion": "0.0.0-preview.1",
+  "source": "packages/industry (INDUSTRY_KEYS / industries.ts), projected to the desktop via canonicalIndustryCatalog.ts",
+  "maturity": "PREVIEW",
+  "maturityNote": "The 20 packs are defined and their declarations are live-verified; per-vertical business data is pending and regulated operations are external. Catalog version is a preview release.",
+  "support": {
+    "desktop": "Industry Center (Advanced) — PREVIEW",
+    "mobile": "Mobile Industry Companion exists (backend-dependent) — PREVIEW",
+    "api": "No public HTTP industry API (in-process only)",
+    "sdk": "In-process SDK: defineIndustrySolution (@neuropause/industry / @neuropause/solution-packs)"
+  },
+  "packCount": 20,
+  "packStructure": "Each pack reuses the enterprise core and declares: objects, workflows, kpis, compliancePacks, connectors, aiSkills, documentTemplates. There is no per-pack maturity field — maturity is catalog-wide (preview).",
+  "packs": [
+    { "id": "healthcare", "name": "Healthcare", "description": "Hospital / Clinic / Lab / Pharmacy / Telemedicine / Radiology", "category": "Healthcare", "maturity": "PREVIEW", "desktop": true, "mobile": "preview", "api": false, "sdk": "in-process" },
+    { "id": "medical-device", "name": "Medical Device Manufacturing", "description": "Medical device manufacturing operations", "category": "Healthcare", "maturity": "PREVIEW", "desktop": true, "mobile": "preview", "api": false, "sdk": "in-process" },
+    { "id": "pharmaceutical", "name": "Pharmaceutical", "description": "GMP / Batch Records / Stability / QA / QC", "category": "Healthcare", "maturity": "PREVIEW", "desktop": true, "mobile": "preview", "api": false, "sdk": "in-process" },
+    { "id": "banking", "name": "Banking & Financial Services", "description": "Lending / Deposits / Treasury / AML / KYC", "category": "Financial", "maturity": "PREVIEW", "desktop": true, "mobile": "preview", "api": false, "sdk": "in-process" },
+    { "id": "insurance", "name": "Insurance", "description": "Policies / Claims / Underwriting / Broker Network", "category": "Financial", "maturity": "PREVIEW", "desktop": true, "mobile": "preview", "api": false, "sdk": "in-process" },
+    { "id": "retail", "name": "Retail & E-Commerce", "description": "POS / Catalog / Orders / Fulfillment / Loyalty", "category": "Commerce", "maturity": "PREVIEW", "desktop": true, "mobile": "preview", "api": false, "sdk": "in-process" },
+    { "id": "hospitality", "name": "Hospitality", "description": "Hotels / Restaurants / Reservations / Events / Housekeeping", "category": "Commerce", "maturity": "PREVIEW", "desktop": true, "mobile": "preview", "api": false, "sdk": "in-process" },
+    { "id": "real-estate", "name": "Real Estate", "description": "Properties / Leasing / Facilities / Tenants", "category": "Commerce", "maturity": "PREVIEW", "desktop": true, "mobile": "preview", "api": false, "sdk": "in-process" },
+    { "id": "media", "name": "Media & Entertainment", "description": "Content / Production / Licensing / Advertising", "category": "Commerce", "maturity": "PREVIEW", "desktop": true, "mobile": "preview", "api": false, "sdk": "in-process" },
+    { "id": "professional-services", "name": "Professional Services", "description": "Consulting / Legal / Accounting / Auditing", "category": "Commerce", "maturity": "PREVIEW", "desktop": true, "mobile": "preview", "api": false, "sdk": "in-process" },
+    { "id": "manufacturing", "name": "Manufacturing", "description": "Factory Ops / Planning / Quality / Maintenance / OEE / Digital Twin", "category": "Industrial", "maturity": "PREVIEW", "desktop": true, "mobile": "preview", "api": false, "sdk": "in-process" },
+    { "id": "logistics", "name": "Logistics & Supply Chain", "description": "Fleet / Warehouses / Routes / Shipments / Cold Chain", "category": "Industrial", "maturity": "PREVIEW", "desktop": true, "mobile": "preview", "api": false, "sdk": "in-process" },
+    { "id": "construction", "name": "Construction", "description": "Projects / BOQ / Contracts / Equipment / Site Safety", "category": "Industrial", "maturity": "PREVIEW", "desktop": true, "mobile": "preview", "api": false, "sdk": "in-process" },
+    { "id": "energy", "name": "Energy & Utilities", "description": "Power / Water / Gas / Assets / Field Operations", "category": "Industrial", "maturity": "PREVIEW", "desktop": true, "mobile": "preview", "api": false, "sdk": "in-process" },
+    { "id": "automotive", "name": "Automotive", "description": "OEM / Dealers / Service / Warranty / VIN / Parts", "category": "Industrial", "maturity": "PREVIEW", "desktop": true, "mobile": "preview", "api": false, "sdk": "in-process" },
+    { "id": "aviation", "name": "Aviation", "description": "Aircraft / Fleet / Maintenance / Crew / Flight Operations", "category": "Industrial", "maturity": "PREVIEW", "desktop": true, "mobile": "preview", "api": false, "sdk": "in-process" },
+    { "id": "agriculture", "name": "Agriculture", "description": "Farms / Crops / Livestock / Irrigation / Supply Chain", "category": "Industrial", "maturity": "PREVIEW", "desktop": true, "mobile": "preview", "api": false, "sdk": "in-process" },
+    { "id": "government", "name": "Government", "description": "Citizen Services / Permits / Cases / Benefits / Public Projects", "category": "Public", "maturity": "PREVIEW", "desktop": true, "mobile": "preview", "api": false, "sdk": "in-process" },
+    { "id": "education", "name": "Education", "description": "Students / Faculty / Admissions / Learning / Exams / Certificates", "category": "Public", "maturity": "PREVIEW", "desktop": true, "mobile": "preview", "api": false, "sdk": "in-process" },
+    { "id": "telecom", "name": "Telecommunications", "description": "Subscribers / Billing / Network Assets / Tickets / Service Orders", "category": "Public", "maturity": "PREVIEW", "desktop": true, "mobile": "preview", "api": false, "sdk": "in-process" }
+  ]
+}

@@ -1,0 +1,81 @@
+{
+  "$schema": "https://neuropause.dev/schemas/product-data.v1.json",
+  "generatedBy": "NeuroPause Global Product RC — Phase 4 documentation",
+  "generatedAt": "2026-08-08",
+  "product": {
+    "name": "NeuroPause",
+    "tagline": "AI-Native Enterprise Operating System",
+    "version": "1.0.0-rc.15",
+    "baselineCommit": "0a040e2",
+    "maturity": "RELEASE_CANDIDATE",
+    "maturityNote": "Pilot-ready RC. Not general-availability / not production-verified. No external compliance certifications claimed."
+  },
+  "positioning": {
+    "what": "One desktop workspace that unifies business modules, AI workers, enterprise knowledge, and operations.",
+    "who": ["business users", "administrators", "developers", "enterprise evaluators"],
+    "differentiators": [
+      "Local-first: enterprise data stays on the device",
+      "Thin cloud plane for account-level concerns only",
+      "Governed AI (intent → governance → permission → execution → evidence)",
+      "One coherent navigation with progressive disclosure"
+    ]
+  },
+  "architecture": {
+    "model": "local-first Electron desktop + thin cloud plane",
+    "desktop": "Electron (main + preload bridge + React/Vite renderer); renderer makes no network calls",
+    "localData": "EnterpriseRecordStore — atomic JSON under userData; single storePaths registry",
+    "cloudPlane": {
+      "backend": "Express (port 4000)",
+      "database": "PostgreSQL 16 (12 migrations, 36 tables)",
+      "cache": "Redis 7",
+      "responsibilities": ["auth", "AI Store catalog", "organizations", "devices", "billing", "license", "sync", "semantic-memory infra", "health", "metrics"]
+    },
+    "mobile": "Expo companion served by the desktop's sealed LAN gateway (view-models); not a backend client",
+    "firstPlatform": "macOS (Apple Silicon); Windows/Linux planned"
+  },
+  "capabilities": {
+    "erp": { "modules": 104, "families": 13, "maturity": "LOCAL_FIRST_RC",
+      "familyCounts": { "Finance": 21, "Sales": 7, "CRM": 8, "Procurement": 7, "Inventory": 7, "Warehouse": 8, "Manufacturing": 12, "Maintenance": 10, "Projects": 4, "HR": 15, "Helpdesk": 1, "Documents": 1, "Executive": 3 } },
+    "aiWorkforce": { "maturity": "LOCAL_FIRST_RC", "liveExecution": "EXTERNAL_DEPENDENCY (AI provider)" },
+    "knowledge": { "surfaces": ["Knowledge (umbrella)", "Enterprise Knowledge (Preview)", "AI Memory"], "maturity": "LOCAL_FIRST_RC", "semanticRanking": "EXTERNAL_DEPENDENCY (Qdrant + embeddings)" },
+    "digitalTwin": { "maturity": "PREVIEW" },
+    "operations": { "surfaces": ["Operations", "AI Operations", "Autonomous Operations (Preview)", "Runtime", "Release Ops"], "maturity": "LOCAL_FIRST_RC" },
+    "industry": { "packs": 20, "catalogVersion": "0.0.0-preview.1", "maturity": "PREVIEW", "ref": "INDUSTRY-CATALOG.json" },
+    "marketplace": { "aiStore": "CLOUD_RC", "enterpriseMarketplace": "PREVIEW" },
+    "connectors": { "total": 22, "production": 13, "preview": 9, "note": "each real connection is an EXTERNAL_DEPENDENCY (provider OAuth)" },
+    "settings": { "domains": 14, "entries": 40 },
+    "aiProviders": { "supported": ["claude", "ollama"], "default": "claude", "note": "EXTERNAL_DEPENDENCY: Anthropic key or local Ollama server" }
+  },
+  "dependencies": {
+    "cloudPlane": ["PostgreSQL", "Redis"],
+    "external": {
+      "aiProvider": "Anthropic API key (Claude) or local Ollama — required for live AI",
+      "semanticSearch": "Qdrant + embedding provider — otherwise local lexical fallback",
+      "oauthLogin": "Google/GitHub/Microsoft/Apple — disabled until configured",
+      "billing": "Razorpay — disabled until configured",
+      "connectors": "per-provider OAuth apps/credentials"
+    }
+  },
+  "verifiedBaseline": {
+    "releaseGate": "631 test files / 5,703 tests green",
+    "backendE2E": "auth, tenancy, authorization, store, health/metrics, failure/recovery verified against real Postgres+Redis (Phase 3)",
+    "backendIntegrationSuite": "17 tests (organizations + auth) green on a real DB"
+  },
+  "knownLimitations": [
+    "Cold-launch auth requires the backend (offline grace not yet implemented)",
+    "Desktop GUI E2E + Phase-2 visual QA are human/Mac tasks (Pending GUI)",
+    "No public HTTP Enterprise API (in-process IPC/SDK only)",
+    "Signed/notarized desktop artifact not yet published"
+  ],
+  "documentationLinks": {
+    "quickStart": "../user/QUICK-START.md",
+    "userGuide": "../user/NEUROPAUSE-USER-GUIDE.md",
+    "whereDoIGo": "../user/WHERE-DO-I-GO.md",
+    "adminGuide": "../admin/ADMIN-GUIDE.md",
+    "developerGuide": "../developer/DEVELOPER-GUIDE.md",
+    "apiSdkGuide": "../developer/API-SDK-GUIDE.md",
+    "industryCatalog": "INDUSTRY-CATALOG.md",
+    "productCatalog": "PRODUCT-CATALOG.md",
+    "enterprisePilotGuide": "../enterprise/ENTERPRISE-PILOT-GUIDE.md"
+  }
+}
