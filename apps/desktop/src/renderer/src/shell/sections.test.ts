@@ -227,6 +227,22 @@ describe('Phase 2 IA — no internal version labels (P3)', () => {
   });
 });
 
+// Phase 2 IA — Today landings & Sandbox positioning.
+describe('Phase 2 IA — Today landings & Sandbox', () => {
+  const byId = (id: string): (typeof SECTIONS)[number] | undefined => SECTIONS.find((s) => s.id === id);
+
+  it('the three Today landings each carry a distinct description (org vs strategy vs personal)', () => {
+    const descs = ['mission-control', 'intent-home', 'hub'].map((id) => byId(id)?.description ?? '');
+    for (const d of descs) expect(d.length).toBeGreaterThan(0);
+    expect(new Set(descs).size).toBe(3);
+  });
+
+  it('Sandbox is positioned in the platform group with a description', () => {
+    expect(byId('sandbox')?.group).toBe('platform');
+    expect((byId('sandbox')?.description ?? '').length).toBeGreaterThan(0);
+  });
+});
+
 // Phase 2 IA — standing coherence guardrail: no two VISIBLE sections may share a
 // label, so the sidebar and command palette never show two identically-named
 // destinations. (Hidden/retired routes are exempt — they aren't shown.)

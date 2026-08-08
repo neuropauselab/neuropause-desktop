@@ -108,8 +108,8 @@ export const SECTIONS: SectionDef[] = [
   // Phase 6 Stage 2 — Mission Control: the live landing dashboard. A pure
   // unification surface over EXISTING sections and IPC feeds (additive; every
   // tile loads independently and degrades to an explicit unavailable state).
-  { id: 'mission-control', label: 'Mission Control', icon: 'gauge', phase: 23, placement: 'primary', group: 'today' },
-  { id: 'intent-home', label: "Today's Intent", icon: 'command', phase: 22, placement: 'primary', group: 'today' },
+  { id: 'mission-control', label: 'Mission Control', icon: 'gauge', phase: 23, placement: 'primary', group: 'today', description: 'Organization-wide operations at a glance — your command landing.' },
+  { id: 'intent-home', label: "Today's Intent", icon: 'command', phase: 22, placement: 'primary', group: 'today', description: 'Your strategic priorities and the outcomes that matter today.' },
   // Phase 6 Stage 3 — Universal Search: one query across every existing index
   // (federated engine, app records, semantic memory, business modules). Additive;
   // placed after the two landing surfaces so their nav locks hold unchanged.
@@ -123,7 +123,7 @@ export const SECTIONS: SectionDef[] = [
   // approvals, notifications, executive snapshot). Additive; placed after Assistant
   // so every prior nav lock holds. Positioning: Mission Control = organizational
   // operations landing; Today's Intent = strategy outcomes; Work Hub = YOUR day.
-  { id: 'hub', label: 'Work Hub', icon: 'checklist', phase: 26, placement: 'primary', group: 'today' },
+  { id: 'hub', label: 'Work Hub', icon: 'checklist', phase: 26, placement: 'primary', group: 'today', description: 'Your personal day — tasks, approvals, briefings, and recent work.' },
   // Retired in favor of the canonical intent-native home (`intent-home`). Hidden from nav, still routable.
   { id: 'decision-center', label: 'Decision Center', icon: 'sparkles', phase: 21, placement: 'primary', group: 'today', hidden: true },
   { id: 'home', label: 'Home', icon: 'home', phase: 2, placement: 'primary', group: 'today', hidden: true },
@@ -175,7 +175,7 @@ export const SECTIONS: SectionDef[] = [
   { id: 'automations', label: 'Automations', icon: 'automations', phase: 6, placement: 'primary', group: 'ai', hidden: true },
   { id: 'notifications', label: 'Notifications', icon: 'bell', phase: 2, placement: 'primary', group: 'system' },
   { id: 'analytics', label: 'Analytics', icon: 'analytics', phase: 6, placement: 'primary', group: 'ai', hidden: true },
-  { id: 'sandbox', label: 'Sandbox', icon: 'beaker', phase: 12, placement: 'primary', group: 'ai' },
+  { id: 'sandbox', label: 'Sandbox', icon: 'beaker', phase: 12, placement: 'primary', group: 'platform', description: 'A safe space to test workflows and validate changes before rollout.' },
   // Phase 7 (Product Experience) — UN-hidden: the onboarding wizard's docstring says "the welcome
   // checklist picks up whatever remains", but a hidden section is excluded from the sidebar AND the
   // command palette, so that hand-off dead-ended. The getting-started checklist is now reachable
