@@ -16,9 +16,9 @@
 
 **AI provider** — The model backend that powers live AI. NeuroPause supports **Claude** (Anthropic — needs an API key) or **Ollama** (a local model server). Without one configured, AI features fall back to a deterministic, non-generative path rather than failing. *(External dependency.)*
 
-**Knowledge** — The unified, read-only lens over everything your organization knows: search, AI memory, the knowledge graph, and a summary of the enterprise knowledge fabric — with links out to the full surfaces.
+**Knowledge** — The unified, read-only lens over everything your organization knows: search, AI memory, the knowledge graph, and a summary of the wider enterprise knowledge layer — with links out to the full surfaces.
 
-**Enterprise Knowledge** — The deep enterprise **knowledge fabric** explorer: relationships, classification, lineage, evidence, and governance across your systems. *(Preview.)*
+**Enterprise Knowledge** — The deep, connected enterprise **knowledge** explorer: relationships, classification, lineage, evidence, and governance across your systems. *(Preview.)*
 
 **Knowledge Graph** — A map of the entities in your organization (people, units, records) and how they relate — used to explain and trace connections. Stored locally.
 

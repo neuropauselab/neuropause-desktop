@@ -41,7 +41,7 @@
 | See the AI operating loop across every AI capability | **AI Operations** | AI & Operations | Local-first |
 | Monitor enterprise operational health, risk, incidents | **Operations** | AI & Operations | Local-first + backend health |
 | Search knowledge, memory, and the graph in one lens | **Knowledge** | Workspace | Local-first |
-| Explore the deep enterprise knowledge fabric | **Enterprise Knowledge** | Advanced | **Preview** |
+| Explore deep, connected enterprise knowledge | **Enterprise Knowledge** | Advanced | **Preview** |
 | See my AI memory (conversations, notes, saved items) | **AI Memory** | Workspace | Local-first (semantic ranking = External dependency) |
 | Explore the enterprise digital twin | **Digital Twin Center** | Advanced | **Preview** |
 | See closed-loop autonomous operations (approval-gated) | **Autonomous Operations** | Advanced | **Preview** |

@@ -1,0 +1,85 @@
+{
+  "schema": "neuropause.documentation-index",
+  "schemaVersion": "1.0",
+  "productBuild": "1.0.0-rc.15",
+  "productRef": "0a040e2",
+  "title": "NeuroPause Documentation",
+  "subtitle": "AI-native enterprise operating system — Release Candidate (pilot-ready, not GA).",
+  "note": "Navigational index for the Phase-4 documentation set. Rendered into dist/docs/INDEX.html by scripts/docs-build.cjs. Honest by design: maturity is stated throughout and nothing is claimed as GA.",
+  "collections": [
+    {
+      "group": "Get started",
+      "documents": [
+        { "path": "docs/user/QUICK-START.md", "title": "Quick Start", "summary": "Sign in and reach the shell in minutes." },
+        { "path": "docs/user/FIRST-30-MINUTES.md", "title": "First 30 Minutes", "summary": "A guided first session on real, local-first data." },
+        { "path": "docs/user/WHERE-DO-I-GO.md", "title": "Where Do I Go?", "summary": "Find the right surface fast; understand the groups." },
+        { "path": "docs/product/PRODUCT-TOUR.md", "title": "Product Tour", "summary": "Self-guided walk through the app in disclosure order." },
+        { "path": "docs/user/GLOSSARY.md", "title": "Glossary", "summary": "Plain-language definitions of NeuroPause terms." }
+      ]
+    },
+    {
+      "group": "Using NeuroPause",
+      "documents": [
+        { "path": "docs/user/NEUROPAUSE-USER-GUIDE.md", "title": "User Guide", "summary": "Full coverage of the surfaces, with per-section maturity." },
+        { "path": "docs/user/AI-WORKFORCE-GUIDE.md", "title": "AI Workforce Guide", "summary": "Governed AI: intent, governance, permission, execution, evidence." },
+        { "path": "docs/user/KNOWLEDGE-GUIDE.md", "title": "Knowledge Guide", "summary": "Search and AI Memory; lexical always on, semantic optional." },
+        { "path": "docs/user/DIGITAL-TWIN-GUIDE.md", "title": "Digital Twin Guide", "summary": "The modeled view over your data (Preview)." },
+        { "path": "docs/user/CONNECTORS-GUIDE.md", "title": "Connectors Guide", "summary": "The 13 production + 9 Preview integrations and how they connect." }
+      ]
+    },
+    {
+      "group": "Administrators",
+      "documents": [
+        { "path": "docs/admin/ADMIN-GUIDE.md", "title": "Admin Guide", "summary": "Organizations, roles, settings domains, and governance." }
+      ]
+    },
+    {
+      "group": "Developers",
+      "documents": [
+        { "path": "docs/developer/DEVELOPER-GUIDE.md", "title": "Developer Guide", "summary": "Architecture, workspaces, and how the pieces fit (with diagrams)." },
+        { "path": "docs/developer/API-SDK-GUIDE.md", "title": "API / SDK Guide", "summary": "Two surfaces: the cloud HTTP API vs in-process typed IPC/SDK." }
+      ]
+    },
+    {
+      "group": "Enterprise & pilots",
+      "documents": [
+        { "path": "docs/enterprise/ENTERPRISE-PILOT-GUIDE.md", "title": "Enterprise Pilot Guide", "summary": "A repeatable functional pilot: setup, dependencies, acceptance." },
+        { "path": "docs/enterprise/DATA-AND-SECURITY-GUIDE.md", "title": "Data & Security Guide", "summary": "Where data lives, auth, isolation, audit — no certifications claimed." },
+        { "path": "docs/enterprise/DEMO-SCRIPT.md", "title": "30-Minute Demo Script", "summary": "An honest timed walkthrough with a Do-NOT-demo list." },
+        { "path": "docs/product/TRIAL-EXPERIENCE.md", "title": "Trial Experience", "summary": "How to evaluate the product; operator-set trial duration." },
+        { "path": "docs/product/TRIAL-CHECKLIST.md", "title": "Trial Checklist", "summary": "A Day 1/2/3/7/Final evaluation cadence." }
+      ]
+    },
+    {
+      "group": "Product & release",
+      "documents": [
+        { "path": "docs/product/NEUROPAUSE-PRODUCT-BROCHURE.md", "title": "Product Brochure", "summary": "The capability-by-capability overview with a maturity matrix." },
+        { "path": "docs/product/ONE-PAGE-PRODUCT-SHEET.md", "title": "One-Page Product Sheet", "summary": "The whole product on a single page." },
+        { "path": "docs/product/CURRENT-RC-RELEASE-NOTES.md", "title": "RC Release Notes", "summary": "The current 1.0.0-rc.15 state and known limitations." },
+        { "path": "docs/product/PRODUCT-CATALOG.md", "title": "Product Catalog", "summary": "The full module/family/connector catalog." },
+        { "path": "docs/product/INDUSTRY-CATALOG.md", "title": "Industry Catalog", "summary": "The 20 vertical solution packs (Preview)." }
+      ]
+    },
+    {
+      "group": "Support",
+      "documents": [
+        { "path": "docs/support/FAQ.md", "title": "FAQ", "summary": "Honest answers to the most common questions." },
+        { "path": "docs/support/TROUBLESHOOTING.md", "title": "Troubleshooting", "summary": "Everyday problems and their honest explanations." }
+      ]
+    },
+    {
+      "group": "Downloads",
+      "documents": [
+        { "path": "docs/downloads/DOWNLOAD-CATALOG.md", "title": "Download Catalog", "summary": "Distribution status — no artifact published yet, no fake links." }
+      ]
+    }
+  ],
+  "machineReadable": [
+    { "path": "docs/product/PRODUCT-DATA.json", "title": "Product Data" },
+    { "path": "docs/product/INDUSTRY-CATALOG.json", "title": "Industry Catalog Data" },
+    { "path": "docs/product/WEBSITE-PRODUCT-DATA.json", "title": "Website Product Data" },
+    { "path": "docs/product/IN-APP-HELP.json", "title": "In-App Help" },
+    { "path": "docs/product/ONBOARDING-CONTENT.json", "title": "Onboarding Content" },
+    { "path": "docs/downloads/DOCUMENT-MANIFEST.json", "title": "Document Manifest" }
+  ]
+}

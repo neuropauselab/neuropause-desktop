@@ -32,7 +32,9 @@
     "typecheck:release": "npm run typecheck -w @neuropause/shared -w @neuropause/companion-protocol -w @neuropause/cloud-core -w @neuropause/shared-cloud -w @neuropause/backend -w @neuropause/desktop --if-present",
     "test:release": "npm run test -w @neuropause/shared -w @neuropause/companion-protocol -w @neuropause/cloud-core -w @neuropause/shared-cloud -w @neuropause/backend -w @neuropause/desktop --if-present",
     "lint:release": "eslint apps/desktop apps/backend packages/shared packages/companion-protocol packages/cloud-core packages/shared-cloud --max-warnings 0",
-    "bootstrap:env": "node scripts/bootstrap-env.cjs"
+    "bootstrap:env": "node scripts/bootstrap-env.cjs",
+    "docs:validate": "node scripts/docs-validate.cjs",
+    "docs:build": "node scripts/docs-build.cjs"
   },
   "devDependencies": {
     "@types/node": "^20.12.7",
