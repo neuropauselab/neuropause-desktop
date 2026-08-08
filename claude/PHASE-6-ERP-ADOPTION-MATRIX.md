@@ -18,14 +18,14 @@ Posting is **derived** here and applied by the **existing** journal module throu
 
 | Module (live id) | Document | Lines | Posts on | Approval + SoD | Status |
 |---|---|---|---|---|---|
-| `procurement-orders` | purchaseOrder | ✓ | — | Spend policy (mgr → finance ≥10k → exec ≥100k); gated: approved/issued/sent | **SPEC COMPLETE, NOT REGISTERED** |
-| `procurement-receipts` | goodsReceipt | ✓ | `received`/`completed` → **Dr Inventory / Cr GRNI** | — | **SPEC COMPLETE, NOT REGISTERED** |
-| `finance-vendor-bills` | bill | ✓ | `posted` → **Dr GRNI / Cr AP** (refuses unless three-way match = MATCHED) | Bill policy; SoD: requester ≠ payment approver | **SPEC COMPLETE, NOT REGISTERED** |
-| `warehouse-shipping` | delivery | ✓ | `shipped`/`dispatched` → **Dr COGS / Cr Inventory** | — | **SPEC COMPLETE, NOT REGISTERED** |
-| `manufacturing-executions` | (material) | ✓ | `in_progress` → **Dr WIP / Cr Inventory**; `completed` → **Dr FG + variance / Cr WIP** | — | **SPEC COMPLETE, NOT REGISTERED** |
-| `sales-quotes` | salesQuote | ✓ | — | — | **SPEC COMPLETE, NOT REGISTERED** |
-| `sales-orders` | salesOrder | ✓ | — | — | **SPEC COMPLETE, NOT REGISTERED** |
-| `finance-invoices` | invoice | ✓ | — (revenue/AR already post via the existing `invoiceModule` → `handleInvoiceChangeForGl`) | — | **SPEC COMPLETE, NOT REGISTERED** |
+| `procurement-orders` | purchaseOrder | ✓ | — | Spend policy (mgr → finance ≥10k → exec ≥100k); gated: approved/issued/sent | **REGISTERED** |
+| `procurement-receipts` | goodsReceipt | ✓ | `received`/`completed` → **Dr Inventory / Cr GRNI** | — | **REGISTERED** |
+| `finance-vendor-bills` | bill | ✓ | `posted` → **Dr GRNI / Cr AP** (refuses unless three-way match = MATCHED) | Bill policy; SoD: requester ≠ payment approver | **REGISTERED** |
+| `warehouse-shipping` | delivery | ✓ | `shipped`/`dispatched` → **Dr COGS / Cr Inventory** | — | **REGISTERED** |
+| `manufacturing-executions` | (material) | ✓ | `in_progress` → **Dr WIP / Cr Inventory**; `completed` → **Dr FG + variance / Cr WIP** | — | **REGISTERED** |
+| `sales-quotes` | salesQuote | ✓ | — | — | **REGISTERED** |
+| `sales-orders` | salesOrder | ✓ | — | — | **REGISTERED** |
+| `finance-invoices` | invoice | ✓ | — (revenue/AR already post via the existing `invoiceModule` → `handleInvoiceChangeForGl`) | — | **REGISTERED** |
 
 ## Deliberately NOT adopted
 
@@ -36,7 +36,13 @@ Posting is **derived** here and applied by the **existing** journal module throu
 | Master data (customers, suppliers, products, employees, contacts, leads, warehouses…) | ~30 | No lines. Already adopted by the Data Plane for import. |
 | Operational records (tickets, tasks, time entries, attendance, leave, movements, lots, serials…) | ~25 | Single-fact records; forcing lines on them would break domain semantics, which the charter forbids. |
 
-## THE REMAINING STEP — honest status
+## REGISTRATION — DONE (superseding the section below)
+
+All 104 module registrations in the enterprise composition root now route through `documentIntegration.attach()`. `postJournal` is bound to the real `applyGlDerivedEntries`. Nine integration tests build the **actual** ledger + journal modules and assert persisted ledger state.
+
+**A real defect was found by doing this**, invisible to 73 passing unit tests: the posting rules referenced stock accounts (`1300` Inventory, `2150` GRNI, `5000` COGS…) that do not exist in the seeded chart, so the journal's account resolver was silently rejecting every stock entry. Fixed with `ensureStockAccounts`, mirroring the existing `ensureFxAccount` pattern.
+
+## Original plan (historical)
 
 Every spec above is **written and tested but NOT registered into the running application.** Registration is one contained edit in the enterprise composition root:
 

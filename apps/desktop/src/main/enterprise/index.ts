@@ -8,6 +8,8 @@
  * recomputed on demand from the runtime plus the existing intelligence,
  * workforce, connector, and unified layers. Nothing here is fabricated.
  */
+import type { EnterpriseModule } from './framework';
+import { documentIntegration } from '../erp/documentIntegrationInstance';
 import type { EntityRef, ConnectorRef } from './graph/orgGraph';
 import type {
   EnterpriseOrgCreateUnitRequest as TCreateUnit,
@@ -298,111 +300,125 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     actor: sessionEmail,
     now: () => new Date().toISOString(),
   });
+  /**
+   * Phase 6 — every module is registered THROUGH the ERP document integration.
+   *
+   * `attach()` returns a module with no `DocumentSpec` by identity, so this is a
+   * literal no-op for the ~96 non-document modules. The 8 transactional
+   * documents gain line items, derived totals, approval/SoD gating and
+   * accounting composed ONTO their existing `onChange` — Finance's GL posting,
+   * Procurement's budget/contract gates and Sales' inventory reservation all
+   * keep running first and unchanged.
+   */
+  const registerModule = (m: EnterpriseModule): void => {
+    modules.registry.register(documentIntegration.attach(m));
+  };
+
   // ERP modules built on the foundation (each: descriptor + store + AI hook).
-  modules.registry.register(invoiceModule); // Finance → Invoices
-  modules.registry.register(contactModule); // CRM → Contacts
-  modules.registry.register(leadModule); // CRM → Leads
-  modules.registry.register(customerModule); // CRM → Customers
-  modules.registry.register(opportunityModule); // CRM → Opportunities (qualified-deal pipeline)
-  modules.registry.register(activityModule); // CRM → Activities (calls/emails/meetings/tasks/notes stream)
-  modules.registry.register(customerHealthModule); // CRM → Customer Health (cross-module registers)
-  modules.registry.register(customerTimelineModule); // CRM → Customer Timelines (one-account chronologies)
-  modules.registry.register(quoteModule); // Sales → Quotes
-  modules.registry.register(orderModule); // Sales → Orders (conversion target)
-  modules.registry.register(contractModule); // Sales → Contracts (activate/terminate/renew lifecycle)
-  modules.registry.register(pricingRuleModule); // Sales → Pricing Rules (the discount-policy rule book)
-  modules.registry.register(commissionPlanModule); // Sales → Commission Plans (the commission rule book)
-  modules.registry.register(commissionStatementModule); // Sales → Commission Statements (immutable per-period payouts)
-  modules.registry.register(revenueForecastModule); // Sales → Revenue Forecast (immutable pipeline snapshots)
-  modules.registry.register(paymentModule); // Finance → Payments
-  modules.registry.register(ledgerAccountModule); // Finance → Chart of Accounts (GL)
-  modules.registry.register(journalEntryModule); // Finance → Journal (GL double-entry)
-  modules.registry.register(accountingPeriodModule); // Finance → Accounting Periods (close guard)
-  modules.registry.register(taxReportModule); // Finance → Tax Reports (GST snapshots from posted books)
-  modules.registry.register(arAgingModule); // Finance → Receivables Aging (open AR bucketed by days past due)
-  modules.registry.register(bankStatementModule); // Finance → Bank Statements (deterministic reconciliation)
-  modules.registry.register(budgetModule); // Finance → Budgets (measured against posted books only)
-  modules.registry.register(vendorBillModule); // Finance → Vendor Bills (payable mirror; books AP via GL seam)
-  modules.registry.register(apAgingModule); // Finance → Payables Aging (open AP bucketed by days past due)
-  modules.registry.register(fixedAssetModule); // Finance → Fixed Assets (capitalization, depreciation, disposal)
-  modules.registry.register(creditNoteModule); // Finance → Credit Notes (invoice adjustments, revenue/tax reversal)
-  modules.registry.register(debitNoteModule); // Finance → Debit Notes (bill adjustments, AP/input-credit reversal)
-  modules.registry.register(vendorPaymentModule); // Finance → Vendor Payments (partial-capable AP settlement)
-  modules.registry.register(exchangeRateModule); // Finance → Exchange Rates (effective-dated FX rate table)
-  modules.registry.register(financialRatiosModule); // Finance → Financial Ratios (GL-derived ratio registers)
-  modules.registry.register(cashFlowModule); // Finance → Cash Flow Statement (direct-method over posted GL entries)
-  modules.registry.register(fxRevaluationModule); // Finance → FX Revaluation (period-end unrealized revaluation, reversing entries)
-  modules.registry.register(fxExposureModule); // Finance → FX Exposure (immutable point-in-time open-position exposure snapshots)
-  modules.registry.register(treasuryPositionModule); // Finance → Treasury Positions (FW-12: derived cash + AR − AP — 104th registered module)
-  modules.registry.register(productModule); // Inventory → Products
-  modules.registry.register(warehouseModule); // Inventory → Warehouses
-  modules.registry.register(stockMovementModule); // Inventory → Stock Movements (ledger)
-  modules.registry.register(lotModule); // Inventory → Lots (batch traceability + code payloads)
-  modules.registry.register(reservationModule); // Inventory → Reservations (holds posting ledger movements)
-  modules.registry.register(inventoryValuationModule); // Inventory → Valuation (standard-cost registers)
-  modules.registry.register(serialModule); // Inventory → Serial Units (per-unit serialized tracking)
-  modules.registry.register(supplierModule); // Procurement → Suppliers
-  modules.registry.register(vendorContractModule); // Procurement → Vendor Contracts (FW-7: dated agreements gate PO approval — 101st registered module)
-  modules.registry.register(purchaseRequestModule); // Procurement → Purchase Requests
-  modules.registry.register(purchaseOrderModule); // Procurement → Purchase Orders
-  modules.registry.register(goodsReceiptModule); // Procurement → Goods Receipts
-  modules.registry.register(rfqModule); // Procurement → RFQs (quotation cycle → PO award)
-  modules.registry.register(supplierPerformanceModule); // Procurement → Supplier Performance (scorecard registers)
-  modules.registry.register(zoneModule); // Warehouse → Zones
-  modules.registry.register(binModule); // Warehouse → Bins
-  modules.registry.register(transferOrderModule); // Warehouse → Transfer Orders
-  modules.registry.register(pickListModule); // Warehouse → Pick Lists
-  modules.registry.register(packingModule); // Warehouse → Packing
-  modules.registry.register(shippingModule); // Warehouse → Shipping
-  modules.registry.register(cycleCountModule); // Warehouse → Cycle Counts
-  modules.registry.register(stockAdjustmentModule); // Warehouse → Stock Adjustments
-  modules.registry.register(bomModule); // Manufacturing → Bill of Materials
-  modules.registry.register(bomExplosionModule); // Manufacturing → BOM Explosions (multi-level requirements)
-  modules.registry.register(projectModule); // Projects → Projects (delivery containers)
-  modules.registry.register(projectTaskModule); // Projects → Tasks (the kanban board)
-  modules.registry.register(timeEntryModule); // Projects → Time Entries (billable record)
-  modules.registry.register(billingRunModule); // Projects → Billing Runs (time → real W1 invoices)
-  modules.registry.register(employeeModule); // HR → Employees (work-scoped, cycle-guarded org chain)
-  modules.registry.register(payrollRunModule); // HR → Payroll Runs (GL-posted accruals)
-  modules.registry.register(salaryStructureModule); // HR → Salary Structures (templates + statutory wage bases)
-  modules.registry.register(statutoryRuleModule); // HR → Statutory Rules (effective-dated PF/ESI/PT/TDS tables)
-  modules.registry.register(salaryDisbursementModule); // HR → Salary Disbursements (net-pay clearing + bank advice)
-  modules.registry.register(payslipModule); // HR → Payslips (immutable per-employee statements from posted runs)
-  modules.registry.register(payrollRegisterModule); // HR → Payroll Register (immutable period summary over posted runs)
-  modules.registry.register(statutoryFilingModule); // HR → Statutory Filings (ECR/ESI/PT/24Q filing data)
-  modules.registry.register(attendanceModule); // HR → Attendance Periods (confirmed LOP → payroll proration + ECR NCP)
-  modules.registry.register(leaveModule); // HR → Leave Requests (human-approved; unpaid → LOP via attendance import)
-  modules.registry.register(holidayModule); // HR → Holiday Calendar (declared holidays never dock pay)
-  modules.registry.register(candidateModule); // HR → Candidates (FW-10: recruitment pipeline; hire creates the employee — 102nd registered module)
-  modules.registry.register(okrModule); // HR → OKRs (FW-11: derived-progress objectives per owner + quarter — 103rd registered module)
-  modules.registry.register(expenseClaimModule); // HR → Expense Claims (approval books Dr 5330 / Cr 2260, idempotent)
-  modules.registry.register(shiftModule); // HR → Shifts (working patterns → attendance present-day prefill)
-  modules.registry.register(ticketModule); // Helpdesk → Tickets (SLA service desk)
-  modules.registry.register(campaignModule); // CRM → Campaigns (live lead attribution)
-  modules.registry.register(documentModule); // Documents → Registry (append-only versioning)
-  modules.registry.register(biReportModule); // Executive → BI Reports (saved aggregations)
-  modules.registry.register(productionOrderModule); // Manufacturing → Production Orders
-  modules.registry.register(workCenterModule); // Manufacturing → Work Centers
-  modules.registry.register(machineModule); // Manufacturing → Machines
-  modules.registry.register(scheduleModule); // Manufacturing → Production Scheduling
-  modules.registry.register(routingModule); // Manufacturing → Routings
-  modules.registry.register(manufacturingEventModule); // Manufacturing → Shop-Floor Event Ledger
-  modules.registry.register(executionModule); // Manufacturing → Production Execution
-  modules.registry.register(qualityModule); // Manufacturing → Quality Inspection
-  modules.registry.register(costingModule); // Manufacturing → Production Costing
-  modules.registry.register(scheduleProposalModule); // Manufacturing → Schedule Proposals (governance + commit)
-  modules.registry.register(assetCategoryModule); // Maintenance → Asset Categories
-  modules.registry.register(assetModule); // Maintenance → Assets
-  modules.registry.register(maintenancePlanModule); // Maintenance → Maintenance Plans
-  modules.registry.register(preventiveMaintenanceModule); // Maintenance → Preventive
-  modules.registry.register(correctiveMaintenanceModule); // Maintenance → Corrective
-  modules.registry.register(workOrderModule); // Maintenance → Work Orders
-  modules.registry.register(technicianModule); // Maintenance → Technicians
-  modules.registry.register(maintenanceHistoryModule); // Maintenance → History
-  modules.registry.register(sparePartModule); // Maintenance → Spare Parts
-  modules.registry.register(downtimeEventModule); // Maintenance → Downtime Events
-  modules.registry.register(executiveDecisionModule); // Executive → Decision Approval (governance)
-  modules.registry.register(executionProposalModule); // Executive → Execution Proposals (controlled handoff)
+  registerModule(invoiceModule); // Finance → Invoices
+  registerModule(contactModule); // CRM → Contacts
+  registerModule(leadModule); // CRM → Leads
+  registerModule(customerModule); // CRM → Customers
+  registerModule(opportunityModule); // CRM → Opportunities (qualified-deal pipeline)
+  registerModule(activityModule); // CRM → Activities (calls/emails/meetings/tasks/notes stream)
+  registerModule(customerHealthModule); // CRM → Customer Health (cross-module registers)
+  registerModule(customerTimelineModule); // CRM → Customer Timelines (one-account chronologies)
+  registerModule(quoteModule); // Sales → Quotes
+  registerModule(orderModule); // Sales → Orders (conversion target)
+  registerModule(contractModule); // Sales → Contracts (activate/terminate/renew lifecycle)
+  registerModule(pricingRuleModule); // Sales → Pricing Rules (the discount-policy rule book)
+  registerModule(commissionPlanModule); // Sales → Commission Plans (the commission rule book)
+  registerModule(commissionStatementModule); // Sales → Commission Statements (immutable per-period payouts)
+  registerModule(revenueForecastModule); // Sales → Revenue Forecast (immutable pipeline snapshots)
+  registerModule(paymentModule); // Finance → Payments
+  registerModule(ledgerAccountModule); // Finance → Chart of Accounts (GL)
+  registerModule(journalEntryModule); // Finance → Journal (GL double-entry)
+  registerModule(accountingPeriodModule); // Finance → Accounting Periods (close guard)
+  registerModule(taxReportModule); // Finance → Tax Reports (GST snapshots from posted books)
+  registerModule(arAgingModule); // Finance → Receivables Aging (open AR bucketed by days past due)
+  registerModule(bankStatementModule); // Finance → Bank Statements (deterministic reconciliation)
+  registerModule(budgetModule); // Finance → Budgets (measured against posted books only)
+  registerModule(vendorBillModule); // Finance → Vendor Bills (payable mirror; books AP via GL seam)
+  registerModule(apAgingModule); // Finance → Payables Aging (open AP bucketed by days past due)
+  registerModule(fixedAssetModule); // Finance → Fixed Assets (capitalization, depreciation, disposal)
+  registerModule(creditNoteModule); // Finance → Credit Notes (invoice adjustments, revenue/tax reversal)
+  registerModule(debitNoteModule); // Finance → Debit Notes (bill adjustments, AP/input-credit reversal)
+  registerModule(vendorPaymentModule); // Finance → Vendor Payments (partial-capable AP settlement)
+  registerModule(exchangeRateModule); // Finance → Exchange Rates (effective-dated FX rate table)
+  registerModule(financialRatiosModule); // Finance → Financial Ratios (GL-derived ratio registers)
+  registerModule(cashFlowModule); // Finance → Cash Flow Statement (direct-method over posted GL entries)
+  registerModule(fxRevaluationModule); // Finance → FX Revaluation (period-end unrealized revaluation, reversing entries)
+  registerModule(fxExposureModule); // Finance → FX Exposure (immutable point-in-time open-position exposure snapshots)
+  registerModule(treasuryPositionModule); // Finance → Treasury Positions (FW-12: derived cash + AR − AP — 104th registered module)
+  registerModule(productModule); // Inventory → Products
+  registerModule(warehouseModule); // Inventory → Warehouses
+  registerModule(stockMovementModule); // Inventory → Stock Movements (ledger)
+  registerModule(lotModule); // Inventory → Lots (batch traceability + code payloads)
+  registerModule(reservationModule); // Inventory → Reservations (holds posting ledger movements)
+  registerModule(inventoryValuationModule); // Inventory → Valuation (standard-cost registers)
+  registerModule(serialModule); // Inventory → Serial Units (per-unit serialized tracking)
+  registerModule(supplierModule); // Procurement → Suppliers
+  registerModule(vendorContractModule); // Procurement → Vendor Contracts (FW-7: dated agreements gate PO approval — 101st registered module)
+  registerModule(purchaseRequestModule); // Procurement → Purchase Requests
+  registerModule(purchaseOrderModule); // Procurement → Purchase Orders
+  registerModule(goodsReceiptModule); // Procurement → Goods Receipts
+  registerModule(rfqModule); // Procurement → RFQs (quotation cycle → PO award)
+  registerModule(supplierPerformanceModule); // Procurement → Supplier Performance (scorecard registers)
+  registerModule(zoneModule); // Warehouse → Zones
+  registerModule(binModule); // Warehouse → Bins
+  registerModule(transferOrderModule); // Warehouse → Transfer Orders
+  registerModule(pickListModule); // Warehouse → Pick Lists
+  registerModule(packingModule); // Warehouse → Packing
+  registerModule(shippingModule); // Warehouse → Shipping
+  registerModule(cycleCountModule); // Warehouse → Cycle Counts
+  registerModule(stockAdjustmentModule); // Warehouse → Stock Adjustments
+  registerModule(bomModule); // Manufacturing → Bill of Materials
+  registerModule(bomExplosionModule); // Manufacturing → BOM Explosions (multi-level requirements)
+  registerModule(projectModule); // Projects → Projects (delivery containers)
+  registerModule(projectTaskModule); // Projects → Tasks (the kanban board)
+  registerModule(timeEntryModule); // Projects → Time Entries (billable record)
+  registerModule(billingRunModule); // Projects → Billing Runs (time → real W1 invoices)
+  registerModule(employeeModule); // HR → Employees (work-scoped, cycle-guarded org chain)
+  registerModule(payrollRunModule); // HR → Payroll Runs (GL-posted accruals)
+  registerModule(salaryStructureModule); // HR → Salary Structures (templates + statutory wage bases)
+  registerModule(statutoryRuleModule); // HR → Statutory Rules (effective-dated PF/ESI/PT/TDS tables)
+  registerModule(salaryDisbursementModule); // HR → Salary Disbursements (net-pay clearing + bank advice)
+  registerModule(payslipModule); // HR → Payslips (immutable per-employee statements from posted runs)
+  registerModule(payrollRegisterModule); // HR → Payroll Register (immutable period summary over posted runs)
+  registerModule(statutoryFilingModule); // HR → Statutory Filings (ECR/ESI/PT/24Q filing data)
+  registerModule(attendanceModule); // HR → Attendance Periods (confirmed LOP → payroll proration + ECR NCP)
+  registerModule(leaveModule); // HR → Leave Requests (human-approved; unpaid → LOP via attendance import)
+  registerModule(holidayModule); // HR → Holiday Calendar (declared holidays never dock pay)
+  registerModule(candidateModule); // HR → Candidates (FW-10: recruitment pipeline; hire creates the employee — 102nd registered module)
+  registerModule(okrModule); // HR → OKRs (FW-11: derived-progress objectives per owner + quarter — 103rd registered module)
+  registerModule(expenseClaimModule); // HR → Expense Claims (approval books Dr 5330 / Cr 2260, idempotent)
+  registerModule(shiftModule); // HR → Shifts (working patterns → attendance present-day prefill)
+  registerModule(ticketModule); // Helpdesk → Tickets (SLA service desk)
+  registerModule(campaignModule); // CRM → Campaigns (live lead attribution)
+  registerModule(documentModule); // Documents → Registry (append-only versioning)
+  registerModule(biReportModule); // Executive → BI Reports (saved aggregations)
+  registerModule(productionOrderModule); // Manufacturing → Production Orders
+  registerModule(workCenterModule); // Manufacturing → Work Centers
+  registerModule(machineModule); // Manufacturing → Machines
+  registerModule(scheduleModule); // Manufacturing → Production Scheduling
+  registerModule(routingModule); // Manufacturing → Routings
+  registerModule(manufacturingEventModule); // Manufacturing → Shop-Floor Event Ledger
+  registerModule(executionModule); // Manufacturing → Production Execution
+  registerModule(qualityModule); // Manufacturing → Quality Inspection
+  registerModule(costingModule); // Manufacturing → Production Costing
+  registerModule(scheduleProposalModule); // Manufacturing → Schedule Proposals (governance + commit)
+  registerModule(assetCategoryModule); // Maintenance → Asset Categories
+  registerModule(assetModule); // Maintenance → Assets
+  registerModule(maintenancePlanModule); // Maintenance → Maintenance Plans
+  registerModule(preventiveMaintenanceModule); // Maintenance → Preventive
+  registerModule(correctiveMaintenanceModule); // Maintenance → Corrective
+  registerModule(workOrderModule); // Maintenance → Work Orders
+  registerModule(technicianModule); // Maintenance → Technicians
+  registerModule(maintenanceHistoryModule); // Maintenance → History
+  registerModule(sparePartModule); // Maintenance → Spare Parts
+  registerModule(downtimeEventModule); // Maintenance → Downtime Events
+  registerModule(executiveDecisionModule); // Executive → Decision Approval (governance)
+  registerModule(executionProposalModule); // Executive → Execution Proposals (controlled handoff)
   await Promise.all([
     invoiceModule.store.load(),
     contactModule.store.load(),

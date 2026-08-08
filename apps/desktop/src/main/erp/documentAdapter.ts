@@ -55,6 +55,13 @@ export interface PostingContext {
   lines: DocumentLine[];
   totals: DocumentTotals;
   action: EnterpriseModuleLifecycleAction;
+  /**
+   * The module action context, threaded through so `postJournal` can reach the
+   * EXISTING general-ledger path (`applyGlDerivedEntries` needs `moduleFor` to
+   * resolve the journal + ledger-account modules). Without this the adapter
+   * would have to own ledger writes — which it must not.
+   */
+  actionCtx: EnterpriseModuleActionContext;
 }
 
 export interface DocumentSpec {
@@ -279,7 +286,7 @@ export class DocumentIntegration {
   private async handleChange(
     spec: DocumentSpec,
     event: { action: EnterpriseModuleLifecycleAction; record: EnterpriseEntity },
-    _ctx: EnterpriseModuleActionContext,
+    actionCtx: EnterpriseModuleActionContext,
   ): Promise<void> {
     if (!spec.postOn) return;
     // Accounting is driven by state, not by every edit.
@@ -295,6 +302,7 @@ export class DocumentIntegration {
       lines,
       totals: computeDocumentTotals(lines),
       action: event.action,
+      actionCtx,
     };
 
     let derivation: PostingDerivation | null;

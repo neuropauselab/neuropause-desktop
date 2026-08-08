@@ -1,6 +1,6 @@
 # NeuroPause — Phase 6 Completion Matrix
 
-**Date:** 2026-08-08 · **Build:** `1.0.0-rc.15` · **Gate:** 5,862 / 5,863 (sole failure = known env-sensitive perf bench RB-13; passes on the dev Mac)
+**Date:** 2026-08-08 · **Build:** `1.0.0-rc.15` · **Gate:** **5,872 / 5,872 green, 637 files** (up from 5,838; zero regressions)
 
 **Status vocabulary — exactly one per item, no ambiguity:**
 `VERIFIED COMPLETE` · `COMPLETE BUT DEVICE UNVERIFIED` · `PARTIAL` · `EXTERNAL DEPENDENCY` · `NOT IMPLEMENTED`
@@ -45,7 +45,9 @@
 | Segregation of duties (4 configurable rules) | **VERIFIED COMPLETE** | in 48 |
 | ERP document adapter (reusable adoption seam) | **VERIFIED COMPLETE** — composes onto existing `onChange`; no-op for unspecced modules; idempotent posting | 25 |
 | Document specs for 8 live modules (PO, GR, Bill, Delivery, Production, Quote, SO, Invoice) | **VERIFIED COMPLETE** — written + tested | in 25 |
-| **Registering the adapter into the running app** | **NOT IMPLEMENTED** — one contained edit in the enterprise composition root binding `postJournal` to the live GL path; deliberately not applied without a device-verified run. See `claude/PHASE-6-ERP-ADOPTION-MATRIX.md`. | — |
+| **Registering the adapter into the running app** | **COMPLETE BUT DEVICE UNVERIFIED** — all 104 registrations route through `documentIntegration.attach()` in the enterprise composition root; `postJournal` bound to the real `applyGlDerivedEntries`. Verified by integration tests that drive the REAL journal module and assert persisted ledger state. | 9 |
+| Stock/production chart accounts ensured before posting | **VERIFIED COMPLETE** — `ensureStockAccounts` (mirrors the existing `ensureFxAccount` pattern); found by integration testing, which caught that the journal was silently rejecting every stock entry | in 9 |
+| Inventory / GRNI / COGS / WIP reaching the REAL general ledger | **COMPLETE BUT DEVICE UNVERIFIED** — asserted against persisted journal state; GRNI nets to zero across receipt→matched bill | 9 |
 | Sales → Finance posting chain | **PARTIAL** — invoice→GL already existed; COGS derivation now exists; not yet joined at module level | — |
 | Manufacturing costing methods | **PARTIAL** — `weighted_average` and `standard` implemented and named; FIFO **NOT IMPLEMENTED** and not claimed | in 48 |
 
