@@ -115,3 +115,25 @@ The engines above are complete and tested but **not yet adopted by the 104 live 
 Per-item status: `claude/PHASE-6-COMPLETION-MATRIX.md`. Device steps: `claude/MACOS-PHASE-6-OPERATOR-CERTIFICATION.md`.
 
 Phase 7 has not been started.
+
+
+---
+
+# ADDENDUM 2 — macOS device verification COMPLETED (2026-08-08)
+
+**The item carried as unverified through three closeouts is now verified.**
+
+Booted on Apple Silicon in dev mode. `INFO (data-plane) Data Plane ready { channels: 11, entities: 8 }`; `Secure IPC handlers registered { count: 652 }`; **no `Refusing to start:`** — every one of the 11 `dp:*` channels passed the boot classification check. The renderer round-trip `(await window.neuropause.invoke('dp:ontology',{})).entities.length` returned **8**, confirming the full path: renderer → preload → secure IPC → auth gate → runtime authorization → subsystem → engine → response.
+
+The engine was additionally exercised on-device against a messy CSV via `scripts/dataplane-check.ts`, producing output identical to the build environment (duplicate detection across "Pvt Ltd" / "Private Limited", currency normalization, required-field catch, approval required).
+
+**Status change:** Data Plane IPC wiring moves from *COMPLETE BUT DEVICE UNVERIFIED* to **VERIFIED COMPLETE**.
+
+**Two pre-existing defects were found by launching the app** — neither introduced by Phase 6, and neither findable by the test suite:
+
+1. A **startup race**: `index.ts` awaits `authService.restoreSession()` before `initRuntimeCore()` registers the secure handlers, so renderer IPC calls during that window fail (`No handler registered for 'flags:get'`). The window was 24.7 s in this run.
+2. **Session restore took ~24.4 s**, before any HTTP call — likely keychain access.
+
+Both are recorded with evidence in `claude/MACOS-PHASE-6-OPERATOR-CERTIFICATION.md`. Neither blocks Phase 6; both are recommended as the next fix.
+
+This is exactly the value of insisting on device verification: the automated gate was green at 5,838 tests throughout, and could not have caught either defect — tests import TypeScript directly and never exercise the bundled runtime module graph or the boot sequence.

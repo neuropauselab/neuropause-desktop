@@ -167,3 +167,32 @@ await window.neuropause.invoke('dp:mapping.forget', { signature: sig });
 | Overall | PASS / FAIL / BLOCKED |
 
 **Until T1 and T4 pass, Phase 6 wiring is COMPLETE BUT DEVICE UNVERIFIED — not VERIFIED.** Do not record it as verified in any closeout without the results above filled in.
+
+
+---
+
+# RESULTS — run 2026-08-08 (Apple Silicon, dev mode)
+
+**Outcome: PASS** for the items exercised. Recorded from the operator's terminal and DevTools console.
+
+| Check | Evidence | Result |
+|---|---|---|
+| T1.1 App launches | Window opened; `Startup complete { complete: true }` | **PASS** |
+| **T1.2 No ungated-channel refusal** | No `Refusing to start:` anywhere in the boot log | **PASS** |
+| T1.3 Data Plane started | `INFO (data-plane) Data Plane ready { channels: 11, entities: 8 }` | **PASS** |
+| T1.4 Secure IPC registered | `INFO (secure-ipc) Secure IPC handlers registered { count: 652 }` | **PASS** |
+| T2.1 Preload bridge exposed | `window.neuropause.invoke` callable from the renderer | **PASS** |
+| T4.1 `dp:ontology` round-trip | Returned **8** entities | **PASS** |
+| Engine on-device | `scripts/dataplane-check.ts` over a messy CSV: 2 importable of 4, 1 duplicate ("Pvt Ltd" ≡ "Private Limited"), 1 incomplete, approval required — output identical to the build environment | **PASS** |
+| Backend round-trip | `/auth/token/refresh` 200, `/auth/me` 200, session restored | **PASS** |
+
+**Not exercised in this run:** T5 (approval gate / SoD through the UI), T6 (provenance), T7 (mapping memory via IPC), T8 (restart / logout / recovery), T9 (regression sweep of existing surfaces). These remain open; the underlying behaviours are covered by automated tests but are not device-confirmed.
+
+## Defects found by this run (both pre-existing, neither Phase 6)
+
+1. **Startup race — renderer calls IPC before handlers are registered.**
+   `apps/desktop/src/main/index.ts` awaits `authService.restoreSession()` *before* `initRuntimeCore()`, and `initRuntimeCore` is what calls `registerSecureHandlers`. The window is live during that gap, so any renderer call fails with `No handler registered for '<channel>'`. Observed: `flags:get`. The gap in this run was **24.7 s** (legacy handlers at `20.849`, secure handlers at `45.544`). Self-heals once startup completes. **Fix: move session restore off the critical path.**
+
+2. **Session restore took ~24.4 s.** Succeeded on `attempt: 1`, and the backend logged the refresh request only at the 24-second mark — so the time was spent *before* the HTTP call, most likely macOS Keychain access via `safeStorage`. A reinstalled Electron binary changes app identity and can invalidate keychain ACLs. Plausible, not proven.
+
+3. **Environment (resolved during the run):** the Electron binary was missing after a lockfile change (`npm rebuild electron`), and `@neuropause/companion-protocol` / `@neuropause/solution-packs` were externalized while shipping raw TypeScript, which broke `ERR_MODULE_NOT_FOUND` at launch. Fixed by adding them to `BUNDLED_WORKSPACE_PACKAGES` in `electron.vite.config.ts`. Neither was caused by Phase 6; both were only discoverable by launching the app.

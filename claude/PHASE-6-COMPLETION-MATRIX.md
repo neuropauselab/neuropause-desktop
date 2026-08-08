@@ -14,7 +14,7 @@
 | Validation, quality report, dedup | **VERIFIED COMPLETE** | in 35 |
 | Approval gating, compensating rollback | **VERIFIED COMPLETE** | in 35 |
 | Provenance (store + per-field lineage) | **VERIFIED COMPLETE** | in 35 |
-| IPC contracts, authz, runtimeCore, renderer namespace | **COMPLETE BUT DEVICE UNVERIFIED** | 24 |
+| IPC contracts, authz, runtimeCore, renderer namespace | **VERIFIED COMPLETE** — booted on macOS 2026-08-08; `dp:ontology` round-trip returned 8 entities | 24 |
 | Boot-invariant replication in tests | **VERIFIED COMPLETE** | in 24 |
 | Segregation of duties on high-risk approval | **VERIFIED COMPLETE** | in 24 |
 | Mapping memory (tenant-isolated, versioned) | **VERIFIED COMPLETE** | in 24 |
@@ -76,7 +76,7 @@
 
 | Item | Status |
 |---|---|
-| macOS Electron boot + round-trip | **EXTERNAL DEPENDENCY (operator)** — see `claude/MACOS-PHASE-6-OPERATOR-CERTIFICATION.md` |
+| macOS Electron boot + round-trip | **VERIFIED COMPLETE** — 2026-08-08 on Apple Silicon. `Data Plane ready { channels: 11, entities: 8 }`, 652 secure handlers, no channel refusal, renderer round-trip returned 8. Results recorded in `claude/MACOS-PHASE-6-OPERATOR-CERTIFICATION.md`. |
 
 ## Quality
 
