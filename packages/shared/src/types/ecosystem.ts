@@ -31,6 +31,7 @@ export type ApiScope =
   | 'context:read'
   | 'search:read'
   | 'automation:read'
+  | 'industry:read'
   | 'observability:read';
 
 export const ALL_API_SCOPES: readonly ApiScope[] = [
@@ -51,6 +52,7 @@ export const ALL_API_SCOPES: readonly ApiScope[] = [
   'context:read',
   'search:read',
   'automation:read',
+  'industry:read',
   'observability:read',
 ];
 

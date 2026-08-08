@@ -211,6 +211,14 @@ export const ENTERPRISE_API_ROUTES: ApiRoute[] = [
   { kind: 'channel', method: 'GET', path: '/automation', scope: 'automation:read', list: false, summary: 'List automation rules + summary', channel: IpcChannel.AutomationList, buildPayload: () => ({}) },
   { kind: 'channel', method: 'GET', path: '/automation/monitor', scope: 'automation:read', list: false, summary: 'Automation monitor rollup', channel: IpcChannel.AutomationMonitor, buildPayload: () => ({}) },
 
+  /* ── Industry (IP-12) — the canonical Wave 9 solution-pack catalog snapshot, read-only.
+     Reuses the already-wired IndustrySnapshot channel (RBAC industry:read + audited); no new logic. ── */
+  {
+    kind: 'channel', method: 'GET', path: '/industry/catalog', scope: 'industry:read', list: false,
+    summary: 'Canonical Wave 9 industry solution-pack catalog snapshot',
+    channel: IpcChannel.IndustrySnapshot, buildPayload: () => ({}),
+  },
+
   /* ── Observability (P3.0, Increment 9) — reshape existing gateway audit + health telemetry ── */
   {
     kind: 'special', method: 'GET', path: '/observability/metrics', scope: 'observability:read', list: false,

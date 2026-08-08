@@ -126,6 +126,11 @@ export class EnterpriseResource {
     return this.t.request<T>({ method: 'GET', path: `/automation/monitor`, query, scope: 'automation:read' }).then((r) => r.data);
   }
 
+  /** GET /industry/catalog — Canonical Wave 9 industry solution-pack catalog snapshot */
+  getIndustryCatalog<T = unknown>(query?: Record<string, string | number | boolean | undefined>): Promise<T> {
+    return this.t.request<T>({ method: 'GET', path: `/industry/catalog`, query, scope: 'industry:read' }).then((r) => r.data);
+  }
+
   /** GET /observability/metrics — Prometheus exposition of gateway + runtime metrics (text/plain) */
   getObservabilityMetrics<T = unknown>(query?: Record<string, string | number | boolean | undefined>): Promise<T> {
     return this.t.request<T>({ method: 'GET', path: `/observability/metrics`, query, scope: 'observability:read' }).then((r) => r.data);
