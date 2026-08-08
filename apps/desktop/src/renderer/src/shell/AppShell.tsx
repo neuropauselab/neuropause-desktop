@@ -17,6 +17,7 @@ import { PerfSampler } from '@renderer/state/PerfSampler';
 import { HomeView } from '@renderer/views/HomeView';
 import { OnboardingWizard } from '@renderer/onboarding/OnboardingWizard';
 import { SECTIONS, type SectionId } from './sections';
+import { PreviewBanner } from './PreviewBanner';
 
 const log = createLogger('shell');
 
@@ -360,6 +361,11 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
     }
   };
 
+  // RC Phase 1 (P4) — surface the registry's `preview` flag in-view, so entering a
+  // preview section by deep-link/command-palette (which bypasses the sidebar chip)
+  // still shows the honest preview context.
+  const activeMeta = SECTIONS.find((s) => s.id === activeSection);
+
   return (
     <div className="app-bg flex h-full w-full flex-col text-ink">
       <Toolbar session={session} />
@@ -373,11 +379,16 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -4 }}
               transition={{ duration: 0.16, ease: [0.2, 0.8, 0.2, 1] }}
-              className="h-full"
+              className="flex h-full flex-col"
             >
-              <WorkspaceErrorBoundary name={activeSection}>
-                <Suspense fallback={<ViewFallback />}>{renderView()}</Suspense>
-              </WorkspaceErrorBoundary>
+              {activeMeta?.preview && (
+                <PreviewBanner label={activeMeta.label} phase={activeMeta.phase} />
+              )}
+              <div className="min-h-0 flex-1">
+                <WorkspaceErrorBoundary name={activeSection}>
+                  <Suspense fallback={<ViewFallback />}>{renderView()}</Suspense>
+                </WorkspaceErrorBoundary>
+              </div>
             </motion.div>
           </AnimatePresence>
         </main>

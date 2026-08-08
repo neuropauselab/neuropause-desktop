@@ -54,6 +54,8 @@ interface OrgBundle {
 
 interface EnterpriseContextValue {
   ready: boolean;
+  /** Set when the initial full load failed, so the view shows an honest unavailable state. */
+  error: string | null;
   snapshot: ExecutiveSnapshot | null;
   org: OrgBundle;
   graph: OrgGraph | null;
@@ -94,6 +96,7 @@ const EMPTY_ORG: OrgBundle = { organization: null, units: [], roles: [], users: 
 
 export function EnterpriseProvider({ children }: { children: ReactNode }): JSX.Element {
   const [ready, setReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<ExecutiveSnapshot | null>(null);
   const [org, setOrg] = useState<OrgBundle>(EMPTY_ORG);
   const [graph, setGraph] = useState<OrgGraph | null>(null);
@@ -135,9 +138,13 @@ export function EnterpriseProvider({ children }: { children: ReactNode }): JSX.E
       setJobs(j.jobs);
       setRecommendations(recs.recommendations);
       setConnectorStats(cstats);
+      setError(null);
       setReady(true);
     } catch (err) {
       log.error('Failed to refresh enterprise', err);
+      // Honest failure: surface it so the view stops showing "Connecting…" and
+      // never renders confident all-clear zeros over data that failed to load.
+      setError(err instanceof Error ? err.message : 'Failed to load enterprise data');
     }
   }, []);
 
@@ -243,6 +250,7 @@ export function EnterpriseProvider({ children }: { children: ReactNode }): JSX.E
   const value = useMemo<EnterpriseContextValue>(
     () => ({
       ready,
+      error,
       snapshot,
       org,
       graph,
@@ -273,7 +281,7 @@ export function EnterpriseProvider({ children }: { children: ReactNode }): JSX.E
       createWorkspace,
     }),
     [
-      ready, snapshot, org, graph, governance, compliance, audit, workspaces, activeWorkspace,
+      ready, error, snapshot, org, graph, governance, compliance, audit, workspaces, activeWorkspace,
       workers, jobs, recommendations, connectorStats, refreshAll, approve, reject, delegate,
       runWorkflow, createUnit, updateUnit, deleteUnit, createUser, updateUser, deleteUser,
       createRole, setChain, setRule, switchWorkspace, createWorkspace,

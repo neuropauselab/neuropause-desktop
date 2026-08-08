@@ -65,7 +65,7 @@ export function EnterpriseRoot({
 }
 
 function EnterpriseInner({ initialTab }: { initialTab: EnterpriseTab }): JSX.Element {
-  const { ready, refreshAll, jobs } = useEnterprise();
+  const { ready, error, refreshAll, jobs } = useEnterprise();
   const { enterpriseTab, clearEnterpriseTab } = useShell();
   const [tab, setTab] = useState<EnterpriseTab>(initialTab);
   const [searchQuery, setSearchQuery] = useState('');
@@ -153,6 +153,14 @@ function EnterpriseInner({ initialTab }: { initialTab: EnterpriseTab }): JSX.Ele
     0,
   );
 
+  // RC Phase 1 (P5) — honest header status: Live only when loaded, Offline on a
+  // failed load, Connecting… while first loading. Never a green "Live" over an error.
+  const status = ready ? 'live' : error ? 'offline' : 'connecting';
+  const statusDot =
+    status === 'live' ? 'bg-sysgreen' : status === 'offline' ? 'bg-syspink' : 'bg-faint';
+  const statusLabel =
+    status === 'live' ? 'Live' : status === 'offline' ? 'Offline' : 'Connecting…';
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto px-8 py-7" style={{ maxWidth: 1280 }}>
@@ -167,20 +175,17 @@ function EnterpriseInner({ initialTab }: { initialTab: EnterpriseTab }): JSX.Ele
           <div className="flex items-center gap-3">
             <span className="inline-flex items-center gap-1.5 text-xs font-medium text-faint">
               <span className="relative flex h-2 w-2">
-                <span
-                  className={cn(
-                    'absolute inline-flex h-full w-full rounded-full',
-                    ready ? 'animate-ping bg-sysgreen opacity-60' : '',
-                  )}
-                />
-                <span
-                  className={cn(
-                    'relative inline-flex h-2 w-2 rounded-full',
-                    ready ? 'bg-sysgreen' : 'bg-faint',
-                  )}
-                />
+                {status === 'live' && (
+                  <span
+                    className={cn(
+                      'absolute inline-flex h-full w-full animate-ping rounded-full opacity-60',
+                      statusDot,
+                    )}
+                  />
+                )}
+                <span className={cn('relative inline-flex h-2 w-2 rounded-full', statusDot)} />
               </span>
-              {ready ? 'Live' : 'Connecting…'}
+              {statusLabel}
             </span>
             {canPersonalize && (
               <>
@@ -241,7 +246,11 @@ function EnterpriseInner({ initialTab }: { initialTab: EnterpriseTab }): JSX.Ele
           })}
         </nav>
 
-        {tab === 'command' && <CommandCenterPanel onNavigate={navigate} />}
+        {error && !ready ? (
+          <EnterpriseUnavailable message={error} onRetry={() => void refreshAll()} />
+        ) : (
+          <>
+            {tab === 'command' && <CommandCenterPanel onNavigate={navigate} />}
         {tab === 'executive' && (
           <ProfiledSection id="enterprise:executive">
             <ExecutiveCenterPanel />
@@ -280,8 +289,58 @@ function EnterpriseInner({ initialTab }: { initialTab: EnterpriseTab }): JSX.Ele
         {tab === 'search' && <EnterpriseSearchPanel key={searchQuery} initialQuery={searchQuery} />}
         {tab === 'workspace' && <ExecutiveWorkspacePanel onNavigate={navigate} />}
         {tab === 'briefings' && <BriefingsPanel />}
-        {tab === 'customize' && <CustomizePanel />}
+            {tab === 'customize' && <CustomizePanel />}
+          </>
+        )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * RC Phase 1 (P5) — honest failure state for the Enterprise center. Shown when the
+ * initial full load fails, so the panels never render a confident all-clear (green
+ * zeros) over data that could not be loaded.
+ */
+function EnterpriseUnavailable({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => void;
+}): JSX.Element {
+  const denied = /not authorized|permission|forbidden|denied/i.test(message);
+  return (
+    <div className="mx-auto max-w-xl rounded-2xl border border-[var(--hairline)] p-8 text-center">
+      <span
+        className={cn(
+          'mx-auto flex h-12 w-12 items-center justify-center rounded-2xl',
+          denied ? 'bg-syspink/15 text-syspink' : 'bg-sysorange/15 text-sysorange',
+        )}
+      >
+        <Icon name={denied ? 'lock' : 'info'} size={24} />
+      </span>
+      <h2 className="mt-3 text-lg font-semibold tracking-tight">
+        {denied ? 'You don’t have access to Enterprise' : 'Enterprise is unavailable'}
+      </h2>
+      <p className="mx-auto mt-1 max-w-sm text-sm text-muted">
+        {denied
+          ? 'Your account doesn’t have permission to view the enterprise data.'
+          : 'The enterprise data couldn’t be loaded — the workspace may be offline or a background service is unavailable.'}
+      </p>
+      <p className="mx-auto mt-2 max-w-sm truncate text-2xs text-faint" title={message}>
+        {message}
+      </p>
+      {!denied && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-white/[0.08] px-3 py-1.5 text-sm font-medium text-ink transition-colors hover:bg-white/[0.12]"
+        >
+          <Icon name="refresh" size={14} />
+          Try again
+        </button>
+      )}
     </div>
   );
 }
