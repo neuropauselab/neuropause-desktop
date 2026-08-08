@@ -76,3 +76,42 @@ The **Universal Data Plane itself** is pilot-ready as an engine once the app is 
 **PHASE 6 FINALIZATION — P0 WIRING COMPLETE (UNVERIFIED ON DEVICE). P1/P2 NOT IMPLEMENTED AND SEQUENCED.**
 
 Phase 7 has not been started.
+
+
+---
+
+# ADDENDUM — ERP Foundation Pass (2026-08-08, later same day)
+
+This addendum supersedes the "NOT IMPLEMENTED" lines above for the items it names.
+
+## Executive summary
+
+Following the charter's own dependency order — *complete the ERP foundation first* — this pass built the **structural keystone** the Phase 6 recon identified: line-item documents, and the accounting integrations they unblock. **48 new tests, all green. Gate: 5,838 tests / 635 files, zero regressions.**
+
+## Work completed
+
+**Line-item documents (`erp/documentLines.ts`) — VERIFIED COMPLETE.** Eight trade document types get real parent/child lines. Design: lines are their own records keyed by parent, NOT a widened `EnterpriseFieldValue` — so all 104 modules, the descriptor validator, the sync `rev` model and the certification lock stay untouched. `journalEntry` is deliberately excluded: the GL already has a real, balance-guarded line model, and duplicating it would create a second accounting truth. Because JSON storage has no foreign keys, parent/child integrity is enforced in the service layer: all-or-nothing writes, an explicit cascade, and an orphan sweep.
+
+**Deterministic totals — VERIFIED COMPLETE.** Money is computed in integer minor units with half-up rounding; document totals are the **sum of rounded line totals**, not a re-computation over summed inputs (which is what makes an invoice disagree with its own printed lines by a cent). Tested against rounding edges, discounts, tax, credit lines, zero price and mixed currency.
+
+**Three-way match (`erp/threeWayMatch.ts`) — VERIFIED COMPLETE.** PO ↔ GR ↔ Bill on supplier, currency, product, quantity and price with explicit configurable tolerances, resolving to MATCHED / PARTIAL / MISMATCH / BLOCKED / MANUAL_REVIEW. **A mismatch never posts.** Covers overcharge, over-billing, billing before receipt, unordered items, excessive over-receipt, and wrong-supplier/wrong-currency blocks.
+
+**Stock and production accounting (`erp/postingRules.ts`) — VERIFIED COMPLETE.** Closes the ceiling "inventory, production and procurement never reach the books": goods receipt (Dr Inventory / Cr GRNI), supplier bill (Dr GRNI / Cr AP, clearing only what was matched), COGS on dispatch (Dr COGS / Cr Inventory), inventory adjustment both directions, material issue (Dr WIP / Cr Inventory), and production completion (Dr Finished Goods + variance / Cr WIP). Rules **derive** balanced journal lines; the existing journal module still **posts** them, so there remains exactly one accounting engine with one balance guard. A rule that cannot compute a defensible amount produces **no entry** and says why — an uncosted dispatch refuses rather than posting a partial cost of sale. Valuation: `weighted_average` and `standard` implemented and named; **FIFO is not implemented and not claimed.**
+
+**Approval engine + segregation of duties (`erp/approvalEngine.ts`) — VERIFIED COMPLETE.** Generalizes the Data Plane's proven pattern: configurable multi-step, threshold, role-based and department-scoped approval, with SoD as an independent control (creator-cannot-approve, no repeat approver, no self-approved payment). A user can hold the required role and still be barred. Refused decisions record nothing.
+
+**Procure-to-pay E2E — VERIFIED COMPLETE.** Receipt accrues GRNI → three-way match → matched bill clears it, asserting **GRNI nets to zero**.
+
+## What remains NOT IMPLEMENTED
+
+The engines above are complete and tested but **not yet adopted by the 104 live ERP modules** — replacing flat fields with lines and calling the posting rules from module lifecycle hooks is the next step. Also still absent: the Data Command Center / Import Center / Provenance UIs, cross-domain relationship reconstruction, export, module-level lifecycle re-entry, connectors, PDF/OCR, and the entire medical-device pack and Relife pilot foundation.
+
+**Relife was deliberately not started**, per the charter's own rule. The foundation only became reliable in this pass and no module calls it yet; a regulated-industry traceability story resting on that would be feature theater.
+
+## Final status
+
+**PHASE 6 ENGINEERING — ERP FOUNDATION COMPLETE. DEVICE VERIFICATION PENDING. UI, MEDICAL-DEVICE PACK AND RELIFE PILOT NOT IMPLEMENTED.**
+
+Per-item status: `claude/PHASE-6-COMPLETION-MATRIX.md`. Device steps: `claude/MACOS-PHASE-6-OPERATOR-CERTIFICATION.md`.
+
+Phase 7 has not been started.
