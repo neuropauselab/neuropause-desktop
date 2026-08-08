@@ -22,6 +22,7 @@ import { marketplaceStore } from '../ecosystem/marketplace/marketplaceInstance';
 import { IndustryPlatformService } from './industryService';
 import type { IndustryPlatformState } from './industryModel';
 import { withIndustryAuthz } from './industryAuthz';
+import { getCanonicalIndustrySnapshot } from './canonicalIndustryCatalog';
 
 const log = createLogger('industry-platform');
 
@@ -78,12 +79,35 @@ export function initIndustryPlatform(): IndustryPlatformSubsystem {
   marketplaceStore.on('changed', invalidate);
 
   const rawHandlers: SecureHandlerDef[] = [
-    { channel: IpcChannel.IndustryOverview, schema: EmptyRequest, handler: () => service.overview() },
+    {
+      channel: IpcChannel.IndustryOverview,
+      schema: EmptyRequest,
+      handler: () => service.overview(),
+    },
     { channel: IpcChannel.IndustrySuites, schema: EmptyRequest, handler: () => service.suites() },
     { channel: IpcChannel.IndustryKpis, schema: EmptyRequest, handler: () => service.kpis() },
-    { channel: IpcChannel.IndustryCompliance, schema: EmptyRequest, handler: () => service.compliance() },
-    { channel: IpcChannel.IndustryCollections, schema: EmptyRequest, handler: () => service.collections() },
-    { channel: IpcChannel.IndustryReadiness, schema: EmptyRequest, handler: () => service.readiness() },
+    {
+      channel: IpcChannel.IndustryCompliance,
+      schema: EmptyRequest,
+      handler: () => service.compliance(),
+    },
+    {
+      channel: IpcChannel.IndustryCollections,
+      schema: EmptyRequest,
+      handler: () => service.collections(),
+    },
+    {
+      channel: IpcChannel.IndustryReadiness,
+      schema: EmptyRequest,
+      handler: () => service.readiness(),
+    },
+    // IP-03b convergence — the canonical Wave 9 catalog snapshot (additive; separate from the
+    // P13 store-derived projections above). RBAC-gated (industry:read) + audited via withIndustryAuthz.
+    {
+      channel: IpcChannel.IndustrySnapshot,
+      schema: EmptyRequest,
+      handler: () => getCanonicalIndustrySnapshot(),
+    },
   ];
   const handlers = withIndustryAuthz(rawHandlers);
 

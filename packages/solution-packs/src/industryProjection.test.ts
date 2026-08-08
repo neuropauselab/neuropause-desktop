@@ -3,7 +3,11 @@
  * canonical @neuropause/industry data shapes.
  */
 import { describe, expect, it } from 'vitest';
-import type { CapabilityEvidence, IndustryReadiness, IndustrySolution } from '@neuropause/industry';
+import type {
+  CapabilityEvidence,
+  IndustryReadiness,
+  IndustrySolution,
+} from '@neuropause/industry/catalog';
 import {
   evidenceLevelLabel,
   groupCapabilitiesByArea,

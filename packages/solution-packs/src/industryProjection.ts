@@ -11,7 +11,11 @@
  * the real `createIndustryPlatform(runtime)` (IP-03) and feeds its data through
  * these projections.
  */
-import type { CapabilityEvidence, IndustryReadiness, IndustrySolution } from '@neuropause/industry';
+import type {
+  CapabilityEvidence,
+  IndustryReadiness,
+  IndustrySolution,
+} from '@neuropause/industry/catalog';
 
 export interface IndustryCounts {
   objects: number;

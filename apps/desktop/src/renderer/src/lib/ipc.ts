@@ -1229,6 +1229,8 @@ export const ipc = {
     compliance: () => invoke(IpcChannel.IndustryCompliance),
     collections: () => invoke(IpcChannel.IndustryCollections),
     readiness: () => invoke(IpcChannel.IndustryReadiness),
+    // IP-03b — the canonical Wave 9 catalog (@neuropause/industry) bridged to the desktop.
+    snapshot: () => invoke(IpcChannel.IndustrySnapshot),
     // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
     onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
   },

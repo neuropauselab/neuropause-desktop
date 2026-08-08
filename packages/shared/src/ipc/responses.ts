@@ -238,6 +238,7 @@ import type {
   GraphSubgraph,
   IdentitySummary,
   IncidentLifecycleReport,
+  IndustryCatalogSnapshot,
   IndustryCollection,
   IndustryComplianceReport,
   IndustryPlatformOverview,
@@ -1013,6 +1014,7 @@ export interface IpcResponseMap {
   'industry:compliance': IndustryComplianceReport;
   'industry:collections': IndustryCollection[];
   'industry:readiness': IndustryReadinessReport;
+  'industry:snapshot': IndustryCatalogSnapshot;
 
   // ── strategy ──
   'strategy:overview': StrategyOverview;

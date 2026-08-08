@@ -209,6 +209,7 @@ export * from './types/federationPlatform';
 export * from './types/controlPlane';
 export * from './types/developerPlatform';
 export * from './types/industrySolution';
+export * from './types/industryCatalog';
 export * from './types/strategyIntelligence';
 export * from './types/enterpriseTwin';
 export * from './types/enterpriseKnowledge';

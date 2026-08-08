@@ -516,6 +516,8 @@ export const IpcChannel = {
   IndustryCompliance: 'industry:compliance',
   IndustryCollections: 'industry:collections',
   IndustryReadiness: 'industry:readiness',
+  /** IP-03b — the canonical Wave 9 catalog (@neuropause/industry) bridged to the desktop. */
+  IndustrySnapshot: 'industry:snapshot',
 
   // ── P14 — Autonomous Enterprise Intelligence (read-only strategic reasoning/projection layer) ──
   StrategyOverview: 'strategy:overview',
@@ -1295,6 +1297,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.IndustryCompliance,
   IpcChannel.IndustryCollections,
   IpcChannel.IndustryReadiness,
+  IpcChannel.IndustrySnapshot,
 
   // ── P14 — Autonomous Enterprise Intelligence ──
   IpcChannel.StrategyOverview,
