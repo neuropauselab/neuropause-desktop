@@ -142,6 +142,14 @@ export const DEFAULT_PROMPTS: PromptTemplate[] = [
     variables: ['context'],
   },
   {
+    id: 'generic.generate',
+    version: 1,
+    label: 'Generate Prompt',
+    system: `${GROUNDING} Generate the requested content, grounded in any provided context. Respond ONLY with JSON: text (string), confidence (number 0..1).`,
+    user: 'CONTEXT:\n{{context}}\n\nInstruction: {{instruction}}\n\nGenerate the requested content, strictly grounded in the context above.',
+    variables: ['context', 'instruction'],
+  },
+  {
     id: 'finance.invoice-summary',
     version: 1,
     label: 'Finance — Invoice Summary',

@@ -19,7 +19,10 @@ import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { automationStore } from './automationInstance';
 import { AutomationRunner } from './automationRunner';
 import { AutomationRunHistory } from './automationRunHistory';
-import { defaultActionExecutor } from './automationActions';
+import { Notification } from 'electron';
+import { createActionExecutor } from './automationActions';
+import { memoryStore } from '../memory/memoryInstance';
+import { aiEngine } from '../ai/engineInstance';
 import { wireAutomationProducers } from './automationProducer';
 import type { PlatformEvent, PlatformEventInput, PlatformEventType } from '@neuropause/shared';
 
@@ -34,7 +37,19 @@ const runHistory = new AutomationRunHistory();
 let publishPlatformEvent: ((input: PlatformEventInput) => void) | null = null;
 
 const runner = new AutomationRunner(() => automationStore.activeRules(), {
-  execute: defaultActionExecutor,
+  // RC Phase 1 — real execution: each action drives its actual subsystem and
+  // reports ok:true ONLY when the effect occurred (see automationActions.ts).
+  execute: createActionExecutor({
+    notify: ({ title, body }) => {
+      if (!Notification.isSupported()) {
+        return { ok: false, message: 'Notifications are not supported on this platform' };
+      }
+      new Notification({ title, body }).show();
+      return { ok: true };
+    },
+    memory: { remember: (input) => memoryStore.remember(input) },
+    ai: { isConfigured: () => aiEngine.isConfigured(), run: (req) => aiEngine.run(req) },
+  }),
   recordRun: (ruleId, result) => automationStore.recordRun(ruleId, result),
   emitCompleted: (record) => {
     runHistory.add(record);
