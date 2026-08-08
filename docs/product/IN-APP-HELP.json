@@ -1,0 +1,96 @@
+{
+  "schema": "neuropause.in-app-help",
+  "schemaVersion": "1.0",
+  "productBuild": "1.0.0-rc.15",
+  "productRef": "0a040e2",
+  "sourceOfTruth": "repository",
+  "note": "Short, honest in-app help entries keyed by surface. Every entry carries a maturity value and points to fuller documentation. No fabricated capabilities.",
+  "maturityLegend": {
+    "LOCAL_FIRST": "Runs on the device; data stored locally.",
+    "CLOUD": "Requires the backend service.",
+    "EXTERNAL_DEPENDENCY": "Requires a provider you configure.",
+    "PREVIEW": "Seeded/in-memory; evolving; not for production reliance."
+  },
+  "entries": [
+    {
+      "id": "today",
+      "title": "Today / Work Hub",
+      "summary": "Your personal day and fast entry point. Open Work Hub for the day view; press Command-K for quick navigation to any surface.",
+      "maturity": "LOCAL_FIRST",
+      "tips": ["Command-K opens the command palette from anywhere.", "The three Today landings are Mission Control, Today's Intent, and Work Hub."],
+      "learnMore": "docs/user/FIRST-30-MINUTES.md"
+    },
+    {
+      "id": "business",
+      "title": "Business (ERP)",
+      "summary": "104 modules across 13 families. Create, edit, and reopen records — they persist locally on this device.",
+      "maturity": "LOCAL_FIRST",
+      "tips": ["Records are real local data, not a demo.", "Some families are permission-gated (e.g. HR read/manage is Manager/Admin only)."],
+      "learnMore": "docs/user/NEUROPAUSE-USER-GUIDE.md"
+    },
+    {
+      "id": "ai-workforce",
+      "title": "AI Workforce",
+      "summary": "Governed AI actions follow intent, governance, permission, execution, evidence. With an AI provider configured, actions run live; without one, you see an honest deterministic fallback.",
+      "maturity": "LOCAL_FIRST + EXTERNAL_DEPENDENCY",
+      "tips": ["Configure an AI provider (Anthropic key or local Ollama) in Settings to enable live AI.", "Every governed action leaves an evidence trail."],
+      "learnMore": "docs/user/AI-WORKFORCE-GUIDE.md"
+    },
+    {
+      "id": "knowledge",
+      "title": "Knowledge & AI Memory",
+      "summary": "Search your work in natural language. Local lexical search always works; enabling semantic ranking (a vector store + embeddings) improves results.",
+      "maturity": "LOCAL_FIRST",
+      "tips": ["If semantic search is unavailable, results fall back to lexical rather than failing.", "Save items to AI Memory, then retrieve them here."],
+      "learnMore": "docs/user/KNOWLEDGE-GUIDE.md"
+    },
+    {
+      "id": "operations",
+      "title": "Operations",
+      "summary": "Health, risk, and incident views. The status indicator shows Live only when data actually loaded — degraded and empty states are shown honestly.",
+      "maturity": "LOCAL_FIRST",
+      "tips": ["A non-Live status is truthful, not a bug — it means data hasn't loaded."],
+      "learnMore": "docs/user/NEUROPAUSE-USER-GUIDE.md"
+    },
+    {
+      "id": "digital-twin",
+      "title": "Digital Twin Center",
+      "summary": "A modeled view over your data. This is a Preview surface running on seeded/in-memory data.",
+      "maturity": "PREVIEW",
+      "tips": ["Look for the in-app Preview banner — treat this surface as exploratory."],
+      "learnMore": "docs/user/DIGITAL-TWIN-GUIDE.md"
+    },
+    {
+      "id": "industry",
+      "title": "Industry Center",
+      "summary": "20 vertical solution packs that reuse the enterprise core. Preview maturity (catalog 0.0.0-preview.1).",
+      "maturity": "PREVIEW",
+      "tips": ["Select the one pack for your vertical rather than opening all of them."],
+      "learnMore": "docs/product/INDUSTRY-CATALOG.md"
+    },
+    {
+      "id": "ai-store",
+      "title": "AI Store",
+      "summary": "Discover, install, and launch AI apps. The catalog is served by the backend.",
+      "maturity": "CLOUD",
+      "tips": ["The AI Store needs the backend; the rest of the app keeps working on local data if it's unavailable."],
+      "learnMore": "docs/user/NEUROPAUSE-USER-GUIDE.md"
+    },
+    {
+      "id": "connectors",
+      "title": "Connectors",
+      "summary": "22 integrations (13 production-ready, 9 Preview) via official APIs/OAuth. A connector is listed but not connectable until you supply its OAuth app credentials.",
+      "maturity": "CLOUD + EXTERNAL_DEPENDENCY",
+      "tips": ["A 'not configured' state is honest — it means OAuth credentials haven't been supplied.", "NeuroPause never fabricates a connected state."],
+      "learnMore": "docs/user/CONNECTORS-GUIDE.md"
+    },
+    {
+      "id": "administration",
+      "title": "Administration & Settings",
+      "summary": "Manage your organization, roles, and 14 settings domains. Tenant isolation is DB-enforced; roles gate sensitive actions.",
+      "maturity": "CLOUD + LOCAL_FIRST",
+      "tips": ["Set a strong JWT access secret and configure providers before onboarding real users.", "Review HR privacy gating and RBAC scopes."],
+      "learnMore": "docs/admin/ADMIN-GUIDE.md"
+    }
+  ]
+}

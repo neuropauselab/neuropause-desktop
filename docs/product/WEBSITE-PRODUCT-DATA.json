@@ -1,0 +1,98 @@
+{
+  "schema": "neuropause.website-product-data",
+  "schemaVersion": "1.0",
+  "generatedFor": "Phase 4 — Product Enablement",
+  "sourceOfTruth": "repository",
+  "note": "Machine-readable product data for a marketing surface. Contains NO fabricated pricing, SLAs, trial durations, customer logos, screenshots, or download URLs. Every capability carries a maturity value.",
+  "product": {
+    "name": "NeuroPause",
+    "category": "AI-native enterprise operating system",
+    "form": "desktop application",
+    "isChatbot": false,
+    "tagline": "One operating layer for business, governed AI, knowledge, and operations.",
+    "positioning": "A desktop workspace that unifies enterprise modules with governed AI, keeping operational data on the device and holding the AI accountable through approval, permission, and evidence.",
+    "build": "1.0.0-rc.15",
+    "buildRef": "0a040e2",
+    "maturity": "RC",
+    "maturityStatement": "Release Candidate — pilot-ready, not general availability."
+  },
+  "maturityLegend": {
+    "LOCAL_FIRST": "Runs on the device; data stored locally.",
+    "CLOUD": "Requires the backend service.",
+    "EXTERNAL_DEPENDENCY": "Requires a provider you configure.",
+    "PREVIEW": "Seeded/in-memory; evolving; not for production reliance.",
+    "RC": "Release-candidate quality; GA pending.",
+    "PLANNED": "Not in this build."
+  },
+  "architecture": {
+    "model": "local-first with a thin cloud plane",
+    "localFirst": "All ERP/enterprise records, knowledge, AI memory, automations, and the activity timeline are stored on each device as atomic JSON under the OS user-data directory. The renderer makes no network calls; only the desktop main process talks outward.",
+    "cloudPlane": "Node.js + Express (:4000) + PostgreSQL 16 (12 migrations, 36 tables) + Redis 7 for sign-in, AI Store, organizations/devices, licensing, billing, sync, and semantic-search infrastructure. The cloud plane does not store business data.",
+    "desktopStack": ["Electron", "React", "TypeScript", "Vite", "Tailwind CSS", "Framer Motion"],
+    "security": ["secure context isolation", "validated IPC", "argon2 passwords", "short-lived JWT access tokens", "keychain-encrypted refresh tokens"],
+    "optional": {
+      "semanticSearch": "Qdrant vector store + embeddings (External dependency)",
+      "billing": "Razorpay (disabled unless configured)"
+    }
+  },
+  "capabilities": [
+    { "id": "today", "name": "Today / Work Hub", "summary": "Your personal day, mission control, and fast entry.", "maturity": "LOCAL_FIRST" },
+    { "id": "business", "name": "Business (ERP)", "summary": "104 modules across 13 families, persisting locally.", "maturity": "LOCAL_FIRST" },
+    { "id": "ai-workforce", "name": "AI Workforce", "summary": "Governed AI: intent, governance, permission, execution, evidence.", "maturity": "LOCAL_FIRST + EXTERNAL_DEPENDENCY" },
+    { "id": "knowledge", "name": "Knowledge & AI Memory", "summary": "Natural-language search over your work; lexical always on, semantic optional.", "maturity": "LOCAL_FIRST" },
+    { "id": "operations", "name": "Operations", "summary": "Health, risk, and incidents with honest status (no false Live).", "maturity": "LOCAL_FIRST" },
+    { "id": "digital-twin", "name": "Digital Twin Center", "summary": "Modeled view over your data.", "maturity": "PREVIEW" },
+    { "id": "industry", "name": "Industry Center", "summary": "20 vertical solution packs reusing the enterprise core.", "maturity": "PREVIEW" },
+    { "id": "ai-store", "name": "AI Store", "summary": "Discover, install, and launch AI apps.", "maturity": "CLOUD" },
+    { "id": "connectors", "name": "Connectors", "summary": "22 integrations via official APIs/OAuth.", "maturity": "CLOUD + EXTERNAL_DEPENDENCY" }
+  ],
+  "businessFamilies": {
+    "totalModules": 104,
+    "totalFamilies": 13,
+    "families": [
+      { "name": "Finance", "modules": 21 },
+      { "name": "Human Resources", "modules": 15 },
+      { "name": "Manufacturing", "modules": 12 },
+      { "name": "Maintenance", "modules": 10 },
+      { "name": "Warehouse", "modules": 8 },
+      { "name": "CRM", "modules": 8 },
+      { "name": "Sales", "modules": 7 },
+      { "name": "Procurement", "modules": 7 },
+      { "name": "Inventory", "modules": 7 },
+      { "name": "Projects", "modules": 4 },
+      { "name": "Executive", "modules": 3 },
+      { "name": "Helpdesk", "modules": 1 },
+      { "name": "Documents", "modules": 1 }
+    ]
+  },
+  "connectors": {
+    "total": 22,
+    "production": ["GitHub", "Notion", "Slack", "Atlassian", "Google Workspace", "Microsoft Entra", "Salesforce", "HubSpot", "ServiceNow", "SAP", "Oracle", "Dynamics 365", "Workday"],
+    "preview": ["ChatGPT", "Claude", "Gemini", "Perplexity", "Cursor", "Canva", "Figma", "Linear", "Zapier"],
+    "note": "Each connector uses official APIs/OAuth where available and is listed but not connectable until its OAuth app credentials are supplied. A connected state is never fabricated."
+  },
+  "industryPacks": { "count": 20, "catalogVersion": "0.0.0-preview.1", "maturity": "PREVIEW" },
+  "aiProviders": { "count": 2, "options": ["Anthropic (Claude) — default", "Ollama — local"], "maturity": "EXTERNAL_DEPENDENCY" },
+  "platformSupport": {
+    "certifiedNow": ["macOS (Apple Silicon)"],
+    "planned": ["Windows", "Linux"]
+  },
+  "quality": { "tests": 5703, "testFiles": 631, "gate": "typecheck + lint + tests across shared, protocol, cloud-core, backend, desktop" },
+  "securityPosture": {
+    "controls": ["server-side auth", "DB-enforced tenant isolation (verified)", "RBAC scopes", "keychain-encrypted refresh tokens", "per-domain audit", "no secrets in logs"],
+    "certificationsClaimed": [],
+    "certificationDisclaimer": "No SOC 2, ISO 27001, GDPR, or HIPAA certification is claimed. Controls are real; formal certifications, a DPA, and penetration-test attestations are not part of this build."
+  },
+  "notClaimed": [
+    "public HTTP Enterprise API (in-process IPC/SDK only)",
+    "signed/notarized packaged artifact (not yet published)",
+    "pricing, SLAs, or trial durations (operator/commercial decisions)",
+    "customer logos or product screenshots"
+  ],
+  "callsToAction": [
+    { "label": "Quick Start", "doc": "docs/user/QUICK-START.md" },
+    { "label": "Enterprise Pilot Guide", "doc": "docs/enterprise/ENTERPRISE-PILOT-GUIDE.md" },
+    { "label": "Product Brochure", "doc": "docs/product/NEUROPAUSE-PRODUCT-BROCHURE.md" },
+    { "label": "RC Release Notes", "doc": "docs/product/CURRENT-RC-RELEASE-NOTES.md" }
+  ]
+}
