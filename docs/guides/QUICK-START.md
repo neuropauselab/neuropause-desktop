@@ -4,7 +4,7 @@
 
 ## The sidebar is your map — six groups
 
-**Today** — Mission Control (the landing dashboard), Today's Intent, Search, Assistant, Work Hub (your day). **Business** — Organization, Enterprise, **Business** (the ERP workspace — start here for real work), Administration. **Workspace** — Intelligence, Collaboration, Knowledge, Automation, AI Store, Marketplace, Workspace, Connectors, AI Memory. **AI & Operations** — AI Operations, Ops Center, Operations, AI Workforce, Workforce Center, Sandbox. **Platform** — developer and platform surfaces (several marked *Preview* — real code, honestly labeled as not yet production capability). **System** — Notifications, Getting Started (checklist + documentation), Settings.
+**Today** — Mission Control (the landing dashboard), Today's Intent, Search, Assistant, Work Hub (your day). **Business** — Organization, Enterprise, **Business** (the ERP workspace — start here for real work), Administration. **Workspace** — Intelligence, Collaboration, Knowledge, Automation, AI Store, Marketplace, Workspace, Connectors, AI Memory. **AI & Operations** — AI Operations, Operations, Runtime, AI Workforce, Workforce Admin, Sandbox. **Platform** — developer and platform surfaces (several marked *Preview* — real code, honestly labeled as not yet production capability). **System** — Notifications, Getting Started (checklist + documentation), Settings.
 
 `⌘K` opens the command palette from anywhere: jump to any section, any business module, search records, launch apps.
 

@@ -47,7 +47,13 @@
         { "path": "docs/enterprise/DATA-AND-SECURITY-GUIDE.md", "title": "Data & Security Guide", "summary": "Where data lives, auth, isolation, audit — no certifications claimed." },
         { "path": "docs/enterprise/DEMO-SCRIPT.md", "title": "30-Minute Demo Script", "summary": "An honest timed walkthrough with a Do-NOT-demo list." },
         { "path": "docs/product/TRIAL-EXPERIENCE.md", "title": "Trial Experience", "summary": "How to evaluate the product; operator-set trial duration." },
-        { "path": "docs/product/TRIAL-CHECKLIST.md", "title": "Trial Checklist", "summary": "A Day 1/2/3/7/Final evaluation cadence." }
+        { "path": "docs/product/TRIAL-CHECKLIST.md", "title": "Trial Checklist", "summary": "A Day 1/2/3/7/Final evaluation cadence." },
+        { "path": "docs/enterprise/PILOT-SUPPORT-RUNBOOK.md", "title": "Pilot Support Runbook", "summary": "How pilot support works; diagnostics, escalation, bug template." },
+        { "path": "docs/enterprise/PILOT-ACCEPTANCE-CRITERIA.md", "title": "Pilot Acceptance Criteria", "summary": "Measurable acceptance with honest per-item status." },
+        { "path": "docs/enterprise/PILOT-TEST-PACK.md", "title": "Pilot Test Pack", "summary": "A hands-on suggested evaluation sequence." },
+        { "path": "docs/enterprise/PILOT-FEEDBACK-FORM.md", "title": "Pilot Feedback Form", "summary": "One structured template for bugs and feedback." },
+        { "path": "docs/enterprise/TELEMETRY-POLICY.md", "title": "Telemetry & Diagnostics Policy", "summary": "What is and isn't collected — no third-party analytics." },
+        { "path": "docs/enterprise/PERFORMANCE-PILOT-BASELINE.md", "title": "Performance Pilot Baseline", "summary": "Pilot-scale baseline + capture method." }
       ]
     },
     {
@@ -57,7 +63,10 @@
         { "path": "docs/product/ONE-PAGE-PRODUCT-SHEET.md", "title": "One-Page Product Sheet", "summary": "The whole product on a single page." },
         { "path": "docs/product/CURRENT-RC-RELEASE-NOTES.md", "title": "RC Release Notes", "summary": "The current 1.0.0-rc.15 state and known limitations." },
         { "path": "docs/product/PRODUCT-CATALOG.md", "title": "Product Catalog", "summary": "The full module/family/connector catalog." },
-        { "path": "docs/product/INDUSTRY-CATALOG.md", "title": "Industry Catalog", "summary": "The 20 vertical solution packs (Preview)." }
+        { "path": "docs/product/INDUSTRY-CATALOG.md", "title": "Industry Catalog", "summary": "The 20 vertical solution packs (Preview)." },
+        { "path": "docs/product/PILOT-RELEASE-NOTES.md", "title": "Pilot Release Notes", "summary": "What a pilot receives in 1.0.0-rc.15, stated honestly." },
+        { "path": "docs/product/PRODUCT-MATURITY-MATRIX.md", "title": "Product Maturity Matrix", "summary": "The definitive per-capability release-readiness view." },
+        { "path": "docs/product/RELEASE-BLOCKERS.md", "title": "Release Blocker Register", "summary": "What stands between the RC and a signed distributable pilot." }
       ]
     },
     {

@@ -195,12 +195,12 @@ data (see §6 and §8).
 | **Launch / install apps** | `apps/desktop/src/renderer/src/store/` (`StoreApp.tsx`, `AppDetail.tsx`, `InstallFlow.tsx`) | Browse the AI Store catalog and launch/install approved apps for a workstation |
 | **Connect sources** | `apps/desktop/src/renderer/src/connectors/` (`ConnectorsPage.tsx`, `ConnectorDetail.tsx`, `IntegrationHealthPanel.tsx`, `LiveConnectorInspector.tsx`) | Authorize and inspect connectors; per-connector health panel |
 | **Sandbox / validate** | `apps/desktop/src/renderer/src/sandbox/` (`SandboxView.tsx`, panels: Overview, Scenarios, Validation, Regression, Certification, Lab, Artifacts, History) | Run validation scenarios and regression checks, view a certification verdict, and keep run history — the operator's dry-run surface before promoting a change |
-| **Ops Center** | `apps/desktop/src/renderer/src/operationsCenter/` (`OpsCenterView.tsx`, `opsModel.ts`) | Health, risk, capacity, incidents, dependencies, root-cause, graph, timeline, diagnostics — a read-only operating lens over the intelligence reports the backend already computed |
+| **Operations** | `apps/desktop/src/renderer/src/operationsCenter/` (`OpsCenterView.tsx`, `opsModel.ts`) | Health, risk, capacity, incidents, dependencies, root-cause, graph, timeline, diagnostics — a read-only operating lens over the intelligence reports the backend already computed |
 | **Operations / Infrastructure** | `.../operations/`, `.../infrastructure/InfrastructurePage.tsx` | Service and infrastructure status views |
 | **Digital Twin / Industry Center** | `.../twinCenter/TwinCenterView.tsx`, `.../industryCenter/IndustryCenterView.tsx` | **MODELED** enterprise digital-twin domains (enterprise, org, infrastructure, workforce, application, connector, federation…). These are software/enterprise twins, **not** physical PLC/line/sensor twins |
 
 **Typical shift flow.** An operator launches the desktop client (authenticated via
-backend-brokered OAuth PKCE), opens **Ops Center** to confirm health/risk are green,
+backend-brokered OAuth PKCE), opens **Operations** to confirm health/risk are green,
 uses **Connectors** to confirm upstream sources are live, and — before promoting a
 configuration or app change — runs it through the **Sandbox** validation scenarios
 and reviews the certification verdict. Privileged actions along the way land in

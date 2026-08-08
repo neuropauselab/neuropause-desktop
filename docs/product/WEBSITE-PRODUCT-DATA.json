@@ -1,7 +1,7 @@
 {
   "schema": "neuropause.website-product-data",
   "schemaVersion": "1.0",
-  "generatedFor": "Phase 4 — Product Enablement",
+  "generatedFor": "Phase 5 — Pilot Readiness (supersedes Phase 4 enablement)",
   "sourceOfTruth": "repository",
   "note": "Machine-readable product data for a marketing surface. Contains NO fabricated pricing, SLAs, trial durations, customer logos, screenshots, or download URLs. Every capability carries a maturity value.",
   "product": {
@@ -15,6 +15,31 @@
     "buildRef": "0a040e2",
     "maturity": "RC",
     "maturityStatement": "Release Candidate — pilot-ready, not general availability."
+  },
+  "pilotReadiness": {
+    "status": "TECHNICALLY PILOT READY — external/operator release blockers remain",
+    "verified": [
+      "local-first ERP persistence (create/reopen/restart)",
+      "server-side auth + tenant isolation + RBAC (Phase 3, real Postgres+Redis)",
+      "honest operational states (no false Live; no fake automation success)",
+      "governed AI lifecycle with evidence",
+      "38/38 governed documents validate clean",
+      "5,703 tests green on the certified baseline"
+    ],
+    "operatorBlockers": [
+      "macOS code signing + notarization (Apple credentials)",
+      "Windows Authenticode (certificate)",
+      "update-feed hosting + a signed build to serve",
+      "rotate real secrets present in local dotfiles"
+    ],
+    "externalDependencies": ["AI provider", "Qdrant + embeddings (semantic search)", "OAuth registration (GitHub/Entra)", "Razorpay billing"],
+    "guiVerification": "PENDING — on-device macOS visual/interaction QA is a human task",
+    "references": {
+      "maturityMatrix": "docs/product/PRODUCT-MATURITY-MATRIX.md",
+      "releaseBlockers": "docs/product/RELEASE-BLOCKERS.md",
+      "pilotReleaseNotes": "docs/product/PILOT-RELEASE-NOTES.md",
+      "closeout": "claude/PHASE-5-CLOSEOUT.md"
+    }
   },
   "maturityLegend": {
     "LOCAL_FIRST": "Runs on the device; data stored locally.",

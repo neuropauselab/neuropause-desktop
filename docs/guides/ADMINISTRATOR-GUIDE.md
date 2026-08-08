@@ -96,7 +96,7 @@ Open the **Administration** workspace to get one console over everything. It has
 | AI Administration | **AI Workforce**, **Enterprise → Customize** (governance) (`:511`, `:526`) |
 | Connectors | **Connectors** (`:541`) |
 | Licensing | **Commercial Center** (`:559`) |
-| Configuration | **Cloud**, **Product Ops** (`:587`, `:594`) |
+| Configuration | **Cloud**, **Release Ops** (`:587`, `:594`) |
 
 Each tab also renders an honest **"Administrative gaps"** panel listing capabilities the platform does *not* surface in-app, so the console never fabricates a control it lacks (`AdministrationView.tsx:230-255`, catalog in `apps/desktop/src/renderer/src/administration/adminModel.ts:88-103`).
 

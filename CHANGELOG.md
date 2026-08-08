@@ -7,6 +7,18 @@ All notable changes to NeuroPause are documented here. The format is based on
 
 ## [Unreleased]
 
+_No unreleased changes; the current build is `1.0.0-rc.15`._
+
+## [1.0.0-rc.15] — Global Product RC: Pilot Readiness (2026-08-08)
+
+The Global Product RC program (pilot-readiness track), layered on the Phase 7/8 hardening recorded below. RC, not GA.
+
+- **Phase 1 — Pilot-credibility hardening:** the automation executor never reports success for a no-op; honest error and "Live" states in Business/Operations; in-view Preview banners; a state-model audit. (`claude/PHASE-1-PILOT-HARDENING.md`)
+- **Phase 2 — Information architecture + Apple-grade UX:** ~40 surfaces regrouped and relabelled into one coherent product with progressive disclosure; route IDs preserved. Naming collisions resolved — e.g. `opscenter`→**Operations**, `operations`→**Runtime**, `workforce-center`→**Workforce Admin**, `commercial-center`→**Commercial Center**, `product-ops`→**Release Ops**, `knowledge-center`→**Enterprise Knowledge**.
+- **Phase 3 — Desktop end-to-end certification:** auth, tenancy, authorization, AI Store, health, and failure/recovery certified against a real PostgreSQL 16 + Redis 7 + Express backend; established the local-first desktop / thin-cloud-plane architecture as documented truth.
+- **Phase 4 — Documentation & product enablement:** a 33-document governed set across user/admin/developer/enterprise/product/support/downloads, with zero-dependency `docs:validate` + `docs:build` tooling and honest maturity labelling throughout.
+- **Phase 5 — Enterprise pilot readiness:** legacy/operator documentation terminology reconciled to Phase-2 names (validator extended to cover it); pilot support runbook, acceptance criteria, test pack, feedback form, telemetry policy, and performance baseline; a product maturity matrix and release-blocker register; release-configuration, security, and version audits. Code signing, notarization, and update-feed hosting remain operator-credential-gated (documented, not faked).
+
 ### Phase 8 — Release Candidate Hardening (2026-08-07)
 
 - **Data safety (Wave 1):** backup/restore now covers EVERY store — a store-path

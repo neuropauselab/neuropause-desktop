@@ -34,6 +34,15 @@
     { "path": "docs/support/FAQ.md", "title": "FAQ", "audience": "support", "format": "md", "headerRequired": true },
     { "path": "docs/support/TROUBLESHOOTING.md", "title": "Troubleshooting (User & Pilot)", "audience": "support", "format": "md", "headerRequired": true },
     { "path": "docs/downloads/DOWNLOAD-CATALOG.md", "title": "Download Catalog", "audience": "downloads", "format": "md", "headerRequired": true },
+    { "path": "docs/enterprise/PILOT-SUPPORT-RUNBOOK.md", "title": "Pilot Support Runbook", "audience": "enterprise", "format": "md", "headerRequired": true },
+    { "path": "docs/enterprise/PILOT-ACCEPTANCE-CRITERIA.md", "title": "Pilot Acceptance Criteria", "audience": "enterprise", "format": "md", "headerRequired": true },
+    { "path": "docs/enterprise/PILOT-TEST-PACK.md", "title": "Pilot Test Pack", "audience": "enterprise", "format": "md", "headerRequired": true },
+    { "path": "docs/enterprise/PILOT-FEEDBACK-FORM.md", "title": "Pilot Feedback Form", "audience": "enterprise", "format": "md", "headerRequired": true },
+    { "path": "docs/enterprise/TELEMETRY-POLICY.md", "title": "Telemetry & Diagnostics Policy", "audience": "enterprise", "format": "md", "headerRequired": true },
+    { "path": "docs/enterprise/PERFORMANCE-PILOT-BASELINE.md", "title": "Performance Pilot Baseline", "audience": "enterprise", "format": "md", "headerRequired": true },
+    { "path": "docs/product/PRODUCT-MATURITY-MATRIX.md", "title": "Product Maturity Matrix", "audience": "product", "format": "md", "headerRequired": true },
+    { "path": "docs/product/RELEASE-BLOCKERS.md", "title": "Release Blocker Register", "audience": "product", "format": "md", "headerRequired": true },
+    { "path": "docs/product/PILOT-RELEASE-NOTES.md", "title": "Pilot Release Notes", "audience": "product", "format": "md", "headerRequired": true },
     { "path": "docs/product/PRODUCT-DATA.json", "title": "Product Data", "audience": "product", "format": "json", "headerRequired": false },
     { "path": "docs/product/INDUSTRY-CATALOG.json", "title": "Industry Catalog Data", "audience": "product", "format": "json", "headerRequired": false },
     { "path": "docs/product/WEBSITE-PRODUCT-DATA.json", "title": "Website Product Data", "audience": "product", "format": "json", "headerRequired": false },
@@ -41,5 +50,12 @@
     { "path": "docs/product/ONBOARDING-CONTENT.json", "title": "Onboarding Content", "audience": "product", "format": "json", "headerRequired": false },
     { "path": "docs/product/DOCUMENTATION-INDEX.json", "title": "Documentation Index", "audience": "product", "format": "json", "headerRequired": false },
     { "path": "docs/downloads/DOCUMENT-MANIFEST.json", "title": "Document Manifest", "audience": "downloads", "format": "json", "headerRequired": false }
+  ],
+  "operatorDocuments": [
+    { "path": "docs/guides/QUICK-START.md", "title": "Operator Quick Start (legacy)", "audience": "operator", "format": "md", "check": "terms-only", "note": "Predates the RC documentation header and may cite historical versions; covered for current-terminology only." },
+    { "path": "docs/guides/ADMINISTRATOR-GUIDE.md", "title": "Administrator Guide (legacy)", "audience": "operator", "format": "md", "check": "terms-only" },
+    { "path": "docs/guides/OPERATIONS-GUIDE.md", "title": "Operations Guide (legacy)", "audience": "operator", "format": "md", "check": "terms-only" },
+    { "path": "docs/validation/verticals/MANUFACTURING.md", "title": "Manufacturing vertical validation", "audience": "validation", "format": "md", "check": "terms-only" },
+    { "path": "docs/validation/verticals/HEALTHCARE.md", "title": "Healthcare vertical validation", "audience": "validation", "format": "md", "check": "terms-only" }
   ]
 }

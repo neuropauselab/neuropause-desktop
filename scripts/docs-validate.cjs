@@ -141,8 +141,36 @@ function main() {
     }
   }
 
+  // Operator/legacy documents: lighter coverage — existence + forbidden-terms only.
+  // These predate the RC header, may cite historical versions, and reference code
+  // paths/ids; we govern them for current-terminology, not header/stale/links.
+  const opDocs = manifest.operatorDocuments || [];
+  if (opDocs.length) console.log(`\nOperator/legacy documents (terminology coverage): ${opDocs.length}`);
+  for (const doc of opDocs) {
+    const abs = join(ROOT, doc.path);
+    const issues = [];
+    if (!existsSync(abs)) {
+      issues.push('file does not exist');
+    } else {
+      const scan = stripFences(readFileSync(abs, 'utf8'));
+      for (const term of manifest.forbiddenTerms || []) {
+        const re = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+        if (re.test(scan)) issues.push(`forbidden term present: "${term}"`);
+      }
+    }
+    if (issues.length) {
+      errors.push({ rel: doc.path, issues });
+      console.log(`  FAIL ${doc.path}`);
+      for (const i of issues) console.log(`         - ${i}`);
+    } else {
+      okCount += 1;
+      console.log(`  ok   ${doc.path}`);
+    }
+  }
+
+  const total = docs.length + opDocs.length;
   const errCount = errors.reduce((n, e) => n + e.issues.length, 0);
-  console.log(`\nSummary: ${okCount}/${docs.length} clean · ${errors.length} file(s) with ${errCount} issue(s)`);
+  console.log(`\nSummary: ${okCount}/${total} clean · ${errors.length} file(s) with ${errCount} issue(s)`);
   if (errors.length) {
     console.error('\nDocumentation validation FAILED.');
     process.exit(1);

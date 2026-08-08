@@ -33,7 +33,7 @@ by an external collector.
 | Tracing | per-request `x-request-id` header | per-request OTLP spans (IPC-only, uncorrelated) |
 | Logging | pino JSON w/ redaction | IPC `audit.log` (JSONL) + console loggers |
 | Incident tooling | Postgres dump/restore scripts | support bundle, crash archive, recovery engines |
-| Dashboards | n/a (headless API) | Ops Center, Intelligence, AI Operations, Extensibility |
+| Dashboards | n/a (headless API) | Operations, Intelligence, AI Operations, Extensibility |
 
 Deployment mechanics (Compose / Kubernetes / Helm) are covered by
 `docs/DEPLOYMENT.md` and `deploy/README.md`; this guide references them but does
@@ -317,7 +317,7 @@ for nightly backups (`docs/DEPLOYMENT.md:113-117`).
 
 1. **Detect** — backend: monitor `/health` (non-200) and container restarts
    (`docs/DEPLOYMENT.md:131`); desktop: watch the NeuroCore level transition
-   events and the Ops Center.
+   events and the Operations surface.
 2. **Triage** — pull the desktop Diagnostics report (`diagnostics:get`) and
    NeuroCore snapshot (`neurocore:systemHealth`); on the backend, tail structured
    logs by `x-request-id`.
@@ -337,7 +337,7 @@ All desktop dashboards are **read-only surfaces fed by IPC** — they render exi
 telemetry and never mutate runtime state. They are registered as navigation
 sections in `apps/desktop/src/renderer/src/shell/sections.ts`:
 
-- **Ops Center** (`opscenter`, `sections.ts:88`) — the incident surface. Its
+- **Operations** (`opscenter` in `sections.ts`) — the incident surface. Its
   provider fetches an `EnterpriseIntelligenceReport` over IPC, polls every ~30s
   with debounced refresh on infra events, and offers read-only blast-radius
   (`intel:changeImpact`) and root-cause (`intel:rootCause`) analysis

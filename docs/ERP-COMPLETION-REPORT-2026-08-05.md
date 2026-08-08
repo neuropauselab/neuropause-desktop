@@ -5,6 +5,8 @@
 **Author:** continuation-engineer session (evidence-based; nothing in this report is assumed)
 **Rule:** no module is implemented until this report is approved. No fake modules, no placeholder screens, no mock data — every future module ships on the existing `defineEnterpriseModule` framework or it does not ship.
 
+> **Historical snapshot (2026-08-05).** This is a point-in-time gap analysis, preserved as written. Some surface names predate the Phase-2 navigation rename — notably the enterprise-knowledge explorer, then described with the older "fabric" terminology, is now labelled **Enterprise Knowledge**. For current terminology and status, see `docs/product/PRODUCT-CATALOG.md` and `docs/product/PRODUCT-MATURITY-MATRIX.md`.
+
 ---
 
 ## 1. Method and evidence
