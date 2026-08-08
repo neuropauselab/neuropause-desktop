@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { cn } from '@renderer/lib/cn';
 import { useShell } from '@renderer/state/ShellProvider';
-import { Icon, type IconName } from '@renderer/components/ui/Icon';
+import { Icon } from '@renderer/components/ui/Icon';
 import { OperationsProvider, useOperations } from './OperationsProvider';
 import { opsStatusMeta } from './lib';
 import { OverviewPanel } from './OverviewPanel';
@@ -25,62 +25,16 @@ import { EngineeringAIPanel } from './EngineeringAIPanel';
 import { TracePanel } from './TracePanel';
 import { ReleaseDiagnosticsPanel } from './ReleaseDiagnosticsPanel';
 import { RecoveryCenterPanel } from './RecoveryCenterPanel';
+import { visibleOpsTabs, type OpsTab } from './opsTabs';
 
-export type OpsTab =
-  | 'overview'
-  | 'installed'
-  | 'sessions'
-  | 'plugins'
-  | 'downloads'
-  | 'updates'
-  | 'permissions'
-  | 'logs'
-  | 'health'
-  | 'collections'
-  | 'knowledge'
-  | 'intelligence'
-  | 'founder'
-  | 'memory'
-  | 'engineering'
-  | 'traces'
-  | 'sync'
-  | 'diagnostics'
-  | 'release'
-  | 'recovery'
-  | 'inspector';
+export type { OpsTab };
 
-interface TabDef {
-  id: OpsTab;
-  label: string;
-  icon: IconName;
-  ready: boolean;
-}
-
-const TABS: TabDef[] = [
-  { id: 'overview', label: 'Overview', icon: 'gauge', ready: true },
-  { id: 'installed', label: 'Installed', icon: 'package', ready: true },
-  { id: 'sessions', label: 'Sessions', icon: 'pulse', ready: true },
-  { id: 'plugins', label: 'Plugins', icon: 'puzzle', ready: true },
-  { id: 'downloads', label: 'Downloads', icon: 'download', ready: true },
-  { id: 'updates', label: 'Updates', icon: 'refresh', ready: true },
-  { id: 'permissions', label: 'Permissions', icon: 'shield', ready: true },
-  { id: 'logs', label: 'Activity', icon: 'list', ready: true },
-  { id: 'health', label: 'Health', icon: 'activity', ready: true },
-  { id: 'collections', label: 'Collections', icon: 'grid', ready: true },
-  { id: 'knowledge', label: 'Knowledge', icon: 'database', ready: true },
-  { id: 'intelligence', label: 'Intelligence', icon: 'sparkles', ready: true },
-  { id: 'founder', label: 'Founder AI', icon: 'bolt', ready: true },
-  { id: 'memory', label: 'Memory', icon: 'memory', ready: true },
-  { id: 'engineering', label: 'Engineering AI', icon: 'cpu', ready: true },
-  { id: 'traces', label: 'Traces', icon: 'layers', ready: true },
-  { id: 'sync', label: 'Sync Health', icon: 'pulse', ready: true },
-  { id: 'diagnostics', label: 'Diagnostics', icon: 'beaker', ready: true },
-  { id: 'release', label: 'Release', icon: 'verified', ready: true },
-  { id: 'recovery', label: 'Recovery', icon: 'undo', ready: true },
-  ...(import.meta.env.DEV
-    ? ([{ id: 'inspector', label: 'Inspector', icon: 'code', ready: true }] as TabDef[])
-    : []),
-];
+/**
+ * Tabs surfaced in this build (see ./opsTabs for the catalog + gating rationale).
+ * Developer/internal surfaces are hidden from packaged pilot builds; a deep-link or
+ * saved tab still resolves against this filtered list and falls back to Overview.
+ */
+const TABS = visibleOpsTabs(import.meta.env.DEV);
 
 /** The Operations command center, mounted with its live data provider. */
 export function OperationsRoot(): JSX.Element {
