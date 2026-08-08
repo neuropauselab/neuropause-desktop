@@ -28,6 +28,14 @@
  * one description in TypeScript, and two descriptions of one thing drift.
  */
 import type { HelpDocMeta } from '../types/helpDocs';
+import type {
+  DataPlaneInspection,
+  DataPlaneOntologyView,
+  DataPlanePlanSummary,
+  DataPlaneProvenance,
+  DataPlaneRunResult,
+  DataPlaneSavedMapping,
+} from '../types/dataPlane';
 import type { IpcChannelName } from './channels';
 import type {
   AdminOverview,
@@ -1385,6 +1393,19 @@ export interface IpcResponseMap {
   'etwin:history': EtwinHistoryView;
   'etwin:dashboard': EtwinDashboard;
   'etwin:report': EtwinReport;
+
+  // ── Phase 6 — Universal Enterprise Data Plane ──
+  'dp:inspect': DataPlaneInspection;
+  'dp:analyze': DataPlanePlanSummary;
+  'dp:plan': DataPlanePlanSummary | null;
+  'dp:import': DataPlaneRunResult;
+  'dp:history': DataPlaneRunResult[];
+  'dp:run': DataPlaneRunResult | null;
+  'dp:provenance': DataPlaneProvenance | null;
+  'dp:mappings': DataPlaneSavedMapping[];
+  'dp:mapping.save': DataPlaneSavedMapping;
+  'dp:mapping.forget': { forgotten: boolean };
+  'dp:ontology': DataPlaneOntologyView;
 }
 
 /**

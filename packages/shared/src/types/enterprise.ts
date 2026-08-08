@@ -139,7 +139,15 @@ export type EnterprisePermission =
   // ── Experience Program v1.0: read the decision-first experience/summary projection layer. ──
   | 'experience:read'
   // ── Intent Experience Program v2.0: read the intent-native reprojection of the strategy goals. ──
-  | 'intent:read';
+  | 'intent:read'
+  // ── Phase 6 — Universal Enterprise Data Plane. Import is split into three
+  // escalating scopes deliberately: reading an analysis is not the same right as
+  // writing records, and neither is the same right as APPROVING a high-risk
+  // (money / payroll / master-data) import. Segregation of duties depends on
+  // `data:import` and `data:approve` being separable. ──
+  | 'data:read'
+  | 'data:import'
+  | 'data:approve';
 
 export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   'org:read',
@@ -208,6 +216,10 @@ export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   'autonomousops:read',
   // ── P20 — NeuroPause Platform v2 (commercial productization) ──
   'commercial:read',
+  // ── Phase 6 — Universal Enterprise Data Plane ──
+  'data:read',
+  'data:import',
+  'data:approve',
   // ── Experience Program v1.0 (decision-first experience) ──
   'experience:read',
   // ── Intent Experience Program v2.0 (intent-native experience) ──

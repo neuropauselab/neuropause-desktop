@@ -45,6 +45,26 @@ import { RUNTIME_INVOKABLE_CHANNELS } from '@neuropause/shared';
  * in the shared union — nothing here mints a new scope.
  */
 export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, EnterprisePermission>> = {
+  /* ── Phase 6 — Universal Enterprise Data Plane ──────────────────────────
+   * Three escalating scopes, deliberately separable so segregation of duties
+   * is expressible: reading an analysis (`data:read`) is not the right to write
+   * records (`data:import`), and neither is the right to APPROVE a high-risk
+   * money / payroll / master-data import (`data:approve`). `dp:import` carries
+   * `data:import`; the approval of a high-risk table is additionally checked
+   * inside the handler against `data:approve`.
+   */
+  [IpcChannel.DataPlaneInspect]: 'data:read',
+  [IpcChannel.DataPlaneAnalyze]: 'data:read',
+  [IpcChannel.DataPlanePlan]: 'data:read',
+  [IpcChannel.DataPlaneHistory]: 'data:read',
+  [IpcChannel.DataPlaneRun]: 'data:read',
+  [IpcChannel.DataPlaneProvenance]: 'data:read',
+  [IpcChannel.DataPlaneMappings]: 'data:read',
+  [IpcChannel.DataPlaneOntology]: 'data:read',
+  [IpcChannel.DataPlaneImport]: 'data:import',
+  [IpcChannel.DataPlaneSaveMapping]: 'data:import',
+  [IpcChannel.DataPlaneForgetMapping]: 'data:import',
+
   /* ── Privileged writes ──────────────────────────────────────────────── */
 
   // Execute Engine re-enters worker/automation/decision execution — THE priority

@@ -2518,3 +2518,97 @@ export const ApPlaybooksRequest = z
 export type ApPlaybooksRequest = z.infer<typeof ApPlaybooksRequest>;
 export const ApPlanRequest = z.object({ playbookId: z.string().trim().min(1).max(128) }).strict();
 export type ApPlanRequest = z.infer<typeof ApPlanRequest>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 6 — Universal Enterprise Data Plane (dp:* cluster).
+//
+// File bytes cross IPC as base64. The renderer never sends a filesystem path:
+// the main process must not be talked into reading an arbitrary location by an
+// untrusted caller, so the caller supplies the CONTENT it already holds. Size is
+// bounded here, before any parsing work is scheduled.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 64 MiB of base64 ≈ 48 MiB of file. Beyond this, ingestion is a batch concern. */
+export const DP_MAX_CONTENT_BASE64 = 64 * 1024 * 1024;
+
+const DpFileName = z.string().trim().min(1).max(400);
+const DpContentBase64 = z.string().max(DP_MAX_CONTENT_BASE64);
+const DpPlanId = z.string().trim().min(1).max(128);
+
+export const DataPlaneInspectRequest = z
+  .object({ filename: DpFileName, contentBase64: DpContentBase64 })
+  .strict();
+export type DataPlaneInspectRequest = z.infer<typeof DataPlaneInspectRequest>;
+
+export const DataPlaneAnalyzeRequest = z
+  .object({ filename: DpFileName, contentBase64: DpContentBase64 })
+  .strict();
+export type DataPlaneAnalyzeRequest = z.infer<typeof DataPlaneAnalyzeRequest>;
+
+export const DataPlanePlanRequest = z.object({ planId: DpPlanId }).strict();
+export type DataPlanePlanRequest = z.infer<typeof DataPlanePlanRequest>;
+
+/**
+ * Execute an approved plan. `approvals` is explicit and per-table: an omitted
+ * table is NOT approved. `reason` is retained on the audit record for
+ * high-risk approvals.
+ */
+export const DataPlaneImportRequest = z
+  .object({
+    planId: DpPlanId,
+    approvals: z
+      .array(
+        z
+          .object({
+            tableName: z.string().trim().min(1).max(200),
+            approved: z.boolean(),
+            skipRows: z.array(z.number().int().min(0)).max(50_000).optional(),
+          })
+          .strict(),
+      )
+      .max(200),
+    reason: z.string().trim().max(500).optional(),
+  })
+  .strict();
+export type DataPlaneImportRequest = z.infer<typeof DataPlaneImportRequest>;
+
+export const DataPlaneHistoryRequest = z
+  .object({ limit: z.number().int().min(1).max(200).optional() })
+  .strict();
+export type DataPlaneHistoryRequest = z.infer<typeof DataPlaneHistoryRequest>;
+
+export const DataPlaneRunRequest = z.object({ planId: DpPlanId }).strict();
+export type DataPlaneRunRequest = z.infer<typeof DataPlaneRunRequest>;
+
+export const DataPlaneProvenanceRequest = z
+  .object({ recordId: z.string().trim().min(1).max(128) })
+  .strict();
+export type DataPlaneProvenanceRequest = z.infer<typeof DataPlaneProvenanceRequest>;
+
+export const DataPlaneMappingsRequest = z
+  .object({ signature: z.string().trim().min(1).max(256).optional() })
+  .strict();
+export type DataPlaneMappingsRequest = z.infer<typeof DataPlaneMappingsRequest>;
+
+export const DataPlaneSaveMappingRequest = z
+  .object({
+    signature: z.string().trim().min(1).max(256),
+    entityId: z.string().trim().min(1).max(64),
+    columns: z
+      .array(
+        z
+          .object({
+            header: z.string().trim().min(1).max(200),
+            fieldKey: z.string().trim().min(1).max(64),
+          })
+          .strict(),
+      )
+      .max(200),
+  })
+  .strict();
+export type DataPlaneSaveMappingRequest = z.infer<typeof DataPlaneSaveMappingRequest>;
+
+export const DataPlaneForgetMappingRequest = z
+  .object({ signature: z.string().trim().min(1).max(256) })
+  .strict();
+export type DataPlaneForgetMappingRequest = z.infer<typeof DataPlaneForgetMappingRequest>;

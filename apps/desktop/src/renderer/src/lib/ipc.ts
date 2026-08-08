@@ -1768,6 +1768,45 @@ export const ipc = {
       invoke(IpcChannel.SandboxValidationScheduleSet, { id, enabled }),
     onEvent: (cb: (e: SandboxEvent) => void) => subscribe(IpcChannel.SandboxEventBroadcast, cb),
   },
+
+  /**
+   * Phase 6 — Universal Enterprise Data Plane.
+   *
+   * Explicit methods only: the renderer never calls `invoke` with an arbitrary
+   * channel, and never hands the main process a filesystem PATH. The caller
+   * passes the CONTENT it already holds (base64), so an untrusted renderer
+   * cannot direct main to read an arbitrary location on disk.
+   */
+  data: {
+    /** What is this file, and can we read it? Cheap pre-flight; writes nothing. */
+    inspect: (filename: string, contentBase64: string) =>
+      invoke(IpcChannel.DataPlaneInspect, { filename, contentBase64 }),
+    /** Full analysis → a reviewable import plan. Still writes nothing. */
+    analyze: (filename: string, contentBase64: string) =>
+      invoke(IpcChannel.DataPlaneAnalyze, { filename, contentBase64 }),
+    /** Re-read a plan produced earlier in this session. */
+    plan: (planId: string) => invoke(IpcChannel.DataPlanePlan, { planId }),
+    /**
+     * Execute an approved plan. Approvals are explicit and per-table — an
+     * omitted table is NOT approved and will not be written.
+     */
+    import: (
+      planId: string,
+      approvals: { tableName: string; approved: boolean; skipRows?: number[] }[],
+      reason?: string,
+    ) => invoke(IpcChannel.DataPlaneImport, { planId, approvals, ...(reason ? { reason } : {}) }),
+    history: (limit?: number) => invoke(IpcChannel.DataPlaneHistory, limit === undefined ? {} : { limit }),
+    run: (planId: string) => invoke(IpcChannel.DataPlaneRun, { planId }),
+    /** Where did this record come from? */
+    provenance: (recordId: string) => invoke(IpcChannel.DataPlaneProvenance, { recordId }),
+    mappings: (signature?: string) =>
+      invoke(IpcChannel.DataPlaneMappings, signature === undefined ? {} : { signature }),
+    saveMapping: (signature: string, entityId: string, columns: { header: string; fieldKey: string }[]) =>
+      invoke(IpcChannel.DataPlaneSaveMapping, { signature, entityId, columns }),
+    forgetMapping: (signature: string) => invoke(IpcChannel.DataPlaneForgetMapping, { signature }),
+    /** The canonical entities and the formats we deliberately cannot read. */
+    ontology: () => invoke(IpcChannel.DataPlaneOntology, {}),
+  },
 };
 
 // Referenced by future surfaces; keeps the import used and the type exported.

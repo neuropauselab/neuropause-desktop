@@ -913,6 +913,32 @@ export const IpcChannel = {
   EtwinHistory: 'etwin:history',
   EtwinDashboard: 'etwin:dashboard',
   EtwinReport: 'etwin:report',
+
+  // ── Phase 6 — Universal Enterprise Data Plane ──────────────────────────
+  // `dp:` is a fresh namespace: `data:` would collide with the enterprise
+  // permission strings and `enterprise:` is reserved for the ERP authz gate.
+  /** Identify a file and report what the plane can and cannot read. */
+  DataPlaneInspect: 'dp:inspect',
+  /** Full analysis → a reviewable import plan. Writes nothing. */
+  DataPlaneAnalyze: 'dp:analyze',
+  /** Re-read a previously produced plan summary. */
+  DataPlanePlan: 'dp:plan',
+  /** Execute an approved plan. The only mutating channel. */
+  DataPlaneImport: 'dp:import',
+  /** Durable import history. */
+  DataPlaneHistory: 'dp:history',
+  /** One import run by id. */
+  DataPlaneRun: 'dp:run',
+  /** Provenance for a single imported record. */
+  DataPlaneProvenance: 'dp:provenance',
+  /** Saved column→field mappings for a source signature. */
+  DataPlaneMappings: 'dp:mappings',
+  /** Persist a reviewer-confirmed mapping for reuse. */
+  DataPlaneSaveMapping: 'dp:mapping.save',
+  /** Forget a saved mapping. */
+  DataPlaneForgetMapping: 'dp:mapping.forget',
+  /** The canonical ontology (entities, fields, risk) for the review UI. */
+  DataPlaneOntology: 'dp:ontology',
 } as const;
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel];
@@ -1637,6 +1663,19 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.CompanionEnable,
   IpcChannel.CompanionRevoke,
   IpcChannel.CompanionPairingQr,
+
+  // ── Phase 6 — Universal Enterprise Data Plane ──
+  IpcChannel.DataPlaneInspect,
+  IpcChannel.DataPlaneAnalyze,
+  IpcChannel.DataPlanePlan,
+  IpcChannel.DataPlaneImport,
+  IpcChannel.DataPlaneHistory,
+  IpcChannel.DataPlaneRun,
+  IpcChannel.DataPlaneProvenance,
+  IpcChannel.DataPlaneMappings,
+  IpcChannel.DataPlaneSaveMapping,
+  IpcChannel.DataPlaneForgetMapping,
+  IpcChannel.DataPlaneOntology,
 ];
 
 /** Runtime-core broadcasts. */

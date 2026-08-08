@@ -172,6 +172,7 @@ import { createWorkforceActionExecutor } from './workforce/execution/workforceAc
 import type { ExecutionBinding } from '@neuropause/shared';
 import { computeOrgHealth } from '@neuropause/shared';
 import { initEnterprise } from './enterprise';
+import { initDataPlane } from './dataPlane';
 import { initEcosystem, runGateway, gatewayMetrics, gatewayAuditEntries } from './ecosystem';
 import { initMarketplace } from './marketplace';
 import { initEnterpriseApi } from './api';
@@ -261,6 +262,7 @@ import { selectRulesForEvent } from './enterprise/automationRunner';
 import { globalGovStore } from './federation/governance/globalGovInstance';
 import { workerInstallStore } from './workforce/install/installInstance';
 import { governanceStore } from './enterprise/governance/governanceInstance';
+import { workspaceStore } from './enterprise/workspace/workspaceInstance';
 import { DEFAULT_PROMPTS } from './ai/promptManager';
 import { runEnterpriseSearch } from './search/enterpriseSearch';
 import { getFederationSearcher } from './federationPlatform/searcherInstance';
@@ -386,6 +388,34 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     broadcast: deps.broadcast,
     publish: platform.api.publish,
   });
+  // Phase 6 — Universal Enterprise Data Plane: file → understood → routed →
+  // approved → imported, writing through the EXISTING module stores. Owns no
+  // business logic; reuses the enterprise registry, authz gate and audit sink.
+  const dataPlane = initDataPlane({
+    userDataDir: app.getPath('userData'),
+    storeFor: (moduleId) => enterprise.modules.get(moduleId)?.store ?? null,
+    actor: () => {
+      const st = authService.getStatus();
+      return st.state === 'authenticated' ? (st.session.user.displayName ?? st.session.user.email) : null;
+    },
+    // Mapping memory is isolated per workspace — the same boundary the audit
+    // trail stamps. A mapping learned in one workspace is never offered in another.
+    tenantId: () => workspaceStore.activeWorkspaceId() ?? 'local',
+    now: () => new Date().toISOString(),
+    audit: (entry) =>
+      governanceStore.record({
+        actor: (() => {
+          const st = authService.getStatus();
+          return st.state === 'authenticated' ? (st.session.user.displayName ?? st.session.user.email) : 'owner';
+        })(),
+        action: entry.action,
+        target: entry.target,
+        summary: entry.summary,
+        workspaceId: workspaceStore.activeWorkspaceId(),
+      }),
+    authorize: enterprise.authorize,
+  });
+
   // Ecosystem Platform: developer portal + marketplace + API gateway + billing.
   const ecosystem = await initEcosystem({ broadcast: deps.broadcast });
   // P9 — Enterprise Marketplace: a governed, trusted, installing LAYER over the ecosystem
@@ -1887,6 +1917,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...trace.handlers);
   defs.push(...workforce.handlers);
   defs.push(...enterprise.handlers);
+  defs.push(...dataPlane.handlers);
   // P12 — harden the previously-ungated ecosystem handlers with RBAC (they shipped with no
   // requireAuth/permission); every ecosystem channel now requires a developer:* permission.
   defs.push(...withEcosystemAuthz(ecosystem.handlers));

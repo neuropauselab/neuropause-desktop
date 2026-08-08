@@ -54,6 +54,7 @@ export * from './types/enterpriseIntelligence';
 export * from './types/enterprise';
 export * from './types/marketplace';
 export * from './types/enterpriseModule';
+export * from './types/dataPlane';
 export * from './types/finance';
 // Finance → General Ledger (Chart of Accounts + Journal) — pure GL domain rules,
 // the module-layer projection of the packages/business ErpCore posting kernel.
