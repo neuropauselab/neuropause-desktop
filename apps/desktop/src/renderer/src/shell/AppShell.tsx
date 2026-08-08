@@ -382,7 +382,7 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
               className="flex h-full flex-col"
             >
               {activeMeta?.preview && (
-                <PreviewBanner label={activeMeta.label} phase={activeMeta.phase} />
+                <PreviewBanner label={activeMeta.label} />
               )}
               <div className="min-h-0 flex-1">
                 <WorkspaceErrorBoundary name={activeSection}>

@@ -8,7 +8,7 @@
  */
 import { Icon } from '@renderer/components/ui/Icon';
 
-export function PreviewBanner({ label, phase }: { label: string; phase?: number }): JSX.Element {
+export function PreviewBanner({ label }: { label: string }): JSX.Element {
   return (
     <div
       role="status"
@@ -20,7 +20,7 @@ export function PreviewBanner({ label, phase }: { label: string; phase?: number 
       </span>
       <span className="min-w-0 truncate text-muted">
         {label} runs on real code with in-memory or seeded data — not live production enterprise
-        state{typeof phase === 'number' ? ` · full functionality lands in Phase ${phase}` : ''}.
+        state · in active development.
       </span>
     </div>
   );

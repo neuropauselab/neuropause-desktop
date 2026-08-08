@@ -210,6 +210,23 @@ describe('Phase 2 IA — Marketplace & platform pairs (P2)', () => {
   });
 });
 
+// Phase 2 IA — internal-label leakage (P3).
+describe('Phase 2 IA — no internal version labels (P3)', () => {
+  const byId = (id: string): (typeof SECTIONS)[number] | undefined => SECTIONS.find((s) => s.id === id);
+
+  it('the commercial surface is "Commercial Center", not the internal "Platform v2"', () => {
+    expect(byId('commercial-center')?.label).toBe('Commercial Center');
+  });
+
+  it('no visible section exposes an internal version identifier as its label', () => {
+    const visibleLabels = SECTIONS.filter((s) => !s.hidden).map((s) => s.label);
+    for (const banned of ['Platform v2', 'v1', 'v2']) {
+      expect(visibleLabels).not.toContain(banned);
+    }
+    expect(visibleLabels.some((l) => /\bstage\s*\d|\bphase\s*\d/i.test(l))).toBe(false);
+  });
+});
+
 // Phase 2 IA — standing coherence guardrail: no two VISIBLE sections may share a
 // label, so the sidebar and command palette never show two identically-named
 // destinations. (Hidden/retired routes are exempt — they aren't shown.)

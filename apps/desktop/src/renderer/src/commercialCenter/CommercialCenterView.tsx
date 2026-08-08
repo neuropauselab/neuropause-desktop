@@ -107,7 +107,7 @@ export function CommercialCenterView(): JSX.Element {
       <div className="mx-auto px-8 py-7" style={{ maxWidth: 1320 }}>
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">NeuroPause Platform v2</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Commercial Center</h1>
             <p className="mt-1 text-md text-muted">
               The commercial layer — buy, deploy, license, operate, govern, and scale the platform. It unifies the existing billing, licensing, tenancy, org, and usage systems into customer-facing views; nothing here transacts — plan changes, charges, seat assignments, and provisioning flow through the existing billing engine and cloud control plane, and no payment secret is ever shown.
             </p>

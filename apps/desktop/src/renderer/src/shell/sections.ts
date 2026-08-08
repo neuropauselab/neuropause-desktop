@@ -152,7 +152,7 @@ export const SECTIONS: SectionDef[] = [
   { id: 'orchestration-center', label: 'Orchestration', icon: 'command', phase: 17, placement: 'primary', group: 'platform', preview: true },
   { id: 'network-center', label: 'Intelligence Network', icon: 'globe', phase: 18, placement: 'primary', group: 'platform', preview: true },
   { id: 'auto-ops-center', label: 'Autonomous Operations', icon: 'command', phase: 19, placement: 'primary', group: 'platform', preview: true, description: 'Closed-loop autonomous operations — plans, coordination, and governance; every action stays approval-gated.' },
-  { id: 'commercial-center', label: 'Platform v2', icon: 'store', phase: 20, placement: 'primary', group: 'platform', preview: true },
+  { id: 'commercial-center', label: 'Commercial Center', icon: 'store', phase: 20, placement: 'primary', group: 'platform', preview: true, description: 'Commercial operations — pricing, packaging, billing, and go-to-market.' },
   // Product Operations & Release Management v1.0 — a read-only operations lens over existing services.
   { id: 'product-ops', label: 'Release Ops', icon: 'package', phase: 20, placement: 'primary', group: 'platform', description: 'Shipping the product — releases, build health, quality, deployment, and commercial metrics.' },
   { id: 'ecosystem', label: 'Ecosystem', icon: 'globe', phase: 8, placement: 'primary', group: 'platform', preview: true, description: 'The org-facing storefront for workers, connectors, templates, and partners.' },
