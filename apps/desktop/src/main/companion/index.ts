@@ -40,6 +40,7 @@ import { shapeNotifications, shapeSearch, shapeTimeline } from './companionFeeds
 import { buildCompanionBriefing, resolveBriefingPeriod } from './companionBriefing';
 import { CompanionGateway, type CompanionOpTable } from './gatewayServer';
 import { companionGatewayService } from './gatewayService';
+import { getCanonicalIndustrySnapshot } from '../industry/canonicalIndustryCatalog';
 
 const log = createLogger('companion');
 
@@ -136,6 +137,12 @@ export async function initCompanion(deps: InitCompanionDeps): Promise<CompanionS
       }
       return buildFamilyDashboard(group, groupSummaries, recordsByModule, ctx.now);
     },
+
+    // IP-11 — the canonical Industry catalog for the executive phone view. Returns the SAME
+    // read-only `industry:snapshot` DTO the desktop Industry Center renders (the Wave 9 vertical
+    // packs + capability-evidence + readiness), sourced in-process from the existing accessor.
+    // No new store, no per-tenant compute — a view-model over the catalog the platform already owns.
+    'industry.snapshot': async () => getCanonicalIndustrySnapshot(),
 
     // M1-05 — the cross-module "waiting on you" approvals inbox.
     'approvals.list': async () => {

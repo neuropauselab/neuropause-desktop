@@ -104,6 +104,28 @@ export function BellIcon({ color, size = 24 }: { color: string; size?: number })
   );
 }
 
+export function LayersIcon({ color, size = 24 }: { color: string; size?: number }): JSX.Element {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M12 2 2 7l10 5 10-5-10-5Z" stroke={color} strokeWidth={2} strokeLinejoin="round" />
+      <Path
+        d="M2 12l10 5 10-5"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M2 17l10 5 10-5"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
 export function SettingsIcon({ color, size = 24 }: { color: string; size?: number }): JSX.Element {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">

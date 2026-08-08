@@ -15,6 +15,7 @@ import {
   ChecklistIcon,
   GridIcon,
   HomeIcon,
+  LayersIcon,
   SearchIcon,
   TimelineIcon,
 } from '../src/components/icons';
@@ -80,6 +81,13 @@ function Gate(): JSX.Element {
             options={{
               title: 'Dashboard',
               tabBarIcon: ({ color, size }) => <GridIcon color={color} size={size} />,
+            }}
+          />
+          <Tabs.Screen
+            name="industry"
+            options={{
+              title: 'Industry',
+              tabBarIcon: ({ color, size }) => <LayersIcon color={color} size={size} />,
             }}
           />
         </Tabs>

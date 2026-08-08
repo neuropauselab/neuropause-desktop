@@ -6,7 +6,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { donutArcs, type DonutSlice } from './geometry';
-import { colors, font, radius, space } from '../../theme/tokens';
+import { colors, font, space } from '../../theme/tokens';
 
 export function Donut({
   slices,
