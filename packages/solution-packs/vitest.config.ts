@@ -12,6 +12,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@neuropause/shared': resolve(__dirname, '../shared/src/index.ts'),
+      '@neuropause/industry/catalog': resolve(__dirname, '../industry/src/catalog.ts'),
     },
   },
   test: {

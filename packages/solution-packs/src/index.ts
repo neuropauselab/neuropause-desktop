@@ -17,6 +17,7 @@
  *     and validation remain in `@neuropause/industry`.
  */
 export * from './industryProjection';
+export * from './industrySnapshot';
 export * from './types';
 export * from './validate';
 export * from './registry';
