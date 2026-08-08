@@ -3,6 +3,7 @@ import { cn } from '@renderer/lib/cn';
 import { useShell } from '@renderer/state/ShellProvider';
 import { Icon, type IconName } from '@renderer/components/ui/Icon';
 import { OperationsProvider, useOperations } from './OperationsProvider';
+import { opsStatusMeta } from './lib';
 import { OverviewPanel } from './OverviewPanel';
 import { InstalledPanel } from './InstalledPanel';
 import { SessionsPanel } from './SessionsPanel';
@@ -91,7 +92,8 @@ export function OperationsRoot(): JSX.Element {
 }
 
 function OperationsInner(): JSX.Element {
-  const { ready, refreshAll } = useOperations();
+  const { status, refreshAll } = useOperations();
+  const st = opsStatusMeta(status);
   const { opsTab, clearOpsTab } = useShell();
   const [tab, setTab] = useState<OpsTab>(() =>
     TABS.some((t) => t.id === opsTab) ? (opsTab as OpsTab) : 'overview',
@@ -118,20 +120,17 @@ function OperationsInner(): JSX.Element {
           <div className="flex items-center gap-3">
             <span className="inline-flex items-center gap-1.5 text-xs font-medium text-faint">
               <span className="relative flex h-2 w-2">
-                <span
-                  className={cn(
-                    'absolute inline-flex h-full w-full rounded-full',
-                    ready ? 'animate-ping bg-sysgreen opacity-60' : '',
-                  )}
-                />
-                <span
-                  className={cn(
-                    'relative inline-flex h-2 w-2 rounded-full',
-                    ready ? 'bg-sysgreen' : 'bg-faint',
-                  )}
-                />
+                {st.pulse && (
+                  <span
+                    className={cn(
+                      'absolute inline-flex h-full w-full animate-ping rounded-full opacity-60',
+                      st.dot,
+                    )}
+                  />
+                )}
+                <span className={cn('relative inline-flex h-2 w-2 rounded-full', st.dot)} />
               </span>
-              {ready ? 'Live' : 'Connecting…'}
+              {st.label}
             </span>
             <button
               type="button"

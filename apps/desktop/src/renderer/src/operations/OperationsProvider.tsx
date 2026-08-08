@@ -22,7 +22,7 @@ import { ipc } from '@renderer/lib/ipc';
 import { createLogger } from '@renderer/lib/logger';
 import { prefs, PrefKey } from '@renderer/lib/preferences';
 import { useShell } from '@renderer/state/ShellProvider';
-import type { OpsTone } from './lib';
+import { deriveOpsStatus, type OpsStatus, type OpsTone } from './lib';
 
 const log = createLogger('operations');
 
@@ -65,13 +65,17 @@ interface OperationsContextValue {
   logEntries: OpsLogEntry[];
   rates: Record<string, DownloadRate>;
   history: DownloadHistoryEntry[];
+  /** True only when the last refresh was fully live (kept for compatibility). */
   ready: boolean;
+  /** Honest connectivity: live only when the backing calls actually succeeded. */
+  status: OpsStatus;
 
   refreshAll: () => Promise<void>;
-  refreshRuntime: () => Promise<void>;
-  refreshRegistry: () => Promise<void>;
-  refreshPlugins: () => Promise<void>;
-  refreshOperations: () => Promise<void>;
+  /** Each returns whether its backing call succeeded (used to derive honest status). */
+  refreshRuntime: () => Promise<boolean>;
+  refreshRegistry: () => Promise<boolean>;
+  refreshPlugins: () => Promise<boolean>;
+  refreshOperations: () => Promise<boolean>;
   appendLog: (e: Omit<OpsLogEntry, 'id' | 'at'>) => void;
   clearDownloadHistory: () => void;
 
@@ -120,6 +124,7 @@ export function OperationsProvider({ children }: { children: ReactNode }): JSX.E
     prefs.read<DownloadHistoryEntry[]>(PrefKey.downloadHistory, []),
   );
   const [ready, setReady] = useState(false);
+  const [status, setStatus] = useState<OpsStatus>('connecting');
 
   const opStatus = useRef<Map<string, string>>(new Map());
   const rateSamples = useRef<Map<string, { bytes: number; at: number }>>(new Map());
@@ -137,43 +142,59 @@ export function OperationsProvider({ children }: { children: ReactNode }): JSX.E
     prefs.remove(PrefKey.downloadHistory);
   }, []);
 
-  const refreshRuntime = useCallback(async () => {
+  // Each refresh reports whether its backing call actually succeeded, so refreshAll
+  // can derive an HONEST status (never "live" over a failed load).
+  const refreshRuntime = useCallback(async (): Promise<boolean> => {
     try {
       setInstances(await ipc.runtime.list());
+      return true;
     } catch (err) {
       log.warn('runtime.list failed', { message: (err as Error).message });
+      return false;
     }
   }, []);
 
-  const refreshOperations = useCallback(async () => {
+  const refreshOperations = useCallback(async (): Promise<boolean> => {
     try {
       setOperations(await ipc.nps.operations());
+      return true;
     } catch {
-      /* package service may have no ops */
+      return false; /* package service unavailable */
     }
   }, []);
 
-  const refreshPlugins = useCallback(async () => {
+  const refreshPlugins = useCallback(async (): Promise<boolean> => {
     try {
       setPlugins(await ipc.plugins.list());
+      return true;
     } catch {
-      /* no plugins */
+      return false; /* plugin host unavailable */
     }
   }, []);
 
-  const refreshRegistry = useCallback(async () => {
+  const refreshRegistry = useCallback(async (): Promise<boolean> => {
     try {
       const [entries, s] = await Promise.all([ipc.registry.list(), ipc.registry.stats()]);
       setRegistry(entries);
       setStats(s);
+      return true;
     } catch (err) {
       log.warn('registry refresh failed', { message: (err as Error).message });
+      return false;
     }
   }, []);
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([refreshRuntime(), refreshOperations(), refreshPlugins(), refreshRegistry()]);
-    setReady(true);
+    const results = await Promise.all([
+      refreshRuntime(),
+      refreshOperations(),
+      refreshPlugins(),
+      refreshRegistry(),
+    ]);
+    // "Live" only when the backing calls genuinely succeeded (see deriveOpsStatus).
+    const next = deriveOpsStatus(results);
+    setStatus(next);
+    setReady(next === 'live');
   }, [refreshRuntime, refreshOperations, refreshPlugins, refreshRegistry]);
 
   // Initial load + live subscriptions + polling.
@@ -286,7 +307,7 @@ export function OperationsProvider({ children }: { children: ReactNode }): JSX.E
   );
 
   const wrap = useCallback(
-    (source: OpsLogSource, kind: string, refresh: () => Promise<void>) =>
+    (source: OpsLogSource, kind: string, refresh: () => Promise<unknown>) =>
       async (fn: () => Promise<unknown>, name: string, ok: string, tone: OpsTone = 'blue'): Promise<void> => {
         try {
           await fn();
@@ -386,7 +407,7 @@ export function OperationsProvider({ children }: { children: ReactNode }): JSX.E
 
   const value = useMemo<OperationsContextValue>(
     () => ({
-      instances, plugins, operations, registry, stats, logEntries, rates, history, ready,
+      instances, plugins, operations, registry, stats, logEntries, rates, history, ready, status,
       refreshAll, refreshRuntime, refreshRegistry, refreshPlugins, refreshOperations, appendLog, clearDownloadHistory,
       runtimeLaunch, runtimeSuspend, runtimeResume, runtimeRestart, runtimeStop,
       appUninstall, appVerify, appRepair, setFlags,
@@ -394,7 +415,7 @@ export function OperationsProvider({ children }: { children: ReactNode }): JSX.E
       dlPause, dlResume, dlCancel, dlRetry,
     }),
     [
-      instances, plugins, operations, registry, stats, logEntries, rates, history, ready,
+      instances, plugins, operations, registry, stats, logEntries, rates, history, ready, status,
       refreshAll, refreshRuntime, refreshRegistry, refreshPlugins, refreshOperations, appendLog, clearDownloadHistory,
       runtimeLaunch, runtimeSuspend, runtimeResume, runtimeRestart, runtimeStop,
       appUninstall, appVerify, appRepair, setFlags,

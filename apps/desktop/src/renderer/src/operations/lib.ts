@@ -46,6 +46,42 @@ export const TINT_TONE: Record<OpsTone, string> = {
   gray: 'bg-white/[0.05] text-white/40',
 };
 
+/* ── RC Phase 1 — honest connectivity status ─────────────────────────────────
+ * The Operations header must never claim "Live" when its data could not be
+ * loaded. Status is DERIVED from whether the backing refresh calls actually
+ * succeeded, not from the mere fact that refreshAll() ran to completion. */
+export type OpsStatus = 'connecting' | 'live' | 'degraded' | 'offline';
+
+/** all ok → live · none ok → offline · some ok → degraded · empty → offline. */
+export function deriveOpsStatus(results: readonly boolean[]): OpsStatus {
+  if (results.length === 0) return 'offline';
+  const ok = results.filter(Boolean).length;
+  if (ok === results.length) return 'live';
+  if (ok === 0) return 'offline';
+  return 'degraded';
+}
+
+export interface OpsStatusMeta {
+  label: string;
+  /** Status-dot colour — DEFINED system tokens only (no sysred in this palette). */
+  dot: string;
+  /** Animate the ping ONLY when genuinely live. */
+  pulse: boolean;
+}
+
+export function opsStatusMeta(s: OpsStatus): OpsStatusMeta {
+  switch (s) {
+    case 'live':
+      return { label: 'Live', dot: 'bg-sysgreen', pulse: true };
+    case 'degraded':
+      return { label: 'Degraded', dot: 'bg-sysorange', pulse: false };
+    case 'offline':
+      return { label: 'Offline', dot: 'bg-syspink', pulse: false };
+    case 'connecting':
+      return { label: 'Connecting…', dot: 'bg-faint', pulse: false };
+  }
+}
+
 interface Meta {
   label: string;
   tone: OpsTone;
