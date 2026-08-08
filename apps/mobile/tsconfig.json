@@ -3,7 +3,10 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["DOM", "ESNext"],
+    "lib": [
+      "DOM",
+      "ESNext"
+    ],
     "jsx": "react-jsx",
     "allowJs": true,
     "esModuleInterop": true,
@@ -14,10 +17,22 @@
     "strict": true,
     "baseUrl": ".",
     "paths": {
-      "@neuropause/companion-protocol": ["../../packages/companion-protocol/src/index.ts"],
-      "@neuropause/shared": ["../../packages/shared/src/index.ts"],
-      "@mobile/*": ["src/*"]
+      "@neuropause/companion-protocol": [
+        "../../packages/companion-protocol/src/index.ts"
+      ],
+      "@neuropause/shared": [
+        "../../packages/shared/src/index.ts"
+      ],
+      "@mobile/*": [
+        "src/*"
+      ]
     }
   },
-  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"]
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts"
+  ],
+  "extends": "expo/tsconfig.base"
 }
