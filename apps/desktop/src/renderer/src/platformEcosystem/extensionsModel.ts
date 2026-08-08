@@ -265,7 +265,7 @@ function extensionGaps(): OpGap[] {
 function extensionLinks(): OpLink[] {
   return [
     { label: 'Developer', section: 'developer', icon: 'code' },
-    { label: 'Marketplace', section: 'marketplace', icon: 'store' },
+    { label: 'Enterprise Marketplace', section: 'marketplace', icon: 'store' },
   ];
 }
 

@@ -188,6 +188,28 @@ describe('Phase 2 IA — Workforce / Knowledge / Business (P1)', () => {
   });
 });
 
+// Phase 2 IA — Marketplace & platform pairs (P2).
+describe('Phase 2 IA — Marketplace & platform pairs (P2)', () => {
+  const byId = (id: string): (typeof SECTIONS)[number] | undefined => SECTIONS.find((s) => s.id === id);
+
+  it('the governed package catalog is "Enterprise Marketplace"; consumer apps stay "AI Store"', () => {
+    expect(byId('marketplace')?.label).toBe('Enterprise Marketplace');
+    expect(byId('store')?.label).toBe('AI Store');
+  });
+
+  it('cloud and infrastructure stay distinct (no shared "control plane" label)', () => {
+    expect(byId('cloud')?.label).toBe('Cloud');
+    expect(byId('infrastructure')?.label).toBe('Infrastructure');
+  });
+
+  it('the P2 clusters carry user-facing descriptions', () => {
+    for (const id of ['store', 'marketplace', 'extensibility', 'ecosystem', 'cloud', 'infrastructure']) {
+      const desc = byId(id)?.description ?? '';
+      expect(desc.length, `section "${id}" needs a description`).toBeGreaterThan(0);
+    }
+  });
+});
+
 // Phase 2 IA — standing coherence guardrail: no two VISIBLE sections may share a
 // label, so the sidebar and command palette never show two identically-named
 // destinations. (Hidden/retired routes are exempt — they aren't shown.)

@@ -535,7 +535,7 @@ function MarketplaceTab({ d, go }: { d: Data; go: Go }): JSX.Element {
   const c = d.connectors;
   return (
     <>
-      <OpsPanel title="Marketplace & connectors" subtitle="Governed catalog + the connector registry" actions={<DeepLink label="Marketplace" section="marketplace" go={go} />}>
+      <OpsPanel title="Marketplace & connectors" subtitle="Governed catalog + the connector registry" actions={<DeepLink label="Enterprise Marketplace" section="marketplace" go={go} />}>
         <Grid cols={4}>
           <Stat icon="store" label="Listings" value={d.marketplace.length} />
           <Stat icon="connectors" label="Connectors" value={c?.total ?? '—'} hint={c ? `${c.configured} configured` : undefined} />

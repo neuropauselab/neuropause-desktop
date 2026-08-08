@@ -173,7 +173,7 @@ function marketplaceGaps(): OpGap[] {
 /** Deep-links to the canonical surfaces this lens is derived from (reuse, not duplicate). */
 function marketplaceLinks(): OpLink[] {
   return [
-    { label: 'Marketplace', section: 'marketplace', icon: 'store' },
+    { label: 'Enterprise Marketplace', section: 'marketplace', icon: 'store' },
     { label: 'Ecosystem storefront', section: 'ecosystem', icon: 'globe' },
   ];
 }
