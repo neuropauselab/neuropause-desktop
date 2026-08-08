@@ -6,6 +6,7 @@ import { useShell } from '@renderer/state/ShellProvider';
 import { Icon, type IconName } from '@renderer/components/ui/Icon';
 import { Chip } from '@renderer/components/ui/pillTabs';
 import { Stat, StatusBadge } from '@renderer/operations/primitives';
+import { ErrorBlock } from '@renderer/operationsCenter/primitives';
 import { EcosystemProvider } from '@renderer/ecosystem/EcosystemProvider';
 import { ConnectorMarketplacePanel } from '@renderer/ecosystem/ConnectorMarketplacePanel';
 import { CATEGORY_LABEL } from './connectorLib';
@@ -66,6 +67,7 @@ export function ConnectorCenterRoot(): JSX.Element {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<ConnectorCategory | 'all'>('all');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [notice, setNotice] = useState<DetailNotice | null>(null);
@@ -84,10 +86,23 @@ export function ConnectorCenterRoot(): JSX.Element {
   }, [connectorsTab, clearConnectorsTab]);
 
   const reload = useCallback(async (): Promise<void> => {
-    const [list, st] = await Promise.all([ipc.connectors.list(), ipc.connectors.stats()]);
-    setConnectors(list);
-    setStats(st);
+    // Honest failure: if the connector runtime can't be read, surface it instead of
+    // letting the list fall back to an empty "No connectors registered" state that
+    // is indistinguishable from a healthy, unconfigured environment.
+    try {
+      const [list, st] = await Promise.all([ipc.connectors.list(), ipc.connectors.stats()]);
+      setConnectors(list);
+      setStats(st);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load connectors');
+    }
   }, []);
+
+  const retry = useCallback((): void => {
+    setLoading(true);
+    void reload().finally(() => setLoading(false));
+  }, [reload]);
 
   const reloadLogs = useCallback(async (id: string | null): Promise<void> => {
     if (!id) {
@@ -260,6 +275,12 @@ export function ConnectorCenterRoot(): JSX.Element {
 
       {/* Active surface */}
       <div className="min-h-0 flex-1">
+        {error && !loading && connectors.length === 0 ? (
+          <div className="p-8">
+            <ErrorBlock title="Couldn’t load connectors" message={error} onRetry={retry} />
+          </div>
+        ) : (
+          <>
         {tab === 'overview' && (
           <ConnectorOverview connectors={connectors} stats={stats} loading={loading} onOpen={openConnector} />
         )}
@@ -324,6 +345,8 @@ export function ConnectorCenterRoot(): JSX.Element {
               </EcosystemProvider>
             </div>
           </div>
+        )}
+          </>
         )}
       </div>
     </div>

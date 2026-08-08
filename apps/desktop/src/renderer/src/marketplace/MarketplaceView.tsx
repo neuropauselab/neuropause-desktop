@@ -20,7 +20,7 @@ import { cn } from '@renderer/lib/cn';
 import { Icon } from '@renderer/components/ui/Icon';
 import { ipc } from '@renderer/lib/ipc';
 import { Bar, OpsPanel, Stat, StatusBadge } from '@renderer/operations/primitives';
-import { EmptyState, Field, Grid, LoadingBlock } from '@renderer/operationsCenter/primitives';
+import { EmptyState, ErrorBlock, Field, Grid, LoadingBlock } from '@renderer/operationsCenter/primitives';
 import { Pill } from '@renderer/workforce/primitives';
 import { VirtualList } from '@renderer/workforceCenter/VirtualList';
 import {
@@ -39,6 +39,7 @@ type Tab = 'discover' | 'publishers' | 'governance';
 
 export function MarketplaceView(): JSX.Element {
   const [ready, setReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [catalog, setCatalog] = useState<MarketplaceEntry[]>([]);
   const [publishers, setPublishers] = useState<PublisherProfile[]>([]);
   const [analytics, setAnalytics] = useState<MarketplaceAnalytics | null>(null);
@@ -57,8 +58,12 @@ export function MarketplaceView(): JSX.Element {
       setPublishers(pubs);
       setAnalytics(an);
       setPolicy(pol);
+      setError(null);
       setReady(true);
-    } catch {
+    } catch (err) {
+      // Honest failure: don't fall through to the same UI a healthy-but-empty
+      // marketplace renders. Record the error so the view can say so.
+      setError(err instanceof Error ? err.message : 'Failed to load the marketplace');
       setReady(true);
     }
   }, []);
@@ -114,6 +119,15 @@ export function MarketplaceView(): JSX.Element {
 
         {!ready ? (
           <LoadingBlock label="Loading marketplace…" />
+        ) : error && catalog.length === 0 ? (
+          <ErrorBlock
+            title="Couldn’t load the marketplace"
+            message={error}
+            onRetry={() => {
+              setReady(false);
+              void refresh();
+            }}
+          />
         ) : tab === 'discover' ? (
           <Discover catalog={catalog} analytics={analytics} onChanged={refresh} />
         ) : tab === 'publishers' ? (

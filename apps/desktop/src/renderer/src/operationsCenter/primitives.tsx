@@ -154,14 +154,27 @@ export function LoadingBlock({ label = 'Loading intelligence…' }: { label?: st
   );
 }
 
-/** A hard-error block (only shown when there is no report at all). */
-export function ErrorBlock({ message, onRetry }: { message: string; onRetry: () => void }): JSX.Element {
+/**
+ * A hard-error block — shown only when a center has NO data to fall back on, so a
+ * failed load is never mistaken for a healthy-but-empty state. `title` phrases the
+ * headline for the center (defaults to the enterprise-intelligence copy so the
+ * pre-existing call sites are unchanged).
+ */
+export function ErrorBlock({
+  message,
+  onRetry,
+  title = 'Couldn’t load enterprise intelligence',
+}: {
+  message: string;
+  onRetry: () => void;
+  title?: string;
+}): JSX.Element {
   return (
     <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-[var(--hairline)] py-16 text-center">
       <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/[0.06] text-muted">
         <Icon name="info" size={20} />
       </span>
-      <p className="text-sm font-medium text-ink">Couldn’t load enterprise intelligence</p>
+      <p className="text-sm font-medium text-ink">{title}</p>
       <p className="max-w-[440px] text-xs text-faint">{message}</p>
       <button
         type="button"
