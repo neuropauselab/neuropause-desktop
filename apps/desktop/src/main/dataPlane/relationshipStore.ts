@@ -129,6 +129,21 @@ export class RelationshipStore {
     return link;
   }
 
+  /**
+   * Notified when a reference is parked for the FIRST time in its class.
+   *
+   * Deliberately not once per reference: an import can park hundreds, and a
+   * hold each would turn the governance list into a noise generator that
+   * nobody reads. The composition root raises one hold per
+   * module + relationship + status and points at the existing queue for the
+   * full set. Optional, so the store stays usable without the decisions
+   * subsystem (as every existing test constructs it).
+   */
+  onFirstParked?: (entry: PendingRelationship) => void;
+
+  /** Relationship classes already notified — the per-class dedupe. */
+  private readonly notifiedClasses = new Set<string>();
+
   /** Park an unresolved or ambiguous reference. Idempotent per slot. */
   async park(input: Omit<PendingRelationship, 'id' | 'firstSeenAt' | 'attempts'>): Promise<PendingRelationship> {
     const key = slot(input.sourceRecordId, input.relationshipKey);
@@ -144,6 +159,17 @@ export class RelationshipStore {
     }
     this.pendingIndex.set(key, entry);
     await this.persist();
+
+    // One notification per class, not per reference.
+    const classKey = `${entry.sourceModuleId}/${entry.relationshipKey}/${entry.status}`;
+    if (!this.notifiedClasses.has(classKey) && entry.status !== 'skipped') {
+      this.notifiedClasses.add(classKey);
+      try {
+        this.onFirstParked?.(entry);
+      } catch {
+        // Raising a hold must never fail the import that produced it.
+      }
+    }
     return entry;
   }
 

@@ -148,7 +148,7 @@ import { createDocumentBridge } from '../erp/documentBridge';
 import { approvalStore } from '../erp/documentIntegrationInstance';
 import type { Approver } from '../erp/approvalEngine';
 import { decisionRecordStore, holdStore, incomingLinksFor } from '../decisions/instances';
-import { holdFromAssessment } from '@neuropause/shared';
+import { holdFromAssessment, permissionMissingHold } from '@neuropause/shared';
 import { reservationModule } from './modules/inventory/reservationModuleInstance';
 import { inventoryValuationModule } from './modules/inventory/inventoryValuationModuleInstance';
 import { serialModule } from './modules/inventory/serialModuleInstance';
@@ -311,6 +311,42 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   };
   const authorize = createAuthorize({
     sessionEmail,
+    /**
+     * HOLD producer #3: `insufficient_permission`.
+     *
+     * Deduplicated by subject inside `holdStore.open`, so a user who clicks a
+     * forbidden action five times gets one item, not five. The scope name is
+     * carried verbatim because it is the thing an administrator must grant.
+     */
+    onPermissionRefused: ({ permission, held, actorLabel }) => {
+      const subject = `permission/${permission}`;
+      const view = permissionMissingHold({
+        action: 'this operation',
+        permission,
+        heldPermissions: held,
+        actorLabel,
+      });
+      const hold = holdStore.open({
+        ...view,
+        title: `Permission needed: ${permission}`,
+        subject,
+        actor: sessionEmail(),
+      });
+      decisionRecordStore.record({
+        actor: sessionEmail(),
+        requestedAction: `Act with "${permission}"`,
+        subject,
+        assessment: {
+          risk: 'insufficient_evidence',
+          recommendation: view.resolution,
+          evidence: view.known.map((detail) => ({ label: 'Access control', detail, count: null })),
+          alternative: null,
+        },
+        outcome: 'cancelled',
+        executed: 'Nothing — the operation was refused for want of permission.',
+        holdId: hold.id,
+      });
+    },
     activeOrgId: () => activeOrg().id,
     usersFor: (orgId) => orgStore.usersFor(orgId),
     rolesFor: (orgId) => orgStore.rolesFor(orgId),

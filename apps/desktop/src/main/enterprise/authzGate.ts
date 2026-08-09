@@ -32,7 +32,7 @@
  */
 import type { EnterprisePermission, IpcChannelName, OrgRole, OrgUser } from '@neuropause/shared';
 import { IpcChannel } from '@neuropause/shared';
-import { requirePermission } from './authz';
+import { can, effectivePermissions, requirePermission } from './authz';
 
 /** The resolved identity a permission check runs against. */
 export interface EnterpriseActor {
@@ -44,6 +44,17 @@ export interface EnterpriseActor {
 export interface ActorResolverDeps {
   /** Email of the signed-in account, or null when unauthenticated. */
   sessionEmail: () => string | null;
+  /**
+   * A permission check failed. Optional so every existing test constructs the
+   * resolver unchanged; supplied by the composition root, where it raises a
+   * durable `insufficient_permission` HOLD.
+   */
+  onPermissionRefused?: (input: {
+    permission: EnterprisePermission;
+    /** Scopes the actor DOES hold — empty means no org membership at all. */
+    held: readonly EnterprisePermission[];
+    actorLabel: string;
+  }) => void;
   /** The org the active workspace is bound to — the scope of every handler. */
   activeOrgId: () => string;
   usersFor: (orgId: string) => OrgUser[];
@@ -119,7 +130,33 @@ export function createAuthorize(
   return (permission) => {
     if (deps.sessionEmail() === null) throw new Error('Sign in to continue.');
     const actor = resolveActor(deps);
-    if (!actor) throw new Error('No organization member is bound to this account.');
+    if (!actor) {
+      deps.onPermissionRefused?.({
+        permission,
+        held: [],
+        actorLabel: deps.sessionEmail() ?? 'This account',
+      });
+      throw new Error('No organization member is bound to this account.');
+    }
+    if (!can(actor.member, actor.roles, permission)) {
+      /**
+       * An RBAC refusal is a HOLD, not an error.
+       *
+       * The request was understood and legitimate; the person simply is not
+       * permitted. Thrown and caught, that fact dies with the toast and the
+       * user is left with "something failed" and no route forward. Recording
+       * it durably means the resolution — ask someone who holds the scope —
+       * lands somewhere a person can actually act on it.
+       *
+       * The throw is UNCHANGED. Every existing caller, and the secure bridge's
+       * own error path, behave exactly as before; this only adds a record.
+       */
+      deps.onPermissionRefused?.({
+        permission,
+        held: [...effectivePermissions(actor.member, actor.roles)],
+        actorLabel: actor.member.name || actor.member.email || 'This account',
+      });
+    }
     requirePermission(actor.member, actor.roles, permission);
   };
 }

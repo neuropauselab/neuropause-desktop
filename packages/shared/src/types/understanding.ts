@@ -125,6 +125,7 @@ export type HoldReason =
   | 'high_risk'
   | 'unresolved_dependency'
   | 'ambiguous_request'
+  | 'ambiguous_identity'
   | 'external_unavailable'
   | 'approval_required'
   | 'verification_unavailable';
@@ -136,6 +137,7 @@ export const HOLD_REASON_LABELS: Record<HoldReason, string> = {
   high_risk: 'High risk',
   unresolved_dependency: 'Unresolved dependency',
   ambiguous_request: 'Ambiguous request',
+  ambiguous_identity: 'Ambiguous identity',
   external_unavailable: 'A required system is unavailable',
   approval_required: 'Approval required',
   verification_unavailable: 'Cannot verify the outcome',

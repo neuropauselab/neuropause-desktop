@@ -185,6 +185,13 @@ import {
 // Named `initDecisionRecords` here: `initDecisions` is already taken by the
 // executive decision workflow, and these are the governance RECORD/HOLD reads.
 import { initDecisions as initDecisionRecords } from './decisions';
+import { createHoldRaiser } from './decisions/raiseHold';
+import {
+  ambiguousIdentityHold,
+  externalUnavailableHold,
+  unresolvedDependencyHold,
+} from '@neuropause/shared';
+import type { ConnectorSyncSnapshot } from '@neuropause/shared';
 import { initEcosystem, runGateway, gatewayMetrics, gatewayAuditEntries } from './ecosystem';
 import { initMarketplace } from './marketplace';
 import { initEnterpriseApi } from './api';
@@ -488,6 +495,68 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     });
   }
 
+  /**
+   * The single seam every HOLD producer outside the enterprise root goes
+   * through: open the hold, pair a Decision Record with it, audit. Reused
+   * rather than re-implemented, so the hold/record pairing cannot be forgotten
+   * at one call site.
+   */
+  const raiseHold = createHoldRaiser({
+    holds: holdStore,
+    decisions: decisionRecordStore,
+    actor: () => {
+      const st = authService.getStatus();
+      return st.state === 'authenticated' ? (st.session.user.displayName ?? st.session.user.email) : null;
+    },
+    audit: (action, target, summary) =>
+      governanceStore.record({
+        actor: (() => {
+          const st = authService.getStatus();
+          return st.state === 'authenticated' ? st.session.user.email : 'system';
+        })(),
+        action,
+        target,
+        summary,
+        workspaceId: workspaceStore.activeWorkspaceId(),
+      }),
+  });
+
+  /**
+   * HOLD producer #6: `external_unavailable`.
+   *
+   * A connector that stops answering used to surface only as a number on the
+   * diagnostics page. That is the wrong shape for work that DID NOT HAPPEN:
+   * the sync was legitimate, nothing is wrong with the request, and retrying
+   * later is a real resolution — which is precisely a hold.
+   *
+   * Reads the live snapshots rather than a fixture, quotes the state the
+   * connector actually reported (401 and 503 need different actions), and
+   * dedupes per account so a permanently-down system produces one item.
+   * Returns the snapshots unchanged so it can sit inline on the health probe.
+   */
+  const raiseHoldsForUnreachableConnectors = (
+    snapshots: readonly ConnectorSyncSnapshot[],
+  ): ConnectorSyncSnapshot[] => {
+    for (const snap of snapshots) {
+      if (snap.status !== 'error' && snap.status !== 'offline') continue;
+      raiseHold({
+        ...externalUnavailableHold({
+          action: `the ${snap.connectorId} sync`,
+          systemName: snap.connectorId,
+          // The connector's OWN words. A summarised error loses the only part
+          // that distinguishes an outage from a revoked credential.
+          observed: snap.lastError ?? `reported "${snap.status}" with no detail`,
+          lastSuccessAt: snap.lastSyncAt,
+        }),
+        title: `${snap.connectorId} is unreachable`,
+        subject: `connector/${snap.connectorId}/${snap.accountId}`,
+        requestedAction: `Sync ${snap.connectorId}`,
+        executed: 'Nothing — the system could not be reached.',
+      });
+    }
+    return [...snapshots];
+  };
+
   // Governed delete: bind the pre-delete assessor to the REAL resolved links.
   // This runs at composition time, unconditionally — the enterprise subsystem
   // above already holds `assessDelete`, which calls through this binding, and
@@ -517,6 +586,48 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     holdStore.load(),
     dataPlane.relationships.load(),
   ]);
+  /**
+   * HOLD producers #4 and #5: `ambiguous_identity` and `unresolved_dependency`.
+   *
+   * The relationship engine already parks every reference it cannot resolve —
+   * an ambiguous one (several candidates) or an unresolved one (no target).
+   * That queue was visible only inside the Data Command Center, so a reference
+   * that silently failed to link was invisible to anyone not looking there.
+   *
+   * The two are genuinely different problems and must not be merged:
+   * ambiguity needs a person to CHOOSE, absence needs the missing record to
+   * ARRIVE. Only the first reference of each class raises a hold; the queue
+   * itself remains the place to work through the rest.
+   */
+  dataPlane.relationships.onFirstParked = (entry) => {
+    const subject = `relationship/${entry.sourceModuleId}/${entry.relationshipKey}/${entry.status}`;
+    const view =
+      entry.status === 'ambiguous'
+        ? ambiguousIdentityHold({
+            action: `linking ${entry.sourceTitle} to its ${entry.targetLabel}`,
+            reference: entry.sourceValue,
+            candidates: entry.candidates.map((c) => `${c.title} (${c.id})`),
+          })
+        : unresolvedDependencyHold({
+            action: `Linking ${entry.sourceTitle} to its ${entry.targetLabel}`,
+            dependencies: [
+              `"${entry.sourceValue}" in ${entry.sourceField} matches no ${entry.targetLabel} record.`,
+              entry.reason,
+            ],
+            resolution: `Import or create the missing ${entry.targetLabel}, then re-run resolution from Data → Relationships.`,
+          });
+    raiseHold({
+      ...view,
+      title:
+        entry.status === 'ambiguous'
+          ? `Ambiguous ${entry.targetLabel} reference on ${entry.sourceTitle}`
+          : `Missing ${entry.targetLabel} for ${entry.sourceTitle}`,
+      subject,
+      requestedAction: `Resolve ${entry.relationshipKey} for ${entry.sourceModuleId}`,
+      executed: 'Nothing — the reference is parked, not guessed.',
+    });
+  };
+
   // Decision Records + Holds read/resolve IPC (governance:read / :manage).
   const decisionRecords = initDecisionRecords({
     decisionRecords: decisionRecordStore,
@@ -2179,7 +2290,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     memory.probe,
     // P4.1 — connector runtime health rolls into the existing diagnostics report; reauth/error accounts
     // (excluded from the connected-only snapshots) surface via the attention count.
-    connectorHealthProbe(() => sync.snapshots(), {
+    connectorHealthProbe(() => raiseHoldsForUnreachableConnectors(sync.snapshots()), {
       attention: () =>
         connectors.supervisor
           .runtimeView()

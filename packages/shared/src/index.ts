@@ -105,6 +105,8 @@ export * from './types/aiRouting';
 export * from './types/experienceProfile';
 // Understanding profile (provenance-marked beliefs), HOLD vocabulary, decision records.
 export * from './types/understanding';
+// The nine HOLD shapes, one deterministic factory each.
+export * from './types/holdProducers';
 // Inventory → W3.4: reservations — hold documents posting real ledger movements.
 export * from './types/reservations';
 // Inventory → W3.5: valuation — immutable standard-cost registers over the ledger.
