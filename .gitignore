@@ -59,3 +59,8 @@ id_dsa*
 
 # Generated at package time by generate-build-info.cjs; never commit
 apps/desktop/resources/build-info.json
+
+# Vite/Vitest temp configs. Normally deleted automatically; they survive when a
+# build is interrupted or runs where the process cannot unlink its own files.
+apps/*/electron.vite.config.*.mjs
+**/vitest.config.ts.timestamp-*.mjs
