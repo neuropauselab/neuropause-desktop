@@ -88,6 +88,22 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
   [IpcChannel.DecisionRecordGet]: 'governance:read',
   [IpcChannel.HoldList]: 'governance:read',
   [IpcChannel.HoldResolve]: 'governance:manage',
+  // Opportunity Center. Scoped to PROCUREMENT rather than intelligence or
+  // governance on purpose: a finding is made entirely of purchase-order
+  // records, restates their contents, and must not become a way to read them
+  // past the permission that guards them. Deciding carries `:manage` because it
+  // changes state everyone sees; executing is the exception explained below.
+  [IpcChannel.OpportunityList]: 'procurement:read',
+  [IpcChannel.OpportunitySetStatus]: 'procurement:manage',
+  // Execute is classified at `:read`, and that is deliberate. Program 3's whole
+  // claim is that a refusal should be a durable, explainable HOLD rather than
+  // an error that vanishes — and a bridge-level RBAC throw happens BEFORE the
+  // handler runs, so a `:manage` classification here would make
+  // `insufficient_permission` unreachable for the one flow that most needs it.
+  // The handler enforces `procurement:manage` itself as its first act and
+  // refuses with a hold; the RFQ write is independently gated a second time by
+  // the enterprise registry's own authorize. Two checks, one explanation.
+  [IpcChannel.OpportunityExecute]: 'procurement:read',
 
   /* ── Privileged writes ──────────────────────────────────────────────── */
 

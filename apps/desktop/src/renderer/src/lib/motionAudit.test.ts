@@ -79,6 +79,8 @@ const JUSTIFIED_LAYOUT_ANIMATIONS: Record<string, string> = {
     'Expand-to-auto-height for the Add panel and attribute rows. The target height is unknown until content renders, so transform cannot express it. Single element, user-triggered, one at a time.',
   'understanding/HoldsView.tsx':
     'Expand-to-auto-height for the Decision Record evidence. Same reasoning: height is content-derived, and collapsing it into a scaleY would squash the text.',
+  'opportunities/OpportunitiesView.tsx':
+    'Expand-to-auto-height for an opportunity’s evidence panel. The block holds a variable number of evidence items, unknowns and confidence checks, so the target height is unreadable until it renders. One card expands at a time, on a click.',
 };
 
 describe('frame budget', () => {

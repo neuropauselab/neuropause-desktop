@@ -53,6 +53,11 @@ import type {
   HoldCenterView,
   HoldRecord,
 } from '../types/understanding';
+import type {
+  Opportunity,
+  OpportunityCenterView,
+  OpportunityExecuteResult,
+} from '../types/opportunity';
 // ── Medical Device Manufacturing Pack ──
 import type {
   DeviceLotDetail,
@@ -1477,6 +1482,10 @@ export interface IpcResponseMap {
   'decisionRecord:get': DecisionRecordDetail | null;
   'hold:list': HoldCenterView;
   'hold:resolve': HoldRecord | null;
+  // ── Opportunity Center (types live in ../types/opportunity) ──
+  'opportunity:list': OpportunityCenterView;
+  'opportunity:setStatus': Opportunity | null;
+  'opportunity:execute': OpportunityExecuteResult;
 }
 
 /**

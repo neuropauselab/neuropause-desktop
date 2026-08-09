@@ -1030,6 +1030,17 @@ export const IpcChannel = {
   HoldList: 'hold:list',
   /** Resolve an open hold with an explicit outcome. */
   HoldResolve: 'hold:resolve',
+  // ── Opportunity Center (Program 4). Findings are DERIVED on read, never
+  // stored, so there is no "get" — only a list that recomputes. Reads carry
+  // `procurement:read` because the findings are made of procurement records
+  // and must not leak past the permission on their source; deciding and
+  // executing carry `procurement:manage` + bridge audit. ──
+  /** Recompute every opportunity from live records, with the data review. */
+  OpportunityList: 'opportunity:list',
+  /** Record what the user decided about a finding (accept, dismiss, …). */
+  OpportunitySetStatus: 'opportunity:setStatus',
+  /** Run an opportunity's plan — governed, verified, and never faked. */
+  OpportunityExecute: 'opportunity:execute',
 } as const;
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel];
@@ -1807,6 +1818,10 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.DecisionRecordGet,
   IpcChannel.HoldList,
   IpcChannel.HoldResolve,
+  // ── Opportunity Center ──
+  IpcChannel.OpportunityList,
+  IpcChannel.OpportunitySetStatus,
+  IpcChannel.OpportunityExecute,
 ];
 
 /** Runtime-core broadcasts. */

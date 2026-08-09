@@ -46,6 +46,7 @@ export type SectionId =
   | 'ai-home'
   | 'understand'
   | 'holds'
+  | 'opportunities'
   | 'memory'
   | 'automations'
   | 'notifications'
@@ -148,6 +149,12 @@ export const SECTIONS: SectionDef[] = [
   // without you. Appended after `ai-home` so every existing nav lock holds.
   { id: 'understand', label: 'Understand', icon: 'lightbulb', phase: 30, placement: 'primary', group: 'today', description: 'What NeuroPause understands about you, where each belief came from, and how to correct it.' },
   { id: 'holds', label: 'Holds', icon: 'shield', phase: 30, placement: 'primary', group: 'today', description: 'Work NeuroPause understood but would not run without you — and the record of every consequential decision.' },
+  // Opportunity Center. Sits in `business` next to Data and the modules whose
+  // records it is made of — a finding here is a restatement of purchase orders,
+  // not a separate kind of thing, and putting it beside `today` would imply it
+  // is about your day rather than about the business. Appended after the
+  // existing entries so every positional nav lock holds.
+  { id: 'opportunities', label: 'Opportunities', icon: 'lightbulb', phase: 31, placement: 'primary', group: 'business', description: 'What NeuroPause found in your own records, what it can prove, and what it cannot.' },
   // Retired in favor of the canonical intent-native home (`intent-home`). Hidden from nav, still routable.
   { id: 'decision-center', label: 'Decision Center', icon: 'sparkles', phase: 21, placement: 'primary', group: 'today', hidden: true },
   { id: 'home', label: 'Home', icon: 'home', phase: 2, placement: 'primary', group: 'today', hidden: true },

@@ -58,6 +58,10 @@ import {
   type DecisionRecordDetail,
   type HoldCenterView,
   type HoldOutcome,
+  type Opportunity,
+  type OpportunityCenterView,
+  type OpportunityExecuteResult,
+  type OpportunityStatus,
   type HoldRecord,
   // ── Medical Device Manufacturing Pack ──
   type LotCenterView,
@@ -1784,6 +1788,20 @@ export const ipc = {
       invoke(IpcChannel.HoldList, limit === undefined ? {} : { limit }),
     resolve: (id: string, outcome: HoldOutcome, note?: string): Promise<HoldRecord | null> =>
       invoke(IpcChannel.HoldResolve, { id, outcome, ...(note ? { note } : {}) }),
+  },
+
+  opportunities: {
+    /** Recomputes on every call — there is no cached finding to go stale. */
+    list: (lookbackDays?: number): Promise<OpportunityCenterView> =>
+      invoke(IpcChannel.OpportunityList, lookbackDays === undefined ? {} : { lookbackDays }),
+    setStatus: (
+      id: string,
+      status: OpportunityStatus,
+      note?: string,
+    ): Promise<Opportunity | null> =>
+      invoke(IpcChannel.OpportunitySetStatus, { id, status, ...(note ? { note } : {}) }),
+    execute: (id: string): Promise<OpportunityExecuteResult> =>
+      invoke(IpcChannel.OpportunityExecute, { id }),
   },
 
   feedback: {

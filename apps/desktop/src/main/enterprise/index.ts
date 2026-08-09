@@ -81,6 +81,7 @@ import { OWNER_USER_ID, ROLE_TO_UNIT_ID } from './org/seed';
 import {
   canDeleteMember,
   createAuthorize,
+  createPermissionProbe,
   decideOwnerClaim,
   guardBuiltInRolePatch,
   guardOwnerUserPatch,
@@ -154,6 +155,14 @@ import {
   incomingLinksFor,
 } from '../decisions/instances';
 import { createHoldRaiser } from '../decisions/raiseHold';
+import { initOpportunities } from '../opportunities';
+import { opportunityDecisionStore } from '../opportunities/instances';
+import {
+  MAX_ORDERS,
+  findOpenRfq,
+  purchaseOrdersAsObservations,
+  rfqFieldsFor,
+} from '../opportunities/procurementSource';
 import {
   holdFromAssessment,
   insufficientEvidenceHold,
@@ -848,8 +857,71 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     auditEntries: (limit) => governanceStore.auditEntries(limit),
   });
 
+  /* ── Opportunity Center (Program 4) ──────────────────────────────────────
+   *
+   * Composed here rather than in `runtimeCore` because everything it needs is
+   * already in scope and correctly wired: the purchase-order store it reads,
+   * the RFQ module it writes, the RBAC gate, the shared HOLD raiser, and the
+   * one action context that makes a cross-module write audited and broadcast
+   * exactly like a hand-entered one. Reaching for any of those from the
+   * runtime root would mean a second path to them.
+   */
+  const permissions = createPermissionProbe({
+    sessionEmail,
+    activeOrgId: () => activeOrg().id,
+    usersFor: (orgId) => orgStore.usersFor(orgId),
+    rolesFor: (orgId) => orgStore.rolesFor(orgId),
+    ownerMember: () => orgStore.user(OWNER_USER_ID),
+  });
+  await opportunityDecisionStore.load();
+  const opportunities = initOpportunities({
+    orders: () => purchaseOrdersAsObservations(purchaseOrderModule.store),
+    readCeiling: MAX_ORDERS,
+    decisions: opportunityDecisionStore,
+    raiseHold,
+    decisionRecords: decisionRecordStore,
+    canExecute: () => permissions.allows('procurement:manage'),
+    heldPermissions: () => permissions.held(),
+    actorLabel: () => permissions.label(),
+    actor: sessionEmail,
+    rfqModuleAvailable: () => modules.registry.get(rfqModule.descriptor.id) !== null,
+    openRfqFor: (product) => findOpenRfq(rfqModule.store, product),
+    createRfq: async (input) => {
+      // The SECOND gate. The handler already refused a caller without
+      // `procurement:manage` with an explainable hold; this is the same check
+      // the module's own CRUD path applies, kept so the write cannot become
+      // reachable by any route that skips the first one.
+      authorize('procurement:manage');
+      const { title, fields } = rfqFieldsFor(rfqModule.store, input);
+      const created = rfqModule.store.create({
+        title,
+        fields,
+        actor: sessionEmail(),
+        now: new Date().toISOString(),
+      });
+      // Full lifecycle fan-out: audit, timeline, renderer broadcast, and the
+      // module's own onChange — identical to a person typing it in.
+      modules.actionContext.emit(rfqModule, 'created', created);
+      await rfqModule.store.flush();
+      return { recordId: created.id, label: title };
+    },
+    readRfq: (recordId) => {
+      const record = rfqModule.store.get(recordId);
+      return record
+        ? { recordId: record.id, label: String(record.fields.rfqNumber ?? record.title) }
+        : null;
+    },
+    audit: (action, target, summary) => audit(action, target, summary),
+    now: () => new Date().toISOString(),
+  });
+
   return {
-    handlers: [...withEnterpriseAuthz(buildHandlers()), ...modules.handlers, ...medicalDeviceHandlers],
+    handlers: [
+      ...withEnterpriseAuthz(buildHandlers()),
+      ...modules.handlers,
+      ...medicalDeviceHandlers,
+      ...opportunities.handlers,
+    ],
     authorize,
     modules: modules.registry,
     complianceFindings: () => evaluateCompliance(governanceStore.rules(), buildComplianceInput()),

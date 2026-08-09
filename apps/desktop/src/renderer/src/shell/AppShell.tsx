@@ -66,6 +66,11 @@ const UnderstandView = lazy(() =>
 const HoldsView = lazy(() =>
   import('@renderer/understanding/HoldsView').then((m) => ({ default: m.HoldsView })),
 );
+const OpportunitiesView = lazy(() =>
+  import('@renderer/opportunities/OpportunitiesView').then((m) => ({
+    default: m.OpportunitiesView,
+  })),
+);
 const MemoryView = lazy(() =>
   import('@renderer/views/MemoryView').then((m) => ({ default: m.MemoryView })),
 );
@@ -385,6 +390,8 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
         return <UnderstandView />;
       case 'holds':
         return <HoldsView />;
+      case 'opportunities':
+        return <OpportunitiesView />;
       case 'memory':
         return <MemoryView />;
       case 'enterprise':

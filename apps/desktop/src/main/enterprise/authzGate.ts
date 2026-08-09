@@ -161,6 +161,45 @@ export function createAuthorize(
   };
 }
 
+/** A non-throwing read of what the current actor may do. */
+export interface PermissionProbe {
+  allows: (permission: EnterprisePermission) => boolean;
+  held: () => readonly EnterprisePermission[];
+  label: () => string;
+}
+
+/**
+ * Ask what the actor may do, without acting.
+ *
+ * `createAuthorize` is the enforcement path: it throws, and it raises a durable
+ * permission HOLD on the way out. Both behaviours are right for a refused
+ * operation and wrong for a question — a UI that greys out a button it knows
+ * will fail would otherwise fill the governance queue with holds nobody
+ * requested, and an audit trail that records refusals nobody attempted is an
+ * audit trail people stop reading.
+ *
+ * Shares `resolveActor` and `can` with the enforcement path on purpose. Two
+ * implementations of "may they?" is how a button ends up enabled for an action
+ * the server will refuse.
+ */
+export function createPermissionProbe(deps: ActorResolverDeps): PermissionProbe {
+  return {
+    allows: (permission) => {
+      if (deps.sessionEmail() === null) return false;
+      const actor = resolveActor(deps);
+      return actor ? can(actor.member, actor.roles, permission) : false;
+    },
+    held: () => {
+      const actor = deps.sessionEmail() === null ? null : resolveActor(deps);
+      return actor ? [...effectivePermissions(actor.member, actor.roles)] : [];
+    },
+    label: () => {
+      const actor = deps.sessionEmail() === null ? null : resolveActor(deps);
+      return actor?.member.name || actor?.member.email || deps.sessionEmail() || 'This account';
+    },
+  };
+}
+
 /**
  * Permission required by each enterprise channel. Reads require the matching
  * `:read` scope (held by every seeded human role); mutations require the

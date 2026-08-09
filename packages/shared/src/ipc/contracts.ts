@@ -2935,3 +2935,40 @@ export const HoldResolveRequest = z
   })
   .strict();
 export type HoldResolveRequest = z.infer<typeof HoldResolveRequest>;
+
+/* ── Opportunity Center ────────────────────────────────────────────────────── */
+
+export const OpportunityListRequest = z
+  .object({
+    /**
+     * How far back to look. Optional; the engine's default is stated in the UI
+     * rather than applied silently, so a narrower window is always the user's
+     * choice and never a hidden reason a finding disappeared.
+     */
+    lookbackDays: z.number().int().min(1).max(3650).optional(),
+  })
+  .strict();
+export type OpportunityListRequest = z.infer<typeof OpportunityListRequest>;
+
+export const OpportunitySetStatusRequest = z
+  .object({
+    id: z.string().trim().min(1).max(80),
+    status: z.enum([
+      'new',
+      'investigating',
+      'recommended',
+      'accepted',
+      'rejected',
+      'in_progress',
+      'completed',
+      'measured',
+    ]),
+    note: z.string().trim().max(400).optional(),
+  })
+  .strict();
+export type OpportunitySetStatusRequest = z.infer<typeof OpportunitySetStatusRequest>;
+
+export const OpportunityExecuteRequest = z
+  .object({ id: z.string().trim().min(1).max(80) })
+  .strict();
+export type OpportunityExecuteRequest = z.infer<typeof OpportunityExecuteRequest>;
