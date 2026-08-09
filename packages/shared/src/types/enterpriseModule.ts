@@ -160,6 +160,22 @@ export interface EnterpriseModuleActionResult {
   message?: string;
   /** field/record-level error message on failure. */
   error?: string;
+  /**
+   * Present when the refusal is a POLICY conflict rather than bad input.
+   *
+   * The distinction matters and only the module knows it: "amount is required"
+   * is a mistake the user fixes in the form, while "the period is closed" is a
+   * rule no amount of authority overrides — it needs the world to change, not
+   * the field. Declaring it here lets the framework raise a durable hold for
+   * the second kind without guessing from an error string.
+   */
+  policy?: {
+    /** The rule, as the system names it. */
+    name: string;
+    /** Why it applies HERE — real, specific facts. */
+    facts: string[];
+    resolution: string;
+  };
 }
 
 /** A module descriptor plus live counts — the payload of `enterprise:modules`. */

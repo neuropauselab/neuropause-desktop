@@ -147,8 +147,20 @@ import { assessDeleteAgainstLinks } from '../decisions/decisionService';
 import { createDocumentBridge } from '../erp/documentBridge';
 import { approvalStore } from '../erp/documentIntegrationInstance';
 import type { Approver } from '../erp/approvalEngine';
-import { decisionRecordStore, holdStore, incomingLinksFor } from '../decisions/instances';
-import { holdFromAssessment, permissionMissingHold } from '@neuropause/shared';
+import {
+  bindingIsLive,
+  decisionRecordStore,
+  holdStore,
+  incomingLinksFor,
+} from '../decisions/instances';
+import { createHoldRaiser } from '../decisions/raiseHold';
+import {
+  holdFromAssessment,
+  insufficientEvidenceHold,
+  permissionMissingHold,
+  policyConflictHold,
+  verificationUnavailableHold,
+} from '@neuropause/shared';
 import { reservationModule } from './modules/inventory/reservationModuleInstance';
 import { inventoryValuationModule } from './modules/inventory/inventoryValuationModuleInstance';
 import { serialModule } from './modules/inventory/serialModuleInstance';
@@ -384,6 +396,48 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     };
   };
 
+  /**
+   * The shared HOLD raiser: open → paired Decision Record → audit, deduped by
+   * subject. Every producer in this file goes through it so the hold/record
+   * pairing that makes reconstruction work cannot be forgotten at one of them.
+   */
+  const raiseHold = createHoldRaiser({
+    holds: holdStore,
+    decisions: decisionRecordStore,
+    actor: sessionEmail,
+    audit: (action, target, summary) => audit(action, target, summary),
+  });
+
+  /**
+   * HOLD producer #9: `verification_unavailable`.
+   *
+   * A document changed and its accounting impact did NOT post — the derivation
+   * refused because it could not compute a defensible number. The document is
+   * real, the books are not updated, and reporting that as a clean save is how
+   * a system loses the right to be believed about any of its saves.
+   *
+   * Polled after posting attempts rather than pushed, because the refusal is
+   * recorded inside the adapter; `seenRefusals` keeps one hold per reference.
+   */
+  const seenRefusals = new Set<string>();
+  const raiseVerificationHolds = (): void => {
+    for (const refusal of documentIntegration.refusedPostings()) {
+      if (seenRefusals.has(refusal.reference)) continue;
+      seenRefusals.add(refusal.reference);
+      raiseHold({
+        ...verificationUnavailableHold({
+          action: `The accounting impact of ${refusal.reference}`,
+          expected: 'a balanced journal entry for this document',
+          because: refusal.reason,
+        }),
+        title: `${refusal.reference}: accounting impact not posted`,
+        subject: `posting/${refusal.reference}`,
+        requestedAction: `Post the accounting impact of ${refusal.reference}`,
+        executed: 'The document was saved; its journal entry was not posted.',
+      });
+    }
+  };
+
   // The ERP document layer becomes reachable here. Everything it exposes —
   // line items, derived totals, the approval policy engine and its SoD rules —
   // shipped registered but with no caller; this is the joint that connects it
@@ -418,8 +472,51 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     now: () => new Date().toISOString(),
     // Governed delete: assess against the REAL resolved relationship links
     // (late-bound — before the Data Plane exists, no links exist to break).
-    assessDelete: (_moduleId, record) =>
-      assessDeleteAgainstLinks(record.title, incomingLinksFor(record.id)),
+    assessDelete: (moduleId, record) => {
+      /**
+       * HOLD producer #7: `insufficient_evidence`.
+       *
+       * If the dependency assessor is not bound to the real relationship
+       * store, it finds no links — which on screen is indistinguishable from
+       * "nothing depends on this". Deleting on that basis is a consequential
+       * decision made with no evidence, and the honest answer is to say so
+       * rather than let the absence read as an all-clear.
+       */
+      if (!bindingIsLive()) {
+        const subject = `${moduleId}/${record.id} (${record.title})`;
+        raiseHold({
+          ...insufficientEvidenceHold({
+            objective: `judge whether deleting "${record.title}" is safe`,
+            available: [`The record itself: ${subject}.`],
+            missing: [
+              'Dependency assessment is not active in this session, so NeuroPause cannot tell whether other records point at this one.',
+            ],
+            resolution:
+              'Restart NeuroPause so dependency assessment binds, then retry. Until then this delete is unassessed, not approved.',
+          }),
+          title: `Cannot assess deleting "${record.title}"`,
+          subject,
+          requestedAction: `Delete ${record.title}`,
+          executed: 'Nothing — the delete was not assessed, so it was not offered.',
+        });
+        // Refuse by returning an assessment the framework will gate on: an
+        // unassessable delete must not fall through to "no links, go ahead".
+        return {
+          risk: 'insufficient_evidence',
+          recommendation:
+            'Dependency assessment is unavailable — NeuroPause cannot confirm that nothing depends on this record.',
+          evidence: [
+            {
+              label: 'Assessment',
+              detail: 'The relationship reader is not bound in this session.',
+              count: null,
+            },
+          ],
+          alternative: 'Archive this record instead; archiving breaks nothing either way.',
+        };
+      }
+      return assessDeleteAgainstLinks(record.title, incomingLinksFor(record.id));
+    },
     // The policy half of governed delete lives here, not in the framework:
     // a REFUSAL opens a durable Hold (the pause has to outlive the dialog),
     // and any outcome that actually resolves the situation closes it. A hold
@@ -464,6 +561,35 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
      * is whether the outstanding approver agrees, and what resolves it is the
      * named next step.
      */
+    /**
+     * HOLD producer #8: `policy_conflict`.
+     *
+     * A rule no authority overrides — posting into a closed accounting period
+     * is the live case. Unlike a permission, the fix is to change the world
+     * (reopen the period, move the date), not the actor.
+     */
+    /**
+     * Every module change is a chance for a posting derivation to have
+     * refused. Checked here rather than inside the adapter so the adapter
+     * stays Electron-free and unaware of the hold subsystem.
+     */
+    onAfterChange: () => raiseVerificationHolds(),
+    onPolicyConflict: ({ moduleId, record, action, policy }) => {
+      const subject = `${moduleId}/${record.id}/${action}`;
+      raiseHold({
+        ...policyConflictHold({
+          action: `${action} on ${record.title}`,
+          policy: policy.name,
+          facts: policy.facts,
+          resolution: policy.resolution,
+        }),
+        title: `${record.title}: blocked by ${policy.name}`,
+        subject,
+        requestedAction: `${action} ${record.title}`,
+        executed: 'Nothing — the action conflicts with a policy.',
+        risk: 'questionable',
+      });
+    },
     onApprovalRequired: ({ moduleId, record, status, reason }) => {
       const view = documents.approvalView(moduleId, record);
       const subject = `${moduleId}/${record.id} (${record.title})`;

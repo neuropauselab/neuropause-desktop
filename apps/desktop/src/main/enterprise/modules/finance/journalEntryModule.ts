@@ -288,9 +288,22 @@ export function createJournalEntryModule(
             await periodsModule.store.load();
             const periods = periodsModule.store.list().map(glPeriodFromRecord);
             if (glDateInClosedPeriod(bookedDate, periods)) {
+              // A closed period is a POLICY conflict, not a validation error:
+              // no privilege makes it correct to post into a closed month.
+              // Declaring it as such raises a durable hold rather than an
+              // error string that vanishes with the dialog.
+              const periodKey = glPeriodKeyForDate(bookedDate);
               return {
                 ok: false,
-                message: `Period ${glPeriodKeyForDate(bookedDate)} is closed — reopen it or move the entry date.`,
+                message: `Period ${periodKey} is closed — reopen it or move the entry date.`,
+                policy: {
+                  name: 'the accounting period close',
+                  facts: [
+                    `Entry ${record.title} is dated ${bookedDate}, which falls in ${periodKey}.`,
+                    `Period ${periodKey} is closed.`,
+                  ],
+                  resolution: `Move the entry into an open period, or have finance reopen ${periodKey}.`,
+                },
               };
             }
             const key = glPeriodKeyForDate(bookedDate);

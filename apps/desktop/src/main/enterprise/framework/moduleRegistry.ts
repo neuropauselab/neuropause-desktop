@@ -154,6 +154,8 @@ async function emitLifecycle(
     at: record.updatedAt,
   });
   await module.hooks.onChange?.({ action, record }, actionCtx);
+  // AFTER the module's own reconciler: a posting refusal happens inside it.
+  ctx.onAfterChange?.();
 }
 
 function resolve(registry: EnterpriseModuleRegistry, moduleId: string): EnterpriseModule {
@@ -561,7 +563,19 @@ export function buildModuleHandlers(
         await module.store.load();
         const record = module.store.get(r.id);
         if (!record || record.status === 'deleted') return { ok: false, error: 'Record not found.' };
-        return module.hooks.runAction(r.action, record, actionCtx);
+        const result = await module.hooks.runAction(r.action, record, actionCtx);
+        // A POLICY refusal is a hold, not an error string. Only the module
+        // knows which of its refusals is which, so it declares it; the
+        // framework never guesses from a message.
+        if (!result.ok && result.policy) {
+          ctx.onPolicyConflict?.({
+            moduleId: r.moduleId,
+            record,
+            action: r.action,
+            policy: result.policy,
+          });
+        }
+        return result;
       },
     },
 

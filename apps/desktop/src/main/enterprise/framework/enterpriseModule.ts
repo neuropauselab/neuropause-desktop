@@ -97,6 +97,23 @@ export interface EnterpriseModuleContext {
     reason: string;
   }) => { holdId: string | null } | void;
   /**
+   * Fired after a record change has fully fanned out. The composition root
+   * uses it to notice side effects that happened DURING the change — a
+   * refused accounting posting, for one — which the framework itself has no
+   * knowledge of.
+   */
+  onAfterChange?: () => void;
+  /**
+   * A module action refused because of a POLICY, not bad input. Raises a
+   * durable hold; absent, the refusal behaves exactly as it did before.
+   */
+  onPolicyConflict?: (input: {
+    moduleId: string;
+    record: EnterpriseEntity;
+    action: string;
+    policy: { name: string; facts: string[]; resolution: string };
+  }) => void;
+  /**
    * The ERP document layer (line items + approval), when composed.
    *
    * Optional and narrow on purpose. The framework must not import the document
