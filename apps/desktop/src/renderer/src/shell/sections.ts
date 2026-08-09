@@ -41,6 +41,7 @@ export type SectionId =
   | 'workforce'
   | 'workforce-center'
   | 'connectors'
+  | 'data-center'
   | 'memory'
   | 'automations'
   | 'notifications'
@@ -176,6 +177,10 @@ export const SECTIONS: SectionDef[] = [
   { id: 'workforce', label: 'AI Workforce', icon: 'cpu', phase: 6, placement: 'primary', group: 'ai', description: 'Run and supervise AI workers — approvals, automations, and the executive assistant.' },
   { id: 'workforce-center', label: 'Workforce Admin', icon: 'checklist', phase: 8, placement: 'primary', group: 'ai', description: 'Install, configure, and manage AI workers — health, delegation, and execution history.', tier: 'advanced' },
   { id: 'connectors', label: 'Connectors', icon: 'connectors', phase: 4, placement: 'primary', group: 'workspace' },
+  // Phase 6 — the Data Command Center. Placed in `business` because its job is
+  // getting the organization's OWN data in, next to the modules that consume it;
+  // appended after the existing entries so every positional nav lock holds.
+  { id: 'data-center', label: 'Data', icon: 'database', phase: 27, placement: 'primary', group: 'business', description: 'Import, review and trace your business data — every record back to the row it came from.' },
   { id: 'memory', label: 'AI Memory', icon: 'memory', phase: 6, placement: 'primary', group: 'workspace', description: 'Your AI memory — conversations, notes, and everything you have saved.' },
   // `automations` + `analytics` are just AI Workforce tabs, not distinct surfaces — hidden from nav.
   // `notifications` stays visible: it renders an honest "you're all caught up" empty state and is the target

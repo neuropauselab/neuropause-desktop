@@ -45,7 +45,7 @@ import type { EnterpriseRecordStore } from '../enterprise/framework/enterpriseRe
 import { createLogger } from '../logger';
 import { analyzeSource, summarizePlan, type ImportPlan } from './planner';
 import { applyImportPlan, ProvenanceStore, type ImportDecision } from './importer';
-import { MappingMemoryStore, sourceSignature } from './mappingMemory';
+import { MappingMemoryStore } from './mappingMemory';
 import { ONTOLOGY, entityById, requiresExplicitApproval } from './ontology';
 import { SUPPORTED_FORMATS, parseFile } from './parsers';
 
@@ -166,10 +166,11 @@ export function initDataPlane(deps: DataPlaneSubsystemDeps): DataPlaneSubsystem 
         await mappings.load();
         const tenantId = deps.tenantId();
         for (const table of plan.tables) {
-          const signature = sourceSignature(table.tableName, table.mappings.map((m) => m.header));
-          const saved = mappings.find(tenantId, signature);
+          // The planner already carries the signature, so the renderer, the
+          // store and this lookup all key off one value.
+          const saved = mappings.find(tenantId, table.signature);
           if (saved && saved.entityId === table.entityId) {
-            await mappings.noteUse(tenantId, signature, deps.now());
+            await mappings.noteUse(tenantId, table.signature, deps.now());
           }
         }
         remember(plan);

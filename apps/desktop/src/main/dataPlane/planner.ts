@@ -11,8 +11,16 @@ import { parseFile, type ParsedDocument, type ParsedTable, type SourceFormat } f
 import { classifyTable, type ColumnMapping, type ConfidenceBand } from './classifier';
 import { entityById, requiresExplicitApproval, type CanonicalDomain, type ImportRisk } from './ontology';
 import { prepareRows, findNearDuplicates, type DuplicateCandidate, type PreparedRow, type QualityReport } from './quality';
+import { sourceSignature } from './mappingMemory';
 
 export interface PlannedTable {
+  /**
+   * The mapping-memory key for this table's SHAPE (name + normalized headers).
+   * Carried on the plan so the reviewer's "remember this mapping" is keyed by
+   * exactly the value the store uses — the renderer never re-derives it, and a
+   * change to the hashing rule cannot silently split saved mappings in two.
+   */
+  signature: string;
   tableName: string;
   entityId: string;
   entityLabel: string;
@@ -164,6 +172,7 @@ function planTable(table: ParsedTable): PlannedTable | null {
   }
 
   return {
+    signature: sourceSignature(table.name, classification.mappings.map((m) => m.header)),
     tableName: table.name,
     entityId: entity.id,
     entityLabel: entity.label,

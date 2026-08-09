@@ -290,3 +290,34 @@ describe('Phase 2 IA — navigation label coherence', () => {
     expect(dupes, `duplicate visible labels: ${dupes.join(', ')}`).toEqual([]);
   });
 });
+
+// Phase 6 — the Data Command Center. It is the only surface that WRITES the
+// organization's own records from a file, so it must stay reachable, must not be
+// mistaken for a preview, and must not be hidden behind the Advanced disclosure.
+describe('Phase 6 — Data Command Center', () => {
+  const dataCenter = SECTIONS.find((s) => s.id === 'data-center');
+
+  it('is a visible primary section in the business group', () => {
+    expect(dataCenter).toBeDefined();
+    expect(dataCenter?.hidden).toBeUndefined();
+    expect(dataCenter?.placement).toBe('primary');
+    expect(dataCenter?.group).toBe('business');
+  });
+
+  it('is real capability, not a preview surface', () => {
+    expect(dataCenter?.preview).toBeUndefined();
+  });
+
+  it('stays in the default sidebar rather than behind the Advanced disclosure', () => {
+    expect(dataCenter?.tier === 'advanced').toBe(false);
+  });
+
+  it('carries a user-facing description that says what it is for', () => {
+    expect((dataCenter?.description ?? '').length).toBeGreaterThan(0);
+  });
+
+  it('does not collide with the AI Memory or Connectors surfaces', () => {
+    expect(dataCenter?.label).not.toBe(SECTIONS.find((s) => s.id === 'memory')?.label);
+    expect(dataCenter?.label).not.toBe(SECTIONS.find((s) => s.id === 'connectors')?.label);
+  });
+});

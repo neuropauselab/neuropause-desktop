@@ -101,6 +101,11 @@ export default defineConfig({
       // collected; the pattern is directory-wide like every entry above, so a
       // future test beside format.ts/cn.ts is picked up without another edit here.
       'src/renderer/src/lib/**/*.test.ts',
+      // Phase 6 — the Data Command Center's pure view-model (no DOM, no React).
+      // Every honesty rule the surface depends on (empty-vs-zero, hold reasons,
+      // "a run with failures is never a success") is decided here, so this is
+      // where they are asserted; the view is a projection with no logic.
+      'src/renderer/src/dataCommandCenter/**/*.test.ts',
     ],
   },
   resolve: {

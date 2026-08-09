@@ -39,6 +39,12 @@ const OperationsView = lazy(() =>
 const ConnectorsView = lazy(() =>
   import('@renderer/views/ConnectorsView').then((m) => ({ default: m.ConnectorsView })),
 );
+// Phase 6 — the Data Command Center (import · review · provenance · quality).
+const DataCommandCenterView = lazy(() =>
+  import('@renderer/dataCommandCenter/DataCommandCenterView').then((m) => ({
+    default: m.DataCommandCenterView,
+  })),
+);
 const MemoryView = lazy(() =>
   import('@renderer/views/MemoryView').then((m) => ({ default: m.MemoryView })),
 );
@@ -284,6 +290,8 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
         return <OperationsView />;
       case 'connectors':
         return <ConnectorsView />;
+      case 'data-center':
+        return <DataCommandCenterView />;
       case 'memory':
         return <MemoryView />;
       case 'enterprise':

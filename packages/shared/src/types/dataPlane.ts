@@ -67,6 +67,12 @@ export interface DataPlaneDuplicate {
 }
 
 export interface DataPlanePlannedTable {
+  /**
+   * Mapping-memory key for this table's shape (name + normalized headers).
+   * The reviewer's "remember this mapping" sends this value back verbatim, so
+   * the renderer never re-derives the hash and the two can never disagree.
+   */
+  signature: string;
   tableName: string;
   entityId: string;
   entityLabel: string;
