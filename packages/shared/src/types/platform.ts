@@ -104,6 +104,9 @@ export type PlatformEventType =
   // diagnostics / system
   | 'diagnostics.health_changed'
   | 'system.ready'
+  // Private-First first-run experience: a profile decision was recorded
+  // (metadata carries the event name only — never content).
+  | 'experience.decision'
   // automation (V4.8)
   | 'automation.completed'
   | 'automation.failed'

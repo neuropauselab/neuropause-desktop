@@ -49,6 +49,9 @@ import {
   type UnifiedCounts,
   type SearchQuery,
   type GraphCounts,
+  // ── Private-First AI experience ──
+  type AiMode,
+  type WorkspaceType,
   // ── Medical Device Manufacturing Pack ──
   type LotCenterView,
   type LotStatus,
@@ -1706,6 +1709,27 @@ export const ipc = {
     migrationStatus: () => invoke(IpcChannel.AiConfigMigrationStatus),
     migrate: () => invoke(IpcChannel.AiConfigMigrate),
     resetToEnv: () => invoke(IpcChannel.AiConfigResetToEnv),
+    /** Private First: the AI routing mode and external-processing consent. */
+    setMode: (mode: AiMode) => invoke(IpcChannel.AiConfigSetMode, { mode }),
+    setExternalConsent: (consent: boolean) =>
+      invoke(IpcChannel.AiConfigSetExternalConsent, { consent }),
+    /** The live routing picture — same assembly + planner a request uses. */
+    routingStatus: () => invoke(IpcChannel.AiRoutingStatus),
+    /** Measured routing usage. Counts, never inventions. */
+    routingUsage: () => invoke(IpcChannel.AiRoutingUsage),
+  },
+
+  /**
+   * First-run experience profile: workspace type + completion state.
+   * (`experience` is taken by the Experience Program's decision surface.)
+   */
+  firstRun: {
+    get: () => invoke(IpcChannel.ExperienceProfileGet),
+    set: (patch: {
+      workspaceType?: WorkspaceType;
+      state?: 'completed' | 'skipped';
+      aiModeChosen?: boolean;
+    }) => invoke(IpcChannel.ExperienceProfileSet, patch),
   },
 
   feedback: {

@@ -108,6 +108,8 @@ export default defineConfig({
       'src/renderer/src/dataCommandCenter/**/*.test.ts',
       // Medical Device Manufacturing Pack — the surface's view model.
       'src/renderer/src/medicalDevices/**/*.test.ts',
+      // Private-First experience — first-run, routing badges, nav filtering.
+      'src/renderer/src/firstRun/**/*.test.ts',
     ],
   },
   resolve: {

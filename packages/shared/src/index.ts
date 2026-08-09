@@ -99,6 +99,10 @@ export * from './types/medicalDevice';
 export * from './types/medicalDeviceLot';
 export * from './types/medicalDeviceTrace';
 export * from './types/medicalDeviceApi';
+// ── Private-First AI experience: routing policy, execution metadata, measured usage. ──
+export * from './types/aiRouting';
+// First-run experience profile — workspace type (Personal/Professional/Business) + completion.
+export * from './types/experienceProfile';
 // Inventory → W3.4: reservations — hold documents posting real ledger movements.
 export * from './types/reservations';
 // Inventory → W3.5: valuation — immutable standard-cost registers over the ledger.

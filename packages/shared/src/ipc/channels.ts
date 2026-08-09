@@ -985,6 +985,20 @@ export const IpcChannel = {
   MedicalDeviceTraceForward: 'md:trace.forward',
   /** What went into this? */
   MedicalDeviceTraceBackward: 'md:trace.backward',
+
+  // ── Private-First AI experience ──
+  /** Set the AI mode (private_first / local_only / external). */
+  AiConfigSetMode: 'ai:config.setMode',
+  /** Grant or withdraw consent for external processing as a fallback. */
+  AiConfigSetExternalConsent: 'ai:config.setExternalConsent',
+  /** The live routing picture: mode, consent, per-route state, current plan. */
+  AiRoutingStatus: 'ai:routing.status',
+  /** Measured routing usage counters. Counts, never inventions. */
+  AiRoutingUsage: 'ai:routing.usage',
+  /** The first-run experience profile. */
+  ExperienceProfileGet: 'xp:profile.get',
+  /** Record a first-run decision (workspace type / completion / skip). */
+  ExperienceProfileSet: 'xp:profile.set',
 } as const;
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel];
@@ -1745,6 +1759,13 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.MedicalDeviceLotShip,
   IpcChannel.MedicalDeviceTraceForward,
   IpcChannel.MedicalDeviceTraceBackward,
+  // ── Private-First AI experience ──
+  IpcChannel.AiConfigSetMode,
+  IpcChannel.AiConfigSetExternalConsent,
+  IpcChannel.AiRoutingStatus,
+  IpcChannel.AiRoutingUsage,
+  IpcChannel.ExperienceProfileGet,
+  IpcChannel.ExperienceProfileSet,
 ];
 
 /** Runtime-core broadcasts. */

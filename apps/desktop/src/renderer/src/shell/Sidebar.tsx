@@ -14,6 +14,13 @@ import {
   type SectionGroup,
 } from './sections';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
+import { useWorkspaceType } from '@renderer/firstRun/workspaceTypeStore';
+import {
+  BUSINESS_NAV_GROUPS,
+  BUSINESS_NAV_GROUP_LABELS,
+  businessGroupFor,
+  sectionVisibleFor,
+} from '@renderer/firstRun/experienceModel';
 
 function SidebarItem({
   section,
@@ -125,8 +132,14 @@ export function Sidebar(): JSX.Element {
   const { sidebarCollapsed, sidebarWidth, setSidebarWidth } = useShell();
   const [resizing, setResizing] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const primary = SECTIONS.filter((s) => s.placement === 'primary' && !s.hidden);
-  const footer = SECTIONS.filter((s) => s.placement === 'footer' && !s.hidden);
+  // Private-First experience: the chosen workspace type narrows the visible
+  // set (Personal shows the focused set; Business shows everything). A RENDER
+  // concern only — the SECTIONS array, its order, and every nav lock over it
+  // are untouched, and the command palette still exposes every section.
+  const workspaceType = useWorkspaceType();
+  const forType = SECTIONS.filter((s) => sectionVisibleFor(workspaceType, s.id));
+  const primary = forType.filter((s) => s.placement === 'primary' && !s.hidden);
+  const footer = forType.filter((s) => s.placement === 'footer' && !s.hidden);
   // Phase 2 (progressive disclosure): the default sidebar shows the focused set;
   // `tier: 'advanced'` surfaces collapse behind the "Advanced" disclosure below. Pure
   // presentation — the command palette + universal search still expose EVERY section,
@@ -135,10 +148,25 @@ export function Sidebar(): JSX.Element {
   const advanced = primary.filter((s) => s.tier === 'advanced');
   // Phase 7 — grouped navigation: bucket the visible primaries into the stable
   // groups, preserving SECTIONS order within each.
-  const grouped: { group: SectionGroup; sections: SectionDef[] }[] = SECTION_GROUPS.map((group) => ({
-    group,
-    sections: mainPrimary.filter((s) => (s.group ?? 'workspace') === group),
-  })).filter((g) => g.sections.length > 0);
+  const registryGrouped: { key: string; label: string; sections: SectionDef[] }[] = SECTION_GROUPS.map(
+    (group: SectionGroup) => ({
+      key: group,
+      label: SECTION_GROUP_LABELS[group],
+      sections: mainPrimary.filter((s) => (s.group ?? 'workspace') === group),
+    }),
+  ).filter((g) => g.sections.length > 0);
+  // Business profile: the SAME visible sections, regrouped into the Business
+  // information architecture (Today / Business / Work / Data / Operations /
+  // Intelligence / System). A render mapping only — order within each group
+  // follows SECTIONS order, nothing is added, renamed or removed, and every
+  // other profile keeps the registry grouping untouched.
+  const businessGrouped: { key: string; label: string; sections: SectionDef[] }[] =
+    BUSINESS_NAV_GROUPS.map((group) => ({
+      key: group,
+      label: BUSINESS_NAV_GROUP_LABELS[group],
+      sections: mainPrimary.filter((s) => businessGroupFor(s.id, s.group) === group),
+    })).filter((g) => g.sections.length > 0);
+  const grouped = workspaceType === 'business' ? businessGrouped : registryGrouped;
 
   const startResize = (e: ReactPointerEvent): void => {
     if (sidebarCollapsed) return;
@@ -170,8 +198,8 @@ export function Sidebar(): JSX.Element {
         <WorkspaceSwitcher collapsed={sidebarCollapsed} />
       </div>
       <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 pt-2" role="navigation">
-        {grouped.map(({ group, sections }, index) => (
-          <div key={group} role="group" aria-label={SECTION_GROUP_LABELS[group]} className="flex flex-col gap-0.5">
+        {grouped.map(({ key, label, sections }, index) => (
+          <div key={key} role="group" aria-label={label} className="flex flex-col gap-0.5">
             {sidebarCollapsed ? (
               index > 0 && <div aria-hidden="true" className="mx-2 my-1.5 h-px bg-[var(--hairline)]" />
             ) : (
@@ -181,7 +209,7 @@ export function Sidebar(): JSX.Element {
                   index === 0 ? 'pt-1' : 'pt-4',
                 )}
               >
-                {SECTION_GROUP_LABELS[group]}
+                {label}
               </div>
             )}
             {sections.map((s) => (

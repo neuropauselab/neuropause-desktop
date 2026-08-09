@@ -44,6 +44,9 @@ import type {
   DataPlaneSavedMapping,
 } from '../types/dataPlane';
 import type { IpcChannelName } from './channels';
+// ── Private-First AI experience ──
+import type { AiRoutingStatusView, AiRoutingUsage } from '../types/aiRouting';
+import type { ExperienceProfile } from '../types/experienceProfile';
 // ── Medical Device Manufacturing Pack ──
 import type {
   DeviceLotDetail,
@@ -1446,6 +1449,13 @@ export interface IpcResponseMap {
   'md:lot.ship': DeviceLotMutationResult;
   'md:trace.forward': DeviceTraceView;
   'md:trace.backward': DeviceTraceView;
+  // ── Private-First AI experience ──
+  'ai:config.setMode': AiConfigDto;
+  'ai:config.setExternalConsent': AiConfigDto;
+  'ai:routing.status': AiRoutingStatusView;
+  'ai:routing.usage': AiRoutingUsage;
+  'xp:profile.get': ExperienceProfile;
+  'xp:profile.set': ExperienceProfile;
 }
 
 /**

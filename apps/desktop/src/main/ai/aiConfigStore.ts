@@ -14,6 +14,9 @@ import { app } from 'electron';
 
 export type AiProviderId = 'claude' | 'ollama';
 
+/** The persisted AI mode. Null = "never chosen" — see `resolveAiMode`. */
+export type StoredAiMode = 'private_first' | 'local_only' | 'external' | null;
+
 export interface AiConfig {
   /** Selected provider, or null to defer to env/default. */
   provider: AiProviderId | null;
@@ -23,6 +26,22 @@ export interface AiConfig {
   ollamaUrl: string | null;
   /** True once env→vault migration has run (idempotency guard, used by M8). */
   migratedFromEnv: boolean;
+  /**
+   * The AI routing mode, or null when the user has never chosen one.
+   *
+   * Null is meaningful and is NOT defaulted away at load: an install that was
+   * set up with a Claude key before modes existed must keep its behaviour
+   * until the user decides otherwise. `resolveAiMode` maps null onto the mode
+   * that reproduces the pre-mode behaviour exactly.
+   */
+  mode: StoredAiMode;
+  /**
+   * Explicit consent for external processing as a FALLBACK under Private
+   * First. Distinct from choosing `external` mode: consent says "cloud may be
+   * used when nothing private can serve this", mode `external` says "cloud is
+   * my provider". Default false — external fallback is opt-in, never assumed.
+   */
+  externalConsent: boolean;
 }
 
 export const DEFAULT_AI_CONFIG: AiConfig = {
@@ -30,6 +49,8 @@ export const DEFAULT_AI_CONFIG: AiConfig = {
   model: null,
   ollamaUrl: null,
   migratedFromEnv: false,
+  mode: null,
+  externalConsent: false,
 };
 
 function configPath(): string {
@@ -39,12 +60,33 @@ function configPath(): string {
 /** Normalise unknown/partial input to a valid AiConfig (unset → null). */
 function coerce(raw: Partial<AiConfig> | null | undefined): AiConfig {
   const provider = raw?.provider === 'claude' || raw?.provider === 'ollama' ? raw.provider : null;
+  const mode =
+    raw?.mode === 'private_first' || raw?.mode === 'local_only' || raw?.mode === 'external'
+      ? raw.mode
+      : null;
   return {
     provider,
     model: typeof raw?.model === 'string' && raw.model.length > 0 ? raw.model : null,
     ollamaUrl: typeof raw?.ollamaUrl === 'string' && raw.ollamaUrl.length > 0 ? raw.ollamaUrl : null,
     migratedFromEnv: raw?.migratedFromEnv === true,
+    mode,
+    externalConsent: raw?.externalConsent === true,
   };
+}
+
+/**
+ * The effective AI mode for a config whose `mode` may be null.
+ *
+ * Null resolves to the mode that reproduces this install's PRE-MODE behaviour:
+ * a config that effectively selects Claude was already sending AI work to an
+ * external provider by the user's own setup, so it resolves to `external` —
+ * anything else would silently break a working configuration. A config that
+ * selects Ollama (or nothing) resolves to `private_first`, which prefers the
+ * local route it was already using.
+ */
+export function resolveAiMode(cfg: AiConfig, effectiveProvider: AiProviderId): AiConfig['mode'] & {} {
+  if (cfg.mode) return cfg.mode;
+  return effectiveProvider === 'claude' ? 'external' : 'private_first';
 }
 
 /** Load the persisted config, falling back to safe defaults on any error. */

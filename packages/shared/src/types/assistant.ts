@@ -8,6 +8,7 @@
  * the end-to-end correlation id, and the Session Inspector trace with its three
  * role-appropriate detail levels. Types + small pure constants only.
  */
+import type { AiRoutingMetadata } from './aiRouting';
 import type { AiEvidence } from './aiEngine';
 import type { ExecutionKind } from './executeEngine';
 import type { MemoryRejection } from './memory';
@@ -348,6 +349,14 @@ export interface AssistantEnvelope {
   reasoningSummary: string | null;
   trace: AssistantTrace;
   memoryCapture: { outcome: string; type: string } | null;
+  /**
+   * Where this turn's AI processing ACTUALLY ran — stamped from the executing
+   * client's routing metadata, never inferred by the renderer. Null only on
+   * envelopes predating this field (old persisted conversations); a turn with
+   * no model run carries `location: 'none'` rather than null, because "no
+   * model ran, computed on this device" is an answer, not an absence.
+   */
+  processing?: AiRoutingMetadata | null;
   generatedAt: string;
 }
 

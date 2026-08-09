@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { Session } from '@neuropause/shared';
 import { useShell } from '@renderer/state/ShellProvider';
@@ -16,6 +16,9 @@ import { PerformanceOverlay } from './PerformanceOverlay';
 import { PerfSampler } from '@renderer/state/PerfSampler';
 import { HomeView } from '@renderer/views/HomeView';
 import { OnboardingWizard } from '@renderer/onboarding/OnboardingWizard';
+import { FirstRunExperience } from '@renderer/firstRun/FirstRunExperience';
+import { setWorkspaceType } from '@renderer/firstRun/workspaceTypeStore';
+import type { ExperienceProfile } from '@neuropause/shared';
 import { SECTIONS, type SectionId } from './sections';
 import { PreviewBanner } from './PreviewBanner';
 
@@ -49,6 +52,9 @@ const MedicalDevicesView = lazy(() =>
   import('@renderer/medicalDevices/MedicalDevicesView').then((m) => ({
     default: m.MedicalDevicesView,
   })),
+);
+const AiHomeView = lazy(() =>
+  import('@renderer/firstRun/AiHomeView').then((m) => ({ default: m.AiHomeView })),
 );
 const MemoryView = lazy(() =>
   import('@renderer/views/MemoryView').then((m) => ({ default: m.MemoryView })),
@@ -267,6 +273,37 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
     reset,
   ]);
 
+  // Private-First first-run experience: gate on the persisted profile. While
+  // `pending`, the full-screen experience renders INSTEAD of the workspace and
+  // the checklist wizard; a completed/skipped profile also feeds the
+  // workspace-type nav filter. Null = not yet loaded (render nothing extra).
+  const [experienceProfile, setExperienceProfile] = useState<ExperienceProfile | null>(null);
+  useEffect(() => {
+    ipc.firstRun
+      .get()
+      .then((p) => {
+        setExperienceProfile(p);
+        setWorkspaceType(p.workspaceType);
+      })
+      .catch((err: unknown) => {
+        // Fail OPEN to the legacy wizard, never to nothing: if this channel is
+        // unreachable (older main process still running, stale build), the
+        // pre-existing onboarding must keep behaving exactly as before.
+        // eslint-disable-next-line no-console
+        console.warn(
+          '[first-run] xp:profile.get failed — falling back to the legacy wizard. Is the main process up to date?',
+          err,
+        );
+        setExperienceProfile({
+          state: 'skipped',
+          workspaceType: null,
+          aiModeChosen: false,
+          completedAt: null,
+          updatedAt: null,
+        });
+      });
+  }, []);
+
   const renderView = (): JSX.Element => {
     switch (activeSection) {
       case 'mission-control':
@@ -299,6 +336,8 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
         return <DataCommandCenterView />;
       case 'medical-devices':
         return <MedicalDevicesView />;
+      case 'ai-home':
+        return <AiHomeView onNavigate={(id) => goToSection(id)} />;
       case 'memory':
         return <MemoryView />;
       case 'enterprise':
@@ -423,7 +462,29 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
         <VoiceWidget />
       </ErrorBoundary>
       <ErrorBoundary inline name="onboarding">
-        <OnboardingWizard onGoTo={goToSection} />
+        {experienceProfile?.state === 'pending' ? (
+          <FirstRunExperience
+            onDone={(landing) => {
+              ipc.firstRun
+                .get()
+                .then((p) => {
+                  setExperienceProfile(p);
+                  setWorkspaceType(p.workspaceType);
+                })
+                .catch(() => undefined);
+              if (landing) goToSection(landing);
+            }}
+            onSignIn={() => {
+              // The existing auth surface lives in Settings → Identity.
+              void ipc.firstRun.set({ state: 'skipped' }).then((p) => setExperienceProfile(p));
+              goToSection('settings');
+            }}
+          />
+        ) : experienceProfile ? (
+          // The guided checklist wizard runs AFTER the experience decided the
+          // product shape — never on top of it.
+          <OnboardingWizard onGoTo={goToSection} />
+        ) : null}
       </ErrorBoundary>
       {/* Always-mounted invisible runtime performance collector (feeds Diagnostics + the dev overlay). */}
       <ErrorBoundary inline name="perf-sampler">

@@ -87,6 +87,19 @@ export interface AssistantSubsystemDeps {
   }) => void;
   /** The EXISTING ExecuteEngine — the assistant's only execution path. */
   execute: (req: ExecutionRequest) => Promise<ExecutionSession>;
+  /**
+   * Deterministic-first: RBAC-gated reads over registered enterprise modules,
+   * supplied by the composition root (the enterprise registry + its authorize
+   * gate). Lets lookup/aggregate questions answer WITHOUT any model.
+   */
+  moduleRecords?: (
+    moduleId: string,
+  ) =>
+    | { rows: { id: string; title: string; status: string; fields: Record<string, unknown> }[] }
+    | 'forbidden'
+    | null;
+  /** Measured-intelligence sink for engineless turns (location 'none'). */
+  recordProcessing?: (location: 'none') => void;
   /** Live count of active ExecuteEngine sessions (for the workspace snapshot). */
   executionsActive: () => number;
   /** Phase 6 Stage 5 — ExecuteEngine history (Work Summary aggregation input). */
@@ -230,6 +243,14 @@ export function initAssistant(deps: AssistantSubsystemDeps): AssistantSubsystem 
 
   const service = new AssistantService({
     store,
+    // Deterministic-first ports: record reads via the composition root's
+    // RBAC-gated port; approvals from the live job store (same read the
+    // workspace snapshot uses).
+    deterministic: {
+      ...(deps.moduleRecords ? { records: deps.moduleRecords } : {}),
+      pendingApprovals: () => jobStore.page({ status: 'awaiting_approval', limit: 1 }).total,
+    },
+    ...(deps.recordProcessing ? { recordProcessing: deps.recordProcessing } : {}),
     context: {
       workspaces: () => {
         const state = workspaceContexts.list();

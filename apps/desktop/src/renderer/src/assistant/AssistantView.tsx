@@ -19,6 +19,7 @@ import type {
 import { ASSISTANT_MODES, ASSISTANT_MODE_META, ASSISTANT_TRACE_LEVELS, ASSISTANT_TRACE_LEVEL_DETAIL } from '@neuropause/shared';
 import { cn } from '@renderer/lib/cn';
 import { Icon } from '@renderer/components/ui/Icon';
+import { ProcessingBadge } from '@renderer/firstRun/ProcessingBadge';
 import { Button } from '@renderer/components/ui/Button';
 import { Spinner } from '@renderer/components/Spinner';
 import { approvalCard, explanationSummary, inspectorSections, STEP_STATE_META, stepsAwaitingApproval } from './assistantViewModel';
@@ -245,9 +246,13 @@ function AssistantReply({
     <div className="space-y-2">
       {/* Narrative / clarification */}
       <div className="rounded-2xl border border-[var(--hairline)] [background:var(--fill-1)] p-4">
-        <div className="mb-1 flex items-center gap-2 text-2xs uppercase tracking-wide text-faint">
-          <Icon name="sparkles" size={12} /> {env.intent.intent} · {env.mode}
-          {env.aiOffline && <span className="text-sysorange">AI offline — deterministic</span>}
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <span className="flex items-center gap-2 text-2xs uppercase tracking-wide text-faint">
+            <Icon name="sparkles" size={12} /> {env.intent.intent} · {env.mode}
+            {env.aiOffline && <span className="text-sysorange">AI offline — deterministic</span>}
+          </span>
+          {/* Where this turn's AI processing actually ran (execution-stamped). */}
+          <ProcessingBadge meta={env.processing ?? null} align="right" />
         </div>
         <p className="whitespace-pre-wrap text-sm text-ink">{env.clarification ?? env.text ?? message.text}</p>
         {env.recommendations.length > 0 && (

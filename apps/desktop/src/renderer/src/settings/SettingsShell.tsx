@@ -17,6 +17,7 @@ import { Icon } from '@renderer/components/ui/Icon';
 import { Avatar, Toggle } from '@renderer/components/ui/controls';
 import { SegmentedTabs, type SegmentedTabItem } from '@renderer/components/ui/pillTabs';
 import { AiSettingsPanel } from './AiSettingsPanel';
+import { AiRoutingPanel } from './AiRoutingPanel';
 import { initials } from '@renderer/lib/format';
 import { useTheme } from '@renderer/providers/ThemeProvider';
 import { useScale } from '@renderer/state/ScaleProvider';
@@ -445,6 +446,11 @@ function DomainContent({
       return (
         <>
           <DomainHeader id="ai" />
+          <Group title="Private First routing">
+            <Card className="py-2.5">
+              <AiRoutingPanel />
+            </Card>
+          </Group>
           <Group title="Model & provider">
             <Card className="py-1.5">
               <AiSettingsPanel />

@@ -2805,3 +2805,27 @@ export const MedicalDeviceTraceRequest = z
   })
   .strict();
 export type MedicalDeviceTraceRequest = z.infer<typeof MedicalDeviceTraceRequest>;
+
+/* ── Private-First AI experience ──────────────────────────────────────────── */
+
+export const AiSetModeRequest = z
+  .object({ mode: z.enum(['private_first', 'local_only', 'external']) })
+  .strict();
+export type AiSetModeRequest = z.infer<typeof AiSetModeRequest>;
+
+export const AiSetExternalConsentRequest = z.object({ consent: z.boolean() }).strict();
+export type AiSetExternalConsentRequest = z.infer<typeof AiSetExternalConsentRequest>;
+
+/**
+ * A first-run decision. Partial on purpose: the experience records each choice
+ * the moment it is made (workspace type when chosen, completion when finished),
+ * so a quit mid-flow loses nothing the user already decided.
+ */
+export const ExperienceProfileSetRequest = z
+  .object({
+    workspaceType: z.enum(['personal', 'professional', 'business']).optional(),
+    state: z.enum(['completed', 'skipped']).optional(),
+    aiModeChosen: z.boolean().optional(),
+  })
+  .strict();
+export type ExperienceProfileSetRequest = z.infer<typeof ExperienceProfileSetRequest>;

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import type { WorkforceAuditEntry } from '@neuropause/shared';
 import { AuditLog } from './auditLog';
 
@@ -14,10 +15,12 @@ import { AuditLog } from './auditLog';
  * still verifiable; and legacy files upgrade in place.
  */
 
-let counter = 0;
 function tempPath(): string {
-  counter += 1;
-  return join(tmpdir(), `np-audit-test-${process.pid}-${counter}.json`);
+  // A per-call UUID, not pid+counter: pids recycle, so a crashed earlier run
+  // (or a sibling worker) could leave a file this test would then LOAD —
+  // reporting 20 entries after recording 10. The assertions are untouched;
+  // only the collision-prone path scheme changes (matching governance.test.ts).
+  return join(tmpdir(), `np-audit-test-${randomUUID()}.json`);
 }
 
 function entry(i: number, over: Partial<WorkforceAuditEntry> = {}): WorkforceAuditEntry {

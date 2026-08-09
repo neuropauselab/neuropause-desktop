@@ -1,6 +1,49 @@
 # NeuroPause — Phase 6 Completion Matrix
 
-**Date:** 2026-08-09 · **Build:** `1.0.0-rc.15` · **Gate:** **6,148 / 6,148 green, 646 files** (desktop; up from 6,010 / 640 at the relationship-engine close — zero regressions, none deleted or weakened). Backend 418, cloud-core 44, companion-protocol 23. `typecheck:release` PASS · `lint:release` PASS · `docs:validate` 50/50.
+**Date:** 2026-08-09 · **Build:** `1.0.0-rc.15` · **Gate:** **6,225 / 6,225 green, 651 files** (desktop; up from 6,148 / 646 at the Medical Device Stage-1 close — zero regressions, none deleted or weakened). Backend 418, cloud-core 44, companion-protocol 23. `typecheck:release` PASS · `lint:release` PASS · `docs:validate` 50/50.
+
+## One Intelligent Workspace — intelligence experience (this pass)
+
+Landed 2026-08-09. Full detail: `claude/NEUROPAUSE-INTELLIGENCE-EXPERIENCE.md`.
+
+**Status reconciliation note:** the Universal Data Plane UI rows earlier in this
+file that read **NOT IMPLEMENTED** are **HISTORICAL — SUPERSEDED**: the Data
+Command Center UI (Import, Export, Relationships, History, Quality, Provenance,
+Mappings, Coverage) shipped in the Phase 6 UI pass and remains VERIFIED against
+its renderer model tests. Where any row below disagrees with an earlier row,
+the LATER row is authoritative.
+
+| Capability | Status | Tests |
+|---|---|---|
+| Deterministic-first intelligence seam (arithmetic, clock, invoice totals, lot quantities, stock, approvals) | **VERIFIED COMPLETE** — a hit NEVER invokes the AI engine (the test engine throws on call); RBAC refusals are answers, not fall-throughs | 15 + 6 |
+| Honest no-AI state (badge case 5: NO AI MODEL USED, never "local AI") | **VERIFIED COMPLETE** | in 6 |
+| Intelligence measurement incl. engineless turns + economics line ("% without an external provider") | **VERIFIED COMPLETE** — measured counters only; explicit empty state | in 6 + 24 |
+| Three-layer answer model (Answer / Reason / Evidence) in AI Home | **COMPLETE BUT DEVICE UNVERIFIED** — rendered from the real envelope; "no evidence" stated when absent | renderer model |
+| Business attention strip (decisions / tickets / quarantined batches) | **COMPLETE BUT DEVICE UNVERIFIED** — real RBAC-gated queries; failed queries omit tiles; all-zero states it | in 24 |
+| Business information architecture (Today/Business/Work/Data/Operations/Intelligence/System) | **COMPLETE BUT DEVICE UNVERIFIED** — render-only regrouping; SECTIONS + nav locks untouched | in 24 |
+| Performance HUD removed from normal dev runs (opt-in `VITE_NP_PERF_HUD=1`) | **VERIFIED COMPLETE** (lint/build); measurement pipeline untouched |  |
+| Governed actions (recommend → plan → approval → execute → verify → audit) | **PRE-EXISTING (Stage 4/5)** — reused, not rebuilt; regression green |  |
+| Cross-domain deterministic variance decomposition ("why did margin change" computed across domains) | **PARTIAL** — catalogued resolver questions answer deterministically; a general variance engine is NOT implemented and not claimed |  |
+
+## Private-First Onboarding + AI Workspace (Product Experience stage)
+
+Landed 2026-08-09. Full detail: `claude/PRIVATE-FIRST-AI-EXPERIENCE.md`.
+
+| Capability | Status | Tests |
+|---|---|---|
+| First-run experience (welcome → privacy → workspace type) | **COMPLETE BUT DEVICE UNVERIFIED** — full-screen flow, each decision persisted immediately; completion one-way | 10 |
+| Private First routing (planner + composite client) | **VERIFIED COMPLETE** — the four charter-critical cases incl. "external disabled → never leaves the device, external client never invoked" | 19 |
+| Execution-stamped routing metadata → UI badge + "Why?" | **COMPLETE BUT DEVICE UNVERIFIED** — badge renders ONLY from execution metadata; absence renders nothing | in 19 + 17 |
+| AI mode + external consent (Settings → AI, audited writes) | **COMPLETE BUT DEVICE UNVERIFIED** — same candidate assembly serves Settings and requests | in 19 |
+| Measured AI usage | **VERIFIED COMPLETE** — counts from execution only; explicit empty state until the first measurement; tamper-corrected totals | in 10 |
+| Workspace types (Personal / Professional / Business) | **COMPLETE BUT DEVICE UNVERIFIED** — one product, render-time nav curation; SECTIONS order + every nav lock untouched | in 17 |
+| Personal → Professional upgrade | **VERIFIED COMPLETE** — a one-field profile change; nothing to migrate, and no migration promised | in 10 |
+| AI Home ("Ask NeuroPause") over the real assistant pipeline | **COMPLETE BUT DEVICE UNVERIFIED** — capability-gated suggestions; no parallel ask path | in 17 |
+| Privacy Center | **COMPLETE BUT DEVICE UNVERIFIED** — describes the three routes without exceeding the architecture |  |
+| Legacy-install behaviour preservation | **VERIFIED COMPLETE** — null mode resolves to pre-mode behaviour; claude-no-key still reports needs-setup | in updated suites |
+| No-unprovable-claims copy | **VERIFIED COMPLETE** — asserted by test: no "no credit card", no "100% local", no "never leaves your device" | in 17 |
+| Telemetry | **VERIFIED COMPLETE** — local platform events, names only; no prompts/content/responses recorded anywhere |  |
+| macOS visual verification of the flow | **DEVICE VISUAL VERIFICATION PENDING** — bundle builds (AiHomeView 9.4 kB chunk); not launched |  |
 
 **Status vocabulary — exactly one per item, no ambiguity:**
 `VERIFIED COMPLETE` · `COMPLETE BUT DEVICE UNVERIFIED` · `PARTIAL` · `EXTERNAL DEPENDENCY` · `NOT IMPLEMENTED`

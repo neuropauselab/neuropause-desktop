@@ -1,0 +1,121 @@
+/**
+ * Experience Profile service — persisted first-run decisions: whether the
+ * first-run experience is pending/completed/skipped, which workspace type the
+ * user chose, and whether they made an explicit AI-mode choice.
+ *
+ * Sits beside the existing onboarding checklist service and does not replace
+ * it: the checklist tracks the guided steps (legal, org, connectors, AI key),
+ * this profile tracks the PRODUCT SHAPE decisions the new first-run experience
+ * collects. Non-secret by construction — AI keys stay in the Secure Vault, and
+ * nothing here is worth encrypting beyond the store's 0600 file mode.
+ *
+ * Partial writes are the point: each decision persists the moment it is made,
+ * so quitting mid-flow loses nothing already chosen and the experience resumes
+ * where it left off.
+ */
+import { promises as fs } from 'node:fs';
+import { dirname } from 'node:path';
+import type { ExperienceProfile, WorkspaceType } from '@neuropause/shared';
+import { defaultExperienceProfile } from '@neuropause/shared';
+import { readStoreFile } from '../storage/storeEnvelope';
+
+export interface ExperienceProfilePatch {
+  workspaceType?: WorkspaceType;
+  state?: 'completed' | 'skipped';
+  aiModeChosen?: boolean;
+}
+
+export interface ExperienceProfileService {
+  load(): Promise<void>;
+  get(): ExperienceProfile;
+  set(patch: ExperienceProfilePatch): Promise<ExperienceProfile>;
+  /** QA/support: return to a first-run state. */
+  reset(): Promise<ExperienceProfile>;
+}
+
+export function createExperienceProfileService(opts: {
+  filePath: string;
+  now?: () => Date;
+  /**
+   * Called when a decision is recorded — the seam the telemetry events hang
+   * from (`workspace_type_selected`, `onboarding_completed`). Receives the
+   * event name and nothing else: no content, no prompt, nothing user-authored.
+   */
+  onEvent?: (event: string) => void;
+}): ExperienceProfileService {
+  const now = opts.now ?? ((): Date => new Date());
+  const onEvent = opts.onEvent ?? ((): void => {});
+  let profile: ExperienceProfile = defaultExperienceProfile();
+  let loaded = false;
+
+  async function persist(): Promise<void> {
+    const tmp = `${opts.filePath}.tmp`;
+    await fs.mkdir(dirname(opts.filePath), { recursive: true });
+    await fs.writeFile(tmp, JSON.stringify({ version: 1, ...profile }), { mode: 0o600 });
+    await fs.rename(tmp, opts.filePath);
+  }
+
+  async function ensureLoaded(): Promise<void> {
+    if (loaded) return;
+    const result = await readStoreFile<Partial<ExperienceProfile>>(opts.filePath);
+    if (result.state === 'loaded' && result.data) {
+      const raw = result.data;
+      const base = defaultExperienceProfile();
+      profile = {
+        state:
+          raw.state === 'completed' || raw.state === 'skipped' || raw.state === 'pending'
+            ? raw.state
+            : base.state,
+        workspaceType:
+          raw.workspaceType === 'personal' ||
+          raw.workspaceType === 'professional' ||
+          raw.workspaceType === 'business'
+            ? raw.workspaceType
+            : null,
+        aiModeChosen: raw.aiModeChosen === true,
+        completedAt: typeof raw.completedAt === 'string' ? raw.completedAt : null,
+        updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : null,
+      };
+    }
+    loaded = true;
+  }
+
+  return {
+    async load(): Promise<void> {
+      await ensureLoaded();
+    },
+
+    get(): ExperienceProfile {
+      return { ...profile };
+    },
+
+    async set(patch: ExperienceProfilePatch): Promise<ExperienceProfile> {
+      await ensureLoaded();
+      const at = now().toISOString();
+      const next: ExperienceProfile = { ...profile, updatedAt: at };
+      if (patch.workspaceType && patch.workspaceType !== profile.workspaceType) {
+        next.workspaceType = patch.workspaceType;
+        onEvent('workspace_type_selected');
+      }
+      if (patch.aiModeChosen === true && !profile.aiModeChosen) {
+        next.aiModeChosen = true;
+        onEvent('ai_mode_selected');
+      }
+      if (patch.state && profile.state === 'pending') {
+        next.state = patch.state;
+        next.completedAt = at;
+        onEvent(patch.state === 'completed' ? 'onboarding_completed' : 'onboarding_skipped');
+      }
+      profile = next;
+      await persist();
+      return { ...profile };
+    },
+
+    async reset(): Promise<ExperienceProfile> {
+      await ensureLoaded();
+      profile = defaultExperienceProfile();
+      await persist();
+      return { ...profile };
+    },
+  };
+}

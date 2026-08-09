@@ -383,6 +383,16 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   IpcChannel.AiConfigMigrationStatus,
   IpcChannel.AiConfigMigrate,
   IpcChannel.AiConfigResetToEnv,
+  // ── Private-First AI experience (same sender-trust model as the AiConfig
+  // block above: per-install desktop configuration, no org RBAC scope; the
+  // two writes that change where AI work may run — setMode and
+  // setExternalConsent — are bridge-audited on their handler defs) ──
+  IpcChannel.AiConfigSetMode,
+  IpcChannel.AiConfigSetExternalConsent,
+  IpcChannel.AiRoutingStatus,
+  IpcChannel.AiRoutingUsage,
+  IpcChannel.ExperienceProfileGet,
+  IpcChannel.ExperienceProfileSet,
   // ── Phase 6 Stage 4 — Workspace Assistant (per-user desktop surface, same
   // sender-trust model as FounderAskV2 + the ExecMemory reads; the one channel
   // that dispatches execution — assistant:plan.decide — is RBAC-gated in

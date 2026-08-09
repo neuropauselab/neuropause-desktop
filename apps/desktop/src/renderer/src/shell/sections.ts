@@ -43,6 +43,7 @@ export type SectionId =
   | 'connectors'
   | 'data-center'
   | 'medical-devices'
+  | 'ai-home'
   | 'memory'
   | 'automations'
   | 'notifications'
@@ -134,6 +135,11 @@ export const SECTIONS: SectionDef[] = [
   // so every prior nav lock holds. Positioning: Mission Control = organizational
   // operations landing; Today's Intent = strategy outcomes; Work Hub = YOUR day.
   { id: 'hub', label: 'Work Hub', icon: 'checklist', phase: 26, placement: 'primary', group: 'today', description: 'Your personal day — tasks, approvals, briefings, and recent work.' },
+  // Private-First experience: the AI workspace home. Positioned AFTER the
+  // locked landing quintet (mission-control, intent-home, search, assistant,
+  // hub) so every existing nav lock holds; the Personal workspace filter makes
+  // it the lead surface for personal installs.
+  { id: 'ai-home', label: 'Ask NeuroPause', icon: 'sparkles', phase: 29, placement: 'primary', group: 'today', description: 'What do you want to accomplish? One place to ask, with a truthful account of where the AI ran.' },
   // Retired in favor of the canonical intent-native home (`intent-home`). Hidden from nav, still routable.
   { id: 'decision-center', label: 'Decision Center', icon: 'sparkles', phase: 21, placement: 'primary', group: 'today', hidden: true },
   { id: 'home', label: 'Home', icon: 'home', phase: 2, placement: 'primary', group: 'today', hidden: true },

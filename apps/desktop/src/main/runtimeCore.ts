@@ -151,6 +151,7 @@ import { initFounderAI } from './founder';
 import { initEngineeringAI, initFounderAIv2 } from './ai';
 // Phase 6 Stage 4 — the Workspace Assistant (composition over existing engines).
 import { initAssistant } from './assistant';
+import { routingUsageStore } from './ai/routingUsageInstance';
 // Phase 6 Stage 5 — the Notification Inbox + preference surface (D-8): the
 // EXISTING delivery engine's notification-center channel made real.
 import { initNotifications } from './notifications';
@@ -222,6 +223,7 @@ import { initReleaseOps } from './releaseOps';
 import { initFeatureFlags } from './featureFlags';
 import { initLicense } from './license';
 import { initOnboarding } from './onboarding';
+import { bindExperienceEvents } from './onboarding/experienceProfileInstance';
 import { initFeedback } from './feedback';
 import { initPilot } from './pilot';
 import { aiMemoryProbe, knowledgeGraphProbe, ollamaProbe } from './platform/aiHealthProbes';
@@ -1207,6 +1209,17 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       ...(input.correlationId ? { correlationId: input.correlationId } : {}),
     });
   };
+  // Private-First experience telemetry: profile decisions become platform
+  // events (names only — no prompts, no content). Late-bound because the
+  // profile service loads before the platform event bus exists.
+  bindExperienceEvents((event) => {
+    publishPlatform({
+      type: 'experience.decision',
+      category: 'system',
+      source: 'experience:first-run',
+      metadata: { event },
+    });
+  });
   const neuroCore = new NeuroCore({
     diagnostics: () => platform.diagnostics(),
     automationMonitor: () => getAutomationMonitor(),
@@ -1624,6 +1637,26 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     broadcast: deps.broadcast,
     publish: publishPlatform,
     execute: (req) => executeEngine.execute(req),
+    // Deterministic-first: the assistant answers lookup/aggregate questions
+    // straight from the enterprise registry, under the SAME RBAC gate the
+    // generic module channels enforce. 'forbidden' is surfaced as an answer.
+    moduleRecords: (moduleId) => {
+      const module = enterprise.modules.get(moduleId);
+      if (!module) return null;
+      try {
+        enterprise.authorize(module.descriptor.permissions.read);
+      } catch {
+        return 'forbidden';
+      }
+      return {
+        rows: module.store
+          .list()
+          .map((r) => ({ id: r.id, title: r.title, status: r.status, fields: r.fields })),
+      };
+    },
+    // Engineless turns land one measured 'none'; engine-backed turns are
+    // measured by the engine itself (never both — that would double-count).
+    recordProcessing: (location) => routingUsageStore.record(location),
     executionsActive: () => executeEngine.activeSessions().length,
     // Phase 6 Stage 5 — Work Summary aggregation inputs (existing histories).
     executionHistory: () =>

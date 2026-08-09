@@ -12,14 +12,26 @@ import {
   AiSetModelRequest,
   AiSetCredentialRequest,
   AiClearCredentialRequest,
+  AiSetExternalConsentRequest,
+  AiSetModeRequest,
   AiTestRequest,
+  planRoute,
 } from '@neuropause/shared';
-import type { AiConfigDto, AiHealthDto, OllamaDetectDto, AiTestResultDto } from '@neuropause/shared';
+import type {
+  AiConfigDto,
+  AiHealthDto,
+  AiRouteStatus,
+  AiRoutingStatusView,
+  AiRoutingUsage,
+  OllamaDetectDto,
+  AiTestResultDto,
+} from '@neuropause/shared';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { engineManager } from './engineManager';
-import { loadAiConfig, saveAiConfig } from './aiConfigStore';
+import { loadAiConfig, resolveAiMode, saveAiConfig } from './aiConfigStore';
 import { credentialStore } from '../security/secureStore';
-import { resolveProviderId, ANTHROPIC_CREDENTIAL_ID } from './providerManager';
+import { assembleRouteCandidates, resolveProviderId, ANTHROPIC_CREDENTIAL_ID } from './providerManager';
+import { routingUsageStore } from './routingUsageInstance';
 import { validateClaudeKey, validateOllama } from './connectionValidator';
 import { migrationStatus, migrateFromEnv, resetToEnvironment } from './migrationManager';
 import { ollamaProbe } from '../platform/aiHealthProbes';
@@ -35,9 +47,87 @@ export async function getConfig(): Promise<AiConfigDto> {
   const cfg = loadAiConfig();
   const { provider, source } = resolveProviderId();
   const status = engineManager.status();
-  const hasStoredKey =
-    provider === 'claude' ? await credentialStore.hasSecret(ANTHROPIC_CREDENTIAL_ID) : false;
-  return { provider, model: cfg.model, configured: status.configured, hasStoredKey, state: status.state, source };
+  // The renderer's question is "is a cloud key stored?", which does not depend
+  // on which provider is currently selected — the Private First fallback uses
+  // the key regardless of the selected provider.
+  const hasStoredKey = await credentialStore.hasSecret(ANTHROPIC_CREDENTIAL_ID);
+  return {
+    provider,
+    model: cfg.model,
+    configured: status.configured,
+    hasStoredKey,
+    state: status.state,
+    source,
+    mode: resolveAiMode(cfg, provider),
+    externalConsent: cfg.externalConsent,
+  };
+}
+
+/** Persist the AI mode and hot-reconfigure routing. */
+async function setMode(req: AiSetModeRequest): Promise<AiConfigDto> {
+  saveAiConfig({ mode: req.mode });
+  await engineManager.reconfigure();
+  return getConfig();
+}
+
+/** Record external-processing consent and hot-reconfigure routing. */
+async function setExternalConsent(req: AiSetExternalConsentRequest): Promise<AiConfigDto> {
+  saveAiConfig({ externalConsent: req.consent });
+  await engineManager.reconfigure();
+  return getConfig();
+}
+
+/**
+ * The live routing picture, computed by the SAME candidate assembly and the
+ * SAME planner a request uses — so what Settings shows and what a request does
+ * can never be two different computations. The Ollama route's `connected` /
+ * `unreachable` state is a real probe, not the configuration's opinion.
+ */
+export async function routingStatus(): Promise<AiRoutingStatusView> {
+  const { cfg, mode, candidates } = await assembleRouteCandidates();
+  const plan = planRoute(mode, candidates);
+
+  const routes: AiRouteStatus[] = [];
+  for (const candidate of candidates) {
+    let state: AiRouteStatus['state'];
+    let detail: string;
+    if (!candidate.configured) {
+      state = 'not_configured';
+      detail =
+        candidate.provider === 'anthropic'
+          ? 'No API key stored. Add one in Settings → AI to make this route available.'
+          : 'Not configured.';
+    } else if (!candidate.enabled && candidate.location === 'external') {
+      state = 'disabled';
+      detail = 'Configured, but external processing is not enabled. Requests will not use this route.';
+    } else if (candidate.provider === 'ollama') {
+      const probe = await detectOllama();
+      state = probe.reachable ? 'connected' : 'unreachable';
+      detail = probe.reachable
+        ? `Reachable · ${probe.models.length} model${probe.models.length === 1 ? '' : 's'} installed`
+        : 'Not reachable right now. Start it with: ollama serve';
+    } else {
+      state = 'connected';
+      detail = 'API key stored in the Secure Vault.';
+    }
+    routes.push({
+      location: candidate.location,
+      provider: candidate.provider,
+      label: candidate.provider === 'ollama' ? 'Ollama' : 'Anthropic Claude',
+      state,
+      detail,
+      model: candidate.model,
+      endpoint: candidate.endpoint,
+    });
+  }
+
+  return { mode, externalConsent: cfg.externalConsent, routes, plan };
+}
+
+/** Measured routing usage. Counts only — the UI derives any percentages. */
+export async function routingUsage(): Promise<AiRoutingUsage> {
+  await routingUsageStore.load();
+  return routingUsageStore.snapshot();
 }
 
 /** Passive provider health (no network for Claude; a reachability probe for Ollama). */
@@ -150,6 +240,22 @@ export function initAiConfig(): AiConfigSubsystem {
         handler: (p) => clearCredential(p as AiClearCredentialRequest),
       },
       { channel: IpcChannel.AiConfigTest, schema: AiTestRequest, handler: (p) => testConnection(p as AiTestRequest) },
+      {
+        // Mode changes are audited: "when did requests start being allowed to
+        // leave the device" is a question the audit trail must answer.
+        channel: IpcChannel.AiConfigSetMode,
+        schema: AiSetModeRequest,
+        audit: true,
+        handler: (p) => setMode(p as AiSetModeRequest),
+      },
+      {
+        channel: IpcChannel.AiConfigSetExternalConsent,
+        schema: AiSetExternalConsentRequest,
+        audit: true,
+        handler: (p) => setExternalConsent(p as AiSetExternalConsentRequest),
+      },
+      { channel: IpcChannel.AiRoutingStatus, schema: EmptyRequest, handler: () => routingStatus() },
+      { channel: IpcChannel.AiRoutingUsage, schema: EmptyRequest, handler: () => routingUsage() },
       { channel: IpcChannel.AiConfigMigrationStatus, schema: EmptyRequest, handler: () => migrationStatus() },
       { channel: IpcChannel.AiConfigMigrate, schema: EmptyRequest, handler: () => migrateFromEnv().then(() => getConfig()) },
       {

@@ -43,7 +43,9 @@ describe('aiConfig IPC — getConfig (secret-free)', () => {
     expect(dto.hasStoredKey).toBe(false);
     expect(Object.keys(dto).sort()).toEqual([
       'configured',
+      'externalConsent',
       'hasStoredKey',
+      'mode',
       'model',
       'provider',
       'source',
