@@ -58,7 +58,7 @@ import type { EnterpriseRecordStore } from '../enterprise/framework/enterpriseRe
 import { createLogger } from '../logger';
 import { analyzeSource, summarizePlan, type ImportPlan } from './planner';
 import { applyImportPlan, ProvenanceStore, type ImportDecision } from './importer';
-import { MappingMemoryStore } from './mappingMemory';
+import { MappingMemoryStore, applySavedMapping } from './mappingMemory';
 import { ONTOLOGY, entityById, requiresExplicitApproval } from './ontology';
 import { SUPPORTED_FORMATS, parseFile } from './parsers';
 import { buildExport, type ExportCell, type ExportColumn, type ExportTable } from './exporters';
@@ -239,6 +239,24 @@ export function initDataPlane(deps: DataPlaneSubsystemDeps): DataPlaneSubsystem 
           // store and this lookup all key off one value.
           const saved = mappings.find(tenantId, table.signature);
           if (saved && saved.entityId === table.entityId) {
+            /**
+             * ACTUALLY apply it. `applySavedMapping` existed, was exported and
+             * was tested — and was called from nowhere, so a remembered mapping
+             * incremented `useCount` and changed not one column. A reviewer who
+             * corrected a mapping last week got the machine's guess again this
+             * week, with a "Remembered" badge on it.
+             *
+             * A saved mapping is a REVIEWER'S DECISION, so it outranks the
+             * classifier for the columns it covers — and only those. It cannot
+             * invent a column this file does not have, and the gate above means
+             * it is only consulted when the classifier independently reached
+             * the same entity: a remembered mapping must not be the thing that
+             * decides what the data IS.
+             */
+            table.mappings = applySavedMapping(table.mappings, saved, (key) => {
+              const entity = entityById(table.entityId);
+              return entity?.fields.find((f) => f.key === key)?.label ?? null;
+            });
             await mappings.noteUse(tenantId, table.signature, deps.now());
           }
         }
@@ -295,6 +313,26 @@ export function initDataPlane(deps: DataPlaneSubsystemDeps): DataPlaneSubsystem 
           actor: deps.actor,
           now: deps.now,
           audit: deps.audit,
+          /**
+           * The destination module's own WRITE scope, on top of `data:import`.
+           *
+           * `dp:export` has always double-gated on the module's READ scope
+           * because bulk extraction must not bypass the per-module gate. Bulk
+           * INSERTION had no equivalent: `data:import` alone was enough to
+           * create records in finance, hr-employees or crm-customers. This is
+           * the missing half.
+           */
+          authorizeWrite: (moduleId) => {
+            const descriptor = deps.modules().find((m) => m.id === moduleId);
+            if (!descriptor) throw new Error(`Module "${moduleId}" is not registered.`);
+            deps.authorize(descriptor.permissions.write);
+          },
+          // Verification reads the destination, not the counters that wrote it.
+          readBack: (moduleId, recordId) => {
+            const store = deps.storeFor(moduleId);
+            const record = store?.get(recordId);
+            return record !== null && record !== undefined && record.status !== 'deleted';
+          },
         });
 
         if (req.reason && approvingHighRisk) {
@@ -339,6 +377,12 @@ export function initDataPlane(deps: DataPlaneSubsystemDeps): DataPlaneSubsystem 
             correlationId,
           });
         }
+
+        // The plan is spent. Leaving it cached let the SAME planId be imported
+        // a second time; per-row import keys now stop that from duplicating
+        // data, but keeping a used plan around only preserves the confusing
+        // case where a second click appears to succeed and writes nothing.
+        plans.delete(plan.planId);
 
         log.info('Import finished', { planId: plan.planId, status: result.status, imported: result.totals.imported });
         return result;

@@ -145,6 +145,20 @@ export interface DataPlaneTableResult {
   createdRecordIds: string[];
   errors: { sourceRow: number; message: string }[];
   rolledBack: boolean;
+  /**
+   * What re-reading the destination confirmed. Absent on paths that never
+   * wrote. `checked: false` means no verification ran at all — which is a
+   * different statement from "verification passed".
+   */
+  verification?: {
+    checked: boolean;
+    sourceRows: number;
+    created: number;
+    confirmed: number;
+    alreadyImported: number;
+    reconciled: boolean;
+    detail: string;
+  };
   note: string | null;
 }
 

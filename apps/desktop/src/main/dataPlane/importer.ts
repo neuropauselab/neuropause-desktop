@@ -54,6 +54,29 @@ export type TableImportStatus =
   | 'blocked'
   | 'skipped';
 
+/**
+ * What was checked AFTER the write, by reading the destination back.
+ *
+ * Separate from the counters because they measure different things: `imported`
+ * is what the import loop believes it did, `confirmed` is what the store will
+ * actually hand back. An import that reports the first as though it were the
+ * second is self-certifying, and self-certification is what this whole
+ * pipeline is built to refuse.
+ */
+export interface TableVerification {
+  /** False when nothing re-read the store — say so rather than imply a check. */
+  checked: boolean;
+  sourceRows: number;
+  created: number;
+  /** Of `created`, how many could be read straight back out. */
+  confirmed: number;
+  /** Rows this file had already imported on an earlier run. */
+  alreadyImported: number;
+  /** Every source row accounted for, and every created record readable. */
+  reconciled: boolean;
+  detail: string;
+}
+
 export interface TableImportResult {
   tableName: string;
   entityId: string;
@@ -69,6 +92,8 @@ export interface TableImportResult {
   errors: { sourceRow: number; message: string }[];
   /** True when created records were compensated away after a partial failure. */
   rolledBack: boolean;
+  /** Absent on paths that never wrote (blocked, declined, awaiting approval). */
+  verification?: TableVerification;
   note: string | null;
 }
 
@@ -100,6 +125,39 @@ export interface ImportDeps {
   /** Enterprise audit sink — the same one the module framework uses. */
   audit: (entry: { action: string; target: string; summary: string }) => void;
   idFactory?: () => string;
+  /**
+   * Authorize a WRITE into a destination module. Throws when refused.
+   *
+   * Export already double-gates: `dp:export` demands the module's own read
+   * scope on top of `data:read`, because bulk extraction must not bypass the
+   * per-module gate. Bulk INSERTION had no equivalent — `data:import` alone let
+   * a principal create records in finance, hr-employees or crm-customers
+   * without holding any of those modules' manage scopes. This is that gate.
+   *
+   * Optional so every existing test constructs `ImportDeps` unchanged; absent,
+   * behaviour is exactly as before.
+   */
+  authorizeWrite?: (moduleId: string) => void;
+  /**
+   * Re-read a record straight from the destination store. Verification only
+   * means something if it reads what was written rather than trusting the
+   * counters that wrote it.
+   */
+  readBack?: (moduleId: string, recordId: string) => boolean;
+}
+
+/**
+ * The deterministic identity of one imported row.
+ *
+ * Re-importing the same file used to duplicate every record: `store.create`
+ * always mints a fresh uuid, and nothing consulted what had already been
+ * imported. The key is the source coordinates, so the SAME row of the SAME
+ * table of the SAME file is recognised on a second pass regardless of the plan
+ * id — which matters, because re-analysing a file produces a new plan id and
+ * would otherwise look like different data.
+ */
+export function importKeyFor(sourceFile: string, tableName: string, sourceRow: number): string {
+  return `${sourceFile}::${tableName}::${sourceRow}`;
 }
 
 /**
@@ -163,6 +221,25 @@ export async function applyImportPlan(
       continue;
     }
 
+    /* The destination module's own write scope. --------------------------
+     *
+     * Per table rather than per plan: a mixed file where the importer may
+     * write customers but not invoices should load the customers and refuse
+     * the invoices with a reason, not fail wholesale. Refused is BLOCKED — a
+     * closed state that imports nothing.
+     */
+    try {
+      deps.authorizeWrite?.(table.moduleId);
+    } catch (err) {
+      results.push({
+        ...base,
+        status: 'blocked',
+        skipped: table.report.totalRows,
+        note: `You do not have permission to create records in ${table.entityLabel}. ${(err as Error).message}`,
+      });
+      continue;
+    }
+
     results.push(await importTable(table, decision, store, deps, plan, at, actor, provenance, base));
   }
 
@@ -177,9 +254,15 @@ export async function applyImportPlan(
     { imported: 0, skipped: 0, failed: 0, duplicates: 0, needsReview: 0 },
   );
 
+  // A table that wrote records it could not read back is not a clean import,
+  // and the RUN must say so too. Without this the per-table status read
+  // `partial` while the headline still read `imported` — and the headline is
+  // what anyone scanning a history list believes.
+  const unreconciled = results.some((r) => r.verification?.reconciled === false);
+
   let status: ImportStatus = 'nothing_imported';
-  if (totals.imported > 0 && totals.failed === 0) status = 'imported';
-  else if (totals.imported > 0 && totals.failed > 0) status = 'partial';
+  if (totals.imported > 0 && totals.failed === 0 && !unreconciled) status = 'imported';
+  else if (totals.imported > 0 && (totals.failed > 0 || unreconciled)) status = 'partial';
   else if (totals.failed > 0) status = 'failed';
 
   deps.audit({
@@ -213,10 +296,32 @@ async function importTable(
   const errors: { sourceRow: number; message: string }[] = [];
   const localProvenance: ProvenanceRecord[] = [];
   let skipped = 0;
+  let alreadyImported = 0;
+
+  /**
+   * Everything this file has already put here, read ONCE.
+   *
+   * One scan per table rather than a lookup per row: the alternative is N+1
+   * over the whole store, which on a 10,000-row import is 10,000 full scans.
+   */
+  const seen = new Set<string>();
+  for (const existing of store.list({ limit: 200_000 })) {
+    const key = existing.metadata?.importKey;
+    if (typeof key === 'string') seen.add(key);
+  }
 
   for (const row of table.rows) {
     if (row.verdict !== 'valid' || skip.has(row.rowIndex)) {
       skipped += 1;
+      continue;
+    }
+    const importKey = importKeyFor(plan.sourceFile, table.tableName, row.sourceRow);
+    if (seen.has(importKey)) {
+      // Already here from an earlier run of this same file. Counted separately
+      // from `skipped` so the result can say "already imported" rather than
+      // implying the row was rejected — and so a second run reads as a no-op
+      // instead of as a success that doubled the data.
+      alreadyImported += 1;
       continue;
     }
     try {
@@ -225,6 +330,7 @@ async function importTable(
         fields: row.fields,
         tags: ['imported'],
         metadata: {
+          importKey,
           importPlanId: plan.planId,
           importSourceFile: plan.sourceFile,
           importSourceTable: table.tableName,
@@ -236,6 +342,7 @@ async function importTable(
         actor,
         now: at,
       });
+      seen.add(importKey);
       created.push(record.id);
       localProvenance.push({
         recordId: record.id,
@@ -281,22 +388,62 @@ async function importTable(
   await store.flush();
   provenance.push(...localProvenance);
 
+  /* ── Verify: read back what we claim to have written. ─────────────────
+   *
+   * Every number above came from the loop that did the writing. That is a
+   * report on the loop's own intentions, not on the store — and an import
+   * whose success is self-certified is exactly the "claim success when
+   * verification fails" this pipeline must not do. So the created ids are
+   * re-read from the destination and the counts reconciled against the source.
+   */
+  const confirmed = deps.readBack
+    ? created.filter((id) => deps.readBack?.(table.moduleId, id) === true).length
+    : created.length;
+  const accountedFor = created.length + skipped + alreadyImported + errors.length;
+  const verification: TableVerification = {
+    checked: deps.readBack !== undefined,
+    sourceRows: table.report.totalRows,
+    created: created.length,
+    confirmed,
+    alreadyImported,
+    reconciled: confirmed === created.length && accountedFor === table.report.totalRows,
+    detail:
+      deps.readBack === undefined
+        ? 'Verification was not run — nothing re-read the destination, so these counts are the importer reporting on itself.'
+        : confirmed !== created.length
+          ? `${created.length - confirmed} of ${created.length} record(s) could not be read back after writing. They may not have persisted.`
+          : accountedFor !== table.report.totalRows
+            ? `${table.report.totalRows} source row(s) but ${accountedFor} accounted for — ${Math.abs(table.report.totalRows - accountedFor)} unexplained.`
+            : `All ${table.report.totalRows} source row(s) accounted for, and every created record was read back.`,
+  };
+
   const status: TableImportStatus =
-    created.length === 0 ? (errors.length > 0 ? 'failed' : 'skipped') : errors.length > 0 ? 'partial' : 'imported';
+    created.length === 0
+      ? errors.length > 0
+        ? 'failed'
+        : 'skipped'
+      : errors.length > 0 || !verification.reconciled
+        ? 'partial'
+        : 'imported';
 
   return {
     ...base,
     status,
     imported: created.length,
-    skipped,
+    skipped: skipped + alreadyImported,
     failed: errors.length,
     createdRecordIds: created,
     errors,
     rolledBack: false,
+    verification,
     note:
-      status === 'partial'
+      errors.length > 0 && status === 'partial'
         ? `${created.length} imported, ${errors.length} failed — this table was NOT rolled back because ${table.entityLabel} is ${table.risk}-risk.`
-        : null,
+        : !verification.reconciled
+          ? verification.detail
+          : alreadyImported > 0
+            ? `${alreadyImported} row(s) were already imported from this file and were not duplicated.`
+            : null,
   };
 }
 

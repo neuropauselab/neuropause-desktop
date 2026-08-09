@@ -102,6 +102,11 @@ beforeEach(async () => {
     'data:approve',
     'crm:read',
     'operations:read',
+    // The destination modules' WRITE scopes. Import now demands them, the way
+    // export has always demanded the read scope — `data:import` alone must not
+    // create records in a module the actor cannot manage.
+    'crm:manage',
+    'operations:manage',
   ]);
   stores = new Map([
     ['projects-projects', new EnterpriseRecordStore(join(dir, 'proj.json'), 'projects-projects', 'project')],
