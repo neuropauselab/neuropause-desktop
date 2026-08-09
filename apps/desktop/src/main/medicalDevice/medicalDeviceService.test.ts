@@ -153,11 +153,23 @@ beforeEach(async () => {
   h = await harness();
 });
 afterEach(async () => {
-  await new Promise((r) => setTimeout(r, 25));
-  await fs.rm(h.dir, { recursive: true, force: true }).catch(async () => {
-    await new Promise((r) => setTimeout(r, 100));
-    await fs.rm(h.dir, { recursive: true, force: true });
-  });
+  // Every store writes atomically (tmp file + rename). A sleep here was a
+  // GUESS that the write had drained — it held on an idle machine and lost the
+  // race under a full parallel run, deleting the directory out from under an
+  // in-flight rename. The result was an unhandled ENOENT rejection that failed
+  // the whole suite while every test still reported green, which is the worst
+  // shape a flake can take: no failing test to point at.
+  //
+  // Each store exposes `flush()`, which resolves when its write queue is
+  // actually empty. Awaiting that is deterministic, and faster than the sleep.
+  await Promise.all([
+    h.deviceProducts.store.flush(),
+    h.deviceLots.store.flush(),
+    h.inventoryProducts.store.flush(),
+    h.movements.store.flush(),
+    h.edges.flush(),
+  ]);
+  await fs.rm(h.dir, { recursive: true, force: true }).catch(() => undefined);
 });
 
 /* ── product ──────────────────────────────────────────────────────────────── */

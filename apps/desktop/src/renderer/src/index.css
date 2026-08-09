@@ -43,6 +43,55 @@
     --fill-2: rgba(255, 255, 255, 0.12);
     --glass: rgba(8, 8, 10, 0.86);
     --sidebar: rgba(0, 0, 0, 0.55);
+
+    /* ── Compatibility aliases ────────────────────────────────────────────
+     * 21 tokens were referenced across 20 screens but never defined. Each
+     * declaration silently did nothing: an invisible border, a colour that
+     * never applied, a fill that stayed transparent. CSS does not warn, so
+     * they shipped.
+     *
+     * Defining them here rather than rewriting 20 unfamiliar screens is the
+     * lower-risk fix — the intent of each reference is unambiguous, and one
+     * definition cannot introduce a layout regression the way twenty edits
+     * could. `cssTokens.test.ts` enforces that no new undefined token appears.
+     *
+     * NOTE the rgb() wrapping. The palette stores CHANNELS (`--c-blue: 64 156
+     * 255`) so they can carry an alpha, which means a bare `var(--c-blue)` is
+     * not a valid colour. Anything consumed directly as a colour must be
+     * wrapped here or it stays just as broken as before. */
+
+    /* Semantic status colours. */
+    --good: rgb(var(--c-green));
+    --warn: rgb(var(--c-orange));
+    --bad: rgb(var(--c-pink));
+
+    /* System palette, pre-resolved for direct use in `color:` / `stroke:`. */
+    --sysblue: rgb(var(--c-blue));
+    --sysgreen: rgb(var(--c-green));
+    --sysorange: rgb(var(--c-orange));
+    --syspurple: rgb(var(--c-purple));
+    --syspink: rgb(var(--c-pink));
+    /* The palette has no distinct red; pink IS the destructive hue here, and
+       every `--sysred` reference is on a destructive control. */
+    --sysred: rgb(var(--c-pink));
+    --sysred-tint: rgb(var(--c-pink) / 0.14);
+
+    /* Structure + surface aliases used by older screens. */
+    --border: var(--hairline);
+    --bg: var(--bg-from);
+    --hover: var(--fill-1);
+    --fill-3: rgba(255, 255, 255, 0.18);
+    --accent-soft-border: rgb(var(--accent) / 0.35);
+    --danger-soft-border: rgb(var(--c-pink) / 0.35);
+
+    /* Text aliases. */
+    --muted: rgb(var(--text-2));
+    --text-ink: rgb(var(--text));
+    --text-faint: rgb(var(--text-3));
+
+    /* Infrastructure page's own prefixed names. */
+    --np-border: var(--hairline);
+    --np-text-muted: rgb(var(--text-2));
   }
 
   /* .dark kept identical so the theme is always deep black regardless of the
@@ -75,6 +124,55 @@
     --fill-2: rgba(255, 255, 255, 0.12);
     --glass: rgba(8, 8, 10, 0.86);
     --sidebar: rgba(0, 0, 0, 0.55);
+
+    /* ── Compatibility aliases ────────────────────────────────────────────
+     * 21 tokens were referenced across 20 screens but never defined. Each
+     * declaration silently did nothing: an invisible border, a colour that
+     * never applied, a fill that stayed transparent. CSS does not warn, so
+     * they shipped.
+     *
+     * Defining them here rather than rewriting 20 unfamiliar screens is the
+     * lower-risk fix — the intent of each reference is unambiguous, and one
+     * definition cannot introduce a layout regression the way twenty edits
+     * could. `cssTokens.test.ts` enforces that no new undefined token appears.
+     *
+     * NOTE the rgb() wrapping. The palette stores CHANNELS (`--c-blue: 64 156
+     * 255`) so they can carry an alpha, which means a bare `var(--c-blue)` is
+     * not a valid colour. Anything consumed directly as a colour must be
+     * wrapped here or it stays just as broken as before. */
+
+    /* Semantic status colours. */
+    --good: rgb(var(--c-green));
+    --warn: rgb(var(--c-orange));
+    --bad: rgb(var(--c-pink));
+
+    /* System palette, pre-resolved for direct use in `color:` / `stroke:`. */
+    --sysblue: rgb(var(--c-blue));
+    --sysgreen: rgb(var(--c-green));
+    --sysorange: rgb(var(--c-orange));
+    --syspurple: rgb(var(--c-purple));
+    --syspink: rgb(var(--c-pink));
+    /* The palette has no distinct red; pink IS the destructive hue here, and
+       every `--sysred` reference is on a destructive control. */
+    --sysred: rgb(var(--c-pink));
+    --sysred-tint: rgb(var(--c-pink) / 0.14);
+
+    /* Structure + surface aliases used by older screens. */
+    --border: var(--hairline);
+    --bg: var(--bg-from);
+    --hover: var(--fill-1);
+    --fill-3: rgba(255, 255, 255, 0.18);
+    --accent-soft-border: rgb(var(--accent) / 0.35);
+    --danger-soft-border: rgb(var(--c-pink) / 0.35);
+
+    /* Text aliases. */
+    --muted: rgb(var(--text-2));
+    --text-ink: rgb(var(--text));
+    --text-faint: rgb(var(--text-3));
+
+    /* Infrastructure page's own prefixed names. */
+    --np-border: var(--hairline);
+    --np-text-muted: rgb(var(--text-2));
   }
 
 
@@ -109,8 +207,22 @@
   }
   .np-pill-item:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
   .np-pill-item:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+  /* The ACTIVE background is painted by a shared-layout element that travels
+     between tabs (see SegmentedTabs), not by this rule — otherwise the chip
+     would blink from one tab to the next while the animated one slides, and
+     you would briefly see two. Only the foreground flips here. */
   .np-pill-item--active,
-  .np-pill-item--active:hover { background: #fff; color: #000; font-weight: 600; }
+  .np-pill-item--active:hover { background: transparent; color: #000; font-weight: 600; }
+  /* A standalone chip is a toggle, not one of a mutually-exclusive set, so it
+     keeps its own solid background rather than borrowing the travelling one. */
+  .np-chip--active,
+  .np-chip--active:hover { background: #fff; color: #000; }
+  .np-pill-indicator {
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    background: #fff;
+  }
 
   .np-pill-count {
     display: inline-flex;
@@ -233,6 +345,41 @@
   }
   .text-faint {
     color: rgb(var(--text-3));
+  }
+
+  /* Skeleton shimmer.
+   *
+   * A TRANSFORM sweep, not a background-position animation: background-position
+   * repaints the element every frame, a translated pseudo-element runs on the
+   * compositor. On a screen with thirty placeholders that is the difference
+   * between a loading state and a stuttering one.
+   *
+   * `prefers-reduced-motion` drops to a static tint — still legibly a
+   * placeholder, just not moving. */
+  .np-skeleton {
+    position: relative;
+    overflow: hidden;
+    background: var(--fill-2);
+  }
+  .np-skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.06),
+      transparent
+    );
+    animation: np-skeleton-sweep 1.6s ease-in-out infinite;
+    will-change: transform;
+  }
+  @keyframes np-skeleton-sweep {
+    100% { transform: translateX(100%); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .np-skeleton::after { animation: none; content: none; }
   }
 
   .tabular {

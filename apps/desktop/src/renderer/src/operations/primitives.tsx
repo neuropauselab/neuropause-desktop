@@ -131,7 +131,7 @@ export function Bar({ value, tone = 'accent' }: { value: number; tone?: OpsTone 
   return (
     <div className="h-1.5 w-full overflow-hidden rounded-full [background:var(--fill-2)]">
       <div
-        className={cn('h-full rounded-full transition-all', DOT_BG[tone])}
+        className={cn('h-full rounded-full transition-[background-color,color,border-color,box-shadow,transform,opacity] motion-reduce:transition-none', DOT_BG[tone])}
         style={{ width: `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%` }}
       />
     </div>

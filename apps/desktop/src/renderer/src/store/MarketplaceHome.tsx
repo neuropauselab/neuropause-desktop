@@ -61,7 +61,7 @@ export function MarketplaceHome(): JSX.Element {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search apps, agents, MCP servers, and tools"
-              className="h-11 flex-1 bg-transparent text-sm outline-none placeholder:text-faint"
+              className="h-11 flex-1 bg-transparent text-sm outline-none focus-visible:shadow-focus placeholder:text-faint"
               spellCheck={false}
             />
             {query && (

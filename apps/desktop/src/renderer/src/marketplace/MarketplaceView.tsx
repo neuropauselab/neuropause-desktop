@@ -196,7 +196,7 @@ function Discover({
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search packages, publishers…"
-              className="flex-1 bg-transparent text-sm outline-none placeholder:text-faint"
+              className="flex-1 bg-transparent text-sm outline-none focus-visible:shadow-focus placeholder:text-faint"
             />
           </div>
           <div className="mb-2 flex flex-wrap gap-1">

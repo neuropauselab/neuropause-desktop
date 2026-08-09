@@ -77,6 +77,18 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
   [IpcChannel.DataPlaneSaveMapping]: 'data:import',
   [IpcChannel.DataPlaneForgetMapping]: 'data:import',
 
+  /* ── Decision Records + NeuroPause Hold ─────────────────────────────────
+   * The reconstruction trail for consequential actions ("why did we approve
+   * this?"). It surfaces who deleted what, against what evidence, and what was
+   * overridden — org intelligence, so the reads are gated rather than public.
+   * Resolving a hold CLOSES a governed pause and is therefore a management
+   * act, not a read; it is additionally bridge-audited on its handler def.
+   */
+  [IpcChannel.DecisionRecordList]: 'governance:read',
+  [IpcChannel.DecisionRecordGet]: 'governance:read',
+  [IpcChannel.HoldList]: 'governance:read',
+  [IpcChannel.HoldResolve]: 'governance:manage',
+
   /* ── Privileged writes ──────────────────────────────────────────────── */
 
   // Execute Engine re-enters worker/automation/decision execution — THE priority
@@ -393,6 +405,10 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   IpcChannel.AiRoutingUsage,
   IpcChannel.ExperienceProfileGet,
   IpcChannel.ExperienceProfileSet,
+  // Reset clears only THIS install's own first-run answers — no org data, no
+  // other user's state — so it shares the profile family's sender-trust model.
+  // It is bridge-audited on its handler def because it discards user input.
+  IpcChannel.ExperienceProfileReset,
   // ── Phase 6 Stage 4 — Workspace Assistant (per-user desktop surface, same
   // sender-trust model as FounderAskV2 + the ExecMemory reads; the one channel
   // that dispatches execution — assistant:plan.decide — is RBAC-gated in

@@ -67,6 +67,14 @@ function buildHandlers(): SecureHandlerDef[] {
       handler: (p) => experienceProfileService.set(p as ExperienceProfileSetRequest),
     },
     {
+      // Back to first run. The service has always supported this; until now
+      // nothing could call it, so "you can answer these later" was not true.
+      channel: IpcChannel.ExperienceProfileReset,
+      schema: EmptyRequest,
+      audit: true,
+      handler: () => experienceProfileService.reset(),
+    },
+    {
       channel: IpcChannel.OnboardingDismiss,
       schema: EmptyRequest,
       handler: () => onboardingService.dismiss(),

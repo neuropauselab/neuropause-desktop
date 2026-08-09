@@ -40,7 +40,7 @@ export function ScoreRing({
           strokeWidth={stroke}
           strokeLinecap="round"
           strokeDasharray={`${dash} ${c - dash}`}
-          className="transition-all duration-500"
+          className="transition-[background-color,color,border-color,box-shadow,transform,opacity] motion-reduce:transition-none duration-500"
         />
       </svg>
       <div className="absolute flex flex-col items-center">

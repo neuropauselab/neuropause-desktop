@@ -80,7 +80,7 @@ export function DelegationPanel(): JSX.Element {
           onChange={(e) => setGoalTitle(e.target.value)}
           placeholder="Goal title"
           maxLength={200}
-          className="mb-3 w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm outline-none placeholder:text-faint"
+          className="mb-3 w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm outline-none focus-visible:shadow-focus placeholder:text-faint"
         />
         <div className="flex flex-col gap-2">
           {tasks.map((t) => (
@@ -121,7 +121,7 @@ export function DelegationPanel(): JSX.Element {
             onKeyDown={(e) => e.key === 'Enter' && addTask()}
             placeholder="Add a task…"
             maxLength={200}
-            className="flex-1 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm outline-none placeholder:text-faint"
+            className="flex-1 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm outline-none focus-visible:shadow-focus placeholder:text-faint"
           />
           <button type="button" onClick={addTask} className="rounded-xl border border-white/10 px-3 py-2 text-sm text-muted transition hover:text-ink">
             <Icon name="plus" size={15} />

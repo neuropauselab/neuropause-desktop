@@ -98,7 +98,7 @@ export function PersonalizationPanel({
                   <span className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-lg', TINT_TONE.green)}><Icon name="doc" size={13} /></span>
                   <div className="min-w-0 flex-1">
                     {renaming === v.id ? (
-                      <input autoFocus value={renameText} onChange={(e) => setRenameText(e.target.value)} placeholder="View name…" className="w-full rounded-lg border border-[var(--hairline)] bg-transparent px-2.5 py-1 text-sm outline-none placeholder:text-faint" />
+                      <input autoFocus value={renameText} onChange={(e) => setRenameText(e.target.value)} placeholder="View name…" className="w-full rounded-lg border border-[var(--hairline)] bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:shadow-focus placeholder:text-faint" />
                     ) : (
                       <div className="truncate text-sm font-medium">{v.label}</div>
                     )}

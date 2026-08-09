@@ -175,7 +175,16 @@ import type { ExecutionBinding } from '@neuropause/shared';
 import { computeOrgHealth } from '@neuropause/shared';
 import { initEnterprise } from './enterprise';
 import { initDataPlane } from './dataPlane';
-import { assertRelationshipsAreDeclarable } from './dataPlane/relationshipModel';
+import { RELATIONSHIPS, assertRelationshipsAreDeclarable } from './dataPlane/relationshipModel';
+import {
+  bindIncomingLinkReader,
+  bindingIsLive,
+  decisionRecordStore,
+  holdStore,
+} from './decisions/instances';
+// Named `initDecisionRecords` here: `initDecisions` is already taken by the
+// executive decision workflow, and these are the governance RECORD/HOLD reads.
+import { initDecisions as initDecisionRecords } from './decisions';
 import { initEcosystem, runGateway, gatewayMetrics, gatewayAuditEntries } from './ecosystem';
 import { initMarketplace } from './marketplace';
 import { initEnterpriseApi } from './api';
@@ -478,6 +487,58 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       problems: relationshipProblems.slice(0, 10),
     });
   }
+
+  // Governed delete: bind the pre-delete assessor to the REAL resolved links.
+  // This runs at composition time, unconditionally — the enterprise subsystem
+  // above already holds `assessDelete`, which calls through this binding, and
+  // an unbound reader silently reports "no links", i.e. every dangerous delete
+  // would sail through ungoverned. The relationship store exists from the
+  // `initDataPlane` call above, so here is the earliest correct place.
+  bindIncomingLinkReader((recordId) =>
+    dataPlane.relationships.incoming(recordId).map((link) => {
+      const declaration = RELATIONSHIPS.find((r) => r.key === link.relationshipKey);
+      return {
+        relationshipKey: link.relationshipKey,
+        label: declaration?.label ?? link.relationshipKey,
+        sourceModuleId: link.sourceModuleId,
+        // The module's own title, so the evidence a person acts on reads
+        // "3 records in Invoices" and not "3 records in finance-invoices".
+        sourceModuleTitle: enterprise.modules.get(link.sourceModuleId)?.descriptor.title,
+      };
+    }),
+  );
+  // Decision records + open holds are organizational memory: load them before
+  // anything can produce one, so an append never races an unloaded file. The
+  // relationship store is loaded here too — the handlers that use it load it
+  // lazily, but the delete assessor has no handler of its own to trigger that,
+  // and an unloaded store answers "no links" for every record.
+  await Promise.all([
+    decisionRecordStore.load(),
+    holdStore.load(),
+    dataPlane.relationships.load(),
+  ]);
+  // Decision Records + Holds read/resolve IPC (governance:read / :manage).
+  const decisionRecords = initDecisionRecords({
+    decisionRecords: decisionRecordStore,
+    holds: holdStore,
+    assessmentLive: bindingIsLive,
+    relationshipsDeclared: () => RELATIONSHIPS.length,
+    actor: () => {
+      const st = authService.getStatus();
+      return st.state === 'authenticated' ? (st.session.user.displayName ?? st.session.user.email) : null;
+    },
+    audit: (action, target, summary) =>
+      governanceStore.record({
+        actor: (() => {
+          const st = authService.getStatus();
+          return st.state === 'authenticated' ? st.session.user.email : 'system';
+        })(),
+        action,
+        target,
+        summary,
+        workspaceId: workspaceStore.activeWorkspaceId(),
+      }),
+  });
 
   // Ecosystem Platform: developer portal + marketplace + API gateway + billing.
   const ecosystem = await initEcosystem({ broadcast: deps.broadcast });
@@ -2099,6 +2160,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...featureFlags.handlers);
   defs.push(...license.handlers);
   defs.push(...onboarding.handlers);
+  // Decision Records + Holds. Classified in `ipc/runtimeAuthz.ts`
+  // (governance:read / governance:manage) and stamped by withRuntimeAuthz below.
+  defs.push(...decisionRecords.handlers);
   defs.push(...aiConfig.handlers);
   defs.push(...feedback.handlers);
   defs.push(...pilot.handlers);

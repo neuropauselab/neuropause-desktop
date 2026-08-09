@@ -28,7 +28,7 @@ const TONE_BAR: Record<string, string> = { green: 'var(--good,#22c55e)', blue: '
 function ProgressBar({ pct, tone }: { pct: number; tone: string }): JSX.Element {
   return (
     <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
-      <div className="h-full rounded-full transition-all" style={{ width: `${Math.max(0, Math.min(100, pct))}%`, background: TONE_BAR[tone] }} />
+      <div className="h-full rounded-full transition-[width,height] motion-reduce:transition-none" style={{ width: `${Math.max(0, Math.min(100, pct))}%`, background: TONE_BAR[tone] }} />
     </div>
   );
 }
@@ -123,7 +123,7 @@ export function IntentHomeView({ onOpenSection }: { onOpenSection?: (id: string)
                 key={rv.role}
                 type="button"
                 onClick={() => setRole(rv.role)}
-                className={cn('flex items-center gap-1.5 rounded-full px-3 py-1.5 text-2xs font-medium transition-all', role === rv.role ? 'bg-white/[0.10] text-ink shadow-sm' : 'text-faint hover:text-muted')}
+                className={cn('flex items-center gap-1.5 rounded-full px-3 py-1.5 text-2xs font-medium transition-[background-color,color,border-color,box-shadow,transform,opacity] motion-reduce:transition-none', role === rv.role ? 'bg-white/[0.10] text-ink shadow-sm' : 'text-faint hover:text-muted')}
               >
                 <Icon name={roleIcon(rv.role)} size={13} />
                 {rv.label}
@@ -203,7 +203,7 @@ export function IntentHomeView({ onOpenSection }: { onOpenSection?: (id: string)
               <button
                 type="button"
                 onClick={() => go('strategy-center')}
-                className="flex items-center gap-1.5 rounded-xl bg-[color:var(--accent,#6366f1)] px-4 py-2.5 text-sm font-medium text-white transition-all hover:opacity-90"
+                className="flex items-center gap-1.5 rounded-xl bg-[color:var(--accent,#6366f1)] px-4 py-2.5 text-sm font-medium text-white transition-[background-color,color,border-color,box-shadow,transform,opacity] motion-reduce:transition-none hover:opacity-90"
               >
                 Open in Strategy Center <Icon name="arrow-right" size={14} />
               </button>
@@ -348,7 +348,7 @@ export function IntentHomeView({ onOpenSection }: { onOpenSection?: (id: string)
                   type="button"
                   onClick={() => setFocusedId(i.id)}
                   className={cn(
-                    'flex flex-col rounded-3xl border p-5 text-left transition-all',
+                    'flex flex-col rounded-3xl border p-5 text-left transition-[background-color,color,border-color,box-shadow,transform,opacity] motion-reduce:transition-none',
                     i.id === focusId ? 'border-[color:var(--accent,#6366f1)] bg-white/[0.04]' : 'border-[var(--hairline)] hover:bg-white/[0.03]',
                   )}
                 >

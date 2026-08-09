@@ -6,7 +6,11 @@
  * is a privacy claim the product did not earn.
  */
 import { describe, expect, it } from 'vitest';
-import type { AiRoutingMetadata, AiRoutingUsage } from '@neuropause/shared';
+import type {
+  AiRoutingMetadata,
+  AiRoutingUsage,
+  UnderstandingAttribute,
+} from '@neuropause/shared';
 import { SECTIONS } from '@renderer/shell/sections';
 import {
   BUSINESS_NAV_GROUPS,
@@ -150,6 +154,56 @@ describe('Suggested actions', () => {
       aiAvailable: true,
     });
     expect(noRecords.some((a) => a.id === 'followups')).toBe(false);
+  });
+
+  describe('personalisation only from confirmed understanding', () => {
+    const attribute = (status: 'stated' | 'inferred' | 'corrected'): UnderstandingAttribute => ({
+      key: 'domain',
+      label: 'You work on',
+      value: 'Manufacturing',
+      status,
+      source: 's',
+      updatedAt: 't',
+    });
+    const base = {
+      workspaceType: 'business' as const,
+      populatedModules: 3,
+      canImport: true,
+      aiAvailable: true,
+    };
+
+    it('an INFERRED domain never becomes a personalised suggestion', () => {
+      const actions = suggestedActions({ ...base, understanding: [attribute('inferred')] });
+      expect(actions.some((a) => a.id === 'domain-opportunities')).toBe(false);
+    });
+
+    it('a stated or corrected domain speaks in the user’s own words', () => {
+      for (const status of ['stated', 'corrected'] as const) {
+        const actions = suggestedActions({ ...base, understanding: [attribute(status)] });
+        const suggestion = actions.find((a) => a.id === 'domain-opportunities');
+        expect(suggestion?.label).toBe('Find opportunities in manufacturing');
+        // The prompt itself forbids inventing impact — evidence or nothing.
+        expect(suggestion?.prompt).toContain('only my real records');
+      }
+    });
+
+    it('no understanding at all changes nothing — the old suggestions stand', () => {
+      expect(suggestedActions(base).some((a) => a.id === 'domain-opportunities')).toBe(false);
+      expect(suggestedActions(base).length).toBeGreaterThan(0);
+    });
+
+    it('open holds lead the list — real work waiting beats any suggestion', () => {
+      const actions = suggestedActions({ ...base, openHolds: 2 });
+      expect(actions[0]).toMatchObject({
+        id: 'open-holds',
+        label: 'Resolve 2 holds',
+        kind: 'navigate',
+        section: 'holds',
+      });
+      // Singular reads correctly, and zero holds offers nothing.
+      expect(suggestedActions({ ...base, openHolds: 1 })[0]!.label).toBe('Resolve 1 hold');
+      expect(suggestedActions({ ...base, openHolds: 0 })[0]!.id).not.toBe('open-holds');
+    });
   });
 
   it('every action lands on a real path — an ask has a prompt, a navigate has a section', () => {

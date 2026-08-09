@@ -17,6 +17,7 @@ import {
   type ToastSeverity,
 } from '@neuropause/shared';
 import { Icon, type IconName } from '@renderer/components/ui/Icon';
+import { AFFORDANCE, CSS_TRANSITION, toastVariants } from '@renderer/lib/motion';
 
 interface LiveToast extends ToastModel {
   onAction?: () => void;
@@ -132,15 +133,26 @@ function ToastCard({ toast, onDismiss }: { toast: LiveToast; onDismiss: (id: str
 
   return (
     <motion.div
+      // `layout` is what makes the stack behave like a tray: dismissing the
+      // middle toast slides the ones below up instead of teleporting them.
       layout
-      initial={{ opacity: 0, y: 12, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: 8, scale: 0.98 }}
-      transition={{ type: 'spring', stiffness: 460, damping: 34 }}
+      variants={toastVariants}
+      initial="initial"
+      animate="animate"
+      exit="exit"
       onMouseEnter={() => { paused.current = true; clear(); }}
       onMouseLeave={() => { paused.current = false; arm(); }}
+      // Keyboard users need the same reprieve as the mouse: focusing anything
+      // inside a toast must stop the countdown, or the Undo button disappears
+      // while they are tabbing to it.
+      onFocusCapture={() => { paused.current = true; clear(); }}
+      onBlurCapture={() => { paused.current = false; arm(); }}
       className="glass-panel pointer-events-auto overflow-hidden rounded-xl shadow-glass"
-      role="status"
+      // An error is not a status update — it needs to interrupt. Everything
+      // else is polite so a success toast does not cut across what the screen
+      // reader is currently saying.
+      role={toast.severity === 'error' ? 'alert' : 'status'}
+      aria-live={toast.severity === 'error' ? 'assertive' : 'polite'}
     >
       <div className="flex items-start gap-3 border-l-2 p-3" style={{ borderColor: meta.color }}>
         <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md" style={{ color: meta.color, background: `${meta.color}1f` }}>
@@ -153,13 +165,13 @@ function ToastCard({ toast, onDismiss }: { toast: LiveToast; onDismiss: (id: str
             <button
               type="button"
               onClick={() => { toast.onAction?.(); onDismiss(toast.id); }}
-              className="mt-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-semibold text-accent hover:text-accent-hover"
+              className={`mt-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-semibold text-accent outline-none hover:text-accent-hover focus-visible:shadow-focus ${CSS_TRANSITION.colors} ${AFFORDANCE.clickable}`}
             >
               <Icon name={toast.actionLabel.toLowerCase() === 'undo' ? 'undo' : 'refresh'} size={12} /> {toast.actionLabel}
             </button>
           )}
         </div>
-        <button type="button" aria-label="Dismiss" onClick={() => onDismiss(toast.id)} className="shrink-0 rounded-md p-0.5 text-faint hover:text-ink">
+        <button type="button" aria-label="Dismiss" onClick={() => onDismiss(toast.id)} className={`shrink-0 rounded-md p-0.5 text-faint outline-none hover:text-ink focus-visible:shadow-focus ${CSS_TRANSITION.colors} ${AFFORDANCE.clickable}`}>
           <Icon name="close" size={14} />
         </button>
       </div>

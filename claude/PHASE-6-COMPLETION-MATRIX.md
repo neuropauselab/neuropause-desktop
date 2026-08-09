@@ -1,6 +1,22 @@
 # NeuroPause — Phase 6 Completion Matrix
 
-**Date:** 2026-08-09 · **Build:** `1.0.0-rc.15` · **Gate:** **6,225 / 6,225 green, 651 files** (desktop; up from 6,148 / 646 at the Medical Device Stage-1 close — zero regressions, none deleted or weakened). Backend 418, cloud-core 44, companion-protocol 23. `typecheck:release` PASS · `lint:release` PASS · `docs:validate` 50/50.
+**Date:** 2026-08-09 · **Build:** `1.0.0-rc.15` · **Gate:** **6,228 / 6,228 green, 652 files** (desktop; up from 6,148 / 646 at the Medical Device Stage-1 close — zero regressions, none deleted or weakened). Backend 418, cloud-core 44, companion-protocol 23. `typecheck:release` PASS · `lint:release` PASS · `docs:validate` 50/50.
+
+## Device-boot defect fixed: phantom module ids (found by real macOS boot)
+
+The first real device boot of the relationship engine reported **6 declaration
+problems**. Root cause: the Phase-6 baseline declared `crm-contacts` and
+`finance-invoices` — module ids that never existed (the real ids are `crm` and
+`finance`). Its tests used fixture modules named after the declarations, so CI
+never noticed. Consequences fixed in this pass:
+
+| Fix | Effect |
+|---|---|
+| Relationship declarations → real ids | invoice→customer/order, payment→invoice, order/customer→contact links can now actually resolve |
+| Data Plane ontology → real ids | imported contacts and invoices now land in the REAL modules instead of a nonexistent destination |
+| ERP invoice DocumentSpec → real id | invoice line-item adoption attaches on a running device for the first time |
+| Deterministic invoice resolver → real id | the outstanding-invoice answer reads the real module |
+| `relationshipBootCheck.test.ts` (3 tests) | the EXACT device boot check now runs in CI against every real module factory — this class of drift cannot ship silently again |
 
 ## One Intelligent Workspace — intelligence experience (this pass)
 

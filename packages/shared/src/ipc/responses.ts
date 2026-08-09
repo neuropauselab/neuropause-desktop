@@ -47,6 +47,12 @@ import type { IpcChannelName } from './channels';
 // ── Private-First AI experience ──
 import type { AiRoutingStatusView, AiRoutingUsage } from '../types/aiRouting';
 import type { ExperienceProfile } from '../types/experienceProfile';
+import type {
+  DecisionRecord,
+  DecisionRecordDetail,
+  HoldCenterView,
+  HoldRecord,
+} from '../types/understanding';
 // ── Medical Device Manufacturing Pack ──
 import type {
   DeviceLotDetail,
@@ -1456,6 +1462,12 @@ export interface IpcResponseMap {
   'ai:routing.usage': AiRoutingUsage;
   'xp:profile.get': ExperienceProfile;
   'xp:profile.set': ExperienceProfile;
+  'xp:profile.reset': ExperienceProfile;
+  // ── Decision Records + NeuroPause Hold ──
+  'decisionRecord:list': DecisionRecord[];
+  'decisionRecord:get': DecisionRecordDetail | null;
+  'hold:list': HoldCenterView;
+  'hold:resolve': HoldRecord | null;
 }
 
 /**

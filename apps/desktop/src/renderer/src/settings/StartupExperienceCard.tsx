@@ -49,7 +49,7 @@ export function StartupExperienceCard(): JSX.Element {
             type="button"
             onClick={() => chooseMode(m)}
             className={cn(
-              'flex w-full items-start gap-3 rounded-2xl border p-3.5 text-left transition-all',
+              'flex w-full items-start gap-3 rounded-2xl border p-3.5 text-left transition-[background-color,color,border-color,box-shadow,transform,opacity] motion-reduce:transition-none',
               mode === m ? 'border-accent bg-accent/[0.06]' : 'border-[var(--hairline)] hover:bg-white/[0.03]',
             )}
           >

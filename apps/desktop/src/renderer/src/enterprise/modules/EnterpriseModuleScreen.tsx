@@ -7,7 +7,9 @@
  * reuse this exact screen with zero module-specific UI code.
  */
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import type {
+  ActionAssessment,
   EnterpriseEntity,
   EnterpriseFieldDef,
   EnterpriseFieldValue,
@@ -17,6 +19,7 @@ import type {
 } from '@neuropause/shared';
 import { validateEnterpriseRecordInput } from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
+import { dialogVariants, overlayVariants } from '@renderer/lib/motion';
 import { cn } from '@renderer/lib/cn';
 import { Button } from '@renderer/components/ui/Button';
 import { Badge } from '@renderer/components/ui/controls';
@@ -511,6 +514,56 @@ function RecordDetail({
     }
   };
 
+  // Governed delete: the main process assesses the record's REAL relationship
+  // links BEFORE anything mutates. A refused delete returns the assessment,
+  // which renders here — evidence, recommendation and the safe alternative —
+  // and only an explicit "Delete anyway" resends with force.
+  const [deleteAssessment, setDeleteAssessment] = useState<ActionAssessment | null>(null);
+  // The refusal raises a durable HOLD in the main process. Holding onto its id
+  // is what lets the safer route actually close the hold — otherwise archiving
+  // would leave an open hold describing a problem the user already solved.
+  const [holdId, setHoldId] = useState<string | null>(null);
+  const requestDelete = async (force: boolean): Promise<void> => {
+    setBusy(true);
+    try {
+      const result = await ipc.enterpriseModules.remove(module.id, record.id, force);
+      if (!result.ok && result.assessment) {
+        setDeleteAssessment(result.assessment);
+        setHoldId(result.holdId ?? null);
+        return;
+      }
+      setDeleteAssessment(null);
+      setHoldId(null);
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Archive instead — then close the hold that recommended exactly this. */
+  const takeAlternative = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      await ipc.enterpriseModules.setStatus(module.id, record.id, 'archived');
+      if (holdId) {
+        await ipc.holds
+          .resolve(
+            holdId,
+            'took_alternative',
+            'Archived instead of deleting; every link keeps resolving.',
+          )
+          // A hold that cannot be closed must not fail the archive that already
+          // happened — the Holds screen can still resolve it by hand.
+          .catch(() => undefined);
+      }
+      setDeleteAssessment(null);
+      setHoldId(null);
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   // Custom record actions (e.g. Convert Lead → Customer). The list is refreshed
   // behind the modal, which stays open to show the deterministic result message.
   const runAction = async (key: string): Promise<void> => {
@@ -570,13 +623,100 @@ function RecordDetail({
               Restore
             </Button>
           )}
-          <Button
-            variant="danger"
-            onClick={() => void act(() => ipc.enterpriseModules.remove(module.id, record.id))}
-            disabled={busy}
-          >
+          <Button variant="danger" onClick={() => void requestDelete(false)} disabled={busy}>
             Delete
           </Button>
+          <AnimatePresence>
+            {deleteAssessment && (
+              // The scrim fades and the dialog scales in together. A dialog
+              // that simply exists on the next frame reads as a page change;
+              // scaling up from behind the scrim reads as "in front of what
+              // you were doing", which is what a blocking assessment IS.
+              <motion.div
+                role="alertdialog"
+                aria-label="High-risk delete"
+                variants={overlayVariants}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-6"
+              >
+                {/* `glass-panel` is the app's opaque floating-UI material. A
+                    translucent surface token would let the record list show
+                    through the evidence a person is being asked to act on. */}
+                <motion.div
+                  variants={dialogVariants}
+                  className="glass-panel w-full max-w-[560px] rounded-2xl p-5 shadow-xl"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1 rounded-full border border-sysorange/40 px-2 py-0.5 text-[11px] font-medium text-sysorange">
+                      On hold
+                    </span>
+                    <h3 className="text-base font-semibold text-syspink">
+                      {deleteAssessment.risk === 'high_risk'
+                        ? 'High risk'
+                        : 'Review before proceeding'}
+                    </h3>
+                  </div>
+                  <p className="mt-1.5 text-sm leading-relaxed text-muted">
+                    {deleteAssessment.recommendation}
+                  </p>
+                  <div className="mt-3">
+                    <div className="text-xs uppercase tracking-wider text-faint">What I know</div>
+                    <ul className="mt-1 space-y-1.5">
+                      {deleteAssessment.evidence.map((e, i) => (
+                        <li key={i} className="text-sm text-muted">
+                          <span className="font-medium text-ink">{e.label}:</span> {e.detail}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  {deleteAssessment.alternative && (
+                    <div className="mt-3 rounded-xl border border-[var(--hairline)] px-3.5 py-2.5">
+                      <div className="text-xs uppercase tracking-wider text-faint">
+                        What would resolve this
+                      </div>
+                      <p className="mt-1 text-sm text-muted">{deleteAssessment.alternative}</p>
+                    </div>
+                  )}
+                  <div className="mt-2 rounded-xl border border-syspink/30 px-3.5 py-2.5">
+                    <div className="text-xs uppercase tracking-wider text-syspink">
+                      If you proceed anyway
+                    </div>
+                    <p className="mt-1 text-sm text-muted">
+                      The dependent records keep their reference but it stops resolving. Nothing is
+                      destroyed — the record is soft-deleted and recoverable — but traces that walk
+                      this link will show a gap until it is restored.
+                    </p>
+                  </div>
+                  <div className="mt-4 flex flex-wrap justify-end gap-2">
+                    <Button size="sm" onClick={() => setDeleteAssessment(null)} disabled={busy}>
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => void takeAlternative()}
+                      disabled={busy}
+                    >
+                      Archive instead
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      onClick={() => void requestDelete(true)}
+                      disabled={busy}
+                    >
+                      Delete anyway
+                    </Button>
+                  </div>
+                  <p className="mt-2.5 text-right text-xs text-faint">
+                    This hold stays open in Holds until it is resolved.
+                  </p>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
           <Button variant="primary" icon="check" onClick={onEdit} disabled={busy}>
             Edit
           </Button>

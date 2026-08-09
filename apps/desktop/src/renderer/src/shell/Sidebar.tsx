@@ -14,6 +14,7 @@ import {
   type SectionGroup,
 } from './sections';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
+import { AFFORDANCE, CSS_TRANSITION, INDICATOR_SPRING, TRANSITION } from '@renderer/lib/motion';
 import { useWorkspaceType } from '@renderer/firstRun/workspaceTypeStore';
 import {
   BUSINESS_NAV_GROUPS,
@@ -40,19 +41,27 @@ function SidebarItem({
       aria-label={section.preview ? `${section.label} — Preview` : section.label}
       aria-current={active ? 'page' : undefined}
       className={cn(
-        'group relative flex h-9 w-full items-center rounded-xl outline-none transition-colors focus-visible:shadow-focus',
+        'group relative flex h-9 w-full items-center rounded-xl outline-none focus-visible:shadow-focus',
+        CSS_TRANSITION.colors,
+        AFFORDANCE.clickable,
         collapsed ? 'justify-center px-0' : 'gap-3 px-3',
         active ? 'text-accent' : 'text-muted hover:text-ink',
       )}
     >
       {active && (
+        // One indicator element shared across every row (`layoutId`), so
+        // selecting a different section MOVES the pill rather than fading one
+        // out and another in. The travel is what tells the eye the two rows
+        // are the same control in two states.
         <motion.span
           layoutId="sidebar-active"
-          transition={{ type: 'spring', stiffness: 560, damping: 38 }}
+          transition={INDICATOR_SPRING}
           className="absolute inset-0 rounded-xl bg-accent/12"
         />
       )}
-      {!active && <span className="absolute inset-0 rounded-xl fill-hover" />}
+      {!active && (
+        <span className={cn('absolute inset-0 rounded-xl fill-hover', CSS_TRANSITION.colors)} />
+      )}
       <Icon name={section.icon} size={19} className={cn('relative z-10', active ? 'text-accent' : '')} />
       <AnimatePresence initial={false}>
         {!collapsed && (
@@ -60,7 +69,7 @@ function SidebarItem({
             initial={{ opacity: 0, x: -4 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -4 }}
-            transition={{ duration: 0.12 }}
+            transition={TRANSITION.instant}
             className="relative z-10 whitespace-nowrap text-base font-medium"
           >
             {section.label}
@@ -100,11 +109,13 @@ function AdvancedNav({
         aria-controls="sidebar-advanced-list"
         title={collapsed ? 'Advanced' : undefined}
         className={cn(
-          'group relative flex h-9 w-full items-center rounded-xl text-muted outline-none transition-colors hover:text-ink focus-visible:shadow-focus',
+          'group relative flex h-9 w-full items-center rounded-xl text-muted outline-none hover:text-ink focus-visible:shadow-focus',
+          CSS_TRANSITION.colors,
+          AFFORDANCE.clickable,
           collapsed ? 'justify-center px-0' : 'gap-3 px-3',
         )}
       >
-        <span className="absolute inset-0 rounded-xl fill-hover" />
+        <span className={cn('absolute inset-0 rounded-xl fill-hover', CSS_TRANSITION.colors)} />
         <Icon name="layers" size={19} className="relative z-10" />
         {!collapsed && (
           <>
@@ -112,7 +123,7 @@ function AdvancedNav({
             <Icon
               name="arrow-right"
               size={14}
-              className={cn('relative z-10 ml-auto transition-transform', open ? 'rotate-90' : '')}
+              className={cn('relative z-10 ml-auto', CSS_TRANSITION.rotate, open ? 'rotate-90' : '')}
             />
           </>
         )}

@@ -238,19 +238,19 @@ function ExecutionRow({
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <span className="text-2xs font-medium text-muted">{INPUT_META[editing.kind].label}:</span>
           {editing.kind === 'assignOperator' && (
-            <input autoFocus value={editing.operator} onChange={(ev) => onPendingChange({ operator: ev.target.value })} placeholder="Operator name…" className="flex-1 rounded-lg border border-[var(--hairline)] bg-transparent px-2.5 py-1.5 text-xs outline-none placeholder:text-faint" />
+            <input autoFocus value={editing.operator} onChange={(ev) => onPendingChange({ operator: ev.target.value })} placeholder="Operator name…" className="flex-1 rounded-lg border border-[var(--hairline)] bg-transparent px-2.5 py-1.5 text-xs outline-none focus-visible:shadow-focus placeholder:text-faint" />
           )}
           {(editing.kind === 'block' || editing.kind === 'qualityHold') && (
-            <input autoFocus value={editing.reason} onChange={(ev) => onPendingChange({ reason: ev.target.value })} placeholder={editing.kind === 'qualityHold' ? 'Quality hold reason…' : 'Hold reason…'} className="flex-1 rounded-lg border border-[var(--hairline)] bg-transparent px-2.5 py-1.5 text-xs outline-none placeholder:text-faint" />
+            <input autoFocus value={editing.reason} onChange={(ev) => onPendingChange({ reason: ev.target.value })} placeholder={editing.kind === 'qualityHold' ? 'Quality hold reason…' : 'Hold reason…'} className="flex-1 rounded-lg border border-[var(--hairline)] bg-transparent px-2.5 py-1.5 text-xs outline-none focus-visible:shadow-focus placeholder:text-faint" />
           )}
           {editing.kind === 'scrap' && (
             <>
-              <input autoFocus type="number" min={0} value={editing.qty} onChange={(ev) => onPendingChange({ qty: ev.target.value })} placeholder="Qty" className="w-20 rounded-lg border border-[var(--hairline)] bg-transparent px-2.5 py-1.5 text-xs outline-none placeholder:text-faint" />
-              <input value={editing.reason} onChange={(ev) => onPendingChange({ reason: ev.target.value })} placeholder="Scrap reason…" className="flex-1 rounded-lg border border-[var(--hairline)] bg-transparent px-2.5 py-1.5 text-xs outline-none placeholder:text-faint" />
+              <input autoFocus type="number" min={0} value={editing.qty} onChange={(ev) => onPendingChange({ qty: ev.target.value })} placeholder="Qty" className="w-20 rounded-lg border border-[var(--hairline)] bg-transparent px-2.5 py-1.5 text-xs outline-none focus-visible:shadow-focus placeholder:text-faint" />
+              <input value={editing.reason} onChange={(ev) => onPendingChange({ reason: ev.target.value })} placeholder="Scrap reason…" className="flex-1 rounded-lg border border-[var(--hairline)] bg-transparent px-2.5 py-1.5 text-xs outline-none focus-visible:shadow-focus placeholder:text-faint" />
             </>
           )}
           {editing.kind === 'rework' && (
-            <input autoFocus type="number" min={0} value={editing.qty} onChange={(ev) => onPendingChange({ qty: ev.target.value })} placeholder="Rework qty" className="w-28 rounded-lg border border-[var(--hairline)] bg-transparent px-2.5 py-1.5 text-xs outline-none placeholder:text-faint" />
+            <input autoFocus type="number" min={0} value={editing.qty} onChange={(ev) => onPendingChange({ qty: ev.target.value })} placeholder="Rework qty" className="w-28 rounded-lg border border-[var(--hairline)] bg-transparent px-2.5 py-1.5 text-xs outline-none focus-visible:shadow-focus placeholder:text-faint" />
           )}
           <Button variant="primary" size="sm" loading={busy === `${e.id}:${editing.kind}`} onClick={onConfirmInput}>Confirm</Button>
           <Button variant="ghost" size="sm" onClick={onCancelInput}>Cancel</Button>
@@ -530,9 +530,9 @@ export function OperatorConsolePanel(): JSX.Element {
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <div className="flex min-w-[200px] flex-1 items-center gap-2 rounded-lg border border-[var(--hairline)] px-2.5 py-1.5">
               <Icon name="search" size={14} />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by execution, order, machine, operator…" className="w-full bg-transparent text-sm outline-none placeholder:text-faint" />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by execution, order, machine, operator…" className="w-full bg-transparent text-sm outline-none focus-visible:shadow-focus placeholder:text-faint" />
             </div>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-lg border border-[var(--hairline)] bg-transparent px-2 py-1.5 text-xs text-ink outline-none">
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-lg border border-[var(--hairline)] bg-transparent px-2 py-1.5 text-xs text-ink outline-none focus-visible:shadow-focus">
               <option value="">All statuses</option>
               {['running', 'paused', 'blocked', 'inspection', 'dispatched', 'waiting', 'released', 'scheduled', 'completed', 'cancelled'].map((s) => <option key={s} value={s}>{s}</option>)}
             </select>

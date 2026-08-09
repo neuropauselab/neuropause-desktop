@@ -120,7 +120,7 @@ export function ExecutiveChatPanel(): JSX.Element {
               if (e.key === 'Enter') void ask(text);
             }}
             placeholder="Ask about priorities, blockers, idle workers, pending approvals…"
-            className="flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-faint"
+            className="flex-1 bg-transparent text-sm text-ink outline-none focus-visible:shadow-focus placeholder:text-faint"
           />
         </div>
         <Button variant="primary" icon="arrow-right" onClick={() => void ask(text)} disabled={loading || !text.trim()}>

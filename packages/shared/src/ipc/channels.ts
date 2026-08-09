@@ -999,6 +999,25 @@ export const IpcChannel = {
   ExperienceProfileGet: 'xp:profile.get',
   /** Record a first-run decision (workspace type / completion / skip). */
   ExperienceProfileSet: 'xp:profile.set',
+  /**
+   * Clear the profile and return to first run.
+   *
+   * The service could always do this (it was built for QA) but nothing could
+   * reach it, so a user who skipped setup had no way back — the product asked
+   * its questions exactly once, forever. Audited: it discards user state.
+   */
+  ExperienceProfileReset: 'xp:profile.reset',
+  // ── Decision Records + NeuroPause Hold (governance memory over consequential
+  // actions). Reads are `governance:read`; resolving a hold is a governed act
+  // and carries `governance:manage` + bridge audit. ──
+  /** The Decision Record history — newest first. */
+  DecisionRecordList: 'decisionRecord:list',
+  /** One Decision Record plus every other decision on the same subject. */
+  DecisionRecordGet: 'decisionRecord:get',
+  /** Open holds + the resolved history, and whether assessment is live. */
+  HoldList: 'hold:list',
+  /** Resolve an open hold with an explicit outcome. */
+  HoldResolve: 'hold:resolve',
 } as const;
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel];
@@ -1766,6 +1785,12 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.AiRoutingUsage,
   IpcChannel.ExperienceProfileGet,
   IpcChannel.ExperienceProfileSet,
+  IpcChannel.ExperienceProfileReset,
+  // ── Decision Records + NeuroPause Hold ──
+  IpcChannel.DecisionRecordList,
+  IpcChannel.DecisionRecordGet,
+  IpcChannel.HoldList,
+  IpcChannel.HoldResolve,
 ];
 
 /** Runtime-core broadcasts. */

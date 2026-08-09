@@ -430,8 +430,47 @@ export function buildModuleHandlers(
         const module = resolve(registry, r.moduleId);
         ctx.authorize(module.descriptor.permissions.write);
         await module.store.load();
+        const existing = module.store.get(r.id);
+        if (!existing || existing.status === 'deleted') {
+          return { ok: false as const, errors: { _: 'Record not found.' } };
+        }
+        // Governed delete: assess dependencies BEFORE mutating. A record with
+        // real relationship links refuses without an explicit force flag and
+        // returns the evidence instead -- deleting a customer that invoices
+        // point at silently breaks those links, and the person deleting must
+        // see that before it happens, not after.
+        const assessment = ctx.assessDelete?.(r.moduleId, existing) ?? null;
+        const requestedAction = `Delete ${module.descriptor.singular.toLowerCase()} "${existing.title}"`;
+        const subject = `${r.moduleId}/${existing.id} (${existing.title})`;
+        if (assessment && assessment.risk !== 'supported' && r.force !== true) {
+          // HOLD, not failure. Nothing mutated, the evidence goes back to the
+          // caller, and the returned hold id is what makes the pause outlive
+          // the dialog: the person who can clear it may not be this person.
+          const recorded = ctx.recordDecision?.({
+            requestedAction,
+            subject,
+            assessment,
+            outcome: 'cancelled',
+            executed: 'Nothing — the delete was refused pending acknowledgement.',
+          });
+          return {
+            ok: false as const,
+            assessment,
+            holdId: recorded?.holdId ?? null,
+          };
+        }
         const record = module.store.softDelete(r.id, { actor: ctx.actor(), now: ctx.now() });
         if (!record) return { ok: false as const, errors: { _: 'Record not found.' } };
+        if (assessment) {
+          ctx.recordDecision?.({
+            requestedAction,
+            subject,
+            assessment,
+            outcome: 'proceeded',
+            executed:
+              'Soft-deleted despite the assessment (force acknowledged); the record is retained and recoverable.',
+          });
+        }
         await fan(module, 'deleted', record);
         return { ok: true as const, record };
       },

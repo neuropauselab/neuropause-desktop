@@ -1,5 +1,6 @@
 import type { HTMLAttributes, ReactNode } from 'react';
 import { cn } from '@renderer/lib/cn';
+import { AFFORDANCE, CSS_TRANSITION } from '@renderer/lib/motion';
 
 interface CardProps extends HTMLAttributes<HTMLDivElement> {
   /** Adds hover/press affordances for clickable cards. */
@@ -79,8 +80,15 @@ export function Card({
       className={cn(
         surfaceClasses,
         !flush && 'p-5',
+        // A card that lifts on hover and settles on press reads as a single
+        // physical target. The press state returning to 0 matters as much as
+        // the lift — without it the card stays raised under the finger and the
+        // click never feels acknowledged.
+        interactive && CSS_TRANSITION.elevation,
+        interactive && AFFORDANCE.clickable,
         interactive &&
-          'cursor-pointer transition duration-150 ease-emphasized hover:-translate-y-0.5 hover:shadow-pop active:translate-y-0',
+          'hover:-translate-y-0.5 hover:shadow-pop active:translate-y-0 active:shadow-card',
+        interactive && 'motion-reduce:hover:translate-y-0 motion-reduce:active:translate-y-0',
         className,
       )}
       {...rest}

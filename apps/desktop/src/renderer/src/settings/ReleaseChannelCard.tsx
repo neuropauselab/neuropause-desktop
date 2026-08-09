@@ -187,7 +187,7 @@ export function ReleaseChannelCard(): JSX.Element {
       {status.phase === 'downloading' && status.progress && (
         <div className="mb-3">
           <div className="h-1.5 w-full overflow-hidden rounded-full [background:var(--fill-2)]">
-            <div className="h-full rounded-full bg-accent transition-all" style={{ width: pct }} />
+            <div className="h-full rounded-full bg-accent transition-[width,height] motion-reduce:transition-none" style={{ width: pct }} />
           </div>
           <div className="mt-1 text-2xs text-white/45">{pct} downloaded</div>
         </div>

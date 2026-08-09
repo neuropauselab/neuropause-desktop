@@ -73,7 +73,7 @@ describe('Date and time', () => {
 describe('Outstanding invoices', () => {
   const ports: DeterministicPorts = {
     records: (moduleId) =>
-      moduleId === 'finance-invoices'
+      moduleId === 'finance'
         ? rows([
             { fields: { total: 1000, amountPaid: 400 } }, // 600 due
             { fields: { total: 500, amountPaid: 500 } }, // settled
@@ -88,7 +88,7 @@ describe('Outstanding invoices', () => {
     expect(hit?.resolver).toBe('finance.outstanding');
     expect(hit?.answer).toContain('850');
     expect(hit?.answer).toContain('2 invoices');
-    expect(hit?.sources[0]).toMatchObject({ id: 'finance-invoices' });
+    expect(hit?.sources[0]).toMatchObject({ id: 'finance' });
   });
 
   it('a permission refusal is an ANSWER, not a fall-through to the model', () => {

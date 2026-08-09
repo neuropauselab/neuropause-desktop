@@ -5,7 +5,7 @@
  * codebase declares that they do: every link is an untyped `type: 'text'` field,
  * and three incompatible conventions are in use at once —
  *
- *   by display name   `finance-invoices.customer` = "ABC Hospital"
+ *   by display name   `finance.customer` = "ABC Hospital"
  *   by business code  `sales-orders.product`      = "SKU-1001"
  *   by record id      `finance-payments.invoiceRef` = a record id OR "INV-1001"
  *
@@ -82,7 +82,7 @@ export const RELATIONSHIPS: readonly RelationshipDef[] = [
   // ── Customer → order → delivery → invoice → payment ──────────────────────
   {
     key: 'invoice.customer',
-    fromModuleId: 'finance-invoices',
+    fromModuleId: 'finance',
     field: 'customer',
     label: 'Customer',
     toModuleId: 'crm-customers',
@@ -93,7 +93,7 @@ export const RELATIONSHIPS: readonly RelationshipDef[] = [
   },
   {
     key: 'invoice.sourceOrder',
-    fromModuleId: 'finance-invoices',
+    fromModuleId: 'finance',
     field: 'sourceOrder',
     label: 'Source order',
     toModuleId: 'sales-orders',
@@ -117,7 +117,7 @@ export const RELATIONSHIPS: readonly RelationshipDef[] = [
     fromModuleId: 'sales-orders',
     field: 'contact',
     label: 'Contact',
-    toModuleId: 'crm-contacts',
+    toModuleId: 'crm',
     toLabel: 'Contact',
     keyFields: ['name'],
     sensitivity: 'operational',
@@ -179,7 +179,7 @@ export const RELATIONSHIPS: readonly RelationshipDef[] = [
     fromModuleId: 'finance-payments',
     field: 'invoiceRef',
     label: 'Invoice',
-    toModuleId: 'finance-invoices',
+    toModuleId: 'finance',
     toLabel: 'Invoice',
     keyFields: ['number'],
     sensitivity: 'financial',
@@ -353,14 +353,14 @@ export const RELATIONSHIPS: readonly RelationshipDef[] = [
     fromModuleId: 'crm-customers',
     field: 'sourceContact',
     label: 'Source contact',
-    toModuleId: 'crm-contacts',
+    toModuleId: 'crm',
     toLabel: 'Contact',
     keyFields: ['name'],
     sensitivity: 'operational',
   },
   {
     key: 'contact.sourceLead',
-    fromModuleId: 'crm-contacts',
+    fromModuleId: 'crm',
     field: 'sourceLead',
     label: 'Source lead',
     toModuleId: 'crm-leads',

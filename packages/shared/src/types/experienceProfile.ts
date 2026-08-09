@@ -12,6 +12,8 @@
  * the workspace-type filter render it.
  */
 
+import type { UnderstandingAttribute } from './understanding';
+
 export type WorkspaceType = 'personal' | 'professional' | 'business';
 
 export const WORKSPACE_TYPES: readonly WorkspaceType[] = ['personal', 'professional', 'business'];
@@ -65,10 +67,24 @@ export interface ExperienceProfile {
   workspaceType: WorkspaceType | null;
   /** True once the user made an explicit AI-mode choice during first run. */
   aiModeChosen: boolean;
+  /**
+   * What NeuroPause currently understands about the user — every entry
+   * provenance-marked (stated / inferred / corrected / ...). This is a model
+   * of the user's words, editable at any time, never silently promoted to
+   * fact. Empty for installs that predate discovery or skipped it.
+   */
+  attributes: UnderstandingAttribute[];
   completedAt: string | null;
   updatedAt: string | null;
 }
 
 export function defaultExperienceProfile(): ExperienceProfile {
-  return { state: 'pending', workspaceType: null, aiModeChosen: false, completedAt: null, updatedAt: null };
+  return {
+    state: 'pending',
+    workspaceType: null,
+    aiModeChosen: false,
+    attributes: [],
+    completedAt: null,
+    updatedAt: null,
+  };
 }

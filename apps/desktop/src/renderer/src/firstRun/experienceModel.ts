@@ -12,12 +12,14 @@ import type {
   AiRoutingMetadata,
   AiRoutingUsage,
   ProcessingLocation,
+  UnderstandingAttribute,
   WorkspaceType,
 } from '@neuropause/shared';
 import {
   PROCESSING_LOCATION_DESCRIPTIONS,
   PROCESSING_LOCATION_LABELS,
   explainRouting,
+  isVerifiedAttribute,
   routingUsagePercentages,
 } from '@neuropause/shared';
 import type { SectionDef, SectionId } from '@renderer/shell/sections';
@@ -34,6 +36,12 @@ import type { SectionDef, SectionId } from '@renderer/shell/sections';
  */
 const PERSONAL_SECTIONS: readonly SectionId[] = [
   'ai-home',
+  // Understanding and Holds are not enterprise features — they are the two
+  // promises the product makes to every user ("here is what I think I know"
+  // and "here is what I won't do without you"), so a Personal workspace keeps
+  // both. Hiding them would make first-run's "you can correct this later" false.
+  'understand',
+  'holds',
   'mission-control',
   'search',
   'assistant',
@@ -145,6 +153,14 @@ export interface CapabilitySnapshot {
   canImport: boolean;
   /** An AI route is currently available (routing plan is non-empty). */
   aiAvailable: boolean;
+  /**
+   * What NeuroPause understands about the user. Only CONFIRMED attributes
+   * (stated / corrected) may shape a suggestion — personalising off an
+   * unconfirmed inference is exactly how a guess starts behaving like a fact.
+   */
+  understanding?: readonly UnderstandingAttribute[];
+  /** Open holds — work already waiting on this person. */
+  openHolds?: number;
 }
 
 export interface SuggestedAction {
@@ -165,6 +181,27 @@ export interface SuggestedAction {
  */
 export function suggestedActions(snapshot: CapabilitySnapshot): SuggestedAction[] {
   const out: SuggestedAction[] = [];
+  // Real work waiting on a person outranks anything NeuroPause could suggest.
+  if ((snapshot.openHolds ?? 0) > 0) {
+    out.push({
+      id: 'open-holds',
+      label: `Resolve ${snapshot.openHolds} hold${snapshot.openHolds === 1 ? '' : 's'}`,
+      kind: 'navigate',
+      section: 'holds',
+    });
+  }
+  // Personalisation from the user's OWN CONFIRMED words. An inference never
+  // reaches this list: a suggestion is a claim about what you care about, and
+  // making that claim from a guess is how the product starts feeling wrong.
+  const domain = confirmedValue(snapshot.understanding, 'domain');
+  if (domain && snapshot.aiAvailable) {
+    out.push({
+      id: 'domain-opportunities',
+      label: `Find opportunities in ${domain.toLowerCase()}`,
+      kind: 'ask',
+      prompt: `Find opportunities in my ${domain.toLowerCase()} work, using only my real records. Say so where evidence is missing.`,
+    });
+  }
   if (snapshot.aiAvailable) {
     out.push({ id: 'summarize-docs', label: 'Summarize my documents', kind: 'ask', prompt: 'Summarize my documents.' });
     out.push({ id: 'plan-day', label: 'Find the important tasks for today', kind: 'ask', prompt: 'Find the important tasks for today.' });
@@ -180,6 +217,19 @@ export function suggestedActions(snapshot: CapabilitySnapshot): SuggestedAction[
     out.push({ id: 'setup-ai', label: 'Set up AI processing', kind: 'navigate', section: 'settings' });
   }
   return out;
+}
+
+/**
+ * The value of an attribute ONLY if a person stated or corrected it.
+ * Inferred / imported / derived values return null — they are real knowledge,
+ * but they are not the user's word, and a suggestion speaks in the user's word.
+ */
+function confirmedValue(
+  attributes: readonly UnderstandingAttribute[] | undefined,
+  key: string,
+): string | null {
+  const found = attributes?.find((a) => a.key === key);
+  return found && isVerifiedAttribute(found) ? found.value : null;
 }
 
 /* ── usage display ─────────────────────────────────────────────────────────── */

@@ -189,7 +189,7 @@ function resolveOutstandingInvoices(
     return null;
   }
   if (!/\b(total|amount|balance|value|how much)\b/i.test(text)) return null;
-  const read = ports.records?.('finance-invoices');
+  const read = ports.records?.('finance');
   if (read === undefined || read === null) return null; // finance module absent → fall through
   if (read === 'forbidden') return forbidden('invoices', 'finance.outstanding');
 
@@ -217,7 +217,7 @@ function resolveOutstandingInvoices(
       finding('Invoices with a balance', String(open)),
       finding('Outstanding total', outstanding.toLocaleString()),
     ],
-    sources: [{ id: 'finance-invoices', label: 'Invoices', kind: 'records', count: read.rows.length }],
+    sources: [{ id: 'finance', label: 'Invoices', kind: 'records', count: read.rows.length }],
     resolver: 'finance.outstanding',
   };
 }

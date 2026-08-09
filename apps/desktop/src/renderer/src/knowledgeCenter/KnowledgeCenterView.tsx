@@ -554,7 +554,7 @@ function Explore(): JSX.Element {
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder="Search across the whole enterprise — records, graph, memory, timeline…"
-            className="flex-1 bg-transparent text-sm outline-none placeholder:text-faint"
+            className="flex-1 bg-transparent text-sm outline-none focus-visible:shadow-focus placeholder:text-faint"
           />
         </div>
         <button type="submit" className="rounded-xl border border-[var(--hairline)] px-4 py-2 text-sm font-medium fill-hover">

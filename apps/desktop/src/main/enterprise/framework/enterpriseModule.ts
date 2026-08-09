@@ -10,6 +10,7 @@
  * therefore just: a descriptor + a store (+ optional validate/format hooks).
  */
 import type {
+  ActionAssessment,
   EnterpriseEntity,
   EnterpriseModuleActionResult,
   EnterpriseModuleDescriptor,
@@ -43,6 +44,30 @@ export interface EnterpriseModuleContext {
   actor: () => string | null;
   /** Injected clock (tests pass a fixed value). */
   now: () => string;
+  /**
+   * Deterministic pre-delete assessment (governed delete). Supplied by the
+   * composition root over the REAL relationship links; null = no linked
+   * records, delete proceeds as before. The framework refuses a linked delete
+   * without an explicit `force`, returning the assessment instead — evidence
+   * first, mutation second.
+   */
+  assessDelete?: (moduleId: string, record: EnterpriseEntity) => ActionAssessment | null;
+  /**
+   * Record a consequential decision (assessment shown → what the user chose →
+   * what executed). Optional; absent = assessments still gate, just unrecorded.
+   *
+   * Returns the ids it created so the framework can hand the caller a HOLD to
+   * act on later. Whether a refusal *becomes* a durable hold is policy, and
+   * policy lives in the composition root — the framework only carries the id
+   * back out, so the same registry works in a test with no hold store at all.
+   */
+  recordDecision?: (record: {
+    requestedAction: string;
+    subject: string;
+    assessment: ActionAssessment;
+    outcome: 'proceeded' | 'took_alternative' | 'cancelled';
+    executed: string;
+  }) => { decisionId: string; holdId: string | null } | void;
 }
 
 /**

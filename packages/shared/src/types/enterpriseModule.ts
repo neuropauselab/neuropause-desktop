@@ -17,6 +17,7 @@
  * main process, the renderer, and the tests without pulling in a runtime.
  */
 import type { EnterprisePermission } from './enterprise';
+import type { ActionAssessment } from './understanding';
 
 /** Lifecycle status shared by every enterprise record. */
 export type EnterpriseRecordStatus = 'active' | 'archived' | 'deleted';
@@ -204,6 +205,20 @@ export interface EnterpriseModuleMutationResult {
   record?: EnterpriseEntity;
   /** field key → message on validation/precondition failure (`_` for record-level). */
   errors?: Record<string, string>;
+  /**
+   * Present when a consequential operation was ASSESSED before execution and
+   * refused (or annotated). Deterministic — computed from real relationship
+   * links, never from a model. A refused delete carries this so the UI can
+   * show the evidence and the safer alternative.
+   */
+  assessment?: ActionAssessment;
+  /**
+   * The durable HOLD raised by a refused operation. Present alongside
+   * `assessment`; null when no hold store is wired (tests). The caller needs
+   * it to resolve the hold when it takes the safer alternative, so the pause
+   * does not outlive its own answer.
+   */
+  holdId?: string | null;
 }
 
 export type EnterpriseModuleLifecycleAction =

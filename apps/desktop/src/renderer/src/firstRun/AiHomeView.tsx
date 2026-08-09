@@ -43,6 +43,7 @@ export function AiHomeView({ onNavigate }: { onNavigate: (section: SectionId) =>
   const [routing, setRouting] = useState<AiRoutingStatusView | null>(null);
   const [profile, setProfile] = useState<ExperienceProfile | null>(null);
   const [populatedModules, setPopulatedModules] = useState(0);
+  const [openHolds, setOpenHolds] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -62,6 +63,12 @@ export function AiHomeView({ onNavigate }: { onNavigate: (section: SectionId) =>
       .exportable()
       .then((mods) => setPopulatedModules(mods.filter((m) => m.recordCount > 0).length))
       .catch(() => setPopulatedModules(0));
+    // Open holds are real work already waiting on this person. An RBAC refusal
+    // leaves the count at 0 and simply omits the prompt — never a fabricated one.
+    ipc.holds
+      .list(200)
+      .then((view) => setOpenHolds(view.open.length))
+      .catch(() => setOpenHolds(0));
   }, []);
 
   // Business attention — REAL counts from real queries, each tile appearing
@@ -112,8 +119,12 @@ export function AiHomeView({ onNavigate }: { onNavigate: (section: SectionId) =>
       populatedModules,
       canImport: true, // the Data Command Center ships in every build
       aiAvailable: Boolean(routing?.plan.ok),
+      // Only CONFIRMED attributes reach a suggestion — `suggestedActions`
+      // filters, but passing the whole set keeps that rule in one place.
+      understanding: profile?.attributes ?? [],
+      openHolds,
     }),
-    [profile, populatedModules, routing],
+    [profile, populatedModules, routing, openHolds],
   );
 
   const suggestions = useMemo(() => suggestedActions(snapshot), [snapshot]);

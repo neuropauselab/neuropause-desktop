@@ -15,12 +15,14 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
-import type { WorkspaceType } from '@neuropause/shared';
+import type { UnderstandingAttribute, WorkspaceType } from '@neuropause/shared';
 import {
+  ATTRIBUTE_STATUS_LABELS,
   WORKSPACE_TYPES,
   WORKSPACE_TYPE_INCLUDES,
   WORKSPACE_TYPE_LABELS,
   WORKSPACE_TYPE_TAGLINES,
+  inferFromWorkDescription,
 } from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
 import { createLogger } from '@renderer/lib/logger';
@@ -31,7 +33,7 @@ import { setWorkspaceType } from './workspaceTypeStore';
 
 const log = createLogger('first-run');
 
-type Step = 'welcome' | 'processing' | 'workspace';
+type Step = 'welcome' | 'processing' | 'workspace' | 'discovery' | 'understanding';
 
 export function FirstRunExperience({
   onDone,
@@ -43,6 +45,13 @@ export function FirstRunExperience({
 }): JSX.Element {
   const [step, setStep] = useState<Step>('welcome');
   const [busy, setBusy] = useState(false);
+  const [chosenType, setChosenType] = useState<WorkspaceType | null>(null);
+  const [role, setRole] = useState<string | null>(null);
+  const [helpStyle, setHelpStyle] = useState<string | null>(null);
+  const [workText, setWorkText] = useState('');
+  const [attributes, setAttributes] = useState<UnderstandingAttribute[]>([]);
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
   const [ollamaReachable, setOllamaReachable] = useState<boolean | null>(null);
   const reducedMotion = useReducedMotion();
 
@@ -85,13 +94,106 @@ export function FirstRunExperience({
   const chooseWorkspace = async (type: WorkspaceType): Promise<void> => {
     setBusy(true);
     try {
-      await ipc.firstRun.set({ workspaceType: type, state: 'completed' });
+      // Persist the choice immediately (a quit here loses nothing), but do NOT
+      // complete yet — discovery and the understanding check come first.
+      await ipc.firstRun.set({ workspaceType: type });
+      setChosenType(type);
       setWorkspaceType(type);
-      onDone('ai-home');
+      setStep('discovery');
     } catch (err) {
       log.warn('Could not persist workspace type', { message: String(err) });
+    } finally {
       setBusy(false);
     }
+  };
+
+  /** Build the understanding set from the answers given so far. */
+  const buildUnderstanding = (): UnderstandingAttribute[] => {
+    const at = new Date().toISOString();
+    const out: UnderstandingAttribute[] = [];
+    if (chosenType) {
+      out.push({
+        key: 'context',
+        label: 'Your context',
+        value: WORKSPACE_TYPE_LABELS[chosenType],
+        status: 'stated',
+        source: 'You chose this during setup.',
+        updatedAt: at,
+      });
+    }
+    if (role) {
+      out.push({
+        key: 'role',
+        label: 'You',
+        value: role,
+        status: 'stated',
+        source: 'Your answer to "What best describes you?"',
+        updatedAt: at,
+      });
+    }
+    if (helpStyle) {
+      out.push({
+        key: 'helpStyle',
+        label: 'You prefer',
+        value: helpStyle,
+        status: 'stated',
+        source: 'Your answer to "How should NeuroPause help you?"',
+        updatedAt: at,
+      });
+    }
+    if (workText.trim()) {
+      out.push({
+        key: 'workDescription',
+        label: 'In your words',
+        value: workText.trim(),
+        status: 'stated',
+        source: 'You typed this.',
+        updatedAt: at,
+      });
+      // DETERMINISTIC inference — every derived belief is marked `inferred`
+      // and shown for confirmation. Inferred is never silently a fact.
+      for (const inferred of inferFromWorkDescription(workText).attributes) {
+        out.push({ ...inferred, status: 'inferred', updatedAt: at });
+      }
+    }
+    return out;
+  };
+
+  const finishDiscovery = (): void => {
+    setAttributes(buildUnderstanding());
+    setStep('understanding');
+  };
+
+  const confirmUnderstanding = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      await ipc.firstRun.set({ attributes, state: 'completed' });
+      onDone('ai-home');
+    } catch (err) {
+      log.warn('Could not persist understanding', { message: String(err) });
+      setBusy(false);
+    }
+  };
+
+  const correctAttribute = (key: string): void => {
+    const attr = attributes.find((a) => a.key === key);
+    if (!attr) return;
+    setEditingKey(key);
+    setEditValue(attr.value);
+  };
+
+  const saveCorrection = (): void => {
+    if (!editingKey) return;
+    const at = new Date().toISOString();
+    setAttributes((list) =>
+      list.map((a) =>
+        a.key === editingKey
+          ? { ...a, value: editValue.trim() || a.value, status: 'corrected', source: 'You corrected this during setup.', updatedAt: at }
+          : a,
+      ),
+    );
+    setEditingKey(null);
+    setEditValue('');
   };
 
   const fade = reducedMotion
@@ -100,7 +202,13 @@ export function FirstRunExperience({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto [background:var(--surface-0)]"
+      // `app-bg` is the app's own opaque window background (deep black +
+      // accent glow). It has to be an OPAQUE class, not a translucent
+      // `--surface-*` token: first run is a full takeover, and anything
+      // see-through lets the shell underneath bleed through the copy —
+      // the welcome headline lands on top of the AI Home suggestions and
+      // both become unreadable.
+      className="app-bg fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto"
       role="dialog"
       aria-modal="true"
       aria-label="Welcome to NeuroPause"
@@ -208,6 +316,175 @@ export function FirstRunExperience({
             </div>
           </motion.div>
         )}
+
+        {step === 'discovery' && (
+          <motion.div {...fade}>
+            <h2 className="text-center text-2xl font-semibold tracking-tight">
+              Let&rsquo;s get to know you.
+            </h2>
+            <p className="mt-2 text-center text-sm text-muted">
+              A few answers shape how NeuroPause helps. Everything you say here is stored on this device, shown
+              back to you for confirmation, and editable.
+            </p>
+
+            {chosenType === 'personal' ? (
+              <div className="mt-8 space-y-6">
+                <ChipQuestion
+                  title="What do you usually want help with?"
+                  options={['Learning', 'Research', 'Writing', 'Planning', 'Travel', 'Finance', 'Creativity', 'Organization', 'Entertainment', 'Other']}
+                  selected={role}
+                  onSelect={setRole}
+                />
+                <ChipQuestion
+                  title="How should NeuroPause help you?"
+                  options={['Give me the answer quickly', 'Explain deeply', 'Give me options', 'Help me decide', 'Create something for me']}
+                  selected={helpStyle}
+                  onSelect={setHelpStyle}
+                />
+              </div>
+            ) : (
+              <div className="mt-8 space-y-6">
+                <ChipQuestion
+                  title="What best describes you?"
+                  options={['Founder', 'Business owner', 'Executive', 'Manager', 'Consultant', 'Freelancer', 'Employee', 'Researcher', 'Developer', 'Student', 'Other']}
+                  selected={role}
+                  onSelect={setRole}
+                />
+                <div>
+                  <h3 className="mb-2 text-sm font-semibold">What do you work on?</h3>
+                  <textarea
+                    value={workText}
+                    onChange={(e) => setWorkText(e.target.value)}
+                    rows={3}
+                    placeholder="For example: I run a medical-component manufacturing company."
+                    className="w-full rounded-xl border border-[var(--hairline)] bg-transparent px-3.5 py-3 text-sm leading-relaxed outline-none placeholder:text-faint focus:border-accent/60"
+                    aria-label="What do you work on"
+                  />
+                  <p className="mt-1.5 text-xs text-faint">
+                    NeuroPause may infer your industry from this — anything inferred is marked and shown to you
+                    for confirmation, never treated as fact.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-8 flex items-center justify-center gap-3">
+              <Button variant="primary" disabled={busy || !role} onClick={finishDiscovery}>
+                Continue
+              </Button>
+              <Button disabled={busy} onClick={finishDiscovery}>
+                Skip these questions
+              </Button>
+            </div>
+          </motion.div>
+        )}
+
+        {step === 'understanding' && (
+          <motion.div {...fade}>
+            <h2 className="text-center text-2xl font-semibold tracking-tight">
+              Here&rsquo;s what I&rsquo;ve understood about you.
+            </h2>
+            <p className="mt-2 text-center text-sm text-muted">
+              This is NeuroPause&rsquo;s current understanding — not objective truth. Every line shows where it
+              came from, and you can correct anything now or later.
+            </p>
+
+            <div className="mx-auto mt-8 max-w-[560px] space-y-2">
+              {attributes.length === 0 && (
+                <p className="text-center text-sm text-faint">
+                  Nothing recorded — you skipped the questions, which is fine. NeuroPause will learn as you use it.
+                </p>
+              )}
+              {attributes.map((a) => (
+                <div
+                  key={a.key}
+                  className="rounded-xl border border-[var(--hairline)] px-4 py-3"
+                >
+                  {editingKey === a.key ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={editValue}
+                        onChange={(e) => setEditValue(e.target.value)}
+                        className="h-9 flex-1 rounded-lg border border-[var(--hairline)] bg-transparent px-3 text-sm outline-none focus:border-accent/60"
+                        aria-label={`Correct ${a.label}`}
+                        autoFocus
+                      />
+                      <Button size="sm" variant="primary" onClick={saveCorrection}>
+                        Save
+                      </Button>
+                      <Button size="sm" onClick={() => setEditingKey(null)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-xs uppercase tracking-wider text-faint">{a.label}</div>
+                        <div className="mt-0.5 text-sm font-medium">{a.value}</div>
+                        <div className="mt-1 text-xs text-faint">
+                          <span className={a.status === 'inferred' ? 'text-sysorange' : ''}>
+                            {ATTRIBUTE_STATUS_LABELS[a.status]}
+                          </span>
+                          {' · '}
+                          {a.source}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="shrink-0 text-xs text-faint underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2"
+                        onClick={() => correctAttribute(a.key)}
+                      >
+                        Correct
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-8 flex items-center justify-center gap-3">
+              <Button variant="primary" disabled={busy} onClick={() => void confirmUnderstanding()}>
+                Yes, continue
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ChipQuestion({
+  title,
+  options,
+  selected,
+  onSelect,
+}: {
+  title: string;
+  options: string[];
+  selected: string | null;
+  onSelect: (value: string) => void;
+}): JSX.Element {
+  return (
+    <div>
+      <h3 className="mb-2 text-sm font-semibold">{title}</h3>
+      <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={title}>
+        {options.map((option) => (
+          <button
+            key={option}
+            type="button"
+            role="radio"
+            aria-checked={selected === option}
+            onClick={() => onSelect(option)}
+            className={
+              selected === option
+                ? 'rounded-full border border-accent/60 bg-accent/15 px-3.5 py-1.5 text-sm'
+                : 'rounded-full border border-[var(--hairline)] px-3.5 py-1.5 text-sm text-muted hover:text-ink'
+            }
+          >
+            {option}
+          </button>
+        ))}
       </div>
     </div>
   );

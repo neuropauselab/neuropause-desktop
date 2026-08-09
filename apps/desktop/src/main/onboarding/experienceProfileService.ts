@@ -15,7 +15,7 @@
  */
 import { promises as fs } from 'node:fs';
 import { dirname } from 'node:path';
-import type { ExperienceProfile, WorkspaceType } from '@neuropause/shared';
+import type { ExperienceProfile, UnderstandingAttribute, WorkspaceType } from '@neuropause/shared';
 import { defaultExperienceProfile } from '@neuropause/shared';
 import { readStoreFile } from '../storage/storeEnvelope';
 
@@ -23,6 +23,18 @@ export interface ExperienceProfilePatch {
   workspaceType?: WorkspaceType;
   state?: 'completed' | 'skipped';
   aiModeChosen?: boolean;
+  /**
+   * Understanding attributes to upsert (matched by key). A write with status
+   * 'corrected' supersedes an inference; provenance is always preserved on
+   * the attribute itself, so a correction is visible as a correction.
+   */
+  attributes?: UnderstandingAttribute[];
+  /**
+   * Attribute keys to forget. A profile you can only add to is a profile you
+   * do not control — "that's wrong, and there is no right answer" has to be
+   * expressible, not just "that's wrong, here is a different value".
+   */
+  removeKeys?: string[];
 }
 
 export interface ExperienceProfileService {
@@ -73,6 +85,7 @@ export function createExperienceProfileService(opts: {
             ? raw.workspaceType
             : null,
         aiModeChosen: raw.aiModeChosen === true,
+        attributes: coerceAttributes(raw.attributes),
         completedAt: typeof raw.completedAt === 'string' ? raw.completedAt : null,
         updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : null,
       };
@@ -101,6 +114,23 @@ export function createExperienceProfileService(opts: {
         next.aiModeChosen = true;
         onEvent('ai_mode_selected');
       }
+      if (patch.attributes && patch.attributes.length > 0) {
+        // Upsert by key. A correction REPLACES the belief but the replacement
+        // carries status 'corrected' — an inference is never silently kept
+        // alongside the fact that overrode it.
+        const byKey = new Map(next.attributes.map((a) => [a.key, a]));
+        for (const attr of patch.attributes) {
+          byKey.set(attr.key, { ...attr, updatedAt: at });
+        }
+        next.attributes = [...byKey.values()];
+        onEvent('understanding_updated');
+      }
+      if (patch.removeKeys && patch.removeKeys.length > 0) {
+        const drop = new Set(patch.removeKeys);
+        const before = next.attributes.length;
+        next.attributes = next.attributes.filter((a) => !drop.has(a.key));
+        if (next.attributes.length !== before) onEvent('understanding_updated');
+      }
       if (patch.state && profile.state === 'pending') {
         next.state = patch.state;
         next.completedAt = at;
@@ -118,4 +148,25 @@ export function createExperienceProfileService(opts: {
       return { ...profile };
     },
   };
+}
+
+const VALID_STATUS = new Set(['stated', 'inferred', 'corrected', 'imported', 'connected', 'system_derived']);
+
+function coerceAttributes(raw: unknown): UnderstandingAttribute[] {
+  if (!Array.isArray(raw)) return [];
+  const out: UnderstandingAttribute[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const a = item as Partial<UnderstandingAttribute>;
+    if (typeof a.key !== 'string' || !a.key || typeof a.value !== 'string') continue;
+    out.push({
+      key: a.key,
+      label: typeof a.label === 'string' ? a.label : a.key,
+      value: a.value,
+      status: VALID_STATUS.has(a.status as string) ? (a.status as UnderstandingAttribute['status']) : 'stated',
+      source: typeof a.source === 'string' ? a.source : '',
+      updatedAt: typeof a.updatedAt === 'string' ? a.updatedAt : '',
+    });
+  }
+  return out;
 }

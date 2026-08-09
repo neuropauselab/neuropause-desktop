@@ -44,6 +44,8 @@ export type SectionId =
   | 'data-center'
   | 'medical-devices'
   | 'ai-home'
+  | 'understand'
+  | 'holds'
   | 'memory'
   | 'automations'
   | 'notifications'
@@ -140,6 +142,12 @@ export const SECTIONS: SectionDef[] = [
   // hub) so every existing nav lock holds; the Personal workspace filter makes
   // it the lead surface for personal installs.
   { id: 'ai-home', label: 'Ask NeuroPause', icon: 'sparkles', phase: 29, placement: 'primary', group: 'today', description: 'What do you want to accomplish? One place to ask, with a truthful account of where the AI ran.' },
+  // Understanding + Hold: the two surfaces that keep the product honest. Both
+  // sit in `today` beside Ask, because both are about the current conversation
+  // between you and the system — what it believes, and what it will not do
+  // without you. Appended after `ai-home` so every existing nav lock holds.
+  { id: 'understand', label: 'Understand', icon: 'lightbulb', phase: 30, placement: 'primary', group: 'today', description: 'What NeuroPause understands about you, where each belief came from, and how to correct it.' },
+  { id: 'holds', label: 'Holds', icon: 'shield', phase: 30, placement: 'primary', group: 'today', description: 'Work NeuroPause understood but would not run without you — and the record of every consequential decision.' },
   // Retired in favor of the canonical intent-native home (`intent-home`). Hidden from nav, still routable.
   { id: 'decision-center', label: 'Decision Center', icon: 'sparkles', phase: 21, placement: 'primary', group: 'today', hidden: true },
   { id: 'home', label: 'Home', icon: 'home', phase: 2, placement: 'primary', group: 'today', hidden: true },

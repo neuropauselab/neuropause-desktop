@@ -110,6 +110,11 @@ export default defineConfig({
       'src/renderer/src/medicalDevices/**/*.test.ts',
       // Private-First experience — first-run, routing badges, nav filtering.
       'src/renderer/src/firstRun/**/*.test.ts',
+      // Understanding Profile — provenance rules, correction/confirmation, and
+      // the derivation of `system_derived` attributes from real counts. These
+      // are the rules that stop an inference becoming a fact, so they are
+      // asserted here rather than left to the view.
+      'src/renderer/src/understanding/**/*.test.ts',
     ],
   },
   resolve: {

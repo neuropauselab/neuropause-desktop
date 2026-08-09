@@ -179,7 +179,7 @@ export function AssistantView(props: AssistantViewProps): JSX.Element {
                     ? 'Ask for the operational picture…'
                     : 'Ask about your workspace…'
               }
-              className="flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-faint"
+              className="flex-1 bg-transparent text-sm text-ink outline-none focus-visible:shadow-focus placeholder:text-faint"
             />
           </div>
           <Button variant="primary" icon="arrow-right" onClick={submit} disabled={props.busy || !text.trim()}>

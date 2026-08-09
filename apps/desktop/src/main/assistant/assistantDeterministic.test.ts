@@ -88,7 +88,7 @@ describe('Deterministic-first through the real service', () => {
   it('answers the outstanding invoice total from records, engine untouched', async () => {
     const h = harness({
       records: (moduleId) =>
-        moduleId === 'finance-invoices'
+        moduleId === 'finance'
           ? {
               rows: [
                 { id: 'i1', title: 'INV-1', status: 'active', fields: { total: 1000, amountPaid: 400 } },
@@ -99,7 +99,7 @@ describe('Deterministic-first through the real service', () => {
     });
     const message = await ask(h, 'What is our outstanding invoice total?');
     expect(message.envelope?.text).toContain('850');
-    expect(message.envelope?.sources.map((s) => s.id)).toContain('finance-invoices');
+    expect(message.envelope?.sources.map((s) => s.id)).toContain('finance');
     expect(message.envelope?.findings.length).toBeGreaterThan(0);
     expect(h.aiCalls).toBe(0);
     expect(h.recorded).toEqual(['none']);

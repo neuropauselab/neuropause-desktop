@@ -124,7 +124,7 @@ function RelationshipSection(): JSX.Element {
               if (e.key === 'Enter') void run();
             }}
             placeholder="Entity / node id (e.g. a project or person id)…"
-            className="flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-faint"
+            className="flex-1 bg-transparent text-sm text-ink outline-none focus-visible:shadow-focus placeholder:text-faint"
           />
         </div>
         <Button variant="secondary" icon="search" onClick={() => void run()} disabled={!nodeId.trim()}>

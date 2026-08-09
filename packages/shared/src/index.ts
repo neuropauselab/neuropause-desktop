@@ -103,6 +103,8 @@ export * from './types/medicalDeviceApi';
 export * from './types/aiRouting';
 // First-run experience profile — workspace type (Personal/Professional/Business) + completion.
 export * from './types/experienceProfile';
+// Understanding profile (provenance-marked beliefs), HOLD vocabulary, decision records.
+export * from './types/understanding';
 // Inventory → W3.4: reservations — hold documents posting real ledger movements.
 export * from './types/reservations';
 // Inventory → W3.5: valuation — immutable standard-cost registers over the ledger.

@@ -95,7 +95,7 @@ export function EnterpriseSearchPanel({ initialQuery = '' }: { initialQuery?: st
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') void run(text); }}
           placeholder="Search projects, tasks, documents, conversations, calendar, people, customers, workers, policies, approvals…"
-          className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-faint"
+          className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none focus-visible:shadow-focus placeholder:text-faint"
         />
         <button type="button" onClick={() => void run(text)} className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white">Search</button>
       </div>

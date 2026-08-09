@@ -10,8 +10,10 @@
  *  - Count badges: inner mini-pill, tabular-nums, tint flips on active (black-on-white).
  * Monochrome only; the sole colors are #000/#FFF/alpha via CSS vars.
  */
-import type { ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
+import { motion } from 'framer-motion';
 import { cn } from '@renderer/lib/cn';
+import { AFFORDANCE, INDICATOR_SPRING } from '@renderer/lib/motion';
 import { Icon, type IconName } from './Icon';
 
 export interface SegmentedTabItem<T extends string> {
@@ -33,6 +35,12 @@ export function SegmentedTabs<T extends string>({
   onChange: (id: T) => void;
   ariaLabel?: string;
 }): JSX.Element {
+  // `layoutId` must be unique per tab row. Two SegmentedTabs on one screen
+  // sharing an id would make the indicator fly between them — a genuinely
+  // baffling effect, and one that only shows up on the screens that happen to
+  // render two rows.
+  const indicatorId = `pill-indicator-${useId()}`;
+
   return (
     <div
       role="tablist"
@@ -48,12 +56,22 @@ export function SegmentedTabs<T extends string>({
             role="tab"
             aria-selected={active}
             onClick={() => onChange(item.id)}
-            className={cn('np-pill-item', active && 'np-pill-item--active')}
+            className={cn('np-pill-item relative', AFFORDANCE.clickable, active && 'np-pill-item--active')}
           >
-            {item.icon && <Icon name={item.icon} size={14} />}
-            <span>{item.label}</span>
+            {active && (
+              <motion.span
+                layoutId={indicatorId}
+                transition={INDICATOR_SPRING}
+                className="np-pill-indicator"
+                aria-hidden="true"
+              />
+            )}
+            {item.icon && <Icon name={item.icon} size={14} className="relative z-10" />}
+            <span className="relative z-10">{item.label}</span>
             {typeof item.count === 'number' && (
-              <span className={cn('np-pill-count', active && 'np-pill-count--active')}>{item.count}</span>
+              <span className={cn('np-pill-count relative z-10', active && 'np-pill-count--active')}>
+                {item.count}
+              </span>
             )}
           </button>
         );
@@ -77,7 +95,12 @@ export function Chip({
   icon?: IconName;
 }): JSX.Element {
   return (
-    <button type="button" onClick={onClick} aria-pressed={active} className={cn('np-pill-item', active && 'np-pill-item--active')}>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn('np-pill-item', AFFORDANCE.clickable, active && 'np-pill-item--active np-chip--active')}
+    >
       {icon && <Icon name={icon} size={14} />}
       <span>{label}</span>
       {typeof count === 'number' && (

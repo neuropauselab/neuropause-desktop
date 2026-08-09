@@ -52,6 +52,12 @@ import {
   // ── Private-First AI experience ──
   type AiMode,
   type WorkspaceType,
+  type UnderstandingAttribute,
+  type DecisionRecord,
+  type DecisionRecordDetail,
+  type HoldCenterView,
+  type HoldOutcome,
+  type HoldRecord,
   // ── Medical Device Manufacturing Pack ──
   type LotCenterView,
   type LotStatus,
@@ -1081,10 +1087,11 @@ export const ipc = {
         id,
         status,
       }),
-    remove: (moduleId: string, id: string) =>
+    remove: (moduleId: string, id: string, force?: boolean) =>
       invoke(IpcChannel.EnterpriseModuleDelete, {
         moduleId,
         id,
+        ...(force === undefined ? {} : { force }),
       }),
     summarize: (moduleId: string, id: string) =>
       invoke(IpcChannel.EnterpriseModuleSummarize, {
@@ -1729,7 +1736,29 @@ export const ipc = {
       workspaceType?: WorkspaceType;
       state?: 'completed' | 'skipped';
       aiModeChosen?: boolean;
+      attributes?: UnderstandingAttribute[];
+      removeKeys?: string[];
     }) => invoke(IpcChannel.ExperienceProfileSet, patch),
+    /** Clear the profile and return to first run. */
+    reset: () => invoke(IpcChannel.ExperienceProfileReset),
+  },
+
+  /**
+   * Decision Records + NeuroPause Hold — the reconstruction trail over
+   * consequential actions, and the durable pauses awaiting a person.
+   */
+  decisionRecords: {
+    list: (limit?: number): Promise<DecisionRecord[]> =>
+      invoke(IpcChannel.DecisionRecordList, limit === undefined ? {} : { limit }),
+    get: (id: string): Promise<DecisionRecordDetail | null> =>
+      invoke(IpcChannel.DecisionRecordGet, { id }),
+  },
+
+  holds: {
+    list: (limit?: number): Promise<HoldCenterView> =>
+      invoke(IpcChannel.HoldList, limit === undefined ? {} : { limit }),
+    resolve: (id: string, outcome: HoldOutcome, note?: string): Promise<HoldRecord | null> =>
+      invoke(IpcChannel.HoldResolve, { id, outcome, ...(note ? { note } : {}) }),
   },
 
   feedback: {

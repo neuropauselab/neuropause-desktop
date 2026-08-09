@@ -143,6 +143,9 @@ import {
   deviceTenantId,
   traceEdgeStore,
 } from '../medicalDevice/instances';
+import { assessDeleteAgainstLinks } from '../decisions/decisionService';
+import { decisionRecordStore, holdStore, incomingLinksFor } from '../decisions/instances';
+import { holdFromAssessment } from '@neuropause/shared';
 import { reservationModule } from './modules/inventory/reservationModuleInstance';
 import { inventoryValuationModule } from './modules/inventory/inventoryValuationModuleInstance';
 import { serialModule } from './modules/inventory/serialModuleInstance';
@@ -322,6 +325,41 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     notify: (title, body) => notificationScheduler.notifyNow(title, body),
     actor: sessionEmail,
     now: () => new Date().toISOString(),
+    // Governed delete: assess against the REAL resolved relationship links
+    // (late-bound — before the Data Plane exists, no links exist to break).
+    assessDelete: (_moduleId, record) =>
+      assessDeleteAgainstLinks(record.title, incomingLinksFor(record.id)),
+    // The policy half of governed delete lives here, not in the framework:
+    // a REFUSAL opens a durable Hold (the pause has to outlive the dialog),
+    // and any outcome that actually resolves the situation closes it. A hold
+    // that survives its own answer is worse than no hold — it trains people
+    // to ignore the list.
+    recordDecision: (entry) => {
+      const actor = sessionEmail();
+      let holdId: string | null = null;
+      if (entry.outcome === 'cancelled') {
+        holdId = holdStore.open({
+          ...holdFromAssessment(entry.assessment, entry.requestedAction.replace(/^Delete /, '')),
+          title: entry.requestedAction,
+          subject: entry.subject,
+          actor,
+        }).id;
+      } else {
+        holdId =
+          holdStore.resolveSubject(
+            entry.subject,
+            entry.outcome,
+            entry.executed,
+          )?.id ?? null;
+      }
+      const record = decisionRecordStore.record({ ...entry, actor, holdId });
+      audit(
+        'decision.recorded',
+        entry.subject,
+        `${entry.requestedAction}: ${entry.outcome} (${entry.assessment.risk})`,
+      );
+      return { decisionId: record.id, holdId };
+    },
   });
   /**
    * Phase 6 — every module is registered THROUGH the ERP document integration.

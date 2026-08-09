@@ -334,7 +334,7 @@ export function ProductionSchedulePanel(): JSX.Element {
                 <div className="mt-1 text-2xs text-faint">{p.plannedStart || '—'} → {p.plannedFinish || '—'} · {p.machines.join(', ') || 'no machine'}</div>
                 {rejecting === p.id ? (
                   <div className="mt-2 flex items-center gap-2">
-                    <input autoFocus value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="Reason for rejection…" className="flex-1 rounded-lg border border-[var(--hairline)] bg-transparent px-2.5 py-1.5 text-xs outline-none placeholder:text-faint" />
+                    <input autoFocus value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="Reason for rejection…" className="flex-1 rounded-lg border border-[var(--hairline)] bg-transparent px-2.5 py-1.5 text-xs outline-none focus-visible:shadow-focus placeholder:text-faint" />
                     <Button variant="danger" size="sm" loading={busy === `${p.id}:reject`} onClick={() => doReject(p.id)}>Confirm reject</Button>
                     <Button variant="ghost" size="sm" onClick={() => { setRejecting(null); setRejectReason(''); }}>Cancel</Button>
                   </div>
@@ -358,9 +358,9 @@ export function ProductionSchedulePanel(): JSX.Element {
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <div className="flex min-w-[200px] flex-1 items-center gap-2 rounded-lg border border-[var(--hairline)] px-2.5 py-1.5">
             <Icon name="search" size={14} />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search operations by order, product, machine…" className="w-full bg-transparent text-sm outline-none placeholder:text-faint" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search operations by order, product, machine…" className="w-full bg-transparent text-sm outline-none focus-visible:shadow-focus placeholder:text-faint" />
           </div>
-          <select value={machineFilter} onChange={(e) => setMachineFilter(e.target.value)} className="rounded-lg border border-[var(--hairline)] bg-transparent px-2 py-1.5 text-xs text-ink outline-none">
+          <select value={machineFilter} onChange={(e) => setMachineFilter(e.target.value)} className="rounded-lg border border-[var(--hairline)] bg-transparent px-2 py-1.5 text-xs text-ink outline-none focus-visible:shadow-focus">
             <option value="">All machines</option>
             {machines.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>

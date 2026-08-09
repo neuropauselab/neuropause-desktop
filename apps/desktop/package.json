@@ -21,7 +21,8 @@
     "package:mac": "node scripts/generate-notices.cjs && node scripts/generate-build-info.cjs && electron-vite build && electron-builder --mac --arm64 --publish never && npm run verify:release",
     "verify:release": "node scripts/verify-release-artifacts.cjs",
     "package:win": "node scripts/generate-notices.cjs && node scripts/generate-build-info.cjs && electron-vite build && electron-builder --win --x64 --publish never && npm run verify:release -- --platform win",
-    "package:mac:universal": "node scripts/generate-notices.cjs && node scripts/generate-build-info.cjs && electron-vite build && electron-builder --mac --universal --publish never && npm run verify:release"
+    "package:mac:universal": "node scripts/generate-notices.cjs && node scripts/generate-build-info.cjs && electron-vite build && electron-builder --mac --universal --publish never && npm run verify:release",
+    "test:ui": "vitest run --config vitest.ui.config.ts"
   },
   "dependencies": {
     "@neuropause/companion-protocol": "*",
@@ -34,6 +35,9 @@
   },
   "devDependencies": {
     "@electron/notarize": "^3.1.1",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/react": "^14.3.1",
+    "@testing-library/user-event": "^14.5.2",
     "@types/react": "^18.3.2",
     "@types/react-dom": "^18.3.0",
     "@types/ws": "^8.18.1",
@@ -43,6 +47,7 @@
     "electron-builder": "^26.15.3",
     "electron-vite": "^2.2.0",
     "framer-motion": "^11.2.4",
+    "jsdom": "^24.1.0",
     "postcss": "^8.4.38",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

@@ -192,7 +192,7 @@ export function WelcomeView() {
           ))}
         </div>
         <textarea
-          className="surface mb-3 h-20 w-full resize-none rounded-xl p-3 text-sm text-ink outline-none"
+          className="surface mb-3 h-20 w-full resize-none rounded-xl p-3 text-sm text-ink outline-none focus-visible:shadow-focus"
           placeholder="What worked, what broke, what's missing…"
           value={fbMessage}
           onChange={(e) => {

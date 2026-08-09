@@ -86,7 +86,7 @@ export function DecisionCenterView({ onOpenSection }: { onOpenSection?: (id: str
                 key={rv.role}
                 type="button"
                 onClick={() => setRole(rv.role)}
-                className={cn('flex items-center gap-1.5 rounded-full px-3 py-1.5 text-2xs font-medium transition-all', role === rv.role ? 'bg-white/[0.10] text-ink shadow-sm' : 'text-faint hover:text-muted')}
+                className={cn('flex items-center gap-1.5 rounded-full px-3 py-1.5 text-2xs font-medium transition-[background-color,color,border-color,box-shadow,transform,opacity] motion-reduce:transition-none', role === rv.role ? 'bg-white/[0.10] text-ink shadow-sm' : 'text-faint hover:text-muted')}
               >
                 <Icon name={roleIcon(rv.role)} size={13} />
                 {rv.label}
@@ -151,7 +151,7 @@ export function DecisionCenterView({ onOpenSection }: { onOpenSection?: (id: str
             value={intentQuery}
             onChange={(e) => setIntentQuery(e.target.value)}
             placeholder="I want to reduce costs…"
-            className="w-full rounded-2xl border border-[var(--hairline)] bg-white/[0.03] px-5 py-3.5 text-lg text-ink outline-none transition-all placeholder:text-faint focus:border-[color:var(--accent,#6366f1)]"
+            className="w-full rounded-2xl border border-[var(--hairline)] bg-white/[0.03] px-5 py-3.5 text-lg text-ink outline-none transition-[background-color,color,border-color,box-shadow,transform,opacity] motion-reduce:transition-none placeholder:text-faint focus:border-[color:var(--accent,#6366f1)]"
           />
           <div className="mt-3 flex flex-wrap gap-2">
             {matchedIntents.map((i: IntentItem) => (
@@ -159,7 +159,7 @@ export function DecisionCenterView({ onOpenSection }: { onOpenSection?: (id: str
                 key={i.id}
                 type="button"
                 onClick={() => go(i.targetSection)}
-                className="flex items-center gap-2 rounded-full border border-[var(--hairline)] px-3.5 py-2 text-2xs text-muted transition-all hover:border-[color:var(--accent,#6366f1)] hover:text-ink"
+                className="flex items-center gap-2 rounded-full border border-[var(--hairline)] px-3.5 py-2 text-2xs text-muted transition-[background-color,color,border-color,box-shadow,transform,opacity] motion-reduce:transition-none hover:border-[color:var(--accent,#6366f1)] hover:text-ink"
               >
                 <span className="font-medium text-ink">{i.label}</span>
                 <span className="text-faint">→ {i.targetLabel}</span>
@@ -182,7 +182,7 @@ export function DecisionCenterView({ onOpenSection }: { onOpenSection?: (id: str
                   key={m.key}
                   type="button"
                   onClick={() => go(m.expandTo)}
-                  className="flex w-full items-center gap-3 rounded-2xl border border-[var(--hairline)] px-4 py-3 text-left transition-all hover:bg-white/[0.03]"
+                  className="flex w-full items-center gap-3 rounded-2xl border border-[var(--hairline)] px-4 py-3 text-left transition-[background-color,color,border-color,box-shadow,transform,opacity] motion-reduce:transition-none hover:bg-white/[0.03]"
                 >
                   <span className={cn('inline-block h-2 w-2 shrink-0 rounded-full', TONE_DOT[bandTone(m.band)])} />
                   <Icon name={moduleIcon(m.key)} size={15} />

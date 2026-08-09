@@ -132,7 +132,11 @@ export const DOCUMENT_SPECS: readonly DocumentSpec[] = [
   // Revenue/receivable already reach the GL through the existing invoice module
   // (`invoiceModule` → `handleInvoiceChangeForGl`). Lines are adopted here for
   // correct multi-line invoicing; posting is deliberately left to that engine.
-  { moduleId: 'finance-invoices', documentType: 'invoice', // Finance modules share the coarse `operations:*` scope (see PHASE-6-RECON §2).
+  // The Invoices module REAL id is 'finance' (FINANCE_MODULE_ID). This spec
+  // shipped naming 'finance-invoices' -- a module that does not exist -- so
+  // invoice line-item adoption silently never attached on a running device.
+  // Same drift class the relationship boot check caught; fixed with it.
+  { moduleId: 'finance', documentType: 'invoice', // Finance modules share the coarse `operations:*` scope (see PHASE-6-RECON §2).
     editPermission: 'operations:manage' },
 
   // ── Manufacturing ──────────────────────────────────────────────────────

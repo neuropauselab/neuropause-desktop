@@ -1517,7 +1517,18 @@ export const ModuleSetStatusRequest = z
   .object({ moduleId: ModuleId, id: EntId, status: RecordStatus })
   .strict();
 
-export const ModuleDeleteRequest = z.object({ moduleId: ModuleId, id: EntId }).strict();
+export const ModuleDeleteRequest = z
+  .object({
+    moduleId: ModuleId,
+    id: EntId,
+    /**
+     * Acknowledge a HIGH RISK assessment and delete anyway. Absent = the
+     * deterministic dependency assessment gates the delete; a linked record
+     * refuses without this flag, returning the assessment instead.
+     */
+    force: z.boolean().optional(),
+  })
+  .strict();
 
 export const ModuleSummarizeRequest = z.object({ moduleId: ModuleId, id: EntId }).strict();
 
@@ -2826,6 +2837,54 @@ export const ExperienceProfileSetRequest = z
     workspaceType: z.enum(['personal', 'professional', 'business']).optional(),
     state: z.enum(['completed', 'skipped']).optional(),
     aiModeChosen: z.boolean().optional(),
+    /** Understanding attributes to upsert — provenance-marked, never secret. */
+    attributes: z
+      .array(
+        z
+          .object({
+            key: z.string().trim().min(1).max(80),
+            label: z.string().trim().min(1).max(120),
+            value: z.string().trim().min(1).max(400),
+            status: z.enum(['stated', 'inferred', 'corrected', 'imported', 'connected', 'system_derived']),
+            source: z.string().trim().max(400),
+            updatedAt: z.string().max(40),
+          })
+          .strict(),
+      )
+      .max(40)
+      .optional(),
+    /**
+     * Remove understanding attributes by key. A person must be able to tell
+     * NeuroPause to forget something it believes about them, not only to
+     * overwrite it — an understanding profile you can only add to is a profile
+     * you do not control.
+     */
+    removeKeys: z.array(z.string().trim().min(1).max(80)).max(40).optional(),
   })
   .strict();
 export type ExperienceProfileSetRequest = z.infer<typeof ExperienceProfileSetRequest>;
+
+/* ── Decision Records + NeuroPause Hold ────────────────────────────────────── */
+
+export const DecisionRecordListRequest = z
+  .object({ limit: z.number().int().min(1).max(500).optional() })
+  .strict();
+export type DecisionRecordListRequest = z.infer<typeof DecisionRecordListRequest>;
+
+export const DecisionRecordGetRequest = z.object({ id: z.string().trim().min(1).max(80) }).strict();
+export type DecisionRecordGetRequest = z.infer<typeof DecisionRecordGetRequest>;
+
+export const HoldListRequest = z
+  .object({ limit: z.number().int().min(1).max(500).optional() })
+  .strict();
+export type HoldListRequest = z.infer<typeof HoldListRequest>;
+
+export const HoldResolveRequest = z
+  .object({
+    id: z.string().trim().min(1).max(80),
+    outcome: z.enum(['proceeded', 'took_alternative', 'cancelled']),
+    /** What actually happened, in the resolver's own words. */
+    note: z.string().trim().max(400).optional(),
+  })
+  .strict();
+export type HoldResolveRequest = z.infer<typeof HoldResolveRequest>;

@@ -106,7 +106,10 @@ describe('adoption is safe by construction', () => {
 
   it('every shipped spec targets a plausible live module id', () => {
     expect(ADOPTED_MODULE_IDS.length).toBeGreaterThan(5);
-    for (const id of ADOPTED_MODULE_IDS) expect(id).toMatch(/^[a-z]+-[a-z-]+$/);
+    // Single-word ids are REAL: the Invoices module is 'finance' and Contacts
+    // is 'crm'. The old hyphen-required pattern encoded the same wrong
+    // assumption that produced the phantom 'finance-invoices' spec id.
+    for (const id of ADOPTED_MODULE_IDS) expect(id).toMatch(/^[a-z]+(-[a-z-]+)?$/);
     // The GL keeps its own line model — a second one would diverge.
     expect(ADOPTED_MODULE_IDS).not.toContain('finance-journal-entries');
   });

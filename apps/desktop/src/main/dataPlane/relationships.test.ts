@@ -48,7 +48,7 @@ const DESCRIPTORS: EnterpriseModuleDescriptor[] = [
     permissions: { read: 'crm:read', write: 'crm:manage' },
   },
   {
-    id: 'finance-invoices',
+    id: 'finance',
     title: 'Invoices',
     singular: 'Invoice',
     plural: 'Invoices',
@@ -110,7 +110,7 @@ beforeEach(async () => {
   stores = new Map();
   audit = [];
   store('crm-customers', 'customer');
-  store('finance-invoices', 'invoice');
+  store('finance', 'invoice');
   store('finance-payments', 'payment');
   store('sales-orders', 'order');
   relStore = new RelationshipStore(join(dir, 'relationships.json'));
@@ -146,10 +146,10 @@ describe('relationship declarations', () => {
 
   it('catches a declaration pointing at a field that does not exist', () => {
     const problems = assertRelationshipsAreDeclarable([
-      { id: 'finance-invoices', fields: [{ key: 'number' }] },
+      { id: 'finance', fields: [{ key: 'number' }] },
       { id: 'crm-customers', fields: [{ key: 'name' }] },
     ]);
-    expect(problems.some((p) => p.includes('finance-invoices.customer'))).toBe(true);
+    expect(problems.some((p) => p.includes('finance.customer'))).toBe(true);
   });
 
   it('has no duplicate relationship keys', () => {
@@ -166,9 +166,9 @@ describe('relationship declarations', () => {
   });
 
   it('exposes both traversal directions', () => {
-    expect(relationshipsFrom('finance-invoices').map((r) => r.key)).toContain('invoice.customer');
+    expect(relationshipsFrom('finance').map((r) => r.key)).toContain('invoice.customer');
     expect(relationshipsTo('crm-customers').map((r) => r.key)).toContain('invoice.customer');
-    expect(relationshipByKey('payment.invoice')?.toModuleId).toBe('finance-invoices');
+    expect(relationshipByKey('payment.invoice')?.toModuleId).toBe('finance');
     expect(relationshipByKey('nope')).toBeNull();
   });
 
@@ -193,7 +193,7 @@ describe('resolveReference', () => {
         id: r.id,
         title: r.title,
         kind: 'invoice',
-        moduleId: 'finance-invoices',
+        moduleId: 'finance',
         status: 'active',
         rev: 1,
         createdAt: T0,
@@ -321,30 +321,30 @@ describe('similarity matching is never silent on money', () => {
 describe('RelationshipEngine', () => {
   it('links an invoice to its customer by exact code', async () => {
     const customerId = await add('crm-customers', 'ABC Hospital', { name: 'ABC Hospital', customerCode: 'CUST-001' });
-    await add('finance-invoices', 'INV-1001', { number: 'INV-1001', customer: 'CUST-001' });
+    await add('finance', 'INV-1001', { number: 'INV-1001', customer: 'CUST-001' });
 
-    const pass = await engine.resolveRecords('finance-invoices', await records('finance-invoices'), 'dp_1');
+    const pass = await engine.resolveRecords('finance', await records('finance'), 'dp_1');
     expect(pass.resolved).toBe(1);
 
-    const links = relStore.outgoing((await records('finance-invoices'))[0]?.id ?? '');
+    const links = relStore.outgoing((await records('finance'))[0]?.id ?? '');
     expect(links[0]?.targetRecordId).toBe(customerId);
     expect(links[0]?.method).toBe('business_key');
     expect(links[0]?.correlationId).toBe('dp_1');
     // The record keeps what the source system said.
-    expect((await records('finance-invoices'))[0]?.fields.customer).toBe('CUST-001');
+    expect((await records('finance'))[0]?.fields.customer).toBe('CUST-001');
   });
 
   it('parks a reference whose target has not been imported yet', async () => {
-    await add('finance-invoices', 'INV-1002', { number: 'INV-1002', customer: 'CUST-999' });
-    const pass = await engine.resolveRecords('finance-invoices', await records('finance-invoices'), 'dp_2');
+    await add('finance', 'INV-1002', { number: 'INV-1002', customer: 'CUST-999' });
+    const pass = await engine.resolveRecords('finance', await records('finance'), 'dp_2');
     expect(pass.unresolved).toBe(1);
     expect(relStore.counts().unresolved).toBe(1);
   });
 
   it('IMPORT ORDER DOES NOT MATTER — a parked reference resolves when its target arrives', async () => {
     // Invoices first, customers second: the worst realistic ordering.
-    await add('finance-invoices', 'INV-1003', { number: 'INV-1003', customer: 'CUST-007' });
-    await engine.resolveRecords('finance-invoices', await records('finance-invoices'), 'dp_a');
+    await add('finance', 'INV-1003', { number: 'INV-1003', customer: 'CUST-007' });
+    await engine.resolveRecords('finance', await records('finance'), 'dp_a');
     expect(relStore.counts().unresolved).toBe(1);
     expect(relStore.counts().links).toBe(0);
 
@@ -354,29 +354,29 @@ describe('RelationshipEngine', () => {
     expect(retry.resolved).toBe(1);
     expect(relStore.counts().unresolved).toBe(0);
     expect(relStore.counts().links).toBe(1);
-    const invoiceId = (await records('finance-invoices'))[0]?.id ?? '';
+    const invoiceId = (await records('finance'))[0]?.id ?? '';
     expect(relStore.linkFor(invoiceId, 'invoice.customer')?.targetRecordId).toBe(customerId);
   });
 
   it('never creates a duplicate target to satisfy a dangling reference', async () => {
-    await add('finance-invoices', 'INV-1', { number: 'INV-1', customer: 'Ghost Ltd' });
-    await engine.resolveRecords('finance-invoices', await records('finance-invoices'), null);
+    await add('finance', 'INV-1', { number: 'INV-1', customer: 'Ghost Ltd' });
+    await engine.resolveRecords('finance', await records('finance'), null);
     await engine.retryPending(null);
     expect(await records('crm-customers')).toHaveLength(0);
   });
 
   it('is idempotent — re-running resolution does not accumulate links', async () => {
     await add('crm-customers', 'ABC Hospital', { name: 'ABC Hospital', customerCode: 'CUST-001' });
-    await add('finance-invoices', 'INV-1', { number: 'INV-1', customer: 'CUST-001' });
+    await add('finance', 'INV-1', { number: 'INV-1', customer: 'CUST-001' });
     for (let i = 0; i < 3; i += 1) {
-      await engine.resolveRecords('finance-invoices', await records('finance-invoices'), 'dp_x');
+      await engine.resolveRecords('finance', await records('finance'), 'dp_x');
     }
     expect(relStore.counts().links).toBe(1);
   });
 
   it('an empty reference is neither a link nor a review item', async () => {
-    await add('finance-invoices', 'INV-2', { number: 'INV-2', customer: '' });
-    const pass = await engine.resolveRecords('finance-invoices', await records('finance-invoices'), null);
+    await add('finance', 'INV-2', { number: 'INV-2', customer: '' });
+    const pass = await engine.resolveRecords('finance', await records('finance'), null);
     expect(pass.empty).toBeGreaterThan(0);
     expect(relStore.counts().links).toBe(0);
     expect(relStore.counts().unresolved).toBe(0);
@@ -387,16 +387,16 @@ describe('RelationshipEngine', () => {
     // LEGAL-SUFFIX canonical form does. So this is the proposal path, which on a
     // financial link never resolves itself.
     const second = await add('crm-customers', 'ABC Hospital Ltd', { name: 'ABC Hospital Ltd', customerCode: 'CUST-011' });
-    await add('finance-invoices', 'INV-1004', { number: 'INV-1004', customer: 'ABC Hospital Limited' });
+    await add('finance', 'INV-1004', { number: 'INV-1004', customer: 'ABC Hospital Limited' });
 
-    await engine.resolveRecords('finance-invoices', await records('finance-invoices'), 'dp_c');
+    await engine.resolveRecords('finance', await records('finance'), 'dp_c');
     const pending = relStore.queue();
     expect(pending[0]?.status).toBe('ambiguous');
     expect(pending[0]?.candidates.length).toBeGreaterThanOrEqual(1);
 
     const res = await engine.decide(pending[0]?.id ?? '', second, 'dp_c');
     expect(res.ok).toBe(true);
-    const invoiceId = (await records('finance-invoices'))[0]?.id ?? '';
+    const invoiceId = (await records('finance'))[0]?.id ?? '';
     const link = relStore.linkFor(invoiceId, 'invoice.customer');
     expect(link?.targetRecordId).toBe(second);
     expect(link?.method).toBe('manual');
@@ -407,8 +407,8 @@ describe('RelationshipEngine', () => {
 
   it('refuses a decision pointing at a record that does not exist', async () => {
     await add('crm-customers', 'ABC Hospital Ltd', { name: 'ABC Hospital Ltd', customerCode: 'CUST-010' });
-    await add('finance-invoices', 'INV-5', { number: 'INV-5', customer: 'ABC Hospital Limited' });
-    await engine.resolveRecords('finance-invoices', await records('finance-invoices'), null);
+    await add('finance', 'INV-5', { number: 'INV-5', customer: 'ABC Hospital Limited' });
+    await engine.resolveRecords('finance', await records('finance'), null);
     const pending = relStore.queue();
     const res = await engine.decide(pending[0]?.id ?? '', 'rec_nonexistent', null);
     expect(res.ok).toBe(false);
@@ -417,8 +417,8 @@ describe('RelationshipEngine', () => {
   });
 
   it('a skipped item is a recorded decision and is not silently retried', async () => {
-    await add('finance-invoices', 'INV-6', { number: 'INV-6', customer: 'CUST-404' });
-    await engine.resolveRecords('finance-invoices', await records('finance-invoices'), null);
+    await add('finance', 'INV-6', { number: 'INV-6', customer: 'CUST-404' });
+    await engine.resolveRecords('finance', await records('finance'), null);
     const pending = relStore.queue();
     const res = await engine.skip(pending[0]?.id ?? '');
     expect(res.ok).toBe(true);
@@ -433,10 +433,10 @@ describe('RelationshipEngine', () => {
 
   it('builds a record-backed neighbourhood in both directions', async () => {
     const customerId = await add('crm-customers', 'ABC Hospital', { name: 'ABC Hospital', customerCode: 'CUST-001' });
-    await add('finance-invoices', 'INV-2001', { number: 'INV-2001', customer: 'CUST-001' });
-    await engine.resolveRecords('finance-invoices', await records('finance-invoices'), null);
+    await add('finance', 'INV-2001', { number: 'INV-2001', customer: 'CUST-001' });
+    await engine.resolveRecords('finance', await records('finance'), null);
 
-    const invoiceId = (await records('finance-invoices'))[0]?.id ?? '';
+    const invoiceId = (await records('finance'))[0]?.id ?? '';
     await add('finance-payments', 'PAY-1', { paymentNumber: 'PAY-1', invoiceRef: 'INV-2001', customer: 'CUST-001' });
     await engine.resolveRecords('finance-payments', await records('finance-payments'), null);
 
@@ -450,23 +450,23 @@ describe('RelationshipEngine', () => {
 
   it('shows a broken edge rather than hiding it when the far end is deleted', async () => {
     const customerId = await add('crm-customers', 'Gone Co', { name: 'Gone Co', customerCode: 'CUST-020' });
-    await add('finance-invoices', 'INV-3001', { number: 'INV-3001', customer: 'CUST-020' });
-    await engine.resolveRecords('finance-invoices', await records('finance-invoices'), null);
+    await add('finance', 'INV-3001', { number: 'INV-3001', customer: 'CUST-020' });
+    await engine.resolveRecords('finance', await records('finance'), null);
 
     const customers = stores.get('crm-customers');
     customers?.softDelete(customerId, { actor: 'test', now: T0 });
     await customers?.flush();
 
-    const invoiceId = (await records('finance-invoices'))[0]?.id ?? '';
+    const invoiceId = (await records('finance'))[0]?.id ?? '';
     const hood = await engine.neighbourhood(invoiceId);
     expect(hood.outgoing).toHaveLength(1);
     expect(hood.outgoing[0]?.title).toContain('deleted record');
   });
 
   it('survives a module that is not wired in this build', async () => {
-    await add('finance-invoices', 'INV-7', { number: 'INV-7', sourceOrder: 'SO-1' });
+    await add('finance', 'INV-7', { number: 'INV-7', sourceOrder: 'SO-1' });
     stores.delete('sales-orders');
-    const pass = await engine.resolveRecords('finance-invoices', await records('finance-invoices'), null);
+    const pass = await engine.resolveRecords('finance', await records('finance'), null);
     expect(pass.resolved).toBe(0);
   });
 });
@@ -477,7 +477,7 @@ describe('RelationshipStore', () => {
   it('survives a reload with both collections intact', async () => {
     await relStore.link({
       relationshipKey: 'invoice.customer',
-      sourceModuleId: 'finance-invoices',
+      sourceModuleId: 'finance',
       sourceRecordId: 'inv_1',
       sourceField: 'customer',
       sourceValue: 'CUST-001',
@@ -497,7 +497,7 @@ describe('RelationshipStore', () => {
       sourceTitle: 'PAY-1',
       sourceField: 'invoiceRef',
       sourceValue: 'INV-404',
-      targetModuleId: 'finance-invoices',
+      targetModuleId: 'finance',
       targetLabel: 'Invoice',
       status: 'unresolved',
       candidates: [],
@@ -520,7 +520,7 @@ describe('RelationshipStore', () => {
       sourceTitle: 'PAY-2',
       sourceField: 'invoiceRef',
       sourceValue: 'INV-404',
-      targetModuleId: 'finance-invoices',
+      targetModuleId: 'finance',
       targetLabel: 'Invoice',
       status: 'unresolved' as const,
       candidates: [],
@@ -536,7 +536,7 @@ describe('RelationshipStore', () => {
 
   it('orders the queue so ambiguous items are seen before unresolved ones', async () => {
     const base = {
-      sourceModuleId: 'finance-invoices',
+      sourceModuleId: 'finance',
       sourceField: 'customer',
       targetModuleId: 'crm-customers',
       targetLabel: 'Customer',

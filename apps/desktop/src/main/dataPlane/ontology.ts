@@ -107,7 +107,7 @@ export const ONTOLOGY: readonly CanonicalEntity[] = [
     label: 'Contact',
     plural: 'Contacts',
     domain: 'crm',
-    moduleId: 'crm-contacts',
+    moduleId: 'crm',
     titleField: 'name',
     risk: 'medium',
     nameHints: ['contact', 'contacts', 'people', 'person'],
@@ -216,7 +216,7 @@ export const ONTOLOGY: readonly CanonicalEntity[] = [
     label: 'Invoice',
     plural: 'Invoices',
     domain: 'finance',
-    moduleId: 'finance-invoices',
+    moduleId: 'finance',
     titleField: 'number',
     risk: 'high', // money
     nameHints: ['invoice', 'invoices', 'bill', 'billing', 'receivable', 'receivables', 'sales invoice', 'ar'],

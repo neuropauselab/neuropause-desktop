@@ -128,7 +128,7 @@ export function MemoryPanel(): JSX.Element {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search memory — keyword, project, worker, connector…"
-          className="flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-faint"
+          className="flex-1 bg-transparent text-sm text-ink outline-none focus-visible:shadow-focus placeholder:text-faint"
         />
         {query && <IconAction icon="close" label="Clear" onClick={() => setQuery('')} />}
       </div>
