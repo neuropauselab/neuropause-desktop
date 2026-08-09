@@ -1048,6 +1048,18 @@ export const IpcChannel = {
    * no-op and a measurement cannot go stale while still looking current.
    */
   OutcomeGet: 'outcome:get',
+  /**
+   * Everything connected to one record, across domains (Program 6).
+   *
+   * In the `enterprise:` namespace because that is what governs it: composed by
+   * the enterprise subsystem, reading enterprise module records, authorized by
+   * the enterprise gate. Dynamically authorized — the handler authorizes the
+   * ROOT record's own module read scope, then filters every hop by the read
+   * scope of the module on the other side. A static channel scope cannot
+   * express that (the answer spans four scopes), and a single broad one would
+   * turn the relationship layer into a way around per-module permissions.
+   */
+  CrossDomainRelated: 'enterprise:related',
 } as const;
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel];
@@ -1830,6 +1842,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.OpportunitySetStatus,
   IpcChannel.OpportunityExecute,
   IpcChannel.OutcomeGet,
+  IpcChannel.CrossDomainRelated,
 ];
 
 /** Runtime-core broadcasts. */

@@ -391,6 +391,100 @@ export const RELATIONSHIPS: readonly RelationshipDef[] = [
     sensitivity: 'operational',
     allowNameProposal: true,
   },
+
+  // ── Program 6: the remaining spokes of a customer's world ────────────────
+  //
+  // Added because a Customer 360 that stops at orders and invoices is not one.
+  // Every entry below points at a field that ALREADY carries a real reference;
+  // none invents a link, and the four marked "record id" are validated by their
+  // own module at write time, which is why they need no name proposal.
+  {
+    key: 'ticket.customer',
+    fromModuleId: 'helpdesk-tickets',
+    field: 'customerRef',
+    label: 'Customer',
+    toModuleId: 'crm-customers',
+    toLabel: 'Customer',
+    keyFields: ['customerCode', 'name'],
+    sensitivity: 'operational',
+  },
+  {
+    key: 'contract.customer',
+    fromModuleId: 'sales-contracts',
+    field: 'customerRef',
+    label: 'Customer',
+    toModuleId: 'crm-customers',
+    toLabel: 'Customer',
+    keyFields: ['customerCode', 'name'],
+    sensitivity: 'operational',
+  },
+  {
+    key: 'activity.customer',
+    fromModuleId: 'crm-activities',
+    field: 'relatedCustomerRef',
+    label: 'Customer',
+    toModuleId: 'crm-customers',
+    toLabel: 'Customer',
+    keyFields: ['customerCode', 'name'],
+    sensitivity: 'operational',
+  },
+  {
+    // `account` holds a NAME, not an id — the one entry here that can be
+    // ambiguous. Left `operational` with a name proposal so a near-miss parks
+    // for a human rather than resolving silently; had it been financial the
+    // resolver would refuse the proposal outright, which is the correct rule
+    // for money and too strict for a pipeline label.
+    key: 'opportunity.customer',
+    fromModuleId: 'crm-opportunities',
+    field: 'account',
+    label: 'Customer',
+    toModuleId: 'crm-customers',
+    toLabel: 'Customer',
+    keyFields: ['customerCode', 'name'],
+    sensitivity: 'operational',
+    allowNameProposal: true,
+  },
+  {
+    key: 'opportunity.sourceLead',
+    fromModuleId: 'crm-opportunities',
+    field: 'sourceLeadRef',
+    label: 'Source lead',
+    toModuleId: 'crm-leads',
+    toLabel: 'Lead',
+    keyFields: ['name'],
+    sensitivity: 'operational',
+  },
+  {
+    key: 'opportunity.quote',
+    fromModuleId: 'crm-opportunities',
+    field: 'quoteRef',
+    label: 'Quote',
+    toModuleId: 'sales-quotes',
+    toLabel: 'Quote',
+    keyFields: ['quoteNumber'],
+    sensitivity: 'operational',
+  },
+  // ── Program 4/5: the sourcing chain, so an outcome is traceable ──────────
+  {
+    key: 'rfq.awardedOrder',
+    fromModuleId: 'procurement-rfqs',
+    field: 'awardedOrder',
+    label: 'Awarded purchase order',
+    toModuleId: 'procurement-orders',
+    toLabel: 'Purchase order',
+    keyFields: ['poNumber'],
+    sensitivity: 'financial',
+  },
+  {
+    key: 'rfq.sourceRequest',
+    fromModuleId: 'procurement-rfqs',
+    field: 'sourceRequest',
+    label: 'Source request',
+    toModuleId: 'procurement-requests',
+    toLabel: 'Purchase request',
+    keyFields: ['requestNumber'],
+    sensitivity: 'operational',
+  },
 ];
 
 /** Every relationship whose source is this module. */

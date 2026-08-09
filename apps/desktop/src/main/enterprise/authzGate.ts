@@ -283,6 +283,12 @@ export const DYNAMICALLY_AUTHORIZED_ENTERPRISE_CHANNELS: readonly IpcChannelName
   IpcChannel.EnterpriseModuleSetLines,
   IpcChannel.EnterpriseModuleApproval,
   IpcChannel.EnterpriseModuleApprove,
+  // Cross-domain related records. The one answer that legitimately spans
+  // several read scopes, so it cannot carry a single static one: the handler
+  // authorizes the root record's module and then filters every hop by the far
+  // module's own scope. A static scope here would be the permission bypass the
+  // traversal exists to prevent.
+  IpcChannel.CrossDomainRelated,
 ];
 
 /**

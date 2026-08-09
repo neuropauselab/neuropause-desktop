@@ -101,8 +101,14 @@ export interface EnterpriseModuleContext {
    * uses it to notice side effects that happened DURING the change — a
    * refused accounting posting, for one — which the framework itself has no
    * knowledge of.
+   *
+   * The record is passed so the root can also react to WHAT changed: Program 6
+   * resolves the record's declared references here, because otherwise a link
+   * only ever exists for imported data and anything typed into the app appears
+   * connected to nothing. Both parameters are optional, so the existing
+   * zero-argument consumers are unaffected.
    */
-  onAfterChange?: () => void;
+  onAfterChange?: (changed?: { moduleId: string; record: EnterpriseEntity }) => void;
   /**
    * A module action refused because of a POLICY, not bad input. Raises a
    * durable hold; absent, the refusal behaves exactly as it did before.

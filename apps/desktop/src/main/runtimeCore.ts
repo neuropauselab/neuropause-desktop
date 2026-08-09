@@ -186,6 +186,7 @@ import {
 // executive decision workflow, and these are the governance RECORD/HOLD reads.
 import { initDecisions as initDecisionRecords } from './decisions';
 import { createHoldRaiser } from './decisions/raiseHold';
+import { bindRelationshipEngine, bindRelationshipStore } from './crossDomain/instances';
 import {
   ambiguousIdentityHold,
   externalUnavailableHold,
@@ -563,6 +564,10 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // an unbound reader silently reports "no links", i.e. every dangerous delete
   // would sail through ungoverned. The relationship store exists from the
   // `initDataPlane` call above, so here is the earliest correct place.
+  // Cross-domain related records read the SAME resolved links governed delete
+  // does — one relationship store, two consumers, no second graph.
+  bindRelationshipStore(dataPlane.relationships);
+  bindRelationshipEngine(dataPlane.relationshipEngine);
   bindIncomingLinkReader((recordId) =>
     dataPlane.relationships.incoming(recordId).map((link) => {
       const declaration = RELATIONSHIPS.find((r) => r.key === link.relationshipKey);

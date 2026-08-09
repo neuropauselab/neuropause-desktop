@@ -155,7 +155,7 @@ async function emitLifecycle(
   });
   await module.hooks.onChange?.({ action, record }, actionCtx);
   // AFTER the module's own reconciler: a posting refusal happens inside it.
-  ctx.onAfterChange?.();
+  ctx.onAfterChange?.({ moduleId: id, record });
 }
 
 function resolve(registry: EnterpriseModuleRegistry, moduleId: string): EnterpriseModule {

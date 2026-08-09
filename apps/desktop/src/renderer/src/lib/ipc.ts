@@ -63,6 +63,7 @@ import {
   type OpportunityExecuteResult,
   type OpportunityStatus,
   type Outcome,
+  type RelatedRecordsView,
   type HoldRecord,
   // ── Medical Device Manufacturing Pack ──
   type LotCenterView,
@@ -1806,6 +1807,19 @@ export const ipc = {
     /** Derived live on every call — Refresh cannot be a no-op. */
     outcome: (opportunityId: string): Promise<Outcome | null> =>
       invoke(IpcChannel.OutcomeGet, { opportunityId }),
+  },
+
+  crossDomain: {
+    /**
+     * Everything connected to one record. Permission-filtered per module on
+     * every hop, so what comes back is what THIS account may see.
+     */
+    related: (recordId: string, moduleId: string, depth?: number): Promise<RelatedRecordsView> =>
+      invoke(IpcChannel.CrossDomainRelated, {
+        recordId,
+        moduleId,
+        ...(depth === undefined ? {} : { depth }),
+      }),
   },
 
   feedback: {

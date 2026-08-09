@@ -165,6 +165,10 @@ import {
   rfqFieldsFor,
 } from '../opportunities/procurementSource';
 import { outcomeRevisionStore } from '../outcomes/instances';
+import { buildRelatedRecords } from '../crossDomain/relatedRecords';
+import { relationshipEngineRef, relationshipStoreRef } from '../crossDomain/instances';
+import { CrossDomainRelatedRequest } from '@neuropause/shared';
+import type { EnterpriseEntity, RelatedRecordsView } from '@neuropause/shared';
 import {
   holdFromAssessment,
   insufficientEvidenceHold,
@@ -584,7 +588,18 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
      * refused. Checked here rather than inside the adapter so the adapter
      * stays Electron-free and unaware of the hold subsystem.
      */
-    onAfterChange: () => raiseVerificationHolds(),
+    onAfterChange: (changed) => {
+      raiseVerificationHolds();
+      // Program 6: resolve this record's declared references NOW.
+      //
+      // Until this existed, `resolveRecords` was called from exactly one place
+      // — the Data Plane import — so a record typed into the app had no links,
+      // ever, and its Related Records panel said "nothing links to this
+      // record". Fire-and-forget and error-swallowing on purpose: a
+      // relationship that fails to resolve must never fail the save that
+      // produced it, and an unresolved reference simply parks for review.
+      if (changed) void resolveReferencesFor(changed.moduleId, changed.record);
+    },
     onPolicyConflict: ({ moduleId, record, action, policy }) => {
       const subject = `${moduleId}/${record.id}/${action}`;
       raiseHold({
@@ -919,12 +934,113 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     now: () => new Date().toISOString(),
   });
 
+  /**
+   * Resolve one record's declared references, and let anything parked waiting
+   * for it try again.
+   *
+   * Two halves, because a link has two ends. Creating an invoice that names
+   * "Acme Ltd" needs its OWN references resolved; creating the customer "Acme
+   * Ltd" needs the invoices that parked waiting for it to be retried. Without
+   * the second half, import-order independence — the property the parking
+   * queue exists for — would hold for imports and not for anything typed in.
+   *
+   * The retry is coalesced behind a short timer: a bulk conversion can fan out
+   * dozens of changes in a tick, and re-running the whole pending queue for
+   * each of them would be quadratic.
+   */
+  let retryTimer: NodeJS.Timeout | null = null;
+  const resolveReferencesFor = async (
+    moduleId: string,
+    record: EnterpriseEntity,
+  ): Promise<void> => {
+    const engine = relationshipEngineRef();
+    if (!engine) return; // Data Plane not up yet; the next import pass covers it.
+    try {
+      await engine.resolveRecords(moduleId, [record], null);
+    } catch {
+      // A failed resolution must never fail the save that produced it.
+    }
+    if (retryTimer) clearTimeout(retryTimer);
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      void engine.retryPending(null).catch(() => undefined);
+    }, 400);
+  };
+
+  /* ── Cross-domain related records (Program 6) ────────────────────────────
+   *
+   * Composed here because this is where the two halves already meet: the
+   * module registry (which record stores exist, and the scope each needs) and
+   * the permission probe. The traversal itself reuses the Data Plane
+   * relationship store — the only one of the repo's four relationship systems
+   * keyed on real record ids — through a late-bound reader, because the Data
+   * Plane initializes after this subsystem.
+   */
+  const relatedRecordsHandler: SecureHandlerDef = {
+    channel: IpcChannel.CrossDomainRelated,
+    schema: CrossDomainRelatedRequest,
+    // Stamped explicitly because this def is appended raw rather than passed
+    // through `withEnterpriseAuthz` (it authorizes dynamically, from the
+    // payload). Without it the bridge's auth gate never runs for this channel.
+    requireAuth: true,
+    handler: async (p): Promise<RelatedRecordsView> => {
+      const req = p as CrossDomainRelatedRequest;
+      const store = relationshipStoreRef();
+      if (!store) {
+        // The Data Plane has not initialized. An empty result would read as
+        // "nothing is connected", so the honest answer is an empty view whose
+        // root is null — the UI says the link engine is not running.
+        return {
+          root: null,
+          groups: [],
+          total: 0,
+          depth: 0,
+          hiddenByPermission: false,
+          brokenLinks: 0,
+          truncated: false,
+        };
+      }
+      // The root's own scope, enforced by THROWING before anything is walked.
+      // Asking for the neighbourhood of a record you cannot read is a refusal,
+      // not an empty list — and checking it first means the traversal never
+      // touches a store on behalf of someone who should not have got here.
+      //
+      // An UNKNOWN module throws too. `moduleId` is caller-supplied, so making
+      // the check conditional on the module resolving would let anyone skip
+      // authorization entirely by naming a module that does not exist.
+      const rootModule = modules.registry.get(req.moduleId);
+      if (!rootModule) throw new Error(`No module "${req.moduleId}" is registered.`);
+      authorize(rootModule.descriptor.permissions.read);
+
+      const view = await buildRelatedRecords(
+        {
+          relationships: store,
+          storeFor: (moduleId) => modules.registry.get(moduleId)?.store ?? null,
+          describe: (moduleId) => {
+            const descriptor = modules.registry.get(moduleId)?.descriptor;
+            return descriptor
+              ? { plural: descriptor.plural, read: descriptor.permissions.read }
+              : null;
+          },
+          allows: (permission) => permissions.allows(permission),
+        },
+        {
+          recordId: req.recordId,
+          moduleId: req.moduleId,
+          ...(req.depth === undefined ? {} : { depth: req.depth }),
+        },
+      );
+      return view;
+    },
+  };
+
   return {
     handlers: [
       ...withEnterpriseAuthz(buildHandlers()),
       ...modules.handlers,
       ...medicalDeviceHandlers,
       ...opportunities.handlers,
+      relatedRecordsHandler,
     ],
     authorize,
     modules: modules.registry,

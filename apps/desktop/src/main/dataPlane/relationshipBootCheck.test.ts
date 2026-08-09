@@ -35,6 +35,15 @@ import { createShippingModule } from '../enterprise/modules/warehouse/shippingMo
 import { createExecutionModule } from '../enterprise/modules/manufacturing/executionModule';
 import { createEmployeeModule } from '../enterprise/modules/hr/employeeModule';
 import { createProjectModule } from '../enterprise/modules/projects/projectModule';
+// Program 6 added declarations pointing at these five. All are registered in
+// the real runtime; the list here simply has to keep up, or a declaration that
+// would boot fine looks broken — and worse, one that would NOT boot looks fine.
+import { createTicketModule } from '../enterprise/modules/helpdesk/ticketModule';
+import { createContractModule } from '../enterprise/modules/sales/contractModule';
+import { createActivityModule } from '../enterprise/modules/crm/activityModule';
+import { createOpportunityModule } from '../enterprise/modules/crm/opportunityModule';
+import { createPurchaseRequestModule } from '../enterprise/modules/procurement/purchaseRequestModule';
+import { createRfqModule } from '../enterprise/modules/procurement/rfqModule';
 
 describe('Relationship declarations vs live descriptors (boot check reproduction)', () => {
   it('every md-lot declaration resolves against the real Medical Device + inventory descriptors', async () => {
@@ -86,6 +95,12 @@ describe('Relationship declarations vs live descriptors (boot check reproduction
       createSupplierModule(j('sup2')).descriptor,
       createDeviceProductModule(j('mdp2'), { tenantId: () => 't' }).descriptor,
       createDeviceLotModule(j('mdl2'), () => 't').descriptor,
+      createTicketModule(j('tkt')).descriptor,
+      createContractModule(j('ctr')).descriptor,
+      createActivityModule(j('act')).descriptor,
+      createOpportunityModule(j('opp')).descriptor,
+      createPurchaseRequestModule(j('pr')).descriptor,
+      createRfqModule(j('rfq')).descriptor,
     ];
     const problems = assertRelationshipsAreDeclarable(descriptors);
     expect(problems, problems.join('\n')).toEqual([]);

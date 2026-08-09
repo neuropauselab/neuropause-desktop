@@ -2973,6 +2973,22 @@ export const OpportunityExecuteRequest = z
   .strict();
 export type OpportunityExecuteRequest = z.infer<typeof OpportunityExecuteRequest>;
 
+export const CrossDomainRelatedRequest = z
+  .object({
+    recordId: z.string().trim().min(1).max(120),
+    /**
+     * The record's own module. Supplied rather than inferred from its links,
+     * because a record with NO links has none to infer from — and inferring
+     * left "this record is connected to nothing" indistinguishable from "the
+     * link engine is not running", which are opposite answers.
+     */
+    moduleId: z.string().trim().min(1).max(80),
+    /** Bounded at the schema too, so a huge traversal is unrequestable. */
+    depth: z.number().int().min(1).max(3).optional(),
+  })
+  .strict();
+export type CrossDomainRelatedRequest = z.infer<typeof CrossDomainRelatedRequest>;
+
 export const OutcomeGetRequest = z
   .object({ opportunityId: z.string().trim().min(1).max(80) })
   .strict();

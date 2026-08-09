@@ -32,6 +32,7 @@ import { EmptyState } from '@renderer/components/ui/EmptyState';
 import { Skeleton } from '@renderer/components/ui/Skeleton';
 import { Icon, type IconName } from '@renderer/components/ui/Icon';
 import { DocumentPanel } from './DocumentPanel';
+import { RelatedRecordsPanel } from './RelatedRecordsPanel';
 
 type BadgeTone = 'neutral' | 'accent' | 'blue' | 'green' | 'orange' | 'purple' | 'teal' | 'pink';
 const BADGE_TONES = new Set<BadgeTone>([
@@ -738,6 +739,15 @@ function RecordDetail({
       {/* Line items + approval. Renders nothing for a module with no document
           spec, so the 90-odd master-data modules are unaffected. */}
       <DocumentPanel moduleId={module.id} recordId={record.id} onChanged={onChanged} />
+      {/*
+        Cross-domain connections for this record (Program 6). Loaded with the
+        detail, not the list, so opening a module does not traverse every row.
+      */}
+      <RelatedRecordsPanel
+        recordId={record.id}
+        moduleId={module.id}
+        revision={`${record.id}|${record.rev}`}
+      />
       {module.aiSummary && <AiSummarySection module={module} recordId={record.id} />}
       <dl className="space-y-3">
         {module.fields.map((f) => (
