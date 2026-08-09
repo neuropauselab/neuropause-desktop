@@ -1536,6 +1536,53 @@ export const ModuleActionRequest = z
   .object({ moduleId: ModuleId, id: EntId, action: z.string().trim().min(1).max(64) })
   .strict();
 
+/* ── ERP document layer: lines + approval ──────────────────────────────────
+ * These are the requests for engines that already existed but had no channel.
+ * Bounds are deliberate: MAX_LINES_PER_DOCUMENT is enforced again in the line
+ * store, but a payload cap belongs at the boundary so a malformed renderer
+ * cannot make the main process do the work before refusing it. */
+
+export const ModuleLinesRequest = z.object({ moduleId: ModuleId, id: EntId }).strict();
+export type ModuleLinesRequest = z.infer<typeof ModuleLinesRequest>;
+
+const DocumentLineInput = z
+  .object({
+    productId: z.string().trim().max(120).nullable().optional(),
+    description: z.string().trim().max(400).optional(),
+    quantity: z.number().finite(),
+    unit: z.string().trim().max(24).nullable().optional(),
+    unitPrice: z.number().finite().optional(),
+    discountPercent: z.number().finite().nullable().optional(),
+    discountAmount: z.number().finite().nullable().optional(),
+    taxRatePercent: z.number().finite().nullable().optional(),
+    currency: z.string().trim().min(3).max(3).optional(),
+    accountId: z.string().trim().max(120).nullable().optional(),
+    warehouseId: z.string().trim().max(120).nullable().optional(),
+    projectId: z.string().trim().max(120).nullable().optional(),
+    costCenterId: z.string().trim().max(120).nullable().optional(),
+    batchId: z.string().trim().max(120).nullable().optional(),
+  })
+  .strict();
+
+export const ModuleSetLinesRequest = z
+  .object({ moduleId: ModuleId, id: EntId, lines: z.array(DocumentLineInput).max(500) })
+  .strict();
+export type ModuleSetLinesRequest = z.infer<typeof ModuleSetLinesRequest>;
+
+export const ModuleApprovalRequest = z.object({ moduleId: ModuleId, id: EntId }).strict();
+export type ModuleApprovalRequest = z.infer<typeof ModuleApprovalRequest>;
+
+export const ModuleApproveRequest = z
+  .object({
+    moduleId: ModuleId,
+    id: EntId,
+    stepId: z.string().trim().min(1).max(80),
+    decision: z.enum(['approved', 'rejected']),
+    note: z.string().trim().max(400).optional(),
+  })
+  .strict();
+export type ModuleApproveRequest = z.infer<typeof ModuleApproveRequest>;
+
 export const ModuleSearchRequest = z
   .object({
     moduleId: ModuleId,

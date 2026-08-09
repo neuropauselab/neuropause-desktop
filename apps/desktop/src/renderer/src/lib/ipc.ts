@@ -53,6 +53,7 @@ import {
   type AiMode,
   type WorkspaceType,
   type UnderstandingAttribute,
+  type DocumentLineInput,
   type DecisionRecord,
   type DecisionRecordDetail,
   type HoldCenterView,
@@ -1097,6 +1098,30 @@ export const ipc = {
       invoke(IpcChannel.EnterpriseModuleSummarize, {
         moduleId,
         id,
+      }),
+    /** Line items + derived totals for a document. */
+    lines: (moduleId: string, id: string) =>
+      invoke(IpcChannel.EnterpriseModuleLines, { moduleId, id }),
+    /** Replace a document's lines. Totals are re-derived, never sent. */
+    setLines: (moduleId: string, id: string, lines: DocumentLineInput[]) =>
+      invoke(IpcChannel.EnterpriseModuleSetLines, { moduleId, id, lines }),
+    /** Approval state: required steps, what is satisfied, who may act next. */
+    approval: (moduleId: string, id: string) =>
+      invoke(IpcChannel.EnterpriseModuleApproval, { moduleId, id }),
+    /** Record an approval decision. Role eligibility and SoD are enforced. */
+    approve: (
+      moduleId: string,
+      id: string,
+      stepId: string,
+      decision: 'approved' | 'rejected',
+      note?: string,
+    ) =>
+      invoke(IpcChannel.EnterpriseModuleApprove, {
+        moduleId,
+        id,
+        stepId,
+        decision,
+        ...(note ? { note } : {}),
       }),
     action: (moduleId: string, id: string, action: string) =>
       invoke(IpcChannel.EnterpriseModuleAction, {

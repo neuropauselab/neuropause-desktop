@@ -31,6 +31,7 @@ import { Input, Textarea, Select } from '@renderer/components/ui/Input';
 import { EmptyState } from '@renderer/components/ui/EmptyState';
 import { Skeleton } from '@renderer/components/ui/Skeleton';
 import { Icon, type IconName } from '@renderer/components/ui/Icon';
+import { DocumentPanel } from './DocumentPanel';
 
 type BadgeTone = 'neutral' | 'accent' | 'blue' | 'green' | 'orange' | 'purple' | 'teal' | 'pink';
 const BADGE_TONES = new Set<BadgeTone>([
@@ -734,6 +735,9 @@ function RecordDetail({
           {actionMsg.text}
         </div>
       )}
+      {/* Line items + approval. Renders nothing for a module with no document
+          spec, so the 90-odd master-data modules are unaffected. */}
+      <DocumentPanel moduleId={module.id} recordId={record.id} onChanged={onChanged} />
       {module.aiSummary && <AiSummarySection module={module} recordId={record.id} />}
       <dl className="space-y-3">
         {module.fields.map((f) => (

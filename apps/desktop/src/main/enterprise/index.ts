@@ -144,6 +144,9 @@ import {
   traceEdgeStore,
 } from '../medicalDevice/instances';
 import { assessDeleteAgainstLinks } from '../decisions/decisionService';
+import { createDocumentBridge } from '../erp/documentBridge';
+import { approvalStore } from '../erp/documentIntegrationInstance';
+import type { Approver } from '../erp/approvalEngine';
 import { decisionRecordStore, holdStore, incomingLinksFor } from '../decisions/instances';
 import { holdFromAssessment } from '@neuropause/shared';
 import { reservationModule } from './modules/inventory/reservationModuleInstance';
@@ -314,11 +317,63 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     ownerMember: () => orgStore.user(OWNER_USER_ID),
   });
 
+  /**
+   * The signed-in person as the APPROVAL engine needs to see them.
+   *
+   * Distinct from `authorize`, and deliberately so. RBAC answers "may this
+   * user act on this module at all"; the approval engine answers "may this
+   * user approve THIS document" — which turns on the roles they hold, the
+   * department they sit in, and whether they raised the thing themselves.
+   * Without real roles here, segregation of duties silently disqualifies
+   * everyone, and the integration previously passed `actor: () => null`.
+   *
+   * Returns null when nobody is signed in or the session is not an org member.
+   * Null means "cannot approve", never "approve anyway".
+   */
+  const currentApprover = (): Approver | null => {
+    const email = sessionEmail();
+    if (!email) return null;
+    const member = orgStore
+      .usersFor(activeOrg().id)
+      .find((u) => u.email?.toLowerCase() === email.toLowerCase());
+    if (!member || member.status !== 'active') return null;
+    const roleNames = orgStore
+      .rolesFor(activeOrg().id)
+      .filter((r) => member.roleIds.includes(r.id))
+      .map((r) => r.name.toLowerCase());
+    return {
+      userId: member.email ?? member.id,
+      roles: roleNames,
+      ...(member.unitId ? { department: member.unitId } : {}),
+    };
+  };
+
+  // The ERP document layer becomes reachable here. Everything it exposes —
+  // line items, derived totals, the approval policy engine and its SoD rules —
+  // shipped registered but with no caller; this is the joint that connects it
+  // to the module registry, and through the registry to IPC and the UI.
+  await approvalStore.load();
+  const documents = createDocumentBridge({
+    integration: documentIntegration,
+    approvals: approvalStore,
+    currentApprover,
+  });
+
   // Enterprise Module Framework: the reusable ERP foundation. Every module
   // registered into this registry inherits RBAC, audit, timeline events,
   // renderer broadcasts, and the generic CRUD IPC surface — nothing per-module.
   const modules = initEnterpriseModules({
     authorize,
+    documents,
+    // The approval gate on status changes. `canEnterStatus` is the engine's
+    // own verdict, read through the live decision history.
+    canEnterStatus: (moduleId, record, status) =>
+      documentIntegration.canEnterStatus(
+        moduleId,
+        record,
+        status,
+        approvalStore.forDocument(moduleId, record.id),
+      ),
     audit: (e) => audit(e.action, e.target, e.summary),
     publish: deps.publish,
     broadcast: deps.broadcast,
@@ -359,6 +414,65 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
         `${entry.requestedAction}: ${entry.outcome} (${entry.assessment.risk})`,
       );
       return { decisionId: record.id, holdId };
+    },
+    /**
+     * HOLD producer #2: `approval_required`.
+     *
+     * A status change refused for want of approval is the textbook hold — the
+     * request is understood and legitimate, it simply is not authorised yet.
+     * Returning a bare error would make it vanish with the toast; raising a
+     * hold makes it an item someone with the right role can find and clear.
+     *
+     * The five questions are answered from the POLICY, not from prose: what we
+     * know is the amount and the steps already satisfied, what we don't know
+     * is whether the outstanding approver agrees, and what resolves it is the
+     * named next step.
+     */
+    onApprovalRequired: ({ moduleId, record, status, reason }) => {
+      const view = documents.approvalView(moduleId, record);
+      const subject = `${moduleId}/${record.id} (${record.title})`;
+      const known = [
+        `Amount evaluated by the policy: ${view.amount.toLocaleString()}.`,
+        view.satisfiedStepIds.length > 0
+          ? `Approved so far: ${view.satisfiedStepIds.join(', ')}.`
+          : 'No approval step has been satisfied yet.',
+        ...view.reasons,
+      ];
+      const hold = holdStore.open({
+        reason: 'approval_required',
+        why: reason,
+        known,
+        unknown: [
+          view.nextStep
+            ? `Whether ${view.nextStep.label} approves — nobody eligible has decided yet.`
+            : 'Which step is outstanding — the policy resolved no next step.',
+        ],
+        resolution: view.nextStep
+          ? `Have someone with one of these roles record a decision on "${view.nextStep.label}": ${view.nextStep.roles.join(', ')}.`
+          : 'Review the approval policy for this document type.',
+        // Deliberately empty: unlike a dangerous delete, there is no "proceed
+        // anyway". Approval is not an acknowledgement the actor can waive.
+        ifProceeding: '',
+        title: `Approve ${record.title} to move it to "${status}"`,
+        subject,
+        actor: sessionEmail(),
+      });
+      decisionRecordStore.record({
+        actor: sessionEmail(),
+        requestedAction: `Move ${record.title} to "${status}"`,
+        subject,
+        assessment: {
+          risk: 'questionable',
+          recommendation: reason,
+          evidence: known.map((detail) => ({ label: 'Approval policy', detail, count: null })),
+          alternative: null,
+        },
+        outcome: 'cancelled',
+        executed: 'Nothing — the status change is held pending approval.',
+        holdId: hold.id,
+      });
+      audit('approval.required', subject, `${record.title} → "${status}" held: ${reason}`);
+      return { holdId: hold.id };
     },
   });
   /**

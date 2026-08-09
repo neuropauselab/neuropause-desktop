@@ -198,6 +198,15 @@ export const DYNAMICALLY_AUTHORIZED_ENTERPRISE_CHANNELS: readonly IpcChannelName
   IpcChannel.EnterpriseModuleSetStatus,
   IpcChannel.EnterpriseModuleDelete,
   IpcChannel.EnterpriseModuleAction,
+  // ERP document layer. Same dynamic model as the CRUD channels: the handler
+  // resolves the module from the payload and authorizes its own read/write
+  // scope. Approval decisions take the module's WRITE scope — recording one
+  // changes what the document is allowed to do — and role eligibility plus
+  // segregation of duties are enforced separately inside the engine.
+  IpcChannel.EnterpriseModuleLines,
+  IpcChannel.EnterpriseModuleSetLines,
+  IpcChannel.EnterpriseModuleApproval,
+  IpcChannel.EnterpriseModuleApprove,
 ];
 
 /**

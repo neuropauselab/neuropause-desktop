@@ -221,6 +221,142 @@ export interface EnterpriseModuleMutationResult {
   holdId?: string | null;
 }
 
+/* ── ERP document layer: the renderer-facing shapes ───────────────────────
+ * Mirrors of the main-process engine types, declared here so the renderer can
+ * read them without importing from `apps/desktop/src/main`. Kept structural —
+ * the handler returns the engine's own objects, and a drift between the two
+ * fails the desktop typecheck through `IpcResponseMap`. */
+
+/** One line on a business document. Money is a plain number of major units. */
+export interface DocumentLineView {
+  id: string;
+  lineNo: number;
+  description: string;
+  quantity: number;
+  unit: string | null;
+  unitPrice: number;
+  discountPercent: number | null;
+  discountAmount: number | null;
+  taxRatePercent: number | null;
+  currency: string;
+  /** quantity x unitPrice, before discount. */
+  gross: number;
+  discount: number;
+  /** gross - discount: the tax base. */
+  taxable: number;
+  tax: number;
+  total: number;
+  productId: string | null;
+  accountId: string | null;
+  warehouseId: string | null;
+}
+
+/** Totals DERIVED from the lines. Never stored on the record. */
+export interface DocumentTotalsView {
+  moduleId: string;
+  documentId: string;
+  documentType: string;
+  lineCount: number;
+  currency: string;
+  /** True when lines disagree on currency — a document must be single-currency. */
+  currencyMismatch: boolean;
+  gross: number;
+  discount: number;
+  taxable: number;
+  tax: number;
+  total: number;
+}
+
+/**
+ * What the document panel reads.
+ *
+ * `supported: false` means the module is not a line-item document at all —
+ * distinct from a document that simply has no lines yet. The UI must not offer
+ * a line editor for a master-data record.
+ */
+export interface DocumentLinesView {
+  supported: boolean;
+  documentType: string | null;
+  /** The permission required to edit lines, for an honest disabled state. */
+  editPermission: string | null;
+  lines: DocumentLineView[];
+  totals: DocumentTotalsView | null;
+}
+
+export interface ApprovalStepView {
+  id: string;
+  label: string;
+  roles: string[];
+  minAmount: number | null;
+}
+
+export interface ApprovalDecisionView {
+  stepId: string;
+  userId: string;
+  decision: 'approved' | 'rejected';
+  at: string;
+  note?: string;
+}
+
+/**
+ * Approval state for one document.
+ *
+ * `required: false` means the document type has no policy — again distinct
+ * from "a policy exists and nothing has been approved yet".
+ */
+export interface DocumentApprovalView {
+  required: boolean;
+  state: 'pending' | 'approved' | 'rejected' | 'blocked' | 'not_required';
+  amount: number;
+  requiredSteps: ApprovalStepView[];
+  satisfiedStepIds: string[];
+  nextStep: ApprovalStepView | null;
+  /** Why the state is what it is — shown verbatim; never paraphrased. */
+  reasons: string[];
+  decisions: ApprovalDecisionView[];
+  /**
+   * Whether THIS user may decide the next step, and if not, why. Segregation
+   * of duties is the usual reason, and saying so plainly is the point: a
+   * disabled button with no explanation reads as a bug.
+   */
+  canDecide: boolean;
+  blockedReason: string | null;
+  /** Statuses this document cannot enter until approval completes. */
+  gatedStatuses: string[];
+}
+
+/** Result of recording an approval decision. */
+export interface DocumentApprovalResult {
+  ok: boolean;
+  error: string | null;
+  approval: DocumentApprovalView | null;
+}
+
+/** What the renderer sends when replacing lines. Mirrors the Zod schema. */
+export interface DocumentLineInput {
+  productId?: string | null;
+  description?: string;
+  quantity: number;
+  unit?: string | null;
+  unitPrice?: number;
+  discountPercent?: number | null;
+  discountAmount?: number | null;
+  taxRatePercent?: number | null;
+  currency?: string;
+  accountId?: string | null;
+  warehouseId?: string | null;
+  projectId?: string | null;
+  costCenterId?: string | null;
+  batchId?: string | null;
+}
+
+/** Result of replacing a document's lines. */
+export interface DocumentLinesResult {
+  ok: boolean;
+  errors: { lineNo: number; errors: string[] }[];
+  view: DocumentLinesView | null;
+}
+
 export type EnterpriseModuleLifecycleAction =
   | 'created'
   | 'updated'

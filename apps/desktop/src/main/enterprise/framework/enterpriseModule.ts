@@ -11,6 +11,10 @@
  */
 import type {
   ActionAssessment,
+  DocumentApprovalResult,
+  DocumentApprovalView,
+  DocumentLinesResult,
+  DocumentLinesView,
   EnterpriseEntity,
   EnterpriseModuleActionResult,
   EnterpriseModuleDescriptor,
@@ -68,6 +72,82 @@ export interface EnterpriseModuleContext {
     outcome: 'proceeded' | 'took_alternative' | 'cancelled';
     executed: string;
   }) => { decisionId: string; holdId: string | null } | void;
+  /**
+   * Approval gate for a status change (governed by the ERP document layer).
+   *
+   * Supplied by the composition root so the framework does not depend on the
+   * approval engine directly — a module registry with no document integration
+   * simply has no gate, which is how every non-document module keeps working
+   * unchanged.
+   */
+  canEnterStatus?: (
+    moduleId: string,
+    record: EnterpriseEntity,
+    status: string,
+  ) => { allowed: boolean; reason: string | null };
+  /**
+   * A status change was refused for want of approval. Returns the durable HOLD
+   * raised for it, so the caller can be pointed at something actionable rather
+   * than an error toast that disappears.
+   */
+  onApprovalRequired?: (input: {
+    moduleId: string;
+    record: EnterpriseEntity;
+    status: string;
+    reason: string;
+  }) => { holdId: string | null } | void;
+  /**
+   * The ERP document layer (line items + approval), when composed.
+   *
+   * Optional and narrow on purpose. The framework must not import the document
+   * engines directly — most of the 106 registered modules are master data with
+   * no lines and no policy, and a hard dependency would make the registry
+   * untestable without the whole ERP stack. Absent, the line and approval
+   * channels answer "unsupported", which is the truth for those modules.
+   */
+  documents?: DocumentBridge;
+}
+
+/**
+ * What the registry needs from the ERP document layer — and nothing more.
+ *
+ * Deliberately expressed in the SHARED view types rather than the engines' own
+ * types: this is the boundary between the generic framework and one specific
+ * subsystem, so it speaks the same language as the renderer that consumes it.
+ */
+export interface DocumentBridge {
+  linesView(moduleId: string, documentId: string): DocumentLinesView;
+  setLines(
+    moduleId: string,
+    documentId: string,
+    lines: readonly DocumentLineInputLike[],
+  ): Promise<DocumentLinesResult>;
+  approvalView(moduleId: string, record: EnterpriseEntity): DocumentApprovalView;
+  decide(
+    moduleId: string,
+    record: EnterpriseEntity,
+    stepId: string,
+    decision: 'approved' | 'rejected',
+    note?: string,
+  ): Promise<DocumentApprovalResult>;
+}
+
+/** The line shape the boundary accepts (mirrors the validated IPC payload). */
+export interface DocumentLineInputLike {
+  productId?: string | null;
+  description?: string;
+  quantity: number;
+  unit?: string | null;
+  unitPrice?: number;
+  discountPercent?: number | null;
+  discountAmount?: number | null;
+  taxRatePercent?: number | null;
+  currency?: string;
+  accountId?: string | null;
+  warehouseId?: string | null;
+  projectId?: string | null;
+  costCenterId?: string | null;
+  batchId?: string | null;
 }
 
 /**

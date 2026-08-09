@@ -31,6 +31,10 @@ import type {
   ModuleSummarizeRequest as TSummarize,
   ModuleUpdateRequest as TUpdate,
   PlatformEventInput,
+  DocumentApprovalResult,
+  DocumentApprovalView,
+  DocumentLinesResult,
+  DocumentLinesView,
 } from '@neuropause/shared';
 import {
   EmptyRequest,
@@ -44,6 +48,10 @@ import {
   ModuleSetStatusRequest,
   ModuleSummarizeRequest,
   ModuleUpdateRequest,
+  ModuleApprovalRequest,
+  ModuleApproveRequest,
+  ModuleLinesRequest,
+  ModuleSetLinesRequest,
   deriveRecordTitle,
 } from '@neuropause/shared';
 import type { SecureHandlerDef } from '../../ipc/secureBridge';
@@ -387,6 +395,40 @@ export function buildModuleHandlers(
           recordId: r.id,
         });
         if (!result.ok) return { ok: false as const, errors: result.errors };
+        /**
+         * THE approval gate.
+         *
+         * A document's business status — draft → approved → sent → received —
+         * lives in its `status` FIELD, not in the record's lifecycle status
+         * (which is only active/archived/deleted). So the transition an
+         * approval policy governs arrives here, on update, not on
+         * `setStatus`. Gating the other channel would compile, read
+         * plausibly, and never once fire.
+         *
+         * Only a CHANGE is gated: re-saving a document that is already
+         * approved must not demand approval again.
+         */
+        const nextStatus = result.values.status;
+        if (
+          ctx.canEnterStatus &&
+          typeof nextStatus === 'string' &&
+          nextStatus !== current.fields.status
+        ) {
+          const verdict = ctx.canEnterStatus(r.moduleId, current, nextStatus);
+          if (!verdict.allowed) {
+            const raised = ctx.onApprovalRequired?.({
+              moduleId: r.moduleId,
+              record: current,
+              status: nextStatus,
+              reason: verdict.reason ?? 'Approval required.',
+            });
+            return {
+              ok: false as const,
+              errors: { status: verdict.reason ?? 'Approval required.' },
+              ...(raised?.holdId ? { holdId: raised.holdId } : {}),
+            };
+          }
+        }
         const title = deriveRecordTitle(module.descriptor, result.values, r.title ?? current.title);
         const record = module.store.update(r.id, {
           title,
@@ -411,6 +453,32 @@ export function buildModuleHandlers(
         const module = resolve(registry, r.moduleId);
         ctx.authorize(module.descriptor.permissions.write);
         await module.store.load();
+        // APPROVAL GATE. This is where a purchase order becomes "approved" or a
+        // bill becomes "paid", and until now it went straight to the store: the
+        // approval/SoD engine existed, declared policies for these very
+        // statuses, and was never consulted by anything. A document's own
+        // creator could wave it through in one click.
+        //
+        // A refusal here is a HOLD, not an error — the request is understood
+        // and legitimate, it simply is not authorised yet, and the composition
+        // root turns that into a durable item someone can act on.
+        const existing = module.store.get(r.id);
+        if (existing && ctx.canEnterStatus) {
+          const verdict = ctx.canEnterStatus(r.moduleId, existing, r.status);
+          if (!verdict.allowed) {
+            const raised = ctx.onApprovalRequired?.({
+              moduleId: r.moduleId,
+              record: existing,
+              status: r.status,
+              reason: verdict.reason ?? 'Approval required.',
+            });
+            return {
+              ok: false as const,
+              errors: { _: verdict.reason ?? 'Approval required.' },
+              ...(raised?.holdId ? { holdId: raised.holdId } : {}),
+            };
+          }
+        }
         const record = module.store.setStatus(r.id, r.status, {
           actor: ctx.actor(),
           now: ctx.now(),
@@ -496,5 +564,122 @@ export function buildModuleHandlers(
         return module.hooks.runAction(r.action, record, actionCtx);
       },
     },
+
+    /* ── ERP document layer ───────────────────────────────────────────────
+     * The engines behind these have existed and been registered for some
+     * time; what was missing was any way to reach them. Without a channel,
+     * lines could never be entered, every derived total was 0, the
+     * three-way match had nothing to match, and four posting rules (GRNI,
+     * COGS, material issue, production completion) refused for want of
+     * costed lines. One channel pair unblocks all of it.
+     *
+     * `documents` is optional on the context: a registry composed without
+     * the document integration (as every existing test does) keeps working
+     * and simply reports the module as unsupported.
+     */
+    {
+      channel: IpcChannel.EnterpriseModuleLines,
+      schema: ModuleLinesRequest,
+      requireAuth: true,
+      handler: async (p): Promise<DocumentLinesView> => {
+        const r = p as ModuleLinesRequest;
+        const module = resolve(registry, r.moduleId);
+        ctx.authorize(module.descriptor.permissions.read);
+        await module.store.load();
+        return ctx.documents?.linesView(r.moduleId, r.id) ?? UNSUPPORTED_LINES;
+      },
+    },
+    {
+      channel: IpcChannel.EnterpriseModuleSetLines,
+      schema: ModuleSetLinesRequest,
+      requireAuth: true,
+      audit: true,
+      handler: async (p): Promise<DocumentLinesResult> => {
+        const r = p as ModuleSetLinesRequest;
+        const module = resolve(registry, r.moduleId);
+        ctx.authorize(module.descriptor.permissions.write);
+        await module.store.load();
+        const record = module.store.get(r.id);
+        if (!record || record.status === 'deleted') {
+          return { ok: false, errors: [{ lineNo: 0, errors: ['Record not found.'] }], view: null };
+        }
+        if (!ctx.documents) {
+          return {
+            ok: false,
+            errors: [{ lineNo: 0, errors: ['Line items are not available in this build.'] }],
+            view: null,
+          };
+        }
+        const result = await ctx.documents.setLines(r.moduleId, r.id, r.lines);
+        // Totals are DERIVED from lines, so a line change is a change to the
+        // document as far as every downstream reader is concerned. Fanning the
+        // lifecycle event is what makes the list refresh and the audit trail
+        // record that the document's value moved.
+        if (result.ok) await fan(module, 'updated', record);
+        return result;
+      },
+    },
+    {
+      channel: IpcChannel.EnterpriseModuleApproval,
+      schema: ModuleApprovalRequest,
+      requireAuth: true,
+      handler: async (p): Promise<DocumentApprovalView> => {
+        const r = p as ModuleApprovalRequest;
+        const module = resolve(registry, r.moduleId);
+        ctx.authorize(module.descriptor.permissions.read);
+        await module.store.load();
+        const record = module.store.get(r.id);
+        if (!record || !ctx.documents) return NOT_REQUIRED_APPROVAL;
+        return ctx.documents.approvalView(r.moduleId, record);
+      },
+    },
+    {
+      channel: IpcChannel.EnterpriseModuleApprove,
+      schema: ModuleApproveRequest,
+      requireAuth: true,
+      audit: true,
+      handler: async (p): Promise<DocumentApprovalResult> => {
+        const r = p as ModuleApproveRequest;
+        const module = resolve(registry, r.moduleId);
+        // Deciding an approval is a write against the document, so it takes
+        // the module's write scope. Role eligibility and segregation of duties
+        // are enforced separately, inside the engine — RBAC says "may act on
+        // this module", SoD says "may not act on THIS document".
+        ctx.authorize(module.descriptor.permissions.write);
+        await module.store.load();
+        const record = module.store.get(r.id);
+        if (!record || record.status === 'deleted') {
+          return { ok: false, error: 'Record not found.', approval: null };
+        }
+        if (!ctx.documents) {
+          return { ok: false, error: 'Approvals are not available in this build.', approval: null };
+        }
+        return ctx.documents.decide(r.moduleId, record, r.stepId, r.decision, r.note);
+      },
+    },
   ];
 }
+
+/** A module with no document spec: not a line-item document at all. */
+const UNSUPPORTED_LINES: DocumentLinesView = {
+  supported: false,
+  documentType: null,
+  editPermission: null,
+  lines: [],
+  totals: null,
+};
+
+/** A document type with no approval policy. Distinct from "not yet approved". */
+const NOT_REQUIRED_APPROVAL: DocumentApprovalView = {
+  required: false,
+  state: 'not_required',
+  amount: 0,
+  requiredSteps: [],
+  satisfiedStepIds: [],
+  nextStep: null,
+  reasons: [],
+  decisions: [],
+  canDecide: false,
+  blockedReason: null,
+  gatedStatuses: [],
+};

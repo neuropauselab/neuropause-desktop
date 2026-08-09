@@ -193,6 +193,10 @@ import type {
   EnterpriseModuleActionResult,
   EnterpriseModuleMutationResult,
   EnterpriseModuleSummary,
+  DocumentLinesView,
+  DocumentLinesResult,
+  DocumentApprovalView,
+  DocumentApprovalResult,
   EnterpriseRecordSummary,
   EnterpriseSearchResult,
   EnterpriseTimelineExport,
@@ -1464,6 +1468,11 @@ export interface IpcResponseMap {
   'xp:profile.set': ExperienceProfile;
   'xp:profile.reset': ExperienceProfile;
   // ── Decision Records + NeuroPause Hold ──
+  // ── ERP document layer ──
+  'enterprise:module.lines': DocumentLinesView;
+  'enterprise:module.setLines': DocumentLinesResult;
+  'enterprise:module.approval': DocumentApprovalView;
+  'enterprise:module.approve': DocumentApprovalResult;
   'decisionRecord:list': DecisionRecord[];
   'decisionRecord:get': DecisionRecordDetail | null;
   'hold:list': HoldCenterView;

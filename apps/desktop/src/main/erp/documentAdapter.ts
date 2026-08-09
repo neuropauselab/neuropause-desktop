@@ -188,6 +188,17 @@ export class DocumentIntegration {
     return this.totalsFor(spec.moduleId, record.id)?.total ?? 0;
   }
 
+  /**
+   * The amount an approval policy is evaluated against, exposed so the UI can
+   * show the figure that actually drives the thresholds. A screen that
+   * displays a different number from the one the policy used is how a person
+   * ends up believing a step was skipped.
+   */
+  approvalAmountFor(moduleId: string, record: EnterpriseEntity): number {
+    const spec = this.specs.get(moduleId);
+    return spec ? this.amountOf(spec, record) : 0;
+  }
+
   approvalStatus(moduleId: string, record: EnterpriseEntity, approvals: ApprovalRequest['approvals'] = []): ApprovalStatus | null {
     const spec = this.specs.get(moduleId);
     if (!spec?.approval) return null;
@@ -200,7 +211,12 @@ export class DocumentIntegration {
       documentType: spec.documentType,
       documentId: record.id,
       amount: this.amountOf(spec, record),
-      createdBy: String(record.metadata.createdBy ?? record.fields.createdBy ?? ''),
+      // `record.createdBy` is where EnterpriseRecordStore actually writes the
+      // author. This previously read `record.fields.createdBy` — a field no
+      // module declares — so it was always '' and every creator-based SoD rule
+      // silently passed. The metadata fallback stays for imported records,
+      // which carry their original author there.
+      createdBy: String(record.createdBy ?? record.metadata.createdBy ?? ''),
       ...(typeof dept === 'string' ? { department: dept } : {}),
       approvals,
     };

@@ -435,6 +435,18 @@ export const IpcChannel = {
   EnterpriseModuleSummarize: 'enterprise:module.summarize',
   /** Run a module-defined record action (e.g. convert a lead). */
   EnterpriseModuleAction: 'enterprise:module.action',
+  // ── ERP document layer (line items + approval).
+  // The engines behind these shipped registered but unreachable: no channel
+  // existed, so lines could never be entered, totals were always 0, and the
+  // approval/SoD engine was never consulted by any mutation. ──
+  /** Lines + derived totals for one document. */
+  EnterpriseModuleLines: 'enterprise:module.lines',
+  /** Replace a document's lines. Validated per document type. */
+  EnterpriseModuleSetLines: 'enterprise:module.setLines',
+  /** Approval state for one document: required steps, satisfied, next. */
+  EnterpriseModuleApproval: 'enterprise:module.approval',
+  /** Record an approval decision. Enforces role eligibility and SoD. */
+  EnterpriseModuleApprove: 'enterprise:module.approve',
   /** Broadcast on any module record change (create/update/status/delete). */
   EnterpriseModuleEventBroadcast: 'enterprise:module.event',
 
@@ -1326,6 +1338,10 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.EnterpriseModuleSearch,
   IpcChannel.EnterpriseModuleSummarize,
   IpcChannel.EnterpriseModuleAction,
+  IpcChannel.EnterpriseModuleLines,
+  IpcChannel.EnterpriseModuleSetLines,
+  IpcChannel.EnterpriseModuleApproval,
+  IpcChannel.EnterpriseModuleApprove,
 
   // ── Ecosystem Platform ──
   IpcChannel.EcosystemDeveloperDashboard,

@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { applyGlDerivedEntries } from '../enterprise/modules/finance/glPosting';
 import { DocumentIntegration } from './documentAdapter';
 import { DocumentLineStore } from './documentLines';
+import { ApprovalStore } from './approvalStore';
 import { DOCUMENT_SPECS } from './documentSpecs';
 import { ensureStockAccounts } from './stockAccounts';
 import { createLogger } from '../logger';
@@ -21,6 +22,15 @@ const log = createLogger('erp-documents');
 
 export const documentLineStore = new DocumentLineStore(
   join(app.getPath('userData'), 'erp-document-lines.json'),
+);
+
+/**
+ * Approval decisions, persisted. The engine is pure and hands its result back
+ * to the caller; without somewhere to put it, every evaluation restarted from
+ * an empty history and no document could reach `approved`.
+ */
+export const approvalStore = new ApprovalStore(
+  join(app.getPath('userData'), 'erp-approvals.json'),
 );
 
 export const documentIntegration = new DocumentIntegration({
