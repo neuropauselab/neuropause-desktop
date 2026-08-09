@@ -20,6 +20,11 @@ import type {
   DataPlaneInspection,
   DataPlanePlanSummary,
   DataPlaneProvenance,
+  DataPlanePendingStatus,
+  DataPlaneRelationshipGraph,
+  DataPlaneRelationshipOverview,
+  DataPlaneRelationshipPass,
+  DataPlaneRelationshipPending,
   DataPlaneRunResult,
   DataPlaneSavedMapping,
 } from '@neuropause/shared';
@@ -706,4 +711,186 @@ export function buildExportRows(modules: readonly DataPlaneExportableModule[]): 
 export function describeExport(result: DataPlaneExportResult, moduleName: string): string {
   if (result.cancelled) return 'Export cancelled — nothing was written.';
   return `Exported ${result.records.toLocaleString()} ${moduleName} to ${result.filePath ?? 'the chosen file'}.`;
+}
+
+// ---------------------------------------------------------------------------
+// Relationships
+// ---------------------------------------------------------------------------
+
+export interface RelationshipQueueRow {
+  id: string;
+  /** e.g. `Invoice INV-1004` */
+  source: string;
+  /** What the source file actually said, verbatim. */
+  value: string;
+  target: string;
+  status: DataPlanePendingStatus;
+  statusLabel: string;
+  tone: 'warn' | 'bad' | 'neutral';
+  reason: string;
+  candidates: {
+    id: string;
+    title: string;
+    confidencePct: number;
+    /** Plain-language explanation of why this record is offered. */
+    why: string;
+  }[];
+  /** True when there is nothing to choose from — waiting on data, not a person. */
+  awaitingData: boolean;
+  attempts: number;
+}
+
+const PENDING_LABEL: Record<DataPlanePendingStatus, string> = {
+  ambiguous: 'Needs a decision',
+  unresolved: 'No match yet',
+  skipped: 'Left unlinked',
+};
+
+const PENDING_TONE: Record<DataPlanePendingStatus, 'warn' | 'bad' | 'neutral'> = {
+  ambiguous: 'warn',
+  unresolved: 'neutral',
+  skipped: 'neutral',
+};
+
+const METHOD_WHY: Record<string, string> = {
+  internal_id: 'The value is this record’s id.',
+  business_key: 'Exact match on',
+  normalized_key: 'Matches ignoring case and punctuation on',
+  canonical_name: 'The company names are equivalent apart from their legal suffix',
+  manual: 'Chosen by a reviewer.',
+};
+
+export function buildRelationshipQueue(
+  pending: readonly DataPlaneRelationshipPending[],
+): RelationshipQueueRow[] {
+  return pending.map((p) => ({
+    id: p.id,
+    source: `${p.sourceTitle}`,
+    value: p.sourceValue,
+    target: p.targetLabel,
+    status: p.status,
+    statusLabel: PENDING_LABEL[p.status],
+    tone: PENDING_TONE[p.status],
+    reason: p.reason,
+    candidates: p.candidates.map((c) => ({
+      id: c.id,
+      title: c.title,
+      confidencePct: Math.round(c.confidence * 100),
+      why:
+        c.method === 'canonical_name' || c.method === 'internal_id' || c.method === 'manual'
+          ? (METHOD_WHY[c.method] ?? '')
+          : `${METHOD_WHY[c.method] ?? 'Matched on'} “${c.matchedOn}”.`,
+    })),
+    // An unresolved reference with no candidates is not a decision anyone can
+    // make yet — it is waiting for the record it points at to be imported.
+    awaitingData: p.status === 'unresolved' && p.candidates.length === 0,
+    attempts: p.attempts,
+  }));
+}
+
+export interface RelationshipSummary {
+  /** True before anything has been imported — an invitation, not zeroes. */
+  empty: boolean;
+  headline: string;
+  metrics: OverviewMetric[];
+}
+
+export function buildRelationshipSummary(
+  overview: DataPlaneRelationshipOverview,
+): RelationshipSummary {
+  const { links, ambiguous, unresolved, skipped } = overview.counts;
+  if (links + ambiguous + unresolved + skipped === 0) {
+    return {
+      empty: true,
+      headline: 'No relationships reconstructed yet.',
+      metrics: [],
+    };
+  }
+  const needsAttention = ambiguous;
+  return {
+    empty: false,
+    headline:
+      needsAttention === 0
+        ? `${links.toLocaleString()} relationships linked. Nothing needs a decision.`
+        : `${links.toLocaleString()} linked · ${needsAttention.toLocaleString()} need a decision.`,
+    metrics: [
+      { key: 'links', label: 'Linked', value: links, tone: 'good' },
+      {
+        key: 'ambiguous',
+        label: 'Need a decision',
+        value: ambiguous,
+        tone: ambiguous > 0 ? 'warn' : 'neutral',
+        ...(ambiguous > 0 ? { hint: 'More than one record could be meant' } : {}),
+      },
+      {
+        key: 'unresolved',
+        label: 'Waiting on data',
+        value: unresolved,
+        tone: 'neutral',
+        ...(unresolved > 0 ? { hint: 'Will link when the target is imported' } : {}),
+      },
+      { key: 'skipped', label: 'Left unlinked', value: skipped, tone: 'neutral' },
+    ],
+  };
+}
+
+/** One honest sentence about what a retry pass actually did. */
+export function describeRetryPass(pass: DataPlaneRelationshipPass): string {
+  if (pass.examined === 0) return 'Nothing was waiting to be re-checked.';
+  if (pass.resolved === 0) {
+    return `Re-checked ${pass.examined.toLocaleString()} reference(s); none could be linked yet.`;
+  }
+  return `Linked ${pass.resolved.toLocaleString()} of ${pass.examined.toLocaleString()} re-checked reference(s).`;
+}
+
+export interface GraphSide {
+  label: string;
+  rows: {
+    recordId: string;
+    title: string;
+    relationship: string;
+    module: string;
+    /** The literal source value, so the edge is explainable. */
+    via: string;
+    method: string;
+    confidencePct: number;
+    decidedBy: string | null;
+    /** True when the record at the far end has been deleted. */
+    broken: boolean;
+  }[];
+}
+
+export interface GraphModel {
+  found: boolean;
+  title: string;
+  outgoing: GraphSide;
+  incoming: GraphSide;
+  /** True when the record exists but has no resolved links at all. */
+  isolated: boolean;
+}
+
+export function buildGraph(graph: DataPlaneRelationshipGraph): GraphModel {
+  const side = (label: string, edges: DataPlaneRelationshipGraph['outgoing']): GraphSide => ({
+    label,
+    rows: edges.map((e) => ({
+      recordId: e.recordId,
+      title: e.title,
+      relationship: e.label,
+      module: e.moduleTitle,
+      via: e.sourceValue,
+      method: e.method,
+      confidencePct: Math.round(e.confidence * 100),
+      decidedBy: e.decidedBy,
+      broken: e.title.startsWith('(deleted record'),
+    })),
+  });
+  const outgoing = side('Points at', graph.outgoing);
+  const incoming = side('Referenced by', graph.incoming);
+  return {
+    found: graph.record !== null || outgoing.rows.length > 0 || incoming.rows.length > 0,
+    title: graph.record?.title ?? '',
+    outgoing,
+    incoming,
+    isolated: outgoing.rows.length === 0 && incoming.rows.length === 0,
+  };
 }

@@ -19,6 +19,11 @@
 import { join } from 'node:path';
 import type {
   DataPlaneExportableModule,
+  DataPlaneRelationshipDecision,
+  DataPlaneRelationshipGraph,
+  DataPlaneRelationshipOverview,
+  DataPlaneRelationshipPass,
+  DataPlaneRelationshipPending,
   DataPlaneExportResult,
   DataPlaneInspection,
   DataPlaneOntologyView,
@@ -32,6 +37,10 @@ import type {
 import {
   DataPlaneAnalyzeRequest,
   DataPlaneExportRequest,
+  DataPlaneRelationshipDecideRequest,
+  DataPlaneRelationshipGraphRequest,
+  DataPlaneRelationshipQueueRequest,
+  DataPlaneRelationshipSkipRequest,
   DataPlaneForgetMappingRequest,
   DataPlaneHistoryRequest,
   DataPlaneImportRequest,
@@ -53,6 +62,9 @@ import { MappingMemoryStore } from './mappingMemory';
 import { ONTOLOGY, entityById, requiresExplicitApproval } from './ontology';
 import { SUPPORTED_FORMATS, parseFile } from './parsers';
 import { buildExport, type ExportCell, type ExportColumn, type ExportTable } from './exporters';
+import { RelationshipEngine } from './relationshipEngine';
+import { RelationshipStore, type PendingRelationship } from './relationshipStore';
+import { RELATIONSHIPS, RELATIONSHIP_CHAINS, relationshipByKey } from './relationshipModel';
 
 const log = createLogger('data-plane');
 
@@ -100,6 +112,8 @@ export interface DataPlaneSubsystem {
   handlers: SecureHandlerDef[];
   provenance: ProvenanceStore;
   mappings: MappingMemoryStore;
+  relationships: RelationshipStore;
+  relationshipEngine: RelationshipEngine;
 }
 
 function decodeContent(base64: string, filename: string): Buffer {
@@ -140,6 +154,34 @@ function ontologyView(): DataPlaneOntologyView {
 export function initDataPlane(deps: DataPlaneSubsystemDeps): DataPlaneSubsystem {
   const provenance = new ProvenanceStore(join(deps.userDataDir, 'data-plane-provenance.json'));
   const mappings = new MappingMemoryStore(join(deps.userDataDir, 'data-plane-mappings.json'));
+  const relationships = new RelationshipStore(join(deps.userDataDir, 'data-plane-relationships.json'));
+  const relationshipEngine = new RelationshipEngine({
+    store: relationships,
+    storeFor: deps.storeFor,
+    describe: (moduleId) => deps.modules().find((m) => m.id === moduleId) ?? null,
+    actor: deps.actor,
+    now: deps.now,
+    audit: deps.audit,
+  });
+
+  /** Shared shape for the review queue — labels resolved from the declaration. */
+  const pendingView = (p: PendingRelationship): DataPlaneRelationshipPending => ({
+    id: p.id,
+    relationshipKey: p.relationshipKey,
+    relationshipLabel: relationshipByKey(p.relationshipKey)?.label ?? p.relationshipKey,
+    sourceModuleId: p.sourceModuleId,
+    sourceRecordId: p.sourceRecordId,
+    sourceTitle: p.sourceTitle,
+    sourceField: p.sourceField,
+    sourceValue: p.sourceValue,
+    targetModuleId: p.targetModuleId,
+    targetLabel: p.targetLabel,
+    status: p.status,
+    candidates: p.candidates,
+    reason: p.reason,
+    firstSeenAt: p.firstSeenAt,
+    attempts: p.attempts,
+  });
 
   /** planId → analyzed plan. Bounded; plans are re-derivable by re-analyzing. */
   const plans = new Map<string, ImportPlan>();
@@ -264,6 +306,26 @@ export function initDataPlane(deps: DataPlaneSubsystemDeps): DataPlaneSubsystem 
         }
 
         await provenance.append(result, records);
+
+        // Reconstruct relationships for what just arrived, then re-check
+        // everything previously parked — which is what makes import ORDER
+        // irrelevant. Failures here are reported, never allowed to unwind an
+        // import whose records are already committed.
+        await relationships.load();
+        for (const table of result.tables) {
+          if (table.createdRecordIds.length === 0) continue;
+          const store = deps.storeFor(table.moduleId);
+          if (!store) continue;
+          await store.load();
+          const created = table.createdRecordIds
+            .map((id) => store.get(id))
+            .filter((r): r is NonNullable<typeof r> => r !== null);
+          await relationshipEngine.resolveRecords(table.moduleId, created, correlationId);
+        }
+        const deferred = await relationshipEngine.retryPending(correlationId);
+        if (deferred.resolved > 0) {
+          log.info('Deferred relationships resolved by this import', { resolved: deferred.resolved });
+        }
 
         // Let domain subsystems react to imported records — one event per
         // destination module, carrying a correlation id so a reaction can never
@@ -470,8 +532,88 @@ export function initDataPlane(deps: DataPlaneSubsystemDeps): DataPlaneSubsystem 
         };
       },
     },
+    {
+      channel: IpcChannel.DataPlaneRelationshipOverview,
+      schema: EmptyRequest,
+      requireAuth: true,
+      handler: async (): Promise<DataPlaneRelationshipOverview> => {
+        deps.authorize('data:read');
+        await relationships.load();
+        return {
+          declared: RELATIONSHIPS.map((r) => ({
+            key: r.key,
+            label: r.label,
+            fromModuleId: r.fromModuleId,
+            field: r.field,
+            toModuleId: r.toModuleId,
+            toLabel: r.toLabel,
+            keyFields: [...r.keyFields],
+            sensitivity: r.sensitivity,
+          })),
+          chains: RELATIONSHIP_CHAINS.map((c) => ({ id: c.id, label: c.label, keys: [...c.keys] })),
+          counts: relationships.counts(),
+        };
+      },
+    },
+    {
+      channel: IpcChannel.DataPlaneRelationshipQueue,
+      schema: DataPlaneRelationshipQueueRequest,
+      requireAuth: true,
+      handler: async (p): Promise<DataPlaneRelationshipPending[]> => {
+        deps.authorize('data:read');
+        await relationships.load();
+        return relationships.queue((p as DataPlaneRelationshipQueueRequest).limit ?? 200).map(pendingView);
+      },
+    },
+    {
+      channel: IpcChannel.DataPlaneRelationshipDecide,
+      schema: DataPlaneRelationshipDecideRequest,
+      requireAuth: true,
+      audit: true,
+      handler: async (p): Promise<DataPlaneRelationshipDecision> => {
+        // Choosing which customer an invoice belongs to WRITES a business fact,
+        // so it carries the import right, not the read right.
+        deps.authorize('data:import');
+        const req = p as DataPlaneRelationshipDecideRequest;
+        return relationshipEngine.decide(req.pendingId, req.targetRecordId, null);
+      },
+    },
+    {
+      channel: IpcChannel.DataPlaneRelationshipSkip,
+      schema: DataPlaneRelationshipSkipRequest,
+      requireAuth: true,
+      audit: true,
+      handler: async (p): Promise<DataPlaneRelationshipDecision> => {
+        deps.authorize('data:import');
+        return relationshipEngine.skip((p as DataPlaneRelationshipSkipRequest).pendingId);
+      },
+    },
+    {
+      channel: IpcChannel.DataPlaneRelationshipRetry,
+      schema: EmptyRequest,
+      requireAuth: true,
+      timeoutMs: 120_000,
+      handler: async (): Promise<DataPlaneRelationshipPass> => {
+        deps.authorize('data:import');
+        await relationships.load();
+        return relationshipEngine.retryPending(null);
+      },
+    },
+    {
+      channel: IpcChannel.DataPlaneRelationshipGraph,
+      schema: DataPlaneRelationshipGraphRequest,
+      requireAuth: true,
+      handler: async (p): Promise<DataPlaneRelationshipGraph> => {
+        deps.authorize('data:read');
+        return relationshipEngine.neighbourhood((p as DataPlaneRelationshipGraphRequest).recordId);
+      },
+    },
   ];
 
-  log.info('Data Plane ready', { channels: handlers.length, entities: ONTOLOGY.length });
-  return { handlers, provenance, mappings };
+  log.info('Data Plane ready', {
+    channels: handlers.length,
+    entities: ONTOLOGY.length,
+    relationships: RELATIONSHIPS.length,
+  });
+  return { handlers, provenance, mappings, relationships, relationshipEngine };
 }

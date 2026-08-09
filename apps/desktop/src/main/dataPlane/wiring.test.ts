@@ -43,6 +43,12 @@ const DATA_PLANE_CHANNELS: IpcChannelName[] = [
   IpcChannel.DataPlaneOntology,
   IpcChannel.DataPlaneExportable,
   IpcChannel.DataPlaneExport,
+  IpcChannel.DataPlaneRelationshipOverview,
+  IpcChannel.DataPlaneRelationshipQueue,
+  IpcChannel.DataPlaneRelationshipDecide,
+  IpcChannel.DataPlaneRelationshipSkip,
+  IpcChannel.DataPlaneRelationshipRetry,
+  IpcChannel.DataPlaneRelationshipGraph,
 ];
 
 const T0 = '2026-08-08T12:00:00.000Z';

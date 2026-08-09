@@ -943,6 +943,18 @@ export const IpcChannel = {
   DataPlaneExportable: 'dp:exportable',
   /** Write a module's records to a file the user chooses. */
   DataPlaneExport: 'dp:export',
+  /** Declared cross-domain relationships + live resolution counts. */
+  DataPlaneRelationshipOverview: 'dp:rel.overview',
+  /** References awaiting a human decision. */
+  DataPlaneRelationshipQueue: 'dp:rel.queue',
+  /** Apply a reviewer's choice of target record. */
+  DataPlaneRelationshipDecide: 'dp:rel.decide',
+  /** Deliberately leave a reference unlinked. */
+  DataPlaneRelationshipSkip: 'dp:rel.skip',
+  /** Re-check every parked reference against the records that exist now. */
+  DataPlaneRelationshipRetry: 'dp:rel.retry',
+  /** The resolved links around one record, both directions. */
+  DataPlaneRelationshipGraph: 'dp:rel.graph',
 } as const;
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel];
@@ -1682,6 +1694,12 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.DataPlaneOntology,
   IpcChannel.DataPlaneExportable,
   IpcChannel.DataPlaneExport,
+  IpcChannel.DataPlaneRelationshipOverview,
+  IpcChannel.DataPlaneRelationshipQueue,
+  IpcChannel.DataPlaneRelationshipDecide,
+  IpcChannel.DataPlaneRelationshipSkip,
+  IpcChannel.DataPlaneRelationshipRetry,
+  IpcChannel.DataPlaneRelationshipGraph,
 ];
 
 /** Runtime-core broadcasts. */

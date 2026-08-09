@@ -26,9 +26,13 @@ import {
   buildProvenance,
   buildQualityIssues,
   buildExportRows,
+  buildGraph,
+  buildRelationshipQueue,
+  buildRelationshipSummary,
   buildResult,
   bytesToBase64,
   describeExport,
+  describeRetryPass,
   formatBytes,
   friendlyError,
   importReadiness,
@@ -698,5 +702,93 @@ describe('export view-model', () => {
       'Customers',
     );
     expect(msg).toBe('Exported 42 Customers to /Users/x/customers.xlsx.');
+  });
+});
+
+// ── relationships ──────────────────────────────────────────────────────────
+
+describe('relationship view-model', () => {
+  const pending = (over: Partial<Parameters<typeof buildRelationshipQueue>[0][number]> = {}): Parameters<typeof buildRelationshipQueue>[0][number] => ({
+    id: 'pen_1',
+    relationshipKey: 'invoice.customer',
+    relationshipLabel: 'Customer',
+    sourceModuleId: 'finance-invoices',
+    sourceRecordId: 'inv_1',
+    sourceTitle: 'INV-1004',
+    sourceField: 'customer',
+    sourceValue: 'ABC Hospital Limited',
+    targetModuleId: 'crm-customers',
+    targetLabel: 'Customer',
+    status: 'ambiguous',
+    candidates: [
+      { id: 'c1', title: 'ABC Hospital Ltd', matchedOn: 'name', matchedValue: 'ABC Hospital Limited', method: 'canonical_name', confidence: 0.88 },
+    ],
+    reason: 'Confirm before linking.',
+    firstSeenAt: '2026-08-09T09:00:00.000Z',
+    attempts: 1,
+    ...over,
+  });
+
+  it('keeps the source value verbatim so a reviewer sees what the file said', () => {
+    const [row] = buildRelationshipQueue([pending()]);
+    expect(row?.value).toBe('ABC Hospital Limited');
+    expect(row?.statusLabel).toBe('Needs a decision');
+  });
+
+  it('explains why each candidate is offered rather than just ranking them', () => {
+    const [row] = buildRelationshipQueue([pending()]);
+    expect(row?.candidates[0]?.why).toContain('legal suffix');
+    expect(row?.candidates[0]?.confidencePct).toBe(88);
+  });
+
+  it('distinguishes waiting-on-data from waiting-on-a-person', () => {
+    const [waiting] = buildRelationshipQueue([pending({ status: 'unresolved', candidates: [] })]);
+    expect(waiting?.awaitingData).toBe(true);
+    const [decide] = buildRelationshipQueue([pending()]);
+    expect(decide?.awaitingData).toBe(false);
+  });
+
+  it('a fresh install shows an invitation rather than four zeroes', () => {
+    const summary = buildRelationshipSummary({
+      declared: [],
+      chains: [],
+      counts: { links: 0, ambiguous: 0, unresolved: 0, skipped: 0 },
+    });
+    expect(summary.empty).toBe(true);
+    expect(summary.metrics).toEqual([]);
+  });
+
+  it('only counts ambiguous items as needing a decision', () => {
+    const summary = buildRelationshipSummary({
+      declared: [],
+      chains: [],
+      counts: { links: 40, ambiguous: 0, unresolved: 6, skipped: 1 },
+    });
+    // Six references are waiting on data. Nobody has to do anything about them.
+    expect(summary.headline).toContain('Nothing needs a decision');
+    expect(summary.metrics.find((m) => m.key === 'unresolved')?.value).toBe(6);
+  });
+
+  it('describes a retry pass without overstating it', () => {
+    expect(describeRetryPass({ examined: 0, resolved: 0, ambiguous: 0, unresolved: 0, empty: 0 })).toContain('Nothing was waiting');
+    expect(describeRetryPass({ examined: 5, resolved: 0, ambiguous: 1, unresolved: 4, empty: 0 })).toContain('none could be linked yet');
+    expect(describeRetryPass({ examined: 5, resolved: 3, ambiguous: 0, unresolved: 2, empty: 0 })).toBe('Linked 3 of 5 re-checked reference(s).');
+  });
+
+  it('marks a deleted far end as broken instead of rendering it as live', () => {
+    const model = buildGraph({
+      record: { id: 'inv_1', title: 'INV-1', moduleId: 'finance-invoices' },
+      outgoing: [
+        { relationshipKey: 'invoice.customer', label: 'Customer', moduleId: 'crm-customers', moduleTitle: 'Customers', recordId: 'c1', title: '(deleted record c1)', method: 'business_key', confidence: 1, decidedBy: null, at: 'T', sourceValue: 'CUST-1' },
+      ],
+      incoming: [],
+    });
+    expect(model.outgoing.rows[0]?.broken).toBe(true);
+    expect(model.isolated).toBe(false);
+  });
+
+  it('reports an isolated record honestly', () => {
+    const model = buildGraph({ record: { id: 'x', title: 'X', moduleId: 'm' }, outgoing: [], incoming: [] });
+    expect(model.isolated).toBe(true);
   });
 });

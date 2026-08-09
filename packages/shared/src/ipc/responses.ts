@@ -33,6 +33,11 @@ import type {
   DataPlaneOntologyView,
   DataPlaneExportableModule,
   DataPlaneExportResult,
+  DataPlaneRelationshipDecision,
+  DataPlaneRelationshipGraph,
+  DataPlaneRelationshipOverview,
+  DataPlaneRelationshipPass,
+  DataPlaneRelationshipPending,
   DataPlanePlanSummary,
   DataPlaneProvenance,
   DataPlaneRunResult,
@@ -1410,6 +1415,12 @@ export interface IpcResponseMap {
   'dp:ontology': DataPlaneOntologyView;
   'dp:exportable': DataPlaneExportableModule[];
   'dp:export': DataPlaneExportResult;
+  'dp:rel.overview': DataPlaneRelationshipOverview;
+  'dp:rel.queue': DataPlaneRelationshipPending[];
+  'dp:rel.decide': DataPlaneRelationshipDecision;
+  'dp:rel.skip': DataPlaneRelationshipDecision;
+  'dp:rel.retry': DataPlaneRelationshipPass;
+  'dp:rel.graph': DataPlaneRelationshipGraph;
 }
 
 /**

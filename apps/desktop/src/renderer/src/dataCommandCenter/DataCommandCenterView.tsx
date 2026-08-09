@@ -18,6 +18,7 @@ import { ImportPanel } from './ImportPanel';
 import {
   CoveragePanel,
   ExportPanel,
+  RelationshipsPanel,
   HistoryPanel,
   MappingsPanel,
   OverviewPanel,
@@ -33,6 +34,7 @@ type Tab =
   | 'overview'
   | 'import'
   | 'export'
+  | 'relationships'
   | 'history'
   | 'quality'
   | 'provenance'
@@ -89,6 +91,7 @@ export function DataCommandCenterView(): JSX.Element {
       { id: 'overview', label: 'Overview', icon: 'gauge' },
       { id: 'import', label: 'Import', icon: 'upload' },
       { id: 'export', label: 'Export', icon: 'download' },
+      { id: 'relationships', label: 'Relationships', icon: 'connectors' },
       { id: 'history', label: 'History', icon: 'clock', count: runs.length || undefined },
       { id: 'quality', label: 'Data Quality', icon: 'shield', count: attention || undefined },
       { id: 'provenance', label: 'Provenance', icon: 'eye' },
@@ -133,6 +136,7 @@ export function DataCommandCenterView(): JSX.Element {
           )}
           {tab === 'import' && <ImportPanel onImported={() => void loadHistory()} />}
           {tab === 'export' && <ExportPanel />}
+          {tab === 'relationships' && <RelationshipsPanel />}
           {tab === 'history' && (
             <HistoryPanel history={runs} selected={selectedRun} onSelect={setSelectedRun} />
           )}

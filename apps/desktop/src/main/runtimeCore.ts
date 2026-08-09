@@ -174,6 +174,7 @@ import type { ExecutionBinding } from '@neuropause/shared';
 import { computeOrgHealth } from '@neuropause/shared';
 import { initEnterprise } from './enterprise';
 import { initDataPlane } from './dataPlane';
+import { assertRelationshipsAreDeclarable } from './dataPlane/relationshipModel';
 import { initEcosystem, runGateway, gatewayMetrics, gatewayAuditEntries } from './ecosystem';
 import { initMarketplace } from './marketplace';
 import { initEnterpriseApi } from './api';
@@ -461,6 +462,20 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       return filePath;
     },
   });
+
+  // A relationship declaration naming a field that does not exist resolves
+  // nothing, forever, without erroring — the worst failure mode this feature
+  // has. Checked against the LIVE descriptors at boot so a typo is visible in
+  // the log rather than discovered as "relationships just don't work".
+  const relationshipProblems = assertRelationshipsAreDeclarable(
+    enterprise.modules.list().map((m) => m.descriptor),
+  );
+  if (relationshipProblems.length > 0) {
+    log.error('Relationship declarations do not match the live modules', {
+      count: relationshipProblems.length,
+      problems: relationshipProblems.slice(0, 10),
+    });
+  }
 
   // Ecosystem Platform: developer portal + marketplace + API gateway + billing.
   const ecosystem = await initEcosystem({ broadcast: deps.broadcast });

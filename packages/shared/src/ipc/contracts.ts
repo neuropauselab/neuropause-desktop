@@ -2625,3 +2625,27 @@ export const DataPlaneExportRequest = z
   })
   .strict();
 export type DataPlaneExportRequest = z.infer<typeof DataPlaneExportRequest>;
+
+/** Reviewer decisions on a parked reference. */
+export const DataPlaneRelationshipDecideRequest = z
+  .object({
+    pendingId: z.string().trim().min(1).max(128),
+    targetRecordId: z.string().trim().min(1).max(128),
+  })
+  .strict();
+export type DataPlaneRelationshipDecideRequest = z.infer<typeof DataPlaneRelationshipDecideRequest>;
+
+export const DataPlaneRelationshipSkipRequest = z
+  .object({ pendingId: z.string().trim().min(1).max(128) })
+  .strict();
+export type DataPlaneRelationshipSkipRequest = z.infer<typeof DataPlaneRelationshipSkipRequest>;
+
+export const DataPlaneRelationshipQueueRequest = z
+  .object({ limit: z.number().int().min(1).max(500).optional() })
+  .strict();
+export type DataPlaneRelationshipQueueRequest = z.infer<typeof DataPlaneRelationshipQueueRequest>;
+
+export const DataPlaneRelationshipGraphRequest = z
+  .object({ recordId: z.string().trim().min(1).max(128) })
+  .strict();
+export type DataPlaneRelationshipGraphRequest = z.infer<typeof DataPlaneRelationshipGraphRequest>;

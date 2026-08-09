@@ -1819,6 +1819,22 @@ export const ipc = {
         format,
         ...(includeProvenance === undefined ? {} : { includeProvenance }),
       }),
+    /**
+     * Cross-domain relationships: what the engine can link, what it has linked,
+     * and what still needs a person.
+     */
+    relationships: {
+      overview: () => invoke(IpcChannel.DataPlaneRelationshipOverview, {}),
+      queue: (limit?: number) =>
+        invoke(IpcChannel.DataPlaneRelationshipQueue, limit === undefined ? {} : { limit }),
+      /** Apply a reviewer's choice. Writes a business fact, so it is audited. */
+      decide: (pendingId: string, targetRecordId: string) =>
+        invoke(IpcChannel.DataPlaneRelationshipDecide, { pendingId, targetRecordId }),
+      skip: (pendingId: string) => invoke(IpcChannel.DataPlaneRelationshipSkip, { pendingId }),
+      /** Re-check parked references against the records that exist now. */
+      retry: () => invoke(IpcChannel.DataPlaneRelationshipRetry, {}),
+      graph: (recordId: string) => invoke(IpcChannel.DataPlaneRelationshipGraph, { recordId }),
+    },
   },
 };
 

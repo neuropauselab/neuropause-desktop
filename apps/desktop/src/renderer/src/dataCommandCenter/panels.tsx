@@ -9,6 +9,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import type {
   DataPlaneExportableModule,
+  DataPlaneRelationshipOverview,
+  DataPlaneRelationshipPending,
   DataPlaneOntologyView,
   DataPlaneRunResult,
   DataPlaneSavedMapping,
@@ -25,13 +27,18 @@ import {
   EXPORT_FORMATS,
   SUPPORTED_FORMAT_LABEL,
   buildExportRows,
+  buildGraph,
   buildOverview,
   buildProvenance,
   buildQualityIssues,
+  buildRelationshipQueue,
+  buildRelationshipSummary,
   buildResult,
   describeExport,
+  describeRetryPass,
   friendlyError,
   type ExportFormatId,
+  type GraphModel,
   type ProvenanceModel,
 } from './dataCommandCenterModel';
 import {
@@ -760,6 +767,307 @@ export function ExportPanel(): JSX.Element {
           ))}
         </DataTable>
       )}
+    </div>
+  );
+}
+
+// ── Relationships ──────────────────────────────────────────────────────────
+
+/**
+ * The relationship review surface.
+ *
+ * Two jobs: show what the engine linked, and let a person settle what it
+ * refused to decide. Every candidate carries the reason it was offered, because
+ * a reviewer choosing which customer an invoice belongs to needs the evidence,
+ * not a ranked list to trust.
+ */
+export function RelationshipsPanel(): JSX.Element {
+  const [overview, setOverview] = useState<DataPlaneRelationshipOverview | null>(null);
+  const [queue, setQueue] = useState<DataPlaneRelationshipPending[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<{ title: string; detail: string } | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+
+  const load = useCallback(async (): Promise<void> => {
+    try {
+      setError(null);
+      const [o, q] = await Promise.all([ipc.data.relationships.overview(), ipc.data.relationships.queue(200)]);
+      setOverview(o);
+      setQueue(q);
+    } catch (err) {
+      setError(friendlyError(err));
+      setQueue([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const decide = useCallback(
+    async (pendingId: string, targetRecordId: string): Promise<void> => {
+      setBusy(pendingId);
+      setMessage(null);
+      try {
+        const res = await ipc.data.relationships.decide(pendingId, targetRecordId);
+        setMessage(res.message);
+        if (res.ok) await load();
+      } catch (err) {
+        setError(friendlyError(err));
+      } finally {
+        setBusy(null);
+      }
+    },
+    [load],
+  );
+
+  const skip = useCallback(
+    async (pendingId: string): Promise<void> => {
+      setBusy(pendingId);
+      setMessage(null);
+      try {
+        const res = await ipc.data.relationships.skip(pendingId);
+        setMessage(res.message);
+        if (res.ok) await load();
+      } catch (err) {
+        setError(friendlyError(err));
+      } finally {
+        setBusy(null);
+      }
+    },
+    [load],
+  );
+
+  const retry = useCallback(async (): Promise<void> => {
+    setRetrying(true);
+    setMessage(null);
+    try {
+      const pass = await ipc.data.relationships.retry();
+      setMessage(describeRetryPass(pass));
+      await load();
+    } catch (err) {
+      setError(friendlyError(err));
+    } finally {
+      setRetrying(false);
+    }
+  }, [load]);
+
+  if (queue === null || overview === null) return <Loading kind="panel" cards={4} />;
+
+  const summary = buildRelationshipSummary(overview);
+  const rows = buildRelationshipQueue(queue);
+  const actionable = rows.filter((r) => r.status !== 'skipped');
+
+  return (
+    <div>
+      {summary.empty ? (
+        <Card variant="flat">
+          <EmptyState
+            icon="connectors"
+            title="No relationships reconstructed yet"
+            description={`NeuroPause can link ${overview.declared.length} kinds of reference between your business records — an invoice to its customer, a goods receipt to its purchase order. Import some data and the links appear here.`}
+          />
+        </Card>
+      ) : (
+        <>
+          <p className="mb-5 text-base">{summary.headline}</p>
+          <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+            {summary.metrics.map((m) => (
+              <MetricTile key={m.key} label={m.label} value={m.value} tone={m.tone} {...(m.hint ? { hint: m.hint } : {})} />
+            ))}
+          </div>
+        </>
+      )}
+
+      {message && (
+        <div className="mb-4">
+          <NoticeBlock icon="check">{message}</NoticeBlock>
+        </div>
+      )}
+      {error && (
+        <div className="mb-4">
+          <ErrorBlock title={error.title} detail={error.detail} onRetry={() => void load()} />
+        </div>
+      )}
+
+      <Section
+        title="Needs relationship review"
+        subtitle="References NeuroPause would not resolve on its own. Nothing here has been guessed at."
+        right={
+          <Button size="sm" icon="refresh" loading={retrying} onClick={() => void retry()}>
+            Re-check
+          </Button>
+        }
+      >
+        {actionable.length === 0 ? (
+          <Card variant="flat">
+            <EmptyState
+              icon="verified"
+              title="Nothing waiting on you"
+              description="Every reference either linked to a record or was deliberately left unlinked."
+              compact
+            />
+          </Card>
+        ) : (
+          <div className="space-y-3">
+            {actionable.map((r) => (
+              <Card key={r.id} variant="flat">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold">{r.source}</span>
+                  <Icon name="arrow-right" size={13} className="text-faint" />
+                  <span>{r.target}</span>
+                  <StatusPill tone={r.tone}>{r.statusLabel}</StatusPill>
+                </div>
+                <p className="mt-1.5 text-sm text-muted">
+                  The file said <span className="font-mono text-xs text-ink">“{r.value}”</span>. {r.reason}
+                </p>
+
+                {r.awaitingData ? (
+                  <div className="mt-3">
+                    <NoticeBlock icon="clock">
+                      Waiting for the {r.target.toLowerCase()} to be imported. This links itself when it arrives —
+                      no action needed. Checked {r.attempts} time{r.attempts === 1 ? '' : 's'}.
+                    </NoticeBlock>
+                    <Button size="sm" variant="ghost" className="mt-2" loading={busy === r.id} onClick={() => void skip(r.id)}>
+                      Leave unlinked
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="mt-3">
+                    <Button size="sm" icon={open === r.id ? 'chevron-down' : 'chevron-right'} onClick={() => setOpen(open === r.id ? null : r.id)}>
+                      {open === r.id ? 'Hide candidates' : `Choose from ${r.candidates.length} candidate${r.candidates.length === 1 ? '' : 's'}`}
+                    </Button>
+                    {open === r.id && (
+                      <div className="mt-3 space-y-2">
+                        {r.candidates.map((c) => (
+                          <div
+                            key={c.id}
+                            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--hairline)] px-3.5 py-2.5"
+                          >
+                            <div className="min-w-0">
+                              <div className="font-medium">{c.title}</div>
+                              <div className="text-xs text-faint">{c.why}</div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-sm tabular-nums text-muted">{c.confidencePct}%</span>
+                              <Button size="sm" variant="primary" loading={busy === r.id} onClick={() => void decide(r.id, c.id)}>
+                                Link
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                        <Button size="sm" variant="ghost" loading={busy === r.id} onClick={() => void skip(r.id)}>
+                          None of these — leave unlinked
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </Card>
+            ))}
+          </div>
+        )}
+      </Section>
+
+      <Section
+        title="What can be linked"
+        subtitle="The relationships this build understands. A reference outside this list is left as plain text."
+      >
+        <DataTable
+          head={
+            <tr>
+              <Th>From</Th>
+              <Th>Field</Th>
+              <Th>To</Th>
+              <Th>Matched on</Th>
+              <Th>Sensitivity</Th>
+            </tr>
+          }
+        >
+          {overview.declared.map((d) => (
+            <tr key={d.key}>
+              <Td className="font-medium">{d.fromModuleId}</Td>
+              <Td className="font-mono text-xs">{d.field}</Td>
+              <Td>{d.toLabel}</Td>
+              <Td className="text-muted">id, {d.keyFields.join(', ')}</Td>
+              <Td>
+                <StatusPill tone={d.sensitivity === 'financial' ? 'warn' : 'neutral'}>{d.sensitivity}</StatusPill>
+              </Td>
+            </tr>
+          ))}
+        </DataTable>
+        <div className="mt-3">
+          <NoticeBlock icon="lock">
+            A <span className="font-medium">financial</span> relationship is never created by a similarity match. If two
+            company names only resemble each other, NeuroPause asks rather than deciding who owes money.
+          </NoticeBlock>
+        </div>
+      </Section>
+    </div>
+  );
+}
+
+/** Record-backed connection view — every edge is a link the engine resolved. */
+export function RecordGraph({ recordId }: { recordId: string }): JSX.Element {
+  const [graph, setGraph] = useState<GraphModel | null>(null);
+  const [error, setError] = useState<{ title: string; detail: string } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    ipc.data.relationships
+      .graph(recordId)
+      .then((g) => {
+        if (!cancelled) setGraph(buildGraph(g));
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(friendlyError(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [recordId]);
+
+  if (error) return <ErrorBlock title={error.title} detail={error.detail} />;
+  if (graph === null) return <Loading kind="section" rows={3} />;
+  if (graph.isolated) {
+    return (
+      <EmptyState
+        icon="connectors"
+        title="No connected records"
+        description="This record has no resolved relationships yet."
+        compact
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {[graph.outgoing, graph.incoming]
+        .filter((side) => side.rows.length > 0)
+        .map((side) => (
+          <div key={side.label}>
+            <h4 className="mb-2 text-sm font-semibold text-muted">{side.label}</h4>
+            <div className="space-y-2">
+              {side.rows.map((row) => (
+                <div
+                  key={`${row.relationship}-${row.recordId}`}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--hairline)] px-3.5 py-2.5"
+                >
+                  <div className="min-w-0">
+                    <div className={cn('font-medium', row.broken && 'text-syspink')}>{row.title}</div>
+                    <div className="text-xs text-faint">
+                      {row.relationship} · {row.module} · via “{row.via}”
+                      {row.decidedBy && ` · chosen by ${row.decidedBy}`}
+                    </div>
+                  </div>
+                  <span className="text-xs uppercase tracking-wider text-faint">{row.method.replace(/_/g, ' ')}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
     </div>
   );
 }

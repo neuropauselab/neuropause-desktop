@@ -240,3 +240,96 @@ export interface DataPlaneExportResult {
   filePath: string | null;
   cancelled: boolean;
 }
+
+// ── Cross-domain relationships ────────────────────────────────────────────
+
+export type DataPlaneMatchMethod =
+  | 'internal_id'
+  | 'business_key'
+  | 'normalized_key'
+  | 'canonical_name'
+  | 'manual';
+
+export type DataPlanePendingStatus = 'ambiguous' | 'unresolved' | 'skipped';
+
+/** One record offered as the target of a reference, with why it was offered. */
+export interface DataPlaneRelationshipCandidate {
+  id: string;
+  title: string;
+  matchedOn: string;
+  matchedValue: string;
+  method: DataPlaneMatchMethod;
+  confidence: number;
+}
+
+/** A reference waiting on a person or on the arrival of its target. */
+export interface DataPlaneRelationshipPending {
+  id: string;
+  relationshipKey: string;
+  relationshipLabel: string;
+  sourceModuleId: string;
+  sourceRecordId: string;
+  sourceTitle: string;
+  sourceField: string;
+  sourceValue: string;
+  targetModuleId: string;
+  targetLabel: string;
+  status: DataPlanePendingStatus;
+  candidates: DataPlaneRelationshipCandidate[];
+  reason: string;
+  firstSeenAt: string;
+  attempts: number;
+}
+
+/** A declared relationship, for the coverage view. */
+export interface DataPlaneRelationshipDefView {
+  key: string;
+  label: string;
+  fromModuleId: string;
+  field: string;
+  toModuleId: string;
+  toLabel: string;
+  keyFields: string[];
+  sensitivity: 'financial' | 'operational';
+}
+
+export interface DataPlaneRelationshipOverview {
+  declared: DataPlaneRelationshipDefView[];
+  chains: { id: string; label: string; keys: string[] }[];
+  counts: { links: number; ambiguous: number; unresolved: number; skipped: number };
+}
+
+/** What one resolution pass did. Every number is a real count. */
+export interface DataPlaneRelationshipPass {
+  examined: number;
+  resolved: number;
+  ambiguous: number;
+  unresolved: number;
+  empty: number;
+}
+
+export interface DataPlaneRelationshipDecision {
+  ok: boolean;
+  message: string;
+}
+
+export interface DataPlaneRelationshipEdge {
+  relationshipKey: string;
+  label: string;
+  moduleId: string;
+  moduleTitle: string;
+  recordId: string;
+  title: string;
+  method: string;
+  confidence: number;
+  decidedBy: string | null;
+  at: string;
+  sourceValue: string;
+}
+
+/** The connected records one hop out from a record, in both directions. */
+export interface DataPlaneRelationshipGraph {
+  record: { id: string; title: string; moduleId: string } | null;
+  outgoing: DataPlaneRelationshipEdge[];
+  incoming: DataPlaneRelationshipEdge[];
+}

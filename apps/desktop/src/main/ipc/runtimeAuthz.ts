@@ -66,6 +66,13 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
   // destination module's OWN read permission, so bulk extraction can never be a
   // way around the per-module gate that the on-screen view enforces.
   [IpcChannel.DataPlaneExport]: 'data:read',
+  [IpcChannel.DataPlaneRelationshipOverview]: 'data:read',
+  [IpcChannel.DataPlaneRelationshipQueue]: 'data:read',
+  [IpcChannel.DataPlaneRelationshipGraph]: 'data:read',
+  // Deciding which record a reference points at writes a business fact.
+  [IpcChannel.DataPlaneRelationshipDecide]: 'data:import',
+  [IpcChannel.DataPlaneRelationshipSkip]: 'data:import',
+  [IpcChannel.DataPlaneRelationshipRetry]: 'data:import',
   [IpcChannel.DataPlaneImport]: 'data:import',
   [IpcChannel.DataPlaneSaveMapping]: 'data:import',
   [IpcChannel.DataPlaneForgetMapping]: 'data:import',
