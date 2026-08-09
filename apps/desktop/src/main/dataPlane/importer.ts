@@ -393,6 +393,16 @@ export class ProvenanceStore {
     return { runs: this.runs.length, records: this.records.length };
   }
 
+  /**
+   * How many records in one module came from an import.
+   *
+   * Used by export to state plainly how much of a module is imported data
+   * rather than implying that everything in it has a traceable source.
+   */
+  countForModule(moduleId: string): number {
+    return this.records.filter((r) => r.moduleId === moduleId).length;
+  }
+
   private async persist(): Promise<void> {
     const payload: ProvenanceFile = { ...envelopeStamp(), records: this.records, runs: this.runs };
     const tmp = `${this.filePath}.tmp`;

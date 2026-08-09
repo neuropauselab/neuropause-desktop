@@ -25,8 +25,10 @@ import {
   buildPlan,
   buildProvenance,
   buildQualityIssues,
+  buildExportRows,
   buildResult,
   bytesToBase64,
+  describeExport,
   formatBytes,
   friendlyError,
   importReadiness,
@@ -636,5 +638,65 @@ describe('approval gate', () => {
     const r = importReadiness(model, { Customers: true, Payroll: true }, 'Signed off by finance.');
     expect(r.approvedTables).toBe(2);
     expect(r.approvedRecords).toBe(23);
+  });
+});
+
+// ── export ─────────────────────────────────────────────────────────────────
+
+describe('export view-model', () => {
+  const mod = (over: Partial<Parameters<typeof buildExportRows>[0][number]> = {}): Parameters<typeof buildExportRows>[0][number] => ({
+    moduleId: 'crm-customers',
+    title: 'Customers',
+    plural: 'Customers',
+    group: 'CRM',
+    recordCount: 10,
+    importedCount: 10,
+    ...over,
+  });
+
+  it('states traceability honestly for a fully imported module', () => {
+    const [row] = buildExportRows([mod()]);
+    expect(row?.provenanceNote).toContain('Every record');
+  });
+
+  it('states the real proportion when only some records were imported', () => {
+    const [row] = buildExportRows([mod({ recordCount: 10, importedCount: 3 })]);
+    expect(row?.provenanceNote).toBe('3 of 10 can be traced to a source row.');
+  });
+
+  it('warns that source columns would be empty when nothing was imported', () => {
+    const [row] = buildExportRows([mod({ importedCount: 0 })]);
+    expect(row?.provenanceNote).toContain('would be empty');
+  });
+
+  it('groups an ungrouped module rather than showing a blank cell', () => {
+    const [row] = buildExportRows([mod({ group: null })]);
+    expect(row?.group).toBe('Other');
+  });
+
+  it('orders by area then name so a long list stays findable', () => {
+    const rows = buildExportRows([
+      mod({ moduleId: 'z', plural: 'Zebras', group: 'Ops' }),
+      mod({ moduleId: 'a', plural: 'Apples', group: 'Ops' }),
+      mod({ moduleId: 'c', plural: 'Cats', group: 'CRM' }),
+    ]);
+    expect(rows.map((r) => r.name)).toEqual(['Cats', 'Apples', 'Zebras']);
+  });
+
+  it('reports a cancelled save as cancelled, never as a zero-record success', () => {
+    const msg = describeExport(
+      { moduleId: 'crm-customers', format: 'csv', records: 0, columns: 4, filePath: null, cancelled: true },
+      'Customers',
+    );
+    expect(msg).toContain('cancelled');
+    expect(msg).not.toContain('Exported 0');
+  });
+
+  it('names the file it actually wrote', () => {
+    const msg = describeExport(
+      { moduleId: 'crm-customers', format: 'xlsx', records: 42, columns: 6, filePath: '/Users/x/customers.xlsx', cancelled: false },
+      'Customers',
+    );
+    expect(msg).toBe('Exported 42 Customers to /Users/x/customers.xlsx.');
   });
 });

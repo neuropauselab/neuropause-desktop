@@ -86,7 +86,11 @@ import {
   guardOwnerUserPatch,
   withEnterpriseAuthz,
 } from './authzGate';
-import { initEnterpriseModules, type EnterpriseModuleRegistry } from './framework';
+import {
+  initEnterpriseModules,
+  type EnterpriseModuleRegistry,
+  type EnterpriseModulesSubsystem,
+} from './framework';
 import { invoiceModule } from './modules/finance/invoiceModuleInstance';
 import { paymentModule } from './modules/finance/paymentModuleInstance';
 import { ledgerAccountModule } from './modules/finance/ledgerAccountModuleInstance';
@@ -227,6 +231,12 @@ export interface EnterpriseSubsystem {
    * no mutation, no new state.
    */
   complianceFindings: () => ComplianceFinding[];
+  /**
+   * Phase 6 — replay Data Plane imports through the module lifecycle, so an
+   * imported record is audited, broadcast to open views and seen by every
+   * `onChange` reconciler exactly as a hand-created one is.
+   */
+  notifyImported: EnterpriseModulesSubsystem['notifyImported'];
 }
 
 export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSubsystem> {
@@ -473,6 +483,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     authorize,
     modules: modules.registry,
     complianceFindings: () => evaluateCompliance(governanceStore.rules(), buildComplianceInput()),
+    notifyImported: modules.notifyImported,
   };
 }
 

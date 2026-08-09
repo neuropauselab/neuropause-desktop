@@ -159,13 +159,22 @@ function resolve(registry: EnterpriseModuleRegistry, moduleId: string): Enterpri
  * they serve every module registered before or after (modules are resolved per
  * call), so a module added later needs no new IPC wiring.
  */
-export function buildModuleHandlers(
+/**
+ * Build the shared action/onChange context and the lifecycle fan-out bound to it.
+ *
+ * Extracted so the fan-out has exactly ONE definition. It was previously inline
+ * in `buildModuleHandlers`, which meant any other producer of records — the Data
+ * Plane importer, for one — had no way to reach it and its records were
+ * invisible to audit, to the renderer broadcast and to every module's `onChange`.
+ */
+export function createLifecycleEmitter(
   registry: EnterpriseModuleRegistry,
   ctx: EnterpriseModuleContext,
-): SecureHandlerDef[] {
-  // One shared action/onChange context: lets record actions and `onChange`
-  // reconcilers reach other modules (`moduleFor`) and fan out their lifecycle
-  // (`emit`), reusing the same identity + RBAC gate as the request.
+  correlationId?: string,
+): {
+  actionCtx: EnterpriseModuleActionContext;
+  emit: (module: EnterpriseModule, action: LifecycleAction, record: EnterpriseEntity) => Promise<void>;
+} {
   const actionCtx: EnterpriseModuleActionContext = {
     actor: ctx.actor,
     now: ctx.now,
@@ -174,9 +183,84 @@ export function buildModuleHandlers(
     emit: (m, action, rec) => {
       void emitLifecycle(ctx, actionCtx, m, action, rec);
     },
+    ...(correlationId === undefined ? {} : { correlationId }),
   };
+  return {
+    actionCtx,
+    emit: (module, action, record) => emitLifecycle(ctx, actionCtx, module, action, record),
+  };
+}
+
+/** One import's records, replayed through the module lifecycle. */
+export interface ImportedRecordsNotification {
+  moduleId: string;
+  recordIds: readonly string[];
+  /** Ties every emitted event back to the import that produced it. */
+  correlationId: string;
+}
+
+export interface ImportedRecordsResult {
+  moduleId: string;
+  /** Records that completed the full fan-out. */
+  notified: number;
+  /** Ids no longer present in the store (deleted between import and replay). */
+  missing: number;
+  /** A hook that threw. The import is NOT failed by this — it already happened. */
+  failed: { recordId: string; message: string }[];
+}
+
+/**
+ * Replay imported records through the SAME lifecycle a user-created record takes.
+ *
+ * Without this, importing 500 invoices leaves every open view stale, writes
+ * nothing to the audit trail per record, and silently skips the reconcilers that
+ * make the ERP consistent — the records exist in the store and nothing in the
+ * system knows.
+ *
+ * Deliberately sequential: a reconciler may write to another module, and running
+ * hundreds of them concurrently would race those writes against each other.
+ * Deliberately non-throwing: the records are already persisted, so a failing
+ * hook is reported, not allowed to unwind an import that has already succeeded.
+ */
+export async function notifyImportedRecords(
+  registry: EnterpriseModuleRegistry,
+  ctx: EnterpriseModuleContext,
+  event: ImportedRecordsNotification,
+): Promise<ImportedRecordsResult> {
+  const module = registry.get(event.moduleId);
+  if (!module) {
+    return { moduleId: event.moduleId, notified: 0, missing: event.recordIds.length, failed: [] };
+  }
+
+  const { emit } = createLifecycleEmitter(registry, ctx, event.correlationId);
+  const result: ImportedRecordsResult = { moduleId: event.moduleId, notified: 0, missing: 0, failed: [] };
+
+  for (const recordId of event.recordIds) {
+    const record = module.store.get(recordId);
+    if (!record) {
+      result.missing += 1;
+      continue;
+    }
+    try {
+      await emit(module, 'created', record);
+      result.notified += 1;
+    } catch (err) {
+      result.failed.push({ recordId, message: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  return result;
+}
+
+export function buildModuleHandlers(
+  registry: EnterpriseModuleRegistry,
+  ctx: EnterpriseModuleContext,
+): SecureHandlerDef[] {
+  // One shared action/onChange context: lets record actions and `onChange`
+  // reconcilers reach other modules (`moduleFor`) and fan out their lifecycle
+  // (`emit`), reusing the same identity + RBAC gate as the request.
+  const { actionCtx, emit } = createLifecycleEmitter(registry, ctx);
   const fan = (module: EnterpriseModule, action: LifecycleAction, record: EnterpriseEntity) =>
-    emitLifecycle(ctx, actionCtx, module, action, record);
+    emit(module, action, record);
   return [
     {
       channel: IpcChannel.EnterpriseModulesList,

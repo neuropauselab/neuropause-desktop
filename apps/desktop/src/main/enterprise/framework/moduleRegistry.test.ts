@@ -12,7 +12,11 @@ import {
 import type { SecureHandlerDef } from '../../ipc/secureBridge';
 import { EnterpriseRecordStore } from './enterpriseRecordStore';
 import { defineEnterpriseModule } from './enterpriseModule';
-import { EnterpriseModuleRegistry, buildModuleHandlers } from './moduleRegistry';
+import {
+  EnterpriseModuleRegistry,
+  buildModuleHandlers,
+  notifyImportedRecords,
+} from './moduleRegistry';
 
 const T0 = '2026-07-08T00:00:00.000Z';
 
@@ -262,5 +266,147 @@ describe('defineEnterpriseModule', () => {
         store,
       }),
     ).toThrow(/titleField/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 6 — imported records re-enter the lifecycle.
+//
+// Before this existed, a Data Plane import wrote straight to the store: the
+// records were there, but no audit entry, no renderer broadcast, and no module
+// reconciler ever saw them. These lock the replay.
+// ---------------------------------------------------------------------------
+
+describe('notifyImportedRecords', () => {
+  async function seed(count: number): Promise<string[]> {
+    const module = registry.get('finance');
+    if (!module) throw new Error('module missing');
+    const ids: string[] = [];
+    for (let i = 0; i < count; i += 1) {
+      const r = module.store.create({
+        title: `INV-${i}`,
+        fields: { number: `INV-${i}`, amount: 100 + i },
+        actor: 'import',
+        now: T0,
+      });
+      ids.push(r.id);
+    }
+    await module.store.flush();
+    // Only the replay's own effects should be under test.
+    rec = { audit: [], publish: [], broadcast: [], authorized: [] };
+    return ids;
+  }
+
+  it('audits, publishes and broadcasts every imported record', async () => {
+    const ids = await seed(3);
+    const res = await notifyImportedRecords(registry, ctx(), {
+      moduleId: 'finance',
+      recordIds: ids,
+      correlationId: 'dp_plan_1',
+    });
+
+    expect(res.notified).toBe(3);
+    expect(res.missing).toBe(0);
+    expect(res.failed).toEqual([]);
+    expect(rec.audit).toHaveLength(3);
+    expect(rec.audit[0]?.action).toBe('module.finance.created');
+    expect(rec.publish).toHaveLength(3);
+    expect(rec.broadcast.filter((b) => b.channel === IpcChannel.EnterpriseModuleEventBroadcast)).toHaveLength(3);
+  });
+
+  it('runs the module’s own onChange reconciler, which an import previously skipped entirely', async () => {
+    const seen: { action: string; id: string; correlationId: string | undefined }[] = [];
+    const store = new EnterpriseRecordStore(
+      join(tmpdir(), `np-erp-reg-${randomUUID()}.json`),
+      'finance',
+      'invoice',
+    );
+    await store.load();
+    const reg = new EnterpriseModuleRegistry();
+    reg.register(
+      defineEnterpriseModule({
+        descriptor: DESCRIPTOR,
+        store,
+        hooks: {
+          onChange: (event, actionCtx) => {
+            seen.push({
+              action: event.action,
+              id: event.record.id,
+              correlationId: actionCtx.correlationId,
+            });
+          },
+        },
+      }),
+    );
+    const created = store.create({ title: 'INV-9', fields: { number: 'INV-9' }, actor: 'import', now: T0 });
+    await store.flush();
+
+    await notifyImportedRecords(reg, ctx(), {
+      moduleId: 'finance',
+      recordIds: [created.id],
+      correlationId: 'dp_plan_9',
+    });
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.action).toBe('created');
+    expect(seen[0]?.id).toBe(created.id);
+    // The reconciler can tell this was an import, not a person clicking Save.
+    expect(seen[0]?.correlationId).toBe('dp_plan_9');
+    await fs.rm(store.path ?? '', { force: true }).catch(() => undefined);
+  });
+
+  it('reports a record that no longer exists instead of throwing', async () => {
+    const ids = await seed(1);
+    const res = await notifyImportedRecords(registry, ctx(), {
+      moduleId: 'finance',
+      recordIds: [...ids, 'rec_does_not_exist'],
+      correlationId: 'dp_plan_2',
+    });
+    expect(res.notified).toBe(1);
+    expect(res.missing).toBe(1);
+  });
+
+  it('does not fail an already-committed import when a reconciler throws', async () => {
+    const store = new EnterpriseRecordStore(
+      join(tmpdir(), `np-erp-reg-${randomUUID()}.json`),
+      'finance',
+      'invoice',
+    );
+    await store.load();
+    const reg = new EnterpriseModuleRegistry();
+    reg.register(
+      defineEnterpriseModule({
+        descriptor: DESCRIPTOR,
+        store,
+        hooks: {
+          onChange: () => {
+            throw new Error('reconciler exploded');
+          },
+        },
+      }),
+    );
+    const a = store.create({ title: 'A', fields: { number: 'A' }, actor: 'import', now: T0 });
+    const b = store.create({ title: 'B', fields: { number: 'B' }, actor: 'import', now: T0 });
+    await store.flush();
+
+    const res = await notifyImportedRecords(reg, ctx(), {
+      moduleId: 'finance',
+      recordIds: [a.id, b.id],
+      correlationId: 'dp_plan_3',
+    });
+
+    // Both are reported, neither is silently dropped, and nothing rejected.
+    expect(res.failed).toHaveLength(2);
+    expect(res.failed[0]?.message).toContain('reconciler exploded');
+    expect(res.notified).toBe(0);
+  });
+
+  it('returns a clean result for a module that is not registered', async () => {
+    const res = await notifyImportedRecords(registry, ctx(), {
+      moduleId: 'not-registered',
+      recordIds: ['a', 'b'],
+      correlationId: 'dp_plan_4',
+    });
+    expect(res).toEqual({ moduleId: 'not-registered', notified: 0, missing: 2, failed: [] });
   });
 });

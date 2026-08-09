@@ -939,6 +939,10 @@ export const IpcChannel = {
   DataPlaneForgetMapping: 'dp:mapping.forget',
   /** The canonical ontology (entities, fields, risk) for the review UI. */
   DataPlaneOntology: 'dp:ontology',
+  /** Modules that hold importable/exportable records, with live counts. */
+  DataPlaneExportable: 'dp:exportable',
+  /** Write a module's records to a file the user chooses. */
+  DataPlaneExport: 'dp:export',
 } as const;
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel];
@@ -1676,6 +1680,8 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.DataPlaneSaveMapping,
   IpcChannel.DataPlaneForgetMapping,
   IpcChannel.DataPlaneOntology,
+  IpcChannel.DataPlaneExportable,
+  IpcChannel.DataPlaneExport,
 ];
 
 /** Runtime-core broadcasts. */

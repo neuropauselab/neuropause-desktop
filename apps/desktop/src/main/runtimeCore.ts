@@ -78,8 +78,9 @@ import {
   OrgWorkspaceRequest,
   OrgUpdateWorkspaceRequest,
 } from '@neuropause/shared';
-import { app, shell } from 'electron';
+import { app, dialog, shell } from 'electron';
 import { join } from 'node:path';
+import { writeFile } from 'node:fs/promises';
 import { createLogger } from './logger';
 import { authService } from './auth/authService';
 import { catalogClient } from './catalog/catalogClient';
@@ -414,6 +415,51 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         workspaceId: workspaceStore.activeWorkspaceId(),
       }),
     authorize: enterprise.authorize,
+    // Phase 6 — imported records re-enter the SAME lifecycle a hand-created
+    // record takes: audit, platform timeline, renderer broadcast, and every
+    // module's own `onChange` reconciler. Without this the records exist in the
+    // store and nothing else in the system knows they arrived. Fire-and-forget
+    // against the already-committed import, and a failing reconciler is logged
+    // rather than allowed to unwind an import that already succeeded.
+    onImported: (event) => {
+      void enterprise
+        .notifyImported({
+          moduleId: event.moduleId,
+          recordIds: event.recordIds,
+          correlationId: event.correlationId,
+        })
+        .then((res) => {
+          if (res.failed.length > 0 || res.missing > 0) {
+            log.warn('Import lifecycle replay had problems', {
+              moduleId: res.moduleId,
+              notified: res.notified,
+              missing: res.missing,
+              failed: res.failed.length,
+            });
+          }
+        })
+        .catch((err: unknown) => {
+          log.warn('Import lifecycle replay failed', {
+            moduleId: event.moduleId,
+            message: err instanceof Error ? err.message : String(err),
+          });
+        });
+    },
+    // Export reads the module descriptors: their fields become the columns and
+    // their own read permission is enforced on top of `data:read`.
+    modules: () => enterprise.modules.list().map((m) => m.descriptor),
+    // The save dialog + filesystem write live HERE, not in the plane, so the
+    // plane itself stays Electron-free and fully testable under Node.
+    saveExport: async (suggestedName, format, content) => {
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        title: 'Export data',
+        defaultPath: suggestedName,
+        filters: [{ name: format.toUpperCase(), extensions: [format] }],
+      });
+      if (canceled || !filePath) return null;
+      await writeFile(filePath, content);
+      return filePath;
+    },
   });
 
   // Ecosystem Platform: developer portal + marketplace + API gateway + billing.

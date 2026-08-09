@@ -211,3 +211,32 @@ export interface DataPlaneOntologyView {
   /** Formats we deliberately do not read, with the reason. */
   unsupportedFormats: { format: string; reason: string }[];
 }
+
+// ── Export ────────────────────────────────────────────────────────────────
+
+export type DataPlaneExportFormat = 'csv' | 'xlsx' | 'json';
+
+/** A module whose records can be exported, with its live count. */
+export interface DataPlaneExportableModule {
+  moduleId: string;
+  title: string;
+  plural: string;
+  group: string | null;
+  /** Records that would be written — deleted records are never exported. */
+  recordCount: number;
+  /** How many of those records came from an import and carry provenance. */
+  importedCount: number;
+}
+
+/**
+ * The outcome of an export. `filePath` is null when the user dismissed the save
+ * dialog — a cancellation is a normal outcome, not an error.
+ */
+export interface DataPlaneExportResult {
+  moduleId: string;
+  format: DataPlaneExportFormat;
+  records: number;
+  columns: number;
+  filePath: string | null;
+  cancelled: boolean;
+}

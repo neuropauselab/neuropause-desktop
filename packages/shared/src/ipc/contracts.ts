@@ -2612,3 +2612,16 @@ export const DataPlaneForgetMappingRequest = z
   .object({ signature: z.string().trim().min(1).max(256) })
   .strict();
 export type DataPlaneForgetMappingRequest = z.infer<typeof DataPlaneForgetMappingRequest>;
+
+/**
+ * Export a module's records. `includeProvenance` adds the source file/sheet/row
+ * columns, so an exported sheet can be traced back to what produced it.
+ */
+export const DataPlaneExportRequest = z
+  .object({
+    moduleId: z.string().trim().min(1).max(128),
+    format: z.enum(['csv', 'xlsx', 'json']),
+    includeProvenance: z.boolean().optional(),
+  })
+  .strict();
+export type DataPlaneExportRequest = z.infer<typeof DataPlaneExportRequest>;

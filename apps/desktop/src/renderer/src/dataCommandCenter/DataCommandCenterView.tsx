@@ -17,6 +17,7 @@ import { buildOverview, friendlyError } from './dataCommandCenterModel';
 import { ImportPanel } from './ImportPanel';
 import {
   CoveragePanel,
+  ExportPanel,
   HistoryPanel,
   MappingsPanel,
   OverviewPanel,
@@ -28,7 +29,15 @@ import { ErrorBlock } from './primitives';
 
 const log = createLogger('data-command-center');
 
-type Tab = 'overview' | 'import' | 'history' | 'quality' | 'provenance' | 'mappings' | 'coverage';
+type Tab =
+  | 'overview'
+  | 'import'
+  | 'export'
+  | 'history'
+  | 'quality'
+  | 'provenance'
+  | 'mappings'
+  | 'coverage';
 
 export function DataCommandCenterView(): JSX.Element {
   const [tab, setTab] = useState<Tab>('overview');
@@ -79,6 +88,7 @@ export function DataCommandCenterView(): JSX.Element {
     return [
       { id: 'overview', label: 'Overview', icon: 'gauge' },
       { id: 'import', label: 'Import', icon: 'upload' },
+      { id: 'export', label: 'Export', icon: 'download' },
       { id: 'history', label: 'History', icon: 'clock', count: runs.length || undefined },
       { id: 'quality', label: 'Data Quality', icon: 'shield', count: attention || undefined },
       { id: 'provenance', label: 'Provenance', icon: 'eye' },
@@ -122,6 +132,7 @@ export function DataCommandCenterView(): JSX.Element {
             <OverviewPanel history={runs} onImport={() => setTab('import')} onOpenRun={openRun} />
           )}
           {tab === 'import' && <ImportPanel onImported={() => void loadHistory()} />}
+          {tab === 'export' && <ExportPanel />}
           {tab === 'history' && (
             <HistoryPanel history={runs} selected={selectedRun} onSelect={setSelectedRun} />
           )}

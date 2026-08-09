@@ -15,6 +15,8 @@
 import { DP_MAX_CONTENT_BASE64 } from '@neuropause/shared';
 import type {
   DataPlaneColumnMapping,
+  DataPlaneExportableModule,
+  DataPlaneExportResult,
   DataPlaneInspection,
   DataPlanePlanSummary,
   DataPlaneProvenance,
@@ -646,4 +648,62 @@ export function importReadiness(
     };
   }
   return { ready: true, blockedBecause: null, approvedTables: approved.length, approvedRecords };
+}
+
+// ---------------------------------------------------------------------------
+// Export
+// ---------------------------------------------------------------------------
+
+export type ExportFormatId = 'xlsx' | 'csv' | 'json';
+
+export interface ExportFormatChoice {
+  id: ExportFormatId;
+  label: string;
+  /** What this format is actually good for — not marketing copy. */
+  detail: string;
+}
+
+export const EXPORT_FORMATS: readonly ExportFormatChoice[] = [
+  { id: 'xlsx', label: 'Excel', detail: 'Opens directly in Excel, Numbers or Sheets.' },
+  { id: 'csv', label: 'CSV', detail: 'Plain text — the safest thing to hand to another system.' },
+  { id: 'json', label: 'JSON', detail: 'Keyed by field name, for scripts and integrations.' },
+];
+
+export interface ExportRow {
+  moduleId: string;
+  name: string;
+  group: string;
+  records: number;
+  imported: number;
+  /** Plain-language note about traceability. Empty when there is nothing to say. */
+  provenanceNote: string;
+}
+
+export function buildExportRows(modules: readonly DataPlaneExportableModule[]): ExportRow[] {
+  return modules
+    .map((m) => ({
+      moduleId: m.moduleId,
+      name: m.plural,
+      group: m.group ?? 'Other',
+      records: m.recordCount,
+      imported: m.importedCount,
+      provenanceNote:
+        m.importedCount === 0
+          ? 'No imported records — source columns would be empty.'
+          : m.importedCount === m.recordCount
+            ? 'Every record can be traced to its source row.'
+            : `${m.importedCount.toLocaleString()} of ${m.recordCount.toLocaleString()} can be traced to a source row.`,
+    }))
+    .sort((a, b) => a.group.localeCompare(b.group) || a.name.localeCompare(b.name));
+}
+
+/**
+ * The sentence shown after an export finishes.
+ *
+ * A cancelled save is reported as cancelled — never as a success with zero
+ * records, which is what a naive "exported N records" template would produce.
+ */
+export function describeExport(result: DataPlaneExportResult, moduleName: string): string {
+  if (result.cancelled) return 'Export cancelled — nothing was written.';
+  return `Exported ${result.records.toLocaleString()} ${moduleName} to ${result.filePath ?? 'the chosen file'}.`;
 }

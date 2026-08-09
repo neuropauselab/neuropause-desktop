@@ -72,6 +72,16 @@ export interface EnterpriseModuleActionContext {
     action: EnterpriseModuleLifecycleAction,
     record: EnterpriseEntity,
   ) => void;
+  /**
+   * Set when this change did NOT originate from a person acting in the UI —
+   * today, a Data Plane import replaying its records through the lifecycle.
+   *
+   * A reconciler that wants to behave differently for bulk-loaded history (skip
+   * a notification, suppress an outbound side effect) can read it. Everything
+   * else ignores it, which is why it is optional: the default behaviour of every
+   * existing hook is unchanged.
+   */
+  correlationId?: string;
 }
 
 /** Optional per-module hooks. Defaults cover the common case. */

@@ -5,100 +5,16 @@
  * format — shared strings, deflate compression, date styles — without committing
  * a binary fixture to the repository.
  *
+ * The ZIP container itself is the PRODUCTION writer (`zipWriter.ts`) — the
+ * fixtures deliberately exercise the same bytes the export path emits, so a
+ * defect in the archive layer cannot hide behind a second implementation.
+ *
  * Nothing in the production main process imports this module.
  */
-import { deflateRawSync } from 'node:zlib';
+import { buildZip, type ZipEntry } from './zipWriter';
 
-let CRC_TABLE: Int32Array | null = null;
-
-function crcTable(): Int32Array {
-  if (CRC_TABLE) return CRC_TABLE;
-  const table = new Int32Array(256);
-  for (let i = 0; i < 256; i += 1) {
-    let c = i;
-    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    table[i] = c;
-  }
-  CRC_TABLE = table;
-  return table;
-}
-
-export function crc32(buf: Buffer): number {
-  const table = crcTable();
-  let c = 0xffffffff;
-  for (let i = 0; i < buf.length; i += 1) {
-    c = (table[(c ^ (buf[i] ?? 0)) & 0xff] ?? 0) ^ (c >>> 8);
-  }
-  return (c ^ 0xffffffff) >>> 0;
-}
-
-export interface ZipInput {
-  name: string;
-  content: string;
-}
-
-/** Build a real ZIP archive (deflate) from a set of named text parts. */
-export function buildZip(parts: readonly ZipInput[]): Buffer {
-  const locals: Buffer[] = [];
-  const centrals: Buffer[] = [];
-  let offset = 0;
-
-  for (const part of parts) {
-    const nameBuf = Buffer.from(part.name, 'utf8');
-    const raw = Buffer.from(part.content, 'utf8');
-    const deflated = deflateRawSync(raw);
-    const crc = crc32(raw);
-
-    const local = Buffer.alloc(30);
-    local.writeUInt32LE(0x04034b50, 0);
-    local.writeUInt16LE(20, 4);
-    local.writeUInt16LE(0, 6);
-    local.writeUInt16LE(8, 8); // deflate
-    local.writeUInt16LE(0, 10);
-    local.writeUInt16LE(0, 12);
-    local.writeUInt32LE(crc, 14);
-    local.writeUInt32LE(deflated.length, 18);
-    local.writeUInt32LE(raw.length, 22);
-    local.writeUInt16LE(nameBuf.length, 26);
-    local.writeUInt16LE(0, 28);
-    locals.push(local, nameBuf, deflated);
-
-    const central = Buffer.alloc(46);
-    central.writeUInt32LE(0x02014b50, 0);
-    central.writeUInt16LE(20, 4);
-    central.writeUInt16LE(20, 6);
-    central.writeUInt16LE(0, 8);
-    central.writeUInt16LE(8, 10);
-    central.writeUInt16LE(0, 12);
-    central.writeUInt16LE(0, 14);
-    central.writeUInt32LE(crc, 16);
-    central.writeUInt32LE(deflated.length, 20);
-    central.writeUInt32LE(raw.length, 24);
-    central.writeUInt16LE(nameBuf.length, 28);
-    central.writeUInt16LE(0, 30);
-    central.writeUInt16LE(0, 32);
-    central.writeUInt16LE(0, 34);
-    central.writeUInt16LE(0, 36);
-    central.writeUInt32LE(0, 38);
-    central.writeUInt32LE(offset, 42);
-    centrals.push(central, nameBuf);
-
-    offset += local.length + nameBuf.length + deflated.length;
-  }
-
-  const centralBuf = Buffer.concat(centrals);
-  const eocd = Buffer.alloc(22);
-  eocd.writeUInt32LE(0x06054b50, 0);
-  eocd.writeUInt16LE(0, 4);
-  eocd.writeUInt16LE(0, 6);
-  eocd.writeUInt16LE(parts.length, 8);
-  eocd.writeUInt16LE(parts.length, 10);
-  eocd.writeUInt32LE(centralBuf.length, 12);
-  eocd.writeUInt32LE(offset, 16);
-  eocd.writeUInt16LE(0, 20);
-
-  return Buffer.concat([...locals, centralBuf, eocd]);
-}
+export type ZipInput = ZipEntry;
+export { buildZip, crc32 } from './zipWriter';
 
 /** A cell value in a fixture sheet. `{ date }` emits a real Excel serial + date style. */
 export type FixtureCell = string | number | boolean | null | { date: string };

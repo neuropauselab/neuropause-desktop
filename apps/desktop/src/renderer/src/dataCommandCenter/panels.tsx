@@ -7,7 +7,13 @@
  * say so plainly rather than rendering an empty chart.
  */
 import { useCallback, useEffect, useState } from 'react';
-import type { DataPlaneOntologyView, DataPlaneRunResult, DataPlaneSavedMapping } from '@neuropause/shared';
+import type {
+  DataPlaneExportableModule,
+  DataPlaneOntologyView,
+  DataPlaneRunResult,
+  DataPlaneSavedMapping,
+} from '@neuropause/shared';
+import { cn } from '@renderer/lib/cn';
 import { ipc } from '@renderer/lib/ipc';
 import { Button } from '@renderer/components/ui/Button';
 import { Card } from '@renderer/components/ui/Card';
@@ -16,12 +22,16 @@ import { Icon } from '@renderer/components/ui/Icon';
 import { Input } from '@renderer/components/ui/Input';
 import { Loading } from '@renderer/components/ui/Loading';
 import {
+  EXPORT_FORMATS,
   SUPPORTED_FORMAT_LABEL,
+  buildExportRows,
   buildOverview,
   buildProvenance,
   buildQualityIssues,
   buildResult,
+  describeExport,
   friendlyError,
+  type ExportFormatId,
   type ProvenanceModel,
 } from './dataCommandCenterModel';
 import {
@@ -607,5 +617,149 @@ export function RefreshButton({ onClick, busy }: { onClick: () => void; busy: bo
     >
       <Icon name="refresh" size={16} className={busy ? 'animate-spin' : undefined} />
     </button>
+  );
+}
+
+// ── Export ─────────────────────────────────────────────────────────────────
+
+export function ExportPanel(): JSX.Element {
+  const [modules, setModules] = useState<DataPlaneExportableModule[] | null>(null);
+  const [format, setFormat] = useState<ExportFormatId>('xlsx');
+  const [includeProvenance, setIncludeProvenance] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<{ title: string; detail: string } | null>(null);
+
+  const load = useCallback(async (): Promise<void> => {
+    try {
+      setError(null);
+      setModules(await ipc.data.exportable());
+    } catch (err) {
+      setError(friendlyError(err));
+      setModules([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const run = useCallback(
+    async (moduleId: string, name: string): Promise<void> => {
+      setBusy(moduleId);
+      setMessage(null);
+      setError(null);
+      try {
+        const result = await ipc.data.export(moduleId, format, includeProvenance);
+        setMessage(describeExport(result, name));
+      } catch (err) {
+        setError(friendlyError(err));
+      } finally {
+        setBusy(null);
+      }
+    },
+    [format, includeProvenance],
+  );
+
+  if (modules === null) return <Loading kind="table" rows={5} />;
+
+  const rows = buildExportRows(modules);
+
+  return (
+    <div>
+      <Section
+        title="Export your data"
+        subtitle="Take records out of NeuroPause in a format you can open, hand to an accountant, or load into another system."
+      >
+        <Card variant="flat">
+          <div className="flex flex-wrap items-center gap-2">
+            {EXPORT_FORMATS.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setFormat(f.id)}
+                className={cn(
+                  'rounded-xl border px-3.5 py-2 text-left transition',
+                  format === f.id
+                    ? 'border-accent [background:var(--fill-1)]'
+                    : 'border-[var(--hairline)] hover:[background:var(--fill-1)]',
+                )}
+              >
+                <div className="text-sm font-semibold">{f.label}</div>
+                <div className="text-xs text-faint">{f.detail}</div>
+              </button>
+            ))}
+          </div>
+
+          <label className="mt-4 flex items-start gap-2.5 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
+              checked={includeProvenance}
+              onChange={(e) => setIncludeProvenance(e.target.checked)}
+            />
+            <span>
+              Include source columns
+              <span className="block text-xs text-faint">
+                Adds the file, sheet and row each record was imported from. Records created by hand leave these
+                cells empty.
+              </span>
+            </span>
+          </label>
+        </Card>
+      </Section>
+
+      {message && (
+        <div className="mb-5">
+          <NoticeBlock icon="check">{message}</NoticeBlock>
+        </div>
+      )}
+      {error && (
+        <div className="mb-5">
+          <ErrorBlock title={error.title} detail={error.detail} onRetry={() => void load()} />
+        </div>
+      )}
+
+      {rows.length === 0 ? (
+        <Card variant="flat">
+          <EmptyState
+            icon="download"
+            title="Nothing to export yet"
+            description="Only modules that hold records are listed here. Import a file, or create records in the business modules, and they will appear."
+          />
+        </Card>
+      ) : (
+        <DataTable
+          head={
+            <tr>
+              <Th>Data</Th>
+              <Th>Area</Th>
+              <Th>Records</Th>
+              <Th>Traceability</Th>
+              <Th />
+            </tr>
+          }
+        >
+          {rows.map((r) => (
+            <tr key={r.moduleId}>
+              <Td className="font-medium">{r.name}</Td>
+              <Td className="text-muted">{r.group}</Td>
+              <Td className="tabular-nums">{r.records.toLocaleString()}</Td>
+              <Td className="text-muted">{r.provenanceNote}</Td>
+              <Td className="text-right">
+                <Button
+                  size="sm"
+                  icon="download"
+                  loading={busy === r.moduleId}
+                  onClick={() => void run(r.moduleId, r.name)}
+                >
+                  Export
+                </Button>
+              </Td>
+            </tr>
+          ))}
+        </DataTable>
+      )}
+    </div>
   );
 }

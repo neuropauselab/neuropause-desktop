@@ -31,6 +31,8 @@ import type { HelpDocMeta } from '../types/helpDocs';
 import type {
   DataPlaneInspection,
   DataPlaneOntologyView,
+  DataPlaneExportableModule,
+  DataPlaneExportResult,
   DataPlanePlanSummary,
   DataPlaneProvenance,
   DataPlaneRunResult,
@@ -1406,6 +1408,8 @@ export interface IpcResponseMap {
   'dp:mapping.save': DataPlaneSavedMapping;
   'dp:mapping.forget': { forgotten: boolean };
   'dp:ontology': DataPlaneOntologyView;
+  'dp:exportable': DataPlaneExportableModule[];
+  'dp:export': DataPlaneExportResult;
 }
 
 /**

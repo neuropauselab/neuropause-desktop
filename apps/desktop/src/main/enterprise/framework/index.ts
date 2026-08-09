@@ -13,7 +13,13 @@
 import { join } from 'node:path';
 import type { SecureHandlerDef } from '../../ipc/secureBridge';
 import type { EnterpriseModuleContext } from './enterpriseModule';
-import { EnterpriseModuleRegistry, buildModuleHandlers } from './moduleRegistry';
+import {
+  EnterpriseModuleRegistry,
+  buildModuleHandlers,
+  notifyImportedRecords,
+  type ImportedRecordsNotification,
+  type ImportedRecordsResult,
+} from './moduleRegistry';
 
 export * from './enterpriseRecordStore';
 export * from './enterpriseModule';
@@ -27,6 +33,12 @@ export function enterpriseModuleStorePath(userDataDir: string, moduleId: string)
 export interface EnterpriseModulesSubsystem {
   registry: EnterpriseModuleRegistry;
   handlers: SecureHandlerDef[];
+  /**
+   * Replay records created OUTSIDE the CRUD handlers (a Data Plane import)
+   * through the same lifecycle fan-out, so they are audited, broadcast to open
+   * views, and seen by every module's `onChange` reconciler.
+   */
+  notifyImported: (event: ImportedRecordsNotification) => Promise<ImportedRecordsResult>;
 }
 
 /**
@@ -37,5 +49,9 @@ export interface EnterpriseModulesSubsystem {
 export function initEnterpriseModules(ctx: EnterpriseModuleContext): EnterpriseModulesSubsystem {
   const registry = new EnterpriseModuleRegistry();
   const handlers = buildModuleHandlers(registry, ctx);
-  return { registry, handlers };
+  return {
+    registry,
+    handlers,
+    notifyImported: (event) => notifyImportedRecords(registry, ctx, event),
+  };
 }

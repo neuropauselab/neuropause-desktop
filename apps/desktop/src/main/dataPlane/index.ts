@@ -18,16 +18,20 @@
  */
 import { join } from 'node:path';
 import type {
+  DataPlaneExportableModule,
+  DataPlaneExportResult,
   DataPlaneInspection,
   DataPlaneOntologyView,
   DataPlanePlanSummary,
   DataPlaneProvenance,
   DataPlaneRunResult,
   DataPlaneSavedMapping,
+  EnterpriseModuleDescriptor,
   EnterprisePermission,
 } from '@neuropause/shared';
 import {
   DataPlaneAnalyzeRequest,
+  DataPlaneExportRequest,
   DataPlaneForgetMappingRequest,
   DataPlaneHistoryRequest,
   DataPlaneImportRequest,
@@ -48,6 +52,7 @@ import { applyImportPlan, ProvenanceStore, type ImportDecision } from './importe
 import { MappingMemoryStore } from './mappingMemory';
 import { ONTOLOGY, entityById, requiresExplicitApproval } from './ontology';
 import { SUPPORTED_FORMATS, parseFile } from './parsers';
+import { buildExport, type ExportCell, type ExportColumn, type ExportTable } from './exporters';
 
 const log = createLogger('data-plane');
 
@@ -65,6 +70,19 @@ export interface DataPlaneSubsystemDeps {
   audit: (entry: { action: string; target: string; summary: string }) => void;
   /** Throws when the current actor lacks the permission. */
   authorize: (permission: EnterprisePermission) => void;
+  /**
+   * Every module that holds records, in registration order. Export needs the
+   * descriptor — its fields become the columns and its OWN read permission is
+   * enforced, so exporting payroll requires the right to read payroll.
+   */
+  modules: () => readonly EnterpriseModuleDescriptor[];
+  /**
+   * Ask the user where to put an export and write it. Injected because the save
+   * dialog and the filesystem are Electron concerns, and keeping them out of
+   * this module is what lets the whole plane run under Node in tests.
+   * Resolves to the written path, or null when the user cancelled.
+   */
+  saveExport: (suggestedName: string, format: string, content: Buffer) => Promise<string | null>;
   /** Fired after a successful import so domain subsystems can react. */
   onImported?: (event: { moduleId: string; recordIds: string[]; planId: string; correlationId: string }) => void;
 }
@@ -334,6 +352,115 @@ export function initDataPlane(deps: DataPlaneSubsystemDeps): DataPlaneSubsystem 
           });
         }
         return { forgotten };
+      },
+    },
+    {
+      channel: IpcChannel.DataPlaneExportable,
+      schema: EmptyRequest,
+      requireAuth: true,
+      handler: async (): Promise<DataPlaneExportableModule[]> => {
+        deps.authorize('data:read');
+        await provenance.load();
+        const out: DataPlaneExportableModule[] = [];
+        for (const descriptor of deps.modules()) {
+          const store = deps.storeFor(descriptor.id);
+          if (!store) continue;
+          await store.load();
+          const live = store.list().filter((r) => r.status !== 'deleted');
+          // A module with nothing in it is not offered — an export that would
+          // produce a header row and no data is not a useful thing to show.
+          if (live.length === 0) continue;
+          out.push({
+            moduleId: descriptor.id,
+            title: descriptor.title,
+            plural: descriptor.plural,
+            group: descriptor.group ?? null,
+            recordCount: live.length,
+            importedCount: provenance.countForModule(descriptor.id),
+          });
+        }
+        return out;
+      },
+    },
+    {
+      channel: IpcChannel.DataPlaneExport,
+      schema: DataPlaneExportRequest,
+      requireAuth: true,
+      audit: true,
+      timeoutMs: 120_000,
+      handler: async (p): Promise<DataPlaneExportResult> => {
+        const req = p as DataPlaneExportRequest;
+
+        // Two gates, deliberately. `data:read` is the right to use this surface
+        // at all; the module's OWN read permission is the right to see THAT
+        // data. Bulk extraction must not be a way around the second one.
+        deps.authorize('data:read');
+        const descriptor = deps.modules().find((m) => m.id === req.moduleId);
+        if (!descriptor) throw new Error(`Unknown module "${req.moduleId}".`);
+        deps.authorize(descriptor.permissions.read);
+
+        const store = deps.storeFor(req.moduleId);
+        if (!store) throw new Error(`"${descriptor.title}" is not available in this build.`);
+        await store.load();
+        const live = store.list().filter((r) => r.status !== 'deleted');
+
+        const columns: ExportColumn[] = descriptor.fields.map((f) => ({ key: f.key, label: f.label }));
+        const withProvenance = req.includeProvenance === true;
+        if (withProvenance) {
+          await provenance.load();
+          columns.push(
+            { key: '__source_file', label: 'Source file' },
+            { key: '__source_table', label: 'Source sheet' },
+            { key: '__source_row', label: 'Source row' },
+            { key: '__imported_at', label: 'Imported at' },
+          );
+        }
+
+        const rows: Record<string, ExportCell>[] = live.map((record) => {
+          const row: Record<string, ExportCell> = {};
+          for (const field of descriptor.fields) row[field.key] = record.fields[field.key] ?? null;
+          if (withProvenance) {
+            const p2 = provenance.forRecord(record.id);
+            // A record created by hand has no import provenance. That is stated
+            // as empty cells rather than invented.
+            row['__source_file'] = p2?.sourceFile ?? null;
+            row['__source_table'] = p2?.sourceTable ?? null;
+            row['__source_row'] = p2?.sourceRow ?? null;
+            row['__imported_at'] = p2?.importedAt ?? null;
+          }
+          return row;
+        });
+
+        const table: ExportTable = { name: descriptor.plural, columns, rows };
+        const artifact = buildExport(table, req.format, deps.now());
+        const filePath = await deps.saveExport(artifact.filename, artifact.format, artifact.content);
+
+        if (filePath === null) {
+          return {
+            moduleId: req.moduleId,
+            format: req.format,
+            records: 0,
+            columns: columns.length,
+            filePath: null,
+            cancelled: true,
+          };
+        }
+
+        deps.audit({
+          action: 'dataplane.export',
+          target: req.moduleId,
+          summary: `Exported ${rows.length} ${descriptor.plural} as ${req.format.toUpperCase()}.`,
+        });
+        log.info('Export written', { moduleId: req.moduleId, format: req.format, records: rows.length });
+
+        return {
+          moduleId: req.moduleId,
+          format: req.format,
+          records: rows.length,
+          columns: columns.length,
+          filePath,
+          cancelled: false,
+        };
       },
     },
   ];

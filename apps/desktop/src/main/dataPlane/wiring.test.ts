@@ -19,6 +19,7 @@ import {
   ALL_ENTERPRISE_PERMISSIONS,
   IpcChannel,
   RUNTIME_INVOKABLE_CHANNELS,
+  type EnterpriseModuleDescriptor,
   type EnterprisePermission,
   type IpcChannelName,
 } from '@neuropause/shared';
@@ -40,6 +41,8 @@ const DATA_PLANE_CHANNELS: IpcChannelName[] = [
   IpcChannel.DataPlaneSaveMapping,
   IpcChannel.DataPlaneForgetMapping,
   IpcChannel.DataPlaneOntology,
+  IpcChannel.DataPlaneExportable,
+  IpcChannel.DataPlaneExport,
 ];
 
 const T0 = '2026-08-08T12:00:00.000Z';
@@ -50,6 +53,9 @@ let audit: { action: string; target: string; summary: string }[];
 let granted: Set<EnterprisePermission>;
 let stores: Map<string, EnterpriseRecordStore>;
 let tenant: string;
+let descriptors: EnterpriseModuleDescriptor[];
+let saved: { name: string; bytes: number }[];
+let saveCancelled: boolean;
 
 function build(): DataPlaneSubsystem {
   return initDataPlane({
@@ -66,6 +72,12 @@ function build(): DataPlaneSubsystem {
         throw err;
       }
     },
+    modules: () => descriptors,
+    saveExport: async (name, _format, content) => {
+      if (saveCancelled) return null;
+      saved.push({ name, bytes: content.length });
+      return `/tmp/${name}`;
+    },
   });
 }
 
@@ -73,11 +85,52 @@ beforeEach(async () => {
   dir = await fs.mkdtemp(join(tmpdir(), 'np-dpwire-'));
   audit = [];
   tenant = 'tenant-a';
-  granted = new Set<EnterprisePermission>(['data:read', 'data:import', 'data:approve']);
+  // `crm:read` / `operations:read` are the DESTINATION modules' own read rights,
+  // which export enforces on top of `data:read`. A test that narrows this set
+  // below proves the second gate is load-bearing.
+  granted = new Set<EnterprisePermission>([
+    'data:read',
+    'data:import',
+    'data:approve',
+    'crm:read',
+    'operations:read',
+  ]);
   stores = new Map([
     ['projects-projects', new EnterpriseRecordStore(join(dir, 'proj.json'), 'projects-projects', 'project')],
     ['crm-customers', new EnterpriseRecordStore(join(dir, 'cust.json'), 'crm-customers', 'customer')],
   ]);
+  saved = [];
+  saveCancelled = false;
+  descriptors = [
+    {
+      id: 'crm-customers',
+      title: 'Customers',
+      singular: 'Customer',
+      plural: 'Customers',
+      icon: 'user',
+      description: 'Customer master data.',
+      fields: [
+        { key: 'name', label: 'Name', type: 'text', required: true },
+        { key: 'email', label: 'Email', type: 'text' },
+      ],
+      titleField: 'name',
+      permissions: { read: 'crm:read', write: 'crm:manage' },
+    },
+    {
+      id: 'projects-projects',
+      title: 'Projects',
+      singular: 'Project',
+      plural: 'Projects',
+      icon: 'grid',
+      description: 'Delivery projects.',
+      fields: [
+        { key: 'code', label: 'Project Number', type: 'text', required: true },
+        { key: 'name', label: 'Project Name', type: 'text' },
+      ],
+      titleField: 'code',
+      permissions: { read: 'operations:read', write: 'operations:manage' },
+    },
+  ];
   sub = build();
 });
 
@@ -386,6 +439,8 @@ describe('import lifecycle notification', () => {
       now: () => T0,
       audit: (e) => audit.push(e),
       authorize: () => undefined,
+      modules: () => descriptors,
+      saveExport: async (name) => `/tmp/${name}`,
       onImported,
     });
 
@@ -417,6 +472,8 @@ describe('import lifecycle notification', () => {
       now: () => T0,
       audit: (e) => audit.push(e),
       authorize: () => undefined,
+      modules: () => descriptors,
+      saveExport: async (name) => `/tmp/${name}`,
       onImported,
     });
     const workbook = buildXlsx([
@@ -428,5 +485,113 @@ describe('import lifecycle notification', () => {
     })) as { planId: string };
     await handlerFor(IpcChannel.DataPlaneImport)({ planId: plan.planId, approvals: [] });
     expect(onImported).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('export', () => {
+  async function seedCustomers(): Promise<void> {
+    const store = stores.get('crm-customers');
+    if (!store) throw new Error('missing store');
+    await store.load();
+    store.create({ title: 'Acme', fields: { name: 'Acme', email: 'a@acme.example' }, actor: 'tester', now: T0 });
+    store.create({ title: 'Globex', fields: { name: 'Globex', email: 'g@globex.example' }, actor: 'tester', now: T0 });
+    // The store persists asynchronously; flush so the temp dir is not removed
+    // out from under a pending write when the test ends.
+    await store.flush();
+  }
+
+  it('lists only modules that actually hold records', async () => {
+    await seedCustomers();
+    const list = (await handlerFor(IpcChannel.DataPlaneExportable)({})) as { moduleId: string; recordCount: number }[];
+    expect(list.map((m) => m.moduleId)).toEqual(['crm-customers']);
+    expect(list[0]?.recordCount).toBe(2);
+  });
+
+  it('reports how many of those records came from an import, not just the total', async () => {
+    await seedCustomers();
+    const before = (await handlerFor(IpcChannel.DataPlaneExportable)({})) as { importedCount: number }[];
+    expect(before[0]?.importedCount).toBe(0);
+
+    const workbook = buildXlsx([
+      { name: 'Customers', rows: [['Customer Name', 'Email'], ['Initech', 'i@initech.example']] },
+    ]);
+    const plan = (await handlerFor(IpcChannel.DataPlaneAnalyze)({
+      filename: 'c.xlsx',
+      contentBase64: b64(workbook),
+    })) as { planId: string };
+    await handlerFor(IpcChannel.DataPlaneImport)({
+      planId: plan.planId,
+      approvals: [{ tableName: 'Customers', approved: true }],
+    });
+
+    const after = (await handlerFor(IpcChannel.DataPlaneExportable)({})) as
+      { recordCount: number; importedCount: number }[];
+    expect(after[0]?.recordCount).toBe(3);
+    expect(after[0]?.importedCount).toBe(1);
+  });
+
+  it('writes the file and reports exactly what was written', async () => {
+    await seedCustomers();
+    const res = (await handlerFor(IpcChannel.DataPlaneExport)({
+      moduleId: 'crm-customers',
+      format: 'csv',
+    })) as { records: number; filePath: string | null; cancelled: boolean };
+    expect(res.cancelled).toBe(false);
+    expect(res.records).toBe(2);
+    expect(res.filePath).toContain('customers-2026-08-08.csv');
+    expect(saved[0]?.bytes).toBeGreaterThan(0);
+  });
+
+  it('treats a dismissed save dialog as a cancellation, not a failure', async () => {
+    await seedCustomers();
+    saveCancelled = true;
+    const res = (await handlerFor(IpcChannel.DataPlaneExport)({
+      moduleId: 'crm-customers',
+      format: 'xlsx',
+    })) as { cancelled: boolean; filePath: string | null; records: number };
+    expect(res.cancelled).toBe(true);
+    expect(res.filePath).toBeNull();
+    expect(res.records).toBe(0);
+    // A cancelled export is not an event worth recording as an extraction.
+    expect(audit.some((a) => a.action === 'dataplane.export')).toBe(false);
+  });
+
+  it('audits a completed export as the extraction it is', async () => {
+    await seedCustomers();
+    await handlerFor(IpcChannel.DataPlaneExport)({ moduleId: 'crm-customers', format: 'json' });
+    const entry = audit.find((a) => a.action === 'dataplane.export');
+    expect(entry?.target).toBe('crm-customers');
+    expect(entry?.summary).toContain('2 Customers');
+  });
+
+  it('refuses a module the actor may not READ, even with data:read granted', async () => {
+    await seedCustomers();
+    granted = new Set<EnterprisePermission>(['data:read']); // no crm:read
+    await expect(
+      handlerFor(IpcChannel.DataPlaneExport)({ moduleId: 'crm-customers', format: 'csv' }),
+    ).rejects.toThrow(/crm:read/);
+  });
+
+  it('refuses an unknown module rather than writing an empty file', async () => {
+    await expect(
+      handlerFor(IpcChannel.DataPlaneExport)({ moduleId: 'not-a-module', format: 'csv' }),
+    ).rejects.toThrow(/Unknown module/);
+  });
+
+  it('adds source columns only when provenance is requested', async () => {
+    await seedCustomers();
+    const plain = (await handlerFor(IpcChannel.DataPlaneExport)({
+      moduleId: 'crm-customers',
+      format: 'csv',
+    })) as { columns: number };
+    const traced = (await handlerFor(IpcChannel.DataPlaneExport)({
+      moduleId: 'crm-customers',
+      format: 'csv',
+      includeProvenance: true,
+    })) as { columns: number };
+    expect(plain.columns).toBe(2);
+    expect(traced.columns).toBe(6);
   });
 });

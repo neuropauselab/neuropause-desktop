@@ -1806,6 +1806,19 @@ export const ipc = {
     forgetMapping: (signature: string) => invoke(IpcChannel.DataPlaneForgetMapping, { signature }),
     /** The canonical entities and the formats we deliberately cannot read. */
     ontology: () => invoke(IpcChannel.DataPlaneOntology, {}),
+    /** Modules that actually hold records, with live counts. */
+    exportable: () => invoke(IpcChannel.DataPlaneExportable, {}),
+    /**
+     * Write a module's records to a file. The main process shows the save
+     * dialog, so the renderer never touches a path; a cancelled dialog comes
+     * back as `cancelled: true`, which is a normal outcome, not an error.
+     */
+    export: (moduleId: string, format: 'csv' | 'xlsx' | 'json', includeProvenance?: boolean) =>
+      invoke(IpcChannel.DataPlaneExport, {
+        moduleId,
+        format,
+        ...(includeProvenance === undefined ? {} : { includeProvenance }),
+      }),
   },
 };
 
