@@ -44,6 +44,16 @@ import type {
   DataPlaneSavedMapping,
 } from '../types/dataPlane';
 import type { IpcChannelName } from './channels';
+// ── Medical Device Manufacturing Pack ──
+import type {
+  DeviceLotDetail,
+  DeviceLotMutationResult,
+  DeviceLotPage,
+  DeviceProductDetail,
+  DeviceProductListItem,
+  DeviceTraceView,
+  MedicalDevicePackView,
+} from '../types/medicalDeviceApi';
 import type {
   AdminOverview,
   AiConfigDto,
@@ -1421,6 +1431,21 @@ export interface IpcResponseMap {
   'dp:rel.skip': DataPlaneRelationshipDecision;
   'dp:rel.retry': DataPlaneRelationshipPass;
   'dp:rel.graph': DataPlaneRelationshipGraph;
+  // ── Medical Device Manufacturing Pack ──
+  'md:pack': MedicalDevicePackView;
+  'md:product.search': DeviceProductListItem[];
+  'md:product.get': DeviceProductDetail | null;
+  'md:lot.list': DeviceLotPage;
+  'md:lot.get': DeviceLotDetail | null;
+  'md:lot.create': DeviceLotMutationResult;
+  'md:lot.transition': DeviceLotMutationResult;
+  'md:lot.split': DeviceLotMutationResult;
+  'md:lot.merge': DeviceLotMutationResult;
+  'md:lot.consume': DeviceLotMutationResult;
+  'md:lot.move': DeviceLotMutationResult;
+  'md:lot.ship': DeviceLotMutationResult;
+  'md:trace.forward': DeviceTraceView;
+  'md:trace.backward': DeviceTraceView;
 }
 
 /**

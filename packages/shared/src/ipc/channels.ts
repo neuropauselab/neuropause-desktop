@@ -955,6 +955,36 @@ export const IpcChannel = {
   DataPlaneRelationshipRetry: 'dp:rel.retry',
   /** The resolved links around one record, both directions. */
   DataPlaneRelationshipGraph: 'dp:rel.graph',
+
+  // ── Medical Device Manufacturing Pack ──
+  /** The pack manifest + taxonomies resolved for the active tenant. */
+  MedicalDevicePack: 'md:pack',
+  /** Products matched on code / name / family / category / material. */
+  MedicalDeviceProductSearch: 'md:product.search',
+  /** One product with its lots and its change history. */
+  MedicalDeviceProductGet: 'md:product.get',
+  /** Lot Center page: one view's lots plus every view's count. */
+  MedicalDeviceLotList: 'md:lot.list',
+  /** One lot with its immediate graph context and legal next states. */
+  MedicalDeviceLotGet: 'md:lot.get',
+  /** Create a lot — the only path that creates one. */
+  MedicalDeviceLotCreate: 'md:lot.create',
+  /** Move a lot through the lifecycle state machine. */
+  MedicalDeviceLotTransition: 'md:lot.transition',
+  /** Divide a lot into child lots, conserving quantity and lineage. */
+  MedicalDeviceLotSplit: 'md:lot.split',
+  /** Always refuses, with the reason merge is unsupported. */
+  MedicalDeviceLotMerge: 'md:lot.merge',
+  /** Draw quantity from a lot, optionally against a manufacturing order. */
+  MedicalDeviceLotConsume: 'md:lot.consume',
+  /** Record a lot's warehouse placement. */
+  MedicalDeviceLotMove: 'md:lot.move',
+  /** Record a lot leaving on a shipment, to a customer and/or order. */
+  MedicalDeviceLotShip: 'md:lot.ship',
+  /** Where did this go? */
+  MedicalDeviceTraceForward: 'md:trace.forward',
+  /** What went into this? */
+  MedicalDeviceTraceBackward: 'md:trace.backward',
 } as const;
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel];
@@ -1700,6 +1730,21 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.DataPlaneRelationshipSkip,
   IpcChannel.DataPlaneRelationshipRetry,
   IpcChannel.DataPlaneRelationshipGraph,
+  // ── Medical Device Manufacturing Pack ──
+  IpcChannel.MedicalDevicePack,
+  IpcChannel.MedicalDeviceProductSearch,
+  IpcChannel.MedicalDeviceProductGet,
+  IpcChannel.MedicalDeviceLotList,
+  IpcChannel.MedicalDeviceLotGet,
+  IpcChannel.MedicalDeviceLotCreate,
+  IpcChannel.MedicalDeviceLotTransition,
+  IpcChannel.MedicalDeviceLotSplit,
+  IpcChannel.MedicalDeviceLotMerge,
+  IpcChannel.MedicalDeviceLotConsume,
+  IpcChannel.MedicalDeviceLotMove,
+  IpcChannel.MedicalDeviceLotShip,
+  IpcChannel.MedicalDeviceTraceForward,
+  IpcChannel.MedicalDeviceTraceBackward,
 ];
 
 /** Runtime-core broadcasts. */

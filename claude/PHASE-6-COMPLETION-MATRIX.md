@@ -1,6 +1,6 @@
 # NeuroPause — Phase 6 Completion Matrix
 
-**Date:** 2026-08-08 · **Build:** `1.0.0-rc.15` · **Gate:** **5,872 / 5,872 green, 637 files** (up from 5,838; zero regressions)
+**Date:** 2026-08-09 · **Build:** `1.0.0-rc.15` · **Gate:** **6,148 / 6,148 green, 646 files** (desktop; up from 6,010 / 640 at the relationship-engine close — zero regressions, none deleted or weakened). Backend 418, cloud-core 44, companion-protocol 23. `typecheck:release` PASS · `lint:release` PASS · `docs:validate` 50/50.
 
 **Status vocabulary — exactly one per item, no ambiguity:**
 `VERIFIED COMPLETE` · `COMPLETE BUT DEVICE UNVERIFIED` · `PARTIAL` · `EXTERNAL DEPENDENCY` · `NOT IMPLEMENTED`
@@ -62,34 +62,65 @@
 
 ## Medical device / Relife
 
-| Capability | Status |
-|---|---|
-| Medical Device Manufacturing industry pack | **NOT IMPLEMENTED** |
-| Medical-device product model | **NOT IMPLEMENTED** |
-| Batch/lot forward + backward traceability | **NOT IMPLEMENTED** |
-| Quality foundation (NCR/CAPA/inspection) | **NOT IMPLEMENTED** |
-| Document control lifecycle | **NOT IMPLEMENTED** |
-| Relife tenant configuration | **NOT IMPLEMENTED** |
-| Relife synthetic dataset + import templates | **NOT IMPLEMENTED** |
-| Relife dashboard + executive AI | **NOT IMPLEMENTED** |
-| Relife pilot documentation | **NOT IMPLEMENTED** |
+Stage 1 (Product Model + Batch/Lot Traceability) landed 2026-08-09. Full detail:
+`claude/MEDICAL-DEVICE-PRODUCT-MODEL.md` and
+`claude/MEDICAL-DEVICE-BATCH-LOT-TRACEABILITY.md`.
 
-**Why none of it was started:** the charter's own dependency rule — "Relife pilot work must not begin before the ERP foundation is reliable", and "COMPLETE THE ERP FOUNDATION FIRST." The foundation became reliable *this pass*; the engines are not yet adopted by the live modules. Building a regulated-industry traceability story on top of engines that no module calls yet would be exactly the feature theater the charter forbids.
+| Capability | Status | Tests |
+|---|---|---|
+| Industry-pack architecture (Core → Pack → Tenant) | **COMPLETE BUT DEVICE UNVERIFIED** — manifest + taxonomy contract, registry with boot-time validation, open vs closed taxonomies. Contains no tenant-specific logic, asserted by test. | in 43 |
+| Medical-device product model | **COMPLETE BUT DEVICE UNVERIFIED** — 18 fields, 5 taxonomies, per-tenant unique product codes on a normalized key, free-form regulatory metadata, serial-requires-batch rule | 43 + 39 |
+| Product persistence / CRUD / audit | **COMPLETE BUT DEVICE UNVERIFIED** — inherited from the Enterprise Module Framework; no new CRUD system | in 39 |
+| Product search (code / name / family / category / material) | **VERIFIED COMPLETE** — deliberately NOT the store's substring-over-everything search | in 43 |
+| Product UI (list / detail / create / edit / history) | **COMPLETE BUT DEVICE UNVERIFIED** — real renderer views on the existing design system; bundle emits `MedicalDevicesView` (81 kB) | 29 renderer |
+| Batch/Lot model + explicit state machine | **COMPLETE BUT DEVICE UNVERIFIED** — 9 states, every transition declared; `recalled` terminal; a recall may land on already-consumed material | in 43 |
+| Lot quantity integrity | **VERIFIED COMPLETE** — `remaining` is derived, never stored; one `canDraw` gate for consumption and splitting; six-decimal rounding | in 43 + 39 |
+| Lot split (lineage + quantity conservation) | **VERIFIED COMPLETE** — 100 = 60 + 40; rename-as-split refused; a refused split leaves the lot byte-identical | in 43 + 39 |
+| Lot merge | **UNSUPPORTED BY DESIGN** — channel exists and always refuses with its reason; refusal audited. Rationale documented. | in 39 |
+| Lot UI (6 views + detail + operations + traceability) | **COMPLETE BUT DEVICE UNVERIFIED** | 29 renderer |
+| Forward traceability | **COMPLETE BUT DEVICE UNVERIFIED** — lot → MO → FG lot → warehouse → shipment → customer/order, from real records only | in 43 + 39 |
+| Backward traceability | **COMPLETE BUT DEVICE UNVERIFIED** — customer/shipment/lot → MO → source lots, recursively | in 43 + 39 |
+| Traceability UI | **COMPLETE BUT DEVICE UNVERIFIED** — both directions, grouped results, scope note always shown | 29 renderer |
+| Inventory integration | **COMPLETE BUT DEVICE UNVERIFIED** — posts through the EXISTING `postStockMovement` seam; non-fatal; never invents an inventory product | in 39 |
+| Manufacturing integration | **COMPLETE BUT DEVICE UNVERIFIED** — input lots → order → output lot recorded as graph edges | in 39 + 6 E2E |
+| Relationship engine integration | **VERIFIED COMPLETE** — 4 declarations (product/MO/warehouse/supplier); none allows a similarity proposal | in 14 |
+| Data Command Center integration | **VERIFIED COMPLETE** — 2 canonical entities; lots are HIGH risk and never import without explicit approval; no second import system | in 14 |
+| Imported-lot normalization | **VERIFIED COMPLETE** — import replay stamps tenant, initialises counters, coerces an uninterpretable status, resolves the product from its code, records context edges; idempotent | in 14 |
+| Provenance on traceability edges | **COMPLETE BUT DEVICE UNVERIFIED** — `{planId, provenanceId}` carried through; written once, never overwritten | in 39 |
+| Permissions (5 new scopes, existing RBAC) | **VERIFIED COMPLETE** — traceability is a separate read scope so support/quality can ask without any write right | 7 |
+| Audit (7 lot actions + product lifecycle) | **VERIFIED COMPLETE** | in 39 + 6 |
+| Tenant isolation | **VERIFIED COMPLETE** (mechanism) / **PARTIAL** (only one tenant can exist) | in 39 |
+| Failure + security testing | **VERIFIED COMPLETE** — 18 named failure modes, all fail safely with an actionable message | in 39 + 6 |
+| Performance (1,000 lots / >11,000 relationships) | **VERIFIED COMPLETE** as a non-quadratic assertion. **No benchmark figure is claimed** — the bounds are deliberately loose and the run is not controlled. | in 39 |
+| Synthetic dataset | **VERIFIED COMPLETE** — `examples/medical-device/`, 94 products + 302 lots + 161 shipments, every row prefixed `SYN-`/`SYNTHETIC` | in 14 |
+| End-to-end scenario (product → RM lot → MO → consume → FG lot → warehouse → shipment → customer → both traces) | **COMPLETE BUT DEVICE UNVERIFIED** — driven through the REAL channel contracts with unmocked services | 6 |
+| Real UI E2E at the DOM level | **NOT IMPLEMENTED** — no DOM testing library exists in this repo. Panel logic is covered by the view-model suite; layout is not covered by anything. |  |
+| Quality foundation (NCR/CAPA/inspection) | **NOT IMPLEMENTED** — depends on this foundation; the lot detail says so in words rather than showing an empty panel |  |
+| Document control lifecycle | **NOT IMPLEMENTED** — same |  |
+| Relife tenant configuration | **NOT IMPLEMENTED** |  |
+| Relife synthetic dataset + import templates | **NOT IMPLEMENTED** |  |
+| Relife dashboard + executive AI | **NOT IMPLEMENTED** |  |
+| Relife pilot documentation | **NOT IMPLEMENTED** |  |
+
+**Why Stage 1 could start (2026-08-09):** the charter's dependency rule — "COMPLETE THE ERP FOUNDATION FIRST" — is satisfied. The ERP engines are adopted by the live modules, the relationship engine is wired, and the Data Command Center exists, so the pack extends real infrastructure rather than standing beside it. Product and Batch/Lot are built; **Quality Center, Document Control and the Relife tenant remain NOT STARTED by design** — they depend on the lot foundation, and starting them before it was verified would be exactly the feature theater the charter forbids.
+
+**No regulatory claim.** The pack records the data a manufacturer keeps. NeuroPause is not validated software and implements no standard; the product model, the sterility field and the UDI field are storage, not compliance. This is stated in the pack manifest, in the product form's help text, and on screen.
 
 ## Runtime
 
 | Item | Status |
 |---|---|
 | macOS Electron boot + round-trip | **VERIFIED COMPLETE** — 2026-08-08 on Apple Silicon. `Data Plane ready { channels: 11, entities: 8 }`, 652 secure handlers, no channel refusal, renderer round-trip returned 8. Results recorded in `claude/MACOS-PHASE-6-OPERATOR-CERTIFICATION.md`. |
+| macOS launch since the Medical Device pack | **DEVICE VISUAL VERIFICATION PENDING** — `npm run dev` has not been run since this work. The production bundle builds (`electron-vite build`: 1,197 main-process modules transformed; every renderer chunk emitted, including `MedicalDevicesView` at 81 kB), and the `md:*` channels are covered by contract-level E2E tests, but nobody has looked at the screen. |
 
 ## Quality
 
 | Item | Status |
 |---|---|
-| Unit + integration tests | **VERIFIED COMPLETE** — 5,838 green, zero regressions, none deleted or weakened |
+| Unit + integration tests | **VERIFIED COMPLETE** — 6,148 green (desktop), zero regressions, none deleted or weakened |
 | Data Plane E2E (multi-domain import journey) | **VERIFIED COMPLETE** |
 | Procure-to-pay E2E (receipt → match → bill, GRNI nets to zero) | **VERIFIED COMPLETE** |
 | Security (ZIP/XXE/limits/tenant/SoD) | **VERIFIED COMPLETE** |
-| Full synthetic enterprise E2E through the UI | **NOT IMPLEMENTED** (no UI) |
+| Full synthetic enterprise E2E through the UI | **PARTIAL** — the medical-device journey runs end to end through the real channel contracts with unmocked services (`medicalDeviceE2E.test.ts`); no DOM-level UI test exists in this repo. |
 | Performance benchmarks at 50k/100k rows | **PARTIAL** — 20k-row parse asserted; larger benchmarks not run |
 | Documentation validation | **VERIFIED COMPLETE** — 50/50 |

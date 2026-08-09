@@ -376,12 +376,15 @@ export function buildModuleHandlers(
         if (!current || current.status === 'deleted')
           return { ok: false as const, errors: { _: 'Record not found.' } };
         // Validate the MERGED field set so required constraints still hold.
+        // `recordId` identifies the record being edited so a uniqueness check in
+        // a module's `validate` hook can exclude the record from its own search.
         const merged = { ...current.fields, ...(r.fields ?? {}) };
         const result = module.hooks.validate({
           title: r.title ?? current.title,
           fields: merged,
           tags: r.tags,
           metadata: r.metadata,
+          recordId: r.id,
         });
         if (!result.ok) return { ok: false as const, errors: result.errors };
         const title = deriveRecordTitle(module.descriptor, result.values, r.title ?? current.title);

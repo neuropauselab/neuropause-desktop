@@ -42,6 +42,7 @@ export type SectionId =
   | 'workforce-center'
   | 'connectors'
   | 'data-center'
+  | 'medical-devices'
   | 'memory'
   | 'automations'
   | 'notifications'
@@ -181,6 +182,10 @@ export const SECTIONS: SectionDef[] = [
   // getting the organization's OWN data in, next to the modules that consume it;
   // appended after the existing entries so every positional nav lock holds.
   { id: 'data-center', label: 'Data', icon: 'database', phase: 27, placement: 'primary', group: 'business', description: 'Import, review and trace your business data — every record back to the row it came from.' },
+  // Medical Device Manufacturing industry pack. Sits in Business, next to Data,
+  // because that is where its records come from — the catalogue and the batch
+  // history are usually imported before anyone creates one by hand.
+  { id: 'medical-devices', label: 'Medical Devices', icon: 'tag', phase: 28, placement: 'primary', group: 'business', description: 'Device catalogue and batch/lot traceability — forward and backward, from real records.' },
   { id: 'memory', label: 'AI Memory', icon: 'memory', phase: 6, placement: 'primary', group: 'workspace', description: 'Your AI memory — conversations, notes, and everything you have saved.' },
   // `automations` + `analytics` are just AI Workforce tabs, not distinct surfaces — hidden from nav.
   // `notifications` stays visible: it renders an honest "you're all caught up" empty state and is the target

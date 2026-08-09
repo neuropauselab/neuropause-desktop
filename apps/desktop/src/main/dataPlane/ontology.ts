@@ -19,7 +19,11 @@ export type CanonicalDomain =
   | 'hr'
   | 'inventory'
   | 'procurement'
-  | 'projects';
+  | 'projects'
+  // Contributed by the Medical Device Manufacturing industry pack. A domain,
+  // not a tenant: the entities below are what any device manufacturer keeps,
+  // and nothing in them names a specific company.
+  | 'medical_device';
 
 /**
  * Import risk. Drives whether a human must explicitly approve.
@@ -248,6 +252,60 @@ export const ONTOLOGY: readonly CanonicalEntity[] = [
       { key: 'startDate', label: 'Starts', type: 'date', shape: 'date', synonyms: ['start date', 'starts', 'begin date', 'kickoff'] },
       { key: 'endDate', label: 'Ends', type: 'date', shape: 'date', synonyms: ['end date', 'ends', 'finish date', 'due date', 'target date'] },
       { key: 'percentComplete', label: 'Complete %', type: 'number', synonyms: ['percent complete', 'complete', 'progress', 'completion'] },
+    ],
+  },
+  {
+    id: 'medical_device_product',
+    label: 'Medical Device Product',
+    plural: 'Medical Device Products',
+    domain: 'medical_device',
+    moduleId: 'md-products',
+    titleField: 'productName',
+    // MEDIUM, not high. The device catalogue is master data and a corrupt row is
+    // expensive to unwind — but it is not money or payroll, and forcing explicit
+    // approval on every catalogue load would train people to approve without
+    // reading, which is worse than the risk it removes. Lots ARE high, below.
+    risk: 'medium',
+    nameHints: ['product', 'products', 'device', 'devices', 'implant', 'implants', 'catalogue', 'catalog', 'item master', 'sku'],
+    identityKeys: [['productCode']],
+    fields: [
+      { key: 'productCode', label: 'Product Code', type: 'text', required: true, shape: 'code', identity: true, synonyms: ['product code', 'item code', 'catalogue number', 'catalog number', 'cat no', 'ref', 'reference', 'part number', 'sku', 'code'] },
+      { key: 'productName', label: 'Product Name', type: 'text', required: true, synonyms: ['product name', 'description', 'item name', 'name', 'product', 'item description'] },
+      { key: 'productFamily', label: 'Family', type: 'text', synonyms: ['family', 'product family', 'range', 'product group', 'group', 'division'] },
+      { key: 'category', label: 'Category', type: 'text', synonyms: ['category', 'type', 'item type', 'product type', 'class'] },
+      { key: 'anatomicalCategory', label: 'Anatomical Category', type: 'text', synonyms: ['anatomy', 'anatomical', 'anatomical category', 'body part', 'application'] },
+      { key: 'material', label: 'Material', type: 'text', synonyms: ['material', 'material grade', 'alloy', 'composition', 'raw material'] },
+      { key: 'size', label: 'Size', type: 'text', synonyms: ['size', 'length', 'diameter', 'dia', 'gauge'] },
+      { key: 'dimensions', label: 'Dimensions', type: 'text', synonyms: ['dimensions', 'dimension', 'measurements'] },
+      { key: 'sterileStatus', label: 'Sterility', type: 'text', synonyms: ['sterile', 'sterility', 'sterilisation', 'sterilization', 'sterile status'] },
+      { key: 'packaging', label: 'Packaging', type: 'text', synonyms: ['packaging', 'pack', 'pack type', 'packing'] },
+      { key: 'udi', label: 'UDI', type: 'text', shape: 'code', synonyms: ['udi', 'udi di', 'unique device identifier', 'gtin', 'di'] },
+    ],
+  },
+  {
+    id: 'medical_device_lot',
+    label: 'Batch / Lot',
+    plural: 'Batches / Lots',
+    domain: 'medical_device',
+    moduleId: 'md-lots',
+    titleField: 'lotNumber',
+    // HIGH. A lot is the unit a recall is executed in; a mis-imported batch
+    // record is the one piece of master data whose corruption can put the wrong
+    // material in front of a patient. It never imports without a person saying so.
+    risk: 'high',
+    nameHints: ['lot', 'lots', 'batch', 'batches', 'batch record', 'lot number', 'traceability'],
+    identityKeys: [['lotNumber']],
+    fields: [
+      { key: 'lotNumber', label: 'Lot #', type: 'text', required: true, shape: 'code', identity: true, synonyms: ['lot', 'lot no', 'lot number', 'batch', 'batch no', 'batch number', 'batch code', 'lot code'] },
+      { key: 'productCode', label: 'Product Code', type: 'text', required: true, shape: 'code', synonyms: ['product code', 'item code', 'catalogue number', 'catalog number', 'cat no', 'ref', 'part number', 'sku', 'product'] },
+      { key: 'quantity', label: 'Quantity', type: 'number', required: true, synonyms: ['quantity', 'qty', 'batch quantity', 'lot quantity', 'produced quantity', 'received quantity'] },
+      { key: 'unit', label: 'Unit', type: 'text', synonyms: ['unit', 'uom', 'unit of measure', 'units'] },
+      { key: 'manufactureDate', label: 'Manufactured', type: 'date', shape: 'date', synonyms: ['manufacture date', 'manufactured', 'mfg date', 'mfg', 'production date', 'date of manufacture'] },
+      { key: 'expiryDate', label: 'Expires', type: 'date', shape: 'date', synonyms: ['expiry', 'expiry date', 'expires', 'exp date', 'use by', 'best before', 'shelf life end'] },
+      { key: 'warehouseId', label: 'Warehouse', type: 'text', shape: 'code', synonyms: ['warehouse', 'store', 'location', 'stock location', 'site'] },
+      { key: 'manufacturingOrderId', label: 'Manufacturing Order', type: 'text', shape: 'code', synonyms: ['manufacturing order', 'production order', 'work order', 'mo', 'wo', 'order number'] },
+      { key: 'supplierId', label: 'Supplier', type: 'text', shape: 'code', synonyms: ['supplier', 'vendor', 'supplier code', 'vendor code', 'source'] },
+      { key: 'status', label: 'Status', type: 'text', synonyms: ['status', 'lot status', 'batch status', 'disposition', 'qc status'] },
     ],
   },
 ];

@@ -283,6 +283,60 @@ export const RELATIONSHIPS: readonly RelationshipDef[] = [
     sensitivity: 'operational',
   },
 
+  // ── Medical Device Manufacturing Pack ────────────────────────────────────
+  //
+  // An imported lot names its product, warehouse, manufacturing order and
+  // supplier by CODE, exactly like every other imported reference in this file.
+  // Declaring them here is what lets the existing engine resolve those codes to
+  // records, park the ones that arrive before their target, and put a genuine
+  // ambiguity in front of a person instead of guessing.
+  //
+  // All four are `operational`, not `financial`: none of them states who owes
+  // what. They are still never resolved by similarity — none sets
+  // `allowNameProposal`, because a lot's product is identified by an exact
+  // catalogue code and "close enough" is the wrong answer when the question is
+  // which device a batch is.
+  {
+    key: 'mdLot.product',
+    fromModuleId: 'md-lots',
+    field: 'productCode',
+    label: 'Product',
+    toModuleId: 'md-products',
+    toLabel: 'Medical device product',
+    keyFields: ['productCode'],
+    sensitivity: 'operational',
+  },
+  {
+    key: 'mdLot.manufacturingOrder',
+    fromModuleId: 'md-lots',
+    field: 'manufacturingOrderId',
+    label: 'Manufacturing order',
+    toModuleId: 'manufacturing-orders',
+    toLabel: 'Production order',
+    keyFields: ['orderNumber'],
+    sensitivity: 'operational',
+  },
+  {
+    key: 'mdLot.warehouse',
+    fromModuleId: 'md-lots',
+    field: 'warehouseId',
+    label: 'Warehouse',
+    toModuleId: 'inventory-warehouses',
+    toLabel: 'Warehouse',
+    keyFields: ['code', 'name'],
+    sensitivity: 'operational',
+  },
+  {
+    key: 'mdLot.supplier',
+    fromModuleId: 'md-lots',
+    field: 'supplierId',
+    label: 'Supplier',
+    toModuleId: 'procurement-suppliers',
+    toLabel: 'Supplier',
+    keyFields: ['name'],
+    sensitivity: 'operational',
+  },
+
   // ── CRM conversion chain ─────────────────────────────────────────────────
   {
     key: 'customer.sourceLead',

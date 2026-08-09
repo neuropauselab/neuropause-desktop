@@ -92,6 +92,13 @@ const READ_ONLY: EnterprisePermission[] = [
   'commercial:read',
   'experience:read',
   'intent:read',
+  // Medical Device Pack — reads only. Answering "where did this lot go?" is a
+  // question support, quality and regulatory staff must be able to ask without
+  // holding any right to change a batch, so the read scopes sit in the
+  // read-only role and the write scopes do not.
+  'medicalDevice:product.read',
+  'medicalDevice:lot.read',
+  'medicalDevice:traceability.read',
 ];
 
 const MEMBER: EnterprisePermission[] = [...READ_ONLY, 'workforce:operate'];
@@ -110,6 +117,11 @@ const MANAGER: EnterprisePermission[] = [
   'maintenance:manage',
   'sandbox:manage',
   'connectors:manage',
+  // Medical Device Pack — maintaining the catalogue and moving a batch through
+  // its lifecycle are operational responsibilities, so they land with Manager
+  // rather than Admin.
+  'medicalDevice:product.write',
+  'medicalDevice:lot.write',
 ];
 
 const ADMIN: EnterprisePermission[] = [

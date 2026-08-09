@@ -147,7 +147,18 @@ export type EnterprisePermission =
   // `data:import` and `data:approve` being separable. ──
   | 'data:read'
   | 'data:import'
-  | 'data:approve';
+  | 'data:approve'
+  // ── Medical Device Manufacturing Pack. Finer-grained than the ERP domains
+  // above on purpose: a quality reviewer who releases and blocks lots is not
+  // the person who maintains the product catalogue, and a regulatory or
+  // customer-service reader needs the traceability answer without either write
+  // right. The `scope:subject.action` shape keeps the existing `scope:action`
+  // convention while carrying the extra subject the charter names. ──
+  | 'medicalDevice:product.read'
+  | 'medicalDevice:product.write'
+  | 'medicalDevice:lot.read'
+  | 'medicalDevice:lot.write'
+  | 'medicalDevice:traceability.read';
 
 export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   'org:read',
@@ -224,6 +235,12 @@ export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   'experience:read',
   // ── Intent Experience Program v2.0 (intent-native experience) ──
   'intent:read',
+  // ── Medical Device Manufacturing Pack ──
+  'medicalDevice:product.read',
+  'medicalDevice:product.write',
+  'medicalDevice:lot.read',
+  'medicalDevice:lot.write',
+  'medicalDevice:traceability.read',
 ];
 
 export interface OrgRole {

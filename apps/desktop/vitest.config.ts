@@ -106,6 +106,8 @@ export default defineConfig({
       // "a run with failures is never a success") is decided here, so this is
       // where they are asserted; the view is a projection with no logic.
       'src/renderer/src/dataCommandCenter/**/*.test.ts',
+      // Medical Device Manufacturing Pack — the surface's view model.
+      'src/renderer/src/medicalDevices/**/*.test.ts',
     ],
   },
   resolve: {

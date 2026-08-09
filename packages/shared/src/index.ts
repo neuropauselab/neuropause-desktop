@@ -92,6 +92,13 @@ export * from './types/rfq';
 export * from './types/supplierPerformance';
 // Inventory → W3.3: lots — batch traceability with deterministic code payloads.
 export * from './types/lots';
+// ── Industry Packs — Core → Industry Pack → Tenant. Declaration + taxonomy only. ──
+export * from './types/industryPack';
+// Medical Device Manufacturing Pack — product model, batch/lot lifecycle, traceability graph.
+export * from './types/medicalDevice';
+export * from './types/medicalDeviceLot';
+export * from './types/medicalDeviceTrace';
+export * from './types/medicalDeviceApi';
 // Inventory → W3.4: reservations — hold documents posting real ledger movements.
 export * from './types/reservations';
 // Inventory → W3.5: valuation — immutable standard-cost registers over the ledger.

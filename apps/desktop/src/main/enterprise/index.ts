@@ -130,6 +130,19 @@ import { productModule } from './modules/inventory/productModuleInstance';
 import { warehouseModule } from './modules/inventory/warehouseModuleInstance';
 import { stockMovementModule } from './modules/inventory/stockMovementModuleInstance';
 import { lotModule } from './modules/inventory/lotModuleInstance';
+// ── Medical Device Manufacturing Pack (Industry Pack layer) ──
+import {
+  LotService,
+  TraceService,
+  buildMedicalDeviceHandlers,
+  registerMedicalDevicePack,
+} from '../medicalDevice';
+import {
+  deviceLotModule,
+  deviceProductModule,
+  deviceTenantId,
+  traceEdgeStore,
+} from '../medicalDevice/instances';
 import { reservationModule } from './modules/inventory/reservationModuleInstance';
 import { inventoryValuationModule } from './modules/inventory/inventoryValuationModuleInstance';
 import { serialModule } from './modules/inventory/serialModuleInstance';
@@ -429,6 +442,12 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   registerModule(downtimeEventModule); // Maintenance → Downtime Events
   registerModule(executiveDecisionModule); // Executive → Decision Approval (governance)
   registerModule(executionProposalModule); // Executive → Execution Proposals (controlled handoff)
+  // ── Medical Device Manufacturing Pack. Registered through the SAME seam as
+  // every core module, so it inherits RBAC, audit, timeline, broadcasts and the
+  // generic read surface. The pack adds a vocabulary and two modules; it does
+  // not fork the framework, and it contains no tenant-specific rule. ──
+  registerModule(deviceProductModule); // Medical Devices → Products
+  registerModule(deviceLotModule); // Medical Devices → Batch/Lot
   await Promise.all([
     invoiceModule.store.load(),
     contactModule.store.load(),
@@ -475,11 +494,48 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     downtimeEventModule.store.load(),
     executiveDecisionModule.store.load(),
     executionProposalModule.store.load(),
+    deviceProductModule.store.load(),
+    deviceLotModule.store.load(),
+    traceEdgeStore.load(),
     personalizationStore.load(),
   ]);
 
+  // ── Medical Device Pack composition ──
+  registerMedicalDevicePack();
+  const lotService = new LotService({
+    lots: deviceLotModule,
+    products: deviceProductModule,
+    edges: traceEdgeStore,
+    tenantId: deviceTenantId,
+    actor: sessionEmail,
+    now: () => new Date().toISOString(),
+    authorize,
+    audit: (e) => audit(e.action, e.target, e.summary),
+    // The ONE shared action context — the same identity and RBAC gate the CRUD
+    // handlers use, so a lot's inventory posting is authorized exactly as a
+    // hand-entered movement would be.
+    moduleContext: () => modules.actionContext,
+  });
+  const traceService = new TraceService({
+    lots: deviceLotModule,
+    products: deviceProductModule,
+    edges: traceEdgeStore,
+    tenantId: deviceTenantId,
+    authorize,
+  });
+  const medicalDeviceHandlers = buildMedicalDeviceHandlers({
+    products: deviceProductModule,
+    lots: deviceLotModule,
+    edges: traceEdgeStore,
+    lotService,
+    traceService,
+    tenantId: deviceTenantId,
+    authorize,
+    auditEntries: (limit) => governanceStore.auditEntries(limit),
+  });
+
   return {
-    handlers: [...withEnterpriseAuthz(buildHandlers()), ...modules.handlers],
+    handlers: [...withEnterpriseAuthz(buildHandlers()), ...modules.handlers, ...medicalDeviceHandlers],
     authorize,
     modules: modules.registry,
     complianceFindings: () => evaluateCompliance(governanceStore.rules(), buildComplianceInput()),

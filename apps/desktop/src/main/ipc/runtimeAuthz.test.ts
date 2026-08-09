@@ -217,6 +217,13 @@ describe('runtime IPC surface completeness (fail-closed startup safety net)', ()
     'webhooks:',
     'sandbox:',
     'org:', // cloud-org CRUD — every channel carries requireAuth
+    // Medical Device Manufacturing Pack: every md:* handler self-carries
+    // requireAuth plus one of the pack's own scopes — `medicalDevice:product.*`,
+    // `medicalDevice:lot.*` or `medicalDevice:traceability.read`. Unlike the
+    // read-only clusters above, this namespace carries WRITES, so the lock is
+    // stronger than "some permission is present": every channel's exact scope
+    // is asserted in src/main/medicalDevice/medicalDeviceAuthz.test.ts.
+    'md:',
   ];
   // Authenticated-but-not-RBAC channels that sit inside otherwise-public namespaces
   // (they carry requireAuth, so they are gated, just not with a static permission).

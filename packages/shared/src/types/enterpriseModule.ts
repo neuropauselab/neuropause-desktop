@@ -66,6 +66,18 @@ export interface EnterpriseRecordInput {
   fields?: Record<string, EnterpriseFieldValue>;
   tags?: string[];
   metadata?: EnterpriseRecordMeta;
+  /**
+   * The record being updated, or undefined on create.
+   *
+   * Added so a `validate` hook can enforce UNIQUENESS. Without it, a hook that
+   * refuses a duplicate product code refuses the record's own code the moment
+   * anyone edits an unrelated field on that record — the check has no way to
+   * tell "this code is taken" from "this code is taken by me". It is deliberately
+   * a first-class field and not a metadata key: metadata is merged into the
+   * persisted record, so smuggling an id through it would write bookkeeping into
+   * every module's stored data.
+   */
+  recordId?: string;
 }
 
 /** The kinds of field a module can declare. Drives validation + the form UI. */

@@ -2649,3 +2649,159 @@ export const DataPlaneRelationshipGraphRequest = z
   .object({ recordId: z.string().trim().min(1).max(128) })
   .strict();
 export type DataPlaneRelationshipGraphRequest = z.infer<typeof DataPlaneRelationshipGraphRequest>;
+
+/* ── Medical Device Manufacturing Pack ────────────────────────────────────── */
+
+/**
+ * Product search, scoped to the fields the charter names — code, name, family,
+ * category, material. Deliberately NOT routed through the record store's
+ * generic search, which is a substring match over the string form of every
+ * field and would return a product because an unrelated note mentioned "steel".
+ */
+export const MedicalDeviceProductSearchRequest = z
+  .object({
+    query: z.string().trim().max(200).optional(),
+    family: z.string().trim().max(120).optional(),
+    category: z.string().trim().max(120).optional(),
+    material: z.string().trim().max(120).optional(),
+    status: z.enum(['active', 'inactive', 'discontinued']).optional(),
+    limit: z.number().int().min(1).max(500).optional(),
+  })
+  .strict();
+export type MedicalDeviceProductSearchRequest = z.infer<typeof MedicalDeviceProductSearchRequest>;
+
+export const MedicalDeviceProductGetRequest = z
+  .object({ productId: z.string().trim().min(1).max(128) })
+  .strict();
+export type MedicalDeviceProductGetRequest = z.infer<typeof MedicalDeviceProductGetRequest>;
+
+export const MedicalDeviceLotListRequest = z
+  .object({
+    view: z.enum(['all', 'quarantined', 'released', 'blocked', 'expired', 'recalled']).optional(),
+    search: z.string().trim().max(200).optional(),
+    productId: z.string().trim().max(128).optional(),
+    limit: z.number().int().min(1).max(1000).optional(),
+  })
+  .strict();
+export type MedicalDeviceLotListRequest = z.infer<typeof MedicalDeviceLotListRequest>;
+
+export const MedicalDeviceLotGetRequest = z
+  .object({ lotId: z.string().trim().min(1).max(128) })
+  .strict();
+export type MedicalDeviceLotGetRequest = z.infer<typeof MedicalDeviceLotGetRequest>;
+
+/**
+ * Create a lot. `quantity` has no upper bound beyond the numeric guard because
+ * a legitimate raw-material lot can be very large; it is the ARITHMETIC that
+ * protects the record, not an arbitrary ceiling.
+ */
+export const MedicalDeviceLotCreateRequest = z
+  .object({
+    lotNumber: z.string().trim().min(1).max(120),
+    productId: z.string().trim().min(1).max(128),
+    quantity: z.number().finite().positive(),
+    unit: z.string().trim().max(32).optional(),
+    manufactureDate: z.string().trim().max(40).optional(),
+    expiryDate: z.string().trim().max(40).optional(),
+    warehouseId: z.string().trim().max(128).optional(),
+    supplierId: z.string().trim().max(128).optional(),
+    manufacturingOrderId: z.string().trim().max(128).optional(),
+    sourceLotId: z.string().trim().max(128).optional(),
+    notes: z.string().trim().max(2000).optional(),
+  })
+  .strict();
+export type MedicalDeviceLotCreateRequest = z.infer<typeof MedicalDeviceLotCreateRequest>;
+
+export const MedicalDeviceLotTransitionRequest = z
+  .object({
+    lotId: z.string().trim().min(1).max(128),
+    status: z.enum([
+      'created',
+      'quarantined',
+      'released',
+      'blocked',
+      'partially_consumed',
+      'consumed',
+      'exhausted',
+      'expired',
+      'recalled',
+    ]),
+    reason: z.string().trim().max(1000).optional(),
+  })
+  .strict();
+export type MedicalDeviceLotTransitionRequest = z.infer<typeof MedicalDeviceLotTransitionRequest>;
+
+export const MedicalDeviceLotSplitRequest = z
+  .object({
+    lotId: z.string().trim().min(1).max(128),
+    parts: z
+      .array(
+        z
+          .object({
+            lotNumber: z.string().trim().min(1).max(120),
+            quantity: z.number().finite().positive(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(50),
+  })
+  .strict();
+export type MedicalDeviceLotSplitRequest = z.infer<typeof MedicalDeviceLotSplitRequest>;
+
+/**
+ * Merge exists as a channel so the refusal is DISCOVERABLE and carries its
+ * reason. A missing channel would leave a caller assuming the feature was
+ * merely unbuilt; this one answers, every time, with why it will not be.
+ */
+export const MedicalDeviceLotMergeRequest = z
+  .object({ lotIds: z.array(z.string().trim().min(1).max(128)).min(1).max(50) })
+  .strict();
+export type MedicalDeviceLotMergeRequest = z.infer<typeof MedicalDeviceLotMergeRequest>;
+
+export const MedicalDeviceLotConsumeRequest = z
+  .object({
+    lotId: z.string().trim().min(1).max(128),
+    quantity: z.number().finite().positive(),
+    manufacturingOrderId: z.string().trim().max(128).optional(),
+    reason: z.string().trim().max(1000).optional(),
+  })
+  .strict();
+export type MedicalDeviceLotConsumeRequest = z.infer<typeof MedicalDeviceLotConsumeRequest>;
+
+export const MedicalDeviceLotMoveRequest = z
+  .object({
+    lotId: z.string().trim().min(1).max(128),
+    warehouseId: z.string().trim().min(1).max(128),
+  })
+  .strict();
+export type MedicalDeviceLotMoveRequest = z.infer<typeof MedicalDeviceLotMoveRequest>;
+
+export const MedicalDeviceLotShipRequest = z
+  .object({
+    lotId: z.string().trim().min(1).max(128),
+    shipmentId: z.string().trim().min(1).max(128),
+    customerId: z.string().trim().max(128).optional(),
+    orderId: z.string().trim().max(128).optional(),
+    quantity: z.number().finite().positive().optional(),
+  })
+  .strict();
+export type MedicalDeviceLotShipRequest = z.infer<typeof MedicalDeviceLotShipRequest>;
+
+export const MedicalDeviceTraceRequest = z
+  .object({
+    nodeType: z.enum([
+      'lot',
+      'product',
+      'manufacturing_order',
+      'warehouse',
+      'shipment',
+      'customer',
+      'order',
+      'supplier',
+    ]),
+    nodeId: z.string().trim().min(1).max(128),
+    maxDepth: z.number().int().min(1).max(50).optional(),
+  })
+  .strict();
+export type MedicalDeviceTraceRequest = z.infer<typeof MedicalDeviceTraceRequest>;

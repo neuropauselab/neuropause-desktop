@@ -49,6 +49,13 @@ import {
   type UnifiedCounts,
   type SearchQuery,
   type GraphCounts,
+  // ── Medical Device Manufacturing Pack ──
+  type LotCenterView,
+  type LotStatus,
+  type MedicalDeviceLotConsumeRequest,
+  type MedicalDeviceLotCreateRequest,
+  type MedicalDeviceLotShipRequest,
+  type TraceNodeType,
   type GraphNodesQuery,
   type GraphNeighborsQuery,
   type GraphSubgraphQuery,
@@ -1834,6 +1841,67 @@ export const ipc = {
       /** Re-check parked references against the records that exist now. */
       retry: () => invoke(IpcChannel.DataPlaneRelationshipRetry, {}),
       graph: (recordId: string) => invoke(IpcChannel.DataPlaneRelationshipGraph, { recordId }),
+    },
+  },
+
+  /**
+   * Medical Device Manufacturing Pack.
+   *
+   * Product CREATE / UPDATE / DELETE are absent here on purpose — products are
+   * an Enterprise Module, so those go through `ipc.enterprise.module.*` like
+   * every other module's records. What lives here is what the generic surface
+   * cannot express: field-scoped product search, and every lot operation.
+   */
+  medicalDevice: {
+    /** The pack, its taxonomies resolved for this workspace, and live counts. */
+    pack: () => invoke(IpcChannel.MedicalDevicePack, {}),
+    products: {
+      search: (filters: {
+        query?: string;
+        family?: string;
+        category?: string;
+        material?: string;
+        status?: 'active' | 'inactive' | 'discontinued';
+        limit?: number;
+      } = {}) => invoke(IpcChannel.MedicalDeviceProductSearch, filters),
+      get: (productId: string) => invoke(IpcChannel.MedicalDeviceProductGet, { productId }),
+    },
+    lots: {
+      list: (query: { view?: LotCenterView; search?: string; productId?: string; limit?: number } = {}) =>
+        invoke(IpcChannel.MedicalDeviceLotList, query),
+      get: (lotId: string) => invoke(IpcChannel.MedicalDeviceLotGet, { lotId }),
+      create: (input: MedicalDeviceLotCreateRequest) => invoke(IpcChannel.MedicalDeviceLotCreate, input),
+      transition: (lotId: string, status: LotStatus, reason?: string) =>
+        invoke(IpcChannel.MedicalDeviceLotTransition, {
+          lotId,
+          status,
+          ...(reason ? { reason } : {}),
+        }),
+      split: (lotId: string, parts: { lotNumber: string; quantity: number }[]) =>
+        invoke(IpcChannel.MedicalDeviceLotSplit, { lotId, parts }),
+      /** Always refuses. Called so the reason is shown rather than inferred. */
+      merge: (lotIds: string[]) => invoke(IpcChannel.MedicalDeviceLotMerge, { lotIds }),
+      consume: (input: MedicalDeviceLotConsumeRequest) =>
+        invoke(IpcChannel.MedicalDeviceLotConsume, input),
+      move: (lotId: string, warehouseId: string) =>
+        invoke(IpcChannel.MedicalDeviceLotMove, { lotId, warehouseId }),
+      ship: (input: MedicalDeviceLotShipRequest) => invoke(IpcChannel.MedicalDeviceLotShip, input),
+    },
+    trace: {
+      /** Where did this go? */
+      forward: (nodeType: TraceNodeType, nodeId: string, maxDepth?: number) =>
+        invoke(IpcChannel.MedicalDeviceTraceForward, {
+          nodeType,
+          nodeId,
+          ...(maxDepth === undefined ? {} : { maxDepth }),
+        }),
+      /** What went into this? */
+      backward: (nodeType: TraceNodeType, nodeId: string, maxDepth?: number) =>
+        invoke(IpcChannel.MedicalDeviceTraceBackward, {
+          nodeType,
+          nodeId,
+          ...(maxDepth === undefined ? {} : { maxDepth }),
+        }),
     },
   },
 };

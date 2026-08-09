@@ -45,6 +45,11 @@ const DataCommandCenterView = lazy(() =>
     default: m.DataCommandCenterView,
   })),
 );
+const MedicalDevicesView = lazy(() =>
+  import('@renderer/medicalDevices/MedicalDevicesView').then((m) => ({
+    default: m.MedicalDevicesView,
+  })),
+);
 const MemoryView = lazy(() =>
   import('@renderer/views/MemoryView').then((m) => ({ default: m.MemoryView })),
 );
@@ -292,6 +297,8 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
         return <ConnectorsView />;
       case 'data-center':
         return <DataCommandCenterView />;
+      case 'medical-devices':
+        return <MedicalDevicesView />;
       case 'memory':
         return <MemoryView />;
       case 'enterprise':
