@@ -56,6 +56,7 @@ let tenant: string;
 let descriptors: EnterpriseModuleDescriptor[];
 let saved: { name: string; bytes: number }[];
 let saveCancelled: boolean;
+let imported: { moduleId: string; recordIds: string[]; planId: string; correlationId: string }[];
 
 function build(): DataPlaneSubsystem {
   return initDataPlane({
@@ -78,6 +79,7 @@ function build(): DataPlaneSubsystem {
       saved.push({ name, bytes: content.length });
       return `/tmp/${name}`;
     },
+    onImported: (e) => imported.push(e),
   });
 }
 
@@ -101,6 +103,7 @@ beforeEach(async () => {
   ]);
   saved = [];
   saveCancelled = false;
+  imported = [];
   descriptors = [
     {
       id: 'crm-customers',

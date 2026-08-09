@@ -83,8 +83,17 @@ export interface DataPlaneSubsystemDeps {
    * Resolves to the written path, or null when the user cancelled.
    */
   saveExport: (suggestedName: string, format: string, content: Buffer) => Promise<string | null>;
-  /** Fired after a successful import so domain subsystems can react. */
-  onImported?: (event: { moduleId: string; recordIds: string[]; planId: string; correlationId: string }) => void;
+  /**
+   * Fired after a successful import so imported records re-enter the module
+   * lifecycle (audit, renderer broadcast, every module's `onChange`).
+   *
+   * REQUIRED, not optional, and deliberately so. It was optional once, and the
+   * composition root was silently reverted to omit it — a full green gate, and
+   * imported records invisible to the rest of the system. An optional dependency
+   * whose absence is undetectable is not a safe contract. A caller that genuinely
+   * wants no reaction passes `() => undefined` and says so at the call site.
+   */
+  onImported: (event: { moduleId: string; recordIds: string[]; planId: string; correlationId: string }) => void;
 }
 
 export interface DataPlaneSubsystem {
@@ -259,16 +268,14 @@ export function initDataPlane(deps: DataPlaneSubsystemDeps): DataPlaneSubsystem 
         // Let domain subsystems react to imported records — one event per
         // destination module, carrying a correlation id so a reaction can never
         // be mistaken for user-driven activity or loop back into the plane.
-        if (deps.onImported) {
-          for (const table of result.tables) {
-            if (table.createdRecordIds.length === 0) continue;
-            deps.onImported({
-              moduleId: table.moduleId,
-              recordIds: table.createdRecordIds,
-              planId: plan.planId,
-              correlationId,
-            });
-          }
+        for (const table of result.tables) {
+          if (table.createdRecordIds.length === 0) continue;
+          deps.onImported({
+            moduleId: table.moduleId,
+            recordIds: table.createdRecordIds,
+            planId: plan.planId,
+            correlationId,
+          });
         }
 
         log.info('Import finished', { planId: plan.planId, status: result.status, imported: result.totals.imported });
