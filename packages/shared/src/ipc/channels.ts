@@ -1041,6 +1041,13 @@ export const IpcChannel = {
   OpportunitySetStatus: 'opportunity:setStatus',
   /** Run an opportunity's plan — governed, verified, and never faked. */
   OpportunityExecute: 'opportunity:execute',
+  /**
+   * What actually happened after the action (Program 5).
+   *
+   * Derived live from purchase orders on every call, so Refresh is never a
+   * no-op and a measurement cannot go stale while still looking current.
+   */
+  OutcomeGet: 'outcome:get',
 } as const;
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel];
@@ -1822,6 +1829,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.OpportunityList,
   IpcChannel.OpportunitySetStatus,
   IpcChannel.OpportunityExecute,
+  IpcChannel.OutcomeGet,
 ];
 
 /** Runtime-core broadcasts. */

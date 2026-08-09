@@ -62,6 +62,7 @@ import {
   type OpportunityCenterView,
   type OpportunityExecuteResult,
   type OpportunityStatus,
+  type Outcome,
   type HoldRecord,
   // ── Medical Device Manufacturing Pack ──
   type LotCenterView,
@@ -1802,6 +1803,9 @@ export const ipc = {
       invoke(IpcChannel.OpportunitySetStatus, { id, status, ...(note ? { note } : {}) }),
     execute: (id: string): Promise<OpportunityExecuteResult> =>
       invoke(IpcChannel.OpportunityExecute, { id }),
+    /** Derived live on every call — Refresh cannot be a no-op. */
+    outcome: (opportunityId: string): Promise<Outcome | null> =>
+      invoke(IpcChannel.OutcomeGet, { opportunityId }),
   },
 
   feedback: {

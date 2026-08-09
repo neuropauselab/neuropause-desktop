@@ -27,8 +27,10 @@ import { initOpportunities } from '@main/opportunities/index';
 import {
   findOpenRfq,
   purchaseOrdersAsObservations,
+  rfqAsExecution,
   rfqFieldsFor,
 } from '@main/opportunities/procurementSource';
+import { OutcomeRevisionStore } from '@main/outcomes/outcomeRevisionStore';
 import { OpportunitiesView } from '@renderer/opportunities/OpportunitiesView';
 
 const DIR = join(tmpdir(), 'np-ui-opportunities');
@@ -40,7 +42,15 @@ let rfqs: EnterpriseRecordStore;
 let holds: HoldStore;
 let records: DecisionRecordStore;
 let decisions: OpportunityDecisionStore;
+let revisions: OutcomeRevisionStore;
 let mayManage = true;
+
+/**
+ * Baseline orders are dated BEFORE the action. An order recorded at the same
+ * instant the RFQ was raised is not evidence of what was being paid
+ * beforehand, and the engine is right to exclude it.
+ */
+const T_BEFORE = '2026-07-01T00:00:00.000Z';
 
 function seed(ref: string, supplier: string, quantity: number, unitCost: number): void {
   orders.create({
@@ -56,7 +66,7 @@ function seed(ref: string, supplier: string, quantity: number, unitCost: number)
       warehouse: 'WH-01',
     },
     actor: 'priya@example.com',
-    now: T0,
+    now: T_BEFORE,
   });
 }
 
@@ -70,7 +80,15 @@ async function wire(): Promise<void> {
   holds = new HoldStore(join(dir, 'holds.json'));
   records = new DecisionRecordStore(join(dir, 'decisions.json'));
   decisions = new OpportunityDecisionStore(join(dir, 'opp.json'));
-  await Promise.all([orders.load(), rfqs.load(), holds.load(), records.load(), decisions.load()]);
+  revisions = new OutcomeRevisionStore(join(dir, 'rev.json'));
+  await Promise.all([
+    orders.load(),
+    rfqs.load(),
+    holds.load(),
+    records.load(),
+    decisions.load(),
+    revisions.load(),
+  ]);
 
   const { handlers } = initOpportunities({
     orders: () => purchaseOrdersAsObservations(orders),
@@ -100,6 +118,8 @@ async function wire(): Promise<void> {
         ? { recordId: record.id, label: String(record.fields.rfqNumber ?? record.title) }
         : null;
     },
+    executionFor: (recordId) => rfqAsExecution(rfqs, recordId),
+    outcomeRevisions: revisions,
     audit: () => undefined,
     // Fixed, so these tests do not start failing on a date.
     now: () => T0,
@@ -120,6 +140,7 @@ afterEach(async () => {
     holds.flush(),
     records.flush(),
     decisions.flush(),
+    revisions.flush(),
   ]);
   await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined);
 });
@@ -275,6 +296,275 @@ describe('Opportunity Center on screen', () => {
       render(<OpportunitiesView />);
       await screen.findByText(/SKU-100 is bought at/i);
       expect(unroutedChannels()).toEqual([]);
+    });
+  });
+
+  /* ── Program 5: the outcome on screen ─────────────────────────────────── */
+
+  describe('the outcome section', () => {
+    beforeEach(seedVariance);
+
+    /** Open a card's detail, where the outcome is rendered. */
+    async function openDetail(): Promise<void> {
+      const user = userEvent.setup();
+      render(<OpportunitiesView />);
+      await screen.findByText(/SKU-100 is bought at/i);
+      await user.click(screen.getByRole('button', { name: /show the evidence/i }));
+      await screen.findByText('Outcome');
+    }
+
+    /** Run the plan so an RFQ exists. */
+    async function execute(): Promise<string> {
+      const user = userEvent.setup();
+      render(<OpportunitiesView />);
+      await screen.findByText(/SKU-100 is bought at/i);
+      await user.click(screen.getByRole('button', { name: /this is worth pursuing/i }));
+      await user.click(await screen.findByRole('button', { name: /create an rfq/i }));
+      await screen.findByText(/Created RFQ-0001/i);
+      cleanup();
+      return rfqs.list()[0]!.id;
+    }
+
+    /** Award the RFQ by hand, the way the module's action would. */
+    function awardTo(rfqId: string, unitCost: number, poStatus = 'draft'): void {
+      const po = orders.create({
+        title: 'PO-RFQ-0001',
+        fields: {
+          poNumber: 'PO-RFQ-0001',
+          supplier: 'Borealis',
+          product: 'SKU-100',
+          quantity: 13,
+          unitCost,
+          currency: 'INR',
+          status: poStatus,
+          warehouse: 'WH-01',
+        },
+        actor: 'priya@example.com',
+        now: '2026-08-10T00:00:00.000Z',
+      });
+      rfqs.update(rfqId, {
+        fields: {
+          ...rfqs.get(rfqId)!.fields,
+          status: 'awarded',
+          awardedSupplier: 'Borealis',
+          awardedOrder: po.id,
+          awardedAt: '2026-08-10T00:00:00.000Z',
+        },
+        actor: 'priya@example.com',
+        now: '2026-08-10T00:00:00.000Z',
+      });
+    }
+
+    it('shows the three columns even when there is nothing to measure', async () => {
+      await openDetail();
+      // Keeping the frame visible is what stops "no measurement" reading as
+      // "no expectation either".
+      expect(screen.getByText('Expected')).toBeTruthy();
+      expect(screen.getByText('Measured')).toBeTruthy();
+      expect(screen.getByText('Verified')).toBeTruthy();
+      expect(screen.getByText(/Measurement unavailable/i)).toBeTruthy();
+      expect(screen.getByText(/has not created a request for quotation/i)).toBeTruthy();
+    });
+
+    it('says PENDING after the action, and that execution is not a result', async () => {
+      await execute();
+      await openDetail();
+      expect(screen.getByText(/Measurement pending/i)).toBeTruthy();
+      expect(screen.getByText(/downstream business transaction/i)).toBeTruthy();
+      expect(screen.getByText(/What would enable the measurement/i)).toBeTruthy();
+    });
+
+    it('shows a favourable change with the causal refusal beside it', async () => {
+      const rfqId = await execute();
+      awardTo(rfqId, 95);
+      await openDetail();
+
+      // Baseline is the weighted average of the three seeded orders: 115.71.
+      expect(screen.getByText('-20.71 INR')).toBeTruthy();
+      expect(screen.getByText(/Lower than the baseline/i)).toBeTruthy();
+      // Not a footnote — the number's natural misreading is "we did that".
+      expect(screen.getByText(/OBSERVED after the action, not what the action achieved/i)).toBeTruthy();
+    });
+
+    it('shows a WORSE result just as prominently, and never as a failure of the app', async () => {
+      const rfqId = await execute();
+      awardTo(rfqId, 150);
+      await openDetail();
+      expect(screen.getByText('+34.29 INR')).toBeTruthy();
+      expect(screen.getByText(/Higher than the baseline/i)).toBeTruthy();
+      // Same place, same treatment as the favourable case.
+      expect(screen.getByText(/Financial effect/i)).toBeTruthy();
+    });
+
+    it('stops at MEASURED on a draft order and says why', async () => {
+      const rfqId = await execute();
+      awardTo(rfqId, 95, 'draft');
+      await openDetail();
+      expect(screen.getByText(/Measured, not yet verified/i)).toBeTruthy();
+      expect(screen.getByText(/5 of 6 checks passed/i)).toBeTruthy();
+      expect(screen.getByText(/agreed but not transacted/i)).toBeTruthy();
+    });
+
+    it('reaches VERIFIED on a committed order', async () => {
+      const rfqId = await execute();
+      awardTo(rfqId, 95, 'approved');
+      await openDetail();
+      expect(screen.getByText(/Measured and verified/i)).toBeTruthy();
+      expect(screen.getByText(/6 of 6 checks passed/i)).toBeTruthy();
+    });
+
+    it('refuses to compare two currencies rather than converting', async () => {
+      const rfqId = await execute();
+      const po = orders.create({
+        title: 'PO-RFQ-0001',
+        fields: {
+          poNumber: 'PO-RFQ-0001',
+          supplier: 'Borealis',
+          product: 'SKU-100',
+          quantity: 13,
+          unitCost: 95,
+          currency: 'USD',
+          // A draft, as an award produces. Deliberate: a COMMITTED order in a
+          // second currency makes the discovery engine drop the product
+          // entirely (it refuses mixed-currency comparison), so the finding —
+          // and with it the outcome — would disappear before this state could
+          // ever be seen. The draft is the reachable path, and it is what the
+          // award actually creates.
+          status: 'draft',
+        },
+        actor: 'priya@example.com',
+        now: '2026-08-10T00:00:00.000Z',
+      });
+      rfqs.update(rfqId, {
+        fields: { ...rfqs.get(rfqId)!.fields, status: 'awarded', awardedOrder: po.id },
+        actor: 'priya@example.com',
+        now: '2026-08-10T00:00:00.000Z',
+      });
+      await openDetail();
+      expect(screen.getByText(/cannot be compared/i)).toBeTruthy();
+      expect(screen.getByText(/would invent the very difference being measured/i)).toBeTruthy();
+    });
+
+    it('Refresh re-measures from the records — it is never a no-op', async () => {
+      const user = userEvent.setup();
+      const rfqId = await execute();
+      awardTo(rfqId, 95);
+
+      render(<OpportunitiesView />);
+      await screen.findByText(/SKU-100 is bought at/i);
+      await user.click(screen.getByRole('button', { name: /show the evidence/i }));
+      expect(await screen.findByText('-20.71 INR')).toBeTruthy();
+
+      // Someone corrects the awarded order's price behind the screen.
+      const po = orders.list().find((r) => r.fields.poNumber === 'PO-RFQ-0001')!;
+      orders.update(po.id, {
+        fields: { ...po.fields, unitCost: 130 },
+        actor: 'priya@example.com',
+        now: '2026-08-10T00:00:00.000Z',
+      });
+      await user.click(screen.getByRole('button', { name: /refresh measurement/i }));
+
+      expect(await screen.findByText('+14.29 INR')).toBeTruthy();
+      expect(screen.queryByText('-20.71 INR')).toBeNull();
+    });
+
+    it('re-measures when the finding beneath it moves, without being remounted', async () => {
+      // The panel stays mounted across a reload. Without a change signal it
+      // keeps asserting "no action has been run" while the RFQ sits in the
+      // store — a stale measurement wearing a fresh timestamp. Every other
+      // test here calls cleanup() first, so only this one can catch it.
+      const user = userEvent.setup();
+      render(<OpportunitiesView />);
+      await screen.findByText(/SKU-100 is bought at/i);
+      await user.click(screen.getByRole('button', { name: /show the evidence/i }));
+      expect(await screen.findByText(/has not created a request for quotation/i)).toBeTruthy();
+
+      await user.click(screen.getByRole('button', { name: /this is worth pursuing/i }));
+      await user.click(await screen.findByRole('button', { name: /create an rfq/i }));
+
+      expect(await screen.findByText(/Measurement pending/i)).toBeTruthy();
+      expect(screen.queryByText(/has not created a request for quotation/i)).toBeNull();
+    });
+
+    it('keeps Refresh reachable when the measurement fails to load', async () => {
+      // An early return on error removed the only retry affordance, leaving a
+      // transient fault as a dead end until the card was collapsed.
+      const user = userEvent.setup();
+      render(<OpportunitiesView />);
+      await screen.findByText(/SKU-100 is bought at/i);
+      route('outcome:get', () => {
+        throw new Error('boom');
+      });
+      await user.click(screen.getByRole('button', { name: /show the evidence/i }));
+
+      expect(await screen.findByText(/This is a fault, not a result/i)).toBeTruthy();
+      expect(screen.getByRole('button', { name: /refresh measurement/i })).toBeTruthy();
+    });
+
+    it('refuses to record a measurement that does not exist, and says so', async () => {
+      const user = userEvent.setup();
+      await execute(); // RFQ raised, never awarded → pending
+      render(<OpportunitiesView />);
+      await screen.findByText(/SKU-100 is bought at/i);
+      await user.click(screen.getByRole('button', { name: /i have finished this/i }));
+      await user.click(await screen.findByRole('button', { name: /record the measurement/i }));
+
+      expect(await screen.findByText(/no measurement to record yet/i)).toBeTruthy();
+      expect(revisions.count()).toBe(0);
+      // And the status did not move.
+      expect(screen.getByText('Done')).toBeTruthy();
+    });
+
+    it('records the measurement into the audit trail once', async () => {
+      const user = userEvent.setup();
+      const rfqId = await execute();
+      awardTo(rfqId, 95, 'approved');
+      render(<OpportunitiesView />);
+      await screen.findByText(/SKU-100 is bought at/i);
+      await user.click(screen.getByRole('button', { name: /i have finished this/i }));
+      await user.click(await screen.findByRole('button', { name: /record the measurement/i }));
+
+      await waitFor(() => expect(revisions.count()).toBe(1));
+      expect(revisions.list()[0]!.measurement).toBe(95);
+      await user.click(screen.getByRole('button', { name: /show the evidence/i }));
+      expect(await screen.findByText(/Recorded measurements \(1\)/i)).toBeTruthy();
+    });
+
+    it('lists the source records the measurement came from', async () => {
+      const rfqId = await execute();
+      awardTo(rfqId, 95);
+      await openDetail();
+      expect(screen.getByText(/Source records/i)).toBeTruthy();
+      expect(screen.getAllByText('PO-0001').length).toBeGreaterThan(0);
+      expect(screen.getByText('PO-RFQ-0001')).toBeTruthy();
+      expect(screen.getByText(/RFQ-0001 \(the action\)/i)).toBeTruthy();
+    });
+
+    it('surfaces a load failure instead of a permanent skeleton', async () => {
+      clearRoutes();
+      route('opportunity:list', () => ({
+        opportunities: [],
+        dismissed: [],
+        review: {
+          windowDays: 365,
+          ordersExamined: 0,
+          ordersInWindow: 0,
+          ordersUsable: 0,
+          truncated: false,
+          productsExamined: 0,
+          productsCompared: 0,
+          exclusions: [],
+          wouldImprove: [],
+        },
+        insufficient: 'Nothing could be analysed in this run.',
+        derivedAt: '2026-08-09T12:00:00.000Z',
+      }));
+      render(<OpportunitiesView />);
+      // The screen must SETTLE rather than spin. The outcome section lives
+      // inside a card, so with no cards the thing being proven is that the
+      // loading state ends and a real message appears.
+      expect(await screen.findByText(/Nothing could be analysed in this run/i)).toBeTruthy();
+      expect(screen.queryByLabelText(/Looking through your records/i)).toBeNull();
     });
   });
 

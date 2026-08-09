@@ -104,6 +104,9 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
   // refuses with a hold; the RFQ write is independently gated a second time by
   // the enterprise registry's own authorize. Two checks, one explanation.
   [IpcChannel.OpportunityExecute]: 'procurement:read',
+  // The outcome restates purchase orders exactly as the finding does, so it
+  // takes the same scope. Pure read: it derives, it never writes.
+  [IpcChannel.OutcomeGet]: 'procurement:read',
 
   /* ── Privileged writes ──────────────────────────────────────────────── */
 

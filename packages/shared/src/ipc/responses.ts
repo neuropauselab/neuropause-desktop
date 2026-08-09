@@ -58,6 +58,7 @@ import type {
   OpportunityCenterView,
   OpportunityExecuteResult,
 } from '../types/opportunity';
+import type { Outcome } from '../types/outcome';
 // ── Medical Device Manufacturing Pack ──
 import type {
   DeviceLotDetail,
@@ -1486,6 +1487,7 @@ export interface IpcResponseMap {
   'opportunity:list': OpportunityCenterView;
   'opportunity:setStatus': Opportunity | null;
   'opportunity:execute': OpportunityExecuteResult;
+  'outcome:get': Outcome | null;
 }
 
 /**

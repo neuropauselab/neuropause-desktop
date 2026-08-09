@@ -108,6 +108,7 @@ export * from './types/understanding';
 // The nine HOLD shapes, one deterministic factory each.
 export * from './types/holdProducers';
 export * from './types/opportunity';
+export * from './types/outcome';
 // Inventory → W3.4: reservations — hold documents posting real ledger movements.
 export * from './types/reservations';
 // Inventory → W3.5: valuation — immutable standard-cost registers over the ledger.

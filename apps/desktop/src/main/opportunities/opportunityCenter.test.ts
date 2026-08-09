@@ -30,7 +30,13 @@ import { DecisionRecordStore } from '../decisions/decisionService';
 import { HoldStore } from '../decisions/holdStore';
 import { createHoldRaiser } from '../decisions/raiseHold';
 import { OpportunityDecisionStore } from './opportunityDecisionStore';
-import { findOpenRfq, purchaseOrdersAsObservations, rfqFieldsFor } from './procurementSource';
+import {
+  findOpenRfq,
+  purchaseOrdersAsObservations,
+  rfqAsExecution,
+  rfqFieldsFor,
+} from './procurementSource';
+import { OutcomeRevisionStore } from '../outcomes/outcomeRevisionStore';
 import { initOpportunities } from '.';
 
 const T0 = '2026-08-09T12:00:00.000Z';
@@ -60,6 +66,7 @@ describe('Opportunity Center, wired', () => {
   let holds: HoldStore;
   let records: DecisionRecordStore;
   let decisions: OpportunityDecisionStore;
+  let revisions: OutcomeRevisionStore;
   let call: (channel: IpcChannelName, payload: unknown) => Promise<unknown>;
 
   /** Flipped per test to drive the governed refusals. */
@@ -97,7 +104,15 @@ describe('Opportunity Center, wired', () => {
     holds = new HoldStore(join(dir, 'holds.json'));
     records = new DecisionRecordStore(join(dir, 'decisions.json'));
     decisions = new OpportunityDecisionStore(join(dir, 'opportunity-decisions.json'));
-    await Promise.all([orders.load(), rfqs.load(), holds.load(), records.load(), decisions.load()]);
+    revisions = new OutcomeRevisionStore(join(dir, 'outcome-revisions.json'));
+    await Promise.all([
+      orders.load(),
+      rfqs.load(),
+      holds.load(),
+      records.load(),
+      decisions.load(),
+      revisions.load(),
+    ]);
     for (const seed of SEED) seedOrder(seed);
 
     const subsystem = initOpportunities({
@@ -129,6 +144,8 @@ describe('Opportunity Center, wired', () => {
           ? { recordId: record.id, label: String(record.fields.rfqNumber ?? record.title) }
           : null;
       },
+      executionFor: (recordId) => rfqAsExecution(rfqs, recordId),
+      outcomeRevisions: revisions,
       audit: () => undefined,
       // A FIXED clock. With the real one, every test here passes only while
       // today is within 365 days of the seeded `createdAt` — the suite would
@@ -150,7 +167,7 @@ describe('Opportunity Center, wired', () => {
     // queue. Draining ALL of them before removing the directory is what stops
     // a stray rename racing the rm — an unhandled ENOENT that fails the run
     // while every test still reports green.
-    await Promise.all([orders.flush(), rfqs.flush(), holds.flush(), records.flush(), decisions.flush()]);
+    await Promise.all([orders.flush(), rfqs.flush(), holds.flush(), records.flush(), decisions.flush(), revisions.flush()]);
     await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined);
   });
 

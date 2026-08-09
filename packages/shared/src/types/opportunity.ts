@@ -75,11 +75,10 @@ export const OPPORTUNITY_STATUS_LABELS: Record<OpportunityStatus, string> = {
 /**
  * Which transitions are legal.
  *
- * Only the statuses this vertical can actually reach are wired. `completed →
- * measured` has no edge because nothing in Program 4 can measure an outcome —
- * offering the transition would let a person mark work "measured" that was
- * never measured, which is the fabrication this whole program exists to avoid.
- * Program 5 adds the edge when it adds the measurement.
+ * `completed → measured` exists as of Program 5, which added the measurement
+ * behind it. The edge is not enough on its own: the subsystem refuses the
+ * transition unless a real outcome has actually been measured, so nobody can
+ * mark work "measured" that was never measured.
  */
 export const OPPORTUNITY_TRANSITIONS: Record<OpportunityStatus, readonly OpportunityStatus[]> = {
   new: ['investigating', 'accepted', 'rejected'],
@@ -89,7 +88,7 @@ export const OPPORTUNITY_TRANSITIONS: Record<OpportunityStatus, readonly Opportu
   rejected: ['new'],
   // `in_progress → completed` is reached by executing the plan, not by hand.
   in_progress: ['completed', 'accepted'],
-  completed: [],
+  completed: ['measured'],
   measured: [],
 };
 
@@ -203,6 +202,13 @@ export interface OpportunityExecutable {
   product: string;
   quantity: number;
   warehouse: string | null;
+  /**
+   * The finding's currency, carried onto the RFQ so the purchase order an
+   * award produces can be compared against the orders that produced the
+   * finding. Without it the order defaults to USD and the analysis that asked
+   * for it can no longer see it.
+   */
+  currency: string;
 }
 
 export interface Opportunity {
@@ -798,6 +804,7 @@ function composePriceVariance(input: ComposeInput): Opportunity {
       product,
       quantity,
       warehouse: best.warehouse,
+      currency,
     },
   };
 

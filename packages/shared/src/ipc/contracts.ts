@@ -2972,3 +2972,8 @@ export const OpportunityExecuteRequest = z
   .object({ id: z.string().trim().min(1).max(80) })
   .strict();
 export type OpportunityExecuteRequest = z.infer<typeof OpportunityExecuteRequest>;
+
+export const OutcomeGetRequest = z
+  .object({ opportunityId: z.string().trim().min(1).max(80) })
+  .strict();
+export type OutcomeGetRequest = z.infer<typeof OutcomeGetRequest>;

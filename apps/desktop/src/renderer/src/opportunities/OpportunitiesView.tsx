@@ -45,6 +45,7 @@ import { NoticeBlock } from '@renderer/dataCommandCenter/primitives';
 import { SkeletonCards, SkeletonRegion } from '@renderer/components/ui/Skeleton';
 import { TRANSITION, listItemVariants, staggerDelay } from '@renderer/lib/motion';
 import { useAnimatedCount } from '@renderer/lib/useAnimatedCount';
+import { OutcomeSection } from './OutcomeSection';
 
 const log = createLogger('opportunities');
 
@@ -130,8 +131,16 @@ export function OpportunitiesView(): JSX.Element {
     setBusy(opportunity.id);
     setError(null);
     try {
-      await ipc.opportunities.setStatus(opportunity.id, status, note);
+      const updated = await ipc.opportunities.setStatus(opportunity.id, status, note);
       await reload();
+      // AFTER the reload, which clears banners. The handler refuses `measured`
+      // when no real measurement exists, and a button that silently does
+      // nothing is worse than one that explains.
+      if (status === 'measured' && updated && updated.status !== 'measured') {
+        setError(
+          'There is no measurement to record yet — the outcome below says what is still missing.',
+        );
+      }
     } catch (err) {
       log.warn('Could not record the decision', { message: String(err) });
       setError('That could not be recorded — you may not hold procurement:manage.');
@@ -404,6 +413,25 @@ function OpportunityCard({
             I have finished this
           </Button>
         )}
+        {/*
+          The step that files the measurement into the audit trail. Without it
+          the whole revision chain is unreachable from the product — every
+          transition into `measured` would come from a test. The handler
+          refuses if no real measurement exists, so this cannot manufacture
+          one; `onRecordRefused` is what tells the user that happened, instead
+          of the button appearing to do nothing.
+        */}
+        {opportunity.status === 'completed' && (
+          <Button
+            size="sm"
+            variant="primary"
+            icon="analytics"
+            onClick={() => onDecide('measured', 'Measurement recorded.')}
+            disabled={busy}
+          >
+            Record the measurement
+          </Button>
+        )}
         {opportunity.executionRef && (
           <span className="text-xs text-faint">
             <Icon name="check" size={10} /> {opportunity.executionRef.label} created
@@ -542,6 +570,19 @@ function Detail({ opportunity }: { opportunity: Opportunity }): JSX.Element {
           <Fact label="How it is verified" value={plan.verification} />
         </dl>
       </Block>
+
+      {/*
+        The loop's last step, and the only one that can say whether any of this
+        mattered. Loaded lazily with the expanded detail, so opening the screen
+        does not measure every finding on it.
+      */}
+      <OutcomeSection
+        opportunityId={opportunity.id}
+        // Re-measures when the finding beneath it moves — running the plan
+        // while this panel is open must not leave it saying "no action has
+        // been run".
+        revision={`${opportunity.status}|${opportunity.executionRef?.recordId ?? ''}|${opportunity.statusChangedAt ?? ''}`}
+      />
 
       <Block title="Why it is ranked here">
         <p className="text-sm leading-relaxed text-muted">{ranking.basis}</p>

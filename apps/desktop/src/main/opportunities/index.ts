@@ -39,23 +39,29 @@ import {
   OpportunityExecuteRequest,
   OpportunityListRequest,
   OpportunitySetStatusRequest,
+  OutcomeGetRequest,
   canTransitionOpportunity,
   discoverPriceVarianceOpportunities,
   insufficiencyMessage,
   insufficientEvidenceHold,
+  measurePriceOutcome,
   permissionMissingHold,
+  revisionNeeded,
   unresolvedDependencyHold,
   verificationUnavailableHold,
 } from '@neuropause/shared';
 import type {
+  ExecutionObservation,
   Opportunity,
   OpportunityCenterView,
   OpportunityDecision,
   OpportunityExecuteResult,
   OpportunityRecordRef,
   OpportunityStatus,
+  Outcome,
   PurchaseOrderObservation,
 } from '@neuropause/shared';
+import type { OutcomeRevisionStore } from '../outcomes/outcomeRevisionStore';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import type { HoldRaiser } from '../decisions/raiseHold';
 import type { DecisionRecordStore } from '../decisions/decisionService';
@@ -111,9 +117,18 @@ export interface OpportunitySubsystemDeps {
     quantity: number;
     warehouse: string | null;
     notes: string;
+    currency: string;
+    opportunityId: string;
   }) => Promise<CreatedRecord>;
   /** Read it back out of the store. The verification step — never skipped. */
   readRfq: (recordId: string) => CreatedRecord | null;
+  /**
+   * The execution, as outcome measurement needs to see it — the RFQ plus the
+   * purchase order its award produced. Null when the record is gone.
+   */
+  executionFor: (recordId: string) => ExecutionObservation | null;
+  /** The audit trail of recorded measurements. */
+  outcomeRevisions: OutcomeRevisionStore;
   audit: (action: string, target: string, summary: string) => void;
   now: () => string;
 }
@@ -231,6 +246,60 @@ export function initOpportunities(deps: OpportunitySubsystemDeps): OpportunitySu
     commit(opportunity, opportunity.status, note, { holdId });
   }
 
+  /**
+   * What actually happened after the action.
+   *
+   * Derived on every call from live purchase orders — same rule as the finding
+   * itself. A measurement that is computed once and stored is a measurement
+   * that keeps asserting yesterday's number after the records beneath it have
+   * been corrected, which is the failure this whole program is about.
+   */
+  function measure(opportunity: Opportunity): Outcome {
+    const executionRecordId = opportunity.executionRef?.recordId ?? null;
+    const execution = executionRecordId ? deps.executionFor(executionRecordId) : null;
+    const product = opportunity.plan.executable?.product ?? '';
+    const currency = opportunity.impact?.currency ?? opportunity.plan.executable?.currency ?? '';
+    if (!product || !currency) {
+      // Without both, the engine would render sentences with blanks in them
+      // ("The baseline is in  and the awarded order is in INR"). Refusing here
+      // keeps the malformed case out of the prose entirely.
+      return {
+        ...measurePriceOutcome({
+          opportunityId: opportunity.id,
+          decisionId: opportunity.decisionId,
+          product,
+          currency,
+          expectedEffect: opportunity.plan.expectedEffect,
+          impactAtDecision: opportunity.impactAtDecision,
+          execution: null,
+          orders: [],
+          revisions: [],
+          now: deps.now(),
+        }),
+        blocked: {
+          headline: 'This finding does not name a product and currency, so nothing can be measured.',
+          available: ['The finding itself.'],
+          missing: ['A product and a currency to compare purchases in.'],
+          wouldEnable: ['Reload Opportunities — a finding derived from live records always carries both.'],
+        },
+      };
+    }
+    const outcome = measurePriceOutcome({
+      opportunityId: opportunity.id,
+      decisionId: opportunity.decisionId,
+      product,
+      currency,
+      expectedEffect: opportunity.plan.expectedEffect,
+      impactAtDecision: opportunity.impactAtDecision,
+      execution,
+      orders: deps.orders(),
+      revisions: [],
+      now: deps.now(),
+    });
+    // Attached after derivation so the engine stays store-free.
+    return { ...outcome, revisions: deps.outcomeRevisions.forOutcome(outcome.id) };
+  }
+
   const handlers: SecureHandlerDef[] = [
     {
       channel: IpcChannel.OpportunityList,
@@ -256,8 +325,64 @@ export function initOpportunities(deps: OpportunitySubsystemDeps): OpportunitySu
           return opportunity;
         }
         const note = req.note?.trim() || `Marked ${req.status.replace(/_/g, ' ')}.`;
+
+        /* Marking something "measured" requires a measurement. -------------
+         *
+         * The Program 4 analogue of this guard is "do not report completed
+         * when nothing happened". Here it is sharper: `measured` is the state
+         * that tells a reader a number exists and was checked. Letting anyone
+         * set it while the outcome is pending or unavailable would make the
+         * status a claim the data does not support — and the status is exactly
+         * what someone scanning a list will believe.
+         */
+        let pendingRevision: (() => void) | null = null;
+        if (req.status === 'measured') {
+          const outcome = measure(opportunity);
+          // Only a real measurement earns the label. `failed_to_verify` carries
+          // null baseline, null measurement and null change — recording it
+          // would file three blanks under "measured".
+          if (outcome.status !== 'measured' && outcome.status !== 'verified') {
+            return opportunity;
+          }
+          // Record the observation, but only when it differs from the last
+          // one. A revision per click is not an audit trail.
+          const previous = deps.outcomeRevisions.latest(outcome.id);
+          const { needed, reason } = revisionNeeded(outcome, previous);
+          if (needed) {
+            pendingRevision = (): void => {
+              deps.outcomeRevisions.append_({
+                outcomeKey: outcome.id,
+                actor: deps.actor(),
+                executionRecordId: outcome.execution?.recordId ?? null,
+                status: outcome.status,
+                baseline: outcome.baseline.value,
+                measurement: outcome.measurement.value,
+                change: outcome.change,
+                currency: outcome.currency,
+                reason,
+              });
+              deps.audit('outcome.recorded', outcome.id, `${opportunity.title}: ${reason}`);
+            };
+          }
+        }
+
+        // Both the audit line and the revision are deferred until `commit` has
+        // actually moved the status. Writing them first would record a
+        // transition that a later refusal inside `commit` prevented.
+        const updated = commit(opportunity, req.status, note);
+        if (updated.status !== req.status) return updated;
+        pendingRevision?.();
         deps.audit('opportunity.status', opportunity.id, `${opportunity.title}: ${req.status}`);
-        return commit(opportunity, req.status, note);
+        return updated;
+      },
+    },
+
+    {
+      channel: IpcChannel.OutcomeGet,
+      schema: OutcomeGetRequest,
+      handler: (p): Outcome | null => {
+        const opportunity = findLive((p as OutcomeGetRequest).opportunityId);
+        return opportunity ? measure(opportunity) : null;
       },
     },
 
@@ -430,6 +555,8 @@ export function initOpportunities(deps: OpportunitySubsystemDeps): OpportunitySu
             product: executable.product,
             quantity: executable.quantity,
             warehouse: executable.warehouse,
+            currency: executable.currency,
+            opportunityId: opportunity.id,
             notes: `Raised from an Opportunity: ${opportunity.finding}`,
           });
         } catch (error) {

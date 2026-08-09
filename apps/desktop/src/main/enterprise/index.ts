@@ -161,8 +161,10 @@ import {
   MAX_ORDERS,
   findOpenRfq,
   purchaseOrdersAsObservations,
+  rfqAsExecution,
   rfqFieldsFor,
 } from '../opportunities/procurementSource';
+import { outcomeRevisionStore } from '../outcomes/instances';
 import {
   holdFromAssessment,
   insufficientEvidenceHold,
@@ -873,7 +875,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     rolesFor: (orgId) => orgStore.rolesFor(orgId),
     ownerMember: () => orgStore.user(OWNER_USER_ID),
   });
-  await opportunityDecisionStore.load();
+  await Promise.all([opportunityDecisionStore.load(), outcomeRevisionStore.load()]);
   const opportunities = initOpportunities({
     orders: () => purchaseOrdersAsObservations(purchaseOrderModule.store),
     readCeiling: MAX_ORDERS,
@@ -911,6 +913,8 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
         ? { recordId: record.id, label: String(record.fields.rfqNumber ?? record.title) }
         : null;
     },
+    executionFor: (recordId) => rfqAsExecution(rfqModule.store, recordId),
+    outcomeRevisions: outcomeRevisionStore,
     audit: (action, target, summary) => audit(action, target, summary),
     now: () => new Date().toISOString(),
   });

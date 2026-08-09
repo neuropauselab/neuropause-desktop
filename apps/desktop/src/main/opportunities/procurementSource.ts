@@ -10,7 +10,11 @@
  *
  * Electron-free — stores are passed in.
  */
-import type { EnterpriseEntity, PurchaseOrderObservation } from '@neuropause/shared';
+import type {
+  EnterpriseEntity,
+  ExecutionObservation,
+  PurchaseOrderObservation,
+} from '@neuropause/shared';
 import type { EnterpriseRecordStore } from '../enterprise/framework/enterpriseRecordStore';
 
 /**
@@ -87,6 +91,36 @@ export function findOpenRfq(
 }
 
 /**
+ * One RFQ read as the measurement engine needs to see it.
+ *
+ * The RFQ is the execution; its `awardedOrder` is the transaction the
+ * execution produced. Those two facts are the whole action → outcome join, and
+ * naming the field mapping here (rather than in the engine) keeps the engine
+ * free of any knowledge of how procurement stores its records.
+ */
+export function rfqAsExecution(
+  store: EnterpriseRecordStore,
+  recordId: string,
+): ExecutionObservation | null {
+  const record = store.get(recordId);
+  if (!record) return null;
+  const awarded = text(record.fields.awardedOrder);
+  return {
+    moduleId: 'procurement-rfqs',
+    recordId: record.id,
+    label: text(record.fields.rfqNumber) || record.title || record.id,
+    createdAt: record.createdAt,
+    status: text(record.fields.status),
+    awardedOrderId: awarded || null,
+    awardedSupplier: text(record.fields.awardedSupplier) || null,
+    awardedAt: text(record.fields.awardedAt) || null,
+    product: text(record.fields.product),
+    currency: text(record.fields.currency).toUpperCase() || null,
+    sourceOpportunity: text(record.fields.sourceOpportunity) || null,
+  };
+}
+
+/**
  * The fields for a new RFQ.
  *
  * The number is derived from the highest existing `RFQ-nnnn` rather than the
@@ -101,7 +135,16 @@ export function findOpenRfq(
  */
 export function rfqFieldsFor(
   store: EnterpriseRecordStore,
-  input: { product: string; quantity: number; warehouse: string | null; notes: string },
+  input: {
+    product: string;
+    quantity: number;
+    warehouse: string | null;
+    notes: string;
+    /** The finding's currency — carried so the awarded order is comparable. */
+    currency: string;
+    /** The finding's id — the machine-readable action → outcome join. */
+    opportunityId: string;
+  },
 ): { title: string; fields: Record<string, string | number> } {
   let highest = 0;
   const everyStatus = ['active', 'archived', 'deleted'] as const;
@@ -119,6 +162,12 @@ export function rfqFieldsFor(
       product: input.product,
       quantity: input.quantity,
       ...(input.warehouse ? { warehouse: input.warehouse } : {}),
+      // Both carried from the finding: the currency so the awarded purchase
+      // order can be compared against the orders that produced the finding,
+      // and the opportunity id so the outcome can PROVE the execution belongs
+      // to it rather than inferring it from free text.
+      currency: input.currency,
+      sourceOpportunity: input.opportunityId,
       status: 'open',
       notes: input.notes,
     },

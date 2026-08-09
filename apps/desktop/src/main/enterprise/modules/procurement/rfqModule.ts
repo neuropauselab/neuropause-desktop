@@ -68,8 +68,40 @@ export const RFQ_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'product', label: 'Product (SKU)', type: 'text', required: true, placeholder: 'SKU-0001' },
     { key: 'quantity', label: 'Quantity', type: 'number', required: true, min: 0 },
     { key: 'warehouse', label: 'Warehouse', type: 'text', column: false, placeholder: 'WH-01' },
+    /**
+     * The currency the quotes are in.
+     *
+     * Added because the award previously created a purchase order with NO
+     * currency, which fell back to the descriptor default (USD) regardless of
+     * what the business actually buys in. That made the awarded order
+     * incomparable with the orders it came from — and since price analysis
+     * refuses to compare across currencies, awarding an RFQ could silently make
+     * the very product it was raised for unmeasurable. An RFQ exists to compare
+     * prices; a price without a currency is not one.
+     */
+    {
+      key: 'currency',
+      label: 'Currency',
+      type: 'select',
+      column: false,
+      default: 'USD',
+      options: [
+        { value: 'USD', label: 'USD' },
+        { value: 'EUR', label: 'EUR' },
+        { value: 'GBP', label: 'GBP' },
+        { value: 'INR', label: 'INR' },
+      ],
+    },
     { key: 'neededBy', label: 'Needed By', type: 'date', format: 'date' },
     { key: 'sourceRequest', label: 'Source Request', type: 'text', column: false, placeholder: 'Purchase request id (optional)' },
+    /**
+     * The finding this RFQ was raised from, when it was raised by NeuroPause.
+     *
+     * A machine-readable link, not prose in the notes: outcome measurement has
+     * to prove an execution belongs to the finding it is being measured for,
+     * and "the notes mention it" is not proof.
+     */
+    { key: 'sourceOpportunity', label: 'Raised From', type: 'text', column: false, readOnly: true },
     {
       key: 'quotesJson',
       label: 'Quotes',
@@ -207,6 +239,13 @@ export function createRfqModule(
             quantity: rfq.quantity,
             unitCost: winner.unitCost,
             subtotal: round2(rfq.quantity * winner.unitCost),
+            // Carried from the RFQ. Omitting it let the purchase order fall
+            // back to the descriptor default (USD), so an award could produce
+            // an order in a currency the business does not buy in — and price
+            // comparison correctly refuses to compare across currencies, which
+            // made the awarded order invisible to the analysis that asked for
+            // it.
+            currency: str(record.fields.currency) || 'USD',
             expectedDelivery: rfq.neededBy ?? '',
             sourceRequest: rfq.sourceRequest,
           };

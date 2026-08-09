@@ -28,12 +28,14 @@ import { DecisionRecordStore } from '../decisions/decisionService';
 import { HoldStore } from '../decisions/holdStore';
 import { createHoldRaiser } from '../decisions/raiseHold';
 import { OpportunityDecisionStore } from './opportunityDecisionStore';
+import { OutcomeRevisionStore } from '../outcomes/outcomeRevisionStore';
 import { initOpportunities } from '.';
 
 const CHANNELS = [
   IpcChannel.OpportunityList,
   IpcChannel.OpportunitySetStatus,
   IpcChannel.OpportunityExecute,
+  IpcChannel.OutcomeGet,
 ] as const;
 
 /**
@@ -65,6 +67,8 @@ function registeredChannels(): string[] {
     openRfqFor: () => null,
     createRfq: async () => ({ recordId: 'x', label: 'x' }),
     readRfq: () => null,
+    executionFor: () => null,
+    outcomeRevisions: new OutcomeRevisionStore(join(dir, 'r.json')),
     audit: () => undefined,
     now: () => '2026-08-09T12:00:00.000Z',
   });
@@ -88,6 +92,9 @@ describe('Opportunity Center authorization', () => {
       expect(RUNTIME_CHANNEL_PERMISSIONS[channel]).toMatch(/^procurement:/);
     }
     expect(RUNTIME_CHANNEL_PERMISSIONS[IpcChannel.OpportunityList]).toBe('procurement:read');
+    // The outcome restates the same purchase orders, so it takes the same
+    // scope — it must not become a side door onto procurement data.
+    expect(RUNTIME_CHANNEL_PERMISSIONS[IpcChannel.OutcomeGet]).toBe('procurement:read');
   });
 
   it('requires :manage to change shared state', () => {
@@ -113,7 +120,7 @@ describe('Opportunity Center authorization', () => {
     const stamped = withRuntimeAuthz(
       registeredChannels().map((channel) => ({ channel: channel as (typeof CHANNELS)[number] })),
     );
-    expect(stamped).toHaveLength(3);
+    expect(stamped).toHaveLength(CHANNELS.length);
     for (const def of stamped) {
       expect(def.requireAuth).toBe(true);
       expect(def.permission).toMatch(/^procurement:/);
