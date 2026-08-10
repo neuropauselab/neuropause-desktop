@@ -27,6 +27,9 @@ import {
   recordInScope,
 } from '@neuropause/shared';
 import { envelopeStamp, readStoreFile } from '../../storage/storeEnvelope';
+import { createLogger } from '../../logger';
+
+const log = createLogger('enterprise-record-store');
 
 interface RecordFile {
   /** Phase 8 (8.3): store schema stamp — absent on legacy files (= v1). */
@@ -240,6 +243,29 @@ export class EnterpriseRecordStore extends EventEmitter {
         this.dirty = false;
         await this.persist();
       }
+    } catch (err) {
+      /**
+       * A FAILED BACKGROUND WRITE IS LOGGED, NEVER UNHANDLED.
+       *
+       * This was the only store in the codebase whose background writer had no
+       * catch — `AppendOnlyJsonStore.drain`, `MemoryStore.drainPersist` and
+       * `GraphStore.drainPersist` all have one. `schedulePersist` assigns the
+       * promise to `lastPersist` and does NOT await it (that is the point of
+       * coalescing), so anything thrown here became an unhandled rejection
+       * rather than an error anyone could see: in production that can take down
+       * the main process on a transient disk fault, and it cannot be caught by
+       * the caller because the caller has already returned.
+       *
+       * Surfaced by a real race — a store persisting in the background while
+       * its directory is removed underneath it, which macOS reports as EINVAL
+       * on rename and Linux as ENOENT. The durability contract is unchanged:
+       * `flush()` still awaits the in-flight write, and callers that need the
+       * bytes on disk still use it.
+       */
+      log.error('Enterprise record store persist failed', {
+        moduleId: this.moduleId,
+        error: String(err),
+      });
     } finally {
       this.persisting = false;
     }
