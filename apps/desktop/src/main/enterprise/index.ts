@@ -83,6 +83,7 @@ import { workspaceStore } from './workspace/workspaceInstance';
 import { governanceStore } from './governance/governanceInstance';
 import { OWNER_USER_ID, ROLE_TO_UNIT_ID } from './org/seed';
 import { provisionOrganization } from './org/provisionOrganization';
+import { bindOrgIntelligenceScope } from './orgIntelligence';
 import {
   firstEnterableWorkspace,
   visibleOrganizations,
@@ -490,10 +491,39 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   bindOwner(authService.getStatus());
   authService.on('statusChanged', bindOwner);
 
-  // Fold the live AI workforce into the org chart, and keep it in sync.
+  /**
+   * Fold the live AI workforce into EVERY tenant's org chart, and keep it in
+   * sync.
+   *
+   * P13C REMEDIATION — FINDING 1. This ran once, against the first-inserted
+   * organization, at boot and on every registry change. See `OrgStore.syncWorkers`
+   * for the three defects that produced — including a cross-tenant DELETE.
+   *
+   * The registry is an install-level catalogue with no tenant of its own, so
+   * the correct number of syncs is one PER ORGANIZATION, each writing that
+   * organization's own member rows. `backgroundTenantRuns` is the same roster
+   * the scheduled jobs fan out over, which is what makes a suspended tenant
+   * stop receiving worker rows here too, for the same reason and in one place.
+   *
+   * No tenant resolvable means NO SYNC — not a sync against whichever
+   * organization happens to be first.
+   */
+  /**
+   * P13C REMEDIATION — FINDING 4. Bind the org-intelligence scope.
+   *
+   * `collectOrgHealthInputs` resolved its organization with `defaultOrg()` and
+   * feeds a SCHEDULED DELIVERY source, so every tenant was sent an assessment of
+   * the first tenant's licence and headcount. Bound to the same resolver
+   * everything else reads, which means inside the delivery engine's per-tenant
+   * pass it answers for that tenant.
+   */
+  bindOrgIntelligenceScope(activeTenantScope);
+
   const syncWorkers = (): void => {
     const refs = workerRegistry.summaries().map((w) => ({ id: w.id, name: w.name, role: w.role }));
-    orgStore.syncWorkers(refs, ROLE_TO_UNIT_ID);
+    for (const run of backgroundTenantRuns('org-worker-sync')) {
+      orgStore.syncWorkers(run.scope.tenantId, refs, ROLE_TO_UNIT_ID);
+    }
   };
   syncWorkers();
   workerRegistry.on('changed', syncWorkers);
@@ -591,12 +621,14 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   const currentApprover = (): Approver | null => {
     const email = sessionEmail();
     if (!email) return null;
+    const org = activeOrgOrNull();
+    if (org === null) return null;
     const member = orgStore
-      .usersFor(activeOrg().id)
+      .usersFor(org.id)
       .find((u) => u.email?.toLowerCase() === email.toLowerCase());
     if (!member || member.status !== 'active') return null;
     const roleNames = orgStore
-      .rolesFor(activeOrg().id)
+      .rolesFor(org.id)
       .filter((r) => member.roleIds.includes(r.id))
       .map((r) => r.name.toLowerCase());
     return {
@@ -1354,9 +1386,53 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
  * own RBAC was evaluated in. Authorization now goes through
  * `authorizationOrgId()` below, which has no fallback.
  */
-function activeOrg(): Organization {
-  const ws = workspaceStore.active();
-  return orgStore.organization(ws.organizationId) ?? orgStore.defaultOrg();
+/**
+ * The organization this call is acting in, or NULL.
+ *
+ * P13C REMEDIATION — FINDING 2. This used to be:
+ *
+ *   const ws = workspaceStore.active();
+ *   return orgStore.organization(ws.organizationId) ?? orgStore.defaultOrg();
+ *
+ * and it was documented as display-only, which it had stopped being. Both
+ * halves were unsafe. `workspaceStore.active()` falls back to the first
+ * workspace on the install, and `?? orgStore.defaultOrg()` falls back to the
+ * first organization — so a caller with no resolvable tenant silently got a
+ * real organization, and one that was somebody's.
+ *
+ * That mattered because `activeOrg()` reached WRITES: it was stamped as `orgId`
+ * on unit, user and role creation, so a create with no resolved tenant landed
+ * in the seeded organization. It also fed `orgBundle()`, whose response
+ * includes that organization's USERS.
+ *
+ * Now resolved through `activeTenantScope()` — the one resolver, which prefers
+ * a BackgroundPrincipal and falls back to the session. Two consequences worth
+ * naming: a background job resolves the tenant it is running FOR rather than
+ * the one on screen, and an unresolved caller gets null rather than a stranger.
+ *
+ * Returning null instead of throwing keeps the choice at the call site: a READ
+ * degrades to empty, a WRITE refuses. Those are different behaviours and a
+ * single throwing accessor could not express both.
+ */
+function activeOrgOrNull(): Organization | null {
+  const scope = activeTenantScope();
+  if (scope === null) return null;
+  return orgStore.organization(scope.tenantId);
+}
+
+/**
+ * The organization this call is acting in. Throws when none resolves.
+ *
+ * For WRITE paths and for reads whose response shape has no empty form. The
+ * secure bridge surfaces a thrown message to the renderer, so a refusal reaches
+ * the user as a refusal rather than as a confusingly empty screen.
+ */
+function requireActiveOrg(): Organization {
+  const org = activeOrgOrNull();
+  if (org === null) {
+    throw new Error('No organization is active, so this action has no owner.');
+  }
+  return org;
 }
 
 function orgBundle(): {
@@ -1365,7 +1441,7 @@ function orgBundle(): {
   roles: ReturnType<typeof orgStore.rolesFor>;
   users: ReturnType<typeof orgStore.usersFor>;
 } {
-  const org = activeOrg();
+  const org = requireActiveOrg();
   return {
     organization: org,
     units: orgStore.unitsFor(org.id),
@@ -1416,7 +1492,7 @@ function connectorRefs(): ConnectorRef[] {
 }
 
 function buildGraph(): ReturnType<typeof buildOrgGraph> {
-  const org = activeOrg();
+  const org = requireActiveOrg();
   return buildOrgGraph({
     org,
     units: orgStore.unitsFor(org.id),
@@ -1427,7 +1503,7 @@ function buildGraph(): ReturnType<typeof buildOrgGraph> {
 }
 
 function buildComplianceInput(): ComplianceInput {
-  const org = activeOrg();
+  const org = requireActiveOrg();
   const jobs = jobStore.page({ limit: 500 }).jobs;
   return {
     units: orgStore.unitsFor(org.id),
@@ -1450,7 +1526,7 @@ function buildComplianceInput(): ComplianceInput {
 }
 
 function governanceConfig(): GovernanceConfig {
-  const org = activeOrg();
+  const org = requireActiveOrg();
   return {
     roles: orgStore.rolesFor(org.id),
     approvalChains: governanceStore.chains(),
@@ -1514,7 +1590,7 @@ function computeActivity(now: string): BusinessActivitySummary {
 
 function buildSnapshot(): ReturnType<typeof computeExecutiveSnapshot> {
   const now = new Date().toISOString();
-  const org = activeOrg();
+  const org = requireActiveOrg();
   const entities = unifiedStore.query({ limit: 1_000_000, includeDeleted: false }).items;
   const tl = getEnterpriseTimeline();
   const events = tl ? tl.query({ limit: 2000, order: 'desc' }).entries : [];
@@ -1582,7 +1658,7 @@ function buildHandlers(): SecureHandlerDef[] {
       handler: (p) => {
         const r = p as TCreateUnit;
         const unit = orgStore.createUnit({
-          orgId: activeOrg().id,
+          orgId: requireActiveOrg().id,
           kind: r.kind,
           name: r.name,
           parentId: r.parentId ?? null,
@@ -1626,7 +1702,7 @@ function buildHandlers(): SecureHandlerDef[] {
       handler: (p) => {
         const r = p as TCreateUser;
         const user = orgStore.createUser({
-          orgId: activeOrg().id,
+          orgId: requireActiveOrg().id,
           name: r.name,
           email: r.email ?? null,
           title: r.title ?? 'Member',
@@ -1677,7 +1753,7 @@ function buildHandlers(): SecureHandlerDef[] {
       handler: (p) => {
         const r = p as TCreateRole;
         const role = orgStore.createRole({
-          orgId: activeOrg().id,
+          orgId: requireActiveOrg().id,
           name: r.name,
           description: r.description ?? '',
           permissions: r.permissions,

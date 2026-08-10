@@ -422,11 +422,63 @@ export class OrgStore extends EventEmitter {
    * Idempotent — existing worker members are refreshed, missing ones added,
    * and workers no longer registered are pruned.
    */
-  syncWorkers(workers: WorkerSeedRef[], roleToUnitId: Record<string, string>): number {
-    const org = this.defaultOrg();
+  /**
+   * Fold the live AI workforce into ONE organization's chart.
+   *
+   * P13C REMEDIATION — FINDING 1. This took no tenant at all and resolved its
+   * organization with `this.defaultOrg()`, the first-inserted one. Three
+   * separate cross-tenant defects came out of that single line, and the third
+   * was the worst:
+   *
+   *  1. WRITE. Every tenant's workers were created as members of the first
+   *     organization, where they appeared in that tenant's roster, its org
+   *     graph and its headcount.
+   *  2. UPDATE. `existingByWorker` was built by scanning EVERY user in the
+   *     store, so a worker already recorded in tenant B was found and mutated
+   *     while the sync was notionally running for A.
+   *  3. DELETE — unreported, and the reason this function needed rewriting
+   *     rather than patching. The prune loop also scanned every organization,
+   *     so running the sync with tenant A's worker list REMOVED tenant B's AI
+   *     members whose ids were absent from A's list. A read of A's registry
+   *     silently deleted B's records.
+   *
+   * WHAT THE WORKER REGISTRY ACTUALLY IS
+   *
+   * `Worker` carries no tenant, and cannot: the registry is an install-level
+   * CATALOGUE of AI worker packages — versions, skills, a `builtIn` flag — in
+   * the same category as installed plugins. So "each worker's authoritative
+   * tenant" is not a fact the data holds, and inventing one would be a guess.
+   *
+   * The honest split is between the catalogue and the MEMBERSHIP. The
+   * catalogue is install-level; the member rows this function writes are not.
+   * Each tenant therefore gets its own rows for the same catalogue, and the
+   * caller runs this once per tenant under that tenant's principal. That
+   * discloses nothing across the boundary — a package name is product data —
+   * while making the write, the update and the prune all tenant-local.
+   *
+   * `orgId` IS REQUIRED AND HAS NO DEFAULT. A caller that cannot name an
+   * organization must not call this; there is no argument that would let it
+   * mean "the usual one".
+   */
+  syncWorkers(orgId: string, workers: WorkerSeedRef[], roleToUnitId: Record<string, string>): number {
+    const org = this.organizations.get(orgId);
+    /**
+     * FAIL CLOSED on an unknown organization.
+     *
+     * Returning 0 rather than throwing because this runs from a fan-out over
+     * live tenants, and one deleted organization mid-sweep must not abort every
+     * later tenant's sync. Nothing is written, which is the part that matters.
+     */
+    if (!org) return 0;
+
     const aiRole = [...this.roles.values()].find((r) => r.orgId === org.id && r.name === 'AI Worker');
     const existingByWorker = new Map<string, OrgUser>();
-    for (const u of this.users.values()) if (u.kind === 'ai_worker' && u.workerId) existingByWorker.set(u.workerId, u);
+    for (const u of this.users.values()) {
+      // Scoped to THIS organization. Unscoped, this map was the update and
+      // delete half of the defect above.
+      if (u.orgId !== org.id) continue;
+      if (u.kind === 'ai_worker' && u.workerId) existingByWorker.set(u.workerId, u);
+    }
 
     const liveIds = new Set(workers.map((w) => w.id));
     let changed = 0;
@@ -434,7 +486,16 @@ export class OrgStore extends EventEmitter {
 
     for (const w of workers) {
       const unitId = roleToUnitId[w.role] ?? roleToUnitId['*'] ?? null;
-      const unit = unitId ? this.units.get(unitId) ?? null : null;
+      /**
+       * A unit belongs to an organization too.
+       *
+       * `roleToUnitId` maps a worker role to one of the SEEDED unit ids, so
+       * outside the seeded organization the lookup finds a unit owned by
+       * somebody else. Ignoring a foreign unit leaves the member unfiled rather
+       * than filing it under another tenant's department.
+       */
+      const candidate = unitId ? this.units.get(unitId) ?? null : null;
+      const unit = candidate && candidate.orgId === org.id ? candidate : null;
       const prev = existingByWorker.get(w.id);
       if (prev) {
         const next: OrgUser = { ...prev, name: w.name, title: `${cap(w.role)} AI`, unitId: unit?.id ?? prev.unitId, updatedAt: now };
@@ -458,7 +519,7 @@ export class OrgStore extends EventEmitter {
         changed++;
       }
     }
-    // Prune AI members whose worker is gone.
+    // Prune AI members whose worker is gone — WITHIN this organization only.
     for (const [workerId, user] of existingByWorker) {
       if (!liveIds.has(workerId)) {
         this.users.delete(user.id);

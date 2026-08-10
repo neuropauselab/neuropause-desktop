@@ -182,6 +182,7 @@ import {
   onWorkspaceSwitch,
 } from './enterprise';
 import { currentPrincipal } from './tenancy/backgroundPrincipal';
+import type { Organization } from '@neuropause/shared';
 import { setLiveSyncActiveOrg } from './cloud/livesync/liveSyncInstance';
 import { initDataPlane } from './dataPlane';
 import { initDocuments } from './documents';
@@ -312,6 +313,80 @@ import type {
 } from '@neuropause/shared';
 import type { IpcBroadcaster } from '@neuropause/shared';
 const log = createLogger('runtime-core');
+
+/**
+ * The organization a READ MODEL is being built for, or null.
+ *
+ * P13C REMEDIATION — FINDING 3. Seven platform read models resolved their
+ * organization with `orgStore.defaultOrg()` — the first-inserted one — and each
+ * returns real membership data: unit names and their lead user ids, member ids
+ * and names, the role catalogue. Insight, Knowledge Assets, the Automation
+ * Platform, Operations and Strategy were all reading one tenant's org chart and
+ * serving it to whoever asked.
+ *
+ * All seven are lazy accessors, evaluated per request or per background pass
+ * rather than captured at boot, so routing them through `activeTenantScope()`
+ * is enough to make each evaluation answer for its own caller — and inside a
+ * fanned-out job it answers for the tenant the job is running FOR, not the one
+ * on screen.
+ *
+ * Null when nothing resolves, and every call site degrades to an EMPTY result
+ * rather than substituting an organization. These feed dashboards and
+ * recommendation inputs whose shapes all have an empty form, so failing closed
+ * costs a blank panel; failing open costs another customer's roster.
+ */
+/**
+ * Assert the caller is a member of the CLOUD organization they named.
+ *
+ * P13C REMEDIATION — FINDING 6. A family of channels — `org.get`, `org.members`,
+ * `org.invite`, `org.removeMember`, `org.workspaces`, the workspace
+ * create/rename/delete trio, billing, and `devices.list/registerCurrent/revoke`
+ * — took `orgId` straight from the renderer payload and forwarded it, guarded by
+ * `requireAuth: true` alone. `requireAuth` proves somebody is signed in. It
+ * proves nothing about WHICH organization they may act in, so any signed-in
+ * account could read another organization's member list and device inventory by
+ * supplying its id.
+ *
+ * WHY THIS IS NOT VALIDATED AGAINST `orgStore`
+ *
+ * These are CLOUD organizations, a different id space from the local enterprise
+ * `orgStore`. Checking a cloud id against local tenancy would reject every real
+ * organization while looking like a security control — worse than no check,
+ * because it would be trusted.
+ *
+ * The authority is `orgClient.list()`, which the backend already scopes to the
+ * authenticated user's own memberships. Asking it and requiring the named id to
+ * appear turns a caller-supplied identifier into a verified one, using the
+ * session's own token rather than anything the renderer said.
+ *
+ * FAIL CLOSED ON AN UNREACHABLE BACKEND. If the list cannot be fetched, the
+ * request is refused rather than forwarded — an offline backend must not become
+ * a bypass, and the caller sees the same refusal either way.
+ */
+async function requireCloudOrgMembership(orgId: string): Promise<string> {
+  if (typeof orgId !== 'string' || orgId.trim() === '') {
+    throw new Error('That organization is not available to you.');
+  }
+  let mine: { orgId: string }[];
+  try {
+    mine = (await orgClient.list()) as unknown as { orgId: string }[];
+  } catch {
+    throw new Error('That organization is not available to you.');
+  }
+  if (!mine.some((o) => o.orgId === orgId)) {
+    // One message for "does not exist" and "not yours" — distinguishing them
+    // would confirm which organizations exist on the backend.
+    throw new Error('That organization is not available to you.');
+  }
+  return orgId;
+}
+
+function activeOrgForReadModel(): Organization | null {
+  const scope = activeTenantScope();
+  if (scope === null) return null;
+  return orgStore.organization(scope.tenantId);
+}
+
 
 /** Narrows a bridge-supplied evidence label to the closed evidence set. */
 function isEvidenceKind(kind: string): kind is IdentityEvidence['kind'] {
@@ -1422,7 +1497,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       channel: IpcChannel.OrgGet,
       schema: OrgIdRequest,
       requireAuth: true,
-      handler: (p) => orgClient.get((p as { orgId: string }).orgId),
+      handler: async (p) =>
+        orgClient.get(await requireCloudOrgMembership((p as { orgId: string }).orgId)),
     },
     {
       channel: IpcChannel.OrgUpdate,
@@ -1430,14 +1506,15 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       requireAuth: true,
       handler: (p) => {
         const r = p as { orgId: string; name: string };
-        return orgClient.update(r.orgId, r.name);
+        return requireCloudOrgMembership(r.orgId).then((id) => orgClient.update(id, r.name));
       },
     },
     {
       channel: IpcChannel.OrgMembers,
       schema: OrgIdRequest,
       requireAuth: true,
-      handler: (p) => orgClient.members((p as { orgId: string }).orgId),
+      handler: async (p) =>
+        orgClient.members(await requireCloudOrgMembership((p as { orgId: string }).orgId)),
     },
     {
       channel: IpcChannel.OrgInvite,
@@ -1449,7 +1526,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
           email: string;
           role: 'owner' | 'admin' | 'member' | 'viewer';
         };
-        return orgClient.invite(r.orgId, { email: r.email, role: r.role });
+        return requireCloudOrgMembership(r.orgId).then((id) =>
+          orgClient.invite(id, { email: r.email, role: r.role }),
+        );
       },
     },
     {
@@ -1468,7 +1547,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
           membershipId: string;
           role: 'owner' | 'admin' | 'member' | 'viewer';
         };
-        return orgClient.changeRole(r.orgId, r.membershipId, r.role);
+        return requireCloudOrgMembership(r.orgId).then((id) =>
+          orgClient.changeRole(id, r.membershipId, r.role),
+        );
       },
     },
     {
@@ -1477,14 +1558,17 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       requireAuth: true,
       handler: (p) => {
         const r = p as { orgId: string; membershipId: string };
-        return orgClient.removeMember(r.orgId, r.membershipId);
+        return requireCloudOrgMembership(r.orgId).then((id) =>
+          orgClient.removeMember(id, r.membershipId),
+        );
       },
     },
     {
       channel: IpcChannel.OrgWorkspaces,
       schema: OrgIdRequest,
       requireAuth: true,
-      handler: (p) => orgClient.workspaces((p as { orgId: string }).orgId),
+      handler: async (p) =>
+        orgClient.workspaces(await requireCloudOrgMembership((p as { orgId: string }).orgId)),
     },
     {
       channel: IpcChannel.OrgCreateWorkspace,
@@ -1492,7 +1576,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       requireAuth: true,
       handler: (p) => {
         const r = p as { orgId: string; name: string };
-        return orgClient.createWorkspace(r.orgId, r.name);
+        return requireCloudOrgMembership(r.orgId).then((id) =>
+          orgClient.createWorkspace(id, r.name),
+        );
       },
     },
     {
@@ -1501,7 +1587,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       requireAuth: true,
       handler: (p) => {
         const r = p as { orgId: string; workspaceId: string; name: string };
-        return orgClient.updateWorkspace(r.orgId, r.workspaceId, r.name);
+        return requireCloudOrgMembership(r.orgId).then((id) =>
+          orgClient.updateWorkspace(id, r.workspaceId, r.name),
+        );
       },
     },
     {
@@ -1510,7 +1598,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       requireAuth: true,
       handler: (p) => {
         const r = p as { orgId: string; workspaceId: string };
-        return orgClient.deleteWorkspace(r.orgId, r.workspaceId);
+        return requireCloudOrgMembership(r.orgId).then((id) =>
+          orgClient.deleteWorkspace(id, r.workspaceId),
+        );
       },
     },
     /* ── local application registry ── */
@@ -1931,7 +2021,11 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     schema: BillingCheckoutRequest,
     handler: async (payload: unknown) => {
       const p = payload as { orgId: string; plan: BillingPlanId; seats?: number };
-      const result = await billingClient.checkout(p.orgId, p.plan, p.seats);
+      // Money. The membership check matters more here than anywhere else in
+      // this family: without it a signed-in account could start a checkout
+      // against another organization's billing account.
+      const orgId = await requireCloudOrgMembership(p.orgId);
+      const result = await billingClient.checkout(orgId, p.plan, p.seats);
       if (result.checkoutUrl) void shell.openExternal(result.checkoutUrl);
       return result;
     },
@@ -1943,19 +2037,22 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     channel: IpcChannel.DevicesRegister,
     schema: DevicesRegisterRequest,
     handler: (payload: unknown) =>
-      deviceClient.registerCurrent((payload as { orgId: string }).orgId),
+      requireCloudOrgMembership((payload as { orgId: string }).orgId).then((id) =>
+        deviceClient.registerCurrent(id),
+      ),
   });
   defs.push({
     channel: IpcChannel.DevicesList,
     schema: DevicesListRequest,
-    handler: (payload: unknown) => deviceClient.list((payload as { orgId: string }).orgId),
+    handler: async (payload: unknown) =>
+      deviceClient.list(await requireCloudOrgMembership((payload as { orgId: string }).orgId)),
   });
   defs.push({
     channel: IpcChannel.DevicesRevoke,
     schema: DevicesRevokeRequest,
     handler: (payload: unknown) => {
       const p = payload as { orgId: string; deviceId: string };
-      return deviceClient.revoke(p.orgId, p.deviceId);
+      return requireCloudOrgMembership(p.orgId).then((id) => deviceClient.revoke(id, p.deviceId));
     },
   });
   // V6.5: renderer reports THIS device's trust status (it holds the active org)
@@ -2395,7 +2492,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         .map((n) => ({ id: n.id, sourceKey: n.sourceKey, at: n.at, read: n.read })),
     orgHealth: () => computeOrgHealth(collectOrgHealthInputs(Date.now())),
     orgUnits: () => {
-      const org = orgStore.defaultOrg();
+      const org = activeOrgForReadModel();
+      if (org === null) return { units: 0, leadershipCoverage: null };
       const units = orgStore.unitsFor(org.id);
       const withLead = units.filter((u) => u.leadUserId).length;
       return {
@@ -2448,7 +2546,10 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     memories: () => memoryStore.allItems(),
     connectors: () => connectorService.list(),
     org: () => {
-      const org = orgStore.defaultOrg();
+      const org = activeOrgForReadModel();
+      // No tenant, no org chart. This accessor returns the member list, so an
+      // unresolved caller getting "the usual organization" was a roster leak.
+      if (org === null) return { org: { id: '', name: '' }, units: [], users: [] };
       return {
         org: { id: org.id, name: org.name },
         units: orgStore
@@ -2588,7 +2689,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         .jobs.map((j) => ({ id: j.id, createdAt: j.createdAt })),
     chains: () => governanceStore.chains(),
     orgRoles: () => {
-      const org = orgStore.defaultOrg();
+      const org = activeOrgForReadModel();
+      if (org === null) return [];
       return orgStore.rolesFor(org.id).map((r) => ({ id: r.id, name: r.name }));
     },
     globalPolicies: () =>
@@ -3034,13 +3136,15 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         onTimeRate: Number.isFinite(m.completionRate) ? m.completionRate : null,
       })),
     units: () => {
-      const org = orgStore.defaultOrg();
+      const org = activeOrgForReadModel();
+      if (org === null) return [];
       return orgStore
         .unitsFor(org.id)
         .map((u) => ({ id: u.id, name: u.name, leadUserId: u.leadUserId }));
     },
     users: () => {
-      const org = orgStore.defaultOrg();
+      const org = activeOrgForReadModel();
+      if (org === null) return [];
       return orgStore.usersFor(org.id).map((u) => ({ id: u.id, name: u.name }));
     },
     compliance: () =>
@@ -3209,13 +3313,15 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         .map((m) => m.processType),
     compliance: () => enterprise.complianceFindings().map((f) => ({ status: f.status })),
     units: () => {
-      const org = orgStore.defaultOrg();
+      const org = activeOrgForReadModel();
+      if (org === null) return [];
       return orgStore
         .unitsFor(org.id)
         .map((u) => ({ id: u.id, name: u.name, leadUserId: u.leadUserId }));
     },
     users: () => {
-      const org = orgStore.defaultOrg();
+      const org = activeOrgForReadModel();
+      if (org === null) return [];
       return orgStore.usersFor(org.id).map((u) => ({ id: u.id, name: u.name }));
     },
     healthHistory: () =>

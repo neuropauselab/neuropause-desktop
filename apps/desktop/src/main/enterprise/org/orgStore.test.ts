@@ -57,7 +57,7 @@ describe('OrgStore — CRUD', () => {
     const human = s.createUser({ orgId: ORG_ID, name: 'Alex', title: 'Engineer', unitId: UNIT.platform });
     expect(s.deleteUser(human.id)).toBe(true);
 
-    s.syncWorkers([{ id: 'w1', name: 'Eng AI', role: 'engineering' }], ROLE_TO_UNIT_ID);
+    s.syncWorkers(ORG_ID, [{ id: 'w1', name: 'Eng AI', role: 'engineering' }], ROLE_TO_UNIT_ID);
     const aiUser = s.usersFor(ORG_ID).find((u) => u.workerId === 'w1');
     expect(aiUser).toBeDefined();
     expect(s.deleteUser(aiUser!.id)).toBe(false);
@@ -79,16 +79,16 @@ describe('OrgStore — syncWorkers', () => {
       { id: 'w-eng', name: 'Engineering AI', role: 'engineering' },
       { id: 'w-fin', name: 'Finance AI', role: 'finance' },
     ];
-    const added = s.syncWorkers(workers, ROLE_TO_UNIT_ID);
+    const added = s.syncWorkers(ORG_ID, workers, ROLE_TO_UNIT_ID);
     expect(added).toBe(2);
     const eng = s.usersFor(ORG_ID).find((u) => u.workerId === 'w-eng');
     expect(eng?.unitId).toBe(ROLE_TO_UNIT_ID['engineering']);
 
     // Idempotent: same set adds nothing.
-    expect(s.syncWorkers(workers, ROLE_TO_UNIT_ID)).toBe(0);
+    expect(s.syncWorkers(ORG_ID, workers, ROLE_TO_UNIT_ID)).toBe(0);
 
     // Prune: drop one worker → one change, member removed.
-    const changed = s.syncWorkers([workers[0]], ROLE_TO_UNIT_ID);
+    const changed = s.syncWorkers(ORG_ID, [workers[0]], ROLE_TO_UNIT_ID);
     expect(changed).toBe(1);
     expect(s.usersFor(ORG_ID).find((u) => u.workerId === 'w-fin')).toBeUndefined();
   });
@@ -171,7 +171,7 @@ describe('OrgStore — persistence', () => {
     const path = tempPath();
     const s1 = await newStore(path);
     s1.createUnit({ orgId: ORG_ID, kind: 'team', name: 'Persisted Team', parentId: UNIT.engineering });
-    s1.syncWorkers([{ id: 'w1', name: 'Ops AI', role: 'operations' }], ROLE_TO_UNIT_ID);
+    s1.syncWorkers(ORG_ID, [{ id: 'w1', name: 'Ops AI', role: 'operations' }], ROLE_TO_UNIT_ID);
     await s1.flush();
 
     const s2 = await newStore(path);

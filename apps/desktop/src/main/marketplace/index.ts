@@ -33,7 +33,7 @@ import {
 import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef, SecureHandlerDefFor } from '../ipc/secureBridge';
-import { ORG_ID } from '../enterprise/org/seed';
+import { activeTenantScope } from '../enterprise/index';
 import { marketplaceStore } from '../ecosystem/marketplace/marketplaceInstance';
 import { developerStore } from '../ecosystem/developer/developerInstance';
 import { installsStore } from '../ecosystem/exchange/installsInstance';
@@ -70,7 +70,16 @@ function buildSource(): CatalogSource {
     versionsByListing.set(v.listingId, arr);
   }
   const installByListing = new Map<string, EntryInput['installStatus']>();
-  for (const inst of installsStore.forOrg(ORG_ID)) installByListing.set(inst.listingId, inst.status);
+  /**
+   * P13C REMEDIATION — FINDING 5. This was `forOrg(ORG_ID)`, so the marketplace
+   * showed every tenant the SEEDED organization's install status: which apps
+   * that customer had installed, and whether each was disabled. No tenant means
+   * no install badges, not somebody else's.
+   */
+  const orgId = activeTenantScope()?.tenantId ?? null;
+  if (orgId !== null) {
+    for (const inst of installsStore.forOrg(orgId)) installByListing.set(inst.listingId, inst.status);
+  }
 
   const orgKeyId = marketplaceStore.signingKeyId();
   let pubKey: KeyObject | null = null;

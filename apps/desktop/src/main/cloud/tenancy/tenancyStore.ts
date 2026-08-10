@@ -256,17 +256,36 @@ export class TenancyStore extends EventEmitter {
   tenant(id: string): CloudTenant | null {
     return this.tenants.get(id) ?? null;
   }
-  listProjects(tenantId?: string): CloudProject[] {
-    const all = [...this.projects.values()];
-    return (tenantId ? all.filter((p) => p.tenantId === tenantId) : all).sort((a, b) => a.name.localeCompare(b.name));
+  /**
+   * P13C REMEDIATION — N4. AN ABSENT TENANT MEANS NOTHING, NOT EVERYTHING.
+   *
+   * These three took `tenantId?: string` and, when it was undefined, returned
+   * EVERY tenant's rows. The IPC schema (`ByTenant`) makes the field optional,
+   * so `{}` was a valid payload — and `{}` was the bypass: a caller who simply
+   * omitted the field received every tenant's projects, teams and workers. The
+   * `cloud:read` permission on those channels is a capability check, not a
+   * membership check, so it did not narrow anything.
+   *
+   * Requiring the argument makes the caller name a tenant, and the handlers now
+   * resolve that name from the session rather than the payload. An empty or
+   * absent id yields an empty list: the fail-closed reading of "which tenant?"
+   * with no answer.
+   */
+  listProjects(tenantId: string): CloudProject[] {
+    if (!tenantId) return [];
+    return [...this.projects.values()]
+      .filter((p) => p.tenantId === tenantId)
+      .sort((a, b) => a.name.localeCompare(b.name));
   }
-  listTeams(tenantId?: string): CloudTeam[] {
-    const all = [...this.teams.values()];
-    return (tenantId ? all.filter((t) => t.tenantId === tenantId) : all).sort((a, b) => a.name.localeCompare(b.name));
+  listTeams(tenantId: string): CloudTeam[] {
+    if (!tenantId) return [];
+    return [...this.teams.values()]
+      .filter((t) => t.tenantId === tenantId)
+      .sort((a, b) => a.name.localeCompare(b.name));
   }
-  listWorkers(tenantId?: string): TenantWorker[] {
-    const all = [...this.workers.values()];
-    return tenantId ? all.filter((w) => w.tenantId === tenantId) : all;
+  listWorkers(tenantId: string): TenantWorker[] {
+    if (!tenantId) return [];
+    return [...this.workers.values()].filter((w) => w.tenantId === tenantId);
   }
   listIsolation(): StorageIsolation[] {
     return [...this.isolation.values()].sort((a, b) => b.bytes - a.bytes);

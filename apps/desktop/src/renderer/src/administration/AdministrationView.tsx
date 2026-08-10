@@ -15,6 +15,7 @@ import type {
   ApiKey,
   CloudMembership,
   CloudRegion,
+  OrganizationSummary,
   CommercialLicensing,
   CommercialMetering,
   ComplianceFinding,
@@ -99,9 +100,34 @@ export function AdministrationView(): JSX.Element {
   const [d, setD] = useState<Data>(EMPTY);
 
   const refresh = useCallback(async () => {
-    // Resolve the cloud org id first (devices are org-scoped); everything else is org-resolved server-side.
-    const orgs = await settled(ipc.org.list(), []);
-    const orgId = orgs[0]?.orgId ?? null;
+    /**
+     * Resolve the cloud org id first (devices are org-scoped).
+     *
+     * P13C REMEDIATION — FINDING 6. This was `orgs[0]?.orgId`, the first entry
+     * of the caller's organization list, which for a multi-organization account
+     * is simply the wrong one: the view showed org #1's members and devices no
+     * matter which organization the user was actually working in.
+     *
+     * The real fix is server-side and is in `requireCloudOrgMembership` — these
+     * channels used to forward a renderer-supplied `orgId` guarded by
+     * `requireAuth` alone, so the id was never verified against the caller's
+     * memberships. Picking the right id here does not authorize anything; it
+     * makes the page show the organization the user is in, and the main process
+     * now refuses any id that is not theirs regardless of what this sends.
+     *
+     * Matching is by NAME against the active local organization because the
+     * cloud and local id spaces are different. An ambiguous or absent match
+     * yields null, and null renders empty rather than falling back to another
+     * organization's data.
+     */
+    const [orgs, localOrgs] = await Promise.all([
+      settled(ipc.org.list(), []),
+      settled(ipc.enterprise.organizations(), [] as OrganizationSummary[]),
+    ]);
+    const activeLocalName = localOrgs.find((o) => o.active)?.name ?? null;
+    const matches =
+      activeLocalName === null ? [] : orgs.filter((o) => o.name === activeLocalName);
+    const orgId = matches.length === 1 ? (matches[0]?.orgId ?? null) : null;
 
     const [
       org, governance, compliance, audit, members, identity, mfa, frameworks, regions, devices,

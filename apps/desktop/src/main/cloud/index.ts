@@ -56,8 +56,7 @@ import { orgStore } from '../enterprise/org/orgInstance';
 import { gatewayStore } from '../ecosystem/gateway/gatewayInstance';
 import { billingStore } from '../ecosystem/billing/billingInstance';
 import { PLAN_CATALOG } from '../ecosystem/billing/billing';
-import { ORG_ID } from '../enterprise/org/seed';
-import { resolveTenantContext } from '../enterprise/index';
+import { activeTenantScope, resolveTenantContext } from '../enterprise/index';
 
 const log = createLogger('cloud');
 
@@ -73,8 +72,39 @@ const REGION_RESIDENCY = Object.fromEntries(
   CLOUD_REGIONS.map((r) => [r.id, r.residency]),
 ) as Record<CloudRegionId, DataResidency>;
 
+/**
+ * The CALLER's own members, for the Cloud admin surface.
+ *
+ * P13C REMEDIATION — N1. This read `orgStore.usersFor(ORG_ID)`: the literal
+ * seeded organization, regardless of who was asking. It feeds `CloudAdminOverview`
+ * and `CloudAdminCompliance`, so every tenant was shown the seeded tenant's real
+ * names, emails and titles. Same defect class the ecosystem fix removed, in a
+ * file that fix did not touch.
+ *
+ * An unresolved caller gets an EMPTY roster, not the seeded one.
+ */
+/**
+ * The cloud tenant this call acts in, resolved SERVER-SIDE.
+ *
+ * P13C REMEDIATION — N4. `CloudProjects`, `CloudTeams` and `CloudTenantWorkers`
+ * took `tenantId` from the payload, and the schema made it optional — so the
+ * bypass was to omit it, which returned every tenant's rows. The write
+ * channels took it from the payload too, guarded only by "does this tenant
+ * exist".
+ *
+ * The tenant is now the caller's own. Nothing on these channels reads a
+ * payload-supplied tenant any more, so a renderer cannot name one at all —
+ * which is the same rule `EnterpriseWorkspaceCreate` follows and, unlike an
+ * added membership check, leaves no parameter to get wrong later.
+ */
+function callerTenantId(): string {
+  return activeTenantScope()?.tenantId ?? '';
+}
+
 function homeUsersForAdmin(): AdminUserInput[] {
-  return orgStore.usersFor(ORG_ID).map((u) => ({
+  const scope = activeTenantScope();
+  if (scope === null) return [];
+  return orgStore.usersFor(scope.tenantId).map((u) => ({
     id: u.id,
     name: u.name,
     email: u.email ?? `${u.name.toLowerCase().replace(/\s+/g, '.')}@neuropause.app`,
@@ -177,6 +207,11 @@ function buildHandlers(): SecureHandlerDef[] {
       audit: true,
       handler: (p) => {
         const r = p as CloudSetTenantStatusRequest;
+        // Suspending or reactivating a tenant is the most consequential write
+        // on this surface; it may only be applied to the caller's own.
+        if (r.tenantId !== callerTenantId() || callerTenantId() === '') {
+          return { error: 'Tenant not found or is the home tenant.' };
+        }
         const result = tenancyStore.setTenantStatus(r.tenantId, r.status);
         return result ?? { error: 'Tenant not found or is the home tenant.' };
       },
@@ -184,7 +219,7 @@ function buildHandlers(): SecureHandlerDef[] {
     {
       channel: IpcChannel.CloudProjects,
       schema: CloudProjectsRequest,
-      handler: (p) => tenancyStore.listProjects((p as { tenantId?: string }).tenantId),
+      handler: () => tenancyStore.listProjects(callerTenantId()),
     },
     {
       channel: IpcChannel.CloudCreateProject,
@@ -193,7 +228,9 @@ function buildHandlers(): SecureHandlerDef[] {
         const r = p as CloudCreateProjectRequest;
         return (
           tenancyStore.createProject({
-            tenantId: r.tenantId,
+            // The caller's tenant, never `r.tenantId` — the payload could name
+            // any tenant and the store only checked that it existed.
+            tenantId: callerTenantId(),
             name: r.name,
             description: r.description,
           }) ?? { error: 'Tenant not found.' }
@@ -203,12 +240,19 @@ function buildHandlers(): SecureHandlerDef[] {
     {
       channel: IpcChannel.CloudDeleteProject,
       schema: CloudDeleteProjectRequest,
-      handler: (p) => ({ deleted: tenancyStore.deleteProject((p as { id: string }).id) }),
+      handler: (p) => {
+        // `deleteProject(id)` takes a bare id, so ownership is resolved here:
+        // the id must appear in the caller's OWN project list.
+        const id = (p as { id: string }).id;
+        const mine = tenancyStore.listProjects(callerTenantId()).some((x) => x.id === id);
+        if (!mine) return { deleted: false };
+        return { deleted: tenancyStore.deleteProject(id) };
+      },
     },
     {
       channel: IpcChannel.CloudTeams,
       schema: CloudTeamsRequest,
-      handler: (p) => tenancyStore.listTeams((p as { tenantId?: string }).tenantId),
+      handler: () => tenancyStore.listTeams(callerTenantId()),
     },
     {
       channel: IpcChannel.CloudCreateTeam,
@@ -216,7 +260,7 @@ function buildHandlers(): SecureHandlerDef[] {
       handler: (p) => {
         const r = p as CloudCreateTeamRequest;
         return (
-          tenancyStore.createTeam({ tenantId: r.tenantId, name: r.name }) ?? {
+          tenancyStore.createTeam({ tenantId: callerTenantId(), name: r.name }) ?? {
             error: 'Tenant not found.',
           }
         );
@@ -225,7 +269,7 @@ function buildHandlers(): SecureHandlerDef[] {
     {
       channel: IpcChannel.CloudTenantWorkers,
       schema: CloudTenantWorkersRequest,
-      handler: (p) => tenancyStore.listWorkers((p as { tenantId?: string }).tenantId),
+      handler: () => tenancyStore.listWorkers(callerTenantId()),
     },
     {
       channel: IpcChannel.CloudStorageIsolation,
@@ -314,7 +358,13 @@ function buildHandlers(): SecureHandlerDef[] {
       schema: EmptyRequest,
       handler: () =>
         federationStore.recordScimSync(
-          orgStore.usersFor(ORG_ID).filter((u) => u.kind === 'human').length,
+          /**
+           * P13C REMEDIATION — N8. This counted the SEEDED organization's
+           * humans and WROTE that number into the calling tenant's SCIM sync
+           * record — one tenant's headcount stored as another's fact.
+           */
+          orgStore.usersFor(activeTenantScope()?.tenantId ?? '').filter((u) => u.kind === 'human')
+            .length,
         ) ?? { error: 'SCIM is not enabled.' },
     },
     {

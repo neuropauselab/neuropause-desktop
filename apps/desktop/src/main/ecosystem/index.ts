@@ -83,8 +83,35 @@ import { packsStore } from './exchange/packsInstance';
 import { partnersStore } from './exchange/partnersInstance';
 import { computeEcosystemAnalytics } from './exchange/analytics';
 import { workerRegistry } from '../workforce/registry/registryInstance';
-import { ORG_ID, OWNER_USER_ID } from '../enterprise/org/seed';
+import { OWNER_USER_ID } from '../enterprise/org/seed';
 import { orgStore } from '../enterprise/org/orgInstance';
+import { activeTenantScope } from '../enterprise/index';
+
+/**
+ * The organization this ecosystem call belongs to, or null.
+ *
+ * P13C REMEDIATION — FINDING 5. Every install read and write in this file was
+ * keyed on `ORG_ID`, the SEEDED organization's literal id. Marketplace installs
+ * and entitlements are per-tenant state, so tenant B's installs were written
+ * into and read from tenant A's partition — the store itself partitions on
+ * `orgId` correctly and was simply never told the truth.
+ *
+ * `activeTenantScope()` is the one resolver: the session on an IPC call, the
+ * running principal inside a background pass. Null means no tenant, and every
+ * caller below treats that as "no installs" or refuses the write, never as
+ * "the seeded organization".
+ */
+function callerOrgId(): string | null {
+  return activeTenantScope()?.tenantId ?? null;
+}
+
+/** The caller's organization, or a refusal. For writes and entitlement paths. */
+function requireCallerOrgId(): string {
+  const orgId = callerOrgId();
+  if (orgId === null) throw new Error('No organization is active, so this action has no owner.');
+  return orgId;
+}
+
 import { developerOwnerIdentity } from './developer/developerStore';
 
 const log = createLogger('ecosystem');
@@ -214,7 +241,9 @@ function currentVersionOf(listingId: string): { versionId: string; version: stri
 
 /** Installs for the local org, with "update available" computed against the marketplace. */
 function annotateInstalls(): Installation[] {
-  return installsStore.forOrg(ORG_ID).map((i) => {
+  const orgId = callerOrgId();
+  if (orgId === null) return [];
+  return installsStore.forOrg(orgId).map((i) => {
     if (i.status === 'disabled') return i;
     const cur = currentVersionOf(i.listingId);
     if (cur && cur.versionId !== i.installedVersionId) return { ...i, status: 'update_available' as const };
@@ -382,7 +411,10 @@ export async function initEcosystem(deps: EcosystemDeps): Promise<EcosystemSubsy
     seats: billingStore.getSubscription().seatsUsed,
   });
   log.info('Ecosystem network ready', {
-    installs: installsStore.forOrg(ORG_ID).length,
+    installs: (() => {
+      const orgId = callerOrgId();
+      return orgId === null ? 0 : installsStore.forOrg(orgId).length;
+    })(),
     packs: packsStore.list().length,
     partners: partnersStore.list().length,
   });
@@ -460,7 +492,18 @@ function buildHandlers(): SecureHandlerDef[] {
         if (!app) {
           return { error: 'invalid_client', error_description: 'Unknown client or invalid secret.' } satisfies OAuthTokenError;
         }
-        const orgId = developerStore.developer(app.developerId)?.orgId ?? ORG_ID;
+        /**
+         * The DEVELOPER's organization, or a refusal.
+         *
+         * `?? ORG_ID` attributed an app whose developer record is missing to the
+         * seeded organization, minting a token scoped to a tenant that has
+         * nothing to do with it. An unresolvable developer is an invalid client,
+         * which is a thing this endpoint already knows how to say.
+         */
+        const orgId = developerStore.developer(app.developerId)?.orgId ?? null;
+        if (orgId === null) {
+          return { error: 'invalid_client', error_description: 'Unknown client or invalid secret.' } satisfies OAuthTokenError;
+        }
         const result = issueClientCredentialsToken({
           app,
           developerId: app.developerId,
@@ -666,7 +709,7 @@ function buildHandlers(): SecureHandlerDef[] {
         const cur = currentVersionOf(r.listingId);
         if (!cur) return { error: 'Listing has no published version' };
         marketplaceStore.install(r.listingId);
-        return installsStore.install({ orgId: ORG_ID, listingId: detail.listing.id, listingName: detail.listing.name, kind: detail.listing.kind, versionId: cur.versionId, version: cur.version });
+        return installsStore.install({ orgId: requireCallerOrgId(), listingId: detail.listing.id, listingName: detail.listing.name, kind: detail.listing.kind, versionId: cur.versionId, version: cur.version });
       },
     },
     {
@@ -675,11 +718,14 @@ function buildHandlers(): SecureHandlerDef[] {
       audit: true,
       handler: (p) => {
         const r = p as EcosystemInstallUpdateRequest;
-        const inst = installsStore.forOrg(ORG_ID).find((i) => i.id === r.installationId);
+        // Scoped lookup FIRST: the id comes from the renderer, so resolving it
+        // inside the caller's own partition is what makes it not an IDOR.
+        const callerOrg = requireCallerOrgId();
+        const inst = installsStore.forOrg(callerOrg).find((i) => i.id === r.installationId);
         if (!inst) return { error: 'Installation not found' };
         const cur = currentVersionOf(inst.listingId);
         if (!cur) return { error: 'No published version' };
-        return installsStore.install({ orgId: ORG_ID, listingId: inst.listingId, listingName: inst.listingName, kind: inst.kind, versionId: cur.versionId, version: cur.version });
+        return installsStore.install({ orgId: callerOrg, listingId: inst.listingId, listingName: inst.listingName, kind: inst.kind, versionId: cur.versionId, version: cur.version });
       },
     },
     {
@@ -687,6 +733,18 @@ function buildHandlers(): SecureHandlerDef[] {
       schema: EcosystemInstallSetEnabledRequest,
       handler: (p) => {
         const r = p as EcosystemInstallSetEnabledRequest;
+        /**
+         * P13C REMEDIATION — an IDOR the audit did not name.
+         *
+         * `setDisabled` takes an installation id and nothing else, so a caller
+         * could disable ANOTHER tenant's installed app by id. Resolving the id
+         * within the caller's own partition first turns a direct object
+         * reference into a scoped lookup.
+         */
+        const owned = installsStore
+          .forOrg(requireCallerOrgId())
+          .some((i) => i.id === r.installationId);
+        if (!owned) throw new Error('That installation does not exist.');
         return installsStore.setDisabled(r.installationId, !r.enabled);
       },
     },
@@ -694,7 +752,14 @@ function buildHandlers(): SecureHandlerDef[] {
       channel: IpcChannel.EcosystemUninstall,
       schema: EcosystemUninstallRequest,
       audit: true,
-      handler: (p) => ({ uninstalled: installsStore.uninstall((p as EcosystemUninstallRequest).installationId) }),
+      handler: (p) => {
+        // Same IDOR as setDisabled above, with a destructive effect: uninstall
+        // took a bare id and deleted whatever it named.
+        const id = (p as EcosystemUninstallRequest).installationId;
+        const owned = installsStore.forOrg(requireCallerOrgId()).some((i) => i.id === id);
+        if (!owned) throw new Error('That installation does not exist.');
+        return { uninstalled: installsStore.uninstall(id) };
+      },
     },
     {
       channel: IpcChannel.EcosystemShareWorker,
@@ -772,7 +837,7 @@ function buildHandlers(): SecureHandlerDef[] {
           partners: partnersStore.list(),
           usage: { requests30d: usage.length, computeUnits30d: usage.reduce((n, u) => n + u.computeUnits, 0), p95LatencyMs: gm.p95LatencyMs },
           activeDevelopers: 1,
-          localOrgId: ORG_ID,
+          localOrgId: callerOrgId() ?? '',
           now: Date.now(),
         });
       },

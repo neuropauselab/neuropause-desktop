@@ -126,6 +126,26 @@ const UNENFORCED: readonly { store: string; status: TenantMigrationStatus; note:
     note: 'P12 — `deviceTenantId()` returned the literal string \u2018default\u2019, so the pack\u2019s real and tested isolation machinery filtered every read on a value that never changed. It now reads the live resolver, falling back to \u2018default\u2019 only when no tenant resolves so existing lots stay readable during cold start. `TraceEdgeStore` itself is still unscoped. This surface was absent from the Program 11 inventory.',
   },
   {
+    store: 'organization roster + platform read models',
+    status: 'PARTIAL',
+    note: 'P13C REMEDIATION — the first organization is no longer an authorization fallback. `activeOrg()` ended in `?? defaultOrg()` and reached WRITES (it was stamped as orgId on unit/user/role creates) and the read model that returns the member list; it now resolves through `activeTenantScope()` and returns null. Seven platform read models (Insight, Knowledge Assets, Automation, Operations, Strategy) built from `defaultOrg()` now resolve per call and degrade to empty. `syncWorkers` took no tenant at all: it wrote every tenant’s AI workers into the first organization, UPDATED rows across organizations, and — unreported until this pass — its prune loop DELETED other tenants’ AI members whose ids were absent from the list it was given; it now takes an explicit orgId, scopes its index and prune, and is fanned out per tenant. Org intelligence, a scheduled DELIVERED source, reported the first tenant’s licence and headcount plus an install-wide workspace count, and is now scope-bound. PARTIAL, not COMPLETE: see the sandbox and assistant entries below.',
+  },
+  {
+    store: 'caller-supplied tenant identifiers (IPC)',
+    status: 'PARTIAL',
+    note: 'P13C REMEDIATION — `requireAuth` proves someone is signed in and nothing about WHICH tenant they may act in. Fourteen cloud org/device/billing channels forwarded a renderer-supplied `orgId` on that basis alone; they now validate it against the caller’s own membership list (fail-closed if the backend is unreachable, and one refusal message so existence cannot be probed). The ecosystem/marketplace surface was keyed on the seeded ORG_ID and additionally let `uninstall`/`setDisabled` act on any installation id — both now resolve the id inside the caller’s partition first. Cloud tenancy list channels treated an ABSENT tenantId as "every tenant", which made omitting the field the bypass; the tenant is now server-resolved and never read from a payload. The two license channels are public (no auth, no permission) and took orgId from the request — they now ignore it. STILL OPEN: the Sandbox subsystem and the assistant conversation store, below.',
+  },
+  {
+    store: 'sandbox (workspaces / scenarios / executions / datasets)',
+    status: 'REQUIRES_MIGRATION',
+    note: 'HIGH, OPEN. `SandboxWorkspace` has no orgId or tenantId field at all, so nothing downstream can be scoped: scenarios, executions, artifacts and datasets hang off a workspace id alone. `SandboxWorkspaceList` returns every sandbox workspace on the install; scenario/execution/dataset/dashboard reads take a payload workspaceId that is never checked against the caller, and two of them make it OPTIONAL so omitting it is the bypass; creates write into a caller-named workspace. `sandbox:read`/`sandbox:manage` gate the capability, never the tenant. Requires a schema change plus a scoped store, which is why it is not closed in this pass — it is stated here rather than carried silently.',
+  },
+  {
+    store: 'assistant conversations (conversationStore)',
+    status: 'REQUIRES_MIGRATION',
+    note: 'MEDIUM, OPEN. `list(workspaceId, limit)` treats null/undefined as "no filter", returning every conversation on the install, and the request schema makes the field nullable AND optional — so `{}` is a valid payload that returns everything. `get(conversationId)` selects by bare id with no scope check. These channels are on the PUBLIC allowlist: no requireAuth, no permission. Conversation bodies carry assistant answers synthesised from tenant data.',
+  },
+  {
     store: 'the filesystem itself',
     status: 'BLOCKED',
     note: 'Every tenant\u2019s records live in one mode-0600 JSON file per module under userData. The boundary is a same-process, same-OS-user filter: anyone who can read those files reads every tenant directly and bypasses all of the above. Inherent to a desktop app, and it caps what this program can honestly claim.',
