@@ -41,7 +41,7 @@ export const SUPPLIER_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'phone', label: 'Phone', type: 'text', column: false },
     { key: 'gst', label: 'GST', type: 'text', column: false },
     { key: 'pan', label: 'PAN', type: 'text', column: false },
-    { key: 'bankDetails', label: 'Bank Details', type: 'textarea', column: false },
+    { key: 'bankDetails', label: 'Bank Details', type: 'textarea', column: false, sensitive: 'restricted' },
     {
       key: 'paymentTerms',
       label: 'Payment Terms',

@@ -66,6 +66,27 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
   // destination module's OWN read permission, so bulk extraction can never be a
   // way around the per-module gate that the on-screen view enforces.
   [IpcChannel.DataPlaneExport]: 'data:read',
+  [IpcChannel.DataPlaneExportPlan]: 'data:read',
+  /* ── Program 8 — Document Intelligence ──────────────────────────────────
+   * Reading documents is `data:read`. Everything that CHANGES one is
+   * `data:import` — uploading, reclassifying, correcting a value, linking to a
+   * business record, deleting. That is the same right the Data Plane's import
+   * surface requires, because it is the same act: bringing information in and
+   * asserting what it means.
+   *
+   * `documents:link` additionally re-checks the TARGET module's own read AND
+   * write permission inside the handler, because a link is an assertion about
+   * that record. Read access to a customer is not authority to attach an
+   * invoice to them.
+   */
+  [IpcChannel.DocumentCapabilities]: 'data:read',
+  [IpcChannel.DocumentList]: 'data:read',
+  [IpcChannel.DocumentDetail]: 'data:read',
+  [IpcChannel.DocumentUpload]: 'data:import',
+  [IpcChannel.DocumentReclassify]: 'data:import',
+  [IpcChannel.DocumentCorrect]: 'data:import',
+  [IpcChannel.DocumentLink]: 'data:import',
+  [IpcChannel.DocumentDelete]: 'data:import',
   [IpcChannel.DataPlaneRelationshipOverview]: 'data:read',
   [IpcChannel.DataPlaneRelationshipQueue]: 'data:read',
   [IpcChannel.DataPlaneRelationshipGraph]: 'data:read',

@@ -175,6 +175,7 @@ import type { ExecutionBinding } from '@neuropause/shared';
 import { computeOrgHealth } from '@neuropause/shared';
 import { initEnterprise } from './enterprise';
 import { initDataPlane } from './dataPlane';
+import { initDocuments } from './documents';
 import { RELATIONSHIPS, assertRelationshipsAreDeclarable } from './dataPlane/relationshipModel';
 import {
   bindIncomingLinkReader,
@@ -435,6 +436,11 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         workspaceId: workspaceStore.activeWorkspaceId(),
       }),
     authorize: enterprise.authorize,
+    // Stamped into the export manifest. Read from the running app rather than
+    // a constant, so a manifest naming a version is naming the build that
+    // actually wrote the file.
+    appVersion: () => app.getVersion(),
+    workspaceId: () => workspaceStore.activeWorkspaceId(),
     // Phase 6 — imported records re-enter the SAME lifecycle a hand-created
     // record takes: audit, platform timeline, renderer broadcast, and every
     // module's own `onChange` reconciler. Without this the records exist in the
@@ -480,6 +486,37 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       await writeFile(filePath, content);
       return filePath;
     },
+  });
+
+  /**
+   * Program 8 — Document Intelligence.
+   *
+   * Deliberately a sibling of the Data Plane rather than a part of it: the
+   * Data Plane turns a file into RECORDS and forgets the file, while this
+   * keeps the file as evidence. It reuses the Data Plane's parser and the
+   * decision subsystem's storage substrate, and owns no governance of its own.
+   */
+  const documents = initDocuments({
+    userDataDir: app.getPath('userData'),
+    actor: () => {
+      const st = authService.getStatus();
+      return st.state === 'authenticated' ? (st.session.user.displayName ?? st.session.user.email) : null;
+    },
+    now: () => new Date().toISOString(),
+    audit: (entry) =>
+      governanceStore.record({
+        actor: (() => {
+          const st = authService.getStatus();
+          return st.state === 'authenticated' ? (st.session.user.displayName ?? st.session.user.email) : 'owner';
+        })(),
+        action: entry.action,
+        target: entry.target,
+        summary: entry.summary,
+        workspaceId: workspaceStore.activeWorkspaceId(),
+      }),
+    authorize: enterprise.authorize,
+    modules: () => enterprise.modules.list().map((m) => m.descriptor),
+    storeFor: (moduleId) => enterprise.modules.get(moduleId)?.store ?? null,
   });
 
   // A relationship declaration naming a field that does not exist resolves
@@ -2189,6 +2226,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...workforce.handlers);
   defs.push(...enterprise.handlers);
   defs.push(...dataPlane.handlers);
+  defs.push(...documents.handlers);
   // P12 — harden the previously-ungated ecosystem handlers with RBAC (they shipped with no
   // requireAuth/permission); every ecosystem channel now requires a developer:* permission.
   defs.push(...withEcosystemAuthz(ecosystem.handlers));

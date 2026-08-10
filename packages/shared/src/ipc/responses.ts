@@ -39,11 +39,18 @@ import type {
   DataPlaneRelationshipPass,
   DataPlaneRelationshipPending,
   DataPlanePlanSummary,
+  DataPlaneExportPlan,
   DataPlanePreview,
   DataPlaneProvenance,
   DataPlaneRunResult,
   DataPlaneSavedMapping,
 } from '../types/dataPlane';
+import type {
+  DocumentCapabilities,
+  DocumentDetail,
+  DocumentSummary,
+  DocumentUploadResult,
+} from '../types/documentIntelligence';
 import type { IpcChannelName } from './channels';
 // ── Private-First AI experience ──
 import type { AiRoutingStatusView, AiRoutingUsage } from '../types/aiRouting';
@@ -1445,6 +1452,15 @@ export interface IpcResponseMap {
   'dp:mapping.forget': { forgotten: boolean };
   'dp:ontology': DataPlaneOntologyView;
   'dp:exportable': DataPlaneExportableModule[];
+  'documents:capabilities': DocumentCapabilities;
+  'documents:list': DocumentSummary[];
+  'documents:detail': DocumentDetail | null;
+  'documents:upload': DocumentUploadResult;
+  'documents:reclassify': DocumentDetail;
+  'documents:correct': DocumentDetail;
+  'documents:link': DocumentDetail;
+  'documents:delete': { removed: boolean };
+  'dp:export.plan': DataPlaneExportPlan;
   'dp:export': DataPlaneExportResult;
   'dp:rel.overview': DataPlaneRelationshipOverview;
   'dp:rel.queue': DataPlaneRelationshipPending[];

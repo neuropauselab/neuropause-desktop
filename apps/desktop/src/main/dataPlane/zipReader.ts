@@ -156,6 +156,14 @@ export interface ZipArchive {
   text: (name: string) => string | null;
   /** Every entry name matching a predicate, in central-directory order. */
   find: (pred: (name: string) => boolean) => string[];
+  /**
+   * Read a part as raw bytes.
+   *
+   * `text` is not enough for every consumer: an export package carries a
+   * spreadsheet next to its manifest, and both verifying its checksum and
+   * parsing it back require the bytes, not a lossy UTF-8 view of them.
+   */
+  bytes: (name: string) => Buffer | null;
 }
 
 export function openZip(buf: Buffer): ZipArchive {
@@ -163,20 +171,25 @@ export function openZip(buf: Buffer): ZipArchive {
   const byName = new Map(entries.map((e) => [e.name, e]));
   let spent = 0;
 
-  const text = (name: string): string | null => {
+  const bytes = (name: string): Buffer | null => {
     const entry = byName.get(name);
     if (!entry) return null;
     spent += entry.uncompressedSize;
     if (spent > ZIP_MAX_TOTAL_BYTES) {
       throw new ZipError(`Archive expands past the ${ZIP_MAX_TOTAL_BYTES}-byte total limit.`);
     }
-    return readZipEntry(buf, entry).toString('utf8');
+    return readZipEntry(buf, entry);
   };
+
+  // Text goes through `bytes` so the inflation budget is spent in exactly one
+  // place; two counters over one archive is how a limit stops being a limit.
+  const text = (name: string): string | null => bytes(name)?.toString('utf8') ?? null;
 
   return {
     entries,
     has: (name) => byName.has(name),
     text,
+    bytes,
     find: (pred) => entries.map((e) => e.name).filter(pred),
   };
 }

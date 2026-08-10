@@ -71,7 +71,8 @@ export const STATUTORY_FILING_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'tdsMemberCount', label: '24Q Deductees', type: 'number', readOnly: true, default: 0, column: false },
     { key: 'tdsMissingPan', label: 'Missing PAN', type: 'number', readOnly: true, default: 0, column: false },
     { key: 'tdsTotal', label: 'TDS Total', type: 'number', readOnly: true, format: 'currency', column: false },
-    { key: 'tdsRowsJson', label: '24Q Rows', type: 'textarea', readOnly: true, column: false },
+    // Every deductee's PAN and taxable salary, in one cell.
+    { key: 'tdsRowsJson', label: '24Q Rows', type: 'textarea', readOnly: true, column: false, sensitive: 'restricted' },
     { key: 'note', label: 'Note', type: 'textarea', readOnly: true, column: false },
     { key: 'generatedAt', label: 'Generated At', type: 'text', readOnly: true, column: false },
   ],

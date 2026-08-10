@@ -17,6 +17,7 @@
  *     framework uses.
  */
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import type {
   DataPlaneExportableModule,
   DataPlaneRelationshipDecision,
@@ -28,6 +29,9 @@ import type {
   DataPlaneInspection,
   DataPlaneOntologyView,
   DataPlanePlanSummary,
+  DataPlaneExportFormats,
+  DataPlaneExportManifest,
+  DataPlaneExportPlan,
   DataPlanePreview,
   DataPlaneProvenance,
   DataPlaneRunResult,
@@ -37,6 +41,7 @@ import type {
 } from '@neuropause/shared';
 import {
   DataPlaneAnalyzeRequest,
+  DataPlaneExportPlanRequest,
   DataPlaneExportRequest,
   DataPlaneRelationshipDecideRequest,
   DataPlaneRelationshipGraphRequest,
@@ -75,6 +80,14 @@ import { MappingMemoryStore, applySavedMapping } from './mappingMemory';
 import { ONTOLOGY, entityById, requiresExplicitApproval } from './ontology';
 import { SUPPORTED_FORMATS, parseFile } from './parsers';
 import { buildExport, type ExportCell, type ExportColumn, type ExportTable } from './exporters';
+import {
+  exportBlockedReason,
+  resolveFields,
+  resolveScope,
+  selectableFields,
+  tooLargeReason,
+} from './exportScope';
+import { buildManifest, packageExport, sha256Hex } from './exportManifest';
 import { RelationshipEngine } from './relationshipEngine';
 import { RelationshipStore, type PendingRelationship } from './relationshipStore';
 import { RELATIONSHIPS, RELATIONSHIP_CHAINS, relationshipByKey } from './relationshipModel';
@@ -83,6 +96,25 @@ const log = createLogger('data-plane');
 
 /** Analyzed plans are held in memory between analyze and import. */
 const MAX_CACHED_PLANS = 20;
+
+/**
+ * What this build can actually write, and what it cannot.
+ *
+ * PDF is named as unavailable rather than omitted. A format that silently
+ * disappears from a chooser reads as "not a thing"; a format that says why it
+ * is missing reads as an honest boundary — and stops the next person adding a
+ * `.pdf` extension to a spreadsheet and calling it done.
+ */
+const EXPORT_FORMATS: DataPlaneExportFormats = {
+  supported: ['csv', 'xlsx', 'json'],
+  unavailable: [
+    {
+      format: 'pdf',
+      reason:
+        'No PDF engine is bundled in this build. A renamed spreadsheet is not a PDF, so the option is withheld rather than faked.',
+    },
+  ],
+};
 
 export interface DataPlaneSubsystemDeps {
   userDataDir: string;
@@ -119,6 +151,17 @@ export interface DataPlaneSubsystemDeps {
    * wants no reaction passes `() => undefined` and says so at the call site.
    */
   onImported: (event: { moduleId: string; recordIds: string[]; planId: string; correlationId: string }) => void;
+  /**
+   * Application identity for the export manifest.
+   *
+   * Injected rather than read from `app.getVersion()` here, because this
+   * module must keep running under plain Node in tests — and because a
+   * manifest claiming a version is only useful if it is the version that
+   * actually wrote the file.
+   */
+  appVersion: () => string;
+  /** Active workspace, when the build has one. Written to the manifest as-is. */
+  workspaceId: () => string | null;
 }
 
 export interface DataPlaneSubsystem {
@@ -340,6 +383,40 @@ export function initDataPlane(deps: DataPlaneSubsystemDeps): DataPlaneSubsystem 
         fields: r.fields as Record<string, CellValue>,
       })),
     );
+  };
+
+  /**
+   * Everything an export needs, with both permission gates already applied.
+   *
+   * Shared by `dp:export.plan` and `dp:export` so a preview can never be
+   * computed against a wider permission set than the run. `mayAdminister` is
+   * probed, not assumed: `authorize` throws, and the right to see the payroll
+   * list is not the right to export the bank accounts in it.
+   */
+  const exportContextFor = async (
+    moduleId: string,
+  ): Promise<{
+    descriptor: EnterpriseModuleDescriptor;
+    store: EnterpriseRecordStore;
+    mayAdminister: boolean;
+  }> => {
+    deps.authorize('data:read');
+    const descriptor = deps.modules().find((m) => m.id === moduleId);
+    if (!descriptor) throw new Error(`Unknown module "${moduleId}".`);
+    deps.authorize(descriptor.permissions.read);
+
+    let mayAdminister = false;
+    try {
+      deps.authorize(descriptor.permissions.write);
+      mayAdminister = true;
+    } catch {
+      mayAdminister = false;
+    }
+
+    const store = deps.storeFor(moduleId);
+    if (!store) throw new Error(`"${descriptor.title}" is not available in this build.`);
+    await store.load();
+    return { descriptor, store, mayAdminister };
   };
 
   /** Recompute plan-level totals after a table is replaced by a reclassify. */
@@ -813,6 +890,21 @@ export function initDataPlane(deps: DataPlaneSubsystemDeps): DataPlaneSubsystem 
         await provenance.load();
         const out: DataPlaneExportableModule[] = [];
         for (const descriptor of deps.modules()) {
+          /**
+           * The module's OWN read scope, exactly as `dp:export` demands it.
+           *
+           * Without this, `data:read` alone returned the name and live record
+           * count of every module in the build — payroll, finance, medical —
+           * to an actor who could not read a single record in any of them.
+           * A count is not a value, but "how many employees are there" and
+           * "which business systems does this company run" are both answers,
+           * and neither was theirs to have.
+           */
+          try {
+            deps.authorize(descriptor.permissions.read);
+          } catch {
+            continue;
+          }
           const store = deps.storeFor(descriptor.id);
           if (!store) continue;
           await store.load();
@@ -833,6 +925,54 @@ export function initDataPlane(deps: DataPlaneSubsystemDeps): DataPlaneSubsystem 
       },
     },
     {
+      channel: IpcChannel.DataPlaneExportPlan,
+      schema: DataPlaneExportPlanRequest,
+      requireAuth: true,
+      handler: async (p): Promise<DataPlaneExportPlan> => {
+        const req = p as DataPlaneExportPlanRequest;
+        const { descriptor, store, mayAdminister } = await exportContextFor(req.moduleId);
+
+        // An explicit ceiling on the scan, matching the import path's own
+        // `limit: 200_000`. The refusal above `MAX_EXPORT_RECORDS` is what
+        // actually protects the file's honesty; this protects the process.
+        const scope = resolveScope(store.list({ limit: 200_000 }), descriptor, req.scope);
+        const available = selectableFields(descriptor, mayAdminister);
+        const wantRestricted = req.includeRestricted === true;
+        const fields = resolveFields(descriptor, available, req.fields, wantRestricted && mayAdminister);
+
+        /**
+         * The plan applies the SAME administrator gate the run applies.
+         *
+         * Resolving with a bare `req.includeRestricted` let a read-only actor
+         * see `blockedReason: null` and a clean field list, then get a throw
+         * when they pressed the button — a preview that disagrees with the
+         * run, which is the one thing a preview must never do.
+         */
+        const restrictedRefusal =
+          wantRestricted && !mayAdminister
+            ? `Exporting personal or financial identifiers from ${descriptor.plural} requires permission to edit them (${descriptor.permissions.write}).`
+            : null;
+
+        return {
+          moduleId: descriptor.id,
+          title: descriptor.title,
+          plural: descriptor.plural,
+          scope: scope.kind,
+          scopeLabel: scope.label,
+          records: scope.records.length,
+          totalRecords: scope.total,
+          fields: available,
+          excluded: fields.excluded,
+          formats: EXPORT_FORMATS,
+          mayIncludeRestricted: mayAdminister,
+          blockedReason: restrictedRefusal ?? exportBlockedReason(scope, fields, descriptor),
+          tooLargeReason: tooLargeReason(scope),
+          refusedFilters: scope.refusedFilters,
+          missingRecordIds: scope.missingIds,
+        };
+      },
+    },
+    {
       channel: IpcChannel.DataPlaneExport,
       schema: DataPlaneExportRequest,
       requireAuth: true,
@@ -844,17 +984,43 @@ export function initDataPlane(deps: DataPlaneSubsystemDeps): DataPlaneSubsystem 
         // Two gates, deliberately. `data:read` is the right to use this surface
         // at all; the module's OWN read permission is the right to see THAT
         // data. Bulk extraction must not be a way around the second one.
-        deps.authorize('data:read');
-        const descriptor = deps.modules().find((m) => m.id === req.moduleId);
-        if (!descriptor) throw new Error(`Unknown module "${req.moduleId}".`);
-        deps.authorize(descriptor.permissions.read);
+        const { descriptor, store, mayAdminister } = await exportContextFor(req.moduleId);
 
-        const store = deps.storeFor(req.moduleId);
-        if (!store) throw new Error(`"${descriptor.title}" is not available in this build.`);
-        await store.load();
-        const live = store.list().filter((r) => r.status !== 'deleted');
+        /**
+         * The scope and the field set are resolved by the SAME functions the
+         * plan channel calls. A preview that says "12 of 340" and a file with
+         * 340 rows in it is not a state this code can reach, because there is
+         * only one place either number is computed.
+         */
+        // An explicit ceiling on the scan, matching the import path's own
+        // `limit: 200_000`. The refusal above `MAX_EXPORT_RECORDS` is what
+        // actually protects the file's honesty; this protects the process.
+        const scope = resolveScope(store.list({ limit: 200_000 }), descriptor, req.scope);
+        const available = selectableFields(descriptor, mayAdminister);
+        const wantRestricted = req.includeRestricted === true;
 
-        const columns: ExportColumn[] = descriptor.fields.map((f) => ({ key: f.key, label: f.label }));
+        /**
+         * Asking for restricted data without the right to administer the
+         * module is REFUSED, not quietly downgraded.
+         *
+         * Silently dropping the fields would produce a file that looks like
+         * the one that was asked for and is missing columns — and the caller
+         * would have no reason to look.
+         */
+        if (wantRestricted && !mayAdminister) {
+          throw new Error(
+            `Exporting personal or financial identifiers from ${descriptor.plural} requires permission to edit them (${descriptor.permissions.write}).`,
+          );
+        }
+
+        const fields = resolveFields(descriptor, available, req.fields, wantRestricted);
+
+        const blocked = exportBlockedReason(scope, fields, descriptor);
+        if (blocked !== null) throw new Error(blocked);
+        const tooLarge = tooLargeReason(scope);
+        if (tooLarge !== null) throw new Error(tooLarge);
+
+        const columns: ExportColumn[] = [...fields.columns];
         const withProvenance = req.includeProvenance === true;
         if (withProvenance) {
           await provenance.load();
@@ -866,11 +1032,15 @@ export function initDataPlane(deps: DataPlaneSubsystemDeps): DataPlaneSubsystem 
           );
         }
 
-        const rows: Record<string, ExportCell>[] = live.map((record) => {
+        let traced = 0;
+        const rows: Record<string, ExportCell>[] = scope.records.map((record) => {
           const row: Record<string, ExportCell> = {};
-          for (const field of descriptor.fields) row[field.key] = record.fields[field.key] ?? null;
+          // Only the RESOLVED keys. Iterating the descriptor here is how the
+          // withheld fields used to get written anyway.
+          for (const key of fields.keys) row[key] = record.fields[key] ?? null;
           if (withProvenance) {
             const p2 = provenance.forRecord(record.id);
+            if (p2) traced += 1;
             // A record created by hand has no import provenance. That is stated
             // as empty cells rather than invented.
             row['__source_file'] = p2?.sourceFile ?? null;
@@ -883,7 +1053,62 @@ export function initDataPlane(deps: DataPlaneSubsystemDeps): DataPlaneSubsystem 
 
         const table: ExportTable = { name: descriptor.plural, columns, rows };
         const artifact = buildExport(table, req.format, deps.now());
-        const filePath = await deps.saveExport(artifact.filename, artifact.format, artifact.content);
+
+        let manifest: DataPlaneExportManifest | null = null;
+        let filename = artifact.filename;
+        let content = artifact.content;
+        let packaged = false;
+
+        if (req.withManifest === true) {
+          manifest = buildManifest({
+            exportId: `exp_${randomUUID()}`,
+            createdAt: deps.now(),
+            createdBy: deps.actor() ?? 'unknown',
+            appName: 'NeuroPause',
+            appVersion: deps.appVersion(),
+            workspaceId: deps.workspaceId(),
+            tenantId: deps.tenantId(),
+            moduleId: descriptor.id,
+            title: descriptor.title,
+            entityPlural: descriptor.plural,
+            scope: {
+              kind: scope.kind,
+              label: scope.label,
+              recordCount: rows.length,
+              moduleRecordCount: scope.total,
+              /**
+               * The filters that were APPLIED, by label — not the raw request.
+               *
+               * Copying `req.scope.filters` verbatim wrote whatever the caller
+               * sent into `manifest.json`, `README.txt` and the audit line,
+               * including a filter naming a field they were not allowed to
+               * read. `resolveScope` refuses those now, so what survives here
+               * is by construction a non-sensitive column.
+               */
+              filters: scope.appliedFilters.map((f) => ({ field: f.label, value: f.value })),
+              recordIds: req.scope?.recordIds ? [...req.scope.recordIds] : null,
+            },
+            fields: fields.columns,
+            excludedFields: fields.excluded,
+            includesRestricted: fields.includesRestricted,
+            format: req.format,
+            dataFile: artifact.filename,
+            // Hashed BEFORE packaging, so the digest describes the data file a
+            // reader will extract, not the archive around it.
+            dataFileSha256: sha256Hex(artifact.content),
+            provenance: {
+              included: withProvenance,
+              tracedRecords: withProvenance ? traced : 0,
+              untracedRecords: withProvenance ? rows.length - traced : 0,
+            },
+          });
+          const pkg = packageExport(artifact.filename, artifact.content, manifest);
+          filename = pkg.filename;
+          content = pkg.content;
+          packaged = true;
+        }
+
+        const filePath = await deps.saveExport(filename, packaged ? 'zip' : artifact.format, content);
 
         if (filePath === null) {
           return {
@@ -893,15 +1118,36 @@ export function initDataPlane(deps: DataPlaneSubsystemDeps): DataPlaneSubsystem 
             columns: columns.length,
             filePath: null,
             cancelled: true,
+            manifest: null,
+            packaged: false,
+            excluded: fields.excluded,
           };
         }
 
+        /**
+         * The audit line names what actually left, including the things that
+         * did not. "Exported 340 Employees" and "exported 340 Employees
+         * including bank accounts" are different events, and only one of them
+         * is worth finding later.
+         */
         deps.audit({
           action: 'dataplane.export',
           target: req.moduleId,
-          summary: `Exported ${rows.length} ${descriptor.plural} as ${req.format.toUpperCase()}.`,
+          summary:
+            `Exported ${rows.length} ${descriptor.plural} as ${req.format.toUpperCase()}` +
+            ` (${scope.label}; ${fields.columns.length} field${fields.columns.length === 1 ? '' : 's'}` +
+            `${fields.includesRestricted ? ', INCLUDING restricted identifiers' : ''}` +
+            `${fields.excluded.length > 0 ? `; ${fields.excluded.length} withheld` : ''}` +
+            `${packaged ? '; packaged with manifest' : ''}).`,
         });
-        log.info('Export written', { moduleId: req.moduleId, format: req.format, records: rows.length });
+        log.info('Export written', {
+          moduleId: req.moduleId,
+          format: req.format,
+          records: rows.length,
+          scope: scope.kind,
+          restricted: fields.includesRestricted,
+          packaged,
+        });
 
         return {
           moduleId: req.moduleId,
@@ -910,6 +1156,9 @@ export function initDataPlane(deps: DataPlaneSubsystemDeps): DataPlaneSubsystem 
           columns: columns.length,
           filePath,
           cancelled: false,
+          manifest,
+          packaged,
+          excluded: fields.excluded,
         };
       },
     },

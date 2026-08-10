@@ -47,8 +47,19 @@ export abstract class AppendOnlyJsonStore<T extends { id: string }> {
 
   protected append(item: T): void {
     this.items.push(item);
-    if (this.items.length > this.cap) this.items.splice(0, this.items.length - this.cap);
+    if (this.items.length > this.cap) {
+      const evicted = this.items.splice(0, this.items.length - this.cap);
+      // Subclasses that own something OUTSIDE this file — a document's bytes,
+      // say — need to know what fell off the end. Governance records own
+      // nothing, so the default does nothing.
+      this.onEvicted(evicted);
+    }
     this.schedulePersist();
+  }
+
+  /** Called with the entries the cap pushed out. Override to clean up. */
+  protected onEvicted(_evicted: readonly T[]): void {
+    /* nothing by default */
   }
 
   /** In-place update of an already-appended item; returns the updated item. */
@@ -56,6 +67,26 @@ export abstract class AppendOnlyJsonStore<T extends { id: string }> {
     Object.assign(item, patch);
     this.schedulePersist();
     return item;
+  }
+
+  /**
+   * Drop items and persist.
+   *
+   * Governance records are append-only and never use this. Documents are not
+   * governance records — a person who uploads the wrong file is entitled to
+   * remove it, and the removal has to reach disk or it reappears on restart.
+   * Returns what was removed so a caller can clean up anything the record
+   * owned, such as its bytes.
+   */
+  protected removeWhere(pred: (item: T) => boolean): T[] {
+    const removed: T[] = [];
+    this.items = this.items.filter((item) => {
+      if (!pred(item)) return true;
+      removed.push(item);
+      return false;
+    });
+    if (removed.length > 0) this.schedulePersist();
+    return removed;
   }
 
   /** Newest first, bounded. */

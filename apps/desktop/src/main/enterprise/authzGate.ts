@@ -299,7 +299,21 @@ export const DYNAMICALLY_AUTHORIZED_ENTERPRISE_CHANNELS: readonly IpcChannelName
  */
 export function withEnterpriseAuthz<T extends { channel: IpcChannelName }>(
   defs: readonly T[],
-): (T & { permission: EnterprisePermission; requireAuth: true })[] {
+): T[] {
+  /**
+   * Returns `T[]`, not `(T & { permission; requireAuth: true })[]`.
+   *
+   * `SecureHandlerDef` is a mapped type distributed over every IPC channel —
+   * seven hundred-odd members — so intersecting it forces TypeScript to
+   * distribute across all of them, and the compiler eventually answers
+   * "expression produces a union type that is too complex to represent". It
+   * did, the first time a batch of new channels pushed it over.
+   *
+   * Nothing is lost: `permission` and `requireAuth` are already declared on
+   * `SecureHandlerDefFor`, the throw below is what actually guarantees the
+   * classification exists, and it is a runtime guarantee rather than a type
+   * one either way — a channel missing from the table fails at startup.
+   */
   return defs.map((def) => {
     const permission = ENTERPRISE_CHANNEL_PERMISSIONS[def.channel];
     if (!permission) {

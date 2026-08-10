@@ -954,7 +954,22 @@ export const IpcChannel = {
   /** Modules that hold importable/exportable records, with live counts. */
   DataPlaneExportable: 'dp:exportable',
   /** Write a module's records to a file the user chooses. */
+  /* ── Program 8 — Document Intelligence ────────────────────────────────
+   * A document here is a FILE with bytes on disk, distinct from the
+   * `documents-registry` module (a record pointing at a path) and the ERP
+   * document layer (invoice/PO line items + approval). Neither is replaced.
+   */
+  DocumentCapabilities: 'documents:capabilities',
+  DocumentList: 'documents:list',
+  DocumentDetail: 'documents:detail',
+  DocumentUpload: 'documents:upload',
+  DocumentReclassify: 'documents:reclassify',
+  DocumentCorrect: 'documents:correct',
+  DocumentLink: 'documents:link',
+  DocumentDelete: 'documents:delete',
   DataPlaneExport: 'dp:export',
+  /** What an export WOULD cover, computed by the code that performs it. */
+  DataPlaneExportPlan: 'dp:export.plan',
   /** Declared cross-domain relationships + live resolution counts. */
   DataPlaneRelationshipOverview: 'dp:rel.overview',
   /** References awaiting a human decision. */
@@ -1814,6 +1829,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.DataPlaneOntology,
   IpcChannel.DataPlaneExportable,
   IpcChannel.DataPlaneExport,
+  IpcChannel.DataPlaneExportPlan,
   IpcChannel.DataPlaneRelationshipOverview,
   IpcChannel.DataPlaneRelationshipQueue,
   IpcChannel.DataPlaneRelationshipDecide,
@@ -1822,6 +1838,17 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.DataPlaneRelationshipGraph,
   IpcChannel.DataPlaneReclassify,
   IpcChannel.DataPlanePreview,
+
+  // ── Program 8 — Document Intelligence ──
+  IpcChannel.DocumentCapabilities,
+  IpcChannel.DocumentList,
+  IpcChannel.DocumentDetail,
+  IpcChannel.DocumentUpload,
+  IpcChannel.DocumentReclassify,
+  IpcChannel.DocumentCorrect,
+  IpcChannel.DocumentLink,
+  IpcChannel.DocumentDelete,
+
   // ── Medical Device Manufacturing Pack ──
   IpcChannel.MedicalDevicePack,
   IpcChannel.MedicalDeviceProductSearch,

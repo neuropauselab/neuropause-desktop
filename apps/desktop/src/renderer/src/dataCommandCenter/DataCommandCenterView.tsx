@@ -15,6 +15,7 @@ import { SegmentedTabs, type SegmentedTabItem } from '@renderer/components/ui/pi
 import { Loading } from '@renderer/components/ui/Loading';
 import { buildOverview, friendlyError } from './dataCommandCenterModel';
 import { ImportPanel } from './ImportPanel';
+import { DocumentsPanel } from './DocumentsPanel';
 import {
   CoveragePanel,
   ExportPanel,
@@ -34,6 +35,7 @@ type Tab =
   | 'overview'
   | 'import'
   | 'export'
+  | 'documents'
   | 'relationships'
   | 'history'
   | 'quality'
@@ -91,6 +93,7 @@ export function DataCommandCenterView(): JSX.Element {
       { id: 'overview', label: 'Overview', icon: 'gauge' },
       { id: 'import', label: 'Import', icon: 'upload' },
       { id: 'export', label: 'Export', icon: 'download' },
+      { id: 'documents', label: 'Documents', icon: 'doc' },
       { id: 'relationships', label: 'Relationships', icon: 'connectors' },
       { id: 'history', label: 'History', icon: 'clock', count: runs.length || undefined },
       { id: 'quality', label: 'Data Quality', icon: 'shield', count: attention || undefined },
@@ -136,6 +139,7 @@ export function DataCommandCenterView(): JSX.Element {
           )}
           {tab === 'import' && <ImportPanel onImported={() => void loadHistory()} />}
           {tab === 'export' && <ExportPanel />}
+          {tab === 'documents' && <DocumentsPanel />}
           {tab === 'relationships' && <RelationshipsPanel />}
           {tab === 'history' && (
             <HistoryPanel history={runs} selected={selectedRun} onSelect={setSelectedRun} />

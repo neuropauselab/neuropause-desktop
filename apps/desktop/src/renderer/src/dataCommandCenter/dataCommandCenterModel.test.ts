@@ -704,7 +704,7 @@ describe('export view-model', () => {
 
   it('reports a cancelled save as cancelled, never as a zero-record success', () => {
     const msg = describeExport(
-      { moduleId: 'crm-customers', format: 'csv', records: 0, columns: 4, filePath: null, cancelled: true },
+      { moduleId: 'crm-customers', format: 'csv', records: 0, columns: 4, filePath: null, cancelled: true, manifest: null, packaged: false, excluded: [] },
       'Customers',
     );
     expect(msg).toContain('cancelled');
@@ -713,7 +713,7 @@ describe('export view-model', () => {
 
   it('names the file it actually wrote', () => {
     const msg = describeExport(
-      { moduleId: 'crm-customers', format: 'xlsx', records: 42, columns: 6, filePath: '/Users/x/customers.xlsx', cancelled: false },
+      { moduleId: 'crm-customers', format: 'xlsx', records: 42, columns: 6, filePath: '/Users/x/customers.xlsx', cancelled: false, manifest: null, packaged: false, excluded: [] },
       'Customers',
     );
     expect(msg).toBe('Exported 42 Customers to /Users/x/customers.xlsx.');

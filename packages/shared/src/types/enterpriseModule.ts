@@ -18,6 +18,7 @@
  */
 import type { EnterprisePermission } from './enterprise';
 import type { ActionAssessment } from './understanding';
+import type { SensitivityClass } from './sensitivity';
 
 /** Lifecycle status shared by every enterprise record. */
 export type EnterpriseRecordStatus = 'active' | 'archived' | 'deleted';
@@ -119,6 +120,15 @@ export interface EnterpriseFieldDef {
    * the create/edit form (its value is derived by the module, e.g. a lead score).
    */
   readOnly?: boolean;
+  /**
+   * Declared sensitivity, when the key and label do not make it obvious.
+   *
+   * Advisory in one direction only: `classifyField` also derives a class from
+   * the name, and takes whichever is MORE restrictive. Declaring `normal` on a
+   * field called `apiKey` does not make it exportable. Most modules need not
+   * set this at all — it exists for fields whose name gives nothing away.
+   */
+  sensitive?: SensitivityClass;
 }
 
 /**

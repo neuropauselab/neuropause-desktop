@@ -52,6 +52,8 @@ const DATA_PLANE_CHANNELS: IpcChannelName[] = [
   // Program 7 hardening: correcting what a file is, and looking at its rows.
   IpcChannel.DataPlaneReclassify,
   IpcChannel.DataPlanePreview,
+  // Program 8: what an export WOULD cover, computed by the code that performs it.
+  IpcChannel.DataPlaneExportPlan,
 ];
 
 const T0 = '2026-08-08T12:00:00.000Z';

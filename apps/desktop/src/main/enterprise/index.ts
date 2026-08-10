@@ -1034,14 +1034,26 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     },
   };
 
+  /**
+   * Annotated, not inferred.
+   *
+   * Left to infer, TypeScript widens this into a union of every concrete
+   * handler shape across five arrays, and the compiler gives up with
+   * "expression produces a union type that is too complex to represent" once
+   * enough channels exist. The annotation collapses it to the one type these
+   * all satisfy — no behaviour change, and the check stays real because each
+   * source array is itself typed.
+   */
+  const handlers: SecureHandlerDef[] = [
+    ...withEnterpriseAuthz(buildHandlers()),
+    ...modules.handlers,
+    ...medicalDeviceHandlers,
+    ...opportunities.handlers,
+    relatedRecordsHandler,
+  ];
+
   return {
-    handlers: [
-      ...withEnterpriseAuthz(buildHandlers()),
-      ...modules.handlers,
-      ...medicalDeviceHandlers,
-      ...opportunities.handlers,
-      relatedRecordsHandler,
-    ],
+    handlers,
     authorize,
     modules: modules.registry,
     complianceFindings: () => evaluateCompliance(governanceStore.rules(), buildComplianceInput()),

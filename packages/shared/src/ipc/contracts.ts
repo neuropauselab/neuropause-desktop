@@ -2705,11 +2705,155 @@ export type DataPlaneForgetMappingRequest = z.infer<typeof DataPlaneForgetMappin
  * Export a module's records. `includeProvenance` adds the source file/sheet/row
  * columns, so an exported sheet can be traced back to what produced it.
  */
+/**
+ * What an export covers.
+ *
+ * Shared verbatim between the plan and the run so the two can never describe
+ * different things — the whole point of previewing an export is that the
+ * preview and the file are computed from one input.
+ *
+ * `recordIds` and `filters` are both bounded. An unbounded id list is a way to
+ * ask for the entire store one id at a time, and an unbounded filter map is a
+ * way to make the scan quadratic.
+ */
+
+/* ── Program 8 — Document Intelligence ─────────────────────────────────── */
+
+const DocumentId = z.string().trim().min(1).max(80);
+
+/**
+ * The document kinds a reviewer may choose.
+ *
+ * `unknown` is deliberately absent: a person correcting a classification is
+ * answering the question, and "I do not know either" is what leaving it alone
+ * already means.
+ */
+export const DocumentKindEnum = z.enum([
+  'invoice',
+  'purchase_order',
+  'receipt',
+  'quote',
+  'contract',
+  'statement',
+  'report',
+  'other',
+]);
+
+export const DocumentListRequest = z
+  .object({
+    search: z.string().trim().max(200).optional(),
+    kind: DocumentKindEnum.optional(),
+    status: z.enum(['stored', 'extracted', 'needs_review', 'unsupported']).optional(),
+    limit: z.number().int().min(1).max(500).optional(),
+  })
+  .strict();
+export type DocumentListRequest = z.infer<typeof DocumentListRequest>;
+
+export const DocumentDetailRequest = z.object({ documentId: DocumentId }).strict();
+export type DocumentDetailRequest = z.infer<typeof DocumentDetailRequest>;
+
+export const DocumentUploadRequest = z
+  .object({
+    filename: z.string().trim().min(1).max(255),
+    /** Bytes, base64. The renderer never supplies a filesystem path. */
+    contentBase64: DpContentBase64,
+    mimeType: z.string().trim().max(200).optional(),
+  })
+  .strict();
+export type DocumentUploadRequest = z.infer<typeof DocumentUploadRequest>;
+
+export const DocumentReclassifyRequest = z
+  .object({
+    documentId: DocumentId,
+    kind: DocumentKindEnum,
+    reason: z.string().trim().max(500).optional(),
+  })
+  .strict();
+export type DocumentReclassifyRequest = z.infer<typeof DocumentReclassifyRequest>;
+
+export const DocumentCorrectRequest = z
+  .object({
+    documentId: DocumentId,
+    fieldKey: z.string().trim().min(1).max(120),
+    value: z.union([z.string().trim().max(500), z.number(), z.null()]),
+    /**
+     * Required, and not merely present — a correction is kept forever next to
+     * what it replaced, and a reason of "." makes the record useless to the
+     * next person reading it.
+     */
+    reason: z.string().trim().min(3).max(500),
+  })
+  .strict();
+export type DocumentCorrectRequest = z.infer<typeof DocumentCorrectRequest>;
+
+export const DocumentLinkRequest = z
+  .object({
+    documentId: DocumentId,
+    moduleId: z.string().trim().min(1).max(128),
+    recordId: z.string().trim().min(1).max(120),
+    relationship: z.string().trim().min(1).max(120),
+    basis: z.string().trim().min(1).max(500),
+  })
+  .strict();
+export type DocumentLinkRequest = z.infer<typeof DocumentLinkRequest>;
+
+export const DocumentDeleteRequest = z.object({ documentId: DocumentId }).strict();
+export type DocumentDeleteRequest = z.infer<typeof DocumentDeleteRequest>;
+
+export const DataPlaneExportScope = z
+  .object({
+    /**
+     * Explicit records. Present for a single-record or multi-select export;
+     * absent means "whatever the filters match".
+     */
+    recordIds: z.array(z.string().trim().min(1).max(120)).max(10_000).optional(),
+    /** Field/value equality filters, exactly as the list view showed them. */
+    filters: z
+      .array(
+        z
+          .object({
+            field: z.string().trim().min(1).max(120),
+            value: z.string().trim().max(200),
+          })
+          .strict(),
+      )
+      .max(20)
+      .optional(),
+    /** Free-text match across the record title and its visible values. */
+    search: z.string().trim().max(200).optional(),
+  })
+  .strict();
+export type DataPlaneExportScope = z.infer<typeof DataPlaneExportScope>;
+
+export const DataPlaneExportPlanRequest = z
+  .object({
+    moduleId: z.string().trim().min(1).max(128),
+    scope: DataPlaneExportScope.optional(),
+    /** Which fields the reviewer has ticked. Absent means "the defaults". */
+    fields: z.array(z.string().trim().min(1).max(120)).max(200).optional(),
+    includeRestricted: z.boolean().optional(),
+  })
+  .strict();
+export type DataPlaneExportPlanRequest = z.infer<typeof DataPlaneExportPlanRequest>;
+
 export const DataPlaneExportRequest = z
   .object({
     moduleId: z.string().trim().min(1).max(128),
     format: z.enum(['csv', 'xlsx', 'json']),
     includeProvenance: z.boolean().optional(),
+    scope: DataPlaneExportScope.optional(),
+    fields: z.array(z.string().trim().min(1).max(120)).max(200).optional(),
+    /**
+     * A deliberate, attributable request for personal or financial
+     * identifiers. Refused unless the actor administers the module, and named
+     * in both the manifest and the audit line when granted.
+     */
+    includeRestricted: z.boolean().optional(),
+    /**
+     * Write a zip containing the data file and `manifest.json` rather than a
+     * bare data file. The manifest carries no business values.
+     */
+    withManifest: z.boolean().optional(),
   })
   .strict();
 export type DataPlaneExportRequest = z.infer<typeof DataPlaneExportRequest>;

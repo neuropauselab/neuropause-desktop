@@ -16,7 +16,7 @@
  * existing shared validator. No new architecture.
  */
 import { describe, expect, it } from 'vitest';
-import { validateModuleDescriptor, type EnterpriseModuleDescriptor } from '@neuropause/shared';
+import { classifyField, validateModuleDescriptor, type EnterpriseModuleDescriptor } from '@neuropause/shared';
 
 // Finance (21)
 import { INVOICE_DESCRIPTOR } from './finance/invoiceModule';
@@ -255,5 +255,68 @@ describe('Enterprise Module Certification — registry lock', () => {
       const keys = (d.actions ?? []).map((a) => a.key);
       expect(new Set(keys).size, `${d.id} has duplicate action keys`).toBe(keys.length);
     }
+  });
+});
+
+
+/* ── Field sensitivity ─────────────────────────────────────────────────────
+ * The export path reads `EnterpriseFieldDef`, and a field it classifies as
+ * `normal` leaves in a spreadsheet in cleartext. Classification is derived
+ * from the field NAME so nobody has to remember — but a derived rule is only
+ * as good as its vocabulary, and a review found it catching `netPay` while
+ * missing `grossEarnings` on the same record. One column redacted and the one
+ * beside it exported is worse than redacting neither.
+ *
+ * These two checks run over every descriptor the app ships, so the next
+ * payroll column either matches a pattern, carries `sensitive:`, or fails
+ * here. Deliberately in THIS file: adding a module already means editing it.
+ */
+describe('field sensitivity', () => {
+  it('classifies every money field on a people module as at least restricted', () => {
+    const leaks: string[] = [];
+    for (const descriptor of ALL) {
+      if (descriptor.permissions.read !== 'people:read') continue;
+      for (const field of descriptor.fields) {
+        // Money on a people module is pay. There is no other thing it is.
+        if (field.format !== 'currency') continue;
+        if (classifyField(field) === 'normal') {
+          leaks.push(`${descriptor.id}.${field.key} (${field.label})`);
+        }
+      }
+    }
+    expect(
+      leaks,
+      `these pay fields would export in cleartext — add a pattern in sensitivity.ts or declare \`sensitive\` on the field:\n  ${leaks.join('\n  ')}`,
+    ).toEqual([]);
+  });
+
+  it('classifies every field whose name mentions a government or bank identifier', () => {
+    const NAMES = /(aadhaar|aadhar|\bpan\b|\buan\b|passport|\bssn\b|\bifsc\b|bank\s?(account|detail))/i;
+    const leaks: string[] = [];
+    for (const descriptor of ALL) {
+      for (const field of descriptor.fields) {
+        const text = `${field.key} ${field.label}`;
+        if (!NAMES.test(text)) continue;
+        if (classifyField(field) === 'normal') {
+          leaks.push(`${descriptor.id}.${field.key} (${field.label})`);
+        }
+      }
+    }
+    expect(leaks, `unclassified identifiers:\n  ${leaks.join('\n  ')}`).toEqual([]);
+  });
+
+  it('does not sweep up ordinary business columns', () => {
+    // The counterweight. A rule that hides real data is a rule the first
+    // person it annoys switches off, so the breadth is asserted too.
+    const hidden = ALL.flatMap((d) =>
+      d.fields
+        .filter((f) => classifyField(f) !== 'normal')
+        .map((f) => `${d.id}.${f.key}`),
+    );
+    const total = ALL.reduce((n, d) => n + d.fields.length, 0);
+    expect(hidden.length).toBeGreaterThan(0);
+    // A tenth of every field in the product being personal or financial would
+    // mean the patterns are matching something they should not.
+    expect(hidden.length / total).toBeLessThan(0.1);
   });
 });

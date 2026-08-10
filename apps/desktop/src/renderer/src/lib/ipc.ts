@@ -277,6 +277,13 @@ function subscribe<C extends IpcBroadcastChannelName>(
   return rawSubscribe(channel, listener as (payload: unknown) => void);
 }
 
+/** Exactly the scope the list view was showing, carried to the exporter. */
+export interface ExportScopeArg {
+  recordIds?: string[];
+  filters?: { field: string; value: string }[];
+  search?: string;
+}
+
 export const ipc = {
   auth: {
     getStatus: () => invoke(IpcChannel.AuthGetStatus),
@@ -1977,12 +1984,67 @@ export const ipc = {
      * dialog, so the renderer never touches a path; a cancelled dialog comes
      * back as `cancelled: true`, which is a normal outcome, not an error.
      */
-    export: (moduleId: string, format: 'csv' | 'xlsx' | 'json', includeProvenance?: boolean) =>
-      invoke(IpcChannel.DataPlaneExport, {
-        moduleId,
-        format,
-        ...(includeProvenance === undefined ? {} : { includeProvenance }),
-      }),
+    /**
+     * What an export WOULD cover — record count, field list, what is withheld
+     * and why. Computed by the same functions that perform the export, so the
+     * number on the button is the number in the file.
+     */
+    exportPlan: (
+      moduleId: string,
+      opts: {
+        scope?: ExportScopeArg;
+        fields?: string[];
+        includeRestricted?: boolean;
+      } = {},
+    ) => invoke(IpcChannel.DataPlaneExportPlan, { moduleId, ...opts }),
+    export: (
+      moduleId: string,
+      format: 'csv' | 'xlsx' | 'json',
+      opts: {
+        includeProvenance?: boolean;
+        scope?: ExportScopeArg;
+        fields?: string[];
+        /** Refused unless the actor may edit the module. Audited when granted. */
+        includeRestricted?: boolean;
+        /** Write a zip carrying the data plus `manifest.json`. */
+        withManifest?: boolean;
+      } = {},
+    ) => invoke(IpcChannel.DataPlaneExport, { moduleId, format, ...opts }),
+    /**
+     * Documents — FILES, kept as evidence.
+     *
+     * Distinct from `enterprise:module.*` on the `documents-registry` module
+     * (a record pointing at someone else's path) and from the ERP document
+     * layer (invoice/PO line items). Neither is replaced.
+     */
+    documents: {
+      capabilities: () => invoke(IpcChannel.DocumentCapabilities, {}),
+      list: (opts: { search?: string; kind?: string; status?: string; limit?: number } = {}) =>
+        invoke(IpcChannel.DocumentList, opts),
+      detail: (documentId: string) => invoke(IpcChannel.DocumentDetail, { documentId }),
+      /** Bytes cross as base64; the renderer never supplies a filesystem path. */
+      upload: (filename: string, contentBase64: string, mimeType?: string) =>
+        invoke(IpcChannel.DocumentUpload, {
+          filename,
+          contentBase64,
+          ...(mimeType ? { mimeType } : {}),
+        }),
+      /** Correct what a document IS. Re-extracts from the stored bytes. */
+      reclassify: (documentId: string, kind: string, reason?: string) =>
+        invoke(IpcChannel.DocumentReclassify, { documentId, kind, ...(reason ? { reason } : {}) }),
+      /** Override an extracted value. The original is kept, never overwritten. */
+      correct: (documentId: string, fieldKey: string, value: string | number | null, reason: string) =>
+        invoke(IpcChannel.DocumentCorrect, { documentId, fieldKey, value, reason }),
+      /** Confirm a link. Needs write access to the record being linked to. */
+      link: (
+        documentId: string,
+        moduleId: string,
+        recordId: string,
+        relationship: string,
+        basis: string,
+      ) => invoke(IpcChannel.DocumentLink, { documentId, moduleId, recordId, relationship, basis }),
+      remove: (documentId: string) => invoke(IpcChannel.DocumentDelete, { documentId }),
+    },
     /**
      * Cross-domain relationships: what the engine can link, what it has linked,
      * and what still needs a person.

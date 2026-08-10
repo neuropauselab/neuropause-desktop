@@ -1250,7 +1250,26 @@ export function buildExportRows(modules: readonly DataPlaneExportableModule[]): 
  */
 export function describeExport(result: DataPlaneExportResult, moduleName: string): string {
   if (result.cancelled) return 'Export cancelled — nothing was written.';
-  return `Exported ${result.records.toLocaleString()} ${moduleName} to ${result.filePath ?? 'the chosen file'}.`;
+  const parts = [
+    `Exported ${result.records.toLocaleString()} ${moduleName} to ${result.filePath ?? 'the chosen file'}.`,
+  ];
+  if (result.packaged) {
+    parts.push('The file is a zip containing the data, manifest.json and a README.');
+  }
+  /**
+   * Withheld fields are named in the success message, not only in the
+   * manifest. Someone who exports a payroll file and does not notice the bank
+   * columns are missing will act on an incomplete file; someone who is told
+   * will either accept it or ask for the permission they need.
+   */
+  if (result.excluded.length > 0) {
+    parts.push(
+      `${result.excluded.length} field${result.excluded.length === 1 ? '' : 's'} withheld: ${result.excluded
+        .map((e) => e.label)
+        .join(', ')}.`,
+    );
+  }
+  return parts.join(' ');
 }
 
 // ---------------------------------------------------------------------------

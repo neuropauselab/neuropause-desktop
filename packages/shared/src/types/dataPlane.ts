@@ -7,6 +7,8 @@
  * store internals.
  */
 
+import type { SensitivityClass } from './sensitivity';
+
 export type DataPlaneConfidenceBand = 'high' | 'medium' | 'low';
 export type DataPlaneRisk = 'low' | 'medium' | 'high';
 
@@ -257,8 +259,20 @@ export interface DataPlaneOntologyView {
 }
 
 // ── Export ────────────────────────────────────────────────────────────────
+// `SensitivityClass` is imported at the top of this file.
 
 export type DataPlaneExportFormat = 'csv' | 'xlsx' | 'json';
+
+/**
+ * Formats the build can actually produce, and the ones it cannot, with the
+ * reason. PDF is absent deliberately: no PDF engine is bundled, and a renamed
+ * spreadsheet with a `.pdf` extension is a lie the user only discovers when
+ * they try to open it.
+ */
+export interface DataPlaneExportFormats {
+  supported: DataPlaneExportFormat[];
+  unavailable: { format: string; reason: string }[];
+}
 
 /** A module whose records can be exported, with its live count. */
 export interface DataPlaneExportableModule {
@@ -272,6 +286,111 @@ export interface DataPlaneExportableModule {
   importedCount: number;
 }
 
+/** How much of a module is being exported. */
+export type DataPlaneExportScopeKind = 'module' | 'filtered' | 'selected' | 'record';
+
+/** One field offered for export, and whether it may be included. */
+export interface DataPlaneExportField {
+  key: string;
+  label: string;
+  sensitivity: SensitivityClass;
+  /**
+   * False when this field can never be part of an export. Secrets are always
+   * false; a restricted field is only selectable by an actor who administers
+   * the module.
+   */
+  selectable: boolean;
+  /** Ticked by default. Restricted fields never are. */
+  defaultSelected: boolean;
+  /** Why it is held back, when it is. Empty for ordinary fields. */
+  reason: string;
+  /**
+   * Values this field can be filtered on, when it is a `select`.
+   *
+   * Carried on the field rather than fetched separately so the export filter
+   * chips offer exactly what the list view offers — one source, so the two
+   * cannot drift into showing different options for the same column.
+   */
+  filterOptions: { value: string; label: string }[] | null;
+}
+
+/**
+ * What an export WOULD do, computed by the same code that performs it.
+ *
+ * The point of a separate preview channel is that the number on the button and
+ * the number in the file come from one function. A UI that counts rows itself
+ * eventually disagrees with the exporter, and the disagreement is invisible.
+ */
+export interface DataPlaneExportPlan {
+  moduleId: string;
+  title: string;
+  plural: string;
+  scope: DataPlaneExportScopeKind;
+  scopeLabel: string;
+  /** Records that match the requested scope right now. */
+  records: number;
+  /** Records in the module, ignoring the scope — so "12 of 340" can be shown. */
+  totalRecords: number;
+  fields: DataPlaneExportField[];
+  /** Fields excluded from THIS export, with the reason, named individually. */
+  excluded: { key: string; label: string; reason: string }[];
+  formats: DataPlaneExportFormats;
+  /** True when the actor may include restricted fields if they ask. */
+  mayIncludeRestricted: boolean;
+  /** Set when the export would be refused, with the reason. */
+  blockedReason: string | null;
+  /** Set when the scope exceeds what one file may carry. */
+  tooLargeReason: string | null;
+  /**
+   * Filters that were refused, with the reason.
+   *
+   * A filter that is quietly ignored produces a WIDER export than the caller
+   * asked for, and nothing on screen would say so.
+   */
+  refusedFilters: { field: string; reason: string }[];
+  /** Requested record ids that are not in this module (or are deleted). */
+  missingRecordIds: string[];
+}
+
+/**
+ * The manifest written alongside an export package.
+ *
+ * Answers "who exported what, from where, with which filters, when" without
+ * carrying a single business value — so it can be read, logged and kept
+ * without re-exposing the data it describes.
+ */
+export interface DataPlaneExportManifest {
+  exportId: string;
+  schemaVersion: number;
+  createdAt: string;
+  createdBy: string;
+  application: { name: string; version: string };
+  workspaceId: string | null;
+  tenantId: string | null;
+  source: { moduleId: string; title: string; entityPlural: string };
+  scope: {
+    kind: DataPlaneExportScopeKind;
+    label: string;
+    recordCount: number;
+    moduleRecordCount: number;
+    filters: { field: string; value: string }[];
+    recordIds: string[] | null;
+  };
+  fields: { key: string; label: string }[];
+  excludedFields: { key: string; label: string; reason: string }[];
+  /** True only when a person explicitly asked for restricted fields. */
+  includesRestricted: boolean;
+  format: DataPlaneExportFormat;
+  dataFile: string;
+  /** SHA-256 of the data file, so a copy can be shown to be unaltered. */
+  dataFileSha256: string;
+  provenance: {
+    included: boolean;
+    tracedRecords: number;
+    untracedRecords: number;
+  };
+}
+
 /**
  * The outcome of an export. `filePath` is null when the user dismissed the save
  * dialog — a cancellation is a normal outcome, not an error.
@@ -283,6 +402,11 @@ export interface DataPlaneExportResult {
   columns: number;
   filePath: string | null;
   cancelled: boolean;
+  /** Set when a manifest was packaged with the data. */
+  manifest: DataPlaneExportManifest | null;
+  /** True when the written file is a zip carrying the data plus the manifest. */
+  packaged: boolean;
+  excluded: { key: string; label: string; reason: string }[];
 }
 
 // ── Cross-domain relationships ────────────────────────────────────────────
