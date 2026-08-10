@@ -37,6 +37,7 @@ import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { connectorService } from './connectorService';
+import { connectorVault } from './connectorVault';
 import { connectorStore } from './connectorStore';
 import type { ConnectorId } from '@neuropause/shared';
 import { testConnection } from './connectionTest';
@@ -60,6 +61,12 @@ const SYNC_TIMEOUT_MS = 2 * 60 * 1000;
 export interface ConnectorSubsystemDeps {
   broadcast: IpcBroadcaster;
   publish: (event: PlatformEventInput) => void;
+  /**
+   * P10 — the active workspace, the boundary every credential and connection
+   * is scoped to. Required: a build that cannot say which workspace it is in
+   * must not be able to spend a credential.
+   */
+  workspaceId: () => string;
 }
 
 export interface ConnectorSubsystem {
@@ -112,7 +119,37 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
   // EVERY connector adapter (GitHub included) through the one incremental-sync pipeline. Until then,
   // connectorService.sync() is a guarded no-op. (A prior standalone GitHub runner here was dead code —
   // initSync overwrote this same seam — and has been removed to keep one connector pipeline.)
+  /**
+   * BOUND BEFORE ANYTHING READS A CREDENTIAL — which means before `init()`.
+   *
+   * `connectorService.init()` calls `connectorStore.all()`, so binding after it
+   * meant the first read of the connection list happened outside the workspace
+   * boundary. Moved above the call, where the comment already claimed it was.
+   */
+  connectorService.bindWorkspace(deps.workspaceId);
+  connectorStore.bindWorkspace(deps.workspaceId);
+
   await connectorService.init();
+
+  /**
+   * Say out loud what the workspace boundary orphaned.
+   *
+   * A credential written before this boundary existed has no workspace, and is
+   * deliberately NOT adopted by whichever workspace happens to be active —
+   * guessing an owner for a secret is the one thing worse than losing it. But
+   * the consequence for an existing user is that connections silently vanish
+   * from the UI, so the count belongs in the log and on the wire rather than
+   * only in a file nobody reads.
+   */
+  const unscoped = await connectorVault.migrationRequired();
+  const unclaimed = connectorStore.unclaimed();
+  if (unscoped.length > 0 || unclaimed.length > 0) {
+    log.warn('Connections from before workspace scoping need reconnecting', {
+      credentials: unscoped.length,
+      connections: unclaimed.length,
+      connectors: [...new Set([...unscoped, ...unclaimed].map((c) => c.connectorId))],
+    });
+  }
 
   const onEvent = (e: ConnectorEvent): void => {
     deps.broadcast(IpcChannel.ConnectorEventBroadcast, e);

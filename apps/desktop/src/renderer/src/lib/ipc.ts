@@ -2046,6 +2046,34 @@ export const ipc = {
       remove: (documentId: string) => invoke(IpcChannel.DocumentDelete, { documentId }),
     },
     /**
+     * Identity — who a provider's object actually is, and who a background job
+     * is. The queue exists because the sync used to detect an ambiguous row,
+     * count it, and drop it: nobody was asked and the data never arrived.
+     */
+    identity: {
+      /** Questions waiting for a person. */
+      queue: (limit?: number) => invoke(IpcChannel.IdentityQueue, limit === undefined ? {} : { limit }),
+      /** Established links, optionally narrowed to one record's identities. */
+      list: (opts: { limit?: number; subjectId?: string } = {}) => invoke(IpcChannel.IdentityList, opts),
+      /**
+       * Answer one question. `subjectId` is required for `confirm` and is
+       * checked in the main process against the candidates that were OFFERED,
+       * so this cannot be used to link to an arbitrary record.
+       */
+      confirm: (matchId: string, decision: 'confirm' | 'create_new' | 'reject', subjectId?: string) =>
+        invoke(IpcChannel.IdentityConfirm, {
+          matchId,
+          decision,
+          ...(subjectId ? { subjectId } : {}),
+        }),
+      /** Break a link. Keeps both sides — the record's provenance still reads. */
+      unlink: (identityId: string, reason?: string) =>
+        invoke(IpcChannel.IdentityUnlink, { identityId, ...(reason ? { reason } : {}) }),
+      services: () => invoke(IpcChannel.IdentityServices, {}),
+      setServiceStatus: (serviceId: string, status: 'active' | 'disabled') =>
+        invoke(IpcChannel.IdentityServiceStatus, { serviceId, status }),
+    },
+    /**
      * Cross-domain relationships: what the engine can link, what it has linked,
      * and what still needs a person.
      */

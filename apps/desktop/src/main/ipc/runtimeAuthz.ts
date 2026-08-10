@@ -79,6 +79,21 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
    * that record. Read access to a customer is not authority to attach an
    * invoice to them.
    */
+  /* ── Program 10 — Identity + External Services ──────────────────────────
+   * Reading identity is `data:read`. DECIDING one is `data:approve`, not
+   * `data:import`: concluding that a provider's object IS an existing customer
+   * changes what that customer means, which is the same class of act as
+   * approving a high-risk import. The handler additionally requires the
+   * destination module's own write scope — deciding and writing are two
+   * authorities and both are needed. Stopping a background service is
+   * `governance:manage`.
+   */
+  [IpcChannel.IdentityQueue]: 'data:read',
+  [IpcChannel.IdentityList]: 'data:read',
+  [IpcChannel.IdentityConfirm]: 'data:approve',
+  [IpcChannel.IdentityUnlink]: 'data:approve',
+  [IpcChannel.IdentityServices]: 'data:read',
+  [IpcChannel.IdentityServiceStatus]: 'governance:manage',
   [IpcChannel.DocumentCapabilities]: 'data:read',
   [IpcChannel.DocumentList]: 'data:read',
   [IpcChannel.DocumentDetail]: 'data:read',

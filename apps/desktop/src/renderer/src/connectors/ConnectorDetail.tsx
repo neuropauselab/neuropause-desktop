@@ -124,6 +124,24 @@ export function ConnectorDetail({
     banner = { tone: 'blue', text: 'This connector authenticates with an API key. Key entry arrives with the Stage 2 sync adapters.' };
   } else if (!dto.configured && dto.setupHint) {
     banner = { tone: 'orange', text: dto.setupHint };
+  } else if (dto.needsReconnect > 0) {
+    /**
+     * The most important banner on this screen when it applies.
+     *
+     * Credentials are now scoped to a workspace, and a credential saved before
+     * that boundary existed has no workspace. It is deliberately not adopted by
+     * whichever workspace happens to be open — guessing an owner for a secret is
+     * worse than losing it — so the connection vanishes from this list. Without
+     * this sentence the screen just shows nothing and the person has no way to
+     * find out why.
+     */
+    banner = {
+      tone: 'orange',
+      text:
+        `${dto.needsReconnect} earlier ${dto.needsReconnect === 1 ? 'connection' : 'connections'} ` +
+        `to ${dto.name} predate workspace-scoped credentials, so ${dto.needsReconnect === 1 ? 'it is' : 'they are'} ` +
+        'no longer usable and cannot be assigned to a workspace automatically. Connect again to restore it here.',
+    };
   }
 
   const connectLabel = connecting

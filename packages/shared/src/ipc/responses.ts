@@ -51,6 +51,7 @@ import type {
   DocumentSummary,
   DocumentUploadResult,
 } from '../types/documentIntelligence';
+import type { ExternalIdentity, IdentityMatch, ServiceIdentity } from '../types/identity';
 import type { IpcChannelName } from './channels';
 // ── Private-First AI experience ──
 import type { AiRoutingStatusView, AiRoutingUsage } from '../types/aiRouting';
@@ -1452,6 +1453,12 @@ export interface IpcResponseMap {
   'dp:mapping.forget': { forgotten: boolean };
   'dp:ontology': DataPlaneOntologyView;
   'dp:exportable': DataPlaneExportableModule[];
+  'identity:queue': IdentityMatch[];
+  'identity:list': ExternalIdentity[];
+  'identity:confirm': { ok: boolean; message: string; recordId: string | null };
+  'identity:unlink': { ok: boolean; message: string };
+  'identity:services': ServiceIdentity[];
+  'identity:service.status': ServiceIdentity | null;
   'documents:capabilities': DocumentCapabilities;
   'documents:list': DocumentSummary[];
   'documents:detail': DocumentDetail | null;

@@ -51,17 +51,71 @@ class ConnectorStore {
     await fs.rename(tmp, storePath());
   }
 
-  /** All connected accounts across every connector. */
-  all(): ConnectedAccount[] {
-    return [...this.accounts.values()];
+  /**
+   * P10 — the workspace whose connections are visible.
+   *
+   * Injected rather than imported so this store keeps no dependency on the
+   * enterprise subsystem, and set once at composition. Until it is set, the
+   * store answers with NOTHING rather than everything: a reader that does not
+   * know which workspace it is in has no business seeing a connection.
+   */
+  private workspaceId: (() => string) | null = null;
+
+  bindWorkspace(fn: () => string): void {
+    this.workspaceId = fn;
   }
 
-  /** Accounts for one connector. */
+  private activeWorkspace(): string | null {
+    return this.workspaceId?.() ?? null;
+  }
+
+  /**
+   * Every connected account IN THE ACTIVE WORKSPACE.
+   *
+   * A record with no `workspaceId` was written before the boundary existed and
+   * is UNCLAIMED — never returned. Its credential is unspendable for the same
+   * reason (see `connectorVault.migrationRequired`), so listing it as
+   * connected would promise a sync that cannot happen.
+   */
+  all(): ConnectedAccount[] {
+    const workspace = this.activeWorkspace();
+    if (workspace === null) return [];
+    return [...this.accounts.values()].filter((a) => a.workspaceId === workspace);
+  }
+
+  /** Accounts for one connector, in the active workspace. */
   byConnector(connectorId: string): ConnectedAccount[] {
     return this.all().filter((a) => a.connectorId === connectorId);
   }
 
+  /**
+   * Accounts written before workspaces were a boundary.
+   *
+   * Surfaced so an operator can see they exist and reconnect. Deliberately not
+   * adopted into the active workspace — that is the guess this change removes.
+   */
+  unclaimed(): ConnectedAccount[] {
+    return [...this.accounts.values()].filter((a) => a.workspaceId === undefined);
+  }
+
+  /**
+   * One account, IF it belongs to the active workspace.
+   *
+   * The single most important line in this file: an id from one workspace must
+   * not resolve in another. Every read path — the supervisor, the webhook
+   * router, the sync orchestrator, the M365 scope check — goes through here or
+   * through `all()`, so scoping both is scoping all seven external callers.
+   */
   get(connectorId: string, accountId: string): ConnectedAccount | null {
+    const found = this.accounts.get(this.key(connectorId, accountId)) ?? null;
+    if (found === null) return null;
+    const workspace = this.activeWorkspace();
+    if (workspace === null || found.workspaceId !== workspace) return null;
+    return found;
+  }
+
+  /** Ignores the workspace. For the owning service's own bookkeeping only. */
+  getAnyWorkspace(connectorId: string, accountId: string): ConnectedAccount | null {
     return this.accounts.get(this.key(connectorId, accountId)) ?? null;
   }
 

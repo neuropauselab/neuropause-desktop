@@ -178,6 +178,16 @@ export type ConnectorLifecyclePhase =
 export interface ConnectedAccount {
   id: string;
   connectorId: ConnectorId;
+  /**
+   * P10 — the workspace this connection belongs to.
+   *
+   * Was absent entirely: a connection made in one workspace was listed, synced
+   * and spendable from every other, because nothing in the connectors
+   * directory knew workspaces existed. Optional in the TYPE only so a file
+   * written before this change still parses; a record without it is UNCLAIMED
+   * and is never returned by a scoped read.
+   */
+  workspaceId?: string;
   /** Display name or email for the connected identity. */
   label: string;
   /** The provider's stable user/account id, if known. */
@@ -225,6 +235,16 @@ export interface ConnectorDto {
   lastSyncAt: string | null;
   /** When unconfigured, a hint telling the operator which credential to set. */
   setupHint: string | null;
+  /**
+   * Connections made before credentials became workspace-scoped.
+   *
+   * They are deliberately NOT adopted into whichever workspace happens to be
+   * active — guessing an owner for a secret is worse than losing it — so they
+   * disappear from the connection list on upgrade. Surfaced as a count so the
+   * screen can say "reconnect this" instead of silently showing nothing, which
+   * is what an unexplained empty list amounts to.
+   */
+  needsReconnect: number;
   /** Lifecycle state derived from REAL data-adapter presence (Capability Completion v1.0). */
   lifecycle: ConnectorLifecycleState;
   /**

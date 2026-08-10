@@ -65,7 +65,9 @@ export type BridgeRowOutcome =
   /** No mapping declares this resource. Stays in the Unified store. */
   | 'unmapped'
   /** The record this object produced was deleted by a person. Left deleted. */
-  | 'suppressed';
+  | 'suppressed'
+  /** A person already ruled on this ambiguity. Not raised again. */
+  | 'decided';
 
 export interface BridgeRowResult {
   externalId: string;
@@ -89,6 +91,13 @@ export interface BridgeResult {
   ambiguous: number;
   invalid: number;
   suppressed: number;
+  /**
+   * Questions a person has already answered, counted separately.
+   *
+   * Folding these into `ambiguous` would keep a settled question inflating the
+   * "needs attention" number for the rest of time.
+   */
+  decided: number;
   /** Set when nothing was written and the reason is structural. */
   skippedReason: string | null;
   rows: BridgeRowResult[];
@@ -112,6 +121,45 @@ export interface BridgeDeps {
   actor: () => string | null;
   now: () => string;
   audit: (entry: { action: string; target: string; summary: string }) => void;
+  /**
+   * Raise an identity question for a person.
+   *
+   * P10. Ambiguous rows were counted in a sync summary and then discarded, so
+   * nobody was ever asked and the data never arrived. Optional so the bridge
+   * still works in a build without the identity subsystem — but when it is
+   * absent, an ambiguous row is reported as held rather than pretended away.
+   */
+  /**
+   * Has a person already ruled on this provider object?
+   *
+   * Asked BEFORE raising. "Not a match" writes no record and therefore no
+   * provenance, so provenance — the bridge's only other memory — cannot answer
+   * it, and without this probe the next tick re-raises the identical question.
+   * A person's answer that lasts one minute is not an answer.
+   */
+  identityDecided?: (input: {
+    provider: string;
+    connectionId: string;
+    providerEntityType: string;
+    providerEntityId: string;
+  }) => boolean;
+  raiseIdentityQuestion?: (input: {
+    provider: string;
+    connectionId: string;
+    providerEntityType: string;
+    providerEntityId: string;
+    incomingLabel: string;
+    incoming: { field: string; label: string; value: string }[];
+    destinationModuleId: string;
+    destinationLabel: string;
+    candidates: {
+      subject: { kind: 'record'; scopeId: string; id: string; label: string };
+      evidence: { kind: string; field: string; value: string | null; detail: string }[];
+      confidence: number;
+      differs: { field: string; label: string; existing: string; incoming: string }[];
+    }[];
+    reason: string;
+  }) => void;
   /**
    * The SAME fan-out a file import fires. Relationship resolution, the
    * platform timeline and every module's own reconciler hang off this; a
@@ -331,6 +379,7 @@ export async function bridgeResource(input: BridgeInput, deps: BridgeDeps): Prom
     ambiguous: 0,
     invalid: 0,
     suppressed: 0,
+    decided: 0,
     skippedReason,
     rows: [],
   });
@@ -439,9 +488,16 @@ export async function bridgeResource(input: BridgeInput, deps: BridgeDeps): Prom
       for (const [key, value] of Object.entries(mapped.fields)) {
         const current = existing.fields[key];
         if (linkage === 'adopted' && textOf(current).trim() !== '') {
-          // An adopted record's non-empty values are somebody's. A sync fills
-          // gaps; it does not overwrite a person.
-          return;
+          /**
+           * An adopted record's non-empty values are somebody's. A sync fills
+           * gaps; it does not overwrite a person.
+           *
+           * `continue`, not `return`. This was a `return`, which abandoned the
+           * WHOLE ROW at the first non-empty field: no provenance refresh, no
+           * result row, no count — and the per-row report silently stopped
+           * summing to the number of entities pulled.
+           */
+          continue;
         }
         if (textOf(current) === textOf(value)) continue;
         patch[key] = value;
@@ -514,14 +570,99 @@ export async function bridgeResource(input: BridgeInput, deps: BridgeDeps): Prom
        * the wrong one attaches a provider's future updates to a record it does
        * not describe, and nothing downstream would ever show it. Held.
        */
+      /**
+       * A person may already have answered this.
+       *
+       * `reject` is the case that needs it: it deliberately writes nothing, so
+       * the row looks identical to the engine on every subsequent sync. Reported
+       * as `decided` rather than `ambiguous`, so a settled question stops
+       * inflating the "needs attention" count for the rest of time.
+       */
+      if (deps.identityDecided?.({
+        provider: input.connectorId,
+        connectionId: input.accountId,
+        providerEntityType: input.resourceId,
+        providerEntityId: entity.sourceId,
+      })) {
+        result.decided += 1;
+        result.rows.push({
+          externalId: entity.sourceId,
+          title: mapped.title,
+          outcome: 'decided',
+          recordId: null,
+          reason: `A person has already ruled on “${mapped.title}”, so it is not raised again.`,
+        });
+        return;
+      }
+
       result.ambiguous += 1;
+      const reason = `“${mapped.title}” matches an existing record only after normalising the name. Not linked — confirm which record it is.`;
       result.rows.push({
         externalId: entity.sourceId,
         title: mapped.title,
         outcome: 'ambiguous',
         recordId: match.id,
-        reason: `“${mapped.title}” matches an existing record only after normalising the name. Not linked — confirm which record it is.`,
+        reason,
       });
+
+      /**
+       * ASK. This is the line Program 9 was missing.
+       *
+       * The candidate carries the DIFFERENCES, so the person deciding sees what
+       * confirming would change before they confirm it — and the answer fills
+       * only what is empty, so nothing they typed is overwritten.
+       */
+      if (deps.raiseIdentityQuestion) {
+        const candidateRecord = store.get(match.id);
+        const differs: { field: string; label: string; existing: string; incoming: string }[] = [];
+        const labelFor = new Map(target.fields.map((f) => [f.key, f.label]));
+        for (const [key, value] of Object.entries(mapped.fields)) {
+          const existingValue = textOf(candidateRecord?.fields[key]);
+          if (textOf(value) !== existingValue) {
+            differs.push({
+              field: key,
+              label: labelFor.get(key) ?? key,
+              existing: existingValue,
+              incoming: textOf(value),
+            });
+          }
+        }
+        deps.raiseIdentityQuestion({
+          provider: input.connectorId,
+          connectionId: input.accountId,
+          providerEntityType: input.resourceId,
+          providerEntityId: entity.sourceId,
+          incomingLabel: mapped.title,
+          incoming: Object.entries(mapped.fields).map(([key, value]) => ({
+            field: key,
+            label: labelFor.get(key) ?? key,
+            value: textOf(value),
+          })),
+          destinationModuleId: target.moduleId,
+          destinationLabel: descriptor.title,
+          candidates: [
+            {
+              subject: {
+                kind: 'record',
+                scopeId: target.moduleId,
+                id: match.id,
+                label: candidateRecord?.title ?? match.id,
+              },
+              evidence: [
+                {
+                  kind: 'name_canonical',
+                  field: identity?.key.split('=')[0] ?? 'name',
+                  value: mapped.title,
+                  detail: 'The names agree only after canonicalising them, which is a hint and not an identity.',
+                },
+              ],
+              confidence: 0.2,
+              differs,
+            },
+          ],
+          reason,
+        });
+      }
       return;
     }
 

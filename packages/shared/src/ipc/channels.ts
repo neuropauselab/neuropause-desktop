@@ -959,6 +959,17 @@ export const IpcChannel = {
    * `documents-registry` module (a record pointing at a path) and the ERP
    * document layer (invoice/PO line items + approval). Neither is replaced.
    */
+  /* ── Program 10 — Identity + External Services ────────────────────────
+   * Identity is not string matching. These channels exist so an ambiguous
+   * match is ANSWERABLE by a person rather than counted and discarded, and so
+   * a background service has an authority of its own.
+   */
+  IdentityQueue: 'identity:queue',
+  IdentityList: 'identity:list',
+  IdentityConfirm: 'identity:confirm',
+  IdentityUnlink: 'identity:unlink',
+  IdentityServices: 'identity:services',
+  IdentityServiceStatus: 'identity:service.status',
   DocumentCapabilities: 'documents:capabilities',
   DocumentList: 'documents:list',
   DocumentDetail: 'documents:detail',
@@ -1838,6 +1849,14 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.DataPlaneRelationshipGraph,
   IpcChannel.DataPlaneReclassify,
   IpcChannel.DataPlanePreview,
+
+  // ── Program 10 — Identity + External Services ──
+  IpcChannel.IdentityQueue,
+  IpcChannel.IdentityList,
+  IpcChannel.IdentityConfirm,
+  IpcChannel.IdentityUnlink,
+  IpcChannel.IdentityServices,
+  IpcChannel.IdentityServiceStatus,
 
   // ── Program 8 — Document Intelligence ──
   IpcChannel.DocumentCapabilities,

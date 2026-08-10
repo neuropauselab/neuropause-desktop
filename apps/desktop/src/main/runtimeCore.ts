@@ -176,6 +176,8 @@ import { computeOrgHealth } from '@neuropause/shared';
 import { initEnterprise } from './enterprise';
 import { initDataPlane } from './dataPlane';
 import { initDocuments } from './documents';
+import { initIdentity, type ServiceAuthorizer } from './identity';
+import { EVIDENCE_STRENGTH, scoreEvidence, type IdentityEvidence } from '@neuropause/shared';
 import { bridgeResource } from './connectors/bridge';
 import { RELATIONSHIPS, assertRelationshipsAreDeclarable } from './dataPlane/relationshipModel';
 import {
@@ -298,10 +300,30 @@ import type {
 } from '@neuropause/shared';
 import type { IpcBroadcaster } from '@neuropause/shared';
 const log = createLogger('runtime-core');
+
+/** Narrows a bridge-supplied evidence label to the closed evidence set. */
+function isEvidenceKind(kind: string): kind is IdentityEvidence['kind'] {
+  return Object.prototype.hasOwnProperty.call(EVIDENCE_STRENGTH, kind);
+}
 export interface RuntimeCoreDeps {
   broadcast: IpcBroadcaster;
 }
 export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
+  /**
+   * The sync bridge's closure is built before the identity subsystem exists in
+   * this function's source order, and the identity subsystem needs `enterprise`
+   * which needs things declared after the sync. Rather than reorder the whole
+   * composition root, the service principal is bound once and read lazily.
+   *
+   * It starts unbound and, unbound, DENIES: a sync that somehow ran before the
+   * principal existed must import nothing rather than fall back to a human's
+   * permissions, which is the exact failure this replaces.
+   */
+  let syncServiceLookup: (() => ServiceAuthorizer) | null = null;
+  const bindSyncService = (fn: () => ServiceAuthorizer): void => {
+    syncServiceLookup = fn;
+  };
+  const syncPrincipal = (): ServiceAuthorizer | null => syncServiceLookup?.() ?? null;
   await registry.load();
   await pluginManager.load();
   // Platform core: event bus + timeline + subscribers + diagnostics.
@@ -310,6 +332,15 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   const connectors = await initConnectors({
     broadcast: deps.broadcast,
     publish: platform.api.publish,
+    /**
+     * P10 — the credential boundary.
+     *
+     * Both the vault and the connection list are scoped to this. A connection
+     * made in one workspace is no longer listed, synced or spendable from
+     * another, and a credential written before this boundary existed is
+     * unclaimed rather than silently adopted by whoever looks first.
+     */
+    workspaceId: () => workspaceStore.activeWorkspaceId(),
   });
   // Unified knowledge layer (UDM): canonical store + query engine + local search.
   const unified = await initUnified({ broadcast: deps.broadcast });
@@ -332,8 +363,24 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
      * a file import fires, which is what makes the relationship engine
      * resolve a synced record's links.
      */
-    bridge: (input) =>
-      bridgeResource(input, {
+    bridge: async (input) => {
+      /**
+       * The workspace is captured ONCE, at the start of the run.
+       *
+       * Read at callback time instead, a workspace switch mid-sync filed
+       * workspace A's provider row — and A's record values inside `differs` —
+       * into workspace B's question queue.
+       */
+      const runWorkspace = workspaceStore.activeWorkspaceId();
+      /**
+       * Wait for the service principal's row to be readable before checking it.
+       *
+       * `allows` fails closed while the identity store is unread, which is
+       * correct and would otherwise mean the first sync of every process is
+       * refused for no reason the operator can see.
+       */
+      await syncPrincipal()?.ready();
+      const result = await bridgeResource(input, {
         storeFor: (moduleId) => enterprise.modules.get(moduleId)?.store ?? null,
         modules: () => enterprise.modules.list().map((m) => m.descriptor),
         /**
@@ -344,14 +391,24 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
          * so that produced a governance artefact every fifteen minutes for a
          * machine-triggered read. The bridge reports the refusal instead.
          */
-        allows: (permission) => enterprise.allows(permission),
+        /**
+         * The SERVICE's authority, not the signed-in human's.
+         *
+         * Still a pure check rather than the throwing gate: `authorize` opens a
+         * HOLD and writes a Decision Record on refusal, which for a
+         * machine-triggered read every fifteen minutes is a governance artefact
+         * nobody asked for. The bridge reports the refusal in its result.
+         */
+        allows: (permission) => syncPrincipal()?.allows(permission) ?? false,
         provenance: dataPlane.provenance,
-        actor: () => {
-          const st = authService.getStatus();
-          return st.state === 'authenticated'
-            ? (st.session.user.displayName ?? st.session.user.email)
-            : null;
-        },
+        /**
+         * Rows arrive attributed to the sync service.
+         *
+         * Attributing them to whoever was last signed in made a 3am scheduled
+         * write look like that person's action, which is precisely the thing an
+         * audit trail exists to distinguish.
+         */
+        actor: () => syncPrincipal()?.actor() ?? null,
         now: () => new Date().toISOString(),
         audit: (entry) =>
           governanceStore.record({
@@ -361,6 +418,65 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
             summary: entry.summary,
             workspaceId: workspaceStore.activeWorkspaceId(),
           }),
+        /**
+         * P10 — ASK instead of discarding.
+         *
+         * `void` because a raised question must never fail a sync: the row is
+         * already reported as ambiguous either way, and a queue write that
+         * throws would turn "we need to ask about one row" into "the sync
+         * broke".
+         */
+        /**
+         * Do not re-ask a settled question. See `decidedAlready`.
+         */
+        identityDecided: (probe) => identity.decidedAlready(probe),
+        raiseIdentityQuestion: (question) => {
+          void identity.store
+            .raiseMatch({
+              workspaceId: runWorkspace,
+              provider: question.provider,
+              connectionId: question.connectionId,
+              providerEntityType: question.providerEntityType,
+              providerEntityId: question.providerEntityId,
+              incomingLabel: question.incomingLabel,
+              incoming: question.incoming,
+              destinationModuleId: question.destinationModuleId,
+              destinationLabel: question.destinationLabel,
+              candidates: question.candidates.map((c) => {
+                const evidence = c.evidence.map((e) => ({
+                  // The bridge speaks in loose strings; the evidence kinds are a
+                  // closed set. Anything it cannot name is the weakest kind
+                  // rather than a stronger guess.
+                  kind: isEvidenceKind(e.kind) ? e.kind : ('name_canonical' as const),
+                  field: e.field,
+                  value: e.value,
+                  detail: e.detail,
+                }));
+                return {
+                  subject: c.subject,
+                  evidence,
+                  /**
+                   * DERIVED, never passed through.
+                   *
+                   * The bridge handed over a literal `0.2` and the screen
+                   * rendered it as "20%" — a hardcoded constant dressed as a
+                   * computed confidence. `scoreEvidence` is deterministic, is
+                   * the only scorer in the app, and is never a model's opinion.
+                   */
+                  confidence: scoreEvidence(evidence),
+                  differs: c.differs,
+                };
+              }),
+              state: question.candidates.length === 0 ? 'unknown' : 'ambiguous',
+              reason: question.reason,
+            })
+            .catch((err: unknown) => {
+            log.warn('Could not queue an identity question', {
+              provider: question.provider,
+              err: err instanceof Error ? err.message : String(err),
+            });
+          });
+        },
         onImported: (event) => {
           void enterprise
             .notifyImported({
@@ -375,13 +491,22 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
               });
             });
         },
-      }).then((r) => ({
-        created: r.created,
-        updated: r.updated,
-        adopted: r.adopted,
-        ambiguous: r.ambiguous,
-        invalid: r.invalid,
-      })),
+      });
+      // Only claim the service acted if it actually did. Noting a refusal made
+      // the health surface report work that never happened.
+      if (result.skippedReason === null) {
+        void syncPrincipal()?.note(
+          `Bridged ${input.connectorId}/${input.resourceId}: ${result.created} created, ${result.updated} updated, ${result.adopted} adopted, ${result.ambiguous} awaiting a decision`,
+        );
+      }
+      return {
+        created: result.created,
+        updated: result.updated,
+        adopted: result.adopted,
+        ambiguous: result.ambiguous,
+        invalid: result.invalid,
+      };
+    },
   });
   // P4.1 — feed the Supervisor the richer sync signals (rate-limit / offline / retry depth) so the runtime
   // state machine surfaces those sub-states, and re-project an account whenever its snapshot changes.
@@ -582,6 +707,96 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     modules: () => enterprise.modules.list().map((m) => m.descriptor),
     storeFor: (moduleId) => enterprise.modules.get(moduleId)?.store ?? null,
   });
+
+  /**
+   * P10 — Identity + external services.
+   *
+   * Two things nothing else owns:
+   *
+   *  · An ambiguous provider row becomes a QUESTION a person can answer. The
+   *    sync used to count those rows and drop them, so the data never arrived
+   *    and nobody was ever asked.
+   *  · A background job gets a principal of its own. See `syncService` below
+   *    for why the alternative was untenable in both directions.
+   *
+   * It owns no governance: it authorizes through `enterprise`, writes records
+   * through the modules' own stores, and fires the SAME `onImported` fan-out an
+   * import does, so a record linked here gets its relationships resolved.
+   */
+  const identity = initIdentity({
+    userDataDir: app.getPath('userData'),
+    workspaceId: () => workspaceStore.activeWorkspaceId(),
+    actor: () => {
+      const st = authService.getStatus();
+      return st.state === 'authenticated' ? (st.session.user.displayName ?? st.session.user.email) : null;
+    },
+    now: () => new Date().toISOString(),
+    audit: (entry) =>
+      governanceStore.record({
+        actor: (() => {
+          const st = authService.getStatus();
+          return st.state === 'authenticated' ? (st.session.user.displayName ?? st.session.user.email) : 'owner';
+        })(),
+        action: entry.action,
+        target: entry.target,
+        summary: entry.summary,
+        workspaceId: workspaceStore.activeWorkspaceId(),
+      }),
+    allows: (permission) => enterprise.allows(permission),
+    authorize: enterprise.authorize,
+    modules: () => enterprise.modules.list().map((m) => m.descriptor),
+    storeFor: (moduleId) => enterprise.modules.get(moduleId)?.store ?? null,
+    /**
+     * The SAME store the bridge and the file importer write.
+     *
+     * This is what makes an answer durable. The bridge's only idempotency
+     * source is `provenance.forExternalKey(...)`, so a decision that leaves no
+     * provenance is invisible to the next sync: the question came back on the
+     * following tick and the provider's updates never reached the linked record.
+     */
+    provenance: dataPlane.provenance,
+    onImported: (event) => {
+      void enterprise
+        .notifyImported({
+          moduleId: event.moduleId,
+          recordIds: event.recordIds,
+          correlationId: event.correlationId,
+        })
+        .catch((err: unknown) => {
+          log.warn('Identity lifecycle replay failed', {
+            moduleId: event.moduleId,
+            err: err instanceof Error ? err.message : String(err),
+          });
+        });
+    },
+  });
+
+  /**
+   * The principal the connector sync actually writes as.
+   *
+   * Before P10 the bridge asked `enterprise.allows(...)`, which resolves the
+   * SIGNED-IN HUMAN's roles. That is wrong in both directions at once: a
+   * scheduled sync with nobody signed in has no permissions and silently
+   * imports nothing, and a sync while an administrator is signed in runs every
+   * fifteen minutes with an administrator's authority and attributes the rows
+   * to them. Neither is a background job's authority.
+   *
+   * `crm:read` and `crm:manage` are the complete list because the four resource
+   * mappings target `contact` and `customer`, and both live in CRM. If a
+   * mapping is added for another module, this list has to be widened
+   * deliberately — which is the point of writing it out rather than inheriting
+   * it. Created lazily so the declaration lands after a workspace exists.
+   */
+  let syncServiceRef: ServiceAuthorizer | null = null;
+  const syncService = (): ServiceAuthorizer => {
+    syncServiceRef ??= identity.serviceAuthorizer({
+      id: 'service.connector-sync',
+      purpose: 'Connector sync',
+      permissions: ['crm:read', 'crm:manage'],
+    });
+    return syncServiceRef;
+  };
+  bindSyncService(syncService);
 
   // A relationship declaration naming a field that does not exist resolves
   // nothing, forever, without erroring — the worst failure mode this feature
@@ -2291,6 +2506,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...enterprise.handlers);
   defs.push(...dataPlane.handlers);
   defs.push(...documents.handlers);
+  defs.push(...identity.handlers);
   // P12 — harden the previously-ungated ecosystem handlers with RBAC (they shipped with no
   // requireAuth/permission); every ecosystem channel now requires a developer:* permission.
   defs.push(...withEcosystemAuthz(ecosystem.handlers));

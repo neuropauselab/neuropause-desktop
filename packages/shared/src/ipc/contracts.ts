@@ -2717,6 +2717,53 @@ export type DataPlaneForgetMappingRequest = z.infer<typeof DataPlaneForgetMappin
  * way to make the scan quadratic.
  */
 
+/* ── Program 10 — Identity + External Services ─────────────────────────── */
+
+export const IdentityQueueRequest = z
+  .object({ limit: z.number().int().min(1).max(500).optional() })
+  .strict();
+export type IdentityQueueRequest = z.infer<typeof IdentityQueueRequest>;
+
+export const IdentityListRequest = z
+  .object({
+    limit: z.number().int().min(1).max(500).optional(),
+    /** Narrow to the identities of one NeuroPause record. */
+    subjectId: z.string().trim().min(1).max(120).optional(),
+  })
+  .strict();
+export type IdentityListRequest = z.infer<typeof IdentityListRequest>;
+
+export const IdentityConfirmRequest = z
+  .object({
+    matchId: z.string().trim().min(1).max(80),
+    decision: z.enum(['confirm', 'create_new', 'reject']),
+    /**
+     * Required for `confirm` and meaningless otherwise. Validated in the
+     * handler against the OFFERED candidates: a subject id that was never
+     * offered is refused, so this cannot be used to link to an arbitrary
+     * record.
+     */
+    subjectId: z.string().trim().min(1).max(120).optional(),
+  })
+  .strict();
+export type IdentityConfirmRequest = z.infer<typeof IdentityConfirmRequest>;
+
+export const IdentityUnlinkRequest = z
+  .object({
+    identityId: z.string().trim().min(1).max(80),
+    reason: z.string().trim().max(500).optional(),
+  })
+  .strict();
+export type IdentityUnlinkRequest = z.infer<typeof IdentityUnlinkRequest>;
+
+export const IdentityServiceStatusRequest = z
+  .object({
+    serviceId: z.string().trim().min(1).max(120),
+    status: z.enum(['active', 'disabled']),
+  })
+  .strict();
+export type IdentityServiceStatusRequest = z.infer<typeof IdentityServiceStatusRequest>;
+
 /* ── Program 8 — Document Intelligence ─────────────────────────────────── */
 
 const DocumentId = z.string().trim().min(1).max(80);

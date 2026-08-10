@@ -16,6 +16,7 @@ import { Loading } from '@renderer/components/ui/Loading';
 import { buildOverview, friendlyError } from './dataCommandCenterModel';
 import { ImportPanel } from './ImportPanel';
 import { DocumentsPanel } from './DocumentsPanel';
+import { IdentityPanel } from './IdentityPanel';
 import {
   CoveragePanel,
   ExportPanel,
@@ -36,6 +37,7 @@ type Tab =
   | 'import'
   | 'export'
   | 'documents'
+  | 'identity'
   | 'relationships'
   | 'history'
   | 'quality'
@@ -50,6 +52,12 @@ export function DataCommandCenterView(): JSX.Element {
   const [error, setError] = useState<{ title: string; detail: string; canRetry: boolean } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
+  /**
+   * Read here rather than inside the panel so the badge is visible without
+   * opening the tab. A refusal (no `data:read`) leaves it at zero rather than
+   * showing a broken badge on an unrelated screen.
+   */
+  const [identityPending, setIdentityPending] = useState(0);
 
   const loadHistory = useCallback(async (): Promise<void> => {
     setRefreshing(true);
@@ -78,6 +86,10 @@ export function DataCommandCenterView(): JSX.Element {
       .ontology()
       .then(setOntology)
       .catch(() => setOntology(null));
+    ipc.data.identity
+      .queue(200)
+      .then((q) => setIdentityPending(q.length))
+      .catch(() => setIdentityPending(0));
   }, [loadHistory]);
 
   // `history` is null only before the first load resolves; the panels take a
@@ -94,6 +106,14 @@ export function DataCommandCenterView(): JSX.Element {
       { id: 'import', label: 'Import', icon: 'upload' },
       { id: 'export', label: 'Export', icon: 'download' },
       { id: 'documents', label: 'Documents', icon: 'doc' },
+      /**
+       * The count is the point of this tab.
+       *
+       * An unanswered identity question means a row a connector pulled has not
+       * arrived. Before P10 that was a number inside a finished sync summary
+       * nobody re-opened; on the tab strip it is a standing ask.
+       */
+      { id: 'identity', label: 'Identity', icon: 'user', count: identityPending || undefined },
       { id: 'relationships', label: 'Relationships', icon: 'connectors' },
       { id: 'history', label: 'History', icon: 'clock', count: runs.length || undefined },
       { id: 'quality', label: 'Data Quality', icon: 'shield', count: attention || undefined },
@@ -101,7 +121,7 @@ export function DataCommandCenterView(): JSX.Element {
       { id: 'mappings', label: 'Mappings', icon: 'memory' },
       { id: 'coverage', label: 'Coverage', icon: 'list' },
     ];
-  }, [overview.metrics, runs.length]);
+  }, [overview.metrics, runs.length, identityPending]);
 
   const openRun = useCallback((planId: string): void => {
     setSelectedRun(planId);
@@ -140,6 +160,7 @@ export function DataCommandCenterView(): JSX.Element {
           {tab === 'import' && <ImportPanel onImported={() => void loadHistory()} />}
           {tab === 'export' && <ExportPanel />}
           {tab === 'documents' && <DocumentsPanel />}
+          {tab === 'identity' && <IdentityPanel />}
           {tab === 'relationships' && <RelationshipsPanel />}
           {tab === 'history' && (
             <HistoryPanel history={runs} selected={selectedRun} onSelect={setSelectedRun} />

@@ -148,6 +148,13 @@ class ConnectorService extends EventEmitter {
       return this.connectFail(connectorId, `${manifest.name} supports a single account. Disconnect the existing one first.`);
     }
 
+    // Fail before opening a browser if there is nowhere to put the result.
+    try {
+      this.requireWorkspace();
+    } catch (err) {
+      return this.connectFail(connectorId, err instanceof Error ? err.message : 'No workspace is active.');
+    }
+
     const accountId = shortId('acct');
     this.fireStatus(connectorId, accountId, 'connecting', null, null);
     this.log(connectorId, accountId, 'info', 'authenticate', 'Opening your browser to sign in…');
@@ -232,7 +239,7 @@ class ConnectorService extends EventEmitter {
         test.externalId !== existing.externalId
       ) {
         const message = `That sign-in is a different ${manifest.name} account (${test.label ?? test.externalId}). Reconnect with the account this connection was set up for, or disconnect and connect the new one.`;
-        await connectorVault.delete(connectorId, accountId);
+        await connectorVault.delete(this.requireWorkspace(), connectorId, accountId);
         await connectorStore.patch(connectorId, accountId, { status: 'reauth_required', error: message, health: 'down' });
         this.fireStatus(connectorId, accountId, 'reauth_required', 'down', message);
         this.log(connectorId, accountId, 'error', 'reconnect', message);
@@ -272,10 +279,10 @@ class ConnectorService extends EventEmitter {
     if (!manifest || !account) return { ok: false, message: 'No such account' };
 
     const creds = resolveCredentials(manifest);
-    const tokens = await connectorVault.get(connectorId, accountId);
+    const tokens = await connectorVault.get(this.requireWorkspace(), connectorId, accountId);
     if (creds && tokens) await oauthEngine.revoke(manifest, creds, tokens.accessToken);
 
-    await connectorVault.delete(connectorId, accountId);
+    await connectorVault.delete(this.requireWorkspace(), connectorId, accountId);
     await connectorStore.remove(connectorId, accountId);
     /**
      * Synced entities go with the connection; business RECORDS do not.
@@ -393,7 +400,7 @@ class ConnectorService extends EventEmitter {
    * accessor Stage-2 provider adapters use.
    */
   async getValidAccessToken(connectorId: string, accountId: string): Promise<string | null> {
-    const tokens = await connectorVault.get(connectorId, accountId);
+    const tokens = await connectorVault.get(this.requireWorkspace(), connectorId, accountId);
     if (!tokens) return null;
     const fresh = !tokens.expiresAt || Date.now() < tokens.expiresAt - REFRESH_SKEW_MS;
     if (fresh) return tokens.accessToken;
@@ -418,7 +425,7 @@ class ConnectorService extends EventEmitter {
   private async doRefreshTokens(connectorId: string, accountId: string): Promise<string | null> {
     const manifest = MANIFEST_BY_ID[connectorId];
     const creds = manifest ? resolveCredentials(manifest) : null;
-    const tokens = await connectorVault.get(connectorId, accountId);
+    const tokens = await connectorVault.get(this.requireWorkspace(), connectorId, accountId);
     if (!manifest || !creds || !tokens || !tokens.refreshToken) {
       await this.markReauth(connectorId, accountId, 'Access token expired; reconnect required');
       return null;
@@ -465,6 +472,9 @@ class ConnectorService extends EventEmitter {
       accounts,
       lastSyncAt: latestSync(accounts),
       setupHint: setupHintFor(manifest),
+      // See `ConnectorDto.needsReconnect`. Counted here so every surface that
+      // reads a connector sees the same number.
+      needsReconnect: connectorStore.unclaimed().filter((a) => a.connectorId === manifest.id).length,
       // Lifecycle is derived from REAL adapter presence, not credentials: a connector with no data adapter
       // is 'preview' (shown in the catalog, not connectable), never offered as ready.
       lifecycle: getAdapter(manifest.id) ? 'production' : 'preview',
@@ -498,7 +508,7 @@ class ConnectorService extends EventEmitter {
       scopes: t.scopes,
       tokenType: t.tokenType,
     };
-    await connectorVault.set(connectorId, accountId, tokens);
+    await connectorVault.set(this.requireWorkspace(), connectorId, accountId, tokens);
   }
 
   private async persistConnected(
@@ -509,6 +519,9 @@ class ConnectorService extends EventEmitter {
     const account: ConnectedAccount = {
       id: accountId,
       connectorId: manifest.id,
+      // Stamped at birth. A connection with no workspace is unclaimed, and the
+      // only thing that can produce one now is a file written before P10.
+      workspaceId: this.requireWorkspace(),
       label: tokens.identity.label ?? `${manifest.name} account`,
       externalId: tokens.identity.externalId,
       avatarUrl: null,
@@ -528,6 +541,28 @@ class ConnectorService extends EventEmitter {
    * The provider round-trip. Injected so tests drive the real code without a
    * socket, and so a build with no network still connects deterministically.
    */
+  /**
+   * The workspace every credential and connection in this service belongs to.
+   *
+   * Injected once at composition. Until it is bound, the service refuses to
+   * read or write a credential at all — a token whose owning workspace is
+   * unknown is a token that must not be spent, and defaulting to "the active
+   * one" is the guess this boundary exists to remove.
+   */
+  private workspaceId: (() => string) | null = null;
+
+  bindWorkspace(fn: () => string): void {
+    this.workspaceId = fn;
+  }
+
+  private requireWorkspace(): string {
+    const id = this.workspaceId?.();
+    if (id === undefined || id === null || id === '') {
+      throw new Error('No workspace is active, so connector credentials cannot be used.');
+    }
+    return id;
+  }
+
   private connectionTester: ConnectionTester | null = null;
 
   setConnectionTester(tester: ConnectionTester): void {

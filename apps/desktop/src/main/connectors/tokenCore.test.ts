@@ -26,6 +26,9 @@ import { IDENTITY_PROBES, testConnection } from './connectionTest';
 import type { RateGate } from '../unified/sync/http';
 import { AuthError, RateLimitError } from '../unified/sync/http';
 
+const WS_A = 'workspace-a';
+const WS_B = 'workspace-b';
+
 const NO_GATE: RateGate = { acquire: async () => undefined, penalize: () => undefined };
 
 function base64urlDecode(s: string): Buffer {
@@ -118,7 +121,7 @@ describe('the credential vault', () => {
   const vaultFile = (): string => join(dir, 'connector-vault.bin');
 
   it('round-trips tokens, and the plaintext is never on disk', async () => {
-    await vault.set('hubspot', 'acct_1', {
+    await vault.set(WS_A, 'hubspot', 'acct_1', {
       accessToken: 'AT-SUPER-SECRET',
       refreshToken: 'RT-ALSO-SECRET',
       expiresAt: 123,
@@ -126,7 +129,7 @@ describe('the credential vault', () => {
       tokenType: 'Bearer',
     });
 
-    const back = await vault.get('hubspot', 'acct_1');
+    const back = await vault.get(WS_A, 'hubspot', 'acct_1');
     expect(back?.accessToken).toBe('AT-SUPER-SECRET');
     expect(back?.scopes).toEqual(['crm.objects.contacts.read']);
 
@@ -141,7 +144,7 @@ describe('the credential vault', () => {
   });
 
   it('is written owner-only', async () => {
-    await vault.set('hubspot', 'acct_1', {
+    await vault.set(WS_A, 'hubspot', 'acct_1', {
       accessToken: 'x',
       refreshToken: null,
       expiresAt: 0,
@@ -154,34 +157,176 @@ describe('the credential vault', () => {
   });
 
   it('keeps two accounts of one connector separate', async () => {
-    await vault.set('hubspot', 'a1', { accessToken: 'ONE', refreshToken: null, expiresAt: 0, scopes: [], tokenType: 'Bearer' });
-    await vault.set('hubspot', 'a2', { accessToken: 'TWO', refreshToken: null, expiresAt: 0, scopes: [], tokenType: 'Bearer' });
-    expect((await vault.get('hubspot', 'a1'))?.accessToken).toBe('ONE');
-    expect((await vault.get('hubspot', 'a2'))?.accessToken).toBe('TWO');
+    await vault.set(WS_A, 'hubspot', 'a1', { accessToken: 'ONE', refreshToken: null, expiresAt: 0, scopes: [], tokenType: 'Bearer' });
+    await vault.set(WS_A, 'hubspot', 'a2', { accessToken: 'TWO', refreshToken: null, expiresAt: 0, scopes: [], tokenType: 'Bearer' });
+    expect((await vault.get(WS_A, 'hubspot', 'a1'))?.accessToken).toBe('ONE');
+    expect((await vault.get(WS_A, 'hubspot', 'a2'))?.accessToken).toBe('TWO');
     // Deleting one must not blind the other.
-    await vault.delete('hubspot', 'a1');
-    expect(await vault.get('hubspot', 'a1')).toBeNull();
-    expect((await vault.get('hubspot', 'a2'))?.accessToken).toBe('TWO');
+    await vault.delete(WS_A, 'hubspot', 'a1');
+    expect(await vault.get(WS_A, 'hubspot', 'a1')).toBeNull();
+    expect((await vault.get(WS_A, 'hubspot', 'a2'))?.accessToken).toBe('TWO');
   });
 
   it('an entry that cannot be decrypted is dropped, not returned as garbage', async () => {
-    await vault.set('hubspot', 'a1', { accessToken: 'ONE', refreshToken: null, expiresAt: 0, scopes: [], tokenType: 'Bearer' });
+    await vault.set(WS_A, 'hubspot', 'a1', { accessToken: 'ONE', refreshToken: null, expiresAt: 0, scopes: [], tokenType: 'Bearer' });
     // The keychain no longer holds the key — a real outcome after an OS
     // reinstall or a profile move.
     store.clear();
-    expect(await vault.get('hubspot', 'a1')).toBeNull();
+    expect(await vault.get(WS_A, 'hubspot', 'a1')).toBeNull();
   });
 
   it('refuses to store anything when the keychain is unavailable', async () => {
     available = false;
-    await vault.set('hubspot', 'a1', { accessToken: 'PLAINTEXT', refreshToken: null, expiresAt: 0, scopes: [], tokenType: 'Bearer' });
+    await vault.set(WS_A, 'hubspot', 'a1', { accessToken: 'PLAINTEXT', refreshToken: null, expiresAt: 0, scopes: [], tokenType: 'Bearer' });
     /**
      * The failure mode that matters: writing the token unencrypted "so it
      * still works". It must not, and the file must not appear at all.
      */
     const written = await fs.readFile(vaultFile(), 'utf8').catch(() => null);
     expect(written).toBeNull();
-    expect(await vault.get('hubspot', 'a1')).toBeNull();
+    expect(await vault.get(WS_A, 'hubspot', 'a1')).toBeNull();
+  });
+
+  /* ── The boundary this program exists for ───────────────────────────── */
+
+  it('a credential stored in one workspace is INVISIBLE from another', async () => {
+    /**
+     * The whole point. Before this the vault key was `connectorId → accountId`
+     * with no workspace anywhere in the connectors directory, so a connection
+     * set up in one workspace was spendable from any other and the file held no
+     * information with which to refuse.
+     */
+    await vault.set(WS_A, 'hubspot', 'acct_1', {
+      accessToken: 'A-ONLY',
+      refreshToken: null,
+      expiresAt: 0,
+      scopes: [],
+      tokenType: 'Bearer',
+    });
+
+    expect((await vault.get(WS_A, 'hubspot', 'acct_1'))?.accessToken).toBe('A-ONLY');
+    // Same connector, same account id, different workspace. Nothing.
+    expect(await vault.get(WS_B, 'hubspot', 'acct_1')).toBeNull();
+  });
+
+  it('two workspaces hold different credentials under the same account id', async () => {
+    await vault.set(WS_A, 'hubspot', 'acct_1', { accessToken: 'FROM-A', refreshToken: null, expiresAt: 0, scopes: [], tokenType: 'Bearer' });
+    await vault.set(WS_B, 'hubspot', 'acct_1', { accessToken: 'FROM-B', refreshToken: null, expiresAt: 0, scopes: [], tokenType: 'Bearer' });
+
+    expect((await vault.get(WS_A, 'hubspot', 'acct_1'))?.accessToken).toBe('FROM-A');
+    expect((await vault.get(WS_B, 'hubspot', 'acct_1'))?.accessToken).toBe('FROM-B');
+    // Removing one leaves the other alone — the ids collide and the secrets do not.
+    await vault.delete(WS_A, 'hubspot', 'acct_1');
+    expect(await vault.get(WS_A, 'hubspot', 'acct_1')).toBeNull();
+    expect((await vault.get(WS_B, 'hubspot', 'acct_1'))?.accessToken).toBe('FROM-B');
+  });
+
+  it('clearing one workspace does not touch another', async () => {
+    await vault.set(WS_A, 'hubspot', 'a', { accessToken: 'A', refreshToken: null, expiresAt: 0, scopes: [], tokenType: 'Bearer' });
+    await vault.set(WS_B, 'hubspot', 'b', { accessToken: 'B', refreshToken: null, expiresAt: 0, scopes: [], tokenType: 'Bearer' });
+    await vault.clear(WS_A);
+    expect(await vault.get(WS_A, 'hubspot', 'a')).toBeNull();
+    expect((await vault.get(WS_B, 'hubspot', 'b'))?.accessToken).toBe('B');
+  });
+
+  it('a credential written before the boundary is UNCLAIMED and unspendable', async () => {
+    /**
+     * The migration rule the spec is explicit about: do not guess ownership.
+     * Adopting a pre-P10 credential into whichever workspace happens to be
+     * active would hand one workspace another's credentials on the first
+     * launch after an update — the exact failure the boundary prevents.
+     */
+    const legacy = {
+      hubspot: { acct_legacy: Buffer.from('enc:old', 'utf8').toString('base64') },
+    };
+    await fs.writeFile(vaultFile(), JSON.stringify(legacy), { mode: 0o600 });
+
+    // Listed, so an operator can see it exists…
+    const pending = await vault.migrationRequired();
+    expect(pending).toEqual([{ connectorId: 'hubspot', accountId: 'acct_legacy' }]);
+
+    // …and readable from NO workspace.
+    expect(await vault.get(WS_A, 'hubspot', 'acct_legacy')).toBeNull();
+    expect(await vault.get(WS_B, 'hubspot', 'acct_legacy')).toBeNull();
+    expect(await vault.get('workspace-default', 'hubspot', 'acct_legacy')).toBeNull();
+  });
+
+  it('the only resolution for an unclaimed credential is to discard it', async () => {
+    await fs.writeFile(
+      vaultFile(),
+      JSON.stringify({ hubspot: { acct_legacy: 'x' } }),
+      { mode: 0o600 },
+    );
+    await vault.discardUnscoped('hubspot', 'acct_legacy');
+    expect(await vault.migrationRequired()).toEqual([]);
+    /**
+     * There is deliberately no "adopt into the current workspace".
+     *
+     * Asserted as BEHAVIOUR, not as the absence of a method name — a test that
+     * checks `Object.keys(vault)` for a function nobody wrote carries no signal
+     * and would keep passing if adoption were added under any other name. What
+     * matters is that the secret stays unreadable from every workspace and that
+     * discarding actually removes it.
+     */
+    expect(await vault.get(WS_A, 'hubspot', 'acct_legacy')).toBeNull();
+    expect(await vault.get(WS_B, 'hubspot', 'acct_legacy')).toBeNull();
+    const raw = await fs.readFile(vaultFile(), 'utf8');
+    expect(raw).not.toContain('acct_legacy');
+  });
+
+  it('a real v1 file survives a later write instead of being overwritten away', async () => {
+    /**
+     * The previous version of this test wrote a v2 file with `vault.set` and then
+     * asserted that v2 was recognised as v2 — it never round-tripped a genuine v1
+     * file, which is the only case the migration exists for.
+     *
+     * The failure it is protecting against is concrete: `set` rewrites the whole
+     * file, so if it dropped `legacy` the unclaimed credentials would vanish and
+     * the operator would never learn they had existed.
+     */
+    await fs.writeFile(
+      vaultFile(),
+      JSON.stringify({ hubspot: { acct_legacy: 'ciphertext' }, github: { acct_old: 'ciphertext' } }),
+      { mode: 0o600 },
+    );
+    expect(await vault.migrationRequired()).toHaveLength(2);
+
+    // A NEW credential in a real workspace, written after the migration.
+    await vault.set(WS_A, 'hubspot', 'acct_1', {
+      accessToken: 'KEEP',
+      refreshToken: null,
+      expiresAt: 0,
+      scopes: [],
+      tokenType: 'Bearer',
+    });
+
+    // The new one reads back…
+    expect((await vault.get(WS_A, 'hubspot', 'acct_1'))?.accessToken).toBe('KEEP');
+    // …the old ones are still listed as needing attention…
+    expect(await vault.migrationRequired()).toHaveLength(2);
+    // …and neither is readable from any workspace.
+    expect(await vault.get(WS_A, 'hubspot', 'acct_legacy')).toBeNull();
+    expect(await vault.get(WS_B, 'github', 'acct_old')).toBeNull();
+
+    // Deleting the new credential must not resurrect or strand the old ones.
+    await vault.delete(WS_A, 'hubspot', 'acct_1');
+    expect(await vault.get(WS_A, 'hubspot', 'acct_1')).toBeNull();
+    expect(await vault.migrationRequired()).toHaveLength(2);
+  });
+
+  it('clearing one workspace leaves the unclaimed credentials alone', async () => {
+    await fs.writeFile(vaultFile(), JSON.stringify({ hubspot: { acct_legacy: 'ciphertext' } }), { mode: 0o600 });
+    await vault.set(WS_A, 'hubspot', 'acct_1', {
+      accessToken: 'KEEP',
+      refreshToken: null,
+      expiresAt: 0,
+      scopes: [],
+      tokenType: 'Bearer',
+    });
+    await vault.clear(WS_A);
+    expect(await vault.get(WS_A, 'hubspot', 'acct_1')).toBeNull();
+    // Still visible to the operator, so the reconnect prompt does not disappear.
+    expect(await vault.migrationRequired()).toHaveLength(1);
   });
 
   it('carries a key version, so a future rotation can tell old ciphertext from new', async () => {

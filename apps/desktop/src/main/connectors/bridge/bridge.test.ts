@@ -451,6 +451,118 @@ describe('connector → data plane bridge', () => {
       expect(customers.list({ status: 'active', limit: 10 })).toHaveLength(1);
     });
 
+    it('raises the ambiguity as a QUESTION, with the differences attached', async () => {
+      /**
+       * P10 — this is the assertion Program 9 could not make.
+       *
+       * Before this, an ambiguous row was counted in the result and dropped, so
+       * the customer never appeared and nobody was ever asked. The bridge now
+       * hands the decision out, and it hands out enough to decide WITH: the
+       * candidate, the evidence, and what confirming would change.
+       */
+      const customers = stores.get('crm-customers')!;
+      const existing = customers.create({
+        title: 'Acme Pvt Ltd',
+        // `industry` is deliberately blank and `phone` deliberately set, so the
+        // difference list has one of each kind.
+        fields: { name: 'Acme Pvt Ltd', phone: '+1 555 0000', industry: '' },
+        actor: 'a person',
+        now: NOW,
+      });
+      await customers.flush();
+
+      const asked: Parameters<NonNullable<BridgeDeps['raiseIdentityQuestion']>>[0][] = [];
+      const result = await bridgeResource(
+        {
+          connectorId: 'hubspot',
+          accountId: 'acct_1',
+          resourceId: 'hubspot_companies',
+          syncRunId: 'run_q',
+          entities: await pullCompanies([
+            company('900', { name: 'Acme Private Limited', industry: 'Retail', phone: '+1 555 9999' }),
+          ]),
+        },
+        { ...deps, raiseIdentityQuestion: (q) => asked.push(q) },
+      );
+
+      expect(result.ambiguous).toBe(1);
+      expect(asked).toHaveLength(1);
+      const question = asked[0]!;
+      expect(question.provider).toBe('hubspot');
+      // The provider's own id for the object, as the adapter reported it.
+      expect(question.providerEntityId).toBe('company-900');
+      expect(question.destinationModuleId).toBe('crm-customers');
+      expect(question.candidates).toHaveLength(1);
+      expect(question.candidates[0]!.subject.id).toBe(existing.id);
+      // The reason the person reads is the SAME string the row reports. Two
+      // different explanations of one refusal is how a UI starts lying.
+      expect(question.reason).toBe(result.rows[0]!.reason);
+
+      const differs = new Map(question.candidates[0]!.differs.map((d) => [d.field, d]));
+      expect(differs.get('industry')).toMatchObject({ existing: '', incoming: 'Retail' });
+      /**
+       * The incoming side is shown POST-normalisation (`+1 555 9999` →
+       * `+15559999`), because that is the value that would actually be written.
+       * Showing the raw provider string would make the preview disagree with the
+       * result, which is the class of defect this whole screen exists to avoid.
+       */
+      expect(differs.get('phone')).toMatchObject({ existing: '+1 555 0000', incoming: '+15559999' });
+      // Still nothing written. Raising a question is not a decision.
+      expect(customers.list({ status: 'active', limit: 10 })).toHaveLength(1);
+    });
+
+    it('does not re-ask a question a person already answered', async () => {
+      /**
+       * "Not a match" writes no record and therefore no provenance, so the row
+       * looks identical to the engine on every subsequent sync. Without this
+       * probe the person's answer lasted exactly one sync interval — and this is
+       * a scheduled loop, so the question came back every minute forever.
+       */
+      const customers = stores.get('crm-customers')!;
+      customers.create({ title: 'Acme Pvt Ltd', fields: { name: 'Acme Pvt Ltd' }, actor: 'a person', now: NOW });
+      await customers.flush();
+
+      const asked: unknown[] = [];
+      const settled: BridgeDeps = {
+        ...deps,
+        identityDecided: () => true,
+        raiseIdentityQuestion: (q) => asked.push(q),
+      };
+      const result = await bridgeResource(
+        {
+          connectorId: 'hubspot',
+          accountId: 'acct_1',
+          resourceId: 'hubspot_companies',
+          syncRunId: 'run_settled',
+          entities: await pullCompanies([company('900', { name: 'Acme Private Limited' })]),
+        },
+        settled,
+      );
+
+      expect(asked).toHaveLength(0);
+      // Counted separately, so a settled question stops inflating the
+      // "needs attention" number for the rest of time.
+      expect(result.decided).toBe(1);
+      expect(result.ambiguous).toBe(0);
+      expect(result.rows[0]!.outcome).toBe('decided');
+      expect(result.created).toBe(0);
+    });
+
+    it('a build with no identity subsystem still refuses, rather than pretending', async () => {
+      /**
+       * `raiseIdentityQuestion` is optional. Absent, the row must still be held
+       * — an optional dependency that turns a refusal into a silent merge would
+       * be worse than a required one.
+       */
+      const customers = stores.get('crm-customers')!;
+      customers.create({ title: 'Acme Pvt Ltd', fields: { name: 'Acme Pvt Ltd' }, actor: 'a person', now: NOW });
+      await customers.flush();
+      const result = await bridge('hubspot_companies', await pullCompanies([company('900', { name: 'Acme Private Limited' })]));
+      expect(result.ambiguous).toBe(1);
+      expect(result.adopted).toBe(0);
+      expect(result.created).toBe(0);
+    });
+
     it('an unrelated company is simply created', async () => {
       const result = await bridge(
         'hubspot_companies',
@@ -570,6 +682,43 @@ describe('connector → data plane bridge', () => {
       expect(result.skippedReason).toMatch(/not a module in this build/i);
       expect(result.created).toBe(0);
     });
+  });
+
+  it('an adopted record with one filled field still reports and still fills the rest', async () => {
+    /**
+     * The regression: the per-field "do not overwrite a person" guard was a
+     * `return`, not a `continue`. One non-empty field abandoned the WHOLE row —
+     * no provenance refresh, no result row, no count — so the report silently
+     * stopped summing to the number of entities pulled, and the row's remaining
+     * blanks were never filled on any later sync.
+     */
+    const contacts = stores.get('crm')!;
+    const rows = [contact('101', { firstname: 'Asha', lastname: 'Rao', email: 'a@x.com' })];
+    // First sync ADOPTS a record that was already here.
+    contacts.create({
+      title: 'Asha Rao',
+      fields: { name: 'Asha Rao', email: 'a@x.com', city: 'Pune' },
+      actor: 'a person',
+      now: NOW,
+    });
+    await contacts.flush();
+    const adopt = await bridge('hubspot_contacts', await pullContacts(rows), 'r1');
+    expect(adopt.adopted).toBe(1);
+    const recordId = adopt.rows[0]!.recordId!;
+
+    // Second sync: `city` is a person's value and must survive; `phone` is blank
+    // and must be filled. Every row must still be accounted for.
+    const second = await bridge(
+      'hubspot_contacts',
+      await pullContacts([
+        contact('101', { firstname: 'Asha', lastname: 'Rao', email: 'a@x.com', phone: '+1 555 1234', city: 'Mumbai' }),
+      ]),
+      'r2',
+    );
+    expect(second.rows).toHaveLength(1);
+    const after = contacts.get(recordId)!;
+    expect(after.fields.city).toBe('Pune');
+    expect(after.fields.phone).toBe('+15551234');
   });
 
   /* ── 7. Two accounts of the same provider ─────────────────────────────── */
