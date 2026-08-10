@@ -93,6 +93,14 @@ import { buildMigrationInventory, summarizeInventory } from '../tenancy/migratio
 import type { MemoryViewer, TenantResolution, TenantScope } from '@neuropause/shared';
 import { currentPrincipal, principalScope, resolveTenantScope } from '../tenancy/backgroundPrincipal';
 import {
+  forEachTenant,
+  tenantRuns,
+  type FanOutOptions,
+  type FanOutOutcome,
+  type TenantFanOutDeps,
+  type TenantRun,
+} from '../tenancy/backgroundFanOut';
+import {
   initEnterpriseModules,
   type EnterpriseModuleRegistry,
   type EnterpriseModulesSubsystem,
@@ -366,6 +374,44 @@ export function onWorkspaceSwitch(fn: (workspaceId: string) => void): void {
 export function activeTenantScope(): TenantScope | null {
   // Precedence lives in `resolveTenantScope` — one opinion, three consumers.
   return resolveTenantScope(() => tenantContext.scope());
+}
+
+/**
+ * The fan-out's view of the install: every organization, every workspace.
+ *
+ * DELIBERATELY NOT SCOPED, and that is not a hole. A fan-out asks "who exists?"
+ * so it can then run separately AS each of them; answering it through
+ * `activeTenantScope` would return the caller's own tenant and reintroduce
+ * exactly the single-tenant timer this replaces. Nothing here reads a record —
+ * it reads the tenant ROSTER, which is install-level state, and every read that
+ * follows happens inside a principal.
+ *
+ * Kept private to this module. The exported surface is the fan-out itself, so
+ * "list every organization" is not a capability any other subsystem acquires.
+ */
+const fanOutDeps: TenantFanOutDeps = {
+  organizations: () => orgStore.listOrganizations(),
+  workspaces: () => workspaceStore.list(),
+};
+
+/**
+ * Run background work once per operable tenant, each under its own principal.
+ *
+ * THE ENTRY POINT EVERY TENANT-SENSITIVE TIMER USES. One implementation, so the
+ * question "does this job run for tenant B?" has the same answer everywhere
+ * instead of being re-decided by each scheduler.
+ */
+export function forEachTenantBackground(
+  jobId: string,
+  fn: (run: TenantRun) => void | Promise<void>,
+  options: FanOutOptions = {},
+): Promise<FanOutOutcome[]> {
+  return forEachTenant(jobId, fanOutDeps, fn, options);
+}
+
+/** The runs a job WOULD perform, without performing them. For tests and probes. */
+export function backgroundTenantRuns(jobId: string, options: FanOutOptions = {}): TenantRun[] {
+  return tenantRuns(jobId, fanOutDeps, options);
 }
 
 /**

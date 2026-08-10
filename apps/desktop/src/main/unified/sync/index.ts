@@ -47,6 +47,21 @@ export interface SyncSubsystemDeps {
    * bridge is something the composition root chooses to attach.
    */
   bridge?: OrchestratorPorts['bridge'];
+  /**
+   * P13C PART 3 — run the scheduler tick once per WORKSPACE, each under its own
+   * principal.
+   *
+   * Required, and per-workspace rather than per-tenant, because a CONNECTION is
+   * a workspace-level object: `connectorStore.all()` filters on the active
+   * workspace id, and a tenant-level principal reports an empty workspace,
+   * which that filter correctly matches to nothing. A tenant-level fan-out here
+   * would therefore sync nothing at all — the fail-closed direction, but still
+   * wrong.
+   *
+   * Injected so this module gains no dependency on the enterprise root, in
+   * keeping with `bridge` above.
+   */
+  forEachWorkspace: (jobId: string, fn: () => void | Promise<void>) => Promise<unknown>;
 }
 
 export interface SyncSubsystem {
@@ -135,7 +150,28 @@ export async function initSync(deps: SyncSubsystemDeps): Promise<SyncSubsystem> 
   const onStateChanged = (): void => deps.broadcast(IpcChannel.ConnectorSyncState, snapshots());
   syncStateStore.on('changed', onStateChanged);
 
-  const scheduler = new SyncScheduler(SCHEDULER_INTERVAL_MS, () => orchestrator.tick());
+  /**
+   * P13C PART 3 — the scheduled sync now happens for EVERY workspace.
+   *
+   * Before this there was one tick, and everything inside it resolved through
+   * the signed-in user's active workspace: `listConnectedAccounts()` returned
+   * only that workspace's accounts and `activeTenantId()` returned only that
+   * organization. So scheduled sync served exactly one workspace on the whole
+   * install — the one the user happened to have open — and every other
+   * workspace's connectors silently never synced. The single-tenant reading of
+   * that behaviour is "it works"; the two-tenant reading is "tenant B's data is
+   * permanently stale and nothing says so".
+   *
+   * Each pass runs under its own workspace principal, so both of those
+   * resolvers answer for the workspace being synced. MANUAL sync is unchanged
+   * and still runs on the caller's own session — it is an interactive request
+   * with a real user behind it, not background work.
+   */
+  const scheduler = new SyncScheduler(SCHEDULER_INTERVAL_MS, () =>
+    deps
+      .forEachWorkspace('connector-sync', () => orchestrator.tick())
+      .then(() => undefined),
+  );
   scheduler.start();
 
   const handlers: SecureHandlerDef[] = [

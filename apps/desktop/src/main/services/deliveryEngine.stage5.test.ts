@@ -13,6 +13,8 @@ import type {
 } from '@neuropause/shared';
 import { DEFAULT_DELIVERY_PREFERENCES } from '@neuropause/shared';
 import { DeliveryEngine } from './deliveryEngine';
+import { forEachTenant } from '../tenancy/backgroundFanOut';
+import { SINGLE_TENANT_FAN_OUT } from '../tenancy/testScope';
 
 const NOW = new Date('2026-07-31T08:00:00.000Z');
 
@@ -44,6 +46,8 @@ function mkEngine(prefs: Partial<DeliveryPreferences> = {}): {
     scheduler: { every: () => undefined, cancel: () => true },
     channels: [channel],
     getPreferences: () => ({ ...DEFAULT_DELIVERY_PREFERENCES, timezoneOffsetMinutes: 0, ...prefs }),
+    // P13C Part 3 — one tenant; the fan-out has its own suite.
+    forEachTenant: (jobId, fn) => forEachTenant(jobId, SINGLE_TENANT_FAN_OUT, fn),
   });
   return { engine, delivered };
 }

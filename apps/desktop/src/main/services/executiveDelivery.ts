@@ -27,6 +27,7 @@ import { getEnterpriseTimeline } from '../timeline';
 import { generateBriefing } from '../intelligence/briefingGenerator';
 import { founderProactiveSource } from '../ai/founderProactive';
 import { orgIntelligenceSource } from '../enterprise/orgIntelligence';
+import { forEachTenantBackground } from '../enterprise/index';
 
 const log = createLogger('delivery-root');
 
@@ -149,6 +150,21 @@ export const deliveryEngine = new DeliveryEngine({
   scheduler: taskScheduler,
   channels: deliveryChannels,
   getPreferences: getPreferencesSync,
+  /**
+   * P13C PART 3 — the real tenant roster.
+   *
+   * `buildMissionBriefItem` below reads `unifiedStore.query(...)` and the
+   * enterprise timeline, both of which resolve through `activeTenantScope()`.
+   * Inside a fanned-out run that resolver returns the RUN's tenant rather than
+   * the signed-in user's, because `resolveTenantScope` prefers a background
+   * principal — so the brief is built from one organization's records, and a
+   * second organization gets its own brief from its own.
+   *
+   * Neither the generator nor the sources changed. That is the property worth
+   * having: the boundary was already drawn by Programs 11-13B, and this only
+   * tells each pass whose side of it to stand on.
+   */
+  forEachTenant: (jobId, fn) => forEachTenantBackground(jobId, fn),
 });
 
 /**

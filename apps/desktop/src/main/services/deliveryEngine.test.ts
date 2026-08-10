@@ -9,6 +9,8 @@ import {
   type IntelligenceSource,
 } from '@neuropause/shared';
 import { DeliveryEngine } from './deliveryEngine';
+import { forEachTenant } from '../tenancy/backgroundFanOut';
+import { SINGLE_TENANT_FAN_OUT } from '../tenancy/testScope';
 
 function makeChannel(): DeliveryChannel & { sent: IntelligenceItem[] } {
   const sent: IntelligenceItem[] = [];
@@ -53,6 +55,10 @@ describe('DeliveryEngine', () => {
       scheduler: fakeScheduler(),
       channels: [channel],
       getPreferences: () => p,
+      // P13C Part 3 — these tests assert cadence/priority/DND behaviour, which
+      // is per-run and tenant-independent, so they run as ONE tenant. The
+      // fan-out itself is asserted in deliveryEngine.tenancy.test.ts.
+      forEachTenant: (jobId, fn) => forEachTenant(jobId, SINGLE_TENANT_FAN_OUT, fn),
     });
   }
 

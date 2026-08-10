@@ -18,7 +18,8 @@
  * `@main/*` and the node suite resolves relative paths, and one importable path
  * beats two copies that can drift.
  */
-import type { MemoryViewer, TenantScope } from '@neuropause/shared';
+import type { MemoryViewer, Organization, TenantScope, Workspace } from '@neuropause/shared';
+import type { TenantFanOutDeps } from './backgroundFanOut';
 
 /**
  * The tenant every existing test operates as.
@@ -67,4 +68,61 @@ export const OTHER_MEMORY_VIEWER: MemoryViewer = {
   tenantId: OTHER_TENANT_SCOPE.tenantId,
   workspaceId: OTHER_TENANT_SCOPE.workspaceId,
   userId: 'other@example.com',
+};
+
+/* ── Background fan-out (P13C Part 3) ──────────────────────────────────── */
+
+/** A minimal operable organization, for fan-out tests. */
+export function testOrganization(id: string, name = id): Organization {
+  const at = '2026-01-01T00:00:00.000Z';
+  return {
+    id,
+    name,
+    slug: id,
+    description: '',
+    type: 'business',
+    status: 'active',
+    createdAt: at,
+    updatedAt: at,
+    metadata: {},
+  };
+}
+
+/** A minimal workspace belonging to `organizationId`, for fan-out tests. */
+export function testWorkspace(id: string, organizationId: string): Workspace {
+  const at = '2026-01-01T00:00:00.000Z';
+  return {
+    id,
+    name: id,
+    organizationId,
+    isolation: 'isolated',
+    createdAt: at,
+    updatedAt: at,
+  };
+}
+
+/**
+ * Fan-out deps for the ONE tenant every ordinary test operates as.
+ *
+ * The same asymmetry `TEST_TENANT_SCOPE` establishes: the default is a single
+ * tenant, so a test that wants to prove a job fans out to a SECOND one has to
+ * build that list deliberately and name it. A default that already contained
+ * two tenants would make every unrelated test quietly exercise the fan-out and
+ * hide which ones actually assert on it.
+ */
+export const SINGLE_TENANT_FAN_OUT: TenantFanOutDeps = {
+  organizations: () => [testOrganization(TEST_TENANT_SCOPE.tenantId)],
+  workspaces: () => [testWorkspace(TEST_TENANT_SCOPE.workspaceId, TEST_TENANT_SCOPE.tenantId)],
+};
+
+/** Fan-out deps covering BOTH test tenants. For isolation tests only. */
+export const TWO_TENANT_FAN_OUT: TenantFanOutDeps = {
+  organizations: () => [
+    testOrganization(TEST_TENANT_SCOPE.tenantId),
+    testOrganization(OTHER_TENANT_SCOPE.tenantId),
+  ],
+  workspaces: () => [
+    testWorkspace(TEST_TENANT_SCOPE.workspaceId, TEST_TENANT_SCOPE.tenantId),
+    testWorkspace(OTHER_TENANT_SCOPE.workspaceId, OTHER_TENANT_SCOPE.tenantId),
+  ],
 };

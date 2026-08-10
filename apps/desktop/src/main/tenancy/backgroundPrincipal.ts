@@ -166,3 +166,28 @@ export function systemPrincipal(jobId: string): BackgroundPrincipal {
 export function resolveTenantScope(session: () => TenantScope | null): TenantScope | null {
   return storage.getStore() ? principalScope() : session();
 }
+
+/**
+ * Run `fn` with NO principal, even when called from inside a job.
+ *
+ * WHY THIS IS NOT A BACK DOOR
+ *
+ * It grants nothing. Leaving the principal means falling back to the SESSION,
+ * so `fn` sees exactly what the signed-in user would see — never more. A job
+ * cannot use this to read another tenant; it can only stop pretending to be one.
+ *
+ * WHAT IT IS ACTUALLY FOR
+ *
+ * Telling the RENDERER something. A background pass legitimately runs as tenant
+ * A while the window in front of the user is showing tenant B, and any value
+ * computed for the UI during that pass — an unread badge, a live count — must
+ * be the count B's viewer is entitled to, not A's. Without this the fan-out
+ * would broadcast tenant A's unread total into tenant B's window: a small
+ * number, and still one tenant's activity visible to another.
+ *
+ * `exit` is the AsyncLocalStorage primitive for exactly this and is scoped to
+ * the callback, so the principal is restored the moment `fn` returns.
+ */
+export function runOutsidePrincipal<T>(fn: () => T): T {
+  return storage.exit(fn);
+}

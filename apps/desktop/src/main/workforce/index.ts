@@ -59,6 +59,7 @@ import { unifiedStore } from '../unified/storeInstance';
 import { graphStore } from '../graph/graphInstance';
 import { memoryStore } from '../memory/memoryInstance';
 import { getEnterpriseTimeline } from '../timeline';
+import { activeTenantScope } from '../enterprise/index';
 import { workerRegistry } from './registry/registryInstance';
 import { auditLog } from './governance/auditInstance';
 import { jobStore } from './runtime/jobInstance';
@@ -196,7 +197,16 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
     submitExecution = submit;
   };
 
-  const scheduler = new Scheduler(runtime);
+  /**
+   * P13C Part 3 — the queue captures the enqueuing tenant.
+   *
+   * `activeTenantScope` is read at ENQUEUE, on the IPC call, where it is the
+   * right answer; the drain timer then executes each item under that captured
+   * principal. Without this the drain resolved the tenant a second later, so a
+   * job queued in organization A and drained after the user switched to B ran
+   * as B — successfully, and into B's records.
+   */
+  const scheduler = new Scheduler(runtime, { resolveScope: activeTenantScope });
   scheduler.start();
   const orchestrator = new Orchestrator({ runtime });
 

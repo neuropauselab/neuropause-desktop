@@ -34,6 +34,7 @@ import type {
 } from '@neuropause/shared';
 import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../logger';
+import { runAsPrincipal, systemPrincipal } from '../tenancy/backgroundPrincipal';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { getBuildInfo } from '../buildInfo';
 import { appUpdater } from '../services/appUpdater';
@@ -218,15 +219,49 @@ export async function initReleaseOps(deps: ReleaseOpsDeps): Promise<ReleaseOps> 
   });
 
   // ── scheduled backups ──
+  /**
+   * P13C PART 3 — CLASSIFIED SYSTEM_GLOBAL. The rationale, not a guess:
+   *
+   * `backup.create` is `fs.copyFile` over `DOMAIN_FILES`. It never opens a
+   * scoped store, never calls a resolver, and never reads a record — it copies
+   * BYTES from one directory under `userData` to another. It therefore operates
+   * BELOW the application's authorization layer, at exactly the level the
+   * migration inventory already names as BLOCKED ("the filesystem itself:
+   * anyone who can read those files reads every tenant directly").
+   *
+   * WHY A TENANT-SCOPED BACKUP WOULD BE A FICTION HERE
+   *
+   * Every tenant's records live inside the SAME mode-0600 JSON file per module.
+   * There is no per-tenant file to copy, so a "tenant-scoped backup" would
+   * either copy the same whole-install files under a tenant's name — claiming
+   * an isolation that does not exist — or require re-architecting local storage,
+   * which is not this program's scope and would not improve the boundary.
+   *
+   * WHAT THE CLASSIFICATION OBLIGES INSTEAD
+   *
+   * Two things, both done here. (1) The job runs under an explicit SYSTEM
+   * principal, so any event it publishes is stamped `system` rather than
+   * inheriting whichever organization the UI had open — a global maintenance
+   * job must not appear in one customer's timeline as their own activity.
+   * (2) The destination stays inside `userData`, the same trust boundary as the
+   * source, so this is not an EGRESS: nothing crosses a process or network
+   * boundary, and no tenant gains a read it did not already have at the OS level.
+   *
+   * The honest limit is stated rather than papered over: a privileged local
+   * user can read a backup exactly as they can read the live files, and this
+   * program does not change that.
+   */
   async function scheduledBackup(): Promise<void> {
-    try {
-      await backup.create('scheduled', LOCAL_DOMAINS);
-      const all = await backup.list();
-      const scheduled = all.filter((b) => b.trigger === 'scheduled');
-      for (const old of scheduled.slice(SCHEDULED_BACKUP_KEEP)) await backup.delete(old.id);
-    } catch (err) {
-      log.warn('Scheduled backup failed', { message: (err as Error).message });
-    }
+    await runAsPrincipal(systemPrincipal('scheduled-backup'), async () => {
+      try {
+        await backup.create('scheduled', LOCAL_DOMAINS);
+        const all = await backup.list();
+        const scheduled = all.filter((b) => b.trigger === 'scheduled');
+        for (const old of scheduled.slice(SCHEDULED_BACKUP_KEEP)) await backup.delete(old.id);
+      } catch (err) {
+        log.warn('Scheduled backup failed', { message: (err as Error).message });
+      }
+    });
   }
   const timer = setInterval(() => void scheduledBackup(), SCHEDULED_BACKUP_INTERVAL_MS);
   if (typeof timer.unref === 'function') timer.unref();

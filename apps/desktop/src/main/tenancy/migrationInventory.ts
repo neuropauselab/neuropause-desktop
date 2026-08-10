@@ -88,7 +88,7 @@ const UNENFORCED: readonly { store: string; status: TenantMigrationStatus; note:
   {
     store: 'notifications (inboxStore)',
     status: 'PARTIAL',
-    note: 'P12 — items carry a scope; the de-dupe key is (scope, id) so the stable-per-subject ids no longer collide across tenants; `page`, `unreadCount` and `markRead("all")` are scoped. A delivery with no tenant is refused rather than stored unowned. The DELIVERY ENGINE upstream still has no tenant context, so what gets produced is not yet scoped \u2014 see background jobs.',
+    note: 'P12 — items carry a scope; the de-dupe key is (scope, id) so the stable-per-subject ids no longer collide across tenants; `page`, `unreadCount` and `markRead("all")` are scoped. A delivery with no tenant is refused rather than stored unowned. P13C \u2014 THE PATH INTO THE STORE IS NOW SCOPED TOO, which is what P12 could not claim. Scheduled items are produced once per tenant under that tenant\u2019s principal; a BUS-DRIVEN item is delivered under a principal built from the EVENT\u2019s own tenant (P13B stamped it), so a connector failure raised by tenant A no longer lands in whichever inbox happens to be open, and an UNOWNED event is dropped rather than given to somebody. The re-delivery cooldown is keyed by (tenant, item): unkeyed, one tenant\u2019s alert silenced another\u2019s for thirty minutes. The unread count broadcast to the renderer is computed OUTSIDE the running principal, so a background pass for A cannot push A\u2019s badge into a window showing B. A SYSTEM-scoped event (runtime supervisor) is deliberately fanned to every tenant \u2014 it carries no customer data by construction. Pre-P12 items remain unresolved.',
   },
   {
     store: 'audit reads (governanceStore)',
@@ -111,9 +111,14 @@ const UNENFORCED: readonly { store: string; status: TenantMigrationStatus; note:
     note: 'Each is a single keyless `let cache` with a ~2.5s TTL, built by fanning out reads across dozens of stores. Their INPUTS are now scoped, so a cache built by tenant A holds A’s data — but it is then served to whoever asks within the TTL. Blocked rather than partial: keying them requires a scope-aware invalidation design, not a filter.',
   },
   {
-    store: 'background jobs (9 of 10 timers)',
-    status: 'REQUIRES_MIGRATION',
-    note: 'Only the connector sync has a principal. The delivery engine, scheduled backup, graph and memory reprojections, webhook dispatcher, health monitor and update checker run with no actor, no tenant and no permission.',
+    store: 'background jobs (every timer)',
+    status: 'PARTIAL',
+    note: 'P13C — every recurring timer is now classified and carries a principal. TENANT/WORKSPACE-SCOPED: the delivery engine (per tenant), connector sync (per WORKSPACE, because a connection is a workspace object), the workforce queue (principal captured at ENQUEUE, so a job queued in A still runs as A after the user switches to B), the webhook dispatcher (P13C 2a), and the graph and memory reprojections. SYSTEM_GLOBAL, under an explicit system principal so they cannot inherit the open organization: runtime supervisor, health monitor, update checker, scheduled backup. The fan-out itself replaces the deeper defect — there was ONE timer per install resolving the signed-in user’s workspace, so the wrong tenant ran AND every other tenant never ran at all. PARTIAL rather than COMPLETE because the fan-out reads the live organization roster: a job’s correctness now depends on that roster being right, and a tenant created while a tick is in flight is picked up on the NEXT tick, not this one.',
+  },
+  {
+    store: 'scheduled backup (backupManager)',
+    status: 'BLOCKED',
+    note: 'P13C — classified SYSTEM_GLOBAL after inspection, not by default. `create` is `fs.copyFile` over DOMAIN_FILES: it never opens a scoped store and never reads a record, so it operates below the application authorization layer entirely. A per-tenant backup is not expressible because every tenant’s records share one JSON file per module — the same reason “the filesystem itself” is BLOCKED below. What the classification obliges is done: it runs under a SYSTEM principal so its events are not stamped into whichever organization is open, and its destination stays inside userData, so it is not an egress. A privileged local user reads a backup exactly as they read the live files.',
   },
   {
     store: 'medical device pack (LotService / TraceService / TraceEdgeStore)',

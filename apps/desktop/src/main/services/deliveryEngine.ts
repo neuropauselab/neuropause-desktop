@@ -51,7 +51,34 @@ export interface DeliveryEngineDeps {
   now: () => Date;
   scheduler: Pick<typeof taskScheduler, 'every' | 'cancel'>;
   channels: DeliveryChannel[];
+  /**
+   * Delivery preferences are PER-INSTALL, not per-tenant, and that is a
+   * deliberate reading rather than an omission.
+   *
+   * Do-not-disturb, quiet hours and the priority threshold describe the HUMAN
+   * at the keyboard, who is one person no matter which organization an item is
+   * about. Making them per-tenant would let a brief from tenant B toast a user
+   * who had silenced their machine while working in tenant A. What IS scoped is
+   * everything the item is built FROM — those reads happen inside a principal.
+   */
   getPreferences: () => DeliveryPreferences;
+  /**
+   * P13C PART 3 — run one pass per operable tenant, each under its own principal.
+   *
+   * REQUIRED, with no default. A default would be a single unscoped pass, which
+   * is the exact defect this replaces: before this, `tick()` ran once and every
+   * `produce()` inside it read through `activeTenantScope()` — the signed-in
+   * user's current workspace. So the 07:00 brief was assembled from whichever
+   * organization happened to be open at 07:00, and every OTHER tenant's brief
+   * never fired at all.
+   *
+   * Injected rather than imported so this file stays Electron-free and pure,
+   * and so a test can prove the fan-out happened by counting the runs.
+   */
+  forEachTenant: (
+    jobId: string,
+    fn: (run: { scope: { tenantId: string; workspaceId: string } }) => Promise<void> | void,
+  ) => Promise<unknown>;
 }
 
 export class DeliveryEngine {
@@ -87,24 +114,43 @@ export class DeliveryEngine {
     this.started = false;
   }
 
-  /** Tracks the last local-minute we fired a given source, to avoid double-fire within a minute. */
+  /**
+   * Last local-minute a given source fired, keyed by (TENANT, source).
+   *
+   * The tenant is part of the key and has to be. Before the fan-out there was
+   * one run, so `source.key` alone was unique; with N runs a minute, a map
+   * keyed on the source alone means the FIRST tenant to fire suppresses every
+   * other tenant's identical source for that minute — tenant A's brief silently
+   * cancelling tenant B's. Same collision the notification inbox had with
+   * stable-per-subject ids, and the same fix: put the scope in the key.
+   */
   private lastFiredKeyMinute = new Map<string, string>();
 
-  /** One scheduler tick: fire any source whose cadence matches the current minute. */
+  /**
+   * One scheduler tick: for EVERY operable tenant, fire any source whose cadence
+   * matches the current minute — each pass under that tenant's own principal.
+   *
+   * The cadence test itself is tenant-independent (it is a clock comparison), so
+   * it stays outside the per-tenant work; what moves inside the principal is
+   * `produce()` and everything it reads. That is the whole point: the sources
+   * were never wrong, their reads were unscoped.
+   */
   async tick(): Promise<void> {
     const prefs = this.deps.getPreferences();
     if (!prefs.enabled) return;
     const now = this.deps.now();
-    for (const source of this.sources.values()) {
-      // Phase 6 Stage 5 — per-source mute (user preference; additive).
-      if (prefs.mutedSources?.includes(source.key)) continue;
-      if (this.cadenceMatches(source, now, prefs)) {
-        const stamp = `${source.key}@${this.minuteStamp(now)}`;
-        if (this.lastFiredKeyMinute.get(source.key) === stamp) continue; // already fired this minute
-        this.lastFiredKeyMinute.set(source.key, stamp);
+    await this.deps.forEachTenant('delivery-engine', async (run) => {
+      for (const source of this.sources.values()) {
+        // Phase 6 Stage 5 — per-source mute (user preference; additive).
+        if (prefs.mutedSources?.includes(source.key)) continue;
+        if (!this.cadenceMatches(source, now, prefs)) continue;
+        const key = `${run.scope.tenantId}::${source.key}`;
+        const stamp = `${key}@${this.minuteStamp(now)}`;
+        if (this.lastFiredKeyMinute.get(key) === stamp) continue; // already fired this minute
+        this.lastFiredKeyMinute.set(key, stamp);
         await this.fireSource(source, prefs);
       }
-    }
+    });
   }
 
   private minuteStamp(now: Date): string {
@@ -198,6 +244,21 @@ export class DeliveryEngine {
    * DND with critical bypass) and the same channels. Used by the notification
    * subsystem's bus-driven sources (approval-needed, workflow-complete,
    * connector-failed, meeting-soon, …). Returns true when it was delivered.
+   *
+   * P13C PART 3 — THIS METHOD DOES NOT FAN OUT, AND MUST NOT.
+   *
+   * A scheduled source is owed to everyone, so `tick` runs it N times. An event
+   * already HAS an owner — Program 13B stamped the tenant onto it at
+   * materialization — so the only correct number of deliveries is one, to that
+   * tenant. Fanning an event out would be the notification twin of the webhook
+   * defect Part 2a closed, where one tenant's event reached every tenant's
+   * endpoint.
+   *
+   * The CALLER is therefore required to invoke this inside the event's own
+   * principal, so the channels' writes (the inbox is a scoped store) land in the
+   * event's tenant rather than the signed-in user's. That contract is enforced
+   * at the one call site in the notification subsystem, which refuses to deliver
+   * an event it cannot build a principal for.
    */
   async deliverNow(sourceKey: string, item: IntelligenceItem): Promise<boolean> {
     const prefs = this.deps.getPreferences();

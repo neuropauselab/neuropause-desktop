@@ -177,9 +177,11 @@ import { computeOrgHealth } from '@neuropause/shared';
 import {
   activeMemoryViewer,
   activeTenantScope,
+  forEachTenantBackground,
   initEnterprise,
   onWorkspaceSwitch,
 } from './enterprise';
+import { currentPrincipal } from './tenancy/backgroundPrincipal';
 import { setLiveSyncActiveOrg } from './cloud/livesync/liveSyncInstance';
 import { initDataPlane } from './dataPlane';
 import { initDocuments } from './documents';
@@ -362,7 +364,27 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
      * already throws on an empty string; this gives it the empty string to throw
      * on instead of a plausible wrong answer.
      */
-    workspaceId: () => workspaceStore.activeWorkspaceIdOrNull() ?? '',
+    /**
+     * P13C — A BACKGROUND PRINCIPAL WINS, exactly as it does in
+     * `activeTenantScope`.
+     *
+     * This binding is what `connectorStore.all()` filters on, so inside the
+     * fanned-out sync it has to name the workspace being SYNCED rather than the
+     * one being LOOKED AT. Without this the fan-out changes nothing: every pass
+     * would list the signed-in user's accounts and then sync them N times, once
+     * per tenant, stamping the results with whichever tenant that pass was
+     * running as. That is not a stale-data bug, it is a cross-tenant WRITE —
+     * strictly worse than the single-workspace sync it replaced.
+     *
+     * A tenant-level or SYSTEM principal reports no workspace and therefore
+     * yields `''`, which `requireWorkspace()` already refuses. A job with no
+     * workspace has no connections, and getting nothing is the correct answer.
+     */
+    workspaceId: () => {
+      const principal = currentPrincipal();
+      if (principal !== null) return principal.workspaceId ?? '';
+      return workspaceStore.activeWorkspaceIdOrNull() ?? '';
+    },
   });
   // Unified knowledge layer (UDM): canonical store + query engine + local search.
   const unified = await initUnified({ broadcast: deps.broadcast });
@@ -372,6 +394,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     publish: platform.api.publish,
     broadcast: deps.broadcast,
     isSuppressed: (c, a) => connectors.supervisor.isSyncSuppressed(c, a),
+    // P13C Part 3 — scheduled sync runs for every workspace, not just the open
+    // one. `perWorkspace` because a connection belongs to a workspace.
+    forEachWorkspace: (jobId, fn) => forEachTenantBackground(jobId, fn, { perWorkspace: true }),
     /**
      * P9 — synced provider data reaches the GOVERNED business data.
      *
@@ -2302,6 +2327,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   const notifications = initNotifications({
     broadcast: deps.broadcast,
     on: (types, handler) => platform.api.on([...types], handler),
+    // P13C Part 3 — the one fan-out, shared with the delivery engine, so a
+    // SYSTEM alert reaches each tenant under that tenant's own principal.
+    forEachTenant: (jobId, fn) => forEachTenantBackground(jobId, fn),
   });
   defs.push(...notifications.handlers);
   // Phase 6 Stage 6 — the Enterprise Intelligence Layer. Every dep is a READ
