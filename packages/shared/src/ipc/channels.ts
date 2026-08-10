@@ -331,6 +331,20 @@ export const IpcChannel = {
   EnterpriseWorkspaceActive: 'enterprise:workspace.active',
   EnterpriseWorkspaceCreate: 'enterprise:workspace.create',
   EnterpriseWorkspaceSwitch: 'enterprise:workspace.switch',
+  /**
+   * P13C Part 3 — multi-organization.
+   *
+   * `.list` returns only organizations the caller is a member of; `.create`
+   * composes org → owner → default workspace → membership → role → audit as one
+   * step, because a half-created tenant (an organization with no workspace, or a
+   * workspace with no member) is one nobody can enter and nobody can delete.
+   * `.switch` names an ORGANIZATION and resolves a workspace inside it, so
+   * organization switching cannot become a second authorization path alongside
+   * workspace switching.
+   */
+  EnterpriseOrganizationList: 'enterprise:organization.list',
+  EnterpriseOrganizationCreate: 'enterprise:organization.create',
+  EnterpriseOrganizationSwitch: 'enterprise:organization.switch',
   EnterpriseGraph: 'enterprise:graph',
   EnterpriseGraphNeighbors: 'enterprise:graph.neighbors',
   EnterpriseGovernanceConfig: 'enterprise:governance.config',
@@ -1329,6 +1343,9 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.EnterpriseWorkspaceActive,
   IpcChannel.EnterpriseWorkspaceCreate,
   IpcChannel.EnterpriseWorkspaceSwitch,
+  IpcChannel.EnterpriseOrganizationList,
+  IpcChannel.EnterpriseOrganizationCreate,
+  IpcChannel.EnterpriseOrganizationSwitch,
   IpcChannel.EnterpriseGraph,
   IpcChannel.EnterpriseGraphNeighbors,
   IpcChannel.EnterpriseGovernanceConfig,

@@ -23,6 +23,8 @@ import type {
   EnterpriseOrgDeleteRoleRequest as TDeleteRole,
   EnterpriseWorkspaceCreateRequest as TWsCreate,
   EnterpriseWorkspaceSwitchRequest as TWsSwitch,
+  EnterpriseOrganizationCreateRequest as TOrgCreate,
+  EnterpriseOrganizationSwitchRequest as TOrgSwitch,
   EnterpriseGraphNeighborsRequest as TNeighbors,
   EnterpriseGovernanceSetChainRequest as TSetChain,
   EnterpriseGovernanceSetRuleRequest as TSetRule,
@@ -58,6 +60,8 @@ import {
   EnterpriseOrgDeleteRoleRequest,
   EnterpriseWorkspaceCreateRequest,
   EnterpriseWorkspaceSwitchRequest,
+  EnterpriseOrganizationCreateRequest,
+  EnterpriseOrganizationSwitchRequest,
   EnterpriseGraphNeighborsRequest,
   EnterpriseGovernanceSetChainRequest,
   EnterpriseGovernanceSetRuleRequest,
@@ -78,6 +82,13 @@ import { orgStore } from './org/orgInstance';
 import { workspaceStore } from './workspace/workspaceInstance';
 import { governanceStore } from './governance/governanceInstance';
 import { OWNER_USER_ID, ROLE_TO_UNIT_ID } from './org/seed';
+import { provisionOrganization } from './org/provisionOrganization';
+import {
+  firstEnterableWorkspace,
+  visibleOrganizations,
+  visibleWorkspaces,
+  type TenantDirectoryDeps,
+} from './org/tenantDirectory';
 import {
   canDeleteMember,
   UNRESOLVED_TENANT,
@@ -1447,21 +1458,37 @@ function governanceConfig(): GovernanceConfig {
   };
 }
 
+/**
+ * The live directory deps. Every input server-side; nothing reads a payload.
+ *
+ * P13C Part 3 — the decisions themselves live in `org/tenantDirectory`, so who
+ * may see whom can be read and tested end-to-end rather than inlined among two
+ * hundred handlers. See that file for what was disclosed before it existed.
+ */
+const directoryDeps: TenantDirectoryDeps = {
+  sessionEmail: () => {
+    const st = authService.getStatus();
+    return st.state === 'authenticated' ? st.session.user.email : null;
+  },
+  organizations: () => orgStore.listOrganizations(),
+  workspaces: () => workspaceStore.list(),
+  usersFor: (orgId) => orgStore.usersFor(orgId),
+  rolesFor: (orgId) => orgStore.rolesFor(orgId),
+  ownerMember: () => orgStore.user(OWNER_USER_ID),
+  activeOrganizationId: () => {
+    // From the RESOLVER, so "the organization the switcher highlights" and "the
+    // organization every read is scoped to" are the same fact. A UI that
+    // highlights an organization the resolver refuses shows an empty screen and
+    // no reason.
+    const resolved = tenantContext.resolveFull();
+    return resolved.ok ? resolved.value.organization.id : null;
+  },
+  activeWorkspaceId: () => workspaceStore.activeWorkspaceIdOrNull(),
+  unitCountFor: (orgId) => orgStore.unitsFor(orgId).length,
+};
+
 function workspaceSummaries(): WorkspaceSummary[] {
-  const active = workspaceStore.activeWorkspaceIdForDisplay();
-  return workspaceStore.list().map((ws) => {
-    const org = orgStore.organization(ws.organizationId);
-    const orgId = org?.id ?? ws.organizationId;
-    return {
-      id: ws.id,
-      name: ws.name,
-      organizationId: ws.organizationId,
-      orgName: org?.name ?? 'Unknown',
-      userCount: orgStore.usersFor(orgId).length,
-      unitCount: orgStore.unitsFor(orgId).length,
-      active: ws.id === active,
-    };
-  });
+  return visibleWorkspaces(directoryDeps);
 }
 
 function computeActivity(now: string): BusinessActivitySummary {
@@ -1787,6 +1814,124 @@ function buildHandlers(): SecureHandlerDef[] {
           audit('workspace.switch', ws.id, `Switched to workspace "${ws.name}"`);
         }
         return workspaceStore.active();
+      },
+    },
+
+    /* ── P13C Part 3: multi-organization ──────────────────────────────── */
+    {
+      channel: IpcChannel.EnterpriseOrganizationList,
+      schema: EmptyRequest,
+      handler: () => visibleOrganizations(directoryDeps),
+    },
+    {
+      channel: IpcChannel.EnterpriseOrganizationCreate,
+      schema: EnterpriseOrganizationCreateRequest,
+      audit: true,
+      handler: (p) => {
+        const r = p as TOrgCreate;
+        /**
+         * THE OWNER IS THE SESSION, and the session is read server-side.
+         *
+         * Not `resolveFull()` — that resolves the CURRENT tenant, and a person
+         * creating their second organization is by definition not yet a member
+         * of it. What is required is only that somebody is signed in, because
+         * that identity becomes the new tenant's owner. Requiring current-tenant
+         * membership would make the first organization a permanent gate on
+         * creating any other, and requiring nothing would let an anonymous
+         * caller mint a tenant nobody can enter.
+         */
+        const status = authService.getStatus();
+        const email = status.state === 'authenticated' ? status.session.user.email : null;
+        if (email === null || email.trim() === '') {
+          throw new Error('Sign in before creating an organization.');
+        }
+
+        const result = provisionOrganization(
+          {
+            createOrganization: (name, description) =>
+              orgStore.createOrganization(name, description),
+            createRole: (input) => orgStore.createRole(input),
+            createUser: (input) => orgStore.createUser(input),
+            createWorkspace: (name, organizationId) => workspaceStore.create(name, organizationId),
+          },
+          {
+            name: r.name,
+            description: r.description,
+            workspaceName: r.workspaceName,
+            ownerEmail: email,
+            ...(status.state === 'authenticated' && status.session.user.displayName
+              ? { ownerName: status.session.user.displayName }
+              : {}),
+          },
+        );
+
+        /**
+         * Audited against the NEW organization, naming its workspace and owner.
+         *
+         * The audit log is scoped, so this entry belongs to the tenant that was
+         * created — the only tenant it describes. Writing it against the
+         * creator's PREVIOUS organization would put a record of one customer's
+         * existence into another customer's log.
+         */
+        audit(
+          'organization.create',
+          result.organization.id,
+          `Created organization "${result.organization.name}" with workspace "${result.workspace.name}"`,
+        );
+        log.info('Organization provisioned', {
+          organizationId: result.organization.id,
+          workspaceId: result.workspace.id,
+          roles: result.roles.length,
+        });
+        return visibleOrganizations(directoryDeps);
+      },
+    },
+    {
+      channel: IpcChannel.EnterpriseOrganizationSwitch,
+      schema: EnterpriseOrganizationSwitchRequest,
+      audit: true,
+      handler: (p) => {
+        const r = p as TOrgSwitch;
+        /**
+         * SWITCHING ORGANIZATION IS SWITCHING WORKSPACE, deliberately.
+         *
+         * There is no separate "active organization" anywhere in this system —
+         * `tenantContext` derives the tenant FROM the active workspace, and that
+         * single derivation is why a renderer cannot name its own tenant. Adding
+         * an independent org pointer would create a second authorization path
+         * that could disagree with the first, and the disagreement would be
+         * invisible: the UI would show one organization while every read
+         * resolved another.
+         *
+         * So this resolves an entry workspace inside the target organization and
+         * commits through the SAME `canSwitchTo` chain the workspace switch
+         * uses. One gate, two entry points.
+         */
+        const entry = firstEnterableWorkspace(directoryDeps, r.id);
+        if (entry === null) {
+          /**
+           * One message for "no such organization", "not a member", "suspended"
+           * and "no workspace you may enter". Distinguishing them would confirm
+           * which organizations exist — the enumeration this channel is meant to
+           * withhold — and the caller's remedy is identical in every case.
+           */
+          audit('organization.switch.refused', r.id, 'Refused');
+          throw new Error('That organization is not available to you.');
+        }
+        const decision = tenantContext.canSwitchTo(entry);
+        if (!decision.ok) {
+          audit('organization.switch.refused', r.id, `Refused: ${decision.refusal.reason}`);
+          throw new Error('That organization is not available to you.');
+        }
+        const ws = workspaceStore.switch(entry.id);
+        if (ws) {
+          // The same residue listeners a workspace switch fires. An organization
+          // switch is a strictly larger change, so skipping them would leave the
+          // previous TENANT's caches live — see the workspace-switch note.
+          for (const onSwitch of workspaceSwitchListeners) onSwitch(ws.id);
+          audit('organization.switch', r.id, `Switched to organization "${r.id}"`);
+        }
+        return visibleOrganizations(directoryDeps);
       },
     },
 

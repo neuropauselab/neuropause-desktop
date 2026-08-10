@@ -251,6 +251,42 @@ export const ENTERPRISE_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Ente
     [IpcChannel.EnterpriseWorkspaceActive]: 'workspace:read',
     [IpcChannel.EnterpriseWorkspaceCreate]: 'workspace:manage',
     [IpcChannel.EnterpriseWorkspaceSwitch]: 'workspace:manage',
+    /**
+     * P13C Part 3 — multi-organization.
+     *
+     * LIST and SWITCH are gated on a READ scope, not `workspace:manage`, and the
+     * asymmetry with `EnterpriseWorkspaceSwitch` above is deliberate.
+     *
+     * Every permission in this map is evaluated against the member's CURRENT
+     * organization, because that is what the active workspace resolves to. For
+     * an action ON that organization — creating a workspace in it — that is
+     * exactly right. For LEAVING it, it is backwards: gating the exit on a
+     * manage scope inside the tenant you are trying to leave traps a viewer in
+     * whichever organization they last opened, with no way out but to sign out.
+     *
+     * Loosening the map is safe here because the map is not the gate that
+     * matters for these two. The real authorization is target-side and
+     * server-side: `organizationSummaries` returns only organizations this
+     * account is an active member of, and the switch commits through the same
+     * `canSwitchTo` membership chain a workspace switch uses. Holding
+     * `workspace:read` grants no organization the membership chain would not
+     * already have admitted.
+     */
+    [IpcChannel.EnterpriseOrganizationList]: 'workspace:read',
+    [IpcChannel.EnterpriseOrganizationSwitch]: 'workspace:read',
+    /**
+     * CREATE is `org:manage`, the strictest reading available.
+     *
+     * The tradeoff is stated rather than hidden: because permissions resolve
+     * against the current organization, a member who is only a viewer in their
+     * one organization cannot create a second one. That is a real limitation
+     * for a desktop product where the user often owns their own install — and
+     * it is the conservative direction, since the alternative lets any
+     * signed-in account mint tenants that then appear in every background
+     * fan-out. The seeded install's first account claims the owner role, so the
+     * common single-user path is unaffected.
+     */
+    [IpcChannel.EnterpriseOrganizationCreate]: 'org:manage',
     [IpcChannel.EnterpriseGovernanceConfig]: 'governance:read',
     [IpcChannel.EnterpriseGovernanceCompliance]: 'governance:read',
     [IpcChannel.EnterpriseGovernanceAudit]: 'governance:read',

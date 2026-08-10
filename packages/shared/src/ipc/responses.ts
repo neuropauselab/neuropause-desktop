@@ -498,6 +498,7 @@ import type {
   WorkforceIntelligence,
   Workspace,
   WorkspaceContextStateDto,
+  OrganizationSummary,
   WorkspaceSummary,
 } from '../index';
 
@@ -926,6 +927,16 @@ export interface IpcResponseMap {
   'enterprise:workspace.active': Workspace;
   'enterprise:workspace.create': WorkspaceSummary[];
   'enterprise:workspace.switch': Workspace;
+  /**
+   * P13C Part 3 — multi-organization. All three return the CALLER's own
+   * organizations: create and switch return the refreshed list rather than the
+   * created or entered organization, so the renderer's view of what it belongs
+   * to is replaced by a server answer after every mutation instead of being
+   * patched locally from a single row.
+   */
+  'enterprise:organization.list': OrganizationSummary[];
+  'enterprise:organization.create': OrganizationSummary[];
+  'enterprise:organization.switch': OrganizationSummary[];
   'enterprise:graph': OrgGraph;
   'enterprise:graph.neighbors': OrgGraphNeighbors | null;
   'enterprise:governance.config': GovernanceConfig;

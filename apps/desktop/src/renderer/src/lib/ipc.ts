@@ -999,6 +999,13 @@ export const ipc = {
       invoke(IpcChannel.EnterpriseWorkspaceCreate, { name, organizationId }),
     switchWorkspace: (id: string) => invoke(IpcChannel.EnterpriseWorkspaceSwitch, { id }),
 
+    // P13C Part 3 — multi-organization. Both lists are scoped SERVER-side to
+    // the signed-in member; the renderer receives only what it may see.
+    organizations: () => invoke(IpcChannel.EnterpriseOrganizationList),
+    createOrganization: (input: { name: string; description?: string; workspaceName?: string }) =>
+      invoke(IpcChannel.EnterpriseOrganizationCreate, input),
+    switchOrganization: (id: string) => invoke(IpcChannel.EnterpriseOrganizationSwitch, { id }),
+
     graph: () => invoke(IpcChannel.EnterpriseGraph),
     graphNeighbors: (id: string) => invoke(IpcChannel.EnterpriseGraphNeighbors, { id }),
 

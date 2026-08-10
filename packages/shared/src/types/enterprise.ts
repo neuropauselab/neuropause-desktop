@@ -360,6 +360,27 @@ export interface WorkspaceSummary {
   active: boolean;
 }
 
+/**
+ * One organization the SIGNED-IN ACCOUNT belongs to (P13C Part 3).
+ *
+ * The switcher's row. Deliberately thin: a name, the caller's own role names,
+ * and how many workspaces they may enter. It carries no headcount, no unit
+ * count and no workspace ids for organizations other than the one being
+ * described, because this list is exactly where an attacker would otherwise
+ * collect the identifiers for a direct-object reference — and a switcher only
+ * needs enough to be chosen from.
+ */
+export interface OrganizationSummary {
+  id: string;
+  name: string;
+  /** Whether this is the organization the session currently resolves to. */
+  active: boolean;
+  /** The caller's role names in THIS organization. Never anyone else's. */
+  roles: string[];
+  /** How many workspaces here the caller may operate in. */
+  workspaceCount: number;
+}
+
 /* ─────────────────────────── Organization graph ───────────────────────── */
 
 export type OrgGraphNodeKind =

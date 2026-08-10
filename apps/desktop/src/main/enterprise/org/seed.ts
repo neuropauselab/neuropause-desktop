@@ -139,6 +139,66 @@ const ADMIN: EnterprisePermission[] = [
 
 const AI_WORKER: EnterprisePermission[] = ['workforce:read', 'intelligence:read'];
 
+/**
+ * The built-in roles, as DEFINITIONS rather than as rows.
+ *
+ * P13C Part 3 — extracted so a SECOND organization gets the same role set the
+ * seeded one has. A new tenant whose roles were invented at its creation site
+ * would drift from these the first time a permission is added here, and the
+ * drift would be silent: the new tenant's Admin would simply be missing a
+ * capability nobody thought to grant it.
+ *
+ * Ids are NOT part of the definition. The seeded organization uses the fixed
+ * `ROLE.*` ids because `reconcileBuiltInRoles` matches on them; a created
+ * organization generates its own, because roles are keyed by id in one map and
+ * two organizations sharing a role id would share a role.
+ */
+export interface BuiltInRoleSpec {
+  key: keyof typeof ROLE;
+  name: string;
+  description: string;
+  permissions: readonly EnterprisePermission[];
+}
+
+export const BUILT_IN_ROLE_SPECS: readonly BuiltInRoleSpec[] = [
+  {
+    key: 'owner',
+    name: 'Owner',
+    description: 'Full control of the organization and every workspace.',
+    permissions: [...ALL_ENTERPRISE_PERMISSIONS],
+  },
+  {
+    key: 'admin',
+    name: 'Admin',
+    description: 'Manage structure, people, and governance.',
+    permissions: ADMIN,
+  },
+  {
+    key: 'manager',
+    name: 'Manager',
+    description: 'Operate the workforce, approve actions, manage a team.',
+    permissions: MANAGER,
+  },
+  {
+    key: 'member',
+    name: 'Member',
+    description: 'Read access and the ability to run AI workers.',
+    permissions: MEMBER,
+  },
+  {
+    key: 'viewer',
+    name: 'Viewer',
+    description: 'Read-only visibility across the organization.',
+    permissions: READ_ONLY,
+  },
+  {
+    key: 'aiWorker',
+    name: 'AI Worker',
+    description: 'Constrained role held by governed AI workers.',
+    permissions: AI_WORKER,
+  },
+];
+
 export interface Seed {
   organizations: Organization[];
   units: OrgUnit[];
@@ -201,32 +261,16 @@ export function buildSeed(now = new Date().toISOString()): Seed {
     u(UNIT.support, 'department', 'Support', UNIT.operations),
   ];
 
-  const r = (
-    id: string,
-    name: string,
-    description: string,
-    permissions: EnterprisePermission[],
-  ): OrgRole => ({
-    id,
+  const roles: OrgRole[] = BUILT_IN_ROLE_SPECS.map((spec) => ({
+    id: ROLE[spec.key],
     orgId: ORG_ID,
-    name,
-    description,
-    permissions,
+    name: spec.name,
+    description: spec.description,
+    permissions: [...spec.permissions],
     builtIn: true,
     createdAt: now,
     updatedAt: now,
-  });
-
-  const roles: OrgRole[] = [
-    r(ROLE.owner, 'Owner', 'Full control of the organization and every workspace.', [
-      ...ALL_ENTERPRISE_PERMISSIONS,
-    ]),
-    r(ROLE.admin, 'Admin', 'Manage structure, people, and governance.', ADMIN),
-    r(ROLE.manager, 'Manager', 'Operate the workforce, approve actions, manage a team.', MANAGER),
-    r(ROLE.member, 'Member', 'Read access and the ability to run AI workers.', MEMBER),
-    r(ROLE.viewer, 'Viewer', 'Read-only visibility across the organization.', READ_ONLY),
-    r(ROLE.aiWorker, 'AI Worker', 'Constrained role held by governed AI workers.', AI_WORKER),
-  ];
+  }));
 
   const owner: OrgUser = {
     id: OWNER_USER_ID,

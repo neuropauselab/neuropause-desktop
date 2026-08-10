@@ -30,6 +30,7 @@ import { EnterpriseOverview } from '@renderer/enterprise/EnterpriseOverview';
 import { FeatureFlagsCenter } from '@renderer/settings/FeatureFlagsCenter';
 import { ReleaseChannelCard } from '@renderer/settings/ReleaseChannelCard';
 import { StartupExperienceCard } from '@renderer/settings/StartupExperienceCard';
+import { TenantMembershipPanel } from '@renderer/settings/TenantMembershipPanel';
 import {
   CAPABILITY_INVENTORY,
   computeReadiness,
@@ -532,6 +533,12 @@ function DomainContent({
       return (
         <>
           <DomainHeader id="organization" />
+          {/* P13C Part 3 — the tenancy boundary, stated first. Which
+              organization you are in decides what every other row on this page
+              is describing, so it belongs above them rather than after. */}
+          <Group title="Membership">
+            <TenantMembershipPanel />
+          </Group>
           <Group title="Structure">
             <Card className="py-1.5">
               <OpenRow

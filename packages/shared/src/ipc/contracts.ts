@@ -1308,6 +1308,24 @@ export const EnterpriseWorkspaceCreateRequest = z.object({
 });
 export const EnterpriseWorkspaceSwitchRequest = z.object({ id: EntId });
 
+/**
+ * P13C Part 3 — multi-organization.
+ *
+ * Note what the CREATE request does NOT contain: an owner, a member list, a
+ * role, or an id. The creator becomes the owner because they are the session,
+ * and the id is generated server-side. Every one of those fields, if accepted,
+ * would be a caller-supplied answer to an authorization question — which is the
+ * shape `EnterpriseWorkspaceCreateRequest.organizationId` had before P11
+ * demoted it to an assertion.
+ */
+export const EnterpriseOrganizationCreateRequest = z.object({
+  name: EntName,
+  description: z.string().trim().max(400).optional(),
+  /** The first workspace's name. Defaults server-side when absent. */
+  workspaceName: EntName.optional(),
+});
+export const EnterpriseOrganizationSwitchRequest = z.object({ id: EntId });
+
 export const EnterpriseGraphNeighborsRequest = z.object({ id: EntId });
 
 export const EnterpriseGovernanceSetChainRequest = z.object({ id: EntId, enabled: z.boolean() });
@@ -1446,6 +1464,12 @@ export type EnterpriseOrgUpdateRoleRequest = z.infer<typeof EnterpriseOrgUpdateR
 export type EnterpriseOrgDeleteRoleRequest = z.infer<typeof EnterpriseOrgDeleteRoleRequest>;
 export type EnterpriseWorkspaceCreateRequest = z.infer<typeof EnterpriseWorkspaceCreateRequest>;
 export type EnterpriseWorkspaceSwitchRequest = z.infer<typeof EnterpriseWorkspaceSwitchRequest>;
+export type EnterpriseOrganizationCreateRequest = z.infer<
+  typeof EnterpriseOrganizationCreateRequest
+>;
+export type EnterpriseOrganizationSwitchRequest = z.infer<
+  typeof EnterpriseOrganizationSwitchRequest
+>;
 export type EnterpriseGraphNeighborsRequest = z.infer<typeof EnterpriseGraphNeighborsRequest>;
 export type EnterpriseProcessExploreRequest = z.infer<typeof EnterpriseProcessExploreRequest>;
 export type EnterpriseProcessCaseRequest = z.infer<typeof EnterpriseProcessCaseRequest>;
