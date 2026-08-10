@@ -175,7 +175,10 @@ export class TimelineService {
     const scope = this.scopeOrDeny();
     if (scope === null) return { events: [], total: 0, nextCursor: null };
     const matched = this.mem.filter((e) => {
-      if (!recordInScope(e, scope)) return false;
+      // A SYSTEM event carries no customer data and is readable by any
+      // resolved viewer — the same rule `memoryVisibleTo` applies to SYSTEM
+      // memory, and the reason the supervisor's alerts are visible again.
+      if (e.scopeKind !== 'system' && !recordInScope(e, scope)) return false;
       if (types && !types.has(e.type)) return false;
       if (categories && !categories.has(e.category)) return false;
       if (priorities && !priorities.has(e.priority)) return false;
@@ -214,7 +217,7 @@ export class TimelineService {
     if (scope === null) {
       return { total: 0, byCategory, byType, oldest: null, newest: null };
     }
-    const mine = this.mem.filter((e) => recordInScope(e, scope));
+    const mine = this.mem.filter((e) => e.scopeKind === 'system' || recordInScope(e, scope));
     for (const e of mine) {
       byCategory[e.category] = (byCategory[e.category] ?? 0) + 1;
       byType[e.type] = (byType[e.type] ?? 0) + 1;
@@ -258,7 +261,7 @@ export class TimelineService {
         const e = JSON.parse(line) as PlatformEvent;
         // A line that does not parse is dropped rather than passed through:
         // an unparseable record cannot be shown to belong to this tenant.
-        if (recordInScope(e, scope)) lines.push(line);
+        if (e.scopeKind === 'system' || recordInScope(e, scope)) lines.push(line);
       } catch {
         continue;
       }

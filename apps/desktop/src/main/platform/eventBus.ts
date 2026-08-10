@@ -14,6 +14,7 @@
  * reusable by any future host.
  */
 import { randomUUID } from 'node:crypto';
+import { currentPrincipal } from '../tenancy/backgroundPrincipal';
 import type {
   EventBusMetrics,
   PlatformEvent,
@@ -229,6 +230,10 @@ export class EventBus {
        * nobody owns and nobody is shown.
        */
       tenantId: this.tenantId?.() ?? null,
+      // Stamped from the principal, never from the producer. Only a SYSTEM
+      // principal yields a system event; everything else is tenant-owned or,
+      // absent a tenant, owned by nobody.
+      scopeKind: currentPrincipal()?.principalType === 'system' ? 'system' : 'tenant',
       type: input.type,
       category: input.category,
       version: input.version ?? 1,

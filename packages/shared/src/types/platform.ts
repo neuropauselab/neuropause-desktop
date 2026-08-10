@@ -214,6 +214,24 @@ export interface PlatformEvent {
    * while remaining in the durable log for local diagnostics.
    */
   tenantId?: string | null;
+  /**
+   * `system` marks an event that belongs to the PRODUCT rather than to any
+   * customer (P13C).
+   *
+   * Mirrors `MemoryVisibility.SYSTEM` deliberately, including the reasoning: a
+   * health check, an update poll or a runtime-supervisor alert carries no
+   * customer data by construction, so it is readable by any resolved viewer.
+   *
+   * It exists because P13B's fail-closed stamping had a real cost — a job with
+   * no principal published an unowned event, and the supervisor's CRITICAL
+   * alerts became invisible to everyone. The fix is not to make the timeline
+   * global; it is to let genuinely global work say so, under an explicit SYSTEM
+   * principal, and leave everything else owned or invisible.
+   *
+   * A producer cannot set this: it is stamped from the principal, and only a
+   * `system` principal produces it.
+   */
+  scopeKind?: 'tenant' | 'system';
   type: PlatformEventType;
   category: PlatformEventCategory;
   /** Schema version of this event type (starts at 1). */

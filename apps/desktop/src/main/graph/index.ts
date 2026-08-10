@@ -38,6 +38,7 @@ import { connectorService } from '../connectors/connectorService';
 import { registry } from '../registry/registry';
 import { unifiedStore } from '../unified/storeInstance';
 import { activeTenantScope } from '../enterprise';
+import { runAsPrincipal, tenantPrincipal } from '../tenancy/backgroundPrincipal';
 import { getRelationshipModel } from '../enterprise/relationshipProvider';
 import { pluginExtensionRegistry } from '../plugins/extensionRegistry';
 import { pluginGraphProjection } from '../plugins/pluginExtensionConsumers';
@@ -85,11 +86,16 @@ export async function initGraph(deps: GraphSubsystemDeps): Promise<GraphSubsyste
      * node ids (`person:`, `connector:`, `app:`) are qualified too. Without a
      * resolved tenant there is nothing to project and nobody to own it.
      */
-    const tenantId = activeTenantScope()?.tenantId ?? null;
-    if (tenantId === null) {
+    const principal = tenantPrincipal({ jobId: 'graph-reprojection', scope: activeTenantScope() });
+    if (principal === null) {
       log.info('Graph rebuild skipped: no organization is active');
       return;
     }
+    const tenantId = principal.tenantId as string;
+    return runAsPrincipal(principal, () => rebuildUnderPrincipal(tenantId));
+  };
+
+  const rebuildUnderPrincipal = (tenantId: string): void => {
     const now = new Date().toISOString();
     const entities = unifiedStore.query({ limit: 1_000_000, includeDeleted: false }).items;
     const connectors = connectorService.list().map((c) => ({ id: c.id, name: c.name }));

@@ -117,7 +117,16 @@ describe('the data fabric: two tenants, one install', () => {
   });
 
   afterEach(async () => {
-    await graph.flush();
+    /**
+     * Flush EVERY store before removing the directory.
+     *
+     * All three persist in the background and coalesce, so removing the temp
+     * dir first leaves a write landing in a directory that no longer exists —
+     * ENOTEMPTY/ENOENT depending on the platform, and a flaky suite. Awaiting
+     * each one is the fixture's half of the same durability contract the
+     * stores expose.
+     */
+    await Promise.all([graph.flush(), memory.flush(), store.flush()]);
     await fs.rm(dir, { recursive: true, force: true });
   });
 

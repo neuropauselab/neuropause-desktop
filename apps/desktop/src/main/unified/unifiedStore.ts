@@ -67,6 +67,8 @@ export class UnifiedStore extends EventEmitter {
   private search: LocalSearchBackend = new LocalSearchBackend();
   private loaded = false;
   private scopeSource: UnifiedScopeSource | null = null;
+  /** The most recent write, so `flush()` can await durability. */
+  private lastWrite: Promise<void> = Promise.resolve();
 
   constructor(private readonly filePath: string) {
     super();
@@ -155,10 +157,25 @@ export class UnifiedStore extends EventEmitter {
     log.info('Unified store ready', { entities: this.entities.size });
   }
 
+  /**
+   * Await the in-flight write.
+   *
+   * `persist()` is awaited inline by every mutator here, so there is no
+   * coalescing queue to drain — this exists so callers (tests, shutdown) have
+   * the same durability handle every other store exposes, rather than each one
+   * guessing whether this store needs flushing.
+   */
+  async flush(): Promise<void> {
+    await this.lastWrite;
+  }
+
   private async persist(): Promise<void> {
     const tmp = `${this.filePath}.tmp`;
-    await fs.writeFile(tmp, JSON.stringify([...this.entities.values()]), { mode: 0o600 });
-    await fs.rename(tmp, this.filePath);
+    this.lastWrite = (async () => {
+      await fs.writeFile(tmp, JSON.stringify([...this.entities.values()]), { mode: 0o600 });
+      await fs.rename(tmp, this.filePath);
+    })();
+    await this.lastWrite;
   }
 
   /**

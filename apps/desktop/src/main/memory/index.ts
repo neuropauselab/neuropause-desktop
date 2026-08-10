@@ -52,7 +52,8 @@ import { backendSemanticSearch } from '../backendsemantic/backendSemanticInstanc
 import { runMemoryBackfill } from './memoryBackfill';
 import { backendBackfill } from '../backendsemantic/backendBackfillInstance';
 import { runtimeIdentity } from '../runtimeIdentity';
-import { activeMemoryViewer } from '../enterprise';
+import { activeMemoryViewer, activeTenantScope } from '../enterprise';
+import { runAsPrincipal, tenantPrincipal } from '../tenancy/backgroundPrincipal';
 import { memoryMaySync } from '@neuropause/shared';
 import { memoryAuditLog } from './memoryAuditInstance';
 import { projectMemory } from './memoryProjector';
@@ -118,6 +119,26 @@ export async function initMemory(deps: MemorySubsystemDeps): Promise<MemorySubsy
   memoryStore.configureSemantic(semantic.search);
 
   const rebuild = (): void => {
+    /**
+     * P13C — the projection runs UNDER A PRINCIPAL, or not at all.
+     *
+     * The graph reprojection already gated on a resolved tenant; this one did
+     * not, and relied entirely on the store's binding. That is a real
+     * difference: `applyProjected` THROWS without a viewer, so an ungated
+     * rebuild turned "no tenant is active" into a caught-and-logged error on a
+     * timer rather than a decision. Running under an explicit principal also
+     * means the rebuild reads and stamps the same tenant even if the user
+     * switches organizations while it is queued.
+     */
+    const principal = tenantPrincipal({ jobId: 'memory-reprojection', scope: activeTenantScope() });
+    if (principal === null) {
+      log.info('Memory rebuild skipped: no organization is active');
+      return;
+    }
+    runAsPrincipal(principal, () => rebuildUnderPrincipal());
+  };
+
+  const rebuildUnderPrincipal = (): void => {
     const now = new Date().toISOString();
     const entities = unifiedStore.query({ limit: 1_000_000, includeDeleted: false }).items;
     // P2.5 — the ERP relationship model, guarded so memory rebuilds never fail if ERP isn't ready.

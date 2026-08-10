@@ -21,6 +21,7 @@ import { randomUUID } from 'node:crypto';
 import type { TenantScope } from '@neuropause/shared';
 import { EventBus } from '../platform/eventBus';
 import { TimelineService } from '../platform/timelineService';
+import { resolveTenantScope, runAsPrincipal, systemPrincipal, tenantPrincipal } from './backgroundPrincipal';
 
 const A: TenantScope = { tenantId: 'org-a', workspaceId: 'ws-a' };
 const B: TenantScope = { tenantId: 'org-b', workspaceId: 'ws-b' };
@@ -39,7 +40,9 @@ describe('the platform event log: the tenant boundary', () => {
     timeline = new TimelineService({ dir });
     timeline.bindScope(() => scope);
     bus = new EventBus();
-    bus.bindTenant(() => scope?.tenantId ?? null);
+    // Bound the way production binds it: through the shared precedence, so a
+    // background principal outranks the UI scope here as it does in the app.
+    bus.bindTenant(() => resolveTenantScope(() => scope)?.tenantId ?? null);
     bus.subscribe((e) => timeline.append(e));
 
     scope = A;
@@ -125,11 +128,10 @@ describe('the platform event log: the tenant boundary', () => {
   });
 
   /**
-   * An event published with no active tenant — boot, or a background timer with
-   * no principal — belongs to nobody and is shown to nobody. That is fail-closed
-   * and it is also a REAL FUNCTIONAL GAP: such events disappear from the
-   * timeline until their producers carry a tenant, which is the background-jobs
-   * work and is recorded as such in the migration inventory.
+   * An event published with no active tenant AND no principal belongs to nobody
+   * and is shown to nobody. Still the correct fail-closed answer — P13C's job
+   * is to make sure real background work no longer lands here, not to make this
+   * case visible.
    */
   it('an event published with no active tenant is owned by nobody', () => {
     scope = null;
@@ -139,5 +141,94 @@ describe('the platform event log: the tenant boundary', () => {
     expect(timeline.query({ limit: 100 }).events).toHaveLength(1); // A's own, not the orphan
     scope = B;
     expect(timeline.query({ limit: 100 }).events).toHaveLength(1);
+  });
+
+  /* ── P13C: background jobs, Phase 8 ───────────────────────────────────── */
+
+  /**
+   * THE GAP PROGRAM 13B NAMED, CLOSED.
+   *
+   * A background job publishes under its own principal, so its events land in
+   * the timeline of the tenant the job was scheduled for — not the tenant that
+   * happens to be active when the timer fires, and not nowhere.
+   */
+  it('a background job’s events belong to the tenant the job runs for', () => {
+    // The UI is on B while A's job runs, which is the whole point.
+    scope = B;
+
+    runAsPrincipal(tenantPrincipal({ jobId: 'nightly', scope: A })!, () => {
+      bus.publish({
+        type: 'connector.sync_completed',
+        category: 'connector',
+        source: 'nightly',
+        metadata: { marker: 'A-BACKGROUND-EVENT' },
+      });
+    });
+
+    scope = A;
+    const a = timeline.query({ limit: 100 });
+    expect(JSON.stringify(a)).toContain('A-BACKGROUND-EVENT');
+
+    scope = B;
+    const b = timeline.query({ limit: 100 });
+    expect(JSON.stringify(b)).not.toContain('A-BACKGROUND-EVENT');
+  });
+
+  it('two concurrent background jobs do not cross-contaminate the timeline', async () => {
+    scope = null; // no UI tenant at all — only the principals decide
+
+    const job = async (s: TenantScope, marker: string): Promise<void> => {
+      await runAsPrincipal(tenantPrincipal({ jobId: marker, scope: s })!, async () => {
+        await new Promise((r) => setTimeout(r, 1));
+        bus.publish({
+          type: 'connector.sync_completed',
+          category: 'connector',
+          source: 'job',
+          metadata: { marker },
+        });
+      });
+    };
+
+    await Promise.all([job(A, 'A-BG'), job(B, 'B-BG')]);
+
+    scope = A;
+    const a = JSON.stringify(timeline.query({ limit: 100 }));
+    expect(a).toContain('A-BG');
+    expect(a).not.toContain('B-BG');
+
+    scope = B;
+    const b = JSON.stringify(timeline.query({ limit: 100 }));
+    expect(b).toContain('B-BG');
+    expect(b).not.toContain('A-BG');
+  });
+
+  /**
+   * A SYSTEM job's events are the product's, not a customer's.
+   *
+   * Without this, P13B's stamping made the runtime supervisor's CRITICAL alerts
+   * invisible to everyone — a health warning nobody can see is worse than no
+   * health warning. Mirrors `MemoryVisibility.SYSTEM`: readable by any resolved
+   * viewer precisely because it carries no customer data.
+   */
+  it('a system job’s events are visible to every tenant, and carry no tenant', () => {
+    runAsPrincipal(systemPrincipal('runtime-supervisor'), () => {
+      bus.publish({
+        type: 'runtime.supervisor.critical',
+        category: 'runtime',
+        source: 'supervisor',
+        priority: 'critical',
+        metadata: { marker: 'SYSTEM-ALERT' },
+      });
+    });
+
+    scope = A;
+    expect(JSON.stringify(timeline.query({ limit: 100 }))).toContain('SYSTEM-ALERT');
+    scope = B;
+    expect(JSON.stringify(timeline.query({ limit: 100 }))).toContain('SYSTEM-ALERT');
+
+    // It belongs to nobody in particular — no tenant is stamped on it.
+    scope = A;
+    const sys = timeline.query({ limit: 100 }).events.find((e) => e.scopeKind === 'system');
+    expect(sys?.tenantId).toBeNull();
   });
 });

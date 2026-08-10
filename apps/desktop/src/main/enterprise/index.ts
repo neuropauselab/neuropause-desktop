@@ -91,6 +91,7 @@ import {
 import { createTenantContextResolver } from '../tenancy/tenantContext';
 import { buildMigrationInventory, summarizeInventory } from '../tenancy/migrationInventory';
 import type { MemoryViewer, TenantResolution, TenantScope } from '@neuropause/shared';
+import { currentPrincipal, principalScope, resolveTenantScope } from '../tenancy/backgroundPrincipal';
 import {
   initEnterpriseModules,
   type EnterpriseModuleRegistry,
@@ -345,9 +346,26 @@ export function onWorkspaceSwitch(fn: (workspaceId: string) => void): void {
   workspaceSwitchListeners.push(fn);
 }
 
-/** The tenant scope, or null. The shape every scoped store accepts. */
+/**
+ * The tenant scope, or null. The shape every scoped store accepts.
+ *
+ * P13C — A BACKGROUND PRINCIPAL WINS OVER THE SESSION.
+ *
+ * This function is read by every scoped store in the system, which is exactly
+ * why the background fix belongs here rather than in each store: a job that
+ * runs under a principal makes all of them correct at once, with no change to
+ * any of them.
+ *
+ * The order matters and is not arbitrary. Inside a job, the session is the
+ * WRONG answer — the user may have switched organizations, or signed out,
+ * while the job was awaiting a network call. The principal was captured when
+ * the job was scheduled and travels with its async execution, so it still
+ * describes the tenant the work was started for. Outside a job there is no
+ * principal and the session is the only authority, unchanged since P11.
+ */
 export function activeTenantScope(): TenantScope | null {
-  return tenantContext.scope();
+  // Precedence lives in `resolveTenantScope` — one opinion, three consumers.
+  return resolveTenantScope(() => tenantContext.scope());
 }
 
 /**
@@ -367,6 +385,19 @@ export function activeTenantScope(): TenantScope | null {
  * individual's private memories.
  */
 export function activeMemoryViewer(): MemoryViewer | null {
+  /**
+   * P13C — same precedence as `activeTenantScope`, and note what a background
+   * principal does NOT get: a `userId`. A job has no human identity, so it
+   * cannot read anyone's PERSONAL memories — which is the correct authority for
+   * a scheduled task acting on behalf of an organization.
+   */
+  const p = currentPrincipal();
+  if (p !== null) {
+    const scope = principalScope();
+    return scope === null
+      ? null
+      : { tenantId: scope.tenantId, workspaceId: scope.workspaceId, userId: null };
+  }
   const res = tenantContext.resolveFull();
   if (!res.ok) return null;
   const ctx = res.value.context;
