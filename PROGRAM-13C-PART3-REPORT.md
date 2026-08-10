@@ -39,19 +39,24 @@ Commits, all green at the point of commit:
 | Typecheck | green (per workspace) | green (per workspace) |
 | Lint | green | green |
 | Desktop build | green | green |
-| Backend build | **ENVIRONMENT FAILURE** | **ENVIRONMENT FAILURE** |
+| Backend build | environment-only failure in the Linux sandbox | **GREEN** — verified natively on macOS (`tsup` → `Build success`). The CI-sandbox failure was an esbuild host/binary version skew from running macOS-installed `node_modules` under Linux, not a code fault; confirmed after the fact. |
 
-Two environment issues, present at baseline and therefore **not regressions**:
+Two environment issues, present at baseline and therefore **not regressions** —
+both since confirmed as environment-only by running the same gates natively on
+macOS:
 
 1. **`npm run typecheck` (aggregate) is killed under memory pressure** in the
    4 GB Linux sandbox. Every workspace typechecks green individually
    (`backend`, `cloud`, `desktop`, `shared`, `companion-protocol`, `cloud-core`,
-   `shared-cloud`). Verified by running each separately.
-2. **`npm run build` fails in `apps/backend`** with
+   `shared-cloud`). Verified by running each separately, and green natively.
+2. **`npm run build` failed in `apps/backend`** with
    `Cannot start service: Host version "0.27.7" does not match binary version "0.21.5"` —
-   an esbuild host/binary mismatch from `node_modules` installed on macOS being
+   an esbuild host/binary skew from `node_modules` installed on macOS being
    executed under Linux. `apps/backend` has no modifications in this program.
-   **The desktop build, which is the gate the program names, is green.**
+   **RESOLVED as environment-only:** the same command run natively completes
+   (`tsup` → `⚡️ Build success`), followed by a clean desktop build. Nothing was
+   changed in any dependency to reach that result — the sandbox simply could not
+   execute a macOS-linked binary.
 
 One pre-existing observation, unmodified by this work: `npm run typecheck:test`
 (`tsconfig.test.json`) reports errors in `fabricTenancy.test.ts`,

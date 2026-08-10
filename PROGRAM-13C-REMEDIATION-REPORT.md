@@ -23,7 +23,7 @@ red-team gates have **not** been started.
 | Typecheck | green, per workspace |
 | Lint | green |
 | Desktop build | green |
-| Backend build | **ENVIRONMENT FAILURE** — esbuild host/binary mismatch, pre-existing, not claimed green |
+| Backend build | **GREEN** — verified natively on macOS (`tsup` → `Build success`). The CI-sandbox failure was an esbuild host/binary version skew from running macOS-installed `node_modules` under Linux, not a code fault; confirmed after the fact. |
 | Working tree | CLEAN |
 
 ---
