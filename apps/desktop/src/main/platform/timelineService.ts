@@ -21,6 +21,8 @@
  * unit-testable against a temp dir.
  */
 import { promises as fs } from 'node:fs';
+import type { TenantScope } from '@neuropause/shared';
+import { recordInScope } from '@neuropause/shared';
 import { join } from 'node:path';
 import type {
   PlatformEvent,
@@ -50,7 +52,36 @@ export interface TimelineOptions {
 
 const FILE = 'timeline.jsonl';
 
+/** The tenant boundary for the durable event log (P13B). `null` means DENY. */
+export type TimelineScopeSource = () => TenantScope | null;
+
+/** A process-wide fallback scope, for TESTS ONLY. Same seam and guard as the others. */
+let ambientTimelineScope: TimelineScopeSource | null = null;
+
+export function setAmbientTimelineScopeForTests(source: TimelineScopeSource | null): void {
+  if (process.env.VITEST === undefined && process.env.NODE_ENV !== 'test') {
+    throw new Error(
+      'setAmbientTimelineScopeForTests is a test-only seam and must not be called at runtime.',
+    );
+  }
+  ambientTimelineScope = source;
+}
+
 export class TimelineService {
+  private scopeSource: TimelineScopeSource | null = null;
+
+  /** Bind the tenant boundary. Chainable. UNBOUND DENIES. */
+  bindScope(source: TimelineScopeSource): this {
+    this.scopeSource = source;
+    return this;
+  }
+
+  /** The active scope, or `null` meaning DENY. */
+  private scopeOrDeny(): TenantScope | null {
+    const source = this.scopeSource ?? ambientTimelineScope;
+    return source === null ? null : source();
+  }
+
   private readonly dir: string;
   private readonly maxInMemory: number;
   private readonly flushIntervalMs: number;
@@ -126,7 +157,25 @@ export class TimelineService {
     const since = q.since ? Date.parse(q.since) : null;
     const until = q.until ? Date.parse(q.until) : null;
 
+    /**
+     * P13B — the tenant filter runs FIRST, before every other predicate.
+     *
+     * This log is the second half of every briefing (the Enterprise Timeline
+     * fuses it with scoped entities), and it is reachable directly through
+     * `timeline:query` / `timeline:export`. An event carries `actor.id`,
+     * `resource.id` and free-form `metadata`, and `q.search` matches over
+     * metadata values — so unscoped this was a targeted oracle over another
+     * tenant's activity, not merely a listing.
+     *
+     * An event with no tenant belongs to nobody and is shown to nobody: events
+     * written before P13B, and those published with no active tenant (boot,
+     * background timers), stay in the durable log for local diagnostics and
+     * out of every tenant-facing read.
+     */
+    const scope = this.scopeOrDeny();
+    if (scope === null) return { events: [], total: 0, nextCursor: null };
     const matched = this.mem.filter((e) => {
+      if (!recordInScope(e, scope)) return false;
       if (types && !types.has(e.type)) return false;
       if (categories && !categories.has(e.category)) return false;
       if (priorities && !priorities.has(e.priority)) return false;
@@ -157,34 +206,64 @@ export class TimelineService {
     return { events: slice, nextCursor, total: matched.length };
   }
 
+  /** Statistics for THIS CALLER only — an install-wide histogram is a disclosure. */
   stats(): TimelineStats {
     const byCategory: Record<string, number> = {};
     const byType: Record<string, number> = {};
-    for (const e of this.mem) {
+    const scope = this.scopeOrDeny();
+    if (scope === null) {
+      return { total: 0, byCategory, byType, oldest: null, newest: null };
+    }
+    const mine = this.mem.filter((e) => recordInScope(e, scope));
+    for (const e of mine) {
       byCategory[e.category] = (byCategory[e.category] ?? 0) + 1;
       byType[e.type] = (byType[e.type] ?? 0) + 1;
     }
     return {
-      total: this.total,
+      // `this.total` counts every event ever written, across tenants. Replaced
+      // with what this caller can actually see, so the number agrees with the
+      // histogram beside it rather than contradicting it.
+      total: mine.length,
       byCategory,
       byType,
-      oldest: this.mem[0]?.timestamp ?? null,
-      newest: this.mem[this.mem.length - 1]?.timestamp ?? null,
+      oldest: mine[0]?.timestamp ?? null,
+      newest: mine[mine.length - 1]?.timestamp ?? null,
     };
   }
 
-  /** Full durable export as newline-delimited JSON. */
+  /**
+   * Durable export as newline-delimited JSON — THIS CALLER'S EVENTS ONLY.
+   *
+   * The file holds every tenant's events, so returning its bytes verbatim was
+   * the single largest disclosure in this program: a full copy of another
+   * tenant's activity log, over an IPC channel with no permission attached.
+   * The file is now parsed and filtered rather than streamed, which costs a
+   * pass over the log and is the only way to export a subset of it.
+   */
   async export(): Promise<TimelineExport> {
     await this.flush();
-    let data = '';
-    let count = 0;
+    const scope = this.scopeOrDeny();
+    const generatedAt = new Date(this.now()).toISOString();
+    if (scope === null) return { format: 'jsonl', generatedAt, count: 0, data: '' };
+    let raw = '';
     try {
-      data = await fs.readFile(this.path(), 'utf8');
-      count = data.split('\n').filter(Boolean).length;
+      raw = await fs.readFile(this.path(), 'utf8');
     } catch {
-      data = '';
+      raw = '';
     }
-    return { format: 'jsonl', generatedAt: new Date(this.now()).toISOString(), count, data };
+    const lines: string[] = [];
+    for (const line of raw.split('\n')) {
+      if (!line) continue;
+      try {
+        const e = JSON.parse(line) as PlatformEvent;
+        // A line that does not parse is dropped rather than passed through:
+        // an unparseable record cannot be shown to belong to this tenant.
+        if (recordInScope(e, scope)) lines.push(line);
+      } catch {
+        continue;
+      }
+    }
+    return { format: 'jsonl', generatedAt, count: lines.length, data: lines.join('\n') };
   }
 
   /** Flush and stop the background timer. */

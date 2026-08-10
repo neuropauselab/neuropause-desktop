@@ -1,3 +1,4 @@
+import { makeUnifiedId } from '../../ids';
 import { describe, it, expect } from 'vitest';
 import type { SyncContext } from '../adapterSdk';
 import { mapRepo, mapIssue, mapNotification, isActiveRepo, mapRepoIssue, mapPull, mapRelease, mapCiRun, advanceDeep } from './github';
@@ -6,7 +7,7 @@ import { mapEvent } from './googleCalendar';
 import { mapChannel, mapMessage } from './slack';
 
 const ctx = (connectorId: string): SyncContext =>
-  ({ connectorId, accountId: 'a1', http: undefined as never, cursor: null, now: '2026-06-01T00:00:00.000Z' });
+  ({ tenantId: 'org-test', connectorId, accountId: 'a1', http: undefined as never, cursor: null, now: '2026-06-01T00:00:00.000Z' });
 
 describe('GitHub mapping', () => {
   it('maps a repo to a project', () => {
@@ -15,7 +16,7 @@ describe('GitHub mapping', () => {
       created_at: '2025-01-01T00:00:00Z', updated_at: '2026-05-01T00:00:00Z', archived: false, private: true,
       stargazers_count: 5, forks_count: 2, open_issues_count: 3, language: 'TypeScript', default_branch: 'main', owner: { login: 'acme' },
     } as never);
-    expect(e.id).toBe('github:a1:project:123');
+    expect(e.id).toBe(makeUnifiedId('org-test', 'github', 'a1', 'project', '123'));
     expect(e.kind).toBe('project');
     expect(e.title).toBe('acme/web');
     expect(e.status).toBe('active');
@@ -57,7 +58,7 @@ describe('GitHub mapping', () => {
       user: { login: 'dev' }, assignee: null, labels: [], comments: 0,
       repository_url: 'https://api.github.com/repos/acme/web', repository: { id: 123, full_name: 'acme/web' },
     } as never);
-    expect(issue.containerId).toBe('github:a1:project:123');
+    expect(issue.containerId).toBe(makeUnifiedId('org-test', 'github', 'a1', 'project', '123'));
 
     // Repo metadata: topics fold into labels; visibility, license and topics land in metadata.
     const repo = mapRepo(ctx('github'), {
@@ -118,10 +119,10 @@ describe('GitHub deep sync (Increment 2)', () => {
     } as never);
     expect(e.kind).toBe('task');
     expect(e.status).toBe('open');
-    expect(e.containerId).toBe('github:a1:project:123');
+    expect(e.containerId).toBe(makeUnifiedId('org-test', 'github', 'a1', 'project', '123'));
     expect(e.metadata.isPullRequest).toBe(false);
     expect(e.metadata.repository).toBe('acme/web');
-    expect(e.id).toBe('github:a1:task:10');
+    expect(e.id).toBe(makeUnifiedId('org-test', 'github', 'a1', 'task', '10'));
   });
 
   it('maps an open PR to a task with review signal, drafts flagged', () => {
@@ -132,10 +133,10 @@ describe('GitHub deep sync (Increment 2)', () => {
     } as never);
     expect(e.kind).toBe('task');
     expect(e.status).toBe('draft');
-    expect(e.containerId).toBe('github:a1:project:123');
+    expect(e.containerId).toBe(makeUnifiedId('org-test', 'github', 'a1', 'project', '123'));
     expect(e.metadata.isPullRequest).toBe(true);
     expect(e.metadata.reviewers).toBe(2);
-    expect(e.id).toBe('github:a1:task:55');
+    expect(e.id).toBe(makeUnifiedId('org-test', 'github', 'a1', 'task', '55'));
   });
 
   it('maps a release to a repo-linked activity', () => {
@@ -146,7 +147,7 @@ describe('GitHub deep sync (Increment 2)', () => {
     } as never);
     expect(e.kind).toBe('activity');
     expect(e.status).toBe('released');
-    expect(e.containerId).toBe('github:a1:project:123');
+    expect(e.containerId).toBe(makeUnifiedId('org-test', 'github', 'a1', 'project', '123'));
     expect(e.timestamp).toBe('2026-04-02T00:00:00Z');
     expect(e.metadata.tag).toBe('v1.2.0');
     expect(e.metadata.activityKind).toBe('release');
@@ -160,9 +161,9 @@ describe('GitHub deep sync (Increment 2)', () => {
       created_at: '2026-05-28T13:21:00Z', updated_at: '2026-05-28T13:25:00Z', run_started_at: '2026-05-28T13:21:00Z',
     } as never);
     expect(e.kind).toBe('activity');
-    expect(e.id).toBe('github:a1:activity:run-9001'); // prefixed id never collides with a release
+    expect(e.id).toBe(makeUnifiedId('org-test', 'github', 'a1', 'activity', 'run-9001')); // prefixed id never collides with a release
     expect(e.status).toBe('failure');
-    expect(e.containerId).toBe('github:a1:project:123');
+    expect(e.containerId).toBe(makeUnifiedId('org-test', 'github', 'a1', 'project', '123'));
     expect(e.metadata.activityKind).toBe('ci_run');
     expect(e.metadata.conclusion).toBe('failure');
     expect(e.metadata.branch).toBe('main');
@@ -203,7 +204,7 @@ describe('Notion mapping', () => {
     } as never);
     expect(e.kind).toBe('document');
     expect(e.title).toBe('Roadmap');
-    expect(e.containerId).toBe('notion:a1:project:db1');
+    expect(e.containerId).toBe(makeUnifiedId('org-test', 'notion', 'a1', 'project', 'db1'));
   });
 
   it('maps a database to a project', () => {
@@ -249,7 +250,7 @@ describe('Slack mapping', () => {
     } as never);
     expect(e.kind).toBe('message');
     expect(e.title).toBe('hello team');
-    expect(e.parentId).toBe('slack:a1:conversation:C1');
+    expect(e.parentId).toBe(makeUnifiedId('org-test', 'slack', 'a1', 'conversation', 'C1'));
     expect(e.sourceId).toBe('C1:1609459201.000200');
     expect(e.author).toBe('U1');
   });

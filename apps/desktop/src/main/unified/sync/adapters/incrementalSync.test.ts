@@ -25,7 +25,7 @@ function seqHttp(responses: Array<HttpResponse<unknown>>) {
 }
 
 const NOW = '2026-07-01T00:00:00.000Z';
-const ghCtx = (http: HttpClient, cursor: string | null): SyncContext => ({ connectorId: 'github', accountId: 'a1', http, cursor, now: NOW });
+const ghCtx = (http: HttpClient, cursor: string | null): SyncContext => ({ tenantId: 'org-test', connectorId: 'github', accountId: 'a1', http, cursor, now: NOW });
 
 const repo = (id: number, full_name: string) => ({
   id,
@@ -130,7 +130,7 @@ describe('Google Calendar events — syncToken expiry (410) full-resync', () => 
       headers: {},
       status: 200,
     });
-    const page = await eventsResource.pull({ connectorId: 'google-workspace', accountId: 'a1', http, cursor: JSON.stringify({ sync: 'STALE' }), now: NOW });
+    const page = await eventsResource.pull({ tenantId: 'org-test', connectorId: 'google-workspace', accountId: 'a1', http, cursor: JSON.stringify({ sync: 'STALE' }), now: NOW });
     expect(page.entities.map((e) => e.sourceId)).toEqual(['ev1']);
     expect(JSON.parse(page.cursor as string)).toEqual({ sync: 'FRESH' });
   });

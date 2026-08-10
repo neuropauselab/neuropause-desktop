@@ -41,6 +41,7 @@ export function mapUser(ctx: SyncContext, u: GraphUser): UnifiedEntity {
   const f = graphUserFields(u);
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'contact',
     sourceId: u.id,
@@ -59,6 +60,7 @@ export function mapGroup(ctx: SyncContext, g: GraphGroup): UnifiedEntity {
   const f = graphGroupFields(g);
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'organization',
     sourceId: g.id,
@@ -76,6 +78,7 @@ export function mapOrganization(ctx: SyncContext, org: GraphOrganization): Unifi
   const t = tenantFromOrganization(org);
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'organization',
     sourceId: org.id,

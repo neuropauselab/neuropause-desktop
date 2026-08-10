@@ -199,6 +199,21 @@ export type PlatformEventMeta = Record<string, string | number | boolean | null>
 export interface PlatformEvent {
   /** Globally unique id for this event instance. */
   id: string;
+  /**
+   * The organization this event happened in (P13B).
+   *
+   * Stamped once, at materialization, from the resolved tenant — never by the
+   * producer. Events are the SECOND input to every briefing: the Enterprise
+   * Timeline fuses scoped entities with this log, so an unowned event log made
+   * the whole briefing path unscoped no matter how well the entities were
+   * guarded. `actor.id`, `resource.id` and `metadata` all travel in an event.
+   *
+   * Absent means UNRESOLVED — belongs to no tenant and is shown to none.
+   * Events written before P13B, and events published with no active tenant
+   * (boot, background timers), are therefore invisible to tenant-facing reads
+   * while remaining in the durable log for local diagnostics.
+   */
+  tenantId?: string | null;
   type: PlatformEventType;
   category: PlatformEventCategory;
   /** Schema version of this event type (starts at 1). */

@@ -107,3 +107,20 @@ export function getTrustModel(): EnterpriseTrustModel {
 export function getTrustKpis(): EnterpriseTrustModel['kpis'] {
   return getTrustModel().kpis;
 }
+
+/**
+ * Drop the memoized model (P13B).
+ *
+ * This cache is keyless with a short TTL, and the migration inventory records
+ * it as BLOCKED for that reason — a transient cross-tenant read was accepted
+ * because it expires. P13B changes the blast radius: the graph projection reads
+ * this model and now STAMPS every node it produces with the reading tenant and
+ * persists it, so a stale read stops being transient and becomes a durable,
+ * correctly-owned-looking record of another tenant's relationships.
+ *
+ * Flushed on workspace switch so the window closes at the moment the authority
+ * changes, rather than up to a TTL later.
+ */
+export function invalidateModelCache(): void {
+  cache = null;
+}

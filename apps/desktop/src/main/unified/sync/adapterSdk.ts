@@ -23,6 +23,16 @@ import type { HttpClient } from './http';
 export interface SyncContext {
   connectorId: ConnectorId;
   accountId: string;
+  /**
+   * The organization this sync run belongs to (P13B).
+   *
+   * Supplied by the orchestrator from the resolved tenant, never by an adapter.
+   * Adapters need it because they mint Unified Identifiers — including the
+   * `parentId`/`containerId` references that point at other entities — and the
+   * tenant is part of that identity domain. A reference built without it would
+   * point at an id that no longer exists, or worse, at another tenant's.
+   */
+  tenantId: string;
   /** Authenticated, rate-gated HTTP client (token attached automatically). */
   http: HttpClient;
   /** Cursor persisted from the previous run of THIS resource (null on first sync). */
@@ -70,6 +80,8 @@ export interface ConnectorAdapter {
 
 /** Fields an adapter supplies; the envelope defaults are filled in for it. */
 export interface EntityInput {
+  /** The owning organization (P13B). Part of the entity's identity domain. */
+  tenantId: string;
   connectorId: ConnectorId;
   accountId: string;
   kind: UnifiedEntityKind;
@@ -114,8 +126,14 @@ export function describeAdapter(adapter: ConnectorAdapter): AdapterCapability {
 /** Build a canonical entity with a deterministic Unified Identifier. */
 export function makeEntity(i: EntityInput): UnifiedEntity {
   return {
-    id: makeUnifiedId(i.connectorId, i.accountId, i.kind, i.sourceId),
+    id: makeUnifiedId(i.tenantId, i.connectorId, i.accountId, i.kind, i.sourceId),
     kind: i.kind,
+    // Stamped here as well as in `upsertMany`. The store's stamp is the
+    // authoritative one — it overwrites whatever arrives — but an entity that
+    // is already owned in flight cannot be mistaken for an unowned one by any
+    // code between the adapter and the store.
+    tenantId: i.tenantId,
+    workspaceId: null,
     connectorId: i.connectorId,
     accountId: i.accountId,
     sourceId: i.sourceId,

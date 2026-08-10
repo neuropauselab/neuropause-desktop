@@ -49,6 +49,8 @@ interface Registered {
 }
 
 export interface EventBusOptions {
+  /** P13B — resolves the owning tenant for each materialized event. */
+  tenantId?: () => string | null;
   /** Max events retained for replay (default 500). */
   replayBufferSize?: number;
   /** Injectable clock (ms) for deterministic tests. */
@@ -68,6 +70,8 @@ export class EventBus {
   private readonly now: () => number;
   private readonly idFactory: () => string;
   private readonly onSubscriberError?: EventBusOptions['onSubscriberError'];
+  /** P13B — resolves the owning tenant at materialization. Null ⇒ unowned. */
+  private tenantId?: () => string | null;
 
   private subSeq = 0;
   private published = 0;
@@ -82,6 +86,19 @@ export class EventBus {
     this.now = opts.now ?? (() => Date.now());
     this.idFactory = opts.idFactory ?? (() => randomUUID());
     this.onSubscriberError = opts.onSubscriberError;
+    this.tenantId = opts.tenantId;
+  }
+
+  /**
+   * Bind the tenant resolver (P13B).
+   *
+   * Late-bound rather than a constructor argument because the bus is created
+   * during boot, before the enterprise subsystem exists to resolve anything.
+   * Until it is bound every event is unowned — which is the correct reading of
+   * "published before the app knew who it was acting for".
+   */
+  bindTenant(resolve: () => string | null): void {
+    this.tenantId = resolve;
   }
 
   /** Publish an event. Returns the fully materialized event. */
@@ -197,6 +214,21 @@ export class EventBus {
     const id = this.idFactory();
     return {
       id,
+      /**
+       * P13B — ONE stamping point for the whole event system.
+       *
+       * `materialize` is the only place a `PlatformEvent` comes into existence,
+       * which is why the tenant is resolved here rather than at the ~100 publish
+       * sites. A producer cannot supply it: `PlatformEventInput` has no such
+       * field, so there is no expressible way to publish an event into another
+       * tenant's timeline.
+       *
+       * `tenantId` is injected as a function rather than imported, so the bus
+       * keeps no dependency on the enterprise subsystem and still unit-tests
+       * standalone. Unset resolver, or no active tenant, yields null — an event
+       * nobody owns and nobody is shown.
+       */
+      tenantId: this.tenantId?.() ?? null,
       type: input.type,
       category: input.category,
       version: input.version ?? 1,

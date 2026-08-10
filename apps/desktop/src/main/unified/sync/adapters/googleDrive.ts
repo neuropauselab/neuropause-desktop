@@ -72,6 +72,7 @@ export function mapFile(ctx: SyncContext, f: DriveFile): UnifiedEntity {
   const owner = f.owners?.[0];
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'file',
     sourceId: f.id,
@@ -85,7 +86,7 @@ export function mapFile(ctx: SyncContext, f: DriveFile): UnifiedEntity {
     author: owner?.emailAddress ?? owner?.displayName ?? null,
     timestamp: f.modifiedTime ?? null,
     // Link a file to its parent folder (also a `file`) so the graph can draw containment.
-    containerId: f.parents?.[0] ? makeUnifiedId(ctx.connectorId, ctx.accountId, 'file', f.parents[0]) : null,
+    containerId: f.parents?.[0] ? makeUnifiedId(ctx.tenantId, ctx.connectorId, ctx.accountId, 'file', f.parents[0]) : null,
     metadata: {
       mimeType: f.mimeType ?? null,
       isFolder,

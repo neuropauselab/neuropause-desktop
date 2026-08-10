@@ -1,3 +1,4 @@
+import { makeUnifiedId } from '../../ids';
 /**
  * P5 — Increment 13: the Microsoft Dynamics 365 connector FAMILY (Accounts, Contacts, Leads, Opportunities,
  * Cases, Products, Sales Orders, Purchase Orders, Invoices, Projects, Assets, Users on one `dynamics365`
@@ -34,7 +35,7 @@ import {
 const BASE = 'https://myorg.crm.dynamics.com';
 const API = `${BASE}/api/data/v9.2`;
 const NOW = '2026-07-13T00:00:00.000Z';
-const baseCtx = { connectorId: 'dynamics365', accountId: 'a1', now: NOW } as const;
+const baseCtx = { tenantId: 'org-test', connectorId: 'dynamics365', accountId: 'a1', now: NOW } as const;
 const pureCtx: SyncContext = { ...baseCtx, http: undefined as never, cursor: null };
 
 interface Handled { value?: Record<string, unknown>[]; next?: string }
@@ -99,7 +100,7 @@ describe('Dynamics mappers — kinds, GUID sourceIds (no prefix), deep links, Fo
       createdon: '2026-06-01T00:00:00Z', modifiedon: '2026-07-02T09:30:00Z',
     });
     expect(e.kind).toBe('organization');
-    expect(e.id).toBe('dynamics365:a1:organization:aaaa1111-0000-0000-0000-000000000001'); // GUID sourceId, no prefix
+    expect(e.id).toBe(makeUnifiedId('org-test', 'dynamics365', 'a1', 'organization', 'aaaa1111-0000-0000-0000-000000000001')); // GUID sourceId, no prefix
     expect(e.title).toBe('Acme Corp');
     expect(e.status).toBe('Active'); // the @OData...FormattedValue label, not the raw `1`
     expect(e.url).toBe(`${BASE}/main.aspx?pagetype=entityrecord&etn=account&id=aaaa1111-0000-0000-0000-000000000001`);
@@ -110,9 +111,9 @@ describe('Dynamics mappers — kinds, GUID sourceIds (no prefix), deep links, Fo
     const acc = mapAccount(pureCtx, { accountid: 'g1', name: 'A' });
     const con = mapContact(pureCtx, { contactid: 'g2', fullname: 'C' });
     const opp = mapOpportunity(pureCtx, { opportunityid: 'g3', name: 'O' });
-    expect(acc.id).toBe('dynamics365:a1:organization:g1');
-    expect(con.id).toBe('dynamics365:a1:contact:g2');
-    expect(opp.id).toBe('dynamics365:a1:task:g3');
+    expect(acc.id).toBe(makeUnifiedId('org-test', 'dynamics365', 'a1', 'organization', 'g1'));
+    expect(con.id).toBe(makeUnifiedId('org-test', 'dynamics365', 'a1', 'contact', 'g2'));
+    expect(opp.id).toBe(makeUnifiedId('org-test', 'dynamics365', 'a1', 'task', 'g3'));
     expect(new Set([acc.id, con.id, opp.id]).size).toBe(3);
   });
 

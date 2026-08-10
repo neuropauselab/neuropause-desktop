@@ -6,7 +6,7 @@ import { AuthError, HttpError } from './unified/sync/http';
 import { makeUnifiedId } from './unified/ids';
 
 const NOW = '2026-07-10T00:00:00.000Z';
-const BASE = { connectorId: 'microsoft-entra', accountId: 'acct-1', now: NOW } as const;
+const BASE = { tenantId: 'org-test', connectorId: 'microsoft-entra', accountId: 'acct-1', now: NOW } as const;
 
 function stubCtx(response: unknown, cursor: string | null = null): SyncContext {
   const http = {
@@ -40,7 +40,7 @@ describe('m365Adapter — mappers', () => {
       receivedDateTime: '2026-07-01T00:00:00Z',
     } as GraphMessage);
     expect(e.kind).toBe('message');
-    expect(e.id).toBe(makeUnifiedId('microsoft-entra', 'acct-1', 'message', 'm1'));
+    expect(e.id).toBe(makeUnifiedId('org-test', 'microsoft-entra', 'acct-1', 'message', 'm1'));
     expect(e.title).toBe('Hi');
     expect(e.author).toBe('a@b.com');
     expect(e.metadata.module).toBe('outlook');

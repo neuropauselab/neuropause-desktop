@@ -179,6 +179,7 @@ function base(ctx: SyncContext, spec: DynSpec, rec: DynRecord) {
   const updated = dynIso(rec.modifiedon, created);
   return {
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: spec.kind,
     sourceId: guid ?? '',

@@ -176,6 +176,7 @@ interface ConfluenceListResp<T> {
 export function mapProject(ctx: SyncContext, site: Site, p: JiraProject): UnifiedEntity {
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'project',
     sourceId: p.id,
@@ -201,10 +202,11 @@ export function mapIssue(ctx: SyncContext, site: Site, it: JiraIssue): UnifiedEn
   const f = it.fields ?? {};
   const created = iso(f.created, ctx.now);
   const updated = iso(f.updated, created);
-  const containerId = f.project?.id ? makeUnifiedId(ctx.connectorId, ctx.accountId, 'project', f.project.id) : null;
-  const parentId = f.parent?.id ? makeUnifiedId(ctx.connectorId, ctx.accountId, 'task', f.parent.id) : null;
+  const containerId = f.project?.id ? makeUnifiedId(ctx.tenantId, ctx.connectorId, ctx.accountId, 'project', f.project.id) : null;
+  const parentId = f.parent?.id ? makeUnifiedId(ctx.tenantId, ctx.connectorId, ctx.accountId, 'task', f.parent.id) : null;
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'task',
     sourceId: it.id,
@@ -234,9 +236,10 @@ export function mapIssue(ctx: SyncContext, site: Site, it: JiraIssue): UnifiedEn
 /** Jira board → project (a board is a container/view); `board-` prefix avoids colliding with a project id. */
 export function mapBoard(ctx: SyncContext, site: Site, b: JiraBoard): UnifiedEntity {
   const projectId = b.location?.projectId != null ? String(b.location.projectId) : null;
-  const containerId = projectId ? makeUnifiedId(ctx.connectorId, ctx.accountId, 'project', projectId) : null;
+  const containerId = projectId ? makeUnifiedId(ctx.tenantId, ctx.connectorId, ctx.accountId, 'project', projectId) : null;
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'project',
     sourceId: `board-${b.id}`,
@@ -259,6 +262,7 @@ export function mapBoard(ctx: SyncContext, site: Site, b: JiraBoard): UnifiedEnt
 export function mapSpace(ctx: SyncContext, site: Site, s: ConfluenceSpace): UnifiedEntity {
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'workspace',
     sourceId: s.id,
@@ -279,9 +283,10 @@ export function mapSpace(ctx: SyncContext, site: Site, s: ConfluenceSpace): Unif
 
 export function mapPage(ctx: SyncContext, site: Site, p: ConfluencePage): UnifiedEntity {
   const modified = iso(p.version?.createdAt, ctx.now);
-  const containerId = p.spaceId ? makeUnifiedId(ctx.connectorId, ctx.accountId, 'workspace', p.spaceId) : null;
+  const containerId = p.spaceId ? makeUnifiedId(ctx.tenantId, ctx.connectorId, ctx.accountId, 'workspace', p.spaceId) : null;
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'document',
     sourceId: p.id,

@@ -37,6 +37,7 @@ describe('projectGraph', () => {
       entity({ id: 'doc1', kind: 'document', title: 'Spec', author: 'writer' }),
     ];
     const { nodes, edges } = projectGraph({
+      tenantId: 'org-test',
       entities,
       connectors: [{ id: 'github', name: 'GitHub' }],
       applications: [{ slug: 'notes', name: 'Notes' }],
@@ -47,15 +48,15 @@ describe('projectGraph', () => {
     expect(byId.get('proj1')?.type).toBe('project');
     expect(byId.get('task1')?.type).toBe('task');
     expect(byId.get('doc1')?.type).toBe('document');
-    expect(byId.get('connector:github')?.type).toBe('connector');
-    expect(byId.get('app:notes')?.type).toBe('application');
-    expect(byId.get('person:github:dev')?.type).toBe('person');
-    expect(byId.get('person:github:writer')?.type).toBe('person');
+    expect(byId.get('connector:org-test:github')?.type).toBe('connector');
+    expect(byId.get('app:org-test:notes')?.type).toBe('application');
+    expect(byId.get('person:org-test:github:dev')?.type).toBe('person');
+    expect(byId.get('person:org-test:github:writer')?.type).toBe('person');
 
     const edgeIds = new Set(edges.map((e) => e.id));
     expect(edgeIds.has('task1|belongs_to|proj1')).toBe(true);
-    expect(edgeIds.has('task1|assigned_to|person:github:dev')).toBe(true); // task author → assigned_to
-    expect(edgeIds.has('doc1|created_by|person:github:writer')).toBe(true); // doc author → created_by
+    expect(edgeIds.has('task1|assigned_to|person:org-test:github:dev')).toBe(true); // task author → assigned_to
+    expect(edgeIds.has('doc1|created_by|person:org-test:github:writer')).toBe(true); // doc author → created_by
 
     // edges carry provenance back to the UDM record
     const belongs = edges.find((e) => e.id === 'task1|belongs_to|proj1');
@@ -67,14 +68,14 @@ describe('projectGraph', () => {
       entity({ id: 'evt1', kind: 'calendar_event', title: 'Standup', author: 'organizer', metadata: { attendees: 3 } }),
       entity({ id: 'evt2', kind: 'calendar_event', title: 'Focus block', metadata: { attendees: 0 } }),
     ];
-    const { nodes, edges } = projectGraph({ entities, connectors: [], applications: [], now: NOW });
+    const { nodes, edges } = projectGraph({ tenantId: 'org-test', entities, connectors: [], applications: [], now: NOW });
 
     const byId = new Map(nodes.map((n) => [n.id, n]));
     expect(byId.get('evt1')?.type).toBe('meeting');
     expect(byId.get('evt2')?.type).toBe('calendar_event');
 
     const edgeIds = new Set(edges.map((e) => e.id));
-    expect(edgeIds.has('person:github:organizer|participated_in|evt1')).toBe(true);
+    expect(edgeIds.has('person:org-test:github:organizer|participated_in|evt1')).toBe(true);
   });
 
   it('links message authors as participants in their conversation', () => {
@@ -82,17 +83,17 @@ describe('projectGraph', () => {
       entity({ id: 'conv1', kind: 'conversation', title: 'general' }),
       entity({ id: 'msg1', kind: 'message', title: 'hello', containerId: 'conv1', author: 'U123' }),
     ];
-    const { edges } = projectGraph({ entities, connectors: [], applications: [], now: NOW });
+    const { edges } = projectGraph({ tenantId: 'org-test', entities, connectors: [], applications: [], now: NOW });
 
     const edgeIds = new Set(edges.map((e) => e.id));
     expect(edgeIds.has('msg1|belongs_to|conv1')).toBe(true);
-    expect(edgeIds.has('msg1|created_by|person:github:u123')).toBe(true);
-    expect(edgeIds.has('person:github:u123|participated_in|conv1')).toBe(true);
+    expect(edgeIds.has('msg1|created_by|person:org-test:github:u123')).toBe(true);
+    expect(edgeIds.has('person:org-test:github:u123|participated_in|conv1')).toBe(true);
   });
 
   it('honors a metadata assignee as an assigned_to edge', () => {
     const entities = [entity({ id: 'task9', kind: 'task', title: 'Triage', metadata: { assignee: 'maintainer' } })];
-    const { edges } = projectGraph({ entities, connectors: [], applications: [], now: NOW });
-    expect(new Set(edges.map((e) => e.id)).has('task9|assigned_to|person:github:maintainer')).toBe(true);
+    const { edges } = projectGraph({ tenantId: 'org-test', entities, connectors: [], applications: [], now: NOW });
+    expect(new Set(edges.map((e) => e.id)).has('task9|assigned_to|person:org-test:github:maintainer')).toBe(true);
   });
 });

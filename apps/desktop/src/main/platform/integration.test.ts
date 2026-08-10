@@ -16,6 +16,8 @@ describe('platform pipeline (integration)', () => {
   it('publish → subscribers → timeline query/export, end to end', async () => {
     dir = join(tmpdir(), 'nps-int-' + Math.random().toString(36).slice(2));
     const bus = new EventBus();
+  // P13B — events are stamped at materialization from the resolved tenant.
+  bus.bindTenant(() => 'org-test');
     const timeline = new TimelineService({ dir, flushIntervalMs: 10_000 });
     await timeline.init();
     const broadcasts: string[] = [];

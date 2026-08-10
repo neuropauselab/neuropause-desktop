@@ -6,7 +6,7 @@ import { HttpError } from './unified/sync/http';
 import { makeUnifiedId } from './unified/ids';
 
 const NOW = '2026-07-10T00:00:00.000Z';
-const BASE = { connectorId: 'microsoft-entra', accountId: 'acct-1', now: NOW } as const;
+const BASE = { tenantId: 'org-test', connectorId: 'microsoft-entra', accountId: 'acct-1', now: NOW } as const;
 
 /** A SyncContext whose http returns a fixed Graph response (shape only — never live). */
 function stubCtx(response: unknown, cursor: string | null = null): SyncContext {
@@ -48,7 +48,7 @@ describe('entraAdapter — mappers', () => {
     };
     const e = mapUser(stubCtx({}), u);
     expect(e.kind).toBe('contact');
-    expect(e.id).toBe(makeUnifiedId('microsoft-entra', 'acct-1', 'contact', 'u1'));
+    expect(e.id).toBe(makeUnifiedId('org-test', 'microsoft-entra', 'acct-1', 'contact', 'u1'));
     expect(e.title).toBe('Ada');
     expect(e.author).toBe('ada@contoso.com');
     expect(e.status).toBe('enabled');
@@ -61,7 +61,7 @@ describe('entraAdapter — mappers', () => {
     const g: GraphGroup = { id: 'g1', displayName: 'Engineering', securityEnabled: true };
     const e = mapGroup(stubCtx({}), g);
     expect(e.kind).toBe('organization');
-    expect(e.id).toBe(makeUnifiedId('microsoft-entra', 'acct-1', 'organization', 'g1'));
+    expect(e.id).toBe(makeUnifiedId('org-test', 'microsoft-entra', 'acct-1', 'organization', 'g1'));
     expect(e.title).toBe('Engineering');
     expect(e.metadata.directoryType).toBe('group');
     expect(e.metadata.groupClass).toBe('security');

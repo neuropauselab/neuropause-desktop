@@ -37,6 +37,7 @@ import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { connectorService } from '../connectors/connectorService';
 import { registry } from '../registry/registry';
 import { unifiedStore } from '../unified/storeInstance';
+import { activeTenantScope } from '../enterprise';
 import { getRelationshipModel } from '../enterprise/relationshipProvider';
 import { pluginExtensionRegistry } from '../plugins/extensionRegistry';
 import { pluginGraphProjection } from '../plugins/pluginExtensionConsumers';
@@ -76,6 +77,19 @@ export async function initGraph(deps: GraphSubsystemDeps): Promise<GraphSubsyste
   await graphStore.load();
 
   const rebuild = (): void => {
+    /**
+     * P13B — a rebuild has an owner, or it does not happen.
+     *
+     * The projection reads the (now scoped) unified store, so it can only see
+     * one tenant's entities; the tenant is passed explicitly so the SYNTHESISED
+     * node ids (`person:`, `connector:`, `app:`) are qualified too. Without a
+     * resolved tenant there is nothing to project and nobody to own it.
+     */
+    const tenantId = activeTenantScope()?.tenantId ?? null;
+    if (tenantId === null) {
+      log.info('Graph rebuild skipped: no organization is active');
+      return;
+    }
     const now = new Date().toISOString();
     const entities = unifiedStore.query({ limit: 1_000_000, includeDeleted: false }).items;
     const connectors = connectorService.list().map((c) => ({ id: c.id, name: c.name }));
@@ -102,7 +116,7 @@ export async function initGraph(deps: GraphSubsystemDeps): Promise<GraphSubsyste
     } catch (err) {
       log.warn('Resource graph unavailable for graph projection', { error: String(err) });
     }
-    const projection = projectGraph({ entities, connectors, applications, now, erpModel, pluginProjection, resourceModel });
+    const projection = projectGraph({ tenantId, entities, connectors, applications, now, erpModel, pluginProjection, resourceModel });
     const result = graphStore.apply(projection.nodes, projection.edges, now);
     log.info('Knowledge graph rebuilt', {
       nodes: projection.nodes.length,

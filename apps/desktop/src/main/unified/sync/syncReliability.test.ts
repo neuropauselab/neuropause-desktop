@@ -36,10 +36,11 @@ async function newState(): Promise<SyncStateStore> {
 }
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 const ent = (sid: string, now: string) =>
-  makeEntity({ connectorId: 'github', accountId: 'a1', kind: 'task', sourceId: sid, title: sid, createdAt: now, updatedAt: now, now });
+  makeEntity({ tenantId: 'org-test', connectorId: 'github', accountId: 'a1', kind: 'task', sourceId: sid, title: sid, createdAt: now, updatedAt: now, now });
 
 function ports(over: Partial<OrchestratorPorts> & { store: UnifiedStore; state: SyncStateStore; adapter: ConnectorAdapter | null }): OrchestratorPorts {
   return {
+    activeTenantId: () => 'org-test',
     upsertMany: (e) => over.store.upsertMany(e),
     markDeleted: (ids, at) => over.store.markDeleted(ids, at),
     countForConnector: (c) => over.store.countForConnector(c),

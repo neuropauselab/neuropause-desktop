@@ -44,6 +44,7 @@ export function mapMessage(ctx: SyncContext, m: GraphMessage): UnifiedEntity {
   const f = messageFields(m);
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'message',
     sourceId: m.id,
@@ -63,6 +64,7 @@ export function mapEvent(ctx: SyncContext, e: GraphEvent): UnifiedEntity {
   const f = eventFields(e);
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'calendar_event',
     sourceId: e.id,
@@ -84,6 +86,7 @@ export function mapDriveItem(ctx: SyncContext, d: GraphDriveItem): UnifiedEntity
   const f = driveItemFields(d);
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'file',
     sourceId: d.id,
@@ -101,6 +104,7 @@ export function mapContact(ctx: SyncContext, c: GraphContact): UnifiedEntity {
   const f = contactFields(c);
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'contact',
     sourceId: c.id,
@@ -117,6 +121,7 @@ export function mapTeam(ctx: SyncContext, t: GraphTeam): UnifiedEntity {
   const f = teamFields(t);
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'workspace',
     sourceId: t.id,

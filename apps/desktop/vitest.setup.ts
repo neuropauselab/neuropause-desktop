@@ -15,6 +15,10 @@
 import { setAmbientTenantScopeForTests } from './src/main/enterprise/framework/enterpriseRecordStore';
 import { setAmbientAppendOnlyScopeForTests } from './src/main/decisions/appendOnlyStore';
 import { setAmbientMemoryViewerForTests } from './src/main/memory/memoryStore';
+import { setAmbientUnifiedScopeForTests } from './src/main/unified/unifiedStore';
+import { setAmbientSearchScopeForTests } from './src/main/unified/searchBackend';
+import { setAmbientGraphScopeForTests } from './src/main/graph/graphStore';
+import { setAmbientTimelineScopeForTests } from './src/main/platform/timelineService';
 import { setAmbientProvenanceScopeForTests } from './src/main/dataPlane/importer';
 import { TEST_TENANT_SCOPE, TEST_MEMORY_VIEWER } from './src/main/tenancy/testScope';
 
@@ -34,3 +38,16 @@ setAmbientAppendOnlyScopeForTests(() => TEST_TENANT_SCOPE);
  */
 setAmbientMemoryViewerForTests(() => TEST_MEMORY_VIEWER);
 setAmbientProvenanceScopeForTests(() => TEST_TENANT_SCOPE);
+
+/**
+ * P13B — the same fallback for the unified store, its search index and the graph.
+ *
+ * These three are the root of the data fabric: memory and the graph both
+ * project from the unified store, and the index mirrors it. Without a fallback
+ * every fixture that seeds an entity would read nothing back, which is the
+ * correct production behaviour and useless as a test default.
+ */
+setAmbientUnifiedScopeForTests(() => TEST_TENANT_SCOPE);
+setAmbientSearchScopeForTests(() => TEST_TENANT_SCOPE);
+setAmbientGraphScopeForTests(() => TEST_TENANT_SCOPE);
+setAmbientTimelineScopeForTests(() => TEST_TENANT_SCOPE);

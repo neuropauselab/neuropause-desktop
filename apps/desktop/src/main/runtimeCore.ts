@@ -146,7 +146,8 @@ import {
   initEnterpriseIntelligence,
   type RawTimelineEvent,
 } from './enterprise/intelligence/enterpriseIntelligenceSubsystem';
-import { getRelationshipModel } from './enterprise/relationshipProvider';
+import { getRelationshipModel, invalidateModelCache as invalidateRelationshipModelCache } from './enterprise/relationshipProvider';
+import { invalidateModelCache as invalidateTrustModelCache } from './enterprise/trustProvider';
 import { initFounderAI } from './founder';
 import { initEngineeringAI, initFounderAIv2 } from './ai';
 // Phase 6 Stage 4 — the Workspace Assistant (composition over existing engines).
@@ -794,8 +795,33 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   memoryStore.bindViewer(activeMemoryViewer);
   dataPlane.provenance.bindScope(activeTenantScope);
 
+  /**
+   * P13B — the Unified Store and the Graph, the two roots of the data fabric.
+   *
+   * `unifiedStore.bindScope` also binds the SEARCH INDEX it owns, because the
+   * index is a second copy of the same records with its own reachable read
+   * path. Binding these two is what finally gives the memory and graph
+   * projections a trustworthy source: Program 13A could stamp a projected
+   * memory with an owner, but the thing it projected from had none.
+   */
+  unifiedStore.bindScope(activeTenantScope);
+  // The event bus + durable timeline: bound here rather than at platform boot,
+  // because the resolver does not exist that early.
+  platform.bindTenant(activeTenantScope);
+  graphStore.bindScope(activeTenantScope);
+
   onWorkspaceSwitch(() => {
     dataPlane.forgetPlans();
+    /**
+     * P13B — flush the keyless TTL model caches on a switch.
+     *
+     * Both are built by fanning out across scoped stores, so a cache built by
+     * tenant A holds A's data and is then served to whoever asks within the
+     * TTL. That was an accepted transient leak while it stayed in memory; the
+     * graph projection now persists what it reads, so it no longer does.
+     */
+    invalidateRelationshipModelCache();
+    invalidateTrustModelCache();
     // Stop the 60-second push loop rather than let it keep pushing to the
     // workspace that was just left. The renderer re-points it deliberately.
     setLiveSyncActiveOrg(null);

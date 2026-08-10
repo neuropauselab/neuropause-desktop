@@ -1,3 +1,4 @@
+import { makeUnifiedId } from '../../ids';
 /**
  * P5 — Increment 5: the GitHub connector FAMILY (repositories, issues, PRs, Actions, releases,
  * organizations, teams, notifications on one `github` connector). Pure-node, fake HttpClient —
@@ -11,7 +12,7 @@ import { AuthError, HttpError, RateLimitError, type HttpRequestOptions, type Htt
 import { GITHUB_SERVICES, githubAdapter, githubServiceAvailability, mapOrg, mapTeam } from './github';
 
 const NOW = '2026-07-12T00:00:00.000Z';
-const base = { connectorId: 'github', accountId: 'a1', now: NOW } as const;
+const base = { tenantId: 'org-test', connectorId: 'github', accountId: 'a1', now: NOW } as const;
 const pureCtx: SyncContext = { ...base, http: undefined as never, cursor: null };
 
 /** ctx whose http replays one response (or throws). */
@@ -70,7 +71,7 @@ describe('GitHub Organizations & Teams', () => {
   it('maps an organization', () => {
     const e = mapOrg(pureCtx, { id: 42, login: 'acme', url: 'https://api.github.com/orgs/acme', description: 'Acme Inc' });
     expect(e.kind).toBe('organization');
-    expect(e.id).toBe('github:a1:organization:42');
+    expect(e.id).toBe(makeUnifiedId('org-test', 'github', 'a1', 'organization', '42'));
     expect(e.title).toBe('acme');
     expect(e.url).toBe('https://github.com/acme');
     expect(e.metadata.githubKind).toBe('organization');
@@ -80,8 +81,8 @@ describe('GitHub Organizations & Teams', () => {
     const e = mapTeam(pureCtx, { id: 42, name: 'Platform', slug: 'platform', privacy: 'closed', organization: { id: 42, login: 'acme' } });
     expect(e.kind).toBe('organization');
     // team id 42 and org id 42 must NOT collide under the shared 'organization' kind.
-    expect(e.id).toBe('github:a1:organization:team-42');
-    expect(e.containerId).toBe('github:a1:organization:42');
+    expect(e.id).toBe(makeUnifiedId('org-test', 'github', 'a1', 'organization', 'team-42'));
+    expect(e.containerId).toBe(makeUnifiedId('org-test', 'github', 'a1', 'organization', '42'));
     expect(e.metadata.githubKind).toBe('team');
     expect(e.metadata.organization).toBe('acme');
   });

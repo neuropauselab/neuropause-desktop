@@ -186,6 +186,7 @@ function base(ctx: SyncContext, instance: string, object: string, kind: UnifiedE
   const updated = iso(r.LastModifiedDate ?? r.SystemModstamp, created);
   return {
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind,
     sourceId: String(r.Id),
@@ -214,7 +215,7 @@ export function mapAccount(ctx: SyncContext, instance: string, r: SfRecord): Uni
 }
 
 export function mapContact(ctx: SyncContext, instance: string, r: SfRecord): UnifiedEntity {
-  const containerId = r.AccountId ? makeUnifiedId(ctx.connectorId, ctx.accountId, 'organization', String(r.AccountId)) : null;
+  const containerId = r.AccountId ? makeUnifiedId(ctx.tenantId, ctx.connectorId, ctx.accountId, 'organization', String(r.AccountId)) : null;
   return makeEntity({
     ...base(ctx, instance, 'Contact', 'contact', r),
     title: str(r.Name) || str(r.Email) || String(r.Id),
@@ -249,7 +250,7 @@ export function mapLead(ctx: SyncContext, instance: string, r: SfRecord): Unifie
 }
 
 export function mapOpportunity(ctx: SyncContext, instance: string, r: SfRecord): UnifiedEntity {
-  const containerId = r.AccountId ? makeUnifiedId(ctx.connectorId, ctx.accountId, 'organization', String(r.AccountId)) : null;
+  const containerId = r.AccountId ? makeUnifiedId(ctx.tenantId, ctx.connectorId, ctx.accountId, 'organization', String(r.AccountId)) : null;
   return makeEntity({
     ...base(ctx, instance, 'Opportunity', 'task', r),
     title: str(r.Name) || String(r.Id),
@@ -271,7 +272,7 @@ export function mapOpportunity(ctx: SyncContext, instance: string, r: SfRecord):
 }
 
 export function mapCase(ctx: SyncContext, instance: string, r: SfRecord): UnifiedEntity {
-  const containerId = r.AccountId ? makeUnifiedId(ctx.connectorId, ctx.accountId, 'organization', String(r.AccountId)) : null;
+  const containerId = r.AccountId ? makeUnifiedId(ctx.tenantId, ctx.connectorId, ctx.accountId, 'organization', String(r.AccountId)) : null;
   return makeEntity({
     ...base(ctx, instance, 'Case', 'task', r),
     title: str(r.Subject) || (r.CaseNumber ? `Case ${str(r.CaseNumber)}` : String(r.Id)),

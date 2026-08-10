@@ -1,3 +1,4 @@
+import { makeUnifiedId } from '../../ids';
 /**
  * P5 — Increment 6: the Slack connector FAMILY (channels, messages, users, files on one `slack`
  * connector). Pure-node, fake HttpClient. Covers the family composition, the `ok:false` → typed-error
@@ -11,7 +12,7 @@ import { slackAdapter, slackServiceAvailability, mapFile, mapUser, SLACK_SERVICE
 import { unixToIso } from './util';
 
 const NOW = '2026-07-12T00:00:00.000Z';
-const base = { connectorId: 'slack', accountId: 'a1', now: NOW } as const;
+const base = { tenantId: 'org-test', connectorId: 'slack', accountId: 'a1', now: NOW } as const;
 const pureCtx: SyncContext = { ...base, http: undefined as never, cursor: null };
 
 /** ctx whose http replays one Slack body (200 with {ok,...}) per call, routed by url. */
@@ -103,7 +104,7 @@ describe('Slack Users & Files', () => {
   it('maps a user to a contact with a REAL updated timestamp (no re-sync churn)', () => {
     const e = mapUser(pureCtx, { id: 'U1', name: 'ada', real_name: 'Ada L', updated: 1_700_000_000, profile: { email: 'ada@x.com', title: 'CTO' } });
     expect(e.kind).toBe('contact');
-    expect(e.id).toBe('slack:a1:contact:U1');
+    expect(e.id).toBe(makeUnifiedId('org-test', 'slack', 'a1', 'contact', 'U1'));
     expect(e.title).toBe('Ada L');
     expect(e.author).toBe('ada@x.com');
     expect(e.updatedAt).toBe(unixToIso(1_700_000_000)); // stable across syncs, not ctx.now
@@ -119,7 +120,7 @@ describe('Slack Users & Files', () => {
   it('maps a file to a file entity via its permalink', () => {
     const e = mapFile(pureCtx, { id: 'F1', created: 1_700_000_000, title: 'Plan', mimetype: 'application/pdf', size: 1234, permalink: 'https://slack/F1' });
     expect(e.kind).toBe('file');
-    expect(e.id).toBe('slack:a1:file:F1');
+    expect(e.id).toBe(makeUnifiedId('org-test', 'slack', 'a1', 'file', 'F1'));
     expect(e.url).toBe('https://slack/F1');
     expect(e.metadata.size).toBe(1234);
   });

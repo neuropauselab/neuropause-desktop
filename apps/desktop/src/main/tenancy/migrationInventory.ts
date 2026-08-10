@@ -68,22 +68,22 @@ const UNENFORCED: readonly { store: string; status: TenantMigrationStatus; note:
   {
     store: 'memory (memoryStore + vectorStore + liveSync bridge)',
     status: 'PARTIAL',
-    note: 'P13A \u2014 MemoryItem carries an owner (SYSTEM / TENANT / WORKSPACE / PERSONAL) stamped by `remember` from the resolved viewer; `remember` throws rather than create an unowned memory. `filterFor` enforces it and every retrieval leg resolves through it \u2014 lexical, semantic, the hybrid union and the degraded fallback \u2014 so the isolated vector half is no longer defeated by the union. `get`, `update`, `forget`, `counts`, `allItems` (backfill egress) and `syncedItems` (sync egress) are scoped; the outbound bridge enqueues under each memory\u2019s OWN org rather than the active one, and an inbound apply is refused unless the payload carries an owner the viewer may read. PROJECTED memories inherit the projecting viewer\u2019s tenant because their source \u2014 the unified store \u2014 is still unscoped, so memory is no better isolated than what it projects from. Memories written before P13A are unresolved and visible to nobody.',
+    note: 'P13A \u2014 MemoryItem carries an owner (SYSTEM / TENANT / WORKSPACE / PERSONAL) stamped by `remember` from the resolved viewer; `remember` throws rather than create an unowned memory. `filterFor` enforces it and every retrieval leg resolves through it \u2014 lexical, semantic, the hybrid union and the degraded fallback \u2014 so the isolated vector half is no longer defeated by the union. `get`, `update`, `forget`, `counts`, `allItems` (backfill egress) and `syncedItems` (sync egress) are scoped; the outbound bridge enqueues under each memory\u2019s OWN org rather than the active one, and an inbound apply is refused unless the payload carries an owner the viewer may read. PROJECTED memories inherit the projecting viewer\u2019s tenant; as of P13B their source (the unified store) IS scoped, so that stamp is derived rather than assumed \u2014 a projection can only have read the tenant\u2019s own entities. Memories written before P13A are unresolved and visible to nobody.',
   },
   {
     store: 'AI context (contextBuilder, enterpriseSearch)',
-    status: 'REQUIRES_MIGRATION',
-    note: 'The deterministic-answer path now reads scoped records, because it goes through `store.list()`. Retrieval is PARTLY scoped: P13A made `EnterpriseSearchSources.memoryScope` a REQUIRED field, so a fan-out that has resolved no tenant returns an empty memory group instead of every tenant’s memories, and the memory leg is bounded by the store’s own viewer rather than by anything the caller passes. The UNIFIED INDEX and the GRAPH legs remain unscoped, so this entry stays REQUIRES_MIGRATION. `RetrievalPorts.governanceFilter` is the seam for those two and is still wired nowhere.',
+    status: 'PARTIAL',
+    note: 'P13B \u2014 every leg of `runEnterpriseSearch` is now bounded by its own store\u2019s binding: entity (partitioned index), graph (scoped reads), memory (P13A + required `memoryScope`) and timeline (scoped event log). The context builder therefore reaches the model with one tenant\u2019s data. `RetrievalPorts.governanceFilter` is still wired nowhere \u2014 it is now a defence in depth rather than the only seam, because the boundary sits in the stores. Briefings read the same scoped sources.',
   },
   {
     store: 'unified store + local search index',
-    status: 'REQUIRES_MIGRATION',
-    note: 'UnifiedEntity has no scope field. `query({limit: 1_000_000})` is the input to every briefing, finding and analytics rollup.',
+    status: 'PARTIAL',
+    note: 'P13B \u2014 UnifiedEntity carries a scope, stamped on write from the active scope and never from the payload; the TENANT is now part of the Unified Identifier, so two tenants syncing the same provider account no longer collide on one row. `get`, `query`, `counts`, `countForConnector`, `markDeleted` and `removeConnector` are scoped, and a disconnect purges only the disconnecting tenant. The SEARCH INDEX is PARTITIONED per tenant rather than filtered, which removes the TF-IDF oracle: idf was computed from global document counts and returned inside the relevance score. `upsertMany` takes the writer\u2019s expected tenant and refuses if the active organization changed mid-run. Records synced before P13B are unresolved and visible to nobody.',
   },
   {
     store: 'graph (graphStore)',
-    status: 'REQUIRES_MIGRATION',
-    note: 'Nodes and edges carry no scope. Adjacency is one global edge set, so `subgraph`, `neighbors` and `path` traverse across tenants; every bound is cardinality, not ownership.',
+    status: 'PARTIAL',
+    note: 'P13B \u2014 nodes AND edges carry a scope. `getNode`, `listNodes`, `neighbors`, `subgraph`, `path`, `historyFor` and `counts` are scoped, and traversal re-checks the EDGE and the FAR NODE at every hop \u2014 so a corrupt or planted cross-tenant edge is a dead end rather than a bridge, without relying on the data being clean. `apply` replaces only the rebuilding tenant\u2019s slice (it previously deleted every other tenant\u2019s nodes) and refuses to take a node id already owned elsewhere. Synthesised node ids (`person:`, `connector:`, `app:`) are tenant-qualified. The relationship HISTORY log remains a single unstamped array with a shared cap, so a churny tenant can still evict another\u2019s history \u2014 events are filtered on read but the retention is shared.',
   },
   {
     store: 'notifications (inboxStore)',
@@ -94,6 +94,11 @@ const UNENFORCED: readonly { store: string; status: TenantMigrationStatus; note:
     store: 'audit reads (governanceStore)',
     status: 'PARTIAL',
     note: 'P12 — `auditEntries` and `auditCount` take a scope and filter the OUTPUT (never the array: the tamper-evident chain is order-sensitive). The renderer channel, the trust model and the medical-device reader all pass the active scope. Entries written before P11 have no workspaceId and are visible to nobody. Approval chains and compliance rules remain global.',
+  },
+  {
+    store: 'platform event log + Enterprise Timeline',
+    status: 'PARTIAL',
+    note: 'P13B \u2014 ADDED TO THIS INVENTORY, having been absent from it. `PlatformEvent` had no scope at all, and the Enterprise Timeline fuses it with (scoped) entities, so every briefing and the timeline leg of Enterprise Search were unscoped no matter how well the entities were guarded \u2014 and `timeline:export` returned the whole durable log over an ungated channel. Events are now stamped at the single materialization point in the bus from the resolved tenant (producers cannot supply one), and `query`, `stats` and `export` all filter. Events written before P13B, and those published with no active tenant (boot, background timers), are unowned and shown to nobody \u2014 which means some legitimate system activity is now invisible in the timeline until its producers carry a tenant. That is the background-jobs entry below.',
   },
   {
     store: 'import plan cache (dataPlane)',

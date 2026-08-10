@@ -72,10 +72,11 @@ export function mapMessage(ctx: SyncContext, m: GmailMessage): UnifiedEntity {
   const from = header(headers, 'From');
   const dateHeader = header(headers, 'Date');
   const ts = m.internalDate ? new Date(Number(m.internalDate)).toISOString() : ctx.now;
-  const threadRef = m.threadId ? makeUnifiedId(ctx.connectorId, ctx.accountId, 'conversation', m.threadId) : null;
+  const threadRef = m.threadId ? makeUnifiedId(ctx.tenantId, ctx.connectorId, ctx.accountId, 'conversation', m.threadId) : null;
   const labels = m.labelIds ?? [];
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'message',
     sourceId: m.id,

@@ -17,6 +17,7 @@ import { connectorService } from '../../connectors/connectorService';
 import { connectorStore } from '../../connectors/connectorStore';
 import { CONNECTOR_MANIFESTS, MANIFEST_BY_ID } from '../../connectors/manifests';
 import { unifiedStore } from '../storeInstance';
+import { activeTenantScope } from '../../enterprise';
 import { syncStateStore } from './syncStateInstance';
 import { stateToSnapshot } from './syncStateStore';
 import { SyncOrchestrator, type OrchestratorPorts } from './orchestrator';
@@ -86,7 +87,11 @@ export async function initSync(deps: SyncSubsystemDeps): Promise<SyncSubsystem> 
   registerBuiltinAdapters();
 
   const orchestrator = new SyncOrchestrator({
-    upsertMany: (entities) => unifiedStore.upsertMany(entities),
+    // P13B — the same resolver every other scoped surface reads. Null (cold
+    // start / signed out / suspended member) declines the run rather than
+    // syncing records nobody would own.
+    activeTenantId: () => activeTenantScope()?.tenantId ?? null,
+    upsertMany: (entities, expectedTenantId) => unifiedStore.upsertMany(entities, expectedTenantId),
     markDeleted: (ids, at) => unifiedStore.markDeleted(ids, at),
     countForConnector: (c) => unifiedStore.countForConnector(c),
     syncState: syncStateStore,

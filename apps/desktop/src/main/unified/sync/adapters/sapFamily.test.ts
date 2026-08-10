@@ -1,3 +1,4 @@
+import { makeUnifiedId } from '../../ids';
 /**
  * P5 — Increment 11: the SAP S/4HANA connector FAMILY (Business Partners, Customers, Suppliers, Materials,
  * Inventory, Sales/Purchase/Production Orders, Financials, Plants, Warehouses on one `sap` connector).
@@ -31,7 +32,7 @@ import {
 
 const BASE = 'https://mytenant-api.s4hana.cloud.sap';
 const NOW = '2026-07-13T00:00:00.000Z';
-const baseCtx = { connectorId: 'sap', accountId: 'a1', now: NOW } as const;
+const baseCtx = { tenantId: 'org-test', connectorId: 'sap', accountId: 'a1', now: NOW } as const;
 const pureCtx: SyncContext = { ...baseCtx, http: undefined as never, cursor: null };
 /** An OData V2 epoch-millis date literal. */
 const D = (iso: string) => `/Date(${Date.parse(iso)})/`;
@@ -86,7 +87,7 @@ describe('SAP mappers — kinds, per-object id prefixes, /Date(ms)/ parsing, com
   it('maps a Business Partner → organization with a prefixed id and a normalized (Z) timestamp from /Date(ms)/', () => {
     const e = mapBusinessPartner(pureCtx, { BusinessPartner: '1000', BusinessPartnerFullName: 'Acme Corp', BusinessPartnerCategory: '2', CreationDate: D('2026-06-01T00:00:00Z'), LastChangeDate: D('2026-07-02T00:00:00Z') });
     expect(e.kind).toBe('organization');
-    expect(e.id).toBe('sap:a1:organization:business_partner-1000');
+    expect(e.id).toBe(makeUnifiedId('org-test', 'sap', 'a1', 'organization', 'business_partner-1000'));
     expect(e.title).toBe('Acme Corp');
     expect(e.updatedAt).toBe('2026-07-02T00:00:00.000Z'); // /Date(ms)/ → ISO-Z
     expect(e.metadata.sapObject).toBe('BusinessPartner');
@@ -98,15 +99,15 @@ describe('SAP mappers — kinds, per-object id prefixes, /Date(ms)/ parsing, com
     const so = mapSalesOrder(pureCtx, { SalesOrder: '1000' });
     // Same raw key '1000' across three object types → three DISTINCT unified ids (different kinds AND prefixes).
     expect(new Set([bp.id, mat.id, so.id]).size).toBe(3);
-    expect(bp.id).toBe('sap:a1:organization:business_partner-1000');
-    expect(mat.id).toBe('sap:a1:document:material-1000');
-    expect(so.id).toBe('sap:a1:task:sales_order-1000');
+    expect(bp.id).toBe(makeUnifiedId('org-test', 'sap', 'a1', 'organization', 'business_partner-1000'));
+    expect(mat.id).toBe(makeUnifiedId('org-test', 'sap', 'a1', 'document', 'material-1000'));
+    expect(so.id).toBe(makeUnifiedId('org-test', 'sap', 'a1', 'task', 'sales_order-1000'));
   });
 
   it('maps a Financial Document → document with a COMPOUND-key id joined from its four key fields', () => {
     const fd = mapFinancialDocument(pureCtx, { CompanyCode: '1710', FiscalYear: '2026', AccountingDocument: '100000001', AccountingDocumentItem: '1', GLAccount: '400000', AmountInCompanyCodeCurrency: '99.50', CompanyCodeCurrency: 'USD', PostingDate: D('2026-07-01T00:00:00Z') });
     expect(fd.kind).toBe('document');
-    expect(fd.id).toBe('sap:a1:document:financial_document-1710-2026-100000001-1');
+    expect(fd.id).toBe(makeUnifiedId('org-test', 'sap', 'a1', 'document', 'financial_document-1710-2026-100000001-1'));
     expect(fd.metadata.amount).toBe('99.50');
   });
 
@@ -116,7 +117,7 @@ describe('SAP mappers — kinds, per-object id prefixes, /Date(ms)/ parsing, com
     expect(mapInventory(pureCtx, { Material: 'M1', Plant: '1710', StorageLocation: '0001', MatlWrhsStkQtyInMatlBaseUnit: '42' }).kind).toBe('document');
     expect(mapPurchaseOrder(pureCtx, { PurchaseOrder: 'PO1' }).kind).toBe('task');
     expect(mapProductionOrder(pureCtx, { ManufacturingOrder: 'MO1' }).kind).toBe('task');
-    expect(mapProductionOrder(pureCtx, { ManufacturingOrder: 'MO1' }).id).toBe('sap:a1:task:production_order-MO1');
+    expect(mapProductionOrder(pureCtx, { ManufacturingOrder: 'MO1' }).id).toBe(makeUnifiedId('org-test', 'sap', 'a1', 'task', 'production_order-MO1'));
     expect(mapPlant(pureCtx, { Plant: '1710', PlantName: 'Main' }).kind).toBe('organization');
     expect(mapWarehouse(pureCtx, { EWMWarehouse: 'WH1', WarehouseName: 'DC' }).kind).toBe('organization');
   });

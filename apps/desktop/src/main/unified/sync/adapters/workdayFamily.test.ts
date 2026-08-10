@@ -1,3 +1,4 @@
+import { makeUnifiedId } from '../../ids';
 /**
  * P5 — Increment 14: the Workday connector FAMILY (Workers, Organizations, Positions, Jobs, Departments,
  * Supervisory Organizations, Recruiting, Candidates, Benefits, Payroll, Learning, Time Off on one `workday`
@@ -35,7 +36,7 @@ import {
 const BASE = 'https://wd2-impl-services1.workday.com';
 const API = `${BASE}/ccx/api`;
 const NOW = '2026-07-13T00:00:00.000Z';
-const baseCtx = { connectorId: 'workday', accountId: 'a1', now: NOW } as const;
+const baseCtx = { tenantId: 'org-test', connectorId: 'workday', accountId: 'a1', now: NOW } as const;
 const pureCtx: SyncContext = { ...baseCtx, http: undefined as never, cursor: null };
 
 interface Handled { total?: number; data?: Record<string, unknown>[] }
@@ -92,7 +93,7 @@ describe('Workday mappers — kinds, object-prefixed WID sourceIds, descriptors,
       primaryJob: { id: 'JOB-1', descriptor: 'Software Engineer' },
     });
     expect(e.kind).toBe('contact');
-    expect(e.id).toBe('workday:a1:contact:worker-WID-worker-1'); // object-type-prefixed WID
+    expect(e.id).toBe(makeUnifiedId('org-test', 'workday', 'a1', 'contact', 'worker-WID-worker-1')); // object-type-prefixed WID
     expect(e.title).toBe('Jane Doe');
     expect(e.author).toBe('jane@acme.com');
     expect(e.metadata.businessTitle).toBe('Staff Engineer');
@@ -106,9 +107,9 @@ describe('Workday mappers — kinds, object-prefixed WID sourceIds, descriptors,
     const org = mapOrganization(pureCtx, { id: 'ORG-1', descriptor: 'Engineering' });
     const dept = mapDepartment(pureCtx, { id: 'ORG-1', descriptor: 'Engineering' });
     const sup = mapSupervisoryOrg(pureCtx, { id: 'ORG-1', descriptor: 'Engineering' });
-    expect(org.id).toBe('workday:a1:organization:organization-ORG-1');
-    expect(dept.id).toBe('workday:a1:organization:department-ORG-1');
-    expect(sup.id).toBe('workday:a1:organization:supervisory_org-ORG-1');
+    expect(org.id).toBe(makeUnifiedId('org-test', 'workday', 'a1', 'organization', 'organization-ORG-1'));
+    expect(dept.id).toBe(makeUnifiedId('org-test', 'workday', 'a1', 'organization', 'department-ORG-1'));
+    expect(sup.id).toBe(makeUnifiedId('org-test', 'workday', 'a1', 'organization', 'supervisory_org-ORG-1'));
     expect(new Set([org.id, dept.id, sup.id]).size).toBe(3); // three DISTINCT ids despite the shared WID + kind
   });
 

@@ -39,6 +39,7 @@ import { setAllowUnsignedInstalls } from '../nps/signature';
 import { pluginManager } from '../plugins/pluginManager';
 import { supervisor } from '../runtime/supervisor';
 import { EventBus } from './eventBus';
+import type { TenantScope } from '@neuropause/shared';
 import { TimelineService } from './timelineService';
 import { PlatformEventApi } from './eventApi';
 import { registerSubscribers } from './subscribers';
@@ -73,6 +74,8 @@ export interface ProducerSources {
 }
 
 export interface Platform {
+  /** P13B — bind the tenant boundary (bus stamping + timeline filtering). */
+  bindTenant: (resolve: () => TenantScope | null) => void;
   api: PlatformEventApi;
   diagnostics: () => Promise<DiagnosticsReport>;
   handlers: SecureHandlerDef[];
@@ -139,6 +142,18 @@ export async function initPlatform(deps: {
   });
 
   const timeline = new TimelineService({ dir: join(app.getPath('userData'), 'timeline') });
+
+  /**
+   * P13B — the event system's tenant boundary is bound by the COMPOSITION ROOT,
+   * not here.
+   *
+   * The platform subsystem boots before the enterprise subsystem exists to
+   * resolve anything, so a binding made at this point would capture a resolver
+   * that can only ever answer null. `runtimeCore` binds `bus` and `timeline`
+   * alongside every other scoped store, once the resolver is real. Until then
+   * events are unowned — the correct reading of "published before the app knew
+   * who it was acting for".
+   */
   await timeline.init();
 
   const api = new PlatformEventApi(bus, timeline);
@@ -261,6 +276,16 @@ export async function initPlatform(deps: {
     diagnostics: () => diagnostics.report(),
     handlers,
     wireProducers,
+    /**
+     * P13B — bind the tenant boundary onto the event system.
+     *
+     * Called by the composition root once the tenant resolver is real. The bus
+     * stamps each event as it is materialized; the timeline filters every read.
+     */
+    bindTenant: (resolve: () => TenantScope | null): void => {
+      bus.bindTenant(() => resolve()?.tenantId ?? null);
+      timeline.bindScope(resolve);
+    },
     dispose: () => timeline.dispose(),
   };
 }

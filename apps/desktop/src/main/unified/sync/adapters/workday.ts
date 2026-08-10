@@ -136,6 +136,7 @@ interface WorkdaySpec {
 function base(ctx: SyncContext, spec: WorkdaySpec, rec: WorkdayRecord) {
   return {
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: spec.kind,
     sourceId: `${spec.prefix}${wid(rec) ?? ''}`,

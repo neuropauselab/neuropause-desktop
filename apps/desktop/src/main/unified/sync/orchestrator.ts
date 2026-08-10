@@ -32,7 +32,21 @@ export const MAX_CONCURRENT_SYNCS = 4;
 
 /** Everything the orchestrator depends on, injected so it can be tested. */
 export interface OrchestratorPorts {
-  upsertMany: (entities: UnifiedEntity[]) => Promise<{ created: number; updated: number; conflicts: number }>;
+  /**
+   * The organization this sync run acts for (P13B), or null when none resolves.
+   *
+   * A PORT, not a global read, and not a parameter on `run()`. It is a port
+   * because the orchestrator must not import the tenant resolver (that would
+   * couple the sync engine to the enterprise subsystem and break its
+   * standalone tests); it is not a parameter because a caller that can name the
+   * tenant is a caller that can name someone else's.
+   *
+   * Returning null STOPS the run. A sync with no owner would mint entities with
+   * no owner — invisible to everyone, re-created on every pass — so refusing is
+   * both the safe answer and the honest one.
+   */
+  activeTenantId: () => string | null;
+  upsertMany: (entities: UnifiedEntity[], expectedTenantId?: string) => Promise<{ created: number; updated: number; conflicts: number }>;
   markDeleted: (ids: string[], at: string) => Promise<number>;
   countForConnector: (connectorId: string) => number;
   syncState: SyncStateStore;
@@ -203,6 +217,40 @@ export class SyncOrchestrator {
     const start = Date.now();
     const nowIso = new Date().toISOString();
 
+    /**
+     * P13B — resolve the owning tenant ONCE, before any provider call.
+     *
+     * Read here rather than per page so a workspace switch mid-run cannot make
+     * the first half of a sync land in one tenant and the second half in
+     * another. The whole run either belongs to one organization or does not
+     * happen.
+     */
+    const tenantId = this.ports.activeTenantId();
+    if (tenantId === null) {
+      /**
+       * RETRYABLE, not a hard failure. There is nothing wrong with the
+       * connector or the provider — the app simply has no active organization
+       * yet (cold start, signed out, a workspace still opening). Marking it
+       * terminal would leave the account looking broken until a manual retry;
+       * marking it retryable lets the normal schedule pick it up once a tenant
+       * resolves.
+       */
+      await this.ports.syncState.recordRun(connectorId, accountId, {
+        status: 'error',
+        lastError: 'No organization is active, so this sync has no owner.',
+      });
+      return {
+        ok: false,
+        hadAdapter: true,
+        ...zero,
+        durationMs: 0,
+        error: 'No organization is active, so this sync has no owner.',
+        retryable: true,
+        rateLimited: false,
+        offline: false,
+      };
+    }
+
     const http = new HttpClient(
       connectorId,
       async () => {
@@ -243,9 +291,17 @@ export class SyncOrchestrator {
         let resDeleted = 0;
         let degraded: SyncPage['degraded'];
         for (;;) {
-          const page = await resource.pull({ connectorId, accountId, http, cursor, now: nowIso });
+          const page = await resource.pull({
+            tenantId,
+            connectorId,
+            accountId,
+            http,
+            cursor,
+            now: nowIso,
+          });
           if (page.entities.length > 0) {
-            const r = await this.ports.upsertMany(page.entities);
+            // P13B — assert the run's tenant is still active; see UnifiedStore.upsertMany.
+            const r = await this.ports.upsertMany(page.entities, tenantId);
             created += r.created;
             updated += r.updated;
             conflicts += r.conflicts;
@@ -279,7 +335,7 @@ export class SyncOrchestrator {
             }
           }
           if (page.deletedSourceIds && page.deletedSourceIds.length > 0) {
-            const ids = page.deletedSourceIds.map((sid) => makeUnifiedId(connectorId, accountId, resource.kind, sid));
+            const ids = page.deletedSourceIds.map((sid) => makeUnifiedId(tenantId, connectorId, accountId, resource.kind, sid));
             const d = await this.ports.markDeleted(ids, nowIso);
             deleted += d;
             resDeleted += d;

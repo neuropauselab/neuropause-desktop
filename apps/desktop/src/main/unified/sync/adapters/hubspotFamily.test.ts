@@ -1,3 +1,4 @@
+import { makeUnifiedId } from '../../ids';
 /**
  * P5 — Increment 9: the HubSpot connector FAMILY (Contacts, Companies, Deals, Tickets, Products, Owners,
  * Notes, Tasks, Meetings, Emails on one `hubspot` connector). Pure-node, fake HttpClient. Covers family
@@ -29,7 +30,7 @@ import {
 const NOW = '2026-07-13T00:00:00.000Z';
 /** Must match OVERLAP_MS in hubspot.ts — the incremental filter re-scans this window below the high-water. */
 const OVERLAP = 2 * 60 * 1000;
-const baseCtx = { connectorId: 'hubspot', accountId: 'a1', now: NOW } as const;
+const baseCtx = { tenantId: 'org-test', connectorId: 'hubspot', accountId: 'a1', now: NOW } as const;
 const pureCtx: SyncContext = { ...baseCtx, http: undefined as never, cursor: null };
 
 interface Req { method: 'GET' | 'POST'; url: string; body?: unknown; opts?: HttpRequestOptions }
@@ -98,13 +99,13 @@ describe('HubSpot mappers — kinds, per-type collision prefixes, timestamps', (
   it('maps a Contact → contact and a Company → organization with normalized (Z) timestamps', () => {
     const c = mapContact(pureCtx, { id: '101', properties: { firstname: 'Ada', lastname: 'Byron', email: 'ada@acme.com' }, createdAt: '2026-06-01T00:00:00Z', updatedAt: '2026-07-02T10:00:00.000Z' });
     expect(c.kind).toBe('contact');
-    expect(c.id).toBe('hubspot:a1:contact:contact-101');
+    expect(c.id).toBe(makeUnifiedId('org-test', 'hubspot', 'a1', 'contact', 'contact-101'));
     expect(c.title).toBe('Ada Byron');
     expect(c.updatedAt).toBe('2026-07-02T10:00:00.000Z');
     expect(c.metadata.hubspotType).toBe('contact');
     const co = mapCompany(pureCtx, { id: '55', properties: { name: 'Acme', domain: 'acme.com' } });
     expect(co.kind).toBe('organization');
-    expect(co.id).toBe('hubspot:a1:organization:company-55');
+    expect(co.id).toBe(makeUnifiedId('org-test', 'hubspot', 'a1', 'organization', 'company-55'));
   });
 
   it('prefixes sourceIds per type so Deals/Tickets/Tasks (all → task) never collide on a shared id', () => {
@@ -114,16 +115,16 @@ describe('HubSpot mappers — kinds, per-type collision prefixes, timestamps', (
     expect([deal.kind, ticket.kind, task.kind]).toEqual(['task', 'task', 'task']);
     // Same raw id 12345, same kind, but three DISTINCT unified ids thanks to the type prefix.
     expect(new Set([deal.id, ticket.id, task.id]).size).toBe(3);
-    expect(deal.id).toBe('hubspot:a1:task:deal-12345');
-    expect(ticket.id).toBe('hubspot:a1:task:ticket-12345');
-    expect(task.id).toBe('hubspot:a1:task:task-12345');
+    expect(deal.id).toBe(makeUnifiedId('org-test', 'hubspot', 'a1', 'task', 'deal-12345'));
+    expect(ticket.id).toBe(makeUnifiedId('org-test', 'hubspot', 'a1', 'task', 'ticket-12345'));
+    expect(task.id).toBe(makeUnifiedId('org-test', 'hubspot', 'a1', 'task', 'task-12345'));
     expect(deal.metadata.amount).toBe('5000');
   });
 
   it('maps a Product → document, a Note → activity (HTML stripped), a Meeting → calendar_event with start/end', () => {
     const prod = mapProduct(pureCtx, { id: '9', properties: { name: 'Widget', price: '19.99', hs_sku: 'W-1' } });
     expect(prod.kind).toBe('document');
-    expect(prod.id).toBe('hubspot:a1:document:product-9');
+    expect(prod.id).toBe(makeUnifiedId('org-test', 'hubspot', 'a1', 'document', 'product-9'));
 
     const note = mapNote(pureCtx, { id: '7', properties: { hs_note_body: '<p>Called&nbsp;the <b>lead</b></p>' } });
     expect(note.kind).toBe('activity');
@@ -145,14 +146,14 @@ describe('HubSpot mappers — kinds, per-type collision prefixes, timestamps', (
   it('maps an Email → message and (via the owners endpoint) an Owner → contact, disjoint from a contact id', () => {
     const em = mapEmail(pureCtx, { id: '88', properties: { hs_email_subject: 'Hello', hs_email_from_email: 'rep@acme.com', hs_email_direction: 'EMAIL' } });
     expect(em.kind).toBe('message');
-    expect(em.id).toBe('hubspot:a1:message:email-88');
+    expect(em.id).toBe(makeUnifiedId('org-test', 'hubspot', 'a1', 'message', 'email-88'));
     expect(em.author).toBe('rep@acme.com');
 
     const owner = mapOwner(pureCtx, { id: '101', email: 'rep@acme.com', firstName: 'Sales', lastName: 'Rep', userId: 55, updatedAt: '2026-05-01T00:00:00Z' });
     const contact = mapContact(pureCtx, { id: '101', properties: { firstname: 'Ada' } });
     expect(owner.kind).toBe('contact');
     expect(owner.metadata.hubspotType).toBe('owner');
-    expect(owner.id).toBe('hubspot:a1:contact:owner-101');
+    expect(owner.id).toBe(makeUnifiedId('org-test', 'hubspot', 'a1', 'contact', 'owner-101'));
     expect(owner.id).not.toBe(contact.id); // owner-101 vs contact-101 — no collision despite the shared raw id
     expect(owner.updatedAt).toBe('2026-05-01T00:00:00.000Z'); // owner's own stamp (churn-free), not the run clock
   });

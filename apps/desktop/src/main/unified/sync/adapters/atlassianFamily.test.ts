@@ -1,3 +1,4 @@
+import { makeUnifiedId } from '../../ids';
 /**
  * P5 — Increment 7: the Atlassian connector FAMILY (Jira projects/issues/boards + Confluence
  * spaces/pages on one `atlassian` connector). Pure-node, fake HttpClient. Covers family composition,
@@ -21,7 +22,7 @@ import {
 
 const SITE = { cloud: 'cid', url: 'https://acme.atlassian.net' };
 const NOW = '2026-07-12T00:00:00.000Z';
-const base = { connectorId: 'atlassian', accountId: 'a1', now: NOW } as const;
+const base = { tenantId: 'org-test', connectorId: 'atlassian', accountId: 'a1', now: NOW } as const;
 const pureCtx: SyncContext = { ...base, http: undefined as never, cursor: null };
 /** A cursor with the site pre-resolved, so a resource test skips the accessible-resources call. */
 const sited = (extra: Record<string, unknown> = {}): string => JSON.stringify({ site: SITE, ...extra });
@@ -90,7 +91,7 @@ describe('Atlassian mappers', () => {
   it('maps a Jira project → project', () => {
     const e = mapProject(pureCtx, SITE, { id: '10001', key: 'ENG', name: 'Engineering', lead: { displayName: 'Ada' } });
     expect(e.kind).toBe('project');
-    expect(e.id).toBe('atlassian:a1:project:10001');
+    expect(e.id).toBe(makeUnifiedId('org-test', 'atlassian', 'a1', 'project', '10001'));
     expect(e.url).toBe('https://acme.atlassian.net/browse/ENG');
     expect(e.metadata.atlassianType).toBe('jira_project');
   });
@@ -105,7 +106,7 @@ describe('Atlassian mappers', () => {
       },
     });
     expect(e.kind).toBe('task');
-    expect(e.containerId).toBe('atlassian:a1:project:10001');
+    expect(e.containerId).toBe(makeUnifiedId('org-test', 'atlassian', 'a1', 'project', '10001'));
     expect(e.title).toBe('Fix bug');
     expect(e.status).toBe('In Progress');
     expect(e.labels).toEqual(['backend']);
@@ -115,10 +116,10 @@ describe('Atlassian mappers', () => {
   it('the board- prefix prevents a board id colliding with a Jira project id under the shared project kind', () => {
     const proj = mapProject(pureCtx, SITE, { id: '10001', key: 'ENG', name: 'Engineering' });
     const board = mapBoard(pureCtx, SITE, { id: 10001, name: 'Board', location: { projectId: 10001, projectKey: 'ENG' } });
-    expect(proj.id).toBe('atlassian:a1:project:10001');
-    expect(board.id).toBe('atlassian:a1:project:board-10001');
+    expect(proj.id).toBe(makeUnifiedId('org-test', 'atlassian', 'a1', 'project', '10001'));
+    expect(board.id).toBe(makeUnifiedId('org-test', 'atlassian', 'a1', 'project', 'board-10001'));
     expect(proj.id).not.toBe(board.id);
-    expect(board.containerId).toBe('atlassian:a1:project:10001'); // board linked to its project
+    expect(board.containerId).toBe(makeUnifiedId('org-test', 'atlassian', 'a1', 'project', '10001')); // board linked to its project
   });
 
   it('a project/board/space (no source timestamp) uses a STABLE baseline, never the run clock (churn-free)', () => {
@@ -133,10 +134,10 @@ describe('Atlassian mappers', () => {
   it('maps a Confluence space → workspace and a page → document linked to its space', () => {
     const space = mapSpace(pureCtx, SITE, { id: '98304', key: 'ENG', name: 'Engineering', type: 'global' });
     expect(space.kind).toBe('workspace');
-    expect(space.id).toBe('atlassian:a1:workspace:98304');
+    expect(space.id).toBe(makeUnifiedId('org-test', 'atlassian', 'a1', 'workspace', '98304'));
     const pg = mapPage(pureCtx, SITE, { id: '77', title: 'Runbook', spaceId: '98304', version: { number: 3, createdAt: '2026-07-05T12:00:00.000Z' }, _links: { webui: '/spaces/ENG/pages/77/Runbook' } });
     expect(pg.kind).toBe('document');
-    expect(pg.containerId).toBe('atlassian:a1:workspace:98304');
+    expect(pg.containerId).toBe(makeUnifiedId('org-test', 'atlassian', 'a1', 'workspace', '98304'));
     expect(pg.url).toBe('https://acme.atlassian.net/wiki/spaces/ENG/pages/77/Runbook');
     expect(pg.updatedAt).toBe('2026-07-05T12:00:00.000Z');
   });

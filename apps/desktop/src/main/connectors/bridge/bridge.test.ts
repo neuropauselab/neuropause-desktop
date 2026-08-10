@@ -1,3 +1,4 @@
+import { makeUnifiedId } from '../../unified/ids';
 /**
  * Connector → Universal Data Plane, end to end.
  *
@@ -126,7 +127,7 @@ function routed(handler: (url: string, body: unknown) => unknown, cursor: string
     postJson: (url: string, body: unknown, _opts?: HttpRequestOptions) =>
       Promise.resolve({ data: handler(url, body), headers: {}, status: 200 }),
   } as unknown as SyncContext['http'];
-  return { connectorId: 'hubspot', accountId: 'acct_1', http, cursor, now: NOW };
+  return { tenantId: 'org-test', connectorId: 'hubspot', accountId: 'acct_1', http, cursor, now: NOW };
 }
 
 describe('connector → data plane bridge', () => {
@@ -243,7 +244,7 @@ describe('connector → data plane bridge', () => {
       ]);
       // The REAL adapter produced these — same code path the scheduler runs.
       expect(entities).toHaveLength(2);
-      expect(entities[0]!.id).toBe('hubspot:acct_1:contact:contact-101');
+      expect(entities[0]!.id).toBe(makeUnifiedId('org-test', 'hubspot', 'acct_1', 'contact', 'contact-101'));
 
       const result = await bridge('hubspot_contacts', entities);
       expect(result.created).toBe(2);
@@ -745,6 +746,7 @@ describe('connector → data plane bridge', () => {
 
       const other = hubspotAdapter.resources.find((r) => r.id === 'hubspot_contacts')!;
       const page = await other.pull({
+        tenantId: 'org-test',
         connectorId: 'hubspot',
         accountId: 'acct_2',
         http: {

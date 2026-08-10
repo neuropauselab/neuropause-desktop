@@ -63,13 +63,20 @@ function pageTitle(p: NotionPage): string {
   return '(untitled)';
 }
 
-function ref(connectorId: ConnectorId, accountId: string, kind: 'document' | 'project', id?: string): string | null {
-  return id ? makeUnifiedId(connectorId, accountId, kind, id) : null;
+function ref(
+  tenantId: string,
+  connectorId: ConnectorId,
+  accountId: string,
+  kind: 'document' | 'project',
+  id?: string,
+): string | null {
+  return id ? makeUnifiedId(tenantId, connectorId, accountId, kind, id) : null;
 }
 
 export function mapPage(ctx: SyncContext, p: NotionPage): UnifiedEntity {
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'document',
     sourceId: p.id,
@@ -80,8 +87,8 @@ export function mapPage(ctx: SyncContext, p: NotionPage): UnifiedEntity {
     updatedAt: p.last_edited_time,
     status: p.archived ? 'archived' : 'active',
     author: p.last_edited_by?.id ?? null,
-    containerId: ref(ctx.connectorId, ctx.accountId, 'project', p.parent?.database_id),
-    parentId: ref(ctx.connectorId, ctx.accountId, 'document', p.parent?.page_id),
+    containerId: ref(ctx.tenantId, ctx.connectorId, ctx.accountId, 'project', p.parent?.database_id),
+    parentId: ref(ctx.tenantId, ctx.connectorId, ctx.accountId, 'document', p.parent?.page_id),
     metadata: { parentType: p.parent?.type ?? null, archived: p.archived },
   });
 }
@@ -89,6 +96,7 @@ export function mapPage(ctx: SyncContext, p: NotionPage): UnifiedEntity {
 export function mapDatabase(ctx: SyncContext, d: NotionDatabase): UnifiedEntity {
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'project',
     sourceId: d.id,
