@@ -18,7 +18,7 @@
  * `@main/*` and the node suite resolves relative paths, and one importable path
  * beats two copies that can drift.
  */
-import type { TenantScope } from '@neuropause/shared';
+import type { MemoryViewer, TenantScope } from '@neuropause/shared';
 
 /**
  * The tenant every existing test operates as.
@@ -42,4 +42,29 @@ export const TEST_TENANT_SCOPE: TenantScope = {
 export const OTHER_TENANT_SCOPE: TenantScope = {
   tenantId: 'org-other',
   workspaceId: 'workspace-other',
+};
+
+/**
+ * The memory viewer every existing test operates as (P13A).
+ *
+ * The same tenant and workspace as `TEST_TENANT_SCOPE`, plus an identity —
+ * because memory enforces PERSONAL ownership and a `TenantScope` has no person
+ * in it. Existing tests therefore keep reading their own memories unchanged.
+ *
+ * The identity is named rather than null on purpose. A null-identity viewer
+ * cannot own or read personal memory at all, so making it the default would
+ * mean every pre-existing test silently exercised the service-principal path
+ * instead of the human one.
+ */
+export const TEST_MEMORY_VIEWER: MemoryViewer = {
+  tenantId: TEST_TENANT_SCOPE.tenantId,
+  workspaceId: TEST_TENANT_SCOPE.workspaceId,
+  userId: 'tester@example.com',
+};
+
+/** A SECOND memory viewer, for isolation tests only. See `OTHER_TENANT_SCOPE`. */
+export const OTHER_MEMORY_VIEWER: MemoryViewer = {
+  tenantId: OTHER_TENANT_SCOPE.tenantId,
+  workspaceId: OTHER_TENANT_SCOPE.workspaceId,
+  userId: 'other@example.com',
 };

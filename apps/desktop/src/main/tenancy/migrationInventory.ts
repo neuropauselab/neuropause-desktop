@@ -47,8 +47,8 @@ const UNENFORCED: readonly { store: string; status: TenantMigrationStatus; note:
   },
   {
     store: 'provenance (ProvenanceStore)',
-    status: 'REQUIRES_MIGRATION',
-    note: 'ProvenanceRecord has no scope field. `byExternal` is keyed on `connectorId::accountId::resourceId::externalId`, so two tenants syncing the same provider account collide on one provenance row and the second adopts the first’s record.',
+    status: 'PARTIAL',
+    note: 'P13A — ProvenanceRecord and ImportResult carry a scope, stamped from the active scope on write and never from the payload. Both indexes are keyed (tenant, key), so the `byExternal` collision is closed: two tenants syncing the same provider account now get one row each, and the second no longer adopts and overwrites the first’s. `forRecord`, `forPlan`, `forConnection`, `forExternalKey`, `history`, `run`, `counts` and `countForModule` are all scoped, and eviction is confined to the writing tenant. Rows written before P13A are unresolved and visible to nobody.',
   },
   {
     store: 'decisions / holds',
@@ -68,12 +68,12 @@ const UNENFORCED: readonly { store: string; status: TenantMigrationStatus; note:
   {
     store: 'memory (memoryStore + vectorStore + liveSync bridge)',
     status: 'PARTIAL',
-    note: 'The vector store is genuinely org-isolated (`orgId` in the key, hard filter on search). The lexical TF-IDF leg is not, and `recallSemantic` unions the two — so the isolated half is defeated by the union. Plain `recall()` takes no org at all. WORSE: `memoryLiveSyncBridge.flush()` iterates every synced item and enqueues each under the ACTIVE org rather than the item\u2019s own, so this is cross-tenant egress, not only a local read.',
+    note: 'P13A \u2014 MemoryItem carries an owner (SYSTEM / TENANT / WORKSPACE / PERSONAL) stamped by `remember` from the resolved viewer; `remember` throws rather than create an unowned memory. `filterFor` enforces it and every retrieval leg resolves through it \u2014 lexical, semantic, the hybrid union and the degraded fallback \u2014 so the isolated vector half is no longer defeated by the union. `get`, `update`, `forget`, `counts`, `allItems` (backfill egress) and `syncedItems` (sync egress) are scoped; the outbound bridge enqueues under each memory\u2019s OWN org rather than the active one, and an inbound apply is refused unless the payload carries an owner the viewer may read. PROJECTED memories inherit the projecting viewer\u2019s tenant because their source \u2014 the unified store \u2014 is still unscoped, so memory is no better isolated than what it projects from. Memories written before P13A are unresolved and visible to nobody.',
   },
   {
     store: 'AI context (contextBuilder, enterpriseSearch)',
     status: 'REQUIRES_MIGRATION',
-    note: 'The deterministic-answer path now reads scoped records, because it goes through `store.list()`. Retrieval does not: `runEnterpriseSearch` fans out to the unified index, the graph and memory, none of which are scoped. `RetrievalPorts.governanceFilter` is the seam and is wired nowhere.',
+    note: 'The deterministic-answer path now reads scoped records, because it goes through `store.list()`. Retrieval is PARTLY scoped: P13A made `EnterpriseSearchSources.memoryScope` a REQUIRED field, so a fan-out that has resolved no tenant returns an empty memory group instead of every tenant’s memories, and the memory leg is bounded by the store’s own viewer rather than by anything the caller passes. The UNIFIED INDEX and the GRAPH legs remain unscoped, so this entry stays REQUIRES_MIGRATION. `RetrievalPorts.governanceFilter` is the seam for those two and is still wired nowhere.',
   },
   {
     store: 'unified store + local search index',

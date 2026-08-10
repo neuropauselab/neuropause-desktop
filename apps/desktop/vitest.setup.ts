@@ -14,9 +14,23 @@
  */
 import { setAmbientTenantScopeForTests } from './src/main/enterprise/framework/enterpriseRecordStore';
 import { setAmbientAppendOnlyScopeForTests } from './src/main/decisions/appendOnlyStore';
-import { TEST_TENANT_SCOPE } from './src/main/tenancy/testScope';
+import { setAmbientMemoryViewerForTests } from './src/main/memory/memoryStore';
+import { setAmbientProvenanceScopeForTests } from './src/main/dataPlane/importer';
+import { TEST_TENANT_SCOPE, TEST_MEMORY_VIEWER } from './src/main/tenancy/testScope';
 
 setAmbientTenantScopeForTests(() => TEST_TENANT_SCOPE);
 // P12 — the same fallback for the append-only substrate: documents, holds,
 // decision records, opportunity decisions, outcome revisions.
 setAmbientAppendOnlyScopeForTests(() => TEST_TENANT_SCOPE);
+/**
+ * P13A — the same fallback for memory and provenance.
+ *
+ * Memory needs a VIEWER rather than a scope, because it enforces personal
+ * ownership and a scope cannot express a person. The ambient viewer names a
+ * user, so an existing test that remembers something gets a tenant memory owned
+ * by a real identity — and a test that wants to prove PERSONAL isolation has to
+ * introduce a second identity deliberately, which is the same asymmetry
+ * `TEST_TENANT_SCOPE` / `OTHER_TENANT_SCOPE` already establishes for tenants.
+ */
+setAmbientMemoryViewerForTests(() => TEST_MEMORY_VIEWER);
+setAmbientProvenanceScopeForTests(() => TEST_TENANT_SCOPE);

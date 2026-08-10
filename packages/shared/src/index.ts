@@ -11,6 +11,7 @@ export * from './types/unified';
 export * from './types/graph';
 export * from './types/erpGraphBridge';
 export * from './types/memory';
+export * from './types/memoryTenancy';
 export * from './types/enterpriseSearch';
 export * from './types/enterpriseTimeline';
 export * from './types/enterpriseContext';

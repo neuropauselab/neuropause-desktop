@@ -20,6 +20,7 @@
  */
 
 import type { MemoryVersion } from './memorySync';
+import type { MemoryOwner } from './memoryTenancy';
 
 export type MemoryKind =
   | 'decision'
@@ -100,6 +101,23 @@ export interface MemoryItem {
    * append-only version history.
    */
   sync?: MemorySyncFields;
+  /**
+   * Who this memory belongs to (P13A). The authoritative answer to "may this
+   * viewer read this?", stamped at creation from the resolved tenant chain and
+   * never from a caller.
+   *
+   * OPTIONAL IN THE TYPE, REQUIRED IN PRACTICE — and the gap is deliberate.
+   * Memories written before P13A exist on disk with no owner, and a required
+   * field would make the store file fail to parse into its own type. Instead
+   * they load, carry `owner: undefined`, and `memoryVisibleTo` denies them to
+   * everyone. An unowned memory is inert rather than universal, which is the
+   * same treatment `ownershipOf` gives an unowned record.
+   *
+   * Nothing may write a memory without one: `remember` throws rather than
+   * produce one, so `undefined` here means "predates P13A", never "created
+   * without an owner".
+   */
+  owner?: MemoryOwner;
 }
 
 /** Input for explicitly remembering something. */

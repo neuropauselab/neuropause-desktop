@@ -52,6 +52,8 @@ import { backendSemanticSearch } from '../backendsemantic/backendSemanticInstanc
 import { runMemoryBackfill } from './memoryBackfill';
 import { backendBackfill } from '../backendsemantic/backendBackfillInstance';
 import { runtimeIdentity } from '../runtimeIdentity';
+import { activeMemoryViewer } from '../enterprise';
+import { memoryMaySync } from '@neuropause/shared';
 import { memoryAuditLog } from './memoryAuditInstance';
 import { projectMemory } from './memoryProjector';
 import { projectBusinessMemory } from './businessMemoryProjector';
@@ -215,8 +217,35 @@ export async function initMemory(deps: MemorySubsystemDeps): Promise<MemorySubsy
       schema: EmptyRequest,
       handler: () =>
         runMemoryBackfill({
-          listItems: () => memoryStore.allItems(),
-          getOrgId: () => runtimeIdentity.getCurrent()?.organizationId,
+          /**
+           * P13A — EGRESS, so `memoryMaySync` gates it, not visibility alone.
+           *
+           * `allItems()` is correctly scoped to what the viewer may READ, which
+           * by design includes their own PERSONAL memories. Backfill does not
+           * read them — it embeds them into the ORG-WIDE cloud vector namespace,
+           * where every other member of the org can reach them through semantic
+           * recall. Scoping to the viewer is the right rule for a read and the
+           * wrong one for an upload.
+           *
+           * `memoryMaySync` is the same predicate that governs the live-sync
+           * bridge in both directions: tenant and workspace memories travel,
+           * personal and system never do. Found by adversarial review — the
+           * sync pipe was fixed and this second pipe to the same destination
+           * was not.
+           */
+          listItems: () => memoryStore.allItems().filter((it) => memoryMaySync(it.owner)),
+          /**
+           * The destination comes from the SAME authority as the source.
+           *
+           * `runtimeIdentity` answers "who did this device sign in as";
+           * `activeMemoryViewer` answers "may this account act here right now",
+           * and only the second is an authorization. Reading the corpus through
+           * one and choosing its cloud namespace with the other is the exact
+           * shape of the bug that made the live-sync bridge upload tenant A's
+           * memories under tenant B. `undefined` here means no tenant resolved,
+           * and `runMemoryBackfill` already declines to run without one.
+           */
+          getOrgId: () => activeMemoryViewer()?.tenantId,
           backfill: (orgId, memories) => backendBackfill(orgId, memories),
           onProgress: (p) => log.info('memory backfill progress', p),
         }),

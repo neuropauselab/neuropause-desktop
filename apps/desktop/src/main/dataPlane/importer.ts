@@ -19,6 +19,8 @@
  */
 import { promises as fs } from 'node:fs';
 import { randomUUID } from 'node:crypto';
+import type { TenantScope } from '@neuropause/shared';
+import { ownershipOf, recordInScope, tenantOnlyKey } from '@neuropause/shared';
 import type { EnterpriseRecordStore } from '../enterprise/framework/enterpriseRecordStore';
 import { envelopeStamp, readStoreFile } from '../storage/storeEnvelope';
 import { entityById } from './ontology';
@@ -70,6 +72,23 @@ export interface ProvenanceRecord {
   recordId: string;
   moduleId: string;
   planId: string;
+  /**
+   * The tenant this provenance belongs to (P13A).
+   *
+   * MUST BE THE SAME TENANT AS THE RECORD IT DESCRIBES. Provenance is a
+   * statement ABOUT a record — where it came from, who approved it, what each
+   * field originally said — so it is exactly as sensitive as the record and
+   * belongs to the same owner. A provenance row that could name a resource in
+   * another tenant would be a bridge between tenants: not a copy of the data,
+   * but a description of it, which for an import trail is most of the value.
+   *
+   * Absent or empty means UNRESOLVED — visible to no tenant. Rows written
+   * before P13A have no tenant and are inert, the same treatment
+   * `ownershipOf` gives every other pre-migration record.
+   */
+  tenantId?: string | null;
+  /** Absent means tenant-level: readable from every workspace in the tenant. */
+  workspaceId?: string | null;
   sourceFile: string;
   sourceTable: string;
   /** One-based row number in the source file. */
@@ -152,6 +171,17 @@ export interface ImportResult {
   status: ImportStatus;
   tables: TableImportResult[];
   totals: { imported: number; updated: number; skipped: number; failed: number; duplicates: number; needsReview: number };
+  /**
+   * The tenant whose import this was (P13A). Stamped by `ProvenanceStore.append`
+   * from the active scope, never by the importer that built the result.
+   *
+   * An import run names the source filename, the actor who approved it, the
+   * modules touched and the row counts — a description of another tenant's
+   * business detailed enough to be worth withholding on its own, before any
+   * record is read. Absent means unresolved: visible to nobody.
+   */
+  tenantId?: string | null;
+  workspaceId?: string | null;
 }
 
 export interface ImportDecision {
@@ -666,22 +696,129 @@ export const MAX_PROVENANCE_RECORDS = 100_000;
 export const MAX_IMPORT_RUNS = 500;
 
 /**
+ * The tenant boundary for provenance (P13A).
+ *
+ * A FUNCTION, and `null` means DENY — identical in shape and contract to
+ * `AppendOnlyScopeSource`, because a third spelling of the same idea is how two
+ * of them end up disagreeing.
+ */
+export type ProvenanceScopeSource = () => TenantScope | null;
+
+/**
+ * A process-wide fallback scope, for TESTS ONLY. Same seam, same guard and same
+ * justification as `setAmbientAppendOnlyScopeForTests`.
+ */
+let ambientProvenanceScope: ProvenanceScopeSource | null = null;
+
+export function setAmbientProvenanceScopeForTests(source: ProvenanceScopeSource | null): void {
+  if (process.env.VITEST === undefined && process.env.NODE_ENV !== 'test') {
+    throw new Error(
+      'setAmbientProvenanceScopeForTests is a test-only seam and must not be called at runtime.',
+    );
+  }
+  ambientProvenanceScope = source;
+}
+
+/**
  * Durable import history + per-record provenance.
  * Electron-free: the constructor takes a file path, matching every other store
  * in this codebase. Atomic write via tmp + rename.
+ *
+ * P13A — TENANT ENFORCEMENT.
+ *
+ * Every read filters on the bound scope, and UNBOUND DENIES. The two indexes
+ * are now keyed by (scope, key) rather than by key alone: `byExternal` was
+ * `connectorId::accountId::resourceId::externalId`, so two tenants syncing the
+ * same provider account collided on one row and the second silently ADOPTED
+ * the first's provenance — the inventory recorded this as the store's
+ * `REQUIRES_MIGRATION` reason, and it is a cross-tenant write, not only a read.
+ *
+ * The runs list is scoped the same way, because an import run names its plan,
+ * its files and its row counts.
  */
 export class ProvenanceStore {
   private records: ProvenanceRecord[] = [];
   private runs: ImportResult[] = [];
   private loaded = false;
+  /**
+   * Both indexes are keyed with the OWNING SCOPE, via `tenantKey`.
+   *
+   * Keying by `recordId`/`externalKey` alone is what made the store a bridge:
+   * one map entry per logical key across every tenant, so whoever wrote last
+   * owned the row and whoever read first got someone else's answer. `tenantKey`
+   * JSON-encodes its parts, so an id containing the separator cannot collapse
+   * two keys into one.
+   */
   private byRecord = new Map<string, ProvenanceRecord>();
   /** External identity → the record it produced. The sync idempotency index. */
   private byExternal = new Map<string, ProvenanceRecord>();
   private tmpSeq = 0;
   /** Serialises persists so two concurrent syncs cannot interleave writes. */
   private writeChain: Promise<void> = Promise.resolve();
+  private scopeSource: ProvenanceScopeSource | null = null;
 
   constructor(private readonly filePath: string) {}
+
+  /** Bind the tenant boundary. Chainable. UNBOUND DENIES. */
+  bindScope(source: ProvenanceScopeSource): this {
+    this.scopeSource = source;
+    return this;
+  }
+
+  /** Whether a boundary has been bound. For the migration inventory. */
+  hasScope(): boolean {
+    return this.scopeSource !== null;
+  }
+
+  /** The active scope, or `null` meaning DENY. */
+  private scopeOrDeny(): TenantScope | null {
+    const source = this.scopeSource ?? ambientProvenanceScope;
+    return source === null ? null : source();
+  }
+
+  /**
+   * The scope a WRITE needs. Throws rather than denying quietly — an import
+   * that recorded provenance nobody owns would produce exactly the unresolved
+   * row this migration exists to remove, and silently.
+   */
+  private requireScope(): TenantScope {
+    const scope = this.scopeOrDeny();
+    if (scope === null) {
+      throw new Error(
+        'Cannot record provenance: no organization and workspace are active, so it would have no owner.',
+      );
+    }
+    return scope;
+  }
+
+  /**
+   * Index keys are TENANT-scoped, not workspace-scoped.
+   *
+   * An import belongs to the organization that performed it, not to the
+   * workspace someone happened to have open — a record imported from the
+   * finance workspace must still explain itself when read from operations.
+   * Rows are therefore stamped tenant-level (`workspaceId: null`), which
+   * `recordInScope` reads as "visible across this tenant's workspaces", and the
+   * indexes must agree with that or a lookup would miss what a filter allows.
+   */
+  private recordKey(tenantId: string, recordId: string): string {
+    return tenantOnlyKey(tenantId, 'record', recordId);
+  }
+
+  private externalKey(tenantId: string, external: string): string {
+    return tenantOnlyKey(tenantId, 'external', external);
+  }
+
+  /** Ownership counts across every row. Three integers, no row content. */
+  ownershipCounts(): { total: number; assigned: number; unresolved: number } {
+    let assigned = 0;
+    let unresolved = 0;
+    for (const r of this.records) {
+      if (ownershipOf(r) === 'assigned') assigned += 1;
+      else unresolved += 1;
+    }
+    return { total: this.records.length, assigned, unresolved };
+  }
 
   async load(): Promise<void> {
     if (this.loaded) return;
@@ -689,33 +826,110 @@ export class ProvenanceStore {
     if (res.state === 'loaded' && res.data) {
       this.records = Array.isArray(res.data.records) ? res.data.records : [];
       this.runs = Array.isArray(res.data.runs) ? res.data.runs : [];
-      for (const r of this.records) {
-        this.byRecord.set(r.recordId, r);
-        if (r.connector) this.byExternal.set(r.connector.externalKey, r);
-      }
+      for (const r of this.records) this.index(r);
     }
     this.loaded = true;
   }
 
+  /**
+   * Add a row to both indexes under its OWN scope.
+   *
+   * A row with no tenant is not indexed at all. That is deliberate: an
+   * unresolved row must be unreachable by lookup as well as invisible to
+   * filters, or `forExternalKey` would keep handing pre-P13A rows to whichever
+   * tenant asked first — which is the adoption bug in a different disguise.
+   */
+  private index(r: ProvenanceRecord): void {
+    if (ownershipOf(r) !== 'assigned') return;
+    const tenantId = r.tenantId as string;
+    this.byRecord.set(this.recordKey(tenantId, r.recordId), r);
+    if (r.connector) this.byExternal.set(this.externalKey(tenantId, r.connector.externalKey), r);
+  }
+
+  /** Remove a row from both indexes. Mirrors `index` exactly. */
+  private deindex(r: ProvenanceRecord): void {
+    if (ownershipOf(r) !== 'assigned') return;
+    const tenantId = r.tenantId as string;
+    this.byRecord.delete(this.recordKey(tenantId, r.recordId));
+    if (r.connector) this.byExternal.delete(this.externalKey(tenantId, r.connector.externalKey));
+  }
+
   async append(run: ImportResult, provenance: readonly ProvenanceRecord[]): Promise<void> {
     await this.load();
-    this.runs.unshift(run);
-    if (this.runs.length > MAX_IMPORT_RUNS) this.runs.length = MAX_IMPORT_RUNS;
+    /**
+     * P13A — stamped from the ACTIVE SCOPE, never from the payload.
+     *
+     * The caller builds these rows and could set `tenantId` on them; that value
+     * is overwritten here rather than validated, because a write path that
+     * accepts a caller's tenant is a write path that can be asked to write
+     * somewhere else. There is no argument to this method that can choose an
+     * owner.
+     */
+    const scope = this.requireScope();
+    this.runs.unshift(this.ownRun(run, scope));
+    this.evictRuns(scope);
     for (const p of provenance) {
-      this.records.push(p);
-      this.byRecord.set(p.recordId, p);
+      const owned = this.own(p, scope);
+      this.records.push(owned);
+      this.index(owned);
     }
-    if (this.records.length > MAX_PROVENANCE_RECORDS) {
-      const drop = this.records.splice(0, this.records.length - MAX_PROVENANCE_RECORDS);
-      for (const d of drop) {
-        this.byRecord.delete(d.recordId);
-        // The external index was NOT pruned here, so `forExternalKey` returned
-        // a row that had already fallen off the end — a ghost that produced a
-        // second provenance entry for the same record on the next sync.
-        if (d.connector) this.byExternal.delete(d.connector.externalKey);
-      }
-    }
+    this.evictOverflow(scope);
     await this.persist();
+  }
+
+  /** Stamp a row with the writing tenant. Tenant-level: see `recordKey`. */
+  private own(p: ProvenanceRecord, scope: TenantScope): ProvenanceRecord {
+    return { ...p, tenantId: scope.tenantId, workspaceId: null };
+  }
+
+  /** Stamp an import run with the writing tenant. */
+  private ownRun(run: ImportResult, scope: TenantScope): ImportResult {
+    return { ...run, tenantId: scope.tenantId, workspaceId: null };
+  }
+
+  /**
+   * Trim to the cap, WITHIN THE WRITING TENANT'S ROWS ONLY.
+   *
+   * Splicing the front of the shared array deleted the globally oldest rows —
+   * another tenant's import trail, destroyed by a busy neighbour. Same
+   * correction, and the same reasoning, as the eviction fix in
+   * `AppendOnlyJsonStore.append`.
+   *
+   * The cap is applied PER TENANT rather than to the file. That is a real
+   * change in meaning and the right one: a shared cap lets any tenant evict any
+   * other simply by importing, which is destruction of an audit trail by a
+   * party with no authority over it. Beyond losing history, eviction also drops
+   * the row from `byExternal`, so the victim's next connector sync no longer
+   * recognises the provider objects it already imported and creates duplicates.
+   *
+   * (The first version of this method carried this comment and did none of it —
+   * it sliced the shared array. Caught by adversarial review. A comment that
+   * asserts a boundary the code does not draw is worse than no comment, because
+   * the next reader stops looking.)
+   */
+  private evictOverflow(scope: TenantScope): void {
+    const mine = this.records.filter((r) => recordInScope(r, scope));
+    const overflow = mine.length - MAX_PROVENANCE_RECORDS;
+    if (overflow <= 0) return;
+    const doomed = new Set(mine.slice(0, overflow));
+    this.records = this.records.filter((r) => !doomed.has(r));
+    for (const d of doomed) this.deindex(d);
+  }
+
+  /**
+   * Trim the run history, again within the writing tenant only.
+   *
+   * `this.runs.length = MAX_IMPORT_RUNS` truncated the shared array, so a
+   * tenant performing 500 imports silently erased every other tenant's import
+   * history — `history()` and `run()` would return nothing for them.
+   */
+  private evictRuns(scope: TenantScope): void {
+    const mine = this.runs.filter((r) => recordInScope(r, scope));
+    const overflow = mine.length - MAX_IMPORT_RUNS;
+    if (overflow <= 0) return;
+    // `runs` is newest-first, so the oldest of MINE are at the end of my slice.
+    const doomed = new Set(mine.slice(mine.length - overflow));
+    this.runs = this.runs.filter((r) => !doomed.has(r));
   }
 
   /**
@@ -729,7 +943,9 @@ export class ProvenanceStore {
   async appendConnector(provenance: readonly ProvenanceRecord[]): Promise<void> {
     if (provenance.length === 0) return;
     await this.load();
-    for (const p of provenance) {
+    const scope = this.requireScope();
+    for (const raw of provenance) {
+      const p = this.own(raw, scope);
       const key = p.connector?.externalKey;
       /**
        * By external key first, then by record.
@@ -740,7 +956,9 @@ export class ProvenanceStore {
        * record whose `sourceFile` then wins every read.
        */
       const existing =
-        (key !== undefined ? this.byExternal.get(key) : undefined) ?? this.byRecord.get(p.recordId);
+        (key !== undefined
+          ? this.byExternal.get(this.externalKey(scope.tenantId, key))
+          : undefined) ?? this.byRecord.get(this.recordKey(scope.tenantId, p.recordId));
       if (existing) {
         /**
          * Re-syncing an already-tracked provider object UPDATES its connector
@@ -755,63 +973,107 @@ export class ProvenanceStore {
          */
         existing.connector = p.connector;
         existing.importedAt = p.importedAt;
-        if (key !== undefined) this.byExternal.set(key, existing);
+        if (key !== undefined) {
+          this.byExternal.set(this.externalKey(scope.tenantId, key), existing);
+        }
         continue;
       }
       this.records.push(p);
-      this.byRecord.set(p.recordId, p);
       /**
-       * Indexed by EXTERNAL key, not skipped when the record already had
-       * provenance. Skipping it meant a connector-adopted CSV record was never
-       * findable by its provider id — so the next sync fell back to identity
-       * matching, and the moment the provider edited the identity field it
-       * created a duplicate.
+       * Indexed by EXTERNAL key as well as record id, not skipped when the
+       * record already had provenance. Skipping it meant a connector-adopted
+       * CSV record was never findable by its provider id — so the next sync
+       * fell back to identity matching, and the moment the provider edited the
+       * identity field it created a duplicate. `index` does both halves under
+       * the row's own tenant.
        */
-      if (key !== undefined) this.byExternal.set(key, p);
+      this.index(p);
     }
-    if (this.records.length > MAX_PROVENANCE_RECORDS) {
-      const drop = this.records.splice(0, this.records.length - MAX_PROVENANCE_RECORDS);
-      for (const d of drop) {
-        this.byRecord.delete(d.recordId);
-        if (d.connector) this.byExternal.delete(d.connector.externalKey);
-      }
-    }
+    this.evictOverflow(scope);
     await this.persist();
   }
 
-  /** The record a given provider object already produced, if any. */
+  /**
+   * The rows this caller may see. `[]` when no scope resolves.
+   *
+   * EVERY read below goes through this or through a tenant-keyed index lookup.
+   * There is no accessor on this class that reads `this.records` directly.
+   */
+  private visible(): ProvenanceRecord[] {
+    const scope = this.scopeOrDeny();
+    if (scope === null) return [];
+    return this.records.filter((r) => recordInScope(r, scope));
+  }
+
+  /**
+   * The record a given provider object already produced, if any.
+   *
+   * THIS LOOKUP WAS THE CROSS-TENANT WRITE. Two tenants syncing the same
+   * provider account produce the same `externalKey`; with one global index the
+   * second tenant's sync found the first tenant's row, took the `existing`
+   * branch above, and adopted it — so tenant B's sync silently rewrote tenant
+   * A's provenance and tenant B's records inherited A's import trail. Scoping
+   * the key means each tenant has its own row for the same provider object,
+   * which is the correct model: they are different records that happen to
+   * describe the same external thing.
+   */
   forExternalKey(externalKey: string): ProvenanceRecord | null {
-    return this.byExternal.get(externalKey) ?? null;
+    const scope = this.scopeOrDeny();
+    if (scope === null) return null;
+    return this.byExternal.get(this.externalKey(scope.tenantId, externalKey)) ?? null;
   }
 
   /** Every record a connection produced. Used to explain, and to disconnect. */
   forConnection(connectorId: string, accountId: string): ProvenanceRecord[] {
-    return this.records.filter(
+    return this.visible().filter(
       (r) => r.connector?.connectorId === connectorId && r.connector.accountId === accountId,
     );
   }
 
   /** Import history, newest first. */
   history(limit = 50): ImportResult[] {
-    return this.runs.slice(0, limit);
+    return this.visibleRuns().slice(0, limit);
   }
 
   run(planId: string): ImportResult | null {
-    return this.runs.find((r) => r.planId === planId) ?? null;
+    return this.visibleRuns().find((r) => r.planId === planId) ?? null;
   }
 
-  /** Where did this record come from? */
+  /** The import runs this caller may see. */
+  private visibleRuns(): ImportResult[] {
+    const scope = this.scopeOrDeny();
+    if (scope === null) return [];
+    return this.runs.filter((r) => recordInScope(r, scope));
+  }
+
+  /**
+   * Where did this record come from?
+   *
+   * A `recordId` is a REFERENCE, NOT AN AUTHORIZATION — the same rule the
+   * memory store's `get` follows. Resolved through the tenant-keyed index, so
+   * holding another tenant's record id yields null rather than its import
+   * trail, source filename and approver.
+   */
   forRecord(recordId: string): ProvenanceRecord | null {
-    return this.byRecord.get(recordId) ?? null;
+    const scope = this.scopeOrDeny();
+    if (scope === null) return null;
+    return this.byRecord.get(this.recordKey(scope.tenantId, recordId)) ?? null;
   }
 
   /** Every record produced by one import run. */
   forPlan(planId: string): ProvenanceRecord[] {
-    return this.records.filter((r) => r.planId === planId);
+    return this.visible().filter((r) => r.planId === planId);
   }
 
+  /**
+   * Counts for this caller only.
+   *
+   * A global count tells one tenant how much another has imported. Phase 22 of
+   * the program names counts as a leakage channel explicitly, and it is the
+   * easiest one to leave open because a number does not look like data.
+   */
   counts(): { runs: number; records: number } {
-    return { runs: this.runs.length, records: this.records.length };
+    return { runs: this.visibleRuns().length, records: this.visible().length };
   }
 
   /**
@@ -821,7 +1083,7 @@ export class ProvenanceStore {
    * rather than implying that everything in it has a traceable source.
    */
   countForModule(moduleId: string): number {
-    return this.records.filter((r) => r.moduleId === moduleId).length;
+    return this.visible().filter((r) => r.moduleId === moduleId).length;
   }
 
   private persist(): Promise<void> {

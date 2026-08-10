@@ -136,7 +136,8 @@ describe('MemoryStore.syncedItems', () => {
   let dir: string;
   let path: string;
   const opened: MemoryStore[] = [];
-  const SCOPE = { orgId: 'org-1', deviceId: 'dev-1', userId: 'user-1' };
+  // P13A — a device id only. The org comes from the resolved viewer.
+  const SYNCED = { sync: { deviceId: 'dev-1' } };
 
   async function open(p: string): Promise<MemoryStore> {
     const store = new MemoryStore(p);
@@ -161,7 +162,7 @@ describe('MemoryStore.syncedItems', () => {
     const synced = store.remember(
       { kind: 'note', title: 'shared', content: 'y' },
       undefined,
-      SCOPE,
+      SYNCED,
     );
     const items = store.syncedItems();
     expect(items).toHaveLength(1);

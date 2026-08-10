@@ -173,7 +173,12 @@ import { jobStore } from './workforce/runtime/jobInstance';
 import { createWorkforceActionExecutor } from './workforce/execution/workforceActionExecutor';
 import type { ExecutionBinding } from '@neuropause/shared';
 import { computeOrgHealth } from '@neuropause/shared';
-import { activeTenantScope, initEnterprise, onWorkspaceSwitch } from './enterprise';
+import {
+  activeMemoryViewer,
+  activeTenantScope,
+  initEnterprise,
+  onWorkspaceSwitch,
+} from './enterprise';
 import { setLiveSyncActiveOrg } from './cloud/livesync/liveSyncInstance';
 import { initDataPlane } from './dataPlane';
 import { initDocuments } from './documents';
@@ -772,6 +777,22 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   decisionRecordStore.bindScope(activeTenantScope);
   opportunityDecisionStore.bindScope(activeTenantScope);
   outcomeRevisionStore.bindScope(activeTenantScope);
+
+  /**
+   * P13A — bind the tenant boundary onto memory and provenance.
+   *
+   * Same shape as the four above, same failure mode if omitted: unbound
+   * DENIES, so forgetting this line empties the Memory view rather than
+   * silently exposing every tenant's memories. That asymmetry is the reason the
+   * default is deny.
+   *
+   * Memory takes `activeMemoryViewer` rather than `activeTenantScope` because
+   * it needs the identity as well as the scope — a scope cannot express "this
+   * person's private memory". Provenance takes the plain scope: a provenance
+   * record belongs to the tenant that imported it, never to one person.
+   */
+  memoryStore.bindViewer(activeMemoryViewer);
+  dataPlane.provenance.bindScope(activeTenantScope);
 
   onWorkspaceSwitch(() => {
     dataPlane.forgetPlans();
@@ -2439,6 +2460,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
           entity: unifiedStore.searchBackend,
           graph: graphStore,
           memory: memoryStore,
+          // P13A — see EnterpriseSearchSources.memoryScope.
+          memoryScope: activeTenantScope(),
           timeline: getEnterpriseTimeline() ?? undefined,
           federation: getFederationSearcher() ?? undefined,
         },
@@ -3836,8 +3859,18 @@ function wireAiQa(cfg: SandboxSecureCfg): ReturnType<typeof initAiQa> {
   return initAiQa({
     executorBackend: backend,
     memory: {
-      remember: (i) =>
-        memoryStore.remember(i as unknown as Parameters<typeof memoryStore.remember>[0]),
+      // P13A — same reasoning as the validation history below: a QA note that
+      // cannot be owned is not written, and the QA run continues regardless.
+      remember: (i) => {
+        try {
+          return memoryStore.remember(
+            i as unknown as Parameters<typeof memoryStore.remember>[0],
+          );
+        } catch (err) {
+          log.warn('QA memory note not recorded: no tenant is active', { error: String(err) });
+          return undefined as unknown as ReturnType<typeof memoryStore.remember>;
+        }
+      },
       recall: (q) =>
         memoryStore.recall(q as unknown as Parameters<typeof memoryStore.recall>[0]) as unknown as {
           hits: { item: { id: string; title: string; content: string } }[];
@@ -3918,13 +3951,29 @@ async function wireContinuousValidation(
     },
     history: {
       remember: (i) => {
-        memoryStore.remember({
-          kind: 'note',
-          title: i.title,
-          content: i.content,
-          tags: i.tags,
-          metadata: i.metadata,
-        } as unknown as Parameters<typeof memoryStore.remember>[0]);
+        /**
+         * P13A — bookkeeping must not abort the run it is recording.
+         *
+         * `remember` now FAILS CLOSED when no tenant resolves, which is correct:
+         * a validation note with no owner is exactly the unowned memory the
+         * program forbids. But a validation run is the primary work and this
+         * note is a record of it, so a throw here would let the absence of a
+         * signed-in workspace cancel the run itself. Not recorded is the right
+         * outcome; not run is not.
+         */
+        try {
+          memoryStore.remember({
+            kind: 'note',
+            title: i.title,
+            content: i.content,
+            tags: i.tags,
+            metadata: i.metadata,
+          } as unknown as Parameters<typeof memoryStore.remember>[0]);
+        } catch (err) {
+          log.warn('validation history note not recorded: no tenant is active', {
+            error: String(err),
+          });
+        }
       },
       recall: (q) => {
         const res = memoryStore.recall({

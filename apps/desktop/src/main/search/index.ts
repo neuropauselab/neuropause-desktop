@@ -10,6 +10,7 @@ import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { unifiedStore } from '../unified/storeInstance';
 import { graphStore } from '../graph/graphInstance';
 import { memoryStore } from '../memory/memoryInstance';
+import { activeTenantScope } from '../enterprise';
 import { getEnterpriseTimeline } from '../timeline';
 import { getFederationSearcher } from '../federationPlatform/searcherInstance';
 import { runEnterpriseSearch } from './enterpriseSearch';
@@ -30,6 +31,8 @@ export function initEnterpriseSearch(): EnterpriseSearchSubsystem {
           entity: unifiedStore.searchBackend,
           graph: graphStore,
           memory: memoryStore,
+          // P13A — see EnterpriseSearchSources.memoryScope.
+          memoryScope: activeTenantScope(),
           timeline: getEnterpriseTimeline() ?? undefined,
           // P10 — federation orgs / packages / shared workers / policies, per the same seam.
           federation: getFederationSearcher() ?? undefined,

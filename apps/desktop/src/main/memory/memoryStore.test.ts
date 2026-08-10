@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MemoryItem } from '@neuropause/shared';
 import { MemoryStore } from './memoryStore';
+import { TEST_MEMORY_VIEWER } from '../tenancy/testScope';
 import { SemanticUnavailableError } from './semanticFailure';
 import type { SemanticSearchFn } from './memorySemanticRecall';
 
@@ -154,7 +155,16 @@ describe('MemoryStore', () => {
 });
 
 describe('MemoryStore.recallSemantic — retrieval diagnostics (A6)', () => {
-  const ORG = 'org-1';
+  /**
+   * P13A — the vector namespace is the VIEWER's tenant, not the fixture's.
+   *
+   * `recallSemantic` still takes an org argument, but it is asserted rather
+   * than trusted: a value that disagrees with the resolved viewer is treated as
+   * a forgery and the semantic leg is skipped. Deriving `ORG` from the ambient
+   * viewer keeps these diagnostics tests testing diagnostics; the forged-org
+   * case is proven deliberately in the cross-tenant suite instead.
+   */
+  const ORG = TEST_MEMORY_VIEWER.tenantId;
   const QUERY = { text: 'postgres datastore', limit: 25 };
   let dir: string;
   let store: MemoryStore;
@@ -185,13 +195,43 @@ describe('MemoryStore.recallSemantic — retrieval diagnostics (A6)', () => {
       expect(res.hits[0]?.item.id).toBe(seeded.id);
     });
 
-    it('never queries semantic against an absent org', async () => {
+    /**
+     * P13A — the invariant survives, its CAUSE changed.
+     *
+     * Pre-P13A "an absent org" meant the caller passed `undefined`, so this
+     * test proved the store did not invent one. The org is no longer the
+     * caller's to pass, so absence now means NO VIEWER RESOLVES — cold start,
+     * signed out, or a suspended membership. Asserting the old form would test
+     * a parameter that no longer decides anything.
+     */
+    it('never queries semantic when no tenant resolves', async () => {
       const searchSemantic = vi.fn(async () => []);
       store.configureSemantic(searchSemantic);
-      const res = await store.recallSemantic(QUERY, undefined);
+      store.bindViewer(() => null); // a per-store binding beats the ambient one
+      const res = await store.recallSemantic(QUERY);
       expect(searchSemantic).not.toHaveBeenCalled();
       expect(res.retrieval?.semantic).toEqual({ state: 'skipped', reason: 'no_org' });
       expect(res.retrieval?.mode).toBe('lexical');
+      // And the lexical leg returns nothing either: unbound denies everywhere.
+      expect(res.hits).toHaveLength(0);
+    });
+
+    /**
+     * A forged org must not reach the vector store's namespace filter.
+     *
+     * The vector store's isolation is real, which is precisely what made this
+     * argument dangerous: naming another tenant's org would have had the
+     * isolated store faithfully return that tenant's neighbours. Skipped rather
+     * than silently corrected, so the disagreement is visible in diagnostics.
+     */
+    it('refuses a supplied org that disagrees with the resolved tenant', async () => {
+      const searchSemantic = vi.fn(async () => []);
+      store.configureSemantic(searchSemantic);
+      const res = await store.recallSemantic(QUERY, 'org-someone-else');
+      expect(searchSemantic).not.toHaveBeenCalled();
+      expect(res.retrieval?.semantic).toEqual({ state: 'skipped', reason: 'no_org' });
+      // The caller still gets THEIR OWN memories from the lexical leg.
+      expect(res.hits[0]?.item.id).toBe(seeded.id);
     });
 
     it('skips an empty query and still browses, reporting the browse pool size', async () => {

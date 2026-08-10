@@ -27,6 +27,8 @@
  * no-op), which is what makes safe cloud integration possible later (V6.6.2).
  */
 
+import type { MemoryOwner } from './memoryTenancy';
+
 /** One immutable edit of a memory. Versions form a parent-linked, hash-chained log. */
 export interface MemoryVersion {
   versionId: string;
@@ -55,6 +57,21 @@ export interface MemoryState {
   head: MemoryVersion;
   /** Prior versions. May or may not include `head`; the engine treats the union. */
   history: MemoryVersion[];
+  /**
+   * The memory's authoritative owner (P13A), carried on the sync envelope.
+   *
+   * ON THE ENVELOPE, NOT ON THE VERSION, and that placement is load-bearing.
+   * `MemoryVersion.contentHash` covers `text` + `metadata` and chains through
+   * `previousHash`; putting ownership inside that payload would fold an
+   * authorization fact into a content hash, so re-stamping an owner would break
+   * the chain and every existing version's hash would change on upgrade.
+   * Ownership is a property of the memory, not of any one edit to it.
+   *
+   * Optional because a peer running an older build sends none. The receiver
+   * REFUSES such a payload rather than inferring an owner from the active
+   * organization — inferring it is precisely the bug P13A exists to remove.
+   */
+  owner?: MemoryOwner;
 }
 
 export type MemoryMergeType =
@@ -79,6 +96,23 @@ export interface MemorySyncResult {
   requiredEmbeddings: string[];
   /** Side-effect-free description of what the caller should persist/push (V6.6.2). */
   syncActions: MemorySyncAction[];
+  /**
+   * The change was REFUSED on ownership grounds and nothing was applied (P13A).
+   *
+   * Optional and absent on every normal result, so existing readers are
+   * unaffected. It exists because a refusal and a clean no-op are
+   * indistinguishable by shape — both leave local state untouched — and the
+   * caller reports one as `applied` and the other must report as `ignored`. The
+   * red-team test for inbound injection caught exactly this: the write was
+   * correctly refused, and the bridge still told the sync engine it had landed,
+   * which would have suppressed the refusal from every conflict tally and
+   * health signal built on that outcome.
+   *
+   * A boolean rather than a new `MemoryMergeType`, because refusal is not a
+   * kind of merge — no merge was attempted — and widening that union would
+   * force a meaningless case into the engine's exhaustive switches.
+   */
+  refused?: true;
 }
 
 // ── Content hashing (deterministic fingerprint; not a cryptographic guarantee) ──

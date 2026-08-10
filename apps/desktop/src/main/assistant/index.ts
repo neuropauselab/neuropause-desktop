@@ -48,6 +48,7 @@ import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { unifiedStore } from '../unified/storeInstance';
 import { graphStore } from '../graph/graphInstance';
 import { memoryStore } from '../memory/memoryInstance';
+import { activeTenantScope } from '../enterprise';
 import { memoryAuditLog } from '../memory/memoryAuditInstance';
 import { getEnterpriseTimeline } from '../timeline';
 import { generateBriefing } from '../intelligence/briefingGenerator';
@@ -208,7 +209,14 @@ export function initAssistant(deps: AssistantSubsystemDeps): AssistantSubsystem 
     const events = tl ? tl.query({ limit: 2000, order: 'desc' }).entries : [];
     const brief = generateBriefing('morning', { entities, events, now });
     const builder = createContextBuilder({
-      searchSources: { entity: unifiedStore.searchBackend, graph: graphStore, memory: memoryStore },
+      searchSources: {
+        entity: unifiedStore.searchBackend,
+        graph: graphStore,
+        memory: memoryStore,
+        // P13A — the authority the memory leg runs under. Same resolver as every
+        // other scoped surface; null (cold start / signed out) yields no memory hits.
+        memoryScope: activeTenantScope(),
+      },
       getBriefing: () => brief,
     });
     return builder
@@ -300,7 +308,14 @@ export function initAssistant(deps: AssistantSubsystemDeps): AssistantSubsystem 
       const events = tl ? tl.query({ limit: 2000, order: 'desc' }).entries : [];
       const brief = generateBriefing('morning', { entities, events, now });
       const builder = createContextBuilder({
-        searchSources: { entity: unifiedStore.searchBackend, graph: graphStore, memory: memoryStore },
+        searchSources: {
+        entity: unifiedStore.searchBackend,
+        graph: graphStore,
+        memory: memoryStore,
+        // P13A — the authority the memory leg runs under. Same resolver as every
+        // other scoped surface; null (cold start / signed out) yields no memory hits.
+        memoryScope: activeTenantScope(),
+      },
         getBriefing: () => brief,
       });
       return builder.build(req);

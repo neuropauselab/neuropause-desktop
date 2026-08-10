@@ -90,7 +90,7 @@ import {
 } from './authzGate';
 import { createTenantContextResolver } from '../tenancy/tenantContext';
 import { buildMigrationInventory, summarizeInventory } from '../tenancy/migrationInventory';
-import type { TenantResolution, TenantScope } from '@neuropause/shared';
+import type { MemoryViewer, TenantResolution, TenantScope } from '@neuropause/shared';
 import {
   initEnterpriseModules,
   type EnterpriseModuleRegistry,
@@ -348,6 +348,29 @@ export function onWorkspaceSwitch(fn: (workspaceId: string) => void): void {
 /** The tenant scope, or null. The shape every scoped store accepts. */
 export function activeTenantScope(): TenantScope | null {
   return tenantContext.scope();
+}
+
+/**
+ * The memory viewer, or null (P13A). The shape the memory store accepts.
+ *
+ * Deliberately derived from the SAME `tenantContext.resolveFull()` that
+ * produces `activeTenantScope`, rather than from `runtimeIdentity`. The two are
+ * not interchangeable: `runtimeIdentity` is a published snapshot of who signed
+ * in, updated by lifecycle code, and it answers "who is this device acting as".
+ * The resolver answers "does this account currently have the right to act in
+ * this workspace", and only the second question is an authorization. Memory
+ * reads must be gated on the second, or a suspended member and a member in good
+ * standing would read the same memories.
+ *
+ * `userId` carries through so PERSONAL memory can be enforced; it is null for a
+ * service principal, which correctly denies a background job access to any
+ * individual's private memories.
+ */
+export function activeMemoryViewer(): MemoryViewer | null {
+  const res = tenantContext.resolveFull();
+  if (!res.ok) return null;
+  const ctx = res.value.context;
+  return { tenantId: ctx.tenantId, workspaceId: ctx.workspaceId, userId: ctx.userId };
 }
 
 /** The full resolution, for callers that need the reason for a refusal. */
