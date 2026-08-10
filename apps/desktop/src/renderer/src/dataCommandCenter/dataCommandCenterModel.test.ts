@@ -10,6 +10,9 @@ import { describe, expect, it } from 'vitest';
 import type {
   DataPlaneColumnMapping,
   DataPlanePlanSummary,
+  DataPlanePreview,
+  DataPlanePreviewRow,
+  DataPlaneRowAction,
   DataPlaneProvenance,
   DataPlaneRunResult,
   DataPlaneSavedMapping,
@@ -18,7 +21,15 @@ import type {
 import {
   IMPORT_STAGE_LABEL,
   MAX_UPLOAD_BYTES,
+  applyDecisions,
   approvalDefaults,
+  buildPreview,
+  mergeApprovals,
+  rowChoices,
+  setRowDecision,
+  toRowActions,
+  undecidedRows,
+  type PlanEffect,
   buildInspection,
   buildMappingRows,
   buildOverview,
@@ -106,6 +117,10 @@ function plannedTable(over: Partial<DataPlanePlanSummary['tables'][number]> = {}
     tableName: 'Customers',
     entityId: 'customer',
     entityLabel: 'Customer',
+    detectedEntityId: 'customer',
+    detectedConfidence: 0.94,
+    classificationMethod: 'detected',
+    override: null,
     domain: 'crm',
     moduleId: 'crm-customers',
     confidence: 0.91,
@@ -790,5 +805,238 @@ describe('relationship view-model', () => {
   it('reports an isolated record honestly', () => {
     const model = buildGraph({ record: { id: 'x', title: 'X', moduleId: 'm' }, outgoing: [], incoming: [] });
     expect(model.isolated).toBe(true);
+  });
+});
+
+/**
+ * Row preview and the reviewer's decisions.
+ *
+ * These exist because the first version of this arithmetic could INVENT rows.
+ * `base` is refetched from main on every preview call — and main re-runs
+ * identity matching against the destination each time — while a decision
+ * carries a snapshot of what the engine said when the reviewer clicked. The
+ * two can disagree, and the code has to survive that without changing how many
+ * rows there are.
+ */
+describe('row decisions applied to whole-table counts', () => {
+  const preview = (over: Partial<DataPlanePreview> = {}): DataPlanePreview => ({
+    tableName: 'data',
+    entityId: 'customer',
+    entityLabel: 'Customer',
+    total: 1,
+    offset: 0,
+    rows: [],
+    counts: { all: 1, valid: 1, warning: 0, invalid: 0, duplicate: 0, ambiguous: 0 },
+    plan: { create: 1, update: 0, skip: 0, review: 0 },
+    ...over,
+  });
+
+  const previewRow = (over: Partial<DataPlanePreviewRow> = {}): DataPlanePreviewRow => ({
+    rowIndex: 0,
+    sourceRow: 2,
+    verdict: 'valid',
+    action: 'create',
+    title: 'Acme Ltd',
+    fields: [{ key: 'name', label: 'Customer Name', value: 'Acme Ltd', redacted: false }],
+    issues: [],
+    transformations: [],
+    duplicateOfRow: null,
+    existingMatch: null,
+    ...over,
+  });
+
+  const total = (e: PlanEffect): number => e.create + e.update + e.skip + e.review;
+
+  it('never changes how many rows there are, even when the snapshot is stale', () => {
+    // The reviewer chose SKIP while the engine said CREATE. By the time this
+    // renders, someone else has created the matching record, so the engine now
+    // says SKIP for that same row and `base` has no `create` left to move.
+    const base: PlanEffect = { create: 0, update: 0, skip: 1, review: 0 };
+    const out = applyDecisions(base, { 0: { action: 'skip', from: 'create' } });
+
+    // The earlier version decremented with `Math.max(0, …)` and incremented
+    // unconditionally, producing `{skip: 2}` for a one-row table.
+    expect(total(out)).toBe(total(base));
+    expect(out.skip).toBe(1);
+  });
+
+  it('does not report an update the reviewer never asked for', () => {
+    // Same stale-snapshot shape, but now the engine's fresh answer is UPDATE.
+    // Unguarded, this produced "This will update 1 record" for the only row in
+    // the file — which the reviewer had set to skip.
+    const base: PlanEffect = { create: 0, update: 1, skip: 0, review: 0 };
+    const out = applyDecisions(base, { 0: { action: 'skip', from: 'create' } });
+    expect(total(out)).toBe(1);
+    expect(out.update).toBe(1);
+    expect(out.skip).toBe(0);
+  });
+
+  it('prefers what the engine says NOW for a row the reviewer can see', () => {
+    // The row is on screen, so there is no need to trust a snapshot at all.
+    const base: PlanEffect = { create: 0, update: 1, skip: 0, review: 0 };
+    const live = new Map<number, DataPlaneRowAction>([[0, 'update']]);
+    const out = applyDecisions(base, { 0: { action: 'skip', from: 'create' } }, live);
+    expect(out).toEqual({ create: 0, update: 0, skip: 1, review: 0 });
+  });
+
+  it('moves a row between buckets in the ordinary case', () => {
+    const base: PlanEffect = { create: 2, update: 0, skip: 0, review: 1 };
+    const out = applyDecisions(base, { 5: { action: 'update', from: 'review' } });
+    expect(out).toEqual({ create: 2, update: 1, skip: 0, review: 0 });
+  });
+
+  it('counts an unanswered ambiguous row, and stops once it is answered', () => {
+    const model = buildPreview(preview({ plan: { create: 1, update: 0, skip: 0, review: 2 } }));
+    expect(undecidedRows(model, undefined)).toBe(2);
+    expect(undecidedRows(model, { 3: { action: 'create', from: 'review' } })).toBe(1);
+    expect(
+      undecidedRows(model, {
+        3: { action: 'create', from: 'review' },
+        4: { action: 'skip', from: 'review' },
+      }),
+    ).toBe(0);
+  });
+
+  it('never reports a NEGATIVE number of undecided rows', () => {
+    // Decisions outlive a re-preview. If the destination changed so that fewer
+    // rows are ambiguous than have been answered, the honest answer is zero,
+    // not "-1 rows await a decision".
+    const model = buildPreview(preview({ plan: { create: 0, update: 0, skip: 0, review: 1 } }));
+    const many = {
+      1: { action: 'create' as const, from: 'review' as const },
+      2: { action: 'create' as const, from: 'review' as const },
+      3: { action: 'create' as const, from: 'review' as const },
+    };
+    expect(undecidedRows(model, many)).toBe(0);
+  });
+
+  it('does not prompt for a decision it offers no way to make', () => {
+    /**
+     * Main has a branch — no destination module for the entity — that marks
+     * rows `review`. An INVALID row offers no actions at all, so a
+     * "needs a decision" prompt on one is unanswerable, and the counter next
+     * to the import button could never reach zero.
+     */
+    const model = buildPreview(
+      preview({
+        rows: [
+          previewRow({ rowIndex: 0, verdict: 'invalid', action: 'review', issues: [{ field: 'Name', message: 'required', original: '' }] }),
+          previewRow({ rowIndex: 1, verdict: 'valid', action: 'review' }),
+        ],
+      }),
+    );
+    expect(model.rows[0]!.choices).toEqual([]);
+    expect(model.rows[0]!.needsDecision).toBe(false);
+    expect(model.rows[0]!.unimportableReason).not.toBeNull();
+    expect(model.rows[1]!.needsDecision).toBe(true);
+  });
+
+  it('refuses to offer CREATE against an exact identity match', () => {
+    const row = previewRow({
+      action: 'skip',
+      existingMatch: {
+        recordId: 'r1',
+        title: 'Acme Ltd',
+        kind: 'exact',
+        basis: 'customerCode=cus-1',
+        differs: [],
+      },
+    });
+    const actions = rowChoices(row).map((c) => c.action);
+    // A declared identity field matched literally. Creating a second record is
+    // precisely the duplicate the matching pass exists to prevent.
+    expect(actions).toContain('skip');
+    expect(actions).toContain('update');
+    expect(actions).not.toContain('create');
+  });
+
+  it('offers all three when the match is only normalized', () => {
+    const row = previewRow({
+      action: 'review',
+      existingMatch: {
+        recordId: 'r1',
+        title: 'Acme Pvt Ltd',
+        kind: 'normalized',
+        basis: 'name=acme pvt ltd',
+        differs: [],
+      },
+    });
+    // "Probably the same" is not "the same": two real companies can normalise
+    // to one string, so the reviewer keeps every option.
+    expect(rowChoices(row).map((c) => c.action).sort()).toEqual(['create', 'skip', 'update']);
+  });
+
+  it('carries the reviewed record id so a moved match can be refused', () => {
+    const model = buildPreview(
+      preview({
+        rows: [
+          previewRow({
+            action: 'review',
+            existingMatch: { recordId: 'r1', title: 'Acme', kind: 'normalized', basis: 'name=acme', differs: [] },
+          }),
+        ],
+      }),
+    );
+    const decided = setRowDecision({}, 'data', model.rows[0]!, 'update');
+    expect(toRowActions(decided['data'])).toEqual([
+      { rowIndex: 0, action: 'update', expectRecordId: 'r1' },
+    ]);
+  });
+
+  it('sends row actions only for groups actually being imported', () => {
+    const model = buildPlan(
+      plan({ tables: [plannedTable({ tableName: 'A' }), plannedTable({ tableName: 'B', signature: 'sig_b' })] }),
+    );
+    const decisions = {
+      A: { 0: { action: 'skip' as const, from: 'create' as const } },
+      B: { 0: { action: 'skip' as const, from: 'create' as const } },
+    };
+    const out = toApprovals({ A: true, B: false }, model, decisions);
+    // Asserting intent about writes the reviewer declined is a trap waiting
+    // for the next person who reads the payload.
+    expect(out.find((t) => t.tableName === 'A')?.rowActions).toHaveLength(1);
+    expect(out.find((t) => t.tableName === 'B')?.rowActions).toBeUndefined();
+  });
+
+  it('keeps other groups ticked when one is corrected', () => {
+    const model = buildPlan(
+      plan({
+        tables: [
+          plannedTable({ tableName: 'A', requiresApproval: false }),
+          plannedTable({ tableName: 'B', signature: 'sig_b', requiresApproval: true }),
+        ],
+      }),
+    );
+    const merged = mergeApprovals({ A: true, B: true }, model, 'B');
+    expect(merged.A).toBe(true);
+    // …and the corrected one goes back to its own default, which for a table
+    // that needs approval means unticked.
+    expect(merged.B).toBe(false);
+  });
+
+  it('describes what the button will do, not just how many rows passed', () => {
+    const model = buildPlan(plan({ tables: [plannedTable({ tableName: 'A', requiresApproval: false })] }));
+    const before = importReadiness(model, { A: true }, '');
+    // With no preview consulted, it talks about validation — a claim the plan
+    // alone supports — rather than guessing a create/update split.
+    expect(before.summary).toContain('passed validation');
+
+    const after = importReadiness(
+      model,
+      { A: true },
+      '',
+      { A: { create: 3, update: 2, skip: 1, review: 4 } },
+      {},
+    );
+    expect(after.summary).toContain('create 3');
+    expect(after.summary).toContain('update 2');
+    expect(after.undecided).toBe(4);
+  });
+
+  it('does not block an import the reviewer has set entirely to skip, but says so', () => {
+    const model = buildPlan(plan({ tables: [plannedTable({ tableName: 'A', requiresApproval: false })] }));
+    const r = importReadiness(model, { A: true }, '', { A: { create: 0, update: 0, skip: 5, review: 0 } }, {});
+    expect(r.ready).toBe(true);
+    expect(r.summary).toContain('Nothing will be written');
   });
 });

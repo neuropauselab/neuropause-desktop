@@ -42,6 +42,14 @@ export interface PreparedRow {
   identity: string | null;
   /** Set when this row duplicates an earlier row in the same import. */
   duplicateOf: number | null;
+  /** A record already in the destination that this row appears to be. */
+  existingMatch?: ExistingMatch | null;
+  /**
+   * What will happen to this row. Set by `matchExistingRecords`; absent means
+   * the destination was never consulted, which is a different statement from
+   * "nothing matched" and is why it is optional rather than defaulted.
+   */
+  action?: RowAction;
 }
 
 export interface QualityReport {
@@ -224,6 +232,124 @@ export function prepareRows(
 }
 
 /** Fuzzy near-duplicate scan across already-prepared rows (name similarity). */
+/**
+ * A record ALREADY in the destination that this row appears to be.
+ *
+ * Until this existed, duplicate detection looked only within the uploaded
+ * file: importing the same customers on Monday and again on Wednesday with a
+ * corrected phone number produced two Acme Ltds, because nothing compared the
+ * incoming rows against what was already there.
+ *
+ * `kind` is the whole safety story. An `exact` match means a declared identity
+ * field matched literally — the strongest thing the ontology can say. A
+ * `normalized` match means the two agree only after canonicalisation ("Acme
+ * Ltd" ≡ "ACME Limited", "+91 98765 43210" ≡ "9876543210"), which is a strong
+ * hint and NOT an identity. The two must never collapse: the first may be
+ * offered as an update, the second must go to a person.
+ */
+export interface ExistingMatch {
+  recordId: string;
+  title: string;
+  kind: 'exact' | 'normalized';
+  /** The identity that matched, quoted so a person can check it. */
+  basis: string;
+  /** Mapped fields whose incoming value differs from what is stored. */
+  differs: { field: string; label: string; existing: string; incoming: string }[];
+}
+
+/** What will happen to a row if the import runs as planned. */
+export type RowAction = 'create' | 'update' | 'skip' | 'review';
+
+/** One record as the matcher needs to see it — id, title, and its fields. */
+export interface ExistingRecordView {
+  id: string;
+  title: string;
+  fields: Record<string, CellValue>;
+}
+
+function text(value: CellValue): string {
+  return value === null || value === undefined ? '' : String(value).trim();
+}
+
+/**
+ * Match prepared rows against records already in the destination.
+ *
+ * Deterministic only, and deliberately so. The normalized comparison reuses
+ * the SAME `identityOf` the in-file duplicate check uses — canonical names,
+ * lower-cased keys — rather than introducing a similarity threshold. A fuzzy
+ * matcher would be the one component here capable of inventing an identity,
+ * and an invented identity is how two customers silently become one.
+ *
+ * Sets `existingMatch` and `action` on each row. Nothing is written, nothing
+ * is merged, and no row is marked for update: an exact match defaults to
+ * SKIP, because overwriting a stored record is a decision a person makes.
+ */
+export function matchExistingRecords(
+  rows: PreparedRow[],
+  entity: CanonicalEntity,
+  existing: readonly ExistingRecordView[],
+): void {
+  // Both indexes built once. Two passes over the destination, not one per row.
+  const exact = new Map<string, ExistingRecordView>();
+  const normalized = new Map<string, ExistingRecordView>();
+  for (const record of existing) {
+    const identity = identityOf(entity, record.fields);
+    if (!identity) continue;
+    if (identity.exact) exact.set(identity.key, record);
+    else normalized.set(identity.key, record);
+  }
+
+  for (const row of rows) {
+    row.existingMatch = null;
+    if (row.verdict === 'duplicate') {
+      row.action = 'skip';
+      continue;
+    }
+    if (row.verdict !== 'valid') {
+      row.action = 'skip';
+      continue;
+    }
+    if (row.identity === null) {
+      row.action = 'create';
+      continue;
+    }
+    const hit = exact.get(row.identity) ?? normalized.get(row.identity);
+    if (!hit) {
+      row.action = 'create';
+      continue;
+    }
+
+    const differs: ExistingMatch['differs'] = [];
+    for (const [key, incoming] of Object.entries(row.fields)) {
+      const before = text(hit.fields[key] ?? null);
+      const after = text(incoming);
+      if (after !== '' && before !== after) {
+        differs.push({
+          field: key,
+          label: entity.fields.find((f) => f.key === key)?.label ?? key,
+          existing: before,
+          incoming: after,
+        });
+      }
+    }
+
+    const isExact = exact.has(row.identity);
+    row.existingMatch = {
+      recordId: hit.id,
+      title: hit.title,
+      kind: isExact ? 'exact' : 'normalized',
+      basis: row.identity,
+      differs,
+    };
+    // Exact → SKIP by default: the record is already here, and replacing its
+    // values is the reviewer's call, not the importer's.
+    // Normalized → REVIEW: "probably the same" is not "the same", and acting
+    // on it either way (creating a twin, or overwriting a different customer)
+    // is a mistake nobody can see afterwards.
+    row.action = isExact ? 'skip' : 'review';
+  }
+}
+
 export function findNearDuplicates(rows: readonly PreparedRow[], entity: CanonicalEntity, limit = 200): DuplicateCandidate[] {
   const titleField = entity.titleField;
   const out: DuplicateCandidate[] = [];

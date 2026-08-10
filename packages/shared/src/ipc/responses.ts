@@ -39,6 +39,7 @@ import type {
   DataPlaneRelationshipPass,
   DataPlaneRelationshipPending,
   DataPlanePlanSummary,
+  DataPlanePreview,
   DataPlaneProvenance,
   DataPlaneRunResult,
   DataPlaneSavedMapping,
@@ -1451,6 +1452,8 @@ export interface IpcResponseMap {
   'dp:rel.skip': DataPlaneRelationshipDecision;
   'dp:rel.retry': DataPlaneRelationshipPass;
   'dp:rel.graph': DataPlaneRelationshipGraph;
+  'dp:reclassify': DataPlanePlanSummary;
+  'dp:preview': DataPlanePreview | null;
   // ── Medical Device Manufacturing Pack ──
   'md:pack': MedicalDevicePackView;
   'md:product.search': DeviceProductListItem[];

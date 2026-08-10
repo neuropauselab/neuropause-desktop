@@ -49,6 +49,9 @@ const DATA_PLANE_CHANNELS: IpcChannelName[] = [
   IpcChannel.DataPlaneRelationshipSkip,
   IpcChannel.DataPlaneRelationshipRetry,
   IpcChannel.DataPlaneRelationshipGraph,
+  // Program 7 hardening: correcting what a file is, and looking at its rows.
+  IpcChannel.DataPlaneReclassify,
+  IpcChannel.DataPlanePreview,
 ];
 
 const T0 = '2026-08-08T12:00:00.000Z';

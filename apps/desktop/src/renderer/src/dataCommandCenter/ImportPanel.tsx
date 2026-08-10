@@ -12,8 +12,12 @@
  *   - A group requiring approval starts unchecked; a blocked group cannot be
  *     checked at all.
  */
-import { useCallback, useRef, useState } from 'react';
-import type { DataPlanePlanSummary, DataPlaneSavedMapping } from '@neuropause/shared';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type {
+  DataPlaneOntologyEntity,
+  DataPlanePlanSummary,
+  DataPlaneSavedMapping,
+} from '@neuropause/shared';
 import { cn } from '@renderer/lib/cn';
 import { ipc } from '@renderer/lib/ipc';
 import { createLogger } from '@renderer/lib/logger';
@@ -24,23 +28,34 @@ import { Textarea } from '@renderer/components/ui/Input';
 import { Spinner } from '@renderer/components/Spinner';
 import {
   IMPORT_STAGE_LABEL,
+  PREVIEW_PAGE_SIZE,
   SUPPORTED_FORMAT_LABEL,
   approvalDefaults,
   buildInspection,
   buildMappingRows,
   buildPlan,
+  buildPreview,
   buildResult,
   bytesToBase64,
+  clearRowDecisions,
   friendlyError,
   importReadiness,
   isBusyStage,
+  mergeApprovals,
+  setRowDecision,
   toApprovals,
   tooLargeMessage,
+  undecidedRows,
   type ImportStage,
   type InspectionModel,
+  type PlanEffects,
   type PlanModel,
+  type PreviewModel,
+  type PreviewRowModel,
   type ResultModel,
+  type RowDecisions,
 } from './dataCommandCenterModel';
+import { EntityCorrection, INITIAL_ROW_REVIEW, RowReview, type RowReviewState } from './RowReview';
 import {
   Confidence,
   DataTable,
@@ -75,6 +90,17 @@ export function ImportPanel({ onImported }: { onImported: () => void }): JSX.Ele
   const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  /** Row review, per table. Absent until the reviewer opens that table. */
+  const [entities, setEntities] = useState<DataPlaneOntologyEntity[]>([]);
+  const [openRows, setOpenRows] = useState<string | null>(null);
+  const [correcting, setCorrecting] = useState<string | null>(null);
+  const [reclassifying, setReclassifying] = useState(false);
+  const [rowState, setRowState] = useState<Record<string, RowReviewState>>({});
+  const [previews, setPreviews] = useState<Record<string, PreviewModel | null>>({});
+  const [previewLoading, setPreviewLoading] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<Record<string, string | null>>({});
+  const [decisions, setDecisions] = useState<RowDecisions>({});
+
   const reset = useCallback((): void => {
     setInspection(null);
     setRaw(null);
@@ -85,6 +111,30 @@ export function ImportPanel({ onImported }: { onImported: () => void }): JSX.Ele
     setError(null);
     setExpanded(null);
     setRemembered({});
+    setOpenRows(null);
+    setCorrecting(null);
+    setRowState({});
+    setPreviews({});
+    setPreviewError({});
+    setDecisions({});
+  }, []);
+
+  // The entity list is needed both to offer a correction and to name what a
+  // table was corrected FROM. Fetched once; a failure is not fatal — it only
+  // means the correction control cannot be offered.
+  useEffect(() => {
+    let live = true;
+    void ipc.data
+      .ontology()
+      .then((o) => {
+        if (live) setEntities(o.entities);
+      })
+      .catch((err: unknown) => {
+        log.warn('Ontology unavailable', { message: err instanceof Error ? err.message : String(err) });
+      });
+    return () => {
+      live = false;
+    };
   }, []);
 
   const startOver = useCallback((): void => {
@@ -128,7 +178,7 @@ export function ImportPanel({ onImported }: { onImported: () => void }): JSX.Ele
 
         setStage('analyzing');
         const summary = await ipc.data.analyze(file.name, contentBase64);
-        const planModel = buildPlan(summary);
+        const planModel = buildPlan(summary, entities);
         setRaw(summary);
         setPlan(planModel);
         setApprovals(approvalDefaults(planModel));
@@ -149,7 +199,86 @@ export function ImportPanel({ onImported }: { onImported: () => void }): JSX.Ele
         setStage('error');
       }
     },
-    [reset],
+    [entities, reset],
+  );
+
+  /**
+   * Fetch the open table's rows whenever the reviewer changes filter, search
+   * or page. Deliberately not cached across those changes: the counts and the
+   * identity matches are recomputed against the destination as it is NOW, and
+   * a stale "this is new" is exactly how a duplicate gets created.
+   */
+  useEffect(() => {
+    const table = openRows;
+    if (table === null || plan === null) return;
+    const view = rowState[table] ?? INITIAL_ROW_REVIEW;
+    let live = true;
+    setPreviewLoading(table);
+    void ipc.data
+      .preview(plan.planId, table, {
+        mode: view.filter,
+        offset: view.offset,
+        limit: PREVIEW_PAGE_SIZE,
+        ...(view.search.trim() === '' ? {} : { search: view.search.trim() }),
+      })
+      .then((p) => {
+        if (!live) return;
+        setPreviews((prev) => ({ ...prev, [table]: p === null ? null : buildPreview(p) }));
+        setPreviewError((prev) => ({ ...prev, [table]: null }));
+      })
+      .catch((err: unknown) => {
+        if (!live) return;
+        // A reviewer may hold `data:import` without the destination module's
+        // read scope. That is a real refusal, not a blank pane.
+        setPreviewError((prev) => ({ ...prev, [table]: friendlyError(err).detail }));
+        setPreviews((prev) => ({ ...prev, [table]: null }));
+      })
+      .finally(() => {
+        if (live) setPreviewLoading((cur) => (cur === table ? null : cur));
+      });
+    return () => {
+      live = false;
+    };
+  }, [openRows, plan, rowState]);
+
+  const correctEntity = useCallback(
+    async (tableName: string, entityId: string, why: string): Promise<void> => {
+      if (!plan) return;
+      setReclassifying(true);
+      try {
+        const summary = await ipc.data.reclassify(plan.planId, tableName, entityId, why);
+        const next = buildPlan(summary, entities);
+        setRaw(summary);
+        setPlan(next);
+        // Ticks on OTHER tables survive; the corrected one resets to its new
+        // default, which for an overridden table is always unticked.
+        setApprovals((prev) => mergeApprovals(prev, next, tableName));
+        // Everything derived from the old reading is now wrong, so it goes.
+        setDecisions((prev) => clearRowDecisions(prev, tableName));
+        setPreviews((prev) => ({ ...prev, [tableName]: null }));
+        // A refusal recorded against the OLD entity says nothing about the new
+        // one, and leaving it would render "the rows could not be shown" over
+        // a table that can now be read perfectly well.
+        setPreviewError((prev) => ({ ...prev, [tableName]: null }));
+        setRowState((prev) => ({ ...prev, [tableName]: INITIAL_ROW_REVIEW }));
+        setRemembered((prev) => ({ ...prev, [tableName]: null }));
+        setCorrecting(null);
+        setExpanded(null);
+      } catch (err) {
+        log.warn('Reclassify failed', { message: err instanceof Error ? err.message : String(err) });
+        setError(friendlyError(err));
+      } finally {
+        setReclassifying(false);
+      }
+    },
+    [entities, plan],
+  );
+
+  const decideRow = useCallback(
+    (tableName: string, row: PreviewRowModel, action: 'create' | 'update' | 'skip'): void => {
+      setDecisions((prev) => setRowDecision(prev, tableName, row, action));
+    },
+    [],
   );
 
   const runImport = useCallback(async (): Promise<void> => {
@@ -160,7 +289,7 @@ export function ImportPanel({ onImported }: { onImported: () => void }): JSX.Ele
       const trimmed = reason.trim();
       const run = await ipc.data.import(
         plan.planId,
-        toApprovals(approvals, plan),
+        toApprovals(approvals, plan, decisions),
         trimmed.length > 0 ? trimmed : undefined,
       );
       setResult(buildResult(run));
@@ -168,10 +297,21 @@ export function ImportPanel({ onImported }: { onImported: () => void }): JSX.Ele
       onImported();
     } catch (err) {
       log.warn('Import failed', { message: err instanceof Error ? err.message : String(err) });
+      /**
+       * Back to REVIEW, not to the error stage.
+       *
+       * The error stage renders only an error card, whose every button calls
+       * `startOver` and wipes the plan. The designed failure mode here is the
+       * stale-match guard — "the matching record changed since you reviewed
+       * this row" — so the reviewer most likely to hit it is the one who has
+       * just paged through hundreds of rows, answered the ambiguous ones and
+       * written an approval reason. Throwing all of that away is a worse
+       * outcome than the error it is reporting.
+       */
       setError(friendlyError(err));
-      setStage('error');
+      setStage('review');
     }
-  }, [approvals, onImported, plan, reason]);
+  }, [approvals, decisions, onImported, plan, reason]);
 
   const rememberMapping = useCallback(
     async (tableName: string): Promise<void> => {
@@ -211,7 +351,18 @@ export function ImportPanel({ onImported }: { onImported: () => void }): JSX.Ele
     [raw],
   );
 
-  const readiness = plan ? importReadiness(plan, approvals, reason) : null;
+  /**
+   * Real action counts, and only for tables actually looked at.
+   *
+   * An unpreviewed table contributes nothing rather than a guess, which is
+   * what keeps the sentence next to the button from claiming a breakdown
+   * nobody computed.
+   */
+  const effects: PlanEffects = {};
+  for (const [name, p] of Object.entries(previews)) {
+    if (p !== null) effects[name] = p.plan;
+  }
+  const readiness = plan ? importReadiness(plan, approvals, reason, effects, decisions) : null;
   const busy = isBusyStage(stage);
 
   return (
@@ -248,12 +399,21 @@ export function ImportPanel({ onImported }: { onImported: () => void }): JSX.Ele
 
       {error && (
         <div className="mt-4">
+          {/*
+           * In the review stage the plan is still underneath this card, so
+           * "try again" means DISMISS and press Import again — not start over.
+           * Wiring it to `startOver` here threw away the reviewer's row
+           * decisions and approval reason on the one error they are most
+           * likely to see, the stale-match refusal.
+           */}
           <ErrorBlock
             title={error.title}
             detail={error.detail}
-            onRetry={error.canRetry ? startOver : undefined}
+            onRetry={
+              stage === 'review' ? () => setError(null) : error.canRetry ? startOver : undefined
+            }
           />
-          {!error.canRetry && (
+          {stage !== 'review' && !error.canRetry && (
             <Button size="sm" icon="undo" className="mt-3" onClick={startOver}>
               Choose a different file
             </Button>
@@ -278,6 +438,27 @@ export function ImportPanel({ onImported }: { onImported: () => void }): JSX.Ele
           readiness={readiness}
           onImport={() => void runImport()}
           onCancel={startOver}
+          entities={entities}
+          openRows={openRows}
+          onOpenRows={(name) => {
+            setOpenRows((prev) => (prev === name ? null : name));
+            setCorrecting(null);
+          }}
+          correcting={correcting}
+          onCorrect={(name) => {
+            setCorrecting((prev) => (prev === name ? null : name));
+            setOpenRows(null);
+          }}
+          reclassifying={reclassifying}
+          onApplyCorrection={(name, entityId, why) => void correctEntity(name, entityId, why)}
+          previews={previews}
+          previewLoading={previewLoading}
+          previewError={previewError}
+          rowState={rowState}
+          onRowState={(name, next) => setRowState((prev) => ({ ...prev, [name]: next }))}
+          decisions={decisions}
+          onDecide={decideRow}
+          onClearDecisions={(name) => setDecisions((prev) => clearRowDecisions(prev, name))}
         />
       )}
 
@@ -409,6 +590,21 @@ function ReviewStep({
   readiness,
   onImport,
   onCancel,
+  entities,
+  openRows,
+  onOpenRows,
+  correcting,
+  onCorrect,
+  reclassifying,
+  onApplyCorrection,
+  previews,
+  previewLoading,
+  previewError,
+  rowState,
+  onRowState,
+  decisions,
+  onDecide,
+  onClearDecisions,
 }: {
   plan: PlanModel;
   raw: DataPlanePlanSummary;
@@ -425,6 +621,21 @@ function ReviewStep({
   readiness: ReturnType<typeof importReadiness> | null;
   onImport: () => void;
   onCancel: () => void;
+  entities: readonly DataPlaneOntologyEntity[];
+  openRows: string | null;
+  onOpenRows: (tableName: string) => void;
+  correcting: string | null;
+  onCorrect: (tableName: string) => void;
+  reclassifying: boolean;
+  onApplyCorrection: (tableName: string, entityId: string, reason: string) => void;
+  previews: Record<string, PreviewModel | null>;
+  previewLoading: string | null;
+  previewError: Record<string, string | null>;
+  rowState: Record<string, RowReviewState>;
+  onRowState: (tableName: string, next: RowReviewState) => void;
+  decisions: RowDecisions;
+  onDecide: (tableName: string, row: PreviewRowModel, action: 'create' | 'update' | 'skip') => void;
+  onClearDecisions: (tableName: string) => void;
 }): JSX.Element {
   const needsReason = readiness !== null && plan.tables.some((t) => t.requiresApproval && !t.blocked && approvals[t.tableName] === true);
 
@@ -436,8 +647,8 @@ function ReviewStep({
         </div>
       )}
 
-      {plan.nothingToImport ? (
-        <Card variant="flat">
+      {plan.nothingToImport && (
+        <Card variant="flat" className="mb-4">
           <h3 className="text-base font-semibold">Nothing in this file can be imported</h3>
           <p className="mt-1.5 text-sm text-muted">
             {plan.tables.length === 0
@@ -448,7 +659,9 @@ function ReviewStep({
             Choose a different file
           </Button>
         </Card>
-      ) : (
+      )}
+
+      {plan.tables.length > 0 && (
         <Section
           title="What was found"
           subtitle="Review each group before anything is written. Tick what you want to import."
@@ -459,6 +672,13 @@ function ReviewStep({
               const rows = table ? buildMappingRows(table.mappings, remembered[t.tableName] ?? null) : [];
               const isOpen = expanded === t.tableName;
               const saved = remembered[t.tableName] ?? null;
+              const rowsOpen = openRows === t.tableName;
+              const isCorrecting = correcting === t.tableName;
+              const preview = previews[t.tableName] ?? null;
+              const view = rowState[t.tableName] ?? INITIAL_ROW_REVIEW;
+              // Only claimed once the rows have actually been read. Before
+              // that the honest answer is nothing, not zero.
+              const outstanding = preview === null ? 0 : undecidedRows(preview, decisions[t.tableName]);
               return (
                 <Card key={t.tableName} variant="flat" flush className="overflow-hidden">
                   <div className="flex items-start gap-3 p-4">
@@ -490,9 +710,23 @@ function ReviewStep({
                         <span className="uppercase tracking-wider text-faint">{t.risk} risk</span>
                       </div>
 
+                      {t.correction && (
+                        <p className="mt-2 text-sm text-muted">
+                          You corrected this from <span className="font-medium">{t.correction.fromLabel}</span>.
+                          {t.correction.reason && <> “{t.correction.reason}”</>} Everything below was recomputed.
+                        </p>
+                      )}
+
                       {t.holdReason && (
                         <p className={cn('mt-2 text-sm', t.blocked ? 'text-syspink' : 'text-sysorange')}>
                           {t.holdReason}
+                        </p>
+                      )}
+
+                      {outstanding > 0 && (
+                        <p className="mt-2 text-sm text-sysorange">
+                          {outstanding} {outstanding === 1 ? 'row needs' : 'rows need'} a decision. Rows left
+                          undecided are skipped, not guessed.
                         </p>
                       )}
 
@@ -500,6 +734,32 @@ function ReviewStep({
                         <Button size="sm" icon={isOpen ? 'chevron-down' : 'chevron-right'} onClick={() => onExpand(t.tableName)}>
                           {isOpen ? 'Hide column mapping' : `Review ${rows.length} columns`}
                         </Button>
+                        <Button
+                          size="sm"
+                          icon={rowsOpen ? 'chevron-down' : 'list'}
+                          onClick={() => onOpenRows(t.tableName)}
+                        >
+                          {rowsOpen ? 'Hide the rows' : 'Look at the rows'}
+                        </Button>
+                        {entities.length === 0 ? (
+                          <span className="text-xs text-faint">
+                            Correction unavailable — the entity list could not be loaded.
+                          </span>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => onCorrect(t.tableName)}
+                          >
+                            {/*
+                             * Deliberately not "Not a {entity}?" — that reads
+                             * well for "Not a Customer?" and badly for "Not a
+                             * Employee?", and an article rule is not worth the
+                             * bug surface on a control this important.
+                             */}
+                            {isCorrecting ? 'Cancel correction' : 'Change what this is'}
+                          </Button>
+                        )}
                         {saved ? (
                           <Button size="sm" variant="ghost" loading={saving === t.tableName} onClick={() => onForget(t.tableName)}>
                             Forget this mapping
@@ -512,6 +772,30 @@ function ReviewStep({
                       </div>
                     </div>
                   </div>
+
+                  {isCorrecting && (
+                    <EntityCorrection
+                      currentEntityId={t.entityId}
+                      entities={entities}
+                      busy={reclassifying}
+                      onApply={(entityId, why) => onApplyCorrection(t.tableName, entityId, why)}
+                      onCancel={() => onCorrect(t.tableName)}
+                    />
+                  )}
+
+                  {rowsOpen && (
+                    <RowReview
+                      preview={preview}
+                      state={view}
+                      onState={(next) => onRowState(t.tableName, next)}
+                      loading={previewLoading === t.tableName}
+                      error={previewError[t.tableName] ?? null}
+                      decisions={decisions[t.tableName]}
+                      pageSize={PREVIEW_PAGE_SIZE}
+                      onDecide={(row, action) => onDecide(t.tableName, row, action)}
+                      onClearDecisions={() => onClearDecisions(t.tableName)}
+                    />
+                  )}
 
                   {isOpen && (
                     <div className="border-t border-[var(--hairline)]">
@@ -555,25 +839,42 @@ function ReviewStep({
       {plan.unclassified.length > 0 && (
         <Section
           title="Not recognised"
-          subtitle="These tables did not match any business entity, so they are left alone."
+          subtitle="These tables did not match any business entity. Nothing here is imported unless you say what it is."
         >
-          <DataTable
-            head={
-              <tr>
-                <Th>Table</Th>
-                <Th>Rows</Th>
-                <Th>Why it was skipped</Th>
-              </tr>
-            }
-          >
+          <div className="space-y-3">
             {plan.unclassified.map((u) => (
-              <tr key={u.tableName}>
-                <Td className="font-medium">{u.tableName}</Td>
-                <Td className="tabular-nums">{u.rowCount.toLocaleString()}</Td>
-                <Td className="text-muted">{u.reason}</Td>
-              </tr>
+              <Card key={u.tableName} variant="flat" flush className="overflow-hidden">
+                <div className="p-4">
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span className="text-base font-semibold">{u.tableName}</span>
+                    <span className="text-sm tabular-nums text-muted">
+                      {u.rowCount.toLocaleString()} rows
+                    </span>
+                  </div>
+                  <p className="mt-1 text-sm text-muted">{u.reason}</p>
+                  {entities.length === 0 ? (
+                    <p className="mt-3 text-sm text-sysorange">
+                      The entity list could not be loaded, so this table cannot be identified in this
+                      session. Reopen the Data Command Center to try again.
+                    </p>
+                  ) : (
+                    <Button size="sm" className="mt-3" onClick={() => onCorrect(u.tableName)}>
+                      {correcting === u.tableName ? 'Cancel' : 'Tell us what this is'}
+                    </Button>
+                  )}
+                </div>
+                {correcting === u.tableName && (
+                  <EntityCorrection
+                    currentEntityId={null}
+                    entities={entities}
+                    busy={reclassifying}
+                    onApply={(entityId, why) => onApplyCorrection(u.tableName, entityId, why)}
+                    onCancel={() => onCorrect(u.tableName)}
+                  />
+                )}
+              </Card>
             ))}
-          </DataTable>
+          </div>
         </Section>
       )}
 
@@ -608,17 +909,21 @@ function ReviewStep({
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="text-sm text-muted">
-              {readiness && readiness.ready ? (
+              {readiness && readiness.ready ? readiness.summary : readiness?.blockedBecause}
+              {/*
+               * Outside the ready branch on purpose. Nested inside it, this
+               * warning appeared only once the reviewer had typed an approval
+               * reason — hidden at precisely the moment they were deciding
+               * whether they still had work to do.
+               */}
+              {readiness && readiness.undecided > 0 && (
                 <>
-                  About to create{' '}
-                  <span className="font-semibold text-ink tabular-nums">
-                    {readiness.approvedRecords.toLocaleString()}
-                  </span>{' '}
-                  records across {readiness.approvedTables}{' '}
-                  {readiness.approvedTables === 1 ? 'group' : 'groups'}.
+                  {' '}
+                  <span className="text-sysorange">
+                    {readiness.undecided} {readiness.undecided === 1 ? 'row is' : 'rows are'} still
+                    awaiting a decision and will be skipped.
+                  </span>
                 </>
-              ) : (
-                readiness?.blockedBecause
               )}
             </div>
             <div className="flex items-center gap-2">

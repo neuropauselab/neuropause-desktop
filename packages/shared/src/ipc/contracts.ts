@@ -2621,6 +2621,36 @@ export const DataPlaneImportRequest = z
             tableName: z.string().trim().min(1).max(200),
             approved: z.boolean(),
             skipRows: z.array(z.number().int().min(0)).max(50_000).optional(),
+            /**
+             * Per-row decisions the reviewer made in the preview.
+             *
+             * `update` replaces the matched record's mapped fields — the only
+             * way an import may touch an existing record, and only ever a row
+             * at a time after the reviewer has seen what differs. `create`
+             * overrides the default skip on a row that matched something.
+             * Rows not named here keep whatever the plan decided.
+             */
+            rowActions: z
+              .array(
+                z
+                  .object({
+                    rowIndex: z.number().int().min(0),
+                    action: z.enum(['create', 'update', 'skip']),
+                    /**
+                     * The record the reviewer was looking at when they chose
+                     * `update`. The import re-resolves the match against the
+                     * destination as it is NOW — correct, because acting on a
+                     * stale match is its own bug — but that means the target
+                     * can move between the review and the click. Carrying the
+                     * id makes the import refuse rather than overwrite a
+                     * record nobody approved.
+                     */
+                    expectRecordId: z.string().trim().max(120).optional(),
+                  })
+                  .strict(),
+              )
+              .max(50_000)
+              .optional(),
           })
           .strict(),
       )
@@ -2702,6 +2732,31 @@ export const DataPlaneRelationshipQueueRequest = z
   .object({ limit: z.number().int().min(1).max(500).optional() })
   .strict();
 export type DataPlaneRelationshipQueueRequest = z.infer<typeof DataPlaneRelationshipQueueRequest>;
+
+export const DataPlaneReclassifyRequest = z
+  .object({
+    planId: z.string().trim().min(1).max(80),
+    tableName: z.string().trim().min(1).max(200),
+    /** A canonical entity id. Validated against the live ontology in the handler. */
+    entityId: z.string().trim().min(1).max(80),
+    reason: z.string().trim().max(400).optional(),
+  })
+  .strict();
+export type DataPlaneReclassifyRequest = z.infer<typeof DataPlaneReclassifyRequest>;
+
+export const DataPlanePreviewRequest = z
+  .object({
+    planId: z.string().trim().min(1).max(80),
+    tableName: z.string().trim().min(1).max(200),
+    /** Which rows to look at. */
+    mode: z.enum(['all', 'valid', 'warning', 'invalid', 'duplicate', 'ambiguous']).optional(),
+    search: z.string().trim().max(120).optional(),
+    offset: z.number().int().min(0).max(200_000).optional(),
+    /** Hard-capped: a preview that can return 200,000 rows is not a preview. */
+    limit: z.number().int().min(1).max(100).optional(),
+  })
+  .strict();
+export type DataPlanePreviewRequest = z.infer<typeof DataPlanePreviewRequest>;
 
 export const DataPlaneRelationshipGraphRequest = z
   .object({ recordId: z.string().trim().min(1).max(128) })

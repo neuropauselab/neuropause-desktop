@@ -69,6 +69,12 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
   [IpcChannel.DataPlaneRelationshipOverview]: 'data:read',
   [IpcChannel.DataPlaneRelationshipQueue]: 'data:read',
   [IpcChannel.DataPlaneRelationshipGraph]: 'data:read',
+  // Correcting the entity decides what a file will BECOME, so it is part of
+  // deciding to load it rather than part of looking at it.
+  [IpcChannel.DataPlaneReclassify]: 'data:import',
+  // Preview shows real source values, so it takes the same scope as any other
+  // read of the uploaded data. Sensitive fields are redacted in the payload.
+  [IpcChannel.DataPlanePreview]: 'data:read',
   // Deciding which record a reference points at writes a business fact.
   [IpcChannel.DataPlaneRelationshipDecide]: 'data:import',
   [IpcChannel.DataPlaneRelationshipSkip]: 'data:import',

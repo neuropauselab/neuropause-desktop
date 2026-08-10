@@ -43,12 +43,47 @@ export interface PlannedTable {
   blockedReason: string | null;
   /** Prepared rows, retained so approval can apply the exact analyzed result. */
   rows: PreparedRow[];
+  /**
+   * The RAW parsed table, retained in the main process only.
+   *
+   * Kept so a reviewer can correct the entity and have everything —
+   * mapping, validation, duplicates, plan — recomputed from the source rather
+   * than patched. Re-deriving from the prepared rows would carry the wrong
+   * entity's normalization forward, which is the subtle way an override
+   * becomes worse than no override. Stripped by `summarizePlan`; it never
+   * crosses IPC.
+   */
+  source: ParsedTable;
+  /** What the detector said, before any reviewer changed it. */
+  detectedEntityId: string | null;
+  detectedConfidence: number;
+  /** How the entity was decided. */
+  classificationMethod: 'detected' | 'reviewer';
+  override: EntityOverride | null;
+}
+
+/** A reviewer's correction of what a file represents. Audited, never silent. */
+export interface EntityOverride {
+  fromEntityId: string | null;
+  toEntityId: string;
+  by: string | null;
+  at: string;
+  reason: string;
 }
 
 export interface UnclassifiedTable {
   tableName: string;
   rowCount: number;
   reason: string;
+  /**
+   * The raw grid, retained in main so a reviewer can rescue this table.
+   *
+   * Without it, the ONE case an override exists for — a table the detector
+   * could not place at all — was the one case with no recourse: `reclassify`
+   * searched `plan.tables`, and an unclassified table is by definition not in
+   * it. Stripped by `summarizePlan`; never crosses IPC.
+   */
+  source: ParsedTable;
   /** The best guess and its score, so a human can map it manually. */
   bestGuess: string | null;
   bestGuessConfidence: number;
@@ -114,6 +149,7 @@ export function analyzeSource(filename: string, buf: Buffer, opts: AnalyzeOption
     if (planned === null) {
       const c = classifyTable(table);
       unclassified.push({
+        source: table,
         tableName: table.name,
         rowCount: table.rows.length,
         reason: c.entityReasons[0] ?? 'no canonical entity matched this table',
@@ -150,8 +186,8 @@ export function analyzeSource(filename: string, buf: Buffer, opts: AnalyzeOption
   };
 }
 
-function planTable(table: ParsedTable): PlannedTable | null {
-  const classification = classifyTable(table);
+export function planTable(table: ParsedTable, forceEntityId?: string): PlannedTable | null {
+  const classification = classifyTable(table, forceEntityId);
   if (classification.entityId === null) return null;
   const entity = entityById(classification.entityId);
   if (entity === null) return null;
@@ -194,6 +230,11 @@ function planTable(table: ParsedTable): PlannedTable | null {
     importableRows,
     blockedReason,
     rows,
+    source: table,
+    detectedEntityId: entity.id,
+    detectedConfidence: classification.entityConfidence,
+    classificationMethod: forceEntityId === undefined ? 'detected' : 'reviewer',
+    override: null,
   };
 }
 
@@ -220,13 +261,20 @@ function emptyPlan(
 }
 
 /** A compact, renderer-safe view of the plan (drops the row payloads). */
-export interface ImportPlanSummary extends Omit<ImportPlan, 'tables'> {
-  tables: Omit<PlannedTable, 'rows'>[];
+export interface ImportPlanSummary extends Omit<ImportPlan, 'tables' | 'unclassified'> {
+  /**
+   * `rows` and `source` are stripped: 200,000 prepared rows and the raw grid
+   * they came from must not cross IPC on every analyze. Rows reach the
+   * renderer through the paginated `dp:preview` channel instead.
+   */
+  tables: Omit<PlannedTable, 'rows' | 'source'>[];
+  unclassified: Omit<UnclassifiedTable, 'source'>[];
 }
 
 export function summarizePlan(plan: ImportPlan): ImportPlanSummary {
   return {
     ...plan,
-    tables: plan.tables.map(({ rows: _rows, ...rest }) => rest),
+    tables: plan.tables.map(({ rows: _rows, source: _source, ...rest }) => rest),
+    unclassified: plan.unclassified.map(({ source: _source, ...rest }) => rest),
   };
 }

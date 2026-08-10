@@ -967,6 +967,17 @@ export const IpcChannel = {
   DataPlaneRelationshipRetry: 'dp:rel.retry',
   /** The resolved links around one record, both directions. */
   DataPlaneRelationshipGraph: 'dp:rel.graph',
+  /**
+   * Correct what a file represents (Program 7 hardening).
+   *
+   * A reviewer's decision, so it re-plans the table from the RAW source with
+   * the chosen entity — mapping, validation, duplicates and the plan are all
+   * recomputed. Carries `data:import`, because changing what a file will
+   * become is part of deciding to load it.
+   */
+  DataPlaneReclassify: 'dp:reclassify',
+  /** A bounded, redacted page of prepared rows for review before import. */
+  DataPlanePreview: 'dp:preview',
 
   // ── Medical Device Manufacturing Pack ──
   /** The pack manifest + taxonomies resolved for the active tenant. */
@@ -1809,6 +1820,8 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.DataPlaneRelationshipSkip,
   IpcChannel.DataPlaneRelationshipRetry,
   IpcChannel.DataPlaneRelationshipGraph,
+  IpcChannel.DataPlaneReclassify,
+  IpcChannel.DataPlanePreview,
   // ── Medical Device Manufacturing Pack ──
   IpcChannel.MedicalDevicePack,
   IpcChannel.MedicalDeviceProductSearch,

@@ -1913,7 +1913,26 @@ export const ipc = {
      */
     import: (
       planId: string,
-      approvals: { tableName: string; approved: boolean; skipRows?: number[] }[],
+      approvals: {
+        tableName: string;
+        approved: boolean;
+        skipRows?: number[];
+        /**
+         * Per-row decisions taken in the preview. `update` touches an existing
+         * record.
+         *
+         * `expectRecordId` is part of the type on purpose. The contract accepts
+         * it and the importer enforces it, but this facade omitted it — so it
+         * worked only through structural assignability, and dropping it from
+         * the caller would silently disarm the only guard against overwriting a
+         * record the reviewer never approved, with `tsc` none the wiser.
+         */
+        rowActions?: {
+          rowIndex: number;
+          action: 'create' | 'update' | 'skip';
+          expectRecordId?: string;
+        }[];
+      }[],
       reason?: string,
     ) => invoke(IpcChannel.DataPlaneImport, { planId, approvals, ...(reason ? { reason } : {}) }),
     history: (limit?: number) => invoke(IpcChannel.DataPlaneHistory, limit === undefined ? {} : { limit }),
@@ -1924,6 +1943,30 @@ export const ipc = {
       invoke(IpcChannel.DataPlaneMappings, signature === undefined ? {} : { signature }),
     saveMapping: (signature: string, entityId: string, columns: { header: string; fieldKey: string }[]) =>
       invoke(IpcChannel.DataPlaneSaveMapping, { signature, entityId, columns }),
+    /** Correct what a file represents; re-plans the table from the raw source. */
+    reclassify: (
+      planId: string,
+      tableName: string,
+      entityId: string,
+      reason?: string,
+    ) =>
+      invoke(IpcChannel.DataPlaneReclassify, {
+        planId,
+        tableName,
+        entityId,
+        ...(reason ? { reason } : {}),
+      }),
+    /** One bounded, redacted page of prepared rows. */
+    preview: (
+      planId: string,
+      tableName: string,
+      opts: {
+        mode?: 'all' | 'valid' | 'warning' | 'invalid' | 'duplicate' | 'ambiguous';
+        search?: string;
+        offset?: number;
+        limit?: number;
+      } = {},
+    ) => invoke(IpcChannel.DataPlanePreview, { planId, tableName, ...opts }),
     forgetMapping: (signature: string) => invoke(IpcChannel.DataPlaneForgetMapping, { signature }),
     /** The canonical entities and the formats we deliberately cannot read. */
     ontology: () => invoke(IpcChannel.DataPlaneOntology, {}),

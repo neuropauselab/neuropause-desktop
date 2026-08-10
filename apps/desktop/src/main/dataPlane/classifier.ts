@@ -307,8 +307,52 @@ function scoreEntity(
  * Returns `entityId: null` when nothing matches well enough — an honest "I do
  * not know" rather than a forced guess.
  */
-export function classifyTable(table: ParsedTable): TableClassification {
+export function classifyTable(table: ParsedTable, forceEntityId?: string): TableClassification {
   const profiles = profileColumns(table);
+
+  /**
+   * A forced entity is a REVIEWER'S DECISION about what the file is, so the
+   * detector is skipped entirely — but the column mapping is still computed
+   * from scratch against that entity's own fields. Reusing the mappings the
+   * detector produced for a different entity would leave columns pointing at
+   * fields the chosen entity does not have, which is how an override becomes
+   * worse than no override.
+   *
+   * Confidence is reported as 1 with an explicit reason: it is certainty about
+   * the reviewer's intent, not about the machine's guess, and the two must not
+   * be confused on screen.
+   */
+  if (forceEntityId !== undefined) {
+    const forced = ONTOLOGY.find((e) => e.id === forceEntityId);
+    if (forced === undefined) {
+      return {
+        tableName: table.name,
+        entityId: null,
+        entityLabel: null,
+        entityConfidence: 0,
+        entityBand: 'low',
+        entityReasons: [`"${forceEntityId}" is not an entity this build can import`],
+        mappings: profiles.map((p) => ({
+          columnIndex: p.index,
+          header: p.header,
+          fieldKey: null,
+          fieldLabel: null,
+          confidence: 0,
+          band: 'low' as ConfidenceBand,
+          reasons: ['no entity selected'],
+          observedShape: p.shape,
+          fillRate: p.fillRate,
+        })),
+        missingRequired: [],
+        unmappedColumns: profiles.map((p) => p.index),
+      };
+    }
+    const scored = scoreEntity(table, profiles, forced);
+    return buildClassification(table, profiles, forced, scored.assigned, 1, [
+      'chosen by a reviewer, not detected',
+      ...scored.reasons,
+    ]);
+  }
 
   let best: { entity: CanonicalEntity; score: number; reasons: string[]; assigned: Map<number, Candidate> } | null = null;
   let runnerUp = 0;
@@ -334,6 +378,18 @@ export function classifyTable(table: ParsedTable): TableClassification {
   let entityScore = best?.score ?? 0;
   if (best && runnerUp > 0 && best.score - runnerUp < 0.08) entityScore = Math.min(entityScore, 0.7);
 
+  return buildClassification(table, profiles, entity, assigned, entityScore, reasons);
+}
+
+/** The shared tail of both paths — detected and reviewer-chosen. */
+function buildClassification(
+  table: ParsedTable,
+  profiles: readonly ColumnProfile[],
+  entity: CanonicalEntity | null,
+  assigned: Map<number, Candidate>,
+  entityScore: number,
+  reasons: readonly string[],
+): TableClassification {
   const mappings: ColumnMapping[] = profiles.map((p) => {
     const c = assigned.get(p.index);
     return {
@@ -360,7 +416,7 @@ export function classifyTable(table: ParsedTable): TableClassification {
     entityLabel: entity?.label ?? null,
     entityConfidence: Number(entityScore.toFixed(4)),
     entityBand: bandOf(entityScore),
-    entityReasons: reasons.length > 0 ? reasons : ['no canonical entity matched this table'],
+    entityReasons: reasons.length > 0 ? [...reasons] : ['no canonical entity matched this table'],
     mappings,
     missingRequired,
     unmappedColumns: mappings.filter((m) => m.fieldKey === null).map((m) => m.columnIndex),

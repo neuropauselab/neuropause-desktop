@@ -89,6 +89,23 @@ export interface DataPlanePlannedTable {
   requiresApproval: boolean;
   importableRows: number;
   blockedReason: string | null;
+  /**
+   * What the DETECTOR concluded, before any reviewer touched it. Kept
+   * alongside the current entity so a corrected table can say what it was
+   * corrected FROM rather than quietly presenting the reviewer's answer as
+   * the machine's.
+   */
+  detectedEntityId: string | null;
+  detectedConfidence: number;
+  classificationMethod: 'detected' | 'reviewer';
+  /** Set only when a person overrode the classification. Audited, never silent. */
+  override: {
+    fromEntityId: string | null;
+    toEntityId: string;
+    by: string | null;
+    at: string;
+    reason: string;
+  } | null;
 }
 
 export interface DataPlaneUnclassifiedTable {
@@ -143,6 +160,8 @@ export interface DataPlaneTableResult {
   duplicates: number;
   needsReview: number;
   createdRecordIds: string[];
+  /** Records changed in place by an explicit per-row update decision. */
+  updatedRecordIds?: string[];
   errors: { sourceRow: number; message: string }[];
   rolledBack: boolean;
   /**
@@ -150,10 +169,13 @@ export interface DataPlaneTableResult {
    * wrote. `checked: false` means no verification ran at all — which is a
    * different statement from "verification passed".
    */
+  /** Existing records updated by an explicit per-row decision. */
+  updated?: number;
   verification?: {
     checked: boolean;
     sourceRows: number;
     created: number;
+    updated: number;
     confirmed: number;
     alreadyImported: number;
     reconciled: boolean;
@@ -169,7 +191,15 @@ export interface DataPlaneRunResult {
   actor: string | null;
   status: DataPlaneRunStatus;
   tables: DataPlaneTableResult[];
-  totals: { imported: number; skipped: number; failed: number; duplicates: number; needsReview: number };
+  totals: {
+    imported: number;
+    /** Existing records overwritten by an explicit per-row decision. */
+    updated?: number;
+    skipped: number;
+    failed: number;
+    duplicates: number;
+    needsReview: number;
+  };
 }
 
 export interface DataPlaneFieldProvenance {
@@ -346,4 +376,75 @@ export interface DataPlaneRelationshipGraph {
   record: { id: string; title: string; moduleId: string } | null;
   outgoing: DataPlaneRelationshipEdge[];
   incoming: DataPlaneRelationshipEdge[];
+}
+
+/* ── Program 7 hardening: row preview + entity override ─────────────────── */
+
+/** What will happen to one row if the import runs as planned. */
+export type DataPlaneRowAction = 'create' | 'update' | 'skip' | 'review';
+
+/** A record already in the destination that an incoming row appears to be. */
+export interface DataPlaneExistingMatch {
+  recordId: string;
+  title: string;
+  /**
+   * `exact` — a declared identity field matched literally.
+   * `normalized` — they agree only after canonicalisation ("Acme Ltd" ≡ "ACME
+   * Limited"). A strong hint, NOT an identity, and never acted on
+   * automatically in either direction.
+   */
+  kind: 'exact' | 'normalized';
+  basis: string;
+  differs: { field: string; label: string; existing: string; incoming: string }[];
+}
+
+export interface DataPlanePreviewRow {
+  rowIndex: number;
+  /** One-based row number in the source file. */
+  sourceRow: number;
+  verdict: 'valid' | 'invalid' | 'incomplete' | 'duplicate';
+  action: DataPlaneRowAction;
+  title: string;
+  /**
+   * Mapped values, as they WOULD be written. Sensitive fields are replaced
+   * with a redaction marker: a preview exists so a person can check the data,
+   * and no check requires putting a password on screen.
+   */
+  fields: { key: string; label: string; value: string; redacted: boolean }[];
+  issues: { field: string; message: string; original: string }[];
+  transformations: string[];
+  /** Set when this row repeats an earlier row of the SAME file. */
+  duplicateOfRow: number | null;
+  existingMatch: DataPlaneExistingMatch | null;
+}
+
+export interface DataPlanePreview {
+  tableName: string;
+  entityId: string;
+  entityLabel: string;
+  /** Total rows matching the current filter — not the page length. */
+  total: number;
+  offset: number;
+  rows: DataPlanePreviewRow[];
+  /** Counts across the WHOLE table, so the filter chips can show them. */
+  counts: {
+    all: number;
+    valid: number;
+    warning: number;
+    invalid: number;
+    duplicate: number;
+    ambiguous: number;
+  };
+  /** What the import would do, per action, across the whole table. */
+  plan: { create: number; update: number; skip: number; review: number };
+}
+
+/** An entity a file can actually be imported as. */
+export interface DataPlaneEntityChoice {
+  id: string;
+  label: string;
+  plural: string;
+  domain: string;
+  requiresApproval: boolean;
+  risk: string;
 }

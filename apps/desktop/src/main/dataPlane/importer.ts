@@ -68,7 +68,9 @@ export interface TableVerification {
   checked: boolean;
   sourceRows: number;
   created: number;
-  /** Of `created`, how many could be read straight back out. */
+  /** Existing records the reviewer chose to update, row by row. */
+  updated: number;
+  /** Of the records touched (created + updated), how many read straight back. */
   confirmed: number;
   /** Rows this file had already imported on an earlier run. */
   alreadyImported: number;
@@ -83,12 +85,16 @@ export interface TableImportResult {
   moduleId: string;
   status: TableImportStatus;
   imported: number;
+  /** Existing records updated by an explicit per-row decision. */
+  updated: number;
   /** Rows deliberately not written (invalid, incomplete, duplicate, user-skipped). */
   skipped: number;
   failed: number;
   duplicates: number;
   needsReview: number;
   createdRecordIds: string[];
+  /** Records changed in place. Separate from created so both can be broadcast. */
+  updatedRecordIds: string[];
   errors: { sourceRow: number; message: string }[];
   /** True when created records were compensated away after a partial failure. */
   rolledBack: boolean;
@@ -106,7 +112,7 @@ export interface ImportResult {
   actor: string | null;
   status: ImportStatus;
   tables: TableImportResult[];
-  totals: { imported: number; skipped: number; failed: number; duplicates: number; needsReview: number };
+  totals: { imported: number; updated: number; skipped: number; failed: number; duplicates: number; needsReview: number };
 }
 
 export interface ImportDecision {
@@ -115,6 +121,20 @@ export interface ImportDecision {
   approved: boolean;
   /** Row indexes (as in `PlannedTable.rows[].rowIndex`) the reviewer chose to skip. */
   skipRows?: readonly number[];
+  /**
+   * Per-row decisions from the preview.
+   *
+   * `update` is the ONLY way an import may touch a record that already exists,
+   * and it is deliberately per-row: the reviewer saw which fields differ
+   * before choosing it. There is no bulk "update everything", because a bulk
+   * overwrite of master data is indistinguishable from a mistake afterwards.
+   */
+  rowActions?: readonly {
+    rowIndex: number;
+    action: 'create' | 'update' | 'skip';
+    /** The record the reviewer saw. An update refuses if the match has moved. */
+    expectRecordId?: string;
+  }[];
 }
 
 export interface ImportDeps {
@@ -181,11 +201,13 @@ export async function applyImportPlan(
       entityId: table.entityId,
       moduleId: table.moduleId,
       imported: 0,
+      updated: 0,
       skipped: 0,
       failed: 0,
       duplicates: table.report.duplicates,
       needsReview: table.report.invalid + table.report.incomplete,
       createdRecordIds: [] as string[],
+      updatedRecordIds: [] as string[],
       errors: [] as { sourceRow: number; message: string }[],
       rolledBack: false,
     };
@@ -246,12 +268,13 @@ export async function applyImportPlan(
   const totals = results.reduce(
     (acc, r) => ({
       imported: acc.imported + r.imported,
+      updated: acc.updated + r.updated,
       skipped: acc.skipped + r.skipped,
       failed: acc.failed + r.failed,
       duplicates: acc.duplicates + r.duplicates,
       needsReview: acc.needsReview + r.needsReview,
     }),
-    { imported: 0, skipped: 0, failed: 0, duplicates: 0, needsReview: 0 },
+    { imported: 0, updated: 0, skipped: 0, failed: 0, duplicates: 0, needsReview: 0 },
   );
 
   // A table that wrote records it could not read back is not a clean import,
@@ -260,15 +283,19 @@ export async function applyImportPlan(
   // what anyone scanning a history list believes.
   const unreconciled = results.some((r) => r.verification?.reconciled === false);
 
+  // An UPDATE is a write. A run that overwrote 500 customer master records
+  // reported `nothing_imported`, and the audit line said nothing happened —
+  // the one durable trace of a bulk master-data change denying it occurred.
+  const touchedTotal = totals.imported + totals.updated;
   let status: ImportStatus = 'nothing_imported';
-  if (totals.imported > 0 && totals.failed === 0 && !unreconciled) status = 'imported';
-  else if (totals.imported > 0 && (totals.failed > 0 || unreconciled)) status = 'partial';
+  if (touchedTotal > 0 && totals.failed === 0 && !unreconciled) status = 'imported';
+  else if (touchedTotal > 0 && (totals.failed > 0 || unreconciled)) status = 'partial';
   else if (totals.failed > 0) status = 'failed';
 
   deps.audit({
     action: 'dataplane.import',
     target: plan.planId,
-    summary: `Imported ${totals.imported} record(s) from "${plan.sourceFile}" (${status}); ${totals.failed} failed, ${totals.skipped} skipped.`,
+    summary: `Imported ${totals.imported} and updated ${totals.updated} record(s) from "${plan.sourceFile}" (${status}); ${totals.failed} failed, ${totals.skipped} skipped.`,
   });
 
   return {
@@ -292,7 +319,10 @@ async function importTable(
 
   const entity = entityById(table.entityId);
   const skip = new Set(decision?.skipRows ?? []);
+  const rowActions = new Map((decision?.rowActions ?? []).map((r) => [r.rowIndex, r]));
   const created: string[] = [];
+  /** Records the reviewer chose to update. Counted apart from creations. */
+  const updatedIds: string[] = [];
   const errors: { sourceRow: number; message: string }[] = [];
   const localProvenance: ProvenanceRecord[] = [];
   let skipped = 0;
@@ -315,15 +345,117 @@ async function importTable(
       skipped += 1;
       continue;
     }
+
+    /* Has THIS FILE already imported THIS ROW? ---------------------------
+     *
+     * Checked before the row's action, and the order matters for what the
+     * user is told. Both paths refuse to duplicate, but they mean different
+     * things: "this file already loaded this row" is a statement about the
+     * import, while "a matching record exists" is a statement about the
+     * business. Letting the identity match answer first would report a
+     * re-import as though someone else had entered the data.
+     */
+    /* The reviewer's decision for this row, or the plan's default. ------
+     *
+     * `review` never imports on its own: it is the state a normalized-only
+     * identity match lands in, and acting on "probably the same record"
+     * without a person is precisely the silent merge this pipeline forbids.
+     */
+    /* Precedence, and it has to be explicit. -----------------------------
+     *
+     * Two guards can stop a row, and they say different things:
+     *
+     *   - the importKey guard: "this FILE already loaded this row";
+     *   - the row's action: "a matching RECORD already exists".
+     *
+     * A REVIEWER'S INSTRUCTION outranks both. Correcting a phone number and
+     * re-importing the same file is the canonical use of `update`, and
+     * whichever guard runs first swallows it — reporting "already imported,
+     * not duplicated", which is a truthful-sounding sentence for a human
+     * instruction that was silently discarded.
+     *
+     * Absent an instruction, the file-level fact is the more precise one:
+     * "you already imported this" beats "something like it exists".
+     */
+    const instruction = rowActions.get(row.rowIndex);
     const importKey = importKeyFor(plan.sourceFile, table.tableName, row.sourceRow);
-    if (seen.has(importKey)) {
-      // Already here from an earlier run of this same file. Counted separately
-      // from `skipped` so the result can say "already imported" rather than
-      // implying the row was rejected — and so a second run reads as a no-op
-      // instead of as a success that doubled the data.
+
+    if (instruction === undefined && seen.has(importKey)) {
       alreadyImported += 1;
       continue;
     }
+
+    const chosen = instruction?.action ?? row.action ?? 'create';
+    if (chosen === 'skip' || chosen === 'review') {
+      skipped += 1;
+      continue;
+    }
+    if (chosen === 'create' && seen.has(importKey)) {
+      alreadyImported += 1;
+      continue;
+    }
+
+    if (chosen === 'update') {
+      const target = row.existingMatch?.recordId;
+      if (target === undefined) {
+        errors.push({ sourceRow: row.sourceRow, message: 'Update was chosen but no matching record was found.' });
+        continue;
+      }
+      // The match is re-resolved at import time, so it can have moved since
+      // the reviewer looked. Refusing is the only safe answer: they approved
+      // "update THIS record", not "update whatever now matches".
+      if (instruction?.expectRecordId !== undefined && instruction.expectRecordId !== target) {
+        errors.push({
+          sourceRow: row.sourceRow,
+          message: 'The matching record changed since you reviewed this row — re-check it before updating.',
+        });
+        continue;
+      }
+      try {
+        const existing = store.get(target);
+        const updated = store.update(target, {
+          // The TITLE too. `store.update` merges fields, so without this a
+          // renamed customer keeps its old title forever while `fields.name`
+          // holds the new one — and every list, search and export then shows
+          // a name that contradicts the record.
+          title: row.title,
+          fields: row.fields,
+          metadata: {
+            ...(existing?.metadata ?? {}),
+            importKey,
+            importPlanId: plan.planId,
+            importSourceFile: plan.sourceFile,
+            importSourceTable: table.tableName,
+            importSourceRow: row.sourceRow,
+            importedAt: at,
+            importedBy: actor,
+          },
+          actor,
+          now: at,
+        });
+        if (updated === null) {
+          errors.push({ sourceRow: row.sourceRow, message: `Record ${target} no longer exists.` });
+          continue;
+        }
+        updatedIds.push(target);
+        localProvenance.push({
+          recordId: target,
+          moduleId: table.moduleId,
+          planId: plan.planId,
+          sourceFile: plan.sourceFile,
+          sourceTable: table.tableName,
+          sourceRow: row.sourceRow,
+          confidence: table.confidence,
+          approvedBy: table.requiresApproval ? actor : null,
+          importedAt: at,
+          fields: fieldProvenance(table, row),
+        });
+      } catch (err) {
+        errors.push({ sourceRow: row.sourceRow, message: (err as Error).message });
+      }
+      continue;
+    }
+
     try {
       const record = store.create({
         title: row.title,
@@ -376,12 +508,22 @@ async function importTable(
       ...base,
       status: 'failed',
       imported: 0,
+      updated: updatedIds.length,
       skipped: skipped + created.length,
       failed: errors.length,
       createdRecordIds: [],
+      // Updates were applied IN PLACE and are not undone — no pre-image is
+      // captured, so they cannot be. Reported rather than zeroed, because a
+      // note claiming the whole table rolled back while payroll values stayed
+      // changed is the worst kind of false success.
+      updatedRecordIds: updatedIds,
       errors,
       rolledBack: true,
-      note: `${table.entityLabel} is high-risk; ${errors.length} row(s) failed so the whole table was rolled back (compensating delete).`,
+      note:
+        `${table.entityLabel} is high-risk; ${errors.length} row(s) failed so every record CREATED here was rolled back (compensating delete).` +
+        (updatedIds.length > 0
+          ? ` ${updatedIds.length} record(s) were UPDATED in place and could not be rolled back — no previous values were captured. Check them.`
+          : ''),
     };
   }
 
@@ -396,29 +538,33 @@ async function importTable(
    * verification fails" this pipeline must not do. So the created ids are
    * re-read from the destination and the counts reconciled against the source.
    */
+  // Updates are read back too: an update that did not land is the same lie as
+  // a create that did not land.
+  const touched = [...created, ...updatedIds];
   const confirmed = deps.readBack
-    ? created.filter((id) => deps.readBack?.(table.moduleId, id) === true).length
-    : created.length;
-  const accountedFor = created.length + skipped + alreadyImported + errors.length;
+    ? touched.filter((id) => deps.readBack?.(table.moduleId, id) === true).length
+    : touched.length;
+  const accountedFor = created.length + updatedIds.length + skipped + alreadyImported + errors.length;
   const verification: TableVerification = {
     checked: deps.readBack !== undefined,
     sourceRows: table.report.totalRows,
     created: created.length,
+    updated: updatedIds.length,
     confirmed,
     alreadyImported,
-    reconciled: confirmed === created.length && accountedFor === table.report.totalRows,
+    reconciled: confirmed === touched.length && accountedFor === table.report.totalRows,
     detail:
       deps.readBack === undefined
         ? 'Verification was not run — nothing re-read the destination, so these counts are the importer reporting on itself.'
-        : confirmed !== created.length
-          ? `${created.length - confirmed} of ${created.length} record(s) could not be read back after writing. They may not have persisted.`
+        : confirmed !== touched.length
+          ? `${touched.length - confirmed} of ${touched.length} record(s) could not be read back after writing. They may not have persisted.`
           : accountedFor !== table.report.totalRows
             ? `${table.report.totalRows} source row(s) but ${accountedFor} accounted for — ${Math.abs(table.report.totalRows - accountedFor)} unexplained.`
             : `All ${table.report.totalRows} source row(s) accounted for, and every created record was read back.`,
   };
 
   const status: TableImportStatus =
-    created.length === 0
+    touched.length === 0
       ? errors.length > 0
         ? 'failed'
         : 'skipped'
@@ -430,9 +576,11 @@ async function importTable(
     ...base,
     status,
     imported: created.length,
+    updated: updatedIds.length,
     skipped: skipped + alreadyImported,
     failed: errors.length,
     createdRecordIds: created,
+    updatedRecordIds: updatedIds,
     errors,
     rolledBack: false,
     verification,

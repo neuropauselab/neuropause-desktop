@@ -28,6 +28,7 @@ import type {
   DataPlaneInspection,
   DataPlaneOntologyView,
   DataPlanePlanSummary,
+  DataPlanePreview,
   DataPlaneProvenance,
   DataPlaneRunResult,
   DataPlaneSavedMapping,
@@ -47,7 +48,9 @@ import {
   DataPlaneInspectRequest,
   DataPlaneMappingsRequest,
   DataPlanePlanRequest,
+  DataPlanePreviewRequest,
   DataPlaneProvenanceRequest,
+  DataPlaneReclassifyRequest,
   DataPlaneRunRequest,
   DataPlaneSaveMappingRequest,
   EmptyRequest,
@@ -56,7 +59,17 @@ import {
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import type { EnterpriseRecordStore } from '../enterprise/framework/enterpriseRecordStore';
 import { createLogger } from '../logger';
-import { analyzeSource, summarizePlan, type ImportPlan } from './planner';
+import {
+  analyzeSource,
+  planTable,
+  summarizePlan,
+  type ImportPlan,
+  type PlannedTable,
+  type UnclassifiedTable,
+} from './planner';
+import { matchExistingRecords, type PreparedRow } from './quality';
+import type { CellValue } from './parsers';
+import type { CanonicalEntity } from './ontology';
 import { applyImportPlan, ProvenanceStore, type ImportDecision } from './importer';
 import { MappingMemoryStore, applySavedMapping } from './mappingMemory';
 import { ONTOLOGY, entityById, requiresExplicitApproval } from './ontology';
@@ -124,6 +137,117 @@ function decodeContent(base64: string, filename: string): Buffer {
   }
 }
 
+/** The row's bucket, as the filter chips name them. */
+function bucketOf(row: PreparedRow): 'valid' | 'warning' | 'invalid' | 'duplicate' | 'ambiguous' {
+  if (row.existingMatch?.kind === 'normalized') return 'ambiguous';
+  if (row.verdict === 'duplicate') return 'duplicate';
+  if (row.verdict === 'invalid') return 'invalid';
+  // `incomplete` is a WARNING, not a failure: a required field is missing, the
+  // row is understood, and the reviewer may still want it. Collapsing it into
+  // "invalid" would hide the difference between unusable and imperfect.
+  if (row.verdict === 'incomplete') return 'warning';
+  return 'valid';
+}
+
+/**
+ * Build one page of preview rows.
+ *
+ * Two rules the shape enforces. Sensitive fields are REDACTED — a preview
+ * exists so a person can check the data, and no check requires a password on
+ * screen. And the page is capped: the whole reason rows were stripped from the
+ * plan summary was that 200,000 of them must not cross IPC, so restoring them
+ * unbounded would undo the fix.
+ */
+function buildPreview(
+  table: PlannedTable,
+  entity: CanonicalEntity,
+  req: DataPlanePreviewRequest,
+): DataPlanePreview {
+  const sensitive = new Set(entity.fields.filter((f) => f.sensitive === true).map((f) => f.key));
+  /**
+   * Transformations are keyed by LABEL, not by field key — `"Monthly Salary:
+   * "₹1,25,000" → 125000 INR"` — so redacting by key alone missed them
+   * entirely and shipped the salary verbatim while the adjacent `original`
+   * was dutifully bulleted out. Redacting one and not the other is worse than
+   * redacting neither, because it reads as though the value was handled.
+   */
+  const sensitiveLabels = new Set(
+    entity.fields.filter((f) => f.sensitive === true).map((f) => f.label),
+  );
+  const labelFor = new Map(entity.fields.map((f) => [f.key, f.label]));
+
+  const counts = { all: table.rows.length, valid: 0, warning: 0, invalid: 0, duplicate: 0, ambiguous: 0 };
+  const plan = { create: 0, update: 0, skip: 0, review: 0 };
+  for (const row of table.rows) {
+    counts[bucketOf(row)] += 1;
+    plan[row.action ?? 'create'] += 1;
+  }
+
+  const mode = req.mode ?? 'all';
+  const needle = req.search?.trim().toLowerCase() ?? '';
+  const matching = table.rows.filter((row) => {
+    if (mode !== 'all' && bucketOf(row) !== mode) return false;
+    if (needle === '') return true;
+    // Search the values a person can SEE. Redacted fields are excluded, so a
+    // search box cannot be used to probe a hidden value character by character.
+    const haystack = [
+      row.title,
+      ...Object.entries(row.fields)
+        .filter(([key]) => !sensitive.has(key))
+        .map(([, v]) => String(v ?? '')),
+    ]
+      .join(' ')
+      .toLowerCase();
+    return haystack.includes(needle);
+  });
+
+  const offset = req.offset ?? 0;
+  const limit = Math.min(req.limit ?? 25, 100);
+
+  return {
+    tableName: table.tableName,
+    entityId: entity.id,
+    entityLabel: entity.label,
+    total: matching.length,
+    offset,
+    counts,
+    plan,
+    rows: matching.slice(offset, offset + limit).map((row) => ({
+      rowIndex: row.rowIndex,
+      sourceRow: row.sourceRow,
+      verdict: row.verdict,
+      action: row.action ?? 'create',
+      title: row.title,
+      fields: Object.entries(row.fields).map(([key, value]) => ({
+        key,
+        label: labelFor.get(key) ?? key,
+        value: sensitive.has(key) ? '••••••••' : String(value ?? ''),
+        redacted: sensitive.has(key),
+      })),
+      issues: row.issues.map((i) => ({
+        field: i.fieldLabel,
+        // The MESSAGE embeds the offending value too ("\"abc\" is not a
+        // number."), so redacting only `original` left the value on screen.
+        message: sensitive.has(i.fieldKey)
+          ? `${i.fieldLabel}: the value could not be read (hidden — sensitive field)`
+          : i.message,
+        original: sensitive.has(i.fieldKey) ? '••••••••' : i.original,
+      })),
+      transformations: row.transformations.map((t) => {
+        const label = t.split(':')[0]?.trim() ?? '';
+        return sensitiveLabels.has(label) ? `${label}: normalized (hidden — sensitive field)` : t;
+      }),
+      duplicateOfRow: row.duplicateOf === null ? null : row.duplicateOf + 1,
+      existingMatch: row.existingMatch
+        ? {
+            ...row.existingMatch,
+            differs: row.existingMatch.differs.filter((d) => !sensitive.has(d.field)),
+          }
+        : null,
+    })),
+  };
+}
+
 function ontologyView(): DataPlaneOntologyView {
   return {
     entities: ONTOLOGY.map((e) => ({
@@ -163,6 +287,74 @@ export function initDataPlane(deps: DataPlaneSubsystemDeps): DataPlaneSubsystem 
     now: deps.now,
     audit: deps.audit,
   });
+
+  /**
+   * Match a planned table's rows against what is ALREADY in the destination.
+   *
+   * Run on demand rather than cached at analyze time, because the destination
+   * can change between analysing a file and importing it — and a stale "this
+   * is new" is exactly how a duplicate gets created.
+   */
+  const matchAgainstDestination = async (table: PlannedTable): Promise<void> => {
+    const entity = entityById(table.entityId);
+    const store = deps.storeFor(table.moduleId);
+    if (!entity || !store) {
+      /**
+       * No destination to compare against. Say nothing rather than let a stale
+       * action from a previous entity stand — after a reclassify to a module
+       * this build does not have, "create" would promise writes that the
+       * importer will refuse.
+       *
+       * `review` only for rows a reviewer could actually decide. Marking an
+       * INVALID row `review` produced a "needs a decision" prompt above zero
+       * available actions, and a counter that could never reach zero: the row
+       * offers no choices, so no choice can ever answer it. A row that failed
+       * validation is skipped, and says why.
+       */
+      for (const row of table.rows) {
+        row.existingMatch = null;
+        row.action = row.verdict === 'valid' ? 'review' : 'skip';
+      }
+      return;
+    }
+    /**
+     * The destination module's OWN read scope, exactly as `dp:export`
+     * demands it.
+     *
+     * Without this, preview is a cross-module read oracle: `data:read` alone
+     * would return `existingMatch.recordId`, `.title` and `differs[].existing`
+     * — the STORED values — for any of the ten ontology modules, reachable by
+     * uploading a CSV with the right headers. Bulk extraction is gated; a
+     * comparison that hands back the same values must be too.
+     */
+    const descriptor = deps.modules().find((m) => m.id === table.moduleId);
+    if (!descriptor) return;
+    deps.authorize(descriptor.permissions.read);
+    await store.load();
+    matchExistingRecords(
+      table.rows,
+      entity,
+      store.list({ status: 'active', limit: 200_000 }).map((r) => ({
+        id: r.id,
+        title: r.title,
+        fields: r.fields as Record<string, CellValue>,
+      })),
+    );
+  };
+
+  /** Recompute plan-level totals after a table is replaced by a reclassify. */
+  const recomputeTotals = (plan: ImportPlan): void => {
+    plan.totals = {
+      tables: plan.tables.length,
+      rows: plan.tables.reduce((n, t) => n + t.report.totalRows, 0),
+      importable: plan.tables.reduce((n, t) => n + t.importableRows, 0),
+      invalid: plan.tables.reduce((n, t) => n + t.report.invalid, 0),
+      incomplete: plan.tables.reduce((n, t) => n + t.report.incomplete, 0),
+      duplicates: plan.tables.reduce((n, t) => n + t.report.duplicates, 0),
+      approvalRequired: plan.tables.filter((t) => t.requiresApproval).length,
+    };
+    plan.requiresApproval = plan.tables.some((t) => t.requiresApproval);
+  };
 
   /** Shared shape for the review queue — labels resolved from the declaration. */
   const pendingView = (p: PendingRelationship): DataPlaneRelationshipPending => ({
@@ -305,7 +497,20 @@ export function initDataPlane(deps: DataPlaneSubsystemDeps): DataPlaneSubsystem 
           tableName: a.tableName,
           approved: a.approved,
           ...(a.skipRows ? { skipRows: a.skipRows } : {}),
+          ...(a.rowActions ? { rowActions: a.rowActions } : {}),
         }));
+
+        // Identity matching runs against the destination as it is NOW, not as
+        // it was at analyze time. Without this, a row whose default action was
+        // computed minutes ago could create a duplicate of a record someone
+        // else added in between.
+        for (const table of plan.tables) {
+          const decision = req.approvals.find((a) => a.tableName === table.tableName);
+          // Skip tables nobody approved: matching them scans the destination
+          // and mutates rows for a table that will never be written.
+          if (decision?.approved !== true && table.requiresApproval) continue;
+          await matchAgainstDestination(table);
+        }
 
         const correlationId = `dp_${plan.planId}`;
         const { result, provenance: records } = await applyImportPlan(plan, decisions, {
@@ -351,14 +556,19 @@ export function initDataPlane(deps: DataPlaneSubsystemDeps): DataPlaneSubsystem 
         // import whose records are already committed.
         await relationships.load();
         for (const table of result.tables) {
-          if (table.createdRecordIds.length === 0) continue;
+          const touched = [...table.createdRecordIds, ...table.updatedRecordIds];
+          if (touched.length === 0) continue;
           const store = deps.storeFor(table.moduleId);
           if (!store) continue;
           await store.load();
-          const created = table.createdRecordIds
+          // UPDATED records are resolved too. An update can change a
+          // reference field — an invoice's customer, a lot's product code —
+          // and leaving it out meant the link kept pointing at the old target
+          // with no sign anything had moved.
+          const records = touched
             .map((id) => store.get(id))
             .filter((r): r is NonNullable<typeof r> => r !== null);
-          await relationshipEngine.resolveRecords(table.moduleId, created, correlationId);
+          await relationshipEngine.resolveRecords(table.moduleId, records, correlationId);
         }
         const deferred = await relationshipEngine.retryPending(correlationId);
         if (deferred.resolved > 0) {
@@ -369,10 +579,11 @@ export function initDataPlane(deps: DataPlaneSubsystemDeps): DataPlaneSubsystem 
         // destination module, carrying a correlation id so a reaction can never
         // be mistaken for user-driven activity or loop back into the plane.
         for (const table of result.tables) {
-          if (table.createdRecordIds.length === 0) continue;
+          const touched = [...table.createdRecordIds, ...table.updatedRecordIds];
+          if (touched.length === 0) continue;
           deps.onImported({
             moduleId: table.moduleId,
-            recordIds: table.createdRecordIds,
+            recordIds: touched,
             planId: plan.planId,
             correlationId,
           });
@@ -386,6 +597,132 @@ export function initDataPlane(deps: DataPlaneSubsystemDeps): DataPlaneSubsystem 
 
         log.info('Import finished', { planId: plan.planId, status: result.status, imported: result.totals.imported });
         return result;
+      },
+    },
+    {
+      /**
+       * Correct what a file represents.
+       *
+       * Re-plans the table from its RAW source with the chosen entity, so
+       * mapping, validation, duplicates, identity matching and the plan are
+       * all recomputed. Reusing any of the previous entity's results would
+       * leave the reviewer looking at numbers computed for a different
+       * question — an override that is worse than no override.
+       */
+      channel: IpcChannel.DataPlaneReclassify,
+      schema: DataPlaneReclassifyRequest,
+      requireAuth: true,
+      audit: true,
+      handler: async (p): Promise<DataPlanePlanSummary> => {
+        const req = p as DataPlaneReclassifyRequest;
+        const plan = plans.get(req.planId);
+        if (!plan) throw new Error('That import plan is no longer available — re-analyze the file.');
+
+        // Only entities this build can actually import. A chooser that offers
+        // "Sales Order" when nothing can receive one is a promise the product
+        // cannot keep.
+        if (!entityById(req.entityId)) {
+          throw new Error(
+            `"${req.entityId}" is not an entity this build can import. Supported: ${ONTOLOGY.map((e) => e.id).join(', ')}.`,
+          );
+        }
+
+        /**
+         * A table the detector placed, OR one it could not place at all.
+         *
+         * The unclassified branch is the case an override matters most for:
+         * a planned table is at least wrong in a nameable way, while an
+         * unrecognised one is simply refused. Both are re-planned from the
+         * same raw grid by the same call, so neither path can drift.
+         */
+        const index = plan.tables.findIndex((t) => t.tableName === req.tableName);
+        const unclassifiedIndex =
+          index >= 0 ? -1 : plan.unclassified.findIndex((u) => u.tableName === req.tableName);
+        if (index < 0 && unclassifiedIndex < 0) {
+          throw new Error(`No table "${req.tableName}" in this plan.`);
+        }
+
+        const current = index >= 0 ? (plan.tables[index] as PlannedTable) : null;
+        const source =
+          current !== null
+            ? current.source
+            : (plan.unclassified[unclassifiedIndex] as UnclassifiedTable).source;
+
+        const replanned = planTable(source, req.entityId);
+        if (!replanned) {
+          throw new Error(`This table cannot be imported as ${req.entityId}.`);
+        }
+        await matchAgainstDestination(replanned);
+
+        const corrected: PlannedTable = {
+          ...replanned,
+          /**
+           * A reviewer-overridden table ALWAYS requires approval.
+           *
+           * The forced path reports confidence 1, which lands in the `high`
+           * band and switches off `requiresApproval`'s low-confidence clause.
+           * That made reclassify a way around `data:approve`: reclassify a
+           * medium-confidence products file to the same entity and the
+           * segregation-of-duties gate stops firing. Certainty about the
+           * reviewer's intent is not certainty about the data.
+           */
+          requiresApproval: true,
+          // The detector's original verdict is preserved, not overwritten:
+          // "we thought Customer at 0.62, a person said Invoice" is the whole
+          // point of recording an override. For a table it could not place at
+          // all, that verdict is genuinely null — not a zero dressed up as one.
+          detectedEntityId: current?.detectedEntityId ?? null,
+          detectedConfidence: current?.detectedConfidence ?? 0,
+          classificationMethod: 'reviewer',
+          override: {
+            fromEntityId: current?.entityId ?? null,
+            toEntityId: req.entityId,
+            by: deps.actor(),
+            at: deps.now(),
+            reason: req.reason?.trim() ?? '',
+          },
+        };
+
+        if (index >= 0) {
+          plan.tables[index] = corrected;
+        } else {
+          plan.unclassified.splice(unclassifiedIndex, 1);
+          plan.tables.push(corrected);
+        }
+        recomputeTotals(plan);
+        // Audited AFTER the plan is consistent but BEFORE it is handed back,
+        // so a summary the reviewer acts on always has a matching audit line.
+        deps.audit({
+          action: 'dataplane.entity.override',
+          target: `${plan.planId}:${req.tableName}`,
+          summary: `Reclassified "${req.tableName}" from ${current?.entityId ?? 'unrecognised'} to ${req.entityId}${req.reason ? ` — ${req.reason}` : ''}.`,
+        });
+        return summarizePlan(plan);
+      },
+    },
+    {
+      /**
+       * A page of prepared rows, bounded and redacted.
+       *
+       * The rows have always existed in main; `summarizePlan` strips them
+       * because 200,000 of them must not cross IPC. This is the seam that lets
+       * a reviewer look at the actual data before approving it, without
+       * handing the renderer the whole file.
+       */
+      channel: IpcChannel.DataPlanePreview,
+      schema: DataPlanePreviewRequest,
+      requireAuth: true,
+      handler: async (p): Promise<DataPlanePreview | null> => {
+        const req = p as DataPlanePreviewRequest;
+        const plan = plans.get(req.planId);
+        const table = plan?.tables.find((t) => t.tableName === req.tableName);
+        if (!plan || !table) return null;
+        const entity = entityById(table.entityId);
+        if (!entity) return null;
+        // Identity matching needs the destination, which may have changed
+        // since the analysis. Recomputed here rather than cached.
+        await matchAgainstDestination(table);
+        return buildPreview(table, entity, req);
       },
     },
     {
