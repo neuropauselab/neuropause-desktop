@@ -457,13 +457,36 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
          */
         actor: () => syncPrincipal()?.actor() ?? null,
         now: () => new Date().toISOString(),
+        /**
+         * P13C PART 3 — THE AUDIT ROW BELONGS TO THE WORKSPACE BEING SYNCED.
+         *
+         * `workspaceId` is not decoration on this record: `governanceStore`
+         * PARTITIONS audit reads on exactly this field. Stamping it with
+         * `activeWorkspaceIdForDisplay()` — the window's workspace — meant that
+         * once scheduled sync fanned out across workspaces, tenant B's sync
+         * rows were written into tenant A's audit trail, carrying B's record
+         * ids and titles in `target` and `summary`. Two failures at once: a
+         * disclosure into A, and a gap in B's own trail, where the evidence
+         * that the sync happened simply is not.
+         *
+         * `activeTenantScope()` prefers the running principal, so inside the
+         * fanned-out pass this names the workspace whose accounts are being
+         * pulled. Outside one — a manual sync — it is the caller's own, which
+         * is the same answer as before.
+         *
+         * Falls back to the display id ONLY when nothing resolves, preserving
+         * the pre-existing cold-start behaviour rather than dropping the row:
+         * an audit entry that is hard to attribute is worth more than no audit
+         * entry at all, and it is the boundary itself that decides who reads it.
+         */
         audit: (entry) =>
           governanceStore.record({
             actor: 'connector',
             action: entry.action,
             target: entry.target,
             summary: entry.summary,
-            workspaceId: workspaceStore.activeWorkspaceIdForDisplay(),
+            workspaceId:
+              activeTenantScope()?.workspaceId || workspaceStore.activeWorkspaceIdForDisplay(),
           }),
         /**
          * P10 — ASK instead of discarding.
@@ -2800,7 +2823,22 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       const st = authService.getStatus();
       return st.state === 'authenticated' ? st.session.user.email : null;
     },
-    orgName: () => orgStore.defaultOrg().name,
+    /**
+     * P13C Part 3 — the ACTIVE organization's name, not the first one's.
+     *
+     * `orgStore.defaultOrg()` returns the first-inserted organization, so every
+     * paired phone in every tenant was told the same organization's name — over
+     * the LAN, in the pairing response and every `session.hello`. Resolving
+     * through the tenant resolver makes the label describe the tenant whose
+     * records the device is actually being shown; an unresolved tenant reports
+     * nothing rather than borrowing a name.
+     */
+    orgName: () => {
+      const scope = activeTenantScope();
+      if (scope === null) return '';
+      return orgStore.organization(scope.tenantId)?.name ?? '';
+    },
+    currentTenantId: () => activeTenantScope()?.tenantId ?? null,
     modules: enterprise.modules,
     executiveSnapshot: () => executiveCenter.snapshot(),
     subscribe: (types, handler) => platform.api.on(types, handler),

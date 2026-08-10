@@ -30,6 +30,21 @@ export interface CompanionDeviceRecord {
   publicKeyB64: string;
   /** Desktop member (email) this device was bound to at pairing. */
   boundMember: string | null;
+  /**
+   * The TENANT this device was paired into (P13C Part 3).
+   *
+   * A device is a companion to one organization's work, not to the machine.
+   * Without this field the gateway had no way to ask "is this event this
+   * device's to receive", and so it did not ask: `broadcastEvent` pushed every
+   * event on the bus to every paired device.
+   *
+   * ABSENT means a device paired before this field existed. Such a device is
+   * not adopted into whichever tenant is open now — that is the guess this
+   * exists to remove — so it receives only SYSTEM-scoped events until it is
+   * paired again. Fewer notifications is a reportable annoyance; another
+   * customer's record names on a phone is not.
+   */
+  boundTenantId?: string | null;
   createdAt: string;
   lastSeenAt: string | null;
   revoked: boolean;
@@ -53,6 +68,8 @@ export interface RegisterDeviceInput {
   model: string | null;
   publicKeyB64: string;
   boundMember: string | null;
+  /** The tenant this device is paired into. Null when none resolves. */
+  boundTenantId: string | null;
   now: string;
 }
 
@@ -136,6 +153,7 @@ export class CompanionDeviceStore {
       model: input.model,
       publicKeyB64: input.publicKeyB64,
       boundMember: input.boundMember,
+      boundTenantId: input.boundTenantId,
       createdAt: existing?.createdAt ?? input.now,
       lastSeenAt: input.now,
       revoked: false,

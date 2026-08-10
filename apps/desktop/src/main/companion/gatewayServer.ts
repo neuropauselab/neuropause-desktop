@@ -77,6 +77,8 @@ export interface CompanionGatewayDeps {
   isSignedIn: () => boolean;
   /** Desktop session email to bind a device to at pairing (null when signed out). */
   currentMember: () => string | null;
+  /** The tenant to bind a device to at pairing. Null when none resolves. */
+  currentTenantId: () => string | null;
   desktopName: () => string;
   orgName: () => string;
   ops: CompanionOpTable;
@@ -192,6 +194,10 @@ export class CompanionGateway {
       model: parsed.data.device.model ?? null,
       publicKeyB64: toB64(opened.senderPublicKey),
       boundMember: this.deps.currentMember(),
+      // P13C Part 3 — a device is a companion to one ORGANIZATION's work, not
+      // to the machine. Captured at pairing so the event push can ask whether
+      // an event is this device's to receive.
+      boundTenantId: this.deps.currentTenantId(),
       now,
     });
     const response: PairingResponse = {
@@ -352,9 +358,44 @@ export class CompanionGateway {
     return this.sealResponse(device, frame);
   }
 
-  /** Push a platform event to every live socket of every paired device. */
+  /**
+   * Push a platform event to the devices ENTITLED TO IT.
+   *
+   * P13C PART 3 — THIS WAS AN UNSCOPED CROSS-TENANT PUSH, OVER THE NETWORK.
+   *
+   * The subscription is the whole bus, and this method pushed every event it
+   * received to every live socket of every paired device. `PlatformEvent`
+   * has carried a `tenantId` since Program 13B and this function never read it.
+   * `EventResource` carries record ids and NAMES, and `EventActor` carries
+   * identity — so a phone paired while tenant A was open received tenant B's
+   * record names for as long as it stayed connected.
+   *
+   * It is the same defect Part 2a closed in the webhook producer — one event
+   * fanned to every destination regardless of ownership — on a different
+   * transport, and a worse one: this leaves the machine over a LAN socket to a
+   * device with no tenant selector and no way to know which organization it is
+   * being told about.
+   *
+   * The rule is the webhook rule: the destination is selected BY THE EVENT'S
+   * OWNER. A device receives an event when its bound tenant matches, and never
+   * otherwise. Two deliberate consequences:
+   *
+   *  · A SYSTEM event reaches every device. `scopeKind: 'system'` is stamped
+   *    only from a system principal, which carries no tenant and so cannot have
+   *    read customer data into its payload — the same reasoning the notification
+   *    broadcast uses.
+   *  · An UNOWNED event reaches nobody. Events published before 13B, or with no
+   *    tenant resolvable, have no owner; pushing one would mean choosing a
+   *    recipient, and every available choice is someone not entitled to it.
+   */
   broadcastEvent(event: PlatformEvent): void {
     if (this.sockets.size === 0) return;
+    const isSystem = event.scopeKind === 'system';
+    const owner = event.tenantId ?? null;
+    // Unowned and not system: nobody may have it. Returning early also avoids
+    // walking every socket to decide nothing.
+    if (!isSystem && (owner === null || owner === '')) return;
+
     const data = {
       resource: event.resource,
       actor: event.actor,
@@ -368,6 +409,13 @@ export class CompanionGateway {
         this.sockets.delete(deviceId);
         continue;
       }
+      /**
+       * A device paired before `boundTenantId` existed has no tenant, and is
+       * NOT adopted into the event's — that would be the "first tenant to send
+       * it something claims it" fallback. It gets system events only, until it
+       * is paired again.
+       */
+      if (!isSystem && (device.boundTenantId ?? null) !== owner) continue;
       let text: string;
       try {
         text = JSON.stringify(this.encodeEventFrame(device, event.type, event.timestamp, data));

@@ -58,6 +58,14 @@ export interface InitCompanionDeps {
   sessionEmail: () => string | null;
   /** Active organization display name, for the pairing QR + session hello. */
   orgName: () => string;
+  /**
+   * The tenant a newly paired device belongs to, or null when none resolves.
+   *
+   * P13C Part 3. Null is honoured as "this device has no tenant", which means
+   * it receives only SYSTEM events — never adopted into whichever organization
+   * happens to be open.
+   */
+  currentTenantId: () => string | null;
   /** The live enterprise module registry — the phone's dashboards read it in-process. */
   modules: EnterpriseModuleRegistry;
   /** The desktop's executive KPI snapshot (the same one the desktop Center renders). */
@@ -267,6 +275,9 @@ export async function initCompanion(deps: InitCompanionDeps): Promise<CompanionS
         devices: store,
         isSignedIn: deps.isSignedIn,
         currentMember: deps.sessionEmail,
+        // P13C Part 3 — the tenant a device is paired INTO, so the event push
+        // can select destinations by the event's owner rather than broadcasting.
+        currentTenantId: deps.currentTenantId,
         desktopName: () => desktopName,
         orgName: deps.orgName,
         ops,

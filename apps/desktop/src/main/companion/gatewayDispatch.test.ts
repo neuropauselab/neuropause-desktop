@@ -49,6 +49,10 @@ beforeEach(async () => {
     currentMember: () => 'owner@acme.test',
     desktopName: () => 'Test Mac',
     orgName: () => 'Acme',
+    // P13C Part 3 — the tenant a paired device belongs to. Named here so these
+    // tests pair into a real tenant rather than the null (system-events-only)
+    // case, which has its own coverage in companionEgressTenancy.test.ts.
+    currentTenantId: () => 'org-acme',
     ops: {
       'session.hello': async (_p, ctx) => ({ deviceId: ctx.device.id, ok: true }),
     },

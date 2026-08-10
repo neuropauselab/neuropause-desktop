@@ -6,6 +6,8 @@
  * current depth per account feeds the Health Dashboard's "Queue Size".
  */
 import { createLogger } from '../../logger';
+import type { BackgroundPrincipal } from '../../tenancy/backgroundPrincipal';
+import { currentPrincipal, runAsPrincipal } from '../../tenancy/backgroundPrincipal';
 
 const log = createLogger('sync-retry');
 
@@ -14,6 +16,26 @@ interface QueueItem {
   accountId: string;
   attempt: number;
   runAt: number;
+  /**
+   * WHO THIS RETRY IS FOR, captured when it was ENQUEUED.
+   *
+   * P13C PART 3 — THE QUEUE ESCAPED THE FAN-OUT, AND SILENTLY.
+   *
+   * The scheduled tick is fanned out per workspace, each pass inside
+   * `runAsPrincipal`. This queue was not, and its shared timer made that
+   * actively wrong rather than merely unscoped: `schedule()` clears and re-arms
+   * ONE timer on every `enqueue`, so during the fan-out loop workspace B's
+   * enqueue cancelled the timer armed inside workspace A's principal and re-
+   * armed it inside B's. `drain()` then ran EVERY due item — including A's —
+   * under B's context, and `runAccountSync` resolves its tenant at drain time.
+   *
+   * The result is not a stale read. It is a cross-tenant WRITE: A's provider
+   * records land in the unified store stamped with B's tenant.
+   *
+   * Capturing the principal per ITEM also removes the timer contamination
+   * entirely, because whichever context the timer fires in stops mattering.
+   */
+  principal: BackgroundPrincipal | null;
 }
 
 function key(connectorId: string, accountId: string): string {
@@ -79,7 +101,23 @@ export class RetryQueue {
       return;
     }
     const backoff = delayMs ?? this.backoffFor(attempt);
-    this.items.set(k, { connectorId, accountId, attempt, runAt: Date.now() + backoff });
+    /**
+     * Read HERE, at enqueue, where the caller's context is still the right one.
+     *
+     * A retry queued inside the fanned-out tick captures that workspace's
+     * principal. A retry queued by a MANUAL sync captures null, because a manual
+     * sync is an interactive request with a real user behind it — and null is
+     * then honoured as "run on the session" at drain, not as "run as anyone".
+     * Re-enqueues below carry the ORIGINAL principal forward, so an item's
+     * owner is fixed at its first failure and cannot drift across attempts.
+     */
+    this.items.set(k, {
+      connectorId,
+      accountId,
+      attempt,
+      runAt: Date.now() + backoff,
+      principal: prev?.principal ?? currentPrincipal(),
+    });
     this.schedule();
   }
 
@@ -125,7 +163,18 @@ export class RetryQueue {
         this.items.delete(k);
         let again = false;
         try {
-          again = await this.run(item.connectorId, item.accountId);
+          /**
+           * Each item under ITS OWN captured principal.
+           *
+           * This is what makes the shared timer harmless: the ambient context
+           * the timer happens to fire in is no longer an input to the answer.
+           */
+          again =
+            item.principal === null
+              ? await this.run(item.connectorId, item.accountId)
+              : await runAsPrincipal(item.principal, () =>
+                  this.run(item.connectorId, item.accountId),
+                );
         } catch (err) {
           log.warn('Retry run threw', { connectorId: item.connectorId, err: String(err) });
           again = true;
