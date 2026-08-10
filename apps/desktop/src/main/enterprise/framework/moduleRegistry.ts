@@ -61,17 +61,48 @@ import type {
   EnterpriseModuleActionContext,
   EnterpriseModuleContext,
 } from './enterpriseModule';
+import type { TenantScopeSource } from './enterpriseRecordStore';
 
 type LifecycleAction = EnterpriseModuleLifecycleAction;
 
 export class EnterpriseModuleRegistry {
   private readonly modules = new Map<string, EnterpriseModule>();
+  /** The tenant boundary handed to every store that registers here. */
+  private scopeSource: TenantScopeSource | null = null;
+
+  /**
+   * Bind the tenant boundary for every module, present and future.
+   *
+   * THE SINGLE BINDING POINT. Every one of the 106 module stores passes through
+   * `register`, so binding here covers all of them plus anything a plugin
+   * registers later — instead of 106 factory signatures, each of which is a
+   * chance to forget one and fail open.
+   *
+   * Called before the modules register. Anything registered before this runs
+   * stays unbound, and an unbound store returns nothing, so the ordering
+   * mistake is loud rather than silent.
+   */
+  bindScope(source: TenantScopeSource): void {
+    this.scopeSource = source;
+    // Re-bind anything already registered, so ordering is forgiving in the safe
+    // direction: late binding still closes the boundary rather than leaving a
+    // store permanently unscoped.
+    for (const m of this.modules.values()) m.store.bindScope(source);
+  }
 
   /** Register a module. Ids are unique; re-registering the same id throws. */
   register(module: EnterpriseModule): void {
     const id = module.descriptor.id;
     if (this.modules.has(id)) throw new Error(`Enterprise module "${id}" is already registered.`);
+    if (this.scopeSource !== null) module.store.bindScope(this.scopeSource);
     this.modules.set(id, module);
+  }
+
+  /** Modules whose store has no tenant boundary. Should always be empty. */
+  unscopedModules(): string[] {
+    return [...this.modules.values()]
+      .filter((m) => !m.store.hasScope())
+      .map((m) => m.descriptor.id);
   }
 
   get(id: string): EnterpriseModule | null {
@@ -600,6 +631,26 @@ export function buildModuleHandlers(
         const module = resolve(registry, r.moduleId);
         ctx.authorize(module.descriptor.permissions.read);
         await module.store.load();
+        /**
+         * P11 — THE SCOPED READ IS THE GATE, and this channel was missing it.
+         *
+         * Its three siblings — SetLines, Approval, Approve — all resolve the
+         * record through `store.get(id)` first and bail on null. This one went
+         * straight to the line store, which has no tenant field at all and
+         * filters on `documentType + documentId` over one global array. So a
+         * caller holding the module's read scope in their OWN tenant could pass
+         * another tenant's document id and receive its line items: descriptions,
+         * quantities, unit prices, discounts, tax, currency.
+         *
+         * Worse on an upgraded install: a pre-P11 record has no owner, so
+         * `store.get` denies it to everyone — and its lines were still readable
+         * by anyone. Records the migration says nobody can see.
+         *
+         * The ids were not a guessing problem either: the audit trail is not
+         * workspace-filtered on read and every mutation records the record id
+         * and title, so one `governance:read` call harvested them.
+         */
+        if (module.store.get(r.id) === null) return UNSUPPORTED_LINES;
         return ctx.documents?.linesView(r.moduleId, r.id) ?? UNSUPPORTED_LINES;
       },
     },

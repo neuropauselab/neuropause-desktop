@@ -32,6 +32,7 @@ import {
 } from '@main/opportunities/procurementSource';
 import { OutcomeRevisionStore } from '@main/outcomes/outcomeRevisionStore';
 import { OpportunitiesView } from '@renderer/opportunities/OpportunitiesView';
+import { TEST_TENANT_SCOPE } from '@main/tenancy/testScope';
 
 const DIR = join(tmpdir(), 'np-ui-opportunities');
 const T0 = '2026-08-09T12:00:00.000Z';
@@ -75,8 +76,8 @@ async function wire(): Promise<void> {
   await fs.mkdir(dir, { recursive: true });
   mayManage = true;
 
-  orders = new EnterpriseRecordStore(join(dir, 'po.json'), 'procurement-orders', 'order');
-  rfqs = new EnterpriseRecordStore(join(dir, 'rfq.json'), 'procurement-rfqs', 'rfq');
+  orders = new EnterpriseRecordStore(join(dir, 'po.json'), 'procurement-orders', 'order').bindScope(() => TEST_TENANT_SCOPE);
+  rfqs = new EnterpriseRecordStore(join(dir, 'rfq.json'), 'procurement-rfqs', 'rfq').bindScope(() => TEST_TENANT_SCOPE);
   holds = new HoldStore(join(dir, 'holds.json'));
   records = new DecisionRecordStore(join(dir, 'decisions.json'));
   decisions = new OpportunityDecisionStore(join(dir, 'opp.json'));

@@ -25,6 +25,7 @@ import type { EnterpriseModuleDescriptor, EnterprisePermission } from '@neuropau
 import { EnterpriseRecordStore } from '@main/enterprise/framework/enterpriseRecordStore';
 import { initDocuments } from '@main/documents/index';
 import { DocumentsPanel } from '@renderer/dataCommandCenter/DocumentsPanel';
+import { TEST_TENANT_SCOPE } from '@main/tenancy/testScope';
 
 const ACTOR = 'priya@example.com';
 const T0 = '2026-08-10T00:00:00.000Z';
@@ -85,7 +86,7 @@ beforeEach(async () => {
   await fs.mkdir(dir, { recursive: true });
   granted = new Set<EnterprisePermission>(['data:read', 'data:import', 'crm:read', 'crm:manage']);
   stores = new Map([
-    ['crm-customers', new EnterpriseRecordStore(join(dir, 'crm.json'), 'crm-customers', 'crm-customers')],
+    ['crm-customers', new EnterpriseRecordStore(join(dir, 'crm.json'), 'crm-customers', 'crm-customers').bindScope(() => TEST_TENANT_SCOPE)],
   ]);
   await Promise.all([...stores.values()].map((s) => s.load()));
 

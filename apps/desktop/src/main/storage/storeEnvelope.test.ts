@@ -20,6 +20,7 @@ import { EnterpriseRecordStore } from '../enterprise/framework/enterpriseRecordS
 import { MemoryStore } from '../memory/memoryStore';
 import { GraphStore } from '../graph/graphStore';
 import { CURRENT_DATA_VERSION, MIGRATIONS } from '../migration/migrations';
+import { TEST_TENANT_SCOPE } from '../tenancy/testScope';
 
 let dir: string;
 
@@ -73,7 +74,7 @@ describe('enterprise record store under the envelope', () => {
   it('quarantines a corrupt module store and starts empty — records preserved on disk', async () => {
     const path = join(dir, 'enterprise-module-finance.json');
     await fs.writeFile(path, 'NOT JSON {{{');
-    const store = new EnterpriseRecordStore(path, 'finance', 'invoice');
+    const store = new EnterpriseRecordStore(path, 'finance', 'invoice').bindScope(() => TEST_TENANT_SCOPE);
     await store.load();
     expect(store.list()).toHaveLength(0);
     expect(store.quarantinedTo).toContain('.quarantined-');
@@ -82,13 +83,13 @@ describe('enterprise record store under the envelope', () => {
 
   it('persists WITH the schema stamp and reloads its own records', async () => {
     const path = join(dir, 'enterprise-module-crm.json');
-    const store = new EnterpriseRecordStore(path, 'crm', 'contact');
+    const store = new EnterpriseRecordStore(path, 'crm', 'contact').bindScope(() => TEST_TENANT_SCOPE);
     await store.load();
     store.create({ title: 'Asha', fields: {}, actor: 't', now: '2026-08-07T00:00:00.000Z' });
     await store.flush();
     const onDisk = JSON.parse(await fs.readFile(path, 'utf8')) as { schemaVersion?: number };
     expect(onDisk.schemaVersion).toBe(STORE_SCHEMA_VERSION);
-    const reread = new EnterpriseRecordStore(path, 'crm', 'contact');
+    const reread = new EnterpriseRecordStore(path, 'crm', 'contact').bindScope(() => TEST_TENANT_SCOPE);
     await reread.load();
     expect(reread.list()).toHaveLength(1);
   });

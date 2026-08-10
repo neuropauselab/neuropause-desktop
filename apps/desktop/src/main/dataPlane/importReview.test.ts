@@ -33,6 +33,7 @@ import type {
 import { IpcChannel } from '@neuropause/shared';
 import { EnterpriseRecordStore } from '../enterprise/framework/enterpriseRecordStore';
 import { initDataPlane, type DataPlaneSubsystem } from './index';
+import { TEST_TENANT_SCOPE } from '../tenancy/testScope';
 
 const T0 = '2026-08-10T00:00:00.000Z';
 const ACTOR = 'priya@example.com';
@@ -124,7 +125,7 @@ describe('import review — override, preview, row actions, identity', () => {
     stores = new Map(
       DESCRIPTORS.map((d) => [
         d.id,
-        new EnterpriseRecordStore(join(dir, `${d.id}.json`), d.id, d.id),
+        new EnterpriseRecordStore(join(dir, `${d.id}.json`), d.id, d.id).bindScope(() => TEST_TENANT_SCOPE),
       ]),
     );
     await Promise.all([...stores.values()].map((s) => s.load()));

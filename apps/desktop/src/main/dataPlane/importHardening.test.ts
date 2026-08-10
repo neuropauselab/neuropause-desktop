@@ -35,6 +35,7 @@ import type {
 import { IpcChannel } from '@neuropause/shared';
 import { EnterpriseRecordStore } from '../enterprise/framework/enterpriseRecordStore';
 import { initDataPlane, type DataPlaneSubsystem } from './index';
+import { TEST_TENANT_SCOPE } from '../tenancy/testScope';
 
 const T0 = '2026-08-10T00:00:00.000Z';
 const ACTOR = 'priya@example.com';
@@ -118,7 +119,7 @@ describe('import hardening', () => {
     stores = new Map([
       [
         'crm-customers',
-        new EnterpriseRecordStore(join(dir, 'cust.json'), 'crm-customers', 'customer'),
+        new EnterpriseRecordStore(join(dir, 'cust.json'), 'crm-customers', 'customer').bindScope(() => TEST_TENANT_SCOPE),
       ],
     ]);
     await Promise.all([...stores.values()].map((s) => s.load()));

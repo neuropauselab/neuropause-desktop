@@ -32,6 +32,7 @@ import { IpcChannel } from '@neuropause/shared';
 import { EnterpriseRecordStore } from '../enterprise/framework/enterpriseRecordStore';
 import { buildRelatedRecords } from '../crossDomain/relatedRecords';
 import { initDataPlane, type DataPlaneSubsystem } from './index';
+import { TEST_TENANT_SCOPE } from '../tenancy/testScope';
 
 const T0 = '2026-08-10T00:00:00.000Z';
 const ACTOR = 'priya@example.com';
@@ -148,7 +149,7 @@ describe('import → relationship resolution → related records', () => {
     stores = new Map(
       Object.keys(MODULES).map((id) => [
         id,
-        new EnterpriseRecordStore(join(dir, `${id}.json`), id, id),
+        new EnterpriseRecordStore(join(dir, `${id}.json`), id, id).bindScope(() => TEST_TENANT_SCOPE),
       ]),
     );
     await Promise.all([...stores.values()].map((s) => s.load()));

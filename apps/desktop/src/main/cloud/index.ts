@@ -57,6 +57,7 @@ import { gatewayStore } from '../ecosystem/gateway/gatewayInstance';
 import { billingStore } from '../ecosystem/billing/billingInstance';
 import { PLAN_CATALOG } from '../ecosystem/billing/billing';
 import { ORG_ID } from '../enterprise/org/seed';
+import { resolveTenantContext } from '../enterprise/index';
 
 const log = createLogger('cloud');
 
@@ -355,7 +356,32 @@ function buildHandlers(): SecureHandlerDef[] {
       channel: IpcChannel.LiveSyncSetActiveOrg,
       schema: LiveSyncSetActiveOrgRequest,
       handler: (p) => {
-        setLiveSyncActiveOrg((p as LiveSyncSetActiveOrgRequest).orgId);
+        const requested = (p as LiveSyncSetActiveOrgRequest).orgId;
+        /**
+         * P11 — THE ORG COMES FROM THE SESSION, NOT THE PAYLOAD.
+         *
+         * This was the sharpest hole the audit found. The live-sync scheduler is
+         * a 60-second background push loop with NO actor and NO permission, and
+         * its target org was whatever the renderer last set here. So a renderer
+         * could point a permission-free egress loop at an arbitrary organization
+         * id and walk away — and the memory bridge downstream enqueues every
+         * synced item under that id regardless of the item's own org.
+         *
+         * `null` still means "stop syncing", which is a safe direction and the
+         * only way to turn the loop off. Any non-null value must match the
+         * tenant the session actually resolves to.
+         */
+        if (requested === null) {
+          setLiveSyncActiveOrg(null);
+          return liveSync.getStatus();
+        }
+        const resolved = resolveTenantContext();
+        if (!resolved.ok) throw new Error(resolved.refusal.message);
+        if (requested !== resolved.context.tenantId) {
+          // Refused without saying whether that org exists.
+          throw new Error('Sync can only be pointed at the organization you are signed in to.');
+        }
+        setLiveSyncActiveOrg(resolved.context.tenantId);
         return liveSync.getStatus();
       },
     },

@@ -25,6 +25,7 @@ import { RelationshipStore } from '@main/dataPlane/relationshipStore';
 import { RelationshipEngine } from '@main/dataPlane/relationshipEngine';
 import { buildRelatedRecords } from '@main/crossDomain/relatedRecords';
 import { RelatedRecordsPanel } from '@renderer/enterprise/modules/RelatedRecordsPanel';
+import { TEST_TENANT_SCOPE } from '@main/tenancy/testScope';
 
 const DIR = join(tmpdir(), 'np-ui-related');
 const T0 = '2026-08-10T00:00:00.000Z';
@@ -68,7 +69,7 @@ async function wire(): Promise<void> {
 
   stores = {};
   for (const moduleId of Object.keys(MODULES)) {
-    stores[moduleId] = new EnterpriseRecordStore(join(dir, `${moduleId}.json`), moduleId, moduleId);
+    stores[moduleId] = new EnterpriseRecordStore(join(dir, `${moduleId}.json`), moduleId, moduleId).bindScope(() => TEST_TENANT_SCOPE);
   }
   relationships = new RelationshipStore(join(dir, 'rel.json'));
   await Promise.all([...Object.values(stores).map((s) => s.load()), relationships.load()]);

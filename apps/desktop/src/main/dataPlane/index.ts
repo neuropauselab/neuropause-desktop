@@ -170,6 +170,8 @@ export interface DataPlaneSubsystem {
   mappings: MappingMemoryStore;
   relationships: RelationshipStore;
   relationshipEngine: RelationshipEngine;
+  /** Drop analyzed-but-unexecuted import plans. Called on a workspace switch. */
+  forgetPlans: () => void;
 }
 
 function decodeContent(base64: string, filename: string): Buffer {
@@ -1245,5 +1247,21 @@ export function initDataPlane(deps: DataPlaneSubsystemDeps): DataPlaneSubsystem 
     entities: ONTOLOGY.length,
     relationships: RELATIONSHIPS.length,
   });
-  return { handlers, provenance, mappings, relationships, relationshipEngine };
+  return {
+    handlers,
+    provenance,
+    mappings,
+    relationships,
+    relationshipEngine,
+    /**
+     * P11 — forget analyzed plans when the workspace changes.
+     *
+     * A plan holds the parsed contents of an uploaded file and is redeemed by id
+     * with no owner check. Surviving a switch meant a file analyzed in one
+     * workspace could be imported into the next, with the rows landing under the
+     * NEW scope — the plan is the file, and the file belonged to the other
+     * workspace.
+     */
+    forgetPlans: () => plans.clear(),
+  };
 }

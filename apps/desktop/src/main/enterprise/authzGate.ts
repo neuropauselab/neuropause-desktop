@@ -72,11 +72,32 @@ export interface ActorResolverDeps {
  * the owner has an email (it has been claimed — see `decideOwnerClaim`), a
  * session matching no member fails closed instead of inheriting ownership.
  */
+/**
+ * The value `activeOrgId` returns when no tenant could be resolved.
+ *
+ * Exported so the gate and the resolver compare the SAME string. A sentinel
+ * written out at two sites is a sentinel that eventually differs at one of them.
+ * The NUL prefix makes it unconstructable as a real organization id.
+ */
+export const UNRESOLVED_TENANT = '\u0000no-tenant';
+
 export function resolveActor(deps: ActorResolverDeps): EnterpriseActor | null {
   const email = deps.sessionEmail();
   if (!email) return null;
   const wanted = email.trim().toLowerCase();
   const orgId = deps.activeOrgId();
+  /**
+   * P11 — NO TENANT MEANS NO ACTOR, before anything else is consulted.
+   *
+   * `activeOrgId` returns `UNRESOLVED_TENANT` whenever the tenant context
+   * refuses — cold start, suspended tenant, orphaned workspace, non-member.
+   * Without this line the sentinel simply matched no org, `usersFor` returned
+   * empty, and execution fell through to the owner branch below — so a tenant
+   * REFUSAL routed into the unclaimed-owner fallback, which holds every
+   * permission there is. Two implementations of first-claim-wins that disagreed
+   * on the one field that makes it a tenant decision.
+   */
+  if (orgId === UNRESOLVED_TENANT) return null;
   const matched = deps
     .usersFor(orgId)
     .find((m) => m.kind === 'human' && m.email !== null && m.email.trim().toLowerCase() === wanted);
@@ -86,7 +107,13 @@ export function resolveActor(deps: ActorResolverDeps): EnterpriseActor | null {
   // First-claim-wins: fall back to the owner only while the workspace is
   // unclaimed. A claimed owner (non-null email) that didn't match above means a
   // *different* account is signing in — deny rather than hand it the workspace.
-  if (owner.email === null) return { member: owner, roles: deps.rolesFor(owner.orgId) };
+  //
+  // P11 adds `owner.orgId === orgId`: the owner of a DIFFERENT tenant is not a
+  // fallback for this one. The tenant resolver already required this; the two
+  // copies of the rule now agree.
+  if (owner.email === null && owner.orgId === orgId) {
+    return { member: owner, roles: deps.rolesFor(owner.orgId) };
+  }
   return null;
 }
 

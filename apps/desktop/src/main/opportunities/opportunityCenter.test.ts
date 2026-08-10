@@ -38,6 +38,7 @@ import {
 } from './procurementSource';
 import { OutcomeRevisionStore } from '../outcomes/outcomeRevisionStore';
 import { initOpportunities } from '.';
+import { TEST_TENANT_SCOPE } from '../tenancy/testScope';
 
 const T0 = '2026-08-09T12:00:00.000Z';
 const ACTOR = 'priya@example.com';
@@ -99,8 +100,8 @@ describe('Opportunity Center, wired', () => {
     rfqModuleUp = true;
     breakVerification = false;
 
-    orders = new EnterpriseRecordStore(join(dir, 'po.json'), 'procurement-orders', 'order');
-    rfqs = new EnterpriseRecordStore(join(dir, 'rfq.json'), 'procurement-rfqs', 'rfq');
+    orders = new EnterpriseRecordStore(join(dir, 'po.json'), 'procurement-orders', 'order').bindScope(() => TEST_TENANT_SCOPE);
+    rfqs = new EnterpriseRecordStore(join(dir, 'rfq.json'), 'procurement-rfqs', 'rfq').bindScope(() => TEST_TENANT_SCOPE);
     holds = new HoldStore(join(dir, 'holds.json'));
     records = new DecisionRecordStore(join(dir, 'decisions.json'));
     decisions = new OpportunityDecisionStore(join(dir, 'opportunity-decisions.json'));

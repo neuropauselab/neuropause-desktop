@@ -173,7 +173,8 @@ import { jobStore } from './workforce/runtime/jobInstance';
 import { createWorkforceActionExecutor } from './workforce/execution/workforceActionExecutor';
 import type { ExecutionBinding } from '@neuropause/shared';
 import { computeOrgHealth } from '@neuropause/shared';
-import { initEnterprise } from './enterprise';
+import { initEnterprise, onWorkspaceSwitch } from './enterprise';
+import { setLiveSyncActiveOrg } from './cloud/livesync/liveSyncInstance';
 import { initDataPlane } from './dataPlane';
 import { initDocuments } from './documents';
 import { initIdentity, type ServiceAuthorizer } from './identity';
@@ -340,7 +341,19 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
      * another, and a credential written before this boundary existed is
      * unclaimed rather than silently adopted by whoever looks first.
      */
-    workspaceId: () => workspaceStore.activeWorkspaceId(),
+    /**
+     * P11 — the NULLABLE accessor, so the cold-start window closes here too.
+     *
+     * The bare `activeWorkspaceId()` returns `'workspace-default'` from field
+     * initialisation, before the file is read. `initConnectors` runs ~270 lines
+     * before `workspaceStore.load()`, so every credential key and connection
+     * filter in that window resolved to the default workspace REGARDLESS of what
+     * was persisted — an OAuth completion in that window writes one workspace's
+     * token under another's key. `requireWorkspace()` in `connectorService`
+     * already throws on an empty string; this gives it the empty string to throw
+     * on instead of a plausible wrong answer.
+     */
+    workspaceId: () => workspaceStore.activeWorkspaceIdOrNull() ?? '',
   });
   // Unified knowledge layer (UDM): canonical store + query engine + local search.
   const unified = await initUnified({ broadcast: deps.broadcast });
@@ -371,7 +384,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
        * workspace A's provider row — and A's record values inside `differs` —
        * into workspace B's question queue.
        */
-      const runWorkspace = workspaceStore.activeWorkspaceId();
+      const runWorkspace = workspaceStore.activeWorkspaceIdOrNull() ?? '';
       /**
        * Wait for the service principal's row to be readable before checking it.
        *
@@ -416,7 +429,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
             action: entry.action,
             target: entry.target,
             summary: entry.summary,
-            workspaceId: workspaceStore.activeWorkspaceId(),
+            workspaceId: workspaceStore.activeWorkspaceIdForDisplay(),
           }),
         /**
          * P10 — ASK instead of discarding.
@@ -611,7 +624,15 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     },
     // Mapping memory is isolated per workspace — the same boundary the audit
     // trail stamps. A mapping learned in one workspace is never offered in another.
-    tenantId: () => workspaceStore.activeWorkspaceId() ?? 'local',
+    /**
+     * P11 — nullable, and the `?? 'local'` branch is now REACHABLE.
+     *
+     * It was dead before: the bare accessor never returned null, which is direct
+     * evidence this call site meant to use the nullable one. `'local'` is a
+     * sentinel that matches no real workspace, so mapping memory saved during
+     * cold start is not readable as any tenant's.
+     */
+    tenantId: () => workspaceStore.activeWorkspaceIdOrNull() ?? 'local',
     now: () => new Date().toISOString(),
     audit: (entry) =>
       governanceStore.record({
@@ -622,14 +643,14 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         action: entry.action,
         target: entry.target,
         summary: entry.summary,
-        workspaceId: workspaceStore.activeWorkspaceId(),
+        workspaceId: workspaceStore.activeWorkspaceIdForDisplay(),
       }),
     authorize: enterprise.authorize,
     // Stamped into the export manifest. Read from the running app rather than
     // a constant, so a manifest naming a version is naming the build that
     // actually wrote the file.
     appVersion: () => app.getVersion(),
-    workspaceId: () => workspaceStore.activeWorkspaceId(),
+    workspaceId: () => workspaceStore.activeWorkspaceIdOrNull() ?? '',
     // Phase 6 — imported records re-enter the SAME lifecycle a hand-created
     // record takes: audit, platform timeline, renderer broadcast, and every
     // module's own `onChange` reconciler. Without this the records exist in the
@@ -701,7 +722,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         action: entry.action,
         target: entry.target,
         summary: entry.summary,
-        workspaceId: workspaceStore.activeWorkspaceId(),
+        workspaceId: workspaceStore.activeWorkspaceIdForDisplay(),
       }),
     authorize: enterprise.authorize,
     modules: () => enterprise.modules.list().map((m) => m.descriptor),
@@ -723,9 +744,24 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
    * through the modules' own stores, and fires the SAME `onImported` fan-out an
    * import does, so a record linked here gets its relationships resolved.
    */
+  /**
+   * P11 — what a workspace switch has to forget.
+   *
+   * Registered at the composition root because these are the only two places
+   * that know both halves: that the Data Plane holds plans and that live-sync
+   * holds a target org. Records need nothing here — the store re-reads its scope
+   * on every call, which is why it was built as a function rather than a value.
+   */
+  onWorkspaceSwitch(() => {
+    dataPlane.forgetPlans();
+    // Stop the 60-second push loop rather than let it keep pushing to the
+    // workspace that was just left. The renderer re-points it deliberately.
+    setLiveSyncActiveOrg(null);
+  });
+
   const identity = initIdentity({
     userDataDir: app.getPath('userData'),
-    workspaceId: () => workspaceStore.activeWorkspaceId(),
+    workspaceId: () => workspaceStore.activeWorkspaceIdOrNull() ?? '',
     actor: () => {
       const st = authService.getStatus();
       return st.state === 'authenticated' ? (st.session.user.displayName ?? st.session.user.email) : null;
@@ -740,7 +776,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         action: entry.action,
         target: entry.target,
         summary: entry.summary,
-        workspaceId: workspaceStore.activeWorkspaceId(),
+        workspaceId: workspaceStore.activeWorkspaceIdForDisplay(),
       }),
     allows: (permission) => enterprise.allows(permission),
     authorize: enterprise.authorize,
@@ -834,7 +870,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         action,
         target,
         summary,
-        workspaceId: workspaceStore.activeWorkspaceId(),
+        workspaceId: workspaceStore.activeWorkspaceIdForDisplay(),
       }),
   });
 
@@ -968,7 +1004,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         action,
         target,
         summary,
-        workspaceId: workspaceStore.activeWorkspaceId(),
+        workspaceId: workspaceStore.activeWorkspaceIdForDisplay(),
       }),
   });
 

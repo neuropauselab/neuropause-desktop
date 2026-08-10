@@ -17,6 +17,7 @@ import {
   buildModuleHandlers,
   notifyImportedRecords,
 } from './moduleRegistry';
+import { TEST_TENANT_SCOPE } from '../../tenancy/testScope';
 
 const T0 = '2026-07-08T00:00:00.000Z';
 
@@ -78,7 +79,7 @@ beforeEach(async () => {
   deny = null;
   const path = join(tmpdir(), `np-erp-reg-${randomUUID()}.json`);
   paths.push(path);
-  const store = new EnterpriseRecordStore(path, 'finance', 'invoice');
+  const store = new EnterpriseRecordStore(path, 'finance', 'invoice').bindScope(() => TEST_TENANT_SCOPE);
   await store.load();
   const module = defineEnterpriseModule({ descriptor: DESCRIPTOR, store });
   registry = new EnterpriseModuleRegistry();
@@ -110,7 +111,7 @@ describe('registry', () => {
       join(tmpdir(), `dup-${randomUUID()}.json`),
       'finance',
       'invoice',
-    );
+    ).bindScope(() => TEST_TENANT_SCOPE);
     expect(() =>
       registry.register(defineEnterpriseModule({ descriptor: DESCRIPTOR, store })),
     ).toThrow(/already registered/);
@@ -259,7 +260,7 @@ describe('unknown module', () => {
 
 describe('defineEnterpriseModule', () => {
   it('rejects an inconsistent descriptor', () => {
-    const store = new EnterpriseRecordStore(join(tmpdir(), `bad-${randomUUID()}.json`), 'x', 'x');
+    const store = new EnterpriseRecordStore(join(tmpdir(), `bad-${randomUUID()}.json`), 'x', 'x').bindScope(() => TEST_TENANT_SCOPE);
     expect(() =>
       defineEnterpriseModule({
         descriptor: { ...DESCRIPTOR, titleField: 'ghostField' },
@@ -320,7 +321,7 @@ describe('notifyImportedRecords', () => {
       join(tmpdir(), `np-erp-reg-${randomUUID()}.json`),
       'finance',
       'invoice',
-    );
+    ).bindScope(() => TEST_TENANT_SCOPE);
     await store.load();
     const reg = new EnterpriseModuleRegistry();
     reg.register(
@@ -371,7 +372,7 @@ describe('notifyImportedRecords', () => {
       join(tmpdir(), `np-erp-reg-${randomUUID()}.json`),
       'finance',
       'invoice',
-    );
+    ).bindScope(() => TEST_TENANT_SCOPE);
     await store.load();
     const reg = new EnterpriseModuleRegistry();
     reg.register(

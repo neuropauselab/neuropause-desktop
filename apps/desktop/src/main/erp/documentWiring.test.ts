@@ -41,6 +41,7 @@ import { DocumentLineStore } from './documentLines';
 import { ApprovalStore } from './approvalStore';
 import { createDocumentBridge } from './documentBridge';
 import type { ApprovalPolicy, Approver } from './approvalEngine';
+import { TEST_TENANT_SCOPE } from '../tenancy/testScope';
 
 const T0 = '2026-08-09T12:00:00.000Z';
 
@@ -119,7 +120,7 @@ describe('ERP document layer, wired', () => {
           },
         ],
       },
-      store: new EnterpriseRecordStore(join(dir, 'orders.json'), 'procurement-orders', 'order'),
+      store: new EnterpriseRecordStore(join(dir, 'orders.json'), 'procurement-orders', 'order').bindScope(() => TEST_TENANT_SCOPE),
     });
     registry.register(module);
     await module.store.load();
@@ -247,7 +248,7 @@ describe('ERP document layer, wired', () => {
           permissions: { read: 'crm:read', write: 'crm:manage' },
           fields: [{ key: 'name', label: 'Name', type: 'text', required: true }],
         },
-        store: new EnterpriseRecordStore(join(dir, 'cust.json'), 'crm-customers', 'customer'),
+        store: new EnterpriseRecordStore(join(dir, 'cust.json'), 'crm-customers', 'customer').bindScope(() => TEST_TENANT_SCOPE),
       });
       registry.register(plain);
       await plain.store.load();

@@ -153,6 +153,17 @@ export function buildSeed(now = new Date().toISOString()): Seed {
     slug: 'neuropause',
     description:
       'The default workspace organization. Rename it, restructure it, and add your people.',
+    /**
+     * P11 — written EXPLICITLY, not left to the read-time default.
+     *
+     * `organizationStatus()` defaults an absent field to `active` so pre-P11
+     * files keep working, and the seed omitting it made that sentence false: the
+     * only organization every install has was relying on the compatibility
+     * default, so `organizationIsOperable` was hardcoded-true in practice and
+     * suspending a tenant was unrepresentable.
+     */
+    type: 'business',
+    status: 'active',
     createdAt: now,
     updatedAt: now,
     metadata: { seeded: true },

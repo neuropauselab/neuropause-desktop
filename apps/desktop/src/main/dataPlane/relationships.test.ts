@@ -23,6 +23,7 @@ import {
   relationshipsFrom,
   relationshipsTo,
 } from './relationshipModel';
+import { TEST_TENANT_SCOPE } from '../tenancy/testScope';
 
 const T0 = '2026-08-09T09:00:00.000Z';
 
@@ -80,7 +81,7 @@ const DESCRIPTORS: EnterpriseModuleDescriptor[] = [
 ];
 
 function store(moduleId: string, kind: string): EnterpriseRecordStore {
-  const s = new EnterpriseRecordStore(join(dir, `${moduleId}.json`), moduleId, kind);
+  const s = new EnterpriseRecordStore(join(dir, `${moduleId}.json`), moduleId, kind).bindScope(() => TEST_TENANT_SCOPE);
   stores.set(moduleId, s);
   return s;
 }

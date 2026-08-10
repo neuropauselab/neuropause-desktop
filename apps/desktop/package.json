@@ -22,7 +22,8 @@
     "verify:release": "node scripts/verify-release-artifacts.cjs",
     "package:win": "node scripts/generate-notices.cjs && node scripts/generate-build-info.cjs && electron-vite build && electron-builder --win --x64 --publish never && npm run verify:release -- --platform win",
     "package:mac:universal": "node scripts/generate-notices.cjs && node scripts/generate-build-info.cjs && electron-vite build && electron-builder --mac --universal --publish never && npm run verify:release",
-    "test:ui": "vitest run --config vitest.ui.config.ts"
+    "test:ui": "vitest run --config vitest.ui.config.ts",
+    "typecheck:test": "tsc --noEmit -p tsconfig.test.json"
   },
   "dependencies": {
     "@neuropause/companion-protocol": "*",

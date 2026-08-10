@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { EnterpriseRecordStore } from './enterpriseRecordStore';
+import { TEST_TENANT_SCOPE } from '../../tenancy/testScope';
 
 const opened: EnterpriseRecordStore[] = [];
 const paths: string[] = [];
@@ -15,7 +16,7 @@ function tempPath(): string {
 }
 
 async function newStore(): Promise<EnterpriseRecordStore> {
-  const s = new EnterpriseRecordStore(tempPath(), 'finance', 'invoice');
+  const s = new EnterpriseRecordStore(tempPath(), 'finance', 'invoice').bindScope(() => TEST_TENANT_SCOPE);
   opened.push(s);
   await s.load();
   return s;
@@ -130,12 +131,12 @@ describe('EnterpriseRecordStore — update/lifecycle', () => {
 describe('EnterpriseRecordStore — persistence', () => {
   it('round-trips through disk (atomic write + reload)', async () => {
     const path = tempPath();
-    const s1 = new EnterpriseRecordStore(path, 'finance', 'invoice');
+    const s1 = new EnterpriseRecordStore(path, 'finance', 'invoice').bindScope(() => TEST_TENANT_SCOPE);
     await s1.load();
     s1.create({ id: 'a', title: 'Persisted', fields: { amount: 42 }, now: T0 });
     await s1.flush();
 
-    const s2 = new EnterpriseRecordStore(path, 'finance', 'invoice');
+    const s2 = new EnterpriseRecordStore(path, 'finance', 'invoice').bindScope(() => TEST_TENANT_SCOPE);
     await s2.load();
     const rec = s2.get('a');
     expect(rec?.title).toBe('Persisted');

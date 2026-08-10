@@ -30,6 +30,7 @@ import { EnterpriseRecordStore } from '@main/enterprise/framework/enterpriseReco
 import { ProvenanceStore } from '@main/dataPlane/importer';
 import { initIdentity, type IdentitySubsystem } from '@main/identity/index';
 import { IdentityPanel } from '@renderer/dataCommandCenter/IdentityPanel';
+import { TEST_TENANT_SCOPE } from '@main/tenancy/testScope';
 
 const ACTOR = 'priya@example.com';
 const T0 = '2026-08-10T00:00:00.000Z';
@@ -114,7 +115,7 @@ beforeEach(async () => {
     'crm:manage',
     'governance:manage',
   ]);
-  store = new EnterpriseRecordStore(join(dir, 'crm.json'), CUSTOMERS.id, CUSTOMERS.id);
+  store = new EnterpriseRecordStore(join(dir, 'crm.json'), CUSTOMERS.id, CUSTOMERS.id).bindScope(() => TEST_TENANT_SCOPE);
   await store.load();
   provenance = new ProvenanceStore(join(dir, 'provenance.json'));
   await provenance.load();

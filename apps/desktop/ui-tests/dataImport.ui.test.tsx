@@ -32,6 +32,7 @@ import type { EnterpriseModuleDescriptor, EnterprisePermission } from '@neuropau
 import { EnterpriseRecordStore } from '@main/enterprise/framework/enterpriseRecordStore';
 import { initDataPlane } from '@main/dataPlane/index';
 import { ImportPanel } from '@renderer/dataCommandCenter/ImportPanel';
+import { TEST_TENANT_SCOPE } from '@main/tenancy/testScope';
 
 const ACTOR = 'priya@example.com';
 const T0 = '2026-08-10T00:00:00.000Z';
@@ -153,7 +154,7 @@ beforeEach(async () => {
     'people:manage',
   ]);
   stores = new Map(
-    DESCRIPTORS.map((d) => [d.id, new EnterpriseRecordStore(join(dir, `${d.id}.json`), d.id, d.id)]),
+    DESCRIPTORS.map((d) => [d.id, new EnterpriseRecordStore(join(dir, `${d.id}.json`), d.id, d.id).bindScope(() => TEST_TENANT_SCOPE)]),
   );
   await Promise.all([...stores.values()].map((s) => s.load()));
 

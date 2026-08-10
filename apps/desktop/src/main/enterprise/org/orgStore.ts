@@ -223,13 +223,31 @@ export class OrgStore extends EventEmitter {
 
   /* ── mutations ── */
 
-  createOrganization(name: string, description = ''): Organization {
+  /**
+   * Create a tenant.
+   *
+   * P11 writes `type` and `status` explicitly for the same reason the seed does:
+   * relying on the read-time compatibility default means a NEW tenant is
+   * indistinguishable from a pre-P11 one, and the default exists only for data
+   * that predates the field.
+   *
+   * Honest note: this method still has no caller and no IPC channel, so a second
+   * tenant cannot be created from the product yet. It is correct rather than
+   * reachable, and the report says so.
+   */
+  createOrganization(
+    name: string,
+    description = '',
+    type: Organization['type'] = 'business',
+  ): Organization {
     const now = new Date().toISOString();
     const org: Organization = {
       id: `org_${randomUUID()}`,
       name,
       slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
       description,
+      type,
+      status: 'active',
       createdAt: now,
       updatedAt: now,
       metadata: {},
@@ -237,6 +255,21 @@ export class OrgStore extends EventEmitter {
     this.organizations.set(org.id, org);
     this.touch();
     return org;
+  }
+
+  /**
+   * Suspend or restore a tenant. All access fails closed while not `active`.
+   *
+   * The writer `organizationIsOperable` needed. Without it the function was a
+   * predicate that could only ever return true.
+   */
+  setOrganizationStatus(id: string, status: Organization['status']): Organization | null {
+    const org = this.organizations.get(id);
+    if (!org) return null;
+    const next: Organization = { ...org, status, updatedAt: new Date().toISOString() };
+    this.organizations.set(id, next);
+    this.touch();
+    return next;
   }
 
   createUnit(input: CreateUnitInput): OrgUnit {
@@ -301,9 +334,23 @@ export class OrgStore extends EventEmitter {
     return user;
   }
 
+  /**
+   * P11 — `workspaceIds` is writable.
+   *
+   * Without it `memberMayUseWorkspace` always returned true, so the
+   * `not_in_workspace` refusal, its message and its test all described a
+   * boundary the product could not express. A predicate with no writer is worse
+   * than no predicate, because the docs and the inventory read as though
+   * intra-tenant isolation existed.
+   *
+   * There is no UI for it yet; see the report's limitations. It is reachable
+   * from the org-update channel, which already requires `people:manage`.
+   */
   updateUser(
     id: string,
-    patch: Partial<Pick<OrgUser, 'name' | 'email' | 'title' | 'unitId' | 'roleIds' | 'status'>>,
+    patch: Partial<
+      Pick<OrgUser, 'name' | 'email' | 'title' | 'unitId' | 'roleIds' | 'status' | 'workspaceIds'>
+    >,
   ): OrgUser | null {
     const user = this.users.get(id);
     if (!user) return null;

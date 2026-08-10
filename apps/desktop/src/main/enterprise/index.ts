@@ -80,6 +80,7 @@ import { governanceStore } from './governance/governanceInstance';
 import { OWNER_USER_ID, ROLE_TO_UNIT_ID } from './org/seed';
 import {
   canDeleteMember,
+  UNRESOLVED_TENANT,
   createAuthorize,
   createPermissionProbe,
   decideOwnerClaim,
@@ -87,6 +88,9 @@ import {
   guardOwnerUserPatch,
   withEnterpriseAuthz,
 } from './authzGate';
+import { createTenantContextResolver } from '../tenancy/tenantContext';
+import { buildMigrationInventory, summarizeInventory } from '../tenancy/migrationInventory';
+import type { TenantResolution, TenantScope } from '@neuropause/shared';
 import {
   initEnterpriseModules,
   type EnterpriseModuleRegistry,
@@ -293,10 +297,69 @@ export interface EnterpriseSubsystem {
   notifyImported: EnterpriseModulesSubsystem['notifyImported'];
 }
 
+/**
+ * P11 — THE authoritative tenant resolver.
+ *
+ * One object, consulted by everything that needs to know which tenant a request
+ * belongs to. Before this there was no request context at all: fifteen call
+ * sites each derived the workspace themselves and eight derived the actor
+ * themselves, which is twenty-three chances for one of them to disagree — and
+ * eleven of the fifteen fed audit stamps, so disagreeing was invisible.
+ *
+ * Module-level, like the three singletons it reads (`authService`, `orgStore`,
+ * `workspaceStore`). It is deliberately NOT constructed inside `initEnterprise`:
+ * `buildHandlers()` is module-level and needs it, and threading it through would
+ * mean either a second resolver or a mutable global set at boot. One authority,
+ * at the same scope as its inputs.
+ *
+ * Every input is server-side. Nothing here reads a payload. It is safe to build
+ * before the stores load because `isLoaded()` is the first thing it checks — an
+ * unread store refuses rather than answering from empty maps.
+ */
+const tenantContext = createTenantContextResolver({
+  sessionEmail: () => {
+    const st = authService.getStatus();
+    return st.state === 'authenticated' ? st.session.user.email : null;
+  },
+  isLoaded: () => workspaceStore.isLoaded(),
+  activeWorkspaceId: () => workspaceStore.activeWorkspaceIdOrNull(),
+  workspace: (id) => workspaceStore.get(id),
+  organization: (id) => orgStore.organization(id),
+  usersFor: (orgId) => orgStore.usersFor(orgId),
+  rolesFor: (orgId) => orgStore.rolesFor(orgId),
+  ownerMember: () => orgStore.user(OWNER_USER_ID),
+});
+
+/**
+ * Things to forget when the active workspace changes.
+ *
+ * A list rather than a hard-coded sequence so a subsystem declares its own
+ * residue at composition. The alternative — this file importing the live-sync
+ * instance, the Data Plane's plan cache and three provider caches — would make
+ * the enterprise root depend on half the app to do one thing.
+ */
+const workspaceSwitchListeners: ((workspaceId: string) => void)[] = [];
+
+/** Register a callback fired after a workspace switch commits. */
+export function onWorkspaceSwitch(fn: (workspaceId: string) => void): void {
+  workspaceSwitchListeners.push(fn);
+}
+
+/** The tenant scope, or null. The shape every scoped store accepts. */
+export function activeTenantScope(): TenantScope | null {
+  return tenantContext.scope();
+}
+
+/** The full resolution, for callers that need the reason for a refusal. */
+export function resolveTenantContext(): TenantResolution {
+  return tenantContext.resolve();
+}
+
 export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSubsystem> {
   await orgStore.load();
   await workspaceStore.load();
   await governanceStore.load();
+
 
   // First-claim-wins ownership: the seeded owner ships unclaimed (email:null).
   // The first account to sign in claims it; the SAME account later only refreshes
@@ -344,6 +407,19 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     const st = authService.getStatus();
     return st.state === 'authenticated' ? st.session.user.email : null;
   };
+  /**
+   * The organization RBAC is evaluated against. STRICT.
+   *
+   * Returns a value that matches no organization when the tenant cannot be
+   * resolved, so `usersFor` yields an empty list, `resolveActor` finds no
+   * member, and the gate refuses with the message it already used for that
+   * case. Fail-closed without inventing a new error path.
+   */
+  const authorizationOrgId = (): string => {
+    const resolved = tenantContext.resolveFull();
+    return resolved.ok ? resolved.value.organization.id : UNRESOLVED_TENANT;
+  };
+
   const authorize = createAuthorize({
     sessionEmail,
     /**
@@ -382,7 +458,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
         holdId: hold.id,
       });
     },
-    activeOrgId: () => activeOrg().id,
+    activeOrgId: authorizationOrgId,
     usersFor: (orgId) => orgStore.usersFor(orgId),
     rolesFor: (orgId) => orgStore.rolesFor(orgId),
     ownerMember: () => orgStore.user(OWNER_USER_ID),
@@ -681,8 +757,38 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
    * Procurement's budget/contract gates and Sales' inventory reservation all
    * keep running first and unchanged.
    */
+  /**
+   * P11 — the tenant boundary, bound once for all 106 module stores.
+   *
+   * `bindScope` on the registry hands the same source to every store that
+   * registers, and re-binds any that registered earlier. Before the modules are
+   * added, so no store is ever briefly unbound while reachable — and an unbound
+   * store denies anyway, so the ordering mistake would be loud.
+   */
+  modules.registry.bindScope(() => tenantContext.scope());
+
   const registerModule = (m: EnterpriseModule): void => {
     modules.registry.register(documentIntegration.attach(m));
+  };
+
+  /**
+   * BOOT INVARIANT: every module store has a tenant boundary.
+   *
+   * Checked after all 106 register, in the same spirit as
+   * `assertAllChannelsClassified`. An unbound store denies rather than leaking,
+   * so this cannot be a security hole — but it WOULD be a module that silently
+   * shows nothing, which is a bug a user reports as "my data is gone". Logged as
+   * an error so it is visible in the log rather than discovered from a support
+   * ticket.
+   */
+  const assertEveryModuleScoped = (): void => {
+    const unscoped = modules.registry.unscopedModules();
+    if (unscoped.length > 0) {
+      log.error('Enterprise modules have no tenant boundary and will return nothing', {
+        count: unscoped.length,
+        modules: unscoped.slice(0, 20),
+      });
+    }
   };
 
   // ERP modules built on the foundation (each: descriptor + store + AI hook).
@@ -796,6 +902,34 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   // not fork the framework, and it contains no tenant-specific rule. ──
   registerModule(deviceProductModule); // Medical Devices → Products
   registerModule(deviceLotModule); // Medical Devices → Batch/Lot
+  assertEveryModuleScoped();
+
+  /**
+   * P11 — report the migration state at boot.
+   *
+   * The inventory's own header claims it is code rather than a document so the
+   * answer is produced by the objects that enforce the boundary. That was only
+   * true once something called it — before this it had zero callers, which made
+   * the claim exactly the kind of assertion it was written to replace.
+   *
+   * Logged rather than surfaced on a screen: it is an operator artefact, and the
+   * counts are the honest headline for "how far did P11 actually get".
+   */
+  void buildMigrationInventory({ registry: modules.registry, now: () => new Date().toISOString() })
+    .then((inventory) => {
+      log.info('Tenant migration inventory', {
+        ...summarizeInventory(inventory),
+        records: inventory.totals.records,
+        assigned: inventory.totals.assigned,
+        unresolved: inventory.totals.unresolved,
+      });
+    })
+    .catch((err: unknown) => {
+      log.warn('Could not build the tenant migration inventory', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    });
+
   await Promise.all([
     invoiceModule.store.load(),
     contactModule.store.load(),
@@ -893,7 +1027,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
    */
   const permissions = createPermissionProbe({
     sessionEmail,
-    activeOrgId: () => activeOrg().id,
+    activeOrgId: authorizationOrgId,
     usersFor: (orgId) => orgStore.usersFor(orgId),
     rolesFor: (orgId) => orgStore.rolesFor(orgId),
     ownerMember: () => orgStore.user(OWNER_USER_ID),
@@ -1081,6 +1215,22 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
 
 /* ── shared helpers ── */
 
+/**
+ * The organization behind the active workspace, for DISPLAY.
+ *
+ * The `?? defaultOrg()` fallback is retained here and ONLY here, deliberately,
+ * because every caller below it renders a name, a member count or an org-chart
+ * panel — and a screen that renders nothing at boot because the stores are half
+ * a millisecond from ready is a worse product than one that shows the default
+ * organization's name.
+ *
+ * It is NOT an authorization input any more. That was the bug: `activeOrgId` was
+ * wired from this function into `createAuthorize`, so any `organizationId` at
+ * all resolved to a real org, which is why `Workspace.organizationId` could
+ * never deny anything and why a renderer that could set it chose the domain its
+ * own RBAC was evaluated in. Authorization now goes through
+ * `authorizationOrgId()` below, which has no fallback.
+ */
 function activeOrg(): Organization {
   const ws = workspaceStore.active();
   return orgStore.organization(ws.organizationId) ?? orgStore.defaultOrg();
@@ -1120,7 +1270,7 @@ function audit(action: string, target: string, summary: string): void {
     action,
     target,
     summary,
-    workspaceId: workspaceStore.activeWorkspaceId(),
+    workspaceId: workspaceStore.activeWorkspaceIdForDisplay(),
   });
 }
 
@@ -1186,7 +1336,7 @@ function governanceConfig(): GovernanceConfig {
 }
 
 function workspaceSummaries(): WorkspaceSummary[] {
-  const active = workspaceStore.activeWorkspaceId();
+  const active = workspaceStore.activeWorkspaceIdForDisplay();
   return workspaceStore.list().map((ws) => {
     const org = orgStore.organization(ws.organizationId);
     const orgId = org?.id ?? ws.organizationId;
@@ -1234,7 +1384,7 @@ function buildSnapshot(): ReturnType<typeof computeExecutiveSnapshot> {
   const rules = governanceStore.rules();
   const stats = connectorService.stats();
   return computeExecutiveSnapshot({
-    workspaceId: workspaceStore.activeWorkspaceId(),
+    workspaceId: workspaceStore.activeWorkspaceIdForDisplay(),
     org,
     units: orgStore.unitsFor(org.id),
     users: orgStore.usersFor(org.id),
@@ -1442,7 +1592,36 @@ function buildHandlers(): SecureHandlerDef[] {
       audit: true,
       handler: (p) => {
         const r = p as TWsCreate;
-        const ws = workspaceStore.create(r.name, r.organizationId ?? activeOrg().id);
+        /**
+         * P11 — THE TENANT COMES FROM THE SESSION, NOT THE PAYLOAD.
+         *
+         * `EnterpriseWorkspaceCreateRequest` still accepts `organizationId`
+         * (removing it from the contract would break older renderers), but it is
+         * now used ONLY as an assertion the server checks, never as authority.
+         *
+         * What it used to be: `r.organizationId ?? activeOrg().id`, passed
+         * through unvalidated. Because the active workspace's org is what RBAC
+         * resolves against, a renderer holding `workspace:manage` could name any
+         * organization — real or invented — and select the authorization domain
+         * its own permissions were evaluated in. An unknown value silently
+         * became the default org, which re-pointed every subsequent audit stamp
+         * and credential lookup.
+         */
+        const resolved = tenantContext.resolveFull();
+        // Thrown, not returned: this channel's response type is the workspace
+        // list, and the secure bridge already surfaces a thrown message to the
+        // renderer. Returning a shape the contract does not describe would be a
+        // second error convention on one surface.
+        if (!resolved.ok) throw new Error(resolved.refusal.message);
+        const tenantId = resolved.value.organization.id;
+        if (r.organizationId !== undefined && r.organizationId !== tenantId) {
+          // Named a different tenant. Refused without confirming whether it
+          // exists — a distinct "no such organization" would be a probe.
+          throw new Error(
+            'A workspace can only be created in the organization you are signed in to.',
+          );
+        }
+        const ws = workspaceStore.create(r.name, tenantId);
         audit('workspace.create', ws.id, `Created workspace "${r.name}"`);
         return workspaceSummaries();
       },
@@ -1453,8 +1632,48 @@ function buildHandlers(): SecureHandlerDef[] {
       audit: true,
       handler: (p) => {
         const r = p as TWsSwitch;
+        /**
+         * P11 — MEMBERSHIP IS CHECKED BEFORE THE SWITCH.
+         *
+         * `workspaceStore.switch` checks existence in a local Map and nothing
+         * else, so before this a caller could switch into any workspace on disk
+         * — including one belonging to an organization they are not a member of
+         * — and every subsequent read would resolve against that tenant.
+         *
+         * Verified server-side, against the same resolver everything else uses,
+         * so there is one answer to "may I be here" rather than two.
+         */
+        const target = workspaceStore.get(r.id);
+        if (target === null) throw new Error('That workspace does not exist.');
+        const decision = tenantContext.canSwitchTo(target);
+        if (!decision.ok) {
+          audit('workspace.switch.refused', r.id, `Refused: ${decision.refusal.reason}`);
+          throw new Error(decision.refusal.message);
+        }
         const ws = workspaceStore.switch(r.id);
-        if (ws) audit('workspace.switch', ws.id, `Switched to workspace "${ws.name}"`);
+        if (ws) {
+          /**
+           * P11 — DROP WHAT THE PREVIOUS TENANT LEFT BEHIND.
+           *
+           * The store reads its scope on every call, so records re-scope for
+           * free. Three things do not, and each is a real residue:
+           *
+           *  · The live-sync push loop holds the org it was last pointed at in
+           *    module state. Left alone it keeps pushing to the workspace you
+           *    just left, every sixty seconds, with no actor and no permission.
+           *  · The import plan cache is keyed by plan id with no owner and
+           *    survives the switch — so a file analyzed in one workspace can be
+           *    executed in the next, and the rows land under the NEW scope.
+           *  · The keyless TTL model caches serve whoever asks within ~2.5s.
+           *
+           * Announced through the existing subscriber seam rather than reached
+           * into directly, so a subsystem that needs to forget something
+           * registers here instead of this function growing an import per
+           * subsystem.
+           */
+          for (const onSwitch of workspaceSwitchListeners) onSwitch(ws.id);
+          audit('workspace.switch', ws.id, `Switched to workspace "${ws.name}"`);
+        }
         return workspaceStore.active();
       },
     },

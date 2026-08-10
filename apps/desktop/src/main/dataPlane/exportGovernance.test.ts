@@ -32,6 +32,7 @@ import { EnterpriseRecordStore } from '../enterprise/framework/enterpriseRecordS
 import { initDataPlane, type DataPlaneSubsystem } from './index';
 import { openZip } from './zipReader';
 import { parseFile } from './parsers';
+import { TEST_TENANT_SCOPE } from '../tenancy/testScope';
 
 const ACTOR = 'priya@example.com';
 const T0 = '2026-08-10T00:00:00.000Z';
@@ -140,7 +141,7 @@ describe('export governance', () => {
       'crm:manage',
     ]);
     stores = new Map(
-      DESCRIPTORS.map((d) => [d.id, new EnterpriseRecordStore(join(dir, `${d.id}.json`), d.id, d.id)]),
+      DESCRIPTORS.map((d) => [d.id, new EnterpriseRecordStore(join(dir, `${d.id}.json`), d.id, d.id).bindScope(() => TEST_TENANT_SCOPE)]),
     );
     await Promise.all([...stores.values()].map((s) => s.load()));
 

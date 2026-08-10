@@ -39,6 +39,7 @@ import { ProvenanceStore } from '../../dataPlane/importer';
 import { bridgeResource, applyNormalize, mapEntity, type BridgeDeps } from './index';
 import { RESOURCE_MAPPINGS, entityForMapping, mappingFor } from './entityMap';
 import { ONTOLOGY, entityById } from '../../dataPlane/ontology';
+import { TEST_TENANT_SCOPE } from '../../tenancy/testScope';
 
 const ACTOR = 'priya@example.com';
 const NOW = '2026-08-10T00:00:00.000Z';
@@ -159,7 +160,7 @@ describe('connector → data plane bridge', () => {
     imported = [];
     granted = new Set<EnterprisePermission>(['crm:read', 'crm:manage']);
     stores = new Map(
-      MODULES.map((m) => [m.id, new EnterpriseRecordStore(join(dir, `${m.id}.json`), m.id, m.id)]),
+      MODULES.map((m) => [m.id, new EnterpriseRecordStore(join(dir, `${m.id}.json`), m.id, m.id).bindScope(() => TEST_TENANT_SCOPE)]),
     );
     await Promise.all([...stores.values()].map((s) => s.load()));
     provenance = new ProvenanceStore(join(dir, 'provenance.json'));

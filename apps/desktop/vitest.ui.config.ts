@@ -21,7 +21,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     include: ['ui-tests/**/*.test.tsx'],
-    setupFiles: ['ui-tests/setup.ts'],
+    setupFiles: ['ui-tests/setup.ts', './vitest.setup.ts'],
     // Testing Library must go through Vite's resolver, not Node's require, so
     // the react/react-dom aliases below apply to it too. Externalized, it
     // resolves its own React copy and every hook call fails with a null

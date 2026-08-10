@@ -13,15 +13,67 @@
 
 /* ───────────────────────── Organization runtime ───────────────────────── */
 
+/**
+ * What kind of organization this is. Affects nothing about isolation — a
+ * personal tenant is isolated exactly as hard as an enterprise one.
+ */
+export type OrganizationType = 'personal' | 'business' | 'enterprise';
+
+/**
+ * Whether the tenant may be operated at all.
+ *
+ * `suspended` and `archived` both deny. They are distinct so an operator can
+ * tell "paused, will return" from "closed, kept for the record", and so a
+ * future restore path has something to restore FROM. Permanent deletion is
+ * deliberately not a state here.
+ */
+export type OrganizationStatus = 'active' | 'suspended' | 'archived';
+
+/**
+ * THE TENANT.
+ *
+ * This type is the security boundary. It is not a new concept and there is no
+ * `Tenant` interface anywhere — `Organization` already drove every permission
+ * decision in the app, so promoting it is the only change that puts the
+ * boundary where authorization already happens. A parallel `Tenant` entity
+ * would have created a second authority to disagree with this one.
+ *
+ * `id` is preserved across the upgrade, including the existing `org-default`.
+ */
 export interface Organization {
   id: string;
   name: string;
   slug: string;
   /** Short human description of what the org does. */
   description: string;
+  /** Optional so a pre-P11 file parses; absent is read as `business`. */
+  type?: OrganizationType;
+  /** Optional so a pre-P11 file parses; absent is read as `active`. */
+  status?: OrganizationStatus;
   createdAt: string;
   updatedAt: string;
   metadata: Record<string, unknown>;
+}
+
+/** The declared type, with the pre-P11 default applied in one place. */
+export function organizationType(org: Organization): OrganizationType {
+  return org.type ?? 'business';
+}
+
+/**
+ * The declared status, with the pre-P11 default applied in one place.
+ *
+ * Defaults to `active` rather than denying, because every existing install has
+ * no status field and must keep working. New tenants are written with an
+ * explicit status, so the default only ever applies to data that predates it.
+ */
+export function organizationStatus(org: Organization): OrganizationStatus {
+  return org.status ?? 'active';
+}
+
+/** Whether this tenant may be operated. Suspended and archived both refuse. */
+export function organizationIsOperable(org: Organization): boolean {
+  return organizationStatus(org) === 'active';
 }
 
 /** The hierarchical levels of an org chart, from broadest to narrowest. */
@@ -61,9 +113,35 @@ export interface OrgUser {
   /** The unit this member belongs to, if any. */
   unitId: string | null;
   roleIds: string[];
+  /**
+   * Which workspaces inside the tenant this member may operate in.
+   *
+   * ABSENT means every workspace in the tenant — which is what the app did
+   * before P11 and what every existing member row means, so the upgrade
+   * changes nobody's access. PRESENT means restricted to exactly this list.
+   * An EMPTY array is not "all"; it is a member of the tenant with no
+   * workspace, which denies.
+   *
+   * `orgId` above is the tenant membership. It already existed; nothing ever
+   * consulted it as one, which is the gap P11 closes.
+   */
+  workspaceIds?: string[];
   status: OrgUserStatus;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * Whether a member may operate in a workspace of their own tenant.
+ *
+ * Deliberately does NOT check the tenant — the caller has to establish that
+ * separately, because conflating "wrong tenant" with "wrong workspace" is how
+ * a workspace check ends up accidentally answering a tenant question.
+ */
+export function memberMayUseWorkspace(member: OrgUser, workspaceId: string): boolean {
+  if (member.status !== 'active') return false;
+  if (member.workspaceIds === undefined) return true;
+  return member.workspaceIds.includes(workspaceId);
 }
 
 /* ─────────────────────────── Roles & permissions ──────────────────────── */

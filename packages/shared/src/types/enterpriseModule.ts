@@ -59,6 +59,32 @@ export interface EnterpriseEntity {
   /** Actor (email/id) that created / last-updated the record, if known. */
   createdBy: string | null;
   updatedBy: string | null;
+  /**
+   * THE TENANT THIS RECORD BELONGS TO.
+   *
+   * Optional in the TYPE only, so a file written before P11 still parses.
+   * Absent or empty means UNRESOLVED — the record's owner is not known, and an
+   * unresolved record is visible to NO tenant. It is not a placeholder for "the
+   * default tenant": assigning it would be a guess, the guess is silent, and
+   * afterwards it is indistinguishable from a correct answer.
+   *
+   * A top-level field rather than something inside `fields`, deliberately.
+   * `validateEnterpriseRecordInput` builds its output from the DECLARED fields
+   * only, so a scope routed through `fields` would be silently dropped unless
+   * all 106 module descriptors declared it — at which point it would be
+   * editable through the generic form and settable through the generic CRUD
+   * channel, i.e. a tenant could rewrite its own scope. `metadata` has the same
+   * problem and its own docstring already warns about smuggling ids through it.
+   */
+  tenantId?: string | null;
+  /**
+   * The workspace inside that tenant, when the record belongs to one.
+   *
+   * Absent means the record belongs to the tenant as a whole and is readable
+   * from every workspace in it. That is a real case, and it is also the shape a
+   * record has the moment a tenant claims it.
+   */
+  workspaceId?: string | null;
   metadata: EnterpriseRecordMeta;
 }
 

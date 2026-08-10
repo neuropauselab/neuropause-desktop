@@ -27,6 +27,7 @@ import {
 } from '../enterprise/framework';
 import { assessDeleteAgainstLinks, DecisionRecordStore, type IncomingLink } from './decisionService';
 import { HoldStore } from './holdStore';
+import { TEST_TENANT_SCOPE } from '../tenancy/testScope';
 
 const T0 = '2026-08-09T12:00:00.000Z';
 
@@ -154,7 +155,7 @@ describe('Governed delete raises and clears a real hold', () => {
         permissions: { read: 'crm:read', write: 'crm:manage' },
         fields: [{ key: 'name', label: 'Name', type: 'text', required: true }],
       },
-      store: new EnterpriseRecordStore(join(dir, 'customers.json'), 'crm-customers', 'customer'),
+      store: new EnterpriseRecordStore(join(dir, 'customers.json'), 'crm-customers', 'customer').bindScope(() => TEST_TENANT_SCOPE),
     });
     registry.register(module);
     await module.store.load();

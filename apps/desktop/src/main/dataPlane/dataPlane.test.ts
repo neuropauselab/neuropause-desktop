@@ -22,6 +22,7 @@ import { analyzeSource, summarizePlan } from './planner';
 import { applyImportPlan, ProvenanceStore, type ImportDeps } from './importer';
 import { prepareRows, similarity } from './quality';
 import { buildXlsx } from './testFixtures';
+import { TEST_TENANT_SCOPE } from '../tenancy/testScope';
 
 const T0 = '2026-08-08T10:00:00.000Z';
 
@@ -259,7 +260,7 @@ describe('import execution, approval gating and provenance', () => {
   }
 
   function storeFor(moduleId: string): EnterpriseRecordStore {
-    return new EnterpriseRecordStore(join(dir, `${moduleId}.json`), moduleId, moduleId.split('-')[1] ?? 'record');
+    return new EnterpriseRecordStore(join(dir, `${moduleId}.json`), moduleId, moduleId.split('-')[1] ?? 'record').bindScope(() => TEST_TENANT_SCOPE);
   }
 
   const projectBook = buildXlsx([
@@ -535,9 +536,9 @@ describe('end-to-end: a company workbook becomes governed enterprise records', (
 
     // 4. Approve only Projects and Employees; leave Customers unapproved.
     const stores = new Map<string, EnterpriseRecordStore>([
-      ['crm-customers', new EnterpriseRecordStore(join(dir, 'cust.json'), 'crm-customers', 'customer')],
-      ['hr-employees', new EnterpriseRecordStore(join(dir, 'emp.json'), 'hr-employees', 'employee')],
-      ['projects-projects', new EnterpriseRecordStore(join(dir, 'proj.json'), 'projects-projects', 'project')],
+      ['crm-customers', new EnterpriseRecordStore(join(dir, 'cust.json'), 'crm-customers', 'customer').bindScope(() => TEST_TENANT_SCOPE)],
+      ['hr-employees', new EnterpriseRecordStore(join(dir, 'emp.json'), 'hr-employees', 'employee').bindScope(() => TEST_TENANT_SCOPE)],
+      ['projects-projects', new EnterpriseRecordStore(join(dir, 'proj.json'), 'projects-projects', 'project').bindScope(() => TEST_TENANT_SCOPE)],
     ]);
     const audit: string[] = [];
     const { result, provenance } = await applyImportPlan(

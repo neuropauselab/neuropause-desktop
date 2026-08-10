@@ -28,6 +28,7 @@ import {
 import { DecisionRecordStore } from './decisionService';
 import { HoldStore } from './holdStore';
 import { createHoldRaiser, type HoldRaiser } from './raiseHold';
+import { TEST_TENANT_SCOPE } from '../tenancy/testScope';
 
 const T0 = '2026-08-09T12:00:00.000Z';
 
@@ -72,7 +73,7 @@ describe('the last three HOLD triggers', () => {
         fields: [{ key: 'reference', label: 'Reference', type: 'text', required: true }],
         actions: [{ key: 'post', label: 'Post' }],
       },
-      store: new EnterpriseRecordStore(join(dir, 'je.json'), 'finance-journal-entries', 'entry'),
+      store: new EnterpriseRecordStore(join(dir, 'je.json'), 'finance-journal-entries', 'entry').bindScope(() => TEST_TENANT_SCOPE),
       hooks: {
         // Mirrors the real module: a closed period is declared as a POLICY
         // refusal, not a validation error, because no privilege overrides it.

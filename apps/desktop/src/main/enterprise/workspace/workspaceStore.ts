@@ -111,10 +111,68 @@ export class WorkspaceStore extends EventEmitter {
     return this.workspaces.get(this.activeId) ?? (this.workspaces.values().next().value as Workspace);
   }
 
+  /** Whether the file has been read. `false` means "do not trust an absence". */
+  isLoaded(): boolean {
+    return this.loaded;
+  }
+
+  /**
+   * The active workspace id, or NULL before the file has been read.
+   *
+   * THE BUG THIS FIXES. `activeId` is initialised to `'workspace-default'` at
+   * declaration, so this used to return a plausible-looking id unconditionally —
+   * including during the ~270 lines of composition between `initConnectors` and
+   * the `workspaceStore.load()` inside `initEnterprise`, and including while the
+   * connector sync scheduler was already running. If the persisted active
+   * workspace was anything other than the default, every workspace-derived read
+   * in that window silently resolved to the WRONG workspace, and the fail-closed
+   * guards written against `''` were unreachable.
+   *
+   * Program 10 got this right twice by accident and once on purpose: the sync
+   * service authorizer starts unbound and denies, and the relationship engine
+   * returns null with a "not up yet" comment. This was given a DEFAULT instead
+   * of a DENIAL. That one-word difference is the whole finding.
+   */
+  activeWorkspaceIdOrNull(): string | null {
+    if (!this.loaded) return null;
+    return this.workspaces.has(this.activeId) ? this.activeId : null;
+  }
+
+  /**
+   * The active workspace id as a bare string.
+   *
+   * Retained for the callers that only stamp it onto an audit line or a display
+   * label, where a wrong-but-plausible value is a cosmetic defect rather than a
+   * boundary breach. ANY caller that gates on it must use
+   * `activeWorkspaceIdOrNull` — and the tenant resolver, which is the only
+   * thing that should be gating, does.
+   */
   activeWorkspaceId(): string {
     return this.activeId;
   }
 
+  /**
+   * The active workspace id for a LABEL or an AUDIT STAMP. Never for a gate.
+   *
+   * Same value as `activeWorkspaceId`, under a name that says what it is safe
+   * for. The two exist because eleven of the fifteen callers only stamp the id
+   * onto an audit line or render it, where a wrong-but-plausible value is a
+   * cosmetic defect — and four gated on it, where the same value was a boundary
+   * breach. Keeping one function meant every caller looked identical.
+   */
+  activeWorkspaceIdForDisplay(): string {
+    return this.activeId;
+  }
+
+  /**
+   * Create a workspace inside a tenant.
+   *
+   * `organizationId` is NOT validated here on purpose — this store does not know
+   * what organizations exist, and giving it an org reader would make it the
+   * second place that answers a tenant question. The caller validates. What
+   * changed in P11 is that the caller now actually does, and no longer accepts
+   * the value from the renderer: see `enterprise/index.ts`.
+   */
   create(name: string, organizationId: string): Workspace {
     const now = new Date().toISOString();
     const ws: Workspace = {

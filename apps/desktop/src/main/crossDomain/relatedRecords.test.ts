@@ -24,6 +24,7 @@ import { EnterpriseRecordStore } from '../enterprise/framework/enterpriseRecordS
 import { RelationshipStore } from '../dataPlane/relationshipStore';
 import { RelationshipEngine } from '../dataPlane/relationshipEngine';
 import { buildRelatedRecords } from './relatedRecords';
+import { TEST_TENANT_SCOPE } from '../tenancy/testScope';
 
 const T0 = '2026-08-10T00:00:00.000Z';
 const ACTOR = 'priya@example.com';
@@ -103,7 +104,7 @@ describe('cross-domain related records', () => {
         join(dir, `${moduleId}.json`),
         moduleId,
         moduleId,
-      );
+      ).bindScope(() => TEST_TENANT_SCOPE);
     }
     relationships = new RelationshipStore(join(dir, 'rel.json'));
     await Promise.all([...Object.values(stores).map((s) => s.load()), relationships.load()]);

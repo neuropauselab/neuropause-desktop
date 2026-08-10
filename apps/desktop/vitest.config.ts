@@ -6,6 +6,8 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
+    // P11 — every store needs a tenant. See vitest.setup.ts.
+    setupFiles: ['./vitest.setup.ts'],
     // Platform-core (main) tests, plus the renderer's PURE view-model logic under
     // `renderer/src/sandbox` (the Sandbox workspace's derivations) and `renderer/src/connectors`
     // (the Enterprise Connector Center's view-model — no DOM, no React), so those presentation

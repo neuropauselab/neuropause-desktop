@@ -28,6 +28,7 @@ import { EnterpriseRecordStore } from '../enterprise/framework/enterpriseRecordS
 import { initDataPlane, type DataPlaneSubsystem } from './index';
 import { buildXlsx } from './testFixtures';
 import { sourceSignature } from './mappingMemory';
+import { TEST_TENANT_SCOPE } from '../tenancy/testScope';
 
 const DATA_PLANE_CHANNELS: IpcChannelName[] = [
   IpcChannel.DataPlaneInspect,
@@ -114,8 +115,8 @@ beforeEach(async () => {
     'operations:manage',
   ]);
   stores = new Map([
-    ['projects-projects', new EnterpriseRecordStore(join(dir, 'proj.json'), 'projects-projects', 'project')],
-    ['crm-customers', new EnterpriseRecordStore(join(dir, 'cust.json'), 'crm-customers', 'customer')],
+    ['projects-projects', new EnterpriseRecordStore(join(dir, 'proj.json'), 'projects-projects', 'project').bindScope(() => TEST_TENANT_SCOPE)],
+    ['crm-customers', new EnterpriseRecordStore(join(dir, 'cust.json'), 'crm-customers', 'customer').bindScope(() => TEST_TENANT_SCOPE)],
   ]);
   saved = [];
   saveCancelled = false;

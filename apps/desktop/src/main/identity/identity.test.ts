@@ -37,6 +37,7 @@ import { REDACTED_MARKER } from '@neuropause/shared';
 import { EnterpriseRecordStore } from '../enterprise/framework/enterpriseRecordStore';
 import { ProvenanceStore } from '../dataPlane/importer';
 import { initIdentity, type IdentitySubsystem } from './index';
+import { TEST_TENANT_SCOPE } from '../tenancy/testScope';
 
 const NOW = '2026-08-10T09:00:00.000Z';
 const ACTOR = 'priya@example.com';
@@ -123,7 +124,7 @@ describe('identity subsystem', () => {
     workspace = WS_A;
     audit = [];
     imported = [];
-    store = new EnterpriseRecordStore(join(dir, 'customers.json'), CUSTOMERS.id, CUSTOMERS.id);
+    store = new EnterpriseRecordStore(join(dir, 'customers.json'), CUSTOMERS.id, CUSTOMERS.id).bindScope(() => TEST_TENANT_SCOPE);
     await store.load();
     provenance = new ProvenanceStore(join(dir, 'provenance.json'));
     await provenance.load();

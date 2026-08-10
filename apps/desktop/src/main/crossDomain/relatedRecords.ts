@@ -141,12 +141,27 @@ export async function buildRelatedRecords(
     if (!store) return null;
     await store.load();
     const record = store.get(recordId);
-    // `get` returns soft-deleted records where `list` hides them, so the check
-    // is explicit: a link to a deleted customer must not render as a live one.
-    if (!record) {
-      brokenLinks += 1;
-      return { title: `(record ${recordId} no longer exists)`, deleted: true, moduleTitle: described.plural };
-    }
+    /**
+     * P11 — OUT OF SCOPE IS NOT "DELETED".
+     *
+     * `store.get` now returns null for three different reasons: the record does
+     * not exist, it belongs to another tenant, or no scope resolved. Returning a
+     * non-null "no longer exists" object for all three meant the caller's
+     * `if (!resolved) continue` never fired, and the hop was emitted carrying
+     * `sourceValue` — the far record's literal field value — and `decidedBy`, the
+     * email of whoever matched it.
+     *
+     * The file's own header calls the forbidden-root early return "load-bearing"
+     * for exactly this reason, and that protection covered only the PERMISSION
+     * branch. The tenant branch took this path instead. Reachable on any upgraded
+     * install: every pre-P11 record is out of scope everywhere, so every link
+     * pointing at one rendered its field value.
+     *
+     * Returning null costs the `brokenLinks` counter its precision for
+     * out-of-scope targets, which is the right trade: a count is cosmetic, a
+     * quoted field value is a disclosure.
+     */
+    if (!record) return null;
     if (record.status === 'deleted') {
       brokenLinks += 1;
       return { title: `${record.title} (deleted)`, deleted: true, moduleTitle: described.plural };

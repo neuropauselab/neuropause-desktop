@@ -58,6 +58,7 @@ export * from './types/dataPlane';
 export * from './types/sensitivity';
 export * from './types/documentIntelligence';
 export * from './types/identity';
+export * from './types/tenancy';
 export * from './types/finance';
 // Finance → General Ledger (Chart of Accounts + Journal) — pure GL domain rules,
 // the module-layer projection of the packages/business ErpCore posting kernel.
