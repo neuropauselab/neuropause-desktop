@@ -378,6 +378,20 @@ export interface AssistantMessage {
 
 export interface AssistantConversation {
   id: string;
+  /**
+   * The organization this conversation belongs to (P13C N7).
+   *
+   * OPTIONAL so a conversations file written before P13C still parses. Absent
+   * means UNRESOLVED — visible to nobody — rather than back-filled to whoever
+   * happens to be signed in when the file is next read.
+   *
+   * Conversation bodies carry assistant answers SYNTHESISED FROM TENANT DATA,
+   * which is why this is the ownership that matters rather than `workspaceId`
+   * below: that field is nullable and was already `null` for every
+   * conversation started outside a workspace, so it could never have been the
+   * boundary.
+   */
+  tenantId?: string | null;
   workspaceId: string | null;
   title: string;
   pinned: boolean;

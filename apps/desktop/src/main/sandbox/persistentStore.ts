@@ -10,6 +10,12 @@
 import { EventEmitter } from 'node:events';
 import { promises as fs } from 'node:fs';
 import { dirname } from 'node:path';
+import type { TenantScope } from '@neuropause/shared';
+
+/** Anything the sandbox persists. `tenantId` absent ⇒ unresolved ⇒ nobody's. */
+export interface SandboxOwned {
+  tenantId?: string | null;
+}
 
 export abstract class PersistentStore<F> extends EventEmitter {
   protected loaded = false;
@@ -19,6 +25,98 @@ export abstract class PersistentStore<F> extends EventEmitter {
 
   constructor(protected readonly filePath: string) {
     super();
+  }
+
+  /* ── P13C N3: the tenant boundary ──────────────────────────────────────
+   *
+   * WHY THIS LIVES ON THE BASE CLASS
+   *
+   * All five sandbox stores extend this, and before P13C not one of them had a
+   * tenant seam of any kind — no `bindScope`, no `visible()`, no ownership
+   * counts. Putting the seam here means the five stores inherit one
+   * implementation rather than growing five that can drift, and it means a
+   * SIXTH sandbox store added later starts out denying instead of starting out
+   * open.
+   *
+   * WHY THE FILTER IS `tenantId` ONLY, NOT `recordInScope`
+   *
+   * Every sandbox record already has a `workspaceId`, and it is a SANDBOX
+   * workspace id (`sbw_…`) — a different namespace from `TenantScope.workspaceId`,
+   * which is an enterprise workspace. Passing a sandbox record to
+   * `recordInScope` would compare `sbw_…` against an enterprise workspace id
+   * and deny everything, which looks like working isolation right up until
+   * someone notices the product is empty.
+   *
+   * So sandbox ownership is TENANT-level and says so. A sandbox workspace is a
+   * container for an organization's test assets; scoping it to one enterprise
+   * workspace would mean a scenario written in one workspace vanished when the
+   * user switched to another inside the same organization, which is not what
+   * the product means.
+   */
+  private scopeSource: (() => TenantScope | null) | null = null;
+
+  /** Bind the tenant boundary. UNBOUND DENIES. Chainable. */
+  bindScope(source: () => TenantScope | null): this {
+    this.scopeSource = source;
+    return this;
+  }
+
+  /** True once a boundary is bound. Evidence for the migration inventory. */
+  hasScope(): boolean {
+    return this.scopeSource !== null;
+  }
+
+  /** The caller's scope, or null. Null means deny — never "everything". */
+  protected scopeOrDeny(): TenantScope | null {
+    return this.scopeSource === null ? null : this.scopeSource();
+  }
+
+  /**
+   * The tenant a WRITE belongs to, or a refusal.
+   *
+   * Writes throw where reads return empty. A read with no tenant has an honest
+   * empty answer; a write with no tenant would have to invent an owner, and the
+   * record would then be visible to nobody while still consuming an id, a
+   * retention slot and a prune budget.
+   */
+  protected requireTenant(): string {
+    const scope = this.scopeOrDeny();
+    if (scope === null || !scope.tenantId) {
+      throw new Error('No organization is active, so this sandbox object has no owner.');
+    }
+    return scope.tenantId;
+  }
+
+  /** Whether `record` belongs to the caller. Unowned records belong to nobody. */
+  protected mine(record: SandboxOwned): boolean {
+    const scope = this.scopeOrDeny();
+    if (scope === null || !scope.tenantId) return false;
+    const owner = record.tenantId;
+    if (typeof owner !== 'string' || owner === '') return false; // pre-P13C ⇒ unresolved
+    return owner === scope.tenantId;
+  }
+
+  /** Only the caller's records. The one filter every read goes through. */
+  protected onlyMine<T extends SandboxOwned>(records: readonly T[]): T[] {
+    const scope = this.scopeOrDeny();
+    if (scope === null || !scope.tenantId) return [];
+    return records.filter((r) => typeof r.tenantId === 'string' && r.tenantId === scope.tenantId);
+  }
+
+  /**
+   * Ownership counts across EVERY record, ignoring scope.
+   *
+   * Deliberately unscoped: this is the migration inventory's evidence that
+   * pre-P13C rows exist and are visible to nobody. Three integers, no content.
+   */
+  protected countOwnership(records: readonly SandboxOwned[]): {
+    total: number;
+    assigned: number;
+    unresolved: number;
+  } {
+    let assigned = 0;
+    for (const r of records) if (typeof r.tenantId === 'string' && r.tenantId !== '') assigned += 1;
+    return { total: records.length, assigned, unresolved: records.length - assigned };
   }
 
   /** Serialize the in-memory state to the persisted file shape. */

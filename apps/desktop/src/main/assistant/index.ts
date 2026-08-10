@@ -156,7 +156,10 @@ function memoryDeps(correlationId: string): ConversationMemoryDeps {
 }
 
 export function initAssistant(deps: AssistantSubsystemDeps): AssistantSubsystem {
-  const store = new ConversationStore(join(app.getPath('userData'), 'assistant-conversations.json'));
+  const store = new ConversationStore(
+    join(app.getPath('userData'), 'assistant-conversations.json'),
+    // P13C N7 — the same resolver every other scoped store reads.
+  ).bindScope(activeTenantScope);
   const loaded = store.loadAllSync();
 
   /* ── Phase 6 Stage 5 — productivity ports over EXISTING singletons ─────── */

@@ -24,6 +24,20 @@ export interface SandboxWorkspaceSettings {
 }
 
 export interface SandboxWorkspace {
+  /**
+   * The organization this belongs to (P13C N3).
+   *
+   * OPTIONAL so a sandbox file written before P13C still parses. Absent means
+   * UNRESOLVED — the record belongs to no tenant and is visible to none, which
+   * is the same fail-closed reading Programs 12 and 13A/B applied to pre-boundary
+   * rows. It is deliberately not back-filled to the first or active organization:
+   * that guess is the defect this field exists to remove.
+   *
+   * Tenant-level, not workspace-level. The `workspaceId` on these records is a
+   * SANDBOX workspace (`sbw_…`), a different namespace from the enterprise
+   * workspace in `TenantScope`; conflating them would deny every read.
+   */
+  tenantId?: string | null;
   id: string;
   name: string;
   description: string;
@@ -51,6 +65,20 @@ export interface ScenarioMetadata {
 export const EMPTY_SCENARIO_METADATA: ScenarioMetadata = { tags: [], category: null, owner: null, labels: {} };
 
 export interface Scenario {
+  /**
+   * The organization this belongs to (P13C N3).
+   *
+   * OPTIONAL so a sandbox file written before P13C still parses. Absent means
+   * UNRESOLVED — the record belongs to no tenant and is visible to none, which
+   * is the same fail-closed reading Programs 12 and 13A/B applied to pre-boundary
+   * rows. It is deliberately not back-filled to the first or active organization:
+   * that guess is the defect this field exists to remove.
+   *
+   * Tenant-level, not workspace-level. The `workspaceId` on these records is a
+   * SANDBOX workspace (`sbw_…`), a different namespace from the enterprise
+   * workspace in `TenantScope`; conflating them would deny every read.
+   */
+  tenantId?: string | null;
   id: string;
   workspaceId: string;
   /** Stable, human key unique within a workspace (e.g. `checkout-happy-path`). */
@@ -70,6 +98,20 @@ export interface Scenario {
 export type ScenarioSpec = Record<string, unknown>;
 
 export interface ScenarioVersion {
+  /**
+   * The organization this belongs to (P13C N3).
+   *
+   * OPTIONAL so a sandbox file written before P13C still parses. Absent means
+   * UNRESOLVED — the record belongs to no tenant and is visible to none, which
+   * is the same fail-closed reading Programs 12 and 13A/B applied to pre-boundary
+   * rows. It is deliberately not back-filled to the first or active organization:
+   * that guess is the defect this field exists to remove.
+   *
+   * Tenant-level, not workspace-level. The `workspaceId` on these records is a
+   * SANDBOX workspace (`sbw_…`), a different namespace from the enterprise
+   * workspace in `TenantScope`; conflating them would deny every read.
+   */
+  tenantId?: string | null;
   id: string;
   scenarioId: string;
   /** Monotonic 1-based version number. */
@@ -106,6 +148,20 @@ export type ExecutionPriority = 'low' | 'normal' | 'high';
 export const EXECUTION_PRIORITIES: readonly ExecutionPriority[] = ['low', 'normal', 'high'];
 
 export interface Execution {
+  /**
+   * The organization this belongs to (P13C N3).
+   *
+   * OPTIONAL so a sandbox file written before P13C still parses. Absent means
+   * UNRESOLVED — the record belongs to no tenant and is visible to none, which
+   * is the same fail-closed reading Programs 12 and 13A/B applied to pre-boundary
+   * rows. It is deliberately not back-filled to the first or active organization:
+   * that guess is the defect this field exists to remove.
+   *
+   * Tenant-level, not workspace-level. The `workspaceId` on these records is a
+   * SANDBOX workspace (`sbw_…`), a different namespace from the enterprise
+   * workspace in `TenantScope`; conflating them would deny every read.
+   */
+  tenantId?: string | null;
   id: string;
   workspaceId: string;
   scenarioId: string;
@@ -159,6 +215,20 @@ export type ArtifactKind = 'screenshot' | 'video' | 'log' | 'report' | 'result' 
 export const ARTIFACT_KINDS: readonly ArtifactKind[] = ['screenshot', 'video', 'log', 'report', 'result', 'trace', 'other'];
 
 export interface Artifact {
+  /**
+   * The organization this belongs to (P13C N3).
+   *
+   * OPTIONAL so a sandbox file written before P13C still parses. Absent means
+   * UNRESOLVED — the record belongs to no tenant and is visible to none, which
+   * is the same fail-closed reading Programs 12 and 13A/B applied to pre-boundary
+   * rows. It is deliberately not back-filled to the first or active organization:
+   * that guess is the defect this field exists to remove.
+   *
+   * Tenant-level, not workspace-level. The `workspaceId` on these records is a
+   * SANDBOX workspace (`sbw_…`), a different namespace from the enterprise
+   * workspace in `TenantScope`; conflating them would deny every read.
+   */
+  tenantId?: string | null;
   id: string;
   executionId: string;
   workspaceId: string;
@@ -178,6 +248,20 @@ export interface Artifact {
 }
 
 export interface Dataset {
+  /**
+   * The organization this belongs to (P13C N3).
+   *
+   * OPTIONAL so a sandbox file written before P13C still parses. Absent means
+   * UNRESOLVED — the record belongs to no tenant and is visible to none, which
+   * is the same fail-closed reading Programs 12 and 13A/B applied to pre-boundary
+   * rows. It is deliberately not back-filled to the first or active organization:
+   * that guess is the defect this field exists to remove.
+   *
+   * Tenant-level, not workspace-level. The `workspaceId` on these records is a
+   * SANDBOX workspace (`sbw_…`), a different namespace from the enterprise
+   * workspace in `TenantScope`; conflating them would deny every read.
+   */
+  tenantId?: string | null;
   id: string;
   workspaceId: string;
   name: string;
@@ -202,6 +286,20 @@ export interface RunAssertions {
 }
 
 export interface RunResult {
+  /**
+   * The organization this belongs to (P13C N3).
+   *
+   * OPTIONAL so a sandbox file written before P13C still parses. Absent means
+   * UNRESOLVED — the record belongs to no tenant and is visible to none, which
+   * is the same fail-closed reading Programs 12 and 13A/B applied to pre-boundary
+   * rows. It is deliberately not back-filled to the first or active organization:
+   * that guess is the defect this field exists to remove.
+   *
+   * Tenant-level, not workspace-level. The `workspaceId` on these records is a
+   * SANDBOX workspace (`sbw_…`), a different namespace from the enterprise
+   * workspace in `TenantScope`; conflating them would deny every read.
+   */
+  tenantId?: string | null;
   id: string;
   executionId: string;
   outcome: RunOutcome;
@@ -219,6 +317,20 @@ export interface ReportSection {
 }
 
 export interface SandboxReport {
+  /**
+   * The organization this belongs to (P13C N3).
+   *
+   * OPTIONAL so a sandbox file written before P13C still parses. Absent means
+   * UNRESOLVED — the record belongs to no tenant and is visible to none, which
+   * is the same fail-closed reading Programs 12 and 13A/B applied to pre-boundary
+   * rows. It is deliberately not back-filled to the first or active organization:
+   * that guess is the defect this field exists to remove.
+   *
+   * Tenant-level, not workspace-level. The `workspaceId` on these records is a
+   * SANDBOX workspace (`sbw_…`), a different namespace from the enterprise
+   * workspace in `TenantScope`; conflating them would deny every read.
+   */
+  tenantId?: string | null;
   id: string;
   executionId: string;
   scenarioId: string;
@@ -263,6 +375,8 @@ export interface RunHistoryPage {
 /** Lightweight change signal broadcast to the renderer for live refresh (the rich,
  *  per-execution history lives in the execution store's timeline, not on a shared bus). */
 export interface SandboxEvent {
+  /** P13C N3 — the owning tenant, so an unfiltered fan-out is filterable. */
+  tenantId?: string | null;
   kind: 'queued' | 'started' | 'passed' | 'failed' | 'error' | 'cancelled' | 'timed_out' | 'artifact';
   executionId: string;
   workspaceId: string;

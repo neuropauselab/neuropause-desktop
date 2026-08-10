@@ -68,6 +68,8 @@ export class SandboxScenarioStore extends PersistentStore<ScenarioFile> {
     const iso = new Date(this.now()).toISOString();
     const scenario: Scenario = {
       id: `sbs_${randomUUID()}`,
+      // P13C N3 — owner from the resolved tenant. Throws when none resolves.
+      tenantId: this.requireTenant(),
       workspaceId: input.workspaceId,
       key,
       name: input.name,
@@ -85,24 +87,47 @@ export class SandboxScenarioStore extends PersistentStore<ScenarioFile> {
     return scenario;
   }
 
+  /** The scenario, IF it is the caller's. A foreign id reads as absent. */
   get(id: string): Scenario | null {
+    const sc = this.scenarios.get(id) ?? null;
+    return sc !== null && this.mine(sc) ? sc : null;
+  }
+
+  /** Unscoped, for the ENGINE's scheduling only. See workspaceStore. */
+  unscopedForEngine(id: string): Scenario | null {
     return this.scenarios.get(id) ?? null;
   }
-  getByKey(workspaceId: string, key: string): Scenario | null {
-    return [...this.scenarios.values()].find((s) => s.workspaceId === workspaceId && s.key === key) ?? null;
+
+  /** Unscoped ownership counts, for the migration inventory only. */
+  ownershipCounts(): { total: number; assigned: number; unresolved: number } {
+    return this.countOwnership([...this.scenarios.values()]);
   }
+  getByKey(workspaceId: string, key: string): Scenario | null {
+    return this.onlyMine([...this.scenarios.values()]).find(
+      (s) => s.workspaceId === workspaceId && s.key === key,
+    ) ?? null;
+  }
+  /**
+   * The caller's scenarios, optionally narrowed to one sandbox workspace.
+   *
+   * P13C N3 — AN OMITTED `workspaceId` NO LONGER WIDENS. It used to mean "every
+   * workspace on the install", so omitting the field was the bypass. It now
+   * means "every workspace of MINE", because the tenant filter is applied
+   * first and unconditionally — the optional argument narrows within a
+   * boundary it can never cross.
+   */
   list(opts: { workspaceId?: string; includeArchived?: boolean } = {}): Scenario[] {
-    return [...this.scenarios.values()]
+    return this.onlyMine([...this.scenarios.values()])
       .filter((s) => (opts.workspaceId ? s.workspaceId === opts.workspaceId : true))
       .filter((s) => (opts.includeArchived ? true : !s.archived))
       .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
   }
   count(): number {
-    return this.scenarios.size;
+    return this.list({ includeArchived: true }).length;
   }
 
   update(id: string, patch: { name?: string; description?: string; metadata?: Partial<ScenarioMetadata> }): Scenario | null {
-    const s = this.scenarios.get(id);
+    const s = this.get(id); // scoped: a foreign id is not found
     if (!s) return null;
     const next: Scenario = {
       ...s,
@@ -117,7 +142,7 @@ export class SandboxScenarioStore extends PersistentStore<ScenarioFile> {
   }
 
   archive(id: string, archived: boolean): Scenario | null {
-    const s = this.scenarios.get(id);
+    const s = this.get(id); // scoped: a foreign id is not found
     if (!s) return null;
     const next = { ...s, archived, updatedAt: new Date(this.now()).toISOString() };
     this.scenarios.set(id, next);
@@ -127,7 +152,7 @@ export class SandboxScenarioStore extends PersistentStore<ScenarioFile> {
 
   /** Append a new immutable version; an identical spec dedupes to the current head. */
   createVersion(scenarioId: string, spec: ScenarioSpec, changelog = ''): ScenarioVersion | null {
-    const s = this.scenarios.get(scenarioId);
+    const s = this.get(scenarioId); // scoped
     if (!s) return null;
     const list = this.versionsByScenario.get(scenarioId) ?? [];
     const checksum = checksumSpec(spec);
@@ -136,6 +161,9 @@ export class SandboxScenarioStore extends PersistentStore<ScenarioFile> {
 
     const version: ScenarioVersion = {
       id: `sbv_${randomUUID()}`,
+      // Inherits the scenario's owner rather than re-resolving: a version
+      // belongs to whatever the scenario belongs to, always.
+      tenantId: s.tenantId ?? null,
       scenarioId,
       version: (head?.version ?? 0) + 1,
       spec,
@@ -150,14 +178,33 @@ export class SandboxScenarioStore extends PersistentStore<ScenarioFile> {
     return version;
   }
 
+  /**
+   * A scenario's versions — gated on the SCENARIO, not the version rows.
+   *
+   * `spec` is the scenario's full definition, so this is a content read and the
+   * sharpest of the three. Gating on the parent means one check covers all
+   * three accessors and cannot disagree with `get`.
+   */
   versions(scenarioId: string): ScenarioVersion[] {
+    if (this.get(scenarioId) === null) return [];
     return [...(this.versionsByScenario.get(scenarioId) ?? [])];
   }
   getVersion(scenarioId: string, version: number): ScenarioVersion | null {
+    if (this.get(scenarioId) === null) return null;
     return (this.versionsByScenario.get(scenarioId) ?? []).find((v) => v.version === version) ?? null;
   }
   latestVersion(scenarioId: string): ScenarioVersion | null {
+    if (this.get(scenarioId) === null) return null;
     const list = this.versionsByScenario.get(scenarioId) ?? [];
     return list[list.length - 1] ?? null;
+  }
+
+  /** Unscoped, for the ENGINE's scheduling only. */
+  latestVersionForEngine(scenarioId: string): ScenarioVersion | null {
+    const list = this.versionsByScenario.get(scenarioId) ?? [];
+    return list[list.length - 1] ?? null;
+  }
+  getVersionForEngine(scenarioId: string, version: number): ScenarioVersion | null {
+    return (this.versionsByScenario.get(scenarioId) ?? []).find((v) => v.version === version) ?? null;
   }
 }

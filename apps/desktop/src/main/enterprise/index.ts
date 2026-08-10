@@ -1799,7 +1799,21 @@ function buildHandlers(): SecureHandlerDef[] {
     {
       channel: IpcChannel.EnterpriseWorkspaceActive,
       schema: EmptyRequest,
-      handler: () => workspaceStore.active(),
+      /**
+       * P13C N9 — REFUSE rather than substitute.
+       *
+       * `active()` now returns null when the active id misses, where it used to
+       * return the first workspace on the install — a foreign tenant's name and
+       * organizationId, over a channel with no permission. The response
+       * contract is a `Workspace`, so a refusal is thrown; the secure bridge
+       * surfaces the message, and the renderer shows an error instead of
+       * silently displaying somebody else's workspace.
+       */
+      handler: () => {
+        const ws = workspaceStore.active();
+        if (ws === null) throw new Error('No workspace is active.');
+        return ws;
+      },
     },
     {
       channel: IpcChannel.EnterpriseWorkspaceCreate,
@@ -1889,7 +1903,9 @@ function buildHandlers(): SecureHandlerDef[] {
           for (const onSwitch of workspaceSwitchListeners) onSwitch(ws.id);
           audit('workspace.switch', ws.id, `Switched to workspace "${ws.name}"`);
         }
-        return workspaceStore.active();
+        const active = workspaceStore.active();
+        if (active === null) throw new Error('No workspace is active.');
+        return active;
       },
     },
 

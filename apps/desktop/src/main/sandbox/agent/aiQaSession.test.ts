@@ -16,6 +16,7 @@ import { createQaExecutor, type QaExecutorBackend } from './executor';
 import { DeterministicReasoner } from './reasoner';
 import { FakeQaMemory } from './memory';
 import type { QaExecutor, QaRunResult } from './ports';
+import { TEST_TENANT_SCOPE } from '../../tenancy/testScope';
 
 const clock = (): (() => number) => {
   let t = 1000;
@@ -86,11 +87,11 @@ describe('agent session (fake executor)', () => {
 function realBackend(script: FakePlatformScript = {}) {
   const now = clock();
   const dir = join(tmpdir(), `s4-${Date.now()}-${Math.floor(now())}`);
-  const workspaces = new SandboxWorkspaceStore(`${dir}-w.json`, now);
-  const scenarios = new SandboxScenarioStore(`${dir}-s.json`, now);
-  const executions = new SandboxExecutionStore(`${dir}-e.json`, now);
-  const artifacts = new SandboxArtifactStore(`${dir}-a.json`, now);
-  const datasets = new SandboxDatasetStore(`${dir}-d.json`, now);
+  const workspaces = new SandboxWorkspaceStore(`${dir}-w.json`, now).bindScope(() => TEST_TENANT_SCOPE);
+  const scenarios = new SandboxScenarioStore(`${dir}-s.json`, now).bindScope(() => TEST_TENANT_SCOPE);
+  const executions = new SandboxExecutionStore(`${dir}-e.json`, now).bindScope(() => TEST_TENANT_SCOPE);
+  const artifacts = new SandboxArtifactStore(`${dir}-a.json`, now).bindScope(() => TEST_TENANT_SCOPE);
+  const datasets = new SandboxDatasetStore(`${dir}-d.json`, now).bindScope(() => TEST_TENANT_SCOPE);
   const engine = new SandboxExecutionEngine({ workspaces, scenarios, executions, artifacts, datasets, now });
   initEnterpriseRunner({ engine, platform: new FakeEnterprisePlatform(script, now), now, sleep: () => Promise.resolve() });
   const ws = workspaces.create({ name: 'AI QA' });

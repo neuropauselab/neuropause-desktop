@@ -1227,6 +1227,16 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   const sandbox = await initSandbox({
     broadcast: deps.broadcast,
     baseDir: join(app.getPath('userData'), 'sandbox'),
+    /**
+     * P13C N3 — the sandbox joins the bound stores.
+     *
+     * Nine stores are bound to `activeTenantScope` a few hundred lines above;
+     * the five sandbox stores were absent from that list, which is why the whole
+     * subsystem had no tenant. The same resolver, so a sandbox read inside a
+     * background run answers for the run's tenant exactly as every other store
+     * does.
+     */
+    scope: activeTenantScope,
   });
   // AI Sandbox S2 (Desktop Automation) + S3 (Enterprise Scenario Runner) register their
   // executors onto the S1 engine THROUGH a router, wired below (after the secure handler
@@ -3968,19 +3978,45 @@ function buildSandboxExecutorBackend(cfg: SandboxSecureCfg): {
     return runSecureHandler(def, payload, cfg.secureBridgeDeps);
   };
 
-  let workspaceId: string | null = null;
+  /**
+   * P13C N3 — keyed by TENANT, not a single process-wide value.
+   *
+   * This was one `let workspaceId`, resolved once to the FIRST sandbox
+   * workspace on the install (or a created "AI QA" one) and then memoised for
+   * the life of the process. Every AI-QA session, every perf-lab run and every
+   * validation pipeline — for every tenant — wrote its scenarios, executions
+   * and artifacts into that one workspace forever.
+   *
+   * A map keyed by tenant makes the memo per-owner, and an unresolved tenant
+   * gets no entry at all rather than sharing whoever was first.
+   */
+  const workspaceIdByTenant = new Map<string, string>();
   const backend: QaExecutorBackend = {
     ensureWorkspace: async () => {
-      if (workspaceId) return workspaceId;
+      /**
+       * The tenant is resolved per call, and the memo is keyed by it.
+       *
+       * `SandboxWorkspaceList` is now scoped, so `list[0]` is "the first of
+       * MINE" rather than "the first on the install" — the adoption is still a
+       * `[0]`, but it can no longer cross a boundary. Failing closed when no
+       * tenant resolves is what stops the AI-QA path creating an unowned
+       * workspace at a moment when nobody could own it.
+       */
+      const tenantId = activeTenantScope()?.tenantId ?? null;
+      if (tenantId === null) throw new Error('No organization is active, so this run has no owner.');
+      const memo = workspaceIdByTenant.get(tenantId);
+      if (memo) return memo;
       const list = (await dispatch(IpcChannel.SandboxWorkspaceList, {}).catch(() => [])) as {
         id?: string;
       }[];
-      if (Array.isArray(list) && list[0]?.id) workspaceId = list[0].id;
+      let resolved: string;
+      if (Array.isArray(list) && list[0]?.id) resolved = list[0].id;
       else
-        workspaceId = (
+        resolved = (
           (await dispatch(IpcChannel.SandboxWorkspaceCreate, { name: 'AI QA' })) as { id: string }
         ).id;
-      return workspaceId;
+      workspaceIdByTenant.set(tenantId, resolved);
+      return resolved;
     },
     createScenario: async (wsId, key, name) =>
       (
@@ -4111,6 +4147,10 @@ async function wirePerfSecurityLab(
     executorBackend: backend,
     observers: { health: cfg.health, kpis: cfg.kpis, auditCount: cfg.auditCount, queueDepth },
     benchmarksPath: cfg.benchmarksPath,
+    // P13C — the benchmark store joins the bound stores. A baseline is echoed
+    // verbatim into the next run's regression findings, so an unbound one put
+    // another tenant's measurements inside this tenant's certification report.
+    scope: activeTenantScope,
   });
 }
 
@@ -4141,6 +4181,10 @@ async function wireContinuousValidation(
     executors: { qaExecutor: executor, runQaSession: cfg.runQaSession, runLab: cfg.runLab },
     benchmarks: cfg.benchmarks,
     runsPath: cfg.runsPath,
+    // P13C — the validation run store joins the bound stores. It extends the
+    // same PersistentStore the five S1 stores do and was the subclass nobody
+    // bound; its certification reports carry live executive KPI figures.
+    scope: activeTenantScope,
     enableSchedules: false,
     scheduler: {
       every: (id, ms, fn) => taskScheduler.every(id, ms, fn),

@@ -39,6 +39,9 @@ export class SandboxDatasetStore extends PersistentStore<DatasetFile> {
     const iso = new Date(this.now()).toISOString();
     const dataset: Dataset = {
       id: `sbd_${randomUUID()}`,
+      // P13C N3 — datasets are input fixtures and can carry real business rows,
+      // which is why the program calls them particularly sensitive.
+      tenantId: this.requireTenant(),
       workspaceId: input.workspaceId,
       name: input.name,
       description: input.description ?? '',
@@ -53,17 +56,26 @@ export class SandboxDatasetStore extends PersistentStore<DatasetFile> {
     return dataset;
   }
 
+  /** The dataset, IF it is the caller's. Also the ATTACH gate — see the engine. */
   get(id: string): Dataset | null {
-    return this.datasets.get(id) ?? null;
+    const d = this.datasets.get(id) ?? null;
+    return d !== null && this.mine(d) ? d : null;
   }
+  /** AN OMITTED `workspaceId` NARROWS TO NOTHING EXTRA — it never widens. */
   list(workspaceId?: string): Dataset[] {
-    return [...this.datasets.values()]
+    return this.onlyMine([...this.datasets.values()])
       .filter((d) => (workspaceId ? d.workspaceId === workspaceId : true))
       .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
   }
   delete(id: string): boolean {
+    if (this.get(id) === null) return false; // not the caller's ⇒ nothing to delete
     const ok = this.datasets.delete(id);
     if (ok) this.changed();
     return ok;
+  }
+
+  /** Unscoped ownership counts, for the migration inventory only. */
+  ownershipCounts(): { total: number; assigned: number; unresolved: number } {
+    return this.countOwnership([...this.datasets.values()]);
   }
 }

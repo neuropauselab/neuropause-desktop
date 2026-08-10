@@ -62,7 +62,7 @@ import type {
   SandboxWorkspaceDeleteRequest as TWorkspaceDelete,
   SandboxWorkspaceUpdateRequest as TWorkspaceUpdate,
 } from '@neuropause/shared';
-import type { IpcBroadcaster } from '@neuropause/shared';
+import type { IpcBroadcaster, TenantScope } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { SandboxWorkspaceStore } from './workspaceStore';
@@ -77,6 +77,15 @@ import { buildDashboard } from './dashboard';
 const log = createLogger('sandbox');
 
 export interface SandboxDeps {
+  /**
+   * P13C N3 — the tenant boundary for every sandbox store.
+   *
+   * Injected rather than imported so this root stays testable, and REQUIRED so
+   * a caller cannot construct the subsystem without one. Before this the five
+   * stores had no tenant seam of any kind, and the composition root at
+   * `runtimeCore` bound nine other stores while omitting all five of these.
+   */
+  scope: () => TenantScope | null;
   broadcast: IpcBroadcaster;
   /** Directory the sandbox stores live under (e.g. <userData>/sandbox). */
   baseDir: string;
@@ -98,8 +107,47 @@ export async function initSandbox(deps: SandboxDeps): Promise<SandboxSubsystem> 
   const artifacts = new SandboxArtifactStore(join(deps.baseDir, 'artifacts.json'), now);
   const datasets = new SandboxDatasetStore(join(deps.baseDir, 'datasets.json'), now);
 
+  // Bind BEFORE load: an unbound store denies, and denying during hydration is
+  // the correct order — the alternative is a window where reads are open.
+  for (const store of [workspaces, scenarios, executions, artifacts, datasets]) {
+    store.bindScope(deps.scope);
+  }
+
+  /**
+   * THE BOOT INVARIANT — the check whose absence let two stores ship unbound.
+   *
+   * `hasScope()` existed on the base class with ZERO callers, and the fresh
+   * sweep found exactly what that predicts: `ValidationRunStore` and
+   * `BenchmarkStore` extend the same substrate, gained the same seam, and were
+   * never bound — so they stayed open while their five siblings closed. The
+   * enterprise module registry has thrown on an unbound store since P11; the
+   * sandbox substrate had the accessor and nothing that read it.
+   *
+   * Throwing at composition rather than warning, because a sandbox store that
+   * denies every read is a broken product someone reports, while one that
+   * answers every read is a disclosure nobody sees.
+   */
+  const unbound = [
+    ['workspaces', workspaces],
+    ['scenarios', scenarios],
+    ['executions', executions],
+    ['artifacts', artifacts],
+    ['datasets', datasets],
+  ].filter(([, store]) => !(store as { hasScope(): boolean }).hasScope());
+  if (unbound.length > 0) {
+    throw new Error(`Sandbox stores have no tenant boundary: ${unbound.map(([n]) => n).join(', ')}`);
+  }
+
   await Promise.all([workspaces.load(), scenarios.load(), executions.load(), artifacts.load(), datasets.load()]);
-  workspaces.ensureDefault();
+  /**
+   * NO DEFAULT WORKSPACE AT BOOT.
+   *
+   * `ensureDefault()` used to run here, at startup, with no tenant resolved —
+   * which under the new ownership rule would throw, and under the old one
+   * created an unowned workspace that every tenant then adopted. A tenant's
+   * default sandbox is created lazily, on their first sandbox call, when there
+   * is an organization to own it.
+   */
 
   const engine = new SandboxExecutionEngine({
     workspaces,
@@ -107,6 +155,16 @@ export async function initSandbox(deps: SandboxDeps): Promise<SandboxSubsystem> 
     executions,
     artifacts,
     datasets,
+    /**
+     * P13C N3 — the broadcast carries its owner.
+     *
+     * This fans out to EVERY open window, so a renderer showing tenant B was
+     * told when tenant A's run started, with A's execution, workspace and
+     * scenario ids in the payload. The event now names its tenant, and the
+     * engine stamps it from the execution row, so a window can ignore what is
+     * not its own. The ids alone were the disclosure — a live feed of another
+     * customer's activity, and a supply of ids to try elsewhere.
+     */
     broadcast: (event: SandboxEvent) => deps.broadcast(IpcChannel.SandboxEventBroadcast, event),
     now,
   });
@@ -116,7 +174,12 @@ export async function initSandbox(deps: SandboxDeps): Promise<SandboxSubsystem> 
 
   const handlers: SecureHandlerDef[] = [
     /* Workspace */
-    { channel: IpcChannel.SandboxWorkspaceList, schema: EmptyRequest, requireAuth: true, permission: read, handler: () => workspaces.list() },
+    { channel: IpcChannel.SandboxWorkspaceList, schema: EmptyRequest, requireAuth: true, permission: read, handler: () => {
+      // A tenant with no sandbox workspace gets their OWN, lazily. Boot no
+      // longer creates one, because at boot there is no tenant to own it.
+      if (workspaces.list().length === 0) workspaces.ensureDefault();
+      return workspaces.list();
+    } },
     {
       channel: IpcChannel.SandboxWorkspaceCreate, schema: SandboxWorkspaceCreateRequest, requireAuth: true, permission: manage, audit: true,
       handler: (p) => { const r = p as TWorkspaceCreate; return workspaces.create({ name: r.name, description: r.description, settings: r.settings }); },

@@ -18,6 +18,7 @@ import { BenchmarkStore } from '../lab/benchmarkStore';
 import { initContinuousValidation } from './index';
 import type { LabRunOutput, StageExecutors } from './ports';
 import type { SecureHandlerDef } from '../../ipc/secureBridge';
+import { TEST_TENANT_SCOPE } from '../../tenancy/testScope';
 
 function clock(): () => number {
   let t = 1000;
@@ -47,7 +48,8 @@ function fakeExecutors(): StageExecutors {
 async function subsystem() {
   return initContinuousValidation({
     executors: fakeExecutors(),
-    benchmarks: new BenchmarkStore(tmpPath('bench')),
+    benchmarks: new BenchmarkStore(tmpPath('bench')).bindScope(() => TEST_TENANT_SCOPE),
+    scope: () => TEST_TENANT_SCOPE,
     runsPath: tmpPath('runs'),
     version: '1.0.0',
     now: clock(),

@@ -105,6 +105,14 @@ export interface StageResult {
 
 export interface ValidationRun {
   id: string;
+  /**
+   * The organization this run belongs to (P13C N3, second pass).
+   *
+   * Absent means UNRESOLVED — visible to nobody. A certification report carries
+   * that tenant's live executive KPI figures, so an unowned historical run must
+   * not be adopted by whoever reads the file next.
+   */
+  tenantId?: string | null;
   pipeline: PipelineKind;
   trigger: TriggerKind;
   status: ValidationRunStatus;

@@ -46,8 +46,24 @@ export class WorkspaceStore extends EventEmitter {
     } catch {
       this.applySeed();
     }
+    /**
+     * P13C N9 (second half) — THE SAME FALLBACK, AT LOAD TIME.
+     *
+     * This repaired an unresolvable active pointer with
+     * `this.workspaces.keys().next().value` — the first workspace in insertion
+     * order, across every organization. Fixing only the read accessor would
+     * have left the guess here, one moment earlier and harder to see: the
+     * pointer would already be pointing at a stranger by the time anything
+     * read it.
+     *
+     * The seeded default is preferred when it exists, because that is this
+     * install's own first workspace rather than a borrowed one. Otherwise the
+     * pointer is left UNRESOLVABLE, so `active()` and `activeWorkspaceIdOrNull`
+     * both report nothing and the user is asked to choose — an empty switcher
+     * someone reports, rather than a silent landing inside another tenant.
+     */
     if (!this.workspaces.has(this.activeId)) {
-      this.activeId = this.workspaces.keys().next().value as string;
+      if (this.workspaces.has(DEFAULT_WORKSPACE_ID)) this.activeId = DEFAULT_WORKSPACE_ID;
     }
     this.loaded = true;
     log.info('Workspace manager ready', { workspaces: this.workspaces.size, active: this.activeId });
@@ -107,8 +123,25 @@ export class WorkspaceStore extends EventEmitter {
     return this.workspaces.get(id) ?? null;
   }
 
-  active(): Workspace {
-    return this.workspaces.get(this.activeId) ?? (this.workspaces.values().next().value as Workspace);
+  /**
+   * The active workspace, or NULL.
+   *
+   * P13C N9 — this used to end in `?? this.workspaces.values().next().value`:
+   * the FIRST workspace on the install, across every organization. So when
+   * `activeId` missed — a stale id, a deleted workspace, a cold start — it
+   * handed back a foreign tenant's workspace, `name` and `organizationId` and
+   * all. `EnterpriseWorkspaceActive` returns this value verbatim and declares
+   * no permission, so that was a reachable read.
+   *
+   * Null is the fail-closed answer and matches `activeWorkspaceIdOrNull` a few
+   * lines below, which this file already documents as the correct pattern —
+   * "do not trust an absence" cuts both ways, and inventing a presence is
+   * worse. The signature changes to `Workspace | null` deliberately: callers
+   * now have to say what they do when there is no workspace, which is a
+   * question the old signature let them skip.
+   */
+  active(): Workspace | null {
+    return this.workspaces.get(this.activeId) ?? null;
   }
 
   /** Whether the file has been read. `false` means "do not trust an absence". */

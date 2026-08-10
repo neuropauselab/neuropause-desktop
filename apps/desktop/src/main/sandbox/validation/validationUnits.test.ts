@@ -14,6 +14,7 @@ import { notificationsFor } from './notifications';
 import { ValidationRunStore } from './runStore';
 import { BenchmarkStore } from '../lab/benchmarkStore';
 import type { LabRunOutput, StageExecutors, ValidationDeps } from './ports';
+import { TEST_TENANT_SCOPE } from '../../tenancy/testScope';
 
 function clock(): () => number {
   let t = 1000;
@@ -42,7 +43,7 @@ function executors(over: Partial<StageExecutors> = {}): StageExecutors {
   };
 }
 function deps(over: Partial<ValidationDeps> = {}): ValidationDeps {
-  return { executors: executors(), benchmarks: new BenchmarkStore(tmpPath('b')), now: clock(), ...over };
+  return { executors: executors(), benchmarks: new BenchmarkStore(tmpPath('b')).bindScope(() => TEST_TENANT_SCOPE), now: clock(), ...over };
 }
 
 describe('pipeline catalog', () => {
@@ -93,7 +94,7 @@ describe('scheduler (reuses the injected scheduler)', () => {
 
 describe('regression analysis (reuses the benchmark store)', () => {
   it('detects a latency regression against the baseline', () => {
-    const bench = new BenchmarkStore(tmpPath('reg'));
+    const bench = new BenchmarkStore(tmpPath('reg')).bindScope(() => TEST_TENANT_SCOPE);
     expect(analyzeRegression({ version: '1', latencyP95Ms: 100 }, bench).regressed).toBe(false); // no baseline
     const second = analyzeRegression({ version: '2', latencyP95Ms: 150 }, bench);
     expect(second.regressed).toBe(true);
@@ -101,7 +102,7 @@ describe('regression analysis (reuses the benchmark store)', () => {
     expect(second.worst).toBe('critical'); // +50%
   });
   it('flags security failures as a critical regression', () => {
-    const r = analyzeRegression({ version: '1', securityFailures: 2 }, new BenchmarkStore(tmpPath('sec')));
+    const r = analyzeRegression({ version: '1', securityFailures: 2 }, new BenchmarkStore(tmpPath('sec')).bindScope(() => TEST_TENANT_SCOPE));
     expect(r.findings.some((f) => f.kind === 'security' && f.severity === 'critical')).toBe(true);
   });
 });
@@ -133,7 +134,7 @@ describe('certification + dashboard + notifications + store', () => {
   });
 
   it('composes a dashboard + notifications, and persists runs', () => {
-    const store = new ValidationRunStore(tmpPath('runs'));
+    const store = new ValidationRunStore(tmpPath('runs')).bindScope(() => TEST_TENANT_SCOPE);
     const run: ValidationRun = { id: 'r1', pipeline: 'certification', trigger: 'manual', status: 'passed', startedAt: 'a', finishedAt: 'b', durationMs: 10, stages: [{ id: 's', name: 'x', kind: 'scenario', status: 'pass', durationMs: 1, summary: '', metrics: {} }], metrics: {}, certificationLevel: 'pass', regressionCount: 0 };
     store.add(run);
     expect(store.history()[0].level).toBe('pass');

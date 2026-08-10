@@ -11,6 +11,7 @@ import { createQaExecutor, type QaExecutorBackend } from '../agent';
 import { BenchmarkStore } from './benchmarkStore';
 import { runLab, type LabRunConfig, type LabRunOutput } from './lab';
 import type { LabDeps, LabObservers } from './ports';
+import type { TenantScope } from '@neuropause/shared';
 
 const log = createLogger('sandbox-perf-security-lab');
 
@@ -19,6 +20,8 @@ export interface PerfSecurityLabDeps {
   observers?: LabObservers;
   qaSession?: (goalText: string) => Promise<{ ms: number; ok: boolean }>;
   benchmarksPath: string;
+  /** P13C — the tenant boundary for the benchmark store. REQUIRED. */
+  scope: () => TenantScope | null;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
 }
@@ -46,7 +49,7 @@ export async function initPerfSecurityLab(deps: PerfSecurityLabDeps): Promise<Pe
   const now = deps.now ?? Date.now;
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const executor = createQaExecutor(deps.executorBackend, { now, sleep });
-  const benchmarks = new BenchmarkStore(deps.benchmarksPath, now);
+  const benchmarks = new BenchmarkStore(deps.benchmarksPath, now).bindScope(deps.scope);
   await benchmarks.load();
 
   let lastVerdict: string | null = null;

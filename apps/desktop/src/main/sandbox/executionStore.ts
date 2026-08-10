@@ -62,6 +62,10 @@ export class SandboxExecutionStore extends PersistentStore<ExecutionFile> {
     const iso = new Date(this.now()).toISOString();
     const execution: Execution = {
       id: `sbe_${randomUUID()}`,
+      // P13C N3 — the run's owner, stamped once at creation and never
+      // re-resolved: an execution that outlives a tenant switch is still the
+      // enqueuing tenant's.
+      tenantId: this.requireTenant(),
       workspaceId: input.workspaceId,
       scenarioId: input.scenarioId,
       scenarioVersion: input.scenarioVersion,
@@ -84,14 +88,31 @@ export class SandboxExecutionStore extends PersistentStore<ExecutionFile> {
     return execution;
   }
 
+  /** The execution, IF it is the caller's. */
   get(id: string): Execution | null {
+    const e = this.executions.get(id) ?? null;
+    return e !== null && this.mine(e) ? e : null;
+  }
+
+  /** Unscoped, for the ENGINE's queue drain only. Never answers a request. */
+  unscopedForEngine(id: string): Execution | null {
     return this.executions.get(id) ?? null;
   }
-  all(): Execution[] {
+  /** Every execution, for the ENGINE's pump. Each run then uses its own principal. */
+  allForEngine(): Execution[] {
     return [...this.executions.values()];
   }
+
+  /** Unscoped ownership counts, for the migration inventory only. */
+  ownershipCounts(): { total: number; assigned: number; unresolved: number } {
+    return this.countOwnership([...this.executions.values()]);
+  }
+  /** The caller's executions. Was every execution on the install. */
+  all(): Execution[] {
+    return this.onlyMine([...this.executions.values()]);
+  }
   count(): number {
-    return this.executions.size;
+    return this.all().length;
   }
 
   /**
@@ -100,6 +121,15 @@ export class SandboxExecutionStore extends PersistentStore<ExecutionFile> {
    * the execution is unknown or the transition is illegal.
    */
   transition(id: string, to: ExecutionStatus, opts: { error?: string | null } = {}): Execution | null {
+    /**
+     * Unscoped BY DESIGN, and safe because of where it is called from.
+     *
+     * The engine drives every transition while running inside that execution's
+     * OWN background principal, so the scoped accessor would be correct but
+     * redundant. What protects the interactive path is `cancel`, which resolves
+     * the id through the scoped `get` before asking the engine to act — so a
+     * caller cannot reach this with a foreign id.
+     */
     const e = this.executions.get(id);
     if (!e || !canTransitionExecution(e.status, to)) return null;
     const nowMs = this.now();
@@ -158,15 +188,31 @@ export class SandboxExecutionStore extends PersistentStore<ExecutionFile> {
     return entry;
   }
 
+  /**
+   * An execution's timeline — gated on the EXECUTION.
+   *
+   * Log messages carry business data (the step, the assertion, the record the
+   * scenario touched), so this is a content read. Gating on the parent means
+   * one check, and it cannot disagree with `get`.
+   */
   timelineFor(executionId: string, limit?: number): ExecutionTimelineEntry[] {
+    if (this.get(executionId) === null) return [];
     const list = this.timeline.get(executionId) ?? [];
     return limit ? list.slice(-limit) : [...list];
   }
 
   /* ── run history ── */
 
+  /**
+   * Run history. AN OMITTED `workspaceId` NO LONGER WIDENS.
+   *
+   * It used to mean "every workspace on the install", so omitting the field was
+   * the bypass — and `total` returned an install-wide count even when the page
+   * itself was narrowed. The tenant filter is applied first and cannot be
+   * turned off by any query field.
+   */
   history(query: RunHistoryQuery = {}): RunHistoryPage {
-    const all = [...this.executions.values()]
+    const all = this.onlyMine([...this.executions.values()])
       .filter((e) => (query.workspaceId ? e.workspaceId === query.workspaceId : true))
       .filter((e) => (query.scenarioId ? e.scenarioId === query.scenarioId : true))
       .filter((e) => (query.status ? e.status === query.status : true))
@@ -179,7 +225,16 @@ export class SandboxExecutionStore extends PersistentStore<ExecutionFile> {
     return { executions, nextCursor, total };
   }
 
-  /** Cap total executions, dropping the oldest terminal runs first. */
+  /**
+   * Cap total executions, dropping the oldest terminal runs first.
+   *
+   * KNOWN LIMITATION, stated rather than hidden: the cap is INSTALL-WIDE, so a
+   * noisy tenant can still evict another tenant's history. That is a retention
+   * fairness problem rather than a disclosure — evicted rows are gone, not
+   * shown to anyone — and fixing it properly means a per-tenant budget, which
+   * is a capacity design and not this program's boundary work. Recorded in the
+   * migration inventory.
+   */
   private prune(): void {
     if (this.executions.size <= MAX_EXECUTIONS) return;
     const ordered = [...this.executions.values()].sort((a, b) => {

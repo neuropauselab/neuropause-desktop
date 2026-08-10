@@ -17,9 +17,10 @@ import type { FederationSearchRequest as TFederationSearchRequest } from '@neuro
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { createLogger } from '../logger';
 import { fedStore } from '../federation/runtime/fedInstance';
+import { activeTenantScope, onWorkspaceSwitch } from '../enterprise/index';
+import { orgStore } from '../enterprise/org/orgInstance';
 import { exchangeStore } from '../federation/exchange/exchangeInstance';
 import { globalGovStore } from '../federation/governance/globalGovInstance';
-import { ORG_ID } from '../enterprise/org/seed';
 import { FederationPlatformService, type FederationReaders } from './federationPlatformService';
 import { withFederationAuthz } from './federationAuthz';
 import { setFederationSearcher } from './searcherInstance';
@@ -47,11 +48,34 @@ function govSummary() {
 }
 
 export function initFederationPlatform(): FederationPlatformSubsystem {
-  const home = fedStore.listOrgs().find((o) => o.role === 'home');
+  /**
+   * P13C N10 — RESOLVED PER CALL, NOT CAPTURED AT INIT.
+   *
+   * `home` was read once during boot and `homeOrgId` was `home?.id ?? ORG_ID`.
+   * Two problems in one line: the value could not follow a tenant switch,
+   * because it was frozen at startup; and when no federation home row existed
+   * it named the SEEDED organization, so the platform identified itself as a
+   * tenant it had nothing to do with. `homeOrgId` is not decorative —
+   * `federationModel` compares it against `artifact.publisherOrg` to decide
+   * which PRIVATE artifacts are visible.
+   *
+   * Both readers are now functions evaluated at read time, preferring the
+   * federation home row and otherwise the caller's own resolved tenant. An
+   * unresolved tenant yields an empty id, which matches no publisher — so the
+   * private-artifact test denies rather than admitting the seed org's.
+   */
+  const resolveHome = (): { id: string; name: string } | null => {
+    const row = fedStore.listOrgs().find((o) => o.role === 'home');
+    if (row) return { id: row.id, name: row.name };
+    const scope = activeTenantScope();
+    if (scope === null) return null;
+    const org = orgStore.organization(scope.tenantId);
+    return org ? { id: org.id, name: org.name } : { id: scope.tenantId, name: 'NeuroPause' };
+  };
 
   const readers: FederationReaders = {
-    homeOrgId: home?.id ?? ORG_ID,
-    homeOrgName: home?.name ?? 'NeuroPause',
+    homeOrgId: () => resolveHome()?.id ?? '',
+    homeOrgName: () => resolveHome()?.name ?? 'NeuroPause',
     orgs: () => fedStore.listOrgs(),
     invitations: () => fedStore.listInvitations(),
     trust: () => fedStore.listTrust(),
@@ -73,6 +97,17 @@ export function initFederationPlatform(): FederationPlatformSubsystem {
   fedStore.on('changed', invalidate);
   exchangeStore.on('changed', invalidate);
   globalGovStore.on('changed', invalidate);
+  /**
+   * P13C N10 — DROP THE SNAPSHOT ON A TENANT SWITCH.
+   *
+   * The service memoises the whole federation state on first read and only
+   * invalidated when a BACKING STORE changed. Switching organizations changes
+   * none of those stores, so the memo survived the switch and kept serving the
+   * previous tenant's home identity — which is what decides private-artifact
+   * visibility. This is the same residue seam every other subsystem registers
+   * with, rather than a second invalidation mechanism.
+   */
+  onWorkspaceSwitch(() => invalidate());
 
   // Register the Federation Search source with the ONE Enterprise Search engine.
   setFederationSearcher({ search: (text, limit) => service.searchHits(text, limit) });

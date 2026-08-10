@@ -8,6 +8,7 @@ import { ConversationStore } from './conversationStore';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { TEST_TENANT_SCOPE } from '../tenancy/testScope';
 
 const NOW = '2026-07-31T09:00:00.000Z';
 
@@ -55,7 +56,7 @@ describe('assistant benchmarks (deterministic layers)', () => {
 
   it('persists and reloads 60 conversations quickly', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'np-assistant-bench-'));
-    const store = new ConversationStore(join(dir, 'c.json'));
+    const store = new ConversationStore(join(dir, 'c.json')).bindScope(() => TEST_TENANT_SCOPE);
     const started = Date.now();
     for (let i = 0; i < 60; i += 1) {
       await store.upsert({
@@ -78,7 +79,7 @@ describe('assistant benchmarks (deterministic layers)', () => {
     }
     const writeMs = Date.now() - started;
     const t2 = Date.now();
-    const reloaded = new ConversationStore(join(dir, 'c.json')).loadAllSync();
+    const reloaded = new ConversationStore(join(dir, 'c.json')).bindScope(() => TEST_TENANT_SCOPE).loadAllSync();
     const loadMs = Date.now() - t2;
     console.log(`assistant.store     ${writeMs} ms / 60 conversations written · ${loadMs} ms reload (${reloaded.length} loaded)`);
     expect(reloaded).toHaveLength(60);

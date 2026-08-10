@@ -21,6 +21,7 @@ import { PIPELINE_LIST } from './pipelines';
 import { runValidationPipeline } from './platform';
 import { ValidationRunStore } from './runStore';
 import type { LabRunOutput, StageExecutors, ValidationDeps } from './ports';
+import { TEST_TENANT_SCOPE } from '../../tenancy/testScope';
 
 function clock(): () => number {
   let t = 1000;
@@ -49,9 +50,9 @@ function fakeExecutors(): StageExecutors {
 
 describe('runValidationPipeline (fake executors)', () => {
   it('runs every one of the 13 pipelines to a terminal status', async () => {
-    const store = new ValidationRunStore(tmpPath('all'));
+    const store = new ValidationRunStore(tmpPath('all')).bindScope(() => TEST_TENANT_SCOPE);
     for (const p of PIPELINE_LIST) {
-      const deps: ValidationDeps & { version: string } = { executors: fakeExecutors(), benchmarks: new BenchmarkStore(tmpPath('b')), now: clock(), version: '1.0.0' };
+      const deps: ValidationDeps & { version: string } = { executors: fakeExecutors(), benchmarks: new BenchmarkStore(tmpPath('b')).bindScope(() => TEST_TENANT_SCOPE), now: clock(), version: '1.0.0' };
       const out = await runValidationPipeline(p.kind, 'manual', deps, store);
       expect(['passed', 'warning']).toContain(out.run.status);
     }
@@ -61,10 +62,10 @@ describe('runValidationPipeline (fake executors)', () => {
   it('certifies, regression-analyzes, notifies and records history for a certifying pipeline', async () => {
     const notified: ValidationNotification[] = [];
     const remembered: { tags: string[] }[] = [];
-    const store = new ValidationRunStore(tmpPath('cert'));
+    const store = new ValidationRunStore(tmpPath('cert')).bindScope(() => TEST_TENANT_SCOPE);
     const deps: ValidationDeps & { version: string } = {
       executors: fakeExecutors(),
-      benchmarks: new BenchmarkStore(tmpPath('b')),
+      benchmarks: new BenchmarkStore(tmpPath('b')).bindScope(() => TEST_TENANT_SCOPE),
       now: clock(),
       version: '1.0.0',
       notifier: { notify: (n) => notified.push(n) },
@@ -84,11 +85,11 @@ describe('runValidationPipeline (fake executors)', () => {
 function realStack(script: FakePlatformScript) {
   const now = clock();
   const dir = join(tmpdir(), `s6i-${Date.now()}-${Math.floor(now())}`);
-  const workspaces = new SandboxWorkspaceStore(`${dir}-w.json`, now);
-  const scenarios = new SandboxScenarioStore(`${dir}-s.json`, now);
-  const executions = new SandboxExecutionStore(`${dir}-e.json`, now);
-  const artifacts = new SandboxArtifactStore(`${dir}-a.json`, now);
-  const datasets = new SandboxDatasetStore(`${dir}-d.json`, now);
+  const workspaces = new SandboxWorkspaceStore(`${dir}-w.json`, now).bindScope(() => TEST_TENANT_SCOPE);
+  const scenarios = new SandboxScenarioStore(`${dir}-s.json`, now).bindScope(() => TEST_TENANT_SCOPE);
+  const executions = new SandboxExecutionStore(`${dir}-e.json`, now).bindScope(() => TEST_TENANT_SCOPE);
+  const artifacts = new SandboxArtifactStore(`${dir}-a.json`, now).bindScope(() => TEST_TENANT_SCOPE);
+  const datasets = new SandboxDatasetStore(`${dir}-d.json`, now).bindScope(() => TEST_TENANT_SCOPE);
   const engine = new SandboxExecutionEngine({ workspaces, scenarios, executions, artifacts, datasets, now });
   initEnterpriseRunner({ engine, platform: new FakeEnterprisePlatform(script, now), now, sleep: () => Promise.resolve() });
   const ws = workspaces.create({ name: 'CV' });
@@ -104,7 +105,7 @@ function realStack(script: FakePlatformScript) {
     isTerminal: (status) => isTerminalExecutionStatus(status),
   };
   const executor = createQaExecutor(backend, { now, sleep: () => new Promise((r) => setTimeout(r, 2)), budgetMs: 15_000 });
-  const benchmarks = new BenchmarkStore(tmpPath('bench'));
+  const benchmarks = new BenchmarkStore(tmpPath('bench')).bindScope(() => TEST_TENANT_SCOPE);
   const executors: StageExecutors = {
     qaExecutor: executor,
     runQaSession: (goal) => runAgentSession({ text: goal }, { executor, reasoner: new DeterministicReasoner(), memory: new FakeQaMemory(), now, sleep: () => Promise.resolve() }).then((o) => o.session),
@@ -116,7 +117,7 @@ function realStack(script: FakePlatformScript) {
 describe('runValidationPipeline (REAL S1→S3→S4→S5 stack)', () => {
   it('runs a certifying release-candidate pipeline through every real executor and certifies', async () => {
     const { executors, benchmarks, now } = realStack({ deny: ['nonexistent:permission'], connectors: ['github'], automationRules: ['rule-1'] });
-    const store = new ValidationRunStore(tmpPath('rc'));
+    const store = new ValidationRunStore(tmpPath('rc')).bindScope(() => TEST_TENANT_SCOPE);
     const deps: ValidationDeps & { version: string } = {
       executors, benchmarks, now, version: '1.0.0',
       observers: { kpis: () => [{ key: 'records', value: 3 }], health: () => Promise.resolve({ level: 'healthy', cpuPercent: 12, memoryUsedMb: 140 }) },

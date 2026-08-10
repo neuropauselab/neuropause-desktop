@@ -29,6 +29,7 @@ import { ValidationRunStore } from './runStore';
 import { runValidationPipeline, validationDashboard, validationSummary, type ValidationRunOutput } from './platform';
 import type { HistoryPort, NotifierPort, ObserverPort, SchedulerPort, StageExecutors, ValidationDeps } from './ports';
 import type { BenchmarkStore } from '../lab/benchmarkStore';
+import type { TenantScope } from '@neuropause/shared';
 
 const log = createLogger('sandbox-continuous-validation');
 
@@ -41,6 +42,11 @@ export interface ContinuousValidationDeps {
   history?: HistoryPort;
   observers?: ObserverPort;
   runsPath: string;
+  /**
+   * P13C — the tenant boundary. REQUIRED, because this store extends the same
+   * `PersistentStore` the S1 stores do and was the one subclass nobody bound.
+   */
+  scope: () => TenantScope | null;
   version?: string;
   now?: () => number;
   clock?: () => Date;
@@ -62,7 +68,7 @@ export interface ContinuousValidationSubsystem {
 export async function initContinuousValidation(deps: ContinuousValidationDeps): Promise<ContinuousValidationSubsystem> {
   const now = deps.now ?? Date.now;
   const version = deps.version ?? '1.0.0';
-  const runStore = new ValidationRunStore(deps.runsPath);
+  const runStore = new ValidationRunStore(deps.runsPath).bindScope(deps.scope);
   await runStore.load();
 
   const runDeps: ValidationDeps & { version: string } = {
@@ -76,7 +82,19 @@ export async function initContinuousValidation(deps: ContinuousValidationDeps): 
     version,
   };
 
-  let current: { runId: string; pipeline: PipelineKind; status: 'running' } | null = null;
+  /**
+   * The in-flight pipeline, PER TENANT.
+   *
+   * P13C — this was one module-level `let`, surfaced in every dashboard, so
+   * tenant B was told that tenant A had a pipeline running and was handed its
+   * runId — which then unlocked the cached detail below.
+   */
+  const currentByTenant = new Map<string, { runId: string; pipeline: PipelineKind; status: 'running' }>();
+  const tenantKeyOrNull = (): string | null => deps.scope()?.tenantId ?? null;
+  const currentFor = (): { runId: string; pipeline: PipelineKind; status: 'running' } | null => {
+    const t = tenantKeyOrNull();
+    return t === null ? null : currentByTenant.get(t) ?? null;
+  };
   const scheduler = new ValidationScheduler({
     scheduler: deps.scheduler,
     runPipeline: async (p, t) => (await runValidationPipeline(p, t, runDeps, runStore)).run,
@@ -88,10 +106,23 @@ export async function initContinuousValidation(deps: ContinuousValidationDeps): 
   // regression). This is NOT a new report/artifact store — it holds only what runValidationPipeline
   // already produced, so the Validation Experience can render/export a run's certification without
   // recomputing it. Older runs fall back to the persisted run (certification null). REUSE, not rebuild.
+  /**
+   * A bounded cache of recent outputs, KEYED BY (tenant, runId).
+   *
+   * P13C — keyed by runId alone this was a direct cross-tenant read: the
+   * `sandbox:validation.run.get` handler took a runId from the payload and
+   * returned the cached `ValidationRunDetail`, whose certification report
+   * carries that tenant's live executive KPI figures plus ready-made markdown,
+   * HTML and JSON exports. `sandbox:read` is in the base read-only role, so
+   * every member of every tenant could call it.
+   */
   const outputs = new Map<string, ValidationRunOutput>();
+  const cacheKey = (tenantId: string, runId: string): string => JSON.stringify([tenantId, runId]);
   const OUTPUTS_CAP = 30;
   const rememberOutput = (out: ValidationRunOutput): void => {
-    outputs.set(out.run.id, out);
+    const owner = tenantKeyOrNull();
+    if (owner === null) return; // unowned output is cached for nobody
+    outputs.set(cacheKey(owner, out.run.id), out);
     if (outputs.size > OUTPUTS_CAP) {
       const oldest = outputs.keys().next().value;
       if (oldest !== undefined) outputs.delete(oldest);
@@ -113,21 +144,24 @@ export async function initContinuousValidation(deps: ContinuousValidationDeps): 
     };
   };
   const buildRunDetail = (runId: string): ValidationRunDetail | { error: 'not_found' } => {
-    const cached = outputs.get(runId);
+    const owner = tenantKeyOrNull();
+    const cached = owner === null ? undefined : outputs.get(cacheKey(owner, runId));
     if (cached) return detailFromOutput(cached);
+    // `runStore.get` is scoped too, so a foreign runId is not_found on both legs.
     const run = runStore.get(runId);
     if (!run) return { error: 'not_found' };
     return { run, certification: null, regression: null, exports: null };
   };
 
   const run = async (pipeline: PipelineKind, trigger: TriggerKind = 'manual'): Promise<ValidationRunOutput> => {
-    current = { runId: 'pending', pipeline, status: 'running' };
+    const owner = tenantKeyOrNull();
+    if (owner !== null) currentByTenant.set(owner, { runId: 'pending', pipeline, status: 'running' });
     try {
       const out = await runValidationPipeline(pipeline, trigger, runDeps, runStore);
       rememberOutput(out);
       return out;
     } finally {
-      current = null;
+      if (owner !== null) currentByTenant.delete(owner);
     }
   };
 
@@ -153,7 +187,7 @@ export async function initContinuousValidation(deps: ContinuousValidationDeps): 
       schema: EmptyRequest,
       requireAuth: true,
       permission: 'sandbox:read',
-      handler: () => validationDashboard(runStore, scheduler, current, 0, now),
+      handler: () => validationDashboard(runStore, scheduler, currentFor(), 0, now),
     },
     {
       channel: IpcChannel.SandboxValidationRunGet,
@@ -202,7 +236,7 @@ export async function initContinuousValidation(deps: ContinuousValidationDeps): 
     scheduler,
     runStore,
     summary: () => validationSummary(runStore, scheduler, now),
-    dashboard: () => validationDashboard(runStore, scheduler, current, 0, now),
+    dashboard: () => validationDashboard(runStore, scheduler, currentFor(), 0, now),
     pipelines: PIPELINE_LIST,
   };
 }

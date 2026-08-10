@@ -8,6 +8,7 @@ import { SandboxScenarioStore } from './scenarioStore';
 import { SandboxExecutionStore } from './executionStore';
 import { SandboxArtifactStore } from './artifactStore';
 import { SandboxDatasetStore } from './datasetStore';
+import { TEST_TENANT_SCOPE } from '../tenancy/testScope';
 
 let seq = 0;
 function tmp(prefix: string): string {
@@ -19,7 +20,7 @@ const NOW = () => 1_700_000_000_000;
 describe('SandboxWorkspaceStore', () => {
   it('creates, ensures a default, updates, deletes, and persists', async () => {
     const path = tmp('ws');
-    const s = new SandboxWorkspaceStore(path, NOW);
+    const s = new SandboxWorkspaceStore(path, NOW).bindScope(() => TEST_TENANT_SCOPE);
     const def = s.ensureDefault();
     expect(def.name).toBe('Default');
     expect(s.ensureDefault().id).toBe(def.id); // idempotent
@@ -29,7 +30,7 @@ describe('SandboxWorkspaceStore', () => {
     s.update(w.id, { name: 'QA-2' });
     await s.flush();
 
-    const reloaded = new SandboxWorkspaceStore(path, NOW);
+    const reloaded = new SandboxWorkspaceStore(path, NOW).bindScope(() => TEST_TENANT_SCOPE);
     await reloaded.load();
     expect(reloaded.count()).toBe(2);
     expect(reloaded.get(w.id)?.name).toBe('QA-2');
@@ -40,7 +41,7 @@ describe('SandboxWorkspaceStore', () => {
 describe('SandboxScenarioStore', () => {
   it('enforces unique keys, versions immutably, dedupes, and merges metadata', async () => {
     const path = tmp('sc');
-    const s = new SandboxScenarioStore(path, NOW);
+    const s = new SandboxScenarioStore(path, NOW).bindScope(() => TEST_TENANT_SCOPE);
     const sc = s.create({ workspaceId: 'w1', key: 'checkout', name: 'Checkout', metadata: { tags: ['smoke'] } });
     expect(() => s.create({ workspaceId: 'w1', key: 'checkout', name: 'Dup' })).toThrow(/already exists/);
     // different workspace, same key is fine
@@ -64,7 +65,7 @@ describe('SandboxScenarioStore', () => {
     expect(s.list({ workspaceId: 'w1', includeArchived: true })).toHaveLength(1);
 
     await s.flush();
-    const reloaded = new SandboxScenarioStore(path, NOW);
+    const reloaded = new SandboxScenarioStore(path, NOW).bindScope(() => TEST_TENANT_SCOPE);
     await reloaded.load();
     expect(reloaded.versions(sc.id)).toHaveLength(2);
     expect(reloaded.getVersion(sc.id, 1)?.spec).toEqual({ steps: 1 });
@@ -73,7 +74,7 @@ describe('SandboxScenarioStore', () => {
 
 describe('SandboxExecutionStore', () => {
   it('creates queued, gates transitions, stamps times, and appends a timeline', () => {
-    const s = new SandboxExecutionStore(tmp('ex'), NOW);
+    const s = new SandboxExecutionStore(tmp('ex'), NOW).bindScope(() => TEST_TENANT_SCOPE);
     const e = s.create({ workspaceId: 'w1', scenarioId: 's1', scenarioVersion: 1, trigger: 'manual', priority: 'high' });
     expect(e.status).toBe('queued');
     expect(s.timelineFor(e.id)).toHaveLength(1); // 'queued' entry
@@ -88,7 +89,7 @@ describe('SandboxExecutionStore', () => {
   });
 
   it('paginates + filters run history', () => {
-    const s = new SandboxExecutionStore(tmp('ex2'), NOW);
+    const s = new SandboxExecutionStore(tmp('ex2'), NOW).bindScope(() => TEST_TENANT_SCOPE);
     for (let i = 0; i < 5; i += 1) s.create({ workspaceId: 'w1', scenarioId: i % 2 ? 'sA' : 'sB', scenarioVersion: 1, trigger: 'manual', priority: 'normal' });
     const page1 = s.history({ limit: 2 });
     expect(page1.executions).toHaveLength(2);
@@ -102,7 +103,7 @@ describe('SandboxExecutionStore', () => {
 
 describe('SandboxArtifactStore (one store, typed facets)', () => {
   it('adds artifacts, exposes facets, and round-trips results + reports', () => {
-    const s = new SandboxArtifactStore(tmp('ar'), NOW);
+    const s = new SandboxArtifactStore(tmp('ar'), NOW).bindScope(() => TEST_TENANT_SCOPE);
     s.add({ executionId: 'e1', workspaceId: 'w1', kind: 'screenshot', name: 's.png', storageRef: 'blob://s' });
     s.add({ executionId: 'e1', workspaceId: 'w1', kind: 'log', name: 'run.log', inline: 'hello world' });
     expect(s.screenshots('e1')).toHaveLength(1);
@@ -122,7 +123,7 @@ describe('SandboxArtifactStore (one store, typed facets)', () => {
 
 describe('SandboxDatasetStore', () => {
   it('creates, lists by workspace, and deletes', () => {
-    const s = new SandboxDatasetStore(tmp('ds'), NOW);
+    const s = new SandboxDatasetStore(tmp('ds'), NOW).bindScope(() => TEST_TENANT_SCOPE);
     const d = s.create({ workspaceId: 'w1', name: 'users', rows: 100, schema: ['id', 'email'] });
     s.create({ workspaceId: 'w2', name: 'other' });
     expect(s.list('w1')).toHaveLength(1);

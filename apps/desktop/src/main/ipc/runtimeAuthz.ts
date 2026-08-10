@@ -278,6 +278,25 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
   // Phase 6 Stage 4 — approving an assistant plan step re-enters the
   // ExecuteEngine exactly like `execute:run`, so it takes the same scope.
   [IpcChannel.AssistantPlanDecide]: 'workforce:operate',
+  /**
+   * P13C N7 — conversations moved out of PUBLIC_CHANNELS and into RBAC.
+   *
+   * `dashboard:read` is the universal signed-in read scope this codebase
+   * already uses for per-user surfaces (personalization favourites, recents,
+   * saved views) whose OWNER is resolved server-side. That is exactly the shape
+   * here: every member may use the assistant, and the store decides which
+   * conversations are theirs. A narrower scope would take the assistant away
+   * from ordinary members; a wider one would not add a check the store does not
+   * already make.
+   *
+   * The tenant boundary is enforced in `ConversationStore`, not here. This entry
+   * closes the unauthenticated path; the store closes the cross-tenant one.
+   */
+  [IpcChannel.AssistantConversations]: 'dashboard:read',
+  [IpcChannel.AssistantConversationGet]: 'dashboard:read',
+  [IpcChannel.AssistantConversationSave]: 'dashboard:read',
+  [IpcChannel.AssistantConversationDelete]: 'dashboard:read',
+  [IpcChannel.AssistantConversationBranch]: 'dashboard:read',
 
   // Executive Center snapshot (rolls every layer into one live view).
   [IpcChannel.ExecutiveCenterSnapshot]: 'intelligence:read',
@@ -470,17 +489,28 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   // other user's state — so it shares the profile family's sender-trust model.
   // It is bridge-audited on its handler def because it discards user input.
   IpcChannel.ExperienceProfileReset,
-  // ── Phase 6 Stage 4 — Workspace Assistant (per-user desktop surface, same
-  // sender-trust model as FounderAskV2 + the ExecMemory reads; the one channel
-  // that dispatches execution — assistant:plan.decide — is RBAC-gated in
-  // RUNTIME_CHANNEL_PERMISSIONS above, and conversation save/delete are
-  // bridge-audited on their handler defs) ──
+  /**
+   * ── Phase 6 Stage 4 — Workspace Assistant ──
+   *
+   * P13C N7 — THE CONVERSATION CHANNELS WERE REMOVED FROM THIS LIST.
+   *
+   * They were admitted under the "per-user desktop surface" sender-trust model
+   * alongside profile and AI-config reads. That reasoning does not hold for
+   * conversations: their bodies carry assistant answers SYNTHESISED FROM TENANT
+   * DATA — record names, figures, summaries of a customer's business — so they
+   * are tenant content, not per-user preference. Public meant no auth and no
+   * permission, and `list(null)` returned every conversation on the install.
+   *
+   * The store is now scoped, which closes the disclosure on its own; removing
+   * them from here is the second layer, so an unauthenticated message cannot
+   * reach the store at all rather than reaching it and being filtered.
+   *
+   * `AssistantAsk` and `AssistantCancel` REMAIN public deliberately: asking a
+   * question is the per-user surface this list was written for, the answer is
+   * assembled from stores that are themselves scoped, and cancelling affects
+   * only the caller's own in-flight request.
+   */
   IpcChannel.AssistantAsk,
-  IpcChannel.AssistantConversations,
-  IpcChannel.AssistantConversationGet,
-  IpcChannel.AssistantConversationSave,
-  IpcChannel.AssistantConversationDelete,
-  IpcChannel.AssistantConversationBranch,
   IpcChannel.AssistantCancel,
   // ── Phase 6 Stage 5 (D-8) — Notification Inbox + delivery preferences
   // (per-user local data, the AiConfig sender-trust precedent; zod-validated,

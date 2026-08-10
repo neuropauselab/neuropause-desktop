@@ -12,6 +12,7 @@ import type {
   AssistantConversation,
   AssistantConversationSummary,
   AssistantIntentId,
+  TenantScope,
 } from '@neuropause/shared';
 
 interface ConversationFile {
@@ -30,6 +31,60 @@ export class ConversationStore {
 
   constructor(private readonly filePath: string) {}
 
+  /* ── P13C N7: the tenant boundary ──────────────────────────────────────
+   *
+   * Conversation bodies carry assistant answers synthesised from tenant data —
+   * record names, figures, summaries of a customer's business. Before this the
+   * store had no boundary at all, and two specific shapes made that reachable:
+   *
+   *   list(null)  meant NO FILTER — every conversation on the install. The IPC
+   *               schema makes `workspaceId` nullable AND optional, so `{}` was
+   *               a valid payload that returned everything.
+   *   get(id)     selected by bare id, so knowing a uuid was the whole
+   *               authorization.
+   *
+   * Both channels were also on the PUBLIC allowlist — no auth, no permission.
+   *
+   * `bindScope` follows the same convention as the notification inbox and the
+   * webhook store: UNBOUND DENIES, so a future caller that forgets to bind gets
+   * an empty store rather than an open one.
+   */
+  private scopeSource: (() => TenantScope | null) | null = null;
+
+  bindScope(source: () => TenantScope | null): this {
+    this.scopeSource = source;
+    return this;
+  }
+
+  hasScope(): boolean {
+    return this.scopeSource !== null;
+  }
+
+  private scopeOrDeny(): TenantScope | null {
+    return this.scopeSource === null ? null : this.scopeSource();
+  }
+
+  /** Whether `c` belongs to the caller. An unowned conversation belongs to nobody. */
+  private mine(c: AssistantConversation): boolean {
+    const scope = this.scopeOrDeny();
+    if (scope === null || !scope.tenantId) return false;
+    return typeof c.tenantId === 'string' && c.tenantId !== '' && c.tenantId === scope.tenantId;
+  }
+
+  /** Ownership counts across EVERY row, ignoring scope. Migration evidence only. */
+  ownershipCounts(): { total: number; assigned: number; unresolved: number } {
+    if (!this.loaded) this.loadAllSync();
+    let assigned = 0;
+    for (const c of this.conversations) {
+      if (typeof c.tenantId === 'string' && c.tenantId !== '') assigned += 1;
+    }
+    return {
+      total: this.conversations.length,
+      assigned,
+      unresolved: this.conversations.length - assigned,
+    };
+  }
+
   /** Synchronous load at startup. Corrupt or missing files yield an empty store. */
   loadAllSync(): AssistantConversation[] {
     if (!this.loaded) {
@@ -44,18 +99,36 @@ export class ConversationStore {
     return [...this.conversations];
   }
 
+  /**
+   * The conversation, IF it is the caller's.
+   *
+   * A foreign id reads as absent rather than refused, so this cannot be used to
+   * probe which conversation ids exist.
+   */
   get(id: string): AssistantConversation | null {
     if (!this.loaded) this.loadAllSync();
-    return this.conversations.find((c) => c.id === id) ?? null;
+    const c = this.conversations.find((x) => x.id === id) ?? null;
+    return c !== null && this.mine(c) ? c : null;
   }
 
   /** Summaries, newest-updated first; pinned float to the top. */
+  /**
+   * Summaries, newest-updated first; pinned float to the top.
+   *
+   * P13C N7 — `null` NO LONGER MEANS ALL. The tenant filter is applied first
+   * and unconditionally, so a null or omitted `workspaceId` now means "every
+   * conversation of MINE" — the optional argument narrows within a boundary it
+   * cannot cross. There is deliberately no argument that widens it: an
+   * administrative cross-tenant read would need its own authorized channel, not
+   * a falsy value on this one.
+   */
   list(workspaceId?: string | null, limit = 50): AssistantConversationSummary[] {
     if (!this.loaded) this.loadAllSync();
+    const mine = this.conversations.filter((c) => this.mine(c));
     const filtered =
       workspaceId === undefined || workspaceId === null
-        ? this.conversations
-        : this.conversations.filter((c) => c.workspaceId === workspaceId);
+        ? mine
+        : mine.filter((c) => c.workspaceId === workspaceId);
     return [...filtered]
       .sort((a, b) => {
         if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
@@ -97,8 +170,24 @@ export class ConversationStore {
   /** Upsert (by id) and persist. Messages are trimmed to the retention cap. */
   upsert(conversation: AssistantConversation): Promise<void> {
     if (!this.loaded) this.loadAllSync();
+    const scope = this.scopeOrDeny();
+    /**
+     * No tenant, no conversation. Storing it unowned would make it invisible to
+     * everyone while still consuming a retention slot, and the retention cap
+     * evicts the least-recently-updated — so unowned rows would quietly push out
+     * real ones.
+     */
+    if (scope === null || !scope.tenantId) return Promise.resolve();
+    /**
+     * An existing conversation may only be updated by its OWNER. Without this,
+     * `upsert` was a write-side IDOR: a caller who knew an id could overwrite
+     * another tenant's conversation, title and message history.
+     */
+    const existing = this.conversations.find((c) => c.id === conversation.id) ?? null;
+    if (existing !== null && !this.mine(existing)) return Promise.resolve();
     const snapshot: AssistantConversation = {
       ...conversation,
+      tenantId: scope.tenantId,
       messages:
         conversation.messages.length > MAX_MESSAGES
           ? conversation.messages.slice(conversation.messages.length - MAX_MESSAGES)
@@ -120,6 +209,8 @@ export class ConversationStore {
 
   delete(id: string): Promise<boolean> {
     if (!this.loaded) this.loadAllSync();
+    // Scoped: a foreign id deletes nothing and reports nothing was deleted.
+    if (this.get(id) === null) return Promise.resolve(false);
     const before = this.conversations.length;
     this.conversations = this.conversations.filter((c) => c.id !== id);
     if (this.conversations.length === before) return Promise.resolve(false);

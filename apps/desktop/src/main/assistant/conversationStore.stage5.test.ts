@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { AssistantConversation, AssistantEnvelope, AssistantPlanStep } from '@neuropause/shared';
 import { ConversationStore } from './conversationStore';
+import { TEST_TENANT_SCOPE } from '../tenancy/testScope';
 
 const NOW = '2026-07-31T09:00:00.000Z';
 
@@ -129,7 +130,7 @@ function conv(id: string, steps: AssistantPlanStep[][]): AssistantConversation {
 
 describe('waitingSteps on summaries', () => {
   it('counts waiting steps across every message', async () => {
-    const store = new ConversationStore(join(dir, 'c.json'));
+    const store = new ConversationStore(join(dir, 'c.json')).bindScope(() => TEST_TENANT_SCOPE);
     await store.upsert(conv('c1', [[step('waiting'), step('completed')], [step('waiting')]]));
     await store.upsert(conv('c2', [[step('completed'), step('rejected')]]));
     const summaries = store.list();
@@ -139,9 +140,9 @@ describe('waitingSteps on summaries', () => {
 
   it('survives the persistence round-trip', async () => {
     const file = join(dir, 'c.json');
-    const a = new ConversationStore(file);
+    const a = new ConversationStore(file).bindScope(() => TEST_TENANT_SCOPE);
     await a.upsert(conv('c1', [[step('waiting')]]));
-    const b = new ConversationStore(file);
+    const b = new ConversationStore(file).bindScope(() => TEST_TENANT_SCOPE);
     expect(b.list().find((s) => s.id === 'c1')?.waitingSteps).toBe(1);
   });
 });

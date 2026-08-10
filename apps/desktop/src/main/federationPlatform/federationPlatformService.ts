@@ -45,8 +45,17 @@ const TIMELINE_CAP = 500;
 
 /** Live readers over the existing federation stores (injected, so the service unit-tests). */
 export interface FederationReaders {
-  homeOrgId: string;
-  homeOrgName: string;
+  /**
+   * P13C N10 — FUNCTIONS, not captured strings.
+   *
+   * These were `string`, resolved once at composition. That made a per-call
+   * reader impossible and froze the platform's identity at boot, so it could
+   * not follow a tenant switch. `homeOrgId` is not a label: `federationModel`
+   * compares it against `artifact.publisherOrg` to decide which PRIVATE
+   * exchange artifacts are visible, so a stale value shows the wrong tenant's.
+   */
+  homeOrgId: () => string;
+  homeOrgName: () => string;
   orgs: () => FederatedOrg[];
   invitations: () => OrgInvitation[];
   trust: () => TrustRelationship[];
@@ -84,8 +93,8 @@ export class FederationPlatformService {
     if (!this.snapshot) {
       const r = this.readers;
       this.snapshot = {
-        homeOrgId: r.homeOrgId,
-        homeOrgName: r.homeOrgName,
+        homeOrgId: r.homeOrgId(),
+        homeOrgName: r.homeOrgName(),
         orgs: r.orgs(),
         invitations: r.invitations(),
         trust: r.trust(),

@@ -30,8 +30,8 @@ const GOV: GlobalGovSummary = { policies: 0, activePolicies: 0, pendingApprovals
 
 function readers(orgsBox: { value: FederatedOrg[] }): FederationReaders {
   return {
-    homeOrgId: 'org-default',
-    homeOrgName: 'NeuroPause',
+    homeOrgId: () => 'org-default',
+    homeOrgName: () => 'NeuroPause',
     orgs: () => orgsBox.value,
     invitations: () => [],
     trust: () => [TRUST],
