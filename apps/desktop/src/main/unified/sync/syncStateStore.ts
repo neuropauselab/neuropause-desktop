@@ -175,6 +175,20 @@ export class SyncStateStore extends EventEmitter {
   }
 
   /** Current state for an account (defaults if never synced). */
+  /**
+   * Forget an account's cursors and health entirely.
+   *
+   * Called on disconnect. A stale cursor is worse than none: reconnecting
+   * would resume from a checkpoint recorded against a credential that no
+   * longer exists, silently skipping everything the provider changed in
+   * between.
+   */
+  async forget(connectorId: string, accountId: string): Promise<void> {
+    if (!this.states.delete(key(connectorId, accountId))) return;
+    await this.persist();
+    this.emit('changed', { connectorId, accountId });
+  }
+
   get(connectorId: string, accountId: string): AccountSyncState {
     return this.states.get(key(connectorId, accountId)) ?? defaultState(connectorId, accountId);
   }

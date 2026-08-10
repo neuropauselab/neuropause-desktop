@@ -31,11 +31,15 @@ import { createLogger } from '../logger';
 import { CONNECTOR_MANIFESTS, MANIFEST_BY_ID } from './manifests';
 import { isConfigured, resolveCredentials, setupHintFor } from './credentials';
 import { connectorStore } from './connectorStore';
+import type { ConnectionTestResult } from './connectionTest';
 import { connectorVault, type AccountTokens } from './connectorVault';
 import { oauthEngine, type OAuthTokens } from './oauthEngine';
 import { accountHealth, aggregateHealth, aggregateStatus, latestSync } from './health';
 import { shortId } from './pkce';
+import { mappingsForConnector } from './bridge/entityMap';
 import { getAdapter } from '../unified/sync/registry';
+
+type ConnectionTester = (connectorId: string, accountId: string) => Promise<ConnectionTestResult>;
 
 const log = createLogger('connectors');
 const REFRESH_SKEW_MS = 60 * 1000;
@@ -151,10 +155,43 @@ class ConnectorService extends EventEmitter {
     try {
       const tokens = await oauthEngine.authorize(manifest, creds);
       await this.vaultTokens(connectorId, accountId, tokens);
-      const account = await this.persistConnected(manifest, accountId, tokens);
+      let account = await this.persistConnected(manifest, accountId, tokens);
+
+      /**
+       * A REAL round-trip before "Connected" is shown.
+       *
+       * A token exchange returning 200 is not a working connection: it does
+       * not prove the credential is usable, and it does not tell us whose
+       * account this is. `externalId` used to come from whatever the token
+       * response happened to carry — `null` for GitHub, Salesforce, HubSpot
+       * and most others — so accounts read as "GitHub account" and a
+       * reconnect produced a duplicate nothing could detect.
+       */
+      const test = await this.runConnectionTest(connectorId, accountId);
+      if (test.status === 'invalid_credential') {
+        await connectorStore.patch(connectorId, accountId, { status: 'error', error: test.message, health: 'down' });
+        this.fireStatus(connectorId, accountId, 'error', 'down', test.message);
+        this.log(connectorId, accountId, 'error', 'connect', test.message);
+        return { ok: false, connectorId, account: null, message: test.message };
+      }
+      if (test.status === 'verified') {
+        // `patch` returns null only when the row vanished; keeping the row we
+        // just wrote is the correct fallback, not throwing away a live
+        // connection over a race that cannot happen here.
+        account =
+          (await connectorStore.patch(connectorId, accountId, {
+            externalId: test.externalId,
+            ...(test.label ? { label: test.label } : {}),
+          })) ?? account;
+      } else {
+        // Not a failure, and not a green tick either. The reason is on the
+        // account so the screen can say which of the two it is.
+        this.log(connectorId, accountId, 'warn', 'connect', test.message);
+      }
+
       this.fire({ connectorId, accountId, type: 'account_added', status: 'connected', health: account.health, syncState: null, message: account.label, at: now() });
       this.fireStatus(connectorId, accountId, 'connected', account.health, null);
-      this.log(connectorId, accountId, 'info', 'connect', `Connected ${account.label}.`);
+      this.log(connectorId, accountId, 'info', 'connect', test.status === 'verified' ? test.message : `Connected ${account.label}.`);
       return { ok: true, connectorId, account, message: null };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Authorization failed';
@@ -177,12 +214,44 @@ class ConnectorService extends EventEmitter {
     try {
       const tokens = await oauthEngine.authorize(manifest, creds);
       await this.vaultTokens(connectorId, accountId, tokens);
+      const test = await this.runConnectionTest(connectorId, accountId);
+
+      /**
+       * Reconnecting must land on the SAME provider account.
+       *
+       * The browser flow signs in whoever is signed in to the provider. Left
+       * unchecked, reconnecting a HubSpot connection while logged into a
+       * different portal silently rebinds every record this connection has
+       * ever produced — the provenance would say one account and the data
+       * would come from another, and nothing would ever show it.
+       */
+      if (
+        test.status === 'verified' &&
+        existing.externalId !== null &&
+        test.externalId !== null &&
+        test.externalId !== existing.externalId
+      ) {
+        const message = `That sign-in is a different ${manifest.name} account (${test.label ?? test.externalId}). Reconnect with the account this connection was set up for, or disconnect and connect the new one.`;
+        await connectorVault.delete(connectorId, accountId);
+        await connectorStore.patch(connectorId, accountId, { status: 'reauth_required', error: message, health: 'down' });
+        this.fireStatus(connectorId, accountId, 'reauth_required', 'down', message);
+        this.log(connectorId, accountId, 'error', 'reconnect', message);
+        return { ok: false, connectorId, account: null, message };
+      }
+      if (test.status === 'invalid_credential') {
+        await connectorStore.patch(connectorId, accountId, { status: 'error', error: test.message, health: 'down' });
+        this.fireStatus(connectorId, accountId, 'error', 'down', test.message);
+        return { ok: false, connectorId, account: null, message: test.message };
+      }
+
       const account = await connectorStore.patch(connectorId, accountId, {
         status: 'connected',
         error: null,
         grantedScopes: tokens.scopes.length ? tokens.scopes : existing.grantedScopes,
         accessTokenExpiresAt: isoFromMs(tokens.expiresAt),
         health: 'healthy',
+        // Back-fill the identity on an older connection that never had one.
+        ...(test.status === 'verified' && existing.externalId === null ? { externalId: test.externalId } : {}),
       });
       this.fireStatus(connectorId, accountId, 'connected', 'healthy', null);
       this.log(connectorId, accountId, 'info', 'reconnect', 'Reconnected.');
@@ -208,6 +277,23 @@ class ConnectorService extends EventEmitter {
 
     await connectorVault.delete(connectorId, accountId);
     await connectorStore.remove(connectorId, accountId);
+    /**
+     * Synced entities go with the connection; business RECORDS do not.
+     *
+     * The Unified store's copy of the provider's data cannot be refreshed
+     * once the credential is gone, so keeping it would be presenting stale
+     * data as live. Records the bridge wrote into the business modules STAY —
+     * they are the company's own data now, and their provenance still names
+     * where they came from, which is what makes the deletion explainable.
+     */
+    if (this.onDisconnected) {
+      try {
+        await this.onDisconnected(connectorId, accountId);
+      } catch (err) {
+        this.log(connectorId, accountId, 'warn', 'disconnect', 'Some synced data could not be cleared.');
+        void err;
+      }
+    }
     this.fire({ connectorId, accountId, type: 'account_removed', status: 'disconnected', health: null, syncState: null, message: account.label, at: now() });
     this.log(connectorId, accountId, 'info', 'disconnect', `Disconnected ${account.label}.`);
     return { ok: true, message: null };
@@ -382,6 +468,25 @@ class ConnectorService extends EventEmitter {
       // Lifecycle is derived from REAL adapter presence, not credentials: a connector with no data adapter
       // is 'preview' (shown in the catalog, not connectable), never offered as ready.
       lifecycle: getAdapter(manifest.id) ? 'production' : 'preview',
+      /**
+       * What this connector's data becomes. Read from the declared mapping
+       * table, so a screen can never claim a destination the bridge does not
+       * actually write to.
+       */
+      businessData: (() => {
+        const mapped = mappingsForConnector(manifest.id).map((m) => ({
+          resourceId: m.resourceId,
+          label: m.label.split('→')[0]?.trim() ?? m.resourceId,
+          entityLabel: m.label.split('→')[1]?.trim() ?? m.entityId,
+        }));
+        return {
+          mapped,
+          unmappedNote:
+            mapped.length > 0
+              ? null
+              : `${manifest.name} data is synced, searchable and on your timeline, but none of it maps to a business record type NeuroPause holds, so nothing is written to your business data.`,
+        };
+      })(),
     };
   }
 
@@ -417,6 +522,55 @@ class ConnectorService extends EventEmitter {
       error: null,
     };
     return connectorStore.upsert(account);
+  }
+
+  /**
+   * The provider round-trip. Injected so tests drive the real code without a
+   * socket, and so a build with no network still connects deterministically.
+   */
+  private connectionTester: ConnectionTester | null = null;
+
+  setConnectionTester(tester: ConnectionTester): void {
+    this.connectionTester = tester;
+  }
+
+  private async runConnectionTest(connectorId: string, accountId: string): Promise<ConnectionTestResult> {
+    if (!this.connectionTester) {
+      return {
+        status: 'not_verifiable',
+        externalId: null,
+        label: null,
+        organization: null,
+        message: 'The connection could not be verified in this build.',
+      };
+    }
+    try {
+      return await this.connectionTester(connectorId, accountId);
+    } catch {
+      // A tester that throws must not take down a connect that otherwise
+      // succeeded. Unverified is the honest outcome.
+      return {
+        status: 'not_verifiable',
+        externalId: null,
+        label: null,
+        organization: null,
+        message: 'The connection check could not be completed.',
+      };
+    }
+  }
+
+  /**
+   * Called on disconnect, after the credential is gone.
+   *
+   * `unifiedStore.removeConnector()` was written, documented as the disconnect
+   * path, and had no callers — so disconnecting left every synced entity
+   * resident and searchable with no way to refresh it. Injected rather than
+   * imported so this service keeps no dependency on the sync layer.
+   */
+  private onDisconnected: ((connectorId: string, accountId: string) => void | Promise<void>) | null = null;
+
+  setDisconnectCleanup(fn: (connectorId: string, accountId: string) => void | Promise<void>): void {
+    this.onDisconnected = fn;
   }
 
   private async markReauth(connectorId: string, accountId: string, message: string): Promise<void> {

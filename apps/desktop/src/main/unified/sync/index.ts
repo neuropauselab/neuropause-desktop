@@ -19,7 +19,7 @@ import { CONNECTOR_MANIFESTS, MANIFEST_BY_ID } from '../../connectors/manifests'
 import { unifiedStore } from '../storeInstance';
 import { syncStateStore } from './syncStateInstance';
 import { stateToSnapshot } from './syncStateStore';
-import { SyncOrchestrator } from './orchestrator';
+import { SyncOrchestrator, type OrchestratorPorts } from './orchestrator';
 import { RateLimiter } from './rateLimiter';
 import { SyncScheduler, SCHEDULER_INTERVAL_MS } from './scheduler';
 import { adapterConnectorIds, describeAdapters, getAdapter } from './registry';
@@ -38,6 +38,14 @@ export interface SyncSubsystemDeps {
   broadcast: IpcBroadcaster;
   /** P4.1 — whether an account's sync is suppressed (paused / disabled). From the Runtime Supervisor. */
   isSuppressed?: (connectorId: string, accountId: string) => boolean;
+  /**
+   * P9 — write a synced resource into the governed business data.
+   *
+   * Injected rather than imported so this module keeps no dependency on the
+   * Data Plane: the sync engine's job ends at the Unified store, and the
+   * bridge is something the composition root chooses to attach.
+   */
+  bridge?: OrchestratorPorts['bridge'];
 }
 
 export interface SyncSubsystem {
@@ -89,6 +97,25 @@ export async function initSync(deps: SyncSubsystemDeps): Promise<SyncSubsystem> 
     publish: deps.publish,
     rate: new RateLimiter(200),
     isSuppressed: deps.isSuppressed,
+    ...(deps.bridge ? { bridge: deps.bridge } : {}),
+  });
+
+  /**
+   * P9 — disconnecting clears that account's synced entities.
+   *
+   * `unifiedStore.removeConnector()` was written, documented as "called on
+   * disconnect", and had NO CALLERS — so a disconnected connector left every
+   * entity resident and searchable, with the credential gone and no way to
+   * refresh it. Stale data presented as live is worse than no data.
+   *
+   * Business RECORDS the bridge wrote are deliberately NOT removed: they are
+   * the company's own data now, and their provenance still names where they
+   * came from, which is what makes keeping them explainable.
+   */
+  connectorService.setDisconnectCleanup(async (connectorId, accountId) => {
+    const removed = await unifiedStore.removeConnector(connectorId, accountId);
+    await syncStateStore.forget(connectorId, accountId);
+    if (removed > 0) log.info('Cleared synced data on disconnect', { connectorId, accountId, removed });
   });
 
   // Manual sync (the Connectors UI button / IPC) now runs adapters.

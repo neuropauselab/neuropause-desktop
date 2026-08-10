@@ -138,9 +138,22 @@ export class UnifiedStore extends EventEmitter {
   }
 
   /** Hard-remove every record for a connector (called on disconnect). */
-  async removeConnector(connectorId: string): Promise<number> {
+  /**
+   * Drop a connector's synced entities — one ACCOUNT's, when one is named.
+   *
+   * The account filter is not optional politeness: a connector can hold two
+   * accounts (a sales portal and a support portal), and disconnecting one used
+   * to delete the other's data too, because this only ever filtered on
+   * `connectorId`. Silent, and unrecoverable without a re-sync that the
+   * remaining account had no reason to run.
+   */
+  async removeConnector(connectorId: string, accountId?: string): Promise<number> {
     const ids: string[] = [];
-    for (const [id, e] of this.entities) if (e.connectorId === connectorId) ids.push(id);
+    for (const [id, e] of this.entities) {
+      if (e.connectorId !== connectorId) continue;
+      if (accountId !== undefined && e.accountId !== accountId) continue;
+      ids.push(id);
+    }
     for (const id of ids) this.entities.delete(id);
     if (ids.length > 0) {
       this.search.remove(ids);

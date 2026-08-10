@@ -227,6 +227,18 @@ export interface ConnectorDto {
   setupHint: string | null;
   /** Lifecycle state derived from REAL data-adapter presence (Capability Completion v1.0). */
   lifecycle: ConnectorLifecycleState;
+  /**
+   * P9 — what this connector's data BECOMES in your business records.
+   *
+   * A screen that says "connected and synced" without saying where the data
+   * went leaves the most important question unanswered. `mapped` names each
+   * resource and its destination; `unmappedNote` is the honest sentence for a
+   * connector whose data is searchable but is not business records.
+   */
+  businessData: {
+    mapped: { resourceId: string; label: string; entityLabel: string }[];
+    unmappedNote: string | null;
+  };
 }
 
 /**

@@ -176,6 +176,7 @@ import { computeOrgHealth } from '@neuropause/shared';
 import { initEnterprise } from './enterprise';
 import { initDataPlane } from './dataPlane';
 import { initDocuments } from './documents';
+import { bridgeResource } from './connectors/bridge';
 import { RELATIONSHIPS, assertRelationshipsAreDeclarable } from './dataPlane/relationshipModel';
 import {
   bindIncomingLinkReader,
@@ -318,6 +319,69 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     publish: platform.api.publish,
     broadcast: deps.broadcast,
     isSuppressed: (c, a) => connectors.supervisor.isSyncSuppressed(c, a),
+    /**
+     * P9 — synced provider data reaches the GOVERNED business data.
+     *
+     * Before this, thirteen real adapters pulled live data into the Unified
+     * store, where it fed search, memory and briefings and reached nothing
+     * governed: a customer from a CSV had provenance, relationships and
+     * Related Records, and the same customer from HubSpot had none of them.
+     *
+     * The bridge reuses the Data Plane wholesale — its record stores, its
+     * `ProvenanceStore`, its identity rules and the SAME `onImported` fan-out
+     * a file import fires, which is what makes the relationship engine
+     * resolve a synced record's links.
+     */
+    bridge: (input) =>
+      bridgeResource(input, {
+        storeFor: (moduleId) => enterprise.modules.get(moduleId)?.store ?? null,
+        modules: () => enterprise.modules.list().map((m) => m.descriptor),
+        /**
+         * A PURE check, not the throwing gate.
+         *
+         * `enterprise.authorize` throws AND, on refusal, opens a HOLD and
+         * writes a Decision Record. A scheduled sync has no signed-in actor,
+         * so that produced a governance artefact every fifteen minutes for a
+         * machine-triggered read. The bridge reports the refusal instead.
+         */
+        allows: (permission) => enterprise.allows(permission),
+        provenance: dataPlane.provenance,
+        actor: () => {
+          const st = authService.getStatus();
+          return st.state === 'authenticated'
+            ? (st.session.user.displayName ?? st.session.user.email)
+            : null;
+        },
+        now: () => new Date().toISOString(),
+        audit: (entry) =>
+          governanceStore.record({
+            actor: 'connector',
+            action: entry.action,
+            target: entry.target,
+            summary: entry.summary,
+            workspaceId: workspaceStore.activeWorkspaceId(),
+          }),
+        onImported: (event) => {
+          void enterprise
+            .notifyImported({
+              moduleId: event.moduleId,
+              recordIds: event.recordIds,
+              correlationId: event.correlationId,
+            })
+            .catch((err: unknown) => {
+              log.warn('Sync lifecycle replay failed', {
+                moduleId: event.moduleId,
+                err: err instanceof Error ? err.message : String(err),
+              });
+            });
+        },
+      }).then((r) => ({
+        created: r.created,
+        updated: r.updated,
+        adopted: r.adopted,
+        ambiguous: r.ambiguous,
+        invalid: r.invalid,
+      })),
   });
   // P4.1 — feed the Supervisor the richer sync signals (rate-limit / offline / retry depth) so the runtime
   // state machine surfaces those sub-states, and re-project an account whenever its snapshot changes.

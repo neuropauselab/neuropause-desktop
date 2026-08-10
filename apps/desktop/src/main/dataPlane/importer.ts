@@ -32,6 +32,40 @@ export interface FieldProvenance {
   transformation: string | null;
 }
 
+/**
+ * Where a record came from, when it came from a connected system.
+ *
+ * Program 9. The same store carries file provenance and connector provenance
+ * because they answer the same question — "where did this record come from?"
+ * — and a second provenance store would be a second answer that can disagree
+ * with the first.
+ *
+ * `externalKey` is the idempotency boundary: connector + account + resource +
+ * the provider's own id. Re-syncing the same provider object finds the record
+ * it already produced instead of creating a second one.
+ */
+export interface ConnectorOrigin {
+  connectorId: string;
+  accountId: string;
+  resourceId: string;
+  /** The provider's own id for this object. */
+  externalId: string;
+  /** `connectorId::accountId::resourceId::externalId`. Unique per record. */
+  externalKey: string;
+  /** The provider's own last-modified stamp, when it supplies one. */
+  externalUpdatedAt: string | null;
+  syncRunId: string;
+  /** Which version of the declared field mapping produced these values. */
+  mappingVersion: number;
+  /**
+   * `created` — this record exists because the connector created it, so a
+   * later sync may update every mapped field.
+   * `adopted` — the connector matched a record that was ALREADY here. A later
+   * sync fills empty fields only; it never overwrites a value a person typed.
+   */
+  linkage: 'created' | 'adopted';
+}
+
 export interface ProvenanceRecord {
   recordId: string;
   moduleId: string;
@@ -44,6 +78,11 @@ export interface ProvenanceRecord {
   approvedBy: string | null;
   importedAt: string;
   fields: FieldProvenance[];
+  /**
+   * Present when the record arrived over a connector rather than from a file.
+   * Absent for every file import, so the two are never confused.
+   */
+  connector?: ConnectorOrigin;
 }
 
 export type TableImportStatus =
@@ -636,6 +675,11 @@ export class ProvenanceStore {
   private runs: ImportResult[] = [];
   private loaded = false;
   private byRecord = new Map<string, ProvenanceRecord>();
+  /** External identity → the record it produced. The sync idempotency index. */
+  private byExternal = new Map<string, ProvenanceRecord>();
+  private tmpSeq = 0;
+  /** Serialises persists so two concurrent syncs cannot interleave writes. */
+  private writeChain: Promise<void> = Promise.resolve();
 
   constructor(private readonly filePath: string) {}
 
@@ -645,7 +689,10 @@ export class ProvenanceStore {
     if (res.state === 'loaded' && res.data) {
       this.records = Array.isArray(res.data.records) ? res.data.records : [];
       this.runs = Array.isArray(res.data.runs) ? res.data.runs : [];
-      for (const r of this.records) this.byRecord.set(r.recordId, r);
+      for (const r of this.records) {
+        this.byRecord.set(r.recordId, r);
+        if (r.connector) this.byExternal.set(r.connector.externalKey, r);
+      }
     }
     this.loaded = true;
   }
@@ -660,9 +707,88 @@ export class ProvenanceStore {
     }
     if (this.records.length > MAX_PROVENANCE_RECORDS) {
       const drop = this.records.splice(0, this.records.length - MAX_PROVENANCE_RECORDS);
-      for (const d of drop) this.byRecord.delete(d.recordId);
+      for (const d of drop) {
+        this.byRecord.delete(d.recordId);
+        // The external index was NOT pruned here, so `forExternalKey` returned
+        // a row that had already fallen off the end — a ghost that produced a
+        // second provenance entry for the same record on the next sync.
+        if (d.connector) this.byExternal.delete(d.connector.externalKey);
+      }
     }
     await this.persist();
+  }
+
+  /**
+   * Record provenance for records a connector produced.
+   *
+   * Deliberately NOT `append`: that one takes an `ImportResult`, which is
+   * file-shaped (a plan, tables, rows). A sync run is not an import run, and
+   * forcing one into the other's shape would make the history lie about what
+   * happened. The RECORDS share a store; the runs do not.
+   */
+  async appendConnector(provenance: readonly ProvenanceRecord[]): Promise<void> {
+    if (provenance.length === 0) return;
+    await this.load();
+    for (const p of provenance) {
+      const key = p.connector?.externalKey;
+      /**
+       * By external key first, then by record.
+       *
+       * The record fallback is what makes adoption non-destructive: a record
+       * that already has FILE provenance is found here, and gains the
+       * connector origin alongside it — instead of a second row for the same
+       * record whose `sourceFile` then wins every read.
+       */
+      const existing =
+        (key !== undefined ? this.byExternal.get(key) : undefined) ?? this.byRecord.get(p.recordId);
+      if (existing) {
+        /**
+         * Re-syncing an already-tracked provider object UPDATES its connector
+         * origin and NOTHING ELSE.
+         *
+         * `Object.assign(existing, p)` was worse than it looks: a record
+         * imported from a CSV and later adopted by a connector had its
+         * `sourceFile`, `sourceRow`, `approvedBy`, `confidence` and per-field
+         * original values overwritten by a background sync — so "row 412 of
+         * Q3-customers.csv, approved by Priya, original value X" silently
+         * became "HubSpot Contacts", and the field-level originals were gone.
+         */
+        existing.connector = p.connector;
+        existing.importedAt = p.importedAt;
+        if (key !== undefined) this.byExternal.set(key, existing);
+        continue;
+      }
+      this.records.push(p);
+      this.byRecord.set(p.recordId, p);
+      /**
+       * Indexed by EXTERNAL key, not skipped when the record already had
+       * provenance. Skipping it meant a connector-adopted CSV record was never
+       * findable by its provider id — so the next sync fell back to identity
+       * matching, and the moment the provider edited the identity field it
+       * created a duplicate.
+       */
+      if (key !== undefined) this.byExternal.set(key, p);
+    }
+    if (this.records.length > MAX_PROVENANCE_RECORDS) {
+      const drop = this.records.splice(0, this.records.length - MAX_PROVENANCE_RECORDS);
+      for (const d of drop) {
+        this.byRecord.delete(d.recordId);
+        if (d.connector) this.byExternal.delete(d.connector.externalKey);
+      }
+    }
+    await this.persist();
+  }
+
+  /** The record a given provider object already produced, if any. */
+  forExternalKey(externalKey: string): ProvenanceRecord | null {
+    return this.byExternal.get(externalKey) ?? null;
+  }
+
+  /** Every record a connection produced. Used to explain, and to disconnect. */
+  forConnection(connectorId: string, accountId: string): ProvenanceRecord[] {
+    return this.records.filter(
+      (r) => r.connector?.connectorId === connectorId && r.connector.accountId === accountId,
+    );
   }
 
   /** Import history, newest first. */
@@ -698,9 +824,24 @@ export class ProvenanceStore {
     return this.records.filter((r) => r.moduleId === moduleId).length;
   }
 
-  private async persist(): Promise<void> {
+  private persist(): Promise<void> {
+    // Serialised: two concurrent syncs writing the same file interleaved a
+    // stale snapshot over a fresh one even with unique temp names.
+    this.writeChain = this.writeChain.then(() => this.writeNow()).catch(() => undefined);
+    return this.writeChain;
+  }
+
+  private async writeNow(): Promise<void> {
     const payload: ProvenanceFile = { ...envelopeStamp(), records: this.records, runs: this.runs };
-    const tmp = `${this.filePath}.tmp`;
+    /**
+     * A UNIQUE temp name, and the same reasoning `SyncStateStore` documents.
+     *
+     * Up to four accounts sync concurrently, and two of them writing
+     * provenance through one fixed `.tmp` path meant the second `rename`
+     * failed `ENOENT` — throwing out of the bridge and leaving the file at the
+     * earlier snapshot.
+     */
+    const tmp = `${this.filePath}.${process.pid}.${(this.tmpSeq += 1)}.tmp`;
     await fs.writeFile(tmp, JSON.stringify(payload), { mode: 0o600 });
     await fs.rename(tmp, this.filePath);
   }

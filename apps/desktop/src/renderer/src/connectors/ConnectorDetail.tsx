@@ -265,6 +265,37 @@ export function ConnectorDetail({
           <p className="mt-2 text-2xs text-faint">NeuroPause requests least-privilege scopes — read-oriented, to build your timeline and memory. Where a connector also grants write access (for example Microsoft mail and calendar), it is used only for actions you explicitly take.</p>
         </section>
 
+        {/* What the data becomes — P9 */}
+        <section className="mb-6">
+          <SectionTitle>What this becomes in your business data</SectionTitle>
+          {dto.businessData.mapped.length > 0 ? (
+            <>
+              <div className="overflow-hidden rounded-xl border border-[var(--hairline)]">
+                {dto.businessData.mapped.map((m, idx) => (
+                  <div
+                    key={m.resourceId}
+                    className={cn(
+                      'flex items-center gap-2.5 px-3.5 py-2.5 text-xs',
+                      idx > 0 && 'border-t border-[var(--hairline)]',
+                    )}
+                  >
+                    <span className="font-medium">{m.label}</span>
+                    <Icon name="arrow-right" size={12} className="shrink-0 text-faint" />
+                    <span className="text-muted">{m.entityLabel}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-2xs text-faint">
+                These become real business records — with provenance back to this connector, and connected
+                to the rest of your data. Everything else this connector syncs stays searchable and on your
+                timeline without being written to your business records.
+              </p>
+            </>
+          ) : (
+            <p className="text-xs text-muted">{dto.businessData.unmappedNote}</p>
+          )}
+        </section>
+
         {/* Microsoft Entra — connector-specific live directory/permissions/tokens */}
         {dto.id === 'microsoft-entra' && <EntraConnectorPanel dto={dto} />}
 

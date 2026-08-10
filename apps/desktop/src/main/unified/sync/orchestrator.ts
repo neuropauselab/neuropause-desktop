@@ -12,13 +12,16 @@
  *   requestSync  → runAccountSync (+ enqueue retry if the failure was transient)
  *   retry queue  → runAccountSync (re-run, capped backoff)
  */
-import type { PlatformEventInput, UnifiedEntity } from '@neuropause/shared';
+import type { ConnectorId, PlatformEventInput, UnifiedEntity } from '@neuropause/shared';
 import { makeUnifiedId } from '../ids';
 import { AuthError, HttpClient, HttpError, NetworkError, RateLimitError, type RateGate } from './http';
 import type { ConnectorAdapter, SyncPage } from './adapterSdk';
 import { RetryQueue } from './retryQueue';
 import type { SyncStateStore } from './syncStateStore';
 import { syncEvents } from './events';
+import { createLogger } from '../../logger';
+
+const log = createLogger('sync');
 
 /** Stop runaway paging if an adapter never reports `hasMore: false`. */
 const MAX_PAGES_PER_RESOURCE = 50;
@@ -41,6 +44,25 @@ export interface OrchestratorPorts {
   rate: RateGate;
   /** P4.1 — whether sync is suppressed for this account (paused / disabled). Optional; defaults to false. */
   isSuppressed?: (connectorId: string, accountId: string) => boolean;
+  /**
+   * P9 — write a resource's entities into the governed business data.
+   *
+   * Optional so the orchestrator's own tests need not stand up a record store,
+   * and so a build without the Data Plane still syncs into the Unified store.
+   * A resource with no declared mapping returns zeroes; the orchestrator does
+   * not decide what is bridgeable.
+   *
+   * Deliberately runs AFTER `upsertMany`: the Unified store is the record of
+   * what the provider said, and it must not be conditional on the governed
+   * write succeeding.
+   */
+  bridge?: (input: {
+    connectorId: ConnectorId;
+    accountId: string;
+    resourceId: string;
+    syncRunId: string;
+    entities: UnifiedEntity[];
+  }) => Promise<{ created: number; updated: number; adopted: number; ambiguous: number; invalid: number }>;
 }
 
 export interface AccountSyncOutcome {
@@ -56,6 +78,16 @@ export interface AccountSyncOutcome {
   retryable: boolean;
   rateLimited: boolean;
   offline: boolean;
+  /**
+   * What reached the GOVERNED business data.
+   *
+   * Absent when no resource in this connector has a declared mapping — which
+   * is the honest representation of "this provider's data is searchable but
+   * is not business records".
+   */
+  bridged?: { created: number; updated: number; adopted: number; ambiguous: number; invalid: number };
+  /** Set when the sync succeeded but the governed write did not. */
+  bridgeError?: string | null;
 }
 
 export class SyncOrchestrator {
@@ -186,6 +218,18 @@ export class SyncOrchestrator {
     let updated = 0;
     let deleted = 0;
     let conflicts = 0;
+    /**
+     * What reached the GOVERNED business data, counted separately.
+     *
+     * Separate from `created`/`updated` on purpose: those count Unified
+     * entities, and conflating them would make "1,200 records synced" read as
+     * "1,200 customers in your business data" when most resources have no
+     * mapping at all.
+     */
+    const bridged = { created: 0, updated: 0, adopted: 0, ambiguous: 0, invalid: 0 };
+    let bridgeError: string | null = null;
+    /** One id per account sync, carried into every bridged record's provenance. */
+    const syncRunId = `sync_${connectorId}_${accountId}_${Date.parse(nowIso) || 0}`;
 
     try {
       // Inside the try so a persistence error still lands in the catch and records a terminal status
@@ -206,6 +250,33 @@ export class SyncOrchestrator {
             updated += r.updated;
             conflicts += r.conflicts;
             resCreated += r.created;
+
+            /**
+             * P9 — and into the governed business data.
+             *
+             * Failing to bridge must not fail the sync. The Unified store
+             * already holds what the provider said; losing a page of that
+             * because a destination module was momentarily unwritable would
+             * make the cursor advance over data nothing recorded.
+             */
+            if (this.ports.bridge) {
+              try {
+                const b = await this.ports.bridge({
+                  connectorId,
+                  accountId,
+                  resourceId: resource.id,
+                  syncRunId,
+                  entities: page.entities,
+                });
+                bridged.created += b.created;
+                bridged.updated += b.updated;
+                bridged.adopted += b.adopted;
+                bridged.ambiguous += b.ambiguous;
+                bridged.invalid += b.invalid;
+              } catch (err) {
+                bridgeError = err instanceof Error ? err.message : String(err);
+              }
+            }
           }
           if (page.deletedSourceIds && page.deletedSourceIds.length > 0) {
             const ids = page.deletedSourceIds.map((sid) => makeUnifiedId(connectorId, accountId, resource.kind, sid));
@@ -214,6 +285,19 @@ export class SyncOrchestrator {
             resDeleted += d;
           }
           if (page.degraded) degraded = page.degraded;
+
+          /**
+           * The cursor does NOT advance when the governed write failed.
+           *
+           * It used to: the catch above recorded `bridgeError` and execution
+           * fell straight through to `setCursor`, so the next sync started
+           * AFTER the page it had failed to write and those records never
+           * reached the business data again — with `ok: true` returned and a
+           * log line as the only trace. Holding the cursor makes the next run
+           * replay the page, which the external-key idempotency makes safe.
+           */
+          if (bridgeError !== null) break;
+
           cursor = page.cursor;
           await this.ports.syncState.setCursor(connectorId, accountId, resource.id, cursor, nowIso);
           pages += 1;
@@ -258,7 +342,27 @@ export class SyncOrchestrator {
         deadLetter: null, // a successful sync clears any prior dead-letter (replay recovered)
       });
       this.ports.publish(syncEvents.completed(connectorId, name, accountId, { created, updated, deleted, durationMs }));
-      return { ok: true, hadAdapter: true, created, updated, deleted, conflicts, durationMs, error: null, retryable: false, rateLimited: false, offline: false };
+
+      /**
+       * A bridge failure is reported, never swallowed and never fatal.
+       *
+       * The provider data IS synced — it is in the Unified store and on the
+       * timeline — so the run is a success. But "synced" and "in your business
+       * data" are different claims, and a run where the second one failed must
+       * not read as though both worked.
+       */
+      if (bridgeError !== null) {
+        log.warn('Sync completed but the governed write failed', {
+          connectorId,
+          accountId,
+          err: bridgeError,
+        });
+      }
+      if (bridged.created + bridged.updated + bridged.adopted > 0) {
+        log.info('Bridged into business data', { connectorId, accountId, ...bridged });
+      }
+
+      return { ok: true, hadAdapter: true, created, updated, deleted, conflicts, durationMs, error: null, retryable: false, rateLimited: false, offline: false, bridged, bridgeError };
     } catch (err) {
       const durationMs = Date.now() - start;
       const prevFailures = this.ports.syncState.get(connectorId, accountId).consecutiveFailures;

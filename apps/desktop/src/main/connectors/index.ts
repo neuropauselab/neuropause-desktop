@@ -38,6 +38,8 @@ import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { connectorService } from './connectorService';
 import { connectorStore } from './connectorStore';
+import type { ConnectorId } from '@neuropause/shared';
+import { testConnection } from './connectionTest';
 import { connectorControlStore } from './connectorControlStore';
 import { ConnectorRuntimeSupervisor } from './connectorRuntimeSupervisor';
 import { isConfigured, resolveWebhookSecret } from './credentials';
@@ -139,6 +141,21 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
   // A paused account / disabled connector skips manual sync (scheduled-path enforcement lands with the
   // orchestrator changes in Increment 3).
   connectorService.setControlGate((c, a) => supervisor.isSyncSuppressed(c, a));
+
+  /**
+   * P9 — a REAL provider round-trip before "Connected" is shown.
+   *
+   * `checkHealth` is structural and pings nothing, by design and by its own
+   * header. This is the missing half: it proves the credential works and, more
+   * importantly, resolves a STABLE provider account id — the thing
+   * `externalId` was declared for and almost never had.
+   */
+  connectorService.setConnectionTester((connectorId, accountId) =>
+    testConnection(connectorId as ConnectorId, accountId, {
+      getAccessToken: (c, a) => connectorService.getValidAccessToken(c, a),
+      rate: new RateLimiter(200),
+    }),
+  );
 
   // P2.4 — Microsoft 365 write executor: audited, confirmation-gated Graph writes on the same account/token.
   const m365 = createM365Executor({

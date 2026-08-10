@@ -266,6 +266,14 @@ export interface EnterpriseDeps {
 
 export interface EnterpriseSubsystem {
   handlers: SecureHandlerDef[];
+  /**
+   * A PURE permission check, with none of `authorize`'s side effects.
+   *
+   * `authorize` throws AND, on refusal, opens a HOLD and writes a Decision
+   * Record — right for a person's request, wrong for a machine-triggered one
+   * running every fifteen minutes.
+   */
+  allows: (permission: EnterprisePermission) => boolean;
   /** RBAC gate for the secure bridge — resolves the session actor and asserts. */
   authorize: (permission: EnterprisePermission) => void;
   /** The ERP module registry — future modules register into this at boot. */
@@ -1054,6 +1062,16 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
 
   return {
     handlers,
+    /**
+     * A PURE permission check, alongside the throwing `authorize`.
+     *
+     * A machine-triggered path (a scheduled connector sync) must be able to
+     * ask "may this be written?" without the side effects `authorize` has on
+     * refusal — it opens a HOLD and writes a Decision Record, which is right
+     * for a person's request and wrong every fifteen minutes for a background
+     * one.
+     */
+    allows: (permission: EnterprisePermission) => permissions.allows(permission),
     authorize,
     modules: modules.registry,
     complianceFindings: () => evaluateCompliance(governanceStore.rules(), buildComplianceInput()),
