@@ -173,7 +173,7 @@ import { jobStore } from './workforce/runtime/jobInstance';
 import { createWorkforceActionExecutor } from './workforce/execution/workforceActionExecutor';
 import type { ExecutionBinding } from '@neuropause/shared';
 import { computeOrgHealth } from '@neuropause/shared';
-import { initEnterprise, onWorkspaceSwitch } from './enterprise';
+import { activeTenantScope, initEnterprise, onWorkspaceSwitch } from './enterprise';
 import { setLiveSyncActiveOrg } from './cloud/livesync/liveSyncInstance';
 import { initDataPlane } from './dataPlane';
 import { initDocuments } from './documents';
@@ -187,6 +187,8 @@ import {
   decisionRecordStore,
   holdStore,
 } from './decisions/instances';
+import { opportunityDecisionStore } from './opportunities/instances';
+import { outcomeRevisionStore } from './outcomes/instances';
 // Named `initDecisionRecords` here: `initDecisions` is already taken by the
 // executive decision workflow, and these are the governance RECORD/HOLD reads.
 import { initDecisions as initDecisionRecords } from './decisions';
@@ -708,6 +710,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
    */
   const documents = initDocuments({
     userDataDir: app.getPath('userData'),
+    // P12 — the same tenant resolver the record stores read.
+    scope: activeTenantScope,
     actor: () => {
       const st = authService.getStatus();
       return st.state === 'authenticated' ? (st.session.user.displayName ?? st.session.user.email) : null;
@@ -752,6 +756,23 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
    * holds a target org. Records need nothing here — the store re-reads its scope
    * on every call, which is why it was built as a function rather than a value.
    */
+  /**
+   * P12 — bind the tenant boundary onto the append-only stores.
+   *
+   * Holds, Decision Records, opportunity decisions and outcome revisions are
+   * module-level singletons created at import time, so they cannot take the
+   * resolver as a constructor argument. Bound here, at the same place the module
+   * registry is bound, and UNBOUND DENIES — so a store missed here returns
+   * nothing rather than everything.
+   *
+   * `activeTenantScope` is the same resolver every other surface reads. One
+   * authority, four more consumers.
+   */
+  holdStore.bindScope(activeTenantScope);
+  decisionRecordStore.bindScope(activeTenantScope);
+  opportunityDecisionStore.bindScope(activeTenantScope);
+  outcomeRevisionStore.bindScope(activeTenantScope);
+
   onWorkspaceSwitch(() => {
     dataPlane.forgetPlans();
     // Stop the 60-second push loop rather than let it keep pushing to the

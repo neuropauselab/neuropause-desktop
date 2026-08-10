@@ -44,6 +44,7 @@ import {
   saveDeliveryPreferences,
 } from '../services/executiveDelivery';
 import { InboxStore } from './inboxStore';
+import { activeTenantScope } from '../enterprise/index';
 import {
   DeliveryCooldown,
   NOTIFICATION_EVENT_TYPES,
@@ -78,7 +79,10 @@ export interface NotificationsSubsystem {
 }
 
 export function initNotifications(deps: NotificationsSubsystemDeps): NotificationsSubsystem {
-  const store = new InboxStore(join(app.getPath('userData'), 'notification-inbox.json'));
+  const store = new InboxStore(
+    join(app.getPath('userData'), 'notification-inbox.json'),
+    // P12 — the same tenant resolver every other store reads.
+  ).bindScope(activeTenantScope);
   const loaded = store.loadAllSync();
 
   const announce = (kind: 'added' | 'read'): void => {

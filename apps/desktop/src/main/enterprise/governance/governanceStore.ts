@@ -16,7 +16,7 @@
 import { EventEmitter } from 'node:events';
 import { promises as fs } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import type { ApprovalChain, ComplianceRule, EnterpriseAuditEntry } from '@neuropause/shared';
+import type { ApprovalChain, ComplianceRule, EnterpriseAuditEntry, TenantScope } from '@neuropause/shared';
 import { AuditChain, type AuditChainSnapshot, type AuditVerifyResult } from '../../security/auditChain';
 import { createLogger } from '../../logger';
 import { DEFAULT_APPROVAL_CHAINS, DEFAULT_COMPLIANCE_RULES } from './enterpriseGovernance';
@@ -149,12 +149,43 @@ export class GovernanceStore extends EventEmitter {
     return [...this.complianceRules.values()];
   }
 
-  auditEntries(limit = 100): EnterpriseAuditEntry[] {
-    return this.audit.slice(-limit).reverse();
+  /**
+   * Audit entries the caller may read, newest first.
+   *
+   * P12 — SCOPED. `record()` has stamped and hash-chained a `workspaceId` since
+   * P11, and this read ignored it: anyone with `governance:read` saw every
+   * workspace's trail. That is not a minor leak — every module mutation writes
+   * the record id AND the title into the target and summary, so the audit trail
+   * was a complete index of every tenant's record ids and names, and one of
+   * those ids then fed the document-lines channel.
+   *
+   * Filters the OUTPUT and never the array. `this.audit` is order-sensitive
+   * because the tamper-evident chain hashes each entry against its predecessor —
+   * filtering in place would break verification for everybody.
+   *
+   * A `null` scope returns nothing. Entries written before P11 have no
+   * workspaceId and are visible to nobody, consistent with every other store.
+   */
+  auditEntries(limit = 100, scope?: TenantScope | null): EnterpriseAuditEntry[] {
+    const visible =
+      scope === undefined
+        ? this.audit
+        : scope === null
+          ? []
+          : this.audit.filter((e) => e.workspaceId === scope.workspaceId);
+    return visible.slice(-limit).reverse();
   }
 
-  auditCount(): number {
-    return this.audit.length;
+  /**
+   * How many entries the caller may read.
+   *
+   * Scoped for the same reason as the read: an install-wide count answers "how
+   * busy is the other tenant" without returning an entry.
+   */
+  auditCount(scope?: TenantScope | null): number {
+    if (scope === undefined) return this.audit.length;
+    if (scope === null) return 0;
+    return this.audit.filter((e) => e.workspaceId === scope.workspaceId).length;
   }
 
   /** Total audit entries ever recorded, including those rotated out of retention. */

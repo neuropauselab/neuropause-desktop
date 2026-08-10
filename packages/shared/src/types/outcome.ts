@@ -159,6 +159,15 @@ export interface OutcomeConfidence {
 
 /** A measurement observed at a point in time, kept so history is not lost. */
 export interface OutcomeRevision {
+  /**
+   * P12 — the tenant this record belongs to.
+   *
+   * Optional in the TYPE so a file written before P12 still parses. Absent means
+   * UNRESOLVED: visible to no tenant, counted, never auto-assigned.
+   */
+  tenantId?: string | null;
+  /** The workspace inside that tenant. Absent means tenant-level. */
+  workspaceId?: string | null;
   id: string;
   /** Deterministic identity: opportunity + metric. */
   outcomeKey: string;

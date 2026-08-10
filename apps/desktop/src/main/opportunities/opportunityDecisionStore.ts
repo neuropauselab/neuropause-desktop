@@ -46,12 +46,12 @@ export class OpportunityDecisionStore extends AppendOnlyJsonStore<OpportunityDec
   }
 
   get(id: string): OpportunityDecision | null {
-    return this.items.find((d) => d.id === id) ?? null;
+    return this.visible().find((d) => d.id === id) ?? null;
   }
 
   /** Every decision, keyed for the merge the subsystem does on each read. */
   byId(): Map<string, OpportunityDecision> {
-    return new Map(this.items.map((d) => [d.id, d]));
+    return new Map(this.visible().map((d) => [d.id, d]));
   }
 
   /**
@@ -65,9 +65,8 @@ export class OpportunityDecisionStore extends AppendOnlyJsonStore<OpportunityDec
    * hold is how the pause is reconstructed afterwards.
    */
   set(input: RecordDecisionInput): OpportunityDecision {
-    const index = this.items.findIndex((d) => d.id === input.id);
-    if (index >= 0) {
-      const existing = this.items[index] as OpportunityDecision;
+    const existing = this.visible().find((d) => d.id === input.id) ?? null;
+    if (existing !== null) {
       const updated: OpportunityDecision = {
         ...existing,
         status: input.status,
@@ -86,7 +85,16 @@ export class OpportunityDecisionStore extends AppendOnlyJsonStore<OpportunityDec
       // discarded, because the failure that causes is a dismissal silently
       // vanishing and the finding reappearing as new — precisely what this
       // store exists to prevent.
-      this.items.splice(index, 1);
+      /**
+       * `removeWhere`, not a splice of the read.
+       *
+       * P12 made `items` private and `visible()` returns a FILTERED COPY, so
+       * `visible().splice(...)` mutated a throwaway array and the old row stayed
+       * — the decision appeared not to move. Six tests caught it. `removeWhere`
+       * is the scoped removal seam and ANDs the tenant predicate in, so this
+       * cannot reach another tenant's row either.
+       */
+      this.removeWhere((d) => d.id === input.id);
       this.append(updated);
       return updated;
     }

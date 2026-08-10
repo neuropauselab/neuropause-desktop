@@ -177,6 +177,15 @@ export const HOLD_OUTCOME_LABELS: Record<HoldOutcome, string> = {
  * the Decision Record that explains how it arose.
  */
 export interface HoldRecord extends HoldView {
+  /**
+   * P12 — the tenant this record belongs to.
+   *
+   * Optional in the TYPE so a file written before P12 still parses. Absent means
+   * UNRESOLVED: visible to no tenant, counted, never auto-assigned.
+   */
+  tenantId?: string | null;
+  /** The workspace inside that tenant. Absent means tenant-level. */
+  workspaceId?: string | null;
   id: string;
   at: string;
   actor: string | null;
@@ -244,6 +253,15 @@ export interface ActionAssessment {
  * the evidence said, what NeuroPause recommended, what actually happened.
  */
 export interface DecisionRecord {
+  /**
+   * P12 — the tenant this record belongs to.
+   *
+   * Optional in the TYPE so a file written before P12 still parses. Absent means
+   * UNRESOLVED: visible to no tenant, counted, never auto-assigned.
+   */
+  tenantId?: string | null;
+  /** The workspace inside that tenant. Absent means tenant-level. */
+  workspaceId?: string | null;
   id: string;
   at: string;
   actor: string | null;

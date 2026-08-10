@@ -110,7 +110,7 @@ export class DecisionRecordStore extends AppendOnlyJsonStore<DecisionRecord> {
   }
 
   get(id: string): DecisionRecord | null {
-    return this.items.find((r) => r.id === id) ?? null;
+    return this.visible().find((r) => r.id === id) ?? null;
   }
 
   /**
@@ -118,6 +118,6 @@ export class DecisionRecordStore extends AppendOnlyJsonStore<DecisionRecord> {
    * "why did we do that?" is a sequence, not a single row.
    */
   forSubject(subject: string): DecisionRecord[] {
-    return this.items.filter((r) => r.subject === subject);
+    return this.visible().filter((r) => r.subject === subject);
   }
 }

@@ -37,8 +37,8 @@ import type { EnterpriseModuleRegistry } from '../enterprise/framework/moduleReg
 const UNENFORCED: readonly { store: string; status: TenantMigrationStatus; note: string }[] = [
   {
     store: 'documents (documentStore)',
-    status: 'REQUIRES_MIGRATION',
-    note: 'DocumentRecord has no scope field. `get(id)` and `existingByHash(sha256)` scan one flat list, so a document is readable by id and a byte-identical upload returns the other tenant’s record. Blob storage is one content-addressed pool.',
+    status: 'PARTIAL',
+    note: 'P12 — DocumentRecord carries a scope; `get`, `all`, `count` and `existingByHash` are all scoped, so the content-hash oracle is closed and an identical upload by a second tenant produces its own record. The BLOB POOL remains shared and content-addressed by design, so the reference count spans tenants (deleting one tenant\u2019s record must not delete bytes another still names). Pre-P12 documents are unresolved and visible to nobody.',
   },
   {
     store: 'relationships (relationshipStore)',
@@ -51,9 +51,9 @@ const UNENFORCED: readonly { store: string; status: TenantMigrationStatus; note:
     note: 'ProvenanceRecord has no scope field. `byExternal` is keyed on `connectorId::accountId::resourceId::externalId`, so two tenants syncing the same provider account collide on one provenance row and the second adopts the first’s record.',
   },
   {
-    store: 'decisions / holds / approvals',
-    status: 'REQUIRES_MIGRATION',
-    note: 'No scope field. `holdStore.open` de-dupes on the subject string alone, so one tenant’s hold on `record:X` is returned as the other’s. `openHolds()` and `openCount()` are install-wide.',
+    store: 'decisions / holds',
+    status: 'PARTIAL',
+    note: 'P12 — HoldRecord and DecisionRecord carry a scope, and every read goes through the base class\u2019s `visible()`. The subject de-dupe is now (scope, subject), so two tenants holding `record:X` get two holds. `resolveSubject` cannot reach across. Pre-P12 rows are unresolved. APPROVALS (erp/approvalStore) are still unscoped \u2014 listed separately.',
   },
   {
     store: 'erp document lines (DocumentLineStore)',
@@ -87,13 +87,13 @@ const UNENFORCED: readonly { store: string; status: TenantMigrationStatus; note:
   },
   {
     store: 'notifications (inboxStore)',
-    status: 'REQUIRES_MIGRATION',
-    note: 'Item ids are stable per subject, so two tenants’ notifications for the same subject collide and overwrite. `markRead("all")` clears every tenant’s unread state.',
+    status: 'PARTIAL',
+    note: 'P12 — items carry a scope; the de-dupe key is (scope, id) so the stable-per-subject ids no longer collide across tenants; `page`, `unreadCount` and `markRead("all")` are scoped. A delivery with no tenant is refused rather than stored unowned. The DELIVERY ENGINE upstream still has no tenant context, so what gets produced is not yet scoped \u2014 see background jobs.',
   },
   {
     store: 'audit reads (governanceStore)',
     status: 'PARTIAL',
-    note: '`record()` writes and hashes a `workspaceId`, so the trail is stamped. `auditEntries(limit)` and `auditCount()` ignore it, so anyone with `governance:read` reads every workspace’s trail.',
+    note: 'P12 — `auditEntries` and `auditCount` take a scope and filter the OUTPUT (never the array: the tamper-evident chain is order-sensitive). The renderer channel, the trust model and the medical-device reader all pass the active scope. Entries written before P11 have no workspaceId and are visible to nobody. Approval chains and compliance rules remain global.',
   },
   {
     store: 'import plan cache (dataPlane)',
@@ -109,6 +109,11 @@ const UNENFORCED: readonly { store: string; status: TenantMigrationStatus; note:
     store: 'background jobs (9 of 10 timers)',
     status: 'REQUIRES_MIGRATION',
     note: 'Only the connector sync has a principal. The delivery engine, scheduled backup, graph and memory reprojections, webhook dispatcher, health monitor and update checker run with no actor, no tenant and no permission.',
+  },
+  {
+    store: 'medical device pack (LotService / TraceService / TraceEdgeStore)',
+    status: 'PARTIAL',
+    note: 'P12 — `deviceTenantId()` returned the literal string \u2018default\u2019, so the pack\u2019s real and tested isolation machinery filtered every read on a value that never changed. It now reads the live resolver, falling back to \u2018default\u2019 only when no tenant resolves so existing lots stay readable during cold start. `TraceEdgeStore` itself is still unscoped. This surface was absent from the Program 11 inventory.',
   },
   {
     store: 'the filesystem itself',

@@ -9,7 +9,8 @@
  */
 import { promises as fs, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { InboxNotification, NotificationInboxPage } from '@neuropause/shared';
+import type { InboxNotification, NotificationInboxPage, TenantScope } from '@neuropause/shared';
+import { ownershipOf, recordInScope } from '@neuropause/shared';
 
 interface InboxFile {
   items: InboxNotification[];
@@ -22,8 +23,33 @@ export class InboxStore {
   private items: InboxNotification[] = [];
   private loaded = false;
   private writeChain: Promise<void> = Promise.resolve();
+  private scopeSource: (() => TenantScope | null) | null = null;
 
   constructor(private readonly filePath: string) {}
+
+  /** Bind the tenant boundary. Unbound denies. Chainable. */
+  bindScope(source: () => TenantScope | null): this {
+    this.scopeSource = source;
+    return this;
+  }
+
+  private scopeOrDeny(): TenantScope | null {
+    return this.scopeSource === null ? null : this.scopeSource();
+  }
+
+  /**
+   * The items this caller may see.
+   *
+   * A notification BODY carries business data — the delivered title interpolates
+   * the subject's name, the connector id, the job id. So an unscoped inbox meant
+   * one tenant's job failure produced a named notification in another tenant's
+   * list.
+   */
+  private visible(): InboxNotification[] {
+    const scope = this.scopeOrDeny();
+    if (scope === null) return [];
+    return this.items.filter((x) => recordInScope(x, scope));
+  }
 
   loadAllSync(): InboxNotification[] {
     if (!this.loaded) {
@@ -38,11 +64,38 @@ export class InboxStore {
     return [...this.items];
   }
 
+  /** Ownership counts across every item. Three integers, no content. */
+  ownershipCounts(): { total: number; assigned: number; unresolved: number } {
+    if (!this.loaded) this.loadAllSync();
+    let assigned = 0;
+    for (const x of this.items) if (ownershipOf(x) === 'assigned') assigned += 1;
+    return { total: this.items.length, assigned, unresolved: this.items.length - assigned };
+  }
+
   /** Add a delivered item. Re-delivery of the same id REPLACES (marks unread again). */
   add(item: InboxNotification): Promise<void> {
     if (!this.loaded) this.loadAllSync();
-    this.items = this.items.filter((x) => x.id !== item.id);
-    this.items.unshift({ ...item });
+    const scope = this.scopeOrDeny();
+    // No tenant, no notification. Delivering it unowned would make it invisible
+    // to everyone AND count against the cap, so refusing is the honest outcome.
+    if (scope === null) return Promise.resolve();
+    const stamped: InboxNotification = {
+      ...item,
+      tenantId: scope.tenantId,
+      workspaceId: scope.workspaceId,
+    };
+    /**
+     * The de-dupe key is (SCOPE, id), not id.
+     *
+     * Item ids are deliberately "stable per SUBJECT, not per occurrence" so a
+     * repeated alert does not pile up. Across tenants that made them COLLIDE:
+     * two tenants' notifications about the same subject overwrote each other, so
+     * one tenant's alert silently replaced the other's.
+     */
+    this.items = this.items.filter(
+      (x) => !(x.id === item.id && recordInScope(x, scope)),
+    );
+    this.items.unshift(stamped);
     if (this.items.length > MAX_INBOX) this.items.length = MAX_INBOX;
     return this.persist();
   }
@@ -50,9 +103,13 @@ export class InboxStore {
   /** Mark specific ids (or every item) read. Returns how many changed. */
   markRead(ids: string[] | 'all'): Promise<number> {
     if (!this.loaded) this.loadAllSync();
+    const scope = this.scopeOrDeny();
+    if (scope === null) return Promise.resolve(0);
     const set = ids === 'all' ? null : new Set(ids);
     let changed = 0;
     this.items = this.items.map((x) => {
+      // `'all'` means all of MINE. It used to clear every tenant's unread state.
+      if (!recordInScope(x, scope)) return x;
       if (!x.read && (set === null || set.has(x.id))) {
         changed += 1;
         return { ...x, read: true };
@@ -65,16 +122,19 @@ export class InboxStore {
 
   page(limit = 50): NotificationInboxPage {
     if (!this.loaded) this.loadAllSync();
+    const mine = this.visible();
     return {
-      items: this.items.slice(0, Math.max(1, limit)),
-      unread: this.items.filter((x) => !x.read).length,
-      total: this.items.length,
+      items: mine.slice(0, Math.max(1, limit)),
+      unread: mine.filter((x) => !x.read).length,
+      // Scoped: an install-wide total is the badge telling one tenant how busy
+      // another one is.
+      total: mine.length,
     };
   }
 
   unreadCount(): number {
     if (!this.loaded) this.loadAllSync();
-    return this.items.filter((x) => !x.read).length;
+    return this.visible().filter((x) => !x.read).length;
   }
 
   private persist(): Promise<void> {

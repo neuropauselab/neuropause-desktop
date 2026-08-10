@@ -62,6 +62,7 @@ import {
   EmptyRequest,
   IpcChannel,
 } from '@neuropause/shared';
+import type { TenantScope } from '@neuropause/shared';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import type { EnterpriseRecordStore } from '../enterprise/framework/enterpriseRecordStore';
 import { createLogger } from '../logger';
@@ -87,6 +88,14 @@ export interface DocumentSubsystemDeps {
   authorize: (permission: EnterprisePermission) => void;
   modules: () => readonly EnterpriseModuleDescriptor[];
   storeFor: (moduleId: string) => EnterpriseRecordStore | null;
+  /**
+   * P12 — the tenant boundary for the document store.
+   *
+   * The same resolver every other surface reads. Required, not optional: an
+   * optional scope is a scope somebody forgets to pass, and the document store
+   * held the sharpest cross-tenant oracle in the app.
+   */
+  scope: () => TenantScope | null;
 }
 
 export interface DocumentSubsystem {
@@ -136,7 +145,7 @@ export function initDocuments(deps: DocumentSubsystemDeps): DocumentSubsystem {
     join(deps.userDataDir, 'documents.json'),
     join(deps.userDataDir, 'documents'),
     deps.now,
-  );
+  ).bindScope(deps.scope);
 
   const CAPABILITIES: DocumentCapabilities = {
     readableFormats: [...SUPPORTED_FORMATS],

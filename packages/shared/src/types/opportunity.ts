@@ -307,6 +307,15 @@ export interface OpportunityExecuteResult {
 
 /** The only part of an opportunity that persists: what the user decided. */
 export interface OpportunityDecision {
+  /**
+   * P12 — the tenant this record belongs to.
+   *
+   * Optional in the TYPE so a file written before P12 still parses. Absent means
+   * UNRESOLVED: visible to no tenant, counted, never auto-assigned.
+   */
+  tenantId?: string | null;
+  /** The workspace inside that tenant. Absent means tenant-level. */
+  workspaceId?: string | null;
   id: string;
   status: OpportunityStatus;
   at: string;

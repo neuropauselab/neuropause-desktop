@@ -39,6 +39,11 @@ import { EnterpriseModuleRegistry } from '../enterprise/framework/moduleRegistry
 import { defineEnterpriseModule } from '../enterprise/framework/enterpriseModule';
 import { createTenantContextResolver } from './tenantContext';
 import { buildMigrationInventory } from './migrationInventory';
+import { setAmbientAppendOnlyScopeForTests } from '../decisions/appendOnlyStore';
+import { DocumentStore } from '../documents/documentStore';
+import { HoldStore } from '../decisions/holdStore';
+import { GovernanceStore } from '../enterprise/governance/governanceStore';
+import { InboxStore } from '../notifications/inboxStore';
 
 const NOW = '2026-08-10T12:00:00.000Z';
 
@@ -823,5 +828,280 @@ describe('record eviction', () => {
 
     await store.flush();
     await fs.rm(dir, { recursive: true, force: true, maxRetries: 3 }).catch(() => undefined);
+  });
+});
+
+/* ── P12: the append-only substrate ──────────────────────────────────── */
+
+describe('cross-tenant documents', () => {
+  let dir: string;
+  let store: DocumentStore;
+  let scope: TenantScope | null;
+
+  const put = async (name: string, body: string): Promise<string> => {
+    const rec = await store.put(Buffer.from(body, 'utf8'), {
+      filename: name,
+      uploadedAt: NOW,
+      uploadedBy: 'u',
+      kind: 'unknown',
+      readable: true,
+      unreadableReason: null,
+      fields: [],
+      issues: [],
+      links: [],
+      corrections: [],
+    } as never);
+    return rec.id;
+  };
+
+  beforeEach(async () => {
+    dir = join(tmpdir(), `np-doc-xt-${randomUUID()}`);
+    await fs.mkdir(dir, { recursive: true });
+    setAmbientAppendOnlyScopeForTests(null);
+    store = new DocumentStore(join(dir, 'documents.json'), join(dir, 'blobs'), () => NOW).bindScope(
+      () => scope,
+    );
+    await store.ensureDir();
+    await store.load();
+  });
+
+  afterEach(async () => {
+    setAmbientAppendOnlyScopeForTests(() => TEST_TENANT_SCOPE);
+    await store.flush();
+    await fs.rm(dir, { recursive: true, force: true, maxRetries: 3 }).catch(() => undefined);
+  });
+
+  it('THE HASH ORACLE: byte-identical bytes do not reveal the other tenant’s record', async () => {
+    /**
+     * The sharpest exposure the audit found, and it was worse than a read.
+     * `existingByHash` scanned one flat list, so uploading a file byte-identical
+     * to another tenant's returned THEIR record — id, uploader, timestamp, field
+     * count, link count — plus `duplicate: true`, which confirms those exact
+     * bytes exist in the install. The id then fed detail, correct, reclassify and
+     * delete.
+     *
+     * A content hash is not an authorization token.
+     */
+    scope = A;
+    const aId = await put('contract.txt', 'IDENTICAL BYTES');
+    expect(store.existingByHash(store.get(aId)!.sha256)).not.toBeNull();
+
+    scope = B;
+    // Same bytes, same digest, different tenant: no record, no confirmation.
+    expect(store.existingByHash(store.get(aId)?.sha256 ?? 'x')).toBeNull();
+    // And the id itself is a dead end.
+    expect(store.get(aId)).toBeNull();
+    expect(store.all()).toEqual([]);
+    expect(store.count()).toBe(0);
+  });
+
+  it('an identical upload by a second tenant produces its OWN record', async () => {
+    scope = A;
+    const aId = await put('contract.txt', 'IDENTICAL BYTES');
+    scope = B;
+    const bId = await put('contract.txt', 'IDENTICAL BYTES');
+    expect(bId).not.toBe(aId);
+    // Bytes are deduplicated on disk; the KNOWLEDGE that they exist is not.
+    expect(store.all()).toHaveLength(1);
+    scope = A;
+    expect(store.all()).toHaveLength(1);
+  });
+
+  it('one tenant removing its record does not delete bytes the other still names', async () => {
+    scope = A;
+    const aId = await put('shared.txt', 'SHARED BYTES');
+    const sha = store.get(aId)!.sha256;
+    scope = B;
+    const bId = await put('shared.txt', 'SHARED BYTES');
+    scope = A;
+    expect(await store.remove(aId)).toBe(true);
+    scope = B;
+    // B's record survives AND its bytes are still readable.
+    expect(store.get(bId)).not.toBeNull();
+    expect(await store.bytes(bId)).not.toBeNull();
+    expect(sha).toBe(store.get(bId)!.sha256);
+  });
+
+  it('a document store with no scope hands back nothing', async () => {
+    scope = A;
+    await put('x.txt', 'x');
+    scope = null;
+    expect(store.all()).toEqual([]);
+    expect(store.count()).toBe(0);
+    expect(store.existingByHash('anything')).toBeNull();
+  });
+});
+
+describe('cross-tenant holds and decisions', () => {
+  let dir: string;
+  let holds: HoldStore;
+  let scope: TenantScope | null;
+
+  beforeEach(async () => {
+    dir = join(tmpdir(), `np-hold-xt-${randomUUID()}`);
+    await fs.mkdir(dir, { recursive: true });
+    setAmbientAppendOnlyScopeForTests(null);
+    holds = new HoldStore(join(dir, 'holds.json')).bindScope(() => scope);
+    await holds.load();
+  });
+
+  afterEach(async () => {
+    setAmbientAppendOnlyScopeForTests(() => TEST_TENANT_SCOPE);
+    await holds.flush();
+    await fs.rm(dir, { recursive: true, force: true, maxRetries: 3 }).catch(() => undefined);
+  });
+
+  const openHold = (subject: string): { id: string } =>
+    holds.open({
+      subject,
+      kind: 'dangerous_delete',
+      title: 'Held',
+      because: 'test',
+      whatHappensNext: 'a person decides',
+      evidence: [],
+      actor: 'u',
+    } as never) as { id: string };
+
+  it('the SAME subject in two tenants is two holds, not one', () => {
+    /**
+     * `open` de-duped on the subject STRING alone. Two tenants holding
+     * `record:X` collided: the second caller received the FIRST tenant's hold —
+     * a governance object from another company, with its actor and its reason.
+     */
+    scope = A;
+    const a = openHold('record:X');
+    scope = B;
+    const b = openHold('record:X');
+    expect(b.id).not.toBe(a.id);
+    expect(holds.openHolds()).toHaveLength(1);
+    scope = A;
+    expect(holds.openHolds()).toHaveLength(1);
+    expect(holds.get(b.id)).toBeNull();
+  });
+
+  it('a count does not reveal the other tenant’s governance queue', () => {
+    scope = A;
+    openHold('record:1');
+    openHold('record:2');
+    scope = B;
+    expect(holds.openCount()).toBe(0);
+    scope = A;
+    expect(holds.openCount()).toBe(2);
+  });
+
+  it('one tenant cannot resolve another tenant’s hold by subject', () => {
+    scope = A;
+    const a = openHold('record:X');
+    scope = B;
+    // Resolving by subject is how the governed-delete flow clears a hold. It
+    // must not reach across.
+    holds.resolveSubject('record:X', 'proceeded', 'attacker');
+    scope = A;
+    expect(holds.get(a.id)?.status).toBe('open');
+  });
+
+  it('a hold cannot be opened with no tenant', () => {
+    scope = null;
+    expect(() => openHold('record:X')).toThrow(/no organization and workspace are active/i);
+  });
+});
+
+/* ── P12: audit reads ────────────────────────────────────────────────── */
+
+describe('cross-tenant audit reads', () => {
+  it('an audit trail is only readable by the workspace that wrote it', async () => {
+    /**
+     * `record()` stamped and hash-chained a workspaceId since P11; the READ
+     * ignored it. That is not a minor leak: every module mutation writes the
+     * record id AND its title into `target`/`summary`, so the trail was a
+     * complete index of every tenant's record ids and names — and one of those
+     * ids then fed the document-lines channel.
+     */
+    const dir = join(tmpdir(), `np-audit-xt-${randomUUID()}`);
+    await fs.mkdir(dir, { recursive: true });
+    const store = new GovernanceStore(join(dir, 'gov.json'));
+    await store.load();
+
+    store.record({ actor: 'a', action: 'record.create', target: 'rec_a', summary: 'Created Customer "Northwind"', workspaceId: A.workspaceId });
+    store.record({ actor: 'b', action: 'record.create', target: 'rec_b', summary: 'Created Customer "Borealis"', workspaceId: B.workspaceId });
+
+    const seenByA = store.auditEntries(100, A);
+    expect(seenByA).toHaveLength(1);
+    expect(JSON.stringify(seenByA)).not.toContain('Borealis');
+    expect(JSON.stringify(seenByA)).not.toContain('rec_b');
+    expect(store.auditCount(A)).toBe(1);
+
+    // No scope reads nothing.
+    expect(store.auditEntries(100, null)).toEqual([]);
+    expect(store.auditCount(null)).toBe(0);
+
+    await store.flush?.();
+    await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined);
+  });
+});
+
+/* ── P12: notifications ──────────────────────────────────────────────── */
+
+describe('cross-tenant notifications', () => {
+  let dir: string;
+  let inbox: InboxStore;
+  let scope: TenantScope | null;
+
+  const item = (id: string, title: string): Parameters<InboxStore['add']>[0] =>
+    ({ id, title, body: title, at: NOW, read: false, priority: 'normal', source: 'test' }) as never;
+
+  beforeEach(async () => {
+    dir = join(tmpdir(), `np-inbox-xt-${randomUUID()}`);
+    await fs.mkdir(dir, { recursive: true });
+    inbox = new InboxStore(join(dir, 'inbox.json')).bindScope(() => scope);
+  });
+
+  afterEach(async () => {
+    await fs.rm(dir, { recursive: true, force: true, maxRetries: 3 }).catch(() => undefined);
+  });
+
+  it('the SAME notification id in two tenants does not overwrite', async () => {
+    /**
+     * Ids are deliberately stable per SUBJECT so a repeated alert does not pile
+     * up. Across tenants that made them collide, and a notification body carries
+     * business data — the title interpolates the subject's name. So one tenant's
+     * job failure produced a NAMED notification in the other's list, replacing
+     * theirs.
+     */
+    scope = A;
+    await inbox.add(item('job-failed', 'Payroll run failed (Tenant A)'));
+    scope = B;
+    await inbox.add(item('job-failed', 'Invoice sync failed (Tenant B)'));
+
+    const bPage = inbox.page(50);
+    expect(bPage.items).toHaveLength(1);
+    expect(bPage.items[0]!.title).toContain('Tenant B');
+    scope = A;
+    const aPage = inbox.page(50);
+    expect(aPage.items).toHaveLength(1);
+    expect(aPage.items[0]!.title).toContain('Tenant A');
+  });
+
+  it('markRead("all") clears only the caller’s own unread state', async () => {
+    scope = A;
+    await inbox.add(item('a1', 'A one'));
+    scope = B;
+    await inbox.add(item('b1', 'B one'));
+    await inbox.markRead('all');
+    expect(inbox.unreadCount()).toBe(0);
+    scope = A;
+    expect(inbox.unreadCount()).toBe(1);
+  });
+
+  it('an unscoped inbox delivers nothing rather than everything', async () => {
+    scope = A;
+    await inbox.add(item('a1', 'A one'));
+    scope = null;
+    expect(inbox.page(50).items).toEqual([]);
+    expect(inbox.unreadCount()).toBe(0);
+    // A delivery with no tenant is refused rather than stored unowned.
+    await inbox.add(item('orphan', 'Orphan'));
+    scope = A;
+    expect(inbox.page(50).items).toHaveLength(1);
   });
 });

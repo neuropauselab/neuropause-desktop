@@ -101,13 +101,24 @@ export class DocumentStore extends AppendOnlyJsonStore<DocumentRecord> {
     const dropped: DocumentRecord[] = [];
     for (const doc of evicted) {
       if (doc.links.length > 0) {
-        this.items.unshift(doc);
+        // Re-admitted. Uses the unscoped readmit seam because eviction is
+        // bookkeeping over the whole file, not a tenant-facing read.
+        this.readmit(doc);
         continue;
       }
       dropped.push(doc);
     }
     for (const doc of dropped) {
-      if (!this.items.some((d) => d.sha256 === doc.sha256)) {
+      /**
+       * The blob reference count spans EVERY tenant, deliberately.
+       *
+       * The pool is content-addressed, so two tenants that upload byte-identical
+       * files share one blob on disk. Counting only the acting tenant's records
+       * would delete a file the other tenant's record still names. That the pool
+       * is shared is a real limitation and is documented in the security note;
+       * deleting another tenant's bytes would be a worse one.
+       */
+      if (!this.allUnscoped().some((d) => d.sha256 === doc.sha256)) {
         void fs.rm(this.blobPath(doc.sha256), { force: true }).catch(() => undefined);
       }
     }
@@ -117,19 +128,39 @@ export class DocumentStore extends AppendOnlyJsonStore<DocumentRecord> {
     await fs.mkdir(this.blobDir, { recursive: true, mode: 0o700 });
   }
 
-  /** The record for a previously-stored identical file, if there is one. */
+  /**
+   * The record for a previously-stored identical file, WITHIN SCOPE.
+   *
+   * A CONTENT HASH IS NOT AUTHORIZATION. Unscoped, this was the sharpest oracle
+   * in the app and it was worse than a read: upload a file byte-identical to
+   * another tenant's and the response returned THEIR record — its id, who
+   * uploaded it, when, how many fields were extracted, how many links it has —
+   * plus `duplicate: true`, which confirms those exact bytes exist in the
+   * install. And the id it handed back then fed detail, correct, reclassify and
+   * delete.
+   *
+   * Scoped, a duplicate upload across tenants now produces two records that
+   * happen to share one blob. That is the correct outcome: the bytes are
+   * deduplicated on disk, the KNOWLEDGE that they exist is not.
+   */
   existingByHash(sha256: string): DocumentRecord | null {
-    return this.items.find((d) => d.sha256 === sha256) ?? null;
+    return this.visible().find((d) => d.sha256 === sha256) ?? null;
   }
 
+  /**
+   * One document by id, or null.
+   *
+   * The same `null` for "no such document", "another tenant's" and "no scope" —
+   * indistinguishable, so an id cannot be used to confirm existence.
+   */
   get(id: string): DocumentRecord | null {
-    return this.items.find((d) => d.id === id) ?? null;
+    return this.visible().find((d) => d.id === id) ?? null;
   }
 
   all(): DocumentRecord[] {
     // Newest first — the order a person looking for what they just uploaded
     // expects, and the order the list view renders without re-sorting.
-    return [...this.items].reverse();
+    return this.visible().reverse();
   }
 
   /**
@@ -168,7 +199,7 @@ export class DocumentStore extends AppendOnlyJsonStore<DocumentRecord> {
 
   /** Apply a patch to a stored record and persist it. */
   update(id: string, patch: Partial<DocumentRecord>): DocumentRecord | null {
-    const doc = this.items.find((d) => d.id === id);
+    const doc = this.visible().find((d) => d.id === id);
     if (!doc) return null;
     return this.mutate(doc, patch);
   }
@@ -185,7 +216,9 @@ export class DocumentStore extends AppendOnlyJsonStore<DocumentRecord> {
     const removed = this.removeWhere((d) => d.id === id);
     const doc = removed[0];
     if (!doc) return false;
-    if (!this.items.some((d) => d.sha256 === doc.sha256)) {
+    // Reference count over EVERY tenant's records — see `onEvicted`. One
+    // tenant removing its record must not delete bytes another still names.
+    if (!this.allUnscoped().some((d) => d.sha256 === doc.sha256)) {
       await fs.rm(this.blobPath(doc.sha256), { force: true }).catch(() => undefined);
     }
     return true;

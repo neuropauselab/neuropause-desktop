@@ -13,6 +13,10 @@
  * become a production bypass.
  */
 import { setAmbientTenantScopeForTests } from './src/main/enterprise/framework/enterpriseRecordStore';
+import { setAmbientAppendOnlyScopeForTests } from './src/main/decisions/appendOnlyStore';
 import { TEST_TENANT_SCOPE } from './src/main/tenancy/testScope';
 
 setAmbientTenantScopeForTests(() => TEST_TENANT_SCOPE);
+// P12 — the same fallback for the append-only substrate: documents, holds,
+// decision records, opportunity decisions, outcome revisions.
+setAmbientAppendOnlyScopeForTests(() => TEST_TENANT_SCOPE);

@@ -31,6 +31,7 @@ import {
 import type { EnterpriseModule } from './framework';
 import { getRelationshipModel } from './relationshipProvider';
 import { getProcessAssessment } from './processMiningProvider';
+import { activeTenantScope } from './index';
 import { governanceStore } from './governance/governanceInstance';
 import { memoryStore } from '../memory/memoryInstance';
 import { invoiceModule } from './modules/finance/invoiceModuleInstance';
@@ -71,7 +72,16 @@ export function buildTrustModelFromStores(nowMs: number): EnterpriseTrustModel {
       decisions,
       proposals,
       memories: memoryStore.allItems().map((m) => ({ id: m.id, kind: m.kind, title: m.title, content: m.content, origin: m.origin, entityRefs: m.entityRefs, updatedAt: m.updatedAt, occurredAt: m.occurredAt })),
-      audit: governanceStore.auditEntries(2000).map((a) => ({ target: a.target, action: a.action, at: a.at })),
+      /**
+       * P12 — the trust model is built from the ACTIVE tenant's audit trail.
+       *
+       * Unscoped, a tenant's trust score was computed partly from another
+       * tenant's activity. Left as an explicit `undefined` would have meant
+       * "every workspace", so the scope is passed through.
+       */
+      audit: governanceStore
+        .auditEntries(2000, activeTenantScope())
+        .map((a) => ({ target: a.target, action: a.action, at: a.at })),
       processMetrics: process.metrics.byType.map((m) => ({ processType: m.processType, completionRate: m.completionRate, reworkRate: m.reworkRate, caseCount: m.caseCount })),
       approval: (() => { const a = deriveApprovalInsights(decisions); return { recoverySuccessRate: a.recoverySuccessRate, averageVerificationAccuracy: a.averageVerificationAccuracy }; })(),
       handoff: (() => { const h = deriveHandoffInsights(proposals); return { executionReadiness: h.executionReadiness, proposalAcceptanceRate: h.proposalAcceptanceRate }; })(),

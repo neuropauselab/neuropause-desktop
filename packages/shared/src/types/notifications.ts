@@ -14,6 +14,15 @@ import type { IntelligencePriority } from './delivery';
 export interface InboxNotification {
   /** The delivered item's id (stable — re-delivery replaces, never duplicates). */
   id: string;
+  /**
+   * P12 — the tenant this notification belongs to.
+   *
+   * Load-bearing because the id is stable per SUBJECT rather than per occurrence:
+   * without a scope, two tenants' notifications about the same subject share an
+   * id and overwrite each other. Absent means unresolved and is shown to nobody.
+   */
+  tenantId?: string | null;
+  workspaceId?: string | null;
   title: string;
   body: string;
   priority: IntelligencePriority;

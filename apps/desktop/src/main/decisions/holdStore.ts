@@ -40,7 +40,7 @@ export class HoldStore extends AppendOnlyJsonStore<HoldRecord> {
    * surface stops being read.
    */
   open(input: OpenHoldInput): HoldRecord {
-    const existing = this.items.find((h) => h.status === 'open' && h.subject === input.subject);
+    const existing = this.visible().find((h) => h.status === 'open' && h.subject === input.subject);
     if (existing) return existing;
     const hold: HoldRecord = {
       id: `hold_${randomUUID()}`,
@@ -66,7 +66,7 @@ export class HoldStore extends AppendOnlyJsonStore<HoldRecord> {
 
   /** Resolve by id. Returns null when unknown or already resolved. */
   resolve(id: string, outcome: HoldOutcome, note: string): HoldRecord | null {
-    const hold = this.items.find((h) => h.id === id);
+    const hold = this.visible().find((h) => h.id === id);
     if (!hold || hold.status === 'resolved') return null;
     return this.mutate(hold, {
       status: 'resolved',
@@ -82,20 +82,20 @@ export class HoldStore extends AppendOnlyJsonStore<HoldRecord> {
    * archive the hold recommended) — the hold must not survive its own answer.
    */
   resolveSubject(subject: string, outcome: HoldOutcome, note: string): HoldRecord | null {
-    const hold = this.items.find((h) => h.status === 'open' && h.subject === subject);
+    const hold = this.visible().find((h) => h.status === 'open' && h.subject === subject);
     return hold ? this.resolve(hold.id, outcome, note) : null;
   }
 
   get(id: string): HoldRecord | null {
-    return this.items.find((h) => h.id === id) ?? null;
+    return this.visible().find((h) => h.id === id) ?? null;
   }
 
   /** Open holds, newest first — the working list. */
   openHolds(): HoldRecord[] {
-    return [...this.items].reverse().filter((h) => h.status === 'open');
+    return [...this.visible()].reverse().filter((h) => h.status === 'open');
   }
 
   openCount(): number {
-    return this.items.reduce((n, h) => n + (h.status === 'open' ? 1 : 0), 0);
+    return this.visible().reduce((n, h) => n + (h.status === 'open' ? 1 : 0), 0);
   }
 }

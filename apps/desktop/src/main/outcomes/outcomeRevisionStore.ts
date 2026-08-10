@@ -53,7 +53,7 @@ export class OutcomeRevisionStore extends AppendOnlyJsonStore<OutcomeRevision> {
 
   /** Every revision of one outcome, newest first. */
   forOutcome(outcomeKey: string): OutcomeRevision[] {
-    return this.items.filter((r) => r.outcomeKey === outcomeKey).reverse();
+    return this.visible().filter((r) => r.outcomeKey === outcomeKey).reverse();
   }
 
   /** The most recent recorded observation, or undefined if never recorded. */

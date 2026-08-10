@@ -21,6 +21,7 @@ import {
   normalizeProductCode,
 } from '@neuropause/shared';
 import { join } from 'node:path';
+import { activeTenantScope } from '../enterprise/index';
 import { enterpriseModuleStorePath } from '../enterprise/framework';
 import { createDeviceLotModule } from './deviceLotModule';
 import { createDeviceProductModule } from './deviceProductModule';
@@ -35,7 +36,25 @@ import { TraceEdgeStore } from './traceStore';
  */
 export const TENANT_ID = 'default';
 
-export const deviceTenantId = (): string => TENANT_ID;
+/**
+ * P12 — the REAL tenant, not a constant.
+ *
+ * This returned the literal string `'default'`, and it is threaded as the tenant
+ * filter into `LotService`, `TraceService` and every medical-device IPC handler.
+ * So the pack's isolation machinery — which is genuinely real and tested — was
+ * filtering every read on a value that never changed. One reachable IPC surface
+ * where two tenants shared one namespace, and it was absent from the Program 11
+ * migration inventory, which is why my own verification pass had to find it
+ * rather than the report naming it.
+ *
+ * Falls back to `TENANT_ID` ONLY when no tenant resolves, and that is not a
+ * bypass: every pre-P12 record in this pack is stamped `'default'`, so the
+ * fallback is what keeps an existing manufacturer's lots readable during the
+ * cold-start window rather than briefly vanishing. A record stamped `'default'`
+ * is invisible to any real tenant, which is the correct migration posture — the
+ * pack's own header already says a second manufacturer is not yet supported.
+ */
+export const deviceTenantId = (): string => activeTenantScope()?.tenantId ?? TENANT_ID;
 
 const now = (): string => new Date().toISOString();
 

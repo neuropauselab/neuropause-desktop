@@ -784,10 +784,22 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   const assertEveryModuleScoped = (): void => {
     const unscoped = modules.registry.unscopedModules();
     if (unscoped.length > 0) {
+      /**
+       * P12 — THROWS, where P11 only logged.
+       *
+       * `assertAllChannelsClassified` throws for the same reason: a boot
+       * invariant that logs is an invariant that ships. An unbound store denies
+       * rather than leaking, so this is not a security hole — it is a module that
+       * silently shows nothing, which a user reports as "my data is gone" and
+       * nobody connects to a log line from three releases ago.
+       */
       log.error('Enterprise modules have no tenant boundary and will return nothing', {
         count: unscoped.length,
         modules: unscoped.slice(0, 20),
       });
+      throw new Error(
+        `${unscoped.length} enterprise module(s) have no tenant boundary: ${unscoped.slice(0, 5).join(', ')}`,
+      );
     }
   };
 
@@ -1013,7 +1025,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     traceService,
     tenantId: deviceTenantId,
     authorize,
-    auditEntries: (limit) => governanceStore.auditEntries(limit),
+    auditEntries: (limit) => governanceStore.auditEntries(limit, tenantContext.scope()),
   });
 
   /* ── Opportunity Center (Program 4) ──────────────────────────────────────
@@ -1320,7 +1332,7 @@ function buildComplianceInput(): ComplianceInput {
         approval: p.approval,
       })),
     })),
-    auditCount: auditLog.size() + governanceStore.auditCount(),
+    auditCount: auditLog.size() + governanceStore.auditCount(tenantContext.scope()),
     jobsRun: jobStore.size(),
     approvalChains: governanceStore.chains(),
   };
@@ -1399,7 +1411,7 @@ function buildSnapshot(): ReturnType<typeof computeExecutiveSnapshot> {
       connectors: stats.total,
       connectedAccounts: stats.accounts,
       installedApps: registry.list().length,
-      auditEntries: auditLog.size() + governanceStore.auditCount(),
+      auditEntries: auditLog.size() + governanceStore.auditCount(tenantContext.scope()),
     },
     now,
   });
@@ -1730,7 +1742,9 @@ function buildHandlers(): SecureHandlerDef[] {
     {
       channel: IpcChannel.EnterpriseGovernanceAudit,
       schema: EnterpriseGovernanceAuditRequest,
-      handler: (p) => governanceStore.auditEntries((p as TAudit).limit ?? 100),
+      // P12 — the caller's own scope. `activeTenantScope()` returns null when
+      // no tenant resolves, and a null scope reads nothing.
+      handler: (p) => governanceStore.auditEntries((p as TAudit).limit ?? 100, tenantContext.scope()),
     },
 
     {
