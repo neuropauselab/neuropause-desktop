@@ -20,6 +20,7 @@ import type { WebhookStore } from './webhookStore';
 import { applyAttemptResult, type AttemptResult } from './delivery';
 import { signWebhook } from './signing';
 import { classifyWebhookUrl } from './urlGuard';
+import { runAsPrincipal, tenantPrincipal } from '../tenancy/backgroundPrincipal';
 
 const log = createLogger('webhook-dispatcher');
 
@@ -65,7 +66,44 @@ export class WebhookDispatcher {
     try {
       const due = this.deps.store.due(this.deps.now());
       for (const item of due) {
-        await this.attempt(item.delivery, item.payload, item.webhookId);
+        /**
+         * P13C — EACH DELIVERY RUNS UNDER ITS OWN TENANT'S PRINCIPAL.
+         *
+         * The dispatcher is a 5-second timer with no session, so resolving the
+         * tenant from the UI would be wrong in both directions: it would refuse
+         * to send anything while nobody is signed in, and it would send under
+         * whichever organization happened to be open when the timer fired.
+         *
+         * The delivery row carries the tenant it was enqueued for, and that is
+         * the authority used here — so the outbox drains correctly with the app
+         * locked, and a retry queued six hours ago still belongs to the tenant
+         * that queued it.
+         */
+        const principal = tenantPrincipal({
+          jobId: 'webhook-dispatch',
+          scope: item.delivery.tenantId
+            ? { tenantId: item.delivery.tenantId, workspaceId: '' }
+            : null,
+        });
+        if (principal === null) {
+          /**
+           * An unowned delivery is never sent. Rows enqueued before P13C, and
+           * any row whose tenant cannot be established, are failed rather than
+           * transmitted — the only safe answer for a queue whose output leaves
+           * the device.
+           */
+          this.deps.store.update(
+            applyAttemptResult(
+              item.delivery,
+              { ok: false, statusCode: null, error: 'no tenant owner; not delivered' },
+              this.deps.now(),
+            ),
+          );
+          continue;
+        }
+        await runAsPrincipal(principal, () =>
+          this.attempt(item.delivery, item.payload, item.webhookId),
+        );
       }
       return due.length;
     } finally {
@@ -75,6 +113,14 @@ export class WebhookDispatcher {
 
   private async attempt(delivery: WebhookDelivery, payload: WebhookEventPayload, webhookId: string): Promise<void> {
     const now = this.deps.now();
+    /**
+     * Resolved UNDER THE DELIVERY'S PRINCIPAL, so both lookups are scoped to
+     * the delivery's own tenant. That is the Phase 8 invariant enforced
+     * structurally rather than by comparison: if the endpoint belonged to a
+     * different tenant it is simply not visible from here, and the delivery
+     * fails as "endpoint removed" instead of being signed with that tenant's
+     * secret and POSTed to their URL.
+     */
     const secret = this.deps.store.secretFor(webhookId);
     const url = this.deps.store.get(webhookId)?.url;
     if (!secret || !url) {

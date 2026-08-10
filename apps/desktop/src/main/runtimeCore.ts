@@ -211,6 +211,7 @@ import { initMarketplace } from './marketplace';
 import { initEnterpriseApi } from './api';
 import { initCompanion } from './companion';
 import { initWebhooks } from './webhooks';
+import { webhookStore } from './webhooks/webhookInstance';
 import { initSandbox } from './sandbox';
 import { createDesktopExecutor, PlaywrightDesktopDriver } from './sandbox/desktop';
 import { initEnterpriseRunner } from './sandbox/enterprise';
@@ -805,6 +806,12 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
    * memory with an owner, but the thing it projected from had none.
    */
   unifiedStore.bindScope(activeTenantScope);
+  /**
+   * P13C — the webhook registry. Bound like every other store, and it matters
+   * more than most: this is the only surface that transmits platform data OFF
+   * the device to an address a user chose.
+   */
+  webhookStore.bindScope(activeTenantScope);
   // The event bus + durable timeline: bound here rather than at platform boot,
   // because the resolver does not exist that early.
   platform.bindTenant(activeTenantScope);

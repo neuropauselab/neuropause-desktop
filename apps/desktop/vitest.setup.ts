@@ -19,6 +19,7 @@ import { setAmbientUnifiedScopeForTests } from './src/main/unified/unifiedStore'
 import { setAmbientSearchScopeForTests } from './src/main/unified/searchBackend';
 import { setAmbientGraphScopeForTests } from './src/main/graph/graphStore';
 import { setAmbientTimelineScopeForTests } from './src/main/platform/timelineService';
+import { setAmbientWebhookScopeForTests } from './src/main/webhooks/webhookStore';
 import { setAmbientProvenanceScopeForTests } from './src/main/dataPlane/importer';
 import { TEST_TENANT_SCOPE, TEST_MEMORY_VIEWER } from './src/main/tenancy/testScope';
 
@@ -51,3 +52,4 @@ setAmbientUnifiedScopeForTests(() => TEST_TENANT_SCOPE);
 setAmbientSearchScopeForTests(() => TEST_TENANT_SCOPE);
 setAmbientGraphScopeForTests(() => TEST_TENANT_SCOPE);
 setAmbientTimelineScopeForTests(() => TEST_TENANT_SCOPE);
+setAmbientWebhookScopeForTests(() => TEST_TENANT_SCOPE);

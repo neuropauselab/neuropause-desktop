@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import type { PlatformEvent } from '@neuropause/shared';
 import { WEBHOOK_SIGNATURE_HEADER } from '@neuropause/shared';
 import { WebhookStore } from './webhookStore';
+import { TEST_TENANT_SCOPE } from '../tenancy/testScope';
 import { WebhookDispatcher } from './webhookDispatcher';
 import { WEBHOOK_MAX_ATTEMPTS } from './retry';
 
@@ -89,8 +90,19 @@ describe('WebhookDispatcher', () => {
   it('only enqueues to enabled endpoints via the store', async () => {
     const store = await tempStore();
     const { webhook } = store.create('t', 'https://example.test/hook', { categories: ['enterprise'], types: [] });
-    expect(store.enabledWebhooks()).toHaveLength(1);
+    /**
+     * P13C — the fan-out set is selected BY THE EVENT'S TENANT, so this asks
+     * for one tenant's enabled endpoints rather than every endpoint on the
+     * install. `enabledWebhooks()` no longer exists: an accessor that returned
+     * the whole registry was the thing that let one tenant's event reach
+     * another tenant's URL, so it was removed rather than left for a future
+     * caller to find.
+     */
+    const tenant = TEST_TENANT_SCOPE.tenantId;
+    expect(store.enabledWebhooksForTenant(tenant)).toHaveLength(1);
     store.setEnabled(webhook.id, false);
-    expect(store.enabledWebhooks()).toHaveLength(0);
+    expect(store.enabledWebhooksForTenant(tenant)).toHaveLength(0);
+    // And another tenant's fan-out never includes it, enabled or not.
+    expect(store.enabledWebhooksForTenant('org-someone-else')).toHaveLength(0);
   });
 });
