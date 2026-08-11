@@ -947,7 +947,38 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
    * added, so no store is ever briefly unbound while reachable — and an unbound
    * store denies anyway, so the ordering mistake would be loud.
    */
-  modules.registry.bindScope(() => tenantContext.scope());
+  /**
+   * P13C ROUND 9 — FRESH RED TEAM, HIGH. THE BOUNDARY WAS BOUND TO THE WRONG
+   * RESOLVER, WHICH IS WHY EVERY "IS IT BOUND?" INVARIANT PASSED.
+   *
+   * This read `() => tenantContext.scope()`. That resolver answers from the
+   * ACTIVE WORKSPACE only — it is not principal-aware. `activeTenantScope`,
+   * defined in this same file and used by every other store here
+   * (`healthHistoryStore`, `approvalStore`, and the rest), routes through
+   * `resolveTenantScope`, which prefers a background principal when one is in
+   * scope. One line out of step, covering the largest data surface in the
+   * product: all 106 ERP, CRM, HR and finance module stores.
+   *
+   * WHAT IT COST, both reachable and both cross-tenant WRITES:
+   *
+   *   COMPANION GATEWAY — `gatewayServer` listens on the LAN and wraps every
+   *   operation in `runAsPrincipal` for the tenant the phone was PAIRED to,
+   *   with a comment stating that this exists precisely so a phone paired to A
+   *   cannot act in B after the desktop user switches. That principal never
+   *   reached these stores, so `approvals.act` from A's phone mutated B's
+   *   records.
+   *
+   *   SANDBOX EXECUTION — `executionEngine` runs each scenario under its owning
+   *   tenant's principal and its comment claims "every scoped store it reaches
+   *   answers for that tenant without any of them changing". These 106 did not.
+   *
+   * `scopeOrDeny()` fails closed on the ABSENCE of a scope and never on the
+   * WRONG one, and `assertEveryModuleScoped` below asserts that a boundary
+   * EXISTS, not that it is the right boundary. A store handed a session
+   * resolver answers it faithfully. That is the lesson: an invariant that
+   * checks for a seam cannot check what the seam is attached to.
+   */
+  modules.registry.bindScope(activeTenantScope);
 
   const registerModule = (m: EnterpriseModule): void => {
     modules.registry.register(documentIntegration.attach(m));

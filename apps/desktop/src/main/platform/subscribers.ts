@@ -220,9 +220,34 @@ export function registerSubscribers(bus: EventBus, deps: SubscriberDeps): Subscr
     bus.subscribe((e) => { if (AUDIT_TYPES.has(e.type)) deps.audit(e); }, { id: 'audit', types: [...AUDIT_TYPES] }),
   );
 
-  // Notifications — high/critical priority signals.
+  /**
+   * Notifications — high/critical priority signals, SCOPED.
+   *
+   * P13C ROUND 9, FRESH RED TEAM. F5 scoped the forwarder eight lines below and
+   * left this one unfiltered, in the same function, having written the reason
+   * out in full directly above. `notifyUser` renders
+   * `event.resource?.name ?? event.resource?.id` as the body of a NATIVE OS
+   * notification — so a background pass for tenant A, running while the window
+   * shows tenant B, put A's record name into macOS Notification Center.
+   *
+   * WORSE THAN THE WINDOW, WHICH IS WHY IT IS NOT A DUPLICATE OF F5: the
+   * renderer feed is cleared by a workspace switch. Notification Center is not.
+   * It persists after the switch, shows on the lock screen, and syncs to the
+   * person's other Apple devices — a surface the tenant boundary does not
+   * reach at all once the bytes are handed over.
+   *
+   * Same predicate as the forwarder, deliberately: two opinions about who may
+   * see an event is how one surface shows what the other hides.
+   */
   subscriptions.push(
-    bus.subscribe((e) => { if (e.priority === 'high' || e.priority === 'critical') deps.notify(e); }, { id: 'notifications' }),
+    bus.subscribe(
+      (e) => {
+        if (e.priority !== 'high' && e.priority !== 'critical') return;
+        if (!eventDeliverableTo(e, deps.viewerScope?.() ?? null)) return;
+        deps.notify(e);
+      },
+      { id: 'notifications' },
+    ),
   );
 
   /**
