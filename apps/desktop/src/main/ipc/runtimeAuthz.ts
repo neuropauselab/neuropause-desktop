@@ -28,7 +28,10 @@
  *  4. `assertAllChannelsClassified(...)` — the startup invariant: returns every
  *     `RUNTIME_INVOKABLE_CHANNELS` entry that is NEITHER gated NOR public, so the
  *     composition root can fail closed (mirroring the annotators' throw-on-
- *     unclassified philosophy) rather than expose a new channel by omission.
+ *     unclassified philosophy) rather than expose a new channel by omission —
+ *     and, since Round 10, THROWS for any channel that is BOTH, because an
+ *     allowlist row that survives a gate is a false statement about the surface
+ *     and made this check blind to a regression on that channel.
  *
  * Enforcement reuses the secure bridge unchanged: the owner role holds every
  * permission, so single-user installs are unaffected; the gate bites only for
@@ -274,8 +277,34 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
   [IpcChannel.PluginsReload]: 'cloud:operate',
   [IpcChannel.PluginsUpdate]: 'cloud:operate',
   [IpcChannel.PluginsRemove]: 'cloud:operate',
-  [IpcChannel.PluginsGrant]: 'marketplace:manage',
-  [IpcChannel.PluginsRevoke]: 'marketplace:manage',
+  /**
+   * P13C ROUND 10 — NEW-H7. THE TWO ROWS ROUND 8 LEFT BEHIND.
+   *
+   * Every sibling above moved to `cloud:operate` in Round 8; these two stayed on
+   * `marketplace:manage`, which is an ORGANIZATION role — in the Owner wildcard
+   * and in ADMIN. They mutate `record.grantedPermissions` in the same
+   * `userData/plugins.json`, a store declared PLATFORM_GLOBAL with
+   * `authority: 'PLATFORM_OPERATOR'` whose own reason names this exposure.
+   *
+   * A grant hands install-wide executable code filesystem, network and host
+   * capabilities, in-process, for every tenant — and ANYONE MAY CREATE AN
+   * ORGANIZATION AND BECOME ITS OWNER, so it was self-service. `plugins:list` is
+   * public and returns every plugin id with its current grants, so there was
+   * nothing to discover first.
+   *
+   * `cloud:operate` is in `PLATFORM_ONLY_PERMISSIONS`, filtered out of the Owner
+   * wildcard by `BUILT_IN_ROLE_SPECS`, so no organization role can hold it.
+   * Deliberately the same permission as the siblings rather than a new
+   * `plugins:grant` scope: the axis is what matters, and a second platform
+   * permission is a second thing to forget to check.
+   *
+   * `plugins/pluginAuthzGate.ts` now asserts this at composition — a mutation of
+   * a PLATFORM_GLOBAL / PLATFORM_OPERATOR store carrying an organization
+   * permission throws on import of the plugin manager, so these two rows cannot
+   * drift back without the application refusing to start.
+   */
+  [IpcChannel.PluginsGrant]: 'cloud:operate',
+  [IpcChannel.PluginsRevoke]: 'cloud:operate',
 
   // Local capability grants to installed apps — access-control mutations.
   /**
@@ -337,6 +366,35 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
   [IpcChannel.BackupDelete]: 'cloud:operate',
   [IpcChannel.RecoveryRun]: 'cloud:operate',
   [IpcChannel.SupportGenerateBundle]: 'cloud:operate',
+  /**
+   * P13C ROUND 10 — NEW-M7 / F22. THE OTHER HALF OF THE BACKUP FAMILY.
+   *
+   * These three were on `PUBLIC_CHANNELS` — no `requireAuth`, no permission —
+   * under the "local, per-user desktop operations" bucket, whose own comment
+   * said "revisit if any becomes multi-tenant". They are multi-tenant:
+   *
+   *   - `backup:create` copies EVERY organization's records (the whole of
+   *     `storage/storePaths.ts` DOMAIN_FILES) into a new directory. It was
+   *     reachable with no authority at all, and manual backups were uncapped —
+   *     only `trigger === 'scheduled'` was pruned — so a loop was an
+   *     unauthenticated disk-fill. The cap now lives in `BackupManager.create`
+   *     (NEW-M7), and this row is the authority half.
+   *   - `backup:list` returns `sizeBytes` and `domains` per archive, so
+   *     create-then-list repeatedly measures how much data the OTHER
+   *     organizations on the install hold. That is the inference channel Round 8
+   *     closed on `graphStore.counts` and `ai/routingUsageStore`, third instance.
+   *   - `backup:validate` takes a caller-chosen archive id and reports which of
+   *     its files are missing or altered — the same install-wide archive, and an
+   *     id-taking surface (see NEW-M6).
+   *
+   * They join `restore` and `delete` on `cloud:operate` so the whole family sits
+   * on one axis: the archive's declaration in `backup/backupArchive.ts` states
+   * PLATFORM_OPERATOR authority, and a declaration whose channels disagree is
+   * the class of finding this round exists to close.
+   */
+  [IpcChannel.BackupCreate]: 'cloud:operate',
+  [IpcChannel.BackupList]: 'cloud:operate',
+  [IpcChannel.BackupValidate]: 'cloud:operate',
 
   // Runtime supervisor control (launch/stop/suspend/resume/restart app runtimes).
   [IpcChannel.RuntimeLaunch]: 'operations:manage',
@@ -471,6 +529,62 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
    * renderer message was not.
    */
   [IpcChannel.DiagnosticsGet]: 'operations:read',
+  /**
+   * P13C ROUND 10 — NEW-M2. THE CLASSIFICATION WAS APPLIED TO A CHANNEL, NOT TO
+   * THE DATA.
+   *
+   * Round 9 moved `diagnostics:get` off the public list because its payload
+   * embeds `bus.metrics()` — `eventsPublished`, `eventsPerMinute`,
+   * `subscribers`, `bufferedEvents`, counted across every tenant on the install
+   * with no boundary in the path. These three channels serve THE SAME NUMBERS
+   * and were left public:
+   *
+   *   `release:diagnostics.get` / `.export` → `collectReleaseDiagnostics`, whose
+   *     `health` port IS `platform.diagnostics()` — the identical
+   *     `DiagnosticsReport`, plus the installed-module and connector inventory.
+   *     `.export` writes it to a file, so it is the strictly wider door.
+   *   `system:health` → `composeSystemHealth`, whose `throughput`
+   *     (`eventsPerMinute`, `bufferedEvents`, `avgDispatchMs`) is the same
+   *     `bus.metrics()` reading under another name.
+   *
+   * A total that climbs while YOU are idle is another organization working, and
+   * its rate is their activity profile — the inference channel Round 8 closed on
+   * `graphStore.counts` and `ai/routingUsageStore`. The lock belongs to the
+   * payload, so it is the same one `diagnostics:get` carries: `operations:read`,
+   * in the READ_ONLY base role, requiring only that the caller be signed in and
+   * a member. The renderer surfaces that read these (`EnterpriseOverview`,
+   * `RuntimeHealthPanel`, `IntelligenceView`, `ProductOpsView`) are all
+   * post-sign-in; the REST `/observability/health` route calls the composer
+   * directly and is gated by the gateway's own scopes, so neither loses a path.
+   */
+  [IpcChannel.ReleaseDiagnosticsGet]: 'operations:read',
+  [IpcChannel.ReleaseDiagnosticsExport]: 'operations:read',
+  [IpcChannel.SystemHealthSnapshot]: 'operations:read',
+  /**
+   * P13C ROUND 10 — NEW-M8. SEVEN CHANNELS THAT WERE PUBLIC **AND** GATED.
+   *
+   * Each of these carries a permission stamped by its family gate
+   * (`ai/aiAuthzGate.ts`, `memory/memoryAuthzGate.ts`) and was ALSO still listed
+   * in `PUBLIC_CHANNELS`. The stale rows granted nothing — the allowlist is only
+   * consulted for channels that ended up ungated — but they made the invariant
+   * blind: `assertAllChannelsClassified` accepted a channel because it was
+   * public, regardless of whether a gate had applied, so with every family gate
+   * removed it reported only 613 of 718 channels unclassified and the 105 public
+   * ones passed in silence. A regression on any of these seven was undetectable.
+   *
+   * The rows are deleted from the allowlist below, the classification is
+   * restated here so the central register is complete, and the invariant now
+   * REFUSES the overlap outright rather than tolerating it. The family gates
+   * cross-check every row against this table and throw on disagreement, so these
+   * eight entries are asserted equal rather than merely written twice.
+   */
+  [IpcChannel.AiConfigMigrate]: 'cloud:operate',
+  [IpcChannel.FounderAskV2]: 'intelligence:read',
+  [IpcChannel.MemoryGet]: 'intelligence:read',
+  [IpcChannel.ExecMemorySearch]: 'intelligence:read',
+  [IpcChannel.ExecMemoryForget]: 'operations:manage',
+  [IpcChannel.ExecMemoryPin]: 'operations:manage',
+  [IpcChannel.ExecMemoryResolve]: 'operations:manage',
   [IpcChannel.DecisionList]: 'operations:read',
   [IpcChannel.AutomationList]: 'operations:read',
   [IpcChannel.AutomationMonitor]: 'operations:read',
@@ -528,15 +642,32 @@ export function withRuntimeAuthz<T extends { channel: IpcChannelName }>(
  *     listings.
  *  b. Renderer→main state reports: the widget/health pings the renderer pushes
  *     back to main (`voice:status`, `license:reportHealth`, `device:reportHealth`,
- *     the system-health snapshot, execute/supervisor status reads).
+ *     supervisor status reads).
  *  c. Local, per-user desktop operations that are out of the org-RBAC audit's
  *     scope and remain on the desktop's existing sender-trust model
- *     (crash/onboarding/feedback/pilot/updater/release-diagnostics/local backup
- *     create+validate, migration status). These are single-user desktop surfaces,
- *     not org-shared state; revisit if any becomes multi-tenant.
+ *     (crash/onboarding/feedback/pilot/updater, migration status). These are
+ *     single-user desktop surfaces, not org-shared state; revisit if any becomes
+ *     multi-tenant.
  *
  * A channel here is a DELIBERATE decision to leave it ungated — it is the escape
  * hatch the startup invariant checks against, not a dumping ground.
+ *
+ * P13C ROUND 10 — NEW-M2. THE RULE THIS LIST IS NOW HELD TO, WRITTEN DOWN.
+ *
+ * A channel may be public only when its PAYLOAD is not tenant-derived. Not when
+ * its name reads harmless, not when it "feels local", and never by pattern — the
+ * question is resolved by following the handler to what it returns:
+ *
+ *   RESOURCE  → what the payload is actually made of;
+ *   OPERATION → read, write, export;
+ *   SCOPE     → whose it is: TENANT, INSTALL_GLOBAL, or genuinely nobody's;
+ *   AUTHORITY → which axis may grant it: an organization role, or platform-only;
+ *   then the classification.
+ *
+ * `release:diagnostics.*` and `system:health` failed that test on RESOURCE: both
+ * carry `bus.metrics()`, counted across every tenant, which is why `diagnostics:get`
+ * left this list in Round 9. Three doors onto one payload, and last round gated
+ * one of them. Classifying a channel is not classifying its data.
  */
 export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelName>([
   // ── Catalog / store reads ──
@@ -568,7 +699,36 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   IpcChannel.RuntimeHealth,
   // ── Permission read ──
   IpcChannel.PermsList,
-  // ── Plugin reads ──
+  /**
+   * ── Plugin reads ── P13C ROUND 10 — NEW-H7 asked whether these stay public.
+   *
+   * THEY STAY, AND HERE IS THE ARGUMENT RATHER THAN A SHRUG.
+   *
+   * WHAT THEY EXPOSE. `PluginDto` carries the plugin id, name, version, author,
+   * kind, state, health, the manifest's requested permissions, the CURRENT
+   * GRANTS, the contributions, and `source` — the plugin root's absolute path
+   * under userData. Nothing in it is customer-derived: `PluginRecord` has no
+   * tenant field, and a plugin is an install-wide object. So this is install
+   * METADATA on a public channel, not one tenant's data on a public channel,
+   * which is the line the rest of this allowlist is drawn on.
+   *
+   * WHY THE GRANT LIST WAS THE PROBLEM AND IS NOT THE FINDING. It made NEW-H7
+   * trivial to aim: read every plugin id and its grants, then call
+   * `plugins:grant` on an organization role. The finding was the WRITE. With
+   * grant and revoke on `cloud:operate`, reading the list buys reconnaissance
+   * and nothing else, and `perms:list` — the sibling capability read for
+   * installed apps — is public on the same reasoning.
+   *
+   * WHAT IS HONESTLY STILL OPEN, STATED RATHER THAN CLAIMED AWAY. The grant list
+   * is install security posture: it names which extension holds filesystem or
+   * network reach, which is the one worth attacking. `source` leaks the userData
+   * path. Neither is customer data and neither is actionable through this
+   * channel, so gating them would cost the four shell surfaces that call
+   * `plugins:list` before an organization resolves (the command palette, the
+   * ecosystem view, the health panel, the operations provider) for a
+   * reconnaissance-only gain. That trade is the reason, and it is the trade to
+   * revisit — not the grant channels — if `PluginDto` ever gains a tenant field.
+   */
   IpcChannel.PluginsList,
   IpcChannel.PluginsGet,
   IpcChannel.PluginsContributions,
@@ -597,17 +757,21 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   // ── Unified knowledge read projections ──
   IpcChannel.UnifiedGet,
   IpcChannel.UnifiedCounts,
-  // ── AI memory read projections + executive conversation memory ──
-  // (A6 moved MemorySemanticRecall to `intelligence:read`, alongside the
-  // MemoryRecall channel it mirrors.)
-  IpcChannel.MemoryGet,
+  /**
+   * ── AI memory read projections + executive conversation memory ──
+   *
+   * P13C ROUND 10 — NEW-M8. FIVE STALE ROWS DELETED: `memory:get`,
+   * `memory:exec-search`, `memory:exec-forget`, `memory:exec-pin` and
+   * `memory:exec-resolve`. Round 9 (F20) gated all five in
+   * `memory/memoryAuthzGate.ts` and left them sitting here, so this file said
+   * "public" about five channels the composition root gates. `memory:counts` is
+   * the only one left, and it is genuinely open — see the `PUBLIC` row in
+   * `MEMORY_CHANNEL_AUTHORITY` for the reasoning.
+   *
+   * (A6 moved MemorySemanticRecall to `intelligence:read`, alongside the
+   * MemoryRecall channel it mirrors. Round 7 removed ExecMemoryAudit.)
+   */
   IpcChannel.MemoryCounts,
-  IpcChannel.ExecMemorySearch,
-  IpcChannel.ExecMemoryForget,
-  IpcChannel.ExecMemoryPin,
-  IpcChannel.ExecMemoryResolve,
-  // P13C Round 7 — ExecMemoryAudit REMOVED from the public set. See the
-  // permission table: the rows carry assistant-written record titles.
   // ── Knowledge reads ──
   IpcChannel.KnowledgeRelated,
   IpcChannel.KnowledgeTopics,
@@ -636,11 +800,19 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
    * cross-tenant one, and neither alone would be enough.
    */
   // ── AI analysis reads ──
+  // P13C Round 10 — NEW-M8. `FounderAskV2` REMOVED: Round 9 gated it at
+  // `intelligence:read` in `ai/aiAuthzGate.ts` (it WRITES a memory through
+  // `captureFounderMemory`) and this row was left behind.
   IpcChannel.EngineeringAnalyze,
-  IpcChannel.FounderAskV2,
   IpcChannel.FounderSuggestions,
-  // ── NeuroCore + renderer→main state reports ──
-  IpcChannel.SystemHealthSnapshot,
+  /**
+   * ── NeuroCore + renderer→main state reports ──
+   *
+   * P13C ROUND 10 — NEW-M2. `SystemHealthSnapshot` REMOVED. It is not a
+   * renderer→main state report; it is a READ whose `throughput` block is
+   * `bus.metrics()` — the identical install-wide counters `diagnostics:get` was
+   * gated for in Round 9. Gated at `operations:read`; see the permission table.
+   */
   IpcChannel.LicenseReportHealth,
   IpcChannel.DeviceReportHealth,
   IpcChannel.VoiceStatus,
@@ -667,16 +839,28 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   IpcChannel.LicenseRefresh,
   // ── Local desktop operations (out of org-RBAC scope; sender-trust retained) ──
   IpcChannel.MigrationStatus,
-  IpcChannel.BackupList,
-  IpcChannel.BackupCreate,
-  IpcChannel.BackupValidate,
+  /**
+   * P13C ROUND 10 — NEW-M7. `BackupList`, `BackupCreate` and `BackupValidate`
+   * WERE HERE and are now gated on `cloud:operate`; see the permission table.
+   * They were admitted as "local backup create+validate", a per-user desktop
+   * convenience. `create` copies every organization's records and was uncapped;
+   * `list` reports each archive's size, which measures other tenants' data
+   * volume. The bucket's own caveat — "revisit if any becomes multi-tenant" —
+   * is what this is.
+   */
   IpcChannel.CrashGetStatus,
   IpcChannel.CrashSetOptIn,
   IpcChannel.CrashExport,
   IpcChannel.CrashRecommendations,
   IpcChannel.CrashReport,
-  IpcChannel.ReleaseDiagnosticsGet,
-  IpcChannel.ReleaseDiagnosticsExport,
+  /**
+   * P13C ROUND 10 — NEW-M2. `ReleaseDiagnosticsGet` and
+   * `ReleaseDiagnosticsExport` WERE HERE, admitted under "release-diagnostics"
+   * as a per-user desktop convenience. Their payload embeds
+   * `platform.diagnostics()` — the same `DiagnosticsReport`, with the same
+   * install-wide `bus.metrics()`, that `diagnostics:get` was moved off this list
+   * for last round. Gated at `operations:read`; see the permission table.
+   */
   IpcChannel.RecoverySafeModeStatus,
   IpcChannel.OnboardingStatus,
   IpcChannel.OnboardingStart,
@@ -689,7 +873,10 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
 
   IpcChannel.AiConfigTest,
   IpcChannel.AiConfigMigrationStatus,
-  IpcChannel.AiConfigMigrate,
+  // P13C Round 10 — NEW-M8. `AiConfigMigrate` REMOVED: Round 9 (F21) gated it at
+  // `cloud:operate` in `ai/aiAuthzGate.ts` — it writes the install's provider,
+  // model and `ollamaUrl` and stores a credential in the Vault — and this row
+  // was left behind, saying the opposite.
 
   // ── Private-First AI experience (same sender-trust model as the AiConfig
   // block above: per-install desktop configuration, no org RBAC scope; the
@@ -751,12 +938,47 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
 ]);
 
 /**
+ * Channels that are BOTH gated and on the public allowlist.
+ *
+ * P13C ROUND 10 — NEW-M8. THE INVARIANT COULD NOT SEE ITS OWN BLIND SPOT.
+ *
+ * `assertAllChannelsClassified` accepted a channel because it appeared in
+ * `publicChannels`, WITHOUT EVER ASKING whether a gate had also applied. That is
+ * an `OR` where the two branches are supposed to be mutually exclusive, and it
+ * has a measurable consequence: delete every family gate in the codebase and the
+ * check reports 613 of 718 channels unclassified while the 105 public ones pass
+ * in silence — including the seven that were, at the time, both public and gated.
+ * The allowlist is not a fallback for a gate; it is the statement that no gate
+ * was wanted, and a channel cannot truthfully make both statements.
+ *
+ * Returned sorted so a failure message is stable and diffable.
+ */
+export function channelsBothPublicAndGated(
+  classifiedChannels: Iterable<IpcChannelName>,
+  publicChannels: ReadonlySet<IpcChannelName>,
+): IpcChannelName[] {
+  return [...new Set<IpcChannelName>(classifiedChannels)]
+    .filter((channel) => publicChannels.has(channel))
+    .sort();
+}
+
+/**
  * Startup invariant. Given the set of channels that ended up GATED (carrying a
  * `permission` and/or `requireAuth` in the assembled handler registry) and the
  * vetted `PUBLIC_CHANNELS` allowlist, return every `RUNTIME_INVOKABLE_CHANNELS`
  * entry that is NEITHER — i.e. still riding on sender-trust alone and not
  * explicitly allowlisted. An empty result means the whole invokable surface is
  * accounted for; a non-empty result is a fail-closed signal for the caller.
+ *
+ * AND IT THROWS when a channel is BOTH, which is the Round 10 strengthening.
+ * Throwing rather than returning the offender, because the two conditions are
+ * different kinds of statement and must not be reported through one list: an
+ * unclassified channel is an OMISSION the caller reports as "rides on
+ * sender-trust alone", while public-and-gated is a CONTRADICTION between two
+ * files that a caller cannot describe that way and cannot act on differently.
+ * It is also the shape every family gate already uses — `withMemoryAuthz`,
+ * `withAiAuthz` and `withRuntimeAuthz` all throw at composition time — so the
+ * whole classification system fails the same way for the same class of defect.
  *
  * Pure and Electron-free so it unit-tests without the app runtime.
  */
@@ -765,6 +987,15 @@ export function assertAllChannelsClassified(
   publicChannels: ReadonlySet<IpcChannelName>,
 ): string[] {
   const classified = new Set<IpcChannelName>(classifiedChannels);
+  const contradictory = channelsBothPublicAndGated(classified, publicChannels);
+  if (contradictory.length > 0) {
+    throw new Error(
+      `Refusing to start: ${contradictory.length} runtime IPC channel(s) are BOTH gated and on ` +
+        `PUBLIC_CHANNELS. A channel is open or it is guarded; a stale allowlist row is a false ` +
+        `statement about the surface and blinds this invariant to a regression on that channel. ` +
+        `Delete the PUBLIC_CHANNELS row (or the gate): ${contradictory.join(', ')}`,
+    );
+  }
   return RUNTIME_INVOKABLE_CHANNELS.filter(
     (channel) => !classified.has(channel) && !publicChannels.has(channel),
   );

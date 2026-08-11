@@ -106,11 +106,29 @@ export async function initReleaseOps(deps: ReleaseOpsDeps): Promise<ReleaseOps> 
   }
   await readVersion();
 
+  /**
+   * P13C ROUND 10 — F22. THE RESTORATION BOUNDARY, DECLARED AT THE COMPOSITION
+   * ROOT AND ENFORCED BY THE MANAGER.
+   *
+   * `restoreBoundary` is a REQUIRED dependency, so this wiring cannot exist
+   * without stating in source what its restores put back. `ALL_TENANTS_AT_ONCE`
+   * is not a euphemism: the archive is a verbatim, unpartitioned copy of every
+   * organization's records, so one operator choosing one archive rolls every
+   * tenant on the machine back to that point. The per-call acknowledgements
+   * below override this one so the audit and any refusal name the exact surface
+   * that asked. See backup/backupArchive.ts for the full declaration and for
+   * what this does NOT do — it does not narrow the blast radius, it makes
+   * crossing it explicit and refusable.
+   */
   const backup = new BackupManager({
     dataDir,
     backupsDir,
     appVersion: getBuildInfo().version,
     dataVersion: () => cachedVersion,
+    restoreBoundary: {
+      boundary: 'ALL_TENANTS_AT_ONCE',
+      declaredBy: 'releaseOps composition root (Recovery Center + migration rollback)',
+    },
   });
 
   const engine = new MigrationEngine({
@@ -119,7 +137,10 @@ export async function initReleaseOps(deps: ReleaseOpsDeps): Promise<ReleaseOps> 
     definitions: MIGRATIONS,
     backup: async () => (await backup.create('pre-migration', LOCAL_DOMAINS)).id,
     restore: async (id) => {
-      await backup.restore(id);
+      await backup.restore(id, undefined, {
+        boundary: 'ALL_TENANTS_AT_ONCE',
+        declaredBy: 'migration rollback',
+      });
     },
     context: { dataDir, log: (m, meta) => log.info(m, meta) },
   });
@@ -250,6 +271,14 @@ export async function initReleaseOps(deps: ReleaseOpsDeps): Promise<ReleaseOps> 
    * The honest limit is stated rather than papered over: a privileged local
    * user can read a backup exactly as they can read the live files, and this
    * program does not change that.
+   *
+   * P13C ROUND 10 — F22. What that classification could not express, the archive
+   * declaration now does: `backup/backupArchive.ts` names the archive
+   * MULTI_TENANT_INSTALL, states what is inside it, who may restore it, how long
+   * it is kept and — the question a store scope never has to answer — what a
+   * restore puts back. The paragraph above is still true and is still not a
+   * partition; the difference is that it is now written on every archive this
+   * job produces, and a restore refuses an archive that does not carry it.
    */
   async function scheduledBackup(): Promise<void> {
     await runAsPrincipal(systemPrincipal('scheduled-backup'), async () => {
@@ -297,8 +326,18 @@ export async function initReleaseOps(deps: ReleaseOpsDeps): Promise<ReleaseOps> 
       schema: BackupRestoreRequest,
       audit: true,
       timeoutMs: HEAVY_TIMEOUT_MS,
+      /**
+       * F22 — the caller-chosen-archive surface names itself. The manager
+       * refuses unless this acknowledgement matches the boundary the archive's
+       * own manifest declares, so this handler cannot perform an install-wide
+       * rollback while appearing to ask for something narrower. `domains`
+       * narrows WHICH STORES come back, never WHOSE.
+       */
       handler: (p) =>
-        backup.restore((p as BackupRestoreRequest).id, (p as BackupRestoreRequest).domains),
+        backup.restore((p as BackupRestoreRequest).id, (p as BackupRestoreRequest).domains, {
+          boundary: 'ALL_TENANTS_AT_ONCE',
+          declaredBy: 'backup:restore IPC handler',
+        }),
     },
     {
       channel: IpcChannel.BackupDelete,

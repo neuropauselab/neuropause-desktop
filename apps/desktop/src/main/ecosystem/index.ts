@@ -276,11 +276,41 @@ function titleCaseRole(s: string): string {
  */
 export function runGateway(input: GatewayRequestInput): GatewayDecision {
   const start = Date.now();
+  /**
+   * P13C ROUND 10 — NEW-M5. THE CREDENTIAL'S OWN TENANT IS THE AUTHORITATIVE ONE.
+   *
+   * `developerOrg` was `developerStore.developer(devId)?.orgId`, and there is
+   * ONE developer account on this install, seeded and pinned to the seeded
+   * `ORG_ID`. So every API-key request in the system resolved to that one
+   * organization no matter whose key was presented — while the API key ROW
+   * carries the correct tenant (`developerStore.createKey` stamps
+   * `tenantId: this.tenancy.requireTenant()`), and that field was read by
+   * nothing on this path.
+   *
+   * `requestOwner` is stamped into `gatewayStore.commit`, `recordUsage` and
+   * `gatewayStore.record`, so audit, usage, quota and billing rows for EVERY
+   * tenant filed under `org-default`. The stores partition correctly — they were
+   * simply told the wrong owner, which is why scoping routed the rows to the
+   * WRONG tenant rather than to nobody, and why every isolation test on those
+   * stores passed.
+   *
+   * The key row is captured here rather than re-resolved: `resolveApiIdentity`
+   * calls `verifyKey` and then, in the same branch and the next statement,
+   * `developerOrg`. Reading the row it just verified is the only way to answer
+   * "whose credential is this?" without a second lookup that could disagree.
+   */
+  let verifiedKey: ApiKey | null = null;
   // P3.0 — resolve EITHER an API key OR an OAuth access token to one identity, then
   // present it to the existing decision engine as an ApiKey-shaped value (unchanged).
   const identity = resolveApiIdentity(input.apiKey, {
-    verifyKey: (raw) => developerStore.verifyKey(raw),
-    developerOrg: (devId) => developerStore.developer(devId)?.orgId ?? null,
+    verifyKey: (raw) => {
+      verifiedKey = developerStore.verifyKey(raw);
+      return verifiedKey;
+    },
+    // The KEY's tenant, never the developer account's. A key with no stored
+    // owner is UNRESOLVED and yields null — refused below, never back-filled to
+    // the seeded organization or to the session.
+    developerOrg: () => (verifiedKey as ApiKey | null)?.tenantId ?? null,
     verifyToken: (raw) => {
       try {
         return toAccessTokenClaims(verifyJwt(raw, signingSecret()));
@@ -307,7 +337,32 @@ export function runGateway(input: GatewayRequestInput): GatewayDecision {
   const developer = key ? developerStore.developer(key.developerId) : null;
   const plan: Plan = planFor(developer?.planTier ?? 'free');
   const versionInfo = apiVersionInfo(input.version);
-  const requestOwner = identity?.orgId || activeTenantScope()?.tenantId || null;
+  /**
+   * WHOSE REQUEST THIS IS — the credential's tenant, or the session's, and never
+   * both in the same breath.
+   *
+   * The old expression was `identity?.orgId || activeTenantScope()?.tenantId`,
+   * which reads as a precedence and behaves as a FALLBACK CHAIN: a presented
+   * credential whose tenant did not resolve fell through to whoever happened to
+   * be signed in, so a request authenticated as nobody was billed and audited to
+   * the desktop's current organization. Splitting the two cases is the point, and
+   * the split is on WHETHER A CREDENTIAL WAS PRESENTED — not on whether it
+   * resolved, because "presented and rejected" is a fact about the caller and
+   * not an absence:
+   *
+   *   A CREDENTIAL WAS PRESENTED → its tenant, or null. Null is a refusal to
+   *   guess: the request is still decided and still audited, with no owner, and
+   *   `quotaKey` puts it in the `unowned` partition where it cannot consume a
+   *   real tenant's budget or write a 401 into their audit trail.
+   *
+   *   NO CREDENTIAL AT ALL → the session. This path is reached from the
+   *   in-process REST dispatcher, where the caller IS a session and that is the
+   *   honest answer.
+   */
+  const credentialPresented = typeof input.apiKey === 'string' && input.apiKey !== '';
+  const requestOwner = credentialPresented
+    ? identity?.orgId || null
+    : activeTenantScope()?.tenantId ?? null;
   const { rateRemaining, quotaUsed } = gatewayStore.peek(key?.id ?? null, developer?.id ?? null, plan.rateLimit, plan.quota, start, requestOwner);
 
   const decision = decideGateway(input, {
@@ -329,15 +384,14 @@ export function runGateway(input: GatewayRequestInput): GatewayDecision {
    * TENANT, NOT BY WHOEVER IS SIGNED IN.
    *
    * `resolveApiIdentity` already computes `identity.orgId` — from the key's
-   * developer, or from the token's `org` claim — and this function discarded it,
-   * because the `ApiKey`-shaped value it builds for the decision engine has no
-   * org field. So the metering and audit rows had no owner at all.
+   * OWN ROW (Round 10), or from the token's `org` claim — and this function
+   * discarded it, because the `ApiKey`-shaped value it builds for the decision
+   * engine has no org field. So the metering and audit rows had no owner at all.
    *
-   * Falling back to the active scope is correct and not a widening: this path is
-   * reached from the in-process REST dispatcher where the caller IS a session.
-   * Where a credential IS presented, the credential wins — a request
-   * authenticated as tenant B must be billed to B and audited to B even if the
-   * desktop happens to have A open.
+   * A request authenticated as tenant B is billed to B and audited to B even if
+   * the desktop happens to have A open. The same value is used for `peek` and
+   * `commit`, so a tenant's rate/quota decision and its consumption are read and
+   * written against ONE key.
    */
   const owner = requestOwner;
 

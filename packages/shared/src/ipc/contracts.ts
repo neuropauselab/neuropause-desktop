@@ -2230,7 +2230,38 @@ export const BackupCreateRequest = z.object({
 });
 export type BackupCreateRequest = z.infer<typeof BackupCreateRequest>;
 
-const BackupIdSchema = z.string().trim().min(1).max(128);
+/**
+ * A BACKUP ID IS ONE DIRECTORY NAME. P13C ROUND 10 — NEW-M6.
+ *
+ * This was `z.string().trim().min(1).max(128)` — no charset — and every consumer
+ * fed it straight to `join(backupsDir, id)`. `{id:'../../../../tmp/victim'}` was
+ * an accepted payload, and `backup:delete` then called
+ * `fs.rm(dir,{recursive:true,force:true})` on the escaped path; `backup:restore`
+ * read a manifest from it and wrote every entry that manifest named.
+ *
+ * The charset is the rule `sandbox`'s `safeSegment` applies to a path segment,
+ * expressed as a REFUSAL rather than a rewrite: silently sanitising an id would
+ * delete or restore the WRONG backup, which is its own incident. The first
+ * character must be alphanumeric, so `..`, `.` and dotfiles are refused; the
+ * remainder is `[A-Za-z0-9._-]`, so `/`, `\`, `:`, `%` (every percent-encoded
+ * traversal form), whitespace and NUL are refused.
+ *
+ * THIS IS THE OUTER LAYER, NOT THE ENFORCEMENT. `backup/backupManager.ts` repeats
+ * the charset check and additionally resolves the REAL path (`fs.realpath`) and
+ * requires it to be contained under the backups directory, because a schema
+ * guards only the callers that arrive through this schema and cannot see a
+ * symlinked directory at all.
+ */
+const BackupIdSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(128)
+  .regex(
+    /^[A-Za-z0-9][A-Za-z0-9._-]*$/,
+    'A backup id is a single directory name: it must start with a letter or digit and may ' +
+      'contain only letters, digits, dot, underscore and hyphen.',
+  );
 export const BackupIdRequest = z.object({ id: BackupIdSchema });
 export type BackupIdRequest = z.infer<typeof BackupIdRequest>;
 

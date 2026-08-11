@@ -149,6 +149,59 @@ export function multiTenantArchiveDeclarations(): MultiTenantArchiveDeclaration[
 }
 
 /**
+ * THE ONE ARCHIVE THIS PRODUCT PRODUCES — declared at module load, exactly as
+ * every store declares its scope at construction.
+ *
+ * Read `restoration.detail` before changing anything here. It is the sentence the
+ * store vocabulary never made anybody write, and it is the whole reason this
+ * concept exists rather than a sixth store scope.
+ */
+export const INSTALL_ARCHIVE: MultiTenantArchiveDeclaration = declareMultiTenantArchive({
+  name: 'local-backup-archive',
+  scope: 'MULTI_TENANT_INSTALL',
+  contents:
+    "Every organization's records on this machine, byte-for-byte and unpartitioned: memory.json, " +
+    'graph.json, unified-store.json, every enterprise-module-* store (the general ledger, ERP ' +
+    'records, HR), executive-decisions.json, enterprise-governance.json, automations.json, ' +
+    'health-history.json, assistant-conversations.json, feedback.json, the timeline directory, ' +
+    'workforce-*.json, registry.json, plugins.json + the plugin roots, and the configuration and ' +
+    'workspace files — i.e. the whole of storage/storePaths.ts DOMAIN_FILES. manifest.json adds a ' +
+    '{domain, relativePath, sizeBytes, sha256} row per file, so the manifest alone discloses how ' +
+    'much data the install holds.',
+  authority: 'PLATFORM_OPERATOR',
+  retention:
+    'Scheduled backups: newest 10 kept, pruned by the scheduler in releaseOps/index.ts. Manual ' +
+    'backups: newest MANUAL_BACKUP_KEEP kept, pruned inside BackupManager.create so every caller ' +
+    'is capped (P13C Round 10 NEW-M7 — manual backups were uncapped, so a loop was a disk-fill). ' +
+    'Pre-migration snapshots are NEVER pruned: they are the rollback anchor for a failed ' +
+    "migration. A prune deletes a whole archive, so it removes every organization's copy at once " +
+    '— never one tenant\'s. The archive currently being restored is protected from its own ' +
+    "restore's safety snapshot.",
+  restoration: {
+    boundary: 'ALL_TENANTS_AT_ONCE',
+    authority: 'PLATFORM_OPERATOR',
+    detail:
+      'A restore copies the archived files back OVER the live data directory. It is install-wide ' +
+      'and all-or-nothing across tenants: one operator picking one archive rolls EVERY ' +
+      'organization on the machine back to that point, and any record any other tenant wrote ' +
+      'since is gone (it survives only in the safety snapshot taken first). It cannot be narrowed ' +
+      'to one tenant — the archive is not partitioned — and the `domains` argument narrows only ' +
+      'WHICH STORES are put back, never WHOSE. What restore CANNOT do: write outside the data ' +
+      'directory, write a path the store-path registry does not cover for the entry\'s own ' +
+      'domain, or run at all for an archive that carries no declaration or whose declared ' +
+      'boundary the caller did not acknowledge.',
+  },
+  reason:
+    'WHY ITS OWN KIND: no StoreScope can describe it honestly. TENANT is a false claim (it holds ' +
+    'every organization\'s records in one directory); PLATFORM_GLOBAL is refused at construction ' +
+    'for CUSTOMER_DERIVED payloads, and rightly — declaring it would assert the archive holds ' +
+    'nothing derived from a customer. WHAT IT DOES NOT ISOLATE: nothing. There is no tenant ' +
+    'boundary inside the archive and this declaration does not invent one; it makes the absence ' +
+    'explicit, puts the operation on platform authority, and forces every restore to name the ' +
+    'boundary it crosses.',
+});
+
+/**
  * The declaration block written into `manifest.json`.
  *
  * It is on the ARCHIVE, not only in the source, because the enforcement point is
@@ -193,16 +246,56 @@ export function isArchiveManifestScope(value: unknown): value is ArchiveManifest
 }
 
 /**
- * The acknowledgement a caller must pass to `restore`.
+ * The acknowledgement a restore is performed under. A restore cannot happen
+ * without one, and it must match the boundary the archive itself declares.
  *
- * `declaredBy` is required so the refusal-or-audit line names the surface that
- * asked. Two call sites exist in production and both name themselves: the
- * `backup:restore` IPC handler and the Recovery Center's composition — see
- * releaseOps/index.ts.
+ * TWO LEVELS, AND WHY BOTH.
+ *
+ * `BackupManagerDeps.restoreBoundary` is REQUIRED, so a composition root cannot
+ * build a manager that restores without first writing down, in source, that its
+ * restores put every tenant back at once. That is the forcing function — a new
+ * wiring of this class has to state the boundary before it compiles.
+ *
+ * `restore(..., ack)` overrides it per call, and the surfaces that take a
+ * caller-chosen archive id use it to name themselves: the `backup:restore` IPC
+ * handler, the migration engine's rollback, and the Recovery Center through the
+ * composition's declaration (see releaseOps/index.ts). `declaredBy` is required
+ * and non-empty so a refusal or an audit line says WHICH surface asked.
+ *
+ * WHAT THIS DOES NOT DO — the honest limit. It does not narrow the blast radius:
+ * `ALL_TENANTS_AT_ONCE` is the only boundary that exists, because the archive is
+ * not partitioned. It makes the crossing EXPLICIT and refusable, not smaller.
  */
 export interface RestoreBoundaryAcknowledgement {
   boundary: ArchiveRestorationBoundary;
   declaredBy: string;
+}
+
+/**
+ * Refuse an acknowledgement that is missing, malformed, or disagrees with the
+ * archive's own declared boundary. Returns a refusal string, or `null` to allow.
+ *
+ * The archive's block is the authority, not the caller: a caller that asks for a
+ * boundary the archive does not declare is refused rather than accommodated.
+ */
+export function restoreBoundaryRefusal(
+  archive: ArchiveManifestScope,
+  ack: RestoreBoundaryAcknowledgement | undefined,
+): string | null {
+  if (!ack || typeof ack.declaredBy !== 'string' || ack.declaredBy.trim() === '') {
+    return (
+      'refused: a restore must acknowledge the restoration boundary it crosses and name the ' +
+      'surface asking for it'
+    );
+  }
+  if (ack.boundary !== archive.restoration) {
+    return (
+      `refused: ${ack.declaredBy} acknowledged boundary "${ack.boundary}", but this archive ` +
+      `declares "${archive.restoration}" — a restore may not cross a boundary its caller did ` +
+      'not name'
+    );
+  }
+  return null;
 }
 
 /* ══════════════════════ containment (NEW-M6) ══════════════════════════ */

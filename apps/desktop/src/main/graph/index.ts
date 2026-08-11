@@ -38,6 +38,7 @@ import { connectorService } from '../connectors/connectorService';
 import { registry } from '../registry/registry';
 import { unifiedStore } from '../unified/storeInstance';
 import { activeTenantScope } from '../enterprise';
+import type { BackgroundPrincipal } from '../tenancy/backgroundPrincipal';
 import { runAsPrincipal, tenantPrincipal } from '../tenancy/backgroundPrincipal';
 import { getRelationshipModel } from '../enterprise/relationshipProvider';
 import { pluginExtensionRegistry } from '../plugins/extensionRegistry';
@@ -47,6 +48,9 @@ import { projectGraph } from './projector';
 import { runOutsidePrincipal } from '../tenancy/backgroundPrincipal';
 
 const log = createLogger('graph');
+
+/** The job identity every principal this subsystem's reprojection mints carries. */
+const REBUILD_JOB_ID = 'graph-reprojection';
 
 /** P2.5 — ERP record + connector-write events that should re-project the graph (UDM 'changed' misses these). */
 const GRAPH_REBUILD_EVENTS: readonly PlatformEventType[] = [
@@ -78,16 +82,20 @@ export interface GraphSubsystem {
 export async function initGraph(deps: GraphSubsystemDeps): Promise<GraphSubsystem> {
   await graphStore.load();
 
+  /**
+   * P13B — a rebuild has an owner, or it does not happen.
+   *
+   * The projection reads the (now scoped) unified store, so it can only see
+   * one tenant's entities; the tenant is passed explicitly so the SYNTHESISED
+   * node ids (`person:`, `connector:`, `app:`) are qualified too. Without a
+   * resolved tenant there is nothing to project and nobody to own it.
+   *
+   * This is the IMMEDIATE path — `graph:rebuild` and the Recovery Center —
+   * where the caller IS the request, so resolving here resolves at the only
+   * moment there is. The DEBOUNCED path is `enqueueRebuild` below.
+   */
   const rebuild = (): void => {
-    /**
-     * P13B — a rebuild has an owner, or it does not happen.
-     *
-     * The projection reads the (now scoped) unified store, so it can only see
-     * one tenant's entities; the tenant is passed explicitly so the SYNTHESISED
-     * node ids (`person:`, `connector:`, `app:`) are qualified too. Without a
-     * resolved tenant there is nothing to project and nobody to own it.
-     */
-    const principal = tenantPrincipal({ jobId: 'graph-reprojection', scope: activeTenantScope() });
+    const principal = tenantPrincipal({ jobId: REBUILD_JOB_ID, scope: activeTenantScope() });
     if (principal === null) {
       log.info('Graph rebuild skipped: no organization is active');
       return;
@@ -140,24 +148,109 @@ export async function initGraph(deps: GraphSubsystemDeps): Promise<GraphSubsyste
     }
   };
 
-  // Debounce rebuilds so a burst of unified-store writes coalesces into one.
+  /**
+   * ONE QUEUED REPROJECTION. P13C ROUND 10 — NEW-M10.
+   *
+   * The principal is a FIELD on the queue item rather than something the drain
+   * works out — the contract `tenancy/backgroundPrincipal.ts` states: "captured
+   * by the CALLER, at the moment the job is scheduled or enqueued — not resolved
+   * inside `fn`".
+   */
+  interface QueuedReprojection {
+    /** WHO THIS REPROJECTION IS FOR, decided when the change arrived. */
+    principal: BackgroundPrincipal;
+    tenantId: string;
+    workspaceId: string;
+    /** WHAT asked for it — the UDM, an ERP event, a plugin, or discovery. */
+    operation: string;
+    enqueuedAt: string;
+  }
+
+  /**
+   * Keyed by tenant + workspace: a debounce coalesces WITHIN an owner, never
+   * ACROSS one. Two organizations' stores can change inside the same 750 ms
+   * window (a fanned-out sync writes A's records then B's), and folding those
+   * into one job would mean silently dropping one tenant's reprojection.
+   */
+  const pendingReprojections = new Map<string, QueuedReprojection>();
   let timer: ReturnType<typeof setTimeout> | null = null;
-  const scheduleRebuild = (): void => {
+
+  /**
+   * THE ENQUEUE. Resolves the tenant HERE, where the caller's context is right.
+   *
+   * `tenantPrincipal({ scope: activeTenantScope() })` used to run INSIDE the
+   * 750 ms `setTimeout` callback, so the tenant was resolved at DRAIN: a
+   * workspace switch inside the debounce window made A's store change reproject
+   * as B, with A's change silently never reprojected at all. `graphStore.apply`
+   * is owner-scoped, so no cross-tenant write was reachable — what was wrong was
+   * whose work ran, and the comment on `rebuild` asserted the opposite.
+   *
+   * Null means the change arrived with no resolvable tenant: DROPPED, not run
+   * as whoever is on screen.
+   */
+  const enqueueRebuild = (operation: string): void => {
+    const principal = tenantPrincipal({ jobId: REBUILD_JOB_ID, scope: activeTenantScope() });
+    if (principal === null) {
+      log.info('Graph reprojection not queued: no organization is active', { operation });
+      return;
+    }
+    const workspaceId = principal.workspaceId ?? '';
+    const key = `${principal.tenantId}::${workspaceId}`;
+    if (!pendingReprojections.has(key)) {
+      pendingReprojections.set(key, {
+        principal,
+        tenantId: principal.tenantId as string,
+        workspaceId,
+        operation,
+        enqueuedAt: new Date().toISOString(),
+      });
+    }
     if (timer) return;
     timer = setTimeout(() => {
       timer = null;
-      safeRebuild();
+      drainReprojections();
     }, 750);
   };
-  unifiedStore.on('changed', scheduleRebuild);
-  // P2.5 — ERP record + connector-write events also re-project the unified graph.
-  if (deps.on) deps.on(GRAPH_REBUILD_EVENTS, scheduleRebuild);
-  // P3.0 — a plugin registering/removing graph extensions re-projects the graph.
-  pluginExtensionRegistry.on('changed', scheduleRebuild);
-  // P7 — infrastructure discovery changes re-project the unified graph (debounced with the rest).
-  if (deps.onResourceChanged) deps.onResourceChanged(scheduleRebuild);
 
-  // First projection shortly after boot, once the store has settled.
+  /**
+   * THE DRAIN. Each item under ITS OWN captured principal, and nothing here
+   * reads `activeTenantScope()` — which is what makes the shared timer harmless.
+   */
+  const drainReprojections = (): void => {
+    const items = [...pendingReprojections.values()];
+    pendingReprojections.clear();
+    for (const item of items) {
+      try {
+        runAsPrincipal(item.principal, () => rebuildUnderPrincipal(item.tenantId));
+      } catch (err) {
+        log.error('Graph rebuild failed', {
+          tenantId: item.tenantId,
+          operation: item.operation,
+          error: String(err),
+        });
+      }
+    }
+  };
+
+  const onUnifiedChanged = (): void => enqueueRebuild('unified-store:changed');
+  const onPlatformRebuildEvent = (): void => enqueueRebuild('platform-event:record-changed');
+  const onPluginExtensionsChanged = (): void => enqueueRebuild('plugin-extensions:changed');
+  const onResourceModelChanged = (): void => enqueueRebuild('infrastructure:discovered');
+  unifiedStore.on('changed', onUnifiedChanged);
+  // P2.5 — ERP record + connector-write events also re-project the unified graph.
+  // The handler runs inside `bus.publish`, so the publishing principal is still
+  // in scope and the capture above names the event's own tenant.
+  if (deps.on) deps.on(GRAPH_REBUILD_EVENTS, onPlatformRebuildEvent);
+  // P3.0 — a plugin registering/removing graph extensions re-projects the graph.
+  pluginExtensionRegistry.on('changed', onPluginExtensionsChanged);
+  // P7 — infrastructure discovery changes re-project the unified graph (debounced with the rest).
+  if (deps.onResourceChanged) deps.onResourceChanged(onResourceModelChanged);
+
+  /**
+   * First projection shortly after boot. Deliberately NOT queued: armed before
+   * any change exists, so the enqueue moment and the fire moment are the same
+   * moment and there is nothing earlier to capture.
+   */
   const initialTimer = setTimeout(safeRebuild, 1500);
 
   /**
@@ -232,9 +325,10 @@ export async function initGraph(deps: GraphSubsystemDeps): Promise<GraphSubsyste
     handlers,
     rebuild,
     dispose: () => {
-      unifiedStore.off('changed', scheduleRebuild);
-      pluginExtensionRegistry.off('changed', scheduleRebuild);
+      unifiedStore.off('changed', onUnifiedChanged);
+      pluginExtensionRegistry.off('changed', onPluginExtensionsChanged);
       graphStore.off('changed', onChanged);
+      pendingReprojections.clear();
       if (timer) clearTimeout(timer);
       clearTimeout(initialTimer);
     },

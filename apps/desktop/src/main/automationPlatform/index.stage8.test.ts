@@ -20,8 +20,15 @@ const scope = (): typeof PLATFORM_SCOPE => PLATFORM_SCOPE;
 
 const T0 = new Date(2026, 6, 15, 8, 59, 0, 0).getTime(); // local Wed 08:59
 
+/**
+ * P13C ROUND 10 — NEW-M9. Every fixture rule now carries its STORED OWNER,
+ * because the tick derives the principal it fires under from `rule.tenantId`
+ * rather than from whoever is signed in. A rule with no owner is skipped, which
+ * is the behaviour a separate test pins.
+ */
 function rule(over: Partial<AutomationRule> = {}): AutomationRule {
   return {
+    tenantId: PLATFORM_SCOPE.tenantId,
     id: 'rule-1',
     name: 'Daily digest',
     trigger: { type: 'schedule', schedule: 'daily 9am' },
@@ -44,6 +51,10 @@ interface Harness {
   produceWatch: () => unknown;
   setNow: (ms: number) => void;
   ruleReads: () => number;
+  /** The callback the platform registered on the scheduler — the LIVE tick. */
+  runRegisteredTick: () => void;
+  /** Job ids the fan-out was asked for, one entry per `tickAllTenants`. */
+  fanOutJobs: string[];
 }
 
 function mkDeps(over: Partial<AutomationPlatformDeps> = {}): Harness {
@@ -53,6 +64,8 @@ function mkDeps(over: Partial<AutomationPlatformDeps> = {}): Harness {
   const scheduled: Harness['scheduled'] = [];
   const cancelled: string[] = [];
   const sources: string[] = [];
+  const fanOutJobs: string[] = [];
+  let tickFn: (() => void) | null = null;
   let produce: () => unknown = () => null;
   const deps: AutomationPlatformDeps = {
   scope,
@@ -79,12 +92,21 @@ function mkDeps(over: Partial<AutomationPlatformDeps> = {}): Harness {
       return Promise.resolve({ ok: true });
     },
     schedule: {
-      every: (id, ms) => {
+      every: (id, ms, fn) => {
         scheduled.push({ id, ms });
+        tickFn = fn;
       },
       cancel: (id) => {
         cancelled.push(id);
       },
+    },
+    // P13C Round 10 — NEW-M9. The default harness is a single-tenant install, so
+    // the fan-out is one run under `PLATFORM_SCOPE`; suites that need two tenants
+    // override this and assert the run count.
+    forEachTenant: async (_jobId, fn) => {
+      fanOutJobs.push(_jobId);
+      await fn({ scope: PLATFORM_SCOPE });
+      return [];
     },
     registerSource: (source) => {
       sources.push(source.key);
@@ -104,6 +126,11 @@ function mkDeps(over: Partial<AutomationPlatformDeps> = {}): Harness {
       nowMs = ms;
     },
     ruleReads: () => ruleReads,
+    runRegisteredTick: () => {
+      if (tickFn === null) throw new Error('the platform registered no tick');
+      tickFn();
+    },
+    fanOutJobs,
   };
 }
 

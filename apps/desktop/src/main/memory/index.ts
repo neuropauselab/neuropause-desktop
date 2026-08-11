@@ -54,6 +54,7 @@ import { runMemoryBackfill } from './memoryBackfill';
 import { backendBackfill } from '../backendsemantic/backendBackfillInstance';
 import { runtimeIdentity } from '../runtimeIdentity';
 import { activeMemoryViewer, activeTenantScope } from '../enterprise';
+import type { BackgroundPrincipal } from '../tenancy/backgroundPrincipal';
 import { runAsPrincipal, tenantPrincipal } from '../tenancy/backgroundPrincipal';
 import { memoryMaySync } from '@neuropause/shared';
 import { memoryAuditLog } from './memoryAuditInstance';
@@ -66,6 +67,9 @@ import { runOutsidePrincipal } from '../tenancy/backgroundPrincipal';
 import type { TenantScope } from '@neuropause/shared';
 
 const log = createLogger('memory');
+
+/** The job identity every principal this subsystem's reprojection mints carries. */
+const REBUILD_JOB_ID = 'memory-reprojection';
 
 /** P2.5 — ERP record + connector-write events that should re-project business memory (UDM 'changed' misses these). */
 const MEMORY_REBUILD_EVENTS: readonly PlatformEventType[] = [
@@ -132,19 +136,22 @@ export async function initMemory(deps: MemorySubsystemDeps): Promise<MemorySubsy
   });
   memoryStore.configureSemantic(semantic.search);
 
+  /**
+   * P13C — the projection runs UNDER A PRINCIPAL, or not at all.
+   *
+   * The graph reprojection already gated on a resolved tenant; this one did
+   * not, and relied entirely on the store's binding. That is a real
+   * difference: `applyProjected` THROWS without a viewer, so an ungated
+   * rebuild turned "no tenant is active" into a caught-and-logged error on a
+   * timer rather than a decision.
+   *
+   * This is the IMMEDIATE path — the `memory:rebuild` channel and the Recovery
+   * Center — where the caller IS the request and resolving the tenant here is
+   * resolving it at the only moment there is. The DEBOUNCED path does not share
+   * that property and does not share this function; see `enqueueRebuild`.
+   */
   const rebuild = (): void => {
-    /**
-     * P13C — the projection runs UNDER A PRINCIPAL, or not at all.
-     *
-     * The graph reprojection already gated on a resolved tenant; this one did
-     * not, and relied entirely on the store's binding. That is a real
-     * difference: `applyProjected` THROWS without a viewer, so an ungated
-     * rebuild turned "no tenant is active" into a caught-and-logged error on a
-     * timer rather than a decision. Running under an explicit principal also
-     * means the rebuild reads and stamps the same tenant even if the user
-     * switches organizations while it is queued.
-     */
-    const principal = tenantPrincipal({ jobId: 'memory-reprojection', scope: activeTenantScope() });
+    const principal = tenantPrincipal({ jobId: REBUILD_JOB_ID, scope: activeTenantScope() });
     if (principal === null) {
       log.info('Memory rebuild skipped: no organization is active');
       return;
@@ -176,17 +183,116 @@ export async function initMemory(deps: MemorySubsystemDeps): Promise<MemorySubsy
     }
   };
 
+  /**
+   * ONE QUEUED REPROJECTION. P13C ROUND 10 — NEW-M10.
+   *
+   * The principal is a FIELD on the queue item, not something the drain works
+   * out. That ordering is the whole point of `tenancy/backgroundPrincipal.ts`,
+   * which states it as the contract: "the principal is captured by the CALLER,
+   * at the moment the job is scheduled or enqueued — not resolved inside `fn`".
+   */
+  interface QueuedReprojection {
+    /** WHO THIS REPROJECTION IS FOR, decided when the store change arrived. */
+    principal: BackgroundPrincipal;
+    /** The tenant, restated from the principal for logging and tests. */
+    tenantId: string;
+    /** The workspace, or '' for tenant-wide. */
+    workspaceId: string;
+    /** WHAT asked for it — the store change, or an ERP/connector event. */
+    operation: string;
+    enqueuedAt: string;
+  }
+
+  /**
+   * KEYED BY TENANT + WORKSPACE, and that is not an optimization.
+   *
+   * The debounce holds ONE timer. Two organizations' stores can both change
+   * inside the same 800 ms window — a fanned-out sync writes A's records and
+   * then B's — and coalescing those into a single job would mean choosing which
+   * tenant's reprojection to run and silently dropping the other's. A map keyed
+   * by owner coalesces WITHIN a tenant, which is what a debounce is for, and
+   * never ACROSS one.
+   */
+  const pendingReprojections = new Map<string, QueuedReprojection>();
   let timer: ReturnType<typeof setTimeout> | null = null;
-  const scheduleRebuild = (): void => {
+
+  /**
+   * THE ENQUEUE. Resolves the tenant HERE, where the caller's context is the
+   * right one.
+   *
+   * The comment this replaces claimed the rebuild "reads and stamps the same
+   * tenant even if the user switches organizations while it is queued". It did
+   * not: `tenantPrincipal({ scope: activeTenantScope() })` ran INSIDE the 800 ms
+   * `setTimeout` callback, so the tenant was resolved at DRAIN, and a switch
+   * inside the debounce window made A's store change reproject as B. The
+   * destinations are owner-scoped, so no cross-tenant write was reachable — the
+   * defect was that the work ran for the wrong tenant and the comment asserted
+   * the opposite of the code.
+   *
+   * Null means the change arrived with no tenant resolvable. Such a change is
+   * DROPPED rather than queued, because there is no tenant to reproject for —
+   * the same fail-closed rule `workforce/runtime/scheduler.ts` applies to a job
+   * enqueued while signed out.
+   */
+  const enqueueRebuild = (operation: string): void => {
+    const principal = tenantPrincipal({ jobId: REBUILD_JOB_ID, scope: activeTenantScope() });
+    if (principal === null) {
+      log.info('Memory reprojection not queued: no organization is active', { operation });
+      return;
+    }
+    const workspaceId = principal.workspaceId ?? '';
+    const key = `${principal.tenantId}::${workspaceId}`;
+    if (!pendingReprojections.has(key)) {
+      pendingReprojections.set(key, {
+        principal,
+        tenantId: principal.tenantId as string,
+        workspaceId,
+        operation,
+        enqueuedAt: new Date().toISOString(),
+      });
+    }
     if (timer) return;
     timer = setTimeout(() => {
       timer = null;
-      safeRebuild();
+      drainReprojections();
     }, 800);
   };
-  unifiedStore.on('changed', scheduleRebuild);
+
+  /**
+   * THE DRAIN. Runs each queued item under ITS OWN captured principal.
+   *
+   * Nothing here reads `activeTenantScope()`. That is what makes the timer
+   * harmless: which organization is on screen when it fires is no longer an
+   * input to the answer. One tenant's failure does not cancel the next one's.
+   */
+  const drainReprojections = (): void => {
+    const items = [...pendingReprojections.values()];
+    pendingReprojections.clear();
+    for (const item of items) {
+      try {
+        runAsPrincipal(item.principal, () => rebuildUnderPrincipal());
+      } catch (err) {
+        log.error('Memory rebuild failed', {
+          tenantId: item.tenantId,
+          operation: item.operation,
+          error: String(err),
+        });
+      }
+    }
+  };
+
+  const onUnifiedChanged = (): void => enqueueRebuild('unified-store:changed');
+  const onPlatformRebuildEvent = (): void => enqueueRebuild('platform-event:record-changed');
+  unifiedStore.on('changed', onUnifiedChanged);
   // P2.5 — ERP record + connector-write events also re-project business memory.
-  if (deps.on) deps.on(MEMORY_REBUILD_EVENTS, scheduleRebuild);
+  // The handler runs inside `bus.publish`, so the publishing principal is still
+  // in scope and the capture above names the event's own tenant.
+  if (deps.on) deps.on(MEMORY_REBUILD_EVENTS, onPlatformRebuildEvent);
+  /**
+   * The boot projection. Deliberately NOT queued: it is armed before any store
+   * change exists, so there is no enqueue moment distinct from the fire moment,
+   * and resolving at fire is resolving at the only time there is.
+   */
   const initialTimer = setTimeout(safeRebuild, 1600);
 
   /**
@@ -382,8 +488,9 @@ export async function initMemory(deps: MemorySubsystemDeps): Promise<MemorySubsy
     // subsystem re-deriving one from logs.
     probe: retrievalProbe(semantic.health),
     dispose: () => {
-      unifiedStore.off('changed', scheduleRebuild);
+      unifiedStore.off('changed', onUnifiedChanged);
       memoryStore.off('changed', onChanged);
+      pendingReprojections.clear();
       if (timer) clearTimeout(timer);
       clearTimeout(initialTimer);
     },

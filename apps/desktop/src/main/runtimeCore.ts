@@ -2894,6 +2894,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       every: (id, ms, fn) => taskScheduler.every(id, ms, fn),
       cancel: (id) => taskScheduler.cancel(id),
     },
+    // P13C Round 10 — NEW-M9. The schedule tick is owed to EVERY tenant, not to
+    // whoever is signed in. Same dep, same source, as the delivery engine's.
+    forEachTenant: (jobId, fn) => forEachTenantBackground(jobId, fn),
     registerSource: (source) => deliveryEngine.register(source),
   });
   automationRef = automationPlatform;

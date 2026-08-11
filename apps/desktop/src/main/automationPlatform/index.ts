@@ -64,6 +64,8 @@ import { planRollback, type InstalledWorkerInfo } from './rollbackPlanner';
 import { buildMonitorReport } from './executionMonitor';
 import { parseScheduleLabel, scheduleDue } from './scheduleParser';
 import { onWorkspaceSwitch } from '../tenancy/workspaceSwitchHub';
+import { principalForOwnedWork } from '../tenancy/backgroundFanOut';
+import { runAsPrincipal } from '../tenancy/backgroundPrincipal';
 import {
   answerAutomationQuestion,
   composeAutomationDashboard,
@@ -80,6 +82,8 @@ const log = createLogger('automation-platform');
 
 const BUILD_TTL_MS = 3_000;
 const TICK_ID = 'automation-platform:schedule-tick';
+/** The job identity every principal this tick mints carries. */
+const TICK_JOB_ID = 'automation-platform:schedule-tick';
 const TICK_MS = 60_000;
 
 /* ── deps (every read injected; sync reads only) ──────────────────────────── */
@@ -123,6 +127,26 @@ export interface AutomationPlatformDeps {
   fireScheduledRule: (ruleId: string, scheduledForIso: string) => Promise<{ ok: boolean } | null>;
   /** The EXISTING taskScheduler surface (no new scheduler class). */
   schedule: { every: (id: string, ms: number, fn: () => void) => void; cancel: (id: string) => void };
+  /**
+   * P13C ROUND 10 — NEW-M9. WHICH TENANTS THE SCHEDULE TICK IS OWED TO.
+   *
+   * The tick was `schedule.every(..., () => void tick(now()))` — one timer, no
+   * principal. `deps.rules()` is `automationStore.all()`, which is correctly
+   * scoped, so with no principal it fell through to THE SESSION: the signed-in
+   * organization's schedule rules fired and EVERY OTHER TENANT'S NEVER RAN AT
+   * ALL. Fail-closed, and a functional gap nobody would report as a security
+   * bug — which is precisely why it survived.
+   *
+   * This is the same dep `services/deliveryEngine.ts` takes, wired to the same
+   * `forEachTenantBackground`, and injected rather than imported for the reason
+   * stated on `scope` above: `enterprise/index` reaches `app.getPath`.
+   *
+   * REQUIRED, so a composition root that forgets it fails to compile.
+   */
+  forEachTenant: (
+    jobId: string,
+    fn: (run: { scope: TenantScope }) => Promise<void> | void,
+  ) => Promise<unknown>;
   /** Register a delivery-engine source (the EXISTING engine). */
   registerSource: (source: IntelligenceSource) => void;
   now?: () => number;
@@ -134,8 +158,16 @@ export interface AutomationPlatformSubsystem {
   monitor: () => AutomationMonitorReport;
   plan: (playbookId: string) => AutomationPlan | null;
   dashboard: () => AutomationPlatformDashboard;
-  /** The schedule tick, exposed for deterministic tests; the taskScheduler drives it live. */
+  /**
+   * The schedule tick for the CALLER'S OWN tenant, exposed for deterministic
+   * tests. Each due rule still fires under ITS OWN stored owner's principal.
+   */
   tick: (nowMs: number) => Promise<{ fired: string[] }>;
+  /**
+   * The schedule tick for EVERY tenant owed one — what the taskScheduler drives
+   * live. Exposed so a test can assert the fan-out happened by counting runs.
+   */
+  tickAllTenants: (nowMs: number) => Promise<{ fired: string[]; tenants: string[] }>;
   /** Assistant port: answer one of the six automation questions, or null. */
   answerQuestion: (text: string, nowIso: string) => AssistantStructuredReport | null;
   dispose: () => void;
@@ -330,14 +362,36 @@ export function initAutomationPlatform(deps: AutomationPlatformDeps): Automation
    * than documenting it.
    */
   const firedOccurrences = new Map<string, Map<string, string>>();
-  const occurrenceBucket = (): Map<string, string> => {
-    const tenantId = deps.scope()?.tenantId ?? '';
+  /**
+   * P13C ROUND 10 — NEW-M9. THE BUCKET COMES FROM THE RULE, NOT FROM THE SESSION.
+   *
+   * This took no argument and re-read `deps.scope()` INSIDE the loop, AFTER
+   * `await deps.fireScheduledRule`. A workspace switch during that await moved
+   * the whole rest of the tick into another tenant's bucket, so one tenant's
+   * occurrence keys were written under another's — which both suppresses a rule
+   * that never fired and re-fires one that did. The owner is now an argument
+   * derived from the rule itself before any await, so there is no read left in
+   * the loop that a switch could change.
+   */
+  const occurrenceBucket = (tenantId: string): Map<string, string> => {
     const existing = firedOccurrences.get(tenantId);
     if (existing) return existing;
     const fresh = new Map<string, string>();
     firedOccurrences.set(tenantId, fresh);
     return fresh;
   };
+  /**
+   * D-3, under the rule's own authority.
+   *
+   * SCHEDULED RULE → ITS STORED OWNER → AN EXPLICIT PRINCIPAL → EXECUTION. The
+   * chain has no step where "whoever is signed in" is consulted:
+   * `principalForOwnedWork` reads `rule.tenantId`, which the store stamped when
+   * the rule was saved and which a payload cannot set. A rule with no stored
+   * owner is UNRESOLVED — it belongs to nobody, so nobody's runner may execute
+   * it, and it is skipped rather than run as the reader. (Unreachable through
+   * `automationStore.all()`, which already hides unowned rows; the guard is here
+   * because "the store filters it out" is a property of another file.)
+   */
   const tick = async (nowMs: number): Promise<{ fired: string[] }> => {
     const fired: string[] = [];
     const rules = safeRead('automation-rules', deps.rules, {});
@@ -347,11 +401,24 @@ export function initAutomationPlatform(deps: AutomationPlatformDeps): Automation
       if (!parsed.spec) continue; // unparseable → the monitor carries the finding; never a silent guess
       const due = scheduleDue(parsed.spec, nowMs);
       if (!due.due) continue;
-      const occurrences = occurrenceBucket();
+      const principal = principalForOwnedWork({
+        jobId: TICK_JOB_ID,
+        tenantId: rule.tenantId,
+        // A rule is TENANT-level: `AutomationRule` has no workspace field, so a
+        // tenant-level principal is the honest reading, not a narrowing.
+        workspaceId: null,
+      });
+      if (principal === null) {
+        log.warn('Scheduled rule has no owner and was not fired', { ruleId: rule.id });
+        continue;
+      }
+      const occurrences = occurrenceBucket(principal.tenantId as string);
       if (occurrences.get(rule.id) === due.occurrenceKey) continue; // once per occurrence
       occurrences.set(rule.id, due.occurrenceKey);
       try {
-        const res = await deps.fireScheduledRule(rule.id, new Date(nowMs).toISOString());
+        const res = await runAsPrincipal(principal, () =>
+          deps.fireScheduledRule(rule.id, new Date(nowMs).toISOString()),
+        );
         if (res) fired.push(rule.id);
       } catch (err) {
         log.warn('Scheduled rule fire failed', { ruleId: rule.id, message: (err as Error).message });
@@ -359,8 +426,26 @@ export function initAutomationPlatform(deps: AutomationPlatformDeps): Automation
     }
     return { fired };
   };
+  /**
+   * The tick EVERY tenant is owed, once per tenant, each under its own principal.
+   *
+   * `tick` alone could only ever see one organization's rules, because the store
+   * it reads is scoped — so running it once per install served exactly one
+   * tenant. One tenant's failure does not cancel the next tenant's run;
+   * `forEachTenant` captures it into that tenant's outcome and continues.
+   */
+  const tickAllTenants = async (nowMs: number): Promise<{ fired: string[]; tenants: string[] }> => {
+    const fired: string[] = [];
+    const tenants: string[] = [];
+    await deps.forEachTenant(TICK_JOB_ID, async (run) => {
+      tenants.push(run.scope.tenantId);
+      const result = await tick(nowMs);
+      fired.push(...result.fired);
+    });
+    return { fired, tenants };
+  };
   deps.schedule.every(TICK_ID, TICK_MS, () => {
-    void tick(now());
+    void tickAllTenants(now());
   });
 
   /* ── monitoring: ONE governed watch source (items only, never actions) ──── */
@@ -513,6 +598,7 @@ export function initAutomationPlatform(deps: AutomationPlatformDeps): Automation
     plan,
     dashboard: () => build().dashboard,
     tick,
+    tickAllTenants,
     answerQuestion,
     dispose: () => {
       deps.schedule.cancel(TICK_ID);
