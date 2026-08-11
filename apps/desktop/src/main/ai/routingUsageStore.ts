@@ -15,6 +15,38 @@ import { promises as fs } from 'node:fs';
 import type { AiRoutingUsage, ProcessingLocation } from '@neuropause/shared';
 import { emptyRoutingUsage } from '@neuropause/shared';
 import { envelopeStamp, readStoreFile } from '../storage/storeEnvelope';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/**
+ * P13C ROUND 9 — the third store the structural detector's `holdsState` regex
+ * misses (`private usage: AiRoutingUsage = emptyRoutingUsage()` matches none of
+ * its three patterns). Declared here rather than reported and left.
+ *
+ * SYSTEM authority, and that is the honest word: nothing mutates these counters
+ * through a user-facing surface. `record()` is called by the engine once per
+ * completed run; the only channel is the READ `ai:routing.usage`, which Round 8
+ * moved off the public allowlist to `cloud:read` because on a two-tenant install
+ * a rising total is the other tenant's activity volume. The counters themselves
+ * are five integers and two timestamps — Round 8 inspected the persisted file and
+ * recorded that finding; this declaration is that decision written where the
+ * inventory can see it.
+ */
+declareStoreScope({
+  name: 'ai-routing-usage',
+  scope: 'INSTALL_GLOBAL',
+  persistence: 'file',
+  authority: 'SYSTEM',
+  classification: 'INSTALL_METADATA',
+  retention:
+    'No cap and no deletion path: counters only increment, and nothing removes rows, so a ' +
+    'retention pass cannot reach another tenant’s data because there are no rows to reach.',
+  reason:
+    'WHY GLOBAL: one shared AI engine on one machine; the counters describe WHERE that engine ' +
+    'ran work (local / private infrastructure / external), which is a property of the install’s ' +
+    'configuration. WHAT DATA: five integers and two timestamps — no prompts, responses, record ' +
+    'content or identifiers. CROSS-TENANT COST: aggregate volume and timing are still an ' +
+    'inference channel, which is why the read requires cloud:read rather than being public.',
+});
 
 interface UsageFile extends AiRoutingUsage {
   schemaVersion?: number;

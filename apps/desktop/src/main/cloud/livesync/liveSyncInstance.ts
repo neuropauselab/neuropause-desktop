@@ -16,6 +16,8 @@ import type { SyncStatus } from './types';
 import { authService } from '../../auth/authService';
 import { runtimeIdentity } from '../../runtimeIdentity';
 import { memoryStore } from '../../memory/memoryInstance';
+import { declareStoreScope } from '../../tenancy/storeScope';
+import { activeTenantScope } from '../../enterprise/index';
 import {
   applyMemoryChange,
   createMemorySyncGuard,
@@ -23,6 +25,32 @@ import {
 } from '../../memory/memoryLiveSyncBridge';
 
 const log = createLogger('livesync');
+
+/**
+ * P13C ROUND 9 — F17 SWEEP. The device id is written to disk here, so this file
+ * persists state and owes a declaration like any other.
+ *
+ * INSTALL_GLOBAL is honest for once: the file holds one random UUID identifying
+ * THIS INSTALLATION, used for echo-exclusion on pull so a device does not re-apply
+ * its own pushes. It names no customer, no organization and no record.
+ *
+ * SYSTEM authority, not ORG_ROLE — `declareStoreScope` refuses that pairing
+ * outright now, and correctly: nothing mutates this through a user-facing
+ * surface. It is generated once, on first read, and never offered to anyone.
+ */
+declareStoreScope({
+  name: 'livesync-device-id',
+  scope: 'INSTALL_GLOBAL',
+  persistence: 'file',
+  authority: 'SYSTEM',
+  classification: 'INSTALL_METADATA',
+  retention:
+    'One file, one line, never removed. Rewritten only when it is missing or unreadable, in ' +
+    'which case a new id is minted; nothing else is deleted and no organization is involved.',
+  reason:
+    'A per-installation random UUID for sync echo-exclusion. Not derived from any customer ' +
+    'record and identical in meaning for every organization on the machine.',
+});
 
 function loadOrCreateDeviceId(): string {
   const file = join(app.getPath('userData'), 'livesync-device-id');
@@ -106,6 +134,16 @@ export const liveSync: LiveSyncService = createLiveSyncService({
   mirrorFilePath: join(app.getPath('userData'), 'livesync-mirror.json'),
   transport: createHttpSyncTransport(),
   getActiveOrgId: () => activeOrgId,
+  /**
+   * P13C ROUND 9 — the tenant seam for the durable queue and the mirror.
+   *
+   * `activeTenantScope` already decides the precedence once, for every store in
+   * the application: a background principal when one is in scope, the session
+   * otherwise. So a sync cycle resolves to the organization the scheduler is
+   * running AS, and an IPC read resolves to the caller — with no second opinion
+   * living in this file.
+   */
+  scope: activeTenantScope,
   onStatus: (status) => {
     for (const listener of statusListeners) {
       try {

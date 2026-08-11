@@ -27,6 +27,7 @@ import type {
   AiTestResultDto,
 } from '@neuropause/shared';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
+import { withAiAuthz } from './aiAuthzGate';
 import { engineManager } from './engineManager';
 import { loadAiConfig, resolveAiMode, saveAiConfig } from './aiConfigStore';
 import { credentialStore } from '../security/secureStore';
@@ -212,8 +213,15 @@ export interface AiConfigSubsystem {
 }
 
 export function initAiConfig(): AiConfigSubsystem {
+  /**
+   * P13C ROUND 9 — F21. Authority is stamped from `AI_CHANNEL_AUTHORITY`, which
+   * throws for any `aiConfig:*` / `ai:config.*` / `ai:routing.*` channel it does
+   * not classify. The resource behind the writes is ONE install-wide config file
+   * plus ONE vault entry, so the writes take `cloud:operate` — an authority no
+   * organization role can hold — and the posture reads stay open.
+   */
   return {
-    handlers: [
+    handlers: withAiAuthz([
       { channel: IpcChannel.AiConfigGet, schema: EmptyRequest, handler: () => getConfig() },
       { channel: IpcChannel.AiConfigHealth, schema: EmptyRequest, handler: () => getHealth() },
       { channel: IpcChannel.AiConfigDetectOllama, schema: EmptyRequest, handler: () => detectOllama() },
@@ -264,6 +272,6 @@ export function initAiConfig(): AiConfigSubsystem {
         audit: true,
         handler: () => resetToEnvironment().then(() => getConfig()),
       },
-    ],
+    ]),
   };
 }

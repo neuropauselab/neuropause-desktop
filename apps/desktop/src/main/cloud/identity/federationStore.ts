@@ -19,6 +19,25 @@ import { createLogger } from '../../logger';
 import { demoSeedsEnabled } from '../../demoSeed';
 import type { TenantScope } from '@neuropause/shared';
 import { TenantOwnership } from '../../tenancy/tenantOwnedStore';
+import { declareStoreScope } from '../../tenancy/storeScope';
+
+/** P13C ROUND 9 — F17 SWEEP. The structural declaration this store never made. */
+declareStoreScope({
+  name: 'cloud-identity-federation',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retention:
+    'No cap and no time-based eviction. `deleteConnection` removes one row and only after ' +
+    "`connection(id)` has confirmed it is the caller's; SCIM and MFA are one row per cloud tenant, " +
+    "replaced in place by their own tenant. Nothing here can remove another organization's row.",
+  reason:
+    "One organization's identity configuration: SSO issuer, entity id, SSO URL, client id, email " +
+    'domains, attribute mapping, SCIM posture and MFA policy. Credential-adjacent (only a token ' +
+    'last-4 is retained, never a secret) and unambiguously that customer\'s. Binding is asserted ' +
+    'by the TenantOwnership this class holds.',
+});
 
 const log = createLogger('cloud-identity');
 

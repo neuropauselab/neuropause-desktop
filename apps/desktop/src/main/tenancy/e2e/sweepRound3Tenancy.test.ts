@@ -193,14 +193,23 @@ describe('gateway counters and retention are per tenant', () => {
   });
 
   /**
-   * Retention SCALES with tenant count rather than being per-tenant, because the
-   * hash chain only permits dropping from the front. This asserts the honest
-   * claim — the window doubles with a second tenant — and NOT a fairness
-   * guarantee the implementation does not provide.
+   * P13C ROUND 9 — F13. THIS TEST USED TO ASSERT THE FINDING.
+   *
+   * As written for Round 8 it ended `expect(gateway.auditEntries(100)).toHaveLength(0)`
+   * for tenant B after tenant A's traffic — B's audit row destroyed by a
+   * neighbour, asserted as correct because "the hash chain only permits dropping
+   * from the front". The chain constraint was real; the conclusion was not. One
+   * chain PER TENANT makes the caller's oldest row the front of the caller's own
+   * chain, so retention no longer reaches anybody else.
+   *
+   * The test is not weakened to accommodate that: the counts are the same
+   * fixture, the assertions are stricter (B's row is now asserted to SURVIVE,
+   * by identity), and the cross-owner case runs past the point where the old
+   * "floor" gave out.
    */
-  it('the retention floor rises with a second tenant, so B’s row survives longer', () => {
+  it('A’s traffic cannot evict B’s audit row, however long it runs', () => {
     const at = (n: number): string => `2026-08-11T00:00:${String(n).padStart(2, '0')}.000Z`;
-    const row = (tenantId: string, i: number): void => {
+    const row = (tenantId: string, i: number): string =>
       gateway.record({
         at: at(i),
         tenantId,
@@ -212,26 +221,30 @@ describe('gateway counters and retention are per tenant', () => {
         status: 200,
         reason: 'ok',
         latencyMs: 1,
-      });
-    };
+      }).id;
 
-    row(TENANT_B.tenantId, 0); // B's single, OLDEST row on the install
+    const bRow = row(TENANT_B.tenantId, 0); // B's single, OLDEST row on the install
     for (let i = 1; i <= 5; i += 1) row(TENANT_A.tenantId, i);
 
-    // cap 3 × 2 tenants = 6, so nothing has been dropped yet. Under the OLD flat
-    // cap of 3, B's row — the oldest on the install — would already be gone.
+    // A is held to ITS OWN cap of 3 — it evicted two of its own — and B, which
+    // owns the oldest row on the whole install, has lost nothing.
     scope = TENANT_B;
     expect(gateway.auditEntries(100)).toHaveLength(1);
     scope = TENANT_A;
-    expect(gateway.auditEntries(100)).toHaveLength(5);
+    expect(gateway.auditEntries(100)).toHaveLength(3);
     expect(gateway.verifyAuditIntegrity().ok).toBe(true);
 
-    // Past the raised floor, eviction resumes front-first — which the chain
-    // requires and which this test does not pretend is fair.
+    // Well past the point where the Round 8 "floor" gave out and started taking
+    // B's row. Eviction is now front-of-A's-own-chain, so B is untouchable.
     for (let i = 6; i <= 12; i += 1) row(TENANT_A.tenantId, i);
     scope = TENANT_B;
-    expect(gateway.auditEntries(100)).toHaveLength(0);
+    const survived = gateway.auditEntries(100);
+    expect(survived).toHaveLength(1);
+    expect(survived[0]?.id).toBe(bRow);
+    scope = TENANT_A;
+    expect(gateway.auditEntries(100)).toHaveLength(3);
     expect(gateway.verifyAuditIntegrity().ok).toBe(true);
+    expect(gateway.totalAudit()).toBe(13);
   });
 });
 

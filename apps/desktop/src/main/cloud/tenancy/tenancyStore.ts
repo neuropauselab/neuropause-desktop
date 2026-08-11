@@ -26,6 +26,34 @@ import { createLogger } from '../../logger';
 import { demoSeedsEnabled } from '../../demoSeed';
 import type { TenantScope } from '@neuropause/shared';
 import { TenantOwnership } from '../../tenancy/tenantOwnedStore';
+import { declareStoreScope } from '../../tenancy/storeScope';
+
+/**
+ * P13C ROUND 9 — F17 SWEEP. The structural declaration this store never made.
+ *
+ * It held a `TenantOwnership`, so the tenant registry could see it and the
+ * startup gate covered it; what it never stated was the richer declaration —
+ * classification and, above all, RETENTION, which is the half that has hidden
+ * six install-wide caps in this program. Stating it is cheap and the answer is
+ * good: nothing here prunes.
+ */
+declareStoreScope({
+  name: 'cloud-tenancy',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retention:
+    'No cap and no time-based eviction. `deleteProject` removes one row after confirming the ' +
+    "caller owns its cloud tenant. `syncHomeWorkers` replaces the HOME tenant's AI-worker rows at " +
+    'boot and is filtered on that tenant id, so it cannot reach another tenant\'s workers.',
+  reason:
+    "Organization names, projects, teams, AI worker assignments and per-tenant storage namespaces " +
+    'and key ids. Reads resolve the caller through CloudTenant.organizationId rather than the ' +
+    'seeded home tenant (F10), so every accessor answers about the asking organization. Binding is ' +
+    'asserted by the TenantOwnership this class holds (`assertAllTenantStoresBound`), so no second ' +
+    'predicate is declared here that could drift from it.',
+});
 
 const log = createLogger('cloud-tenancy');
 

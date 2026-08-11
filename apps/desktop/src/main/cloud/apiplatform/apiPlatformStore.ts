@@ -25,6 +25,46 @@ import { createLogger } from '../../logger';
 import { demoSeedsEnabled } from '../../demoSeed';
 import type { TenantScope } from '@neuropause/shared';
 import { TenantOwnership } from '../../tenancy/tenantOwnedStore';
+import { declareStoreScope } from '../../tenancy/storeScope';
+
+/**
+ * P13C ROUND 9 — F17 SWEEP. TWO DECLARATIONS, BECAUSE THIS FILE HOLDS TWO STORES.
+ *
+ * The class already documents the split (webhooks are tenant records; deployments,
+ * rate policies and the public API registry are install infrastructure) and a
+ * store that is partly tenant data does not get to be classified by its majority.
+ * `declareStoreScope` takes a name, so the honest form is two entries rather than
+ * one averaged answer.
+ */
+declareStoreScope({
+  name: 'cloud-api-webhooks',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retention:
+    "No cap. `deleteWebhook` removes one row and only after `myWebhook(id)` confirms it is the " +
+    "caller's; status changes replace a row in place. No operation reaches another tenant's row.",
+  reason:
+    'A webhook endpoint carries a customer-supplied URL and secret last-4 and is stamped with the ' +
+    "caller's cloud tenant. Binding is asserted by the TenantOwnership this class holds.",
+});
+
+declareStoreScope({
+  name: 'cloud-api-control-plane',
+  scope: 'PLATFORM_GLOBAL',
+  persistence: 'file',
+  authority: 'PLATFORM_OPERATOR',
+  classification: 'INSTALL_METADATA',
+  retention:
+    'No removal at all: deployments, rate-limit policies and the public API registry are seeded ' +
+    'once and mutated only by `setPolicyEnabled`, which flips a boolean in place.',
+  reason:
+    'Replicas, regions, rate-limit policies and the published API surface describe the control ' +
+    'plane itself and carry no tenant field of any kind. PLATFORM_GLOBAL rather than INSTALL_GLOBAL ' +
+    'because changing one visibly affects every organization on the machine, which is why Round 7 ' +
+    'moved `cloud:setPolicyEnabled` to `cloud:operate` — the authority named here.',
+});
 
 const log = createLogger('cloud-apiplatform');
 

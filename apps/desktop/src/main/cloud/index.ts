@@ -167,8 +167,16 @@ function buildAdminInput(): AdminInput {
     homeMonthly: homeMonthly(),
     identity: federationStore.summary(),
     apiRequests30d: gatewayStore.metrics(30, Date.now()).requests,
-    // Real applied-operation counter from the live sync engine (its cursor is a
-    // monotonically increasing sequence of applied changes). Honest zero offline.
+    /**
+     * Real applied-operation counter from the live sync engine (its cursor is a
+     * monotonically increasing sequence of applied changes). Honest zero offline.
+     *
+     * P13C ROUND 9 — F3. This was the ACTIVE organization's cursor, shown to
+     * whichever organization asked for the admin overview: a live count of
+     * another customer's synced record mutations. `getStatus()` now resolves the
+     * caller, so an organization that has never synced reports zero rather than
+     * somebody else's total.
+     */
     syncOps30d: liveSync.getStatus().cursor,
     activeWorkers: workerRegistry.summaries().length,
     regionResidency: REGION_RESIDENCY,
@@ -469,8 +477,27 @@ function buildHandlers(deps: CloudDeps): SecureHandlerDef[] {
       channel: IpcChannel.LiveSyncSetOnline,
       schema: LiveSyncSetOnlineRequest,
       handler: (p) => {
-        liveSync.setOnline((p as LiveSyncSetOnlineRequest).online);
-        return liveSync.getStatus();
+        /**
+         * P13C ROUND 9 — F3. THE EGRESS TOGGLE IS THE CALLER'S OWN.
+         *
+         * This paused the ONE shared engine and cancelled the ONE shared timer,
+         * on `cloud:manage` — a permission every organization's own
+         * administrator holds. So A's administrator stopped B's sync, and, worse
+         * in the other direction, could RESUME egress for an organization whose
+         * own administrator had deliberately stopped it.
+         *
+         * It stays on `cloud:manage` rather than moving to `cloud:operate`
+         * because of what the toggle IS: "may this organization's records leave
+         * this device" is that organization's decision about its own data, not a
+         * platform act. Taking it to a platform-only permission would remove a
+         * legitimate tenant capability and hand a customer's data-protection
+         * choice to whoever administers the machine. The resource is scoped
+         * instead — `setOnline` pauses only the caller's organization, resolved
+         * server-side — which is the fix the rate-limit policy could NOT have
+         * (a shared runtime limit has no per-tenant form, so that one moved to
+         * `cloud:operate` in Round 7).
+         */
+        return liveSync.setOnline((p as LiveSyncSetOnlineRequest).online);
       },
     },
     {

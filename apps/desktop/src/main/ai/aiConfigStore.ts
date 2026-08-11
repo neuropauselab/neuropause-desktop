@@ -11,6 +11,42 @@
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { app } from 'electron';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/**
+ * P13C ROUND 9 — F21. THE STORE AT THE CENTRE OF THE ROUND 7 EXPOSURE, DECLARED.
+ *
+ * It had no declaration and the structural detector does not catch it: the gate
+ * in `tenancy/storeScopeGate.test.ts` requires a write AND a retained collection,
+ * and this file is a pair of functions over one JSON object, so it matched only
+ * half the test. An undeclared store is exactly the class Round 8 built that gate
+ * for, so the omission is worth more than the file: it is reported alongside the
+ * two others the same regex misses (`registry/registry.ts`,
+ * `ai/routingUsageStore.ts`).
+ *
+ * PLATFORM_OPERATOR is a true statement as of this round, not an aspiration:
+ * every channel that writes this file — setProvider, setModel, setCredential,
+ * clearCredential, setMode, setExternalConsent, resetToEnv and (F21) migrate —
+ * requires `cloud:operate`, which no organization role can hold.
+ */
+declareStoreScope({
+  name: 'ai-config',
+  scope: 'INSTALL_GLOBAL',
+  persistence: 'file',
+  authority: 'PLATFORM_OPERATOR',
+  classification: 'INSTALL_METADATA',
+  retention:
+    'No cap; one object. `resetToEnv` clears provider/model/ollamaUrl for the WHOLE install and ' +
+    'deletes the shared vault credential, so removal reaches every tenant — which is why it, and ' +
+    'every other write here, requires cloud:operate.',
+  reason:
+    'WHY GLOBAL: one `ai-config.json` per machine and one shared engine; `AiConfig` has no tenant ' +
+    'field and two tenants cannot hold different destinations. WHAT DATA: provider choice, model ' +
+    'tag, Ollama URL, routing mode, external-processing consent — machine configuration, never ' +
+    'customer content (secrets live in the Secure Vault). CROSS-TENANT COST: this object decides ' +
+    'WHERE retrieved records are sent, so an organization role over it would let one tenant’s ' +
+    'administrator redirect every other tenant’s records off the device — the Round 7 finding.',
+});
 
 export type AiProviderId = 'claude' | 'ollama';
 

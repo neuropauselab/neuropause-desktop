@@ -99,6 +99,39 @@ function migrate(file: RegistryFile): RegistryFile {
   return f;
 }
 
+/**
+ * SCOPE ANALYSIS. P13C ROUND 9 — F4, and the reason this store carries no
+ * `declareStoreScope` call yet.
+ *
+ * WHAT IT IS: one `registry.json` per machine. `RegistryEntry` has no tenant
+ * field, and the Package Service, the Runtime Supervisor and the UI all read and
+ * write the same map — so the scope is INSTALL_GLOBAL and the authority that
+ * matches an install-wide resource is PLATFORM_OPERATOR (`cloud:operate`), the
+ * same answer Round 8/9 reached for the plugin registry and the workforce
+ * install lifecycle, which are the same resource class.
+ *
+ * WHY THE DECLARATION IS NOT WRITTEN HERE. Two of its fields make the honest
+ * declaration illegal by construction rather than merely inconvenient:
+ *
+ *   - `launchCount` / `lastLaunchedAt` / `usage.*` count WHO USED WHAT AND WHEN,
+ *     install-wide. That is CUSTOMER_DERIVED, and `declareStoreScope` refuses
+ *     CUSTOMER_DERIVED + INSTALL_GLOBAL — correctly. The fix is the one Round 8
+ *     applied to `worker-registry`'s trust/health counters: key them per tenant
+ *     inside the store. That needs a tenant seam bound at the composition root.
+ *   - the bulk writes (`registry:import`, `registry:backup`) are classified
+ *     `operations:manage`, an organization role over an install-wide file — the
+ *     F19 class — and they are classified outside this directory.
+ *
+ * A declaration written before those two are true would be a false claim in the
+ * one place the program treats as a source of truth, which is worse than a stated
+ * gap. This comment is the stated gap; the round report carries it as an open
+ * item. `setFlags` below is the part of F4 that IS closed here.
+ *
+ * The structural detector in `tenancy/storeScopeGate.test.ts` does not currently
+ * flag this file: it requires a retained collection matching one of three
+ * patterns, and `private file: RegistryFile = emptyFile()` matches none of them.
+ * That detector gap is reported too — it is more valuable than this one store.
+ */
 class Registry {
   private file: RegistryFile = emptyFile();
   private loaded = false;
@@ -215,10 +248,46 @@ class Registry {
     return true;
   }
 
+  /**
+   * The two DISPLAY flags, and nothing else. P13C ROUND 9 — F4.
+   *
+   * THE FINDING: `registry:setFlags` is a PUBLIC write (no auth, no permission)
+   * onto an install-wide file that also holds `grantedPermissions`,
+   * `permissionGrants`, `packageHash`, `signatureKeyId`, `hasSignature`,
+   * `installLocation` and per-app `config` — the machine's record of what is
+   * installed and what it is allowed to do.
+   *
+   * THE VERIFICATION, on the four links between the renderer and the file:
+   *
+   *   1. `RegistrySetFlagsRequest` is `{ slug, pinned?, favorite? }`. Zod strips
+   *      unknown keys, so no other field survives the bridge.
+   *   2. `SlugSchema` constrains the slug, so the payload cannot address anything
+   *      but an existing entry's key.
+   *   3. `patch` returns null for an unknown slug: this call can neither create an
+   *      entry nor resurrect a removed one.
+   *   4. The mutation below — now an explicit whitelist rather than two
+   *      incidental assignments — assigns ONLY `pinned` and `favorite`, and
+   *      coerces to boolean so a truthy non-boolean cannot land in the file.
+   *
+   * So a public `setFlags` cannot reach a security-sensitive flag, and the
+   * whitelist is what keeps that true when someone widens the caller. `persist`
+   * recomputes the integrity checksum on every write, so this path also cannot be
+   * used to leave the file looking tampered with.
+   *
+   * WHAT IS NOT CLOSED HERE, because it is not this method: the file is
+   * install-wide, and its bulk writes (`registry:import`, `registry:backup`) are
+   * classified `operations:manage` — an ORGANIZATION role over an install-wide
+   * resource, which is the F19 class. Those channels are registered in
+   * `runtimeCore.ts` and classified in `ipc/runtimeAuthz.ts`; see the round report.
+   */
+  private static readonly DISPLAY_FLAGS = ['pinned', 'favorite'] as const;
+
   async setFlags(slug: string, flags: { pinned?: boolean; favorite?: boolean }): Promise<RegistryEntryDto | null> {
     return this.patch(slug, (e) => {
-      if (flags.pinned !== undefined) e.pinned = flags.pinned;
-      if (flags.favorite !== undefined) e.favorite = flags.favorite;
+      for (const key of Registry.DISPLAY_FLAGS) {
+        const value = flags[key];
+        if (value !== undefined) e[key] = value === true;
+      }
     });
   }
 

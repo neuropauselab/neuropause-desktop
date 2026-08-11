@@ -35,11 +35,40 @@ import type {
   TimelineExport,
 } from '@neuropause/shared';
 import { registerTenantStore } from '../tenancy/tenantOwnedStore';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/**
+ * P13C ROUND 9 — F11. The structural scope declaration. See tenancy/storeScope.ts.
+ */
+declareStoreScope({
+  name: 'platform-timeline',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'SYSTEM',
+  classification: 'CUSTOMER_DERIVED',
+  retention:
+    'The durable JSONL log is append-only and never trimmed. The in-memory query window is bounded ' +
+    'PER OWNER (maxInMemory events for each tenant, plus its own bucket for SYSTEM events and one ' +
+    'for unowned rows) as of Round 9. It was one install-wide ring buffer, so a busy tenant silently ' +
+    'evicted a quiet one from the live window while the durable file still held those rows — which ' +
+    'made query() and export() disagree about the same log.',
+  reason:
+    'Events carry actor ids, resource ids and free-form metadata, and `q.search` matches over metadata ' +
+    'values. The log is the second half of every briefing and a leg of Enterprise Search, so it is a ' +
+    "targeted oracle over a tenant's activity if it is not owned.",
+});
 
 export interface TimelineOptions {
   /** Directory in which the timeline log lives. */
   dir: string;
-  /** Max events kept in memory for querying (default 5000). */
+  /**
+   * Max events kept in memory for querying, PER OWNER (default 5000).
+   *
+   * P13C ROUND 9 — F11: it used to be the size of ONE shared window across every
+   * tenant. An install with more tenants now holds more events in memory, which
+   * is the same honest trade `TenantOwnership.pruneOwn` makes: the alternative is
+   * one customer able to evict another's.
+   */
   maxInMemory?: number;
   /** Flush cadence for batched persistence in ms (default 2000). */
   flushIntervalMs?: number;
@@ -52,6 +81,29 @@ export interface TimelineOptions {
 }
 
 const FILE = 'timeline.jsonl';
+
+/**
+ * The in-memory window's retention buckets.
+ *
+ * SYSTEM events belong to the product rather than to a customer and are readable
+ * by every resolved viewer, so they get their own budget: no tenant's traffic can
+ * push the runtime supervisor's CRITICAL alerts out of the live window, and the
+ * alerts cannot push a tenant's events out either. Unowned rows (published before
+ * P13B, or with no principal at all) are visible to nobody and likewise cannot
+ * evict, or be evicted by, anyone.
+ *
+ * The leading space keeps these keys out of the `t:` namespace used for tenants,
+ * so no tenant id can collide with them.
+ */
+const SYSTEM_BUCKET = ' system';
+const UNOWNED_BUCKET = ' unowned';
+
+/** The bucket an event's retention belongs to. Derived from the event, never guessed. */
+function windowBucket(e: PlatformEvent): string {
+  if (e.scopeKind === 'system') return SYSTEM_BUCKET;
+  const owner = e.tenantId;
+  return typeof owner === 'string' && owner !== '' ? `t:${owner}` : UNOWNED_BUCKET;
+}
 
 /** The tenant boundary for the durable event log (P13B). `null` means DENY. */
 export type TimelineScopeSource = () => TenantScope | null;
@@ -95,7 +147,17 @@ export class TimelineService {
   private readonly now: () => number;
   private readonly defaultLimit: number;
 
-  private mem: PlatformEvent[] = [];
+  /**
+   * The live query window, ONE BOUNDED BUFFER PER OWNER. P13C ROUND 9 — F11.
+   *
+   * It was a single `PlatformEvent[]` with `shift()` at `maxInMemory`, which made
+   * eviction a cross-tenant act: tenant A's volume pushed tenant B's events out
+   * of the window while the durable file still held them, so `query()` and
+   * `export()` — two reads of the same log — returned different answers for B.
+   * Filtering the window on read could not fix that; by the time the filter ran,
+   * B's rows had already been deleted from memory by A's writes.
+   */
+  private windows = new Map<string, PlatformEvent[]>();
   private pending: PlatformEvent[] = [];
   private timer: NodeJS.Timeout | null = null;
   private total = 0;
@@ -116,17 +178,36 @@ export class TimelineService {
     this.defaultLimit = opts.defaultLimit ?? 100;
   }
 
-  /** Prepare storage and warm the in-memory window from the durable log tail. */
+  /**
+   * Prepare storage and warm the in-memory window from the durable log.
+   *
+   * P13C ROUND 9 — F11. The warm-up used to take the last `maxInMemory` LINES of
+   * the file, which is the same install-wide window in a different place: a
+   * tenant that wrote the last 5000 lines meant every other tenant restarted with
+   * an empty timeline while its own events sat in the file untouched. The scan
+   * now runs newest-first and fills each owner's own budget, so a restart
+   * restores the same window each tenant would have had.
+   *
+   * It parses more lines than the old tail did. The file was already read into
+   * memory in one call, so the added cost is JSON parsing at startup only, and it
+   * stops adding to any bucket that is already full.
+   */
   async init(): Promise<void> {
     await fs.mkdir(this.dir, { recursive: true });
     try {
       const raw = await fs.readFile(this.path(), 'utf8');
       const lines = raw.split('\n').filter(Boolean);
       this.total = lines.length;
-      const tail = lines.slice(Math.max(0, lines.length - this.maxInMemory));
-      this.mem = tail
-        .map((l) => safeParse(l))
-        .filter((e): e is PlatformEvent => e !== null);
+      const newestFirst = new Map<string, PlatformEvent[]>();
+      for (let i = lines.length - 1; i >= 0; i -= 1) {
+        const e = safeParse(lines[i] as string);
+        if (e === null) continue;
+        const key = windowBucket(e);
+        let bucket = newestFirst.get(key);
+        if (!bucket) newestFirst.set(key, (bucket = []));
+        if (bucket.length < this.maxInMemory) bucket.push(e);
+      }
+      this.windows = new Map([...newestFirst].map(([k, b]) => [k, b.reverse()]));
     } catch {
       // No prior log yet — start clean.
       this.total = 0;
@@ -136,11 +217,43 @@ export class TimelineService {
 
   /** Record an event. Non-blocking: persistence is batched. */
   append(event: PlatformEvent): void {
-    this.mem.push(event);
-    if (this.mem.length > this.maxInMemory) this.mem.shift();
+    this.admit(event);
     this.pending.push(event);
     this.total += 1;
     if (this.pending.length >= this.batchSize) void this.flush();
+  }
+
+  /**
+   * Put one event into ITS OWNER'S window, evicting only that owner's oldest.
+   *
+   * A retention cap is a WRITE, so the only rows this may delete are the ones
+   * belonging to the event's own owner. The bucket is derived from the event
+   * itself, which was stamped from the resolved principal at materialization —
+   * a producer cannot choose it.
+   */
+  private admit(event: PlatformEvent): void {
+    const key = windowBucket(event);
+    let bucket = this.windows.get(key);
+    if (!bucket) this.windows.set(key, (bucket = []));
+    bucket.push(event);
+    if (bucket.length > this.maxInMemory) bucket.shift();
+  }
+
+  /**
+   * The live window THIS CALLER can see, oldest first.
+   *
+   * Two buckets: the caller's own tenant, and the SYSTEM bucket that belongs to
+   * the product. `recordInScope` still runs over the result — the bucket key is
+   * derived from `tenantId` alone, so the workspace half of the boundary is
+   * checked here and a planted row cannot ride in on a bucket name.
+   */
+  private windowFor(scope: TenantScope): PlatformEvent[] {
+    const mine = [
+      ...(this.windows.get(`t:${scope.tenantId}`) ?? []),
+      ...(this.windows.get(SYSTEM_BUCKET) ?? []),
+    ].filter((e) => (e.scopeKind === 'system' ? true : recordInScope(e, scope)));
+    mine.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    return mine;
   }
 
   /** Persist any pending events. Safe to call concurrently. */
@@ -186,11 +299,15 @@ export class TimelineService {
      */
     const scope = this.scopeOrDeny();
     if (scope === null) return { events: [], total: 0, nextCursor: null };
-    const matched = this.mem.filter((e) => {
-      // A SYSTEM event carries no customer data and is readable by any
-      // resolved viewer — the same rule `memoryVisibleTo` applies to SYSTEM
-      // memory, and the reason the supervisor's alerts are visible again.
-      if (e.scopeKind !== 'system' && !recordInScope(e, scope)) return false;
+    /**
+     * P13C ROUND 9 — F11. `windowFor` has already applied the tenant boundary AND
+     * the per-owner retention, so what this filter sees is the caller's own
+     * window plus the SYSTEM bucket — never a window another tenant's volume has
+     * been allowed to shrink. A SYSTEM event carries no customer data and is
+     * readable by any resolved viewer: the same rule `memoryVisibleTo` applies to
+     * SYSTEM memory, and the reason the supervisor's alerts are visible again.
+     */
+    const matched = this.windowFor(scope).filter((e) => {
       if (types && !types.has(e.type)) return false;
       if (categories && !categories.has(e.category)) return false;
       if (priorities && !priorities.has(e.priority)) return false;
@@ -229,7 +346,7 @@ export class TimelineService {
     if (scope === null) {
       return { total: 0, byCategory, byType, oldest: null, newest: null };
     }
-    const mine = this.mem.filter((e) => e.scopeKind === 'system' || recordInScope(e, scope));
+    const mine = this.windowFor(scope);
     for (const e of mine) {
       byCategory[e.category] = (byCategory[e.category] ?? 0) + 1;
       byType[e.type] = (byType[e.type] ?? 0) + 1;

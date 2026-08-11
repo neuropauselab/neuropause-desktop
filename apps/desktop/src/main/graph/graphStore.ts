@@ -27,23 +27,78 @@ import type {
   GraphSubgraph,
   GraphSubgraphQuery,
 } from '@neuropause/shared';
-import type { TenantScope } from '@neuropause/shared';
+import type { GraphOwnership, TenantScope } from '@neuropause/shared';
 import { ownershipOf, recordInScope } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import { envelopeStamp, readStoreFile } from '../storage/storeEnvelope';
 import { registerTenantStore } from '../tenancy/tenantOwnedStore';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/**
+ * P13C ROUND 9 — F10. The structural scope declaration. See tenancy/storeScope.ts.
+ *
+ * The graph's nodes and edges have carried an owner since P13B. Its RELATIONSHIP
+ * HISTORY did not — `GraphEdgeEvent` had no tenant field at all — so the file
+ * held one undifferentiated log and the cap below sliced it install-wide.
+ */
+declareStoreScope({
+  name: 'knowledge-graph',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'SYSTEM',
+  classification: 'CUSTOMER_DERIVED',
+  retention:
+    'Relationship history is capped PER TENANT (5000 rows each) as of Round 9, and every row is ' +
+    'stamped with the rebuilding tenant at write time. It was an install-wide slice over rows with ' +
+    'no owner field at all, so one tenant\'s rebuild churn deleted another tenant\'s relationship ' +
+    'history. Nodes and edges are replaced only within the rebuilding tenant\'s slice (P13B). ' +
+    'Pre-Round-9 history rows have no owner: they are retained in their own bucket, deletable by ' +
+    'nobody\'s traffic, and visible to nobody.',
+  reason:
+    'Nodes, edges and history rows name a tenant\'s people, projects, customers and the shape of the ' +
+    'relationships between them. The projection derives them from the (scoped) unified store, so the ' +
+    'rebuilding tenant is the authoritative owner.',
+});
 
 const log = createLogger('graph-store');
 
-/** Cap on the relationship-history log so the file can't grow without bound. */
-const HISTORY_CAP = 5000;
+/**
+ * Cap on the relationship-history log, PER TENANT.
+ *
+ * P13C ROUND 9 — F10. It was a flat install-wide 5000 with an oldest-first slice.
+ * A cap is a WRITE: because the slice is deterministic and oldest-first, a noisy
+ * tenant did not merely consume capacity, it CHOSE which of another tenant's
+ * relationship-history rows was destroyed — and the graph rebuilds on a 750 ms
+ * debounce off any unified-store change, so "noisy" is the ordinary case.
+ */
+const HISTORY_CAP_PER_TENANT = 5000;
+
+/**
+ * The retention bucket for history rows written before Round 9.
+ *
+ * They have no owner and are visible to nobody. They get their OWN bucket rather
+ * than being folded into any tenant's, so no tenant's traffic can evict them and
+ * they cannot evict any tenant's rows. Guessing an owner for them is the one
+ * thing a migration must never do.
+ */
+const UNOWNED_HISTORY_BUCKET = ' unowned';
+
+/**
+ * A persisted relationship-history row.
+ *
+ * `GraphEdgeEvent` (shared) is the WIRE shape and carries no owner. The stored
+ * row adds `GraphOwnership`, exactly as `GraphNode` and `GraphEdge` already do —
+ * because a row that must survive a retention pass needs an authoritative owner
+ * on the row itself, not merely a read filter standing in front of it.
+ */
+export interface StoredGraphEdgeEvent extends GraphEdgeEvent, GraphOwnership {}
 
 interface GraphFile {
   /** Phase 9: store schema stamp — absent on legacy files (= v1). */
   schemaVersion?: number;
   nodes: GraphNode[];
   edges: GraphEdge[];
-  history: GraphEdgeEvent[];
+  history: StoredGraphEdgeEvent[];
   lastBuiltAt: string | null;
 }
 
@@ -58,6 +113,48 @@ export interface GraphApplyResult {
  * The tenant boundary for the graph (P13B). A FUNCTION; `null` means DENY.
  */
 export type GraphScopeSource = () => TenantScope | null;
+
+/**
+ * One relationship-history row, WITH ITS OWNER, built from the rebuild scope.
+ *
+ * The owner is a parameter of the write rather than a property of the payload:
+ * `scope` comes from `requireScope()`, which is the only thing entitled to say
+ * whose rebuild this is. A history row with no owner is a row a retention pass
+ * cannot attribute, which is precisely how the install-wide cap came to be able
+ * to delete anyone's rows.
+ */
+function historyRow(
+  at: string,
+  edgeId: string,
+  edge: GraphEdge,
+  change: 'added' | 'removed',
+  scope: TenantScope,
+): StoredGraphEdgeEvent {
+  return {
+    at,
+    edgeId,
+    type: edge.type,
+    from: edge.from,
+    to: edge.to,
+    change,
+    tenantId: scope.tenantId,
+    // Tenant-level, like the nodes and edges beside it: the graph is rebuilt for
+    // the whole organization, not for one workspace inside it.
+    workspaceId: null,
+  };
+}
+
+/**
+ * The retention bucket a stored history row belongs to. Never guessed.
+ *
+ * Tenant buckets are namespaced with `t:` so no tenant id can ever equal the
+ * unowned bucket's key — a collision there would put an unowned row and a
+ * tenant's rows in one budget, which is the thing this whole change removes.
+ */
+function historyBucket(h: StoredGraphEdgeEvent): string {
+  const owner = h.tenantId;
+  return typeof owner === 'string' && owner !== '' ? `t:${owner}` : UNOWNED_HISTORY_BUCKET;
+}
 
 /** A process-wide fallback scope, for TESTS ONLY. Same seam and guard as the others. */
 let ambientGraphScope: GraphScopeSource | null = null;
@@ -74,7 +171,7 @@ export function setAmbientGraphScopeForTests(source: GraphScopeSource | null): v
 export class GraphStore extends EventEmitter {
   private nodes = new Map<string, GraphNode>();
   private edges = new Map<string, GraphEdge>();
-  private history: GraphEdgeEvent[] = [];
+  private history: StoredGraphEdgeEvent[] = [];
   private lastBuiltAt: string | null = null;
   /** P13B — per-tenant build stamp; the global one above is a cross-tenant signal. */
   private lastBuiltAtFor = new Map<string, string>();
@@ -89,7 +186,13 @@ export class GraphStore extends EventEmitter {
   private persisting = false;
   private dirty = false;
 
-  constructor(private readonly filePath: string) {
+  /** Relationship-history rows kept per tenant. Injectable so retention is testable. */
+  private readonly historyCapPerTenant: number;
+
+  constructor(
+    private readonly filePath: string,
+    opts: { historyCapPerTenant?: number } = {},
+  ) {
     super();
     /**
      * P13C ROUND 3 — PHASE 4. Declare this store to the startup gate. The seam
@@ -97,6 +200,7 @@ export class GraphStore extends EventEmitter {
      * instance denied every read (correct) and shipped silently (not correct).
      */
     registerTenantStore('knowledge-graph', () => this.hasScope());
+    this.historyCapPerTenant = Math.max(1, opts.historyCapPerTenant ?? HISTORY_CAP_PER_TENANT);
   }
 
   async load(): Promise<void> {
@@ -250,6 +354,37 @@ export class GraphStore extends EventEmitter {
   }
 
   /**
+   * Keep the newest N history rows PER TENANT. P13C ROUND 9 — F10.
+   *
+   * Same shape as `marketplaceStore.event()`'s per-listing cap: walk newest-first,
+   * keep while that owner is under its own budget, then filter. A tenant over its
+   * cap loses only its own oldest rows, and a tenant under its cap loses nothing
+   * no matter how loud its neighbours are. Rows with no owner (pre-Round-9 files)
+   * are capped against each other in their own bucket, so they neither evict nor
+   * are evicted by anyone's traffic.
+   *
+   * The array is only rewritten when something actually overflows, so the common
+   * case costs one pass and no allocation of a new history array.
+   */
+  private capHistoryPerTenant(): void {
+    const perTenant = new Map<string, number>();
+    const kept = new Set<StoredGraphEdgeEvent>();
+    let overflowed = false;
+    for (let i = this.history.length - 1; i >= 0; i -= 1) {
+      const row = this.history[i] as StoredGraphEdgeEvent;
+      const bucket = historyBucket(row);
+      const n = perTenant.get(bucket) ?? 0;
+      if (n < this.historyCapPerTenant) {
+        kept.add(row);
+        perTenant.set(bucket, n + 1);
+      } else {
+        overflowed = true;
+      }
+    }
+    if (overflowed) this.history = this.history.filter((h) => kept.has(h));
+  }
+
+  /**
    * Replace the graph with a freshly projected set, recording every edge that
    * appeared or disappeared into the relationship history.
    */
@@ -330,7 +465,7 @@ export class GraphStore extends EventEmitter {
       if (!prev) {
         this.edges.set(id, e);
         this.indexEdge(e);
-        this.history.push({ at, edgeId: id, type: e.type, from: e.from, to: e.to, change: 'added' });
+        this.history.push(historyRow(at, id, e, 'added', scope));
         edgesAdded++;
       } else {
         this.edges.set(id, { ...e, createdAt: prev.createdAt, updatedAt: at });
@@ -341,14 +476,21 @@ export class GraphStore extends EventEmitter {
       if (!newEdges.has(id)) {
         this.edges.delete(id);
         this.deindexEdge(e);
-        this.history.push({ at, edgeId: id, type: e.type, from: e.from, to: e.to, change: 'removed' });
+        this.history.push(historyRow(at, id, e, 'removed', scope));
         edgesRemoved++;
       }
     }
 
-    if (this.history.length > HISTORY_CAP) {
-      this.history = this.history.slice(this.history.length - HISTORY_CAP);
-    }
+    /**
+     * P13C ROUND 9 — F10. THE CAP IS PER TENANT, AND EVERY ROW ABOVE WAS STAMPED.
+     *
+     * The two pushes go through the same `own()` that stamps nodes and edges, so
+     * the owner comes from `requireScope()` — the authoritative rebuild scope —
+     * and never from a payload. Both branches are already inside a
+     * `recordInScope(e, scope)` / cross-tenant-skip guard, so a history row can
+     * only ever be written about an edge this tenant owns.
+     */
+    this.capHistoryPerTenant();
     this.lastBuiltAt = at;
     this.lastBuiltAtFor.set(scope.tenantId, at);
     this.schedulePersist();
@@ -550,16 +692,26 @@ export class GraphStore extends EventEmitter {
   /**
    * Relationship history for one node.
    *
-   * Scoped on the ANCHOR being visible, then on each event's own edge. History
-   * entries record `from`/`to` node ids and edge types, so an unscoped read
-   * would let a caller watch another tenant's relationships appear and
-   * disappear over time — a change feed is a disclosure with a timestamp.
+   * Scoped on the ROW'S OWN OWNER first, then on the anchor being visible, then
+   * on the far end. History entries record `from`/`to` node ids and edge types,
+   * so an unscoped read would let a caller watch another tenant's relationships
+   * appear and disappear over time — a change feed is a disclosure with a
+   * timestamp.
+   *
+   * P13C ROUND 9 — F10. The row check is FIRST and is new. Before it, the read
+   * was scoped entirely on the endpoint NODES, which is a filter standing in
+   * front of rows that had no owner at all. A pre-Round-9 row is therefore
+   * unresolved and visible to nobody — the same answer `recordInScope` gives for
+   * every other unowned record in the app, and the only honest one: guessing an
+   * owner for a historical row is indistinguishable from a correct answer
+   * afterwards.
    */
   historyFor(q: GraphHistoryQuery): GraphEdgeEvent[] {
     const scope = this.scopeOrDeny();
     if (scope === null) return [];
     if (!this.visibleNode(q.id, scope)) return [];
     const out = this.history.filter((h) => {
+      if (!recordInScope(h, scope)) return false;
       if (h.from !== q.id && h.to !== q.id) return false;
       // The far end must also be the caller's. A removed edge's node may no
       // longer exist, in which case the event names an id and nothing more —

@@ -48,7 +48,30 @@ export const CLOUD_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpris
   [IpcChannel.CloudMfa]: READ,
   [IpcChannel.CloudSetMfa]: MANAGE,
 
-  /* ── Cloud synchronization (real live-sync engine) ── */
+  /**
+   * ── Cloud synchronization (real live-sync engine) ──
+   *
+   * P13C ROUND 9 — F3. THESE FIVE STAY BELOW `cloud:operate`, DELIBERATELY.
+   *
+   * Round 7 moved one channel up to `cloud:operate` because a rate-limit policy
+   * governs the SHARED runtime and has no per-tenant form: whoever disables one
+   * decides for every organization, so no organization role can hold it.
+   *
+   * The live-sync channels are the opposite shape once the resources behind them
+   * are scoped. "How much of MY organization's data is queued", "sync MY
+   * organization now", "stop MY organization's records leaving this device" are
+   * decisions about one customer's own data, and taking them to a platform-only
+   * permission would put a customer's data-protection choice in the hands of
+   * whoever administers the machine. So the fix for F3 was to scope the
+   * RESOURCES — a per-organization pause, per-organization status, cursor,
+   * conflicts and queue, all resolved from the caller's own seam — rather than
+   * to raise the permission over a shared one.
+   *
+   * `LiveSyncSetActiveOrg` remains `cloud:manage` and remains additionally
+   * refused unless the requested organization is the session's own (see
+   * `cloud/index.ts`); null, which means "stop", is the only value that reaches
+   * the shared loop, and stopping egress is the safe direction.
+   */
   [IpcChannel.LiveSyncStatus]: READ,
   [IpcChannel.LiveSyncDetail]: READ,
   [IpcChannel.LiveSyncNow]: MANAGE,

@@ -4,6 +4,29 @@
  * status, and `nextRetryDelay` reports how long to wait after failures. A thin
  * scheduler wired to the app lifecycle decides *when* to call syncOnce — which keeps
  * the engine fully unit-testable without fake timers.
+ *
+ * P13C ROUND 9 — F3. THE ENGINE'S STATE IS PER ORGANIZATION.
+ *
+ * Every field below used to be a single scalar on the engine: one `cursor`, one
+ * `pendingCount`, one `failures`, one `paused`, one conflict log. The engine
+ * serves whichever organization the scheduler last pointed it at, and its status
+ * is read on `livesync:status` and `livesync:detail` (both `cloud:read`), folded
+ * into the Cloud admin overview as `syncOps30d`, and into the control-plane
+ * projection. So:
+ *
+ *   - one organization's applied-change cursor and backlog were shown to every
+ *     other organization signed in on the machine;
+ *   - one organization's conflict log — entity types and entity ids — was
+ *     surfaced to all of them, capped install-wide so a conflict storm in A
+ *     evicted B's conflict evidence;
+ *   - `setPaused` was the EGRESS TOGGLE: `cloud:manage` is held by each
+ *     organization's own administrator, so A's admin could stop B's sync, and
+ *     worse could RESUME it after B's admin had stopped it.
+ *
+ * The state is now keyed by organization, so all five of those become answers
+ * about the asking organization only. The keying is not the boundary by itself —
+ * the store's seam is — but it is what stops one organization's numbers from
+ * being reported as another's.
  */
 import {
   classifyError,
@@ -24,7 +47,12 @@ import type {
 
 const PULL_LIMIT = 200;
 const MAX_PULL_PAGES = 50;
-/** Newest-first cap on the in-memory resolved-conflict log surfaced to the UI. */
+/**
+ * Newest-first cap on the resolved-conflict log surfaced to the UI.
+ *
+ * PER ORGANIZATION. It was one log for the install, which made it a retention
+ * cap one tenant could drive: 50 conflicts in A deleted every record of B's.
+ */
 const MAX_CONFLICT_LOG = 50;
 
 /**
@@ -79,6 +107,11 @@ export async function runSyncCycle(
        * `memoryLiveSyncBridge` refuses a change whose `orgId` differs from the
        * one it pulled for. Applying the same rule at the loop covers every
        * entity type instead of the one somebody remembered.
+       *
+       * P13C ROUND 9 — the store and the mirror now enforce the same rule at
+       * their own seams, against the OWNER rather than against this argument.
+       * This check stays: it is cheaper, it is closer to the response, and two
+       * independent refusals is the point.
        */
       if (change.orgId !== orgId) continue;
       const outcome = await store.applyRemote(change);
@@ -107,6 +140,51 @@ export interface SyncEngineOptions {
   now?: () => number;
 }
 
+/** One organization's view of the engine. Nothing here is shared between two. */
+interface OrgSyncState {
+  state: SyncState;
+  failures: number;
+  lastError: string | null;
+  lastErrorKind: SyncErrorKind | null;
+  lastSyncedAt: string | null;
+  cursor: number;
+  pendingCount: number;
+  /** User-requested pause. Distinct from `state`, which only tracks cycle outcomes. */
+  paused: boolean;
+  /** Newest-first log of conflicts this organization's cycles actually resolved. */
+  conflictLog: LiveSyncConflict[];
+}
+
+function freshOrgState(): OrgSyncState {
+  return {
+    state: 'idle',
+    failures: 0,
+    lastError: null,
+    lastErrorKind: null,
+    lastSyncedAt: null,
+    cursor: 0,
+    pendingCount: 0,
+    paused: false,
+    conflictLog: [],
+  };
+}
+
+/**
+ * What a caller with no resolved organization sees.
+ *
+ * Zeroes rather than the last organization's numbers. "I have nothing for you"
+ * is a true answer; "here is whoever synced last" is the finding.
+ */
+export const EMPTY_SYNC_STATUS: SyncStatus = {
+  state: 'idle',
+  online: true,
+  pendingCount: 0,
+  failures: 0,
+  lastError: null,
+  lastSyncedAt: null,
+  cursor: 0,
+};
+
 export class SyncEngine {
   private readonly transport: SyncTransport;
   private readonly store: SyncStore;
@@ -114,17 +192,12 @@ export class SyncEngine {
   private readonly backoffOpts: BackoffOptions;
   private readonly now: () => number;
 
-  private state: SyncState = 'idle';
-  private failures = 0;
-  private lastError: string | null = null;
-  private lastErrorKind: SyncErrorKind | null = null;
-  private lastSyncedAt: string | null = null;
-  private cursor = 0;
-  private pendingCount = 0;
-  /** User-requested pause. Distinct from `state`, which only tracks cycle outcomes. */
-  private paused = false;
-  /** Newest-first log of conflicts this engine actually resolved (bounded). */
-  private conflictLog: LiveSyncConflict[] = [];
+  /**
+   * Per-organization state. A `Map` keyed by organization rather than a set of
+   * scalars, which is the whole of F3's engine half: an organization that has
+   * never synced has no entry, and reading one never creates another's.
+   */
+  private readonly orgs = new Map<string, OrgSyncState>();
 
   constructor(opts: SyncEngineOptions) {
     this.transport = opts.transport;
@@ -134,79 +207,102 @@ export class SyncEngine {
     this.now = opts.now ?? Date.now;
   }
 
-  getStatus(): SyncStatus {
+  /** Mutable state for one organization, created on first use. */
+  private stateFor(orgId: string): OrgSyncState {
+    const existing = this.orgs.get(orgId);
+    if (existing) return existing;
+    const created = freshOrgState();
+    this.orgs.set(orgId, created);
+    return created;
+  }
+
+  /** Read-only state for one organization, WITHOUT creating an entry. */
+  private peek(orgId: string | null): OrgSyncState | null {
+    return orgId === null ? null : (this.orgs.get(orgId) ?? null);
+  }
+
+  /** The status of ONE organization. A null organization gets the empty status. */
+  getStatus(orgId: string | null): SyncStatus {
+    const org = this.peek(orgId);
+    if (org === null) return { ...EMPTY_SYNC_STATUS };
     // A user pause reads as offline without discarding the underlying cycle state,
     // so resuming restores whatever the last cycle actually reported.
-    const state: SyncState = this.paused ? 'offline' : this.state;
+    const state: SyncState = org.paused ? 'offline' : org.state;
     return {
       state,
       online: state !== 'offline',
-      pendingCount: this.pendingCount,
-      failures: this.failures,
-      lastError: this.lastError,
-      lastSyncedAt: this.lastSyncedAt,
-      cursor: this.cursor,
+      pendingCount: org.pendingCount,
+      failures: org.failures,
+      lastError: org.lastError,
+      lastSyncedAt: org.lastSyncedAt,
+      cursor: org.cursor,
     };
   }
 
   /**
-   * Pause or resume syncing. While paused, `syncOnce` is a no-op, so local edits
-   * stay queued on the device and nothing is pushed or pulled.
+   * Pause or resume syncing FOR ONE ORGANIZATION. While paused, `syncOnce` is a
+   * no-op for it, so its local edits stay queued on the device and nothing of
+   * its is pushed or pulled. Another organization's sync is unaffected — which
+   * is the fix: this is the egress toggle, and `cloud:manage` is held
+   * independently by every organization's own administrator.
    */
-  setPaused(paused: boolean): void {
-    this.paused = paused;
+  setPaused(orgId: string, paused: boolean): void {
+    this.stateFor(orgId).paused = paused;
   }
 
-  isPaused(): boolean {
-    return this.paused;
+  isPaused(orgId: string | null): boolean {
+    return this.peek(orgId)?.paused ?? false;
   }
 
-  /** The conflicts this engine resolved, newest first (bounded to MAX_CONFLICT_LOG). */
-  getConflicts(): LiveSyncConflict[] {
-    return [...this.conflictLog];
+  /** The conflicts resolved for ONE organization, newest first (bounded per org). */
+  getConflicts(orgId: string | null): LiveSyncConflict[] {
+    return [...(this.peek(orgId)?.conflictLog ?? [])];
   }
 
-  /** The last error's kind, or null after a success. Lets the scheduler decide
-   *  whether a retry is worthwhile (see isRetryable). */
-  get errorKind(): SyncErrorKind | null {
-    return this.lastErrorKind;
+  /** The last error's kind for one organization, or null after a success. Lets the
+   *  scheduler decide whether a retry is worthwhile (see isRetryable). */
+  errorKind(orgId: string | null): SyncErrorKind | null {
+    return this.peek(orgId)?.lastErrorKind ?? null;
   }
 
-  /** Delay (ms) before the next retry given consecutive failures; 0 when healthy. */
-  nextRetryDelay(): number {
-    return this.failures > 0 ? computeBackoff(this.failures, this.backoffOpts) : 0;
+  /** Delay (ms) before this organization's next retry; 0 when healthy. */
+  nextRetryDelay(orgId: string | null): number {
+    const org = this.peek(orgId);
+    if (org === null || org.failures === 0) return 0;
+    return computeBackoff(org.failures, this.backoffOpts);
   }
 
   /**
-   * Run one sync cycle for an org, updating status. Never throws: failures are
-   * captured in the status (state + lastError) so the scheduler can react. A cycle
-   * already in progress is a no-op that returns current status.
+   * Run one sync cycle for an org, updating that org's status. Never throws:
+   * failures are captured in the status (state + lastError) so the scheduler can
+   * react. A cycle already in progress is a no-op that returns current status.
    */
   async syncOnce(orgId: string): Promise<SyncStatus> {
-    if (this.paused || this.state === 'syncing') return this.getStatus();
-    this.state = 'syncing';
+    const org = this.stateFor(orgId);
+    if (org.paused || org.state === 'syncing') return this.getStatus(orgId);
+    org.state = 'syncing';
     try {
       const result = await runSyncCycle(this.transport, this.store, orgId, this.deviceId);
-      this.recordConflicts(result.conflictRefs);
-      this.cursor = result.cursor;
-      this.pendingCount = (await this.store.listPending(orgId)).length;
-      this.failures = 0;
-      this.lastError = null;
-      this.lastErrorKind = null;
-      this.lastSyncedAt = new Date(this.now()).toISOString();
-      this.state = 'idle';
+      this.recordConflicts(org, result.conflictRefs);
+      org.cursor = result.cursor;
+      org.pendingCount = (await this.store.listPending(orgId)).length;
+      org.failures = 0;
+      org.lastError = null;
+      org.lastErrorKind = null;
+      org.lastSyncedAt = new Date(this.now()).toISOString();
+      org.state = 'idle';
     } catch (err) {
       const kind = classifyError(err);
-      this.failures += 1;
-      this.lastError = err instanceof Error ? err.message : String(err);
-      this.lastErrorKind = kind;
-      this.state = kind === 'network' ? 'offline' : 'error';
+      org.failures += 1;
+      org.lastError = err instanceof Error ? err.message : String(err);
+      org.lastErrorKind = kind;
+      org.state = kind === 'network' ? 'offline' : 'error';
     }
-    return this.getStatus();
+    return this.getStatus(orgId);
   }
 
-  /** Prepend this cycle's resolved conflicts to the log, newest first, and cap it. */
-  private recordConflicts(refs: readonly SyncConflictRef[]): void {
+  /** Prepend this cycle's resolved conflicts to the org's log, newest first, and cap it. */
+  private recordConflicts(org: OrgSyncState, refs: readonly SyncConflictRef[]): void {
     if (refs.length === 0) return;
     const at = new Date(this.now()).toISOString();
     const entries: LiveSyncConflict[] = refs.map((ref) => ({
@@ -214,6 +310,6 @@ export class SyncEngine {
       resolution: 'last_write_wins',
       at,
     }));
-    this.conflictLog = [...entries.reverse(), ...this.conflictLog].slice(0, MAX_CONFLICT_LOG);
+    org.conflictLog = [...entries.reverse(), ...org.conflictLog].slice(0, MAX_CONFLICT_LOG);
   }
 }

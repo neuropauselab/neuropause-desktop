@@ -22,6 +22,7 @@ import {
 import { createLogger } from '../logger';
 import { randomUUID } from 'node:crypto';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
+import { withAiAuthz } from './aiAuthzGate';
 import { unifiedStore } from '../unified/storeInstance';
 import { graphStore } from '../graph/graphInstance';
 import { memoryStore } from '../memory/memoryInstance';
@@ -74,13 +75,13 @@ export function initEngineeringAI(): AiSubsystem {
     );
   };
 
-  const handlers: SecureHandlerDef[] = [
+  const handlers: SecureHandlerDef[] = withAiAuthz([
     {
       channel: IpcChannel.EngineeringAnalyze,
       schema: EngineeringAiRequest,
       handler: (p) => analyze(p as TEngineeringAiRequest),
     },
-  ];
+  ]);
 
   log.info('Engineering AI initialized', {
     provider: process.env.NEUROPAUSE_LLM_PROVIDER ?? 'claude',
@@ -138,7 +139,15 @@ export function initFounderAIv2(): AiSubsystem & {
     return deriveFounderSuggestions({ briefing: brief });
   };
 
-  const handlers: SecureHandlerDef[] = [
+  /**
+   * P13C ROUND 9 — the sweep sibling. `founder:ask-v2` was registered as an "AI
+   * analysis read" and left public, but `answerFounder` runs
+   * `captureFounderMemory` on every path, which calls `memoryStore.remember`. A
+   * public channel that writes the tenant memory store, beside a v1 sibling
+   * (`founder:ask`) that requires `intelligence:read` to answer the same question.
+   * See `AI_CHANNEL_AUTHORITY` for the resource/scope/authority derivation.
+   */
+  const handlers: SecureHandlerDef[] = withAiAuthz([
     {
       channel: IpcChannel.FounderAskV2,
       schema: FounderAskV2Request,
@@ -149,7 +158,7 @@ export function initFounderAIv2(): AiSubsystem & {
       schema: FounderSuggestionsRequest,
       handler: (p) => suggest(p as TFounderSuggestionsRequest),
     },
-  ];
+  ]);
 
   founderLog.info('Founder AI v2 initialized', {
     provider: process.env.NEUROPAUSE_LLM_PROVIDER ?? 'claude',

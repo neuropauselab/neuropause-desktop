@@ -35,6 +35,7 @@ import {
 } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
+import { withMemoryAuthz } from './memoryAuthzGate';
 import {
   forgetMemory,
   pinMemory,
@@ -221,7 +222,13 @@ export async function initMemory(deps: MemorySubsystemDeps): Promise<MemorySubsy
     audit: (e) => memoryAuditLog.record(e),
   };
 
-  const handlers: SecureHandlerDef[] = [
+  /**
+   * The family's defs, BEFORE authority is stamped. `withMemoryAuthz` below is
+   * what makes this array shippable: it refuses to return a def whose channel has
+   * no row in `MEMORY_CHANNEL_AUTHORITY`, so a fourteenth `memory:*` channel
+   * added here cannot reach a renderer until someone has decided what it needs.
+   */
+  const rawHandlers: SecureHandlerDef[] = [
     {
       channel: IpcChannel.MemoryRecall,
       schema: MemoryRecallRequest,
@@ -352,6 +359,18 @@ export async function initMemory(deps: MemorySubsystemDeps): Promise<MemorySubsy
       handler: (p) => memoryAuditLog.page(p as TExecMemoryAuditRequest),
     },
   ];
+
+  /**
+   * P13C ROUND 9 — F20. THE AUTHORITY IS STAMPED HERE, NOT LEFT TO THE CALLER.
+   *
+   * `withRuntimeAuthz` at the composition root only stamps defs that carry no
+   * `permission` of their own, so a def gated here wins and the two tables are
+   * cross-checked for agreement inside the gate. Doing it in this file is what
+   * makes the throw-on-unclassified guard meaningful: the array and the
+   * classification live together, and neither can be edited without the other
+   * being in view.
+   */
+  const handlers: SecureHandlerDef[] = withMemoryAuthz(rawHandlers);
 
   log.info('AI memory initialized', memoryStore.counts());
 
