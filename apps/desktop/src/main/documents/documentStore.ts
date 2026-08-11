@@ -75,7 +75,7 @@ export class DocumentStore extends AppendOnlyJsonStore<DocumentRecord> {
     private readonly blobDir: string,
     now: () => string,
   ) {
-    super(filePath, MAX_DOCUMENTS, now);
+    super(filePath, MAX_DOCUMENTS, now, 'documents');
   }
 
   /** Where a blob lives. Derived from the digest — never from a filename. */

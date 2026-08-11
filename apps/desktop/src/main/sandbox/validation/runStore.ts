@@ -19,7 +19,7 @@ export class ValidationRunStore extends PersistentStore<RunFile> {
   private runs: ValidationRun[] = [];
 
   constructor(filePath: string) {
-    super(filePath);
+    super(filePath, 'sandbox-validation-runs');
   }
 
   protected snapshot(): RunFile {

@@ -307,7 +307,8 @@ export function runGateway(input: GatewayRequestInput): GatewayDecision {
   const developer = key ? developerStore.developer(key.developerId) : null;
   const plan: Plan = planFor(developer?.planTier ?? 'free');
   const versionInfo = apiVersionInfo(input.version);
-  const { rateRemaining, quotaUsed } = gatewayStore.peek(key?.id ?? null, developer?.id ?? null, plan.rateLimit, plan.quota, start);
+  const requestOwner = identity?.orgId || activeTenantScope()?.tenantId || null;
+  const { rateRemaining, quotaUsed } = gatewayStore.peek(key?.id ?? null, developer?.id ?? null, plan.rateLimit, plan.quota, start, requestOwner);
 
   const decision = decideGateway(input, {
     key,
@@ -323,11 +324,29 @@ export function runGateway(input: GatewayRequestInput): GatewayDecision {
   const latencyMs = Math.max(1, Date.now() - start);
   const at = new Date(start).toISOString();
 
+  /**
+   * P13C ROUND 3 — H-3. THE USAGE AND AUDIT ROWS ARE OWNED BY THE CREDENTIAL'S
+   * TENANT, NOT BY WHOEVER IS SIGNED IN.
+   *
+   * `resolveApiIdentity` already computes `identity.orgId` — from the key's
+   * developer, or from the token's `org` claim — and this function discarded it,
+   * because the `ApiKey`-shaped value it builds for the decision engine has no
+   * org field. So the metering and audit rows had no owner at all.
+   *
+   * Falling back to the active scope is correct and not a widening: this path is
+   * reached from the in-process REST dispatcher where the caller IS a session.
+   * Where a credential IS presented, the credential wins — a request
+   * authenticated as tenant B must be billed to B and audited to B even if the
+   * desktop happens to have A open.
+   */
+  const owner = requestOwner;
+
   if (decision.allowed) {
-    gatewayStore.commit(key?.id ?? null, developer?.id ?? null, plan.rateLimit, plan.quota, start);
+    gatewayStore.commit(key?.id ?? null, developer?.id ?? null, plan.rateLimit, plan.quota, start, owner);
   }
   if (developer) {
     developerStore.recordUsage({
+      tenantId: owner,
       developerId: developer.id,
       apiKeyId: key?.id ?? null,
       at,
@@ -341,6 +360,7 @@ export function runGateway(input: GatewayRequestInput): GatewayDecision {
   }
   gatewayStore.record({
     at,
+    tenantId: owner,
     keyId: key?.id ?? null,
     developerId: developer?.id ?? null,
     method: input.method,
@@ -364,6 +384,16 @@ export function gatewayAuditEntries(limit: number): GatewayAuditEntry[] {
 }
 
 export async function initEcosystem(deps: EcosystemDeps): Promise<EcosystemSubsystem> {
+  /**
+   * P13C ROUND 3 — H-3. BIND BEFORE LOAD.
+   *
+   * `load()` can seed, and seeding writes rows. Binding first means those rows
+   * are stamped rather than written unowned and then invisible to everybody.
+   */
+  developerStore.bindScope(activeTenantScope);
+  billingStore.bindScope(activeTenantScope);
+  gatewayStore.bindScope(activeTenantScope);
+
   await developerStore.load();
   await marketplaceStore.load();
   await gatewayStore.load();

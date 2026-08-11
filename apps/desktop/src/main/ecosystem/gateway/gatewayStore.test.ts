@@ -24,9 +24,19 @@ afterEach(async () => {
   }
 });
 
+/**
+ * P13C ROUND 3 — H-3. The audit trail is now tenant-owned, so these tests name a
+ * tenant and stamp their entries. The chain guarantees are unchanged and still
+ * asserted install-wide: `verifyAuditIntegrity` and `totalAudit` are statements
+ * about the CHAIN, and scoping them would make them weaker claims.
+ */
+const TENANT = { tenantId: 'org-gw-test', workspaceId: 'ws-gw-test' };
+const scope = (): typeof TENANT => TENANT;
+
 function gwEntry(i: number) {
   return {
     at: `2026-07-24T00:00:${String(i % 60).padStart(2, '0')}.000Z`,
+    tenantId: TENANT.tenantId,
     keyId: i % 2 === 0 ? `key-${i}` : null,
     developerId: `dev-${i % 3}`,
     method: 'GET',
@@ -40,7 +50,7 @@ function gwEntry(i: number) {
 
 describe('GatewayStore — tamper-evident audit trail (REP v2.0)', () => {
   it('records and verifies the chain', async () => {
-    const s = new GatewayStore(tempPath());
+    const s = new GatewayStore(tempPath()).bindScope(scope);
     await s.load();
     for (let i = 0; i < 6; i++) s.record(gwEntry(i));
     expect(s.verifyAuditIntegrity().ok).toBe(true);
@@ -50,12 +60,12 @@ describe('GatewayStore — tamper-evident audit trail (REP v2.0)', () => {
 
   it('persists and reloads with integrity intact', async () => {
     const path = tempPath();
-    const s = new GatewayStore(path);
+    const s = new GatewayStore(path).bindScope(scope);
     await s.load();
     for (let i = 0; i < 4; i++) s.record(gwEntry(i));
     await s.flush();
 
-    const re = new GatewayStore(path);
+    const re = new GatewayStore(path).bindScope(scope);
     await re.load();
     expect(re.auditEntries(100)).toHaveLength(4);
     expect(re.verifyAuditIntegrity().ok).toBe(true);
@@ -63,7 +73,7 @@ describe('GatewayStore — tamper-evident audit trail (REP v2.0)', () => {
 
   it('DETECTS a mutated entry after reload', async () => {
     const path = tempPath();
-    const s = new GatewayStore(path);
+    const s = new GatewayStore(path).bindScope(scope);
     await s.load();
     for (let i = 0; i < 4; i++) s.record(gwEntry(i));
     await s.flush();
@@ -73,7 +83,7 @@ describe('GatewayStore — tamper-evident audit trail (REP v2.0)', () => {
     await fs.writeFile(path, JSON.stringify(raw));
 
     let violated = false;
-    const re = new GatewayStore(path);
+    const re = new GatewayStore(path).bindScope(scope);
     re.on('integrity-violation', () => (violated = true));
     await re.load();
     expect(re.verifyAuditIntegrity().ok).toBe(false);
@@ -81,7 +91,7 @@ describe('GatewayStore — tamper-evident audit trail (REP v2.0)', () => {
   });
 
   it('bounds retention honestly and still verifies across rotation', async () => {
-    const s = new GatewayStore(tempPath(), { auditCap: 3 });
+    const s = new GatewayStore(tempPath(), { auditCap: 3 }).bindScope(scope);
     await s.load();
     for (let i = 0; i < 8; i++) s.record(gwEntry(i));
     expect(s.auditEntries(100)).toHaveLength(3);

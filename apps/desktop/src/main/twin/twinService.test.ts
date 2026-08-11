@@ -6,6 +6,15 @@ import { describe, expect, it } from 'vitest';
 import { TwinService } from './twinService';
 import type { TwinState } from './twinModel';
 
+/**
+ * P13C ROUND 3 — H-2. The memo is now keyed by tenant, so these tests must name
+ * one. A fixed scope keeps every existing memoization assertion meaningful:
+ * repeated reads under ONE tenant must still be O(1) cache hits, which is the
+ * property this file was written to protect and the fix must not cost.
+ */
+const TEST_SCOPE = { tenantId: 'org-test', workspaceId: 'ws-test' };
+const scope = (): typeof TEST_SCOPE => TEST_SCOPE;
+
 const PROJ = { costUsd: 0, riskScore: 0, timeDays: 0, resourceUtilizationPct: 0, complianceScore: 0, probabilityPct: 0 };
 
 function baseState(over: Partial<TwinState> = {}): TwinState {
@@ -33,7 +42,7 @@ function baseState(over: Partial<TwinState> = {}): TwinState {
 
 describe('TwinService', () => {
   it('composes every projection from the injected reader', () => {
-    const svc = new TwinService({ readState: () => baseState() });
+    const svc = new TwinService({ scope, readState: () => baseState() });
     expect(svc.overview().summary.domainCount).toBe(8);
     expect(svc.domains().domains).toHaveLength(9);
     expect(svc.topology().nodes).toHaveLength(2);
@@ -47,8 +56,7 @@ describe('TwinService', () => {
   it('memoizes the snapshot + projections and recomposes only after invalidate()', () => {
     const box = { value: baseState() };
     let reads = 0;
-    const svc = new TwinService({
-      readState: () => {
+    const svc = new TwinService({ scope, readState: () => {
         reads += 1;
         return box.value;
       },
@@ -68,8 +76,7 @@ describe('TwinService', () => {
   it('refreshes after the TTL even without invalidate() — fixes injected report/cloud/timeline staleness', () => {
     let clock = 1_000;
     let reads = 0;
-    const svc = new TwinService({
-      readState: () => {
+    const svc = new TwinService({ scope, readState: () => {
         reads += 1;
         return baseState();
       },

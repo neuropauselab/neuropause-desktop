@@ -28,7 +28,7 @@ const MAX_HOLDS = 2_000;
 
 export class HoldStore extends AppendOnlyJsonStore<HoldRecord> {
   constructor(filePath: string, now: () => string = () => new Date().toISOString()) {
-    super(filePath, MAX_HOLDS, now);
+    super(filePath, MAX_HOLDS, now, 'decision-holds');
   }
 
   /**

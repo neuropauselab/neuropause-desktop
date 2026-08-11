@@ -42,7 +42,7 @@ export interface RecordDecisionInput {
 
 export class OpportunityDecisionStore extends AppendOnlyJsonStore<OpportunityDecision> {
   constructor(filePath: string, now: () => string = () => new Date().toISOString()) {
-    super(filePath, MAX_DECISIONS, now);
+    super(filePath, MAX_DECISIONS, now, 'opportunity-decisions');
   }
 
   get(id: string): OpportunityDecision | null {

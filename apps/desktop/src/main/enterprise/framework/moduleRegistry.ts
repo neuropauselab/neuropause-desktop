@@ -62,6 +62,7 @@ import type {
   EnterpriseModuleContext,
 } from './enterpriseModule';
 import type { TenantScopeSource } from './enterpriseRecordStore';
+import { registerTenantStore } from '../../tenancy/tenantOwnedStore';
 
 type LifecycleAction = EnterpriseModuleLifecycleAction;
 
@@ -69,6 +70,23 @@ export class EnterpriseModuleRegistry {
   private readonly modules = new Map<string, EnterpriseModule>();
   /** The tenant boundary handed to every store that registers here. */
   private scopeSource: TenantScopeSource | null = null;
+
+  /**
+   * P13C ROUND 3 — PHASE 4. ONE registry entry standing for all 106 module stores.
+   *
+   * Registering 106 individual entries would be noise; what the gate needs to
+   * know is whether ANY module store is unbound, and this registry already
+   * answers that in `unscopedModules()`. So the predicate is "no module is
+   * unscoped AND the registry itself has a source", which is stricter than
+   * either half: an empty registry with no source would otherwise report bound
+   * simply because it has nothing to be unbound.
+   */
+  constructor() {
+    registerTenantStore(
+      'enterprise-module-stores',
+      () => this.scopeSource !== null && this.unscopedModules().length === 0,
+    );
+  }
 
   /**
    * Bind the tenant boundary for every module, present and future.

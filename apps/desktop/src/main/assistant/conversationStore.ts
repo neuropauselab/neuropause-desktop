@@ -14,6 +14,7 @@ import type {
   AssistantIntentId,
   TenantScope,
 } from '@neuropause/shared';
+import { registerTenantStore } from '../tenancy/tenantOwnedStore';
 
 interface ConversationFile {
   conversations: AssistantConversation[];
@@ -29,7 +30,16 @@ export class ConversationStore {
   private loaded = false;
   private writeChain: Promise<void> = Promise.resolve();
 
-  constructor(private readonly filePath: string) {}
+    /**
+   * P13C ROUND 3 — PHASE 4. Declare this store to the startup gate.
+   *
+   * The seam below predates the registry, so the gate could not see it: an
+   * unbound instance denied every read (correct) but shipped silently (not
+   * correct). One line, so the next store has no excuse to skip it.
+   */
+  constructor(private readonly filePath: string) {
+    registerTenantStore('assistant-conversations', () => this.hasScope());
+  }
 
   /* ── P13C N7: the tenant boundary ──────────────────────────────────────
    *

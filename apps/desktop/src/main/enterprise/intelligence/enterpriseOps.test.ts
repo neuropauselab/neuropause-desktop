@@ -25,6 +25,7 @@ import {
 } from '@neuropause/shared';
 import { toCorrelationEvent } from './enterpriseIntelligenceSubsystem';
 
+
 const NOW = '2026-07-14T00:00:00.000Z';
 const NOW_MS = Date.parse(NOW);
 function res(nativeId: string, opts: { domain?: InfrastructureDomain; type?: string; health?: CloudResource['health']; deps?: string[]; attributes?: Record<string, string | number | boolean | null> } = {}): CloudResource {

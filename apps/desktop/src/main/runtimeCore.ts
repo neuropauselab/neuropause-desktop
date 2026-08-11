@@ -1299,6 +1299,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   getInfraResourceModel = () => infrastructure.store.graph(Date.now());
   if (infraGraphRebuild) infrastructure.store.on('changed', infraGraphRebuild);
   const enterpriseIntel = initEnterpriseIntelligence({
+    scope: activeTenantScope,
     broadcast: deps.broadcast,
     getResourceModel: () => {
       try {
@@ -3393,6 +3394,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // cross-org here is a RECORD in the local stores — no live connectivity
   // exists and none is claimed.
   const enterpriseFederation = initEnterpriseFederation({
+    scope: activeTenantScope,
     fedHome: () => {
       const h = fedStore.homeOrg();
       return h ? { id: h.id, name: h.name, regionId: h.regionId } : null;

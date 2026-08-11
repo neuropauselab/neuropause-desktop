@@ -34,6 +34,7 @@ import type {
   TimelineStats,
   TimelineExport,
 } from '@neuropause/shared';
+import { registerTenantStore } from '../tenancy/tenantOwnedStore';
 
 export interface TimelineOptions {
   /** Directory in which the timeline log lives. */
@@ -71,6 +72,11 @@ export class TimelineService {
   private scopeSource: TimelineScopeSource | null = null;
 
   /** Bind the tenant boundary. Chainable. UNBOUND DENIES. */
+  /** True once a boundary is bound. Evidence for the startup gate. */
+  hasScope(): boolean {
+    return this.scopeSource !== null;
+  }
+
   bindScope(source: TimelineScopeSource): this {
     this.scopeSource = source;
     return this;
@@ -96,6 +102,12 @@ export class TimelineService {
   private writing = false;
 
   constructor(opts: TimelineOptions) {
+    /**
+     * P13C ROUND 3 — PHASE 4. Declare this store to the startup gate. The seam
+     * below predates the registry, so the gate could not see it: an unbound
+     * instance denied every read (correct) and shipped silently (not correct).
+     */
+    registerTenantStore('platform-timeline', () => this.hasScope());
     this.dir = opts.dir;
     this.maxInMemory = opts.maxInMemory ?? 5000;
     this.flushIntervalMs = opts.flushIntervalMs ?? 2000;

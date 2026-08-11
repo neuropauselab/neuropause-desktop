@@ -25,7 +25,7 @@ export class SandboxDatasetStore extends PersistentStore<DatasetFile> {
   private datasets = new Map<string, Dataset>();
 
   constructor(filePath: string, private readonly now: () => number = Date.now) {
-    super(filePath);
+    super(filePath, 'sandbox-datasets');
   }
 
   protected snapshot(): DatasetFile {

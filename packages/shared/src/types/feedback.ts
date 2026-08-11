@@ -14,6 +14,13 @@ export const FEEDBACK_CATEGORIES: readonly FeedbackCategory[] = [
 
 export interface FeedbackEntry {
   id: string;
+  /**
+   * P13C ROUND 3 — the organization whose member submitted this.
+   *
+   * Optional because entries written before this round have no owner, and an
+   * unowned entry is visible to NOBODY rather than guessed into a tenant.
+   */
+  tenantId?: string | null;
   category: FeedbackCategory;
   message: string;
   createdAt: string;

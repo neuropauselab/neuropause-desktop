@@ -6,6 +6,15 @@ import { describe, expect, it } from 'vitest';
 import { ExperienceService } from './experienceService';
 import type { ExperienceState } from './experienceModel';
 
+/**
+ * P13C ROUND 3 — H-2. The memo is now keyed by tenant, so these tests must name
+ * one. A fixed scope keeps every existing memoization assertion meaningful:
+ * repeated reads under ONE tenant must still be O(1) cache hits, which is the
+ * property this file was written to protect and the fix must not cost.
+ */
+const TEST_SCOPE = { tenantId: 'org-test', workspaceId: 'ws-test' };
+const scope = (): typeof TEST_SCOPE => TEST_SCOPE;
+
 function baseState(over: Partial<ExperienceState> = {}): ExperienceState {
   return {
     greeting: 'Good morning', generatedAt: '2026-07-16T08:00:00.000Z',
@@ -25,7 +34,7 @@ function baseState(over: Partial<ExperienceState> = {}): ExperienceState {
 
 describe('ExperienceService', () => {
   it('composes every projection from the injected reader', () => {
-    const svc = new ExperienceService({ readState: () => baseState() });
+    const svc = new ExperienceService({ scope, readState: () => baseState() });
     expect(svc.home().roleViews).toHaveLength(8);
     expect(svc.decisions().items).toHaveLength(1);
     expect(svc.summaries().disclosure).toHaveLength(3);
@@ -36,8 +45,7 @@ describe('ExperienceService', () => {
   it('memoizes the snapshot + projections and recomposes only after invalidate()', () => {
     const box = { value: baseState() };
     let reads = 0;
-    const svc = new ExperienceService({
-      readState: () => {
+    const svc = new ExperienceService({ scope, readState: () => {
         reads += 1;
         return box.value;
       },
@@ -58,8 +66,7 @@ describe('ExperienceService', () => {
   it('refreshes after the TTL even without invalidate() — fixes injected platform staleness', () => {
     let clock = 1_000;
     let reads = 0;
-    const svc = new ExperienceService({
-      readState: () => {
+    const svc = new ExperienceService({ scope, readState: () => {
         reads += 1;
         return baseState();
       },

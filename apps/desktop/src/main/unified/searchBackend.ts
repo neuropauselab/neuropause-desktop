@@ -9,6 +9,7 @@
  */
 import type { SearchHit, TenantScope, UnifiedEntity, UnifiedEntityKind } from '@neuropause/shared';
 import { ownershipOf } from '@neuropause/shared';
+import { registerTenantStore } from '../tenancy/tenantOwnedStore';
 
 /**
  * A process-wide fallback scope for the index, for TESTS ONLY.
@@ -138,7 +139,24 @@ export class LocalSearchBackend implements SearchBackend {
   private byTenant = new Map<string, TenantIndex>();
   private scopeSource: (() => TenantScope | null) | null = null;
 
+  /**
+   * P13C ROUND 3 — PHASE 4. Declare this index to the startup gate.
+   *
+   * Worth singling out: this backend is bound ONLY transitively, from
+   * `UnifiedStore.bindScope`. It holds a second copy of every unified record,
+   * so an instance constructed anywhere else would be a searchable, unscoped
+   * duplicate of the entire corpus — and nothing would have said so.
+   */
+  constructor() {
+    registerTenantStore('unified-search-index', () => this.hasScope());
+  }
+
   /** Bind the tenant boundary. UNBOUND DENIES — see `scopeOrDeny`. */
+  /** True once a boundary is bound. Evidence for the startup gate. */
+  hasScope(): boolean {
+    return this.scopeSource !== null;
+  }
+
   bindScope(source: () => TenantScope | null): this {
     this.scopeSource = source;
     return this;

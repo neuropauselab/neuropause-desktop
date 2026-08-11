@@ -34,7 +34,15 @@ import type { EnterpriseModuleRegistry } from '../enterprise/framework/moduleReg
  * inventory that silently reports only the stores that were migrated and
  * therefore looks complete. Every entry says what would be exposed.
  */
-const UNENFORCED: readonly { store: string; status: TenantMigrationStatus; note: string }[] = [
+/**
+ * P13C ROUND 3 — PHASE 5. EXPORTED so it can be tested.
+ *
+ * A documentation error in this array concealed a HIGH finding for five sweeps.
+ * It is now asserted against the code it describes, in
+ * `migrationInventoryIntegrity.test.ts` — which is only possible if a test can
+ * read it.
+ */
+export const UNENFORCED: readonly { store: string; status: TenantMigrationStatus; note: string }[] = [
   {
     store: 'documents (documentStore)',
     status: 'PARTIAL',
@@ -106,9 +114,29 @@ const UNENFORCED: readonly { store: string; status: TenantMigrationStatus; note:
     note: 'Plans are held in a Map keyed by planId with no owner, so any caller holding a planId can preview or execute it. The ids are uuids, so this is a capability with no holder rather than a guessable one.',
   },
   {
-    store: 'TTL model caches (relationship / trust / process-mining providers)',
-    status: 'BLOCKED',
-    note: 'Each is a single keyless `let cache` with a ~2.5s TTL, built by fanning out reads across dozens of stores. Their INPUTS are now scoped, so a cache built by tenant A holds A’s data — but it is then served to whoever asks within the TTL. Blocked rather than partial: keying them requires a scope-aware invalidation design, not a filter.',
+    store: 'composed model caches (relationship / trust / process-mining providers)',
+    status: 'PARTIAL',
+    note: 'P13C ROUND 3 — H-1 and H-2. ALL THREE ARE NOW KEYED BY THE AUTHORITATIVE TENANT, via `TenantMemo`, and all three are registered with the startup gate so an unbound one fails composition. This entry previously described the process-mining provider as having "a ~2.5s TTL" — IT NEVER HAD ONE, and that single inaccurate clause is why five successive sweeps read this line and moved on. It cached the materialised records of THIRTEEN tenant-scoped module stores behind a record-COUNT signature, which two tenants match trivially (identically on a fresh second organization, where every count is zero), and `EnterpriseProcessCase` resolved a payload caseId against it with no ownership check. Relationship and trust did have the 2.5s TTL plus a switch listener, and both were still insufficient: `forEachTenant` runs scheduled work once per tenant back-to-back under each tenant’s own principal, announcing no switch, so tenant B’s pass read the model tenant A’s pass had just built. The TTLs remain, doing the job they can do — freshness. PARTIAL rather than COMPLETE because the tenant key is the process-wide `activeTenantScope`, so correctness still depends on that resolver, and because these caches hold no owner ON THE RECORDS: the cell is owned, the composed values inside it are not independently checkable.',
+  },
+  {
+    store: 'developer registry (API keys / OAuth applications / usage ledger)',
+    status: 'PARTIAL',
+    note: 'P13C ROUND 3 — H-3. ADDED TO THIS INVENTORY, having been absent from it entirely. There is one developer account per install (`dev-owner`, seeded to the literal ORG_ID) and every key, application and usage row hung off its `developerId`, so `keysFor(devId())` returned every tenant’s API keys, `appsFor` every tenant’s OAuth clients, and the analytics window every tenant’s traffic. Worse than the read: `revokeKey(id)`, `rotateKey(id)` and `deleteApp(id)` took a BARE payload id, so one tenant could cut another’s production API access, and an OAuth deletion is unrecoverable because the client secret existed exactly once. Keys, applications and usage rows now carry `tenantId`, every listing and every id-taking mutation resolves ownership first, and usage retention is per tenant (it was install-wide and oldest-first over the rows the metered invoice is computed from). `verifyKey`, `verifyAppCredentials`, `revokeToken` and `isTokenRevoked` stay deliberately unscoped: they resolve a PRESENTED credential, which is what would establish a tenant, so a scoped lookup there could only deny. PARTIAL: the developer ACCOUNT itself is still one shared row, so its display identity and plan tier are install-wide.',
+  },
+  {
+    store: 'billing (subscription / seats / licences / purchases)',
+    status: 'PARTIAL',
+    note: 'P13C ROUND 3 — H-3. ADDED TO THIS INVENTORY. Every collection was singular and pinned to the seeded ORG_ID. `License` and `MarketplacePurchase` both CARRY an `orgId` and it was written from the seed rather than the caller — the most dangerous shape a tenancy defect takes, because an auditor asking "do these rows have an organization?" gets yes. `releaseSeat(seatId)` was `seats.delete(id)` on a bare payload id; `setPlan` mutated the one shared subscription, so a tenant could downgrade another’s plan and its seat cap; `seatAssignments()` listed every tenant’s seated users by name; `periodSpend` summed the install and reported it as one tenant’s. Subscriptions are now one row PER ORGANIZATION created lazily on first read, seats carry `tenantId`, licences and purchases are filtered on the `orgId` they already had, and the seat cap counts the caller’s seats. A pre-Round-3 file upgrades by reading its single `subscription` under its own stamped orgId — no guess. PARTIAL: an unresolved caller receives a detached Free subscription that is deliberately not stored.',
+  },
+  {
+    store: 'API gateway audit trail (gatewayStore)',
+    status: 'PARTIAL',
+    note: 'P13C ROUND 3 — H-3. ADDED TO THIS INVENTORY. `auditEntries` and `metrics` were install-wide over rows with no owner, and both are reachable: `ecosystem:gateway.audit` under `developer:read`, and `GET /observability/traces|logs` through the REST dispatcher, which exports them as OTLP spans carrying `enduser.id` and the credential id. Entries now carry `tenantId`, taken from the CREDENTIAL’s tenant where one was presented and the active scope otherwise, and the OUTPUT is filtered while the array is never touched — the array backs an order-sensitive hash chain. `tenantId` is appended to the canonical hash form ONLY when present, so pre-Round-3 rows hash exactly as before and an upgrading install does not raise an integrity violation indistinguishable from real tampering. `verifyAuditIntegrity` and `totalAudit` stay install-wide on purpose: they are statements about the CHAIN, and a per-tenant chain could not detect an entry deleted from another tenant’s section of the same file. PARTIAL: rate-limit state is keyed by credential id and quota state by developer id, so the shared developer account still means one install-wide quota pool.',
+  },
+  {
+    store: 'the tenant-store startup gate (assertAllTenantStoresBound)',
+    status: 'PARTIAL',
+    note: 'P13C ROUND 3 — PHASE 4. The gate previously covered FIVE stores — the five holding a `TenantOwnership` — while eighteen classes implemented `bindScope` themselves. The Round 2 report said six; five was the true number, and `executionStore.ts`, named in the design comment as one of the intended six, has no seam at all. Registration is now a one-line `registerTenantStore(name, () => this.hasScope())`, placed on the two ABSTRACT BASES (`PersistentStore`, `AppendOnlyJsonStore`) so twelve concrete stores inherit it and a thirteenth cannot be added without one, plus the standalone seams and a single entry standing for all 106 enterprise module stores. `tenantStoreCoverage()` reports the live counts and `tenantStoreRegistry.test.ts` asserts unbound = 0 and fails when a new `bindScope` class is added unregistered. PARTIAL, and the honest reason: registration proves a store HAS a boundary, not that the boundary is CORRECT. It cannot see a store with no seam at all — which is what every finding in this program has actually been.',
   },
   {
     store: 'background jobs (every timer)',

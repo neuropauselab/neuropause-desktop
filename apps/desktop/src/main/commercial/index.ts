@@ -304,7 +304,7 @@ function buildState(deps: CommercialPlatformDeps): CommercialState {
 }
 
 export function initCommercialPlatform(deps: CommercialPlatformDeps): CommercialPlatformSubsystem {
-  const service = new CommercialPlatformService({ readState: () => buildState(deps) });
+  const service = new CommercialPlatformService({ scope: activeTenantScope, readState: () => buildState(deps) });
 
   // Invalidate the memoized snapshot when a backing store changes; the injected report/cloud/strategy/
   // marketplace accessors refresh via the service TTL. Renderer liveness reuses `ecosystem:event`.

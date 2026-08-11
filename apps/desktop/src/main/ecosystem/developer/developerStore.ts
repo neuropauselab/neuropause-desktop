@@ -3,6 +3,35 @@
  * the raw usage ledger. API key + OAuth secrets are high-entropy tokens; only a
  * SHA-256 hash is persisted, and the clear secret is returned exactly once at
  * creation. Electron-free; the singleton lives in developerInstance.ts.
+ *
+ * P13C ROUND 3 — H-3. THE WHOLE STORE WAS ONE PARTITION.
+ *
+ * There is exactly one developer account on an install — `dev-owner`, seeded to
+ * the literal `ORG_ID` — and every key, application and usage row hangs off its
+ * `developerId`. So `keysFor(devId())` was every tenant's keys, `appsFor` was
+ * every tenant's OAuth applications, and the analytics window was every tenant's
+ * traffic. Three consequences, and only the first is disclosure:
+ *
+ *   READ    — key names, prefixes, last4, scopes and last-used times; OAuth
+ *             client ids, redirect URIs and grant types. That is a map of
+ *             another organization's integrations.
+ *   REVOKE  — `revokeKey(id)` and `deleteApp(id)` took a BARE payload id and
+ *             deleted whatever it named. One tenant could cut another tenant's
+ *             production API access, and an OAuth application deletion is not
+ *             recoverable: the client secret existed exactly once.
+ *   BILLING — usage rows drive the metered invoice, so one tenant's traffic was
+ *             counted against another's quota and period spend.
+ *
+ * The fix is an owner on the row, not a check in the handler, because these
+ * accessors are reached from the ecosystem IPC surface, the developer-platform
+ * projection AND the marketplace publisher lookup. A handler check would have to
+ * be right in three places and stay right in the fourth somebody adds.
+ *
+ * WHAT DELIBERATELY STAYS UNSCOPED — and why that is not a hole. `verifyKey`,
+ * `verifyAppCredentials`, `revokeToken` and `isTokenRevoked` resolve a PRESENTED
+ * CREDENTIAL. They run before any tenant is known — resolving the credential is
+ * what would establish one — so a scoped lookup there could only ever deny.
+ * They are named for what they are and answer no listing.
  */
 import { EventEmitter } from 'node:events';
 import { promises as fs } from 'node:fs';
@@ -16,12 +45,21 @@ import type {
   OAuthApplicationWithSecret,
   OAuthGrantType,
   PlanTier,
+  TenantScope,
   UsageRecord,
 } from '@neuropause/shared';
+import { TenantOwnership } from '../../tenancy/tenantOwnedStore';
 import { createLogger } from '../../logger';
 
 const log = createLogger('developer-registry');
-const USAGE_CAP = 20_000;
+/**
+ * Usage retention, PER TENANT.
+ *
+ * Was one install-wide cap of 20 000. Kept at the same number per tenant rather
+ * than divided by a tenant count, because dividing would mean adding a customer
+ * silently shortens every existing customer's billing history.
+ */
+const PER_TENANT_USAGE_CAP = 20_000;
 
 interface StoredKey extends ApiKey {
   hash: string;
@@ -68,6 +106,8 @@ export function developerOwnerIdentity(
 }
 
 export class DeveloperStore extends EventEmitter {
+  /** The tenant boundary. Registered with the startup gate by construction. */
+  private readonly tenancy = new TenantOwnership('ecosystem-developer');
   private developers = new Map<string, DeveloperAccount>();
   private keys = new Map<string, StoredKey>();
   private apps = new Map<string, StoredApp>();
@@ -81,6 +121,23 @@ export class DeveloperStore extends EventEmitter {
 
   constructor(private readonly filePath: string, private readonly seed: SeedDeveloper) {
     super();
+  }
+
+  /** Bind the tenant boundary. UNBOUND DENIES. Chainable. */
+  bindScope(source: () => TenantScope | null): this {
+    this.tenancy.bindScope(source);
+    return this;
+  }
+  hasScope(): boolean {
+    return this.tenancy.hasScope();
+  }
+  /** Unscoped ownership counts across keys + apps + usage, for the inventory only. */
+  ownershipCounts(): { total: number; assigned: number; unresolved: number } {
+    return this.tenancy.countOwnership([
+      ...this.keys.values(),
+      ...this.apps.values(),
+      ...this.usage,
+    ]);
   }
 
   async load(): Promise<void> {
@@ -181,8 +238,12 @@ export class DeveloperStore extends EventEmitter {
 
   /* ── API keys ── */
 
+  /** The CALLER'S keys for this developer. Was every tenant's keys on the install. */
   keysFor(developerId: string): ApiKey[] {
-    return [...this.keys.values()].filter((k) => k.developerId === developerId).map(strip);
+    return this.tenancy
+      .onlyMine([...this.keys.values()])
+      .filter((k) => k.developerId === developerId)
+      .map(strip);
   }
 
   createKey(developerId: string, name: string, scopes: ApiScope[], expiresAt: string | null = null): ApiKeyWithSecret {
@@ -192,6 +253,7 @@ export class DeveloperStore extends EventEmitter {
     const secret = `${prefix}.${raw}`;
     const stored: StoredKey = {
       id,
+      tenantId: this.tenancy.requireTenant(),
       developerId,
       name,
       prefix,
@@ -209,8 +271,13 @@ export class DeveloperStore extends EventEmitter {
     return { key: strip(stored), secret };
   }
 
+  /**
+   * Revoke one of the CALLER'S keys. A foreign id is indistinguishable from an
+   * invented one — both `null` — so the refusal is not an existence oracle over
+   * another tenant's credential ids.
+   */
   revokeKey(id: string): ApiKey | null {
-    const k = this.keys.get(id);
+    const k = this.mineOrNull(id);
     if (!k || k.revokedAt) return k ? strip(k) : null;
     const next = { ...k, revokedAt: new Date().toISOString() };
     this.keys.set(id, next);
@@ -225,14 +292,27 @@ export class DeveloperStore extends EventEmitter {
    * the new secret exactly once, like `createKey`.
    */
   rotateKey(id: string): ApiKeyWithSecret | null {
-    const k = this.keys.get(id);
+    const k = this.mineOrNull(id);
     if (!k || k.revokedAt) return null;
     const rotated = this.createKey(k.developerId, k.name, k.scopes, k.expiresAt);
     this.revokeKey(id);
     return rotated;
   }
 
-  /** Resolve a presented raw token to its key, or null. Records last-used. */
+  /** One of the caller's keys by id, or null. The single ownership resolve. */
+  private mineOrNull(id: string): StoredKey | null {
+    const k = this.keys.get(id) ?? null;
+    return k !== null && this.tenancy.mine(k) ? k : null;
+  }
+
+  /**
+   * Resolve a PRESENTED raw token to its key, or null. Records last-used.
+   *
+   * DELIBERATELY UNSCOPED — see the file header. The caller has proved
+   * possession of the secret, which is the whole authentication, and this runs
+   * before any tenant is established. Scoping it would break external API
+   * access without closing anything: possession of the token is the credential.
+   */
   verifyKey(token: string): ApiKey | null {
     const hash = sha256(token);
     for (const k of this.keys.values()) {
@@ -250,8 +330,12 @@ export class DeveloperStore extends EventEmitter {
 
   /* ── OAuth apps ── */
 
+  /** The CALLER'S OAuth applications. Was every tenant's integration map. */
   appsFor(developerId: string): OAuthApplication[] {
-    return [...this.apps.values()].filter((a) => a.developerId === developerId).map(stripApp);
+    return this.tenancy
+      .onlyMine([...this.apps.values()])
+      .filter((a) => a.developerId === developerId)
+      .map(stripApp);
   }
 
   createApp(developerId: string, name: string, redirectUris: string[], scopes: ApiScope[], grantTypes: OAuthGrantType[]): OAuthApplicationWithSecret {
@@ -260,6 +344,7 @@ export class DeveloperStore extends EventEmitter {
     const clientSecret = `nps_${randomBytes(24).toString('base64url')}`;
     const stored: StoredApp = {
       id,
+      tenantId: this.tenancy.requireTenant(),
       developerId,
       name,
       clientId,
@@ -276,7 +361,17 @@ export class DeveloperStore extends EventEmitter {
     return { application: stripApp(stored), clientSecret };
   }
 
+  /**
+   * Delete one of the CALLER'S OAuth applications.
+   *
+   * This was `this.apps.delete(id)` on a bare payload id — the sharpest write in
+   * the file, because the deletion is irreversible in a way a key revocation is
+   * not: the client secret was returned exactly once at creation and cannot be
+   * reissued for the same client id.
+   */
   deleteApp(id: string): boolean {
+    const app = this.apps.get(id) ?? null;
+    if (app === null || !this.tenancy.mine(app)) return false;
     const ok = this.apps.delete(id);
     if (ok) {
       this.schedulePersist();
@@ -318,16 +413,49 @@ export class DeveloperStore extends EventEmitter {
 
   /* ── usage ── */
 
+  /**
+   * Append one usage row, owned by the caller.
+   *
+   * The owner may be pre-supplied (the gateway path knows the key's tenant
+   * before it knows the session's) and otherwise comes from the active scope.
+   * Retention is PER TENANT: the cap was install-wide and oldest-first, so a
+   * high-traffic tenant chose which of another tenant's billing rows was
+   * destroyed — and these rows are what the metered invoice is computed from.
+   */
   recordUsage(rec: Omit<UsageRecord, 'id'>): UsageRecord {
-    const full: UsageRecord = { id: `use_${randomUUID()}`, ...rec };
+    const tenantId = rec.tenantId ?? this.tenancy.scopeOrDeny()?.tenantId ?? null;
+    const full: UsageRecord = { id: `use_${randomUUID()}`, ...rec, tenantId };
     this.usage.push(full);
-    if (this.usage.length > USAGE_CAP) this.usage = this.usage.slice(this.usage.length - USAGE_CAP);
+    /**
+     * PER-TENANT CAP, WITH NO INSTALL-WIDE FALLBACK.
+     *
+     * The first version of this fix called `pruneOwn(usage, USAGE_CAP, …)` and
+     * then, if the array was STILL over `USAGE_CAP`, fell back to
+     * `slice(length - USAGE_CAP)` — an install-wide, oldest-first trim. With two
+     * tenants at 12 000 rows each the per-tenant prune is a no-op (neither
+     * exceeds 20 000) and the fallback deletes 4 000 rows that are mostly the
+     * other tenant's. So the fallback quietly restored the exact defect the
+     * prune was added to remove, and it took the sweep to see it.
+     *
+     * The cap is now per tenant with nothing after it. An install with more
+     * tenants holds more rows. That is the honest trade, and it is the same one
+     * `TenantOwnership.pruneOwn` already documents: the alternative is one
+     * customer deleting another's billing evidence.
+     */
+    this.usage = this.tenancy.pruneOwn(
+      this.usage,
+      PER_TENANT_USAGE_CAP,
+      (a, b) => a.at.localeCompare(b.at),
+    );
     this.schedulePersist();
     return full;
   }
 
+  /** The CALLER'S usage. Drives the metered invoice, so this is a billing boundary. */
   usageFor(developerId: string, sinceMs: number): UsageRecord[] {
-    return this.usage.filter((u) => u.developerId === developerId && Date.parse(u.at) >= sinceMs);
+    return this.tenancy
+      .onlyMine(this.usage)
+      .filter((u) => u.developerId === developerId && Date.parse(u.at) >= sinceMs);
   }
 
   countSince(developerId: string, sinceMs: number): number {

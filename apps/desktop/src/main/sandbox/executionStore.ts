@@ -42,7 +42,7 @@ export class SandboxExecutionStore extends PersistentStore<ExecutionFile> {
   private timeline = new Map<string, ExecutionTimelineEntry[]>();
 
   constructor(filePath: string, private readonly now: () => number = Date.now) {
-    super(filePath);
+    super(filePath, 'sandbox-executions');
   }
 
   protected snapshot(): ExecutionFile {

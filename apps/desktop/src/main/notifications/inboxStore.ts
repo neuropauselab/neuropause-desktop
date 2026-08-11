@@ -11,6 +11,7 @@ import { promises as fs, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { InboxNotification, NotificationInboxPage, TenantScope } from '@neuropause/shared';
 import { ownershipOf, recordInScope } from '@neuropause/shared';
+import { registerTenantStore } from '../tenancy/tenantOwnedStore';
 
 interface InboxFile {
   items: InboxNotification[];
@@ -25,9 +26,23 @@ export class InboxStore {
   private writeChain: Promise<void> = Promise.resolve();
   private scopeSource: (() => TenantScope | null) | null = null;
 
-  constructor(private readonly filePath: string) {}
+    /**
+   * P13C ROUND 3 — PHASE 4. Declare this store to the startup gate.
+   *
+   * The seam below predates the registry, so the gate could not see it: an
+   * unbound instance denied every read (correct) but shipped silently (not
+   * correct). One line, so the next store has no excuse to skip it.
+   */
+  constructor(private readonly filePath: string) {
+    registerTenantStore('notification-inbox', () => this.hasScope());
+  }
 
   /** Bind the tenant boundary. Unbound denies. Chainable. */
+  /** True once a boundary is bound. Evidence for the startup gate. */
+  hasScope(): boolean {
+    return this.scopeSource !== null;
+  }
+
   bindScope(source: () => TenantScope | null): this {
     this.scopeSource = source;
     return this;

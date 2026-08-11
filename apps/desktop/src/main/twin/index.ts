@@ -204,7 +204,7 @@ function buildState(deps: EnterpriseTwinDeps): TwinState {
 }
 
 export function initEnterpriseTwin(deps: EnterpriseTwinDeps): EnterpriseTwinSubsystem {
-  const service = new TwinService({ readState: () => buildState(deps) });
+  const service = new TwinService({ scope: activeTenantScope, readState: () => buildState(deps) });
 
   // Invalidate the memoized snapshot when a backing signal changes; the injected report/cloud/strategy/
   // timeline sources refresh via the service TTL. Renderer liveness reuses the existing `ecosystem:event`.

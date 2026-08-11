@@ -22,7 +22,7 @@ export class SandboxWorkspaceStore extends PersistentStore<WorkspaceFile> {
   private workspaces = new Map<string, SandboxWorkspace>();
 
   constructor(filePath: string, private readonly now: () => number = Date.now) {
-    super(filePath);
+    super(filePath, 'sandbox-workspaces');
   }
 
   protected snapshot(): WorkspaceFile {

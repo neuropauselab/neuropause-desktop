@@ -74,6 +74,61 @@ export function resetTenantStoreRegistryForTests(): void {
   registry.clear();
 }
 
+/**
+ * Register a store that already OWNS its tenant seam.
+ *
+ * P13C ROUND 3 — PHASE 4. Eighteen classes in this application implement
+ * `bindScope` themselves, most of them long before `TenantOwnership` existed,
+ * and only five of them registered. The gate therefore protected five stores
+ * while its own doc-comment implied it protected the class.
+ *
+ * Converting eighteen working stores to hold a `TenantOwnership` would be a
+ * large refactor with a security change buried inside it. This is the small
+ * alternative: a store keeps its own seam and hands the registry a predicate
+ * over it. Registration becomes one line in a constructor, which is cheap enough
+ * that there is no excuse for the next store to skip it.
+ *
+ * `hasScope` is a FUNCTION, not a boolean, because binding happens at a
+ * composition root long after construction. Capturing the value here would
+ * record every store as unbound forever.
+ */
+export function registerTenantStore(name: string, hasScope: () => boolean): void {
+  registry.set(name, { name, classification: 'tenant-scoped', reason: null, hasScope });
+}
+
+/**
+ * Register a store that holds NO tenant data, and say why.
+ *
+ * The reason is mandatory for the same reason it is mandatory on
+ * `TenantOwnership.declareSystemGlobal`: "this one is global" is precisely the
+ * sentence that has been wrong at every previous round of this program. Written
+ * down, it is reviewable; omitted, it is indistinguishable from an oversight.
+ */
+export function declareSystemGlobalStore(name: string, reason: string): void {
+  if (reason.trim() === '') throw new Error(`System-global store ${name} must state its reason.`);
+  registry.set(name, { name, classification: 'system-global', reason, hasScope: () => true });
+}
+
+/** How many stores are registered, split by classification and binding. */
+export function tenantStoreCoverage(): {
+  registered: number;
+  tenantScoped: number;
+  bound: number;
+  unbound: number;
+  systemGlobal: number;
+} {
+  const all = [...registry.values()];
+  const scoped = all.filter((r) => r.classification === 'tenant-scoped');
+  const bound = scoped.filter((r) => r.hasScope());
+  return {
+    registered: all.length,
+    tenantScoped: scoped.length,
+    bound: bound.length,
+    unbound: scoped.length - bound.length,
+    systemGlobal: all.length - scoped.length,
+  };
+}
+
 /** What is registered, for the migration inventory and the startup report. */
 export function tenantStoreRegistrations(): {
   name: string;
@@ -136,8 +191,26 @@ export class TenantOwnership {
     });
   }
 
-  /** Bind the boundary. UNBOUND DENIES. Chainable, matching every other store. */
+  /**
+   * Bind the boundary. UNBOUND DENIES. Chainable, matching every other store.
+   *
+   * THROWS on a non-function, and that is not defensive noise — it is the
+   * failure this session actually hit. A composition root passed
+   * `deps.scope` where `scope` was `undefined`; `scopeSource` became
+   * `undefined`, which is not `null`, so `hasScope()` reported TRUE, the startup
+   * gate passed, and the store failed at read time instead.
+   *
+   * That is the worst of the three possible outcomes: not fail-closed, not
+   * fail-open, but "passes every check and breaks later somewhere else". A store
+   * that claims a boundary it does not have is exactly what the gate exists to
+   * prevent, so a bad bind must be loud at the bind.
+   */
   bindScope(source: () => TenantScope | null): this {
+    if (typeof source !== 'function') {
+      throw new TypeError(
+        `bindScope(${String(source)}) on "${this.name}": the tenant boundary must be a resolver function.`,
+      );
+    }
     this.scopeSource = source;
     return this;
   }

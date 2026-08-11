@@ -6,6 +6,15 @@ import { describe, expect, it } from 'vitest';
 import { IntentService } from './intentService';
 import type { IntentGoalInput, IntentState } from './intentModel';
 
+/**
+ * P13C ROUND 3 — H-2. The memo is now keyed by tenant, so these tests must name
+ * one. A fixed scope keeps every existing memoization assertion meaningful:
+ * repeated reads under ONE tenant must still be O(1) cache hits, which is the
+ * property this file was written to protect and the fix must not cost.
+ */
+const TEST_SCOPE = { tenantId: 'org-test', workspaceId: 'ws-test' };
+const scope = (): typeof TEST_SCOPE => TEST_SCOPE;
+
 function goal(id: string, over: Partial<IntentGoalInput> = {}): IntentGoalInput {
   return {
     id, category: 'operational', name: `Goal ${id}`, description: 'd', horizon: '90d',
@@ -20,7 +29,7 @@ function baseState(over: Partial<IntentState> = {}): IntentState {
 
 describe('IntentService', () => {
   it('composes every projection from the injected reader', () => {
-    const svc = new IntentService({ readState: () => baseState() });
+    const svc = new IntentService({ scope, readState: () => baseState() });
     expect(svc.board().intents).toHaveLength(1);
     expect(svc.board().roleViews).toHaveLength(10);
     expect(svc.workspaces().workspaces).toHaveLength(1);
@@ -30,8 +39,7 @@ describe('IntentService', () => {
   it('memoizes the snapshot + projections and recomposes only after invalidate()', () => {
     const box = { value: baseState() };
     let reads = 0;
-    const svc = new IntentService({
-      readState: () => {
+    const svc = new IntentService({ scope, readState: () => {
         reads += 1;
         return box.value;
       },
@@ -52,8 +60,7 @@ describe('IntentService', () => {
   it('refreshes after the TTL even without invalidate() — fixes injected platform staleness', () => {
     let clock = 1_000;
     let reads = 0;
-    const svc = new IntentService({
-      readState: () => {
+    const svc = new IntentService({ scope, readState: () => {
         reads += 1;
         return baseState();
       },

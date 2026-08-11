@@ -8,6 +8,15 @@
 import { describe, expect, it } from 'vitest';
 import { initEnterpriseFederation, type EnterpriseFederationDeps } from './index';
 
+/**
+ * P13C ROUND 3 — the composed cache is now tenant-keyed, so this fixture names a
+ * tenant. A fixed scope preserves every existing TTL and memoization assertion:
+ * repeated reads under ONE tenant must still be one build, which is what these
+ * tests were written to protect.
+ */
+const TEST_SCOPE = { tenantId: 'org-test', workspaceId: 'ws-test' };
+const scope = (): typeof TEST_SCOPE => TEST_SCOPE;
+
 const T0 = Date.parse('2026-07-31T12:00:00.000Z');
 
 function mkDeps(): { deps: EnterpriseFederationDeps; tick: () => void } {
@@ -49,6 +58,7 @@ function mkDeps(): { deps: EnterpriseFederationDeps; tick: () => void } {
     topics: i % 4 === 0 ? ['sop'] : i % 4 === 1 ? ['policy'] : ['misc'],
   }));
   const deps: EnterpriseFederationDeps = {
+    scope,
     fedHome: () => ({ id: 'org-home', name: 'NeuroPause', regionId: 'us-east' }),
     fedPeers: () => peers,
     fedInvitations: () => peers.map((p) => ({ toOrg: p.id, fromOrg: 'org-home', direction: 'outbound', status: 'accepted' })),

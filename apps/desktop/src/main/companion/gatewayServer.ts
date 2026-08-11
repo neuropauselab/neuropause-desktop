@@ -47,6 +47,8 @@ import {
 import type { CompanionPairingQrDto, PlatformEvent } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { CompanionDeviceRecord, CompanionDeviceStore } from './deviceRegistryStore';
+import { principalForOwnedWork } from '../tenancy/backgroundFanOut';
+import { runAsPrincipal } from '../tenancy/backgroundPrincipal';
 
 const log = createLogger('companion-gateway');
 
@@ -253,8 +255,48 @@ export class CompanionGateway {
       return this.sealError(device, parsed.data.id, 'not-found', `Unknown op: ${parsed.data.op}`);
     }
     await this.deps.devices.touch(device.id, opened.seq, this.nowIso());
+
+    /**
+     * P13C ROUND 3 — THE OP RUNS AS THE DEVICE'S OWN TENANT.
+     *
+     * The push path got this right: `:418` refuses to send an event whose owner
+     * is not `device.boundTenantId`. The PULL path did not — it invoked the op
+     * with no principal, so every read resolved through the desktop's ambient
+     * `activeTenantScope()`.
+     *
+     * The attack that leaves: a phone paired while organization A was open stays
+     * bound to A. The desktop user later switches to B. The A-bound phone calls
+     * `dashboard.family`, `timeline.list`, `search.query` or `briefing.get` and
+     * receives B's records — over a socket bound to 0.0.0.0, which makes this
+     * external egress rather than a local disclosure. `approvals.act` makes it a
+     * cross-tenant WRITE.
+     *
+     * A device with no bound tenant is REFUSED rather than run ambiently. That
+     * is a pre-P13C pairing, and running it as whoever is currently signed in is
+     * precisely the guess this program does not make. Re-pairing restores it.
+     */
+    const boundTenantId = device.boundTenantId ?? null;
+    if (boundTenantId === null || boundTenantId === '') {
+      return this.sealError(
+        device,
+        parsed.data.id,
+        'not-signed-in',
+        'This device is not bound to an organization. Pair it again from the desktop.',
+      );
+    }
+    const principal = principalForOwnedWork({
+      jobId: `companion:${parsed.data.op}`,
+      tenantId: boundTenantId,
+      workspaceId: null,
+    });
+    if (principal === null) {
+      return this.sealError(device, parsed.data.id, 'not-signed-in', 'This device has no organization.');
+    }
+
     try {
-      const result = await op(parsed.data.params, { device, now: this.nowIso() });
+      const result = await runAsPrincipal(principal, async () =>
+        op(parsed.data.params, { device, now: this.nowIso() }),
+      );
       return { ok: true, envelope: this.sealResponse(device, okResponse(parsed.data.id, result)) };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Internal error.';

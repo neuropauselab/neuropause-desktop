@@ -34,7 +34,7 @@ export class SandboxScenarioStore extends PersistentStore<ScenarioFile> {
   private versionsByScenario = new Map<string, ScenarioVersion[]>();
 
   constructor(filePath: string, private readonly now: () => number = Date.now) {
-    super(filePath);
+    super(filePath, 'sandbox-scenarios');
   }
 
   protected snapshot(): ScenarioFile {

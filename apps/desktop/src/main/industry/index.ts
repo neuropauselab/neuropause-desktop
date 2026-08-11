@@ -23,6 +23,7 @@ import { IndustryPlatformService } from './industryService';
 import type { IndustryPlatformState } from './industryModel';
 import { withIndustryAuthz } from './industryAuthz';
 import { getCanonicalIndustrySnapshot } from './canonicalIndustryCatalog';
+import { activeTenantScope } from '../enterprise/index';
 
 const log = createLogger('industry-platform');
 
@@ -66,7 +67,7 @@ function readState(): IndustryPlatformState {
 }
 
 export function initIndustryPlatform(): IndustryPlatformSubsystem {
-  const service = new IndustryPlatformService({ readState });
+  const service = new IndustryPlatformService({ scope: activeTenantScope, readState });
 
   // Invalidate the memoized snapshot whenever a backing store changes (renderer liveness is already
   // served by the existing `ecosystem:event` broadcast the ecosystem subsystem emits).

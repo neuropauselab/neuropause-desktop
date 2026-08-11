@@ -48,7 +48,7 @@ export class OutcomeRevisionStore extends AppendOnlyJsonStore<OutcomeRevision> {
   private sequence = 0;
 
   constructor(filePath: string, now: () => string = () => new Date().toISOString()) {
-    super(filePath, MAX_REVISIONS, now);
+    super(filePath, MAX_REVISIONS, now, 'outcome-revisions');
   }
 
   /** Every revision of one outcome, newest first. */

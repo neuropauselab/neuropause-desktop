@@ -6,6 +6,15 @@ import { describe, expect, it } from 'vitest';
 import { GlobalOrchestrationService } from './orchestrationService';
 import type { OrchestrationState } from './orchestrationModel';
 
+/**
+ * P13C ROUND 3 — H-2. The memo is now keyed by tenant, so these tests must name
+ * one. A fixed scope keeps every existing memoization assertion meaningful:
+ * repeated reads under ONE tenant must still be O(1) cache hits, which is the
+ * property this file was written to protect and the fix must not cost.
+ */
+const TEST_SCOPE = { tenantId: 'org-test', workspaceId: 'ws-test' };
+const scope = (): typeof TEST_SCOPE => TEST_SCOPE;
+
 function baseState(over: Partial<OrchestrationState> = {}): OrchestrationState {
   return {
     generatedAt: '2026-07-16T00:00:00.000Z',
@@ -26,7 +35,7 @@ function baseState(over: Partial<OrchestrationState> = {}): OrchestrationState {
 
 describe('GlobalOrchestrationService', () => {
   it('composes every projection from the injected reader', () => {
-    const svc = new GlobalOrchestrationService({ readState: () => baseState() });
+    const svc = new GlobalOrchestrationService({ scope, readState: () => baseState() });
     expect(svc.overview().summary.orchestrators).toBe(9);
     expect(svc.goals().total).toBe(1);
     expect(svc.workforce().pools).toHaveLength(1);
@@ -40,8 +49,7 @@ describe('GlobalOrchestrationService', () => {
   it('memoizes the snapshot + projections and recomposes only after invalidate()', () => {
     const box = { value: baseState() };
     let reads = 0;
-    const svc = new GlobalOrchestrationService({
-      readState: () => {
+    const svc = new GlobalOrchestrationService({ scope, readState: () => {
         reads += 1;
         return box.value;
       },
@@ -61,8 +69,7 @@ describe('GlobalOrchestrationService', () => {
   it('refreshes after the TTL even without invalidate() — fixes injected strategy/cloud staleness', () => {
     let clock = 1_000;
     let reads = 0;
-    const svc = new GlobalOrchestrationService({
-      readState: () => {
+    const svc = new GlobalOrchestrationService({ scope, readState: () => {
         reads += 1;
         return baseState();
       },

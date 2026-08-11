@@ -35,6 +35,7 @@ import { ExperienceService } from './experienceService';
 import type { DecisionInput, ExperienceState, ModuleSummaryInput } from './experienceModel';
 import { valueBand, workforceBand } from './experienceModel';
 import { withExperienceAuthz } from './experienceAuthz';
+import { activeTenantScope } from '../enterprise/index';
 
 const log = createLogger('experience');
 
@@ -219,7 +220,7 @@ function buildState(deps: ExperienceDeps): ExperienceState {
 }
 
 export function initExperience(deps: ExperienceDeps): ExperienceSubsystem {
-  const service = new ExperienceService({ readState: () => buildState(deps) });
+  const service = new ExperienceService({ scope: activeTenantScope, readState: () => buildState(deps) });
 
   // Invalidate the memoized snapshot when a backing store changes; the injected report/strategy/ops/twin/
   // knowledge/commercial accessors refresh via the service TTL. Renderer liveness reuses `ecosystem:event`.

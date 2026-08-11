@@ -35,7 +35,7 @@ export class SandboxArtifactStore extends PersistentStore<ArtifactFile> {
   private artifacts = new Map<string, Artifact>();
 
   constructor(filePath: string, private readonly now: () => number = Date.now) {
-    super(filePath);
+    super(filePath, 'sandbox-artifacts');
   }
 
   protected snapshot(): ArtifactFile {

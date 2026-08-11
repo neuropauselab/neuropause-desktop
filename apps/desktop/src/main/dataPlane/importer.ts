@@ -26,6 +26,7 @@ import { envelopeStamp, readStoreFile } from '../storage/storeEnvelope';
 import { entityById } from './ontology';
 import type { ImportPlan, PlannedTable } from './planner';
 import type { PreparedRow } from './quality';
+import { registerTenantStore } from '../tenancy/tenantOwnedStore';
 
 export interface FieldProvenance {
   field: string;
@@ -757,7 +758,16 @@ export class ProvenanceStore {
   private writeChain: Promise<void> = Promise.resolve();
   private scopeSource: ProvenanceScopeSource | null = null;
 
-  constructor(private readonly filePath: string) {}
+  /**
+   * P13C ROUND 3 — PHASE 4. Declare this store to the startup gate.
+   *
+   * Found by the coverage scan in `tenantStoreRegistry.test.ts`, not by hand —
+   * this file is named `importer.ts`, so a `*Store.ts` sweep walks past it. That
+   * is the failure mode the scan exists for.
+   */
+  constructor(private readonly filePath: string) {
+    registerTenantStore('dataplane-provenance', () => this.hasScope());
+  }
 
   /** Bind the tenant boundary. Chainable. UNBOUND DENIES. */
   bindScope(source: ProvenanceScopeSource): this {

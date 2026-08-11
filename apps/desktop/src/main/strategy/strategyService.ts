@@ -25,8 +25,24 @@ import {
   buildStrategyOverview,
   type StrategyState,
 } from './strategyModel';
+import type { TenantScope } from '@neuropause/shared';
+import { TenantMemo } from '../tenancy/tenantMemo';
 
 export interface StrategyServiceDeps {
+  /**
+   * P13C ROUND 3 — H-2. THE TENANT BOUNDARY, AND IT IS REQUIRED.
+   *
+   * This service memoises a composed snapshot of tenant-derived data. The memo
+   * had no key, so a snapshot built while one organization was active was served
+   * to the next caller — including the next tenant's pass of a fanned-out
+   * background job, which announces no switch and therefore defeated the switch
+   * listener the sibling platforms rely on.
+   *
+   * Required rather than optional so a composition root that forgets it fails to
+   * COMPILE. That is a stronger gate than failing at startup, and strictly
+   * stronger than being caught by a later audit.
+   */
+  scope: () => TenantScope | null;
   /** Compose the strategy snapshot from the existing platform signals (injected → testable). */
   readState: () => StrategyState;
   /**
@@ -40,78 +56,70 @@ export interface StrategyServiceDeps {
   now?: () => number;
 }
 
-interface ProjectionMemo {
-  overview?: StrategyOverview;
-  goals?: GoalManager;
-  planning?: PlanningEngine;
-  reasoning?: ReasoningReport;
-  optimization?: OptimizationEngine;
-  simulation?: SimulationReport;
-  decisions?: DecisionQueue;
-}
 
 export class StrategyService {
-  private snapshot: StrategyState | null = null;
-  private snapshotAt = 0;
-  private memo: ProjectionMemo = {};
-  private readonly ttlMs: number;
-  private readonly now: () => number;
+  /**
+   * One tenant-keyed cell holding the snapshot AND its projections.
+   *
+   * The projections are inside the cell rather than beside it because they
+   * are derived from that snapshot: keeping the snapshot keyed while leaving
+   * the derived values in a separate object would leak exactly the composed,
+   * human-readable half — which is the half worth stealing.
+   */
+  private readonly cache: TenantMemo<StrategyState>;
 
   constructor(private readonly deps: StrategyServiceDeps) {
-    this.ttlMs = deps.ttlMs ?? 3000;
-    this.now = deps.now ?? Date.now;
+    this.cache = new TenantMemo<StrategyState>('strategy-projections', {
+      ttlMs: deps.ttlMs ?? 3000,
+      ...(deps.now ? { now: deps.now } : {}),
+    }).bindScope(deps.scope);
   }
 
   /** Drop the memoized snapshot AND projections; the next read recomposes from the sources. */
   invalidate(): void {
-    this.snapshot = null;
-    this.memo = {};
+    this.cache.invalidate();
   }
 
   private state(): StrategyState {
-    const t = this.now();
-    if (!this.snapshot || t - this.snapshotAt >= this.ttlMs) {
-      this.snapshot = this.deps.readState();
-      this.snapshotAt = t;
-      this.memo = {};
-    }
-    return this.snapshot;
+    return this.cache.state(() => this.deps.readState());
   }
 
-  // NOTE: `this.state()` MUST be resolved on its own line before the `??=` — `state()` may reset
-  // `this.memo` on first read, and `a.b ??= f()` captures the base object BEFORE evaluating `f()`.
+  // The projection name is the memo key, and it lives INSIDE the tenant-keyed cell
+  // established by `state()`. Resolving `state()` on its own line first is what puts
+  // the right cell in place; it also removes the `??=` base-object footgun this
+  // comment used to warn about, because there is no longer an object to capture.
   overview(): StrategyOverview {
     const s = this.state();
-    return (this.memo.overview ??= buildStrategyOverview(s));
+    return this.cache.projection('overview', () => buildStrategyOverview(s));
   }
 
   goals(): GoalManager {
     const s = this.state();
-    return (this.memo.goals ??= buildGoalManager(s));
+    return this.cache.projection('goals', () => buildGoalManager(s));
   }
 
   planning(): PlanningEngine {
     const s = this.state();
-    return (this.memo.planning ??= buildPlanningEngine(s));
+    return this.cache.projection('planning', () => buildPlanningEngine(s));
   }
 
   reasoning(): ReasoningReport {
     const s = this.state();
-    return (this.memo.reasoning ??= buildReasoningReport(s));
+    return this.cache.projection('reasoning', () => buildReasoningReport(s));
   }
 
   optimization(): OptimizationEngine {
     const s = this.state();
-    return (this.memo.optimization ??= buildOptimizationEngine(s));
+    return this.cache.projection('optimization', () => buildOptimizationEngine(s));
   }
 
   simulation(): SimulationReport {
     const s = this.state();
-    return (this.memo.simulation ??= buildSimulationReport(s));
+    return this.cache.projection('simulation', () => buildSimulationReport(s));
   }
 
   decisions(): DecisionQueue {
     const s = this.state();
-    return (this.memo.decisions ??= buildDecisionQueue(s));
+    return this.cache.projection('decisions', () => buildDecisionQueue(s));
   }
 }

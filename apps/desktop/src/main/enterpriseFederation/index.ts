@@ -50,6 +50,8 @@ import { buildSharedKnowledge } from './sharedKnowledge';
 import { buildSharedOperations } from './sharedOperations';
 import { buildSharedStrategy } from './sharedStrategy';
 import { buildTrustReport } from './trustModel';
+import { TenantMemo } from '../tenancy/tenantMemo';
+import type { TenantScope } from '@neuropause/shared';
 
 const log = createLogger('enterprise-federation');
 
@@ -58,6 +60,17 @@ const BUILD_TTL_MS = 3_000;
 /* ── deps (every read injected; all sync — Stage 11 composes, never fetches) ─ */
 
 export interface EnterpriseFederationDeps {
+  /**
+   * P13C ROUND 3 — the tenant boundary for this subsystem's composed cache.
+   *
+   * INJECTED, not imported. `enterprise/index` reaches `app.getPath`, so
+   * importing `activeTenantScope` here would drag Electron into a pure-model
+   * node test — a trap this program has now fallen into three times. The
+   * composition root passes the same resolver every store reads.
+   *
+   * Required, so a root that forgets it fails to compile.
+   */
+  scope: () => TenantScope | null;
   /** P9-S2 federation runtime records. */
   fedHome: () => { id: string; name: string; regionId: string } | null;
   fedPeers: () => {
@@ -173,11 +186,30 @@ function pick(failures: Record<string, string>, systems: readonly string[]): Rec
 
 export function initEnterpriseFederation(deps: EnterpriseFederationDeps): EnterpriseFederationSubsystem {
   const now = deps.now ?? ((): number => Date.now());
-  let cache: BuildArtifacts | null = null;
+  /**
+   * P13C ROUND 3 — found by the sweep, in the ONE subsystem of eight that was
+   * missed.
+   *
+   * This was `let cache: BuildArtifacts | null` behind a 3s TTL, cleared only in
+   * `dispose()`. Seven sibling subsystems with the identical shape all register
+   * an `onWorkspaceSwitch` flush; this one never did, so a composed model of
+   * peers, trusts, shares, exchange artifacts, governance audit, knowledge
+   * assets, connectors, workers and executive KPIs survived an organization
+   * switch — and the renderer's reload after a switch lands inside 3s.
+   *
+   * Keyed rather than given the missing listener, because the listener is what
+   * the other seven have and it does not cover the background fan-out. A key
+   * covers both.
+   */
+  const memo = new TenantMemo<BuildArtifacts>('enterprise-federation-model', {
+    ttlMs: BUILD_TTL_MS,
+    now,
+  }).bindScope(deps.scope);
 
-  const build = (): BuildArtifacts => {
+  const build = (): BuildArtifacts => memo.state(compose);
+
+  const compose = (): BuildArtifacts => {
     const nowMs = now();
-    if (cache && nowMs - cache.at < BUILD_TTL_MS) return cache;
     const nowIso = new Date(nowMs).toISOString();
     const failures: Record<string, string> = {};
 
@@ -290,8 +322,7 @@ export function initEnterpriseFederation(deps: EnterpriseFederationDeps): Enterp
     }
     const board = composeFederationBoardReport(dashInputs);
 
-    cache = { at: nowMs, nowIso, partners, trust, exchange, sharing, dashboard, board };
-    return cache;
+    return { at: nowMs, nowIso, partners, trust, exchange, sharing, dashboard, board };
   };
 
   /* ── the assistant port (ten questions; sync; same composed pass) ────────── */
@@ -404,7 +435,7 @@ export function initEnterpriseFederation(deps: EnterpriseFederationDeps): Enterp
     boardReport: () => build().board,
     answerQuestion,
     dispose: () => {
-      cache = null;
+      memo.invalidate();
     },
   };
 }

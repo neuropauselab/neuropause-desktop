@@ -45,6 +45,20 @@ import { RUNTIME_INVOKABLE_CHANNELS } from '@neuropause/shared';
  * in the shared union — nothing here mints a new scope.
  */
 export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, EnterprisePermission>> = {
+  /**
+   * P13C ROUND 3 — feedback came OFF the public allowlist.
+   *
+   * `feedback:list` and `feedback:export` returned every organization's
+   * free-text feedback with no auth and no permission; `feedback:exportToFile`
+   * wrote it to an arbitrary path, and `feedback:clear` destroyed all of it.
+   * The store is now tenant-owned, and these are the gates that stop an
+   * unauthenticated renderer message reaching it at all.
+   */
+  [IpcChannel.FeedbackSubmit]: 'dashboard:read',
+  [IpcChannel.FeedbackList]: 'dashboard:read',
+  [IpcChannel.FeedbackExport]: 'dashboard:read',
+  [IpcChannel.FeedbackClear]: 'org:manage',
+  [IpcChannel.FeedbackExportToFile]: 'org:manage',
   /* ── Phase 6 — Universal Enterprise Data Plane ──────────────────────────
    * Three escalating scopes, deliberately separable so segregation of duties
    * is expressible: reading an analysis (`data:read`) is not the right to write
@@ -551,11 +565,6 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   IpcChannel.NotificationsMarkRead,
   IpcChannel.NotificationsPrefsGet,
   IpcChannel.NotificationsPrefsSet,
-  IpcChannel.FeedbackSubmit,
-  IpcChannel.FeedbackList,
-  IpcChannel.FeedbackExport,
-  IpcChannel.FeedbackClear,
-  IpcChannel.FeedbackExportToFile,
   IpcChannel.PilotStatus,
   IpcChannel.PilotSetEnabled,
   IpcChannel.UpdateGetStatus,

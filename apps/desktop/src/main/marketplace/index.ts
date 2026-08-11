@@ -41,6 +41,7 @@ import { verifyManifest } from '../ecosystem/marketplace/pipeline';
 import { orgPolicyStore } from './instance';
 import { publisherTier, publisherTrust, type EntryInput } from './marketplaceModel';
 import { MarketplaceService, type CatalogSource, type ListingMeta } from './marketplaceService';
+import { TenantMemo } from '../tenancy/tenantMemo';
 
 const log = createLogger('marketplace');
 
@@ -196,11 +197,27 @@ export async function initMarketplace(deps: MarketplaceSubsystemDeps): Promise<M
 
   // Memoize the composed catalog snapshot; rebuild only when a backing store changes, so
   // reads are O(1) cache hits (a 100k-listing catalog composes once per change, not per call).
-  let snapshot: CatalogSource | null = null;
-  const source = (): CatalogSource => {
-    if (!snapshot) snapshot = buildSource();
-    return snapshot;
-  };
+  /**
+   * P13C ROUND 3 — found by the sweep. KEYED BY TENANT, and it had NO TTL.
+   *
+   * `buildSource()` reads `activeTenantScope()` and fills each listing's install
+   * badge from `installsStore.forOrg(orgId)`. The read was scoped — the earlier
+   * remediation is documented directly above — and the MEMO over it was left
+   * keyless with no expiry and invalidation only on a store 'changed' event.
+   *
+   * A tenant switch fires none of those events. So the first organization to
+   * open the marketplace fixed the snapshot for every organization afterwards,
+   * indefinitely: tenant B saw which applications tenant A had installed and
+   * whether each was disabled. Not a three-second race — persistent until a
+   * listing or installation changed.
+   *
+   * The long TTL is deliberate: composition is expensive and the store events
+   * remain the real freshness signal. The KEY is what makes it safe.
+   */
+  const memo = new TenantMemo<CatalogSource>('marketplace-catalog-snapshot', {
+    ttlMs: 5 * 60 * 1000,
+  }).bindScope(activeTenantScope);
+  const source = (): CatalogSource => memo.state(buildSource);
   const service = new MarketplaceService({
     source,
     policy: orgPolicyStore,
@@ -209,7 +226,7 @@ export async function initMarketplace(deps: MarketplaceSubsystemDeps): Promise<M
   });
 
   const onChange = (): void => {
-    snapshot = null; // invalidate → next read recomposes
+    memo.invalidate(); // invalidate → next read recomposes, per tenant
     deps.broadcast(IpcChannel.MarketplaceEventBroadcast, { at: Date.now() });
   };
   marketplaceStore.on('changed', onChange);

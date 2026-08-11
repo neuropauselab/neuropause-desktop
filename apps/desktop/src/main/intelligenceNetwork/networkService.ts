@@ -27,8 +27,24 @@ import {
   buildIntelNetworkTrust,
   type IntelNetworkState,
 } from './networkModel';
+import type { TenantScope } from '@neuropause/shared';
+import { TenantMemo } from '../tenancy/tenantMemo';
 
 export interface EnterpriseIntelligenceNetworkServiceDeps {
+  /**
+   * P13C ROUND 3 — H-2. THE TENANT BOUNDARY, AND IT IS REQUIRED.
+   *
+   * This service memoises a composed snapshot of tenant-derived data. The memo
+   * had no key, so a snapshot built while one organization was active was served
+   * to the next caller — including the next tenant's pass of a fanned-out
+   * background job, which announces no switch and therefore defeated the switch
+   * listener the sibling platforms rely on.
+   *
+   * Required rather than optional so a composition root that forgets it fails to
+   * COMPILE. That is a stronger gate than failing at startup, and strictly
+   * stronger than being caught by a later audit.
+   */
+  scope: () => TenantScope | null;
   /** Compose the sanitized network snapshot from the existing platform signals (injected → testable). */
   readState: () => IntelNetworkState;
   /**
@@ -41,84 +57,75 @@ export interface EnterpriseIntelligenceNetworkServiceDeps {
   now?: () => number;
 }
 
-interface ProjectionMemo {
-  overview?: IntelNetworkOverview;
-  exchange?: IntelNetworkExchange;
-  benchmarks?: IntelNetworkBenchmarks;
-  insights?: IntelNetworkInsights;
-  trust?: IntelNetworkTrust;
-  organizations?: IntelNetworkOrganizations;
-  collective?: IntelNetworkCollective;
-  governance?: IntelNetworkGovernance;
-}
 
 export class EnterpriseIntelligenceNetworkService {
-  private snapshot: IntelNetworkState | null = null;
-  private snapshotAt = 0;
-  private memo: ProjectionMemo = {};
-  private readonly ttlMs: number;
-  private readonly now: () => number;
+  /**
+   * One tenant-keyed cell holding the snapshot AND its projections.
+   *
+   * The projections are inside the cell rather than beside it because they
+   * are derived from that snapshot: keeping the snapshot keyed while leaving
+   * the derived values in a separate object would leak exactly the composed,
+   * human-readable half — which is the half worth stealing.
+   */
+  private readonly cache: TenantMemo<IntelNetworkState>;
 
   constructor(private readonly deps: EnterpriseIntelligenceNetworkServiceDeps) {
-    this.ttlMs = deps.ttlMs ?? 3000;
-    this.now = deps.now ?? Date.now;
+    this.cache = new TenantMemo<IntelNetworkState>('intelligence-network-projections', {
+      ttlMs: deps.ttlMs ?? 3000,
+      ...(deps.now ? { now: deps.now } : {}),
+    }).bindScope(deps.scope);
   }
 
   /** Drop the memoized snapshot AND projections; the next read recomposes from the sources. */
   invalidate(): void {
-    this.snapshot = null;
-    this.memo = {};
+    this.cache.invalidate();
   }
 
   private state(): IntelNetworkState {
-    const t = this.now();
-    if (!this.snapshot || t - this.snapshotAt >= this.ttlMs) {
-      this.snapshot = this.deps.readState();
-      this.snapshotAt = t;
-      this.memo = {};
-    }
-    return this.snapshot;
+    return this.cache.state(() => this.deps.readState());
   }
 
-  // NOTE: `this.state()` MUST be resolved on its own line before the `??=` — `state()` may reset the
-  // memo, and `a.b ??= f()` captures the base object BEFORE evaluating `f()`.
+  // The projection name is the memo key, and it lives INSIDE the tenant-keyed cell
+  // established by `state()`. Resolving `state()` on its own line first is what puts
+  // the right cell in place; it also removes the `??=` base-object footgun this
+  // comment used to warn about, because there is no longer an object to capture.
   overview(): IntelNetworkOverview {
     const s = this.state();
-    return (this.memo.overview ??= buildIntelNetworkOverview(s));
+    return this.cache.projection('overview', () => buildIntelNetworkOverview(s));
   }
 
   exchange(): IntelNetworkExchange {
     const s = this.state();
-    return (this.memo.exchange ??= buildIntelNetworkExchange(s));
+    return this.cache.projection('exchange', () => buildIntelNetworkExchange(s));
   }
 
   benchmarks(): IntelNetworkBenchmarks {
     const s = this.state();
-    return (this.memo.benchmarks ??= buildIntelNetworkBenchmarks(s));
+    return this.cache.projection('benchmarks', () => buildIntelNetworkBenchmarks(s));
   }
 
   insights(): IntelNetworkInsights {
     const s = this.state();
-    return (this.memo.insights ??= buildIntelNetworkInsights(s));
+    return this.cache.projection('insights', () => buildIntelNetworkInsights(s));
   }
 
   trust(): IntelNetworkTrust {
     const s = this.state();
-    return (this.memo.trust ??= buildIntelNetworkTrust(s));
+    return this.cache.projection('trust', () => buildIntelNetworkTrust(s));
   }
 
   organizations(): IntelNetworkOrganizations {
     const s = this.state();
-    return (this.memo.organizations ??= buildIntelNetworkOrganizations(s));
+    return this.cache.projection('organizations', () => buildIntelNetworkOrganizations(s));
   }
 
   collective(): IntelNetworkCollective {
     const s = this.state();
-    return (this.memo.collective ??= buildIntelNetworkCollective(s));
+    return this.cache.projection('collective', () => buildIntelNetworkCollective(s));
   }
 
   governance(): IntelNetworkGovernance {
     const s = this.state();
-    return (this.memo.governance ??= buildIntelNetworkGovernance(s));
+    return this.cache.projection('governance', () => buildIntelNetworkGovernance(s));
   }
 }

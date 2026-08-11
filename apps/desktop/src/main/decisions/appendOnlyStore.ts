@@ -19,6 +19,7 @@ import { promises as fs } from 'node:fs';
 import type { TenantScope } from '@neuropause/shared';
 import { ownershipOf, recordInScope } from '@neuropause/shared';
 import { readStoreFile, envelopeStamp } from '../storage/storeEnvelope';
+import { registerTenantStore } from '../tenancy/tenantOwnedStore';
 
 /**
  * A process-wide fallback scope, for TESTS ONLY. Mirrors the one on
@@ -82,11 +83,21 @@ export abstract class AppendOnlyJsonStore<T extends ScopedRecord> {
   private dirty = false;
   private lastPersist: Promise<void> = Promise.resolve();
 
+  /**
+   * P13C ROUND 3 — PHASE 4. Register with the startup gate.
+   *
+   * On the base for the same reason the seam is: five stores share this class,
+   * and a sixth added later inherits the registration instead of needing to
+   * remember it.
+   */
   protected constructor(
     private readonly filePath: string,
     private readonly cap: number,
     protected readonly now: () => string,
-  ) {}
+    tenantStoreName: string,
+  ) {
+    registerTenantStore(tenantStoreName, () => this.hasScope());
+  }
 
   /**
    * Bind the tenant boundary. Chainable, so a store can be constructed and

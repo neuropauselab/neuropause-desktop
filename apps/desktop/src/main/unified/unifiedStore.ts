@@ -19,6 +19,7 @@ import type {
 import { ownershipOf, recordInScope } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import { LocalSearchBackend, type SearchBackend } from './searchBackend';
+import { registerTenantStore } from '../tenancy/tenantOwnedStore';
 
 const log = createLogger('unified-store');
 
@@ -72,6 +73,12 @@ export class UnifiedStore extends EventEmitter {
 
   constructor(private readonly filePath: string) {
     super();
+    /**
+     * P13C ROUND 3 — PHASE 4. Declare this store to the startup gate. The seam
+     * below predates the registry, so the gate could not see it: an unbound
+     * instance denied every read (correct) and shipped silently (not correct).
+     */
+    registerTenantStore('unified-entities', () => this.hasScope());
   }
 
   /**

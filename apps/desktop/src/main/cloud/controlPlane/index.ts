@@ -27,6 +27,7 @@ import { drStore } from '../../federation/dr/drInstance';
 import { ControlPlaneService } from './controlPlaneService';
 import type { ControlPlaneState } from './controlPlaneModel';
 import { withCloudAuthz } from './cloudAuthz';
+import { activeTenantScope } from '../../enterprise/index';
 
 const log = createLogger('control-plane');
 
@@ -64,7 +65,7 @@ function readState(): ControlPlaneState {
 }
 
 export function initControlPlane(): ControlPlaneSubsystem {
-  const service = new ControlPlaneService({ readState });
+  const service = new ControlPlaneService({ scope: activeTenantScope, readState });
 
   // Invalidate the memoized snapshot whenever a backing store changes (renderer liveness is
   // already served by the existing `cloud:event` / `fed:event` broadcasts those subsystems emit).

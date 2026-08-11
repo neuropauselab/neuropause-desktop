@@ -17,7 +17,7 @@ export class BenchmarkStore extends PersistentStore<BenchmarkFile> {
   private records: BenchmarkRecord[] = [];
 
   constructor(filePath: string, private readonly now: () => number = Date.now) {
-    super(filePath);
+    super(filePath, 'sandbox-benchmarks');
   }
 
   protected snapshot(): BenchmarkFile {

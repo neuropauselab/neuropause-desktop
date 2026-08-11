@@ -11,6 +11,7 @@ import { EventEmitter } from 'node:events';
 import { promises as fs } from 'node:fs';
 import { dirname } from 'node:path';
 import type { TenantScope } from '@neuropause/shared';
+import { registerTenantStore } from '../tenancy/tenantOwnedStore';
 
 /** Anything the sandbox persists. `tenantId` absent ⇒ unresolved ⇒ nobody's. */
 export interface SandboxOwned {
@@ -23,8 +24,21 @@ export abstract class PersistentStore<F> extends EventEmitter {
   private dirty = false;
   private lastPersist: Promise<void> = Promise.resolve();
 
-  constructor(protected readonly filePath: string) {
+  /**
+   * P13C ROUND 3 — PHASE 4. The base REGISTERS with the startup gate.
+   *
+   * On the base, so a SIXTH sandbox store cannot be added unregistered: it
+   * inherits the seam and the registration together, and the only thing its
+   * author must supply is a name. Two of these stores — validation runs and
+   * benchmarks — previously shipped UNBOUND and were caught by a hand-rolled
+   * boot check in `sandbox/index.ts`. This makes that check the general rule.
+   */
+  constructor(
+    protected readonly filePath: string,
+    tenantStoreName: string,
+  ) {
     super();
+    registerTenantStore(tenantStoreName, () => this.hasScope());
   }
 
   /* ── P13C N3: the tenant boundary ──────────────────────────────────────

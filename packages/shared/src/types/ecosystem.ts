@@ -72,6 +72,13 @@ export interface DeveloperAccount {
 export interface ApiKey {
   id: string;
   developerId: string;
+  /**
+   * P13C ROUND 3 — H-3. The organization this record belongs to.
+   *
+   * Optional because rows written before this round have no owner, and an
+   * unowned row is visible to NOBODY rather than being guessed into a tenant.
+   */
+  tenantId?: string | null;
   name: string;
   /** Public, non-secret identifying prefix, e.g. `npk_live_a1b2c3`. */
   prefix: string;
@@ -94,6 +101,13 @@ export type OAuthGrantType = 'authorization_code' | 'client_credentials' | 'refr
 export interface OAuthApplication {
   id: string;
   developerId: string;
+  /**
+   * P13C ROUND 3 — H-3. The organization this record belongs to.
+   *
+   * Optional because rows written before this round have no owner, and an
+   * unowned row is visible to NOBODY rather than being guessed into a tenant.
+   */
+  tenantId?: string | null;
   name: string;
   clientId: string;
   secretLast4: string;
@@ -111,6 +125,13 @@ export interface OAuthApplicationWithSecret {
 export interface UsageRecord {
   id: string;
   developerId: string;
+  /**
+   * P13C ROUND 3 — H-3. The organization this record belongs to.
+   *
+   * Optional because rows written before this round have no owner, and an
+   * unowned row is visible to NOBODY rather than being guessed into a tenant.
+   */
+  tenantId?: string | null;
   apiKeyId: string | null;
   at: string;
   method: string;
@@ -339,6 +360,13 @@ export interface GatewayDecision {
 export interface GatewayAuditEntry {
   id: string;
   at: string;
+  /**
+   * P13C ROUND 3 — H-3. The organization this record belongs to.
+   *
+   * Optional because rows written before this round have no owner, and an
+   * unowned row is visible to NOBODY rather than being guessed into a tenant.
+   */
+  tenantId?: string | null;
   keyId: string | null;
   developerId: string | null;
   method: string;
@@ -398,6 +426,13 @@ export interface Subscription {
 
 export interface SeatAssignment {
   id: string;
+  /**
+   * P13C ROUND 3 — H-3. The organization this record belongs to.
+   *
+   * Optional because rows written before this round have no owner, and an
+   * unowned row is visible to NOBODY rather than being guessed into a tenant.
+   */
+  tenantId?: string | null;
   userId: string;
   userName: string;
   assignedAt: string;

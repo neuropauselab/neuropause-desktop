@@ -90,7 +90,7 @@ const MAX_RECORDS = 2_000;
 
 export class DecisionRecordStore extends AppendOnlyJsonStore<DecisionRecord> {
   constructor(filePath: string, now: () => string = () => new Date().toISOString()) {
-    super(filePath, MAX_RECORDS, now);
+    super(filePath, MAX_RECORDS, now, 'decision-records');
   }
 
   record(input: Omit<DecisionRecord, 'id' | 'at'> & { actor?: string | null }): DecisionRecord {

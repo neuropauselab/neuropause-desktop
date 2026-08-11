@@ -258,11 +258,15 @@ import {
 } from './modules/maintenance/maintenanceInstances';
 import { executiveDecisionModule } from './modules/executive/executiveDecisionInstance';
 import { executionProposalModule } from './modules/executive/executionProposalInstance';
-import { getProcessExplorerModel, getProcessCaseDetail } from './processMiningProvider';
+import {
+  getProcessExplorerModel,
+  getProcessCaseDetail,
+  bindProcessMiningScope,
+} from './processMiningProvider';
 import { getScheduleExploreModel } from './scheduleExploreProvider';
 import { getExecutionConsoleModel } from './executionConsoleProvider';
-import { getRelationshipModel } from './relationshipProvider';
-import { getTrustModel } from './trustProvider';
+import { getRelationshipModel, bindRelationshipModelScope } from './relationshipProvider';
+import { getTrustModel, bindTrustModelScope } from './trustProvider';
 import { buildEnterpriseContext, type ContextEngineDeps } from './contextEngine';
 import { graphStore } from '../graph/graphInstance';
 import { memoryStore } from '../memory/memoryInstance';
@@ -521,6 +525,20 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
    * pass it answers for that tenant.
    */
   bindOrgIntelligenceScope(activeTenantScope);
+
+  /**
+   * P13C ROUND 3 — H-1 and H-2. Bind the three composed-model caches.
+   *
+   * All three memoise a snapshot fanned out across dozens of tenant-scoped
+   * stores and held in a module-level variable. Process mining was keyed by a
+   * record-count signature, which two tenants can trivially match; trust and
+   * relationship were keyed by nothing at all and relied on a 2.5s TTL plus a
+   * switch listener. None of those is a tenant boundary. Bound to the same
+   * resolver every store reads, so the cell now carries an owner.
+   */
+  bindProcessMiningScope(activeTenantScope);
+  bindTrustModelScope(activeTenantScope);
+  bindRelationshipModelScope(activeTenantScope);
 
   const syncWorkers = (): void => {
     const refs = workerRegistry.summaries().map((w) => ({ id: w.id, name: w.name, role: w.role }));
