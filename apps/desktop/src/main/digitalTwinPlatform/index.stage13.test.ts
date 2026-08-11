@@ -64,6 +64,14 @@ import {
 import { ETWIN_QUESTION_KEYS } from '@neuropause/shared';
 import { initDigitalTwinPlatform, type EtwinPlatformDeps, type EtwinPlatformSubsystem } from './index';
 
+/**
+ * P13C ROUND 5 — the composed cache is tenant-keyed, so these suites name a
+ * tenant. Every existing TTL and memoization assertion keeps its meaning:
+ * repeated reads under ONE tenant must still be a single composition.
+ */
+const PLATFORM_SCOPE = { tenantId: 'org-test', workspaceId: 'ws-test' };
+const scope = (): typeof PLATFORM_SCOPE => PLATFORM_SCOPE;
+
 const T0 = Date.parse('2026-08-01T09:00:00.000Z');
 const T0_ISO = '2026-08-01T09:00:00.000Z';
 
@@ -242,6 +250,7 @@ function mkDeps(over: Partial<EtwinPlatformDeps> = {}): Harness {
   // The build counter wraps the merged read, so an override is still counted.
   const counted = base.twinSummary;
   const deps: EtwinPlatformDeps = {
+  scope,
     ...base,
     twinSummary: () => {
       builds += 1;
@@ -719,7 +728,11 @@ const FAILURE_MAP: [keyof EtwinPlatformDeps, string, ViewName[]][] = [
 
 describe('failure isolation — explicit unavailability, never a fabricated value', () => {
   it('covers EVERY injected read — a read missing from this table is an untested failure path', () => {
-    const injected = Object.keys(mkDeps().deps).filter((k) => k !== 'registerSource' && k !== 'now');
+    // `scope` joins `now` and `registerSource` as a dep that is not a READ —
+    // it resolves the caller's tenant, so there is no upstream to fail.
+    const injected = Object.keys(mkDeps().deps).filter(
+      (k) => k !== 'registerSource' && k !== 'now' && k !== 'scope',
+    );
     expect(FAILURE_MAP).toHaveLength(21);
     expect(FAILURE_MAP.map(([dep]) => dep).sort()).toEqual(injected.sort());
   });

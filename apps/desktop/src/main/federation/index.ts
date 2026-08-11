@@ -30,6 +30,7 @@ import {
   FedSetScopeRequest,
   FedAddPolicyRequest,
   FedSetPolicyEnabledRequest,
+  FedPolicyMigrationRequest,
   FedResolveApprovalRequest,
   FedRecordActionRequest,
   FedCreateBackupRequest,
@@ -387,6 +388,51 @@ function buildHandlers(): SecureHandlerDef[] {
         const r = p as FedSetPolicyEnabledRequest;
         return globalGovStore.setPolicyEnabled(r.id, r.enabled) ?? { error: 'Policy not found.' };
       },
+    },
+    /**
+     * P13C ROUND 5 — F6. The quarantine surface.
+     *
+     * Legacy governance policies carry no owner and cannot be safely attributed
+     * from the data, so they are retained in a `migration_required` state and
+     * governance evaluation fails closed while any exist. These three channels
+     * are how a human resolves that: see how many there are, claim one (which
+     * can only constrain the claimer), or discard it.
+     *
+     * The STATUS channel returns a COUNT and not a listing — the rows may name
+     * another organization's actions, and the point is to make their existence
+     * undeniable rather than to disclose their contents.
+     */
+    {
+      channel: IpcChannel.FedPolicyMigrationStatus,
+      schema: EmptyRequest,
+      handler: () => ({ migrationRequired: globalGovStore.migrationRequiredCount() }),
+    },
+    {
+      channel: IpcChannel.FedQuarantinedPolicies,
+      schema: EmptyRequest,
+      handler: () => globalGovStore.quarantinedPolicies(),
+    },
+    {
+      channel: IpcChannel.FedClaimPolicy,
+      schema: FedPolicyMigrationRequest,
+      audit: true,
+      /**
+       * Returns whether it worked, NOT the policy.
+       *
+       * The first version returned the full `FedPolicy` — name, description,
+       * action — from a channel the design comment two files away said would
+       * only ever expose a count. The contents belong on the administrator
+       * listing above and nowhere else.
+       */
+      handler: (p) => ({
+        claimed: globalGovStore.claimPolicy((p as FedPolicyMigrationRequest).id) !== null,
+      }),
+    },
+    {
+      channel: IpcChannel.FedDiscardPolicy,
+      schema: FedPolicyMigrationRequest,
+      audit: true,
+      handler: (p) => ({ discarded: globalGovStore.discardPolicy((p as FedPolicyMigrationRequest).id) }),
     },
     {
       channel: IpcChannel.FedResolveApproval,

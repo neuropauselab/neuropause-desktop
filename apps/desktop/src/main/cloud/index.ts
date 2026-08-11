@@ -97,9 +97,32 @@ const REGION_RESIDENCY = Object.fromEntries(
  * which is the same rule `EnterpriseWorkspaceCreate` follows and, unlike an
  * added membership check, leaves no parameter to get wrong later.
  */
-function callerTenantId(): string {
-  return activeTenantScope()?.tenantId ?? '';
+/**
+ * P13C ROUND 5 — F10. THIS RETURNED THE WRONG ID SPACE.
+ *
+ * It returns the ORGANIZATION id (`org_…`), and every call site below passed it
+ * into `TenancyStore`, which keys cloud tenants as `tnt_…`. The two never
+ * intersect, so `listProjects`, `listTeams`, `listWorkers` always returned `[]`
+ * and `createProject`/`createTeam`/`setTenantStatus` always failed.
+ *
+ * Fail-closed, so nothing broke visibly — and dead code, so **the isolation
+ * these call sites appear to enforce has never actually run**. A test asserting
+ * "B cannot read A's project" passed because nobody could read any project.
+ *
+ * `CloudTenant.organizationId` is the mapping and was already on the record.
+ * This now resolves through it, so the cloud tenant id is the caller's real one.
+ */
+function callerCloudTenantId(): string {
+  return tenancyStore.homeTenantForCaller()?.id ?? '';
 }
+
+/**
+ * NOTE: there is deliberately no `callerTenantId()` any more.
+ *
+ * It returned an organization id under a name that every call site read as a
+ * cloud tenant id, which is how F10 happened. The org-keyed surfaces in this
+ * file read `activeTenantScope()` directly, where the id space is unambiguous.
+ */
 
 function homeUsersForAdmin(): AdminUserInput[] {
   const scope = activeTenantScope();
@@ -138,6 +161,12 @@ function buildAdminInput(): AdminInput {
 }
 
 export async function initCloud(deps: CloudDeps): Promise<CloudSubsystem> {
+  /**
+   * P13C ROUND 5 — F10. Bind before load: `load()` seeds the home tenant row,
+   * and that row is what the organization → cloud-tenant mapping resolves
+   * through.
+   */
+  tenancyStore.bindScope(activeTenantScope);
   await tenancyStore.load();
   const home = tenancyStore.homeTenant();
   const homeId = home?.id ?? '';
@@ -209,7 +238,7 @@ function buildHandlers(): SecureHandlerDef[] {
         const r = p as CloudSetTenantStatusRequest;
         // Suspending or reactivating a tenant is the most consequential write
         // on this surface; it may only be applied to the caller's own.
-        if (r.tenantId !== callerTenantId() || callerTenantId() === '') {
+        if (r.tenantId !== callerCloudTenantId() || callerCloudTenantId() === '') {
           return { error: 'Tenant not found or is the home tenant.' };
         }
         const result = tenancyStore.setTenantStatus(r.tenantId, r.status);
@@ -219,7 +248,7 @@ function buildHandlers(): SecureHandlerDef[] {
     {
       channel: IpcChannel.CloudProjects,
       schema: CloudProjectsRequest,
-      handler: () => tenancyStore.listProjects(callerTenantId()),
+      handler: () => tenancyStore.listProjects(callerCloudTenantId()),
     },
     {
       channel: IpcChannel.CloudCreateProject,
@@ -230,7 +259,7 @@ function buildHandlers(): SecureHandlerDef[] {
           tenancyStore.createProject({
             // The caller's tenant, never `r.tenantId` — the payload could name
             // any tenant and the store only checked that it existed.
-            tenantId: callerTenantId(),
+            tenantId: callerCloudTenantId(),
             name: r.name,
             description: r.description,
           }) ?? { error: 'Tenant not found.' }
@@ -244,7 +273,7 @@ function buildHandlers(): SecureHandlerDef[] {
         // `deleteProject(id)` takes a bare id, so ownership is resolved here:
         // the id must appear in the caller's OWN project list.
         const id = (p as { id: string }).id;
-        const mine = tenancyStore.listProjects(callerTenantId()).some((x) => x.id === id);
+        const mine = tenancyStore.listProjects(callerCloudTenantId()).some((x) => x.id === id);
         if (!mine) return { deleted: false };
         return { deleted: tenancyStore.deleteProject(id) };
       },
@@ -252,7 +281,7 @@ function buildHandlers(): SecureHandlerDef[] {
     {
       channel: IpcChannel.CloudTeams,
       schema: CloudTeamsRequest,
-      handler: () => tenancyStore.listTeams(callerTenantId()),
+      handler: () => tenancyStore.listTeams(callerCloudTenantId()),
     },
     {
       channel: IpcChannel.CloudCreateTeam,
@@ -260,7 +289,7 @@ function buildHandlers(): SecureHandlerDef[] {
       handler: (p) => {
         const r = p as CloudCreateTeamRequest;
         return (
-          tenancyStore.createTeam({ tenantId: callerTenantId(), name: r.name }) ?? {
+          tenancyStore.createTeam({ tenantId: callerCloudTenantId(), name: r.name }) ?? {
             error: 'Tenant not found.',
           }
         );
@@ -269,7 +298,7 @@ function buildHandlers(): SecureHandlerDef[] {
     {
       channel: IpcChannel.CloudTenantWorkers,
       schema: CloudTenantWorkersRequest,
-      handler: () => tenancyStore.listWorkers(callerTenantId()),
+      handler: () => tenancyStore.listWorkers(callerCloudTenantId()),
     },
     {
       channel: IpcChannel.CloudStorageIsolation,

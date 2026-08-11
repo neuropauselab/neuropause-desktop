@@ -201,6 +201,20 @@ export interface FedPolicy {
    * Optional: pre-Round-4 rows have no owner and govern nobody.
    */
   ownerOrg?: string | null;
+  /**
+   * P13C ROUND 5 — F6. WHY THIS POLICY IS NOT BEING ENFORCED.
+   *
+   * A policy written before Round 4 has no `ownerOrg`, and Round 4's filter
+   * dropped it from `listPolicies()` — which `recordAction` evaluates. So a
+   * pre-existing DENY rule silently stopped being enforced, and nobody could
+   * re-enable it because `setPolicyEnabled` filtered on the same list. That is
+   * fail-OPEN on a control, and it is worse than fail-open on data: nothing
+   * looks wrong.
+   *
+   * `migration_required` means the row is retained, counted and surfaced, and
+   * governance evaluation FAILS CLOSED while any exist. Absent means owned.
+   */
+  migrationState?: 'migration_required';
   name: string;
   description: string;
   scope: FedPolicyScope;

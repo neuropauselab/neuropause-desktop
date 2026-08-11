@@ -8,6 +8,8 @@ import { EventEmitter } from 'node:events';
 import { promises as fs } from 'node:fs';
 import type { ConnectorSyncSnapshot, ConnectorModuleStat, UnifiedEntityKind } from '@neuropause/shared';
 import { createLogger } from '../../logger';
+import type { TenantScope } from '@neuropause/shared';
+import { TenantOwnership } from '../../tenancy/tenantOwnedStore';
 
 const log = createLogger('sync-state');
 
@@ -31,6 +33,16 @@ export interface DeadLetterInfo {
 }
 
 export interface AccountSyncState {
+  /**
+   * P13C ROUND 5 — the workspace this connected account belongs to.
+   *
+   * Optional because rows written before this round have no owner. They are not
+   * attributed on load — a legacy row is adopted only by the first write that
+   * has a resolvable owner, and that write can only come through the
+   * workspace-filtered connector store, so the writer IS the owner.
+   */
+  tenantId?: string | null;
+  workspaceId?: string | null;
   connectorId: string;
   accountId: string;
   status: ConnectorSyncSnapshot['status'];
@@ -124,6 +136,66 @@ export function stateToSnapshot(s: AccountSyncState, queueSize: number): Connect
 }
 
 export class SyncStateStore extends EventEmitter {
+  /**
+   * P13C ROUND 5 — WORKSPACE-SCOPED, not tenant-scoped.
+   *
+   * A connection is a WORKSPACE object — this subsystem's own composition root
+   * says so, which is why the sync scheduler fans out per workspace rather than
+   * per tenant. So the boundary here is the workspace, and scoping it to the
+   * tenant would be the wrong shape twice over: too coarse to isolate two
+   * workspaces, and it would not match the key the rows already have.
+   *
+   * Most fields are install-level plumbing — cursors, durations, retry depth,
+   * quota. What makes it more than counters: `lastError`, `reason` and
+   * `deadLetter.error` are VERBATIM PROVIDER ERROR STRINGS, which routinely name
+   * objects and ids, and `entityCount`/`objectCount` count that workspace's
+   * records per module.
+   *
+   * Its safety today is inherited: the enumeration path goes through
+   * `connectorStore`, which is workspace-filtered, so a caller can only name
+   * accounts in their own workspace. This store's own `get()` denied nothing —
+   * it returned a default state for an unknown key — and `all()` /
+   * `deadLettered()` are install-wide accessors sitting unused, waiting for the
+   * dead-letter view somebody will eventually build.
+   */
+  private readonly tenancy = new TenantOwnership('connector-sync-state');
+
+  /** Bind the workspace boundary. UNBOUND DENIES. Chainable. */
+  bindScope(source: () => TenantScope | null): this {
+    this.tenancy.bindScope(source);
+    return this;
+  }
+  hasScope(): boolean {
+    return this.tenancy.hasScope();
+  }
+
+  /**
+   * WHY THIS STAMPS AN OWNER RATHER THAN RE-KEYING THE MAP.
+   *
+   * Re-keying to `(workspace, connector, account)` is the shape used elsewhere
+   * in this program and it is the wrong trade here: every existing row would
+   * become unreachable on upgrade, the stored cursors with it, and every
+   * connected account would perform a full re-sync against the provider. A
+   * security fix that triggers an install-wide re-sync storm — with the rate
+   * limits and cost that implies — is a fix people turn off.
+   *
+   * The key stays; the OWNER goes on the record. Reads filter on it, and a row
+   * written before this round has no owner and is returned by no install-wide
+   * accessor.
+   */
+  private ownerOf(): { tenantId: string; workspaceId: string } | null {
+    const scope = this.tenancy.scopeOrDeny();
+    if (scope === null || !scope.tenantId) return null;
+    return { tenantId: scope.tenantId, workspaceId: scope.workspaceId };
+  }
+
+  /** Whether a row belongs to the caller's workspace. Unowned rows belong to nobody. */
+  private mine(state: AccountSyncState): boolean {
+    const owner = this.ownerOf();
+    if (owner === null) return false;
+    return state.tenantId === owner.tenantId && state.workspaceId === owner.workspaceId;
+  }
+
   private states = new Map<string, AccountSyncState>();
   private loaded = false;
   /** Serializes persistence so concurrent saves never race on the temp file (see persist()). */
@@ -189,6 +261,26 @@ export class SyncStateStore extends EventEmitter {
     this.emit('changed', { connectorId, accountId });
   }
 
+  /**
+   * One account's sync state.
+   *
+   * DELIBERATELY NOT FILTERED, and this is the honest half of the F-triage.
+   *
+   * Its protection is INHERITED: every reachable path enumerates accounts
+   * through `connectorStore`, which is workspace-filtered and returns nothing
+   * when unbound, so a caller cannot name an account outside their workspace to
+   * begin with. I did add a filter here and it broke live sync — the
+   * orchestrator writes under a workspace principal and reads back through
+   * paths that legitimately resolve differently, so the filter denied the
+   * writer its own row.
+   *
+   * Rather than ship a plausible-looking check that fails the product, the
+   * boundary is applied where it is BOTH correct and unambiguous — the two
+   * install-wide accessors below — and this one is left inherited, said out
+   * loud, and recorded in the migration inventory as PARTIAL. A borrowed
+   * guarantee that is written down is worth more than an invented one that is
+   * wrong.
+   */
   get(connectorId: string, accountId: string): AccountSyncState {
     return this.states.get(key(connectorId, accountId)) ?? defaultState(connectorId, accountId);
   }
@@ -199,7 +291,7 @@ export class SyncStateStore extends EventEmitter {
 
   async setCursor(connectorId: string, accountId: string, resourceId: string, cursor: string | null, at: string): Promise<void> {
     const k = key(connectorId, accountId);
-    const state = this.states.get(k) ?? defaultState(connectorId, accountId);
+    const state = this.stateFor(k, connectorId, accountId);
     const prev = state.resources[resourceId];
     // Preserve any module stats already recorded for this resource; only advance the cursor.
     state.resources[resourceId] = { ...prev, cursor, lastSyncAt: at };
@@ -219,7 +311,7 @@ export class SyncStateStore extends EventEmitter {
     patch: Partial<Omit<ResourceCursor, 'cursor'>>,
   ): Promise<void> {
     const k = key(connectorId, accountId);
-    const state = this.states.get(k) ?? defaultState(connectorId, accountId);
+    const state = this.stateFor(k, connectorId, accountId);
     const prev = state.resources[resourceId] ?? { cursor: null, lastSyncAt: null };
     state.resources[resourceId] = { ...prev, ...patch };
     this.states.set(k, state);
@@ -228,7 +320,7 @@ export class SyncStateStore extends EventEmitter {
 
   async recordRun(connectorId: string, accountId: string, patch: SyncStatePatch): Promise<void> {
     const k = key(connectorId, accountId);
-    const state = this.states.get(k) ?? defaultState(connectorId, accountId);
+    const state = this.stateFor(k, connectorId, accountId);
     Object.assign(state, patch);
     this.states.set(k, state);
     await this.persist();
@@ -238,7 +330,7 @@ export class SyncStateStore extends EventEmitter {
   /** P4.1 — dead-letter an account's sync (retry budget exhausted). Durable + idempotent. */
   async recordDeadLetter(connectorId: string, accountId: string, info: DeadLetterInfo): Promise<void> {
     const k = key(connectorId, accountId);
-    const state = this.states.get(k) ?? defaultState(connectorId, accountId);
+    const state = this.stateFor(k, connectorId, accountId);
     if (state.deadLetter) return; // already dead-lettered — no duplicate write/broadcast
     state.deadLetter = info;
     this.states.set(k, state);
@@ -255,9 +347,40 @@ export class SyncStateStore extends EventEmitter {
     this.emit('changed', { connectorId, accountId });
   }
 
-  /** P4.1 — every account currently dead-lettered (for the DLQ view + reconciler). */
+  /**
+   * Resolve-or-create a state row, stamped with the CALLER'S workspace.
+   *
+   * A write with no resolvable owner still proceeds — the sync orchestrator runs
+   * under a workspace principal and a missing one means the row is legacy — but
+   * it is left unowned, which means no install-wide accessor will return it.
+   */
+  private stateFor(k: string, connectorId: string, accountId: string): AccountSyncState {
+    const state = this.states.get(k) ?? defaultState(connectorId, accountId);
+    /**
+     * Stamp the writing workspace, without changing who can READ the row.
+     *
+     * The stamp is what makes the two install-wide accessors below filterable.
+     * It is evidence-based: this key is only reachable through the
+     * workspace-filtered connector store, so the writer IS the owner.
+     */
+    const owner = this.ownerOf();
+    if (owner !== null && !state.tenantId) {
+      state.tenantId = owner.tenantId;
+      state.workspaceId = owner.workspaceId;
+    }
+    return state;
+  }
+
+  /**
+   * P4.1 — every account currently dead-lettered, FOR THE CALLER'S WORKSPACE.
+   *
+   * Install-wide, this returned every workspace's dead-letter rows including
+   * `deadLetter.error` — verbatim provider error text, which routinely names
+   * objects and ids. It has no production caller yet, which is precisely when a
+   * boundary is cheapest to add.
+   */
   deadLettered(): AccountSyncState[] {
-    return [...this.states.values()].filter((s) => Boolean(s.deadLetter));
+    return [...this.states.values()].filter((s) => Boolean(s.deadLetter) && this.mine(s));
   }
 
   /**

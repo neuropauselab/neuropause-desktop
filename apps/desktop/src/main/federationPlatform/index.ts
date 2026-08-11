@@ -89,7 +89,7 @@ export function initFederationPlatform(): FederationPlatformSubsystem {
     govSummary,
   };
 
-  const service = new FederationPlatformService(readers);
+  const service = new FederationPlatformService(readers, activeTenantScope);
 
   // Invalidate the memoized snapshot whenever a backing store changes (renderer liveness is
   // already served by the existing `fed:event` broadcast the federation runtime emits).

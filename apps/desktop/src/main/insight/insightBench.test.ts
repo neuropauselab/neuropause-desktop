@@ -14,6 +14,10 @@ import type { RawTimelineEvent } from '../enterprise/intelligence/enterpriseInte
 import { projectSignals, type ProjectionInput } from './signalProjection';
 import { composeHealthFramework } from './healthFramework';
 
+/** P13C Round 5 — the composed cache is tenant-keyed. */
+const PLATFORM_SCOPE = { tenantId: 'org-test', workspaceId: 'ws-test' };
+const scope = (): typeof PLATFORM_SCOPE => PLATFORM_SCOPE;
+
 const T0 = Date.parse('2026-07-31T12:00:00.000Z');
 const iso = (msAgo: number): string => new Date(T0 - msAgo).toISOString();
 
@@ -142,6 +146,7 @@ function benchDeps(): InsightSubsystemDeps {
   const jbs = jobs();
   const conns = connectors();
   return {
+    scope,
     getResourceModel: () => null,
     getRelationshipModel: () => null,
     getEvents: () => evts,

@@ -60,6 +60,13 @@ export const FEDERATION_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Ente
   [IpcChannel.FedGovSummary]: READ,
   [IpcChannel.FedAddPolicy]: MANAGE,
   [IpcChannel.FedSetPolicyEnabled]: MANAGE,
+  // P13C Round 5 — F6. Reading the count is a read; resolving a quarantined
+  // policy changes what governance enforces, so it is a manage operation.
+  [IpcChannel.FedPolicyMigrationStatus]: READ,
+  // The contents, unlike the count, are an administrator surface.
+  [IpcChannel.FedQuarantinedPolicies]: MANAGE,
+  [IpcChannel.FedClaimPolicy]: MANAGE,
+  [IpcChannel.FedDiscardPolicy]: MANAGE,
   [IpcChannel.FedRecordAction]: MANAGE,
   [IpcChannel.FedResolveApproval]: APPROVE,
 

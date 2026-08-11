@@ -72,6 +72,8 @@ import {
   resolveAutomationQuestion,
   type AutomationQuestionContext,
 } from './automationModel';
+import { TenantMemo } from '../tenancy/tenantMemo';
+import type { TenantScope } from '@neuropause/shared';
 
 const log = createLogger('automation-platform');
 
@@ -82,6 +84,18 @@ const TICK_MS = 60_000;
 /* ── deps (every read injected; sync reads only) ──────────────────────────── */
 
 export interface AutomationPlatformDeps {
+  /**
+   * P13C ROUND 5 — the tenant boundary for this subsystem's composed cache.
+   *
+   * INJECTED, not imported. `enterprise/index` reaches `app.getPath`, so
+   * importing `activeTenantScope` here drags Electron into a pure-model node
+   * test — a trap this program has now fallen into FOUR times, once per round.
+   * Worth stating as a rule rather than a note: a subsystem that unit-tests
+   * without Electron takes its resolver as a dep.
+   *
+   * Required, so a composition root that forgets it fails to compile.
+   */
+  scope: () => TenantScope | null;
   rules: () => AutomationRule[];
   runRecords: () => AutomationRunRecord[];
   workflowRuns: () => { run: WorkflowRun; spec: WorkflowSpec }[] | null;
@@ -148,12 +162,28 @@ function safeRead<T>(system: string, fn: () => T, failures: Record<string, strin
 
 export function initAutomationPlatform(deps: AutomationPlatformDeps): AutomationPlatformSubsystem {
   const now = deps.now ?? ((): number => Date.now());
-  let cache: BuildArtifacts | null = null;
+  /**
+   * P13C ROUND 5 — KEYED BY TENANT.
+   *
+   * `let cache: BuildArtifacts | null` behind a short TTL, flushed on
+   * `onWorkspaceSwitch`. That listener cannot see the case this program has
+   * documented twice already: `deliveryEngine.tick()` runs `forEachTenant`, so
+   * each tenant's `produce()` fills the cache back to back with NO SWITCH
+   * ANNOUNCED, and an interactive read from another tenant inside the TTL is
+   * served the composed dashboard of whoever ran last.
+   *
+   * Round 3 fixed eleven services of this shape by name and Round 4 fixed a
+   * twelfth; these seven were the remainder. Keying rather than adding a second
+   * listener, because the key covers the fan-out and the listener does not.
+   */
+  const projectionCache = new TenantMemo<BuildArtifacts>('automation-platform-projections', { ttlMs: BUILD_TTL_MS, now })
+    .bindScope(deps.scope);
   const planCache = new Map<string, { at: number; plan: AutomationPlan | null }>();
 
-  const build = (): BuildArtifacts => {
+  const build = (): BuildArtifacts => projectionCache.state(compose);
+
+  const compose = (): BuildArtifacts => {
     const nowMs = now();
-    if (cache && nowMs - cache.at < BUILD_TTL_MS) return cache;
     const nowIso = new Date(nowMs).toISOString();
     const failures: Record<string, string> = {};
 
@@ -202,8 +232,7 @@ export function initAutomationPlatform(deps: AutomationPlatformDeps): Automation
       nowIso,
     });
 
-    cache = { at: nowMs, nowIso, catalog, monitorReport, policiesView, dashboard, chains, autoAllowed };
-    return cache;
+    return { at: nowMs, nowIso, catalog, monitorReport, policiesView, dashboard, chains, autoAllowed };
   };
 
   /* ── plan compilation (per playbook, TTL-cached) ───────────────────────── */
@@ -361,7 +390,7 @@ export function initAutomationPlatform(deps: AutomationPlatformDeps): Automation
    * a second invalidation mechanism.
    */
   onWorkspaceSwitch(() => {
-    cache = null;
+    projectionCache.invalidate();
   });
 
   const handlers: SecureHandlerDef[] = [
@@ -432,7 +461,7 @@ export function initAutomationPlatform(deps: AutomationPlatformDeps): Automation
     answerQuestion,
     dispose: () => {
       deps.schedule.cancel(TICK_ID);
-      cache = null;
+      projectionCache.invalidate();
       planCache.clear();
     },
   };

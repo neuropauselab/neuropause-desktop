@@ -20,6 +20,7 @@ import type { ApprovalChain, ComplianceRule, EnterpriseAuditEntry, TenantScope }
 import { AuditChain, type AuditChainSnapshot, type AuditVerifyResult } from '../../security/auditChain';
 import { createLogger } from '../../logger';
 import { DEFAULT_APPROVAL_CHAINS, DEFAULT_COMPLIANCE_RULES } from './enterpriseGovernance';
+import { TenantOwnership } from '../../tenancy/tenantOwnedStore';
 
 const log = createLogger('enterprise-governance');
 const DEFAULT_AUDIT_CAP = 2000;
@@ -46,6 +47,45 @@ interface GovFile {
 }
 
 export class GovernanceStore extends EventEmitter {
+  /**
+   * P13C ROUND 5 — the tenant boundary. THIS STORE IS THREE COLLECTIONS WITH
+   * THREE DIFFERENT ANSWERS, and treating it as one is how the gap survived.
+   *
+   * AUDIT already had the right shape — `workspaceId` is required on the type,
+   * hash-chained into `canonicalAudit`, and `auditEntries`/`auditCount` take a
+   * scope and filter the OUTPUT without touching the order-sensitive array. The
+   * defect was the DEFAULT: the parameter is optional and `undefined` meant
+   * EVERY WORKSPACE. Two callers omitted it, so an install-wide count of a trail
+   * whose every row names a tenant's record ids and titles surfaced through
+   * `commercial:read` — a permission with nothing to do with governance.
+   *
+   * CHAINS AND RULES were worse and were not covered by the inventory's existing
+   * note. Both carry an `orgId`, it is seeded from the literal `ORG_ID`, and no
+   * read ever filtered on it — the shape where an auditor asking "do these rows
+   * have an owner?" gets yes and the value is a constant. `setChainEnabled(id)`
+   * and `setRuleEnabled(id)` then took a BARE payload id, so a
+   * `governance:manage` holder in one tenant could disable the approval chain
+   * gating another tenant's invoices. That is a cross-tenant control mutation,
+   * not a disclosure.
+   */
+  private readonly tenancy = new TenantOwnership('enterprise-governance');
+
+  /** Bind the tenant boundary. UNBOUND DENIES. Chainable. */
+  bindScope(source: () => TenantScope | null): this {
+    this.tenancy.bindScope(source);
+    return this;
+  }
+  hasScope(): boolean {
+    return this.tenancy.hasScope();
+  }
+  /** Unscoped ownership counts over chains + rules, for the migration inventory. */
+  ownershipCounts(): { total: number; assigned: number; unresolved: number } {
+    return this.tenancy.countOwnership([
+      ...this.chainList().map((c) => ({ tenantId: c.orgId })),
+      ...this.ruleList().map((r) => ({ tenantId: r.orgId })),
+    ]);
+  }
+
   private approvalChains = new Map<string, ApprovalChain>();
   private complianceRules = new Map<string, ComplianceRule>();
   private audit: EnterpriseAuditEntry[] = [];
@@ -99,6 +139,24 @@ export class GovernanceStore extends EventEmitter {
   }
 
   private applySeed(): void {
+    /**
+     * P13C ROUND 5, SECOND PASS — SEED FOR THE CALLER, NOT FOR THE CONSTANT.
+     *
+     * `DEFAULT_APPROVAL_CHAINS` and `DEFAULT_COMPLIANCE_RULES` stamp the literal
+     * `ORG_ID`, so once `chains()`/`rules()` began filtering on `orgId` every
+     * organization except the seeded one had ZERO approval chains and ZERO
+     * compliance rules. That is a fail-open twice over: the autonomous-ops
+     * governance veto reads an empty chain list as "ungoverned", and the
+     * compliance score computes `passed/evaluated` with `evaluated === 0` as a
+     * perfect 100%.
+     *
+     * The sweep caught it because the test I wrote asserted `chains() === []`
+     * for a non-seeded organization and I read that as isolation working. It was
+     * the breakage.
+     *
+     * Defaults are now materialised per organization on first read, so a second
+     * tenant gets the same starting governance the first one did.
+     */
     for (const c of DEFAULT_APPROVAL_CHAINS) if (!this.approvalChains.has(c.id)) this.approvalChains.set(c.id, c);
     for (const r of DEFAULT_COMPLIANCE_RULES) if (!this.complianceRules.has(r.id)) this.complianceRules.set(r.id, r);
     this.schedulePersist();
@@ -141,12 +199,76 @@ export class GovernanceStore extends EventEmitter {
     while (this.persisting) await this.lastPersist;
   }
 
-  chains(): ApprovalChain[] {
+  /** Every chain, ignoring scope. Internal only — for ownership counts. */
+  private chainList(): ApprovalChain[] {
     return [...this.approvalChains.values()];
   }
-
-  rules(): ComplianceRule[] {
+  private ruleList(): ComplianceRule[] {
     return [...this.complianceRules.values()];
+  }
+
+  /**
+   * The CALLER'S approval chains. Was every organization's.
+   *
+   * `ApprovalChain.orgId` existed all along and nothing read it. Six subsystems
+   * consume this list and re-expose derived values — chain names, `appliesTo`
+   * and step role ids — so the leak was not confined to the governance screen.
+   */
+  chains(): ApprovalChain[] {
+    this.ensureDefaultsForCaller();
+    return this.mine(this.chainList());
+  }
+
+  /** The CALLER'S compliance rules. Drives `evaluateCompliance`. */
+  rules(): ComplianceRule[] {
+    this.ensureDefaultsForCaller();
+    return this.mine(this.ruleList());
+  }
+
+  /**
+   * Materialise the default chains and rules for the CALLER, once.
+   *
+   * Lazily rather than at seed time, because a second organization may be
+   * created long after the file was written — and a tenant that has never
+   * opened governance should still be governed by the defaults the product
+   * promises.
+   */
+  private ensureDefaultsForCaller(): void {
+    const orgId = this.tenancy.scopeOrDeny()?.tenantId ?? null;
+    if (orgId === null || orgId === '') return;
+    if (this.chainList().some((c) => c.orgId === orgId)) return;
+    for (const chain of DEFAULT_APPROVAL_CHAINS) {
+      const id = `${chain.id}:${orgId}`;
+      if (!this.approvalChains.has(id)) this.approvalChains.set(id, { ...chain, id, orgId });
+    }
+    for (const rule of DEFAULT_COMPLIANCE_RULES) {
+      const id = `${rule.id}:${orgId}`;
+      if (!this.complianceRules.has(id)) this.complianceRules.set(id, { ...rule, id, orgId });
+    }
+    this.schedulePersist();
+  }
+
+  /**
+   * Filter on the `orgId` the records already carry.
+   *
+   * Not `TenantOwnership.onlyMine`, which reads `tenantId`: these two types
+   * predate that convention and their owner field is `orgId`. Filtering on the
+   * field that exists beats adding a second owner that could disagree with it.
+   */
+  private mine<T extends { orgId: string }>(rows: readonly T[]): T[] {
+    const scope = this.tenancy.scopeOrDeny();
+    if (scope === null || !scope.tenantId) return [];
+    return rows.filter((r) => r.orgId === scope.tenantId);
+  }
+
+  /** One of the caller's chains by id, or null. */
+  private myChain(id: string): ApprovalChain | null {
+    const c = this.approvalChains.get(id) ?? null;
+    return c !== null && this.mine([c]).length === 1 ? c : null;
+  }
+  private myRule(id: string): ComplianceRule | null {
+    const r = this.complianceRules.get(id) ?? null;
+    return r !== null && this.mine([r]).length === 1 ? r : null;
   }
 
   /**
@@ -167,13 +289,30 @@ export class GovernanceStore extends EventEmitter {
    * workspaceId and are visible to nobody, consistent with every other store.
    */
   auditEntries(limit = 100, scope?: TenantScope | null): EnterpriseAuditEntry[] {
-    const visible =
-      scope === undefined
-        ? this.audit
-        : scope === null
-          ? []
-          : this.audit.filter((e) => e.workspaceId === scope.workspaceId);
-    return visible.slice(-limit).reverse();
+    return this.visibleAudit(scope).slice(-limit).reverse();
+  }
+
+  /**
+   * P13C ROUND 5 — OMITTING THE SCOPE NO LONGER MEANS "EVERY WORKSPACE".
+   *
+   * The parameter was optional with three meanings: a scope filtered, `null`
+   * denied, and `undefined` returned EVERYTHING. Two callers omitted it —
+   * `commercial/index.ts` and `autonomousOps/index.ts` — so an install-wide
+   * count of a trail whose every row carries a tenant's record ids and titles
+   * surfaced under `commercial:read`.
+   *
+   * `undefined` now falls back to the store's own bound scope, which is the same
+   * resolver every other store reads. An omitted argument therefore narrows to
+   * the caller instead of widening to the install — the "absent field widens"
+   * bypass this program has removed from six other stores, in its last place.
+   *
+   * An explicit `null` still denies, because a caller that has resolved "no
+   * tenant" is saying so deliberately.
+   */
+  private visibleAudit(scope?: TenantScope | null): EnterpriseAuditEntry[] {
+    const effective = scope === undefined ? this.tenancy.scopeOrDeny() : scope;
+    if (effective === null) return [];
+    return this.audit.filter((e) => e.workspaceId === effective.workspaceId);
   }
 
   /**
@@ -183,9 +322,7 @@ export class GovernanceStore extends EventEmitter {
    * busy is the other tenant" without returning an entry.
    */
   auditCount(scope?: TenantScope | null): number {
-    if (scope === undefined) return this.audit.length;
-    if (scope === null) return 0;
-    return this.audit.filter((e) => e.workspaceId === scope.workspaceId).length;
+    return this.visibleAudit(scope).length;
   }
 
   /** Total audit entries ever recorded, including those rotated out of retention. */
@@ -198,8 +335,16 @@ export class GovernanceStore extends EventEmitter {
     return this.auditChain.verify(this.audit);
   }
 
+  /**
+   * Enable or disable one of the CALLER'S approval chains.
+   *
+   * The sharpest write in this store: an approval chain is what gates a
+   * tenant's documents, so disabling another organization's chain removes a
+   * control they are relying on — reachable on `governance:manage` with a bare
+   * payload id.
+   */
   setChainEnabled(id: string, enabled: boolean): ApprovalChain | null {
-    const c = this.approvalChains.get(id);
+    const c = this.myChain(id);
     if (!c) return null;
     const next: ApprovalChain = { ...c, enabled, updatedAt: new Date().toISOString() };
     this.approvalChains.set(id, next);
@@ -208,8 +353,9 @@ export class GovernanceStore extends EventEmitter {
     return next;
   }
 
+  /** Enable or disable one of the CALLER'S compliance rules. Was a bare id. */
   setRuleEnabled(id: string, enabled: boolean): ComplianceRule | null {
-    const r = this.complianceRules.get(id);
+    const r = this.myRule(id);
     if (!r) return null;
     const next: ComplianceRule = { ...r, enabled, updatedAt: new Date().toISOString() };
     this.complianceRules.set(id, next);

@@ -2179,7 +2179,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // V5.8: durable execution persistence. The store implements the engine's
   // persist hook; the engine stays unaware of storage. Sessions in-flight at last
   // shutdown are recovered as 'interrupted' (never rerun) and seeded into history.
-  const executionStore = new ExecutionStore(join(app.getPath('userData'), 'executions.json'));
+  const executionStore = new ExecutionStore(join(app.getPath('userData'), 'executions.json')).bindScope(activeTenantScope);
   const executeEngine = new ExecuteEngine({
     publish: publishPlatform,
     persist: (session) => void executionStore.save(session),
@@ -2511,6 +2511,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // and produce governed recommendation items only. Suggested recoveries run
   // exclusively as approval-gated assistant plan steps through the ExecuteEngine.
   const insight = initInsight({
+    scope: activeTenantScope,
     getResourceModel: () => {
       try {
         return infrastructure.store.graph(Date.now());
@@ -2582,6 +2583,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // (knowledge:read); zero new persistence; no lifecycle executor — state
   // changes stay behind the existing governed writes.
   const knowledgeAssets = initKnowledgeAssets({
+    scope: activeTenantScope,
     decisions: () => decisionStore.all(),
     chains: () => governanceStore.chains(),
     rules: () => governanceStore.rules(),
@@ -2724,6 +2726,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // execution remains exclusively Assistant → Approval → ExecuteEngine →
   // Workforce → Connector Executors.
   const automationPlatform = initAutomationPlatform({
+    scope: activeTenantScope,
     rules: () => automationStore.all(),
     runRecords: () => getAutomationRunRecords(),
     workflowRuns: () => workforce.workflowRunEntries(),
@@ -3139,6 +3142,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // surface; execution remains exclusively Assistant → Approval →
   // ExecuteEngine → Workforce → Connector Executors.
   const operationsPlatform = initOperationsPlatform({
+    scope: activeTenantScope,
     insightReport: () => insightRef?.report() ?? null,
     executionStats: () => executeEngine.stats(),
     queuedJobsTotal: () => jobStore.page({ status: 'queued', limit: 1 }).total,
@@ -3271,6 +3275,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // report. Six read-only estrat:* channels under the EXISTING strategy:read
   // scope; one strategy-watch delivery source; zero mutation surface.
   const strategyPlatform = initStrategyPlatform({
+    scope: activeTenantScope,
     insightDomains: () =>
       insightRef
         ?.report()
@@ -3528,6 +3533,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // intelligence:read scope; one analytics-watch delivery source; zero
   // mutation surface.
   const analyticsPlatform = initAnalyticsPlatform({
+    scope: activeTenantScope,
     executiveKpis: () =>
       executiveCenter.snapshot().kpis.map((k) => ({
         key: k.key,
@@ -3666,6 +3672,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // (continuity awaits the local-backup list), and `capacity()` publishes both
   // the posture and its bottleneck count from one snapshot.
   const digitalTwinPlatform = initDigitalTwinPlatform({
+    scope: activeTenantScope,
     // P15, composed verbatim. `safeRead` inside the subsystem turns a throw
     // into a reported failure, so these stay direct reads.
     twinSummary: () => enterpriseTwin.service.overview().summary,

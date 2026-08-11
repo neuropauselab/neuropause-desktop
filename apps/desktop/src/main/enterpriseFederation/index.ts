@@ -343,7 +343,39 @@ export function initEnterpriseFederation(deps: EnterpriseFederationDeps): Enterp
   };
 
   /* ── monitoring: ONE governed watch source (items only, never actions) ──── */
-  const deliveredWatch = new Set<string>();
+  /**
+   * P13C ROUND 5 — F8. DELIVERED-WATCH STATE, PER TENANT AND BOUNDED.
+   *
+   * One global `Set<string>` of recommendation ids, and `produce()` runs once
+   * per tenant under the delivery fan-out. Recommendation ids are
+   * tenant-independent constants (`efedrec:governance:pending-approvals` and
+   * friends), so the FIRST tenant in the fan-out claimed each id and every other
+   * tenant's identical item was suppressed — permanently, since nothing ever
+   * cleared it.
+   *
+   * No content crossed: each body is built from that tenant's own scoped
+   * `build()`. What crossed was the DECISION not to deliver. Cross-tenant
+   * suppression is quieter than cross-tenant disclosure and just as wrong — one
+   * customer stops receiving critical federation alerts because another
+   * customer received the same category first.
+   *
+   * Bounded on two axes, because a fix that leaks memory is not a fix: entries
+   * expire after a day (the source's own cadence, so re-delivery resumes the
+   * next cycle rather than never), and the whole structure is capped so a
+   * pathological tenant count cannot grow it without limit.
+   */
+  const WATCH_TTL_MS = 24 * 60 * 60 * 1000;
+  const WATCH_MAX_ENTRIES = 5_000;
+  const deliveredWatch = new Map<string, number>();
+  const watchKey = (tenantId: string, recId: string): string => JSON.stringify([tenantId, recId]);
+  const watchPrune = (nowMs: number): void => {
+    for (const [k, at] of deliveredWatch) if (nowMs - at >= WATCH_TTL_MS) deliveredWatch.delete(k);
+    while (deliveredWatch.size > WATCH_MAX_ENTRIES) {
+      const oldest = deliveredWatch.keys().next().value;
+      if (oldest === undefined) break;
+      deliveredWatch.delete(oldest);
+    }
+  };
   const watchSource: IntelligenceSource = {
     key: 'federation-watch',
     label: 'Federation Watch',
@@ -351,10 +383,19 @@ export function initEnterpriseFederation(deps: EnterpriseFederationDeps): Enterp
     produce: async (): Promise<IntelligenceItem[]> => {
       const b = build();
       const items: IntelligenceItem[] = [];
+      /**
+       * The tenant this pass is FOR. Under the delivery fan-out this is the
+       * running principal's organization, not whatever the UI has open.
+       */
+      const tenantId = deps.scope()?.tenantId ?? null;
+      if (tenantId === null) return items;
+      const nowMs = now();
+      watchPrune(nowMs);
       for (const r of b.dashboard.recommendations) {
         if (r.priority !== 'critical' && r.priority !== 'high') continue;
-        if (deliveredWatch.has(r.id)) continue;
-        deliveredWatch.add(r.id);
+        const key = watchKey(tenantId, r.id);
+        if (deliveredWatch.has(key)) continue;
+        deliveredWatch.set(key, nowMs);
         items.push({
           id: `efed:${r.id}`,
           title: r.title,

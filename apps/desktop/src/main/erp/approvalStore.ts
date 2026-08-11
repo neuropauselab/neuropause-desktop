@@ -21,11 +21,10 @@
 import { promises as fs } from 'node:fs';
 import type { ApprovalRecord } from './approvalEngine';
 import { readStoreFile, envelopeStamp } from '../storage/storeEnvelope';
+import type { TenantScope } from '@neuropause/shared';
+import { TenantOwnership } from '../tenancy/tenantOwnedStore';
 
 /** `moduleId/documentId` — unique across the registry. */
-function keyOf(moduleId: string, documentId: string): string {
-  return `${moduleId}/${documentId}`;
-}
 
 interface ApprovalFile {
   schemaVersion?: number;
@@ -37,6 +36,43 @@ interface ApprovalFile {
 const MAX_DECISIONS_PER_DOCUMENT = 50;
 
 export class ApprovalStore {
+  /**
+   * P13C ROUND 5 — TENANT-SCOPED.
+   *
+   * The primary key here is `moduleId/documentId` — a tenant's purchase order,
+   * invoice or quote — and the values are named approvers plus free-text notes
+   * about that document. There was no owner field at all.
+   *
+   * Its safety today is entirely BORROWED: the two IPC handlers resolve the
+   * record through the scoped module store first, so a foreign id reads as
+   * absent before this store is reached. That closes the reachable path and
+   * leaves the store one new caller away from a disclosure, which is exactly
+   * the shape the migration inventory has recorded as REQUIRES_MIGRATION.
+   */
+  private readonly tenancy = new TenantOwnership('erp-approvals');
+
+  /** Bind the tenant boundary. UNBOUND DENIES. Chainable. */
+  bindScope(source: () => TenantScope | null): this {
+    this.tenancy.bindScope(source);
+    return this;
+  }
+  hasScope(): boolean {
+    return this.tenancy.hasScope();
+  }
+
+  /**
+   * The tenant-qualified key.
+   *
+   * Keying rather than filtering, for the reason H4 gave: a filter is something
+   * a future accessor can forget and a key is not. Two tenants may hold the same
+   * `moduleId/documentId` without colliding, which they previously could not.
+   */
+  private scopedKey(moduleId: string, documentId: string): string | null {
+    const tenantId = this.tenancy.scopeOrDeny()?.tenantId ?? null;
+    if (tenantId === null || tenantId === '') return null;
+    return JSON.stringify([tenantId, moduleId, documentId]);
+  }
+
   private byDocument = new Map<string, ApprovalRecord[]>();
   private loaded = false;
   private persisting = false;
@@ -56,9 +92,17 @@ export class ApprovalStore {
     this.loaded = true;
   }
 
-  /** Decisions recorded so far. Never null — an unknown document has none. */
+  /**
+   * Decisions recorded so far, FOR THE CALLER'S DOCUMENT.
+   *
+   * An unresolved caller and an unknown document give the same answer — an
+   * empty list — so the read is not an existence oracle over another tenant's
+   * document ids.
+   */
   forDocument(moduleId: string, documentId: string): ApprovalRecord[] {
-    return [...(this.byDocument.get(keyOf(moduleId, documentId)) ?? [])];
+    const key = this.scopedKey(moduleId, documentId);
+    if (key === null) return [];
+    return [...(this.byDocument.get(key) ?? [])];
   }
 
   /**
@@ -70,16 +114,29 @@ export class ApprovalStore {
    * decided.
    */
   replace(moduleId: string, documentId: string, approvals: readonly ApprovalRecord[]): void {
+    const key = this.scopedKey(moduleId, documentId);
+    // A decision with no tenant would be written under a key nobody can read
+    // back — the row would exist, gate nothing, and be invisible. Refuse it.
+    if (key === null) return;
     const capped = approvals.slice(-MAX_DECISIONS_PER_DOCUMENT);
-    this.byDocument.set(keyOf(moduleId, documentId), [...capped]);
+    this.byDocument.set(key, [...capped]);
     this.schedulePersist();
   }
 
   /** Forget a document's approvals — used when the document itself is deleted. */
   forget(moduleId: string, documentId: string): void {
-    if (this.byDocument.delete(keyOf(moduleId, documentId))) this.schedulePersist();
+    const key = this.scopedKey(moduleId, documentId);
+    if (key !== null && this.byDocument.delete(key)) this.schedulePersist();
   }
 
+  /**
+   * Total documents with decisions, ACROSS TENANTS.
+   *
+   * Deliberately unscoped and deliberately narrow: it returns one integer and no
+   * content, and it exists for the migration inventory's evidence that
+   * pre-Round-5 rows are held under unscoped keys and shown to nobody. It has no
+   * production caller.
+   */
   count(): number {
     return this.byDocument.size;
   }

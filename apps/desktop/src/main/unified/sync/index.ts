@@ -95,6 +95,7 @@ function connectedAccounts(connectorId?: string): Array<{ connectorId: string; a
 }
 
 export async function initSync(deps: SyncSubsystemDeps): Promise<SyncSubsystem> {
+  syncStateStore.bindScope(activeTenantScope);
   await syncStateStore.load();
   // P4.1 crash reconciler: reset any account left mid-sync by a crash before the scheduler starts.
   const reconciled = await syncStateStore.reconcile();

@@ -723,6 +723,14 @@ export const IpcChannel = {
   FedGovSummary: 'fed:gov.summary',
   FedAddPolicy: 'fed:gov.addPolicy',
   FedSetPolicyEnabled: 'fed:gov.setPolicyEnabled',
+  /** P13C Round 5 — F6: how many governance policies predate tenant attribution. */
+  FedPolicyMigrationStatus: 'fed:gov.policyMigrationStatus',
+  /** P13C Round 5 — F6: the quarantined policies themselves, for an administrator. */
+  FedQuarantinedPolicies: 'fed:gov.quarantinedPolicies',
+  /** P13C Round 5 — F6: take ownership of an unattributed legacy policy. */
+  FedClaimPolicy: 'fed:gov.claimPolicy',
+  /** P13C Round 5 — F6: discard an unattributed legacy policy. */
+  FedDiscardPolicy: 'fed:gov.discardPolicy',
   FedApprovals: 'fed:gov.approvals',
   FedResolveApproval: 'fed:gov.resolveApproval',
   FedAuditTrail: 'fed:gov.audit',
@@ -1677,6 +1685,10 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.FedGovSummary,
   IpcChannel.FedAddPolicy,
   IpcChannel.FedSetPolicyEnabled,
+  IpcChannel.FedPolicyMigrationStatus,
+  IpcChannel.FedQuarantinedPolicies,
+  IpcChannel.FedClaimPolicy,
+  IpcChannel.FedDiscardPolicy,
   IpcChannel.FedApprovals,
   IpcChannel.FedResolveApproval,
   IpcChannel.FedAuditTrail,

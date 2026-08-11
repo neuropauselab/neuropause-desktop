@@ -17,7 +17,9 @@ const tmp = (name: string): string => join(tmpdir(), `np-prod-${randomUUID()}-${
 
 describe('cloud stores — production seed (no demo data)', () => {
   it('TenancyStore seeds ONLY the home tenant, with a real (zero-until-measured) storage footprint', async () => {
-    const s = new TenancyStore(tmp('tenancy.json'), 'org-x', 'Acme');
+    // P13C Round 5 — F10. Cloud tenants resolve through organizationId.
+    const asOrgX = (): { tenantId: string; workspaceId: string } => ({ tenantId: 'org-x', workspaceId: 'ws-x' });
+    const s = new TenancyStore(tmp('tenancy.json'), 'org-x', 'Acme').bindScope(asOrgX);
     await s.load();
     const tenants = s.listTenants();
     expect(tenants).toHaveLength(1);

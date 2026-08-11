@@ -2144,6 +2144,10 @@ export const FedAddPolicyRequest = z.object({
 export type FedAddPolicyRequest = z.infer<typeof FedAddPolicyRequest>;
 
 export const FedSetPolicyEnabledRequest = z.object({ id: FedId, enabled: z.boolean() });
+
+/** P13C Round 5 — F6. Resolving one unattributed legacy governance policy. */
+export const FedPolicyMigrationRequest = z.object({ id: z.string().min(1).max(128) });
+export type FedPolicyMigrationRequest = z.infer<typeof FedPolicyMigrationRequest>;
 export type FedSetPolicyEnabledRequest = z.infer<typeof FedSetPolicyEnabledRequest>;
 
 export const FedResolveApprovalRequest = z.object({ id: FedId, approve: z.boolean() });

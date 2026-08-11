@@ -125,7 +125,33 @@ export class GlobalGovStore extends EventEmitter {
     if (this.loaded) return;
     try {
       const data = JSON.parse(await fs.readFile(this.filePath, 'utf8')) as Partial<GovFile>;
-      for (const p of data.policies ?? []) if (p?.id) this.policies.set(p.id, p);
+      /**
+       * P13C ROUND 5 — F6. LEGACY POLICIES ARE QUARANTINED, NOT DROPPED.
+       *
+       * A row with no `ownerOrg` predates Round 4. It is marked
+       * `migration_required` on load so that its absence from `listPolicies()`
+       * is a STATE somebody can see rather than a silent disappearance.
+       *
+       * WHY NOT SIMPLY ATTRIBUTE THEM TO THE SEEDED ORGANIZATION.
+       *
+       * That was the tempting migration and it would have been a fabrication.
+       * Before Round 4 `addPolicy` stamped no owner and the store's home was the
+       * seeded org, so on a single-organization install the seed really is the
+       * author — but ANY tenant could call `FedAddPolicy` and get an unowned
+       * row. There is therefore no evidence in the data of who authored a given
+       * legacy policy, and inventing one is the single thing a migration must
+       * never do: the guess is silent, permanent, and indistinguishable from a
+       * correct answer afterwards.
+       *
+       * So the honest outcome is MIGRATION_REQUIRED plus fail-closed
+       * enforcement, and a human resolves it. See `recordAction` and
+       * `claimPolicy`.
+       */
+      for (const p of data.policies ?? []) {
+        if (!p?.id) continue;
+        const needsMigration = typeof p.ownerOrg !== 'string' || p.ownerOrg === '';
+        this.policies.set(p.id, needsMigration ? { ...p, migrationState: 'migration_required' } : p);
+      }
       for (const a of data.approvals ?? []) if (a?.id) this.approvals.set(a.id, a);
       this.audit = data.audit ?? [];
       if (!data.seeded || this.policies.size === 0) this.applySeed();
@@ -215,6 +241,75 @@ export class GlobalGovStore extends EventEmitter {
     while (this.persisting) await this.lastPersist;
   }
 
+  /**
+   * How many policies exist that nobody can be shown to own.
+   *
+   * A COUNT and not a listing. The rows carry names, descriptions and actions
+   * that on a multi-organization install may be another tenant's, and the
+   * point of this number is to make their existence undeniable — not to
+   * disclose their contents to whoever asks first.
+   */
+  migrationRequiredCount(): number {
+    return [...this.policies.values()].filter((p) => p.migrationState === 'migration_required').length;
+  }
+
+  /**
+   * The quarantined policies themselves — FOR AN ADMINISTRATOR.
+   *
+   * P13C ROUND 5, SECOND PASS. The first version of this fix shipped a
+   * quarantine that could not be cleared: a COUNT channel, no way to learn the
+   * ids, and no renderer surface. On any upgraded install that meant
+   * `require_approval` for every organization forever, with a pending approval
+   * opened per call. A control nobody can resolve is not a control; it is an
+   * outage with a security-shaped explanation.
+   *
+   * The contents are disclosed here, and that is a deliberate narrowing rather
+   * than a reversal. Nothing in the data says who authored these rows, so no
+   * organization can be shown to own them and none can be shown NOT to. The
+   * least-bad resolution is an administrator of the install — which is what
+   * `federation:manage` on a desktop application means — seeing them once, and
+   * deciding. The count channel remains for everybody else.
+   */
+  quarantinedPolicies(): FedPolicy[] {
+    if (this.fed.callerOrg() === null) return [];
+    return [...this.policies.values()].filter((p) => p.migrationState === 'migration_required');
+  }
+
+  /**
+   * Take ownership of an unattributed legacy policy.
+   *
+   * SAFE BY CONSTRUCTION, which is why the caller may simply claim it: a policy
+   * governs its OWNER'S federated actions, so claiming one can only constrain
+   * the claimer. It is not a route to authority over anybody else, and the
+   * claimer could have written the same rule for itself anyway.
+   *
+   * The alternative — an administrator attributing rows to other organizations —
+   * needs an authority this application does not have, because nothing in the
+   * data says who wrote them.
+   */
+  claimPolicy(id: string): FedPolicy | null {
+    const me = this.fed.callerOrg();
+    const p = this.policies.get(id) ?? null;
+    if (me === null || p === null || p.migrationState !== 'migration_required') return null;
+    const next: FedPolicy = { ...p, ownerOrg: me };
+    delete (next as { migrationState?: unknown }).migrationState;
+    this.policies.set(id, next);
+    this.schedulePersist();
+    this.emit('changed');
+    return next;
+  }
+
+  /** Discard an unattributed legacy policy outright. The other resolution. */
+  discardPolicy(id: string): boolean {
+    const p = this.policies.get(id) ?? null;
+    if (p === null || p.migrationState !== 'migration_required') return false;
+    if (this.fed.callerOrg() === null) return false;
+    this.policies.delete(id);
+    this.schedulePersist();
+    this.emit('changed');
+    return true;
+  }
+
   /** The CALLER'S governance policies. Was every organization's rule set. */
   listPolicies(): FedPolicy[] {
     return this.fed.onlyMine([...this.policies.values()], policyParties).sort((a, b) => a.name.localeCompare(b.name));
@@ -291,6 +386,22 @@ export class GlobalGovStore extends EventEmitter {
      */
     const actorOrg = this.fed.requireCallerOrg();
     /**
+     * FAIL CLOSED WHILE ANY POLICY IS UNATTRIBUTED.
+     *
+     * This is the actual fix for F6. Quarantining the rows stops them
+     * disappearing from view; it does not by itself stop a legacy DENY rule
+     * from having no effect. So while unattributed policies exist, the
+     * evaluation cannot be trusted to be complete, and every federated action
+     * is forced to `require_approval` regardless of what the owned policies say.
+     *
+     * `require_approval` rather than `deny`, deliberately: denying outright
+     * would break federated work on any upgraded install until an administrator
+     * intervened, and a control that takes the product down gets removed. This
+     * routes the decision to a human, which is what an incomplete policy set
+     * honestly warrants.
+     */
+    const unattributed = this.migrationRequiredCount();
+    /**
      * `peerOrg` ARRIVES IN THE PAYLOAD, AND IT BINDS ANOTHER ORGANIZATION.
      *
      * Every other write in this store checks party membership on an EXISTING
@@ -307,7 +418,15 @@ export class GlobalGovStore extends EventEmitter {
     if (!this.relatedToCaller(input.peerOrg)) {
       throw new Error('That organization is not a federation peer of yours.');
     }
-    const evaluation = evaluateFederatedAction({ action: input.action, peerTrustLevel: input.trustLevel, policies: this.listPolicies() });
+    const evaluated = evaluateFederatedAction({ action: input.action, peerTrustLevel: input.trustLevel, policies: this.listPolicies() });
+    const evaluation: FedActionEvaluation =
+      unattributed > 0 && evaluated.decision === 'allow'
+        ? {
+            ...evaluated,
+            decision: 'require_approval',
+            reason: `${unattributed} governance polic${unattributed === 1 ? 'y' : 'ies'} predate tenant attribution and are not being evaluated. Approval is required until they are claimed or discarded.`,
+          }
+        : evaluated;
     const entry: FedAuditEntry = {
       id: `faud_${randomUUID()}`,
       at: new Date().toISOString(),

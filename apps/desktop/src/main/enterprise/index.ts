@@ -285,6 +285,7 @@ import { connectorService } from '../connectors/connectorService';
 import { registry } from '../registry/registry';
 import { generateBriefing } from '../intelligence/briefingGenerator';
 import { generateRecommendations } from '../recommendations/recommendationEngine';
+import { healthHistoryStore } from './healthHistoryInstance';
 
 const log = createLogger('enterprise');
 
@@ -477,6 +478,9 @@ export function resolveTenantContext(): TenantResolution {
 export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSubsystem> {
   await orgStore.load();
   await workspaceStore.load();
+  // P13C Round 5 — bind before load: the seed stamps chains and rules.
+  governanceStore.bindScope(activeTenantScope);
+  healthHistoryStore.bindScope(activeTenantScope);
   await governanceStore.load();
 
 
@@ -705,6 +709,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   // line items, derived totals, the approval policy engine and its SoD rules —
   // shipped registered but with no caller; this is the joint that connects it
   // to the module registry, and through the registry to IPC and the UI.
+  approvalStore.bindScope(activeTenantScope);
   await approvalStore.load();
   const documents = createDocumentBridge({
     integration: documentIntegration,

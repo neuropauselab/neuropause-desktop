@@ -43,6 +43,14 @@ import { createDocumentBridge } from './documentBridge';
 import type { ApprovalPolicy, Approver } from './approvalEngine';
 import { TEST_TENANT_SCOPE } from '../tenancy/testScope';
 
+/**
+ * P13C ROUND 5 — approvals are keyed by (tenant, module, document), so this
+ * suite names an organization. It tests one tenant's approval flow, exactly as
+ * before; cross-tenant behaviour is asserted separately.
+ */
+const APPROVAL_ORG = { tenantId: 'org-test', workspaceId: 'ws-test' };
+const asOrg = (): typeof APPROVAL_ORG => APPROVAL_ORG;
+
 const T0 = '2026-08-09T12:00:00.000Z';
 
 /**
@@ -76,7 +84,7 @@ describe('ERP document layer, wired', () => {
     approver = { userId: 'manager@example.com', roles: ['manager'] };
 
     lineStore = new DocumentLineStore(join(dir, 'lines.json'));
-    approvals = new ApprovalStore(join(dir, 'approvals.json'));
+    approvals = new ApprovalStore(join(dir, 'approvals.json')).bindScope(asOrg);
     await Promise.all([lineStore.load(), approvals.load()]);
 
     const integration = new DocumentIntegration({
@@ -307,7 +315,7 @@ describe('ERP document layer, wired', () => {
 
       // Read back through a FRESH store: the engine is pure, so if nothing
       // persisted the next evaluation starts empty and approval is impossible.
-      const reopened = new ApprovalStore(join(dir, 'approvals.json'));
+      const reopened = new ApprovalStore(join(dir, 'approvals.json')).bindScope(asOrg);
       await approvals.flush();
       await reopened.load();
       const saved = reopened.forDocument('procurement-orders', recordId);

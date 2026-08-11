@@ -24,6 +24,8 @@ import type {
 } from '@neuropause/shared';
 import { createLogger } from '../../logger';
 import { demoSeedsEnabled } from '../../demoSeed';
+import type { TenantScope } from '@neuropause/shared';
+import { TenantOwnership } from '../../tenancy/tenantOwnedStore';
 
 const log = createLogger('cloud-tenancy');
 
@@ -98,6 +100,69 @@ const DEMO_TENANTS: DemoTenant[] = [
 ];
 
 export class TenancyStore extends EventEmitter {
+  /**
+   * P13C ROUND 5 — F10. THE TENANT BOUNDARY, AND THE IDENTITY MAPPING IT NEEDS.
+   *
+   * TWO ID SPACES, AND THE OLD CODE COMPARED THEM DIRECTLY.
+   *
+   *   ORGANIZATION id — `org_<uuid>` (or the seeded `org-default`). This is what
+   *                     `TenantScope.tenantId` holds and what every other store
+   *                     in this application means by "tenant".
+   *   CLOUD TENANT id — `tnt_<uuid>`. An infrastructure record id, minted here.
+   *
+   * They never intersect. `callerTenantId()` in `cloud/index.ts` returns the
+   * ORGANIZATION id and it was passed straight into `listProjects(tenantId)`,
+   * which filters on the `tnt_` id — so those accessors always returned `[]` and
+   * every write always failed. Fail-closed, which is why nothing broke visibly,
+   * and dead code, which is worse than it sounds: **any isolation test of the
+   * form "B cannot read A's project" passed vacuously.** The N4 remediation
+   * documented directly below was real work that has never actually run.
+   *
+   * `CloudTenant.organizationId` is the mapping and it was already on the
+   * record. Resolving through it makes the scoped half live for the first time.
+   *
+   * Meanwhile the accessors that DID return data — `listTenants`,
+   * `listIsolation` — were install-wide on `cloud:read`: every organization's
+   * name, region, storage namespace and encryption key id.
+   */
+  private readonly tenancy = new TenantOwnership('cloud-tenancy');
+
+  /** Bind the tenant boundary. UNBOUND DENIES. Chainable. */
+  bindScope(source: () => TenantScope | null): this {
+    this.tenancy.bindScope(source);
+    return this;
+  }
+  hasScope(): boolean {
+    return this.tenancy.hasScope();
+  }
+
+  /**
+   * THE MAPPING. The caller's ORGANIZATION id → the cloud tenant rows it owns.
+   *
+   * Returns a set rather than one id because nothing in the model forbids an
+   * organization having more than one cloud tenant, and silently taking the
+   * first would be the `organizations[0]` mistake in a new place.
+   */
+  private callerTenantIds(): Set<string> {
+    const orgId = this.tenancy.scopeOrDeny()?.tenantId ?? null;
+    const out = new Set<string>();
+    if (orgId === null || orgId === '') return out;
+    for (const t of this.tenants.values()) if (t.organizationId === orgId) out.add(t.id);
+    return out;
+  }
+
+  /** Whether a `tnt_` id belongs to the caller's organization. The one check. */
+  private ownsTenant(tenantId: string): boolean {
+    return this.callerTenantIds().has(tenantId);
+  }
+
+  /** Unscoped ownership counts, for the migration inventory. */
+  ownershipCounts(): { total: number; assigned: number; unresolved: number } {
+    return this.tenancy.countOwnership(
+      [...this.tenants.values()].map((t) => ({ tenantId: t.organizationId })),
+    );
+  }
+
   private tenants = new Map<string, CloudTenant>();
   private projects = new Map<string, CloudProject>();
   private teams = new Map<string, CloudTeam>();
@@ -250,11 +315,36 @@ export class TenancyStore extends EventEmitter {
   regions(): CloudRegion[] {
     return CLOUD_REGIONS;
   }
+  /** The CALLER'S cloud tenants. Was every organization's, on `cloud:read`. */
   listTenants(): CloudTenant[] {
-    return [...this.tenants.values()].sort((a, b) => (a.isHome ? -1 : b.isHome ? 1 : a.name.localeCompare(b.name)));
+    const mine = this.callerTenantIds();
+    return [...this.tenants.values()]
+      .filter((t) => mine.has(t.id))
+      .sort((a, b) => (a.isHome ? -1 : b.isHome ? 1 : a.name.localeCompare(b.name)));
   }
+  /**
+   * The CALLER'S home cloud tenant.
+   *
+   * P13C ROUND 5, SECOND PASS. `cloud/index.ts` resolved the caller's cloud
+   * tenant as `listTenants()[0]`, and `listTenants` sorts home first — so for
+   * the seeded organization `[0]` was always the home tenant, `setTenantStatus`
+   * refuses home, and that channel could never succeed. Any second cloud tenant
+   * that organization provisioned was invisible to every project and team
+   * surface.
+   *
+   * The mapping helper below returns a SET and its own comment warns against
+   * "silently taking the first" — and the caller then took the first. Named
+   * explicitly here so the intent is in the signature rather than in an index.
+   */
+  homeTenantForCaller(): CloudTenant | null {
+    const mine = this.listTenants();
+    return mine.find((t) => t.isHome) ?? mine[0] ?? null;
+  }
+
+  /** One cloud tenant, IF the caller's organization owns it. */
   tenant(id: string): CloudTenant | null {
-    return this.tenants.get(id) ?? null;
+    const t = this.tenants.get(id) ?? null;
+    return t !== null && this.ownsTenant(id) ? t : null;
   }
   /**
    * P13C REMEDIATION — N4. AN ABSENT TENANT MEANS NOTHING, NOT EVERYTHING.
@@ -272,27 +362,37 @@ export class TenancyStore extends EventEmitter {
    * with no answer.
    */
   listProjects(tenantId: string): CloudProject[] {
-    if (!tenantId) return [];
+    if (!tenantId || !this.ownsTenant(tenantId)) return [];
     return [...this.projects.values()]
       .filter((p) => p.tenantId === tenantId)
       .sort((a, b) => a.name.localeCompare(b.name));
   }
   listTeams(tenantId: string): CloudTeam[] {
-    if (!tenantId) return [];
+    if (!tenantId || !this.ownsTenant(tenantId)) return [];
     return [...this.teams.values()]
       .filter((t) => t.tenantId === tenantId)
       .sort((a, b) => a.name.localeCompare(b.name));
   }
   listWorkers(tenantId: string): TenantWorker[] {
-    if (!tenantId) return [];
+    if (!tenantId || !this.ownsTenant(tenantId)) return [];
     return [...this.workers.values()].filter((w) => w.tenantId === tenantId);
   }
+  /**
+   * The CALLER'S storage isolation records.
+   *
+   * The sharpest of the install-wide reads: `namespace` and `encryptionKeyId`
+   * are infrastructure identifiers for another customer's data at rest.
+   */
   listIsolation(): StorageIsolation[] {
-    return [...this.isolation.values()].sort((a, b) => b.bytes - a.bytes);
+    const mine = this.callerTenantIds();
+    return [...this.isolation.values()]
+      .filter((i) => mine.has(i.tenantId))
+      .sort((a, b) => b.bytes - a.bytes);
   }
 
+  /** Counts over the CALLER'S cloud footprint. Was an install-wide census. */
   summary(): TenantSummary {
-    const tenants = [...this.tenants.values()];
+    const tenants = this.listTenants();
     return {
       tenants: tenants.length,
       active: tenants.filter((t) => t.status === 'active').length,
@@ -303,14 +403,29 @@ export class TenancyStore extends EventEmitter {
     };
   }
 
+  /**
+   * Provision a cloud tenant FOR THE CALLER'S ORGANIZATION.
+   *
+   * `organizationId` was derived from the display NAME — `org-${slug}` — so a
+   * newly provisioned tenant belonged to an organization that generally did not
+   * exist, and belonged to the CALLER never. Under the new mapping that would
+   * make every provisioned tenant immediately invisible to the person who
+   * provisioned it, so this is both the security fix and the thing that makes
+   * the feature work.
+   *
+   * A name-derived organization id is also how a caller could have addressed
+   * somebody else's organization by typing their name, which is the same defect
+   * federation's `inviteOrg` still has.
+   */
   createTenant(input: { name: string; regionId: CloudRegionId; tier: TenantTier }): CloudTenant {
+    const organizationId = this.tenancy.requireTenant();
     const id = `tnt_${randomUUID()}`;
     const slug = input.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
     const tenant: CloudTenant = {
       id,
       name: input.name,
       slug,
-      organizationId: `org-${slug}`,
+      organizationId,
       regionId: input.regionId,
       tier: input.tier,
       status: 'provisioning',
@@ -334,9 +449,10 @@ export class TenancyStore extends EventEmitter {
     return tenant;
   }
 
+  /** Suspend or resume one of the CALLER'S cloud tenants. Was a bare id. */
   setTenantStatus(id: string, status: TenantStatus): CloudTenant | null {
     const t = this.tenants.get(id);
-    if (!t || t.isHome) return t && t.isHome ? null : null;
+    if (!t || t.isHome || !this.ownsTenant(id)) return null;
     const next: CloudTenant = { ...t, status };
     this.tenants.set(id, next);
     this.schedulePersist();
@@ -345,7 +461,7 @@ export class TenancyStore extends EventEmitter {
   }
 
   createProject(input: { tenantId: string; name: string; description?: string }): CloudProject | null {
-    if (!this.tenants.has(input.tenantId)) return null;
+    if (!this.ownsTenant(input.tenantId)) return null;
     const id = `prj_${randomUUID()}`;
     const project: CloudProject = {
       id,
@@ -361,7 +477,10 @@ export class TenancyStore extends EventEmitter {
     return project;
   }
 
+  /** Delete one of the CALLER'S projects. Was `projects.delete(id)` on a bare id. */
   deleteProject(id: string): boolean {
+    const project = this.projects.get(id) ?? null;
+    if (project === null || !this.ownsTenant(project.tenantId)) return false;
     const ok = this.projects.delete(id);
     if (ok) {
       this.schedulePersist();
@@ -371,7 +490,7 @@ export class TenancyStore extends EventEmitter {
   }
 
   createTeam(input: { tenantId: string; name: string }): CloudTeam | null {
-    if (!this.tenants.has(input.tenantId)) return null;
+    if (!this.ownsTenant(input.tenantId)) return null;
     const id = `tem_${randomUUID()}`;
     const team: CloudTeam = { id, tenantId: input.tenantId, name: input.name, memberCount: 0, createdAt: new Date().toISOString() };
     this.teams.set(id, team);

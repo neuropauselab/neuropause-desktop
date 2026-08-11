@@ -10,6 +10,14 @@ import { describe, expect, it } from 'vitest';
 import { IpcChannel, type AutomationRule } from '@neuropause/shared';
 import { initAutomationPlatform, type AutomationPlatformDeps } from './index';
 
+/**
+ * P13C ROUND 5 — the composed cache is tenant-keyed, so these suites name a
+ * tenant. Every existing TTL and memoization assertion keeps its meaning:
+ * repeated reads under ONE tenant must still be a single composition.
+ */
+const PLATFORM_SCOPE = { tenantId: 'org-test', workspaceId: 'ws-test' };
+const scope = (): typeof PLATFORM_SCOPE => PLATFORM_SCOPE;
+
 const T0 = new Date(2026, 6, 15, 8, 59, 0, 0).getTime(); // local Wed 08:59
 
 function rule(over: Partial<AutomationRule> = {}): AutomationRule {
@@ -47,6 +55,7 @@ function mkDeps(over: Partial<AutomationPlatformDeps> = {}): Harness {
   const sources: string[] = [];
   let produce: () => unknown = () => null;
   const deps: AutomationPlatformDeps = {
+  scope,
     rules: () => {
       ruleReads += 1;
       return [rule()];

@@ -12,12 +12,22 @@
  */
 import { promises as fs, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import type { TenantScope } from '@neuropause/shared';
+import { TenantOwnership } from '../tenancy/tenantOwnedStore';
 
 export interface HealthPoint {
   /** ISO date (YYYY-MM-DD) the point represents. */
   day: string;
   overall: number;
   engineering: number;
+  /**
+   * P13C ROUND 5 — the organization this datapoint describes.
+   *
+   * Optional because rows written before this round have no owner. They are
+   * NOT attributed to anybody: a pre-Round-5 file holds one series for the
+   * install and there is no evidence in it of which tenant wrote which day.
+   */
+  tenantId?: string | null;
 }
 
 interface HealthFile {
@@ -31,6 +41,38 @@ function dayKey(ms: number): string {
 }
 
 export class HealthHistoryStore {
+  /**
+   * P13C ROUND 5 — TENANT-SCOPED, and it looked global right up until you ask
+   * what the numbers ARE.
+   *
+   * `HealthPoint` is `{ day, overall, engineering }` — three primitives, no ids,
+   * no text. That shape is why five sweeps read it as install telemetry. But
+   * `overall` comes from `collectOrgHealthInputs`, which is a function of ONE
+   * organization's headcount, licence runway, connector fleet and activity
+   * volume — every input of which was deliberately scoped in an earlier round.
+   *
+   * And the mechanism is worse than a read leak. The primary key was the
+   * CALENDAR DAY, one row per day for the whole install, last-write-wins — so
+   * whichever tenant opened the Executive Center last that day DESTROYED the
+   * other tenant's datapoint, and six subsystems (Insight predictions, Strategy,
+   * Analytics, Operations, the digital twin, the Executive Center itself) then
+   * drew trend lines and forecasts from whoever happened to write last.
+   */
+  private readonly tenancy = new TenantOwnership('enterprise-health-history');
+
+  /** Bind the tenant boundary. UNBOUND DENIES. Chainable. */
+  bindScope(source: () => TenantScope | null): this {
+    this.tenancy.bindScope(source);
+    return this;
+  }
+  hasScope(): boolean {
+    return this.tenancy.hasScope();
+  }
+  /** Unscoped ownership counts, for the migration inventory. */
+  ownershipCounts(): { total: number; assigned: number; unresolved: number } {
+    return this.tenancy.countOwnership(this.points);
+  }
+
   private points: HealthPoint[] = [];
   private loaded = false;
   /** Serializes persists so concurrent record() calls can't race the temp file. */
@@ -70,9 +112,10 @@ export class HealthHistoryStore {
   }
 
   /** All recorded points, oldest first. */
+  /** The CALLER'S points, oldest first. Was every organization's series. */
   all(): HealthPoint[] {
     this.load();
-    return [...this.points];
+    return this.tenancy.onlyMine(this.points);
   }
 
   /**
@@ -81,14 +124,28 @@ export class HealthHistoryStore {
    * injectable for tests.
    */
   async record(overall: number, engineering: number, nowMs: number = Date.now()): Promise<void> {
+    // A datapoint with no owner is a datapoint nobody can read back. Refuse it
+    // rather than write one, matching every other write in this program.
+    const tenantId = this.tenancy.requireTenant();
     this.load();
     const day = dayKey(nowMs);
-    const existingIdx = this.points.findIndex((p) => p.day === day);
-    const point: HealthPoint = { day, overall, engineering };
+    /**
+     * KEYED BY (TENANT, DAY), not by day.
+     *
+     * One row per calendar day for the whole install meant last-write-wins
+     * across tenants: whoever opened the Executive Center last that day
+     * overwrote everybody else's datapoint. Not a leak — a silent destruction
+     * of another organization's history, which then fed six subsystems'
+     * trend lines and forecasts.
+     */
+    const existingIdx = this.points.findIndex((p) => p.day === day && p.tenantId === tenantId);
+    const point: HealthPoint = { tenantId, day, overall, engineering };
     if (existingIdx >= 0) this.points[existingIdx] = point;
     else this.points.push(point);
     this.points.sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
-    if (this.points.length > MAX_POINTS) this.points = this.points.slice(-MAX_POINTS);
+    // Retention PER TENANT. Install-wide, a busy tenant's daily writes pushed
+    // another tenant's ninety-day window out from underneath it.
+    this.points = this.tenancy.pruneOwn(this.points, MAX_POINTS, (a, b) => a.day.localeCompare(b.day));
     await this.persist();
   }
 
@@ -100,9 +157,10 @@ export class HealthHistoryStore {
    */
   valueAround(daysAgo: number, nowMs: number = Date.now()): HealthPoint | null {
     this.load();
-    if (this.points.length === 0) return null;
+    const mine = this.tenancy.onlyMine(this.points);
+    if (mine.length === 0) return null;
     const today = dayKey(nowMs);
-    const older = this.points.filter((p) => p.day !== today);
+    const older = mine.filter((p) => p.day !== today);
     if (older.length === 0) return null;
     const targetMs = nowMs - daysAgo * 86_400_000;
     let best: HealthPoint | null = null;
@@ -137,9 +195,12 @@ export class HealthHistoryStore {
     count: number;
   } | null {
     this.load();
-    if (this.points.length === 0) return null;
+    // The CALLER'S series. Unscoped, every trend line, moving average and
+    // standard deviation in the Executive Center was computed across tenants.
+    const mine = this.tenancy.onlyMine(this.points);
+    if (mine.length === 0) return null;
     const cutoff = nowMs - days * 86_400_000;
-    const inWindow = this.points.filter((p) => new Date(p.day).getTime() >= cutoff);
+    const inWindow = mine.filter((p) => new Date(p.day).getTime() >= cutoff);
     if (inWindow.length === 0) return null;
     const values = inWindow.map((p) => p[metric]);
     const sum = values.reduce((a, b) => a + b, 0);
