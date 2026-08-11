@@ -9,7 +9,9 @@ import type {
 import {
   ALL_ENTERPRISE_PERMISSIONS,
   IpcChannel,
+  PLATFORM_ONLY_PERMISSIONS,
   RUNTIME_INVOKABLE_CHANNELS,
+  isPlatformOnlyPermission,
 } from '@neuropause/shared';
 import { AuthorizationError } from './authz';
 import {
@@ -64,7 +66,18 @@ function member(
   };
 }
 
-const ownerRole = role('role-owner', [...ALL_ENTERPRISE_PERMISSIONS]);
+/**
+ * P13C ROUND 7 — the widest role an ORGANIZATION can grant.
+ *
+ * This used to be `[...ALL_ENTERPRISE_PERMISSIONS]` and the tests below asserted
+ * the owner could do every single thing in that array. That was the trap the
+ * round removed: a permission meant to be install-level would have been granted
+ * here, silently, and these tests would have CONFIRMED the escalation as correct
+ * behaviour. `PLATFORM_ONLY_PERMISSIONS` is excluded, and the exclusion is
+ * asserted directly further down rather than left implicit.
+ */
+const ORG_GRANTABLE = ALL_ENTERPRISE_PERMISSIONS.filter((p) => !isPlatformOnlyPermission(p));
+const ownerRole = role('role-owner', [...ORG_GRANTABLE]);
 const viewerRole = role('role-viewer', ['org:read', 'dashboard:read', 'governance:read']);
 
 interface World {
@@ -208,14 +221,20 @@ describe('createAuthorize', () => {
         owner: unclaimedOwner,
       }),
     );
-    for (const p of ALL_ENTERPRISE_PERMISSIONS) expect(() => authorize(p)).not.toThrow();
+    for (const p of ORG_GRANTABLE) expect(() => authorize(p)).not.toThrow();
+    // …and NOT the install-level ones, on the very install where bootstrap is
+    // most permissive. A fresh unclaimed install is exactly where an escalation
+    // would be least noticed.
+    for (const p of PLATFORM_ONLY_PERMISSIONS) expect(() => authorize(p)).toThrow();
   });
 
   it('allows the claimed owner everything when signed in with the owning account', () => {
     const authorize = createAuthorize(
       depsOf({ session: 'owner@np.dev', users: [owner], roles: [ownerRole], owner }),
     );
-    for (const p of ALL_ENTERPRISE_PERMISSIONS) expect(() => authorize(p)).not.toThrow();
+    for (const p of ORG_GRANTABLE) expect(() => authorize(p)).not.toThrow();
+    // The claimed owner is no more install-level than the unclaimed one.
+    for (const p of PLATFORM_ONLY_PERMISSIONS) expect(() => authorize(p)).toThrow();
   });
 
   it('denies a different account once ownership is claimed (no silent seizure)', () => {

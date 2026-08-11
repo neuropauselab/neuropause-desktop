@@ -63,6 +63,7 @@ import { iacActions } from './iac/iacActions';
 import type { DiscoveryHttp } from '@neuropause/shared';
 import type { IpcBroadcaster } from '@neuropause/shared';
 import { AuthError } from '../unified/sync/http';
+import type { TenantScope } from '@neuropause/shared';
 
 const log = createLogger('infrastructure');
 
@@ -70,6 +71,17 @@ export interface InfrastructureDeps {
   broadcast: IpcBroadcaster;
   publish: (e: PlatformEventInput) => void;
   now?: () => string;
+  /**
+   * The tenant boundary. P13C Round 7 — this subsystem had none.
+   *
+   * REQUIRED and INJECTED. Required, because an optional boundary defaults to
+   * something and the default here was "every tenant sees every tenant's cloud
+   * inventory". Injected rather than imported, because importing
+   * `activeTenantScope` from `enterprise/index` drags Electron's `app.getPath`
+   * into this subsystem's node tests — a trap this program has now hit in five
+   * consecutive rounds.
+   */
+  scope: () => TenantScope | null;
 }
 
 export interface InfrastructureSubsystem {
@@ -102,8 +114,12 @@ function accountHealth(s: AccountDiscoveryState): CloudPlatformHealth {
 export async function initInfrastructure(deps: InfrastructureDeps): Promise<InfrastructureSubsystem> {
   const now = deps.now ?? (() => new Date().toISOString());
   const baseDir = safeUserData();
-  const store = new ResourceStore(baseDir ? join(baseDir, 'infra-resources.json') : null);
-  const state = new DiscoveryStateStore(baseDir ? join(baseDir, 'infra-discovery-state.json') : null);
+  const store = new ResourceStore(baseDir ? join(baseDir, 'infra-resources.json') : null).bindScope(
+    deps.scope,
+  );
+  const state = new DiscoveryStateStore(
+    baseDir ? join(baseDir, 'infra-discovery-state.json') : null,
+  ).bindScope(deps.scope);
   await store.load();
   await state.load();
   await state.reconcile();
@@ -192,6 +208,8 @@ export async function initInfrastructure(deps: InfrastructureDeps): Promise<Infr
       makeHttp,
       publish: deps.publish,
       regionFor: (platformId, accountId) => state.get(platformId, accountId).region,
+      // P13C Round 7 — the same scoped filter the listings use. See executor.ts.
+      ownsAccount: (platformId, accountId) => store.ownsAccount(platformId, accountId),
       now,
     },
     [...awsActions(), ...azureActions(), ...gcpActions(), ...kubernetesActions(), ...dockerActions(), ...vmwareActions(), ...cloudflareActions(), ...snowflakeActions(), ...databricksActions(), ...iacActions()],
@@ -244,6 +262,8 @@ export async function initInfrastructure(deps: InfrastructureDeps): Promise<Infr
       discovering: platforms.filter((p) => p.status === 'discovering').length,
       degraded: platforms.filter((p) => p.status === 'degraded').length,
       down: platforms.filter((p) => p.health === 'down').length,
+      // Scoped, because `state.all()` is. A count over a scoped collection that
+      // is not itself scoped is the same query with the rows dropped.
       accounts: platforms.reduce((n, p) => n + p.accounts.length, 0),
       resources: store.all().length,
       domains: domainSet.size,
@@ -298,6 +318,25 @@ export async function initInfrastructure(deps: InfrastructureDeps): Promise<Infr
       handler: async (p) => {
         const req = p as { platformId: string; accountId?: string };
         if (!PLATFORM_BY_ID[req.platformId]) return { ok: false, hadAdapter: false, resources: 0, error: 'Unknown platform', domains: [], created: 0, updated: 0, deleted: 0, retryable: false };
+        /**
+         * P13C ROUND 7 (final sweep) — AUTHORIZE THE ACCOUNT.
+         *
+         * `InfraAction` was given `ownsAccount` earlier in this same round and
+         * this channel — the more powerful of the two — was not. One call with
+         * another tenant's account id ran LIVE SIGNED PROVIDER API CALLS against
+         * their cloud account, wrote the returned inventory into the caller's
+         * partition, RE-OWNED the target tenant's existing rows, and overwrote
+         * their discovery cursors.
+         *
+         * The sibling was fixed; the class was not. That is the failure mode this
+         * entire program has been about, and it recurred inside the round that
+         * named it.
+         */
+        if (!state.mayUse(req.platformId, req.accountId ?? 'default')) {
+          // Same shape a genuine no-op discovery returns — a caller probing
+          // account ids must not learn from the response that one exists.
+          return { ok: false, hadAdapter: false, resources: 0 };
+        }
         return engine.discoverAccount(req.platformId, req.accountId ?? 'default');
       },
     },

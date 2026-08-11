@@ -44,6 +44,7 @@ import { pluginExtensionRegistry } from '../plugins/extensionRegistry';
 import { pluginGraphProjection } from '../plugins/pluginExtensionConsumers';
 import { graphStore } from './graphInstance';
 import { projectGraph } from './projector';
+import { runOutsidePrincipal } from '../tenancy/backgroundPrincipal';
 
 const log = createLogger('graph');
 
@@ -159,7 +160,28 @@ export async function initGraph(deps: GraphSubsystemDeps): Promise<GraphSubsyste
   // First projection shortly after boot, once the store has settled.
   const initialTimer = setTimeout(safeRebuild, 1500);
 
-  const onChanged = (): void => deps.broadcast(IpcChannel.GraphEventBroadcast, graphStore.counts());
+  /**
+   * P13C ROUND 7 — COMPUTED FOR THE VIEWER, NOT FOR THE JOB.
+   *
+   * THE CLASS: a background pass runs as tenant A while the window in front of
+   * the user is showing tenant B. Any value computed for the RENDERER during
+   * that pass is computed under A's principal, so a correctly-scoped store
+   * honestly answers for A — and the answer is delivered into B's window.
+   *
+   * The store is not the defect. The store is right, which is exactly why this
+   * survived seven rounds of auditing stores: every isolation test on it passes,
+   * because the boundary holds and the READER is standing on the wrong side of
+   * it.
+   *
+   * `runOutsidePrincipal` exists for precisely this and had ONE caller in the
+   * whole main process (the unread badge), with a comment describing the general
+   * case. This is the general case, in the five other places it occurs.
+   *
+   * It grants nothing: leaving the principal falls back to the SESSION, so the
+   * value is what the signed-in viewer is entitled to and never more.
+   */
+  const onChanged = (): void =>
+    deps.broadcast(IpcChannel.GraphEventBroadcast, runOutsidePrincipal(() => graphStore.counts()));
   graphStore.on('changed', onChanged);
 
   const handlers: SecureHandlerDef[] = [

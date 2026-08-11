@@ -13,6 +13,8 @@ import { EventEmitter } from 'node:events';
 import { promises as fs } from 'node:fs';
 import type { MemoryAuditAction, MemoryAuditEvent, MemoryAuditPage } from '@neuropause/shared';
 import { createLogger } from '../logger';
+import type { TenantScope } from '@neuropause/shared';
+import { TenantOwnership } from '../tenancy/tenantOwnedStore';
 
 const log = createLogger('memory-audit');
 
@@ -30,6 +32,27 @@ export interface MemoryAuditQuery {
 }
 
 export class MemoryAuditLog extends EventEmitter {
+  /**
+   * P13C ROUND 7 (final sweep) — the boundary this log never had.
+   *
+   * No tenant field, no `bindScope`, no registration — and its channel was in
+   * `PUBLIC_CHANNELS`: no auth, no permission. `detail` is an assistant-written
+   * plain-language summary, so the rows carry record titles verbatim.
+   *
+   * The memory STORE beside it is scoped and the conversation store was pulled
+   * off the public list in an earlier round. This is their sibling.
+   */
+  private readonly tenancy = new TenantOwnership('memory-audit-log');
+
+  /** Bind the tenant boundary. UNBOUND DENIES. Chainable. */
+  bindScope(source: () => TenantScope | null): this {
+    this.tenancy.bindScope(source);
+    return this;
+  }
+  hasScope(): boolean {
+    return this.tenancy.hasScope();
+  }
+
   private entries: MemoryAuditEvent[] = [];
   private loaded = false;
   private lastPersist: Promise<void> = Promise.resolve();
@@ -86,10 +109,18 @@ export class MemoryAuditLog extends EventEmitter {
 
   /** Append one event. Newest entries are kept; the oldest are trimmed past the cap. */
   record(event: MemoryAuditEvent): void {
-    this.entries.push(event);
-    if (this.entries.length > MAX_ENTRIES) {
-      this.entries = this.entries.slice(this.entries.length - MAX_ENTRIES);
-    }
+    // Stamped from the resolver, never from the caller. An unresolved writer
+    // produces an UNATTRIBUTED row rather than one owned by the wrong tenant;
+    // unattributed rows reach nobody.
+    const owner = this.tenancy.scopeOrDeny()?.tenantId;
+    this.entries.push(owner === undefined ? event : { ...event, tenantId: owner });
+    /**
+     * PER TENANT. `slice(length - MAX_ENTRIES)` was install-wide, so one tenant's
+     * memory activity deleted another tenant's audit evidence — the fifth
+     * retention cap in this program able to do that, and the second found in this
+     * round alone. A retention cap is a write.
+     */
+    this.entries = this.tenancy.pruneOwn(this.entries, MAX_ENTRIES, (a, b) => a.at.localeCompare(b.at));
     this.schedulePersist();
     this.emit('changed', event);
   }
@@ -98,14 +129,16 @@ export class MemoryAuditLog extends EventEmitter {
   page(query: MemoryAuditQuery = {}): MemoryAuditPage {
     const limit = Math.min(Math.max(query.limit ?? 100, 1), 1000);
     const offset = Math.max(query.offset ?? 0, 0);
-    let rows = [...this.entries].reverse();
+    // The CALLER'S rows.
+    let rows = [...this.tenancy.onlyMine(this.entries)].reverse();
     if (query.action) rows = rows.filter((e) => e.action === query.action);
     if (query.memoryId) rows = rows.filter((e) => e.memoryId === query.memoryId);
     const total = rows.length;
     return { entries: rows.slice(offset, offset + limit), total };
   }
 
+  /** The CALLER'S row count. An install-wide size says how busy another tenant is. */
   size(): number {
-    return this.entries.length;
+    return this.tenancy.onlyMine(this.entries).length;
   }
 }

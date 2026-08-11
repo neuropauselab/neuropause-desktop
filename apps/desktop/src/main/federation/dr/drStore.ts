@@ -73,7 +73,17 @@ export class DrStore extends EventEmitter {
   private lastPersist: Promise<void> = Promise.resolve();
 
   constructor(private readonly filePath: string) {
-    declareSystemGlobalStore('federation-dr', 'Backups, replicas, recovery validations and continuity posture describe the');
+    declareSystemGlobalStore(
+      'federation-dr',
+      [
+        'WHY GLOBAL: backups, replicas, recovery validations and continuity posture describe THIS MACHINE\'s durability — which regions hold a replica, whether replication is lagging, when the last drill ran. There is one filesystem and one replication topology per install, so a per-tenant partition would describe something that does not exist.',
+        'WHAT DATA: Backup{id, scope, status, regionId, sizeBytes, objectCount, durationMs, createdAt}; ReplicaState{regionId, status, lagSeconds}; RecoveryValidation{rpo/rto seconds, checkedItems, integrityOk}; ContinuityPosture{haEnabled, multiRegion, targets, score}. Every field is an enum, a region id, a duration or a count. No id, name, title, email or record content appears anywhere in the file.',
+        'WHO MAY ACCESS: federation:read. WHO MAY MODIFY: federation:manage (FedCreateBackup, FedValidateRecovery).',
+        'WHY IT CANNOT DISCLOSE TENANT DATA: nothing in it is derived from a tenant. P13C Round 7 verified this by inspecting the persisted bytes after two tenants wrote — see systemGlobalProof.test.ts. Note WHY that holds today: createBackup does not read any data, it FABRICATES sizeBytes and objectCount from a constant plus a random offset. So the numbers are not an aggregate over customer records; they are placeholders.',
+        'THE CONDITION THAT ENDS THIS DECLARATION: if a real backup engine is wired, sizeBytes and objectCount become AGGREGATES OVER TENANT DATA, and an install-wide object count is a volume side channel — a tenant who knows their own count can subtract. At that moment this store stops being system-global and this reason stops being true.',
+        'CROSS-TENANT COST TODAY: a federation:manage holder in one tenant can trigger an install-wide backup or a recovery validation, consuming shared IO. Accepted: it is the same property as any shared-machine maintenance action.',
+      ].join(' '),
+    );
     super();
   }
 

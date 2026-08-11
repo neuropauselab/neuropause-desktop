@@ -20,6 +20,7 @@ import type {
   WebhookEndpoint,
   WebhookStatus,
 } from '@neuropause/shared';
+import type { PlatformAuthority } from '../../platformOperator/platformAuthority';
 import { createLogger } from '../../logger';
 import { demoSeedsEnabled } from '../../demoSeed';
 import type { TenantScope } from '@neuropause/shared';
@@ -324,31 +325,75 @@ export class ApiPlatformStore extends EventEmitter {
   /**
    * Enable or disable a control-plane rate-limit policy.
    *
-   * P13C ROUND 6 — A SHARED CONTROL SURFACE, DECLARED WITH ITS COST.
+   * P13C ROUND 7 — REQUIRES AN INSTALL-LEVEL PLATFORM OPERATOR.
    *
-   * Rate policies carry no tenant field and describe THIS MACHINE'S control plane
-   * — one set of limits protecting one process. Scoping them would be wrong in a
-   * way that is worse than the exposure: per-tenant limits over a shared runtime
-   * are not limits.
+   * Round 6 declared this a shared control surface and stated the cost: any
+   * `cloud:manage` holder could disable a policy protecting every other tenant,
+   * including the seeded `Per-tenant` policy. `cloud:manage` is held by every
+   * organization's Admin, and anyone may create an organization and own it — so
+   * "administrator capability, not a member one" was true and not nearly enough.
    *
-   * THE COST, STATED PLAINLY: any `cloud:manage` holder can disable a policy that
-   * protects every other tenant on the install — including the seeded
-   * `Per-tenant` policy. That is a cross-tenant availability decision, and the
-   * only honest reasons to accept it are that the resource genuinely is shared and
-   * that `cloud:manage` is an administrator capability, not a member one.
+   * The resource classification has NOT changed and must not: rate policies carry
+   * no tenant field and govern one shared runtime. Scoping them per tenant would
+   * be worse than the exposure, because per-tenant limits over a shared process
+   * are not limits. What changed is the AUTHORITY. The operation now demands a
+   * `PlatformAuthority`, which only an install-level operator can obtain and which
+   * no organization role, no Owner, and no background principal can produce.
    *
-   * This is a DECLARATION, like `installStore`'s and `drStore`'s, not a
-   * dismissal. If NeuroPause ever hosts unrelated organizations on one control
-   * plane, this needs a platform-operator role above `cloud:manage`, and the
-   * declaration stops holding at that moment.
+   * The parameter is REQUIRED, not optional. An optional authority is a default,
+   * and the default would be "unauthorized calls still work" — which is the state
+   * this change exists to end.
+   *
+   * @param authority Proof of an install-level decision. See `platformAuthority.ts`.
+   * @param onAudit   Called with the before/after transition so the caller can
+   *                  write the audit line. Injected rather than imported: this
+   *                  store must not acquire a dependency on the governance store,
+   *                  and the audit belongs to the caller's tenant context, which
+   *                  this store deliberately does not have.
    */
-  setPolicyEnabled(id: string, enabled: boolean): CloudRateLimitPolicy | null {
+  setPolicyEnabled(
+    id: string,
+    enabled: boolean,
+    authority: PlatformAuthority,
+    onAudit?: (record: PolicyChangeAudit) => void,
+  ): CloudRateLimitPolicy | null {
     const p = this.policies.get(id);
     if (!p) return null;
     const next: CloudRateLimitPolicy = { ...p, enabled };
     this.policies.set(id, next);
     this.schedulePersist();
     this.emit('changed');
+    onAudit?.({
+      actor: authority.operator,
+      authorizedBy: authority.permission,
+      authorizedAt: authority.at,
+      operation: 'cloud.rate_policy.set_enabled',
+      policyId: p.id,
+      policyName: p.name,
+      before: p.enabled,
+      after: enabled,
+      at: new Date().toISOString(),
+    });
     return next;
   }
+}
+
+/**
+ * What a rate-policy change records.
+ *
+ * Every field the round demanded, and one it did not: `authorizedBy` and
+ * `authorizedAt` come from the AUTHORITY rather than from the call site, so the
+ * trail cannot record an actor the authorizer never approved. An audit line
+ * assembled from ambient scope drifts from the decision it claims to describe.
+ */
+export interface PolicyChangeAudit {
+  actor: string;
+  authorizedBy: 'cloud:operate';
+  authorizedAt: string;
+  operation: 'cloud.rate_policy.set_enabled';
+  policyId: string;
+  policyName: string;
+  before: boolean;
+  after: boolean;
+  at: string;
 }

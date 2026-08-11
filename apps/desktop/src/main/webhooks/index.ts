@@ -30,6 +30,7 @@ import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { webhookStore } from './webhookInstance';
 import { WebhookDispatcher, type WebhookPoster } from './webhookDispatcher';
 import { wireWebhookProducers } from './webhookProducer';
+import { runOutsidePrincipal } from '../tenancy/backgroundPrincipal';
 
 const log = createLogger('webhooks');
 
@@ -71,7 +72,30 @@ export async function initWebhooks(deps: WebhookSubsystemDeps): Promise<WebhookS
   });
   dispatcher.start();
 
-  const onChanged = (): void => deps.broadcast(IpcChannel.WebhookEventBroadcast, webhookStore.stats());
+  /**
+   * P13C ROUND 7 — COMPUTED FOR THE VIEWER, NOT FOR THE JOB.
+   *
+   * THE CLASS: a background pass runs as tenant A while the window in front of
+   * the user is showing tenant B. Any value computed for the RENDERER during
+   * that pass is computed under A's principal, so a correctly-scoped store
+   * honestly answers for A — and the answer is delivered into B's window.
+   *
+   * The store is not the defect. The store is right, which is exactly why this
+   * survived seven rounds of auditing stores: every isolation test on it passes,
+   * because the boundary holds and the READER is standing on the wrong side of
+   * it.
+   *
+   * `runOutsidePrincipal` exists for precisely this and had ONE caller in the
+   * whole main process (the unread badge), with a comment describing the general
+   * case. This is the general case, in the five other places it occurs.
+   *
+   * It grants nothing: leaving the principal falls back to the SESSION, so the
+   * value is what the signed-in viewer is entitled to and never more.
+   */
+  // The dispatcher runs each delivery under ITS OWN tenant's principal, so
+  // `markDelivered`/`markFailed` emit `changed` from inside that scope.
+  const onChanged = (): void =>
+    deps.broadcast(IpcChannel.WebhookEventBroadcast, runOutsidePrincipal(() => webhookStore.stats()));
   webhookStore.on('changed', onChanged);
 
   const handlers: SecureHandlerDef[] = [

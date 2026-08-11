@@ -11,6 +11,9 @@
  * Electron-free (JSON-file-backed, or fully in-memory when constructed with a null path) so the discovery
  * engine and its tests run under the node vitest gate.
  */
+import type { TenantScope } from '@neuropause/shared';
+import { TenantOwnership } from '../tenancy/tenantOwnedStore';
+import { TenantMemo } from '../tenancy/tenantMemo';
 import { EventEmitter } from 'node:events';
 import { promises as fs } from 'node:fs';
 import {
@@ -83,12 +86,72 @@ export interface ResourceChangedEvent {
  * literal to `any`, so even the `kind` discriminant written down right there was
  * unchecked. Declaring the payload restores the literal's type.
  */
+/** Graph rebuild is cheap but discovery can upsert in bursts; cache for a short window. */
+const GRAPH_TTL_MS = 1500;
+
 export class ResourceStore extends EventEmitter<{ changed: [ResourceChangedEvent] }> {
+  /**
+   * P13C ROUND 7 — THE SUBSYSTEM THAT NEVER HAD A TENANT DIMENSION.
+   *
+   * Fifty-four source files under `infrastructure/`, and not one reference to
+   * `activeTenantScope`, `TenantOwnership`, `bindScope` or `tenantId`. It was not
+   * a store with a broken boundary — it was a subsystem that had never been asked
+   * the question, which is why six rounds of sweeping past it found nothing: every
+   * sweep looked for a seam that was WRONG, and there was no seam at all.
+   *
+   * It is absent from `migrationInventory.ts` and from the tenant-store registry,
+   * so `assertAllTenantStoresBound()` could not see it either. A gate that lists
+   * the stores it knows about cannot report the one nobody registered.
+   *
+   * WHAT WAS EXPOSED: `InfraSearch`, `InfraResourceGraph` and `InfraStats` on
+   * `connectors:read` returned every tenant's discovered cloud inventory —
+   * resource names, tags, attribute values, account ids, regions, health. And the
+   * same unscoped graph was fed into three TENANT-SCOPED read models (knowledge
+   * graph, enterprise intelligence, insight), where it was stamped with the
+   * reading tenant's id and became indistinguishable from their own. Those three
+   * sinks passed every isolation test, because the sinks were correct.
+   */
+  private readonly tenancy = new TenantOwnership('infrastructure-resources');
+
+  /** Bind the tenant boundary. UNBOUND DENIES. Chainable. */
+  bindScope(source: () => TenantScope | null): this {
+    this.tenancy.bindScope(source);
+    return this;
+  }
+  hasScope(): boolean {
+    return this.tenancy.hasScope();
+  }
+  /** Unscoped ownership counts, for the migration inventory. */
+  ownershipCounts(): { total: number; assigned: number; unresolved: number } {
+    return this.tenancy.countOwnership([...this.resources.values()].map((r) => ({ tenantId: r.tenantId })));
+  }
+
+  /**
+   * The caller's resources. THE ONE FILTER.
+   *
+   * A row with no `tenantId` was discovered before this boundary existed and is
+   * visible to NOBODY. That fails closed, and the cost is bounded: discovery
+   * re-runs on a schedule and re-stamps every resource it finds, so an upgraded
+   * install repopulates on the next pass rather than losing anything.
+   */
+  private mine(rows: readonly CloudResource[]): CloudResource[] {
+    const scope = this.tenancy.scopeOrDeny();
+    if (scope === null) return [];
+    return rows.filter((r) => r.tenantId === scope.tenantId);
+  }
+
   private resources = new Map<string, CloudResource>();
   private loaded = false;
-  private graphCache: { model: ResourceGraphModel; at: number } | null = null;
-  /** Graph rebuild is cheap but discovery can upsert in bursts; cache for a short window. */
-  private static readonly GRAPH_TTL_MS = 1500;
+  /**
+   * P13C Round 7 — the graph cache is now a `TenantMemo`. It was a bare
+   * `{model, at}` cell behind a 1.5s TTL, so once the store became scoped this
+   * would have handed tenant A's freshly-built graph to tenant B inside the
+   * window — the exact class Round 3 built `TenantMemo` for, arriving in the
+   * same commit that fixed the store beneath it.
+   */
+  private readonly graphCache = new TenantMemo<ResourceGraphModel>('infrastructure-resource-graph', {
+    ttlMs: GRAPH_TTL_MS,
+  });
 
   constructor(private readonly filePath: string | null) {
     super();
@@ -129,15 +192,23 @@ export class ResourceStore extends EventEmitter<{ changed: [ResourceChangedEvent
     let deleted = 0;
     const changed: string[] = [];
 
+    /**
+     * Discovery writes as the tenant that ran it. `requireTenant()` THROWS when
+     * unresolved rather than stamping a default — a resource filed under the
+     * wrong organization is worse than a discovery pass that refuses to run, and
+     * the refusal is visible where a mis-filing is not.
+     */
+    const owner = this.tenancy.requireTenant();
+
     for (const next of incoming) {
       const prev = this.resources.get(next.id);
       if (!prev) {
-        this.resources.set(next.id, next);
+        this.resources.set(next.id, { ...next, tenantId: owner });
         changed.push(next.id);
         created += 1;
       } else if (signature(next) !== signature(prev)) {
         // Preserve the original createdAt (first-seen), take the rest from the fresh discovery.
-        this.resources.set(next.id, { ...next, createdAt: prev.createdAt });
+        this.resources.set(next.id, { ...next, createdAt: prev.createdAt, tenantId: owner });
         changed.push(next.id);
         updated += 1;
       } else {
@@ -162,7 +233,8 @@ export class ResourceStore extends EventEmitter<{ changed: [ResourceChangedEvent
     }
 
     if (changed.length > 0) {
-      this.graphCache = null;
+      // Discovery changed the inventory: drop the memo so the next read rebuilds.
+      this.graphCache.invalidate();
       await this.persist();
       this.emit('changed', { ids: changed });
     }
@@ -170,8 +242,9 @@ export class ResourceStore extends EventEmitter<{ changed: [ResourceChangedEvent
   }
 
   /** All resources currently in the store. */
+  /** The CALLER'S resources. Was every organization's cloud inventory. */
   all(): CloudResource[] {
-    return [...this.resources.values()];
+    return this.mine([...this.resources.values()]);
   }
 
   /** Resources filtered by platform and/or account. */
@@ -191,7 +264,9 @@ export class ResourceStore extends EventEmitter<{ changed: [ResourceChangedEvent
     const q = text.trim().toLowerCase();
     if (!q) return { query: text, total: 0, hits: [] };
     const matches: Array<{ hit: InfraSearchHit; nameHit: boolean }> = [];
-    for (const r of this.resources.values()) {
+    // `all()`, not `this.resources.values()` — the search box was the widest read
+    // on this surface: it matches names, tags AND attribute values.
+    for (const r of this.all()) {
       if (filter?.platformId && r.platformId !== filter.platformId) continue;
       if (filter?.domain && r.domain !== filter.domain) continue;
       const matchedOn = matchResource(r, q);
@@ -204,19 +279,32 @@ export class ResourceStore extends EventEmitter<{ changed: [ResourceChangedEvent
   }
 
   /** How many resources belong to a platform (for the Cloud Platform Center counts). */
+  /** How many of the CALLER'S resources belong to a platform. */
   countForPlatform(platformId: string): number {
+    // Scoped in the same commit as the listing. A count over a scoped collection
+    // that is not itself scoped is the same query with the rows dropped — four
+    // separate findings in this program, so it is no longer a separate step.
     let n = 0;
-    for (const r of this.resources.values()) if (r.platformId === platformId) n += 1;
+    for (const r of this.all()) if (r.platformId === platformId) n += 1;
     return n;
   }
 
   /** Build (or return the cached) Resource Graph model for a scope. `nowMs` stamps the model. */
   graph(nowMs: number, filter?: { platformId?: string; accountId?: string }): ResourceGraphModel {
-    if (!filter && this.graphCache && nowMs - this.graphCache.at < ResourceStore.GRAPH_TTL_MS) {
-      return this.graphCache.model;
-    }
-    const model = buildResourceGraph({ resources: this.query(filter) }, nowMs);
-    if (!filter) this.graphCache = { model, at: nowMs };
-    return model;
+    if (!filter) return this.graphCache.state(() => buildResourceGraph({ resources: this.query() }, nowMs));
+    return buildResourceGraph({ resources: this.query(filter) }, nowMs);
+  }
+
+  /**
+   * Whether the caller may act on this account.
+   *
+   * P13C Round 7. `accountId` arrives from the renderer payload and reached
+   * `executor.execute` with no ownership resolution at all — so a
+   * `connectors:manage` holder in one tenant could run MUTATING provider actions
+   * against another tenant's cloud account. Resolved through the same filter the
+   * listings use, so there is one answer to "whose account is this".
+   */
+  ownsAccount(platformId: string, accountId: string): boolean {
+    return this.all().some((r) => r.platformId === platformId && r.accountId === accountId);
   }
 }

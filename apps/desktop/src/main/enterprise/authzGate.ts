@@ -32,7 +32,8 @@
  */
 import type { EnterprisePermission, IpcChannelName, OrgRole, OrgUser } from '@neuropause/shared';
 import { IpcChannel } from '@neuropause/shared';
-import { can, effectivePermissions, requirePermission } from './authz';
+import { isPlatformOnlyPermission } from '@neuropause/shared';
+import { AuthorizationError, can, effectivePermissions, requirePermission } from './authz';
 
 /** The resolved identity a permission check runs against. */
 export interface EnterpriseActor {
@@ -61,6 +62,17 @@ export interface ActorResolverDeps {
   rolesFor: (orgId: string) => OrgRole[];
   /** The seeded workspace-owner member, if it still exists. */
   ownerMember: () => OrgUser | null;
+  /**
+   * Whether the signed-in account is an INSTALL-LEVEL platform operator.
+   *
+   * P13C ROUND 7. Optional so every existing test constructs the resolver
+   * unchanged — and an ABSENT resolver means NOBODY, which is why the default
+   * below is `() => false` rather than a throw. A platform-only permission
+   * checked on an install that never wired the registry is refused, which is the
+   * safe direction: the failure is "the control plane cannot be reconfigured",
+   * not "anyone may reconfigure it".
+   */
+  isPlatformOperator?: (email: string) => boolean;
 }
 
 /**
@@ -155,7 +167,33 @@ export function createAuthorize(
   deps: ActorResolverDeps,
 ): (permission: EnterprisePermission) => void {
   return (permission) => {
-    if (deps.sessionEmail() === null) throw new Error('Sign in to continue.');
+    const email = deps.sessionEmail();
+    if (email === null) throw new Error('Sign in to continue.');
+
+    /**
+     * P13C ROUND 7 — PLATFORM-ONLY PERMISSIONS NEVER CONSULT ORG ROLES.
+     *
+     * Handled here, before `resolveActor`, and returning early rather than
+     * falling through — because falling through would mean an operator ALSO
+     * needs an org membership, and a platform operator is not a member of
+     * anything. More importantly, an org role must never be able to satisfy this:
+     * the whole point is that tenant A's Admin and tenant B's Admin are equally
+     * refused, and that switching from A to B confers nothing, because nothing
+     * about this decision is keyed on an organization.
+     *
+     * The refusal is recorded through the same hold channel as any other, so an
+     * administrator who hits it gets a route forward rather than a dead toast.
+     */
+    if (isPlatformOnlyPermission(permission)) {
+      if (deps.isPlatformOperator?.(email) === true) return;
+      deps.onPermissionRefused?.({
+        permission,
+        held: [],
+        actorLabel: email,
+      });
+      throw new AuthorizationError(permission);
+    }
+
     const actor = resolveActor(deps);
     if (!actor) {
       deps.onPermissionRefused?.({

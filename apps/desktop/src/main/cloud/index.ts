@@ -43,6 +43,8 @@ import { createLogger } from '../logger';
 import { tenancyStore, CLOUD_REGIONS } from './tenancy/tenancyInstance';
 import { federationStore } from './identity/federationInstance';
 import { liveSync, onLiveSyncStatus, setLiveSyncActiveOrg } from './livesync/liveSyncInstance';
+import type { PolicyChangeAudit } from './apiplatform/apiPlatformStore';
+import type { PlatformAuthority } from '../platformOperator/platformAuthority';
 import { apiPlatformStore } from './apiplatform/apiPlatformInstance';
 import { evaluateFederation, buildTestAssertion } from './identity/federation';
 import {
@@ -62,6 +64,17 @@ const log = createLogger('cloud');
 
 export interface CloudDeps {
   broadcast: IpcBroadcaster;
+  /**
+   * Mints proof that an install-level platform operator authorized the call, or
+   * null. P13C Round 7 — see `platformOperator/platformAuthority.ts`.
+   *
+   * REQUIRED, not optional. An optional authorizer would default to something,
+   * and every safe default here is a second code path nobody exercises. A
+   * composition root that forgets this fails to compile.
+   */
+  platformAuthorizer: () => PlatformAuthority | null;
+  /** Record a control-plane policy change: actor, authority, before, after. */
+  auditPolicyChange: (record: PolicyChangeAudit) => void;
 }
 
 export interface CloudSubsystem {
@@ -223,10 +236,16 @@ export async function initCloud(deps: CloudDeps): Promise<CloudSubsystem> {
     liveSync: liveSync.getStatus().state,
   });
 
-  return { handlers: buildHandlers() };
+  return { handlers: buildHandlers(deps) };
 }
 
-function buildHandlers(): SecureHandlerDef[] {
+/**
+ * P13C Round 7 — takes `deps` because one handler needs the platform authorizer.
+ * Passed as an argument rather than captured in a module variable: a captured
+ * authorizer is a second source of truth that survives past its composition and
+ * can be read after the thing that owns it is gone.
+ */
+function buildHandlers(deps: CloudDeps): SecureHandlerDef[] {
   return [
     /* ── Multi-tenant runtime ── */
     {
@@ -507,9 +526,32 @@ function buildHandlers(): SecureHandlerDef[] {
     {
       channel: IpcChannel.CloudSetPolicyEnabled,
       schema: CloudSetPolicyEnabledRequest,
+      // P13C Round 7 — `audit: true` records that the channel was invoked; the
+      // handler additionally records WHO changed WHAT from WHAT to WHAT. The
+      // bridge's audit line has no actor and no target, so it is necessary and
+      // not sufficient.
+      audit: true,
       handler: (p) => {
         const r = p as CloudSetPolicyEnabledRequest;
-        return apiPlatformStore.setPolicyEnabled(r.id, r.enabled) ?? { error: 'Policy not found.' };
+        /**
+         * The SECOND check. `withCloudAuthz` already refused this channel to
+         * anyone without `cloud:operate`, and this is not redundant: the
+         * authority is a value the store demands, so if the gate is ever moved,
+         * renamed, or forgotten on a new channel that reaches the same method,
+         * the operation still cannot run. Defence in depth, one decision.
+         */
+        const authority = deps.platformAuthorizer();
+        if (authority === null) {
+          // Deliberately says nothing about whether an operator is configured.
+          // That is a fact about the machine's administration, and a tenant
+          // administrator has no claim to it.
+          return { error: 'This action requires a platform operator.' };
+        }
+        return (
+          apiPlatformStore.setPolicyEnabled(r.id, r.enabled, authority, deps.auditPolicyChange) ?? {
+            error: 'Policy not found.',
+          }
+        );
       },
     },
     {

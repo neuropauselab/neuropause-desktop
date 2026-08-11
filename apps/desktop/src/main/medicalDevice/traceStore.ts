@@ -187,9 +187,28 @@ export class TraceEdgeStore extends EventEmitter {
    * good, and the cap is set high enough that a mid-size manufacturer will not
    * reach it — see the performance section of the traceability documentation.
    */
+  /**
+   * P13C ROUND 7 (final sweep) — PER TENANT.
+   *
+   * `this.edges.splice(0, drop)` took the globally oldest tenth, so one
+   * manufacturer's traceability volume deleted another's. Every READ path in this
+   * file already filters on `tenantId`; the retention policy did not — and what
+   * it deletes is regulated evidence for a recall.
+   */
   private evictOldest(): void {
     const drop = Math.ceil(this.maxEdges * 0.1);
-    const removed = this.edges.splice(0, drop);
+    /**
+     * The tenant to evict from is the tenant that just WROTE — `record()` is the
+     * only caller, and the row it appended names its owner. Deriving it from the
+     * newest edge rather than from an ambient resolver keeps this store free of a
+     * scope dependency it otherwise does not need, and it is the correct answer:
+     * the tenant that filled the store is the one whose history rotates.
+     */
+    const writer = this.edges[this.edges.length - 1]?.tenantId ?? null;
+    const mine = writer === null ? this.edges : this.edges.filter((e) => e.tenantId === writer);
+    const doomed = new Set(mine.slice(0, drop));
+    const removed = this.edges.filter((e) => doomed.has(e));
+    this.edges = this.edges.filter((e) => !doomed.has(e));
     for (const edge of removed) this.byKey.delete(traceEdgeKey(edge));
     this.emit('evicted', { count: removed.length });
   }

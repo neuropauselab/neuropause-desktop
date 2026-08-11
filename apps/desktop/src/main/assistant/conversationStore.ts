@@ -206,13 +206,33 @@ export class ConversationStore {
     const idx = this.conversations.findIndex((c) => c.id === snapshot.id);
     if (idx >= 0) this.conversations[idx] = snapshot;
     else this.conversations.unshift(snapshot);
-    if (this.conversations.length > MAX_CONVERSATIONS) {
-      // Drop the least-recently-updated unpinned conversations first.
-      const keep = [...this.conversations].sort((a, b) => {
-        if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-        return Date.parse(b.updatedAt) - Date.parse(a.updatedAt);
-      });
-      this.conversations = keep.slice(0, MAX_CONVERSATIONS);
+/**
+     * PER TENANT. P13C ROUND 7 (final sweep).
+     *
+     * This sorted the whole install by (pinned, updatedAt) and kept the newest
+     * 100 — so a conversation in tenant A destroyed tenant B's least recently
+     * updated unpinned conversations, on disk. The scoped `get`, `delete` and
+     * `upsert` in this same file were fixed rounds ago; the retention cap beside
+     * them was not.
+     *
+     * Sixth install-wide cap this program has found behind a correct read path,
+     * and the third in this round. A RETENTION CAP IS A WRITE.
+     */
+    const pruneScope = this.scopeOrDeny();
+    if (pruneScope !== null && pruneScope.tenantId) {
+      const mine = this.conversations.filter((c) => c.tenantId === pruneScope.tenantId);
+      if (mine.length > MAX_CONVERSATIONS) {
+        const doomed = new Set(
+          [...mine]
+            .sort((a, b) => {
+              // Pinned last in the "oldest first" ordering, so they evict last.
+              if (a.pinned !== b.pinned) return a.pinned ? 1 : -1;
+              return Date.parse(a.updatedAt) - Date.parse(b.updatedAt);
+            })
+            .slice(0, mine.length - MAX_CONVERSATIONS),
+        );
+        this.conversations = this.conversations.filter((c) => !doomed.has(c));
+      }
     }
     return this.persist();
   }

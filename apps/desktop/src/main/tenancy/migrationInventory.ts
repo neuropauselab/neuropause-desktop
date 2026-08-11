@@ -51,7 +51,12 @@ export const UNENFORCED: readonly { store: string; status: TenantMigrationStatus
   {
     store: 'relationships (relationshipStore)',
     status: 'PARTIAL',
-    note: 'Link CREATION is now scoped, because the resolver builds its candidate index from a scoped `store.list()`. Existing links written before P11 are not scoped, and `outgoing`/`incoming` still scan every link, so a pre-existing cross-tenant edge would still traverse.',
+    note: 'P13C Round 7 — RelationshipLink now carries an OWNER. This store was HALF migrated for six rounds: `PendingRelationship` had a tenantId and the resolved links did not, which reads as done because the class holds a TenantOwnership. `link()` stamps from the resolver and throws when unresolved; `outgoing`, `incoming`, `linkFor` and `counts` filter on it (linkFor goes through the ownership filter and NOT the index, which is keyed by (record, relationship) with no tenant in it). The install-wide `splice(0, …)` cap is now `pruneOwn` — it was the fourth retention cap in this program able to delete another tenant\u2019s rows. Links written before Round 7 are unresolved and visible to nobody; they re-resolve on the next import.',
+  },
+  {
+    store: 'infrastructure resources (ResourceStore)',
+    status: 'PARTIAL',
+    note: 'P13C Round 7 — the subsystem had NO TENANT DIMENSION AT ALL. 54 files under infrastructure/, zero references to activeTenantScope, TenantOwnership, bindScope or tenantId, one shared infra-resources.json, and absent from this inventory and from the store registry — so the startup gate could not see it and six sweeps found nothing, because every sweep looked for a seam that was wrong rather than for a subsystem with none. CloudResource now carries a tenantId stamped by discovery; all/search/countForPlatform/graph filter on it; the graph memo is a TenantMemo (a bare TTL cell would have handed A\u2019s graph to B the moment the store became scoped); and executor.execute authorizes accountId through ownsAccount before the confirmation gate, closing a path that ran MUTATING provider actions against another tenant\u2019s cloud account. Resources discovered before Round 7 are unresolved and visible to nobody; discovery re-stamps them on the next pass.',
   },
   {
     store: 'provenance (ProvenanceStore)',

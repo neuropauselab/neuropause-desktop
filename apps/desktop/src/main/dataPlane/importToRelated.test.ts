@@ -168,6 +168,14 @@ describe('import → relationship resolution → related records', () => {
       saveExport: async (name) => `/tmp/${name}`,
       onImported: () => undefined,
     });
+    /**
+     * P13C Round 7 — `RelationshipStore` now owns its resolved LINKS as well as
+     * its pending queue (it was half migrated: the queue had an owner and the
+     * links did not, and the link cap was install-wide). `link()` therefore
+     * stamps from the resolver and throws when unresolved. `runtimeCore.ts:946`
+     * performs this binding in production; this supplies the same thing.
+     */
+    sub.relationships.bindScope(() => ({ tenantId: 'org_1', workspaceId: 'ws_1' }));
   });
 
   afterEach(async () => {

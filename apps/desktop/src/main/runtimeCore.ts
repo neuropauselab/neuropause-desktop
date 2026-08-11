@@ -228,6 +228,9 @@ import { initContinuousValidation } from './sandbox/validation';
 import { taskScheduler } from './services/taskScheduler';
 import { notificationScheduler } from './services/notificationScheduler';
 import { aiEngine } from './ai/engineInstance';
+import { bindDeliveryViewer } from './services/executiveDelivery';
+import { PlatformOperatorRegistry } from './platformOperator/platformOperatorRegistry';
+import { createPlatformAuthorizer } from './platformOperator/platformAuthority';
 import { engineManager } from './ai/engineManager';
 import { initAiConfig } from './ai/aiConfigIpc';
 import { handleEnterpriseApiRequest } from './api/apiGateway';
@@ -684,6 +687,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // AI Memory: distills the UDM into a searchable organizational memory.
   // P2.5 — also subscribes to ERP record + connector-write events to re-project business memory.
   const memory = await initMemory({
+    // P13C Round 7 — the memory AUDIT LOG had no boundary and a public channel.
+    scope: activeTenantScope,
     broadcast: deps.broadcast,
     on: (types, handler) => platform.api.on([...types], handler),
   });
@@ -914,6 +919,12 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
    * and `activeTenantScope` pulls Electron in with it.
    */
   aiEngine.bindUsageScope(activeTenantScope);
+  /**
+   * P13C Round 7 — an OS toast goes to a PERSON. `deliveryEngine.tick()` fans out
+   * over every organization on the install; the only correct recipient of a
+   * desktop notification is the tenant the signed-in human is currently viewing.
+   */
+  bindDeliveryViewer(() => activeTenantScope()?.tenantId ?? null);
   automationStore.bindScope(activeTenantScope);
   decisionStore.bindScope(activeTenantScope);
   holdStore.bindScope(activeTenantScope);
@@ -1291,13 +1302,57 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     cwd: app.getAppPath(),
   };
   // Phase 9 · Stage 1 — Cloud Platform (multi-tenant, identity federation, sync, API platform, admin).
-  const cloud = await initCloud({ broadcast: deps.broadcast });
+  /**
+   * P13C ROUND 7 — THE INSTALL-LEVEL OPERATOR.
+   *
+   * Loaded from disk, empty unless the machine's owner wrote the file. There is
+   * no IPC that adds an operator, deliberately: a grant path reachable by whoever
+   * is signed in would be reachable by exactly the person this authority exists
+   * to sit above. See `platformOperatorRegistry.ts`.
+   */
+  const platformOperators = new PlatformOperatorRegistry(app.getPath('userData'));
+  await platformOperators.load();
+  const platformAuthorizer = createPlatformAuthorizer({
+    sessionEmail: () => {
+      const st = authService.getStatus();
+      return st.state === 'authenticated' ? st.session.user.email : null;
+    },
+    isOperator: (email) => platformOperators.isOperator(email),
+  });
+
+  const cloud = await initCloud({
+    broadcast: deps.broadcast,
+    platformAuthorizer,
+    /**
+     * The change lands in the same tamper-evident governance trail as every other
+     * administrative action, rather than in a second log nobody reads.
+     *
+     * It is stamped with the CALLER'S tenant, which is a deliberate compromise
+     * worth naming: the ACTION is install-level, so no single tenant owns the
+     * record, and there is no install-level audit store to put it in. Filing it
+     * under the operator's active organization means another tenant cannot read
+     * that an operator changed a shared policy — an under-disclosure, not an
+     * over-disclosure. The alternative, an unowned row, is withheld from
+     * everyone and read by nobody.
+     */
+    auditPolicyChange: (r) =>
+      governanceStore.record({
+        actor: r.actor,
+        action: r.operation,
+        target: `${r.policyId} (${r.policyName})`,
+        summary: `Platform operator ${r.actor} set rate policy "${r.policyName}" enabled=${r.before} → enabled=${r.after}, authorized by ${r.authorizedBy} at ${r.authorizedAt}.`,
+        workspaceId:
+          activeTenantScope()?.workspaceId || workspaceStore.activeWorkspaceIdForDisplay(),
+      }),
+  });
   // P6 — Cloud & Infrastructure Control Plane (Cloud Platform abstraction, Discovery Engine, Resource Graph).
   // Reuses the Platform Event Bus (Timeline), the diagnostics probe registry, the HttpClient/RateLimiter
   // primitives, and the secure-bridge IPC — no parallel runtime.
   const infrastructure = await initInfrastructure({
     broadcast: deps.broadcast,
     publish: platform.api.publish,
+    // P13C Round 7 — the boundary this subsystem never had.
+    scope: activeTenantScope,
   });
   // P7 — Enterprise Intelligence. Fold infra into the unified graph projection + re-project on discovery changes,
   // and stand up the intelligence subsystem (composes the Resource Graph + ERP Relationship Graph + Timeline into
@@ -3862,6 +3917,8 @@ function wireSandboxRunners(cfg: {
     launchTarget: cfg.launchTarget,
     profilesDir: join(cfg.baseDir, 'enterprise', 'profiles'),
     artifactsBaseDir: join(cfg.baseDir, 'enterprise', 'artifacts'),
+    // P13C Round 7 — persistent profiles are per tenant. See SessionManagerDeps.
+    tenantId: () => activeTenantScope()?.tenantId ?? null,
   });
 
   const platform = createRealEnterprisePlatform({
@@ -4002,6 +4059,9 @@ function wireSandboxRunners(cfg: {
     profilesDir: join(cfg.baseDir, 'profiles'),
     artifactsBaseDir: join(cfg.baseDir, 'artifacts'),
     launchTarget: cfg.launchTarget,
+    // P13C Round 7 — persistent browser profiles are per tenant. An unresolved
+    // tenant gets a fresh, disposable profile rather than a shared one.
+    tenantId: () => activeTenantScope()?.tenantId ?? null,
   });
 
   initEnterpriseRunner({ engine: cfg.engine, platform, desktopExecutor });

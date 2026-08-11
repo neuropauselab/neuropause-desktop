@@ -31,6 +31,7 @@ import { githubServiceAvailability } from './adapters/github';
 import { slackServiceAvailability } from './adapters/slack';
 import { atlassianServiceAvailability } from './adapters/atlassian';
 import { hubspotServiceAvailability } from './adapters/hubspot';
+import { runOutsidePrincipal } from '../../tenancy/backgroundPrincipal';
 
 const log = createLogger('sync');
 
@@ -148,7 +149,11 @@ export async function initSync(deps: SyncSubsystemDeps): Promise<SyncSubsystem> 
     );
 
   // Re-broadcast sync-state changes so the dashboard refreshes live.
-  const onStateChanged = (): void => deps.broadcast(IpcChannel.ConnectorSyncState, snapshots());
+  // P13C Round 7 — `changed` fires synchronously inside the per-workspace sync
+  // fan-out, so `connectedAccounts()` and `syncStateStore.get()` resolve to the
+  // RUN'S workspace. Same pattern as the six sibling broadcasts.
+  const onStateChanged = (): void =>
+    deps.broadcast(IpcChannel.ConnectorSyncState, runOutsidePrincipal(() => snapshots()));
   syncStateStore.on('changed', onStateChanged);
 
   /**

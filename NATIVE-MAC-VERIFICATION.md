@@ -1,0 +1,174 @@
+# Native macOS Verification — Program 13C
+
+**Nothing in this document is verified.** It is the procedure, not a result. Every
+box is unchecked until a person has actually done it on a Mac and written down
+what they saw.
+
+That distinction is the point. Seven rounds of this program have found defects
+that every automated gate passed: a graph memo that leaked inside a 1.5s window,
+an audit trail readable by everyone, a browser profile directory two tenants
+shared. Not one of them would have shown up in a build.
+
+---
+
+## Setup
+
+```
+npm install
+npm run build          # must complete end to end, including apps/backend (tsup)
+npm run dev            # or launch the packaged app
+```
+
+**Two organizations are required.** A single-tenant install cannot exercise any
+of this — most of the defects this program found look like correct behaviour when
+there is only one tenant, because the one tenant sees its own data either way.
+
+Create:
+
+- **Org A** — sign in, create workspace `A-Main`, add a second workspace `A-Alt`
+- **Org B** — a *different* account if possible; if not, a second organization
+  under the same account
+- **Org C** — optional but recommended. Two tenants cannot distinguish "A leaks
+  to B" from "the pair share one slot"; three can.
+
+Seed each org with **distinct, recognisable data**. Use markers you can search
+for: name org A's records `ALPHA-…` and org B's `BRAVO-…`. If a marker from one
+appears anywhere while the other is active, that is a finding, and the marker is
+what makes it unambiguous rather than a judgement call.
+
+---
+
+## How to record a result
+
+For each item: **what you did**, **what you saw**, **PASS / FAIL / NOT REACHED**.
+
+"NOT REACHED" is a legitimate and useful answer — a surface that cannot be
+exercised has not been verified, and saying so is worth more than a checkmark
+that means "it looked fine".
+
+A **tenancy FAIL** is any of:
+
+- data, a name, a count or an id from one org visible while another is active
+- an action in one org changing, deleting or suppressing something in another
+- a value that persists across an org switch when it should have re-resolved
+- an empty screen where the org demonstrably has data (this is the *other*
+  failure mode — a boundary applied too widely breaks the product, and this
+  program has twice had to withdraw a fix for exactly that)
+
+---
+
+## 1 — Boot and identity
+
+| # | Surface | Do this | Watch for |
+|---|---|---|---|
+| 1 | Desktop boot | Launch cold. | Window appears; no error dialog; check the log for `Platform operator registry ready` and `assertAllTenantStoresBound` not throwing. |
+| 2 | Backend boot | Confirm the backend process starts and is reachable. | No unhandled rejection at startup. |
+| 3 | Authentication | Sign out fully, sign back in. | Session restores; no data visible while signed out. |
+| 4 | Organization creation | Create org B while A is active. | You land in B, seeing B's (empty) state — **not** A's data with B's name on it. |
+| 5 | Tenant creation | Cloud → provision a tenant in each org. | Each org sees only its own tenant in the list. |
+| 6 | Workspace creation | Create `A-Alt` inside A. | Appears under A only; invisible from B. |
+| 7 | **Tenant switching** | A → B → C → A, pausing on each. | Every panel re-resolves. Nothing from the previous org survives the switch — including counts, badges and chart values, which are the parts that leak quietly. |
+| 8 | Workspace switching | `A-Main` → `A-Alt` → back. | Connector accounts and sync state change with the workspace. |
+
+---
+
+## 2 — Intelligence and data
+
+| # | Surface | Do this | Watch for |
+|---|---|---|---|
+| 9 | AI | Run an assistant query in A, switch to B, run one. | B's answer cites only B's records. **Check the AI settings screen: provider/model/endpoint should be read-only or refused for a normal org admin** — it is now `cloud:operate`, install-level. |
+| 10 | Search | Search `ALPHA-` while B is active. | Zero results. Then search `BRAVO-` in B: results appear. Both halves matter. |
+| 11 | Memory | Create memories in each. Open the **memory audit trail**. | Only your org's events. This channel was public until Round 7 — confirm it now requires sign-in. |
+| 12 | Graph | Open the knowledge graph in each org. | No node from the other. Watch the node COUNT on switch — it is broadcast from background work. |
+| 13 | ERP | Create documents/postings in each. | Idempotency and approval are per org. |
+| 14 | CRM | Create customers in each. | Related-records traversal never crosses. |
+| 15 | HR | Create people records. | Headcount figures differ per org and match what you entered. |
+| 16 | Finance | Create invoices/payments. | Totals are per org. |
+| 17 | Documents | Upload the *same file* to both. | Each org gets its own record. Neither can see the other's, and neither upload is silently deduplicated into the other's. |
+
+---
+
+## 3 — Connectors and sync
+
+| # | Surface | Do this | Watch for |
+|---|---|---|---|
+| 18 | Connectors | Connect a provider in A. | Invisible in B. |
+| 19 | OAuth | Complete a real OAuth flow. | Token stored against A's workspace; B cannot see or use the account. |
+| 20 | Sync | Let a sync run in A while viewing B. | **No toast, badge or count from A appears on screen.** Five broadcasts were fixed this round; this is where you would see a sixth. |
+| 21 | Connector disable | Disable a connector in A. | B's connector of the same type keeps syncing. Re-enable in B: A's stays disabled. |
+| 22 | M365 action | Run a Microsoft 365 write action. | Runs for the owning workspace; refused for another. |
+
+---
+
+## 4 — Work and automation
+
+| # | Surface | Do this | Watch for |
+|---|---|---|---|
+| 23 | AI Workforce | Install a worker; run it in each org. | Job lists are per org. **A worker uninstall is install-wide by declaration** — confirm that is acceptable, it is a stated cost. |
+| 24 | Jobs | Queue jobs in both. | Job counts, results and history are per org. |
+| 25 | Workflow | Run a workflow in each. | Runs and outputs never cross. |
+| 26 | ExecuteEngine | Execute an action in each. | Results are per org; cancel in A does not touch B. |
+| 27 | Sandbox | Run a scenario with a **persistent** browser profile in A, then the same in B. | **B's browser is NOT signed into whatever A's automation signed into.** This was a shared directory until Round 7 — the sharpest thing on this list to verify by hand. |
+| 28 | Automation | Create rules in both; let them fire. | Run history is per org (**known open: `automation:history` is not yet scoped — expect this one to FAIL**). |
+
+---
+
+## 5 — Platform and governance
+
+| # | Surface | Do this | Watch for |
+|---|---|---|---|
+| 29 | Federation | Federate A with B. | The relationship is visible to both parties and to nobody else. C sees nothing. |
+| 30 | Cloud | Open the cloud control plane in each. | SSO connections, webhooks and tenant lists are per org. |
+| 31 | **Rate policies** | As an ordinary org Admin, try to disable a rate-limit policy. | **Refused.** Then add your address to `<userData>/platform-operators.json` as `{"operators":["you@example.com"]}`, restart, try again → allowed, and an audit line records who/what/before/after. |
+| 32 | Governance | Approval chains and compliance in each org. | Each org HAS its own governance (not empty) and cannot touch the other's. |
+| 33 | Notifications | Trigger notifications in both. | Inbox and unread badge are per org; **no desktop toast from the org you are not viewing**. |
+| 34 | Executive Center | Open in each org. | Monthly trend is a real number, **not −100%**. Health scores differ per org. |
+| 35 | Marketplace / AI Store | Browse and install. | Install state is per org where it should be; publisher metadata is shared by design. |
+| 36 | Plugin runtime | Install and enable a plugin. | **Known open: plugin lifecycle is install-wide on a tenant-role permission — expect A's enable to affect B.** |
+| 37 | Permissions | Sign in as a Viewer, then a Manager, then an Admin. | Each is refused what they should be; none of them can reach `cloud:operate` surfaces. |
+| 38 | Audit | Open the enterprise audit trail in each org. | Only your org's rows. Integrity check passes. On an upgraded install, pre-existing rows still verify. |
+| 39 | Infrastructure | Discover a cloud account in A. | **B cannot see A's account id, resources, tags or discovery schedule, and cannot discover against A's account id.** New this round; unverified by hand. |
+
+---
+
+## 6 — Things only a human can check
+
+These have no automated equivalent and are where the remaining risk is:
+
+1. **Switch organizations while a background job is mid-flight.** Start a sync or
+   a workforce job in A, switch to B immediately, and watch B's screen for
+   thirty seconds. Anything that appears belongs to A.
+2. **Leave the app open across a scheduled brief.** The delivery engine fans out
+   over every organization. Only the one you are viewing should reach the screen.
+3. **Sign out with two orgs configured, sign back in.** Confirm the first screen
+   after sign-in is not the previous org's data.
+4. **Kill the app mid-write** (force quit during an import). On restart, confirm
+   no other org's data was truncated, and that the audit chain still verifies.
+5. **Look at the on-disk files.** `<userData>` — open the JSON stores in a text
+   editor and search for the other org's markers. This is the one check that
+   cannot be fooled by a correct read filter over incorrectly stored data, and it
+   is how the system-global stores were proved this round.
+
+---
+
+## Known open before you start
+
+Do not treat these as surprises when you hit them:
+
+| Item | Expect |
+|---|---|
+| `automation:history` / `automation:monitor` | Unscoped — another org's run history is visible |
+| Plugin install/enable/disable, capability grants | Install-wide, gated on a tenant role |
+| `marketplace/orgPolicyStore` | One install-wide marketplace policy |
+| `ai/routingUsageStore` | Install-wide AI run counters on a public channel |
+| `flags:get` | Takes `planTier` from the renderer |
+| Backend `tsup` in a Linux container | Fails on an esbuild version skew — this is an environment artifact, not a defect; it builds on the Mac |
+
+---
+
+## When you are done
+
+Write the results into the Round 8 report as **observed**, with the date, the
+build, and what you actually saw. A checklist returned fully ticked and with no
+notes is indistinguishable from a checklist nobody ran, and this program has
+already established what a confident claim is worth without evidence behind it.

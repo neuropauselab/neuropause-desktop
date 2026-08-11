@@ -18,6 +18,8 @@ import type { LaunchTarget } from './sessionManager';
 const log = createLogger('sandbox-desktop');
 
 export interface DesktopAutomationDeps {
+  /** P13C Round 7 — the tenant a persistent browser profile belongs to. */
+  tenantId: () => string | null;
   engine: SandboxExecutionEngine;
   /** Sandbox base dir (e.g. <userData>/sandbox); profiles + artifacts live under it. */
   baseDir: string;
@@ -38,6 +40,7 @@ export function initDesktopAutomation(deps: DesktopAutomationDeps): DesktopAutom
   const executor = createDesktopExecutor({
     driver,
     profilesDir: join(deps.baseDir, 'profiles'),
+    tenantId: deps.tenantId,
     artifactsBaseDir: join(deps.baseDir, 'artifacts'),
     launchTarget: deps.launchTarget,
     now: deps.now,

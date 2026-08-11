@@ -26,7 +26,7 @@ function harness(flavor: IacFlavor, router: (req: { method: string; url: string;
     getArtifact: async (url: string) => router({ method: 'ARTIFACT', url }).text ?? '{}',
     getLocation: async (path: string) => ({ location: null, text: router({ method: 'LOCATION', url: path }).text ?? null }),
   };
-  const exec = new InfraActionExecutor({ makeHttp: () => http, publish: (e) => events.push(e), regionFor: () => null, now: () => NOW }, IAC_ACTIONS);
+  const exec = new InfraActionExecutor({ makeHttp: () => http, publish: (e) => events.push(e), regionFor: () => null, ownsAccount: () => true, /* P13C R7 — these suites act AS the owning tenant; cross-tenant refusal is asserted in infrastructureTenancy.test.ts */ now: () => NOW }, IAC_ACTIONS);
   return { exec, events, requests };
 }
 const types = (events: PlatformEventInput[]): string[] => events.map((e) => e.type);

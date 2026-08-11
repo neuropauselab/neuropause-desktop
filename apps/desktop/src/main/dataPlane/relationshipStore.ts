@@ -47,6 +47,27 @@ export interface RelationshipLink {
   /** Ties the link back to the import that produced it. */
   correlationId: string | null;
   reason: string;
+  /**
+   * The organization that resolved this edge.
+   *
+   * P13C ROUND 7 — `PendingRelationship` gained an owner in an earlier round and
+   * `RelationshipLink` did not, so this store was HALF migrated: the queue was
+   * owned and the resolved links were not. A half-migration reads as done,
+   * because the reviewer checks the class and finds a `TenantOwnership` in it.
+   *
+   * Two consequences, and the second is the serious one:
+   *   - `counts()`, `outgoing()`, `incoming()` and `linkFor()` filtered nothing.
+   *   - `link()` capped the array INSTALL-WIDE with `splice(0, …)`, so one tenant
+   *     reaching MAX_LINKS deleted another tenant's oldest resolved edges.
+   *     Fourth install-wide cap this program has found behind a correct-looking
+   *     read path. A retention cap is a write.
+   *
+   * Optional for the same reason every other migrated record's is: rows written
+   * before the field existed have no owner and inventing one is the single thing
+   * a migration must never do. They are visible to nobody and re-resolve on the
+   * next import pass.
+   */
+  tenantId?: string;
 }
 
 export interface PendingRelationship {
@@ -135,13 +156,30 @@ export class RelationshipStore {
   async link(input: Omit<RelationshipLink, 'id'>): Promise<RelationshipLink> {
     const key = slot(input.sourceRecordId, input.relationshipKey);
     const existing = this.linkIndex.get(key);
-    const link: RelationshipLink = { id: existing?.id ?? `rel_${randomUUID()}`, ...input };
+    // Stamped from the resolver, never from the caller. `own()` throws when
+    // unresolved rather than writing an unowned edge.
+    const link: RelationshipLink = this.tenancy.stamp({
+      id: existing?.id ?? `rel_${randomUUID()}`,
+      ...input,
+    });
 
     if (existing) {
       this.links[this.links.indexOf(existing)] = link;
     } else {
       this.links.push(link);
-      if (this.links.length > MAX_LINKS) this.links.splice(0, this.links.length - MAX_LINKS);
+      /**
+       * PER OWNER. `splice(0, this.links.length - MAX_LINKS)` was install-wide:
+       * one tenant resolving MAX_LINKS edges deleted another tenant's oldest.
+       * `pruneOwn` caps each owner's rows separately, so total storage scales
+       * with tenant count — the same deliberate trade every other store in this
+       * program makes, and the correct one when the alternative is deleting a
+       * customer's data because a different customer was busy.
+       */
+      this.links = this.tenancy.pruneOwn(
+        this.links,
+        MAX_LINKS,
+        (a, b) => a.at.localeCompare(b.at),
+      );
     }
     this.linkIndex.set(key, link);
 
@@ -275,24 +313,44 @@ export class RelationshipStore {
 
   /** Links out of a record — what it points at. */
   outgoing(recordId: string): RelationshipLink[] {
-    return this.links.filter((l) => l.sourceRecordId === recordId);
+    return this.tenancy.onlyMine(this.links).filter((l) => l.sourceRecordId === recordId);
   }
 
   /** Links into a record — the backward-trace direction. */
   incoming(recordId: string): RelationshipLink[] {
-    return this.links.filter((l) => l.targetRecordId === recordId);
+    return this.tenancy.onlyMine(this.links).filter((l) => l.targetRecordId === recordId);
   }
 
   linkFor(sourceRecordId: string, relationshipKey: string): RelationshipLink | null {
-    return this.linkIndex.get(slot(sourceRecordId, relationshipKey)) ?? null;
+    // Through the OWNERSHIP filter, not the index. The index is keyed by
+    // (record, relationship) with no tenant in it, so a bare lookup would resolve
+    // another tenant's edge — an index is a lookup structure, not a boundary.
+    const hit = this.linkIndex.get(slot(sourceRecordId, relationshipKey)) ?? null;
+    return hit !== null && this.tenancy.onlyMine([hit]).length === 1 ? hit : null;
   }
 
+  /**
+   * The CALLER'S counts.
+   *
+   * P13C ROUND 7 — this read the raw arrays while `queue()`, `retryable()` and
+   * `pendingById()` — its three siblings in this class — all go through
+   * `this.tenancy`. Reached over IPC through the data-plane dashboard, so it
+   * disclosed install-wide link volume and another tenant's unresolved backlog.
+   *
+   * Fifth instance of "the listing is scoped and the aggregate over the same
+   * collection is not". The pattern is now stated as a rule wherever it has been
+   * fixed: a count is the same query with the rows dropped.
+   *
+   * `links` is filtered by the same ownership as `pending` — see the note on
+   * `RelationshipLink` below.
+   */
   counts(): { links: number; ambiguous: number; unresolved: number; skipped: number } {
+    const pending = this.tenancy.onlyMine(this.pending);
     return {
-      links: this.links.length,
-      ambiguous: this.pending.filter((p) => p.status === 'ambiguous').length,
-      unresolved: this.pending.filter((p) => p.status === 'unresolved').length,
-      skipped: this.pending.filter((p) => p.status === 'skipped').length,
+      links: this.tenancy.onlyMine(this.links).length,
+      ambiguous: pending.filter((p) => p.status === 'ambiguous').length,
+      unresolved: pending.filter((p) => p.status === 'unresolved').length,
+      skipped: pending.filter((p) => p.status === 'skipped').length,
     };
   }
 

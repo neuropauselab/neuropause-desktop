@@ -14,7 +14,7 @@ import type {
   OrgUnit,
   OrgUser,
 } from '@neuropause/shared';
-import { ALL_ENTERPRISE_PERMISSIONS } from '@neuropause/shared';
+import { ALL_ENTERPRISE_PERMISSIONS, isPlatformOnlyPermission } from '@neuropause/shared';
 
 export const ORG_ID = 'org-default';
 export const OWNER_USER_ID = 'user-owner';
@@ -165,7 +165,20 @@ export const BUILT_IN_ROLE_SPECS: readonly BuiltInRoleSpec[] = [
     key: 'owner',
     name: 'Owner',
     description: 'Full control of the organization and every workspace.',
-    permissions: [...ALL_ENTERPRISE_PERMISSIONS],
+    /**
+     * P13C ROUND 7 — THE WILDCARD MEANS "EVERYTHING AN ORGANIZATION CAN DO".
+     *
+     * It used to mean everything, full stop, which made this line a silent grant
+     * channel: adding an install-level capability to `ALL_ENTERPRISE_PERMISSIONS`
+     * would have handed it to every organization's Owner on the next reconcile,
+     * and anyone can become an Owner by creating an organization.
+     *
+     * `PLATFORM_ONLY_PERMISSIONS` is filtered out here so that a capability
+     * declared install-level STAYS install-level. Admin (the explicit list below)
+     * never held it either, but only by omission — which is not a decision, it is
+     * an accident waiting for someone to tidy it up.
+     */
+    permissions: ALL_ENTERPRISE_PERMISSIONS.filter((p) => !isPlatformOnlyPermission(p)),
   },
   {
     key: 'admin',

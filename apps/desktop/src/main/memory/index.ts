@@ -61,6 +61,8 @@ import { projectBusinessMemory } from './businessMemoryProjector';
 import { getRelationshipModel } from '../enterprise/relationshipProvider';
 import type { PlatformEventType } from '@neuropause/shared';
 import type { IpcBroadcaster } from '@neuropause/shared';
+import { runOutsidePrincipal } from '../tenancy/backgroundPrincipal';
+import type { TenantScope } from '@neuropause/shared';
 
 const log = createLogger('memory');
 
@@ -76,6 +78,15 @@ const MEMORY_REBUILD_EVENTS: readonly PlatformEventType[] = [
 
 export interface MemorySubsystemDeps {
   broadcast: IpcBroadcaster;
+  /**
+   * The tenant boundary for the AUDIT LOG. P13C Round 7.
+   *
+   * Injected, not imported — importing `activeTenantScope` here drags Electron
+   * into this subsystem's node tests. Required, because the store it binds went
+   * from "no boundary at all" to "denies when unbound", and an optional binding
+   * is a boundary somebody forgets.
+   */
+  scope: () => TenantScope | null;
   /** P2.5 — subscribe to platform events so ERP changes re-project business memory. */
   on?: (types: readonly PlatformEventType[], handler: () => void) => void;
 }
@@ -91,6 +102,8 @@ export interface MemorySubsystem {
 
 export async function initMemory(deps: MemorySubsystemDeps): Promise<MemorySubsystem> {
   await memoryStore.load();
+  // P13C Round 7 — the audit trail carries assistant-written record titles.
+  memoryAuditLog.bindScope(deps.scope);
   await memoryAuditLog.load();
 
   // V8.2: wire the backend semantic source so recallSemantic can blend vector hits.
@@ -175,8 +188,28 @@ export async function initMemory(deps: MemorySubsystemDeps): Promise<MemorySubsy
   if (deps.on) deps.on(MEMORY_REBUILD_EVENTS, scheduleRebuild);
   const initialTimer = setTimeout(safeRebuild, 1600);
 
+  /**
+   * P13C ROUND 7 — COMPUTED FOR THE VIEWER, NOT FOR THE JOB.
+   *
+   * THE CLASS: a background pass runs as tenant A while the window in front of
+   * the user is showing tenant B. Any value computed for the RENDERER during
+   * that pass is computed under A's principal, so a correctly-scoped store
+   * honestly answers for A — and the answer is delivered into B's window.
+   *
+   * The store is not the defect. The store is right, which is exactly why this
+   * survived seven rounds of auditing stores: every isolation test on it passes,
+   * because the boundary holds and the READER is standing on the wrong side of
+   * it.
+   *
+   * `runOutsidePrincipal` exists for precisely this and had ONE caller in the
+   * whole main process (the unread badge), with a comment describing the general
+   * case. This is the general case, in the five other places it occurs.
+   *
+   * It grants nothing: leaving the principal falls back to the SESSION, so the
+   * value is what the signed-in viewer is entitled to and never more.
+   */
   const onChanged = (): void =>
-    deps.broadcast(IpcChannel.MemoryEventBroadcast, memoryStore.counts());
+    deps.broadcast(IpcChannel.MemoryEventBroadcast, runOutsidePrincipal(() => memoryStore.counts()));
   memoryStore.on('changed', onChanged);
 
   const execMemoryDeps: ConversationMemoryDeps = {

@@ -16,6 +16,8 @@ import { IpcChannel } from '@neuropause/shared';
 
 const READ: EnterprisePermission = 'cloud:read';
 const MANAGE: EnterprisePermission = 'cloud:manage';
+/** Install-level. See `platformOperatorRegistry.ts`. No org role can hold it. */
+const OPERATE: EnterprisePermission = 'cloud:operate';
 
 /** Permission required by each cloud channel. Reads → cloud:read; mutations/operations → cloud:manage. */
 export const CLOUD_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, EnterprisePermission>> = {
@@ -57,7 +59,17 @@ export const CLOUD_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpris
   [IpcChannel.CloudDeployments]: READ,
   [IpcChannel.CloudApiSummary]: READ,
   [IpcChannel.CloudRatePolicies]: READ,
-  [IpcChannel.CloudSetPolicyEnabled]: MANAGE,
+  /**
+   * P13C ROUND 7 — OPERATE, NOT MANAGE.
+   *
+   * The only channel in this table above `cloud:manage`. A rate-limit policy
+   * governs the SHARED runtime, so disabling one is a decision made on behalf of
+   * every organization on the machine — and `cloud:manage` is held by each of
+   * their Admins independently. `cloud:operate` cannot be held by an
+   * organization role at all (`PLATFORM_ONLY_PERMISSIONS`), so tenant A's Admin,
+   * tenant B's Admin, and an Owner of either are all refused identically.
+   */
+  [IpcChannel.CloudSetPolicyEnabled]: OPERATE,
   [IpcChannel.CloudWebhooks]: READ,
   [IpcChannel.CloudCreateWebhook]: MANAGE,
   [IpcChannel.CloudSetWebhookStatus]: MANAGE,

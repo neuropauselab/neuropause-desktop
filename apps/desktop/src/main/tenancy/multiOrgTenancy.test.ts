@@ -18,7 +18,7 @@ import type {
   OrgUser,
   Workspace,
 } from '@neuropause/shared';
-import { ALL_ENTERPRISE_PERMISSIONS } from '@neuropause/shared';
+import { ALL_ENTERPRISE_PERMISSIONS, PLATFORM_ONLY_PERMISSIONS, isPlatformOnlyPermission } from '@neuropause/shared';
 import {
   firstEnterableWorkspace,
   memberIn,
@@ -177,13 +177,31 @@ describe('Phase 18 — creating an organization provisions a USABLE tenant', () 
     expect(r.roles.length).toBeGreaterThan(0);
   });
 
-  it('gives the owner a role that actually carries every permission', () => {
+  /**
+   * P13C ROUND 7 — "EVERY PERMISSION" NOW MEANS "EVERY ORGANIZATION PERMISSION".
+   *
+   * This test asserted the new Owner held all of `ALL_ENTERPRISE_PERMISSIONS`,
+   * and that was the escalation route: anyone may create an organization, so any
+   * signed-in user could become an Owner and hold whatever was in that array —
+   * including a capability meant to govern the shared runtime for every tenant on
+   * the machine. The test would have CONFIRMED the escalation as correct.
+   *
+   * Both halves are asserted now: the owner is genuinely a wildcard within their
+   * organization, AND that wildcard stops at the install boundary.
+   */
+  it('gives the owner a role carrying every ORGANIZATION permission, and no platform one', () => {
     const w = new World();
     const r = provisionOrganization(w.provisionDeps(), { name: 'Alpha', ownerEmail: ALICE });
     const ownerRole = r.roles.find((role) => r.owner.roleIds.includes(role.id));
     expect(ownerRole).toBeDefined();
+
     for (const p of ALL_ENTERPRISE_PERMISSIONS) {
+      if (isPlatformOnlyPermission(p)) continue;
       expect(ownerRole!.permissions).toContain(p as EnterprisePermission);
+    }
+    // Creating an organization must not confer install-level authority.
+    for (const p of PLATFORM_ONLY_PERMISSIONS) {
+      expect(ownerRole!.permissions).not.toContain(p);
     }
   });
 

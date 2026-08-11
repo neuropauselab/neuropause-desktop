@@ -74,6 +74,7 @@ import { builtInSkills, registerBuiltInWorkers } from './workers';
 import { WorkerInstallService } from './install/installService';
 import { workerInstallStore, workerSigningKey } from './install/installInstance';
 import type { SkillImpl, WorkforceData, WorkforceNeighbor } from './sdk';
+import { runOutsidePrincipal } from '../tenancy/backgroundPrincipal';
 
 const log = createLogger('workforce');
 
@@ -268,12 +269,15 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
     });
   };
 
+  // P13C Round 7 — `jobStore.size()` is scoped ON PURPOSE ("an install-wide size
+  // tells one tenant how busy another is"), and this fired from a background job
+  // write under that job's principal.
   const emitSnapshot = (): void => {
-    deps.broadcast(IpcChannel.WorkforceEventBroadcast, {
+    deps.broadcast(IpcChannel.WorkforceEventBroadcast, runOutsidePrincipal(() => ({
       workers: workerRegistry.summaries().length,
       jobs: jobStore.size(),
       audit: auditLog.size(),
-    });
+    })));
   };
   const onChange = (): void => emitSnapshot();
   workerRegistry.on('changed', onChange);

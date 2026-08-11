@@ -153,6 +153,27 @@ export class TenantDedupe {
     return true;
   }
 
+  /**
+   * Forget ONE id for ONE tenant, so the next occurrence is announced again.
+   *
+   * P13C ROUND 7. Added for edge triggers whose condition can CLEAR — a connector
+   * that went offline and came back. Without it the caller has to choose between
+   * `clear()` (which drops that tenant's other edges as collateral) and leaving
+   * the entry until the TTL expires (so a genuine second outage is silent for up
+   * to a day). Both are wrong, and the second is wrong in the dangerous
+   * direction.
+   *
+   * Returns whether anything was actually forgotten, so a caller can distinguish
+   * "this tenant was told, and now recovered" from "this tenant was never told" —
+   * publishing a recovery notice to someone who never saw the failure is its own
+   * small cross-tenant leak of another tenant's operational state.
+   */
+  forget(scope: TenantScope | null, id: string): boolean {
+    const key = this.keyOf(scope);
+    if (key === null) return false;
+    return this.buckets.get(key)?.delete(id) ?? false;
+  }
+
   /** Forget everything for one tenant. For sign-out and explicit resets. */
   clear(scope: TenantScope | null): void {
     const key = this.keyOf(scope);

@@ -1,4 +1,11 @@
 /**
+ * P13C Round 7 — these suites act AS one tenant. `ResourceStore` gained a tenant
+ * boundary this round (the subsystem had none at all), and an unbound store now
+ * denies every read and throws on write. Binding here preserves each existing
+ * assertion's single-tenant meaning; A/B/C isolation is asserted separately in
+ * `tenancy/e2e/infrastructureTenancy.test.ts`.
+ */
+/**
  * P6.1 — global infrastructure search over the Resource Store. In-memory (null path), so it runs under the
  * node vitest gate. Proves matching across name / native id / type / region / tags / attributes, name-first
  * ranking, platform + domain filters, the display cap with a true total, and the empty-query short-circuit.
@@ -13,7 +20,7 @@ function res(over: Partial<Parameters<typeof makeResource>[0]> & { nativeId: str
 }
 
 async function seed(resources: CloudResource[]): Promise<ResourceStore> {
-  const store = new ResourceStore(null);
+  const store = new ResourceStore(null).bindScope(() => ({ tenantId: 'org-alpha', workspaceId: 'ws-alpha' }));
   await store.load();
   await store.upsertMany(resources);
   return store;

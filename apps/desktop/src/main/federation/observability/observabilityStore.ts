@@ -24,12 +24,20 @@ export class ObservabilityStore extends EventEmitter {
   /**
    * P13C ROUND 4 — PHASE 29. DECLARED SYSTEM-GLOBAL, WITH A REASON.
    *
-   * Usage points are install-level counters (api requests, sync ops, worker jobs,
- * events) and security events carry only category, severity, source and a
- * detail string describing a platform condition. Neither names an organization
- * or contains record content. Declared rather than assumed: if a future event
- * starts naming a tenant, this reason stops being true and the declaration is
- * where a reviewer will look.
+   * Usage points are install-level counters and security events carry only
+   * category, severity, source and a detail string. Neither names an
+   * organization or contains record content.
+   *
+   * P13C ROUND 7 — and the reason this is true today is stronger than the field
+   * list: THERE IS NO RUNTIME WRITE PATH. Both arrays are populated only by
+   * `applySeed`, behind `demoSeedsEnabled()`. The declaration used to say a
+   * production install "fills them from real runtime activity"; nothing does.
+   *
+   * That matters because the counters are TENANT-DERIVED BY DEFINITION —
+   * `apiRequests`, `syncOps` and `workerJobs` count tenant activity. The day a
+   * real feed lands, an install-wide series readable on `federation:read` lets
+   * one tenant watch another tenant work. The declaration says so explicitly, so
+   * whoever wires it finds the boundary before they cross it.
    *
    * The declaration is what makes this reviewable. An undeclared store is
    * indistinguishable from one nobody thought about, which is how every
@@ -44,7 +52,18 @@ export class ObservabilityStore extends EventEmitter {
   private lastPersist: Promise<void> = Promise.resolve();
 
   constructor(private readonly filePath: string) {
-    declareSystemGlobalStore('federation-observability', 'Usage points are install-level counters (api requests, sync ops, worker jobs,');
+    declareSystemGlobalStore(
+      'federation-observability',
+      [
+        'WHY GLOBAL: subsystem health and security events describe the RUNTIME, not any organization in it — one process, one set of subsystems, one security log.',
+        'WHAT DATA: UsagePoint{at, apiRequests, syncOps, workerJobs, events} — five numbers and a timestamp; SecurityEvent{id, at, category, severity, source, detail} where detail is a fixed string authored in this file; ObsSubsystem{id, label, status, metric, unit, detail}. No organization id, workspace id, member, email or record content.',
+        'WHO MAY ACCESS: federation:read (FedUsageSeries, FedSecurityEvents). WHO MAY MODIFY: nothing at runtime — see below.',
+        'WHY IT CANNOT DISCLOSE TENANT DATA: P13C Round 7 verified by inspecting the persisted bytes after two tenants wrote (systemGlobalProof.test.ts). The decisive fact is stronger than the field list: THERE IS NO RUNTIME WRITE PATH AT ALL. usage.push and security.push appear only inside applySeed, behind demoSeedsEnabled(). On a production install the series is empty and stays empty, so there is nothing to derive from.',
+        'A CLAIM THAT WAS UNTRUE, CORRECTED: this reason previously said a production install "fills them from real runtime activity". Nothing fills them. The comment described an intention as though it were behaviour — the exact pattern this program keeps finding, in its own comments.',
+        'THE CONDITION THAT ENDS THIS DECLARATION: apiRequests, syncOps and workerJobs count TENANT ACTIVITY. The moment a real feed is wired, an install-wide counter readable on federation:read lets one tenant watch another tenant work — activity volume, timing, and idle periods. Whoever wires that feed must partition it per tenant or scope the read; it does not stay system-global.',
+        'CROSS-TENANT COST TODAY: none, because there is no data.',
+      ].join(' '),
+    );
     super();
   }
 

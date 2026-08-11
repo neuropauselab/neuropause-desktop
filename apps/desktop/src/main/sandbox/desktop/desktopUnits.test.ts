@@ -47,7 +47,7 @@ describe('SessionManager', () => {
   });
 
   it('keeps a persistent profile across close', async () => {
-    const sm = new SessionManager({ driver: new FakeDesktopDriver(), profilesDir: base(), launchTarget: target });
+    const sm = new SessionManager({ driver: new FakeDesktopDriver(), profilesDir: base(), tenantId: () => 'org-alpha', launchTarget: target });
     const m = await sm.launch(opts({ profile: 'persistent', profileKey: 'ci' }));
     const dir = m.profileDir;
     await sm.close(m.id);
@@ -56,7 +56,7 @@ describe('SessionManager', () => {
 
   it('supports multiple sessions, health, app state, restart and reset', async () => {
     const driver = new FakeDesktopDriver({ windows: [{ title: 'NeuroPause', elements: [] }] });
-    const sm = new SessionManager({ driver, profilesDir: base(), launchTarget: target });
+    const sm = new SessionManager({ driver, profilesDir: base(), tenantId: () => 'org-alpha', launchTarget: target });
     const a = await sm.launch(opts());
     const b = await sm.launch(opts());
     expect(sm.list()).toHaveLength(2);
@@ -147,5 +147,85 @@ describe('failure classification', () => {
     expect(classifyDesktopFailure(new Error('Timeout: waiting for x'), true)).toMatchObject({ kind: 'timeout', recoverable: true });
     expect(classifyDesktopFailure(new Error('anything'), false)).toMatchObject({ kind: 'app_crash', recoverable: true });
     expect(classifyDesktopFailure(new Error('selector "#x" not found'), true)).toMatchObject({ kind: 'automation', recoverable: false });
+  });
+});
+
+/* ── P13C ROUND 7 — persistent profiles are per tenant ────────────────────── */
+
+describe('persistent profile isolation', () => {
+  /**
+   * A persistent profile is a real Chromium user-data directory: cookies,
+   * localStorage, saved sessions. The path was
+   * `<profiles>/persistent/<profileKey ?? 'default'>` with no tenant segment, so
+   * two tenants running any `profile: 'persistent'` scenario without an explicit
+   * key shared ONE directory. That is one tenant's automation inheriting
+   * another's LOGGED-IN SESSIONS — not data disclosure, credential inheritance.
+   *
+   * A directory name is neither a store nor an IPC handler, which is why six
+   * rounds of sweeping both walked past it.
+   */
+  const smFor = (tenantId: string | null, dir: string): SessionManager =>
+    new SessionManager({
+      driver: new FakeDesktopDriver(),
+      profilesDir: dir,
+      tenantId: () => tenantId,
+      launchTarget: target,
+    });
+
+  it('two tenants asking for the SAME key get different directories', async () => {
+    const dir = base();
+    const a = await smFor('org-alpha', dir).launch(opts({ profile: 'persistent', profileKey: 'ci' }));
+    const b = await smFor('org-bravo', dir).launch(opts({ profile: 'persistent', profileKey: 'ci' }));
+    const c = await smFor('org-charlie', dir).launch(opts({ profile: 'persistent', profileKey: 'ci' }));
+
+    // PRESENCE: each got a real persistent directory…
+    for (const m of [a, b, c]) expect(await fs.stat(m.profileDir)).toBeTruthy();
+    // …and no two are the same.
+    expect(new Set([a.profileDir, b.profileDir, c.profileDir]).size).toBe(3);
+    // Neither is nested inside another, which a naive prefix scheme would allow.
+    expect(b.profileDir.startsWith(`${a.profileDir}/`)).toBe(false);
+  });
+
+  it('the DEFAULT key — no profileKey at all — is still per tenant', async () => {
+    const dir = base();
+    const a = await smFor('org-alpha', dir).launch(opts({ profile: 'persistent' }));
+    const b = await smFor('org-bravo', dir).launch(opts({ profile: 'persistent' }));
+    // This is the exact case that collided: `profileKey ?? 'default'`.
+    expect(a.profileDir).not.toBe(b.profileDir);
+  });
+
+  it('the same tenant reusing a key gets the SAME directory — it must still persist', async () => {
+    const dir = base();
+    const first = await smFor('org-alpha', dir).launch(opts({ profile: 'persistent', profileKey: 'ci' }));
+    const second = await smFor('org-alpha', dir).launch(opts({ profile: 'persistent', profileKey: 'ci' }));
+    expect(second.profileDir).toBe(first.profileDir);
+  });
+
+  /**
+   * `profileKey` comes from the renderer. Without sanitizing, `../` walks
+   * straight out of the tenant segment into another tenant's cookie jar — the
+   * boundary would exist and the caller would step around it.
+   */
+  it('a traversing profileKey cannot escape the tenant segment', async () => {
+    const dir = base();
+    const evil = await smFor('org-alpha', dir).launch(
+      opts({ profile: 'persistent', profileKey: '../../org-bravo/ci' }),
+    );
+    const honest = await smFor('org-bravo', dir).launch(opts({ profile: 'persistent', profileKey: 'ci' }));
+    expect(evil.profileDir).not.toBe(honest.profileDir);
+    expect(evil.profileDir).toContain('org-alpha');
+  });
+
+  /**
+   * An unresolved tenant gets a FRESH, disposable profile rather than a shared
+   * one. It still works; it just does not remember — the safe direction, because
+   * the alternative is remembering into a directory somebody else will open.
+   */
+  it('an unresolved tenant gets a disposable profile, never a shared persistent one', async () => {
+    const dir = base();
+    const m = await smFor(null, dir).launch(opts({ profile: 'persistent', profileKey: 'ci' }));
+    expect(m.profileDir).not.toContain('persistent');
+    const owned = await smFor('org-alpha', dir).launch(opts({ profile: 'persistent', profileKey: 'ci' }));
+    expect(m.profileDir).not.toBe(owned.profileDir);
   });
 });

@@ -62,11 +62,43 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
    * `AiConfigGet` stays public — reading which provider is configured is not the
    * exposure, and the settings screen needs it before an org resolves.
    */
-  [IpcChannel.AiConfigSetProvider]: 'org:manage',
-  [IpcChannel.AiConfigSetModel]: 'org:manage',
-  [IpcChannel.AiConfigSetCredential]: 'org:manage',
-  [IpcChannel.AiConfigSetMode]: 'org:manage',
-  [IpcChannel.AiConfigSetExternalConsent]: 'org:manage',
+  /**
+   * P13C ROUND 7 (final sweep) — THE MEMORY AUDIT TRAIL IS TENANT DATA.
+   *
+   * It was PUBLIC: no auth, no permission. `MemoryAuditEvent.detail` is a
+   * plain-language summary written by the assistant and carries record titles.
+   */
+  [IpcChannel.ExecMemoryAudit]: 'intelligence:read',
+
+  /**
+   * P13C ROUND 7 (final sweep) — THE AI DESTINATION IS INSTALL-LEVEL.
+   *
+   * These were `org:manage`, an ordinary organization-role permission held by
+   * every tenant's Owner and Admin — and anyone may create an organization and
+   * own it. There is ONE `ai-config.json` for the whole install, so an
+   * administrator of tenant A could point `ollamaUrl` at a host they control and
+   * flip `externalConsent`, and TENANT B'S RETRIEVED RECORDS would then leave the
+   * device to that host on the next assistant call.
+   *
+   * The comment above this table already described that exposure precisely, and
+   * the fix it describes moved these channels off the PUBLIC list onto a TENANT
+   * permission — which is a real improvement and the wrong axis. The resource is
+   * install-level; the authority must be too.
+   *
+   * `cloud:operate` cannot be held by any organization role
+   * (`PLATFORM_ONLY_PERMISSIONS`), so tenant A's Admin, tenant B's Admin and an
+   * Owner of either are refused identically.
+   */
+  // Destructive and install-wide: both were PUBLIC while their `set` twins
+  // required a permission. `resetToEnv` deletes the stored provider credential
+  // for every tenant on the machine.
+  [IpcChannel.AiConfigClearCredential]: 'cloud:operate',
+  [IpcChannel.AiConfigResetToEnv]: 'cloud:operate',
+  [IpcChannel.AiConfigSetProvider]: 'cloud:operate',
+  [IpcChannel.AiConfigSetModel]: 'cloud:operate',
+  [IpcChannel.AiConfigSetCredential]: 'cloud:operate',
+  [IpcChannel.AiConfigSetMode]: 'cloud:operate',
+  [IpcChannel.AiConfigSetExternalConsent]: 'cloud:operate',
   /**
    * P13C ROUND 3 — feedback came OFF the public allowlist.
    *
@@ -457,7 +489,8 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   IpcChannel.ExecMemoryForget,
   IpcChannel.ExecMemoryPin,
   IpcChannel.ExecMemoryResolve,
-  IpcChannel.ExecMemoryAudit,
+  // P13C Round 7 — ExecMemoryAudit REMOVED from the public set. See the
+  // permission table: the rows carry assistant-written record titles.
   // ── Knowledge reads ──
   IpcChannel.KnowledgeRelated,
   IpcChannel.KnowledgeTopics,
@@ -535,11 +568,11 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   IpcChannel.AiConfigGet,
   IpcChannel.AiConfigHealth,
   IpcChannel.AiConfigDetectOllama,
-  IpcChannel.AiConfigClearCredential,
+
   IpcChannel.AiConfigTest,
   IpcChannel.AiConfigMigrationStatus,
   IpcChannel.AiConfigMigrate,
-  IpcChannel.AiConfigResetToEnv,
+
   // ── Private-First AI experience (same sender-trust model as the AiConfig
   // block above: per-install desktop configuration, no org RBAC scope; the
   // two writes that change where AI work may run — setMode and

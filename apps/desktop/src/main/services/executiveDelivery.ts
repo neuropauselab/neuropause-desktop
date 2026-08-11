@@ -28,6 +28,7 @@ import { generateBriefing } from '../intelligence/briefingGenerator';
 import { founderProactiveSource } from '../ai/founderProactive';
 import { orgIntelligenceSource } from '../enterprise/orgIntelligence';
 import { forEachTenantBackground } from '../enterprise/index';
+import { currentPrincipal } from '../tenancy/backgroundPrincipal';
 
 const log = createLogger('delivery-root');
 
@@ -65,12 +66,42 @@ function getPreferencesSync(): DeliveryPreferences {
 }
 
 // ── Desktop channel (reuses the existing notification path) ───────────────────
+/**
+ * The ACTIVE session's tenant, or null. Bound at composition.
+ *
+ * P13C ROUND 7 (final sweep) — see `desktopChannel` below. A module-level binding
+ * rather than a parameter because `DeliveryChannel.deliver` is a fixed interface
+ * shared with the stub channels, and widening it would put a tenant argument on
+ * an email channel that does not exist yet.
+ */
+let viewerTenantId: () => string | null = () => null;
+export function bindDeliveryViewer(source: () => string | null): void {
+  viewerTenantId = source;
+}
+
 export const desktopChannel: DeliveryChannel = {
   key: 'desktop',
   available: true,
   deliver: (item: IntelligenceItem) => {
-    // Reuse the one notification primitive; deep-link is carried for the renderer
-    // to consume when the user clicks (handled by the existing notification wiring).
+    /**
+     * P13C ROUND 7 (final sweep) — AN OS TOAST GOES TO A PERSON, NOT TO A TENANT.
+     *
+     * `deliveryEngine.tick()` fans out over EVERY operable organization on the
+     * install and calls every channel for each. The INBOX half of this was fixed
+     * — the store is scoped and the badge uses `runOutsidePrincipal` — and the
+     * OS notification was not. So a scheduled brief for tenant B raised a desktop
+     * toast on the screen of whoever was signed in, carrying B's operational
+     * state in the title: "Organization health is at-risk (42/100)", "License
+     * expires in 3 days", "4 connector(s) in error".
+     *
+     * There is exactly one screen and one signed-in human, so the only correct
+     * recipient is the tenant they are currently viewing. An unresolved viewer
+     * gets nothing: a toast with no owner is a toast for the wrong person.
+     */
+    const viewer = viewerTenantId();
+    const owner = currentPrincipal()?.tenantId ?? null;
+    if (viewer === null) return;
+    if (owner !== null && owner !== viewer) return;
     notificationScheduler.notifyNow(item.title, item.body);
   },
 };

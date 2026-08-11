@@ -16,6 +16,8 @@ import type { ConnectorId, PlatformEventInput, UnifiedEntity } from '@neuropause
 import { makeUnifiedId } from '../ids';
 import { AuthError, HttpClient, HttpError, NetworkError, RateLimitError, type RateGate } from './http';
 import type { ConnectorAdapter, SyncPage } from './adapterSdk';
+import type { TenantScope } from '@neuropause/shared';
+import { TenantDedupe } from '../../tenancy/tenantDedupe';
 import { RetryQueue } from './retryQueue';
 import type { SyncStateStore } from './syncStateStore';
 import { syncEvents } from './events';
@@ -131,7 +133,49 @@ export class SyncOrchestrator {
    * tenant", and it also fixes the collision between two accounts of the same
    * provider inside ONE workspace — which was a real bug with no tenancy in it.
    */
-  private readonly offlineConnectors = new Set<string>();
+  /**
+   * P13C ROUND 7 — BOUNDED, AND BOUNDED PER TENANT.
+   *
+   * Round 6 keyed this correctly and left it unbounded: a `Set` that only ever
+   * grew, holding one entry per account that had ever gone offline, including
+   * accounts long since disconnected. A leak is not a tenancy defect, but an
+   * unbounded structure in the sync engine is the kind of thing that gets
+   * "fixed" later by someone reaching for a global `slice()` — which is how the
+   * install-wide caps this program removed three times got there.
+   *
+   * It uses `TenantDedupe`, the primitive Round 6 defined, rather than a private
+   * TTL map. That is the point of having defined a class: the thirteenth site
+   * gets the eviction rule by using the type, not by remembering it.
+   *
+   * WHY EVICTION IS SAFE HERE. Losing an entry means the next failure publishes
+   * `connector.offline` AGAIN — a duplicate notification. It can never mean a
+   * tenant is not told, because "not told" would require the entry to survive
+   * when it should not, and eviction only removes. Re-delivery is the acceptable
+   * failure; silence is not. The cap is per tenant, so a workspace with fifty
+   * broken connectors rotates its own entries and never another tenant's.
+   *
+   * THE TTL IS A FRESHNESS RULE, NOT AN ISOLATION ONE. Twelve hours: an account
+   * that is still down half a day later is worth mentioning again, and an
+   * operator who dismissed the first notice has had time to act on it.
+   */
+  private readonly offlineConnectors = new TenantDedupe('sync-offline-announced', {
+    ttlMs: 12 * 60 * 60 * 1000,
+    maxPerTenant: 500,
+  });
+
+  /**
+   * The tenant this run acts for, as a scope.
+   *
+   * `workspaceId` is deliberately empty: the id below already carries the
+   * ACCOUNT, and an account belongs to exactly one workspace, so qualifying by
+   * workspace as well would partition the same fact twice. `TenantDedupe` keys on
+   * the tenant only, for the same reason.
+   */
+  private offlineScope(): TenantScope | null {
+    const tenantId = this.ports.activeTenantId();
+    return tenantId === null ? null : { tenantId, workspaceId: '' };
+  }
+
   /** Same composite key as `inFlight`. An account is the unit of connectivity. */
   private static accountKey(connectorId: string, accountId: string): string {
     return `${connectorId}::${accountId}`;
@@ -403,7 +447,11 @@ export class SyncOrchestrator {
         });
       }
 
-      if (this.offlineConnectors.delete(SyncOrchestrator.accountKey(connectorId, accountId))) {
+      // Recovery: clear the edge so the NEXT failure announces again, and tell
+      // this tenant it is back — only if this tenant was told it was down.
+      const recoveredKey = SyncOrchestrator.accountKey(connectorId, accountId);
+      if (this.offlineConnectors.hasSeen(this.offlineScope(), recoveredKey)) {
+        this.offlineConnectors.forget(this.offlineScope(), recoveredKey);
         this.ports.publish(syncEvents.online(connectorId, name, accountId));
       }
       if (created > 0) this.ports.publish(syncEvents.entityCreated(connectorId, name, accountId, created));
@@ -466,9 +514,9 @@ export class SyncOrchestrator {
       }
 
       if (err instanceof NetworkError) {
-        const offlineKey = SyncOrchestrator.accountKey(connectorId, accountId);
-        if (!this.offlineConnectors.has(offlineKey)) {
-          this.offlineConnectors.add(offlineKey);
+        // `claim` is has-then-add in one call: the two-step form is where this
+        // whole class of bug lived, in twelve places.
+        if (this.offlineConnectors.claim(this.offlineScope(), SyncOrchestrator.accountKey(connectorId, accountId))) {
           this.ports.publish(syncEvents.offline(connectorId, name, accountId));
         }
         await this.ports.syncState.recordRun(connectorId, accountId, {

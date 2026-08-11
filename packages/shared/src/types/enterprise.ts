@@ -195,6 +195,27 @@ export type EnterprisePermission =
   // ── P11 — Cloud Control Plane: read the global control plane, and manage/operate cloud resources. ──
   | 'cloud:read'
   | 'cloud:manage'
+  /**
+   * P13C ROUND 7 — THE PLATFORM OPERATOR. STRICTLY ABOVE `cloud:manage`.
+   *
+   * Every other permission in this union is granted by an ORGANIZATION ROLE, and
+   * that is the right model for everything an organization owns. It cannot
+   * express the one authority the control plane actually needs, because the
+   * resources it governs — rate-limit policies, deployment replicas, the shared
+   * runtime — belong to the MACHINE, not to any organization on it.
+   *
+   * `cloud:manage` was doing that job and it is the wrong shape: it is held by
+   * every organization's Admin, so tenant A's administrator could disable the
+   * rate limit protecting tenant B. Scoping the policies per tenant would be
+   * worse than the exposure — per-tenant limits over one shared runtime are not
+   * limits at all.
+   *
+   * So this permission is deliberately UNREACHABLE FROM ANY ORGANIZATION ROLE.
+   * See `PLATFORM_ONLY_PERMISSIONS` below and `platformOperatorRegistry.ts`: it is
+   * held by an install-level operator identity and by nothing else, and switching
+   * organizations cannot confer it because it was never keyed on one.
+   */
+  | 'cloud:operate'
   // ── P12 — Developer Platform: read the developer console, and manage keys/OAuth/publishing/billing. ──
   | 'developer:read'
   | 'developer:manage'
@@ -286,6 +307,7 @@ export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   // ── P11 — Cloud Control Plane ──
   'cloud:read',
   'cloud:manage',
+  'cloud:operate',
   // ── P12 — Developer Platform ──
   'developer:read',
   'developer:manage',
@@ -320,6 +342,28 @@ export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   'medicalDevice:lot.write',
   'medicalDevice:traceability.read',
 ];
+
+/**
+ * Permissions NO ORGANIZATION ROLE MAY EVER HOLD.
+ *
+ * P13C ROUND 7. This list is the whole mechanism, and it exists because of a
+ * trap in the seed: the Owner role is defined as `[...ALL_ENTERPRISE_PERMISSIONS]`,
+ * so ANY permission added to that array is granted — silently, to every
+ * organization's Owner, on the next reconcile. A capability meant to be
+ * install-level would have become the most widely held one in the product,
+ * reachable by creating a second organization and owning it.
+ *
+ * `BUILT_IN_ROLE_SPECS` filters the Owner wildcard through this set, so the
+ * default is now "the wildcard means everything an ORGANIZATION can do", which
+ * is what it was always read as. Anything here needs a different authority, and
+ * the code that grants it must say where that authority comes from.
+ */
+export const PLATFORM_ONLY_PERMISSIONS: readonly EnterprisePermission[] = ['cloud:operate'];
+
+/** True when this permission cannot be satisfied by an organization role. */
+export function isPlatformOnlyPermission(p: EnterprisePermission): boolean {
+  return PLATFORM_ONLY_PERMISSIONS.includes(p);
+}
 
 export interface OrgRole {
   id: string;

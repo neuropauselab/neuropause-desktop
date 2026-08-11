@@ -23,6 +23,8 @@ import type { CaptureDeps } from '../desktop/capture';
 const log = createLogger('sandbox-enterprise-desktop');
 
 export interface RealDesktopChannelDeps {
+  /** P13C Round 7 — the tenant a persistent browser profile belongs to. */
+  tenantId: () => string | null;
   launchTarget: LaunchTarget;
   profilesDir: string;
   artifactsBaseDir: string;
@@ -36,7 +38,16 @@ const NOOP_CAPTURE_ATTACH: CaptureDeps['attach'] = () => ({}) as Artifact;
 export function createRealDesktopChannel(deps: RealDesktopChannelDeps): EnterpriseDesktopChannel {
   const now = deps.now ?? Date.now;
   const driver = new PlaywrightDesktopDriver();
-  const sessions = new SessionManager({ driver, profilesDir: deps.profilesDir, launchTarget: deps.launchTarget, now });
+  const sessions = new SessionManager({
+    driver,
+    profilesDir: deps.profilesDir,
+    // P13C Round 7 — see SessionManagerDeps.tenantId. Required, not optional: an
+    // optional tenant on a filesystem path defaults to a shared directory, which
+    // is what the finding was.
+    tenantId: deps.tenantId,
+    launchTarget: deps.launchTarget,
+    now,
+  });
   const perf = new PerfCollector();
   const state: { managed: ManagedSession | null; window: DesktopWindow | null; shots: number } = { managed: null, window: null, shots: 0 };
 

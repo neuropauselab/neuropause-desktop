@@ -23,6 +23,8 @@ export interface DesktopExecutorDeps {
   driver: DesktopDriver;
   /** Base dir for isolated session profiles. */
   profilesDir: string;
+  /** The tenant a persistent profile belongs to. See SessionManagerDeps. */
+  tenantId: () => string | null;
   /** Base dir for per-run binary artifacts (a per-execution subdir is created). */
   artifactsBaseDir: string;
   launchTarget: LaunchTarget;
@@ -40,7 +42,7 @@ export function createDesktopExecutor(deps: DesktopExecutorDeps): SandboxExecuto
     const spec = parsed.value;
 
     const perf = new PerfCollector();
-    const sessions = new SessionManager({ driver: deps.driver, profilesDir: deps.profilesDir, launchTarget: deps.launchTarget, now });
+    const sessions = new SessionManager({ driver: deps.driver, profilesDir: deps.profilesDir, tenantId: deps.tenantId, launchTarget: deps.launchTarget, now });
     const capture: CaptureDeps = { artifactsDir: join(deps.artifactsBaseDir, ctx.execution.id), attach: ctx.attachArtifact, now };
 
     // A stable state object (not `let`) so TS keeps the declared union type across the

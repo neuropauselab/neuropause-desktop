@@ -376,6 +376,22 @@ export type MemoryAuditAction =
 
 export interface MemoryAuditEvent {
   id: string;
+  /**
+   * The organization this event belongs to.
+   *
+   * P13C ROUND 7 (final sweep) — `MemoryAuditLog` had no tenant field, no
+   * `bindScope` and no registration, and its channel sat in `PUBLIC_CHANNELS`:
+   * no auth, no permission. `detail` is a plain-language summary written by the
+   * assistant, so it carries record titles and section counts verbatim.
+   *
+   * The memory STORE beside it was scoped and the conversation store was pulled
+   * off the public list in an earlier round. The audit log of the same subsystem
+   * was not touched — a sibling of something already fixed, which is the shape of
+   * nearly every finding in this program.
+   *
+   * Optional: pre-Round-7 rows have no owner and reach nobody.
+   */
+  tenantId?: string;
   action: MemoryAuditAction;
   /** The memory this concerns; null for a rejected capture (nothing was stored). */
   memoryId: string | null;
