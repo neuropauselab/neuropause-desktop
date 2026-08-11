@@ -212,6 +212,53 @@ describe('the declarations themselves', () => {
     ).toThrow(/authority must be PLATFORM_OPERATOR/);
   });
 
+  /**
+   * P13C ROUND 9 — F19. The combination Round 8 left legal.
+   *
+   * `worker-registry` shipped as INSTALL_GLOBAL + ORG_ROLE and named the cost in
+   * its own reason string: "a workforce:manage holder can uninstall a package
+   * other tenants use." That is the Round 7 finding class, declared and
+   * permitted. The rule below is generic — no store name appears in it — so a
+   * future store cannot reintroduce the class by declaring it.
+   */
+  it('an install-global store cannot be gated on an organization role either', async () => {
+    const { declareStoreScope, __resetStoreScopeRegistryForTests } = await import('./storeScope');
+    __resetStoreScopeRegistryForTests();
+    expect(() =>
+      declareStoreScope({
+        name: 'bad-4',
+        scope: 'INSTALL_GLOBAL',
+        persistence: 'file',
+        authority: 'ORG_ROLE',
+        classification: 'INSTALL_METADATA',
+        retention: 'uninstall removes the package for every tenant',
+        reason: 'an org admin can surely handle it',
+      }),
+    ).toThrow(/cannot be mutated on an organization role/);
+    __resetStoreScopeRegistryForTests();
+  });
+
+  it('install-global remains legal under platform, system and user authority', async () => {
+    const { declareStoreScope, __resetStoreScopeRegistryForTests } = await import('./storeScope');
+    __resetStoreScopeRegistryForTests();
+    // The rule must not be "install-global is banned" — that would push stores
+    // into declaring a tenant scope they do not have, which is worse.
+    for (const authority of ['PLATFORM_OPERATOR', 'SYSTEM', 'USER'] as const) {
+      expect(() =>
+        declareStoreScope({
+          name: `ok-${authority}`,
+          scope: 'INSTALL_GLOBAL',
+          persistence: 'file',
+          authority,
+          classification: 'INSTALL_METADATA',
+          retention: 'unbounded; rows describe the machine',
+          reason: 'one shared runtime on one machine',
+        }),
+      ).not.toThrow();
+    }
+    __resetStoreScopeRegistryForTests();
+  });
+
   it('a reason and a retention policy are both mandatory', async () => {
     const { declareStoreScope, __resetStoreScopeRegistryForTests } = await import('./storeScope');
     __resetStoreScopeRegistryForTests();
@@ -271,7 +318,10 @@ describe('the declarations themselves', () => {
       name: 'good',
       scope: 'INSTALL_GLOBAL',
       persistence: 'file',
-      authority: 'ORG_ROLE',
+      // P13C ROUND 9 — was ORG_ROLE, which F19 made illegal. The fixture is
+      // corrected rather than the rule relaxed: an install-wide resource is not
+      // one organization's to mutate.
+      authority: 'PLATFORM_OPERATOR',
       classification: 'INSTALL_METADATA',
       retention: 'unbounded; rows describe the machine',
       reason: 'one shared runtime',

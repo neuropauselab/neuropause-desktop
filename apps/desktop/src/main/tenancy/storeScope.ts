@@ -170,6 +170,38 @@ export function declareStoreScope(decl: StoreScopeDeclaration): void {
         'An install-wide resource behind an organization role is the Round 7 finding class.',
     );
   }
+  /**
+   * INSTALL_GLOBAL CANNOT BE MUTATED THROUGH AN ORGANIZATION ROLE. P13C ROUND 9 — F19.
+   *
+   * Round 8 enforced this for `PLATFORM_GLOBAL` and left `INSTALL_GLOBAL` free to
+   * pair with `ORG_ROLE`. That is the Round 7 finding class written as a LEGAL
+   * DECLARATION, and `worker-registry` was declared exactly that way — its own
+   * `reason` string ending "a workforce:manage holder can uninstall a package
+   * other tenants use", which is the finding, stated and permitted.
+   *
+   * The two global scopes differ in what they HOLD, not in who may change them:
+   * `INSTALL_GLOBAL` promises no customer-derived data, `PLATFORM_GLOBAL` adds
+   * that changing it is visibly a platform act. Neither is one organization's to
+   * mutate, because any person may create an organization and own it — so an
+   * organization role is a self-service grant.
+   *
+   * `SYSTEM` and `USER` remain legal: `SYSTEM` means nothing mutates it through a
+   * user-facing surface, and a `USER`-authority install-global row is the signed-in
+   * person's own machine preference. Only ORG_ROLE — authority that one tenant's
+   * administrator can hold over every tenant's resource — is refused.
+   *
+   * GENERIC BY CONSTRUCTION: no store name appears here. A future INSTALL_GLOBAL
+   * store cannot reintroduce the class by declaring it.
+   */
+  if (decl.scope === 'INSTALL_GLOBAL' && decl.authority === 'ORG_ROLE') {
+    throw new Error(
+      `Store "${decl.name}" is INSTALL_GLOBAL with ORG_ROLE authority. One shared resource ` +
+        'on the machine cannot be mutated on an organization role: anyone may create an ' +
+        'organization and own it, so that is a self-service grant over every tenant. Use ' +
+        'PLATFORM_OPERATOR (cloud:operate), or SYSTEM if nothing mutates it through a ' +
+        'user-facing surface, or narrow the scope to TENANT.',
+    );
+  }
   if (decl.scope === 'EPHEMERAL' && decl.persistence !== 'memory') {
     throw new Error(`Store "${decl.name}" is EPHEMERAL but persists to ${decl.persistence}.`);
   }
