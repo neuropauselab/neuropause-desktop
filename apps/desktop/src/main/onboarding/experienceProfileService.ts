@@ -18,6 +18,38 @@ import { dirname } from 'node:path';
 import type { ExperienceProfile, UnderstandingAttribute, WorkspaceType } from '@neuropause/shared';
 import { defaultExperienceProfile } from '@neuropause/shared';
 import { readStoreFile } from '../storage/storeEnvelope';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/** P13C ROUND 9 — F18. The structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'experience-profile',
+  scope: 'USER',
+  persistence: 'file',
+  authority: 'USER',
+  // NOT `USER_PREFERENCE`, and the distinction is the point. `state`,
+  // `workspaceType` and `aiModeChosen` are preferences. `attributes` are not:
+  // `AttributeStatus` includes `imported`, `connected` and `system_derived`
+  // ("computed from real records"), so the VOCABULARY admits values derived from
+  // a customer's data even where today's only writer is the first-run flow. The
+  // classification follows what the store may hold, not what it happens to.
+  classification: 'CUSTOMER_DERIVED',
+  retention:
+    'One record. `set` upserts attributes by key and `removeKeys` deletes by key — both inside this ' +
+    'one profile, so neither can reach anything else. `reset` returns the whole profile to defaults ' +
+    'and is the only destructive path. There is no list and no cap, so no write evicts anything.',
+  reason:
+    "WHY USER: the profile is a model of one person's own words about themselves — role, domain, " +
+    'priorities — and it deliberately follows them across organizations, which is what USER scope ' +
+    'means here and why `enterprise-personalization` is declared the same way. WHAT DATA: the ' +
+    'first-run decisions (pending/completed/skipped, workspace type, whether an AI mode was chosen) ' +
+    'plus `UnderstandingAttribute[]`, each carrying a key, a value, a provenance status and a ' +
+    'plain-language evidence sentence. THE SEAM, STATED HONESTLY: the boundary is the operating-' +
+    "system account — one `experience-profile.json` under that account's userData directory — and " +
+    'NOT an in-app identity resolver. Two people who share one macOS account and sign in to ' +
+    'NeuroPause in turn share this profile. That is a real limit of a per-device file, it is not ' +
+    'closed by this declaration, and `isBound` is deliberately omitted rather than pointed at a ' +
+    'resolver that does not exist.',
+});
 
 export interface ExperienceProfilePatch {
   workspaceType?: WorkspaceType;

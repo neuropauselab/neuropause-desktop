@@ -183,6 +183,7 @@ import {
 } from './enterprise';
 import { currentPrincipal } from './tenancy/backgroundPrincipal';
 import { assertAllTenantStoresBound } from './tenancy/tenantOwnedStore';
+import { assertAllStoreScopesBound } from './tenancy/storeScope';
 import type { Organization } from '@neuropause/shared';
 import { setLiveSyncActiveOrg } from './cloud/livesync/liveSyncInstance';
 import { initDataPlane } from './dataPlane';
@@ -929,6 +930,13 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
    */
   workerRegistry.bindOutcomeScope(() => activeTenantScope()?.tenantId ?? null);
   /**
+   * P13C Round 9 — F20. Same shape, same reason, different registry: the
+   * installed-app CATALOGUE is install-level and stays so; its LAUNCH COUNTERS
+   * are per tenant. `launchCount` and `usage.*` on a shared row told one
+   * organization how often another had run an app and when it last did.
+   */
+  registry.bindUsageScope(() => activeTenantScope()?.tenantId ?? null);
+  /**
    * P13C Round 7 — an OS toast goes to a PERSON. `deliveryEngine.tick()` fans out
    * over every organization on the install; the only correct recipient of a
    * desktop notification is the tenant the signed-in human is currently viewing.
@@ -1001,6 +1009,27 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
    * so the failure happens at composition rather than on the first request.
    */
   assertAllTenantStoresBound();
+
+  /**
+   * THE SECOND GATE, AND IT WAS NEVER WIRED. P13C ROUND 9.
+   *
+   * Round 8 built `assertAllStoreScopesBound()` and documented it as "called
+   * from the composition root before any handler is registered, so an unbound
+   * store cannot reach a user". It was never called from anywhere but its own
+   * test. So every `isBound` predicate written into the 21 declarations that
+   * round was decoration: a store could declare `TENANT`, have no boundary
+   * bound, and the application would start and serve.
+   *
+   * The two assertions overlap DELIBERATELY and are not redundant.
+   * `assertAllTenantStoresBound` covers stores that registered a
+   * `TenantOwnership`; this one covers everything that declared a SCOPE,
+   * including stores whose seam is their own and which never touch that class.
+   * A store can pass either gate and fail the other, which is exactly why both
+   * run — and why a Round 8 gate that only ever ran in a test is a finding
+   * about this program's own instrumentation, recorded here rather than quietly
+   * fixed.
+   */
+  assertAllStoreScopesBound();
 
   onWorkspaceSwitch(() => {
     dataPlane.forgetPlans();

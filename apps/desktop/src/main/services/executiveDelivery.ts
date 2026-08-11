@@ -29,6 +29,40 @@ import { founderProactiveSource } from '../ai/founderProactive';
 import { orgIntelligenceSource } from '../enterprise/orgIntelligence';
 import { forEachTenantBackground } from '../enterprise/index';
 import { currentPrincipal } from '../tenancy/backgroundPrincipal';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/**
+ * P13C ROUND 9 — F18. The structural scope declaration. See tenancy/storeScope.ts.
+ *
+ * The DECLARED STORE IS `delivery-preferences.json` AND NOTHING ELSE. This file
+ * is a composition root: the intelligence it delivers is read through
+ * `unifiedStore` and the enterprise timeline, which declare their own scopes and
+ * are filtered by `forEachTenantBackground`'s principal; the toast it raises is
+ * gated on the VIEWER (see `desktopChannel.deliver`, P13C Round 7). None of
+ * that is persisted here. The only bytes this file writes are the schedule.
+ */
+declareStoreScope({
+  name: 'delivery-preferences',
+  scope: 'INSTALL_GLOBAL',
+  persistence: 'file',
+  // `notifications:prefs.set` is a per-user desktop surface on the sender-trust
+  // model, not an organizational decision. ORG_ROLE is refused for an
+  // install-wide file and would be the wrong axis anyway.
+  authority: 'USER',
+  classification: 'USER_PREFERENCE',
+  retention:
+    'One record, rewritten whole by `saveDeliveryPreferences` — no list, no cap, no eviction, so a ' +
+    'write can remove nothing but the previous schedule. There is no delete path at all.',
+  reason:
+    'WHY GLOBAL: there is one screen, one notification centre and one timer on this machine, so ' +
+    'there is one schedule. WHAT DATA: `DeliveryPreferences` in full — enabled, timezone offset, ' +
+    'morning/afternoon/evening minutes, weekly report day, working-hours bounds, do-not-disturb and ' +
+    'a minimum priority. Nine numbers, two booleans and an enum: no record names, no counts, nothing ' +
+    'derived from any customer. STATED LIMIT: the file is install-wide, so on a shared machine a ' +
+    "change to the brief time applies to everyone who uses it. That is a shared preference, not a " +
+    'disclosure — the CONTENT of each brief is built per tenant by the fan-out and delivered only to ' +
+    'the tenant the signed-in person is currently viewing.',
+});
 
 const log = createLogger('delivery-root');
 

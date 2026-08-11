@@ -14,6 +14,35 @@ import type { LicenseValidationStatus, OrgLicense } from '@neuropause/shared';
 import { evaluateLicense } from '@neuropause/shared';
 import type { LicenseTransport } from './types';
 import { readStoreFile } from '../storage/storeEnvelope';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/** P13C ROUND 9 — F18. The structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'org-license-cache',
+  scope: 'TENANT',
+  persistence: 'file',
+  // Nothing mutates this through a user-facing surface. `refresh` fetches the
+  // authoritative snapshot from the backend for the CALLER'S OWN organization
+  // and overwrites that key; there is no path that authors a license locally.
+  authority: 'SYSTEM',
+  classification: 'CUSTOMER_DERIVED',
+  retention:
+    'No cap, no eviction and no delete path. The file is `{ [orgId]: OrgLicense }` — one row per ' +
+    "organization — and the ONLY write is `data.licenses[orgId] = license`, which replaces that " +
+    "organization's own row and can reach no other key. So there is no removal here that could " +
+    "destroy another tenant's entitlement snapshot. The file is in the backup set " +
+    "(`license-status.json` under the `configuration` domain), so a restore replaces it wholesale.",
+  reason:
+    'WHY TENANT: the store is KEYED BY ORGANIZATION ID and every read goes through ' +
+    '`statusFor(orgId)`, which reads exactly one key. The boundary is the key, not a filter — a ' +
+    'caller that resolves to no organization gets the empty id, which matches nothing. The IPC layer ' +
+    'is the half that makes that true: `license/index.ts` resolves the id from `activeTenantScope()` ' +
+    'and IGNORES the payload id, because both channels are on the PUBLIC allowlist and taking the id ' +
+    'from the request made this an existence oracle for arbitrary organizations (P13C N2). WHAT ' +
+    "DATA: the organization's plan tier, entitled plan, subscription state, seat counts, grace days " +
+    'and period dates — a description of one customer\'s commercial relationship, so CUSTOMER_DERIVED ' +
+    'even though it holds none of their records.',
+});
 
 interface LicenseFileData {
   version: 1;

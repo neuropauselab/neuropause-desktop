@@ -24,6 +24,46 @@ import type {
 } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { BackupManager } from '../backup/backupManager';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/**
+ * P13C ROUND 9 — F18/F21. The structural scope declaration.
+ *
+ * THE ONLY STATE THIS FILE OWNS IS `safe-mode.json`. Everything else it does is
+ * composition — it calls the backup manager, the plugin manager and the package
+ * service, each of which owns its own bytes. The declaration is therefore about
+ * the flag, and the reason names what the ACTIONS reach, because the authority
+ * has to match the widest thing the surface can do rather than the smallest.
+ *
+ * This declaration was impossible until this round: `recovery:run` was
+ * classified `org:manage`, and `declareStoreScope` refuses INSTALL_GLOBAL +
+ * ORG_ROLE. The channel now requires `cloud:operate` — see ipc/runtimeAuthz.ts.
+ */
+declareStoreScope({
+  name: 'safe-mode-flag',
+  scope: 'INSTALL_GLOBAL',
+  persistence: 'file',
+  authority: 'PLATFORM_OPERATOR',
+  classification: 'INSTALL_METADATA',
+  retention:
+    'One record. `toggleSafeMode` writes it, `clearSafeMode` removes it, and both act on the whole ' +
+    'install because the launcher reads one flag at startup. No list, no cap, no eviction. ' +
+    'WHAT THE OTHER ACTIONS REMOVE, stated because a recovery action is a write: `resetSettings` ' +
+    'deletes four named settings files (telemetry, crash-reporting, update-prefs, window-state) and ' +
+    'no data files; `restoreBackup` delegates to the backup manager, which snapshots the current ' +
+    'state as a safety backup before overwriting anything. Both reach the whole install, which is ' +
+    'why the channel is behind cloud:operate as of Round 9.',
+  reason:
+    'WHY GLOBAL: Safe Mode is read by the launcher before any organization exists to scope it to, ' +
+    'and there is one launcher. WHAT DATA: `{enabled, reason, setAt}` — a boolean, a timestamp, and ' +
+    'a reason string that is either the constant below or a caller-supplied `z.string().max(300)` ' +
+    'from `RecoveryRunRequest`. No record names, no counts, nothing derived from a customer. ' +
+    'CROSS-TENANT COST: the actions this service runs are install-wide by construction — safe mode ' +
+    "suppresses every tenant's plugins, `disablePlugins` disables them, `resetSettings` deletes the " +
+    "install's settings and `restoreBackup` rolls the whole data directory back. That is precisely " +
+    'why the authority is PLATFORM_OPERATOR: any person may create an organization and own it, so an ' +
+    'organization role over these would be a self-service grant to reset every other tenant.',
+});
 
 const log = createLogger('recovery');
 

@@ -77,26 +77,149 @@ function persistsState(src: string): boolean {
   if (!writes) return false;
   // A file that only writes what it was handed, with no retained collection, is a
   // sink rather than a store. Require some retained state as well.
-  const holdsState =
-    /private\s+(?:readonly\s+)?\w+\s*[:=]\s*(?:new\s+Map|new\s+Set|\[\]|\{\})/.test(src) ||
-    /private\s+\w+\s*:\s*\w+\[\]\s*=/.test(src) ||
-    /private\s+\w+\s*=\s*new\s+(?:Map|Set)/.test(src);
-  return holdsState;
+  return holdsRetainedState(src);
+}
+
+/**
+ * Does this file RETAIN state, at ANY scope? P13C ROUND 9 — F18.
+ *
+ * THE BLIND SPOT ROUND 8 SHIPPED
+ *
+ * The previous predicate required the word `private`. It therefore saw class
+ * fields and nothing else, and the red team found roughly fourteen persisting
+ * files it could not see — `cloud/livesync/store.ts`, holding every
+ * organization's pending record mutations in a module-level structure and
+ * declaring nothing, being the one that mattered. A detector that only sees one
+ * syntax is a detector that reports full coverage while the interesting stores
+ * hide in the other syntaxes.
+ *
+ * WHAT IS NOW COVERED, EACH BECAUSE A REAL STORE IN THIS REPO USES IT
+ *
+ *   class field            `private rows: Row[] = []`
+ *   module-level Map/Set   `const byId = new Map<string, Row>()`
+ *   module-level array     `const queue: Job[] = []`
+ *   closure-retained       `function make() { const seen = new Set(); … }`
+ *     — the pattern below is scope-agnostic, so a binding inside a factory
+ *       matches exactly as a top-level one does. That is the point: `let` and
+ *       `const` inside a closure were completely invisible before.
+ *   singleton / factory    both reduce to one of the above at the binding site
+ *   typed single object    `private state: Snapshot = { … }` — a store holding
+ *                          ONE record is still a store; `registry.json` and
+ *                          `windowState` are exactly this shape.
+ *   declared collections   `private rows: Map<string, Row>` assigned later
+ *
+ * WHAT IS STILL NOT COVERED, STATED PLAINLY RATHER THAN CLAIMED AWAY
+ *
+ * This is a REGEX OVER SOURCE. It cannot follow a collection that is only ever
+ * reached through an imported helper, one built by a generic factory in another
+ * file, or one held in a data structure the pattern does not name. So this gate
+ * is a forcing function, NOT a proof of completeness, and the round that
+ * declares otherwise is the round that gets the next F18. The startup assertion
+ * in `assertAllStoreScopesBound()` is the second mechanism, and the two overlap
+ * deliberately: static scanning catches what is never constructed in a test,
+ * runtime assertion catches what the regex cannot parse.
+ *
+ * The asymmetry is unchanged and deliberate: a false positive costs one honest
+ * declaration; a false negative is an unclassified store holding customer data.
+ */
+function holdsRetainedState(src: string): boolean {
+  const BINDING = '(?:private|protected|public|const|let|var)\\s+(?:readonly\\s+)?\\w+\\s*';
+  return (
+    // = new Map() / new Set() / new WeakMap(), at any scope
+    new RegExp(`${BINDING}(?::[^=;\\n]+)?=\\s*new\\s+(?:Map|Set|WeakMap|WeakSet)\\b`).test(src) ||
+    // = []
+    new RegExp(`${BINDING}(?::[^=;\\n]+)?=\\s*\\[\\s*\\]`).test(src) ||
+    // : SomeType = { … }  — a store of exactly one record
+    new RegExp(`${BINDING}:\\s*[\\w<>,\\s|\\[\\]]+\\s*=\\s*\\{`).test(src) ||
+    // declared-but-assigned-later collections
+    /(?:private|protected|public)\s+(?:readonly\s+)?\w+\s*!?\s*:\s*(?:Map|Set|Record)</.test(src) ||
+    /(?:private|protected|public)\s+(?:readonly\s+)?\w+\s*:\s*\w+\[\]/.test(src)
+  );
 }
 
 /**
  * Files that persist but are not stores. Each entry is a claim with a reason.
  *
- * IT IS EMPTY, AND THAT IS THE STRONGEST AVAILABLE STATEMENT: every file in the
- * main process that writes state AND retains a collection is classified. The
- * mechanism exists for the day one genuinely is not a store — a log writer, an
- * artifact sink — and until then the honest value is nothing.
- *
  * The detector requires BOTH a write and a retained collection, which is why the
  * obvious candidates (`storeEnvelope`, `auditChain`, `logger`) never reach here:
- * they write what they are handed and keep no rows.
+ * they write what they are handed and keep no rows. The four below reach it
+ * because they hold a collection of something OTHER than rows — probe functions,
+ * live process handles, a local accumulator — while writing bytes they were
+ * handed. Each reason names the specific file that is written and what it holds.
+ *
+ * ONE OF THEM IS NOT AN EXONERATION. `backup/backupManager.ts` is listed because
+ * it retains nothing, and its entry records the finding rather than closing it.
+ * An entry here is a statement about the FILE, never about the risk.
  */
-const NOT_A_STORE: Record<string, string> = {};
+const NOT_A_STORE: Record<string, string> = {
+  /**
+   * P13C ROUND 9 — F18.
+   */
+  'platform/index.ts':
+    'Composition root. It writes ONE line per platform event to `logs/audit.log` with ' +
+    '`fs.appendFile` — `{at, kind, type, actor, resource, correlationId}` — and retains none of ' +
+    'them: `appendAuditLine` formats its argument and returns, so the file is a sink with no ' +
+    'in-memory collection behind it and no read path in this module. The two collections the ' +
+    'detector matched hold no rows: `pendingProbes` is an array of DIAGNOSTIC PROBE FUNCTIONS ' +
+    'drained into the live probe list at init, and `seenDownloads` is a per-wiring `Set<string>` of ' +
+    'download ids used to de-duplicate producer events in memory and never persisted. The two real ' +
+    'stores it composes declare their own scopes in their own files — `platform/timelineService.ts` ' +
+    '(platform-timeline, TENANT) and the event bus, both bound by the composition root through ' +
+    '`bindTenant`.',
+
+  'sandbox/enterprise/desktopChannel.ts':
+    'Adapter over the live Playwright desktop driver. The only bytes it writes are the PNG returned ' +
+    'by `session.window.screenshot()`, written straight through to ' +
+    '`<artifactsBaseDir>/tenants/<tenantId>/<workspaceId>/<name>-<ts>-<n>.png` and handed back to ' +
+    'the caller as a `storageRef`: it never lists, reads, indexes or deletes those files, so there ' +
+    'is no collection of them to own. The retained state the detector matched is a ' +
+    '`DesktopSessionRegistry` of LIVE ELECTRON PROCESS HANDLES (`ManagedSession`, `DesktopWindow`), ' +
+    'which cannot survive a restart by construction — the process it refers to is gone. Ownership ' +
+    'is already enforced on that registry (F15/F16, Round 9): every operation resolves the owner ' +
+    'before executing and every path segment is sanitized so a tenant id containing `..` cannot ' +
+    'climb into another tenant\'s captures.',
+
+  'support/supportBundle.ts':
+    'Artifact sink. `generate()` writes the `SupportBundlePayload` its `collect()` dependency hands ' +
+    'it — versions, diagnostics, modules, connector name+status, plugins, crashes — plus ' +
+    'redaction-scrubbed copies of `logs/` and a manifest, into a fresh `support-<ts>` directory. It ' +
+    'retains nothing between calls (`contents` is a local array) and has no list, read, validate or ' +
+    'delete path, so no bundle is ever reachable through this class again. NOT A CLEAN BILL: the ' +
+    'bundle it produces spans every tenant on the install, which is why `support:generateBundle` was ' +
+    'moved from `org:manage` to `cloud:operate` this round (F21) — see ipc/runtimeAuthz.ts.',
+
+  /**
+   * P13C ROUND 9 — F22. AN ENTRY THAT RECORDS AN OPEN FINDING.
+   *
+   * The FILE is not a store: `BackupManager` retains no collection between calls
+   * (`entries` is a local in `create`), and every byte it writes it was handed —
+   * `fs.copyFile` of paths the store-path registry named, plus a `manifest.json`
+   * of `{domain, relativePath, sizeBytes, sha256}` per copied file. The rows in
+   * those copied files belong to stores that each declare their own scope.
+   *
+   * The ARCHIVE it produces is a different matter and is reported as F22, not
+   * closed here: `storage/storePaths.ts` includes `memory.json`, `graph.json`,
+   * `unified-store.json`, `enterprise-module-*` ("the user's business records"),
+   * `assistant-conversations.json` and `executive-decisions.json`, so one
+   * backup directory is a verbatim copy of EVERY organization's records with no
+   * tenant partition. There is no honest declaration for that in this
+   * vocabulary — CUSTOMER_DERIVED is refused for both global scopes, and the
+   * archive is not one tenant's — and inventing a TENANT scope it does not have
+   * would be the false claim this registry exists to prevent. Partitioning the
+   * archive per tenant means re-serializing every store's rows through that
+   * store's own filter, which is not a contained change. What WAS contained and
+   * is done: `backup:restore` and `backup:delete` moved from `org:manage` to
+   * `cloud:operate` (F21), so one organization's administrator can no longer
+   * roll back or destroy every other organization's data.
+   */
+  'backup/backupManager.ts':
+    'Copy engine, not a store: it retains no collection between calls and writes only files it was ' +
+    'handed by `storage/storePaths.ts` plus a manifest of {domain, relativePath, sizeBytes, sha256}. ' +
+    'OPEN FINDING F22, recorded here rather than declared away: the ARCHIVE it produces is an ' +
+    "install-wide verbatim copy of every organization's records with no tenant partition, so it has " +
+    'no honest scope in this vocabulary. Restore and delete moved to cloud:operate this round; ' +
+    'per-tenant partitioning of the archive is open.',
+};
 
 /** A declaration lives in the file if it calls any of the declaring APIs. */
 function declaresScope(src: string): boolean {

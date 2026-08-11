@@ -295,10 +295,48 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
   // Release engineering: data migration, backup restore/delete, recovery run,
   // support-bundle generation — org-wide, data-touching admin actions.
   [IpcChannel.MigrationRun]: 'org:manage',
-  [IpcChannel.BackupRestore]: 'org:manage',
-  [IpcChannel.BackupDelete]: 'org:manage',
-  [IpcChannel.RecoveryRun]: 'org:manage',
-  [IpcChannel.SupportGenerateBundle]: 'org:manage',
+  /**
+   * P13C ROUND 9 — F21. THESE ARE INSTALL-WIDE, AND `org:manage` IS NOT.
+   *
+   * The comment above called them "org-wide", and every one of them is wider
+   * than that. There is one data directory on the machine and one backup
+   * archive over it:
+   *
+   *   - `backup:restore` copies a snapshot of `storage/storePaths.ts`'s whole
+   *     DOMAIN_FILES set back over the live directory — `memory.json`,
+   *     `graph.json`, `unified-store.json`, `enterprise-module-*` ("the user's
+   *     business records"), `assistant-conversations.json`. It rolls EVERY
+   *     organization on the install back to an older state, and the caller
+   *     chooses which state.
+   *   - `backup:delete` destroys a snapshot every organization's recovery
+   *     depends on, including the safety backup a prior restore left behind.
+   *   - `recovery:run` reaches `restoreBackup` (the same primitive),
+   *     `resetSettings` (deletes install-wide settings files),
+   *     `disablePlugins` (every tenant's plugins) and `safeMode` (arms a flag
+   *     the launcher reads for the whole install).
+   *   - `support:generateBundle` writes a directory containing every tenant's
+   *     installed modules, connector names and statuses, crash archive and
+   *     redacted logs. The redactor strips secrets and emails; it does not know
+   *     which organization a log line came from.
+   *
+   * `org:manage` is held by every organization's Owner and Admin, and ANY
+   * PERSON MAY CREATE AN ORGANIZATION AND OWN IT — so it was a self-service
+   * grant to overwrite, destroy or exfiltrate every other tenant's data on the
+   * machine. That is the Round 7 finding class (`F19`) as an operation rather
+   * than a store, and it is why `declareStoreScope` refuses INSTALL_GLOBAL +
+   * ORG_ROLE: `recovery/recoveryService.ts` could not declare its true scope
+   * while this line said `org:manage`.
+   *
+   * `cloud:operate` is in `PLATFORM_ONLY_PERMISSIONS`, so no organization role
+   * can satisfy it. All four move together deliberately: leaving
+   * `backup:restore` on the weaker gate while `recovery:run` required the
+   * stronger one would leave the identical capability reachable through the
+   * other door.
+   */
+  [IpcChannel.BackupRestore]: 'cloud:operate',
+  [IpcChannel.BackupDelete]: 'cloud:operate',
+  [IpcChannel.RecoveryRun]: 'cloud:operate',
+  [IpcChannel.SupportGenerateBundle]: 'cloud:operate',
 
   // Runtime supervisor control (launch/stop/suspend/resume/restart app runtimes).
   [IpcChannel.RuntimeLaunch]: 'operations:manage',
@@ -336,9 +374,19 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
   [IpcChannel.SupervisorRecover]: 'operations:manage',
   [IpcChannel.SupervisorSetPolicy]: 'operations:manage',
 
-  // Local registry mutations (bulk import, backup snapshot).
-  [IpcChannel.RegistryImport]: 'operations:manage',
-  [IpcChannel.RegistryBackup]: 'operations:manage',
+  /**
+   * Local registry mutations (bulk import, backup snapshot).
+   *
+   * P13C ROUND 9 — F20/F21. `operations:manage` is an ORGANIZATION role, and
+   * `registry.json` is one file for the whole machine: `registry:import` with
+   * `merge:false` REPLACES the entire entry map — every organization's installed
+   * apps, their granted permissions, package hashes and signature key ids — and
+   * `registry:backup` writes that map to a file under `userData/backups`. The
+   * open item recorded in `registry/registry.ts`'s scope analysis; closed here,
+   * which is what let that file declare INSTALL_GLOBAL + PLATFORM_OPERATOR.
+   */
+  [IpcChannel.RegistryImport]: 'cloud:operate',
+  [IpcChannel.RegistryBackup]: 'cloud:operate',
 
   // Package rollback (reverts an installed app to a prior version).
   [IpcChannel.NpsRollback]: 'operations:manage',
@@ -413,6 +461,16 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
    * in the STORES — these entries close the unauthenticated path, not the
    * cross-tenant one.
    */
+  /**
+   * P13C ROUND 9 — F9. Moved out of `PUBLIC_CHANNELS`; see the note there.
+   *
+   * `operations:read` rather than a platform permission: a diagnostics report is
+   * something an organization's operator legitimately reads about the machine
+   * they are running on, and it is in the READ_ONLY base role. The change is
+   * that it now requires BEING SIGNED IN AND A MEMBER, which an unauthenticated
+   * renderer message was not.
+   */
+  [IpcChannel.DiagnosticsGet]: 'operations:read',
   [IpcChannel.DecisionList]: 'operations:read',
   [IpcChannel.AutomationList]: 'operations:read',
   [IpcChannel.AutomationMonitor]: 'operations:read',
@@ -519,7 +577,22 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   IpcChannel.TimelineQuery,
   IpcChannel.TimelineStats,
   IpcChannel.TimelineExport,
-  IpcChannel.DiagnosticsGet,
+  /**
+   * `DiagnosticsGet` was here. P13C ROUND 9 — F9. It is gated below.
+   *
+   * The three Timeline channels above stay public because each one filters on
+   * the caller's own scope before returning a row. `DiagnosticsGet` does not:
+   * its payload embeds `bus.metrics()` — `eventsPublished`, `eventsPerMinute`,
+   * `subscribers`, `bufferedEvents` — counted across every tenant on the
+   * install, with no boundary anywhere in the path.
+   *
+   * Those numbers name no record, and that is not the test. A total that climbs
+   * while YOU are idle is another organization working, and its rate is their
+   * activity profile. Round 8 closed exactly this inference channel twice — on
+   * `graphStore.counts` and on `ai/routingUsageStore`, the latter after
+   * inspecting the bytes, finding five genuinely install-level integers, and
+   * taking it off this list anyway. Same reasoning, third instance.
+   */
   IpcChannel.PlatformEmit,
   // ── Unified knowledge read projections ──
   IpcChannel.UnifiedGet,

@@ -9,6 +9,30 @@ import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { app, screen, type BrowserWindow, type Rectangle } from 'electron';
 import { createLogger } from './logger';
+import { declareStoreScope } from './tenancy/storeScope';
+
+/** P13C ROUND 9 — F18. The structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'window-state',
+  scope: 'INSTALL_GLOBAL',
+  persistence: 'file',
+  // The case `storeScope.ts` names explicitly when it refuses ORG_ROLE: a
+  // USER-authority install-global row is the signed-in person's own machine
+  // preference. Nothing organizational decides where a window sits.
+  authority: 'USER',
+  classification: 'USER_PREFERENCE',
+  retention:
+    'One record, overwritten in place on every move/resize — there is no list, no cap and no ' +
+    'eviction, so no write can remove anything but the previous value of this same rectangle. ' +
+    '`recovery:run resetSettings` deletes the whole file (it is in SETTINGS_FILES), which resets ' +
+    'the window to defaults for the install and reaches no other data.',
+  reason:
+    'WHY GLOBAL: there is one main window on one machine, so there is one rectangle. WHAT DATA: ' +
+    'width, height, x, y and isMaximized — geometry of a window on a display, measured from the ' +
+    'window itself. It names no record, counts no activity and describes no customer; the file is ' +
+    "under the OS account's userData directory, so it is already per-person by the filesystem. " +
+    'CROSS-TENANT COST: none — a wrong value moves a window.',
+});
 
 const log = createLogger('window-state');
 

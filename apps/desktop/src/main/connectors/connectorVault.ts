@@ -13,6 +13,32 @@ import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { app, safeStorage } from 'electron';
 import { createLogger } from '../logger';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/** P13C ROUND 9 — F18. The structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'connector-vault',
+  scope: 'WORKSPACE',
+  persistence: 'keychain',
+  authority: 'ORG_ROLE',
+  classification: 'SECRET',
+  retention:
+    'No cap — nothing is ever evicted to make room, so no write can destroy a credential. ' +
+    'Three removals exist and each names its reach: `delete` removes ONE account inside ONE ' +
+    'workspace; `clear(workspaceId)` removes one workspace subtree; `discardUnscoped` removes one ' +
+    'pre-P10 legacy entry. P13C ROUND 9 — F14: `clear()` with no resolved workspace used to ' +
+    '`unlink` the whole vault file, so a caller that failed to resolve a workspace destroyed EVERY ' +
+    "workspace's credentials. It now removes nothing. There is deliberately no whole-file wipe.",
+  reason:
+    'WHY WORKSPACE: the on-disk key is `workspaceId → connectorId → accountId`, and `get` takes the ' +
+    'workspace as a required first argument with no defaulting overload, so a credential minted in ' +
+    'one workspace cannot be spent from another. WHAT DATA: safeStorage (macOS Keychain) ciphertext ' +
+    'of OAuth access/refresh tokens — no plaintext is ever written, and if OS encryption is ' +
+    'unavailable the write is refused rather than downgraded. Pre-P10 entries whose owning workspace ' +
+    'is unknown live under `legacy` and are readable only through `migrationRequired`, never through ' +
+    '`get` from any workspace: adopting them into whichever workspace happened to be active is the ' +
+    'guess this boundary exists to prevent.',
+});
 
 const log = createLogger('connector-vault');
 
@@ -195,14 +221,34 @@ export const connectorVault = {
     await writeVault({ ...vault, schemaVersion: CONNECTOR_VAULT_SCHEMA_VERSION, legacy });
   },
 
-  /** Removes every token in one workspace, or the whole file when none given. */
+  /**
+   * Removes every token in ONE workspace. P13C ROUND 9 — F14.
+   *
+   * THE FINDING: the workspace was optional and a missing one meant
+   * `fs.unlink(vaultPath())` — the WHOLE FILE, every workspace's credentials,
+   * plus the `legacy` entries an operator still has to reconnect. So the widest
+   * possible destruction was what happened when the narrowest input was absent,
+   * which is the failure mode a boundary must never have: an unresolved
+   * workspace is the case where the code knows LEAST about whose data it is
+   * holding, and it was the case that reached the MOST of it. A caller whose
+   * `requireWorkspace()` returned '' — or a future caller that simply forgot the
+   * argument — silently wiped the install.
+   *
+   * It now FAILS CLOSED: no resolved workspace, no removal. The parameter stays
+   * optional so every existing call site still type-checks and so the refusal is
+   * exercised rather than hidden behind a compile error somebody would fix by
+   * passing something; `''` and `undefined` are treated identically, because an
+   * empty id is an unresolved id wearing a string.
+   *
+   * There is deliberately NO replacement whole-file wipe. Nothing in the app
+   * needed one — the only production caller of any vault removal is
+   * `connectorService`, which always passes `this.requireWorkspace()` — and a
+   * primitive that can delete every tenant's secrets is worth more to an
+   * attacker than to this product.
+   */
   async clear(workspaceId?: string): Promise<void> {
-    if (!workspaceId) {
-      try {
-        await fs.unlink(vaultPath());
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') log.warn('Failed to clear vault', err);
-      }
+    if (workspaceId === undefined || workspaceId === '') {
+      log.warn('Refusing to clear the connector vault: no workspace resolved, so nothing was removed');
       return;
     }
     const vault = await readVault();

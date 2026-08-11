@@ -23,6 +23,50 @@ import type {
   RuntimeStatus,
 } from '@neuropause/shared';
 import { createLogger } from '../logger';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/**
+ * P13C ROUND 9 — F18/F20. The structural scope declaration.
+ *
+ * It could not be written before this round, and the reason is recorded here
+ * rather than deleted with the problem: `launchCount`, `lastLaunchedAt` and
+ * `usage.{launches,totalActiveMs,lastSessionAt}` were accumulated on the SHARED
+ * catalogue row from every tenant's launches, which made an install-wide
+ * `registry:list` a live meter of another organization's activity — the
+ * `worker-registry` shape exactly. CUSTOMER_DERIVED + INSTALL_GLOBAL is refused
+ * by construction, so the declaration was impossible while that was true.
+ * `TenantUsage` below moves those five fields off the shared row.
+ */
+declareStoreScope({
+  name: 'local-app-registry',
+  scope: 'INSTALL_GLOBAL',
+  persistence: 'file',
+  // P13C ROUND 9 — F20. `registry:import` and `registry:backup` were classified
+  // `operations:manage`, an ORGANIZATION role over one install-wide file, and
+  // `import({merge:false})` REPLACES every entry. Both now require
+  // `cloud:operate`, which no organization role can hold — see ipc/runtimeAuthz.
+  authority: 'PLATFORM_OPERATOR',
+  classification: 'INSTALL_METADATA',
+  retention:
+    'No cap and no eviction: nothing is ever removed to make room, so no write can destroy another ' +
+    "reader's row. `remove(slug)` deletes one entry for the whole install (an uninstall), and " +
+    '`import({merge:false})` REPLACES the entire map — both install-wide acts, which is why both now ' +
+    'sit behind cloud:operate. Per-tenant usage counters are keyed by tenant and a tenant only ever ' +
+    "writes its own bucket, so no tenant's launch history can evict another's.",
+  reason:
+    'WHY INSTALL_GLOBAL: there is one `registry.json` per machine, `RegistryEntry` has no tenant ' +
+    'field, and the Package Service, the Runtime Supervisor and the UI all read and write the same ' +
+    'map — two organizations cannot hold different versions of the same slug. WHAT DATA: install ' +
+    'metadata authored by the publisher and the installer — version, channel, install location, ' +
+    'package hash, signature key id, granted permissions — plus two per-user display flags ' +
+    '(pinned/favorite). ROUND 9 FINDING F20: `launchCount`, `lastLaunchedAt` and `usage.*` were NOT ' +
+    'install metadata. They were incremented by `supervisor.launch` on behalf of whichever ' +
+    'organization was active and served install-wide through `list()` and `stats()`, so one tenant ' +
+    'could read how often another had run an app and when it last did. They now live in a per-tenant ' +
+    'side table and are projected onto the caller\'s own view; see `TenantUsage` and `recordLaunch`. ' +
+    'CROSS-TENANT COST: an uninstall or a bulk import removes an app every organization on the ' +
+    'machine uses, which is why the mutation authority is install-level rather than an org role.',
+});
 
 const log = createLogger('registry');
 const SCHEMA_VERSION = 1;
@@ -55,11 +99,41 @@ export interface RegistryEntry {
   usage: { launches: number; totalActiveMs: number; lastSessionAt: string | null };
 }
 
+/**
+ * ONE TENANT'S launch history for ONE installed app. P13C ROUND 9 — F20.
+ *
+ * The same shape `worker-registry` uses for `WorkerOutcomeCounters`, and for the
+ * same reason: the package row is shared and install-level, the ACTIVITY against
+ * it is not. Durable, because `launchCount` was durable before this change and
+ * losing it on restart would be a regression dressed as a security fix.
+ */
+export interface TenantUsage {
+  launchCount: number;
+  lastLaunchedAt: string | null;
+  totalActiveMs: number;
+  lastSessionAt: string | null;
+}
+
+function emptyUsage(): TenantUsage {
+  return { launchCount: 0, lastLaunchedAt: null, totalActiveMs: 0, lastSessionAt: null };
+}
+
 interface RegistryFile {
   schemaVersion: number;
   checksum: string;
   meta: { createdAt: string; updatedAt: string };
   entries: Record<string, RegistryEntry>;
+  /**
+   * Per-tenant launch counters. P13C ROUND 9 — F20.
+   *
+   * `{ [tenantId]: { [slug]: TenantUsage } }`, with `''` for an unresolved
+   * writer — a partition that reaches nobody, not a shared one. Deliberately
+   * OUTSIDE the checksummed `entries` map: the integrity hash exists to detect
+   * out-of-band edits to what is installed and what it may do, and folding a
+   * counter that changes on every app launch into it would make the hash churn
+   * constantly and stop being evidence of anything.
+   */
+  usageByTenant?: Record<string, Record<string, TenantUsage>>;
 }
 
 function registryPath(): string {
@@ -88,6 +162,7 @@ function emptyFile(): RegistryFile {
     checksum: checksumOf({}),
     meta: { createdAt: now, updatedAt: now },
     entries: {},
+    usageByTenant: {},
   };
 }
 
@@ -100,8 +175,8 @@ function migrate(file: RegistryFile): RegistryFile {
 }
 
 /**
- * SCOPE ANALYSIS. P13C ROUND 9 — F4, and the reason this store carries no
- * `declareStoreScope` call yet.
+ * SCOPE ANALYSIS. P13C ROUND 9 — F4/F18/F20. The declaration is at the top of
+ * this file; what follows is why it says what it says.
  *
  * WHAT IT IS: one `registry.json` per machine. `RegistryEntry` has no tenant
  * field, and the Package Service, the Runtime Supervisor and the UI all read and
@@ -110,32 +185,60 @@ function migrate(file: RegistryFile): RegistryFile {
  * same answer Round 8/9 reached for the plugin registry and the workforce
  * install lifecycle, which are the same resource class.
  *
- * WHY THE DECLARATION IS NOT WRITTEN HERE. Two of its fields make the honest
- * declaration illegal by construction rather than merely inconvenient:
+ * ROUND 9 CLOSED THE TWO THINGS THAT MADE THAT DECLARATION FALSE:
  *
- *   - `launchCount` / `lastLaunchedAt` / `usage.*` count WHO USED WHAT AND WHEN,
- *     install-wide. That is CUSTOMER_DERIVED, and `declareStoreScope` refuses
- *     CUSTOMER_DERIVED + INSTALL_GLOBAL — correctly. The fix is the one Round 8
- *     applied to `worker-registry`'s trust/health counters: key them per tenant
- *     inside the store. That needs a tenant seam bound at the composition root.
- *   - the bulk writes (`registry:import`, `registry:backup`) are classified
+ *   - `launchCount` / `lastLaunchedAt` / `usage.*` counted WHO USED WHAT AND
+ *     WHEN, install-wide. That is CUSTOMER_DERIVED, and `declareStoreScope`
+ *     refuses CUSTOMER_DERIVED + INSTALL_GLOBAL — correctly. They now live in a
+ *     per-tenant side table (`usageByTenant`) and are projected onto the caller's
+ *     own rows, exactly as Round 8 did for `worker-registry`'s trust and health.
+ *   - the bulk writes (`registry:import`, `registry:backup`) were classified
  *     `operations:manage`, an organization role over an install-wide file — the
- *     F19 class — and they are classified outside this directory.
+ *     F19 class. They now require `cloud:operate`.
  *
- * A declaration written before those two are true would be a false claim in the
- * one place the program treats as a source of truth, which is worse than a stated
- * gap. This comment is the stated gap; the round report carries it as an open
- * item. `setFlags` below is the part of F4 that IS closed here.
- *
- * The structural detector in `tenancy/storeScopeGate.test.ts` does not currently
- * flag this file: it requires a retained collection matching one of three
- * patterns, and `private file: RegistryFile = emptyFile()` matches none of them.
- * That detector gap is reported too — it is more valuable than this one store.
+ * WHAT REMAINS SHARED, AND IS MEANT TO: version, channel, install location,
+ * package hash, signature, granted permissions and per-app `config` describe the
+ * one copy of the app that exists on this machine. `pinned`/`favorite` are
+ * display flags shared by everyone who uses the install; `setFlags` is a PUBLIC
+ * write and the whitelist below is what keeps it reaching nothing else.
  */
 class Registry {
   private file: RegistryFile = emptyFile();
   private loaded = false;
   private integrityOk = true;
+
+  /**
+   * The tenant boundary for LAUNCH COUNTERS. The catalogue stays global.
+   *
+   * A function, not a value: binding happens at the composition root long after
+   * this module-level singleton is constructed. Unresolved answers `null`, which
+   * keys the `''` bucket — a partition that reaches nobody rather than a shared
+   * one, and the bucket a single-user install with no organization consistently
+   * reads and writes.
+   */
+  private tenantIdFor: () => string | null = () => null;
+
+  /** Bind the tenant boundary for USAGE COUNTERS. See `recordLaunch`. */
+  bindUsageScope(source: () => string | null): this {
+    this.tenantIdFor = source;
+    return this;
+  }
+
+  private usageKey(): string {
+    return this.tenantIdFor() ?? '';
+  }
+
+  /** This caller's counters for one app. Never another caller's. */
+  private usageFor(slug: string): TenantUsage {
+    return this.file.usageByTenant?.[this.usageKey()]?.[slug] ?? emptyUsage();
+  }
+
+  private setUsage(slug: string, next: TenantUsage): void {
+    const key = this.usageKey();
+    const byTenant = (this.file.usageByTenant ??= {});
+    const bucket = (byTenant[key] ??= {});
+    bucket[slug] = next;
+  }
 
   async load(): Promise<void> {
     try {
@@ -151,6 +254,18 @@ class Registry {
         checksum: parsed.checksum,
         meta: parsed.meta ?? { createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
         entries: parsed.entries ?? {},
+        /**
+         * MIGRATION. P13C ROUND 9 — F20.
+         *
+         * A pre-Round-9 file has no `usageByTenant`, and its entry rows carry
+         * counters that are the SUM of every tenant's launches. Those are
+         * adopted by NOBODY — attributing an aggregate to whoever loads it first
+         * is the "first caller claims it" fallback this program has removed
+         * repeatedly. The numbers stay on the row so a backup or a downgrade is
+         * not lossy, and `toDto` no longer reads them, so they are visible to no
+         * organization; each tenant starts counting its own from zero.
+         */
+        usageByTenant: parsed.usageByTenant ?? {},
       });
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
@@ -187,12 +302,25 @@ class Registry {
   getRaw(slug: string): RegistryEntry | null {
     return this.file.entries[slug] ?? null;
   }
+  /**
+   * One entry, carrying THE CALLER'S OWN launch history. P13C ROUND 9 — F20.
+   *
+   * The catalogue row is shared and install-level, as declared. Its
+   * `launchCount`/`lastLaunchedAt`/`usage` fields were accumulating every
+   * tenant's launches, so an install-wide read told one organization how often
+   * another had run an app and when it last did.
+   *
+   * The fields are OVERLAID per caller rather than removed: removing them would
+   * create a new vacuous zero for every renderer that reads them, which is the
+   * same mistake in the other direction. Every existing call site keeps working
+   * and now sees its own numbers, which is what each of them always meant.
+   */
   get(slug: string): RegistryEntryDto | null {
     const e = this.file.entries[slug];
-    return e ? toDto(e) : null;
+    return e ? toDto(e, this.usageFor(slug)) : null;
   }
   list(): RegistryEntryDto[] {
-    return Object.values(this.file.entries).map(toDto);
+    return Object.values(this.file.entries).map((e) => toDto(e, this.usageFor(e.slug)));
   }
   isIntegrityOk(): boolean {
     return this.integrityOk;
@@ -208,7 +336,11 @@ class Registry {
     for (const e of entries) {
       byType[e.appType] = (byType[e.appType] ?? 0) + 1;
       totalDisk += e.diskUsageBytes ?? 0;
-      totalLaunches += e.launchCount;
+      // P13C ROUND 9 — F20. THE CALLER'S launches, not the install's. This
+      // summed every organization's, so a rising `totalLaunches` while you did
+      // nothing was another organization working — the activity-volume
+      // inference channel closed on `graphStore.counts` and `AiRoutingUsage`.
+      totalLaunches += this.usageFor(e.slug).launchCount;
       if (e.pinned) pinned += 1;
       if (e.favorite) favorite += 1;
     }
@@ -228,7 +360,7 @@ class Registry {
     this.ensureLoaded();
     this.file.entries[entry.slug] = entry;
     await this.persist();
-    return toDto(entry);
+    return toDto(entry, this.usageFor(entry.slug));
   }
 
   async patch(slug: string, fn: (e: RegistryEntry) => void): Promise<RegistryEntryDto | null> {
@@ -237,7 +369,7 @@ class Registry {
     if (!e) return null;
     fn(e);
     await this.persist();
-    return toDto(e);
+    return toDto(e, this.usageFor(slug));
   }
 
   async remove(slug: string): Promise<boolean> {
@@ -302,26 +434,59 @@ class Registry {
     });
   }
 
+  /**
+   * Record a launch IN THE CALLER'S BUCKET. P13C ROUND 9 — F20.
+   *
+   * `e.launchCount += 1` on the shared row accumulated every organization's
+   * launches onto one entry, which is why `list()` and `stats()` were a
+   * cross-tenant activity meter. The catalogue row is left alone; the counters
+   * advance under `usageByTenant[tenantId][slug]` and are projected back by
+   * `toDto`, so every existing caller sees its own numbers.
+   *
+   * `supervisor.launch()` is the only production caller and it holds no tenant
+   * argument — the seam is read here, from the resolver the composition root
+   * bound, exactly as `worker-registry.recordOutcome` does.
+   */
   async recordLaunch(slug: string): Promise<void> {
+    this.ensureLoaded();
+    if (!this.file.entries[slug]) return;
     const now = new Date().toISOString();
-    await this.patch(slug, (e) => {
-      e.launchCount += 1;
-      e.lastLaunchedAt = now;
-      e.usage.launches += 1;
-      e.usage.lastSessionAt = now;
+    const prev = this.usageFor(slug);
+    this.setUsage(slug, {
+      ...prev,
+      launchCount: prev.launchCount + 1,
+      lastLaunchedAt: now,
+      lastSessionAt: now,
     });
+    await this.persist();
   }
 
   async recordSessionDuration(slug: string, ms: number): Promise<void> {
-    await this.patch(slug, (e) => {
-      e.usage.totalActiveMs += Math.max(0, ms);
-    });
+    this.ensureLoaded();
+    if (!this.file.entries[slug]) return;
+    const prev = this.usageFor(slug);
+    this.setUsage(slug, { ...prev, totalActiveMs: prev.totalActiveMs + Math.max(0, ms) });
+    await this.persist();
   }
 
   /* ── import / export / backup / restore ── */
 
+  /**
+   * The registry as JSON, carrying ONLY THE CALLER'S usage bucket.
+   *
+   * P13C ROUND 9 — F20. `registry:export` is on the PUBLIC channel list, so
+   * serializing the whole `usageByTenant` map would have handed every
+   * organization's launch history to any renderer message — reintroducing the
+   * exposure this round removed from `list()`, through a different door. The
+   * export is a snapshot of what THIS caller can already see.
+   */
   export(): string {
-    return JSON.stringify(this.file, null, 2);
+    const key = this.usageKey();
+    const mine: RegistryFile = {
+      ...this.file,
+      usageByTenant: { [key]: this.file.usageByTenant?.[key] ?? {} },
+    };
+    return JSON.stringify(mine, null, 2);
   }
 
   async import(data: string, opts: { merge?: boolean } = {}): Promise<number> {
@@ -332,6 +497,14 @@ class Registry {
     }
     const next = opts.merge ? { ...this.file.entries, ...incoming.entries } : incoming.entries;
     this.file.entries = next;
+    /**
+     * `usageByTenant` from the payload is DISCARDED. P13C ROUND 9 — F20.
+     *
+     * An import replaces what is installed; it must not be a way to write into
+     * another organization's counters, and a payload that named a foreign tenant
+     * key would do exactly that. The live counters are left untouched — an
+     * import is not a reason to destroy another tenant's launch history either.
+     */
     await this.persist();
     return Object.keys(next).length;
   }
@@ -352,7 +525,16 @@ class Registry {
   }
 }
 
-export function toDto(e: RegistryEntry): RegistryEntryDto {
+/**
+ * A DTO carrying one caller's launch history over a shared catalogue row.
+ *
+ * P13C ROUND 9 — F20. `usage` defaults to ZERO rather than to the row's own
+ * fields, so a future caller that forgets to pass a bucket sees no activity
+ * instead of the install-wide aggregate. Fail-closed on the axis that matters:
+ * an under-reported count is a cosmetic bug, an over-reported one is another
+ * organization's activity.
+ */
+export function toDto(e: RegistryEntry, usage: TenantUsage = emptyUsage()): RegistryEntryDto {
   return {
     slug: e.slug,
     name: e.name,
@@ -364,8 +546,9 @@ export function toDto(e: RegistryEntry): RegistryEntryDto {
     signatureKeyId: e.signatureKeyId,
     hasSignature: e.hasSignature,
     grantedPermissions: e.grantedPermissions,
-    launchCount: e.launchCount,
-    lastLaunchedAt: e.lastLaunchedAt,
+    // The CALLER'S counters, never the row's install-wide accumulation.
+    launchCount: usage.launchCount,
+    lastLaunchedAt: usage.lastLaunchedAt,
     installedAt: e.installedAt,
     lastUpdatedAt: e.lastUpdatedAt,
     runtimeStatus: e.runtimeStatus,
@@ -375,9 +558,9 @@ export function toDto(e: RegistryEntry): RegistryEntryDto {
     favorite: e.favorite,
     config: e.config,
     usage: {
-      launches: e.usage.launches,
-      totalActiveMs: e.usage.totalActiveMs,
-      lastSessionAt: e.usage.lastSessionAt,
+      launches: usage.launchCount,
+      totalActiveMs: usage.totalActiveMs,
+      lastSessionAt: usage.lastSessionAt,
     },
   };
 }

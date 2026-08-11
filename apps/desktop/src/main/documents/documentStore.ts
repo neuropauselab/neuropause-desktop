@@ -27,6 +27,45 @@ import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { DocumentRecord, DocumentSummary } from '@neuropause/shared';
 import { AppendOnlyJsonStore } from '../decisions/appendOnlyStore';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/**
+ * P13C ROUND 9 — F18. The structural scope declaration. See tenancy/storeScope.ts.
+ *
+ * The seam itself is inherited: `AppendOnlyJsonStore` calls
+ * `registerTenantStore('documents', …)` in its constructor, stamps every append
+ * with the active scope and filters every read through `visible()`. The gate
+ * flagged this file because the REGISTRATION lives in the base class while the
+ * PERSISTENCE (`fs.writeFile` for blobs) lives here — which is exactly the kind
+ * of split a detector should not have to reason about, and exactly why the
+ * declaration belongs on the file that writes.
+ */
+declareStoreScope({
+  name: 'documents',
+  scope: 'WORKSPACE',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retention:
+    'Capped at 40 documents PER SCOPE, not per install: `AppendOnlyJsonStore.append` filters to ' +
+    "`recordInScope` before choosing what to evict, so one workspace's uploads cannot delete " +
+    "another's. A LINKED document is re-admitted rather than evicted (`onEvicted`), because a " +
+    'business record that can no longer name its source is worth more than a bounded file. STATED ' +
+    'LIMIT, verified by reading `append`: the cap is only CONSIDERED when the total row count across ' +
+    'every scope exceeds 40, so with several workspaces below the cap each the file grows past 40 ' +
+    'and nothing is evicted. That errs toward keeping data and never toward deleting another ' +
+    "owner's, which is the correct direction for the failure. BLOB REFERENCE COUNTING SPANS EVERY " +
+    'TENANT deliberately (`allUnscoped`): the pool is content-addressed, so counting only the acting ' +
+    "tenant's records would delete bytes another tenant's record still names.",
+  reason:
+    'WHY WORKSPACE: records are stamped with both tenantId and workspaceId by `append`, and ' +
+    '`recordInScope` requires the workspace to match when one is present. WHAT DATA: uploaded ' +
+    'business documents — filename, uploader, extracted fields, links to business records, and the ' +
+    'file bytes themselves under `documents/<sha256>.bin`. This is customer content in the most ' +
+    'literal sense available in this codebase. `existingByHash` is scoped for a reason worth ' +
+    'restating: unscoped, a content hash was an oracle that returned ANOTHER tenant\'s record — its ' +
+    'id, uploader and field counts — to whoever uploaded byte-identical bytes.',
+});
 
 /**
  * Documents kept. Oldest fall off first, as everywhere else in the app —
