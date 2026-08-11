@@ -43,8 +43,8 @@ three-tenant test and by nothing else.
 | Lint | **green** — `eslint . --max-warnings 0` |
 | Desktop build | **green** — `✓ built in 4.54s` |
 | Backend typecheck (`tsc --noEmit`) | **green** |
-| **Backend bundle (`tsup`)** | **NOT VERIFIED HERE** — esbuild host 0.27.7 vs binary 0.21.5 skew in the Linux container. Same environment artifact as Round 5. **Run `npm run build` on the Mac.** |
-| **Native Mac build / runtime** | **NOT PERFORMED** — this session has no macOS host |
+| **Backend bundle (`tsup`)** | **GREEN — verified on the Mac.** `npm run build` completes end to end, `✓ built in 2.77s`. The Linux container's failure was an esbuild host 0.27.7 vs binary 0.21.5 skew, an environment artifact, not a code defect — the same one Round 5 hit. |
+| **Native Mac RUNTIME** | **STILL NOT PERFORMED** — the app has not been launched and exercised with two organizations signed in |
 
 ---
 
@@ -262,8 +262,11 @@ removed accounts (memory only, correctly keyed). `installStore`,
 `drStore` and the rate policies remain declared system-global with their costs
 stated.
 
-**Not verified in this environment:** the backend `tsup` bundle (esbuild version
-skew in the container — `tsc --noEmit` is green) and any macOS build or runtime.
+**Not verified:** the macOS **runtime**. The full build is green on the Mac
+(`npm run build`, end to end), so every gate this program can automate is green —
+but no one has launched the app, signed two organizations in, and looked. Every
+finding in this round was reachable through a store or an IPC handler, and none of
+them would have been visible from a build.
 
 ---
 
@@ -288,7 +291,8 @@ skew in the container — `tsc --noEmit` is green) and any macOS build or runtim
 
 ### Before the next certification attempt
 
-1. Run `npm run build` and the app on the Mac — neither is verifiable here.
+1. Run the app on the Mac with two organizations and switch between them. The
+   build is green; the runtime is the one thing no gate in this program covers.
 2. Decide the platform-operator role for `setPolicyEnabled`.
 3. Re-run the sweep after any new subsystem lands; the class is defined now, so
    the test is whether new code reaches for the primitive.
