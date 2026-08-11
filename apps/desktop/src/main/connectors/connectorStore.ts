@@ -11,6 +11,18 @@ import { join } from 'node:path';
 import { app } from 'electron';
 import type { ConnectedAccount, SyncState } from '@neuropause/shared';
 import { createLogger } from '../logger';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/** P13C ROUND 8 — the structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'connector-accounts',
+  scope: 'WORKSPACE',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retention: 'No eviction. `remove` deletes one account and is reached only through workspace-scoped handlers.',
+  reason: "ConnectedAccount.workspaceId, and unbound returns []. An account label and its granted scopes describe a customer's own SaaS connection.",
+});
 
 const log = createLogger('connector-store');
 
@@ -86,6 +98,36 @@ class ConnectorStore {
   /** Accounts for one connector, in the active workspace. */
   byConnector(connectorId: string): ConnectedAccount[] {
     return this.all().filter((a) => a.connectorId === connectorId);
+  }
+
+  /**
+   * Every account in ONE ORGANIZATION, across all of its workspaces.
+   *
+   * P13C ROUND 8 — FINDING 7. THE ORGANIZATION BRIEF WAS ALWAYS ZERO.
+   *
+   * `collectOrgHealthInputs` called `all()`, which filters on the ACTIVE
+   * WORKSPACE — and the scheduled brief runs under a tenant-level background
+   * principal whose `workspaceId` is `''`. So `connectorsTotal`,
+   * `connectorsHealthy` and `connectorsError` were 0 in every brief, for every
+   * tenant, forever. Every isolation assertion over those fields passed
+   * VACUOUSLY, because zero is equal to zero.
+   *
+   * The intended semantic is organization-wide: "how healthy are this
+   * organization's integrations" is not a per-workspace question, and a brief
+   * that reported one workspace's connectors as the organization's would be a
+   * different wrong answer.
+   *
+   * This is why the resolver is passed EXPLICITLY rather than read from the
+   * ambient workspace: the caller states which organization it is asking about,
+   * and there is no value of the active workspace that makes the question
+   * answerable.
+   */
+  forOrganization(workspaceIdsInOrg: readonly string[]): ConnectedAccount[] {
+    if (workspaceIdsInOrg.length === 0) return [];
+    const wanted = new Set(workspaceIdsInOrg);
+    return [...this.accounts.values()].filter(
+      (a) => a.workspaceId !== undefined && wanted.has(a.workspaceId),
+    );
   }
 
   /**

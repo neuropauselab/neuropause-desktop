@@ -316,6 +316,7 @@ import type {
   ResourceGraphModel,
 } from '@neuropause/shared';
 import type { IpcBroadcaster } from '@neuropause/shared';
+import { developerStore } from './ecosystem/developer/developerInstance';
 const log = createLogger('runtime-core');
 
 /**
@@ -714,6 +715,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // V4.8: wire platform publish + subscribe so automations fire on real events
   // and completed runs surface on the timeline/activity bus.
   const automations = initAutomations({
+    // P13C Round 8 — Finding 1. Run records now carry an owner.
+    scope: activeTenantScope,
     publish: platform.api.publish,
     on: (types, handler) => platform.api.on(types, handler),
   });
@@ -919,6 +922,12 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
    * and `activeTenantScope` pulls Electron in with it.
    */
   aiEngine.bindUsageScope(activeTenantScope);
+  /**
+   * P13C Round 8 — the worker CATALOGUE is install-level and stays so; its
+   * execution COUNTERS are per tenant. `jobsRun` on a shared row was a live meter
+   * of another tenant's work.
+   */
+  workerRegistry.bindOutcomeScope(() => activeTenantScope()?.tenantId ?? null);
   /**
    * P13C Round 7 — an OS toast goes to a PERSON. `deliveryEngine.tick()` fans out
    * over every organization on the install; the only correct recipient of a
@@ -1264,6 +1273,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // P9 — Enterprise Marketplace: a governed, trusted, installing LAYER over the ecosystem
   // marketplace. Routes approved worker installs to the existing P8.5 install service.
   const marketplace = await initMarketplace({
+    // P13C Round 8 — Finding 3. The marketplace policy is per organization.
+    scope: activeTenantScope,
     broadcast: deps.broadcast,
     appVersion: app.getVersion(),
     installWorker: workforce.installWorkerPackage,
@@ -1385,7 +1396,15 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       }
     },
   });
-  const featureFlags = await initFeatureFlags();
+  const featureFlags = await initFeatureFlags({
+    /**
+     * P13C Round 8 — Finding 6. The renderer no longer supplies the plan.
+     * `developerStore.planFor()` resolves it from the CALLER'S tenant through the
+     * store's own bound scope, so a renderer claiming `enterprise` on a free
+     * tenant is evaluated as free.
+     */
+    authoritativePlanTier: () => developerStore.planFor(),
+  });
   const license = await initLicense();
   const onboarding = await initOnboarding();
   // AI configuration IPC (M5, read-only surface: current provider/model, health, Ollama detect).

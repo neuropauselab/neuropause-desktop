@@ -397,6 +397,8 @@ export async function initEcosystem(deps: EcosystemDeps): Promise<EcosystemSubsy
   packsStore.bindScope(activeTenantScope);
 
   await developerStore.load();
+  // P13C Round 8 — drafts and the submission trail belong to the publisher.
+  marketplaceStore.bindScope(activeTenantScope);
   await marketplaceStore.load();
   await gatewayStore.load();
   await billingStore.load();

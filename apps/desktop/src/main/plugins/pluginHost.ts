@@ -19,6 +19,18 @@ import type { HealthStatus, PluginHostEvent, PluginManifest, RuntimePermissionKe
 import { createLogger } from '../logger';
 import { pluginExtensionRegistry } from './extensionRegistry';
 import { applyExtensionCall } from './extensionHostCalls';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/** P13C ROUND 8 — the structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'plugin-kv-storage',
+  scope: 'PLATFORM_GLOBAL',
+  persistence: 'file',
+  authority: 'PLATFORM_OPERATOR',
+  classification: 'INSTALL_METADATA',
+  retention: "No cap. writeKv rewrites one plugin's file; the removal reach is that plugin, install-wide.",
+  reason: 'WHY GLOBAL: the path is plugin-data/<pluginId>.json and the plugin is the only partition that exists, because an enabled plugin runs in-process for the whole install. WHO MODIFIES: the forked plugin process. WHY IT CANNOT DISCLOSE TENANT DATA: nothing routes tenant records into it today. CROSS-TENANT COST, STATED: storage.get/set are the one host call with NO permission check, so a plugin that read tenant data through another host call could persist it here unpartitioned — a plugin-trust boundary rather than a tenancy one, and precisely why installing a plugin now requires cloud:operate.',
+});
 
 const log = createLogger('plugin-host');
 

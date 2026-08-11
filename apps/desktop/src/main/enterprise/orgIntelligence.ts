@@ -45,10 +45,36 @@ export function bindOrgIntelligenceScope(fn: () => TenantScope | null): void {
 
 const log = createLogger('org-intelligence');
 
+/**
+ * Every workspace id belonging to the CALLER'S organization.
+ *
+ * P13C Round 8 — Finding 7. Derived from the resolved tenant, so an unresolved
+ * caller gets an empty list and therefore a zero count that is HONEST rather than
+ * accidental. `workspaceStore.list()` is install-wide; the `organizationId` filter
+ * is what makes this the caller's own.
+ */
+function orgWorkspaceIds(): string[] {
+  const tenantId = scopeSource?.()?.tenantId ?? null;
+  if (tenantId === null || tenantId === '') return [];
+  return workspaceStore
+    .list()
+    .filter((w) => w.organizationId === tenantId)
+    .map((w) => w.id);
+}
+
 /** Read real org signals into health-model inputs. Everything here is observed. */
 export function collectOrgHealthInputs(nowMs: number): OrgHealthInputs {
-  // Connectors — health snapshot from the existing store.
-  const accounts = connectorStore.all();
+  /**
+   * Connectors — health snapshot for THE WHOLE ORGANIZATION.
+   *
+   * P13C ROUND 8 — FINDING 7. This was `connectorStore.all()`, which filters on
+   * the active WORKSPACE. The scheduled brief runs under a tenant-level principal
+   * with `workspaceId: ''`, so every count was 0 for every tenant — a dead
+   * feature whose isolation tests passed because zero equals zero.
+   *
+   * `EMPTY IS NOT ISOLATION` has a twin, and this is it: A ZERO IS NOT A COUNT.
+   */
+  const accounts = connectorStore.forOrganization(orgWorkspaceIds());
   const connectorsTotal = accounts.length;
   const connectorsHealthy = accounts.filter((a) => a.health === 'healthy').length;
   const connectorsError = accounts.filter(

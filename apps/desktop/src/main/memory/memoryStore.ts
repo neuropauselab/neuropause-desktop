@@ -48,6 +48,18 @@ import { hybridRecall, type SemanticSearchFn } from './memorySemanticRecall';
 import type { RetrievalHit } from './memoryHybridSearch';
 import { buildRetrievalDiagnostics, semanticSkipReason } from './retrievalDiagnostics';
 import { classifySemanticError } from './semanticFailure';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/** P13C ROUND 8 — the structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'ai-memory-store',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retention: "No cap. The stale-projection sweep checks memoryVisibleTo before deleting, so it can only reach the sweeping viewer's own items.",
+  reason: 'item.owner, stamped from the resolved viewer at remember() and never patchable. Unbound denies.',
+});
 
 const log = createLogger('memory-store');
 

@@ -42,6 +42,7 @@ import { orgPolicyStore } from './instance';
 import { publisherTier, publisherTrust, type EntryInput } from './marketplaceModel';
 import { MarketplaceService, type CatalogSource, type ListingMeta } from './marketplaceService';
 import { TenantMemo } from '../tenancy/tenantMemo';
+import type { TenantScope } from '@neuropause/shared';
 
 const log = createLogger('marketplace');
 
@@ -50,6 +51,12 @@ export interface MarketplaceSubsystemDeps {
   appVersion: string;
   /** Route an approved worker install to the EXISTING P8.5 install service. */
   installWorker: (pkg: WorkerPackage) => WorkerInstallResult;
+  /**
+   * The tenant boundary for the marketplace POLICY. P13C Round 8 — Finding 3.
+   * Required and injected: an optional boundary on a governance rule defaults to
+   * a shared record, which is what the finding was.
+   */
+  scope: () => TenantScope | null;
 }
 
 export interface MarketplaceSubsystem {
@@ -193,6 +200,8 @@ function read<C extends IpcChannelName>(
 }
 
 export async function initMarketplace(deps: MarketplaceSubsystemDeps): Promise<MarketplaceSubsystem> {
+  // P13C Round 8 — Finding 3. One policy per organization.
+  orgPolicyStore.bindScope(deps.scope);
   await orgPolicyStore.load();
 
   // Memoize the composed catalog snapshot; rebuild only when a backing store changes, so

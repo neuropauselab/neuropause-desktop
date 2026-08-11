@@ -23,6 +23,18 @@
 import { promises as fs } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { envelopeStamp, readStoreFile } from '../storage/storeEnvelope';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/** P13C ROUND 8 — the structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'erp-document-lines',
+  scope: 'WORKSPACE',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retention: 'No eviction. Replace and delete are per document, and the 1,000-line cap REFUSES rather than deleting.',
+  reason: 'Product, quantity, unit price, discount, tax, warehouse. The row has no owner field: its owner is the parent document, whose scoped resolve gates the IPC path. ROUND 8 FINDING: in-process callers bypass that gate, so the guarantee is borrowed and is written down rather than assumed.',
+});
 
 /**
  * Documents that carry lines. `journalEntry` is deliberately ABSENT — the

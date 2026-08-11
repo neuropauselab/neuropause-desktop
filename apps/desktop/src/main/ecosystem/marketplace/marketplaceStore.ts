@@ -30,6 +30,20 @@ import type {
 } from '@neuropause/shared';
 import { createLogger } from '../../logger';
 import { securityScan, signManifest } from './pipeline';
+import { declareStoreScope } from '../../tenancy/storeScope';
+import type { TenantScope } from '@neuropause/shared';
+import { TenantOwnership } from '../../tenancy/tenantOwnedStore';
+
+/** P13C ROUND 8 — the structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'ecosystem-marketplace',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retention: "Event log capped PER PUBLISHER as of Round 8. It was an install-wide slice, so one publisher's activity evicted another's submission trail.",
+  reason: "ROUND 8 FINDING: no seam, no orgId, and developerId was a constant — while EcosystemShareWorker writes a tenant's AI worker name and first goal into a listing every tenant could read, and events carry the signed-in actor's name and email.",
+});
 
 const log = createLogger('marketplace');
 const EVENT_CAP = 5000;
@@ -56,6 +70,9 @@ export interface SeedListing {
 }
 
 export class MarketplaceStore extends EventEmitter {
+  /** P13C Round 8 — the publisher boundary. See `bindScope`. */
+  private readonly tenancy = new TenantOwnership('ecosystem-marketplace');
+
   private listings = new Map<string, MarketplaceListing>();
   private versions = new Map<string, ListingVersion>();
   private events: SubmissionEvent[] = [];
@@ -176,10 +193,54 @@ export class MarketplaceStore extends EventEmitter {
     while (this.persisting) await this.lastPersist;
   }
 
+  /**
+   * Bind the publisher boundary. P13C ROUND 8.
+   *
+   * WHAT IS AND IS NOT A LEAK HERE, because a marketplace is the one place where
+   * cross-tenant visibility is the PRODUCT:
+   *
+   *   PUBLISHED listings   visible to everyone. That is what publishing means, and
+   *                        the publisher chose it. Not scoped, deliberately.
+   *   DRAFT / IN-REVIEW    visible to the PUBLISHER only. A draft is work in
+   *                        progress — including, via EcosystemShareWorker, a
+   *                        tenant's AI worker name and first goal, which is that
+   *                        tenant's operational detail until they publish it.
+   *   THE EVENT TRAIL      the publisher's only. Events carry the signed-in
+   *                        actor's display name and email and the review history,
+   *                        which is nobody else's business even for a published
+   *                        listing.
+   *
+   * Unbound denies the scoped halves and leaves published listings readable, which
+   * is the correct fail-closed shape for a catalogue: a signed-out or unresolved
+   * caller sees the storefront and nothing behind it.
+   */
+  bindScope(source: () => TenantScope | null): this {
+    this.tenancy.bindScope(source);
+    return this;
+  }
+  hasScope(): boolean {
+    return this.tenancy.hasScope();
+  }
+
+  /** The caller's organization, or null. */
+  private publisher(): string | null {
+    return this.tenancy.scopeOrDeny()?.tenantId ?? null;
+  }
+
   /* ── reads ── */
 
+  /**
+   * Published listings, plus THE CALLER'S OWN drafts.
+   *
+   * P13C Round 8. This returned every listing in every state, so one tenant's
+   * unpublished submissions — and the worker names inside them — were readable by
+   * every other tenant.
+   */
   list(): MarketplaceListing[] {
-    return [...this.listings.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    const mine = this.publisher();
+    return [...this.listings.values()]
+      .filter((l) => l.status === 'published' || (mine !== null && l.publisherOrgId === mine))
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
   /** P9 — all versions in one pass (lets the marketplace bucket by listing without O(N) detail() calls). */
   allVersions(): ListingVersion[] {
@@ -193,16 +254,39 @@ export class MarketplaceStore extends EventEmitter {
   detailFor(listing: MarketplaceListing): ListingDetail {
     return { listing, versions: [...this.versions.values()].filter((v) => v.listingId === listing.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) };
   }
+  /** One listing, if it is published or the caller published it. Was a bare id. */
   detail(id: string): ListingDetail | null {
     const listing = this.listings.get(id);
     if (!listing) return null;
+    const mine = this.publisher();
+    if (listing.status !== 'published' && (mine === null || listing.publisherOrgId !== mine)) return null;
     return this.detailFor(listing);
   }
+  /** The submission trail for a listing the CALLER published. */
   eventsFor(listingId: string, limit = 50): SubmissionEvent[] {
+    if (this.detail(listingId) === null) return [];
+    const mine = this.publisher();
+    const listing = this.listings.get(listingId);
+    if (mine === null || listing?.publisherOrgId !== mine) return [];
     return this.events.filter((e) => e.listingId === listingId).slice(-limit).reverse();
   }
+
+  /**
+   * The CALLER'S OWN submission trail.
+   *
+   * Events carry the acting person's display name and email. An install-wide feed
+   * of them was a roster of who at which organization submitted what, and when.
+   */
   recentEvents(limit = 50): SubmissionEvent[] {
-    return this.events.slice(-limit).reverse();
+    const mine = this.publisher();
+    if (mine === null) return [];
+    const ownListings = new Set(
+      [...this.listings.values()].filter((l) => l.publisherOrgId === mine).map((l) => l.id),
+    );
+    return this.events
+      .filter((e) => e.listingId !== null && ownListings.has(e.listingId))
+      .slice(-limit)
+      .reverse();
   }
 
   stats(): MarketplaceStats {
@@ -232,6 +316,9 @@ export class MarketplaceStore extends EventEmitter {
       name: input.name,
       summary: input.summary,
       developerId: this.developerId,
+      // P13C Round 8 — the publisher, stamped from the resolver. `developerId` is a
+      // constant (`dev-owner`), so it never identified anybody.
+      publisherOrgId: this.publisher(),
       category: input.category,
       pricing: input.pricing,
       status: 'draft',
@@ -385,6 +472,24 @@ export class MarketplaceStore extends EventEmitter {
   }
   private event(listingId: string, versionId: string, action: string, actor: string, detail: string): void {
     this.events.push({ id: `sev_${randomUUID()}`, listingId, versionId, at: new Date().toISOString(), action, actor, detail });
-    if (this.events.length > EVENT_CAP) this.events = this.events.slice(this.events.length - EVENT_CAP);
+    /**
+     * PER LISTING. P13C ROUND 8. An install-wide slice let one publisher's
+     * activity evict another publisher's submission trail — the record of what
+     * was reviewed and approved. Tenth install-wide cap.
+     */
+    {
+      const byListing = new Map<string, number>();
+      const kept = new Set<(typeof this.events)[number]>();
+      for (let i = this.events.length - 1; i >= 0; i -= 1) {
+        const e = this.events[i]!;
+        const key = e.listingId ?? '__none__';
+        const n = byListing.get(key) ?? 0;
+        if (n < EVENT_CAP) {
+          kept.add(e);
+          byListing.set(key, n + 1);
+        }
+      }
+      this.events = this.events.filter((e) => kept.has(e));
+    }
   }
 }

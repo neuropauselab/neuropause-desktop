@@ -1,4 +1,10 @@
 /**
+ * P13C Round 8 — `CompanionDeviceStore` gained the tenant boundary it never had:
+ * rows carried `boundTenantId` and no read consulted it, while the list channel was
+ * PUBLIC. An unbound store now denies every read, so these suites act AS one
+ * tenant; cross-tenant behaviour is asserted in tenancy/e2e/round8Tenancy.test.ts.
+ */
+/**
  * Mobile M1-03 — the gateway's sealed dispatch, exercised end-to-end against a
  * real "phone" (the companion-protocol client side) with no socket. Locks:
  * pairing binds the phone's key and returns a sealed PairingResponse; an
@@ -37,7 +43,7 @@ let gateway: CompanionGateway;
 beforeEach(async () => {
   dir = join(tmpdir(), `np-gw-${randomUUID()}`);
   await fs.mkdir(dir, { recursive: true });
-  devices = new CompanionDeviceStore(join(dir, 'companion-devices.json'));
+  devices = new CompanionDeviceStore(join(dir, 'companion-devices.json')).bindScope(() => ({ tenantId: 'org-alpha', workspaceId: '' }));
   await devices.load();
   desktop = generateIdentityKeyPair();
   phone = generateIdentityKeyPair();

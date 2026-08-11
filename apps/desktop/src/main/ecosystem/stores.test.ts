@@ -1,3 +1,8 @@
+/**
+ * P13C Round 8 — `MarketplaceStore` now has a publisher boundary: PUBLISHED
+ * listings stay visible to all (a marketplace), while DRAFTS and the submission
+ * trail belong to the publisher. These suites act AS one publisher.
+ */
 import { afterEach, describe, expect, it } from 'vitest';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -89,7 +94,7 @@ describe('developerOwnerIdentity (mirrors the enterprise claimed owner)', () => 
 
 describe('MarketplaceStore lifecycle', () => {
   it('drives submit → review → publish, and signs the version', async () => {
-    const s = new MarketplaceStore(tempPath('mkt'), 'dev-test', []);
+    const s = new MarketplaceStore(tempPath('mkt'), 'dev-test', []).bindScope(() => ({ tenantId: 'org-alpha', workspaceId: 'ws-alpha' }));
     await s.load();
     const listing = s.createListing({ kind: 'connector', slug: 'c', name: 'C', summary: '', category: 'x', pricing: { model: 'free', amount: 0, currency: 'USD' } });
     const v1 = s.addVersion(listing.id, cleanManifest('1.0.0'), 'init');
@@ -112,7 +117,7 @@ describe('MarketplaceStore lifecycle', () => {
   });
 
   it('rejects a version that fails the security scan', async () => {
-    const s = new MarketplaceStore(tempPath('mkt'), 'dev-test', []);
+    const s = new MarketplaceStore(tempPath('mkt'), 'dev-test', []).bindScope(() => ({ tenantId: 'org-alpha', workspaceId: 'ws-alpha' }));
     await s.load();
     const listing = s.createListing({ kind: 'plugin', slug: 'p', name: 'P', summary: '', category: 'x', pricing: { model: 'free', amount: 0, currency: 'USD' } });
     const bad = s.addVersion(listing.id, { ...cleanManifest(), permissions: ['system:exec'] }, 'bad');
@@ -123,7 +128,7 @@ describe('MarketplaceStore lifecycle', () => {
   });
 
   it('rolls back to the previous published version', async () => {
-    const s = new MarketplaceStore(tempPath('mkt'), 'dev-test', []);
+    const s = new MarketplaceStore(tempPath('mkt'), 'dev-test', []).bindScope(() => ({ tenantId: 'org-alpha', workspaceId: 'ws-alpha' }));
     await s.load();
     const listing = s.createListing({ kind: 'connector', slug: 'c', name: 'C', summary: '', category: 'x', pricing: { model: 'free', amount: 0, currency: 'USD' } });
     const v1 = s.addVersion(listing.id, cleanManifest('1.0.0'), 'v1')!;

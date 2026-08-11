@@ -76,8 +76,16 @@ describe('RUNTIME_CHANNEL_PERMISSIONS map sanity', () => {
     // THE priority finding — execute:run re-enters worker/automation execution.
     expect(RUNTIME_CHANNEL_PERMISSIONS[IpcChannel.ExecuteRun]).toBe('workforce:operate');
     expect(RUNTIME_CHANNEL_PERMISSIONS[IpcChannel.ExecuteCancel]).toBe('workforce:operate');
-    expect(RUNTIME_CHANNEL_PERMISSIONS[IpcChannel.PluginsInstall]).toBe('marketplace:manage');
-    expect(RUNTIME_CHANNEL_PERMISSIONS[IpcChannel.PermsGrant]).toBe('org:manage');
+    /**
+     * P13C Round 8 — Finding 2. Plugin install is an INSTALL-LEVEL decision: one
+     * registry, one set of enable flags, executable code running in-process for
+     * every tenant. `marketplace:manage` is an organization role, and anyone may
+     * create an organization and hold it.
+     */
+    expect(RUNTIME_CHANNEL_PERMISSIONS[IpcChannel.PluginsInstall]).toBe('cloud:operate');
+    // P13C Round 8 — Finding 2. A capability grant gives a plugin filesystem and
+    // network reach on the whole machine, for every tenant. Install-level.
+    expect(RUNTIME_CHANNEL_PERMISSIONS[IpcChannel.PermsGrant]).toBe('cloud:operate');
     expect(RUNTIME_CHANNEL_PERMISSIONS[IpcChannel.AutomationRun]).toBe('operations:manage');
     expect(RUNTIME_CHANNEL_PERMISSIONS[IpcChannel.RuntimeLaunch]).toBe('operations:manage');
     expect(RUNTIME_CHANNEL_PERMISSIONS[IpcChannel.MigrationRun]).toBe('org:manage');

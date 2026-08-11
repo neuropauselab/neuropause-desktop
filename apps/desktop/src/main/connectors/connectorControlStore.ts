@@ -12,6 +12,18 @@ import { join } from 'node:path';
 import { app } from 'electron';
 import { DEFAULT_CONTROL_STATE, type ConnectorControlState } from '@neuropause/shared';
 import { createLogger } from '../logger';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/** P13C ROUND 8 — the structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'connector-control-flags',
+  scope: 'WORKSPACE',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'INSTALL_METADATA',
+  retention: 'No cap. A legacy pre-boundary flag is cleared install-wide only on an explicit re-enable, which is the sole way an operator can clear one.',
+  reason: 'Two booleans per connector/account and no customer content. The disable key is workspaceId::connectorId — a connected account belongs to one workspace, narrower than its organization.',
+});
 
 const log = createLogger('connector-controls');
 

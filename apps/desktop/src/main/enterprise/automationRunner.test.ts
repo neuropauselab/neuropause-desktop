@@ -141,6 +141,12 @@ describe('AutomationRunner (V4.7)', () => {
   });
 });
 
+/**
+ * P13C Round 8 — Finding 1. `AutomationRunRecord` carries an owner now: the
+ * history and its monitor returned every organization's runs on operations:read
+ * while the rule list beside them was scoped. Unbound reads nothing, so these
+ * suites act AS one tenant; A/B/C is in tenancy/e2e/round8Tenancy.test.ts.
+ */
 describe('AutomationRunHistory (V4.7)', () => {
   function record(ok: boolean, ms: number, id = 'r'): Parameters<AutomationRunHistory['add']>[0] {
     return {
@@ -157,7 +163,7 @@ describe('AutomationRunHistory (V4.7)', () => {
   }
 
   it('derives a monitor snapshot from records', () => {
-    const h = new AutomationRunHistory();
+    const h = new AutomationRunHistory().bindScope(() => ({ tenantId: 'org-alpha', workspaceId: 'ws-alpha' }));
     h.add(record(true, 100, 'r1'));
     h.add(record(false, 200, 'r2'));
     h.add(record(true, 300, 'r3'));
@@ -169,13 +175,13 @@ describe('AutomationRunHistory (V4.7)', () => {
   });
 
   it('reflects paused count', () => {
-    const h = new AutomationRunHistory();
+    const h = new AutomationRunHistory().bindScope(() => ({ tenantId: 'org-alpha', workspaceId: 'ws-alpha' }));
     h.setPaused(3);
     expect(h.monitor().paused).toBe(3);
   });
 
   it('bounds history to newest-first', () => {
-    const h = new AutomationRunHistory();
+    const h = new AutomationRunHistory().bindScope(() => ({ tenantId: 'org-alpha', workspaceId: 'ws-alpha' }));
     h.add(record(true, 10, 'old'));
     h.add(record(true, 20, 'new'));
     expect(h.list()[0].id).toBe('new');

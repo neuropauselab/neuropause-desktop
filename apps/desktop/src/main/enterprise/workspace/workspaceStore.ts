@@ -12,6 +12,18 @@ import { randomUUID } from 'node:crypto';
 import type { Workspace } from '@neuropause/shared';
 import { createLogger } from '../../logger';
 import { ORG_ID } from '../org/seed';
+import { declareStoreScope } from '../../tenancy/storeScope';
+
+/** P13C ROUND 8 — the structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'workspace-directory',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retention: 'No delete path at all.',
+  reason: "Workspace.organizationId — a workspace belongs to exactly one organization. list() and get() are install-wide and the org filter lives one layer up in tenantDirectory; recorded here because any NEW in-process caller of list() reads other organizations' workspace names.",
+});
 
 const log = createLogger('workspace');
 

@@ -28,6 +28,18 @@ import { FederationBoundary } from '../tenancy/federationBoundary';
 import { signArtifact, verifyArtifact, type SignableManifest } from './signing';
 import { createLogger } from '../../logger';
 import { demoSeedsEnabled } from '../../demoSeed';
+import { declareStoreScope } from '../../tenancy/storeScope';
+
+/** P13C ROUND 8 — the structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'federation-exchange-artifacts',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retention: 'No removal; rollback marks a version rolled_back.',
+  reason: "a.publisherOrg compared to the caller's org, and publisherOrg is no longer a parameter. Private drafts and per-org install records are the publishing organization's business.",
+});
 
 const log = createLogger('federation-exchange');
 

@@ -71,9 +71,24 @@ export interface IpcStoreChangedEvent {
  * moved, the discovery-state store reports which account was scanned — and both are
  * useful to a renderer that wants to refresh narrowly.
  */
+/**
+ * P13C ROUND 8 — FINDING 4. THE IDS ARE GONE FROM THE WIRE.
+ *
+ * This carried `ids: string[]` and `{platformId, accountId}` because a renderer
+ * that knows what moved can refresh narrowly, and the comment above says so. It
+ * was also a disclosure: discovery runs as the tenant owning the account, the
+ * window shows whoever the human last switched to, and there is one renderer. So
+ * tenant A's cloud resource ids and account ids arrived in tenant B's process.
+ *
+ * The payload now says WHOSE change it was and nothing more. `tenantId` is null
+ * when unresolved, and a renderer showing another tenant ignores the event. The
+ * Cloud Platform Center refetches through the scoped `infra:resources` and
+ * `infra:platforms` channels anyway — so the ids were a convenience that happened
+ * to be a leak. A CHANGE NOTIFICATION DOES NOT HAVE TO SAY WHAT CHANGED.
+ */
 export type InfraChangedEvent =
-  | { kind: 'resources'; ids: string[] }
-  | { kind: 'discovery'; platformId: string; accountId: string };
+  | { kind: 'resources'; tenantId: string | null }
+  | { kind: 'discovery'; tenantId: string | null };
 
 /**
  * Marketplace catalog invalidation. Carries an epoch-millisecond stamp rather than the

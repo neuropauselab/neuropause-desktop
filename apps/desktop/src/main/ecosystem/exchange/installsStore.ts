@@ -10,6 +10,18 @@ import { promises as fs } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import type { Installation, ListingKind } from '@neuropause/shared';
 import { createLogger } from '../../logger';
+import { declareStoreScope } from '../../tenancy/storeScope';
+
+/** P13C ROUND 8 — the structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'ecosystem-installs',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retention: "No cap. `uninstall` removes one row after the handler resolves the caller's organization.",
+  reason: "Installation.orgId stamped from requireCallerOrgId(): which apps an organization runs is that organization's business.",
+});
 
 const log = createLogger('ecosystem-installs');
 

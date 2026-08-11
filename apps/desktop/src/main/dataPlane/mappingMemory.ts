@@ -15,6 +15,18 @@ import { createHash } from 'node:crypto';
 import type { DataPlaneSavedMapping } from '@neuropause/shared';
 import { envelopeStamp, readStoreFile } from '../storage/storeEnvelope';
 import { normalizeHeader } from './normalize';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/** P13C ROUND 8 — the structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'dataplane-mapping-memory',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retention: "Capped 5,000 PER TENANT as of Round 8. It was an install-wide splice, so one tenant's imports deleted another tenant's remembered mappings.",
+  reason: "A row is this organization's own spreadsheet headers mapped to its field decisions; m.tenantId is in every read predicate.",
+});
 
 interface MappingFile {
   schemaVersion?: number;
@@ -38,7 +50,17 @@ export class MappingMemoryStore {
   private mappings: DataPlaneSavedMapping[] = [];
   private loaded = false;
 
-  constructor(private readonly filePath: string) {}
+  /**
+   * @param maxPerTenant Injectable so the PER-TENANT cap can be exercised without
+   *                     writing five thousand rows. P13C Round 8 — a retention
+   *                     boundary that is too slow to test is a boundary that does
+   *                     not get tested, and this one used to delete other tenants'
+   *                     rows.
+   */
+  constructor(
+    private readonly filePath: string,
+    private readonly maxPerTenant: number = MAX_SAVED_MAPPINGS,
+  ) {}
 
   async load(): Promise<void> {
     if (this.loaded) return;
@@ -93,8 +115,24 @@ export class MappingMemoryStore {
       useCount: 0,
     };
     this.mappings.push(created);
-    if (this.mappings.length > MAX_SAVED_MAPPINGS) {
-      this.mappings.splice(0, this.mappings.length - MAX_SAVED_MAPPINGS);
+    // The cap is checked against the WRITER's own rows, not the array length —
+    // `this.mappings.length > MAX` would never fire for a tenant under the cap and
+    // would fire for one that is, which is the bug in miniature.
+    {
+      /**
+       * PER TENANT. P13C ROUND 8.
+       *
+       * `splice(0, length - MAX)` walked one shared array oldest-first, so one
+       * tenant's imports deleted another tenant's remembered column mappings —
+       * and a lost mapping means the next import of that file silently guesses
+       * again. Eighth install-wide cap this program has found behind correct read
+       * filters. A RETENTION CAP IS A WRITE.
+       */
+      const mine = this.mappings.filter((m) => m.tenantId === ctx.tenantId);
+      if (mine.length > this.maxPerTenant) {
+        const doomed = new Set(mine.slice(0, mine.length - this.maxPerTenant));
+        this.mappings = this.mappings.filter((m) => !doomed.has(m));
+      }
     }
     await this.persist();
     return created;

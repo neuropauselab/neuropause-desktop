@@ -1,4 +1,10 @@
 /**
+ * P13C Round 8 — `CompanionDeviceStore` gained the tenant boundary it never had:
+ * rows carried `boundTenantId` and no read consulted it, while the list channel was
+ * PUBLIC. An unbound store now denies every read, so these suites act AS one
+ * tenant; cross-tenant behaviour is asserted in tenancy/e2e/round8Tenancy.test.ts.
+ */
+/**
  * Mobile M1-06b — the realtime WS layer's socket-free core: a paired device is
  * authenticated from a sealed hello (garbage + unpaired senders rejected), and
  * an event frame is sealed such that only the device can open it. The ws glue
@@ -34,7 +40,7 @@ let device: CompanionDeviceRecord;
 beforeEach(async () => {
   dir = join(tmpdir(), `np-gw-ws-${randomUUID()}`);
   await fs.mkdir(dir, { recursive: true });
-  devices = new CompanionDeviceStore(join(dir, 'companion-devices.json'));
+  devices = new CompanionDeviceStore(join(dir, 'companion-devices.json')).bindScope(() => ({ tenantId: 'org-alpha', workspaceId: '' }));
   await devices.load();
   desktop = generateIdentityKeyPair();
   phone = generateIdentityKeyPair();

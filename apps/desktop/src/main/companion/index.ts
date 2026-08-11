@@ -96,6 +96,16 @@ export interface CompanionSubsystem {
 
 export async function initCompanion(deps: InitCompanionDeps): Promise<CompanionSubsystem> {
   const store = companionDeviceStore();
+  /**
+   * P13C Round 8 — the boundary this store never had. `currentTenantId` was
+   * already here and was used ONLY to stamp a newly paired device; nothing read
+   * the stamp back. The workspace half is empty because a companion device pairs
+   * with an organization, not with one of its workspaces.
+   */
+  store.bindScope(() => {
+    const tenantId = deps.currentTenantId();
+    return tenantId === null ? null : { tenantId, workspaceId: '' };
+  });
   await store.load();
   const identity = await loadOrCreateIdentity();
   const desktopName = hostname() || 'NeuroPause Desktop';

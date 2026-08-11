@@ -28,6 +28,18 @@ import {
 } from '@neuropause/shared';
 import { envelopeStamp, readStoreFile } from '../../storage/storeEnvelope';
 import { createLogger } from '../../logger';
+import { declareStoreScope } from '../../tenancy/storeScope';
+
+/** P13C ROUND 8 — the structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'enterprise-module-records',
+  scope: 'WORKSPACE',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retention: 'Per-scope eviction: evictOldest filters recordInScope before choosing victims.',
+  reason: 'entity.tenantId + entity.workspaceId stamped from the resolved scope at create(), and unbound DENIES. This is the store behind all 106 business modules.',
+});
 
 const log = createLogger('enterprise-record-store');
 

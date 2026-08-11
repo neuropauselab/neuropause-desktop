@@ -445,7 +445,10 @@ export class CompanionGateway {
       category: event.category,
     };
     for (const [deviceId, set] of this.sockets) {
-      const device = this.deps.devices.get(deviceId);
+      // `getForDelivery`, not `get`: this loop has no session, and the ownership
+      // decision below is a comparison of two STORED owners rather than of the
+      // reader's scope. See the note on the accessor.
+      const device = this.deps.devices.getForDelivery(deviceId);
       if (!device || device.revoked) {
         for (const ws of set) ws.close(4401);
         this.sockets.delete(deviceId);

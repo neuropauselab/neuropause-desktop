@@ -1,4 +1,10 @@
 /**
+ * P13C Round 8 — `CompanionDeviceStore` gained the tenant boundary it never had:
+ * rows carried `boundTenantId` and no read consulted it, while the list channel was
+ * PUBLIC. An unbound store now denies every read, so these suites act AS one
+ * tenant; cross-tenant behaviour is asserted in tenancy/e2e/round8Tenancy.test.ts.
+ */
+/**
  * P13C Part 3 — the companion LAN push, per tenant.
  *
  * The audit that produced these tests found `broadcastEvent` subscribing to the
@@ -53,11 +59,14 @@ function spySocket(): SpySocket {
 }
 
 let dir: string;
+let pairingScope: { tenantId: string; workspaceId: string } | null = null;
 let devices: CompanionDeviceStore;
 let gateway: CompanionGateway;
 
 async function pair(tenantId: string | null, name: string): Promise<CompanionDeviceRecord> {
   const phone: CompanionKeyPair = generateIdentityKeyPair();
+  // Act AS the tenant the device is being paired to — see the note on bindScope.
+  pairingScope = tenantId === null ? null : { tenantId, workspaceId: '' };
   return devices.register({
     name,
     platform: 'ios',
@@ -98,7 +107,16 @@ function event(over: Partial<PlatformEvent> = {}): PlatformEvent {
 beforeEach(async () => {
   dir = join(tmpdir(), `np-companion-tenancy-${randomUUID()}`);
   await fs.mkdir(dir, { recursive: true });
-  devices = new CompanionDeviceStore(join(dir, 'companion-devices.json'));
+  /**
+   * P13C Round 8 — this suite pairs devices for BOTH tenants, so the scope has to
+   * move with the pairing. `register()` now stamps from the resolver rather than
+   * from `input.boundTenantId` (a caller-supplied owner is a suggestion, and the
+   * finding was that the suggestion was recorded and never read), so `pairingScope`
+   * is set by the helper below before each registration.
+   */
+  devices = new CompanionDeviceStore(join(dir, 'companion-devices.json')).bindScope(
+    () => pairingScope,
+  );
   await devices.load();
   const deps: CompanionGatewayDeps = {
     identity: generateIdentityKeyPair(),

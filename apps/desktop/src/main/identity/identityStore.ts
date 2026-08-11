@@ -37,6 +37,18 @@ import type {
 import { scoreEvidence } from '@neuropause/shared';
 import { envelopeStamp, readStoreFile } from '../storage/storeEnvelope';
 import { createLogger } from '../logger';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/** P13C ROUND 8 — the structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'external-identity-store',
+  scope: 'WORKSPACE',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retention: 'Per-workspace eviction: the victim set is filtered to the writing workspace, and the drop is logged.',
+  reason: 'workspaceId is the FIRST element of the four-field providerKey, so a key from one workspace cannot resolve in another. Rows hold provider display names, emails and candidate record matches.',
+});
 
 const log = createLogger('identity');
 

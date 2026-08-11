@@ -51,6 +51,18 @@ import type { TenantScope } from '@neuropause/shared';
 import { FederationBoundary, type FederationParties } from '../tenancy/federationBoundary';
 import { createLogger } from '../../logger';
 import { demoSeedsEnabled } from '../../demoSeed';
+import { declareStoreScope } from '../../tenancy/storeScope';
+
+/** P13C ROUND 8 — the structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'federation-runtime',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retention: 'No cap. revokeShare deletes one row after a party check.',
+  reason: 'Every row names two organizations and seedOrgId authorizes nothing: home is the caller, not the install. A peer directory is a relationship, so the boundary is a relationship rather than a single owner.',
+});
 
 const log = createLogger('federation-runtime');
 

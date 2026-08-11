@@ -26,6 +26,18 @@ import { randomUUID } from 'node:crypto';
 import type { TraceEdge, TraceNodeRef, TraceProvenance } from '@neuropause/shared';
 import { traceEdgeKey, traceNodeKey } from '@neuropause/shared';
 import { envelopeStamp, readStoreFile } from '../storage/storeEnvelope';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/** P13C ROUND 8 — the structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'medical-device-trace-edges',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retention: "Caps at 500,000 and evicts 10% OF THE WRITING TENANT'S edges as of Round 7. It was a global splice over regulated recall evidence.",
+  reason: 'TraceEdge.tenantId is part of the idempotency key and every read predicate. The rows are regulated lot and shipment movement — the evidence for a recall.',
+});
 
 interface TraceFile {
   schemaVersion?: number;

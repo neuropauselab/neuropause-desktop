@@ -26,6 +26,18 @@ import type {
 import { createLogger } from '../logger';
 import { validateManifest, satisfiesRange } from './manifest';
 import { pluginHost } from './pluginHost';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/** P13C ROUND 8 — the structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'plugin-install-registry',
+  scope: 'PLATFORM_GLOBAL',
+  persistence: 'file',
+  authority: 'PLATFORM_OPERATOR',
+  classification: 'INSTALL_METADATA',
+  retention: 'No cap. remove() deletes the record and removes the plugin root, so the plugin disappears for every tenant.',
+  reason: "WHY GLOBAL: rows describe executable extensions installed on the machine; PluginRecord has no tenant field and an enabled plugin runs in-process for everyone. WHO MODIFIES: a platform operator, as of Round 8 Finding 2 — it was marketplace:manage, an organization role, so tenant A's admin could enable code running while tenant B's data was in memory. CROSS-TENANT COST: one registry; an uninstall affects every tenant.",
+});
 
 const log = createLogger('plugins');
 const MANIFEST_FILE = 'neuropause.plugin.json';

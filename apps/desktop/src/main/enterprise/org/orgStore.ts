@@ -21,6 +21,18 @@ import type {
 } from '@neuropause/shared';
 import { createLogger } from '../../logger';
 import { buildSeed, OWNER_USER_ID } from './seed';
+import { declareStoreScope } from '../../tenancy/storeScope';
+
+/** P13C ROUND 8 — the structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'organization-directory',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retention: 'The worker prune is confined to one organization; there is no other removal.',
+  reason: 'Member names, emails, titles and the org chart. Every row but Organization itself carries orgId. The cross-org read filter lives in tenantDirectory, and that borrowed guarantee is recorded here rather than assumed.',
+});
 
 const log = createLogger('org-runtime');
 

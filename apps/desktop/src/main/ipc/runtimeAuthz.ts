@@ -71,6 +71,29 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
   [IpcChannel.ExecMemoryAudit]: 'intelligence:read',
 
   /**
+   * P13C Round 8 — a paired companion device belongs to one organization, and the
+   * row names the bound member's email. It was PUBLIC.
+   */
+  [IpcChannel.CompanionDevices]: 'org:read',
+
+  /**
+   * P13C ROUND 8 — FINDING 5. ROUTING USAGE IS INSTALL-LEVEL, AND WAS PUBLIC.
+   *
+   * The counters are genuinely install-level — they say where AI work ran (local,
+   * private infrastructure, external), which is a property of the machine's
+   * configuration, and they hold no prompts, responses or record content.
+   * Inspecting the persisted file confirms it: five integers and a timestamp.
+   *
+   * They are still not public. On an install with two organizations, a rising
+   * `total` while you are doing nothing is another tenant working — activity
+   * volume and timing, which is the same inference channel this program closed on
+   * `graphStore.counts` and `unifiedStore.counts`. `cloud:read` is the narrowest
+   * honest gate: it is the machine's own posture, and a signed-in member may see
+   * it.
+   */
+  [IpcChannel.AiRoutingUsage]: 'cloud:read',
+
+  /**
    * P13C ROUND 7 (final sweep) — THE AI DESTINATION IS INSTALL-LEVEL.
    *
    * These were `org:manage`, an ordinary organization-role permission held by
@@ -229,18 +252,39 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
   // Plugin lifecycle (install/enable/disable/reload/update/remove + permission
   // grant/revoke) — installing/altering executable extensions is a marketplace
   // management operation.
-  [IpcChannel.PluginsInstall]: 'marketplace:manage',
-  [IpcChannel.PluginsEnable]: 'marketplace:manage',
-  [IpcChannel.PluginsDisable]: 'marketplace:manage',
-  [IpcChannel.PluginsReload]: 'marketplace:manage',
-  [IpcChannel.PluginsUpdate]: 'marketplace:manage',
-  [IpcChannel.PluginsRemove]: 'marketplace:manage',
+  /**
+   * P13C ROUND 8 — FINDING 2. INSTALL-WIDE CODE IS AN INSTALL-LEVEL DECISION.
+   *
+   * These were `marketplace:manage`, an organization role held by every tenant's
+   * Owner and Admin — and anyone may create an organization and own it. The
+   * resource is `userData/plugins.json` plus a plugin root on disk: ONE registry,
+   * ONE set of enable flags, executable code that runs in-process for every
+   * tenant. So tenant A's administrator could install and enable an extension that
+   * executes while tenant B's data is in memory, and remove one B depends on.
+   *
+   * Third instance of the Round 7 class — an install-wide resource behind an
+   * organization-level role — after the AI destination and rate-limit policies.
+   * The same capability closes all three, and it is deliberately the SAME one
+   * rather than a new `plugins:operate`: a second platform permission is a second
+   * thing to forget, and the axis is what matters, not the name.
+   */
+  [IpcChannel.PluginsInstall]: 'cloud:operate',
+  [IpcChannel.PluginsEnable]: 'cloud:operate',
+  [IpcChannel.PluginsDisable]: 'cloud:operate',
+  [IpcChannel.PluginsReload]: 'cloud:operate',
+  [IpcChannel.PluginsUpdate]: 'cloud:operate',
+  [IpcChannel.PluginsRemove]: 'cloud:operate',
   [IpcChannel.PluginsGrant]: 'marketplace:manage',
   [IpcChannel.PluginsRevoke]: 'marketplace:manage',
 
   // Local capability grants to installed apps — access-control mutations.
-  [IpcChannel.PermsGrant]: 'org:manage',
-  [IpcChannel.PermsRevoke]: 'org:manage',
+  /**
+   * P13C Round 8 — Finding 2. A capability grant hands a plugin filesystem and
+   * network reach on the whole machine. `org:manage` made that an organization
+   * administrator's call about every other organization's exposure.
+   */
+  [IpcChannel.PermsGrant]: 'cloud:operate',
+  [IpcChannel.PermsRevoke]: 'cloud:operate',
 
   // Automation Builder rule CRUD + manual run — operations control.
   [IpcChannel.AutomationSave]: 'operations:manage',
@@ -531,7 +575,8 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   IpcChannel.DevicesList,
   // Mobile M1-03 — companion gateway status + paired-device list are local reads.
   IpcChannel.CompanionStatus,
-  IpcChannel.CompanionDevices,
+  // P13C Round 8 — CompanionDevices REMOVED from the public set. The rows name a
+  // member's email and their paired device; see the permission table.
   IpcChannel.SupervisorStatus,
   IpcChannel.SupervisorHistory,
   /**
@@ -578,7 +623,9 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   // two writes that change where AI work may run — setMode and
   // setExternalConsent — are bridge-audited on their handler defs) ──
   IpcChannel.AiRoutingStatus,
-  IpcChannel.AiRoutingUsage,
+  // P13C Round 8 — Finding 5. AiRoutingUsage REMOVED from the public set; see
+  // the permission table. The counters measure where AI work ran, and on an
+  // install with two tenants that is one tenant's activity volume and timing.
   IpcChannel.ExperienceProfileGet,
   IpcChannel.ExperienceProfileSet,
   // Reset clears only THIS install's own first-run answers — no org data, no

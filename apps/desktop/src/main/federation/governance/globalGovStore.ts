@@ -24,6 +24,18 @@ import type { TenantScope } from '@neuropause/shared';
 import { FederationBoundary, type FederationParties } from '../tenancy/federationBoundary';
 import { createLogger } from '../../logger';
 import { demoSeedsEnabled } from '../../demoSeed';
+import { declareStoreScope } from '../../tenancy/storeScope';
+
+/** P13C ROUND 8 — the structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'federation-global-governance',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retention: "Audit capped PER ORGANIZATION as of Round 8. It was an install-wide slice(0,500), so one org's federated actions pushed another org's audit rows off the end.",
+  reason: 'Policies carry ownerOrg, approvals name fromOrg and toOrg, audit rows name actorOrg and peerOrg — and those fields ARE the authorization predicate.',
+});
 
 const log = createLogger('federation-governance');
 
@@ -49,6 +61,27 @@ function auditParties(e: FedAuditEntry): FederationParties {
 }
 function policyParties(p: FedPolicy): FederationParties {
   return { owner: p.ownerOrg ?? null, peer: null };
+}
+
+/**
+ * Keep the newest 500 audit rows FOR EACH organization.
+ *
+ * Total storage scales with organization count — the deliberate trade every store
+ * in this program makes, and the correct one when the alternative is one customer
+ * able to erase another's compliance trail.
+ */
+function capAuditPerOrg<T extends { actorOrg?: string | null }>(rows: readonly T[]): T[] {
+  const kept = new Set<T>();
+  const seen = new Map<string, number>();
+  for (const row of rows) {
+    const key = row.actorOrg ?? '__unattributed__';
+    const n = seen.get(key) ?? 0;
+    if (n < 500) {
+      kept.add(row);
+      seen.set(key, n + 1);
+    }
+  }
+  return rows.filter((r) => kept.has(r));
 }
 
 export class GlobalGovStore extends EventEmitter {
@@ -439,7 +472,14 @@ export class GlobalGovStore extends EventEmitter {
       policyId: evaluation.policyId,
       detail: input.detail,
     };
-    this.audit = [entry, ...this.audit].slice(0, 500);
+    /**
+     * PER ORGANIZATION. P13C ROUND 8.
+     *
+     * `slice(0, 500)` over one shared array meant a busy federating organization
+     * pushed another organization's audit rows off the end — the rows that name
+     * who did what across a federation boundary. Ninth install-wide cap.
+     */
+    this.audit = capAuditPerOrg([entry, ...this.audit]);
 
     if (evaluation.decision === 'require_approval') {
       const apId = `appr_${randomUUID()}`;
@@ -492,7 +532,14 @@ export class GlobalGovStore extends EventEmitter {
       policyId: null,
       detail: `Delegated approval ${approve ? 'approved' : 'rejected'}.`,
     };
-    this.audit = [entry, ...this.audit].slice(0, 500);
+    /**
+     * PER ORGANIZATION. P13C ROUND 8.
+     *
+     * `slice(0, 500)` over one shared array meant a busy federating organization
+     * pushed another organization's audit rows off the end — the rows that name
+     * who did what across a federation boundary. Ninth install-wide cap.
+     */
+    this.audit = capAuditPerOrg([entry, ...this.audit]);
     this.schedulePersist();
     this.emit('changed');
     return next;

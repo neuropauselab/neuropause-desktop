@@ -268,6 +268,20 @@ export interface ListingPricing {
 }
 
 export interface MarketplaceListing {
+  /**
+   * The organization that published this listing, or null for a pre-Round-8 row.
+   *
+   * P13C ROUND 8. The store had NO publisher field — `developerId` was the constant
+   * `'dev-owner'` — so drafts and the submission trail were readable by every
+   * tenant, and `EcosystemShareWorker` puts a tenant's AI worker name and first
+   * goal into a draft. Published listings remain visible to all, because that is
+   * what publishing means; drafts and events are the publisher's own.
+   *
+   * Optional: rows written before the field existed have no publisher. A PUBLISHED
+   * legacy row stays visible (the storefront is the product); a legacy DRAFT
+   * reaches nobody, which is the direction that cannot disclose.
+   */
+  publisherOrgId?: string | null;
   id: string;
   kind: ListingKind;
   slug: string;

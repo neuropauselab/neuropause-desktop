@@ -215,9 +215,39 @@ export async function initInfrastructure(deps: InfrastructureDeps): Promise<Infr
     [...awsActions(), ...azureActions(), ...gcpActions(), ...kubernetesActions(), ...dockerActions(), ...vmwareActions(), ...cloudflareActions(), ...snowflakeActions(), ...databricksActions(), ...iacActions()],
   );
 
-  // Re-broadcast resource-store changes so the Cloud Platform Center refreshes live.
-  store.on('changed', (e) => deps.broadcast(IpcChannel.InfraEventBroadcast, { kind: 'resources', ...e }));
-  state.on('changed', (e) => deps.broadcast(IpcChannel.InfraEventBroadcast, { kind: 'discovery', ...e }));
+  /**
+   * P13C ROUND 8 — FINDING 4. THE PAYLOAD CARRIED THE IDS.
+   *
+   * These fired on every discovery write and pushed the CHANGED IDS to the single
+   * renderer: `{ ids: [...] }` for resources, `{ platformId, accountId }` for
+   * discovery. Discovery runs as the tenant that owns the account, and the window
+   * is showing whoever the human last switched to — so tenant A's cloud resource
+   * ids and account ids arrived in tenant B's process.
+   *
+   * `runOutsidePrincipal` is NOT the fix here, and that distinction matters. The
+   * other six broadcasts in this program computed a SCOPED AGGREGATE under the
+   * wrong principal, so re-resolving to the session gave the right number. This
+   * payload is not an aggregate — it is a list of identifiers the producer already
+   * holds, and no principal makes it belong to the viewer.
+   *
+   * So the event carries WHOSE it is, and the renderer's own scope decides. The
+   * ids are dropped from the wire entirely: the Cloud Platform Center refetches
+   * through the scoped `infra:resources` / `infra:platforms` channels anyway, so
+   * the ids were never needed — they were a convenience that happened to be a
+   * disclosure. A change notification does not have to say what changed.
+   */
+  store.on('changed', () =>
+    deps.broadcast(IpcChannel.InfraEventBroadcast, {
+      kind: 'resources',
+      tenantId: deps.scope()?.tenantId ?? null,
+    }),
+  );
+  state.on('changed', () =>
+    deps.broadcast(IpcChannel.InfraEventBroadcast, {
+      kind: 'discovery',
+      tenantId: deps.scope()?.tenantId ?? null,
+    }),
+  );
 
   /* ── Projections the Cloud Platform Center reads ─────────────────────────── */
 

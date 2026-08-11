@@ -45,7 +45,34 @@ vi.mock('../enterprise/org/orgInstance', () => ({
 vi.mock('../enterprise/workspace/workspaceInstance', () => ({
   workspaceStore: { list: () => WORKSPACES },
 }));
-vi.mock('../connectors/connectorStore', () => ({ connectorStore: { all: () => [] } }));
+/**
+ * P13C ROUND 8 — FINDING 7. THIS MOCK WAS THE VACUOUS PASS.
+ *
+ * It returned `[]`, so `connectorsTotal`, `connectorsHealthy` and `connectorsError`
+ * were 0 for every tenant and every assertion over them held trivially — while the
+ * PRODUCTION code had the same defect for a different reason: it called `all()`,
+ * which filters on the active WORKSPACE, and the scheduled brief runs under a
+ * tenant principal whose workspaceId is `''`.
+ *
+ * So the feature was dead and the test agreed with it. A ZERO IS NOT A COUNT.
+ *
+ * Now: A has THREE connected accounts across its two workspaces, B has SEVEN in
+ * its one. Different numbers on purpose, so a leak or a collapse is visible as a
+ * number rather than as an absence.
+ */
+const CONNECTOR_ACCOUNTS = [
+  ...Array.from({ length: 2 }, (_, i) => ({ id: `a-${i}`, workspaceId: 'ws-a', health: 'healthy', status: 'ok' })),
+  { id: 'a-2', workspaceId: 'ws-a2', health: 'down', status: 'error' },
+  ...Array.from({ length: 7 }, (_, i) => ({ id: `b-${i}`, workspaceId: 'ws-b', health: 'healthy', status: 'ok' })),
+];
+vi.mock('../connectors/connectorStore', () => ({
+  connectorStore: {
+    // `all()` remains, unused by orgIntelligence now, so a regression to it is visible.
+    all: () => [],
+    forOrganization: (ids: readonly string[]) =>
+      CONNECTOR_ACCOUNTS.filter((a) => ids.includes(a.workspaceId)),
+  },
+}));
 vi.mock('../timeline', () => ({ getEnterpriseTimeline: () => null }));
 vi.mock('../license/licenseInstance', () => ({
   licenseValidator: {
@@ -141,5 +168,55 @@ describe('fail-closed', () => {
     const inputs = collectOrgHealthInputs(NOW);
     expect(inputs.memberCount).toBe(0);
     expect(inputs.licenseDaysToExpiry).toBeNull();
+  });
+});
+
+/* ── P13C ROUND 8 — FINDING 7: the counts must be REAL ────────────────────── */
+
+describe('connector counts in the organization brief', () => {
+  /**
+   * The whole point of Finding 7. Before this, both tenants reported 0 and every
+   * isolation assertion over the field passed because zero equals zero — a dead
+   * feature and a test that agreed with it.
+   *
+   * A has 3 connected accounts ACROSS TWO WORKSPACES, B has 7 in one. Asserting
+   * the exact numbers proves three things at once: the feature works, it is
+   * organization-wide rather than workspace-wide, and it does not leak.
+   */
+  it('A reports 3 and B reports 7 — not 0, and not each other’s', () => {
+    scope = A;
+    const a = collectOrgHealthInputs(NOW);
+    expect(a.connectorsTotal).toBe(3);
+    expect(a.connectorsError).toBe(1); // the one in A's second workspace
+    expect(a.connectorsHealthy).toBe(2);
+
+    scope = B;
+    const b = collectOrgHealthInputs(NOW);
+    expect(b.connectorsTotal).toBe(7);
+    expect(b.connectorsHealthy).toBe(7);
+    expect(b.connectorsError).toBe(0);
+
+    // And the two are genuinely different, so a collapse to one shared value
+    // cannot pass.
+    expect(a.connectorsTotal).not.toBe(b.connectorsTotal);
+  });
+
+  it('spans the tenant’s workspaces rather than only the active one', () => {
+    // A's active workspace is `ws-a`, which holds 2 of its 3 accounts. A brief
+    // that reported 2 would be workspace-scoped, which is the wrong question.
+    scope = A;
+    expect(collectOrgHealthInputs(NOW).connectorsTotal).toBe(3);
+  });
+
+  it('an unresolved tenant reports 0 HONESTLY, not by accident', () => {
+    scope = null;
+    // Zero because no organization resolves and therefore no workspace belongs to
+    // it — the same number the bug produced, now for a stated reason.
+    expect(collectOrgHealthInputs(NOW).connectorsTotal).toBe(0);
+  });
+
+  it('a tenant with no workspaces reports 0 and reads nobody else’s accounts', () => {
+    scope = { tenantId: 'org-ghost', workspaceId: 'ws-ghost' };
+    expect(collectOrgHealthInputs(NOW).connectorsTotal).toBe(0);
   });
 });
