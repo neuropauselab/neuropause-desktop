@@ -57,6 +57,7 @@ import { toCorrelationEvent, type RawTimelineEvent } from '../enterprise/intelli
 import { projectSignals, type ProjectionInput } from './signalProjection';
 import { composeHealthFramework } from './healthFramework';
 import { buildPredictions } from './predictions';
+import { onWorkspaceSwitch } from '../tenancy/workspaceSwitchHub';
 import {
   answerInsightQuestion,
   buildDependencyGraph,
@@ -556,6 +557,23 @@ export function initInsight(deps: InsightSubsystemDeps): InsightSubsystem {
   deps.registerSource(riskTrendSource);
 
   /* ── the five read-only IPC channels (D-9) ─────────────────────────────── */
+  /**
+   * P13C Round 2 — H7. DROP THE TENANT-DERIVED SNAPSHOT ON A TENANT SWITCH.
+   *
+   * This cache holds a fully composed, tenant-derived read model behind a short
+   * TTL, and it was cleared only in `dispose()`. Switching organization changes
+   * none of the backing stores this subsystem watches, so the memo survived the
+   * switch — and the renderer's reload after a switch lands INSIDE the TTL.
+   * Opening a dashboard right after switching is the single most common
+   * multi-tenant action there is, so the window was not theoretical.
+   *
+   * Registered on the same residue seam every other subsystem uses, rather than
+   * a second invalidation mechanism.
+   */
+  onWorkspaceSwitch(() => {
+    cache = null;
+  });
+
   const handlers: SecureHandlerDef[] = [
     {
       channel: IpcChannel.InsightReport,

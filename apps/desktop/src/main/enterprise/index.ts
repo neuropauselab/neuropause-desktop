@@ -83,6 +83,7 @@ import { workspaceStore } from './workspace/workspaceInstance';
 import { governanceStore } from './governance/governanceInstance';
 import { OWNER_USER_ID, ROLE_TO_UNIT_ID } from './org/seed';
 import { provisionOrganization } from './org/provisionOrganization';
+import { announceWorkspaceSwitch } from '../tenancy/workspaceSwitchHub';
 import { bindOrgIntelligenceScope } from './orgIntelligence';
 import {
   firstEnterableWorkspace,
@@ -359,12 +360,14 @@ const tenantContext = createTenantContextResolver({
  * instance, the Data Plane's plan cache and three provider caches — would make
  * the enterprise root depend on half the app to do one thing.
  */
-const workspaceSwitchListeners: ((workspaceId: string) => void)[] = [];
-
-/** Register a callback fired after a workspace switch commits. */
-export function onWorkspaceSwitch(fn: (workspaceId: string) => void): void {
-  workspaceSwitchListeners.push(fn);
-}
+/**
+ * P13C Round 2 — the list moved to `tenancy/workspaceSwitchHub`, which has no
+ * dependencies. This root still OWNS the switch — it is the only thing that may
+ * decide one happened — and now announces it through the hub, so seven platform
+ * subsystems can register a cache flush without importing a module that reaches
+ * `app.getPath` and drags Electron into their pure-model tests.
+ */
+export { onWorkspaceSwitch } from '../tenancy/workspaceSwitchHub';
 
 /**
  * The tenant scope, or null. The shape every scoped store accepts.
@@ -1900,7 +1903,7 @@ function buildHandlers(): SecureHandlerDef[] {
            * registers here instead of this function growing an import per
            * subsystem.
            */
-          for (const onSwitch of workspaceSwitchListeners) onSwitch(ws.id);
+          announceWorkspaceSwitch(ws.id);
           audit('workspace.switch', ws.id, `Switched to workspace "${ws.name}"`);
         }
         const active = workspaceStore.active();
@@ -2020,7 +2023,7 @@ function buildHandlers(): SecureHandlerDef[] {
           // The same residue listeners a workspace switch fires. An organization
           // switch is a strictly larger change, so skipping them would leave the
           // previous TENANT's caches live — see the workspace-switch note.
-          for (const onSwitch of workspaceSwitchListeners) onSwitch(ws.id);
+          announceWorkspaceSwitch(ws.id);
           audit('organization.switch', r.id, `Switched to organization "${r.id}"`);
         }
         return visibleOrganizations(directoryDeps);

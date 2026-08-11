@@ -69,7 +69,15 @@ const runner = new AutomationRunner(() => automationStore.activeRules(), {
     });
   },
   now: Date.now,
-});
+  },
+  /**
+   * P13C Round 2 — H1. The per-tenant selector the runner uses for BUS-DRIVEN
+   * dispatch. `activeRules()` above is the caller-scoped set used by the
+   * interactive `runById`; this one answers for the EVENT's owner, which is a
+   * different question and used to be answered with "every rule on the install".
+   */
+  (tenantId: string) => automationStore.activeRulesForTenant(tenantId),
+);
 
 /** Exposed so producers (connector/activity/schedule) can feed the runtime. */
 export function getAutomationRunner(): AutomationRunner {

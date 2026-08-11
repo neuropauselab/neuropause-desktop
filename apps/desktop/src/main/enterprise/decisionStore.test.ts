@@ -9,6 +9,7 @@ import {
   type ExecutiveDecision,
   type ExecutiveRecommendation,
 } from '@neuropause/shared';
+import { TEST_TENANT_SCOPE } from '../tenancy/testScope';
 import {
   DecisionStore,
   canTransition,
@@ -102,7 +103,7 @@ describe('DecisionStore', () => {
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'np-dec-'));
-    store = new DecisionStore(join(dir, 'executive-decisions.json'));
+    store = new DecisionStore(join(dir, 'executive-decisions.json')).bindScope(() => TEST_TENANT_SCOPE);
   });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -135,7 +136,7 @@ describe('DecisionStore', () => {
   it('persists across instances', async () => {
     const d = decisionFromRecommendation(rec(), new Date().toISOString(), 'x3');
     await store.create(d);
-    const reopened = new DecisionStore(join(dir, 'executive-decisions.json'));
+    const reopened = new DecisionStore(join(dir, 'executive-decisions.json')).bindScope(() => TEST_TENANT_SCOPE);
     expect(reopened.all()).toHaveLength(1);
     expect(reopened.summary().pending).toBe(1);
   });
@@ -166,7 +167,7 @@ describe('V3.6 decision model extensions', () => {
   let store: DecisionStore;
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'np-dec6-'));
-    store = new DecisionStore(join(dir, 'executive-decisions.json'));
+    store = new DecisionStore(join(dir, 'executive-decisions.json')).bindScope(() => TEST_TENANT_SCOPE);
   });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 

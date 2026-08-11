@@ -106,7 +106,7 @@ describe('cross-domain related records', () => {
         moduleId,
       ).bindScope(() => TEST_TENANT_SCOPE);
     }
-    relationships = new RelationshipStore(join(dir, 'rel.json'));
+    relationships = new RelationshipStore(join(dir, 'rel.json')).bindScope(() => TEST_TENANT_SCOPE);
     await Promise.all([...Object.values(stores).map((s) => s.load()), relationships.load()]);
 
     engine = new RelationshipEngine({

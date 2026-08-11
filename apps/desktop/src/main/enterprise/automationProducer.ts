@@ -66,6 +66,10 @@ export function toAutomationEvent(evt: PlatformEvent): AutomationEvent {
     payload.resourceName = evt.resource.name;
   }
   return {
+    // P13C Round 2 — carry the event's owner through to the runner, which now
+    // selects rules by it. Program 13B stamped this at materialization; the
+    // producer had simply been dropping it.
+    tenantId: evt.tenantId ?? null,
     source,
     connectorId: source === 'connector' ? (evt.resource?.id ?? undefined) : undefined,
     event: evt.type,

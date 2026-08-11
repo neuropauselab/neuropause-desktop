@@ -64,6 +64,7 @@ import { buildSimulationInventory } from './simulationInventory';
 import { buildHistoryView } from './twinHistory';
 import { composeTwinDashboard, composeTwinReport, type EtwinDashboardInputs } from './twinDashboard';
 import { answerTwinQuestion, resolveTwinQuestion, type TwinQuestionContext } from './twinPlatformModel';
+import { onWorkspaceSwitch } from '../tenancy/workspaceSwitchHub';
 
 const log = createLogger('digital-twin-platform');
 
@@ -346,6 +347,23 @@ export function initDigitalTwinPlatform(deps: EtwinPlatformDeps): EtwinPlatformS
   deps.registerSource(watchSource);
 
   /* ── the seven read-only IPC channels (the EXISTING twin:read, fail-closed) ─ */
+  /**
+   * P13C Round 2 — H7. DROP THE TENANT-DERIVED SNAPSHOT ON A TENANT SWITCH.
+   *
+   * This cache holds a fully composed, tenant-derived read model behind a short
+   * TTL, and it was cleared only in `dispose()`. Switching organization changes
+   * none of the backing stores this subsystem watches, so the memo survived the
+   * switch — and the renderer's reload after a switch lands INSIDE the TTL.
+   * Opening a dashboard right after switching is the single most common
+   * multi-tenant action there is, so the window was not theoretical.
+   *
+   * Registered on the same residue seam every other subsystem uses, rather than
+   * a second invalidation mechanism.
+   */
+  onWorkspaceSwitch(() => {
+    cache = null;
+  });
+
   const handlers: SecureHandlerDef[] = [
     {
       channel: IpcChannel.EtwinRuntime,

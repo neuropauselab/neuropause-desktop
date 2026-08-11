@@ -24,6 +24,9 @@ function rule(over: Partial<AutomationRule> = {}): AutomationRule {
 }
 
 const connectorEvent: AutomationEvent = {
+  // P13C Round 2 — an event must name its owner; the runner now selects rules
+  // by it, and an UNOWNED event deliberately matches nothing.
+  tenantId: 'org-test',
   source: 'connector',
   connectorId: 'gmail',
   event: 'message.received',

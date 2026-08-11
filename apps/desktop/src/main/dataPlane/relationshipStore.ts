@@ -19,6 +19,8 @@
  * customers park here, and the next resolution pass picks them up.
  */
 import { promises as fs } from 'node:fs';
+import type { TenantScope } from '@neuropause/shared';
+import { TenantOwnership } from '../tenancy/tenantOwnedStore';
 import { randomUUID } from 'node:crypto';
 import { envelopeStamp, readStoreFile } from '../storage/storeEnvelope';
 import type { CandidateRecord } from './relationshipResolver';
@@ -47,6 +49,15 @@ export interface RelationshipLink {
 }
 
 export interface PendingRelationship {
+  /**
+   * The organization this parked reference belongs to (P13C Round 2, H6).
+   *
+   * Absent means UNRESOLVED — visible to nobody. These rows carry
+   * `sourceTitle`, `sourceField` and the literal `sourceValue` that failed to
+   * match, so an unscoped queue disclosed another organization's record titles
+   * and field contents under `data:read`, a base role.
+   */
+  tenantId?: string | null;
   id: string;
   relationshipKey: string;
   sourceModuleId: string;
@@ -77,6 +88,17 @@ const MAX_PENDING = 20_000;
 const MAX_LINKS = 200_000;
 
 export class RelationshipStore {
+  /**
+   * P13C Round 2 — H6. THE TENANT BOUNDARY.
+   *
+   * The sibling `ProvenanceStore` in this same subsystem gained a scope in
+   * P13A; this one did not, and nothing noticed because the queue is a
+   * back-office surface. `queue()` returned every tenant's parked references,
+   * and `decide()` resolved `pendingId` unscoped while scoping only the
+   * TARGET — so the write linked one tenant's source record to another's
+   * target.
+   */
+  private readonly tenancy = new TenantOwnership('dataplane-relationship-queue');
   private links: RelationshipLink[] = [];
   private pending: PendingRelationship[] = [];
   private loaded = false;
@@ -150,12 +172,23 @@ export class RelationshipStore {
     const existing = this.pendingIndex.get(key);
     const entry: PendingRelationship = existing
       ? { ...existing, ...input, id: existing.id, firstSeenAt: existing.firstSeenAt, attempts: existing.attempts + 1 }
-      : { ...input, id: `pen_${randomUUID()}`, firstSeenAt: input.lastCheckedAt, attempts: 1 };
+      : {
+          ...input,
+          // Owner from the resolved tenant, never from the payload.
+          tenantId: this.tenancy.requireTenant(),
+          id: `pen_${randomUUID()}`,
+          firstSeenAt: input.lastCheckedAt,
+          attempts: 1,
+        };
 
     if (existing) this.pending[this.pending.indexOf(existing)] = entry;
     else {
       this.pending.push(entry);
-      if (this.pending.length > MAX_PENDING) this.pending.splice(0, this.pending.length - MAX_PENDING);
+      // Retention PER TENANT — an install-wide cap let one tenant evict
+      // another's parked references.
+      this.pending = this.tenancy.pruneOwn(this.pending, MAX_PENDING, (a, b) =>
+        a.firstSeenAt < b.firstSeenAt ? -1 : 1,
+      );
     }
     this.pendingIndex.set(key, entry);
     await this.persist();
@@ -191,21 +224,43 @@ export class RelationshipStore {
     return entry;
   }
 
+  /** Bind the tenant boundary. UNBOUND DENIES. Chainable. */
+  bindScope(source: () => TenantScope | null): this {
+    this.tenancy.bindScope(source);
+    return this;
+  }
+  hasScope(): boolean {
+    return this.tenancy.hasScope();
+  }
+  /** Unscoped ownership counts, for the migration inventory only. */
+  ownershipCounts(): { total: number; assigned: number; unresolved: number } {
+    return this.tenancy.countOwnership(this.pending);
+  }
+
+  /**
+   * The pending reference, IF it is the caller's.
+   *
+   * This is the accessor `decide()` resolves through, and scoping it is what
+   * makes source-and-target-share-a-tenant true: the target was already scoped,
+   * so with the source scoped too there is no pair left that spans tenants.
+   */
   pendingById(id: string): PendingRelationship | null {
-    return this.pending.find((p) => p.id === id) ?? null;
+    const p = this.pending.find((x) => x.id === id) ?? null;
+    return p !== null && this.tenancy.mine(p) ? p : null;
   }
 
   /** Items still needing attention, worst first (ambiguous before unresolved). */
+  /** The CALLER'S queue. Was every tenant's parked references. */
   queue(limit = 200): PendingRelationship[] {
     const rank = { ambiguous: 0, unresolved: 1, skipped: 2 } as const;
-    return [...this.pending]
+    return this.tenancy.onlyMine(this.pending)
       .sort((a, b) => rank[a.status] - rank[b.status] || a.firstSeenAt.localeCompare(b.firstSeenAt))
       .slice(0, limit);
   }
 
   /** Every pending entry that a resolution pass should retry. */
   retryable(): PendingRelationship[] {
-    return this.pending.filter((p) => p.status !== 'skipped');
+    return this.tenancy.onlyMine(this.pending).filter((p) => p.status !== 'skipped');
   }
 
   /** Links out of a record — what it points at. */

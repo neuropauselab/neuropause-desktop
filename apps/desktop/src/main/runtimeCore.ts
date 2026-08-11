@@ -182,6 +182,7 @@ import {
   onWorkspaceSwitch,
 } from './enterprise';
 import { currentPrincipal } from './tenancy/backgroundPrincipal';
+import { assertAllTenantStoresBound } from './tenancy/tenantOwnedStore';
 import type { Organization } from '@neuropause/shared';
 import { setLiveSyncActiveOrg } from './cloud/livesync/liveSyncInstance';
 import { initDataPlane } from './dataPlane';
@@ -898,6 +899,17 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
    * `activeTenantScope` is the same resolver every other surface reads. One
    * authority, four more consumers.
    */
+  /**
+   * P13C Round 2 — the legacy stores join the bound set.
+   *
+   * Automation rules, executive decisions and the relationship queue each
+   * predate tenancy and were reached by public or base-role channels. They are
+   * bound here alongside the nine stores bound since P13B, and
+   * `assertAllTenantStoresBound()` below turns a forgotten binding into a
+   * startup failure rather than a silent leak.
+   */
+  automationStore.bindScope(activeTenantScope);
+  decisionStore.bindScope(activeTenantScope);
   holdStore.bindScope(activeTenantScope);
   decisionRecordStore.bindScope(activeTenantScope);
   opportunityDecisionStore.bindScope(activeTenantScope);
@@ -918,6 +930,12 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
    */
   memoryStore.bindViewer(activeMemoryViewer);
   dataPlane.provenance.bindScope(activeTenantScope);
+  /**
+   * P13C Round 2 — H6. Its sibling gained a scope in P13A; this one did not,
+   * and nothing noticed because the relationship queue is a back-office
+   * surface that returns `sourceValue` verbatim.
+   */
+  dataPlane.relationships.bindScope(activeTenantScope);
 
   /**
    * P13B — the Unified Store and the Graph, the two roots of the data fabric.
@@ -939,6 +957,24 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // because the resolver does not exist that early.
   platform.bindTenant(activeTenantScope);
   graphStore.bindScope(activeTenantScope);
+
+  /**
+   * THE STARTUP GATE — P13C Round 2, Phases 2 and 16.
+   *
+   * Four security sweeps found the same defect in four different subsystems,
+   * and every one of them was found because somebody happened to walk that
+   * code. That approach cannot converge: the risk was never in the audited
+   * files, it was in the ones the audit did not reach.
+   *
+   * `assertAllTenantStoresBound()` inverts it. A tenant-sensitive store
+   * registers itself at CONSTRUCTION; this line asserts, once at startup, that
+   * every registered store has a boundary. A store nobody bound therefore
+   * cannot reach a user, because the application refuses to start.
+   *
+   * Placed AFTER every `bindScope` above and BEFORE any handler is registered,
+   * so the failure happens at composition rather than on the first request.
+   */
+  assertAllTenantStoresBound();
 
   onWorkspaceSwitch(() => {
     dataPlane.forgetPlans();
@@ -2146,6 +2182,11 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   const executeEngine = new ExecuteEngine({
     publish: publishPlatform,
     persist: (session) => void executionStore.save(session),
+    // P13C Round 2 — H5. Sessions carry their owner, so `activeSessions`,
+    // `getHistory`, `stats` and `cancel` answer for the caller rather than the
+    // install. Resolved through the one resolver, so a background execution
+    // belongs to the tenant it was started FOR.
+    tenantId: () => activeTenantScope()?.tenantId ?? null,
   });
   executeEngine.register('task', async (req, ctx) => {
     ctx.setStep(1);

@@ -8,6 +8,8 @@
  * and this store only persists + transitions them.
  */
 import { promises as fs, readFileSync } from 'node:fs';
+import type { TenantScope } from '@neuropause/shared';
+import { TenantOwnership } from '../tenancy/tenantOwnedStore';
 import { dirname } from 'node:path';
 import type {
   DecisionCategory,
@@ -142,6 +144,16 @@ export function summarizeDecisions(
 }
 
 export class DecisionStore {
+  /**
+   * P13C Round 2 — H2. THE TENANT BOUNDARY.
+   *
+   * `ExecutiveDecision` carries `description`, `reasoning`, `evidence[]`,
+   * `businessImpact` and `owner` — it is tenant content in the plainest sense —
+   * and `all()` returned every organization's through a channel on the PUBLIC
+   * allowlist. `setStatus` transitioned by bare payload id, and an install-wide
+   * 500 cap let one tenant evict another's decisions.
+   */
+  private readonly tenancy = new TenantOwnership('executive-decisions');
   private decisions: ExecutiveDecision[] = [];
   private loaded = false;
 
@@ -167,30 +179,52 @@ export class DecisionStore {
     await fs.rename(tmp, this.filePath);
   }
 
-  /** All decisions, newest first. */
-  all(): ExecutiveDecision[] {
+  /** Bind the tenant boundary. UNBOUND DENIES. Chainable. */
+  bindScope(source: () => TenantScope | null): this {
+    this.tenancy.bindScope(source);
+    return this;
+  }
+  hasScope(): boolean {
+    return this.tenancy.hasScope();
+  }
+  /** Unscoped ownership counts, for the migration inventory only. */
+  ownershipCounts(): { total: number; assigned: number; unresolved: number } {
     this.load();
-    return [...this.decisions].sort((a, b) => (b.createdAt < a.createdAt ? -1 : 1));
+    return this.tenancy.countOwnership(this.decisions);
   }
 
+  /** The CALLER'S decisions, newest first. Was every decision on the install. */
+  all(): ExecutiveDecision[] {
+    this.load();
+    return this.tenancy
+      .onlyMine(this.decisions)
+      .sort((a, b) => (b.createdAt < a.createdAt ? -1 : 1));
+  }
+
+  /** The decision, IF it is the caller's. A foreign id reads as absent. */
   get(id: string): ExecutiveDecision | null {
     this.load();
-    return this.decisions.find((d) => d.id === id) ?? null;
+    const d = this.decisions.find((x) => x.id === id) ?? null;
+    return d !== null && this.tenancy.mine(d) ? d : null;
   }
 
   /** Persist a new decision (deduped by id; last write wins). */
   async create(decision: ExecutiveDecision): Promise<ExecutiveDecision> {
     this.load();
+    // Owner from the resolved tenant; an existing row only replaceable by its
+    // owner, or `create` is a write-side IDOR keyed on a decision id.
     const idx = this.decisions.findIndex((d) => d.id === decision.id);
-    if (idx >= 0) this.decisions[idx] = decision;
-    else this.decisions.push(decision);
-    if (this.decisions.length > MAX_DECISIONS) {
-      // Drop oldest archived first, else oldest overall.
-      this.decisions.sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
-      this.decisions = this.decisions.slice(-MAX_DECISIONS);
-    }
+    if (idx >= 0 && !this.tenancy.mine(this.decisions[idx]!)) return decision;
+    const owned = this.tenancy.stamp(decision);
+    if (idx >= 0) this.decisions[idx] = owned;
+    else this.decisions.push(owned);
+    // Retention PER TENANT — an install-wide cap let one tenant choose which of
+    // another's decisions was destroyed.
+    this.decisions = this.tenancy.pruneOwn(this.decisions, MAX_DECISIONS, (a, b) =>
+      a.createdAt < b.createdAt ? -1 : 1,
+    );
     await this.persist();
-    return decision;
+    return owned;
   }
 
   /**
@@ -204,7 +238,7 @@ export class DecisionStore {
     opts?: { actor?: string; reason?: string },
   ): Promise<ExecutiveDecision | null> {
     this.load();
-    const d = this.decisions.find((x) => x.id === id);
+    const d = this.get(id); // scoped: a foreign id is not found
     if (!d) return null;
     if (d.status === to) return d;
     if (!canTransition(d.status, to)) return null;
@@ -233,6 +267,7 @@ export class DecisionStore {
 
   summary(): DecisionSummaryView {
     this.load();
-    return summarizeDecisions(this.decisions);
+    // Scoped: a summary over every tenant's decisions is a disclosure of shape.
+    return summarizeDecisions(this.tenancy.onlyMine(this.decisions));
   }
 }

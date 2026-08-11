@@ -114,7 +114,7 @@ beforeEach(async () => {
   store('finance', 'invoice');
   store('finance-payments', 'payment');
   store('sales-orders', 'order');
-  relStore = new RelationshipStore(join(dir, 'relationships.json'));
+  relStore = new RelationshipStore(join(dir, 'relationships.json')).bindScope(() => TEST_TENANT_SCOPE);
   await relStore.load();
   engine = new RelationshipEngine({
     store: relStore,
@@ -507,7 +507,7 @@ describe('RelationshipStore', () => {
       correlationId: 'dp_1',
     });
 
-    const reloaded = new RelationshipStore(join(dir, 'relationships.json'));
+    const reloaded = new RelationshipStore(join(dir, 'relationships.json')).bindScope(() => TEST_TENANT_SCOPE);
     await reloaded.load();
     expect(reloaded.counts()).toEqual({ links: 1, ambiguous: 0, unresolved: 1, skipped: 0 });
     expect(reloaded.linkFor('inv_1', 'invoice.customer')?.targetRecordId).toBe('cus_1');

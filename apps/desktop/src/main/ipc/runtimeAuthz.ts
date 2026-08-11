@@ -292,6 +292,21 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
    * The tenant boundary is enforced in `ConversationStore`, not here. This entry
    * closes the unauthenticated path; the store closes the cross-tenant one.
    */
+  /**
+   * P13C Round 2 — the five channel families moved out of PUBLIC_CHANNELS.
+   *
+   * Automations and decisions are operations surfaces, so they take the
+   * operations scopes the rest of that surface already uses; execution reads
+   * take `operations:read` for the same reason. The tenant boundary is enforced
+   * in the STORES — these entries close the unauthenticated path, not the
+   * cross-tenant one.
+   */
+  [IpcChannel.DecisionList]: 'operations:read',
+  [IpcChannel.AutomationList]: 'operations:read',
+  [IpcChannel.AutomationMonitor]: 'operations:read',
+  [IpcChannel.AutomationHistory]: 'operations:read',
+  [IpcChannel.ExecuteSessions]: 'operations:read',
+  [IpcChannel.ExecuteHistory]: 'operations:read',
   [IpcChannel.AssistantConversations]: 'dashboard:read',
   [IpcChannel.AssistantConversationGet]: 'dashboard:read',
   [IpcChannel.AssistantConversationSave]: 'dashboard:read',
@@ -418,11 +433,22 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   // ── Daily intelligence generators (read-only) ──
   IpcChannel.BriefingGenerate,
   IpcChannel.RecommendationsGenerate,
-  // ── Decision + automation read listings ──
-  IpcChannel.DecisionList,
-  IpcChannel.AutomationList,
-  IpcChannel.AutomationMonitor,
-  IpcChannel.AutomationHistory,
+  /**
+   * ── Decision + automation read listings ──
+   *
+   * P13C Round 2 — H1/H2. REMOVED FROM PUBLIC.
+   *
+   * These were admitted as "read listings". They are not: `ExecutiveDecision`
+   * carries description, reasoning, evidence, business impact and owner, and an
+   * `AutomationRule` carries its trigger and its action set — including
+   * `save-memory` and `ai-generate`, which move tenant data. Public meant no
+   * auth and no permission, and both stores were install-wide, so an
+   * unauthenticated renderer message returned every organization's.
+   *
+   * Now classified in RUNTIME_CHANNEL_PERMISSIONS above. The stores are scoped
+   * too; this closes the unauthenticated path, the stores close the
+   * cross-tenant one, and neither alone would be enough.
+   */
   // ── AI analysis reads ──
   IpcChannel.EngineeringAnalyze,
   IpcChannel.FounderAskV2,
@@ -439,8 +465,14 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   IpcChannel.CompanionDevices,
   IpcChannel.SupervisorStatus,
   IpcChannel.SupervisorHistory,
-  IpcChannel.ExecuteSessions,
-  IpcChannel.ExecuteHistory,
+  /**
+   * P13C Round 2 — H5. `ExecuteSessions` / `ExecuteHistory` REMOVED FROM PUBLIC.
+   *
+   * `ExecutionSession.result` is the full structured output of every executed
+   * action — infrastructure changes, M365 sends, approved worker actions — and
+   * both channels returned every tenant's behind no permission at all.
+   * `ExecuteCancel` took a bare session id.
+   */
   // ── Feature flags read ──
   IpcChannel.FlagsGet,
   // ── License reads ──

@@ -63,6 +63,7 @@ import { resolvePolicy, previewApprovals } from './policyResolver';
 import { planRollback, type InstalledWorkerInfo } from './rollbackPlanner';
 import { buildMonitorReport } from './executionMonitor';
 import { parseScheduleLabel, scheduleDue } from './scheduleParser';
+import { onWorkspaceSwitch } from '../tenancy/workspaceSwitchHub';
 import {
   answerAutomationQuestion,
   composeAutomationDashboard,
@@ -346,6 +347,23 @@ export function initAutomationPlatform(deps: AutomationPlatformDeps): Automation
   };
 
   /* ── the six read-only IPC channels (D-9; autonomousops:read, P19 scope) ── */
+  /**
+   * P13C Round 2 — H7. DROP THE TENANT-DERIVED SNAPSHOT ON A TENANT SWITCH.
+   *
+   * This cache holds a fully composed, tenant-derived read model behind a short
+   * TTL, and it was cleared only in `dispose()`. Switching organization changes
+   * none of the backing stores this subsystem watches, so the memo survived the
+   * switch — and the renderer's reload after a switch lands INSIDE the TTL.
+   * Opening a dashboard right after switching is the single most common
+   * multi-tenant action there is, so the window was not theoretical.
+   *
+   * Registered on the same residue seam every other subsystem uses, rather than
+   * a second invalidation mechanism.
+   */
+  onWorkspaceSwitch(() => {
+    cache = null;
+  });
+
   const handlers: SecureHandlerDef[] = [
     {
       channel: IpcChannel.ApCatalog,
