@@ -204,7 +204,10 @@ describe('healthHistoryStore — TENANT-SCOPED', () => {
 
 describe('governanceStore — TENANT-SCOPED', () => {
   async function open(): Promise<GovernanceStore> {
-    const g = new GovernanceStore(join(dir, 'gov.json')).bindScope(src);
+    // P13C Round 6 — two organizations exist in these fixtures, so unattributed
+    // legacy rows are ambiguous and withheld. Every row below is written under a
+    // real scope, which is what production does.
+    const g = new GovernanceStore(join(dir, 'gov.json')).bindScope(src).bindOrganizationCount(() => 2);
     await g.load();
     return g;
   }
@@ -217,7 +220,12 @@ describe('governanceStore — TENANT-SCOPED', () => {
    */
   it('an OMITTED scope narrows to the caller instead of widening to the install', async () => {
     const gov = await open();
+    // The writer must ACT AS the tenant: `record()` resolves the owner and no
+    // longer trusts the caller-supplied workspaceId, which in production is the
+    // window's workspace rather than the acting principal's.
+    scope = A;
     gov.record({ actor: 'u', action: 'a', target: 't', summary: MARK_A, workspaceId: A.workspaceId });
+    scope = B;
     gov.record({ actor: 'u', action: 'a', target: 't', summary: MARK_B, workspaceId: B.workspaceId });
 
     scope = A;
@@ -229,8 +237,8 @@ describe('governanceStore — TENANT-SCOPED', () => {
 
   it('an explicit null still denies — an intentional "no tenant" is honoured', async () => {
     const gov = await open();
-    gov.record({ actor: 'u', action: 'a', target: 't', summary: MARK_A, workspaceId: A.workspaceId });
     scope = A;
+    gov.record({ actor: 'u', action: 'a', target: 't', summary: MARK_A, workspaceId: A.workspaceId });
     expect(gov.auditCount(null)).toBe(0);
     expect(gov.auditEntries(100, null)).toEqual([]);
   });

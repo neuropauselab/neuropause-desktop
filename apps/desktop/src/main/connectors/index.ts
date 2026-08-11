@@ -128,6 +128,8 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
    */
   connectorService.bindWorkspace(deps.workspaceId);
   connectorStore.bindWorkspace(deps.workspaceId);
+  // P13C Round 6 — `disabled` was an install-wide kill switch. Same resolver.
+  connectorControlStore.bindWorkspace(deps.workspaceId);
 
   await connectorService.init();
 
@@ -203,6 +205,9 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
     health: syncStateStore,
     manifestName: (c) => MANIFEST_BY_ID[c]?.name ?? c,
     grantedScopes: (c, a) => connectorStore.get(c, a)?.grantedScopes ?? [],
+    // P13C Round 6 — the same workspace-scoped resolve, used as an authorization
+    // decision rather than as a scope lookup that happens to return nothing.
+    ownsAccount: (c, a) => connectorStore.get(c, a) !== null,
   });
 
   // P5 — inbound webhook / realtime runtime. Verified deliveries (relay/tunnel) via handle() and

@@ -106,7 +106,36 @@ export interface AccountSyncOutcome {
 
 export class SyncOrchestrator {
   private readonly retry: RetryQueue;
+  /**
+   * P13C ROUND 6 — THE OFFLINE EDGE, KEYED PER ACCOUNT.
+   *
+   * This was `Set<connectorId>` — `'github'`, `'slack'`, from the fixed adapter
+   * registry — while the `inFlight` map one line below already carried
+   * `connectorId::accountId`. The discriminator was in the file, on the adjacent
+   * line, and this set omitted it.
+   *
+   * `tick()` is driven by `forEachTenantBackground(..., { perWorkspace: true })`,
+   * so it runs back to back for every tenant×workspace with no switch announced.
+   * The first workspace whose GitHub went offline claimed `'github'`, and every
+   * other tenant's GitHub failure then published NO `connector.offline` event —
+   * which is what `eventNotifications` turns into the `connector-issue` inbox
+   * item. So the other tenants were simply never told their connector was down,
+   * and a silent absence looks exactly like health.
+   *
+   * The recovery path had the mirror defect: A's recovery `delete`d the flag and
+   * published `online` for A while B was still offline, and B's later genuine
+   * recovery then published nothing.
+   *
+   * Keyed on the ACCOUNT rather than the tenant, deliberately: an account belongs
+   * to exactly one workspace, which is a stronger statement than "belongs to this
+   * tenant", and it also fixes the collision between two accounts of the same
+   * provider inside ONE workspace — which was a real bug with no tenancy in it.
+   */
   private readonly offlineConnectors = new Set<string>();
+  /** Same composite key as `inFlight`. An account is the unit of connectivity. */
+  private static accountKey(connectorId: string, accountId: string): string {
+    return `${connectorId}::${accountId}`;
+  }
   /** P4.1 — per-account in-flight guard: a second sync of the same account coalesces onto the first. */
   private readonly inFlight = new Map<string, Promise<AccountSyncOutcome>>();
 
@@ -374,7 +403,7 @@ export class SyncOrchestrator {
         });
       }
 
-      if (this.offlineConnectors.delete(connectorId)) {
+      if (this.offlineConnectors.delete(SyncOrchestrator.accountKey(connectorId, accountId))) {
         this.ports.publish(syncEvents.online(connectorId, name, accountId));
       }
       if (created > 0) this.ports.publish(syncEvents.entityCreated(connectorId, name, accountId, created));
@@ -437,8 +466,9 @@ export class SyncOrchestrator {
       }
 
       if (err instanceof NetworkError) {
-        if (!this.offlineConnectors.has(connectorId)) {
-          this.offlineConnectors.add(connectorId);
+        const offlineKey = SyncOrchestrator.accountKey(connectorId, accountId);
+        if (!this.offlineConnectors.has(offlineKey)) {
+          this.offlineConnectors.add(offlineKey);
           this.ports.publish(syncEvents.offline(connectorId, name, accountId));
         }
         await this.ports.syncState.recordRun(connectorId, accountId, {

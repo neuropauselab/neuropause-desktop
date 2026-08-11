@@ -30,6 +30,24 @@ export interface M365ExecutorDeps {
   manifestName: (connectorId: string) => string;
   /** Scopes the account's token actually carries (for pre-flight validation). */
   grantedScopes: (connectorId: string, accountId: string) => string[];
+  /**
+   * Whether `accountId` names a connected account THIS CALLER MAY USE.
+   *
+   * P13C ROUND 6 — the authorization step, made explicit.
+   *
+   * `accountId` arrives from the renderer payload and every downstream dep took
+   * it on faith. The only thing standing between a foreign account id and a
+   * write against that account's mailbox was `grantedScopes` returning `[]` for
+   * an account the workspace filter did not resolve — which denied only because
+   * every shipped action happens to declare at least one scope. An action with
+   * `scopes: []`, or a future action added without one, would sail through the
+   * scope check and reach `getToken` with someone else's account id.
+   *
+   * That is authorization as a SIDE EFFECT of a least-privilege check, and it is
+   * the shape this whole program keeps finding: the boundary holds because of a
+   * property of the data rather than because anything asserts it.
+   */
+  ownsAccount: (connectorId: string, accountId: string) => boolean;
   /** Test seam: build the Graph client (defaults to a real, rate-gated HttpClient). */
   makeHttp?: (connectorId: string, getToken: () => Promise<string>, rate: RateGate) => HttpClient;
 }
@@ -65,6 +83,18 @@ export class M365Executor {
   ): Promise<ConnectorWriteResult> {
     const action = this.byId.get(actionId);
     if (!action) return { ok: false, message: `Unknown action "${actionId}"` };
+
+    /**
+     * 0. AUTHORIZATION. Before the confirmation gate, before the scope check.
+     *
+     * Ordered first deliberately: a caller probing another workspace's account
+     * ids must not learn from the response whether the action needed
+     * confirmation or which Graph permissions that account is missing. Same
+     * message an unknown account gets, because to this caller it IS unknown.
+     */
+    if (!this.deps.ownsAccount(connectorId, accountId)) {
+      return { ok: false, message: 'Not authorized — reconnect this account.' };
+    }
 
     // 1. Confirmation gate — no mutation without an explicit, user-originated confirmation.
     if (action.mutates && confirmed !== true) {

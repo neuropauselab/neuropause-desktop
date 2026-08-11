@@ -128,7 +128,15 @@ describe('M365Executor — confirmation gate, scope validation, audit + health',
     await fs.rm(dir, { recursive: true, force: true });
   });
 
-  async function build(granted: string[]): Promise<{ exec: M365Executor; events: PlatformEventInput[]; health: SyncStateStore }> {
+  /**
+   * P13C ROUND 6 — `owned` models the WORKSPACE FILTER, which is the real
+   * authorization boundary on this path. Defaults to the account these suites
+   * already use, so every pre-existing assertion keeps its meaning.
+   */
+  async function build(
+    granted: string[],
+    owned: Set<string> = new Set(['a']),
+  ): Promise<{ exec: M365Executor; events: PlatformEventInput[]; health: SyncStateStore }> {
     const health = new SyncStateStore(join(dir, 'ss.json'));
     await health.load();
     const events: PlatformEventInput[] = [];
@@ -140,7 +148,8 @@ describe('M365Executor — confirmation gate, scope validation, audit + health',
         recordActivity: () => undefined,
         health,
         manifestName: () => 'Microsoft Entra ID',
-        grantedScopes: () => granted,
+        grantedScopes: (_c, a) => (owned.has(a) ? granted : []),
+        ownsAccount: (_c, a) => owned.has(a),
         makeHttp: () => fakeHttp().http,
       },
       ALL_M365_ACTIONS,
@@ -165,6 +174,57 @@ describe('M365Executor — confirmation gate, scope validation, audit + health',
     const r = await exec.execute('microsoft-entra', 'a', 'mail.send', { to: ['x@y.com'], subject: 'Hi' }, true);
     expect(r.ok).toBe(false);
     expect(r.message).toContain('Missing Graph permission');
+  });
+
+  /**
+   * THE FINDING, AS A TEST.
+   *
+   * `accountId` comes straight off the renderer payload. Until Round 6 nothing on
+   * this path ASSERTED that the caller may use it — the only thing that denied a
+   * foreign id was `grantedScopes` returning `[]`, and that denies only because
+   * every shipped action happens to declare at least one scope. `ownsAccount`
+   * makes it a decision instead of a coincidence.
+   */
+  it('refuses an account the caller’s workspace does not own — BEFORE any other gate', async () => {
+    const { exec, events } = await build(['Mail.Send'], new Set(['mine']));
+
+    // Confirmed, and the action's scope IS granted to the real owner. The only
+    // thing wrong is whose account it is.
+    const r = await exec.execute('microsoft-entra', 'theirs', 'mail.send', { to: ['x@y.com'], subject: 'Hi', body: 'yo' }, true);
+    expect(r.ok).toBe(false);
+    // No write started, so nothing reached Graph on another workspace's token.
+    expect(events).toHaveLength(0);
+    // And the refusal must not distinguish "not yours" from "unknown" — a caller
+    // probing ids learns nothing about which exist elsewhere.
+    expect(r.message).toBe('Not authorized — reconnect this account.');
+    expect(r.requiresConfirmation).toBeUndefined();
+  });
+
+  it('an action declaring NO scopes is still refused for a foreign account', async () => {
+    // The exact hole the old arrangement left: with `scopes: []` the missing-scope
+    // check passes vacuously and the id would have reached `getToken`.
+    const { exec, events } = await build([], new Set(['mine']));
+    const scopeless = [{ id: 'test.noop', label: 'Noop', domain: 'mail' as const, scopes: [], mutates: false, run: () => Promise.resolve({ ok: true }) }];
+    const health = new SyncStateStore(join(dir, 'ss2.json'));
+    await health.load();
+    const exec2 = new M365Executor(
+      {
+        getToken: () => Promise.resolve('tok'),
+        publish: (e) => events.push(e),
+        rate,
+        recordActivity: () => undefined,
+        health,
+        manifestName: () => 'Microsoft Entra ID',
+        grantedScopes: () => [],
+        ownsAccount: (_c, a) => a === 'mine',
+        makeHttp: () => fakeHttp().http,
+      },
+      scopeless,
+    );
+    expect(await exec2.execute('microsoft-entra', 'theirs', 'test.noop', {}, true)).toMatchObject({ ok: false });
+    // …and it still works for the owner, so the guard is a boundary, not a block.
+    expect(await exec2.execute('microsoft-entra', 'mine', 'test.noop', {}, true)).toMatchObject({ ok: true });
+    void exec;
   });
 
   it('executes a confirmed, scoped write and records the audit events + write-health', async () => {

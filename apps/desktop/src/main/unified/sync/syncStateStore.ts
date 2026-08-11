@@ -400,13 +400,25 @@ export class SyncStateStore extends EventEmitter {
     return { reset };
   }
 
-  /** All known account states (optionally filtered to one connector). */
-  all(connectorId?: string): AccountSyncState[] {
-    const out: AccountSyncState[] = [];
-    for (const s of this.states.values()) {
-      if (connectorId && s.connectorId !== connectorId) continue;
-      out.push(s);
-    }
-    return out;
-  }
+  /**
+   * P13C ROUND 6 — `all()` IS DELETED.
+   *
+   * It returned every account's sync state across every workspace, unfiltered,
+   * and it had ZERO callers — not in the main process, not in the renderer, not
+   * in a test. Round 5 recorded it as "latent, no caller" and left it, which is
+   * the wrong resolution twice over: it is an unfiltered install-wide accessor
+   * sitting in a store whose other accessors are deliberately narrow, so the
+   * next person to want "all the accounts" finds a method that already exists,
+   * already compiles, and looks sanctioned. Dead code is not a smaller risk than
+   * live code; it is the same risk with nobody watching it.
+   *
+   * Deleted rather than filtered, because a scoped `all()` would still be an
+   * invitation and there is nothing to keep working. Anything genuinely needing
+   * a cross-workspace view is a new deliberate decision with its own review, not
+   * a method that was already there.
+   *
+   * `deadLettered()` remains and is scoped. `get()` remains unfiltered and its
+   * borrowed guarantee is documented at its declaration — a filter there broke
+   * live sync and was reverted rather than shipped as a plausible-looking check.
+   */
 }

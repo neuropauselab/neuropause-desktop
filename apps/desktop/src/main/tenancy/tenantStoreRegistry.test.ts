@@ -107,11 +107,26 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
 /**
  * Files that DEFINE a tenant seam. A definition is `bindScope(source...)` with a
  * body — as opposed to `x.bindScope(y)`, which is a call.
+ *
+ * P13C ROUND 6 — `bindWorkspace` COUNTS TOO.
+ *
+ * The scan matched only the name `bindScope`, so the ENTIRE CONNECTOR SUBSYSTEM
+ * was invisible to it: `connectorStore`, `connectorService` and
+ * `connectorControlStore` all name their seam `bindWorkspace`, hold no
+ * `TenantOwnership`, and were therefore neither registered nor listed. Meanwhile
+ * `tenantOwnedStore.ts` told readers that a store which is never bound "cannot
+ * reach a user: the application refuses to start" — a claim that was false for
+ * three stores holding credential-adjacent state.
+ *
+ * A gate that recognises boundaries by NAMING CONVENTION only sees the ones that
+ * followed the convention. Matching both names is the smallest change that makes
+ * the gate's own claim true; the deeper fix is that a seam is declared, not
+ * detected, and the registry is what does that.
  */
 function filesDefiningBindScope(): string[] {
   return sourceFiles(MAIN).filter((p) => {
     const src = readFileSync(p, 'utf8');
-    return /^\s{2}(?:protected |private |public )?bindScope\(/m.test(src);
+    return /^\s{2}(?:protected |private |public )?bind(?:Scope|Workspace)\(/m.test(src);
   });
 }
 
@@ -124,6 +139,17 @@ function filesDefiningBindScope(): string[] {
  * address rather than an omission.
  */
 const REGISTERED_ELSEWHERE: Record<string, string> = {
+  // P13C Round 6 — the connector subsystem. Its seam is `bindWorkspace`, bound at
+  // `connectors/index.ts:129-132`, and its boundary is the WORKSPACE (a connected
+  // account belongs to one workspace) rather than the organization. Registered
+  // here with the address rather than converted, because giving these three a
+  // `TenantOwnership` would give them a second, organization-shaped notion of
+  // ownership alongside the workspace one they already enforce — two boundaries
+  // in one store is how the seams this program removed came to disagree.
+  'connectors/connectorStore.ts': 'bindWorkspace, bound at connectors/index.ts:130. Workspace-scoped; `get`/`all` filter on it.',
+  'connectors/connectorService.ts': 'bindWorkspace, bound at connectors/index.ts:129. Delegates every read to connectorStore.',
+  'connectors/connectorControlStore.ts': 'bindWorkspace, bound at connectors/index.ts:132. `disabled` is per workspace as of Round 6.',
+
   'tenancy/tenantOwnedStore.ts': 'TenantOwnership registers itself in its constructor.',
   'tenancy/tenantMemo.ts': 'Holds a TenantOwnership, which registers.',
   'enterprise/automationStore.ts': 'Holds a TenantOwnership.',

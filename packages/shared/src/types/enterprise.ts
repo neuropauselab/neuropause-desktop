@@ -507,6 +507,25 @@ export interface EnterpriseAuditEntry {
   target: string;
   summary: string;
   workspaceId: string;
+  /**
+   * P13C ROUND 6 — the owning ORGANIZATION.
+   *
+   * `workspaceId` alone could not partition this trail. It is stamped from
+   * `activeWorkspaceIdForDisplay()`, which returns one install-wide variable and
+   * never consults the principal — so a row written under a background fan-out
+   * carried whatever workspace the WINDOW happened to be showing. Worse, the
+   * unswitched value is the shared constant `workspace-default`, so every tenant
+   * that had never created a workspace wrote into the same partition and read
+   * each other's rows: record ids, record titles, actors and actions.
+   *
+   * OPTIONAL, and that is load-bearing. Rows written before this field existed
+   * must hash exactly as they did or the tamper-evident chain reports forgery on
+   * the first upgrade. `canonicalAudit` therefore includes the key ONLY when it
+   * is present. See `governanceStore.visibleAudit` for how unattributed legacy
+   * rows are handled — they are not given an owner, because a migration that
+   * invents provenance has destroyed the thing it was protecting.
+   */
+  tenantId?: string;
 }
 
 /** The editable governance configuration for an organization. */

@@ -207,7 +207,16 @@ export async function buildTwoTenantWorld(): Promise<TwoTenantWorld> {
 
   const documents = new DocumentStore(join(dir, 'documents.json'), join(dir, 'blobs'), () => NOW)
     .bindScope(src);
-  const governance = new GovernanceStore(join(dir, 'governance.json'));
+  /**
+   * P13C Round 6 — bound like every other store here. `record()` now resolves the
+   * owner instead of trusting the caller's `workspaceId`, and the seeding loop
+   * below already sets `scope = tenant` before it writes, so each row is stamped
+   * with the tenant that actually wrote it. Two organizations exist in this
+   * world, which is what `bindOrganizationCount` reports.
+   */
+  const governance = new GovernanceStore(join(dir, 'governance.json'))
+    .bindScope(src)
+    .bindOrganizationCount(() => 2);
   const inbox = new InboxStore(join(dir, 'inbox.json')).bindScope(src);
   const unified = new UnifiedStore(join(dir, 'unified.json')).bindScope(src);
   const graph = new GraphStore(join(dir, 'graph.json')).bindScope(src);

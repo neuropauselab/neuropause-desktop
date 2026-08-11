@@ -59,6 +59,7 @@ import { answerStrategyQuestion, resolveStrategyQuestion, type StrategyQuestionC
 import { onWorkspaceSwitch } from '../tenancy/workspaceSwitchHub';
 import { TenantMemo } from '../tenancy/tenantMemo';
 import type { TenantScope } from '@neuropause/shared';
+import { TenantDedupe } from '../tenancy/tenantDedupe';
 
 const log = createLogger('strategy-platform');
 
@@ -380,7 +381,24 @@ export function initStrategyPlatform(deps: StrategyPlatformDeps): StrategyPlatfo
   };
 
   /* ── monitoring: ONE governed watch source (items only, never actions) ──── */
-  const deliveredWatch = new Set<string>();
+  /**
+   * P13C ROUND 6 — EDGE-TRIGGER STATE, KEYED BY TENANT.
+   *
+   * Was `new Set<string>()` holding bare recommendation ids, and `produce()`
+   * runs once per tenant under the delivery fan-out. The ids are deterministic
+   * constants, so the FIRST tenant in the fan-out claimed each one permanently
+   * and every other tenant's identical critical alert was dropped — forever, with
+   * no TTL and nothing to clear it.
+   *
+   * No content crossed. What crossed was the decision NOT to deliver, which is
+   * quieter than a disclosure and, for a critical alert, not obviously less
+   * serious: one customer stops receiving warnings because another received the
+   * same category first, and nothing looks wrong.
+   *
+   * `claim()` is one call rather than has-then-add, because has-then-add is
+   * where the bug lived in twelve places and a thirteenth would write it too.
+   */
+  const deliveredWatch = new TenantDedupe('strategy-watch');
   const watchSource: IntelligenceSource = {
     key: 'strategy-watch',
     label: 'Strategy Watch',
@@ -390,8 +408,7 @@ export function initStrategyPlatform(deps: StrategyPlatformDeps): StrategyPlatfo
       const items: IntelligenceItem[] = [];
       for (const r of b.dashboard.recommendations) {
         if (r.priority !== 'critical' && r.priority !== 'high') continue;
-        if (deliveredWatch.has(r.id)) continue;
-        deliveredWatch.add(r.id);
+        if (!deliveredWatch.claim(deps.scope(), r.id)) continue;
         items.push({
           id: `estrat:${r.id}`,
           title: r.title,

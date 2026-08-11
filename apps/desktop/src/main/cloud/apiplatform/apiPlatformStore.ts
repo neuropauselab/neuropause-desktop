@@ -22,6 +22,8 @@ import type {
 } from '@neuropause/shared';
 import { createLogger } from '../../logger';
 import { demoSeedsEnabled } from '../../demoSeed';
+import type { TenantScope } from '@neuropause/shared';
+import { TenantOwnership } from '../../tenancy/tenantOwnedStore';
 
 const log = createLogger('cloud-apiplatform');
 
@@ -34,6 +36,58 @@ interface ApiPlatformFile {
 }
 
 export class ApiPlatformStore extends EventEmitter {
+  /**
+   * P13C ROUND 6 — A SPLIT CLASSIFICATION, AND SAYING SO IS THE POINT.
+   *
+   * WEBHOOKS are tenant records: `WebhookEndpoint` carries a `tenantId`, they
+   * hold a customer-supplied URL and secret, and `createWebhook` stamped them
+   * with the seeded organization's cloud tenant for every caller. Scoped.
+   *
+   * DEPLOYMENTS, RATE POLICIES and PUBLIC APIs have NO tenant field of any kind
+   * — they describe the control plane's own replicas, regions and published API
+   * surface, which is one shared thing on one machine. They are install-level
+   * infrastructure and scoping them would be wrong, not merely unnecessary.
+   *
+   * The store therefore takes a boundary for one half and is declared for the
+   * other. A store that is partly tenant data does not get to be classified by
+   * its majority.
+   */
+  private readonly tenancy = new TenantOwnership('cloud-api-webhooks');
+
+  /** Bind the tenant boundary. UNBOUND DENIES for webhooks. Chainable. */
+  bindScope(source: () => TenantScope | null): this {
+    this.tenancy.bindScope(source);
+    return this;
+  }
+  hasScope(): boolean {
+    return this.tenancy.hasScope();
+  }
+  private callerCloudTenant: () => string | null = () => null;
+  bindCloudTenantResolver(resolver: () => string | null): this {
+    this.callerCloudTenant = resolver;
+    return this;
+  }
+  /**
+   * The caller's cloud tenant, or a refusal.
+   *
+   * Writes throw where reads return empty — the rule the rest of this program
+   * uses. A write with no tenant would have to invent an owner, and the invented
+   * one was the seeded organization's.
+   */
+  private requireCloudTenant(): string {
+    const id = this.callerCloudTenant();
+    if (id === null || id === '') {
+      throw new Error('No organization is active, so this webhook has no owner.');
+    }
+    return id;
+  }
+
+  private mineWebhooks<T extends { tenantId: string }>(rows: readonly T[]): T[] {
+    const mineId = this.callerCloudTenant();
+    if (mineId === null || mineId === '') return [];
+    return rows.filter((r) => r.tenantId === mineId);
+  }
+
   private deployments = new Map<string, ApiDeployment>();
   private policies = new Map<string, CloudRateLimitPolicy>();
   private webhooks = new Map<string, WebhookEndpoint>();
@@ -106,6 +160,10 @@ export class ApiPlatformStore extends EventEmitter {
     const wid = `whk_${randomUUID()}`;
     this.webhooks.set(wid, {
       id: wid,
+      // Demo seed, boot only, no caller exists. Stated as the boot value rather
+      // than written as `callerCloudTenant() ?? homeTenantId`, because that is
+      // the exact expression the note on `createWebhook` says was removed from
+      // this file — and a disclaimed pattern still present reads as an oversight.
       tenantId: this.homeTenantId,
       url: 'https://hooks.neuropause.app/inbound',
       events: ['listing.published', 'sync.completed', 'governance.violation'],
@@ -166,8 +224,15 @@ export class ApiPlatformStore extends EventEmitter {
   listPolicies(): CloudRateLimitPolicy[] {
     return [...this.policies.values()];
   }
+  /** The CALLER'S webhook endpoints. Was every organization's URL and secret. */
   listWebhooks(): WebhookEndpoint[] {
-    return [...this.webhooks.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return this.mineWebhooks([...this.webhooks.values()]);
+  }
+
+  /** One webhook, IF the caller's cloud tenant owns it. */
+  private myWebhook(id: string): WebhookEndpoint | null {
+    const w = this.webhooks.get(id) ?? null;
+    return w !== null && this.mineWebhooks([w]).length === 1 ? w : null;
   }
   listPublicApis(): PublicApi[] {
     return [...this.apis.values()];
@@ -184,7 +249,10 @@ export class ApiPlatformStore extends EventEmitter {
       replicas,
       uptimePct: replicas > 0 ? Math.round((healthyReplicas / replicas) * 10_000) / 100 : 0,
       requests30d,
-      webhooks: this.webhooks.size,
+      // P13C Round 6 — the caller's, not the install's. `listWebhooks()` was
+      // scoped and this count over the same Map was not. See the class header:
+      // webhooks are tenant records; deployments and public APIs are not.
+      webhooks: this.listWebhooks().length,
       publicApis: this.apis.size,
     };
   }
@@ -193,7 +261,17 @@ export class ApiPlatformStore extends EventEmitter {
     const id = `whk_${randomUUID()}`;
     const webhook: WebhookEndpoint = {
       id,
-      tenantId: this.homeTenantId,
+      /**
+       * P13C ROUND 6 — NO `?? this.homeTenantId` FALLBACK.
+       *
+       * An unresolved caller creating a webhook used to stamp the SEEDED
+       * organization as owner: a delivery endpoint — the thing data is
+       * exfiltrated TO — filed under a customer who never asked for it, and
+       * visible in that customer's listing. Fabricating ownership to avoid an
+       * error is the failure this program keeps finding; `requireCloudTenant()`
+       * throws, and an unresolved write is refused rather than misfiled.
+       */
+      tenantId: this.requireCloudTenant(),
       url: input.url,
       events: input.events,
       status: 'active',
@@ -209,8 +287,9 @@ export class ApiPlatformStore extends EventEmitter {
     return webhook;
   }
 
+  /** setWebhookStatus, for one of the CALLER'S webhooks. Was a bare payload id. */
   setWebhookStatus(id: string, status: WebhookStatus): WebhookEndpoint | null {
-    const w = this.webhooks.get(id);
+    const w = this.myWebhook(id);
     if (!w) return null;
     const next: WebhookEndpoint = { ...w, status };
     this.webhooks.set(id, next);
@@ -219,7 +298,9 @@ export class ApiPlatformStore extends EventEmitter {
     return next;
   }
 
+  /** Delete one of the CALLER'S webhooks. Was a bare payload id. */
   deleteWebhook(id: string): boolean {
+    if (this.myWebhook(id) === null) return false;
     const ok = this.webhooks.delete(id);
     if (ok) {
       this.schedulePersist();
@@ -229,8 +310,9 @@ export class ApiPlatformStore extends EventEmitter {
   }
 
   /** Simulate a webhook test delivery. */
+  /** testWebhook, for one of the CALLER'S webhooks. Was a bare payload id. */
   testWebhook(id: string): WebhookEndpoint | null {
-    const w = this.webhooks.get(id);
+    const w = this.myWebhook(id);
     if (!w) return null;
     const next: WebhookEndpoint = { ...w, deliveries: w.deliveries + 1, lastDeliveryAt: new Date().toISOString(), status: w.status === 'failing' ? 'active' : w.status };
     this.webhooks.set(id, next);
@@ -239,6 +321,27 @@ export class ApiPlatformStore extends EventEmitter {
     return next;
   }
 
+  /**
+   * Enable or disable a control-plane rate-limit policy.
+   *
+   * P13C ROUND 6 — A SHARED CONTROL SURFACE, DECLARED WITH ITS COST.
+   *
+   * Rate policies carry no tenant field and describe THIS MACHINE'S control plane
+   * — one set of limits protecting one process. Scoping them would be wrong in a
+   * way that is worse than the exposure: per-tenant limits over a shared runtime
+   * are not limits.
+   *
+   * THE COST, STATED PLAINLY: any `cloud:manage` holder can disable a policy that
+   * protects every other tenant on the install — including the seeded
+   * `Per-tenant` policy. That is a cross-tenant availability decision, and the
+   * only honest reasons to accept it are that the resource genuinely is shared and
+   * that `cloud:manage` is an administrator capability, not a member one.
+   *
+   * This is a DECLARATION, like `installStore`'s and `drStore`'s, not a
+   * dismissal. If NeuroPause ever hosts unrelated organizations on one control
+   * plane, this needs a platform-operator role above `cloud:manage`, and the
+   * declaration stops holding at that moment.
+   */
   setPolicyEnabled(id: string, enabled: boolean): CloudRateLimitPolicy | null {
     const p = this.policies.get(id);
     if (!p) return null;

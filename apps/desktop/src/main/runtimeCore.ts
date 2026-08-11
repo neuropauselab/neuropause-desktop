@@ -908,6 +908,12 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
    * `assertAllTenantStoresBound()` below turns a forgotten binding into a
    * startup failure rather than a silent leak.
    */
+  /**
+   * P13C Round 6 — AI usage accrues to the tenant that spent it. Bound HERE and
+   * not in `ai/engineInstance.ts`: that module is imported by pure-model tests,
+   * and `activeTenantScope` pulls Electron in with it.
+   */
+  aiEngine.bindUsageScope(activeTenantScope);
   automationStore.bindScope(activeTenantScope);
   decisionStore.bindScope(activeTenantScope);
   holdStore.bindScope(activeTenantScope);

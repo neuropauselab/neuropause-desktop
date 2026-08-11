@@ -82,6 +82,7 @@ import {
 } from './knowledgeModel';
 import { TenantMemo } from '../tenancy/tenantMemo';
 import type { TenantScope } from '@neuropause/shared';
+import { TenantDedupe } from '../tenancy/tenantDedupe';
 
 const log = createLogger('knowledge-assets');
 
@@ -417,7 +418,24 @@ export function initKnowledgeAssets(deps: KnowledgeAssetsDeps): KnowledgeAssetsS
   };
 
   /* ── monitoring: ONE governed hygiene source (items only, never actions) ── */
-  const deliveredHygiene = new Set<string>();
+  /**
+   * P13C ROUND 6 — EDGE-TRIGGER STATE, KEYED BY TENANT.
+   *
+   * Was `new Set<string>()` holding bare recommendation ids, and `produce()`
+   * runs once per tenant under the delivery fan-out. The ids are deterministic
+   * constants, so the FIRST tenant in the fan-out claimed each one permanently
+   * and every other tenant's identical critical alert was dropped — forever, with
+   * no TTL and nothing to clear it.
+   *
+   * No content crossed. What crossed was the decision NOT to deliver, which is
+   * quieter than a disclosure and, for a critical alert, not obviously less
+   * serious: one customer stops receiving warnings because another received the
+   * same category first, and nothing looks wrong.
+   *
+   * `claim()` is one call rather than has-then-add, because has-then-add is
+   * where the bug lived in twelve places and a thirteenth would write it too.
+   */
+  const deliveredHygiene = new TenantDedupe('knowledge-hygiene');
   const hygieneSource: IntelligenceSource = {
     key: 'knowledge-hygiene',
     label: 'Knowledge Hygiene',
@@ -427,8 +445,7 @@ export function initKnowledgeAssets(deps: KnowledgeAssetsDeps): KnowledgeAssetsS
       const items: IntelligenceItem[] = [];
       for (const r of b.recommendations) {
         if (r.priority !== 'critical' && r.priority !== 'high') continue;
-        if (deliveredHygiene.has(r.id)) continue;
-        deliveredHygiene.add(r.id);
+        if (!deliveredHygiene.claim(deps.scope(), r.id)) continue;
         items.push({
           id: `kb:${r.id}`,
           title: r.title,

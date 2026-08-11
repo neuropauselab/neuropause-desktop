@@ -142,7 +142,10 @@ function homeMonthly(): number {
 }
 
 function buildAdminInput(): AdminInput {
-  const home = tenancyStore.homeTenant();
+  // P13C Round 6 — the CALLER'S home, not the install's. `homeTenant()` is a
+  // boot accessor; using it per request made every non-seeded tenant's own row
+  // fail the `t.id === homeTenantId` comparison downstream.
+  const home = tenancyStore.homeTenantForCaller();
   return {
     tenants: tenancyStore.listTenants(),
     isolation: tenancyStore.listIsolation(),
@@ -175,6 +178,26 @@ export async function initCloud(deps: CloudDeps): Promise<CloudSubsystem> {
   tenancyStore.syncHomeWorkers(
     workerRegistry.summaries().map((w) => ({ workerId: w.id, name: w.name, role: w.role })),
   );
+
+  /**
+   * P13C ROUND 6 — THE BOUNDARY NOW EXTENDS PAST `load()`.
+   *
+   * `homeId` is still passed, and still only does what it legitimately does:
+   * seed, and supply a default before any caller exists. What changed is that
+   * both stores now RESOLVE THE CALLER for every per-request operation, through
+   * the same organization→cloud-tenant mapping `TenancyStore` enforces.
+   *
+   * Before this, `homeId` was frozen into a private field and every write went
+   * to it — so tenant B's SSO connection, SCIM posture, MFA policy and webhooks
+   * were all stamped with, and read from, the SEEDED organization's cloud
+   * tenant. The F10 fix stopped at this call boundary.
+   */
+  federationStore
+    .bindScope(activeTenantScope)
+    .bindCloudTenantResolver(() => tenancyStore.homeTenantForCaller()?.id ?? null);
+  apiPlatformStore
+    .bindScope(activeTenantScope)
+    .bindCloudTenantResolver(() => tenancyStore.homeTenantForCaller()?.id ?? null);
 
   await federationStore.load(homeId);
   await apiPlatformStore.load(homeId);

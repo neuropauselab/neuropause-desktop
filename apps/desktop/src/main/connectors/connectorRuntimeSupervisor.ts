@@ -309,8 +309,27 @@ export class ConnectorRuntimeSupervisor {
       case 'pause':
       case 'resume': {
         const paused = action === 'pause';
+        /**
+         * P13C ROUND 6 — THE `accountId` BRANCH BYPASSED THE ONLY SCOPED LIST.
+         *
+         * `accountId` arrives from the renderer payload. The `null` branch goes
+         * through `listAccounts()`, which is workspace-filtered; the id branch
+         * went straight to `controls.setPaused` with whatever was sent. Pausing
+         * an account is a SYNC KILL — `isSuppressed` consults the flag inside the
+         * per-workspace fan-out — so a `connectors:manage` holder in one tenant
+         * could silently stop another tenant's GitHub from ever syncing again.
+         *
+         * `deps.getAccount` is `connectorStore.get`, the workspace-scoped
+         * resolver, and it was ALREADY on this object and already used twice in
+         * this file. The same shape was fixed in `m365/executor.ts` this round by
+         * adding `ownsAccount`; the control path was missed because a key that
+         * looks specific (`connectorId::accountId`) reads like a boundary. A KEY
+         * IS NOT AN AUTHORIZATION CHECK.
+         */
         const targets = accountId
-          ? [accountId]
+          ? this.deps.getAccount(connectorId, accountId) !== null
+            ? [accountId]
+            : []
           : this.deps.listAccounts().filter((a) => a.connectorId === connectorId).map((a) => a.id);
         for (const id of targets) {
           await this.deps.controls.setPaused(connectorId, id, paused);

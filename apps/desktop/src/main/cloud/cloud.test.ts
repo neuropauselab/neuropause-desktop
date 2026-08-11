@@ -9,6 +9,17 @@ import { ApiPlatformStore } from './apiplatform/apiPlatformStore';
 import { buildAdminOverview, buildComplianceReport, type AdminInput } from './admin/admin';
 import type { CloudRegionId, DataResidency, MfaPolicy, SsoConnection } from '@neuropause/shared';
 
+/**
+ * P13C ROUND 6 — SSO connections and webhooks resolve the CALLER'S cloud
+ * tenant, not the one frozen at boot. These suites act as the tenant whose
+ * cloud-tenant id they seed with, so every existing assertion keeps its
+ * single-tenant meaning; cross-tenant behaviour is asserted with three
+ * organizations in `tenancy/e2e/cloudIdentityTenancy.test.ts`.
+ */
+const CLOUD_TENANT = 'tnt_home';
+const asCloudTenant = (): string => CLOUD_TENANT;
+const asOrgScope = (): { tenantId: string; workspaceId: string } => ({ tenantId: 'org-default', workspaceId: 'ws-default' });
+
 /** P13C Round 5 — F10. The organization this suite acts as. */
 const HOME_ORG = { tenantId: 'org-default', workspaceId: 'ws-default' };
 const asHomeOrg = (): typeof HOME_ORG => HOME_ORG;
@@ -205,8 +216,8 @@ describe('federation engine (pure)', () => {
 
 describe('FederationStore', () => {
   async function make(): Promise<FederationStore> {
-    const s = new FederationStore(join(dir, 'identity.json'));
-    await s.load('tnt_home');
+    const s = new FederationStore(join(dir, 'identity.json')).bindScope(asOrgScope).bindCloudTenantResolver(asCloudTenant);
+    await s.load(CLOUD_TENANT);
     openStores.push(s);
     return s;
   }
@@ -257,8 +268,8 @@ describe('FederationStore', () => {
 
 describe('ApiPlatformStore', () => {
   async function make(): Promise<ApiPlatformStore> {
-    const s = new ApiPlatformStore(join(dir, 'api.json'));
-    await s.load('tnt_home');
+    const s = new ApiPlatformStore(join(dir, 'api.json')).bindScope(asOrgScope).bindCloudTenantResolver(asCloudTenant);
+    await s.load(CLOUD_TENANT);
     openStores.push(s);
     return s;
   }

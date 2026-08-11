@@ -48,6 +48,7 @@ import {
   type ApprovalStatus,
   type Approver,
 } from './approvalEngine';
+import { TenantDedupe } from '../tenancy/tenantDedupe';
 
 /** Context handed to a spec's posting derivation. */
 export interface PostingContext {
@@ -98,6 +99,15 @@ export interface DocumentAdapterDeps {
   actor: () => string | null;
   /** Resolve the approver's roles/department for approval + SoD evaluation. */
   approverFor?: (userId: string) => Approver | null;
+  /**
+   * P13C ROUND 6 — the tenant this posting belongs to.
+   *
+   * Optional so every existing test construction still compiles. Absent means
+   * the guard falls back to ONE shared bucket — the install-wide behaviour it
+   * had before — because an accounting idempotency guard must never fail toward
+   * allowing a second post. See `postingScope`.
+   */
+  scope?: () => { tenantId: string } | null;
 }
 
 export interface DocumentTotalsView extends DocumentTotals {
@@ -108,8 +118,45 @@ export interface DocumentTotalsView extends DocumentTotals {
 
 export class DocumentIntegration {
   private readonly specs = new Map<string, DocumentSpec>();
-  /** References already posted — the idempotency guard. */
-  private readonly posted = new Set<string>();
+  /**
+   * References already posted — the idempotency guard, PER TENANT.
+   *
+   * P13C ROUND 6. `derivation.reference` is a DOCUMENT NUMBER — `INV-1001`,
+   * `PO-204` — and two organizations routinely use the same numbering. So one
+   * tenant posting `INV-1001` silently prevented another tenant's `INV-1001`
+   * journal entry from ever being posted: not a disclosure, but a suppressed
+   * accounting write, which is the most consequential thing on this list.
+   *
+   * The guard remains within a session and is not persisted, which is
+   * pre-existing behaviour and unchanged.
+   */
+  private readonly posted = new TenantDedupe('erp-posted-references', {
+    // A posting guard must not expire inside a session — re-posting a journal
+    // is a correctness failure, not a missed notification.
+    ttlMs: Number.MAX_SAFE_INTEGER,
+    maxPerTenant: 20_000,
+  });
+
+  /**
+   * The tenant a posting belongs to — NEVER null.
+   *
+   * This is the one dedupe in the codebase that must not fail toward
+   * re-delivery. Everywhere else an unresolved caller re-announces, which costs
+   * a duplicate notification. Here a "duplicate" is a second journal entry
+   * against the same document, so the unresolved case falls back to a single
+   * shared bucket — the install-wide behaviour this guard had before — rather
+   * than to no guard at all.
+   *
+   * I wrote the opposite first: `markSeen(null, …)` is a no-op, so an unwired
+   * adapter silently stopped guarding, and the comment claimed it "degrades in
+   * the conservative direction". It degraded toward double-posting. The
+   * existing idempotency test caught it, which is the argument for having had
+   * one.
+   */
+  private postingScope(): { tenantId: string; workspaceId: string } {
+    const resolved = this.deps.scope?.() ?? null;
+    return { tenantId: resolved?.tenantId || '__unscoped__', workspaceId: '' };
+  }
   private readonly postingLog: { reference: string; moduleId: string; recordId: string; at: string }[] = [];
   private readonly refusals: { reference: string; reason: string; at: string }[] = [];
 
@@ -346,13 +393,14 @@ export class DocumentIntegration {
       return;
     }
 
-    if (this.posted.has(derivation.reference)) {
+    const scope = this.postingScope();
+    if (this.posted.hasSeen(scope, derivation.reference)) {
       // Deterministic reference already emitted — a re-fired event must not double-post.
       return;
     }
 
     await this.deps.postJournal(derivation, ctx);
-    this.posted.add(derivation.reference);
+    this.posted.markSeen(scope, derivation.reference);
     this.postingLog.push({
       reference: derivation.reference,
       moduleId: spec.moduleId,
@@ -377,6 +425,6 @@ export class DocumentIntegration {
   }
 
   hasPosted(reference: string): boolean {
-    return this.posted.has(reference);
+    return this.posted.hasSeen(this.postingScope(), reference);
   }
 }

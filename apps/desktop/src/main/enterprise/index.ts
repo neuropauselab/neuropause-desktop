@@ -286,6 +286,7 @@ import { registry } from '../registry/registry';
 import { generateBriefing } from '../intelligence/briefingGenerator';
 import { generateRecommendations } from '../recommendations/recommendationEngine';
 import { healthHistoryStore } from './healthHistoryInstance';
+import { TenantDedupe } from '../tenancy/tenantDedupe';
 
 const log = createLogger('enterprise');
 
@@ -479,7 +480,11 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   await orgStore.load();
   await workspaceStore.load();
   // P13C Round 5 — bind before load: the seed stamps chains and rules.
-  governanceStore.bindScope(activeTenantScope);
+  governanceStore
+    .bindScope(activeTenantScope)
+    // Legacy audit rows only — see `bindOrganizationCount`. Read live, never
+    // captured: the count must fall out of scope the moment a second org exists.
+    .bindOrganizationCount(() => orgStore.listOrganizations().length);
   healthHistoryStore.bindScope(activeTenantScope);
   await governanceStore.load();
 
@@ -686,11 +691,19 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
    * Polled after posting attempts rather than pushed, because the refusal is
    * recorded inside the adapter; `seenRefusals` keeps one hold per reference.
    */
-  const seenRefusals = new Set<string>();
+  /**
+   * P13C ROUND 6 — one hold per refused reference, PER TENANT.
+   *
+   * A document reference like `INV-1001` is a tenant's own numbering, and two
+   * organizations routinely use the same one. So the first tenant whose posting
+   * was refused claimed the reference and the second tenant never got the hold
+   * saying its accounting impact had not posted — a governance signal about
+   * money, silently dropped.
+   */
+  const seenRefusals = new TenantDedupe('erp-posting-refusals');
   const raiseVerificationHolds = (): void => {
     for (const refusal of documentIntegration.refusedPostings()) {
-      if (seenRefusals.has(refusal.reference)) continue;
-      seenRefusals.add(refusal.reference);
+      if (!seenRefusals.claim(activeTenantScope(), refusal.reference)) continue;
       raiseHold({
         ...verificationUnavailableHold({
           action: `The accounting impact of ${refusal.reference}`,

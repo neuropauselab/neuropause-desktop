@@ -71,6 +71,7 @@ import {
 } from './insightModel';
 import { TenantMemo } from '../tenancy/tenantMemo';
 import type { TenantScope } from '@neuropause/shared';
+import { TenantDedupe } from '../tenancy/tenantDedupe';
 
 const log = createLogger('insight');
 
@@ -195,11 +196,74 @@ export function initInsight(deps: InsightSubsystemDeps): InsightSubsystem {
   const projectionCache = new TenantMemo<BuildArtifacts>('insight-projections', { ttlMs: REPORT_TTL_MS, now })
     .bindScope(deps.scope);
   /* edge-trigger state for insight.* events + the verification loop */
-  const seenIncidents = new Set<string>();
-  const seenRecommendations = new Map<string, string>(); // id → title
-  const approvalRequested = new Set<string>();
-  const verifiedLog: { id: string; title: string; at: string }[] = [];
-  let firstBuild = true;
+  /**
+   * P13C ROUND 6 — three edge-trigger sets, all keyed by tenant.
+   *
+   * These are the sharpest of the twelve because they suppress PLATFORM EVENTS,
+   * not just delivery items: `insight.detected`, `insight.recommended` and
+   * `insight.approval_requested`. Under the fan-out the first tenant claimed
+   * each incident and recommendation id, so the second tenant's incident was
+   * never announced to its own timeline, briefings or approval queue.
+   */
+  const seenIncidents = new TenantDedupe('insight-incidents');
+  const approvalRequested = new TenantDedupe('insight-approvals');
+  /**
+   * Recommendation id → title, PER TENANT.
+   *
+   * A plain `TenantDedupe` will not do here: the verification loop iterates the
+   * remembered entries and republishes their TITLE when a recommendation stops
+   * appearing, so this one carries a value rather than mere membership. Keyed
+   * the same way, which is the part that matters.
+   */
+  const seenRecommendations = new Map<string, Map<string, string>>();
+  const recoBucket = (): Map<string, string> => {
+    const tenantId = deps.scope()?.tenantId ?? '';
+    const existing = seenRecommendations.get(tenantId);
+    if (existing) return existing;
+    const fresh = new Map<string, string>();
+    seenRecommendations.set(tenantId, fresh);
+    return fresh;
+  };
+  /**
+   * P13C ROUND 6 — THE VERIFIED-OUTCOME LOG, WHICH THE FIRST SWEEP WALKED PAST.
+   *
+   * A flat process-wide array, nine lines below `seenRecommendations`, which the
+   * same change had already bucketed. `compose()` unshifts `{id, title}` onto it
+   * when a recommendation disappears, and `dashboard()` returns `[...verifiedLog]`
+   * on `InsightDashboard` — so tenant A's recommendation ids AND their
+   * human-readable titles were rendered in tenant B's Intelligence Center.
+   *
+   * That makes it DISCLOSURE, not suppression: the sharper half of this class,
+   * sitting inside a file this program had already edited. A file that was
+   * touched is not a file that was finished, and "the neighbouring line is fixed"
+   * is not evidence about this line.
+   *
+   * The cap applies PER TENANT for the same reason `TenantDedupe` prunes per
+   * bucket: a global cap would let a busy tenant push a quiet tenant's entries
+   * out, which is the finding again wearing a retention policy.
+   */
+  const verifiedByTenant = new Map<string, { id: string; title: string; at: string }[]>();
+  const verifiedBucket = (): { id: string; title: string; at: string }[] => {
+    const tenantId = deps.scope()?.tenantId ?? '';
+    const existing = verifiedByTenant.get(tenantId);
+    if (existing) return existing;
+    const fresh: { id: string; title: string; at: string }[] = [];
+    verifiedByTenant.set(tenantId, fresh);
+    return fresh;
+  };
+
+  /**
+   * "Has this tenant composed before?" — PER TENANT.
+   *
+   * A global boolean was benign only by accident: tenant B's first `compose()`
+   * iterates B's own empty `recoBucket()`, so nothing incorrect published. It is
+   * still wrong, and it is wrong in the direction that stops being benign the
+   * moment either bucket is shared. The suppression this guards — "do not
+   * announce every recommendation as verified on the first pass" — is a
+   * per-tenant fact, so it is stored as one.
+   */
+  const composedOnce = new Set<string>();
+  const isFirstBuild = (): boolean => !composedOnce.has(deps.scope()?.tenantId ?? '');
 
   const build = (): BuildArtifacts => projectionCache.state(compose);
 
@@ -341,12 +405,13 @@ export function initInsight(deps: InsightSubsystemDeps): InsightSubsystem {
       ...predictions.map((p) => `reco:${p.id}`),
     ]);
     const cleared = new Set<string>();
-    if (!firstBuild) {
-      for (const [id, title] of seenRecommendations) {
+    if (!isFirstBuild()) {
+      const verified = verifiedBucket();
+      for (const [id, title] of recoBucket()) {
         if (!currentRecoIdsPre.has(id)) {
           cleared.add(id);
-          verifiedLog.unshift({ id, title, at: nowIso });
-          if (verifiedLog.length > MAX_VERIFIED_LOG) verifiedLog.length = MAX_VERIFIED_LOG;
+          verified.unshift({ id, title, at: nowIso });
+          if (verified.length > MAX_VERIFIED_LOG) verified.length = MAX_VERIFIED_LOG;
           deps.publish({
             type: 'insight.outcome_verified',
             category: 'enterprise',
@@ -354,7 +419,7 @@ export function initInsight(deps: InsightSubsystemDeps): InsightSubsystem {
             metadata: { recommendationId: id, title },
             correlationId: `ins_${id.replace(/[^a-zA-Z0-9_-]+/g, '_')}`,
           });
-          seenRecommendations.delete(id);
+          recoBucket().delete(id);
         }
       }
     }
@@ -402,8 +467,8 @@ export function initInsight(deps: InsightSubsystemDeps): InsightSubsystem {
 
     /* ── 6. edge-triggered insight.* chain events ───────────────────────── */
     for (const inc of engine.incidents.incidents) {
-      if (inc.severity === 'info' || seenIncidents.has(inc.id)) continue;
-      seenIncidents.add(inc.id);
+      if (inc.severity === 'info') continue;
+      if (!seenIncidents.claim(deps.scope(), inc.id)) continue;
       deps.publish({
         type: 'insight.detected',
         category: 'enterprise',
@@ -414,8 +479,9 @@ export function initInsight(deps: InsightSubsystemDeps): InsightSubsystem {
       });
     }
     for (const r of recommendations) {
-      if (seenRecommendations.has(r.id)) continue;
-      seenRecommendations.set(r.id, r.title);
+      const recos = recoBucket();
+      if (recos.has(r.id)) continue;
+      recos.set(r.id, r.title);
       deps.publish({
         type: 'insight.recommended',
         category: 'enterprise',
@@ -423,8 +489,10 @@ export function initInsight(deps: InsightSubsystemDeps): InsightSubsystem {
         metadata: { recommendationId: r.id, title: r.title, priority: r.priority, confidence: r.confidence.overall },
         correlationId: r.correlationId,
       });
-      if ((r.priority === 'critical' || r.priority === 'high') && !approvalRequested.has(r.id)) {
-        approvalRequested.add(r.id);
+      if (
+        (r.priority === 'critical' || r.priority === 'high') &&
+        approvalRequested.claim(deps.scope(), r.id)
+      ) {
         deps.publish({
           type: 'insight.approval_requested',
           category: 'enterprise',
@@ -434,7 +502,7 @@ export function initInsight(deps: InsightSubsystemDeps): InsightSubsystem {
         });
       }
     }
-    firstBuild = false;
+    composedOnce.add(deps.scope()?.tenantId ?? '');
 
     return {
       at: nowMs,
@@ -473,7 +541,7 @@ export function initInsight(deps: InsightSubsystemDeps): InsightSubsystem {
     return composeDashboard({
       report: b.report,
       trend: history.slice(-30).map((p) => ({ day: p.day, overall: p.overall })),
-      recentlyVerified: [...verifiedLog],
+      recentlyVerified: [...verifiedBucket()],
       nowIso: new Date(now()).toISOString(),
     });
   };
@@ -508,7 +576,24 @@ export function initInsight(deps: InsightSubsystemDeps): InsightSubsystem {
   };
 
   /* ── monitoring sources (D-6): governed items only, never actions ──────── */
-  const deliveredByMonitor = new Set<string>();
+  /**
+   * P13C ROUND 6 — EDGE-TRIGGER STATE, KEYED BY TENANT.
+   *
+   * Was `new Set<string>()` holding bare recommendation ids, and `produce()`
+   * runs once per tenant under the delivery fan-out. The ids are deterministic
+   * constants, so the FIRST tenant in the fan-out claimed each one permanently
+   * and every other tenant's identical critical alert was dropped — forever, with
+   * no TTL and nothing to clear it.
+   *
+   * No content crossed. What crossed was the decision NOT to deliver, which is
+   * quieter than a disclosure and, for a critical alert, not obviously less
+   * serious: one customer stops receiving warnings because another received the
+   * same category first, and nothing looks wrong.
+   *
+   * `claim()` is one call rather than has-then-add, because has-then-add is
+   * where the bug lived in twelve places and a thirteenth would write it too.
+   */
+  const deliveredByMonitor = new TenantDedupe('insight-monitor');
   const monitorSource: IntelligenceSource = {
     key: 'insight-monitor',
     label: 'Intelligence Monitor',
@@ -518,8 +603,7 @@ export function initInsight(deps: InsightSubsystemDeps): InsightSubsystem {
       const items: IntelligenceItem[] = [];
       for (const r of b.report.recommendations) {
         if (r.priority !== 'critical' && r.priority !== 'high') continue;
-        if (deliveredByMonitor.has(r.id)) continue;
-        deliveredByMonitor.add(r.id);
+        if (!deliveredByMonitor.claim(deps.scope(), r.id)) continue;
         items.push({
           id: `insight:${r.id}`,
           title: r.title,
@@ -543,7 +627,25 @@ export function initInsight(deps: InsightSubsystemDeps): InsightSubsystem {
       return items;
     },
   };
-  let lastTrendBand: string | null = null;
+  /**
+   * P13C ROUND 6 — the risk-trend edge, PER TENANT.
+   *
+   * `let lastTrendBand: string | null` is the F8 `deliveredWatch` shape again, in
+   * the one daily source this file's earlier pass did not reach. `produce()` runs
+   * once per tenant with no switch announced, so tenant A settling on `at-risk`
+   * meant `band === lastTrendBand` was true for tenant B and B's "Risk Trend
+   * Watch" — the alert that says an organization's health is deteriorating — was
+   * never raised. Silent, and indistinguishable from healthy.
+   *
+   * A plain Map rather than `TenantDedupe` because this carries a VALUE (the last
+   * band) rather than membership; the key discipline is identical.
+   */
+  const lastTrendBandByTenant = new Map<string, string>();
+  const lastTrendBand = (): string | null =>
+    lastTrendBandByTenant.get(deps.scope()?.tenantId ?? '') ?? null;
+  const setLastTrendBand = (band: string): void => {
+    lastTrendBandByTenant.set(deps.scope()?.tenantId ?? '', band);
+  };
   const riskTrendSource: IntelligenceSource = {
     key: 'insight-risk-trend',
     label: 'Risk Trend Watch',
@@ -554,11 +656,11 @@ export function initInsight(deps: InsightSubsystemDeps): InsightSubsystem {
       const band = b.report.health.band;
       const worsened = band === 'at-risk' || band === 'critical';
       if (trendPreds.length === 0 && !worsened) {
-        lastTrendBand = band;
+        setLastTrendBand(band);
         return [];
       }
-      if (trendPreds.length === 0 && band === lastTrendBand) return [];
-      lastTrendBand = band;
+      if (trendPreds.length === 0 && band === lastTrendBand()) return [];
+      setLastTrendBand(band);
       const top = trendPreds[0];
       return [
         {

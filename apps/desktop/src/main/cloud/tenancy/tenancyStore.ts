@@ -309,6 +309,21 @@ export class TenancyStore extends EventEmitter {
     while (this.persisting) await this.lastPersist;
   }
 
+  /**
+   * The INSTALL'S home cloud tenant. BOOT ONLY.
+   *
+   * P13C ROUND 6 — classified rather than scoped, because at composition there
+   * is no caller whose scope could be consulted: `activeTenantScope()` is null
+   * and `homeTenantForCaller()` would return null too. Reading `isHome` is the
+   * only thing that CAN work there.
+   *
+   * The defect was never this accessor. It was that its result was frozen into
+   * two downstream stores and then used as their only notion of tenant forever.
+   * Those stores now resolve the caller themselves; this is used once, at boot,
+   * to seed them.
+   *
+   * ANY per-request caller wants `homeTenantForCaller()`.
+   */
   homeTenant(): CloudTenant | null {
     return this.tenants.get(this.homeTenantId) ?? null;
   }
@@ -390,16 +405,34 @@ export class TenancyStore extends EventEmitter {
       .sort((a, b) => b.bytes - a.bytes);
   }
 
-  /** Counts over the CALLER'S cloud footprint. Was an install-wide census. */
+  /**
+   * Counts over the CALLER'S cloud footprint.
+   *
+   * P13C ROUND 6 — HALF OF IT WAS STILL AN INSTALL-WIDE CENSUS, under a header
+   * that said it was not. `tenants`/`active`/`regions` went through the scoped
+   * `listTenants()`; `projects`, `teams` and `workers` read `.size` off the raw
+   * Maps while `listProjects`/`listTeams`/`listWorkers` twenty lines above are
+   * all `ownsTenant`-gated.
+   *
+   * This is the third summary-beside-a-scoped-listing found in one review
+   * (`federationStore.summary`, `apiPlatformStore.summary`, this). The pattern
+   * is now explicit: WHEN A LISTING IS SCOPED, EVERY AGGREGATE OVER THE SAME
+   * COLLECTION MUST BE SCOPED IN THE SAME COMMIT. Reviewers check the listing
+   * because it returns the records; the count is read as harmless and it is the
+   * same query with the rows dropped.
+   */
   summary(): TenantSummary {
     const tenants = this.listTenants();
     return {
       tenants: tenants.length,
       active: tenants.filter((t) => t.status === 'active').length,
       regions: new Set(tenants.map((t) => t.regionId)).size,
-      projects: this.projects.size,
-      teams: this.teams.size,
-      workers: this.workers.size,
+      // Summed over the caller's OWN tenants — `listProjects`/`listTeams`/
+      // `listWorkers` are per cloud tenant and `ownsTenant`-gated, so this is the
+      // same authorization the listings enforce, applied once per owned tenant.
+      projects: tenants.reduce((n, t) => n + this.listProjects(t.id).length, 0),
+      teams: tenants.reduce((n, t) => n + this.listTeams(t.id).length, 0),
+      workers: tenants.reduce((n, t) => n + this.listWorkers(t.id).length, 0),
     };
   }
 

@@ -1019,11 +1019,23 @@ describe('cross-tenant audit reads', () => {
      */
     const dir = join(tmpdir(), `np-audit-xt-${randomUUID()}`);
     await fs.mkdir(dir, { recursive: true });
-    const store = new GovernanceStore(join(dir, 'gov.json'));
+    /**
+     * P13C Round 6 — the store RESOLVES the owner on write; a caller-supplied
+     * `workspaceId` is only a suggestion (in production it is the window's
+     * workspace, which under a background fan-out belongs to whoever was last on
+     * screen). So the writer must act AS a tenant. This is the binding
+     * `enterprise/index.ts` performs in production, nothing more.
+     */
+    let writer: TenantScope | null = A;
+    const store = new GovernanceStore(join(dir, 'gov.json'))
+      .bindScope(() => writer)
+      .bindOrganizationCount(() => 2);
     await store.load();
 
     store.record({ actor: 'a', action: 'record.create', target: 'rec_a', summary: 'Created Customer "Northwind"', workspaceId: A.workspaceId });
+    writer = B;
     store.record({ actor: 'b', action: 'record.create', target: 'rec_b', summary: 'Created Customer "Borealis"', workspaceId: B.workspaceId });
+    writer = null;
 
     const seenByA = store.auditEntries(100, A);
     expect(seenByA).toHaveLength(1);

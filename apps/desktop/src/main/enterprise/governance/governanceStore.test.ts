@@ -109,10 +109,71 @@ describe('GovernanceStore — tamper-evident audit trail (REP v2.0)', () => {
         seeded: true,
       }),
     );
-    const store = new GovernanceStore(path).bindScope(asGovScope);
+    // P13C Round 6 — legacy rows have no `tenantId`, so the store needs to know
+    // whether attribution is ambiguous. One organization ⇒ unambiguous ⇒ visible.
+    const store = new GovernanceStore(path).bindScope(asGovScope).bindOrganizationCount(() => 1);
     await store.load();
     expect(store.auditCount()).toBe(2);
     expect(store.verifyAuditIntegrity().ok).toBe(true); // chain rebuilt from entries
+    await store.flush();
+  });
+
+  /**
+   * P13C ROUND 6 — THE UPGRADE MUST NOT BREAK THE CHAIN.
+   *
+   * `tenantId` is a new canonical field. If it were hashed unconditionally, every
+   * pre-upgrade row's canonical string would change and the first launch after
+   * the upgrade would report the whole trail as tampered. Asserted directly,
+   * because "integrity still verifies" is precisely the claim a reviewer would
+   * take on trust.
+   */
+  it('a legacy row and a new attributed row verify in the SAME chain', async () => {
+    const path = tempPath();
+    await fs.writeFile(
+      path,
+      JSON.stringify({
+        approvalChains: [],
+        complianceRules: [],
+        audit: [{ id: 'ea_1', at: '2026-07-24T00:00:00.000Z', ...auditEntry(1) }],
+        seeded: true,
+      }),
+    );
+    const store = new GovernanceStore(path).bindScope(asGovScope).bindOrganizationCount(() => 1);
+    await store.load();
+    const fresh = store.record({ ...auditEntry(2) });
+    expect(fresh.tenantId).toBe(asGovScope().tenantId); // resolved, not caller-supplied
+    expect(store.verifyAuditIntegrity().ok).toBe(true);
+    expect(store.auditCount()).toBe(2);
+    await store.flush();
+  });
+
+  /**
+   * WITHHELD, NOT SHARED. With a second organization present, a row nobody can be
+   * shown to own goes to nobody — and is COUNTED, so it is visibly withheld.
+   */
+  it('withholds unattributed legacy rows once a second organization exists', async () => {
+    const path = tempPath();
+    await fs.writeFile(
+      path,
+      JSON.stringify({
+        approvalChains: [],
+        complianceRules: [],
+        audit: [{ id: 'ea_1', at: '2026-07-24T00:00:00.000Z', ...auditEntry(1) }],
+        seeded: true,
+      }),
+    );
+    let orgs = 1;
+    const store = new GovernanceStore(path).bindScope(asGovScope).bindOrganizationCount(() => orgs);
+    await store.load();
+    expect(store.auditCount()).toBe(1); // visible while unambiguous
+
+    orgs = 2;
+    expect(store.auditCount()).toBe(0); // ambiguous ⇒ withheld from EVERYONE
+    expect(store.unattributedAudit()).toBe(1); // and accounted for, not vanished
+
+    // A row written now IS attributed, so it survives the ambiguity.
+    store.record({ ...auditEntry(2) });
+    expect(store.auditCount()).toBe(1);
     await store.flush();
   });
 });

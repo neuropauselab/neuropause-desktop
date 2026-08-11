@@ -17,6 +17,7 @@ import { ApprovalStore } from './approvalStore';
 import { DOCUMENT_SPECS } from './documentSpecs';
 import { ensureStockAccounts } from './stockAccounts';
 import { createLogger } from '../logger';
+import { activeTenantScope } from '../enterprise/index';
 
 const log = createLogger('erp-documents');
 
@@ -34,6 +35,8 @@ export const approvalStore = new ApprovalStore(
 );
 
 export const documentIntegration = new DocumentIntegration({
+  // P13C Round 6 — document numbers collide across organizations.
+  scope: () => activeTenantScope(),
   lines: documentLineStore,
   /**
    * Hand the derived, balanced entry to the real journal. `applyGlDerivedEntries`

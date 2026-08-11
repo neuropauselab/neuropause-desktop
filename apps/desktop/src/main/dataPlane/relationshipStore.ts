@@ -25,6 +25,7 @@ import { randomUUID } from 'node:crypto';
 import { envelopeStamp, readStoreFile } from '../storage/storeEnvelope';
 import type { CandidateRecord } from './relationshipResolver';
 import type { MatchMethod, RelationshipStatus } from './relationshipModel';
+import { TenantDedupe } from '../tenancy/tenantDedupe';
 
 export interface RelationshipLink {
   id: string;
@@ -163,8 +164,18 @@ export class RelationshipStore {
    */
   onFirstParked?: (entry: PendingRelationship) => void;
 
-  /** Relationship classes already notified — the per-class dedupe. */
-  private readonly notifiedClasses = new Set<string>();
+  /**
+   * Relationship classes already notified — the per-class dedupe, PER TENANT.
+   *
+   * P13C ROUND 6. The class key is `moduleId/relationshipKey/status`, which is
+   * tenant-independent BY CONSTRUCTION — every tenant importing invoices with
+   * the same unresolved supplier reference produces the same key. So the first
+   * tenant to park a reference claimed the class and no other tenant ever got
+   * the hold that tells them their import left references unresolved.
+   *
+   * Uses the store's existing `TenantOwnership` rather than a second seam.
+   */
+  private readonly notifiedClasses = new TenantDedupe('relationship-parked-classes');
 
   /** Park an unresolved or ambiguous reference. Idempotent per slot. */
   async park(input: Omit<PendingRelationship, 'id' | 'firstSeenAt' | 'attempts'>): Promise<PendingRelationship> {
@@ -195,8 +206,7 @@ export class RelationshipStore {
 
     // One notification per class, not per reference.
     const classKey = `${entry.sourceModuleId}/${entry.relationshipKey}/${entry.status}`;
-    if (!this.notifiedClasses.has(classKey) && entry.status !== 'skipped') {
-      this.notifiedClasses.add(classKey);
+    if (entry.status !== 'skipped' && this.notifiedClasses.claim(this.tenancy.scopeOrDeny(), classKey)) {
       try {
         this.onFirstParked?.(entry);
       } catch {

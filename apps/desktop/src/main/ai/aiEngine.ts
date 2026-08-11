@@ -161,6 +161,18 @@ export class AiEngine {
     }
   }
 
+  /**
+   * Bind the tenant boundary for usage accounting. See `UsageTracker`.
+   *
+   * On the engine rather than reaching into `.usage` from outside, so the tracker
+   * stays private and there is one place a reviewer checks whether it is bound.
+   */
+  bindUsageScope(source: () => { tenantId: string } | null): this {
+    this.usage.bindScope(source);
+    return this;
+  }
+
+  /** THE CALLER'S usage. Never the install's. */
   usageSummary(): AiUsageSummary {
     return this.usage.summary();
   }

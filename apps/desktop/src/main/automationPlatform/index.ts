@@ -74,6 +74,7 @@ import {
 } from './automationModel';
 import { TenantMemo } from '../tenancy/tenantMemo';
 import type { TenantScope } from '@neuropause/shared';
+import { TenantDedupe } from '../tenancy/tenantDedupe';
 
 const log = createLogger('automation-platform');
 
@@ -178,7 +179,25 @@ export function initAutomationPlatform(deps: AutomationPlatformDeps): Automation
    */
   const projectionCache = new TenantMemo<BuildArtifacts>('automation-platform-projections', { ttlMs: BUILD_TTL_MS, now })
     .bindScope(deps.scope);
+  /**
+   * P13C ROUND 6 — THE PLAN CACHE, TWO LINES BELOW THE TenantMemo THAT FIXED ITS
+   * NEIGHBOUR.
+   *
+   * Keyed on `playbookId`, which comes from the STATIC `PLAYBOOK_REGISTRY` — the
+   * same handful of constants for every install. So the key is tenant-independent
+   * by construction and two tenants collide on every entry, while the cached
+   * value is thoroughly tenant-derived: the compiled plan carries the caller's
+   * approval chain and, through `deps.orgRoles`, that organization's ROLE NAMES.
+   * Inside the 3s TTL, tenant B's `ap:plan` returned tenant A's.
+   *
+   * Not a `TenantMemo`, because that primitive holds ONE composed snapshot per
+   * tenant and this is a keyed collection. Same discipline, applied by hand: the
+   * tenant is part of the key, and it is read at lookup time rather than captured.
+   * An unresolved caller gets its own `''` partition, which cannot collide with a
+   * real tenant.
+   */
   const planCache = new Map<string, { at: number; plan: AutomationPlan | null }>();
+  const planKey = (playbookId: string): string => `${deps.scope()?.tenantId ?? ''}::${playbookId}`;
 
   const build = (): BuildArtifacts => projectionCache.state(compose);
 
@@ -238,11 +257,12 @@ export function initAutomationPlatform(deps: AutomationPlatformDeps): Automation
   /* ── plan compilation (per playbook, TTL-cached) ───────────────────────── */
   const plan = (playbookId: string): AutomationPlan | null => {
     const nowMs = now();
-    const cached = planCache.get(playbookId);
+    const key = planKey(playbookId);
+    const cached = planCache.get(key);
     if (cached && nowMs - cached.at < BUILD_TTL_MS) return cached.plan;
     const playbook: PlaybookDefinition | undefined = PLAYBOOK_BY_ID.get(playbookId);
     if (!playbook) {
-      planCache.set(playbookId, { at: nowMs, plan: null });
+      planCache.set(key, { at: nowMs, plan: null });
       return null;
     }
     const b = build();
@@ -294,12 +314,30 @@ export function initAutomationPlatform(deps: AutomationPlatformDeps): Automation
       },
       knowledge,
     };
-    planCache.set(playbookId, { at: nowMs, plan: result });
+    planCache.set(key, { at: nowMs, plan: result });
     return result;
   };
 
   /* ── D-3: the schedule tick (the Builder's first-ever schedule emitter) ─── */
-  const firedOccurrences = new Map<string, string>(); // ruleId → occurrenceKey (in-memory, delivery-engine style)
+  /**
+   * P13C ROUND 6 — ruleId → occurrenceKey, PER TENANT.
+   *
+   * Rule ids are uuids from a tenant-scoped store, so a collision across tenants
+   * is not reachable and this was never a suppression bug. It is keyed anyway
+   * for two reasons worth stating: the map is tenant-derived state that grew
+   * without bound, and "these ids happen not to collide" is a property of an id
+   * generator somebody could change. Keying removes the reasoning burden rather
+   * than documenting it.
+   */
+  const firedOccurrences = new Map<string, Map<string, string>>();
+  const occurrenceBucket = (): Map<string, string> => {
+    const tenantId = deps.scope()?.tenantId ?? '';
+    const existing = firedOccurrences.get(tenantId);
+    if (existing) return existing;
+    const fresh = new Map<string, string>();
+    firedOccurrences.set(tenantId, fresh);
+    return fresh;
+  };
   const tick = async (nowMs: number): Promise<{ fired: string[] }> => {
     const fired: string[] = [];
     const rules = safeRead('automation-rules', deps.rules, {});
@@ -309,8 +347,9 @@ export function initAutomationPlatform(deps: AutomationPlatformDeps): Automation
       if (!parsed.spec) continue; // unparseable → the monitor carries the finding; never a silent guess
       const due = scheduleDue(parsed.spec, nowMs);
       if (!due.due) continue;
-      if (firedOccurrences.get(rule.id) === due.occurrenceKey) continue; // once per occurrence
-      firedOccurrences.set(rule.id, due.occurrenceKey);
+      const occurrences = occurrenceBucket();
+      if (occurrences.get(rule.id) === due.occurrenceKey) continue; // once per occurrence
+      occurrences.set(rule.id, due.occurrenceKey);
       try {
         const res = await deps.fireScheduledRule(rule.id, new Date(nowMs).toISOString());
         if (res) fired.push(rule.id);
@@ -325,7 +364,24 @@ export function initAutomationPlatform(deps: AutomationPlatformDeps): Automation
   });
 
   /* ── monitoring: ONE governed watch source (items only, never actions) ──── */
-  const deliveredWatch = new Set<string>();
+  /**
+   * P13C ROUND 6 — EDGE-TRIGGER STATE, KEYED BY TENANT.
+   *
+   * Was `new Set<string>()` holding bare recommendation ids, and `produce()`
+   * runs once per tenant under the delivery fan-out. The ids are deterministic
+   * constants, so the FIRST tenant in the fan-out claimed each one permanently
+   * and every other tenant's identical critical alert was dropped — forever, with
+   * no TTL and nothing to clear it.
+   *
+   * No content crossed. What crossed was the decision NOT to deliver, which is
+   * quieter than a disclosure and, for a critical alert, not obviously less
+   * serious: one customer stops receiving warnings because another received the
+   * same category first, and nothing looks wrong.
+   *
+   * `claim()` is one call rather than has-then-add, because has-then-add is
+   * where the bug lived in twelve places and a thirteenth would write it too.
+   */
+  const deliveredWatch = new TenantDedupe('automation-watch');
   const watchSource: IntelligenceSource = {
     key: 'automation-watch',
     label: 'Automation Watch',
@@ -335,8 +391,7 @@ export function initAutomationPlatform(deps: AutomationPlatformDeps): Automation
       const items: IntelligenceItem[] = [];
       for (const f of b.monitorReport.findings) {
         if (f.severity !== 'critical' && f.severity !== 'high') continue;
-        if (deliveredWatch.has(f.id)) continue;
-        deliveredWatch.add(f.id);
+        if (!deliveredWatch.claim(deps.scope(), f.id)) continue;
         items.push({
           id: `ap:${f.id}`,
           title: f.title,
