@@ -21,7 +21,32 @@ declareStoreScope({
   persistence: 'file',
   authority: 'ORG_ROLE',
   classification: 'INSTALL_METADATA',
-  retention: 'No cap. A legacy pre-boundary flag is cleared install-wide only on an explicit re-enable, which is the sole way an operator can clear one.',
+  /**
+   * P13C ROUND 10 — NEW FINDING, FOUND BY BEING MADE TO ANSWER THIS QUESTION.
+   *
+   * Round 8's `retention` line on this store read, in full:
+   *
+   *   "No cap. A legacy pre-boundary flag is cleared INSTALL-WIDE only on an
+   *    explicit re-enable, which is the sole way an operator can clear one."
+   *
+   * That is a WORKSPACE-scoped store stating, in prose, that one of its removals
+   * reached install-wide — written down, reviewed, and shipped, because prose
+   * cannot be checked. `retentionScope: 'INSTALL'` on a `WORKSPACE` store now
+   * throws, so the sentence had to become either a lie or a fix. It is a fix:
+   * see `legacyCleared` and `setDisabled`.
+   */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'OWNER',
+  retention:
+    'No cap, no TTL, no eviction: nothing is ever removed to make room, so no workspace\'s volume ' +
+    'can reach another\'s flag. THREE removals, each named. (1) `setPaused(…, false)` deletes ' +
+    '`connectorId::accountId`; account ids are minted locally by `shortId(\'acct\')` — eight random ' +
+    'bytes — so that key names one connection in one workspace in fact and not merely by ' +
+    'convention, and the supervisor resolves the account through the workspace-scoped ' +
+    '`connectorStore.get` before it ever reaches here. (2) `setDisabled(…, false)` deletes ' +
+    '`workspaceId::connectorId`, which carries the owning workspace in the key. (3) Re-disabling ' +
+    'drops that same workspace\'s own legacy clearance. The install-wide legacy flag itself is ' +
+    'NEVER deleted by anybody — see `legacyCleared`.',
   reason: 'Two booleans per connector/account and no customer content. The disable key is workspaceId::connectorId — a connected account belongs to one workspace, narrower than its organization.',
 });
 
@@ -32,6 +57,15 @@ interface ControlsFile {
   pausedAccounts: string[];
   /** connectorId keys of disabled connectors. */
   disabledConnectors: string[];
+  /**
+   * `workspaceId::connectorId` keys whose workspace has cleared the legacy,
+   * pre-boundary install-wide disable for ITSELF. P13C ROUND 10.
+   *
+   * Absent in every file written before Round 10, which reads as "nobody has
+   * cleared anything" — the safe direction: the kill switch stays on until an
+   * operator turns it off in their own workspace.
+   */
+  legacyClearedDisables?: string[];
 }
 
 function storePath(): string {
@@ -51,6 +85,14 @@ export class ConnectorControlStore {
 
   private paused = new Set<string>();
   private disabled = new Set<string>();
+  /**
+   * `workspaceId::connectorId` for each workspace that has cleared the LEGACY
+   * install-wide disable for itself. P13C ROUND 10 — see `setDisabled`.
+   *
+   * A per-workspace OVERRIDE rather than a deletion, because the legacy flag is
+   * one row that applies to every workspace and no single workspace owns it.
+   */
+  private legacyCleared = new Set<string>();
   private loaded = false;
   private workspaceId: (() => string) | null = null;
 
@@ -104,9 +146,18 @@ export class ConnectorControlStore {
    * here "hide it" means silently re-enabling a connector somebody switched off,
    * which fails in the dangerous direction. So old flags keep their old meaning
    * until an operator sets one again, at which point it becomes per workspace.
+   *
+   * P13C ROUND 10 — THE CLEARANCE IS PER WORKSPACE, THE FLAG IS NEVER DELETED.
+   *
+   * A workspace that re-enables the connector records a clearance for ITSELF and
+   * the shared row survives, so every other workspace's kill switch stays on.
+   * An UNRESOLVED workspace has no clearance to consult and gets the flag — the
+   * same fail-safe direction the paragraph above argues for.
    */
   private legacyDisabled(connectorId: string): boolean {
-    return this.disabled.has(connectorId);
+    if (!this.disabled.has(connectorId)) return false;
+    const k = this.disableKey(connectorId);
+    return k === null || !this.legacyCleared.has(k);
   }
 
   /** Loads persisted flags once. Safe to call repeatedly. */
@@ -117,6 +168,7 @@ export class ConnectorControlStore {
       const parsed = JSON.parse(raw) as Partial<ControlsFile>;
       if (Array.isArray(parsed.pausedAccounts)) this.paused = new Set(parsed.pausedAccounts.filter((s) => typeof s === 'string'));
       if (Array.isArray(parsed.disabledConnectors)) this.disabled = new Set(parsed.disabledConnectors.filter((s) => typeof s === 'string'));
+      if (Array.isArray(parsed.legacyClearedDisables)) this.legacyCleared = new Set(parsed.legacyClearedDisables.filter((s) => typeof s === 'string'));
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
         log.warn('Failed to read connector controls; starting empty', err);
@@ -126,7 +178,11 @@ export class ConnectorControlStore {
   }
 
   private async persist(): Promise<void> {
-    const data: ControlsFile = { pausedAccounts: [...this.paused], disabledConnectors: [...this.disabled] };
+    const data: ControlsFile = {
+      pausedAccounts: [...this.paused],
+      disabledConnectors: [...this.disabled],
+      legacyClearedDisables: [...this.legacyCleared],
+    };
     const tmp = `${this.path()}.tmp`;
     await fs.writeFile(tmp, JSON.stringify(data, null, 2), { mode: 0o600 });
     await fs.rename(tmp, this.path());
@@ -165,11 +221,31 @@ export class ConnectorControlStore {
   /**
    * Disable or re-enable a connector FOR THE ACTIVE WORKSPACE.
    *
-   * Re-enabling also drops the legacy install-wide flag, because that is the only
-   * way an operator can ever clear one — and the operator doing it is, by
-   * definition, someone with `connectors:manage` who is looking at the connector
-   * and asking for it to run. On a single-workspace install this is exactly the
-   * old behaviour.
+   * P13C ROUND 10 — NEW FINDING. RE-ENABLING USED TO CLEAR EVERY WORKSPACE'S
+   * KILL SWITCH.
+   *
+   * The line this replaces was:
+   *
+   *     this.disabled.delete(k);
+   *     this.disabled.delete(connectorId); // clear the pre-boundary flag too
+   *
+   * The second delete removed the LEGACY, pre-boundary flag — the bare
+   * `connectorId` key that `legacyDisabled` applies to EVERY workspace on the
+   * machine. So a `connectors:manage` holder in workspace A pressing "enable" on
+   * GitHub silently restarted GitHub sync for workspace B, in a different
+   * organization, which had deliberately turned it off. It is the same
+   * cross-tenant control mutation Round 6 found in `isDisabled` and fixed on the
+   * READ side, left live on the WRITE side by the very line that was added to
+   * make the fix usable — the shape this program keeps finding: a filter hides,
+   * a delete destroys, and the delete is the half that survives review because
+   * the neighbouring code is correct.
+   *
+   * A per-workspace CLEARANCE rather than a delete. The legacy row belongs to
+   * nobody — it predates the boundary — so no single workspace may remove it;
+   * each may only record that it does not apply to itself. The operator's
+   * intent is served in full (their connector runs), every other workspace's
+   * safety control survives, and on a single-workspace install the observable
+   * behaviour is byte-for-byte the old one.
    *
    * An unresolved workspace CANNOT disable. A kill switch with no owner is how the
    * install-wide one got here.
@@ -187,9 +263,13 @@ export class ConnectorControlStore {
     if (before === disabled) return;
     if (disabled) {
       this.disabled.add(k);
+      // Its own clearance, so the two flags cannot disagree. Nobody else's row.
+      this.legacyCleared.delete(k);
     } else {
       this.disabled.delete(k);
-      this.disabled.delete(connectorId); // clear the pre-boundary flag too
+      // The legacy install-wide flag is NOT deleted. This workspace records that
+      // it no longer applies HERE; every other workspace keeps its kill switch.
+      this.legacyCleared.add(k);
     }
     await this.persist();
   }

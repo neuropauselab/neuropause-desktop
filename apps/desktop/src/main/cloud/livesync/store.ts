@@ -73,6 +73,16 @@ declareStoreScope({
   persistence: 'file',
   authority: 'ORG_ROLE',
   classification: 'CUSTOMER_DERIVED',
+  /**
+   * P13C ROUND 10 — the checkable form of the prose below.
+   *
+   * SYSTEM rather than OWNER: neither removal has a user-facing surface. The cap
+   * is automatic on enqueue, and `removePending` is driven by the sync engine
+   * when the SERVER ACKNOWLEDGES a push — nobody presses a button to delete a
+   * queued mutation. Both are still confined to the caller's own rows.
+   */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'SYSTEM',
   retention:
     'Per OWNER cap (maxPendingPerOrg, default 5000), oldest-first, applied only to rows stamped ' +
     "with the writing organization — one organization's backlog can never evict another's. Rows " +

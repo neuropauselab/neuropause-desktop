@@ -20,7 +20,17 @@ declareStoreScope({
   persistence: 'file',
   authority: 'ORG_ROLE',
   classification: 'CUSTOMER_DERIVED',
-  retention: 'No eviction. `remove` deletes one account and is reached only through workspace-scoped handlers.',
+  /** P13C ROUND 10 — the checkable form, and see `remove` for what changed. */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'OWNER',
+  retention:
+    'No cap, no TTL, no eviction: nothing is ever removed to make room, so no workspace\'s volume ' +
+    'reaches another\'s connections. ONE removal, `remove(connectorId, accountId)`, which now ' +
+    'resolves the account through the workspace-scoped `get()` BEFORE deleting — Round 10; it was ' +
+    'a bare `accounts.delete(connectorId::accountId)` whose only ownership check lived in its single ' +
+    'caller. An account written before the workspace boundary existed is UNCLAIMED, is returned by ' +
+    'no scoped read, and is therefore removable by nobody through this path; `unclaimed()` surfaces ' +
+    'it so an operator can reconnect instead.',
   reason: "ConnectedAccount.workspaceId, and unbound returns []. An account label and its granted scopes describe a customer's own SaaS connection.",
 });
 
@@ -192,7 +202,26 @@ class ConnectorStore {
     });
   }
 
+  /**
+   * Remove one account — IF it belongs to the active workspace.
+   *
+   * P13C ROUND 10. This was `accounts.delete(this.key(connectorId, accountId))`
+   * on a bare pair, and the pair arrives from a renderer payload through
+   * `connectorService.disconnect`. The ownership check existed, but it existed in
+   * the CALLER, which is the arrangement this program has repeatedly found to be
+   * one refactor away from a cross-workspace delete: `get()` and `all()` are
+   * scoped, `getAnyWorkspace()` is named for the fact that it is not, and this
+   * primitive silently behaved like the third while reading like the first.
+   *
+   * The check is the store's own now, on the same resolver every read uses, so
+   * there is no ordering a future caller can choose that removes another
+   * workspace's connection. Refusing rather than throwing keeps the existing
+   * `Promise<void>` contract: the only production caller has already resolved the
+   * account through `get()` in the same operation, so this cannot refuse a
+   * legitimate disconnect.
+   */
   async remove(connectorId: string, accountId: string): Promise<void> {
+    if (this.get(connectorId, accountId) === null) return;
     if (this.accounts.delete(this.key(connectorId, accountId))) await this.persist();
   }
 }

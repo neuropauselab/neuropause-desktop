@@ -10,6 +10,7 @@
 import { promises as fs, readFileSync } from 'node:fs';
 import type { TenantScope } from '@neuropause/shared';
 import { TenantOwnership } from '../tenancy/tenantOwnedStore';
+import { declareStoreScope } from '../tenancy/storeScope';
 import { dirname } from 'node:path';
 import type {
   DecisionCategory,
@@ -20,6 +21,35 @@ import type {
   ExecutiveRecommendation,
 } from '@neuropause/shared';
 import { isOverdue, isStale } from '@neuropause/shared';
+
+/**
+ * P13C ROUND 10 — the structural scope declaration. See tenancy/storeScope.ts.
+ *
+ * `new TenantOwnership(...)` satisfied the scope gate and cannot express a
+ * retention policy, so nothing had ever asked this store what a removal reaches.
+ */
+declareStoreScope({
+  name: 'executive-decisions',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retentionScope: 'OWNER',
+  /** The cap runs inside `create`, under the creating tenant's own resolved scope. */
+  retentionAuthority: 'OWNER',
+  retention:
+    'ONE removal: the MAX_DECISIONS=500 cap in `create`, applied through ' +
+    "`TenantOwnership.pruneOwn` — filtered to `scope.tenantId`, oldest-by-`createdAt` within that " +
+    'tenant, every other tenant\'s rows returned untouched, and NOTHING pruned when the scope is ' +
+    "unresolved. It was an install-wide 500 that let one tenant evict another's decisions " +
+    '(Round 2 — H2). There is no delete path at all: `setStatus` transitions to `archived` (a ' +
+    'status, not a deletion) after a scoped `get`, and `d.history` grows unbounded by design ' +
+    'because a decision trail that silently loses its oldest events is not a trail.',
+  reason:
+    'ExecutiveDecision carries description, reasoning, evidence[], businessImpact and owner — ' +
+    'tenant content in the plainest sense — and it reached a channel on the PUBLIC allowlist ' +
+    'before Round 2.',
+});
 
 interface DecisionFile {
   decisions: ExecutiveDecision[];

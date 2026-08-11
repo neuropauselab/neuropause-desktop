@@ -46,7 +46,23 @@ declareStoreScope({
   persistence: 'file',
   authority: 'ORG_ROLE',
   classification: 'CUSTOMER_DERIVED',
-  retention: 'Per-workspace eviction: the victim set is filtered to the writing workspace, and the drop is logged.',
+  /** P13C ROUND 10 — the enum form. Both caps AND both triggers are per workspace. */
+  retentionScope: 'OWNER',
+  /** `retireMatch` is the owning workspace answering its own question. */
+  retentionAuthority: 'OWNER',
+  retention:
+    'Three removals, all per workspace. (1) `evictMatches(workspaceId)` and ' +
+    '(2) `evictIdentities(workspaceId)` each filter to the WRITING workspace before measuring — ' +
+    'the trigger is `mine.length > CAP`, not the array length, so a workspace under its own cap ' +
+    'loses nothing however full the file is — and drop only that workspace\'s oldest, logging the ' +
+    'count because evicting an unanswered identity question is a real loss. A global cap would ' +
+    "make a chatty connector in one workspace another workspace's data loss. (3) " +
+    '`retireMatch(workspaceId, matchId)` splices exactly one row, and the `findIndex` requires ' +
+    'BOTH the id and the workspace to match, so a foreign matchId is a miss. The index deletes ' +
+    'that follow each removal are keyed on the four-field `providerKey`, whose FIRST element is ' +
+    'the workspace id. `byProvider.clear()` / `matchByProvider.clear()` in `readFromDisk` rebuild ' +
+    'the indexes from the rows just read; they remove no row and exist because a merge left stale ' +
+    'entries pointing at orphans.',
   reason: 'workspaceId is the FIRST element of the four-field providerKey, so a key from one workspace cannot resolve in another. Rows hold provider display names, emails and candidate record matches.',
 });
 

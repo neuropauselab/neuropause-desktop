@@ -28,6 +28,17 @@ declareStoreScope({
   persistence: 'file',
   authority: 'SYSTEM',
   classification: 'CUSTOMER_DERIVED',
+  /**
+   * P13C ROUND 10. SYSTEM: no channel, id or payload can cause a removal here.
+   * The cap fires inside `record()` and nothing else deletes an audit row — an
+   * audit trail with a delete button is not an audit trail.
+   *
+   * The other matches the retention scanner finds in this file are `chains.clear()`
+   * and `ownerCounts.clear()`, which rebuild derived structures (one hash chain
+   * and one count per owner) from `this.audit` after a load; they remove no rows.
+   */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'SYSTEM',
   retention:
     'Capped PER TENANT (auditCap rows each, default 10,000) as of Round 9, over ONE HASH CHAIN PER ' +
     'TENANT. Round 3 shipped an install-wide cap; Round 8 widened it to auditCap x (tenants with ' +

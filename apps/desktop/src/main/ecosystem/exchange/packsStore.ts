@@ -16,6 +16,39 @@ import { createLogger } from '../../logger';
 import { demoSeedsEnabled } from '../../demoSeed';
 import type { TenantScope } from '@neuropause/shared';
 import { TenantOwnership } from '../../tenancy/tenantOwnedStore';
+import { declareStoreScope } from '../../tenancy/storeScope';
+
+/**
+ * P13C ROUND 10 — THE RETENTION DECLARATION THIS FILE COULD NOT MAKE.
+ *
+ * The store satisfied the scope gate by holding a `TenantOwnership`, which takes
+ * no retention argument. The answer is good and worth stating: nothing here is
+ * capped, so the only way a pack disappears is its own publisher removing it.
+ */
+declareStoreScope({
+  name: 'ecosystem-packs',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retentionScope: 'OWNER',
+  retentionAuthority: 'OWNER',
+  retention:
+    'No cap, no TTL, no eviction: nothing is ever removed to make room, so no organization\'s ' +
+    'publishing volume can reach another\'s packs. ONE removal, `remove(id)`, which resolves the ' +
+    'pack through `mine(id)` — comparing `publisherOrgId` to the caller\'s tenant — and returns ' +
+    'false for a foreign id. It was `packs.delete(id)` on a bare payload id: an unrecoverable ' +
+    "cross-tenant HARD DELETE of another organization's published pack, and the sharpest write in " +
+    'this file. `importPack` mutates a counter in place through the same resolver and removes nothing.',
+  reason:
+    "A pack bundles an organization's own knowledge, workers, automations or connector " +
+    'configurations, and `list()`/`stats()` were reachable on `developer:read`. This store wore the ' +
+    'most misleading shape a tenancy defect takes: `publish()` stamped `publisherOrgId: ' +
+    'this.localOrgId` — the literal seeded ORG_ID — so every row LOOKED owned while the value was a ' +
+    'constant nothing ever read back. The seeded org id is still accepted by the constructor and ' +
+    'deliberately unused, so the evidence that it was once the publisher stamp is not erased. ' +
+    'Binding is asserted by the TenantOwnership this class holds.',
+});
 
 const log = createLogger('ecosystem-exchange');
 

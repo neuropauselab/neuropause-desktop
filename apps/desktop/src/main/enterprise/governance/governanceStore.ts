@@ -24,6 +24,43 @@ const UNATTRIBUTED = '__unattributed__';
 import { createLogger } from '../../logger';
 import { DEFAULT_APPROVAL_CHAINS, DEFAULT_COMPLIANCE_RULES } from './enterpriseGovernance';
 import { TenantOwnership } from '../../tenancy/tenantOwnedStore';
+import { declareStoreScope } from '../../tenancy/storeScope';
+
+/**
+ * P13C ROUND 10 — the structural scope declaration. See tenancy/storeScope.ts.
+ *
+ * This store's cap WAS the third install-wide one this program found (Round 6),
+ * and the file still satisfied the gate through `new TenantOwnership(...)`,
+ * which takes no retention argument. The finding was fixed; the question was
+ * still never asked. That gap is what Round 10 closes.
+ */
+declareStoreScope({
+  name: 'enterprise-governance',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retentionScope: 'OWNER',
+  /** An automatic cap inside `record`. No user-facing surface deletes an audit row. */
+  retentionAuthority: 'SYSTEM',
+  retention:
+    'ONE removal: the audit cap (default 2000), applied PER TENANT COHORT by `pruneOwn(tenantId)` ' +
+    "— `cohort()` selects the rows whose `tenantId` matches (unattributed rows form their own " +
+    'cohort under `__unattributed__`), drops that cohort\'s oldest in append order, and folds each ' +
+    'dropped row into THAT COHORT\'S OWN hash chain via `chainFor(tenantId).dropOldest`, which is ' +
+    'what keeps the retained tail verifiable. It was ' +
+    '`while (this.audit.length > this.auditCap) this.audit.shift()` over one shared array and one ' +
+    "shared chain, so a tenant writing 2000 entries deleted every other tenant's compliance " +
+    'evidence — gone rather than hidden, because `dropOldest` also removed it from the chain ' +
+    '(Round 6). Nothing else removes: chains and rules are only ever `set` (enable/disable after a ' +
+    'scoped `myChain`/`myRule` resolve), and `visibleAudit` filters the OUTPUT and never the ' +
+    'order-sensitive array.',
+  reason:
+    'Every audit row carries the record id AND the title of the mutation it describes, so the ' +
+    "trail is a complete index of one tenant's records; approval chains and compliance rules are " +
+    'the controls gating that tenant\'s invoices, and `setChainEnabled` on a bare id was a ' +
+    'cross-tenant CONTROL mutation (Round 5).',
+});
 
 const log = createLogger('enterprise-governance');
 const DEFAULT_AUDIT_CAP = 2000;

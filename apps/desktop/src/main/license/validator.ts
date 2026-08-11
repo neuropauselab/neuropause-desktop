@@ -26,12 +26,28 @@ declareStoreScope({
   // and overwrites that key; there is no path that authors a license locally.
   authority: 'SYSTEM',
   classification: 'CUSTOMER_DERIVED',
+  /**
+   * P13C ROUND 10 — OWNER rather than NONE, and the difference is one line.
+   *
+   * The PERSISTED map has no removal at all. But `refresh` calls
+   * `lastErrors.delete(orgId)` on success, and `lastErrors` is a retained
+   * module-level Map that the gate's scan sees and that `getStatus` reads back
+   * as `lastError`. It is keyed by organization id and the key is the caller's
+   * own resolved org, so the removal reaches exactly one owner's entry and can
+   * reach no other — but "no delete path" was not true, and a retention
+   * declaration that is nearly true is the shape this program keeps finding.
+   */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'SYSTEM',
   retention:
-    'No cap, no eviction and no delete path. The file is `{ [orgId]: OrgLicense }` — one row per ' +
+    'No cap and no eviction. The file is `{ [orgId]: OrgLicense }` — one row per ' +
     "organization — and the ONLY write is `data.licenses[orgId] = license`, which replaces that " +
     "organization's own row and can reach no other key. So there is no removal here that could " +
-    "destroy another tenant's entitlement snapshot. The file is in the backup set " +
-    "(`license-status.json` under the `configuration` domain), so a restore replaces it wholesale.",
+    "destroy another tenant's entitlement snapshot. The one removal in the file is " +
+    '`lastErrors.delete(orgId)` on a successful `refresh`: an in-memory, non-persisted diagnostic ' +
+    "map holding the last refresh error per organization, cleared for the CALLER'S OWN key and " +
+    'reachable at no other. The file is in the backup set (`license-status.json` under the ' +
+    '`configuration` domain), so a restore replaces it wholesale.',
   reason:
     'WHY TENANT: the store is KEYED BY ORGANIZATION ID and every read goes through ' +
     '`statusFor(orgId)`, which reads exactly one key. The boundary is the key, not a filter — a ' +

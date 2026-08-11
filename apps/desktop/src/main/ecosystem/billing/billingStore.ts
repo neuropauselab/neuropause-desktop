@@ -43,6 +43,40 @@ import type {
 import { TenantOwnership } from '../../tenancy/tenantOwnedStore';
 import { createLogger } from '../../logger';
 import { PLAN_CATALOG } from './billing';
+import { declareStoreScope } from '../../tenancy/storeScope';
+
+/**
+ * P13C ROUND 10 — THE RETENTION DECLARATION THIS FILE COULD NOT MAKE.
+ *
+ * The store satisfied the scope gate by holding a `TenantOwnership`, which takes
+ * no retention argument — the gap all three proven Round 9 findings went
+ * through. The answer here is good, and stating it is the point: nothing in this
+ * file is capped, so no tenant's volume can destroy another's billing record.
+ */
+declareStoreScope({
+  name: 'ecosystem-billing',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retentionScope: 'OWNER',
+  retentionAuthority: 'OWNER',
+  retention:
+    'NO CAP ANYWHERE, deliberately: subscriptions, seats, licences and the purchase ledger are ' +
+    'commercial evidence, and a cap over a ledger is a cap over an invoice. Licences and purchases ' +
+    'are never removed at all. The ONE removal is `releaseSeat(seatId)`, which resolves the seat and ' +
+    'then requires `tenancy.mine(seat)` before deleting — it was `this.seats.delete(seatId)` on a ' +
+    "bare payload id, so one organization could revoke another organization's user's seat. The seat " +
+    "counter it updates afterwards is recomputed from the caller's own `seatAssignments()`.",
+  reason:
+    "One organization's subscription tier, seated users by name and user id, licence ledger and " +
+    'itemised marketplace spend. Every collection here was SINGULAR before Round 3 — one ' +
+    'subscription stamped with the literal seeded ORG_ID, one seat map, one ledger — and both ' +
+    '`License` and `MarketplacePurchase` CARRY an `orgId` that was written from the seed rather than ' +
+    'from the caller, so every row looked correctly owned while claiming the same owner. That is the ' +
+    'most dangerous shape a tenancy defect takes: an auditor asking "do these rows have an ' +
+    'organization?" gets yes. Binding is asserted by the TenantOwnership this class holds.',
+});
 
 const log = createLogger('billing');
 

@@ -33,7 +33,24 @@ declareStoreScope({
   persistence: 'file',
   authority: 'ORG_ROLE',
   classification: 'CUSTOMER_DERIVED',
-  retention: "Audit capped PER ORGANIZATION as of Round 8. It was an install-wide slice(0,500), so one org's federated actions pushed another org's audit rows off the end.",
+  /** P13C ROUND 10 — the enum form. See the NEW FINDING note in `persist()`. */
+  retentionScope: 'OWNER',
+  /** The audit cap is automatic; `discardPolicy` is the owner acting on its own quarantined row. */
+  retentionAuthority: 'OWNER',
+  retention:
+    "Audit capped PER ORGANIZATION (500 rows each, keyed on actorOrg) as of Round 8 in memory and " +
+    'as of Round 10 ON DISK. Round 8 replaced the two in-memory `slice(0, 500)` calls and left the ' +
+    'one in `persist()`, so the file kept only the newest 500 rows on the whole machine: a busy ' +
+    "federating organization erased every other organization's federated audit trail from " +
+    '`federation-governance.json` permanently, while `listAudit()` filtered correctly the entire ' +
+    'time. The only other removal is `discardPolicy`, and its limits are stated rather than ' +
+    'implied: it deletes ONE policy, refuses unless that policy carries ' +
+    "`migrationState: 'migration_required'`, and therefore cannot reach any ATTRIBUTED policy — no " +
+    "organization's own governance rule is removable by anybody else. It CAN be called by any " +
+    'organization with `federation:manage` against a pre-Round-4 legacy policy, because such a row ' +
+    'names no owner and the data holds no evidence of one; that is the Round 5 quarantine decision ' +
+    '(claim or discard, both visible, both audited) and not a per-owner guarantee. ' +
+    '`resolveApproval` and `claimPolicy` mutate in place after a party check and remove nothing.',
   reason: 'Policies carry ownerOrg, approvals name fromOrg and toOrg, audit rows name actorOrg and peerOrg — and those fields ARE the authorization predicate.',
 });
 
@@ -248,7 +265,29 @@ export class GlobalGovStore extends EventEmitter {
 
   private async persist(): Promise<void> {
     const tmp = `${this.filePath}.tmp`;
-    const payload: GovFile = { policies: [...this.policies.values()], approvals: [...this.approvals.values()], audit: this.audit.slice(0, 500), seeded: true };
+    /**
+     * P13C ROUND 10 — NEW FINDING. THE CAP WAS FIXED IN MEMORY AND NOT ON DISK.
+     *
+     * This line was `audit: this.audit.slice(0, 500)`.
+     *
+     * Round 8 replaced the two in-memory `slice(0, 500)` calls with
+     * `capAuditPerOrg` and did not touch the third, which is the one that
+     * decides what actually SURVIVES. `this.audit` is newest-first and holds up
+     * to 500 rows PER ORGANIZATION, so on any install with more than one
+     * federating organization the array is longer than 500 and this wrote only
+     * the newest 500 rows on the machine — every older organization's federated
+     * audit trail was dropped from `federation-governance.json`, and `load()`
+     * reads the file back as the whole truth, so the next start had no record of
+     * it. Deleted rather than hidden, exactly like the Round 6 governance chain.
+     *
+     * `listAudit()` filters with `fed.onlyMine(...)` and was correct throughout,
+     * which is the recurring shape: a filter hides, a cap deletes, and the cap
+     * that matters is whichever one runs closest to the bytes.
+     *
+     * The same function the write paths use, so there is ONE answer to "how many
+     * audit rows does an organization keep" rather than two that drift.
+     */
+    const payload: GovFile = { policies: [...this.policies.values()], approvals: [...this.approvals.values()], audit: capAuditPerOrg(this.audit), seeded: true };
     await fs.writeFile(tmp, JSON.stringify(payload), { mode: 0o600 });
     await fs.rename(tmp, this.filePath);
   }

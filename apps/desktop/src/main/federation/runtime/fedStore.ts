@@ -60,7 +60,18 @@ declareStoreScope({
   persistence: 'file',
   authority: 'ORG_ROLE',
   classification: 'CUSTOMER_DERIVED',
-  retention: 'No cap. revokeShare deletes one row after a party check.',
+  /** P13C ROUND 10 — the enum form. One delete, gated on being a PARTY to the row. */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'OWNER',
+  retention:
+    'No cap, no TTL and no eviction on any of the four collections (orgs, invitations, trust, ' +
+    'shared). Exactly ONE removal exists in the file: `revokeShare(id)`, which resolves the share, ' +
+    'asks `fed.roleIn(shareParties(share))` and refuses when the answer is `none`. It was ' +
+    '`shared.delete(id)` on a bare payload id, so any tenant could destroy any two organizations\' ' +
+    'sharing arrangement. BOTH parties may revoke — the owner because it is their resource, the ' +
+    'peer because declining an unwanted inbound share is a legitimate operation — and a non-party ' +
+    'may do neither, which is what makes OWNER the honest answer for a store whose rows name two ' +
+    'organizations each.',
   reason: 'Every row names two organizations and seedOrgId authorizes nothing: home is the caller, not the install. A peer directory is a relationship, so the boundary is a relationship rather than a single owner.',
 });
 

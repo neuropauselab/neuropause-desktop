@@ -35,7 +35,18 @@ declareStoreScope({
   persistence: 'file',
   authority: 'ORG_ROLE',
   classification: 'CUSTOMER_DERIVED',
-  retention: "Caps at 500,000 and evicts 10% OF THE WRITING TENANT'S edges as of Round 7. It was a global splice over regulated recall evidence.",
+  /** P13C ROUND 10 — the enum form. See the NEW FINDING note on `evictOldest`. */
+  retentionScope: 'OWNER',
+  /** An automatic cap. Nothing in this store removes an edge through a user surface. */
+  retentionAuthority: 'SYSTEM',
+  retention:
+    "Caps at 500,000 and evicts 10% OF THE WRITING TENANT'S oldest edges. It was a global splice " +
+    'over regulated recall evidence (Round 7), and the CONDITION stayed global for one more round: ' +
+    '`record()` evicts when `this.edges.length` — every manufacturer\'s edges — exceeds the cap, so ' +
+    'a filled install made every later tenant evict its own newest write immediately. Round 10 adds ' +
+    'the early return: a tenant under its own cap loses nothing however full the machine is. There ' +
+    'is no other removal — `record` is idempotent on `traceEdgeKey` and only ever attaches ' +
+    'provenance to an existing edge.',
   reason: 'TraceEdge.tenantId is part of the idempotency key and every read predicate. The rows are regulated lot and shipment movement — the evidence for a recall.',
 });
 
@@ -218,6 +229,25 @@ export class TraceEdgeStore extends EventEmitter {
      */
     const writer = this.edges[this.edges.length - 1]?.tenantId ?? null;
     const mine = writer === null ? this.edges : this.edges.filter((e) => e.tenantId === writer);
+    /**
+     * P13C ROUND 10 — NEW FINDING. THE VICTIM WAS SCOPED AND THE TRIGGER WAS NOT.
+     *
+     * Round 7 made the victim set per-tenant and left the condition alone:
+     * `record()` evicts whenever `this.edges.length > this.maxEdges`, which
+     * counts EVERY manufacturer's edges. So once one manufacturer reached
+     * 500,000 the store sat permanently at the trigger, and the next
+     * manufacturer to record anything evicted from ITS OWN — with `mine`
+     * holding only the edges it had just written. A second manufacturer on a
+     * filled install could not retain a single traceability edge, and what is
+     * dropped here is the regulated lot-and-shipment evidence a recall is built
+     * from.
+     *
+     * A cap is a WRITE, and this is the half of it Round 7 did not read: the
+     * question is not only "whose row is destroyed" but "who decides that a
+     * destruction happens at all". Below its own cap, a tenant now loses
+     * nothing however full the machine is.
+     */
+    if (mine.length <= this.maxEdges) return;
     const doomed = new Set(mine.slice(0, drop));
     const removed = this.edges.filter((e) => doomed.has(e));
     this.edges = this.edges.filter((e) => !doomed.has(e));

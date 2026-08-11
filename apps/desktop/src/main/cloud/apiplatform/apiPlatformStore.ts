@@ -42,9 +42,18 @@ declareStoreScope({
   persistence: 'file',
   authority: 'ORG_ROLE',
   classification: 'CUSTOMER_DERIVED',
+  /**
+   * P13C ROUND 10. The enum form of the prose below, which `declareStoreScope`
+   * can check: `TENANT` + `INSTALL` now throws.
+   */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'OWNER',
   retention:
-    "No cap. `deleteWebhook` removes one row and only after `myWebhook(id)` confirms it is the " +
-    "caller's; status changes replace a row in place. No operation reaches another tenant's row.",
+    "No cap, no TTL, no eviction: nothing here removes a row to make room, so no volume of one " +
+    "tenant's webhooks can reach another tenant's. The ONE removal is `deleteWebhook`, which runs " +
+    "only after `myWebhook(id)` has resolved the row and compared its `tenantId` to the caller's " +
+    'cloud tenant — a foreign id returns false and deletes nothing. Status changes and test ' +
+    'deliveries replace a row in place through the same resolver.',
   reason:
     'A webhook endpoint carries a customer-supplied URL and secret last-4 and is stamped with the ' +
     "caller's cloud tenant. Binding is asserted by the TenantOwnership this class holds.",
@@ -56,9 +65,19 @@ declareStoreScope({
   persistence: 'file',
   authority: 'PLATFORM_OPERATOR',
   classification: 'INSTALL_METADATA',
+  /**
+   * NONE, not INSTALL: `INSTALL` would claim a removal exists and reaches
+   * everything, and there is no removal on this half at all. `NONE` therefore
+   * takes `retentionAuthority: 'NONE'` — if nothing is removed there is nobody to
+   * authorize, which `declareStoreScope` enforces in both directions.
+   */
+  retentionScope: 'NONE',
+  retentionAuthority: 'NONE',
   retention:
     'No removal at all: deployments, rate-limit policies and the public API registry are seeded ' +
-    'once and mutated only by `setPolicyEnabled`, which flips a boolean in place.',
+    'once and mutated only by `setPolicyEnabled`, which flips a boolean in place. The `.slice(0, 4)` ' +
+    'occurrences the retention scanner matches in this file are secret-last-4 substrings of a fresh ' +
+    'UUID, not row removals.',
   reason:
     'Replicas, regions, rate-limit policies and the published API surface describe the control ' +
     'plane itself and carry no tenant field of any kind. PLATFORM_GLOBAL rather than INSTALL_GLOBAL ' +

@@ -50,6 +50,52 @@ import type {
 } from '@neuropause/shared';
 import { TenantOwnership } from '../../tenancy/tenantOwnedStore';
 import { createLogger } from '../../logger';
+import { declareStoreScope } from '../../tenancy/storeScope';
+
+/**
+ * P13C ROUND 10 — THE RETENTION DECLARATION THIS FILE COULD NOT MAKE.
+ *
+ * The store satisfied the scope gate by holding a `TenantOwnership`, which takes
+ * no retention argument. This file has its own history in the class, and it is
+ * the sharpest version of it in the program: the usage cap was install-wide and
+ * oldest-first, so a high-traffic tenant chose which of ANOTHER tenant's billing
+ * rows was destroyed — and the first attempt at the fix left an install-wide
+ * `slice(length - USAGE_CAP)` FALLBACK after the per-tenant prune, which with two
+ * tenants at 12,000 rows each did the entire original damage while the per-tenant
+ * prune above it was a no-op. See `recordUsage`.
+ */
+declareStoreScope({
+  name: 'ecosystem-developer',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retentionScope: 'OWNER',
+  retentionAuthority: 'OWNER',
+  retention:
+    'ONE cap and TWO single-row removals, plus one entry that belongs to nobody. The cap is ' +
+    '`recordUsage` → `tenancy.pruneOwn(usage, PER_TENANT_USAGE_CAP (20,000), oldest-first)`, which ' +
+    'counts and evicts within the writing tenant only and has NOTHING after it. Keys and OAuth ' +
+    'applications are never capped: `revokeKey` marks `revokedAt` and removes nothing, and ' +
+    '`deleteApp(id)` requires `tenancy.mine(app)` first — it was `apps.delete(id)` on a bare payload ' +
+    'id, the sharpest write in the file, because an OAuth client secret existed exactly once and ' +
+    'cannot be reissued. THE ONE ROW THAT IS NOBODY\'S, stated rather than averaged away: ' +
+    '`isTokenRevoked(jti)` deletes a revocation entry once it has EXPIRED. That map is the ' +
+    'credential-resolution surface the file header names as deliberately unscoped — it runs before ' +
+    'any tenant is established — but the removal cannot reach another owner in any meaningful sense: ' +
+    'it deletes exactly the entry for a jti the caller has PRESENTED (and therefore holds), only ' +
+    'after that token has expired, at which point the revocation is a no-op. No volume, id or ' +
+    'payload widens it.',
+  reason:
+    "One organization's API keys (name, prefix, last4, scopes, last-used), its OAuth applications " +
+    '(client ids, redirect URIs, grant types) and its raw usage ledger. There is exactly one ' +
+    'developer ACCOUNT on an install — a display identity — and every key, application and usage ' +
+    'row used to hang off it, so `keysFor(devId())` was every tenant\'s keys and the usage rows ' +
+    "drove another tenant's metered invoice. The owner is on the ROW rather than in the handler " +
+    'because these accessors are reached from the ecosystem IPC surface, the developer-platform ' +
+    'projection AND the marketplace publisher lookup. Binding is asserted by the TenantOwnership ' +
+    'this class holds.',
+});
 
 const log = createLogger('developer-registry');
 /**

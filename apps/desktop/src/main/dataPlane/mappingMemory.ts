@@ -24,7 +24,17 @@ declareStoreScope({
   persistence: 'file',
   authority: 'ORG_ROLE',
   classification: 'CUSTOMER_DERIVED',
-  retention: "Capped 5,000 PER TENANT as of Round 8. It was an install-wide splice, so one tenant's imports deleted another tenant's remembered mappings.",
+  /** P13C ROUND 10 — the checkable form of the prose below. */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'OWNER',
+  retention:
+    "Capped 5,000 PER TENANT as of Round 8 — the cap is computed over " +
+    '`mappings.filter(m => m.tenantId === ctx.tenantId)`, which is exactly the predicate `list` and ' +
+    "`find` read through, so an eviction can only remove the writer's own rows. It was an " +
+    "install-wide `splice(0, length - MAX)`, so one tenant's imports deleted another tenant's " +
+    'remembered column mappings and the next import of that file silently guessed again. The other ' +
+    'removal, `forget(tenantId, signature)`, filters on the SAME tenant id and takes it from ' +
+    '`deps.tenantId()` at the only call site (dataPlane/index.ts), never from the request payload.',
   reason: "A row is this organization's own spreadsheet headers mapped to its field decisions; m.tenantId is in every read predicate.",
 });
 

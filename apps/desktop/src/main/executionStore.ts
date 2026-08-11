@@ -13,6 +13,44 @@ import { dirname } from 'node:path';
 import type { ExecutionSession } from '@neuropause/shared';
 import type { TenantScope } from '@neuropause/shared';
 import { TenantOwnership } from './tenancy/tenantOwnedStore';
+import { declareStoreScope } from './tenancy/storeScope';
+
+/**
+ * P13C ROUND 10 — the structural scope declaration. See tenancy/storeScope.ts.
+ *
+ * Two of this program's install-wide caps were in THIS FILE, four hours apart
+ * (`save`, then `replaceAll`), and it still satisfied the gate on
+ * `new TenantOwnership(...)`, which takes no retention argument. There is
+ * a third removal below that neither fix touched; it is named honestly.
+ */
+declareStoreScope({
+  name: 'execute-engine-sessions',
+  scope: 'TENANT',
+  persistence: 'file',
+  /** Nothing deletes a session through a user surface; the engine writes, boot recovery replaces. */
+  authority: 'SYSTEM',
+  classification: 'CUSTOMER_DERIVED',
+  retentionScope: 'OWNER',
+  retentionAuthority: 'SYSTEM',
+  retention:
+    'Three removals. (1) `save` caps at MAX_PERSISTED=500 through `TenantOwnership.pruneOwn`, ' +
+    'which evicts only the CALLER\'S oldest by `startedAt`; it was `sessions.length = 500`, ' +
+    "install-wide and newest-first, so one tenant's activity truncated another's durable history " +
+    '(Round 5). (2) `replaceAll` — boot recovery, which runs before any organization is active — ' +
+    'buckets by `session.tenantId` and slices 500 WITHIN EACH BUCKET; it was a flat ' +
+    '`slice(0, 500)` over a newest-first file, which is the same defect re-applied on every start ' +
+    'that found an interrupted session. (3) `archiveOlderThan(retentionMs)` drops every session ' +
+    'whose `completedAt` is older than the window REGARDLESS OF OWNER. It is uniform and ' +
+    'age-based rather than volume-based, so no tenant can aim it at another, and it has NO ' +
+    'PRODUCTION CALLER — `executionStore.test.ts` is the only caller in the repo. If a retention ' +
+    'setting is ever wired to it, the window must come from the owning tenant and the sweep must ' +
+    'be per owner, or it becomes one tenant\'s policy deleting another tenant\'s evidence.',
+  reason:
+    '`ExecutionSession.result` is the full structured output of every executed action — an ' +
+    'assistant answer, an automation run, a memory recall, the executive snapshot, a workforce ' +
+    'job. Nothing reads the file except boot recovery, and the ring it feeds filters on read, so ' +
+    'this is the DESTRUCTION half of the boundary rather than the disclosure half.',
+});
 
 interface ExecutionFile {
   sessions: ExecutionSession[];

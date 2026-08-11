@@ -47,6 +47,16 @@ declareStoreScope({
   persistence: 'file',
   authority: 'SYSTEM',
   classification: 'CUSTOMER_DERIVED',
+  /**
+   * P13C ROUND 10 — the enum form, and this store is the reference the other
+   * fixes point at. `capHistoryPerTenant()` walks newest-first, keeps N per
+   * bucket and filters once; the two `apply()` sweeps that delete stale nodes
+   * and edges are both inside a `recordInScope(x, scope)` guard, so a rebuild
+   * removes only the rebuilding tenant's own slice.
+   */
+  retentionScope: 'OWNER',
+  /** Automatic: the cap runs inside `apply`, on a 750 ms rebuild debounce. */
+  retentionAuthority: 'SYSTEM',
   retention:
     'Relationship history is capped PER TENANT (5000 rows each) as of Round 9, and every row is ' +
     'stamped with the rebuilding tenant at write time. It was an install-wide slice over rows with ' +

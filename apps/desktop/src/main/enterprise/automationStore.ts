@@ -9,12 +9,43 @@
 import { promises as fs, readFileSync } from 'node:fs';
 import type { TenantScope } from '@neuropause/shared';
 import { TenantOwnership } from '../tenancy/tenantOwnedStore';
+import { declareStoreScope } from '../tenancy/storeScope';
 import { dirname } from 'node:path';
 import {
   validateAutomationRule,
   type AutomationRule,
   type AutomationStatus,
 } from '@neuropause/shared';
+
+/**
+ * P13C ROUND 10 — the structural scope declaration. See tenancy/storeScope.ts.
+ *
+ * The file passed the scope gate on `new TenantOwnership(...)` alone, which
+ * takes no retention argument — the hole all three of Round 9's proven HIGH
+ * findings sat in. Read against the code rather than against the fix comment.
+ */
+declareStoreScope({
+  name: 'automation-rules',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retentionScope: 'OWNER',
+  /** `remove` is the owner deleting its own rule; the cap runs under the same caller. */
+  retentionAuthority: 'OWNER',
+  retention:
+    'Two removals, both per owner. (1) The MAX_RULES=500 cap goes through ' +
+    '`TenantOwnership.pruneOwn`, which filters to `scope.tenantId`, drops that tenant\'s oldest by ' +
+    '`createdAt` and returns every other tenant\'s rows untouched; an unresolved scope prunes ' +
+    'NOTHING rather than pruning globally. It was an install-wide 500 that let one tenant choose ' +
+    "which of another's live automations was destroyed (Round 2 — H1). (2) `remove(id)` resolves " +
+    'through the scoped `get(id)` first, so a foreign id is "not found" rather than "found and ' +
+    'deleted". `save` refuses to replace a row it does not own, which is the write-side half.',
+  reason:
+    'An AutomationRule is a live business object — trigger, conditions and the actions it will ' +
+    'execute — and `runById` EXECUTES one. Ownership is stamped from the resolved tenant at save ' +
+    'and never taken from the payload.',
+});
 
 interface AutomationFile {
   rules: AutomationRule[];

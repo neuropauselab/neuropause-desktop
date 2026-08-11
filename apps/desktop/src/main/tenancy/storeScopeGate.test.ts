@@ -221,6 +221,51 @@ const NOT_A_STORE: Record<string, string> = {
     'per-tenant partitioning of the archive is open.',
 };
 
+/**
+ * Does this file REMOVE retained rows? P13C ROUND 10.
+ *
+ * The three HIGH findings Round 9's red team proved — `inboxStore`,
+ * `webhookStore`, `runStore` — were all one bug: a cap over a single shared
+ * array that deleted another tenant's rows while every read above it was
+ * correctly filtered. All three passed the scope gate, because
+ * `registerTenantStore(name, hasScope)` satisfies it and **takes no retention
+ * argument at all**. The question was never asked.
+ *
+ * So the gate now asks it. A file that persists, retains rows AND removes them
+ * must carry a `declareStoreScope` naming `retentionScope` and
+ * `retentionAuthority` — the enum form, which `declareStoreScope` can check
+ * against the store's scope. Prose could not be checked; `TENANT` + `INSTALL`
+ * now throws.
+ *
+ * Deliberately broad. `.delete(` and `.clear()` are included even though most
+ * are ordinary single-row deletes, because a single-row delete reached by a
+ * renderer-supplied id is the OTHER half of this program's history. The cost of
+ * a false positive is one honest enum on a declaration that already exists.
+ */
+function removesRows(src: string): boolean {
+  return (
+    /\.slice\(\s*0\s*,/.test(src) ||
+    /\.slice\(\s*-/.test(src) ||
+    /\.splice\(\s*0\s*,/.test(src) ||
+    /\.shift\(\)/.test(src) ||
+    /\.pop\(\)/.test(src) ||
+    /\.length\s*=\s*[A-Z_0-9]/.test(src) ||
+    /\bevict/i.test(src) ||
+    /\bprune/i.test(src) ||
+    /\bexpire\b/i.test(src) ||
+    /\bTTL\b/.test(src) ||
+    /\bLRU\b/.test(src) ||
+    /\btruncate\b/i.test(src) ||
+    /\.delete\(/.test(src) ||
+    /\.clear\(\)/.test(src)
+  );
+}
+
+/** Does the file state its retention in the CHECKABLE enum form? */
+function declaresRetentionScope(src: string): boolean {
+  return /retentionScope\s*:/.test(src) && /retentionAuthority\s*:/.test(src);
+}
+
 /** A declaration lives in the file if it calls any of the declaring APIs. */
 function declaresScope(src: string): boolean {
   return (
@@ -255,6 +300,40 @@ describe('every persistent store declares a scope', () => {
         'TENANT / WORKSPACE / USER / INSTALL_GLOBAL / PLATFORM_GLOBAL / EPHEMERAL — ' +
         'or add the file to NOT_A_STORE with the reason it is not one. ' +
         'UNKNOWN is not an option.',
+    ).toEqual([]);
+  });
+
+  /**
+   * P13C ROUND 10 — THE RETENTION GATE. A store that DELETES must say whose rows.
+   *
+   * This is the invariant Round 9 ended without. Three proven HIGH findings —
+   * one tenant's volume deleting another's notifications, dead-letter queue and
+   * certification history — sat in stores that satisfied the scope gate through
+   * `registerTenantStore`, which cannot express a retention policy. Nothing ever
+   * asked them the question, so nothing ever caught the answer being wrong.
+   *
+   * The failure message names the decision owed, not just the problem, because a
+   * gate whose output is "something is wrong" gets suppressed.
+   */
+  it('a file that persists AND removes rows declares retentionScope and retentionAuthority', () => {
+    const missing: string[] = [];
+    for (const path of sourceFiles(MAIN)) {
+      const rel = path.slice(MAIN.length + 1);
+      if (NOT_A_STORE[rel] !== undefined) continue;
+      const src = readFileSync(path, 'utf8');
+      if (!persistsState(src)) continue;
+      if (!removesRows(src)) continue;
+      if (!declaresRetentionScope(src)) missing.push(rel);
+    }
+
+    expect(
+      missing.sort(),
+      'These files persist state AND remove rows, and do not say WHOSE rows a removal can ' +
+        'reach. Add retentionScope (OWNER | INSTALL | NONE) and retentionAuthority ' +
+        '(OWNER | PLATFORM_OPERATOR | SYSTEM | NONE) to declareStoreScope. ' +
+        'A retention cap is a WRITE: this program has found eighteen that deleted across a ' +
+        'tenant boundary while every read above them was correctly filtered. ' +
+        'registerTenantStore cannot express this, which is exactly why three of them shipped.',
     ).toEqual([]);
   });
 

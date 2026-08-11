@@ -37,7 +37,25 @@ declareStoreScope({
   persistence: 'file',
   authority: 'ORG_ROLE',
   classification: 'CUSTOMER_DERIVED',
-  retention: 'No removal; rollback marks a version rolled_back.',
+  /**
+   * P13C ROUND 10 — NONE, verified by reading every write path rather than by
+   * trusting the previous one-line summary.
+   *
+   * `this.artifacts` is only ever `.set()` — nine call sites, all upserts. There
+   * is no `delete`, no `clear`, no `splice`, no cap and no TTL. The single
+   * `slice` in the file is `digest('hex').slice(0, 16)` building a key id, which
+   * shortens a STRING and removes no row. Versions accumulate: rollback appends
+   * a status change (`rolled_back`), it does not drop the version.
+   */
+  retentionScope: 'NONE',
+  retentionAuthority: 'NONE',
+  retention:
+    'NOTHING IS EVER REMOVED. No cap, no TTL, no eviction and no delete path: every mutation is an ' +
+    'upsert into the artifact Map, and rollback marks a version `rolled_back` rather than dropping ' +
+    'it — which is the right shape for a signed publication history, since a version that can ' +
+    'vanish cannot be verified after the fact. The file therefore grows with publication volume; ' +
+    'if a cap is ever added it must be per publisherOrg, because `publisherOrg` is already the ' +
+    'read predicate.',
   reason: "a.publisherOrg compared to the caller's org, and publisherOrg is no longer a parameter. Private drafts and per-org install records are the publishing organization's business.",
 });
 

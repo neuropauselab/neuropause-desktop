@@ -99,6 +99,44 @@ export type DataClassification =
   /** Credentials or secrets. */
   | 'SECRET';
 
+/**
+ * WHOSE ROWS A REMOVAL CAN REACH. P13C ROUND 10.
+ *
+ * THE GAP THIS CLOSES. Round 9's fresh red team proved three HIGH findings that
+ * were all the same bug — `inboxStore`, `webhookStore`, `runStore` each capped a
+ * single shared array, so one tenant's volume silently deleted another tenant's
+ * notifications, dead-letter queue and certification history. Every READ above
+ * those caps was correctly filtered.
+ *
+ * They passed the store-scope gate. `registerTenantStore(name, hasScope)`
+ * satisfies it and TAKES NO RETENTION ARGUMENT AT ALL, so none of the three was
+ * ever asked the question. The forcing function existed and three of the four
+ * declaring paths could not express the answer.
+ *
+ * A prose `retention` string was already mandatory. Prose cannot be checked. An
+ * enum can: `TENANT` + `INSTALL` is now refused at construction, which makes the
+ * entire class — a scoped store whose cap deletes across the boundary —
+ * unrepresentable rather than merely discouraged.
+ */
+export type RetentionScope =
+  /** A removal reaches ONLY the owning tenant / workspace / user's own rows. */
+  | 'OWNER'
+  /** A removal reaches every row on the machine, whoever wrote them. */
+  | 'INSTALL'
+  /** Nothing is ever removed. No cap, no TTL, no eviction, no delete path. */
+  | 'NONE';
+
+/** Who may cause a removal. Distinct from who may write, on purpose. */
+export type RetentionAuthority =
+  /** The owning tenant, acting on its own rows. */
+  | 'OWNER'
+  /** An install-level platform operator (`cloud:operate`). */
+  | 'PLATFORM_OPERATOR'
+  /** An automatic cap or TTL with no user-facing surface at all. */
+  | 'SYSTEM'
+  /** Nothing removes. Pairs with `retentionScope: 'NONE'`. */
+  | 'NONE';
+
 export interface StoreScopeDeclaration {
   /** Stable, human-readable, unique. Appears in the coverage report. */
   name: string;
@@ -106,6 +144,18 @@ export interface StoreScopeDeclaration {
   persistence: StorePersistence;
   authority: StoreAuthority;
   classification: DataClassification;
+  /**
+   * WHOSE rows a removal can reach. Required for every store that removes.
+   *
+   * Optional in the type ONLY so the 38 declarations that predate Round 10 keep
+   * compiling; `storeScopeGate.test.ts` requires it of any file whose source
+   * contains a removal, so omitting it on a store that deletes is a build
+   * failure, not a silence. The two mechanisms overlap deliberately — the type
+   * cannot see a `splice`, and the source scan cannot see a generic factory.
+   */
+  retentionScope?: RetentionScope;
+  /** WHO may cause that removal. Required whenever `retentionScope` is set. */
+  retentionAuthority?: RetentionAuthority;
   /**
    * How rows are removed, and WHOSE rows a removal can reach.
    *
@@ -193,6 +243,62 @@ export function declareStoreScope(decl: StoreScopeDeclaration): void {
    * GENERIC BY CONSTRUCTION: no store name appears here. A future INSTALL_GLOBAL
    * store cannot reintroduce the class by declaring it.
    */
+  /**
+   * A SCOPED STORE CANNOT HAVE INSTALL-WIDE RETENTION. P13C ROUND 10.
+   *
+   * The whole class, made unrepresentable. `inboxStore`, `webhookStore` and
+   * `runStore` were each `TENANT` with a cap over one shared array — declared
+   * correctly, filtered correctly on every read, and deleting across the
+   * boundary on every write. This is the line that would have refused all three.
+   *
+   * Generic: no store name appears in it.
+   */
+  if (
+    decl.retentionScope === 'INSTALL' &&
+    (decl.scope === 'TENANT' || decl.scope === 'WORKSPACE' || decl.scope === 'USER')
+  ) {
+    throw new Error(
+      `Store "${decl.name}" is ${decl.scope} but its retention reaches INSTALL-wide. ` +
+        'A cap, TTL or eviction that crosses the scope boundary DELETES another owner\'s rows ' +
+        'while every read above it stays correctly filtered — a filter hides, a cap deletes. ' +
+        'Keep the newest N PER OWNER (see marketplaceStore.event), or declare the honest scope.',
+    );
+  }
+  /**
+   * A GLOBAL store has no per-owner rows, so it cannot have per-owner retention.
+   * Catches a declaration copied from a scoped store without rereading it.
+   */
+  if (
+    decl.retentionScope === 'OWNER' &&
+    (decl.scope === 'INSTALL_GLOBAL' || decl.scope === 'PLATFORM_GLOBAL')
+  ) {
+    throw new Error(
+      `Store "${decl.name}" is ${decl.scope}, so it has no per-owner rows and its retention ` +
+        'cannot be OWNER-scoped. Use INSTALL (a removal reaches everything, which is what a ' +
+        'global store means) or NONE, or narrow the scope.',
+    );
+  }
+  /** A removal must say who may cause it, and a non-removal must say neither. */
+  if (decl.retentionScope !== undefined && decl.retentionScope !== 'NONE') {
+    if (decl.retentionAuthority === undefined || decl.retentionAuthority === 'NONE') {
+      throw new Error(
+        `Store "${decl.name}" removes rows (retentionScope: ${decl.retentionScope}) but names ` +
+          'no retentionAuthority. A retention cap is a WRITE; say who may cause it.',
+      );
+    }
+  }
+  if (decl.retentionScope === 'NONE' && (decl.retentionAuthority ?? 'NONE') !== 'NONE') {
+    throw new Error(
+      `Store "${decl.name}" declares retentionScope NONE but names a retentionAuthority. ` +
+        'If nothing is removed there is nobody to authorize; if something is removed, say whose.',
+    );
+  }
+  if (decl.retentionAuthority !== undefined && decl.retentionScope === undefined) {
+    throw new Error(
+      `Store "${decl.name}" names a retentionAuthority with no retentionScope. ` +
+        'WHO may remove is only meaningful alongside WHOSE rows a removal reaches.',
+    );
+  }
   if (decl.scope === 'INSTALL_GLOBAL' && decl.authority === 'ORG_ROLE') {
     throw new Error(
       `Store "${decl.name}" is INSTALL_GLOBAL with ORG_ROLE authority. One shared resource ` +

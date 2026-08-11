@@ -32,7 +32,23 @@ declareStoreScope({
   persistence: 'file',
   authority: 'ORG_ROLE',
   classification: 'CUSTOMER_DERIVED',
-  retention: 'The worker prune is confined to one organization; there is no other removal.',
+  /** P13C ROUND 10 — the enum form. Re-read against the code, not against the fix note. */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'OWNER',
+  retention:
+    'Four removals, and every one resolves ownership FIRST — the `ownedUnit` / `ownedUser` / ' +
+    '`ownedRole` gate added for NEW-H6 this round. (1) `deleteUnit`, (2) `deleteUser` and ' +
+    '(3) `deleteRole` were each a bare `this.<map>.get(id)` over one install-wide Map reached by a ' +
+    'renderer-supplied id, and the thirteen seeded unit ids plus `user-owner` are COMPILE-TIME ' +
+    'CONSTANTS, so there was nothing to discover. They now return false for a row the caller does ' +
+    'not own, and `owns()` fails closed on an unbound seam, an unresolved tenant, an unknown id ' +
+    'and a row with no orgId. Their cascades (re-parenting children, detaching members, clearing ' +
+    '`leadUserId`, stripping a deleted role from its holders) scan the whole Map by id equality ' +
+    'and can only match rows that reference the OWNED row being deleted. (4) `syncWorkers` prunes ' +
+    'AI members whose worker package is gone, from `existingByWorker`, which is built with an ' +
+    "explicit `u.orgId !== org.id` skip — unscoped, it deleted another tenant's AI members whose " +
+    'ids were absent from the list being synced. There is no cap, no TTL and no eviction anywhere ' +
+    'in this store; an org chart is not rotated.',
   reason: 'Member names, emails, titles and the org chart. Every row but Organization itself carries orgId. The cross-org read filter lives in tenantDirectory, and that borrowed guarantee is recorded here rather than assumed.',
 });
 

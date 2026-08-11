@@ -44,9 +44,28 @@ declareStoreScope({
   persistence: 'file',
   authority: 'SYSTEM',
   classification: 'INSTALL_METADATA',
+  /**
+   * P13C ROUND 10. `NONE`, and the two matches the retention scanner finds in
+   * this file are named so the answer is checkable rather than asserted:
+   *
+   *   `runtimeIdentity.clear()`        — clears the IN-MEMORY org/user/device
+   *                                      identity context on sign-out. Nothing
+   *                                      persisted, no row anywhere.
+   *   `statusListeners.delete(listener)` — the unsubscribe returned by
+   *                                      `onLiveSyncStatus`. The Set holds
+   *                                      CALLBACK FUNCTIONS, not rows.
+   *
+   * The persisted state this file owns is one line in one file, and no code path
+   * removes it. `INSTALL_GLOBAL` also makes `OWNER` illegal here, correctly: a
+   * global store has no per-owner rows.
+   */
+  retentionScope: 'NONE',
+  retentionAuthority: 'NONE',
   retention:
     'One file, one line, never removed. Rewritten only when it is missing or unreadable, in ' +
-    'which case a new id is minted; nothing else is deleted and no organization is involved.',
+    'which case a new id is minted; nothing else is deleted and no organization is involved. The ' +
+    'durable queue and mirror this module composes are a DIFFERENT store with its own declaration ' +
+    'and its own per-owner cap (`cloud-livesync-queue`, cloud/livesync/store.ts).',
   reason:
     'A per-installation random UUID for sync echo-exclusion. Not derived from any customer ' +
     'record and identical in meaning for every organization on the machine.',

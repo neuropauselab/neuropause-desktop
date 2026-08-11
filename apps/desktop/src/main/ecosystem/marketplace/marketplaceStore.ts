@@ -41,7 +41,22 @@ declareStoreScope({
   persistence: 'file',
   authority: 'ORG_ROLE',
   classification: 'CUSTOMER_DERIVED',
-  retention: "Event log capped PER PUBLISHER as of Round 8. It was an install-wide slice, so one publisher's activity evicted another's submission trail.",
+  /**
+   * P13C ROUND 10. SYSTEM: the event cap fires inside the private `event()`
+   * helper and there is no delete surface on this store at all — no listing,
+   * version or event can be removed through any channel.
+   */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'SYSTEM',
+  retention:
+    'ONE removal: the submission-event cap in `event()`, EVENT_CAP (5,000) rows PER LISTING. It ' +
+    "was an install-wide `slice(-EVENT_CAP)`, so one publisher's activity evicted another's " +
+    'submission trail — the record of what was reviewed and approved. Per listing is strictly ' +
+    'NARROWER than per publisher, since a listing has exactly one `publisherOrgId`, so no ' +
+    "publisher's volume can reach another's rows even across their own listings. Events loaded from " +
+    'an older file with a null `listingId` share the `__none__` bucket; they are returned by no read ' +
+    '(`recentEvents` requires a non-null listingId in an owned set) and can evict only each other. ' +
+    'Listings and versions are never removed.',
   reason: "ROUND 8 FINDING: no seam, no orgId, and developerId was a constant — while EcosystemShareWorker writes a tenant's AI worker name and first goal into a listing every tenant could read, and events carry the signed-in actor's name and email.",
 });
 

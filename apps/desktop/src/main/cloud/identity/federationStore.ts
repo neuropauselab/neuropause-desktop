@@ -28,10 +28,16 @@ declareStoreScope({
   persistence: 'file',
   authority: 'ORG_ROLE',
   classification: 'CUSTOMER_DERIVED',
+  /** P13C ROUND 10 — the checkable form of the prose below. */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'OWNER',
   retention:
-    'No cap and no time-based eviction. `deleteConnection` removes one row and only after ' +
-    "`connection(id)` has confirmed it is the caller's; SCIM and MFA are one row per cloud tenant, " +
-    "replaced in place by their own tenant. Nothing here can remove another organization's row.",
+    'No cap and no time-based eviction, so no write can evict anything to make room. The ONE ' +
+    'removal is `deleteConnection`, which runs only after `connection(id)` has resolved the row and ' +
+    "compared its `tenantId` to the caller's cloud tenant; a foreign id returns false. SCIM and MFA " +
+    'are one row per cloud tenant keyed BY that tenant and replaced in place by `requireCloudTenant()`, ' +
+    "which throws when unresolved rather than writing into somebody's partition. Nothing here can " +
+    "remove another organization's row.",
   reason:
     "One organization's identity configuration: SSO issuer, entity id, SSO URL, client id, email " +
     'domains, attribute mapping, SCIM posture and MFA policy. Credential-adjacent (only a token ' +

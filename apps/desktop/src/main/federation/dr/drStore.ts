@@ -24,6 +24,64 @@ import type {
 import { createLogger } from '../../logger';
 import { demoSeedsEnabled } from '../../demoSeed';
 import { declareSystemGlobalStore } from '../../tenancy/tenantOwnedStore';
+import { declareStoreScope } from '../../tenancy/storeScope';
+
+/**
+ * P13C ROUND 10 — NEW-F5, FOUND BY THE RETENTION GATE AND NOW CLOSED.
+ *
+ * The gate demanded this file state whose rows a removal can reach. The honest
+ * declaration would not construct, and the reason it would not construct WAS the
+ * finding:
+ *
+ *     scope      INSTALL_GLOBAL   backups, replication topology and continuity
+ *                                 posture describe THIS MACHINE. There is one
+ *                                 filesystem and one topology per install; a
+ *                                 per-tenant partition would name something that
+ *                                 does not exist.
+ *     authority  ORG_ROLE         `FedCreateBackup`, `FedRunValidation` and
+ *                                 `FedCheckReplication` were `federation:manage`.
+ *
+ * `declareStoreScope` refuses that pair — Round 9's F19 — because anyone may
+ * create an organization and own it, so an organization role over an install-wide
+ * resource is a self-service grant across every tenant.
+ *
+ * THE PART WORTH REMEMBERING. This store's `declareSystemGlobalStore` reason has
+ * stated the cost in prose SINCE ROUND 4: "a federation:manage holder in one
+ * tenant can trigger an install-wide backup or a recovery validation." That is
+ * the finding, written down, reviewed, and shipped five rounds running. PROSE
+ * CANNOT BE CHECKED. The enum can, and refused to compile a lie.
+ *
+ * The three channels moved to `cloud:operate` in `federationPlatform/
+ * federationAuthz.ts`; the reads did not move. The declaration below is now a
+ * true statement.
+ */
+declareStoreScope({
+  name: 'federation-dr',
+  scope: 'INSTALL_GLOBAL',
+  persistence: 'file',
+  authority: 'PLATFORM_OPERATOR',
+  classification: 'INSTALL_METADATA',
+  /**
+   * INSTALL is the only honest answer: the rows have no owner field, because
+   * there is nothing per-tenant to own. A removal reaches everything, which is
+   * what a global store means — and `declareStoreScope` refuses `OWNER` here for
+   * exactly that reason.
+   */
+  retentionScope: 'INSTALL',
+  retentionAuthority: 'PLATFORM_OPERATOR',
+  retention:
+    'ONE removal: `validations.slice(0, 50)`, applied in both `runValidation()` and `persist()` so ' +
+    'memory and disk cannot disagree. Rows carry no owner, so the cap can reach nothing that ' +
+    'belongs to a tenant — there are no tenant rows here. Backups, replicas and posture are never ' +
+    'removed by this store; deleting a backup archive is `backup/backupManager`, which is separately ' +
+    'declared and separately gated.',
+  reason:
+    'WHY GLOBAL: one machine, one filesystem, one replication topology. WHAT DATA: backup ids and ' +
+    'timestamps, replica lag, validation outcomes, RPO/RTO targets — the deployment\'s own posture, ' +
+    'no customer records and no counts derived from them. ROUND 10 (NEW-F5): the three mutating ' +
+    'channels were `federation:manage`, an organization role over an install-wide side effect; they ' +
+    'are now `cloud:operate`. The prose below this line said so from Round 4 and nothing could check it.',
+});
 
 const log = createLogger('federation-dr');
 

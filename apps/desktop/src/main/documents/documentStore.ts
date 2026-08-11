@@ -46,6 +46,20 @@ declareStoreScope({
   persistence: 'file',
   authority: 'ORG_ROLE',
   classification: 'CUSTOMER_DERIVED',
+  /**
+   * P13C ROUND 10 — the checkable form of the prose below.
+   *
+   * OWNER covers the ROWS, which is what `retentionScope` is about. The one
+   * thing in this file that spans owners is the BLOB reference count, and it is
+   * deliberate and unchanged: the pool is content-addressed, so counting only
+   * the acting tenant's records would delete bytes another tenant's record still
+   * names. That is a shared-pool limitation recorded in the security note, not a
+   * removal that reaches another owner's rows — the other tenant's record
+   * survives intact either way, and the direction of the choice is toward
+   * keeping bytes.
+   */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'OWNER',
   retention:
     'Capped at 40 documents PER SCOPE, not per install: `AppendOnlyJsonStore.append` filters to ' +
     "`recordInScope` before choosing what to evict, so one workspace's uploads cannot delete " +

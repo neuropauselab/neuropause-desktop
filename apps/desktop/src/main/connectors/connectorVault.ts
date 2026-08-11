@@ -22,6 +22,23 @@ declareStoreScope({
   persistence: 'keychain',
   authority: 'ORG_ROLE',
   classification: 'SECRET',
+  /**
+   * P13C ROUND 10. OWNER, and the one entry that is nobody's is stated rather
+   * than averaged away.
+   *
+   * `delete` and `clear` both take the workspace as an explicit argument and can
+   * only reach that workspace's subtree. `discardUnscoped` reaches the `legacy`
+   * bucket, whose entries have NO owning workspace by construction: they are
+   * returned by no `get` from any workspace, they are unspendable, and the only
+   * thing lost by discarding one is the operator's reminder to reconnect. It is
+   * also reachable from no IPC channel — `connectors/index.ts` calls
+   * `migrationRequired()` at startup to log the count and nothing calls
+   * `discardUnscoped` outside tests — so no caller of any kind can currently
+   * cause it. Verified by reading, and named here so a future caller that wires
+   * it to a channel has to reread this line.
+   */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'OWNER',
   retention:
     'No cap — nothing is ever evicted to make room, so no write can destroy a credential. ' +
     'Three removals exist and each names its reach: `delete` removes ONE account inside ONE ' +

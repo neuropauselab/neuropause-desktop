@@ -14,6 +14,39 @@ import { promises as fs, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { TenantScope } from '@neuropause/shared';
 import { TenantOwnership } from '../tenancy/tenantOwnedStore';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/**
+ * P13C ROUND 10 — the structural scope declaration. See tenancy/storeScope.ts.
+ *
+ * `new TenantOwnership(...)` satisfied the scope gate and cannot express a
+ * retention policy. This store is the reason that matters: its primary key USED
+ * TO BE the calendar day for the whole install, so a write was itself a deletion
+ * of somebody else's row.
+ */
+declareStoreScope({
+  name: 'enterprise-health-history',
+  scope: 'TENANT',
+  persistence: 'file',
+  /** Nothing edits a datapoint; `record` is called by the Executive Center subsystem. */
+  authority: 'SYSTEM',
+  classification: 'CUSTOMER_DERIVED',
+  retentionScope: 'OWNER',
+  retentionAuthority: 'SYSTEM',
+  retention:
+    'ONE removal: the MAX_POINTS=90 rolling window in `record`, applied through ' +
+    "`TenantOwnership.pruneOwn` — filtered to `scope.tenantId`, oldest-by-`day` within that " +
+    "tenant, nobody else's series touched, and nothing pruned at all when the scope is " +
+    'unresolved. Install-wide, a busy tenant\'s daily writes pushed another tenant\'s ninety-day ' +
+    'window out from underneath it. The OVERWRITE is the other half and was the sharper defect: ' +
+    'the row key was the calendar day ALONE, last-write-wins, so whichever tenant opened the ' +
+    "Executive Center last that day destroyed every other tenant's datapoint for it. The key is " +
+    '`(tenantId, day)` as of Round 5, and `record` refuses outright when no tenant resolves.',
+  reason:
+    'The numbers look like install telemetry — `{day, overall, engineering}`, three primitives — ' +
+    'and are not: `overall` is computed from ONE organization\'s headcount, licence runway, ' +
+    'connector fleet and activity volume. Five sweeps read the shape and missed the derivation.',
+});
 
 export interface HealthPoint {
   /** ISO date (YYYY-MM-DD) the point represents. */

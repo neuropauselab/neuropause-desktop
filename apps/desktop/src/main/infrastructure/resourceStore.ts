@@ -14,6 +14,7 @@
 import type { TenantScope } from '@neuropause/shared';
 import { TenantOwnership } from '../tenancy/tenantOwnedStore';
 import { TenantMemo } from '../tenancy/tenantMemo';
+import { declareStoreScope } from '../tenancy/storeScope';
 import { EventEmitter } from 'node:events';
 import { promises as fs } from 'node:fs';
 import {
@@ -23,6 +24,42 @@ import {
   type InfraSearchResult,
   type ResourceGraphModel,
 } from '@neuropause/shared';
+
+/**
+ * P13C ROUND 10 — the structural scope declaration. See tenancy/storeScope.ts.
+ *
+ * The file satisfied the scope gate through `new TenantOwnership(...)` alone,
+ * which asks "is a boundary bound?" and cannot express what a REMOVAL reaches.
+ * That is the hole all three of Round 9's proven HIGH findings sat in.
+ */
+declareStoreScope({
+  name: 'infrastructure-resources',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retentionScope: 'OWNER',
+  /**
+   * The removal is the discovery pass's source-deletion cascade, which runs
+   * under the discovering tenant's own principal. No cap, no TTL over rows —
+   * `GRAPH_TTL_MS` bounds a MEMO of a projection, not the resources.
+   */
+  retentionAuthority: 'OWNER',
+  retention:
+    'No cap and no TTL on rows. The one removal is the source-deletion half of `upsertMany`: when ' +
+    'a discovery pass reports that a provider object is gone, its resource is deleted. As of ' +
+    'Round 10 that deletion is CONFINED TO THE DISCOVERING TENANT — the id is resolved against ' +
+    "rows the writer owns, so a `deletedIds` entry naming another organization's resource is a " +
+    'miss rather than a delete. It previously resolved over the whole Map on either the resolved ' +
+    'id or a `nativeId` matched only on platform+account, and two organizations that discover the ' +
+    'same cloud account share both. `GRAPH_TTL_MS` expires a per-tenant `TenantMemo` of the ' +
+    'projected graph and removes no resource.',
+  reason:
+    'Discovered cloud inventory: resource names, tags, attribute values, account ids, regions and ' +
+    'health. `tenantId` is stamped from `requireTenant()` at every upsert and `mine()` is the one ' +
+    'read filter. Round 7 found this subsystem had never had a tenant dimension at all — 54 files ' +
+    'and not one reference to a scope — so the boundary is young and the declaration says so.',
+});
 
 /** Does `q` (already lowercased) match this resource? Returns the matched field name, or null. Scans the
  *  human-meaningful fields — name, native id, type, region, tag keys/values, and string attribute values. */
@@ -221,11 +258,31 @@ export class ResourceStore extends EventEmitter<{ changed: [ResourceChangedEvent
       // (platform + account) — two accounts routinely share a native id, so an unscoped `find` would delete
       // the wrong account's resource and miss the intended one. When the scope is absent (a resolved id was
       // passed), an exact-id match is used.
-      const resolved = this.resources.has(id)
-        ? id
-        : [...this.resources.values()].find(
-            (r) => r.nativeId === id && (!scope?.platformId || r.platformId === scope.platformId) && (!scope?.accountId || r.accountId === scope.accountId),
-          )?.id;
+      /**
+       * P13C ROUND 10 — THE DELETE RESOLVES WITHIN THE DISCOVERING TENANT.
+       *
+       * Both arms resolved over the whole Map: the exact-id arm did no
+       * ownership check at all, and the `nativeId` arm narrowed on
+       * platform+account, which is a CLOUD account and not an organization —
+       * the file's own comment says two accounts routinely share a native id,
+       * and two ORGANIZATIONS that point at the same cloud account share both
+       * of the fields that arm compares. A discovery pass for one tenant could
+       * therefore delete another tenant's resource row, which is the same
+       * read-scoped/write-unscoped split as the marketplace, the connectors and
+       * the org directory.
+       *
+       * `owner` is the authoritative `requireTenant()` value resolved above, so
+       * a `deletedIds` entry naming somebody else's resource is now a MISS —
+       * indistinguishable from an id that does not exist, which is the answer
+       * every other resolver in this program gives.
+       */
+      const exact = this.resources.get(id);
+      const resolved =
+        exact && exact.tenantId === owner
+          ? id
+          : [...this.resources.values()].find(
+              (r) => r.tenantId === owner && r.nativeId === id && (!scope?.platformId || r.platformId === scope.platformId) && (!scope?.accountId || r.accountId === scope.accountId),
+            )?.id;
       if (resolved && this.resources.delete(resolved)) {
         changed.push(resolved);
         deleted += 1;

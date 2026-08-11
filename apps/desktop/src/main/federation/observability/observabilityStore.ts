@@ -11,6 +11,49 @@ import type { SecurityEvent, SecuritySeverity, UsagePoint } from '@neuropause/sh
 import { createLogger } from '../../logger';
 import { demoSeedsEnabled } from '../../demoSeed';
 import { declareSystemGlobalStore } from '../../tenancy/tenantOwnedStore';
+import { declareStoreScope } from '../../tenancy/storeScope';
+
+/**
+ * P13C ROUND 10 — the structural scope declaration. See tenancy/storeScope.ts.
+ *
+ * `declareSystemGlobalStore` demands a prose reason and takes no retention
+ * argument, so this store's two `slice` calls had never been classified. They
+ * are genuinely install-wide, which for a store with no per-owner rows is the
+ * honest answer rather than a finding — `INSTALL_GLOBAL` + `retentionScope:
+ * 'OWNER'` is refused by `declareStoreScope` for exactly that reason.
+ */
+declareStoreScope({
+  name: 'federation-observability',
+  scope: 'INSTALL_GLOBAL',
+  persistence: 'file',
+  /**
+   * SYSTEM, and it is checked rather than assumed: `recordSecurity` is the only
+   * mutating method and NOTHING in the repo calls it outside this file's tests.
+   * The three IPC channels that reach this store (FedObservability,
+   * FedUsageSeries, FedSecurityEvents) are all `federation:read`. If a runtime
+   * feed is ever wired, this becomes ORG_ROLE over an install-wide resource —
+   * the Round 7 finding class — and `declareStoreScope` will refuse it.
+   */
+  authority: 'SYSTEM',
+  classification: 'INSTALL_METADATA',
+  /** No per-owner rows exist, so a removal reaches everything by construction. */
+  retentionScope: 'INSTALL',
+  retentionAuthority: 'SYSTEM',
+  retention:
+    'Two install-wide caps, applied at persist: `usage.slice(-90)` (90 daily points) and ' +
+    '`security.slice(0, 200)`, plus the same 200 cap in `recordSecurity`. Install-wide is correct ' +
+    'here and only because the rows have no owner to lose: a UsagePoint is five integers and a ' +
+    'timestamp, a SecurityEvent is a category, a severity, a source and a detail string authored ' +
+    'in this file. THE CONDITION THAT ENDS THAT: `apiRequests`, `syncOps` and `workerJobs` COUNT ' +
+    'TENANT ACTIVITY. The day a real feed replaces the demo seed, this cap becomes one tenant\'s ' +
+    "volume deleting another tenant's series — the Round 9 class exactly — and the store must be " +
+    'partitioned before the feed lands, not after.',
+  reason:
+    'Subsystem health and a security event log describe the RUNTIME: one process, one set of ' +
+    'subsystems, one log. Verified stronger than by field list — there is NO runtime write path at ' +
+    'all today; both arrays are populated only by `applySeed`, behind `demoSeedsEnabled()`, so a ' +
+    'production install holds nothing to derive from. See `systemGlobalProof.test.ts`.',
+});
 
 const log = createLogger('federation-observability');
 

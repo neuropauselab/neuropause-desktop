@@ -27,6 +27,58 @@ import { entityById } from './ontology';
 import type { ImportPlan, PlannedTable } from './planner';
 import type { PreparedRow } from './quality';
 import { registerTenantStore } from '../tenancy/tenantOwnedStore';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/**
+ * P13C ROUND 10 — THE RETENTION DECLARATION THIS FILE COULD NOT MAKE.
+ *
+ * `ProvenanceStore` satisfied the scope gate through `registerTenantStore`,
+ * which asks "is a boundary bound?" and takes no retention argument at all —
+ * the exact gap the three proven Round 9 findings went through. This store has
+ * its own history in the class: `evictOverflow` used to splice the front of the
+ * shared records array and `evictRuns` used to do `runs.length = MAX_IMPORT_RUNS`,
+ * so a tenant performing 500 imports erased every other tenant's import history
+ * while `history()`, `run()` and `forExternalKey()` were all correctly filtered.
+ *
+ * The declaration is here rather than beside the class because the file is named
+ * `importer.ts` — a `*Store.ts` sweep walks past it, which is what the structural
+ * gate exists to make irrelevant.
+ */
+declareStoreScope({
+  name: 'dataplane-provenance',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  /**
+   * SYSTEM, not OWNER: there is no delete surface on this store at all. Both
+   * removals are automatic caps that fire on append, and neither is reachable
+   * from any channel, id or payload.
+   */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'SYSTEM',
+  retention:
+    'TWO caps, both PER TENANT, and a third removal that is index bookkeeping. (1) ' +
+    '`evictOverflow` keeps MAX_PROVENANCE_RECORDS (100,000) rows for the WRITING tenant, choosing ' +
+    'the doomed set from `records.filter(r => recordInScope(r, scope))` — the identical predicate ' +
+    '`visible()` filters every read through, so the retention bucket and the visibility set are the ' +
+    'same set by construction. (2) `evictRuns` keeps MAX_IMPORT_RUNS (500) runs for the writing ' +
+    'tenant, dropping the oldest of ITS OWN slice of a newest-first array. Both were install-wide ' +
+    "and both destroyed another tenant's import trail; eviction also drops the row from " +
+    "`byExternal`, so the victim's next connector sync no longer recognised provider objects it had " +
+    'already imported and created duplicates. (3) `deindex` removes exactly the two index entries ' +
+    'of a row that has just been evicted, under that row\'s OWN tenant key. Rows with no owner are ' +
+    'never indexed and never counted against any tenant\'s cap.',
+  reason:
+    'A provenance row is the answer to "where did this record come from" — source file, sheet, row, ' +
+    'the original value and the transformation applied — and an import run names the plan, the files ' +
+    'and the row counts. TENANT rather than WORKSPACE deliberately: an import belongs to the ' +
+    'organization that performed it, not to whichever workspace happened to be open, so rows are ' +
+    'stamped `workspaceId: null` and both indexes are keyed with `tenantOnlyKey` to agree with that. ' +
+    'Keying `byExternal` on the external id ALONE was itself a cross-tenant write: two tenants ' +
+    "syncing the same provider account collided on one row and the second adopted the first's " +
+    'provenance. Binding is asserted by the `registerTenantStore` line in the constructor.',
+});
 
 export interface FieldProvenance {
   field: string;

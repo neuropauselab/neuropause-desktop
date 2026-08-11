@@ -15,6 +15,53 @@ import type {
   TenantScope,
 } from '@neuropause/shared';
 import { registerTenantStore } from '../tenancy/tenantOwnedStore';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/**
+ * P13C ROUND 10 — THE RETENTION DECLARATION THIS FILE COULD NOT MAKE.
+ *
+ * The store satisfied the scope gate through `registerTenantStore` alone, which
+ * asks "is a boundary bound?" and cannot express what a REMOVAL reaches. That is
+ * the gap the three proven Round 9 findings went through, and this file has its
+ * own history in the same class: until Round 7 the cap here sorted the WHOLE
+ * INSTALL by (pinned, updatedAt) and kept the newest 100, so a conversation in
+ * tenant A destroyed tenant B's least-recently-updated conversations on disk
+ * while `get`, `list`, `delete` and `upsert` were all correctly scoped.
+ */
+declareStoreScope({
+  name: 'assistant-conversations',
+  scope: 'TENANT',
+  persistence: 'file',
+  /**
+   * No role gates these channels — `assistant:*` is on the PUBLIC allowlist (see
+   * the boundary note below), so the person at the keyboard is the whole
+   * authority for their own organization's conversations.
+   */
+  authority: 'USER',
+  classification: 'CUSTOMER_DERIVED',
+  /** P13C ROUND 10 — the checkable form of the prose below. */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'OWNER',
+  retention:
+    'Capped PER TENANT (MAX_CONVERSATIONS = 100 for each tenantId) since Round 7, and the bucket ' +
+    'is exactly the predicate `mine()` enforces on every read, so an eviction can only ever remove ' +
+    "rows from the caller's own tenant. It was an install-wide sort-and-keep-newest-100, the sixth " +
+    'such cap this program found behind a correct read path. THE OTHER TWO REMOVALS, each stated: ' +
+    '`upsert` trims one conversation to the newest MAX_MESSAGES messages — inside a single row the ' +
+    'caller has just been proved to own — and `delete(id)` resolves through `get(id)`, which returns ' +
+    'null for a foreign id, so a guessed uuid deletes nothing and reports nothing was deleted. An ' +
+    'unowned write is refused outright rather than stored, because an ownerless row would be ' +
+    'invisible to everyone while still consuming a retention slot.',
+  reason:
+    "A conversation body is assistant output synthesised from one organization's records — record " +
+    'names, figures, summaries of that business — plus the message history that produced it. Before ' +
+    'the seam, `list(null)` meant NO FILTER (the IPC schema makes workspaceId nullable AND optional, ' +
+    'so `{}` returned every conversation on the install) and `get(id)` selected by bare uuid, both ' +
+    'on PUBLIC channels. TENANT rather than WORKSPACE because `list` narrows by workspace WITHIN the ' +
+    'tenant filter and never across it; the retention bucket uses the same tenant key. Binding is ' +
+    'asserted by the `registerTenantStore` line in the constructor (`assertAllTenantStoresBound`), ' +
+    'so no second predicate is declared here that could drift from it.',
+});
 
 interface ConversationFile {
   conversations: AssistantConversation[];

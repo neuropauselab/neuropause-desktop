@@ -32,7 +32,22 @@ declareStoreScope({
   persistence: 'file',
   authority: 'ORG_ROLE',
   classification: 'CUSTOMER_DERIVED',
-  retention: 'No eviction. Replace and delete are per document, and the 1,000-line cap REFUSES rather than deleting.',
+  /** P13C ROUND 10 — the enum form. The guarantee is BORROWED; see below. */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'OWNER',
+  retention:
+    'No cap, no TTL, no eviction — and the 1,000-line limit is the interesting part: `setLines` ' +
+    'REFUSES an over-length document (`ok: false`, nothing written) rather than truncating it, so ' +
+    'the one bound in this file cannot delete anything, anyone\'s. Two removals remain, both keyed ' +
+    'on `(documentType, documentId)` and both replacing exactly one document\'s lines: `setLines` ' +
+    '(replace-whole-document, all-or-nothing after validating every line) and `deleteForDocument` ' +
+    '(the parent-delete cascade JSON storage cannot give us). NEITHER CHECKS AN OWNER ITSELF, and ' +
+    'it cannot: a DocumentLine has no tenant field — its owner is its parent document. The ' +
+    'boundary is the caller\'s: the IPC path resolves the parent through the scoped enterprise ' +
+    'module store first, so a foreign documentId reads as absent before this store is reached. ' +
+    'That is a BORROWED guarantee and is written down rather than assumed, because an in-process ' +
+    'caller that skips the resolve would delete across it (the Round 8 finding, still open by ' +
+    'design).',
   reason: 'Product, quantity, unit price, discount, tax, warehouse. The row has no owner field: its owner is the parent document, whose scoped resolve gates the IPC path. ROUND 8 FINDING: in-process callers bypass that gate, so the guarantee is borrowed and is written down rather than assumed.',
 });
 

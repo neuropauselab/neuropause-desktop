@@ -20,6 +20,55 @@ import type { TenantScope } from '@neuropause/shared';
 import { ownershipOf, recordInScope } from '@neuropause/shared';
 import { readStoreFile, envelopeStamp } from '../storage/storeEnvelope';
 import { registerTenantStore } from '../tenancy/tenantOwnedStore';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/**
+ * P13C ROUND 10 — ONE DECLARATION FOR THE SUBSTRATE, NOT FOR ITS FIVE STORES.
+ *
+ * This file is not a store; it is the persistence and RETENTION MECHANISM five
+ * stores share (documents, holds, decision records, opportunity decisions,
+ * outcome revisions). Each concrete store declares its own scope in its own file
+ * — `documents/documentStore.ts` declares `documents` — and each passes its own
+ * name to `registerTenantStore` through this constructor, so there is no single
+ * honest name for the class itself.
+ *
+ * It nevertheless owes THIS declaration, because the cap lives here and nowhere
+ * else: whatever a subclass declares about its retention is a statement about
+ * `append()` below. Declaring the substrate once is what makes the five
+ * subclasses' answers checkable against one implementation instead of five
+ * comments. The name is the file's role, and the scope is the narrowest thing
+ * true of every subclass — every row carries `tenantId` and `workspaceId` and
+ * every read goes through `recordInScope`.
+ */
+declareStoreScope({
+  name: 'append-only-substrate',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retentionScope: 'OWNER',
+  retentionAuthority: 'OWNER',
+  retention:
+    'ONE cap and ONE delete path, and both are confined to the caller. `append()` evicts only rows ' +
+    'matching `recordInScope(r, scope)` for the WRITING scope — it was a splice over the front of ' +
+    "the shared array, which deleted the globally oldest record, meaning another tenant's document " +
+    'or governance decision. `removeWhere(pred)` ANDs the scope in HERE rather than trusting each ' +
+    "subclass's predicate, so a caller-supplied predicate cannot reach another tenant's records; it " +
+    'returns [] outright when no scope resolves. STATED LIMIT, verified by reading `append`: the cap ' +
+    'is only CONSIDERED when the total row count across every scope exceeds it, so with several ' +
+    'tenants below the cap each the file grows past it and nothing is evicted at all. That errs ' +
+    "toward keeping data and never toward deleting another owner's, which is the correct direction " +
+    'for the failure. `readmit` and `mutate` remove nothing; `mutate` additionally refuses an ' +
+    'out-of-scope item and never lets `tenantId`/`workspaceId` be patched, so a record cannot be ' +
+    'moved between tenants.',
+  reason:
+    'Uploaded business documents, governance holds and executive decision records — customer content ' +
+    'and the governance artifacts over it. TENANT is the floor rather than the ceiling: rows are ' +
+    'stamped with BOTH tenant and workspace by `append`, and `recordInScope` narrows to the workspace ' +
+    'whenever one is present, which is why `documents` declares itself WORKSPACE over this same ' +
+    'substrate. Binding is per instance and asserted by the `registerTenantStore(tenantStoreName, …)` ' +
+    'call in the constructor, so each subclass appears in the tenant registry under its own name.',
+});
 
 /**
  * A process-wide fallback scope, for TESTS ONLY. Mirrors the one on

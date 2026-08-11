@@ -37,7 +37,25 @@ declareStoreScope({
   persistence: 'file',
   authority: 'ORG_ROLE',
   classification: 'CUSTOMER_DERIVED',
-  retention: 'Per-scope eviction: evictOldest filters recordInScope before choosing victims.',
+  /**
+   * P13C ROUND 10 — the enum form, and it changed the answer.
+   *
+   * The prose said "per-scope eviction", which described `evictOldest` and not
+   * the line that CALLS it. See the note on `evictOldest`.
+   */
+  retentionScope: 'OWNER',
+  /** No user-facing delete surface: the cap is automatic and `softDelete` only flips a status. */
+  retentionAuthority: 'SYSTEM',
+  retention:
+    'Per-owner eviction as of Round 10, in BOTH halves. `evictOldest` filters `recordInScope` ' +
+    'before choosing a victim (Round 7) and now also returns early unless the WRITING owner is ' +
+    'over its own `maxRecords` — the trigger was `this.records.size`, every tenant\'s rows in the ' +
+    'module, so one tenant filling the 50,000-row cap made every later create by any other tenant ' +
+    'hard-delete the row it had just written. The store-wide size check survives only as a cheap ' +
+    'pre-filter, because owners partition the Map and nobody can exceed their own cap while the ' +
+    'whole store is under it. The only other removal is `softDelete`, which sets `status: deleted` ' +
+    'and removes nothing; `update`/`setStatus` resolve through the scoped `get`, so no mutation ' +
+    'reaches another owner\'s row.',
   reason: 'entity.tenantId + entity.workspaceId stamped from the resolved scope at create(), and unbound DENIES. This is the store behind all 106 business modules.',
 });
 
@@ -441,7 +459,15 @@ export class EnterpriseRecordStore extends EventEmitter {
       metadata: { ...(input.metadata ?? {}) },
     };
     this.records.set(entity.id, entity);
-    // Eviction is confined to the writing tenant. See `evictOldest`.
+    /**
+     * The cap is PER OWNER — both the VICTIM and the TRIGGER. P13C ROUND 10.
+     *
+     * The store-wide `this.records.size` is kept only as a cheap pre-filter:
+     * owners partition the Map, so nobody can be over their own cap while the
+     * whole store is under it, and the O(n) count in `evictOldest` therefore
+     * runs no more often than it did before. `evictOldest` is what decides,
+     * and it decides on the WRITER'S OWN row count.
+     */
     if (this.records.size > this.maxRecords) this.evictOldest(scope);
     this.touch();
     return entity;
@@ -521,11 +547,43 @@ export class EnterpriseRecordStore extends EventEmitter {
    * is the correct semantics and worth saying out loud: a shared cap is a
    * cross-tenant denial of service by construction, because filling it is
    * something any tenant can do.
+   *
+   * P13C ROUND 10 — NEW FINDING. THE VICTIM WAS SCOPED AND THE TRIGGER WAS NOT.
+   *
+   * Round 7 fixed WHOSE row is destroyed and left WHEN untouched:
+   *
+   *     if (this.records.size > this.maxRecords) this.evictOldest(scope);
+   *
+   * `this.records.size` is every tenant's rows in this module. So the moment
+   * one tenant filled the 50,000-row cap, the store sat permanently at the
+   * trigger and EVERY subsequent create by ANY tenant evicted — from the
+   * writer's own rows, oldest-first, with `mine` containing only the row that
+   * had just been written. A second organization on a module a first
+   * organization had filled could not store a single record: `create()`
+   * returned the entity, `touch()` persisted, and the row was already gone from
+   * the Map. Silent, no `deleted` status, no audit line, no lifecycle event, no
+   * recovery — and this class is the backing store for all 106 ERP/CRM/HR/
+   * finance modules, so it is the largest data surface in the product.
+   *
+   * It is the mirror image of the Round 9 class rather than a repeat of it: not
+   * a scoped read over an install-wide cap, but a scoped VICTIM behind an
+   * install-wide CONDITION. The declared retention read "Per-scope eviction:
+   * evictOldest filters recordInScope before choosing victims", which was true
+   * and was not the whole sentence.
+   *
+   * The early return below is the fix. An owner over ITS OWN cap loses its own
+   * oldest; an owner under its own cap loses nothing, however full the machine
+   * is. Total storage scales with tenant count, which is the same honest trade
+   * `TenantOwnership.pruneOwn`, `marketplaceStore.event` and
+   * `graphStore.capHistoryPerTenant` all make.
    */
   private evictOldest(scope: TenantScope): void {
     const mine = [...this.records.values()]
       .filter((r) => recordInScope(r, scope))
       .sort((a, b) => (a.updatedAt < b.updatedAt ? -1 : 1));
+    // The writer is within its own budget. Another tenant filling the module is
+    // not a reason to destroy this one's records.
+    if (mine.length <= this.maxRecords) return;
     const victim =
       mine.find((r) => r.status === 'deleted') ??
       mine.find((r) => r.status === 'archived') ??

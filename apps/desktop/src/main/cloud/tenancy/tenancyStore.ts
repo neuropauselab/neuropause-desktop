@@ -43,10 +43,18 @@ declareStoreScope({
   persistence: 'file',
   authority: 'ORG_ROLE',
   classification: 'CUSTOMER_DERIVED',
+  /** P13C ROUND 10 — the checkable form of the prose below. */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'OWNER',
   retention:
-    'No cap and no time-based eviction. `deleteProject` removes one row after confirming the ' +
-    "caller owns its cloud tenant. `syncHomeWorkers` replaces the HOME tenant's AI-worker rows at " +
-    'boot and is filtered on that tenant id, so it cannot reach another tenant\'s workers.',
+    'No cap and no time-based eviction — nothing is ever evicted to make room, so no tenant\'s ' +
+    'volume can reach another\'s rows. TWO removals, each named. `deleteProject(id)` resolves the ' +
+    'project FIRST and then checks `ownsTenant(project.tenantId)`, so a bare renderer-supplied id ' +
+    'that names another organization\'s project returns false and deletes nothing. ' +
+    '`syncHomeWorkers` replaces AI-worker rows at boot and its sweep is filtered on ' +
+    '`w.tenantId === this.homeTenantId`, so it touches exactly one tenant\'s workers and immediately ' +
+    'rewrites them from that same tenant\'s live workforce — it is a replace, not a cap, and there ' +
+    'is no id, count or payload that can widen it.',
   reason:
     "Organization names, projects, teams, AI worker assignments and per-tenant storage namespaces " +
     'and key ids. Reads resolve the caller through CloudTenant.organizationId rather than the ' +

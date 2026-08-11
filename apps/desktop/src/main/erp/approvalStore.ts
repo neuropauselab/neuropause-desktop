@@ -23,6 +23,38 @@ import type { ApprovalRecord } from './approvalEngine';
 import { readStoreFile, envelopeStamp } from '../storage/storeEnvelope';
 import type { TenantScope } from '@neuropause/shared';
 import { TenantOwnership } from '../tenancy/tenantOwnedStore';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/**
+ * P13C ROUND 10 — the structural scope declaration. See tenancy/storeScope.ts.
+ *
+ * `new TenantOwnership(...)` satisfied the scope gate and cannot express a
+ * retention policy, so nothing had asked what a removal here reaches.
+ */
+declareStoreScope({
+  name: 'erp-approvals',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retentionScope: 'OWNER',
+  /** Both removals run under `scopedKey`, which is derived from the caller's own tenant. */
+  retentionAuthority: 'OWNER',
+  retention:
+    'Two removals, and the KEY is what confines both. Every entry is filed under ' +
+    '`JSON.stringify([tenantId, moduleId, documentId])` with the tenant taken from the resolved ' +
+    'scope, never from the argument. (1) `replace` caps at 50 decisions with ' +
+    '`approvals.slice(-50)`, which is a cap over ONE DOCUMENT\'S OWN list inside one tenant\'s own ' +
+    'key — it cannot reach a second key, let alone a second tenant. (2) `forget` deletes exactly ' +
+    'one key, and an unresolved caller produces a null key and deletes nothing. There is no ' +
+    'install-wide array here at all: the store is a Map keyed by owner, which is the shape ' +
+    '`inboxStore` had to be rewritten into.',
+  reason:
+    'The key names a tenant\'s purchase order, invoice or quote and the values are named approvers ' +
+    'plus free-text notes about that document. The rows carry no owner FIELD — the tenant is the ' +
+    'first element of the key, which is why the key was chosen over a filter: a filter is ' +
+    'something a future accessor can forget.',
+});
 
 /** `moduleId/documentId` — unique across the registry. */
 
