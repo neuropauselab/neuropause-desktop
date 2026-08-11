@@ -35,17 +35,23 @@ work rather than a fix.
 | Typecheck | green — `packages/shared`, `apps/desktop`, `apps/backend` |
 | Lint | green |
 | Desktop build | green |
-| **Backend build** | **NOT VERIFIED IN THIS ENVIRONMENT** — see below |
+| **Backend build** | **green — verified natively on macOS at this commit** |
 | Mac runtime verification | **NOT PERFORMED** |
 
 ### Backend build
 
 `npx tsup` fails in the Linux sandbox with `Host version "0.27.7" does not match
 binary version "0.21.5"` — an esbuild host/binary skew in the container, the same
-one the previous two rounds hit and which was confirmed green natively on macOS
-both times. It is an environment fault, not a code fault, but **I have not
-verified it on this commit and do not claim it is green.** Please run
-`npm run build` on the Mac before pushing.
+fault the previous two rounds hit. It is an environment problem, not a code one,
+and the report initially declined to call it green for that reason.
+
+It has since been run natively on macOS at commit `943dad8` and reports
+`CJS ⚡️ Build success in 74ms`. Recorded here as direct evidence on this commit,
+not inherited from an earlier round.
+
+**Mac RUNTIME verification is a different claim and remains NOT PERFORMED.** The
+application has not been launched; nothing here says the tenant boundary behaves
+correctly against a real two-organization install driven through the UI.
 
 ---
 
