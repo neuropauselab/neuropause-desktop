@@ -1352,6 +1352,21 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
    */
   const platformOperators = new PlatformOperatorRegistry(app.getPath('userData'));
   await platformOperators.load();
+  /**
+   * P13C ROUND 10, fresh red team — THE PLATFORM AUTHORITY PATH WAS NEVER WIRED.
+   *
+   * `createAuthorize` has accepted `isPlatformOperator` since the model was
+   * built, and `enterprise/authzGate.ts` has one line that can satisfy a
+   * `cloud:operate` permission. The registry was wired into
+   * `createPlatformAuthorizer` — a DIFFERENT object — and never into the gate,
+   * so the predicate was `undefined` and every `cloud:operate` channel refused
+   * everyone, platform operators included.
+   *
+   * It failed CLOSED, which is why ten rounds of isolation testing did not see
+   * it: nothing leaked. What it meant is that the ~40 install-wide channels this
+   * program moved onto platform authority had never been exercised through it.
+   */
+  enterprise.bindPlatformOperator((email) => platformOperators.isOperator(email));
   const platformAuthorizer = createPlatformAuthorizer({
     sessionEmail: () => {
       const st = authService.getStatus();

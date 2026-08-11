@@ -30,6 +30,7 @@ import { runValidationPipeline, validationDashboard, validationSummary, type Val
 import type { HistoryPort, NotifierPort, ObserverPort, SchedulerPort, StageExecutors, ValidationDeps } from './ports';
 import type { BenchmarkStore } from '../lab/benchmarkStore';
 import type { TenantScope } from '@neuropause/shared';
+import { runAsPrincipal, tenantPrincipal } from '../../tenancy/backgroundPrincipal';
 
 const log = createLogger('sandbox-continuous-validation');
 
@@ -97,6 +98,22 @@ export async function initContinuousValidation(deps: ContinuousValidationDeps): 
   };
   const scheduler = new ValidationScheduler({
     scheduler: deps.scheduler,
+    /**
+     * P13C ROUND 10, fresh red team — HIGH. The schedule set had no tenant
+     * dimension at all, and the tick ran with no principal.
+     */
+    tenantId: tenantKeyOrNull,
+    runAsOwner: async (tenantId, fn) => {
+      const principal = tenantPrincipal({
+        jobId: 'validation-schedule',
+        scope: { tenantId, workspaceId: '' },
+      });
+      // NULL IS THE FAIL-CLOSED ANSWER: a schedule that cannot name its
+      // principal does not run, rather than running as whoever is signed in.
+      if (principal === null) return false;
+      await runAsPrincipal(principal, fn);
+      return true;
+    },
     runPipeline: async (p, t) => (await runValidationPipeline(p, t, runDeps, runStore)).run,
     now,
     clock: deps.clock,
@@ -123,8 +140,28 @@ export async function initContinuousValidation(deps: ContinuousValidationDeps): 
     const owner = tenantKeyOrNull();
     if (owner === null) return; // unowned output is cached for nobody
     outputs.set(cacheKey(owner, out.run.id), out);
-    if (outputs.size > OUTPUTS_CAP) {
-      const oldest = outputs.keys().next().value;
+    /**
+     * PER OWNER. P13C ROUND 10, fresh red team — MEDIUM.
+     *
+     * The trigger was `outputs.size > OUTPUTS_CAP` over every tenant's entries
+     * and the victim was the globally oldest insertion, so one organization
+     * running thirty ordinary pipelines destroyed another's cached certification
+     * report, regression analysis and exports. The run row survived — that cap
+     * was made per owner earlier this round — and the EVIDENCE did not.
+     *
+     * Exactly the shape `declareStoreScope` refuses at declaration time; a Map
+     * cap inside a factory closure is invisible to it, which is why the closure
+     * has to get this right itself.
+     */
+    const mineKeys = [...outputs.keys()].filter((k) => {
+      try {
+        return (JSON.parse(k) as [string, string])[0] === owner;
+      } catch {
+        return false;
+      }
+    });
+    while (mineKeys.length > OUTPUTS_CAP) {
+      const oldest = mineKeys.shift();
       if (oldest !== undefined) outputs.delete(oldest);
     }
   };

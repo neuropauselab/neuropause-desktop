@@ -177,9 +177,35 @@ function buildSource(): CatalogSource {
 
 const READ: EnterprisePermission = 'marketplace:read';
 const MANAGE: EnterprisePermission = 'marketplace:manage';
-// Install routes to the worker installer → require the SAME authority as a direct worker
-// install (no privilege escalation via the marketplace).
-const INSTALL: EnterprisePermission = 'workforce:manage';
+/**
+ * P13C ROUND 10, FRESH RED TEAM — HIGH. THE SECOND DOOR.
+ *
+ * This was `workforce:manage`, and the comment above it said "require the SAME
+ * authority as a direct worker install (no privilege escalation via the
+ * marketplace)". That sentence was TRUE WHEN IT WAS WRITTEN and became false in
+ * Round 9, when F2 moved all six `workforce:*` install-lifecycle channels to
+ * `cloud:operate`. The front door moved; this one did not, and the comment kept
+ * asserting a parity that no longer held.
+ *
+ * `marketplace:install` reaches `marketplaceService.install` →
+ * `runtimeCore.installWorker` → `workforce.installWorkerPackage` →
+ * `installService.install(pkg)` — byte for byte the function
+ * `IpcChannel.WorkforceInstall` calls, writing the same install-wide
+ * `workforce-installs.json` and the same process-wide `WorkerRegistry`, both
+ * declared `INSTALL_GLOBAL` + `PLATFORM_OPERATOR`.
+ *
+ * `workforce:manage` is held by Admin and by the Owner wildcard, and anyone may
+ * create an organization and become its Owner — so this was a self-service
+ * grant over install-wide executable code.
+ *
+ * WHY `withWorkforceAuthz` DID NOT CATCH IT: that gate throws at composition for
+ * any unclassified `workforce:*` channel, and this channel is `marketplace:*`,
+ * registered with its own permission constant in its own file. A family gate
+ * cannot see a handler registered outside its family. That is the structural
+ * lesson, and `channelResourceAuthority.test.ts` now asserts the property by
+ * RESOURCE rather than by family.
+ */
+const INSTALL: EnterprisePermission = 'cloud:operate';
 
 /**
  * The seven read routes differ only in channel, schema and body, so they are built by

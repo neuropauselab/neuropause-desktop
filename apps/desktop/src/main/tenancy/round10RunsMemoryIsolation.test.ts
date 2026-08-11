@@ -260,7 +260,7 @@ describe('NEW-H3 — validation run retention is per tenant, in memory and on di
     );
     await fs.writeFile(legacyPath, JSON.stringify({ runs: legacy }));
 
-    let s: TenantScope | null = RUN_B;
+    const s: TenantScope | null = RUN_B;
     const store = new ValidationRunStore(legacyPath).bindScope(() => s);
     await store.load();
     opened.push(store);

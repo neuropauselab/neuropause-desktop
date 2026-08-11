@@ -308,6 +308,14 @@ export interface EnterpriseSubsystem {
   allows: (permission: EnterprisePermission) => boolean;
   /** RBAC gate for the secure bridge — resolves the session actor and asserts. */
   authorize: (permission: EnterprisePermission) => void;
+  /**
+   * Bind the platform-operator predicate, once the registry has loaded.
+   *
+   * P13C ROUND 10: `createAuthorize` has always accepted this dep and NOTHING
+   * EVER PASSED IT, so `cloud:operate` refused everyone — fail-closed, and the
+   * reason four rounds of platform-authority work were never exercised.
+   */
+  bindPlatformOperator: (isOperator: (email: string) => boolean) => void;
   /** The ERP module registry — future modules register into this at boot. */
   modules: EnterpriseModuleRegistry;
   /**
@@ -600,13 +608,68 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
    * member, and the gate refuses with the message it already used for that
    * case. Fail-closed without inventing a new error path.
    */
+  /**
+   * P13C ROUND 10, FRESH RED TEAM — HIGH. AUTHORITY MUST FOLLOW THE PRINCIPAL,
+   * NOT THE SESSION.
+   *
+   * This read `tenantContext.resolveFull()` — the RAW resolver, which answers
+   * from the active workspace and knows nothing about background principals.
+   * Every STORE in this subsystem resolves through `activeTenantScope`, which
+   * prefers a principal when one is in scope. So inside `runAsPrincipal`:
+   *
+   *     DATA resolved to the principal's organization.
+   *     AUTHORITY resolved to the session's.
+   *
+   * The companion gateway runs every LAN request under a principal derived from
+   * the device's `boundTenantId`, and dispatches `EnterpriseModuleUpdate` and
+   * `EnterpriseModuleAction` through it. So a person who is Admin in org A and
+   * read-only in org B could, from a B-bound phone while A was on screen,
+   * perform a write in B that B had explicitly denied them — B's revocation
+   * simply was not the thing being consulted. The refusal-side HOLD and Decision
+   * Record were then filed under B while describing A's permission set.
+   *
+   * THIS IS ROUND 9's H5 ONE LAYER OUT. That finding was a STORE bound to the
+   * session-only resolver while its siblings were principal-aware; this is the
+   * AUTHORIZATION path with the same defect. The resolver was taught about
+   * principals for data and never for permissions, and no invariant asked.
+   *
+   * `activeTenantScope()` is `resolveTenantScope(() => tenantContext.scope())`,
+   * so on the UI path this is the same organization it always was — and inside a
+   * job it is the organization the work belongs to. The fail-closed shape is
+   * unchanged: no resolvable tenant still yields `UNRESOLVED_TENANT`, which
+   * matches no organization, so `usersFor` is empty and the gate refuses.
+   */
   const authorizationOrgId = (): string => {
-    const resolved = tenantContext.resolveFull();
-    return resolved.ok ? resolved.value.organization.id : UNRESOLVED_TENANT;
+    return activeTenantScope()?.tenantId ?? UNRESOLVED_TENANT;
   };
+
+  /**
+   * The platform-operator predicate, LATE BOUND. P13C ROUND 10, fresh red team.
+   *
+   * `createAuthorize` has accepted an `isPlatformOperator` dep since the platform
+   * authority model was built, and `authzGate.ts:188` is the ONLY line that can
+   * satisfy a `cloud:operate` permission. NOTHING EVER PASSED IT. The registry
+   * was wired into `createPlatformAuthorizer` — a different object — so
+   * `deps.isPlatformOperator?.(email)` was `undefined` and every `cloud:operate`
+   * channel refused everyone, operators included.
+   *
+   * That failed CLOSED, which is why ten rounds of isolation testing never saw
+   * it: nothing leaked. What it meant is that the ~40 install-wide channels this
+   * program has spent four rounds moving onto platform authority had never once
+   * been exercised through it — and that `marketplace:install` on
+   * `workforce:manage` was, until the line above, the only working door to the
+   * install-wide worker registry.
+   *
+   * Late-bound because `PlatformOperatorRegistry` is constructed after
+   * `initEnterprise` in the composition root. Unbound answers false, which is
+   * the same fail-closed behaviour as before — this makes the operator path
+   * REACHABLE, it does not make it default.
+   */
+  let isPlatformOperatorFn: (email: string) => boolean = () => false;
 
   const authorize = createAuthorize({
     sessionEmail,
+    isPlatformOperator: (email) => isPlatformOperatorFn(email),
     /**
      * HOLD producer #3: `insufficient_permission`.
      *
@@ -1446,6 +1509,18 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
      */
     allows: (permission: EnterprisePermission) => permissions.allows(permission),
     authorize,
+    /**
+     * Bind the platform-operator predicate. P13C ROUND 10, fresh red team.
+     *
+     * Called by the composition root once `PlatformOperatorRegistry` has loaded.
+     * Until then — and if a future refactor forgets the call — the predicate
+     * answers false and every `cloud:operate` channel refuses, which is the
+     * behaviour that shipped for four rounds and is fail-closed. This makes the
+     * operator path REACHABLE; it grants nothing by default.
+     */
+    bindPlatformOperator: (isOperator: (email: string) => boolean): void => {
+      isPlatformOperatorFn = isOperator;
+    },
     modules: modules.registry,
     complianceFindings: () => evaluateCompliance(governanceStore.rules(), buildComplianceInput()),
     notifyImported: modules.notifyImported,

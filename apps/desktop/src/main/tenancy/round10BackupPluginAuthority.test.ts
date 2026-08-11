@@ -359,7 +359,7 @@ describe('the store↔channel authority invariant is checked at composition', ()
 
 describe('NEW-H7 — pluginManager.grant consults the manifest', () => {
   let pluginRoot: string;
-  let manager: typeof import('../plugins/pluginManager')['pluginManager'];
+  let manager: PluginManagerModule['pluginManager'];
 
   beforeEach(async () => {
     mockState.userDataDir = await fs.mkdtemp(join(tmpdir(), 'np-plugin-'));

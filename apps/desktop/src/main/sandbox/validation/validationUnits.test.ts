@@ -71,24 +71,97 @@ describe('pipeline runner (dispatches to existing executors)', () => {
 });
 
 describe('scheduler (reuses the injected scheduler)', () => {
-  it('registers schedules and fires a due nightly run through the tick', async () => {
-    const fired: PipelineKind[] = [];
-    let tick: (() => void) | null = null;
-    const scheduler = new ValidationScheduler({
-      scheduler: { every: (_id, _ms, fn) => { tick = fn; }, cancel: () => undefined },
+  /**
+   * P13C ROUND 10, fresh red team — the harness now supplies an OWNER and a
+   * PRINCIPAL RUNNER, because production does.
+   *
+   * Before the fix the schedule set was one install-wide Map with no tenant
+   * dimension and the tick ran with no principal, so this suite constructed the
+   * scheduler bare and everything worked. That is exactly why it could not see
+   * the finding: with no owner there is no owner to cross.
+   */
+  const makeScheduler = (
+    who: () => string | null,
+    fired: PipelineKind[],
+    ranAs: string[],
+    onTick: (fn: () => void) => void,
+  ) =>
+    new ValidationScheduler({
+      scheduler: { every: (_id, _ms, fn) => onTick(fn), cancel: () => undefined },
+      tenantId: who,
+      runAsOwner: async (tenantId, fn) => { ranAs.push(tenantId); await fn(); return true; },
       runPipeline: (p) => { fired.push(p); return Promise.resolve({ id: 'r', pipeline: p, trigger: 'nightly', status: 'passed', startedAt: 'x', finishedAt: 'x', durationMs: 1, stages: [], metrics: {}, certificationLevel: null, regressionCount: 0 } as ValidationRun); },
       now: () => Date.now(),
       clock: () => new Date(2026, 0, 2, 2, 0, 0), // local 02:00
     });
+
+  it('registers schedules and fires a due nightly run through the tick', async () => {
+    const fired: PipelineKind[] = [];
+    const ranAs: string[] = [];
+    let tick: (() => void) | null = null;
+    const who: string | null = 'org-a';
+    const scheduler = makeScheduler(() => who, fired, ranAs, (fn) => { tick = fn; });
     scheduler.register('regression', { kind: 'nightly', atMinutes: 120 }, 'nightly');
     scheduler.ensureTick();
     expect(tick).not.toBeNull();
     await scheduler.tick();
     expect(fired).toContain('regression');
+    // …and it ran AS ITS OWNER, not as whoever happened to be signed in.
+    expect(ranAs).toEqual(['org-a']);
     // does not double-fire the same day
     fired.length = 0;
     await scheduler.tick();
     expect(fired).toHaveLength(0);
+  });
+
+  it('a schedule belongs to the organization that registered it', async () => {
+    const fired: PipelineKind[] = [];
+    const ranAs: string[] = [];
+    let who: string | null = 'org-a';
+    const scheduler = makeScheduler(() => who, fired, ranAs, () => undefined);
+    const a = scheduler.register('regression', { kind: 'nightly', atMinutes: 120 }, 'nightly');
+
+    // B sees nothing of A's, and cannot toggle or cancel it by id.
+    who = 'org-b';
+    expect(scheduler.list()).toEqual([]);
+    expect(scheduler.setEnabled(a.id, false)).toBe(false);
+    expect(scheduler.cancel(a.id)).toBe(false);
+
+    // A still sees and controls its own — the gate is not "always no".
+    who = 'org-a';
+    expect(scheduler.list().map((e) => e.id)).toEqual([a.id]);
+    expect(scheduler.setEnabled(a.id, true)).toBe(true);
+
+    // An unresolved caller sees and controls nothing.
+    who = null;
+    expect(scheduler.list()).toEqual([]);
+    expect(scheduler.setEnabled(a.id, false)).toBe(false);
+  });
+
+  it('a due schedule runs as ITS owner even when another tenant is signed in', async () => {
+    const fired: PipelineKind[] = [];
+    const ranAs: string[] = [];
+    let who: string | null = 'org-a';
+    const scheduler = makeScheduler(() => who, fired, ranAs, () => undefined);
+    scheduler.register('regression', { kind: 'nightly', atMinutes: 120 }, 'nightly');
+
+    // The session switches to B before the tick fires — the finding's shape.
+    who = 'org-b';
+    await scheduler.tick();
+    expect(fired).toContain('regression');
+    expect(ranAs).toEqual(['org-a']);
+  });
+
+  it('a schedule that cannot name a principal does not run at all', async () => {
+    const fired: PipelineKind[] = [];
+    const ranAs: string[] = [];
+    let who: string | null = null; // registered with no resolvable tenant
+    const scheduler = makeScheduler(() => who, fired, ranAs, () => undefined);
+    scheduler.register('regression', { kind: 'nightly', atMinutes: 120 }, 'nightly');
+    who = 'org-b';
+    await scheduler.tick();
+    expect(fired).toEqual([]);
+    expect(ranAs).toEqual([]);
   });
 });
 

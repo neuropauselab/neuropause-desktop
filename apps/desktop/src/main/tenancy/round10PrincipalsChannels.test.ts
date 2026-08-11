@@ -27,7 +27,7 @@
  * what must not have.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { EventEmitter } from 'node:events';
+import { type EventEmitter } from 'node:events';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -81,7 +81,7 @@ const session = vi.hoisted(() => ({
 }));
 
 vi.mock('../enterprise', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../enterprise')>();
+  const actual = await importOriginal<EnterpriseModule>();
   const { resolveTenantScope } = await import('./backgroundPrincipal');
   return {
     ...actual,
