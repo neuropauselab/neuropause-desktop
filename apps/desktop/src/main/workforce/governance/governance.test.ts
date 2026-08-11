@@ -7,6 +7,7 @@ import type { ActionRequest, RiskLevel, Worker, WorkerPermissionScope } from '@n
 import { evaluateAction, DEFAULT_POLICIES } from './policyEngine';
 import { AuditLog } from './auditLog';
 import { GovernanceRuntime } from './index';
+import { TEST_TENANT_SCOPE } from '../../tenancy/testScope';
 
 const NOW = '2026-02-10T00:00:00.000Z';
 
@@ -105,7 +106,7 @@ describe('AuditLog', () => {
     return p;
   };
   const newLog = async (p: string) => {
-    const a = new AuditLog(p);
+    const a = new AuditLog(p).bindScope(() => TEST_TENANT_SCOPE);
     opened.push(a);
     await a.load();
     return a;
@@ -155,7 +156,9 @@ describe('AuditLog', () => {
 
 describe('GovernanceRuntime', () => {
   it('returns a verdict and audits the decision', async () => {
-    const a = new AuditLog(join(tmpdir(), `nps-gov-${randomUUID()}.json`));
+    const a = new AuditLog(join(tmpdir(), `nps-gov-${randomUUID()}.json`)).bindScope(
+      () => TEST_TENANT_SCOPE,
+    );
     await a.load();
     const gov = new GovernanceRuntime(a);
     const v = gov.evaluate(

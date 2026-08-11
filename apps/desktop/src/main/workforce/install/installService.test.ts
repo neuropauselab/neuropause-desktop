@@ -21,6 +21,7 @@ import { InstallStore } from './installStore';
 import { WorkerInstallService } from './installService';
 import { composeInstalledWorker } from './manifest';
 import { digestManifest, packWorker } from './packaging';
+import { TEST_TENANT_SCOPE } from '../../tenancy/testScope';
 
 const NOW = '2026-07-15T00:00:00.000Z';
 const pair = generateSigningKeyPair();
@@ -277,8 +278,8 @@ describe('installed workers are governed identically to built-ins', () => {
   async function runtimeSetup(): Promise<{ registry: WorkerRegistry; service: WorkerInstallService; runtime: WorkerRuntime }> {
     const registry = new WorkerRegistry(tempPath());
     const store = new InstallStore(tempPath());
-    const audit = new AuditLog(tempPath());
-    const jobs = new JobStore(tempPath());
+    const audit = new AuditLog(tempPath()).bindScope(() => TEST_TENANT_SCOPE);
+    const jobs = new JobStore(tempPath()).bindScope(() => TEST_TENANT_SCOPE);
     stores.push(registry, store, audit, jobs);
     await registry.load();
     await audit.load();

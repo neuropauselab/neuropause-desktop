@@ -151,9 +151,27 @@ export class SandboxExecutionEngine {
       .all()
       .filter((e) => e.status === 'queued' && (workspaceId ? e.workspaceId === workspaceId : true))
       .map((e) => ({ executionId: e.id, scenarioId: e.scenarioId, priority: e.priority, enqueuedAt: e.queuedAt }));
-    const running = [...this.running].filter((id) =>
-      workspaceId ? this.deps.executions.get(id)?.workspaceId === workspaceId : true,
-    );
+    /**
+     * P13C Round 2 — M-B. THE LAST SURVIVING "OMITTED FIELD WIDENS".
+     *
+     * `this.running` is the ENGINE's install-wide set — it has to be, because
+     * the engine drains every tenant's queue — and the old filter read
+     * `workspaceId ? … : true`. So omitting the field returned every tenant's
+     * running execution ids. `pending` and `concurrency` above were already
+     * scoped through `executions.all()` and `workspaces.list()`; this one line
+     * was the exception, and it is the same bypass the four sibling stores had
+     * removed.
+     *
+     * The fix resolves each id through the SCOPED accessor first, so the
+     * install-wide set is filtered down to the caller's own before the optional
+     * workspace narrows it further. An omitted `workspaceId` now means "every
+     * running execution of MINE", which is a narrowing the caller cannot widen.
+     */
+    const running = [...this.running].filter((id) => {
+      const execution = this.deps.executions.get(id); // scoped: foreign ⇒ null
+      if (!execution) return false;
+      return workspaceId ? execution.workspaceId === workspaceId : true;
+    });
     const concurrency = workspaceId
       ? this.deps.workspaces.get(workspaceId)?.settings.maxConcurrency ?? 0
       : this.deps.workspaces.list().reduce((sum, w) => sum + w.settings.maxConcurrency, 0);

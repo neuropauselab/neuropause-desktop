@@ -103,6 +103,14 @@ export interface GovernanceVerdict {
 }
 
 export interface WorkforceAuditEntry {
+  /**
+   * The organization this entry belongs to (P13C Round 2, H3).
+   *
+   * Absent means UNRESOLVED — shown to nobody. Entries written before this
+   * round are not back-filled: an audit trail that silently adopted an owner
+   * would be worse than one with a gap, because the gap is visible.
+   */
+  tenantId?: string | null;
   id: string;
   at: string;
   workerId: string;

@@ -16,6 +16,7 @@ import { JobStore } from './jobStore';
 import { WorkerRuntime } from './workerRuntime';
 import { aggregateOutcome, bindingToRequest } from '../execution/router';
 import type { SkillImpl, WorkforceData } from '../sdk';
+import { TEST_TENANT_SCOPE } from '../../tenancy/testScope';
 
 const NOW = '2026-07-15T00:00:00.000Z';
 const stores: Array<{ flush: () => Promise<void> }> = [];
@@ -77,8 +78,8 @@ async function setup(submit: (req: ExecutionRequest) => Promise<ExecutionSession
 }> {
   counter = 0;
   const registry = new WorkerRegistry(tempPath());
-  const audit = new AuditLog(tempPath());
-  const jobs = new JobStore(tempPath());
+  const audit = new AuditLog(tempPath()).bindScope(() => TEST_TENANT_SCOPE);
+  const jobs = new JobStore(tempPath()).bindScope(() => TEST_TENANT_SCOPE);
   stores.push(registry, audit, jobs);
   await registry.load();
   await audit.load();
@@ -159,8 +160,8 @@ describe('WorkerRuntime approved-action execution', () => {
 
   it('keeps a binding proposal advisory (immediate succeeded) when no dispatcher is wired', async () => {
     const registry = new WorkerRegistry(tempPath());
-    const audit = new AuditLog(tempPath());
-    const jobs = new JobStore(tempPath());
+    const audit = new AuditLog(tempPath()).bindScope(() => TEST_TENANT_SCOPE);
+    const jobs = new JobStore(tempPath()).bindScope(() => TEST_TENANT_SCOPE);
     stores.push(registry, audit, jobs);
     await registry.load();
     await audit.load();
@@ -184,8 +185,8 @@ describe('WorkerRuntime approved-action execution', () => {
 
   it('never strands a job in running when the engine is not ready (settles failed)', async () => {
     const registry = new WorkerRegistry(tempPath());
-    const audit = new AuditLog(tempPath());
-    const jobs = new JobStore(tempPath());
+    const audit = new AuditLog(tempPath()).bindScope(() => TEST_TENANT_SCOPE);
+    const jobs = new JobStore(tempPath()).bindScope(() => TEST_TENANT_SCOPE);
     stores.push(registry, audit, jobs);
     await registry.load();
     await audit.load();
@@ -247,12 +248,29 @@ describe('JobStore crash recovery (P8.3)', () => {
       durationMs: null,
     };
     await fs.writeFile(p, JSON.stringify({ jobs: [running] }));
-    const store = new JobStore(p);
+    const store = new JobStore(p).bindScope(() => TEST_TENANT_SCOPE);
     stores.push(store);
     await store.load();
-    const recovered = store.get('stuck')!;
+    /**
+     * P13C Round 2 — crash recovery is a MAINTENANCE sweep, not a tenant read.
+     *
+     * A crash orphans every tenant's running jobs, so recovery must settle all
+     * of them — leaving another tenant's job stuck 'running' forever would be a
+     * worse bug than the one being fixed. It therefore iterates the raw map at
+     * load, and is asserted here through the unscoped accessor.
+     */
+    const recovered = store.unscopedForRuntime('stuck')!;
     expect(recovered.status).toBe('failed');
     expect(recovered.error).toBe('Interrupted by application restart');
     expect(recovered.finishedAt).not.toBeNull();
+
+    /**
+     * And the row written before P13C carries no owner, so it is visible to
+     * NOBODY through the tenant-facing accessor — recovered, retained, and
+     * shown to no one, which is the same rule every other pre-boundary store
+     * follows.
+     */
+    expect(store.get('stuck')).toBeNull();
+    expect(store.ownershipCounts()).toEqual({ total: 1, assigned: 0, unresolved: 1 });
   });
 });

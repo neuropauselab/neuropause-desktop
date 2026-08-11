@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { WorkforceAuditEntry } from '@neuropause/shared';
 import { AuditLog } from './auditLog';
+import { TEST_TENANT_SCOPE } from '../../tenancy/testScope';
 
 /**
  * REP conversion (Workstream 10 — audit integrity): the governance audit log was
@@ -50,7 +51,7 @@ describe('AuditLog — tamper-evident hash chain (REP Workstream 10)', () => {
   function newLog(opts?: { maxEntries?: number }): { log: AuditLog; path: string } {
     const path = tempPath();
     paths.push(path);
-    return { log: new AuditLog(path, opts), path };
+    return { log: new AuditLog(path, opts).bindScope(() => TEST_TENANT_SCOPE), path };
   }
 
   it('records entries and verifies the chain', async () => {
@@ -71,7 +72,7 @@ describe('AuditLog — tamper-evident hash chain (REP Workstream 10)', () => {
     for (let i = 0; i < 5; i++) log.record(entry(i));
     await log.flush();
 
-    const reopened = new AuditLog(path);
+    const reopened = new AuditLog(path).bindScope(() => TEST_TENANT_SCOPE);
     await reopened.load();
     expect(reopened.size()).toBe(5);
     expect(reopened.verifyIntegrity().ok).toBe(true);
@@ -90,7 +91,7 @@ describe('AuditLog — tamper-evident hash chain (REP Workstream 10)', () => {
     await fs.writeFile(path, JSON.stringify(raw));
 
     let violated = false;
-    const reopened = new AuditLog(path);
+    const reopened = new AuditLog(path).bindScope(() => TEST_TENANT_SCOPE);
     reopened.on('integrity-violation', () => (violated = true));
     await reopened.load();
     expect(reopened.verifyIntegrity().ok).toBe(false);
@@ -107,7 +108,7 @@ describe('AuditLog — tamper-evident hash chain (REP Workstream 10)', () => {
     raw.entries.splice(1, 1); // remove one entry, keep the recorded head
     await fs.writeFile(path, JSON.stringify(raw));
 
-    const reopened = new AuditLog(path);
+    const reopened = new AuditLog(path).bindScope(() => TEST_TENANT_SCOPE);
     await reopened.load();
     expect(reopened.verifyIntegrity().ok).toBe(false);
   });
@@ -132,7 +133,7 @@ describe('AuditLog — tamper-evident hash chain (REP Workstream 10)', () => {
     for (let i = 0; i < 8; i++) log.record(entry(i));
     await log.flush();
 
-    const reopened = new AuditLog(path, { maxEntries: 3 });
+    const reopened = new AuditLog(path, { maxEntries: 3 }).bindScope(() => TEST_TENANT_SCOPE);
     await reopened.load();
     expect(reopened.verifyIntegrity().ok).toBe(true);
     expect(reopened.totalRecorded()).toBe(8);
@@ -144,9 +145,24 @@ describe('AuditLog — tamper-evident hash chain (REP Workstream 10)', () => {
     // Legacy format: entries only, no integrity block.
     await fs.writeFile(path, JSON.stringify({ entries: [entry(1), entry(2), entry(3)] }));
 
-    const log = new AuditLog(path);
+    const log = new AuditLog(path).bindScope(() => TEST_TENANT_SCOPE);
     await log.load();
-    expect(log.size()).toBe(3);
+    /**
+     * P13C Round 2 — a LEGACY file's entries carry no owner.
+     *
+     * `size()` is tenant-facing, so the three upgraded rows are visible to
+     * nobody: shown to no tenant, retained in the chain, and counted as
+     * unresolved. That is the same rule every other pre-boundary store follows,
+     * and it is why the count here is 0 rather than 3.
+     */
+    expect(log.size()).toBe(0);
+    expect(log.ownershipCounts()).toEqual({ total: 3, assigned: 0, unresolved: 3 });
+    /**
+     * The INTEGRITY claim is unchanged and deliberately install-wide: it is a
+     * statement about the chain, not about anyone's records. A per-tenant
+     * integrity check would be a weaker claim, and the upgrade must still
+     * verify across every retained entry.
+     */
     expect(log.verifyIntegrity().ok).toBe(true); // chain rebuilt from the entries
     await log.flush();
 

@@ -115,6 +115,15 @@ export interface WorkforceSubsystem {
 }
 
 export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<WorkforceSubsystem> {
+  /**
+   * P13C Round 2 — H3. The workforce stores join the bound set.
+   *
+   * Bound BEFORE load, so an unbound store denies during hydration too rather
+   * than leaving a window where reads are open.
+   */
+  jobStore.bindScope(activeTenantScope);
+  auditLog.bindScope(activeTenantScope);
+
   await Promise.all([workerRegistry.load(), auditLog.load(), jobStore.load()]);
 
   const governance = new GovernanceRuntime(auditLog);
@@ -212,7 +221,32 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
 
   // Workflow runs are ephemeral this stage (jobs are the durable record). We keep
   // the spec alongside each run so it can be resumed and its checkpoints resolved.
-  const workflowRuns = new Map<string, { run: WorkflowRun; spec: WorkflowSpec }>();
+  /**
+   * P13C Round 2 — H4. WORKFLOW RUNS, KEYED BY (TENANT, RUN).
+   *
+   * This was `Map<runId, …>`, install-wide, with three reachable consequences:
+   * `WorkforceWorkflowRuns` takes `EmptyRequest` and enumerated every tenant's
+   * runs AND their specs; `Resume` recovered another tenant's failed run; and
+   * `Checkpoint` approved another tenant's human-approval gate — the second and
+   * third being execution, not disclosure.
+   *
+   * Keyed by tenant rather than filtered on read, because a filter is something
+   * a future accessor can forget and a key is not: there is no way to reach
+   * another tenant's entry without naming their tenant, and the tenant is never
+   * taken from a payload.
+   */
+  const workflowRuns = new Map<string, Map<string, { run: WorkflowRun; spec: WorkflowSpec }>>();
+
+  /** The caller's run table, created on demand. Empty when no tenant resolves. */
+  const runsForCaller = (): Map<string, { run: WorkflowRun; spec: WorkflowSpec }> => {
+    const tenantId = activeTenantScope()?.tenantId ?? null;
+    if (tenantId === null) return new Map();
+    const existing = workflowRuns.get(tenantId);
+    if (existing) return existing;
+    const fresh = new Map<string, { run: WorkflowRun; spec: WorkflowSpec }>();
+    workflowRuns.set(tenantId, fresh);
+    return fresh;
+  };
   // V7.3.2: emit a workflow lifecycle event so it flows onto the platform bus →
   // timeline → Executive Center. `recovered` marks a run that came back via
   // recover(); otherwise the type is derived from the run's terminal status.
@@ -352,7 +386,11 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
         const r = p as TWorkforceWorkflowRunRequest;
         const spec = r.spec as WorkflowSpec;
         const run = orchestrator.start(spec, r.now);
-        workflowRuns.set(run.id, { run, spec });
+        // Stored in the CALLER'S table, stamped with their tenant.
+        runsForCaller().set(run.id, {
+          run: { ...run, tenantId: activeTenantScope()?.tenantId ?? null },
+          spec,
+        });
         publishWorkflow(run, spec);
         return run;
       },
@@ -365,7 +403,9 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
         // issues (analyzeWorkflowHealth) and the critical path (bottlenecks, slack,
         // estimated duration), both from the tested analyzers. Backward-compatible:
         // these are extra fields; existing consumers reading WorkflowRun ignore them.
-        [...workflowRuns.values()].map((x) => ({
+        // Scoped: this channel takes EmptyRequest and used to enumerate every
+        // tenant's runs and their specs.
+        [...runsForCaller().values()].map((x) => ({
           ...x.run,
           health: analyzeWorkflowHealth(x.spec),
           criticalPath: criticalPath(x.spec),
@@ -376,7 +416,9 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
       schema: WorkforceWorkflowResumeRequest,
       handler: (p) => {
         const { runId } = p as TWorkforceWorkflowResumeRequest;
-        const entry = workflowRuns.get(runId);
+        // Resolved inside the caller's own table: a foreign runId is "no such
+        // run", so RECOVER and RESUME cannot start another tenant's workflow.
+        const entry = runsForCaller().get(runId);
         if (!entry) return null;
         // V7.3.1: resuming a FAILED run RECOVERS it — replay only the unfinished
         // branches (planRecovery), preserving completed work — instead of the prior
@@ -395,7 +437,9 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
       schema: WorkforceWorkflowCheckpointRequest,
       handler: (p) => {
         const r = p as TWorkforceWorkflowCheckpointRequest;
-        const entry = workflowRuns.get(r.runId);
+        // Same gate on the approval path: approving another tenant's checkpoint
+        // would advance their workflow, which is execution.
+        const entry = runsForCaller().get(r.runId);
         if (!entry) return null;
         entry.run = orchestrator.approveCheckpoint(
           entry.run,
@@ -466,6 +510,7 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
     runWorker,
     setExecutionSubmit,
     installWorkerPackage: (pkg) => installService.install(pkg),
-    workflowRunEntries: () => [...workflowRuns.values()].map((x) => ({ run: x.run, spec: x.spec })),
+    workflowRunEntries: () =>
+      [...runsForCaller().values()].map((x) => ({ run: x.run, spec: x.spec })),
   };
 }

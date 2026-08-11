@@ -19,6 +19,8 @@ import { promises as fs } from 'node:fs';
 import type { WorkforceAuditEntry, WorkforceAuditPage } from '@neuropause/shared';
 import { AuditChain, type AuditChainSnapshot, type AuditVerifyResult } from '../../security/auditChain';
 import { createLogger } from '../../logger';
+import type { TenantScope } from '@neuropause/shared';
+import { TenantOwnership } from '../../tenancy/tenantOwnedStore';
 
 const log = createLogger('workforce-audit');
 
@@ -52,6 +54,8 @@ export interface AuditQuery {
 }
 
 export class AuditLog extends EventEmitter {
+  /** P13C Round 2 — H3. See `page()` for why the ARRAY is never filtered. */
+  private readonly tenancy = new TenantOwnership('workforce-governance-audit');
   private entries: WorkforceAuditEntry[] = [];
   private loaded = false;
   private lastPersist: Promise<void> = Promise.resolve();
@@ -138,10 +142,33 @@ export class AuditLog extends EventEmitter {
    * bounded: past `maxEntries` the oldest entries are rotated out, advancing the
    * chain checkpoint so the retained tail still verifies, and counting the drop.
    */
+  /**
+   * Append an entry, stamped with the caller's tenant.
+   *
+   * P13C Round 2 — H3. Unowned when no tenant resolves, which makes the entry
+   * visible to nobody rather than to everybody: an audit row is evidence, and
+   * evidence with an invented owner is worse than evidence with none.
+   */
   record(entry: WorkforceAuditEntry): void {
+    const scope = this.tenancy.scopeOrDeny();
+    entry = { ...entry, tenantId: scope?.tenantId ?? null };
     this.chain.append(entry);
     this.entries.push(entry);
-    while (this.entries.length > this.maxEntries) {
+    /**
+     * Rotation is PER TENANT.
+     *
+     * The cap was install-wide and oldest-first, so a tenant generating
+     * `maxEntries` governance decisions deleted another tenant's audit
+     * evidence — and audit evidence is the one record class where destruction
+     * is worse than disclosure. `page()` deliberately does not filter the
+     * array (the hash chain is order-sensitive); rotation is a different
+     * question, and it must drop only the writer's own oldest rows so the chain
+     * stays contiguous for everyone else.
+     */
+    const kept = new Set(
+      this.tenancy.pruneOwn(this.entries, this.maxEntries, (a, b) => (a.at < b.at ? -1 : 1)),
+    );
+    while (this.entries.length > 0 && !kept.has(this.entries[0]!)) {
       this.chain.dropOldest(this.entries[0]);
       this.entries.shift();
     }
@@ -154,19 +181,48 @@ export class AuditLog extends EventEmitter {
     return this.chain.verify(this.entries);
   }
 
-  /** Page through the audit trail, newest first, with optional filters. */
+  /** Bind the tenant boundary. UNBOUND DENIES. Chainable. */
+  bindScope(source: () => TenantScope | null): this {
+    this.tenancy.bindScope(source);
+    return this;
+  }
+  hasScope(): boolean {
+    return this.tenancy.hasScope();
+  }
+  /** Unscoped ownership counts, for the migration inventory only. */
+  ownershipCounts(): { total: number; assigned: number; unresolved: number } {
+    return this.tenancy.countOwnership(this.entries);
+  }
+
+  /**
+   * Page through the CALLER'S audit trail, newest first.
+   *
+   * P13C Round 2 — H3. THE OUTPUT IS FILTERED, NEVER THE ARRAY.
+   *
+   * `this.entries` backs a tamper-evident hash chain, so it is order-sensitive:
+   * filtering or reordering it would break `verifyIntegrity()` and destroy the
+   * property the log exists for. Filtering the RESULT gives the caller only
+   * their own rows while every entry stays in the chain — the same rule
+   * Program 12 applied to the enterprise governance log, for the same reason.
+   *
+   * `verifyIntegrity` and `totalRecorded` therefore remain deliberately
+   * install-wide: they are statements about the CHAIN, not about anyone's
+   * records, and a per-tenant integrity check would be a different and weaker
+   * claim.
+   */
   page(query: AuditQuery = {}): WorkforceAuditPage {
     const limit = Math.min(Math.max(query.limit ?? 100, 1), 1000);
     const offset = Math.max(query.offset ?? 0, 0);
-    let rows = [...this.entries].reverse();
+    let rows = this.tenancy.onlyMine([...this.entries].reverse());
     if (query.workerId) rows = rows.filter((e) => e.workerId === query.workerId);
     if (query.decision) rows = rows.filter((e) => e.decision === query.decision);
     const total = rows.length;
     return { entries: rows.slice(offset, offset + limit), total };
   }
 
+  /** Scoped: an install-wide size discloses how much another tenant does. */
   size(): number {
-    return this.entries.length;
+    return this.tenancy.onlyMine(this.entries).length;
   }
 
   /** Total entries ever appended, including those rotated out of retention. */

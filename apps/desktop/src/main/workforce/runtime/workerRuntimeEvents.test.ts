@@ -16,6 +16,7 @@ import { GovernanceRuntime } from '../governance';
 import { JobStore } from './jobStore';
 import { WorkerRuntime } from './workerRuntime';
 import type { SkillImpl, WorkforceData } from '../sdk';
+import { TEST_TENANT_SCOPE } from '../../tenancy/testScope';
 
 const NOW = '2026-07-15T00:00:00.000Z';
 const stores: Array<{ flush: () => Promise<void> }> = [];
@@ -77,8 +78,8 @@ const data: WorkforceData = { now: NOW, entities: [{ id: 'e1' } as never], event
 async function setup(withPublish = true): Promise<{ runtime: WorkerRuntime; events: PlatformEventInput[] }> {
   counter = 0;
   const registry = new WorkerRegistry(tempPath());
-  const audit = new AuditLog(tempPath());
-  const jobs = new JobStore(tempPath());
+  const audit = new AuditLog(tempPath()).bindScope(() => TEST_TENANT_SCOPE);
+  const jobs = new JobStore(tempPath()).bindScope(() => TEST_TENANT_SCOPE);
   stores.push(registry, audit, jobs);
   await registry.load();
   await audit.load();

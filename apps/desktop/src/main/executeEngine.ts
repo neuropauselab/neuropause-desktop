@@ -169,7 +169,7 @@ export class ExecuteEngine {
 
     this.sessions.delete(session.id);
     this.history.unshift({ ...session, steps: session.steps.map((s) => ({ ...s })) });
-    if (this.history.length > MAX_HISTORY) this.history.length = MAX_HISTORY;
+    this.pruneHistoryForOwner();
     this.deps.persist?.(this.history[0]);
 
     this.emit(
@@ -179,6 +179,33 @@ export class ExecuteEngine {
       session.correlationId,
     );
     log.info('execution finished', { kind: session.kind, ok, durationMs: session.durationMs });
+  }
+
+  /**
+   * Trim history to `MAX_HISTORY` PER TENANT, never install-wide.
+   *
+   * Sessions carry an owner as of this round, but retention did not — so one
+   * busy tenant silently destroyed another's execution record, and
+   * `ExecutionSession.result` is the structured output of actions that actually
+   * ran. `jobStore` solved this with `pruneOwn`; this is the same rule applied
+   * to the in-memory ring.
+   */
+  private pruneHistoryForOwner(): void {
+    const tenantId = this.deps.tenantId?.() ?? null;
+    if (tenantId === null || tenantId === '') {
+      // No owner to prune for: fall back to the global cap so the ring stays
+      // bounded, which is a capacity guarantee rather than a tenant decision.
+      if (this.history.length > MAX_HISTORY) this.history.length = MAX_HISTORY;
+      return;
+    }
+    const mine = this.history.filter((s) => s.tenantId === tenantId);
+    if (mine.length <= MAX_HISTORY) return;
+    const doomed = new Set(mine.slice(MAX_HISTORY));
+    // Spliced in place: `history` is readonly, and mutating rather than
+    // reassigning also keeps any live reference to the ring valid.
+    for (let i = this.history.length - 1; i >= 0; i -= 1) {
+      if (doomed.has(this.history[i]!)) this.history.splice(i, 1);
+    }
   }
 
   /** Whether `s` belongs to the caller. Unowned sessions belong to nobody. */
@@ -221,7 +248,7 @@ export class ExecuteEngine {
     session.currentStep = -1;
     this.sessions.delete(id);
     this.history.unshift({ ...session });
-    if (this.history.length > MAX_HISTORY) this.history.length = MAX_HISTORY;
+    this.pruneHistoryForOwner();
     this.deps.persist?.(this.history[0]);
     this.emit('execution.cancelled', 'normal', { kind: session.kind, id, label: session.label }, session.correlationId);
     return session;
@@ -238,7 +265,7 @@ export class ExecuteEngine {
     }
     // Newest first, bounded.
     this.history.sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
-    if (this.history.length > MAX_HISTORY) this.history.length = MAX_HISTORY;
+    this.pruneHistoryForOwner();
   }
 
   private emit(
