@@ -120,13 +120,38 @@ export interface PlatformPluginResult {
   error?: string;
 }
 
-/** Desktop channel — reuses the S2 session manager + action interpreter. */
+/**
+ * Which session a desktop call means — NEVER whose it is.
+ *
+ * P13C Round 9 — F15. A caller (a renderer payload, a scenario step) may name a
+ * session it opened. The OWNER is resolved by the channel from the injected
+ * tenant resolver and can never arrive in a payload, so a named id selects among
+ * the caller's own sessions and nothing else. Omitted means "the session I have
+ * open", which is per owner rather than per install.
+ */
+export interface DesktopSessionRef {
+  sessionId?: string;
+}
+
+/** What `open` hands back, so a caller can name the session it just created. */
+export interface DesktopSessionHandle {
+  sessionId: string;
+}
+
+/**
+ * Desktop channel — reuses the S2 session manager + action interpreter.
+ *
+ * EVERY operation resolves the owner before it executes and refuses a foreign
+ * session with an {@link EnterprisePlatformError} (`desktop_denied`), or refuses
+ * outright when no tenant resolves (`desktop_no_owner`). See
+ * `desktopSessionOwnership.ts` for why the slot used to be shared.
+ */
 export interface EnterpriseDesktopChannel {
-  open(opts?: { profile?: string }): Promise<void>;
-  action(action: DesktopAction): Promise<{ assertion?: { ok: boolean; message: string } }>;
-  screenshot(name: string): Promise<{ storageRef: string | null; sizeBytes: number; bytes?: Buffer }>;
-  isOpen(): boolean;
-  close(): Promise<void>;
+  open(opts?: { profile?: string; sessionId?: string }): Promise<DesktopSessionHandle>;
+  action(action: DesktopAction, ref?: DesktopSessionRef): Promise<{ assertion?: { ok: boolean; message: string } }>;
+  screenshot(name: string, ref?: DesktopSessionRef): Promise<{ storageRef: string | null; sizeBytes: number; bytes?: Buffer }>;
+  isOpen(ref?: DesktopSessionRef): boolean;
+  close(ref?: DesktopSessionRef): Promise<void>;
 }
 
 /**

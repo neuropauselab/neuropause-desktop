@@ -36,13 +36,14 @@ import {
 import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
-import { connectorService } from './connectorService';
+import { connectorService, ownedByViewer, type OwnedConnectorEvent } from './connectorService';
 import { connectorVault } from './connectorVault';
 import { connectorStore } from './connectorStore';
 import type { ConnectorId } from '@neuropause/shared';
 import { testConnection } from './connectionTest';
 import { connectorControlStore } from './connectorControlStore';
-import { ConnectorRuntimeSupervisor } from './connectorRuntimeSupervisor';
+import { ConnectorRuntimeSupervisor, lifecycleToWire } from './connectorRuntimeSupervisor';
+import { runOutsidePrincipal } from '../tenancy/backgroundPrincipal';
 import { isConfigured, resolveWebhookSecret } from './credentials';
 import { MANIFEST_BY_ID } from './manifests';
 import { InboundWebhookRouter } from './inbound/router';
@@ -153,8 +154,46 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
     });
   }
 
-  const onEvent = (e: ConnectorEvent): void => {
-    deps.broadcast(IpcChannel.ConnectorEventBroadcast, e);
+  /**
+   * The workspace the WINDOW is showing — never the one a job is acting as.
+   *
+   * P13C ROUND 9 — FINDING 6. `deps.workspaceId` deliberately prefers a
+   * background principal, which is correct for every WRITE: the fanned-out sync
+   * must read, stamp and store as the workspace it is syncing. It is exactly
+   * wrong for deciding what a window may see, because during that pass the
+   * resolver names workspace B while the user is looking at A — so an
+   * unconditional broadcast pushed B's connector and account ids into A's
+   * window on every scheduled sync.
+   *
+   * `runOutsidePrincipal` drops the job's principal for the length of this call
+   * and nothing else, so the resolver falls back to the SESSION's workspace.
+   * It grants nothing: the answer is what the signed-in user would see anyway.
+   * `backgroundPrincipal.ts` documents this as its intended use.
+   */
+  const viewerWorkspace = (): string | null => {
+    const id = runOutsidePrincipal(() => deps.workspaceId());
+    return id === undefined || id === null || id === '' ? null : id;
+  };
+
+  /** Whether a stamped record belongs to the workspace on screen. Unowned ⇒ nobody's. */
+  const onScreen = (owner: string | null): boolean => ownedByViewer(owner, viewerWorkspace());
+
+  const onEvent = (e: OwnedConnectorEvent): void => {
+    const { workspaceId: owner, ...wire } = e;
+    /**
+     * The renderer sees its OWN workspace's connector activity. A live event
+     * carries an account id and the provider's error text, which is the same
+     * disclosure the log feed was fixed for — a broadcast is just a read
+     * nobody asked for.
+     */
+    if (onScreen(owner)) deps.broadcast(IpcChannel.ConnectorEventBroadcast, wire);
+    /**
+     * The Platform Event Bus is NOT gated here, and that is deliberate: it
+     * stamps every event with the tenant resolved at PUBLISH time, so an event
+     * published inside the fan-out is durably owned by the workspace being
+     * synced and is filtered on read by the bus's own boundary. Dropping it
+     * here would delete a timeline entry rather than protect one.
+     */
     const pe = toPlatformEvent(e);
     if (pe) deps.publish(pe);
   };
@@ -174,7 +213,15 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
       return m ? isConfigured(m) : false;
     },
     getLogs: (id) => connectorService.logFeed(id),
-    broadcast: (evt) => deps.broadcast(IpcChannel.ConnectorLifecycleBroadcast, evt),
+    // The boundary the accounts, the credentials and the activity feed already use.
+    workspaceId: deps.workspaceId,
+    // Same viewer test as the connector event stream: a transition names an
+    // account, so it reaches the window that owns that account or no window.
+    broadcast: (evt) => {
+      if (onScreen(evt.workspaceId)) {
+        deps.broadcast(IpcChannel.ConnectorLifecycleBroadcast, lifecycleToWire(evt));
+      }
+    },
   });
   supervisor.prime();
   // A paused account / disabled connector skips manual sync (scheduled-path enforcement lands with the

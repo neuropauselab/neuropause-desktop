@@ -12,8 +12,15 @@
  */
 import type { DesktopAction } from '@neuropause/shared';
 import {
+  DesktopSessionRegistry,
+  type DesktopOwnerResolver,
+  type OwnedDesktopSession,
+} from './desktopSessionOwnership';
+import {
   EnterpriseAuthorizationError,
   EnterprisePlatformError,
+  type DesktopSessionHandle,
+  type DesktopSessionRef,
   type EnterpriseDesktopChannel,
   type EnterprisePlatform,
   type PlatformActionResult,
@@ -54,6 +61,17 @@ export interface FakePlatformScript {
   desktopElements?: { selector: string; visible?: boolean; text?: string }[];
   /** When set, the desktop channel `open` rejects (unavailable backend). */
   desktopUnavailable?: string;
+  /**
+   * WHO the desktop calls are made as. P13C Round 9 — F15.
+   *
+   * Defaults to one fixed tenant, so an ordinary test is a single organization
+   * and nothing changes for it. An isolation test supplies a MUTABLE resolver —
+   * the same way `sandboxTenancy.test.ts` drives the stores through a mutable
+   * scope — because switching tenants against one live channel is the thing
+   * under test; building a second channel per tenant would make every assertion
+   * pass for the wrong reason.
+   */
+  desktopOwner?: DesktopOwnerResolver;
   /** Make the first N `create` calls for a module throw a recoverable error (retry tests). */
   failCreate?: { moduleId: string; times: number; message?: string };
 }
@@ -68,23 +86,68 @@ interface FakeTimeline {
   entries: PlatformTimelineEntry[];
 }
 
-class FakeDesktop implements EnterpriseDesktopChannel {
-  private open_ = false;
-  private seq = 0;
-  constructor(private readonly script: FakePlatformScript) {}
+/**
+ * The fake desktop channel — OWNER-KEYED, exactly like the real one.
+ *
+ * P13C ROUND 9 — F15. This class held `private open_ = false` and a `seq`: one
+ * slot, the same defect as `createRealDesktopChannel`. That matters more than a
+ * test double usually does, because the gates run headless and exercise THE FAKE
+ * through the same port — a fake with a shared slot keeps every gate green while
+ * production leaks, which is precisely how the finding survived.
+ *
+ * It therefore resolves ownership through the SAME
+ * {@link DesktopSessionRegistry} the production channel uses, so a test that
+ * proves the fake refuses a foreign session is proving the production rule
+ * rather than a parallel one written to agree with it.
+ */
+interface FakeDesktopSession extends OwnedDesktopSession {
+  shots: number;
+  clicks: { selector: string; sessionId: string }[];
+}
 
-  open(): Promise<void> {
+export class FakeDesktop implements EnterpriseDesktopChannel {
+  private readonly registry: DesktopSessionRegistry<FakeDesktopSession>;
+  constructor(private readonly script: FakePlatformScript) {
+    /**
+     * The default owner is ONE fixed tenant, so every pre-existing test keeps
+     * running as a single organization and a test that wants to prove ISOLATION
+     * has to introduce a second owner deliberately. Same asymmetry, and the same
+     * reason, as `TEST_TENANT_SCOPE`: crossing a boundary should read as an
+     * intrusion, not as ordinary setup.
+     */
+    this.registry = new DesktopSessionRegistry<FakeDesktopSession>(
+      script.desktopOwner ?? (() => ({ tenantId: 'fake-tenant', workspaceId: 'fake-workspace' })),
+    );
+  }
+
+  open(opts?: { profile?: string; sessionId?: string }): Promise<DesktopSessionHandle> {
     if (this.script.desktopUnavailable) {
       return Promise.reject(new EnterprisePlatformError(this.script.desktopUnavailable, 'desktop_unavailable'));
     }
-    this.open_ = true;
-    return Promise.resolve();
+    let claim: ReturnType<DesktopSessionRegistry<FakeDesktopSession>['claim']>;
+    try {
+      claim = this.registry.claim(opts?.sessionId, 'open');
+    } catch (err) {
+      return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+    }
+    if (claim.existing) return Promise.resolve({ sessionId: claim.existing.sessionId });
+    this.registry.put({ sessionId: claim.sessionId, owner: claim.owner, shots: 0, clicks: [] });
+    return Promise.resolve({ sessionId: claim.sessionId });
   }
-  isOpen(): boolean {
-    return this.open_;
+  isOpen(ref?: DesktopSessionRef): boolean {
+    return this.registry.peek(ref) !== null;
   }
-  action(action: DesktopAction): Promise<{ assertion?: { ok: boolean; message: string } }> {
-    if (!this.open_) return Promise.reject(new EnterprisePlatformError('desktop session not open', 'desktop_closed'));
+  /** Test hook: what was driven into ONE session. Never install-wide. */
+  clicksOn(ref?: DesktopSessionRef): { selector: string; sessionId: string }[] {
+    return [...(this.registry.peek(ref)?.clicks ?? [])];
+  }
+  action(action: DesktopAction, ref?: DesktopSessionRef): Promise<{ assertion?: { ok: boolean; message: string } }> {
+    let session: FakeDesktopSession;
+    try {
+      session = this.registry.require(ref, `desktop ${action.type}`);
+    } catch (err) {
+      return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+    }
     const el = (this.script.desktopElements ?? []).find((e) => e.selector === action.selector);
     if (action.type === 'assertVisible' || action.type === 'assertExists') {
       const ok = !!el && el.visible !== false;
@@ -98,15 +161,44 @@ class FakeDesktop implements EnterpriseDesktopChannel {
     if ((action.type === 'click' || action.type === 'type' || action.type === 'fill') && !el) {
       return Promise.reject(new EnterprisePlatformError(`selector "${action.selector}" not found`, 'desktop_automation'));
     }
+    // Recorded on the SESSION, so a test can prove which window a click landed in.
+    if (action.type === 'click') session.clicks.push({ selector: action.selector ?? '', sessionId: session.sessionId });
     return Promise.resolve({});
   }
-  screenshot(name: string): Promise<{ storageRef: string | null; sizeBytes: number; bytes?: Buffer }> {
-    this.seq += 1;
-    const bytes = Buffer.from(`fake-shot:${name}:${this.seq}`);
+  screenshot(name: string, ref?: DesktopSessionRef): Promise<{ storageRef: string | null; sizeBytes: number; bytes?: Buffer }> {
+    let session: FakeDesktopSession;
+    try {
+      session = this.registry.require(ref, 'screenshot');
+    } catch (err) {
+      return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+    }
+    session.shots += 1;
+    /**
+     * The bytes NAME THE SESSION AND ITS OWNER.
+     *
+     * A screenshot that returned the same bytes whoever asked would make an
+     * isolation test pass while the leak it exists to catch was still there —
+     * `A !== B` is not a proof of anything. These are the fake's stand-in for
+     * pixels of a particular tenant's window, so a test can assert that A's
+     * capture is A's window rather than merely "not B's".
+     */
+    const bytes = Buffer.from(`fake-shot:${session.owner.tenantId}:${session.sessionId}:${name}:${session.shots}`);
     return Promise.resolve({ storageRef: null, sizeBytes: bytes.length, bytes });
   }
-  close(): Promise<void> {
-    this.open_ = false;
+  close(ref?: DesktopSessionRef): Promise<void> {
+    // Named close: refused when it is not this owner's. Unnamed: close mine, if any.
+    if (ref?.sessionId) {
+      let session: FakeDesktopSession;
+      try {
+        session = this.registry.require(ref, 'close');
+      } catch (err) {
+        return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+      }
+      this.registry.drop(session);
+      return Promise.resolve();
+    }
+    const mine = this.registry.peek();
+    if (mine) this.registry.drop(mine);
     return Promise.resolve();
   }
 }
@@ -122,7 +214,8 @@ export class FakeEnterprisePlatform implements EnterprisePlatform {
   private readonly connectorState = new Map<string, PlatformConnectorState>();
   private seq = 0;
   private failCreateCount = 0;
-  readonly desktop: EnterpriseDesktopChannel;
+  /** Typed as the fake so isolation tests can ask which session a click landed in. */
+  readonly desktop: FakeDesktop;
   private readonly moduleSet: ReadonlySet<string>;
 
   constructor(private readonly script: FakePlatformScript = {}, private readonly clock: () => number = Date.now) {

@@ -16,9 +16,21 @@ import type {
 } from '@neuropause/shared';
 import { ConnectorRuntimeSupervisor, type RuntimeControlPort } from './connectorRuntimeSupervisor';
 
+/**
+ * P13C ROUND 9 — F7. Every fixture account now names the WORKSPACE THAT OWNS IT.
+ *
+ * It is not decoration. Lifecycle history is stamped from
+ * `ConnectedAccount.workspaceId` at write time and filtered by it on read, so a
+ * fixture with no workspace produces rows owned by nobody — which is the correct
+ * production behaviour for a pre-boundary account and useless as a test default.
+ * Wiring the owner here is what makes the isolation suite below able to fail.
+ */
+const WS_MAIN = 'workspace-main';
+const WS_OTHER = 'workspace-other';
+
 function acct(over: Partial<ConnectedAccount> = {}): ConnectedAccount {
   return {
-    id: 'a1', connectorId: 'github', label: 'octocat', externalId: null, avatarUrl: null,
+    id: 'a1', connectorId: 'github', workspaceId: WS_MAIN, label: 'octocat', externalId: null, avatarUrl: null,
     status: 'connected', health: 'healthy', grantedScopes: [], connectedAt: 'x',
     lastSyncAt: null, lastSyncState: 'never', accessTokenExpiresAt: null, error: null, ...over,
   };
@@ -41,14 +53,26 @@ function harness() {
   const controls = new FakeControls();
   const emitted: ConnectorLifecycleEvent[] = [];
   let t = 1_000;
+  /** The workspace the caller is in — the harness's `connectorStore` boundary. */
+  let workspace = WS_MAIN;
   const set = (a: ConnectedAccount): void => { accounts.set(`${a.connectorId}::${a.id}`, a); };
+  /**
+   * `getAccount` and `listAccounts` are `connectorStore.get` / `.all` in
+   * production, and BOTH are workspace-scoped there. The doubles were not, so
+   * the harness could not express the cross-workspace case at all — the reason
+   * a whole class of finding survived a passing suite.
+   */
   const sup = new ConnectorRuntimeSupervisor({
     events: bus,
     controls,
-    getAccount: (c, a) => accounts.get(`${c}::${a}`) ?? null,
-    listAccounts: () => [...accounts.values()],
+    getAccount: (c, a) => {
+      const found = accounts.get(`${c}::${a}`) ?? null;
+      return found !== null && found.workspaceId === workspace ? found : null;
+    },
+    listAccounts: () => [...accounts.values()].filter((a) => a.workspaceId === workspace),
     isConfigured: () => true,
     getLogs: () => [{ id: 'l1', connectorId: 'github', accountId: 'a1', level: 'info', phase: 'sync', message: 'synced', at: 'x' }],
+    workspaceId: () => workspace,
     broadcast: (e) => emitted.push(e),
     now: () => (t += 1_000),
   });
@@ -58,7 +82,9 @@ function harness() {
     const ev: ConnectorEvent = { connectorId: 'github', accountId: id, type: 'sync', status: null, health: null, syncState: state, message: null, at: 'x' };
     bus.emit('event', ev);
   };
-  return { bus, accounts, controls, emitted, sup, set, emitSync };
+  /** Act as another workspace, the way a workspace switch or a fanned-out job does. */
+  const asWorkspace = (ws: string): void => { workspace = ws; };
+  return { bus, accounts, controls, emitted, sup, set, emitSync, asWorkspace };
 }
 
 const path = (evs: ConnectorLifecycleEvent[]): string[] => evs.map((e) => `${e.from}->${e.to}`);
@@ -152,9 +178,52 @@ describe('ConnectorRuntimeSupervisor — reads', () => {
     h.sup.prime();
     await h.sup.control('github', 'a1', 'pause');
     await h.sup.control('github', 'a1', 'resume');
+    expect(h.sup.history({ connectorId: 'github' })).toHaveLength(2); // the owner sees both
     const hist = h.sup.history({ connectorId: 'github', limit: 1 });
     expect(hist).toHaveLength(1);
     expect(`${hist[0].from}->${hist[0].to}`).toBe('paused->idle'); // newest first
+  });
+
+  /**
+   * P13C ROUND 9 — F7. The case the old harness could not express.
+   *
+   * Before the fix, `history()` filtered on `connectorId` and nothing else, so
+   * this read returned WS_MAIN's two transitions — its account id, its
+   * from→to states and the reasons attached to them — to a caller in a
+   * different workspace holding only `connectors:read`.
+   */
+  it('another workspace reads none of it, and the owner still reads all of it', async () => {
+    const h = harness();
+    h.set(acct({ lastSyncAt: 'x', lastSyncState: 'success' }));
+    h.sup.prime();
+    await h.sup.control('github', 'a1', 'pause');
+    await h.sup.control('github', 'a1', 'resume');
+
+    h.asWorkspace(WS_OTHER);
+    expect(h.sup.history()).toEqual([]); // the whole ring
+    expect(h.sup.history({ connectorId: 'github' })).toEqual([]); // by connector id
+    expect(h.sup.history({ accountId: 'a1' })).toEqual([]); // by the other workspace's account id
+    expect(h.sup.inspect('github').lifecycle).toEqual([]); // and through the read model
+
+    h.asWorkspace(WS_MAIN);
+    expect(h.sup.history({ connectorId: 'github' })).toHaveLength(2); // ALLOWED, non-empty
+  });
+
+  it('a workspace with no connectors of its own sees an empty inspector, not the neighbour’s', () => {
+    const h = harness();
+    h.set(acct({ id: 'a1', lastSyncAt: 'x', lastSyncState: 'success' }));
+    h.set(acct({ id: 'b1', workspaceId: WS_OTHER, lastSyncAt: 'x', lastSyncState: 'success' }));
+    h.sup.prime();
+    h.emitSync('a1', 'syncing'); // WS_MAIN's account transitions
+
+    h.asWorkspace(WS_OTHER);
+    const insp = h.sup.inspect('github');
+    expect(insp.runtime.accounts.map((a) => a.accountId)).toEqual(['b1']); // only its own account
+    expect(insp.lifecycle).toEqual([]); // and none of WS_MAIN's transitions
+
+    h.asWorkspace(WS_MAIN);
+    expect(h.sup.inspect('github').lifecycle).toHaveLength(1);
+    expect(h.sup.inspect('github').runtime.accounts.map((a) => a.accountId)).toEqual(['a1']);
   });
 
   it('runtimeStateOf reflects live derivation', () => {

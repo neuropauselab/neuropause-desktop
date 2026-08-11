@@ -3938,6 +3938,18 @@ function wireSandboxRunners(cfg: {
     artifactsBaseDir: join(cfg.baseDir, 'enterprise', 'artifacts'),
     // P13C Round 7 — persistent profiles are per tenant. See SessionManagerDeps.
     tenantId: () => activeTenantScope()?.tenantId ?? null,
+    /**
+     * P13C ROUND 9 — F16. The workspace segment of the capture path.
+     *
+     * The SESSION boundary is the tenant (see DesktopSessionRegistry — the
+     * enterprise runner executes every scenario under a tenant-level principal
+     * with no workspace, so keying sessions by workspace would split one
+     * tenant's own sessions while adding no boundary between tenants). This is
+     * recorded for the artifact path only: without it every capture lands in
+     * `tenants/<tenant>/_tenant/` and one tenant's screenshots share a directory
+     * across its workspaces.
+     */
+    workspaceId: () => activeTenantScope()?.workspaceId ?? null,
   });
 
   const platform = createRealEnterprisePlatform({
