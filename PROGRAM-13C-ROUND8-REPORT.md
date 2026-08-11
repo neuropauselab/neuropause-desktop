@@ -120,9 +120,9 @@ The exemption list is **empty** — no file is claimed to be "not a store".
 | Typecheck | **green** — 0 `error TS` |
 | Lint | **green** — `--max-warnings 0` |
 | Desktop build | **green** |
-| Backend bundle (`tsup`) | **NOT VERIFIED HERE** — esbuild host/binary skew in the Linux container, unchanged and not worked around. Green on the Mac in Round 6. |
-| **Native Mac build** | **NOT RUN in this session** |
-| **Native Mac RUNTIME** | **NOT PERFORMED** — no macOS host available here |
+| Backend bundle (`tsup`) | **GREEN — verified on the Mac.** `npm run build` completes end to end. The Linux container's failure is an esbuild host/binary skew and was not worked around. |
+| **Native Mac build** | **GREEN** — run on macOS after the commit below |
+| **Native Mac RUNTIME** | **STILL NOT PERFORMED** — the app has not been launched and exercised with two organizations signed in |
 | Persistent stores inventoried | **21 newly declared + 42 pre-existing declaration sites** |
 | Unregistered persistent tenant-sensitive stores | **0 by the gate's detector; the red team found ~14 the detector misses — see F17/F18** |
 | Unjustified global stores | **0 declared; 1 legal-but-wrong combination — see F19** |
@@ -240,7 +240,7 @@ Three structural gaps remain, and they are more useful than the individual bugs:
 | Structural scope registry enforced | YES, with the three gaps above |
 | Unregistered persistent tenant-sensitive store = 0 | **NO** by the red team's stricter detector |
 | Critical tests contain positive A/B/C data | YES for what this round touched |
-| Native Mac verification completed | **NO** |
+| Native Mac verification completed | **BUILD yes; the 39-surface checklist NO** |
 | Runtime multi-organization verification completed | **NO** |
 | Fresh independent red team completed | YES |
 | No critical finding from the fresh red team | **NO** |
