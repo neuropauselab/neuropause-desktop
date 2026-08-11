@@ -28,6 +28,9 @@ declareStoreScope({
   persistence: 'file',
   authority: 'USER',
   classification: 'USER_PREFERENCE',
+  /** P13C ROUND 10. The only removals are inside ONE owner's own record: MAX_TABS/MAX_NAME truncation, and remove() on the caller's own context. MAX_WORKSPACES THROWS rather than evicting - a limit that refuses a write can destroy nothing, which is the shape a cap should have. */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'OWNER',
   retention:
     'INSPECTED FOR THE INSTALL-WIDE-CAP CLASS AND CLEAN. `MAX_WORKSPACES` (30) is enforced by ' +
     'THROWING in `create`, not by evicting — a limit that refuses a write can destroy nothing, which ' +

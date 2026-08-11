@@ -50,6 +50,9 @@ declareStoreScope({
   // install-wide file and would be the wrong axis anyway.
   authority: 'USER',
   classification: 'USER_PREFERENCE',
+  /** P13C ROUND 10. Nothing is ever removed: one record, rewritten whole. NONE + NONE is the pair declareStoreScope requires when there is no removal - naming an authority for a deletion that cannot happen would be a false statement. */
+  retentionScope: 'NONE',
+  retentionAuthority: 'NONE',
   retention:
     'One record, rewritten whole by `saveDeliveryPreferences` — no list, no cap, no eviction, so a ' +
     'write can remove nothing but the previous schedule. There is no delete path at all.',

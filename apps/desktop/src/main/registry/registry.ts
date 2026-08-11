@@ -47,12 +47,47 @@ declareStoreScope({
   // `cloud:operate`, which no organization role can hold — see ipc/runtimeAuthz.
   authority: 'PLATFORM_OPERATOR',
   classification: 'INSTALL_METADATA',
+  /**
+   * P13C ROUND 10. INSTALL is structurally correct — `RegistryEntry` has no
+   * tenant field, so there are no per-owner rows and `declareStoreScope` refuses
+   * `OWNER` here. PLATFORM_OPERATOR is the authority this store REQUIRES and the
+   * one two of its three removal-reaching channels carry.
+   *
+   * IT IS NOT THE AUTHORITY THE THIRD ONE CARRIES. See the OPEN FINDING in the
+   * retention string below: `nps:uninstall` reaches `remove(slug)` on
+   * `requireAuth` alone. This declaration names the authority an install-wide
+   * deletion must have, and records where the code does not yet meet it, rather
+   * than describing the gap as if it were the policy.
+   */
+  retentionScope: 'INSTALL',
+  retentionAuthority: 'PLATFORM_OPERATOR',
   retention:
     'No cap and no eviction: nothing is ever removed to make room, so no write can destroy another ' +
     "reader's row. `remove(slug)` deletes one entry for the whole install (an uninstall), and " +
-    '`import({merge:false})` REPLACES the entire map — both install-wide acts, which is why both now ' +
-    'sit behind cloud:operate. Per-tenant usage counters are keyed by tenant and a tenant only ever ' +
-    "writes its own bucket, so no tenant's launch history can evict another's.",
+    '`import({merge:false})` REPLACES the entire map — both install-wide acts. `import` and ' +
+    '`backup` sit behind cloud:operate as of Round 9. Per-tenant usage counters are keyed by tenant ' +
+    "and a tenant only ever writes its own bucket, so no tenant's launch history can evict " +
+    "another's; `import` explicitly DISCARDS the payload's usageByTenant and leaves the live " +
+    'counters alone, so a bulk import cannot destroy another tenant\'s launch history either. ' +
+    'OPEN FINDING, RECORDED HERE RATHER THAN DECLARED AWAY — R10-B3A-F1: the authority above is ' +
+    'true of `registry:import` and `registry:backup` and NOT of the third path into the same ' +
+    'deletion. `remove()` is also reached from `nps:uninstall` → `packageService.uninstall()`, and ' +
+    'that channel carries `requireAuth: true` and NO permission at all (it is absent from ' +
+    'RUNTIME_CHANNEL_PERMISSIONS and from PUBLIC_CHANNELS; see the REQUIRE_AUTH_ONLY list in ' +
+    'ipc/runtimeAuthz.test.ts). So any authenticated user in any organization can delete the ' +
+    "install-wide catalogue row — install location, package hash, signature key id, granted " +
+    'permissions, per-app config — for an application every other organization on the machine ' +
+    'uses. That is strictly WEAKER than the F19/NEW-H7 class, which was an organization role over ' +
+    'an install-wide resource; this is no role. Round 9 moved the two `registry:*` bulk channels ' +
+    'and did not follow the same store through its `nps:*` door. The fix is one row — ' +
+    "`[IpcChannel.NpsUninstall]: 'cloud:operate'` — plus the same question asked of `nps:install` " +
+    'and `nps:update`, which upsert the same rows on the same `requireAuth`-only footing, and of ' +
+    "`nps:rollback`, which patches them on `operations:manage`, an organization role. The " +
+    'generic gate that would have caught all four already exists and is not applied to this store: ' +
+    '`assertPlatformStoreChannelAuthority` in plugins/pluginAuthzGate.ts takes a store name, a ' +
+    'family and its mutating channels, and `local-app-registry` should call it the way ' +
+    '`plugin-install-registry` does. Calling it before the permission rows move would stop the ' +
+    'application starting, so the rows move first.',
   reason:
     'WHY INSTALL_GLOBAL: there is one `registry.json` per machine, `RegistryEntry` has no tenant ' +
     'field, and the Package Service, the Runtime Supervisor and the UI all read and write the same ' +

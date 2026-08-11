@@ -21,6 +21,28 @@ import { AuditChain, type AuditChainSnapshot, type AuditVerifyResult } from '../
 import { createLogger } from '../../logger';
 import type { TenantScope } from '@neuropause/shared';
 import { TenantOwnership } from '../../tenancy/tenantOwnedStore';
+import { declareStoreScope } from '../../tenancy/storeScope';
+
+/** P13C ROUND 10 — the retention invariant. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'workforce-governance-audit',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retentionScope: 'OWNER',
+  retentionAuthority: 'SYSTEM',
+  retention:
+    'Capped at `maxEntries` (5,000) PER TENANT via `tenancy.pruneOwn`, which selects victims only ' +
+    "from the writer's own rows — the trigger and the victim selection are both per owner, which is " +
+    'the pair Round 10 found disagreeing in two other stores. Dropped rows are removed from the hash ' +
+    'chain through `chain.dropOldest` so integrity still verifies over what remains. SYSTEM: the cap ' +
+    'fires inside `record()` and no channel deletes an audit entry.',
+  reason:
+    'WHY TENANT: a governance decision names the worker, the action it was refused or allowed, and ' +
+    "the record it concerned — one organization's operational history, and the evidence a refusal " +
+    'happened. Declared here because `TenantOwnership` alone cannot state retention.',
+});
 
 const log = createLogger('workforce-audit');
 

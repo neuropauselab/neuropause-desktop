@@ -34,6 +34,9 @@ declareStoreScope({
   // role could authorize. `declareStoreScope` now refuses that combination.
   authority: 'PLATFORM_OPERATOR',
   classification: 'INSTALL_METADATA',
+  /** P13C ROUND 10. unregister removes one worker for the whole install; the rows have no tenant field, so INSTALL is the only honest answer. PLATFORM_OPERATOR because the lifecycle channels moved to cloud:operate in Round 9 - this pair is now a true statement rather than the prose it replaced. */
+  retentionScope: 'INSTALL',
+  retentionAuthority: 'PLATFORM_OPERATOR',
   retention: 'No cap. unregister removes one worker for the whole install, and now requires cloud:operate.',
   reason: "WHY GLOBAL: Worker has no tenant field, and composed workers register into ONE process-wide registry with one skill-resolution seam, so two tenants cannot hold different versions of the same worker id. WHAT DATA: package identity, declared skills, permissions, goals — publisher-authored. ROUND 8 FINDING: trustScore and health.{jobsRun,jobsFailed,successRate} were mutated from TENANT job execution and read install-wide, making this a live counter of another tenant's job volume and failure rate; see recordOutcome. CROSS-TENANT COST: a workforce:manage holder can uninstall a package other tenants use.",
 });

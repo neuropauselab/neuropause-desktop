@@ -10,6 +10,30 @@ import type { ConnectorSyncSnapshot, ConnectorModuleStat, UnifiedEntityKind } fr
 import { createLogger } from '../../logger';
 import type { TenantScope } from '@neuropause/shared';
 import { TenantOwnership } from '../../tenancy/tenantOwnedStore';
+import { declareStoreScope } from '../../tenancy/storeScope';
+
+/** P13C ROUND 10 — the retention invariant. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'connector-sync-state',
+  scope: 'WORKSPACE',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retentionScope: 'OWNER',
+  retentionAuthority: 'OWNER',
+  retention:
+    'NO CAP AND NO TTL — cursors and health rows are kept until their account is disconnected. The ' +
+    'one removal is `forget(connectorId, accountId)`, called from disconnect, which deletes exactly ' +
+    "the row for that account. HONEST LIMIT: the Map key is `connectorId::accountId` with no " +
+    'workspace segment, so the guarantee that it cannot reach another workspace rests on `accountId` ' +
+    "being a random `shortId('acct')` minted per connection, not on a check in this method. That is a " +
+    'borrowed guarantee and is written down rather than assumed; the same shape was tightened in ' +
+    '`connectorStore.remove` in Round 10 and this one is recorded as the remaining instance.',
+  reason:
+    'WHY WORKSPACE: a sync cursor names a provider resource path and a health row carries provider ' +
+    "error strings and entity counts for one connected account, which is that workspace's " +
+    'operational detail. The seam is the `TenantOwnership` below, bound at the composition root.',
+});
 
 const log = createLogger('sync-state');
 

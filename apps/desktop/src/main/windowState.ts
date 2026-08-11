@@ -21,6 +21,9 @@ declareStoreScope({
   // preference. Nothing organizational decides where a window sits.
   authority: 'USER',
   classification: 'USER_PREFERENCE',
+  /** P13C ROUND 10. Nothing is ever removed: one rectangle, overwritten in place. recovery:run resetSettings deletes the whole file, but that is recoveryService's removal on cloud:operate, declared there, not this store's. */
+  retentionScope: 'NONE',
+  retentionAuthority: 'NONE',
   retention:
     'One record, overwritten in place on every move/resize — there is no list, no cap and no ' +
     'eviction, so no write can remove anything but the previous value of this same rectangle. ' +

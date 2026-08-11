@@ -45,6 +45,19 @@ declareStoreScope({
   persistence: 'file',
   authority: 'PLATFORM_OPERATOR',
   classification: 'INSTALL_METADATA',
+  /**
+   * P13C ROUND 10. INSTALL, because there is exactly one flag and one launcher
+   * that reads it — a per-owner Safe Mode is unrepresentable when the file is
+   * consulted before any organization exists to scope it to, and
+   * `declareStoreScope` refuses `OWNER` on a global scope for that reason.
+   *
+   * PLATFORM_OPERATOR is true as of Round 9 and is the precondition for this
+   * declaration existing at all: `recovery:run` is classified `cloud:operate` in
+   * `ipc/runtimeAuthz.ts`, and while it was `org:manage` the INSTALL_GLOBAL +
+   * ORG_ROLE rule would have refused the whole declaration.
+   */
+  retentionScope: 'INSTALL',
+  retentionAuthority: 'PLATFORM_OPERATOR',
   retention:
     'One record. `toggleSafeMode` writes it, `clearSafeMode` removes it, and both act on the whole ' +
     'install because the launcher reads one flag at startup. No list, no cap, no eviction. ' +

@@ -29,6 +29,9 @@ declareStoreScope({
   // organizational decision, so USER rather than ORG_ROLE (which is refused).
   authority: 'USER',
   classification: 'INSTALL_METADATA',
+  /** P13C ROUND 10. INSTALL is honest and is NOT the finding class: `crashes.log` rotates by size install-wide, and the rows have NO OWNER FIELD, so there is no tenant partition for a rotation to cross. A store with nothing per-tenant to protect cannot delete across a boundary that does not exist. */
+  retentionScope: 'INSTALL',
+  retentionAuthority: 'SYSTEM',
   retention:
     'INSPECTED, AND STATED RATHER THAN CLAIMED SAFE. `crashes.log` rotates by SIZE, install-wide: ' +
     '`createBoundedLog(2 MiB, keep 2)` — so a crash loop in one subsystem does push older crash ' +

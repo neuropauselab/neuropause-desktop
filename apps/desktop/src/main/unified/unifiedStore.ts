@@ -20,6 +20,29 @@ import { ownershipOf, recordInScope } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import { LocalSearchBackend, type SearchBackend } from './searchBackend';
 import { registerTenantStore } from '../tenancy/tenantOwnedStore';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/** P13C ROUND 10 — the retention invariant. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'unified-entities',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retentionScope: 'OWNER',
+  retentionAuthority: 'OWNER',
+  retention:
+    'NO CAP. The only removal is `deleteByConnector`, and it is scoped BEFORE it deletes: it resolves ' +
+    '`scopeOrDeny()`, walks the entities, and skips every row failing `recordInScope` — so the ids it ' +
+    "collects are the caller's own and the `entities.delete(id)` loop cannot reach another tenant's " +
+    'row. Deletion is the owner disconnecting their own connector, hence OWNER authority. There is no ' +
+    'TTL, no LRU and no size cap anywhere in this file.',
+  reason:
+    'WHY TENANT: canonical business entities — the customer records themselves. This is the store the ' +
+    'whole data plane projects into, so it is the single largest concentration of customer data in ' +
+    'the product. It satisfied the gate through `registerTenantStore` alone, which cannot state a ' +
+    'retention policy — the gap Round 10 exists to close.',
+});
 
 const log = createLogger('unified-store');
 

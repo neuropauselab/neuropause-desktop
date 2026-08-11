@@ -447,7 +447,36 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
   [IpcChannel.RegistryBackup]: 'cloud:operate',
 
   // Package rollback (reverts an installed app to a prior version).
-  [IpcChannel.NpsRollback]: 'operations:manage',
+  /**
+   * P13C ROUND 10 — R10-B3A-F1. THE APP REGISTRY'S OTHER DOOR, WITH NO LOCK.
+   *
+   * `local-app-registry` is declared `INSTALL_GLOBAL` + `PLATFORM_OPERATOR`, and
+   * its own reason says "an uninstall removes an app every organization on the
+   * machine uses". Round 9 moved `registry:import` and `registry:backup` to
+   * `cloud:operate` — and did not follow the same store through its `nps:*` door.
+   *
+   * `nps:uninstall` reaches `registry.remove(slug)`, deleting the catalogue row
+   * for one installed app across every organization: install location, package
+   * hash, signature key id, `grantedPermissions`, `permissionGrants` and the
+   * per-app `config`. It carried `requireAuth: true` and NO PERMISSION — it was
+   * in neither the gated map nor `PUBLIC_CHANNELS`, parked instead in the test's
+   * `REQUIRE_AUTH_ONLY` list.
+   *
+   * That is WEAKER than the F19 class this program has been closing all
+   * programme. F19 was an organization role over an install-wide resource;
+   * this was no role at all — any signed-in member of any organization.
+   *
+   * `install` and `update` upsert the same rows through the same door and move
+   * with it. `rollback` was already `operations:manage`, an organization role
+   * over the same install-wide rows, so it moves too: the axis is the resource,
+   * not which verb reaches it. The reads (`registry:list`, `registry:get`) do not
+   * move — knowing what this machine has installed is inventory a member needs.
+   */
+  [IpcChannel.NpsInstall]: 'cloud:operate',
+  [IpcChannel.NpsUninstall]: 'cloud:operate',
+  [IpcChannel.NpsUpdate]: 'cloud:operate',
+  [IpcChannel.NpsRepair]: 'cloud:operate',
+  [IpcChannel.NpsRollback]: 'cloud:operate',
 
   // Knowledge-graph REBUILD is a mutation (rebuilds the entire EKG index). The
   // task's "all graph:* → intelligence:read" shorthand was written for the graph

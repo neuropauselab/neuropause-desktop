@@ -44,6 +44,9 @@ declareStoreScope({
   // organization. Scope and authority are on the same axis.
   authority: 'ORG_ROLE',
   classification: 'CUSTOMER_DERIVED',
+  /** P13C ROUND 10. The delivery cap is per (tenant, workspace) - the same pair recordInScope enforces on every read - and fires inside prune() with no user-facing surface, hence SYSTEM. Endpoint deletion is the owner's own act via visibleWebhook. */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'SYSTEM',
   retention:
     'The delivery outbox is capped PER OWNER (DELIVERY_CAP_PER_OWNER rows for each (tenant, ' +
     'workspace) pair — the pair `recordInScope` enforces on `deliveriesFor`, `deadLetters`, `replay` ' +

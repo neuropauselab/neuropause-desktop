@@ -33,6 +33,15 @@ declareStoreScope({
    */
   authority: 'USER',
   classification: 'CUSTOMER_DERIVED',
+  /**
+   * P13C ROUND 10 — the enum half of NEW-H1, which is the half that can be
+   * checked. The prose below said "capped PER OWNER" from the moment the fix
+   * landed, and prose is what let the install-wide version ship for nine rounds.
+   * `TENANT` + `INSTALL` now throws at construction, so the pre-fix behaviour is
+   * no longer expressible in a declaration at all.
+   */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'SYSTEM',
   retention:
     'The inbox is capped PER OWNER (MAX_INBOX rows for each (tenant, workspace) pair — exactly the ' +
     'pair `recordInScope` enforces on every read) as of Round 10. It was ONE install-wide ' +
@@ -42,7 +51,13 @@ declareStoreScope({
     'four reads (`visible`, `markRead`, `page`, the (scope,id) de-dupe) stayed perfectly scoped. ' +
     'Rows with no resolvable owner are retained in their own bucket, evictable by nobody else\'s ' +
     'traffic and visible to nobody. There is no other delete path: `add` replaces only same-(scope,id) ' +
-    'rows and `markRead` removes nothing.',
+    'rows and `markRead` removes nothing. ' +
+    'THE TRIGGER IS PER OWNER TOO, not just the victim selection: `capPerOwner` counts into a ' +
+    "per-bucket tally and drops only rows past that bucket's own budget — there is no " +
+    '`if (this.items.length > MAX_INBOX)` over the shared array left to fire on somebody else\'s ' +
+    'volume, which is the half of this finding class that survives a correct-looking eviction. ' +
+    '`writeNow()` serializes `this.items` whole and applies no second cap, so the bytes on disk ' +
+    'cannot disagree with memory.',
   reason:
     'A notification BODY is business data — the delivered title interpolates the subject\'s name, the ' +
     'connector id, the job id — and item ids are stable per SUBJECT, so two organizations\' alerts ' +

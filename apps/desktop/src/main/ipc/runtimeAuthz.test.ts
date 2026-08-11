@@ -241,10 +241,14 @@ describe('runtime IPC surface completeness (fail-closed startup safety net)', ()
     IpcChannel.CatalogSubmitReview,
     IpcChannel.CatalogRecommendations,
     IpcChannel.CatalogCheckUpdate,
-    IpcChannel.NpsInstall,
-    IpcChannel.NpsUninstall,
-    IpcChannel.NpsUpdate,
-    IpcChannel.NpsRepair,
+    /**
+     * P13C ROUND 10 — R10-B3A-F1. The four `nps:*` package-lifecycle channels
+     * were HERE, on sender-trust alone, while reaching `registry.remove(slug)`
+     * and the upserts beside it — install-wide rows on a store declared
+     * PLATFORM_OPERATOR. They are now in `RUNTIME_CHANNEL_PERMISSIONS` on
+     * `cloud:operate`, so this list is four entries shorter rather than four
+     * entries better explained.
+     */
   ];
 
   it('accounts for every invokable runtime channel (gated | public | sibling-authz)', () => {

@@ -15,6 +15,65 @@ import type { MemoryAuditAction, MemoryAuditEvent, MemoryAuditPage } from '@neur
 import { createLogger } from '../logger';
 import type { TenantScope } from '@neuropause/shared';
 import { TenantOwnership } from '../tenancy/tenantOwnedStore';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/**
+ * P13C ROUND 10 — the structural scope declaration. See tenancy/storeScope.ts.
+ *
+ * THE FILE HAD NO `declareStoreScope` AT ALL. It satisfied the scope gate through
+ * `new TenantOwnership('memory-audit-log')` — one of the four declaring APIs, and
+ * the one that, like `registerTenantStore`, TAKES NO RETENTION ARGUMENT. So the
+ * store that Round 7 found on a PUBLIC channel holding assistant-written record
+ * titles, and whose install-wide `slice(length - MAX_ENTRIES)` was the fifth cap
+ * in this program able to delete another tenant's audit evidence, has never once
+ * been asked in a checkable form whose rows a removal reaches. It is asked here.
+ */
+declareStoreScope({
+  name: 'memory-audit-log',
+  scope: 'TENANT',
+  persistence: 'file',
+  /**
+   * SYSTEM: nothing mutates this log through a user-facing surface. Every row is
+   * appended by `record()` as a side effect of a memory lifecycle event, and the
+   * only channel that reaches it — `ExecMemoryAudit` — is a READ, classified
+   * `intelligence:read` since Round 7 (it was public). There is no delete, no
+   * edit and no clear on this class.
+   */
+  authority: 'SYSTEM',
+  classification: 'CUSTOMER_DERIVED',
+  /** A removal reaches the recording tenant's own rows and no others. Verified below. */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'SYSTEM',
+  retention:
+    'ONE removal: the MAX_ENTRIES cap in `record()`, applied through ' +
+    '`TenantOwnership.pruneOwn`, which selects victims from `records.filter(r => r.tenantId === ' +
+    "mine)` only — so an overflowing tenant can delete nothing but its own oldest rows. It was " +
+    '`entries.slice(length - MAX_ENTRIES)` over the single shared array, which made one ' +
+    "organization's memory activity destroy another organization's audit evidence; that is the " +
+    'fifth install-wide cap this program has found sitting behind correct read filters. ' +
+    'THE PERSIST PATH AGREES WITH THE IN-MEMORY PATH, checked rather than assumed: `persist()` ' +
+    'writes `{entries: this.entries}` whole, with no second slice of its own, so disk cannot hold ' +
+    'a differently-trimmed log than memory. There is no other delete path — no clear, no TTL, no ' +
+    'single-row delete, and `page()`\'s `slice(offset, offset + limit)` is pagination over a copy. ' +
+    'STATED RATHER THAN HIDDEN: rows recorded with no resolvable tenant are UNATTRIBUTED, ' +
+    '`pruneOwn` returns the list untouched when no scope resolves, and `onlyMine` shows them to ' +
+    'nobody — so they are unreachable by every read and uncapped by every write. They accumulate. ' +
+    'That is a growth bound, not a cross-tenant reach: no tenant can evict them and they can evict ' +
+    'nobody.',
+  reason:
+    'WHY TENANT: `detail` is an assistant-written plain-language summary of what Founder AI chose ' +
+    'to remember, recall or refuse, so the rows carry record titles verbatim; `memoryId` and ' +
+    '`action` together are a timeline of one organization\'s decision-making. Round 7 found this ' +
+    'log with NO tenant field, NO bindScope and its channel in PUBLIC_CHANNELS — no auth, no ' +
+    'permission. The owner is stamped in `record()` from the RESOLVER, never from the caller, so a ' +
+    'writer that cannot be resolved produces an unattributed row rather than one owned by the ' +
+    'wrong tenant. TENANT rather than WORKSPACE because a memory lifecycle event is raised by ' +
+    'tenant-level machinery (governance, projection, sync) that carries no workspace of its own. ' +
+    'NO `isBound` HERE, DELIBERATELY: the seam this store owns is the `TenantOwnership` field ' +
+    'below, which registers itself under this same name in `tenantOwnedStore`\'s registry and is ' +
+    'already asserted at startup by `assertAllTenantStoresBound()`. A second binding predicate ' +
+    'over the same seam would be a second thing to keep true, not a second check.',
+});
 
 const log = createLogger('memory-audit');
 

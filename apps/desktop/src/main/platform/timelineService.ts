@@ -46,12 +46,34 @@ declareStoreScope({
   persistence: 'file',
   authority: 'SYSTEM',
   classification: 'CUSTOMER_DERIVED',
+  /**
+   * P13C ROUND 10 — the enum half of the Round 9 F11 fix.
+   *
+   * Checked at the three places this class can remove or fail to restore a row,
+   * because a window is three code paths and they can disagree:
+   *   `admit()`  — the TRIGGER is `bucket.length > this.maxInMemory`, over the
+   *                event's OWN bucket, and the `shift()` under it therefore
+   *                drops that owner's oldest and nobody else's. A per-owner
+   *                eviction under an install-wide trigger is still the finding;
+   *                this has neither.
+   *   `init()`   — the warm-up fills each bucket to its own budget scanning
+   *                newest-first, so a restart cannot silently narrow one tenant's
+   *                window because another wrote the last N lines.
+   *   `flush()`  — appends the pending batch and trims nothing, so the durable
+   *                log holds every row forever and `export()` re-derives from it.
+   */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'SYSTEM',
   retention:
     'The durable JSONL log is append-only and never trimmed. The in-memory query window is bounded ' +
     'PER OWNER (maxInMemory events for each tenant, plus its own bucket for SYSTEM events and one ' +
     'for unowned rows) as of Round 9. It was one install-wide ring buffer, so a busy tenant silently ' +
     'evicted a quiet one from the live window while the durable file still held those rows — which ' +
-    'made query() and export() disagree about the same log.',
+    'made query() and export() disagree about the same log. ' +
+    'THE EVICTION TRIGGER IS PER OWNER, not only the victim: `admit()` compares the length of the ' +
+    "event's OWN bucket, so no other tenant's volume can fire it. The restart path (`init`) fills " +
+    'each bucket to its own budget and the flush path appends without trimming, so none of the ' +
+    'three can shrink a window that is not the writer\'s.',
   reason:
     'Events carry actor ids, resource ids and free-form metadata, and `q.search` matches over metadata ' +
     'values. The log is the second half of every briefing and a leg of Enterprise Search, so it is a ' +

@@ -33,10 +33,34 @@ declareStoreScope({
   // a customer's data even where today's only writer is the first-run flow. The
   // classification follows what the store may hold, not what it happens to.
   classification: 'CUSTOMER_DERIVED',
+  /**
+   * P13C ROUND 10. OWNER, and the reach is bounded by the file rather than by a
+   * filter: this store holds exactly ONE profile, in one `experience-profile.json`
+   * under one operating-system account's userData directory. There is no
+   * collection to walk, so there is no cap to get wrong and no other owner's row
+   * for a removal to arrive at.
+   *
+   * THE LIMIT OF THAT CLAIM, kept next to the claim: "owner" here means the OS
+   * account, not an in-app identity — the same honest boundary the `reason`
+   * below states. Two people sharing one macOS account share this profile, so
+   * one can `reset` what the other stated. That is a property of a per-device
+   * file and it is not closed by declaring a scope; it is the reason the scope
+   * is USER rather than something narrower it cannot enforce.
+   */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'OWNER',
   retention:
     'One record. `set` upserts attributes by key and `removeKeys` deletes by key — both inside this ' +
     'one profile, so neither can reach anything else. `reset` returns the whole profile to defaults ' +
-    'and is the only destructive path. There is no list and no cap, so no write evicts anything.',
+    'and is the only destructive path. There is no list and no cap, so no write evicts anything. ' +
+    'Both removals reach exactly one owner\'s rows because the file holds exactly one owner\'s rows: ' +
+    'the removal boundary and the read boundary are the same file, so they cannot drift apart. ' +
+    '`persist()` writes the whole profile after every mutation and applies no cap of its own. ' +
+    'AUTHORITY, STATED PLAINLY: `experience:profile.set` and `experience:profile.reset` are on the ' +
+    'PUBLIC channel list — no auth, no permission — so the person at the keyboard can erase their ' +
+    'own stated attributes without proving anything. That is coherent for a per-account preference ' +
+    'file and is the reason the retention authority is OWNER rather than an org or platform role; ' +
+    'it would NOT be coherent the moment this profile gained a row derived from another owner.',
   reason:
     "WHY USER: the profile is a model of one person's own words about themselves — role, domain, " +
     'priorities — and it deliberately follows them across organizations, which is what USER scope ' +

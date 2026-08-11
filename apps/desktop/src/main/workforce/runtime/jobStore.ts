@@ -11,6 +11,28 @@ import { EventEmitter } from 'node:events';
 import { promises as fs } from 'node:fs';
 import type { Job, JobPage, JobStatus, TenantScope } from '@neuropause/shared';
 import { TenantOwnership } from '../../tenancy/tenantOwnedStore';
+import { declareStoreScope } from '../../tenancy/storeScope';
+
+/** P13C ROUND 10 — the retention invariant. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'workforce-jobs',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retentionScope: 'OWNER',
+  retentionAuthority: 'SYSTEM',
+  retention:
+    'Capped at MAX_JOBS (2,000) PER TENANT via `tenancy.pruneOwn`. The cap was install-wide and ' +
+    'oldest-first, so a busy tenant did not merely consume capacity — it chose which of another ' +
+    "tenant's jobs, and therefore which EVIDENCE of what a worker did, was destroyed. The row being " +
+    'written is explicitly added to the keep set, so a write can never evict itself. SYSTEM: the cap ' +
+    'fires inside `upsert()`; no channel deletes a job.',
+  reason:
+    'WHY TENANT: a job row carries the worker, the goal it was given, its inputs and the proposals it ' +
+    "produced — one organization's work. Declared here because `TenantOwnership` alone cannot state " +
+    'retention, which is how the install-wide cap above survived until it was measured.',
+});
 import { createLogger } from '../../logger';
 
 const log = createLogger('workforce-jobs');

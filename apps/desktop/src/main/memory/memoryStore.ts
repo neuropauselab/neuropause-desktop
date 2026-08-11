@@ -57,7 +57,40 @@ declareStoreScope({
   persistence: 'file',
   authority: 'ORG_ROLE',
   classification: 'CUSTOMER_DERIVED',
-  retention: "No cap. The stale-projection sweep checks memoryVisibleTo before deleting, so it can only reach the sweeping viewer's own items.",
+  /**
+   * P13C ROUND 10 — the prose below was already right; nothing could check it.
+   *
+   * Both removals resolve ownership BEFORE deleting, and both were verified by
+   * reading the delete site rather than by trusting the summary:
+   *   `forget(ids)`      → `this.visible(id)` → `memoryVisibleTo(item.owner, viewer)`,
+   *                        so a renderer-supplied id belonging to another tenant
+   *                        deletes nothing and is told nothing. This is the
+   *                        single-row-delete-by-caller-id shape, gated.
+   *   `applyProjected()` → the stale sweep `continue`s on
+   *                        `!memoryVisibleTo(it.owner, viewer)` before `delete`.
+   * There is NO cap, NO TTL and NO eviction anywhere in the class, so there is no
+   * trigger over a shared collection to get wrong.
+   */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'OWNER',
+  retention:
+    "No cap, no TTL, no eviction. TWO delete paths, both ownership-resolved before the delete: " +
+    '`forget(ids)` reaches each id through `visible()`, so an id belonging to another tenant is ' +
+    'silently skipped — which is also what bounds "forget everything" to "everything I can see"; ' +
+    "and `applyProjected`'s stale-projection sweep skips any row `memoryVisibleTo` says this " +
+    'viewer cannot read. A synced item is never physically removed at all — `forget` appends a ' +
+    'deletion TOMBSTONE version so history stays recoverable. The persist path agrees with memory ' +
+    'by construction: `persist()` writes `[...this.items.values()]` whole and applies no cap of ' +
+    'its own. The `pool.slice(0, limit)` in `lexicalRecall` is a page size over a filtered copy, ' +
+    'not a removal. ' +
+    'ONE CROSS-OWNER EFFECT, NAMED RATHER THAN OMITTED because it is a write that makes another ' +
+    "owner's row unreadable: projected ids are deterministic (`mem:<entityId>`) and derive from " +
+    'the still-unscoped unified store, so two tenants project the SAME id and `this.items` is ' +
+    "keyed by id alone — the later rebuild RE-STAMPS the row with its own owner and the earlier " +
+    'tenant stops seeing it until it rebuilds. That is an overwrite of a byte-identical derivation ' +
+    'of a source both tenants can already read, not a deletion and not a disclosure; the sweep ' +
+    'above still refuses to DELETE another owner\'s projection. The real fix is scoping the ' +
+    'unified store. See the KNOWN LIMITATION block on `applyProjected`.',
   reason: 'item.owner, stamped from the resolved viewer at remember() and never patchable. Unbound denies.',
 });
 

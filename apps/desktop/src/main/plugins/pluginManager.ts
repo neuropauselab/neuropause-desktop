@@ -36,7 +36,30 @@ declareStoreScope({
   persistence: 'file',
   authority: 'PLATFORM_OPERATOR',
   classification: 'INSTALL_METADATA',
-  retention: 'No cap. remove() deletes the record and removes the plugin root, so the plugin disappears for every tenant.',
+  /**
+   * P13C ROUND 10. INSTALL is the only honest answer and it is not a finding:
+   * `PluginRecord` has no tenant field, an enabled plugin runs in-process for the
+   * whole install, and `declareStoreScope` refuses `OWNER` on a global scope for
+   * exactly that reason — there are no per-owner rows to keep.
+   *
+   * PLATFORM_OPERATOR is CHECKED here, not asserted: `remove` is reached only
+   * from `plugins:remove`, which is in `PLUGIN_MUTATION_CHANNELS`, and
+   * `assertPluginChannelAuthority()` on the line below this declaration throws at
+   * module load if any of those channels carries a permission an organization
+   * role can hold. So the retention authority named here is the one the gate
+   * enforces, not the one this comment hopes for.
+   */
+  retentionScope: 'INSTALL',
+  retentionAuthority: 'PLATFORM_OPERATOR',
+  retention:
+    'No cap, no TTL, no eviction. ONE removal, and it is deliberately install-wide: `remove(id)` ' +
+    'deletes `records[id]`, drops the in-memory `Loaded`, and `fs.rm`s the plugin root unless the ' +
+    'plugin is a dev-dir plugin loaded in place — so the plugin disappears for every tenant at ' +
+    'once, which is what uninstalling one shared executable extension means. `install()` also ' +
+    '`fs.rm`s the destination directory before copying, which removes the PREVIOUS copy of the ' +
+    'same plugin id and nothing else. `revoke()` removes one capability from one record, not a ' +
+    'row. Both removals are behind `cloud:operate` and that is enforced at composition by ' +
+    '`assertPluginChannelAuthority()`, not merely declared here.',
   reason: "WHY GLOBAL: rows describe executable extensions installed on the machine; PluginRecord has no tenant field and an enabled plugin runs in-process for everyone. WHO MODIFIES: a platform operator, as of Round 8 Finding 2 — it was marketplace:manage, an organization role, so tenant A's admin could enable code running while tenant B's data was in memory. CROSS-TENANT COST: one registry; an uninstall affects every tenant.",
 });
 
