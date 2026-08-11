@@ -477,6 +477,20 @@ export function resolveTenantContext(): TenantResolution {
 }
 
 export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSubsystem> {
+  /**
+   * P13C ROUND 10 — NEW-H6. The organization directory's ownership seam.
+   *
+   * `activeTenantScope`, not `tenantContext.scope` — the Round 9 lesson, applied
+   * where it is load-bearing. The two differ only inside a background job, and
+   * the companion gateway and sandbox executor both run this store's mutations
+   * under a job principal.
+   *
+   * BOUND BEFORE `load()`. `load()` seeds on a fresh install, and while the seed
+   * writes straight into the Maps rather than through the guarded mutators, a
+   * store that is briefly unbound while reachable is the ordering mistake this
+   * program keeps finding. Binding first costs nothing and removes the window.
+   */
+  orgStore.bindScope(activeTenantScope);
   await orgStore.load();
   await workspaceStore.load();
   // P13C Round 5 — bind before load: the seed stamps chains and rules.

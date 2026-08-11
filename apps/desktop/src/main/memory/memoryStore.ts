@@ -124,6 +124,19 @@ export class MemoryStore extends EventEmitter {
   ) {
     super();
     this.retriever = retriever ?? new LexicalMemoryRetriever();
+    /**
+     * P13C ROUND 10 (NEW-H4) — the retriever is bound HERE, in the constructor.
+     *
+     * Not in `bindViewer`, and that is the point. The retriever is indexed over
+     * every tenant's memories (see `reindex`), so an unbound one is a corpus
+     * that ranks and scores across the whole install. Binding it at
+     * construction means there is no window — not one statement — in which this
+     * store exists with an unpartitioned index, and no way for a caller to
+     * forget. It also inherits the ambient test seam for free, because it
+     * resolves through this store's own `viewerOrDeny` rather than through a
+     * second copy of the resolution rules.
+     */
+    this.retriever.bindViewer(() => this.viewerOrDeny());
   }
 
   /**
@@ -214,6 +227,16 @@ export class MemoryStore extends EventEmitter {
   /** Where a corrupt/newer store file was preserved at load, if any. */
   quarantinedTo: string | null = null;
 
+  /**
+   * Rebuild the retrieval index from every memory in the file.
+   *
+   * It is handed EVERY tenant's items on purpose: a rebuild happens on load and
+   * on every mutation, when the active viewer may be nobody in particular, and
+   * an index that only ever held the current viewer's memories would have to be
+   * thrown away and rebuilt on every workspace switch. The retriever files each
+   * item into the partition its OWN stamped owner names, and answers a query
+   * only from the partitions the asking viewer may read (NEW-H4).
+   */
   private reindex(): void {
     this.retriever.index([...this.items.values()]);
   }
@@ -1024,12 +1047,10 @@ export class MemoryStore extends EventEmitter {
    *
    * FILTERED HERE, NOT ONLY AT RESOLUTION.
    *
-   * The retriever is indexed over every memory in the file — `reindex()` cannot
-   * know who is asking — so its raw output spans tenants. Resolution through
-   * `itemResolver` already drops what the viewer may not read, so no foreign
-   * ITEM ever escaped. The COUNT did: `lexicalCandidates` and the browse pool
-   * size were reported from this unfiltered list, and that number is returned to
-   * the renderer on `memory:semantic-recall`.
+   * Resolution through `itemResolver` already drops what the viewer may not
+   * read, so no foreign ITEM ever escaped. The COUNT did: `lexicalCandidates`
+   * and the browse pool size were reported from the unfiltered list, and that
+   * number is returned to the renderer on `memory:semantic-recall`.
    *
    * That made it a cross-tenant content oracle. A tenant querying a guessed term
    * and seeing `hits: []` with `lexicalCandidates > 0` learns the term appears in
@@ -1038,6 +1059,17 @@ export class MemoryStore extends EventEmitter {
    * `lexicalRecall` already counted its pool AFTER filtering, and the mismatch
    * between the two branches is what showed it was an oversight rather than a
    * decision.
+   *
+   * WHAT THIS FILTER IS AND IS NOT (P13C ROUND 10, NEW-H4). It is the kind /
+   * entity / tag / time / tombstone filter, and it is a second line on
+   * ownership. It is NOT the tenancy boundary for retrieval, and a later round
+   * proved it never could have been: filtering AFTER the retriever has already
+   * taken its global top-N cannot undo candidate starvation (another tenant's
+   * documents occupied the slots before this ran) and cannot undo a TF-IDF score
+   * computed from a global document count. The boundary is now drawn inside
+   * `LexicalMemoryRetriever` by partitioning the index per audience — see its
+   * class comment — so what arrives here is already only this viewer's own
+   * corpus, ranked against only this viewer's own corpus.
    *
    * Filtering at the source rather than at the reporting site also means every
    * future consumer of this pool inherits the boundary instead of having to

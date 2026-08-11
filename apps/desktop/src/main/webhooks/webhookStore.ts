@@ -25,9 +25,55 @@ import { createLogger } from '../logger';
 import { buildEventPayload, dueDeliveries, selectEvictions } from './delivery';
 import { assertSafeWebhookUrl } from './urlGuard';
 import { registerTenantStore } from '../tenancy/tenantOwnedStore';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/**
+ * P13C ROUND 10 — NEW-H2. The structural scope declaration. See tenancy/storeScope.ts.
+ *
+ * The file satisfied the gate through `registerTenantStore` alone, which asks
+ * whether a boundary is bound and never asks what a REMOVAL reaches. Endpoints and
+ * deliveries live in one file and are declared together because they are one
+ * persistence unit with one owner field apiece.
+ */
+declareStoreScope({
+  name: 'webhook-endpoints',
+  scope: 'TENANT',
+  persistence: 'file',
+  // Every mutating channel (`webhook:create/setEnabled/delete/replay`) is gated on
+  // `governance:manage`, an organization role, over rows that belong to that
+  // organization. Scope and authority are on the same axis.
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retention:
+    'The delivery outbox is capped PER OWNER (DELIVERY_CAP_PER_OWNER rows for each (tenant, ' +
+    'workspace) pair — the pair `recordInScope` enforces on `deliveriesFor`, `deadLetters`, `replay` ' +
+    'and `stats`) as of Round 10; `prune()` runs from `enqueue` and `replay` and is then persisted. ' +
+    'It was ONE install-wide `selectEvictions` over every tenant\'s rows, sorted terminal-first then ' +
+    'oldest-first, so a busy tenant\'s traffic deleted a quiet tenant\'s deliveries — DEAD-LETTERED ' +
+    'rows FIRST, because terminal sorts to the front. That is the replay and forensics surface, so ' +
+    'the removal destroyed evidence rather than history: B holding 5 deliveries (2 dead) had 0 of ' +
+    'both after A enqueued 5,100, with `stats` reading all zeros. Rows with no resolvable owner are ' +
+    "retained in their own bucket, evictable by nobody else's traffic. Endpoints are NOT capped and " +
+    'are removed only by `delete(id)`, which resolves through `visibleWebhook` first, so a caller ' +
+    "holding another tenant's endpoint id deletes nothing.",
+  reason:
+    'A delivery row carries the event id, the event type and the full stored payload (resource + ' +
+    'metadata), and an endpoint carries the URL a customer chose plus its HMAC signing secret — the ' +
+    'one field whose disclosure lets another party FORGE deliveries the receiver accepts as genuine. ' +
+    'TENANT rather than WORKSPACE because both endpoints and deliveries are stamped ' +
+    '`workspaceId: null` and are meant to be reachable from any of the tenant\'s workspaces: an ' +
+    'endpoint is an organization-level integration, and the dispatcher re-enters a delivery under a ' +
+    'tenant-level principal hours after it was queued.',
+});
 
 const log = createLogger('webhook-store');
-const DELIVERY_CAP = 5000;
+/**
+ * Max retained deliveries PER OWNER. Per owner, not per install — see `prune`.
+ *
+ * Exported so the isolation suite floods a real cap rather than a number it
+ * guessed: a test that hard-codes 5000 keeps passing if the constant moves.
+ */
+export const DELIVERY_CAP_PER_OWNER = 5000;
 
 interface StoredWebhook extends Webhook {
   secret: string;
@@ -394,13 +440,24 @@ export class WebhookStore extends EventEmitter {
   }
 
   /**
-   * Hard-cap the outbox. Evicts terminal (delivered/dead) rows oldest-first, then —
-   * if a stuck backlog of pending/failed rows is still over the cap — the oldest
-   * non-terminal rows too, so the Map + persisted file can never grow without bound
-   * (a black-holed endpoint used to pin every delivery non-terminal for ~6h).
+   * Hard-cap the outbox PER OWNER. P13C ROUND 10 — NEW-H2.
+   *
+   * Within one owner: terminal (delivered/dead) rows oldest-first, then — if a
+   * stuck backlog of pending/failed rows is still over the cap — that owner's
+   * oldest non-terminal rows too, so no single tenant's slice of the Map or of
+   * the persisted file can grow without bound (a black-holed endpoint used to
+   * pin every delivery non-terminal for ~6h).
+   *
+   * The cap argument used to be install-wide, and `selectEvictions` sorted every
+   * tenant's rows into ONE order. Terminal-first then meant another tenant's
+   * dead-lettered rows were evicted before the flooding tenant's own pending
+   * ones — the DLQ is what `deadLetters()` and `replay()` read, so the loss was
+   * of evidence and of the ability to re-send, not merely of history. Called
+   * from `enqueue` and `replay`, and the result is persisted, so the deletion
+   * reached disk.
    */
   private prune(): void {
-    for (const id of selectEvictions([...this.deliveries.values()], DELIVERY_CAP)) {
+    for (const id of selectEvictions([...this.deliveries.values()], DELIVERY_CAP_PER_OWNER)) {
       this.deliveries.delete(id);
     }
   }

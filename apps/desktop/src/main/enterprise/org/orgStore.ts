@@ -18,10 +18,12 @@ import type {
   OrgUnitKind,
   OrgUser,
   OrgUserStatus,
+  TenantScope,
 } from '@neuropause/shared';
 import { createLogger } from '../../logger';
 import { buildSeed, OWNER_USER_ID } from './seed';
 import { declareStoreScope } from '../../tenancy/storeScope';
+import { registerTenantStore } from '../../tenancy/tenantOwnedStore';
 
 /** P13C ROUND 8 — the structural scope declaration. See tenancy/storeScope.ts. */
 declareStoreScope({
@@ -88,8 +90,136 @@ export class OrgStore extends EventEmitter {
   private persisting = false;
   private dirty = false;
 
+  /**
+   * The authoritative caller tenant. P13C ROUND 10 — NEW-H6.
+   *
+   * Bound at the composition root to the PRINCIPAL-AWARE resolver. Round 9's
+   * enterprise finding was a store bound to the session-only resolver while
+   * every sibling used the principal-aware one, so the binding site names which
+   * it wants and `resolverAttachment.test.ts` asserts it.
+   *
+   * Unbound answers null, and null denies every mutation below. That is the
+   * correct state before the app knows who it is acting for.
+   */
+  private scopeSource: (() => TenantScope | null) | null = null;
+
   constructor(private readonly filePath: string) {
     super();
+    /**
+     * P13C ROUND 10 — the startup gate must be able to see this seam.
+     *
+     * Round 9's enterprise finding was a boundary bound to the wrong resolver
+     * while every "is it bound?" invariant passed. Registering here means the
+     * opposite failure — a boundary that is never bound at all — makes the
+     * application refuse to start rather than serving one tenant's directory to
+     * another.
+     */
+    registerTenantStore('organization-directory', () => this.hasScope());
+  }
+
+  /* ── ownership: the ONE gate every mutation goes through — P13C ROUND 10 ── */
+
+  /**
+   * NEW-H6 — TENANT TAKEOVER. THE MOST SEVERE FINDING OF ROUND 9.
+   *
+   * `createUnit`/`createUser`/`createRole` stamped `orgId` from the authoritative
+   * resolver. **Update and delete did not.** Each was a bare `this.<map>.get(id)`
+   * over one install-wide Map — the read-scoped, write-unscoped split this
+   * program has now found in the marketplace, the connectors, the desktop
+   * sessions and here.
+   *
+   * WHY THIS ONE WAS WORSE THAN THE OTHERS. This store decides WHO EVERYONE IS.
+   * Membership is resolved by matching the signed-in email against an `OrgUser`
+   * row (`tenantDirectory`, `tenantContext`), so an attacker who can rewrite a
+   * row's `email` does not merely edit a record — they become that row's holder.
+   * The proven chain:
+   *
+   *   1. Create an organization. Anyone may; you are its Owner.
+   *   2. Call `enterprise:org.updateUser` with `{ id: 'user-owner', email: <you> }`.
+   *      `guardOwnerUserPatch` strips `roleIds` and `status` — NOT `email`.
+   *   3. That row lives in the VICTIM's organization and holds `role-owner`.
+   *   4. You are now the victim tenant's Owner.
+   *
+   * `user-owner` and the thirteen seeded unit ids are COMPILE-TIME CONSTANTS, so
+   * there was no id to discover.
+   *
+   * WHY THE PERMISSION CHECK DID NOT STOP IT. `createAuthorize` resolves the
+   * caller's member row in the caller's OWN active organization and never sees
+   * the target record. `people:manage` was evaluated in the attacker's org B and
+   * the write landed in org A. A permission answers "may this person do this
+   * kind of thing"; only ownership answers "to THIS row".
+   *
+   * WHAT IS DELIBERATELY NOT GATED, and why that is safe:
+   *
+   * The `orgId`-parameterised reads — `usersFor`, `rolesFor`, `unitsFor`,
+   * `organization`, and `user(OWNER_USER_ID)` behind `ownerMember` — are the
+   * INPUTS TO THE TENANT RESOLVER ITSELF. `tenantContext` calls them to decide
+   * which tenant the caller is in. Gating them on the answer to that question
+   * would be circular and would resolve nobody, on any install, ever. They are
+   * safe because each takes the organization id as an explicit argument and no
+   * IPC handler passes a renderer-supplied value to one: every handler goes
+   * through `requireActiveOrg()`. `noRendererIdToRawAccessor` in the Round 10
+   * suite asserts that property rather than trusting it.
+   */
+  bindScope(source: () => TenantScope | null): this {
+    this.scopeSource = source;
+    return this;
+  }
+
+  /** Whether the seam is live. For the startup gate. */
+  hasScope(): boolean {
+    return this.scopeSource !== null;
+  }
+
+  /** The caller's organization, authoritatively. Never from an argument. */
+  private callerOrgId(): string | null {
+    const id = this.scopeSource?.()?.tenantId ?? null;
+    return id === null || id === '' ? null : id;
+  }
+
+  /**
+   * Does `row` belong to the caller's organization?
+   *
+   * Fails closed on every ambiguity: no bound seam, no resolved tenant, unknown
+   * id, or a row whose `orgId` is absent. A row with no organization is not
+   * owned by whoever asks — it is owned by nobody, and a mutation on it is
+   * refused.
+   */
+  private owns(row: { orgId?: string | null } | null | undefined): boolean {
+    if (!row) return false;
+    const mine = this.callerOrgId();
+    if (mine === null) return false;
+    return typeof row.orgId === 'string' && row.orgId !== '' && row.orgId === mine;
+  }
+
+  /** The unit the caller's organization owns, or null. */
+  private ownedUnit(id: string): OrgUnit | null {
+    const unit = this.units.get(id);
+    return this.owns(unit) ? (unit ?? null) : null;
+  }
+
+  /** The member the caller's organization owns, or null. */
+  private ownedUser(id: string): OrgUser | null {
+    const user = this.users.get(id);
+    return this.owns(user) ? (user ?? null) : null;
+  }
+
+  /** The role the caller's organization owns, or null. */
+  private ownedRole(id: string): OrgRole | null {
+    const role = this.roles.get(id);
+    return this.owns(role) ? (role ?? null) : null;
+  }
+
+  /**
+   * The organization the caller IS, or null.
+   *
+   * `Organization` has no `orgId` field — it IS the organization — so the
+   * comparison is against its own id.
+   */
+  private ownedOrganization(id: string): Organization | null {
+    const mine = this.callerOrgId();
+    if (mine === null || id !== mine) return null;
+    return this.organizations.get(id) ?? null;
   }
 
   async load(): Promise<void> {
@@ -276,7 +406,9 @@ export class OrgStore extends EventEmitter {
    * predicate that could only ever return true.
    */
   setOrganizationStatus(id: string, status: Organization['status']): Organization | null {
-    const org = this.organizations.get(id);
+    // P13C ROUND 10 NEW-H6 — suspending ANOTHER tenant's organization is a
+    // cross-tenant denial of service. Was `this.organizations.get(id)`.
+    const org = this.ownedOrganization(id);
     if (!org) return null;
     const next: Organization = { ...org, status, updatedAt: new Date().toISOString() };
     this.organizations.set(id, next);
@@ -302,7 +434,8 @@ export class OrgStore extends EventEmitter {
   }
 
   updateUnit(id: string, patch: Partial<Pick<OrgUnit, 'name' | 'parentId' | 'leadUserId'>>): OrgUnit | null {
-    const unit = this.units.get(id);
+    // P13C ROUND 10 NEW-H6 — ownership, not identity. Was `this.units.get(id)`.
+    const unit = this.ownedUnit(id);
     if (!unit) return null;
     const next: OrgUnit = { ...unit, ...patch, updatedAt: new Date().toISOString() };
     this.units.set(id, next);
@@ -311,7 +444,9 @@ export class OrgStore extends EventEmitter {
   }
 
   deleteUnit(id: string): boolean {
-    const unit = this.units.get(id);
+    // P13C ROUND 10 NEW-H6 — the thirteen seeded unit ids are compile-time
+    // constants, so this needed no discovery. Was `this.units.get(id)`.
+    const unit = this.ownedUnit(id);
     if (!unit) return false;
     // Re-parent children to this unit's parent, and detach members.
     for (const child of this.units.values()) {
@@ -364,7 +499,10 @@ export class OrgStore extends EventEmitter {
       Pick<OrgUser, 'name' | 'email' | 'title' | 'unitId' | 'roleIds' | 'status' | 'workspaceIds'>
     >,
   ): OrgUser | null {
-    const user = this.users.get(id);
+    // P13C ROUND 10 NEW-H6 — THE TAKEOVER. Rewriting `email` on another
+    // tenant's owner row made the attacker that tenant's Owner, because
+    // membership is decided by email on this row. Was `this.users.get(id)`.
+    const user = this.ownedUser(id);
     if (!user) return null;
     const next: OrgUser = { ...user, ...patch, updatedAt: new Date().toISOString() };
     this.users.set(id, next);
@@ -373,7 +511,8 @@ export class OrgStore extends EventEmitter {
   }
 
   deleteUser(id: string): boolean {
-    const user = this.users.get(id);
+    // P13C ROUND 10 NEW-H6 — ownership, not identity. Was `this.users.get(id)`.
+    const user = this.ownedUser(id);
     if (!user || user.kind === 'ai_worker') return false; // workers are managed by the workforce
     for (const unit of this.units.values()) {
       if (unit.leadUserId === id) this.units.set(unit.id, { ...unit, leadUserId: null });
@@ -401,7 +540,9 @@ export class OrgStore extends EventEmitter {
   }
 
   updateRole(id: string, patch: Partial<Pick<OrgRole, 'name' | 'description' | 'permissions'>>): OrgRole | null {
-    const role = this.roles.get(id);
+    // P13C ROUND 10 NEW-H6 — renaming or re-permissioning another tenant's
+    // roles. Was `this.roles.get(id)`.
+    const role = this.ownedRole(id);
     if (!role) return null;
     const next: OrgRole = { ...role, ...patch, updatedAt: new Date().toISOString() };
     this.roles.set(id, next);
@@ -410,7 +551,9 @@ export class OrgStore extends EventEmitter {
   }
 
   deleteRole(id: string): boolean {
-    const role = this.roles.get(id);
+    // P13C ROUND 10 NEW-H6 — deleting another tenant's custom role also strips
+    // it from every holder below. Was `this.roles.get(id)`.
+    const role = this.ownedRole(id);
     if (!role || role.builtIn) return false;
     this.roles.delete(id);
     for (const u of this.users.values()) {
@@ -422,7 +565,10 @@ export class OrgStore extends EventEmitter {
 
   /** Rename the seeded owner to the signed-in account (idempotent best-effort). */
   setOwnerIdentity(name: string, email: string | null): void {
-    const owner = this.users.get(OWNER_USER_ID);
+    // P13C ROUND 10 NEW-H6 — OWNER_USER_ID is a compile-time constant naming a
+    // row in the SEEDED organization. Claiming it from another tenant's session
+    // is the takeover by a second door. Was `this.users.get(OWNER_USER_ID)`.
+    const owner = this.ownedUser(OWNER_USER_ID);
     if (!owner) return;
     this.users.set(owner.id, { ...owner, name, email, updatedAt: new Date().toISOString() });
     this.touch();

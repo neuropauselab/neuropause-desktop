@@ -12,13 +12,79 @@ import { dirname } from 'node:path';
 import type { InboxNotification, NotificationInboxPage, TenantScope } from '@neuropause/shared';
 import { ownershipOf, recordInScope } from '@neuropause/shared';
 import { registerTenantStore } from '../tenancy/tenantOwnedStore';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/**
+ * P13C ROUND 10 — NEW-H1. The structural scope declaration. See tenancy/storeScope.ts.
+ *
+ * The file satisfied the gate through `registerTenantStore` alone, which asks
+ * "is a boundary bound?" and never asks "what does a REMOVAL reach?". The answer
+ * was: everybody's rows. Stating retention is the point of this declaration.
+ */
+declareStoreScope({
+  name: 'notification-inbox',
+  scope: 'TENANT',
+  persistence: 'file',
+  /**
+   * The only user-facing mutation is `notifications:markRead`, which flips read
+   * state on the CALLER'S OWN rows and is gated by no role. Delivery itself is
+   * SYSTEM work: the engine writes under the event's tenant principal, never
+   * under a person's authority.
+   */
+  authority: 'USER',
+  classification: 'CUSTOMER_DERIVED',
+  retention:
+    'The inbox is capped PER OWNER (MAX_INBOX rows for each (tenant, workspace) pair — exactly the ' +
+    'pair `recordInScope` enforces on every read) as of Round 10. It was ONE install-wide ' +
+    'truncation — `items.length = MAX_INBOX` over the single shared array, then persisted — and ' +
+    "because `add` unshifts, the rows it dropped were the globally oldest: another tenant's. A " +
+    'tenant delivering past the cap deleted every other tenant\'s notifications from disk while all ' +
+    'four reads (`visible`, `markRead`, `page`, the (scope,id) de-dupe) stayed perfectly scoped. ' +
+    'Rows with no resolvable owner are retained in their own bucket, evictable by nobody else\'s ' +
+    'traffic and visible to nobody. There is no other delete path: `add` replaces only same-(scope,id) ' +
+    'rows and `markRead` removes nothing.',
+  reason:
+    'A notification BODY is business data — the delivered title interpolates the subject\'s name, the ' +
+    'connector id, the job id — and item ids are stable per SUBJECT, so two organizations\' alerts ' +
+    'about the same kind of subject collide by construction. TENANT rather than WORKSPACE because a ' +
+    'bus-driven delivery runs under a tenant-level principal and is stamped workspace-wide (visible ' +
+    "from any of that tenant's workspaces); a session-stamped row carries a workspace and is narrowed " +
+    'to it, which the retention key honours by bucketing on the same pair the read filter uses.',
+});
 
 interface InboxFile {
   items: InboxNotification[];
 }
 
-/** Keep at most this many notifications (newest first). */
+/**
+ * Keep at most this many notifications PER OWNER (newest first).
+ *
+ * Per owner, not per install. See the `retention` line above and `capPerOwner`.
+ */
 export const MAX_INBOX = 200;
+
+/**
+ * The retention budget a row is charged to.
+ *
+ * It must be EXACTLY the boundary `recordInScope` enforces, or the cap deletes
+ * rows the reads say belong to somebody else. `recordInScope` denies a different
+ * tenant, treats an absent/empty workspace as tenant-wide, and denies a
+ * different workspace — so the pair `(tenantId, workspaceId)` with empty
+ * normalised to `null` is the owner, and every row inside one bucket has an
+ * IDENTICAL visibility set. Eviction inside a bucket can therefore only remove
+ * rows from the very caller whose write caused it.
+ *
+ * JSON-encoded rather than joined, so a tenant id containing the separator
+ * cannot collapse two owners into one budget. A row with no tenant is
+ * `[null, null]`, which no owned row can produce (an owned row's tenant is a
+ * non-empty string), so unowned rows get their own bucket rather than sharing
+ * one with a real tenant.
+ */
+function inboxOwnerKey(row: { tenantId?: string | null; workspaceId?: string | null }): string {
+  const tenant = typeof row.tenantId === 'string' && row.tenantId !== '' ? row.tenantId : null;
+  const workspace = typeof row.workspaceId === 'string' && row.workspaceId !== '' ? row.workspaceId : null;
+  return JSON.stringify([tenant, workspace]);
+}
 
 export class InboxStore {
   private items: InboxNotification[] = [];
@@ -111,8 +177,53 @@ export class InboxStore {
       (x) => !(x.id === item.id && recordInScope(x, scope)),
     );
     this.items.unshift(stamped);
-    if (this.items.length > MAX_INBOX) this.items.length = MAX_INBOX;
+    this.capPerOwner();
     return this.persist();
+  }
+
+  /**
+   * Hold the newest MAX_INBOX rows FOR EACH OWNER. P13C ROUND 10 — NEW-H1.
+   *
+   * WHAT THIS REPLACED, AND WHY EVERY READ BEING CORRECT DID NOT HELP
+   *
+   *     if (this.items.length > MAX_INBOX) this.items.length = MAX_INBOX;
+   *
+   * One shared array, truncated by whoever wrote last, then `persist()` wrote
+   * the truncated result to disk. `add()` unshifts, so the rows that fell off
+   * the end were the globally oldest — which, the moment a second tenant
+   * existed, meant somebody else's. Tenant B holding three notifications lost
+   * all three, from memory AND from `inbox.json`, when tenant A delivered 200.
+   *
+   * A filter HIDES a row; a cap DELETES one. `visible()`, `markRead()`,
+   * `page()` and the (scope,id) de-dupe were all hardened in P12 and all stayed
+   * green through the whole regression, because none of them is the write.
+   *
+   * `this.items` is newest-first by construction (`add` unshifts, `markRead`
+   * maps in place, the load preserves file order), so walking it front-to-back
+   * visits each owner's rows newest-first and the first MAX_INBOX seen for a
+   * bucket are the ones to keep. Same shape as
+   * `ecosystem/marketplace/marketplaceStore.event()` and
+   * `graph/graphStore.capHistoryPerTenant()`.
+   *
+   * THE HONEST TRADE, STATED: an install with more tenants now holds more rows.
+   * The alternative is one customer able to delete another's, which is the
+   * finding.
+   */
+  private capPerOwner(): void {
+    const perOwner = new Map<string, number>();
+    const kept = new Set<InboxNotification>();
+    let overflowed = false;
+    for (const row of this.items) {
+      const key = inboxOwnerKey(row);
+      const n = perOwner.get(key) ?? 0;
+      if (n < MAX_INBOX) {
+        kept.add(row);
+        perOwner.set(key, n + 1);
+      } else {
+        overflowed = true;
+      }
+    }
+    if (overflowed) this.items = this.items.filter((row) => kept.has(row));
   }
 
   /** Mark specific ids (or every item) read. Returns how many changed. */

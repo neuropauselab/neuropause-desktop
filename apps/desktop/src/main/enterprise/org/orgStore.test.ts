@@ -15,9 +15,19 @@ function tempPath(): string {
   return p;
 }
 
+/**
+ * P13C ROUND 10 — the harness now BINDS A SCOPE, because production does.
+ *
+ * Before NEW-H6 this store had no seam at all, so the suite constructed it bare
+ * and every mutation succeeded. That is exactly why the suite could not see the
+ * takeover: with no boundary there is no boundary to cross. The harness acts as
+ * the seeded organization — the tenant that owns the rows these tests mutate —
+ * and `crossTenantStore()` below supplies an attacker for the added cases.
+ */
 async function newStore(path: string): Promise<OrgStore> {
   const s = new OrgStore(path);
   opened.push(s);
+  s.bindScope(() => ({ tenantId: ORG_ID, workspaceId: 'ws-test' }));
   await s.load();
   return s;
 }
@@ -177,5 +187,63 @@ describe('OrgStore — persistence', () => {
     const s2 = await newStore(path);
     expect(s2.unitsFor(ORG_ID).some((u) => u.name === 'Persisted Team')).toBe(true);
     expect(s2.usersFor(ORG_ID).some((u) => u.workerId === 'w1')).toBe(true);
+  });
+});
+
+/**
+ * P13C ROUND 10 — NEW-H6, added to the store's OWN suite.
+ *
+ * The dedicated tenancy suite (`tenancy/round10OrgOwnership.test.ts`) carries
+ * the full A/B/C matrix and the exploit chain. These live here because a
+ * developer changing `orgStore.ts` runs this file, and the property they must
+ * not break should fail in front of them rather than two directories away.
+ */
+describe('OrgStore — ownership (NEW-H6)', () => {
+  /** A store seen through an ATTACKER's session: a different organization. */
+  async function asAttacker(path: string): Promise<OrgStore> {
+    const s = new OrgStore(path);
+    opened.push(s);
+    s.bindScope(() => ({ tenantId: 'org-attacker', workspaceId: 'ws-attacker' }));
+    await s.load();
+    return s;
+  }
+
+  it('a foreign tenant cannot rewrite the seeded owner’s email — the takeover', async () => {
+    const path = tempPath();
+    const victim = await newStore(path);
+    const before = victim.user(OWNER_USER_ID)!;
+    expect(before.orgId).toBe(ORG_ID);
+
+    const attacker = await asAttacker(path);
+    expect(attacker.updateUser(OWNER_USER_ID, { email: 'attacker@evil.test' })).toBeNull();
+    attacker.setOwnerIdentity('Attacker', 'attacker@evil.test');
+
+    expect(attacker.user(OWNER_USER_ID)!.email).toBe(before.email);
+  });
+
+  it('a foreign tenant cannot delete seeded units or members', async () => {
+    const path = tempPath();
+    const victim = await newStore(path);
+    const unitCount = victim.unitsFor(ORG_ID).length;
+    const member = victim.createUser({ orgId: ORG_ID, name: 'Real', title: 'Member' });
+
+    const attacker = await asAttacker(path);
+    expect(attacker.deleteUnit(UNIT.engineering)).toBe(false);
+    expect(attacker.deleteUser(member.id)).toBe(false);
+    expect(attacker.setOrganizationStatus(ORG_ID, 'suspended')).toBeNull();
+
+    expect(victim.unitsFor(ORG_ID)).toHaveLength(unitCount);
+    expect(victim.usersFor(ORG_ID).some((u) => u.id === member.id)).toBe(true);
+    expect(victim.organization(ORG_ID)!.status).not.toBe('suspended');
+  });
+
+  it('the owning tenant CAN still do all of it — the gate is not "always no"', async () => {
+    const s = await newStore(tempPath());
+    const member = s.createUser({ orgId: ORG_ID, name: 'Real', title: 'Member' });
+    expect(s.updateUser(member.id, { title: 'Lead' })?.title).toBe('Lead');
+    expect(s.deleteUser(member.id)).toBe(true);
+    const unit = s.createUnit({ orgId: ORG_ID, kind: 'team', name: 'Mine' });
+    expect(s.updateUnit(unit.id, { name: 'Renamed' })?.name).toBe('Renamed');
+    expect(s.deleteUnit(unit.id)).toBe(true);
   });
 });

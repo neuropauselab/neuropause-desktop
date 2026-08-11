@@ -2,9 +2,9 @@ import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { MemoryItem } from '@neuropause/shared';
+import type { MemoryItem, MemoryViewer } from '@neuropause/shared';
 import { MemoryStore } from './memoryStore';
-import { TEST_MEMORY_VIEWER } from '../tenancy/testScope';
+import { OTHER_MEMORY_VIEWER, TEST_MEMORY_VIEWER } from '../tenancy/testScope';
 import { SemanticUnavailableError } from './semanticFailure';
 import type { SemanticSearchFn } from './memorySemanticRecall';
 
@@ -73,6 +73,61 @@ describe('MemoryStore', () => {
     expect(res.hits[0]?.score).toBeGreaterThan(0);
     expect(res.hits[0]?.score).toBeLessThanOrEqual(1);
     expect(res.retriever).toBe('lexical');
+  });
+
+  /**
+   * P13C ROUND 10 (NEW-H4) — the retrieval INDEX is partitioned, not the results.
+   *
+   * The test above is the single-tenant shape of recall, and it stayed green
+   * throughout the defect, because with one tenant a global corpus and a
+   * partitioned one are the same corpus. This is its cross-tenant twin, and it
+   * lives in THIS file rather than only in the tenancy suite so that an engineer
+   * changing `memoryStore` or the retriever runs it without having to know the
+   * tenancy suite exists.
+   *
+   * What it pins: another tenant writing memories that match my query must not
+   * change WHICH of my memories I get back, nor the score I am shown for them.
+   * The score reaches the renderer as `MemoryHit.ranking.lexicalScore`, and
+   * before the index was partitioned it was computed from an install-wide
+   * document count — so it moved, measurably, as a stranger typed.
+   */
+  it('another tenant’s memories change neither my hits nor my scores', async () => {
+    const store = await open(path);
+    let viewer: MemoryViewer | null = TEST_MEMORY_VIEWER;
+    store.bindViewer(() => viewer);
+
+    const mine = store.remember({
+      kind: 'decision',
+      title: 'Adopt Postgres',
+      content: 'We will use Postgres as the primary datastore for the platform',
+    });
+    const before = store.recall({ text: 'postgres datastore' }).hits;
+    expect(before).toHaveLength(1);
+    expect(before[0]?.item.id).toBe(mine.id);
+    expect(before[0]?.ranking?.lexicalScore).toBe(1);
+
+    // A different organization writes twenty memories on the same subject.
+    viewer = OTHER_MEMORY_VIEWER;
+    for (let i = 0; i < 20; i += 1) {
+      store.remember({
+        kind: 'note',
+        title: `Postgres datastore rollout ${i}`,
+        content: 'postgres datastore postgres datastore migration plan',
+      });
+    }
+
+    viewer = TEST_MEMORY_VIEWER;
+    const after = store.recall({ text: 'postgres datastore' }).hits;
+    expect(after.map((h) => h.item.id)).toEqual([mine.id]);
+    expect(after[0]?.ranking?.lexicalScore).toBe(before[0]?.ranking?.lexicalScore);
+    expect(after[0]?.score).toBe(before[0]?.score);
+    expect(store.counts().total).toBe(1);
+
+    // And the other tenant reads its own, so this is isolation and not silence.
+    viewer = OTHER_MEMORY_VIEWER;
+    const theirs = store.recall({ text: 'postgres datastore' }).hits;
+    expect(theirs.length).toBeGreaterThan(0);
+    expect(theirs.map((h) => h.item.id)).not.toContain(mine.id);
   });
 
   it('updates an item metadata, bumps updatedAt, and persists; returns null for unknown id', async () => {
