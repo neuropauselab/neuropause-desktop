@@ -14,6 +14,8 @@ import { randomUUID } from 'node:crypto';
 import type { ExchangePack, ExchangeStats, PackItem, PackKind } from '@neuropause/shared';
 import { createLogger } from '../../logger';
 import { demoSeedsEnabled } from '../../demoSeed';
+import type { TenantScope } from '@neuropause/shared';
+import { TenantOwnership } from '../../tenancy/tenantOwnedStore';
 
 const log = createLogger('ecosystem-exchange');
 
@@ -75,13 +77,39 @@ const SEED_PACKS: SeedPack[] = [
 ];
 
 export class PacksStore extends EventEmitter {
+  /**
+   * P13C ROUND 4 — F9. THE TENANT BOUNDARY.
+   *
+   * This store had none, and it wore the most misleading shape a tenancy defect
+   * takes: `publish()` stamped `publisherOrgId: this.localOrgId` — the literal
+   * seeded `ORG_ID` — so every row LOOKED owned, and the value was a constant
+   * that nothing ever read back.
+   *
+   *   list() / stats()   every organization's packs, on `developer:read`.
+   *   importPack(id)     bare payload id, mutating another tenant's counters.
+   *   remove(id)         `packs.delete(id)` on a bare payload id — a HARD
+   *                      DELETE of another organization's published pack.
+   *
+   * It was also conspicuously absent from the binding block that binds its three
+   * siblings in `ecosystem/index.ts`, while still being loaded beside them —
+   * which is what an omission looks like when nothing enforces the list.
+   */
+  private readonly tenancy = new TenantOwnership('ecosystem-packs');
+
   private packs = new Map<string, ExchangePack>();
   private loaded = false;
   private persisting = false;
   private dirty = false;
   private lastPersist: Promise<void> = Promise.resolve();
 
-  constructor(private readonly filePath: string, private readonly localOrgId: string, private readonly localOrgName: string) {
+  /**
+   * The seeded organization id is accepted and DELIBERATELY UNUSED.
+   *
+   * It is kept in the signature so the call site stays stable and so this line
+   * records that the value exists and is not an authority. Removing the
+   * parameter would erase the evidence that it was once the publisher stamp.
+   */
+  constructor(private readonly filePath: string, _seedOrgId: string, private readonly localOrgName: string) {
     super();
   }
 
@@ -153,12 +181,43 @@ export class PacksStore extends EventEmitter {
     while (this.persisting) await this.lastPersist;
   }
 
+  /** Bind the tenant boundary. UNBOUND DENIES. Chainable. */
+  bindScope(source: () => TenantScope | null): this {
+    this.tenancy.bindScope(source);
+    return this;
+  }
+  hasScope(): boolean {
+    return this.tenancy.hasScope();
+  }
+  /** Unscoped ownership counts, for the migration inventory. */
+  ownershipCounts(): { total: number; assigned: number; unresolved: number } {
+    return this.tenancy.countOwnership(
+      [...this.packs.values()].map((p) => ({ tenantId: p.publisherOrgId })),
+    );
+  }
+
+  /** One of the CALLER'S packs by id, or null. The single ownership resolve. */
+  private mine(id: string): ExchangePack | null {
+    const p = this.packs.get(id) ?? null;
+    if (p === null) return null;
+    const scope = this.tenancy.scopeOrDeny();
+    if (scope === null || !scope.tenantId) return null;
+    return p.publisherOrgId === scope.tenantId ? p : null;
+  }
+
+  /** The CALLER'S packs. Was every organization's. */
   list(): ExchangePack[] {
-    return [...this.packs.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return this.visible().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  private visible(): ExchangePack[] {
+    const scope = this.tenancy.scopeOrDeny();
+    if (scope === null || !scope.tenantId) return [];
+    return [...this.packs.values()].filter((p) => p.publisherOrgId === scope.tenantId);
   }
 
   stats(): ExchangeStats {
-    const all = [...this.packs.values()];
+    const all = this.visible();
     const byKind: Record<string, number> = {};
     for (const p of all) byKind[p.kind] = (byKind[p.kind] ?? 0) + 1;
     return {
@@ -176,7 +235,8 @@ export class PacksStore extends EventEmitter {
       summary: input.summary,
       kind: input.kind,
       publisherOrg: this.localOrgName,
-      publisherOrgId: this.localOrgId,
+      // The CALLER, not the seeded organization.
+      publisherOrgId: this.tenancy.requireTenant(),
       isLocal: true,
       items: input.items,
       installs: 0,
@@ -189,8 +249,9 @@ export class PacksStore extends EventEmitter {
     return pack;
   }
 
+  /** Import one of the CALLER'S packs. Was a bare payload id. */
   importPack(id: string): ExchangePack | null {
-    const p = this.packs.get(id);
+    const p = this.mine(id);
     if (!p || p.installed) return p ?? null;
     const next: ExchangePack = { ...p, installed: true, installs: p.installs + 1 };
     this.packs.set(id, next);
@@ -199,7 +260,14 @@ export class PacksStore extends EventEmitter {
     return next;
   }
 
+  /**
+   * Delete one of the CALLER'S packs.
+   *
+   * Was `packs.delete(id)` on a bare id — an unrecoverable cross-tenant delete,
+   * the sharpest write in this file.
+   */
   remove(id: string): boolean {
+    if (this.mine(id) === null) return false;
     const ok = this.packs.delete(id);
     if (ok) {
       this.schedulePersist();

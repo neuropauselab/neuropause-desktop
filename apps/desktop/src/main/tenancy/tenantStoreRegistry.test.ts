@@ -142,6 +142,12 @@ const REGISTERED_ELSEWHERE: Record<string, string> = {
   'ecosystem/developer/developerStore.ts': 'Holds a TenantOwnership.',
   'ecosystem/billing/billingStore.ts': 'Holds a TenantOwnership.',
   'ecosystem/gateway/gatewayStore.ts': 'Holds a TenantOwnership.',
+  // Federation uses a RELATIONSHIP boundary rather than single-owner
+  // `TenantOwnership`, because its records name two organizations. The wrapper
+  // holds a TenantOwnership internally, so both stores register through it.
+  'federation/runtime/fedStore.ts': 'Holds a FederationBoundary, which holds a TenantOwnership.',
+  'federation/exchange/exchangeStore.ts': 'Holds a FederationBoundary.',
+  'federation/governance/globalGovStore.ts': 'Holds a FederationBoundary.',
 };
 
 describe('every tenant seam in the source tree is declared to the gate', () => {

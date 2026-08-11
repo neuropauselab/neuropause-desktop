@@ -28,8 +28,29 @@ import {
   buildFabricSources,
   type FabricState,
 } from './knowledgeFabricModel';
+import type { TenantScope } from '@neuropause/shared';
+import { TenantMemo } from '../tenancy/tenantMemo';
 
 export interface KnowledgeFabricServiceDeps {
+  /**
+   * P13C ROUND 4 — F4. THE TENANT BOUNDARY, AND IT IS REQUIRED.
+   *
+   * This service has the exact shape Round 3 fixed in eleven siblings and was
+   * not in the list of eleven — so it kept a keyless snapshot behind a 3s TTL,
+   * protected only by `onWorkspaceSwitch`.
+   *
+   * That protection fails on the one path this program has already documented as
+   * defeating it: the delivery engine's `forEachTenant` runs a knowledge-assets
+   * pass once per tenant, back to back, under each tenant's own principal,
+   * announcing no switch. Tenant A's pass composes the snapshot — memory-corpus
+   * tag strings verbatim, plus the federation summary — and tenant B's pass,
+   * microseconds later inside the TTL, is served it.
+   *
+   * The lesson is about the SWEEP, not the code: Round 3 fixed the eleven
+   * services a review named and did not go looking for a twelfth with the same
+   * shape. A list of instances is not a definition of a class.
+   */
+  scope: () => TenantScope | null;
   /** Compose the fabric snapshot from the existing platform signals (injected → testable). */
   readState: () => FabricState;
   /**
@@ -42,84 +63,66 @@ export interface KnowledgeFabricServiceDeps {
   now?: () => number;
 }
 
-interface ProjectionMemo {
-  overview?: FabricOverview;
-  sources?: FabricSourceCatalog;
-  relationships?: FabricRelationshipMap;
-  classification?: FabricClassification;
-  lineage?: FabricLineage;
-  evidence?: FabricEvidenceReport;
-  governance?: FabricGovernance;
-  analytics?: FabricAnalytics;
-}
 
 export class KnowledgeFabricService {
-  private snapshot: FabricState | null = null;
-  private snapshotAt = 0;
-  private memo: ProjectionMemo = {};
-  private readonly ttlMs: number;
-  private readonly now: () => number;
+  /** One tenant-keyed cell holding the snapshot AND its projections. */
+  private readonly cache: TenantMemo<FabricState>;
 
   constructor(private readonly deps: KnowledgeFabricServiceDeps) {
-    this.ttlMs = deps.ttlMs ?? 3000;
-    this.now = deps.now ?? Date.now;
+    this.cache = new TenantMemo<FabricState>('knowledge-fabric-projections', {
+      ttlMs: deps.ttlMs ?? 3000,
+      ...(deps.now ? { now: deps.now } : {}),
+    }).bindScope(deps.scope);
   }
 
   /** Drop the memoized snapshot AND projections; the next read recomposes from the sources. */
   invalidate(): void {
-    this.snapshot = null;
-    this.memo = {};
+    this.cache.invalidate();
   }
 
   private state(): FabricState {
-    const t = this.now();
-    if (!this.snapshot || t - this.snapshotAt >= this.ttlMs) {
-      this.snapshot = this.deps.readState();
-      this.snapshotAt = t;
-      this.memo = {};
-    }
-    return this.snapshot;
+    return this.cache.state(() => this.deps.readState());
   }
 
   // NOTE: `this.state()` MUST be resolved on its own line before the `??=` — `state()` may reset the
   // memo, and `a.b ??= f()` captures the base object BEFORE evaluating `f()`.
   overview(): FabricOverview {
     const s = this.state();
-    return (this.memo.overview ??= buildFabricOverview(s));
+    return this.cache.projection('overview', () => buildFabricOverview(s));
   }
 
   sources(): FabricSourceCatalog {
     const s = this.state();
-    return (this.memo.sources ??= buildFabricSources(s));
+    return this.cache.projection('sources', () => buildFabricSources(s));
   }
 
   relationships(): FabricRelationshipMap {
     const s = this.state();
-    return (this.memo.relationships ??= buildFabricRelationships(s));
+    return this.cache.projection('relationships', () => buildFabricRelationships(s));
   }
 
   classification(): FabricClassification {
     const s = this.state();
-    return (this.memo.classification ??= buildFabricClassification(s));
+    return this.cache.projection('classification', () => buildFabricClassification(s));
   }
 
   lineage(): FabricLineage {
     const s = this.state();
-    return (this.memo.lineage ??= buildFabricLineage(s));
+    return this.cache.projection('lineage', () => buildFabricLineage(s));
   }
 
   evidence(): FabricEvidenceReport {
     const s = this.state();
-    return (this.memo.evidence ??= buildFabricEvidence(s));
+    return this.cache.projection('evidence', () => buildFabricEvidence(s));
   }
 
   governance(): FabricGovernance {
     const s = this.state();
-    return (this.memo.governance ??= buildFabricGovernance(s));
+    return this.cache.projection('governance', () => buildFabricGovernance(s));
   }
 
   analytics(): FabricAnalytics {
     const s = this.state();
-    return (this.memo.analytics ??= buildFabricAnalytics(s));
+    return this.cache.projection('analytics', () => buildFabricAnalytics(s));
   }
 }

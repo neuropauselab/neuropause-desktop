@@ -36,6 +36,7 @@ import { KnowledgeFabricService } from './knowledgeFabricService';
 import { buildExplanationInputs, buildLineage } from './knowledgeFabricModel';
 import type { FabricSourceInput, FabricState } from './knowledgeFabricModel';
 import { withKnowledgeAuthz } from './knowledgeFabricAuthz';
+import { activeTenantScope } from '../enterprise/index';
 
 const log = createLogger('enterprise-knowledge');
 
@@ -198,7 +199,7 @@ function buildState(deps: EnterpriseKnowledgeDeps): FabricState {
 }
 
 export function initEnterpriseKnowledge(deps: EnterpriseKnowledgeDeps): EnterpriseKnowledgeSubsystem {
-  const service = new KnowledgeFabricService({ readState: () => buildState(deps) });
+  const service = new KnowledgeFabricService({ scope: activeTenantScope, readState: () => buildState(deps) });
 
   // Invalidate the memoized snapshot when a backing store changes; the injected report/strategy/twin/
   // relationship/timeline sources refresh via the service TTL. Renderer liveness reuses `ecosystem:event`.

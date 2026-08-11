@@ -46,6 +46,28 @@ import { RUNTIME_INVOKABLE_CHANNELS } from '@neuropause/shared';
  */
 export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, EnterprisePermission>> = {
   /**
+   * P13C ROUND 4 — THE AI DESTINATION CAME OFF THE PUBLIC ALLOWLIST.
+   *
+   * The PAYLOAD sent to a model is correctly tenant-scoped — retrieval runs over
+   * scoped stores. The DESTINATION was not: one install-wide provider,
+   * credential and `ollamaUrl`, settable from channels with no `requireAuth` and
+   * no permission. Any renderer message could point the model endpoint at a host
+   * it controlled and flip external consent, and every later assistant or
+   * briefing call made while ANOTHER organization was active would ship that
+   * organization's retrieved records there.
+   *
+   * The allowlist's own comment said these were "single-user desktop surfaces,
+   * not org-shared state; revisit if any becomes multi-tenant". They did.
+   *
+   * `AiConfigGet` stays public — reading which provider is configured is not the
+   * exposure, and the settings screen needs it before an org resolves.
+   */
+  [IpcChannel.AiConfigSetProvider]: 'org:manage',
+  [IpcChannel.AiConfigSetModel]: 'org:manage',
+  [IpcChannel.AiConfigSetCredential]: 'org:manage',
+  [IpcChannel.AiConfigSetMode]: 'org:manage',
+  [IpcChannel.AiConfigSetExternalConsent]: 'org:manage',
+  /**
    * P13C ROUND 3 — feedback came OFF the public allowlist.
    *
    * `feedback:list` and `feedback:export` returned every organization's
@@ -513,9 +535,6 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   IpcChannel.AiConfigGet,
   IpcChannel.AiConfigHealth,
   IpcChannel.AiConfigDetectOllama,
-  IpcChannel.AiConfigSetProvider,
-  IpcChannel.AiConfigSetModel,
-  IpcChannel.AiConfigSetCredential,
   IpcChannel.AiConfigClearCredential,
   IpcChannel.AiConfigTest,
   IpcChannel.AiConfigMigrationStatus,
@@ -525,8 +544,6 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   // block above: per-install desktop configuration, no org RBAC scope; the
   // two writes that change where AI work may run — setMode and
   // setExternalConsent — are bridge-audited on their handler defs) ──
-  IpcChannel.AiConfigSetMode,
-  IpcChannel.AiConfigSetExternalConsent,
   IpcChannel.AiRoutingStatus,
   IpcChannel.AiRoutingUsage,
   IpcChannel.ExperienceProfileGet,

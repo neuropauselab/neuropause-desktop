@@ -69,6 +69,8 @@ interface StoredApp extends OAuthApplication {
 }
 interface DevFile {
   developers: DeveloperAccount[];
+  /** P13C Round 4 — per-organization plan tiers. Absent in pre-Round-4 files. */
+  plans?: Array<{ tenantId: string; planTier: PlanTier }>;
   keys: StoredKey[];
   apps: StoredApp[];
   usage: UsageRecord[];
@@ -112,6 +114,15 @@ export class DeveloperStore extends EventEmitter {
   private keys = new Map<string, StoredKey>();
   private apps = new Map<string, StoredApp>();
   private usage: UsageRecord[] = [];
+  /**
+   * API plan tier PER ORGANIZATION.
+   *
+   * Beside the shared developer account rather than on it: the account is one
+   * display identity for the install, and an entitlement is not a display
+   * property. Absent means Free, so a new organization starts at the safe tier
+   * rather than inheriting whatever the last one set.
+   */
+  private planByTenant = new Map<string, PlanTier>();
   /** P3.0 — revoked access-token jtis → expiry (ms). Pruned on read + load. */
   private revokedTokens = new Map<string, number>();
   private loaded = false;
@@ -148,6 +159,7 @@ export class DeveloperStore extends EventEmitter {
       for (const k of data.keys ?? []) if (k?.id) this.keys.set(k.id, k);
       for (const a of data.apps ?? []) if (a?.id) this.apps.set(a.id, a);
       this.usage = Array.isArray(data.usage) ? data.usage : [];
+      for (const p of data.plans ?? []) if (p?.tenantId) this.planByTenant.set(p.tenantId, p.planTier);
       const now = Date.now();
       for (const t of data.revokedTokens ?? []) if (t?.jti && t.expMs > now) this.revokedTokens.set(t.jti, t.expMs);
       if (!data.seeded || this.developers.size === 0) this.applySeed();
@@ -180,6 +192,7 @@ export class DeveloperStore extends EventEmitter {
       keys: [...this.keys.values()],
       apps: [...this.apps.values()],
       usage: this.usage,
+      plans: [...this.planByTenant.entries()].map(([tenantId, planTier]) => ({ tenantId, planTier })),
       revokedTokens: [...this.revokedTokens.entries()].map(([jti, expMs]) => ({ jti, expMs })),
       seeded: true,
     };
@@ -212,8 +225,17 @@ export class DeveloperStore extends EventEmitter {
 
   /* ── developers ── */
 
+  /**
+   * The install's developer account, with the CALLER'S plan tier.
+   *
+   * The identity is shared (one portal account per install) and the entitlement
+   * is not. Overlaying the tenant's plan here means every existing reader —
+   * the dashboard, the billing summary, the gateway — gets the right tier
+   * without each having to remember to ask separately.
+   */
   defaultDeveloper(): DeveloperAccount {
-    return this.developers.get(this.seed.id) ?? [...this.developers.values()][0];
+    const base = this.developers.get(this.seed.id) ?? [...this.developers.values()][0];
+    return { ...base, planTier: this.planFor() };
   }
   developer(id: string): DeveloperAccount | null {
     return this.developers.get(id) ?? null;
@@ -226,14 +248,34 @@ export class DeveloperStore extends EventEmitter {
       this.emit('changed');
     }
   }
-  setPlan(developerId: string, planTier: PlanTier): DeveloperAccount | null {
-    const d = this.developers.get(developerId);
-    if (!d) return null;
-    const next = { ...d, planTier };
-    this.developers.set(developerId, next);
+  /**
+   * The CALLER'S API plan tier, and its gateway limits.
+   *
+   * P13C ROUND 4 — the last cross-tenant WRITE on this surface. Round 3 gave
+   * keys, applications and usage rows an owner but left the single `dev-owner`
+   * ACCOUNT shared, and `runGateway` derives every request's rate limit and
+   * quota from `developer.planTier`. So one tenant calling
+   * `ecosystem:developer.setPlan` with `'free'` collapsed ANOTHER tenant's
+   * production API limits — a cross-tenant denial of service through a config
+   * write, which is why it is not merely a fairness issue.
+   *
+   * Plan tier is now held PER ORGANIZATION rather than on the shared account.
+   * The account keeps its display identity, which is what it was actually for;
+   * the entitlement moves to the tenant, which is what an entitlement is.
+   */
+  setPlan(_developerId: string, planTier: PlanTier): DeveloperAccount | null {
+    const tenantId = this.tenancy.requireTenant();
+    this.planByTenant.set(tenantId, planTier);
     this.schedulePersist();
     this.emit('changed');
-    return next;
+    return this.defaultDeveloper();
+  }
+
+  /** The plan tier in force for the CALLER. Free until the tenant sets one. */
+  planFor(): PlanTier {
+    const tenantId = this.tenancy.scopeOrDeny()?.tenantId ?? null;
+    if (tenantId === null) return 'free';
+    return this.planByTenant.get(tenantId) ?? 'free';
   }
 
   /* ── API keys ── */

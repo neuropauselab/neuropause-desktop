@@ -6,6 +6,14 @@ import { describe, expect, it } from 'vitest';
 import { KnowledgeFabricService } from './knowledgeFabricService';
 import type { FabricState } from './knowledgeFabricModel';
 
+/**
+ * P13C ROUND 4 — F4. The composed cache is tenant-keyed, so this fixture names a
+ * tenant. Every memoization and TTL assertion below keeps its meaning: repeated
+ * reads under ONE tenant must still be a single composition.
+ */
+const TEST_SCOPE = { tenantId: 'org-test', workspaceId: 'ws-test' };
+const scope = (): typeof TEST_SCOPE => TEST_SCOPE;
+
 function baseState(over: Partial<FabricState> = {}): FabricState {
   return {
     generatedAt: '2026-07-16T00:00:00.000Z',
@@ -27,7 +35,7 @@ function baseState(over: Partial<FabricState> = {}): FabricState {
 
 describe('KnowledgeFabricService', () => {
   it('composes every projection from the injected reader', () => {
-    const svc = new KnowledgeFabricService({ readState: () => baseState() });
+    const svc = new KnowledgeFabricService({ scope, readState: () => baseState() });
     expect(svc.overview().summary.sourceCount).toBe(2);
     expect(svc.sources().total).toBe(2);
     expect(svc.relationships().nodes).toBe(50);
@@ -41,8 +49,7 @@ describe('KnowledgeFabricService', () => {
   it('memoizes the snapshot + projections and recomposes only after invalidate()', () => {
     const box = { value: baseState() };
     let reads = 0;
-    const svc = new KnowledgeFabricService({
-      readState: () => {
+    const svc = new KnowledgeFabricService({ scope, readState: () => {
         reads += 1;
         return box.value;
       },
@@ -62,8 +69,7 @@ describe('KnowledgeFabricService', () => {
   it('refreshes after the TTL even without invalidate() — fixes injected report/relationship staleness', () => {
     let clock = 1_000;
     let reads = 0;
-    const svc = new KnowledgeFabricService({
-      readState: () => {
+    const svc = new KnowledgeFabricService({ scope, readState: () => {
         reads += 1;
         return baseState();
       },

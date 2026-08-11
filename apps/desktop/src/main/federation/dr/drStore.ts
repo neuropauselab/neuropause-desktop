@@ -23,6 +23,7 @@ import type {
 } from '@neuropause/shared';
 import { createLogger } from '../../logger';
 import { demoSeedsEnabled } from '../../demoSeed';
+import { declareSystemGlobalStore } from '../../tenancy/tenantOwnedStore';
 
 const log = createLogger('federation-dr');
 
@@ -47,6 +48,20 @@ const DEFAULT_POSTURE: ContinuityPosture = {
 };
 
 export class DrStore extends EventEmitter {
+  /**
+   * P13C ROUND 4 — PHASE 29. DECLARED SYSTEM-GLOBAL, WITH A REASON.
+   *
+   * Backups, replicas, recovery validations and continuity posture describe the
+ * INSTALL's infrastructure, not any organization's records. Every tenant's data
+ * shares one JSON file per module, so a per-tenant backup is not expressible —
+ * the same structural limit the scheduled-backup entry in the migration
+ * inventory already records. The rows carry no tenantId, no orgId and no
+ * customer content: a backup row names a file scope and a size.
+   *
+   * The declaration is what makes this reviewable. An undeclared store is
+   * indistinguishable from one nobody thought about, which is how every
+   * finding in this program started.
+   */
   private backups = new Map<string, Backup>();
   private replicas = new Map<CloudRegionId, ReplicaState>();
   private validations: RecoveryValidation[] = [];
@@ -58,6 +73,7 @@ export class DrStore extends EventEmitter {
   private lastPersist: Promise<void> = Promise.resolve();
 
   constructor(private readonly filePath: string) {
+    declareSystemGlobalStore('federation-dr', 'Backups, replicas, recovery validations and continuity posture describe the');
     super();
   }
 

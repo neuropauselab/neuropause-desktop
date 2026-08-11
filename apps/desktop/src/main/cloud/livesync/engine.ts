@@ -65,6 +65,22 @@ export async function runSyncCycle(
   for (let page = 0; page < MAX_PULL_PAGES; page += 1) {
     const resp = await transport.pull(orgId, cursor, { deviceId, limit: PULL_LIMIT });
     for (const change of resp.changes) {
+      /**
+       * P13C ROUND 4 — THE RESPONSE IS NOT TRUSTED TO NAME ITS OWN ORGANIZATION.
+       *
+       * The pull is issued for `orgId`, and every returned change went straight
+       * into `store.applyRemote`, which keys the local mirror on
+       * `change.orgId`. So a response served on organization A's pull endpoint
+       * could write into organization B's local namespace — inbound integrity
+       * rather than egress, and it needs a malicious or buggy backend, which is
+       * why this is not rated HIGH.
+       *
+       * The guard already existed one layer down for a single entity type:
+       * `memoryLiveSyncBridge` refuses a change whose `orgId` differs from the
+       * one it pulled for. Applying the same rule at the loop covers every
+       * entity type instead of the one somebody remembered.
+       */
+      if (change.orgId !== orgId) continue;
       const outcome = await store.applyRemote(change);
       if (outcome === 'conflict') {
         conflictRefs.push({

@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import type { SecurityEvent, SecuritySeverity, UsagePoint } from '@neuropause/shared';
 import { createLogger } from '../../logger';
 import { demoSeedsEnabled } from '../../demoSeed';
+import { declareSystemGlobalStore } from '../../tenancy/tenantOwnedStore';
 
 const log = createLogger('federation-observability');
 
@@ -20,6 +21,20 @@ interface ObsFile {
 }
 
 export class ObservabilityStore extends EventEmitter {
+  /**
+   * P13C ROUND 4 — PHASE 29. DECLARED SYSTEM-GLOBAL, WITH A REASON.
+   *
+   * Usage points are install-level counters (api requests, sync ops, worker jobs,
+ * events) and security events carry only category, severity, source and a
+ * detail string describing a platform condition. Neither names an organization
+ * or contains record content. Declared rather than assumed: if a future event
+ * starts naming a tenant, this reason stops being true and the declaration is
+ * where a reviewer will look.
+   *
+   * The declaration is what makes this reviewable. An undeclared store is
+   * indistinguishable from one nobody thought about, which is how every
+   * finding in this program started.
+   */
   private usage: UsagePoint[] = [];
   private security: SecurityEvent[] = [];
 
@@ -29,6 +44,7 @@ export class ObservabilityStore extends EventEmitter {
   private lastPersist: Promise<void> = Promise.resolve();
 
   constructor(private readonly filePath: string) {
+    declareSystemGlobalStore('federation-observability', 'Usage points are install-level counters (api requests, sync ops, worker jobs,');
     super();
   }
 

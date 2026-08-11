@@ -393,6 +393,8 @@ export async function initEcosystem(deps: EcosystemDeps): Promise<EcosystemSubsy
   developerStore.bindScope(activeTenantScope);
   billingStore.bindScope(activeTenantScope);
   gatewayStore.bindScope(activeTenantScope);
+  // P13C Round 4 — F9. Bound beside its three siblings, where it always belonged.
+  packsStore.bindScope(activeTenantScope);
 
   await developerStore.load();
   await marketplaceStore.load();
