@@ -12,6 +12,15 @@ name: desktop-ci
 # mounted-component tests ran in no workflow and no release. Two breakages sat
 # in it undetected — Round 2's tenancy binding and Round 17's D-5 channel move.
 # A suite nothing runs is not a gate; it is documentation that looks like one.
+#
+# P13C ROUND 17i — and adding a step HERE was half a fix. The release workflows
+# do not run this file; they run `test:release`, which runs each workspace's own
+# `test` script, so a signed artifact could still ship with the UI suite unrun.
+# The step below is therefore gone and `@neuropause/desktop`'s `test` script
+# runs BOTH configs. Every caller — this workflow, `test:release`, a developer
+# typing `npm test`, and whatever workflow someone adds next — now gets the
+# whole suite without having to know it exists. A gate that each caller must
+# remember to invoke is the same defect as no gate, one indirection later.
 
 on:
   push:
@@ -40,9 +49,7 @@ jobs:
         run: npm run typecheck -w @neuropause/desktop
       - name: Lint (desktop)
         run: npx eslint apps/desktop --max-warnings 0
-      - name: Test (desktop)
+      - name: Test (desktop — node suite + mounted components)
         run: npm run test -w @neuropause/desktop
-      - name: UI test (desktop — mounted components, jsdom)
-        run: npm run test:ui -w @neuropause/desktop
       - name: Build (desktop)
         run: npm run build -w @neuropause/desktop
