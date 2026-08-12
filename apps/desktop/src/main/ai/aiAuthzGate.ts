@@ -93,6 +93,35 @@ export const AI_CHANNEL_AUTHORITY: Readonly<Partial<Record<IpcChannelName, Chann
    * same question.
    */
   [IpcChannel.FounderAskV2]: 'intelligence:read',
+  /**
+   * P13C ROUND 13 — M-14. THE SIBLING THAT WAS LEFT BEHIND.
+   *
+   * `ai:engineering-analyze` builds its context from `unifiedStore`,
+   * `graphStore` and `memoryStore` — with `memoryScope: activeTenantScope()` —
+   * runs it through `aiEngine`, and returns `rootCause`, `engineeringRisk` and
+   * `recommendedAction`. That is an answer SYNTHESISED FROM THIS TENANT'S
+   * RECORDS, which is the exact sentence three lines above that moved
+   * `founder:ask-v2` off public.
+   *
+   * IT WAS KEPT PUBLIC ON THE WRONG AXIS. The note below called these
+   * "non-persisting derivations" — true, and it answers MUTABILITY. The
+   * allowlist rule is about the PAYLOAD. `founder:ask-v2` had two reasons to
+   * move (synthesis AND a memory write); this has the first, and the first was
+   * always the sufficient one. The comment even conceded the shape by naming the
+   * channel "so that decision has an address rather than a silence" — the
+   * address was right and the decision was wrong.
+   *
+   * SECOND REASON, INDEPENDENT OF DISCLOSURE: an unauthenticated caller could
+   * spend the install's configured model credential and ship retrieved tenant
+   * records to the configured destination, in a loop, with no rate limit above
+   * `runSecureHandler`.
+   *
+   * `founder:suggestions` STAYS PUBLIC, deliberately: it returns fixed question
+   * TEMPLATES plus coarse counts of the caller's own tenant, never record
+   * content. The two were named together in the old comment and they are not the
+   * same shape.
+   */
+  [IpcChannel.EngineeringAnalyze]: 'intelligence:read',
 
   /* ── Deliberately open ─────────────────────────────────────────────────
    * Reads of the machine's own AI posture, which the Settings screen needs before
@@ -101,9 +130,12 @@ export const AI_CHANNEL_AUTHORITY: Readonly<Partial<Record<IpcChannelName, Chann
    * `aiConfig:test` validates a candidate credential and PERSISTS NOTHING; the
    * endpoint it dials is the stored `ollamaUrl` or Anthropic's fixed host, and
    * changing that stored value now requires `cloud:operate`.
-   * `founder:suggestions` and `ai:engineering-analyze` are non-persisting
-   * derivations; they are left as the earlier rounds decided, and named here so
-   * that decision has an address rather than a silence.
+   * `founder:suggestions` returns fixed question TEMPLATES plus coarse counts of
+   * the caller's own tenant — no record content — so it stays.
+   * `ai:engineering-analyze` WAS listed here on the same line, as a
+   * "non-persisting derivation". P13C ROUND 13 — M-14 moved it to
+   * `intelligence:read`: non-persisting answers mutability, and its payload is
+   * synthesised from tenant records. See its row above.
    */
   [IpcChannel.AiConfigGet]: 'PUBLIC',
   [IpcChannel.AiConfigHealth]: 'PUBLIC',
@@ -112,7 +144,6 @@ export const AI_CHANNEL_AUTHORITY: Readonly<Partial<Record<IpcChannelName, Chann
   [IpcChannel.AiConfigTest]: 'PUBLIC',
   [IpcChannel.AiRoutingStatus]: 'PUBLIC',
   [IpcChannel.FounderSuggestions]: 'PUBLIC',
-  [IpcChannel.EngineeringAnalyze]: 'PUBLIC',
 };
 
 /**
