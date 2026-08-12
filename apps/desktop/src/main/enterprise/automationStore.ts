@@ -9,6 +9,7 @@
 import { promises as fs, readFileSync } from 'node:fs';
 import type { TenantScope } from '@neuropause/shared';
 import { TenantOwnership } from '../tenancy/tenantOwnedStore';
+import type { TenantReadGrant } from '../tenancy/tenantOwnedStore';
 import { declareStoreScope } from '../tenancy/storeScope';
 import { dirname } from 'node:path';
 import {
@@ -93,6 +94,44 @@ export class AutomationStore {
   }
 
   /** Bind the tenant boundary. UNBOUND DENIES. Chainable. */
+
+  /**
+   * F22 TENANT ARCHIVE SEAM. P13C ROUND 15.
+   *
+   * The pair a `TenantDomainSource` adapter needs, living ON the store because
+   * the store owns its collection and its serialization — an adapter reaching
+   * into a private field from outside would be a second copy of that knowledge,
+   * and the two would drift.
+   *
+   * BOTH TAKE A `TenantReadGrant`, which cannot be constructed literally and is
+   * only minted by `authorizeTenantRead`. So this is not an unscoped read that
+   * anybody can call: it is a read whose authority is in its type. `onlyMine`
+   * stays the seam for every ordinary caller.
+   */
+  snapshotForGrant(grant: TenantReadGrant): AutomationRule[] {
+    this.load();
+    return this.tenancy.onlyFor(grant, this.rules).map((r) => structuredClone(r));
+  }
+
+  /**
+   * Replace this tenant's rows, leaving every other tenant's byte-identical.
+   *
+   * ORDER IS PRESERVED for the rows that stay: other tenants keep their relative
+   * positions and the restored rows are appended in archive order. Rule order is not semantically meaningful.
+   *
+   * The in-memory collection is updated BEFORE the write, because `persist()`
+   * serializes from memory — a disk-only merge would be erased by the next
+   * ordinary write, which is the hazard `requiresRestart` exists to flag.
+   */
+  async mergeForGrant(grant: TenantReadGrant, rows: readonly AutomationRule[]): Promise<number> {
+    this.load();
+    const others = this.rules.filter((r) => r.tenantId !== grant.tenantId);
+    const mine = rows.map((r) => structuredClone(r) as AutomationRule);
+    this.rules = [...others, ...mine];
+    await this.persist();
+    return mine.length;
+  }
+
   bindScope(source: () => TenantScope | null): this {
     this.tenancy.bindScope(source);
     return this;

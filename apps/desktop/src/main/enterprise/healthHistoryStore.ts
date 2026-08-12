@@ -14,6 +14,7 @@ import { promises as fs, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { TenantScope } from '@neuropause/shared';
 import { TenantOwnership } from '../tenancy/tenantOwnedStore';
+import type { TenantReadGrant } from '../tenancy/tenantOwnedStore';
 import { declareStoreScope } from '../tenancy/storeScope';
 
 /**
@@ -94,6 +95,44 @@ export class HealthHistoryStore {
   private readonly tenancy = new TenantOwnership('enterprise-health-history');
 
   /** Bind the tenant boundary. UNBOUND DENIES. Chainable. */
+
+  /**
+   * F22 TENANT ARCHIVE SEAM. P13C ROUND 15.
+   *
+   * The pair a `TenantDomainSource` adapter needs, living ON the store because
+   * the store owns its collection and its serialization — an adapter reaching
+   * into a private field from outside would be a second copy of that knowledge,
+   * and the two would drift.
+   *
+   * BOTH TAKE A `TenantReadGrant`, which cannot be constructed literally and is
+   * only minted by `authorizeTenantRead`. So this is not an unscoped read that
+   * anybody can call: it is a read whose authority is in its type. `onlyMine`
+   * stays the seam for every ordinary caller.
+   */
+  snapshotForGrant(grant: TenantReadGrant): HealthPoint[] {
+    this.load();
+    return this.tenancy.onlyFor(grant, this.points).map((r) => structuredClone(r));
+  }
+
+  /**
+   * Replace this tenant's rows, leaving every other tenant's byte-identical.
+   *
+   * ORDER IS PRESERVED for the rows that stay: other tenants keep their relative
+   * positions and the restored rows are appended in archive order. Health points are re-sorted by `day`, because the primary key is (tenantId, day) and `valueAround`/`windowStats` assume ascending order.
+   *
+   * The in-memory collection is updated BEFORE the write, because `persist()`
+   * serializes from memory — a disk-only merge would be erased by the next
+   * ordinary write, which is the hazard `requiresRestart` exists to flag.
+   */
+  async mergeForGrant(grant: TenantReadGrant, rows: readonly HealthPoint[]): Promise<number> {
+    this.load();
+    const others = this.points.filter((r) => r.tenantId !== grant.tenantId);
+    const mine = rows.map((r) => structuredClone(r) as HealthPoint);
+    this.points = [...others, ...mine].sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
+    await this.persist();
+    return mine.length;
+  }
+
   bindScope(source: () => TenantScope | null): this {
     this.tenancy.bindScope(source);
     return this;

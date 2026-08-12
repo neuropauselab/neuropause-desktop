@@ -10,6 +10,7 @@
 import { promises as fs, readFileSync } from 'node:fs';
 import type { TenantScope } from '@neuropause/shared';
 import { TenantOwnership } from '../tenancy/tenantOwnedStore';
+import type { TenantReadGrant } from '../tenancy/tenantOwnedStore';
 import { declareStoreScope } from '../tenancy/storeScope';
 import { dirname } from 'node:path';
 import type {
@@ -210,6 +211,44 @@ export class DecisionStore {
   }
 
   /** Bind the tenant boundary. UNBOUND DENIES. Chainable. */
+
+  /**
+   * F22 TENANT ARCHIVE SEAM. P13C ROUND 15.
+   *
+   * The pair a `TenantDomainSource` adapter needs, living ON the store because
+   * the store owns its collection and its serialization — an adapter reaching
+   * into a private field from outside would be a second copy of that knowledge,
+   * and the two would drift.
+   *
+   * BOTH TAKE A `TenantReadGrant`, which cannot be constructed literally and is
+   * only minted by `authorizeTenantRead`. So this is not an unscoped read that
+   * anybody can call: it is a read whose authority is in its type. `onlyMine`
+   * stays the seam for every ordinary caller.
+   */
+  snapshotForGrant(grant: TenantReadGrant): ExecutiveDecision[] {
+    this.load();
+    return this.tenancy.onlyFor(grant, this.decisions).map((r) => structuredClone(r));
+  }
+
+  /**
+   * Replace this tenant's rows, leaving every other tenant's byte-identical.
+   *
+   * ORDER IS PRESERVED for the rows that stay: other tenants keep their relative
+   * positions and the restored rows are appended in archive order. Decision order is not semantically meaningful; `all()` sorts on read.
+   *
+   * The in-memory collection is updated BEFORE the write, because `persist()`
+   * serializes from memory — a disk-only merge would be erased by the next
+   * ordinary write, which is the hazard `requiresRestart` exists to flag.
+   */
+  async mergeForGrant(grant: TenantReadGrant, rows: readonly ExecutiveDecision[]): Promise<number> {
+    this.load();
+    const others = this.decisions.filter((r) => r.tenantId !== grant.tenantId);
+    const mine = rows.map((r) => structuredClone(r) as ExecutiveDecision);
+    this.decisions = [...others, ...mine];
+    await this.persist();
+    return mine.length;
+  }
+
   bindScope(source: () => TenantScope | null): this {
     this.tenancy.bindScope(source);
     return this;
