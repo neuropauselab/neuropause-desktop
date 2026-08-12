@@ -11,6 +11,7 @@ import { EventEmitter } from 'node:events';
 import { promises as fs } from 'node:fs';
 import type { Job, JobPage, JobStatus, TenantScope } from '@neuropause/shared';
 import { TenantOwnership } from '../../tenancy/tenantOwnedStore';
+import type { TenantReadGrant } from '../../tenancy/tenantOwnedStore';
 import { declareStoreScope } from '../../tenancy/storeScope';
 
 /** P13C ROUND 10 — the retention invariant. See tenancy/storeScope.ts. */
@@ -146,6 +147,47 @@ export class JobStore extends EventEmitter {
   }
 
   /** Bind the tenant boundary. UNBOUND DENIES. Chainable. */
+  /**
+   * F22 TENANT ARCHIVE SEAM. P13C ROUND 15/16.
+   *
+   * THE `order[]` HAZARD, which is why this store is not a copy of the other
+   * three. `persist()` serializes `this.order.map((id) => this.jobs.get(id))` —
+   * from the INDEX, not from the map. A merge that updates `jobs` and forgets
+   * `order` therefore writes a file missing every restored row, silently, and
+   * the loss only appears on the next reload.
+   *
+   * Snapshot walks `order` too, so a restore round-trips the tenant's jobs in
+   * their original relative sequence rather than in Map-iteration order.
+   *
+   * DELIBERATELY NOT `put()`. That method stamps ownership from the live
+   * resolver and mutates in place because the runtime aliases the row it is
+   * executing. Restoring through it would re-stamp every job with whoever
+   * happens to be active — the exact substitution this program has spent ten
+   * rounds removing.
+   */
+  async snapshotForGrant(grant: TenantReadGrant): Promise<Job[]> {
+    await this.load();
+    return this.order
+      .map((id) => this.jobs.get(id))
+      .filter((j): j is Job => !!j && j.tenantId === grant.tenantId)
+      .map((j) => structuredClone(j));
+  }
+
+  async mergeForGrant(grant: TenantReadGrant, rows: readonly Job[]): Promise<number> {
+    await this.load();
+    // Other tenants keep their rows AND their positions.
+    const keptOrder = this.order.filter((id) => this.jobs.get(id)?.tenantId !== grant.tenantId);
+    for (const [id, job] of [...this.jobs]) {
+      if (job.tenantId === grant.tenantId) this.jobs.delete(id);
+    }
+    const restored = rows.map((r) => structuredClone(r) as Job);
+    for (const job of restored) this.jobs.set(job.id, job);
+    this.order = [...keptOrder, ...restored.map((j) => j.id)];
+    this.schedulePersist();
+    await this.flush();
+    return restored.length;
+  }
+
   bindScope(source: () => TenantScope | null): this {
     this.tenancy.bindScope(source);
     return this;

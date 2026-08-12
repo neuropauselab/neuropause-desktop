@@ -18,6 +18,7 @@ import { envelopeStamp, readStoreFile } from '../storage/storeEnvelope';
 import { declareStoreScope } from '../tenancy/storeScope';
 import type { TenantScope } from '@neuropause/shared';
 import { TenantOwnership } from '../tenancy/tenantOwnedStore';
+import type { TenantReadGrant } from '../tenancy/tenantOwnedStore';
 
 /** P13C ROUND 8 — the structural scope declaration. See tenancy/storeScope.ts. */
 declareStoreScope({
@@ -26,7 +27,31 @@ declareStoreScope({
   persistence: 'file',
   authority: 'ORG_ROLE',
   classification: 'CUSTOMER_DERIVED',
-  retention: 'No cap. `revoke` tombstones ONE device and requires the caller to own it (Round 8).',
+  retention:
+    'No cap. `revoke` tombstones ONE device and requires the caller to own it (Round 8). ' +
+    'P13C ROUND 16 — F22 added a SECOND removal: `mergeForGrant` deletes the granted ' +
+    "tenant's device rows before writing the restored set. It reaches ONLY rows whose " +
+    '`boundTenantId` equals the grant, so it cannot cross an organization boundary, and the ' +
+    'grant is mintable only by `authorizeTenantRead` — the tenant itself or a platform operator.',
+  /**
+   * P13C ROUND 16. THE RETENTION GATE CAUGHT THIS CHANGE, WHICH IS THE POINT.
+   *
+   * Adding `mergeForGrant` introduced a `.delete(` into this file, so
+   * `storeScopeGate` immediately refused the build until the removal was
+   * declared in the checkable enum form. The Round 10 invariant did exactly what
+   * it was built to do, against a change made six rounds later.
+   *
+   * OWNER, not INSTALL: the delete is filtered on `boundTenantId === grant.tenantId`
+   * before it runs, so a restore of A can never reach B's phones — and
+   * `declareStoreScope` would throw on `TENANT` + `INSTALL` anyway, which is the
+   * whole finding class made unrepresentable.
+   *
+   * PLATFORM_OPERATOR, because a restore is a `cloud:operate` act. `revoke`,
+   * the other removal, is an owner action and is narrower; naming the wider of
+   * the two authorities is the honest answer.
+   */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'PLATFORM_OPERATOR',
   reason: "A paired device is a companion to one organization's work, not to the machine: rows carry boundTenantId and the bound member's email. ROUND 8 FINDING: the field existed and no read consulted it, while CompanionDevices sat on the PUBLIC allowlist and CompanionRevoke was org:manage — so one tenant could list and unpair another tenant's phones.",
 });
 
@@ -170,6 +195,50 @@ export class CompanionDeviceStore {
    * Found by the scope gate rather than by a sweep: the store persists, it never
    * declared a scope, and declaring it forced the question nobody had asked.
    */
+  /**
+   * F22 TENANT ARCHIVE SEAM. P13C ROUND 16.
+   *
+   * THE OWNER FIELD HERE IS `boundTenantId`, NOT `tenantId`. That matters more
+   * than it looks: this store holds a `TenantOwnership`, but
+   * `TenantOwnership.onlyFor` / `onlyMine` read `.tenantId` — so calling them
+   * here returns an EMPTY LIST for every row, silently. An adapter written by
+   * pattern-matching the other stores would produce an archive that always
+   * contains zero devices and never fails.
+   *
+   * The ownership semantics are NOT changed to suit the adapter. `boundTenantId`
+   * is the field the pairing capability writes (M-9) and the field `mine()`
+   * compares; the adapter adapts to the store, not the reverse.
+   *
+   * STRICTER THAN `mine()` ON ONE POINT, deliberately: an empty or absent
+   * `boundTenantId` yields nothing here. `mine()` compares directly and would
+   * match a scope whose tenantId was also empty; an unowned device — paired
+   * before the field existed — belongs to nobody and must never be restorable.
+   *
+   * `persist()` also writes `enabled` and `port`, which are GATEWAY SETTINGS and
+   * not tenant rows. This seam touches only `this.devices`, so a restore cannot
+   * move another organization's companion port or switch the gateway on.
+   */
+  async snapshotForGrant(grant: TenantReadGrant): Promise<CompanionDeviceRecord[]> {
+    await this.load();
+    return [...this.devices.values()]
+      .filter((d) => typeof d.boundTenantId === 'string' && d.boundTenantId === grant.tenantId)
+      .map((d) => structuredClone(d));
+  }
+
+  async mergeForGrant(
+    grant: TenantReadGrant,
+    rows: readonly CompanionDeviceRecord[],
+  ): Promise<number> {
+    await this.load();
+    for (const [id, d] of [...this.devices]) {
+      if (d.boundTenantId === grant.tenantId) this.devices.delete(id);
+    }
+    const restored = rows.map((r) => structuredClone(r) as CompanionDeviceRecord);
+    for (const d of restored) this.devices.set(d.id, d);
+    await this.persist();
+    return restored.length;
+  }
+
   bindScope(source: () => TenantScope | null): this {
     this.tenancy.bindScope(source);
     return this;

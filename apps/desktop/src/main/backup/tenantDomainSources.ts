@@ -106,3 +106,53 @@ export function healthHistorySource<T extends { tenantId?: string | null }>(
 ): TenantDomainSource {
   return mechanicalSource('enterprise-health-history', 'enterprise-health-history', store);
 }
+
+/**
+ * WORKFORCE JOBS. P13C ROUND 16.
+ *
+ * Mechanical in its owner field and NOT mechanical in its persistence: the store
+ * serializes from a parallel `order[]` index, so its seam is bespoke even though
+ * `ownerOf` is the ordinary `tenantId`. The seam is async because `JobStore.load`
+ * is, which is why this cannot reuse `mechanicalSource`.
+ */
+export function workforceJobsSource<T extends { tenantId?: string | null }>(store: {
+  snapshotForGrant(grant: TenantReadGrant): Promise<T[]>;
+  mergeForGrant(grant: TenantReadGrant, rows: readonly T[]): Promise<number>;
+}): TenantDomainSource {
+  return {
+    domain: 'workforce-jobs',
+    storeName: 'workforce-jobs',
+    inMemoryCollection: true,
+    ownerOf: (row) => {
+      const owner = (row as T).tenantId;
+      return typeof owner === 'string' && owner !== '' ? owner : null;
+    },
+    snapshot: async (grant) => store.snapshotForGrant(grant),
+    merge: async (grant, rows) => store.mergeForGrant(grant, rows as readonly T[]),
+  };
+}
+
+/**
+ * COMPANION DEVICES. P13C ROUND 16.
+ *
+ * `ownerOf` reads `boundTenantId`, NOT `tenantId` — the one adapter where
+ * copying the mechanical shape would have produced an archive that silently
+ * contained zero devices on every install, because `TenantOwnership.onlyFor`
+ * reads a field these rows do not have.
+ */
+export function companionDevicesSource<T extends { boundTenantId?: string | null }>(store: {
+  snapshotForGrant(grant: TenantReadGrant): Promise<T[]>;
+  mergeForGrant(grant: TenantReadGrant, rows: readonly T[]): Promise<number>;
+}): TenantDomainSource {
+  return {
+    domain: 'companion-device-registry',
+    storeName: 'companion-device-registry',
+    inMemoryCollection: true,
+    ownerOf: (row) => {
+      const owner = (row as T).boundTenantId;
+      return typeof owner === 'string' && owner !== '' ? owner : null;
+    },
+    snapshot: async (grant) => store.snapshotForGrant(grant),
+    merge: async (grant, rows) => store.mergeForGrant(grant, rows as readonly T[]),
+  };
+}
