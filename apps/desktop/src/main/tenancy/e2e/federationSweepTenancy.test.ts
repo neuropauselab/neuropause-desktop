@@ -36,6 +36,27 @@ afterEach(async () => {
 
 const src = (): TenantScope | null => scope;
 
+/**
+ * P13C ROUND 12 — M-11. SEED A REAL DIRECTORY ROW, THEN INVITE ITS ID.
+ *
+ * These fixtures used to call `inviteOrg({ name: 'Bravo Co' })` and rely on the
+ * store SLUGIFYING that name into `org-bravo-co`. That derivation was the
+ * finding, so the fixtures were built on the defect — the same shape Round 10
+ * recorded when the certification suite for the accept-guard turned out to be
+ * using the very bypass it tested.
+ *
+ * A target now has to exist in the directory, which is what makes the id real.
+ */
+function seedPeer(f: FederationRuntimeStore, id: string, name: string): string {
+  (f as unknown as { orgs: Map<string, unknown> }).orgs.set(id, {
+    id, name, slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+    role: 'peer', status: 'active', regionId: 'us-east', trustLevel: 'basic',
+    joinedAt: new Date().toISOString(), sharedOut: 0, sharedIn: 0,
+  });
+  return id;
+}
+
+
 /* ── F1: the sender cannot accept its own invitation ────────────────────── */
 
 describe('F1 — an invitation needs the RECIPIENT’s consent', () => {
@@ -58,8 +79,29 @@ describe('F1 — an invitation needs the RECIPIENT’s consent', () => {
   it('C cannot invite the primary organization and then accept on its behalf', async () => {
     const fed = await makeFed();
     scope = C;
-    const invite = fed.inviteOrg({ name: 'Default', trustLevel: 'full' });
+    /**
+     * P13C ROUND 12 — M-11, AND THE HONEST LIMIT OF IT.
+     *
+     * The original attack was that C could address `org-default` BY TYPING
+     * "Default", because the store slugified a display name into an id. That is
+     * closed: the target is now resolved from the directory.
+     *
+     * It does NOT follow that C cannot invite `org-default` at all. The home
+     * organization is always a real directory row, so C can resolve it — and
+     * sending an invitation to an organization you can legitimately see is what
+     * an invitation IS. What M-11 removed is targeting by GUESSABLE STRING:
+     * spoofed names, duplicate-name collisions, renamed and deleted
+     * organizations, self-invitation, and the black-hole rows addressed to ids
+     * belonging to nobody.
+     *
+     * So the thing that actually protects the recipient here is unchanged and
+     * is what this case has always been about: CONSENT. C may ask; only
+     * `org-default` may accept.
+     */
+    const invite = fed.inviteOrg({ toOrg: 'org-default', trustLevel: 'full' });
     expect(invite.toOrg).toBe('org-default');
+    // …and the name is the RESOLVED row's, not a string C supplied.
+    expect(invite.toOrgName).toBe('Default');
 
     expect(fed.respondInvitation(invite.id, true)).toBeNull();
     expect(fed.listTrust()).toEqual([]);
@@ -72,7 +114,8 @@ describe('F1 — an invitation needs the RECIPIENT’s consent', () => {
   it('the RECIPIENT can accept — the gate is not simply "no"', async () => {
     const fed = await makeFed();
     scope = A;
-    const invite = fed.inviteOrg({ name: 'Bravo Co', trustLevel: 'full' });
+    const peer = seedPeer(fed, 'org_bravo', 'Bravo Co');
+    const invite = fed.inviteOrg({ toOrg: peer, trustLevel: 'full' });
     scope = { tenantId: invite.toOrg, workspaceId: 'ws-p' };
     expect(fed.respondInvitation(invite.id, true)?.status).toBe('accepted');
     expect(fed.listTrust()).toHaveLength(1);
@@ -82,7 +125,8 @@ describe('F1 — an invitation needs the RECIPIENT’s consent', () => {
   it('the sender may WITHDRAW but not accept', async () => {
     const fed = await makeFed();
     scope = A;
-    const invite = fed.inviteOrg({ name: 'Bravo Co', trustLevel: 'full' });
+    const peer = seedPeer(fed, 'org_bravo', 'Bravo Co');
+    const invite = fed.inviteOrg({ toOrg: peer, trustLevel: 'full' });
     expect(fed.respondInvitation(invite.id, true)).toBeNull();
     expect(fed.revokeInvitation(invite.id)?.status).toBe('revoked');
   });
@@ -90,7 +134,8 @@ describe('F1 — an invitation needs the RECIPIENT’s consent', () => {
   it('a third party can neither accept nor withdraw', async () => {
     const fed = await makeFed();
     scope = A;
-    const invite = fed.inviteOrg({ name: 'Bravo Co', trustLevel: 'full' });
+    const peer = seedPeer(fed, 'org_bravo', 'Bravo Co');
+    const invite = fed.inviteOrg({ toOrg: peer, trustLevel: 'full' });
     scope = C;
     expect(fed.respondInvitation(invite.id, true)).toBeNull();
     expect(fed.revokeInvitation(invite.id)).toBeNull();
@@ -100,7 +145,8 @@ describe('F1 — an invitation needs the RECIPIENT’s consent', () => {
   it('the recipient may decline', async () => {
     const fed = await makeFed();
     scope = A;
-    const invite = fed.inviteOrg({ name: 'Bravo Co', trustLevel: 'full' });
+    const peer = seedPeer(fed, 'org_bravo', 'Bravo Co');
+    const invite = fed.inviteOrg({ toOrg: peer, trustLevel: 'full' });
     scope = { tenantId: invite.toOrg, workspaceId: 'ws-p' };
     expect(fed.respondInvitation(invite.id, false)?.status).toBe('declined');
   });

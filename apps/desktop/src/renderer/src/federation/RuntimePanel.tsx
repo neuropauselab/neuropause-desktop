@@ -27,6 +27,14 @@ export function RuntimePanel(): JSX.Element {
   const peers = orgs.filter((o) => o.role === 'peer');
   const activePeers = useMemo(() => peers.filter((p) => p.status === 'active'), [peers]);
   const pendingInvites = invitations.filter((i) => i.status === 'pending');
+  /**
+   * P13C ROUND 12 — M-11. Everyone in the directory who is not us.
+   *
+   * On a fresh install this is usually empty, and the Invite button is
+   * disabled rather than offering a text box that fabricates an id. That is
+   * the honest state of federation today — see `fedStore.inviteOrg`.
+   */
+  const invitableOrgs = useMemo(() => orgs.filter((o) => o.role !== 'home'), [orgs]);
 
   return (
     <div>
@@ -143,28 +151,52 @@ export function RuntimePanel(): JSX.Element {
         )}
       </OpsPanel>
 
-      {inviteOpen && <InviteModal onClose={() => setInviteOpen(false)} onInvite={inviteOrg} />}
+      {inviteOpen && (
+        <InviteModal
+          /* P13C ROUND 12 — M-11. Invitees are CHOSEN from the resolvable
+             directory, never typed. A name the user types is not an id, and
+             the store now refuses one it cannot resolve. */
+          candidates={invitableOrgs.map((o) => ({ id: o.id, name: o.name }))}
+          onClose={() => setInviteOpen(false)}
+          onInvite={inviteOrg}
+        />
+      )}
       {shareOpen && <ShareModal peers={activePeers.map((p) => ({ id: p.id, name: p.name }))} onClose={() => setShareOpen(false)} onShare={shareResource} />}
     </div>
   );
 }
 
-function InviteModal({ onClose, onInvite }: { onClose: () => void; onInvite: (input: { name: string; trustLevel: TrustLevel; message?: string }) => Promise<void> }): JSX.Element {
-  const [name, setName] = useState('');
+function InviteModal({ candidates, onClose, onInvite }: { candidates: { id: string; name: string }[]; onClose: () => void; onInvite: (input: { toOrg: string; trustLevel: TrustLevel; message?: string }) => Promise<void> }): JSX.Element {
+  const [toOrg, setToOrg] = useState(candidates[0]?.id ?? '');
   const [trustLevel, setTrustLevel] = useState<TrustLevel>('basic');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const submit = async (): Promise<void> => {
-    if (!name.trim()) return;
+    if (!toOrg) return;
     setBusy(true);
-    await onInvite({ name: name.trim(), trustLevel, message: message.trim() || undefined });
+    await onInvite({ toOrg, trustLevel, message: message.trim() || undefined });
     setBusy(false);
     onClose();
   };
   return (
-    <Modal open title="Invite organization" subtitle="Send a federation invitation to a peer organization" onClose={onClose} footer={<><Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button><Button variant="primary" size="sm" onClick={() => void submit()} disabled={busy || !name.trim()}>Send invitation</Button></>}>
+    <Modal open title="Invite organization" subtitle="Send a federation invitation to a peer organization" onClose={onClose} footer={<><Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button><Button variant="primary" size="sm" onClick={() => void submit()} disabled={busy || !toOrg}>Send invitation</Button></>}>
       <div className="space-y-3">
-        <Field label="Organization name"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Vertex Dynamics" autoFocus /></Field>
+        {candidates.length === 0 ? (
+          /* Stated, not implied. Previously this was a free-text box whose value
+             was slugified into an organization id, so it always "worked" and
+             usually addressed nobody. An empty directory is the truth. */
+          <p className="text-sm text-muted">
+            No other organizations are resolvable from this install yet, so there is nobody to invite.
+          </p>
+        ) : (
+          <Field label="Organization">
+            <Select value={toOrg} onChange={(e) => setToOrg(e.target.value)}>
+              {candidates.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </Select>
+          </Field>
+        )}
         <Field label="Initial trust level"><Select value={trustLevel} onChange={(e) => setTrustLevel(e.target.value as TrustLevel)}><option value="basic">Basic</option><option value="verified">Verified</option><option value="full">Full</option></Select></Field>
         <Field label="Message" hint="Optional"><Textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={2} placeholder="Why you'd like to federate" /></Field>
       </div>

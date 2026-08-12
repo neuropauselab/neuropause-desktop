@@ -41,6 +41,27 @@ const B: TenantScope = { tenantId: 'org-bravo', workspaceId: 'ws-b' };
 const C: TenantScope = { tenantId: 'org-charlie', workspaceId: 'ws-c' };
 
 const MARK_A = 'NP-ORG-A-731904';
+
+/**
+ * P13C ROUND 12 — M-11. SEED A REAL DIRECTORY ROW, THEN INVITE ITS ID.
+ *
+ * These fixtures used to call `inviteOrg({ name: 'Bravo Co' })` and rely on the
+ * store SLUGIFYING that name into `org-bravo-co`. That derivation was the
+ * finding, so the fixtures were built on the defect — the same shape Round 10
+ * recorded when the certification suite for the accept-guard turned out to be
+ * using the very bypass it tested.
+ *
+ * A target now has to exist in the directory, which is what makes the id real.
+ */
+function seedPeer(f: FederationRuntimeStore, id: string, name: string): string {
+  (f as unknown as { orgs: Map<string, unknown> }).orgs.set(id, {
+    id, name, slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+    role: 'peer', status: 'active', regionId: 'us-east', trustLevel: 'basic',
+    joinedAt: new Date().toISOString(), sharedOut: 0, sharedIn: 0,
+  });
+  return id;
+}
+
 const MARK_B = 'NP-ORG-B-518273';
 
 let scope: TenantScope | null = A;
@@ -78,7 +99,7 @@ afterEach(async () => {
 /** A ↔ B federate. C is never involved. Returns the ids A and B now share. */
 function federateAandB(): { invitationId: string } {
   scope = A;
-  const invite = fed.inviteOrg({ name: 'Bravo', trustLevel: 'full', message: MARK_A });
+  const invite = fed.inviteOrg({ toOrg: seedPeer(fed, 'org_bravo', 'Bravo'), trustLevel: 'full', message: MARK_A });
   // The store derives the target id from the name; align B's identity with it so
   // the two sides of the relationship are the same organization.
   return { invitationId: invite.id };
@@ -128,7 +149,10 @@ describe('S-10 — invitations name two organizations', () => {
     federateAandB();
     scope = null;
     expect(fed.listInvitations()).toEqual([]);
-    expect(() => fed.inviteOrg({ name: 'Ghost', trustLevel: 'basic' })).toThrow(/no party/i);
+    // The target is seeded so this asserts the CALLER has no party — not that
+    // the target is unresolvable, which is a different refusal (M-11).
+    seedPeer(fed, 'org_ghost', 'Ghost');
+    expect(() => fed.inviteOrg({ toOrg: 'org_ghost', trustLevel: 'basic' })).toThrow(/no party/i);
   });
 });
 
@@ -166,7 +190,7 @@ describe('S-10 — the directory is derived from relationships', () => {
    */
   it('`role` is relative to the caller — everyone is home to themselves', () => {
     scope = A;
-    const invite = fed.inviteOrg({ name: 'Bravo Co', trustLevel: 'full' });
+    const invite = fed.inviteOrg({ toOrg: seedPeer(fed, 'org_bravo', 'Bravo Co'), trustLevel: 'full' });
     const peerId = invite.toOrg;
     scope = { tenantId: peerId, workspaceId: 'ws-peer' };
     fed.respondInvitation(invite.id, true);
@@ -204,7 +228,7 @@ describe('S-10 — trust is relationship-scoped', () => {
    */
   function trustAtoB(): string {
     scope = A;
-    const invite = fed.inviteOrg({ name: 'Bravo Co', trustLevel: 'full' });
+    const invite = fed.inviteOrg({ toOrg: seedPeer(fed, 'org_bravo', 'Bravo Co'), trustLevel: 'full' });
     const peerId = invite.toOrg;
     scope = { tenantId: peerId, workspaceId: 'ws-peer' };
     fed.respondInvitation(invite.id, true);
@@ -249,7 +273,7 @@ describe('S-10 — a share is visible to BOTH parties and to nobody else', () =>
   /** A federates with B and shares one resource outbound. */
   function shareAtoB(): { shareId: string; peerId: string } {
     scope = A;
-    const invite = fed.inviteOrg({ name: 'Bravo Co', trustLevel: 'full' });
+    const invite = fed.inviteOrg({ toOrg: seedPeer(fed, 'org_bravo', 'Bravo Co'), trustLevel: 'full' });
     const peerId = invite.toOrg;
     scope = { tenantId: peerId, workspaceId: 'ws-peer' };
     fed.respondInvitation(invite.id, true); // the RECIPIENT accepts
@@ -427,7 +451,7 @@ describe('S-10 — artifact visibility follows the publisher’s scope', () => {
 
   it('PARTNER needs a trust relationship, which C does not have', () => {
     scope = A;
-    const invite = fed.inviteOrg({ name: 'Bravo Co', trustLevel: 'full' });
+    const invite = fed.inviteOrg({ toOrg: seedPeer(fed, 'org_bravo', 'Bravo Co'), trustLevel: 'full' });
     const partnerId = invite.toOrg;
     scope = { tenantId: partnerId, workspaceId: 'ws-p' };
     fed.respondInvitation(invite.id, true); // the RECIPIENT accepts

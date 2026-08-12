@@ -235,7 +235,9 @@ function buildHandlers(): SecureHandlerDef[] {
       audit: true,
       handler: (p) => {
         const r = p as FedInviteOrgRequest;
-        return fedStore.inviteOrg({ name: r.name, trustLevel: r.trustLevel, message: r.message });
+        // P13C ROUND 12 — M-11. The target is the caller-supplied ID, which
+        // `inviteOrg` must RESOLVE against the directory; it is not authority.
+        return fedStore.inviteOrg({ toOrg: r.toOrg, trustLevel: r.trustLevel, message: r.message });
       },
     },
     {

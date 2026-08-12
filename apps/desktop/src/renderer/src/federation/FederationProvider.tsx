@@ -81,7 +81,7 @@ interface FederationContextValue {
 
   refreshAll: () => Promise<void>;
   // runtime actions
-  inviteOrg: (input: { name: string; trustLevel: TrustLevel; message?: string }) => Promise<void>;
+  inviteOrg: (input: { toOrg: string; trustLevel: TrustLevel; message?: string }) => Promise<void>;
   respondInvite: (id: string, accept: boolean) => Promise<void>;
   setTrust: (input: { peerOrg: string; trustLevel?: TrustLevel; delegatedApproval?: boolean; canShareWorkers?: boolean; canShareData?: boolean }) => Promise<void>;
   shareResource: (input: { kind: SharedResourceKind; name: string; peerOrg: string; access: ShareAccess }) => Promise<string | null>;
@@ -255,7 +255,7 @@ export function FederationProvider({ children }: { children: ReactNode }): JSX.E
     };
   }, [refreshAll, refreshLive]);
 
-  const inviteOrg = useCallback(async (input: { name: string; trustLevel: TrustLevel; message?: string }) => { await ipc.federation.inviteOrg(input); await refreshLive(); }, [refreshLive]);
+  const inviteOrg = useCallback(async (input: { toOrg: string; trustLevel: TrustLevel; message?: string }) => { await ipc.federation.inviteOrg(input); await refreshLive(); }, [refreshLive]);
   const respondInvite = useCallback(async (id: string, accept: boolean) => { await ipc.federation.respondInvite(id, accept); await refreshLive(); }, [refreshLive]);
   const setTrustAction = useCallback(async (input: { peerOrg: string; trustLevel?: TrustLevel; delegatedApproval?: boolean; canShareWorkers?: boolean; canShareData?: boolean }) => { await ipc.federation.setTrust(input); await refreshLive(); }, [refreshLive]);
   const shareResource = useCallback(async (input: { kind: SharedResourceKind; name: string; peerOrg: string; access: ShareAccess }) => {

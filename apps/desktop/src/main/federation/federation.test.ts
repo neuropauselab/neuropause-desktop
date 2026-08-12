@@ -110,7 +110,13 @@ describe('FederationRuntimeStore', () => {
 
   it('invites an org and accepts an inbound invitation into an active peer with trust', async () => {
     const s = await makeFed();
-    const invite = s.inviteOrg({ name: 'Vertex Dynamics', trustLevel: 'verified' });
+    // P13C ROUND 12 — M-11: the target must be a resolvable directory row.
+    (s as unknown as { orgs: Map<string, unknown> }).orgs.set('org_vertex', {
+      id: 'org_vertex', name: 'Vertex Dynamics', slug: 'vertex-dynamics',
+      role: 'peer', status: 'active', regionId: 'us-east', trustLevel: 'basic',
+      joinedAt: new Date().toISOString(), sharedOut: 0, sharedIn: 0,
+    });
+    const invite = s.inviteOrg({ toOrg: 'org_vertex', trustLevel: 'verified' });
     expect(invite.direction).toBe('outbound');
     expect(invite.status).toBe('pending');
 

@@ -496,18 +496,68 @@ export class FederationRuntimeStore extends EventEmitter {
     };
   }
 
-  /** Invite another organization. The sender is the CALLER, never the seed. */
-  inviteOrg(input: { name: string; trustLevel: TrustLevel; message?: string }): OrgInvitation {
+  /**
+   * Invite another organization. The sender is the CALLER, never the seed, and
+   * the RECIPIENT IS AN ID THE DIRECTORY RESOLVES — never a name the caller typed.
+   *
+   * P13C ROUND 12 — M-11.
+   *
+   * This used to compute `org-${slug(input.name)}` and write an invitation to
+   * it. The consequences, all real:
+   *
+   *   - Any caller could address any organization BY TYPING ITS NAME. The one
+   *     genuinely reachable target was `org-default`, the install's primary
+   *     tenant, because every other real id is `org_<uuid>` and the slug space
+   *     cannot intersect it.
+   *   - Two organizations named "Acme" collapsed onto one id, so whichever
+   *     tenant held it could accept an invitation intended for the other.
+   *   - A rename orphaned outstanding invitations; a deletion left a row that
+   *     would become live again if that id were ever reissued.
+   *   - Every other name minted an invitation to an id belonging to nobody: a
+   *     black hole the sender saw as "pending" forever, plus unbounded junk in
+   *     the persisted store.
+   *
+   * WHAT THIS DOES NOT PRETEND TO FIX, stated rather than implied. The directory
+   * resolved against holds the home organization plus whatever peers a
+   * relationship already introduced, so on a fresh install there is usually
+   * nobody to invite. That is the HONEST state of this feature, and it is what
+   * `tenancy/migrationInventory.ts` has described since Round 4 — *"real
+   * federation between two UI-created organizations is not currently
+   * expressible"*. The slug minting never implemented that capability; it
+   * fabricated an id so the call appeared to succeed. Refusing an unresolvable
+   * target makes the gap visible instead of writing a fake row. A real
+   * directory-exchange mechanism is a product decision, not a security patch.
+   *
+   * Escalation was already blocked downstream — `respondInvitation` refuses
+   * `accept` unless `inv.toOrg === me` — so what this closes is the unsolicited
+   * WRITE into another organization's inbox, carrying an attacker-chosen trust
+   * level and 500 characters of attacker-chosen message.
+   */
+  inviteOrg(input: { toOrg: string; trustLevel: TrustLevel; message?: string }): OrgInvitation {
     const me = this.fed.requireCallerOrg();
+    const target = this.orgs.get(input.toOrg);
+    /**
+     * FAIL CLOSED, WITH ONE MESSAGE. "No such organization" and "not one you may
+     * address" are deliberately the same sentence: distinguishing them would let
+     * a caller enumerate which organization ids exist on the install, the same
+     * oracle `orgStore` and the runtime supervisor both refuse.
+     *
+     * Self-invitation is refused here too. It is what let a caller in
+     * `org-default` accept its own invitation and overwrite its own directory
+     * row with an attacker-supplied name, flipping `role` from home to peer.
+     */
+    if (!target || target.id === me) {
+      throw new Error('That organization is not available to invite.');
+    }
     const id = `inv_${randomUUID()}`;
-    const slug = input.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-    const targetId = `org-${slug}`;
     const invite: OrgInvitation = {
       id,
       fromOrg: me,
       fromOrgName: this.orgs.get(me)?.name ?? me,
-      toOrg: targetId,
-      toOrgName: input.name,
+      toOrg: target.id,
+      // The RESOLVED record's name, never the payload's: a display string the
+      // caller typed must not become the recipient's identity in anyone's inbox.
+      toOrgName: target.name,
       direction: 'outbound',
       status: 'pending',
       trustLevel: input.trustLevel,

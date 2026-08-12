@@ -1558,7 +1558,7 @@ export const ipc = {
     invitations: () => invoke(IpcChannel.FedInvitations),
     trust: () => invoke(IpcChannel.FedTrust),
     shared: () => invoke(IpcChannel.FedShared),
-    inviteOrg: (input: { name: string; trustLevel: TrustLevel; message?: string }) =>
+    inviteOrg: (input: { toOrg: string; trustLevel: TrustLevel; message?: string }) =>
       invoke(IpcChannel.FedInviteOrg, input),
     respondInvite: (id: string, accept: boolean) =>
       invoke(IpcChannel.FedRespondInvite, { id, accept }),

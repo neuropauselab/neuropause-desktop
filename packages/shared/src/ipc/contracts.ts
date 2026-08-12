@@ -2064,8 +2064,30 @@ const FedRegionZ = z.enum([
 ]);
 const BackupScopeZ = z.enum(['full', 'incremental']);
 
+/**
+ * P13C ROUND 12 — M-11. THE TARGET IS AN ID, NOT A DISPLAY NAME.
+ *
+ * This carried `name`, and `inviteOrg` turned it into an organization id by
+ * SLUGIFYING it: `org-${slug(name)}`. A display name is not an identifier and
+ * is certainly not an authority — anyone could address any organization by
+ * typing its name. The codebase said so itself, in
+ * `tenancy/migrationInventory.ts`, since Round 4: *"`inviteOrg` derives the
+ * target organization id from a display name … real federation between two
+ * UI-created organizations is not currently expressible."* Four rounds read
+ * that sentence and shipped.
+ *
+ * Real ids are `org_<uuid>` (see `orgStore`), so the minted `org-<slug>` space
+ * could never intersect a genuine organization — with exactly one exception,
+ * the seeded `org-default`, which is the install's primary tenant and the one
+ * worth attacking. Duplicate names collapsed onto one id; renames orphaned
+ * invitations; deletions left rows that would go live again if the id were
+ * reissued.
+ *
+ * `toOrg` matches `FedSetTrustRequest.peerOrg`, which has addressed peers by id
+ * all along — the convention already existed in this file.
+ */
 export const FedInviteOrgRequest = z.object({
-  name: z.string().min(1).max(120),
+  toOrg: FedId,
   trustLevel: TrustLevelZ,
   message: z.string().max(500).optional(),
 });
