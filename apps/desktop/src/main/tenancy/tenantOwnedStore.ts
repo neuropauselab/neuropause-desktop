@@ -278,6 +278,32 @@ export class TenantOwnership {
   }
 
   /**
+   * Only the records of a NAMED tenant. P13C ROUND 14 — F22.
+   *
+   * `onlyMine` reads the AMBIENT scope, which is correct for every ordinary read
+   * and useless for a backup: a backup of tenant A must be producible while
+   * nobody is signed in as A, and must not be steerable by whatever organization
+   * happens to be on screen.
+   *
+   * THIS IS DELIBERATELY NOT A PUBLIC BYPASS, and the shape is the argument:
+   * it takes a `TenantReadGrant`, which only `authorizeTenantRead` can mint, and
+   * that function requires a principal the caller has already had authorized.
+   * A caller holding a bare string cannot reach this. The Round 10 lesson — "a
+   * scope field is not ownership, an authority permission is not proof that the
+   * correct resource is being authorized" — is why the grant carries the tenant
+   * id rather than the caller passing one alongside it.
+   *
+   * Filtering is by `tenantId` only, NOT `recordInScope`: a tenant backup spans
+   * every workspace that tenant owns, and `recordInScope` would drop rows whose
+   * workspace differs from an ambient one that is not even resolved here.
+   */
+  onlyFor<T extends TenantOwned>(grant: TenantReadGrant, records: readonly T[]): T[] {
+    const tenantId = grant.tenantId;
+    if (tenantId === '') return [];
+    return records.filter((r) => typeof r.tenantId === 'string' && r.tenantId === tenantId);
+  }
+
+  /**
    * Stamp a record with the caller's tenant. For writes.
    *
    * Returns a NEW object rather than mutating, so a caller cannot accidentally
@@ -334,4 +360,61 @@ export class TenantOwnership {
     );
     return records.filter((r) => !doomed.has(r));
   }
+}
+
+
+/**
+ * PERMISSION TO READ ONE TENANT'S ROWS OUT OF BAND. P13C ROUND 14 — F22.
+ *
+ * A backup is the one legitimate reason to read a tenant's records while not
+ * acting as that tenant. Everything else in this codebase resolves the owner
+ * from the ambient principal, and that must stay true — so the exception is a
+ * TYPE rather than a parameter, and the only way to obtain one is
+ * `authorizeTenantRead`.
+ *
+ * The private brand is the point: a caller cannot construct this object
+ * literally, cannot cast a string into it, and cannot widen it accidentally. The
+ * grep for "who can read another tenant's rows" has exactly one answer.
+ */
+declare const TENANT_READ_GRANT: unique symbol;
+export interface TenantReadGrant {
+  readonly tenantId: string;
+  readonly [TENANT_READ_GRANT]: true;
+}
+
+/** How a principal was established as entitled to act for a tenant. */
+export interface TenantReadPrincipal {
+  /** The organization the AUTHORIZED principal resolves to. */
+  readonly tenantId: string;
+  /**
+   * Whether this principal may operate across tenants (a platform operator
+   * taking an install-wide backup). An ordinary principal may only grant itself.
+   */
+  readonly platformOperator: boolean;
+}
+
+/**
+ * Mint a read grant, or refuse.
+ *
+ * An ordinary principal may only ever authorize a read of ITS OWN tenant.
+ * A platform operator may authorize any, which is what an install-wide backup
+ * needs — and `cloud:operate` is already the gate on every backup channel, so
+ * this does not invent an authority, it consumes the one that already exists.
+ *
+ * Refuses rather than returning null: a backup that silently produced an empty
+ * archive for an unauthorized tenant would look like "that tenant has no data".
+ */
+export function authorizeTenantRead(
+  principal: TenantReadPrincipal,
+  tenantId: string,
+): TenantReadGrant {
+  if (tenantId.trim() === '') {
+    throw new Error('A tenant read needs a tenant.');
+  }
+  if (!principal.platformOperator && principal.tenantId !== tenantId) {
+    // One message for "not yours" and "no such tenant" — the same oracle rule
+    // `orgStore`, the runtime supervisor and `inviteOrg` all follow.
+    throw new Error('That organization is not available to read.');
+  }
+  return { tenantId } as TenantReadGrant;
 }
