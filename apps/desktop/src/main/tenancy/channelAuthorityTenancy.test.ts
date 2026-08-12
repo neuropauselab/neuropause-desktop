@@ -384,8 +384,24 @@ describe('the open surface did not shrink by accident', () => {
     [IpcChannel.AiConfigMigrationStatus, 'ai'],
     [IpcChannel.AiConfigTest, 'ai'],
     [IpcChannel.AiRoutingStatus, 'ai'],
+    /**
+     * `founder:suggestions` STAYS: fixed question TEMPLATES plus coarse counts of
+     * the caller's own tenant. No record content.
+     */
     [IpcChannel.FounderSuggestions, 'ai'],
-    [IpcChannel.EngineeringAnalyze, 'ai'],
+    /**
+     * P13C ROUND 13 — M-14. `EngineeringAnalyze` WAS IN THIS LIST, and this
+     * assertion is why the finding survived: the test encoded the earlier
+     * decision as a REQUIREMENT ("must stay open"), so the only way to reopen
+     * the question was to change the test.
+     *
+     * It is removed rather than re-pointed, because the channel is no longer an
+     * example of "a read that was public and should stay public". Its payload is
+     * synthesised from `unifiedStore` / `graphStore` / `memoryStore`, which is
+     * the same reason `founder:ask-v2` moved. The property this case tests — a
+     * genuinely open read still runs with no session — is unchanged and is still
+     * covered by the six entries above.
+     */
   ];
 
   it('the reads that were public are still public, and still run without a session', async () => {
@@ -712,9 +728,20 @@ describe('F4 — registry:setFlags cannot mutate a security-sensitive flag', () 
       installedVersion: '99.0.0',
     } as unknown as { pinned?: boolean; favorite?: boolean });
 
+    /**
+     * P13C ROUND 13 — M-13 MOVED WHERE THE FLAGS LAND, NOT WHETHER THEY ARE
+     * WHITELISTED.
+     *
+     * `setFlags` no longer writes `pinned`/`favorite` onto the shared row — they
+     * are per-tenant now — so the flags are read through the DTO, which is the
+     * caller's view. The property THIS CASE TESTS is unchanged and is the one
+     * that matters: nothing outside the two display flags reaches the row, and
+     * the raw-row assertions below are untouched.
+     */
+    const view = registry.get(SLUG)!;
+    expect(view.pinned).toBe(true);
+    expect(view.favorite).toBe(true);
     const after = registry.getRaw(SLUG)!;
-    expect(after.pinned).toBe(true);
-    expect(after.favorite).toBe(true);
     // Everything a compromise would want is untouched.
     expect(after.grantedPermissions).toEqual(['filesystem_read']);
     expect(after.permissionGrants).toEqual([]);
@@ -730,7 +757,8 @@ describe('F4 — registry:setFlags cannot mutate a security-sensitive flag', () 
 
   it('a truthy non-boolean cannot land in the file, and an unknown slug creates nothing', async () => {
     await registry.setFlags(SLUG, { pinned: 'yes' as unknown as boolean });
-    expect(registry.getRaw(SLUG)!.pinned).toBe(false);
+    // P13C ROUND 13 — M-13: read the caller's projection, not the shared row.
+    expect(registry.get(SLUG)!.pinned).toBe(false);
     expect(await registry.setFlags('com.example.absent', { pinned: true })).toBeNull();
     expect(registry.getRaw('com.example.absent')).toBeNull();
   });
@@ -740,6 +768,14 @@ describe('F4 — registry:setFlags cannot mutate a security-sensitive flag', () 
     // A fresh load re-verifies the checksum over the entries it reads back.
     await registry.load();
     expect(registry.isIntegrityOk()).toBe(true);
-    expect(registry.getRaw(SLUG)!.favorite).toBe(true);
+    /**
+     * P13C ROUND 13 — M-13. The flag now persists in `flagsByTenant`, which sits
+     * OUTSIDE the checksummed `entries` map — the same placement `usageByTenant`
+     * uses, and for the same reason: a value that changes on a user's click must
+     * not churn the integrity hash that exists to detect out-of-band edits to
+     * what is installed and what it may do. So this case asserts both halves:
+     * the checksum still verifies, AND the flag survived the reload.
+     */
+    expect(registry.get(SLUG)!.favorite).toBe(true);
   });
 });

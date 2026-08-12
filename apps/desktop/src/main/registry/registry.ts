@@ -169,6 +169,26 @@ interface RegistryFile {
    * constantly and stop being evidence of anything.
    */
   usageByTenant?: Record<string, Record<string, TenantUsage>>;
+  /**
+   * PER-TENANT DISPLAY FLAGS. P13C ROUND 13 — M-13.
+   *
+   * `pinned` and `favorite` lived on the shared `RegistryEntry`, so tenant A
+   * un-pinning an app un-pinned it for tenant B — on a channel with no auth at
+   * all. The file contradicted itself about this: one comment called them
+   * "shared by everyone who uses the install", another called them "per-user".
+   * The storage settled it, and the storage was wrong.
+   *
+   * Same shape as `usageByTenant`, and deliberately so: `{ [tenantId]: { [slug]:
+   * flags } }`, outside the checksummed `entries` map, with `''` for an
+   * unresolved caller — a partition that reaches nobody rather than a shared one.
+   *
+   * LEGACY IS PRESERVED, NOT REWRITTEN. A row's own `pinned`/`favorite` stays on
+   * disk and acts as the DEFAULT any tenant sees until that tenant sets its own.
+   * The historical value was never attributable to an organization, so promoting
+   * it to one would be inventing provenance; dropping it would silently unpin
+   * every app on every existing install.
+   */
+  flagsByTenant?: Record<string, Record<string, { pinned?: boolean; favorite?: boolean }>>;
 }
 
 function registryPath(): string {
@@ -198,6 +218,7 @@ function emptyFile(): RegistryFile {
     meta: { createdAt: now, updatedAt: now },
     entries: {},
     usageByTenant: {},
+    flagsByTenant: {},
   };
 }
 
@@ -263,6 +284,22 @@ class Registry {
     return this.tenantIdFor() ?? '';
   }
 
+  /**
+   * This caller's display flags for one app. P13C ROUND 13 — M-13.
+   *
+   * Falls back to the row's legacy value, which is the pre-M-13 shared flag and
+   * is the honest default: it belonged to no organization, so it belongs to
+   * every organization until one overrides it.
+   */
+  private flagsFor(slug: string): { pinned: boolean; favorite: boolean } {
+    const own = this.file.flagsByTenant?.[this.usageKey()]?.[slug];
+    const row = this.file.entries[slug];
+    return {
+      pinned: own?.pinned ?? row?.pinned ?? false,
+      favorite: own?.favorite ?? row?.favorite ?? false,
+    };
+  }
+
   /** This caller's counters for one app. Never another caller's. */
   private usageFor(slug: string): TenantUsage {
     return this.file.usageByTenant?.[this.usageKey()]?.[slug] ?? emptyUsage();
@@ -301,6 +338,8 @@ class Registry {
          * organization; each tenant starts counting its own from zero.
          */
         usageByTenant: parsed.usageByTenant ?? {},
+        // P13C ROUND 13 — M-13.
+        flagsByTenant: parsed.flagsByTenant ?? {},
       });
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
@@ -352,10 +391,10 @@ class Registry {
    */
   get(slug: string): RegistryEntryDto | null {
     const e = this.file.entries[slug];
-    return e ? toDto(e, this.usageFor(slug)) : null;
+    return e ? toDto(e, this.usageFor(slug), this.flagsFor(slug)) : null;
   }
   list(): RegistryEntryDto[] {
-    return Object.values(this.file.entries).map((e) => toDto(e, this.usageFor(e.slug)));
+    return Object.values(this.file.entries).map((e) => toDto(e, this.usageFor(e.slug), this.flagsFor(e.slug)));
   }
   isIntegrityOk(): boolean {
     return this.integrityOk;
@@ -395,7 +434,7 @@ class Registry {
     this.ensureLoaded();
     this.file.entries[entry.slug] = entry;
     await this.persist();
-    return toDto(entry, this.usageFor(entry.slug));
+    return toDto(entry, this.usageFor(entry.slug), this.flagsFor(entry.slug));
   }
 
   async patch(slug: string, fn: (e: RegistryEntry) => void): Promise<RegistryEntryDto | null> {
@@ -404,7 +443,7 @@ class Registry {
     if (!e) return null;
     fn(e);
     await this.persist();
-    return toDto(e, this.usageFor(slug));
+    return toDto(e, this.usageFor(slug), this.flagsFor(slug));
   }
 
   async remove(slug: string): Promise<boolean> {
@@ -449,13 +488,32 @@ class Registry {
    */
   private static readonly DISPLAY_FLAGS = ['pinned', 'favorite'] as const;
 
+  /**
+   * Set THIS CALLER'S display flags. P13C ROUND 13 — M-13.
+   *
+   * Was `patch(slug, e => e[key] = value)` — a write to the shared row, so one
+   * organization's pin was every organization's pin. The payload whitelist
+   * (`DISPLAY_FLAGS`) was verified in Round 9 and is preserved below; what was
+   * never resolved is that the DESTINATION was install-global.
+   *
+   * The shared row is no longer written at all: the legacy value stays as the
+   * default in `flagsFor`, and the caller's own bucket takes precedence.
+   */
   async setFlags(slug: string, flags: { pinned?: boolean; favorite?: boolean }): Promise<RegistryEntryDto | null> {
-    return this.patch(slug, (e) => {
-      for (const key of Registry.DISPLAY_FLAGS) {
-        const value = flags[key];
-        if (value !== undefined) e[key] = value === true;
-      }
-    });
+    this.ensureLoaded();
+    if (!this.file.entries[slug]) return null;
+    const key = this.usageKey();
+    const current = this.flagsFor(slug);
+    const next: { pinned: boolean; favorite: boolean } = { ...current };
+    for (const f of Registry.DISPLAY_FLAGS) {
+      const value = flags[f];
+      if (value !== undefined) next[f] = value === true;
+    }
+    const byTenant = { ...(this.file.flagsByTenant ?? {}) };
+    byTenant[key] = { ...(byTenant[key] ?? {}), [slug]: next };
+    this.file.flagsByTenant = byTenant;
+    await this.persist();
+    return this.get(slug);
   }
 
   async setRuntimeStatus(slug: string, status: RuntimeStatus): Promise<void> {
@@ -559,6 +617,15 @@ class Registry {
       ...this.file,
       entries,
       usageByTenant: { [key]: this.file.usageByTenant?.[key] ?? {} },
+      /**
+       * P13C ROUND 13 — M-13 ADDED A SECOND PER-TENANT MAP, SO IT GETS THE SAME
+       * FILTER. `...this.file` is a spread: any new per-tenant field is exported
+       * in full unless it is named here. That is exactly how M-10 happened — one
+       * field filtered, another added later and forgotten — so the filter is
+       * applied in the same commit that adds the field, not in the round that
+       * finds it.
+       */
+      flagsByTenant: { [key]: this.file.flagsByTenant?.[key] ?? {} },
     };
     return JSON.stringify(authorized, null, 2);
   }
@@ -628,7 +695,17 @@ class Registry {
  * an under-reported count is a cosmetic bug, an over-reported one is another
  * organization's activity.
  */
-export function toDto(e: RegistryEntry, usage: TenantUsage = emptyUsage()): RegistryEntryDto {
+export function toDto(
+  e: RegistryEntry,
+  usage: TenantUsage = emptyUsage(),
+  /**
+   * P13C ROUND 13 — M-13. The CALLER'S display flags. Defaults to the row's own
+   * legacy values so an existing caller of this function is unchanged, and so a
+   * future caller that forgets to pass a bucket shows the shared default rather
+   * than someone else's choice.
+   */
+  flags: { pinned: boolean; favorite: boolean } = { pinned: e.pinned, favorite: e.favorite },
+): RegistryEntryDto {
   return {
     slug: e.slug,
     name: e.name,
@@ -648,8 +725,8 @@ export function toDto(e: RegistryEntry, usage: TenantUsage = emptyUsage()): Regi
     runtimeStatus: e.runtimeStatus,
     healthStatus: e.healthStatus,
     diskUsageBytes: e.diskUsageBytes,
-    pinned: e.pinned,
-    favorite: e.favorite,
+    pinned: flags.pinned,
+    favorite: flags.favorite,
     config: e.config,
     usage: {
       launches: usage.launchCount,

@@ -719,6 +719,30 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
   [IpcChannel.CrashRecommendations]: 'operations:read',
   [IpcChannel.PilotSetEnabled]: 'org:manage',
   /**
+   * P13C ROUND 13 — M-14. Restated here so the central register is complete and
+   * the AI family gate's cross-check has something to agree WITH — the NEW-M8
+   * lesson: a channel classified in only one of the two tables is a channel a
+   * regression can move without either mechanism noticing.
+   */
+  [IpcChannel.EngineeringAnalyze]: 'intelligence:read',
+  /**
+   * P13C ROUND 13 — M-13. A PUBLIC WRITE TO A SHARED ROW.
+   *
+   * `registry:setFlags` mutated `pinned`/`favorite` on the install-global
+   * `RegistryEntry`, so tenant A un-pinning an app un-pinned it for tenant B,
+   * from a context with no authentication at all. Round 9 (F4) verified the
+   * PAYLOAD whitelist — the mutation can only reach those two fields — and that
+   * verification still holds. What it never resolved was the DESTINATION.
+   *
+   * `cloud:operate` would be the wrong lock: this is a per-user personalization,
+   * not a platform act, and gating it there takes the pin button away from every
+   * ordinary member. The fix is that the write now lands in the caller's own
+   * `flagsByTenant` bucket (see `registry.ts`), which makes the mutation
+   * genuinely tenant-local — and `dashboard:read` is the scope this file already
+   * uses for per-user surfaces whose owner is resolved server-side.
+   */
+  [IpcChannel.RegistrySetFlags]: 'dashboard:read',
+  /**
    * P13C ROUND 10 — NEW-M8. SEVEN CHANNELS THAT WERE PUBLIC **AND** GATED.
    *
    * Each of these carries a permission stamped by its family gate
@@ -840,7 +864,6 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   // ── Local application registry reads ──
   IpcChannel.RegistryList,
   IpcChannel.RegistryGet,
-  IpcChannel.RegistrySetFlags,
   IpcChannel.RegistryStats,
   /**
    * P13C ROUND 11 — M-10. `RegistryExport` WAS HERE.
@@ -989,7 +1012,6 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   // P13C Round 10 — NEW-M8. `FounderAskV2` REMOVED: Round 9 gated it at
   // `intelligence:read` in `ai/aiAuthzGate.ts` (it WRITES a memory through
   // `captureFounderMemory`) and this row was left behind.
-  IpcChannel.EngineeringAnalyze,
   IpcChannel.FounderSuggestions,
   /**
    * ── NeuroCore + renderer→main state reports ──
