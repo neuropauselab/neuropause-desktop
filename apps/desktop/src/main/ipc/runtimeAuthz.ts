@@ -590,6 +590,60 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
   [IpcChannel.ReleaseDiagnosticsExport]: 'operations:read',
   [IpcChannel.SystemHealthSnapshot]: 'operations:read',
   /**
+   * P13C ROUND 11 — M-1 / M-2. THE SAME ARGUMENT AS THE THREE ABOVE, ONE
+   * SUBSYSTEM LATER.
+   *
+   * `runtime:list` and `runtime:health` were PUBLIC — no auth, no permission —
+   * and returned a `RuntimeInstanceDto` PER LIVE PROCESS: `appSlug`, `pid`,
+   * `startedAt`, `uptimeMs`, `restarts` and a CPU/memory sample. That is not
+   * install metadata like `plugins:list`; it is what one organization is running
+   * right now. An instance count that climbs while you are idle is another
+   * organization launching something, and `appSlug` names WHAT — a sharper
+   * version of the `bus.metrics()` inference the three rows above were gated for.
+   *
+   * `operations:read` rather than a new lock, for the reason stated above: it is
+   * in the READ_ONLY base role, so any signed-in member keeps the panel, and
+   * `RuntimeHealthPanel` — named in that comment as post-sign-in — is the caller
+   * of both of these channels. Nothing loses a path.
+   *
+   * THE GATE IS THE SMALLER HALF, and saying so is the point. Authentication
+   * establishes that a caller is a member of SOME organization; it cannot say
+   * which processes are theirs. The boundary is `supervisor.ownerNow()` filtering
+   * `list` / `get` / `requireInstance` (M-3). This row stops the channel being
+   * readable with no session at all and makes the classification honest: it
+   * carries tenant-derived data, so it is not public.
+   */
+  [IpcChannel.RuntimeList]: 'operations:read',
+  [IpcChannel.RuntimeHealth]: 'operations:read',
+  /**
+   * P13C ROUND 11 — M-4 / M-5 / M-7 / M-10. FOUR FAMILIES OFF THE PUBLIC
+   * ALLOWLIST. Each removal is argued at its former site in `PUBLIC_CHANNELS`.
+   *
+   * The dividing line is the one this table already uses: a MUTATION of an
+   * install-wide resource is a platform act (`cloud:operate`); a READ whose
+   * payload is tenant-derived needs a signed-in member (`operations:read`).
+   *
+   * `update:*` — the application binary. Four mutations that were reachable with
+   *   no auth at all; `quitAndInstall` alone is an unauthenticated DoS on every
+   *   tenant. `getStatus` is a read and stays available to any member.
+   * `nps:pause|resume|cancel` — abort an install a platform operator authorized,
+   *   delete the partial from disk, drop the concurrency lock.
+   * `crash:*` reads — one install-wide archive with no owner field on any row.
+   * `registry:export` — raw rows, so it carries the per-app launch counters
+   *   `toDto` withholds. Beside its `import` / `backup` write siblings.
+   */
+  [IpcChannel.UpdateCheckNow]: 'cloud:operate',
+  [IpcChannel.UpdateDownload]: 'cloud:operate',
+  [IpcChannel.UpdateInstallOnQuit]: 'cloud:operate',
+  [IpcChannel.UpdateSetChannel]: 'cloud:operate',
+  [IpcChannel.UpdateGetStatus]: 'operations:read',
+  [IpcChannel.NpsPause]: 'cloud:operate',
+  [IpcChannel.NpsResume]: 'cloud:operate',
+  [IpcChannel.NpsCancel]: 'cloud:operate',
+  [IpcChannel.CrashExport]: 'operations:read',
+  [IpcChannel.CrashGetStatus]: 'operations:read',
+  [IpcChannel.RegistryExport]: 'cloud:operate',
+  /**
    * P13C ROUND 10 — NEW-M8. SEVEN CHANNELS THAT WERE PUBLIC **AND** GATED.
    *
    * Each of these carries a permission stamped by its family gate
@@ -713,19 +767,56 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   IpcChannel.RegistryGet,
   IpcChannel.RegistrySetFlags,
   IpcChannel.RegistryStats,
-  IpcChannel.RegistryExport,
+  /**
+   * P13C ROUND 11 — M-10. `RegistryExport` WAS HERE.
+   *
+   * `registry.export()` serialises `...this.file` — the RAW entry rows — so it
+   * bypasses `toDto`, which Round 9 (F20) made the place where the cross-tenant
+   * activity counters are withheld. `launchCount`, `lastLaunchedAt` and
+   * `usage.{launches,totalActiveMs,lastSessionAt}` are absent from
+   * `registry:list` and present in the export bytes. The migration note in
+   * `registry.ts` states the numbers "are visible to no organization" — true of
+   * `toDto`, false of this path, which is the stale-declaration class.
+   *
+   * Now `cloud:operate`, beside `registry:import` and `registry:backup` that
+   * write the same file. Cost: none. `registry.export` has ZERO renderer call
+   * sites — `ipc.ts` defines the wrapper and nothing invokes it.
+   */
   // ── Package service read-only operations ──
   IpcChannel.NpsVerify,
   IpcChannel.NpsOperations,
-  IpcChannel.NpsPause,
-  IpcChannel.NpsResume,
-  IpcChannel.NpsCancel,
+  /**
+   * P13C ROUND 11 — M-4. `NpsPause`, `NpsResume` and `NpsCancel` WERE HERE,
+   * under a header that calls them "read-only operations". THEY ARE NOT.
+   *
+   * `nps:cancel` reaches `downloadManager.cancel`: it aborts an in-flight
+   * install/update/repair that a PLATFORM OPERATOR authorized, deletes the
+   * partial file from disk, and drops the `busy` concurrency lock for that slug.
+   * `nps:pause` aborts the same request. Round 10 moved install / uninstall /
+   * update / repair / rollback to `cloud:operate` on the stated principle that
+   * "the axis is the resource, not which verb reaches it" — and left behind the
+   * three channels that TERMINATE those very operations, on no authority at all.
+   *
+   * The attack needed no guessing: public `nps:operations` enumerates the
+   * operation ids and slugs, public `nps:cancel` kills them.
+   *
+   * Cost: none. The only callers are the Operations toolbar, whose neighbouring
+   * button already invokes `nps:install` — a `cloud:operate` channel.
+   */
   // ── Runtime reads ──
   // Phase 8 (8.14): bundled-docs help surface — fixed catalog, fail-closed enum.
   IpcChannel.HelpListDocs,
   IpcChannel.HelpOpenDoc,
-  IpcChannel.RuntimeList,
-  IpcChannel.RuntimeHealth,
+  /**
+   * P13C ROUND 11 — M-1 / M-2. `RuntimeList` and `RuntimeHealth` WERE HERE.
+   *
+   * They are now classified `operations:read` in RUNTIME_CHANNEL_PERMISSIONS
+   * above, with the reasoning. Removed rather than left alongside the gate:
+   * `channelsBothPublicAndGated` throws on the overlap, because a channel that
+   * is both is the NEW-M8 blindness — the allowlist satisfies
+   * `assertAllChannelsClassified` regardless of whether the gate applied, so a
+   * regression on it would be undetectable.
+   */
   // ── Permission read ──
   IpcChannel.PermsList,
   /**
@@ -877,9 +968,31 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
    * volume. The bucket's own caveat — "revisit if any becomes multi-tenant" —
    * is what this is.
    */
-  IpcChannel.CrashGetStatus,
+  /**
+   * P13C ROUND 11 — M-7. `CrashGetStatus` and `CrashExport` WERE HERE.
+   *
+   * One install-wide `crashes.log`, no owner field on any row, and two public
+   * reads that return whole records: `crash:export` up to 200, `crash:getStatus`
+   * the last 10 with no arguments. Any tenant — and a SIGNED-OUT session — read
+   * every other tenant's fault history: which workspace they crashed in
+   * (`kind: workspace:<section>`), when, and whatever text the exception carried.
+   *
+   * `redactSensitive` is not a tenant boundary. It strips credentials, home
+   * paths and emails; it does not strip org ids, record names or uploaded
+   * filenames, and it never runs on `kind` at all. The store's own declaration
+   * concedes the point — "not proven free of record text" — while classifying
+   * itself `INSTALL_METADATA`, whose definition is "Never about a customer".
+   * Those two statements cannot both be true, and the classification is
+   * load-bearing: `declareStoreScope` refuses `CUSTOMER_DERIVED` + `INSTALL_GLOBAL`.
+   *
+   * `operations:read`, exactly as Round 10 did to `ReleaseDiagnosticsGet` /
+   * `Export` and `SystemHealthSnapshot` — same file, same shape, same argument.
+   *
+   * `CrashSetOptIn` and `CrashReport` STAY PUBLIC and that is deliberate: an
+   * opt-in is a per-user machine preference, and reporting your own fault
+   * discloses nothing to anyone.
+   */
   IpcChannel.CrashSetOptIn,
-  IpcChannel.CrashExport,
   IpcChannel.CrashRecommendations,
   IpcChannel.CrashReport,
   /**
@@ -953,11 +1066,39 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   IpcChannel.NotificationsPrefsSet,
   IpcChannel.PilotStatus,
   IpcChannel.PilotSetEnabled,
-  IpcChannel.UpdateGetStatus,
-  IpcChannel.UpdateCheckNow,
-  IpcChannel.UpdateDownload,
-  IpcChannel.UpdateInstallOnQuit,
-  IpcChannel.UpdateSetChannel,
+  /**
+   * P13C ROUND 11 — M-5. THE FOUR UPDATER MUTATIONS WERE HERE. THE WORST OF
+   * THIS ROUND, because the resource is the APPLICATION BINARY ITSELF.
+   *
+   * They carried no permission AND no `requireAuth` — sender-frame trust only,
+   * which every tenant user and every SIGNED-OUT session satisfies. `audit:true`
+   * on the handler defs authorizes nothing; it writes a log line.
+   *
+   *   `update:installOnQuit` → `autoUpdater.quitAndInstall()`. Terminates the
+   *      process for every tenant on the machine and swaps the binary.
+   *   `update:setChannel`    → rewrites the install-wide `update-prefs.json` and
+   *      repoints the feed, i.e. selects WHICH CODE the install runs next.
+   *   `update:download`      → writes the installer to disk.
+   *   `update:checkNow`      → outbound fetch to the release feed.
+   *
+   * Chained, an unauthenticated renderer context moves the machine onto the
+   * internal pre-release feed and reboots into a build no administrator chose.
+   * Standalone, `installOnQuit` is an unauthenticated denial of service against
+   * every tenant.
+   *
+   * This is the Round 8 Finding-2 class, one level more severe: plugin
+   * install/update went to `cloud:operate` because a plugin is "executable code
+   * that runs in-process for every tenant". Replacing the application is
+   * strictly wider than replacing a plugin, and it was gated less.
+   *
+   * The stale admission is the "local, per-user desktop operations" bucket
+   * above, which names the updater and carries its own expiry: "revisit if any
+   * becomes multi-tenant". The updater is not a per-user surface — it is the one
+   * subsystem that by definition affects every user of the install.
+   *
+   * `UpdateGetStatus` is a READ and moves to `operations:read` rather than
+   * `cloud:operate`, so an ordinary member still sees "an update is available".
+   */
   // ── Enterprise REST API gateway entrypoints. `api:request` cannot bypass RBAC:
   // it dispatches through `runSecureHandler`, which re-applies each target
   // handler's `permission`; routes/openapi are static docs. ──

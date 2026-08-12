@@ -17,11 +17,14 @@ import type {
   RuntimeEvent,
   RuntimeInstanceDto,
   StoreAppDetail,
+  TenantScope,
 } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import { registry } from '../registry/registry';
 import { catalogClient } from '../catalog/catalogClient';
-import type { LaunchContext, RuntimeAdapter, RuntimeInstance } from './types';
+import type { LaunchContext, RuntimeAdapter, RuntimeInstance, RuntimeInstanceOwner } from './types';
+import { ownerForTenantKey, sameOwner } from './types';
+import { registerTenantStore } from '../tenancy/tenantOwnedStore';
 import { WebRuntimeAdapter } from './adapters/webAdapter';
 import { ProcessRuntimeAdapter } from './adapters/processAdapter';
 
@@ -37,6 +40,57 @@ class RuntimeSupervisor extends EventEmitter<{ event: [RuntimeEvent]; openApp: [
   private instances = new Map<string, RuntimeInstance>();
   private adapters: RuntimeAdapter[] = [new WebRuntimeAdapter(), new ProcessRuntimeAdapter()];
   private launchUrlCache = new Map<string, string | null>();
+
+  /**
+   * WHO IS ASKING. P13C ROUND 11 — M-3.
+   *
+   * The supervisor holds LIVE PROCESSES, not catalogue rows. The catalogue is
+   * legitimately INSTALL_GLOBAL — one copy of the app on one machine — but a
+   * running instance is something one organization started, and it reports
+   * `pid`, `startedAt`, `uptimeMs`, `restarts` and a CPU/memory sample.
+   *
+   * Bound to `activeTenantScope` in the composition root, never to
+   * `tenantContext.scope`: the principal-aware resolver is the one Round 10's
+   * RT-H2 established, and `resolverAttachment.test.ts` fails the build if a
+   * `bindScope` in this process receives the session-only one.
+   *
+   * UNBOUND ANSWERS `unowned-install`, which is the single-user desktop case and
+   * is one audience rather than a shared one. The composition root binds it, and
+   * `round11RuntimeOwnership.test.ts` pins that line by name — because "nobody
+   * bound it" must not silently become "everyone can see everything".
+   */
+  private scopeSource: (() => TenantScope | null) | null = null;
+
+  /**
+   * P13C ROUND 11 — M-3. REGISTERED WITH THE STARTUP GATE.
+   *
+   * `tenantStoreRegistry` refused this file the moment it defined a `bindScope`,
+   * which is the invariant behaving exactly as designed: a seam the startup gate
+   * cannot see is a seam that can silently ship unbound, and an unbound
+   * supervisor answers `unowned-install` for every caller — the shared audience
+   * this finding WAS. So `assertAllTenantStoresBound()` now refuses to start an
+   * install where nothing bound it.
+   *
+   * It registers as tenant-scoped rather than declaring a store scope: the
+   * instances are LIVE PROCESSES, not persisted rows, so `storeScopeGate` (which
+   * keys off persistence) correctly has nothing to say about this file. The two
+   * mechanisms are deliberately blind to different things.
+   */
+  constructor() {
+    super();
+    registerTenantStore('runtime-supervisor', () => this.scopeSource !== null);
+  }
+
+  /** Attach the authoritative tenant resolver. Composition root only. */
+  bindScope(source: () => TenantScope | null): this {
+    this.scopeSource = source;
+    return this;
+  }
+
+  /** The audience the CALLER belongs to right now. */
+  private ownerNow(): RuntimeInstanceOwner {
+    return ownerForTenantKey(this.scopeSource?.()?.tenantId ?? '');
+  }
 
   private adapterFor(kind: AppType): RuntimeAdapter {
     const adapter = this.adapters.find((a) => a.kinds.includes(kind));
@@ -125,6 +179,10 @@ class RuntimeSupervisor extends EventEmitter<{ event: [RuntimeEvent]; openApp: [
 
     const instance: RuntimeInstance = {
       instanceId: randomUUID(),
+      // P13C ROUND 11 — M-3. Stamped from the resolver at launch, never from a
+      // caller-supplied field: the renderer may say WHICH app to start and never
+      // WHOSE the running process is.
+      owner: this.ownerNow(),
       slug: entry.slug,
       name: entry.name,
       kind: entry.appType,
@@ -160,8 +218,27 @@ class RuntimeSupervisor extends EventEmitter<{ event: [RuntimeEvent]; openApp: [
     }
   }
 
+  /** Stop an instance the caller owns. */
   async stop(instanceId: string): Promise<void> {
-    const instance = this.requireInstance(instanceId);
+    this.requireInstance(instanceId);
+    await this.stopInternal(instanceId);
+  }
+
+  /**
+   * Stop WITHOUT an ownership check — SYSTEM PATH ONLY. P13C ROUND 11 — M-3.
+   *
+   * `stopByApp` is reached from uninstall, which removes the install-wide
+   * catalogue row: every tenant's instance of that app must come down, or a
+   * process outlives the app it belongs to. That is a legitimate install-wide
+   * act and it is authorized at ITS OWN door (the uninstall channel), not here.
+   *
+   * Private, and the only two callers are `stop` (which checks first) and
+   * `stopByApp`. It is not exported and there is no public unchecked sibling —
+   * adding one would reopen M-3 under a new name.
+   */
+  private async stopInternal(instanceId: string): Promise<void> {
+    const instance = this.instances.get(instanceId);
+    if (!instance) throw new Error(`No runtime instance ${instanceId}`);
     instance.intentionalStop = true;
     this.dispatch(instance, { type: 'lifecycle', status: 'stopping', health: 'unknown', message: 'Stopping' });
     await this.adapterFor(instance.kind).stop(instance);
@@ -194,7 +271,9 @@ class RuntimeSupervisor extends EventEmitter<{ event: [RuntimeEvent]; openApp: [
 
   async stopByApp(slug: string): Promise<void> {
     const ids = [...this.instances.values()].filter((i) => i.slug === slug).map((i) => i.instanceId);
-    for (const id of ids) await this.stop(id);
+    // SYSTEM PATH — see `stopInternal`. Uninstall removes the install-wide
+    // catalogue row, so every tenant's instance of that app must come down.
+    for (const id of ids) await this.stopInternal(id);
   }
 
   /* ── monitoring ── */
@@ -214,18 +293,34 @@ class RuntimeSupervisor extends EventEmitter<{ event: [RuntimeEvent]; openApp: [
     }
   }
 
+  /** Only the caller's own live processes. P13C ROUND 11 — M-3. */
   list(): RuntimeInstanceDto[] {
-    return [...this.instances.values()].map((i) => this.toDto(i));
+    const me = this.ownerNow();
+    return [...this.instances.values()]
+      .filter((i) => sameOwner(i.owner, me))
+      .map((i) => this.toDto(i));
   }
 
   get(instanceId: string): RuntimeInstanceDto | null {
     const i = this.instances.get(instanceId);
-    return i ? this.toDto(i) : null;
+    if (!i || !sameOwner(i.owner, this.ownerNow())) return null;
+    return this.toDto(i);
   }
 
+  /**
+   * Resolve an instance the CALLER OWNS, or refuse. P13C ROUND 11 — M-3.
+   *
+   * THE ERROR IS DELIBERATELY IDENTICAL for "no such instance" and "not yours".
+   * A distinguishable message is an existence oracle: instance ids are UUIDs, so
+   * a different error for a real-but-foreign id confirms that another
+   * organization is running something, which is the inference half of this
+   * finding. One message, both cases.
+   */
   private requireInstance(instanceId: string): RuntimeInstance {
     const instance = this.instances.get(instanceId);
-    if (!instance) throw new Error(`No runtime instance ${instanceId}`);
+    if (!instance || !sameOwner(instance.owner, this.ownerNow())) {
+      throw new Error(`No runtime instance ${instanceId}`);
+    }
     return instance;
   }
 

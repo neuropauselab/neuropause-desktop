@@ -43,7 +43,16 @@ let gateway: CompanionGateway;
 beforeEach(async () => {
   dir = join(tmpdir(), `np-gw-${randomUUID()}`);
   await fs.mkdir(dir, { recursive: true });
-  devices = new CompanionDeviceStore(join(dir, 'companion-devices.json')).bindScope(() => ({ tenantId: 'org-alpha', workspaceId: '' }));
+  /**
+   * P13C ROUND 11 — M-9. See the fuller note in `gatewayWs.test.ts`.
+   *
+   * The reader was bound to `org-alpha` while the gateway minted under
+   * `org-acme`. M-9 makes the paired device belong to the MINTING organization,
+   * so the reader must be that organization for `get` / `activeCount` to see it.
+   * `activeCount` is itself M-6's newly-scoped count, so this fixture now
+   * exercises both fixes in agreement rather than relying on two bugs cancelling.
+   */
+  devices = new CompanionDeviceStore(join(dir, 'companion-devices.json')).bindScope(() => ({ tenantId: 'org-acme', workspaceId: '' }));
   await devices.load();
   desktop = generateIdentityKeyPair();
   phone = generateIdentityKeyPair();

@@ -942,6 +942,18 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
    * desktop notification is the tenant the signed-in human is currently viewing.
    */
   bindDeliveryViewer(() => activeTenantScope()?.tenantId ?? null);
+  /**
+   * P13C ROUND 11 — M-3. THE RUNTIME SUPERVISOR IS A TENANT SEAM.
+   *
+   * It holds live processes one organization started — `pid`, `startedAt`,
+   * `uptimeMs`, `restarts`, CPU and memory — and `runtime:list` reported every
+   * one of them to any caller while `requireInstance` resolved a
+   * renderer-supplied id with no ownership comparison. Bound to the
+   * principal-aware resolver like every other seam here, so a companion device
+   * acting for the tenant it was paired to sees that tenant's processes and not
+   * whichever organization happens to be on screen.
+   */
+  supervisor.bindScope(activeTenantScope);
   automationStore.bindScope(activeTenantScope);
   decisionStore.bindScope(activeTenantScope);
   holdStore.bindScope(activeTenantScope);

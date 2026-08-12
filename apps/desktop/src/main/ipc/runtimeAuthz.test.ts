@@ -46,8 +46,22 @@ describe('withRuntimeAuthz', () => {
     expect((defs[0] as { requireAuth?: boolean }).requireAuth).toBeUndefined();
   });
 
+  /**
+   * P13C ROUND 11 — THE FIXTURE CHANGED BECAUSE PRODUCTION DID, and that is
+   * stated rather than quietly swapped.
+   *
+   * This case used `IpcChannel.RuntimeList` as its example of an unclassified
+   * channel. M-1/M-2 classified it (`operations:read`), so it is no longer an
+   * example of one — keeping it here would have made this assertion pass for the
+   * wrong reason, or fail and invite someone to "fix" it by reverting the gate.
+   *
+   * `HelpListDocs` replaces it: a genuinely public, genuinely unmapped channel.
+   * The PROPERTY under test is unchanged — a channel `withRuntimeAuthz` cannot
+   * classify must throw at composition rather than ship open — and the assertion
+   * is not weakened.
+   */
   it('throws at composition time for an unclassified channel (ship-time guard)', () => {
-    expect(() => withRuntimeAuthz([{ channel: IpcChannel.RuntimeList as IpcChannelName }])).toThrow(
+    expect(() => withRuntimeAuthz([{ channel: IpcChannel.HelpListDocs as IpcChannelName }])).toThrow(
       /no permission classification/,
     );
     // A genuinely-public channel is deliberately NOT in the map, so wrapping it throws.

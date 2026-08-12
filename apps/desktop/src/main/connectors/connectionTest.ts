@@ -28,6 +28,7 @@
  */
 import type { ConnectorId } from '@neuropause/shared';
 import { AuthError, HttpClient, RateLimitError, type RateGate } from '../unified/sync/http';
+import { rateGateKey } from '../unified/sync/rateLimiter';
 
 /** Where a provider says who you are, and how to read the answer. */
 export interface IdentityProbe {
@@ -180,9 +181,13 @@ export async function testConnection(
     return token;
   };
 
+  // P13C ROUND 11 — M-8. Per-credential gate key; see `rateGateKey`. A
+  // connection test is interactive and one-off, but it shares the install-wide
+  // limiter, so under the old bare key a failing test could stall another
+  // tenant's background sync for the same provider.
   const client =
     deps.makeClient?.(connectorId, getToken) ??
-    new HttpClient(connectorId, getToken, deps.rate);
+    new HttpClient(rateGateKey(connectorId, accountId), getToken, deps.rate);
 
   try {
     const res = await client.getJson(probe.url);

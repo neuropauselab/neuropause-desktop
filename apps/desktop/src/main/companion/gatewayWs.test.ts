@@ -40,7 +40,26 @@ let device: CompanionDeviceRecord;
 beforeEach(async () => {
   dir = join(tmpdir(), `np-gw-ws-${randomUUID()}`);
   await fs.mkdir(dir, { recursive: true });
-  devices = new CompanionDeviceStore(join(dir, 'companion-devices.json')).bindScope(() => ({ tenantId: 'org-alpha', workspaceId: '' }));
+  /**
+   * P13C ROUND 11 — M-9. THE FIXTURE WAS INTERNALLY INCONSISTENT, AND THE BUG
+   * HID IT.
+   *
+   * This bound the store's reader to `org-alpha` while telling the gateway
+   * `currentTenantId: () => 'org-acme'`. Before M-9 that disagreement was
+   * invisible: `register()` stamped the owner from the LIVE resolver at redeem
+   * time, so the device landed in `org-alpha` — the reader's tenant — and
+   * `devices.list()` found it.
+   *
+   * M-9 binds the device to the tenant that AUTHORIZED the pairing (captured at
+   * mint), which is `org-acme`. The reader then correctly saw nothing, and these
+   * suites failed with `device` undefined. That is the fix working, not the fix
+   * breaking: a device paired under one organization is not visible to another.
+   *
+   * Corrected by making the fixture agree with itself — the store reads as the
+   * organization the QR was minted under. The alternative, reverting the owner
+   * to the live resolver, IS the finding.
+   */
+  devices = new CompanionDeviceStore(join(dir, 'companion-devices.json')).bindScope(() => ({ tenantId: 'org-acme', workspaceId: '' }));
   await devices.load();
   desktop = generateIdentityKeyPair();
   phone = generateIdentityKeyPair();

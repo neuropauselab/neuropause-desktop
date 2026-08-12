@@ -11,6 +11,7 @@
  */
 import type { ConnectorWriteActionInfo, ConnectorWriteResult, PlatformEventInput } from '@neuropause/shared';
 import { AuthError, HttpClient, type RateGate } from '../../unified/sync/http';
+import { rateGateKey } from '../../unified/sync/rateLimiter';
 import type { SyncStateStore } from '../../unified/sync/syncStateStore';
 import { writeEvents } from '../../unified/sync/events';
 import type { WriteAction } from './actionSdk';
@@ -119,7 +120,8 @@ export class M365Executor {
       return t;
     };
     const makeHttp = this.deps.makeHttp ?? ((c, gt, r): HttpClient => new HttpClient(c, gt, r));
-    const http = makeHttp(connectorId, tokenFn, this.deps.rate);
+    // P13C ROUND 11 — M-8. Per-credential gate key; see `rateGateKey`.
+    const http = makeHttp(rateGateKey(connectorId, accountId), tokenFn, this.deps.rate);
     const nowIso = new Date().toISOString();
 
     // 4. Audited fan-out.

@@ -15,6 +15,7 @@
 import type { ConnectorId, PlatformEventInput, UnifiedEntity } from '@neuropause/shared';
 import { makeUnifiedId } from '../ids';
 import { AuthError, HttpClient, HttpError, NetworkError, RateLimitError, type RateGate } from './http';
+import { rateGateKey } from './rateLimiter';
 import type { ConnectorAdapter, SyncPage } from './adapterSdk';
 import type { TenantScope } from '@neuropause/shared';
 import { TenantDedupe } from '../../tenancy/tenantDedupe';
@@ -325,7 +326,10 @@ export class SyncOrchestrator {
     }
 
     const http = new HttpClient(
-      connectorId,
+      // P13C ROUND 11 — M-8. Keyed on the CREDENTIAL, not the vendor: one
+      // shared RateLimiter serves every workspace, so a bare `connectorId` let
+      // one tenant's 429 stall every other tenant's sync for that provider.
+      rateGateKey(connectorId, accountId),
       async () => {
         const token = await this.ports.getAccessToken(connectorId, accountId);
         if (!token) throw new AuthError('no valid token');
