@@ -125,7 +125,31 @@ export class TraceEdgeStore extends EventEmitter {
     this.dirty = true;
     if (this.persisting) return;
     this.persisting = true;
-    this.lastPersist = this.drainPersist();
+    const run = this.drainPersist();
+    this.lastPersist = run;
+    /**
+     * A FAILED BACKGROUND WRITE MUST REACH SOMEBODY. P13C ROUND 17l.
+     *
+     * `drainPersist()` was assigned and never observed. `flush()` awaits it,
+     * but nothing calls `flush()` on the ordinary write path — so a background
+     * persist that rejected (disk full, permission lost, directory removed)
+     * became an UNHANDLED REJECTION in the Electron main process. That is the
+     * swallowing catch turned inside out: instead of the failure being hidden
+     * from everyone, it escapes to a global handler that cannot say which store
+     * failed or what the user should do. Neither delivers the error to someone
+     * who can act on it, which is the only thing that counts.
+     *
+     * `persist-failed`, NOT `error`: an EventEmitter with no listener for
+     * `'error'` re-throws, which would convert a recoverable write failure into
+     * a crash — the opposite of the intent.
+     *
+     * Attaching the handler here also leaves `lastPersist` rejecting, so a
+     * caller who explicitly `await store.flush()` still gets the error. The
+     * background path reports; the deliberate path still throws.
+     */
+    void run.catch((error: unknown) => {
+      this.emit('persist-failed', { path: this.filePath, error });
+    });
   }
 
   private async drainPersist(): Promise<void> {

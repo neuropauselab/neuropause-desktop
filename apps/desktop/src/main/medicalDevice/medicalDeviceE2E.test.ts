@@ -62,6 +62,8 @@ interface App {
   movements: EnterpriseModule;
   inventoryProducts: EnterpriseModule;
   lotStore: EnterpriseModule;
+  /** Resolves when every store's write queue is empty. See the afterEach below. */
+  flush: () => Promise<void>;
 }
 
 async function boot(): Promise<App> {
@@ -159,7 +161,17 @@ async function boot(): Promise<App> {
     return (await handler.handler(parsed)) as T;
   };
 
-  return { dir, call, audits, movements, inventoryProducts, lotStore: deviceLots };
+  const flush = async (): Promise<void> => {
+    await Promise.all([
+      deviceProducts.store.flush(),
+      deviceLots.store.flush(),
+      inventoryProducts.store.flush(),
+      movements.store.flush(),
+      edges.flush(),
+    ]);
+  };
+
+  return { dir, call, audits, movements, inventoryProducts, lotStore: deviceLots, flush };
 }
 
 let app: App;
@@ -167,7 +179,21 @@ beforeEach(async () => {
   app = await boot();
 });
 afterEach(async () => {
-  await new Promise((r) => setTimeout(r, 25));
+  /**
+   * AWAIT THE WRITE QUEUE, DO NOT SLEEP AND HOPE. P13C ROUND 17l.
+   *
+   * Every store here writes atomically (tmp file, then rename). A `setTimeout`
+   * in teardown was a GUESS that the queue had drained. It held on an idle Mac
+   * and lost on the Windows runner, where the same suite takes 775s instead of
+   * 16s — the directory was removed out from under an in-flight rename and the
+   * ENOENT surfaced as an unhandled rejection that failed the build while all
+   * 8018 tests still reported green. The worst shape a flake can take: no
+   * failing test to point at.
+   *
+   * `medicalDeviceService.test.ts` replaced its own sleep with exactly this,
+   * for exactly this reason, and the change never reached its two neighbours.
+   */
+  await app.flush().catch(() => undefined);
   await fs.rm(app.dir, { recursive: true, force: true }).catch(() => undefined);
 });
 
