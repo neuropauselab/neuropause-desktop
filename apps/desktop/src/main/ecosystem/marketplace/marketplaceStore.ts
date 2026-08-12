@@ -590,7 +590,24 @@ export class MarketplaceStore extends EventEmitter {
     // may install another tenant's draft, which would confirm it exists.
     const l = this.visibleListing(listingId);
     if (!l) return null;
-    const next = { ...l, installs: l.installs + 1 };
+    /**
+     * P13C ROUND 12 — M-12. ONE ADOPTION PER ORGANIZATION.
+     *
+     * This was `installs + 1` per call with no record of who, so adoption was
+     * unbounded self-inflation — and `rankCatalog` sorts on it. Idempotent now:
+     * a second install by the same organization returns the row unchanged.
+     *
+     * Fail closed on an unresolved caller: "nobody" is not an organization and
+     * must not get a vote in the count.
+     */
+    const who = this.publisher();
+    if (who === null) return null;
+    if (l.installedBy?.[who]) return l;
+    const next: MarketplaceListing = {
+      ...l,
+      installedBy: { ...(l.installedBy ?? {}), [who]: true },
+      installs: l.installs + 1,
+    };
     this.listings.set(listingId, next);
     this.schedulePersist();
     this.emit('changed');
@@ -601,10 +618,33 @@ export class MarketplaceStore extends EventEmitter {
     // P13C ROUND 9 F1 — CONSUMER relation, same predicate as `install`.
     const l = this.visibleListing(listingId);
     if (!l) return null;
+    /**
+     * P13C ROUND 12 — M-12. ONE OPINION PER ORGANIZATION, CHANGEABLE.
+     *
+     * Every call used to be a new vote, so review-bombing another tenant's
+     * published listing was a loop over one channel. An organization may now
+     * change its mind — that is what a rating is — but it cannot vote twice.
+     *
+     * THE ARITHMETIC RUNS OFF THE STORED TOTALS, not off the map, so a legacy
+     * row's historical `ratingCount` / `ratingAvg` survive: a first vote from a
+     * new organization extends that baseline, and a revision adjusts the total
+     * by the delta while leaving the count alone. Recomputing purely from
+     * `ratings` would silently discard every pre-M-12 vote, which is data loss
+     * dressed up as a cleaner model.
+     */
+    const who = this.publisher();
+    if (who === null) return null;
     const s = Math.max(1, Math.min(5, Math.round(stars)));
-    const count = l.ratingCount + 1;
-    const avg = (l.ratingAvg * l.ratingCount + s) / count;
-    const next = { ...l, ratingCount: count, ratingAvg: Math.round(avg * 100) / 100 };
+    const prior = l.ratings?.[who];
+    const count = prior === undefined ? l.ratingCount + 1 : l.ratingCount;
+    const total = l.ratingAvg * l.ratingCount + (prior === undefined ? s : s - prior);
+    const avg = count === 0 ? 0 : total / count;
+    const next: MarketplaceListing = {
+      ...l,
+      ratings: { ...(l.ratings ?? {}), [who]: s },
+      ratingCount: count,
+      ratingAvg: Math.round(avg * 100) / 100,
+    };
     this.listings.set(listingId, next);
     this.schedulePersist();
     this.emit('changed');

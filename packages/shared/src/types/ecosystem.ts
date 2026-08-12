@@ -296,6 +296,36 @@ export interface MarketplaceListing {
   installs: number;
   ratingAvg: number;
   ratingCount: number;
+  /**
+   * WHO HAS ADOPTED, AND WHO HAS VOTED. P13C ROUND 12 — M-12.
+   *
+   * `install()` and `rate()` were `installs + 1` and a running average with NO
+   * IDENTITY: every call was a fresh adoption and a fresh vote. Any tenant
+   * holding `developer:manage` in its own organization — which every Owner of
+   * every self-created organization holds — could loop `ecosystem:listing.rate`
+   * and drive another tenant's PUBLISHED listing to `ratingAvg: 1.0,
+   * ratingCount: 100000`, or inflate its own to the top of `rankCatalog`.
+   * Neither handler carried `audit: true`, so the write was not even recorded.
+   *
+   * THE DIMENSION IS THE ORGANIZATION, and that is a decision rather than a
+   * default. This store's only identity seam is `tenancy.scopeOrDeny()`, which
+   * resolves a tenant; it has no user seam, and inventing one here would be
+   * guessing at semantics the rest of the subsystem does not share. Per-org also
+   * matches how adoption is already counted next door:
+   * `exchange/analytics.downloads30d` counts per-organization `Installation`
+   * rows through `requireCallerOrgId`. One adoption and one opinion per
+   * organization.
+   *
+   * OPTIONAL, AND LEGACY ROWS ARE NOT REWRITTEN. A row written before these
+   * fields existed keeps its `installs` / `ratingCount` / `ratingAvg` exactly as
+   * they are, and the maps start empty — historical totals are preserved rather
+   * than recomputed from an identity nobody recorded. New activity is idempotent
+   * per organization from that baseline forward. Discarding the old scalars to
+   * make the model tidy would be destroying real data to fix a counting bug.
+   */
+  installedBy?: Record<string, true>;
+  /** `organizationId → stars (1-5)`. See `installedBy`. */
+  ratings?: Record<string, number>;
   certified: boolean;
   createdAt: string;
   updatedAt: string;
