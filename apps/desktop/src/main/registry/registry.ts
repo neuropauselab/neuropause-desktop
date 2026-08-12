@@ -517,11 +517,68 @@ class Registry {
    */
   export(): string {
     const key = this.usageKey();
-    const mine: RegistryFile = {
+    /**
+     * P13C ROUND 12 — M-10. THE ROWS ARE SCRUBBED, NOT JUST THE MAP.
+     *
+     * The Round 9 (F20) fix filtered `usageByTenant` to the caller's bucket and
+     * spread `...this.file` for everything else — so the RAW `entries` rows went
+     * out untouched, and `RegistryEntry` still carries `launchCount`,
+     * `lastLaunchedAt` and `usage` as the install-wide accumulation. The exact
+     * information this function deliberately withheld through one field, it
+     * handed over through another.
+     *
+     * THE FUNCTION CONTRADICTED ITSELF, which is why this is a finding rather
+     * than a judgement call about what a platform operator may see. The
+     * migration note in this file states the row counters "are visible to no
+     * organization" — true of `toDto`, false here. A false statement inside a
+     * security declaration blinds the next reviewer exactly as a missing one
+     * does.
+     *
+     * The rows are now projected through the SAME rule `toDto` applies: the
+     * caller's own counters, never the row's accumulation. Install metadata
+     * (`previousVersion`, `permissionGrants`, hashes) is deliberately KEPT — it
+     * is not tenant-derived, a re-import needs it, and this channel is
+     * `cloud:operate`. Stripping it would be hiding data rather than fixing a
+     * boundary.
+     */
+    const entries: Record<string, RegistryEntry> = {};
+    for (const [slug, e] of Object.entries(this.file.entries)) {
+      const mine = this.file.usageByTenant?.[key]?.[slug] ?? emptyUsage();
+      entries[slug] = {
+        ...e,
+        launchCount: mine.launchCount,
+        lastLaunchedAt: mine.lastLaunchedAt,
+        usage: {
+          launches: mine.launchCount,
+          totalActiveMs: mine.totalActiveMs,
+          lastSessionAt: mine.lastSessionAt,
+        },
+      };
+    }
+    const authorized: RegistryFile = {
       ...this.file,
+      entries,
       usageByTenant: { [key]: this.file.usageByTenant?.[key] ?? {} },
     };
-    return JSON.stringify(mine, null, 2);
+    return JSON.stringify(authorized, null, 2);
+  }
+
+  /**
+   * THE LOSSLESS SERIALIZATION. P13C ROUND 12 — M-10.
+   *
+   * `backup()` called `export()`, so a backup was silently SCRUBBED: it kept
+   * only the taker's `usageByTenant` bucket and dropped every other
+   * organization's launch history. `restore()` is `import(raw, {merge:false})`,
+   * so restoring such a backup writes that loss back as fact. A backup that
+   * quietly discards other tenants' data is a DATA-LOSS PATH, it existed before
+   * M-10, and narrowing `export()` further would only have deepened it.
+   *
+   * The two callers are therefore split by intent rather than sharing one
+   * function: a backup is lossless and platform-scoped; an export is what the
+   * caller is authorized to receive. Private — `backup()` is the only caller.
+   */
+  private serializeAll(): string {
+    return JSON.stringify(this.file, null, 2);
   }
 
   async import(data: string, opts: { merge?: boolean } = {}): Promise<number> {
@@ -549,7 +606,9 @@ class Registry {
     await fs.mkdir(dir, { recursive: true });
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     const path = join(dir, `registry-${stamp}.json`);
-    await fs.writeFile(path, this.export(), { mode: 0o600 });
+    // P13C ROUND 12 — M-10. LOSSLESS, not the authorized export view. A backup
+    // that drops other tenants' counters restores that loss as fact.
+    await fs.writeFile(path, this.serializeAll(), { mode: 0o600 });
     log.info('Registry backed up', { path });
     return path;
   }
