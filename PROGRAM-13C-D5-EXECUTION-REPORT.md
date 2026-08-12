@@ -163,8 +163,9 @@ its end, so the step advance is **inferred**, and the amber notice rendering is
 
 | Gate | Result |
 |---|---|
-| Desktop main suite | **677 files / 7048 tests** (was 675 / 7021) |
-| Failures | 1 — `knowledgeBench.test.ts`, wall-clock budget, untouched file, **3/3 pass in isolation** |
+| Desktop suite | **764 files / 8011 tests, 0 failures** — measured on the Mac, 12 Aug, after `round17e`. |
+| ↳ correction | Every earlier round in this program, this one included, reported **677 / 7048**. That is `src/main` alone. `vitest.config.ts` also collects 87 renderer view-model files. A subset was published as a total, in the certification record, by me. |
+| Failures at time of writing | 1 — `knowledgeBench.test.ts`, wall-clock budget, untouched file, **3/3 pass in isolation**. Closed by `round17e`. |
 | Typecheck node / web | 0 / 0 |
 | `packages/shared` typecheck | clean |
 | Lint | clean |
