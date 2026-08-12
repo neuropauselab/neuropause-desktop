@@ -236,4 +236,32 @@ describe('First run persists real state at every step', () => {
     expect(landedOn).toBeUndefined();
     expect(unroutedChannels()).toEqual([]);
   });
+
+  /**
+   * P13C ROUND 17h — the HIGH's shape, two steps later in the same wizard.
+   *
+   * `chooseWorkspace` advanced inside its `try`, so a failed write left the
+   * user on this screen with the button they had just pressed doing nothing at
+   * all. A renderer-wide census found ten catches on write paths whose entire
+   * body is a log call; this was one of them, in code this program already
+   * owns.
+   */
+  it('a workspace choice that cannot be saved says so instead of going inert', async () => {
+    const user = userEvent.setup();
+    render(<FirstRunExperience onDone={noop} onSignIn={noop} />);
+    await user.click(screen.getByRole('button', { name: 'Try Free Locally' }));
+    await user.click(await screen.findByRole('button', { name: 'Keep it on this device' }));
+    const explore = await screen.findByRole('button', { name: 'Explore Business' });
+
+    // The profile write fails from here on — a disk error, a refused handler.
+    route('xp:profile.set', () => {
+      throw new Error('Profile is not writable');
+    });
+    await user.click(explore);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/could not be saved/i);
+    // Still on the workspace step: it did not advance on a write that failed.
+    expect(screen.getByRole('button', { name: 'Explore Business' })).toBeTruthy();
+  });
 });

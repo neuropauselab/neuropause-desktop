@@ -51,7 +51,15 @@ export function FirstRunExperience({
    * the error is surfaced instead of swallowed, and the effective mode is shown
    * rather than the preference being displayed as if it were in force.
    */
-  const [processingError, setProcessingError] = useState<string | null>(null);
+  /**
+   * ONE error channel for the screen, not one per step. P13C ROUND 17h.
+   *
+   * Named for the action rather than the step because the same thing is true
+   * everywhere here: a click that could not be persisted must say so. A second
+   * `workspaceError` state would have been the third place this screen learned
+   * the same lesson.
+   */
+  const [actionError, setActionError] = useState<string | null>(null);
   const [effectiveMode, setEffectiveMode] = useState<AiMode | null>(null);
   const [restrictedByPlatform, setRestrictedByPlatform] = useState(false);
   const [chosenType, setChosenType] = useState<WorkspaceType | null>(null);
@@ -102,7 +110,7 @@ export function FirstRunExperience({
    */
   const chooseProcessing = async (allowExternal: boolean): Promise<void> => {
     setBusy(true);
-    setProcessingError(null);
+    setActionError(null);
     try {
       const view = await ipc.aiConfig.setPreference(allowExternal ? 'private_first' : 'local_only');
       setEffectiveMode(view.effectiveMode);
@@ -135,7 +143,7 @@ export function FirstRunExperience({
        * fourteen rounds. A refusal here is now visible and actionable.
        */
       log.warn('Could not persist AI preference', { message: String(err) });
-      setProcessingError(
+      setActionError(
         'That choice could not be saved. You can continue and set it later in Settings.',
       );
     } finally {
@@ -145,6 +153,7 @@ export function FirstRunExperience({
 
   const chooseWorkspace = async (type: WorkspaceType): Promise<void> => {
     setBusy(true);
+    setActionError(null);
     try {
       // Persist the choice immediately (a quit here loses nothing), but do NOT
       // complete yet — discovery and the understanding check come first.
@@ -153,7 +162,18 @@ export function FirstRunExperience({
       setWorkspaceType(type);
       setStep('discovery');
     } catch (err) {
+      /**
+       * NOT SWALLOWED. P13C ROUND 17h.
+       *
+       * `setStep('discovery')` is inside the try, so a failure here left the
+       * user on this screen with the button they just pressed doing nothing
+       * and no explanation — the same shape as the D-5 HIGH, two steps later
+       * in the same wizard, written the same way. A census of the renderer
+       * found ten of these on write paths; this is one of the four in code
+       * this program already owns.
+       */
       log.warn('Could not persist workspace type', { message: String(err) });
+      setActionError('That choice could not be saved. Please try again.');
     } finally {
       setBusy(false);
     }
@@ -325,12 +345,12 @@ export function FirstRunExperience({
                 onChoose={() => void chooseProcessing(true)}
               />
             </div>
-            {processingError !== null && (
+            {actionError !== null && (
               <p
                 role="alert"
                 className="mt-6 rounded-lg border border-danger/40 bg-danger/10 px-4 py-3 text-center text-sm text-danger"
               >
-                {processingError}
+                {actionError}
               </p>
             )}
             {restrictedByPlatform && effectiveMode !== null && (
@@ -414,6 +434,19 @@ export function FirstRunExperience({
                 </div>
               ))}
             </div>
+            {/*
+              * P13C ROUND 17h — the same alert as the processing step, reading
+              * the same state. A click here that could not be persisted left
+              * the button inert and the screen silent; it now says so.
+              */}
+            {actionError !== null && (
+              <p
+                role="alert"
+                className="mt-6 rounded-lg border border-danger/40 bg-danger/10 px-4 py-3 text-center text-sm text-danger"
+              >
+                {actionError}
+              </p>
+            )}
           </motion.div>
         )}
 

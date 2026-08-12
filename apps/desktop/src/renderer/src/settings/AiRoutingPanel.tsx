@@ -33,6 +33,27 @@ export function AiRoutingPanel(): JSX.Element {
   const [routing, setRouting] = useState<AiRoutingStatusView | null>(null);
   const [usage, setUsage] = useState<AiRoutingUsage | null>(null);
   const [busy, setBusy] = useState(false);
+  /**
+   * THE SAME DEFECT AS THE D-5 HIGH, ON A DIFFERENT SCREEN. P13C ROUND 17h.
+   *
+   * `ai:config.setMode` is `cloud:operate` — platform-only, and refused on any
+   * install with no platform operator, which is every fresh one. All three
+   * calls below caught that refusal into `log.warn` and showed nothing. The
+   * radios are CONTROLLED by `routing.mode`, and `refresh()` never runs after a
+   * failure, so React puts the selection straight back: the control visibly
+   * un-clicks itself and says nothing. That is what produced twenty-two
+   * refusals in one first-run session — not a retry loop, a person clicking a
+   * control that appeared to be ignoring them.
+   *
+   * A message from the boundary is rendered verbatim. `secureBridge` already
+   * scrubs internal detail before it leaves main, and inventing a friendlier
+   * sentence here would mean classifying the failure by regex on English prose,
+   * which is what D-6 exists to stop.
+   */
+  const [error, setError] = useState<string | null>(null);
+
+  const describe = (err: unknown): string =>
+    err instanceof Error && err.message ? err.message : 'The request failed.';
 
   const refresh = useCallback(async (): Promise<void> => {
     try {
@@ -40,6 +61,7 @@ export function AiRoutingPanel(): JSX.Element {
       setUsage(await ipc.aiConfig.routingUsage());
     } catch (err) {
       log.warn('Routing status unavailable', err);
+      setError(describe(err));
     }
   }, []);
 
@@ -49,12 +71,14 @@ export function AiRoutingPanel(): JSX.Element {
 
   const setMode = async (mode: AiMode): Promise<void> => {
     setBusy(true);
+    setError(null);
     try {
       const next: AiConfigDto = await ipc.aiConfig.setMode(mode);
       void next;
       await refresh();
     } catch (err) {
       log.warn('Could not set AI mode', err);
+      setError(describe(err));
     } finally {
       setBusy(false);
     }
@@ -62,11 +86,13 @@ export function AiRoutingPanel(): JSX.Element {
 
   const setConsent = async (consent: boolean): Promise<void> => {
     setBusy(true);
+    setError(null);
     try {
       await ipc.aiConfig.setExternalConsent(consent);
       await refresh();
     } catch (err) {
       log.warn('Could not set consent', err);
+      setError(describe(err));
     } finally {
       setBusy(false);
     }
@@ -116,6 +142,15 @@ export function AiRoutingPanel(): JSX.Element {
             {routing?.mode === 'local_only' && ' (Local Only mode never uses external providers, regardless.)'}
           </span>
         </label>
+
+        {error !== null && (
+          <p
+            role="alert"
+            className="mt-2 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-2xs leading-relaxed text-danger"
+          >
+            {error}
+          </p>
+        )}
       </section>
 
       {/* ── Routes ── */}
