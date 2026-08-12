@@ -19,9 +19,10 @@ import { randomUUID } from 'node:crypto';
 import React from 'react';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { route, clearRoutes, unroutedChannels } from './setup';
+import { route, clearRoutes, unroutedChannels, routeTenantAiPreference } from './setup';
 import { IpcChannel } from '@neuropause/shared';
 import { createExperienceProfileService } from '@main/onboarding/experienceProfileService';
+import type { TenantAiPreferenceStore } from '@main/ai/tenantAiPreferenceStore';
 import { FirstRunExperience } from '@renderer/firstRun/FirstRunExperience';
 
 /**
@@ -33,6 +34,7 @@ const OPAQUE_BACKGROUNDS = ['app-bg', 'glass-panel'];
 
 let dir: string;
 let profile: ReturnType<typeof createExperienceProfileService>;
+let prefs: TenantAiPreferenceStore;
 
 beforeEach(async () => {
   cleanup();
@@ -48,8 +50,15 @@ beforeEach(async () => {
   // A real probe result — the processing step must not imply a local model
   // that is not there.
   route(IpcChannel.AiConfigDetectOllama, () => ({ reachable: false, models: [] }));
-  route(IpcChannel.AiConfigSetMode, () => ({}));
-  route(IpcChannel.AiConfigSetExternalConsent, () => ({}));
+  /**
+   * P13C ROUND 17g. `AiConfigSetMode` and `AiConfigSetExternalConsent` were
+   * routed here and are no longer called by first run — D-5 moved it to
+   * `ai:preference.set`, which was not routed at all, so two tests below broke
+   * on 12 Aug and stayed broken because nothing runs this suite. Dead routes
+   * are deleted rather than left: a route nothing calls is indistinguishable
+   * from a route that works.
+   */
+  prefs = routeTenantAiPreference(join(dir, 'ai-preference.json'));
 });
 
 afterEach(async () => {
@@ -186,5 +195,45 @@ describe('First run persists real state at every step', () => {
     await user.click(screen.getByRole('button', { name: 'Skip setup for now' }));
     await waitFor(() => expect(profile.get().state).toBe('skipped'));
     expect(profile.get().attributes).toEqual([]);
+  });
+
+  /**
+   * THE NOTICE, OBSERVED. P13C ROUND 17g.
+   *
+   * The D-5 report listed "confirm the amber notice renders (one look)" as work
+   * remaining for a human. That look would have found nothing. The notice lives
+   * inside the processing step, and the step advanced in the same handler that
+   * set the flag, so it existed for the length of one IPC round trip and then
+   * unmounted. A saved preference the platform cannot honour, and a screen that
+   * moves on without saying so, is the silent no-op D-5 was written to prevent.
+   *
+   * This test is that look, made automatic, and made to fail if the flash ever
+   * comes back.
+   */
+  it('the cloud path saves, SAYS the platform will not honour it, and waits', async () => {
+    const user = userEvent.setup();
+    let landedOn: string | null | undefined;
+    render(<FirstRunExperience onDone={(l) => (landedOn = l)} onSignIn={noop} />);
+    await user.click(screen.getByRole('button', { name: 'Try Free Locally' }));
+    await user.click(await screen.findByRole('button', { name: 'Allow approved cloud AI' }));
+
+    // The preference really is written, through the real tenant boundary.
+    await waitFor(() => expect(prefs.mine()?.mode).toBe('private_first'));
+    await waitFor(() => expect(profile.get().aiModeChosen).toBe(true));
+
+    // …and the screen says so, where a person can read it.
+    const notice = await screen.findByRole('status');
+    expect(notice.textContent).toMatch(/has not enabled external processing/);
+    // Nothing FAILED. A restriction and an error are different events and must
+    // not be announced as the same one.
+    expect(screen.queryByRole('alert')).toBeNull();
+    // It has not skipped past: the choice screen is still on screen.
+    expect(screen.getByText('Where should your AI work?')).toBeTruthy();
+
+    // And it is not a dead end — which is the failure this decision began with.
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByRole('button', { name: 'Explore Business' })).toBeTruthy();
+    expect(landedOn).toBeUndefined();
+    expect(unroutedChannels()).toEqual([]);
   });
 });

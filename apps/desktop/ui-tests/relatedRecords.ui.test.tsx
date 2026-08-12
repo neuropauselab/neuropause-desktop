@@ -71,7 +71,22 @@ async function wire(): Promise<void> {
   for (const moduleId of Object.keys(MODULES)) {
     stores[moduleId] = new EnterpriseRecordStore(join(dir, `${moduleId}.json`), moduleId, moduleId).bindScope(() => TEST_TENANT_SCOPE);
   }
-  relationships = new RelationshipStore(join(dir, 'rel.json'));
+  /**
+   * BOUND, like every store above it. P13C ROUND 17g.
+   *
+   * `8e9bb90` (Program 13C Round 2) gave `RelationshipStore` a `TenantOwnership`
+   * and `link()` calls `requireTenant()`, which throws when no organization is
+   * active. This line did not gain the `.bindScope` its siblings on line 72
+   * already had, so all seven tests in this file have failed since 11 August —
+   * unnoticed, because `test:ui` runs in no workflow and no release gate.
+   *
+   * A REAL tenant, not an ambient bypass. `vitest.setup.ts` installs fallback
+   * scopes for nine subsystems and deliberately does not cover `TenantOwnership`
+   * itself; adding one there would scope every tenant-owned store in every test
+   * by default and quietly weaken the isolation proofs this program rests on.
+   * The narrow fix is the honest one.
+   */
+  relationships = new RelationshipStore(join(dir, 'rel.json')).bindScope(() => TEST_TENANT_SCOPE);
   await Promise.all([...Object.values(stores).map((s) => s.load()), relationships.load()]);
 
   engine = new RelationshipEngine({

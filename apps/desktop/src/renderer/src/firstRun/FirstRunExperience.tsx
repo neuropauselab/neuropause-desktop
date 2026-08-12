@@ -108,7 +108,26 @@ export function FirstRunExperience({
       setEffectiveMode(view.effectiveMode);
       setRestrictedByPlatform(view.restrictedByPlatform);
       await ipc.firstRun.set({ aiModeChosen: true });
-      setStep('workspace');
+      /**
+       * A RESTRICTION IS SHOWN, NOT FLASHED. P13C ROUND 17g.
+       *
+       * `setStep('workspace')` unmounts this step, and the notice below lives
+       * inside it. Advancing unconditionally rendered that notice only in the
+       * gap between the state flush before the `await` above and the one after
+       * it — a few milliseconds, unreadable. The preference was saved, the
+       * platform could not honour it, and the screen moved on: precisely the
+       * silent no-op D-5 was written to prevent, reproduced inside the code
+       * that prevents it, and invisible to every test because no test mounted
+       * this screen.
+       *
+       * When the platform CAN honour the choice, nothing changes — the step
+       * advances as before. When it cannot, the step stays and the user
+       * continues with one deliberate click. That is not a dead end, which is
+       * the failure this decision started from; the button works. It is an
+       * acknowledgement, which is the least a product owes someone whose
+       * choice it has just filed away unfulfilled.
+       */
+      if (!view.restrictedByPlatform) setStep('workspace');
     } catch (err) {
       /**
        * NOT SWALLOWED. The old catch logged to a console nobody was attached to
@@ -324,13 +343,35 @@ export function FirstRunExperience({
                * preference IS saved and becomes effective the moment a platform
                * operator enables external processing.
                */
-              <p className="mt-6 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-center text-sm text-warning">
-                Saved. Your organization permits approved cloud AI — but this
-                installation has not enabled external processing, so AI work stays
-                on this device. Effective mode: {AI_MODE_LABELS[effectiveMode]}. Your
-                choice takes effect automatically once a platform operator turns
-                external processing on.
-              </p>
+              <div className="mt-6">
+                {/*
+                 * `role="status"` because this is not an error — nothing failed,
+                 * the write succeeded. It is a statement about what the saved
+                 * choice will and will not do, and assistive tech should
+                 * announce it as one. The error above keeps `role="alert"`; the
+                 * two are different events and must not read as the same one.
+                 */}
+                <p
+                  role="status"
+                  className="rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-center text-sm text-warning"
+                >
+                  Saved. Your organization permits approved cloud AI — but this
+                  installation has not enabled external processing, so AI work stays
+                  on this device. Effective mode: {AI_MODE_LABELS[effectiveMode]}. Your
+                  choice takes effect automatically once a platform operator turns
+                  external processing on.
+                </p>
+                {/*
+                 * The step does not advance on its own while this is showing —
+                 * see `chooseProcessing`. This button is the whole difference
+                 * between telling someone and appearing to.
+                 */}
+                <div className="mt-4 flex justify-center">
+                  <Button variant="primary" autoFocus onClick={() => setStep('workspace')}>
+                    Continue
+                  </Button>
+                </div>
+              </div>
             )}
             <p className="mt-6 text-center text-xs text-faint">
               Default is Private First: local processing is preferred wherever it can serve the request.

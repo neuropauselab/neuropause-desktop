@@ -11,12 +11,63 @@
  * message transport — everything the screens actually depend on is genuine.
  */
 import { vi } from 'vitest';
+import type { AiMode, TenantAiPreferenceView } from '@neuropause/shared';
+import { AiPreferenceSetRequest, IpcChannel } from '@neuropause/shared';
+import { TenantAiPreferenceStore } from '@main/ai/tenantAiPreferenceStore';
+import { composeAiPreferenceView } from '@main/ai/tenantAiPreferenceCompose';
+import { TEST_TENANT_SCOPE } from '@main/tenancy/testScope';
 
 type Handler = (payload: unknown) => unknown;
 const routes = new Map<string, Handler>();
 
 export function route(channel: string, handler: Handler): void {
   routes.set(channel, handler);
+}
+
+/**
+ * Route `ai:preference.*` against a REAL tenant-owned store and the REAL rule.
+ * P13C ROUND 17g.
+ *
+ * D-5 moved first run off `ai:config.setMode` (platform-only, `cloud:operate`)
+ * and onto this pair. Both first-run harnesses still routed the old channels
+ * with `() => ({})`, so every test that clicked a processing button broke the
+ * moment D-5 landed — and nobody saw it, because nothing runs this suite.
+ *
+ * The store is the production class, tenant-bound to the test scope, over a
+ * real temp file. The view goes through `composeAiPreferenceView`, the same
+ * function production calls. A hand-written `{ effectiveMode: … }` here would
+ * have been quicker and would have put a SECOND copy of the intersection rule
+ * in the codebase — the exact thing `tenantAiPreferenceCompose.ts` says must
+ * never exist, since the direction two copies drift apart in is the direction
+ * that grants capability nobody authorized.
+ *
+ * `platform` states the install's half explicitly. Its default is the fresh
+ * install D-5 exists for: Private First, external consent OFF, zero platform
+ * operators — the condition under which a tenant asking for cloud AI must be
+ * told the platform will not honour it.
+ */
+export function routeTenantAiPreference(
+  filePath: string,
+  platform: { mode: AiMode; externalConsent: boolean } = {
+    mode: 'private_first',
+    externalConsent: false,
+  },
+): TenantAiPreferenceStore {
+  const store = new TenantAiPreferenceStore(filePath).bindScope(() => TEST_TENANT_SCOPE);
+  const view = (): TenantAiPreferenceView =>
+    composeAiPreferenceView({
+      platformMode: platform.mode,
+      platformExternalConsent: platform.externalConsent,
+      row: store.mine(),
+    });
+  route(IpcChannel.AiPreferenceGet, () => view());
+  route(IpcChannel.AiPreferenceSet, async (payload) => {
+    // The real request schema, so a contract drift fails here rather than
+    // being absorbed by a permissive stub.
+    await store.setMine(AiPreferenceSetRequest.parse(payload).mode);
+    return view();
+  });
+  return store;
 }
 export function clearRoutes(): void {
   routes.clear();

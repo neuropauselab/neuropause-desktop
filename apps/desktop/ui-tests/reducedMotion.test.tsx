@@ -20,7 +20,7 @@ import { randomUUID } from 'node:crypto';
 import React from 'react';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { route, clearRoutes, unroutedChannels } from './setup';
+import { route, clearRoutes, unroutedChannels, routeTenantAiPreference } from './setup';
 import { IpcChannel } from '@neuropause/shared';
 import { initDecisions } from '@main/decisions/index';
 import { DecisionRecordStore } from '@main/decisions/decisionService';
@@ -87,8 +87,9 @@ beforeEach(async () => {
   route('dp:exportable', () => []);
   route('connectors:list', () => []);
   route(IpcChannel.AiConfigDetectOllama, () => ({ reachable: false, models: [] }));
-  route(IpcChannel.AiConfigSetMode, () => ({}));
-  route(IpcChannel.AiConfigSetExternalConsent, () => ({}));
+  // P13C ROUND 17g — since D-5 first run writes `ai:preference.set`, not
+  // `ai:config.setMode`. Real store, real rule; see `routeTenantAiPreference`.
+  routeTenantAiPreference(join(dir, 'ai-preference.json'));
 });
 
 afterEach(async () => {

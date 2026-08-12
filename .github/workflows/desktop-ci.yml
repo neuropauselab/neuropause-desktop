@@ -1,8 +1,17 @@
 name: desktop-ci
 
-# TD-4a (GA blocker): per-PR desktop CI. The desktop test suite is headless
-# (Vitest unit/model tests for the main + renderer logic — not the Electron UI),
-# so it runs on ubuntu and gates every change to the desktop app or shared types.
+# TD-4a (GA blocker): per-PR desktop CI. Both desktop suites are headless, so
+# they run on ubuntu and gate every change to the desktop app or shared types.
+#
+# P13C ROUND 17g — the UI suite was added here after fifteen rounds of security
+# certification ran against it while it was red. This comment previously read
+# "not the Electron UI", which was true of Electron and not true of `test:ui`:
+# that suite is jsdom + Testing Library, it mounts real components, and it runs
+# on ubuntu in under four seconds. It was excluded on a distinction that did not
+# apply to it, so `vitest run` (764 files) was the only gate and the ten
+# mounted-component tests ran in no workflow and no release. Two breakages sat
+# in it undetected — Round 2's tenancy binding and Round 17's D-5 channel move.
+# A suite nothing runs is not a gate; it is documentation that looks like one.
 
 on:
   push:
@@ -33,5 +42,7 @@ jobs:
         run: npx eslint apps/desktop --max-warnings 0
       - name: Test (desktop)
         run: npm run test -w @neuropause/desktop
+      - name: UI test (desktop — mounted components, jsdom)
+        run: npm run test:ui -w @neuropause/desktop
       - name: Build (desktop)
         run: npm run build -w @neuropause/desktop
