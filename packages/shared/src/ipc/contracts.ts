@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { HELP_DOC_IDS } from '../types/helpDocs';
+import { ONBOARDING_STEP_IDS } from '../types/onboarding';
 // Type-only (erased at compile time, so no runtime cycle with ../types).
 import type { ConflictStrategy, SyncEntityType } from '../types/sync';
 
@@ -2333,9 +2334,16 @@ export type FlagsClearOverrideRequest = z.infer<typeof FlagsClearOverrideRequest
 export const LicenseOrgRequest = z.object({ orgId: z.string().min(1) });
 export type LicenseOrgRequest = z.infer<typeof LicenseOrgRequest>;
 
-// --- Onboarding ---
+/* --- Onboarding ---
+ * P13C ROUND 17. This enum was written out by hand and omitted `'legal'`, the
+ * step `ONBOARDING_STEPS` puts SECOND — so the wizard sent a value the bridge
+ * refused and onboarding could not be completed on any install. It now consumes
+ * the catalog's own tuple, the same way `HelpOpenDocRequest` consumes
+ * `HELP_DOC_IDS` (imported at the top of this file), so the validator and the
+ * `OnboardingStepId` type cannot drift again: they are one list.
+ */
 export const OnboardingCompleteStepRequest = z.object({
-  step: z.enum(['welcome', 'organization', 'connectors', 'ai_setup', 'pilot']),
+  step: z.enum(ONBOARDING_STEP_IDS),
 });
 export type OnboardingCompleteStepRequest = z.infer<typeof OnboardingCompleteStepRequest>;
 
