@@ -23,6 +23,40 @@ export function attachLogFileSink(sink: (line: string) => void): void {
   fileSink = sink;
 }
 
+/**
+ * `JSON.stringify(new Error('boom'))` is `'{}'` — `name`, `message` and `stack`
+ * are non-enumerable. P13C ROUND 17: that one fact hid a fourteen-round outage.
+ * `index.ts` caught a fatal from `initRuntimeCore` and logged
+ * `Runtime core failed to initialize {}`; because, as this file's own header
+ * says, "in a packaged app console output goes nowhere", the file sink was the
+ * ONLY surviving diagnostic and it threw the error away. The console path
+ * printed the real object — to a console nobody was attached to.
+ *
+ * Normalize before serializing, and do it RECURSIVELY: an Error is at least as
+ * likely to arrive as a field of a meta object as on its own. Depth is capped
+ * because a log line is not a heap dump and `cause` chains can be long.
+ */
+export function serializableMeta(value: unknown, depth = 0): unknown {
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: value.message,
+      stack: value.stack,
+      ...(value.cause !== undefined && depth < 4
+        ? { cause: serializableMeta(value.cause, depth + 1) }
+        : {}),
+    };
+  }
+  if (depth >= 4) return value;
+  if (Array.isArray(value)) return value.map((v) => serializableMeta(v, depth + 1));
+  if (value !== null && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) out[k] = serializableMeta(v, depth + 1);
+    return out;
+  }
+  return value;
+}
+
 function emit(level: Level, scope: string, message: string, meta?: unknown): void {
   if (LEVEL_ORDER[level] < threshold) return;
   const prefix = `[${new Date().toISOString()}] ${level.toUpperCase()} (${scope})`;
@@ -37,7 +71,7 @@ function emit(level: Level, scope: string, message: string, meta?: unknown): voi
     let suffix = '';
     if (meta !== undefined) {
       try {
-        suffix = ` ${JSON.stringify(meta)}`;
+        suffix = ` ${JSON.stringify(serializableMeta(meta))}`;
       } catch {
         suffix = ' [unserializable meta]';
       }

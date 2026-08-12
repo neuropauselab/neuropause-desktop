@@ -150,9 +150,37 @@ export class ResourceStore extends EventEmitter<{ changed: [ResourceChangedEvent
    */
   private readonly tenancy = new TenantOwnership('infrastructure-resources');
 
-  /** Bind the tenant boundary. UNBOUND DENIES. Chainable. */
+  /**
+   * Bind the tenant boundary. UNBOUND DENIES. Chainable.
+   *
+   * P13C ROUND 17 — TWO BOUNDARIES, ONE CALL SITE.
+   *
+   * This class holds TWO registered tenant boundaries, not one: `tenancy` on
+   * the rows, and `graphCache` — a `TenantMemo`, which constructs its own
+   * `TenantOwnership` under the name `infrastructure-resource-graph`. Round 7
+   * bound the first and not the second, and `initInfrastructure` calls
+   * `.bindScope(deps.scope)` exactly once, on this method, so there was no
+   * second call site that could have caught it.
+   *
+   * The startup gate DID catch it — the first time it was ever allowed to run,
+   * after Round 17 moved it below the `init*()` calls it had been racing since
+   * Round 3. It was the only unbound store among 27 `TenantMemo` instances, and
+   * it had been masked for fourteen rounds by the thirteen ordering false
+   * positives that aborted composition before the honest check.
+   *
+   * IMPACT, STATED HONESTLY: an unbound memo fails CLOSED — `scopeOrDeny()`
+   * returns null, `state()` composes fresh and stores nothing, and the row
+   * filter beneath it was correctly bound the whole time. So this was never a
+   * cross-tenant read. It was a projection that silently never cached, and a
+   * keying protection that was never actually exercised for this one model.
+   *
+   * The binding happens HERE rather than at the composition root because the
+   * memo is this class's private field. A caller cannot be expected to know
+   * about a boundary it cannot see.
+   */
   bindScope(source: () => TenantScope | null): this {
     this.tenancy.bindScope(source);
+    this.graphCache.bindScope(source);
     return this;
   }
   hasScope(): boolean {

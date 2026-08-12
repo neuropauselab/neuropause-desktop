@@ -1005,43 +1005,38 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   graphStore.bindScope(activeTenantScope);
 
   /**
-   * THE STARTUP GATE — P13C Round 2, Phases 2 and 16.
+   * THE STARTUP GATES USED TO RUN HERE, AND THAT WAS THE BUG. P13C ROUND 17.
    *
-   * Four security sweeps found the same defect in four different subsystems,
-   * and every one of them was found because somebody happened to walk that
-   * code. That approach cannot converge: the risk was never in the audited
-   * files, it was in the ones the audit did not reach.
+   * Round 2 (`8e9bb90`) placed `assertAllTenantStoresBound()` on this line
+   * under the comment *"Placed AFTER every `bindScope` above and BEFORE any
+   * handler is registered."* The first half of that sentence stopped being true
+   * one round later, at Round 3 (`943dad8`), and nothing noticed for fourteen
+   * rounds because no round launched the application.
    *
-   * `assertAllTenantStoresBound()` inverts it. A tenant-sensitive store
-   * registers itself at CONSTRUCTION; this line asserts, once at startup, that
-   * every registered store has a boundary. A store nobody bound therefore
-   * cannot reach a user, because the application refuses to start.
+   * Thirteen tenant-scoped stores construct their `TenantOwnership` at import
+   * time — which REGISTERS them — and call `bindScope()` inside an `init*()`
+   * that runs several hundred lines BELOW this point:
    *
-   * Placed AFTER every `bindScope` above and BEFORE any handler is registered,
-   * so the failure happens at composition rather than on the first request.
+   *     initEcosystem   ~1313      initCloud       ~1390
+   *     initMarketplace ~1316      initFeedback    ~1468
+   *     initWebhooks    ~1325      initFederation  ~1470
+   *
+   * So the gate fired on a TRANSIENT state and named thirteen stores that were
+   * about to be bound perfectly well. The throw landed in the `try/catch`
+   * around `initRuntimeCore` in `index.ts`, composition died on this line, and
+   * `registerSecureHandlers` — 2,800 lines below — never ran. The application
+   * presented a complete UI while answering "No handler registered" for
+   * essentially every channel. A gate built to prevent a broken install was the
+   * only thing breaking it.
+   *
+   * Both gates now run immediately before `registerSecureHandlers`, beside
+   * `assertAllChannelsClassified` — the ONE point in this function where "after
+   * every bindScope and before any handler" is actually true. Their original
+   * comments moved with them. This note stays here because the empty space is
+   * the finding: an assertion is only as good as its position, and position is
+   * not something a unit test that never calls this function can check.
+   * `tenancy/round17CompositionOrder.test.ts` now checks it.
    */
-  assertAllTenantStoresBound();
-
-  /**
-   * THE SECOND GATE, AND IT WAS NEVER WIRED. P13C ROUND 9.
-   *
-   * Round 8 built `assertAllStoreScopesBound()` and documented it as "called
-   * from the composition root before any handler is registered, so an unbound
-   * store cannot reach a user". It was never called from anywhere but its own
-   * test. So every `isBound` predicate written into the 21 declarations that
-   * round was decoration: a store could declare `TENANT`, have no boundary
-   * bound, and the application would start and serve.
-   *
-   * The two assertions overlap DELIBERATELY and are not redundant.
-   * `assertAllTenantStoresBound` covers stores that registered a
-   * `TenantOwnership`; this one covers everything that declared a SCOPE,
-   * including stores whose seam is their own and which never touch that class.
-   * A store can pass either gate and fail the other, which is exactly why both
-   * run — and why a Round 8 gate that only ever ran in a test is a finding
-   * about this program's own instrumentation, recorded here rather than quietly
-   * fixed.
-   */
-  assertAllStoreScopesBound();
 
   onWorkspaceSwitch(() => {
     dataPlane.forgetPlans();
@@ -3881,6 +3876,48 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   });
   twinRef = digitalTwinPlatform;
   defs.push(...digitalTwinPlatform.handlers);
+
+  /**
+   * THE STARTUP GATE — P13C Round 2, Phases 2 and 16. MOVED HERE IN ROUND 17.
+   *
+   * Four security sweeps found the same defect in four different subsystems,
+   * and every one of them was found because somebody happened to walk that
+   * code. That approach cannot converge: the risk was never in the audited
+   * files, it was in the ones the audit did not reach.
+   *
+   * `assertAllTenantStoresBound()` inverts it. A tenant-sensitive store
+   * registers itself at CONSTRUCTION; this line asserts, once at startup, that
+   * every registered store has a boundary. A store nobody bound therefore
+   * cannot reach a user, because the application refuses to start.
+   *
+   * Placed AFTER every `bindScope` — including the thirteen that happen inside
+   * `initEcosystem` / `initMarketplace` / `initWebhooks` / `initCloud` /
+   * `initFeedback` / `initFederation`, which is what the Round 2 position got
+   * wrong — and BEFORE any handler is registered, so the failure happens at
+   * composition rather than on the first request. See the note at the old site.
+   */
+  assertAllTenantStoresBound();
+
+  /**
+   * THE SECOND GATE, AND IT WAS NEVER WIRED. P13C ROUND 9. MOVED IN ROUND 17.
+   *
+   * Round 8 built `assertAllStoreScopesBound()` and documented it as "called
+   * from the composition root before any handler is registered, so an unbound
+   * store cannot reach a user". It was never called from anywhere but its own
+   * test. So every `isBound` predicate written into the 21 declarations that
+   * round was decoration: a store could declare `TENANT`, have no boundary
+   * bound, and the application would start and serve.
+   *
+   * The two assertions overlap DELIBERATELY and are not redundant.
+   * `assertAllTenantStoresBound` covers stores that registered a
+   * `TenantOwnership`; this one covers everything that declared a SCOPE,
+   * including stores whose seam is their own and which never touch that class.
+   * A store can pass either gate and fail the other, which is exactly why both
+   * run — and why a Round 8 gate that only ever ran in a test is a finding
+   * about this program's own instrumentation, recorded here rather than quietly
+   * fixed.
+   */
+  assertAllStoreScopesBound();
 
   // Startup invariant (fail-closed): with every def now assembled, no runtime-invokable
   // channel may ride on sender-trust ALONE. Collect the channels that ended up gated —
