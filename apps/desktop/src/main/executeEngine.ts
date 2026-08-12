@@ -16,6 +16,7 @@ import {
   type ExecutionStats,
 } from '@neuropause/shared';
 import { createLogger } from './logger';
+import type { ExecutionGate } from './execution/executionGovernance';
 
 const log = createLogger('execute-engine');
 
@@ -39,6 +40,16 @@ export interface ExecuteEngineDeps {
   /** Durable persistence hook (V5.8). Engine stays unaware of the implementation. */
   persist?: (session: ExecutionSession) => void;
   now?: () => number;
+  /**
+   * Governance gate. Every request is put to it BEFORE dispatch, and a request it
+   * refuses never reaches an executor. Injected like every other dep, so the
+   * engine stays unaware of the decision core (see execution/executionGovernance.ts).
+   *
+   * Optional ONLY so existing unit tests construct the engine unchanged. In the
+   * composition root it is REQUIRED: without it `execute:run` is gated by RBAC
+   * alone — may this user call the channel — with no verdict on the action itself.
+   */
+  gate?: ExecutionGate;
 }
 
 const MAX_HISTORY = 200;
@@ -87,7 +98,12 @@ export class ExecuteEngine {
     this.sessions.set(id, session);
     this.deps.persist?.(session);
     const startedMs = this.now();
-    this.emit('execution.started', 'normal', { kind: req.kind, label: session.label, id }, session.correlationId);
+    this.emit(
+      'execution.started',
+      'normal',
+      { kind: req.kind, label: session.label, id },
+      session.correlationId,
+    );
 
     const setStep = (index: number): void => {
       if (session.state !== 'running') return;
@@ -99,6 +115,30 @@ export class ExecuteEngine {
     };
 
     try {
+      // Governance BEFORE dispatch. A refusal is a finished session with an
+      // honest error — recorded in history like any other outcome, because an
+      // audit trail that only records what ran cannot evidence what was stopped.
+      const decision = this.deps.gate?.(req);
+      if (decision && !decision.allowed) {
+        this.emit(
+          'execution.denied',
+          'high',
+          {
+            kind: req.kind,
+            label: session.label,
+            id,
+            decision: decision.verdict.decision,
+          },
+          session.correlationId,
+        );
+        log.warn('execution refused by governance', {
+          kind: req.kind,
+          decision: decision.verdict.decision,
+        });
+        this.finish(session, startedMs, false, null, decision.reason);
+        return session;
+      }
+
       const executor = this.executors.get(req.kind);
       if (!executor) {
         this.finish(session, startedMs, false, null, `No executor registered for '${req.kind}'`);
@@ -152,7 +192,13 @@ export class ExecuteEngine {
     this.emit(
       ok ? 'execution.completed' : 'execution.failed',
       ok ? 'normal' : 'high',
-      { kind: session.kind, label: session.label, id: session.id, durationMs: session.durationMs, ok },
+      {
+        kind: session.kind,
+        label: session.label,
+        id: session.id,
+        durationMs: session.durationMs,
+        ok,
+      },
       session.correlationId,
     );
     log.info('execution finished', { kind: session.kind, ok, durationMs: session.durationMs });
@@ -181,7 +227,12 @@ export class ExecuteEngine {
     this.history.unshift({ ...session });
     if (this.history.length > MAX_HISTORY) this.history.length = MAX_HISTORY;
     this.deps.persist?.(this.history[0]);
-    this.emit('execution.cancelled', 'normal', { kind: session.kind, id, label: session.label }, session.correlationId);
+    this.emit(
+      'execution.cancelled',
+      'normal',
+      { kind: session.kind, id, label: session.label },
+      session.correlationId,
+    );
     return session;
   }
 
