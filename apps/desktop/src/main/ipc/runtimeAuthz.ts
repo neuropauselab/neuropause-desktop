@@ -644,6 +644,81 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
   [IpcChannel.CrashGetStatus]: 'operations:read',
   [IpcChannel.RegistryExport]: 'cloud:operate',
   /**
+   * P13C ROUND 12 — PHASE 5. THE FINAL PUBLIC-ALLOWLIST SWEEP.
+   *
+   * Round 11 closed four MEDIUM findings that all lived in this list, and said
+   * the bucket was "smaller but not empty". It was not empty. A full sweep of
+   * every remaining entry against SCOPE + AUTHORITY + PAYLOAD + MUTABILITY found
+   * fourteen more, and nine of them are ONE DEFECT wearing different names:
+   *
+   *   A GENERATOR OVER THE TENANT CORPUS WAS ADMITTED AS "READ-ONLY".
+   *
+   * "Read-only" answers MUTABILITY. The allowlist rule is about the PAYLOAD.
+   * Every one of these reads the same `unified-entities` / `ai-memory-store` /
+   * timeline rows — declared TENANT + CUSTOMER_DERIVED — and returns record
+   * titles, body excerpts, actor labels and synthesised summaries, while the
+   * STORED form of the identical data is already gated `intelligence:read`:
+   *
+   *   `enterprise:timeline.export/.replay/.stats` — the same private `collect()`
+   *     as `enterprise:timeline.query`, which is gated. `export` is the strictly
+   *     WIDER door: unpaginated, every entry, body excerpt attached.
+   *   `briefing:generate`   — `unifiedStore.query({limit: 1_000_000})`, emitted as
+   *     "Meeting: <title>", "Document: <title>", with 140-char body excerpts.
+   *   `knowledge:related` / `.topics` / `.health` — a THIRD retrieval strategy
+   *     over `memoryStore.allItems()`, whose other two strategies (`memory:recall`,
+   *     `memory:semanticRecall`) are both `intelligence:read`. The A6 note in
+   *     this file already states the rule: "the gate belongs to the data, not to
+   *     the retrieval strategy."
+   *   `recommendations:generate` — carries `rationale`, `entityRefs`, `evidence`;
+   *     `decision:list` was pulled off this allowlist in Round 2 for exactly that
+   *     payload, and `decision:createFromRecommendation` turns these INTO those.
+   *   `voice:turn` — speaks `composeExecutiveSnapshot`, whose written form
+   *     (`ExecutiveCenterSnapshot`) is `intelligence:read`. The channel name says
+   *     voice; the payload is org intelligence.
+   *
+   * The remaining five are their own shapes:
+   *
+   *   `notifications:list` / `.markRead` — the inbox store DECLARES itself
+   *     TENANT + CUSTOMER_DERIVED and its own comment says "a notification BODY
+   *     carries business data — the delivered title interpolates the subject's
+   *     name". Admitted here as "per-user local data", which was true of the
+   *     PREFERENCES and never of the rows. `prefs.get/.set` stay public.
+   *   `platform:emit` — a PUBLIC WRITE into a TENANT + CUSTOMER_DERIVED store
+   *     whose authority is SYSTEM, i.e. rows the product produces and a caller
+   *     does not author. It let an unauthenticated renderer write timeline rows
+   *     with a chosen `resourceName`, read back later by the gated
+   *     `timeline.query` as observed activity — into an append-only log the
+   *     declaration says is "never trimmed", with no rate limit above it.
+   *   `crash:recommendations` — the THIRD door on the archive whose two siblings
+   *     were gated last round, and the M-7 comment block never mentioned it. Its
+   *     payload is advisories rather than records, but they are thresholded on
+   *     install-wide fault counts that move when another tenant's session
+   *     crashes, which is the inference clause.
+   *   `pilot:setEnabled` — a PUBLIC mutation of one install-global JSON. Lowest
+   *     severity here (the blast radius is a badge) and the only store in the
+   *     group with NO `declareStoreScope` at all, which is why nothing
+   *     structural caught it.
+   *
+   * `dashboard:read` for the per-user surfaces and `operations:read` /
+   * `intelligence:read` for the rest are all in the READ_ONLY base role, so no
+   * signed-in member loses a path. What changes is that a SIGNED-OUT context
+   * loses all of them.
+   */
+  [IpcChannel.EnterpriseTimelineExport]: 'intelligence:read',
+  [IpcChannel.EnterpriseTimelineReplay]: 'intelligence:read',
+  [IpcChannel.EnterpriseTimelineStats]: 'intelligence:read',
+  [IpcChannel.BriefingGenerate]: 'intelligence:read',
+  [IpcChannel.KnowledgeRelated]: 'intelligence:read',
+  [IpcChannel.KnowledgeTopics]: 'intelligence:read',
+  [IpcChannel.KnowledgeHealth]: 'intelligence:read',
+  [IpcChannel.RecommendationsGenerate]: 'intelligence:read',
+  [IpcChannel.VoiceTurn]: 'intelligence:read',
+  [IpcChannel.NotificationsList]: 'dashboard:read',
+  [IpcChannel.NotificationsMarkRead]: 'dashboard:read',
+  [IpcChannel.PlatformEmit]: 'dashboard:read',
+  [IpcChannel.CrashRecommendations]: 'operations:read',
+  [IpcChannel.PilotSetEnabled]: 'org:manage',
+  /**
    * P13C ROUND 10 — NEW-M8. SEVEN CHANNELS THAT WERE PUBLIC **AND** GATED.
    *
    * Each of these carries a permission stamped by its family gate
@@ -873,7 +948,6 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
    * inspecting the bytes, finding five genuinely install-level integers, and
    * taking it off this list anyway. Same reasoning, third instance.
    */
-  IpcChannel.PlatformEmit,
   // ── Unified knowledge read projections ──
   IpcChannel.UnifiedGet,
   IpcChannel.UnifiedCounts,
@@ -893,16 +967,8 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
    */
   IpcChannel.MemoryCounts,
   // ── Knowledge reads ──
-  IpcChannel.KnowledgeRelated,
-  IpcChannel.KnowledgeTopics,
-  IpcChannel.KnowledgeHealth,
   // ── Enterprise timeline read projections (query is gated separately) ──
-  IpcChannel.EnterpriseTimelineReplay,
-  IpcChannel.EnterpriseTimelineStats,
-  IpcChannel.EnterpriseTimelineExport,
   // ── Daily intelligence generators (read-only) ──
-  IpcChannel.BriefingGenerate,
-  IpcChannel.RecommendationsGenerate,
   /**
    * ── Decision + automation read listings ──
    *
@@ -936,7 +1002,6 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   IpcChannel.LicenseReportHealth,
   IpcChannel.DeviceReportHealth,
   IpcChannel.VoiceStatus,
-  IpcChannel.VoiceTurn,
   IpcChannel.DevicesList,
   // Mobile M1-03 — companion gateway status + paired-device list are local reads.
   IpcChannel.CompanionStatus,
@@ -993,7 +1058,6 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
    * discloses nothing to anyone.
    */
   IpcChannel.CrashSetOptIn,
-  IpcChannel.CrashRecommendations,
   IpcChannel.CrashReport,
   /**
    * P13C ROUND 10 — NEW-M2. `ReleaseDiagnosticsGet` and
@@ -1060,12 +1124,9 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   // ── Phase 6 Stage 5 (D-8) — Notification Inbox + delivery preferences
   // (per-user local data, the AiConfig sender-trust precedent; zod-validated,
   // and `notifications:prefs.set` is bridge-audited on its handler def) ──
-  IpcChannel.NotificationsList,
-  IpcChannel.NotificationsMarkRead,
   IpcChannel.NotificationsPrefsGet,
   IpcChannel.NotificationsPrefsSet,
   IpcChannel.PilotStatus,
-  IpcChannel.PilotSetEnabled,
   /**
    * P13C ROUND 11 — M-5. THE FOUR UPDATER MUTATIONS WERE HERE. THE WORST OF
    * THIS ROUND, because the resource is the APPLICATION BINARY ITSELF.
