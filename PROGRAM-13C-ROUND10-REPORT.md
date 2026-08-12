@@ -17,8 +17,10 @@ Round 10 commits: `6f9b7c6`, `633084f`, `8059822`, `13f3831`, `3b4b036`.
 Three disqualifying reasons:
 
 1. **Fourteen MEDIUM security findings are open**, raised by this round's fresh red team and not yet closed.
-2. **Native Mac build, real multi-organization runtime and restart persistence were not performed.** This round ran in a Linux container. A verification script has been produced for you to run; until its results exist, these are **NOT TESTED**.
+2. **Real multi-organization runtime and restart persistence were not performed.** The native Mac BUILD is now verified — 25/25 including the backend bundle (§22) — but Phases 23 and 24 need a person to drive the application, and they remain **NOT TESTED**.
 3. **The fresh red team has not been re-run** since this round's three HIGH fixes. The certification loop requires a red team that finds zero HIGH *after* the fixes, not before.
+
+**What is no longer a reason:** the native build. It passed on the Mac against this exact commit, including the backend bundle that has been unverifiable in the container since Round 8.
 
 **What did change:** all six HIGH findings carried in from Round 9 are closed, the three new HIGH this round's red team found are closed, and **five further HIGH findings were discovered by the new structural invariant and closed** — fourteen HIGH in total.
 
@@ -178,7 +180,7 @@ Renderer-supplied ids are identifiers everywhere they were found to be authority
 | Typecheck | **0 errors**, every release workspace, node and web |
 | Lint | **clean**, `--max-warnings 0` |
 | Desktop build | **green** |
-| Backend build | **NOT VERIFIED THIS ROUND** — the container's esbuild host skew was not worked around; it is in the Mac script |
+| Backend build | **PASS — verified natively on the Mac** (see §22). The container's esbuild host skew was not worked around; it did not need to be |
 
 No assertion weakened, no test disabled, no timeout relaxed. Where an existing test asserted the old behaviour it was corrected to bind the boundary as production does **and strengthened with a cross-owner case** — including `federationAuthz.test.ts`, whose `expect(p).toMatch(/^federation:/)` *was the finding's own assumption* and now asserts the authority axis instead.
 
@@ -190,17 +192,31 @@ One honest note from an agent: a first-pass scheduler test **passed both ways** 
 
 ---
 
-## 22. NATIVE MAC
+## 22. NATIVE MAC — **VERIFIED**
 
-| | |
+Run 12 August 2026 on macOS 26.5.2, arm64, Node v20.20.2, against `201d70d`.
+**25 checks, 25 PASS, 0 FAIL.**
+
+| Gate | Result |
 |---|---|
-| **Build** | **NOT TESTED** |
-| **Runtime** | **NOT TESTED** |
-| **Checklist** | **NOT PERFORMED** |
+| `npm ci` | **PASS** |
+| Typecheck, all release workspaces | **PASS** |
+| Lint | **PASS** |
+| Desktop main tests | **PASS — 660 files / 6822 tests** |
+| Renderer + shared tests | **PASS — 87 files / 963 tests** |
+| Desktop build | **PASS** |
+| **Backend build (`tsup`)** | **PASS — natively** |
+| 18 named security suites | **PASS**, each run individually |
 
-This round ran in an isolated Linux container; a macOS Electron application cannot be built or launched from it.
+**The backend bundle is the one that matters here.** It has failed in the Linux container every round on an esbuild host/binary skew, and every previous report had to record it as unverified rather than claim it. It builds end to end on the Mac. That gate is now a result.
 
-**`scripts/p13c-round10-mac-verify.sh` is ready for you to run.** It automates the build and every gate including the backend bundle, names all eighteen security suites individually so a silent skip is visible, and emits `P13C-ROUND10-MAC-RESULTS.txt`.
+**Integrity of the run:** the script reported the worktree `DIRTY`, which is its own false positive — it tests for any `git status --porcelain` output and cannot distinguish its own results file from an edit. `git diff --stat` was empty and `git status --short` showed exactly one untracked entry, `P13C-ROUND10-MAC-RESULTS.txt`. **Zero tracked-file changes**, so the run is against `201d70d` and nothing else.
+
+**Cross-check:** the macOS and container runs agree exactly — 660/6822 and 87/963 in both. The security suites are not host-sensitive, which is the useful negative: nothing was passing in one environment and failing in the other.
+
+## 22b. WHAT THE MAC RUN DID NOT COVER
+
+Phases 23 and 24 below remain **NOT TESTED**. The automated half of `scripts/p13c-round10-mac-verify.sh` is complete; its hand-checklist is not, and no line of it may be marked PASS by inference from the build passing.
 
 ## 23. REAL A/B/C RUNTIME
 
@@ -267,7 +283,7 @@ It failed **closed** — which is why ten rounds of isolation testing never saw 
 | Resolver attachment structurally verified | **PARTIAL** — data yes, authority now pinned, the general gate still reads binding sites only |
 | Automated tests green | **PASS** |
 | Negative controls green | **PASS** |
-| Native Mac build | **NOT TESTED** |
+| Native Mac build | **PASS** — 25/25, backend bundle included |
 | Native Mac runtime | **NOT TESTED** |
 | Real A/B/C in the running app | **NOT TESTED** |
 | Restart / persistence | **NOT TESTED** |
