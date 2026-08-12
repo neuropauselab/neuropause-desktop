@@ -1,0 +1,27 @@
+{
+  "product": "NeuroPause OS",
+  "channel": "beta",
+  "version": "1.0.0-rc.15",
+  "build": "1.0.0-rc.15+aec87bd",
+  "gitCommit": "aec87bd",
+  "branch": "feat/understanding-holds-motion-system",
+  "dirty": false,
+  "buildTime": "2026-08-12T19:49:44.208Z",
+  "platform": "win32",
+  "architecture": "x64",
+  "installerArch": "x86",
+  "electronVersion": "42.8.1",
+  "nodeVersion": "20",
+  "artifact": "NeuroPause-Founder-Test-Setup.exe",
+  "artifactBytes": 110820498,
+  "artifactSha256": "693ae976fa5d07eab47d0c877e8379a735c4817be900015d1abe21b0b97a587b",
+  "signingStatus": "NOT CONFIGURED",
+  "notarizationStatus": "NOT APPLICABLE (Windows)",
+  "certificationStatus": "PROGRAM 13C — NOT CERTIFIED",
+  "testSummary": {
+    "desktopNode": "765 files / 8018 tests",
+    "desktopUi": "11 files / 116 tests",
+    "backendUnit": "37 files / 418 tests",
+    "backendIntegration": "2 files / 17 tests"
+  }
+}
