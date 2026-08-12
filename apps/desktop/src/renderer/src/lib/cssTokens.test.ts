@@ -36,7 +36,9 @@ function referencedTokens(dir: string, out: { token: string; file: string }[] = 
     if (!/\.tsx?$/.test(entry) || entry.endsWith('.test.ts') || entry.endsWith('.test.tsx')) continue;
     const source = readFileSync(path, 'utf8');
     for (const match of source.matchAll(/var\((--[a-z0-9-]+)/gi)) {
-      out.push({ token: match[1], file: path.slice(RENDERER_SRC.length + 1) });
+      // P13C ROUND 17k — `/` on every platform, so a failure message reads the same
+      // on Windows as it does here.
+      out.push({ token: match[1], file: path.slice(RENDERER_SRC.length + 1).replace(/\\/g, '/') });
     }
   }
   return out;

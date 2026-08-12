@@ -152,6 +152,32 @@ describe('the credential vault', () => {
       tokenType: 'Bearer',
     });
     const stat = await fs.stat(vaultFile());
+    /**
+     * POSIX ONLY, AND SAID OUT LOUD. P13C ROUND 17k.
+     *
+     * Windows has no POSIX permission bits. Node reports mode 0o666 for every
+     * file there and `chmod(0o600)` is a no-op, so this assertion measured 54
+     * (0o66) on the first Windows release run and failed — not because the
+     * vault regressed, but because the control it checks does not exist on that
+     * platform. Access control on Windows is an ACL, and `%APPDATA%` is already
+     * user-scoped.
+     *
+     * ANNOUNCED, NOT SKIPPED. A security assertion that quietly does not apply
+     * on a platform is indistinguishable from one that passes there, and the
+     * difference is the whole point. The line below appears in the Windows log
+     * so nobody reads a green run as proof of a file mode nobody checked.
+     *
+     * What still holds on Windows is the stronger property, asserted in the
+     * test above: the tokens are not in the file in readable form at all.
+     */
+    if (process.platform === 'win32') {
+      // eslint-disable-next-line no-console
+      console.log(
+        '[tokenCore] owner-only file mode NOT ASSERTED on win32 — POSIX mode bits do not ' +
+          'exist there. Vault contents remain encrypted (asserted separately).',
+      );
+      return;
+    }
     // A world-readable credential file is a credential file in name only.
     expect(stat.mode & 0o077).toBe(0);
   });

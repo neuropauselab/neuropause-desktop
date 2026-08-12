@@ -287,7 +287,23 @@ describe('every persistent store declares a scope', () => {
   it('a file that persists state either declares a scope or is listed as not-a-store', () => {
     const undeclared: string[] = [];
     for (const path of sourceFiles(MAIN)) {
-      const rel = path.slice(MAIN.length + 1);
+      /**
+       * FORWARD SLASHES ON EVERY PLATFORM. P13C ROUND 17k.
+       *
+       * `slice()` leaves the OS separator in place, so on Windows this produced
+       * `backup\\backupManager.ts` while every key in NOT_A_STORE is written
+       * `backup/backupManager.ts`. The allow-list stopped matching and this gate
+       * reported four files as undeclared stores that have been declared for days.
+       *
+       * A path comparison IS the security control here: every exemption in this
+       * file is keyed by one. A separator is not a cosmetic detail when the string
+       * decides whether a store is exempt.
+       *
+       * `tenantStoreRegistry.test.ts` already carried exactly this `.replace`. One
+       * file knew; the knowledge never spread, and no Windows run existed to force
+       * the issue until the first founder build.
+       */
+      const rel = path.slice(MAIN.length + 1).replace(/\\/g, '/');
       if (NOT_A_STORE[rel] !== undefined) continue;
       const src = readFileSync(path, 'utf8');
       if (!persistsState(src)) continue;
@@ -318,7 +334,8 @@ describe('every persistent store declares a scope', () => {
   it('a file that persists AND removes rows declares retentionScope and retentionAuthority', () => {
     const missing: string[] = [];
     for (const path of sourceFiles(MAIN)) {
-      const rel = path.slice(MAIN.length + 1);
+      // P13C ROUND 17k — `/` on every platform; see above.
+      const rel = path.slice(MAIN.length + 1).replace(/\\/g, '/');
       if (NOT_A_STORE[rel] !== undefined) continue;
       const src = readFileSync(path, 'utf8');
       if (!persistsState(src)) continue;

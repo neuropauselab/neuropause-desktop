@@ -425,10 +425,10 @@ describe('every persisting file in the main process is classified', () => {
         const classification = /classification:\s*'(\w+)'/.exec(block)?.[1];
         const global = scope === 'INSTALL_GLOBAL' || scope === 'PLATFORM_GLOBAL';
         if (global && classification === 'CUSTOMER_DERIVED') {
-          offenders.push(`${path.slice(MAIN.length + 1)}: ${scope} + CUSTOMER_DERIVED`);
+          offenders.push(`${path.slice(MAIN.length + 1).replace(/\\/g, '/')}: ${scope} + CUSTOMER_DERIVED`);
         }
         if (global && authority === 'ORG_ROLE') {
-          offenders.push(`${path.slice(MAIN.length + 1)}: ${scope} + ORG_ROLE`);
+          offenders.push(`${path.slice(MAIN.length + 1).replace(/\\/g, '/')}: ${scope} + ORG_ROLE`);
         }
       }
     }

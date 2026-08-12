@@ -89,7 +89,8 @@ describe('a declared tenant seam is bound to the PRINCIPAL-AWARE resolver', () =
     for (const path of sourceFiles(MAIN)) {
       const src = readFileSync(path, 'utf8');
       if (!src.includes('.bindScope(')) continue;
-      const rel = path.slice(MAIN.length + 1);
+      // P13C ROUND 17k — `/` on every platform. See storeScopeGate.test.ts.
+      const rel = path.slice(MAIN.length + 1).replace(/\\/g, '/');
       for (const arg of bindScopeArguments(src)) {
         if (SESSION_ONLY.test(arg)) offenders.push(`${rel}  →  bindScope(${arg})`);
       }

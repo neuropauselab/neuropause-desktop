@@ -30,7 +30,14 @@ function sourceFiles(dir: string, out: { path: string; source: string }[] = []) 
       continue;
     }
     if (!/\.tsx?$/.test(entry) || /\.test\.tsx?$/.test(entry)) continue;
-    out.push({ path: path.slice(RENDERER_SRC.length + 1), source: readFileSync(path, 'utf8') });
+    out.push({
+      // P13C ROUND 17k — see storeScopeGate.test.ts: `slice()` keeps the OS separator,
+      // so on Windows every key below stopped matching and each justified file was
+      // reported BOTH as an unjustified offender and as a stale entry naming a file
+      // that no longer exists. The same file, accused of both at once.
+      path: path.slice(RENDERER_SRC.length + 1).replace(/\\/g, '/'),
+      source: readFileSync(path, 'utf8'),
+    });
   }
   return out;
 }
