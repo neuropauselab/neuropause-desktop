@@ -124,6 +124,17 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
   [IpcChannel.AiConfigSetModel]: 'cloud:operate',
   [IpcChannel.AiConfigSetCredential]: 'cloud:operate',
   [IpcChannel.AiConfigSetMode]: 'cloud:operate',
+  /**
+   * P13C ROUND 17 · D-5. Listed here AND in `AI_CHANNEL_AUTHORITY` because
+   * `ai:` is not a self-gated prefix: `withAiAuthz` cross-checks the two maps
+   * and throws when they disagree, so the duplication is a consistency check
+   * rather than a second source of truth.
+   *
+   * Tenant RBAC, NOT `cloud:operate`. The row above governs the machine; these
+   * govern one organization's preference, which can only narrow it.
+   */
+  [IpcChannel.AiPreferenceGet]: 'org:read',
+  [IpcChannel.AiPreferenceSet]: 'org:manage',
   [IpcChannel.AiConfigSetExternalConsent]: 'cloud:operate',
   /**
    * P13C ROUND 3 — feedback came OFF the public allowlist.

@@ -59,6 +59,13 @@ export const TENANT_ARCHIVE_SCHEMA_VERSION = 1;
  * registered source, the archive says so and the gate test reports it.
  */
 export const TENANT_DERIVED_DOMAINS = [
+  /**
+   * P13C ROUND 17 · D-5. The nineteenth domain, added because the store is
+   * genuinely tenant-derived — not removed to keep the ratio flattering. The
+   * denominator grows when the product grows; that is the whole design of this
+   * list.
+   */
+  'tenant-ai-preference',
   'enterprise-module-records',
   'executive-decisions',
   'enterprise-governance',

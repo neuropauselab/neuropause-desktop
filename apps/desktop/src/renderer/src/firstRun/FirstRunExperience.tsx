@@ -15,7 +15,8 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
-import type { UnderstandingAttribute, WorkspaceType } from '@neuropause/shared';
+import type { AiMode, UnderstandingAttribute, WorkspaceType } from '@neuropause/shared';
+import { AI_MODE_LABELS } from '@neuropause/shared';
 import {
   ATTRIBUTE_STATUS_LABELS,
   WORKSPACE_TYPES,
@@ -45,6 +46,14 @@ export function FirstRunExperience({
 }): JSX.Element {
   const [step, setStep] = useState<Step>('welcome');
   const [busy, setBusy] = useState(false);
+  /**
+   * P13C ROUND 17 · D-5. Three pieces of state so the screen can be HONEST:
+   * the error is surfaced instead of swallowed, and the effective mode is shown
+   * rather than the preference being displayed as if it were in force.
+   */
+  const [processingError, setProcessingError] = useState<string | null>(null);
+  const [effectiveMode, setEffectiveMode] = useState<AiMode | null>(null);
+  const [restrictedByPlatform, setRestrictedByPlatform] = useState(false);
   const [chosenType, setChosenType] = useState<WorkspaceType | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [helpStyle, setHelpStyle] = useState<string | null>(null);
@@ -76,16 +85,40 @@ export function FirstRunExperience({
     }
   }, [onDone]);
 
+  /**
+   * P13C ROUND 17 · D-5 — THE FIRST-RUN HIGH.
+   *
+   * This used to call `ai:config.setMode` and `ai:config.setExternalConsent`,
+   * with the comment "The ACTUAL routing configuration — not a stored marketing
+   * preference." The instinct was right and the authority tier was wrong: both
+   * are `cloud:operate`, `platformOperatorRegistry` deliberately never
+   * self-seeds, so on a fresh install the first call was refused, the catch
+   * swallowed it, and `setStep('workspace')` never ran. The user clicked and
+   * nothing happened. No install could complete onboarding.
+   *
+   * It now writes the ORGANISATION's preference through tenant RBAC. Still not
+   * a marketing flag — it is one half of the real routing decision — but it is
+   * the half a tenant is allowed to make. `min(platform, tenant)` does the rest.
+   */
   const chooseProcessing = async (allowExternal: boolean): Promise<void> => {
     setBusy(true);
+    setProcessingError(null);
     try {
-      // The ACTUAL routing configuration — not a stored marketing preference.
-      await ipc.aiConfig.setMode('private_first');
-      await ipc.aiConfig.setExternalConsent(allowExternal);
+      const view = await ipc.aiConfig.setPreference(allowExternal ? 'private_first' : 'local_only');
+      setEffectiveMode(view.effectiveMode);
+      setRestrictedByPlatform(view.restrictedByPlatform);
       await ipc.firstRun.set({ aiModeChosen: true });
       setStep('workspace');
     } catch (err) {
-      log.warn('Could not persist AI mode', { message: String(err) });
+      /**
+       * NOT SWALLOWED. The old catch logged to a console nobody was attached to
+       * and left the button inert — the failure mode that hid this bug for
+       * fourteen rounds. A refusal here is now visible and actionable.
+       */
+      log.warn('Could not persist AI preference', { message: String(err) });
+      setProcessingError(
+        'That choice could not be saved. You can continue and set it later in Settings.',
+      );
     } finally {
       setBusy(false);
     }
@@ -273,6 +306,32 @@ export function FirstRunExperience({
                 onChoose={() => void chooseProcessing(true)}
               />
             </div>
+            {processingError !== null && (
+              <p
+                role="alert"
+                className="mt-6 rounded-lg border border-danger/40 bg-danger/10 px-4 py-3 text-center text-sm text-danger"
+              >
+                {processingError}
+              </p>
+            )}
+            {restrictedByPlatform && effectiveMode !== null && (
+              /**
+               * P13C ROUND 17 · D-5 · NO SILENT NO-OP.
+               *
+               * The organization asked for approved cloud AI and this install's
+               * platform policy does not currently permit it. Saying nothing here
+               * would replace a hard dead end with a lie, which is worse. The
+               * preference IS saved and becomes effective the moment a platform
+               * operator enables external processing.
+               */
+              <p className="mt-6 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-center text-sm text-warning">
+                Saved. Your organization permits approved cloud AI — but this
+                installation has not enabled external processing, so AI work stays
+                on this device. Effective mode: {AI_MODE_LABELS[effectiveMode]}. Your
+                choice takes effect automatically once a platform operator turns
+                external processing on.
+              </p>
+            )}
             <p className="mt-6 text-center text-xs text-faint">
               Default is Private First: local processing is preferred wherever it can serve the request.
             </p>

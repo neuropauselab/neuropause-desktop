@@ -156,3 +156,33 @@ export function companionDevicesSource<T extends { boundTenantId?: string | null
     merge: async (grant, rows) => store.mergeForGrant(grant, rows as readonly T[]),
   };
 }
+
+/**
+ * TENANT AI PREFERENCE. P13C ROUND 17 · D-5.
+ *
+ * Domain nineteen, and the simplest adapter in the set precisely because the
+ * store was designed after the F22 seam existed: `ownerOf` is the row's own
+ * `tenantId`, which is also its primary key, so the archive's ownership check
+ * and the store's read filter examine the same field.
+ *
+ * The merge is where a tampered archive gets stopped a second time — the store
+ * drops any restored row whose mode is not a value a tenant may hold, so an
+ * edited archive claiming `external` cannot install a capability through the
+ * restore path even if it survives the manifest and integrity checks.
+ */
+export function tenantAiPreferenceSource<T extends { tenantId?: string | null }>(store: {
+  snapshotForGrant(grant: TenantReadGrant): T[];
+  mergeForGrant(grant: TenantReadGrant, rows: readonly T[]): Promise<number>;
+}): TenantDomainSource {
+  return {
+    domain: 'tenant-ai-preference',
+    storeName: 'tenant-ai-preference',
+    inMemoryCollection: true,
+    ownerOf: (row) => {
+      const owner = (row as T).tenantId;
+      return typeof owner === 'string' && owner !== '' ? owner : null;
+    },
+    snapshot: async (grant) => store.snapshotForGrant(grant),
+    merge: async (grant, rows) => store.mergeForGrant(grant, rows as readonly T[]),
+  };
+}

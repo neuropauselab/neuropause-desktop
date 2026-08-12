@@ -51,6 +51,7 @@ import {
   type GraphCounts,
   // ── Private-First AI experience ──
   type AiMode,
+  type TenantAiMode,
   type WorkspaceType,
   type UnderstandingAttribute,
   type DocumentLineInput,
@@ -1765,6 +1766,18 @@ export const ipc = {
     setMode: (mode: AiMode) => invoke(IpcChannel.AiConfigSetMode, { mode }),
     setExternalConsent: (consent: boolean) =>
       invoke(IpcChannel.AiConfigSetExternalConsent, { consent }),
+    /**
+     * P13C ROUND 17 · D-5 — the ORGANISATION's preference, not the install's.
+     *
+     * `setMode`/`setExternalConsent` above are `cloud:operate` and stay that
+     * way. These two are tenant RBAC (`org:read`/`org:manage`), which is why
+     * first-run can call them and could not call those.
+     *
+     * Both return the composed view — tenant, platform, effective — so a caller
+     * cannot render the preference as though it were in force.
+     */
+    preference: () => invoke(IpcChannel.AiPreferenceGet),
+    setPreference: (mode: TenantAiMode) => invoke(IpcChannel.AiPreferenceSet, { mode }),
     /** The live routing picture — same assembly + planner a request uses. */
     routingStatus: () => invoke(IpcChannel.AiRoutingStatus),
     /** Measured routing usage. Counts, never inventions. */

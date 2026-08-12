@@ -54,7 +54,7 @@ import type {
 import type { ExternalIdentity, IdentityMatch, ServiceIdentity } from '../types/identity';
 import type { IpcChannelName } from './channels';
 // ── Private-First AI experience ──
-import type { AiRoutingStatusView, AiRoutingUsage } from '../types/aiRouting';
+import type { AiRoutingStatusView, AiRoutingUsage, TenantAiPreferenceView } from '../types/aiRouting';
 import type { ExperienceProfile } from '../types/experienceProfile';
 import type {
   DecisionRecord,
@@ -1506,6 +1506,8 @@ export interface IpcResponseMap {
   // ── Private-First AI experience ──
   'ai:config.setMode': AiConfigDto;
   'ai:config.setExternalConsent': AiConfigDto;
+  'ai:preference.get': TenantAiPreferenceView;
+  'ai:preference.set': TenantAiPreferenceView;
   'ai:routing.status': AiRoutingStatusView;
   'ai:routing.usage': AiRoutingUsage;
   'xp:profile.get': ExperienceProfile;

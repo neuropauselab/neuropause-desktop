@@ -289,10 +289,21 @@ describe('THE COVERAGE GATE — F22 is measured, not asserted', () => {
     expect([...covered, ...gaps].sort()).toEqual([...TENANT_DERIVED_DOMAINS].sort());
   });
 
-  it('the denominator still names all eighteen tenant-derived domains', () => {
-    // Guards the denominator itself: shrinking this list would make coverage
-    // look complete without any domain becoming safer.
-    expect(TENANT_DERIVED_DOMAINS.length).toBe(18);
+  it('the denominator still names every tenant-derived domain', () => {
+    /**
+     * Guards the denominator itself: shrinking this list would make coverage
+     * look complete without any domain becoming safer.
+     *
+     * P13C ROUND 17 — 18 → 19. `tenant-ai-preference` is a NEW tenant-derived
+     * store (decision D-5), so the denominator GREW. That is the direction this
+     * guard permits and the whole reason it is a number rather than a mood: a
+     * domain added must move it up, and a domain quietly deleted to flatter the
+     * ratio moves it down and fails here. The number is updated deliberately,
+     * in the same commit that adds the domain and its adapter — never to make a
+     * red test green.
+     */
+    expect(TENANT_DERIVED_DOMAINS.length).toBe(19);
+    expect(TENANT_DERIVED_DOMAINS).toContain('tenant-ai-preference');
     for (const d of ['ai-memory-store', 'knowledge-graph', 'unified-entities', 'platform-timeline', 'enterprise-module-records']) {
       expect(TENANT_DERIVED_DOMAINS).toContain(d);
     }

@@ -8,6 +8,7 @@
 import {
   EmptyRequest,
   IpcChannel,
+  AiPreferenceSetRequest,
   AiSetProviderRequest,
   AiSetModelRequest,
   AiSetCredentialRequest,
@@ -28,6 +29,35 @@ import type {
 } from '@neuropause/shared';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { withAiAuthz } from './aiAuthzGate';
+import { tenantAiPreferenceStore } from './tenantAiPreferenceInstance';
+import { aiPreferenceView } from './tenantAiPreferenceView';
+import { declareChannelResource } from '../ipc/channelResource';
+
+/**
+ * CHANNEL → STORE. P13C ROUND 17.
+ *
+ * The mechanism landed in Round 13 and shipped with no production declarations
+ * — the "coverage partial" line in five consecutive reports. These are the
+ * first two, and they are the right pair to open with: a channel reaching a
+ * CUSTOMER_DERIVED, TENANT-scoped store is exactly the shape the rule set was
+ * written to police.
+ */
+declareChannelResource({
+  channel: IpcChannel.AiPreferenceGet,
+  store: 'tenant-ai-preference',
+  effect: 'read',
+  reason:
+    "Returns the active organization's own AI preference composed against platform policy. " +
+    'Ambient scope is the only selector; the channel accepts no target id.',
+});
+declareChannelResource({
+  channel: IpcChannel.AiPreferenceSet,
+  store: 'tenant-ai-preference',
+  effect: 'mutate',
+  reason:
+    "Upserts the active organization's own preference row. It cannot widen platform policy: " +
+    "the request enum has no 'external' member.",
+});
 import { engineManager } from './engineManager';
 import { loadAiConfig, resolveAiMode, saveAiConfig } from './aiConfigStore';
 import { credentialStore } from '../security/secureStore';
@@ -223,6 +253,26 @@ export function initAiConfig(): AiConfigSubsystem {
   return {
     handlers: withAiAuthz([
       { channel: IpcChannel.AiConfigGet, schema: EmptyRequest, handler: () => getConfig() },
+      /**
+       * P13C ROUND 17 · D-5 — the ORGANISATION's preference, beside the
+       * platform's config on purpose: the contrast is the point. Everything
+       * else in this array that writes takes `cloud:operate`. These two take
+       * `org:read` / `org:manage`, because a tenant preference can only narrow
+       * what the platform already permits and therefore is not a platform act.
+       *
+       * Neither accepts a target id, so ambient scope is the only selector and
+       * organization B has no parameter with which to address organization A.
+       */
+      { channel: IpcChannel.AiPreferenceGet, schema: EmptyRequest, handler: () => aiPreferenceView() },
+      {
+        channel: IpcChannel.AiPreferenceSet,
+        schema: AiPreferenceSetRequest,
+        audit: true,
+        handler: async (p) => {
+          await tenantAiPreferenceStore.setMine((p as AiPreferenceSetRequest).mode);
+          return aiPreferenceView();
+        },
+      },
       { channel: IpcChannel.AiConfigHealth, schema: EmptyRequest, handler: () => getHealth() },
       { channel: IpcChannel.AiConfigDetectOllama, schema: EmptyRequest, handler: () => detectOllama() },
       {

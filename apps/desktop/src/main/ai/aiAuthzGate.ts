@@ -65,6 +65,24 @@ export const AI_CHANNEL_AUTHORITY: Readonly<Partial<Record<IpcChannelName, Chann
   [IpcChannel.AiConfigSetCredential]: 'cloud:operate',
   [IpcChannel.AiConfigClearCredential]: 'cloud:operate',
   [IpcChannel.AiConfigSetMode]: 'cloud:operate',
+  /**
+   * P13C ROUND 17 · D-5 — THE TENANT HALF, and it lives here rather than in
+   * the enterprise gate because the gate that owns a namespace must own every
+   * channel in it. The first attempt put these in
+   * `ENTERPRISE_CHANNEL_PERMISSIONS` and two invariants refused it: the
+   * enterprise gate rejects a channel outside its own namespace, and
+   * `runtimeAuthz.test` reported them unaccounted because `ai:` is not a
+   * self-gated prefix. Both were right.
+   *
+   * TENANT RBAC, deliberately NOT `cloud:operate`. The row above is the
+   * platform's standing policy for the machine; these two are one
+   * organization's preference, which can only ever narrow it — see
+   * `resolveEffectiveAiMode`. That difference is the whole of decision D-5, and
+   * it is the reason a fresh install can now complete onboarding without a
+   * platform operator existing.
+   */
+  [IpcChannel.AiPreferenceGet]: 'org:read',
+  [IpcChannel.AiPreferenceSet]: 'org:manage',
   [IpcChannel.AiConfigSetExternalConsent]: 'cloud:operate',
   [IpcChannel.AiConfigResetToEnv]: 'cloud:operate',
   /**
@@ -157,6 +175,7 @@ export const AI_WRITE_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannel
   IpcChannel.AiConfigClearCredential,
   IpcChannel.AiConfigSetMode,
   IpcChannel.AiConfigSetExternalConsent,
+  IpcChannel.AiPreferenceSet,
   IpcChannel.AiConfigResetToEnv,
   IpcChannel.AiConfigMigrate,
   IpcChannel.FounderAskV2,

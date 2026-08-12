@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { HELP_DOC_IDS } from '../types/helpDocs';
 import { ONBOARDING_STEP_IDS } from '../types/onboarding';
+import { TENANT_AI_MODES } from '../types/aiRouting';
 // Type-only (erased at compile time, so no runtime cycle with ../types).
 import type { ConflictStrategy, SyncEntityType } from '../types/sync';
 
@@ -3207,6 +3208,15 @@ export const AiSetModeRequest = z
 export type AiSetModeRequest = z.infer<typeof AiSetModeRequest>;
 
 export const AiSetExternalConsentRequest = z.object({ consent: z.boolean() }).strict();
+
+/**
+ * P13C ROUND 17 · D-5. The tenant preference, and the enum is the security
+ * boundary: `TENANT_AI_MODES` omits `'external'`, so an organization cannot
+ * even send a request asking to be elevated. Refusal is unnecessary because
+ * the request is unrepresentable.
+ */
+export const AiPreferenceSetRequest = z.object({ mode: z.enum(TENANT_AI_MODES) }).strict();
+export type AiPreferenceSetRequest = z.infer<typeof AiPreferenceSetRequest>;
 export type AiSetExternalConsentRequest = z.infer<typeof AiSetExternalConsentRequest>;
 
 /**

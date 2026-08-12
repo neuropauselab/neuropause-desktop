@@ -42,6 +42,9 @@ export const DOMAIN_FILES: Record<MaintenanceDomain, string[]> = {
     'license-status.json',
     // Mobile M1-03 — paired companion devices + gateway on/off (envelope-backed).
     'companion-devices.json',
+    // P13C Round 17 (D-5) — the per-organization AI preference. Customer state,
+    // so it must be inside backup and inside pre-migration rollback like the rest.
+    'tenant-ai-preference.json',
   ],
   workspace: ['enterprise-workspaces.json', 'enterprise-org.json'],
   knowledgeGraph: ['graph.json', 'unified-store.json'],

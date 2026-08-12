@@ -74,6 +74,103 @@ export const AI_MODE_LABELS: Record<AiMode, string> = {
   external: 'External Provider',
 };
 
+/* ── tenant preference (P13C Round 17, decision D-5) ───────────────────────── */
+
+/**
+ * WHAT AN ORGANIZATION MAY ASK FOR — AND WHY IT IS TWO VALUES, NOT THREE.
+ *
+ * `ai:config.setMode` is `cloud:operate`: one `ai-config.json` per machine, and
+ * changing where AI work may run is an INSTALL-level act. That is correct and
+ * D-5 keeps it. But first-run asked every new user that platform question, and
+ * a fresh install has no platform operator by design, so onboarding dead-ended
+ * on its own authority model.
+ *
+ * The fix is a tenant preference that can only ever RESTRICT. It is deliberately
+ * a two-value type: `external` is not offered, so an organization asking to be
+ * elevated into direct external routing is not something the resolver refuses —
+ * it is something the type cannot express. Same idiom as the branded
+ * `TenantReadGrant` and `EnterpriseOrgGet`'s `EmptyRequest`: remove the
+ * parameter rather than guard it.
+ */
+export type TenantAiMode = 'local_only' | 'private_first';
+
+export const TENANT_AI_MODES = ['local_only', 'private_first'] as const;
+
+/**
+ * Permissiveness order over `AiMode`. Lower is stricter.
+ *
+ * The three modes are TOTALLY ORDERED, which is what makes the intersection a
+ * `min()` and its proof exhaustive rather than exemplary.
+ */
+const AI_MODE_RANK: Record<AiMode, number> = {
+  local_only: 0,
+  private_first: 1,
+  external: 2,
+};
+
+/**
+ * THE ONE RESOLVER. `effective = min(platform, tenant)`.
+ *
+ * The security property, stated as a law rather than a behaviour: for every
+ * platform policy P and every tenant preference T,
+ *
+ *     rank(effective(P, T)) <= rank(P)
+ *
+ * so a tenant can narrow what the platform permits and can never widen it.
+ * `resolveEffectiveAiMode` accepts a full `AiMode` on the tenant side only so
+ * that the law can be tested across all nine combinations including the value
+ * the store cannot persist — the proof covers inputs the product cannot produce,
+ * which is the point of a proof.
+ */
+export function resolveEffectiveAiMode(platform: AiMode, tenant: AiMode): AiMode {
+  return AI_MODE_RANK[tenant] < AI_MODE_RANK[platform] ? tenant : platform;
+}
+
+/**
+ * What a caller sees: the organization's own preference, the platform policy it
+ * is composed against, and the mode that actually applies.
+ *
+ * All three are returned together ON PURPOSE. A view that showed only the
+ * preference would let the UI claim "approved cloud AI" while the platform
+ * still routes everything locally — the silent no-op that makes a fix worse
+ * than the dead end it replaces.
+ */
+export interface TenantAiPreferenceView {
+  /** The organization's standing preference. Absent until it chooses one. */
+  tenantMode: TenantAiMode | null;
+  /** The install-wide policy, set only by a platform operator. */
+  platformMode: AiMode;
+  /**
+   * The platform's separate external-processing consent.
+   *
+   * P13C ROUND 17, CORRECTED AFTER A FRESH-INSTALL RUN. Mode alone does not
+   * decide whether external AI may be used: under `private_first`, external is
+   * a fallback that requires THIS flag, and it defaults to false. The first
+   * version of this view compared modes only, so a tenant choosing "approved
+   * cloud AI" on a default install saw `restrictedByPlatform: false` while
+   * external routing remained impossible — the silent no-op this view exists to
+   * prevent, reproduced by the very code meant to prevent it.
+   */
+  platformExternalConsent: boolean;
+  /** `min(platformMode, tenantMode)` — what requests will actually do. */
+  effectiveMode: AiMode;
+  /**
+   * True when the organization asked for external AI and cannot have it —
+   * because the platform's mode is stricter, its consent is off, or both.
+   *
+   * A tenant that chose `local_only` is never "restricted": it asked for the
+   * narrower thing and got it. Restriction means an UNFULFILLED intent, which
+   * is the only case the UI must speak up about.
+   */
+  restrictedByPlatform: boolean;
+  updatedAt: number | null;
+}
+
+/** Whether a value is a preference an organization is allowed to hold. */
+export function isTenantAiMode(value: unknown): value is TenantAiMode {
+  return value === 'local_only' || value === 'private_first';
+}
+
 export const AI_MODE_DESCRIPTIONS: Record<AiMode, string> = {
   private_first:
     'Prefer processing on this device. Fall back to your private AI infrastructure if configured, and use an external provider only when you have enabled one.',

@@ -286,9 +286,11 @@ import { registry } from '../registry/registry';
 import { generateBriefing } from '../intelligence/briefingGenerator';
 import { generateRecommendations } from '../recommendations/recommendationEngine';
 import { healthHistoryStore } from './healthHistoryInstance';
+import { tenantAiPreferenceStore } from '../ai/tenantAiPreferenceInstance';
 import { TenantDedupe } from '../tenancy/tenantDedupe';
 
 const log = createLogger('enterprise');
+
 
 export interface EnterpriseDeps {
   broadcast: IpcBroadcaster;
@@ -508,6 +510,12 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     // captured: the count must fall out of scope the moment a second org exists.
     .bindOrganizationCount(() => orgStore.listOrganizations().length);
   healthHistoryStore.bindScope(activeTenantScope);
+  /**
+   * P13C ROUND 17 · D-5. Bound here, beside the other tenant stores, which runs
+   * BELOW the startup gates after Round 17 relocated them. An unbound preference
+   * store now refuses the boot rather than answering `unowned-install`.
+   */
+  tenantAiPreferenceStore.bindScope(activeTenantScope);
   await governanceStore.load();
 
 

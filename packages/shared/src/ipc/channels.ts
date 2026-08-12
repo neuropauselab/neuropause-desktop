@@ -1060,6 +1060,13 @@ export const IpcChannel = {
   // ── Private-First AI experience ──
   /** Set the AI mode (private_first / local_only / external). */
   AiConfigSetMode: 'ai:config.setMode',
+  /**
+   * P13C ROUND 17 · D-5. The ORGANISATION's AI preference, which can only
+   * restrict what `ai:config.setMode` (platform, `cloud:operate`) permits.
+   * Tenant RBAC — `org:read` / `org:manage` — never PUBLIC, never platform.
+   */
+  AiPreferenceGet: 'ai:preference.get',
+  AiPreferenceSet: 'ai:preference.set',
   /** Grant or withdraw consent for external processing as a fallback. */
   AiConfigSetExternalConsent: 'ai:config.setExternalConsent',
   /** The live routing picture: mode, consent, per-route state, current plan. */
@@ -1914,6 +1921,8 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.MedicalDeviceTraceBackward,
   // ── Private-First AI experience ──
   IpcChannel.AiConfigSetMode,
+  IpcChannel.AiPreferenceGet,
+  IpcChannel.AiPreferenceSet,
   IpcChannel.AiConfigSetExternalConsent,
   IpcChannel.AiRoutingStatus,
   IpcChannel.AiRoutingUsage,
