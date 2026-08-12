@@ -27,6 +27,7 @@ import { WebSocketServer, type RawData, type WebSocket } from 'ws';
 import {
   CompanionRequestSchema,
   COMPANION_PROTOCOL_VERSION,
+  DEFAULT_MAX_SKEW_MS,
   PairingRequestSchema,
   checkReplay,
   companionErrorCode,
@@ -89,9 +90,26 @@ export interface CompanionGatewayDeps {
 
 type GatewayResult = { ok: true; envelope: SealedEnvelope } | { ok: false; httpStatus: number };
 
+/**
+ * A minted, not-yet-redeemed pairing capability.
+ *
+ * P13C ROUND 11 — M-9. THE OWNER IS PART OF THE CAPABILITY, NOT OF THE MOMENT IT
+ * IS SPENT. A QR was stamped with `orgName()` at MINT time and `handlePairing`
+ * resolved `currentTenantId()` at REDEEM time, up to five minutes later, with
+ * nothing clearing this map on a workspace switch. So a code that said "Alpha"
+ * bound the phone into Beta whenever the desktop user switched inside the
+ * window — silently, and the phone was then told "Beta" in its pairing response,
+ * so neither side could tell that the answer had changed underneath them.
+ *
+ * Recording both here makes the two reads the same read.
+ */
 interface PendingToken {
   token: Uint8Array;
   expIso: string;
+  /** The tenant that authorized this pairing. `null` = none resolved at mint. */
+  tenantId: string | null;
+  /** The organization name PRINTED IN THE QR, so the response cannot disagree. */
+  orgName: string;
 }
 
 /** First non-internal IPv4 address, or null when only loopback is available. */
@@ -133,19 +151,32 @@ export class CompanionGateway {
     return { host: this.boundHost, port: this.boundPort };
   }
 
-  /** Mint a one-time pairing token and the QR text the phone scans. */
+  /**
+   * Mint a one-time pairing token and the QR text the phone scans.
+   *
+   * P13C ROUND 11 — M-9. The organization is captured HERE, alongside the token,
+   * because this is the moment the authorization happens: `companion:pairingQr`
+   * is `org:manage`, so whoever minted this held that right in THIS organization
+   * and in no other. `handlePairing` spends what was minted.
+   */
   mintPairingQr(port: number): CompanionPairingQrDto {
     const host = detectLanHost() ?? '127.0.0.1';
     const { token, tokenB64 } = generatePairingToken();
     const expIso = new Date(this.nowMs() + PAIRING_TOKEN_TTL_MS).toISOString();
+    const orgName = this.deps.orgName();
     this.prunePending();
-    this.pending.set(tokenB64, { token, expIso });
+    this.pending.set(tokenB64, {
+      token,
+      expIso,
+      tenantId: this.deps.currentTenantId(),
+      orgName,
+    });
     const qr = encodePairingQr({
       v: COMPANION_PROTOCOL_VERSION,
       host,
       port,
       name: this.deps.desktopName(),
-      org: this.deps.orgName(),
+      org: orgName,
       dpk: toB64(this.deps.identity.publicKey),
       token: tokenB64,
       exp: expIso,
@@ -161,18 +192,25 @@ export class CompanionGateway {
     }
   }
 
-  /** Consume the first pending token that matches (single-use, constant-time). */
-  private consumePairingToken(presentedB64: string): boolean {
+  /**
+   * Consume the first pending token that matches (single-use, constant-time).
+   *
+   * Returns the CAPABILITY rather than a boolean (P13C Round 11 — M-9) so the
+   * caller binds the device to the organization that authorized the pairing. A
+   * boolean forced `handlePairing` to go and ask the live resolver, which is
+   * precisely the wrong question at redeem time.
+   */
+  private consumePairingToken(presentedB64: string): PendingToken | null {
     const nowIso = this.nowIso();
     for (const [key, entry] of this.pending) {
       if (
         verifyPairingToken({ presentedB64, expected: entry.token, nowIso, expIso: entry.expIso })
       ) {
         this.pending.delete(key);
-        return true;
+        return entry;
       }
     }
-    return false;
+    return null;
   }
 
   /** Handle a sealed PairingRequest → sealed PairingResponse. Socket-free. */
@@ -185,7 +223,8 @@ export class CompanionGateway {
     }
     const parsed = PairingRequestSchema.safeParse(opened.body);
     if (!parsed.success) return { ok: false, httpStatus: 400 };
-    if (!this.consumePairingToken(parsed.data.token)) {
+    const capability = this.consumePairingToken(parsed.data.token);
+    if (capability === null) {
       log.warn('Companion pairing rejected: bad or expired token');
       return { ok: false, httpStatus: 401 };
     }
@@ -199,14 +238,23 @@ export class CompanionGateway {
       // P13C Part 3 — a device is a companion to one ORGANIZATION's work, not
       // to the machine. Captured at pairing so the event push can ask whether
       // an event is this device's to receive.
+      //
+      // P13C ROUND 11 — M-9. The owner is the organization that MINTED this QR,
+      // not whichever one is open now. `boundTenantId` keeps the live reading
+      // only as the value the store ignores in favour of `mintedTenantId`; the
+      // two are passed together deliberately, so a reader can see that the
+      // question changed rather than that an argument moved.
       boundTenantId: this.deps.currentTenantId(),
+      mintedTenantId: capability.tenantId,
       now,
     });
     const response: PairingResponse = {
       kind: 'pairing-response',
       deviceId: device.id,
       desktopName: this.deps.desktopName(),
-      orgName: this.deps.orgName(),
+      // The name the QR printed, so the phone's stored session label names the
+      // organization it was actually bound into.
+      orgName: capability.orgName,
       protocolVersion: COMPANION_PROTOCOL_VERSION,
     };
     log.info('Companion device paired', { deviceId: device.id, platform: device.platform });
@@ -378,7 +426,35 @@ export class CompanionGateway {
     log.info('Companion gateway stopped');
   }
 
-  /** Authenticate a WS hello: unseal + match a paired, non-revoked device. Socket-free. */
+  /**
+   * Authenticate a WS hello: unseal + match a paired, non-revoked device. Socket-free.
+   *
+   * P13C ROUND 11 — M-9. THE HELLO IS FRESHNESS-CHECKED; `/rpc` ALSO CHECKS THE
+   * SEQUENCE, AND THIS DELIBERATELY DOES NOT. THE DIFFERENCE IS STATED RATHER
+   * THAN GLOSSED.
+   *
+   * WHAT WAS WRONG. `/rpc` runs `checkReplay`, and this ran nothing. The gateway
+   * listens on `0.0.0.0` and the WebSocket carries the sealed envelope as
+   * plaintext JSON over TCP, so an on-path listener can capture a hello frame
+   * verbatim. Replaying it opened a socket authenticated AS THAT DEVICE, which
+   * then received that organization's live event pushes — `EventResource` carries
+   * record ids and names. Indefinitely, because nothing about the frame expired.
+   *
+   * WHAT IS FIXED HERE. The `sentAt` inside the seal must be within the same
+   * clock-skew window `/rpc` enforces, so a captured frame stops working after
+   * ninety seconds instead of never. `sentAt` travels INSIDE the ciphertext
+   * (see envelope.ts), so it cannot be edited without the device's key.
+   *
+   * WHAT IS NOT FIXED HERE, AND WHY IT IS NOT SILENTLY LEFT OUT. The full guard
+   * is monotonic-sequence, and the phone cannot currently satisfy it: the mobile
+   * client's `sealHello()` sends `seq: 0` HARDCODED on every connect while its
+   * RPC counter advances, both against the one `device.lastSeq` high-water mark.
+   * Enforcing the sequence here would refuse every reconnect after the phone's
+   * first RPC — a product break, not a fix — so closing it needs a matching
+   * change in `apps/mobile/src/lib/sealedClient.ts` (a per-channel counter, or a
+   * hello nonce). Reported as an open item rather than half-done under a comment
+   * that claims otherwise.
+   */
   authenticateWsFrame(rawEnvelope: unknown): CompanionDeviceRecord | null {
     let opened;
     try {
@@ -386,7 +462,32 @@ export class CompanionGateway {
     } catch {
       return null;
     }
+    const sentMs = Date.parse(opened.sentAt);
+    if (!Number.isFinite(sentMs) || Math.abs(this.nowMs() - sentMs) > DEFAULT_MAX_SKEW_MS) {
+      return null;
+    }
     return this.deps.devices.activeByPublicKey(toB64(opened.senderPublicKey));
+  }
+
+  /**
+   * Close every live socket belonging to a device. P13C ROUND 11 — M-9.
+   *
+   * Revocation tombstoned the row and left the socket OPEN. Every other door
+   * consulted the tombstone immediately — `activeByPublicKey` excludes revoked
+   * devices, so `/rpc` and any new `/events` connection were refused — but an
+   * ALREADY-ESTABLISHED socket was only torn down opportunistically, inside
+   * `broadcastEvent`, on the next event that happened to arrive. On a quiet
+   * install that is never, and "unpair this phone" has to mean the phone is off
+   * the wire now, not off it at the convenience of the next event.
+   *
+   * Idempotent and safe on an unknown id, because the revoke handler calls it
+   * whether or not the gateway is running.
+   */
+  disconnectDevice(deviceId: string): void {
+    const set = this.sockets.get(deviceId);
+    if (!set) return;
+    for (const ws of set) ws.close(4401);
+    this.sockets.delete(deviceId);
   }
 
   /** Seal a realtime event frame to a device (socket-free; tested directly). */
@@ -471,8 +572,28 @@ export class CompanionGateway {
     }
   }
 
+  /**
+   * P13C ROUND 11 — M-9. A BROWSER MAY NOT OPEN THIS SOCKET.
+   *
+   * `handleUpgrade` validated the PATH and nothing else, on a listener bound to
+   * `0.0.0.0`. WebSocket handshakes are not subject to the same-origin policy —
+   * a page on any origin the user visits can open a socket to
+   * `ws://<lan-ip>:47600/events` and the browser will send the request. It cannot
+   * authenticate, because the hello must be sealed to the desktop's static key
+   * and the page has no device private key, so the disclosure risk is bounded by
+   * that seal. What it CAN do without one is consume a connection slot and hold
+   * it for the ten-second auth window, from any tab, in a loop.
+   *
+   * A browser is required to send `Origin`; the phone's native client does not.
+   * So the presence of the header is the signal, and refusing on it costs the
+   * real client nothing. Refused at the upgrade, before `ws` allocates anything.
+   *
+   * NOT CLAIMED: this is not an authentication check and does not replace one —
+   * a non-browser attacker simply omits the header. It removes the one caller who
+   * cannot omit it, which is the one that can be aimed by a link.
+   */
   private handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
-    if (req.url !== '/events' || !this.wss) {
+    if (req.url !== '/events' || !this.wss || req.headers.origin !== undefined) {
       socket.destroy();
       return;
     }

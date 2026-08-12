@@ -373,9 +373,22 @@ export async function initCompanion(deps: InitCompanionDeps): Promise<CompanionS
       channel: IpcChannel.CompanionRevoke,
       schema: CompanionRevokeRequest,
       audit: true,
+      /**
+       * P13C ROUND 11 — M-9. UNPAIRING CUTS THE WIRE, NOT JUST THE ROW.
+       *
+       * `store.revoke` tombstones (and is itself ownership-checked — it refuses a
+       * device the caller's organization did not pair). Every door that opens a
+       * NEW channel already consulted that tombstone. An ALREADY-OPEN `/events`
+       * socket did not: it was closed opportunistically inside `broadcastEvent`,
+       * on whatever event arrived next, which on a quiet install is not a time.
+       */
       handler: async (p) => {
-        const ok = await store.revoke((p as CompanionRevokeRequest).deviceId);
-        if (ok) announce();
+        const deviceId = (p as CompanionRevokeRequest).deviceId;
+        const ok = await store.revoke(deviceId);
+        if (ok) {
+          gateway?.disconnectDevice(deviceId);
+          announce();
+        }
         return { ok };
       },
     },

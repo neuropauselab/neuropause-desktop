@@ -84,6 +84,21 @@ export interface RegisterDeviceInput {
   boundMember: string | null;
   /** The tenant this device is paired into. Null when none resolves. */
   boundTenantId: string | null;
+  /**
+   * The tenant that AUTHORIZED this pairing, captured when the capability was
+   * issued rather than when it was redeemed. P13C ROUND 11 — M-9.
+   *
+   * Absent for every caller that has no such capability, and those callers keep
+   * the Round 8 behaviour exactly: the owner comes from the live resolver.
+   *
+   * PROVENANCE IS THE WHOLE POINT, so it is stated rather than assumed. The only
+   * producer is `CompanionGateway.handlePairing`, which reads it from the pending
+   * pairing token it is consuming — a map written ONLY by `mintPairingQr`, which
+   * is reachable only through `companion:pairingQr` (org:manage). A value that
+   * arrived any other way is a caller-supplied owner, which Round 8 correctly
+   * refuses to treat as an owner; this field must never be plumbed to one.
+   */
+  mintedTenantId?: string | null;
   now: string;
 }
 
@@ -222,6 +237,22 @@ export class CompanionDeviceStore {
    * `mine`. That is the safe direction: an unowned device is unusable, where a
    * device filed under the wrong organization is another tenant's phone on your
    * account.
+   *
+   * P13C ROUND 11 — M-9. `mintedTenantId` OVERRIDES THE LIVE RESOLVER, AND ONLY
+   * IT DOES.
+   *
+   * Round 8's rule — the owner is stamped from the resolver, not from the payload
+   * — is right for every write a user makes NOW. A pairing is not that: the QR is
+   * a capability minted under one organization and redeemed up to five minutes
+   * later, and the resolver at redeem time answers a question nobody asked. A QR
+   * that printed "Alpha" and bound the phone into Beta because the desktop user
+   * switched in between is the finding, and reading the live resolver is how it
+   * happened.
+   *
+   * So the authorized owner wins when there is one, and the resolver wins when
+   * there is not. `null` is a REAL ANSWER here rather than "fall through": a QR
+   * minted with no organization resolved authorized nothing, and the device it
+   * pairs must be unowned, not adopted by whoever is open at redeem time.
    */
   async register(input: RegisterDeviceInput): Promise<CompanionDeviceRecord> {
     // Re-pairing the same key replaces the prior record (one identity per key),
@@ -235,7 +266,10 @@ export class CompanionDeviceStore {
       model: input.model,
       publicKeyB64: input.publicKeyB64,
       boundMember: input.boundMember,
-      boundTenantId: this.tenancy.scopeOrDeny()?.tenantId ?? input.boundTenantId ?? null,
+      boundTenantId:
+        input.mintedTenantId !== undefined
+          ? input.mintedTenantId
+          : this.tenancy.scopeOrDeny()?.tenantId ?? input.boundTenantId ?? null,
       createdAt: existing?.createdAt ?? input.now,
       lastSeenAt: input.now,
       revoked: false,
@@ -271,9 +305,35 @@ export class CompanionDeviceStore {
     return true;
   }
 
+  /**
+   * How many of the CALLER'S devices are active.
+   *
+   * P13C ROUND 11 — M-6. A SECOND DOOR ONTO THE SAME ROWS, WITH A WEAKER LOCK.
+   *
+   * `mine`, `list` and `get` were all scoped in Round 8 because a paired device
+   * row is one organization's — it names the device, the platform, the bound
+   * member's email and the last-seen time — and `CompanionDevices` was taken off
+   * the PUBLIC allowlist for exactly that reason. This method walked
+   * `this.devices.values()` with NO `mine()` and NO `scopeOrDeny()`, and it
+   * reaches the renderer twice: `companion/index.ts` puts it in
+   * `CompanionStatusDto.deviceCount` (the `CompanionStatus` handler) and in the
+   * `announce()` broadcast.
+   *
+   * So the row LIST was locked and a COUNT OF THE SAME ROWS was left open, on a
+   * channel with no auth at all. A count is not nothing: watching it rise while
+   * you pair nothing tells you another organization on this machine just paired
+   * a phone, which is the inference channel Round 8 closed on `graphStore.counts`
+   * and `ai/routingUsageStore`. An unbound or unresolved scope counts NOTHING,
+   * matching `mine` — never "everything", because the honest answer to "whose
+   * devices are these" with no organization active is none of them.
+   *
+   * There is deliberately NO unscoped sibling. The startup log and the status
+   * broadcast both read THIS method; adding a `countAll()` for diagnostics would
+   * recreate the finding under a new name.
+   */
   activeCount(): number {
     let n = 0;
-    for (const d of this.devices.values()) if (!d.revoked) n += 1;
+    for (const d of this.mine([...this.devices.values()])) if (!d.revoked) n += 1;
     return n;
   }
 }
