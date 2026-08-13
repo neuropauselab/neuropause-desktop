@@ -97,7 +97,7 @@ export function EnterpriseSearchPanel({ initialQuery = '' }: { initialQuery?: st
           placeholder="Search projects, tasks, documents, conversations, calendar, people, customers, workers, policies, approvals…"
           className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none focus-visible:shadow-focus placeholder:text-faint"
         />
-        <button type="button" onClick={() => void run(text)} className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white">Search</button>
+        <button type="button" onClick={() => void run(text)} className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg">Search</button>
       </div>
 
       <div className="mb-5 flex flex-wrap gap-1.5">

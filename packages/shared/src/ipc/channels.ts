@@ -9,6 +9,23 @@
  */
 export const IpcChannel = {
   // ── auth/app (legacy router) ──
+  /**
+   * P13C F-8 — the OAuth providers the SERVER has configured.
+   *
+   * A BASE channel, sibling to the other `auth:*` entries, routed through
+   * `ipc/router.ts` rather than the secure bridge. That placement is the point:
+   * the login screen asks this question before anyone is authenticated, exactly
+   * like `auth:getStatus`, and neither belongs on the runtime surface that
+   * `PUBLIC_CHANNELS` classifies. An earlier draft of this change added it to
+   * that allowlist and the Round 10 invariant rejected it as a stale entry —
+   * correctly, because an allowlist row for a channel outside the classified
+   * surface is a false statement about that surface.
+   *
+   * What crosses: provider NAMES, filtered by the handler to the four known
+   * OAuth ids. No credentials, no client ids, no redirect URIs, no topology,
+   * and nothing that varies by caller.
+   */
+  AuthProviders: 'auth:providers',
   AuthGetStatus: 'auth:getStatus',
   AuthLoginOAuth: 'auth:loginOAuth',
   AuthLoginEmail: 'auth:loginEmail',
@@ -134,6 +151,13 @@ export const IpcChannel = {
   AutomationHistory: 'automations:history',
   /** NeuroCore system-health snapshot (V5.0). */
   SystemHealthSnapshot: 'neurocore:systemHealth',
+  /**
+   * P13C F-7 — pre-authentication backend reachability. Returns exactly
+   * `BackendReachability` (reachable / checkedAt / lastError) and nothing else.
+   * The ONLY health channel that may be public; the rationale lives on
+   * `BackendReachability` and on the PUBLIC_CHANNELS entry in `runtimeAuthz.ts`.
+   */
+  BackendReachability: 'system:backendReachability',
   /** Runtime supervisor status + history + recovery (V5.3). */
   SupervisorStatus: 'supervisor:status',
   /** Renderer reports commercial license health for NeuroCore (V6.1). */
@@ -1132,6 +1156,7 @@ export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel];
 
 /** Legacy auth/app invokable channels (handled by ipc/router). */
 export const INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
+  IpcChannel.AuthProviders,
   IpcChannel.AuthGetStatus,
   IpcChannel.AuthLoginOAuth,
   IpcChannel.AuthLoginEmail,
@@ -1240,6 +1265,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.AutomationMonitor,
   IpcChannel.AutomationHistory,
   IpcChannel.SystemHealthSnapshot,
+  IpcChannel.BackendReachability,
   IpcChannel.SupervisorStatus,
   IpcChannel.LicenseReportHealth,
   IpcChannel.BillingCheckout,

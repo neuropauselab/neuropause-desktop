@@ -37,6 +37,7 @@ import type {
 import {
   IpcChannel,
   EmptyRequest,
+  BackendReachabilityRequest,
   VoiceStatusRequest,
   SupervisorRecoverRequest,
   SupervisorSetPolicyRequest,
@@ -2206,6 +2207,21 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     channel: IpcChannel.SystemHealthSnapshot,
     schema: EmptyRequest,
     handler: () => neuroCore.snapshot(),
+  });
+  // P13C F-7: pre-authentication backend reachability. PUBLIC by design and by
+  // exception — see the PUBLIC_CHANNELS entry in `ipc/runtimeAuthz.ts` for why
+  // this one is safe when `neurocore:systemHealth` (Round 10) and
+  // `runtime:health` (Round 11) are not. The handler returns the sampler's
+  // three-field payload verbatim and composes nothing into it; any widening has
+  // to happen in `RuntimeTelemetrySampler.reachability()`, where the F-7 test
+  // locks the key set.
+  defs.push({
+    channel: IpcChannel.BackendReachability,
+    schema: BackendReachabilityRequest,
+    handler: async (payload: unknown) => {
+      const { refresh } = (payload ?? {}) as { refresh?: boolean };
+      return neuroCore.backendReachability(refresh === true);
+    },
   });
   // V6.1: renderer reports license health (it holds the active org) so NeuroCore
   // can compose it into system health without needing ambient org state in main.

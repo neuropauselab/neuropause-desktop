@@ -9,6 +9,7 @@
  */
 import {
   composeSystemHealth,
+  type BackendReachability,
   type DiagnosticsReport,
   type SystemHealthSnapshot,
   type VoiceRuntimeState,
@@ -168,5 +169,33 @@ export class NeuroCore {
   async forceBackendProbe(): Promise<boolean> {
     await this.telemetry.probeBackend(0);
     return this.telemetry.read().backendState === 'connected';
+  }
+
+  /**
+   * P13C F-7: the pre-authentication reachability answer, and the only health
+   * value that crosses an unauthenticated channel. Delegates to the sampler —
+   * this class adds nothing to the payload, deliberately, so there is exactly
+   * one place the shape can widen and exactly one test guarding it.
+   *
+   * `refresh` is what the login screen's Retry button calls; it bypasses the
+   * probe throttle so a person pressing a button gets a real answer rather than
+   * a cached one.
+   */
+  async backendReachability(refresh = false): Promise<BackendReachability> {
+    // Probe when asked to, AND when nothing has probed yet this session.
+    //
+    // Found by running the real app with the backend down (13 Aug): the login
+    // screen mounts and asks immediately, long before the 20-second supervisor
+    // tick, so without this the FIRST answer of every launch was the untouched
+    // initial state — `reachable:false, checkedAt:null` — which the notice
+    // rendered as a live outage. On a healthy machine that is a false alarm at
+    // every start, which is worse than saying nothing.
+    //
+    // `checkedAt === null` is the honest test for "no probe has completed",
+    // and it is the same field the renderer uses to tell "not yet" from "no".
+    if (refresh || this.telemetry.reachability().checkedAt === null) {
+      await this.telemetry.probeBackend(0);
+    }
+    return this.telemetry.reachability();
   }
 }

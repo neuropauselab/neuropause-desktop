@@ -127,7 +127,7 @@ export function ExecutiveWorkspacePanel({ onNavigate }: { onNavigate: (tab: Ente
                 </div>
                 {selectedSkill && <p className="mt-2.5 text-2xs text-faint">{selectedSkill.description}{selectedSkill.sideEffects ? ' · This skill can have side effects, so it is approval-gated.' : ' · Read-only.'}</p>}
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <button type="button" disabled={busy || !skillId} onClick={() => void doDelegate()} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">
+                  <button type="button" disabled={busy || !skillId} onClick={() => void doDelegate()} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg disabled:opacity-40">
                     <Icon name="launch" size={13} /> Delegate task
                   </button>
                   <button type="button" disabled={busy || !skillId} onClick={() => void launchWorkflow()} className={cn('inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition disabled:opacity-40', TINT_TONE.purple)}>

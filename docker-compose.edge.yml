@@ -1,0 +1,37 @@
+# TLS edge for the single-host deployment. Layered ON TOP of the repository's
+# own docker-compose.prod.yml, which already defines postgres, redis and the
+# backend with healthchecks and restart policies.
+#
+#   docker compose -f docker-compose.prod.yml -f docker-compose.edge.yml up -d --build
+#
+# Why an overlay rather than an edit: docker-compose.prod.yml is the team's file
+# and is versioned with the backend. Keeping the edge separate means a backend
+# change never conflicts with a TLS change, and removing the edge is deleting
+# one -f argument.
+name: neuropause-prod
+
+services:
+  edge:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on:
+      backend:
+        condition: service_started
+
+  # The backend binds to 127.0.0.1 in docker-compose.prod.yml, which is correct
+  # for a host with no edge. With Caddy in front, the published port is removed
+  # entirely: the only route in is through TLS. Nothing else changes.
+  backend:
+    ports: !reset []
+
+volumes:
+  caddydata:
+  caddyconfig:

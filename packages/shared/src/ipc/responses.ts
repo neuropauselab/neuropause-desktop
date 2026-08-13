@@ -96,6 +96,7 @@ import type {
   AssistantAskResult,
   AssistantConversation,
   AssistantConversationsResult,
+  AuthProviderId,
   AuthStatus,
   AutoOpsAnalytics,
   AutoOpsApprovals,
@@ -116,6 +117,7 @@ import type {
   AutomationRule,
   AutomationRunRecord,
   Backup,
+  BackendReachability,
   BackupInfo,
   BackupValidation,
   BillingSummary,
@@ -517,6 +519,8 @@ export interface Items<T> {
  */
 export interface IpcResponseMap {
   // ── auth ──
+  /** P13C F-8 — provider names only; never client ids or secrets. */
+  'auth:providers': { providers: AuthProviderId[] };
   'auth:getStatus': AuthStatus;
   'auth:loginOAuth': AuthStatus;
   'auth:loginEmail': AuthStatus;
@@ -644,6 +648,12 @@ export interface IpcResponseMap {
 
   // ── neurocore ──
   'neurocore:systemHealth': SystemHealthSnapshot;
+  /**
+   * P13C F-7. The one health response that crosses an unauthenticated channel.
+   * Three fields, locked by `backendReachability.test.ts`; see the rationale on
+   * `BackendReachability` and on the PUBLIC_CHANNELS entry in `runtimeAuthz.ts`.
+   */
+  'system:backendReachability': BackendReachability;
 
   // ── supervisor ──
   'supervisor:status': SupervisorStatus;

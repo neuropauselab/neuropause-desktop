@@ -39,6 +39,7 @@ interface Route {
 }
 
 const routes: Partial<Record<IpcChannelName, Route>> = {
+  [IpcChannel.AuthProviders]: { schema: EmptyRequest, handle: () => authHandlers.getProviders() },
   [IpcChannel.AuthGetStatus]: { schema: EmptyRequest, handle: () => authHandlers.getStatus() },
   [IpcChannel.AuthLoginOAuth]: {
     schema: LoginOAuthRequest,

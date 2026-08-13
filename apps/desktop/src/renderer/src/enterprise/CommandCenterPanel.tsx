@@ -148,7 +148,7 @@ export function CommandCenterPanel({
         <button
           type="button"
           onClick={() => query.trim() && onNavigate('search', query.trim())}
-          className="rounded-lg bg-accent px-2.5 py-1 text-xs font-semibold text-white"
+          className="rounded-lg bg-accent px-2.5 py-1 text-xs font-semibold text-accent-fg"
         >
           Search
         </button>

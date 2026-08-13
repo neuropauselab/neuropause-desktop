@@ -287,6 +287,12 @@ export interface ExportScopeArg {
 
 export const ipc = {
   auth: {
+    /**
+     * P13C F-8 — the OAuth providers the server has configured. Callable before
+     * sign-in. Returns `[]` when the backend is unreachable, so the screen
+     * offers email only rather than four buttons nobody can stand behind.
+     */
+    providers: () => invoke(IpcChannel.AuthProviders),
     getStatus: () => invoke(IpcChannel.AuthGetStatus),
     loginOAuth: (provider: OAuthProviderId) => invoke(IpcChannel.AuthLoginOAuth, { provider }),
     loginEmail: (email: string, password: string) =>
@@ -785,8 +791,15 @@ export const ipc = {
   },
 
   system: {
-    /** NeuroCore composed system-health snapshot (V5.0). */
+    /** NeuroCore composed system-health snapshot (V5.0). Authenticated. */
     health: () => invoke(IpcChannel.SystemHealthSnapshot),
+    /**
+     * P13C F-7 — backend reachability, callable BEFORE sign-in. Three fields,
+     * no topology; see `BackendReachability`. `refresh` re-probes for the login
+     * screen's Retry button instead of returning the throttled cache.
+     */
+    backendReachability: (refresh = false) =>
+      invoke(IpcChannel.BackendReachability, { refresh }),
   },
 
   supervisor: {

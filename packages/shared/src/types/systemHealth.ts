@@ -29,6 +29,45 @@ export interface SubsystemHealth {
 /** Backend connectivity state (V5.1 live probe). */
 export type BackendState = 'connected' | 'disconnected' | 'recovering' | 'failed';
 
+/**
+ * Why the last backend probe failed, at the coarsest useful granularity.
+ *
+ * Deliberately NOT the error message: messages from `fetch`/undici embed the
+ * host, the port and sometimes the resolved address, and this type crosses an
+ * UNAUTHENTICATED channel (see `BackendReachability`).
+ */
+export type BackendProbeError = 'timeout' | 'dns' | 'refused' | 'http_error';
+
+/**
+ * P13C F-7 — the pre-authentication reachability payload, and the ONLY
+ * backend-health shape allowed across an unauthenticated channel.
+ *
+ * `neurocore:systemHealth` came off the public allowlist in Round 10 and
+ * `runtime:health` in Round 11, both because their payloads carry organization
+ * intelligence. Both removals were right. The unintended consequence was that a
+ * user who cannot sign in BECAUSE the backend is unreachable sees a generic
+ * authentication error, while the process that knows the real reason is
+ * forbidden to say so.
+ *
+ * This type is the narrow answer. Three fields, each of them something a person
+ * is entitled to know before they have an account:
+ *
+ *   - `reachable`  — can the app talk to its service at all
+ *   - `checkedAt`  — how stale that answer is
+ *   - `lastError`  — which class of failure, so support can triage
+ *
+ * It must NEVER grow a backend URL, host, address, latency, failure count,
+ * tenant, organization, version or any topology detail. The desktop's F-7 test
+ * locks the key set exactly; widening this type without widening that lock is a
+ * security regression, not a feature.
+ */
+export interface BackendReachability {
+  reachable: boolean;
+  /** ISO-8601. `null` when no probe has completed yet this session. */
+  checkedAt: string | null;
+  lastError: BackendProbeError | null;
+}
+
 /** Real process/runtime telemetry (V5.1). */
 export interface RuntimeTelemetry {
   cpuPercent: number;

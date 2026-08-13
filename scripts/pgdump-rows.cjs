@@ -13,7 +13,7 @@ const st = { b, p: 5 };
 const vmaj = b[st.p++], vmin = b[st.p++]; st.p++; // vrev
 st.intSize = b[st.p++];
 st.offSize = b[st.p++];
-const format = b[st.p++];
+st.p++; // format byte: read to advance the cursor, value unused here
 const version = vmaj * 256 + vmin;
 let compression = 0;
 if (version >= 0x010f) compression = b[st.p++];
@@ -27,7 +27,8 @@ rs(); rs(); rs();                       // dbname, remoteVersion, dumpVersion
 const count = ri();
 const tagById = new Map();
 for (let i = 0; i < count; i++) {
-  const dumpId = ri(); const hadDumper = ri();
+  const dumpId = ri();
+  ri(); // hadDumper: consumed to keep the cursor aligned; the flag is unused here
   rs(); rs();                           // tableoid, oid
   const tag = rs(); const desc = rs();
   ri();                                 // section

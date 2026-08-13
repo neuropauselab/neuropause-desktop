@@ -135,7 +135,7 @@ export function CustomizePanel(): JSX.Element {
             <option value="">No parent</option>
             {org.units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
-          <button type="button" disabled={busy || !unitName.trim()} onClick={() => void addUnit()} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"><Icon name="plus" size={13} /> Add</button>
+          <button type="button" disabled={busy || !unitName.trim()} onClick={() => void addUnit()} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg disabled:opacity-40"><Icon name="plus" size={13} /> Add</button>
         </div>
         <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
           {org.units.map((u) => {
@@ -156,7 +156,7 @@ export function CustomizePanel(): JSX.Element {
         <div className="mb-3 rounded-xl border border-[var(--hairline)] [background:var(--fill-1)] p-3">
           <div className="flex flex-wrap items-center gap-2">
             <input value={roleName} onChange={(e) => setRoleName(e.target.value)} placeholder="New role name…" className="min-w-44 flex-1 rounded-lg border border-[var(--hairline)] surface-raised px-3 py-1.5 text-sm text-ink outline-none focus-visible:shadow-focus placeholder:text-faint" />
-            <button type="button" disabled={busy || !roleName.trim()} onClick={() => void addRole()} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"><Icon name="plus" size={13} /> Create role</button>
+            <button type="button" disabled={busy || !roleName.trim()} onClick={() => void addRole()} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg disabled:opacity-40"><Icon name="plus" size={13} /> Create role</button>
           </div>
           <div className="mt-2.5 flex flex-wrap gap-1.5">
             {ROLE_PERMS.map((p) => {

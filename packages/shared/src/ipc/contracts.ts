@@ -33,6 +33,19 @@ export const SetThemeSourceRequest = z.object({
 // Empty-payload requests still get a schema so the router is uniform.
 export const EmptyRequest = z.object({}).strict();
 
+/**
+ * P13C F-7 — pre-authentication backend reachability request.
+ *
+ * `.strict()` matters more here than on a typical channel: this is the only
+ * health channel reachable without authentication, so an unknown key must be a
+ * rejection rather than something the handler quietly ignores. `refresh` is the
+ * login screen's Retry button asking to bypass the probe throttle.
+ */
+export const BackendReachabilityRequest = z
+  .object({ refresh: z.boolean().optional() })
+  .strict();
+export type BackendReachabilityRequest = z.infer<typeof BackendReachabilityRequest>;
+
 // V4.2 — runtime launch-at-login toggle.
 export const SetLoginAtStartupRequest = z.object({ enabled: z.boolean() }).strict();
 

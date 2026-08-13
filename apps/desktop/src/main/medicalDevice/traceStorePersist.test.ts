@@ -39,6 +39,43 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { TraceEdgeStore } from './traceStore';
 
+/**
+ * Remove a directory that a background write may still be touching.
+ *
+ * P13C — THIS TEST LOST THE RACE IT WAS WRITTEN TO MEMORIALIZE.
+ *
+ * `fs.rm(recursive)` enumerates the directory, unlinks what it found, then
+ * rmdirs. `TraceEdgeStore.persist` writes `trace.json.tmp` into that same
+ * directory. A tmp file created between the enumeration and the rmdir makes the
+ * rmdir fail with ENOTEMPTY — and because the throw happens on the SETUP line,
+ * the test dies before reaching the assertion it exists to make.
+ *
+ * `force: true` does not help: it suppresses "path does not exist", not
+ * "directory not empty".
+ *
+ * A file reappearing mid-removal IS the condition under test, so it is not a
+ * failure here — it is the scenario. Retry, and if the directory survives, let
+ * it: the assertion below already accepts both outcomes.
+ *
+ * NOT a platform limitation. It was previously characterised as a Windows
+ * filesystem difference; it then failed on macOS, and passes on Linux. It is
+ * timing, and timing is not a platform.
+ */
+async function rmRacing(dir: string): Promise<void> {
+  for (let attempt = 1; attempt <= 10; attempt++) {
+    try {
+      await fs.rm(dir, { recursive: true, force: true });
+      return;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== 'ENOTEMPTY' && code !== 'EBUSY' && code !== 'EPERM') throw err;
+      await new Promise((r) => setTimeout(r, 10 * attempt));
+    }
+  }
+  // Still there after ten tries: the writer is winning every round. That is a
+  // legitimate outcome of this scenario, and the assertion covers it.
+}
+
 const T0 = '2026-08-12T00:00:00.000Z';
 
 const EDGE = {
@@ -87,7 +124,7 @@ describe('TraceEdgeStore — a failed background write', () => {
     store.on('persist-failed', (f) => failures.push(f));
 
     store.record(EDGE);
-    await fs.rm(dir, { recursive: true, force: true });
+    await rmRacing(dir);
     // The write may have completed before the removal on a fast machine, so the
     // assertion is on the CLASS of outcome: it either succeeded or it reported.
     // What it must never do is reject into nothing.

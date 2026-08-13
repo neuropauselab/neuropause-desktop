@@ -1199,6 +1199,49 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   IpcChannel.EnterpriseApiRequest,
   IpcChannel.EnterpriseApiRoutes,
   IpcChannel.EnterpriseApiOpenApi,
+  /**
+   * P13C F-7 — `system:backendReachability`. THE ONLY HEALTH CHANNEL ON THIS
+   * LIST, ADDED WITH THE TWO REMOVALS THAT MADE IT NECESSARY IN FULL VIEW.
+   *
+   * Round 10 (NEW-M2) removed `neurocore:systemHealth` and Round 11 (M-1/M-2)
+   * removed `runtime:health`. Both removals were correct and both stand: those
+   * payloads compose subsystem detail, license state, device trust, event-bus
+   * throughput and diagnostics text — organization intelligence, unauthenticated.
+   *
+   * What neither round noticed is what the removals cost. A person who cannot
+   * sign in BECAUSE the backend is unreachable now gets a generic authentication
+   * error, while the main process holds the actual answer and has no lawful way
+   * to hand it over. On the founder's Windows machine that is the entire visible
+   * failure: a login form that rejects him, and a supervisor logging
+   * `subsystem=backend ok=false` to a file he will never open.
+   *
+   * This channel is the narrow repair, and the four properties that make it
+   * admissible where the other two are not:
+   *
+   *   1. FIXED SHAPE. It returns `BackendReachability` — `reachable`,
+   *      `checkedAt`, `lastError` — and the F-7 test asserts the key set is
+   *      EXACTLY those three, so growth is a test failure, not a review miss.
+   *   2. NO TOPOLOGY. No URL, host, address, port, latency or failure count. A
+   *      caller learns "the service answered, or did not, and roughly why" —
+   *      never where the service is.
+   *   3. NO ORG, NO TENANT, NO USER. Nothing in the payload varies by who is
+   *      asking or which organization is active, so it cannot be a side channel
+   *      into tenant state. It is identical for every caller on the machine.
+   *   4. PROBE-DERIVED, NOT STATE-DERIVED. It reports the last `/health` probe,
+   *      not `backendState` — which `setBackendState()` can force after an AUTH
+   *      failure. Deriving it from the composed state would leak "someone's
+   *      sign-in failed" through an unauthenticated channel; the sampler keeps
+   *      separate fields precisely so it cannot.
+   *
+   * `refresh: true` re-probes, bypassing the throttle, because the Retry button
+   * on the login screen must produce a real answer rather than a cached one. It
+   * is an outbound GET to a URL the app already polls every 20 seconds on its
+   * own; it grants no reach the process did not already have.
+   *
+   * If a future change needs latency, a URL, a version or a failure count on
+   * this surface: that is a NEW channel with its own gate, not a field here.
+   */
+  IpcChannel.BackendReachability,
 ]);
 
 /**

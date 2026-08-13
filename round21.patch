@@ -1,0 +1,1336 @@
+--- a/packages/shared/src/types/systemHealth.ts
++++ b/packages/shared/src/types/systemHealth.ts
+@@ -29,6 +29,45 @@
+ /** Backend connectivity state (V5.1 live probe). */
+ export type BackendState = 'connected' | 'disconnected' | 'recovering' | 'failed';
+ 
++/**
++ * Why the last backend probe failed, at the coarsest useful granularity.
++ *
++ * Deliberately NOT the error message: messages from `fetch`/undici embed the
++ * host, the port and sometimes the resolved address, and this type crosses an
++ * UNAUTHENTICATED channel (see `BackendReachability`).
++ */
++export type BackendProbeError = 'timeout' | 'dns' | 'refused' | 'http_error';
++
++/**
++ * P13C F-7 — the pre-authentication reachability payload, and the ONLY
++ * backend-health shape allowed across an unauthenticated channel.
++ *
++ * `neurocore:systemHealth` came off the public allowlist in Round 10 and
++ * `runtime:health` in Round 11, both because their payloads carry organization
++ * intelligence. Both removals were right. The unintended consequence was that a
++ * user who cannot sign in BECAUSE the backend is unreachable sees a generic
++ * authentication error, while the process that knows the real reason is
++ * forbidden to say so.
++ *
++ * This type is the narrow answer. Three fields, each of them something a person
++ * is entitled to know before they have an account:
++ *
++ *   - `reachable`  — can the app talk to its service at all
++ *   - `checkedAt`  — how stale that answer is
++ *   - `lastError`  — which class of failure, so support can triage
++ *
++ * It must NEVER grow a backend URL, host, address, latency, failure count,
++ * tenant, organization, version or any topology detail. The desktop's F-7 test
++ * locks the key set exactly; widening this type without widening that lock is a
++ * security regression, not a feature.
++ */
++export interface BackendReachability {
++  reachable: boolean;
++  /** ISO-8601. `null` when no probe has completed yet this session. */
++  checkedAt: string | null;
++  lastError: BackendProbeError | null;
++}
++
+ /** Real process/runtime telemetry (V5.1). */
+ export interface RuntimeTelemetry {
+   cpuPercent: number;
+--- a/packages/shared/src/ipc/contracts.ts
++++ b/packages/shared/src/ipc/contracts.ts
+@@ -33,6 +33,19 @@
+ // Empty-payload requests still get a schema so the router is uniform.
+ export const EmptyRequest = z.object({}).strict();
+ 
++/**
++ * P13C F-7 — pre-authentication backend reachability request.
++ *
++ * `.strict()` matters more here than on a typical channel: this is the only
++ * health channel reachable without authentication, so an unknown key must be a
++ * rejection rather than something the handler quietly ignores. `refresh` is the
++ * login screen's Retry button asking to bypass the probe throttle.
++ */
++export const BackendReachabilityRequest = z
++  .object({ refresh: z.boolean().optional() })
++  .strict();
++export type BackendReachabilityRequest = z.infer<typeof BackendReachabilityRequest>;
++
+ // V4.2 — runtime launch-at-login toggle.
+ export const SetLoginAtStartupRequest = z.object({ enabled: z.boolean() }).strict();
+ 
+--- a/packages/shared/src/ipc/channels.ts
++++ b/packages/shared/src/ipc/channels.ts
+@@ -9,6 +9,23 @@
+  */
+ export const IpcChannel = {
+   // ── auth/app (legacy router) ──
++  /**
++   * P13C F-8 — the OAuth providers the SERVER has configured.
++   *
++   * A BASE channel, sibling to the other `auth:*` entries, routed through
++   * `ipc/router.ts` rather than the secure bridge. That placement is the point:
++   * the login screen asks this question before anyone is authenticated, exactly
++   * like `auth:getStatus`, and neither belongs on the runtime surface that
++   * `PUBLIC_CHANNELS` classifies. An earlier draft of this change added it to
++   * that allowlist and the Round 10 invariant rejected it as a stale entry —
++   * correctly, because an allowlist row for a channel outside the classified
++   * surface is a false statement about that surface.
++   *
++   * What crosses: provider NAMES, filtered by the handler to the four known
++   * OAuth ids. No credentials, no client ids, no redirect URIs, no topology,
++   * and nothing that varies by caller.
++   */
++  AuthProviders: 'auth:providers',
+   AuthGetStatus: 'auth:getStatus',
+   AuthLoginOAuth: 'auth:loginOAuth',
+   AuthLoginEmail: 'auth:loginEmail',
+@@ -134,6 +151,13 @@
+   AutomationHistory: 'automations:history',
+   /** NeuroCore system-health snapshot (V5.0). */
+   SystemHealthSnapshot: 'neurocore:systemHealth',
++  /**
++   * P13C F-7 — pre-authentication backend reachability. Returns exactly
++   * `BackendReachability` (reachable / checkedAt / lastError) and nothing else.
++   * The ONLY health channel that may be public; the rationale lives on
++   * `BackendReachability` and on the PUBLIC_CHANNELS entry in `runtimeAuthz.ts`.
++   */
++  BackendReachability: 'system:backendReachability',
+   /** Runtime supervisor status + history + recovery (V5.3). */
+   SupervisorStatus: 'supervisor:status',
+   /** Renderer reports commercial license health for NeuroCore (V6.1). */
+@@ -1132,6 +1156,7 @@
+ 
+ /** Legacy auth/app invokable channels (handled by ipc/router). */
+ export const INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
++  IpcChannel.AuthProviders,
+   IpcChannel.AuthGetStatus,
+   IpcChannel.AuthLoginOAuth,
+   IpcChannel.AuthLoginEmail,
+@@ -1240,6 +1265,7 @@
+   IpcChannel.AutomationMonitor,
+   IpcChannel.AutomationHistory,
+   IpcChannel.SystemHealthSnapshot,
++  IpcChannel.BackendReachability,
+   IpcChannel.SupervisorStatus,
+   IpcChannel.LicenseReportHealth,
+   IpcChannel.BillingCheckout,
+--- a/packages/shared/src/ipc/responses.ts
++++ b/packages/shared/src/ipc/responses.ts
+@@ -96,6 +96,7 @@
+   AssistantAskResult,
+   AssistantConversation,
+   AssistantConversationsResult,
++  AuthProviderId,
+   AuthStatus,
+   AutoOpsAnalytics,
+   AutoOpsApprovals,
+@@ -116,6 +117,7 @@
+   AutomationRule,
+   AutomationRunRecord,
+   Backup,
++  BackendReachability,
+   BackupInfo,
+   BackupValidation,
+   BillingSummary,
+@@ -517,6 +519,8 @@
+  */
+ export interface IpcResponseMap {
+   // ── auth ──
++  /** P13C F-8 — provider names only; never client ids or secrets. */
++  'auth:providers': { providers: AuthProviderId[] };
+   'auth:getStatus': AuthStatus;
+   'auth:loginOAuth': AuthStatus;
+   'auth:loginEmail': AuthStatus;
+@@ -644,6 +648,12 @@
+ 
+   // ── neurocore ──
+   'neurocore:systemHealth': SystemHealthSnapshot;
++  /**
++   * P13C F-7. The one health response that crosses an unauthenticated channel.
++   * Three fields, locked by `backendReachability.test.ts`; see the rationale on
++   * `BackendReachability` and on the PUBLIC_CHANNELS entry in `runtimeAuthz.ts`.
++   */
++  'system:backendReachability': BackendReachability;
+ 
+   // ── supervisor ──
+   'supervisor:status': SupervisorStatus;
+--- a/apps/desktop/src/main/runtimeTelemetry.ts
++++ b/apps/desktop/src/main/runtimeTelemetry.ts
+@@ -9,10 +9,49 @@
+  */
+ import { config } from './config';
+ import { createLogger } from './logger';
+-import type { BackendState, RuntimeTelemetry } from '@neuropause/shared';
++import type {
++  BackendProbeError,
++  BackendReachability,
++  BackendState,
++  RuntimeTelemetry,
++} from '@neuropause/shared';
+ 
+ const log = createLogger('runtime-telemetry');
+ 
++/**
++ * Classify a probe failure into the coarse public buckets.
++ *
++ * Returns `null` for anything unrecognized. That is deliberate: an unclassified
++ * failure reported as `{ reachable: false, lastError: null }` is honest, whereas
++ * guessing the nearest label would put a wrong cause in front of a user and in
++ * front of support. Program 13C exists because statuses were assigned by the
++ * proxy that was easiest to measure; this is the same mistake in miniature.
++ *
++ * Reads only `name` and `code`. The error's MESSAGE is never inspected and never
++ * propagated — undici embeds host, port and sometimes the resolved address in it,
++ * and this value crosses an unauthenticated channel.
++ */
++export function classifyProbeError(err: unknown): BackendProbeError | null {
++  const e = err as { name?: unknown; code?: unknown; cause?: { code?: unknown } } | null;
++  if (!e || typeof e !== 'object') return null;
++  const name = typeof e.name === 'string' ? e.name : '';
++  if (name === 'AbortError' || name === 'TimeoutError') return 'timeout';
++  const code = typeof e.code === 'string' ? e.code : typeof e.cause?.code === 'string' ? e.cause.code : '';
++  switch (code) {
++    case 'ENOTFOUND':
++    case 'EAI_AGAIN':
++      return 'dns';
++    case 'ECONNREFUSED':
++      return 'refused';
++    case 'ETIMEDOUT':
++    case 'UND_ERR_CONNECT_TIMEOUT':
++    case 'UND_ERR_HEADERS_TIMEOUT':
++      return 'timeout';
++    default:
++      return null;
++  }
++}
++
+ export class RuntimeTelemetrySampler {
+   private lastCpu = process.cpuUsage();
+   private lastCpuAt = Date.now();
+@@ -23,6 +62,17 @@
+   private lastProbeAt = 0;
+   private consecutiveFailures = 0;
+ 
++  // ── F-7 reachability, kept SEPARATE from backendState on purpose ──
++  //
++  // `setBackendState()` lets other subsystems force the state — notably after an
++  // AUTH failure. `reachability()` is served over an unauthenticated channel, so
++  // it must answer "did the last /health probe succeed", never "did somebody's
++  // sign-in fail". Deriving it from backendState would leak the second through
++  // the first. These three fields are written ONLY by probeBackend().
++  private lastProbeOk: boolean | null = null;
++  private lastProbeCheckedAt: string | null = null;
++  private lastProbeError: BackendProbeError | null = null;
++
+   constructor(private readonly now: () => number = Date.now) {}
+ 
+   /** CPU% since the last sample, normalized by elapsed wall-clock + core count. */
+@@ -70,19 +120,42 @@
+       });
+       clearTimeout(timeout);
+       this.backendLatencyMs = Date.now() - started;
++      this.lastProbeCheckedAt = new Date(this.now()).toISOString();
+       if (res.ok) {
+         this.backendState = 'connected';
+         this.consecutiveFailures = 0;
++        this.lastProbeOk = true;
++        this.lastProbeError = null;
+       } else {
+         this.registerFailure();
++        this.lastProbeOk = false;
++        this.lastProbeError = 'http_error';
+       }
+     } catch (err) {
+       this.backendLatencyMs = null;
+       this.registerFailure();
++      this.lastProbeCheckedAt = new Date(this.now()).toISOString();
++      this.lastProbeOk = false;
++      this.lastProbeError = classifyProbeError(err);
+       log.debug('backend probe failed', { err: String(err) });
+     }
+   }
+ 
++  /**
++   * F-7 — the pre-authentication reachability answer.
++   *
++   * Exactly three fields, and it must stay exactly three. No URL, no host, no
++   * latency, no failure count, no org. `reachable` is false until a probe has
++   * actually succeeded, so "we have not checked yet" never renders as "fine".
++   */
++  reachability(): BackendReachability {
++    return {
++      reachable: this.lastProbeOk === true,
++      checkedAt: this.lastProbeCheckedAt,
++      lastError: this.lastProbeError,
++    };
++  }
++
+   private registerFailure(): void {
+     this.consecutiveFailures += 1;
+     // One blip → recovering; sustained failures → disconnected.
+--- a/apps/desktop/src/main/neuroCore.ts
++++ b/apps/desktop/src/main/neuroCore.ts
+@@ -9,6 +9,7 @@
+  */
+ import {
+   composeSystemHealth,
++  type BackendReachability,
+   type DiagnosticsReport,
+   type SystemHealthSnapshot,
+   type VoiceRuntimeState,
+@@ -169,4 +170,32 @@
+     await this.telemetry.probeBackend(0);
+     return this.telemetry.read().backendState === 'connected';
+   }
++
++  /**
++   * P13C F-7: the pre-authentication reachability answer, and the only health
++   * value that crosses an unauthenticated channel. Delegates to the sampler —
++   * this class adds nothing to the payload, deliberately, so there is exactly
++   * one place the shape can widen and exactly one test guarding it.
++   *
++   * `refresh` is what the login screen's Retry button calls; it bypasses the
++   * probe throttle so a person pressing a button gets a real answer rather than
++   * a cached one.
++   */
++  async backendReachability(refresh = false): Promise<BackendReachability> {
++    // Probe when asked to, AND when nothing has probed yet this session.
++    //
++    // Found by running the real app with the backend down (13 Aug): the login
++    // screen mounts and asks immediately, long before the 20-second supervisor
++    // tick, so without this the FIRST answer of every launch was the untouched
++    // initial state — `reachable:false, checkedAt:null` — which the notice
++    // rendered as a live outage. On a healthy machine that is a false alarm at
++    // every start, which is worse than saying nothing.
++    //
++    // `checkedAt === null` is the honest test for "no probe has completed",
++    // and it is the same field the renderer uses to tell "not yet" from "no".
++    if (refresh || this.telemetry.reachability().checkedAt === null) {
++      await this.telemetry.probeBackend(0);
++    }
++    return this.telemetry.reachability();
++  }
+ }
+--- a/apps/desktop/src/main/ipc/runtimeAuthz.ts
++++ b/apps/desktop/src/main/ipc/runtimeAuthz.ts
+@@ -1199,6 +1199,49 @@
+   IpcChannel.EnterpriseApiRequest,
+   IpcChannel.EnterpriseApiRoutes,
+   IpcChannel.EnterpriseApiOpenApi,
++  /**
++   * P13C F-7 — `system:backendReachability`. THE ONLY HEALTH CHANNEL ON THIS
++   * LIST, ADDED WITH THE TWO REMOVALS THAT MADE IT NECESSARY IN FULL VIEW.
++   *
++   * Round 10 (NEW-M2) removed `neurocore:systemHealth` and Round 11 (M-1/M-2)
++   * removed `runtime:health`. Both removals were correct and both stand: those
++   * payloads compose subsystem detail, license state, device trust, event-bus
++   * throughput and diagnostics text — organization intelligence, unauthenticated.
++   *
++   * What neither round noticed is what the removals cost. A person who cannot
++   * sign in BECAUSE the backend is unreachable now gets a generic authentication
++   * error, while the main process holds the actual answer and has no lawful way
++   * to hand it over. On the founder's Windows machine that is the entire visible
++   * failure: a login form that rejects him, and a supervisor logging
++   * `subsystem=backend ok=false` to a file he will never open.
++   *
++   * This channel is the narrow repair, and the four properties that make it
++   * admissible where the other two are not:
++   *
++   *   1. FIXED SHAPE. It returns `BackendReachability` — `reachable`,
++   *      `checkedAt`, `lastError` — and the F-7 test asserts the key set is
++   *      EXACTLY those three, so growth is a test failure, not a review miss.
++   *   2. NO TOPOLOGY. No URL, host, address, port, latency or failure count. A
++   *      caller learns "the service answered, or did not, and roughly why" —
++   *      never where the service is.
++   *   3. NO ORG, NO TENANT, NO USER. Nothing in the payload varies by who is
++   *      asking or which organization is active, so it cannot be a side channel
++   *      into tenant state. It is identical for every caller on the machine.
++   *   4. PROBE-DERIVED, NOT STATE-DERIVED. It reports the last `/health` probe,
++   *      not `backendState` — which `setBackendState()` can force after an AUTH
++   *      failure. Deriving it from the composed state would leak "someone's
++   *      sign-in failed" through an unauthenticated channel; the sampler keeps
++   *      separate fields precisely so it cannot.
++   *
++   * `refresh: true` re-probes, bypassing the throttle, because the Retry button
++   * on the login screen must produce a real answer rather than a cached one. It
++   * is an outbound GET to a URL the app already polls every 20 seconds on its
++   * own; it grants no reach the process did not already have.
++   *
++   * If a future change needs latency, a URL, a version or a failure count on
++   * this surface: that is a NEW channel with its own gate, not a field here.
++   */
++  IpcChannel.BackendReachability,
+ ]);
+ 
+ /**
+--- a/apps/desktop/src/main/runtimeCore.ts
++++ b/apps/desktop/src/main/runtimeCore.ts
+@@ -37,6 +37,7 @@
+ import {
+   IpcChannel,
+   EmptyRequest,
++  BackendReachabilityRequest,
+   VoiceStatusRequest,
+   SupervisorRecoverRequest,
+   SupervisorSetPolicyRequest,
+@@ -2207,6 +2208,21 @@
+     schema: EmptyRequest,
+     handler: () => neuroCore.snapshot(),
+   });
++  // P13C F-7: pre-authentication backend reachability. PUBLIC by design and by
++  // exception — see the PUBLIC_CHANNELS entry in `ipc/runtimeAuthz.ts` for why
++  // this one is safe when `neurocore:systemHealth` (Round 10) and
++  // `runtime:health` (Round 11) are not. The handler returns the sampler's
++  // three-field payload verbatim and composes nothing into it; any widening has
++  // to happen in `RuntimeTelemetrySampler.reachability()`, where the F-7 test
++  // locks the key set.
++  defs.push({
++    channel: IpcChannel.BackendReachability,
++    schema: BackendReachabilityRequest,
++    handler: async (payload: unknown) => {
++      const { refresh } = (payload ?? {}) as { refresh?: boolean };
++      return neuroCore.backendReachability(refresh === true);
++    },
++  });
+   // V6.1: renderer reports license health (it holds the active org) so NeuroCore
+   // can compose it into system health without needing ambient org state in main.
+   defs.push({
+--- a/apps/desktop/src/main/ipc/handlers/auth.ts
++++ b/apps/desktop/src/main/ipc/handlers/auth.ts
+@@ -1,7 +1,42 @@
+ /** Handlers for authentication IPC. All real work lives in authService. */
+-import type { AuthStatus } from '@neuropause/shared';
++import type { AuthProviderId, AuthStatus } from '@neuropause/shared';
+ import type { EmailCredentialsRequest, LoginOAuthRequest } from '@neuropause/shared';
+ import { authService } from '../../auth/authService';
++import { backendClient } from '../../auth/backendClient';
++import { createLogger } from '../../logger';
++
++const log = createLogger('auth-providers');
++
++/** The OAuth providers the login screen may render. `email` is not one of them. */
++const OAUTH_PROVIDERS: readonly string[] = ['google', 'github', 'microsoft', 'apple'];
++
++/**
++ * P13C F-8 — which sign-in providers the SERVER actually has configured.
++ *
++ * `LoginScreen.tsx:15` rendered a hardcoded array of four OAuth buttons while
++ * `/auth/providers` returned `[]`, so Google, GitHub, Microsoft and Apple were
++ * all offered and none could work. It was almost certainly the founder's first
++ * click. `backendClient.getProviders()` already existed to answer this and had
++ * NO CALLER anywhere in the main process — the correct data source was written
++ * and never wired.
++ *
++ * A failed lookup is not an error state here. If the backend cannot be reached
++ * we cannot confirm that any provider works, so we return none and the screen
++ * falls back to email sign-in. That is the honest response to "I don't know",
++ * and offering a button nobody can stand behind is what created F-8.
++ */
++export async function getProviders(): Promise<{ providers: AuthProviderId[] }> {
++  try {
++    const result = await backendClient.getProviders();
++    const providers = (result?.providers ?? []).filter((p): p is AuthProviderId =>
++      OAUTH_PROVIDERS.includes(p),
++    );
++    return { providers };
++  } catch (err) {
++    log.debug('provider list unavailable; offering none', { err: String(err) });
++    return { providers: [] };
++  }
++}
+ 
+ export function getStatus(): AuthStatus {
+   return authService.getStatus();
+--- a/apps/desktop/src/main/ipc/router.ts
++++ b/apps/desktop/src/main/ipc/router.ts
+@@ -39,6 +39,7 @@
+ }
+ 
+ const routes: Partial<Record<IpcChannelName, Route>> = {
++  [IpcChannel.AuthProviders]: { schema: EmptyRequest, handle: () => authHandlers.getProviders() },
+   [IpcChannel.AuthGetStatus]: { schema: EmptyRequest, handle: () => authHandlers.getStatus() },
+   [IpcChannel.AuthLoginOAuth]: {
+     schema: LoginOAuthRequest,
+--- a/apps/desktop/src/renderer/src/lib/ipc.ts
++++ b/apps/desktop/src/renderer/src/lib/ipc.ts
+@@ -287,6 +287,12 @@
+ 
+ export const ipc = {
+   auth: {
++    /**
++     * P13C F-8 — the OAuth providers the server has configured. Callable before
++     * sign-in. Returns `[]` when the backend is unreachable, so the screen
++     * offers email only rather than four buttons nobody can stand behind.
++     */
++    providers: () => invoke(IpcChannel.AuthProviders),
+     getStatus: () => invoke(IpcChannel.AuthGetStatus),
+     loginOAuth: (provider: OAuthProviderId) => invoke(IpcChannel.AuthLoginOAuth, { provider }),
+     loginEmail: (email: string, password: string) =>
+@@ -785,8 +791,15 @@
+   },
+ 
+   system: {
+-    /** NeuroCore composed system-health snapshot (V5.0). */
++    /** NeuroCore composed system-health snapshot (V5.0). Authenticated. */
+     health: () => invoke(IpcChannel.SystemHealthSnapshot),
++    /**
++     * P13C F-7 — backend reachability, callable BEFORE sign-in. Three fields,
++     * no topology; see `BackendReachability`. `refresh` re-probes for the login
++     * screen's Retry button instead of returning the throttled cache.
++     */
++    backendReachability: (refresh = false) =>
++      invoke(IpcChannel.BackendReachability, { refresh }),
+   },
+ 
+   supervisor: {
+--- a/apps/desktop/src/renderer/src/screens/LoginScreen.tsx
++++ b/apps/desktop/src/renderer/src/screens/LoginScreen.tsx
+@@ -1,8 +1,10 @@
+-import { useMemo, useState, type FormEvent } from 'react';
++import { useEffect, useMemo, useState, type FormEvent } from 'react';
+ import { motion } from 'framer-motion';
+ import type { AuthProviderId } from '@neuropause/shared';
+ import { useAuth } from '@renderer/providers/AuthProvider';
+ import { Spinner } from '@renderer/components/Spinner';
++import { BackendReachabilityNotice } from './BackendReachabilityNotice';
++import { ipc } from '@renderer/lib/ipc';
+ import {
+   AppleIcon,
+   GitHubIcon,
+@@ -12,7 +14,16 @@
+ 
+ type OAuthProviderId = Exclude<AuthProviderId, 'email'>;
+ 
+-const PROVIDERS: { id: OAuthProviderId; label: string; Icon: typeof GoogleIcon }[] = [
++/**
++ * P13C F-8 — the catalogue of buttons this screen KNOWS HOW TO RENDER. It is not
++ * the list it offers.
++ *
++ * Until now this array WAS the offer: four OAuth buttons rendered unconditionally
++ * while `/auth/providers` returned `[]`, so every one of them failed. What ships
++ * is now the intersection of this catalogue and what the server says it has
++ * configured, which is empty until somebody configures a provider.
++ */
++const PROVIDER_CATALOGUE: { id: OAuthProviderId; label: string; Icon: typeof GoogleIcon }[] = [
+   { id: 'google', label: 'Continue with Google', Icon: GoogleIcon },
+   { id: 'github', label: 'Continue with GitHub', Icon: GitHubIcon },
+   { id: 'microsoft', label: 'Continue with Microsoft', Icon: MicrosoftIcon },
+@@ -29,6 +40,28 @@
+   const [formError, setFormError] = useState<string | null>(null);
+   const [pendingProvider, setPendingProvider] = useState<OAuthProviderId | null>(null);
+   const [submitting, setSubmitting] = useState(false);
++  // F-8: empty until the server says otherwise. Never optimistic.
++  const [enabledProviders, setEnabledProviders] = useState<OAuthProviderId[]>([]);
++
++  useEffect(() => {
++    let alive = true;
++    void ipc.auth
++      .providers()
++      .then((r) => {
++        if (alive) setEnabledProviders(r.providers.filter((p): p is OAuthProviderId => p !== 'email'));
++      })
++      .catch(() => {
++        // Unknown is not "all four". Leave the list empty.
++      });
++    return () => {
++      alive = false;
++    };
++  }, []);
++
++  const providers = useMemo(
++    () => PROVIDER_CATALOGUE.filter((p) => enabledProviders.includes(p.id)),
++    [enabledProviders],
++  );
+ 
+   const authenticating = status.state === 'authenticating';
+   const busy = authenticating || submitting || pendingProvider !== null;
+@@ -91,6 +124,14 @@
+             <p className="mt-1 text-[13px] text-muted">Sign in to your AI operating layer</p>
+           </div>
+ 
++          {/*
++            F-7. Above the auth banner deliberately: when the service is
++            unreachable, "Invalid email or password" is a true statement about
++            the response and a false explanation of the situation. The reader
++            should meet the cause before the symptom.
++          */}
++          <BackendReachabilityNotice />
++
+           {banner ? (
+             <div
+               className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 py-2.5 text-[12.5px] text-red-300"
+@@ -100,9 +141,10 @@
+             </div>
+           ) : null}
+ 
+-          {/* OAuth providers */}
++          {/* OAuth providers — only those the server actually has (F-8) */}
++          {providers.length > 0 ? (
+           <div className="flex flex-col gap-2.5">
+-            {PROVIDERS.map(({ id, label, Icon }) => {
++            {providers.map(({ id, label, Icon }) => {
+               const isPending = pendingProvider === id;
+               return (
+                 <button
+@@ -118,13 +160,16 @@
+               );
+             })}
+           </div>
++          ) : null}
+ 
+-          {/* Divider */}
++          {/* Divider — pointless with nothing above it */}
++          {providers.length > 0 ? (
+           <div className="my-5 flex items-center gap-3">
+             <span className="h-px flex-1 bg-surface-border" />
+             <span className="text-[11px] uppercase tracking-wider text-muted">or</span>
+             <span className="h-px flex-1 bg-surface-border" />
+           </div>
++          ) : null}
+ 
+           {/* Email / password */}
+           <form className="flex flex-col gap-2.5" onSubmit={(e) => void handleEmailSubmit(e)}>
+@@ -149,7 +194,7 @@
+             <button
+               type="submit"
+               disabled={busy}
+-              className="app-no-drag mt-1 flex h-11 items-center justify-center gap-2 rounded-xl bg-accent px-4 text-[13.5px] font-semibold text-white transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
++              className="app-no-drag mt-1 flex h-11 items-center justify-center gap-2 rounded-xl bg-accent px-4 text-[13.5px] font-semibold text-accent-fg transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+             >
+               {submitting ? <Spinner /> : null}
+               <span>{mode === 'signup' ? 'Create account' : 'Sign in'}</span>
+--- a/apps/desktop/src/renderer/src/enterprise/CustomizePanel.tsx
++++ b/apps/desktop/src/renderer/src/enterprise/CustomizePanel.tsx
+@@ -135,7 +135,7 @@
+             <option value="">No parent</option>
+             {org.units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+           </select>
+-          <button type="button" disabled={busy || !unitName.trim()} onClick={() => void addUnit()} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"><Icon name="plus" size={13} /> Add</button>
++          <button type="button" disabled={busy || !unitName.trim()} onClick={() => void addUnit()} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg disabled:opacity-40"><Icon name="plus" size={13} /> Add</button>
+         </div>
+         <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+           {org.units.map((u) => {
+@@ -156,7 +156,7 @@
+         <div className="mb-3 rounded-xl border border-[var(--hairline)] [background:var(--fill-1)] p-3">
+           <div className="flex flex-wrap items-center gap-2">
+             <input value={roleName} onChange={(e) => setRoleName(e.target.value)} placeholder="New role name…" className="min-w-44 flex-1 rounded-lg border border-[var(--hairline)] surface-raised px-3 py-1.5 text-sm text-ink outline-none focus-visible:shadow-focus placeholder:text-faint" />
+-            <button type="button" disabled={busy || !roleName.trim()} onClick={() => void addRole()} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"><Icon name="plus" size={13} /> Create role</button>
++            <button type="button" disabled={busy || !roleName.trim()} onClick={() => void addRole()} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg disabled:opacity-40"><Icon name="plus" size={13} /> Create role</button>
+           </div>
+           <div className="mt-2.5 flex flex-wrap gap-1.5">
+             {ROLE_PERMS.map((p) => {
+--- a/apps/desktop/src/renderer/src/enterprise/DecisionCenterPanel.tsx
++++ b/apps/desktop/src/renderer/src/enterprise/DecisionCenterPanel.tsx
+@@ -108,7 +108,7 @@
+                         <Icon name="clock" size={12} /> proposed {relativeTime(job.createdAt)}
+                       </div>
+                       {!open && (
+-                        <button type="button" onClick={() => { setOpenId(proposal.id); setNote(''); }} className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white">
++                        <button type="button" onClick={() => { setOpenId(proposal.id); setNote(''); }} className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg">
+                           Review decision <Icon name="chevron-right" size={13} />
+                         </button>
+                       )}
+--- a/apps/desktop/src/renderer/src/enterprise/ExecutiveWorkspacePanel.tsx
++++ b/apps/desktop/src/renderer/src/enterprise/ExecutiveWorkspacePanel.tsx
+@@ -127,7 +127,7 @@
+                 </div>
+                 {selectedSkill && <p className="mt-2.5 text-2xs text-faint">{selectedSkill.description}{selectedSkill.sideEffects ? ' · This skill can have side effects, so it is approval-gated.' : ' · Read-only.'}</p>}
+                 <div className="mt-3 flex flex-wrap gap-2">
+-                  <button type="button" disabled={busy || !skillId} onClick={() => void doDelegate()} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">
++                  <button type="button" disabled={busy || !skillId} onClick={() => void doDelegate()} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg disabled:opacity-40">
+                     <Icon name="launch" size={13} /> Delegate task
+                   </button>
+                   <button type="button" disabled={busy || !skillId} onClick={() => void launchWorkflow()} className={cn('inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition disabled:opacity-40', TINT_TONE.purple)}>
+--- a/apps/desktop/src/renderer/src/enterprise/EnterpriseSearchPanel.tsx
++++ b/apps/desktop/src/renderer/src/enterprise/EnterpriseSearchPanel.tsx
+@@ -97,7 +97,7 @@
+           placeholder="Search projects, tasks, documents, conversations, calendar, people, customers, workers, policies, approvals…"
+           className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none focus-visible:shadow-focus placeholder:text-faint"
+         />
+-        <button type="button" onClick={() => void run(text)} className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white">Search</button>
++        <button type="button" onClick={() => void run(text)} className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg">Search</button>
+       </div>
+ 
+       <div className="mb-5 flex flex-wrap gap-1.5">
+--- a/apps/desktop/src/renderer/src/enterprise/CommandCenterPanel.tsx
++++ b/apps/desktop/src/renderer/src/enterprise/CommandCenterPanel.tsx
+@@ -148,7 +148,7 @@
+         <button
+           type="button"
+           onClick={() => query.trim() && onNavigate('search', query.trim())}
+-          className="rounded-lg bg-accent px-2.5 py-1 text-xs font-semibold text-white"
++          className="rounded-lg bg-accent px-2.5 py-1 text-xs font-semibold text-accent-fg"
+         >
+           Search
+         </button>
+--- /dev/null
++++ b/apps/desktop/src/main/backendReachability.test.ts
+@@ -0,0 +1,236 @@
++/**
++ * P13C F-7 — the pre-authentication reachability channel, locked.
++ *
++ * F-7: the application knows its backend is unreachable and, since Round 10
++ * removed `neurocore:systemHealth` and Round 11 removed `runtime:health` from
++ * the public allowlist, has had no lawful way to say so before sign-in. The
++ * repair is one narrow public channel. Its value is entirely in its narrowness,
++ * so the narrowness is what this file tests — not that it "works".
++ *
++ * Every assertion below is a security property, and each names the regression it
++ * would catch. Negative controls are recorded per block: revert the guard named
++ * in the comment and that block must FAIL. A test that passes both ways proves
++ * nothing, which is the mistake this program was convened over.
++ */
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
++
++const mockState = vi.hoisted(() => ({ backendUrl: 'https://api.example.test' }));
++
++vi.mock('./config', () => ({
++  config: {
++    get backendUrl() {
++      return mockState.backendUrl;
++    },
++    isDev: true,
++    oauthTimeoutMs: 1,
++    accessTokenRefreshSkewMs: 1,
++  },
++}));
++
++vi.mock('./logger', () => ({
++  createLogger: () => ({
++    info: () => undefined,
++    warn: () => undefined,
++    error: () => undefined,
++    debug: () => undefined,
++  }),
++}));
++
++import { PUBLIC_CHANNELS, RUNTIME_CHANNEL_PERMISSIONS } from './ipc/runtimeAuthz';
++import { IpcChannel, RUNTIME_INVOKABLE_CHANNELS } from '@neuropause/shared';
++import { BackendReachabilityRequest } from '@neuropause/shared';
++import { RuntimeTelemetrySampler, classifyProbeError } from './runtimeTelemetry';
++
++const CHANNEL = IpcChannel.BackendReachability;
++const realFetch = globalThis.fetch;
++
++/** Drive one probe with a stubbed fetch and read the public payload back. */
++async function probeWith(
++  impl: () => Promise<Response> | Promise<never>,
++): Promise<ReturnType<RuntimeTelemetrySampler['reachability']>> {
++  const sampler = new RuntimeTelemetrySampler(() => 1_700_000_000_000);
++  globalThis.fetch = impl as unknown as typeof fetch;
++  await sampler.probeBackend(0);
++  return sampler.reachability();
++}
++
++beforeEach(() => {
++  mockState.backendUrl = 'https://api.neuropause033.com';
++});
++
++afterEach(() => {
++  globalThis.fetch = realFetch;
++});
++
++describe('F-7 · the payload cannot widen', () => {
++  // NEGATIVE CONTROL: add any field to RuntimeTelemetrySampler.reachability()
++  // — latency, the URL, a failure count — and this test fails.
++  it('exposes EXACTLY three keys and no others', async () => {
++    const payload = await probeWith(async () => new Response('{}', { status: 200 }));
++    expect(Object.keys(payload).sort()).toEqual(['checkedAt', 'lastError', 'reachable']);
++  });
++
++  it('never contains the backend URL, host, or any topology detail', async () => {
++    mockState.backendUrl = 'https://api.neuropause033.com';
++    const cases = [
++      await probeWith(async () => new Response('{}', { status: 200 })),
++      await probeWith(async () => new Response('nope', { status: 503 })),
++      await probeWith(async () => {
++        throw Object.assign(new Error('connect ECONNREFUSED 134.199.250.188:443'), {
++          code: 'ECONNREFUSED',
++        });
++      }),
++    ];
++    for (const payload of cases) {
++      const serialized = JSON.stringify(payload);
++      expect(serialized).not.toContain('neuropause033');
++      expect(serialized).not.toContain('api.');
++      expect(serialized).not.toContain('134.199');
++      expect(serialized).not.toContain('443');
++      // A URL scheme, not the substring 'http' — `lastError: "http_error"` is a
++      // classification and legitimately contains it. The first draft of this
++      // assertion did not make that distinction and failed on its own payload.
++      expect(serialized).not.toContain('http://');
++      expect(serialized).not.toContain('https://');
++    }
++  });
++
++  it('carries no latency, no failure count, and nothing user- or org-shaped', async () => {
++    const payload = await probeWith(async () => new Response('{}', { status: 200 }));
++    const keys = Object.keys(payload).join(',').toLowerCase();
++    for (const forbidden of ['latency', 'ms', 'count', 'fail', 'tenant', 'org', 'user', 'url']) {
++      expect(keys).not.toContain(forbidden);
++    }
++  });
++});
++
++describe('F-7 · reachability is probe-derived, never auth-derived', () => {
++  // NEGATIVE CONTROL: change reachability() to read `backendState` and this
++  // fails — which is the point. `setBackendState` is called after AUTH failures,
++  // so a state-derived answer would leak "somebody's sign-in failed" to an
++  // unauthenticated caller.
++  it('a forced backendState does not move the public answer', async () => {
++    const sampler = new RuntimeTelemetrySampler(() => 1_700_000_000_000);
++    globalThis.fetch = (async () => new Response('{}', { status: 200 })) as unknown as typeof fetch;
++    await sampler.probeBackend(0);
++    expect(sampler.reachability().reachable).toBe(true);
++
++    sampler.setBackendState('failed');
++    expect(sampler.read().backendState).toBe('failed');
++    // The public answer still reports what the PROBE saw.
++    expect(sampler.reachability().reachable).toBe(true);
++  });
++
++  it('reports unreachable before any probe has run — never "fine by default"', () => {
++    const sampler = new RuntimeTelemetrySampler(() => 1_700_000_000_000);
++    expect(sampler.reachability()).toEqual({
++      reachable: false,
++      checkedAt: null,
++      lastError: null,
++    });
++  });
++});
++
++describe('F-7 · failure classification is honest', () => {
++  it('maps the founder’s actual failure — the 4000ms abort — to "timeout"', () => {
++    expect(classifyProbeError(Object.assign(new Error('aborted'), { name: 'AbortError' }))).toBe(
++      'timeout',
++    );
++  });
++
++  it('maps DNS, refusal and connect-timeout codes to their own buckets', () => {
++    expect(classifyProbeError(Object.assign(new Error(''), { code: 'ENOTFOUND' }))).toBe('dns');
++    expect(classifyProbeError(Object.assign(new Error(''), { code: 'EAI_AGAIN' }))).toBe('dns');
++    expect(classifyProbeError(Object.assign(new Error(''), { code: 'ECONNREFUSED' }))).toBe(
++      'refused',
++    );
++    expect(
++      classifyProbeError({ cause: { code: 'UND_ERR_CONNECT_TIMEOUT' } }),
++    ).toBe('timeout');
++  });
++
++  it('returns null for an unrecognized failure rather than guessing a label', () => {
++    expect(classifyProbeError(Object.assign(new Error('weird'), { code: 'EPROTO' }))).toBeNull();
++    expect(classifyProbeError(null)).toBeNull();
++    expect(classifyProbeError('a string')).toBeNull();
++  });
++
++  it('a non-2xx response is http_error, not a connection failure', async () => {
++    const payload = await probeWith(async () => new Response('down', { status: 502 }));
++    expect(payload).toMatchObject({ reachable: false, lastError: 'http_error' });
++    expect(payload.checkedAt).not.toBeNull();
++  });
++
++  it('a healthy response clears the previous error', async () => {
++    const sampler = new RuntimeTelemetrySampler(() => 1_700_000_000_000);
++    globalThis.fetch = (async () => {
++      throw Object.assign(new Error(''), { code: 'ECONNREFUSED' });
++    }) as unknown as typeof fetch;
++    await sampler.probeBackend(0);
++    expect(sampler.reachability().lastError).toBe('refused');
++
++    globalThis.fetch = (async () => new Response('{}', { status: 200 })) as unknown as typeof fetch;
++    await sampler.probeBackend(0);
++    expect(sampler.reachability()).toMatchObject({ reachable: true, lastError: null });
++  });
++});
++
++describe('F-7 · the authorization surface stays where Rounds 10 and 11 left it', () => {
++  it('the reachability channel is public', () => {
++    expect(PUBLIC_CHANNELS.has(CHANNEL)).toBe(true);
++  });
++
++  it('is NOT also gated — public-and-gated is the Round 10 contradiction', () => {
++    expect(RUNTIME_CHANNEL_PERMISSIONS[CHANNEL]).toBeUndefined();
++  });
++
++  it('is invokable, so the classification invariant actually sees it', () => {
++    expect(RUNTIME_INVOKABLE_CHANNELS).toContain(CHANNEL);
++  });
++
++  // The regression this whole finding is one step away from causing: someone
++  // "fixes" F-7 the lazy way by putting the old channels back on the allowlist.
++  it('neurocore:systemHealth is STILL not public (Round 10, NEW-M2)', () => {
++    expect(PUBLIC_CHANNELS.has(IpcChannel.SystemHealthSnapshot)).toBe(false);
++  });
++
++  it('runtime:health is STILL not public (Round 11, M-1/M-2)', () => {
++    expect(PUBLIC_CHANNELS.has(IpcChannel.RuntimeHealth)).toBe(false);
++  });
++
++  /**
++   * A snapshot lock, not a slogan.
++   *
++   * The first version of this test asserted "exactly one health channel is
++   * public" and failed immediately: three already were. They are legitimately
++   * different things — two are renderer→main REPORTS (the renderer holds the
++   * active org and pushes health INTO main; no health flows out) and one probes
++   * the LOCAL AI engine, not the backend. Rather than delete the check or weaken
++   * the regex until it agreed with me, the honest form is an explicit snapshot:
++   * a fourth public channel with `health` in its name has to be added here
++   * deliberately, with a reason, by whoever adds it.
++   */
++  it('the public health surface is exactly these four, and no more', () => {
++    const healthish = [...PUBLIC_CHANNELS].filter((c) => /health|reachab/i.test(c)).sort();
++    expect(healthish).toEqual(
++      [
++        IpcChannel.AiConfigHealth, // probes the LOCAL AI engine, not the backend
++        IpcChannel.BackendReachability, // F-7, this file
++        IpcChannel.DeviceReportHealth, // renderer → main report; nothing flows out
++        IpcChannel.LicenseReportHealth, // renderer → main report; nothing flows out
++      ].sort(),
++    );
++  });
++});
++
++describe('F-7 · the request schema rejects anything it does not know', () => {
++  it('accepts an empty body and an explicit refresh', () => {
++    expect(BackendReachabilityRequest.safeParse({}).success).toBe(true);
++    expect(BackendReachabilityRequest.safeParse({ refresh: true }).success).toBe(true);
++  });
++
++  it('rejects unknown keys — strict, because this channel needs no auth', () => {
++    expect(BackendReachabilityRequest.safeParse({ verbose: true }).success).toBe(false);
++    expect(BackendReachabilityRequest.safeParse({ refresh: 'yes' }).success).toBe(false);
++  });
++});
+--- /dev/null
++++ b/apps/desktop/src/renderer/src/screens/BackendReachabilityNotice.tsx
+@@ -0,0 +1,134 @@
++/**
++ * P13C F-7 — the pre-authentication service-status notice.
++ *
++ * The founder's Windows machine did exactly this: launched, showed a sign-in
++ * form, rejected every attempt, and told him nothing — while the main process
++ * logged `subsystem=backend ok=false` to a file he will never open. The
++ * application knew. It had no lawful way to say so, because the two channels
++ * that carry health came off the public allowlist in Rounds 10 and 11.
++ *
++ * This component is the mouth for `system:backendReachability`. It owns one
++ * editorial rule, which is why it is a component and not three lines inside
++ * LoginScreen: **the copy never asks the reader to run anything.** No "is the
++ * backend running?", no port, no URL, no command. A founder who installed an
++ * installer cannot act on any of that, and printing it turns an outage into a
++ * message that reads like his own mistake.
++ */
++import { useCallback, useEffect, useRef, useState } from 'react';
++import type { BackendReachability } from '@neuropause/shared';
++import { ipc } from '@renderer/lib/ipc';
++import { Spinner } from '@renderer/components/Spinner';
++
++/** How often to re-check while the notice is on screen. */
++const POLL_MS = 15_000;
++
++type Phase = 'checking' | 'reachable' | 'unreachable';
++
++/** Public copy per failure class. Support can triage; the reader gets a plain fact. */
++function detailFor(lastError: BackendReachability['lastError']): string {
++  switch (lastError) {
++    case 'timeout':
++      return 'The service did not respond in time.';
++    case 'dns':
++      return 'The service address could not be found on this network.';
++    case 'refused':
++      return 'The service refused the connection.';
++    case 'http_error':
++      return 'The service responded, but reported a problem.';
++    default:
++      return 'The connection could not be completed.';
++  }
++}
++
++export function BackendReachabilityNotice(): JSX.Element | null {
++  const [phase, setPhase] = useState<Phase>('checking');
++  const [detail, setDetail] = useState<string | null>(null);
++  const [retrying, setRetrying] = useState(false);
++  const alive = useRef(true);
++
++  const check = useCallback(async (refresh: boolean): Promise<void> => {
++    try {
++      const result = await ipc.system.backendReachability(refresh);
++      if (!alive.current) return;
++      if (result.reachable) {
++        setPhase('reachable');
++        setDetail(null);
++      } else if (result.checkedAt === null) {
++        // No probe has completed yet. `reachable:false` here means "we have not
++        // asked", not "the answer is no". Rendering it as an outage put a false
++        // alarm on the login screen of every healthy launch — caught by running
++        // the app, not by the tests, which asserted the field and not the
++        // meaning.
++        setPhase('checking');
++        setDetail(null);
++      } else {
++        setPhase('unreachable');
++        setDetail(detailFor(result.lastError));
++      }
++    } catch {
++      // The channel itself failed. Say nothing rather than invent a cause —
++      // an unknown state rendered as an outage is the same false-status error
++      // this program exists to stop.
++      if (alive.current) setPhase('checking');
++    }
++  }, []);
++
++  useEffect(() => {
++    alive.current = true;
++    void check(false);
++    const id = setInterval(() => void check(false), POLL_MS);
++    return () => {
++      alive.current = false;
++      clearInterval(id);
++    };
++  }, [check]);
++
++  const onRetry = useCallback(async (): Promise<void> => {
++    setRetrying(true);
++    setPhase('checking');
++    try {
++      await check(true);
++    } finally {
++      if (alive.current) setRetrying(false);
++    }
++  }, [check]);
++
++  // Nothing to say when the service is fine. The first render is 'checking',
++  // which is also silent — a status line that flashes on every healthy launch
++  // trains people to ignore it.
++  if (phase === 'reachable') return null;
++  if (phase === 'checking' && !retrying) return null;
++
++  if (phase === 'checking') {
++    return (
++      <div
++        className="mb-4 flex items-center gap-2.5 rounded-xl border border-surface-border bg-surface-raised px-3.5 py-2.5 text-[12.5px] text-muted"
++        role="status"
++      >
++        <Spinner />
++        <span>Checking connection…</span>
++      </div>
++    );
++  }
++
++  return (
++    <div
++      className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-[12.5px] text-amber-200"
++      role="status"
++    >
++      <p className="font-medium">NeuroPause cannot reach its AI service right now.</p>
++      {detail ? <p className="mt-1 text-amber-200/80">{detail}</p> : null}
++      <p className="mt-1 text-amber-200/80">
++        Sign-in needs the service. Nothing is wrong with this computer.
++      </p>
++      <button
++        type="button"
++        onClick={() => void onRetry()}
++        disabled={retrying}
++        className="app-no-drag mt-2 rounded-lg border border-amber-400/40 px-2.5 py-1 text-[12px] font-medium text-amber-100 transition hover:bg-amber-400/10 disabled:opacity-50"
++      >
++        Retry
++      </button>
++    </div>
++  );
++}
+--- /dev/null
++++ b/apps/desktop/ui-tests/backendReachabilityNotice.test.tsx
+@@ -0,0 +1,152 @@
++/**
++ * P13C F-7 — what the founder actually sees, tested at the surface he saw.
++ *
++ * The mounted-component trap is recorded in the certification (§2): a test that
++ * renders `FirstRunExperience` directly proved onboarding "worked" while the
++ * application could not reach it. So this file does NOT assert that a notice
++ * component renders in isolation — it renders it in the state the founder's
++ * machine was in and asserts the words on screen, including the words that must
++ * NOT be there.
++ */
++import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
++import { render, screen, waitFor, cleanup } from '@testing-library/react';
++import userEvent from '@testing-library/user-event';
++
++const mockState = vi.hoisted(() => ({
++  calls: [] as boolean[],
++  reject: false,
++  next: { reachable: false, checkedAt: '2026-08-13T06:00:00.000Z', lastError: 'timeout' } as {
++    reachable: boolean;
++    checkedAt: string | null;
++    lastError: 'timeout' | 'dns' | 'refused' | 'http_error' | null;
++  },
++}));
++
++vi.mock('@renderer/lib/ipc', () => ({
++  ipc: {
++    system: {
++      backendReachability: (refresh = false) => {
++        mockState.calls.push(refresh);
++        if (mockState.reject) return Promise.reject(new Error('channel unavailable'));
++        return Promise.resolve(mockState.next);
++      },
++    },
++  },
++}));
++
++import { BackendReachabilityNotice } from '@renderer/screens/BackendReachabilityNotice';
++
++beforeEach(() => {
++  mockState.calls = [];
++  mockState.next = {
++    reachable: false,
++    checkedAt: '2026-08-13T06:00:00.000Z',
++    lastError: 'timeout',
++  };
++});
++
++afterEach(() => cleanup());
++
++describe('F-7 · the unreachable notice', () => {
++  it('names the situation in the product’s own terms', async () => {
++    render(<BackendReachabilityNotice />);
++    await screen.findByText('NeuroPause cannot reach its AI service right now.');
++  });
++
++  it('explains the failure class without exposing where the service is', async () => {
++    render(<BackendReachabilityNotice />);
++    await screen.findByText('The service did not respond in time.');
++    const body = document.body.textContent ?? '';
++    expect(body).not.toContain('neuropause033');
++    expect(body).not.toContain('127.0.0.1');
++    expect(body).not.toContain('4000');
++    expect(body).not.toContain('http');
++  });
++
++  /**
++   * The brief's explicit prohibition, kept as an assertion rather than a review
++   * note. A founder who installed an installer cannot start a backend, and copy
++   * that tells him to makes an outage read like his own mistake.
++   */
++  it('never tells the reader to run a backend, a terminal, or a command', async () => {
++    render(<BackendReachabilityNotice />);
++    await screen.findByText('NeuroPause cannot reach its AI service right now.');
++    const body = (document.body.textContent ?? '').toLowerCase();
++    for (const forbidden of ['is it running', 'npm', 'node', 'vite', 'terminal', 'localhost', 'server']) {
++      expect(body).not.toContain(forbidden);
++    }
++  });
++
++  it('says the machine is not at fault', async () => {
++    render(<BackendReachabilityNotice />);
++    await screen.findByText(/Nothing is wrong with this computer/);
++  });
++
++  it('Retry re-probes rather than reading the cache', async () => {
++    render(<BackendReachabilityNotice />);
++    await screen.findByText('NeuroPause cannot reach its AI service right now.');
++    expect(mockState.calls).toEqual([false]);
++
++    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
++    await waitFor(() => expect(mockState.calls).toContain(true));
++  });
++
++  it('clears itself when the service comes back', async () => {
++    render(<BackendReachabilityNotice />);
++    await screen.findByText('NeuroPause cannot reach its AI service right now.');
++
++    mockState.next = { reachable: true, checkedAt: '2026-08-13T06:00:15.000Z', lastError: null };
++    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
++    await waitFor(() =>
++      expect(screen.queryByText('NeuroPause cannot reach its AI service right now.')).toBeNull(),
++    );
++  });
++
++  it('stays silent on a healthy launch — a banner every time trains people to ignore it', async () => {
++    mockState.next = { reachable: true, checkedAt: '2026-08-13T06:00:00.000Z', lastError: null };
++    const { container } = render(<BackendReachabilityNotice />);
++    await waitFor(() => expect(mockState.calls.length).toBeGreaterThan(0));
++    expect(container.textContent).toBe('');
++  });
++
++  /**
++   * The channel itself failing is NOT evidence the service is down — main could
++   * be mid-boot, or the handler could have thrown. Claiming an outage from it
++   * would be a status assigned from a proxy, which is the §2 failure pattern.
++   * The component stays silent instead.
++   */
++  it('says nothing when the channel itself fails, rather than inventing a cause', async () => {
++    mockState.reject = true;
++    const { container } = render(<BackendReachabilityNotice />);
++    await waitFor(() => expect(mockState.calls.length).toBeGreaterThan(0));
++    expect(container.textContent).toBe('');
++    mockState.reject = false;
++  });
++});
++
++/**
++ * Regression: the pre-probe state is NOT an outage.
++ *
++ * Found by running the real Electron app with the backend down and reading the
++ * screenshot: the notice printed the unclassified fallback because the renderer
++ * received `{reachable:false, checkedAt:null, lastError:null}` — the untouched
++ * initial state — before any probe had completed. On a HEALTHY machine that is a
++ * false outage banner at every launch.
++ *
++ * The tests above all passed while this was broken, because every one of them
++ * supplied a `checkedAt`. They asserted the field and not the meaning.
++ */
++describe('F-7 · "not asked yet" is not "unreachable"', () => {
++  it('stays silent when no probe has completed (checkedAt null)', async () => {
++    mockState.next = { reachable: false, checkedAt: null, lastError: null };
++    const { container } = render(<BackendReachabilityNotice />);
++    await waitFor(() => expect(mockState.calls.length).toBeGreaterThan(0));
++    expect(container.textContent).toBe('');
++  });
++
++  it('speaks only once a probe has actually answered', async () => {
++    mockState.next = { reachable: false, checkedAt: '2026-08-13T07:51:00.000Z', lastError: 'refused' };
++    render(<BackendReachabilityNotice />);
++    await screen.findByText('The service refused the connection.');
++  });
++});
+--- /dev/null
++++ b/apps/desktop/ui-tests/loginProviders.test.tsx
+@@ -0,0 +1,127 @@
++/**
++ * P13C F-8 / F-9 — the login screen must not offer what does not exist, and its
++ * primary action must be readable.
++ *
++ * F-8: `PROVIDER_CATALOGUE` used to be rendered unconditionally while
++ * `/auth/providers` returned `[]`, so four OAuth buttons were offered and none
++ * could work — most likely the founder's first click.
++ *
++ * F-9: `--accent` is `255 255 255` (index.css:11) and the submit button carried
++ * `bg-accent … text-white`. White on white. The design system ships
++ * `--accent-fg` (0 0 0) for exactly this and ten other call sites use it.
++ * Observed as a blank white bar in four screenshots before it was traced to the
++ * token.
++ */
++import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
++import { render, screen, cleanup } from '@testing-library/react';
++
++const mockState = vi.hoisted(() => ({
++  providers: [] as string[],
++  reject: false,
++}));
++
++vi.mock('@renderer/lib/ipc', () => ({
++  ipc: {
++    auth: {
++      providers: () =>
++        mockState.reject
++          ? Promise.reject(new Error('unreachable'))
++          : Promise.resolve({ providers: mockState.providers }),
++    },
++    system: {
++      backendReachability: () =>
++        Promise.resolve({ reachable: true, checkedAt: '2026-08-13T08:00:00.000Z', lastError: null }),
++    },
++  },
++}));
++
++vi.mock('@renderer/providers/AuthProvider', () => ({
++  useAuth: () => ({
++    status: { state: 'unauthenticated' },
++    loginOAuth: vi.fn(),
++    loginEmail: vi.fn(),
++    registerEmail: vi.fn(),
++  }),
++}));
++
++import { LoginScreen } from '@renderer/screens/LoginScreen';
++
++const OAUTH_LABELS = [
++  'Continue with Google',
++  'Continue with GitHub',
++  'Continue with Microsoft',
++  'Continue with Apple',
++];
++
++beforeEach(() => {
++  mockState.providers = [];
++  mockState.reject = false;
++});
++afterEach(() => cleanup());
++
++describe('F-8 · the screen offers only what the server has', () => {
++  it('offers NO OAuth button when the server reports none — the shipped state today', async () => {
++    render(<LoginScreen />);
++    await screen.findByPlaceholderText('Email');
++    for (const label of OAUTH_LABELS) {
++      expect(screen.queryByRole('button', { name: label })).toBeNull();
++    }
++    // and the "or" divider goes with them
++    expect(screen.queryByText('or')).toBeNull();
++  });
++
++  it('offers exactly the providers the server names, and no others', async () => {
++    mockState.providers = ['google'];
++    render(<LoginScreen />);
++    await screen.findByRole('button', { name: 'Continue with Google' });
++    for (const label of OAUTH_LABELS.slice(1)) {
++      expect(screen.queryByRole('button', { name: label })).toBeNull();
++    }
++    expect(screen.getByText('or')).toBeTruthy();
++  });
++
++  it('ignores a provider it has no button for, rather than crashing', async () => {
++    mockState.providers = ['google', 'saml', 'okta'];
++    render(<LoginScreen />);
++    await screen.findByRole('button', { name: 'Continue with Google' });
++    expect(screen.queryByText(/saml|okta/i)).toBeNull();
++  });
++
++  it('offers none when the lookup fails — unknown is not "all four"', async () => {
++    mockState.reject = true;
++    render(<LoginScreen />);
++    await screen.findByPlaceholderText('Email');
++    for (const label of OAUTH_LABELS) {
++      expect(screen.queryByRole('button', { name: label })).toBeNull();
++    }
++  });
++
++  it('always keeps the path that works — email and Create one', async () => {
++    render(<LoginScreen />);
++    await screen.findByPlaceholderText('Email');
++    expect(screen.getByPlaceholderText('Password')).toBeTruthy();
++    expect(screen.getByRole('button', { name: 'Create one' })).toBeTruthy();
++  });
++});
++
++describe('F-9 · the primary action is readable', () => {
++  /**
++   * NEGATIVE CONTROL: put `text-white` back on the submit button and this fails.
++   * `--accent` is white, so `bg-accent` + `text-white` is an invisible label on
++   * the first button anyone sees.
++   */
++  it('the submit button does not paint accent-on-accent', async () => {
++    render(<LoginScreen />);
++    const submit = await screen.findByRole('button', { name: /Sign in/i });
++    const cls = submit.className;
++    expect(cls).toContain('bg-accent');
++    expect(cls).toContain('text-accent-fg');
++    expect(cls).not.toContain('text-white');
++  });
++
++  it('the submit button carries a visible label', async () => {
++    render(<LoginScreen />);
++    const submit = await screen.findByRole('button', { name: /Sign in/i });
++    expect((submit.textContent ?? '').trim().length).toBeGreaterThan(0);
++  });
++});
