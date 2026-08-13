@@ -111,3 +111,24 @@ pushed). The default branch carries the certified tree. Verified by
 `git diff 093f391 origin/main` — the merge preserved the branch content exactly.
 The gate consequence stands until the next freeze: G1 and G18 remain NOT RUN
 until a baseline is frozen ON main.
+
+## O-7 · a merge bumped the product version with no human decision
+
+Merging ec28f45 (a 7-line documentation commit) into main produced:
+  apps/desktop/package.json  1.0.0-rc.15 -> 1.0.0-rc.16
+  package.json               1.0.0-rc.15 -> 1.0.0-rc.16
+Nobody asked for it. It is committed as bd38e68 and pushed to origin/main.
+
+The FIRST merge (d3e0ad9) did NOT bump — `git diff 093f391 d3e0ad9` was empty.
+So the trigger is conditional, not unconditional, and that is worse: a bump
+that fires sometimes cannot be reasoned about.
+
+CONSEQUENCE: main is no longer byte-identical to BASELINE-d825317dfb27, which
+records rc.15. The O-6 resolution note above was true when written and is now
+stale by exactly this diff.
+
+G18 (release provenance) CANNOT PASS while a version can change without a
+decision. An installer hash referenced by a certification artifact is worthless
+if the version it carries was assigned by a hook nobody invoked.
+
+NOT DIAGNOSED. NOT FIXED. Mechanism to be identified in round23.
