@@ -183,6 +183,10 @@ import {
 } from './enterprise';
 import { currentPrincipal } from './tenancy/backgroundPrincipal';
 import { assertAllTenantStoresBound } from './tenancy/tenantOwnedStore';
+import { registerTenantDomainSources } from './backup/tenantDomainRegistration';
+import { tenantArchiveCoverageGaps } from './backup/tenantArchive';
+import { companionDeviceStore } from './companion/deviceRegistryInstance';
+import { tenantAiPreferenceStore } from './ai/tenantAiPreferenceInstance';
 import { assertAllStoreScopesBound } from './tenancy/storeScope';
 import type { Organization } from '@neuropause/shared';
 import { setLiveSyncActiveOrg } from './cloud/livesync/liveSyncInstance';
@@ -956,6 +960,32 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   supervisor.bindScope(activeTenantScope);
   automationStore.bindScope(activeTenantScope);
   decisionStore.bindScope(activeTenantScope);
+
+  /**
+   * POPULATE THE F22 ARCHIVE REGISTRY. P13C FINAL CERTIFICATION.
+   *
+   * `registerTenantDomainSource()` had no production caller at all. Six adapters
+   * existed and none was ever registered, so the running application's source
+   * map was EMPTY: `registeredTenantDomains()` returned `[]`, all 19 domains
+   * read as uncovered, and a tenant archive would have held nothing. Reports
+   * counted adapters that had been WRITTEN and called it coverage.
+   *
+   * Registered here, immediately after the stores these adapters read are bound
+   * — before the binding is bound, a source would hand the archive a store that
+   * denies every read, which is the ordering mistake this programme keeps
+   * finding in other forms.
+   */
+  log.info('Tenant archive sources registered', {
+    domains: registerTenantDomainSources({
+      decisions: decisionStore,
+      automations: automationStore,
+      healthHistory: healthHistoryStore,
+      workforceJobs: jobStore,
+      companionDevices: companionDeviceStore(),
+      aiPreference: tenantAiPreferenceStore,
+    }).length,
+    uncovered: tenantArchiveCoverageGaps().length,
+  });
   holdStore.bindScope(activeTenantScope);
   decisionRecordStore.bindScope(activeTenantScope);
   opportunityDecisionStore.bindScope(activeTenantScope);
