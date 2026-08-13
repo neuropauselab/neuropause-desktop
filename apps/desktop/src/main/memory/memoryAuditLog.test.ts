@@ -1,3 +1,9 @@
+/**
+ * P13C Round 7 — `MemoryAuditLog` gained a tenant boundary: it had none, its
+ * channel was PUBLIC, and `detail` carries assistant-written record titles. An
+ * unbound log now denies every read, so these suites act AS one tenant.
+ * Cross-tenant behaviour is asserted in `tenancy/e2e/round7Tenancy.test.ts`.
+ */
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promises as fs } from 'node:fs';
@@ -26,7 +32,7 @@ describe('MemoryAuditLog', () => {
   beforeEach(async () => {
     dir = await fs.mkdtemp(join(tmpdir(), 'mem-audit-'));
     path = join(dir, 'memory-audit.json');
-    audit = new MemoryAuditLog(path);
+    audit = new MemoryAuditLog(path).bindScope(() => ({ tenantId: 'org-alpha', workspaceId: 'ws-alpha' }));
     await audit.load();
   });
 
@@ -66,7 +72,7 @@ describe('MemoryAuditLog', () => {
     audit.record(ev({ action: 'created' }));
     await audit.flush();
 
-    const b = new MemoryAuditLog(path);
+    const b = new MemoryAuditLog(path).bindScope(() => ({ tenantId: 'org-alpha', workspaceId: 'ws-alpha' }));
     await b.load();
     expect(b.size()).toBe(1);
     expect(b.page().entries[0]!.action).toBe('created');

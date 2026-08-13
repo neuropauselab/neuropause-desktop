@@ -16,7 +16,7 @@ import {
 const NAV: { id: string; label: string }[] = [
   { id: 'command', label: 'Command Center' },
   { id: 'decision', label: 'Decision Center' },
-  { id: 'organization', label: 'Organization' },
+  { id: 'organization', label: 'Org Structure' },
   { id: 'operations', label: 'Operations' },
   { id: 'search', label: 'Search' },
   { id: 'workspace', label: 'Workspace' },
@@ -127,15 +127,15 @@ export function CustomizePanel(): JSX.Element {
       {/* Business units */}
       <OpsPanel title="Business units" subtitle="Departments and teams" className="mt-1">
         <div className="mb-3 flex flex-wrap items-end gap-2">
-          <input value={unitName} onChange={(e) => setUnitName(e.target.value)} placeholder="New unit name…" className="min-w-44 flex-1 rounded-lg border border-[var(--hairline)] [background:var(--fill-1)] px-3 py-1.5 text-sm text-ink outline-none placeholder:text-faint" />
-          <select value={unitKind} onChange={(e) => setUnitKind(e.target.value as OrgUnitKind)} className="rounded-lg border border-[var(--hairline)] [background:var(--fill-1)] px-2.5 py-1.5 text-sm text-ink outline-none">
+          <input value={unitName} onChange={(e) => setUnitName(e.target.value)} placeholder="New unit name…" className="min-w-44 flex-1 rounded-lg border border-[var(--hairline)] [background:var(--fill-1)] px-3 py-1.5 text-sm text-ink outline-none focus-visible:shadow-focus placeholder:text-faint" />
+          <select value={unitKind} onChange={(e) => setUnitKind(e.target.value as OrgUnitKind)} className="rounded-lg border border-[var(--hairline)] [background:var(--fill-1)] px-2.5 py-1.5 text-sm text-ink outline-none focus-visible:shadow-focus">
             {UNIT_KINDS.map((k) => <option key={k} value={k}>{unitKindLabel(k)}</option>)}
           </select>
-          <select value={unitParent} onChange={(e) => setUnitParent(e.target.value)} className="rounded-lg border border-[var(--hairline)] [background:var(--fill-1)] px-2.5 py-1.5 text-sm text-ink outline-none">
+          <select value={unitParent} onChange={(e) => setUnitParent(e.target.value)} className="rounded-lg border border-[var(--hairline)] [background:var(--fill-1)] px-2.5 py-1.5 text-sm text-ink outline-none focus-visible:shadow-focus">
             <option value="">No parent</option>
             {org.units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
-          <button type="button" disabled={busy || !unitName.trim()} onClick={() => void addUnit()} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"><Icon name="plus" size={13} /> Add</button>
+          <button type="button" disabled={busy || !unitName.trim()} onClick={() => void addUnit()} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg disabled:opacity-40"><Icon name="plus" size={13} /> Add</button>
         </div>
         <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
           {org.units.map((u) => {
@@ -155,8 +155,8 @@ export function CustomizePanel(): JSX.Element {
       <OpsPanel title="Roles" subtitle="Permission sets">
         <div className="mb-3 rounded-xl border border-[var(--hairline)] [background:var(--fill-1)] p-3">
           <div className="flex flex-wrap items-center gap-2">
-            <input value={roleName} onChange={(e) => setRoleName(e.target.value)} placeholder="New role name…" className="min-w-44 flex-1 rounded-lg border border-[var(--hairline)] surface-raised px-3 py-1.5 text-sm text-ink outline-none placeholder:text-faint" />
-            <button type="button" disabled={busy || !roleName.trim()} onClick={() => void addRole()} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"><Icon name="plus" size={13} /> Create role</button>
+            <input value={roleName} onChange={(e) => setRoleName(e.target.value)} placeholder="New role name…" className="min-w-44 flex-1 rounded-lg border border-[var(--hairline)] surface-raised px-3 py-1.5 text-sm text-ink outline-none focus-visible:shadow-focus placeholder:text-faint" />
+            <button type="button" disabled={busy || !roleName.trim()} onClick={() => void addRole()} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg disabled:opacity-40"><Icon name="plus" size={13} /> Create role</button>
           </div>
           <div className="mt-2.5 flex flex-wrap gap-1.5">
             {ROLE_PERMS.map((p) => {
@@ -218,7 +218,7 @@ export function CustomizePanel(): JSX.Element {
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }): JSX.Element {
   return (
     <button type="button" onClick={onClick} className={cn('relative h-5 w-9 shrink-0 rounded-full transition', on ? 'bg-accent' : 'bg-[var(--fill-3)]')} aria-pressed={on}>
-      <span className={cn('absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all', on ? 'left-[18px]' : 'left-0.5')} />
+      <span className={cn('absolute top-0.5 h-4 w-4 rounded-full bg-white transition-[background-color,color,border-color,box-shadow,transform,opacity] motion-reduce:transition-none', on ? 'left-[18px]' : 'left-0.5')} />
     </button>
   );
 }

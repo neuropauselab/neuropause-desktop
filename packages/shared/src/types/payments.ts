@@ -43,6 +43,8 @@ export interface SalesPayment {
   customer: string;
   amount: number;
   currency: string;
+  /** W6-B4: settlement-date rate (functional per transaction unit). Default 1. */
+  exchangeRate: number;
   method: string;
   transactionRef: string;
   receivedDate: string;
@@ -94,6 +96,7 @@ export function paymentFromRecord(record: EnterpriseEntity): SalesPayment {
     customer: str(f.customer),
     amount: num(f.amount),
     currency: str(f.currency) || 'USD',
+    exchangeRate: num(f.exchangeRate) || 1,
     method: str(f.method),
     transactionRef: str(f.transactionRef),
     receivedDate: str(f.receivedDate),

@@ -1,8 +1,26 @@
 name: desktop-ci
 
-# TD-4a (GA blocker): per-PR desktop CI. The desktop test suite is headless
-# (Vitest unit/model tests for the main + renderer logic — not the Electron UI),
-# so it runs on ubuntu and gates every change to the desktop app or shared types.
+# TD-4a (GA blocker): per-PR desktop CI. Both desktop suites are headless, so
+# they run on ubuntu and gate every change to the desktop app or shared types.
+#
+# P13C ROUND 17g — the UI suite was added here after fifteen rounds of security
+# certification ran against it while it was red. This comment previously read
+# "not the Electron UI", which was true of Electron and not true of `test:ui`:
+# that suite is jsdom + Testing Library, it mounts real components, and it runs
+# on ubuntu in under four seconds. It was excluded on a distinction that did not
+# apply to it, so `vitest run` (764 files) was the only gate and the ten
+# mounted-component tests ran in no workflow and no release. Two breakages sat
+# in it undetected — Round 2's tenancy binding and Round 17's D-5 channel move.
+# A suite nothing runs is not a gate; it is documentation that looks like one.
+#
+# P13C ROUND 17i — and adding a step HERE was half a fix. The release workflows
+# do not run this file; they run `test:release`, which runs each workspace's own
+# `test` script, so a signed artifact could still ship with the UI suite unrun.
+# The step below is therefore gone and `@neuropause/desktop`'s `test` script
+# runs BOTH configs. Every caller — this workflow, `test:release`, a developer
+# typing `npm test`, and whatever workflow someone adds next — now gets the
+# whole suite without having to know it exists. A gate that each caller must
+# remember to invoke is the same defect as no gate, one indirection later.
 
 on:
   push:
@@ -31,7 +49,7 @@ jobs:
         run: npm run typecheck -w @neuropause/desktop
       - name: Lint (desktop)
         run: npx eslint apps/desktop --max-warnings 0
-      - name: Test (desktop)
+      - name: Test (desktop — node suite + mounted components)
         run: npm run test -w @neuropause/desktop
       - name: Build (desktop)
         run: npm run build -w @neuropause/desktop

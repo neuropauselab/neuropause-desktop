@@ -9,6 +9,23 @@
  */
 export const IpcChannel = {
   // ── auth/app (legacy router) ──
+  /**
+   * P13C F-8 — the OAuth providers the SERVER has configured.
+   *
+   * A BASE channel, sibling to the other `auth:*` entries, routed through
+   * `ipc/router.ts` rather than the secure bridge. That placement is the point:
+   * the login screen asks this question before anyone is authenticated, exactly
+   * like `auth:getStatus`, and neither belongs on the runtime surface that
+   * `PUBLIC_CHANNELS` classifies. An earlier draft of this change added it to
+   * that allowlist and the Round 10 invariant rejected it as a stale entry —
+   * correctly, because an allowlist row for a channel outside the classified
+   * surface is a false statement about that surface.
+   *
+   * What crosses: provider NAMES, filtered by the handler to the four known
+   * OAuth ids. No credentials, no client ids, no redirect URIs, no topology,
+   * and nothing that varies by caller.
+   */
+  AuthProviders: 'auth:providers',
   AuthGetStatus: 'auth:getStatus',
   AuthLoginOAuth: 'auth:loginOAuth',
   AuthLoginEmail: 'auth:loginEmail',
@@ -134,6 +151,13 @@ export const IpcChannel = {
   AutomationHistory: 'automations:history',
   /** NeuroCore system-health snapshot (V5.0). */
   SystemHealthSnapshot: 'neurocore:systemHealth',
+  /**
+   * P13C F-7 — pre-authentication backend reachability. Returns exactly
+   * `BackendReachability` (reachable / checkedAt / lastError) and nothing else.
+   * The ONLY health channel that may be public; the rationale lives on
+   * `BackendReachability` and on the PUBLIC_CHANNELS entry in `runtimeAuthz.ts`.
+   */
+  BackendReachability: 'system:backendReachability',
   /** Runtime supervisor status + history + recovery (V5.3). */
   SupervisorStatus: 'supervisor:status',
   /** Renderer reports commercial license health for NeuroCore (V6.1). */
@@ -271,6 +295,17 @@ export const IpcChannel = {
   NotificationsPrefsSet: 'notifications:prefs.set',
   NotificationsEventBroadcast: 'notifications:event',
 
+  // ── Companion (mobile) gateway — local management surface (Mobile M1-03).
+  // The desktop hosts a LAN gateway a paired phone reaches over end-to-end
+  // sealed frames; these channels are the DESKTOP Settings pane's controls, not
+  // the phone's transport (that is @neuropause/companion-protocol over HTTP). ──
+  CompanionStatus: 'companion:status',
+  CompanionDevices: 'companion:devices',
+  CompanionEnable: 'companion:enable',
+  CompanionRevoke: 'companion:revoke',
+  CompanionPairingQr: 'companion:pairingQr',
+  CompanionEventBroadcast: 'companion:event',
+
   // ── Traces (governance / context / relationship) ──
   GovernanceList: 'governance:list',
   GovernanceTrace: 'governance:trace',
@@ -320,6 +355,20 @@ export const IpcChannel = {
   EnterpriseWorkspaceActive: 'enterprise:workspace.active',
   EnterpriseWorkspaceCreate: 'enterprise:workspace.create',
   EnterpriseWorkspaceSwitch: 'enterprise:workspace.switch',
+  /**
+   * P13C Part 3 — multi-organization.
+   *
+   * `.list` returns only organizations the caller is a member of; `.create`
+   * composes org → owner → default workspace → membership → role → audit as one
+   * step, because a half-created tenant (an organization with no workspace, or a
+   * workspace with no member) is one nobody can enter and nobody can delete.
+   * `.switch` names an ORGANIZATION and resolves a workspace inside it, so
+   * organization switching cannot become a second authorization path alongside
+   * workspace switching.
+   */
+  EnterpriseOrganizationList: 'enterprise:organization.list',
+  EnterpriseOrganizationCreate: 'enterprise:organization.create',
+  EnterpriseOrganizationSwitch: 'enterprise:organization.switch',
   EnterpriseGraph: 'enterprise:graph',
   EnterpriseGraphNeighbors: 'enterprise:graph.neighbors',
   EnterpriseGovernanceConfig: 'enterprise:governance.config',
@@ -424,6 +473,18 @@ export const IpcChannel = {
   EnterpriseModuleSummarize: 'enterprise:module.summarize',
   /** Run a module-defined record action (e.g. convert a lead). */
   EnterpriseModuleAction: 'enterprise:module.action',
+  // ── ERP document layer (line items + approval).
+  // The engines behind these shipped registered but unreachable: no channel
+  // existed, so lines could never be entered, totals were always 0, and the
+  // approval/SoD engine was never consulted by any mutation. ──
+  /** Lines + derived totals for one document. */
+  EnterpriseModuleLines: 'enterprise:module.lines',
+  /** Replace a document's lines. Validated per document type. */
+  EnterpriseModuleSetLines: 'enterprise:module.setLines',
+  /** Approval state for one document: required steps, satisfied, next. */
+  EnterpriseModuleApproval: 'enterprise:module.approval',
+  /** Record an approval decision. Enforces role eligibility and SoD. */
+  EnterpriseModuleApprove: 'enterprise:module.approve',
   /** Broadcast on any module record change (create/update/status/delete). */
   EnterpriseModuleEventBroadcast: 'enterprise:module.event',
 
@@ -505,6 +566,8 @@ export const IpcChannel = {
   IndustryCompliance: 'industry:compliance',
   IndustryCollections: 'industry:collections',
   IndustryReadiness: 'industry:readiness',
+  /** IP-03b — the canonical Wave 9 catalog (@neuropause/industry) bridged to the desktop. */
+  IndustrySnapshot: 'industry:snapshot',
 
   // ── P14 — Autonomous Enterprise Intelligence (read-only strategic reasoning/projection layer) ──
   StrategyOverview: 'strategy:overview',
@@ -684,6 +747,14 @@ export const IpcChannel = {
   FedGovSummary: 'fed:gov.summary',
   FedAddPolicy: 'fed:gov.addPolicy',
   FedSetPolicyEnabled: 'fed:gov.setPolicyEnabled',
+  /** P13C Round 5 — F6: how many governance policies predate tenant attribution. */
+  FedPolicyMigrationStatus: 'fed:gov.policyMigrationStatus',
+  /** P13C Round 5 — F6: the quarantined policies themselves, for an administrator. */
+  FedQuarantinedPolicies: 'fed:gov.quarantinedPolicies',
+  /** P13C Round 5 — F6: take ownership of an unattributed legacy policy. */
+  FedClaimPolicy: 'fed:gov.claimPolicy',
+  /** P13C Round 5 — F6: discard an unattributed legacy policy. */
+  FedDiscardPolicy: 'fed:gov.discardPolicy',
   FedApprovals: 'fed:gov.approvals',
   FedResolveApproval: 'fed:gov.resolveApproval',
   FedAuditTrail: 'fed:gov.audit',
@@ -719,6 +790,10 @@ export const IpcChannel = {
   UpdateInstallOnQuit: 'update:installOnQuit',
   UpdateSetChannel: 'update:setChannel',
   UpdateEventBroadcast: 'update:event',
+
+  // ── in-app help (Phase 8: bundled documentation) ──
+  HelpOpenDoc: 'help:openDoc',
+  HelpListDocs: 'help:listDocs',
 
   // ── release engineering: migration / backup / crash / diagnostics / recovery / support ──
   MigrationStatus: 'migration:status',
@@ -896,12 +971,192 @@ export const IpcChannel = {
   EtwinHistory: 'etwin:history',
   EtwinDashboard: 'etwin:dashboard',
   EtwinReport: 'etwin:report',
+
+  // ── Phase 6 — Universal Enterprise Data Plane ──────────────────────────
+  // `dp:` is a fresh namespace: `data:` would collide with the enterprise
+  // permission strings and `enterprise:` is reserved for the ERP authz gate.
+  /** Identify a file and report what the plane can and cannot read. */
+  DataPlaneInspect: 'dp:inspect',
+  /** Full analysis → a reviewable import plan. Writes nothing. */
+  DataPlaneAnalyze: 'dp:analyze',
+  /** Re-read a previously produced plan summary. */
+  DataPlanePlan: 'dp:plan',
+  /** Execute an approved plan. The only mutating channel. */
+  DataPlaneImport: 'dp:import',
+  /** Durable import history. */
+  DataPlaneHistory: 'dp:history',
+  /** One import run by id. */
+  DataPlaneRun: 'dp:run',
+  /** Provenance for a single imported record. */
+  DataPlaneProvenance: 'dp:provenance',
+  /** Saved column→field mappings for a source signature. */
+  DataPlaneMappings: 'dp:mappings',
+  /** Persist a reviewer-confirmed mapping for reuse. */
+  DataPlaneSaveMapping: 'dp:mapping.save',
+  /** Forget a saved mapping. */
+  DataPlaneForgetMapping: 'dp:mapping.forget',
+  /** The canonical ontology (entities, fields, risk) for the review UI. */
+  DataPlaneOntology: 'dp:ontology',
+  /** Modules that hold importable/exportable records, with live counts. */
+  DataPlaneExportable: 'dp:exportable',
+  /** Write a module's records to a file the user chooses. */
+  /* ── Program 8 — Document Intelligence ────────────────────────────────
+   * A document here is a FILE with bytes on disk, distinct from the
+   * `documents-registry` module (a record pointing at a path) and the ERP
+   * document layer (invoice/PO line items + approval). Neither is replaced.
+   */
+  /* ── Program 10 — Identity + External Services ────────────────────────
+   * Identity is not string matching. These channels exist so an ambiguous
+   * match is ANSWERABLE by a person rather than counted and discarded, and so
+   * a background service has an authority of its own.
+   */
+  IdentityQueue: 'identity:queue',
+  IdentityList: 'identity:list',
+  IdentityConfirm: 'identity:confirm',
+  IdentityUnlink: 'identity:unlink',
+  IdentityServices: 'identity:services',
+  IdentityServiceStatus: 'identity:service.status',
+  DocumentCapabilities: 'documents:capabilities',
+  DocumentList: 'documents:list',
+  DocumentDetail: 'documents:detail',
+  DocumentUpload: 'documents:upload',
+  DocumentReclassify: 'documents:reclassify',
+  DocumentCorrect: 'documents:correct',
+  DocumentLink: 'documents:link',
+  DocumentDelete: 'documents:delete',
+  DataPlaneExport: 'dp:export',
+  /** What an export WOULD cover, computed by the code that performs it. */
+  DataPlaneExportPlan: 'dp:export.plan',
+  /** Declared cross-domain relationships + live resolution counts. */
+  DataPlaneRelationshipOverview: 'dp:rel.overview',
+  /** References awaiting a human decision. */
+  DataPlaneRelationshipQueue: 'dp:rel.queue',
+  /** Apply a reviewer's choice of target record. */
+  DataPlaneRelationshipDecide: 'dp:rel.decide',
+  /** Deliberately leave a reference unlinked. */
+  DataPlaneRelationshipSkip: 'dp:rel.skip',
+  /** Re-check every parked reference against the records that exist now. */
+  DataPlaneRelationshipRetry: 'dp:rel.retry',
+  /** The resolved links around one record, both directions. */
+  DataPlaneRelationshipGraph: 'dp:rel.graph',
+  /**
+   * Correct what a file represents (Program 7 hardening).
+   *
+   * A reviewer's decision, so it re-plans the table from the RAW source with
+   * the chosen entity — mapping, validation, duplicates and the plan are all
+   * recomputed. Carries `data:import`, because changing what a file will
+   * become is part of deciding to load it.
+   */
+  DataPlaneReclassify: 'dp:reclassify',
+  /** A bounded, redacted page of prepared rows for review before import. */
+  DataPlanePreview: 'dp:preview',
+
+  // ── Medical Device Manufacturing Pack ──
+  /** The pack manifest + taxonomies resolved for the active tenant. */
+  MedicalDevicePack: 'md:pack',
+  /** Products matched on code / name / family / category / material. */
+  MedicalDeviceProductSearch: 'md:product.search',
+  /** One product with its lots and its change history. */
+  MedicalDeviceProductGet: 'md:product.get',
+  /** Lot Center page: one view's lots plus every view's count. */
+  MedicalDeviceLotList: 'md:lot.list',
+  /** One lot with its immediate graph context and legal next states. */
+  MedicalDeviceLotGet: 'md:lot.get',
+  /** Create a lot — the only path that creates one. */
+  MedicalDeviceLotCreate: 'md:lot.create',
+  /** Move a lot through the lifecycle state machine. */
+  MedicalDeviceLotTransition: 'md:lot.transition',
+  /** Divide a lot into child lots, conserving quantity and lineage. */
+  MedicalDeviceLotSplit: 'md:lot.split',
+  /** Always refuses, with the reason merge is unsupported. */
+  MedicalDeviceLotMerge: 'md:lot.merge',
+  /** Draw quantity from a lot, optionally against a manufacturing order. */
+  MedicalDeviceLotConsume: 'md:lot.consume',
+  /** Record a lot's warehouse placement. */
+  MedicalDeviceLotMove: 'md:lot.move',
+  /** Record a lot leaving on a shipment, to a customer and/or order. */
+  MedicalDeviceLotShip: 'md:lot.ship',
+  /** Where did this go? */
+  MedicalDeviceTraceForward: 'md:trace.forward',
+  /** What went into this? */
+  MedicalDeviceTraceBackward: 'md:trace.backward',
+
+  // ── Private-First AI experience ──
+  /** Set the AI mode (private_first / local_only / external). */
+  AiConfigSetMode: 'ai:config.setMode',
+  /**
+   * P13C ROUND 17 · D-5. The ORGANISATION's AI preference, which can only
+   * restrict what `ai:config.setMode` (platform, `cloud:operate`) permits.
+   * Tenant RBAC — `org:read` / `org:manage` — never PUBLIC, never platform.
+   */
+  AiPreferenceGet: 'ai:preference.get',
+  AiPreferenceSet: 'ai:preference.set',
+  /** Grant or withdraw consent for external processing as a fallback. */
+  AiConfigSetExternalConsent: 'ai:config.setExternalConsent',
+  /** The live routing picture: mode, consent, per-route state, current plan. */
+  AiRoutingStatus: 'ai:routing.status',
+  /** Measured routing usage counters. Counts, never inventions. */
+  AiRoutingUsage: 'ai:routing.usage',
+  /** The first-run experience profile. */
+  ExperienceProfileGet: 'xp:profile.get',
+  /** Record a first-run decision (workspace type / completion / skip). */
+  ExperienceProfileSet: 'xp:profile.set',
+  /**
+   * Clear the profile and return to first run.
+   *
+   * The service could always do this (it was built for QA) but nothing could
+   * reach it, so a user who skipped setup had no way back — the product asked
+   * its questions exactly once, forever. Audited: it discards user state.
+   */
+  ExperienceProfileReset: 'xp:profile.reset',
+  // ── Decision Records + NeuroPause Hold (governance memory over consequential
+  // actions). Reads are `governance:read`; resolving a hold is a governed act
+  // and carries `governance:manage` + bridge audit. ──
+  /** The Decision Record history — newest first. */
+  DecisionRecordList: 'decisionRecord:list',
+  /** One Decision Record plus every other decision on the same subject. */
+  DecisionRecordGet: 'decisionRecord:get',
+  /** Open holds + the resolved history, and whether assessment is live. */
+  HoldList: 'hold:list',
+  /** Resolve an open hold with an explicit outcome. */
+  HoldResolve: 'hold:resolve',
+  // ── Opportunity Center (Program 4). Findings are DERIVED on read, never
+  // stored, so there is no "get" — only a list that recomputes. Reads carry
+  // `procurement:read` because the findings are made of procurement records
+  // and must not leak past the permission on their source; deciding and
+  // executing carry `procurement:manage` + bridge audit. ──
+  /** Recompute every opportunity from live records, with the data review. */
+  OpportunityList: 'opportunity:list',
+  /** Record what the user decided about a finding (accept, dismiss, …). */
+  OpportunitySetStatus: 'opportunity:setStatus',
+  /** Run an opportunity's plan — governed, verified, and never faked. */
+  OpportunityExecute: 'opportunity:execute',
+  /**
+   * What actually happened after the action (Program 5).
+   *
+   * Derived live from purchase orders on every call, so Refresh is never a
+   * no-op and a measurement cannot go stale while still looking current.
+   */
+  OutcomeGet: 'outcome:get',
+  /**
+   * Everything connected to one record, across domains (Program 6).
+   *
+   * In the `enterprise:` namespace because that is what governs it: composed by
+   * the enterprise subsystem, reading enterprise module records, authorized by
+   * the enterprise gate. Dynamically authorized — the handler authorizes the
+   * ROOT record's own module read scope, then filters every hop by the read
+   * scope of the module on the other side. A static channel scope cannot
+   * express that (the answer spans four scopes), and a single broad one would
+   * turn the relationship layer into a way around per-module permissions.
+   */
+  CrossDomainRelated: 'enterprise:related',
 } as const;
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel];
 
 /** Legacy auth/app invokable channels (handled by ipc/router). */
 export const INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
+  IpcChannel.AuthProviders,
   IpcChannel.AuthGetStatus,
   IpcChannel.AuthLoginOAuth,
   IpcChannel.AuthLoginEmail,
@@ -1010,6 +1265,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.AutomationMonitor,
   IpcChannel.AutomationHistory,
   IpcChannel.SystemHealthSnapshot,
+  IpcChannel.BackendReachability,
   IpcChannel.SupervisorStatus,
   IpcChannel.LicenseReportHealth,
   IpcChannel.BillingCheckout,
@@ -1128,6 +1384,9 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.EnterpriseWorkspaceActive,
   IpcChannel.EnterpriseWorkspaceCreate,
   IpcChannel.EnterpriseWorkspaceSwitch,
+  IpcChannel.EnterpriseOrganizationList,
+  IpcChannel.EnterpriseOrganizationCreate,
+  IpcChannel.EnterpriseOrganizationSwitch,
   IpcChannel.EnterpriseGraph,
   IpcChannel.EnterpriseGraphNeighbors,
   IpcChannel.EnterpriseGovernanceConfig,
@@ -1204,6 +1463,10 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.EnterpriseModuleSearch,
   IpcChannel.EnterpriseModuleSummarize,
   IpcChannel.EnterpriseModuleAction,
+  IpcChannel.EnterpriseModuleLines,
+  IpcChannel.EnterpriseModuleSetLines,
+  IpcChannel.EnterpriseModuleApproval,
+  IpcChannel.EnterpriseModuleApprove,
 
   // ── Ecosystem Platform ──
   IpcChannel.EcosystemDeveloperDashboard,
@@ -1280,6 +1543,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.IndustryCompliance,
   IpcChannel.IndustryCollections,
   IpcChannel.IndustryReadiness,
+  IpcChannel.IndustrySnapshot,
 
   // ── P14 — Autonomous Enterprise Intelligence ──
   IpcChannel.StrategyOverview,
@@ -1454,6 +1718,10 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.FedGovSummary,
   IpcChannel.FedAddPolicy,
   IpcChannel.FedSetPolicyEnabled,
+  IpcChannel.FedPolicyMigrationStatus,
+  IpcChannel.FedQuarantinedPolicies,
+  IpcChannel.FedClaimPolicy,
+  IpcChannel.FedDiscardPolicy,
   IpcChannel.FedApprovals,
   IpcChannel.FedResolveApproval,
   IpcChannel.FedAuditTrail,
@@ -1480,6 +1748,9 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.FederationAnalytics,
   IpcChannel.FederationSearch,
   IpcChannel.FederationOverview,
+  // Phase 8 (8.14): in-app help over the bundled documentation set.
+  IpcChannel.HelpListDocs,
+  IpcChannel.HelpOpenDoc,
   IpcChannel.UpdateGetStatus,
   IpcChannel.UpdateCheckNow,
   IpcChannel.UpdateDownload,
@@ -1610,6 +1881,91 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.NotificationsMarkRead,
   IpcChannel.NotificationsPrefsGet,
   IpcChannel.NotificationsPrefsSet,
+  // Mobile M1-03 — Companion gateway management (Settings pane).
+  IpcChannel.CompanionStatus,
+  IpcChannel.CompanionDevices,
+  IpcChannel.CompanionEnable,
+  IpcChannel.CompanionRevoke,
+  IpcChannel.CompanionPairingQr,
+
+  // ── Phase 6 — Universal Enterprise Data Plane ──
+  IpcChannel.DataPlaneInspect,
+  IpcChannel.DataPlaneAnalyze,
+  IpcChannel.DataPlanePlan,
+  IpcChannel.DataPlaneImport,
+  IpcChannel.DataPlaneHistory,
+  IpcChannel.DataPlaneRun,
+  IpcChannel.DataPlaneProvenance,
+  IpcChannel.DataPlaneMappings,
+  IpcChannel.DataPlaneSaveMapping,
+  IpcChannel.DataPlaneForgetMapping,
+  IpcChannel.DataPlaneOntology,
+  IpcChannel.DataPlaneExportable,
+  IpcChannel.DataPlaneExport,
+  IpcChannel.DataPlaneExportPlan,
+  IpcChannel.DataPlaneRelationshipOverview,
+  IpcChannel.DataPlaneRelationshipQueue,
+  IpcChannel.DataPlaneRelationshipDecide,
+  IpcChannel.DataPlaneRelationshipSkip,
+  IpcChannel.DataPlaneRelationshipRetry,
+  IpcChannel.DataPlaneRelationshipGraph,
+  IpcChannel.DataPlaneReclassify,
+  IpcChannel.DataPlanePreview,
+
+  // ── Program 10 — Identity + External Services ──
+  IpcChannel.IdentityQueue,
+  IpcChannel.IdentityList,
+  IpcChannel.IdentityConfirm,
+  IpcChannel.IdentityUnlink,
+  IpcChannel.IdentityServices,
+  IpcChannel.IdentityServiceStatus,
+
+  // ── Program 8 — Document Intelligence ──
+  IpcChannel.DocumentCapabilities,
+  IpcChannel.DocumentList,
+  IpcChannel.DocumentDetail,
+  IpcChannel.DocumentUpload,
+  IpcChannel.DocumentReclassify,
+  IpcChannel.DocumentCorrect,
+  IpcChannel.DocumentLink,
+  IpcChannel.DocumentDelete,
+
+  // ── Medical Device Manufacturing Pack ──
+  IpcChannel.MedicalDevicePack,
+  IpcChannel.MedicalDeviceProductSearch,
+  IpcChannel.MedicalDeviceProductGet,
+  IpcChannel.MedicalDeviceLotList,
+  IpcChannel.MedicalDeviceLotGet,
+  IpcChannel.MedicalDeviceLotCreate,
+  IpcChannel.MedicalDeviceLotTransition,
+  IpcChannel.MedicalDeviceLotSplit,
+  IpcChannel.MedicalDeviceLotMerge,
+  IpcChannel.MedicalDeviceLotConsume,
+  IpcChannel.MedicalDeviceLotMove,
+  IpcChannel.MedicalDeviceLotShip,
+  IpcChannel.MedicalDeviceTraceForward,
+  IpcChannel.MedicalDeviceTraceBackward,
+  // ── Private-First AI experience ──
+  IpcChannel.AiConfigSetMode,
+  IpcChannel.AiPreferenceGet,
+  IpcChannel.AiPreferenceSet,
+  IpcChannel.AiConfigSetExternalConsent,
+  IpcChannel.AiRoutingStatus,
+  IpcChannel.AiRoutingUsage,
+  IpcChannel.ExperienceProfileGet,
+  IpcChannel.ExperienceProfileSet,
+  IpcChannel.ExperienceProfileReset,
+  // ── Decision Records + NeuroPause Hold ──
+  IpcChannel.DecisionRecordList,
+  IpcChannel.DecisionRecordGet,
+  IpcChannel.HoldList,
+  IpcChannel.HoldResolve,
+  // ── Opportunity Center ──
+  IpcChannel.OpportunityList,
+  IpcChannel.OpportunitySetStatus,
+  IpcChannel.OpportunityExecute,
+  IpcChannel.OutcomeGet,
+  IpcChannel.CrossDomainRelated,
 ];
 
 /** Runtime-core broadcasts. */
@@ -1644,6 +2000,8 @@ export const RUNTIME_BROADCAST_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.AssistantEventBroadcast,
   // Phase 6 Stage 5 — Notification Inbox refresh signal.
   IpcChannel.NotificationsEventBroadcast,
+  // Mobile M1-03 — Companion gateway status/device refresh signal.
+  IpcChannel.CompanionEventBroadcast,
 ];
 
 /** The full set the preload bridge permits (legacy + runtime core). */

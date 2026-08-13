@@ -83,8 +83,35 @@ import { packsStore } from './exchange/packsInstance';
 import { partnersStore } from './exchange/partnersInstance';
 import { computeEcosystemAnalytics } from './exchange/analytics';
 import { workerRegistry } from '../workforce/registry/registryInstance';
-import { ORG_ID, OWNER_USER_ID } from '../enterprise/org/seed';
+import { OWNER_USER_ID } from '../enterprise/org/seed';
 import { orgStore } from '../enterprise/org/orgInstance';
+import { activeTenantScope } from '../enterprise/index';
+
+/**
+ * The organization this ecosystem call belongs to, or null.
+ *
+ * P13C REMEDIATION — FINDING 5. Every install read and write in this file was
+ * keyed on `ORG_ID`, the SEEDED organization's literal id. Marketplace installs
+ * and entitlements are per-tenant state, so tenant B's installs were written
+ * into and read from tenant A's partition — the store itself partitions on
+ * `orgId` correctly and was simply never told the truth.
+ *
+ * `activeTenantScope()` is the one resolver: the session on an IPC call, the
+ * running principal inside a background pass. Null means no tenant, and every
+ * caller below treats that as "no installs" or refuses the write, never as
+ * "the seeded organization".
+ */
+function callerOrgId(): string | null {
+  return activeTenantScope()?.tenantId ?? null;
+}
+
+/** The caller's organization, or a refusal. For writes and entitlement paths. */
+function requireCallerOrgId(): string {
+  const orgId = callerOrgId();
+  if (orgId === null) throw new Error('No organization is active, so this action has no owner.');
+  return orgId;
+}
+
 import { developerOwnerIdentity } from './developer/developerStore';
 
 const log = createLogger('ecosystem');
@@ -214,7 +241,9 @@ function currentVersionOf(listingId: string): { versionId: string; version: stri
 
 /** Installs for the local org, with "update available" computed against the marketplace. */
 function annotateInstalls(): Installation[] {
-  return installsStore.forOrg(ORG_ID).map((i) => {
+  const orgId = callerOrgId();
+  if (orgId === null) return [];
+  return installsStore.forOrg(orgId).map((i) => {
     if (i.status === 'disabled') return i;
     const cur = currentVersionOf(i.listingId);
     if (cur && cur.versionId !== i.installedVersionId) return { ...i, status: 'update_available' as const };
@@ -247,11 +276,41 @@ function titleCaseRole(s: string): string {
  */
 export function runGateway(input: GatewayRequestInput): GatewayDecision {
   const start = Date.now();
+  /**
+   * P13C ROUND 10 — NEW-M5. THE CREDENTIAL'S OWN TENANT IS THE AUTHORITATIVE ONE.
+   *
+   * `developerOrg` was `developerStore.developer(devId)?.orgId`, and there is
+   * ONE developer account on this install, seeded and pinned to the seeded
+   * `ORG_ID`. So every API-key request in the system resolved to that one
+   * organization no matter whose key was presented — while the API key ROW
+   * carries the correct tenant (`developerStore.createKey` stamps
+   * `tenantId: this.tenancy.requireTenant()`), and that field was read by
+   * nothing on this path.
+   *
+   * `requestOwner` is stamped into `gatewayStore.commit`, `recordUsage` and
+   * `gatewayStore.record`, so audit, usage, quota and billing rows for EVERY
+   * tenant filed under `org-default`. The stores partition correctly — they were
+   * simply told the wrong owner, which is why scoping routed the rows to the
+   * WRONG tenant rather than to nobody, and why every isolation test on those
+   * stores passed.
+   *
+   * The key row is captured here rather than re-resolved: `resolveApiIdentity`
+   * calls `verifyKey` and then, in the same branch and the next statement,
+   * `developerOrg`. Reading the row it just verified is the only way to answer
+   * "whose credential is this?" without a second lookup that could disagree.
+   */
+  let verifiedKey: ApiKey | null = null;
   // P3.0 — resolve EITHER an API key OR an OAuth access token to one identity, then
   // present it to the existing decision engine as an ApiKey-shaped value (unchanged).
   const identity = resolveApiIdentity(input.apiKey, {
-    verifyKey: (raw) => developerStore.verifyKey(raw),
-    developerOrg: (devId) => developerStore.developer(devId)?.orgId ?? null,
+    verifyKey: (raw) => {
+      verifiedKey = developerStore.verifyKey(raw);
+      return verifiedKey;
+    },
+    // The KEY's tenant, never the developer account's. A key with no stored
+    // owner is UNRESOLVED and yields null — refused below, never back-filled to
+    // the seeded organization or to the session.
+    developerOrg: () => (verifiedKey as ApiKey | null)?.tenantId ?? null,
     verifyToken: (raw) => {
       try {
         return toAccessTokenClaims(verifyJwt(raw, signingSecret()));
@@ -278,7 +337,33 @@ export function runGateway(input: GatewayRequestInput): GatewayDecision {
   const developer = key ? developerStore.developer(key.developerId) : null;
   const plan: Plan = planFor(developer?.planTier ?? 'free');
   const versionInfo = apiVersionInfo(input.version);
-  const { rateRemaining, quotaUsed } = gatewayStore.peek(key?.id ?? null, developer?.id ?? null, plan.rateLimit, plan.quota, start);
+  /**
+   * WHOSE REQUEST THIS IS — the credential's tenant, or the session's, and never
+   * both in the same breath.
+   *
+   * The old expression was `identity?.orgId || activeTenantScope()?.tenantId`,
+   * which reads as a precedence and behaves as a FALLBACK CHAIN: a presented
+   * credential whose tenant did not resolve fell through to whoever happened to
+   * be signed in, so a request authenticated as nobody was billed and audited to
+   * the desktop's current organization. Splitting the two cases is the point, and
+   * the split is on WHETHER A CREDENTIAL WAS PRESENTED — not on whether it
+   * resolved, because "presented and rejected" is a fact about the caller and
+   * not an absence:
+   *
+   *   A CREDENTIAL WAS PRESENTED → its tenant, or null. Null is a refusal to
+   *   guess: the request is still decided and still audited, with no owner, and
+   *   `quotaKey` puts it in the `unowned` partition where it cannot consume a
+   *   real tenant's budget or write a 401 into their audit trail.
+   *
+   *   NO CREDENTIAL AT ALL → the session. This path is reached from the
+   *   in-process REST dispatcher, where the caller IS a session and that is the
+   *   honest answer.
+   */
+  const credentialPresented = typeof input.apiKey === 'string' && input.apiKey !== '';
+  const requestOwner = credentialPresented
+    ? identity?.orgId || null
+    : activeTenantScope()?.tenantId ?? null;
+  const { rateRemaining, quotaUsed } = gatewayStore.peek(key?.id ?? null, developer?.id ?? null, plan.rateLimit, plan.quota, start, requestOwner);
 
   const decision = decideGateway(input, {
     key,
@@ -294,11 +379,28 @@ export function runGateway(input: GatewayRequestInput): GatewayDecision {
   const latencyMs = Math.max(1, Date.now() - start);
   const at = new Date(start).toISOString();
 
+  /**
+   * P13C ROUND 3 — H-3. THE USAGE AND AUDIT ROWS ARE OWNED BY THE CREDENTIAL'S
+   * TENANT, NOT BY WHOEVER IS SIGNED IN.
+   *
+   * `resolveApiIdentity` already computes `identity.orgId` — from the key's
+   * OWN ROW (Round 10), or from the token's `org` claim — and this function
+   * discarded it, because the `ApiKey`-shaped value it builds for the decision
+   * engine has no org field. So the metering and audit rows had no owner at all.
+   *
+   * A request authenticated as tenant B is billed to B and audited to B even if
+   * the desktop happens to have A open. The same value is used for `peek` and
+   * `commit`, so a tenant's rate/quota decision and its consumption are read and
+   * written against ONE key.
+   */
+  const owner = requestOwner;
+
   if (decision.allowed) {
-    gatewayStore.commit(key?.id ?? null, developer?.id ?? null, plan.rateLimit, plan.quota, start);
+    gatewayStore.commit(key?.id ?? null, developer?.id ?? null, plan.rateLimit, plan.quota, start, owner);
   }
   if (developer) {
     developerStore.recordUsage({
+      tenantId: owner,
       developerId: developer.id,
       apiKeyId: key?.id ?? null,
       at,
@@ -312,6 +414,7 @@ export function runGateway(input: GatewayRequestInput): GatewayDecision {
   }
   gatewayStore.record({
     at,
+    tenantId: owner,
     keyId: key?.id ?? null,
     developerId: developer?.id ?? null,
     method: input.method,
@@ -335,7 +438,21 @@ export function gatewayAuditEntries(limit: number): GatewayAuditEntry[] {
 }
 
 export async function initEcosystem(deps: EcosystemDeps): Promise<EcosystemSubsystem> {
+  /**
+   * P13C ROUND 3 — H-3. BIND BEFORE LOAD.
+   *
+   * `load()` can seed, and seeding writes rows. Binding first means those rows
+   * are stamped rather than written unowned and then invisible to everybody.
+   */
+  developerStore.bindScope(activeTenantScope);
+  billingStore.bindScope(activeTenantScope);
+  gatewayStore.bindScope(activeTenantScope);
+  // P13C Round 4 — F9. Bound beside its three siblings, where it always belonged.
+  packsStore.bindScope(activeTenantScope);
+
   await developerStore.load();
+  // P13C Round 8 — drafts and the submission trail belong to the publisher.
+  marketplaceStore.bindScope(activeTenantScope);
   await marketplaceStore.load();
   await gatewayStore.load();
   await billingStore.load();
@@ -382,7 +499,10 @@ export async function initEcosystem(deps: EcosystemDeps): Promise<EcosystemSubsy
     seats: billingStore.getSubscription().seatsUsed,
   });
   log.info('Ecosystem network ready', {
-    installs: installsStore.forOrg(ORG_ID).length,
+    installs: (() => {
+      const orgId = callerOrgId();
+      return orgId === null ? 0 : installsStore.forOrg(orgId).length;
+    })(),
     packs: packsStore.list().length,
     partners: partnersStore.list().length,
   });
@@ -460,7 +580,18 @@ function buildHandlers(): SecureHandlerDef[] {
         if (!app) {
           return { error: 'invalid_client', error_description: 'Unknown client or invalid secret.' } satisfies OAuthTokenError;
         }
-        const orgId = developerStore.developer(app.developerId)?.orgId ?? ORG_ID;
+        /**
+         * The DEVELOPER's organization, or a refusal.
+         *
+         * `?? ORG_ID` attributed an app whose developer record is missing to the
+         * seeded organization, minting a token scoped to a tenant that has
+         * nothing to do with it. An unresolvable developer is an invalid client,
+         * which is a thing this endpoint already knows how to say.
+         */
+        const orgId = developerStore.developer(app.developerId)?.orgId ?? null;
+        if (orgId === null) {
+          return { error: 'invalid_client', error_description: 'Unknown client or invalid secret.' } satisfies OAuthTokenError;
+        }
         const result = issueClientCredentialsToken({
           app,
           developerId: app.developerId,
@@ -666,7 +797,7 @@ function buildHandlers(): SecureHandlerDef[] {
         const cur = currentVersionOf(r.listingId);
         if (!cur) return { error: 'Listing has no published version' };
         marketplaceStore.install(r.listingId);
-        return installsStore.install({ orgId: ORG_ID, listingId: detail.listing.id, listingName: detail.listing.name, kind: detail.listing.kind, versionId: cur.versionId, version: cur.version });
+        return installsStore.install({ orgId: requireCallerOrgId(), listingId: detail.listing.id, listingName: detail.listing.name, kind: detail.listing.kind, versionId: cur.versionId, version: cur.version });
       },
     },
     {
@@ -675,11 +806,14 @@ function buildHandlers(): SecureHandlerDef[] {
       audit: true,
       handler: (p) => {
         const r = p as EcosystemInstallUpdateRequest;
-        const inst = installsStore.forOrg(ORG_ID).find((i) => i.id === r.installationId);
+        // Scoped lookup FIRST: the id comes from the renderer, so resolving it
+        // inside the caller's own partition is what makes it not an IDOR.
+        const callerOrg = requireCallerOrgId();
+        const inst = installsStore.forOrg(callerOrg).find((i) => i.id === r.installationId);
         if (!inst) return { error: 'Installation not found' };
         const cur = currentVersionOf(inst.listingId);
         if (!cur) return { error: 'No published version' };
-        return installsStore.install({ orgId: ORG_ID, listingId: inst.listingId, listingName: inst.listingName, kind: inst.kind, versionId: cur.versionId, version: cur.version });
+        return installsStore.install({ orgId: callerOrg, listingId: inst.listingId, listingName: inst.listingName, kind: inst.kind, versionId: cur.versionId, version: cur.version });
       },
     },
     {
@@ -687,6 +821,18 @@ function buildHandlers(): SecureHandlerDef[] {
       schema: EcosystemInstallSetEnabledRequest,
       handler: (p) => {
         const r = p as EcosystemInstallSetEnabledRequest;
+        /**
+         * P13C REMEDIATION — an IDOR the audit did not name.
+         *
+         * `setDisabled` takes an installation id and nothing else, so a caller
+         * could disable ANOTHER tenant's installed app by id. Resolving the id
+         * within the caller's own partition first turns a direct object
+         * reference into a scoped lookup.
+         */
+        const owned = installsStore
+          .forOrg(requireCallerOrgId())
+          .some((i) => i.id === r.installationId);
+        if (!owned) throw new Error('That installation does not exist.');
         return installsStore.setDisabled(r.installationId, !r.enabled);
       },
     },
@@ -694,7 +840,14 @@ function buildHandlers(): SecureHandlerDef[] {
       channel: IpcChannel.EcosystemUninstall,
       schema: EcosystemUninstallRequest,
       audit: true,
-      handler: (p) => ({ uninstalled: installsStore.uninstall((p as EcosystemUninstallRequest).installationId) }),
+      handler: (p) => {
+        // Same IDOR as setDisabled above, with a destructive effect: uninstall
+        // took a bare id and deleted whatever it named.
+        const id = (p as EcosystemUninstallRequest).installationId;
+        const owned = installsStore.forOrg(requireCallerOrgId()).some((i) => i.id === id);
+        if (!owned) throw new Error('That installation does not exist.');
+        return { uninstalled: installsStore.uninstall(id) };
+      },
     },
     {
       channel: IpcChannel.EcosystemShareWorker,
@@ -772,7 +925,7 @@ function buildHandlers(): SecureHandlerDef[] {
           partners: partnersStore.list(),
           usage: { requests30d: usage.length, computeUnits30d: usage.reduce((n, u) => n + u.computeUnits, 0), p95LatencyMs: gm.p95LatencyMs },
           activeDevelopers: 1,
-          localOrgId: ORG_ID,
+          localOrgId: callerOrgId() ?? '',
           now: Date.now(),
         });
       },

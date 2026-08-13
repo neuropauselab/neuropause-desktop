@@ -10,6 +10,11 @@
  * therefore just: a descriptor + a store (+ optional validate/format hooks).
  */
 import type {
+  ActionAssessment,
+  DocumentApprovalResult,
+  DocumentApprovalView,
+  DocumentLinesResult,
+  DocumentLinesView,
   EnterpriseEntity,
   EnterpriseModuleActionResult,
   EnterpriseModuleDescriptor,
@@ -43,6 +48,129 @@ export interface EnterpriseModuleContext {
   actor: () => string | null;
   /** Injected clock (tests pass a fixed value). */
   now: () => string;
+  /**
+   * Deterministic pre-delete assessment (governed delete). Supplied by the
+   * composition root over the REAL relationship links; null = no linked
+   * records, delete proceeds as before. The framework refuses a linked delete
+   * without an explicit `force`, returning the assessment instead — evidence
+   * first, mutation second.
+   */
+  assessDelete?: (moduleId: string, record: EnterpriseEntity) => ActionAssessment | null;
+  /**
+   * Record a consequential decision (assessment shown → what the user chose →
+   * what executed). Optional; absent = assessments still gate, just unrecorded.
+   *
+   * Returns the ids it created so the framework can hand the caller a HOLD to
+   * act on later. Whether a refusal *becomes* a durable hold is policy, and
+   * policy lives in the composition root — the framework only carries the id
+   * back out, so the same registry works in a test with no hold store at all.
+   */
+  recordDecision?: (record: {
+    requestedAction: string;
+    subject: string;
+    assessment: ActionAssessment;
+    outcome: 'proceeded' | 'took_alternative' | 'cancelled';
+    executed: string;
+  }) => { decisionId: string; holdId: string | null } | void;
+  /**
+   * Approval gate for a status change (governed by the ERP document layer).
+   *
+   * Supplied by the composition root so the framework does not depend on the
+   * approval engine directly — a module registry with no document integration
+   * simply has no gate, which is how every non-document module keeps working
+   * unchanged.
+   */
+  canEnterStatus?: (
+    moduleId: string,
+    record: EnterpriseEntity,
+    status: string,
+  ) => { allowed: boolean; reason: string | null };
+  /**
+   * A status change was refused for want of approval. Returns the durable HOLD
+   * raised for it, so the caller can be pointed at something actionable rather
+   * than an error toast that disappears.
+   */
+  onApprovalRequired?: (input: {
+    moduleId: string;
+    record: EnterpriseEntity;
+    status: string;
+    reason: string;
+  }) => { holdId: string | null } | void;
+  /**
+   * Fired after a record change has fully fanned out. The composition root
+   * uses it to notice side effects that happened DURING the change — a
+   * refused accounting posting, for one — which the framework itself has no
+   * knowledge of.
+   *
+   * The record is passed so the root can also react to WHAT changed: Program 6
+   * resolves the record's declared references here, because otherwise a link
+   * only ever exists for imported data and anything typed into the app appears
+   * connected to nothing. Both parameters are optional, so the existing
+   * zero-argument consumers are unaffected.
+   */
+  onAfterChange?: (changed?: { moduleId: string; record: EnterpriseEntity }) => void;
+  /**
+   * A module action refused because of a POLICY, not bad input. Raises a
+   * durable hold; absent, the refusal behaves exactly as it did before.
+   */
+  onPolicyConflict?: (input: {
+    moduleId: string;
+    record: EnterpriseEntity;
+    action: string;
+    policy: { name: string; facts: string[]; resolution: string };
+  }) => void;
+  /**
+   * The ERP document layer (line items + approval), when composed.
+   *
+   * Optional and narrow on purpose. The framework must not import the document
+   * engines directly — most of the 106 registered modules are master data with
+   * no lines and no policy, and a hard dependency would make the registry
+   * untestable without the whole ERP stack. Absent, the line and approval
+   * channels answer "unsupported", which is the truth for those modules.
+   */
+  documents?: DocumentBridge;
+}
+
+/**
+ * What the registry needs from the ERP document layer — and nothing more.
+ *
+ * Deliberately expressed in the SHARED view types rather than the engines' own
+ * types: this is the boundary between the generic framework and one specific
+ * subsystem, so it speaks the same language as the renderer that consumes it.
+ */
+export interface DocumentBridge {
+  linesView(moduleId: string, documentId: string): DocumentLinesView;
+  setLines(
+    moduleId: string,
+    documentId: string,
+    lines: readonly DocumentLineInputLike[],
+  ): Promise<DocumentLinesResult>;
+  approvalView(moduleId: string, record: EnterpriseEntity): DocumentApprovalView;
+  decide(
+    moduleId: string,
+    record: EnterpriseEntity,
+    stepId: string,
+    decision: 'approved' | 'rejected',
+    note?: string,
+  ): Promise<DocumentApprovalResult>;
+}
+
+/** The line shape the boundary accepts (mirrors the validated IPC payload). */
+export interface DocumentLineInputLike {
+  productId?: string | null;
+  description?: string;
+  quantity: number;
+  unit?: string | null;
+  unitPrice?: number;
+  discountPercent?: number | null;
+  discountAmount?: number | null;
+  taxRatePercent?: number | null;
+  currency?: string;
+  accountId?: string | null;
+  warehouseId?: string | null;
+  projectId?: string | null;
+  costCenterId?: string | null;
+  batchId?: string | null;
 }
 
 /**
@@ -72,6 +200,16 @@ export interface EnterpriseModuleActionContext {
     action: EnterpriseModuleLifecycleAction,
     record: EnterpriseEntity,
   ) => void;
+  /**
+   * Set when this change did NOT originate from a person acting in the UI —
+   * today, a Data Plane import replaying its records through the lifecycle.
+   *
+   * A reconciler that wants to behave differently for bulk-loaded history (skip
+   * a notification, suppress an outbound side effect) can read it. Everything
+   * else ignores it, which is why it is optional: the default behaviour of every
+   * existing hook is unchanged.
+   */
+  correlationId?: string;
 }
 
 /** Optional per-module hooks. Defaults cover the common case. */

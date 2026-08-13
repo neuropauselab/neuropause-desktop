@@ -49,6 +49,7 @@ interface GCalCursor {
 export function mapEvent(ctx: SyncContext, ev: GCalEvent): UnifiedEntity {
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'calendar_event',
     sourceId: ev.id,

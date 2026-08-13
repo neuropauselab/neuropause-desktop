@@ -17,6 +17,7 @@ import { BUSINESS_FAVORITE_KIND, moduleIdFromBusinessFavorite } from '@renderer/
 import { setPendingSearchQuery } from '@renderer/search/searchHandoff';
 // Phase 6 Stage 4 — hand-off into the Workspace Assistant.
 import { setPendingAssistantQuery } from '@renderer/assistant/assistantHandoff';
+import { overlayVariants, paletteVariants } from '@renderer/lib/motion';
 
 type GroupKey = 'Search' | 'Recent' | 'Applications' | 'Plugins' | 'Sessions' | 'Downloads' | 'Go to' | 'Commands';
 
@@ -180,9 +181,9 @@ export function CommandPalette(): JSX.Element {
       id: `nav:${sct.id}`,
       group: 'Go to',
       title: sct.label,
-      subtitle: 'Go to section',
+      subtitle: sct.description ?? 'Go to section',
       icon: sct.icon,
-      keywords: `go open ${sct.label}`,
+      keywords: `go open ${sct.label} ${sct.description ?? ''}`,
       run: () => setSection(sct.id),
     }));
 
@@ -218,9 +219,9 @@ export function CommandPalette(): JSX.Element {
       id: `ops:${o.tab}`,
       group: 'Go to',
       title: o.title,
-      subtitle: 'Operations',
+      subtitle: 'Runtime',
       icon: o.icon,
-      keywords: `operations ${o.kw}`,
+      keywords: `runtime operations ${o.kw}`,
       run: () => openOperations(o.tab),
     }));
 
@@ -377,12 +378,25 @@ export function CommandPalette(): JSX.Element {
 
   const flat = useMemo(() => groups.flatMap((g) => g.items), [groups]);
 
+  // Where focus was before the palette took it. Closing must give it back:
+  // dropping focus to <body> strands a keyboard user, who then has to tab from
+  // the top of the window to get back to whatever they were doing.
+  const returnFocusTo = useRef<HTMLElement | null>(null);
   useEffect(() => {
     if (commandOpen) {
+      returnFocusTo.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null;
       setQuery('');
       setActiveIndex(0);
       requestAnimationFrame(() => inputRef.current?.focus());
+      return;
     }
+    // Closed. Restore focus if the element is still in the document — after a
+    // command that navigated away it may not be, and focusing a detached node
+    // silently does nothing.
+    const target = returnFocusTo.current;
+    returnFocusTo.current = null;
+    if (target && document.contains(target)) target.focus();
   }, [commandOpen]);
 
   useEffect(() => {
@@ -424,20 +438,21 @@ export function CommandPalette(): JSX.Element {
       {commandOpen && (
         <motion.div
           className="fixed inset-0 z-[100] flex items-start justify-center px-4 pt-[14vh]"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.14 }}
+          variants={overlayVariants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
           onMouseDown={close}
         >
           <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" aria-hidden="true" />
           <motion.div
             role="dialog"
             aria-label="Command palette"
-            initial={{ opacity: 0, scale: 0.97, y: -8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.98, y: -6 }}
-            transition={{ type: 'spring', stiffness: 480, damping: 34 }}
+            aria-modal="true"
+            variants={paletteVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
             onMouseDown={(e) => e.stopPropagation()}
             onKeyDown={onKeyDown}
             className="glass-panel relative w-full max-w-[600px] overflow-hidden rounded-2xl shadow-glass"
@@ -449,7 +464,7 @@ export function CommandPalette(): JSX.Element {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search everything — content, records, apps, commands…"
-                className="flex-1 bg-transparent text-md text-ink outline-none placeholder:text-faint"
+                className="flex-1 bg-transparent text-md text-ink outline-none focus-visible:shadow-focus placeholder:text-faint"
                 spellCheck={false}
                 autoComplete="off"
               />

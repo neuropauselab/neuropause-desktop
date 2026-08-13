@@ -574,7 +574,7 @@ export function MissionControlView({ onNavigate, onOpenPalette, notificationsSto
               tint="green"
               action={
                 <Button variant="ghost" size="sm" onClick={() => go('opscenter')}>
-                  Ops Center
+                  Operations
                 </Button>
               }
             />

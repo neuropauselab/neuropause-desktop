@@ -1,0 +1,19 @@
+{
+  /**
+   * P11 — a type gate for the SECURITY tests.
+   *
+   * Every `*.test.ts` was excluded from every typecheck project, and the tenancy
+   * suite had already drifted: an `OrgRole` fixture was missing two required
+   * fields, which would be a compile error anywhere else. A security test whose
+   * fixtures cannot match the shapes the product actually produces is a test
+   * that can assert anything.
+   *
+   * Scoped to `src/main/tenancy` rather than the whole tree ON PURPOSE. Turning
+   * it on repo-wide surfaces a few hundred pre-existing errors in unrelated
+   * suites — real drift, worth fixing, and not this program's job. Widening the
+   * include list is the follow-up; narrowing it to nothing was the status quo.
+   */
+  "extends": "./tsconfig.node.json",
+  "include": ["src/main/tenancy/**/*.ts", "vitest.setup.ts"],
+  "exclude": []
+}

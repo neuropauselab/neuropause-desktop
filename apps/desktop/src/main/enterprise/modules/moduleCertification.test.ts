@@ -1,40 +1,76 @@
 /**
  * Enterprise Module Certification v1.0 — the registry-wide descriptor lock.
  *
- * A QUALITY gate, not a feature: it runs every one of the 45 REAL registered module descriptors through the
+ * A QUALITY gate, not a feature: it runs every one of the 104 REAL registered module descriptors through the
  * framework's own `validateModuleDescriptor`, and locks the certified inventory (count, unique ids, family
- * distribution, RBAC scopes, title fields). Before this test the 45 real descriptors were validated only
+ * distribution, RBAC scopes, title fields). Before this test the real descriptors were validated only
  * implicitly at construction; this makes the guarantee explicit.
  *
  * SCOPE (stated honestly): the lock is over the enumerated `CERTIFIED` list below. It catches a descriptor
  * REGRESSION (bad id, dup field, wrong group/scope, dup id/action) and a REMOVAL or RENAME of a `*_DESCRIPTOR`
  * export (the import breaks → the file goes red). It does NOT read the live runtime registry, so ADDING a new
- * (46th) registered module does not fail this test until this list is updated — which is the intended,
+ * (105th) registered module does not fail this test until this list is updated — which is the intended,
  * deliberate re-certification checkpoint for a new module.
  *
  * Reuse-only: it imports the standalone descriptor consts (Electron-free — no store, no app runtime) and the
  * existing shared validator. No new architecture.
  */
 import { describe, expect, it } from 'vitest';
-import { validateModuleDescriptor, type EnterpriseModuleDescriptor } from '@neuropause/shared';
+import { classifyField, validateModuleDescriptor, type EnterpriseModuleDescriptor } from '@neuropause/shared';
 
-// Finance (2)
+// Finance (21)
 import { INVOICE_DESCRIPTOR } from './finance/invoiceModule';
 import { PAYMENT_DESCRIPTOR } from './finance/paymentModule';
-// Sales (2)
+import { LEDGER_ACCOUNT_DESCRIPTOR } from './finance/ledgerAccountModule';
+import { JOURNAL_ENTRY_DESCRIPTOR } from './finance/journalEntryModule';
+import { ACCOUNTING_PERIOD_DESCRIPTOR } from './finance/accountingPeriodModule';
+import { TAX_REPORT_DESCRIPTOR } from './finance/taxReportModule';
+import { AR_AGING_DESCRIPTOR } from './finance/arAgingModule';
+import { BANK_STATEMENT_DESCRIPTOR } from './finance/bankStatementModule';
+import { BUDGET_DESCRIPTOR } from './finance/budgetModule';
+import { VENDOR_BILL_DESCRIPTOR } from './finance/vendorBillModule';
+import { AP_AGING_DESCRIPTOR } from './finance/apAgingModule';
+import { FIXED_ASSET_DESCRIPTOR } from './finance/fixedAssetModule';
+import { TREASURY_POSITION_DESCRIPTOR } from './finance/treasuryPositionModule';
+import { CREDIT_NOTE_DESCRIPTOR } from './finance/creditNoteModule';
+import { DEBIT_NOTE_DESCRIPTOR } from './finance/debitNoteModule';
+import { VENDOR_PAYMENT_DESCRIPTOR } from './finance/vendorPaymentModule';
+import { EXCHANGE_RATE_DESCRIPTOR } from './finance/exchangeRateModule';
+import { FINANCIAL_RATIOS_DESCRIPTOR } from './finance/financialRatiosModule';
+import { CASH_FLOW_DESCRIPTOR } from './finance/cashFlowModule';
+import { FX_REVALUATION_DESCRIPTOR } from './finance/fxRevaluationModule';
+import { FX_EXPOSURE_DESCRIPTOR } from './finance/fxExposureModule';
+// Sales (7)
 import { QUOTE_DESCRIPTOR } from './sales/quoteModule';
 import { ORDER_DESCRIPTOR } from './sales/orderModule';
-// CRM (3)
+import { CONTRACT_DESCRIPTOR } from './sales/contractModule';
+import { PRICING_RULE_DESCRIPTOR } from './sales/pricingRuleModule';
+import { COMMISSION_PLAN_DESCRIPTOR } from './sales/commissionPlanModule';
+import { COMMISSION_STATEMENT_DESCRIPTOR } from './sales/commissionStatementModule';
+import { REVENUE_FORECAST_DESCRIPTOR } from './sales/revenueForecastModule';
+// CRM (8)
 import { CONTACT_DESCRIPTOR } from './crm/contactModule';
 import { LEAD_DESCRIPTOR } from './crm/leadModule';
 import { CUSTOMER_DESCRIPTOR } from './crm/customerModule';
-// Procurement (4)
+import { OPPORTUNITY_DESCRIPTOR } from './crm/opportunityModule';
+import { ACTIVITY_DESCRIPTOR } from './crm/activityModule';
+import { CUSTOMER_HEALTH_DESCRIPTOR } from './crm/customerHealthModule';
+import { CUSTOMER_TIMELINE_DESCRIPTOR } from './crm/customerTimelineModule';
+import { CAMPAIGN_DESCRIPTOR } from './crm/campaignModule';
+// Procurement (7)
 import { SUPPLIER_DESCRIPTOR } from './procurement/supplierModule';
+import { VENDOR_CONTRACT_DESCRIPTOR } from './procurement/vendorContractModule';
 import { PURCHASE_REQUEST_DESCRIPTOR } from './procurement/purchaseRequestModule';
 import { PURCHASE_ORDER_DESCRIPTOR } from './procurement/purchaseOrderModule';
 import { GOODS_RECEIPT_DESCRIPTOR } from './procurement/goodsReceiptModule';
-// Inventory (3)
+import { RFQ_DESCRIPTOR } from './procurement/rfqModule';
+import { SUPPLIER_PERFORMANCE_DESCRIPTOR } from './procurement/supplierPerformanceModule';
+// Inventory (7)
 import { PRODUCT_DESCRIPTOR } from './inventory/productModule';
+import { LOT_DESCRIPTOR } from './inventory/lotModule';
+import { RESERVATION_DESCRIPTOR } from './inventory/reservationModule';
+import { INVENTORY_VALUATION_DESCRIPTOR } from './inventory/inventoryValuationModule';
+import { SERIAL_DESCRIPTOR } from './inventory/serialModule';
 import { WAREHOUSE_DESCRIPTOR } from './inventory/warehouseModule';
 import { STOCK_MOVEMENT_DESCRIPTOR } from './inventory/stockMovementModule';
 // Warehouse (8)
@@ -46,7 +82,7 @@ import { PACKING_DESCRIPTOR } from './warehouse/packingModule';
 import { SHIPPING_DESCRIPTOR } from './warehouse/shippingModule';
 import { CYCLE_COUNT_DESCRIPTOR } from './warehouse/cycleCountModule';
 import { STOCK_ADJUSTMENT_DESCRIPTOR } from './warehouse/stockAdjustmentModule';
-// Manufacturing (11)
+// Manufacturing (12)
 import { BOM_DESCRIPTOR } from './manufacturing/bomModule';
 import { PRODUCTION_ORDER_DESCRIPTOR } from './manufacturing/productionOrderModule';
 import { WORK_CENTER_DESCRIPTOR } from './manufacturing/workCenterModule';
@@ -58,6 +94,7 @@ import { PRODUCTION_EXECUTION_DESCRIPTOR } from './manufacturing/executionModule
 import { QUALITY_INSPECTION_DESCRIPTOR } from './manufacturing/qualityModule';
 import { PRODUCTION_COSTING_DESCRIPTOR } from './manufacturing/costingModule';
 import { SCHEDULE_PROPOSAL_DESCRIPTOR } from './manufacturing/scheduleProposalModule';
+import { BOM_EXPLOSION_DESCRIPTOR } from './manufacturing/bomExplosionModule';
 // Maintenance (10)
 import { ASSET_CATEGORY_DESCRIPTOR } from './maintenance/assetCategoryModule';
 import { ASSET_DESCRIPTOR } from './maintenance/assetModule';
@@ -69,17 +106,61 @@ import { TECHNICIAN_DESCRIPTOR } from './maintenance/technicianModule';
 import { MAINTENANCE_HISTORY_DESCRIPTOR } from './maintenance/maintenanceHistoryModule';
 import { SPARE_PART_DESCRIPTOR } from './maintenance/sparePartModule';
 import { DOWNTIME_EVENT_DESCRIPTOR } from './maintenance/downtimeEventModule';
-// Executive (2)
+// Projects (4)
+import { PROJECT_DESCRIPTOR } from './projects/projectModule';
+import { PROJECT_TASK_DESCRIPTOR } from './projects/projectTaskModule';
+import { TIME_ENTRY_DESCRIPTOR } from './projects/timeEntryModule';
+import { BILLING_RUN_DESCRIPTOR } from './projects/billingRunModule';
+// HR (15)
+import { TICKET_DESCRIPTOR } from './helpdesk/ticketModule';
+import { ATTENDANCE_DESCRIPTOR } from './hr/attendanceModule';
+import { LEAVE_DESCRIPTOR } from './hr/leaveModule';
+import { HOLIDAY_DESCRIPTOR } from './hr/holidayModule';
+import { EXPENSE_CLAIM_DESCRIPTOR } from './hr/expenseClaimModule';
+import { SHIFT_DESCRIPTOR } from './hr/shiftModule';
+import { CANDIDATE_DESCRIPTOR } from './hr/candidateModule';
+import { OKR_DESCRIPTOR } from './hr/okrModule';
+import { EMPLOYEE_DESCRIPTOR } from './hr/employeeModule';
+import { PAYROLL_RUN_DESCRIPTOR } from './hr/payrollRunModule';
+import { SALARY_STRUCTURE_DESCRIPTOR } from './hr/salaryStructureModule';
+import { STATUTORY_RULE_DESCRIPTOR } from './hr/statutoryRuleModule';
+import { SALARY_DISBURSEMENT_DESCRIPTOR } from './hr/salaryDisbursementModule';
+import { PAYSLIP_DESCRIPTOR } from './hr/payslipModule';
+import { PAYROLL_REGISTER_DESCRIPTOR } from './hr/payrollRegisterModule';
+import { STATUTORY_FILING_DESCRIPTOR } from './hr/statutoryFilingModule';
+// Documents (1)
+import { DOCUMENT_DESCRIPTOR } from './documents/documentModule';
+// Executive (3)
 import { EXECUTIVE_DECISION_DESCRIPTOR } from './executive/executiveDecisionModule';
 import { EXECUTION_PROPOSAL_DESCRIPTOR } from './executive/executionProposalModule';
+import { BI_REPORT_DESCRIPTOR } from './executive/biReportModule';
 
 /** The certified inventory, grouped by family. Adding/removing a real module must update this + the counts. */
 const CERTIFIED: Record<string, EnterpriseModuleDescriptor[]> = {
-  Finance: [INVOICE_DESCRIPTOR, PAYMENT_DESCRIPTOR],
-  Sales: [QUOTE_DESCRIPTOR, ORDER_DESCRIPTOR],
-  CRM: [CONTACT_DESCRIPTOR, LEAD_DESCRIPTOR, CUSTOMER_DESCRIPTOR],
-  Procurement: [SUPPLIER_DESCRIPTOR, PURCHASE_REQUEST_DESCRIPTOR, PURCHASE_ORDER_DESCRIPTOR, GOODS_RECEIPT_DESCRIPTOR],
-  Inventory: [PRODUCT_DESCRIPTOR, WAREHOUSE_DESCRIPTOR, STOCK_MOVEMENT_DESCRIPTOR],
+  Finance: [
+    INVOICE_DESCRIPTOR, PAYMENT_DESCRIPTOR, LEDGER_ACCOUNT_DESCRIPTOR, JOURNAL_ENTRY_DESCRIPTOR,
+    ACCOUNTING_PERIOD_DESCRIPTOR, TAX_REPORT_DESCRIPTOR, AR_AGING_DESCRIPTOR,
+    BANK_STATEMENT_DESCRIPTOR, BUDGET_DESCRIPTOR, VENDOR_BILL_DESCRIPTOR, AP_AGING_DESCRIPTOR,
+    FIXED_ASSET_DESCRIPTOR, CREDIT_NOTE_DESCRIPTOR, DEBIT_NOTE_DESCRIPTOR, VENDOR_PAYMENT_DESCRIPTOR,
+    EXCHANGE_RATE_DESCRIPTOR, FINANCIAL_RATIOS_DESCRIPTOR, CASH_FLOW_DESCRIPTOR, FX_REVALUATION_DESCRIPTOR, FX_EXPOSURE_DESCRIPTOR,
+    TREASURY_POSITION_DESCRIPTOR,
+  ],
+  Sales: [
+    QUOTE_DESCRIPTOR, ORDER_DESCRIPTOR, CONTRACT_DESCRIPTOR, PRICING_RULE_DESCRIPTOR,
+    COMMISSION_PLAN_DESCRIPTOR, COMMISSION_STATEMENT_DESCRIPTOR, REVENUE_FORECAST_DESCRIPTOR,
+  ],
+  CRM: [
+    CONTACT_DESCRIPTOR, LEAD_DESCRIPTOR, CUSTOMER_DESCRIPTOR, OPPORTUNITY_DESCRIPTOR, ACTIVITY_DESCRIPTOR,
+    CUSTOMER_HEALTH_DESCRIPTOR, CUSTOMER_TIMELINE_DESCRIPTOR, CAMPAIGN_DESCRIPTOR,
+  ],
+  Procurement: [
+    SUPPLIER_DESCRIPTOR, VENDOR_CONTRACT_DESCRIPTOR, PURCHASE_REQUEST_DESCRIPTOR, PURCHASE_ORDER_DESCRIPTOR,
+    GOODS_RECEIPT_DESCRIPTOR, RFQ_DESCRIPTOR, SUPPLIER_PERFORMANCE_DESCRIPTOR,
+  ],
+  Inventory: [
+    PRODUCT_DESCRIPTOR, WAREHOUSE_DESCRIPTOR, STOCK_MOVEMENT_DESCRIPTOR,
+    LOT_DESCRIPTOR, RESERVATION_DESCRIPTOR, INVENTORY_VALUATION_DESCRIPTOR, SERIAL_DESCRIPTOR,
+  ],
   Warehouse: [
     WAREHOUSE_ZONE_DESCRIPTOR, WAREHOUSE_BIN_DESCRIPTOR, TRANSFER_ORDER_DESCRIPTOR, PICK_LIST_DESCRIPTOR,
     PACKING_DESCRIPTOR, SHIPPING_DESCRIPTOR, CYCLE_COUNT_DESCRIPTOR, STOCK_ADJUSTMENT_DESCRIPTOR,
@@ -87,19 +168,23 @@ const CERTIFIED: Record<string, EnterpriseModuleDescriptor[]> = {
   Manufacturing: [
     BOM_DESCRIPTOR, PRODUCTION_ORDER_DESCRIPTOR, WORK_CENTER_DESCRIPTOR, MACHINE_DESCRIPTOR, PRODUCTION_SCHEDULE_DESCRIPTOR,
     ROUTING_DESCRIPTOR, MANUFACTURING_EVENT_DESCRIPTOR, PRODUCTION_EXECUTION_DESCRIPTOR, QUALITY_INSPECTION_DESCRIPTOR,
-    PRODUCTION_COSTING_DESCRIPTOR, SCHEDULE_PROPOSAL_DESCRIPTOR,
+    PRODUCTION_COSTING_DESCRIPTOR, SCHEDULE_PROPOSAL_DESCRIPTOR, BOM_EXPLOSION_DESCRIPTOR,
   ],
   Maintenance: [
     ASSET_CATEGORY_DESCRIPTOR, ASSET_DESCRIPTOR, MAINTENANCE_PLAN_DESCRIPTOR, PREVENTIVE_MAINTENANCE_DESCRIPTOR,
     CORRECTIVE_MAINTENANCE_DESCRIPTOR, WORK_ORDER_DESCRIPTOR, TECHNICIAN_DESCRIPTOR, MAINTENANCE_HISTORY_DESCRIPTOR,
     SPARE_PART_DESCRIPTOR, DOWNTIME_EVENT_DESCRIPTOR,
   ],
-  Executive: [EXECUTIVE_DECISION_DESCRIPTOR, EXECUTION_PROPOSAL_DESCRIPTOR],
+  Projects: [PROJECT_DESCRIPTOR, PROJECT_TASK_DESCRIPTOR, TIME_ENTRY_DESCRIPTOR, BILLING_RUN_DESCRIPTOR],
+  HR: [EMPLOYEE_DESCRIPTOR, PAYROLL_RUN_DESCRIPTOR, SALARY_STRUCTURE_DESCRIPTOR, STATUTORY_RULE_DESCRIPTOR, SALARY_DISBURSEMENT_DESCRIPTOR, PAYSLIP_DESCRIPTOR, PAYROLL_REGISTER_DESCRIPTOR, STATUTORY_FILING_DESCRIPTOR, ATTENDANCE_DESCRIPTOR, LEAVE_DESCRIPTOR, HOLIDAY_DESCRIPTOR, EXPENSE_CLAIM_DESCRIPTOR, SHIFT_DESCRIPTOR, CANDIDATE_DESCRIPTOR, OKR_DESCRIPTOR],
+  Helpdesk: [TICKET_DESCRIPTOR],
+  Documents: [DOCUMENT_DESCRIPTOR],
+  Executive: [EXECUTIVE_DECISION_DESCRIPTOR, EXECUTION_PROPOSAL_DESCRIPTOR, BI_REPORT_DESCRIPTOR],
 };
 
 /** The certified per-family module counts (verified from the registration site, enterprise/index.ts). */
 const CERTIFIED_COUNTS: Record<string, number> = {
-  Finance: 2, Sales: 2, CRM: 3, Procurement: 4, Inventory: 3, Warehouse: 8, Manufacturing: 11, Maintenance: 10, Executive: 2,
+  Finance: 21, Sales: 7, CRM: 8, Procurement: 7, Inventory: 7, Warehouse: 8, Manufacturing: 12, Maintenance: 10, Projects: 4, HR: 15, Helpdesk: 1, Documents: 1, Executive: 3,
 };
 
 const ALL = Object.values(CERTIFIED).flat();
@@ -108,17 +193,18 @@ const KNOWN_FAMILIES = Object.keys(CERTIFIED_COUNTS);
 const FAMILY_WRITE_SCOPE: Record<string, string> = {
   Finance: 'operations:manage', Sales: 'sales:manage', CRM: 'crm:manage', Procurement: 'procurement:manage',
   Inventory: 'inventory:manage', Warehouse: 'warehouse:manage', Manufacturing: 'manufacturing:manage',
-  Maintenance: 'maintenance:manage', Executive: 'executive:', // approve OR execute — asserted as a prefix
+  Maintenance: 'maintenance:manage', Projects: 'operations:manage', HR: 'operations:manage', Helpdesk: 'operations:manage', Documents: 'operations:manage', // Projects/HR/Helpdesk/Documents deliberately reuse operations:* (the Finance precedent)
+  Executive: 'executive:', // approve OR execute — asserted as a prefix
 };
 
 describe('Enterprise Module Certification — registry lock', () => {
-  it('certifies exactly 45 modules across the 9 production families', () => {
-    expect(ALL).toHaveLength(45);
+  it('certifies exactly 104 modules across the 13 production families', () => {
+    expect(ALL).toHaveLength(104);
     for (const fam of KNOWN_FAMILIES) {
       expect(CERTIFIED[fam]).toHaveLength(CERTIFIED_COUNTS[fam]);
     }
     const total = Object.values(CERTIFIED_COUNTS).reduce((a, b) => a + b, 0);
-    expect(total).toBe(45);
+    expect(total).toBe(104);
   });
 
   it('every real descriptor passes the framework validator (validateModuleDescriptor)', () => {
@@ -169,5 +255,68 @@ describe('Enterprise Module Certification — registry lock', () => {
       const keys = (d.actions ?? []).map((a) => a.key);
       expect(new Set(keys).size, `${d.id} has duplicate action keys`).toBe(keys.length);
     }
+  });
+});
+
+
+/* ── Field sensitivity ─────────────────────────────────────────────────────
+ * The export path reads `EnterpriseFieldDef`, and a field it classifies as
+ * `normal` leaves in a spreadsheet in cleartext. Classification is derived
+ * from the field NAME so nobody has to remember — but a derived rule is only
+ * as good as its vocabulary, and a review found it catching `netPay` while
+ * missing `grossEarnings` on the same record. One column redacted and the one
+ * beside it exported is worse than redacting neither.
+ *
+ * These two checks run over every descriptor the app ships, so the next
+ * payroll column either matches a pattern, carries `sensitive:`, or fails
+ * here. Deliberately in THIS file: adding a module already means editing it.
+ */
+describe('field sensitivity', () => {
+  it('classifies every money field on a people module as at least restricted', () => {
+    const leaks: string[] = [];
+    for (const descriptor of ALL) {
+      if (descriptor.permissions.read !== 'people:read') continue;
+      for (const field of descriptor.fields) {
+        // Money on a people module is pay. There is no other thing it is.
+        if (field.format !== 'currency') continue;
+        if (classifyField(field) === 'normal') {
+          leaks.push(`${descriptor.id}.${field.key} (${field.label})`);
+        }
+      }
+    }
+    expect(
+      leaks,
+      `these pay fields would export in cleartext — add a pattern in sensitivity.ts or declare \`sensitive\` on the field:\n  ${leaks.join('\n  ')}`,
+    ).toEqual([]);
+  });
+
+  it('classifies every field whose name mentions a government or bank identifier', () => {
+    const NAMES = /(aadhaar|aadhar|\bpan\b|\buan\b|passport|\bssn\b|\bifsc\b|bank\s?(account|detail))/i;
+    const leaks: string[] = [];
+    for (const descriptor of ALL) {
+      for (const field of descriptor.fields) {
+        const text = `${field.key} ${field.label}`;
+        if (!NAMES.test(text)) continue;
+        if (classifyField(field) === 'normal') {
+          leaks.push(`${descriptor.id}.${field.key} (${field.label})`);
+        }
+      }
+    }
+    expect(leaks, `unclassified identifiers:\n  ${leaks.join('\n  ')}`).toEqual([]);
+  });
+
+  it('does not sweep up ordinary business columns', () => {
+    // The counterweight. A rule that hides real data is a rule the first
+    // person it annoys switches off, so the breadth is asserted too.
+    const hidden = ALL.flatMap((d) =>
+      d.fields
+        .filter((f) => classifyField(f) !== 'normal')
+        .map((f) => `${d.id}.${f.key}`),
+    );
+    const total = ALL.reduce((n, d) => n + d.fields.length, 0);
+    expect(hidden.length).toBeGreaterThan(0);
+    // A tenth of every field in the product being personal or financial would
+    // mean the patterns are matching something they should not.
+    expect(hidden.length / total).toBeLessThan(0.1);
   });
 });

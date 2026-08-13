@@ -10,6 +10,36 @@ import { promises as fs } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import type { Installation, ListingKind } from '@neuropause/shared';
 import { createLogger } from '../../logger';
+import { declareStoreScope } from '../../tenancy/storeScope';
+
+/** P13C ROUND 8 — the structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'ecosystem-installs',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  /**
+   * P13C ROUND 10. OWNER, and WHERE the ownership check lives is stated rather
+   * than implied, because this store has no seam of its own.
+   *
+   * `uninstall(id)` and `setDisabled(id, …)` are bare-id primitives. Their only
+   * callers are the `EcosystemUninstall` and `EcosystemInstallSetEnabled`
+   * handlers in `ecosystem/index.ts`, and each resolves the renderer-supplied id
+   * INSIDE `installsStore.forOrg(requireCallerOrgId())` first and throws "That
+   * installation does not exist" otherwise — the P13C remediation that closed
+   * this exact IDOR. So the reach is per owner in fact, and it is per owner
+   * because of two call sites rather than because of anything in this file.
+   * Verified by reading `ecosystem/index.ts`, not by a test in this module.
+   */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'OWNER',
+  retention:
+    'No cap, no TTL, no eviction — nothing is removed to make room. ONE removal, `uninstall(id)`, ' +
+    "reached only through the handler above, which resolves the id inside the caller's own " +
+    'organization before calling it.',
+  reason: "Installation.orgId stamped from requireCallerOrgId(): which apps an organization runs is that organization's business.",
+});
 
 const log = createLogger('ecosystem-installs');
 

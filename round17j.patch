@@ -1,0 +1,66 @@
+--- a/.github/workflows/backend-ci.yml
++++ b/.github/workflows/backend-ci.yml
+@@ -34,6 +34,63 @@
+       - name: Build
+         run: npm run build -w @neuropause/backend
+ 
++  # P13C ROUND 17j — the integration suite had no gate.
++  #
++  # `apps/backend` has TWO suites. `test` is infra-free and runs above; the
++  # `test:integration` config runs `src/__integration__/**` against a REAL
++  # Postgres and Redis, and it was invoked by nothing: not this workflow, not
++  # `test:release`, not the root `npm test`. Its two files cover auth and
++  # organizations — the identity and tenant boundary the desktop app trusts.
++  #
++  # It is GREEN, unlike the desktop UI suite found ungated the same day; run
++  # against a stock Postgres 16 + Redis 7 it applies its twelve migrations and
++  # passes 17/17. Ungated and passing is still ungated: nothing would have said
++  # so on the day it stopped.
++  #
++  # A separate job rather than a step, because the config THROWS when
++  # TEST_DATABASE_URL is unset — chaining it into `npm test` the way the desktop
++  # suites are chained would break every infra-free run, which is exactly the
++  # property its own header says to preserve. `waitForDb.ts` tolerates a
++  # still-starting container and creates the database itself, so no setup step
++  # is needed beyond the services below.
++  integration:
++    runs-on: ubuntu-latest
++    services:
++      postgres:
++        image: postgres:16
++        env:
++          POSTGRES_USER: postgres
++          POSTGRES_PASSWORD: postgres
++          POSTGRES_DB: postgres
++        ports:
++          - 5432:5432
++        options: >-
++          --health-cmd "pg_isready -U postgres"
++          --health-interval 10s
++          --health-timeout 5s
++          --health-retries 10
++      redis:
++        image: redis:7
++        ports:
++          - 6379:6379
++        options: >-
++          --health-cmd "redis-cli ping"
++          --health-interval 10s
++          --health-timeout 5s
++          --health-retries 10
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-node@v4
++        with:
++          node-version: '20'
++          cache: 'npm'
++      - run: npm ci
++      - name: Integration test (real Postgres + Redis)
++        env:
++          TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/neuropause_test
++          REDIS_URL: redis://localhost:6379
++        run: npm run test:integration -w @neuropause/backend
++
+   docker-build:
+     runs-on: ubuntu-latest
+     needs: test

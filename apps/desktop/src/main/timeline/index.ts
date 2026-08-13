@@ -22,6 +22,7 @@ import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { unifiedStore } from '../unified/storeInstance';
 import { EnterpriseTimeline } from './enterpriseTimeline';
+import { runOutsidePrincipal } from '../tenancy/backgroundPrincipal';
 
 const log = createLogger('enterprise-timeline');
 
@@ -49,8 +50,35 @@ export function initEnterpriseTimeline(deps: EnterpriseTimelineDeps): Enterprise
   timelineRef = timeline;
 
   let timer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * P13C ROUND 7 — COMPUTED FOR THE VIEWER, NOT FOR THE JOB.
+   *
+   * THE CLASS: a background pass runs as tenant A while the window in front of
+   * the user is showing tenant B. Any value computed for the RENDERER during
+   * that pass is computed under A's principal, so a correctly-scoped store
+   * honestly answers for A — and the answer is delivered into B's window.
+   *
+   * The store is not the defect. The store is right, which is exactly why this
+   * survived seven rounds of auditing stores: every isolation test on it passes,
+   * because the boundary holds and the READER is standing on the wrong side of
+   * it.
+   *
+   * `runOutsidePrincipal` exists for precisely this and had ONE caller in the
+   * whole main process (the unread badge), with a comment describing the general
+   * case. This is the general case, in the five other places it occurs.
+   *
+   * It grants nothing: leaving the principal falls back to the SESSION, so the
+   * value is what the signed-in viewer is entitled to and never more.
+   */
+  // The 800ms debounce does NOT clear the principal: AsyncLocalStorage
+  // propagates into timer callbacks, so a `setTimeout` preserves it rather than
+  // escaping it. That is the opposite of the intuition, and it is why this one
+  // looked safe.
   const broadcastStats = (): void =>
-    deps.broadcast(IpcChannel.EnterpriseTimelineEventBroadcast, timeline.stats());
+    deps.broadcast(
+      IpcChannel.EnterpriseTimelineEventBroadcast,
+      runOutsidePrincipal(() => timeline.stats()),
+    );
   const schedule = (): void => {
     if (timer) return;
     timer = setTimeout(() => {

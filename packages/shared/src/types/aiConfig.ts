@@ -11,6 +11,8 @@ export type AiRuntimeState = 'booting' | 'loading' | 'ready' | 'needs-setup' | '
 /** Where the effective provider selection came from (diagnostic only). */
 export type AiConfigSource = 'config' | 'env' | 'default';
 
+import type { AiMode } from './aiRouting';
+
 /** The renderer's view of the current AI configuration. Secret-free by construction. */
 export interface AiConfigDto {
   provider: AiProviderId;
@@ -24,6 +26,15 @@ export interface AiConfigDto {
   state: AiRuntimeState;
   /** Provenance of the effective provider selection. */
   source: AiConfigSource;
+  /**
+   * The effective AI mode. For installs configured before modes existed the
+   * stored value is null and the effective mode preserves their behaviour
+   * exactly (see `resolveAiMode` in the main process): a working cloud setup
+   * keeps working, and only an explicit choice changes routing.
+   */
+  mode: AiMode;
+  /** Whether the user has consented to external processing as a fallback. */
+  externalConsent: boolean;
 }
 
 /** Provider reachability/health for the Settings + Operations indicators. */

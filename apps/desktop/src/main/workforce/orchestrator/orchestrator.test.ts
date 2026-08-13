@@ -11,6 +11,7 @@ import { JobStore } from '../runtime/jobStore';
 import { WorkerRuntime } from '../runtime/workerRuntime';
 import type { SkillImpl, WorkforceData } from '../sdk';
 import { Orchestrator } from './orchestrator';
+import { TEST_TENANT_SCOPE } from '../../tenancy/testScope';
 
 const NOW = '2026-02-12T00:00:00.000Z';
 
@@ -115,8 +116,8 @@ async function setup() {
   wfCounter = 0;
   flakyCalls = 0;
   const registry = new WorkerRegistry(tempPath());
-  const audit = new AuditLog(tempPath());
-  const jobs = new JobStore(tempPath());
+  const audit = new AuditLog(tempPath()).bindScope(() => TEST_TENANT_SCOPE);
+  const jobs = new JobStore(tempPath()).bindScope(() => TEST_TENANT_SCOPE);
   stores.push(registry, audit, jobs);
   await registry.load();
   await audit.load();

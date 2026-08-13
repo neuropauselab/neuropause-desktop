@@ -18,6 +18,7 @@ import {
   type SystemHealthSnapshot,
 } from '@neuropause/shared';
 import { createLogger } from './logger';
+import { runAsPrincipal, systemPrincipal } from './tenancy/backgroundPrincipal';
 
 const log = createLogger('runtime-supervisor');
 
@@ -51,9 +52,28 @@ export class RuntimeSupervisor {
     this.now = deps.now ?? Date.now;
   }
 
+  /**
+   * P13C PART 3 — CLASSIFIED SYSTEM_GLOBAL.
+   *
+   * The supervisor observes SUBSYSTEMS of this process — the event bus, the
+   * connector runtime, the window — none of which belong to a customer. It
+   * carries no tenant, and running it under an explicit SYSTEM principal is
+   * what stops it inheriting one: without a principal, `activeTenantScope()`
+   * falls through to the session, and a global health alert would be published
+   * into whichever organization the user happened to have open, appearing in
+   * that customer's timeline as their own activity.
+   *
+   * The alerts are not lost by being system-owned. `scopeKind: 'system'` is
+   * stamped from this principal, and the notification subsystem fans a system
+   * alert out to every operable tenant under that tenant's own principal — so
+   * the CRITICAL signal reaches every operator without the log becoming global.
+   */
   start(intervalMs = 20_000): void {
     if (this.timer) return;
-    this.timer = setInterval(() => void this.tick(), intervalMs);
+    this.timer = setInterval(
+      () => void runAsPrincipal(systemPrincipal('runtime-supervisor'), () => this.tick()),
+      intervalMs,
+    );
     if (typeof this.timer === 'object' && 'unref' in this.timer) this.timer.unref?.();
     log.info('Runtime supervisor started', { intervalMs });
   }

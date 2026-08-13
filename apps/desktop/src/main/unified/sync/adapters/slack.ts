@@ -179,6 +179,7 @@ interface FilesCursor {
 export function mapChannel(ctx: SyncContext, ch: SlackChannel): UnifiedEntity {
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'conversation',
     sourceId: ch.id,
@@ -200,9 +201,10 @@ export function mapChannel(ctx: SyncContext, ch: SlackChannel): UnifiedEntity {
 
 export function mapMessage(ctx: SyncContext, channelId: string, m: SlackMessage): UnifiedEntity {
   const ts = slackTsToIso(m.ts);
-  const channelRef = makeUnifiedId(ctx.connectorId, ctx.accountId, 'conversation', channelId);
+  const channelRef = makeUnifiedId(ctx.tenantId, ctx.connectorId, ctx.accountId, 'conversation', channelId);
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'message',
     sourceId: `${channelId}:${m.ts}`,
@@ -233,6 +235,7 @@ export function mapUser(ctx: SyncContext, u: SlackUser): UnifiedEntity {
   const when = u.updated ? unixToIso(u.updated) : SLACK_STABLE_TS;
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'contact',
     sourceId: u.id,
@@ -260,6 +263,7 @@ export function mapFile(ctx: SyncContext, f: SlackFile): UnifiedEntity {
   const created = unixToIso(f.created);
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'file',
     sourceId: f.id,

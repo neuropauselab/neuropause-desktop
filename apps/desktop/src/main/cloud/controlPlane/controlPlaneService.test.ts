@@ -16,6 +16,15 @@ import type {
 import { ControlPlaneService } from './controlPlaneService';
 import type { ControlPlaneState } from './controlPlaneModel';
 
+/**
+ * P13C ROUND 3 — H-2. The memo is now keyed by tenant, so these tests must name
+ * one. A fixed scope keeps every existing memoization assertion meaningful:
+ * repeated reads under ONE tenant must still be O(1) cache hits, which is the
+ * property this file was written to protect and the fix must not cost.
+ */
+const TEST_SCOPE = { tenantId: 'org-test', workspaceId: 'ws-test' };
+const scope = (): typeof TEST_SCOPE => TEST_SCOPE;
+
 const NOW = '2026-07-15T00:00:00.000Z';
 const REGIONS: CloudRegion[] = [
   { id: 'us-east', name: 'US East', residency: 'us', available: true },
@@ -54,7 +63,7 @@ function baseState(over: Partial<ControlPlaneState> = {}): ControlPlaneState {
 
 describe('ControlPlaneService', () => {
   it('composes every projection from the injected reader', () => {
-    const svc = new ControlPlaneService({ readState: () => baseState() });
+    const svc = new ControlPlaneService({ scope, readState: () => baseState() });
     expect(svc.overview().fleet.subsystems).toHaveLength(6);
     expect(svc.fleet().status).toBe('healthy');
     expect(svc.regions()).toHaveLength(2);
@@ -66,8 +75,7 @@ describe('ControlPlaneService', () => {
   it('memoizes the snapshot + projections and recomposes only after invalidate()', () => {
     const box = { value: baseState() };
     let reads = 0;
-    const svc = new ControlPlaneService({
-      readState: () => {
+    const svc = new ControlPlaneService({ scope, readState: () => {
         reads += 1;
         return box.value;
       },

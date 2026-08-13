@@ -3,7 +3,7 @@
  * healthy and current run behind a single manager that starts and stops them
  * together. Part A ships the two the runtime depends on directly — the Health
  * Monitor (liveness + resource sampling) and the Update Checker (release
- * polling). The remaining services (telemetry, crash reporter, task and
+ * polling). The remaining services (crash reporter, task and
  * notification schedulers, plugin loader) plug into this same manager in Part B.
  *
  * The Download Manager and Runtime Supervisor are also "services" in spirit but
@@ -12,15 +12,16 @@
  */
 import type { UpdateCheck } from '@neuropause/shared';
 import { createLogger } from '../logger';
+import { runAsPrincipal, systemPrincipal } from '../tenancy/backgroundPrincipal';
 import { registry } from '../registry/registry';
 import { catalogClient } from '../catalog/catalogClient';
 import { supervisor } from '../runtime/supervisor';
 import { crashReporter } from './crashReporter';
-import { telemetry } from './telemetry';
 import { taskScheduler } from './taskScheduler';
 import { notificationScheduler } from './notificationScheduler';
 import { pluginLoader } from './pluginLoader';
 import { appUpdater } from './appUpdater';
+import { companionGatewayService } from '../companion/gatewayService';
 
 const log = createLogger('services');
 
@@ -36,10 +37,19 @@ class HealthMonitor implements BackgroundService {
   private timer: NodeJS.Timeout | null = null;
   private readonly intervalMs = 5000;
 
+  /**
+   * P13C PART 3 — CLASSIFIED SYSTEM_GLOBAL, under an explicit principal.
+   *
+   * Instance health is a property of the PROCESS, not of a customer. The
+   * principal is not decoration: without one, this 5-second timer resolves the
+   * signed-in user's tenant, so every health sample it publishes lands in
+   * whichever organization is open — and the sample rate means that tenant's
+   * timeline fills with work it did not do.
+   */
   start(): void {
     if (this.timer) return;
     this.timer = setInterval(() => {
-      void supervisor.checkHealth();
+      void runAsPrincipal(systemPrincipal('health-monitor'), () => supervisor.checkHealth());
     }, this.intervalMs);
     this.timer.unref?.();
     log.info('Health monitor started', { intervalMs: this.intervalMs });
@@ -60,9 +70,18 @@ class UpdateChecker implements BackgroundService {
 
   start(): void {
     if (this.timer) return;
+    /**
+     * P13C PART 3 — CLASSIFIED SYSTEM_GLOBAL. The Store's catalogue of app
+     * versions is product data, identical for every customer, so this poll
+     * belongs to the product. Both entry points — the launch sweep and the
+     * recurring one — run under the principal, because a job is only
+     * fail-closed if EVERY path into it is.
+     */
+    const sweepAsSystem = (): Promise<void> =>
+      runAsPrincipal(systemPrincipal('update-checker'), () => this.sweep());
     // First sweep shortly after launch, then on the long interval.
-    setTimeout(() => void this.sweep(), 30_000).unref?.();
-    this.timer = setInterval(() => void this.sweep(), this.intervalMs);
+    setTimeout(() => void sweepAsSystem(), 30_000).unref?.();
+    this.timer = setInterval(() => void sweepAsSystem(), this.intervalMs);
     this.timer.unref?.();
     log.info('Update checker started', { intervalMs: this.intervalMs });
   }
@@ -104,13 +123,15 @@ class ServiceManager {
     // the monitors, and the plugin loader last (it enables plugins).
     this.services = [
       crashReporter,
-      telemetry,
       taskScheduler,
       notificationScheduler,
       this.healthMonitor,
       this.updateChecker,
       appUpdater,
       pluginLoader,
+      // Mobile M1-03 — the companion LAN gateway (no-op until initCompanion binds it
+      // and only listens when the user has enabled it in Settings).
+      companionGatewayService,
     ];
   }
 

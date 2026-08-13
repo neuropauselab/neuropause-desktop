@@ -40,6 +40,17 @@ export function classifyEnterpriseFailure(err: unknown): EnterpriseFailure {
 
 function detect(message: string, name: string, code: string): EnterpriseFailureKind {
   const m = message.toLowerCase();
+  /**
+   * P13C Round 9 — F15. A DESKTOP OWNERSHIP REFUSAL IS AN AUTHORIZATION FAILURE.
+   *
+   * Checked first, and by CODE rather than by wording. Without this the denial
+   * fell through every branch to `unknown`, which this file treats as
+   * recoverable — so a step that reached for another tenant's session would be
+   * retried to exhaustion and then, under `onExhausted: 'skip'`, reported as
+   * SKIPPED. The boundary held either way (no bytes ever crossed), but a real
+   * refusal has to read as a refusal in the report.
+   */
+  if (code === 'desktop_denied' || code === 'desktop_no_owner') return 'authorization';
   if (name === 'EnterpriseAuthorizationError' || name === 'AuthorizationError' || m.includes('permission') || m.includes('sign in to continue') || m.includes('unauthor')) return 'authorization';
   if (code === 'desktop_unavailable' || code === 'platform_unavailable' || m.includes('requires playwright') || m.includes('unavailable')) return 'platform_unavailable';
   if (code === 'module_not_found' || code === 'record_not_found' || m.includes('not found') || m.includes('not registered')) return 'not_found';

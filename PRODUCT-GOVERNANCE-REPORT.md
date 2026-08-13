@@ -1,5 +1,12 @@
 # NeuroPause — Product Evolution & Release Governance Program (PERG) Report
 
+> **Historical snapshot — superseded facts.** This report was written in the
+> `1.0.0-rc.1` era (bulk pass of 2026-07-24) and is retained as program history.
+> Authoritative current facts: **104 certified modules across 13 families**
+> (locked by `apps/desktop/src/main/enterprise/modules/moduleCertification.test.ts`),
+> version lineage `1.0.0-rc.14`. See `PHASE7-COMPLETION-REPORT.md` and the
+> Phase 8 reports for current state. Banner added by Phase 8 (8.11).
+
 **Version:** 1.0 · **Date:** 2026-07-18 · **Platform:** `1.0.0-rc.1` (Validated
 Release Candidate)
 

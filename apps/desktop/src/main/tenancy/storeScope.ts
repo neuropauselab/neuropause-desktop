@@ -1,0 +1,358 @@
+/**
+ * EVERY PERSISTENT STATEFUL SUBSYSTEM MUST DECLARE ITS SCOPE.
+ *
+ * WHY THIS EXISTS, AND WHY THE EXISTING REGISTRY WAS NOT ENOUGH
+ *
+ * `registerTenantStore` inverted the audit problem: instead of searching for
+ * stores somebody forgot to bind, a store registers itself and the app refuses to
+ * start if it is unbound. That is the right shape, and it has one hole big enough
+ * to have hidden four HIGH findings:
+ *
+ *     A STORE THAT NEVER REGISTERS IS INVISIBLE TO THE REGISTRY.
+ *
+ * Round 7's red team found seven such stores. `discoveryState` held cloud account
+ * ids for every tenant. `memoryAuditLog` held assistant-written record titles on a
+ * PUBLIC channel. `traceStore` deleted another tenant's regulated recall evidence.
+ * None of them appeared in the coverage report, because the report enumerates
+ * stores that OPTED IN. Round 6 widened the scan from `bindScope` to
+ * `bindWorkspace`, which helped and was still detection by naming convention — a
+ * subsystem with no seam at all matches no convention.
+ *
+ * THE INVARIANT THIS FILE ENFORCES
+ *
+ * Every file that holds persistent state must declare exactly one scope from the
+ * closed set below. Omission is a TEST FAILURE (`storeScopeGate.test.ts` runs in
+ * `npm test`), so a developer who writes a new store and forgets cannot get a
+ * green build. `UNKNOWN` is not a value — the type has no room for it.
+ *
+ * WHY A DECLARATION AND NOT INFERENCE
+ *
+ * A scanner could guess from field names, and this program has repeatedly shown
+ * what guessing is worth: `objectCount` and `syncOps` are tenant-derived and named
+ * for neither; `platformId:accountId` looks specific and authorizes nothing. The
+ * scanner's job is therefore to detect PERSISTENCE — which is mechanical and hard
+ * to hide — and demand a human answer for scope. It is a forcing function, not an
+ * oracle.
+ *
+ * WHAT A DECLARATION COSTS THE DECLARER
+ *
+ * Deliberately more than one word. `INSTALL_GLOBAL` and `PLATFORM_GLOBAL` require
+ * an authority model and a reason, because those two are the ones that get chosen
+ * by accident — "it's just a config file" is how the AI provider endpoint came to
+ * be install-wide behind a tenant role, letting one organization's administrator
+ * redirect another organization's records off the device.
+ */
+
+/**
+ * The closed set. Adding a seventh is a deliberate architectural act; there is no
+ * escape hatch, and that is the point.
+ */
+export type StoreScope =
+  /** Rows belong to one ORGANIZATION. The default answer for customer data. */
+  | 'TENANT'
+  /** Rows belong to one WORKSPACE inside an organization. Narrower than TENANT. */
+  | 'WORKSPACE'
+  /** Rows belong to one SIGNED-IN PERSON, across organizations. */
+  | 'USER'
+  /**
+   * One shared thing on one machine, holding NO customer-derived state.
+   * Mutation is an organization-level decision that affects the install.
+   */
+  | 'INSTALL_GLOBAL'
+  /**
+   * One shared thing on one machine whose MUTATION requires install-level
+   * authority (`cloud:operate`), because changing it affects every tenant.
+   */
+  | 'PLATFORM_GLOBAL'
+  /** In-memory only. Nothing survives a restart. */
+  | 'EPHEMERAL';
+
+/** Where the state lives. `EPHEMERAL` scope and `none` persistence go together. */
+export type StorePersistence = 'file' | 'keychain' | 'memory';
+
+/**
+ * Who may MUTATE. Distinct from scope on purpose.
+ *
+ * Round 7's central lesson: an install-level resource behind an organization-level
+ * role is the bug. Three findings had that exact shape — the AI destination,
+ * plugin capability grants, rate-limit policies. Scope answers "whose data is
+ * this"; authority answers "who may change it", and they must be on the same axis.
+ */
+export type StoreAuthority =
+  /** An organization role decides. */
+  | 'ORG_ROLE'
+  /** An install-level platform operator decides (`cloud:operate`). */
+  | 'PLATFORM_OPERATOR'
+  /** The signed-in person decides, for their own state. */
+  | 'USER'
+  /** Nothing mutates it through a user-facing surface. */
+  | 'SYSTEM';
+
+/** What kind of information the rows hold. Drives whether a global scope is legal. */
+export type DataClassification =
+  /** Derived from, names, counts, or describes a customer's records or activity. */
+  | 'CUSTOMER_DERIVED'
+  /** About the machine, the software, or a publisher. Never about a customer. */
+  | 'INSTALL_METADATA'
+  /** About the signed-in person's own preferences or device. */
+  | 'USER_PREFERENCE'
+  /** Credentials or secrets. */
+  | 'SECRET';
+
+/**
+ * WHOSE ROWS A REMOVAL CAN REACH. P13C ROUND 10.
+ *
+ * THE GAP THIS CLOSES. Round 9's fresh red team proved three HIGH findings that
+ * were all the same bug — `inboxStore`, `webhookStore`, `runStore` each capped a
+ * single shared array, so one tenant's volume silently deleted another tenant's
+ * notifications, dead-letter queue and certification history. Every READ above
+ * those caps was correctly filtered.
+ *
+ * They passed the store-scope gate. `registerTenantStore(name, hasScope)`
+ * satisfies it and TAKES NO RETENTION ARGUMENT AT ALL, so none of the three was
+ * ever asked the question. The forcing function existed and three of the four
+ * declaring paths could not express the answer.
+ *
+ * A prose `retention` string was already mandatory. Prose cannot be checked. An
+ * enum can: `TENANT` + `INSTALL` is now refused at construction, which makes the
+ * entire class — a scoped store whose cap deletes across the boundary —
+ * unrepresentable rather than merely discouraged.
+ */
+export type RetentionScope =
+  /** A removal reaches ONLY the owning tenant / workspace / user's own rows. */
+  | 'OWNER'
+  /** A removal reaches every row on the machine, whoever wrote them. */
+  | 'INSTALL'
+  /** Nothing is ever removed. No cap, no TTL, no eviction, no delete path. */
+  | 'NONE';
+
+/** Who may cause a removal. Distinct from who may write, on purpose. */
+export type RetentionAuthority =
+  /** The owning tenant, acting on its own rows. */
+  | 'OWNER'
+  /** An install-level platform operator (`cloud:operate`). */
+  | 'PLATFORM_OPERATOR'
+  /** An automatic cap or TTL with no user-facing surface at all. */
+  | 'SYSTEM'
+  /** Nothing removes. Pairs with `retentionScope: 'NONE'`. */
+  | 'NONE';
+
+export interface StoreScopeDeclaration {
+  /** Stable, human-readable, unique. Appears in the coverage report. */
+  name: string;
+  scope: StoreScope;
+  persistence: StorePersistence;
+  authority: StoreAuthority;
+  classification: DataClassification;
+  /**
+   * WHOSE rows a removal can reach. Required for every store that removes.
+   *
+   * Optional in the type ONLY so the 38 declarations that predate Round 10 keep
+   * compiling; `storeScopeGate.test.ts` requires it of any file whose source
+   * contains a removal, so omitting it on a store that deletes is a build
+   * failure, not a silence. The two mechanisms overlap deliberately — the type
+   * cannot see a `splice`, and the source scan cannot see a generic factory.
+   */
+  retentionScope?: RetentionScope;
+  /** WHO may cause that removal. Required whenever `retentionScope` is set. */
+  retentionAuthority?: RetentionAuthority;
+  /**
+   * How rows are removed, and WHOSE rows a removal can reach.
+   *
+   * Mandatory because a retention cap is a WRITE. This program has found SIX
+   * install-wide caps sitting behind correct read filters — `executionStore.save`,
+   * then `replaceAll`, then governance audit, relationship links, assistant
+   * conversations, the memory audit log — each one able to delete another tenant's
+   * data while every read was perfectly scoped. A filter hides; a cap deletes.
+   */
+  retention: string;
+  /**
+   * WHY this scope, and for the two global scopes what the cross-tenant cost is.
+   *
+   * Required for every scope, not just the globals: a TENANT declaration whose
+   * reason is empty is a store nobody thought about, and this program's entire
+   * history is stores nobody thought about.
+   */
+  reason: string;
+  /**
+   * Whether the seam is currently bound. Omit for scopes that have no seam.
+   * `assertAllStoreScopesBound()` calls it at startup.
+   */
+  isBound?: () => boolean;
+}
+
+const registry = new Map<string, StoreScopeDeclaration>();
+
+/** Scopes that require a live tenant/workspace seam. */
+const SEAMED: ReadonlySet<StoreScope> = new Set<StoreScope>(['TENANT', 'WORKSPACE', 'USER']);
+
+/**
+ * Declare a persistent store's scope. Call once, at construction.
+ *
+ * THE ILLEGAL COMBINATION IS ENFORCED HERE, not documented: customer-derived
+ * state cannot be `INSTALL_GLOBAL` or `PLATFORM_GLOBAL`. That is the rule Round 8
+ * exists to make unbreakable, and it throws rather than warns — a warning in a
+ * startup log is a thing nobody reads until after the incident.
+ */
+export function declareStoreScope(decl: StoreScopeDeclaration): void {
+  if (decl.name.trim() === '') throw new Error('A store scope declaration needs a name.');
+  if (decl.reason.trim() === '') {
+    throw new Error(`Store "${decl.name}" must say WHY it has scope ${decl.scope}.`);
+  }
+  if (decl.retention.trim() === '') {
+    throw new Error(
+      `Store "${decl.name}" must state its retention policy and whose rows a removal can reach. ` +
+        'A retention cap is a write.',
+    );
+  }
+  if (
+    decl.classification === 'CUSTOMER_DERIVED' &&
+    (decl.scope === 'INSTALL_GLOBAL' || decl.scope === 'PLATFORM_GLOBAL')
+  ) {
+    throw new Error(
+      `Store "${decl.name}" holds CUSTOMER_DERIVED data and cannot be ${decl.scope}. ` +
+        'Customer data belongs to a tenant, a workspace or a user.',
+    );
+  }
+  if (decl.scope === 'PLATFORM_GLOBAL' && decl.authority !== 'PLATFORM_OPERATOR') {
+    throw new Error(
+      `Store "${decl.name}" is PLATFORM_GLOBAL, so its authority must be PLATFORM_OPERATOR. ` +
+        'An install-wide resource behind an organization role is the Round 7 finding class.',
+    );
+  }
+  /**
+   * INSTALL_GLOBAL CANNOT BE MUTATED THROUGH AN ORGANIZATION ROLE. P13C ROUND 9 — F19.
+   *
+   * Round 8 enforced this for `PLATFORM_GLOBAL` and left `INSTALL_GLOBAL` free to
+   * pair with `ORG_ROLE`. That is the Round 7 finding class written as a LEGAL
+   * DECLARATION, and `worker-registry` was declared exactly that way — its own
+   * `reason` string ending "a workforce:manage holder can uninstall a package
+   * other tenants use", which is the finding, stated and permitted.
+   *
+   * The two global scopes differ in what they HOLD, not in who may change them:
+   * `INSTALL_GLOBAL` promises no customer-derived data, `PLATFORM_GLOBAL` adds
+   * that changing it is visibly a platform act. Neither is one organization's to
+   * mutate, because any person may create an organization and own it — so an
+   * organization role is a self-service grant.
+   *
+   * `SYSTEM` and `USER` remain legal: `SYSTEM` means nothing mutates it through a
+   * user-facing surface, and a `USER`-authority install-global row is the signed-in
+   * person's own machine preference. Only ORG_ROLE — authority that one tenant's
+   * administrator can hold over every tenant's resource — is refused.
+   *
+   * GENERIC BY CONSTRUCTION: no store name appears here. A future INSTALL_GLOBAL
+   * store cannot reintroduce the class by declaring it.
+   */
+  /**
+   * A SCOPED STORE CANNOT HAVE INSTALL-WIDE RETENTION. P13C ROUND 10.
+   *
+   * The whole class, made unrepresentable. `inboxStore`, `webhookStore` and
+   * `runStore` were each `TENANT` with a cap over one shared array — declared
+   * correctly, filtered correctly on every read, and deleting across the
+   * boundary on every write. This is the line that would have refused all three.
+   *
+   * Generic: no store name appears in it.
+   */
+  if (
+    decl.retentionScope === 'INSTALL' &&
+    (decl.scope === 'TENANT' || decl.scope === 'WORKSPACE' || decl.scope === 'USER')
+  ) {
+    throw new Error(
+      `Store "${decl.name}" is ${decl.scope} but its retention reaches INSTALL-wide. ` +
+        'A cap, TTL or eviction that crosses the scope boundary DELETES another owner\'s rows ' +
+        'while every read above it stays correctly filtered — a filter hides, a cap deletes. ' +
+        'Keep the newest N PER OWNER (see marketplaceStore.event), or declare the honest scope.',
+    );
+  }
+  /**
+   * A GLOBAL store has no per-owner rows, so it cannot have per-owner retention.
+   * Catches a declaration copied from a scoped store without rereading it.
+   */
+  if (
+    decl.retentionScope === 'OWNER' &&
+    (decl.scope === 'INSTALL_GLOBAL' || decl.scope === 'PLATFORM_GLOBAL')
+  ) {
+    throw new Error(
+      `Store "${decl.name}" is ${decl.scope}, so it has no per-owner rows and its retention ` +
+        'cannot be OWNER-scoped. Use INSTALL (a removal reaches everything, which is what a ' +
+        'global store means) or NONE, or narrow the scope.',
+    );
+  }
+  /** A removal must say who may cause it, and a non-removal must say neither. */
+  if (decl.retentionScope !== undefined && decl.retentionScope !== 'NONE') {
+    if (decl.retentionAuthority === undefined || decl.retentionAuthority === 'NONE') {
+      throw new Error(
+        `Store "${decl.name}" removes rows (retentionScope: ${decl.retentionScope}) but names ` +
+          'no retentionAuthority. A retention cap is a WRITE; say who may cause it.',
+      );
+    }
+  }
+  if (decl.retentionScope === 'NONE' && (decl.retentionAuthority ?? 'NONE') !== 'NONE') {
+    throw new Error(
+      `Store "${decl.name}" declares retentionScope NONE but names a retentionAuthority. ` +
+        'If nothing is removed there is nobody to authorize; if something is removed, say whose.',
+    );
+  }
+  if (decl.retentionAuthority !== undefined && decl.retentionScope === undefined) {
+    throw new Error(
+      `Store "${decl.name}" names a retentionAuthority with no retentionScope. ` +
+        'WHO may remove is only meaningful alongside WHOSE rows a removal reaches.',
+    );
+  }
+  if (decl.scope === 'INSTALL_GLOBAL' && decl.authority === 'ORG_ROLE') {
+    throw new Error(
+      `Store "${decl.name}" is INSTALL_GLOBAL with ORG_ROLE authority. One shared resource ` +
+        'on the machine cannot be mutated on an organization role: anyone may create an ' +
+        'organization and own it, so that is a self-service grant over every tenant. Use ' +
+        'PLATFORM_OPERATOR (cloud:operate), or SYSTEM if nothing mutates it through a ' +
+        'user-facing surface, or narrow the scope to TENANT.',
+    );
+  }
+  if (decl.scope === 'EPHEMERAL' && decl.persistence !== 'memory') {
+    throw new Error(`Store "${decl.name}" is EPHEMERAL but persists to ${decl.persistence}.`);
+  }
+  registry.set(decl.name, decl);
+}
+
+/** Every declaration, sorted. For the coverage report and the gate test. */
+export function storeScopeDeclarations(): StoreScopeDeclaration[] {
+  return [...registry.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Declarations by scope, for the inventory. */
+export function storeScopeCoverage(): Record<StoreScope, number> {
+  const out: Record<StoreScope, number> = {
+    TENANT: 0,
+    WORKSPACE: 0,
+    USER: 0,
+    INSTALL_GLOBAL: 0,
+    PLATFORM_GLOBAL: 0,
+    EPHEMERAL: 0,
+  };
+  for (const d of registry.values()) out[d.scope] += 1;
+  return out;
+}
+
+/**
+ * STARTUP GATE. Throws when a seamed store has no live boundary.
+ *
+ * Called from the composition root before any handler is registered, so an
+ * unbound store cannot reach a user: the application refuses to start rather than
+ * serving one tenant's rows to another.
+ */
+export function assertAllStoreScopesBound(): void {
+  const unbound = [...registry.values()]
+    .filter((d) => SEAMED.has(d.scope) && d.isBound !== undefined && !d.isBound())
+    .map((d) => `${d.name} (${d.scope})`);
+  if (unbound.length > 0) {
+    throw new Error(
+      `Stores declared with a tenant scope have no boundary bound: ${unbound.sort().join(', ')}. ` +
+        'Bind at the composition root, or re-declare the scope with an honest reason.',
+    );
+  }
+}
+
+/** Test-only. The registry is module state and suites must not leak into each other. */
+export function __resetStoreScopeRegistryForTests(): void {
+  registry.clear();
+}

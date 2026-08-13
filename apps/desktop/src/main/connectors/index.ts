@@ -36,10 +36,14 @@ import {
 import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
-import { connectorService } from './connectorService';
+import { connectorService, ownedByViewer, type OwnedConnectorEvent } from './connectorService';
+import { connectorVault } from './connectorVault';
 import { connectorStore } from './connectorStore';
+import type { ConnectorId } from '@neuropause/shared';
+import { testConnection } from './connectionTest';
 import { connectorControlStore } from './connectorControlStore';
-import { ConnectorRuntimeSupervisor } from './connectorRuntimeSupervisor';
+import { ConnectorRuntimeSupervisor, lifecycleToWire } from './connectorRuntimeSupervisor';
+import { runOutsidePrincipal } from '../tenancy/backgroundPrincipal';
 import { isConfigured, resolveWebhookSecret } from './credentials';
 import { MANIFEST_BY_ID } from './manifests';
 import { InboundWebhookRouter } from './inbound/router';
@@ -58,6 +62,12 @@ const SYNC_TIMEOUT_MS = 2 * 60 * 1000;
 export interface ConnectorSubsystemDeps {
   broadcast: IpcBroadcaster;
   publish: (event: PlatformEventInput) => void;
+  /**
+   * P10 — the active workspace, the boundary every credential and connection
+   * is scoped to. Required: a build that cannot say which workspace it is in
+   * must not be able to spend a credential.
+   */
+  workspaceId: () => string;
 }
 
 export interface ConnectorSubsystem {
@@ -110,10 +120,80 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
   // EVERY connector adapter (GitHub included) through the one incremental-sync pipeline. Until then,
   // connectorService.sync() is a guarded no-op. (A prior standalone GitHub runner here was dead code —
   // initSync overwrote this same seam — and has been removed to keep one connector pipeline.)
+  /**
+   * BOUND BEFORE ANYTHING READS A CREDENTIAL — which means before `init()`.
+   *
+   * `connectorService.init()` calls `connectorStore.all()`, so binding after it
+   * meant the first read of the connection list happened outside the workspace
+   * boundary. Moved above the call, where the comment already claimed it was.
+   */
+  connectorService.bindWorkspace(deps.workspaceId);
+  connectorStore.bindWorkspace(deps.workspaceId);
+  // P13C Round 6 — `disabled` was an install-wide kill switch. Same resolver.
+  connectorControlStore.bindWorkspace(deps.workspaceId);
+
   await connectorService.init();
 
-  const onEvent = (e: ConnectorEvent): void => {
-    deps.broadcast(IpcChannel.ConnectorEventBroadcast, e);
+  /**
+   * Say out loud what the workspace boundary orphaned.
+   *
+   * A credential written before this boundary existed has no workspace, and is
+   * deliberately NOT adopted by whichever workspace happens to be active —
+   * guessing an owner for a secret is the one thing worse than losing it. But
+   * the consequence for an existing user is that connections silently vanish
+   * from the UI, so the count belongs in the log and on the wire rather than
+   * only in a file nobody reads.
+   */
+  const unscoped = await connectorVault.migrationRequired();
+  const unclaimed = connectorStore.unclaimed();
+  if (unscoped.length > 0 || unclaimed.length > 0) {
+    log.warn('Connections from before workspace scoping need reconnecting', {
+      credentials: unscoped.length,
+      connections: unclaimed.length,
+      connectors: [...new Set([...unscoped, ...unclaimed].map((c) => c.connectorId))],
+    });
+  }
+
+  /**
+   * The workspace the WINDOW is showing — never the one a job is acting as.
+   *
+   * P13C ROUND 9 — FINDING 6. `deps.workspaceId` deliberately prefers a
+   * background principal, which is correct for every WRITE: the fanned-out sync
+   * must read, stamp and store as the workspace it is syncing. It is exactly
+   * wrong for deciding what a window may see, because during that pass the
+   * resolver names workspace B while the user is looking at A — so an
+   * unconditional broadcast pushed B's connector and account ids into A's
+   * window on every scheduled sync.
+   *
+   * `runOutsidePrincipal` drops the job's principal for the length of this call
+   * and nothing else, so the resolver falls back to the SESSION's workspace.
+   * It grants nothing: the answer is what the signed-in user would see anyway.
+   * `backgroundPrincipal.ts` documents this as its intended use.
+   */
+  const viewerWorkspace = (): string | null => {
+    const id = runOutsidePrincipal(() => deps.workspaceId());
+    return id === undefined || id === null || id === '' ? null : id;
+  };
+
+  /** Whether a stamped record belongs to the workspace on screen. Unowned ⇒ nobody's. */
+  const onScreen = (owner: string | null): boolean => ownedByViewer(owner, viewerWorkspace());
+
+  const onEvent = (e: OwnedConnectorEvent): void => {
+    const { workspaceId: owner, ...wire } = e;
+    /**
+     * The renderer sees its OWN workspace's connector activity. A live event
+     * carries an account id and the provider's error text, which is the same
+     * disclosure the log feed was fixed for — a broadcast is just a read
+     * nobody asked for.
+     */
+    if (onScreen(owner)) deps.broadcast(IpcChannel.ConnectorEventBroadcast, wire);
+    /**
+     * The Platform Event Bus is NOT gated here, and that is deliberate: it
+     * stamps every event with the tenant resolved at PUBLISH time, so an event
+     * published inside the fan-out is durably owned by the workspace being
+     * synced and is filtered on read by the bus's own boundary. Dropping it
+     * here would delete a timeline entry rather than protect one.
+     */
     const pe = toPlatformEvent(e);
     if (pe) deps.publish(pe);
   };
@@ -133,12 +213,35 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
       return m ? isConfigured(m) : false;
     },
     getLogs: (id) => connectorService.logFeed(id),
-    broadcast: (evt) => deps.broadcast(IpcChannel.ConnectorLifecycleBroadcast, evt),
+    // The boundary the accounts, the credentials and the activity feed already use.
+    workspaceId: deps.workspaceId,
+    // Same viewer test as the connector event stream: a transition names an
+    // account, so it reaches the window that owns that account or no window.
+    broadcast: (evt) => {
+      if (onScreen(evt.workspaceId)) {
+        deps.broadcast(IpcChannel.ConnectorLifecycleBroadcast, lifecycleToWire(evt));
+      }
+    },
   });
   supervisor.prime();
   // A paused account / disabled connector skips manual sync (scheduled-path enforcement lands with the
   // orchestrator changes in Increment 3).
   connectorService.setControlGate((c, a) => supervisor.isSyncSuppressed(c, a));
+
+  /**
+   * P9 — a REAL provider round-trip before "Connected" is shown.
+   *
+   * `checkHealth` is structural and pings nothing, by design and by its own
+   * header. This is the missing half: it proves the credential works and, more
+   * importantly, resolves a STABLE provider account id — the thing
+   * `externalId` was declared for and almost never had.
+   */
+  connectorService.setConnectionTester((connectorId, accountId) =>
+    testConnection(connectorId as ConnectorId, accountId, {
+      getAccessToken: (c, a) => connectorService.getValidAccessToken(c, a),
+      rate: new RateLimiter(200),
+    }),
+  );
 
   // P2.4 — Microsoft 365 write executor: audited, confirmation-gated Graph writes on the same account/token.
   const m365 = createM365Executor({
@@ -149,6 +252,9 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
     health: syncStateStore,
     manifestName: (c) => MANIFEST_BY_ID[c]?.name ?? c,
     grantedScopes: (c, a) => connectorStore.get(c, a)?.grantedScopes ?? [],
+    // P13C Round 6 — the same workspace-scoped resolve, used as an authorization
+    // decision rather than as a scope lookup that happens to return nothing.
+    ownsAccount: (c, a) => connectorStore.get(c, a) !== null,
   });
 
   // P5 — inbound webhook / realtime runtime. Verified deliveries (relay/tunnel) via handle() and

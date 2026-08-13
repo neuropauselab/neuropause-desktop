@@ -6,6 +6,15 @@ import { describe, expect, it } from 'vitest';
 import { AutonomousOperationsService } from './autoOpsService';
 import type { AutoOpsState } from './autoOpsModel';
 
+/**
+ * P13C ROUND 3 — H-2. The memo is now keyed by tenant, so these tests must name
+ * one. A fixed scope keeps every existing memoization assertion meaningful:
+ * repeated reads under ONE tenant must still be O(1) cache hits, which is the
+ * property this file was written to protect and the fix must not cost.
+ */
+const TEST_SCOPE = { tenantId: 'org-test', workspaceId: 'ws-test' };
+const scope = (): typeof TEST_SCOPE => TEST_SCOPE;
+
 function baseState(over: Partial<AutoOpsState> = {}): AutoOpsState {
   return {
     generatedAt: '2026-07-16T00:00:00.000Z',
@@ -32,7 +41,7 @@ function baseState(over: Partial<AutoOpsState> = {}): AutoOpsState {
 
 describe('AutonomousOperationsService', () => {
   it('composes every projection from the injected reader', () => {
-    const svc = new AutonomousOperationsService({ readState: () => baseState() });
+    const svc = new AutonomousOperationsService({ scope, readState: () => baseState() });
     expect(svc.overview().summary.modules).toBe(7);
     expect(svc.plans().plans).toHaveLength(1);
     expect(svc.execution().throughput).toBe(3);
@@ -48,8 +57,7 @@ describe('AutonomousOperationsService', () => {
   it('memoizes the snapshot + projections and recomposes only after invalidate()', () => {
     const box = { value: baseState() };
     let reads = 0;
-    const svc = new AutonomousOperationsService({
-      readState: () => {
+    const svc = new AutonomousOperationsService({ scope, readState: () => {
         reads += 1;
         return box.value;
       },
@@ -69,8 +77,7 @@ describe('AutonomousOperationsService', () => {
   it('refreshes after the TTL even without invalidate() — fixes injected execution/supervisor staleness', () => {
     let clock = 1_000;
     let reads = 0;
-    const svc = new AutonomousOperationsService({
-      readState: () => {
+    const svc = new AutonomousOperationsService({ scope, readState: () => {
         reads += 1;
         return baseState();
       },

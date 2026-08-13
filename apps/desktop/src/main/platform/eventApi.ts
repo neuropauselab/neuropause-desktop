@@ -36,7 +36,14 @@ export class PlatformEventApi {
     return this.bus.publish(input);
   }
 
-  /** Subscribe to events, optionally filtered by type. */
+  /**
+   * Subscribe to events, optionally filtered by type.
+   *
+   * `opts.replay` delivers only the events the CALLER's resolved tenant owns,
+   * plus SYSTEM events — see `EventBus.replay`. Before Round 10 it re-dispatched
+   * the whole install-wide ring, and this re-export was the reachable half of
+   * that: a consumer depends on `PlatformEventApi`, never on the bus.
+   */
   subscribe(handler: EventHandler, opts?: SubscribeOptions): Subscription {
     return this.bus.subscribe(handler, opts);
   }
@@ -46,7 +53,16 @@ export class PlatformEventApi {
     return this.bus.subscribe(handler, { types });
   }
 
-  /** The live in-memory replay buffer (for late subscribers / the Inspector). */
+  /**
+   * The live in-memory replay buffer (for late subscribers / the Inspector),
+   * AUTHORIZED to the caller's tenant.
+   *
+   * P13C ROUND 10 — NEW-M11. Returns the caller's own events and SYSTEM events,
+   * never another organization's, and returns nothing at all when no tenant
+   * resolves. Nothing in the main process calls this today; it is a stable
+   * internal interface, so it is correct here rather than at whichever call site
+   * eventually arrives.
+   */
   replay(filter?: { types?: PlatformEventType[]; limit?: number }): PlatformEvent[] {
     return this.bus.replay(filter);
   }

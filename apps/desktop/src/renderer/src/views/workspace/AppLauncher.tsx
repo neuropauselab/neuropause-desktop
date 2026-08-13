@@ -46,7 +46,7 @@ export function AppLauncher({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search apps"
-              className="flex-1 bg-transparent text-base outline-none placeholder:text-faint"
+              className="flex-1 bg-transparent text-base outline-none focus-visible:shadow-focus placeholder:text-faint"
               spellCheck={false}
             />
           </div>

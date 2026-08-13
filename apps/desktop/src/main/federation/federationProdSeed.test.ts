@@ -49,7 +49,10 @@ describe('federation stores — production seed (no demo data)', () => {
   });
 
   it('GlobalGovStore keeps policy definitions but has an empty audit trail + no pending approvals', async () => {
-    const s = new GlobalGovStore(tmp('gov.json'), 'org-x', 'Acme');
+    // P13C ROUND 4 — governance records now name their organization, so this
+    // production-seed check acts as the organization the store was seeded for.
+    const asOrgX = (): { tenantId: string; workspaceId: string } => ({ tenantId: 'org-x', workspaceId: 'ws-x' });
+    const s = new GlobalGovStore(tmp('gov.json'), 'org-x', 'Acme').bindScope(asOrgX);
     await s.load();
     expect(s.listPolicies().length).toBeGreaterThan(0); // real config, kept
     expect(s.listAudit()).toHaveLength(0); // no fabricated audit entry

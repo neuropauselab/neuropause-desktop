@@ -68,6 +68,25 @@ export interface UnifiedEntity {
   /** Unified Identifier — stable, globally unique within NeuroPause. */
   id: string;
   kind: UnifiedEntityKind;
+
+  /* ── tenant ownership (P13B) ── */
+  /**
+   * The organization this record belongs to.
+   *
+   * THE UNIFIED STORE IS THE ROOT OF THE DATA GRAPH, so this field is the root
+   * of the boundary. Memory projects from here, the graph projects from here,
+   * the search index mirrors it, and every briefing, finding and analytics
+   * rollup reads it through `query({limit: 1_000_000})`. Program 13A could give
+   * a projected memory an owner but not a TRUSTWORTHY one, because the thing it
+   * projected from had none — that limitation is this field.
+   *
+   * Absent or empty means UNRESOLVED: visible to no tenant. Records synced
+   * before P13B have no owner and are inert until re-synced, which is the same
+   * treatment every other store gives its pre-migration rows.
+   */
+  tenantId?: string | null;
+  /** Absent means tenant-level: readable from every workspace in the tenant. */
+  workspaceId?: string | null;
   /** Source Connector. */
   connectorId: ConnectorId;
   /** The connected account this record was synced through. */

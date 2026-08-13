@@ -17,7 +17,7 @@ export class BenchmarkStore extends PersistentStore<BenchmarkFile> {
   private records: BenchmarkRecord[] = [];
 
   constructor(filePath: string, private readonly now: () => number = Date.now) {
-    super(filePath);
+    super(filePath, 'sandbox-benchmarks');
   }
 
   protected snapshot(): BenchmarkFile {
@@ -30,6 +30,9 @@ export class BenchmarkStore extends PersistentStore<BenchmarkFile> {
   record(input: { target: LabTargetKind; metric: string; version: string; value: number }): BenchmarkRecord {
     const rec: BenchmarkRecord = {
       id: `bench_${randomUUID()}`,
+      // P13C — a measurement belongs to the tenant that produced it. Unbound
+      // and unstamped, one tenant's latency became another's baseline.
+      tenantId: this.requireTenant(),
       target: input.target,
       metric: input.metric,
       version: input.version,
@@ -42,12 +45,19 @@ export class BenchmarkStore extends PersistentStore<BenchmarkFile> {
   }
 
   history(target: LabTargetKind, metric: string): BenchmarkRecord[] {
-    return this.records.filter((r) => r.target === target && r.metric === metric).sort((a, b) => (a.at < b.at ? -1 : 1));
+    return this.onlyMine(this.records)
+      .filter((r) => r.target === target && r.metric === metric)
+      .sort((a, b) => (a.at < b.at ? -1 : 1));
   }
 
-  /** The most recent record for a different version — the baseline to compare against. */
+  /**
+   * The most recent record for a different version — the baseline to compare
+   * against. SCOPED: `regression.ts` copies this number verbatim into
+   * `RegressionFinding.baseline`, which lands in a certification report, so an
+   * unscoped baseline printed one tenant's measurements inside another's report.
+   */
   baseline(target: LabTargetKind, metric: string, currentVersion: string): number | null {
-    const prior = this.records
+    const prior = this.onlyMine(this.records)
       .filter((r) => r.target === target && r.metric === metric && r.version !== currentVersion)
       .sort((a, b) => (a.at < b.at ? 1 : -1));
     return prior[0]?.value ?? null;
@@ -60,9 +70,9 @@ export class BenchmarkStore extends PersistentStore<BenchmarkFile> {
   }
 
   all(): BenchmarkRecord[] {
-    return [...this.records];
+    return this.onlyMine(this.records);
   }
   count(): number {
-    return this.records.length;
+    return this.all().length;
   }
 }

@@ -30,6 +30,7 @@ import {
   FedSetScopeRequest,
   FedAddPolicyRequest,
   FedSetPolicyEnabledRequest,
+  FedPolicyMigrationRequest,
   FedResolveApprovalRequest,
   FedRecordActionRequest,
   FedCreateBackupRequest,
@@ -55,7 +56,7 @@ import { apiPlatformStore } from '../cloud/apiplatform/apiPlatformInstance';
 import { tenancyStore, CLOUD_REGIONS } from '../cloud/tenancy/tenancyInstance';
 import { gatewayStore } from '../ecosystem/gateway/gatewayInstance';
 import { graphStore } from '../graph/graphInstance';
-import { ORG_ID } from '../enterprise/org/seed';
+import { activeTenantScope } from '../enterprise/index';
 
 const log = createLogger('federation');
 
@@ -155,6 +156,40 @@ function adminOverview() {
 }
 
 export async function initFederation(deps: FederationDeps): Promise<FederationSubsystem> {
+  /**
+   * P13C ROUND 4 — S-10. BIND BEFORE LOAD.
+   *
+   * `load()` seeds on a fresh install, and seeding writes rows that must carry
+   * their parties. Binding first means those rows are stamped rather than
+   * written unowned and then invisible to everyone.
+   *
+   * The exchange also needs to know whether the caller trusts a publisher, to
+   * resolve `partner` scope. That answer lives in the runtime store, so it is
+   * injected as a predicate rather than imported — the two halves of this
+   * subsystem would otherwise be circular.
+   */
+  fedStore.bindScope(activeTenantScope);
+  globalGovStore
+    .bindScope(activeTenantScope)
+    .bindPeerResolver((peerOrg) => fedStore.trustFor(peerOrg) !== null)
+    /**
+     * P13C ROUND 4 — the ACTOR NAME follows the actor.
+     *
+     * `actorOrg` was already the caller, but `actorOrgName`, `fromOrgName` and
+     * `resolver` were all the literal 'NeuroPause' the store was constructed
+     * with. So both parties to an approval read "resolved by NeuroPause" when
+     * the other one resolved it — not a disclosure, but an integrity failure on
+     * the one record this subsystem exists to produce.
+     */
+    .bindActorNameResolver(() => fedStore.homeOrg()?.name ?? 'Unknown organization');
+  exchangeStore
+    .bindScope(activeTenantScope)
+    .bindTrustResolver((publisherOrg) => {
+      const trust = fedStore.trustFor(publisherOrg);
+      return trust !== null && trust.trustLevel !== 'none';
+    })
+    .bindRegionResolver(() => fedStore.homeOrg()?.regionId ?? null);
+
   await fedStore.load();
   await exchangeStore.load();
   await globalGovStore.load();
@@ -200,7 +235,9 @@ function buildHandlers(): SecureHandlerDef[] {
       audit: true,
       handler: (p) => {
         const r = p as FedInviteOrgRequest;
-        return fedStore.inviteOrg({ name: r.name, trustLevel: r.trustLevel, message: r.message });
+        // P13C ROUND 12 — M-11. The target is the caller-supplied ID, which
+        // `inviteOrg` must RESOLVE against the directory; it is not authority.
+        return fedStore.inviteOrg({ toOrg: r.toOrg, trustLevel: r.trustLevel, message: r.message });
       },
     },
     {
@@ -251,7 +288,24 @@ function buildHandlers(): SecureHandlerDef[] {
       audit: true,
       handler: (p) => {
         const r = p as FedPublishArtifactRequest;
-        return exchangeStore.publish({ kind: r.kind, name: r.name, summary: r.summary, scope: r.scope, publisherOrg: ORG_ID, publisherOrgName: 'NeuroPause', regionId: r.regionId ?? null });
+        /**
+         * P13C ROUND 4 — S-10. THE PUBLISHER IS NO LONGER A LITERAL.
+         *
+         * This passed `publisherOrg: ORG_ID` — `'org-default'`, the seeded
+         * organization — so every tenant's artifact was published under, and
+         * cryptographically SIGNED as, the seeded org. The store now resolves
+         * the publisher from the authoritative tenant and the parameter is gone
+         * from its signature, so this cannot regress by someone passing a
+         * different constant.
+         */
+        return exchangeStore.publish({
+          kind: r.kind,
+          name: r.name,
+          summary: r.summary,
+          scope: r.scope,
+          publisherOrgName: fedStore.homeOrg()?.name ?? 'Unknown organization',
+          regionId: r.regionId ?? null,
+        });
       },
     },
     {
@@ -336,6 +390,51 @@ function buildHandlers(): SecureHandlerDef[] {
         const r = p as FedSetPolicyEnabledRequest;
         return globalGovStore.setPolicyEnabled(r.id, r.enabled) ?? { error: 'Policy not found.' };
       },
+    },
+    /**
+     * P13C ROUND 5 — F6. The quarantine surface.
+     *
+     * Legacy governance policies carry no owner and cannot be safely attributed
+     * from the data, so they are retained in a `migration_required` state and
+     * governance evaluation fails closed while any exist. These three channels
+     * are how a human resolves that: see how many there are, claim one (which
+     * can only constrain the claimer), or discard it.
+     *
+     * The STATUS channel returns a COUNT and not a listing — the rows may name
+     * another organization's actions, and the point is to make their existence
+     * undeniable rather than to disclose their contents.
+     */
+    {
+      channel: IpcChannel.FedPolicyMigrationStatus,
+      schema: EmptyRequest,
+      handler: () => ({ migrationRequired: globalGovStore.migrationRequiredCount() }),
+    },
+    {
+      channel: IpcChannel.FedQuarantinedPolicies,
+      schema: EmptyRequest,
+      handler: () => globalGovStore.quarantinedPolicies(),
+    },
+    {
+      channel: IpcChannel.FedClaimPolicy,
+      schema: FedPolicyMigrationRequest,
+      audit: true,
+      /**
+       * Returns whether it worked, NOT the policy.
+       *
+       * The first version returned the full `FedPolicy` — name, description,
+       * action — from a channel the design comment two files away said would
+       * only ever expose a count. The contents belong on the administrator
+       * listing above and nowhere else.
+       */
+      handler: (p) => ({
+        claimed: globalGovStore.claimPolicy((p as FedPolicyMigrationRequest).id) !== null,
+      }),
+    },
+    {
+      channel: IpcChannel.FedDiscardPolicy,
+      schema: FedPolicyMigrationRequest,
+      audit: true,
+      handler: (p) => ({ discarded: globalGovStore.discardPolicy((p as FedPolicyMigrationRequest).id) }),
     },
     {
       channel: IpcChannel.FedResolveApproval,

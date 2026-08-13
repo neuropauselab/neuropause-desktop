@@ -17,7 +17,9 @@ import type {
   PlatformEvent,
   PlatformEventCategory,
   PlatformEventType,
+  TenantScope,
 } from '@neuropause/shared';
+import { recordInScope } from '@neuropause/shared';
 import type { EventBus, Subscription } from './eventBus';
 
 /** High-frequency events that are delivered live but not persisted verbatim. */
@@ -140,6 +142,47 @@ export interface SubscriberDeps {
   notify: (event: PlatformEvent) => void;
   /** Mirror an event to the renderer. */
   broadcast: (event: PlatformEvent) => void;
+  /**
+   * The tenant of the WINDOW IN FRONT OF THE USER. P13C ROUND 9 — F5.
+   *
+   * NOT the tenant of whatever is publishing. A background pass legitimately
+   * runs as tenant A while the renderer is showing tenant B, so the forwarder
+   * must ask "who is the viewer" and not "who is the actor" — the composition
+   * root supplies this through `runOutsidePrincipal`, which is the primitive
+   * built for exactly this and grants nothing (it falls back to the session, so
+   * it can only ever see what the signed-in user could).
+   *
+   * Optional so a standalone bus in a unit test needs no wiring; ABSENT MEANS
+   * UNRESOLVED, which the predicate below treats as "system events only", not
+   * as "deliver everything".
+   */
+  viewerScope?: () => TenantScope | null;
+}
+
+/**
+ * May this event be mirrored to a renderer showing `viewer`? P13C ROUND 9 — F5.
+ *
+ * THE FINDING: `broadcast` mirrored every event raw to the single renderer with
+ * no filter and no principal handling, while the SAME ROWS read back through
+ * `timeline:query` were hard-filtered. An event carries `actor.id`,
+ * `resource.id` and free-form metadata, so workspace B's sync pass was sending
+ * B's identifiers and record names into A's window.
+ *
+ * THE PREDICATE IS THE TIMELINE'S, VERBATIM — `scopeKind === 'system' ||
+ * recordInScope(...)`. Deliberately not a second opinion: two predicates for
+ * "may this person see this event" is how a live feed shows what the query then
+ * refuses, and the disagreement is the leak.
+ *
+ * The one addition is the both-unresolved case. An unowned event delivered while
+ * NO tenant is resolved reaches nobody's session, so it cannot cross a boundary
+ * — and refusing it would blank the pre-sign-in boot feed for no security gain.
+ * The moment a tenant IS active, unowned events stop being delivered, which is
+ * the fail-closed half and matches what the timeline shows.
+ */
+export function eventDeliverableTo(event: PlatformEvent, viewer: TenantScope | null): boolean {
+  if (event.scopeKind === 'system') return true;
+  if (viewer === null) return event.tenantId === null || event.tenantId === undefined;
+  return recordInScope(event, viewer);
 }
 
 export interface SubscriberRegistry {
@@ -177,13 +220,51 @@ export function registerSubscribers(bus: EventBus, deps: SubscriberDeps): Subscr
     bus.subscribe((e) => { if (AUDIT_TYPES.has(e.type)) deps.audit(e); }, { id: 'audit', types: [...AUDIT_TYPES] }),
   );
 
-  // Notifications — high/critical priority signals.
+  /**
+   * Notifications — high/critical priority signals, SCOPED.
+   *
+   * P13C ROUND 9, FRESH RED TEAM. F5 scoped the forwarder eight lines below and
+   * left this one unfiltered, in the same function, having written the reason
+   * out in full directly above. `notifyUser` renders
+   * `event.resource?.name ?? event.resource?.id` as the body of a NATIVE OS
+   * notification — so a background pass for tenant A, running while the window
+   * shows tenant B, put A's record name into macOS Notification Center.
+   *
+   * WORSE THAN THE WINDOW, WHICH IS WHY IT IS NOT A DUPLICATE OF F5: the
+   * renderer feed is cleared by a workspace switch. Notification Center is not.
+   * It persists after the switch, shows on the lock screen, and syncs to the
+   * person's other Apple devices — a surface the tenant boundary does not
+   * reach at all once the bytes are handed over.
+   *
+   * Same predicate as the forwarder, deliberately: two opinions about who may
+   * see an event is how one surface shows what the other hides.
+   */
   subscriptions.push(
-    bus.subscribe((e) => { if (e.priority === 'high' || e.priority === 'critical') deps.notify(e); }, { id: 'notifications' }),
+    bus.subscribe(
+      (e) => {
+        if (e.priority !== 'high' && e.priority !== 'critical') return;
+        if (!eventDeliverableTo(e, deps.viewerScope?.() ?? null)) return;
+        deps.notify(e);
+      },
+      { id: 'notifications' },
+    ),
   );
 
-  // Forwarder — mirror to renderer.
-  subscriptions.push(bus.subscribe((e) => deps.broadcast(e), { id: 'forwarder' }));
+  /**
+   * Forwarder — mirror to renderer, SCOPED. P13C ROUND 9 — F5.
+   *
+   * Was `bus.subscribe((e) => deps.broadcast(e))`: every tenant's events, raw,
+   * to the one window.
+   */
+  subscriptions.push(
+    bus.subscribe(
+      (e) => {
+        if (!eventDeliverableTo(e, deps.viewerScope?.() ?? null)) return;
+        deps.broadcast(e);
+      },
+      { id: 'forwarder' },
+    ),
+  );
 
   // Analytics + diagnostics collectors.
   subscriptions.push(bus.subscribe(analytics.handle, { id: analytics.id }));

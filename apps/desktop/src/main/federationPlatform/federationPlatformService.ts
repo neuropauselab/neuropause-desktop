@@ -39,14 +39,25 @@ import {
   searchFederation,
   type FederationState,
 } from './federationModel';
+import type { TenantScope } from '@neuropause/shared';
+import { TenantMemo } from '../tenancy/tenantMemo';
 
 /** Cap on the timeline returned over IPC (newest-first), bounding the payload at scale. */
 const TIMELINE_CAP = 500;
 
 /** Live readers over the existing federation stores (injected, so the service unit-tests). */
 export interface FederationReaders {
-  homeOrgId: string;
-  homeOrgName: string;
+  /**
+   * P13C N10 — FUNCTIONS, not captured strings.
+   *
+   * These were `string`, resolved once at composition. That made a per-call
+   * reader impossible and froze the platform's identity at boot, so it could
+   * not follow a tenant switch. `homeOrgId` is not a label: `federationModel`
+   * compares it against `artifact.publisherOrg` to decide which PRIVATE
+   * exchange artifacts are visible, so a stale value shows the wrong tenant's.
+   */
+  homeOrgId: () => string;
+  homeOrgName: () => string;
   orgs: () => FederatedOrg[];
   invitations: () => OrgInvitation[];
   trust: () => TrustRelationship[];
@@ -60,32 +71,45 @@ export interface FederationReaders {
   govSummary: () => GlobalGovSummary;
 }
 
-interface ProjectionMemo {
-  graph?: FederationGraph;
-  timeline?: FederationTimelineEntry[];
-  directory?: OrgDirectoryEntry[];
-  analytics?: FederationAnalytics;
-  overview?: FederationOverview;
-}
 
 export class FederationPlatformService {
-  private snapshot: FederationState | null = null;
-  private memo: ProjectionMemo = {};
+  /**
+   * P13C ROUND 5 — F7. TENANT-KEYED, and it was the last keyless composed cache
+   * over federation data in the application.
+   *
+   * `private snapshot` with NO key and NO TTL, protected only by an
+   * `onWorkspaceSwitch` listener. Three consequences that listener cannot cover:
+   * signing out does not invalidate; an organization switch that does not commit
+   * a workspace announces nothing (the enterprise root only announces
+   * `if (ws)`); and with no expiry a stale snapshot persists indefinitely rather
+   * than for a few seconds.
+   *
+   * Every field it caches is tenant-derived, including `homeOrgId` — which the
+   * model then uses to decide which artifacts are private. A stale
+   * `homeOrgId` is not a stale label; it is the input to a visibility check.
+   *
+   * The TTL below is FRESHNESS ONLY. The key is the boundary.
+   */
+  private readonly cache: TenantMemo<FederationState>;
 
-  constructor(private readonly readers: FederationReaders) {}
+  constructor(
+    private readonly readers: FederationReaders,
+    scope: () => TenantScope | null,
+  ) {
+    this.cache = new TenantMemo<FederationState>('federation-platform-projections', { ttlMs: 3000 }).bindScope(scope);
+  }
 
   /** Drop the memoized snapshot AND projections; the next read recomposes from the stores. */
   invalidate(): void {
-    this.snapshot = null;
-    this.memo = {};
+    this.cache.invalidate();
   }
 
   private state(): FederationState {
-    if (!this.snapshot) {
+    return this.cache.state(() => {
       const r = this.readers;
-      this.snapshot = {
-        homeOrgId: r.homeOrgId,
-        homeOrgName: r.homeOrgName,
+      return {
+        homeOrgId: r.homeOrgId(),
+        homeOrgName: r.homeOrgName(),
         orgs: r.orgs(),
         invitations: r.invitations(),
         trust: r.trust(),
@@ -98,34 +122,32 @@ export class FederationPlatformService {
         scopes: r.scopes(),
         govSummary: r.govSummary(),
       };
-      this.memo = {};
-    }
-    return this.snapshot;
+    });
   }
 
   graph(): FederationGraph {
     const s = this.state();
-    return (this.memo.graph ??= buildFederationGraph(s));
+    return this.cache.projection('graph', () => buildFederationGraph(s));
   }
 
   timeline(): FederationTimelineEntry[] {
     const s = this.state();
-    return (this.memo.timeline ??= buildFederationTimeline(s).slice(0, TIMELINE_CAP));
+    return this.cache.projection('timeline', () => buildFederationTimeline(s).slice(0, TIMELINE_CAP));
   }
 
   directory(): OrgDirectoryEntry[] {
     const s = this.state();
-    return (this.memo.directory ??= buildOrgDirectory(s));
+    return this.cache.projection('directory', () => buildOrgDirectory(s));
   }
 
   analytics(): FederationAnalytics {
     const s = this.state();
-    return (this.memo.analytics ??= buildFederationAnalytics(s));
+    return this.cache.projection('analytics', () => buildFederationAnalytics(s));
   }
 
   overview(): FederationOverview {
     const s = this.state();
-    return (this.memo.overview ??= buildFederationOverview(s));
+    return this.cache.projection('overview', () => buildFederationOverview(s));
   }
 
   search(text: string, kinds?: FederationSearchKind[], limit?: number): FederationSearchHit[] {

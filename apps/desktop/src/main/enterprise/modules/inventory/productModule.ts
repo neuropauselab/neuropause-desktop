@@ -27,6 +27,7 @@ import {
   defineEnterpriseModule,
   type EnterpriseModule,
 } from '../../framework';
+import { REORDER_CHECK_ACTION, runReorderCheck } from './autoReorderSeam';
 
 /** The declarative description of a product — drives store, CRUD, and the UI. */
 export const PRODUCT_DESCRIPTOR: EnterpriseModuleDescriptor = {
@@ -39,6 +40,7 @@ export const PRODUCT_DESCRIPTOR: EnterpriseModuleDescriptor = {
   group: 'Inventory',
   titleField: 'name',
   permissions: { read: 'inventory:read', write: 'inventory:manage' },
+  actions: [{ key: REORDER_CHECK_ACTION, label: 'Check Reorder', icon: 'refresh' }],
   fields: [
     { key: 'sku', label: 'SKU', type: 'text', required: true, placeholder: 'SKU-0001' },
     { key: 'name', label: 'Name', type: 'text', required: true, placeholder: 'Widget' },
@@ -55,6 +57,20 @@ export const PRODUCT_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'reorderLevel', label: 'Reorder Level', type: 'number', min: 0, column: false },
     { key: 'safetyStock', label: 'Safety Stock', type: 'number', min: 0, column: false },
     { key: 'maximumStock', label: 'Maximum Stock', type: 'number', min: 0, column: false },
+    {
+      // FW-6 (ADDITIVE): opt this product into automatic replenishment — each
+      // ledger reconciliation at/below the reorder level drafts a purchase
+      // request. Off (the default) keeps pre-FW-6 behavior exactly.
+      key: 'autoReorder',
+      label: 'Auto Reorder',
+      type: 'select',
+      default: 'off',
+      column: false,
+      options: [
+        { value: 'off', label: 'Off', tone: 'neutral' },
+        { value: 'on', label: 'On', tone: 'green' },
+      ],
+    },
     {
       key: 'status',
       label: 'Status',
@@ -89,6 +105,12 @@ export function createProductModule(storePath: string, aiRunner?: ProductAiRunne
     descriptor: PRODUCT_DESCRIPTOR,
     store,
     hooks: {
+      // FW-6: on-demand replenishment check — assesses the inventory position
+      // and drafts a purchase request when at/below the reorder level.
+      runAction: async (action, record, actionCtx) => {
+        if (action === REORDER_CHECK_ACTION) return runReorderCheck(record, actionCtx, 'manual');
+        return { ok: false, error: `Unknown action "${action}".` };
+      },
       summarize: async (record): Promise<EnterpriseRecordSummary> => {
         const product = productFromRecord(record);
         const health = calculateStockHealth(product);

@@ -452,7 +452,7 @@ function OperationsTab({ d, go }: { d: Data; go: Go }): JSX.Element {
   const sup = d.supervisor;
   return (
     <>
-      <OpsPanel title="Runtime health" subtitle="NeuroCore composed system health" actions={<DeepLink label="Open Ops Center" onClick={() => go.setSection('opscenter')} />}>
+      <OpsPanel title="Runtime health" subtitle="NeuroCore composed system health" actions={<DeepLink label="Open Operations" onClick={() => go.setSection('opscenter')} />}>
         {sys ? (
           <>
             <Grid cols={4}>
@@ -558,7 +558,7 @@ function CommercialTab({ d, go }: { d: Data; go: Go }): JSX.Element {
   const c = d.customers;
   return (
     <>
-      <OpsPanel title="Commercial signals" subtitle="Usage, value & customer health — session/cloud usage, not billing" actions={<DeepLink label="Open Platform v2" onClick={() => go.setSection('commercial-center')} />}>
+      <OpsPanel title="Commercial signals" subtitle="Usage, value & customer health — session/cloud usage, not billing" actions={<DeepLink label="Open Commercial" onClick={() => go.setSection('commercial-center')} />}>
         <Grid cols={4}>
           <Stat icon="pulse" label="Requests (30d)" value={m ? m.requests30d : '—'} />
           <Stat icon="sparkles" label="AI cost" value={m ? formatUsd(m.aiCostUsd) : '—'} hint="session/cloud usage" />

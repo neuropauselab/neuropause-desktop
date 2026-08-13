@@ -144,6 +144,7 @@ interface SinceCursor {
 export function mapRepo(ctx: SyncContext, r: GhRepo) {
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'project',
     sourceId: String(r.id),
@@ -178,10 +179,11 @@ export function mapIssue(ctx: SyncContext, i: GhIssue) {
   // `repository` object; if the repo wasn't synced, the projector simply
   // skips the edge (it checks the container node exists).
   const containerId = i.repository
-    ? makeUnifiedId(ctx.connectorId, ctx.accountId, 'project', String(i.repository.id))
+    ? makeUnifiedId(ctx.tenantId, ctx.connectorId, ctx.accountId, 'project', String(i.repository.id))
     : null;
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'task',
     sourceId: String(i.id),
@@ -209,6 +211,7 @@ export function mapIssue(ctx: SyncContext, i: GhIssue) {
 export function mapNotification(ctx: SyncContext, n: GhNotification) {
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'notification',
     sourceId: String(n.id),
@@ -232,6 +235,7 @@ export function mapNotification(ctx: SyncContext, n: GhNotification) {
 export function mapOrg(ctx: SyncContext, o: GhOrg) {
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'organization',
     sourceId: String(o.id),
@@ -260,10 +264,11 @@ export function mapOrg(ctx: SyncContext, o: GhOrg) {
 export function mapTeam(ctx: SyncContext, t: GhTeam) {
   const org = t.organization?.login ?? null;
   const containerId = t.organization
-    ? makeUnifiedId(ctx.connectorId, ctx.accountId, 'organization', String(t.organization.id))
+    ? makeUnifiedId(ctx.tenantId, ctx.connectorId, ctx.accountId, 'organization', String(t.organization.id))
     : null;
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'organization',
     sourceId: `team-${t.id}`,
@@ -513,12 +518,13 @@ function repoRefOf(r: GhRepo): RepoRef {
 }
 
 const repoContainer = (ctx: SyncContext, repo: RepoRef): string =>
-  makeUnifiedId(ctx.connectorId, ctx.accountId, 'project', String(repo.id));
+  makeUnifiedId(ctx.tenantId, ctx.connectorId, ctx.accountId, 'project', String(repo.id));
 
 /** Open issue (PRs filtered out by the caller) → task, linked to its repo. */
 export function mapRepoIssue(ctx: SyncContext, repo: RepoRef, i: GhIssue) {
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'task',
     sourceId: String(i.id),
@@ -547,6 +553,7 @@ export function mapRepoIssue(ctx: SyncContext, repo: RepoRef, i: GhIssue) {
 export function mapPull(ctx: SyncContext, repo: RepoRef, p: GhPull) {
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'task',
     sourceId: String(p.id),
@@ -576,6 +583,7 @@ export function mapRelease(ctx: SyncContext, repo: RepoRef, r: GhRelease) {
   const when = r.published_at ?? r.created_at;
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'activity',
     sourceId: String(r.id),
@@ -609,6 +617,7 @@ export function mapCiRun(ctx: SyncContext, repo: RepoRef, run: GhWorkflowRun) {
   const when = run.run_started_at ?? run.created_at;
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'activity',
     sourceId: `run-${run.id}`, // prefixed so it never collides with a release id

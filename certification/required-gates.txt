@@ -1,0 +1,37 @@
+# 13C required gates — THE DENOMINATOR.
+#
+# This file exists because coverage counted against the numerator is the defect
+# that produced "F22 adapters 6/19" and "channel→store 2 declarations". A gate
+# absent from gates.json is NOT RUN, and NOT RUN is not silence — it is a row.
+#
+# record-gate.sh refuses to run without this file. Adding a gate here makes the
+# programme longer and that is correct; removing one is a scope decision that
+# should be visible in a diff, not an omission nobody notices.
+#
+# format:  <gate-id><TAB or spaces><owner><TAB or spaces><what closes it>
+
+G0    You        Clean worktree, pinned Node, freezer writes CERT-<sha>
+G0b   You        node --version matches .nvmrc for the run producing the evidence
+G0c   You        Typecheck: zero errors under the pinned Node
+G0d   You        Lint: zero errors, lint surface deliberately drawn
+G0e   You        Each deliberate regression makes its test fail, then reverted
+G1    You        Artifact hashes produced from the frozen baseline
+G2    You        Wiring census: zero unexplained production orphans
+G3    You+Saurabh  DNS -> TCP -> TLS -> HTTP -> /health/ready, from two networks
+G4    You+Saurabh  Real UI on physical Windows and macOS, screen captured
+G5    You        Authentication against production, not a local backend
+G6    Saurabh    Governance verdicts declared BEFORE execution, then matched
+G7    Saurabh    Paired allow/refuse cases; verdict AND reason class
+G8    Both       The deterministic adversarial matrix
+G9    You        Same case x3 identical; change policy version -> verdict changes
+G10   You        Runtime ownership: executor never receives the prohibited operation
+G11   You        Retention: eviction scoped per tenant, surviving restart
+G12   You        Background principal: job carries its own tenant; unowned does not run
+G13   You        Queue identity: no cross-tenant coalescing; identity survives lifecycle
+G14   You        Recovery drill: kill -> honest UNAVAILABLE -> restart -> recovers
+G15   You        Restore drill: real data -> isolated restore -> counts and ownership
+G16   Both       Cross-platform: real binaries on both platforms
+G17   You        Production smoke: live end-to-end through the real API
+G18   You        Release provenance: installer hash referenced by the certification artifact
+G19   All        No critical defect: open-defect report empty
+G0f   You        Suite deterministic: full run green parallel AND --no-file-parallelism at the frozen commit

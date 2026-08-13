@@ -28,6 +28,7 @@ import {
   deriveInventoryInsights,
   deriveInvoiceInsights,
   deriveLeadInsights,
+  deriveOpportunityPipeline,
   deriveOrderInsights,
   derivePaymentInsights,
   deriveProcurementInsights,
@@ -69,6 +70,7 @@ import {
   goodsReceiptFromRecord,
   invoiceFromRecord,
   leadFromRecord,
+  opportunityFromRecord,
   orderFromRecord,
   paymentFromRecord,
   productFromRecord,
@@ -97,6 +99,7 @@ import {
 } from '@neuropause/shared';
 import { contactModule } from './modules/crm/contactModuleInstance';
 import { leadModule } from './modules/crm/leadModuleInstance';
+import { opportunityModule } from './modules/crm/opportunityModuleInstance';
 import { customerModule } from './modules/crm/customerModuleInstance';
 import { quoteModule } from './modules/sales/quoteModuleInstance';
 import { orderModule } from './modules/sales/orderModuleInstance';
@@ -145,7 +148,7 @@ import { pluginExecutiveKpis } from '../plugins/pluginExtensionConsumers';
 import { executiveDecisionModule } from './modules/executive/executiveDecisionInstance';
 import { executionProposalModule } from './modules/executive/executionProposalInstance';
 import { getProcessAssessment } from './processMiningProvider';
-import type { MonthlyTrend } from '@neuropause/shared';
+import { computeOrgHealth, type MonthlyTrend } from '@neuropause/shared';
 
 const log = createLogger('executive-center');
 
@@ -241,11 +244,31 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
     // assessment is computed one way and reused by both these KPIs and the Process Explorer queries — no
     // duplicate mining, no rescanning. Read-only, deterministic.
     const processMining = getProcessAssessment();
-    // computeOrgHealth is what the composer uses; import lazily via the composer's
-    // own path would duplicate — instead record after compose but read current from
-    // the freshly-composed snapshot (below), and expose monthly via a closure that
-    // captures it. Simpler: compose first, then the monthly source reads the snap.
-    let composed: ExecutiveCenterSnapshot | null = null;
+    /**
+     * P13C ROUND 6 — THE MONTHLY TREND SAID -100% FOR EVERY TENANT.
+     *
+     * The comment below used to describe reading the current score off `composed`,
+     * "the freshly-composed snapshot". It is not fresh at that moment: the
+     * `monthlyTrends` closure is INVOKED BY `composeExecutiveSnapshot`, and
+     * `composed = snap` runs after that call returns. So `composed` was null on
+     * every pass, `cur?.overall ?? 0` was 0, and the trend reported a fall from
+     * last month's score to zero — `percentChange = (0 - monthAgo) / monthAgo` —
+     * which is -100%, forever, on a headline executive metric.
+     *
+     * The `?? 0` is what made it silent. A fallback that produces a PLAUSIBLE
+     * number turns an ordering bug into a wrong answer nobody can see.
+     *
+     * The right value was already in hand: `curInputs` is collected at the top of
+     * this function and handed to the composer as `orgHealthInputs`, and
+     * `computeOrgHealth` is pure. So the trend and the snapshot now score the SAME
+     * inputs through the SAME function — no ordering to get wrong, and no second
+     * notion of "current".
+     *
+     * Not a tenancy defect. Reported here because this round made the health
+     * store per-tenant, so the wrong number is now computed independently for each
+     * tenant instead of once for the install — the same bug, multiplied.
+     */
+    const currentHealth = computeOrgHealth(curInputs);
     const snap = composeExecutiveSnapshot({
       now: () => new Date(nowMs),
       founderItems: () => buildFounderProactiveItems('morning'),
@@ -268,6 +291,12 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       leadInsights: () =>
         deriveLeadInsights(
           leadModule.store.list({ status: 'active', limit: 5000 }).map(leadFromRecord),
+          nowMs,
+        ),
+      // CRM opportunity-pipeline KPIs from the registered Opportunities module (W2.8).
+      opportunityInsights: () =>
+        deriveOpportunityPipeline(
+          opportunityModule.store.list({ status: 'active', limit: 5000 }).map(opportunityFromRecord),
           nowMs,
         ),
       // CRM customer-account KPIs from the registered Customers module.
@@ -418,20 +447,20 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       // V3.1: rich 30-day trends from the SAME store (no new persistence). Uses the
       // current composed scores as "current" and the store window for history.
       monthlyTrends: () => {
-        const cur = composed?.orgHealth;
+        // `currentHealth`, NOT `composed` — see the note at its declaration. This
+        // closure runs *inside* the compose call below, so `composed` is null here.
         const trends = [
-          monthlyTrendFor('overall', 'Organization Health', 'overall', cur?.overall ?? 0),
+          monthlyTrendFor('overall', 'Organization Health', 'overall', currentHealth.overall),
           monthlyTrendFor(
             'engineering',
             'Engineering Health',
             'engineering',
-            cur?.engineering ?? 0,
+            currentHealth.engineering,
           ),
         ].filter((t): t is MonthlyTrend => t !== null);
         return trends.length > 0 ? trends : undefined;
       },
     });
-    composed = snap;
     // V3.2: derive ranked recommendations + executive summary from the composed
     // snapshot (pure; explains existing metrics — no new intelligence).
     const recommendations = [

@@ -90,10 +90,11 @@ describe('computeExecutionStats (V5.4)', () => {
 });
 
 import { ExecuteEngine } from './executeEngine';
+import { TEST_TENANT_SCOPE } from './tenancy/testScope';
 
 describe('ExecuteEngine class (V5.4/V5.6)', () => {
   it('runs a registered executor and preserves the typed result', async () => {
-    const engine = new ExecuteEngine();
+    const engine = new ExecuteEngine({ tenantId: () => TEST_TENANT_SCOPE.tenantId });
     engine.register('memory', async () => ({
       ok: true,
       summary: '3 memories found',
@@ -109,14 +110,14 @@ describe('ExecuteEngine class (V5.4/V5.6)', () => {
   });
 
   it('fails cleanly when no executor is registered for the kind', async () => {
-    const engine = new ExecuteEngine();
+    const engine = new ExecuteEngine({ tenantId: () => TEST_TENANT_SCOPE.tenantId });
     const s = await engine.execute({ kind: 'connector' });
     expect(s.state).toBe('failed');
     expect(s.error).toContain('No executor registered');
   });
 
   it('marks a session failed when the executor throws', async () => {
-    const engine = new ExecuteEngine();
+    const engine = new ExecuteEngine({ tenantId: () => TEST_TENANT_SCOPE.tenantId });
     engine.register('runtime', async () => {
       throw new Error('boom');
     });
@@ -126,7 +127,7 @@ describe('ExecuteEngine class (V5.4/V5.6)', () => {
   });
 
   it('reports registered kinds and computes stats', async () => {
-    const engine = new ExecuteEngine();
+    const engine = new ExecuteEngine({ tenantId: () => TEST_TENANT_SCOPE.tenantId });
     engine.register('executive', async () => ({ ok: true, summary: 'ok' }));
     engine.register('runtime', async () => ({ ok: false, error: 'nope' }));
     await engine.execute({ kind: 'executive' });
@@ -139,7 +140,7 @@ describe('ExecuteEngine class (V5.4/V5.6)', () => {
   });
 
   it('cancels a running session (cooperative)', async () => {
-    const engine = new ExecuteEngine();
+    const engine = new ExecuteEngine({ tenantId: () => TEST_TENANT_SCOPE.tenantId });
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
     engine.register('task', async () => {

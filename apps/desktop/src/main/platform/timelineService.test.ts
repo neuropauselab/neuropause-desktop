@@ -7,6 +7,8 @@ import type { PlatformEvent, PlatformEventType, PlatformEventCategory } from '@n
 
 function evt(over: Partial<PlatformEvent> = {}): PlatformEvent {
   return {
+    // P13B — an event with no tenant belongs to nobody and is shown to nobody.
+    tenantId: 'org-test',
     id: 'e' + Math.random().toString(36).slice(2),
     type: 'system.ready' as PlatformEventType,
     category: 'system' as PlatformEventCategory,

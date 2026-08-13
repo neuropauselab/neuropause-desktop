@@ -29,6 +29,7 @@ import {
   type ScenarioVersion,
 } from '@neuropause/shared';
 import { createLogger } from '../logger';
+import { runAsPrincipal, tenantPrincipal } from '../tenancy/backgroundPrincipal';
 import { generateReport } from './reportGenerator';
 import type { SandboxWorkspaceStore } from './workspaceStore';
 import type { SandboxScenarioStore } from './scenarioStore';
@@ -124,7 +125,22 @@ export class SandboxExecutionEngine {
       trigger: input.trigger ?? 'manual',
       priority: input.priority ?? 'normal',
     });
-    if (input.datasetId) this.datasetByExecution.set(execution.id, input.datasetId);
+    /**
+     * P13C N3 — A DATASET MUST BE THE CALLER'S TO ATTACH.
+     *
+     * `datasetId` arrives in the payload and was pinned to the execution
+     * unvalidated, so tenant B could attach tenant A's dataset to a B scenario
+     * and read A's fixture rows through the run. `datasets.get` is scoped, so
+     * resolving it here turns a supplied id into an owned one — and a foreign
+     * id is refused rather than silently ignored, because silently dropping it
+     * would run the scenario against no data and look like a product bug.
+     */
+    if (input.datasetId) {
+      if (this.deps.datasets.get(input.datasetId) === null) {
+        throw new Error('Invalid request: dataset not found');
+      }
+      this.datasetByExecution.set(execution.id, input.datasetId);
+    }
     this.emit('queued', execution);
     this.pump();
     return execution;
@@ -135,9 +151,27 @@ export class SandboxExecutionEngine {
       .all()
       .filter((e) => e.status === 'queued' && (workspaceId ? e.workspaceId === workspaceId : true))
       .map((e) => ({ executionId: e.id, scenarioId: e.scenarioId, priority: e.priority, enqueuedAt: e.queuedAt }));
-    const running = [...this.running].filter((id) =>
-      workspaceId ? this.deps.executions.get(id)?.workspaceId === workspaceId : true,
-    );
+    /**
+     * P13C Round 2 — M-B. THE LAST SURVIVING "OMITTED FIELD WIDENS".
+     *
+     * `this.running` is the ENGINE's install-wide set — it has to be, because
+     * the engine drains every tenant's queue — and the old filter read
+     * `workspaceId ? … : true`. So omitting the field returned every tenant's
+     * running execution ids. `pending` and `concurrency` above were already
+     * scoped through `executions.all()` and `workspaces.list()`; this one line
+     * was the exception, and it is the same bypass the four sibling stores had
+     * removed.
+     *
+     * The fix resolves each id through the SCOPED accessor first, so the
+     * install-wide set is filtered down to the caller's own before the optional
+     * workspace narrows it further. An omitted `workspaceId` now means "every
+     * running execution of MINE", which is a narrowing the caller cannot widen.
+     */
+    const running = [...this.running].filter((id) => {
+      const execution = this.deps.executions.get(id); // scoped: foreign ⇒ null
+      if (!execution) return false;
+      return workspaceId ? execution.workspaceId === workspaceId : true;
+    });
     const concurrency = workspaceId
       ? this.deps.workspaces.get(workspaceId)?.settings.maxConcurrency ?? 0
       : this.deps.workspaces.list().reduce((sum, w) => sum + w.settings.maxConcurrency, 0);
@@ -161,9 +195,25 @@ export class SandboxExecutionEngine {
     return this.deps.executions.get(id);
   }
 
-  /** Start every currently-runnable execution, respecting per-workspace concurrency. */
+  /**
+   * Start every currently-runnable execution, respecting per-workspace concurrency.
+   *
+   * P13C N3 — THE QUEUE IS SHARED; THE EXECUTION CONTEXT IS NOT.
+   *
+   * `pump` is re-entered by whoever enqueues and by every run that finishes, so
+   * it must be able to SEE the whole queue — otherwise tenant B's runs would sit
+   * queued until tenant B happened to act, which is a stall dressed up as
+   * isolation. It therefore reads `allForEngine()` deliberately.
+   *
+   * What was wrong before is not that it saw everything: it is that it then RAN
+   * everything in the enqueuer's context. Tenant A calling enqueue started
+   * tenant B's queued executions inside A's IPC call stack, and every store
+   * those runs touched — memory, timeline, artifacts — resolved through A's
+   * session. Each run now executes under a principal built from its OWN
+   * execution row, which is the same rule Part 2a gave webhook deliveries.
+   */
   private pump(): void {
-    const queued = this.deps.executions.all().filter((e) => e.status === 'queued');
+    const queued = this.deps.executions.allForEngine().filter((e) => e.status === 'queued');
     const byWorkspace = new Map<string, Execution[]>();
     for (const e of queued) {
       const list = byWorkspace.get(e.workspaceId) ?? [];
@@ -171,15 +221,20 @@ export class SandboxExecutionEngine {
       byWorkspace.set(e.workspaceId, list);
     }
     for (const [workspaceId, execs] of byWorkspace) {
-      const concurrency = this.deps.workspaces.get(workspaceId)?.settings.maxConcurrency ?? 1;
-      const runningInWs = [...this.running].filter((id) => this.deps.executions.get(id)?.workspaceId === workspaceId).length;
+      // Unscoped reads: scheduling decisions about a workspace this pump is not
+      // "in". Neither value reaches a caller.
+      const concurrency =
+        this.deps.workspaces.unscopedForEngine(workspaceId)?.settings.maxConcurrency ?? 1;
+      const runningInWs = [...this.running].filter(
+        (id) => this.deps.executions.unscopedForEngine(id)?.workspaceId === workspaceId,
+      ).length;
       const slots = concurrency - runningInWs;
       if (slots <= 0) continue;
       const entries: QueueEntry[] = execs.map((e) => ({ executionId: e.id, scenarioId: e.scenarioId, priority: e.priority, enqueuedAt: e.queuedAt }));
       for (const entry of runnableEntries(entries, 0, slots)) {
         if (this.running.has(entry.executionId)) continue;
         this.running.add(entry.executionId);
-        void this.run(entry.executionId).finally(() => {
+        void this.runOwned(entry.executionId).finally(() => {
           this.running.delete(entry.executionId);
           this.cancelSignals.delete(entry.executionId);
           this.datasetByExecution.delete(entry.executionId);
@@ -187,6 +242,34 @@ export class SandboxExecutionEngine {
         });
       }
     }
+  }
+
+  /**
+   * Run `id` under the principal of the execution's OWN tenant.
+   *
+   * The principal is built from the stored row, not from anything ambient, so a
+   * run started while tenant A was on screen still executes as the tenant that
+   * enqueued it — and every scoped store it reaches answers for that tenant
+   * without any of them changing.
+   *
+   * AN UNOWNED EXECUTION IS NOT RUN. Rows written before P13C carry no tenant;
+   * executing one would mean choosing an organization for work that named none,
+   * and it would then write artifacts under that choice. It is failed instead,
+   * which is visible, rather than skipped, which is not.
+   */
+  private async runOwned(id: string): Promise<void> {
+    const row = this.deps.executions.unscopedForEngine(id);
+    if (!row) return;
+    const principal = row.tenantId
+      ? tenantPrincipal({ jobId: 'sandbox-execution', scope: { tenantId: row.tenantId, workspaceId: '' } })
+      : null;
+    if (principal === null) {
+      this.deps.executions.transition(id, 'error', {
+        error: 'This run predates tenant ownership and has no owner.',
+      });
+      return;
+    }
+    await runAsPrincipal(principal, () => this.run(id));
   }
 
   private async run(id: string): Promise<void> {
@@ -294,6 +377,9 @@ export class SandboxExecutionEngine {
   private emit(kind: SandboxEvent['kind'], execution: Execution): void {
     this.deps.broadcast?.({
       kind,
+      // P13C N3 — from the execution ROW, so the event names the tenant whose
+      // run it describes rather than whoever is on screen when it fires.
+      tenantId: execution.tenantId ?? null,
       executionId: execution.id,
       workspaceId: execution.workspaceId,
       scenarioId: execution.scenarioId,

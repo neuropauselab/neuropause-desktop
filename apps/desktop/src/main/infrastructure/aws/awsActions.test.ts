@@ -29,7 +29,7 @@ function harness(router: (req: DiscoveryRequest) => { text?: string; error?: Err
     },
   };
   const exec = new InfraActionExecutor(
-    { makeHttp: () => http, publish: (e) => events.push(e), regionFor: () => region, now: () => NOW },
+    { makeHttp: () => http, publish: (e) => events.push(e), regionFor: () => region, ownsAccount: () => true, /* P13C R7 — these suites act AS the owning tenant; cross-tenant refusal is asserted in infrastructureTenancy.test.ts */ now: () => NOW },
     AWS_ACTIONS,
   );
   return { exec, events, requests };

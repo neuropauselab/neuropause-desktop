@@ -217,7 +217,7 @@ export function InstallFlow({
               {phase === 'running' && event?.status === 'downloading' && event.bytesTotal ? (
                 <div className="mt-3 h-1.5 overflow-hidden rounded-full [background:var(--fill-2)]">
                   <div
-                    className="h-full rounded-full bg-accent transition-all"
+                    className="h-full rounded-full bg-accent transition-[background-color,color,border-color,box-shadow,transform,opacity] motion-reduce:transition-none"
                     style={{ width: `${Math.round((event.progress ?? 0) * 100)}%` }}
                   />
                 </div>

@@ -19,8 +19,22 @@ afterEach(async () => {
   await fs.rm(root, { recursive: true, force: true });
 });
 
-function manager(now = () => 1_700_000_000_000): BackupManager {
-  return new BackupManager({ dataDir, backupsDir, appVersion: '1.0.0', dataVersion: () => 1, now });
+/**
+ * P13C ROUND 10 — F22. `restoreBoundary` is a REQUIRED dependency now, exactly
+ * as production supplies it at the releaseOps composition root: a manager that
+ * has not said what its restores put back cannot be constructed. Supplying it
+ * here is the same act, not a test accommodation.
+ */
+function manager(now = () => 1_700_000_000_000, manualKeep?: number): BackupManager {
+  return new BackupManager({
+    dataDir,
+    backupsDir,
+    appVersion: '1.0.0',
+    dataVersion: () => 1,
+    now,
+    manualKeep,
+    restoreBoundary: { boundary: 'ALL_TENANTS_AT_ONCE', declaredBy: 'backupManager.test.ts' },
+  });
 }
 
 async function write(rel: string, content: string): Promise<void> {
@@ -30,6 +44,27 @@ async function write(rel: string, content: string): Promise<void> {
 }
 
 describe('BackupManager', () => {
+  // Phase 8 (8.2): the business domain's prefix pattern captures every
+  // enterprise-module store live at snapshot time — and restore brings the
+  // records back byte-for-byte. This is the data-loss-class fix under test.
+  it('backs up and restores ALL enterprise-module stores via the business prefix', async () => {
+    await write('enterprise-module-finance.json', '{"records":[{"id":"inv-1"}]}');
+    await write('enterprise-module-hr-employees.json', '{"records":[{"id":"emp-1"}]}');
+    await write('unrelated.json', '{}'); // not covered — never captured
+    const info = await manager().create('manual', ['business']);
+    expect(info.domains).toEqual(['business']);
+    const listedFiles = (await manager().validate(info.id)).checked;
+    expect(listedFiles).toBe(2);
+    // Simulate the failure mode Phase 8 exists to prevent: business data wiped.
+    await write('enterprise-module-finance.json', '{"records":[]}');
+    // Later clock: the pre-restore safety snapshot must get its own id, not
+    // collide with (and overwrite) the backup being restored.
+    const result = await manager(() => 1_700_000_100_000).restore(info.id, ['business']);
+    expect(result.ok).toBe(true);
+    const restored = await fs.readFile(join(dataDir, 'enterprise-module-finance.json'), 'utf8');
+    expect(restored).toContain('inv-1');
+  });
+
   it('snapshots only the files that exist and records them in the manifest', async () => {
     await write('registry.json', '{"installs":[]}');
     await write('graph.json', '{"nodes":[]}');
@@ -102,5 +137,55 @@ describe('BackupManager', () => {
     const info = await manager().create('manual', ['registry']);
     expect(await manager().delete(info.id)).toBe(true);
     expect(await manager().list()).toHaveLength(0);
+  });
+
+  /* ── P13C ROUND 10 — F22 / NEW-M7 ───────────────────────────────────── */
+
+  it('stamps the multi-tenant archive declaration into every manifest', async () => {
+    await write('registry.json', 'x');
+    const info = await manager().create('manual', ['registry']);
+    const manifest = JSON.parse(
+      await fs.readFile(join(backupsDir, info.id, 'manifest.json'), 'utf8'),
+    );
+    // The archive says what it is, ON the archive — a restore of a directory
+    // produced by another build has something to check.
+    expect(manifest.archive).toEqual({
+      scope: 'MULTI_TENANT_INSTALL',
+      tenants: 'ALL',
+      authority: 'PLATFORM_OPERATOR',
+      restoration: 'ALL_TENANTS_AT_ONCE',
+      declaration: 'local-backup-archive',
+    });
+  });
+
+  it('caps manual backups and never prunes a pre-migration snapshot', async () => {
+    await write('registry.json', 'x');
+    // Distinct clocks → distinct ids. Four manual creates against a cap of two.
+    const first = await manager(() => 1_700_000_001_000, 2).create('manual', ['registry']);
+    const anchor = await manager(() => 1_700_000_002_000, 2).create('pre-migration', ['registry']);
+    const second = await manager(() => 1_700_000_003_000, 2).create('manual', ['registry']);
+    const third = await manager(() => 1_700_000_004_000, 2).create('manual', ['registry']);
+    const fourth = await manager(() => 1_700_000_005_000, 2).create('manual', ['registry']);
+
+    const ids = (await manager().list()).map((b) => b.id);
+    // Newest two manual survive; the oldest two are gone.
+    expect(ids).toContain(fourth.id);
+    expect(ids).toContain(third.id);
+    expect(ids).not.toContain(second.id);
+    expect(ids).not.toContain(first.id);
+    // The rollback anchor is untouched — pruning it would turn a failed
+    // migration into data loss.
+    expect(ids).toContain(anchor.id);
+  });
+
+  it('a restore does not let its own safety snapshot prune the archive being restored', async () => {
+    await write('registry.json', 'ORIGINAL');
+    const target = await manager(() => 1_700_000_001_000, 1).create('manual', ['registry']);
+    await write('registry.json', 'CHANGED');
+    // Cap of one: without the protection, the safety snapshot's prune would
+    // delete `target` mid-restore.
+    const result = await manager(() => 1_700_000_009_000, 1).restore(target.id, ['registry']);
+    expect(result.ok).toBe(true);
+    expect(await fs.readFile(join(dataDir, 'registry.json'), 'utf8')).toBe('ORIGINAL');
   });
 });

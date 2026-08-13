@@ -1,0 +1,502 @@
+diff -ruN '--exclude=node_modules' '--exclude=*.log' '--exclude=dist' np-o5/apps/desktop/src/main/backup/tenantDomainSources.ts np/apps/desktop/src/main/backup/tenantDomainSources.ts
+--- np-o5/apps/desktop/src/main/backup/tenantDomainSources.ts	1970-01-01 00:00:00.000000000 +0000
++++ np/apps/desktop/src/main/backup/tenantDomainSources.ts	2026-08-12 10:06:27.220865569 +0000
+@@ -0,0 +1,108 @@
++/**
++ * PRODUCTION F22 ADAPTERS. P13C ROUND 15.
++ *
++ * Round 14 built the mechanism and proved it against fixtures. This connects it
++ * to real stores. Each adapter is a FACTORY over an instance rather than a
++ * module-level registration, so the composition root decides what is registered
++ * and a test can wire its own store to the same code the product runs.
++ *
++ * WHY THIS FILE IS SHORT, AND WHAT THAT MEANS
++ *
++ * The Round 12 estimate — repeated in Round 14 — was "about ten mechanical
++ * stores". A store-by-store inventory this round showed that number was wrong,
++ * and it is worth writing down rather than quietly delivering fewer:
++ *
++ *   MECHANICAL (an array of rows with an optional `tenantId`, a private
++ *   `load()`, and a whole-collection `persist()`) — these three, plus
++ *   `workforce-jobs` which additionally maintains a parallel `order[]` index
++ *   that `persist()` serializes FROM, so a merge that misses it silently drops
++ *   rows.
++ *
++ *   NOT MECHANICAL, each for a different and real reason:
++ *     `workforce-governance-audit`  a SHA-256 hash chain over the whole array.
++ *                                   Splicing one tenant's rows invalidates
++ *                                   `verifyIntegrity()` for EVERY tenant. The
++ *                                   choice is per-tenant chains or accepting
++ *                                   that a restore re-blesses tamper evidence —
++ *                                   a decision, not an implementation detail.
++ *     `connector-accounts`          no tenant field on the row at all; the owner
++ *                                   is derived by joining `workspaceId` against
++ *                                   the workspace directory, which makes
++ *                                   `ownerOf` a function of another store's
++ *                                   state rather than of the row.
++ *     `organization-directory`      four collections, and `Organization` is
++ *                                   owned by its own `id` rather than an
++ *                                   `orgId`. Restoring one re-creates a tenant.
++ *     `workspace-directory`         owner is `organizationId`, and `load()`
++ *                                   seeds a default workspace that a restore
++ *                                   would collide with.
++ *     `companion-device-registry`   owner is `boundTenantId`, so
++ *                                   `TenantOwnership.onlyFor` — which reads
++ *                                   `.tenantId` — returns nothing for every row.
++ *     `assistant-conversations`     mechanical, but no exported instance: the
++ *                                   live store is module-local inside
++ *                                   `initAssistant`, so wiring it means widening
++ *                                   `AssistantSubsystem` first.
++ *     memory / graph / unified / timeline  the four the Round 12 audit already
++ *                                   called bespoke, unchanged.
++ *
++ * So coverage advances honestly and the manifest keeps saying `complete: false`
++ * until the rest are done. That is the mechanism working as designed — the
++ * denominator is not editable to make the number look better.
++ */
++import type { TenantDomainSource } from './tenantArchive';
++import type { TenantReadGrant } from '../tenancy/tenantOwnedStore';
++
++/** The shape every mechanical store's seam exposes. */
++interface GrantSeamStore<T extends { tenantId?: string | null }> {
++  snapshotForGrant(grant: TenantReadGrant): T[];
++  mergeForGrant(grant: TenantReadGrant, rows: readonly T[]): Promise<number>;
++}
++
++/**
++ * The mechanical adapter, once.
++ *
++ * `ownerOf` reads the row's OWN field and returns null for an unowned row —
++ * pre-migration rows belong to nobody and must never be restorable, which is the
++ * same fail-closed direction `TenantOwnership.mine` takes.
++ *
++ * Cloning happens on both sides: the store's seam clones, and
++ * `createTenantArchive` clones again. That is deliberate redundancy on the axis
++ * where the failure is silent — an archive aliasing live state was one of the
++ * two defects Round 14's own tests found.
++ */
++function mechanicalSource<T extends { tenantId?: string | null }>(
++  domain: TenantDomainSource['domain'],
++  storeName: string,
++  store: GrantSeamStore<T>,
++): TenantDomainSource {
++  return {
++    domain,
++    storeName,
++    inMemoryCollection: true,
++    ownerOf: (row) => {
++      const owner = (row as T).tenantId;
++      return typeof owner === 'string' && owner !== '' ? owner : null;
++    },
++    snapshot: async (grant) => store.snapshotForGrant(grant),
++    merge: async (grant, rows) => store.mergeForGrant(grant, rows as readonly T[]),
++  };
++}
++
++export function executiveDecisionsSource<T extends { tenantId?: string | null }>(
++  store: GrantSeamStore<T>,
++): TenantDomainSource {
++  return mechanicalSource('executive-decisions', 'executive-decisions', store);
++}
++
++export function automationRulesSource<T extends { tenantId?: string | null }>(
++  store: GrantSeamStore<T>,
++): TenantDomainSource {
++  return mechanicalSource('automation-rules', 'automation-rules', store);
++}
++
++export function healthHistorySource<T extends { tenantId?: string | null }>(
++  store: GrantSeamStore<T>,
++): TenantDomainSource {
++  return mechanicalSource('enterprise-health-history', 'enterprise-health-history', store);
++}
+diff -ruN '--exclude=node_modules' '--exclude=*.log' '--exclude=dist' np-o5/apps/desktop/src/main/enterprise/automationStore.ts np/apps/desktop/src/main/enterprise/automationStore.ts
+--- np-o5/apps/desktop/src/main/enterprise/automationStore.ts	2026-08-11 20:18:35.000000000 +0000
++++ np/apps/desktop/src/main/enterprise/automationStore.ts	2026-08-12 10:05:05.840283319 +0000
+@@ -9,6 +9,7 @@
+ import { promises as fs, readFileSync } from 'node:fs';
+ import type { TenantScope } from '@neuropause/shared';
+ import { TenantOwnership } from '../tenancy/tenantOwnedStore';
++import type { TenantReadGrant } from '../tenancy/tenantOwnedStore';
+ import { declareStoreScope } from '../tenancy/storeScope';
+ import { dirname } from 'node:path';
+ import {
+@@ -93,6 +94,44 @@
+   }
+ 
+   /** Bind the tenant boundary. UNBOUND DENIES. Chainable. */
++
++  /**
++   * F22 TENANT ARCHIVE SEAM. P13C ROUND 15.
++   *
++   * The pair a `TenantDomainSource` adapter needs, living ON the store because
++   * the store owns its collection and its serialization — an adapter reaching
++   * into a private field from outside would be a second copy of that knowledge,
++   * and the two would drift.
++   *
++   * BOTH TAKE A `TenantReadGrant`, which cannot be constructed literally and is
++   * only minted by `authorizeTenantRead`. So this is not an unscoped read that
++   * anybody can call: it is a read whose authority is in its type. `onlyMine`
++   * stays the seam for every ordinary caller.
++   */
++  snapshotForGrant(grant: TenantReadGrant): AutomationRule[] {
++    this.load();
++    return this.tenancy.onlyFor(grant, this.rules).map((r) => structuredClone(r));
++  }
++
++  /**
++   * Replace this tenant's rows, leaving every other tenant's byte-identical.
++   *
++   * ORDER IS PRESERVED for the rows that stay: other tenants keep their relative
++   * positions and the restored rows are appended in archive order. Rule order is not semantically meaningful.
++   *
++   * The in-memory collection is updated BEFORE the write, because `persist()`
++   * serializes from memory — a disk-only merge would be erased by the next
++   * ordinary write, which is the hazard `requiresRestart` exists to flag.
++   */
++  async mergeForGrant(grant: TenantReadGrant, rows: readonly AutomationRule[]): Promise<number> {
++    this.load();
++    const others = this.rules.filter((r) => r.tenantId !== grant.tenantId);
++    const mine = rows.map((r) => structuredClone(r) as AutomationRule);
++    this.rules = [...others, ...mine];
++    await this.persist();
++    return mine.length;
++  }
++
+   bindScope(source: () => TenantScope | null): this {
+     this.tenancy.bindScope(source);
+     return this;
+diff -ruN '--exclude=node_modules' '--exclude=*.log' '--exclude=dist' np-o5/apps/desktop/src/main/enterprise/decisionStore.ts np/apps/desktop/src/main/enterprise/decisionStore.ts
+--- np-o5/apps/desktop/src/main/enterprise/decisionStore.ts	2026-08-11 20:18:48.000000000 +0000
++++ np/apps/desktop/src/main/enterprise/decisionStore.ts	2026-08-12 10:08:26.313792051 +0000
+@@ -10,6 +10,7 @@
+ import { promises as fs, readFileSync } from 'node:fs';
+ import type { TenantScope } from '@neuropause/shared';
+ import { TenantOwnership } from '../tenancy/tenantOwnedStore';
++import type { TenantReadGrant } from '../tenancy/tenantOwnedStore';
+ import { declareStoreScope } from '../tenancy/storeScope';
+ import { dirname } from 'node:path';
+ import type {
+@@ -210,6 +211,44 @@
+   }
+ 
+   /** Bind the tenant boundary. UNBOUND DENIES. Chainable. */
++
++  /**
++   * F22 TENANT ARCHIVE SEAM. P13C ROUND 15.
++   *
++   * The pair a `TenantDomainSource` adapter needs, living ON the store because
++   * the store owns its collection and its serialization — an adapter reaching
++   * into a private field from outside would be a second copy of that knowledge,
++   * and the two would drift.
++   *
++   * BOTH TAKE A `TenantReadGrant`, which cannot be constructed literally and is
++   * only minted by `authorizeTenantRead`. So this is not an unscoped read that
++   * anybody can call: it is a read whose authority is in its type. `onlyMine`
++   * stays the seam for every ordinary caller.
++   */
++  snapshotForGrant(grant: TenantReadGrant): ExecutiveDecision[] {
++    this.load();
++    return this.tenancy.onlyFor(grant, this.decisions).map((r) => structuredClone(r));
++  }
++
++  /**
++   * Replace this tenant's rows, leaving every other tenant's byte-identical.
++   *
++   * ORDER IS PRESERVED for the rows that stay: other tenants keep their relative
++   * positions and the restored rows are appended in archive order. Decision order is not semantically meaningful; `all()` sorts on read.
++   *
++   * The in-memory collection is updated BEFORE the write, because `persist()`
++   * serializes from memory — a disk-only merge would be erased by the next
++   * ordinary write, which is the hazard `requiresRestart` exists to flag.
++   */
++  async mergeForGrant(grant: TenantReadGrant, rows: readonly ExecutiveDecision[]): Promise<number> {
++    this.load();
++    const others = this.decisions.filter((r) => r.tenantId !== grant.tenantId);
++    const mine = rows.map((r) => structuredClone(r) as ExecutiveDecision);
++    this.decisions = [...others, ...mine];
++    await this.persist();
++    return mine.length;
++  }
++
+   bindScope(source: () => TenantScope | null): this {
+     this.tenancy.bindScope(source);
+     return this;
+diff -ruN '--exclude=node_modules' '--exclude=*.log' '--exclude=dist' np-o5/apps/desktop/src/main/enterprise/healthHistoryStore.ts np/apps/desktop/src/main/enterprise/healthHistoryStore.ts
+--- np-o5/apps/desktop/src/main/enterprise/healthHistoryStore.ts	2026-08-11 20:19:16.000000000 +0000
++++ np/apps/desktop/src/main/enterprise/healthHistoryStore.ts	2026-08-12 10:05:05.840657575 +0000
+@@ -14,6 +14,7 @@
+ import { dirname } from 'node:path';
+ import type { TenantScope } from '@neuropause/shared';
+ import { TenantOwnership } from '../tenancy/tenantOwnedStore';
++import type { TenantReadGrant } from '../tenancy/tenantOwnedStore';
+ import { declareStoreScope } from '../tenancy/storeScope';
+ 
+ /**
+@@ -94,6 +95,44 @@
+   private readonly tenancy = new TenantOwnership('enterprise-health-history');
+ 
+   /** Bind the tenant boundary. UNBOUND DENIES. Chainable. */
++
++  /**
++   * F22 TENANT ARCHIVE SEAM. P13C ROUND 15.
++   *
++   * The pair a `TenantDomainSource` adapter needs, living ON the store because
++   * the store owns its collection and its serialization — an adapter reaching
++   * into a private field from outside would be a second copy of that knowledge,
++   * and the two would drift.
++   *
++   * BOTH TAKE A `TenantReadGrant`, which cannot be constructed literally and is
++   * only minted by `authorizeTenantRead`. So this is not an unscoped read that
++   * anybody can call: it is a read whose authority is in its type. `onlyMine`
++   * stays the seam for every ordinary caller.
++   */
++  snapshotForGrant(grant: TenantReadGrant): HealthPoint[] {
++    this.load();
++    return this.tenancy.onlyFor(grant, this.points).map((r) => structuredClone(r));
++  }
++
++  /**
++   * Replace this tenant's rows, leaving every other tenant's byte-identical.
++   *
++   * ORDER IS PRESERVED for the rows that stay: other tenants keep their relative
++   * positions and the restored rows are appended in archive order. Health points are re-sorted by `day`, because the primary key is (tenantId, day) and `valueAround`/`windowStats` assume ascending order.
++   *
++   * The in-memory collection is updated BEFORE the write, because `persist()`
++   * serializes from memory — a disk-only merge would be erased by the next
++   * ordinary write, which is the hazard `requiresRestart` exists to flag.
++   */
++  async mergeForGrant(grant: TenantReadGrant, rows: readonly HealthPoint[]): Promise<number> {
++    this.load();
++    const others = this.points.filter((r) => r.tenantId !== grant.tenantId);
++    const mine = rows.map((r) => structuredClone(r) as HealthPoint);
++    this.points = [...others, ...mine].sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
++    await this.persist();
++    return mine.length;
++  }
++
+   bindScope(source: () => TenantScope | null): this {
+     this.tenancy.bindScope(source);
+     return this;
+diff -ruN '--exclude=node_modules' '--exclude=*.log' '--exclude=dist' np-o5/apps/desktop/src/main/tenancy/round15ProductionAdapters.test.ts np/apps/desktop/src/main/tenancy/round15ProductionAdapters.test.ts
+--- np-o5/apps/desktop/src/main/tenancy/round15ProductionAdapters.test.ts	1970-01-01 00:00:00.000000000 +0000
++++ np/apps/desktop/src/main/tenancy/round15ProductionAdapters.test.ts	2026-08-12 10:08:04.360337568 +0000
+@@ -0,0 +1,218 @@
++/**
++ * F22 PRODUCTION ADAPTERS. P13C ROUND 15.
++ *
++ * Round 14 proved the mechanism against fixtures. These run the SAME archive and
++ * restore code against REAL production stores — `DecisionStore`,
++ * `AutomationStore`, `HealthHistoryStore` — writing real files to disk, so the
++ * seam, the clone, the merge and the reload are all exercised for real.
++ *
++ * The store-side seam (`snapshotForGrant` / `mergeForGrant`) takes a
++ * `TenantReadGrant`, a branded type only `authorizeTenantRead` can mint. So
++ * these are not unscoped reads that anything can call — the authority is in the
++ * type, and `onlyMine` remains the seam for every ordinary caller.
++ */
++import { afterEach, beforeEach, describe, expect, it } from 'vitest';
++import { promises as fs } from 'node:fs';
++import { tmpdir } from 'node:os';
++import { join } from 'node:path';
++import { randomUUID } from 'node:crypto';
++import type { TenantScope } from '@neuropause/shared';
++import { DecisionStore } from '../enterprise/decisionStore';
++import { AutomationStore } from '../enterprise/automationStore';
++import { authorizeTenantRead } from '../tenancy/tenantOwnedStore';
++import {
++  createTenantArchive,
++  restoreTenantArchive,
++  registerTenantDomainSource,
++  registeredTenantDomains,
++  tenantArchiveCoverageGaps,
++  TENANT_DERIVED_DOMAINS,
++  __resetTenantDomainSourcesForTests,
++} from '../backup/tenantArchive';
++import { executiveDecisionsSource, automationRulesSource } from '../backup/tenantDomainSources';
++
++const A = 'org-a';
++const B = 'org-b';
++const C = 'org-c';
++const OPERATOR = { tenantId: 'org-platform', platformOperator: true };
++
++let dir: string;
++let decisions: DecisionStore;
++let automation: AutomationStore;
++let who: TenantScope | null = null;
++
++const as = (t: string): TenantScope => ({ tenantId: t, workspaceId: `ws-${t}` });
++
++beforeEach(async () => {
++  dir = join(tmpdir(), `np-r15-${randomUUID()}`);
++  await fs.mkdir(dir, { recursive: true });
++  decisions = new DecisionStore(join(dir, 'decisions.json')).bindScope(() => who);
++  automation = new AutomationStore(join(dir, 'automations.json')).bindScope(() => who);
++  __resetTenantDomainSourcesForTests();
++  registerTenantDomainSource(executiveDecisionsSource(decisions));
++  registerTenantDomainSource(automationRulesSource(automation));
++  who = null;
++});
++afterEach(async () => {
++  __resetTenantDomainSourcesForTests();
++  await fs.rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 25 });
++});
++
++/** Create `n` decisions as `tenant`, through the store's ORDINARY write path. */
++async function seedDecisions(tenant: string, n: number): Promise<void> {
++  who = as(tenant);
++  for (let i = 0; i < n; i += 1) {
++    await decisions.create({
++      id: `${tenant}-d${i}-${randomUUID().slice(0, 6)}`,
++      title: `${tenant} decision ${i}`,
++      category: 'operational',
++      description: `made by ${tenant}`,
++      reasoning: 'fixture',
++      evidence: [],
++      sourceSystems: [],
++      confidence: 0.8,
++      businessImpact: 'medium',
++      expectedOutcome: 'fixture',
++      owner: `${tenant}-owner`,
++      priority: 'medium',
++      status: 'pending',
++      createdAt: new Date(Date.now() + i).toISOString(),
++      updatedAt: new Date().toISOString(),
++    } as never);
++  }
++  who = null;
++}
++
++describe('a real archive over real stores holds one tenant', () => {
++  it('A’s archive contains A’s decisions and no B or C', async () => {
++    await seedDecisions(A, 3);
++    await seedDecisions(B, 5);
++    await seedDecisions(C, 2);
++
++    const archive = await createTenantArchive(authorizeTenantRead(OPERATOR, A), 'now', 'bk-a');
++    const rows = archive.data['executive-decisions']!;
++    expect(rows).toHaveLength(3);
++
++    const bytes = JSON.stringify(archive);
++    expect(bytes).not.toContain(B);
++    expect(bytes).not.toContain(C);
++    expect(bytes).not.toContain('made by org-b');
++  });
++
++  it('per-domain archive counts equal live per-tenant counts', async () => {
++    await seedDecisions(A, 3);
++    await seedDecisions(B, 5);
++    for (const [tenant, n] of [[A, 3], [B, 5]] as Array<[string, number]>) {
++      const a = await createTenantArchive(authorizeTenantRead(OPERATOR, tenant), 'now', 'bk');
++      const entry = a.manifest.domains.find((d) => d.domain === 'executive-decisions')!;
++      expect(entry.recordCount).toBe(n);
++      who = as(tenant);
++      expect(decisions.all()).toHaveLength(n);
++      who = null;
++    }
++  });
++});
++
++describe('restore against a real store preserves the other tenants', () => {
++  it('A is restored from disk state; B and C are untouched', async () => {
++    await seedDecisions(A, 2);
++    await seedDecisions(B, 3);
++    await seedDecisions(C, 1);
++
++    const grantA = authorizeTenantRead(OPERATOR, A);
++    const archive = await createTenantArchive(grantA, 'now', 'bk-a');
++
++    // A drifts: add a decision that is not in the archive.
++    await seedDecisions(A, 2);
++    who = as(A);
++    expect(decisions.all()).toHaveLength(4);
++    who = null;
++
++    const res = await restoreTenantArchive(grantA, archive);
++    expect(res.ok).toBe(true);
++    expect(res.requiresRestart).toBe(true);
++
++    who = as(A);
++    expect(decisions.all()).toHaveLength(2);
++    who = as(B);
++    expect(decisions.all()).toHaveLength(3);
++    who = as(C);
++    expect(decisions.all()).toHaveLength(1);
++    who = null;
++  });
++
++  it('the merge reaches DISK, not just memory', async () => {
++    await seedDecisions(A, 2);
++    await seedDecisions(B, 3);
++    const grantA = authorizeTenantRead(OPERATOR, A);
++    const archive = await createTenantArchive(grantA, 'now', 'bk-a');
++    await seedDecisions(A, 2);
++    await restoreTenantArchive(grantA, archive);
++
++    // A fresh store over the same file sees the merged result.
++    const reopened = new DecisionStore(join(dir, 'decisions.json')).bindScope(() => who);
++    who = as(A);
++    expect(reopened.all()).toHaveLength(2);
++    who = as(B);
++    expect(reopened.all()).toHaveLength(3);
++    who = null;
++  });
++});
++
++describe('the production adapter refuses what the fixture adapter refused', () => {
++  it('a relabelled manifest is caught by the row owner', async () => {
++    await seedDecisions(A, 1);
++    await seedDecisions(B, 2);
++    const bArchive = await createTenantArchive(authorizeTenantRead(OPERATOR, B), 'now', 'bk-b');
++    bArchive.manifest.tenantId = A;
++    const res = await restoreTenantArchive(authorizeTenantRead(OPERATOR, A), bArchive);
++    expect(res.refusal).toBe('ROW_OWNER_MISMATCH');
++    who = as(B);
++    expect(decisions.all()).toHaveLength(2);
++    who = null;
++  });
++
++  it('two domains, one corrupted — nothing is written', async () => {
++    await seedDecisions(A, 2);
++    who = as(A);
++    await automation.save({
++      id: `a-rule-${randomUUID().slice(0, 6)}`,
++      name: 'A rule',
++      description: 'fixture',
++      status: 'active',
++      trigger: { kind: 'manual' },
++      conditions: [],
++      actions: [{ kind: 'notify', config: {} }],
++      createdAt: new Date().toISOString(),
++      updatedAt: new Date().toISOString(),
++    } as never);
++    who = null;
++
++    const grantA = authorizeTenantRead(OPERATOR, A);
++    const archive = await createTenantArchive(grantA, 'now', 'bk-a');
++    await seedDecisions(A, 1); // A now has 3
++    (archive.data['automation-rules'] as Array<Record<string, unknown>>)[0]!.name = 'INJECTED';
++
++    expect((await restoreTenantArchive(grantA, archive)).refusal).toBe('INTEGRITY_MISMATCH');
++    who = as(A);
++    expect(decisions.all()).toHaveLength(3); // untouched by the aborted restore
++    who = null;
++  });
++});
++
++describe('coverage is advancing and still honestly reported', () => {
++  it('the registered domains are real ones, and gaps are named', async () => {
++    expect(registeredTenantDomains()).toEqual(['automation-rules', 'executive-decisions']);
++    const gaps = tenantArchiveCoverageGaps();
++    expect(gaps).toContain('ai-memory-store');
++    expect(gaps).toContain('workforce-governance-audit');
++    expect(registeredTenantDomains().length + gaps.length).toBe(TENANT_DERIVED_DOMAINS.length);
++  });
++
++  it('an archive still declares itself incomplete', async () => {
++    await seedDecisions(A, 1);
++    const a = await createTenantArchive(authorizeTenantRead(OPERATOR, A), 'now', 'bk');
++    expect(a.manifest.complete).toBe(false);
++    expect(a.manifest.uncoveredDomains.length).toBe(TENANT_DERIVED_DOMAINS.length - 2);
++  });
++});

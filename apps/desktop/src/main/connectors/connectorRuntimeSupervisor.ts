@@ -29,9 +29,59 @@ import type {
 } from '@neuropause/shared';
 import { aggregateRuntimeState, computeIntegrationHealth, deriveRuntimeState } from '@neuropause/shared';
 import { createLogger } from '../logger';
+import { declareStoreScope } from '../tenancy/storeScope';
 
 const log = createLogger('connector-runtime');
-const HISTORY_CAP = 500;
+/**
+ * Per WORKSPACE, not per install. See `remember`.
+ *
+ * Exported for the same reason `LOG_CAP` is: the isolation suite must assert the
+ * real cap, not a copy of the number that survives somebody changing this one.
+ */
+export const HISTORY_CAP = 500;
+
+/**
+ * P13C ROUND 9 — FINDING 7, SECOND HALF. LIFECYCLE HISTORY BELONGS TO A WORKSPACE.
+ *
+ * `history()` filtered the ring on `connectorId` / `accountId` and nothing else,
+ * so `connector:inspect` on `connectors:read` returned another workspace's
+ * account ids, its from→to transitions and the provider reason strings attached
+ * to them — the same disclosure as the activity log, through the read model
+ * beside it. The account listing this projection is built from has been
+ * workspace-scoped since P10; the transitions it recorded never were.
+ *
+ * Each row now carries the owner resolved from the AUTHORITATIVE account lookup
+ * (`deps.getAccount`, which is `connectorStore.get` — the resolver that already
+ * refuses a foreign id), and reads filter on it against the viewer's own
+ * workspace. A row with no owner belongs to nobody and is returned to nobody.
+ */
+declareStoreScope({
+  name: 'connector-lifecycle-history',
+  scope: 'WORKSPACE',
+  persistence: 'memory',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retention: `Per workspace: the ${HISTORY_CAP}-row ring evicts only the owning workspace's own oldest transitions (remember). An install-wide splice let one workspace's churn delete another's disconnect record.`,
+  reason:
+    "ConnectorLifecycleEvent.workspaceId, resolved from ConnectedAccount.workspaceId at write time; unresolved reads return []. A transition names an account and carries the provider's reason string, which is one customer's own integration activity.",
+});
+
+/**
+ * A lifecycle transition with the workspace whose account it happened to.
+ *
+ * Not on the shared `ConnectorLifecycleEvent`, because this is an enforcement
+ * field rather than a payload one: it is stamped from the account the supervisor
+ * resolved, filtered on at every read, and stripped before the transition is
+ * broadcast to a window.
+ */
+export type OwnedLifecycleEvent = ConnectorLifecycleEvent & { workspaceId: string | null };
+
+/** Drop the owner before a transition leaves the process. */
+export function lifecycleToWire(evt: OwnedLifecycleEvent): ConnectorLifecycleEvent {
+  const { workspaceId: _owner, ...wire } = evt;
+  void _owner;
+  return wire;
+}
 
 /** The narrow event source the Supervisor subscribes to (the ConnectorService singleton satisfies this). */
 export interface RuntimeEventSource {
@@ -59,8 +109,19 @@ export interface ConnectorRuntimeSupervisorDeps {
   isConfigured: (connectorId: string) => boolean;
   /** Recent activity log for a connector (connectorService.logFeed) — for the Inspector. */
   getLogs: (connectorId: string) => ConnectorLogEntry[];
-  /** Broadcast the lifecycle transition to the renderer. */
-  broadcast: (event: ConnectorLifecycleEvent) => void;
+  /**
+   * The workspace the CALLER is in — the same resolver `connectorStore` and
+   * `connectorService` bind, so one boundary answers for accounts, credentials,
+   * activity and lifecycle rather than four that can drift apart.
+   *
+   * REQUIRED, not optional. An optional seam is one a future construction site
+   * can omit and still compile, and every finding in this program is a boundary
+   * somebody did not know they had to draw. `''` (no workspace resolved) denies,
+   * exactly as it does in `connectorService.requireWorkspace`.
+   */
+  workspaceId: () => string;
+  /** Broadcast the lifecycle transition to the renderer. Carries its owner; see `initConnectors`. */
+  broadcast: (event: OwnedLifecycleEvent) => void;
   now?: () => number;
   /** Optional richer sync signals (rate-limit / retry depth / offline); wired in a later increment. */
   snapshotFor?: (connectorId: string, accountId: string) => ConnectorSyncSnapshot | null;
@@ -183,8 +244,18 @@ function mergeModuleStat(into: Map<string, ConnectorModuleStat>, m: ConnectorMod
 export class ConnectorRuntimeSupervisor {
   private readonly deps: ConnectorRuntimeSupervisorDeps;
   private readonly now: () => number;
-  private readonly last = new Map<string, ConnectorRuntimeState>();
-  private readonly historyRing: ConnectorLifecycleEvent[] = [];
+  /**
+   * Last known state per account, WITH the workspace that owned the account
+   * when it was observed.
+   *
+   * The owner is carried here so a removal can still be attributed: by the time
+   * `account_removed` arrives, `connectorStore.remove` has already run and the
+   * authoritative lookup returns null. Taking the owner from the last resolved
+   * account keeps the removal row's owner sourced from the store rather than
+   * from the event — an event is a message, and a message is not authority.
+   */
+  private readonly last = new Map<string, { state: ConnectorRuntimeState; owner: string | null }>();
+  private historyRing: OwnedLifecycleEvent[] = [];
   private snapshotFor?: (connectorId: string, accountId: string) => ConnectorSyncSnapshot | null;
   private serviceSource?: (connectorId: string, grantedScopes: readonly string[]) => ConnectorServiceDescriptor[];
   private readonly onEvent = (e: ConnectorEvent): void => this.handleEvent(e);
@@ -200,7 +271,7 @@ export class ConnectorRuntimeSupervisor {
   prime(): void {
     for (const a of this.deps.listAccounts()) {
       const state = this.computeAccount(a.connectorId, a.id);
-      if (state) this.last.set(this.key(a.connectorId, a.id), state);
+      if (state) this.last.set(this.key(a.connectorId, a.id), { state, owner: a.workspaceId ?? null });
     }
     log.info('Runtime supervisor primed', { accounts: this.last.size });
   }
@@ -246,14 +317,29 @@ export class ConnectorRuntimeSupervisor {
     accountId: string,
     phase: ConnectorLifecyclePhase,
     reason: string | null,
-  ): ConnectorLifecycleEvent | null {
+  ): OwnedLifecycleEvent | null {
+    /**
+     * THE AUTHORITATIVE LOOKUP IS THE FIRST STEP, NOT THE LAST.
+     *
+     * `getAccount` is `connectorStore.get`, which resolves an id only inside the
+     * caller's workspace and returns the account's own `workspaceId`. So the
+     * owner of this row is read from the account the transition is ABOUT —
+     * never from the connector id that arrived on the event, and never from
+     * "whichever workspace is active when somebody reads it later".
+     */
+    const account = this.deps.getAccount(connectorId, accountId);
     const to = this.computeAccount(connectorId, accountId);
-    if (!to) return null;
+    if (!account || !to) return null;
     const k = this.key(connectorId, accountId);
-    const from = this.last.get(k) ?? 'disconnected';
-    if (from === to) return null;
-    this.last.set(k, to);
-    const evt: ConnectorLifecycleEvent = {
+    const from = this.last.get(k)?.state ?? 'disconnected';
+    const owner = account.workspaceId ?? null;
+    if (from === to) {
+      // Still worth remembering the owner: the removal path reads it.
+      this.last.set(k, { state: to, owner });
+      return null;
+    }
+    this.last.set(k, { state: to, owner });
+    const evt: OwnedLifecycleEvent = {
       connectorId,
       accountId,
       phase,
@@ -261,20 +347,52 @@ export class ConnectorRuntimeSupervisor {
       to,
       reason,
       at: new Date(this.now()).toISOString(),
+      workspaceId: owner,
     };
-    this.historyRing.push(evt);
-    if (this.historyRing.length > HISTORY_CAP) this.historyRing.splice(0, this.historyRing.length - HISTORY_CAP);
+    this.remember(evt);
     this.deps.broadcast(evt);
     return evt;
+  }
+
+  /**
+   * Append a transition and evict the OWNER'S oldest beyond the cap.
+   * P13C ROUND 9 — FINDING 12.
+   *
+   * `historyRing.splice(0, length - HISTORY_CAP)` was install-wide and
+   * oldest-first: a workspace whose connectors flapped 500 times evicted another
+   * workspace's transitions — including the `→ disconnected` and
+   * `→ reauth_required` rows the Inspector shows an operator. A filter hides; a
+   * cap deletes, and this one deleted across a boundary every read now respects.
+   */
+  private remember(evt: OwnedLifecycleEvent): void {
+    this.historyRing.push(evt);
+    const mine = this.historyRing.filter((h) => h.workspaceId === evt.workspaceId);
+    if (mine.length <= HISTORY_CAP) return;
+    const doomed = new Set(mine.slice(0, mine.length - HISTORY_CAP));
+    this.historyRing = this.historyRing.filter((h) => !doomed.has(h));
+  }
+
+  /**
+   * The workspace whose lifecycle history is visible, or null.
+   *
+   * `''` is what the bound resolver returns when nothing resolves — a
+   * tenant-level or system background principal, or a cold start before the
+   * workspace file is read — and it denies rather than matching the rows that
+   * also have no owner.
+   */
+  private viewer(): string | null {
+    const id = this.deps.workspaceId();
+    return id === undefined || id === null || id === '' ? null : id;
   }
 
   private handleEvent(e: ConnectorEvent): void {
     if (!e.accountId) return; // connector-level logs carry no account; nothing to project
     if (e.type === 'account_removed') {
       const k = this.key(e.connectorId, e.accountId);
-      const from = this.last.get(k) ?? 'disconnected';
+      const previous = this.last.get(k);
+      const from = previous?.state ?? 'disconnected';
       if (from !== 'disconnected') {
-        const evt: ConnectorLifecycleEvent = {
+        const evt: OwnedLifecycleEvent = {
           connectorId: e.connectorId,
           accountId: e.accountId,
           phase: 'disconnect',
@@ -282,9 +400,17 @@ export class ConnectorRuntimeSupervisor {
           to: 'disconnected',
           reason: e.message,
           at: new Date(this.now()).toISOString(),
+          /**
+           * The owner of the account AS THE STORE LAST RESOLVED IT. The row is
+           * gone from `connectorStore` by now, so there is nothing left to look
+           * up — but this supervisor only ever recorded a state for an account
+           * the workspace-scoped resolver returned, so the remembered owner is
+           * still store-sourced. An account it never saw resolve leaves the row
+           * unowned, and an unowned row is visible to nobody.
+           */
+          workspaceId: previous?.owner ?? null,
         };
-        this.historyRing.push(evt);
-        if (this.historyRing.length > HISTORY_CAP) this.historyRing.splice(0, this.historyRing.length - HISTORY_CAP);
+        this.remember(evt);
         this.deps.broadcast(evt);
       }
       this.last.delete(k);
@@ -309,8 +435,27 @@ export class ConnectorRuntimeSupervisor {
       case 'pause':
       case 'resume': {
         const paused = action === 'pause';
+        /**
+         * P13C ROUND 6 — THE `accountId` BRANCH BYPASSED THE ONLY SCOPED LIST.
+         *
+         * `accountId` arrives from the renderer payload. The `null` branch goes
+         * through `listAccounts()`, which is workspace-filtered; the id branch
+         * went straight to `controls.setPaused` with whatever was sent. Pausing
+         * an account is a SYNC KILL — `isSuppressed` consults the flag inside the
+         * per-workspace fan-out — so a `connectors:manage` holder in one tenant
+         * could silently stop another tenant's GitHub from ever syncing again.
+         *
+         * `deps.getAccount` is `connectorStore.get`, the workspace-scoped
+         * resolver, and it was ALREADY on this object and already used twice in
+         * this file. The same shape was fixed in `m365/executor.ts` this round by
+         * adding `ownsAccount`; the control path was missed because a key that
+         * looks specific (`connectorId::accountId`) reads like a boundary. A KEY
+         * IS NOT AN AUTHORIZATION CHECK.
+         */
         const targets = accountId
-          ? [accountId]
+          ? this.deps.getAccount(connectorId, accountId) !== null
+            ? [accountId]
+            : []
           : this.deps.listAccounts().filter((a) => a.connectorId === connectorId).map((a) => a.id);
         for (const id of targets) {
           await this.deps.controls.setPaused(connectorId, id, paused);
@@ -419,12 +564,20 @@ export class ConnectorRuntimeSupervisor {
     return declared.map((d) => toServiceCapability(d, merged.get(d.id) ?? null, { disabled, scopesKnown }));
   }
 
-  /** The lifecycle transition history (newest first), optionally filtered. */
+  /**
+   * The CALLER'S WORKSPACE'S lifecycle history (newest first), optionally filtered.
+   *
+   * The owner check comes FIRST and is not part of `filter`: the connector and
+   * account ids in `filter` arrive from a renderer request and narrow a set the
+   * caller is already entitled to. A caller with no workspace sees nothing.
+   */
   history(filter?: { connectorId?: string; accountId?: string; limit?: number }): ConnectorLifecycleEvent[] {
-    let out = this.historyRing;
+    const viewer = this.viewer();
+    if (viewer === null) return [];
+    let out = this.historyRing.filter((h) => h.workspaceId === viewer);
     if (filter?.connectorId) out = out.filter((h) => h.connectorId === filter.connectorId);
     if (filter?.accountId) out = out.filter((h) => h.accountId === filter.accountId);
-    const reversed = [...out].reverse();
+    const reversed = out.reverse().map(lifecycleToWire);
     return filter?.limit ? reversed.slice(0, filter.limit) : reversed;
   }
 

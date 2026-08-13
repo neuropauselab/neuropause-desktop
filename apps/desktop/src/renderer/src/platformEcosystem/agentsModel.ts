@@ -174,7 +174,7 @@ const AGENTS_GAPS: readonly OpGap[] = [
 const AGENTS_LINKS: readonly OpLink[] = [
   { label: 'AI Operations', section: 'ai-operations', icon: 'sparkles' },
   { label: 'AI Workforce', section: 'workforce', icon: 'cpu' },
-  { label: 'Workforce Center', section: 'workforce-center', icon: 'checklist' },
+  { label: 'Workforce Admin', section: 'workforce-center', icon: 'checklist' },
 ];
 
 /**

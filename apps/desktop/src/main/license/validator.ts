@@ -13,6 +13,52 @@ import { dirname } from 'node:path';
 import type { LicenseValidationStatus, OrgLicense } from '@neuropause/shared';
 import { evaluateLicense } from '@neuropause/shared';
 import type { LicenseTransport } from './types';
+import { readStoreFile } from '../storage/storeEnvelope';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/** P13C ROUND 9 — F18. The structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'org-license-cache',
+  scope: 'TENANT',
+  persistence: 'file',
+  // Nothing mutates this through a user-facing surface. `refresh` fetches the
+  // authoritative snapshot from the backend for the CALLER'S OWN organization
+  // and overwrites that key; there is no path that authors a license locally.
+  authority: 'SYSTEM',
+  classification: 'CUSTOMER_DERIVED',
+  /**
+   * P13C ROUND 10 — OWNER rather than NONE, and the difference is one line.
+   *
+   * The PERSISTED map has no removal at all. But `refresh` calls
+   * `lastErrors.delete(orgId)` on success, and `lastErrors` is a retained
+   * module-level Map that the gate's scan sees and that `getStatus` reads back
+   * as `lastError`. It is keyed by organization id and the key is the caller's
+   * own resolved org, so the removal reaches exactly one owner's entry and can
+   * reach no other — but "no delete path" was not true, and a retention
+   * declaration that is nearly true is the shape this program keeps finding.
+   */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'SYSTEM',
+  retention:
+    'No cap and no eviction. The file is `{ [orgId]: OrgLicense }` — one row per ' +
+    "organization — and the ONLY write is `data.licenses[orgId] = license`, which replaces that " +
+    "organization's own row and can reach no other key. So there is no removal here that could " +
+    "destroy another tenant's entitlement snapshot. The one removal in the file is " +
+    '`lastErrors.delete(orgId)` on a successful `refresh`: an in-memory, non-persisted diagnostic ' +
+    "map holding the last refresh error per organization, cleared for the CALLER'S OWN key and " +
+    'reachable at no other. The file is in the backup set (`license-status.json` under the ' +
+    '`configuration` domain), so a restore replaces it wholesale.',
+  reason:
+    'WHY TENANT: the store is KEYED BY ORGANIZATION ID and every read goes through ' +
+    '`statusFor(orgId)`, which reads exactly one key. The boundary is the key, not a filter — a ' +
+    'caller that resolves to no organization gets the empty id, which matches nothing. The IPC layer ' +
+    'is the half that makes that true: `license/index.ts` resolves the id from `activeTenantScope()` ' +
+    'and IGNORES the payload id, because both channels are on the PUBLIC allowlist and taking the id ' +
+    'from the request made this an existence oracle for arbitrary organizations (P13C N2). WHAT ' +
+    "DATA: the organization's plan tier, entitled plan, subscription state, seat counts, grace days " +
+    'and period dates — a description of one customer\'s commercial relationship, so CUSTOMER_DERIVED ' +
+    'even though it holds none of their records.',
+});
 
 interface LicenseFileData {
   version: 1;
@@ -60,12 +106,13 @@ export function createLicenseValidator(opts: {
 
   async function ensureLoaded(): Promise<void> {
     if (loaded) return;
-    try {
-      const raw = JSON.parse(await fs.readFile(opts.filePath, 'utf8')) as Partial<LicenseFileData>;
-      data = { version: 1, licenses: raw.licenses ?? {} };
-    } catch {
-      data = emptyData();
-    }
+    // Phase 8 (8.3/8.20): envelope read — the last-known-good entitlement
+    // snapshot is quarantined (preserved) on corruption, never silently reset.
+    const result = await readStoreFile<Partial<LicenseFileData>>(opts.filePath);
+    data =
+      result.state === 'loaded' && result.data
+        ? { version: 1, licenses: result.data.licenses ?? {} }
+        : emptyData();
     loaded = true;
   }
 

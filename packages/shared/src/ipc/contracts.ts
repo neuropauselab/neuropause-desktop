@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { HELP_DOC_IDS } from '../types/helpDocs';
+import { ONBOARDING_STEP_IDS } from '../types/onboarding';
+import { TENANT_AI_MODES } from '../types/aiRouting';
 // Type-only (erased at compile time, so no runtime cycle with ../types).
 import type { ConflictStrategy, SyncEntityType } from '../types/sync';
 
@@ -30,6 +33,19 @@ export const SetThemeSourceRequest = z.object({
 // Empty-payload requests still get a schema so the router is uniform.
 export const EmptyRequest = z.object({}).strict();
 
+/**
+ * P13C F-7 — pre-authentication backend reachability request.
+ *
+ * `.strict()` matters more here than on a typical channel: this is the only
+ * health channel reachable without authentication, so an unknown key must be a
+ * rejection rather than something the handler quietly ignores. `refresh` is the
+ * login screen's Retry button asking to bypass the probe throttle.
+ */
+export const BackendReachabilityRequest = z
+  .object({ refresh: z.boolean().optional() })
+  .strict();
+export type BackendReachabilityRequest = z.infer<typeof BackendReachabilityRequest>;
+
 // V4.2 — runtime launch-at-login toggle.
 export const SetLoginAtStartupRequest = z.object({ enabled: z.boolean() }).strict();
 
@@ -51,7 +67,9 @@ export const WorkspaceCtxSnapshotSchema = z
     activeTabId: z.string().max(128).nullable(),
   })
   .strict();
-export const WorkspaceCtxBootstrapRequest = z.object({ legacySnapshot: z.unknown().optional() }).strict();
+export const WorkspaceCtxBootstrapRequest = z
+  .object({ legacySnapshot: z.unknown().optional() })
+  .strict();
 export const WorkspaceCtxCreateRequest = z
   .object({
     name: z.string().min(1).max(60),
@@ -744,7 +762,14 @@ export type EnterpriseTimelineReplayRequest = z.infer<typeof EnterpriseTimelineR
 /* ──────────────────── Daily Intelligence + Recommendations ───────────────── */
 
 // Phase 6 Stage 5 — 'afternoon' added additively (the Afternoon Update).
-const BriefingPeriodSchema = z.enum(['morning', 'afternoon', 'evening', 'weekly', 'monthly', 'quarterly']);
+const BriefingPeriodSchema = z.enum([
+  'morning',
+  'afternoon',
+  'evening',
+  'weekly',
+  'monthly',
+  'quarterly',
+]);
 const RecommendationKindSchema = z.enum([
   'next_task',
   'stale_task',
@@ -886,7 +911,13 @@ export const NotificationsPrefsSetRequest = z.object({
   enabled: z.boolean().optional(),
   doNotDisturb: z.boolean().optional(),
   minPriority: IntelligencePrioritySchema.optional(),
-  timezoneOffsetMinutes: z.number().int().min(-14 * 60).max(14 * 60).nullable().optional(),
+  timezoneOffsetMinutes: z
+    .number()
+    .int()
+    .min(-14 * 60)
+    .max(14 * 60)
+    .nullable()
+    .optional(),
   morningBriefMinutes: z.number().int().min(0).max(1439).optional(),
   afternoonUpdateMinutes: z.number().int().min(0).max(1439).optional(),
   eveningSummaryMinutes: z.number().int().min(0).max(1439).optional(),
@@ -894,6 +925,18 @@ export const NotificationsPrefsSetRequest = z.object({
   mutedSources: z.array(z.string().trim().min(1).max(80)).max(50).optional(),
 });
 export type NotificationsPrefsSetRequest = z.infer<typeof NotificationsPrefsSetRequest>;
+
+/* ───────── Companion (mobile) gateway management (Mobile M1-03) ───────── */
+
+/** Turn the LAN companion gateway on or off. */
+export const CompanionEnableRequest = z.object({ enabled: z.boolean() }).strict();
+export type CompanionEnableRequest = z.infer<typeof CompanionEnableRequest>;
+
+/** Revoke (unpair) a specific device by its registry id. */
+export const CompanionRevokeRequest = z
+  .object({ deviceId: z.string().trim().min(1).max(200) })
+  .strict();
+export type CompanionRevokeRequest = z.infer<typeof CompanionRevokeRequest>;
 
 /* ────────────────────────────────── Traces ──────────────────────────────── */
 
@@ -1015,12 +1058,32 @@ export type WorkforceWorkflowCheckpointRequest = z.infer<typeof WorkforceWorkflo
 
 // ── P8.5 — Installable Workers ──
 const WorkerPackageRoleSchema = z.enum([
-  'founder', 'research', 'engineering', 'marketing', 'sales', 'finance', 'legal', 'operations', 'support',
-  'executive', 'infrastructure', 'hr', 'procurement',
+  'founder',
+  'research',
+  'engineering',
+  'marketing',
+  'sales',
+  'finance',
+  'legal',
+  'operations',
+  'support',
+  'executive',
+  'infrastructure',
+  'hr',
+  'procurement',
 ]);
 const WorkerPackageScopeSchema = z.enum([
-  'read:entities', 'read:graph', 'read:timeline', 'read:memory', 'read:health', 'read:connectors',
-  'write:memory', 'write:reminder', 'propose:draft', 'propose:message', 'execute:action',
+  'read:entities',
+  'read:graph',
+  'read:timeline',
+  'read:memory',
+  'read:health',
+  'read:connectors',
+  'write:memory',
+  'write:reminder',
+  'propose:draft',
+  'propose:message',
+  'execute:action',
 ]);
 const WorkerSkillSpecSchema = z.object({
   kind: z.enum(['advisory', 'draft', 'note', 'mail', 'infra']),
@@ -1063,8 +1126,16 @@ export type WorkforceInstallActionRequest = z.infer<typeof WorkforceInstallActio
 
 // ── P9 — Enterprise Marketplace ──
 const MarketplacePackageTypeSchema = z.enum([
-  'worker', 'connector', 'template', 'workflow_pack', 'knowledge_pack',
-  'automation_pack', 'dashboard_pack', 'policy_pack', 'blueprint', 'prompt_pack',
+  'worker',
+  'connector',
+  'template',
+  'workflow_pack',
+  'knowledge_pack',
+  'automation_pack',
+  'dashboard_pack',
+  'policy_pack',
+  'blueprint',
+  'prompt_pack',
 ]);
 const ReleaseChannelSchema = z.enum(['stable', 'beta', 'canary', 'lts']);
 const PublisherTierSchema = z.enum(['unverified', 'verified', 'trusted', 'official']);
@@ -1101,11 +1172,27 @@ export type MarketplaceInstallRequest = z.infer<typeof MarketplaceInstallRequest
 
 // P8 — delegate a goal's task graph across the worker roster (read-only planning).
 const WorkerRoleSchema = z.enum([
-  'founder', 'research', 'engineering', 'marketing', 'sales', 'finance', 'legal', 'operations', 'support',
+  'founder',
+  'research',
+  'engineering',
+  'marketing',
+  'sales',
+  'finance',
+  'legal',
+  'operations',
+  'support',
 ]);
 const WorkerScopeSchema = z.enum([
-  'read:entities', 'read:graph', 'read:timeline', 'read:memory', 'read:health', 'read:connectors',
-  'write:memory', 'write:reminder', 'propose:draft', 'propose:message',
+  'read:entities',
+  'read:graph',
+  'read:timeline',
+  'read:memory',
+  'read:health',
+  'read:connectors',
+  'write:memory',
+  'write:reminder',
+  'propose:draft',
+  'propose:message',
 ]);
 export const WorkforceDelegateRequest = z.object({
   id: z.string().trim().min(1).max(128),
@@ -1236,6 +1323,24 @@ export const EnterpriseWorkspaceCreateRequest = z.object({
 });
 export const EnterpriseWorkspaceSwitchRequest = z.object({ id: EntId });
 
+/**
+ * P13C Part 3 — multi-organization.
+ *
+ * Note what the CREATE request does NOT contain: an owner, a member list, a
+ * role, or an id. The creator becomes the owner because they are the session,
+ * and the id is generated server-side. Every one of those fields, if accepted,
+ * would be a caller-supplied answer to an authorization question — which is the
+ * shape `EnterpriseWorkspaceCreateRequest.organizationId` had before P11
+ * demoted it to an assertion.
+ */
+export const EnterpriseOrganizationCreateRequest = z.object({
+  name: EntName,
+  description: z.string().trim().max(400).optional(),
+  /** The first workspace's name. Defaults server-side when absent. */
+  workspaceName: EntName.optional(),
+});
+export const EnterpriseOrganizationSwitchRequest = z.object({ id: EntId });
+
 export const EnterpriseGraphNeighborsRequest = z.object({ id: EntId });
 
 export const EnterpriseGovernanceSetChainRequest = z.object({ id: EntId, enabled: z.boolean() });
@@ -1280,8 +1385,19 @@ export const EnterpriseApiRequestRequest = z
 /* ══════════════════ Enterprise Webhooks (P3.0, Increment 4) ═══════════ */
 
 const WebhookCategory = z.enum([
-  'application', 'runtime', 'plugin', 'permission', 'download', 'update', 'session',
-  'diagnostics', 'connector', 'knowledge', 'automation', 'enterprise', 'system',
+  'application',
+  'runtime',
+  'plugin',
+  'permission',
+  'download',
+  'update',
+  'session',
+  'diagnostics',
+  'connector',
+  'knowledge',
+  'automation',
+  'enterprise',
+  'system',
 ]);
 
 export const WebhookCreateRequest = z
@@ -1321,16 +1437,36 @@ export const EnterpriseContextRequest = z
 const EntTab = z.string().trim().min(1).max(64);
 const EntQuery = z.string().trim().max(256).optional();
 export const EnterprisePersonalizationFavoriteRequest = z
-  .object({ id: EntId, kind: z.string().trim().max(64).optional(), label: z.string().trim().max(200).optional(), tab: EntTab, query: EntQuery })
+  .object({
+    id: EntId,
+    kind: z.string().trim().max(64).optional(),
+    label: z.string().trim().max(200).optional(),
+    tab: EntTab,
+    query: EntQuery,
+  })
   .strict();
 export const EnterprisePersonalizationRecentRequest = z
-  .object({ id: EntId, kind: z.string().trim().max(64).optional(), label: z.string().trim().max(200).optional(), tab: EntTab, query: EntQuery })
+  .object({
+    id: EntId,
+    kind: z.string().trim().max(64).optional(),
+    label: z.string().trim().max(200).optional(),
+    tab: EntTab,
+    query: EntQuery,
+  })
   .strict();
 export const EnterprisePersonalizationSaveViewRequest = z
-  .object({ id: EntId.optional(), label: EntName, tab: EntTab, query: EntQuery, filters: z.string().max(8192).optional() })
+  .object({
+    id: EntId.optional(),
+    label: EntName,
+    tab: EntTab,
+    query: EntQuery,
+    filters: z.string().max(8192).optional(),
+  })
   .strict();
 export const EnterprisePersonalizationDeleteViewRequest = z.object({ id: EntId }).strict();
-export const EnterprisePersonalizationRenameViewRequest = z.object({ id: EntId, label: EntName }).strict();
+export const EnterprisePersonalizationRenameViewRequest = z
+  .object({ id: EntId, label: EntName })
+  .strict();
 
 export type EnterpriseOrgCreateUnitRequest = z.infer<typeof EnterpriseOrgCreateUnitRequest>;
 export type EnterpriseOrgUpdateUnitRequest = z.infer<typeof EnterpriseOrgUpdateUnitRequest>;
@@ -1343,6 +1479,12 @@ export type EnterpriseOrgUpdateRoleRequest = z.infer<typeof EnterpriseOrgUpdateR
 export type EnterpriseOrgDeleteRoleRequest = z.infer<typeof EnterpriseOrgDeleteRoleRequest>;
 export type EnterpriseWorkspaceCreateRequest = z.infer<typeof EnterpriseWorkspaceCreateRequest>;
 export type EnterpriseWorkspaceSwitchRequest = z.infer<typeof EnterpriseWorkspaceSwitchRequest>;
+export type EnterpriseOrganizationCreateRequest = z.infer<
+  typeof EnterpriseOrganizationCreateRequest
+>;
+export type EnterpriseOrganizationSwitchRequest = z.infer<
+  typeof EnterpriseOrganizationSwitchRequest
+>;
 export type EnterpriseGraphNeighborsRequest = z.infer<typeof EnterpriseGraphNeighborsRequest>;
 export type EnterpriseProcessExploreRequest = z.infer<typeof EnterpriseProcessExploreRequest>;
 export type EnterpriseProcessCaseRequest = z.infer<typeof EnterpriseProcessCaseRequest>;
@@ -1353,11 +1495,21 @@ export type EnterpriseGovernanceSetChainRequest = z.infer<
 >;
 export type EnterpriseGovernanceSetRuleRequest = z.infer<typeof EnterpriseGovernanceSetRuleRequest>;
 export type EnterpriseGovernanceAuditRequest = z.infer<typeof EnterpriseGovernanceAuditRequest>;
-export type EnterprisePersonalizationFavoriteRequest = z.infer<typeof EnterprisePersonalizationFavoriteRequest>;
-export type EnterprisePersonalizationRecentRequest = z.infer<typeof EnterprisePersonalizationRecentRequest>;
-export type EnterprisePersonalizationSaveViewRequest = z.infer<typeof EnterprisePersonalizationSaveViewRequest>;
-export type EnterprisePersonalizationDeleteViewRequest = z.infer<typeof EnterprisePersonalizationDeleteViewRequest>;
-export type EnterprisePersonalizationRenameViewRequest = z.infer<typeof EnterprisePersonalizationRenameViewRequest>;
+export type EnterprisePersonalizationFavoriteRequest = z.infer<
+  typeof EnterprisePersonalizationFavoriteRequest
+>;
+export type EnterprisePersonalizationRecentRequest = z.infer<
+  typeof EnterprisePersonalizationRecentRequest
+>;
+export type EnterprisePersonalizationSaveViewRequest = z.infer<
+  typeof EnterprisePersonalizationSaveViewRequest
+>;
+export type EnterprisePersonalizationDeleteViewRequest = z.infer<
+  typeof EnterprisePersonalizationDeleteViewRequest
+>;
+export type EnterprisePersonalizationRenameViewRequest = z.infer<
+  typeof EnterprisePersonalizationRenameViewRequest
+>;
 
 /* ══════════════════ Enterprise Module Framework (ERP foundation) ═══════════ */
 
@@ -1404,13 +1556,71 @@ export const ModuleSetStatusRequest = z
   .object({ moduleId: ModuleId, id: EntId, status: RecordStatus })
   .strict();
 
-export const ModuleDeleteRequest = z.object({ moduleId: ModuleId, id: EntId }).strict();
+export const ModuleDeleteRequest = z
+  .object({
+    moduleId: ModuleId,
+    id: EntId,
+    /**
+     * Acknowledge a HIGH RISK assessment and delete anyway. Absent = the
+     * deterministic dependency assessment gates the delete; a linked record
+     * refuses without this flag, returning the assessment instead.
+     */
+    force: z.boolean().optional(),
+  })
+  .strict();
 
 export const ModuleSummarizeRequest = z.object({ moduleId: ModuleId, id: EntId }).strict();
 
 export const ModuleActionRequest = z
   .object({ moduleId: ModuleId, id: EntId, action: z.string().trim().min(1).max(64) })
   .strict();
+
+/* ── ERP document layer: lines + approval ──────────────────────────────────
+ * These are the requests for engines that already existed but had no channel.
+ * Bounds are deliberate: MAX_LINES_PER_DOCUMENT is enforced again in the line
+ * store, but a payload cap belongs at the boundary so a malformed renderer
+ * cannot make the main process do the work before refusing it. */
+
+export const ModuleLinesRequest = z.object({ moduleId: ModuleId, id: EntId }).strict();
+export type ModuleLinesRequest = z.infer<typeof ModuleLinesRequest>;
+
+const DocumentLineInput = z
+  .object({
+    productId: z.string().trim().max(120).nullable().optional(),
+    description: z.string().trim().max(400).optional(),
+    quantity: z.number().finite(),
+    unit: z.string().trim().max(24).nullable().optional(),
+    unitPrice: z.number().finite().optional(),
+    discountPercent: z.number().finite().nullable().optional(),
+    discountAmount: z.number().finite().nullable().optional(),
+    taxRatePercent: z.number().finite().nullable().optional(),
+    currency: z.string().trim().min(3).max(3).optional(),
+    accountId: z.string().trim().max(120).nullable().optional(),
+    warehouseId: z.string().trim().max(120).nullable().optional(),
+    projectId: z.string().trim().max(120).nullable().optional(),
+    costCenterId: z.string().trim().max(120).nullable().optional(),
+    batchId: z.string().trim().max(120).nullable().optional(),
+  })
+  .strict();
+
+export const ModuleSetLinesRequest = z
+  .object({ moduleId: ModuleId, id: EntId, lines: z.array(DocumentLineInput).max(500) })
+  .strict();
+export type ModuleSetLinesRequest = z.infer<typeof ModuleSetLinesRequest>;
+
+export const ModuleApprovalRequest = z.object({ moduleId: ModuleId, id: EntId }).strict();
+export type ModuleApprovalRequest = z.infer<typeof ModuleApprovalRequest>;
+
+export const ModuleApproveRequest = z
+  .object({
+    moduleId: ModuleId,
+    id: EntId,
+    stepId: z.string().trim().min(1).max(80),
+    decision: z.enum(['approved', 'rejected']),
+    note: z.string().trim().max(400).optional(),
+  })
+  .strict();
+export type ModuleApproveRequest = z.infer<typeof ModuleApproveRequest>;
 
 export const ModuleSearchRequest = z
   .object({
@@ -1517,7 +1727,9 @@ export const EcosystemOAuthTokenRequest = z
 export type EcosystemOAuthTokenRequest = z.infer<typeof EcosystemOAuthTokenRequest>;
 
 /** P3.0 — revoke a previously-issued access token by its jti. */
-export const EcosystemOAuthRevokeTokenRequest = z.object({ jti: z.string().trim().min(1).max(128) }).strict();
+export const EcosystemOAuthRevokeTokenRequest = z
+  .object({ jti: z.string().trim().min(1).max(128) })
+  .strict();
 export type EcosystemOAuthRevokeTokenRequest = z.infer<typeof EcosystemOAuthRevokeTokenRequest>;
 
 export const EcosystemUsageAnalyticsRequest = z.object({
@@ -1867,8 +2079,30 @@ const FedRegionZ = z.enum([
 ]);
 const BackupScopeZ = z.enum(['full', 'incremental']);
 
+/**
+ * P13C ROUND 12 — M-11. THE TARGET IS AN ID, NOT A DISPLAY NAME.
+ *
+ * This carried `name`, and `inviteOrg` turned it into an organization id by
+ * SLUGIFYING it: `org-${slug(name)}`. A display name is not an identifier and
+ * is certainly not an authority — anyone could address any organization by
+ * typing its name. The codebase said so itself, in
+ * `tenancy/migrationInventory.ts`, since Round 4: *"`inviteOrg` derives the
+ * target organization id from a display name … real federation between two
+ * UI-created organizations is not currently expressible."* Four rounds read
+ * that sentence and shipped.
+ *
+ * Real ids are `org_<uuid>` (see `orgStore`), so the minted `org-<slug>` space
+ * could never intersect a genuine organization — with exactly one exception,
+ * the seeded `org-default`, which is the install's primary tenant and the one
+ * worth attacking. Duplicate names collapsed onto one id; renames orphaned
+ * invitations; deletions left rows that would go live again if the id were
+ * reissued.
+ *
+ * `toOrg` matches `FedSetTrustRequest.peerOrg`, which has addressed peers by id
+ * all along — the convention already existed in this file.
+ */
 export const FedInviteOrgRequest = z.object({
-  name: z.string().min(1).max(120),
+  toOrg: FedId,
   trustLevel: TrustLevelZ,
   message: z.string().max(500).optional(),
 });
@@ -1947,6 +2181,10 @@ export const FedAddPolicyRequest = z.object({
 export type FedAddPolicyRequest = z.infer<typeof FedAddPolicyRequest>;
 
 export const FedSetPolicyEnabledRequest = z.object({ id: FedId, enabled: z.boolean() });
+
+/** P13C Round 5 — F6. Resolving one unattributed legacy governance policy. */
+export const FedPolicyMigrationRequest = z.object({ id: z.string().min(1).max(128) });
+export type FedPolicyMigrationRequest = z.infer<typeof FedPolicyMigrationRequest>;
 export type FedSetPolicyEnabledRequest = z.infer<typeof FedSetPolicyEnabledRequest>;
 
 export const FedResolveApprovalRequest = z.object({ id: FedId, approve: z.boolean() });
@@ -1969,7 +2207,12 @@ export type FedRunValidationRequest = z.infer<typeof FedRunValidationRequest>;
 
 /* ───────────────────────── P10 — Federation Platform contracts ───────────── */
 
-export const FederationSearchKindSchema = z.enum(['organization', 'artifact', 'policy', 'shared_resource']);
+export const FederationSearchKindSchema = z.enum([
+  'organization',
+  'artifact',
+  'policy',
+  'shared_resource',
+]);
 export const FederationSearchRequest = z.object({
   text: z.string().trim().max(200),
   kinds: z.array(FederationSearchKindSchema).max(4).optional(),
@@ -1981,6 +2224,9 @@ export type FederationSearchRequest = z.infer<typeof FederationSearchRequest>;
 
 export const UpdateChannelSchema = z.enum(['stable', 'beta', 'internal']);
 export type UpdateChannelName = z.infer<typeof UpdateChannelSchema>;
+
+export const HelpOpenDocRequest = z.object({ doc: z.enum(HELP_DOC_IDS) });
+export type HelpOpenDocRequest = z.infer<typeof HelpOpenDocRequest>;
 
 export const UpdateSetChannelRequest = z.object({ channel: UpdateChannelSchema });
 export type UpdateSetChannelRequest = z.infer<typeof UpdateSetChannelRequest>;
@@ -2021,7 +2267,38 @@ export const BackupCreateRequest = z.object({
 });
 export type BackupCreateRequest = z.infer<typeof BackupCreateRequest>;
 
-const BackupIdSchema = z.string().trim().min(1).max(128);
+/**
+ * A BACKUP ID IS ONE DIRECTORY NAME. P13C ROUND 10 — NEW-M6.
+ *
+ * This was `z.string().trim().min(1).max(128)` — no charset — and every consumer
+ * fed it straight to `join(backupsDir, id)`. `{id:'../../../../tmp/victim'}` was
+ * an accepted payload, and `backup:delete` then called
+ * `fs.rm(dir,{recursive:true,force:true})` on the escaped path; `backup:restore`
+ * read a manifest from it and wrote every entry that manifest named.
+ *
+ * The charset is the rule `sandbox`'s `safeSegment` applies to a path segment,
+ * expressed as a REFUSAL rather than a rewrite: silently sanitising an id would
+ * delete or restore the WRONG backup, which is its own incident. The first
+ * character must be alphanumeric, so `..`, `.` and dotfiles are refused; the
+ * remainder is `[A-Za-z0-9._-]`, so `/`, `\`, `:`, `%` (every percent-encoded
+ * traversal form), whitespace and NUL are refused.
+ *
+ * THIS IS THE OUTER LAYER, NOT THE ENFORCEMENT. `backup/backupManager.ts` repeats
+ * the charset check and additionally resolves the REAL path (`fs.realpath`) and
+ * requires it to be contained under the backups directory, because a schema
+ * guards only the callers that arrive through this schema and cannot see a
+ * symlinked directory at all.
+ */
+const BackupIdSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(128)
+  .regex(
+    /^[A-Za-z0-9][A-Za-z0-9._-]*$/,
+    'A backup id is a single directory name: it must start with a letter or digit and may ' +
+      'contain only letters, digits, dot, underscore and hyphen.',
+  );
 export const BackupIdRequest = z.object({ id: BackupIdSchema });
 export type BackupIdRequest = z.infer<typeof BackupIdRequest>;
 
@@ -2071,9 +2348,16 @@ export type FlagsClearOverrideRequest = z.infer<typeof FlagsClearOverrideRequest
 export const LicenseOrgRequest = z.object({ orgId: z.string().min(1) });
 export type LicenseOrgRequest = z.infer<typeof LicenseOrgRequest>;
 
-// --- Onboarding ---
+/* --- Onboarding ---
+ * P13C ROUND 17. This enum was written out by hand and omitted `'legal'`, the
+ * step `ONBOARDING_STEPS` puts SECOND — so the wizard sent a value the bridge
+ * refused and onboarding could not be completed on any install. It now consumes
+ * the catalog's own tuple, the same way `HelpOpenDocRequest` consumes
+ * `HELP_DOC_IDS` (imported at the top of this file), so the validator and the
+ * `OnboardingStepId` type cannot drift again: they are one list.
+ */
 export const OnboardingCompleteStepRequest = z.object({
-  step: z.enum(['welcome', 'organization', 'connectors', 'ai_setup', 'pilot']),
+  step: z.enum(ONBOARDING_STEP_IDS),
 });
 export type OnboardingCompleteStepRequest = z.infer<typeof OnboardingCompleteStepRequest>;
 
@@ -2119,7 +2403,15 @@ export type RecoveryRunRequest = z.infer<typeof RecoveryRunRequest>;
 const SbName = z.string().trim().min(1).max(160);
 const SbText = z.string().trim().max(2000);
 const SbKey = z.string().trim().min(1).max(120);
-const SbStatus = z.enum(['queued', 'running', 'passed', 'failed', 'error', 'cancelled', 'timed_out']);
+const SbStatus = z.enum([
+  'queued',
+  'running',
+  'passed',
+  'failed',
+  'error',
+  'cancelled',
+  'timed_out',
+]);
 const SbLabels = z.record(z.string().max(64), z.string().max(512));
 const SbSpec = z.record(z.string().max(120), z.unknown());
 const SbMetadata = z
@@ -2144,7 +2436,12 @@ export const SandboxWorkspaceCreateRequest = z
   .strict();
 export type SandboxWorkspaceCreateRequest = z.infer<typeof SandboxWorkspaceCreateRequest>;
 export const SandboxWorkspaceUpdateRequest = z
-  .object({ id: EntId, name: SbName.optional(), description: SbText.optional(), settings: SbSettings.optional() })
+  .object({
+    id: EntId,
+    name: SbName.optional(),
+    description: SbText.optional(),
+    settings: SbSettings.optional(),
+  })
   .strict();
 export type SandboxWorkspaceUpdateRequest = z.infer<typeof SandboxWorkspaceUpdateRequest>;
 export const SandboxWorkspaceDeleteRequest = z.object({ id: EntId }).strict();
@@ -2152,7 +2449,13 @@ export type SandboxWorkspaceDeleteRequest = z.infer<typeof SandboxWorkspaceDelet
 
 /* Scenario */
 export const SandboxScenarioCreateRequest = z
-  .object({ workspaceId: EntId, key: SbKey, name: SbName, description: SbText.optional(), metadata: SbMetadata.optional() })
+  .object({
+    workspaceId: EntId,
+    key: SbKey,
+    name: SbName,
+    description: SbText.optional(),
+    metadata: SbMetadata.optional(),
+  })
   .strict();
 export type SandboxScenarioCreateRequest = z.infer<typeof SandboxScenarioCreateRequest>;
 export const SandboxScenarioGetRequest = z.object({ id: EntId }).strict();
@@ -2162,15 +2465,24 @@ export const SandboxScenarioListRequest = z
   .strict();
 export type SandboxScenarioListRequest = z.infer<typeof SandboxScenarioListRequest>;
 export const SandboxScenarioUpdateRequest = z
-  .object({ id: EntId, name: SbName.optional(), description: SbText.optional(), metadata: SbMetadata.optional() })
+  .object({
+    id: EntId,
+    name: SbName.optional(),
+    description: SbText.optional(),
+    metadata: SbMetadata.optional(),
+  })
   .strict();
 export type SandboxScenarioUpdateRequest = z.infer<typeof SandboxScenarioUpdateRequest>;
-export const SandboxScenarioArchiveRequest = z.object({ id: EntId, archived: z.boolean() }).strict();
+export const SandboxScenarioArchiveRequest = z
+  .object({ id: EntId, archived: z.boolean() })
+  .strict();
 export type SandboxScenarioArchiveRequest = z.infer<typeof SandboxScenarioArchiveRequest>;
 export const SandboxScenarioVersionCreateRequest = z
   .object({ scenarioId: EntId, spec: SbSpec, changelog: SbText.optional() })
   .strict();
-export type SandboxScenarioVersionCreateRequest = z.infer<typeof SandboxScenarioVersionCreateRequest>;
+export type SandboxScenarioVersionCreateRequest = z.infer<
+  typeof SandboxScenarioVersionCreateRequest
+>;
 export const SandboxScenarioVersionsRequest = z.object({ scenarioId: EntId }).strict();
 export type SandboxScenarioVersionsRequest = z.infer<typeof SandboxScenarioVersionsRequest>;
 
@@ -2238,20 +2550,45 @@ export type SandboxDashboardRequest = z.infer<typeof SandboxDashboardRequest>;
 
 /* ── P4 Validation Experience — thin read/command seams over the S6 subsystem ── */
 const SANDBOX_PIPELINE_KINDS = [
-  'quick', 'smoke', 'regression', 'performance', 'security', 'enterprise', 'connector',
-  'plugin', 'sdk', 'cli', 'desktop', 'release-candidate', 'certification',
+  'quick',
+  'smoke',
+  'regression',
+  'performance',
+  'security',
+  'enterprise',
+  'connector',
+  'plugin',
+  'sdk',
+  'cli',
+  'desktop',
+  'release-candidate',
+  'certification',
 ] as const;
 const SANDBOX_TRIGGER_KINDS = [
-  'manual', 'scheduled', 'nightly', 'weekly', 'pre-release', 'post-upgrade', 'regression', 'certification',
+  'manual',
+  'scheduled',
+  'nightly',
+  'weekly',
+  'pre-release',
+  'post-upgrade',
+  'regression',
+  'certification',
 ] as const;
 export const SandboxValidationRunRequest = z
-  .object({ pipeline: z.enum(SANDBOX_PIPELINE_KINDS), trigger: z.enum(SANDBOX_TRIGGER_KINDS).optional() })
+  .object({
+    pipeline: z.enum(SANDBOX_PIPELINE_KINDS),
+    trigger: z.enum(SANDBOX_TRIGGER_KINDS).optional(),
+  })
   .strict();
 export type SandboxValidationRunRequest = z.infer<typeof SandboxValidationRunRequest>;
 export const SandboxValidationRunGetRequest = z.object({ runId: EntId }).strict();
 export type SandboxValidationRunGetRequest = z.infer<typeof SandboxValidationRunGetRequest>;
-export const SandboxValidationScheduleSetRequest = z.object({ id: EntId, enabled: z.boolean() }).strict();
-export type SandboxValidationScheduleSetRequest = z.infer<typeof SandboxValidationScheduleSetRequest>;
+export const SandboxValidationScheduleSetRequest = z
+  .object({ id: EntId, enabled: z.boolean() })
+  .strict();
+export type SandboxValidationScheduleSetRequest = z.infer<
+  typeof SandboxValidationScheduleSetRequest
+>;
 
 // P6 — Cloud & Infrastructure Control Plane. Reads take no args (EmptyRequest); the graph/neighbors reads
 // take an optional platform / resource filter; discovery is a scoped manage op.
@@ -2296,7 +2633,10 @@ export type InfraSearchRequest = z.infer<typeof InfraSearchRequest>;
 export const EnterpriseIntelChangeImpactRequest = z.object({ nodeId: z.string().min(1) }).strict();
 export type EnterpriseIntelChangeImpactRequest = z.infer<typeof EnterpriseIntelChangeImpactRequest>;
 export const EnterpriseIntelRootCauseRequest = z
-  .object({ targetResourceId: z.string().min(1).optional(), windowMs: z.number().int().positive().max(2_592_000_000).optional() })
+  .object({
+    targetResourceId: z.string().min(1).optional(),
+    windowMs: z.number().int().positive().max(2_592_000_000).optional(),
+  })
   .strict();
 export type EnterpriseIntelRootCauseRequest = z.infer<typeof EnterpriseIntelRootCauseRequest>;
 
@@ -2323,9 +2663,7 @@ export type KbInventoryRequest = z.infer<typeof KbInventoryRequest>;
  */
 export const KbMatrixRequest = z.object({}).strict();
 export type KbMatrixRequest = z.infer<typeof KbMatrixRequest>;
-export const KbImpactRequest = z
-  .object({ assetId: z.string().trim().min(1).max(256) })
-  .strict();
+export const KbImpactRequest = z.object({ assetId: z.string().trim().min(1).max(256) }).strict();
 export type KbImpactRequest = z.infer<typeof KbImpactRequest>;
 export const KbLineageRequest = z
   .object({ decisionId: z.string().trim().min(1).max(128).optional() })
@@ -2339,7 +2677,677 @@ export const ApPlaybooksRequest = z
   .object({ id: z.string().trim().min(1).max(128).optional() })
   .strict();
 export type ApPlaybooksRequest = z.infer<typeof ApPlaybooksRequest>;
-export const ApPlanRequest = z
-  .object({ playbookId: z.string().trim().min(1).max(128) })
-  .strict();
+export const ApPlanRequest = z.object({ playbookId: z.string().trim().min(1).max(128) }).strict();
 export type ApPlanRequest = z.infer<typeof ApPlanRequest>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 6 — Universal Enterprise Data Plane (dp:* cluster).
+//
+// File bytes cross IPC as base64. The renderer never sends a filesystem path:
+// the main process must not be talked into reading an arbitrary location by an
+// untrusted caller, so the caller supplies the CONTENT it already holds. Size is
+// bounded here, before any parsing work is scheduled.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 64 MiB of base64 ≈ 48 MiB of file. Beyond this, ingestion is a batch concern. */
+export const DP_MAX_CONTENT_BASE64 = 64 * 1024 * 1024;
+
+const DpFileName = z.string().trim().min(1).max(400);
+const DpContentBase64 = z.string().max(DP_MAX_CONTENT_BASE64);
+const DpPlanId = z.string().trim().min(1).max(128);
+
+export const DataPlaneInspectRequest = z
+  .object({ filename: DpFileName, contentBase64: DpContentBase64 })
+  .strict();
+export type DataPlaneInspectRequest = z.infer<typeof DataPlaneInspectRequest>;
+
+export const DataPlaneAnalyzeRequest = z
+  .object({ filename: DpFileName, contentBase64: DpContentBase64 })
+  .strict();
+export type DataPlaneAnalyzeRequest = z.infer<typeof DataPlaneAnalyzeRequest>;
+
+export const DataPlanePlanRequest = z.object({ planId: DpPlanId }).strict();
+export type DataPlanePlanRequest = z.infer<typeof DataPlanePlanRequest>;
+
+/**
+ * Execute an approved plan. `approvals` is explicit and per-table: an omitted
+ * table is NOT approved. `reason` is retained on the audit record for
+ * high-risk approvals.
+ */
+export const DataPlaneImportRequest = z
+  .object({
+    planId: DpPlanId,
+    approvals: z
+      .array(
+        z
+          .object({
+            tableName: z.string().trim().min(1).max(200),
+            approved: z.boolean(),
+            skipRows: z.array(z.number().int().min(0)).max(50_000).optional(),
+            /**
+             * Per-row decisions the reviewer made in the preview.
+             *
+             * `update` replaces the matched record's mapped fields — the only
+             * way an import may touch an existing record, and only ever a row
+             * at a time after the reviewer has seen what differs. `create`
+             * overrides the default skip on a row that matched something.
+             * Rows not named here keep whatever the plan decided.
+             */
+            rowActions: z
+              .array(
+                z
+                  .object({
+                    rowIndex: z.number().int().min(0),
+                    action: z.enum(['create', 'update', 'skip']),
+                    /**
+                     * The record the reviewer was looking at when they chose
+                     * `update`. The import re-resolves the match against the
+                     * destination as it is NOW — correct, because acting on a
+                     * stale match is its own bug — but that means the target
+                     * can move between the review and the click. Carrying the
+                     * id makes the import refuse rather than overwrite a
+                     * record nobody approved.
+                     */
+                    expectRecordId: z.string().trim().max(120).optional(),
+                  })
+                  .strict(),
+              )
+              .max(50_000)
+              .optional(),
+          })
+          .strict(),
+      )
+      .max(200),
+    reason: z.string().trim().max(500).optional(),
+  })
+  .strict();
+export type DataPlaneImportRequest = z.infer<typeof DataPlaneImportRequest>;
+
+export const DataPlaneHistoryRequest = z
+  .object({ limit: z.number().int().min(1).max(200).optional() })
+  .strict();
+export type DataPlaneHistoryRequest = z.infer<typeof DataPlaneHistoryRequest>;
+
+export const DataPlaneRunRequest = z.object({ planId: DpPlanId }).strict();
+export type DataPlaneRunRequest = z.infer<typeof DataPlaneRunRequest>;
+
+export const DataPlaneProvenanceRequest = z
+  .object({ recordId: z.string().trim().min(1).max(128) })
+  .strict();
+export type DataPlaneProvenanceRequest = z.infer<typeof DataPlaneProvenanceRequest>;
+
+export const DataPlaneMappingsRequest = z
+  .object({ signature: z.string().trim().min(1).max(256).optional() })
+  .strict();
+export type DataPlaneMappingsRequest = z.infer<typeof DataPlaneMappingsRequest>;
+
+export const DataPlaneSaveMappingRequest = z
+  .object({
+    signature: z.string().trim().min(1).max(256),
+    entityId: z.string().trim().min(1).max(64),
+    columns: z
+      .array(
+        z
+          .object({
+            header: z.string().trim().min(1).max(200),
+            fieldKey: z.string().trim().min(1).max(64),
+          })
+          .strict(),
+      )
+      .max(200),
+  })
+  .strict();
+export type DataPlaneSaveMappingRequest = z.infer<typeof DataPlaneSaveMappingRequest>;
+
+export const DataPlaneForgetMappingRequest = z
+  .object({ signature: z.string().trim().min(1).max(256) })
+  .strict();
+export type DataPlaneForgetMappingRequest = z.infer<typeof DataPlaneForgetMappingRequest>;
+
+/**
+ * Export a module's records. `includeProvenance` adds the source file/sheet/row
+ * columns, so an exported sheet can be traced back to what produced it.
+ */
+/**
+ * What an export covers.
+ *
+ * Shared verbatim between the plan and the run so the two can never describe
+ * different things — the whole point of previewing an export is that the
+ * preview and the file are computed from one input.
+ *
+ * `recordIds` and `filters` are both bounded. An unbounded id list is a way to
+ * ask for the entire store one id at a time, and an unbounded filter map is a
+ * way to make the scan quadratic.
+ */
+
+/* ── Program 10 — Identity + External Services ─────────────────────────── */
+
+export const IdentityQueueRequest = z
+  .object({ limit: z.number().int().min(1).max(500).optional() })
+  .strict();
+export type IdentityQueueRequest = z.infer<typeof IdentityQueueRequest>;
+
+export const IdentityListRequest = z
+  .object({
+    limit: z.number().int().min(1).max(500).optional(),
+    /** Narrow to the identities of one NeuroPause record. */
+    subjectId: z.string().trim().min(1).max(120).optional(),
+  })
+  .strict();
+export type IdentityListRequest = z.infer<typeof IdentityListRequest>;
+
+export const IdentityConfirmRequest = z
+  .object({
+    matchId: z.string().trim().min(1).max(80),
+    decision: z.enum(['confirm', 'create_new', 'reject']),
+    /**
+     * Required for `confirm` and meaningless otherwise. Validated in the
+     * handler against the OFFERED candidates: a subject id that was never
+     * offered is refused, so this cannot be used to link to an arbitrary
+     * record.
+     */
+    subjectId: z.string().trim().min(1).max(120).optional(),
+  })
+  .strict();
+export type IdentityConfirmRequest = z.infer<typeof IdentityConfirmRequest>;
+
+export const IdentityUnlinkRequest = z
+  .object({
+    identityId: z.string().trim().min(1).max(80),
+    reason: z.string().trim().max(500).optional(),
+  })
+  .strict();
+export type IdentityUnlinkRequest = z.infer<typeof IdentityUnlinkRequest>;
+
+export const IdentityServiceStatusRequest = z
+  .object({
+    serviceId: z.string().trim().min(1).max(120),
+    status: z.enum(['active', 'disabled']),
+  })
+  .strict();
+export type IdentityServiceStatusRequest = z.infer<typeof IdentityServiceStatusRequest>;
+
+/* ── Program 8 — Document Intelligence ─────────────────────────────────── */
+
+const DocumentId = z.string().trim().min(1).max(80);
+
+/**
+ * The document kinds a reviewer may choose.
+ *
+ * `unknown` is deliberately absent: a person correcting a classification is
+ * answering the question, and "I do not know either" is what leaving it alone
+ * already means.
+ */
+export const DocumentKindEnum = z.enum([
+  'invoice',
+  'purchase_order',
+  'receipt',
+  'quote',
+  'contract',
+  'statement',
+  'report',
+  'other',
+]);
+
+export const DocumentListRequest = z
+  .object({
+    search: z.string().trim().max(200).optional(),
+    kind: DocumentKindEnum.optional(),
+    status: z.enum(['stored', 'extracted', 'needs_review', 'unsupported']).optional(),
+    limit: z.number().int().min(1).max(500).optional(),
+  })
+  .strict();
+export type DocumentListRequest = z.infer<typeof DocumentListRequest>;
+
+export const DocumentDetailRequest = z.object({ documentId: DocumentId }).strict();
+export type DocumentDetailRequest = z.infer<typeof DocumentDetailRequest>;
+
+export const DocumentUploadRequest = z
+  .object({
+    filename: z.string().trim().min(1).max(255),
+    /** Bytes, base64. The renderer never supplies a filesystem path. */
+    contentBase64: DpContentBase64,
+    mimeType: z.string().trim().max(200).optional(),
+  })
+  .strict();
+export type DocumentUploadRequest = z.infer<typeof DocumentUploadRequest>;
+
+export const DocumentReclassifyRequest = z
+  .object({
+    documentId: DocumentId,
+    kind: DocumentKindEnum,
+    reason: z.string().trim().max(500).optional(),
+  })
+  .strict();
+export type DocumentReclassifyRequest = z.infer<typeof DocumentReclassifyRequest>;
+
+export const DocumentCorrectRequest = z
+  .object({
+    documentId: DocumentId,
+    fieldKey: z.string().trim().min(1).max(120),
+    value: z.union([z.string().trim().max(500), z.number(), z.null()]),
+    /**
+     * Required, and not merely present — a correction is kept forever next to
+     * what it replaced, and a reason of "." makes the record useless to the
+     * next person reading it.
+     */
+    reason: z.string().trim().min(3).max(500),
+  })
+  .strict();
+export type DocumentCorrectRequest = z.infer<typeof DocumentCorrectRequest>;
+
+export const DocumentLinkRequest = z
+  .object({
+    documentId: DocumentId,
+    moduleId: z.string().trim().min(1).max(128),
+    recordId: z.string().trim().min(1).max(120),
+    relationship: z.string().trim().min(1).max(120),
+    basis: z.string().trim().min(1).max(500),
+  })
+  .strict();
+export type DocumentLinkRequest = z.infer<typeof DocumentLinkRequest>;
+
+export const DocumentDeleteRequest = z.object({ documentId: DocumentId }).strict();
+export type DocumentDeleteRequest = z.infer<typeof DocumentDeleteRequest>;
+
+export const DataPlaneExportScope = z
+  .object({
+    /**
+     * Explicit records. Present for a single-record or multi-select export;
+     * absent means "whatever the filters match".
+     */
+    recordIds: z.array(z.string().trim().min(1).max(120)).max(10_000).optional(),
+    /** Field/value equality filters, exactly as the list view showed them. */
+    filters: z
+      .array(
+        z
+          .object({
+            field: z.string().trim().min(1).max(120),
+            value: z.string().trim().max(200),
+          })
+          .strict(),
+      )
+      .max(20)
+      .optional(),
+    /** Free-text match across the record title and its visible values. */
+    search: z.string().trim().max(200).optional(),
+  })
+  .strict();
+export type DataPlaneExportScope = z.infer<typeof DataPlaneExportScope>;
+
+export const DataPlaneExportPlanRequest = z
+  .object({
+    moduleId: z.string().trim().min(1).max(128),
+    scope: DataPlaneExportScope.optional(),
+    /** Which fields the reviewer has ticked. Absent means "the defaults". */
+    fields: z.array(z.string().trim().min(1).max(120)).max(200).optional(),
+    includeRestricted: z.boolean().optional(),
+  })
+  .strict();
+export type DataPlaneExportPlanRequest = z.infer<typeof DataPlaneExportPlanRequest>;
+
+export const DataPlaneExportRequest = z
+  .object({
+    moduleId: z.string().trim().min(1).max(128),
+    format: z.enum(['csv', 'xlsx', 'json']),
+    includeProvenance: z.boolean().optional(),
+    scope: DataPlaneExportScope.optional(),
+    fields: z.array(z.string().trim().min(1).max(120)).max(200).optional(),
+    /**
+     * A deliberate, attributable request for personal or financial
+     * identifiers. Refused unless the actor administers the module, and named
+     * in both the manifest and the audit line when granted.
+     */
+    includeRestricted: z.boolean().optional(),
+    /**
+     * Write a zip containing the data file and `manifest.json` rather than a
+     * bare data file. The manifest carries no business values.
+     */
+    withManifest: z.boolean().optional(),
+  })
+  .strict();
+export type DataPlaneExportRequest = z.infer<typeof DataPlaneExportRequest>;
+
+/** Reviewer decisions on a parked reference. */
+export const DataPlaneRelationshipDecideRequest = z
+  .object({
+    pendingId: z.string().trim().min(1).max(128),
+    targetRecordId: z.string().trim().min(1).max(128),
+  })
+  .strict();
+export type DataPlaneRelationshipDecideRequest = z.infer<typeof DataPlaneRelationshipDecideRequest>;
+
+export const DataPlaneRelationshipSkipRequest = z
+  .object({ pendingId: z.string().trim().min(1).max(128) })
+  .strict();
+export type DataPlaneRelationshipSkipRequest = z.infer<typeof DataPlaneRelationshipSkipRequest>;
+
+export const DataPlaneRelationshipQueueRequest = z
+  .object({ limit: z.number().int().min(1).max(500).optional() })
+  .strict();
+export type DataPlaneRelationshipQueueRequest = z.infer<typeof DataPlaneRelationshipQueueRequest>;
+
+export const DataPlaneReclassifyRequest = z
+  .object({
+    planId: z.string().trim().min(1).max(80),
+    tableName: z.string().trim().min(1).max(200),
+    /** A canonical entity id. Validated against the live ontology in the handler. */
+    entityId: z.string().trim().min(1).max(80),
+    reason: z.string().trim().max(400).optional(),
+  })
+  .strict();
+export type DataPlaneReclassifyRequest = z.infer<typeof DataPlaneReclassifyRequest>;
+
+export const DataPlanePreviewRequest = z
+  .object({
+    planId: z.string().trim().min(1).max(80),
+    tableName: z.string().trim().min(1).max(200),
+    /** Which rows to look at. */
+    mode: z.enum(['all', 'valid', 'warning', 'invalid', 'duplicate', 'ambiguous']).optional(),
+    search: z.string().trim().max(120).optional(),
+    offset: z.number().int().min(0).max(200_000).optional(),
+    /** Hard-capped: a preview that can return 200,000 rows is not a preview. */
+    limit: z.number().int().min(1).max(100).optional(),
+  })
+  .strict();
+export type DataPlanePreviewRequest = z.infer<typeof DataPlanePreviewRequest>;
+
+export const DataPlaneRelationshipGraphRequest = z
+  .object({ recordId: z.string().trim().min(1).max(128) })
+  .strict();
+export type DataPlaneRelationshipGraphRequest = z.infer<typeof DataPlaneRelationshipGraphRequest>;
+
+/* ── Medical Device Manufacturing Pack ────────────────────────────────────── */
+
+/**
+ * Product search, scoped to the fields the charter names — code, name, family,
+ * category, material. Deliberately NOT routed through the record store's
+ * generic search, which is a substring match over the string form of every
+ * field and would return a product because an unrelated note mentioned "steel".
+ */
+export const MedicalDeviceProductSearchRequest = z
+  .object({
+    query: z.string().trim().max(200).optional(),
+    family: z.string().trim().max(120).optional(),
+    category: z.string().trim().max(120).optional(),
+    material: z.string().trim().max(120).optional(),
+    status: z.enum(['active', 'inactive', 'discontinued']).optional(),
+    limit: z.number().int().min(1).max(500).optional(),
+  })
+  .strict();
+export type MedicalDeviceProductSearchRequest = z.infer<typeof MedicalDeviceProductSearchRequest>;
+
+export const MedicalDeviceProductGetRequest = z
+  .object({ productId: z.string().trim().min(1).max(128) })
+  .strict();
+export type MedicalDeviceProductGetRequest = z.infer<typeof MedicalDeviceProductGetRequest>;
+
+export const MedicalDeviceLotListRequest = z
+  .object({
+    view: z.enum(['all', 'quarantined', 'released', 'blocked', 'expired', 'recalled']).optional(),
+    search: z.string().trim().max(200).optional(),
+    productId: z.string().trim().max(128).optional(),
+    limit: z.number().int().min(1).max(1000).optional(),
+  })
+  .strict();
+export type MedicalDeviceLotListRequest = z.infer<typeof MedicalDeviceLotListRequest>;
+
+export const MedicalDeviceLotGetRequest = z
+  .object({ lotId: z.string().trim().min(1).max(128) })
+  .strict();
+export type MedicalDeviceLotGetRequest = z.infer<typeof MedicalDeviceLotGetRequest>;
+
+/**
+ * Create a lot. `quantity` has no upper bound beyond the numeric guard because
+ * a legitimate raw-material lot can be very large; it is the ARITHMETIC that
+ * protects the record, not an arbitrary ceiling.
+ */
+export const MedicalDeviceLotCreateRequest = z
+  .object({
+    lotNumber: z.string().trim().min(1).max(120),
+    productId: z.string().trim().min(1).max(128),
+    quantity: z.number().finite().positive(),
+    unit: z.string().trim().max(32).optional(),
+    manufactureDate: z.string().trim().max(40).optional(),
+    expiryDate: z.string().trim().max(40).optional(),
+    warehouseId: z.string().trim().max(128).optional(),
+    supplierId: z.string().trim().max(128).optional(),
+    manufacturingOrderId: z.string().trim().max(128).optional(),
+    sourceLotId: z.string().trim().max(128).optional(),
+    notes: z.string().trim().max(2000).optional(),
+  })
+  .strict();
+export type MedicalDeviceLotCreateRequest = z.infer<typeof MedicalDeviceLotCreateRequest>;
+
+export const MedicalDeviceLotTransitionRequest = z
+  .object({
+    lotId: z.string().trim().min(1).max(128),
+    status: z.enum([
+      'created',
+      'quarantined',
+      'released',
+      'blocked',
+      'partially_consumed',
+      'consumed',
+      'exhausted',
+      'expired',
+      'recalled',
+    ]),
+    reason: z.string().trim().max(1000).optional(),
+  })
+  .strict();
+export type MedicalDeviceLotTransitionRequest = z.infer<typeof MedicalDeviceLotTransitionRequest>;
+
+export const MedicalDeviceLotSplitRequest = z
+  .object({
+    lotId: z.string().trim().min(1).max(128),
+    parts: z
+      .array(
+        z
+          .object({
+            lotNumber: z.string().trim().min(1).max(120),
+            quantity: z.number().finite().positive(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(50),
+  })
+  .strict();
+export type MedicalDeviceLotSplitRequest = z.infer<typeof MedicalDeviceLotSplitRequest>;
+
+/**
+ * Merge exists as a channel so the refusal is DISCOVERABLE and carries its
+ * reason. A missing channel would leave a caller assuming the feature was
+ * merely unbuilt; this one answers, every time, with why it will not be.
+ */
+export const MedicalDeviceLotMergeRequest = z
+  .object({ lotIds: z.array(z.string().trim().min(1).max(128)).min(1).max(50) })
+  .strict();
+export type MedicalDeviceLotMergeRequest = z.infer<typeof MedicalDeviceLotMergeRequest>;
+
+export const MedicalDeviceLotConsumeRequest = z
+  .object({
+    lotId: z.string().trim().min(1).max(128),
+    quantity: z.number().finite().positive(),
+    manufacturingOrderId: z.string().trim().max(128).optional(),
+    reason: z.string().trim().max(1000).optional(),
+  })
+  .strict();
+export type MedicalDeviceLotConsumeRequest = z.infer<typeof MedicalDeviceLotConsumeRequest>;
+
+export const MedicalDeviceLotMoveRequest = z
+  .object({
+    lotId: z.string().trim().min(1).max(128),
+    warehouseId: z.string().trim().min(1).max(128),
+  })
+  .strict();
+export type MedicalDeviceLotMoveRequest = z.infer<typeof MedicalDeviceLotMoveRequest>;
+
+export const MedicalDeviceLotShipRequest = z
+  .object({
+    lotId: z.string().trim().min(1).max(128),
+    shipmentId: z.string().trim().min(1).max(128),
+    customerId: z.string().trim().max(128).optional(),
+    orderId: z.string().trim().max(128).optional(),
+    quantity: z.number().finite().positive().optional(),
+  })
+  .strict();
+export type MedicalDeviceLotShipRequest = z.infer<typeof MedicalDeviceLotShipRequest>;
+
+export const MedicalDeviceTraceRequest = z
+  .object({
+    nodeType: z.enum([
+      'lot',
+      'product',
+      'manufacturing_order',
+      'warehouse',
+      'shipment',
+      'customer',
+      'order',
+      'supplier',
+    ]),
+    nodeId: z.string().trim().min(1).max(128),
+    maxDepth: z.number().int().min(1).max(50).optional(),
+  })
+  .strict();
+export type MedicalDeviceTraceRequest = z.infer<typeof MedicalDeviceTraceRequest>;
+
+/* ── Private-First AI experience ──────────────────────────────────────────── */
+
+export const AiSetModeRequest = z
+  .object({ mode: z.enum(['private_first', 'local_only', 'external']) })
+  .strict();
+export type AiSetModeRequest = z.infer<typeof AiSetModeRequest>;
+
+export const AiSetExternalConsentRequest = z.object({ consent: z.boolean() }).strict();
+
+/**
+ * P13C ROUND 17 · D-5. The tenant preference, and the enum is the security
+ * boundary: `TENANT_AI_MODES` omits `'external'`, so an organization cannot
+ * even send a request asking to be elevated. Refusal is unnecessary because
+ * the request is unrepresentable.
+ */
+export const AiPreferenceSetRequest = z.object({ mode: z.enum(TENANT_AI_MODES) }).strict();
+export type AiPreferenceSetRequest = z.infer<typeof AiPreferenceSetRequest>;
+export type AiSetExternalConsentRequest = z.infer<typeof AiSetExternalConsentRequest>;
+
+/**
+ * A first-run decision. Partial on purpose: the experience records each choice
+ * the moment it is made (workspace type when chosen, completion when finished),
+ * so a quit mid-flow loses nothing the user already decided.
+ */
+export const ExperienceProfileSetRequest = z
+  .object({
+    workspaceType: z.enum(['personal', 'professional', 'business']).optional(),
+    state: z.enum(['completed', 'skipped']).optional(),
+    aiModeChosen: z.boolean().optional(),
+    /** Understanding attributes to upsert — provenance-marked, never secret. */
+    attributes: z
+      .array(
+        z
+          .object({
+            key: z.string().trim().min(1).max(80),
+            label: z.string().trim().min(1).max(120),
+            value: z.string().trim().min(1).max(400),
+            status: z.enum(['stated', 'inferred', 'corrected', 'imported', 'connected', 'system_derived']),
+            source: z.string().trim().max(400),
+            updatedAt: z.string().max(40),
+          })
+          .strict(),
+      )
+      .max(40)
+      .optional(),
+    /**
+     * Remove understanding attributes by key. A person must be able to tell
+     * NeuroPause to forget something it believes about them, not only to
+     * overwrite it — an understanding profile you can only add to is a profile
+     * you do not control.
+     */
+    removeKeys: z.array(z.string().trim().min(1).max(80)).max(40).optional(),
+  })
+  .strict();
+export type ExperienceProfileSetRequest = z.infer<typeof ExperienceProfileSetRequest>;
+
+/* ── Decision Records + NeuroPause Hold ────────────────────────────────────── */
+
+export const DecisionRecordListRequest = z
+  .object({ limit: z.number().int().min(1).max(500).optional() })
+  .strict();
+export type DecisionRecordListRequest = z.infer<typeof DecisionRecordListRequest>;
+
+export const DecisionRecordGetRequest = z.object({ id: z.string().trim().min(1).max(80) }).strict();
+export type DecisionRecordGetRequest = z.infer<typeof DecisionRecordGetRequest>;
+
+export const HoldListRequest = z
+  .object({ limit: z.number().int().min(1).max(500).optional() })
+  .strict();
+export type HoldListRequest = z.infer<typeof HoldListRequest>;
+
+export const HoldResolveRequest = z
+  .object({
+    id: z.string().trim().min(1).max(80),
+    outcome: z.enum(['proceeded', 'took_alternative', 'cancelled']),
+    /** What actually happened, in the resolver's own words. */
+    note: z.string().trim().max(400).optional(),
+  })
+  .strict();
+export type HoldResolveRequest = z.infer<typeof HoldResolveRequest>;
+
+/* ── Opportunity Center ────────────────────────────────────────────────────── */
+
+export const OpportunityListRequest = z
+  .object({
+    /**
+     * How far back to look. Optional; the engine's default is stated in the UI
+     * rather than applied silently, so a narrower window is always the user's
+     * choice and never a hidden reason a finding disappeared.
+     */
+    lookbackDays: z.number().int().min(1).max(3650).optional(),
+  })
+  .strict();
+export type OpportunityListRequest = z.infer<typeof OpportunityListRequest>;
+
+export const OpportunitySetStatusRequest = z
+  .object({
+    id: z.string().trim().min(1).max(80),
+    status: z.enum([
+      'new',
+      'investigating',
+      'recommended',
+      'accepted',
+      'rejected',
+      'in_progress',
+      'completed',
+      'measured',
+    ]),
+    note: z.string().trim().max(400).optional(),
+  })
+  .strict();
+export type OpportunitySetStatusRequest = z.infer<typeof OpportunitySetStatusRequest>;
+
+export const OpportunityExecuteRequest = z
+  .object({ id: z.string().trim().min(1).max(80) })
+  .strict();
+export type OpportunityExecuteRequest = z.infer<typeof OpportunityExecuteRequest>;
+
+export const CrossDomainRelatedRequest = z
+  .object({
+    recordId: z.string().trim().min(1).max(120),
+    /**
+     * The record's own module. Supplied rather than inferred from its links,
+     * because a record with NO links has none to infer from — and inferring
+     * left "this record is connected to nothing" indistinguishable from "the
+     * link engine is not running", which are opposite answers.
+     */
+    moduleId: z.string().trim().min(1).max(80),
+    /** Bounded at the schema too, so a huge traversal is unrequestable. */
+    depth: z.number().int().min(1).max(3).optional(),
+  })
+  .strict();
+export type CrossDomainRelatedRequest = z.infer<typeof CrossDomainRelatedRequest>;
+
+export const OutcomeGetRequest = z
+  .object({ opportunityId: z.string().trim().min(1).max(80) })
+  .strict();
+export type OutcomeGetRequest = z.infer<typeof OutcomeGetRequest>;

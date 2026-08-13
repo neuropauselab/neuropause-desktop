@@ -44,5 +44,6 @@ export const routingModule = createRoutingModule(store(ROUTINGS_MODULE_ID));
 export const manufacturingEventModule = createManufacturingEventModule(store(MANUFACTURING_EVENTS_MODULE_ID));
 export const executionModule = createExecutionModule(store(PRODUCTION_EXECUTIONS_MODULE_ID));
 export const qualityModule = createQualityModule(store(QUALITY_INSPECTIONS_MODULE_ID), (q) => runQualityAi(aiEngine, q));
-export const costingModule = createCostingModule(store(PRODUCTION_COSTINGS_MODULE_ID), (c) => runCostingAi(aiEngine, c));
+// Phase 9 — costing validates its production-order reference against the real register.
+export const costingModule = createCostingModule(store(PRODUCTION_COSTINGS_MODULE_ID), (c) => runCostingAi(aiEngine, c), productionOrderModule.store);
 export const scheduleProposalModule = createScheduleProposalModule(store(SCHEDULE_PROPOSALS_MODULE_ID));

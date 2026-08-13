@@ -23,6 +23,8 @@ import {
 
 /** An incoming event the runtime can react to. */
 export interface AutomationEvent {
+  /** P13C Round 2 — the owning tenant, taken from the platform event. */
+  tenantId?: string | null;
   source: AutomationTriggerSource;
   /** For connector/activity events: connector id + event name to match triggers. */
   connectorId?: string;
@@ -96,6 +98,12 @@ export class AutomationRunner {
   constructor(
     private readonly loadActiveRules: () => AutomationRule[],
     private readonly deps: AutomationRunnerDeps,
+    /**
+     * Rules owned by a NAMED tenant. Optional so existing unit tests construct
+     * the runner unchanged; when absent, `dispatch` falls back to the
+     * caller-scoped `loadActiveRules`, which is itself now tenant-filtered.
+     */
+    private readonly rulesForTenant?: (tenantId: string) => AutomationRule[],
   ) {
     this.now = deps.now ?? Date.now;
   }
@@ -166,8 +174,27 @@ export class AutomationRunner {
    * Dispatch an event to all matching active rules, returning every run record.
    * This is the runtime's main entry point for connector/activity/schedule events.
    */
+  /**
+   * P13C Round 2 — H1. RULES ARE SELECTED BY THE EVENT'S TENANT.
+   *
+   * `loadActiveRules()` returned every active rule on the install, so a
+   * platform event raised by tenant A was matched against tenant B's rules and
+   * could execute them — with actions including `save-memory` and
+   * `ai-generate`, which move record data. This is the automation twin of the
+   * webhook fan-out Part 2a closed, and it is closed the same way: the
+   * destination is selected by the EVENT's owner, which Program 13B stamped.
+   *
+   * An event with no tenant matches NOTHING. A rule that fires for an unowned
+   * event would have to be chosen from somebody's set, and there is no honest
+   * choice.
+   */
   async dispatch(event: AutomationEvent): Promise<AutomationRunRecord[]> {
-    const rules = selectRulesForEvent(this.loadActiveRules(), event);
+    const owner = event.tenantId ?? null;
+    const candidates =
+      owner === null || owner === ''
+        ? []
+        : (this.rulesForTenant?.(owner) ?? this.loadActiveRules());
+    const rules = selectRulesForEvent(candidates, event);
     const records: AutomationRunRecord[] = [];
     for (const rule of rules) {
       records.push(await this.runRule(rule, event));

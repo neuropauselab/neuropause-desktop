@@ -36,7 +36,23 @@ function Row({
   );
 }
 
+/**
+ * Opt-in gate: the HUD renders only when VITE_NP_PERF_HUD=1. It was previously
+ * on for every unpackaged run, which put a floating "Performance" panel in
+ * front of ordinary development use; the measurement pipeline (PerfSampler,
+ * perf recorder, diagnostics) is untouched and keeps feeding Operations.
+ */
+const PERF_HUD_ENABLED = import.meta.env.VITE_NP_PERF_HUD === '1';
+
 export function PerformanceOverlay(): JSX.Element | null {
+  // The gate lives in a wrapper so the inner component's hooks stay
+  // unconditional (rules-of-hooks): disabled → nothing mounts at all.
+  if (!PERF_HUD_ENABLED) return null;
+  return <PerformanceHud />;
+}
+
+function PerformanceHud(): JSX.Element | null {
+
   const perf = usePerformance();
   const [open, setOpen] = useState(true);
 

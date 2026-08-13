@@ -24,6 +24,18 @@ import {
   type SavedView,
 } from '@neuropause/shared';
 import { createLogger } from '../../logger';
+import { declareStoreScope } from '../../tenancy/storeScope';
+
+/** P13C ROUND 8 — the structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'enterprise-personalization',
+  scope: 'USER',
+  persistence: 'file',
+  authority: 'USER',
+  classification: 'USER_PREFERENCE',
+  retention: "Dedupe and cap inside one actor's entry; a removal cannot reach another actor.",
+  reason: "byActor is keyed on the signed-in email with NO tenant component — deliberately, because a person's pinned views follow them across organizations.",
+});
 
 const log = createLogger('enterprise-personalization');
 

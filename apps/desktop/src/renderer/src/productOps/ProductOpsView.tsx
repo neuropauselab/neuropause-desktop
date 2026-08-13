@@ -347,7 +347,7 @@ function HealthTab({ d, go }: { d: Data; go: Go }): JSX.Element {
   return (
     <>
       {h && (
-        <OpsPanel title="System health" subtitle="NeuroCore composed snapshot" actions={<DeepLink label="Ops Center" section="opscenter" go={go} />}>
+        <OpsPanel title="System health" subtitle="NeuroCore composed snapshot" actions={<DeepLink label="Operations" section="opscenter" go={go} />}>
           <Grid cols={4}>
             <Stat icon="pulse" label="Health score" tone={healthLevelTone(h.level)} value={Math.round(h.score)} hint={h.level} />
             <Stat icon="clock" label="Uptime" value={formatUptime(h.uptimeMs)} />
@@ -499,7 +499,7 @@ function DeploymentTab({ d }: { d: Data }): JSX.Element {
 function SupportTab({ d, go }: { d: Data; go: Go }): JSX.Element {
   return (
     <>
-      <OpsPanel title="Operational support" subtitle="Diagnostics, recovery, crash capture & feedback" actions={<DeepLink label="Operations" section="operations" go={go} />}>
+      <OpsPanel title="Operational support" subtitle="Diagnostics, recovery, crash capture & feedback" actions={<DeepLink label="Runtime" section="operations" go={go} />}>
         <Grid cols={4}>
           <Stat icon="shield" label="Safe mode" tone={d.safeMode?.enabled ? 'orange' : 'green'} value={d.safeMode?.enabled ? 'Active' : 'Normal'} />
           <Stat icon="database" label="Backups" value={d.backups.length} />
@@ -535,7 +535,7 @@ function MarketplaceTab({ d, go }: { d: Data; go: Go }): JSX.Element {
   const c = d.connectors;
   return (
     <>
-      <OpsPanel title="Marketplace & connectors" subtitle="Governed catalog + the connector registry" actions={<DeepLink label="Marketplace" section="marketplace" go={go} />}>
+      <OpsPanel title="Marketplace & connectors" subtitle="Governed catalog + the connector registry" actions={<DeepLink label="Enterprise Marketplace" section="marketplace" go={go} />}>
         <Grid cols={4}>
           <Stat icon="store" label="Listings" value={d.marketplace.length} />
           <Stat icon="connectors" label="Connectors" value={c?.total ?? '—'} hint={c ? `${c.configured} configured` : undefined} />

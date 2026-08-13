@@ -39,17 +39,36 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
+      # A tag release must ship the version it claims: fail fast when the tag
+      # (e.g. v1.0.0-rc.14) does not equal apps/desktop/package.json "version".
+      # Tags are unique, so this also makes publishing the same app version
+      # twice impossible — the historical rc.2…rc.13 tags all shipped as
+      # "1.0.0-rc.1" because nothing enforced this.
+      - name: Verify tag matches package version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          node -e '
+            const v = require("./apps/desktop/package.json").version;
+            const tag = (process.env.GITHUB_REF_NAME || "").replace(/^v/, "");
+            if (tag !== v) {
+              console.error("Tag " + tag + " does not match package version " + v + " - bump both package.json versions before tagging.");
+              process.exit(1);
+            }
+            console.log("Tag matches package version " + v);
+          '
+
       - name: Install dependencies
         run: npm ci
 
       - name: Typecheck
-        run: npm run typecheck
+        run: npm run typecheck:release
 
       - name: Lint
-        run: npm run lint
+        run: npm run lint:release
 
       - name: Test
-        run: npm test
+        run: npm run test:release
 
       # Package the macOS .dmg + .zip (arm64). The backend URL is baked into
       # build-info.json by generate-build-info.cjs (same mechanism as Windows).
@@ -93,13 +112,50 @@ jobs:
         run: node scripts/verify-release-artifacts.cjs --platform mac
         shell: bash
 
+      # ARTIFACTS FIRST. P13C ROUND 17m.
+      #
+      # This step used to sit BELOW the two publish steps. On 12 Aug the Windows
+      # build packaged and verified successfully, then `scp` to the droplet timed
+      # out and the job died — taking the installer with it. A 23-minute build
+      # produced a correct artifact and delivered nothing, because an unrelated
+      # third-party host was down. The macOS workflow had the same ordering and
+      # therefore the same latent failure; it is corrected here too rather than
+      # left to be discovered by a second lost build.
+      #
+      # The build output is saved BEFORE anything touches the network.
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: neuropause-macos
+          path: |
+            apps/desktop/dist/*.dmg
+            apps/desktop/dist/*.zip
+            apps/desktop/dist/*.yml
+            apps/desktop/dist/*.blockmap
+          if-no-files-found: error
+          retention-days: 14
+
+      # PUBLISHING TO neuropause033.com IS OFF. P13C ROUND 17m.
+      #
+      # Founder-test builds are handed over as a direct download first; the
+      # public download page is turned on afterwards, deliberately. Set the repo
+      # variable PUBLISH_TO_SITE to 'true' to re-enable — the secret's presence
+      # is no longer sufficient on its own, because "a key exists" was never the
+      # same question as "we intend to publish this build".
+      #
+      # `continue-on-error` because the comment below used to claim this step
+      # "never fails the build" while nothing in the step made that true. An
+      # unreachable droplet is now what it should always have been: a warning on
+      # a green build, not the loss of the artifact.
       # Self-hosted download (Option C): copy the .dmg to the droplet so it's
       # served from neuropause033.com/downloads/ with no GitHub login. Runs only
-      # if the deploy secret is present, and never fails the build.
+      # Gated on PUBLISH_TO_SITE (see above) and marked continue-on-error, so it
+      # genuinely cannot fail the build — which is what this line used to claim.
       - name: Publish installer to neuropause033.com
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-        if: ${{ env.DEPLOY_SSH_KEY != '' }}
+        if: ${{ vars.PUBLISH_TO_SITE == 'true' && env.DEPLOY_SSH_KEY != '' }}
+        continue-on-error: true
         shell: bash
         run: |
           echo "$DEPLOY_SSH_KEY" > deploy_key
@@ -112,18 +168,45 @@ jobs:
           rm -f deploy_key
           echo "Installer published to https://neuropause033.com/downloads/NeuroPause.dmg"
 
-      # Keep every build's output, tag or not, for inspection/download.
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: neuropause-macos
-          path: |
-            apps/desktop/dist/*.dmg
-            apps/desktop/dist/*.zip
-            apps/desktop/dist/*.yml
-            apps/desktop/dist/*.blockmap
-          if-no-files-found: error
-          retention-days: 14
+      # Auto-update feed (generic provider): copy the electron-updater feed and
+      # the update payloads to the droplet path served at
+      # https://neuropause033.com/updates/ — the URL baked into the app via
+      # electron-builder.yml `publish`. While every build is a pre-release the
+      # feed is emitted as beta-mac.yml; alias it to latest-mac.yml so the
+      # in-app "stable" channel resolves as well. Runs only when the deploy
+      # secret is present; the trailing curl proves the feed is actually
+      # reachable over HTTPS (fails the release if the server hides /updates/).
+      - name: Publish update feed to neuropause033.com
+        if: ${{ vars.PUBLISH_TO_SITE == 'true' && env.DEPLOY_SSH_KEY != '' && startsWith(github.ref, 'refs/tags/') }}
+        continue-on-error: true
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        shell: bash
+        run: |
+          echo "$DEPLOY_SSH_KEY" > deploy_key
+          chmod 600 deploy_key
+          ssh -o StrictHostKeyChecking=no -i deploy_key root@64.227.128.218 \
+            "mkdir -p /opt/neuropause-site/website/updates"
+          scp -o StrictHostKeyChecking=no -i deploy_key \
+            apps/desktop/dist/beta*.yml apps/desktop/dist/*-mac.zip apps/desktop/dist/*.blockmap \
+            root@64.227.128.218:/opt/neuropause-site/website/updates/
+          ssh -o StrictHostKeyChecking=no -i deploy_key root@64.227.128.218 \
+            "cd /opt/neuropause-site/website/updates && cp -f beta-mac.yml latest-mac.yml"
+          rm -f deploy_key
+          curl -fsS https://neuropause033.com/updates/beta-mac.yml | head -n 3
+
+      # ARTIFACTS FIRST. P13C ROUND 17m.
+      #
+      # This step used to sit BELOW the two publish steps. On 12 Aug the Windows
+      # build packaged and verified successfully, then `scp` to the droplet timed
+      # out (`connect to host 64.227.128.218 port 22: Connection timed out`,
+      # exit 255) and the job died — taking the installer with it. A 23-minute
+      # build produced a correct artifact and delivered nothing, because an
+      # unrelated third-party host was down.
+      #
+      # The build output is now saved BEFORE anything touches the network. No
+      # step after this one can cost us the thing the job exists to produce.
+
 
       # Publish a GitHub Release only for tag pushes. softprops/action-gh-release
       # attaches the .dmg, .zip, and the electron-updater feed file so auto-update

@@ -27,7 +27,7 @@ function harness(router: (req: DiscoveryRequest) => { text?: string; error?: Err
     },
   };
   const exec = new InfraActionExecutor(
-    { makeHttp: () => http, publish: (e) => events.push(e), regionFor: () => null, now: () => NOW },
+    { makeHttp: () => http, publish: (e) => events.push(e), regionFor: () => null, ownsAccount: () => true, /* P13C R7 — these suites act AS the owning tenant; cross-tenant refusal is asserted in infrastructureTenancy.test.ts */ now: () => NOW },
     AZURE_ACTIONS,
   );
   return { exec, events, requests };

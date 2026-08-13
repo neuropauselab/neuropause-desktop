@@ -55,6 +55,7 @@ import type {
 } from './autoOpsModel';
 import { deriveAutoAllowedTriggers, isIncidentOpen } from './autoOpsModel';
 import { withAutoOpsAuthz } from './autoOpsAuthz';
+import { activeTenantScope } from '../enterprise/index';
 
 const log = createLogger('autonomous-operations');
 
@@ -465,7 +466,7 @@ function buildState(deps: AutonomousOperationsDeps): AutoOpsState {
 }
 
 export function initAutonomousOperations(deps: AutonomousOperationsDeps): AutonomousOperationsSubsystem {
-  const service = new AutonomousOperationsService({ readState: () => buildState(deps) });
+  const service = new AutonomousOperationsService({ scope: activeTenantScope, readState: () => buildState(deps) });
 
   // Invalidate the memoized snapshot when a backing store changes; the injected execution/supervisor/
   // knowledge/strategy/cloud accessors refresh via the service TTL. Renderer liveness reuses `ecosystem:event`.

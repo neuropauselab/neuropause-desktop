@@ -24,6 +24,19 @@ import type {
 import { erpGraphBridge, resourceGraphBridge } from '@neuropause/shared';
 
 export interface ProjectionInput {
+  /**
+   * The organization this projection belongs to (P13B).
+   *
+   * Required, and it enters the NODE IDENTITY DOMAIN rather than only the
+   * ownership stamp. Most projected ids derive from a UDM entity id, which is
+   * already tenant-qualified — but the SYNTHESISED ones are not:
+   * `connector:${id}`, `app:${slug}` and `person:${connectorId}:${handle}` are
+   * functions of things two tenants can legitimately share. Two tenants with
+   * the same person on the same connector collided on one node id, and the
+   * later rebuild took it. Qualifying the id makes the collision unrepresentable
+   * instead of merely refused.
+   */
+  tenantId: string;
   entities: UnifiedEntity[];
   connectors: Array<{ id: string; name: string }>;
   applications: Array<{ slug: string; name: string }>;
@@ -114,14 +127,14 @@ export function projectGraph(input: ProjectionInput): Projection {
 
   // Provenance nodes.
   for (const c of connectors) {
-    addNode({ id: `connector:${c.id}`, type: 'connector', label: c.name, sourceKind: 'platform', sourceId: null, connectorId: c.id, createdAt: now, updatedAt: now, metadata: {} });
+    addNode({ id: `connector:${input.tenantId}:${c.id}`, type: 'connector', label: c.name, sourceKind: 'platform', sourceId: null, connectorId: c.id, createdAt: now, updatedAt: now, metadata: {} });
   }
   for (const a of applications) {
-    addNode({ id: `app:${a.slug}`, type: 'application', label: a.name, sourceKind: 'platform', sourceId: null, connectorId: null, createdAt: now, updatedAt: now, metadata: {} });
+    addNode({ id: `app:${input.tenantId}:${a.slug}`, type: 'application', label: a.name, sourceKind: 'platform', sourceId: null, connectorId: null, createdAt: now, updatedAt: now, metadata: {} });
   }
 
   const ensurePerson = (connectorId: string, handle: string): string => {
-    const id = `person:${connectorId}:${slug(handle)}`;
+    const id = `person:${input.tenantId}:${connectorId}:${slug(handle)}`;
     addNode({ id, type: 'person', label: handle, sourceKind: 'derived', sourceId: null, connectorId, createdAt: now, updatedAt: now, metadata: {} });
     return id;
   };

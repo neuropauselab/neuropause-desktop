@@ -96,7 +96,7 @@ export function HeroBanner(): JSX.Element | null {
               aria-label={`Show featured ${i + 1}`}
               onClick={() => setIndex(i)}
               className={cn(
-                'h-1.5 rounded-full transition-all',
+                'h-1.5 rounded-full transition-[background-color,color,border-color,box-shadow,transform,opacity] motion-reduce:transition-none',
                 i === index % entries.length ? 'w-5 bg-white' : 'w-1.5 bg-white/45',
               )}
             />

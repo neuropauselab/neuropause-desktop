@@ -11,6 +11,7 @@ export * from './types/unified';
 export * from './types/graph';
 export * from './types/erpGraphBridge';
 export * from './types/memory';
+export * from './types/memoryTenancy';
 export * from './types/enterpriseSearch';
 export * from './types/enterpriseTimeline';
 export * from './types/enterpriseContext';
@@ -54,9 +55,136 @@ export * from './types/enterpriseIntelligence';
 export * from './types/enterprise';
 export * from './types/marketplace';
 export * from './types/enterpriseModule';
+export * from './types/dataPlane';
+export * from './types/sensitivity';
+export * from './types/documentIntelligence';
+export * from './types/identity';
+export * from './types/tenancy';
 export * from './types/finance';
+// Finance → General Ledger (Chart of Accounts + Journal) — pure GL domain rules,
+// the module-layer projection of the packages/business ErpCore posting kernel.
+export * from './types/generalLedger';
+// Finance → W1.6–W1.8: bank reconciliation matching, budget-vs-actual variance,
+// and the payable mirror (vendor bills + AP aging) — pure domain rules only.
+export * from './types/bankReconciliation';
+export * from './types/budgets';
+export * from './types/vendorBills';
+// Finance → W1.9: fixed-asset register + exact straight-line depreciation.
+export * from './types/fixedAssets';
+// Finance → W1.10: credit/debit notes — receivable + payable adjustment documents.
+export * from './types/adjustmentNotes';
+// Finance → W1.11: vendor payments — payable settlement as the source of truth.
+export * from './types/vendorPayments';
 export * from './types/crm';
 export * from './types/leads';
+// CRM → W2.1: opportunities — the qualified-deal pipeline between Leads and Quotes.
+export * from './types/opportunities';
+// CRM → W2.2: activities — the sales activity stream (calls/emails/meetings/tasks/notes).
+export * from './types/activities';
+// Sales → W2.3: contracts — marker lifecycle, time-derived expiry, renewal chain.
+export * from './types/contracts';
+// Sales → W2.4: pricing rules — the discount-policy rule book + pure engine.
+export * from './types/pricingRules';
+// Sales → W2.5: commissions — plan book + immutable bookings-based statements.
+export * from './types/commissions';
+// Sales → W2.6: revenue forecast — immutable weighted-pipeline snapshots.
+export * from './types/revenueForecast';
+// CRM → W2.7: customer insights — cross-module health registers + one-account timelines.
+export * from './types/customerInsights';
+// Procurement → W3.1: RFQs — multi-supplier quotation cycle + deterministic comparison.
+export * from './types/rfq';
+// Procurement → W3.2: supplier performance — evidence-based scorecard registers.
+export * from './types/supplierPerformance';
+// Inventory → W3.3: lots — batch traceability with deterministic code payloads.
+export * from './types/lots';
+// ── Industry Packs — Core → Industry Pack → Tenant. Declaration + taxonomy only. ──
+export * from './types/industryPack';
+// Medical Device Manufacturing Pack — product model, batch/lot lifecycle, traceability graph.
+export * from './types/medicalDevice';
+export * from './types/medicalDeviceLot';
+export * from './types/medicalDeviceTrace';
+export * from './types/medicalDeviceApi';
+// ── Private-First AI experience: routing policy, execution metadata, measured usage. ──
+export * from './types/aiRouting';
+// First-run experience profile — workspace type (Personal/Professional/Business) + completion.
+export * from './types/experienceProfile';
+// Understanding profile (provenance-marked beliefs), HOLD vocabulary, decision records.
+export * from './types/understanding';
+// The nine HOLD shapes, one deterministic factory each.
+export * from './types/holdProducers';
+export * from './types/opportunity';
+export * from './types/outcome';
+export * from './types/crossDomain';
+// Inventory → W3.4: reservations — hold documents posting real ledger movements.
+export * from './types/reservations';
+// Inventory → W3.5: valuation — immutable standard-cost registers over the ledger.
+export * from './types/inventoryValuation';
+// Manufacturing → W3.6: BOM explosion — multi-level requirements with cycle detection.
+export * from './types/bomExplosion';
+// Projects → W4.1: projects + tasks — delivery containers with a derived-progress task board.
+export * from './types/projects';
+// Projects → W4.2: time entries + billing runs — unbilled time into real W1 invoices.
+export * from './types/projectBilling';
+// HR → W4.3/W4.4: employees + payroll runs — work-scoped records and GL-posted accruals.
+export * from './types/hr';
+// Helpdesk → W5.1: tickets — priority-derived SLA with time-derived breach.
+export * from './types/helpdesk';
+// CRM → W5.1: campaigns — live lead attribution by the existing campaign field.
+export * from './types/marketing';
+// Documents → W5.2: registry — append-only check-in versioning over external refs.
+export * from './types/documents';
+// Executive → W5.2: BI reports — saved aggregations over any registered module.
+export * from './types/biReports';
+// HR → W6-A1: salary structures — contractual templates + derived statutory wage bases.
+export * from './types/salaryStructures';
+// HR → W6-A2: statutory rules — effective-dated PF/ESI/PT/TDS tables + pure calculators.
+export * from './types/statutoryRules';
+// HR → W6-A3: statutory payroll processing — gross-to-net engine + balanced accrual lines.
+export * from './types/payrollProcessing';
+// HR → FW-1: attendance — calendar-day LOP proration feeding payroll + ECR NCP days.
+export * from './types/attendance';
+// HR → FW-2: leave + holiday calendar — approved paid leave never docks pay; unpaid leave (minus holidays) is LOP.
+export * from './types/leave';
+// HR → FW-3: expense claims — approval books a real Dr 5330 / Cr 2260 accrual, idempotent per claim.
+export * from './types/expenseClaims';
+// HR → FW-4: shifts — working patterns; expected working days power attendance prefill.
+export * from './types/shifts';
+// Procurement ↔ Finance → FW-5: budget controls — PO approval consults the named budget (off/warn/block).
+export * from './types/budgetControls';
+// Inventory ↔ Procurement → FW-6: auto-reordering — min–max replenishment on the inventory position.
+export * from './types/autoReorder';
+// Procurement → FW-7: vendor contracts — dated agreements whose open window gates PO approval.
+export * from './types/vendorContracts';
+// Phase 8 (8.14): the fixed in-app help/documentation catalog.
+export * from './types/helpDocs';
+// HR → FW-10: recruitment — staged candidate pipeline; hire creates a real Employee.
+export * from './types/recruitment';
+// HR → FW-11: OKRs — objectives with measurable key results; progress is arithmetic.
+export * from './types/okrs';
+// Finance → FW-12: treasury — the derived cash position (cash + AR − AP), never typed.
+export * from './types/treasury';
+// HR → W6-A4: salary disbursement — net-pay clearing + deterministic bank advice.
+export * from './types/salaryDisbursement';
+// HR → W6-A5: payslips — immutable per-employee statements from posted runs.
+export * from './types/payslips';
+// HR → W6-A6: payroll register — immutable management summary over posted runs.
+export * from './types/payrollRegister';
+// Inventory → W6-C2: serial units — per-unit serialized tracking.
+export * from './types/serials';
+// Finance → W6-B1: exchange rates — effective-dated FX table + conversion engine.
+export * from './types/exchangeRates';
+// Finance → W6-B3: FX gain/loss — realized/unrealized exchange-difference engine.
+export * from './types/fxGainLoss';
+// Finance → W6-B5: financial ratios — GL-derived class-total ratio engine.
+export * from './types/financialRatios';
+// Finance → W6-B6: cash flow statement — direct-method engine over posted GL entries.
+export * from './types/cashFlow';
+// Finance → W6-B7: unrealized FX revaluation — period-end receivables revaluation engine.
+export * from './types/fxRevaluation';
+// Finance → W6-C2: FX exposure — netted open-position exposure engine (by currency).
+export * from './types/fxExposure';
+// HR → W6-A7: statutory filings — ECR/ESI/PT/24Q filing data from posted runs.
+export * from './types/statutoryFilings';
 export * from './types/customers';
 export * from './types/quotes';
 export * from './types/orders';
@@ -105,6 +233,7 @@ export * from './types/federationPlatform';
 export * from './types/controlPlane';
 export * from './types/developerPlatform';
 export * from './types/industrySolution';
+export * from './types/industryCatalog';
 export * from './types/strategyIntelligence';
 export * from './types/enterpriseTwin';
 export * from './types/enterpriseKnowledge';
@@ -182,6 +311,10 @@ export * from './infra/resourceGraph';
 export * from './infra/discovery';
 export * from './infra/resourceGraphBridge';
 export * from './infra/action';
+// Mobile M1 — business view-models shared by renderer, Companion Gateway, and the mobile app.
+export * from './business/familyDashboardModel';
+// Mobile M1 — companion (mobile) DTOs for the desktop gateway's Settings surface.
+export * from './types/companion';
 // P7 — Enterprise Intelligence (pure engines composed over the existing graphs/timeline; the runtime consumes these).
 export * from './intelligence/enterpriseGraph';
 export * from './intelligence/enterpriseHealth';

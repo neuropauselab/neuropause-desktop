@@ -11,6 +11,7 @@ import { SandboxDatasetStore } from '../datasetStore';
 import { SandboxExecutionEngine } from '../executionEngine';
 import { initEnterpriseRunner } from './index';
 import { FakeEnterprisePlatform, type FakePlatformScript } from './fakePlatform';
+import { TEST_TENANT_SCOPE } from '../../tenancy/testScope';
 
 let seq = 0;
 function harness(script: FakePlatformScript = {}, desktopExecutor?: Parameters<typeof initEnterpriseRunner>[0]['desktopExecutor']) {
@@ -18,11 +19,11 @@ function harness(script: FakePlatformScript = {}, desktopExecutor?: Parameters<t
   const dir = join(tmpdir(), `s3e-${Date.now()}-${seq}`);
   let t = 1000;
   const now = (): number => (t += 5);
-  const workspaces = new SandboxWorkspaceStore(`${dir}-w.json`, now);
-  const scenarios = new SandboxScenarioStore(`${dir}-s.json`, now);
-  const executions = new SandboxExecutionStore(`${dir}-e.json`, now);
-  const artifacts = new SandboxArtifactStore(`${dir}-a.json`, now);
-  const datasets = new SandboxDatasetStore(`${dir}-d.json`, now);
+  const workspaces = new SandboxWorkspaceStore(`${dir}-w.json`, now).bindScope(() => TEST_TENANT_SCOPE);
+  const scenarios = new SandboxScenarioStore(`${dir}-s.json`, now).bindScope(() => TEST_TENANT_SCOPE);
+  const executions = new SandboxExecutionStore(`${dir}-e.json`, now).bindScope(() => TEST_TENANT_SCOPE);
+  const artifacts = new SandboxArtifactStore(`${dir}-a.json`, now).bindScope(() => TEST_TENANT_SCOPE);
+  const datasets = new SandboxDatasetStore(`${dir}-d.json`, now).bindScope(() => TEST_TENANT_SCOPE);
   const engine = new SandboxExecutionEngine({ workspaces, scenarios, executions, artifacts, datasets, now });
   const platform = new FakeEnterprisePlatform(script, now);
   initEnterpriseRunner({ engine, platform, desktopExecutor, now, sleep: () => Promise.resolve() });

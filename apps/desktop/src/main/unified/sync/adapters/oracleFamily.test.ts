@@ -1,3 +1,4 @@
+import { makeUnifiedId } from '../../ids';
 /**
  * P5 — Increment 12: the Oracle Fusion Cloud ERP connector FAMILY (Business Units, Suppliers, Customers,
  * Items, Inventory, Purchase Orders, Receipts, Invoices, Payments, Projects, Work Orders on one `oracle`
@@ -33,7 +34,7 @@ import {
 const FUSION = 'https://mytenant.fa.us2.oraclecloud.com';
 const V = '11.13.18.05';
 const NOW = '2026-07-13T00:00:00.000Z';
-const baseCtx = { connectorId: 'oracle', accountId: 'a1', now: NOW } as const;
+const baseCtx = { tenantId: 'org-test', connectorId: 'oracle', accountId: 'a1', now: NOW } as const;
 const pureCtx: SyncContext = { ...baseCtx, http: undefined as never, cursor: null };
 
 interface Handled { items?: Record<string, unknown>[]; hasMore?: boolean }
@@ -89,7 +90,7 @@ describe('Oracle mappers — kinds, per-object id prefixes, ISO parsing, compoun
   it('maps a Business Unit → organization with a prefixed id and a normalized (Z) timestamp from ISO+offset', () => {
     const e = mapBusinessUnit(pureCtx, { BusinessUnitId: 300, BusinessUnitName: 'US Operations', CreationDate: '2026-06-01T00:00:00+00:00', LastUpdateDate: '2026-07-02T09:30:00+00:00' });
     expect(e.kind).toBe('organization');
-    expect(e.id).toBe('oracle:a1:organization:business_unit-300');
+    expect(e.id).toBe(makeUnifiedId('org-test', 'oracle', 'a1', 'organization', 'business_unit-300'));
     expect(e.title).toBe('US Operations');
     expect(e.updatedAt).toBe('2026-07-02T09:30:00.000Z'); // ISO+offset → ISO-Z
     expect(e.metadata.oracleObject).toBe('BusinessUnit');
@@ -101,15 +102,15 @@ describe('Oracle mappers — kinds, per-object id prefixes, ISO parsing, compoun
     const wo = mapWorkOrder(pureCtx, { WorkOrderId: '1000' });
     // Same raw key '1000' across three object types → three DISTINCT unified ids (different kinds AND prefixes).
     expect(new Set([bu.id, inv.id, wo.id]).size).toBe(3);
-    expect(bu.id).toBe('oracle:a1:organization:business_unit-1000');
-    expect(inv.id).toBe('oracle:a1:document:invoice-1000');
-    expect(wo.id).toBe('oracle:a1:task:work_order-1000');
+    expect(bu.id).toBe(makeUnifiedId('org-test', 'oracle', 'a1', 'organization', 'business_unit-1000'));
+    expect(inv.id).toBe(makeUnifiedId('org-test', 'oracle', 'a1', 'document', 'invoice-1000'));
+    expect(wo.id).toBe(makeUnifiedId('org-test', 'oracle', 'a1', 'task', 'work_order-1000'));
   });
 
   it('maps an Item → document with a COMPOUND-key id joined from ItemId + OrganizationId', () => {
     const e = mapItem(pureCtx, { ItemId: '4977', OrganizationId: '204', ItemNumber: 'AS54888', ItemDescription: 'Standard Desktop', LastUpdateDate: '2026-07-01T00:00:00+00:00' });
     expect(e.kind).toBe('document');
-    expect(e.id).toBe('oracle:a1:document:item-4977-204');
+    expect(e.id).toBe(makeUnifiedId('org-test', 'oracle', 'a1', 'document', 'item-4977-204'));
     expect(e.title).toBe('AS54888');
     expect(e.body).toBe('Standard Desktop');
   });
@@ -117,7 +118,7 @@ describe('Oracle mappers — kinds, per-object id prefixes, ISO parsing, compoun
   it('maps Inventory → document keyed on the FULL physical grain (org/item/subinv/locator/lot/serial/revision)', () => {
     const e = mapInventory(pureCtx, { OrganizationId: '204', InventoryItemId: '4977', SubinventoryCode: 'STORES', LotNumber: 'LOT1', ItemNumber: 'AS54888', PrimaryTransactionQuantity: '42' });
     expect(e.kind).toBe('document');
-    expect(e.id).toBe('oracle:a1:document:inventory-204-4977-STORES--LOT1--'); // org-item-subinv-locator-lot-serial-rev (absent dims → '')
+    expect(e.id).toBe(makeUnifiedId('org-test', 'oracle', 'a1', 'document', 'inventory-204-4977-STORES--LOT1--')); // org-item-subinv-locator-lot-serial-rev (absent dims → '')
     expect(e.metadata.quantity).toBe('42');
     expect(e.metadata.lotNumber).toBe('LOT1');
   });
@@ -138,7 +139,7 @@ describe('Oracle mappers — kinds, per-object id prefixes, ISO parsing, compoun
     expect(mapReceipt(pureCtx, { TransactionId: 'T1', ReceiptNumber: 'RCV-9' }).kind).toBe('task');
     expect(mapPayment(pureCtx, { CheckId: 'CK1', PaymentNumber: 'P-5' }).kind).toBe('document');
     expect(mapProject(pureCtx, { ProjectId: 'PR1', ProjectName: 'Rollout' }).kind).toBe('project');
-    expect(mapProject(pureCtx, { ProjectId: 'PR1', ProjectName: 'Rollout' }).id).toBe('oracle:a1:project:project-PR1');
+    expect(mapProject(pureCtx, { ProjectId: 'PR1', ProjectName: 'Rollout' }).id).toBe(makeUnifiedId('org-test', 'oracle', 'a1', 'project', 'project-PR1'));
   });
 
   it('a stamp-less record falls back to the STABLE baseline (never the run clock) so it is not re-churned', () => {

@@ -1,3 +1,4 @@
+import { makeUnifiedId } from '../../ids';
 /**
  * P5 — Increment 3: the Google Workspace connector FAMILY (Gmail, Drive, People, Tasks service resources
  * on one `google-workspace` connector). Pure-node, fake HttpClient — mappers + delta/full-sync/reset flows
@@ -14,7 +15,7 @@ import { googleServiceAvailability, googleWorkspaceAdapter } from './googleWorks
 
 const WS = 'google-workspace';
 const NOW = '2026-07-12T00:00:00.000Z';
-const base = { connectorId: WS, accountId: 'a1', now: NOW } as const;
+const base = { tenantId: 'org-test', connectorId: WS, accountId: 'a1', now: NOW } as const;
 const ok = (data: unknown): HttpResponse<unknown> => ({ data, headers: {}, status: 200 });
 
 /** ctx whose http routes by url; a route may throw (→ rejected getJson). */
@@ -54,11 +55,11 @@ describe('Gmail', () => {
       payload: { headers: [{ name: 'Subject', value: 'Hi' }, { name: 'From', value: 'a@b.com' }] },
     });
     expect(e.kind).toBe('message');
-    expect(e.id).toBe('google-workspace:a1:message:m1');
+    expect(e.id).toBe(makeUnifiedId('org-test', 'google-workspace', 'a1', 'message', 'm1'));
     expect(e.title).toBe('Hi');
     expect(e.author).toBe('a@b.com');
     expect(e.status).toBe('unread');
-    expect(e.parentId).toBe('google-workspace:a1:conversation:t1');
+    expect(e.parentId).toBe(makeUnifiedId('org-test', 'google-workspace', 'a1', 'conversation', 't1'));
     expect(e.timestamp).toBe('2026-07-01T10:00:00.000Z');
     expect(e.body).toBe('hello there');
   });
@@ -108,7 +109,7 @@ describe('Google Drive', () => {
       webViewLink: 'https://drive/f1', parents: ['d1'], trashed: false, owners: [{ emailAddress: 'me@x.com' }], size: '123',
     });
     expect(file.kind).toBe('file');
-    expect(file.containerId).toBe('google-workspace:a1:file:d1');
+    expect(file.containerId).toBe(makeUnifiedId('org-test', 'google-workspace', 'a1', 'file', 'd1'));
     expect(file.author).toBe('me@x.com');
     expect(file.metadata.size).toBe(123);
   });
@@ -150,7 +151,7 @@ describe('Google People', () => {
       organizations: [{ name: 'Acme', title: 'CTO' }],
     });
     expect(e.kind).toBe('contact');
-    expect(e.id).toBe('google-workspace:a1:contact:people/c1');
+    expect(e.id).toBe(makeUnifiedId('org-test', 'google-workspace', 'a1', 'contact', 'people/c1'));
     expect(e.title).toBe('Ada');
     expect(e.metadata.organization).toBe('Acme');
   });
@@ -186,11 +187,11 @@ describe('Google Tasks', () => {
   it('maps a task list to a project and a task to its list', () => {
     const list = mapTaskList(pureCtx, { id: 'L1', title: 'Work' });
     expect(list.kind).toBe('project');
-    expect(list.id).toBe('google-workspace:a1:project:L1');
+    expect(list.id).toBe(makeUnifiedId('org-test', 'google-workspace', 'a1', 'project', 'L1'));
     const task = mapTask(pureCtx, 'L1', { id: 't1', title: 'Ship it', status: 'completed', updated: '2026-07-01T00:00:00Z' });
     expect(task.kind).toBe('task');
     expect(task.status).toBe('completed');
-    expect(task.containerId).toBe('google-workspace:a1:project:L1');
+    expect(task.containerId).toBe(makeUnifiedId('org-test', 'google-workspace', 'a1', 'project', 'L1'));
   });
 
   it('walks a list, keeps a per-list high-water, and tombstones deleted tasks', async () => {

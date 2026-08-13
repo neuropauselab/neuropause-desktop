@@ -30,6 +30,35 @@ import type {
 } from '@neuropause/shared';
 import { createLogger } from '../../logger';
 import { securityScan, signManifest } from './pipeline';
+import { declareStoreScope } from '../../tenancy/storeScope';
+import type { TenantScope } from '@neuropause/shared';
+import { TenantOwnership } from '../../tenancy/tenantOwnedStore';
+
+/** P13C ROUND 8 — the structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'ecosystem-marketplace',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  /**
+   * P13C ROUND 10. SYSTEM: the event cap fires inside the private `event()`
+   * helper and there is no delete surface on this store at all — no listing,
+   * version or event can be removed through any channel.
+   */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'SYSTEM',
+  retention:
+    'ONE removal: the submission-event cap in `event()`, EVENT_CAP (5,000) rows PER LISTING. It ' +
+    "was an install-wide `slice(-EVENT_CAP)`, so one publisher's activity evicted another's " +
+    'submission trail — the record of what was reviewed and approved. Per listing is strictly ' +
+    'NARROWER than per publisher, since a listing has exactly one `publisherOrgId`, so no ' +
+    "publisher's volume can reach another's rows even across their own listings. Events loaded from " +
+    'an older file with a null `listingId` share the `__none__` bucket; they are returned by no read ' +
+    '(`recentEvents` requires a non-null listingId in an owned set) and can evict only each other. ' +
+    'Listings and versions are never removed.',
+  reason: "ROUND 8 FINDING: no seam, no orgId, and developerId was a constant — while EcosystemShareWorker writes a tenant's AI worker name and first goal into a listing every tenant could read, and events carry the signed-in actor's name and email.",
+});
 
 const log = createLogger('marketplace');
 const EVENT_CAP = 5000;
@@ -56,6 +85,9 @@ export interface SeedListing {
 }
 
 export class MarketplaceStore extends EventEmitter {
+  /** P13C Round 8 — the publisher boundary. See `bindScope`. */
+  private readonly tenancy = new TenantOwnership('ecosystem-marketplace');
+
   private listings = new Map<string, MarketplaceListing>();
   private versions = new Map<string, ListingVersion>();
   private events: SubmissionEvent[] = [];
@@ -63,6 +95,17 @@ export class MarketplaceStore extends EventEmitter {
   private privateKey!: KeyObject;
   private keyId = '';
   private loaded = false;
+  /**
+   * True only inside `applySeed()`. P13C ROUND 9.
+   *
+   * The seed path drives the same lifecycle methods the renderer does, and it
+   * runs during `load()` when no tenant is resolved — so without this every seed
+   * would be refused by its own ownership check and the storefront would boot
+   * empty. It is set and cleared inside one synchronous call with a `finally`,
+   * is `private`, and is reachable from no IPC handler: it cannot be entered
+   * from outside this file.
+   */
+  private seeding = false;
   private persisting = false;
   private dirty = false;
   private lastPersist: Promise<void> = Promise.resolve();
@@ -117,26 +160,31 @@ export class MarketplaceStore extends EventEmitter {
 
   private applySeed(): void {
     this.computeKeyId();
-    for (const s of this.seeds) {
-      if ([...this.listings.values()].some((l) => l.slug === s.slug)) continue;
-      const listing = this.createListing({
-        kind: s.kind,
-        slug: s.slug,
-        name: s.name,
-        summary: s.summary,
-        category: s.category,
-        pricing: s.pricing,
-        certified: s.certified,
-      });
-      const version = this.addVersion(listing.id, s.manifest, s.changelog);
-      if (version) {
-        this.submit(version.id, 'seed');
-        const v = this.versions.get(version.id);
-        if (v && v.status === 'in_review') {
-          this.review(v.id, 'approved', 'neuropause-review', 'Seed example — auto-approved.');
-          this.publish(v.id, 'seed');
+    this.seeding = true;
+    try {
+      for (const s of this.seeds) {
+        if ([...this.listings.values()].some((l) => l.slug === s.slug)) continue;
+        const listing = this.createListing({
+          kind: s.kind,
+          slug: s.slug,
+          name: s.name,
+          summary: s.summary,
+          category: s.category,
+          pricing: s.pricing,
+          certified: s.certified,
+        });
+        const version = this.addVersion(listing.id, s.manifest, s.changelog);
+        if (version) {
+          this.submit(version.id, 'seed');
+          const v = this.versions.get(version.id);
+          if (v && v.status === 'in_review') {
+            this.review(v.id, 'approved', 'neuropause-review', 'Seed example — auto-approved.');
+            this.publish(v.id, 'seed');
+          }
         }
       }
+    } finally {
+      this.seeding = false;
     }
     this.schedulePersist();
   }
@@ -176,14 +224,151 @@ export class MarketplaceStore extends EventEmitter {
     while (this.persisting) await this.lastPersist;
   }
 
+  /**
+   * Bind the publisher boundary. P13C ROUND 8.
+   *
+   * WHAT IS AND IS NOT A LEAK HERE, because a marketplace is the one place where
+   * cross-tenant visibility is the PRODUCT:
+   *
+   *   PUBLISHED listings   visible to everyone. That is what publishing means, and
+   *                        the publisher chose it. Not scoped, deliberately.
+   *   DRAFT / IN-REVIEW    visible to the PUBLISHER only. A draft is work in
+   *                        progress — including, via EcosystemShareWorker, a
+   *                        tenant's AI worker name and first goal, which is that
+   *                        tenant's operational detail until they publish it.
+   *   THE EVENT TRAIL      the publisher's only. Events carry the signed-in
+   *                        actor's display name and email and the review history,
+   *                        which is nobody else's business even for a published
+   *                        listing.
+   *
+   * Unbound denies the scoped halves and leaves published listings readable, which
+   * is the correct fail-closed shape for a catalogue: a signed-out or unresolved
+   * caller sees the storefront and nothing behind it.
+   */
+  bindScope(source: () => TenantScope | null): this {
+    this.tenancy.bindScope(source);
+    return this;
+  }
+  hasScope(): boolean {
+    return this.tenancy.hasScope();
+  }
+
+  /** The caller's organization, or null. */
+  private publisher(): string | null {
+    return this.tenancy.scopeOrDeny()?.tenantId ?? null;
+  }
+
+  /* ── ownership: the ONE resolver every mutation goes through — P13C ROUND 9 ── */
+
+  /**
+   * F1. THE RENDERER SUPPLIES AN IDENTIFIER. IT DOES NOT SUPPLY AUTHORITY.
+   *
+   * Round 8 scoped the reads (`list`, `detail`, `eventsFor`, `recentEvents`) and
+   * left every write resolving `this.listings.get(rendererId)` directly. So a
+   * listing id — which is not a secret, and which `list()` hands to every tenant
+   * for every PUBLISHED listing — was sufficient to call `rollback` and
+   * unpublish another organization's product, writing an event into their trail
+   * attributed to the attacker.
+   *
+   * That was my own Round 8 fix, half-applied, in the round whose stated lesson
+   * is that a fix beside a sibling is not a class. The correction is not seven
+   * more checks: it is that a mutation CANNOT REACH THE MAP except through one
+   * of the two resolvers below. `this.listings.get(...)` and
+   * `this.versions.get(...)` no longer appear in any mutation body.
+   *
+   * TWO RELATIONS, BECAUSE A MARKETPLACE HAS TWO:
+   *
+   *   PUBLISHER   may change the product. Lifecycle: addVersion, submit, review,
+   *               publish, rollback. Requires `publisherOrgId === caller`.
+   *   CONSUMER    may install and rate what is PUBLISHED — including other
+   *               organizations' listings, because that is what a marketplace
+   *               is. Requires the listing to be visible to the caller.
+   *
+   * Collapsing those two into one rule would either break installing (the
+   * product) or leave rating another tenant's unpublished draft open (a probe
+   * for its existence). They are different relations and get different resolvers.
+   */
+
+  /**
+   * The listing THE CALLER PUBLISHES, or null.
+   *
+   * Fails closed on every ambiguity: no resolved tenant, unknown id, and — the
+   * one that matters for legacy data — a listing whose `publisherOrgId` is null.
+   * A row with no publisher is not owned by whoever asks; it is owned by nobody,
+   * and a mutation on it is refused. Seed listings are exactly that shape, which
+   * is why they are published platform examples and not anybody's to roll back.
+   */
+  private ownedListing(listingId: string): MarketplaceListing | null {
+    if (this.seeding) return this.listings.get(listingId) ?? null;
+    const mine = this.publisher();
+    if (mine === null) return null;
+    const listing = this.listings.get(listingId);
+    if (!listing) return null;
+    if (listing.publisherOrgId === null || listing.publisherOrgId !== mine) return null;
+    return listing;
+  }
+
+  /**
+   * The version whose LISTING the caller publishes, or null.
+   *
+   * Ownership lives on the listing, so a version id is resolved to its listing
+   * and the listing answers. A version id that names nothing, or whose listing
+   * the caller does not publish, is the same answer — null — so neither confirms
+   * the other's existence.
+   */
+  private ownedVersion(versionId: string): ListingVersion | null {
+    if (this.seeding) return this.versions.get(versionId) ?? null;
+    const v = this.versions.get(versionId);
+    if (!v) return null;
+    return this.ownedListing(v.listingId) === null ? null : v;
+  }
+
+  /**
+   * The listing the caller may act on AS A CONSUMER: published, or their own.
+   *
+   * Deliberately the same predicate as `detail()`, so what you can install is
+   * exactly what you can see. Two predicates for "is this listing visible" is
+   * how an install succeeds against a listing every read then denies.
+   */
+  private visibleListing(listingId: string): MarketplaceListing | null {
+    if (this.seeding) return this.listings.get(listingId) ?? null;
+    const listing = this.listings.get(listingId);
+    if (!listing) return null;
+    if (listing.status === 'published') return listing;
+    const mine = this.publisher();
+    if (mine === null || listing.publisherOrgId !== mine) return null;
+    return listing;
+  }
+
   /* ── reads ── */
 
+  /**
+   * Published listings, plus THE CALLER'S OWN drafts.
+   *
+   * P13C Round 8. This returned every listing in every state, so one tenant's
+   * unpublished submissions — and the worker names inside them — were readable by
+   * every other tenant.
+   */
   list(): MarketplaceListing[] {
-    return [...this.listings.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    const mine = this.publisher();
+    return [...this.listings.values()]
+      .filter((l) => l.status === 'published' || (mine !== null && l.publisherOrgId === mine))
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
   /** P9 — all versions in one pass (lets the marketplace bucket by listing without O(N) detail() calls). */
   allVersions(): ListingVersion[] {
-    return [...this.versions.values()];
+    /**
+     * SCOPED TO VISIBLE LISTINGS. P13C ROUND 9 — sibling found re-auditing the
+     * F1/F8 class rather than reported by the red team.
+     *
+     * Both call sites join this against `list()`, so scoping it changes no
+     * behaviour today. It is scoped anyway because a bulk unfiltered accessor
+     * sitting next to seven filtered ones is a loaded gun for the next caller:
+     * a `ListingVersion` carries the full manifest, changelog and review record,
+     * and nothing in the name says "this one is not filtered".
+     */
+    const visibleIds = new Set(this.list().map((l) => l.id));
+    return [...this.versions.values()].filter((v) => visibleIds.has(v.listingId));
   }
   /**
    * The detail view of a listing already in hand. `detail(id)` is the lookup form and
@@ -193,23 +378,61 @@ export class MarketplaceStore extends EventEmitter {
   detailFor(listing: MarketplaceListing): ListingDetail {
     return { listing, versions: [...this.versions.values()].filter((v) => v.listingId === listing.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) };
   }
+  /** One listing, if it is published or the caller published it. Was a bare id. */
   detail(id: string): ListingDetail | null {
     const listing = this.listings.get(id);
     if (!listing) return null;
+    const mine = this.publisher();
+    if (listing.status !== 'published' && (mine === null || listing.publisherOrgId !== mine)) return null;
     return this.detailFor(listing);
   }
+  /** The submission trail for a listing the CALLER published. */
   eventsFor(listingId: string, limit = 50): SubmissionEvent[] {
+    if (this.detail(listingId) === null) return [];
+    const mine = this.publisher();
+    const listing = this.listings.get(listingId);
+    if (mine === null || listing?.publisherOrgId !== mine) return [];
     return this.events.filter((e) => e.listingId === listingId).slice(-limit).reverse();
   }
+
+  /**
+   * The CALLER'S OWN submission trail.
+   *
+   * Events carry the acting person's display name and email. An install-wide feed
+   * of them was a roster of who at which organization submitted what, and when.
+   */
   recentEvents(limit = 50): SubmissionEvent[] {
-    return this.events.slice(-limit).reverse();
+    const mine = this.publisher();
+    if (mine === null) return [];
+    const ownListings = new Set(
+      [...this.listings.values()].filter((l) => l.publisherOrgId === mine).map((l) => l.id),
+    );
+    return this.events
+      .filter((e) => e.listingId !== null && ownListings.has(e.listingId))
+      .slice(-limit)
+      .reverse();
   }
 
+  /**
+   * Counts over WHAT THE CALLER CAN SEE. P13C ROUND 9 — F8.
+   *
+   * Round 8 scoped `list()` and left this reading every row, so the aggregate
+   * counted precisely the drafts the list had just been taught to hide:
+   * `draft`, `inReview` and `pendingReview` were a live meter of other
+   * organizations' unpublished submissions. `totalListings - published` gave the
+   * same number without even reading the fields.
+   *
+   * An aggregate is a read. It gets the same predicate as the read it aggregates
+   * — `list()` — rather than a second one that can drift from it.
+   */
   stats(): MarketplaceStats {
-    const all = [...this.listings.values()];
+    const all = this.list();
+    const visibleIds = new Set(all.map((l) => l.id));
     const byKind: Record<string, number> = {};
     for (const l of all) byKind[l.kind] = (byKind[l.kind] ?? 0) + 1;
-    const pendingReview = [...this.versions.values()].filter((v) => v.status === 'in_review').length;
+    const pendingReview = [...this.versions.values()].filter(
+      (v) => v.status === 'in_review' && visibleIds.has(v.listingId),
+    ).length;
     return {
       totalListings: all.length,
       published: all.filter((l) => l.status === 'published').length,
@@ -232,6 +455,9 @@ export class MarketplaceStore extends EventEmitter {
       name: input.name,
       summary: input.summary,
       developerId: this.developerId,
+      // P13C Round 8 — the publisher, stamped from the resolver. `developerId` is a
+      // constant (`dev-owner`), so it never identified anybody.
+      publisherOrgId: this.publisher(),
       category: input.category,
       pricing: input.pricing,
       status: 'draft',
@@ -251,7 +477,8 @@ export class MarketplaceStore extends EventEmitter {
   }
 
   addVersion(listingId: string, manifest: ListingManifest, changelog: string): ListingVersion | null {
-    const listing = this.listings.get(listingId);
+    // P13C ROUND 9 F1 — ownership, not identity. Was `this.listings.get(listingId)`.
+    const listing = this.ownedListing(listingId);
     if (!listing) return null;
     const now = new Date().toISOString();
     const version: ListingVersion = {
@@ -277,7 +504,8 @@ export class MarketplaceStore extends EventEmitter {
 
   /** Submit → scan → (sign) → in_review, or reject on scan failure. */
   submit(versionId: string, actor: string): ListingVersion | null {
-    const v = this.versions.get(versionId);
+    // P13C ROUND 9 F1 — ownership, not identity. Was `this.versions.get(versionId)`.
+    const v = this.ownedVersion(versionId);
     if (!v) return null;
     if (!['draft', 'rejected', 'rolled_back'].includes(v.status)) return v;
 
@@ -306,7 +534,9 @@ export class MarketplaceStore extends EventEmitter {
   }
 
   review(versionId: string, decision: ReviewDecision, reviewer: string, notes: string): ListingVersion | null {
-    const v = this.versions.get(versionId);
+    // P13C ROUND 9 F1 — ownership, not identity. A denied caller gets null, not
+    // the version: returning `v` on the status branch below leaked the row.
+    const v = this.ownedVersion(versionId);
     if (!v || v.status !== 'in_review') return v ?? null;
     const review: ReviewRecord = { decision, reviewer, notes, decidedAt: new Date().toISOString() };
     const status: ListingStatus = decision === 'approved' ? 'approved' : decision === 'rejected' ? 'rejected' : 'draft';
@@ -319,9 +549,10 @@ export class MarketplaceStore extends EventEmitter {
   }
 
   publish(versionId: string, actor: string): ListingVersion | null {
-    const v = this.versions.get(versionId);
+    // P13C ROUND 9 F1 — ownership, not identity.
+    const v = this.ownedVersion(versionId);
     if (!v || v.status !== 'approved') return v ?? null;
-    const listing = this.listings.get(v.listingId);
+    const listing = this.ownedListing(v.listingId);
     if (!listing) return null;
     const now = new Date().toISOString();
     this.setVersion(versionId, { status: 'published', publishedAt: now });
@@ -334,7 +565,10 @@ export class MarketplaceStore extends EventEmitter {
 
   /** Roll back the current published version to the previous published one. */
   rollback(listingId: string, actor: string): MarketplaceListing | null {
-    const listing = this.listings.get(listingId);
+    // P13C ROUND 9 F1 — THE EXPLOIT. Tenant B called this with tenant A's
+    // published listing id, taken from the public `list()`, and unpublished A's
+    // product. Was `this.listings.get(listingId)`.
+    const listing = this.ownedListing(listingId);
     if (!listing || !listing.currentVersionId) return listing ?? null;
     const current = this.versions.get(listing.currentVersionId);
     const published = [...this.versions.values()]
@@ -351,9 +585,29 @@ export class MarketplaceStore extends EventEmitter {
   }
 
   install(listingId: string): MarketplaceListing | null {
-    const l = this.listings.get(listingId);
+    // P13C ROUND 9 F1 — CONSUMER relation: published, or the caller's own. Any
+    // tenant may install any PUBLISHED listing (that is the marketplace); nobody
+    // may install another tenant's draft, which would confirm it exists.
+    const l = this.visibleListing(listingId);
     if (!l) return null;
-    const next = { ...l, installs: l.installs + 1 };
+    /**
+     * P13C ROUND 12 — M-12. ONE ADOPTION PER ORGANIZATION.
+     *
+     * This was `installs + 1` per call with no record of who, so adoption was
+     * unbounded self-inflation — and `rankCatalog` sorts on it. Idempotent now:
+     * a second install by the same organization returns the row unchanged.
+     *
+     * Fail closed on an unresolved caller: "nobody" is not an organization and
+     * must not get a vote in the count.
+     */
+    const who = this.publisher();
+    if (who === null) return null;
+    if (l.installedBy?.[who]) return l;
+    const next: MarketplaceListing = {
+      ...l,
+      installedBy: { ...(l.installedBy ?? {}), [who]: true },
+      installs: l.installs + 1,
+    };
     this.listings.set(listingId, next);
     this.schedulePersist();
     this.emit('changed');
@@ -361,12 +615,36 @@ export class MarketplaceStore extends EventEmitter {
   }
 
   rate(listingId: string, stars: number): MarketplaceListing | null {
-    const l = this.listings.get(listingId);
+    // P13C ROUND 9 F1 — CONSUMER relation, same predicate as `install`.
+    const l = this.visibleListing(listingId);
     if (!l) return null;
+    /**
+     * P13C ROUND 12 — M-12. ONE OPINION PER ORGANIZATION, CHANGEABLE.
+     *
+     * Every call used to be a new vote, so review-bombing another tenant's
+     * published listing was a loop over one channel. An organization may now
+     * change its mind — that is what a rating is — but it cannot vote twice.
+     *
+     * THE ARITHMETIC RUNS OFF THE STORED TOTALS, not off the map, so a legacy
+     * row's historical `ratingCount` / `ratingAvg` survive: a first vote from a
+     * new organization extends that baseline, and a revision adjusts the total
+     * by the delta while leaving the count alone. Recomputing purely from
+     * `ratings` would silently discard every pre-M-12 vote, which is data loss
+     * dressed up as a cleaner model.
+     */
+    const who = this.publisher();
+    if (who === null) return null;
     const s = Math.max(1, Math.min(5, Math.round(stars)));
-    const count = l.ratingCount + 1;
-    const avg = (l.ratingAvg * l.ratingCount + s) / count;
-    const next = { ...l, ratingCount: count, ratingAvg: Math.round(avg * 100) / 100 };
+    const prior = l.ratings?.[who];
+    const count = prior === undefined ? l.ratingCount + 1 : l.ratingCount;
+    const total = l.ratingAvg * l.ratingCount + (prior === undefined ? s : s - prior);
+    const avg = count === 0 ? 0 : total / count;
+    const next: MarketplaceListing = {
+      ...l,
+      ratings: { ...(l.ratings ?? {}), [who]: s },
+      ratingCount: count,
+      ratingAvg: Math.round(avg * 100) / 100,
+    };
     this.listings.set(listingId, next);
     this.schedulePersist();
     this.emit('changed');
@@ -385,6 +663,24 @@ export class MarketplaceStore extends EventEmitter {
   }
   private event(listingId: string, versionId: string, action: string, actor: string, detail: string): void {
     this.events.push({ id: `sev_${randomUUID()}`, listingId, versionId, at: new Date().toISOString(), action, actor, detail });
-    if (this.events.length > EVENT_CAP) this.events = this.events.slice(this.events.length - EVENT_CAP);
+    /**
+     * PER LISTING. P13C ROUND 8. An install-wide slice let one publisher's
+     * activity evict another publisher's submission trail — the record of what
+     * was reviewed and approved. Tenth install-wide cap.
+     */
+    {
+      const byListing = new Map<string, number>();
+      const kept = new Set<(typeof this.events)[number]>();
+      for (let i = this.events.length - 1; i >= 0; i -= 1) {
+        const e = this.events[i]!;
+        const key = e.listingId ?? '__none__';
+        const n = byListing.get(key) ?? 0;
+        if (n < EVENT_CAP) {
+          kept.add(e);
+          byListing.set(key, n + 1);
+        }
+      }
+      this.events = this.events.filter((e) => kept.has(e));
+    }
   }
 }

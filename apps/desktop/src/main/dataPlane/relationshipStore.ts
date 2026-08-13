@@ -1,0 +1,498 @@
+/**
+ * Phase 6 — relationship persistence.
+ *
+ * Two collections, deliberately separate from the records themselves:
+ *
+ *   LINKS   a resolved edge: source record → target record, with the method,
+ *           the actor and the correlation id that produced it.
+ *   PENDING an unresolved or ambiguous reference waiting for either a human
+ *           decision or the arrival of the record it points at.
+ *
+ * WHY NOT WRITE THE TARGET ID BACK INTO THE RECORD. The reference field holds
+ * what the source system said — "ABC Hospital", "PO-1042". Overwriting it with
+ * an internal id would destroy the evidence, break the round trip back out
+ * through export, and make a wrong resolution unrecoverable. The link is stored
+ * alongside instead, so the record keeps its own truth and the resolution keeps
+ * its provenance. Undoing a bad link is deleting a row, not repairing data.
+ *
+ * PENDING is what makes import order not matter: invoices imported before
+ * customers park here, and the next resolution pass picks them up.
+ */
+import { promises as fs } from 'node:fs';
+import type { TenantScope } from '@neuropause/shared';
+import { TenantOwnership } from '../tenancy/tenantOwnedStore';
+import { randomUUID } from 'node:crypto';
+import { envelopeStamp, readStoreFile } from '../storage/storeEnvelope';
+import type { CandidateRecord } from './relationshipResolver';
+import type { MatchMethod, RelationshipStatus } from './relationshipModel';
+import { TenantDedupe } from '../tenancy/tenantDedupe';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/**
+ * P13C ROUND 10 — THE RETENTION DECLARATION THIS FILE COULD NOT MAKE.
+ *
+ * The store satisfied the scope gate by holding a `TenantOwnership`, which the
+ * registry can see and which takes no retention argument — the gap all three
+ * proven Round 9 findings went through. This file has its own history in the
+ * class twice over: `link()` capped `this.links` install-wide with
+ * `splice(0, …)` until Round 7, and `park()` did the same to `this.pending`.
+ * Being made to answer the question this round surfaced a third, different
+ * removal that was still crossing the boundary — see `slot`.
+ */
+declareStoreScope({
+  name: 'dataplane-relationship-queue',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  retentionScope: 'OWNER',
+  retentionAuthority: 'OWNER',
+  retention:
+    'TWO per-owner caps and TWO single-row removals. The caps go through ' +
+    '`TenantOwnership.pruneOwn` — MAX_LINKS (200,000) resolved edges and MAX_PENDING (20,000) ' +
+    "parked references, counted and evicted within the writing tenant's own rows only. Both were " +
+    'install-wide `splice(0, …)` calls, so one tenant resolving edges deleted another tenant\'s ' +
+    'oldest. The single-row removals are `dropPending` (a resolved link retires its own parked ' +
+    'entry) and the update branches of `link`/`park` (a re-resolution replaces a row in place). ' +
+    'P13C ROUND 10: all three of those were keyed on `slot(recordId, relationshipKey)` with NO ' +
+    "TENANT IN THE KEY, so a slot collision let one organization's resolution overwrite another's " +
+    "resolved edge and delete another's parked reference — while `linkFor`, the READ over the same " +
+    'index, was explicitly hardened against exactly that. The key now carries the owner.',
+  reason:
+    'A parked reference carries `sourceTitle`, `sourceField` and the literal `sourceValue` that ' +
+    "failed to match — one organization's record titles and field contents, reachable on `data:read`, " +
+    'a base role. A resolved link names both endpoints. TENANT rather than WORKSPACE because a ' +
+    'relationship is an organization-level fact about its own records: resolution runs after import ' +
+    'from whichever workspace performed it and the edge must still read from the others. Binding is ' +
+    'asserted by the TenantOwnership this class holds, so no second predicate is declared here that ' +
+    'could drift from it.',
+});
+
+export interface RelationshipLink {
+  id: string;
+  /** Declared relationship key, e.g. `payment.invoice`. */
+  relationshipKey: string;
+  sourceModuleId: string;
+  sourceRecordId: string;
+  /** Descriptor field the reference was read from. */
+  sourceField: string;
+  /** The literal text the source system supplied — never overwritten. */
+  sourceValue: string;
+  targetModuleId: string;
+  targetRecordId: string;
+  method: MatchMethod;
+  confidence: number;
+  /** Null when the engine resolved it deterministically with no human involved. */
+  decidedBy: string | null;
+  at: string;
+  /** Ties the link back to the import that produced it. */
+  correlationId: string | null;
+  reason: string;
+  /**
+   * The organization that resolved this edge.
+   *
+   * P13C ROUND 7 — `PendingRelationship` gained an owner in an earlier round and
+   * `RelationshipLink` did not, so this store was HALF migrated: the queue was
+   * owned and the resolved links were not. A half-migration reads as done,
+   * because the reviewer checks the class and finds a `TenantOwnership` in it.
+   *
+   * Two consequences, and the second is the serious one:
+   *   - `counts()`, `outgoing()`, `incoming()` and `linkFor()` filtered nothing.
+   *   - `link()` capped the array INSTALL-WIDE with `splice(0, …)`, so one tenant
+   *     reaching MAX_LINKS deleted another tenant's oldest resolved edges.
+   *     Fourth install-wide cap this program has found behind a correct-looking
+   *     read path. A retention cap is a write.
+   *
+   * Optional for the same reason every other migrated record's is: rows written
+   * before the field existed have no owner and inventing one is the single thing
+   * a migration must never do. They are visible to nobody and re-resolve on the
+   * next import pass.
+   */
+  tenantId?: string;
+}
+
+export interface PendingRelationship {
+  /**
+   * The organization this parked reference belongs to (P13C Round 2, H6).
+   *
+   * Absent means UNRESOLVED — visible to nobody. These rows carry
+   * `sourceTitle`, `sourceField` and the literal `sourceValue` that failed to
+   * match, so an unscoped queue disclosed another organization's record titles
+   * and field contents under `data:read`, a base role.
+   */
+  tenantId?: string | null;
+  id: string;
+  relationshipKey: string;
+  sourceModuleId: string;
+  sourceRecordId: string;
+  sourceTitle: string;
+  sourceField: string;
+  sourceValue: string;
+  targetModuleId: string;
+  targetLabel: string;
+  status: Extract<RelationshipStatus, 'ambiguous' | 'unresolved' | 'skipped'>;
+  candidates: CandidateRecord[];
+  reason: string;
+  firstSeenAt: string;
+  lastCheckedAt: string;
+  /** How many resolution passes have looked at this without resolving it. */
+  attempts: number;
+  correlationId: string | null;
+}
+
+interface RelationshipFile {
+  schemaVersion: number;
+  links: RelationshipLink[];
+  pending: PendingRelationship[];
+}
+
+/** Bound on retained pending items — a runaway import cannot grow this forever. */
+const MAX_PENDING = 20_000;
+const MAX_LINKS = 200_000;
+
+export class RelationshipStore {
+  /**
+   * P13C Round 2 — H6. THE TENANT BOUNDARY.
+   *
+   * The sibling `ProvenanceStore` in this same subsystem gained a scope in
+   * P13A; this one did not, and nothing noticed because the queue is a
+   * back-office surface. `queue()` returned every tenant's parked references,
+   * and `decide()` resolved `pendingId` unscoped while scoping only the
+   * TARGET — so the write linked one tenant's source record to another's
+   * target.
+   */
+  private readonly tenancy = new TenantOwnership('dataplane-relationship-queue');
+  private links: RelationshipLink[] = [];
+  private pending: PendingRelationship[] = [];
+  private loaded = false;
+  /** `sourceRecordId relationshipKey` → link, for idempotency. */
+  private linkIndex = new Map<string, RelationshipLink>();
+  private pendingIndex = new Map<string, PendingRelationship>();
+
+  constructor(private readonly filePath: string) {}
+
+  async load(): Promise<void> {
+    if (this.loaded) return;
+    const res = await readStoreFile<RelationshipFile>(this.filePath);
+    if (res.state === 'loaded' && res.data) {
+      this.links = Array.isArray(res.data.links) ? res.data.links : [];
+      this.pending = Array.isArray(res.data.pending) ? res.data.pending : [];
+    }
+    this.reindex();
+    this.loaded = true;
+  }
+
+  /**
+   * Rebuild both indexes under each row's OWN owner. P13C ROUND 10.
+   *
+   * Keyed without a tenant, this was last-one-wins across tenants: two rows for
+   * the same (record, relationship) in different organizations collapsed to one
+   * map entry, so which tenant's row was reachable depended on file order.
+   */
+  private reindex(): void {
+    this.linkIndex = new Map(
+      this.links.map((l) => [slot(l.tenantId, l.sourceRecordId, l.relationshipKey), l]),
+    );
+    this.pendingIndex = new Map(
+      this.pending.map((p) => [slot(p.tenantId, p.sourceRecordId, p.relationshipKey), p]),
+    );
+  }
+
+  /**
+   * Record a resolved edge.
+   *
+   * Idempotent per (source record, relationship): re-running resolution over the
+   * same record REPLACES its link rather than accumulating duplicates, which is
+   * what makes the deferred-resolution pass safe to run after every import.
+   */
+  async link(input: Omit<RelationshipLink, 'id'>): Promise<RelationshipLink> {
+    /**
+     * THE OWNER FIRST, so the index key is scoped. P13C ROUND 10.
+     *
+     * `requireTenant()` throws when no organization is active — which is exactly
+     * what `stamp()` did on the next line, so the refusal is unchanged and only
+     * moves earlier. What changes is that `existing` can no longer be another
+     * organization's edge: keyed without the tenant, a slot collision made the
+     * line below (`this.links[indexOf(existing)] = link`) OVERWRITE that
+     * organization's resolved edge with this one's, and `dropPending(key)` at
+     * the end of this method DELETE that organization's parked reference.
+     */
+    const owner = this.tenancy.requireTenant();
+    const key = slot(owner, input.sourceRecordId, input.relationshipKey);
+    const existing = this.linkIndex.get(key);
+    // Stamped from the resolver, never from the caller. `own()` throws when
+    // unresolved rather than writing an unowned edge.
+    const link: RelationshipLink = this.tenancy.stamp({
+      id: existing?.id ?? `rel_${randomUUID()}`,
+      ...input,
+    });
+
+    if (existing) {
+      this.links[this.links.indexOf(existing)] = link;
+    } else {
+      this.links.push(link);
+      /**
+       * PER OWNER. `splice(0, this.links.length - MAX_LINKS)` was install-wide:
+       * one tenant resolving MAX_LINKS edges deleted another tenant's oldest.
+       * `pruneOwn` caps each owner's rows separately, so total storage scales
+       * with tenant count — the same deliberate trade every other store in this
+       * program makes, and the correct one when the alternative is deleting a
+       * customer's data because a different customer was busy.
+       */
+      this.links = this.tenancy.pruneOwn(
+        this.links,
+        MAX_LINKS,
+        (a, b) => a.at.localeCompare(b.at),
+      );
+    }
+    this.linkIndex.set(key, link);
+
+    // A resolved link retires its pending entry — the queue only ever holds
+    // things that still need attention.
+    this.dropPending(key);
+    await this.persist();
+    return link;
+  }
+
+  /**
+   * Notified when a reference is parked for the FIRST time in its class.
+   *
+   * Deliberately not once per reference: an import can park hundreds, and a
+   * hold each would turn the governance list into a noise generator that
+   * nobody reads. The composition root raises one hold per
+   * module + relationship + status and points at the existing queue for the
+   * full set. Optional, so the store stays usable without the decisions
+   * subsystem (as every existing test constructs it).
+   */
+  onFirstParked?: (entry: PendingRelationship) => void;
+
+  /**
+   * Relationship classes already notified — the per-class dedupe, PER TENANT.
+   *
+   * P13C ROUND 6. The class key is `moduleId/relationshipKey/status`, which is
+   * tenant-independent BY CONSTRUCTION — every tenant importing invoices with
+   * the same unresolved supplier reference produces the same key. So the first
+   * tenant to park a reference claimed the class and no other tenant ever got
+   * the hold that tells them their import left references unresolved.
+   *
+   * Uses the store's existing `TenantOwnership` rather than a second seam.
+   */
+  private readonly notifiedClasses = new TenantDedupe('relationship-parked-classes');
+
+  /** Park an unresolved or ambiguous reference. Idempotent per slot. */
+  async park(input: Omit<PendingRelationship, 'id' | 'firstSeenAt' | 'attempts'>): Promise<PendingRelationship> {
+    /**
+     * THE OWNER FIRST. P13C ROUND 10, and this branch was the sharper half.
+     *
+     * A tenant-less slot key meant `existing` could be ANOTHER organization's
+     * parked reference, and the update branch then wrote this caller's
+     * `sourceTitle`, `sourceValue`, `candidates` and `status` into it while
+     * leaving that organization's `tenantId` in place — so the victim's own
+     * review queue displayed the attacker's record title and field contents,
+     * and the victim's parked reference was gone. A cross-tenant disclosure
+     * delivered through a write.
+     *
+     * `requireTenant()` already ran in the create branch below, so an unresolved
+     * caller was already refused when parking something new; hoisting it means
+     * an unresolved caller can no longer reach the update branch either, which
+     * is the branch that had no owner check at all.
+     */
+    const owner = this.tenancy.requireTenant();
+    const key = slot(owner, input.sourceRecordId, input.relationshipKey);
+    const existing = this.pendingIndex.get(key);
+    const entry: PendingRelationship = existing
+      ? {
+          ...existing,
+          ...input,
+          // Restated after the spread: `input` is typed to carry an optional
+          // `tenantId`, and a caller passing an explicit `undefined` must not be
+          // able to unown a row it has just been proved to own.
+          tenantId: owner,
+          id: existing.id,
+          firstSeenAt: existing.firstSeenAt,
+          attempts: existing.attempts + 1,
+        }
+      : {
+          ...input,
+          // Owner from the resolved tenant, never from the payload.
+          tenantId: owner,
+          id: `pen_${randomUUID()}`,
+          firstSeenAt: input.lastCheckedAt,
+          attempts: 1,
+        };
+
+    if (existing) this.pending[this.pending.indexOf(existing)] = entry;
+    else {
+      this.pending.push(entry);
+      // Retention PER TENANT — an install-wide cap let one tenant evict
+      // another's parked references.
+      this.pending = this.tenancy.pruneOwn(this.pending, MAX_PENDING, (a, b) =>
+        a.firstSeenAt < b.firstSeenAt ? -1 : 1,
+      );
+    }
+    this.pendingIndex.set(key, entry);
+    await this.persist();
+
+    // One notification per class, not per reference.
+    const classKey = `${entry.sourceModuleId}/${entry.relationshipKey}/${entry.status}`;
+    if (entry.status !== 'skipped' && this.notifiedClasses.claim(this.tenancy.scopeOrDeny(), classKey)) {
+      try {
+        this.onFirstParked?.(entry);
+      } catch {
+        // Raising a hold must never fail the import that produced it.
+      }
+    }
+    return entry;
+  }
+
+  /**
+   * Retire a parked reference. The KEY is the boundary, and it is now scoped.
+   *
+   * Its one caller is `link()`, which builds the key from the resolved owner, so
+   * this can only ever reach a row of the caller's own. It was reachable across
+   * organizations for as long as the key had no tenant in it.
+   */
+  private dropPending(key: string): void {
+    const existing = this.pendingIndex.get(key);
+    if (!existing) return;
+    this.pending.splice(this.pending.indexOf(existing), 1);
+    this.pendingIndex.delete(key);
+  }
+
+  /**
+   * Mark a pending item as deliberately skipped — a decision, not a silence.
+   *
+   * P13C ROUND 10 — resolved through `pendingById`, the scoped resolver two
+   * methods down, instead of a bare `pending.find(p => p.id === pendingId)`.
+   * `pendingId` arrives from a renderer payload
+   * (`DataPlaneRelationshipSkipRequest`), and while `relationshipEngine.skip`
+   * does resolve it through `pendingById` before calling this, that check lived
+   * in the caller — the same arrangement that has repeatedly turned into a
+   * cross-tenant write one refactor later. A foreign id now changes nothing and
+   * reports null, which is indistinguishable from an invented one.
+   */
+  async skip(pendingId: string, actor: string | null, at: string): Promise<PendingRelationship | null> {
+    const entry = this.pendingById(pendingId);
+    if (!entry) return null;
+    entry.status = 'skipped';
+    entry.lastCheckedAt = at;
+    entry.reason = actor === null ? 'Skipped.' : `Skipped by ${actor}.`;
+    await this.persist();
+    return entry;
+  }
+
+  /** Bind the tenant boundary. UNBOUND DENIES. Chainable. */
+  bindScope(source: () => TenantScope | null): this {
+    this.tenancy.bindScope(source);
+    return this;
+  }
+  hasScope(): boolean {
+    return this.tenancy.hasScope();
+  }
+  /** Unscoped ownership counts, for the migration inventory only. */
+  ownershipCounts(): { total: number; assigned: number; unresolved: number } {
+    return this.tenancy.countOwnership(this.pending);
+  }
+
+  /**
+   * The pending reference, IF it is the caller's.
+   *
+   * This is the accessor `decide()` resolves through, and scoping it is what
+   * makes source-and-target-share-a-tenant true: the target was already scoped,
+   * so with the source scoped too there is no pair left that spans tenants.
+   */
+  pendingById(id: string): PendingRelationship | null {
+    const p = this.pending.find((x) => x.id === id) ?? null;
+    return p !== null && this.tenancy.mine(p) ? p : null;
+  }
+
+  /** Items still needing attention, worst first (ambiguous before unresolved). */
+  /** The CALLER'S queue. Was every tenant's parked references. */
+  queue(limit = 200): PendingRelationship[] {
+    const rank = { ambiguous: 0, unresolved: 1, skipped: 2 } as const;
+    return this.tenancy.onlyMine(this.pending)
+      .sort((a, b) => rank[a.status] - rank[b.status] || a.firstSeenAt.localeCompare(b.firstSeenAt))
+      .slice(0, limit);
+  }
+
+  /** Every pending entry that a resolution pass should retry. */
+  retryable(): PendingRelationship[] {
+    return this.tenancy.onlyMine(this.pending).filter((p) => p.status !== 'skipped');
+  }
+
+  /** Links out of a record — what it points at. */
+  outgoing(recordId: string): RelationshipLink[] {
+    return this.tenancy.onlyMine(this.links).filter((l) => l.sourceRecordId === recordId);
+  }
+
+  /** Links into a record — the backward-trace direction. */
+  incoming(recordId: string): RelationshipLink[] {
+    return this.tenancy.onlyMine(this.links).filter((l) => l.targetRecordId === recordId);
+  }
+
+  linkFor(sourceRecordId: string, relationshipKey: string): RelationshipLink | null {
+    // Through the OWNERSHIP filter, AND under the caller's own key. Round 10 put
+    // the tenant into the key (see `slot`); this filter stays because the index
+    // is still a lookup structure rather than a boundary, and two mechanisms
+    // that must both fail is the arrangement this program keeps choosing.
+    const scope = this.tenancy.scopeOrDeny();
+    if (scope === null || !scope.tenantId) return null;
+    const hit = this.linkIndex.get(slot(scope.tenantId, sourceRecordId, relationshipKey)) ?? null;
+    return hit !== null && this.tenancy.onlyMine([hit]).length === 1 ? hit : null;
+  }
+
+  /**
+   * The CALLER'S counts.
+   *
+   * P13C ROUND 7 — this read the raw arrays while `queue()`, `retryable()` and
+   * `pendingById()` — its three siblings in this class — all go through
+   * `this.tenancy`. Reached over IPC through the data-plane dashboard, so it
+   * disclosed install-wide link volume and another tenant's unresolved backlog.
+   *
+   * Fifth instance of "the listing is scoped and the aggregate over the same
+   * collection is not". The pattern is now stated as a rule wherever it has been
+   * fixed: a count is the same query with the rows dropped.
+   *
+   * `links` is filtered by the same ownership as `pending` — see the note on
+   * `RelationshipLink` below.
+   */
+  counts(): { links: number; ambiguous: number; unresolved: number; skipped: number } {
+    const pending = this.tenancy.onlyMine(this.pending);
+    return {
+      links: this.tenancy.onlyMine(this.links).length,
+      ambiguous: pending.filter((p) => p.status === 'ambiguous').length,
+      unresolved: pending.filter((p) => p.status === 'unresolved').length,
+      skipped: pending.filter((p) => p.status === 'skipped').length,
+    };
+  }
+
+  private async persist(): Promise<void> {
+    const payload: RelationshipFile = { ...envelopeStamp(), links: this.links, pending: this.pending };
+    const tmp = `${this.filePath}.tmp`;
+    await fs.writeFile(tmp, JSON.stringify(payload), { mode: 0o600 });
+    await fs.rename(tmp, this.filePath);
+  }
+}
+
+/**
+ * The idempotency key for one (owner, record, relationship). P13C ROUND 10.
+ *
+ * THE TENANT IS PART OF THE KEY, and it was not. `linkFor` already said why, in
+ * a comment written against its own read path: "the index is keyed by (record,
+ * relationship) with no tenant in it, so a bare lookup would resolve another
+ * tenant's edge — an index is a lookup structure, not a boundary." That was
+ * true, and it was true of the three WRITE paths as well, which went on using
+ * the raw index while only the read was filtered. See `link`, `park` and
+ * `dropPending`.
+ *
+ * JSON-encoded rather than joined on `::`, for the same reason `tenantKey`,
+ * `makeUnifiedId` and `inboxOwnerKey` are: a record id or relationship key that
+ * contains the separator could otherwise make two different tuples collapse to
+ * one string, which is a forged collision rather than an accidental one. A row
+ * with no owner keys under `null`, which no owned row can produce, so
+ * pre-migration rows share an index with nobody.
+ */
+function slot(tenantId: string | null | undefined, recordId: string, relationshipKey: string): string {
+  const owner = typeof tenantId === 'string' && tenantId !== '' ? tenantId : null;
+  return JSON.stringify([owner, recordId, relationshipKey]);
+}

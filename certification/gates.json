@@ -1,0 +1,119 @@
+{
+  "program": "13C",
+  "baseline_sha256": "d825317dfb2799fbbc0a2d20e7e325cd8c9d1a819773552a83629bc71740313c",
+  "source_commit": "d378ae80964d41ead84c2a3c3eb9805f2c095889",
+  "gates": [
+    {
+      "gate": "G0e",
+      "status": "PASS",
+      "run_id": "RUN-20260813T122238Z-G0e",
+      "source_sha": "d378ae80964d41ead84c2a3c3eb9805f2c095889",
+      "baseline_sha256": "d825317dfb2799fbbc0a2d20e7e325cd8c9d1a819773552a83629bc71740313c",
+      "environment": "node 20.20.2 (pin 20)",
+      "toolchain_matches_pin": true,
+      "recorded_at": "2026-08-13T12:22:38.956Z",
+      "command": "two deliberate regressions to LoginScreen.tsx, each reverted with git checkout",
+      "evidence": [
+        "control 1 (text-accent-fg -> text-white): 1 failed | 6 passed (7); control 2 (catalogue bypass): 3 failed | 4 passed (7); source tree clean after both reverts"
+      ]
+    },
+    {
+      "gate": "G0",
+      "status": "PASS",
+      "run_id": "RUN-20260813T123206Z-G0",
+      "source_sha": "d378ae80964d41ead84c2a3c3eb9805f2c095889",
+      "baseline_sha256": "d825317dfb2799fbbc0a2d20e7e325cd8c9d1a819773552a83629bc71740313c",
+      "environment": "node 20.20.2 (pin 20)",
+      "toolchain_matches_pin": true,
+      "recorded_at": "2026-08-13T12:32:06.083Z",
+      "command": "bash freeze-baseline.sh",
+      "evidence": [
+        "source tree clean (certification/ excluded); BASELINE-d825317dfb27 at commit d378ae8"
+      ]
+    },
+    {
+      "gate": "G0b",
+      "status": "PASS",
+      "run_id": "RUN-20260813T123206Z-G0b",
+      "source_sha": "d378ae80964d41ead84c2a3c3eb9805f2c095889",
+      "baseline_sha256": "d825317dfb2799fbbc0a2d20e7e325cd8c9d1a819773552a83629bc71740313c",
+      "environment": "node 20.20.2 (pin 20)",
+      "toolchain_matches_pin": true,
+      "recorded_at": "2026-08-13T12:32:06.189Z",
+      "command": "node --version; cat .nvmrc",
+      "evidence": [
+        "node 20.20.2 against pin 20; toolchain_matches_pin true on every row"
+      ]
+    },
+    {
+      "gate": "G0c",
+      "status": "PASS",
+      "run_id": "RUN-20260813T123206Z-G0c",
+      "source_sha": "d378ae80964d41ead84c2a3c3eb9805f2c095889",
+      "baseline_sha256": "d825317dfb2799fbbc0a2d20e7e325cd8c9d1a819773552a83629bc71740313c",
+      "environment": "node 20.20.2 (pin 20)",
+      "toolchain_matches_pin": true,
+      "recorded_at": "2026-08-13T12:32:06.296Z",
+      "command": "npm run typecheck",
+      "evidence": [
+        "exit 0 across all workspaces at d378ae8; /tmp/np-runs/typecheck.log"
+      ]
+    },
+    {
+      "gate": "G0d",
+      "status": "PASS",
+      "run_id": "RUN-20260813T123206Z-G0d",
+      "source_sha": "d378ae80964d41ead84c2a3c3eb9805f2c095889",
+      "baseline_sha256": "d825317dfb2799fbbc0a2d20e7e325cd8c9d1a819773552a83629bc71740313c",
+      "environment": "node 20.20.2 (pin 20)",
+      "toolchain_matches_pin": true,
+      "recorded_at": "2026-08-13T12:32:06.399Z",
+      "command": "npm run lint",
+      "evidence": [
+        "eslint . --max-warnings 0, exit 0 at d378ae8; /tmp/np-runs/lint.log"
+      ]
+    },
+    {
+      "gate": "G0f",
+      "status": "PASS",
+      "run_id": "RUN-20260813T123206Z-G0f",
+      "source_sha": "d378ae80964d41ead84c2a3c3eb9805f2c095889",
+      "baseline_sha256": "d825317dfb2799fbbc0a2d20e7e325cd8c9d1a819773552a83629bc71740313c",
+      "environment": "node 20.20.2 (pin 20)",
+      "toolchain_matches_pin": true,
+      "recorded_at": "2026-08-13T12:32:06.505Z",
+      "command": "npm test -w @neuropause/desktop; then npx vitest run --root apps/desktop --no-file-parallelism",
+      "evidence": [
+        "parallel 771/771 files 8057/8057 tests plus UI 13/13 133/133; serial 771/771 8057/8057; all exits 0 at d378ae8"
+      ]
+    },
+    {
+      "gate": "G5",
+      "status": "PASS",
+      "run_id": "RUN-20260813T132106Z-G5",
+      "source_sha": "d378ae80964d41ead84c2a3c3eb9805f2c095889",
+      "baseline_sha256": "d825317dfb2799fbbc0a2d20e7e325cd8c9d1a819773552a83629bc71740313c",
+      "environment": "node 20.20.2 (pin 20)",
+      "toolchain_matches_pin": true,
+      "recorded_at": "2026-08-13T13:21:06.619Z",
+      "command": "npm run dev:desktop with NEUROPAUSE_BACKEND_URL=https://api.neuropause033.com",
+      "evidence": [
+        "registered dishantdobariya91@gmail.com; users row 2026-08-13 13:17:42.645795+00; auth_sessions=1; reached Mission Control; log 'catalog reachable'. SUBSTRATE: docker-compose.prod.yml on a developer Mac behind a Cloudflare Tunnel, NOT a server. Registration used a temporary /etc/hosts pin to 172.67.202.47 while a stale NXDOMAIN expired; public DNS verified resolving WITHOUT the pin at 13:19 (uptime 1252s)."
+      ]
+    },
+    {
+      "gate": "G3",
+      "status": "BLOCKED",
+      "run_id": "RUN-20260813T132106Z-G3",
+      "source_sha": "d378ae80964d41ead84c2a3c3eb9805f2c095889",
+      "baseline_sha256": "d825317dfb2799fbbc0a2d20e7e325cd8c9d1a819773552a83629bc71740313c",
+      "environment": "node 20.20.2 (pin 20)",
+      "toolchain_matches_pin": true,
+      "recorded_at": "2026-08-13T13:21:06.725Z",
+      "blocker": "No server substrate. DigitalOcean account locked/restricted; the API terminates at a Cloudflare Tunnel on a laptop that sleeps. The DNS->TCP->TLS->HTTP->/health chain itself is proven from the public internet — what is missing is a host, not a configuration.",
+      "owner": "Saurabh (account appeal or new provider), Dishant (deploy)",
+      "required_evidence": "The same chain against a host that stays up with no human's laptop open, verified from two networks",
+      "next_action": "Saurabh opens a DigitalOcean appeal with ID. In parallel evaluate an India-billing provider. deploy-single-host.sh, Caddyfile and docker-compose.edge.yml are written and provider-agnostic — the deploy is one command once a host exists."
+    }
+  ]
+}

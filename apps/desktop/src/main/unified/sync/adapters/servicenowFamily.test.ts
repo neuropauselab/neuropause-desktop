@@ -1,3 +1,4 @@
+import { makeUnifiedId } from '../../ids';
 /**
  * P5 — Increment 10: the ServiceNow connector FAMILY (Incidents, Problems, Change Requests, Requests,
  * Knowledge, CMDB, Assets, Users, Groups, Catalog on one `servicenow` connector). Pure-node, fake
@@ -31,7 +32,7 @@ import {
 
 const BASE = 'https://dev00001.service-now.com';
 const NOW = '2026-07-13T00:00:00.000Z';
-const baseCtx = { connectorId: 'servicenow', accountId: 'a1', now: NOW } as const;
+const baseCtx = { tenantId: 'org-test', connectorId: 'servicenow', accountId: 'a1', now: NOW } as const;
 const pureCtx: SyncContext = { ...baseCtx, http: undefined as never, cursor: null };
 
 /** A `sysparm_display_value=all` field: {value, display_value}. */
@@ -90,7 +91,7 @@ describe('ServiceNow mappers — kinds, per-table id prefixes, display_value + d
       sys_created_on: f('2026-06-01 00:00:00'), sys_updated_on: f('2026-07-02 10:00:00'),
     });
     expect(e.kind).toBe('task');
-    expect(e.id).toBe('servicenow:a1:task:incident-abc123'); // per-table prefix
+    expect(e.id).toBe(makeUnifiedId('org-test', 'servicenow', 'a1', 'task', 'incident-abc123')); // per-table prefix
     expect(e.title).toBe('INC0010023 — Email down');
     expect(e.status).toBe('In Progress'); // display_value of the choice code, not "2"
     expect(e.author).toBe('Ada Byron'); // reference display_value, not the sys_id
@@ -107,8 +108,8 @@ describe('ServiceNow mappers — kinds, per-table id prefixes, display_value + d
     const req = mapRequest(pureCtx, BASE, 'sc_request', rec('same'));
     expect([inc.kind, prob.kind, chg.kind, req.kind]).toEqual(['task', 'task', 'task', 'task']);
     expect(new Set([inc.id, prob.id, chg.id, req.id]).size).toBe(4); // four DISTINCT ids from one sys_id
-    expect(inc.id).toBe('servicenow:a1:task:incident-same');
-    expect(chg.id).toBe('servicenow:a1:task:change_request-same');
+    expect(inc.id).toBe(makeUnifiedId('org-test', 'servicenow', 'a1', 'task', 'incident-same'));
+    expect(chg.id).toBe(makeUnifiedId('org-test', 'servicenow', 'a1', 'task', 'change_request-same'));
   });
 
   it('maps Knowledge/CMDB/Asset/Catalog → document (HTML stripped) and User → contact, Group → organization', () => {
@@ -125,7 +126,7 @@ describe('ServiceNow mappers — kinds, per-table id prefixes, display_value + d
     expect(cat.kind).toBe('document');
     const user = mapUser(pureCtx, BASE, 'sys_user', { sys_id: f('u1'), name: f('Grace Hopper'), email: f('grace@navy.mil'), active: f('true') });
     expect(user.kind).toBe('contact');
-    expect(user.id).toBe('servicenow:a1:contact:sys_user-u1');
+    expect(user.id).toBe(makeUnifiedId('org-test', 'servicenow', 'a1', 'contact', 'sys_user-u1'));
     const group = mapGroup(pureCtx, BASE, 'sys_user_group', { sys_id: f('g1'), name: f('Network Team'), active: f('true') });
     expect(group.kind).toBe('organization');
   });

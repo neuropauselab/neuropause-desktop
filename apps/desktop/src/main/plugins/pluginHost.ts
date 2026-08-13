@@ -19,6 +19,44 @@ import type { HealthStatus, PluginHostEvent, PluginManifest, RuntimePermissionKe
 import { createLogger } from '../logger';
 import { pluginExtensionRegistry } from './extensionRegistry';
 import { applyExtensionCall } from './extensionHostCalls';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/** P13C ROUND 8 — the structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'plugin-kv-storage',
+  scope: 'PLATFORM_GLOBAL',
+  persistence: 'file',
+  authority: 'PLATFORM_OPERATOR',
+  classification: 'INSTALL_METADATA',
+  /**
+   * P13C ROUND 10 — NONE, not INSTALL, and the distinction is load-bearing.
+   * `INSTALL` claims a removal EXISTS and reaches everything; on this store there
+   * is no removal at all. The persisted state is `plugin-data/<pluginId>.json`
+   * and the only two operations that touch it are `storage.get` (a read) and
+   * `storage.set` (an upsert of one key into the map `readKv` just returned).
+   * There is no `storage.delete`, no clear, no cap and no TTL, and uninstalling a
+   * plugin removes its ROOT (`pluginManager.remove`), not this file.
+   *
+   * WHAT THE RETENTION SCANNER ACTUALLY MATCHED HERE: `this.procs.delete(id)` in
+   * the child's `exit` handler, and `pluginExtensionRegistry.clearPlugin(id)`
+   * beside it. Neither touches a persisted row — `procs` holds LIVE CHILD PROCESS
+   * HANDLES, which cannot survive a restart by construction, and the extension
+   * registry is rebuilt from the manifest on every start.
+   */
+  retentionScope: 'NONE',
+  retentionAuthority: 'NONE',
+  retention:
+    "NOTHING IS EVER REMOVED from the persisted KV. `storage.set` reads the plugin's own file, sets " +
+    'one key and writes the map back; there is no delete host call, no cap, no TTL and no eviction, ' +
+    'and no path in this file reaches another plugin\'s file. The `.delete(`/`.clear()` the scanner ' +
+    'matched are `this.procs.delete(id)` and `pluginExtensionRegistry.clearPlugin(id)` on process ' +
+    'exit — live child-process handles and an in-memory extension index, neither persisted. ' +
+    'ONE DATA-LOSS PATH THAT IS NOT A RETENTION POLICY, named rather than hidden: `readKv` catches ' +
+    'a parse failure and returns `{}`, so a `storage.set` against a CORRUPT file rewrites it with ' +
+    'only the new key. That destroys nothing that was readable, and it reaches one plugin\'s own ' +
+    'file, never another\'s and never a tenant\'s.',
+  reason: 'WHY GLOBAL: the path is plugin-data/<pluginId>.json and the plugin is the only partition that exists, because an enabled plugin runs in-process for the whole install. WHO MODIFIES: the forked plugin process. WHY IT CANNOT DISCLOSE TENANT DATA: nothing routes tenant records into it today. CROSS-TENANT COST, STATED: storage.get/set are the one host call with NO permission check, so a plugin that read tenant data through another host call could persist it here unpartitioned — a plugin-trust boundary rather than a tenancy one, and precisely why installing a plugin now requires cloud:operate.',
+});
 
 const log = createLogger('plugin-host');
 

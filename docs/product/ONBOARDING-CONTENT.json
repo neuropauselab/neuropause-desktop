@@ -1,0 +1,93 @@
+{
+  "schema": "neuropause.onboarding-content",
+  "schemaVersion": "1.0",
+  "productBuild": "1.0.0-rc.15",
+  "productRef": "0a040e2",
+  "sourceOfTruth": "repository",
+  "note": "Ordered onboarding content aligned with the product's progressive-disclosure model. Honest and maturity-tagged; introduces surfaces gradually rather than exposing all ~40 at once.",
+  "welcome": {
+    "title": "Welcome to NeuroPause",
+    "body": "NeuroPause is an AI-native enterprise operating system — business modules, governed AI, knowledge, and operations in one desktop workspace. Two ideas to start with: your operational data is local-first (it lives on this device), and a thin cloud plane handles sign-in, the AI Store, and sync. This is a Release Candidate: pilot-ready, and honest about what's Preview.",
+    "maturity": "RC"
+  },
+  "steps": [
+    {
+      "order": 1,
+      "id": "sign-in",
+      "title": "Sign in",
+      "body": "Sign in via the backend with email/password (or OAuth, if your organization configured it). Sign-in requires the backend to be reachable.",
+      "action": "Sign in to reach the shell.",
+      "maturity": "CLOUD",
+      "learnMore": "docs/user/QUICK-START.md"
+    },
+    {
+      "order": 2,
+      "id": "orient",
+      "title": "Get your bearings",
+      "body": "Notice the three groups: Today, Business, and Advanced. Everyday surfaces are up front; advanced centers are revealed on demand. Press Command-K anytime to jump to any surface.",
+      "action": "Open the command palette with Command-K.",
+      "maturity": "LOCAL_FIRST",
+      "learnMore": "docs/user/WHERE-DO-I-GO.md"
+    },
+    {
+      "order": 3,
+      "id": "first-record",
+      "title": "Create your first record",
+      "body": "Open Business and pick a family you use (for example Finance or CRM). Create a record, then reopen it — it persists locally on this device. This is real local-first data, not a mock.",
+      "action": "Create and reopen one Business record.",
+      "maturity": "LOCAL_FIRST",
+      "learnMore": "docs/user/NEUROPAUSE-USER-GUIDE.md"
+    },
+    {
+      "order": 4,
+      "id": "memory-search",
+      "title": "Save to memory, then find it",
+      "body": "Save something to AI Memory, then find it again from Knowledge search. Local lexical search always works; semantic ranking is optional.",
+      "action": "Save to AI Memory and retrieve it via Knowledge.",
+      "maturity": "LOCAL_FIRST",
+      "learnMore": "docs/user/KNOWLEDGE-GUIDE.md"
+    },
+    {
+      "order": 5,
+      "id": "configure-ai",
+      "title": "Turn on AI (optional)",
+      "body": "To evaluate live AI, configure an AI provider in Settings — an Anthropic key or a local Ollama model. Without one, AI Workforce shows an honest deterministic fallback instead of a fabricated result.",
+      "action": "Configure an AI provider, or note the honest fallback.",
+      "maturity": "EXTERNAL_DEPENDENCY",
+      "learnMore": "docs/user/AI-WORKFORCE-GUIDE.md"
+    },
+    {
+      "order": 6,
+      "id": "governed-action",
+      "title": "Run a governed AI action",
+      "body": "In AI Workforce, run one action end-to-end and inspect the approval and evidence trail: intent, governance, permission, execution, evidence.",
+      "action": "Run one governed action and review its evidence.",
+      "maturity": "LOCAL_FIRST + EXTERNAL_DEPENDENCY",
+      "learnMore": "docs/user/AI-WORKFORCE-GUIDE.md"
+    },
+    {
+      "order": 7,
+      "id": "connect",
+      "title": "Connect an integration (optional)",
+      "body": "In Connectors, connect one real integration. A connector is listed but not connectable until its OAuth app credentials are supplied — a 'not configured' state is honest.",
+      "action": "Connect one integration, or note the honest not-configured state.",
+      "maturity": "CLOUD + EXTERNAL_DEPENDENCY",
+      "learnMore": "docs/user/CONNECTORS-GUIDE.md"
+    },
+    {
+      "order": 8,
+      "id": "explore-preview",
+      "title": "Explore Preview surfaces",
+      "body": "Advanced centers like Digital Twin, Industry, and Enterprise Marketplace run on seeded/in-memory data and are labelled Preview. Explore them as exploratory, not for production reliance.",
+      "action": "Open one Preview surface and note its banner.",
+      "maturity": "PREVIEW",
+      "learnMore": "docs/user/DIGITAL-TWIN-GUIDE.md"
+    }
+  ],
+  "nextSteps": {
+    "user": "docs/user/NEUROPAUSE-USER-GUIDE.md",
+    "admin": "docs/admin/ADMIN-GUIDE.md",
+    "developer": "docs/developer/DEVELOPER-GUIDE.md",
+    "pilot": "docs/enterprise/ENTERPRISE-PILOT-GUIDE.md"
+  }
+}

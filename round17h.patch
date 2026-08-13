@@ -1,0 +1,326 @@
+--- /dev/null
++++ b/apps/desktop/ui-tests/aiRouting.ui.test.tsx
+@@ -0,0 +1,106 @@
++/**
++ * Settings → AI — a refused write is VISIBLE. P13C ROUND 17h.
++ *
++ * `ai:config.setMode` is `cloud:operate`: platform-only, and refused on every
++ * install with no platform operator. The panel caught that refusal into
++ * `log.warn` and rendered nothing, and because the radios are controlled by
++ * `routing.mode` — which `refresh()` never updates after a failure — React put
++ * the selection straight back. The control un-clicked itself in silence.
++ *
++ * That is the same defect as the D-5 first-run HIGH, on a different screen, and
++ * it is why one first-run session logged twenty-two refusals: nothing was
++ * retrying, a person was clicking a control that appeared to ignore them.
++ *
++ * These tests mount the real panel and drive it with a real refusal, because
++ * that is the only place the silence was observable. Every unit test in the
++ * repo passed while it was there.
++ */
++import { afterEach, beforeEach, describe, expect, it } from 'vitest';
++import React from 'react';
++import { cleanup, render, screen, waitFor } from '@testing-library/react';
++import userEvent from '@testing-library/user-event';
++import { route, clearRoutes, unroutedChannels } from './setup';
++import type { AiRoutingStatusView, AiRoutingUsage } from '@neuropause/shared';
++import { IpcChannel, emptyRoutingUsage } from '@neuropause/shared';
++import { AiRoutingPanel } from '@renderer/settings/AiRoutingPanel';
++
++/** The exact sentence `AuthorizationError` produces for a platform-only permission. */
++const REFUSAL = 'Not authorized: missing permission "cloud:operate".';
++
++/** A default install: Private First, consent off, one reachable local route. */
++const status = (mode: AiRoutingStatusView['mode'] = 'private_first'): AiRoutingStatusView => ({
++  mode,
++  externalConsent: false,
++  routes: [],
++  plan: { ok: true, attempts: [], skipped: [], refusal: null, mode },
++});
++
++let setModeCalls: number;
++
++beforeEach(() => {
++  cleanup();
++  clearRoutes();
++  setModeCalls = 0;
++  route(IpcChannel.AiRoutingStatus, () => status());
++  route(IpcChannel.AiRoutingUsage, (): AiRoutingUsage => emptyRoutingUsage());
++  route(IpcChannel.AiConfigSetMode, () => {
++    setModeCalls += 1;
++    // The real refusal, produced where production produces it: main throws, the
++    // secure bridge replaces it with a clean message, the renderer gets a
++    // rejection carrying only that string.
++    throw new Error(REFUSAL);
++  });
++});
++
++afterEach(cleanup);
++
++describe('Settings → AI, when the platform refuses the write', () => {
++  it('says so on screen instead of logging to a console nobody is attached to', async () => {
++    const user = userEvent.setup();
++    render(<AiRoutingPanel />);
++    // The panel has loaded its real status before anything is clicked.
++    const localOnly = await screen.findByRole('radio', { name: /Local Only/i });
++
++    await user.click(localOnly);
++
++    await waitFor(() => expect(setModeCalls).toBe(1));
++    const alert = await screen.findByRole('alert');
++    expect(alert.textContent).toContain('cloud:operate');
++    expect(unroutedChannels()).toEqual([]);
++  });
++
++  it('does not pretend the mode changed — the control returns to the truth', async () => {
++    const user = userEvent.setup();
++    render(<AiRoutingPanel />);
++    const localOnly = await screen.findByRole('radio', { name: /Local Only/i });
++    const privateFirst = await screen.findByRole('radio', { name: /Private First/i });
++
++    await user.click(localOnly);
++    await screen.findByRole('alert');
++
++    // The refused mode is NOT selected, and the real one still is. Snapping the
++    // radio back is correct; doing it in silence was the defect.
++    await waitFor(() => expect((localOnly as HTMLInputElement).checked).toBe(false));
++    expect((privateFirst as HTMLInputElement).checked).toBe(true);
++  });
++
++  it('clears the refusal when the user tries again, rather than leaving it stale', async () => {
++    const user = userEvent.setup();
++    render(<AiRoutingPanel />);
++    const localOnly = await screen.findByRole('radio', { name: /Local Only/i });
++    await user.click(localOnly);
++    await screen.findByRole('alert');
++
++    // Second attempt succeeds — a platform operator was configured in between.
++    route(IpcChannel.AiConfigSetMode, () => {
++      setModeCalls += 1;
++      return {};
++    });
++    route(IpcChannel.AiRoutingStatus, () => status('local_only'));
++
++    await user.click(localOnly);
++    await waitFor(() => expect(setModeCalls).toBe(2));
++    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
++    expect((localOnly as HTMLInputElement).checked).toBe(true);
++  });
++});
+--- a/apps/desktop/src/renderer/src/firstRun/FirstRunExperience.tsx
++++ b/apps/desktop/src/renderer/src/firstRun/FirstRunExperience.tsx
+@@ -51,7 +51,15 @@
+    * the error is surfaced instead of swallowed, and the effective mode is shown
+    * rather than the preference being displayed as if it were in force.
+    */
+-  const [processingError, setProcessingError] = useState<string | null>(null);
++  /**
++   * ONE error channel for the screen, not one per step. P13C ROUND 17h.
++   *
++   * Named for the action rather than the step because the same thing is true
++   * everywhere here: a click that could not be persisted must say so. A second
++   * `workspaceError` state would have been the third place this screen learned
++   * the same lesson.
++   */
++  const [actionError, setActionError] = useState<string | null>(null);
+   const [effectiveMode, setEffectiveMode] = useState<AiMode | null>(null);
+   const [restrictedByPlatform, setRestrictedByPlatform] = useState(false);
+   const [chosenType, setChosenType] = useState<WorkspaceType | null>(null);
+@@ -102,7 +110,7 @@
+    */
+   const chooseProcessing = async (allowExternal: boolean): Promise<void> => {
+     setBusy(true);
+-    setProcessingError(null);
++    setActionError(null);
+     try {
+       const view = await ipc.aiConfig.setPreference(allowExternal ? 'private_first' : 'local_only');
+       setEffectiveMode(view.effectiveMode);
+@@ -135,7 +143,7 @@
+        * fourteen rounds. A refusal here is now visible and actionable.
+        */
+       log.warn('Could not persist AI preference', { message: String(err) });
+-      setProcessingError(
++      setActionError(
+         'That choice could not be saved. You can continue and set it later in Settings.',
+       );
+     } finally {
+@@ -145,6 +153,7 @@
+ 
+   const chooseWorkspace = async (type: WorkspaceType): Promise<void> => {
+     setBusy(true);
++    setActionError(null);
+     try {
+       // Persist the choice immediately (a quit here loses nothing), but do NOT
+       // complete yet — discovery and the understanding check come first.
+@@ -153,7 +162,18 @@
+       setWorkspaceType(type);
+       setStep('discovery');
+     } catch (err) {
++      /**
++       * NOT SWALLOWED. P13C ROUND 17h.
++       *
++       * `setStep('discovery')` is inside the try, so a failure here left the
++       * user on this screen with the button they just pressed doing nothing
++       * and no explanation — the same shape as the D-5 HIGH, two steps later
++       * in the same wizard, written the same way. A census of the renderer
++       * found ten of these on write paths; this is one of the four in code
++       * this program already owns.
++       */
+       log.warn('Could not persist workspace type', { message: String(err) });
++      setActionError('That choice could not be saved. Please try again.');
+     } finally {
+       setBusy(false);
+     }
+@@ -325,12 +345,12 @@
+                 onChoose={() => void chooseProcessing(true)}
+               />
+             </div>
+-            {processingError !== null && (
++            {actionError !== null && (
+               <p
+                 role="alert"
+                 className="mt-6 rounded-lg border border-danger/40 bg-danger/10 px-4 py-3 text-center text-sm text-danger"
+               >
+-                {processingError}
++                {actionError}
+               </p>
+             )}
+             {restrictedByPlatform && effectiveMode !== null && (
+@@ -414,6 +434,19 @@
+                 </div>
+               ))}
+             </div>
++            {/*
++              * P13C ROUND 17h — the same alert as the processing step, reading
++              * the same state. A click here that could not be persisted left
++              * the button inert and the screen silent; it now says so.
++              */}
++            {actionError !== null && (
++              <p
++                role="alert"
++                className="mt-6 rounded-lg border border-danger/40 bg-danger/10 px-4 py-3 text-center text-sm text-danger"
++              >
++                {actionError}
++              </p>
++            )}
+           </motion.div>
+         )}
+ 
+--- a/apps/desktop/src/renderer/src/settings/AiRoutingPanel.tsx
++++ b/apps/desktop/src/renderer/src/settings/AiRoutingPanel.tsx
+@@ -33,6 +33,27 @@
+   const [routing, setRouting] = useState<AiRoutingStatusView | null>(null);
+   const [usage, setUsage] = useState<AiRoutingUsage | null>(null);
+   const [busy, setBusy] = useState(false);
++  /**
++   * THE SAME DEFECT AS THE D-5 HIGH, ON A DIFFERENT SCREEN. P13C ROUND 17h.
++   *
++   * `ai:config.setMode` is `cloud:operate` — platform-only, and refused on any
++   * install with no platform operator, which is every fresh one. All three
++   * calls below caught that refusal into `log.warn` and showed nothing. The
++   * radios are CONTROLLED by `routing.mode`, and `refresh()` never runs after a
++   * failure, so React puts the selection straight back: the control visibly
++   * un-clicks itself and says nothing. That is what produced twenty-two
++   * refusals in one first-run session — not a retry loop, a person clicking a
++   * control that appeared to be ignoring them.
++   *
++   * A message from the boundary is rendered verbatim. `secureBridge` already
++   * scrubs internal detail before it leaves main, and inventing a friendlier
++   * sentence here would mean classifying the failure by regex on English prose,
++   * which is what D-6 exists to stop.
++   */
++  const [error, setError] = useState<string | null>(null);
++
++  const describe = (err: unknown): string =>
++    err instanceof Error && err.message ? err.message : 'The request failed.';
+ 
+   const refresh = useCallback(async (): Promise<void> => {
+     try {
+@@ -40,6 +61,7 @@
+       setUsage(await ipc.aiConfig.routingUsage());
+     } catch (err) {
+       log.warn('Routing status unavailable', err);
++      setError(describe(err));
+     }
+   }, []);
+ 
+@@ -49,12 +71,14 @@
+ 
+   const setMode = async (mode: AiMode): Promise<void> => {
+     setBusy(true);
++    setError(null);
+     try {
+       const next: AiConfigDto = await ipc.aiConfig.setMode(mode);
+       void next;
+       await refresh();
+     } catch (err) {
+       log.warn('Could not set AI mode', err);
++      setError(describe(err));
+     } finally {
+       setBusy(false);
+     }
+@@ -62,11 +86,13 @@
+ 
+   const setConsent = async (consent: boolean): Promise<void> => {
+     setBusy(true);
++    setError(null);
+     try {
+       await ipc.aiConfig.setExternalConsent(consent);
+       await refresh();
+     } catch (err) {
+       log.warn('Could not set consent', err);
++      setError(describe(err));
+     } finally {
+       setBusy(false);
+     }
+@@ -116,6 +142,15 @@
+             {routing?.mode === 'local_only' && ' (Local Only mode never uses external providers, regardless.)'}
+           </span>
+         </label>
++
++        {error !== null && (
++          <p
++            role="alert"
++            className="mt-2 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-2xs leading-relaxed text-danger"
++          >
++            {error}
++          </p>
++        )}
+       </section>
+ 
+       {/* ── Routes ── */}
+--- a/apps/desktop/ui-tests/firstRun.ui.test.tsx
++++ b/apps/desktop/ui-tests/firstRun.ui.test.tsx
+@@ -236,4 +236,32 @@
+     expect(landedOn).toBeUndefined();
+     expect(unroutedChannels()).toEqual([]);
+   });
++
++  /**
++   * P13C ROUND 17h — the HIGH's shape, two steps later in the same wizard.
++   *
++   * `chooseWorkspace` advanced inside its `try`, so a failed write left the
++   * user on this screen with the button they had just pressed doing nothing at
++   * all. A renderer-wide census found ten catches on write paths whose entire
++   * body is a log call; this was one of them, in code this program already
++   * owns.
++   */
++  it('a workspace choice that cannot be saved says so instead of going inert', async () => {
++    const user = userEvent.setup();
++    render(<FirstRunExperience onDone={noop} onSignIn={noop} />);
++    await user.click(screen.getByRole('button', { name: 'Try Free Locally' }));
++    await user.click(await screen.findByRole('button', { name: 'Keep it on this device' }));
++    const explore = await screen.findByRole('button', { name: 'Explore Business' });
++
++    // The profile write fails from here on — a disk error, a refused handler.
++    route('xp:profile.set', () => {
++      throw new Error('Profile is not writable');
++    });
++    await user.click(explore);
++
++    const alert = await screen.findByRole('alert');
++    expect(alert.textContent).toMatch(/could not be saved/i);
++    // Still on the workspace step: it did not advance on a write that failed.
++    expect(screen.getByRole('button', { name: 'Explore Business' })).toBeTruthy();
++  });
+ });

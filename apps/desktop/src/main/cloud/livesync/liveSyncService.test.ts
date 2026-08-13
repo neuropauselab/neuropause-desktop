@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { SyncChange } from '@neuropause/shared';
+import type { SyncChange, TenantScope } from '@neuropause/shared';
 import { createLiveSyncService, type LiveSyncService } from './liveSyncService';
 import type { SyncTransport } from './types';
 
@@ -25,6 +25,10 @@ describe('createLiveSyncService', () => {
   let mirrorPath: string;
   let pushed: SyncChange[][];
   let svc: LiveSyncService;
+  /** Who the test is acting as. Bound as the service's tenant seam. */
+  let acting: string | null;
+  const scope = (): TenantScope | null =>
+    acting === null ? null : { tenantId: acting, workspaceId: '' };
 
   const transport: SyncTransport = {
     async push(_orgId, _deviceId, changes) {
@@ -40,9 +44,9 @@ describe('createLiveSyncService', () => {
         cursor: 0,
       };
     },
-    async pull() {
+    async pull(orgId) {
       return {
-        changes: [change({ entityId: 'remote', version: 3, data: { landed: true } })],
+        changes: [change({ orgId, entityId: 'remote', version: 3, data: { landed: true } })],
         cursor: 8,
         hasMore: false,
       };
@@ -53,12 +57,14 @@ describe('createLiveSyncService', () => {
     storePath = join(tmpdir(), `nps-svc-store-${randomUUID()}.json`);
     mirrorPath = join(tmpdir(), `nps-svc-mirror-${randomUUID()}.json`);
     pushed = [];
+    acting = 'org-1';
     svc = createLiveSyncService({
       deviceId: 'devA',
       storeFilePath: storePath,
       mirrorFilePath: mirrorPath,
       transport,
       getActiveOrgId: () => 'org-1',
+      scope,
       intervalMs: 999_999,
     });
     await svc.init();
@@ -95,5 +101,104 @@ describe('createLiveSyncService', () => {
 
   it('exposes the current engine status', () => {
     expect(svc.getStatus().state).toBe('idle');
+  });
+
+  /* ── P13C ROUND 9 — F3. The reads are the CALLER'S. ─────────────────────── */
+
+  it('status, detail and the cursor answer the CALLER, not the device pointer', async () => {
+    await svc.enqueue('org-1', change());
+    await svc.syncNow();
+    expect(svc.getStatus().cursor).toBe(8);
+    expect(svc.getDetail().orgId).toBe('org-1');
+    expect(svc.getDetail().entities.some((e) => e.synced > 0)).toBe(true);
+
+    // The device pointer still says org-1 — that is exactly the stale-pointer
+    // case. A caller from another organization must see nothing of org-1's.
+    acting = 'org-2';
+    const status = svc.getStatus();
+    expect(status.cursor).toBe(0);
+    expect(status.pendingCount).toBe(0);
+    expect(status.lastSyncedAt).toBeNull();
+
+    const detail = svc.getDetail();
+    expect(detail.orgId).toBe('org-2');
+    expect(detail.entities.every((e) => e.pending === 0 && e.synced === 0)).toBe(true);
+    expect(detail.conflicts).toEqual([]);
+    expect(svc.list('org-1')).toEqual([]);
+    expect(svc.read('org-1', 'org_prefs', 'remote')).toBeNull();
+  });
+
+  it('a caller with no organization sees the empty status, never the last one’s', async () => {
+    await svc.enqueue('org-1', change());
+    await svc.syncNow();
+    acting = null;
+    expect(svc.getStatus()).toMatchObject({ cursor: 0, pendingCount: 0, lastSyncedAt: null });
+    expect(svc.getDetail().orgId).toBeNull();
+    expect(svc.setOnline(false)).toMatchObject({ cursor: 0 });
+  });
+
+  it('B cannot enqueue into A’s queue through the service', async () => {
+    acting = 'org-2';
+    await expect(svc.enqueue('org-1', change())).rejects.toThrow(/not the active organization/i);
+    acting = 'org-1';
+    expect(svc.getStatus().pendingCount).toBe(0);
+  });
+
+  it('the cycle carries the org’s principal, while an entity applier runs outside it', async () => {
+    const { currentPrincipal } = await import('../../tenancy/backgroundPrincipal');
+    const seen: { where: string; tenant: string | null }[] = [];
+    const applierPath = createLiveSyncService({
+      deviceId: 'devA',
+      storeFilePath: join(tmpdir(), `nps-svc-store-${randomUUID()}.json`),
+      mirrorFilePath: join(tmpdir(), `nps-svc-mirror-${randomUUID()}.json`),
+      transport: {
+        push: transport.push,
+        async pull(orgId, cursor, o) {
+          seen.push({ where: 'transport', tenant: currentPrincipal()?.tenantId ?? null });
+          return transport.pull(orgId, cursor, o);
+        },
+      },
+      getActiveOrgId: () => 'org-1',
+      scope,
+      intervalMs: 999_999,
+      entityAppliers: {
+        org_prefs: async () => {
+          seen.push({ where: 'applier', tenant: currentPrincipal()?.tenantId ?? null });
+          return 'applied';
+        },
+      },
+    });
+    await applierPath.init();
+    await applierPath.syncNow();
+    applierPath.stop();
+
+    // The transport leg runs AS the organization; the memory-style applier, which
+    // resolves its own viewer and needs a workspace/identity the org-level
+    // principal does not carry, runs outside it.
+    expect(seen).toEqual([
+      { where: 'transport', tenant: 'org-1' },
+      { where: 'applier', tenant: null },
+    ]);
+  });
+
+  it('pausing is per organization: A’s pause does not stop B’s sync', async () => {
+    acting = 'org-1';
+    svc.setOnline(false);
+    expect(svc.getStatus().state).toBe('offline');
+    await svc.enqueue('org-1', change());
+    await svc.syncNow();
+    expect(pushed).toHaveLength(0); // A is paused, nothing left the device
+
+    acting = 'org-2';
+    expect(svc.getStatus().state).toBe('idle'); // B was never paused
+    await svc.enqueue('org-2', change({ orgId: 'org-2' }));
+    await svc.syncNow();
+    expect(pushed).toHaveLength(1);
+    expect(pushed[0][0].orgId).toBe('org-2');
+
+    // …and A is still paused with its own edit still queued locally.
+    acting = 'org-1';
+    expect(svc.getStatus().state).toBe('offline');
+    expect(svc.getStatus().pendingCount).toBe(1);
   });
 });

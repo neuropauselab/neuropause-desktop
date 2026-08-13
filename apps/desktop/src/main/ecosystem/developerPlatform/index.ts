@@ -23,6 +23,7 @@ import { SDK_ARTIFACTS } from '../index';
 import { DeveloperPlatformService } from './developerPlatformService';
 import type { DeveloperPlatformState } from './developerPlatformModel';
 import { withEcosystemAuthz } from './ecosystemAuthz';
+import { activeTenantScope } from '../../enterprise/index';
 
 const log = createLogger('developer-platform');
 
@@ -89,7 +90,7 @@ function readState(): DeveloperPlatformState {
 }
 
 export function initDeveloperPlatform(): DeveloperPlatformSubsystem {
-  const service = new DeveloperPlatformService({ readState });
+  const service = new DeveloperPlatformService({ scope: activeTenantScope, readState });
 
   // Invalidate the memoized snapshot whenever a backing store changes (renderer liveness is
   // already served by the existing `ecosystem:event` broadcast the ecosystem subsystem emits).

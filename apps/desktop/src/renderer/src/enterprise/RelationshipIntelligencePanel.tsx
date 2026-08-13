@@ -339,15 +339,15 @@ export function RelationshipIntelligencePanel(): JSX.Element {
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <div className="flex min-w-[200px] flex-1 items-center gap-2 rounded-lg border border-[var(--hairline)] px-2.5 py-1.5">
             <Icon name="search" size={14} />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search entities and relationships…" className="w-full bg-transparent text-sm outline-none placeholder:text-faint" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search entities and relationships…" className="w-full bg-transparent text-sm outline-none focus-visible:shadow-focus placeholder:text-faint" />
           </div>
           {view !== 'relationships' && (
-            <select value={kindFilter} onChange={(e) => setKindFilter(e.target.value)} className="rounded-lg border border-[var(--hairline)] bg-transparent px-2 py-1.5 text-xs text-ink outline-none">
+            <select value={kindFilter} onChange={(e) => setKindFilter(e.target.value)} className="rounded-lg border border-[var(--hairline)] bg-transparent px-2 py-1.5 text-xs text-ink outline-none focus-visible:shadow-focus">
               <option value="">All kinds</option>
               {KIND_OPTIONS.map((k) => <option key={k} value={k}>{kindMeta(k).label}</option>)}
             </select>
           )}
-          <select value={healthFilter} onChange={(e) => setHealthFilter(e.target.value)} className="rounded-lg border border-[var(--hairline)] bg-transparent px-2 py-1.5 text-xs text-ink outline-none">
+          <select value={healthFilter} onChange={(e) => setHealthFilter(e.target.value)} className="rounded-lg border border-[var(--hairline)] bg-transparent px-2 py-1.5 text-xs text-ink outline-none focus-visible:shadow-focus">
             <option value="">All health</option>
             {['strong', 'healthy', 'weak', 'dormant', 'broken', 'critical'].map((h) => <option key={h} value={h}>{h}</option>)}
           </select>

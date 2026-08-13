@@ -35,7 +35,7 @@ export class SandboxArtifactStore extends PersistentStore<ArtifactFile> {
   private artifacts = new Map<string, Artifact>();
 
   constructor(filePath: string, private readonly now: () => number = Date.now) {
-    super(filePath);
+    super(filePath, 'sandbox-artifacts');
   }
 
   protected snapshot(): ArtifactFile {
@@ -49,6 +49,16 @@ export class SandboxArtifactStore extends PersistentStore<ArtifactFile> {
     const inline = input.inline ?? null;
     const artifact: Artifact = {
       id: input.id ?? `sba_${randomUUID()}`,
+      /**
+       * P13C N3 — owner from the running context.
+       *
+       * Artifacts are written from inside the engine, which runs each execution
+       * under that execution's own principal, so `requireTenant()` here resolves
+       * the ENQUEUING tenant rather than whoever is on screen when the run
+       * happens to finish. `inline` carries the full result and report JSON,
+       * which makes this the most content-bearing row in the subsystem.
+       */
+      tenantId: this.requireTenant(),
       executionId: input.executionId,
       workspaceId: input.workspaceId,
       kind: input.kind,
@@ -95,18 +105,39 @@ export class SandboxArtifactStore extends PersistentStore<ArtifactFile> {
     });
   }
 
+  /**
+   * The artifact, IF it is the caller's.
+   *
+   * P13C N3 — THE SHARPEST READ IN THE SUBSYSTEM. An artifact id alone returned
+   * the record including `inline`, which carries the complete result and report
+   * JSON of a run — assertions, metrics, summaries, every logged step. No
+   * workspace check, no execution check, just the id.
+   */
   get(id: string): Artifact | null {
-    return this.artifacts.get(id) ?? null;
+    const a = this.artifacts.get(id) ?? null;
+    return a !== null && this.mine(a) ? a : null;
   }
   all(): Artifact[] {
-    return [...this.artifacts.values()];
+    return this.onlyMine([...this.artifacts.values()]);
   }
   count(): number {
-    return this.artifacts.size;
+    return this.all().length;
   }
 
+  /** Unscoped ownership counts, for the migration inventory only. */
+  ownershipCounts(): { total: number; assigned: number; unresolved: number } {
+    return this.countOwnership([...this.artifacts.values()]);
+  }
+
+  /**
+   * An execution's artifacts. Scoped on the ARTIFACTS, not the execution id.
+   *
+   * Filtering on `executionId` alone was a capability check on a uuid: knowing
+   * the id was the whole authorization. The tenant filter runs first, so a
+   * foreign execution id now matches nothing rather than returning its files.
+   */
   list(executionId: string, kind?: ArtifactKind): Artifact[] {
-    return [...this.artifacts.values()]
+    return this.onlyMine([...this.artifacts.values()])
       .filter((a) => a.executionId === executionId && (kind ? a.kind === kind : true))
       .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
   }

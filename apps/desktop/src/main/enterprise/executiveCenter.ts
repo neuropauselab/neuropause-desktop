@@ -45,6 +45,8 @@ import {
   type InventoryModuleInsights,
   type InvoiceModuleInsights,
   type LeadModuleInsights,
+  type OpportunityPipelineInsights,
+  opportunityPipelineToKpis,
   type OrderModuleInsights,
   type PaymentModuleInsights,
   type ProcurementModuleInsights,
@@ -112,6 +114,8 @@ export interface ExecutiveCenterSources {
   crmInsights?: () => CrmModuleInsights | undefined;
   /** CRM lead-pipeline insights → Executive Center KPI tiles (optional). */
   leadInsights?: () => LeadModuleInsights | undefined;
+  /** CRM opportunity-pipeline KPIs (W2.8) — optional like every other domain source. */
+  opportunityInsights?: () => OpportunityPipelineInsights | undefined;
   /** CRM customer-account insights → Executive Center KPI tiles (optional). */
   customerInsights?: () => CustomerModuleInsights | undefined;
   /** Sales quote-pipeline insights → Executive Center KPI tiles (optional). */
@@ -384,6 +388,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
   const workforceIntel = sources.workforceIntelligence?.();
   const crmInsightsForKpis = sources.crmInsights?.();
   const leadInsightsForKpis = sources.leadInsights?.();
+  const opportunityInsightsForKpis = sources.opportunityInsights?.();
   const customerInsightsForKpis = sources.customerInsights?.();
   const quoteInsightsForKpis = sources.quoteInsights?.();
   const orderInsightsForKpis = sources.orderInsights?.();
@@ -431,6 +436,7 @@ export function composeExecutiveSnapshot(sources: ExecutiveCenterSources): Execu
       enterpriseInsightsKpi(enterprise),
       ...(crmInsightsForKpis ? crmInsightsToKpis(crmInsightsForKpis) : []),
       ...(leadInsightsForKpis ? leadInsightsToKpis(leadInsightsForKpis) : []),
+      ...(opportunityInsightsForKpis ? opportunityPipelineToKpis(opportunityInsightsForKpis) : []),
       ...(customerInsightsForKpis ? customerInsightsToKpis(customerInsightsForKpis) : []),
       ...(quoteInsightsForKpis ? quoteInsightsToKpis(quoteInsightsForKpis) : []),
       ...(orderInsightsForKpis ? orderInsightsToKpis(orderInsightsForKpis) : []),

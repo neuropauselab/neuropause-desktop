@@ -1,4 +1,11 @@
 /**
+ * P13C Round 7 — these suites act AS one tenant. `ResourceStore` gained a tenant
+ * boundary this round (the subsystem had none at all), and an unbound store now
+ * denies every read and throws on write. Binding here preserves each existing
+ * assertion's single-tenant meaning; A/B/C isolation is asserted separately in
+ * `tenancy/e2e/infrastructureTenancy.test.ts`.
+ */
+/**
  * P6 — the Infrastructure Runtime: the Discovery Engine driving a fake Cloud Platform incrementally into the
  * Resource Store + Resource Graph, with graceful per-domain degrade and Timeline events. Pure-node; the
  * engine's reused HttpClient is stubbed (the fake collectors return canned data). No concrete provider.
@@ -56,8 +63,8 @@ function fakePlatform(seenCursors: string[] = []): CloudPlatformAdapter {
 }
 
 function harness(adapter: CloudPlatformAdapter | null) {
-  const store = new ResourceStore(null);
-  const state = new DiscoveryStateStore(null);
+  const store = new ResourceStore(null).bindScope(() => ({ tenantId: 'org-alpha', workspaceId: 'ws-alpha' }));
+  const state = new DiscoveryStateStore(null).bindScope(() => ({ tenantId: 'org-alpha', workspaceId: 'ws-alpha' }));
   const events: PlatformEventInput[] = [];
   const ports: DiscoveryEnginePorts = {
     getPlatform: (id) => (adapter && id === adapter.platformId ? adapter : null),
@@ -183,7 +190,7 @@ describe('Discovery Engine — incremental discovery into the Resource Graph', (
 
 describe('Resource Store — scoped native-id deletion', () => {
   it('deletes a native-id resource ONLY within the discovering scope (no cross-account deletion)', async () => {
-    const store = new ResourceStore(null);
+    const store = new ResourceStore(null).bindScope(() => ({ tenantId: 'org-alpha', workspaceId: 'ws-alpha' }));
     const admin = (account: string) => makeResource({ platformId: 'aws', provider: 'aws', accountId: account, resourceType: 'role', nativeId: 'AdminRole', name: `${account}-admin`, domain: 'identity', now: NOW });
     await store.upsertMany([admin('A'), admin('B')]);
     expect(store.all()).toHaveLength(2);

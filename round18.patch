@@ -1,0 +1,405 @@
+--- /dev/null
++++ b/apps/desktop/src/main/backup/tenantDomainRegistration.ts
+@@ -0,0 +1,95 @@
++/**
++ * THE F22 REGISTRY, ACTUALLY POPULATED. P13C FINAL CERTIFICATION.
++ *
++ * WHAT THIS FILE EXISTS TO FIX
++ *
++ * `registerTenantDomainSource()` had ZERO production call sites. Six adapter
++ * factories were written across Rounds 15–17 — `executiveDecisionsSource`,
++ * `automationRulesSource`, `healthHistorySource`, `workforceJobsSource`,
++ * `companionDevicesSource`, `tenantAiPreferenceSource` — and not one of them was
++ * ever called outside a test. In the running application the source map was
++ * empty, so `registeredTenantDomains()` returned `[]`, every one of the 19
++ * domains was `uncovered`, and a tenant archive would have contained nothing.
++ *
++ * Reports described this as "F22 5/19" and then "6/19", counting adapters that
++ * EXISTED. Coverage is not whether an adapter was written; it is whether the
++ * archive can reach the data. By that measure production coverage was 0/19.
++ *
++ * This is the third registry in this programme found shipping empty — after the
++ * channel→store registry (empty from Round 13 until Round 17) and the startup
++ * gates that ran above the code that binds. The shape repeats: a registry, a
++ * population step nobody wrote, and a count that measured the wrong noun.
++ *
++ * WHY THE SPLIT
++ *
++ * `buildTenantDomainSources()` is pure and takes its stores as arguments, so the
++ * gate test can assert the full set without an Electron runtime. The wiring
++ * function below imports the module-level singletons and is the only part that
++ * needs `app.getPath`. The same separation `tenantAiPreferenceCompose.ts` needed
++ * for exactly the same reason: the rule that cannot be imported cannot be tested.
++ */
++import type { TenantDomain, TenantDomainSource } from './tenantArchive';
++import { registerTenantDomainSource } from './tenantArchive';
++import {
++  automationRulesSource,
++  companionDevicesSource,
++  executiveDecisionsSource,
++  healthHistorySource,
++  tenantAiPreferenceSource,
++  workforceJobsSource,
++} from './tenantDomainSources';
++
++/**
++ * The six domains that have a working adapter today.
++ *
++ * Stated as a constant so the gate test asserts a NUMBER a human chose, not
++ * whatever the code happens to produce. If a registration is deleted, the test
++ * fails on the count before anyone has to notice the archive got quieter.
++ */
++export const REGISTERED_TENANT_DOMAINS: readonly TenantDomain[] = [
++  'executive-decisions',
++  'automation-rules',
++  'enterprise-health-history',
++  'workforce-jobs',
++  'companion-device-registry',
++  'tenant-ai-preference',
++];
++
++/* eslint-disable @typescript-eslint/no-explicit-any -- each store's row type is
++ * private to its module; the adapters narrow via their own generic bounds, and
++ * widening every store's public surface just to name the row here would be a
++ * larger change than the wiring it serves. */
++export interface TenantDomainStores {
++  decisions: any;
++  automations: any;
++  healthHistory: any;
++  workforceJobs: any;
++  companionDevices: any;
++  aiPreference: any;
++}
++/* eslint-enable @typescript-eslint/no-explicit-any */
++
++/** Every source that can be built today, in a fixed order. Pure. */
++export function buildTenantDomainSources(stores: TenantDomainStores): TenantDomainSource[] {
++  return [
++    executiveDecisionsSource(stores.decisions),
++    automationRulesSource(stores.automations),
++    healthHistorySource(stores.healthHistory),
++    workforceJobsSource(stores.workforceJobs),
++    companionDevicesSource(stores.companionDevices),
++    tenantAiPreferenceSource(stores.aiPreference),
++  ];
++}
++
++/**
++ * Register every available source with the archive.
++ *
++ * Idempotent by construction — `registerTenantDomainSource` writes into a Map
++ * keyed by domain, so a second call replaces rather than duplicates. Returns the
++ * domains registered so the caller can log a number rather than assume one.
++ */
++export function registerTenantDomainSources(stores: TenantDomainStores): TenantDomain[] {
++  const sources = buildTenantDomainSources(stores);
++  for (const source of sources) registerTenantDomainSource(source);
++  return sources.map((s) => s.domain);
++}
+--- /dev/null
++++ b/apps/desktop/src/main/tenancy/f22ProductionCoverage.test.ts
+@@ -0,0 +1,112 @@
++/**
++ * F22 COVERAGE IS WHAT PRODUCTION REGISTERS, NOT WHAT SOMEBODY WROTE.
++ * P13C FINAL CERTIFICATION.
++ *
++ * THE FINDING THIS FILE EXISTS FOR
++ *
++ * Rounds 15, 16 and 17 reported F22 coverage as 3/18, then 5/18, then 5/19 and
++ * 6/19, counting adapter FACTORIES that had been written. A census of the tree
++ * during final certification found that `registerTenantDomainSource()` — the
++ * only way a source reaches the archive — had **zero production call sites**.
++ * All six factories were called exclusively from tests. Two of them
++ * (`healthHistorySource`, `tenantAiPreferenceSource`) had no call site anywhere.
++ *
++ * In the shipped application the source map was therefore empty:
++ * `registeredTenantDomains()` returned `[]`, `tenantArchiveCoverageGaps()`
++ * returned all 19, and a tenant archive would have contained no domains at all.
++ * Real production coverage was **0/19** while the reports said 6/19.
++ *
++ * This is the third registry in this programme discovered shipping empty, after
++ * the channel→store registry (Round 13 to Round 17) and the startup gates that
++ * ran above the code that binds them. The failure is always the same: a registry
++ * exists, a population step is never written, and a count measures the wrong noun.
++ *
++ * WHAT THIS TEST LOCKS
++ *
++ * It asserts the SET the composition root registers, using the pure builder so
++ * no Electron runtime is needed. It cannot prove the running app called the
++ * wiring function — `runtimeCore.ts` needs Electron — so the boot log line
++ * `Tenant archive sources registered { domains, uncovered }` is the runtime
++ * evidence for that half, and it is deliberately a log rather than an inference.
++ */
++import { afterEach, beforeEach, describe, expect, it } from 'vitest';
++import {
++  TENANT_DERIVED_DOMAINS,
++  __resetTenantDomainSourcesForTests,
++  registeredTenantDomains,
++  tenantArchiveCoverageGaps,
++} from '../backup/tenantArchive';
++import {
++  REGISTERED_TENANT_DOMAINS,
++  buildTenantDomainSources,
++  registerTenantDomainSources,
++} from '../backup/tenantDomainRegistration';
++
++/** Minimal stand-ins: the registration path never reads them, only wraps them. */
++const stubStore = {
++  snapshotForGrant: () => [],
++  mergeForGrant: async () => 0,
++};
++const stores = {
++  decisions: stubStore,
++  automations: stubStore,
++  healthHistory: stubStore,
++  workforceJobs: { snapshotForGrant: async () => [], mergeForGrant: async () => 0 },
++  companionDevices: { snapshotForGrant: async () => [], mergeForGrant: async () => 0 },
++  aiPreference: stubStore,
++};
++
++beforeEach(() => __resetTenantDomainSourcesForTests());
++afterEach(() => __resetTenantDomainSourcesForTests());
++
++describe('F22 — production archive coverage', () => {
++  it('registers exactly the six domains that have a working adapter', () => {
++    const registered = registerTenantDomainSources(stores);
++    expect([...registered].sort()).toEqual([...REGISTERED_TENANT_DOMAINS].sort());
++    expect(registeredTenantDomains().sort()).toEqual([...REGISTERED_TENANT_DOMAINS].sort());
++  });
++
++  it('every registered domain is a real member of the denominator', () => {
++    // A source for a domain not in TENANT_DERIVED_DOMAINS would inflate coverage
++    // with something the archive does not owe.
++    for (const domain of REGISTERED_TENANT_DOMAINS) {
++      expect(
++        TENANT_DERIVED_DOMAINS as readonly string[],
++        `${domain} is registered but is not a tenant-derived domain`,
++      ).toContain(domain);
++    }
++  });
++
++  it('reports the REMAINING gap honestly — 13 of 19 still uncovered', () => {
++    registerTenantDomainSources(stores);
++    const gaps = tenantArchiveCoverageGaps();
++    expect(gaps.length).toBe(TENANT_DERIVED_DOMAINS.length - REGISTERED_TENANT_DOMAINS.length);
++    expect(gaps.length).toBe(13);
++    // The gap list must not contain anything we just registered.
++    for (const domain of REGISTERED_TENANT_DOMAINS) expect(gaps).not.toContain(domain);
++  });
++
++  it('is 0/19 before registration — the state the application actually shipped in', () => {
++    // The negative control for the finding itself. Without the wiring added at
++    // the composition root, this is what every install had.
++    expect(registeredTenantDomains()).toEqual([]);
++    expect(tenantArchiveCoverageGaps()).toHaveLength(19);
++  });
++
++  it('is idempotent — a second registration replaces rather than duplicates', () => {
++    registerTenantDomainSources(stores);
++    registerTenantDomainSources(stores);
++    expect(registeredTenantDomains()).toHaveLength(REGISTERED_TENANT_DOMAINS.length);
++  });
++
++  it('builds one source per registered domain, with matching storeName', () => {
++    const sources = buildTenantDomainSources(stores);
++    expect(sources).toHaveLength(REGISTERED_TENANT_DOMAINS.length);
++    for (const s of sources) {
++      expect(typeof s.ownerOf).toBe('function');
++      expect(typeof s.snapshot).toBe('function');
++      expect(typeof s.merge).toBe('function');
++      expect(s.storeName.length).toBeGreaterThan(0);
++    }
++  });
++});
+--- /dev/null
++++ b/apps/desktop/src/main/tenancy/channelStoreCoverageGate.test.ts
+@@ -0,0 +1,143 @@
++/**
++ * CHANNEL → STORE COVERAGE, MEASURED AND RATCHETED. P13C FINAL CERTIFICATION.
++ *
++ * THE NUMBER, STATED PLAINLY
++ *
++ * Five reports described channel→store coverage as "PARTIAL — 2 declarations",
++ * which reads like a small remainder. Measured against its real denominator it
++ * is **2 of 194 authority-gated channels: 1.0%**. The registry shipped in Round
++ * 13 with zero production declarations and gained its first two in Round 17,
++ * eleven months of channels later.
++ *
++ * WHY THIS IS A RATCHET AND NOT A COMPLETION
++ *
++ * The honest fix is 192 declarations, and each one must name the store its
++ * handler ACTUALLY reaches. `channelResource.ts`'s own header explains why that
++ * cannot be derived mechanically: handlers close over injected ports and reach
++ * stores several frames deep, so "a regex would produce confident wrong answers,
++ * which is worse than no answer." Generating 192 declarations from a scan would
++ * manufacture exactly that — a registry that looks complete and asserts things
++ * nobody checked. This programme's rule is that unverified evidence is not
++ * evidence, and it applies to evidence produced in its own favour.
++ *
++ * So this gate does the part that CAN be done correctly:
++ *
++ *   1. It computes the denominator from the authority tables, so the number
++ *      cannot drift away from the real surface.
++ *   2. It fails when a NEW authority-gated channel is added while coverage is
++ *      incomplete and the baseline is not updated — the forcing function the
++ *      registry was always described as being, and never was.
++ *   3. It fails when coverage goes DOWN, so a declaration cannot be quietly
++ *      deleted.
++ *
++ * The baseline is a number a human must edit deliberately. That is the point:
++ * moving it is a decision with a name on it, not a side effect.
++ */
++import { describe, expect, it } from 'vitest';
++import { readFileSync, readdirSync, statSync } from 'node:fs';
++import { join } from 'node:path';
++import { fileURLToPath } from 'node:url';
++
++const MAIN = join(fileURLToPath(new URL('.', import.meta.url)), '..');
++
++/**
++ * THE DENOMINATOR, at the commit this gate was written.
++ *
++ * Every channel carrying an authority requirement in any gate table. Raise it
++ * only alongside declarations; a bare increase means a sensitive channel was
++ * added and nobody said what it reaches.
++ */
++const SENSITIVE_BASELINE = 194;
++
++/**
++ * THE NUMERATOR. 2 as of P13C final certification — `ai:preference.get` and
++ * `ai:preference.set`, added by D-5. This number may only go UP.
++ */
++const DECLARED_BASELINE = 2;
++
++function sourceFiles(dir: string, out: string[] = []): string[] {
++  for (const name of readdirSync(dir)) {
++    const p = join(dir, name);
++    if (statSync(p).isDirectory()) {
++      if (name === 'node_modules' || name === 'e2e') continue;
++      sourceFiles(p, out);
++    } else if (name.endsWith('.ts') && !name.endsWith('.test.ts')) {
++      out.push(p);
++    }
++  }
++  return out;
++}
++
++/** Channels carrying an authority requirement — the sensitive surface. */
++function sensitiveChannels(): Set<string> {
++  const found = new Set<string>();
++  for (const path of sourceFiles(MAIN)) {
++    if (!/AuthzGate\.ts$|runtimeAuthz\.ts$/.test(path)) continue;
++    const src = readFileSync(path, 'utf8');
++    for (const m of src.matchAll(/\[IpcChannel\.(\w+)\]\s*:/g)) found.add(m[1]!);
++  }
++  return found;
++}
++
++/** Channels that have told the registry which store they reach. */
++function declaredChannels(): Set<string> {
++  const found = new Set<string>();
++  for (const path of sourceFiles(MAIN)) {
++    const src = readFileSync(path, 'utf8');
++    for (const m of src.matchAll(/declareChannelResource\(\{\s*channel:\s*IpcChannel\.(\w+)/g)) {
++      found.add(m[1]!);
++    }
++  }
++  return found;
++}
++
++describe('channel → store coverage', () => {
++  it('reports the real coverage rather than a count of declarations', () => {
++    const sensitive = sensitiveChannels();
++    const declared = declaredChannels();
++    const covered = [...declared].filter((c) => sensitive.has(c));
++    const pct = (100 * covered.length) / sensitive.size;
++    // eslint-disable-next-line no-console
++    console.log(
++      `[channel-store] ${covered.length}/${sensitive.size} authority-gated channels declared ` +
++        `(${pct.toFixed(1)}%). ${sensitive.size - covered.length} UNDECLARED. ` +
++        'A declaration names the store a handler reaches; without one, no rule in ' +
++        'channelResource.ts can see that channel at all.',
++    );
++    expect(sensitive.size).toBeGreaterThan(0);
++  });
++
++  it('fails when a new authority-gated channel arrives without a declaration', () => {
++    const sensitive = sensitiveChannels();
++    expect(
++      sensitive.size,
++      `The authority-gated surface changed (${sensitive.size}, baseline ${SENSITIVE_BASELINE}). ` +
++        'If channels were ADDED, declare what each one reaches with declareChannelResource() ' +
++        'and raise DECLARED_BASELINE too. If they were removed, lower SENSITIVE_BASELINE. ' +
++        'Coverage is 2/194 — a new undeclared channel makes a bad ratio worse silently, ' +
++        'which is how it reached 1% in the first place.',
++    ).toBe(SENSITIVE_BASELINE);
++  });
++
++  it('never goes backwards — a declaration cannot be quietly deleted', () => {
++    const sensitive = sensitiveChannels();
++    const covered = [...declaredChannels()].filter((c) => sensitive.has(c));
++    expect(
++      covered.length,
++      'Channel→store coverage decreased. A declaration is the only thing that makes a ' +
++        'channel visible to the correspondence rules; removing one removes the checking, ' +
++        'not just the line.',
++    ).toBeGreaterThanOrEqual(DECLARED_BASELINE);
++  });
++
++  it('every declaration names a channel that is actually authority-gated', () => {
++    const sensitive = sensitiveChannels();
++    const stray = [...declaredChannels()].filter((c) => !sensitive.has(c));
++    expect(
++      stray,
++      'These channels declare a store but carry no authority requirement. Either they are ' +
++        'public (and the declaration is describing an ungated reach — say so deliberately) ' +
++        'or a gate entry was lost.',
++    ).toEqual([]);
++  });
++});
+--- a/apps/desktop/src/main/runtimeCore.ts
++++ b/apps/desktop/src/main/runtimeCore.ts
+@@ -183,6 +183,10 @@
+ } from './enterprise';
+ import { currentPrincipal } from './tenancy/backgroundPrincipal';
+ import { assertAllTenantStoresBound } from './tenancy/tenantOwnedStore';
++import { registerTenantDomainSources } from './backup/tenantDomainRegistration';
++import { tenantArchiveCoverageGaps } from './backup/tenantArchive';
++import { companionDeviceStore } from './companion/deviceRegistryInstance';
++import { tenantAiPreferenceStore } from './ai/tenantAiPreferenceInstance';
+ import { assertAllStoreScopesBound } from './tenancy/storeScope';
+ import type { Organization } from '@neuropause/shared';
+ import { setLiveSyncActiveOrg } from './cloud/livesync/liveSyncInstance';
+@@ -956,6 +960,32 @@
+   supervisor.bindScope(activeTenantScope);
+   automationStore.bindScope(activeTenantScope);
+   decisionStore.bindScope(activeTenantScope);
++
++  /**
++   * POPULATE THE F22 ARCHIVE REGISTRY. P13C FINAL CERTIFICATION.
++   *
++   * `registerTenantDomainSource()` had no production caller at all. Six adapters
++   * existed and none was ever registered, so the running application's source
++   * map was EMPTY: `registeredTenantDomains()` returned `[]`, all 19 domains
++   * read as uncovered, and a tenant archive would have held nothing. Reports
++   * counted adapters that had been WRITTEN and called it coverage.
++   *
++   * Registered here, immediately after the stores these adapters read are bound
++   * — before the binding is bound, a source would hand the archive a store that
++   * denies every read, which is the ordering mistake this programme keeps
++   * finding in other forms.
++   */
++  log.info('Tenant archive sources registered', {
++    domains: registerTenantDomainSources({
++      decisions: decisionStore,
++      automations: automationStore,
++      healthHistory: healthHistoryStore,
++      workforceJobs: jobStore,
++      companionDevices: companionDeviceStore(),
++      aiPreference: tenantAiPreferenceStore,
++    }).length,
++    uncovered: tenantArchiveCoverageGaps().length,
++  });
+   holdStore.bindScope(activeTenantScope);
+   decisionRecordStore.bindScope(activeTenantScope);
+   opportunityDecisionStore.bindScope(activeTenantScope);

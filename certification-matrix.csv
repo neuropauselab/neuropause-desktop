@@ -1,46 +1,105 @@
-module_id,family,name,fields,level,level_name,overall,Architecture,Security,BusinessCompleteness,Workflow,UserExperience,Performance,Accessibility,AI,Reporting,Automation,EnterpriseReadiness,Maintainability,Documentation,Testing,ai,actions,test_tier
-finance,Finance,invoice,17,5,Reference,8.07,9,9,9,8,8,6,6,9,8,8,8,9,7,9,runner,1,dedicated
-finance-payments,Finance,payment,11,3,Enterprise Ready,7.36,9,9,7,5,8,6,6,9,8,3,8,9,7,9,runner,0,dedicated
-sales-orders,Sales,order,30,5,Reference,8.07,9,9,9,8,8,6,6,9,8,8,8,9,7,9,runner,1,dedicated
-sales-quotes,Sales,quote,24,5,Reference,8.07,9,9,9,8,8,6,6,9,8,8,8,9,7,9,runner,1,dedicated
-crm-leads,CRM,lead,19,5,Reference,8.07,9,9,9,8,8,6,6,9,8,8,8,9,7,9,runner,1,dedicated
-crm,CRM,contact,19,4,Production Certified,7.5,9,9,9,5,8,6,6,9,8,3,8,9,7,9,runner,0,dedicated
-crm-customers,CRM,customer,24,4,Production Certified,7.5,9,9,9,5,8,6,6,9,8,3,8,9,7,9,runner,0,dedicated
-procurement-orders,Procurement,purchaseOrder,20,4,Production Certified,8,9,9,9,8,8,6,6,9,8,8,8,9,7,8,runner,1,family
-procurement-receipts,Procurement,goodsReceipt,12,4,Production Certified,7.86,9,9,7,8,8,6,6,9,8,8,8,9,7,8,runner,1,family
-procurement-requests,Procurement,purchaseRequest,13,3,Enterprise Ready,7.36,9,9,7,8,8,6,6,2,8,8,8,9,7,8,none,1,family
-procurement-suppliers,Procurement,supplier,11,3,Enterprise Ready,7.29,9,9,7,5,8,6,6,9,8,3,8,9,7,8,runner,0,family
-inventory-products,Inventory,product,16,4,Production Certified,7.43,9,9,9,5,8,6,6,9,8,3,8,9,7,8,runner,0,family
-inventory-movements,Inventory,stockMovement,11,3,Enterprise Ready,7.29,9,9,7,5,8,6,6,9,8,3,8,9,7,8,runner,0,family
-inventory-warehouses,Inventory,warehouse,8,2,Business Ready,6.39,9,9,6,5,8,6,6,2,5,3,8,9,7,6.5,none,0,basic
-warehouse-cycle-counts,Warehouse,cycleCount,9,4,Production Certified,7.86,9,9,7,8,8,6,6,9,8,8,8,9,7,8,runner,1,family
-warehouse-adjustments,Warehouse,stockAdjustment,9,4,Production Certified,7.86,9,9,7,8,8,6,6,9,8,8,8,9,7,8,runner,1,family
-warehouse-transfers,Warehouse,transferOrder,12,4,Production Certified,7.86,9,9,7,8,8,6,6,9,8,8,8,9,7,8,runner,1,family
-warehouse-picks,Warehouse,pickList,9,3,Enterprise Ready,7.36,9,9,7,8,8,6,6,2,8,8,8,9,7,8,none,1,family
-warehouse-shipping,Warehouse,shipping,11,3,Enterprise Ready,7.36,9,9,7,8,8,6,6,2,8,8,8,9,7,8,none,1,family
-warehouse-packing,Warehouse,packing,8,3,Enterprise Ready,7.29,9,9,6,8,8,6,6,2,8,8,8,9,7,8,none,1,family
-warehouse-bins,Warehouse,bin,6,2,Business Ready,6.32,9,9,5,5,8,6,6,2,5,3,8,9,7,6.5,none,0,basic
-warehouse-zones,Warehouse,zone,6,2,Business Ready,6.32,9,9,5,5,8,6,6,2,5,3,8,9,7,6.5,none,0,basic
-manufacturing-orders,Manufacturing,productionOrder,16,4,Production Certified,8,9,9,9,8,8,6,6,9,8,8,8,9,7,8,runner,1,family
-manufacturing-schedule-proposals,Manufacturing,scheduleProposal,25,5,Reference,8,9,9,9,9,8,6,6,6,8,9,8,9,7,9,deterministic,1,dedicated
-manufacturing-executions,Manufacturing,execution,34,4,Production Certified,7.86,9,9,9,8,8,6,6,6,8,8,8,9,7,9,deterministic,1,dedicated
-manufacturing-costing,Manufacturing,costing,10,3,Enterprise Ready,7.29,9,9,7,5,8,6,6,9,8,3,8,9,7,8,runner,0,family
-manufacturing-quality,Manufacturing,quality,11,3,Enterprise Ready,7.29,9,9,7,5,8,6,6,9,8,3,8,9,7,8,runner,0,family
-manufacturing-schedules,Manufacturing,schedule,7,3,Enterprise Ready,7.18,9,9,6,8,8,6,6,2,8,8,8,9,7,6.5,none,1,basic
-manufacturing-events,Manufacturing,manufacturingEvent,14,3,Enterprise Ready,7.14,9,9,7,5,8,6,6,6,8,3,8,9,7,9,deterministic,0,dedicated
-manufacturing-machines,Manufacturing,machine,7,3,Enterprise Ready,6.89,9,9,6,5,8,6,6,6,8,3,8,9,7,6.5,deterministic,0,basic
-manufacturing-routings,Manufacturing,routing,5,2,Business Ready,6.5,9,9,5,5,8,6,6,2,5,3,8,9,7,9,none,0,dedicated
-manufacturing-bom,Manufacturing,bom,9,2,Business Ready,6.46,9,9,7,5,8,6,6,2,5,3,8,9,7,6.5,none,0,basic
-manufacturing-work-centers,Manufacturing,workCenter,7,2,Business Ready,6.39,9,9,6,5,8,6,6,2,5,3,8,9,7,6.5,none,0,basic
-maintenance-work-orders,Maintenance,workOrder,15,4,Production Certified,8,9,9,9,8,8,6,6,9,8,8,8,9,7,8,runner,1,family
-maintenance-downtime,Maintenance,downtimeEvent,9,4,Production Certified,7.86,9,9,7,8,8,6,6,9,8,8,8,9,7,8,runner,1,family
-maintenance-assets,Maintenance,asset,10,3,Enterprise Ready,7.29,9,9,7,5,8,6,6,9,8,3,8,9,7,8,runner,0,family
-maintenance-corrective,Maintenance,correctiveMaintenance,7,3,Enterprise Ready,7.29,9,9,6,8,8,6,6,2,8,8,8,9,7,8,none,1,family
-maintenance-preventive,Maintenance,preventiveMaintenance,8,3,Enterprise Ready,7.29,9,9,6,8,8,6,6,2,8,8,8,9,7,8,none,1,family
-maintenance-spare-parts,Maintenance,sparePart,8,3,Enterprise Ready,7.29,9,9,6,8,8,6,6,2,8,8,8,9,7,8,none,1,family
-maintenance-history,Maintenance,maintenanceHistory,10,2,Business Ready,6.46,9,9,7,5,8,6,6,2,5,3,8,9,7,6.5,none,0,basic
-maintenance-plans,Maintenance,maintenancePlan,8,2,Business Ready,6.39,9,9,6,5,8,6,6,2,5,3,8,9,7,6.5,none,0,basic
-maintenance-asset-categories,Maintenance,assetCategory,3,2,Business Ready,6.32,9,9,5,5,8,6,6,2,5,3,8,9,7,6.5,none,0,basic
-maintenance-technicians,Maintenance,technician,6,2,Business Ready,6.32,9,9,5,5,8,6,6,2,5,3,8,9,7,6.5,none,0,basic
-execution-proposals,Executive,executionProposal,21,5,Reference,8,9,9,9,9,8,6,6,6,8,9,8,9,7,9,deterministic,1,dedicated
-executive-decisions,Executive,executiveDecision,29,5,Reference,8,9,9,9,9,8,6,6,6,8,9,8,9,7,9,deterministic,1,dedicated
+family,module,source_of_truth
+Finance,Invoice,moduleCertification.test.ts
+Finance,Payment,moduleCertification.test.ts
+Finance,Ledger Account,moduleCertification.test.ts
+Finance,Journal Entry,moduleCertification.test.ts
+Finance,Accounting Period,moduleCertification.test.ts
+Finance,Tax Report,moduleCertification.test.ts
+Finance,Ar Aging,moduleCertification.test.ts
+Finance,Bank Statement,moduleCertification.test.ts
+Finance,Budget,moduleCertification.test.ts
+Finance,Vendor Bill,moduleCertification.test.ts
+Finance,Ap Aging,moduleCertification.test.ts
+Finance,Fixed Asset,moduleCertification.test.ts
+Finance,Credit Note,moduleCertification.test.ts
+Finance,Debit Note,moduleCertification.test.ts
+Finance,Vendor Payment,moduleCertification.test.ts
+Finance,Exchange Rate,moduleCertification.test.ts
+Finance,Financial Ratios,moduleCertification.test.ts
+Finance,Cash Flow,moduleCertification.test.ts
+Finance,Fx Revaluation,moduleCertification.test.ts
+Finance,Fx Exposure,moduleCertification.test.ts
+Finance,Treasury Position,moduleCertification.test.ts
+Sales,Quote,moduleCertification.test.ts
+Sales,Order,moduleCertification.test.ts
+Sales,Contract,moduleCertification.test.ts
+Sales,Pricing Rule,moduleCertification.test.ts
+Sales,Commission Plan,moduleCertification.test.ts
+Sales,Commission Statement,moduleCertification.test.ts
+Sales,Revenue Forecast,moduleCertification.test.ts
+CRM,Contact,moduleCertification.test.ts
+CRM,Lead,moduleCertification.test.ts
+CRM,Customer,moduleCertification.test.ts
+CRM,Opportunity,moduleCertification.test.ts
+CRM,Activity,moduleCertification.test.ts
+CRM,Customer Health,moduleCertification.test.ts
+CRM,Customer Timeline,moduleCertification.test.ts
+CRM,Campaign,moduleCertification.test.ts
+Procurement,Supplier,moduleCertification.test.ts
+Procurement,Vendor Contract,moduleCertification.test.ts
+Procurement,Purchase Request,moduleCertification.test.ts
+Procurement,Purchase Order,moduleCertification.test.ts
+Procurement,Goods Receipt,moduleCertification.test.ts
+Procurement,Rfq,moduleCertification.test.ts
+Procurement,Supplier Performance,moduleCertification.test.ts
+Inventory,Product,moduleCertification.test.ts
+Inventory,Warehouse,moduleCertification.test.ts
+Inventory,Stock Movement,moduleCertification.test.ts
+Inventory,Lot,moduleCertification.test.ts
+Inventory,Reservation,moduleCertification.test.ts
+Inventory,Inventory Valuation,moduleCertification.test.ts
+Inventory,Serial,moduleCertification.test.ts
+Warehouse,Warehouse Zone,moduleCertification.test.ts
+Warehouse,Warehouse Bin,moduleCertification.test.ts
+Warehouse,Transfer Order,moduleCertification.test.ts
+Warehouse,Pick List,moduleCertification.test.ts
+Warehouse,Packing,moduleCertification.test.ts
+Warehouse,Shipping,moduleCertification.test.ts
+Warehouse,Cycle Count,moduleCertification.test.ts
+Warehouse,Stock Adjustment,moduleCertification.test.ts
+Manufacturing,Bom,moduleCertification.test.ts
+Manufacturing,Production Order,moduleCertification.test.ts
+Manufacturing,Work Center,moduleCertification.test.ts
+Manufacturing,Machine,moduleCertification.test.ts
+Manufacturing,Production Schedule,moduleCertification.test.ts
+Manufacturing,Routing,moduleCertification.test.ts
+Manufacturing,Manufacturing Event,moduleCertification.test.ts
+Manufacturing,Production Execution,moduleCertification.test.ts
+Manufacturing,Quality Inspection,moduleCertification.test.ts
+Manufacturing,Production Costing,moduleCertification.test.ts
+Manufacturing,Schedule Proposal,moduleCertification.test.ts
+Manufacturing,Bom Explosion,moduleCertification.test.ts
+Maintenance,Asset Category,moduleCertification.test.ts
+Maintenance,Asset,moduleCertification.test.ts
+Maintenance,Maintenance Plan,moduleCertification.test.ts
+Maintenance,Preventive Maintenance,moduleCertification.test.ts
+Maintenance,Corrective Maintenance,moduleCertification.test.ts
+Maintenance,Work Order,moduleCertification.test.ts
+Maintenance,Technician,moduleCertification.test.ts
+Maintenance,Maintenance History,moduleCertification.test.ts
+Maintenance,Spare Part,moduleCertification.test.ts
+Maintenance,Downtime Event,moduleCertification.test.ts
+Projects,Project,moduleCertification.test.ts
+Projects,Project Task,moduleCertification.test.ts
+Projects,Time Entry,moduleCertification.test.ts
+Projects,Billing Run,moduleCertification.test.ts
+HR,Employee,moduleCertification.test.ts
+HR,Payroll Run,moduleCertification.test.ts
+HR,Salary Structure,moduleCertification.test.ts
+HR,Statutory Rule,moduleCertification.test.ts
+HR,Salary Disbursement,moduleCertification.test.ts
+HR,Payslip,moduleCertification.test.ts
+HR,Payroll Register,moduleCertification.test.ts
+HR,Statutory Filing,moduleCertification.test.ts
+HR,Attendance,moduleCertification.test.ts
+HR,Leave,moduleCertification.test.ts
+HR,Holiday,moduleCertification.test.ts
+HR,Expense Claim,moduleCertification.test.ts
+HR,Shift,moduleCertification.test.ts
+HR,Candidate,moduleCertification.test.ts
+HR,Okr,moduleCertification.test.ts
+Helpdesk,Ticket,moduleCertification.test.ts
+Documents,Document,moduleCertification.test.ts
+Executive,Executive Decision,moduleCertification.test.ts
+Executive,Execution Proposal,moduleCertification.test.ts
+Executive,Bi Report,moduleCertification.test.ts

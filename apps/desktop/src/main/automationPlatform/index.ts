@@ -63,6 +63,9 @@ import { resolvePolicy, previewApprovals } from './policyResolver';
 import { planRollback, type InstalledWorkerInfo } from './rollbackPlanner';
 import { buildMonitorReport } from './executionMonitor';
 import { parseScheduleLabel, scheduleDue } from './scheduleParser';
+import { onWorkspaceSwitch } from '../tenancy/workspaceSwitchHub';
+import { principalForOwnedWork } from '../tenancy/backgroundFanOut';
+import { runAsPrincipal } from '../tenancy/backgroundPrincipal';
 import {
   answerAutomationQuestion,
   composeAutomationDashboard,
@@ -71,16 +74,33 @@ import {
   resolveAutomationQuestion,
   type AutomationQuestionContext,
 } from './automationModel';
+import { TenantMemo } from '../tenancy/tenantMemo';
+import type { TenantScope } from '@neuropause/shared';
+import { TenantDedupe } from '../tenancy/tenantDedupe';
 
 const log = createLogger('automation-platform');
 
 const BUILD_TTL_MS = 3_000;
 const TICK_ID = 'automation-platform:schedule-tick';
+/** The job identity every principal this tick mints carries. */
+const TICK_JOB_ID = 'automation-platform:schedule-tick';
 const TICK_MS = 60_000;
 
 /* ── deps (every read injected; sync reads only) ──────────────────────────── */
 
 export interface AutomationPlatformDeps {
+  /**
+   * P13C ROUND 5 — the tenant boundary for this subsystem's composed cache.
+   *
+   * INJECTED, not imported. `enterprise/index` reaches `app.getPath`, so
+   * importing `activeTenantScope` here drags Electron into a pure-model node
+   * test — a trap this program has now fallen into FOUR times, once per round.
+   * Worth stating as a rule rather than a note: a subsystem that unit-tests
+   * without Electron takes its resolver as a dep.
+   *
+   * Required, so a composition root that forgets it fails to compile.
+   */
+  scope: () => TenantScope | null;
   rules: () => AutomationRule[];
   runRecords: () => AutomationRunRecord[];
   workflowRuns: () => { run: WorkflowRun; spec: WorkflowSpec }[] | null;
@@ -107,6 +127,26 @@ export interface AutomationPlatformDeps {
   fireScheduledRule: (ruleId: string, scheduledForIso: string) => Promise<{ ok: boolean } | null>;
   /** The EXISTING taskScheduler surface (no new scheduler class). */
   schedule: { every: (id: string, ms: number, fn: () => void) => void; cancel: (id: string) => void };
+  /**
+   * P13C ROUND 10 — NEW-M9. WHICH TENANTS THE SCHEDULE TICK IS OWED TO.
+   *
+   * The tick was `schedule.every(..., () => void tick(now()))` — one timer, no
+   * principal. `deps.rules()` is `automationStore.all()`, which is correctly
+   * scoped, so with no principal it fell through to THE SESSION: the signed-in
+   * organization's schedule rules fired and EVERY OTHER TENANT'S NEVER RAN AT
+   * ALL. Fail-closed, and a functional gap nobody would report as a security
+   * bug — which is precisely why it survived.
+   *
+   * This is the same dep `services/deliveryEngine.ts` takes, wired to the same
+   * `forEachTenantBackground`, and injected rather than imported for the reason
+   * stated on `scope` above: `enterprise/index` reaches `app.getPath`.
+   *
+   * REQUIRED, so a composition root that forgets it fails to compile.
+   */
+  forEachTenant: (
+    jobId: string,
+    fn: (run: { scope: TenantScope }) => Promise<void> | void,
+  ) => Promise<unknown>;
   /** Register a delivery-engine source (the EXISTING engine). */
   registerSource: (source: IntelligenceSource) => void;
   now?: () => number;
@@ -118,8 +158,16 @@ export interface AutomationPlatformSubsystem {
   monitor: () => AutomationMonitorReport;
   plan: (playbookId: string) => AutomationPlan | null;
   dashboard: () => AutomationPlatformDashboard;
-  /** The schedule tick, exposed for deterministic tests; the taskScheduler drives it live. */
+  /**
+   * The schedule tick for the CALLER'S OWN tenant, exposed for deterministic
+   * tests. Each due rule still fires under ITS OWN stored owner's principal.
+   */
   tick: (nowMs: number) => Promise<{ fired: string[] }>;
+  /**
+   * The schedule tick for EVERY tenant owed one — what the taskScheduler drives
+   * live. Exposed so a test can assert the fan-out happened by counting runs.
+   */
+  tickAllTenants: (nowMs: number) => Promise<{ fired: string[]; tenants: string[] }>;
   /** Assistant port: answer one of the six automation questions, or null. */
   answerQuestion: (text: string, nowIso: string) => AssistantStructuredReport | null;
   dispose: () => void;
@@ -147,12 +195,46 @@ function safeRead<T>(system: string, fn: () => T, failures: Record<string, strin
 
 export function initAutomationPlatform(deps: AutomationPlatformDeps): AutomationPlatformSubsystem {
   const now = deps.now ?? ((): number => Date.now());
-  let cache: BuildArtifacts | null = null;
+  /**
+   * P13C ROUND 5 — KEYED BY TENANT.
+   *
+   * `let cache: BuildArtifacts | null` behind a short TTL, flushed on
+   * `onWorkspaceSwitch`. That listener cannot see the case this program has
+   * documented twice already: `deliveryEngine.tick()` runs `forEachTenant`, so
+   * each tenant's `produce()` fills the cache back to back with NO SWITCH
+   * ANNOUNCED, and an interactive read from another tenant inside the TTL is
+   * served the composed dashboard of whoever ran last.
+   *
+   * Round 3 fixed eleven services of this shape by name and Round 4 fixed a
+   * twelfth; these seven were the remainder. Keying rather than adding a second
+   * listener, because the key covers the fan-out and the listener does not.
+   */
+  const projectionCache = new TenantMemo<BuildArtifacts>('automation-platform-projections', { ttlMs: BUILD_TTL_MS, now })
+    .bindScope(deps.scope);
+  /**
+   * P13C ROUND 6 — THE PLAN CACHE, TWO LINES BELOW THE TenantMemo THAT FIXED ITS
+   * NEIGHBOUR.
+   *
+   * Keyed on `playbookId`, which comes from the STATIC `PLAYBOOK_REGISTRY` — the
+   * same handful of constants for every install. So the key is tenant-independent
+   * by construction and two tenants collide on every entry, while the cached
+   * value is thoroughly tenant-derived: the compiled plan carries the caller's
+   * approval chain and, through `deps.orgRoles`, that organization's ROLE NAMES.
+   * Inside the 3s TTL, tenant B's `ap:plan` returned tenant A's.
+   *
+   * Not a `TenantMemo`, because that primitive holds ONE composed snapshot per
+   * tenant and this is a keyed collection. Same discipline, applied by hand: the
+   * tenant is part of the key, and it is read at lookup time rather than captured.
+   * An unresolved caller gets its own `''` partition, which cannot collide with a
+   * real tenant.
+   */
   const planCache = new Map<string, { at: number; plan: AutomationPlan | null }>();
+  const planKey = (playbookId: string): string => `${deps.scope()?.tenantId ?? ''}::${playbookId}`;
 
-  const build = (): BuildArtifacts => {
+  const build = (): BuildArtifacts => projectionCache.state(compose);
+
+  const compose = (): BuildArtifacts => {
     const nowMs = now();
-    if (cache && nowMs - cache.at < BUILD_TTL_MS) return cache;
     const nowIso = new Date(nowMs).toISOString();
     const failures: Record<string, string> = {};
 
@@ -201,18 +283,18 @@ export function initAutomationPlatform(deps: AutomationPlatformDeps): Automation
       nowIso,
     });
 
-    cache = { at: nowMs, nowIso, catalog, monitorReport, policiesView, dashboard, chains, autoAllowed };
-    return cache;
+    return { at: nowMs, nowIso, catalog, monitorReport, policiesView, dashboard, chains, autoAllowed };
   };
 
   /* ── plan compilation (per playbook, TTL-cached) ───────────────────────── */
   const plan = (playbookId: string): AutomationPlan | null => {
     const nowMs = now();
-    const cached = planCache.get(playbookId);
+    const key = planKey(playbookId);
+    const cached = planCache.get(key);
     if (cached && nowMs - cached.at < BUILD_TTL_MS) return cached.plan;
     const playbook: PlaybookDefinition | undefined = PLAYBOOK_BY_ID.get(playbookId);
     if (!playbook) {
-      planCache.set(playbookId, { at: nowMs, plan: null });
+      planCache.set(key, { at: nowMs, plan: null });
       return null;
     }
     const b = build();
@@ -264,12 +346,52 @@ export function initAutomationPlatform(deps: AutomationPlatformDeps): Automation
       },
       knowledge,
     };
-    planCache.set(playbookId, { at: nowMs, plan: result });
+    planCache.set(key, { at: nowMs, plan: result });
     return result;
   };
 
   /* ── D-3: the schedule tick (the Builder's first-ever schedule emitter) ─── */
-  const firedOccurrences = new Map<string, string>(); // ruleId → occurrenceKey (in-memory, delivery-engine style)
+  /**
+   * P13C ROUND 6 — ruleId → occurrenceKey, PER TENANT.
+   *
+   * Rule ids are uuids from a tenant-scoped store, so a collision across tenants
+   * is not reachable and this was never a suppression bug. It is keyed anyway
+   * for two reasons worth stating: the map is tenant-derived state that grew
+   * without bound, and "these ids happen not to collide" is a property of an id
+   * generator somebody could change. Keying removes the reasoning burden rather
+   * than documenting it.
+   */
+  const firedOccurrences = new Map<string, Map<string, string>>();
+  /**
+   * P13C ROUND 10 — NEW-M9. THE BUCKET COMES FROM THE RULE, NOT FROM THE SESSION.
+   *
+   * This took no argument and re-read `deps.scope()` INSIDE the loop, AFTER
+   * `await deps.fireScheduledRule`. A workspace switch during that await moved
+   * the whole rest of the tick into another tenant's bucket, so one tenant's
+   * occurrence keys were written under another's — which both suppresses a rule
+   * that never fired and re-fires one that did. The owner is now an argument
+   * derived from the rule itself before any await, so there is no read left in
+   * the loop that a switch could change.
+   */
+  const occurrenceBucket = (tenantId: string): Map<string, string> => {
+    const existing = firedOccurrences.get(tenantId);
+    if (existing) return existing;
+    const fresh = new Map<string, string>();
+    firedOccurrences.set(tenantId, fresh);
+    return fresh;
+  };
+  /**
+   * D-3, under the rule's own authority.
+   *
+   * SCHEDULED RULE → ITS STORED OWNER → AN EXPLICIT PRINCIPAL → EXECUTION. The
+   * chain has no step where "whoever is signed in" is consulted:
+   * `principalForOwnedWork` reads `rule.tenantId`, which the store stamped when
+   * the rule was saved and which a payload cannot set. A rule with no stored
+   * owner is UNRESOLVED — it belongs to nobody, so nobody's runner may execute
+   * it, and it is skipped rather than run as the reader. (Unreachable through
+   * `automationStore.all()`, which already hides unowned rows; the guard is here
+   * because "the store filters it out" is a property of another file.)
+   */
   const tick = async (nowMs: number): Promise<{ fired: string[] }> => {
     const fired: string[] = [];
     const rules = safeRead('automation-rules', deps.rules, {});
@@ -279,10 +401,24 @@ export function initAutomationPlatform(deps: AutomationPlatformDeps): Automation
       if (!parsed.spec) continue; // unparseable → the monitor carries the finding; never a silent guess
       const due = scheduleDue(parsed.spec, nowMs);
       if (!due.due) continue;
-      if (firedOccurrences.get(rule.id) === due.occurrenceKey) continue; // once per occurrence
-      firedOccurrences.set(rule.id, due.occurrenceKey);
+      const principal = principalForOwnedWork({
+        jobId: TICK_JOB_ID,
+        tenantId: rule.tenantId,
+        // A rule is TENANT-level: `AutomationRule` has no workspace field, so a
+        // tenant-level principal is the honest reading, not a narrowing.
+        workspaceId: null,
+      });
+      if (principal === null) {
+        log.warn('Scheduled rule has no owner and was not fired', { ruleId: rule.id });
+        continue;
+      }
+      const occurrences = occurrenceBucket(principal.tenantId as string);
+      if (occurrences.get(rule.id) === due.occurrenceKey) continue; // once per occurrence
+      occurrences.set(rule.id, due.occurrenceKey);
       try {
-        const res = await deps.fireScheduledRule(rule.id, new Date(nowMs).toISOString());
+        const res = await runAsPrincipal(principal, () =>
+          deps.fireScheduledRule(rule.id, new Date(nowMs).toISOString()),
+        );
         if (res) fired.push(rule.id);
       } catch (err) {
         log.warn('Scheduled rule fire failed', { ruleId: rule.id, message: (err as Error).message });
@@ -290,12 +426,47 @@ export function initAutomationPlatform(deps: AutomationPlatformDeps): Automation
     }
     return { fired };
   };
+  /**
+   * The tick EVERY tenant is owed, once per tenant, each under its own principal.
+   *
+   * `tick` alone could only ever see one organization's rules, because the store
+   * it reads is scoped — so running it once per install served exactly one
+   * tenant. One tenant's failure does not cancel the next tenant's run;
+   * `forEachTenant` captures it into that tenant's outcome and continues.
+   */
+  const tickAllTenants = async (nowMs: number): Promise<{ fired: string[]; tenants: string[] }> => {
+    const fired: string[] = [];
+    const tenants: string[] = [];
+    await deps.forEachTenant(TICK_JOB_ID, async (run) => {
+      tenants.push(run.scope.tenantId);
+      const result = await tick(nowMs);
+      fired.push(...result.fired);
+    });
+    return { fired, tenants };
+  };
   deps.schedule.every(TICK_ID, TICK_MS, () => {
-    void tick(now());
+    void tickAllTenants(now());
   });
 
   /* ── monitoring: ONE governed watch source (items only, never actions) ──── */
-  const deliveredWatch = new Set<string>();
+  /**
+   * P13C ROUND 6 — EDGE-TRIGGER STATE, KEYED BY TENANT.
+   *
+   * Was `new Set<string>()` holding bare recommendation ids, and `produce()`
+   * runs once per tenant under the delivery fan-out. The ids are deterministic
+   * constants, so the FIRST tenant in the fan-out claimed each one permanently
+   * and every other tenant's identical critical alert was dropped — forever, with
+   * no TTL and nothing to clear it.
+   *
+   * No content crossed. What crossed was the decision NOT to deliver, which is
+   * quieter than a disclosure and, for a critical alert, not obviously less
+   * serious: one customer stops receiving warnings because another received the
+   * same category first, and nothing looks wrong.
+   *
+   * `claim()` is one call rather than has-then-add, because has-then-add is
+   * where the bug lived in twelve places and a thirteenth would write it too.
+   */
+  const deliveredWatch = new TenantDedupe('automation-watch');
   const watchSource: IntelligenceSource = {
     key: 'automation-watch',
     label: 'Automation Watch',
@@ -305,8 +476,7 @@ export function initAutomationPlatform(deps: AutomationPlatformDeps): Automation
       const items: IntelligenceItem[] = [];
       for (const f of b.monitorReport.findings) {
         if (f.severity !== 'critical' && f.severity !== 'high') continue;
-        if (deliveredWatch.has(f.id)) continue;
-        deliveredWatch.add(f.id);
+        if (!deliveredWatch.claim(deps.scope(), f.id)) continue;
         items.push({
           id: `ap:${f.id}`,
           title: f.title,
@@ -346,6 +516,23 @@ export function initAutomationPlatform(deps: AutomationPlatformDeps): Automation
   };
 
   /* ── the six read-only IPC channels (D-9; autonomousops:read, P19 scope) ── */
+  /**
+   * P13C Round 2 — H7. DROP THE TENANT-DERIVED SNAPSHOT ON A TENANT SWITCH.
+   *
+   * This cache holds a fully composed, tenant-derived read model behind a short
+   * TTL, and it was cleared only in `dispose()`. Switching organization changes
+   * none of the backing stores this subsystem watches, so the memo survived the
+   * switch — and the renderer's reload after a switch lands INSIDE the TTL.
+   * Opening a dashboard right after switching is the single most common
+   * multi-tenant action there is, so the window was not theoretical.
+   *
+   * Registered on the same residue seam every other subsystem uses, rather than
+   * a second invalidation mechanism.
+   */
+  onWorkspaceSwitch(() => {
+    projectionCache.invalidate();
+  });
+
   const handlers: SecureHandlerDef[] = [
     {
       channel: IpcChannel.ApCatalog,
@@ -411,10 +598,11 @@ export function initAutomationPlatform(deps: AutomationPlatformDeps): Automation
     plan,
     dashboard: () => build().dashboard,
     tick,
+    tickAllTenants,
     answerQuestion,
     dispose: () => {
       deps.schedule.cancel(TICK_ID);
-      cache = null;
+      projectionCache.invalidate();
       planCache.clear();
     },
   };

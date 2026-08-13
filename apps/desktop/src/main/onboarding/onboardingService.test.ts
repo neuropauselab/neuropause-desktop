@@ -47,7 +47,8 @@ describe('createOnboardingService', () => {
     const s = await svc.completeStep('welcome');
     expect(s.startedAt).toBe(T0.toISOString());
     expect(s.steps.find((st) => st.id === 'welcome')?.completedAt).toBe(T0.toISOString());
-    expect(s.nextStep).toBe('organization');
+    // Phase 8 (8.13): the legal step follows welcome in the catalog.
+    expect(s.nextStep).toBe('legal');
     expect(s.completedAt).toBeNull();
   });
 
@@ -74,7 +75,8 @@ describe('createOnboardingService', () => {
     const s = await svc.dismiss();
     expect(s.completedAt).toBe(T0.toISOString());
     expect(s.firstRun).toBe(false);
-    expect(s.nextStep).toBe('organization');
+    // Phase 8 (8.13): the legal step follows welcome in the catalog.
+    expect(s.nextStep).toBe('legal');
     expect(s.steps.filter((st) => st.completedAt === null)).toHaveLength(
       ONBOARDING_STEPS.length - 1,
     );
@@ -87,7 +89,8 @@ describe('createOnboardingService', () => {
     await reloaded.load();
     const s = reloaded.getStatus();
     expect(s.startedAt).toBe(T0.toISOString());
-    expect(s.nextStep).toBe('connectors');
+    // Phase 8 (8.13): with legal inserted after welcome, it is the first incomplete step here.
+    expect(s.nextStep).toBe('legal');
     expect(s.steps.filter((st) => st.completedAt !== null)).toHaveLength(2);
   });
 

@@ -12,6 +12,35 @@ import { EventEmitter } from 'node:events';
 import { promises as fs } from 'node:fs';
 import type { WorkerInstallState, WorkerPackageManifest } from '@neuropause/shared';
 import { createLogger } from '../../logger';
+import { declareSystemGlobalStore } from '../../tenancy/tenantOwnedStore';
+import { declareStoreScope } from '../../tenancy/storeScope';
+
+/** P13C ROUND 10 — the retention invariant. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'workforce-installs',
+  scope: 'INSTALL_GLOBAL',
+  persistence: 'file',
+  // P13C ROUND 9 F2 — the install lifecycle moved to `cloud:operate`. Before
+  // that this was an organization role over an install-wide, destructive
+  // operation, and `declareStoreScope` would now refuse the pair outright.
+  authority: 'PLATFORM_OPERATOR',
+  classification: 'INSTALL_METADATA',
+  retentionScope: 'INSTALL',
+  retentionAuthority: 'PLATFORM_OPERATOR',
+  retention:
+    'NO CAP. The one removal is `remove(id)` from `uninstall`, which deletes the package for EVERY ' +
+    'tenant on the machine — INSTALL is the honest answer, not a defect, because the rows have no ' +
+    'tenant field and a per-tenant partition would be wrong rather than merely absent: composed ' +
+    'workers register into one process-wide registry with one skill-resolution seam. What makes it ' +
+    'acceptable is the authority, not the scope: `WorkforceUninstall` is `cloud:operate`, which no ' +
+    'organization role can hold. Round 9 F2 moved it there precisely because the prose below argued ' +
+    'the opposite from the plugin analogy — and the plugin channels had already moved the other way.',
+  reason:
+    'WHY GLOBAL: publisher-authored software inventory for one machine — id, version, author, ' +
+    'declared skills and permissions, an Ed25519 signature re-verified on every load, and one ' +
+    'retained prior version for rollback. No field is derived from, names, or counts a customer ' +
+    'record. Declared here because `declareSystemGlobalStore` cannot state a retention policy.',
+});
 
 const log = createLogger('workforce-install-store');
 
@@ -45,6 +74,15 @@ interface InstallFile {
 }
 
 export class InstallStore extends EventEmitter {
+  /**
+   * P13C ROUND 5 — DECLARED SYSTEM-GLOBAL, WITH A REASON, AND WITH ITS COST NAMED.
+   *
+   * Installed worker packages are publisher-authored software inventory for one machine: id, version, author, declared skills and permissions, an Ed25519 signature re-verified against a trusted key on every load, and one retained prior version for rollback. No field is derived from, names, or counts a customer record. A per-tenant partition would also be WRONG rather than merely unnecessary: composed workers register into one process-wide WorkerRegistry with one skill-resolution seam, so two tenants cannot hold different versions of the same worker id in one running process. The deliberate cost is a shared administration surface — a workforce:manage holder can uninstall or roll back a package other tenants use — which is the same property as uninstalling a plugin and is why that permission is Admin/Owner only.
+   *
+   * The cost is stated rather than omitted because that is the difference
+   * between a declaration and a dismissal. A reviewer who disagrees with the
+   * trade now has something to disagree WITH.
+   */
   private installs = new Map<string, StoredInstall>();
   private loaded = false;
   private lastPersist: Promise<void> = Promise.resolve();
@@ -52,6 +90,7 @@ export class InstallStore extends EventEmitter {
   private dirty = false;
 
   constructor(private readonly filePath: string) {
+    declareSystemGlobalStore('workforce-installs', 'Installed worker packages are publisher-authored software inventory for one machine: id, version, author, declared skills and permissions, an Ed25519 signature re-verified against a trusted key on every load, and one retained prior version for rollback. No field is derived from, names, or counts a customer record. A per-tenant partition would also be WRONG rather than merely unnecessary: composed workers register into one process-wide WorkerRegistry with one skill-resolution seam, so two tenants cannot hold different versions of the same worker id in one running process. The deliberate cost is a shared administration surface — a workforce:manage holder can uninstall or roll back a package other tenants use — which is the same property as uninstalling a plugin and is why that permission is Admin/Owner only.');
     super();
   }
 

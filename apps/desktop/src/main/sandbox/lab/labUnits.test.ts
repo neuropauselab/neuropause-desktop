@@ -12,6 +12,7 @@ import { BenchmarkStore } from './benchmarkStore';
 import { composeLabDashboard } from './dashboard';
 import { buildLabReport, labReportToCsv, labReportToHtml, labReportToJson, labReportToJUnitXml } from './report';
 import type { LabDeps, QaExecutor, QaRunResult } from './ports';
+import { TEST_TENANT_SCOPE } from '../../tenancy/testScope';
 
 function clock(): () => number {
   let t = 1000;
@@ -105,7 +106,7 @@ describe('recovery lab', () => {
 
 describe('benchmark store (extends PersistentStore)', () => {
   it('records history and compares versions', async () => {
-    const store = new BenchmarkStore(join(tmpdir(), `bench-${Date.now()}.json`), (() => { let t = 1; return () => (t += 1000); })());
+    const store = new BenchmarkStore(join(tmpdir(), `bench-${Date.now()}.json`), (() => { let t = 1; return () => (t += 1000); })()).bindScope(() => TEST_TENANT_SCOPE);
     store.record({ target: 'rest', metric: 'p95Ms', version: '1', value: 100 });
     store.record({ target: 'rest', metric: 'p95Ms', version: '2', value: 130 });
     const cmp = store.compareLatest('rest', 'p95Ms', '2');

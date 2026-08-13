@@ -36,6 +36,8 @@ import {
   executionProposalFromRecord,
   type RelationshipGraphModel,
 } from '@neuropause/shared';
+import type { TenantScope } from '@neuropause/shared';
+import { TenantMemo } from '../tenancy/tenantMemo';
 import type { EnterpriseModule } from './framework';
 import { customerModule } from './modules/crm/customerModuleInstance';
 import { quoteModule } from './modules/sales/quoteModuleInstance';
@@ -98,20 +100,50 @@ export function buildRelationshipModel(nowMs: number): RelationshipGraphModel {
   );
 }
 
-/* short TTL cache so exec-snapshot + explore within a couple seconds reuse one build */
-let cache: { model: RelationshipGraphModel; atMs: number } | null = null;
-const TTL_MS = 2500;
+/**
+ * P13C ROUND 3 — H-2. KEYED BY TENANT, not merely expired.
+ *
+ * Keyless `let cache` + 2.5s TTL + switch listener. The switch listener cannot
+ * see the case that matters: `forEachTenant` runs scheduled work once per
+ * tenant, back to back, under each tenant's own principal, announcing no switch.
+ * A model built during tenant A's pass was still inside the TTL when tenant B's
+ * pass began. Sequencing those passes — which `backgroundFanOut` does, citing
+ * these caches as the reason — stops two tenants interleaving inside one build
+ * and does nothing about a build surviving between them.
+ *
+ * The short TTL is retained for the job it can do: this model is fanned out over
+ * dozens of stores, and the exec snapshot plus an explore call within a couple
+ * of seconds should reuse one build.
+ */
+const memo = new TenantMemo<RelationshipGraphModel>('enterprise-relationship-model', { ttlMs: 2500 });
 
-/** The read-only relationship graph model (cached briefly). */
+/** Bind the tenant resolver. Called once by the enterprise composition root. */
+export function bindRelationshipModelScope(source: () => TenantScope | null): void {
+  memo.bindScope(source);
+}
+
+/** The read-only relationship graph model (cached briefly, per tenant). */
 export function getRelationshipModel(): RelationshipGraphModel {
-  const nowMs = Date.now();
-  if (cache && nowMs - cache.atMs < TTL_MS) return cache.model;
-  const model = buildRelationshipModel(nowMs);
-  cache = { model, atMs: nowMs };
-  return model;
+  return memo.state(() => buildRelationshipModel(Date.now()));
 }
 
 /** The eight relationship KPIs (for the Executive Center source). Reuses the cached model. */
 export function getRelationshipKpis(): RelationshipGraphModel['kpis'] {
   return getRelationshipModel().kpis;
+}
+
+/**
+ * Drop the memoized model (P13B).
+ *
+ * Kept, and still wired to the workspace switch, as defence in depth. It is no
+ * longer the isolation mechanism — the cell is keyed — but it remains the right
+ * response to the one moment the application KNOWS the tenant changed.
+ *
+ * Why this mattered enough to keep: the graph projection reads this model and
+ * STAMPS every node it produces with the reading tenant, then persists it. A
+ * stale read there is not transient; it becomes a durable, correctly-owned-
+ * looking record of another tenant's relationships.
+ */
+export function invalidateModelCache(): void {
+  memo.invalidate();
 }

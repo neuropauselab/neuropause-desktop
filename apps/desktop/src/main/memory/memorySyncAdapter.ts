@@ -78,5 +78,9 @@ export function toSyncState(item: MemoryItem): MemoryState | null {
     orgId: item.sync.orgId,
     head,
     history: item.sync.history,
+    // P13A — the owner travels with the state so the receiving device can
+    // authorize the write instead of inferring an owner from whichever
+    // organization happens to be active over there.
+    ...(item.owner ? { owner: item.owner } : {}),
   };
 }

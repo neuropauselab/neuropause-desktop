@@ -179,7 +179,7 @@ export function summarizeMemory(input: MemoryInput = {}): OpLens {
     ],
     links: [
       { label: 'Knowledge workspace', section: 'knowledge', icon: 'doc' },
-      { label: 'Knowledge Fabric', section: 'knowledge-center', icon: 'database' },
+      { label: 'Enterprise Knowledge', section: 'knowledge-center', icon: 'database' },
     ],
   };
 }

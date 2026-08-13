@@ -28,6 +28,7 @@ import type { ControlPlaneService } from '../cloud/controlPlane/controlPlaneServ
 import { StrategyService } from './strategyService';
 import type { StrategyState } from './strategyModel';
 import { withStrategyAuthz } from './strategyAuthz';
+import { activeTenantScope } from '../enterprise/index';
 
 const log = createLogger('autonomous-intelligence');
 
@@ -162,7 +163,7 @@ function buildState(deps: AutonomousIntelligenceDeps): StrategyState {
 }
 
 export function initAutonomousIntelligence(deps: AutonomousIntelligenceDeps): AutonomousIntelligenceSubsystem {
-  const service = new StrategyService({ readState: () => buildState(deps) });
+  const service = new StrategyService({ scope: activeTenantScope, readState: () => buildState(deps) });
 
   // Invalidate the memoized snapshot when a backing signal changes. The injected cloud/industry
   // services and the enterprise report keep themselves fresh (their own composition roots + TTLs);

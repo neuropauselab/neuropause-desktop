@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { cn } from '@renderer/lib/cn';
 import { Icon, type IconName } from '@renderer/components/ui/Icon';
+import { EmptyState as SharedEmptyState } from '@renderer/components/ui/EmptyState';
 import { Spinner } from '@renderer/components/Spinner';
 import { DOT_BG, TEXT_TONE, TINT_TONE, type OpsTone } from '@renderer/operations/lib';
 import type { ExecutiveKpi } from '@neuropause/shared';
@@ -54,7 +55,7 @@ export function Meter({
       )}
       <div className="h-1.5 w-full overflow-hidden rounded-full [background:var(--fill-2)]">
         <div
-          className={cn('h-full rounded-full transition-all duration-500', DOT_BG[tone as OpsTone])}
+          className={cn('h-full rounded-full transition-[background-color,color,border-color,box-shadow,transform,opacity] motion-reduce:transition-none duration-500', DOT_BG[tone as OpsTone])}
           style={{ width: pctWidth }}
         />
       </div>
@@ -121,7 +122,12 @@ export function KpiCard({ kpi, tone = 'accent' }: { kpi: ExecutiveKpi; tone?: To
   );
 }
 
-/** A friendly empty state for a screen with no findings. */
+/**
+ * A friendly empty state for a screen with no findings. Phase 7 (Product
+ * Experience): now a thin adapter over the ONE shared EmptyState — same visual
+ * language everywhere — keeping this surface's bordered container and its
+ * `hint` prop name so every existing call site compiles unchanged.
+ */
 export function EmptyState({
   icon = 'sparkles',
   title,
@@ -132,12 +138,8 @@ export function EmptyState({
   hint?: string;
 }): JSX.Element {
   return (
-    <div className="flex flex-col items-center justify-center rounded-2xl border border-[var(--hairline)] px-6 py-14 text-center">
-      <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-white/[0.06] text-muted">
-        <Icon name={icon} size={20} />
-      </span>
-      <p className="text-sm font-medium text-ink">{title}</p>
-      {hint && <p className="mt-1 max-w-[420px] text-xs text-faint">{hint}</p>}
+    <div className="rounded-2xl border border-[var(--hairline)]">
+      <SharedEmptyState icon={icon} title={title} description={hint} />
     </div>
   );
 }
@@ -152,14 +154,27 @@ export function LoadingBlock({ label = 'Loading intelligence…' }: { label?: st
   );
 }
 
-/** A hard-error block (only shown when there is no report at all). */
-export function ErrorBlock({ message, onRetry }: { message: string; onRetry: () => void }): JSX.Element {
+/**
+ * A hard-error block — shown only when a center has NO data to fall back on, so a
+ * failed load is never mistaken for a healthy-but-empty state. `title` phrases the
+ * headline for the center (defaults to the enterprise-intelligence copy so the
+ * pre-existing call sites are unchanged).
+ */
+export function ErrorBlock({
+  message,
+  onRetry,
+  title = 'Couldn’t load enterprise intelligence',
+}: {
+  message: string;
+  onRetry: () => void;
+  title?: string;
+}): JSX.Element {
   return (
     <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-[var(--hairline)] py-16 text-center">
       <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/[0.06] text-muted">
         <Icon name="info" size={20} />
       </span>
-      <p className="text-sm font-medium text-ink">Couldn’t load enterprise intelligence</p>
+      <p className="text-sm font-medium text-ink">{title}</p>
       <p className="max-w-[440px] text-xs text-faint">{message}</p>
       <button
         type="button"

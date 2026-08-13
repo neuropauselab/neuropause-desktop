@@ -23,6 +23,65 @@ import type {
 } from '@neuropause/shared';
 import { createLogger } from '../../logger';
 import { demoSeedsEnabled } from '../../demoSeed';
+import { declareSystemGlobalStore } from '../../tenancy/tenantOwnedStore';
+import { declareStoreScope } from '../../tenancy/storeScope';
+
+/**
+ * P13C ROUND 10 — NEW-F5, FOUND BY THE RETENTION GATE AND NOW CLOSED.
+ *
+ * The gate demanded this file state whose rows a removal can reach. The honest
+ * declaration would not construct, and the reason it would not construct WAS the
+ * finding:
+ *
+ *     scope      INSTALL_GLOBAL   backups, replication topology and continuity
+ *                                 posture describe THIS MACHINE. There is one
+ *                                 filesystem and one topology per install; a
+ *                                 per-tenant partition would name something that
+ *                                 does not exist.
+ *     authority  ORG_ROLE         `FedCreateBackup`, `FedRunValidation` and
+ *                                 `FedCheckReplication` were `federation:manage`.
+ *
+ * `declareStoreScope` refuses that pair — Round 9's F19 — because anyone may
+ * create an organization and own it, so an organization role over an install-wide
+ * resource is a self-service grant across every tenant.
+ *
+ * THE PART WORTH REMEMBERING. This store's `declareSystemGlobalStore` reason has
+ * stated the cost in prose SINCE ROUND 4: "a federation:manage holder in one
+ * tenant can trigger an install-wide backup or a recovery validation." That is
+ * the finding, written down, reviewed, and shipped five rounds running. PROSE
+ * CANNOT BE CHECKED. The enum can, and refused to compile a lie.
+ *
+ * The three channels moved to `cloud:operate` in `federationPlatform/
+ * federationAuthz.ts`; the reads did not move. The declaration below is now a
+ * true statement.
+ */
+declareStoreScope({
+  name: 'federation-dr',
+  scope: 'INSTALL_GLOBAL',
+  persistence: 'file',
+  authority: 'PLATFORM_OPERATOR',
+  classification: 'INSTALL_METADATA',
+  /**
+   * INSTALL is the only honest answer: the rows have no owner field, because
+   * there is nothing per-tenant to own. A removal reaches everything, which is
+   * what a global store means — and `declareStoreScope` refuses `OWNER` here for
+   * exactly that reason.
+   */
+  retentionScope: 'INSTALL',
+  retentionAuthority: 'PLATFORM_OPERATOR',
+  retention:
+    'ONE removal: `validations.slice(0, 50)`, applied in both `runValidation()` and `persist()` so ' +
+    'memory and disk cannot disagree. Rows carry no owner, so the cap can reach nothing that ' +
+    'belongs to a tenant — there are no tenant rows here. Backups, replicas and posture are never ' +
+    'removed by this store; deleting a backup archive is `backup/backupManager`, which is separately ' +
+    'declared and separately gated.',
+  reason:
+    'WHY GLOBAL: one machine, one filesystem, one replication topology. WHAT DATA: backup ids and ' +
+    'timestamps, replica lag, validation outcomes, RPO/RTO targets — the deployment\'s own posture, ' +
+    'no customer records and no counts derived from them. ROUND 10 (NEW-F5): the three mutating ' +
+    'channels were `federation:manage`, an organization role over an install-wide side effect; they ' +
+    'are now `cloud:operate`. The prose below this line said so from Round 4 and nothing could check it.',
+});
 
 const log = createLogger('federation-dr');
 
@@ -47,6 +106,20 @@ const DEFAULT_POSTURE: ContinuityPosture = {
 };
 
 export class DrStore extends EventEmitter {
+  /**
+   * P13C ROUND 4 — PHASE 29. DECLARED SYSTEM-GLOBAL, WITH A REASON.
+   *
+   * Backups, replicas, recovery validations and continuity posture describe the
+ * INSTALL's infrastructure, not any organization's records. Every tenant's data
+ * shares one JSON file per module, so a per-tenant backup is not expressible —
+ * the same structural limit the scheduled-backup entry in the migration
+ * inventory already records. The rows carry no tenantId, no orgId and no
+ * customer content: a backup row names a file scope and a size.
+   *
+   * The declaration is what makes this reviewable. An undeclared store is
+   * indistinguishable from one nobody thought about, which is how every
+   * finding in this program started.
+   */
   private backups = new Map<string, Backup>();
   private replicas = new Map<CloudRegionId, ReplicaState>();
   private validations: RecoveryValidation[] = [];
@@ -58,6 +131,17 @@ export class DrStore extends EventEmitter {
   private lastPersist: Promise<void> = Promise.resolve();
 
   constructor(private readonly filePath: string) {
+    declareSystemGlobalStore(
+      'federation-dr',
+      [
+        'WHY GLOBAL: backups, replicas, recovery validations and continuity posture describe THIS MACHINE\'s durability — which regions hold a replica, whether replication is lagging, when the last drill ran. There is one filesystem and one replication topology per install, so a per-tenant partition would describe something that does not exist.',
+        'WHAT DATA: Backup{id, scope, status, regionId, sizeBytes, objectCount, durationMs, createdAt}; ReplicaState{regionId, status, lagSeconds}; RecoveryValidation{rpo/rto seconds, checkedItems, integrityOk}; ContinuityPosture{haEnabled, multiRegion, targets, score}. Every field is an enum, a region id, a duration or a count. No id, name, title, email or record content appears anywhere in the file.',
+        'WHO MAY ACCESS: federation:read. WHO MAY MODIFY: federation:manage (FedCreateBackup, FedValidateRecovery).',
+        'WHY IT CANNOT DISCLOSE TENANT DATA: nothing in it is derived from a tenant. P13C Round 7 verified this by inspecting the persisted bytes after two tenants wrote — see systemGlobalProof.test.ts. Note WHY that holds today: createBackup does not read any data, it FABRICATES sizeBytes and objectCount from a constant plus a random offset. So the numbers are not an aggregate over customer records; they are placeholders.',
+        'THE CONDITION THAT ENDS THIS DECLARATION: if a real backup engine is wired, sizeBytes and objectCount become AGGREGATES OVER TENANT DATA, and an install-wide object count is a volume side channel — a tenant who knows their own count can subtract. At that moment this store stops being system-global and this reason stops being true.',
+        'CROSS-TENANT COST TODAY: a federation:manage holder in one tenant can trigger an install-wide backup or a recovery validation, consuming shared IO. Accepted: it is the same property as any shared-machine maintenance action.',
+      ].join(' '),
+    );
     super();
   }
 

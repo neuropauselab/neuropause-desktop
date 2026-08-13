@@ -69,6 +69,12 @@ export interface FinanceInvoice {
   taxRate: number;
   amountPaid: number;
   currency: string;
+  /**
+   * W6-B2: units of functional currency per one unit of `currency`. Defaults to
+   * 1 — a single-currency invoice is unchanged, and the functional amount then
+   * equals the original. The GL always posts the FUNCTIONAL amount.
+   */
+  exchangeRate: number;
   status: InvoiceStatus;
   paymentTerms: string;
   issueDate: string | null;
@@ -115,6 +121,7 @@ export function invoiceFromRecord(record: EnterpriseEntity): FinanceInvoice {
     taxRate: num(f.taxRate),
     amountPaid: num(f.amountPaid),
     currency: asString(f.currency) || 'USD',
+    exchangeRate: num(f.exchangeRate) || 1,
     status: asStatus(f.status),
     paymentTerms: asString(f.paymentTerms),
     issueDate: asString(f.issueDate) || null,
@@ -232,11 +239,26 @@ export function formatInvoiceAmount(amount: number, currency: string): string {
 
 /** The now-independent computed fields stamped onto every invoice write. */
 export function invoiceComputedFields(invoice: FinanceInvoice): Record<string, EnterpriseFieldValue> {
+  const rate = invoice.exchangeRate > 0 ? invoice.exchangeRate : 1;
   return {
     taxAmount: calculateTaxAmount(invoice),
     total: calculateInvoiceAmount(invoice),
     outstandingBalance: calculateOutstandingBalance(invoice),
+    // W6-B2: normalized rate + the functional-currency total the GL posts.
+    // Rate 1 (single-currency) → functionalTotal === total, so nothing changes.
+    exchangeRate: rate,
+    functionalTotal: functionalInvoiceTotal(invoice),
   };
+}
+
+/**
+ * The invoice total in FUNCTIONAL currency (W6-B2): each component converted at
+ * the invoice's rate, then summed — component-wise rounding matches the GL
+ * posting exactly, so the booked entry is balanced to the unit.
+ */
+export function functionalInvoiceTotal(invoice: FinanceInvoice): number {
+  const rate = invoice.exchangeRate > 0 ? invoice.exchangeRate : 1;
+  return Math.round(Math.max(0, invoice.amount) * rate) + Math.round(calculateTaxAmount(invoice) * rate);
 }
 
 /**
@@ -418,4 +440,90 @@ export function invoiceInsightsToKpis(insights: InvoiceModuleInsights): Executiv
     },
     { key: 'inv-payment-time', label: 'Avg Payment Time', value: insights.averagePaymentDays, display: `${insights.averagePaymentDays}d`, deepLink: 'enterprise/modules' },
   ];
+}
+
+/* ── receivables aging (W1.5) — pure bucketing over open invoices ── */
+
+/** The Receivables Aging module id + record kind (the framework store key). */
+export const AR_AGING_MODULE_ID = 'finance-ar-aging';
+export const AR_AGING_KIND = 'arAgingReport';
+
+export type ArAgingBucket = 'current' | 'days1to30' | 'days31to60' | 'days61to90' | 'days90plus';
+
+/** One open invoice's row in an aging view. */
+export interface ArAgingRow {
+  invoiceNumber: string;
+  customer: string;
+  dueDate: string;
+  outstanding: number;
+  daysOverdue: number;
+  bucket: ArAgingBucket;
+}
+
+export interface ArAging {
+  totalOutstanding: number;
+  current: number;
+  days1to30: number;
+  days31to60: number;
+  days61to90: number;
+  days90plus: number;
+  invoiceCount: number;
+  rows: ArAgingRow[];
+}
+
+/** Bucket a days-overdue count (≤0 — including no due date — is current). */
+export function arAgingBucketFor(daysOverdue: number): ArAgingBucket {
+  if (daysOverdue <= 0) return 'current';
+  if (daysOverdue <= 30) return 'days1to30';
+  if (daysOverdue <= 60) return 'days31to60';
+  if (daysOverdue <= 90) return 'days61to90';
+  return 'days90plus';
+}
+
+/**
+ * Derive the receivables aging view at a moment in time. DETERMINISTIC and
+ * pure: only issued-side invoices with a real outstanding balance appear
+ * (drafts, cancelled, and settled invoices never age), days-overdue counts
+ * whole days past the due date at `nowMs`, and an invoice without a due date
+ * sits in `current` (it cannot be overdue by a date it does not have). Payables
+ * aging deliberately does not exist yet — there is no vendor-bill module to age
+ * — and is added with Procurement completion, not faked here.
+ */
+export function deriveArAging(invoices: readonly FinanceInvoice[], nowMs: number): ArAging {
+  const rows: ArAgingRow[] = [];
+  for (const inv of invoices) {
+    const effective = calculatePaymentStatus(inv, nowMs);
+    if (effective === 'draft' || effective === 'cancelled' || effective === 'paid') continue;
+    const outstanding = calculateOutstandingBalance(inv);
+    if (outstanding <= 0) continue;
+    let daysOverdue = 0;
+    if (inv.dueDate) {
+      const due = Date.parse(inv.dueDate);
+      if (Number.isFinite(due)) daysOverdue = Math.max(0, Math.floor((nowMs - due) / DAY_MS));
+    }
+    rows.push({
+      invoiceNumber: inv.number,
+      customer: inv.customer,
+      dueDate: inv.dueDate ?? '',
+      outstanding,
+      daysOverdue,
+      bucket: arAgingBucketFor(daysOverdue),
+    });
+  }
+  rows.sort((a, b) => b.daysOverdue - a.daysOverdue || b.outstanding - a.outstanding);
+  const sum = (bucket: ArAgingBucket): number =>
+    rows.filter((r) => r.bucket === bucket).reduce((s, r) => s + r.outstanding, 0);
+  const buckets = {
+    current: sum('current'),
+    days1to30: sum('days1to30'),
+    days31to60: sum('days31to60'),
+    days61to90: sum('days61to90'),
+    days90plus: sum('days90plus'),
+  };
+  return {
+    totalOutstanding: buckets.current + buckets.days1to30 + buckets.days31to60 + buckets.days61to90 + buckets.days90plus,
+    ...buckets,
+    invoiceCount: rows.length,
+    rows,
+  };
 }

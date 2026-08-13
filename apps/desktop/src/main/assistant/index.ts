@@ -48,6 +48,7 @@ import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { unifiedStore } from '../unified/storeInstance';
 import { graphStore } from '../graph/graphInstance';
 import { memoryStore } from '../memory/memoryInstance';
+import { activeTenantScope } from '../enterprise';
 import { memoryAuditLog } from '../memory/memoryAuditInstance';
 import { getEnterpriseTimeline } from '../timeline';
 import { generateBriefing } from '../intelligence/briefingGenerator';
@@ -87,6 +88,19 @@ export interface AssistantSubsystemDeps {
   }) => void;
   /** The EXISTING ExecuteEngine — the assistant's only execution path. */
   execute: (req: ExecutionRequest) => Promise<ExecutionSession>;
+  /**
+   * Deterministic-first: RBAC-gated reads over registered enterprise modules,
+   * supplied by the composition root (the enterprise registry + its authorize
+   * gate). Lets lookup/aggregate questions answer WITHOUT any model.
+   */
+  moduleRecords?: (
+    moduleId: string,
+  ) =>
+    | { rows: { id: string; title: string; status: string; fields: Record<string, unknown> }[] }
+    | 'forbidden'
+    | null;
+  /** Measured-intelligence sink for engineless turns (location 'none'). */
+  recordProcessing?: (location: 'none') => void;
   /** Live count of active ExecuteEngine sessions (for the workspace snapshot). */
   executionsActive: () => number;
   /** Phase 6 Stage 5 — ExecuteEngine history (Work Summary aggregation input). */
@@ -142,7 +156,10 @@ function memoryDeps(correlationId: string): ConversationMemoryDeps {
 }
 
 export function initAssistant(deps: AssistantSubsystemDeps): AssistantSubsystem {
-  const store = new ConversationStore(join(app.getPath('userData'), 'assistant-conversations.json'));
+  const store = new ConversationStore(
+    join(app.getPath('userData'), 'assistant-conversations.json'),
+    // P13C N7 — the same resolver every other scoped store reads.
+  ).bindScope(activeTenantScope);
   const loaded = store.loadAllSync();
 
   /* ── Phase 6 Stage 5 — productivity ports over EXISTING singletons ─────── */
@@ -195,7 +212,14 @@ export function initAssistant(deps: AssistantSubsystemDeps): AssistantSubsystem 
     const events = tl ? tl.query({ limit: 2000, order: 'desc' }).entries : [];
     const brief = generateBriefing('morning', { entities, events, now });
     const builder = createContextBuilder({
-      searchSources: { entity: unifiedStore.searchBackend, graph: graphStore, memory: memoryStore },
+      searchSources: {
+        entity: unifiedStore.searchBackend,
+        graph: graphStore,
+        memory: memoryStore,
+        // P13A — the authority the memory leg runs under. Same resolver as every
+        // other scoped surface; null (cold start / signed out) yields no memory hits.
+        memoryScope: activeTenantScope(),
+      },
       getBriefing: () => brief,
     });
     return builder
@@ -230,6 +254,14 @@ export function initAssistant(deps: AssistantSubsystemDeps): AssistantSubsystem 
 
   const service = new AssistantService({
     store,
+    // Deterministic-first ports: record reads via the composition root's
+    // RBAC-gated port; approvals from the live job store (same read the
+    // workspace snapshot uses).
+    deterministic: {
+      ...(deps.moduleRecords ? { records: deps.moduleRecords } : {}),
+      pendingApprovals: () => jobStore.page({ status: 'awaiting_approval', limit: 1 }).total,
+    },
+    ...(deps.recordProcessing ? { recordProcessing: deps.recordProcessing } : {}),
     context: {
       workspaces: () => {
         const state = workspaceContexts.list();
@@ -279,7 +311,14 @@ export function initAssistant(deps: AssistantSubsystemDeps): AssistantSubsystem 
       const events = tl ? tl.query({ limit: 2000, order: 'desc' }).entries : [];
       const brief = generateBriefing('morning', { entities, events, now });
       const builder = createContextBuilder({
-        searchSources: { entity: unifiedStore.searchBackend, graph: graphStore, memory: memoryStore },
+        searchSources: {
+        entity: unifiedStore.searchBackend,
+        graph: graphStore,
+        memory: memoryStore,
+        // P13A — the authority the memory leg runs under. Same resolver as every
+        // other scoped surface; null (cold start / signed out) yields no memory hits.
+        memoryScope: activeTenantScope(),
+      },
         getBriefing: () => brief,
       });
       return builder.build(req);

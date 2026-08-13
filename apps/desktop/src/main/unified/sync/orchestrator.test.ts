@@ -31,7 +31,7 @@ async function newState(): Promise<SyncStateStore> {
 }
 
 function ent(sourceId: string, title: string, updatedAt: string, now: string) {
-  return makeEntity({ connectorId: 'github', accountId: 'a1', kind: 'task', sourceId, title, createdAt: updatedAt, updatedAt, now });
+  return makeEntity({ tenantId: 'org-test', connectorId: 'github', accountId: 'a1', kind: 'task', sourceId, title, createdAt: updatedAt, updatedAt, now });
 }
 
 function fakeAdapter(pull: (ctx: SyncContext) => Promise<SyncPage>): ConnectorAdapter {
@@ -45,6 +45,7 @@ function ports(
   events: PlatformEventInput[],
 ): OrchestratorPorts {
   return {
+    activeTenantId: () => 'org-test',
     upsertMany: (e) => store.upsertMany(e),
     markDeleted: (ids, at) => store.markDeleted(ids, at),
     countForConnector: (c) => store.countForConnector(c),

@@ -20,6 +20,7 @@
  */
 
 import type { MemoryVersion } from './memorySync';
+import type { MemoryOwner } from './memoryTenancy';
 
 export type MemoryKind =
   | 'decision'
@@ -100,6 +101,23 @@ export interface MemoryItem {
    * append-only version history.
    */
   sync?: MemorySyncFields;
+  /**
+   * Who this memory belongs to (P13A). The authoritative answer to "may this
+   * viewer read this?", stamped at creation from the resolved tenant chain and
+   * never from a caller.
+   *
+   * OPTIONAL IN THE TYPE, REQUIRED IN PRACTICE — and the gap is deliberate.
+   * Memories written before P13A exist on disk with no owner, and a required
+   * field would make the store file fail to parse into its own type. Instead
+   * they load, carry `owner: undefined`, and `memoryVisibleTo` denies them to
+   * everyone. An unowned memory is inert rather than universal, which is the
+   * same treatment `ownershipOf` gives an unowned record.
+   *
+   * Nothing may write a memory without one: `remember` throws rather than
+   * produce one, so `undefined` here means "predates P13A", never "created
+   * without an owner".
+   */
+  owner?: MemoryOwner;
 }
 
 /** Input for explicitly remembering something. */
@@ -358,6 +376,22 @@ export type MemoryAuditAction =
 
 export interface MemoryAuditEvent {
   id: string;
+  /**
+   * The organization this event belongs to.
+   *
+   * P13C ROUND 7 (final sweep) — `MemoryAuditLog` had no tenant field, no
+   * `bindScope` and no registration, and its channel sat in `PUBLIC_CHANNELS`:
+   * no auth, no permission. `detail` is a plain-language summary written by the
+   * assistant, so it carries record titles and section counts verbatim.
+   *
+   * The memory STORE beside it was scoped and the conversation store was pulled
+   * off the public list in an earlier round. The audit log of the same subsystem
+   * was not touched — a sibling of something already fixed, which is the shape of
+   * nearly every finding in this program.
+   *
+   * Optional: pre-Round-7 rows have no owner and reach nobody.
+   */
+  tenantId?: string;
   action: MemoryAuditAction;
   /** The memory this concerns; null for a rejected capture (nothing was stored). */
   memoryId: string | null;

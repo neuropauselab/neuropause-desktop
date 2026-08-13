@@ -19,7 +19,13 @@ vi.mock('electron', () => ({
 
 import { credentialStore } from '../security/secureStore';
 import { saveAiConfig } from './aiConfigStore';
-import { resolveProviderId, buildModelRouter, ANTHROPIC_CREDENTIAL_ID } from './providerManager';
+import {
+  ANTHROPIC_CREDENTIAL_ID,
+  assembleRouteCandidates,
+  buildModelRouter,
+  resolveProviderId,
+} from './providerManager';
+import { planRoute } from '@neuropause/shared';
 
 beforeEach(async () => {
   mockState.userDataDir = await fs.mkdtemp(join(tmpdir(), 'np-pm-'));
@@ -49,11 +55,18 @@ describe('resolveProviderId — precedence config > env > default', () => {
 });
 
 describe('buildModelRouter — config + Vault aware', () => {
-  it('uses the Vault key for claude (configured)', async () => {
+  it('uses the Vault key for claude (configured), and claude leads the plan', async () => {
     await credentialStore.setSecret(ANTHROPIC_CREDENTIAL_ID, 'sk-fixture');
     const r = await buildModelRouter();
-    expect(r.resolve().client.provider).toBe('anthropic');
+    // Every construction now routes through the Private First composite so the
+    // execution can stamp routing metadata; the PLAN carries which provider
+    // actually leads — for a claude install, the external route.
+    expect(r.resolve().client.provider).toBe('private-first');
     expect(r.isConfigured()).toBe(true);
+    const { mode, candidates } = await assembleRouteCandidates();
+    expect(mode).toBe('external');
+    const plan = planRoute(mode, candidates);
+    expect(plan.attempts[0]).toMatchObject({ provider: 'anthropic', location: 'external' });
   });
   it('falls back to the env key when the Vault is empty', async () => {
     vi.stubEnv('ANTHROPIC_API_KEY', 'sk-env-fixture');
@@ -61,13 +74,19 @@ describe('buildModelRouter — config + Vault aware', () => {
     expect(r.isConfigured()).toBe(true);
   });
   it('is unconfigured for claude with neither Vault nor env key', async () => {
+    // The legacy behaviour, preserved exactly: a default install with no key
+    // reports needs-setup — it does NOT silently grow a localhost route.
     const r = await buildModelRouter();
     expect(r.isConfigured()).toBe(false);
   });
-  it('honors a config-selected ollama provider', async () => {
+  it('honors a config-selected ollama provider — the local route leads', async () => {
     saveAiConfig({ provider: 'ollama' });
     const r = await buildModelRouter();
-    expect(r.resolve('deep').client.provider).toBe('ollama');
+    expect(r.isConfigured()).toBe(true);
+    const { mode, candidates } = await assembleRouteCandidates();
+    expect(mode).toBe('private_first');
+    const plan = planRoute(mode, candidates);
+    expect(plan.attempts[0]).toMatchObject({ provider: 'ollama', location: 'local' });
   });
   it('applies a config model override across all tiers (claude)', async () => {
     await credentialStore.setSecret(ANTHROPIC_CREDENTIAL_ID, 'sk-fixture');

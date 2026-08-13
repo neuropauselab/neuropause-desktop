@@ -13,15 +13,67 @@
 
 /* ───────────────────────── Organization runtime ───────────────────────── */
 
+/**
+ * What kind of organization this is. Affects nothing about isolation — a
+ * personal tenant is isolated exactly as hard as an enterprise one.
+ */
+export type OrganizationType = 'personal' | 'business' | 'enterprise';
+
+/**
+ * Whether the tenant may be operated at all.
+ *
+ * `suspended` and `archived` both deny. They are distinct so an operator can
+ * tell "paused, will return" from "closed, kept for the record", and so a
+ * future restore path has something to restore FROM. Permanent deletion is
+ * deliberately not a state here.
+ */
+export type OrganizationStatus = 'active' | 'suspended' | 'archived';
+
+/**
+ * THE TENANT.
+ *
+ * This type is the security boundary. It is not a new concept and there is no
+ * `Tenant` interface anywhere — `Organization` already drove every permission
+ * decision in the app, so promoting it is the only change that puts the
+ * boundary where authorization already happens. A parallel `Tenant` entity
+ * would have created a second authority to disagree with this one.
+ *
+ * `id` is preserved across the upgrade, including the existing `org-default`.
+ */
 export interface Organization {
   id: string;
   name: string;
   slug: string;
   /** Short human description of what the org does. */
   description: string;
+  /** Optional so a pre-P11 file parses; absent is read as `business`. */
+  type?: OrganizationType;
+  /** Optional so a pre-P11 file parses; absent is read as `active`. */
+  status?: OrganizationStatus;
   createdAt: string;
   updatedAt: string;
   metadata: Record<string, unknown>;
+}
+
+/** The declared type, with the pre-P11 default applied in one place. */
+export function organizationType(org: Organization): OrganizationType {
+  return org.type ?? 'business';
+}
+
+/**
+ * The declared status, with the pre-P11 default applied in one place.
+ *
+ * Defaults to `active` rather than denying, because every existing install has
+ * no status field and must keep working. New tenants are written with an
+ * explicit status, so the default only ever applies to data that predates it.
+ */
+export function organizationStatus(org: Organization): OrganizationStatus {
+  return org.status ?? 'active';
+}
+
+/** Whether this tenant may be operated. Suspended and archived both refuse. */
+export function organizationIsOperable(org: Organization): boolean {
+  return organizationStatus(org) === 'active';
 }
 
 /** The hierarchical levels of an org chart, from broadest to narrowest. */
@@ -61,9 +113,35 @@ export interface OrgUser {
   /** The unit this member belongs to, if any. */
   unitId: string | null;
   roleIds: string[];
+  /**
+   * Which workspaces inside the tenant this member may operate in.
+   *
+   * ABSENT means every workspace in the tenant — which is what the app did
+   * before P11 and what every existing member row means, so the upgrade
+   * changes nobody's access. PRESENT means restricted to exactly this list.
+   * An EMPTY array is not "all"; it is a member of the tenant with no
+   * workspace, which denies.
+   *
+   * `orgId` above is the tenant membership. It already existed; nothing ever
+   * consulted it as one, which is the gap P11 closes.
+   */
+  workspaceIds?: string[];
   status: OrgUserStatus;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * Whether a member may operate in a workspace of their own tenant.
+ *
+ * Deliberately does NOT check the tenant — the caller has to establish that
+ * separately, because conflating "wrong tenant" with "wrong workspace" is how
+ * a workspace check ends up accidentally answering a tenant question.
+ */
+export function memberMayUseWorkspace(member: OrgUser, workspaceId: string): boolean {
+  if (member.status !== 'active') return false;
+  if (member.workspaceIds === undefined) return true;
+  return member.workspaceIds.includes(workspaceId);
 }
 
 /* ─────────────────────────── Roles & permissions ──────────────────────── */
@@ -117,6 +195,27 @@ export type EnterprisePermission =
   // ── P11 — Cloud Control Plane: read the global control plane, and manage/operate cloud resources. ──
   | 'cloud:read'
   | 'cloud:manage'
+  /**
+   * P13C ROUND 7 — THE PLATFORM OPERATOR. STRICTLY ABOVE `cloud:manage`.
+   *
+   * Every other permission in this union is granted by an ORGANIZATION ROLE, and
+   * that is the right model for everything an organization owns. It cannot
+   * express the one authority the control plane actually needs, because the
+   * resources it governs — rate-limit policies, deployment replicas, the shared
+   * runtime — belong to the MACHINE, not to any organization on it.
+   *
+   * `cloud:manage` was doing that job and it is the wrong shape: it is held by
+   * every organization's Admin, so tenant A's administrator could disable the
+   * rate limit protecting tenant B. Scoping the policies per tenant would be
+   * worse than the exposure — per-tenant limits over one shared runtime are not
+   * limits at all.
+   *
+   * So this permission is deliberately UNREACHABLE FROM ANY ORGANIZATION ROLE.
+   * See `PLATFORM_ONLY_PERMISSIONS` below and `platformOperatorRegistry.ts`: it is
+   * held by an install-level operator identity and by nothing else, and switching
+   * organizations cannot confer it because it was never keyed on one.
+   */
+  | 'cloud:operate'
   // ── P12 — Developer Platform: read the developer console, and manage keys/OAuth/publishing/billing. ──
   | 'developer:read'
   | 'developer:manage'
@@ -139,7 +238,26 @@ export type EnterprisePermission =
   // ── Experience Program v1.0: read the decision-first experience/summary projection layer. ──
   | 'experience:read'
   // ── Intent Experience Program v2.0: read the intent-native reprojection of the strategy goals. ──
-  | 'intent:read';
+  | 'intent:read'
+  // ── Phase 6 — Universal Enterprise Data Plane. Import is split into three
+  // escalating scopes deliberately: reading an analysis is not the same right as
+  // writing records, and neither is the same right as APPROVING a high-risk
+  // (money / payroll / master-data) import. Segregation of duties depends on
+  // `data:import` and `data:approve` being separable. ──
+  | 'data:read'
+  | 'data:import'
+  | 'data:approve'
+  // ── Medical Device Manufacturing Pack. Finer-grained than the ERP domains
+  // above on purpose: a quality reviewer who releases and blocks lots is not
+  // the person who maintains the product catalogue, and a regulatory or
+  // customer-service reader needs the traceability answer without either write
+  // right. The `scope:subject.action` shape keeps the existing `scope:action`
+  // convention while carrying the extra subject the charter names. ──
+  | 'medicalDevice:product.read'
+  | 'medicalDevice:product.write'
+  | 'medicalDevice:lot.read'
+  | 'medicalDevice:lot.write'
+  | 'medicalDevice:traceability.read';
 
 export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   'org:read',
@@ -189,6 +307,7 @@ export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   // ── P11 — Cloud Control Plane ──
   'cloud:read',
   'cloud:manage',
+  'cloud:operate',
   // ── P12 — Developer Platform ──
   'developer:read',
   'developer:manage',
@@ -208,11 +327,43 @@ export const ALL_ENTERPRISE_PERMISSIONS: readonly EnterprisePermission[] = [
   'autonomousops:read',
   // ── P20 — NeuroPause Platform v2 (commercial productization) ──
   'commercial:read',
+  // ── Phase 6 — Universal Enterprise Data Plane ──
+  'data:read',
+  'data:import',
+  'data:approve',
   // ── Experience Program v1.0 (decision-first experience) ──
   'experience:read',
   // ── Intent Experience Program v2.0 (intent-native experience) ──
   'intent:read',
+  // ── Medical Device Manufacturing Pack ──
+  'medicalDevice:product.read',
+  'medicalDevice:product.write',
+  'medicalDevice:lot.read',
+  'medicalDevice:lot.write',
+  'medicalDevice:traceability.read',
 ];
+
+/**
+ * Permissions NO ORGANIZATION ROLE MAY EVER HOLD.
+ *
+ * P13C ROUND 7. This list is the whole mechanism, and it exists because of a
+ * trap in the seed: the Owner role is defined as `[...ALL_ENTERPRISE_PERMISSIONS]`,
+ * so ANY permission added to that array is granted — silently, to every
+ * organization's Owner, on the next reconcile. A capability meant to be
+ * install-level would have become the most widely held one in the product,
+ * reachable by creating a second organization and owning it.
+ *
+ * `BUILT_IN_ROLE_SPECS` filters the Owner wildcard through this set, so the
+ * default is now "the wildcard means everything an ORGANIZATION can do", which
+ * is what it was always read as. Anything here needs a different authority, and
+ * the code that grants it must say where that authority comes from.
+ */
+export const PLATFORM_ONLY_PERMISSIONS: readonly EnterprisePermission[] = ['cloud:operate'];
+
+/** True when this permission cannot be satisfied by an organization role. */
+export function isPlatformOnlyPermission(p: EnterprisePermission): boolean {
+  return PLATFORM_ONLY_PERMISSIONS.includes(p);
+}
 
 export interface OrgRole {
   id: string;
@@ -251,6 +402,27 @@ export interface WorkspaceSummary {
   userCount: number;
   unitCount: number;
   active: boolean;
+}
+
+/**
+ * One organization the SIGNED-IN ACCOUNT belongs to (P13C Part 3).
+ *
+ * The switcher's row. Deliberately thin: a name, the caller's own role names,
+ * and how many workspaces they may enter. It carries no headcount, no unit
+ * count and no workspace ids for organizations other than the one being
+ * described, because this list is exactly where an attacker would otherwise
+ * collect the identifiers for a direct-object reference — and a switcher only
+ * needs enough to be chosen from.
+ */
+export interface OrganizationSummary {
+  id: string;
+  name: string;
+  /** Whether this is the organization the session currently resolves to. */
+  active: boolean;
+  /** The caller's role names in THIS organization. Never anyone else's. */
+  roles: string[];
+  /** How many workspaces here the caller may operate in. */
+  workspaceCount: number;
 }
 
 /* ─────────────────────────── Organization graph ───────────────────────── */
@@ -379,6 +551,25 @@ export interface EnterpriseAuditEntry {
   target: string;
   summary: string;
   workspaceId: string;
+  /**
+   * P13C ROUND 6 — the owning ORGANIZATION.
+   *
+   * `workspaceId` alone could not partition this trail. It is stamped from
+   * `activeWorkspaceIdForDisplay()`, which returns one install-wide variable and
+   * never consults the principal — so a row written under a background fan-out
+   * carried whatever workspace the WINDOW happened to be showing. Worse, the
+   * unswitched value is the shared constant `workspace-default`, so every tenant
+   * that had never created a workspace wrote into the same partition and read
+   * each other's rows: record ids, record titles, actors and actions.
+   *
+   * OPTIONAL, and that is load-bearing. Rows written before this field existed
+   * must hash exactly as they did or the tamper-evident chain reports forgery on
+   * the first upgrade. `canonicalAudit` therefore includes the key ONLY when it
+   * is present. See `governanceStore.visibleAudit` for how unattributed legacy
+   * rows are handled — they are not given an owner, because a migration that
+   * invents provenance has destroyed the thing it was protecting.
+   */
+  tenantId?: string;
 }
 
 /** The editable governance configuration for an organization. */

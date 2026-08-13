@@ -1,0 +1,61 @@
+--- a/apps/desktop/src/main/knowledgeAssets/knowledgeBench.test.ts
++++ b/apps/desktop/src/main/knowledgeAssets/knowledgeBench.test.ts
+@@ -265,10 +265,17 @@
+      *
+      * These four budgets failed intermittently in the full suite and passed
+      * 3/3 in isolation. The module did not change between those runs; the
+-     * machine did. Vitest runs 677 files across parallel workers, so a
+-     * `performance.now()` delta measured inside one of them is a function of
++     * machine did. `vitest run` collects 764 files across parallel workers, so
++     * a `performance.now()` delta measured inside one of them is a function of
+      * how many siblings happened to be resident — it is a measurement of CPU
+-     * contention, not of this code.
++     * contention, not of this code. Measured alone: compose 17.8ms. Measured
++     * in the full suite: 117.1ms. Contention did not perturb the number, it
++     * dominated it.
++     *
++     * (764, not the 677 an earlier draft of this comment claimed. 677 is
++     * `src/main` alone; the config also collects 87 renderer view-model files.
++     * A subset reported as a total — the error this program exists to catch,
++     * committed inside the fix for a different one.)
+      *
+      * THE HEADER OF THIS FILE ALREADY ARGUES THIS, one step short. It discards
+      * the warmup pass because "first-call JIT in a cold vitest worker is not
+@@ -279,13 +286,22 @@
+      * number means something. Skipping was rejected: the workload and its
+      * correctness assertions still run everywhere, and only the stopwatch moves.
+      *
++     * COMPOSE RETURNS TO 100 — WHERE THIS TEST'S NAME ALWAYS SAID IT WAS.
++     * `f48059b1` ("test(ci): relax Stage 7 benchmark threshold", 5 Aug) moved
++     * the assertion 100 → 120 and left the title reading `compose ≤100ms`. For
++     * a week the file advertised one budget and enforced another: the first of
++     * the two options above, taken silently, in the very test whose comment now
++     * argues against it. The relaxation existed to survive shared workers. The
++     * bench no longer runs in them, so its reason is gone, and 17.8ms observed
++     * leaves the restored budget 5.6x of headroom.
++     *
+      * `npm run bench` runs this file alone with NP_BENCH=1. It belongs in the
+      * release procedure, not in the inner loop. A budget that has never failed
+      * is not proof of speed; a budget nobody runs is not proof of anything, so
+      * a run without it says so out loud below.
+      */
+     if (process.env['NP_BENCH'] === '1') {
+-      expect(composeMs).toBeLessThanOrEqual(120);
++      expect(composeMs).toBeLessThanOrEqual(100);
+       expect(matrixMs).toBeLessThanOrEqual(100);
+       expect(lineageMs).toBeLessThanOrEqual(100);
+       expect(dashboardMs).toBeLessThanOrEqual(500);
+--- a/PROGRAM-13C-D5-EXECUTION-REPORT.md
++++ b/PROGRAM-13C-D5-EXECUTION-REPORT.md
+@@ -163,8 +163,9 @@
+ 
+ | Gate | Result |
+ |---|---|
+-| Desktop main suite | **677 files / 7048 tests** (was 675 / 7021) |
+-| Failures | 1 — `knowledgeBench.test.ts`, wall-clock budget, untouched file, **3/3 pass in isolation** |
++| Desktop suite | **764 files / 8011 tests, 0 failures** — measured on the Mac, 12 Aug, after `round17e`. |
++| ↳ correction | Every earlier round in this program, this one included, reported **677 / 7048**. That is `src/main` alone. `vitest.config.ts` also collects 87 renderer view-model files. A subset was published as a total, in the certification record, by me. |
++| Failures at time of writing | 1 — `knowledgeBench.test.ts`, wall-clock budget, untouched file, **3/3 pass in isolation**. Closed by `round17e`. |
+ | Typecheck node / web | 0 / 0 |
+ | `packages/shared` typecheck | clean |
+ | Lint | clean |

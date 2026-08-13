@@ -11,6 +11,7 @@ import { JobStore } from './jobStore';
 import { WorkerRuntime } from './workerRuntime';
 import { Scheduler } from './scheduler';
 import type { SkillImpl, WorkforceData } from '../sdk';
+import { TEST_TENANT_SCOPE } from '../../tenancy/testScope';
 
 const NOW = '2026-02-10T00:00:00.000Z';
 
@@ -96,8 +97,8 @@ const data: WorkforceData = { now: NOW, entities: [{ id: 'e1' } as never], event
 async function setup() {
   counter = 0;
   const registry = new WorkerRegistry(tempPath());
-  const audit = new AuditLog(tempPath());
-  const jobs = new JobStore(tempPath());
+  const audit = new AuditLog(tempPath()).bindScope(() => TEST_TENANT_SCOPE);
+  const jobs = new JobStore(tempPath()).bindScope(() => TEST_TENANT_SCOPE);
   stores.push(registry, audit, jobs);
   await registry.load();
   await audit.load();

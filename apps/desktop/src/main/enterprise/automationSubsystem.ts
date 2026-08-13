@@ -19,14 +19,21 @@ import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { automationStore } from './automationInstance';
 import { AutomationRunner } from './automationRunner';
 import { AutomationRunHistory } from './automationRunHistory';
-import { defaultActionExecutor } from './automationActions';
+import { Notification } from 'electron';
+import { createActionExecutor } from './automationActions';
+import { memoryStore } from '../memory/memoryInstance';
+import { aiEngine } from '../ai/engineInstance';
 import { wireAutomationProducers } from './automationProducer';
 import type { PlatformEvent, PlatformEventInput, PlatformEventType } from '@neuropause/shared';
+import type { TenantScope } from '@neuropause/shared';
 
 const log = createLogger('automations');
 
 // V4.7 runtime: bounded run history + the runner, wired to the store + the default
 // action executor. Completed runs are recorded on the rule and pushed to history.
+// P13C Round 8 — Finding 1. Bound where the store is created; `activeTenantScope`
+// is already imported in this subsystem's dependency graph via the enterprise root,
+// so the binding happens at the composition call below rather than here.
 const runHistory = new AutomationRunHistory();
 
 // V4.8: the platform publisher, injected at init so completed runs emit events
@@ -34,7 +41,19 @@ const runHistory = new AutomationRunHistory();
 let publishPlatformEvent: ((input: PlatformEventInput) => void) | null = null;
 
 const runner = new AutomationRunner(() => automationStore.activeRules(), {
-  execute: defaultActionExecutor,
+  // RC Phase 1 — real execution: each action drives its actual subsystem and
+  // reports ok:true ONLY when the effect occurred (see automationActions.ts).
+  execute: createActionExecutor({
+    notify: ({ title, body }) => {
+      if (!Notification.isSupported()) {
+        return { ok: false, message: 'Notifications are not supported on this platform' };
+      }
+      new Notification({ title, body }).show();
+      return { ok: true };
+    },
+    memory: { remember: (input) => memoryStore.remember(input) },
+    ai: { isConfigured: () => aiEngine.isConfigured(), run: (req) => aiEngine.run(req) },
+  }),
   recordRun: (ruleId, result) => automationStore.recordRun(ruleId, result),
   emitCompleted: (record) => {
     runHistory.add(record);
@@ -54,7 +73,15 @@ const runner = new AutomationRunner(() => automationStore.activeRules(), {
     });
   },
   now: Date.now,
-});
+  },
+  /**
+   * P13C Round 2 — H1. The per-tenant selector the runner uses for BUS-DRIVEN
+   * dispatch. `activeRules()` above is the caller-scoped set used by the
+   * interactive `runById`; this one answers for the EVENT's owner, which is a
+   * different question and used to be answered with "every rule on the install".
+   */
+  (tenantId: string) => automationStore.activeRulesForTenant(tenantId),
+);
 
 /** Exposed so producers (connector/activity/schedule) can feed the runtime. */
 export function getAutomationRunner(): AutomationRunner {
@@ -93,10 +120,19 @@ export interface AutomationInitDeps {
     types: PlatformEventType[],
     handler: (evt: PlatformEvent) => void,
   ) => { dispose: () => void };
+  /**
+   * The tenant boundary for the RUN HISTORY. P13C Round 8 — Finding 1.
+   *
+   * Optional so the pure-model suites in this directory construct unchanged, and
+   * an ABSENT resolver means the history denies every read — an unbound store that
+   * shows nobody anything is the safe direction, and it is loud rather than quiet.
+   */
+  scope?: () => TenantScope | null;
 }
 
 export function initAutomations(deps: AutomationInitDeps = {}): AutomationSubsystem {
   publishPlatformEvent = deps.publish ?? null;
+  if (deps.scope) runHistory.bindScope(deps.scope);
   // V4.8: wire automatic event producers so saved rules fire on real events.
   if (deps.on) {
     wireAutomationProducers({ on: deps.on, runner });

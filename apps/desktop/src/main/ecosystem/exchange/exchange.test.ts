@@ -8,6 +8,13 @@ import { PacksStore } from './packsStore';
 import { PartnersStore } from './partnersStore';
 import { PARTNER_TYPES } from '@neuropause/shared';
 
+/**
+ * P13C ROUND 4 — F9. Packs are tenant-owned and an UNBOUND store denies. The
+ * seeded org id used by these fixtures is the tenant here, so single-tenant
+ * behaviour is asserted exactly as before.
+ */
+const packScope = (): { tenantId: string; workspaceId: string } => ({ tenantId: 'org-default', workspaceId: 'ws-default' });
+
 // PacksStore/PartnersStore seed DEMO community packs + a sample partner directory (off by default in prod);
 // enable demo seeds so these fixtures exist. Production-empty behavior is asserted in *.prod.test.ts.
 beforeAll(() => { process.env.NP_DEMO_SEEDS = '1'; });
@@ -45,25 +52,45 @@ describe('InstallsStore', () => {
 });
 
 describe('PacksStore', () => {
-  it('seeds community packs, publishes local, and imports', async () => {
-    const s = new PacksStore(tempPath('pack'), 'org-default', 'NeuroPause');
+  /**
+   * P13C ROUND 4 — F9. This asserted that the demo's community packs were listed;
+   * now it asserts they are NOT. That is stricter, and it is a deliberate
+   * product trade worth stating.
+   *
+   * An `ExchangePack` carries `items: PackItem[]` — real content: documents,
+   * workers, automations, connector definitions. It has NO visibility scope
+   * field, unlike a federation `ExchangeArtifact` which has
+   * private/partner/regional/public. With no way for a publisher to say "this
+   * one is public", the only safe default is owner-only, so a pack published by
+   * one organization is not listed to another.
+   *
+   * The cost is real: there is currently no way to publish a pack to a community
+   * catalogue. Giving `ExchangePack` a scope field is the fix, and it is a
+   * product change rather than a security patch — recorded as open work rather
+   * than papered over by keeping the listing open.
+   *
+   * The seeded packs belong to fictional community publishers, so under the new
+   * rule they belong to nobody on this install.
+   */
+  it('lists only the caller’s packs, publishes local, and imports its own', async () => {
+    const s = new PacksStore(tempPath('pack'), 'org-default', 'NeuroPause').bindScope(packScope);
     await s.load();
-    const seeded = s.list();
-    expect(seeded.length).toBeGreaterThanOrEqual(4);
-    expect(seeded.every((p) => !p.isLocal)).toBe(true);
+    // The demo's community packs are published by fictional organizations.
+    expect(s.list()).toEqual([]);
 
     const local = s.publish({ name: 'My Pack', summary: 'x', kind: 'knowledge', items: [{ kind: 'document', name: 'Doc', detail: '1' }] });
     expect(local.isLocal).toBe(true);
     expect(local.installed).toBe(true);
+    expect(s.list().map((p) => p.id)).toEqual([local.id]);
 
-    const target = seeded[0];
-    const imported = s.importPack(target.id);
-    expect(imported?.installed).toBe(true);
-    expect(imported?.installs).toBe(target.installs + 1);
+    // A foreign pack id resolves to nothing — neither importable nor removable.
+    const foreign = s.list().length === 0 ? 'pack_invented' : 'pack_invented';
+    expect(s.importPack(foreign)).toBeNull();
+    expect(s.remove(foreign)).toBe(false);
 
     const stats = s.stats();
+    expect(stats.total).toBe(1);
     expect(stats.published).toBe(1);
-    expect(stats.imported).toBeGreaterThanOrEqual(2);
     await s.flush();
   });
 });

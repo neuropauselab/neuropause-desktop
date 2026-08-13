@@ -39,6 +39,68 @@ describe('selectEvictions (outbox hard cap)', () => {
     // cap 1, no terminal rows → evict the 2 oldest non-terminal (p1, p2).
     expect(selectEvictions(rows, 1)).toEqual(['p1', 'p2']);
   });
+
+  /**
+   * THE CAP IS PER OWNER. P13C ROUND 10 — NEW-H2.
+   *
+   * The three cases above all carry ONE owner and stayed green through the whole
+   * finding, because a single-owner fixture cannot distinguish "the newest N" from
+   * "the newest N of MINE". Sorted install-wide, terminal-first put a quiet
+   * tenant's DEAD-LETTERED rows at the very front of the eviction order — the
+   * dead-letter queue is what `deadLetters()` reads and what `replay()` re-sends,
+   * so the deletion took evidence rather than history.
+   *
+   * The end-to-end proof over the real store, its file and its stats is
+   * `tenancy/round10InboxWebhookRetention.test.ts`.
+   */
+  const owned = (
+    id: string,
+    status: 'delivered' | 'dead' | 'pending' | 'failed',
+    createdAt: string,
+    tenantId: string,
+  ) => ({ id, status, createdAt, tenantId, workspaceId: null });
+
+  it('charges each owner its own budget: a flood evicts only the flooder\'s rows', () => {
+    const rows = [
+      // B: two rows, one of them dead-lettered and the OLDEST row in the whole set.
+      owned('b-dead', 'dead', '2026-01-01', 'org-b'),
+      owned('b-pending', 'pending', '2026-01-02', 'org-b'),
+      // A: four rows, all newer than B's.
+      owned('a1', 'pending', '2026-01-03', 'org-a'),
+      owned('a2', 'delivered', '2026-01-04', 'org-a'),
+      owned('a3', 'pending', '2026-01-05', 'org-a'),
+      owned('a4', 'pending', '2026-01-06', 'org-a'),
+    ];
+    // Install-wide with cap 2 this returned ['b-dead','a2','b-pending','a1'] — B wiped out.
+    // Per owner with cap 2: B is at cap and loses nothing; A sheds its 2 by its own rule
+    // (terminal first, then oldest non-terminal).
+    const evicted = selectEvictions(rows, 2);
+    expect(evicted.sort()).toEqual(['a1', 'a2']);
+    expect(evicted).not.toContain('b-dead');
+    expect(evicted).not.toContain('b-pending');
+  });
+
+  it('an unowned row has its own budget and is not evicted by an owned flood', () => {
+    const rows = [
+      row('legacy', 'dead', '2026-01-01'), // pre-ownership row: no tenantId at all
+      owned('a1', 'pending', '2026-01-02', 'org-a'),
+      owned('a2', 'pending', '2026-01-03', 'org-a'),
+      owned('a3', 'pending', '2026-01-04', 'org-a'),
+    ];
+    expect(selectEvictions(rows, 1)).toEqual(['a1', 'a2']);
+  });
+
+  it('returns nothing when every owner is at or under cap, however many owners there are', () => {
+    const rows = [
+      owned('a1', 'pending', '2026-01-01', 'org-a'),
+      owned('a2', 'pending', '2026-01-02', 'org-a'),
+      owned('b1', 'dead', '2026-01-03', 'org-b'),
+      owned('b2', 'pending', '2026-01-04', 'org-b'),
+      owned('c1', 'pending', '2026-01-05', 'org-c'),
+    ];
+    // Five rows over a cap of 2: the install-wide version evicted three of them.
+    expect(selectEvictions(rows, 2)).toEqual([]);
+  });
 });
 
 describe('applyAttemptResult', () => {

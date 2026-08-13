@@ -38,6 +38,15 @@ export interface ExecuteEngineDeps {
   }) => void;
   /** Durable persistence hook (V5.8). Engine stays unaware of the implementation. */
   persist?: (session: ExecutionSession) => void;
+  /**
+   * P13C Round 2 — the resolved tenant. Injected so the engine stays free of
+   * the enterprise root, matching every other dep here.
+   *
+   * Optional in the TYPE so existing unit tests construct the engine unchanged;
+   * absent means every session is unowned and therefore visible to NOBODY,
+   * which is the fail-closed direction. The composition root supplies it.
+   */
+  tenantId?: () => string | null;
   now?: () => number;
 }
 
@@ -82,6 +91,20 @@ export class ExecuteEngine {
       resultSummary: null,
       result: null,
       correlationId: req.correlationId ?? null,
+      /**
+       * P13C Round 2 — H5. THE OWNER, STAMPED AT START.
+       *
+       * `ExecutionSession.result` is the full structured output of every
+       * executed action — infrastructure changes, M365 sends, approved worker
+       * actions. `activeSessions()` and `getHistory()` returned every tenant's
+       * through channels on the PUBLIC allowlist, and `cancel` took a bare id.
+       *
+       * Stamped once, from the resolved tenant, and never re-resolved: an
+       * execution that outlives a tenant switch still belongs to the tenant
+       * that started it. Null when nothing resolves — an unowned session is
+       * then visible to nobody rather than to everybody.
+       */
+      tenantId: this.deps.tenantId?.() ?? null,
     };
     if (session.steps[0]) session.steps[0].state = 'running';
     this.sessions.set(id, session);
@@ -146,7 +169,7 @@ export class ExecuteEngine {
 
     this.sessions.delete(session.id);
     this.history.unshift({ ...session, steps: session.steps.map((s) => ({ ...s })) });
-    if (this.history.length > MAX_HISTORY) this.history.length = MAX_HISTORY;
+    this.pruneHistoryForOwner();
     this.deps.persist?.(this.history[0]);
 
     this.emit(
@@ -158,28 +181,74 @@ export class ExecuteEngine {
     log.info('execution finished', { kind: session.kind, ok, durationMs: session.durationMs });
   }
 
+  /**
+   * Trim history to `MAX_HISTORY` PER TENANT, never install-wide.
+   *
+   * Sessions carry an owner as of this round, but retention did not — so one
+   * busy tenant silently destroyed another's execution record, and
+   * `ExecutionSession.result` is the structured output of actions that actually
+   * ran. `jobStore` solved this with `pruneOwn`; this is the same rule applied
+   * to the in-memory ring.
+   */
+  private pruneHistoryForOwner(): void {
+    const tenantId = this.deps.tenantId?.() ?? null;
+    if (tenantId === null || tenantId === '') {
+      // No owner to prune for: fall back to the global cap so the ring stays
+      // bounded, which is a capacity guarantee rather than a tenant decision.
+      if (this.history.length > MAX_HISTORY) this.history.length = MAX_HISTORY;
+      return;
+    }
+    const mine = this.history.filter((s) => s.tenantId === tenantId);
+    if (mine.length <= MAX_HISTORY) return;
+    const doomed = new Set(mine.slice(MAX_HISTORY));
+    // Spliced in place: `history` is readonly, and mutating rather than
+    // reassigning also keeps any live reference to the ring valid.
+    for (let i = this.history.length - 1; i >= 0; i -= 1) {
+      if (doomed.has(this.history[i]!)) this.history.splice(i, 1);
+    }
+  }
+
+  /** Whether `s` belongs to the caller. Unowned sessions belong to nobody. */
+  private mine(s: ExecutionSession): boolean {
+    const tenantId = this.deps.tenantId?.() ?? null;
+    if (tenantId === null || tenantId === '') return false;
+    return typeof s.tenantId === 'string' && s.tenantId !== '' && s.tenantId === tenantId;
+  }
+
+  /** The CALLER'S live sessions. Was every session on the install. */
   activeSessions(): ExecutionSession[] {
-    return [...this.sessions.values()];
+    return [...this.sessions.values()].filter((s) => this.mine(s));
   }
 
+  /** The CALLER'S history. Was every tenant's executed-action output. */
   getHistory(): ExecutionSession[] {
-    return [...this.history];
+    return this.history.filter((s) => this.mine(s));
   }
 
+  /** Scoped: stats over another tenant's runs disclose volume and outcome. */
   stats(): ExecutionStats {
-    return computeExecutionStats(this.activeSessions(), this.history);
+    return computeExecutionStats(this.activeSessions(), this.getHistory());
+  }
+
+  /** Unscoped ownership counts, for the migration inventory only. */
+  ownershipCounts(): { total: number; assigned: number; unresolved: number } {
+    const all = [...this.sessions.values(), ...this.history];
+    let assigned = 0;
+    for (const s of all) if (typeof s.tenantId === 'string' && s.tenantId !== '') assigned += 1;
+    return { total: all.length, assigned, unresolved: all.length - assigned };
   }
 
   /** Cancel a live session (best-effort — marks state; executors are cooperative). */
   cancel(id: string): ExecutionSession | null {
     const session = this.sessions.get(id);
-    if (!session) return null;
+    // Scoped: a foreign id is "no such session", not "cancelled".
+    if (!session || !this.mine(session)) return null;
     session.state = 'cancelled';
     session.completedAt = new Date(this.now()).toISOString();
     session.currentStep = -1;
     this.sessions.delete(id);
     this.history.unshift({ ...session });
-    if (this.history.length > MAX_HISTORY) this.history.length = MAX_HISTORY;
+    this.pruneHistoryForOwner();
     this.deps.persist?.(this.history[0]);
     this.emit('execution.cancelled', 'normal', { kind: session.kind, id, label: session.label }, session.correlationId);
     return session;
@@ -196,7 +265,7 @@ export class ExecuteEngine {
     }
     // Newest first, bounded.
     this.history.sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
-    if (this.history.length > MAX_HISTORY) this.history.length = MAX_HISTORY;
+    this.pruneHistoryForOwner();
   }
 
   private emit(

@@ -50,6 +50,17 @@ export interface OrgInvitation {
 
 export interface TrustRelationship {
   id: string;
+  /**
+   * P13C ROUND 4 — S-10. THE LOCAL SIDE OF THE RELATIONSHIP.
+   *
+   * A trust relationship is `ownerOrg` ↔ `peerOrg`. Only `peerOrg` existed,
+   * because "the local side" was the install's single seeded organization —
+   * which is exactly why every tenant saw every trust record.
+   *
+   * Optional: rows written before this round name only a peer, so they have no
+   * local side and are visible to nobody rather than being guessed into one.
+   */
+  ownerOrg?: string | null;
   peerOrg: string;
   peerOrgName: string;
   trustLevel: TrustLevel;
@@ -65,6 +76,15 @@ export type ShareAccess = 'read' | 'collaborate';
 
 export interface SharedResource {
   id: string;
+  /**
+   * P13C ROUND 4 — S-10. THE ORGANIZATION THAT OWNS THE SHARED THING.
+   *
+   * A share is `ownerOrg` → `peerOrg`. Both sides may READ it — that is what
+   * sharing means and why a plain `tenantId` filter would break the product —
+   * but only the owner may revoke it outright. Unowned rows are visible to
+   * nobody.
+   */
+  ownerOrg?: string | null;
   kind: SharedResourceKind;
   name: string;
   peerOrg: string;
@@ -114,6 +134,19 @@ export interface ExchangeVersion {
 
 export interface ExchangeArtifact {
   id: string;
+  /**
+   * P13C ROUND 4 — S-10. WHO HAS INSTALLED THIS, BY ORGANIZATION.
+   *
+   * `installs` is an aggregate count and stays one: an install count is a
+   * public marketplace signal, and hiding it would say nothing useful while
+   * still being derivable from ratings. WHICH organizations installed is a
+   * different fact, so it is a per-organization list the reader sees only its
+   * own entry of.
+   *
+   * Installation never rewrites `publisherOrg`. Publisher ownership stays with
+   * the publisher; installer ownership is recorded separately and alongside.
+   */
+  installations?: ArtifactInstallation[];
   kind: ExchangeKind;
   name: string;
   summary: string;
@@ -128,6 +161,13 @@ export interface ExchangeArtifact {
   currentVersionId: string;
   versions: ExchangeVersion[];
   createdAt: string;
+}
+
+/** One organization's installation of an artifact published by another. */
+export interface ArtifactInstallation {
+  orgId: string;
+  versionId: string;
+  installedAt: string;
 }
 
 export interface ExchangeSummary {
@@ -151,6 +191,30 @@ export type FedPolicyEffect = 'allow' | 'deny' | 'require_approval';
 
 export interface FedPolicy {
   id: string;
+  /**
+   * P13C ROUND 4 — S-10. The organization whose federated actions this governs.
+   *
+   * Policies were install-wide, so one tenant's governance rules evaluated
+   * another tenant's federated actions — and one tenant could disable another's
+   * controls through `setPolicyEnabled(id, false)` on a bare id.
+   *
+   * Optional: pre-Round-4 rows have no owner and govern nobody.
+   */
+  ownerOrg?: string | null;
+  /**
+   * P13C ROUND 5 — F6. WHY THIS POLICY IS NOT BEING ENFORCED.
+   *
+   * A policy written before Round 4 has no `ownerOrg`, and Round 4's filter
+   * dropped it from `listPolicies()` — which `recordAction` evaluates. So a
+   * pre-existing DENY rule silently stopped being enforced, and nobody could
+   * re-enable it because `setPolicyEnabled` filtered on the same list. That is
+   * fail-OPEN on a control, and it is worse than fail-open on data: nothing
+   * looks wrong.
+   *
+   * `migration_required` means the row is retained, counted and surfaced, and
+   * governance evaluation FAILS CLOSED while any exist. Absent means owned.
+   */
+  migrationState?: 'migration_required';
   name: string;
   description: string;
   scope: FedPolicyScope;

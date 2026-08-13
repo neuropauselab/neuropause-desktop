@@ -71,8 +71,15 @@ describe('EventBus', () => {
     expect(errors).toContain('bad-async');
   });
 
+  /**
+   * P13C ROUND 10 — NEW-M11. These two suites bound a tenant resolver, because
+   * replay is now authorized: an unowned event belongs to nobody and is replayed
+   * to nobody. The assertions themselves are unchanged in meaning — a late
+   * subscriber still receives the buffer in order, and the cap still bites — they
+   * are now made from inside an organization rather than from nowhere.
+   */
   it('replays the buffer to late subscribers', () => {
-    const bus = makeBus();
+    const bus = makeBus({ tenantId: () => 'org-a' });
     bus.publish(input({ type: 'system.ready' }));
     bus.publish(input({ type: 'runtime.started', category: 'runtime' }));
     const got: string[] = [];
@@ -80,10 +87,23 @@ describe('EventBus', () => {
     expect(got).toEqual(['system.ready', 'runtime.started']);
   });
 
-  it('caps the replay buffer', () => {
-    const bus = makeBus({ replayBufferSize: 2 });
+  it('replays nothing when no tenant resolves (unowned events belong to nobody)', () => {
+    const bus = makeBus();
+    bus.publish(input({ type: 'system.ready' }));
+    bus.publish(input({ type: 'runtime.started', category: 'runtime' }));
+    const got: string[] = [];
+    bus.subscribe((e) => got.push(e.type), { replay: true });
+    expect(got).toEqual([]);
+    expect(bus.replay()).toEqual([]);
+    // …and the events are still retained, so the cap and metrics stay honest.
+    expect(bus.metrics().bufferedEvents).toBe(2);
+  });
+
+  it('caps the replay buffer PER OWNER', () => {
+    const bus = makeBus({ replayBufferSize: 2, tenantId: () => 'org-a' });
     for (let i = 0; i < 5; i++) bus.publish(input());
     expect(bus.replay()).toHaveLength(2);
+    expect(bus.metrics().bufferedEvents).toBe(2);
   });
 
   it('reports metrics', () => {

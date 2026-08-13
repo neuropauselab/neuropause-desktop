@@ -5,6 +5,14 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createFeedbackStore, type FeedbackStore } from './feedbackService';
 
+/**
+ * P13C ROUND 3 — feedback entries are tenant-owned and an UNBOUND store denies.
+ * These tests name one organization, so every existing assertion keeps its
+ * meaning; cross-tenant behaviour is asserted in `feedbackTenancy.test.ts`.
+ */
+const TEST_SCOPE = { tenantId: 'org-test', workspaceId: 'ws-test' };
+const scope = (): typeof TEST_SCOPE => TEST_SCOPE;
+
 const T0 = new Date('2026-07-01T00:00:00.000Z');
 
 describe('createFeedbackStore', () => {
@@ -17,7 +25,7 @@ describe('createFeedbackStore', () => {
     filePath = join(tmpdir(), `nps-feedback-${randomUUID()}.json`);
     clock = T0;
     seq = 0;
-    store = createFeedbackStore({ filePath, now: () => clock, id: () => `fb-${++seq}` });
+    store = createFeedbackStore({ filePath, now: () => clock, id: () => `fb-${++seq}` }).bindScope(scope);
     await store.load();
   });
   afterEach(async () => {
@@ -65,7 +73,7 @@ describe('createFeedbackStore', () => {
 
   it('persists across a reload', async () => {
     await store.submit({ category: 'bug', message: 'kept' });
-    const reloaded = createFeedbackStore({ filePath, now: () => clock });
+    const reloaded = createFeedbackStore({ filePath, now: () => clock }).bindScope(scope);
     await reloaded.load();
     expect(reloaded.list()).toHaveLength(1);
     expect(reloaded.list()[0].message).toBe('kept');
@@ -84,7 +92,7 @@ describe('createFeedbackStore', () => {
     await store.submit({ category: 'idea', message: 'b' });
     const removed = await store.clear();
     expect(removed).toBe(2);
-    const reloaded = createFeedbackStore({ filePath });
+    const reloaded = createFeedbackStore({ filePath }).bindScope(scope);
     await reloaded.load();
     expect(reloaded.list()).toHaveLength(0);
   });

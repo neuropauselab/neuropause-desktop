@@ -20,6 +20,8 @@ interface GeneratedBuildInfo {
   connectorClientIds?: Record<string, string>;
   channel?: string;
   buildTime?: string;
+  /** Phase 8 (8.6): this version's CHANGELOG section, baked at build time. */
+  releaseNotes?: string | null;
 }
 
 function readGenerated(): GeneratedBuildInfo {
@@ -51,6 +53,8 @@ export interface BuildInfo {
   arch: string;
   packaged: boolean;
   runtime: { electron: string; node: string; chrome: string; v8: string };
+  /** This build's own release notes (CHANGELOG section), null when absent. */
+  releaseNotes: string | null;
 }
 
 export function getBuildInfo(): BuildInfo {
@@ -58,6 +62,7 @@ export function getBuildInfo(): BuildInfo {
     version: app.getVersion(),
     channel: resolveChannel(process.env.NEUROPAUSE_CHANNEL ?? generated.channel),
     commit: process.env.NEUROPAUSE_BUILD_COMMIT ?? generated.commit ?? 'unknown',
+    releaseNotes: generated.releaseNotes ?? null,
     buildTime: process.env.NEUROPAUSE_BUILD_TIME ?? generated.buildTime ?? 'unknown',
     platform: process.platform,
     arch: process.arch,

@@ -46,8 +46,22 @@ describe('withRuntimeAuthz', () => {
     expect((defs[0] as { requireAuth?: boolean }).requireAuth).toBeUndefined();
   });
 
+  /**
+   * P13C ROUND 11 — THE FIXTURE CHANGED BECAUSE PRODUCTION DID, and that is
+   * stated rather than quietly swapped.
+   *
+   * This case used `IpcChannel.RuntimeList` as its example of an unclassified
+   * channel. M-1/M-2 classified it (`operations:read`), so it is no longer an
+   * example of one — keeping it here would have made this assertion pass for the
+   * wrong reason, or fail and invite someone to "fix" it by reverting the gate.
+   *
+   * `HelpListDocs` replaces it: a genuinely public, genuinely unmapped channel.
+   * The PROPERTY under test is unchanged — a channel `withRuntimeAuthz` cannot
+   * classify must throw at composition rather than ship open — and the assertion
+   * is not weakened.
+   */
   it('throws at composition time for an unclassified channel (ship-time guard)', () => {
-    expect(() => withRuntimeAuthz([{ channel: IpcChannel.RuntimeList as IpcChannelName }])).toThrow(
+    expect(() => withRuntimeAuthz([{ channel: IpcChannel.HelpListDocs as IpcChannelName }])).toThrow(
       /no permission classification/,
     );
     // A genuinely-public channel is deliberately NOT in the map, so wrapping it throws.
@@ -76,8 +90,16 @@ describe('RUNTIME_CHANNEL_PERMISSIONS map sanity', () => {
     // THE priority finding — execute:run re-enters worker/automation execution.
     expect(RUNTIME_CHANNEL_PERMISSIONS[IpcChannel.ExecuteRun]).toBe('workforce:operate');
     expect(RUNTIME_CHANNEL_PERMISSIONS[IpcChannel.ExecuteCancel]).toBe('workforce:operate');
-    expect(RUNTIME_CHANNEL_PERMISSIONS[IpcChannel.PluginsInstall]).toBe('marketplace:manage');
-    expect(RUNTIME_CHANNEL_PERMISSIONS[IpcChannel.PermsGrant]).toBe('org:manage');
+    /**
+     * P13C Round 8 — Finding 2. Plugin install is an INSTALL-LEVEL decision: one
+     * registry, one set of enable flags, executable code running in-process for
+     * every tenant. `marketplace:manage` is an organization role, and anyone may
+     * create an organization and hold it.
+     */
+    expect(RUNTIME_CHANNEL_PERMISSIONS[IpcChannel.PluginsInstall]).toBe('cloud:operate');
+    // P13C Round 8 — Finding 2. A capability grant gives a plugin filesystem and
+    // network reach on the whole machine, for every tenant. Install-level.
+    expect(RUNTIME_CHANNEL_PERMISSIONS[IpcChannel.PermsGrant]).toBe('cloud:operate');
     expect(RUNTIME_CHANNEL_PERMISSIONS[IpcChannel.AutomationRun]).toBe('operations:manage');
     expect(RUNTIME_CHANNEL_PERMISSIONS[IpcChannel.RuntimeLaunch]).toBe('operations:manage');
     expect(RUNTIME_CHANNEL_PERMISSIONS[IpcChannel.MigrationRun]).toBe('org:manage');
@@ -217,6 +239,13 @@ describe('runtime IPC surface completeness (fail-closed startup safety net)', ()
     'webhooks:',
     'sandbox:',
     'org:', // cloud-org CRUD — every channel carries requireAuth
+    // Medical Device Manufacturing Pack: every md:* handler self-carries
+    // requireAuth plus one of the pack's own scopes — `medicalDevice:product.*`,
+    // `medicalDevice:lot.*` or `medicalDevice:traceability.read`. Unlike the
+    // read-only clusters above, this namespace carries WRITES, so the lock is
+    // stronger than "some permission is present": every channel's exact scope
+    // is asserted in src/main/medicalDevice/medicalDeviceAuthz.test.ts.
+    'md:',
   ];
   // Authenticated-but-not-RBAC channels that sit inside otherwise-public namespaces
   // (they carry requireAuth, so they are gated, just not with a static permission).
@@ -226,10 +255,14 @@ describe('runtime IPC surface completeness (fail-closed startup safety net)', ()
     IpcChannel.CatalogSubmitReview,
     IpcChannel.CatalogRecommendations,
     IpcChannel.CatalogCheckUpdate,
-    IpcChannel.NpsInstall,
-    IpcChannel.NpsUninstall,
-    IpcChannel.NpsUpdate,
-    IpcChannel.NpsRepair,
+    /**
+     * P13C ROUND 10 — R10-B3A-F1. The four `nps:*` package-lifecycle channels
+     * were HERE, on sender-trust alone, while reaching `registry.remove(slug)`
+     * and the upserts beside it — install-wide rows on a store declared
+     * PLATFORM_OPERATOR. They are now in `RUNTIME_CHANNEL_PERMISSIONS` on
+     * `cloud:operate`, so this list is four entries shorter rather than four
+     * entries better explained.
+     */
   ];
 
   it('accounts for every invokable runtime channel (gated | public | sibling-authz)', () => {

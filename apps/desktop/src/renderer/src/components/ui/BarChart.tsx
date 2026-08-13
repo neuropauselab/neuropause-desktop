@@ -36,7 +36,7 @@ export function BarChart({
           return (
             <div key={d.label} className="flex flex-1 flex-col items-center justify-end">
               <div
-                className="w-full rounded-[5px] transition-all duration-300 ease-emphasized"
+                className="w-full rounded-[5px] transition-[background-color,color,border-color,box-shadow,transform,opacity] motion-reduce:transition-none duration-300 ease-emphasized"
                 style={{
                   height: h,
                   background: active ? color : 'var(--fill-2)',

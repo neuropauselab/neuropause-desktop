@@ -5,7 +5,7 @@
   "description": "NeuroPause Enterprise Management System — Wave 9 Industry Solutions Platform. Composes Waves 1-8 (unchanged) into a multi-industry enterprise ecosystem: an Industry SDK (register objects/workflows/forms/dashboards/reports/compliance packs/connectors/AI skills/automation packs/KPIs/document templates), 20 vertical solution packs that reuse the Wave 8 business domains WITHOUT duplicating core logic, a universal configuration engine, a low-code platform (object/form/workflow/report/dashboard/automation/document builders), industry AI copilots (reuse Enterprise AI), a compliance pack library, a connector marketplace, and industry analytics. The SDK/registration/configuration/low-code/copilot/analytics computations are LIVE-VERIFIED in-process; connectors are ADAPTER-VERIFIED until configured; real industry data (patients/students/policies/shipments/subscribers/…) is BUSINESS-DATA-PENDING (registries start empty; never fabricated); and FDA/GMP/GLP submissions, certification, government approvals, real EHR, and payment settlement are REGULATED-EXTERNAL and never executed or claimed. One new additive package; every industry operation is audited on the one chain with a replay id and evidence level.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
-  "exports": { ".": "./src/index.ts" },
+  "exports": { ".": "./src/index.ts", "./catalog": "./src/catalog.ts" },
   "scripts": { "typecheck": "tsc --noEmit", "test": "vitest run" },
   "dependencies": {
     "@neuropause/runtime": "*",

@@ -37,6 +37,7 @@ import type {
 import {
   IpcChannel,
   EmptyRequest,
+  BackendReachabilityRequest,
   VoiceStatusRequest,
   SupervisorRecoverRequest,
   SupervisorSetPolicyRequest,
@@ -78,8 +79,9 @@ import {
   OrgWorkspaceRequest,
   OrgUpdateWorkspaceRequest,
 } from '@neuropause/shared';
-import { app, shell } from 'electron';
+import { app, dialog, shell } from 'electron';
 import { join } from 'node:path';
+import { writeFile } from 'node:fs/promises';
 import { createLogger } from './logger';
 import { authService } from './auth/authService';
 import { catalogClient } from './catalog/catalogClient';
@@ -92,7 +94,11 @@ import { serviceManager } from './services/serviceManager';
 import { pluginManager } from './plugins/pluginManager';
 import { pluginHost } from './plugins/pluginHost';
 import { pluginExtensionRegistry } from './plugins/extensionRegistry';
-import { registerSecureHandlers, runSecureHandler, type SecureHandlerDef } from './ipc/secureBridge';
+import {
+  registerSecureHandlers,
+  runSecureHandler,
+  type SecureHandlerDef,
+} from './ipc/secureBridge';
 import {
   RUNTIME_CHANNEL_PERMISSIONS,
   withRuntimeAuthz,
@@ -137,12 +143,17 @@ import { deviceClient } from './devices/deviceClient';
 import { initVoice } from './voice/voiceSubsystem';
 import { deliveryEngine, initExecutiveDelivery } from './services/executiveDelivery';
 import { initRecommendations } from './recommendations';
-import { initEnterpriseIntelligence, type RawTimelineEvent } from './enterprise/intelligence/enterpriseIntelligenceSubsystem';
-import { getRelationshipModel } from './enterprise/relationshipProvider';
+import {
+  initEnterpriseIntelligence,
+  type RawTimelineEvent,
+} from './enterprise/intelligence/enterpriseIntelligenceSubsystem';
+import { getRelationshipModel, invalidateModelCache as invalidateRelationshipModelCache } from './enterprise/relationshipProvider';
+import { invalidateModelCache as invalidateTrustModelCache } from './enterprise/trustProvider';
 import { initFounderAI } from './founder';
 import { initEngineeringAI, initFounderAIv2 } from './ai';
 // Phase 6 Stage 4 — the Workspace Assistant (composition over existing engines).
 import { initAssistant } from './assistant';
+import { routingUsageStore } from './ai/routingUsageInstance';
 // Phase 6 Stage 5 — the Notification Inbox + preference surface (D-8): the
 // EXISTING delivery engine's notification-center channel made real.
 import { initNotifications } from './notifications';
@@ -164,11 +175,53 @@ import { jobStore } from './workforce/runtime/jobInstance';
 import { createWorkforceActionExecutor } from './workforce/execution/workforceActionExecutor';
 import type { ExecutionBinding } from '@neuropause/shared';
 import { computeOrgHealth } from '@neuropause/shared';
-import { initEnterprise } from './enterprise';
+import {
+  activeMemoryViewer,
+  activeTenantScope,
+  forEachTenantBackground,
+  initEnterprise,
+  onWorkspaceSwitch,
+} from './enterprise';
+import { currentPrincipal } from './tenancy/backgroundPrincipal';
+import { assertAllTenantStoresBound } from './tenancy/tenantOwnedStore';
+import { registerTenantDomainSources } from './backup/tenantDomainRegistration';
+import { tenantArchiveCoverageGaps } from './backup/tenantArchive';
+import { companionDeviceStore } from './companion/deviceRegistryInstance';
+import { tenantAiPreferenceStore } from './ai/tenantAiPreferenceInstance';
+import { assertAllStoreScopesBound } from './tenancy/storeScope';
+import type { Organization } from '@neuropause/shared';
+import { setLiveSyncActiveOrg } from './cloud/livesync/liveSyncInstance';
+import { initDataPlane } from './dataPlane';
+import { initDocuments } from './documents';
+import { initIdentity, type ServiceAuthorizer } from './identity';
+import { EVIDENCE_STRENGTH, scoreEvidence, type IdentityEvidence } from '@neuropause/shared';
+import { bridgeResource } from './connectors/bridge';
+import { RELATIONSHIPS, assertRelationshipsAreDeclarable } from './dataPlane/relationshipModel';
+import {
+  bindIncomingLinkReader,
+  bindingIsLive,
+  decisionRecordStore,
+  holdStore,
+} from './decisions/instances';
+import { opportunityDecisionStore } from './opportunities/instances';
+import { outcomeRevisionStore } from './outcomes/instances';
+// Named `initDecisionRecords` here: `initDecisions` is already taken by the
+// executive decision workflow, and these are the governance RECORD/HOLD reads.
+import { initDecisions as initDecisionRecords } from './decisions';
+import { createHoldRaiser } from './decisions/raiseHold';
+import { bindRelationshipEngine, bindRelationshipStore } from './crossDomain/instances';
+import {
+  ambiguousIdentityHold,
+  externalUnavailableHold,
+  unresolvedDependencyHold,
+} from '@neuropause/shared';
+import type { ConnectorSyncSnapshot } from '@neuropause/shared';
 import { initEcosystem, runGateway, gatewayMetrics, gatewayAuditEntries } from './ecosystem';
 import { initMarketplace } from './marketplace';
 import { initEnterpriseApi } from './api';
+import { initCompanion } from './companion';
 import { initWebhooks } from './webhooks';
+import { webhookStore } from './webhooks/webhookInstance';
 import { initSandbox } from './sandbox';
 import { createDesktopExecutor, PlaywrightDesktopDriver } from './sandbox/desktop';
 import { initEnterpriseRunner } from './sandbox/enterprise';
@@ -181,6 +234,9 @@ import { initContinuousValidation } from './sandbox/validation';
 import { taskScheduler } from './services/taskScheduler';
 import { notificationScheduler } from './services/notificationScheduler';
 import { aiEngine } from './ai/engineInstance';
+import { bindDeliveryViewer } from './services/executiveDelivery';
+import { PlatformOperatorRegistry } from './platformOperator/platformOperatorRegistry';
+import { createPlatformAuthorizer } from './platformOperator/platformAuthority';
 import { engineManager } from './ai/engineManager';
 import { initAiConfig } from './ai/aiConfigIpc';
 import { handleEnterpriseApiRequest } from './api/apiGateway';
@@ -206,10 +262,12 @@ import { initCommercialPlatform } from './commercial';
 import { initExperience } from './experience';
 import { initIntent } from './intent';
 import { initUpdater } from './updater';
+import { initHelp } from './help';
 import { initReleaseOps } from './releaseOps';
 import { initFeatureFlags } from './featureFlags';
 import { initLicense } from './license';
 import { initOnboarding } from './onboarding';
+import { bindExperienceEvents } from './onboarding/experienceProfileInstance';
 import { initFeedback } from './feedback';
 import { initPilot } from './pilot';
 import { aiMemoryProbe, knowledgeGraphProbe, ollamaProbe } from './platform/aiHealthProbes';
@@ -231,7 +289,10 @@ import { initStrategyPlatform, type StrategyPlatformSubsystem } from './strategy
 // Phase 6 Stage 11 — the Enterprise Federation Platform (read-only composition
 // over the P9-S2 federation stores + P18 + Stages 7–10; six efed:* channels;
 // one federation-watch source).
-import { initEnterpriseFederation, type EnterpriseFederationSubsystem } from './enterpriseFederation';
+import {
+  initEnterpriseFederation,
+  type EnterpriseFederationSubsystem,
+} from './enterpriseFederation';
 import { initAnalyticsPlatform, type AnalyticsPlatformSubsystem } from './analyticsPlatform';
 // Phase 6 Stage 13 — the Enterprise Digital Twin Platform (read-only composition
 // over the P15 twin + Execute Engine + Runtime Supervisor + Stages 6–12; seven
@@ -249,17 +310,118 @@ import { selectRulesForEvent } from './enterprise/automationRunner';
 import { globalGovStore } from './federation/governance/globalGovInstance';
 import { workerInstallStore } from './workforce/install/installInstance';
 import { governanceStore } from './enterprise/governance/governanceInstance';
+import { workspaceStore } from './enterprise/workspace/workspaceInstance';
 import { DEFAULT_PROMPTS } from './ai/promptManager';
 import { runEnterpriseSearch } from './search/enterpriseSearch';
 import { getFederationSearcher } from './federationPlatform/searcherInstance';
 import { runMrp, computeCapacitySchedule, isTerminalExecutionStatus } from '@neuropause/shared';
-import type { ApiMethod, EnterprisePermission, IpcChannelName, ResourceGraphModel } from '@neuropause/shared';
+import type {
+  ApiMethod,
+  EnterprisePermission,
+  IpcChannelName,
+  ResourceGraphModel,
+} from '@neuropause/shared';
 import type { IpcBroadcaster } from '@neuropause/shared';
+import { developerStore } from './ecosystem/developer/developerInstance';
 const log = createLogger('runtime-core');
+
+/**
+ * The organization a READ MODEL is being built for, or null.
+ *
+ * P13C REMEDIATION — FINDING 3. Seven platform read models resolved their
+ * organization with `orgStore.defaultOrg()` — the first-inserted one — and each
+ * returns real membership data: unit names and their lead user ids, member ids
+ * and names, the role catalogue. Insight, Knowledge Assets, the Automation
+ * Platform, Operations and Strategy were all reading one tenant's org chart and
+ * serving it to whoever asked.
+ *
+ * All seven are lazy accessors, evaluated per request or per background pass
+ * rather than captured at boot, so routing them through `activeTenantScope()`
+ * is enough to make each evaluation answer for its own caller — and inside a
+ * fanned-out job it answers for the tenant the job is running FOR, not the one
+ * on screen.
+ *
+ * Null when nothing resolves, and every call site degrades to an EMPTY result
+ * rather than substituting an organization. These feed dashboards and
+ * recommendation inputs whose shapes all have an empty form, so failing closed
+ * costs a blank panel; failing open costs another customer's roster.
+ */
+/**
+ * Assert the caller is a member of the CLOUD organization they named.
+ *
+ * P13C REMEDIATION — FINDING 6. A family of channels — `org.get`, `org.members`,
+ * `org.invite`, `org.removeMember`, `org.workspaces`, the workspace
+ * create/rename/delete trio, billing, and `devices.list/registerCurrent/revoke`
+ * — took `orgId` straight from the renderer payload and forwarded it, guarded by
+ * `requireAuth: true` alone. `requireAuth` proves somebody is signed in. It
+ * proves nothing about WHICH organization they may act in, so any signed-in
+ * account could read another organization's member list and device inventory by
+ * supplying its id.
+ *
+ * WHY THIS IS NOT VALIDATED AGAINST `orgStore`
+ *
+ * These are CLOUD organizations, a different id space from the local enterprise
+ * `orgStore`. Checking a cloud id against local tenancy would reject every real
+ * organization while looking like a security control — worse than no check,
+ * because it would be trusted.
+ *
+ * The authority is `orgClient.list()`, which the backend already scopes to the
+ * authenticated user's own memberships. Asking it and requiring the named id to
+ * appear turns a caller-supplied identifier into a verified one, using the
+ * session's own token rather than anything the renderer said.
+ *
+ * FAIL CLOSED ON AN UNREACHABLE BACKEND. If the list cannot be fetched, the
+ * request is refused rather than forwarded — an offline backend must not become
+ * a bypass, and the caller sees the same refusal either way.
+ */
+async function requireCloudOrgMembership(orgId: string): Promise<string> {
+  if (typeof orgId !== 'string' || orgId.trim() === '') {
+    throw new Error('That organization is not available to you.');
+  }
+  let mine: { orgId: string }[];
+  try {
+    mine = (await orgClient.list()) as unknown as { orgId: string }[];
+  } catch {
+    throw new Error('That organization is not available to you.');
+  }
+  if (!mine.some((o) => o.orgId === orgId)) {
+    // One message for "does not exist" and "not yours" — distinguishing them
+    // would confirm which organizations exist on the backend.
+    throw new Error('That organization is not available to you.');
+  }
+  return orgId;
+}
+
+function activeOrgForReadModel(): Organization | null {
+  const scope = activeTenantScope();
+  if (scope === null) return null;
+  return orgStore.organization(scope.tenantId);
+}
+
+
+/** Narrows a bridge-supplied evidence label to the closed evidence set. */
+function isEvidenceKind(kind: string): kind is IdentityEvidence['kind'] {
+  return Object.prototype.hasOwnProperty.call(EVIDENCE_STRENGTH, kind);
+}
 export interface RuntimeCoreDeps {
   broadcast: IpcBroadcaster;
 }
 export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
+  /**
+   * The sync bridge's closure is built before the identity subsystem exists in
+   * this function's source order, and the identity subsystem needs `enterprise`
+   * which needs things declared after the sync. Rather than reorder the whole
+   * composition root, the service principal is bound once and read lazily.
+   *
+   * It starts unbound and, unbound, DENIES: a sync that somehow ran before the
+   * principal existed must import nothing rather than fall back to a human's
+   * permissions, which is the exact failure this replaces.
+   */
+  let syncServiceLookup: (() => ServiceAuthorizer) | null = null;
+  const bindSyncService = (fn: () => ServiceAuthorizer): void => {
+    syncServiceLookup = fn;
+  };
+  const syncPrincipal = (): ServiceAuthorizer | null => syncServiceLookup?.() ?? null;
   await registry.load();
   await pluginManager.load();
   // Platform core: event bus + timeline + subscribers + diagnostics.
@@ -268,6 +430,47 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   const connectors = await initConnectors({
     broadcast: deps.broadcast,
     publish: platform.api.publish,
+    /**
+     * P10 — the credential boundary.
+     *
+     * Both the vault and the connection list are scoped to this. A connection
+     * made in one workspace is no longer listed, synced or spendable from
+     * another, and a credential written before this boundary existed is
+     * unclaimed rather than silently adopted by whoever looks first.
+     */
+    /**
+     * P11 — the NULLABLE accessor, so the cold-start window closes here too.
+     *
+     * The bare `activeWorkspaceId()` returns `'workspace-default'` from field
+     * initialisation, before the file is read. `initConnectors` runs ~270 lines
+     * before `workspaceStore.load()`, so every credential key and connection
+     * filter in that window resolved to the default workspace REGARDLESS of what
+     * was persisted — an OAuth completion in that window writes one workspace's
+     * token under another's key. `requireWorkspace()` in `connectorService`
+     * already throws on an empty string; this gives it the empty string to throw
+     * on instead of a plausible wrong answer.
+     */
+    /**
+     * P13C — A BACKGROUND PRINCIPAL WINS, exactly as it does in
+     * `activeTenantScope`.
+     *
+     * This binding is what `connectorStore.all()` filters on, so inside the
+     * fanned-out sync it has to name the workspace being SYNCED rather than the
+     * one being LOOKED AT. Without this the fan-out changes nothing: every pass
+     * would list the signed-in user's accounts and then sync them N times, once
+     * per tenant, stamping the results with whichever tenant that pass was
+     * running as. That is not a stale-data bug, it is a cross-tenant WRITE —
+     * strictly worse than the single-workspace sync it replaced.
+     *
+     * A tenant-level or SYSTEM principal reports no workspace and therefore
+     * yields `''`, which `requireWorkspace()` already refuses. A job with no
+     * workspace has no connections, and getting nothing is the correct answer.
+     */
+    workspaceId: () => {
+      const principal = currentPrincipal();
+      if (principal !== null) return principal.workspaceId ?? '';
+      return workspaceStore.activeWorkspaceIdOrNull() ?? '';
+    },
   });
   // Unified knowledge layer (UDM): canonical store + query engine + local search.
   const unified = await initUnified({ broadcast: deps.broadcast });
@@ -277,6 +480,189 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     publish: platform.api.publish,
     broadcast: deps.broadcast,
     isSuppressed: (c, a) => connectors.supervisor.isSyncSuppressed(c, a),
+    // P13C Part 3 — scheduled sync runs for every workspace, not just the open
+    // one. `perWorkspace` because a connection belongs to a workspace.
+    forEachWorkspace: (jobId, fn) => forEachTenantBackground(jobId, fn, { perWorkspace: true }),
+    /**
+     * P9 — synced provider data reaches the GOVERNED business data.
+     *
+     * Before this, thirteen real adapters pulled live data into the Unified
+     * store, where it fed search, memory and briefings and reached nothing
+     * governed: a customer from a CSV had provenance, relationships and
+     * Related Records, and the same customer from HubSpot had none of them.
+     *
+     * The bridge reuses the Data Plane wholesale — its record stores, its
+     * `ProvenanceStore`, its identity rules and the SAME `onImported` fan-out
+     * a file import fires, which is what makes the relationship engine
+     * resolve a synced record's links.
+     */
+    bridge: async (input) => {
+      /**
+       * The workspace is captured ONCE, at the start of the run.
+       *
+       * Read at callback time instead, a workspace switch mid-sync filed
+       * workspace A's provider row — and A's record values inside `differs` —
+       * into workspace B's question queue.
+       */
+      const runWorkspace = workspaceStore.activeWorkspaceIdOrNull() ?? '';
+      /**
+       * Wait for the service principal's row to be readable before checking it.
+       *
+       * `allows` fails closed while the identity store is unread, which is
+       * correct and would otherwise mean the first sync of every process is
+       * refused for no reason the operator can see.
+       */
+      await syncPrincipal()?.ready();
+      const result = await bridgeResource(input, {
+        storeFor: (moduleId) => enterprise.modules.get(moduleId)?.store ?? null,
+        modules: () => enterprise.modules.list().map((m) => m.descriptor),
+        /**
+         * A PURE check, not the throwing gate.
+         *
+         * `enterprise.authorize` throws AND, on refusal, opens a HOLD and
+         * writes a Decision Record. A scheduled sync has no signed-in actor,
+         * so that produced a governance artefact every fifteen minutes for a
+         * machine-triggered read. The bridge reports the refusal instead.
+         */
+        /**
+         * The SERVICE's authority, not the signed-in human's.
+         *
+         * Still a pure check rather than the throwing gate: `authorize` opens a
+         * HOLD and writes a Decision Record on refusal, which for a
+         * machine-triggered read every fifteen minutes is a governance artefact
+         * nobody asked for. The bridge reports the refusal in its result.
+         */
+        allows: (permission) => syncPrincipal()?.allows(permission) ?? false,
+        provenance: dataPlane.provenance,
+        /**
+         * Rows arrive attributed to the sync service.
+         *
+         * Attributing them to whoever was last signed in made a 3am scheduled
+         * write look like that person's action, which is precisely the thing an
+         * audit trail exists to distinguish.
+         */
+        actor: () => syncPrincipal()?.actor() ?? null,
+        now: () => new Date().toISOString(),
+        /**
+         * P13C PART 3 — THE AUDIT ROW BELONGS TO THE WORKSPACE BEING SYNCED.
+         *
+         * `workspaceId` is not decoration on this record: `governanceStore`
+         * PARTITIONS audit reads on exactly this field. Stamping it with
+         * `activeWorkspaceIdForDisplay()` — the window's workspace — meant that
+         * once scheduled sync fanned out across workspaces, tenant B's sync
+         * rows were written into tenant A's audit trail, carrying B's record
+         * ids and titles in `target` and `summary`. Two failures at once: a
+         * disclosure into A, and a gap in B's own trail, where the evidence
+         * that the sync happened simply is not.
+         *
+         * `activeTenantScope()` prefers the running principal, so inside the
+         * fanned-out pass this names the workspace whose accounts are being
+         * pulled. Outside one — a manual sync — it is the caller's own, which
+         * is the same answer as before.
+         *
+         * Falls back to the display id ONLY when nothing resolves, preserving
+         * the pre-existing cold-start behaviour rather than dropping the row:
+         * an audit entry that is hard to attribute is worth more than no audit
+         * entry at all, and it is the boundary itself that decides who reads it.
+         */
+        audit: (entry) =>
+          governanceStore.record({
+            actor: 'connector',
+            action: entry.action,
+            target: entry.target,
+            summary: entry.summary,
+            workspaceId:
+              activeTenantScope()?.workspaceId || workspaceStore.activeWorkspaceIdForDisplay(),
+          }),
+        /**
+         * P10 — ASK instead of discarding.
+         *
+         * `void` because a raised question must never fail a sync: the row is
+         * already reported as ambiguous either way, and a queue write that
+         * throws would turn "we need to ask about one row" into "the sync
+         * broke".
+         */
+        /**
+         * Do not re-ask a settled question. See `decidedAlready`.
+         */
+        identityDecided: (probe) => identity.decidedAlready(probe),
+        raiseIdentityQuestion: (question) => {
+          void identity.store
+            .raiseMatch({
+              workspaceId: runWorkspace,
+              provider: question.provider,
+              connectionId: question.connectionId,
+              providerEntityType: question.providerEntityType,
+              providerEntityId: question.providerEntityId,
+              incomingLabel: question.incomingLabel,
+              incoming: question.incoming,
+              destinationModuleId: question.destinationModuleId,
+              destinationLabel: question.destinationLabel,
+              candidates: question.candidates.map((c) => {
+                const evidence = c.evidence.map((e) => ({
+                  // The bridge speaks in loose strings; the evidence kinds are a
+                  // closed set. Anything it cannot name is the weakest kind
+                  // rather than a stronger guess.
+                  kind: isEvidenceKind(e.kind) ? e.kind : ('name_canonical' as const),
+                  field: e.field,
+                  value: e.value,
+                  detail: e.detail,
+                }));
+                return {
+                  subject: c.subject,
+                  evidence,
+                  /**
+                   * DERIVED, never passed through.
+                   *
+                   * The bridge handed over a literal `0.2` and the screen
+                   * rendered it as "20%" — a hardcoded constant dressed as a
+                   * computed confidence. `scoreEvidence` is deterministic, is
+                   * the only scorer in the app, and is never a model's opinion.
+                   */
+                  confidence: scoreEvidence(evidence),
+                  differs: c.differs,
+                };
+              }),
+              state: question.candidates.length === 0 ? 'unknown' : 'ambiguous',
+              reason: question.reason,
+            })
+            .catch((err: unknown) => {
+            log.warn('Could not queue an identity question', {
+              provider: question.provider,
+              err: err instanceof Error ? err.message : String(err),
+            });
+          });
+        },
+        onImported: (event) => {
+          void enterprise
+            .notifyImported({
+              moduleId: event.moduleId,
+              recordIds: event.recordIds,
+              correlationId: event.correlationId,
+            })
+            .catch((err: unknown) => {
+              log.warn('Sync lifecycle replay failed', {
+                moduleId: event.moduleId,
+                err: err instanceof Error ? err.message : String(err),
+              });
+            });
+        },
+      });
+      // Only claim the service acted if it actually did. Noting a refusal made
+      // the health surface report work that never happened.
+      if (result.skippedReason === null) {
+        void syncPrincipal()?.note(
+          `Bridged ${input.connectorId}/${input.resourceId}: ${result.created} created, ${result.updated} updated, ${result.adopted} adopted, ${result.ambiguous} awaiting a decision`,
+        );
+      }
+      return {
+        created: result.created,
+        updated: result.updated,
+        adopted: result.adopted,
+        ambiguous: result.ambiguous,
+        invalid: result.invalid,
+      };
+    },
   });
   // P4.1 — feed the Supervisor the richer sync signals (rate-limit / offline / retry depth) so the runtime
   // state machine surfaces those sub-states, and re-project an account whenever its snapshot changes.
@@ -308,6 +694,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // AI Memory: distills the UDM into a searchable organizational memory.
   // P2.5 — also subscribes to ERP record + connector-write events to re-project business memory.
   const memory = await initMemory({
+    // P13C Round 7 — the memory AUDIT LOG had no boundary and a public channel.
+    scope: activeTenantScope,
     broadcast: deps.broadcast,
     on: (types, handler) => platform.api.on([...types], handler),
   });
@@ -333,6 +721,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // V4.8: wire platform publish + subscribe so automations fire on real events
   // and completed runs surface on the timeline/activity bus.
   const automations = initAutomations({
+    // P13C Round 8 — Finding 1. Run records now carry an owner.
+    scope: activeTenantScope,
     publish: platform.api.publish,
     on: (types, handler) => platform.api.on(types, handler),
   });
@@ -369,11 +759,589 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     broadcast: deps.broadcast,
     publish: platform.api.publish,
   });
+  // Phase 6 — Universal Enterprise Data Plane: file → understood → routed →
+  // approved → imported, writing through the EXISTING module stores. Owns no
+  // business logic; reuses the enterprise registry, authz gate and audit sink.
+  const dataPlane = initDataPlane({
+    userDataDir: app.getPath('userData'),
+    storeFor: (moduleId) => enterprise.modules.get(moduleId)?.store ?? null,
+    actor: () => {
+      const st = authService.getStatus();
+      return st.state === 'authenticated' ? (st.session.user.displayName ?? st.session.user.email) : null;
+    },
+    // Mapping memory is isolated per workspace — the same boundary the audit
+    // trail stamps. A mapping learned in one workspace is never offered in another.
+    /**
+     * P11 — nullable, and the `?? 'local'` branch is now REACHABLE.
+     *
+     * It was dead before: the bare accessor never returned null, which is direct
+     * evidence this call site meant to use the nullable one. `'local'` is a
+     * sentinel that matches no real workspace, so mapping memory saved during
+     * cold start is not readable as any tenant's.
+     */
+    tenantId: () => workspaceStore.activeWorkspaceIdOrNull() ?? 'local',
+    now: () => new Date().toISOString(),
+    audit: (entry) =>
+      governanceStore.record({
+        actor: (() => {
+          const st = authService.getStatus();
+          return st.state === 'authenticated' ? (st.session.user.displayName ?? st.session.user.email) : 'owner';
+        })(),
+        action: entry.action,
+        target: entry.target,
+        summary: entry.summary,
+        workspaceId: workspaceStore.activeWorkspaceIdForDisplay(),
+      }),
+    authorize: enterprise.authorize,
+    // Stamped into the export manifest. Read from the running app rather than
+    // a constant, so a manifest naming a version is naming the build that
+    // actually wrote the file.
+    appVersion: () => app.getVersion(),
+    workspaceId: () => workspaceStore.activeWorkspaceIdOrNull() ?? '',
+    // Phase 6 — imported records re-enter the SAME lifecycle a hand-created
+    // record takes: audit, platform timeline, renderer broadcast, and every
+    // module's own `onChange` reconciler. Without this the records exist in the
+    // store and nothing else in the system knows they arrived. Fire-and-forget
+    // against the already-committed import, and a failing reconciler is logged
+    // rather than allowed to unwind an import that already succeeded.
+    onImported: (event) => {
+      void enterprise
+        .notifyImported({
+          moduleId: event.moduleId,
+          recordIds: event.recordIds,
+          correlationId: event.correlationId,
+        })
+        .then((res) => {
+          if (res.failed.length > 0 || res.missing > 0) {
+            log.warn('Import lifecycle replay had problems', {
+              moduleId: res.moduleId,
+              notified: res.notified,
+              missing: res.missing,
+              failed: res.failed.length,
+            });
+          }
+        })
+        .catch((err: unknown) => {
+          log.warn('Import lifecycle replay failed', {
+            moduleId: event.moduleId,
+            message: err instanceof Error ? err.message : String(err),
+          });
+        });
+    },
+    // Export reads the module descriptors: their fields become the columns and
+    // their own read permission is enforced on top of `data:read`.
+    modules: () => enterprise.modules.list().map((m) => m.descriptor),
+    // The save dialog + filesystem write live HERE, not in the plane, so the
+    // plane itself stays Electron-free and fully testable under Node.
+    saveExport: async (suggestedName, format, content) => {
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        title: 'Export data',
+        defaultPath: suggestedName,
+        filters: [{ name: format.toUpperCase(), extensions: [format] }],
+      });
+      if (canceled || !filePath) return null;
+      await writeFile(filePath, content);
+      return filePath;
+    },
+  });
+
+  /**
+   * Program 8 — Document Intelligence.
+   *
+   * Deliberately a sibling of the Data Plane rather than a part of it: the
+   * Data Plane turns a file into RECORDS and forgets the file, while this
+   * keeps the file as evidence. It reuses the Data Plane's parser and the
+   * decision subsystem's storage substrate, and owns no governance of its own.
+   */
+  const documents = initDocuments({
+    userDataDir: app.getPath('userData'),
+    // P12 — the same tenant resolver the record stores read.
+    scope: activeTenantScope,
+    actor: () => {
+      const st = authService.getStatus();
+      return st.state === 'authenticated' ? (st.session.user.displayName ?? st.session.user.email) : null;
+    },
+    now: () => new Date().toISOString(),
+    audit: (entry) =>
+      governanceStore.record({
+        actor: (() => {
+          const st = authService.getStatus();
+          return st.state === 'authenticated' ? (st.session.user.displayName ?? st.session.user.email) : 'owner';
+        })(),
+        action: entry.action,
+        target: entry.target,
+        summary: entry.summary,
+        workspaceId: workspaceStore.activeWorkspaceIdForDisplay(),
+      }),
+    authorize: enterprise.authorize,
+    modules: () => enterprise.modules.list().map((m) => m.descriptor),
+    storeFor: (moduleId) => enterprise.modules.get(moduleId)?.store ?? null,
+  });
+
+  /**
+   * P10 — Identity + external services.
+   *
+   * Two things nothing else owns:
+   *
+   *  · An ambiguous provider row becomes a QUESTION a person can answer. The
+   *    sync used to count those rows and drop them, so the data never arrived
+   *    and nobody was ever asked.
+   *  · A background job gets a principal of its own. See `syncService` below
+   *    for why the alternative was untenable in both directions.
+   *
+   * It owns no governance: it authorizes through `enterprise`, writes records
+   * through the modules' own stores, and fires the SAME `onImported` fan-out an
+   * import does, so a record linked here gets its relationships resolved.
+   */
+  /**
+   * P11 — what a workspace switch has to forget.
+   *
+   * Registered at the composition root because these are the only two places
+   * that know both halves: that the Data Plane holds plans and that live-sync
+   * holds a target org. Records need nothing here — the store re-reads its scope
+   * on every call, which is why it was built as a function rather than a value.
+   */
+  /**
+   * P12 — bind the tenant boundary onto the append-only stores.
+   *
+   * Holds, Decision Records, opportunity decisions and outcome revisions are
+   * module-level singletons created at import time, so they cannot take the
+   * resolver as a constructor argument. Bound here, at the same place the module
+   * registry is bound, and UNBOUND DENIES — so a store missed here returns
+   * nothing rather than everything.
+   *
+   * `activeTenantScope` is the same resolver every other surface reads. One
+   * authority, four more consumers.
+   */
+  /**
+   * P13C Round 2 — the legacy stores join the bound set.
+   *
+   * Automation rules, executive decisions and the relationship queue each
+   * predate tenancy and were reached by public or base-role channels. They are
+   * bound here alongside the nine stores bound since P13B, and
+   * `assertAllTenantStoresBound()` below turns a forgotten binding into a
+   * startup failure rather than a silent leak.
+   */
+  /**
+   * P13C Round 6 — AI usage accrues to the tenant that spent it. Bound HERE and
+   * not in `ai/engineInstance.ts`: that module is imported by pure-model tests,
+   * and `activeTenantScope` pulls Electron in with it.
+   */
+  aiEngine.bindUsageScope(activeTenantScope);
+  /**
+   * P13C Round 8 — the worker CATALOGUE is install-level and stays so; its
+   * execution COUNTERS are per tenant. `jobsRun` on a shared row was a live meter
+   * of another tenant's work.
+   */
+  workerRegistry.bindOutcomeScope(() => activeTenantScope()?.tenantId ?? null);
+  /**
+   * P13C Round 9 — F20. Same shape, same reason, different registry: the
+   * installed-app CATALOGUE is install-level and stays so; its LAUNCH COUNTERS
+   * are per tenant. `launchCount` and `usage.*` on a shared row told one
+   * organization how often another had run an app and when it last did.
+   */
+  registry.bindUsageScope(() => activeTenantScope()?.tenantId ?? null);
+  /**
+   * P13C Round 7 — an OS toast goes to a PERSON. `deliveryEngine.tick()` fans out
+   * over every organization on the install; the only correct recipient of a
+   * desktop notification is the tenant the signed-in human is currently viewing.
+   */
+  bindDeliveryViewer(() => activeTenantScope()?.tenantId ?? null);
+  /**
+   * P13C ROUND 11 — M-3. THE RUNTIME SUPERVISOR IS A TENANT SEAM.
+   *
+   * It holds live processes one organization started — `pid`, `startedAt`,
+   * `uptimeMs`, `restarts`, CPU and memory — and `runtime:list` reported every
+   * one of them to any caller while `requireInstance` resolved a
+   * renderer-supplied id with no ownership comparison. Bound to the
+   * principal-aware resolver like every other seam here, so a companion device
+   * acting for the tenant it was paired to sees that tenant's processes and not
+   * whichever organization happens to be on screen.
+   */
+  supervisor.bindScope(activeTenantScope);
+  automationStore.bindScope(activeTenantScope);
+  decisionStore.bindScope(activeTenantScope);
+
+  /**
+   * POPULATE THE F22 ARCHIVE REGISTRY. P13C FINAL CERTIFICATION.
+   *
+   * `registerTenantDomainSource()` had no production caller at all. Six adapters
+   * existed and none was ever registered, so the running application's source
+   * map was EMPTY: `registeredTenantDomains()` returned `[]`, all 19 domains
+   * read as uncovered, and a tenant archive would have held nothing. Reports
+   * counted adapters that had been WRITTEN and called it coverage.
+   *
+   * Registered here, immediately after the stores these adapters read are bound
+   * — before the binding is bound, a source would hand the archive a store that
+   * denies every read, which is the ordering mistake this programme keeps
+   * finding in other forms.
+   */
+  log.info('Tenant archive sources registered', {
+    domains: registerTenantDomainSources({
+      decisions: decisionStore,
+      automations: automationStore,
+      healthHistory: healthHistoryStore,
+      workforceJobs: jobStore,
+      companionDevices: companionDeviceStore(),
+      aiPreference: tenantAiPreferenceStore,
+    }).length,
+    uncovered: tenantArchiveCoverageGaps().length,
+  });
+  holdStore.bindScope(activeTenantScope);
+  decisionRecordStore.bindScope(activeTenantScope);
+  opportunityDecisionStore.bindScope(activeTenantScope);
+  outcomeRevisionStore.bindScope(activeTenantScope);
+
+  /**
+   * P13A — bind the tenant boundary onto memory and provenance.
+   *
+   * Same shape as the four above, same failure mode if omitted: unbound
+   * DENIES, so forgetting this line empties the Memory view rather than
+   * silently exposing every tenant's memories. That asymmetry is the reason the
+   * default is deny.
+   *
+   * Memory takes `activeMemoryViewer` rather than `activeTenantScope` because
+   * it needs the identity as well as the scope — a scope cannot express "this
+   * person's private memory". Provenance takes the plain scope: a provenance
+   * record belongs to the tenant that imported it, never to one person.
+   */
+  memoryStore.bindViewer(activeMemoryViewer);
+  dataPlane.provenance.bindScope(activeTenantScope);
+  /**
+   * P13C Round 2 — H6. Its sibling gained a scope in P13A; this one did not,
+   * and nothing noticed because the relationship queue is a back-office
+   * surface that returns `sourceValue` verbatim.
+   */
+  dataPlane.relationships.bindScope(activeTenantScope);
+
+  /**
+   * P13B — the Unified Store and the Graph, the two roots of the data fabric.
+   *
+   * `unifiedStore.bindScope` also binds the SEARCH INDEX it owns, because the
+   * index is a second copy of the same records with its own reachable read
+   * path. Binding these two is what finally gives the memory and graph
+   * projections a trustworthy source: Program 13A could stamp a projected
+   * memory with an owner, but the thing it projected from had none.
+   */
+  unifiedStore.bindScope(activeTenantScope);
+  /**
+   * P13C — the webhook registry. Bound like every other store, and it matters
+   * more than most: this is the only surface that transmits platform data OFF
+   * the device to an address a user chose.
+   */
+  webhookStore.bindScope(activeTenantScope);
+  // The event bus + durable timeline: bound here rather than at platform boot,
+  // because the resolver does not exist that early.
+  platform.bindTenant(activeTenantScope);
+  graphStore.bindScope(activeTenantScope);
+
+  /**
+   * THE STARTUP GATES USED TO RUN HERE, AND THAT WAS THE BUG. P13C ROUND 17.
+   *
+   * Round 2 (`8e9bb90`) placed `assertAllTenantStoresBound()` on this line
+   * under the comment *"Placed AFTER every `bindScope` above and BEFORE any
+   * handler is registered."* The first half of that sentence stopped being true
+   * one round later, at Round 3 (`943dad8`), and nothing noticed for fourteen
+   * rounds because no round launched the application.
+   *
+   * Thirteen tenant-scoped stores construct their `TenantOwnership` at import
+   * time — which REGISTERS them — and call `bindScope()` inside an `init*()`
+   * that runs several hundred lines BELOW this point:
+   *
+   *     initEcosystem   ~1313      initCloud       ~1390
+   *     initMarketplace ~1316      initFeedback    ~1468
+   *     initWebhooks    ~1325      initFederation  ~1470
+   *
+   * So the gate fired on a TRANSIENT state and named thirteen stores that were
+   * about to be bound perfectly well. The throw landed in the `try/catch`
+   * around `initRuntimeCore` in `index.ts`, composition died on this line, and
+   * `registerSecureHandlers` — 2,800 lines below — never ran. The application
+   * presented a complete UI while answering "No handler registered" for
+   * essentially every channel. A gate built to prevent a broken install was the
+   * only thing breaking it.
+   *
+   * Both gates now run immediately before `registerSecureHandlers`, beside
+   * `assertAllChannelsClassified` — the ONE point in this function where "after
+   * every bindScope and before any handler" is actually true. Their original
+   * comments moved with them. This note stays here because the empty space is
+   * the finding: an assertion is only as good as its position, and position is
+   * not something a unit test that never calls this function can check.
+   * `tenancy/round17CompositionOrder.test.ts` now checks it.
+   */
+
+  onWorkspaceSwitch(() => {
+    dataPlane.forgetPlans();
+    /**
+     * P13B — flush the keyless TTL model caches on a switch.
+     *
+     * Both are built by fanning out across scoped stores, so a cache built by
+     * tenant A holds A's data and is then served to whoever asks within the
+     * TTL. That was an accepted transient leak while it stayed in memory; the
+     * graph projection now persists what it reads, so it no longer does.
+     */
+    invalidateRelationshipModelCache();
+    invalidateTrustModelCache();
+    // Stop the 60-second push loop rather than let it keep pushing to the
+    // workspace that was just left. The renderer re-points it deliberately.
+    setLiveSyncActiveOrg(null);
+  });
+
+  const identity = initIdentity({
+    userDataDir: app.getPath('userData'),
+    workspaceId: () => workspaceStore.activeWorkspaceIdOrNull() ?? '',
+    actor: () => {
+      const st = authService.getStatus();
+      return st.state === 'authenticated' ? (st.session.user.displayName ?? st.session.user.email) : null;
+    },
+    now: () => new Date().toISOString(),
+    audit: (entry) =>
+      governanceStore.record({
+        actor: (() => {
+          const st = authService.getStatus();
+          return st.state === 'authenticated' ? (st.session.user.displayName ?? st.session.user.email) : 'owner';
+        })(),
+        action: entry.action,
+        target: entry.target,
+        summary: entry.summary,
+        workspaceId: workspaceStore.activeWorkspaceIdForDisplay(),
+      }),
+    allows: (permission) => enterprise.allows(permission),
+    authorize: enterprise.authorize,
+    modules: () => enterprise.modules.list().map((m) => m.descriptor),
+    storeFor: (moduleId) => enterprise.modules.get(moduleId)?.store ?? null,
+    /**
+     * The SAME store the bridge and the file importer write.
+     *
+     * This is what makes an answer durable. The bridge's only idempotency
+     * source is `provenance.forExternalKey(...)`, so a decision that leaves no
+     * provenance is invisible to the next sync: the question came back on the
+     * following tick and the provider's updates never reached the linked record.
+     */
+    provenance: dataPlane.provenance,
+    onImported: (event) => {
+      void enterprise
+        .notifyImported({
+          moduleId: event.moduleId,
+          recordIds: event.recordIds,
+          correlationId: event.correlationId,
+        })
+        .catch((err: unknown) => {
+          log.warn('Identity lifecycle replay failed', {
+            moduleId: event.moduleId,
+            err: err instanceof Error ? err.message : String(err),
+          });
+        });
+    },
+  });
+
+  /**
+   * The principal the connector sync actually writes as.
+   *
+   * Before P10 the bridge asked `enterprise.allows(...)`, which resolves the
+   * SIGNED-IN HUMAN's roles. That is wrong in both directions at once: a
+   * scheduled sync with nobody signed in has no permissions and silently
+   * imports nothing, and a sync while an administrator is signed in runs every
+   * fifteen minutes with an administrator's authority and attributes the rows
+   * to them. Neither is a background job's authority.
+   *
+   * `crm:read` and `crm:manage` are the complete list because the four resource
+   * mappings target `contact` and `customer`, and both live in CRM. If a
+   * mapping is added for another module, this list has to be widened
+   * deliberately — which is the point of writing it out rather than inheriting
+   * it. Created lazily so the declaration lands after a workspace exists.
+   */
+  let syncServiceRef: ServiceAuthorizer | null = null;
+  const syncService = (): ServiceAuthorizer => {
+    syncServiceRef ??= identity.serviceAuthorizer({
+      id: 'service.connector-sync',
+      purpose: 'Connector sync',
+      permissions: ['crm:read', 'crm:manage'],
+    });
+    return syncServiceRef;
+  };
+  bindSyncService(syncService);
+
+  // A relationship declaration naming a field that does not exist resolves
+  // nothing, forever, without erroring — the worst failure mode this feature
+  // has. Checked against the LIVE descriptors at boot so a typo is visible in
+  // the log rather than discovered as "relationships just don't work".
+  const relationshipProblems = assertRelationshipsAreDeclarable(
+    enterprise.modules.list().map((m) => m.descriptor),
+  );
+  if (relationshipProblems.length > 0) {
+    log.error('Relationship declarations do not match the live modules', {
+      count: relationshipProblems.length,
+      problems: relationshipProblems.slice(0, 10),
+    });
+  }
+
+  /**
+   * The single seam every HOLD producer outside the enterprise root goes
+   * through: open the hold, pair a Decision Record with it, audit. Reused
+   * rather than re-implemented, so the hold/record pairing cannot be forgotten
+   * at one call site.
+   */
+  const raiseHold = createHoldRaiser({
+    holds: holdStore,
+    decisions: decisionRecordStore,
+    actor: () => {
+      const st = authService.getStatus();
+      return st.state === 'authenticated' ? (st.session.user.displayName ?? st.session.user.email) : null;
+    },
+    audit: (action, target, summary) =>
+      governanceStore.record({
+        actor: (() => {
+          const st = authService.getStatus();
+          return st.state === 'authenticated' ? st.session.user.email : 'system';
+        })(),
+        action,
+        target,
+        summary,
+        workspaceId: workspaceStore.activeWorkspaceIdForDisplay(),
+      }),
+  });
+
+  /**
+   * HOLD producer #6: `external_unavailable`.
+   *
+   * A connector that stops answering used to surface only as a number on the
+   * diagnostics page. That is the wrong shape for work that DID NOT HAPPEN:
+   * the sync was legitimate, nothing is wrong with the request, and retrying
+   * later is a real resolution — which is precisely a hold.
+   *
+   * Reads the live snapshots rather than a fixture, quotes the state the
+   * connector actually reported (401 and 503 need different actions), and
+   * dedupes per account so a permanently-down system produces one item.
+   * Returns the snapshots unchanged so it can sit inline on the health probe.
+   */
+  const raiseHoldsForUnreachableConnectors = (
+    snapshots: readonly ConnectorSyncSnapshot[],
+  ): ConnectorSyncSnapshot[] => {
+    for (const snap of snapshots) {
+      if (snap.status !== 'error' && snap.status !== 'offline') continue;
+      raiseHold({
+        ...externalUnavailableHold({
+          action: `the ${snap.connectorId} sync`,
+          systemName: snap.connectorId,
+          // The connector's OWN words. A summarised error loses the only part
+          // that distinguishes an outage from a revoked credential.
+          observed: snap.lastError ?? `reported "${snap.status}" with no detail`,
+          lastSuccessAt: snap.lastSyncAt,
+        }),
+        title: `${snap.connectorId} is unreachable`,
+        subject: `connector/${snap.connectorId}/${snap.accountId}`,
+        requestedAction: `Sync ${snap.connectorId}`,
+        executed: 'Nothing — the system could not be reached.',
+      });
+    }
+    return [...snapshots];
+  };
+
+  // Governed delete: bind the pre-delete assessor to the REAL resolved links.
+  // This runs at composition time, unconditionally — the enterprise subsystem
+  // above already holds `assessDelete`, which calls through this binding, and
+  // an unbound reader silently reports "no links", i.e. every dangerous delete
+  // would sail through ungoverned. The relationship store exists from the
+  // `initDataPlane` call above, so here is the earliest correct place.
+  // Cross-domain related records read the SAME resolved links governed delete
+  // does — one relationship store, two consumers, no second graph.
+  bindRelationshipStore(dataPlane.relationships);
+  bindRelationshipEngine(dataPlane.relationshipEngine);
+  bindIncomingLinkReader((recordId) =>
+    dataPlane.relationships.incoming(recordId).map((link) => {
+      const declaration = RELATIONSHIPS.find((r) => r.key === link.relationshipKey);
+      return {
+        relationshipKey: link.relationshipKey,
+        label: declaration?.label ?? link.relationshipKey,
+        sourceModuleId: link.sourceModuleId,
+        // The module's own title, so the evidence a person acts on reads
+        // "3 records in Invoices" and not "3 records in finance-invoices".
+        sourceModuleTitle: enterprise.modules.get(link.sourceModuleId)?.descriptor.title,
+      };
+    }),
+  );
+  // Decision records + open holds are organizational memory: load them before
+  // anything can produce one, so an append never races an unloaded file. The
+  // relationship store is loaded here too — the handlers that use it load it
+  // lazily, but the delete assessor has no handler of its own to trigger that,
+  // and an unloaded store answers "no links" for every record.
+  await Promise.all([
+    decisionRecordStore.load(),
+    holdStore.load(),
+    dataPlane.relationships.load(),
+  ]);
+  /**
+   * HOLD producers #4 and #5: `ambiguous_identity` and `unresolved_dependency`.
+   *
+   * The relationship engine already parks every reference it cannot resolve —
+   * an ambiguous one (several candidates) or an unresolved one (no target).
+   * That queue was visible only inside the Data Command Center, so a reference
+   * that silently failed to link was invisible to anyone not looking there.
+   *
+   * The two are genuinely different problems and must not be merged:
+   * ambiguity needs a person to CHOOSE, absence needs the missing record to
+   * ARRIVE. Only the first reference of each class raises a hold; the queue
+   * itself remains the place to work through the rest.
+   */
+  dataPlane.relationships.onFirstParked = (entry) => {
+    const subject = `relationship/${entry.sourceModuleId}/${entry.relationshipKey}/${entry.status}`;
+    const view =
+      entry.status === 'ambiguous'
+        ? ambiguousIdentityHold({
+            action: `linking ${entry.sourceTitle} to its ${entry.targetLabel}`,
+            reference: entry.sourceValue,
+            candidates: entry.candidates.map((c) => `${c.title} (${c.id})`),
+          })
+        : unresolvedDependencyHold({
+            action: `Linking ${entry.sourceTitle} to its ${entry.targetLabel}`,
+            dependencies: [
+              `"${entry.sourceValue}" in ${entry.sourceField} matches no ${entry.targetLabel} record.`,
+              entry.reason,
+            ],
+            resolution: `Import or create the missing ${entry.targetLabel}, then re-run resolution from Data → Relationships.`,
+          });
+    raiseHold({
+      ...view,
+      title:
+        entry.status === 'ambiguous'
+          ? `Ambiguous ${entry.targetLabel} reference on ${entry.sourceTitle}`
+          : `Missing ${entry.targetLabel} for ${entry.sourceTitle}`,
+      subject,
+      requestedAction: `Resolve ${entry.relationshipKey} for ${entry.sourceModuleId}`,
+      executed: 'Nothing — the reference is parked, not guessed.',
+    });
+  };
+
+  // Decision Records + Holds read/resolve IPC (governance:read / :manage).
+  const decisionRecords = initDecisionRecords({
+    decisionRecords: decisionRecordStore,
+    holds: holdStore,
+    assessmentLive: bindingIsLive,
+    relationshipsDeclared: () => RELATIONSHIPS.length,
+    actor: () => {
+      const st = authService.getStatus();
+      return st.state === 'authenticated' ? (st.session.user.displayName ?? st.session.user.email) : null;
+    },
+    audit: (action, target, summary) =>
+      governanceStore.record({
+        actor: (() => {
+          const st = authService.getStatus();
+          return st.state === 'authenticated' ? st.session.user.email : 'system';
+        })(),
+        action,
+        target,
+        summary,
+        workspaceId: workspaceStore.activeWorkspaceIdForDisplay(),
+      }),
+  });
+
   // Ecosystem Platform: developer portal + marketplace + API gateway + billing.
   const ecosystem = await initEcosystem({ broadcast: deps.broadcast });
   // P9 — Enterprise Marketplace: a governed, trusted, installing LAYER over the ecosystem
   // marketplace. Routes approved worker installs to the existing P8.5 install service.
   const marketplace = await initMarketplace({
+    // P13C Round 8 — Finding 3. The marketplace policy is per organization.
+    scope: activeTenantScope,
     broadcast: deps.broadcast,
     appVersion: app.getVersion(),
     installWorker: workforce.installWorkerPackage,
@@ -390,25 +1358,102 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   const sandbox = await initSandbox({
     broadcast: deps.broadcast,
     baseDir: join(app.getPath('userData'), 'sandbox'),
+    /**
+     * P13C N3 — the sandbox joins the bound stores.
+     *
+     * Nine stores are bound to `activeTenantScope` a few hundred lines above;
+     * the five sandbox stores were absent from that list, which is why the whole
+     * subsystem had no tenant. The same resolver, so a sandbox read inside a
+     * background run answers for the run's tenant exactly as every other store
+     * does.
+     */
+    scope: activeTenantScope,
   });
   // AI Sandbox S2 (Desktop Automation) + S3 (Enterprise Scenario Runner) register their
   // executors onto the S1 engine THROUGH a router, wired below (after the secure handler
   // registry + REST gateway are assembled) so the enterprise runner can dispatch through
   // the SAME secure core the IPC bridge + REST gateway use.
   const sandboxBaseDir = join(app.getPath('userData'), 'sandbox');
-  const sandboxLaunchTarget = { executablePath: process.execPath, args: [app.getAppPath()], cwd: app.getAppPath() };
+  const sandboxLaunchTarget = {
+    executablePath: process.execPath,
+    args: [app.getAppPath()],
+    cwd: app.getAppPath(),
+  };
   // Phase 9 · Stage 1 — Cloud Platform (multi-tenant, identity federation, sync, API platform, admin).
-  const cloud = await initCloud({ broadcast: deps.broadcast });
+  /**
+   * P13C ROUND 7 — THE INSTALL-LEVEL OPERATOR.
+   *
+   * Loaded from disk, empty unless the machine's owner wrote the file. There is
+   * no IPC that adds an operator, deliberately: a grant path reachable by whoever
+   * is signed in would be reachable by exactly the person this authority exists
+   * to sit above. See `platformOperatorRegistry.ts`.
+   */
+  const platformOperators = new PlatformOperatorRegistry(app.getPath('userData'));
+  await platformOperators.load();
+  /**
+   * P13C ROUND 10, fresh red team — THE PLATFORM AUTHORITY PATH WAS NEVER WIRED.
+   *
+   * `createAuthorize` has accepted `isPlatformOperator` since the model was
+   * built, and `enterprise/authzGate.ts` has one line that can satisfy a
+   * `cloud:operate` permission. The registry was wired into
+   * `createPlatformAuthorizer` — a DIFFERENT object — and never into the gate,
+   * so the predicate was `undefined` and every `cloud:operate` channel refused
+   * everyone, platform operators included.
+   *
+   * It failed CLOSED, which is why ten rounds of isolation testing did not see
+   * it: nothing leaked. What it meant is that the ~40 install-wide channels this
+   * program moved onto platform authority had never been exercised through it.
+   */
+  enterprise.bindPlatformOperator((email) => platformOperators.isOperator(email));
+  const platformAuthorizer = createPlatformAuthorizer({
+    sessionEmail: () => {
+      const st = authService.getStatus();
+      return st.state === 'authenticated' ? st.session.user.email : null;
+    },
+    isOperator: (email) => platformOperators.isOperator(email),
+  });
+
+  const cloud = await initCloud({
+    broadcast: deps.broadcast,
+    platformAuthorizer,
+    /**
+     * The change lands in the same tamper-evident governance trail as every other
+     * administrative action, rather than in a second log nobody reads.
+     *
+     * It is stamped with the CALLER'S tenant, which is a deliberate compromise
+     * worth naming: the ACTION is install-level, so no single tenant owns the
+     * record, and there is no install-level audit store to put it in. Filing it
+     * under the operator's active organization means another tenant cannot read
+     * that an operator changed a shared policy — an under-disclosure, not an
+     * over-disclosure. The alternative, an unowned row, is withheld from
+     * everyone and read by nobody.
+     */
+    auditPolicyChange: (r) =>
+      governanceStore.record({
+        actor: r.actor,
+        action: r.operation,
+        target: `${r.policyId} (${r.policyName})`,
+        summary: `Platform operator ${r.actor} set rate policy "${r.policyName}" enabled=${r.before} → enabled=${r.after}, authorized by ${r.authorizedBy} at ${r.authorizedAt}.`,
+        workspaceId:
+          activeTenantScope()?.workspaceId || workspaceStore.activeWorkspaceIdForDisplay(),
+      }),
+  });
   // P6 — Cloud & Infrastructure Control Plane (Cloud Platform abstraction, Discovery Engine, Resource Graph).
   // Reuses the Platform Event Bus (Timeline), the diagnostics probe registry, the HttpClient/RateLimiter
   // primitives, and the secure-bridge IPC — no parallel runtime.
-  const infrastructure = await initInfrastructure({ broadcast: deps.broadcast, publish: platform.api.publish });
+  const infrastructure = await initInfrastructure({
+    broadcast: deps.broadcast,
+    publish: platform.api.publish,
+    // P13C Round 7 — the boundary this subsystem never had.
+    scope: activeTenantScope,
+  });
   // P7 — Enterprise Intelligence. Fold infra into the unified graph projection + re-project on discovery changes,
   // and stand up the intelligence subsystem (composes the Resource Graph + ERP Relationship Graph + Timeline into
   // health/risk/dependency/impact/drift/capacity/root-cause; reuses store/graph/timeline/diagnostics/RBAC).
   getInfraResourceModel = () => infrastructure.store.graph(Date.now());
   if (infraGraphRebuild) infrastructure.store.on('changed', infraGraphRebuild);
   const enterpriseIntel = initEnterpriseIntelligence({
+    scope: activeTenantScope,
     broadcast: deps.broadcast,
     getResourceModel: () => {
       try {
@@ -433,7 +1478,15 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       }
     },
   });
-  const featureFlags = await initFeatureFlags();
+  const featureFlags = await initFeatureFlags({
+    /**
+     * P13C Round 8 — Finding 6. The renderer no longer supplies the plan.
+     * `developerStore.planFor()` resolves it from the CALLER'S tenant through the
+     * store's own bound scope, so a renderer claiming `enterprise` on a free
+     * tenant is evaluated as free.
+     */
+    authoritativePlanTier: () => developerStore.planFor(),
+  });
   const license = await initLicense();
   const onboarding = await initOnboarding();
   // AI configuration IPC (M5, read-only surface: current provider/model, health, Ollama detect).
@@ -653,7 +1706,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       channel: IpcChannel.OrgGet,
       schema: OrgIdRequest,
       requireAuth: true,
-      handler: (p) => orgClient.get((p as { orgId: string }).orgId),
+      handler: async (p) =>
+        orgClient.get(await requireCloudOrgMembership((p as { orgId: string }).orgId)),
     },
     {
       channel: IpcChannel.OrgUpdate,
@@ -661,14 +1715,15 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       requireAuth: true,
       handler: (p) => {
         const r = p as { orgId: string; name: string };
-        return orgClient.update(r.orgId, r.name);
+        return requireCloudOrgMembership(r.orgId).then((id) => orgClient.update(id, r.name));
       },
     },
     {
       channel: IpcChannel.OrgMembers,
       schema: OrgIdRequest,
       requireAuth: true,
-      handler: (p) => orgClient.members((p as { orgId: string }).orgId),
+      handler: async (p) =>
+        orgClient.members(await requireCloudOrgMembership((p as { orgId: string }).orgId)),
     },
     {
       channel: IpcChannel.OrgInvite,
@@ -680,7 +1735,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
           email: string;
           role: 'owner' | 'admin' | 'member' | 'viewer';
         };
-        return orgClient.invite(r.orgId, { email: r.email, role: r.role });
+        return requireCloudOrgMembership(r.orgId).then((id) =>
+          orgClient.invite(id, { email: r.email, role: r.role }),
+        );
       },
     },
     {
@@ -699,7 +1756,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
           membershipId: string;
           role: 'owner' | 'admin' | 'member' | 'viewer';
         };
-        return orgClient.changeRole(r.orgId, r.membershipId, r.role);
+        return requireCloudOrgMembership(r.orgId).then((id) =>
+          orgClient.changeRole(id, r.membershipId, r.role),
+        );
       },
     },
     {
@@ -708,14 +1767,17 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       requireAuth: true,
       handler: (p) => {
         const r = p as { orgId: string; membershipId: string };
-        return orgClient.removeMember(r.orgId, r.membershipId);
+        return requireCloudOrgMembership(r.orgId).then((id) =>
+          orgClient.removeMember(id, r.membershipId),
+        );
       },
     },
     {
       channel: IpcChannel.OrgWorkspaces,
       schema: OrgIdRequest,
       requireAuth: true,
-      handler: (p) => orgClient.workspaces((p as { orgId: string }).orgId),
+      handler: async (p) =>
+        orgClient.workspaces(await requireCloudOrgMembership((p as { orgId: string }).orgId)),
     },
     {
       channel: IpcChannel.OrgCreateWorkspace,
@@ -723,7 +1785,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       requireAuth: true,
       handler: (p) => {
         const r = p as { orgId: string; name: string };
-        return orgClient.createWorkspace(r.orgId, r.name);
+        return requireCloudOrgMembership(r.orgId).then((id) =>
+          orgClient.createWorkspace(id, r.name),
+        );
       },
     },
     {
@@ -732,7 +1796,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       requireAuth: true,
       handler: (p) => {
         const r = p as { orgId: string; workspaceId: string; name: string };
-        return orgClient.updateWorkspace(r.orgId, r.workspaceId, r.name);
+        return requireCloudOrgMembership(r.orgId).then((id) =>
+          orgClient.updateWorkspace(id, r.workspaceId, r.name),
+        );
       },
     },
     {
@@ -741,7 +1807,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       requireAuth: true,
       handler: (p) => {
         const r = p as { orgId: string; workspaceId: string };
-        return orgClient.deleteWorkspace(r.orgId, r.workspaceId);
+        return requireCloudOrgMembership(r.orgId).then((id) =>
+          orgClient.deleteWorkspace(id, r.workspaceId),
+        );
       },
     },
     /* ── local application registry ── */
@@ -1092,6 +2160,17 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       ...(input.correlationId ? { correlationId: input.correlationId } : {}),
     });
   };
+  // Private-First experience telemetry: profile decisions become platform
+  // events (names only — no prompts, no content). Late-bound because the
+  // profile service loads before the platform event bus exists.
+  bindExperienceEvents((event) => {
+    publishPlatform({
+      type: 'experience.decision',
+      category: 'system',
+      source: 'experience:first-run',
+      metadata: { event },
+    });
+  });
   const neuroCore = new NeuroCore({
     diagnostics: () => platform.diagnostics(),
     automationMonitor: () => getAutomationMonitor(),
@@ -1129,6 +2208,21 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     schema: EmptyRequest,
     handler: () => neuroCore.snapshot(),
   });
+  // P13C F-7: pre-authentication backend reachability. PUBLIC by design and by
+  // exception — see the PUBLIC_CHANNELS entry in `ipc/runtimeAuthz.ts` for why
+  // this one is safe when `neurocore:systemHealth` (Round 10) and
+  // `runtime:health` (Round 11) are not. The handler returns the sampler's
+  // three-field payload verbatim and composes nothing into it; any widening has
+  // to happen in `RuntimeTelemetrySampler.reachability()`, where the F-7 test
+  // locks the key set.
+  defs.push({
+    channel: IpcChannel.BackendReachability,
+    schema: BackendReachabilityRequest,
+    handler: async (payload: unknown) => {
+      const { refresh } = (payload ?? {}) as { refresh?: boolean };
+      return neuroCore.backendReachability(refresh === true);
+    },
+  });
   // V6.1: renderer reports license health (it holds the active org) so NeuroCore
   // can compose it into system health without needing ambient org state in main.
   defs.push({
@@ -1151,7 +2245,11 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     schema: BillingCheckoutRequest,
     handler: async (payload: unknown) => {
       const p = payload as { orgId: string; plan: BillingPlanId; seats?: number };
-      const result = await billingClient.checkout(p.orgId, p.plan, p.seats);
+      // Money. The membership check matters more here than anywhere else in
+      // this family: without it a signed-in account could start a checkout
+      // against another organization's billing account.
+      const orgId = await requireCloudOrgMembership(p.orgId);
+      const result = await billingClient.checkout(orgId, p.plan, p.seats);
       if (result.checkoutUrl) void shell.openExternal(result.checkoutUrl);
       return result;
     },
@@ -1163,19 +2261,22 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     channel: IpcChannel.DevicesRegister,
     schema: DevicesRegisterRequest,
     handler: (payload: unknown) =>
-      deviceClient.registerCurrent((payload as { orgId: string }).orgId),
+      requireCloudOrgMembership((payload as { orgId: string }).orgId).then((id) =>
+        deviceClient.registerCurrent(id),
+      ),
   });
   defs.push({
     channel: IpcChannel.DevicesList,
     schema: DevicesListRequest,
-    handler: (payload: unknown) => deviceClient.list((payload as { orgId: string }).orgId),
+    handler: async (payload: unknown) =>
+      deviceClient.list(await requireCloudOrgMembership((payload as { orgId: string }).orgId)),
   });
   defs.push({
     channel: IpcChannel.DevicesRevoke,
     schema: DevicesRevokeRequest,
     handler: (payload: unknown) => {
       const p = payload as { orgId: string; deviceId: string };
-      return deviceClient.revoke(p.orgId, p.deviceId);
+      return requireCloudOrgMembership(p.orgId).then((id) => deviceClient.revoke(id, p.deviceId));
     },
   });
   // V6.5: renderer reports THIS device's trust status (it holds the active org)
@@ -1255,10 +2356,15 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // V5.8: durable execution persistence. The store implements the engine's
   // persist hook; the engine stays unaware of storage. Sessions in-flight at last
   // shutdown are recovered as 'interrupted' (never rerun) and seeded into history.
-  const executionStore = new ExecutionStore(join(app.getPath('userData'), 'executions.json'));
+  const executionStore = new ExecutionStore(join(app.getPath('userData'), 'executions.json')).bindScope(activeTenantScope);
   const executeEngine = new ExecuteEngine({
     publish: publishPlatform,
     persist: (session) => void executionStore.save(session),
+    // P13C Round 2 — H5. Sessions carry their owner, so `activeSessions`,
+    // `getHistory`, `stats` and `cancel` answer for the caller rather than the
+    // install. Resolved through the one resolver, so a background execution
+    // belongs to the tenant it was started FOR.
+    tenantId: () => activeTenantScope()?.tenantId ?? null,
   });
   executeEngine.register('task', async (req, ctx) => {
     ctx.setStep(1);
@@ -1386,15 +2492,30 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
           binding.params ?? {},
           confirmed,
         );
-        return { ok: r.ok, summary: r.message ?? undefined, error: r.ok ? undefined : (r.message ?? undefined) };
+        return {
+          ok: r.ok,
+          summary: r.message ?? undefined,
+          error: r.ok ? undefined : (r.message ?? undefined),
+        };
       }
       case 'automation': {
-        const rec = await getAutomationRunner().runById(binding.target, binding.params ?? {}, 'manual');
+        const rec = await getAutomationRunner().runById(
+          binding.target,
+          binding.params ?? {},
+          'manual',
+        );
         if (!rec) return { ok: false, error: `Automation rule "${binding.target}" not found` };
-        return { ok: rec.ok, summary: rec.ok ? `Automation ${binding.target} ran` : undefined, error: rec.ok ? undefined : 'Automation failed' };
+        return {
+          ok: rec.ok,
+          summary: rec.ok ? `Automation ${binding.target} ran` : undefined,
+          error: rec.ok ? undefined : 'Automation failed',
+        };
       }
       default:
-        return { ok: false, error: `Unknown executor "${(binding as { executor?: string }).executor ?? ''}"` };
+        return {
+          ok: false,
+          error: `Unknown executor "${(binding as { executor?: string }).executor ?? ''}"`,
+        };
     }
   };
   executeEngine.register('connector', createWorkforceActionExecutor(runBinding));
@@ -1494,10 +2615,32 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     broadcast: deps.broadcast,
     publish: publishPlatform,
     execute: (req) => executeEngine.execute(req),
+    // Deterministic-first: the assistant answers lookup/aggregate questions
+    // straight from the enterprise registry, under the SAME RBAC gate the
+    // generic module channels enforce. 'forbidden' is surfaced as an answer.
+    moduleRecords: (moduleId) => {
+      const module = enterprise.modules.get(moduleId);
+      if (!module) return null;
+      try {
+        enterprise.authorize(module.descriptor.permissions.read);
+      } catch {
+        return 'forbidden';
+      }
+      return {
+        rows: module.store
+          .list()
+          .map((r) => ({ id: r.id, title: r.title, status: r.status, fields: r.fields })),
+      };
+    },
+    // Engineless turns land one measured 'none'; engine-backed turns are
+    // measured by the engine itself (never both — that would double-count).
+    recordProcessing: (location) => routingUsageStore.record(location),
     executionsActive: () => executeEngine.activeSessions().length,
     // Phase 6 Stage 5 — Work Summary aggregation inputs (existing histories).
     executionHistory: () =>
-      executeEngine.getHistory().map((s) => ({ label: s.label, state: s.state, startedAt: s.startedAt })),
+      executeEngine
+        .getHistory()
+        .map((s) => ({ label: s.label, state: s.state, startedAt: s.startedAt })),
     automationRuns: () =>
       getAutomationRunRecords().map((r) => ({ ok: r.ok, startedAt: r.startedAt })),
     // Phase 6 Stage 6 (D-5) — the ten enterprise questions answer from the
@@ -1533,6 +2676,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   const notifications = initNotifications({
     broadcast: deps.broadcast,
     on: (types, handler) => platform.api.on([...types], handler),
+    // P13C Part 3 — the one fan-out, shared with the delivery engine, so a
+    // SYSTEM alert reaches each tenant under that tenant's own principal.
+    forEachTenant: (jobId, fn) => forEachTenantBackground(jobId, fn),
   });
   defs.push(...notifications.handlers);
   // Phase 6 Stage 6 — the Enterprise Intelligence Layer. Every dep is a READ
@@ -1542,6 +2688,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // and produce governed recommendation items only. Suggested recoveries run
   // exclusively as approval-gated assistant plan steps through the ExecuteEngine.
   const insight = initInsight({
+    scope: activeTenantScope,
     getResourceModel: () => {
       try {
         return infrastructure.store.graph(Date.now());
@@ -1566,15 +2713,23 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     automationRuns: () => getAutomationRunRecords(),
     automationRules: () => automationStore.all(),
     connectors: () => connectorService.list(),
-    workers: () => workerRegistry.summaries().map((w) => ({ id: w.id, name: w.name, role: w.role })),
+    workers: () =>
+      workerRegistry.summaries().map((w) => ({ id: w.id, name: w.name, role: w.role })),
     conversations: () => assistant.conversationSummaries(),
-    inbox: () => notifications.inboxItems().map((n) => ({ id: n.id, sourceKey: n.sourceKey, at: n.at, read: n.read })),
+    inbox: () =>
+      notifications
+        .inboxItems()
+        .map((n) => ({ id: n.id, sourceKey: n.sourceKey, at: n.at, read: n.read })),
     orgHealth: () => computeOrgHealth(collectOrgHealthInputs(Date.now())),
     orgUnits: () => {
-      const org = orgStore.defaultOrg();
+      const org = activeOrgForReadModel();
+      if (org === null) return { units: 0, leadershipCoverage: null };
       const units = orgStore.unitsFor(org.id);
       const withLead = units.filter((u) => u.leadUserId).length;
-      return { units: units.length, leadershipCoverage: units.length > 0 ? withLead / units.length : null };
+      return {
+        units: units.length,
+        leadershipCoverage: units.length > 0 ? withLead / units.length : null,
+      };
     },
     workforceHealth: () => summarizeWorkforceHealth(workerRegistry.healthSummaries()),
     systemHealth: () => {
@@ -1605,6 +2760,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // (knowledge:read); zero new persistence; no lifecycle executor — state
   // changes stay behind the existing governed writes.
   const knowledgeAssets = initKnowledgeAssets({
+    scope: activeTenantScope,
     decisions: () => decisionStore.all(),
     chains: () => governanceStore.chains(),
     rules: () => governanceStore.rules(),
@@ -1612,7 +2768,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       const latest = new Map<string, { id: string; version: number; label: string }>();
       for (const p of DEFAULT_PROMPTS) {
         const cur = latest.get(p.id);
-        if (!cur || p.version > cur.version) latest.set(p.id, { id: p.id, version: p.version, label: p.label });
+        if (!cur || p.version > cur.version)
+          latest.set(p.id, { id: p.id, version: p.version, label: p.label });
       }
       return [...latest.values()];
     },
@@ -1620,10 +2777,15 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     memories: () => memoryStore.allItems(),
     connectors: () => connectorService.list(),
     org: () => {
-      const org = orgStore.defaultOrg();
+      const org = activeOrgForReadModel();
+      // No tenant, no org chart. This accessor returns the member list, so an
+      // unresolved caller getting "the usual organization" was a roster leak.
+      if (org === null) return { org: { id: '', name: '' }, units: [], users: [] };
       return {
         org: { id: org.id, name: org.name },
-        units: orgStore.unitsFor(org.id).map((u) => ({ id: u.id, name: u.name, leadUserId: u.leadUserId })),
+        units: orgStore
+          .unitsFor(org.id)
+          .map((u) => ({ id: u.id, name: u.name, leadUserId: u.leadUserId })),
         users: orgStore.usersFor(org.id).map((u) => ({ id: u.id, name: u.name, unitId: u.unitId })),
       };
     },
@@ -1637,13 +2799,24 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         finishedAt: j.finishedAt,
         correlationId: j.correlationId ?? null,
       })),
-    conversations: () => assistant.conversationSummaries().map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt })),
+    conversations: () =>
+      assistant
+        .conversationSummaries()
+        .map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt })),
     executions: () =>
-      executeEngine.getHistory().map((s) => ({ label: s.label, state: s.state, startedAt: s.startedAt })),
+      executeEngine
+        .getHistory()
+        .map((s) => ({ label: s.label, state: s.state, startedAt: s.startedAt })),
     getEvents: (since, limit) => {
       const page = platform.api.query({ since, limit }) as { events?: unknown };
       const events = Array.isArray(page.events) ? page.events : [];
-      return events as { id: string; type: string; timestamp: string; correlationId?: string | null; metadata?: Record<string, unknown> | null }[];
+      return events as {
+        id: string;
+        type: string;
+        timestamp: string;
+        correlationId?: string | null;
+        metadata?: Record<string, unknown> | null;
+      }[];
     },
     graphEdgesFor: (recordIds) => {
       const out: {
@@ -1677,7 +2850,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     graphDiscussedIn: (recordId) => {
       if (!graphStore.getNode(recordId)) return [];
       const n = graphStore.neighbors({ id: recordId, edgeTypes: ['discussed_in'], limit: 20 });
-      return n ? n.neighbors.map((en) => ({ id: en.node.id, label: en.node.label, at: en.edge.updatedAt })) : [];
+      return n
+        ? n.neighbors.map((en) => ({ id: en.node.id, label: en.node.label, at: en.edge.updatedAt }))
+        : [];
     },
     graphHistoryFor: (recordIds) => {
       const out: { at: string; action: string; label: string }[] = [];
@@ -1690,7 +2865,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       return out;
     },
     insightRecommendations: () =>
-      insight.report().recommendations.map((r) => ({ id: r.id, title: r.title, evidence: r.evidence })),
+      insight
+        .report()
+        .recommendations.map((r) => ({ id: r.id, title: r.title, evidence: r.evidence })),
     fabricGeneratedAt: () => enterpriseKnowledge.service.overview().summary.generatedAt,
     search: (text) =>
       runEnterpriseSearch(
@@ -1699,10 +2876,19 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
           entity: unifiedStore.searchBackend,
           graph: graphStore,
           memory: memoryStore,
+          // P13A — see EnterpriseSearchSources.memoryScope.
+          memoryScope: activeTenantScope(),
           timeline: getEnterpriseTimeline() ?? undefined,
           federation: getFederationSearcher() ?? undefined,
         },
-      ).hits.map((h) => ({ source: h.source, id: h.id, kind: h.kind, title: h.title, snippet: h.snippet, score: h.score })),
+      ).hits.map((h) => ({
+        source: h.source,
+        id: h.id,
+        kind: h.kind,
+        title: h.title,
+        snippet: h.snippet,
+        score: h.score,
+      })),
     registerSource: (source) => deliveryEngine.register(source),
   });
   knowledgeRef = knowledgeAssets;
@@ -1717,18 +2903,26 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // execution remains exclusively Assistant → Approval → ExecuteEngine →
   // Workforce → Connector Executors.
   const automationPlatform = initAutomationPlatform({
+    scope: activeTenantScope,
     rules: () => automationStore.all(),
     runRecords: () => getAutomationRunRecords(),
     workflowRuns: () => workforce.workflowRunEntries(),
     sessions: () =>
-      executeEngine
-        .getHistory()
-        .map((x) => ({ id: x.id, kind: x.kind, label: x.label, state: x.state, startedAt: x.startedAt })),
+      executeEngine.getHistory().map((x) => ({
+        id: x.id,
+        kind: x.kind,
+        label: x.label,
+        state: x.state,
+        startedAt: x.startedAt,
+      })),
     jobsAwaiting: () =>
-      jobStore.page({ status: 'awaiting_approval', limit: 200 }).jobs.map((j) => ({ id: j.id, createdAt: j.createdAt })),
+      jobStore
+        .page({ status: 'awaiting_approval', limit: 200 })
+        .jobs.map((j) => ({ id: j.id, createdAt: j.createdAt })),
     chains: () => governanceStore.chains(),
     orgRoles: () => {
-      const org = orgStore.defaultOrg();
+      const org = activeOrgForReadModel();
+      if (org === null) return [];
       return orgStore.rolesFor(org.id).map((r) => ({ id: r.id, name: r.name }));
     },
     globalPolicies: () =>
@@ -1738,7 +2932,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         action: (pol as { action?: string }).action ?? '',
       })),
     knownWorkers: () =>
-      workerRegistry.list().map((w) => ({ id: w.identity.id, skills: w.skills.map((sk) => sk.id) })),
+      workerRegistry
+        .list()
+        .map((w) => ({ id: w.identity.id, skills: w.skills.map((sk) => sk.id) })),
     installedWorkers: () =>
       workerInstallStore.all().map((r) => ({ id: r.id, hasPreviousVersion: r.previous !== null })),
     deliverySources: () => deliveryEngine.listSources().map((key) => ({ key })),
@@ -1766,6 +2962,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       every: (id, ms, fn) => taskScheduler.every(id, ms, fn),
       cancel: (id) => taskScheduler.cancel(id),
     },
+    // P13C Round 10 — NEW-M9. The schedule tick is owed to EVERY tenant, not to
+    // whoever is signed in. Same dep, same source, as the delivery engine's.
+    forEachTenant: (jobId, fn) => forEachTenantBackground(jobId, fn),
     registerSource: (source) => deliveryEngine.register(source),
   });
   automationRef = automationPlatform;
@@ -1806,6 +3005,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...trace.handlers);
   defs.push(...workforce.handlers);
   defs.push(...enterprise.handlers);
+  defs.push(...dataPlane.handlers);
+  defs.push(...documents.handlers);
+  defs.push(...identity.handlers);
   // P12 — harden the previously-ungated ecosystem handlers with RBAC (they shipped with no
   // requireAuth/permission); every ecosystem channel now requires a developer:* permission.
   defs.push(...withEcosystemAuthz(ecosystem.handlers));
@@ -1893,6 +3095,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...featureFlags.handlers);
   defs.push(...license.handlers);
   defs.push(...onboarding.handlers);
+  // Decision Records + Holds. Classified in `ipc/runtimeAuthz.ts`
+  // (governance:read / governance:manage) and stamped by withRuntimeAuthz below.
+  defs.push(...decisionRecords.handlers);
   defs.push(...aiConfig.handlers);
   defs.push(...feedback.handlers);
   defs.push(...pilot.handlers);
@@ -1909,7 +3114,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     memory.probe,
     // P4.1 — connector runtime health rolls into the existing diagnostics report; reauth/error accounts
     // (excluded from the connected-only snapshots) surface via the attention count.
-    connectorHealthProbe(() => sync.snapshots(), {
+    connectorHealthProbe(() => raiseHoldsForUnreachableConnectors(sync.snapshots()), {
       attention: () =>
         connectors.supervisor
           .runtimeView()
@@ -1940,7 +3145,43 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...withFederationAuthz(federation.handlers));
   defs.push(...federationPlatform.handlers);
   defs.push(...updater.handlers);
+  // Phase 8 (8.14): in-app help over the bundled documentation set.
+  defs.push(...initHelp().handlers);
   defs.push(...releaseOps.handlers);
+
+  // Mobile M1-03 — Companion Gateway (desktop side of the mobile companion): a LAN
+  // server a paired phone reaches over end-to-end sealed frames, off by default,
+  // hosting view-models only and dispatching through the same secure core as
+  // IPC/REST. Wired before the sender-trust stamping below so its org:manage-gated
+  // management channels (enable / revoke / pairingQr) are classified with the rest.
+  const companion = await initCompanion({
+    isSignedIn: () => authService.getStatus().state === 'authenticated',
+    sessionEmail: () => {
+      const st = authService.getStatus();
+      return st.state === 'authenticated' ? st.session.user.email : null;
+    },
+    /**
+     * P13C Part 3 — the ACTIVE organization's name, not the first one's.
+     *
+     * `orgStore.defaultOrg()` returns the first-inserted organization, so every
+     * paired phone in every tenant was told the same organization's name — over
+     * the LAN, in the pairing response and every `session.hello`. Resolving
+     * through the tenant resolver makes the label describe the tenant whose
+     * records the device is actually being shown; an unresolved tenant reports
+     * nothing rather than borrowing a name.
+     */
+    orgName: () => {
+      const scope = activeTenantScope();
+      if (scope === null) return '';
+      return orgStore.organization(scope.tenantId)?.name ?? '';
+    },
+    currentTenantId: () => activeTenantScope()?.tenantId ?? null,
+    modules: enterprise.modules,
+    executiveSnapshot: () => executiveCenter.snapshot(),
+    subscribe: (types, handler) => platform.api.on(types, handler),
+    broadcast: deps.broadcast,
+  });
+  defs.push(...companion.handlers);
 
   // ── Close the sender-trust gap on privileged base/core channels ──────────────
   // A class of privileged runtime channels (execute / plugin lifecycle / permission
@@ -1980,10 +3221,18 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // handler is assembled so it can resolve any of them by channel.
   const handlerByChannel = new Map<string, SecureHandlerDef>();
   for (const d of defs) handlerByChannel.set(d.channel, d);
+  // Mobile M1-05 — let the companion write path (approvals.act) dispatch module
+  // actions through the SAME secure core (RBAC + Zod + module guards + audit).
+  companion.bindDispatch((channel, payload) => {
+    const def = handlerByChannel.get(channel);
+    if (!def) throw new Error(`Companion dispatch: no handler for channel "${channel}"`);
+    return runSecureHandler(def, payload, secureBridgeDeps);
+  });
   const apiGatewayDeps = {
     decide: (input: Parameters<typeof runGateway>[0]) => runGateway(input),
     resolveHandler: (channel: string) => handlerByChannel.get(channel),
-    runHandler: (def: SecureHandlerDef, payload: unknown) => runSecureHandler(def, payload, secureBridgeDeps),
+    runHandler: (def: SecureHandlerDef, payload: unknown) =>
+      runSecureHandler(def, payload, secureBridgeDeps),
     metrics: (windowDays: number) => gatewayMetrics(windowDays),
     gatewayAudit: (limit: number) => gatewayAuditEntries(limit),
     health: () => neuroCore.snapshot(),
@@ -2027,7 +3276,11 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     benchmarksPath: join(sandboxBaseDir, 'lab', 'benchmarks.json'),
     health: async () => {
       const s = await neuroCore.snapshot();
-      return { level: s.level, cpuPercent: s.telemetry.cpuPercent, memoryUsedMb: s.telemetry.memoryUsedMb };
+      return {
+        level: s.level,
+        cpuPercent: s.telemetry.cpuPercent,
+        memoryUsedMb: s.telemetry.memoryUsedMb,
+      };
     },
     kpis: () => executiveCenter.snapshot().kpis.map((k) => ({ key: k.key, value: k.value })),
     auditCount: () => gatewayAuditEntries(100).length,
@@ -2049,12 +3302,18 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     benchmarks: perfLab.benchmarks,
     health: async () => {
       const s = await neuroCore.snapshot();
-      return { level: s.level, cpuPercent: s.telemetry.cpuPercent, memoryUsedMb: s.telemetry.memoryUsedMb };
+      return {
+        level: s.level,
+        cpuPercent: s.telemetry.cpuPercent,
+        memoryUsedMb: s.telemetry.memoryUsedMb,
+      };
     },
     kpis: () => executiveCenter.snapshot().kpis.map((k) => ({ key: k.key, value: k.value })),
   });
   defs.push(...validation.handlers);
-  log.info('Continuous Validation Platform ready — AI Sandbox v1.0 complete', { pipelines: validation.pipelines.length });
+  log.info('Continuous Validation Platform ready — AI Sandbox v1.0 complete', {
+    pipelines: validation.pipelines.length,
+  });
 
   // Phase 6 Stage 9 — the Enterprise Operations Platform. Every dep is a READ
   // over an existing singleton/subsystem; the ONE async read is the local
@@ -2063,11 +3322,14 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // surface; execution remains exclusively Assistant → Approval →
   // ExecuteEngine → Workforce → Connector Executors.
   const operationsPlatform = initOperationsPlatform({
+    scope: activeTenantScope,
     insightReport: () => insightRef?.report() ?? null,
     executionStats: () => executeEngine.stats(),
     queuedJobsTotal: () => jobStore.page({ status: 'queued', limit: 1 }).total,
     awaitingApprovals: () =>
-      jobStore.page({ status: 'awaiting_approval', limit: 200 }).jobs.map((j) => ({ id: j.id, createdAt: j.createdAt })),
+      jobStore
+        .page({ status: 'awaiting_approval', limit: 200 })
+        .jobs.map((j) => ({ id: j.id, createdAt: j.createdAt })),
     bottlenecks: () =>
       detectBottlenecks(jobStore.page({ limit: 500 }).jobs).map((b) => ({
         scope: b.scope,
@@ -2080,7 +3342,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     automationMonitor: () => getAutomationMonitor(),
     automationErrorRules: () => automationStore.all().filter((r) => r.status === 'error').length,
     connectors: () =>
-      connectorService.list().map((c) => ({ id: c.id, name: c.name, configured: c.configured, health: c.health })),
+      connectorService
+        .list()
+        .map((c) => ({ id: c.id, name: c.name, configured: c.configured, health: c.health })),
     aiState: () => engineManager.status().state,
     executiveKpis: () =>
       executiveCenter.snapshot().kpis.map((k) => ({
@@ -2102,25 +3366,39 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       getProcessAssessment().metrics.byType.map((m) => ({
         type: m.processType,
         cases: m.caseCount,
-        medianDurationMs: Number.isFinite(m.medianCycleHours) ? m.medianCycleHours * 3_600_000 : null,
+        medianDurationMs: Number.isFinite(m.medianCycleHours)
+          ? m.medianCycleHours * 3_600_000
+          : null,
         onTimeRate: Number.isFinite(m.completionRate) ? m.completionRate : null,
       })),
     units: () => {
-      const org = orgStore.defaultOrg();
-      return orgStore.unitsFor(org.id).map((u) => ({ id: u.id, name: u.name, leadUserId: u.leadUserId }));
+      const org = activeOrgForReadModel();
+      if (org === null) return [];
+      return orgStore
+        .unitsFor(org.id)
+        .map((u) => ({ id: u.id, name: u.name, leadUserId: u.leadUserId }));
     },
     users: () => {
-      const org = orgStore.defaultOrg();
+      const org = activeOrgForReadModel();
+      if (org === null) return [];
       return orgStore.usersFor(org.id).map((u) => ({ id: u.id, name: u.name }));
     },
     compliance: () =>
-      enterprise
-        .complianceFindings()
-        .map((f) => ({ ruleId: f.ruleId, ruleName: f.ruleName, severity: f.severity, status: f.status })),
+      enterprise.complianceFindings().map((f) => ({
+        ruleId: f.ruleId,
+        ruleName: f.ruleName,
+        severity: f.severity,
+        status: f.status,
+      })),
     enabledChains: () => governanceStore.chains().filter((c) => c.enabled).length,
     workforceHealth: () => {
       const w = summarizeWorkforceHealth(workerRegistry.healthSummaries());
-      return { healthy: w.healthy, degraded: w.degraded, unhealthy: w.unhealthy, unknown: w.unknown };
+      return {
+        healthy: w.healthy,
+        degraded: w.degraded,
+        unhealthy: w.unhealthy,
+        unknown: w.unknown,
+      };
     },
     systemHealth: () => {
       const snap = neuroCore.last();
@@ -2138,7 +3416,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     drPosture: () => drStore.continuity(),
     drReplicas: () => drStore.listReplicas().map((r) => ({ status: r.status })),
     drValidations: () =>
-      drStore.listValidations().map((v) => ({ status: v.status, rpoSeconds: v.rpoSeconds, validatedAt: v.validatedAt })),
+      drStore
+        .listValidations()
+        .map((v) => ({ status: v.status, rpoSeconds: v.rpoSeconds, validatedAt: v.validatedAt })),
     localBackups: async () => {
       const list = await releaseOps.listBackups();
       return list.map((b) => ({ createdAt: b.createdAt, valid: b.valid }));
@@ -2175,16 +3455,22 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // report. Six read-only estrat:* channels under the EXISTING strategy:read
   // scope; one strategy-watch delivery source; zero mutation surface.
   const strategyPlatform = initStrategyPlatform({
+    scope: activeTenantScope,
     insightDomains: () =>
-      insightRef?.report().health.domains.map((d) => ({ key: d.key, band: d.band, score: d.score })) ?? null,
+      insightRef
+        ?.report()
+        .health.domains.map((d) => ({ key: d.key, band: d.band, score: d.score })) ?? null,
     insightOverallBand: () => insightRef?.report().health.band ?? null,
     insightIncidents: () => {
       // Domain attribution rides the Stage 9 incident lifecycle (composed, not recomputed).
       if (!operationsRef) return null;
-      return operationsRef.incidents().incidents.map((i) => ({ domain: i.domain, severity: i.incident.severity }));
+      return operationsRef
+        .incidents()
+        .incidents.map((i) => ({ domain: i.domain, severity: i.incident.severity }));
     },
     insightOutcomes: () =>
-      insightRef?.report().recommendations.map((r) => ({ id: r.id, stage: r.outcome.stage })) ?? null,
+      insightRef?.report().recommendations.map((r) => ({ id: r.id, stage: r.outcome.stage })) ??
+      null,
     executiveKpis: () =>
       executiveCenter.snapshot().kpis.map((k) => ({
         key: k.key,
@@ -2194,24 +3480,33 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       })),
     slaStatuses: () =>
       operationsRef
-        ? operationsRef.sla().statuses.map((s) => ({ targetId: s.targetId, status: s.status, detail: s.detail }))
+        ? operationsRef
+            .sla()
+            .statuses.map((s) => ({ targetId: s.targetId, status: s.status, detail: s.detail }))
         : [],
     readiness: () =>
       operationsRef
-        ? operationsRef
-            .readiness()
-            .dimensions.map((d) => ({ key: d.key, state: d.state, detail: d.detail, missing: d.missing }))
+        ? operationsRef.readiness().dimensions.map((d) => ({
+            key: d.key,
+            state: d.state,
+            detail: d.detail,
+            missing: d.missing,
+          }))
         : [],
     s9Services: () =>
       operationsRef
-        ? operationsRef
-            .catalog()
-            .entries.map((e) => ({ serviceId: e.serviceId, state: e.state, stateDetail: e.stateDetail }))
+        ? operationsRef.catalog().entries.map((e) => ({
+            serviceId: e.serviceId,
+            state: e.state,
+            stateDetail: e.stateDetail,
+          }))
         : [],
     capacityPressure: () => (operationsRef ? operationsRef.capacity().pressure : 'unknown'),
     playbooks: () => PLAYBOOK_REGISTRY.map((p) => ({ id: p.id, version: p.version })),
     apFindings: () =>
-      automationRef ? automationRef.monitor().findings.map((f) => ({ kind: f.kind, severity: f.severity })) : null,
+      automationRef
+        ? automationRef.monitor().findings.map((f) => ({ kind: f.kind, severity: f.severity }))
+        : null,
     knowledgeTotals: () => {
       const d = knowledgeRef?.dashboard();
       return d ? { assets: d.inventory.total, findings: d.quality.findings } : null;
@@ -2243,22 +3538,33 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     projects: () =>
       unifiedStore
         .query({ kinds: ['project'], limit: 100_000, includeDeleted: false })
-        .items.map((e) => ({ id: e.id, title: e.title, syncState: e.syncState, status: e.status ?? null })),
+        .items.map((e) => ({
+          id: e.id,
+          title: e.title,
+          syncState: e.syncState,
+          status: e.status ?? null,
+        })),
     minedTypes: () =>
       getProcessAssessment()
         .metrics.byType.filter((m) => m.caseCount > 0)
         .map((m) => m.processType),
     compliance: () => enterprise.complianceFindings().map((f) => ({ status: f.status })),
     units: () => {
-      const org = orgStore.defaultOrg();
-      return orgStore.unitsFor(org.id).map((u) => ({ id: u.id, name: u.name, leadUserId: u.leadUserId }));
+      const org = activeOrgForReadModel();
+      if (org === null) return [];
+      return orgStore
+        .unitsFor(org.id)
+        .map((u) => ({ id: u.id, name: u.name, leadUserId: u.leadUserId }));
     },
     users: () => {
-      const org = orgStore.defaultOrg();
+      const org = activeOrgForReadModel();
+      if (org === null) return [];
       return orgStore.usersFor(org.id).map((u) => ({ id: u.id, name: u.name }));
     },
     healthHistory: () =>
-      healthHistoryStore.all().map((h) => ({ day: h.day, overall: h.overall, engineering: h.engineering })),
+      healthHistoryStore
+        .all()
+        .map((h) => ({ day: h.day, overall: h.overall, engineering: h.engineering })),
     registerSource: (source) => deliveryEngine.register(source),
   });
   strategyRef = strategyPlatform;
@@ -2273,6 +3579,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // cross-org here is a RECORD in the local stores — no live connectivity
   // exists and none is claimed.
   const enterpriseFederation = initEnterpriseFederation({
+    scope: activeTenantScope,
     fedHome: () => {
       const h = fedStore.homeOrg();
       return h ? { id: h.id, name: h.name, regionId: h.regionId } : null;
@@ -2290,7 +3597,12 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         sharedIn: p.sharedIn,
       })),
     fedInvitations: () =>
-      fedStore.listInvitations().map((i) => ({ toOrg: i.toOrg, fromOrg: i.fromOrg, direction: i.direction, status: i.status })),
+      fedStore.listInvitations().map((i) => ({
+        toOrg: i.toOrg,
+        fromOrg: i.fromOrg,
+        direction: i.direction,
+        status: i.status,
+      })),
     fedTrusts: () =>
       fedStore.listTrust().map((t) => ({
         peerOrg: t.peerOrg,
@@ -2322,36 +3634,60 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         installs: a.installs,
         signaturesEd25519: a.versions.every((v) => v.signature.algorithm === 'ed25519'),
       })),
-    govPolicies: () => globalGovStore.listPolicies().map((p) => ({ id: p.id, name: p.name, action: p.action, enabled: p.enabled })),
+    govPolicies: () =>
+      globalGovStore
+        .listPolicies()
+        .map((p) => ({ id: p.id, name: p.name, action: p.action, enabled: p.enabled })),
     govApprovals: () => globalGovStore.listApprovals().map((a) => ({ status: a.status })),
     govAudit: () => globalGovStore.listAudit().map((e) => ({ peerOrg: e.peerOrg })),
     p18Summary: () => {
       const s = intelligenceNetwork.service.overview().summary;
-      return { shareableIntelligence: s.shareableIntelligence, publishedInsights: s.publishedInsights, healthBand: s.healthBand };
+      return {
+        shareableIntelligence: s.shareableIntelligence,
+        publishedInsights: s.publishedInsights,
+        healthBand: s.healthBand,
+      };
     },
     knowledgeAssets: () => {
       const inv = knowledgeRef?.inventory();
       return inv ? inv.assets.map((a) => ({ id: a.id, title: a.title, topics: a.topics })) : null;
     },
     playbooks: () => PLAYBOOK_REGISTRY.map((p) => ({ id: p.id, name: p.name, version: p.version })),
-    apFindings: () => (automationRef ? automationRef.monitor().findings.map((f) => ({ severity: f.severity })) : null),
+    apFindings: () =>
+      automationRef
+        ? automationRef.monitor().findings.map((f) => ({ severity: f.severity }))
+        : null,
     connectors: () => connectorService.list().map((c) => ({ id: c.id, name: c.name })),
     workers: () => workerRegistry.summaries().map((w) => ({ id: w.id, name: w.name })),
     s9Services: () =>
-      operationsRef ? operationsRef.catalog().entries.map((e) => ({ serviceId: e.serviceId, state: e.state })) : [],
+      operationsRef
+        ? operationsRef.catalog().entries.map((e) => ({ serviceId: e.serviceId, state: e.state }))
+        : [],
     slaStatuses: () =>
       operationsRef
-        ? operationsRef.sla().statuses.map((s) => ({ targetId: s.targetId, serviceId: s.serviceId, status: s.status }))
+        ? operationsRef.sla().statuses.map((s) => ({
+            targetId: s.targetId,
+            serviceId: s.serviceId,
+            status: s.status,
+          }))
         : [],
-    readiness: () => (operationsRef ? operationsRef.readiness().dimensions.map((d) => ({ state: d.state })) : []),
+    readiness: () =>
+      operationsRef ? operationsRef.readiness().dimensions.map((d) => ({ state: d.state })) : [],
     capacityPressure: () => (operationsRef ? operationsRef.capacity().pressure : 'unknown'),
     strategyInitiatives: () =>
       strategyRef
-        ? strategyRef.portfolio().initiatives.map((i) => ({ id: i.id, label: i.label, state: i.state, capabilityKeys: [...i.capabilityKeys] }))
+        ? strategyRef.portfolio().initiatives.map((i) => ({
+            id: i.id,
+            label: i.label,
+            state: i.state,
+            capabilityKeys: [...i.capabilityKeys],
+          }))
         : [],
     strategyCapabilities: () =>
       strategyRef
-        ? strategyRef.capabilityMap().capabilities.map((c) => ({ key: c.key, label: c.label, condition: c.condition }))
+        ? strategyRef
+            .capabilityMap()
+            .capabilities.map((c) => ({ key: c.key, label: c.label, condition: c.condition }))
         : [],
     executiveKpis: () =>
       executiveCenter.snapshot().kpis.map((k) => ({
@@ -2377,6 +3713,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // intelligence:read scope; one analytics-watch delivery source; zero
   // mutation surface.
   const analyticsPlatform = initAnalyticsPlatform({
+    scope: activeTenantScope,
     executiveKpis: () =>
       executiveCenter.snapshot().kpis.map((k) => ({
         key: k.key,
@@ -2410,7 +3747,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         ...(k.band ? { band: k.band } : {}),
       })),
     healthHistory: () =>
-      healthHistoryStore.all().map((h) => ({ day: h.day, overall: h.overall, engineering: h.engineering })),
+      healthHistoryStore
+        .all()
+        .map((h) => ({ day: h.day, overall: h.overall, engineering: h.engineering })),
     valueDeltas: () =>
       strategyPlatform.value().decisions.map((d) => ({
         decisionId: d.decisionId,
@@ -2420,30 +3759,47 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     valueTotals: () => strategyPlatform.value().totals,
     insightPredictions: () => {
       if (!insightRef) throw new Error('insight subsystem not initialized');
-      return insightRef.report().predictions.map((p) => ({ kind: p.kind, likelihood: p.likelihood }));
+      return insightRef
+        .report()
+        .predictions.map((p) => ({ kind: p.kind, likelihood: p.likelihood }));
     },
-    p14Simulation: () => ({ scenarios: autonomousIntel.service.overview().simulation.scenarios.length }),
+    p14Simulation: () => ({
+      scenarios: autonomousIntel.service.overview().simulation.scenarios.length,
+    }),
     capacityPressure: () => (operationsRef ? operationsRef.capacity().pressure : 'unknown'),
     decisions: () =>
-      decisionStore.all().map((d) => ({ id: d.id, status: d.status, fromRecommendationId: d.fromRecommendationId ?? null })),
+      decisionStore.all().map((d) => ({
+        id: d.id,
+        status: d.status,
+        fromRecommendationId: d.fromRecommendationId ?? null,
+      })),
     insightOutcomes: () => {
       if (!insightRef) throw new Error('insight subsystem not initialized');
       return insightRef.report().recommendations.map((r) => ({ id: r.id, stage: r.outcome.stage }));
     },
     strategyRecs: () => {
       const recs = strategyPlatform.dashboard().recommendations;
-      return { count: recs.length, criticalOrHigh: recs.filter((r) => r.priority === 'critical' || r.priority === 'high').length };
+      return {
+        count: recs.length,
+        criticalOrHigh: recs.filter((r) => r.priority === 'critical' || r.priority === 'high')
+          .length,
+      };
     },
     federationRecs: () => {
       const recs = enterpriseFederation.dashboard().recommendations;
-      return { count: recs.length, criticalOrHigh: recs.filter((r) => r.priority === 'critical' || r.priority === 'high').length };
+      return {
+        count: recs.length,
+        criticalOrHigh: recs.filter((r) => r.priority === 'critical' || r.priority === 'high')
+          .length,
+      };
     },
     s8Monitor: () => {
       if (!automationRef) return null;
       const findings = automationRef.monitor().findings;
       return {
         findings: findings.length,
-        criticalOrHigh: findings.filter((f) => f.severity === 'critical' || f.severity === 'high').length,
+        criticalOrHigh: findings.filter((f) => f.severity === 'critical' || f.severity === 'high')
+          .length,
       };
     },
     s9Slices: () => {
@@ -2460,7 +3816,11 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     },
     s10Totals: () => {
       const d = strategyPlatform.dashboard();
-      return { offTrack: d.objectives.offTrack, atRisk: d.objectives.atRisk, blocked: d.portfolio.blocked };
+      return {
+        offTrack: d.objectives.offTrack,
+        atRisk: d.objectives.atRisk,
+        blocked: d.portfolio.blocked,
+      };
     },
     s11Totals: () => {
       const d = enterpriseFederation.dashboard();
@@ -2492,6 +3852,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // (continuity awaits the local-backup list), and `capacity()` publishes both
   // the posture and its bottleneck count from one snapshot.
   const digitalTwinPlatform = initDigitalTwinPlatform({
+    scope: activeTenantScope,
     // P15, composed verbatim. `safeRead` inside the subsystem turns a throw
     // into a reported failure, so these stay direct reads.
     twinSummary: () => enterpriseTwin.service.overview().summary,
@@ -2512,7 +3873,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       const recs = insightRef.report().recommendations;
       return {
         findings: recs.length,
-        criticalOrHigh: recs.filter((r) => r.priority === 'critical' || r.priority === 'high').length,
+        criticalOrHigh: recs.filter((r) => r.priority === 'critical' || r.priority === 'high')
+          .length,
       };
     },
     s7Knowledge: () => {
@@ -2552,13 +3914,56 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     recordedDays: () => healthHistoryStore.all().length,
     recordedDecisions: () => decisionStore.all().length,
     // Existing simulation capability, registered but never invoked.
-    insightPredictions: () => (insightRef ? insightRef.report().predictions.map((p) => ({ kind: p.kind })) : null),
+    insightPredictions: () =>
+      insightRef ? insightRef.report().predictions.map((p) => ({ kind: p.kind })) : null,
     p14Scenarios: () => ({ count: autonomousIntel.service.overview().simulation.scenarios.length }),
     s12Forecasts: () => ({ registered: analyticsPlatform.forecasts().totals.registered }),
     registerSource: (source) => deliveryEngine.register(source),
   });
   twinRef = digitalTwinPlatform;
   defs.push(...digitalTwinPlatform.handlers);
+
+  /**
+   * THE STARTUP GATE — P13C Round 2, Phases 2 and 16. MOVED HERE IN ROUND 17.
+   *
+   * Four security sweeps found the same defect in four different subsystems,
+   * and every one of them was found because somebody happened to walk that
+   * code. That approach cannot converge: the risk was never in the audited
+   * files, it was in the ones the audit did not reach.
+   *
+   * `assertAllTenantStoresBound()` inverts it. A tenant-sensitive store
+   * registers itself at CONSTRUCTION; this line asserts, once at startup, that
+   * every registered store has a boundary. A store nobody bound therefore
+   * cannot reach a user, because the application refuses to start.
+   *
+   * Placed AFTER every `bindScope` — including the thirteen that happen inside
+   * `initEcosystem` / `initMarketplace` / `initWebhooks` / `initCloud` /
+   * `initFeedback` / `initFederation`, which is what the Round 2 position got
+   * wrong — and BEFORE any handler is registered, so the failure happens at
+   * composition rather than on the first request. See the note at the old site.
+   */
+  assertAllTenantStoresBound();
+
+  /**
+   * THE SECOND GATE, AND IT WAS NEVER WIRED. P13C ROUND 9. MOVED IN ROUND 17.
+   *
+   * Round 8 built `assertAllStoreScopesBound()` and documented it as "called
+   * from the composition root before any handler is registered, so an unbound
+   * store cannot reach a user". It was never called from anywhere but its own
+   * test. So every `isBound` predicate written into the 21 declarations that
+   * round was decoration: a store could declare `TENANT`, have no boundary
+   * bound, and the application would start and serve.
+   *
+   * The two assertions overlap DELIBERATELY and are not redundant.
+   * `assertAllTenantStoresBound` covers stores that registered a
+   * `TenantOwnership`; this one covers everything that declared a SCOPE,
+   * including stores whose seam is their own and which never touch that class.
+   * A store can pass either gate and fail the other, which is exactly why both
+   * run — and why a Round 8 gate that only ever ran in a test is a finding
+   * about this program's own instrumentation, recorded here rather than quietly
+   * fixed.
+   */
+  assertAllStoreScopesBound();
 
   // Startup invariant (fail-closed): with every def now assembled, no runtime-invokable
   // channel may ride on sender-trust ALONE. Collect the channels that ended up gated —
@@ -2627,18 +4032,43 @@ function wireSandboxRunners(cfg: {
   baseDir: string;
   launchTarget: { executablePath: string; args: string[]; cwd?: string };
   handlerByChannel: Map<string, SecureHandlerDef>;
-  secureBridgeDeps: { isAuthenticated: () => boolean; authorize?: (p: EnterprisePermission) => void };
+  secureBridgeDeps: {
+    isAuthenticated: () => boolean;
+    authorize?: (p: EnterprisePermission) => void;
+  };
   apiGatewayDeps: Parameters<typeof handleEnterpriseApiRequest>[1];
   authorize: (p: EnterprisePermission) => void;
   moduleRegistry: { get: (id: string) => unknown };
   graphRebuild: () => unknown;
-  executiveSnapshot: () => { kpis: { key: string; label: string; value: number | null; display: string }[] };
+  executiveSnapshot: () => {
+    kpis: { key: string; label: string; value: number | null; display: string }[];
+  };
   webhookDelivered?: (ref: string) => boolean;
 }): void {
-  const restRaw = async (req: { method: string; path: string; body?: unknown; query?: Record<string, string | number | boolean>; apiKey?: string | null }): Promise<{ status: number; ok: boolean; data?: unknown; error?: string }> => {
-    const query = req.query ? Object.fromEntries(Object.entries(req.query).map(([k, v]) => [k, String(v)])) : undefined;
-    const res = await handleEnterpriseApiRequest({ method: req.method as ApiMethod, path: req.path, body: req.body, query, apiKey: req.apiKey ?? null }, cfg.apiGatewayDeps);
-    const out: { status: number; ok: boolean; data?: unknown; error?: string } = { status: res.status, ok: res.ok };
+  const restRaw = async (req: {
+    method: string;
+    path: string;
+    body?: unknown;
+    query?: Record<string, string | number | boolean>;
+    apiKey?: string | null;
+  }): Promise<{ status: number; ok: boolean; data?: unknown; error?: string }> => {
+    const query = req.query
+      ? Object.fromEntries(Object.entries(req.query).map(([k, v]) => [k, String(v)]))
+      : undefined;
+    const res = await handleEnterpriseApiRequest(
+      {
+        method: req.method as ApiMethod,
+        path: req.path,
+        body: req.body,
+        query,
+        apiKey: req.apiKey ?? null,
+      },
+      cfg.apiGatewayDeps,
+    );
+    const out: { status: number; ok: boolean; data?: unknown; error?: string } = {
+      status: res.status,
+      ok: res.ok,
+    };
     if (res.data !== undefined) out.data = res.data;
     if (res.error !== undefined) out.error = res.error;
     return out;
@@ -2648,6 +4078,20 @@ function wireSandboxRunners(cfg: {
     launchTarget: cfg.launchTarget,
     profilesDir: join(cfg.baseDir, 'enterprise', 'profiles'),
     artifactsBaseDir: join(cfg.baseDir, 'enterprise', 'artifacts'),
+    // P13C Round 7 — persistent profiles are per tenant. See SessionManagerDeps.
+    tenantId: () => activeTenantScope()?.tenantId ?? null,
+    /**
+     * P13C ROUND 9 — F16. The workspace segment of the capture path.
+     *
+     * The SESSION boundary is the tenant (see DesktopSessionRegistry — the
+     * enterprise runner executes every scenario under a tenant-level principal
+     * with no workspace, so keying sessions by workspace would split one
+     * tenant's own sessions while adding no boundary between tenants). This is
+     * recorded for the artifact path only: without it every capture lands in
+     * `tenants/<tenant>/_tenant/` and one tenant's screenshots share a directory
+     * across its workspaces.
+     */
+    workspaceId: () => activeTenantScope()?.workspaceId ?? null,
   });
 
   const platform = createRealEnterprisePlatform({
@@ -2660,7 +4104,11 @@ function wireSandboxRunners(cfg: {
     sdkEnterprise: createGatewaySdk(restRaw),
     cli: createGatewayCli(restRaw),
     automationRun: async (ruleId, payload) => {
-      const rec = (await getAutomationRunner().runById(ruleId, payload, 'manual')) as { id?: string; ok?: boolean; actions?: unknown[] } | null;
+      const rec = (await getAutomationRunner().runById(ruleId, payload, 'manual')) as {
+        id?: string;
+        ok?: boolean;
+        actions?: unknown[];
+      } | null;
       return { ok: rec?.ok ?? false, ranId: rec?.id ?? null, actions: rec?.actions?.length ?? 0 };
     },
     automationMonitor: () => {
@@ -2670,16 +4118,38 @@ function wireSandboxRunners(cfg: {
     timelineQuery: (ref) => {
       const tl = getEnterpriseTimeline();
       if (!tl) return [];
-      const page = tl.query({ entityRef: ref, order: 'desc' }) as { entries: { id: string; kind: string; title: string; at: string; entityRefs: string[]; resourceId: string | null }[] };
-      return page.entries.map((e) => ({ id: e.id, kind: e.kind, title: e.title, at: e.at, entityRefs: e.entityRefs, resourceId: e.resourceId }));
+      const page = tl.query({ entityRef: ref, order: 'desc' }) as {
+        entries: {
+          id: string;
+          kind: string;
+          title: string;
+          at: string;
+          entityRefs: string[];
+          resourceId: string | null;
+        }[];
+      };
+      return page.entries.map((e) => ({
+        id: e.id,
+        kind: e.kind,
+        title: e.title,
+        at: e.at,
+        entityRefs: e.entityRefs,
+        resourceId: e.resourceId,
+      }));
     },
     graphGetNode: (id) => {
       const n = graphStore.getNode(id) as { id: string; type?: string; label?: string } | null;
       return n ? { id: n.id, type: n.type ?? 'node', label: n.label ?? n.id } : null;
     },
     graphNeighbors: (id) => {
-      const r = graphStore.neighbors({ id }) as { neighbors?: { node: { id: string; type?: string; label?: string } }[] } | null;
-      return (r?.neighbors ?? []).map((x) => ({ id: x.node.id, type: x.node.type ?? 'node', label: x.node.label ?? x.node.id }));
+      const r = graphStore.neighbors({ id }) as {
+        neighbors?: { node: { id: string; type?: string; label?: string } }[];
+      } | null;
+      return (r?.neighbors ?? []).map((x) => ({
+        id: x.node.id,
+        type: x.node.type ?? 'node',
+        label: x.node.label ?? x.node.id,
+      }));
     },
     graphRebuild: async () => {
       await cfg.graphRebuild();
@@ -2687,21 +4157,38 @@ function wireSandboxRunners(cfg: {
     memoryReferences: (ref) => {
       try {
         const q = { query: ref, limit: 10 } as unknown as Parameters<typeof memoryStore.recall>[0];
-        const res = memoryStore.recall(q) as unknown as { entries?: unknown[]; results?: unknown[]; items?: unknown[] };
+        const res = memoryStore.recall(q) as unknown as {
+          entries?: unknown[];
+          results?: unknown[];
+          items?: unknown[];
+        };
         const list = res.entries ?? res.results ?? res.items ?? [];
         return Array.isArray(list) && list.length > 0;
       } catch {
         return false;
       }
     },
-    executiveKpis: () => cfg.executiveSnapshot().kpis.map((k) => ({ key: k.key, label: k.label, value: k.value, display: k.display })),
+    executiveKpis: () =>
+      cfg
+        .executiveSnapshot()
+        .kpis.map((k) => ({ key: k.key, label: k.label, value: k.value, display: k.display })),
     connectorSync: async (id, accountId) => {
       const r = (await connectorService.sync(id, accountId)) as { ok: boolean; message?: string };
       return { ok: r.ok, message: r.message ?? '' };
     },
     connectorState: (id) => {
-      const c = connectorService.get(id) as { status?: string; lastSync?: { at?: string } | null } | null;
-      return c ? { status: c.status ?? 'unknown', lastSyncAt: c.lastSync?.at ?? null, entityCount: 0, consecutiveFailures: 0 } : null;
+      const c = connectorService.get(id) as {
+        status?: string;
+        lastSync?: { at?: string } | null;
+      } | null;
+      return c
+        ? {
+            status: c.status ?? 'unknown',
+            lastSyncAt: c.lastSync?.at ?? null,
+            entityCount: 0,
+            consecutiveFailures: 0,
+          }
+        : null;
     },
     planningRun: (kind) => {
       const { input } = collectPlanningModel();
@@ -2711,13 +4198,20 @@ function wireSandboxRunners(cfg: {
         summary.plannedOrders = r.orders?.length ?? 0;
         summary.shortages = r.shortages?.length ?? 0;
       } else {
-        const s = computeCapacitySchedule(input, Date.now()) as { bottlenecks?: unknown[]; assignments?: unknown[] };
+        const s = computeCapacitySchedule(input, Date.now()) as {
+          bottlenecks?: unknown[];
+          assignments?: unknown[];
+        };
         summary.bottlenecks = s.bottlenecks?.length ?? 0;
         summary.scheduled = s.assignments?.length ?? 0;
       }
       return { kind, ok: true, summary };
     },
-    pluginRun: () => Promise.resolve({ ok: false, error: 'plugin execution is not exposed to the embedded scenario runner' }),
+    pluginRun: () =>
+      Promise.resolve({
+        ok: false,
+        error: 'plugin execution is not exposed to the embedded scenario runner',
+      }),
     pluginRegistered: (id) => pluginManager.list().some((p) => (p as { id?: string }).id === id),
     webhookDelivered: (ref) => cfg.webhookDelivered?.(ref) ?? false,
     moduleRegistered: (id) => cfg.moduleRegistry.get(id) != null,
@@ -2738,6 +4232,9 @@ function wireSandboxRunners(cfg: {
     profilesDir: join(cfg.baseDir, 'profiles'),
     artifactsBaseDir: join(cfg.baseDir, 'artifacts'),
     launchTarget: cfg.launchTarget,
+    // P13C Round 7 — persistent browser profiles are per tenant. An unresolved
+    // tenant gets a fresh, disposable profile rather than a shared one.
+    tenantId: () => activeTenantScope()?.tenantId ?? null,
   });
 
   initEnterpriseRunner({ engine: cfg.engine, platform, desktopExecutor });
@@ -2752,47 +4249,114 @@ function wireSandboxRunners(cfg: {
  */
 type SandboxSecureCfg = {
   handlerByChannel: Map<string, SecureHandlerDef>;
-  secureBridgeDeps: { isAuthenticated: () => boolean; authorize?: (p: EnterprisePermission) => void };
+  secureBridgeDeps: {
+    isAuthenticated: () => boolean;
+    authorize?: (p: EnterprisePermission) => void;
+  };
 };
 
 /** A dispatcher + `QaExecutorBackend` over the sandbox IPC channels — reused by S4 (AI QA)
  *  and S5 (Perf & Security Lab). Runs through the SAME secure core → same RBAC. */
-function buildSandboxExecutorBackend(cfg: SandboxSecureCfg): { dispatch: (channel: string, payload: unknown) => Promise<unknown>; backend: QaExecutorBackend } {
+function buildSandboxExecutorBackend(cfg: SandboxSecureCfg): {
+  dispatch: (channel: string, payload: unknown) => Promise<unknown>;
+  backend: QaExecutorBackend;
+} {
   const dispatch = (channel: string, payload: unknown): Promise<unknown> => {
     const def = cfg.handlerByChannel.get(channel);
     if (!def) return Promise.reject(new Error(`channel not wired: ${channel}`));
     return runSecureHandler(def, payload, cfg.secureBridgeDeps);
   };
 
-  let workspaceId: string | null = null;
+  /**
+   * P13C N3 — keyed by TENANT, not a single process-wide value.
+   *
+   * This was one `let workspaceId`, resolved once to the FIRST sandbox
+   * workspace on the install (or a created "AI QA" one) and then memoised for
+   * the life of the process. Every AI-QA session, every perf-lab run and every
+   * validation pipeline — for every tenant — wrote its scenarios, executions
+   * and artifacts into that one workspace forever.
+   *
+   * A map keyed by tenant makes the memo per-owner, and an unresolved tenant
+   * gets no entry at all rather than sharing whoever was first.
+   */
+  const workspaceIdByTenant = new Map<string, string>();
   const backend: QaExecutorBackend = {
     ensureWorkspace: async () => {
-      if (workspaceId) return workspaceId;
-      const list = (await dispatch(IpcChannel.SandboxWorkspaceList, {}).catch(() => [])) as { id?: string }[];
-      if (Array.isArray(list) && list[0]?.id) workspaceId = list[0].id;
-      else workspaceId = ((await dispatch(IpcChannel.SandboxWorkspaceCreate, { name: 'AI QA' })) as { id: string }).id;
-      return workspaceId;
+      /**
+       * The tenant is resolved per call, and the memo is keyed by it.
+       *
+       * `SandboxWorkspaceList` is now scoped, so `list[0]` is "the first of
+       * MINE" rather than "the first on the install" — the adoption is still a
+       * `[0]`, but it can no longer cross a boundary. Failing closed when no
+       * tenant resolves is what stops the AI-QA path creating an unowned
+       * workspace at a moment when nobody could own it.
+       */
+      const tenantId = activeTenantScope()?.tenantId ?? null;
+      if (tenantId === null) throw new Error('No organization is active, so this run has no owner.');
+      const memo = workspaceIdByTenant.get(tenantId);
+      if (memo) return memo;
+      const list = (await dispatch(IpcChannel.SandboxWorkspaceList, {}).catch(() => [])) as {
+        id?: string;
+      }[];
+      let resolved: string;
+      if (Array.isArray(list) && list[0]?.id) resolved = list[0].id;
+      else
+        resolved = (
+          (await dispatch(IpcChannel.SandboxWorkspaceCreate, { name: 'AI QA' })) as { id: string }
+        ).id;
+      workspaceIdByTenant.set(tenantId, resolved);
+      return resolved;
     },
-    createScenario: async (wsId, key, name) => ((await dispatch(IpcChannel.SandboxScenarioCreate, { workspaceId: wsId, key, name })) as { id: string }).id,
-    createVersion: async (scenarioId, spec) => { await dispatch(IpcChannel.SandboxScenarioVersionCreate, { scenarioId, spec }); },
-    enqueue: async (scenarioId) => ((await dispatch(IpcChannel.SandboxExecutionEnqueue, { scenarioId })) as { id: string }).id,
+    createScenario: async (wsId, key, name) =>
+      (
+        (await dispatch(IpcChannel.SandboxScenarioCreate, { workspaceId: wsId, key, name })) as {
+          id: string;
+        }
+      ).id,
+    createVersion: async (scenarioId, spec) => {
+      await dispatch(IpcChannel.SandboxScenarioVersionCreate, { scenarioId, spec });
+    },
+    enqueue: async (scenarioId) =>
+      ((await dispatch(IpcChannel.SandboxExecutionEnqueue, { scenarioId })) as { id: string }).id,
     getExecution: async (id) => {
-      const e = (await dispatch(IpcChannel.SandboxExecutionGet, { id }).catch(() => null)) as { status?: string; error?: string | null } | null;
+      const e = (await dispatch(IpcChannel.SandboxExecutionGet, { id }).catch(() => null)) as {
+        status?: string;
+        error?: string | null;
+      } | null;
       return e && e.status ? { status: e.status, error: e.error ?? null } : null;
     },
     getResult: async (id) => {
-      const r = (await dispatch(IpcChannel.SandboxResultGet, { executionId: id }).catch(() => null)) as { outcome?: 'pass' | 'fail' | 'error' | null; assertions?: { total: number; passed: number; failed: number }; metrics?: Record<string, number> } | null;
-      return r ? { outcome: r.outcome ?? null, assertions: r.assertions ?? { total: 0, passed: 0, failed: 0 }, metrics: r.metrics ?? {} } : null;
+      const r = (await dispatch(IpcChannel.SandboxResultGet, { executionId: id }).catch(
+        () => null,
+      )) as {
+        outcome?: 'pass' | 'fail' | 'error' | null;
+        assertions?: { total: number; passed: number; failed: number };
+        metrics?: Record<string, number>;
+      } | null;
+      return r
+        ? {
+            outcome: r.outcome ?? null,
+            assertions: r.assertions ?? { total: 0, passed: 0, failed: 0 },
+            metrics: r.metrics ?? {},
+          }
+        : null;
     },
     listArtifacts: async (id) => {
-      const a = (await dispatch(IpcChannel.SandboxArtifactList, { executionId: id }).catch(() => [])) as { name: string; kind: string; storageRef?: string | null }[];
-      return Array.isArray(a) ? a.map((x) => ({ name: x.name, kind: x.kind, ref: x.storageRef ?? null })) : [];
+      const a = (await dispatch(IpcChannel.SandboxArtifactList, { executionId: id }).catch(
+        () => [],
+      )) as { name: string; kind: string; storageRef?: string | null }[];
+      return Array.isArray(a)
+        ? a.map((x) => ({ name: x.name, kind: x.kind, ref: x.storageRef ?? null }))
+        : [];
     },
     getTimeline: async (id) => {
-      const t = (await dispatch(IpcChannel.SandboxExecutionTimeline, { executionId: id }).catch(() => [])) as { phase: string }[];
+      const t = (await dispatch(IpcChannel.SandboxExecutionTimeline, { executionId: id }).catch(
+        () => [],
+      )) as { phase: string }[];
       return Array.isArray(t) ? t.map((x) => x.phase) : [];
     },
-    isTerminal: (status) => isTerminalExecutionStatus(status as Parameters<typeof isTerminalExecutionStatus>[0]),
+    isTerminal: (status) =>
+      isTerminalExecutionStatus(status as Parameters<typeof isTerminalExecutionStatus>[0]),
   };
   return { dispatch, backend };
 }
@@ -2800,10 +4364,23 @@ function buildSandboxExecutorBackend(cfg: SandboxSecureCfg): { dispatch: (channe
 function wireAiQa(cfg: SandboxSecureCfg): ReturnType<typeof initAiQa> {
   const { backend } = buildSandboxExecutorBackend(cfg);
 
-  const generate = async (prompt: string): Promise<{ text: string; confidence: number; tokens: number; grounded: boolean }> => {
+  const generate = async (
+    prompt: string,
+  ): Promise<{ text: string; confidence: number; tokens: number; grounded: boolean }> => {
     try {
-      const res = await aiEngine.run({ worker: 'diagnostic', promptId: 'generic.summary', variables: { content: prompt, input: prompt, text: prompt }, tier: 'fast', maxOutputTokens: 400 });
-      return { text: res.text, confidence: res.confidence, tokens: res.usage.inputTokens + res.usage.outputTokens, grounded: res.grounded };
+      const res = await aiEngine.run({
+        worker: 'diagnostic',
+        promptId: 'generic.summary',
+        variables: { content: prompt, input: prompt, text: prompt },
+        tier: 'fast',
+        maxOutputTokens: 400,
+      });
+      return {
+        text: res.text,
+        confidence: res.confidence,
+        tokens: res.usage.inputTokens + res.usage.outputTokens,
+        grounded: res.grounded,
+      };
     } catch {
       return { text: '', confidence: 0, tokens: 0, grounded: false };
     }
@@ -2812,8 +4389,22 @@ function wireAiQa(cfg: SandboxSecureCfg): ReturnType<typeof initAiQa> {
   return initAiQa({
     executorBackend: backend,
     memory: {
-      remember: (i) => memoryStore.remember(i as unknown as Parameters<typeof memoryStore.remember>[0]),
-      recall: (q) => memoryStore.recall(q as unknown as Parameters<typeof memoryStore.recall>[0]) as unknown as { hits: { item: { id: string; title: string; content: string } }[] },
+      // P13A — same reasoning as the validation history below: a QA note that
+      // cannot be owned is not written, and the QA run continues regardless.
+      remember: (i) => {
+        try {
+          return memoryStore.remember(
+            i as unknown as Parameters<typeof memoryStore.remember>[0],
+          );
+        } catch (err) {
+          log.warn('QA memory note not recorded: no tenant is active', { error: String(err) });
+          return undefined as unknown as ReturnType<typeof memoryStore.remember>;
+        }
+      },
+      recall: (q) =>
+        memoryStore.recall(q as unknown as Parameters<typeof memoryStore.recall>[0]) as unknown as {
+          hits: { item: { id: string; title: string; content: string } }[];
+        },
     },
     generate,
   });
@@ -2826,21 +4417,29 @@ function wireAiQa(cfg: SandboxSecureCfg): ReturnType<typeof initAiQa> {
  * gateway audit, and sandbox queue depth. It surfaces its verdict through the EXISTING
  * diagnostics via a registered probe. No new diagnostics/monitoring/metrics/dashboard.
  */
-async function wirePerfSecurityLab(cfg: SandboxSecureCfg & {
-  benchmarksPath: string;
-  health: () => Promise<{ level: string; cpuPercent: number; memoryUsedMb: number }>;
-  kpis: () => { key: string; value: number | null }[];
-  auditCount: () => number;
-}): Promise<Awaited<ReturnType<typeof initPerfSecurityLab>>> {
+async function wirePerfSecurityLab(
+  cfg: SandboxSecureCfg & {
+    benchmarksPath: string;
+    health: () => Promise<{ level: string; cpuPercent: number; memoryUsedMb: number }>;
+    kpis: () => { key: string; value: number | null }[];
+    auditCount: () => number;
+  },
+): Promise<Awaited<ReturnType<typeof initPerfSecurityLab>>> {
   const { dispatch, backend } = buildSandboxExecutorBackend(cfg);
   const queueDepth = async (): Promise<number> => {
-    const q = (await dispatch(IpcChannel.SandboxQueueState, {}).catch(() => ({ depth: 0 }))) as { depth?: number };
+    const q = (await dispatch(IpcChannel.SandboxQueueState, {}).catch(() => ({ depth: 0 }))) as {
+      depth?: number;
+    };
     return q?.depth ?? 0;
   };
   return initPerfSecurityLab({
     executorBackend: backend,
     observers: { health: cfg.health, kpis: cfg.kpis, auditCount: cfg.auditCount, queueDepth },
     benchmarksPath: cfg.benchmarksPath,
+    // P13C — the benchmark store joins the bound stores. A baseline is echoed
+    // verbatim into the next run's regression findings, so an unbound one put
+    // another tenant's measurements inside this tenant's certification report.
+    scope: activeTenantScope,
   });
 }
 
@@ -2852,33 +4451,76 @@ async function wirePerfSecurityLab(cfg: SandboxSecureCfg & {
  * the EXISTING `notificationScheduler`. Exposes one read-only `sandbox:read` channel the
  * Developer Portal consumes. No new engine/scheduler/dashboard/report/memory/security.
  */
-async function wireContinuousValidation(cfg: SandboxSecureCfg & {
-  runsPath: string;
-  runQaSession: Parameters<typeof initContinuousValidation>[0]['executors']['runQaSession'];
-  runLab: Parameters<typeof initContinuousValidation>[0]['executors']['runLab'];
-  benchmarks: Parameters<typeof initContinuousValidation>[0]['benchmarks'];
-  health: () => Promise<{ level: string; cpuPercent: number; memoryUsedMb: number }>;
-  kpis: () => { key: string; value: number | null }[];
-}): Promise<Awaited<ReturnType<typeof initContinuousValidation>>> {
+async function wireContinuousValidation(
+  cfg: SandboxSecureCfg & {
+    runsPath: string;
+    runQaSession: Parameters<typeof initContinuousValidation>[0]['executors']['runQaSession'];
+    runLab: Parameters<typeof initContinuousValidation>[0]['executors']['runLab'];
+    benchmarks: Parameters<typeof initContinuousValidation>[0]['benchmarks'];
+    health: () => Promise<{ level: string; cpuPercent: number; memoryUsedMb: number }>;
+    kpis: () => { key: string; value: number | null }[];
+  },
+): Promise<Awaited<ReturnType<typeof initContinuousValidation>>> {
   const { backend } = buildSandboxExecutorBackend(cfg);
-  const executor = createQaExecutor(backend, { now: Date.now, sleep: (ms) => new Promise((r) => setTimeout(r, ms)) });
+  const executor = createQaExecutor(backend, {
+    now: Date.now,
+    sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+  });
   return initContinuousValidation({
     executors: { qaExecutor: executor, runQaSession: cfg.runQaSession, runLab: cfg.runLab },
     benchmarks: cfg.benchmarks,
     runsPath: cfg.runsPath,
+    // P13C — the validation run store joins the bound stores. It extends the
+    // same PersistentStore the five S1 stores do and was the subclass nobody
+    // bound; its certification reports carry live executive KPI figures.
+    scope: activeTenantScope,
     enableSchedules: false,
-    scheduler: { every: (id, ms, fn) => taskScheduler.every(id, ms, fn), cancel: (id) => { taskScheduler.cancel(id); } },
+    scheduler: {
+      every: (id, ms, fn) => taskScheduler.every(id, ms, fn),
+      cancel: (id) => {
+        taskScheduler.cancel(id);
+      },
+    },
     notifier: {
       notify: (n) => {
-        if (n.priority === 'high' || n.priority === 'critical') notificationScheduler.notifyNow(n.title, n.body);
+        if (n.priority === 'high' || n.priority === 'critical')
+          notificationScheduler.notifyNow(n.title, n.body);
       },
     },
     history: {
       remember: (i) => {
-        memoryStore.remember({ kind: 'note', title: i.title, content: i.content, tags: i.tags, metadata: i.metadata } as unknown as Parameters<typeof memoryStore.remember>[0]);
+        /**
+         * P13A — bookkeeping must not abort the run it is recording.
+         *
+         * `remember` now FAILS CLOSED when no tenant resolves, which is correct:
+         * a validation note with no owner is exactly the unowned memory the
+         * program forbids. But a validation run is the primary work and this
+         * note is a record of it, so a throw here would let the absence of a
+         * signed-in workspace cancel the run itself. Not recorded is the right
+         * outcome; not run is not.
+         */
+        try {
+          memoryStore.remember({
+            kind: 'note',
+            title: i.title,
+            content: i.content,
+            tags: i.tags,
+            metadata: i.metadata,
+          } as unknown as Parameters<typeof memoryStore.remember>[0]);
+        } catch (err) {
+          log.warn('validation history note not recorded: no tenant is active', {
+            error: String(err),
+          });
+        }
       },
       recall: (q) => {
-        const res = memoryStore.recall({ tag: q.tag, text: q.text, limit: q.limit } as unknown as Parameters<typeof memoryStore.recall>[0]) as unknown as { hits: { item: { title: string; content: string } }[] };
+        const res = memoryStore.recall({
+          tag: q.tag,
+          text: q.text,
+          limit: q.limit,
+        } as unknown as Parameters<typeof memoryStore.recall>[0]) as unknown as {
+          hits: { item: { title: string; content: string } }[];
+        };
         return res.hits.map((h) => ({ title: h.item.title, content: h.item.content }));
       },
     },

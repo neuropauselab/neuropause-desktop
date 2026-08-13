@@ -155,6 +155,7 @@ function base(ctx: SyncContext, spec: OracleSpec, rec: OracleRecord) {
   const key = spec.keyFields.map((k) => s(rec, k) ?? '').join('-');
   return {
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: spec.kind,
     sourceId: `${spec.prefix}${key}`,

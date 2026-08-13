@@ -24,24 +24,93 @@ import { licenseValidator } from '../license/licenseInstance';
 import { orgStore } from './org/orgInstance';
 import { workspaceStore } from './workspace/workspaceInstance';
 import { getEnterpriseTimeline } from '../timeline';
+import type { TenantScope } from '@neuropause/shared';
+
+/**
+ * The tenant boundary, late-bound (P13C).
+ *
+ * Bound rather than imported because this module is Electron-free and
+ * unit-tests as a pure model — importing the enterprise root to reach
+ * `activeTenantScope` would drag `app.getPath` into a node test. Same
+ * `bindScope` shape every other scoped store in this system uses.
+ *
+ * UNBOUND DENIES. A null scope yields a neutral assessment, never the first
+ * organization's.
+ */
+let scopeSource: (() => TenantScope | null) | null = null;
+
+export function bindOrgIntelligenceScope(fn: () => TenantScope | null): void {
+  scopeSource = fn;
+}
 
 const log = createLogger('org-intelligence');
 
+/**
+ * Every workspace id belonging to the CALLER'S organization.
+ *
+ * P13C Round 8 — Finding 7. Derived from the resolved tenant, so an unresolved
+ * caller gets an empty list and therefore a zero count that is HONEST rather than
+ * accidental. `workspaceStore.list()` is install-wide; the `organizationId` filter
+ * is what makes this the caller's own.
+ */
+function orgWorkspaceIds(): string[] {
+  const tenantId = scopeSource?.()?.tenantId ?? null;
+  if (tenantId === null || tenantId === '') return [];
+  return workspaceStore
+    .list()
+    .filter((w) => w.organizationId === tenantId)
+    .map((w) => w.id);
+}
+
 /** Read real org signals into health-model inputs. Everything here is observed. */
 export function collectOrgHealthInputs(nowMs: number): OrgHealthInputs {
-  // Connectors — health snapshot from the existing store.
-  const accounts = connectorStore.all();
+  /**
+   * Connectors — health snapshot for THE WHOLE ORGANIZATION.
+   *
+   * P13C ROUND 8 — FINDING 7. This was `connectorStore.all()`, which filters on
+   * the active WORKSPACE. The scheduled brief runs under a tenant-level principal
+   * with `workspaceId: ''`, so every count was 0 for every tenant — a dead
+   * feature whose isolation tests passed because zero equals zero.
+   *
+   * `EMPTY IS NOT ISOLATION` has a twin, and this is it: A ZERO IS NOT A COUNT.
+   */
+  const accounts = connectorStore.forOrganization(orgWorkspaceIds());
   const connectorsTotal = accounts.length;
   const connectorsHealthy = accounts.filter((a) => a.health === 'healthy').length;
   const connectorsError = accounts.filter(
     (a) => a.health === 'down' || a.status === 'error',
   ).length;
 
+  /**
+   * P13C REMEDIATION — FINDING 4. THE ORGANIZATION COMES FROM THE CALLER'S
+   * CONTEXT, NOT FROM `defaultOrg()`.
+   *
+   * This function feeds `orgIntelligenceSource`, a source registered on the
+   * scheduled delivery engine, so its output is turned into findings and
+   * DELIVERED. Resolving the organization as "the first one" meant every tenant
+   * received an assessment of somebody else's licence state and headcount —
+   * with the install-wide workspace count thrown in, which is a fact about how
+   * many other customers exist on the machine.
+   *
+   * Since Part 3a the delivery engine runs each source once per tenant under
+   * that tenant's principal, so the bound resolver here answers for the
+   * tenant the pass is FOR. No fan-out logic is needed in this file; the
+   * boundary was already drawn, and this only stops the function stepping
+   * around it.
+   *
+   * A null scope yields a NEUTRAL assessment rather than the first tenant's:
+   * every field below is already optional and the model scores absent inputs
+   * neutrally, so failing closed here degrades the finding instead of
+   * fabricating one about a stranger.
+   */
+  const scope = scopeSource === null ? null : scopeSource();
+  const org = scope === null ? null : orgStore.organization(scope.tenantId);
+
   // License — re-evaluated status from the existing validator.
   let licenseDaysToExpiry: number | null = null;
   let licenseValid: boolean | undefined;
   try {
-    const org = orgStore.defaultOrg();
+    if (org === null) throw new Error('no tenant');
     const status = licenseValidator.getStatus(org.id);
     const ev = status.evaluation;
     if (ev) {
@@ -58,9 +127,17 @@ export function collectOrgHealthInputs(nowMs: number): OrgHealthInputs {
   let memberCount = 0;
   let workspaceCount = 0;
   try {
-    const org = orgStore.defaultOrg();
+    if (org === null) throw new Error('no tenant');
     memberCount = orgStore.usersFor(org.id).length;
-    workspaceCount = workspaceStore.list().length;
+    /**
+     * THIS TENANT'S workspaces, not the install's.
+     *
+     * `workspaceStore.list()` is every workspace on the machine, so the
+     * un-filtered count told each tenant, in a delivered notification, roughly
+     * how many other customers share their install. The member count above had
+     * the same shape and the same fix.
+     */
+    workspaceCount = workspaceStore.list().filter((w) => w.organizationId === org.id).length;
   } catch {
     /* org read unavailable */
   }

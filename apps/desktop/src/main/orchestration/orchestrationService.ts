@@ -28,8 +28,24 @@ import {
   buildOrchestrationWorkforce,
   type OrchestrationState,
 } from './orchestrationModel';
+import type { TenantScope } from '@neuropause/shared';
+import { TenantMemo } from '../tenancy/tenantMemo';
 
 export interface GlobalOrchestrationServiceDeps {
+  /**
+   * P13C ROUND 3 — H-2. THE TENANT BOUNDARY, AND IT IS REQUIRED.
+   *
+   * This service memoises a composed snapshot of tenant-derived data. The memo
+   * had no key, so a snapshot built while one organization was active was served
+   * to the next caller — including the next tenant's pass of a fanned-out
+   * background job, which announces no switch and therefore defeated the switch
+   * listener the sibling platforms rely on.
+   *
+   * Required rather than optional so a composition root that forgets it fails to
+   * COMPILE. That is a stronger gate than failing at startup, and strictly
+   * stronger than being caught by a later audit.
+   */
+  scope: () => TenantScope | null;
   /** Compose the orchestration snapshot from the existing platform signals (injected → testable). */
   readState: () => OrchestrationState;
   /**
@@ -42,84 +58,75 @@ export interface GlobalOrchestrationServiceDeps {
   now?: () => number;
 }
 
-interface ProjectionMemo {
-  overview?: OrchestrationOverview;
-  goals?: OrchestrationGoalRouting;
-  workforce?: OrchestrationWorkforce;
-  cloud?: OrchestrationCloud;
-  knowledge?: OrchestrationKnowledge;
-  flows?: OrchestrationFlowReport;
-  coordination?: OrchestrationCoordination;
-  governance?: OrchestrationGovernance;
-}
 
 export class GlobalOrchestrationService {
-  private snapshot: OrchestrationState | null = null;
-  private snapshotAt = 0;
-  private memo: ProjectionMemo = {};
-  private readonly ttlMs: number;
-  private readonly now: () => number;
+  /**
+   * One tenant-keyed cell holding the snapshot AND its projections.
+   *
+   * The projections are inside the cell rather than beside it because they
+   * are derived from that snapshot: keeping the snapshot keyed while leaving
+   * the derived values in a separate object would leak exactly the composed,
+   * human-readable half — which is the half worth stealing.
+   */
+  private readonly cache: TenantMemo<OrchestrationState>;
 
   constructor(private readonly deps: GlobalOrchestrationServiceDeps) {
-    this.ttlMs = deps.ttlMs ?? 3000;
-    this.now = deps.now ?? Date.now;
+    this.cache = new TenantMemo<OrchestrationState>('orchestration-projections', {
+      ttlMs: deps.ttlMs ?? 3000,
+      ...(deps.now ? { now: deps.now } : {}),
+    }).bindScope(deps.scope);
   }
 
   /** Drop the memoized snapshot AND projections; the next read recomposes from the sources. */
   invalidate(): void {
-    this.snapshot = null;
-    this.memo = {};
+    this.cache.invalidate();
   }
 
   private state(): OrchestrationState {
-    const t = this.now();
-    if (!this.snapshot || t - this.snapshotAt >= this.ttlMs) {
-      this.snapshot = this.deps.readState();
-      this.snapshotAt = t;
-      this.memo = {};
-    }
-    return this.snapshot;
+    return this.cache.state(() => this.deps.readState());
   }
 
-  // NOTE: `this.state()` MUST be resolved on its own line before the `??=` — `state()` may reset the
-  // memo, and `a.b ??= f()` captures the base object BEFORE evaluating `f()`.
+  // The projection name is the memo key, and it lives INSIDE the tenant-keyed cell
+  // established by `state()`. Resolving `state()` on its own line first is what puts
+  // the right cell in place; it also removes the `??=` base-object footgun this
+  // comment used to warn about, because there is no longer an object to capture.
   overview(): OrchestrationOverview {
     const s = this.state();
-    return (this.memo.overview ??= buildOrchestrationOverview(s));
+    return this.cache.projection('overview', () => buildOrchestrationOverview(s));
   }
 
   goals(): OrchestrationGoalRouting {
     const s = this.state();
-    return (this.memo.goals ??= buildOrchestrationGoals(s));
+    return this.cache.projection('goals', () => buildOrchestrationGoals(s));
   }
 
   workforce(): OrchestrationWorkforce {
     const s = this.state();
-    return (this.memo.workforce ??= buildOrchestrationWorkforce(s));
+    return this.cache.projection('workforce', () => buildOrchestrationWorkforce(s));
   }
 
   cloud(): OrchestrationCloud {
     const s = this.state();
-    return (this.memo.cloud ??= buildOrchestrationCloud(s));
+    return this.cache.projection('cloud', () => buildOrchestrationCloud(s));
   }
 
   knowledge(): OrchestrationKnowledge {
     const s = this.state();
-    return (this.memo.knowledge ??= buildOrchestrationKnowledge(s));
+    return this.cache.projection('knowledge', () => buildOrchestrationKnowledge(s));
   }
 
   flows(): OrchestrationFlowReport {
     const s = this.state();
-    return (this.memo.flows ??= buildOrchestrationFlowReport(s));
+    return this.cache.projection('flows', () => buildOrchestrationFlowReport(s));
   }
 
   coordination(): OrchestrationCoordination {
     const s = this.state();
-    return (this.memo.coordination ??= buildOrchestrationCoordination(s));
+    return this.cache.projection('coordination', () => buildOrchestrationCoordination(s));
   }
 
   governance(): OrchestrationGovernance {
     const s = this.state();
-    return (this.memo.governance ??= buildOrchestrationGovernance(s));
+    return this.cache.projection('governance', () => buildOrchestrationGovernance(s));
   }
 }

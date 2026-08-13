@@ -9,6 +9,21 @@ import { ApiPlatformStore } from './apiplatform/apiPlatformStore';
 import { buildAdminOverview, buildComplianceReport, type AdminInput } from './admin/admin';
 import type { CloudRegionId, DataResidency, MfaPolicy, SsoConnection } from '@neuropause/shared';
 
+/**
+ * P13C ROUND 6 — SSO connections and webhooks resolve the CALLER'S cloud
+ * tenant, not the one frozen at boot. These suites act as the tenant whose
+ * cloud-tenant id they seed with, so every existing assertion keeps its
+ * single-tenant meaning; cross-tenant behaviour is asserted with three
+ * organizations in `tenancy/e2e/cloudIdentityTenancy.test.ts`.
+ */
+const CLOUD_TENANT = 'tnt_home';
+const asCloudTenant = (): string => CLOUD_TENANT;
+const asOrgScope = (): { tenantId: string; workspaceId: string } => ({ tenantId: 'org-default', workspaceId: 'ws-default' });
+
+/** P13C Round 5 — F10. The organization this suite acts as. */
+const HOME_ORG = { tenantId: 'org-default', workspaceId: 'ws-default' };
+const asHomeOrg = (): typeof HOME_ORG => HOME_ORG;
+
 // These suites exercise the DEMO-seeded store fixtures (sample tenants, SSO connections, deployments).
 // Demo seeds are off by default in production; enable them here so the fixtures exist. The honest
 // production-empty behavior (no demo data when the flag is off) is asserted in *.prod.test.ts.
@@ -47,24 +62,33 @@ const REGION_RESIDENCY: Record<CloudRegionId, DataResidency> = {
 /* ════════════════════════════ Multi-tenant runtime ════════════════════════ */
 
 describe('TenancyStore', () => {
+  /**
+   * P13C ROUND 5 — F10. Cloud tenants resolve through
+   * `CloudTenant.organizationId`, so this suite acts as the organization the
+   * store was seeded for. The demo's "remote tenants" belong to OTHER
+   * organizations and are correctly not visible here — which is why the counts
+   * below changed from 4 to 1. Cross-organization behaviour is asserted with
+   * three organizations in `tenancy/e2e/cloudTenantIdentity.test.ts`.
+   */
   async function make(): Promise<TenancyStore> {
-    const s = new TenancyStore(join(dir, 'tenancy.json'), 'org-default', 'NeuroPause');
+    const s = new TenancyStore(join(dir, 'tenancy.json'), 'org-default', 'NeuroPause').bindScope(asHomeOrg);
     await s.load();
     openStores.push(s);
     return s;
   }
 
-  it('seeds the home tenant plus demo tenants across regions', async () => {
+  it('seeds the home tenant, and the demo peers belong to other organizations', async () => {
     const s = await make();
     const tenants = s.listTenants();
-    expect(tenants.length).toBe(4);
+    // One, not four: the three demo tenants carry `organizationId: org-<slug>`,
+    // so they are other organizations' infrastructure. Unscoped, `listTenants`
+    // returned all four to anybody with `cloud:read`.
+    expect(tenants.length).toBe(1);
     expect(tenants[0]?.isHome).toBe(true);
     expect(tenants[0]?.name).toBe('NeuroPause');
     expect(s.regions().length).toBe(6);
     const summary = s.summary();
-    expect(summary.tenants).toBe(4);
-    expect(summary.regions).toBeGreaterThanOrEqual(3);
-    expect(summary.projects).toBeGreaterThan(0);
+    expect(summary.tenants).toBe(1);
   });
 
   it('provisions a new tenant with isolation', async () => {
@@ -114,9 +138,11 @@ describe('TenancyStore', () => {
     const s = await make();
     s.createTenant({ name: 'Persisted Co', regionId: 'us-west', tier: 'enterprise' });
     await s.flush();
-    const s2 = new TenancyStore(join(dir, 'tenancy.json'), 'org-default', 'NeuroPause');
+    const s2 = new TenancyStore(join(dir, 'tenancy.json'), 'org-default', 'NeuroPause').bindScope(asHomeOrg);
     await s2.load();
     openStores.push(s2);
+    // Visible because `createTenant` now stamps the CALLER's organization; under
+    // the old name-derived `org-${slug}` it would belong to `org-persisted-co`.
     expect(s2.listTenants().some((t) => t.name === 'Persisted Co')).toBe(true);
   });
 });
@@ -190,8 +216,8 @@ describe('federation engine (pure)', () => {
 
 describe('FederationStore', () => {
   async function make(): Promise<FederationStore> {
-    const s = new FederationStore(join(dir, 'identity.json'));
-    await s.load('tnt_home');
+    const s = new FederationStore(join(dir, 'identity.json')).bindScope(asOrgScope).bindCloudTenantResolver(asCloudTenant);
+    await s.load(CLOUD_TENANT);
     openStores.push(s);
     return s;
   }
@@ -242,8 +268,8 @@ describe('FederationStore', () => {
 
 describe('ApiPlatformStore', () => {
   async function make(): Promise<ApiPlatformStore> {
-    const s = new ApiPlatformStore(join(dir, 'api.json'));
-    await s.load('tnt_home');
+    const s = new ApiPlatformStore(join(dir, 'api.json')).bindScope(asOrgScope).bindCloudTenantResolver(asCloudTenant);
+    await s.load(CLOUD_TENANT);
     openStores.push(s);
     return s;
   }

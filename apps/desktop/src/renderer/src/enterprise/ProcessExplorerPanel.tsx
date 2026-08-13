@@ -547,7 +547,7 @@ export function ProcessExplorerPanel({ onNavigate }: { onNavigate?: (tab: Enterp
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search cases by customer, product, machine, activity…"
-                  className="w-full bg-transparent text-sm outline-none placeholder:text-faint"
+                  className="w-full bg-transparent text-sm outline-none focus-visible:shadow-focus placeholder:text-faint"
                 />
               </div>
               <FilterChips
@@ -620,7 +620,7 @@ function DimensionSelect({ label, values, value, onChange }: { label: string; va
       <select
         value={value ?? ''}
         onChange={(e) => onChange(e.target.value || undefined)}
-        className="rounded-md border border-[var(--hairline)] bg-transparent px-1.5 py-1 text-2xs text-ink outline-none"
+        className="rounded-md border border-[var(--hairline)] bg-transparent px-1.5 py-1 text-2xs text-ink outline-none focus-visible:shadow-focus"
       >
         <option value="">All</option>
         {values.slice(0, 200).map((v) => (

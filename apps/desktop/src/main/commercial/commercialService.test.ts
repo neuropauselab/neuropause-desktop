@@ -6,6 +6,15 @@ import { describe, expect, it } from 'vitest';
 import { CommercialPlatformService } from './commercialService';
 import type { CommercialState } from './commercialModel';
 
+/**
+ * P13C ROUND 3 — H-2. The memo is now keyed by tenant, so these tests must name
+ * one. A fixed scope keeps every existing memoization assertion meaningful:
+ * repeated reads under ONE tenant must still be O(1) cache hits, which is the
+ * property this file was written to protect and the fix must not cost.
+ */
+const TEST_SCOPE = { tenantId: 'org-test', workspaceId: 'ws-test' };
+const scope = (): typeof TEST_SCOPE => TEST_SCOPE;
+
 function baseState(over: Partial<CommercialState> = {}): CommercialState {
   return {
     generatedAt: '2026-07-16T00:00:00.000Z', planTier: 'pro', subStatus: 'active', seats: 5, seatsUsed: 2,
@@ -35,7 +44,7 @@ function baseState(over: Partial<CommercialState> = {}): CommercialState {
 
 describe('CommercialPlatformService', () => {
   it('composes every projection from the injected reader', () => {
-    const svc = new CommercialPlatformService({ readState: () => baseState() });
+    const svc = new CommercialPlatformService({ scope, readState: () => baseState() });
     expect(svc.overview().summary.modules).toBe(9);
     expect(svc.subscription().tiers).toHaveLength(7);
     expect(svc.licensing().seatsTotal).toBe(5);
@@ -52,8 +61,7 @@ describe('CommercialPlatformService', () => {
   it('memoizes the snapshot + projections and recomposes only after invalidate()', () => {
     const box = { value: baseState() };
     let reads = 0;
-    const svc = new CommercialPlatformService({
-      readState: () => {
+    const svc = new CommercialPlatformService({ scope, readState: () => {
         reads += 1;
         return box.value;
       },
@@ -73,8 +81,7 @@ describe('CommercialPlatformService', () => {
   it('refreshes after the TTL even without invalidate() — fixes injected billing/cloud staleness', () => {
     let clock = 1_000;
     let reads = 0;
-    const svc = new CommercialPlatformService({
-      readState: () => {
+    const svc = new CommercialPlatformService({ scope, readState: () => {
         reads += 1;
         return baseState();
       },

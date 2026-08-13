@@ -27,7 +27,7 @@ export interface WorkspaceTemplateDef {
  */
 const TEMPLATE_CATALOG: WorkspaceTemplateDef[] = [
   { id: 'blank', label: 'Blank', description: 'Start from Today’s Intent', section: 'intent-home' },
-  { id: 'operations', label: 'Operations', description: 'Open on the Operations board', section: 'operations' },
+  { id: 'operations', label: 'Runtime', description: 'Open on Runtime', section: 'operations' },
   { id: 'enterprise', label: 'Enterprise', description: 'Open on the Enterprise suite', section: 'enterprise' },
   { id: 'research', label: 'Research', description: 'Open on Knowledge', section: 'knowledge' },
 ];

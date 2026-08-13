@@ -7,7 +7,7 @@
  * architecture. Families with no real modules (Quality, HR, Projects) never appear here — they are recorded
  * in the Capability Registry as future, so the workspace only ever shows real, working areas.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { EnterpriseModuleSummary } from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
 import { cn } from '@renderer/lib/cn';
@@ -21,18 +21,37 @@ import { BusinessFamilySection } from './BusinessFamilySection';
 export function BusinessView(): JSX.Element {
   const { businessTab, clearBusinessTab } = useShell();
   const [modules, setModules] = useState<EnterpriseModuleSummary[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
   const [pendingModuleId, setPendingModuleId] = useState<string | null>(null);
 
+  const mounted = useRef(true);
   useEffect(() => {
-    let alive = true;
-    void ipc.enterpriseModules.list().then((m) => {
-      if (alive) setModules(m);
-    });
+    mounted.current = true;
     return () => {
-      alive = false;
+      mounted.current = false;
     };
   }, []);
+
+  // RC Phase 1 — a failed load must surface an honest error (with retry), never a
+  // permanent skeleton. Guards state writes with a mounted ref so it is safe to
+  // call again from the "Try again" button.
+  const reload = useCallback(async () => {
+    setError(null);
+    setModules(null);
+    try {
+      const m = await ipc.enterpriseModules.list();
+      if (mounted.current) setModules(m);
+    } catch (err) {
+      if (mounted.current) {
+        setError(err instanceof Error ? err.message : 'Failed to load the business modules');
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
 
   const families = useMemo(() => (modules ? groupModulesByFamily(modules) : []), [modules]);
 
@@ -51,6 +70,10 @@ export function BusinessView(): JSX.Element {
     }
     clearBusinessTab();
   }, [businessTab, families, clearBusinessTab]);
+
+  if (error && modules === null) {
+    return <BusinessError message={error} onRetry={() => void reload()} />;
+  }
 
   if (modules === null) {
     return (
@@ -128,6 +151,58 @@ function BusinessEmpty(): JSX.Element {
             The Business Workspace groups the enterprise modules by area. Once a module is registered it appears
             here automatically — nothing is shown that has no real backing.
           </p>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+/**
+ * RC Phase 1 — the honest failure state for the Business workspace. Distinguishes
+ * a permission denial (no retry — the caller lacks access) from a transient load
+ * failure (offline / service unavailable — offer a retry). Never a blank skeleton.
+ */
+function BusinessError({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => void;
+}): JSX.Element {
+  const denied = /not authorized|permission|forbidden|denied/i.test(message);
+  return (
+    <div className="p-6">
+      <Card variant="hairline" className="mx-auto max-w-xl">
+        <div className="flex flex-col items-center py-6 text-center">
+          <span
+            className={cn(
+              'flex h-12 w-12 items-center justify-center rounded-2xl',
+              denied ? 'bg-syspink/15 text-syspink' : 'bg-sysorange/15 text-sysorange',
+            )}
+          >
+            <Icon name={denied ? 'lock' : 'info'} size={24} />
+          </span>
+          <h2 className="mt-3 text-lg font-semibold tracking-tight">
+            {denied ? 'You don’t have access to Business' : 'Couldn’t load the Business workspace'}
+          </h2>
+          <p className="mt-1 max-w-sm text-sm text-muted">
+            {denied
+              ? 'Your account doesn’t have permission to view the enterprise modules. Contact an administrator if you believe this is a mistake.'
+              : 'The enterprise modules couldn’t be loaded — this can happen when the workspace is offline or a background service is unavailable.'}
+          </p>
+          <p className="mt-2 max-w-sm truncate text-2xs text-faint" title={message}>
+            {message}
+          </p>
+          {!denied && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-white/[0.08] px-3 py-1.5 text-sm font-medium text-ink transition-colors hover:bg-white/[0.12]"
+            >
+              <Icon name="refresh" size={14} />
+              Try again
+            </button>
+          )}
         </div>
       </Card>
     </div>

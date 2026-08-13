@@ -13,11 +13,29 @@ files:
 extraResources:
 - from: resources/build-info.json
   to: build-info.json
+# Phase 8 (8.8): OSS attribution ships inside every distributed binary.
+- from: resources/THIRD-PARTY-NOTICES.md
+  to: THIRD-PARTY-NOTICES.md
+# Phase 8 (8.14): bundle the pilot documentation set (in-app help opens these).
+- from: ../../docs/guides
+  to: docs/guides
+- from: ../../docs/user
+  to: docs/user
+- from: ../../docs/legal
+  to: docs/legal
+- from: resources/THIRD-PARTY-NOTICES.md
+  to: docs/THIRD-PARTY-NOTICES.md
 afterSign: scripts/notarize.cjs
+# Auto-update feed: generic HTTPS provider on our own server. The GitHub repo is
+# private, so customer updaters can never read its Releases anonymously — the
+# release workflows copy the feed (beta*.yml) + update payloads to
+# /opt/neuropause-site/website/updates/ on the droplet, served at this URL.
+# channel=beta keeps the feed name beta-mac.yml / beta.yml while every build is
+# a pre-release; the workflows alias it to latest*.yml so the in-app "stable"
+# channel resolves too. Revisit at the first non-RC release.
 publish:
-  provider: github
-  owner: dishantdobariya91-debug
-  repo: neuropause-desktop
+  provider: generic
+  url: https://neuropause033.com/updates
   channel: beta
 mac:
   category: public.app-category.productivity

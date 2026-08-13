@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AutomationRule } from '@neuropause/shared';
 import { AutomationStore } from './automationStore';
+import { TEST_TENANT_SCOPE } from '../tenancy/testScope';
 
 function rule(over: Partial<AutomationRule> = {}): AutomationRule {
   return {
@@ -26,7 +27,7 @@ describe('AutomationStore', () => {
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'np-auto-'));
-    store = new AutomationStore(join(dir, 'automations.json'));
+    store = new AutomationStore(join(dir, 'automations.json')).bindScope(() => TEST_TENANT_SCOPE);
   });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -75,7 +76,7 @@ describe('AutomationStore', () => {
 
   it('persists across instances', async () => {
     await store.save(rule());
-    const reopened = new AutomationStore(join(dir, 'automations.json'));
+    const reopened = new AutomationStore(join(dir, 'automations.json')).bindScope(() => TEST_TENANT_SCOPE);
     expect(reopened.all()).toHaveLength(1);
   });
 });

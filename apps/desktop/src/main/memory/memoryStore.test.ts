@@ -2,8 +2,9 @@ import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { MemoryItem } from '@neuropause/shared';
+import type { MemoryItem, MemoryViewer } from '@neuropause/shared';
 import { MemoryStore } from './memoryStore';
+import { OTHER_MEMORY_VIEWER, TEST_MEMORY_VIEWER } from '../tenancy/testScope';
 import { SemanticUnavailableError } from './semanticFailure';
 import type { SemanticSearchFn } from './memorySemanticRecall';
 
@@ -72,6 +73,61 @@ describe('MemoryStore', () => {
     expect(res.hits[0]?.score).toBeGreaterThan(0);
     expect(res.hits[0]?.score).toBeLessThanOrEqual(1);
     expect(res.retriever).toBe('lexical');
+  });
+
+  /**
+   * P13C ROUND 10 (NEW-H4) — the retrieval INDEX is partitioned, not the results.
+   *
+   * The test above is the single-tenant shape of recall, and it stayed green
+   * throughout the defect, because with one tenant a global corpus and a
+   * partitioned one are the same corpus. This is its cross-tenant twin, and it
+   * lives in THIS file rather than only in the tenancy suite so that an engineer
+   * changing `memoryStore` or the retriever runs it without having to know the
+   * tenancy suite exists.
+   *
+   * What it pins: another tenant writing memories that match my query must not
+   * change WHICH of my memories I get back, nor the score I am shown for them.
+   * The score reaches the renderer as `MemoryHit.ranking.lexicalScore`, and
+   * before the index was partitioned it was computed from an install-wide
+   * document count — so it moved, measurably, as a stranger typed.
+   */
+  it('another tenant’s memories change neither my hits nor my scores', async () => {
+    const store = await open(path);
+    let viewer: MemoryViewer | null = TEST_MEMORY_VIEWER;
+    store.bindViewer(() => viewer);
+
+    const mine = store.remember({
+      kind: 'decision',
+      title: 'Adopt Postgres',
+      content: 'We will use Postgres as the primary datastore for the platform',
+    });
+    const before = store.recall({ text: 'postgres datastore' }).hits;
+    expect(before).toHaveLength(1);
+    expect(before[0]?.item.id).toBe(mine.id);
+    expect(before[0]?.ranking?.lexicalScore).toBe(1);
+
+    // A different organization writes twenty memories on the same subject.
+    viewer = OTHER_MEMORY_VIEWER;
+    for (let i = 0; i < 20; i += 1) {
+      store.remember({
+        kind: 'note',
+        title: `Postgres datastore rollout ${i}`,
+        content: 'postgres datastore postgres datastore migration plan',
+      });
+    }
+
+    viewer = TEST_MEMORY_VIEWER;
+    const after = store.recall({ text: 'postgres datastore' }).hits;
+    expect(after.map((h) => h.item.id)).toEqual([mine.id]);
+    expect(after[0]?.ranking?.lexicalScore).toBe(before[0]?.ranking?.lexicalScore);
+    expect(after[0]?.score).toBe(before[0]?.score);
+    expect(store.counts().total).toBe(1);
+
+    // And the other tenant reads its own, so this is isolation and not silence.
+    viewer = OTHER_MEMORY_VIEWER;
+    const theirs = store.recall({ text: 'postgres datastore' }).hits;
+    expect(theirs.length).toBeGreaterThan(0);
+    expect(theirs.map((h) => h.item.id)).not.toContain(mine.id);
   });
 
   it('updates an item metadata, bumps updatedAt, and persists; returns null for unknown id', async () => {
@@ -154,7 +210,16 @@ describe('MemoryStore', () => {
 });
 
 describe('MemoryStore.recallSemantic — retrieval diagnostics (A6)', () => {
-  const ORG = 'org-1';
+  /**
+   * P13A — the vector namespace is the VIEWER's tenant, not the fixture's.
+   *
+   * `recallSemantic` still takes an org argument, but it is asserted rather
+   * than trusted: a value that disagrees with the resolved viewer is treated as
+   * a forgery and the semantic leg is skipped. Deriving `ORG` from the ambient
+   * viewer keeps these diagnostics tests testing diagnostics; the forged-org
+   * case is proven deliberately in the cross-tenant suite instead.
+   */
+  const ORG = TEST_MEMORY_VIEWER.tenantId;
   const QUERY = { text: 'postgres datastore', limit: 25 };
   let dir: string;
   let store: MemoryStore;
@@ -185,13 +250,43 @@ describe('MemoryStore.recallSemantic — retrieval diagnostics (A6)', () => {
       expect(res.hits[0]?.item.id).toBe(seeded.id);
     });
 
-    it('never queries semantic against an absent org', async () => {
+    /**
+     * P13A — the invariant survives, its CAUSE changed.
+     *
+     * Pre-P13A "an absent org" meant the caller passed `undefined`, so this
+     * test proved the store did not invent one. The org is no longer the
+     * caller's to pass, so absence now means NO VIEWER RESOLVES — cold start,
+     * signed out, or a suspended membership. Asserting the old form would test
+     * a parameter that no longer decides anything.
+     */
+    it('never queries semantic when no tenant resolves', async () => {
       const searchSemantic = vi.fn(async () => []);
       store.configureSemantic(searchSemantic);
-      const res = await store.recallSemantic(QUERY, undefined);
+      store.bindViewer(() => null); // a per-store binding beats the ambient one
+      const res = await store.recallSemantic(QUERY);
       expect(searchSemantic).not.toHaveBeenCalled();
       expect(res.retrieval?.semantic).toEqual({ state: 'skipped', reason: 'no_org' });
       expect(res.retrieval?.mode).toBe('lexical');
+      // And the lexical leg returns nothing either: unbound denies everywhere.
+      expect(res.hits).toHaveLength(0);
+    });
+
+    /**
+     * A forged org must not reach the vector store's namespace filter.
+     *
+     * The vector store's isolation is real, which is precisely what made this
+     * argument dangerous: naming another tenant's org would have had the
+     * isolated store faithfully return that tenant's neighbours. Skipped rather
+     * than silently corrected, so the disagreement is visible in diagnostics.
+     */
+    it('refuses a supplied org that disagrees with the resolved tenant', async () => {
+      const searchSemantic = vi.fn(async () => []);
+      store.configureSemantic(searchSemantic);
+      const res = await store.recallSemantic(QUERY, 'org-someone-else');
+      expect(searchSemantic).not.toHaveBeenCalled();
+      expect(res.retrieval?.semantic).toEqual({ state: 'skipped', reason: 'no_org' });
+      // The caller still gets THEIR OWN memories from the lexical leg.
+      expect(res.hits[0]?.item.id).toBe(seeded.id);
     });
 
     it('skips an empty query and still browses, reporting the browse pool size', async () => {

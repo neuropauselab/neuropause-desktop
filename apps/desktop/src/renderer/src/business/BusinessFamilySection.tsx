@@ -28,6 +28,7 @@ import { Icon, type IconName } from '@renderer/components/ui/Icon';
 import { SkeletonLines } from '@renderer/components/ui/Skeleton';
 import { formatRelative } from '@renderer/lib/format';
 import { EnterpriseModuleScreen } from '@renderer/enterprise/modules/EnterpriseModuleScreen';
+import { FamilyDashboard } from './FamilyDashboard';
 import {
   BUSINESS_FAVORITE_KIND,
   businessFavoriteId,
@@ -204,6 +205,9 @@ function FamilyLanding({ family, onOpen }: { family: BusinessFamilyGroup; onOpen
           </span>
         </div>
       </div>
+
+      {/* Phase 7.2 — the live family dashboard (real records via the generic IPC). */}
+      <FamilyDashboard family={family} />
 
       {/* Scoped search across the family's modules */}
       <ScopedSearch family={family} onOpen={onOpen} />

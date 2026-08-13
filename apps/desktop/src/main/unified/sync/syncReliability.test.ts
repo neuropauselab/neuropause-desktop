@@ -15,6 +15,10 @@ import { RetryQueue } from './retryQueue';
 import { SyncOrchestrator, MAX_CONCURRENT_SYNCS, type OrchestratorPorts } from './orchestrator';
 import { makeEntity, type ConnectorAdapter, type SyncContext, type SyncPage } from './adapterSdk';
 
+/** P13C Round 5 — sync rows are stamped with the writing workspace. */
+const SYNC_SCOPE = { tenantId: 'org-test', workspaceId: 'ws-test' };
+const asSyncScope = (): typeof SYNC_SCOPE => SYNC_SCOPE;
+
 let dir: string;
 beforeEach(async () => {
   dir = join(tmpdir(), `nps-rel-${Math.random().toString(36).slice(2)}`);
@@ -30,16 +34,17 @@ async function newStore(): Promise<UnifiedStore> {
   return s;
 }
 async function newState(): Promise<SyncStateStore> {
-  const s = new SyncStateStore(join(dir, `s-${Math.random().toString(36).slice(2)}.json`));
+  const s = new SyncStateStore(join(dir, `s-${Math.random().toString(36).slice(2)}.json`)).bindScope(asSyncScope);
   await s.load();
   return s;
 }
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 const ent = (sid: string, now: string) =>
-  makeEntity({ connectorId: 'github', accountId: 'a1', kind: 'task', sourceId: sid, title: sid, createdAt: now, updatedAt: now, now });
+  makeEntity({ tenantId: 'org-test', connectorId: 'github', accountId: 'a1', kind: 'task', sourceId: sid, title: sid, createdAt: now, updatedAt: now, now });
 
 function ports(over: Partial<OrchestratorPorts> & { store: UnifiedStore; state: SyncStateStore; adapter: ConnectorAdapter | null }): OrchestratorPorts {
   return {
+    activeTenantId: () => 'org-test',
     upsertMany: (e) => over.store.upsertMany(e),
     markDeleted: (ids, at) => over.store.markDeleted(ids, at),
     countForConnector: (c) => over.store.countForConnector(c),

@@ -115,14 +115,14 @@ export function M365WritePanel({
         </div>
         <div className="space-y-1.5">
           <input
-            className="w-full rounded-lg [background:var(--fill-2)] px-3 py-1.5 text-2xs text-ink outline-none placeholder:text-faint"
+            className="w-full rounded-lg [background:var(--fill-2)] px-3 py-1.5 text-2xs text-ink outline-none focus-visible:shadow-focus placeholder:text-faint"
             placeholder="To (comma-separated)"
             value={to}
             onChange={(e) => setTo(e.target.value)}
             disabled={!canWrite || busy}
           />
           <input
-            className="w-full rounded-lg [background:var(--fill-2)] px-3 py-1.5 text-2xs text-ink outline-none placeholder:text-faint"
+            className="w-full rounded-lg [background:var(--fill-2)] px-3 py-1.5 text-2xs text-ink outline-none focus-visible:shadow-focus placeholder:text-faint"
             placeholder="Subject"
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
@@ -130,7 +130,7 @@ export function M365WritePanel({
           />
           <div className="flex gap-1.5">
             <input
-              className="min-w-0 flex-1 rounded-lg [background:var(--fill-2)] px-3 py-1.5 text-2xs text-ink outline-none placeholder:text-faint"
+              className="min-w-0 flex-1 rounded-lg [background:var(--fill-2)] px-3 py-1.5 text-2xs text-ink outline-none focus-visible:shadow-focus placeholder:text-faint"
               placeholder="AI instruction (e.g. “thank them and propose Tuesday”)"
               value={instruction}
               onChange={(e) => setInstruction(e.target.value)}
@@ -138,7 +138,7 @@ export function M365WritePanel({
             />
             <button
               type="button"
-              className="shrink-0 rounded-lg border border-[var(--hairline)] px-2.5 py-1.5 text-2xs font-medium text-ink disabled:opacity-50"
+              className="shrink-0 rounded-lg border border-[var(--hairline)] px-2.5 py-1.5 text-2xs font-medium text-ink outline-none focus-visible:shadow-focus disabled:cursor-not-allowed disabled:opacity-50"
               onClick={() => void draft()}
               disabled={!canWrite || busy}
             >
@@ -146,7 +146,7 @@ export function M365WritePanel({
             </button>
           </div>
           <textarea
-            className="h-24 w-full resize-none rounded-lg [background:var(--fill-2)] px-3 py-1.5 text-2xs text-ink outline-none placeholder:text-faint"
+            className="h-24 w-full resize-none rounded-lg [background:var(--fill-2)] px-3 py-1.5 text-2xs text-ink outline-none focus-visible:shadow-focus placeholder:text-faint"
             placeholder="Body"
             value={body}
             onChange={(e) => setBody(e.target.value)}

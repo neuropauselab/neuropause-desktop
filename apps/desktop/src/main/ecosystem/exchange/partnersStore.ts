@@ -10,6 +10,18 @@ import { randomUUID } from 'node:crypto';
 import type { Partner, PartnerStats, PartnerTier, PartnerType } from '@neuropause/shared';
 import { createLogger } from '../../logger';
 import { demoSeedsEnabled } from '../../demoSeed';
+import { declareStoreScope } from '../../tenancy/storeScope';
+
+/** P13C ROUND 8 — the structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'ecosystem-partner-directory',
+  scope: 'INSTALL_GLOBAL',
+  persistence: 'file',
+  authority: 'SYSTEM',
+  classification: 'INSTALL_METADATA',
+  retention: 'No cap and no delete path. Rows are seeded and never customer-written.',
+  reason: 'WHY GLOBAL: rows are third-party partner companies (name, tier, website, regions) with no tenant field and NO mutating channel — the only handlers are list and stats. WHO ACCESSES: any signed-in member. WHO MODIFIES: nobody at runtime. WHY IT CANNOT DISCLOSE TENANT DATA: nothing in a row originates from a customer. CROSS-TENANT COST: none.',
+});
 
 const log = createLogger('ecosystem-partners');
 

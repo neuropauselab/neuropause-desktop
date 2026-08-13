@@ -1,4 +1,10 @@
 /**
+ * P13C Round 8 — `OrgPolicyStore` holds one policy PER ORGANIZATION now (it held
+ * exactly one for the whole machine, so one tenant's `requireApproval` relaxation
+ * relaxed it for everyone). Writes throw when unresolved, so these suites act AS
+ * one tenant; cross-tenant behaviour is asserted in round8Tenancy.test.ts.
+ */
+/**
  * P9 — marketplace service tests. Catalog composition, trust report, install plan,
  * analytics, and the governed install routing: allowed worker → routes to the injected
  * installer; policy deny/require_approval blocks; non-worker types catalog-only.
@@ -56,7 +62,7 @@ function source(entries: EntryInput[]): CatalogSource {
 }
 
 async function setup(entries: EntryInput[], installWorker?: (pkg: WorkerPackage) => WorkerInstallResult): Promise<MarketplaceService> {
-  const policy = new OrgPolicyStore(tempPath());
+  const policy = new OrgPolicyStore(tempPath()).bindScope(() => ({ tenantId: 'org-alpha', workspaceId: 'ws-alpha' }));
   stores.push(policy);
   await policy.load();
   return new MarketplaceService({
@@ -121,7 +127,7 @@ describe('MarketplaceService governed install routing', () => {
   });
 
   it('denies a present-but-invalid signature when the org requires a valid signature', async () => {
-    const policy = new OrgPolicyStore(tempPath());
+    const policy = new OrgPolicyStore(tempPath()).bindScope(() => ({ tenantId: 'org-alpha', workspaceId: 'ws-alpha' }));
     stores.push(policy);
     await policy.load();
     // Entry claims to be signed, but the trust layer reports the signature does NOT verify.

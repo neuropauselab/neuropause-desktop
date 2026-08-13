@@ -47,6 +47,7 @@ import {
   type EnterpriseModule,
   type EnterpriseModuleActionContext,
 } from '../../framework';
+import { handlePaymentChangeForGl } from './glPosting';
 
 /** The declarative description of a payment — drives store, CRUD, and the UI. */
 export const PAYMENT_DESCRIPTOR: EnterpriseModuleDescriptor = {
@@ -78,6 +79,7 @@ export const PAYMENT_DESCRIPTOR: EnterpriseModuleDescriptor = {
         { value: 'INR', label: 'INR' },
       ],
     },
+    { key: 'exchangeRate', label: 'Exchange Rate', type: 'number', min: 0, default: 1, column: false },
     {
       key: 'method',
       label: 'Method',
@@ -110,6 +112,10 @@ export const PAYMENT_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'receivedDate', label: 'Received', type: 'date', format: 'date' },
     { key: 'transactionRef', label: 'Transaction Ref', type: 'text', column: false },
     { key: 'bankAccount', label: 'Bank Account', type: 'text', column: false },
+    // FW-8 (ADDITIVE): stamped by the Bank Statements module when a FINALIZED
+    // statement's matched line evidences this payment — never user-edited.
+    { key: 'bankReconciledAt', label: 'Bank Reconciled', type: 'text', readOnly: true, column: false },
+    { key: 'bankStatementRef', label: 'Bank Statement', type: 'text', readOnly: true, column: false },
     { key: 'notes', label: 'Notes', type: 'textarea', column: false, placeholder: 'Optional notes…' },
   ],
 };
@@ -206,6 +212,15 @@ export function createPaymentModule(
       validate: (input: EnterpriseRecordInput): EnterpriseRecordValidation => {
         const result = validateEnterpriseRecordInput(PAYMENT_DESCRIPTOR, input);
         if (!result.ok) return result;
+        // FW-8: a bank-reconciled payment is bank-evidenced settled fact — a
+        // finalized statement line vouches for it. Immutable through edits.
+        if (String(input.fields?.bankReconciledAt ?? '')) {
+          return {
+            ok: false,
+            errors: { _: 'This payment is bank-reconciled against a finalized statement — bank-evidenced payments are immutable.' },
+            values: result.values,
+          };
+        }
         const payment = projectValues(result.values);
         const errors: Record<string, string> = {};
 
@@ -242,9 +257,13 @@ export function createPaymentModule(
         return result;
       },
       // The source-of-truth inversion: on every payment change, reconcile the
-      // invoice's paid amount + status from the real ledger.
+      // invoice's paid amount + status from the real ledger, then post the
+      // settlement into the General Ledger (Dr Cash / Cr AR + realized FX,
+      // W6-B4.5) — the same reconcile-then-post pattern the Vendor Payments
+      // module already uses. A no-op when the GL modules are not wired.
       onChange: async (_event, ctx) => {
         await reconcileInvoice(str(_event.record.fields.invoiceRef), ctx);
+        await handlePaymentChangeForGl(_event, ctx);
       },
       summarize: async (record): Promise<EnterpriseRecordSummary> => {
         const payment = paymentFromRecord(record);

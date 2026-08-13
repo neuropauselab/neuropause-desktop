@@ -1,0 +1,328 @@
+--- a/apps/desktop/src/main/runtimeCore.ts
++++ b/apps/desktop/src/main/runtimeCore.ts
+@@ -1005,43 +1005,38 @@
+   graphStore.bindScope(activeTenantScope);
+ 
+   /**
+-   * THE STARTUP GATE — P13C Round 2, Phases 2 and 16.
++   * THE STARTUP GATES USED TO RUN HERE, AND THAT WAS THE BUG. P13C ROUND 17.
+    *
+-   * Four security sweeps found the same defect in four different subsystems,
+-   * and every one of them was found because somebody happened to walk that
+-   * code. That approach cannot converge: the risk was never in the audited
+-   * files, it was in the ones the audit did not reach.
++   * Round 2 (`8e9bb90`) placed `assertAllTenantStoresBound()` on this line
++   * under the comment *"Placed AFTER every `bindScope` above and BEFORE any
++   * handler is registered."* The first half of that sentence stopped being true
++   * one round later, at Round 3 (`943dad8`), and nothing noticed for fourteen
++   * rounds because no round launched the application.
+    *
+-   * `assertAllTenantStoresBound()` inverts it. A tenant-sensitive store
+-   * registers itself at CONSTRUCTION; this line asserts, once at startup, that
+-   * every registered store has a boundary. A store nobody bound therefore
+-   * cannot reach a user, because the application refuses to start.
++   * Thirteen tenant-scoped stores construct their `TenantOwnership` at import
++   * time — which REGISTERS them — and call `bindScope()` inside an `init*()`
++   * that runs several hundred lines BELOW this point:
+    *
+-   * Placed AFTER every `bindScope` above and BEFORE any handler is registered,
+-   * so the failure happens at composition rather than on the first request.
+-   */
+-  assertAllTenantStoresBound();
+-
+-  /**
+-   * THE SECOND GATE, AND IT WAS NEVER WIRED. P13C ROUND 9.
++   *     initEcosystem   ~1313      initCloud       ~1390
++   *     initMarketplace ~1316      initFeedback    ~1468
++   *     initWebhooks    ~1325      initFederation  ~1470
+    *
+-   * Round 8 built `assertAllStoreScopesBound()` and documented it as "called
+-   * from the composition root before any handler is registered, so an unbound
+-   * store cannot reach a user". It was never called from anywhere but its own
+-   * test. So every `isBound` predicate written into the 21 declarations that
+-   * round was decoration: a store could declare `TENANT`, have no boundary
+-   * bound, and the application would start and serve.
++   * So the gate fired on a TRANSIENT state and named thirteen stores that were
++   * about to be bound perfectly well. The throw landed in the `try/catch`
++   * around `initRuntimeCore` in `index.ts`, composition died on this line, and
++   * `registerSecureHandlers` — 2,800 lines below — never ran. The application
++   * presented a complete UI while answering "No handler registered" for
++   * essentially every channel. A gate built to prevent a broken install was the
++   * only thing breaking it.
+    *
+-   * The two assertions overlap DELIBERATELY and are not redundant.
+-   * `assertAllTenantStoresBound` covers stores that registered a
+-   * `TenantOwnership`; this one covers everything that declared a SCOPE,
+-   * including stores whose seam is their own and which never touch that class.
+-   * A store can pass either gate and fail the other, which is exactly why both
+-   * run — and why a Round 8 gate that only ever ran in a test is a finding
+-   * about this program's own instrumentation, recorded here rather than quietly
+-   * fixed.
++   * Both gates now run immediately before `registerSecureHandlers`, beside
++   * `assertAllChannelsClassified` — the ONE point in this function where "after
++   * every bindScope and before any handler" is actually true. Their original
++   * comments moved with them. This note stays here because the empty space is
++   * the finding: an assertion is only as good as its position, and position is
++   * not something a unit test that never calls this function can check.
++   * `tenancy/round17CompositionOrder.test.ts` now checks it.
+    */
+-  assertAllStoreScopesBound();
+ 
+   onWorkspaceSwitch(() => {
+     dataPlane.forgetPlans();
+@@ -3882,6 +3877,48 @@
+   twinRef = digitalTwinPlatform;
+   defs.push(...digitalTwinPlatform.handlers);
+ 
++  /**
++   * THE STARTUP GATE — P13C Round 2, Phases 2 and 16. MOVED HERE IN ROUND 17.
++   *
++   * Four security sweeps found the same defect in four different subsystems,
++   * and every one of them was found because somebody happened to walk that
++   * code. That approach cannot converge: the risk was never in the audited
++   * files, it was in the ones the audit did not reach.
++   *
++   * `assertAllTenantStoresBound()` inverts it. A tenant-sensitive store
++   * registers itself at CONSTRUCTION; this line asserts, once at startup, that
++   * every registered store has a boundary. A store nobody bound therefore
++   * cannot reach a user, because the application refuses to start.
++   *
++   * Placed AFTER every `bindScope` — including the thirteen that happen inside
++   * `initEcosystem` / `initMarketplace` / `initWebhooks` / `initCloud` /
++   * `initFeedback` / `initFederation`, which is what the Round 2 position got
++   * wrong — and BEFORE any handler is registered, so the failure happens at
++   * composition rather than on the first request. See the note at the old site.
++   */
++  assertAllTenantStoresBound();
++
++  /**
++   * THE SECOND GATE, AND IT WAS NEVER WIRED. P13C ROUND 9. MOVED IN ROUND 17.
++   *
++   * Round 8 built `assertAllStoreScopesBound()` and documented it as "called
++   * from the composition root before any handler is registered, so an unbound
++   * store cannot reach a user". It was never called from anywhere but its own
++   * test. So every `isBound` predicate written into the 21 declarations that
++   * round was decoration: a store could declare `TENANT`, have no boundary
++   * bound, and the application would start and serve.
++   *
++   * The two assertions overlap DELIBERATELY and are not redundant.
++   * `assertAllTenantStoresBound` covers stores that registered a
++   * `TenantOwnership`; this one covers everything that declared a SCOPE,
++   * including stores whose seam is their own and which never touch that class.
++   * A store can pass either gate and fail the other, which is exactly why both
++   * run — and why a Round 8 gate that only ever ran in a test is a finding
++   * about this program's own instrumentation, recorded here rather than quietly
++   * fixed.
++   */
++  assertAllStoreScopesBound();
++
+   // Startup invariant (fail-closed): with every def now assembled, no runtime-invokable
+   // channel may ride on sender-trust ALONE. Collect the channels that ended up gated —
+   // carrying a `permission` (RBAC, from every withXAuthz annotator's output) and/or
+--- a/apps/desktop/src/main/logger.ts
++++ b/apps/desktop/src/main/logger.ts
+@@ -23,6 +23,40 @@
+   fileSink = sink;
+ }
+ 
++/**
++ * `JSON.stringify(new Error('boom'))` is `'{}'` — `name`, `message` and `stack`
++ * are non-enumerable. P13C ROUND 17: that one fact hid a fourteen-round outage.
++ * `index.ts` caught a fatal from `initRuntimeCore` and logged
++ * `Runtime core failed to initialize {}`; because, as this file's own header
++ * says, "in a packaged app console output goes nowhere", the file sink was the
++ * ONLY surviving diagnostic and it threw the error away. The console path
++ * printed the real object — to a console nobody was attached to.
++ *
++ * Normalize before serializing, and do it RECURSIVELY: an Error is at least as
++ * likely to arrive as a field of a meta object as on its own. Depth is capped
++ * because a log line is not a heap dump and `cause` chains can be long.
++ */
++export function serializableMeta(value: unknown, depth = 0): unknown {
++  if (value instanceof Error) {
++    return {
++      name: value.name,
++      message: value.message,
++      stack: value.stack,
++      ...(value.cause !== undefined && depth < 4
++        ? { cause: serializableMeta(value.cause, depth + 1) }
++        : {}),
++    };
++  }
++  if (depth >= 4) return value;
++  if (Array.isArray(value)) return value.map((v) => serializableMeta(v, depth + 1));
++  if (value !== null && typeof value === 'object') {
++    const out: Record<string, unknown> = {};
++    for (const [k, v] of Object.entries(value)) out[k] = serializableMeta(v, depth + 1);
++    return out;
++  }
++  return value;
++}
++
+ function emit(level: Level, scope: string, message: string, meta?: unknown): void {
+   if (LEVEL_ORDER[level] < threshold) return;
+   const prefix = `[${new Date().toISOString()}] ${level.toUpperCase()} (${scope})`;
+@@ -37,7 +71,7 @@
+     let suffix = '';
+     if (meta !== undefined) {
+       try {
+-        suffix = ` ${JSON.stringify(meta)}`;
++        suffix = ` ${JSON.stringify(serializableMeta(meta))}`;
+       } catch {
+         suffix = ' [unserializable meta]';
+       }
+diff --git a/apps/desktop/src/main/tenancy/round17CompositionOrder.test.ts b/apps/desktop/src/main/tenancy/round17CompositionOrder.test.ts
+new file mode 100644
+--- /dev/null
++++ b/apps/desktop/src/main/tenancy/round17CompositionOrder.test.ts
+@@ -0,0 +1,150 @@
++/**
++ * THE TEST THIS PROGRAM DID NOT HAVE, AND THE REASON IT NEEDED ONE.
++ * P13C ROUND 17.
++ *
++ * WHAT HAPPENED
++ *
++ * Round 2 (`8e9bb90`) added `assertAllTenantStoresBound()` to the composition
++ * root with the comment *"Placed AFTER every `bindScope` above and BEFORE any
++ * handler is registered."* Round 3 (`943dad8`) added
++ * `new TenantOwnership('ecosystem-billing' | 'ecosystem-developer' |
++ * 'ecosystem-gateway-audit' | 'user-feedback')` — four stores that construct
++ * (and therefore REGISTER) at import time but call `bindScope()` inside
++ * `initEcosystem` / `initFeedback`, several hundred lines BELOW the gate.
++ *
++ * From that commit onward the gate threw on every launch, naming thirteen
++ * stores that were about to be bound perfectly well. The throw landed in the
++ * `try/catch` around `initRuntimeCore` in `index.ts`; composition died at the
++ * gate; `registerSecureHandlers` — 2,800 lines further down — never ran. The
++ * application started, painted a full UI, and answered
++ * `No handler registered for '<channel>'` for essentially every channel.
++ *
++ * It stayed that way for FOURTEEN ROUNDS of security certification, because
++ * every round verified the code and no round launched the binary.
++ *
++ * WHY A SOURCE SCAN, AND WHAT IT HONESTLY CANNOT DO
++ *
++ * The obvious test — "call `initRuntimeCore` and assert it resolves" — needs a
++ * live Electron main process, which is exactly the thing vitest cannot give.
++ * Every existing fixture wires stores ITS way, which is why 7,011 passing tests
++ * never reproduced a composition-order bug: they never used the composition.
++ *
++ * So this checks the one property that is decidable from source and that would
++ * have caught it: **the startup gates must come after every `init*()` in
++ * `initRuntimeCore`, and before `registerSecureHandlers`.**
++ *
++ * This test does NOT prove the application starts. Nothing in this repository
++ * does. Round 17's real conclusion is that a launch belongs in the release
++ * procedure, not in a test file — and this test exists to stop the specific
++ * regression, not to stand in for the launch.
++ */
++import { describe, expect, it } from 'vitest';
++import { readFileSync } from 'node:fs';
++import { join } from 'node:path';
++import { fileURLToPath } from 'node:url';
++import { createLogger, attachLogFileSink, serializableMeta } from '../logger';
++
++const MAIN = join(fileURLToPath(new URL('.', import.meta.url)), '..');
++const SOURCE = readFileSync(join(MAIN, 'runtimeCore.ts'), 'utf8').split('\n');
++
++/** Statement lines only — a mention inside a comment is not a call. */
++function statementLines(pattern: RegExp): number[] {
++  const out: number[] = [];
++  SOURCE.forEach((line, i) => {
++    const t = line.trimStart();
++    if (t.startsWith('*') || t.startsWith('//') || t.startsWith('/*')) return;
++    if (pattern.test(line)) out.push(i + 1);
++  });
++  return out;
++}
++
++const only = (pattern: RegExp, what: string): number => {
++  const hits = statementLines(pattern);
++  expect(hits, `expected exactly one call site for ${what}`).toHaveLength(1);
++  return hits[0] as number;
++};
++
++describe('P13C Round 17 — composition order of the startup gates', () => {
++  const tenantGate = only(/\bassertAllTenantStoresBound\(\)\s*;/, 'assertAllTenantStoresBound');
++  const scopeGate = only(/\bassertAllStoreScopesBound\(\)\s*;/, 'assertAllStoreScopesBound');
++  const register = only(/\bregisterSecureHandlers\(defs\b/, 'registerSecureHandlers');
++
++  /**
++   * Every subsystem constructor in the composition root. Deliberately broad:
++   * the four that broke it were `initEcosystem`, `initMarketplace`,
++   * `initWebhooks`, `initCloud`, `initFeedback` and `initFederation`, but
++   * naming them would only protect against the six we already know about. Any
++   * `init*()` may bind a store tomorrow.
++   */
++  const initCalls = statementLines(/=\s*(await\s+)?init[A-Z]\w*\(/);
++
++  it('finds the composition root it is asserting about', () => {
++    expect(initCalls.length).toBeGreaterThan(10);
++    expect(register).toBeGreaterThan(1000);
++  });
++
++  it('runs both gates AFTER every init*() — the Round 3 regression', () => {
++    const latestInit = Math.max(...initCalls);
++    const offenders = initCalls.filter((l) => l > tenantGate || l > scopeGate);
++    expect(
++      offenders,
++      `Startup gates at lines ${tenantGate}/${scopeGate} run BEFORE ${offenders.length} ` +
++        `init*() call(s) (latest at line ${latestInit}). A store that binds inside one of ` +
++        `those will be reported unbound, the gate will throw on a transient state, and ` +
++        `composition will abort before registerSecureHandlers — which is exactly the ` +
++        `fourteen-round outage this test exists to prevent.`,
++    ).toEqual([]);
++  });
++
++  it('runs both gates BEFORE registerSecureHandlers', () => {
++    expect(tenantGate).toBeLessThan(register);
++    expect(scopeGate).toBeLessThan(register);
++  });
++
++  it('keeps the gates adjacent to the channel-classification gate', () => {
++    const channelGate = only(/\bassertAllChannelsClassified\(/, 'assertAllChannelsClassified');
++    // All three are composition-time invariants and must share one position, so
++    // that moving one for a good reason forces a decision about the others.
++    expect(Math.abs(channelGate - tenantGate)).toBeLessThan(120);
++    expect(Math.abs(channelGate - scopeGate)).toBeLessThan(120);
++  });
++});
++
++/**
++ * THE SECOND HALF OF THE FINDING.
++ *
++ * The outage was survivable. What made it invisible for fourteen rounds is that
++ * the only surviving diagnostic in a packaged app recorded it as `{}`.
++ */
++describe('P13C Round 17 — an Error must survive the log file sink', () => {
++  it('serializes name, message and stack instead of {}', () => {
++    expect(JSON.stringify(new Error('boom'))).toBe('{}'); // the trap, stated
++    const out = serializableMeta(new Error('boom')) as Record<string, unknown>;
++    expect(out['name']).toBe('Error');
++    expect(out['message']).toBe('boom');
++    expect(String(out['stack'])).toContain('boom');
++  });
++
++  it('reaches the file sink with the message intact', () => {
++    const lines: string[] = [];
++    attachLogFileSink((line) => lines.push(line));
++    const log = createLogger('round17');
++    log.error(
++      'Runtime core failed to initialize',
++      new Error('Tenant-scoped stores have no tenant boundary: ecosystem-billing'),
++    );
++    attachLogFileSink(() => {});
++    expect(lines).toHaveLength(1);
++    expect(lines[0]).toContain('Tenant-scoped stores have no tenant boundary');
++    expect(lines[0]).not.toMatch(/Runtime core failed to initialize \{\}/);
++  });
++
++  it('unwraps an Error nested inside a meta object, and a cause chain', () => {
++    const nested = serializableMeta({
++      phase: 'composition',
++      err: new Error('outer', { cause: new Error('inner') }),
++    }) as { err: { message: string; cause?: { message: string } } };
++    expect(nested.err.message).toBe('outer');
++    expect(nested.err.cause?.message).toBe('inner');
++  });
++});

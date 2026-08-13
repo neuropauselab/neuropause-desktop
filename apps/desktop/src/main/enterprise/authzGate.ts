@@ -32,7 +32,8 @@
  */
 import type { EnterprisePermission, IpcChannelName, OrgRole, OrgUser } from '@neuropause/shared';
 import { IpcChannel } from '@neuropause/shared';
-import { requirePermission } from './authz';
+import { isPlatformOnlyPermission } from '@neuropause/shared';
+import { AuthorizationError, can, effectivePermissions, requirePermission } from './authz';
 
 /** The resolved identity a permission check runs against. */
 export interface EnterpriseActor {
@@ -44,12 +45,34 @@ export interface EnterpriseActor {
 export interface ActorResolverDeps {
   /** Email of the signed-in account, or null when unauthenticated. */
   sessionEmail: () => string | null;
+  /**
+   * A permission check failed. Optional so every existing test constructs the
+   * resolver unchanged; supplied by the composition root, where it raises a
+   * durable `insufficient_permission` HOLD.
+   */
+  onPermissionRefused?: (input: {
+    permission: EnterprisePermission;
+    /** Scopes the actor DOES hold — empty means no org membership at all. */
+    held: readonly EnterprisePermission[];
+    actorLabel: string;
+  }) => void;
   /** The org the active workspace is bound to — the scope of every handler. */
   activeOrgId: () => string;
   usersFor: (orgId: string) => OrgUser[];
   rolesFor: (orgId: string) => OrgRole[];
   /** The seeded workspace-owner member, if it still exists. */
   ownerMember: () => OrgUser | null;
+  /**
+   * Whether the signed-in account is an INSTALL-LEVEL platform operator.
+   *
+   * P13C ROUND 7. Optional so every existing test constructs the resolver
+   * unchanged — and an ABSENT resolver means NOBODY, which is why the default
+   * below is `() => false` rather than a throw. A platform-only permission
+   * checked on an install that never wired the registry is refused, which is the
+   * safe direction: the failure is "the control plane cannot be reconfigured",
+   * not "anyone may reconfigure it".
+   */
+  isPlatformOperator?: (email: string) => boolean;
 }
 
 /**
@@ -61,11 +84,32 @@ export interface ActorResolverDeps {
  * the owner has an email (it has been claimed — see `decideOwnerClaim`), a
  * session matching no member fails closed instead of inheriting ownership.
  */
+/**
+ * The value `activeOrgId` returns when no tenant could be resolved.
+ *
+ * Exported so the gate and the resolver compare the SAME string. A sentinel
+ * written out at two sites is a sentinel that eventually differs at one of them.
+ * The NUL prefix makes it unconstructable as a real organization id.
+ */
+export const UNRESOLVED_TENANT = '\u0000no-tenant';
+
 export function resolveActor(deps: ActorResolverDeps): EnterpriseActor | null {
   const email = deps.sessionEmail();
   if (!email) return null;
   const wanted = email.trim().toLowerCase();
   const orgId = deps.activeOrgId();
+  /**
+   * P11 — NO TENANT MEANS NO ACTOR, before anything else is consulted.
+   *
+   * `activeOrgId` returns `UNRESOLVED_TENANT` whenever the tenant context
+   * refuses — cold start, suspended tenant, orphaned workspace, non-member.
+   * Without this line the sentinel simply matched no org, `usersFor` returned
+   * empty, and execution fell through to the owner branch below — so a tenant
+   * REFUSAL routed into the unclaimed-owner fallback, which holds every
+   * permission there is. Two implementations of first-claim-wins that disagreed
+   * on the one field that makes it a tenant decision.
+   */
+  if (orgId === UNRESOLVED_TENANT) return null;
   const matched = deps
     .usersFor(orgId)
     .find((m) => m.kind === 'human' && m.email !== null && m.email.trim().toLowerCase() === wanted);
@@ -75,7 +119,13 @@ export function resolveActor(deps: ActorResolverDeps): EnterpriseActor | null {
   // First-claim-wins: fall back to the owner only while the workspace is
   // unclaimed. A claimed owner (non-null email) that didn't match above means a
   // *different* account is signing in — deny rather than hand it the workspace.
-  if (owner.email === null) return { member: owner, roles: deps.rolesFor(owner.orgId) };
+  //
+  // P11 adds `owner.orgId === orgId`: the owner of a DIFFERENT tenant is not a
+  // fallback for this one. The tenant resolver already required this; the two
+  // copies of the rule now agree.
+  if (owner.email === null && owner.orgId === orgId) {
+    return { member: owner, roles: deps.rolesFor(owner.orgId) };
+  }
   return null;
 }
 
@@ -117,10 +167,101 @@ export function createAuthorize(
   deps: ActorResolverDeps,
 ): (permission: EnterprisePermission) => void {
   return (permission) => {
-    if (deps.sessionEmail() === null) throw new Error('Sign in to continue.');
+    const email = deps.sessionEmail();
+    if (email === null) throw new Error('Sign in to continue.');
+
+    /**
+     * P13C ROUND 7 — PLATFORM-ONLY PERMISSIONS NEVER CONSULT ORG ROLES.
+     *
+     * Handled here, before `resolveActor`, and returning early rather than
+     * falling through — because falling through would mean an operator ALSO
+     * needs an org membership, and a platform operator is not a member of
+     * anything. More importantly, an org role must never be able to satisfy this:
+     * the whole point is that tenant A's Admin and tenant B's Admin are equally
+     * refused, and that switching from A to B confers nothing, because nothing
+     * about this decision is keyed on an organization.
+     *
+     * The refusal is recorded through the same hold channel as any other, so an
+     * administrator who hits it gets a route forward rather than a dead toast.
+     */
+    if (isPlatformOnlyPermission(permission)) {
+      if (deps.isPlatformOperator?.(email) === true) return;
+      deps.onPermissionRefused?.({
+        permission,
+        held: [],
+        actorLabel: email,
+      });
+      throw new AuthorizationError(permission);
+    }
+
     const actor = resolveActor(deps);
-    if (!actor) throw new Error('No organization member is bound to this account.');
+    if (!actor) {
+      deps.onPermissionRefused?.({
+        permission,
+        held: [],
+        actorLabel: deps.sessionEmail() ?? 'This account',
+      });
+      throw new Error('No organization member is bound to this account.');
+    }
+    if (!can(actor.member, actor.roles, permission)) {
+      /**
+       * An RBAC refusal is a HOLD, not an error.
+       *
+       * The request was understood and legitimate; the person simply is not
+       * permitted. Thrown and caught, that fact dies with the toast and the
+       * user is left with "something failed" and no route forward. Recording
+       * it durably means the resolution — ask someone who holds the scope —
+       * lands somewhere a person can actually act on it.
+       *
+       * The throw is UNCHANGED. Every existing caller, and the secure bridge's
+       * own error path, behave exactly as before; this only adds a record.
+       */
+      deps.onPermissionRefused?.({
+        permission,
+        held: [...effectivePermissions(actor.member, actor.roles)],
+        actorLabel: actor.member.name || actor.member.email || 'This account',
+      });
+    }
     requirePermission(actor.member, actor.roles, permission);
+  };
+}
+
+/** A non-throwing read of what the current actor may do. */
+export interface PermissionProbe {
+  allows: (permission: EnterprisePermission) => boolean;
+  held: () => readonly EnterprisePermission[];
+  label: () => string;
+}
+
+/**
+ * Ask what the actor may do, without acting.
+ *
+ * `createAuthorize` is the enforcement path: it throws, and it raises a durable
+ * permission HOLD on the way out. Both behaviours are right for a refused
+ * operation and wrong for a question — a UI that greys out a button it knows
+ * will fail would otherwise fill the governance queue with holds nobody
+ * requested, and an audit trail that records refusals nobody attempted is an
+ * audit trail people stop reading.
+ *
+ * Shares `resolveActor` and `can` with the enforcement path on purpose. Two
+ * implementations of "may they?" is how a button ends up enabled for an action
+ * the server will refuse.
+ */
+export function createPermissionProbe(deps: ActorResolverDeps): PermissionProbe {
+  return {
+    allows: (permission) => {
+      if (deps.sessionEmail() === null) return false;
+      const actor = resolveActor(deps);
+      return actor ? can(actor.member, actor.roles, permission) : false;
+    },
+    held: () => {
+      const actor = deps.sessionEmail() === null ? null : resolveActor(deps);
+      return actor ? [...effectivePermissions(actor.member, actor.roles)] : [];
+    },
+    label: () => {
+      const actor = deps.sessionEmail() === null ? null : resolveActor(deps);
+      return actor?.member.name || actor?.member.email || deps.sessionEmail() || 'This account';
+    },
   };
 }
 
@@ -148,6 +289,42 @@ export const ENTERPRISE_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Ente
     [IpcChannel.EnterpriseWorkspaceActive]: 'workspace:read',
     [IpcChannel.EnterpriseWorkspaceCreate]: 'workspace:manage',
     [IpcChannel.EnterpriseWorkspaceSwitch]: 'workspace:manage',
+    /**
+     * P13C Part 3 — multi-organization.
+     *
+     * LIST and SWITCH are gated on a READ scope, not `workspace:manage`, and the
+     * asymmetry with `EnterpriseWorkspaceSwitch` above is deliberate.
+     *
+     * Every permission in this map is evaluated against the member's CURRENT
+     * organization, because that is what the active workspace resolves to. For
+     * an action ON that organization — creating a workspace in it — that is
+     * exactly right. For LEAVING it, it is backwards: gating the exit on a
+     * manage scope inside the tenant you are trying to leave traps a viewer in
+     * whichever organization they last opened, with no way out but to sign out.
+     *
+     * Loosening the map is safe here because the map is not the gate that
+     * matters for these two. The real authorization is target-side and
+     * server-side: `organizationSummaries` returns only organizations this
+     * account is an active member of, and the switch commits through the same
+     * `canSwitchTo` membership chain a workspace switch uses. Holding
+     * `workspace:read` grants no organization the membership chain would not
+     * already have admitted.
+     */
+    [IpcChannel.EnterpriseOrganizationList]: 'workspace:read',
+    [IpcChannel.EnterpriseOrganizationSwitch]: 'workspace:read',
+    /**
+     * CREATE is `org:manage`, the strictest reading available.
+     *
+     * The tradeoff is stated rather than hidden: because permissions resolve
+     * against the current organization, a member who is only a viewer in their
+     * one organization cannot create a second one. That is a real limitation
+     * for a desktop product where the user often owns their own install — and
+     * it is the conservative direction, since the alternative lets any
+     * signed-in account mint tenants that then appear in every background
+     * fan-out. The seeded install's first account claims the owner role, so the
+     * common single-user path is unaffected.
+     */
+    [IpcChannel.EnterpriseOrganizationCreate]: 'org:manage',
     [IpcChannel.EnterpriseGovernanceConfig]: 'governance:read',
     [IpcChannel.EnterpriseGovernanceCompliance]: 'governance:read',
     [IpcChannel.EnterpriseGovernanceAudit]: 'governance:read',
@@ -198,6 +375,21 @@ export const DYNAMICALLY_AUTHORIZED_ENTERPRISE_CHANNELS: readonly IpcChannelName
   IpcChannel.EnterpriseModuleSetStatus,
   IpcChannel.EnterpriseModuleDelete,
   IpcChannel.EnterpriseModuleAction,
+  // ERP document layer. Same dynamic model as the CRUD channels: the handler
+  // resolves the module from the payload and authorizes its own read/write
+  // scope. Approval decisions take the module's WRITE scope — recording one
+  // changes what the document is allowed to do — and role eligibility plus
+  // segregation of duties are enforced separately inside the engine.
+  IpcChannel.EnterpriseModuleLines,
+  IpcChannel.EnterpriseModuleSetLines,
+  IpcChannel.EnterpriseModuleApproval,
+  IpcChannel.EnterpriseModuleApprove,
+  // Cross-domain related records. The one answer that legitimately spans
+  // several read scopes, so it cannot carry a single static one: the handler
+  // authorizes the root record's module and then filters every hop by the far
+  // module's own scope. A static scope here would be the permission bypass the
+  // traversal exists to prevent.
+  IpcChannel.CrossDomainRelated,
 ];
 
 /**
@@ -208,7 +400,21 @@ export const DYNAMICALLY_AUTHORIZED_ENTERPRISE_CHANNELS: readonly IpcChannelName
  */
 export function withEnterpriseAuthz<T extends { channel: IpcChannelName }>(
   defs: readonly T[],
-): (T & { permission: EnterprisePermission; requireAuth: true })[] {
+): T[] {
+  /**
+   * Returns `T[]`, not `(T & { permission; requireAuth: true })[]`.
+   *
+   * `SecureHandlerDef` is a mapped type distributed over every IPC channel —
+   * seven hundred-odd members — so intersecting it forces TypeScript to
+   * distribute across all of them, and the compiler eventually answers
+   * "expression produces a union type that is too complex to represent". It
+   * did, the first time a batch of new channels pushed it over.
+   *
+   * Nothing is lost: `permission` and `requireAuth` are already declared on
+   * `SecureHandlerDefFor`, the throw below is what actually guarantees the
+   * classification exists, and it is a runtime guarantee rather than a type
+   * one either way — a channel missing from the table fails at startup.
+   */
   return defs.map((def) => {
     const permission = ENTERPRISE_CHANNEL_PERMISSIONS[def.channel];
     if (!permission) {

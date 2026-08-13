@@ -1,8 +1,10 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { motion } from 'framer-motion';
 import type { AuthProviderId } from '@neuropause/shared';
 import { useAuth } from '@renderer/providers/AuthProvider';
 import { Spinner } from '@renderer/components/Spinner';
+import { BackendReachabilityNotice } from './BackendReachabilityNotice';
+import { ipc } from '@renderer/lib/ipc';
 import {
   AppleIcon,
   GitHubIcon,
@@ -12,7 +14,16 @@ import {
 
 type OAuthProviderId = Exclude<AuthProviderId, 'email'>;
 
-const PROVIDERS: { id: OAuthProviderId; label: string; Icon: typeof GoogleIcon }[] = [
+/**
+ * P13C F-8 — the catalogue of buttons this screen KNOWS HOW TO RENDER. It is not
+ * the list it offers.
+ *
+ * Until now this array WAS the offer: four OAuth buttons rendered unconditionally
+ * while `/auth/providers` returned `[]`, so every one of them failed. What ships
+ * is now the intersection of this catalogue and what the server says it has
+ * configured, which is empty until somebody configures a provider.
+ */
+const PROVIDER_CATALOGUE: { id: OAuthProviderId; label: string; Icon: typeof GoogleIcon }[] = [
   { id: 'google', label: 'Continue with Google', Icon: GoogleIcon },
   { id: 'github', label: 'Continue with GitHub', Icon: GitHubIcon },
   { id: 'microsoft', label: 'Continue with Microsoft', Icon: MicrosoftIcon },
@@ -29,6 +40,28 @@ export function LoginScreen(): JSX.Element {
   const [formError, setFormError] = useState<string | null>(null);
   const [pendingProvider, setPendingProvider] = useState<OAuthProviderId | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // F-8: empty until the server says otherwise. Never optimistic.
+  const [enabledProviders, setEnabledProviders] = useState<OAuthProviderId[]>([]);
+
+  useEffect(() => {
+    let alive = true;
+    void ipc.auth
+      .providers()
+      .then((r) => {
+        if (alive) setEnabledProviders(r.providers.filter((p): p is OAuthProviderId => p !== 'email'));
+      })
+      .catch(() => {
+        // Unknown is not "all four". Leave the list empty.
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const providers = useMemo(
+    () => PROVIDER_CATALOGUE.filter((p) => enabledProviders.includes(p.id)),
+    [enabledProviders],
+  );
 
   const authenticating = status.state === 'authenticating';
   const busy = authenticating || submitting || pendingProvider !== null;
@@ -91,6 +124,14 @@ export function LoginScreen(): JSX.Element {
             <p className="mt-1 text-[13px] text-muted">Sign in to your AI operating layer</p>
           </div>
 
+          {/*
+            F-7. Above the auth banner deliberately: when the service is
+            unreachable, "Invalid email or password" is a true statement about
+            the response and a false explanation of the situation. The reader
+            should meet the cause before the symptom.
+          */}
+          <BackendReachabilityNotice />
+
           {banner ? (
             <div
               className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 py-2.5 text-[12.5px] text-red-300"
@@ -100,9 +141,10 @@ export function LoginScreen(): JSX.Element {
             </div>
           ) : null}
 
-          {/* OAuth providers */}
+          {/* OAuth providers — only those the server actually has (F-8) */}
+          {providers.length > 0 ? (
           <div className="flex flex-col gap-2.5">
-            {PROVIDERS.map(({ id, label, Icon }) => {
+            {providers.map(({ id, label, Icon }) => {
               const isPending = pendingProvider === id;
               return (
                 <button
@@ -118,13 +160,16 @@ export function LoginScreen(): JSX.Element {
               );
             })}
           </div>
+          ) : null}
 
-          {/* Divider */}
+          {/* Divider — pointless with nothing above it */}
+          {providers.length > 0 ? (
           <div className="my-5 flex items-center gap-3">
             <span className="h-px flex-1 bg-surface-border" />
             <span className="text-[11px] uppercase tracking-wider text-muted">or</span>
             <span className="h-px flex-1 bg-surface-border" />
           </div>
+          ) : null}
 
           {/* Email / password */}
           <form className="flex flex-col gap-2.5" onSubmit={(e) => void handleEmailSubmit(e)}>
@@ -149,7 +194,7 @@ export function LoginScreen(): JSX.Element {
             <button
               type="submit"
               disabled={busy}
-              className="app-no-drag mt-1 flex h-11 items-center justify-center gap-2 rounded-xl bg-accent px-4 text-[13.5px] font-semibold text-white transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+              className="app-no-drag mt-1 flex h-11 items-center justify-center gap-2 rounded-xl bg-accent px-4 text-[13.5px] font-semibold text-accent-fg transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitting ? <Spinner /> : null}
               <span>{mode === 'signup' ? 'Create account' : 'Sign in'}</span>

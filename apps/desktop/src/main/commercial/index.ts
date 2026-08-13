@@ -30,6 +30,7 @@ import { billingStore } from '../ecosystem/billing/billingInstance';
 import { planFor, computeInvoice } from '../ecosystem/billing/billing';
 import { marketplaceStore } from '../ecosystem/marketplace/marketplaceInstance';
 import { orgStore } from '../enterprise/org/orgInstance';
+import { activeTenantScope } from '../enterprise/index';
 import { governanceStore } from '../enterprise/governance/governanceInstance';
 import { workspaceStore } from '../enterprise/workspace/workspaceInstance';
 import { federationStore as cloudIdentityStore } from '../cloud/identity/federationInstance';
@@ -99,7 +100,30 @@ function buildState(deps: CommercialPlatformDeps): CommercialState {
   const sub = safe(() => billingStore.getSubscription());
   const planTier = (sub?.planTier ?? 'free') as PlanTier;
   const plan = safe(() => planFor(planTier));
-  const orgId = sub?.orgId ?? safe(() => orgStore.defaultOrg().id) ?? 'org-default';
+  /**
+   * P13C REMEDIATION — N5. THE LITERAL `?? 'org-default'` FALLBACK.
+   *
+   * All three branches landed on the seeded organization — `sub.orgId` is
+   * itself `ORG_ID`, `defaultOrg()` is the first-inserted org, and the string
+   * literal is the seed id. `orgId` then drove `licenseValidator.getStatus`,
+   * `orgStore.usersFor` for SEAT BINDING, and the invoice, so one tenant's
+   * roster decided another tenant's seats and billing view.
+   *
+   * The caller's own tenant, or nothing. Null flows through the `safe()`
+   * wrappers below as absent licence and an empty roster, which is the honest
+   * "we do not know" rather than someone else's answer.
+   */
+  /**
+   * The empty string is the fail-closed SENTINEL, not a default.
+   *
+   * Organization ids are never empty, so `usersFor('')`, `unitsFor('')` and
+   * `rolesFor('')` return nothing and `getStatus('')` resolves no licence —
+   * which is exactly the "we do not know" this should report when no tenant is
+   * active. Using a sentinel rather than threading null through eight call
+   * sites keeps the degraded path identical to the resolved one, so there is no
+   * second code path that could later be made to fall back.
+   */
+  const orgId = activeTenantScope()?.tenantId ?? '';
 
   // ── License validator (entitled plan + lifecycle) ──
   const licenseStatus = safe(() => licenseValidator.getStatus(orgId));
@@ -180,11 +204,18 @@ function buildState(deps: CommercialPlatformDeps): CommercialState {
   const featureFlags: FlagInput[] = flags.map((f) => ({ key: f.key, enabled: f.enabled, source: f.source, description: f.description }));
 
   // ── Administration ──
-  const organizations = (safe(() => orgStore.listOrganizations()) ?? []).length;
+  /**
+   * P13C REMEDIATION — N5 (second half). These two counted the INSTALL:
+   * `listOrganizations().length` and `workspaceStore.list().length` told every
+   * tenant how many other customers and workspaces share the machine.
+   */
+  const organizations = orgId === '' ? 0 : 1;
   const departments: DeptInput[] = (safe(() => orgStore.unitsFor(orgId)) ?? []).map((u) => ({ kind: u.kind }));
   const users: UserInput[] = orgUsers.map((u) => ({ kind: u.kind, status: u.status }));
   const roles: RoleInput[] = (safe(() => orgStore.rolesFor(orgId)) ?? []).map((r) => ({ name: r.name, permissionCount: r.permissions.length, builtIn: r.builtIn }));
-  const workspaces = (safe(() => workspaceStore.list()) ?? []).length;
+  const workspaces = (safe(() => workspaceStore.list()) ?? []).filter(
+    (w) => w.organizationId === orgId,
+  ).length;
   const approvalChains = (safe(() => governanceStore.chains()) ?? []).length;
   const complianceRules = (safe(() => governanceStore.rules()) ?? []).length;
   const auditEntries = safe(() => governanceStore.auditCount()) ?? 0;
@@ -273,7 +304,7 @@ function buildState(deps: CommercialPlatformDeps): CommercialState {
 }
 
 export function initCommercialPlatform(deps: CommercialPlatformDeps): CommercialPlatformSubsystem {
-  const service = new CommercialPlatformService({ readState: () => buildState(deps) });
+  const service = new CommercialPlatformService({ scope: activeTenantScope, readState: () => buildState(deps) });
 
   // Invalidate the memoized snapshot when a backing store changes; the injected report/cloud/strategy/
   // marketplace accessors refresh via the service TTL. Renderer liveness reuses `ecosystem:event`.

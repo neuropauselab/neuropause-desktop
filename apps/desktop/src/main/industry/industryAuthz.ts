@@ -25,6 +25,7 @@ export const INDUSTRY_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterp
   [IpcChannel.IndustryCompliance]: READ,
   [IpcChannel.IndustryCollections]: READ,
   [IpcChannel.IndustryReadiness]: READ,
+  [IpcChannel.IndustrySnapshot]: READ,
 };
 
 /**

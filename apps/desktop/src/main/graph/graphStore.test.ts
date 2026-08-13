@@ -2,8 +2,9 @@ import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { GraphEdge, GraphNode } from '@neuropause/shared';
+import type { GraphEdge, GraphNode, TenantScope } from '@neuropause/shared';
 import { GraphStore } from './graphStore';
+import { OTHER_TENANT_SCOPE, TEST_TENANT_SCOPE } from '../tenancy/testScope';
 
 const NOW = '2026-01-01T00:00:00.000Z';
 const LATER = '2026-01-02T00:00:00.000Z';
@@ -146,5 +147,47 @@ describe('GraphStore', () => {
     expect(reopened.counts().edges).toBe(1);
     expect(reopened.neighbors({ id: 'x' })?.neighbors[0]?.node.id).toBe('y');
     expect(reopened.historyFor({ id: 'x' }).length).toBe(1);
+  });
+
+  /**
+   * P13C ROUND 9 — F10. Every test above runs as the one ambient test tenant, so
+   * none of them could see the defect: the history cap was a flat install-wide
+   * `slice()` over rows that carried NO OWNER FIELD AT ALL. This one introduces a
+   * second organization deliberately — the asymmetry `OTHER_TENANT_SCOPE` exists
+   * for — and asserts the count that the install-wide slice destroyed.
+   */
+  it('a rebuilding tenant’s history cap cannot reach another tenant’s rows', async () => {
+    let scope: TenantScope = TEST_TENANT_SCOPE;
+    const store = new GraphStore(path, { historyCapPerTenant: 4 });
+    store.bindScope(() => scope);
+    await store.load();
+    opened.push(store);
+
+    // The OTHER organization writes three relationships and then goes quiet.
+    scope = OTHER_TENANT_SCOPE;
+    const theirs = ['a', 'b', 'c'].map((n) => `other:${n}`);
+    store.apply(
+      [node('other:hub', 'project'), ...theirs.map((n) => node(n, 'task'))],
+      theirs.map((n) => edge('other:hub', 'belongs_to', n)),
+      NOW,
+    );
+    expect(store.historyFor({ id: 'other:hub', limit: 100 })).toHaveLength(3);
+
+    // The test tenant rebuilds 20 times: 39 history rows against a cap of 4.
+    scope = TEST_TENANT_SCOPE;
+    for (let r = 1; r <= 20; r += 1) {
+      store.apply([node('mine:hub', 'project'), node(`mine:${r}`, 'task')], [edge('mine:hub', 'belongs_to', `mine:${r}`)], LATER);
+    }
+    expect(store.historyFor({ id: 'mine:hub', limit: 100 })).toHaveLength(4);
+
+    // THE NUMBER: still three, and still theirs.
+    scope = OTHER_TENANT_SCOPE;
+    const after = store.historyFor({ id: 'other:hub', limit: 100 });
+    expect(after).toHaveLength(3);
+    expect(after.map((h) => h.to).sort()).toEqual([...theirs].sort());
+
+    // And neither can read the other's change feed.
+    scope = TEST_TENANT_SCOPE;
+    expect(store.historyFor({ id: 'other:hub', limit: 100 })).toEqual([]);
   });
 });

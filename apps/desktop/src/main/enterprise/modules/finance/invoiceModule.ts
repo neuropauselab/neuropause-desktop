@@ -43,6 +43,7 @@ import {
   defineEnterpriseModule,
   type EnterpriseModule,
 } from '../../framework';
+import { handleInvoiceChangeForGl } from './glPosting';
 
 /** The declarative description of an invoice — drives store, CRUD, and the UI. */
 export const INVOICE_DESCRIPTOR: EnterpriseModuleDescriptor = {
@@ -65,10 +66,13 @@ export const INVOICE_DESCRIPTOR: EnterpriseModuleDescriptor = {
   fields: [
     { key: 'number', label: 'Invoice #', type: 'text', required: true, placeholder: 'INV-0001' },
     { key: 'customer', label: 'Customer', type: 'text', required: true, placeholder: 'Acme Inc.' },
+    { key: 'customerGstin', label: 'Customer GSTIN', type: 'text', column: false, placeholder: '22AAAAA0000A1Z5' },
     { key: 'amount', label: 'Subtotal', type: 'number', required: true, min: 0, format: 'currency' },
     { key: 'taxRate', label: 'Tax Rate %', type: 'number', min: 0, max: 100, column: false },
     { key: 'taxAmount', label: 'Tax', type: 'number', column: false, format: 'currency', readOnly: true },
     { key: 'total', label: 'Total', type: 'number', format: 'currency', readOnly: true },
+    { key: 'exchangeRate', label: 'Exchange Rate', type: 'number', min: 0, default: 1, column: false },
+    { key: 'functionalTotal', label: 'Functional Total', type: 'number', format: 'currency', readOnly: true, column: false },
     { key: 'amountPaid', label: 'Amount Paid', type: 'number', min: 0, format: 'currency', readOnly: true },
     { key: 'outstandingBalance', label: 'Outstanding', type: 'number', format: 'currency', readOnly: true },
     {
@@ -184,6 +188,12 @@ export function createInvoiceModule(storePath: string, aiRunner?: InvoiceAiRunne
           result.values.status = deriveStoredInvoiceStatus(invoice.status, invoice);
         }
         return result;
+      },
+      // Bookkeeping is derived, never manual: issuing, cancelling, or deleting an
+      // invoice flows into the General Ledger through the idempotent auto-posting
+      // seam (a no-op when the GL modules are not wired, e.g. module-local tests).
+      onChange: async (event, ctx) => {
+        await handleInvoiceChangeForGl(event, ctx);
       },
       summarize: async (record): Promise<EnterpriseRecordSummary> => {
         const invoice = invoiceFromRecord(record);

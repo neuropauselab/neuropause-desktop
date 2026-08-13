@@ -1,0 +1,195 @@
+--- a/certification/PROGRAM-13C-FINAL-CERTIFICATION.md
++++ b/certification/PROGRAM-13C-FINAL-CERTIFICATION.md
+@@ -1,7 +1,8 @@
+ # PROGRAM 13C — FINAL ENGINEERING CERTIFICATION
+ 
+-**12 August 2026** · branch `feat/understanding-holds-motion-system`
+-Baseline commit `927b7bf` · certification changes delivered as `round18.patch`
++**12 August 2026**, amended 13 August · branch `feat/understanding-holds-motion-system`
++Certification commit **`018f1f9`** — `round18.patch` is applied and committed; the
++earlier `927b7bf` baseline reference is superseded.
+ 
+ ---
+ 
+@@ -11,9 +12,14 @@
+ PROGRAM 13C  =  NOT CERTIFIED
+ ```
+ 
+-Five runtime gates have no evidence, one gate is now **FAIL** rather than
+-untested, channel→store coverage is **1.0%**, and the backend — confirmed this
+-run to be inside the product's security boundary — has never been examined.
++**Gate 1 is FAIL.** A human installed the Windows artifact and could not reach the
++product: the application opens on a sign-in screen that requires a backend, and
++onboarding lives behind it. That is F-4 below, and it refutes a row this document
++previously marked PASS.
++
++Five runtime gates have no evidence, Gate 10 is FAIL, channel→store coverage is
++**1.0%**, and the backend — confirmed inside the product's security boundary —
++has never been examined.
+ 
+ The verdict does not turn on judgement. It turns on the certification policy
+ stated in the brief: any required item that is `PARTIAL`, `NOT TESTED`,
+@@ -23,7 +29,9 @@
+ 
+ ## 1 · WHAT THIS RUN FOUND
+ 
+-Three findings, each verified by execution rather than inference.
++Five findings. F-1 to F-3 were verified by execution in the container; F-4 was
++found by a human installing the artifact, which is why nothing in this repository
++could have produced it.
+ 
+ ### F-1 · The F22 tenant archive registry ships EMPTY — **HIGH**
+ 
+@@ -111,9 +119,87 @@
+ **Backend tenant certification: NOT TESTED.** Program 13C does not certify the
+ backend, and this document says so rather than leaving it implied.
+ 
++### F-4 · The packaged application cannot be opened without a server — **BLOCKER**
++
++The first human runtime evidence on Windows in seventeen rounds, and it refuted a
++gate marked PASS.
++
++`App.tsx` has one decision and no third branch:
++
++```ts
++if (status.state === 'authenticated') return <AppShell session={status.session} />;
++return <LoginScreen />;
++```
++
++`AppShell` is typed `{ session: Session }` — it cannot render without one.
++`FirstRunExperience` is rendered at `AppShell.tsx:575`, **inside** the authenticated
++shell. `LoginScreen` offers OAuth buttons and a credentials form and nothing else: no
++guest, no local account, no skip. The main process has no offline auth path.
++
++No backend → no session → `LoginScreen` → **"Try Free Locally" is unreachable.**
++
++Platform-independent: the same two branches govern macOS and Linux. A product
++described as local-first cannot currently be opened without a network round trip.
++Neither `FOUNDER-INSTALL-WINDOWS.md` nor the acceptance checklist mentions a backend;
++the build was handed over as self-contained and is not.
++
++The remedy is a product decision, not a defect fix — offline account, cached-session
++grace, or repositioning "local-first" to mean where inference runs. Recorded, not
++resolved.
++
++### F-5 · Infrastructure, and a wrong inference this document made
++
++The deploy host `64.227.128.218` did not answer SSH. **This document previously called
++that "an unrelated live-infrastructure question." That was wrong** — it is what
++surfaced F-4 — and the inference behind it was also wrong: a refused port on one host
++says nothing about a service on another. DNS resolution shows three distinct hosts:
++
++```
++neuropause033.com          no A record        ← the update feed baked into every artifact
++api.neuropause033.com      134.199.250.188    ← what the application calls
++64.227.128.218             website/downloads  ← the box whose SSH timed out
++```
++
++If the apex genuinely carries no address record, every installed copy fails its update
++check at DNS before HTTP is attempted. Resolution is not reachability; both need
++checking from a second network before either is concluded.
++
++---
++
++## 2 · WHAT COUNTED AS EVIDENCE, AND WHERE IT DID NOT
++
++Three times in this programme a status was assigned by counting the wrong noun. The
++fixes are individually small; the pattern is the finding.
++
++| Claim made | What was counted | What was true |
++|---|---|---|
++| "F22 6/19" | adapters **written** | adapters **registered in production**: 0/19 |
++| "Channel→store PARTIAL — 2 declarations" | **declarations** | **coverage**: 2/194 = 1.0% |
++| "Fresh install can complete onboarding — PASS" | a mounted component **completing** | whether the application **reaches** that component: it cannot |
++
++Each was produced by someone applying this programme's own rule to everything except
++their own evidence. The rule reads *"a unit test existing is not evidence."* A
++mounted-component test is closer to the product than a unit test — it renders real
++React, drives real clicks, asserts on real DOM — and it is still not the product.
++Proximity to the real thing is a gradient, and every point on it that is not the real
++thing can be cited as though it were. The third row is the sharpest case: the test
++renders `FirstRunExperience` **directly**, so it could never have observed that
++`App.tsx` refuses to render it without a session.
++
++Two of the three now have a gate that measures the right noun.
++`f22ProductionCoverage.test.ts` asserts registration rather than authorship, and proves
++the pre-fix state was 0/19. `channelStoreCoverageGate.test.ts` computes the denominator
++from the authority tables and prints the ratio on every run.
++
++**The third has no automated remedy, and that is the point.** Only a person installing
++the artifact could have found F-4. That is the same reason gates 4, 5, 6, 7, 10's
++runtime half and the red team cannot be discharged by any suite in this repository,
++however green it is — and this document should be read as evidence of what 8,031
++passing tests do not cover.
++
+ ---
+ 
+-## 2 · AUTOMATED RESULTS — all executed this run
++## 3 · AUTOMATED RESULTS — all executed this run
+ 
+ | Suite | Command | Result |
+ |---|---|---|
+@@ -138,11 +224,11 @@
+ 
+ ---
+ 
+-## 3 · GATE MATRIX
++## 4 · GATE MATRIX
+ 
+ | Gate | Status | Basis |
+ |---|---|---|
+-| **1 · Native launch, packaged artifact** | **PARTIAL** | Windows x64 installer built and verified on a `windows-latest` runner (run 31633030913, commit `aec87bd`, sha256 `693ae976…a587b`); payload inspected — machine `0x8664`, PE32+, D-5/17g/17h strings present in `app.asar`. **Not launched by any human.** |
++| **1 · Native launch, packaged artifact** | **FAIL** | Windows x64 installer built and verified on a `windows-latest` runner (run 31633030913, commit `aec87bd`, sha256 `693ae976…a587b`); payload inspected — machine `0x8664`, PE32+, D-5/17g/17h strings present in `app.asar`. **Installed and launched by a human on 13 August: it opens on a sign-in screen and cannot reach the product (F-4).** |
+ | **2 · Real A/B/C tenants** | **PASS** | Runtime evidence, Round 17: seeded org non-zero, A/B/C zero on scoped projections. |
+ | **3 · Cross-tenant matrix** | **PARTIAL** | `crossTenant.test.ts` — 52 tests covering READ, WRITE, DELETE, IDOR, SEARCH, COUNT, cold start, tenant switch, workspace isolation, unowned rows. **In-process against real stores, not against a running application.** The runtime mutation matrix was not run. |
+ | **4 · Runtime ownership** | **NOT TESTED** | Requires a running application. |
+@@ -162,7 +248,7 @@
+ 
+ ---
+ 
+-## 4 · WHY FIVE GATES REMAIN UNTESTED
++## 5 · WHY FIVE GATES REMAIN UNTESTED
+ 
+ Gates 4, 5, 6, 7 and 10's runtime half, the red team, and packaged-runtime
+ verification all require **the packaged application, running, driven by a
+@@ -184,7 +270,7 @@
+ 
+ ---
+ 
+-## 5 · REMAINING RISK, RANKED
++## 6 · REMAINING RISK, RANKED
+ 
+ 1. **Gate 10 FAIL** — no tenant-scoped backup or restore exists in the product.
+    A customer cannot export or recover their own organization's data.
+@@ -204,22 +290,24 @@
+ 
+ ---
+ 
+-## 6 · FOUNDER / RELEASE STATUS — unchanged by this run
++## 7 · FOUNDER / RELEASE STATUS
+ 
+-The Windows Founder Test Build (`aec87bd`, sha256 `693ae976…a587b`) has already
+-been handed over and **remains valid**. Nothing in this certification invalidates
+-it. It was always labelled a test build accompanied by `KNOWN-LIMITATIONS.md`
++The Windows Founder Test Build (`aec87bd`, sha256 `693ae976…a587b`) was handed over
++and **is now known not to work**: it installs correctly and cannot pass its first
++screen (F-4). The founder should be told to hold rather than left to discover it.
++Sections A and B of the acceptance checklist are the only parts that produced valid
++evidence; C through I describe a product nobody can currently reach. It was always labelled a test build accompanied by `KNOWN-LIMITATIONS.md`
+ and an engineering status stating NOT CERTIFIED.
+ 
+ Windows signing is **NOT CONFIGURED** — a release and distribution concern,
+ reported separately, and not counted as a Program 13C security failure.
+ 
+-Windows human runtime verification remains **NOT TESTED**. Nobody has installed
+-and run the artifact.
++Windows human runtime verification is **TESTED — FAILED**. Installation succeeds;
++the application cannot be used.
+ 
+ ---
+ 
+-## 7 · EXACT NEXT ACTION
++## 8 · EXACT NEXT ACTION
+ 
+ 1. Apply `round18.patch`, run the desktop suite, commit. That converts F22
+    production coverage from 0/19 to 6/19 and puts a ratchet under channel→store.

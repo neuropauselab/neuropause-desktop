@@ -67,6 +67,7 @@ describe('SupportBundleGenerator', () => {
       arch: 'arm64',
       packaged: true,
       runtime: { electron: '30.5.1', node: '20', chrome: '124', v8: '12' },
+      releaseNotes: null,
     },
     diagnostics: { overall: 'ok' },
     modules: [{ name: 'demo', kind: 'app', version: '1.0.0', enabled: true }],

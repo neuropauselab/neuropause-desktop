@@ -6,8 +6,22 @@ import {
   useShell,
   SIDEBAR_COLLAPSED,
 } from '@renderer/state/ShellProvider';
-import { SECTIONS, type SectionDef } from './sections';
+import {
+  SECTIONS,
+  SECTION_GROUPS,
+  SECTION_GROUP_LABELS,
+  type SectionDef,
+  type SectionGroup,
+} from './sections';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
+import { AFFORDANCE, CSS_TRANSITION, INDICATOR_SPRING, TRANSITION } from '@renderer/lib/motion';
+import { useWorkspaceType } from '@renderer/firstRun/workspaceTypeStore';
+import {
+  BUSINESS_NAV_GROUPS,
+  BUSINESS_NAV_GROUP_LABELS,
+  businessGroupFor,
+  sectionVisibleFor,
+} from '@renderer/firstRun/experienceModel';
 
 function SidebarItem({
   section,
@@ -23,23 +37,31 @@ function SidebarItem({
     <button
       type="button"
       onClick={() => setSection(section.id)}
-      title={collapsed ? section.label : undefined}
+      title={collapsed ? section.label : section.description}
       aria-label={section.preview ? `${section.label} — Preview` : section.label}
       aria-current={active ? 'page' : undefined}
       className={cn(
-        'group relative flex h-9 w-full items-center rounded-xl outline-none transition-colors focus-visible:shadow-focus',
+        'group relative flex h-9 w-full items-center rounded-xl outline-none focus-visible:shadow-focus',
+        CSS_TRANSITION.colors,
+        AFFORDANCE.clickable,
         collapsed ? 'justify-center px-0' : 'gap-3 px-3',
         active ? 'text-accent' : 'text-muted hover:text-ink',
       )}
     >
       {active && (
+        // One indicator element shared across every row (`layoutId`), so
+        // selecting a different section MOVES the pill rather than fading one
+        // out and another in. The travel is what tells the eye the two rows
+        // are the same control in two states.
         <motion.span
           layoutId="sidebar-active"
-          transition={{ type: 'spring', stiffness: 560, damping: 38 }}
+          transition={INDICATOR_SPRING}
           className="absolute inset-0 rounded-xl bg-accent/12"
         />
       )}
-      {!active && <span className="absolute inset-0 rounded-xl fill-hover" />}
+      {!active && (
+        <span className={cn('absolute inset-0 rounded-xl fill-hover', CSS_TRANSITION.colors)} />
+      )}
       <Icon name={section.icon} size={19} className={cn('relative z-10', active ? 'text-accent' : '')} />
       <AnimatePresence initial={false}>
         {!collapsed && (
@@ -47,7 +69,7 @@ function SidebarItem({
             initial={{ opacity: 0, x: -4 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -4 }}
-            transition={{ duration: 0.12 }}
+            transition={TRANSITION.instant}
             className="relative z-10 whitespace-nowrap text-base font-medium"
           >
             {section.label}
@@ -66,11 +88,96 @@ function SidebarItem({
   );
 }
 
+function AdvancedNav({
+  sections,
+  open,
+  onToggle,
+  collapsed,
+}: {
+  sections: SectionDef[];
+  open: boolean;
+  onToggle: () => void;
+  collapsed: boolean;
+}): JSX.Element {
+  return (
+    <div role="group" aria-label="Advanced" className="mt-2 flex flex-col gap-0.5">
+      {collapsed && <div aria-hidden="true" className="mx-2 my-1.5 h-px bg-[var(--hairline)]" />}
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-controls="sidebar-advanced-list"
+        title={collapsed ? 'Advanced' : undefined}
+        className={cn(
+          'group relative flex h-9 w-full items-center rounded-xl text-muted outline-none hover:text-ink focus-visible:shadow-focus',
+          CSS_TRANSITION.colors,
+          AFFORDANCE.clickable,
+          collapsed ? 'justify-center px-0' : 'gap-3 px-3',
+        )}
+      >
+        <span className={cn('absolute inset-0 rounded-xl fill-hover', CSS_TRANSITION.colors)} />
+        <Icon name="layers" size={19} className="relative z-10" />
+        {!collapsed && (
+          <>
+            <span className="relative z-10 whitespace-nowrap text-base font-medium">Advanced</span>
+            <Icon
+              name="arrow-right"
+              size={14}
+              className={cn('relative z-10 ml-auto', CSS_TRANSITION.rotate, open ? 'rotate-90' : '')}
+            />
+          </>
+        )}
+      </button>
+      {open && (
+        <div id="sidebar-advanced-list" className="flex flex-col gap-0.5">
+          {sections.map((s) => (
+            <SidebarItem key={s.id} section={s} collapsed={collapsed} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Sidebar(): JSX.Element {
   const { sidebarCollapsed, sidebarWidth, setSidebarWidth } = useShell();
   const [resizing, setResizing] = useState(false);
-  const primary = SECTIONS.filter((s) => s.placement === 'primary' && !s.hidden);
-  const footer = SECTIONS.filter((s) => s.placement === 'footer' && !s.hidden);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  // Private-First experience: the chosen workspace type narrows the visible
+  // set (Personal shows the focused set; Business shows everything). A RENDER
+  // concern only — the SECTIONS array, its order, and every nav lock over it
+  // are untouched, and the command palette still exposes every section.
+  const workspaceType = useWorkspaceType();
+  const forType = SECTIONS.filter((s) => sectionVisibleFor(workspaceType, s.id));
+  const primary = forType.filter((s) => s.placement === 'primary' && !s.hidden);
+  const footer = forType.filter((s) => s.placement === 'footer' && !s.hidden);
+  // Phase 2 (progressive disclosure): the default sidebar shows the focused set;
+  // `tier: 'advanced'` surfaces collapse behind the "Advanced" disclosure below. Pure
+  // presentation — the command palette + universal search still expose EVERY section,
+  // and the SECTIONS array order (and every nav lock over it) is untouched.
+  const mainPrimary = primary.filter((s) => s.tier !== 'advanced');
+  const advanced = primary.filter((s) => s.tier === 'advanced');
+  // Phase 7 — grouped navigation: bucket the visible primaries into the stable
+  // groups, preserving SECTIONS order within each.
+  const registryGrouped: { key: string; label: string; sections: SectionDef[] }[] = SECTION_GROUPS.map(
+    (group: SectionGroup) => ({
+      key: group,
+      label: SECTION_GROUP_LABELS[group],
+      sections: mainPrimary.filter((s) => (s.group ?? 'workspace') === group),
+    }),
+  ).filter((g) => g.sections.length > 0);
+  // Business profile: the SAME visible sections, regrouped into the Business
+  // information architecture (Today / Business / Work / Data / Operations /
+  // Intelligence / System). A render mapping only — order within each group
+  // follows SECTIONS order, nothing is added, renamed or removed, and every
+  // other profile keeps the registry grouping untouched.
+  const businessGrouped: { key: string; label: string; sections: SectionDef[] }[] =
+    BUSINESS_NAV_GROUPS.map((group) => ({
+      key: group,
+      label: BUSINESS_NAV_GROUP_LABELS[group],
+      sections: mainPrimary.filter((s) => businessGroupFor(s.id, s.group) === group),
+    })).filter((g) => g.sections.length > 0);
+  const grouped = workspaceType === 'business' ? businessGrouped : registryGrouped;
 
   const startResize = (e: ReactPointerEvent): void => {
     if (sidebarCollapsed) return;
@@ -101,10 +208,34 @@ export function Sidebar(): JSX.Element {
       <div className="px-3 pt-3">
         <WorkspaceSwitcher collapsed={sidebarCollapsed} />
       </div>
-      <nav className="flex flex-1 flex-col gap-0.5 px-3 pt-2" role="navigation">
-        {primary.map((s) => (
-          <SidebarItem key={s.id} section={s} collapsed={sidebarCollapsed} />
+      <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 pt-2" role="navigation">
+        {grouped.map(({ key, label, sections }, index) => (
+          <div key={key} role="group" aria-label={label} className="flex flex-col gap-0.5">
+            {sidebarCollapsed ? (
+              index > 0 && <div aria-hidden="true" className="mx-2 my-1.5 h-px bg-[var(--hairline)]" />
+            ) : (
+              <div
+                className={cn(
+                  'px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-faint',
+                  index === 0 ? 'pt-1' : 'pt-4',
+                )}
+              >
+                {label}
+              </div>
+            )}
+            {sections.map((s) => (
+              <SidebarItem key={s.id} section={s} collapsed={sidebarCollapsed} />
+            ))}
+          </div>
         ))}
+        {advanced.length > 0 && (
+          <AdvancedNav
+            sections={advanced}
+            open={advancedOpen}
+            onToggle={() => setAdvancedOpen((v) => !v)}
+            collapsed={sidebarCollapsed}
+          />
+        )}
       </nav>
       <div className="px-3 pb-3">
         {footer.map((s) => (

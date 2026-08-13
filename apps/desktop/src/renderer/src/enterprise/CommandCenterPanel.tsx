@@ -143,12 +143,12 @@ export function CommandCenterPanel({
             if (e.key === 'Enter' && query.trim()) onNavigate('search', query.trim());
           }}
           placeholder="Search the entire organization — projects, documents, people, conversations…"
-          className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-faint"
+          className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none focus-visible:shadow-focus placeholder:text-faint"
         />
         <button
           type="button"
           onClick={() => query.trim() && onNavigate('search', query.trim())}
-          className="rounded-lg bg-accent px-2.5 py-1 text-xs font-semibold text-white"
+          className="rounded-lg bg-accent px-2.5 py-1 text-xs font-semibold text-accent-fg"
         >
           Search
         </button>

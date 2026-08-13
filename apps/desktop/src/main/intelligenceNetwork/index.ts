@@ -43,6 +43,7 @@ import { EnterpriseIntelligenceNetworkService } from './networkService';
 import type { IntelNetworkState, NetworkMetric, RegistryEntryInput, SharedRecommendationInput } from './networkModel';
 import { bandFor } from './networkModel';
 import { withNetworkAuthz } from './networkAuthz';
+import { activeTenantScope } from '../enterprise/index';
 
 const log = createLogger('intelligence-network');
 
@@ -172,7 +173,7 @@ function buildState(deps: EnterpriseIntelligenceNetworkDeps): IntelNetworkState 
 }
 
 export function initEnterpriseIntelligenceNetwork(deps: EnterpriseIntelligenceNetworkDeps): EnterpriseIntelligenceNetworkSubsystem {
-  const service = new EnterpriseIntelligenceNetworkService({ readState: () => buildState(deps) });
+  const service = new EnterpriseIntelligenceNetworkService({ scope: activeTenantScope, readState: () => buildState(deps) });
 
   // Invalidate the memoized snapshot when a backing store changes; the injected knowledge/industry/
   // twin/orchestration accessors refresh via the service TTL. Renderer liveness reuses `ecosystem:event`.

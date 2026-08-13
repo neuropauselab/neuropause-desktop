@@ -31,6 +31,7 @@ export type ApiScope =
   | 'context:read'
   | 'search:read'
   | 'automation:read'
+  | 'industry:read'
   | 'observability:read';
 
 export const ALL_API_SCOPES: readonly ApiScope[] = [
@@ -51,6 +52,7 @@ export const ALL_API_SCOPES: readonly ApiScope[] = [
   'context:read',
   'search:read',
   'automation:read',
+  'industry:read',
   'observability:read',
 ];
 
@@ -70,6 +72,13 @@ export interface DeveloperAccount {
 export interface ApiKey {
   id: string;
   developerId: string;
+  /**
+   * P13C ROUND 3 — H-3. The organization this record belongs to.
+   *
+   * Optional because rows written before this round have no owner, and an
+   * unowned row is visible to NOBODY rather than being guessed into a tenant.
+   */
+  tenantId?: string | null;
   name: string;
   /** Public, non-secret identifying prefix, e.g. `npk_live_a1b2c3`. */
   prefix: string;
@@ -92,6 +101,13 @@ export type OAuthGrantType = 'authorization_code' | 'client_credentials' | 'refr
 export interface OAuthApplication {
   id: string;
   developerId: string;
+  /**
+   * P13C ROUND 3 — H-3. The organization this record belongs to.
+   *
+   * Optional because rows written before this round have no owner, and an
+   * unowned row is visible to NOBODY rather than being guessed into a tenant.
+   */
+  tenantId?: string | null;
   name: string;
   clientId: string;
   secretLast4: string;
@@ -109,6 +125,13 @@ export interface OAuthApplicationWithSecret {
 export interface UsageRecord {
   id: string;
   developerId: string;
+  /**
+   * P13C ROUND 3 — H-3. The organization this record belongs to.
+   *
+   * Optional because rows written before this round have no owner, and an
+   * unowned row is visible to NOBODY rather than being guessed into a tenant.
+   */
+  tenantId?: string | null;
   apiKeyId: string | null;
   at: string;
   method: string;
@@ -245,6 +268,20 @@ export interface ListingPricing {
 }
 
 export interface MarketplaceListing {
+  /**
+   * The organization that published this listing, or null for a pre-Round-8 row.
+   *
+   * P13C ROUND 8. The store had NO publisher field — `developerId` was the constant
+   * `'dev-owner'` — so drafts and the submission trail were readable by every
+   * tenant, and `EcosystemShareWorker` puts a tenant's AI worker name and first
+   * goal into a draft. Published listings remain visible to all, because that is
+   * what publishing means; drafts and events are the publisher's own.
+   *
+   * Optional: rows written before the field existed have no publisher. A PUBLISHED
+   * legacy row stays visible (the storefront is the product); a legacy DRAFT
+   * reaches nobody, which is the direction that cannot disclose.
+   */
+  publisherOrgId?: string | null;
   id: string;
   kind: ListingKind;
   slug: string;
@@ -259,6 +296,36 @@ export interface MarketplaceListing {
   installs: number;
   ratingAvg: number;
   ratingCount: number;
+  /**
+   * WHO HAS ADOPTED, AND WHO HAS VOTED. P13C ROUND 12 — M-12.
+   *
+   * `install()` and `rate()` were `installs + 1` and a running average with NO
+   * IDENTITY: every call was a fresh adoption and a fresh vote. Any tenant
+   * holding `developer:manage` in its own organization — which every Owner of
+   * every self-created organization holds — could loop `ecosystem:listing.rate`
+   * and drive another tenant's PUBLISHED listing to `ratingAvg: 1.0,
+   * ratingCount: 100000`, or inflate its own to the top of `rankCatalog`.
+   * Neither handler carried `audit: true`, so the write was not even recorded.
+   *
+   * THE DIMENSION IS THE ORGANIZATION, and that is a decision rather than a
+   * default. This store's only identity seam is `tenancy.scopeOrDeny()`, which
+   * resolves a tenant; it has no user seam, and inventing one here would be
+   * guessing at semantics the rest of the subsystem does not share. Per-org also
+   * matches how adoption is already counted next door:
+   * `exchange/analytics.downloads30d` counts per-organization `Installation`
+   * rows through `requireCallerOrgId`. One adoption and one opinion per
+   * organization.
+   *
+   * OPTIONAL, AND LEGACY ROWS ARE NOT REWRITTEN. A row written before these
+   * fields existed keeps its `installs` / `ratingCount` / `ratingAvg` exactly as
+   * they are, and the maps start empty — historical totals are preserved rather
+   * than recomputed from an identity nobody recorded. New activity is idempotent
+   * per organization from that baseline forward. Discarding the old scalars to
+   * make the model tidy would be destroying real data to fix a counting bug.
+   */
+  installedBy?: Record<string, true>;
+  /** `organizationId → stars (1-5)`. See `installedBy`. */
+  ratings?: Record<string, number>;
   certified: boolean;
   createdAt: string;
   updatedAt: string;
@@ -337,6 +404,13 @@ export interface GatewayDecision {
 export interface GatewayAuditEntry {
   id: string;
   at: string;
+  /**
+   * P13C ROUND 3 — H-3. The organization this record belongs to.
+   *
+   * Optional because rows written before this round have no owner, and an
+   * unowned row is visible to NOBODY rather than being guessed into a tenant.
+   */
+  tenantId?: string | null;
   keyId: string | null;
   developerId: string | null;
   method: string;
@@ -396,6 +470,13 @@ export interface Subscription {
 
 export interface SeatAssignment {
   id: string;
+  /**
+   * P13C ROUND 3 — H-3. The organization this record belongs to.
+   *
+   * Optional because rows written before this round have no owner, and an
+   * unowned row is visible to NOBODY rather than being guessed into a tenant.
+   */
+  tenantId?: string | null;
   userId: string;
   userName: string;
   assignedAt: string;

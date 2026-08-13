@@ -26,7 +26,9 @@ function dto(over: Partial<ConnectorDto> = {}): ConnectorDto {
     id: 'github', name: 'GitHub', provider: 'GitHub', description: 'Code hosting', category: 'developer',
     website: '', docsUrl: '', brandColor: '#000', version: '1.0.0', authType: 'oauth2_pkce', capabilities: [],
     scopes: [], multiAccount: true, configured: true, status: 'connected', health: 'healthy', accounts: [],
-    lastSyncAt: null, setupHint: null, lifecycle: 'production', ...over,
+    lastSyncAt: null, setupHint: null, lifecycle: 'production', needsReconnect: 0,
+    businessData: { mapped: [], unmappedNote: null },
+    ...over,
   };
 }
 

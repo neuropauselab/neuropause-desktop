@@ -12,10 +12,43 @@
  */
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
+import { createBoundedLog } from '../storage/boundedLog';
 import { app, crashReporter as nativeCrashReporter } from 'electron';
 import type { CrashCategory, CrashRecord, CrashStatus, RecoveryRecommendation } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import { buildCrashRecord } from './crashRecord';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/** P13C ROUND 9 — F18. The structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'crash-archive',
+  scope: 'INSTALL_GLOBAL',
+  persistence: 'file',
+  // `crash:setOptIn` is the only mutation and it is the person at the keyboard
+  // consenting to native minidump capture on their own machine — not an
+  // organizational decision, so USER rather than ORG_ROLE (which is refused).
+  authority: 'USER',
+  classification: 'INSTALL_METADATA',
+  /** P13C ROUND 10. INSTALL is honest and is NOT the finding class: `crashes.log` rotates by size install-wide, and the rows have NO OWNER FIELD, so there is no tenant partition for a rotation to cross. A store with nothing per-tenant to protect cannot delete across a boundary that does not exist. */
+  retentionScope: 'INSTALL',
+  retentionAuthority: 'SYSTEM',
+  retention:
+    'INSPECTED, AND STATED RATHER THAN CLAIMED SAFE. `crashes.log` rotates by SIZE, install-wide: ' +
+    '`createBoundedLog(2 MiB, keep 2)` — so a crash loop in one subsystem does push older crash ' +
+    'lines out, and those lines have no owner to preserve them for. That is NOT the install-wide-cap ' +
+    'finding class: a crash row is a fault in the software with no tenant field and no tenant ' +
+    'meaning, so there is no per-owner partition a rotation could respect. `crash-reporting.json` is ' +
+    'a single boolean overwritten in place. `recovery:run resetSettings` deletes that opt-in file.',
+  reason:
+    'WHY GLOBAL: one process on one machine faults, and a fault belongs to the software, not to a ' +
+    'customer. WHAT DATA: category (main/renderer/worker/plugin/connector), kind, message and stack ' +
+    '— every one of which is passed through `redactSensitive` in `buildCrashRecord` BEFORE it is ' +
+    'written, so the archive at rest is scrubbed rather than scrubbed only on export. Nothing is ' +
+    'ever uploaded: native capture is opt-in and `uploadToServer:false`, and there is no ingest ' +
+    'endpoint. STATED LIMIT: a stack frame is redacted, not tenant-partitioned — an exception ' +
+    'message that quoted a record name would be scrubbed of secrets and paths but is not proven free ' +
+    'of record text, which is why the archive stays local and the support bundle re-scrubs on export.',
+});
 
 const log = createLogger('crash-reporter');
 
@@ -28,6 +61,8 @@ class CrashReporter {
   private count = 0;
   private optedIn = false;
   private nativeActive = false;
+  /** Phase 8 (8.4): rotating sink for crashes.log — 2 MiB per generation, 2 kept. */
+  private readonly crashLog = createBoundedLog(() => this.logPath(), { maxBytes: 2 * 1024 * 1024, keep: 2 });
 
   private onUncaught = (err: Error): void => this.report('main', 'uncaughtException', err.message, err.stack);
   private onRejection = (reason: unknown): void =>
@@ -83,10 +118,9 @@ class CrashReporter {
     // Scrub secrets/PII from message + stack before anything is persisted or logged.
     const record: CrashRecord = buildCrashRecord(category, kind, message, stack, new Date().toISOString());
     log.error('Crash captured', { category, kind, message: record.message });
-    void fs
-      .mkdir(join(app.getPath('userData'), 'logs'), { recursive: true })
-      .then(() => fs.appendFile(this.logPath(), `${JSON.stringify(record)}\n`))
-      .catch(() => undefined);
+    // Phase 8 (8.4): bounded append — a crash loop can no longer grow this
+    // file without limit (rotations remain in logs/ for the support bundle).
+    this.crashLog.append(JSON.stringify(record));
   }
 
   async setOptIn(optedIn: boolean): Promise<CrashStatus> {

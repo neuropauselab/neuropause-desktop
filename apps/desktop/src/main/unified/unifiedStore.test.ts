@@ -8,6 +8,17 @@ import type { UnifiedEntity, UnifiedEntityKind } from '@neuropause/shared';
 
 function entity(over: Partial<UnifiedEntity> & { id: string; kind: UnifiedEntityKind }): UnifiedEntity {
   return {
+    /**
+     * P13B — every fixture entity now declares its owner.
+     *
+     * `org-test` matches the ambient scope in `vitest.setup.ts`, so these tests
+     * keep reading their own records. An entity WITHOUT this field is not a
+     * "plain" entity any more — it is an unowned one, visible to nobody and
+     * absent from the index, which is the production behaviour for rows written
+     * before P13B.
+     */
+    tenantId: 'org-test',
+    workspaceId: null,
     connectorId: 'github',
     accountId: 'acct_1',
     sourceId: over.id,

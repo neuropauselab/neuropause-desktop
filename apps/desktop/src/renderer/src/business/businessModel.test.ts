@@ -1,7 +1,7 @@
 /**
  * EBS v1.0 — Business Workspace model tests. These lock the authenticity + reuse contract of the presentation
  * layer: families are derived purely from the modules' real `descriptor.group`, only families that actually
- * have modules appear (roadmap-only families like Quality/HR/Projects never render as empty rooms), counts are
+ * have modules appear (roadmap-only families like Quality never render as empty rooms), counts are
  * honest sums of the registry summaries, and the Finance RBAC caveat (operations:*, not finance:*) is recorded.
  */
 import { describe, expect, it } from 'vitest';
@@ -38,14 +38,16 @@ function mod(
 }
 
 describe('BUSINESS_FAMILIES — the honest family set', () => {
-  it('lists exactly the nine real families, in canonical order, and never Quality/HR/Projects', () => {
+  // Phase 7: HR, Projects, Helpdesk and Documents modules registered during the
+  // Final Wave, so the family set grew from nine to thirteen. Quality remains
+  // the one roadmap family with no module carrying its group.
+  it('lists exactly the thirteen real families, in canonical order, and never Quality', () => {
     const groups = BUSINESS_FAMILIES.map((f) => f.group);
     expect(groups).toEqual([
-      'Finance', 'Sales', 'CRM', 'Procurement', 'Inventory', 'Warehouse', 'Manufacturing', 'Maintenance', 'Executive',
+      'Finance', 'Sales', 'CRM', 'Procurement', 'Inventory', 'Warehouse', 'Manufacturing', 'Maintenance',
+      'HR', 'Projects', 'Helpdesk', 'Documents', 'Executive',
     ]);
     expect(groups).not.toContain('Quality');
-    expect(groups).not.toContain('HR');
-    expect(groups).not.toContain('Projects');
   });
 
   it('records the Finance RBAC caveat truthfully (operations:*, not finance:*)', () => {

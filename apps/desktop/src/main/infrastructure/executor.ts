@@ -25,6 +25,21 @@ export interface InfraExecutorDeps {
   publish: (event: PlatformEventInput) => void;
   /** The account's discovered region for a regional action (a param `region` overrides; global actions ignore). */
   regionFor: (platformId: string, accountId: string) => string | null;
+  /**
+   * Whether the CALLER may act on this cloud account.
+   *
+   * P13C ROUND 7 — the authorization step, which did not exist. `accountId`
+   * arrives from the renderer payload (`InfraExecuteAction`) and reached the
+   * provider transport with only two checks: that the action id is known and that
+   * a mutating action was confirmed. Neither says anything about WHOSE account it
+   * is. So a `connectors:manage` holder in one tenant could run a MUTATING
+   * provider action — restart, terminate, scale, revoke — against another
+   * tenant's cloud infrastructure.
+   *
+   * Backed by `ResourceStore.ownsAccount`, the same filter the listings use, so
+   * there is exactly one answer to "whose account is this".
+   */
+  ownsAccount: (platformId: string, accountId: string) => boolean;
   now: () => string;
 }
 
@@ -53,6 +68,19 @@ export class InfraActionExecutor {
     const action = this.byId.get(actionId);
     if (!action || action.platformId !== platformId) {
       return { ok: false, message: `Unknown action "${actionId}" for platform "${platformId}"` };
+    }
+
+    /**
+     * 0. AUTHORIZATION. Before the confirmation gate, deliberately.
+     *
+     * A caller probing account ids must not learn from the response whether the
+     * action would have needed confirmation, or that the account exists at all.
+     * Same message an unknown account gets — because to this caller it IS
+     * unknown. Mirrors `m365/executor.ts`, where the identical shape was closed
+     * in Round 6.
+     */
+    if (!this.deps.ownsAccount(platformId, accountId)) {
+      return { ok: false, message: `Unknown account "${accountId}" for platform "${platformId}"` };
     }
 
     // 1. Confirmation gate — no high-privilege mutation without an explicit, user-originated confirmation.

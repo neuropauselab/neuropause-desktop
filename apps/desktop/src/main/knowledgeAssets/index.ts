@@ -71,6 +71,7 @@ import { composeDecisionLineage } from './decisionLineage';
 import { buildQualityReport } from './quality';
 import { composeStandards } from './standards';
 import { buildCoverageMap } from './coverageMap';
+import { onWorkspaceSwitch } from '../tenancy/workspaceSwitchHub';
 import {
   answerKnowledgeQuestion,
   composeKnowledgeDashboard,
@@ -79,6 +80,9 @@ import {
   resolveKnowledgeQuestion,
   type KnowledgeQuestionContext,
 } from './knowledgeModel';
+import { TenantMemo } from '../tenancy/tenantMemo';
+import type { TenantScope } from '@neuropause/shared';
+import { TenantDedupe } from '../tenancy/tenantDedupe';
 
 const log = createLogger('knowledge-assets');
 
@@ -98,6 +102,18 @@ export interface TimelineEventLite {
 }
 
 export interface KnowledgeAssetsDeps {
+  /**
+   * P13C ROUND 5 — the tenant boundary for this subsystem's composed cache.
+   *
+   * INJECTED, not imported. `enterprise/index` reaches `app.getPath`, so
+   * importing `activeTenantScope` here drags Electron into a pure-model node
+   * test — a trap this program has now fallen into FOUR times, once per round.
+   * Worth stating as a rule rather than a note: a subsystem that unit-tests
+   * without Electron takes its resolver as a dep.
+   *
+   * Required, so a composition root that forgets it fails to compile.
+   */
+  scope: () => TenantScope | null;
   decisions: () => ExecutiveDecision[];
   chains: () => ApprovalChain[];
   rules: () => ComplianceRule[];
@@ -167,11 +183,27 @@ function safeRead<T>(system: string, fn: () => T, failures: Record<string, strin
 
 export function initKnowledgeAssets(deps: KnowledgeAssetsDeps): KnowledgeAssetsSubsystem {
   const now = deps.now ?? ((): number => Date.now());
-  let cache: BuildArtifacts | null = null;
+  /**
+   * P13C ROUND 5 — KEYED BY TENANT.
+   *
+   * `let cache: BuildArtifacts | null` behind a short TTL, flushed on
+   * `onWorkspaceSwitch`. That listener cannot see the case this program has
+   * documented twice already: `deliveryEngine.tick()` runs `forEachTenant`, so
+   * each tenant's `produce()` fills the cache back to back with NO SWITCH
+   * ANNOUNCED, and an interactive read from another tenant inside the TTL is
+   * served the composed dashboard of whoever ran last.
+   *
+   * Round 3 fixed eleven services of this shape by name and Round 4 fixed a
+   * twelfth; these seven were the remainder. Keying rather than adding a second
+   * listener, because the key covers the fan-out and the listener does not.
+   */
+  const projectionCache = new TenantMemo<BuildArtifacts>('knowledge-assets-projections', { ttlMs: BUILD_TTL_MS, now })
+    .bindScope(deps.scope);
 
-  const build = (): BuildArtifacts => {
+  const build = (): BuildArtifacts => projectionCache.state(compose);
+
+  const compose = (): BuildArtifacts => {
     const nowMs = now();
-    if (cache && nowMs - cache.at < BUILD_TTL_MS) return cache;
     const nowIso = new Date(nowMs).toISOString();
     const failures: Record<string, string> = {};
 
@@ -325,7 +357,7 @@ export function initKnowledgeAssets(deps: KnowledgeAssetsDeps): KnowledgeAssetsS
       nowIso,
     });
 
-    cache = {
+    return {
       at: nowMs,
       nowIso,
       inventory,
@@ -341,7 +373,6 @@ export function initKnowledgeAssets(deps: KnowledgeAssetsDeps): KnowledgeAssetsS
       verifiedEvents,
       insightRecos,
     };
-    return cache;
   };
 
   const lineage = (decisionId: string): DecisionLineage => {
@@ -387,7 +418,24 @@ export function initKnowledgeAssets(deps: KnowledgeAssetsDeps): KnowledgeAssetsS
   };
 
   /* ── monitoring: ONE governed hygiene source (items only, never actions) ── */
-  const deliveredHygiene = new Set<string>();
+  /**
+   * P13C ROUND 6 — EDGE-TRIGGER STATE, KEYED BY TENANT.
+   *
+   * Was `new Set<string>()` holding bare recommendation ids, and `produce()`
+   * runs once per tenant under the delivery fan-out. The ids are deterministic
+   * constants, so the FIRST tenant in the fan-out claimed each one permanently
+   * and every other tenant's identical critical alert was dropped — forever, with
+   * no TTL and nothing to clear it.
+   *
+   * No content crossed. What crossed was the decision NOT to deliver, which is
+   * quieter than a disclosure and, for a critical alert, not obviously less
+   * serious: one customer stops receiving warnings because another received the
+   * same category first, and nothing looks wrong.
+   *
+   * `claim()` is one call rather than has-then-add, because has-then-add is
+   * where the bug lived in twelve places and a thirteenth would write it too.
+   */
+  const deliveredHygiene = new TenantDedupe('knowledge-hygiene');
   const hygieneSource: IntelligenceSource = {
     key: 'knowledge-hygiene',
     label: 'Knowledge Hygiene',
@@ -397,8 +445,7 @@ export function initKnowledgeAssets(deps: KnowledgeAssetsDeps): KnowledgeAssetsS
       const items: IntelligenceItem[] = [];
       for (const r of b.recommendations) {
         if (r.priority !== 'critical' && r.priority !== 'high') continue;
-        if (deliveredHygiene.has(r.id)) continue;
-        deliveredHygiene.add(r.id);
+        if (!deliveredHygiene.claim(deps.scope(), r.id)) continue;
         items.push({
           id: `kb:${r.id}`,
           title: r.title,
@@ -422,6 +469,23 @@ export function initKnowledgeAssets(deps: KnowledgeAssetsDeps): KnowledgeAssetsS
   deps.registerSource(hygieneSource);
 
   /* ── the six read-only IPC channels (D-9; knowledge:read, the P16 precedent) ── */
+  /**
+   * P13C Round 2 — H7. DROP THE TENANT-DERIVED SNAPSHOT ON A TENANT SWITCH.
+   *
+   * This cache holds a fully composed, tenant-derived read model behind a short
+   * TTL, and it was cleared only in `dispose()`. Switching organization changes
+   * none of the backing stores this subsystem watches, so the memo survived the
+   * switch — and the renderer's reload after a switch lands INSIDE the TTL.
+   * Opening a dashboard right after switching is the single most common
+   * multi-tenant action there is, so the window was not theoretical.
+   *
+   * Registered on the same residue seam every other subsystem uses, rather than
+   * a second invalidation mechanism.
+   */
+  onWorkspaceSwitch(() => {
+    projectionCache.invalidate();
+  });
+
   const handlers: SecureHandlerDef[] = [
     {
       channel: IpcChannel.KbInventory,
@@ -516,7 +580,7 @@ export function initKnowledgeAssets(deps: KnowledgeAssetsDeps): KnowledgeAssetsS
     lineage,
     answerQuestion,
     dispose: () => {
-      cache = null;
+      projectionCache.invalidate();
     },
   };
 }

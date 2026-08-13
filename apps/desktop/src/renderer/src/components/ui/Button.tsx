@@ -1,5 +1,6 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import { cn } from '@renderer/lib/cn';
+import { AFFORDANCE, CSS_TRANSITION } from '@renderer/lib/motion';
 import { Icon, type IconName } from './Icon';
 import { Spinner } from '../Spinner';
 
@@ -40,7 +41,20 @@ export function Button({
   return (
     <button
       className={cn(
-        'inline-flex select-none items-center justify-center font-medium outline-none transition duration-100 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50',
+        'inline-flex items-center justify-center font-medium outline-none',
+        // Press feedback. `active:scale-[0.98]` is the whole interaction: a
+        // button that does not move on press feels like an image of a button,
+        // and no amount of hover styling compensates for it.
+        'active:scale-[0.98] motion-reduce:active:scale-100',
+        CSS_TRANSITION.interactive,
+        AFFORDANCE.clickable,
+        // NOT `disabled:pointer-events-none`. Removing pointer events gives a
+        // disabled control the default arrow cursor, which reads as "this is
+        // not a control" rather than "this control is unavailable right now".
+        // The browser already blocks activation on a disabled button, so the
+        // not-allowed cursor is both safe and more informative.
+        AFFORDANCE.disabled,
+        AFFORDANCE.busy,
         VARIANTS[variant],
         SIZES[size],
         className,
@@ -81,7 +95,11 @@ export function IconButton({
       aria-label={label}
       title={label}
       className={cn(
-        'flex h-8 w-8 items-center justify-center rounded-lg outline-none transition duration-100 active:scale-95 focus-visible:shadow-focus',
+        'flex h-8 w-8 items-center justify-center rounded-lg outline-none focus-visible:shadow-focus',
+        'active:scale-95 motion-reduce:active:scale-100',
+        CSS_TRANSITION.interactive,
+        AFFORDANCE.clickable,
+        AFFORDANCE.disabled,
         active ? 'fill-active text-ink' : 'text-muted hover:text-ink fill-hover',
         className,
       )}

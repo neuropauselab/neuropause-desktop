@@ -104,7 +104,23 @@ export interface GraphEvidence {
   id: string;
 }
 
-export interface GraphNode {
+/**
+ * Tenant ownership for graph elements (P13B).
+ *
+ * Both nodes AND edges carry it, which is not redundant. An edge is a claim
+ * that two things are related, and that claim is itself sensitive: "these two
+ * records are connected" is information even when neither record is returned.
+ * More practically, a traversal walks edges before it resolves nodes, so an
+ * unowned edge set would be walkable before any node check could apply.
+ */
+export interface GraphOwnership {
+  /** Absent or empty means UNRESOLVED — visible to no tenant. */
+  tenantId?: string | null;
+  /** Absent means tenant-level: visible from every workspace in the tenant. */
+  workspaceId?: string | null;
+}
+
+export interface GraphNode extends GraphOwnership {
   /** Stable graph id (UDM unified id for entity-derived nodes; synthesized otherwise). */
   id: string;
   type: GraphNodeType;
@@ -121,7 +137,7 @@ export interface GraphNode {
   metadata: GraphMeta;
 }
 
-export interface GraphEdge {
+export interface GraphEdge extends GraphOwnership {
   /** Deterministic id: `${from}|${type}|${to}`. */
   id: string;
   type: GraphEdgeType;

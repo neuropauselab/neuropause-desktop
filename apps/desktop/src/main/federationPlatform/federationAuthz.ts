@@ -60,6 +60,13 @@ export const FEDERATION_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Ente
   [IpcChannel.FedGovSummary]: READ,
   [IpcChannel.FedAddPolicy]: MANAGE,
   [IpcChannel.FedSetPolicyEnabled]: MANAGE,
+  // P13C Round 5 — F6. Reading the count is a read; resolving a quarantined
+  // policy changes what governance enforces, so it is a manage operation.
+  [IpcChannel.FedPolicyMigrationStatus]: READ,
+  // The contents, unlike the count, are an administrator surface.
+  [IpcChannel.FedQuarantinedPolicies]: MANAGE,
+  [IpcChannel.FedClaimPolicy]: MANAGE,
+  [IpcChannel.FedDiscardPolicy]: MANAGE,
   [IpcChannel.FedRecordAction]: MANAGE,
   [IpcChannel.FedResolveApproval]: APPROVE,
 
@@ -74,9 +81,35 @@ export const FEDERATION_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Ente
   [IpcChannel.FedValidations]: READ,
   [IpcChannel.FedContinuity]: READ,
   [IpcChannel.FedDrSummary]: READ,
-  [IpcChannel.FedCreateBackup]: MANAGE,
-  [IpcChannel.FedRunValidation]: MANAGE,
-  [IpcChannel.FedCheckReplication]: MANAGE,
+  /**
+   * P13C ROUND 10 — NEW-F5. THE DISASTER-RECOVERY WRITES ARE INSTALL-WIDE.
+   *
+   * These were `federation:manage`, an ORGANIZATION role. The resource is one
+   * `drStore` holding the machine's backups, replication topology and continuity
+   * posture — it has no per-owner rows at all. Anyone may create an organization
+   * and become its Owner, so an organization role over an install-wide,
+   * side-effecting operation is a self-service grant: Round 9's F19 class.
+   *
+   * WHAT MADE THIS ONE DIFFERENT, AND WHY IT SAT HERE SINCE ROUND 4. The store's
+   * own declaration has stated the cost in prose the whole time — *"a
+   * federation:manage holder in one tenant can trigger an install-wide backup or
+   * a recovery validation"*. That is the finding, written down and permitted.
+   * PROSE CANNOT BE CHECKED. Round 10's retention/authority enums can, and
+   * `declareStoreScope` refused the honest declaration until these three moved —
+   * which is precisely what the enum was added to do.
+   *
+   * Same destination as every sibling this program has moved for the same
+   * reason: `worker-registry` (the store F19 was written for), the plugin
+   * lifecycle, the AI destination, `backup:restore`. `cloud:operate` is in
+   * `PLATFORM_ONLY_PERMISSIONS` and is filtered out of the Owner wildcard, so no
+   * organization role can hold it.
+   *
+   * THE READS ABOVE DID NOT MOVE. Seeing this machine's continuity posture is
+   * something a member legitimately does; triggering a backup of it is not.
+   */
+  [IpcChannel.FedCreateBackup]: 'cloud:operate',
+  [IpcChannel.FedRunValidation]: 'cloud:operate',
+  [IpcChannel.FedCheckReplication]: 'cloud:operate',
 
   /* ── Federation administration + scalability ── */
   [IpcChannel.FedAdminOverview]: READ,

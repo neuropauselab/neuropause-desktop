@@ -31,6 +31,10 @@ import type {
   ModuleSummarizeRequest as TSummarize,
   ModuleUpdateRequest as TUpdate,
   PlatformEventInput,
+  DocumentApprovalResult,
+  DocumentApprovalView,
+  DocumentLinesResult,
+  DocumentLinesView,
 } from '@neuropause/shared';
 import {
   EmptyRequest,
@@ -44,6 +48,10 @@ import {
   ModuleSetStatusRequest,
   ModuleSummarizeRequest,
   ModuleUpdateRequest,
+  ModuleApprovalRequest,
+  ModuleApproveRequest,
+  ModuleLinesRequest,
+  ModuleSetLinesRequest,
   deriveRecordTitle,
 } from '@neuropause/shared';
 import type { SecureHandlerDef } from '../../ipc/secureBridge';
@@ -53,17 +61,66 @@ import type {
   EnterpriseModuleActionContext,
   EnterpriseModuleContext,
 } from './enterpriseModule';
+import type { TenantScopeSource } from './enterpriseRecordStore';
+import { registerTenantStore } from '../../tenancy/tenantOwnedStore';
 
 type LifecycleAction = EnterpriseModuleLifecycleAction;
 
 export class EnterpriseModuleRegistry {
   private readonly modules = new Map<string, EnterpriseModule>();
+  /** The tenant boundary handed to every store that registers here. */
+  private scopeSource: TenantScopeSource | null = null;
+
+  /**
+   * P13C ROUND 3 — PHASE 4. ONE registry entry standing for all 106 module stores.
+   *
+   * Registering 106 individual entries would be noise; what the gate needs to
+   * know is whether ANY module store is unbound, and this registry already
+   * answers that in `unscopedModules()`. So the predicate is "no module is
+   * unscoped AND the registry itself has a source", which is stricter than
+   * either half: an empty registry with no source would otherwise report bound
+   * simply because it has nothing to be unbound.
+   */
+  constructor() {
+    registerTenantStore(
+      'enterprise-module-stores',
+      () => this.scopeSource !== null && this.unscopedModules().length === 0,
+    );
+  }
+
+  /**
+   * Bind the tenant boundary for every module, present and future.
+   *
+   * THE SINGLE BINDING POINT. Every one of the 106 module stores passes through
+   * `register`, so binding here covers all of them plus anything a plugin
+   * registers later — instead of 106 factory signatures, each of which is a
+   * chance to forget one and fail open.
+   *
+   * Called before the modules register. Anything registered before this runs
+   * stays unbound, and an unbound store returns nothing, so the ordering
+   * mistake is loud rather than silent.
+   */
+  bindScope(source: TenantScopeSource): void {
+    this.scopeSource = source;
+    // Re-bind anything already registered, so ordering is forgiving in the safe
+    // direction: late binding still closes the boundary rather than leaving a
+    // store permanently unscoped.
+    for (const m of this.modules.values()) m.store.bindScope(source);
+  }
 
   /** Register a module. Ids are unique; re-registering the same id throws. */
   register(module: EnterpriseModule): void {
     const id = module.descriptor.id;
     if (this.modules.has(id)) throw new Error(`Enterprise module "${id}" is already registered.`);
+    if (this.scopeSource !== null) module.store.bindScope(this.scopeSource);
     this.modules.set(id, module);
+  }
+
+  /** Modules whose store has no tenant boundary. Should always be empty. */
+  unscopedModules(): string[] {
+    return [...this.modules.values()]
+      .filter((m) => !m.store.hasScope())
+      .map((m) => m.descriptor.id);
   }
 
   get(id: string): EnterpriseModule | null {
@@ -146,6 +203,8 @@ async function emitLifecycle(
     at: record.updatedAt,
   });
   await module.hooks.onChange?.({ action, record }, actionCtx);
+  // AFTER the module's own reconciler: a posting refusal happens inside it.
+  ctx.onAfterChange?.({ moduleId: id, record });
 }
 
 function resolve(registry: EnterpriseModuleRegistry, moduleId: string): EnterpriseModule {
@@ -159,13 +218,22 @@ function resolve(registry: EnterpriseModuleRegistry, moduleId: string): Enterpri
  * they serve every module registered before or after (modules are resolved per
  * call), so a module added later needs no new IPC wiring.
  */
-export function buildModuleHandlers(
+/**
+ * Build the shared action/onChange context and the lifecycle fan-out bound to it.
+ *
+ * Extracted so the fan-out has exactly ONE definition. It was previously inline
+ * in `buildModuleHandlers`, which meant any other producer of records — the Data
+ * Plane importer, for one — had no way to reach it and its records were
+ * invisible to audit, to the renderer broadcast and to every module's `onChange`.
+ */
+export function createLifecycleEmitter(
   registry: EnterpriseModuleRegistry,
   ctx: EnterpriseModuleContext,
-): SecureHandlerDef[] {
-  // One shared action/onChange context: lets record actions and `onChange`
-  // reconcilers reach other modules (`moduleFor`) and fan out their lifecycle
-  // (`emit`), reusing the same identity + RBAC gate as the request.
+  correlationId?: string,
+): {
+  actionCtx: EnterpriseModuleActionContext;
+  emit: (module: EnterpriseModule, action: LifecycleAction, record: EnterpriseEntity) => Promise<void>;
+} {
   const actionCtx: EnterpriseModuleActionContext = {
     actor: ctx.actor,
     now: ctx.now,
@@ -174,9 +242,84 @@ export function buildModuleHandlers(
     emit: (m, action, rec) => {
       void emitLifecycle(ctx, actionCtx, m, action, rec);
     },
+    ...(correlationId === undefined ? {} : { correlationId }),
   };
+  return {
+    actionCtx,
+    emit: (module, action, record) => emitLifecycle(ctx, actionCtx, module, action, record),
+  };
+}
+
+/** One import's records, replayed through the module lifecycle. */
+export interface ImportedRecordsNotification {
+  moduleId: string;
+  recordIds: readonly string[];
+  /** Ties every emitted event back to the import that produced it. */
+  correlationId: string;
+}
+
+export interface ImportedRecordsResult {
+  moduleId: string;
+  /** Records that completed the full fan-out. */
+  notified: number;
+  /** Ids no longer present in the store (deleted between import and replay). */
+  missing: number;
+  /** A hook that threw. The import is NOT failed by this — it already happened. */
+  failed: { recordId: string; message: string }[];
+}
+
+/**
+ * Replay imported records through the SAME lifecycle a user-created record takes.
+ *
+ * Without this, importing 500 invoices leaves every open view stale, writes
+ * nothing to the audit trail per record, and silently skips the reconcilers that
+ * make the ERP consistent — the records exist in the store and nothing in the
+ * system knows.
+ *
+ * Deliberately sequential: a reconciler may write to another module, and running
+ * hundreds of them concurrently would race those writes against each other.
+ * Deliberately non-throwing: the records are already persisted, so a failing
+ * hook is reported, not allowed to unwind an import that has already succeeded.
+ */
+export async function notifyImportedRecords(
+  registry: EnterpriseModuleRegistry,
+  ctx: EnterpriseModuleContext,
+  event: ImportedRecordsNotification,
+): Promise<ImportedRecordsResult> {
+  const module = registry.get(event.moduleId);
+  if (!module) {
+    return { moduleId: event.moduleId, notified: 0, missing: event.recordIds.length, failed: [] };
+  }
+
+  const { emit } = createLifecycleEmitter(registry, ctx, event.correlationId);
+  const result: ImportedRecordsResult = { moduleId: event.moduleId, notified: 0, missing: 0, failed: [] };
+
+  for (const recordId of event.recordIds) {
+    const record = module.store.get(recordId);
+    if (!record) {
+      result.missing += 1;
+      continue;
+    }
+    try {
+      await emit(module, 'created', record);
+      result.notified += 1;
+    } catch (err) {
+      result.failed.push({ recordId, message: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  return result;
+}
+
+export function buildModuleHandlers(
+  registry: EnterpriseModuleRegistry,
+  ctx: EnterpriseModuleContext,
+): SecureHandlerDef[] {
+  // One shared action/onChange context: lets record actions and `onChange`
+  // reconcilers reach other modules (`moduleFor`) and fan out their lifecycle
+  // (`emit`), reusing the same identity + RBAC gate as the request.
+  const { actionCtx, emit } = createLifecycleEmitter(registry, ctx);
   const fan = (module: EnterpriseModule, action: LifecycleAction, record: EnterpriseEntity) =>
-    emitLifecycle(ctx, actionCtx, module, action, record);
+    emit(module, action, record);
   return [
     {
       channel: IpcChannel.EnterpriseModulesList,
@@ -292,14 +435,51 @@ export function buildModuleHandlers(
         if (!current || current.status === 'deleted')
           return { ok: false as const, errors: { _: 'Record not found.' } };
         // Validate the MERGED field set so required constraints still hold.
+        // `recordId` identifies the record being edited so a uniqueness check in
+        // a module's `validate` hook can exclude the record from its own search.
         const merged = { ...current.fields, ...(r.fields ?? {}) };
         const result = module.hooks.validate({
           title: r.title ?? current.title,
           fields: merged,
           tags: r.tags,
           metadata: r.metadata,
+          recordId: r.id,
         });
         if (!result.ok) return { ok: false as const, errors: result.errors };
+        /**
+         * THE approval gate.
+         *
+         * A document's business status — draft → approved → sent → received —
+         * lives in its `status` FIELD, not in the record's lifecycle status
+         * (which is only active/archived/deleted). So the transition an
+         * approval policy governs arrives here, on update, not on
+         * `setStatus`. Gating the other channel would compile, read
+         * plausibly, and never once fire.
+         *
+         * Only a CHANGE is gated: re-saving a document that is already
+         * approved must not demand approval again.
+         */
+        const nextStatus = result.values.status;
+        if (
+          ctx.canEnterStatus &&
+          typeof nextStatus === 'string' &&
+          nextStatus !== current.fields.status
+        ) {
+          const verdict = ctx.canEnterStatus(r.moduleId, current, nextStatus);
+          if (!verdict.allowed) {
+            const raised = ctx.onApprovalRequired?.({
+              moduleId: r.moduleId,
+              record: current,
+              status: nextStatus,
+              reason: verdict.reason ?? 'Approval required.',
+            });
+            return {
+              ok: false as const,
+              errors: { status: verdict.reason ?? 'Approval required.' },
+              ...(raised?.holdId ? { holdId: raised.holdId } : {}),
+            };
+          }
+        }
         const title = deriveRecordTitle(module.descriptor, result.values, r.title ?? current.title);
         const record = module.store.update(r.id, {
           title,
@@ -324,6 +504,32 @@ export function buildModuleHandlers(
         const module = resolve(registry, r.moduleId);
         ctx.authorize(module.descriptor.permissions.write);
         await module.store.load();
+        // APPROVAL GATE. This is where a purchase order becomes "approved" or a
+        // bill becomes "paid", and until now it went straight to the store: the
+        // approval/SoD engine existed, declared policies for these very
+        // statuses, and was never consulted by anything. A document's own
+        // creator could wave it through in one click.
+        //
+        // A refusal here is a HOLD, not an error — the request is understood
+        // and legitimate, it simply is not authorised yet, and the composition
+        // root turns that into a durable item someone can act on.
+        const existing = module.store.get(r.id);
+        if (existing && ctx.canEnterStatus) {
+          const verdict = ctx.canEnterStatus(r.moduleId, existing, r.status);
+          if (!verdict.allowed) {
+            const raised = ctx.onApprovalRequired?.({
+              moduleId: r.moduleId,
+              record: existing,
+              status: r.status,
+              reason: verdict.reason ?? 'Approval required.',
+            });
+            return {
+              ok: false as const,
+              errors: { _: verdict.reason ?? 'Approval required.' },
+              ...(raised?.holdId ? { holdId: raised.holdId } : {}),
+            };
+          }
+        }
         const record = module.store.setStatus(r.id, r.status, {
           actor: ctx.actor(),
           now: ctx.now(),
@@ -343,8 +549,47 @@ export function buildModuleHandlers(
         const module = resolve(registry, r.moduleId);
         ctx.authorize(module.descriptor.permissions.write);
         await module.store.load();
+        const existing = module.store.get(r.id);
+        if (!existing || existing.status === 'deleted') {
+          return { ok: false as const, errors: { _: 'Record not found.' } };
+        }
+        // Governed delete: assess dependencies BEFORE mutating. A record with
+        // real relationship links refuses without an explicit force flag and
+        // returns the evidence instead -- deleting a customer that invoices
+        // point at silently breaks those links, and the person deleting must
+        // see that before it happens, not after.
+        const assessment = ctx.assessDelete?.(r.moduleId, existing) ?? null;
+        const requestedAction = `Delete ${module.descriptor.singular.toLowerCase()} "${existing.title}"`;
+        const subject = `${r.moduleId}/${existing.id} (${existing.title})`;
+        if (assessment && assessment.risk !== 'supported' && r.force !== true) {
+          // HOLD, not failure. Nothing mutated, the evidence goes back to the
+          // caller, and the returned hold id is what makes the pause outlive
+          // the dialog: the person who can clear it may not be this person.
+          const recorded = ctx.recordDecision?.({
+            requestedAction,
+            subject,
+            assessment,
+            outcome: 'cancelled',
+            executed: 'Nothing — the delete was refused pending acknowledgement.',
+          });
+          return {
+            ok: false as const,
+            assessment,
+            holdId: recorded?.holdId ?? null,
+          };
+        }
         const record = module.store.softDelete(r.id, { actor: ctx.actor(), now: ctx.now() });
         if (!record) return { ok: false as const, errors: { _: 'Record not found.' } };
+        if (assessment) {
+          ctx.recordDecision?.({
+            requestedAction,
+            subject,
+            assessment,
+            outcome: 'proceeded',
+            executed:
+              'Soft-deleted despite the assessment (force acknowledged); the record is retained and recoverable.',
+          });
+        }
         await fan(module, 'deleted', record);
         return { ok: true as const, record };
       },
@@ -367,8 +612,157 @@ export function buildModuleHandlers(
         await module.store.load();
         const record = module.store.get(r.id);
         if (!record || record.status === 'deleted') return { ok: false, error: 'Record not found.' };
-        return module.hooks.runAction(r.action, record, actionCtx);
+        const result = await module.hooks.runAction(r.action, record, actionCtx);
+        // A POLICY refusal is a hold, not an error string. Only the module
+        // knows which of its refusals is which, so it declares it; the
+        // framework never guesses from a message.
+        if (!result.ok && result.policy) {
+          ctx.onPolicyConflict?.({
+            moduleId: r.moduleId,
+            record,
+            action: r.action,
+            policy: result.policy,
+          });
+        }
+        return result;
+      },
+    },
+
+    /* ── ERP document layer ───────────────────────────────────────────────
+     * The engines behind these have existed and been registered for some
+     * time; what was missing was any way to reach them. Without a channel,
+     * lines could never be entered, every derived total was 0, the
+     * three-way match had nothing to match, and four posting rules (GRNI,
+     * COGS, material issue, production completion) refused for want of
+     * costed lines. One channel pair unblocks all of it.
+     *
+     * `documents` is optional on the context: a registry composed without
+     * the document integration (as every existing test does) keeps working
+     * and simply reports the module as unsupported.
+     */
+    {
+      channel: IpcChannel.EnterpriseModuleLines,
+      schema: ModuleLinesRequest,
+      requireAuth: true,
+      handler: async (p): Promise<DocumentLinesView> => {
+        const r = p as ModuleLinesRequest;
+        const module = resolve(registry, r.moduleId);
+        ctx.authorize(module.descriptor.permissions.read);
+        await module.store.load();
+        /**
+         * P11 — THE SCOPED READ IS THE GATE, and this channel was missing it.
+         *
+         * Its three siblings — SetLines, Approval, Approve — all resolve the
+         * record through `store.get(id)` first and bail on null. This one went
+         * straight to the line store, which has no tenant field at all and
+         * filters on `documentType + documentId` over one global array. So a
+         * caller holding the module's read scope in their OWN tenant could pass
+         * another tenant's document id and receive its line items: descriptions,
+         * quantities, unit prices, discounts, tax, currency.
+         *
+         * Worse on an upgraded install: a pre-P11 record has no owner, so
+         * `store.get` denies it to everyone — and its lines were still readable
+         * by anyone. Records the migration says nobody can see.
+         *
+         * The ids were not a guessing problem either: the audit trail is not
+         * workspace-filtered on read and every mutation records the record id
+         * and title, so one `governance:read` call harvested them.
+         */
+        if (module.store.get(r.id) === null) return UNSUPPORTED_LINES;
+        return ctx.documents?.linesView(r.moduleId, r.id) ?? UNSUPPORTED_LINES;
+      },
+    },
+    {
+      channel: IpcChannel.EnterpriseModuleSetLines,
+      schema: ModuleSetLinesRequest,
+      requireAuth: true,
+      audit: true,
+      handler: async (p): Promise<DocumentLinesResult> => {
+        const r = p as ModuleSetLinesRequest;
+        const module = resolve(registry, r.moduleId);
+        ctx.authorize(module.descriptor.permissions.write);
+        await module.store.load();
+        const record = module.store.get(r.id);
+        if (!record || record.status === 'deleted') {
+          return { ok: false, errors: [{ lineNo: 0, errors: ['Record not found.'] }], view: null };
+        }
+        if (!ctx.documents) {
+          return {
+            ok: false,
+            errors: [{ lineNo: 0, errors: ['Line items are not available in this build.'] }],
+            view: null,
+          };
+        }
+        const result = await ctx.documents.setLines(r.moduleId, r.id, r.lines);
+        // Totals are DERIVED from lines, so a line change is a change to the
+        // document as far as every downstream reader is concerned. Fanning the
+        // lifecycle event is what makes the list refresh and the audit trail
+        // record that the document's value moved.
+        if (result.ok) await fan(module, 'updated', record);
+        return result;
+      },
+    },
+    {
+      channel: IpcChannel.EnterpriseModuleApproval,
+      schema: ModuleApprovalRequest,
+      requireAuth: true,
+      handler: async (p): Promise<DocumentApprovalView> => {
+        const r = p as ModuleApprovalRequest;
+        const module = resolve(registry, r.moduleId);
+        ctx.authorize(module.descriptor.permissions.read);
+        await module.store.load();
+        const record = module.store.get(r.id);
+        if (!record || !ctx.documents) return NOT_REQUIRED_APPROVAL;
+        return ctx.documents.approvalView(r.moduleId, record);
+      },
+    },
+    {
+      channel: IpcChannel.EnterpriseModuleApprove,
+      schema: ModuleApproveRequest,
+      requireAuth: true,
+      audit: true,
+      handler: async (p): Promise<DocumentApprovalResult> => {
+        const r = p as ModuleApproveRequest;
+        const module = resolve(registry, r.moduleId);
+        // Deciding an approval is a write against the document, so it takes
+        // the module's write scope. Role eligibility and segregation of duties
+        // are enforced separately, inside the engine — RBAC says "may act on
+        // this module", SoD says "may not act on THIS document".
+        ctx.authorize(module.descriptor.permissions.write);
+        await module.store.load();
+        const record = module.store.get(r.id);
+        if (!record || record.status === 'deleted') {
+          return { ok: false, error: 'Record not found.', approval: null };
+        }
+        if (!ctx.documents) {
+          return { ok: false, error: 'Approvals are not available in this build.', approval: null };
+        }
+        return ctx.documents.decide(r.moduleId, record, r.stepId, r.decision, r.note);
       },
     },
   ];
 }
+
+/** A module with no document spec: not a line-item document at all. */
+const UNSUPPORTED_LINES: DocumentLinesView = {
+  supported: false,
+  documentType: null,
+  editPermission: null,
+  lines: [],
+  totals: null,
+};
+
+/** A document type with no approval policy. Distinct from "not yet approved". */
+const NOT_REQUIRED_APPROVAL: DocumentApprovalView = {
+  required: false,
+  state: 'not_required',
+  amount: 0,
+  requiredSteps: [],
+  satisfiedStepIds: [],
+  nextStep: null,
+  reasons: [],
+  decisions: [],
+  canDecide: false,
+  blockedReason: null,
+  gatedStatuses: [],
+};

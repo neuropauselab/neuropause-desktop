@@ -17,9 +17,10 @@ import { connectorService } from '../../connectors/connectorService';
 import { connectorStore } from '../../connectors/connectorStore';
 import { CONNECTOR_MANIFESTS, MANIFEST_BY_ID } from '../../connectors/manifests';
 import { unifiedStore } from '../storeInstance';
+import { activeTenantScope } from '../../enterprise';
 import { syncStateStore } from './syncStateInstance';
 import { stateToSnapshot } from './syncStateStore';
-import { SyncOrchestrator } from './orchestrator';
+import { SyncOrchestrator, type OrchestratorPorts } from './orchestrator';
 import { RateLimiter } from './rateLimiter';
 import { SyncScheduler, SCHEDULER_INTERVAL_MS } from './scheduler';
 import { adapterConnectorIds, describeAdapters, getAdapter } from './registry';
@@ -30,6 +31,7 @@ import { githubServiceAvailability } from './adapters/github';
 import { slackServiceAvailability } from './adapters/slack';
 import { atlassianServiceAvailability } from './adapters/atlassian';
 import { hubspotServiceAvailability } from './adapters/hubspot';
+import { runOutsidePrincipal } from '../../tenancy/backgroundPrincipal';
 
 const log = createLogger('sync');
 
@@ -38,6 +40,29 @@ export interface SyncSubsystemDeps {
   broadcast: IpcBroadcaster;
   /** P4.1 — whether an account's sync is suppressed (paused / disabled). From the Runtime Supervisor. */
   isSuppressed?: (connectorId: string, accountId: string) => boolean;
+  /**
+   * P9 — write a synced resource into the governed business data.
+   *
+   * Injected rather than imported so this module keeps no dependency on the
+   * Data Plane: the sync engine's job ends at the Unified store, and the
+   * bridge is something the composition root chooses to attach.
+   */
+  bridge?: OrchestratorPorts['bridge'];
+  /**
+   * P13C PART 3 — run the scheduler tick once per WORKSPACE, each under its own
+   * principal.
+   *
+   * Required, and per-workspace rather than per-tenant, because a CONNECTION is
+   * a workspace-level object: `connectorStore.all()` filters on the active
+   * workspace id, and a tenant-level principal reports an empty workspace,
+   * which that filter correctly matches to nothing. A tenant-level fan-out here
+   * would therefore sync nothing at all — the fail-closed direction, but still
+   * wrong.
+   *
+   * Injected so this module gains no dependency on the enterprise root, in
+   * keeping with `bridge` above.
+   */
+  forEachWorkspace: (jobId: string, fn: () => void | Promise<void>) => Promise<unknown>;
 }
 
 export interface SyncSubsystem {
@@ -71,6 +96,7 @@ function connectedAccounts(connectorId?: string): Array<{ connectorId: string; a
 }
 
 export async function initSync(deps: SyncSubsystemDeps): Promise<SyncSubsystem> {
+  syncStateStore.bindScope(activeTenantScope);
   await syncStateStore.load();
   // P4.1 crash reconciler: reset any account left mid-sync by a crash before the scheduler starts.
   const reconciled = await syncStateStore.reconcile();
@@ -78,7 +104,11 @@ export async function initSync(deps: SyncSubsystemDeps): Promise<SyncSubsystem> 
   registerBuiltinAdapters();
 
   const orchestrator = new SyncOrchestrator({
-    upsertMany: (entities) => unifiedStore.upsertMany(entities),
+    // P13B — the same resolver every other scoped surface reads. Null (cold
+    // start / signed out / suspended member) declines the run rather than
+    // syncing records nobody would own.
+    activeTenantId: () => activeTenantScope()?.tenantId ?? null,
+    upsertMany: (entities, expectedTenantId) => unifiedStore.upsertMany(entities, expectedTenantId),
     markDeleted: (ids, at) => unifiedStore.markDeleted(ids, at),
     countForConnector: (c) => unifiedStore.countForConnector(c),
     syncState: syncStateStore,
@@ -89,6 +119,25 @@ export async function initSync(deps: SyncSubsystemDeps): Promise<SyncSubsystem> 
     publish: deps.publish,
     rate: new RateLimiter(200),
     isSuppressed: deps.isSuppressed,
+    ...(deps.bridge ? { bridge: deps.bridge } : {}),
+  });
+
+  /**
+   * P9 — disconnecting clears that account's synced entities.
+   *
+   * `unifiedStore.removeConnector()` was written, documented as "called on
+   * disconnect", and had NO CALLERS — so a disconnected connector left every
+   * entity resident and searchable, with the credential gone and no way to
+   * refresh it. Stale data presented as live is worse than no data.
+   *
+   * Business RECORDS the bridge wrote are deliberately NOT removed: they are
+   * the company's own data now, and their provenance still names where they
+   * came from, which is what makes keeping them explainable.
+   */
+  connectorService.setDisconnectCleanup(async (connectorId, accountId) => {
+    const removed = await unifiedStore.removeConnector(connectorId, accountId);
+    await syncStateStore.forget(connectorId, accountId);
+    if (removed > 0) log.info('Cleared synced data on disconnect', { connectorId, accountId, removed });
   });
 
   // Manual sync (the Connectors UI button / IPC) now runs adapters.
@@ -100,10 +149,35 @@ export async function initSync(deps: SyncSubsystemDeps): Promise<SyncSubsystem> 
     );
 
   // Re-broadcast sync-state changes so the dashboard refreshes live.
-  const onStateChanged = (): void => deps.broadcast(IpcChannel.ConnectorSyncState, snapshots());
+  // P13C Round 7 — `changed` fires synchronously inside the per-workspace sync
+  // fan-out, so `connectedAccounts()` and `syncStateStore.get()` resolve to the
+  // RUN'S workspace. Same pattern as the six sibling broadcasts.
+  const onStateChanged = (): void =>
+    deps.broadcast(IpcChannel.ConnectorSyncState, runOutsidePrincipal(() => snapshots()));
   syncStateStore.on('changed', onStateChanged);
 
-  const scheduler = new SyncScheduler(SCHEDULER_INTERVAL_MS, () => orchestrator.tick());
+  /**
+   * P13C PART 3 — the scheduled sync now happens for EVERY workspace.
+   *
+   * Before this there was one tick, and everything inside it resolved through
+   * the signed-in user's active workspace: `listConnectedAccounts()` returned
+   * only that workspace's accounts and `activeTenantId()` returned only that
+   * organization. So scheduled sync served exactly one workspace on the whole
+   * install — the one the user happened to have open — and every other
+   * workspace's connectors silently never synced. The single-tenant reading of
+   * that behaviour is "it works"; the two-tenant reading is "tenant B's data is
+   * permanently stale and nothing says so".
+   *
+   * Each pass runs under its own workspace principal, so both of those
+   * resolvers answer for the workspace being synced. MANUAL sync is unchanged
+   * and still runs on the caller's own session — it is an interactive request
+   * with a real user behind it, not background work.
+   */
+  const scheduler = new SyncScheduler(SCHEDULER_INTERVAL_MS, () =>
+    deps
+      .forEachWorkspace('connector-sync', () => orchestrator.tick())
+      .then(() => undefined),
+  );
   scheduler.start();
 
   const handlers: SecureHandlerDef[] = [

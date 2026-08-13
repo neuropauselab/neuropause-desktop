@@ -30,11 +30,13 @@ import { marketplaceStore } from '../ecosystem/marketplace/marketplaceInstance';
 import { fedStore } from '../federation/runtime/fedInstance';
 import { connectorService } from '../connectors/connectorService';
 import { getRelationshipModel } from '../enterprise/relationshipProvider';
+import { onWorkspaceSwitch } from '../enterprise';
 import { knowledgeHealth } from '../knowledge/knowledgeHealth';
 import { KnowledgeFabricService } from './knowledgeFabricService';
 import { buildExplanationInputs, buildLineage } from './knowledgeFabricModel';
 import type { FabricSourceInput, FabricState } from './knowledgeFabricModel';
 import { withKnowledgeAuthz } from './knowledgeFabricAuthz';
+import { activeTenantScope } from '../enterprise/index';
 
 const log = createLogger('enterprise-knowledge');
 
@@ -197,7 +199,7 @@ function buildState(deps: EnterpriseKnowledgeDeps): FabricState {
 }
 
 export function initEnterpriseKnowledge(deps: EnterpriseKnowledgeDeps): EnterpriseKnowledgeSubsystem {
-  const service = new KnowledgeFabricService({ readState: () => buildState(deps) });
+  const service = new KnowledgeFabricService({ scope: activeTenantScope, readState: () => buildState(deps) });
 
   // Invalidate the memoized snapshot when a backing store changes; the injected report/strategy/twin/
   // relationship/timeline sources refresh via the service TTL. Renderer liveness reuses `ecosystem:event`.
@@ -206,6 +208,21 @@ export function initEnterpriseKnowledge(deps: EnterpriseKnowledgeDeps): Enterpri
   connectorService.on('event', invalidate);
   marketplaceStore.on('changed', invalidate);
   fedStore.on('changed', invalidate);
+  /**
+   * P13A — a workspace switch invalidates too, because this snapshot holds
+   * MEMORY-DERIVED data.
+   *
+   * `buildState` reads `memoryStore.allItems()`, which is now scoped to the
+   * viewer — so the snapshot is correct for whoever built it, and then MEMOISED
+   * behind a TTL. Without this line, switching tenant served the previous
+   * tenant's corpus derivatives for the remainder of the TTL: the top-40 tag
+   * strings verbatim, plus per-kind, per-source and sensitivity histograms.
+   *
+   * Found by adversarial review. Every other invalidation here is triggered by
+   * a DATA change; this one is triggered by an AUTHORITY change, which is a
+   * distinct reason for a cache to be wrong and was the one nothing covered.
+   */
+  onWorkspaceSwitch(invalidate);
 
   const rawHandlers: SecureHandlerDef[] = [
     { channel: IpcChannel.FabricOverview, schema: EmptyRequest, handler: () => service.overview() },

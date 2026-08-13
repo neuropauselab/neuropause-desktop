@@ -31,6 +31,7 @@ import {
 } from '@neuropause/shared';
 import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../logger';
+import { runOutsidePrincipal } from '../tenancy/backgroundPrincipal';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { catalogClient } from '../catalog/catalogClient';
 import { registry } from '../registry/registry';
@@ -39,6 +40,7 @@ import { setAllowUnsignedInstalls } from '../nps/signature';
 import { pluginManager } from '../plugins/pluginManager';
 import { supervisor } from '../runtime/supervisor';
 import { EventBus } from './eventBus';
+import type { TenantScope } from '@neuropause/shared';
 import { TimelineService } from './timelineService';
 import { PlatformEventApi } from './eventApi';
 import { registerSubscribers } from './subscribers';
@@ -73,6 +75,8 @@ export interface ProducerSources {
 }
 
 export interface Platform {
+  /** P13B — bind the tenant boundary (bus stamping + timeline filtering). */
+  bindTenant: (resolve: () => TenantScope | null) => void;
   api: PlatformEventApi;
   diagnostics: () => Promise<DiagnosticsReport>;
   handlers: SecureHandlerDef[];
@@ -139,15 +143,38 @@ export async function initPlatform(deps: {
   });
 
   const timeline = new TimelineService({ dir: join(app.getPath('userData'), 'timeline') });
+
+  /**
+   * P13B — the event system's tenant boundary is bound by the COMPOSITION ROOT,
+   * not here.
+   *
+   * The platform subsystem boots before the enterprise subsystem exists to
+   * resolve anything, so a binding made at this point would capture a resolver
+   * that can only ever answer null. `runtimeCore` binds `bus` and `timeline`
+   * alongside every other scoped store, once the resolver is real. Until then
+   * events are unowned — the correct reading of "published before the app knew
+   * who it was acting for".
+   */
   await timeline.init();
 
   const api = new PlatformEventApi(bus, timeline);
+
+  /**
+   * The viewer resolver, late-bound. P13C ROUND 9 — F5.
+   *
+   * Same reason the bus's own tenant resolver is late-bound: the platform
+   * subsystem boots before the enterprise subsystem exists to resolve anything.
+   * Until the composition root binds it this answers null, and the forwarder's
+   * predicate reads null as "system events only" — fail-closed, not fail-open.
+   */
+  let viewerScope: () => TenantScope | null = () => null;
 
   registerSubscribers(bus, {
     persist: (e) => timeline.append(e),
     audit: (e) => appendAuditLine(e),
     notify: (e) => notifyUser(e),
     broadcast: (e) => deps.broadcast(IpcChannel.PlatformEventBroadcast, e),
+    viewerScope: () => viewerScope(),
   });
 
   // Service health probes (use only confirmed public methods).
@@ -261,6 +288,32 @@ export async function initPlatform(deps: {
     diagnostics: () => diagnostics.report(),
     handlers,
     wireProducers,
+    /**
+     * P13B — bind the tenant boundary onto the event system.
+     *
+     * Called by the composition root once the tenant resolver is real. The bus
+     * stamps each event as it is materialized; the timeline filters every read.
+     */
+    bindTenant: (resolve: () => TenantScope | null): void => {
+      bus.bindTenant(() => resolve()?.tenantId ?? null);
+      timeline.bindScope(resolve);
+      /**
+       * P13C ROUND 9 — F5. THE VIEWER IS NOT THE ACTOR.
+       *
+       * `resolve` is `activeTenantScope`, which PREFERS a background principal
+       * when one is in scope — correct for stamping an event with whose work it
+       * is, and wrong for deciding which window may see it. A connector sync
+       * running as tenant A publishes while the renderer shows tenant B; asking
+       * `resolve()` inside that job returns A and would hand A's identifiers to
+       * B's window, which is the finding with an extra step.
+       *
+       * `runOutsidePrincipal` leaves the job's principal for the duration of the
+       * call, so this reads the SESSION — exactly what the person at the
+       * keyboard is entitled to, never more. It grants nothing; it only stops
+       * the forwarder pretending to be the job.
+       */
+      viewerScope = () => runOutsidePrincipal(() => resolve());
+    },
     dispose: () => timeline.dispose(),
   };
 }

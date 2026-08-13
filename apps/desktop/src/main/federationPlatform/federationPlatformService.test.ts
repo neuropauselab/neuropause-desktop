@@ -13,6 +13,14 @@ import type {
 } from '@neuropause/shared';
 import { FederationPlatformService, type FederationReaders } from './federationPlatformService';
 
+/**
+ * P13C ROUND 5 — F7. The composed federation snapshot is tenant-keyed, so this
+ * fixture names a tenant. Every memoization assertion below keeps its meaning:
+ * repeated reads under ONE tenant must still be a single composition.
+ */
+const TEST_SCOPE = { tenantId: 'org-test', workspaceId: 'ws-test' };
+const scope = (): typeof TEST_SCOPE => TEST_SCOPE;
+
 const NOW = '2026-07-15T00:00:00.000Z';
 
 const HOME: FederatedOrg = { id: 'org-default', name: 'NeuroPause', slug: 'neuropause', role: 'home', status: 'active', regionId: 'us-east', trustLevel: 'full', joinedAt: NOW, sharedOut: 1, sharedIn: 0 };
@@ -30,8 +38,8 @@ const GOV: GlobalGovSummary = { policies: 0, activePolicies: 0, pendingApprovals
 
 function readers(orgsBox: { value: FederatedOrg[] }): FederationReaders {
   return {
-    homeOrgId: 'org-default',
-    homeOrgName: 'NeuroPause',
+    homeOrgId: () => 'org-default',
+    homeOrgName: () => 'NeuroPause',
     orgs: () => orgsBox.value,
     invitations: () => [],
     trust: () => [TRUST],
@@ -48,7 +56,7 @@ function readers(orgsBox: { value: FederatedOrg[] }): FederationReaders {
 
 describe('FederationPlatformService', () => {
   it('composes the projections from the injected readers', () => {
-    const svc = new FederationPlatformService(readers({ value: [HOME, PEER] }));
+    const svc = new FederationPlatformService(readers({ value: [HOME, PEER] }), scope);
     expect(svc.graph().counts.organizations).toBe(2);
     expect(svc.directory()[0].role).toBe('home');
     expect(svc.analytics().trustedPeers).toBe(1);
@@ -59,7 +67,7 @@ describe('FederationPlatformService', () => {
 
   it('memoizes a snapshot and recomposes only after invalidate()', () => {
     const box = { value: [HOME, PEER] };
-    const svc = new FederationPlatformService(readers(box));
+    const svc = new FederationPlatformService(readers(box), scope);
     expect(svc.directory()).toHaveLength(2);
     box.value = [HOME]; // backing store "changed" but not yet invalidated
     expect(svc.directory()).toHaveLength(2); // still the cached snapshot
@@ -68,7 +76,7 @@ describe('FederationPlatformService', () => {
   });
 
   it('memoizes projections within a snapshot and recomputes after invalidate()', () => {
-    const svc = new FederationPlatformService(readers({ value: [HOME, PEER] }));
+    const svc = new FederationPlatformService(readers({ value: [HOME, PEER] }), scope);
     const g1 = svc.graph();
     expect(svc.graph()).toBe(g1); // same reference → true O(1) cache hit
     svc.invalidate();
@@ -76,7 +84,7 @@ describe('FederationPlatformService', () => {
   });
 
   it('adapts federation hits into the Enterprise Search hit shape', () => {
-    const svc = new FederationPlatformService(readers({ value: [HOME, PEER] }));
+    const svc = new FederationPlatformService(readers({ value: [HOME, PEER] }), scope);
     const hits = svc.searchHits('finance', 10);
     expect(hits.length).toBeGreaterThan(0);
     expect(hits.every((h) => h.source === 'federation')).toBe(true);

@@ -1,3 +1,8 @@
+/**
+ * P13C Round 8 — `MarketplaceStore` now has a publisher boundary: PUBLISHED
+ * listings stay visible to all (a marketplace), while DRAFTS and the submission
+ * trail belong to the publisher. These suites act AS one publisher.
+ */
 import { afterEach, describe, expect, it } from 'vitest';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -22,6 +27,17 @@ afterEach(async () => {
 
 const SEED = { id: 'dev-test', name: 'Tester', email: 't@x.io', organization: 'X', orgId: 'org-default' };
 
+/**
+ * P13C ROUND 3 — H-3. The developer, billing and gateway stores now carry a
+ * tenant boundary, and an UNBOUND store denies. These tests name the same
+ * organization the seeds use, so every existing assertion keeps its meaning:
+ * they are single-tenant tests of single-tenant behaviour, which is exactly what
+ * they were before. Cross-tenant behaviour is asserted separately, in
+ * `tenancy/e2e/developerSurfaceTenancy.test.ts`.
+ */
+const TENANT = { tenantId: 'org-default', workspaceId: 'ws-default' };
+const scope = (): typeof TENANT => TENANT;
+
 function cleanManifest(version = '1.0.0'): ListingManifest {
   return {
     kind: 'connector',
@@ -38,7 +54,7 @@ function cleanManifest(version = '1.0.0'): ListingManifest {
 
 describe('DeveloperStore', () => {
   it('creates, verifies, and revokes API keys', async () => {
-    const s = new DeveloperStore(tempPath('dev'), SEED);
+    const s = new DeveloperStore(tempPath('dev'), SEED).bindScope(scope);
     await s.load();
     const { key, secret } = s.createKey('dev-test', 'CI', ['marketplace:read']);
     expect(secret.startsWith(key.prefix)).toBe(true);
@@ -50,7 +66,7 @@ describe('DeveloperStore', () => {
   });
 
   it('records usage and counts within a window', async () => {
-    const s = new DeveloperStore(tempPath('dev'), SEED);
+    const s = new DeveloperStore(tempPath('dev'), SEED).bindScope(scope);
     await s.load();
     const now = new Date().toISOString();
     s.recordUsage({ developerId: 'dev-test', apiKeyId: null, at: now, method: 'GET', path: '/v1/x', version: 'v1', status: 200, latencyMs: 5, computeUnits: 1 });
@@ -78,7 +94,7 @@ describe('developerOwnerIdentity (mirrors the enterprise claimed owner)', () => 
 
 describe('MarketplaceStore lifecycle', () => {
   it('drives submit → review → publish, and signs the version', async () => {
-    const s = new MarketplaceStore(tempPath('mkt'), 'dev-test', []);
+    const s = new MarketplaceStore(tempPath('mkt'), 'dev-test', []).bindScope(() => ({ tenantId: 'org-alpha', workspaceId: 'ws-alpha' }));
     await s.load();
     const listing = s.createListing({ kind: 'connector', slug: 'c', name: 'C', summary: '', category: 'x', pricing: { model: 'free', amount: 0, currency: 'USD' } });
     const v1 = s.addVersion(listing.id, cleanManifest('1.0.0'), 'init');
@@ -101,7 +117,7 @@ describe('MarketplaceStore lifecycle', () => {
   });
 
   it('rejects a version that fails the security scan', async () => {
-    const s = new MarketplaceStore(tempPath('mkt'), 'dev-test', []);
+    const s = new MarketplaceStore(tempPath('mkt'), 'dev-test', []).bindScope(() => ({ tenantId: 'org-alpha', workspaceId: 'ws-alpha' }));
     await s.load();
     const listing = s.createListing({ kind: 'plugin', slug: 'p', name: 'P', summary: '', category: 'x', pricing: { model: 'free', amount: 0, currency: 'USD' } });
     const bad = s.addVersion(listing.id, { ...cleanManifest(), permissions: ['system:exec'] }, 'bad');
@@ -112,7 +128,7 @@ describe('MarketplaceStore lifecycle', () => {
   });
 
   it('rolls back to the previous published version', async () => {
-    const s = new MarketplaceStore(tempPath('mkt'), 'dev-test', []);
+    const s = new MarketplaceStore(tempPath('mkt'), 'dev-test', []).bindScope(() => ({ tenantId: 'org-alpha', workspaceId: 'ws-alpha' }));
     await s.load();
     const listing = s.createListing({ kind: 'connector', slug: 'c', name: 'C', summary: '', category: 'x', pricing: { model: 'free', amount: 0, currency: 'USD' } });
     const v1 = s.addVersion(listing.id, cleanManifest('1.0.0'), 'v1')!;
@@ -135,7 +151,7 @@ describe('MarketplaceStore lifecycle', () => {
 
 describe('GatewayStore', () => {
   it('peeks without consuming and commits one request', async () => {
-    const s = new GatewayStore(tempPath('gw'));
+    const s = new GatewayStore(tempPath('gw')).bindScope(scope);
     await s.load();
     const rate = { windowMs: 60_000, max: 5 };
     const quota = { period: 'month' as const, limit: 100 };
@@ -147,11 +163,12 @@ describe('GatewayStore', () => {
   });
 
   it('aggregates metrics from the audit trail', async () => {
-    const s = new GatewayStore(tempPath('gw'));
+    const s = new GatewayStore(tempPath('gw')).bindScope(scope);
     await s.load();
     const at = new Date().toISOString();
-    s.record({ at, keyId: 'k', developerId: 'd', method: 'GET', path: '/v1', version: 'v1', status: 200, reason: 'OK', latencyMs: 4 });
-    s.record({ at, keyId: 'k', developerId: 'd', method: 'GET', path: '/v1', version: 'v1', status: 429, reason: 'rate', latencyMs: 2 });
+    const owner = TENANT.tenantId;
+    s.record({ at, tenantId: owner, keyId: 'k', developerId: 'd', method: 'GET', path: '/v1', version: 'v1', status: 200, reason: 'OK', latencyMs: 4 });
+    s.record({ at, tenantId: owner, keyId: 'k', developerId: 'd', method: 'GET', path: '/v1', version: 'v1', status: 429, reason: 'rate', latencyMs: 2 });
     const m = s.metrics(7, Date.now());
     expect(m.requests).toBe(2);
     expect(m.allowed).toBe(1);
@@ -162,7 +179,7 @@ describe('GatewayStore', () => {
 
 describe('BillingStore', () => {
   it('seeds a free subscription with the owner seated', async () => {
-    const s = new BillingStore(tempPath('bill'), { orgId: 'org-default', ownerUserId: 'user-owner', ownerName: 'Owner' });
+    const s = new BillingStore(tempPath('bill'), { orgId: 'org-default', ownerUserId: 'user-owner', ownerName: 'Owner' }).bindScope(scope);
     await s.load();
     const sub = s.getSubscription();
     expect(sub.planTier).toBe('free');
@@ -171,7 +188,7 @@ describe('BillingStore', () => {
   });
 
   it('enforces seat limits and reflects plan changes', async () => {
-    const s = new BillingStore(tempPath('bill'), { orgId: 'org-default', ownerUserId: 'user-owner', ownerName: 'Owner' });
+    const s = new BillingStore(tempPath('bill'), { orgId: 'org-default', ownerUserId: 'user-owner', ownerName: 'Owner' }).bindScope(scope);
     await s.load();
     // free plan = 1 seat, already used by owner
     expect(s.assignSeat('u2', 'Two')).toHaveProperty('error');
@@ -182,7 +199,7 @@ describe('BillingStore', () => {
   });
 
   it('records a purchase and issues an org license', async () => {
-    const s = new BillingStore(tempPath('bill'), { orgId: 'org-default', ownerUserId: 'user-owner', ownerName: 'Owner' });
+    const s = new BillingStore(tempPath('bill'), { orgId: 'org-default', ownerUserId: 'user-owner', ownerName: 'Owner' }).bindScope(scope);
     await s.load();
     const { purchase, license } = s.purchase({ listingId: 'lst_1', listingName: 'Pack', versionId: 'ver_1', model: 'one_time', amount: 100, currency: 'USD', feePct: 0.2 });
     expect(purchase.feeAmount).toBe(20);

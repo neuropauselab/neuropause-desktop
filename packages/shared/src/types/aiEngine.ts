@@ -6,6 +6,7 @@
  * that goes in, the structured response that comes out, and the audit record
  * written for every call. Model-agnostic by design: callers never name a model.
  */
+import type { AiRoutingMetadata } from './aiRouting';
 import type { ExecutiveMemoryView, FounderMemoryCapture } from './memory';
 
 /** Logical workers/features that may call the engine (the consumer ladder). */
@@ -105,6 +106,13 @@ export interface AiEngineResponse {
   contextSources: AiContextSource[];
   /** True when a real model ran; false when the deterministic fallback was used. */
   grounded: boolean;
+  /**
+   * Where this response's processing ACTUALLY ran — stamped by the executing
+   * client (routed runs) or synthesized as `location: 'none'` (fallbacks).
+   * Optional because responses predate the field; consumers treat absence as
+   * "unknown", never as "local".
+   */
+  routing?: AiRoutingMetadata;
 }
 
 /** An immutable audit record written for every engine call. Never holds secrets. */

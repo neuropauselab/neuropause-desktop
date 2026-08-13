@@ -7,6 +7,15 @@ import type { GatewayMetrics, MarketplaceListing, PublicApi, SdkArtifact } from 
 import { DeveloperPlatformService } from './developerPlatformService';
 import type { DeveloperPlatformState } from './developerPlatformModel';
 
+/**
+ * P13C ROUND 3 — H-2. The memo is now keyed by tenant, so these tests must name
+ * one. A fixed scope keeps every existing memoization assertion meaningful:
+ * repeated reads under ONE tenant must still be O(1) cache hits, which is the
+ * property this file was written to protect and the fix must not cost.
+ */
+const TEST_SCOPE = { tenantId: 'org-test', workspaceId: 'ws-test' };
+const scope = (): typeof TEST_SCOPE => TEST_SCOPE;
+
 const NOW = '2026-07-16T00:00:00.000Z';
 const GATEWAY: GatewayMetrics = { windowDays: 30, requests: 500, allowed: 490, denied: 10, rateLimited: 4, unauthorized: 6, byStatus: {}, byVersion: {}, p95LatencyMs: 60 };
 const SDKS: SdkArtifact[] = [{ language: 'typescript', name: 'SDK', packageName: '@neuropause/sdk', version: '0.1.0', install: 'npm i', docsPath: 'd', description: 'x', builds: ['AI Workers'] }];
@@ -40,7 +49,7 @@ function baseState(over: Partial<DeveloperPlatformState> = {}): DeveloperPlatfor
 
 describe('DeveloperPlatformService', () => {
   it('composes every projection from the injected reader', () => {
-    const svc = new DeveloperPlatformService({ readState: () => baseState() });
+    const svc = new DeveloperPlatformService({ scope, readState: () => baseState() });
     expect(svc.overview().console.apiKeys).toBe(2);
     expect(svc.console().health).toBe('healthy');
     expect(svc.sdks().languages).toBeGreaterThan(0);
@@ -57,8 +66,7 @@ describe('DeveloperPlatformService', () => {
   it('memoizes the snapshot + projections and recomposes only after invalidate()', () => {
     const box = { value: baseState() };
     let reads = 0;
-    const svc = new DeveloperPlatformService({
-      readState: () => {
+    const svc = new DeveloperPlatformService({ scope, readState: () => {
         reads += 1;
         return box.value;
       },

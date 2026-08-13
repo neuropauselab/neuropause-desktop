@@ -26,6 +26,8 @@ import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../../logger';
 import { makeCheck, type DiagnosticProbe } from '../../platform/diagnostics';
 import type { SecureHandlerDef } from '../../ipc/secureBridge';
+import { TenantMemo } from '../../tenancy/tenantMemo';
+import type { TenantScope } from '@neuropause/shared';
 
 const log = createLogger('enterprise-intelligence');
 const REPORT_TTL_MS = 3_000;
@@ -44,6 +46,17 @@ export interface RawTimelineEvent {
 }
 
 export interface EnterpriseIntelligenceDeps {
+  /**
+   * P13C ROUND 3 — the tenant boundary for this subsystem's composed cache.
+   *
+   * INJECTED, not imported. `enterprise/index` reaches `app.getPath`, so
+   * importing `activeTenantScope` here would drag Electron into a pure-model
+   * node test — a trap this program has now fallen into three times. The
+   * composition root passes the same resolver every store reads.
+   *
+   * Required, so a root that forgets it fails to compile.
+   */
+  scope: () => TenantScope | null;
   broadcast: IpcBroadcaster;
   /** Read the P6 Resource Graph (cloud/infra/identity). Guarded — returns null when infra isn't ready. */
   getResourceModel: () => ResourceGraphModel | null;
@@ -85,11 +98,25 @@ export function toCorrelationEvent(e: RawTimelineEvent): CorrelationEvent {
 export function initEnterpriseIntelligence(deps: EnterpriseIntelligenceDeps): EnterpriseIntelligenceSubsystem {
   const now = deps.now ?? (() => Date.now());
 
-  let cache: { at: number; report: EnterpriseIntelligenceReport } | null = null;
+  /**
+   * P13C ROUND 3 — found by the sweep. KEYED BY TENANT.
+   *
+   * Sharper than the sibling caches, because the switch handler in
+   * `runtimeCore` already flushes this report's two INPUTS
+   * (`invalidateRelationshipModelCache`, `invalidateTrustModelCache`) and never
+   * flushed the composition over them. The inputs were invalidated and the
+   * composed result was not — and `knowledgeFabric` then recomposes from this
+   * report, so the stale tenant propagated one layer further.
+   */
+  const memo = new TenantMemo<EnterpriseIntelligenceReport>('enterprise-intelligence-report', {
+    ttlMs: REPORT_TTL_MS,
+    now,
+  }).bindScope(deps.scope);
 
-  const build = (): EnterpriseIntelligenceReport => {
+  const build = (): EnterpriseIntelligenceReport => memo.state(compose);
+
+  const compose = (): EnterpriseIntelligenceReport => {
     const nowMs = now();
-    if (cache && nowMs - cache.at < REPORT_TTL_MS) return cache.report;
     let resource: ResourceGraphModel | null = null;
     let relationship: RelationshipGraphModel | null = null;
     let events: CorrelationEvent[] = [];
@@ -101,9 +128,7 @@ export function initEnterpriseIntelligence(deps: EnterpriseIntelligenceDeps): En
     } catch (err) {
       log.warn('timeline events unavailable', { error: String(err) });
     }
-    const report = composeEnterpriseIntelligence({ resource, relationship, events }, nowMs);
-    cache = { at: nowMs, report };
-    return report;
+    return composeEnterpriseIntelligence({ resource, relationship, events }, nowMs);
   };
 
   const probe: DiagnosticProbe = () => {
@@ -148,7 +173,7 @@ export function initEnterpriseIntelligence(deps: EnterpriseIntelligenceDeps): En
     handlers,
     probe,
     report: build,
-    dispose: () => { cache = null; },
+    dispose: () => { memo.invalidate(); },
   };
 }
 

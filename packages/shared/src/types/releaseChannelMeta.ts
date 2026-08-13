@@ -21,6 +21,14 @@ export interface ReleaseChannelMeta {
   order: number;
   /** The channel recommended for most users. */
   recommended: boolean;
+  /**
+   * Phase 8 (RC hardening 8.5): whether the channel is user-SELECTABLE. The
+   * release pipeline publishes feeds for stable (`latest*.yml`) and beta
+   * (`beta*.yml`) only — `internal` has no published feed, so offering it
+   * would strand the user with permanent silent update failure. It remains
+   * described here honestly for diagnostics; it is just not offered.
+   */
+  selectable: boolean;
 }
 
 /** The real channels, described honestly. */
@@ -31,6 +39,7 @@ export const RELEASE_CHANNEL_META: Record<UpdateChannel, ReleaseChannelMeta> = {
     description: 'Production-ready releases. Recommended for everyone.',
     order: 0,
     recommended: true,
+    selectable: true,
   },
   beta: {
     channel: 'beta',
@@ -38,6 +47,7 @@ export const RELEASE_CHANNEL_META: Record<UpdateChannel, ReleaseChannelMeta> = {
     description: 'Early access to upcoming features. Generally stable, but less tested than Stable.',
     order: 1,
     recommended: false,
+    selectable: true,
   },
   internal: {
     channel: 'internal',
@@ -45,6 +55,7 @@ export const RELEASE_CHANNEL_META: Record<UpdateChannel, ReleaseChannelMeta> = {
     description: 'Unfiltered internal team builds. May be unstable — intended for NeuroPause developers.',
     order: 2,
     recommended: false,
+    selectable: false,
   },
 };
 
@@ -54,6 +65,14 @@ export function orderedReleaseChannels(): UpdateChannel[] {
     .slice()
     .sort((a, b) => a.order - b.order)
     .map((m) => m.channel);
+}
+
+/**
+ * Phase 8 (8.5): the channels the user may SELECT — exactly those whose feeds
+ * the release pipeline publishes. The Settings card renders from this.
+ */
+export function selectableReleaseChannels(): UpdateChannel[] {
+  return orderedReleaseChannels().filter((c) => RELEASE_CHANNEL_META[c].selectable);
 }
 
 export function releaseChannelLabel(channel: UpdateChannel): string {

@@ -19,6 +19,39 @@
  */
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/** P13C ROUND 9 — F18. The structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: 'workspace-contexts',
+  scope: 'USER',
+  persistence: 'file',
+  authority: 'USER',
+  classification: 'USER_PREFERENCE',
+  /** P13C ROUND 10. The only removals are inside ONE owner's own record: MAX_TABS/MAX_NAME truncation, and remove() on the caller's own context. MAX_WORKSPACES THROWS rather than evicting - a limit that refuses a write can destroy nothing, which is the shape a cap should have. */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'OWNER',
+  retention:
+    'INSPECTED FOR THE INSTALL-WIDE-CAP CLASS AND CLEAN. `MAX_WORKSPACES` (30) is enforced by ' +
+    'THROWING in `create`, not by evicting — a limit that refuses a write can destroy nothing, which ' +
+    'is the shape a cap should have. `MAX_TABS` (200) and `MAX_NAME` (60) truncate INSIDE one ' +
+    "context's own record, so they cannot reach another context's. `remove(id)` deletes exactly the " +
+    'named context and re-bootstraps a fresh Default rather than leaving zero. There is no ' +
+    'oldest-first eviction anywhere in this file.',
+  reason:
+    'WHY USER: a workspace context is where the person left the shell — which section was open, ' +
+    'which tabs, which one was active — and it follows them across organizations, exactly as ' +
+    '`enterprise-personalization` does. WHAT DATA: a context name and accent colour the person ' +
+    'typed, a template id from a four-value enum, two timestamps, and per-tab `{id, appId, title}` ' +
+    'where the title is a UI section or installed-app name from the renderer tab model ("Installed ' +
+    'Apps", "Connector Center"), never a record. No customer content, no counts of customer ' +
+    'activity. THE SEAM, STATED HONESTLY: as with `experience-profile`, the boundary is the ' +
+    "operating-system account's userData directory rather than an in-app identity resolver, so two " +
+    'people sharing one macOS account share these contexts. `isBound` is omitted rather than ' +
+    'pointed at a resolver that does not exist. NOTE: deliberately distinct from ' +
+    '`@neuropause/workspace`, the cloud organization-workspace domain — these are local shell ' +
+    'contexts on one device and confer no access to anything.',
+});
 
 /** One open Workspace tab inside a context (mirrors the renderer tab model). */
 export interface ContextTab {

@@ -24,71 +24,85 @@ import {
   buildSuites,
   type IndustryPlatformState,
 } from './industryModel';
+import type { TenantScope } from '@neuropause/shared';
+import { TenantMemo } from '../tenancy/tenantMemo';
 
 export interface IndustryPlatformServiceDeps {
+  /**
+   * P13C ROUND 3 — H-2. THE TENANT BOUNDARY, AND IT IS REQUIRED.
+   *
+   * This service memoises a composed snapshot of tenant-derived data. The memo
+   * had no key, so a snapshot built while one organization was active was served
+   * to the next caller — including the next tenant's pass of a fanned-out
+   * background job, which announces no switch and therefore defeated the switch
+   * listener the sibling platforms rely on.
+   *
+   * Required rather than optional so a composition root that forgets it fails to
+   * COMPILE. That is a stronger gate than failing at startup, and strictly
+   * stronger than being caught by a later audit.
+   */
+  scope: () => TenantScope | null;
   /** Compose the industry snapshot from the existing platform stores (injected → testable). */
   readState: () => IndustryPlatformState;
 }
 
-interface ProjectionMemo {
-  overview?: IndustryPlatformOverview;
-  suites?: IndustrySuite[];
-  kpis?: ExecutiveKpi[];
-  compliance?: IndustryComplianceReport;
-  collections?: IndustryCollection[];
-  readiness?: IndustryReadinessReport;
-}
 
 export class IndustryPlatformService {
-  private snapshot: IndustryPlatformState | null = null;
-  private memo: ProjectionMemo = {};
+  /**
+   * One tenant-keyed cell holding the snapshot AND its projections.
+   *
+   * The projections are inside the cell rather than beside it because they
+   * are derived from that snapshot: keeping the snapshot keyed while leaving
+   * the derived values in a separate object would leak exactly the composed,
+   * human-readable half — which is the half worth stealing.
+   */
+  private readonly cache: TenantMemo<IndustryPlatformState>;
 
-  constructor(private readonly deps: IndustryPlatformServiceDeps) {}
+  constructor(private readonly deps: IndustryPlatformServiceDeps) {
+    this.cache = new TenantMemo<IndustryPlatformState>('industry-projections').bindScope(deps.scope);
+  }
 
   /** Drop the memoized snapshot AND projections; the next read recomposes from the stores. */
   invalidate(): void {
-    this.snapshot = null;
-    this.memo = {};
+    this.cache.invalidate();
   }
 
   private state(): IndustryPlatformState {
-    if (!this.snapshot) {
-      this.snapshot = this.deps.readState();
-      this.memo = {};
-    }
-    return this.snapshot;
+    return this.cache.state(() => this.deps.readState());
   }
 
-  // NOTE: `this.state()` MUST be resolved on its own line before the `??=` — `state()` may reset
-  // `this.memo` on first read, and `a.b ??= f()` captures the base object `a` (this.memo) BEFORE
+  // The projection name is the memo key, and it lives INSIDE the tenant-keyed cell
+  // established by `state()`. Resolving `state()` on its own line first is what puts
+  // the right cell in place; it also removes the `??=` base-object footgun this
+  // comment used to warn about, because there is no longer an object to capture.
   // evaluating `f()`, so inlining state() inside the RHS would write the cache to a stale memo.
   overview(): IndustryPlatformOverview {
     const s = this.state();
-    return (this.memo.overview ??= buildIndustryOverview(s));
+    return this.cache.projection('overview', () => buildIndustryOverview(s));
   }
 
   suites(): IndustrySuite[] {
     const s = this.state();
-    return (this.memo.suites ??= buildSuites(s));
+    return this.cache.projection('suites', () => buildSuites(s));
   }
 
   kpis(): ExecutiveKpi[] {
     const s = this.state();
-    return (this.memo.kpis ??= buildIndustryKpis(s));
+    return this.cache.projection('kpis', () => buildIndustryKpis(s));
   }
 
   compliance(): IndustryComplianceReport {
     const s = this.state();
-    return (this.memo.compliance ??= buildComplianceReport(s));
+    return this.cache.projection('compliance', () => buildComplianceReport(s));
   }
 
   collections(): IndustryCollection[] {
     const s = this.state();
-    return (this.memo.collections ??= buildCollections(s));
+    return this.cache.projection('collections', () => buildCollections(s));
   }
 
   readiness(): IndustryReadinessReport {
     const s = this.state();
-    return (this.memo.readiness ??= buildReadinessReport(s));
+    return this.cache.projection('readiness', () => buildReadinessReport(s));
   }
 }

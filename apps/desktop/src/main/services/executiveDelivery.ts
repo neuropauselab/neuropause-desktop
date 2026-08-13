@@ -27,6 +27,45 @@ import { getEnterpriseTimeline } from '../timeline';
 import { generateBriefing } from '../intelligence/briefingGenerator';
 import { founderProactiveSource } from '../ai/founderProactive';
 import { orgIntelligenceSource } from '../enterprise/orgIntelligence';
+import { forEachTenantBackground } from '../enterprise/index';
+import { currentPrincipal } from '../tenancy/backgroundPrincipal';
+import { declareStoreScope } from '../tenancy/storeScope';
+
+/**
+ * P13C ROUND 9 — F18. The structural scope declaration. See tenancy/storeScope.ts.
+ *
+ * The DECLARED STORE IS `delivery-preferences.json` AND NOTHING ELSE. This file
+ * is a composition root: the intelligence it delivers is read through
+ * `unifiedStore` and the enterprise timeline, which declare their own scopes and
+ * are filtered by `forEachTenantBackground`'s principal; the toast it raises is
+ * gated on the VIEWER (see `desktopChannel.deliver`, P13C Round 7). None of
+ * that is persisted here. The only bytes this file writes are the schedule.
+ */
+declareStoreScope({
+  name: 'delivery-preferences',
+  scope: 'INSTALL_GLOBAL',
+  persistence: 'file',
+  // `notifications:prefs.set` is a per-user desktop surface on the sender-trust
+  // model, not an organizational decision. ORG_ROLE is refused for an
+  // install-wide file and would be the wrong axis anyway.
+  authority: 'USER',
+  classification: 'USER_PREFERENCE',
+  /** P13C ROUND 10. Nothing is ever removed: one record, rewritten whole. NONE + NONE is the pair declareStoreScope requires when there is no removal - naming an authority for a deletion that cannot happen would be a false statement. */
+  retentionScope: 'NONE',
+  retentionAuthority: 'NONE',
+  retention:
+    'One record, rewritten whole by `saveDeliveryPreferences` — no list, no cap, no eviction, so a ' +
+    'write can remove nothing but the previous schedule. There is no delete path at all.',
+  reason:
+    'WHY GLOBAL: there is one screen, one notification centre and one timer on this machine, so ' +
+    'there is one schedule. WHAT DATA: `DeliveryPreferences` in full — enabled, timezone offset, ' +
+    'morning/afternoon/evening minutes, weekly report day, working-hours bounds, do-not-disturb and ' +
+    'a minimum priority. Nine numbers, two booleans and an enum: no record names, no counts, nothing ' +
+    'derived from any customer. STATED LIMIT: the file is install-wide, so on a shared machine a ' +
+    "change to the brief time applies to everyone who uses it. That is a shared preference, not a " +
+    'disclosure — the CONTENT of each brief is built per tenant by the fan-out and delivered only to ' +
+    'the tenant the signed-in person is currently viewing.',
+});
 
 const log = createLogger('delivery-root');
 
@@ -64,12 +103,42 @@ function getPreferencesSync(): DeliveryPreferences {
 }
 
 // ── Desktop channel (reuses the existing notification path) ───────────────────
+/**
+ * The ACTIVE session's tenant, or null. Bound at composition.
+ *
+ * P13C ROUND 7 (final sweep) — see `desktopChannel` below. A module-level binding
+ * rather than a parameter because `DeliveryChannel.deliver` is a fixed interface
+ * shared with the stub channels, and widening it would put a tenant argument on
+ * an email channel that does not exist yet.
+ */
+let viewerTenantId: () => string | null = () => null;
+export function bindDeliveryViewer(source: () => string | null): void {
+  viewerTenantId = source;
+}
+
 export const desktopChannel: DeliveryChannel = {
   key: 'desktop',
   available: true,
   deliver: (item: IntelligenceItem) => {
-    // Reuse the one notification primitive; deep-link is carried for the renderer
-    // to consume when the user clicks (handled by the existing notification wiring).
+    /**
+     * P13C ROUND 7 (final sweep) — AN OS TOAST GOES TO A PERSON, NOT TO A TENANT.
+     *
+     * `deliveryEngine.tick()` fans out over EVERY operable organization on the
+     * install and calls every channel for each. The INBOX half of this was fixed
+     * — the store is scoped and the badge uses `runOutsidePrincipal` — and the
+     * OS notification was not. So a scheduled brief for tenant B raised a desktop
+     * toast on the screen of whoever was signed in, carrying B's operational
+     * state in the title: "Organization health is at-risk (42/100)", "License
+     * expires in 3 days", "4 connector(s) in error".
+     *
+     * There is exactly one screen and one signed-in human, so the only correct
+     * recipient is the tenant they are currently viewing. An unresolved viewer
+     * gets nothing: a toast with no owner is a toast for the wrong person.
+     */
+    const viewer = viewerTenantId();
+    const owner = currentPrincipal()?.tenantId ?? null;
+    if (viewer === null) return;
+    if (owner !== null && owner !== viewer) return;
     notificationScheduler.notifyNow(item.title, item.body);
   },
 };
@@ -149,6 +218,21 @@ export const deliveryEngine = new DeliveryEngine({
   scheduler: taskScheduler,
   channels: deliveryChannels,
   getPreferences: getPreferencesSync,
+  /**
+   * P13C PART 3 — the real tenant roster.
+   *
+   * `buildMissionBriefItem` below reads `unifiedStore.query(...)` and the
+   * enterprise timeline, both of which resolve through `activeTenantScope()`.
+   * Inside a fanned-out run that resolver returns the RUN's tenant rather than
+   * the signed-in user's, because `resolveTenantScope` prefers a background
+   * principal — so the brief is built from one organization's records, and a
+   * second organization gets its own brief from its own.
+   *
+   * Neither the generator nor the sources changed. That is the property worth
+   * having: the boundary was already drawn by Programs 11-13B, and this only
+   * tells each pass whose side of it to stand on.
+   */
+  forEachTenant: (jobId, fn) => forEachTenantBackground(jobId, fn),
 });
 
 /**

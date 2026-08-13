@@ -14,12 +14,15 @@
  * reusable by any future host.
  */
 import { randomUUID } from 'node:crypto';
+import { recordInScope } from '@neuropause/shared';
+import { currentPrincipal } from '../tenancy/backgroundPrincipal';
 import type {
   EventBusMetrics,
   PlatformEvent,
   PlatformEventInput,
   PlatformEventType,
   SubscriberStatus,
+  TenantScope,
 } from '@neuropause/shared';
 
 export type EventHandler = (event: PlatformEvent) => void | Promise<void>;
@@ -29,7 +32,12 @@ export interface SubscribeOptions {
   id?: string;
   /** Only receive these event types (omit for all). */
   types?: PlatformEventType[];
-  /** Replay the current buffer (oldest→newest) to this subscriber on attach. */
+  /**
+   * Replay the buffer THIS CALLER MAY SEE (oldest→newest) on attach.
+   *
+   * P13C ROUND 10 — NEW-M11: this used to re-dispatch the whole install-wide
+   * ring. It is now the same authorized set `replay()` returns.
+   */
   replay?: boolean;
 }
 
@@ -49,7 +57,16 @@ interface Registered {
 }
 
 export interface EventBusOptions {
-  /** Max events retained for replay (default 500). */
+  /** P13B — resolves the owning tenant for each materialized event. */
+  tenantId?: () => string | null;
+  /**
+   * Max events retained for replay, PER OWNER (default 500).
+   *
+   * P13C ROUND 10 — NEW-M11: it used to be the size of ONE shared ring across
+   * every tenant. An install with more tenants now holds more events in memory,
+   * which is the identical trade `TimelineService.maxInMemory` documents: the
+   * alternative is one customer able to evict another's.
+   */
   replayBufferSize?: number;
   /** Injectable clock (ms) for deterministic tests. */
   now?: () => number;
@@ -61,13 +78,59 @@ export interface EventBusOptions {
 
 const RATE_WINDOW_MS = 60_000;
 
+/**
+ * The replay ring's retention buckets. P13C ROUND 10 — NEW-M11.
+ *
+ * Deliberately the SAME partitioning `platform/timelineService.ts` already uses,
+ * key for key, because it is the same problem one layer down and two answers to
+ * it is how one of them drifts. SYSTEM events belong to the product and are
+ * readable by every resolved viewer, so they get their own budget; unowned rows
+ * (published before the tenant resolver was bound, or with no principal at all)
+ * are visible to nobody and can neither evict nor be evicted by anyone.
+ *
+ * The leading space keeps these keys out of the `t:` namespace used for tenants,
+ * so no tenant id can collide with them.
+ */
+const SYSTEM_BUCKET = ' system';
+const UNOWNED_BUCKET = ' unowned';
+
+/** The bucket an event belongs to. Derived from the event, never guessed. */
+function replayBucket(e: PlatformEvent): string {
+  if (e.scopeKind === 'system') return SYSTEM_BUCKET;
+  const owner = e.tenantId;
+  return typeof owner === 'string' && owner !== '' ? `t:${owner}` : UNOWNED_BUCKET;
+}
+
 export class EventBus {
   private readonly subs = new Map<string, Registered>();
-  private readonly buffer: PlatformEvent[] = [];
+  /**
+   * THE REPLAY RING, ONE BOUNDED BUFFER PER OWNER. P13C ROUND 10 — NEW-M11.
+   *
+   * It was a single `PlatformEvent[]` with `shift()` at the cap, and three
+   * things followed from that, none of them visible from any one line:
+   *
+   *   1. EVICTION WAS A CROSS-TENANT ACT. A busy tenant pushed a quiet one's
+   *      events out of the ring — the defect Round 9 fixed on the durable
+   *      timeline (F11) and left standing on the bus that feeds it.
+   *   2. `replay()` FILTERED ONLY BY TYPE and never consulted the `tenantId`
+   *      that `materialize` stamps two methods below, so it returned every
+   *      tenant's events to any caller.
+   *   3. `subscribe({ replay: true })` RE-DISPATCHED THAT WHOLE RING to a late
+   *      subscriber — the same disclosure with a push shape instead of a pull.
+   *
+   * No production caller was found for either read; `PlatformEventApi.replay`
+   * re-exports it and nothing calls that. It is fixed anyway, because "nothing
+   * calls it" is a fact about today's wiring and not a property of the bus, and
+   * because the event these buffers hold carries `actor.id`, `resource.id` and
+   * free-form `metadata`.
+   */
+  private readonly buffers = new Map<string, PlatformEvent[]>();
   private readonly bufferSize: number;
   private readonly now: () => number;
   private readonly idFactory: () => string;
   private readonly onSubscriberError?: EventBusOptions['onSubscriberError'];
+  /** P13B — resolves the owning tenant at materialization. Null ⇒ unowned. */
+  private tenantId?: () => string | null;
 
   private subSeq = 0;
   private published = 0;
@@ -82,15 +145,26 @@ export class EventBus {
     this.now = opts.now ?? (() => Date.now());
     this.idFactory = opts.idFactory ?? (() => randomUUID());
     this.onSubscriberError = opts.onSubscriberError;
+    this.tenantId = opts.tenantId;
+  }
+
+  /**
+   * Bind the tenant resolver (P13B).
+   *
+   * Late-bound rather than a constructor argument because the bus is created
+   * during boot, before the enterprise subsystem exists to resolve anything.
+   * Until it is bound every event is unowned — which is the correct reading of
+   * "published before the app knew who it was acting for".
+   */
+  bindTenant(resolve: () => string | null): void {
+    this.tenantId = resolve;
   }
 
   /** Publish an event. Returns the fully materialized event. */
   publish(input: PlatformEventInput): PlatformEvent {
     const event = this.materialize(input);
 
-    // Retain for replay (ring buffer).
-    this.buffer.push(event);
-    if (this.buffer.length > this.bufferSize) this.buffer.shift();
+    this.retain(event);
 
     this.published += 1;
     const t = this.now();
@@ -120,8 +194,15 @@ export class EventBus {
     };
     this.subs.set(id, reg);
 
+    /**
+     * A late subscriber receives THE EVENTS ITS CALLER MAY SEE.
+     *
+     * The authorization is the same call `replay()` makes, deliberately: a push
+     * and a pull onto one buffer must not be able to disagree, which is exactly
+     * how this diverged from the timeline in the first place.
+     */
     if (opts.replay) {
-      for (const event of this.buffer) {
+      for (const event of this.visibleBuffer()) {
         if (reg.types && !reg.types.has(event.type)) continue;
         this.dispatch(reg, event);
       }
@@ -130,12 +211,67 @@ export class EventBus {
     return { id, dispose: () => void this.subs.delete(id) };
   }
 
-  /** The current replay buffer (optionally filtered), oldest→newest. */
+  /**
+   * The replay buffer THIS CALLER MAY SEE (optionally filtered), oldest→newest.
+   *
+   * Two buckets: the caller's own tenant, and the SYSTEM bucket that belongs to
+   * the product. NO RESOLVED TENANT MEANS NO EVENTS — an unbound bus, or one
+   * read before an organization resolves, returns nothing rather than the ring.
+   * That is the same fail-closed answer `TimelineService.query` gives, and it is
+   * why a workspace switch needs nothing cleared: the buffers are not the
+   * boundary, the read is, so after a switch the caller simply resolves to a
+   * different bucket.
+   */
   replay(filter?: { types?: PlatformEventType[]; limit?: number }): PlatformEvent[] {
     const set = filter?.types && filter.types.length ? new Set(filter.types) : null;
-    let out = set ? this.buffer.filter((e) => set.has(e.type)) : this.buffer.slice();
+    const visible = this.visibleBuffer();
+    let out = set ? visible.filter((e) => set.has(e.type)) : visible;
     if (filter?.limit && out.length > filter.limit) out = out.slice(out.length - filter.limit);
     return out;
+  }
+
+  /**
+   * Put one event into ITS OWNER'S ring, evicting only that owner's oldest.
+   *
+   * A retention cap is a WRITE, so the only rows it may delete belong to the
+   * event's own owner. The bucket comes from the event, which `materialize`
+   * stamped from the resolved principal — a producer cannot choose it.
+   */
+  private retain(event: PlatformEvent): void {
+    const key = replayBucket(event);
+    let bucket = this.buffers.get(key);
+    if (!bucket) this.buffers.set(key, (bucket = []));
+    bucket.push(event);
+    if (bucket.length > this.bufferSize) bucket.shift();
+  }
+
+  /**
+   * The caller's own bucket plus the system bucket, merged oldest→newest.
+   *
+   * `recordInScope` still runs over the result: the bucket key is derived from
+   * `tenantId` alone, so re-checking the event against the resolved scope means
+   * a row cannot ride in on a bucket name. The bus resolves only a tenant id
+   * (`platform/index.ts` binds `resolve()?.tenantId`), and a `PlatformEvent`
+   * carries no workspace, so tenant granularity is the whole boundary here
+   * rather than a narrowing of one.
+   */
+  private visibleBuffer(): PlatformEvent[] {
+    const owner = this.tenantId?.() ?? null;
+    if (owner === null || owner === '') return [];
+    const scope: TenantScope = { tenantId: owner, workspaceId: '' };
+    const mine = [
+      ...(this.buffers.get(`t:${owner}`) ?? []),
+      ...(this.buffers.get(SYSTEM_BUCKET) ?? []),
+    ].filter((e) => (e.scopeKind === 'system' ? true : recordInScope(e, scope)));
+    mine.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    return mine;
+  }
+
+  /** How many events are retained across every owner. Diagnostics only. */
+  private bufferedCount(): number {
+    let n = 0;
+    for (const bucket of this.buffers.values()) n += bucket.length;
+    return n;
   }
 
   metrics(): EventBusMetrics {
@@ -147,7 +283,7 @@ export class EventBus {
       subscribers: this.subs.size,
       droppedEvents: this.dropped,
       avgDispatchMs: this.dispatchCount ? round2(this.dispatchTotalMs / this.dispatchCount) : 0,
-      bufferedEvents: this.buffer.length,
+      bufferedEvents: this.bufferedCount(),
     };
   }
 
@@ -197,6 +333,25 @@ export class EventBus {
     const id = this.idFactory();
     return {
       id,
+      /**
+       * P13B — ONE stamping point for the whole event system.
+       *
+       * `materialize` is the only place a `PlatformEvent` comes into existence,
+       * which is why the tenant is resolved here rather than at the ~100 publish
+       * sites. A producer cannot supply it: `PlatformEventInput` has no such
+       * field, so there is no expressible way to publish an event into another
+       * tenant's timeline.
+       *
+       * `tenantId` is injected as a function rather than imported, so the bus
+       * keeps no dependency on the enterprise subsystem and still unit-tests
+       * standalone. Unset resolver, or no active tenant, yields null — an event
+       * nobody owns and nobody is shown.
+       */
+      tenantId: this.tenantId?.() ?? null,
+      // Stamped from the principal, never from the producer. Only a SYSTEM
+      // principal yields a system event; everything else is tenant-owned or,
+      // absent a tenant, owned by nobody.
+      scopeKind: currentPrincipal()?.principalType === 'system' ? 'system' : 'tenant',
       type: input.type,
       category: input.category,
       version: input.version ?? 1,

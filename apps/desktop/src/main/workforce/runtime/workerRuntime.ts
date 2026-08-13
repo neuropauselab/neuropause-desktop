@@ -302,7 +302,24 @@ export class WorkerRuntime {
    * ExecutionSession id, updates trust/health, and emits the terminal worker event.
    */
   settleExecution(jobId: string, outcome: WorkforceExecutionOutcome): void {
-    const job = this.deps.jobs.get(jobId);
+    /**
+     * P13C Round 2 — THE RUNTIME'S OWN WRITEBACK, deliberately unscoped.
+     *
+     * This runs in a promise continuation AFTER the approving IPC call has
+     * returned, so by the time it fires the session may have switched
+     * organizations. Resolving through the tenant-facing `get()` would then
+     * return null and strand the job in `running` until the next restart
+     * recovered it to `failed` — a correctness regression introduced by the
+     * scoping fix, which is the worst kind because the job silently never
+     * settles.
+     *
+     * Safe because this is not a request: the job id comes from the engine's
+     * own dispatch, not from a caller, and the only mutation is settling a run
+     * that this runtime already started. The APPROVAL that authorized it was
+     * gated by the scoped `get()` in `decide()`, which is where the boundary
+     * belongs.
+     */
+    const job = this.deps.jobs.unscopedForRuntime(jobId);
     if (!job || job.status !== 'running') return;
     const now = this.clock();
     job.status = outcome.ok ? 'succeeded' : 'failed';

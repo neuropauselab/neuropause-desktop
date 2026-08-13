@@ -81,7 +81,7 @@ export function TimelinePanel({ nowMs }: PanelProps): JSX.Element {
               value={text}
               onChange={(e) => setText(e.target.value)}
               placeholder="Filter events…"
-              className="w-40 bg-transparent text-sm outline-none placeholder:text-faint"
+              className="w-40 bg-transparent text-sm outline-none focus-visible:shadow-focus placeholder:text-faint"
             />
           </div>
         </form>
@@ -156,7 +156,7 @@ export function SearchPanel(): JSX.Element {
               value={text}
               onChange={(e) => setText(e.target.value)}
               placeholder="Search everything…"
-              className="flex-1 bg-transparent text-sm outline-none placeholder:text-faint"
+              className="flex-1 bg-transparent text-sm outline-none focus-visible:shadow-focus placeholder:text-faint"
               autoFocus
             />
           </div>

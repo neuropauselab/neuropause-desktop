@@ -32,6 +32,7 @@ import {
   type EnterpriseModule,
   type EnterpriseModuleActionContext,
 } from '../../framework';
+import { runReorderCheck } from './autoReorderSeam';
 
 /** The declarative description of a stock movement — drives store, CRUD, and the UI. */
 export const STOCK_MOVEMENT_DESCRIPTOR: EnterpriseModuleDescriptor = {
@@ -148,6 +149,24 @@ export function createStockMovementModule(
       // materialized stock from the full ledger (create, edit, or void).
       onChange: async (event, ctx) => {
         await reconcileProduct(str(event.record.fields.product), ctx);
+        // FW-6: after the ledger reconciles, a product opted into auto-reorder
+        // (`autoReorder: on`) that sits at/below its reorder level drafts its
+        // own purchase request (idempotent — the draft counts as open supply).
+        // Replenishment is ADVISORY: a failure here must never unwind the
+        // ledger write above, so it is contained rather than propagated.
+        try {
+          const ref = str(event.record.fields.product);
+          const productModule = ctx.moduleFor(PRODUCTS_MODULE_ID);
+          const productRecord =
+            productModule?.store.list().find((r) => str(r.fields.sku) === ref) ??
+            productModule?.store.get(ref) ??
+            null;
+          if (productRecord && productRecord.status !== 'deleted' && str(productRecord.fields.autoReorder) === 'on') {
+            await runReorderCheck(productRecord, ctx, 'movement');
+          }
+        } catch {
+          // Advisory only — the movement and reconciliation above already stand.
+        }
       },
       summarize: async (record): Promise<EnterpriseRecordSummary> => {
         const movement = movementFromRecord(record);

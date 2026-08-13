@@ -12,7 +12,7 @@
  */
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import { app } from 'electron';
+import { app, shell } from 'electron';
 import {
   BackupCreateRequest,
   BackupIdRequest,
@@ -34,6 +34,7 @@ import type {
 } from '@neuropause/shared';
 import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../logger';
+import { runAsPrincipal, systemPrincipal } from '../tenancy/backgroundPrincipal';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { getBuildInfo } from '../buildInfo';
 import { appUpdater } from '../services/appUpdater';
@@ -105,11 +106,29 @@ export async function initReleaseOps(deps: ReleaseOpsDeps): Promise<ReleaseOps> 
   }
   await readVersion();
 
+  /**
+   * P13C ROUND 10 — F22. THE RESTORATION BOUNDARY, DECLARED AT THE COMPOSITION
+   * ROOT AND ENFORCED BY THE MANAGER.
+   *
+   * `restoreBoundary` is a REQUIRED dependency, so this wiring cannot exist
+   * without stating in source what its restores put back. `ALL_TENANTS_AT_ONCE`
+   * is not a euphemism: the archive is a verbatim, unpartitioned copy of every
+   * organization's records, so one operator choosing one archive rolls every
+   * tenant on the machine back to that point. The per-call acknowledgements
+   * below override this one so the audit and any refusal name the exact surface
+   * that asked. See backup/backupArchive.ts for the full declaration and for
+   * what this does NOT do — it does not narrow the blast radius, it makes
+   * crossing it explicit and refusable.
+   */
   const backup = new BackupManager({
     dataDir,
     backupsDir,
     appVersion: getBuildInfo().version,
     dataVersion: () => cachedVersion,
+    restoreBoundary: {
+      boundary: 'ALL_TENANTS_AT_ONCE',
+      declaredBy: 'releaseOps composition root (Recovery Center + migration rollback)',
+    },
   });
 
   const engine = new MigrationEngine({
@@ -118,7 +137,10 @@ export async function initReleaseOps(deps: ReleaseOpsDeps): Promise<ReleaseOps> 
     definitions: MIGRATIONS,
     backup: async () => (await backup.create('pre-migration', LOCAL_DOMAINS)).id,
     restore: async (id) => {
-      await backup.restore(id);
+      await backup.restore(id, undefined, {
+        boundary: 'ALL_TENANTS_AT_ONCE',
+        declaredBy: 'migration rollback',
+      });
     },
     context: { dataDir, log: (m, meta) => log.info(m, meta) },
   });
@@ -218,15 +240,57 @@ export async function initReleaseOps(deps: ReleaseOpsDeps): Promise<ReleaseOps> 
   });
 
   // ── scheduled backups ──
+  /**
+   * P13C PART 3 — CLASSIFIED SYSTEM_GLOBAL. The rationale, not a guess:
+   *
+   * `backup.create` is `fs.copyFile` over `DOMAIN_FILES`. It never opens a
+   * scoped store, never calls a resolver, and never reads a record — it copies
+   * BYTES from one directory under `userData` to another. It therefore operates
+   * BELOW the application's authorization layer, at exactly the level the
+   * migration inventory already names as BLOCKED ("the filesystem itself:
+   * anyone who can read those files reads every tenant directly").
+   *
+   * WHY A TENANT-SCOPED BACKUP WOULD BE A FICTION HERE
+   *
+   * Every tenant's records live inside the SAME mode-0600 JSON file per module.
+   * There is no per-tenant file to copy, so a "tenant-scoped backup" would
+   * either copy the same whole-install files under a tenant's name — claiming
+   * an isolation that does not exist — or require re-architecting local storage,
+   * which is not this program's scope and would not improve the boundary.
+   *
+   * WHAT THE CLASSIFICATION OBLIGES INSTEAD
+   *
+   * Two things, both done here. (1) The job runs under an explicit SYSTEM
+   * principal, so any event it publishes is stamped `system` rather than
+   * inheriting whichever organization the UI had open — a global maintenance
+   * job must not appear in one customer's timeline as their own activity.
+   * (2) The destination stays inside `userData`, the same trust boundary as the
+   * source, so this is not an EGRESS: nothing crosses a process or network
+   * boundary, and no tenant gains a read it did not already have at the OS level.
+   *
+   * The honest limit is stated rather than papered over: a privileged local
+   * user can read a backup exactly as they can read the live files, and this
+   * program does not change that.
+   *
+   * P13C ROUND 10 — F22. What that classification could not express, the archive
+   * declaration now does: `backup/backupArchive.ts` names the archive
+   * MULTI_TENANT_INSTALL, states what is inside it, who may restore it, how long
+   * it is kept and — the question a store scope never has to answer — what a
+   * restore puts back. The paragraph above is still true and is still not a
+   * partition; the difference is that it is now written on every archive this
+   * job produces, and a restore refuses an archive that does not carry it.
+   */
   async function scheduledBackup(): Promise<void> {
-    try {
-      await backup.create('scheduled', LOCAL_DOMAINS);
-      const all = await backup.list();
-      const scheduled = all.filter((b) => b.trigger === 'scheduled');
-      for (const old of scheduled.slice(SCHEDULED_BACKUP_KEEP)) await backup.delete(old.id);
-    } catch (err) {
-      log.warn('Scheduled backup failed', { message: (err as Error).message });
-    }
+    await runAsPrincipal(systemPrincipal('scheduled-backup'), async () => {
+      try {
+        await backup.create('scheduled', LOCAL_DOMAINS);
+        const all = await backup.list();
+        const scheduled = all.filter((b) => b.trigger === 'scheduled');
+        for (const old of scheduled.slice(SCHEDULED_BACKUP_KEEP)) await backup.delete(old.id);
+      } catch (err) {
+        log.warn('Scheduled backup failed', { message: (err as Error).message });
+      }
+    });
   }
   const timer = setInterval(() => void scheduledBackup(), SCHEDULED_BACKUP_INTERVAL_MS);
   if (typeof timer.unref === 'function') timer.unref();
@@ -262,8 +326,18 @@ export async function initReleaseOps(deps: ReleaseOpsDeps): Promise<ReleaseOps> 
       schema: BackupRestoreRequest,
       audit: true,
       timeoutMs: HEAVY_TIMEOUT_MS,
+      /**
+       * F22 — the caller-chosen-archive surface names itself. The manager
+       * refuses unless this acknowledgement matches the boundary the archive's
+       * own manifest declares, so this handler cannot perform an install-wide
+       * rollback while appearing to ask for something narrower. `domains`
+       * narrows WHICH STORES come back, never WHOSE.
+       */
       handler: (p) =>
-        backup.restore((p as BackupRestoreRequest).id, (p as BackupRestoreRequest).domains),
+        backup.restore((p as BackupRestoreRequest).id, (p as BackupRestoreRequest).domains, {
+          boundary: 'ALL_TENANTS_AT_ONCE',
+          declaredBy: 'backup:restore IPC handler',
+        }),
     },
     {
       channel: IpcChannel.BackupDelete,
@@ -340,7 +414,13 @@ export async function initReleaseOps(deps: ReleaseOpsDeps): Promise<ReleaseOps> 
       schema: EmptyRequest,
       audit: true,
       timeoutMs: HEAVY_TIMEOUT_MS,
-      handler: () => support.generate(),
+      // Phase 8 (8.4): reveal the generated bundle in the file manager — the
+      // user was previously told a path and left to find it by hand.
+      handler: async () => {
+        const info = await support.generate();
+        shell.showItemInFolder(info.path);
+        return info;
+      },
     },
   ];
 

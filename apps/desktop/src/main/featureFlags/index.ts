@@ -11,22 +11,49 @@ import {
 } from '@neuropause/shared';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { flagService } from './flagInstance';
+import type { PlanTier } from '@neuropause/shared';
+
+export interface FeatureFlagDeps {
+  /**
+   * The CALLER'S plan tier, resolved from backend state.
+   *
+   * P13C Round 8. Injected rather than imported so this subsystem does not take a
+   * dependency on the developer platform, and REQUIRED rather than optional: an
+   * optional resolver defaults to something, and the default that existed was
+   * "believe the renderer".
+   */
+  authoritativePlanTier: () => PlanTier;
+}
 
 export interface FeatureFlagsSubsystem {
   handlers: SecureHandlerDef[];
 }
 
-export async function initFeatureFlags(): Promise<FeatureFlagsSubsystem> {
+export async function initFeatureFlags(deps: FeatureFlagDeps): Promise<FeatureFlagsSubsystem> {
   await flagService.load();
-  return { handlers: buildHandlers() };
+  return { handlers: buildHandlers(deps) };
 }
 
-function buildHandlers(): SecureHandlerDef[] {
+function buildHandlers(deps: FeatureFlagDeps): SecureHandlerDef[] {
   return [
     {
       channel: IpcChannel.FlagsGet,
       schema: FlagsGetRequest,
-      handler: (p) => flagService.evaluate((p as FlagsGetRequest).planTier),
+      /**
+       * P13C ROUND 8 — THE RENDERER IS NOT AUTHORITATIVE FOR ENTITLEMENT.
+       *
+       * `planTier` came off the payload, so a renderer claiming
+       * `planTier: 'enterprise'` was evaluated as enterprise regardless of what
+       * the tenant actually pays for. The payload field is now IGNORED: the plan
+       * is resolved from `developerStore.planFor()`, which reads the CALLER'S
+       * tenant through its own bound scope.
+       *
+       * The field stays on the request schema deliberately — removing it would
+       * break the renderer's typed call for no security benefit, and leaving it
+       * unread is the honest record that it was once trusted. A renderer that
+       * keeps sending it simply has no effect.
+       */
+      handler: () => flagService.evaluate(deps.authoritativePlanTier()),
     },
     {
       channel: IpcChannel.FlagsSetOverride,
@@ -35,7 +62,9 @@ function buildHandlers(): SecureHandlerDef[] {
       handler: async (p) => {
         const r = p as FlagsSetOverrideRequest;
         await flagService.setOverride(r.key, r.value);
-        return flagService.evaluate(r.planTier);
+        // Same rule: the override write is authorized elsewhere, and the
+        // evaluation it returns uses the authoritative plan, not the claimed one.
+        return flagService.evaluate(deps.authoritativePlanTier());
       },
     },
     {

@@ -20,7 +20,7 @@ import type {
 import { ipc } from '@renderer/lib/ipc';
 import { Icon } from '@renderer/components/ui/Icon';
 import { OpsPanel, StatusBadge } from '@renderer/operations/primitives';
-import { EmptyState, LoadingBlock } from '@renderer/operationsCenter/primitives';
+import { EmptyState, ErrorBlock, LoadingBlock } from '@renderer/operationsCenter/primitives';
 import {
   decisionLines,
   domainTone,
@@ -73,6 +73,22 @@ export function EanaPlatformTab(): JSX.Element {
   }, [refresh]);
 
   if (!ready) return <LoadingBlock label="Composing enterprise analytics…" />;
+
+  // Per-source failures degrade gracefully to a "declared unavailability" note (via
+  // `settled`), but if EVERY read failed the tab would render blank — indistinguishable
+  // from "no analytics yet". Surface an honest, retryable error instead.
+  const anyLoaded = Boolean(d.dashboard || d.kpis || d.trends || d.forecasts || d.decisions || d.report);
+  if (!anyLoaded)
+    return (
+      <ErrorBlock
+        title="Couldn’t load enterprise analytics"
+        message="No analytics source responded this pass — the workspace may be offline or the analytics services are unavailable."
+        onRetry={() => {
+          setReady(false);
+          void refresh();
+        }}
+      />
+    );
 
   const stats = d.dashboard ? eanaHeaderStats(d.dashboard) : [];
   const unavailable = unavailableLines(

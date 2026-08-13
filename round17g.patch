@@ -1,0 +1,610 @@
+--- /dev/null
++++ b/apps/desktop/src/main/ai/tenantAiPreferenceCompose.ts
+@@ -0,0 +1,75 @@
++/**
++ * THE COMPOSED ANSWER, WITHOUT ELECTRON. P13C ROUND 17 · D-5.
++ *
++ * One function, because there must be exactly one place that combines the
++ * platform policy with the tenant preference. Two places would eventually
++ * disagree, and the direction they disagree in is the direction that grants
++ * capability nobody authorized.
++ *
++ * WHY IT LIVES IN ITS OWN FILE.
++ *
++ * It used to sit in `tenantAiPreferenceView.ts`, which imports the module-level
++ * store instance, which imports `electron` for `app.getPath('userData')`. So the
++ * only function implementing this decision could not be imported by anything
++ * without an Electron runtime — and it therefore had NO test, in a program whose
++ * first rule is that a unit test existing is not evidence. The one defect this
++ * program shipped (`restrictedByPlatform` comparing modes while ignoring
++ * `externalConsent`) was in this function, and was caught by a human running a
++ * fresh install because nothing else could reach it.
++ *
++ * Splitting the pure composition out is what makes it testable, and is what
++ * lets the UI harness route `ai:preference.*` through the REAL rule instead of
++ * a second copy of it written for the test.
++ */
++import type { AiMode, TenantAiMode, TenantAiPreferenceView } from '@neuropause/shared';
++import { resolveEffectiveAiMode } from '@neuropause/shared';
++
++export interface AiPreferenceComposeInput {
++  /** The platform's resolved routing mode — `ai-config.json`, behind `cloud:operate`. */
++  platformMode: AiMode;
++  /**
++   * The platform's SEPARATE consent flag for external fallback. Not derivable
++   * from the mode, and false on a fresh install; passing it explicitly is what
++   * stops a caller forgetting it exists, which is exactly how it was forgotten.
++   */
++  platformExternalConsent: boolean;
++  /** The calling organization's stored row, or null when it has never chosen. */
++  row: { mode: TenantAiMode; updatedAt: number } | null;
++}
++
++export function composeAiPreferenceView(input: AiPreferenceComposeInput): TenantAiPreferenceView {
++  const { platformMode, platformExternalConsent, row } = input;
++  /**
++   * NO PREFERENCE MEANS NO OPINION, NOT A DEFAULT.
++   *
++   * An organization that has never chosen gets the platform policy unchanged.
++   * Defaulting the absent case to `local_only` would look safer and would be a
++   * lie — it would silently restrict tenants who never expressed anything, and
++   * the product could not tell "chose local" from "has not chosen".
++   */
++  const effectiveMode = row === null ? platformMode : resolveEffectiveAiMode(platformMode, row.mode);
++  /**
++   * CAN EXTERNAL AI ACTUALLY RUN? Two conditions, not one.
++   *
++   * `external` mode routes to the provider directly. `private_first` uses one
++   * only as a FALLBACK and only when `externalConsent` is set — a separate
++   * platform flag that defaults to false. Comparing modes alone therefore
++   * reports "not restricted" on a default install while external routing is
++   * impossible, which is the silent no-op this whole view exists to stop.
++   */
++  const externalPossible =
++    effectiveMode === 'external' || (effectiveMode === 'private_first' && platformExternalConsent);
++  return {
++    tenantMode: row?.mode ?? null,
++    platformMode,
++    platformExternalConsent,
++    effectiveMode,
++    /**
++     * Only an UNFULFILLED intent counts. A tenant that chose `local_only`
++     * asked to be narrower and got exactly that; calling it "restricted" would
++     * cry wolf on the common, correct case and train the notice to be ignored.
++     */
++    restrictedByPlatform: row?.mode === 'private_first' && !externalPossible,
++    updatedAt: row?.updatedAt ?? null,
++  };
++}
+--- /dev/null
++++ b/apps/desktop/src/main/ai/tenantAiPreferenceCompose.test.ts
+@@ -0,0 +1,135 @@
++/**
++ * THE COMPOSITION, TESTED. P13C ROUND 17g.
++ *
++ * WHY THIS FILE EXISTS, STATED PLAINLY.
++ *
++ * `round17TenantAiPreference.test.ts` asserts 23 things about the STORE and the
++ * pure `resolveEffectiveAiMode` in `packages/shared`. It asserts nothing about
++ * the composition — the function that decides what the product actually tells a
++ * user — because that function imported the Electron-bound store instance and
++ * could not be imported here.
++ *
++ * That gap is not academic. The single defect this program shipped lived in
++ * exactly that function: `restrictedByPlatform` compared modes and ignored
++ * `externalConsent`, so a default install told an organization its cloud choice
++ * was in force while external routing was impossible. It was found by a human
++ * running a fresh install. The tests could not have found it. The first case
++ * below is that defect, pinned.
++ */
++import { describe, expect, it } from 'vitest';
++import type { AiMode, TenantAiMode } from '@neuropause/shared';
++import { composeAiPreferenceView } from './tenantAiPreferenceCompose';
++
++/** Rank order, NOT the declaration order of `AI_MODES` (which is UI order). */
++const MODES: readonly AiMode[] = ['local_only', 'private_first', 'external'];
++const RANK: Record<AiMode, number> = { local_only: 0, private_first: 1, external: 2 };
++const TENANT_MODES: readonly TenantAiMode[] = ['local_only', 'private_first'];
++
++const row = (mode: TenantAiMode): { mode: TenantAiMode; updatedAt: number } => ({
++  mode,
++  updatedAt: 1_700_000_000_000,
++});
++
++describe('composeAiPreferenceView — the defect that shipped', () => {
++  it('a default install that permits cloud AI is RESTRICTED, because consent is off', () => {
++    // Platform mode and tenant mode AGREE here. Comparing modes alone says
++    // "not restricted" — which is what shipped, and what produced a saved
++    // preference, no notice, and no external routing.
++    const view = composeAiPreferenceView({
++      platformMode: 'private_first',
++      platformExternalConsent: false,
++      row: row('private_first'),
++    });
++    expect(view.effectiveMode).toBe('private_first');
++    expect(view.restrictedByPlatform).toBe(true);
++  });
++
++  it('the same install with consent ON is not restricted', () => {
++    const view = composeAiPreferenceView({
++      platformMode: 'private_first',
++      platformExternalConsent: true,
++      row: row('private_first'),
++    });
++    expect(view.restrictedByPlatform).toBe(false);
++  });
++
++  it('platform `external` with consent off still restricts a `private_first` tenant', () => {
++    // Recorded because the prediction was wrong: `external` mode routes
++    // directly and needs no consent, but the EFFECTIVE mode here is the
++    // tenant's `private_first`, which does. Restricted is correct.
++    const view = composeAiPreferenceView({
++      platformMode: 'external',
++      platformExternalConsent: false,
++      row: row('private_first'),
++    });
++    expect(view.effectiveMode).toBe('private_first');
++    expect(view.restrictedByPlatform).toBe(true);
++  });
++});
++
++describe('composeAiPreferenceView — a tenant can only narrow', () => {
++  it('rank(effective) <= rank(platform) for every platform x tenant pair', () => {
++    for (const platformMode of MODES) {
++      for (const tenantMode of TENANT_MODES) {
++        for (const platformExternalConsent of [false, true]) {
++          const view = composeAiPreferenceView({
++            platformMode,
++            platformExternalConsent,
++            row: row(tenantMode),
++          });
++          expect(
++            RANK[view.effectiveMode],
++            `a tenant preference widened platform policy: platform=${platformMode} ` +
++              `tenant=${tenantMode} consent=${platformExternalConsent} -> ${view.effectiveMode}`,
++          ).toBeLessThanOrEqual(RANK[platformMode]);
++        }
++      }
++    }
++  });
++
++  it('never reports a `local_only` tenant as restricted — it asked to be narrower', () => {
++    for (const platformMode of MODES) {
++      for (const platformExternalConsent of [false, true]) {
++        const view = composeAiPreferenceView({
++          platformMode,
++          platformExternalConsent,
++          row: row('local_only'),
++        });
++        expect(view.effectiveMode).toBe('local_only');
++        expect(view.restrictedByPlatform).toBe(false);
++      }
++    }
++  });
++});
++
++describe('composeAiPreferenceView — no preference is not a preference', () => {
++  it('an organization that has never chosen gets platform policy, unchanged and unflagged', () => {
++    for (const platformMode of MODES) {
++      const view = composeAiPreferenceView({
++        platformMode,
++        platformExternalConsent: false,
++        row: null,
++      });
++      expect(view.tenantMode).toBeNull();
++      expect(view.effectiveMode).toBe(platformMode);
++      expect(view.restrictedByPlatform).toBe(false);
++      expect(view.updatedAt).toBeNull();
++    }
++  });
++});
++
++describe('composeAiPreferenceView — the view reports its own inputs', () => {
++  it('carries the platform consent flag through, so a caller cannot forget it exists', () => {
++    // The UI needs to distinguish "your mode is narrower" from "consent is off";
++    // dropping this field is what made the two indistinguishable.
++    const view = composeAiPreferenceView({
++      platformMode: 'private_first',
++      platformExternalConsent: false,
++      row: row('private_first'),
++    });
++    expect(view.platformExternalConsent).toBe(false);
++    expect(view.platformMode).toBe('private_first');
++    expect(view.tenantMode).toBe('private_first');
++    expect(view.updatedAt).toBe(1_700_000_000_000);
++  });
++});
+--- a/apps/desktop/src/main/ai/tenantAiPreferenceView.ts
++++ b/apps/desktop/src/main/ai/tenantAiPreferenceView.ts
+@@ -1,21 +1,15 @@
+ /**
+- * THE COMPOSED ANSWER. P13C ROUND 17 · D-5.
++ * The production reading of the composed AI preference. P13C ROUND 17 · D-5.
+  *
+- * One function, because there must be exactly one place that combines the
+- * platform policy with the tenant preference. Two places would eventually
+- * disagree, and the direction they disagree in is the direction that grants
+- * capability nobody authorized.
+- *
+- * It returns all three values — tenant, platform, effective — plus
+- * `restrictedByPlatform`, so the UI is structurally unable to display "approved
+- * cloud AI" as if it were in force while the platform still routes everything
+- * locally. Replacing a hard dead end with a silent no-op would be a worse bug
+- * than the one D-5 is fixing.
++ * The RULE lives in `tenantAiPreferenceCompose.ts`, which is pure and therefore
++ * testable. This file is only the wiring: where the two halves are read from on
++ * a real install. Keeping the wiring separate from the rule is what let the rule
++ * acquire a test at all — see that file's header for why it had none.
+  */
+ import type { TenantAiPreferenceView } from '@neuropause/shared';
+-import { resolveEffectiveAiMode } from '@neuropause/shared';
+ import { tenantAiPreferenceStore } from './tenantAiPreferenceInstance';
+ import { loadAiConfig, resolveAiMode } from './aiConfigStore';
++import { composeAiPreferenceView } from './tenantAiPreferenceCompose';
+ 
+ export function aiPreferenceView(): TenantAiPreferenceView {
+   /**
+@@ -24,49 +18,21 @@
+    * function that answers what an unset config actually behaves as. Reading
+    * `cfg.mode` directly would have made "unset" compose as `undefined` and the
+    * intersection meaningless.
+-   */
+-  const cfg = loadAiConfig();
+-  /**
++   *
+    * `provider: null` means "defer to env/default", and `resolveAiMode` reads it
+    * to decide what an UNSET mode behaves as: a Claude setup already routes
+    * externally, anything else prefers local. A null provider is not Claude, so
+    * it takes the local-preferring branch — which is also the fail-safer of the
+    * two, and the direction to be wrong in if this ever changes.
+-   */
+-  const platformMode = resolveAiMode(cfg, cfg.provider ?? 'ollama');
+-  const row = tenantAiPreferenceStore.mine();
+-  /**
+-   * NO PREFERENCE MEANS NO OPINION, NOT A DEFAULT.
+    *
+-   * An organization that has never chosen gets the platform policy unchanged.
+-   * Defaulting the absent case to `local_only` would look safer and would be a
+-   * lie — it would silently restrict tenants who never expressed anything, and
+-   * the product could not tell "chose local" from "has not chosen".
++   * This expression is the one part of the composition still outside the tested
++   * function, because `resolveAiMode` lives in `aiConfigStore` and that module
++   * imports `electron`. Stated rather than glossed.
+    */
+-  const effectiveMode =
+-    row === null ? platformMode : resolveEffectiveAiMode(platformMode, row.mode);
+-  /**
+-   * CAN EXTERNAL AI ACTUALLY RUN? Two conditions, not one.
+-   *
+-   * `external` mode routes to the provider directly. `private_first` uses one
+-   * only as a FALLBACK and only when `externalConsent` is set — a separate
+-   * platform flag that defaults to false. Comparing modes alone therefore
+-   * reports "not restricted" on a default install while external routing is
+-   * impossible, which is the silent no-op this whole view exists to stop.
+-   */
+-  const externalPossible =
+-    effectiveMode === 'external' || (effectiveMode === 'private_first' && cfg.externalConsent);
+-  return {
+-    tenantMode: row?.mode ?? null,
+-    platformMode,
++  const cfg = loadAiConfig();
++  return composeAiPreferenceView({
++    platformMode: resolveAiMode(cfg, cfg.provider ?? 'ollama'),
+     platformExternalConsent: cfg.externalConsent,
+-    effectiveMode,
+-    /**
+-     * Only an UNFULFILLED intent counts. A tenant that chose `local_only`
+-     * asked to be narrower and got exactly that; calling it "restricted" would
+-     * cry wolf on the common, correct case and train the notice to be ignored.
+-     */
+-    restrictedByPlatform: row?.mode === 'private_first' && !externalPossible,
+-    updatedAt: row?.updatedAt ?? null,
+-  };
++    row: tenantAiPreferenceStore.mine(),
++  });
+ }
+--- a/apps/desktop/src/renderer/src/firstRun/FirstRunExperience.tsx
++++ b/apps/desktop/src/renderer/src/firstRun/FirstRunExperience.tsx
+@@ -108,7 +108,26 @@
+       setEffectiveMode(view.effectiveMode);
+       setRestrictedByPlatform(view.restrictedByPlatform);
+       await ipc.firstRun.set({ aiModeChosen: true });
+-      setStep('workspace');
++      /**
++       * A RESTRICTION IS SHOWN, NOT FLASHED. P13C ROUND 17g.
++       *
++       * `setStep('workspace')` unmounts this step, and the notice below lives
++       * inside it. Advancing unconditionally rendered that notice only in the
++       * gap between the state flush before the `await` above and the one after
++       * it — a few milliseconds, unreadable. The preference was saved, the
++       * platform could not honour it, and the screen moved on: precisely the
++       * silent no-op D-5 was written to prevent, reproduced inside the code
++       * that prevents it, and invisible to every test because no test mounted
++       * this screen.
++       *
++       * When the platform CAN honour the choice, nothing changes — the step
++       * advances as before. When it cannot, the step stays and the user
++       * continues with one deliberate click. That is not a dead end, which is
++       * the failure this decision started from; the button works. It is an
++       * acknowledgement, which is the least a product owes someone whose
++       * choice it has just filed away unfulfilled.
++       */
++      if (!view.restrictedByPlatform) setStep('workspace');
+     } catch (err) {
+       /**
+        * NOT SWALLOWED. The old catch logged to a console nobody was attached to
+@@ -324,13 +343,35 @@
+                * preference IS saved and becomes effective the moment a platform
+                * operator enables external processing.
+                */
+-              <p className="mt-6 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-center text-sm text-warning">
+-                Saved. Your organization permits approved cloud AI — but this
+-                installation has not enabled external processing, so AI work stays
+-                on this device. Effective mode: {AI_MODE_LABELS[effectiveMode]}. Your
+-                choice takes effect automatically once a platform operator turns
+-                external processing on.
+-              </p>
++              <div className="mt-6">
++                {/*
++                 * `role="status"` because this is not an error — nothing failed,
++                 * the write succeeded. It is a statement about what the saved
++                 * choice will and will not do, and assistive tech should
++                 * announce it as one. The error above keeps `role="alert"`; the
++                 * two are different events and must not read as the same one.
++                 */}
++                <p
++                  role="status"
++                  className="rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-center text-sm text-warning"
++                >
++                  Saved. Your organization permits approved cloud AI — but this
++                  installation has not enabled external processing, so AI work stays
++                  on this device. Effective mode: {AI_MODE_LABELS[effectiveMode]}. Your
++                  choice takes effect automatically once a platform operator turns
++                  external processing on.
++                </p>
++                {/*
++                 * The step does not advance on its own while this is showing —
++                 * see `chooseProcessing`. This button is the whole difference
++                 * between telling someone and appearing to.
++                 */}
++                <div className="mt-4 flex justify-center">
++                  <Button variant="primary" autoFocus onClick={() => setStep('workspace')}>
++                    Continue
++                  </Button>
++                </div>
++              </div>
+             )}
+             <p className="mt-6 text-center text-xs text-faint">
+               Default is Private First: local processing is preferred wherever it can serve the request.
+--- a/apps/desktop/ui-tests/setup.ts
++++ b/apps/desktop/ui-tests/setup.ts
+@@ -11,6 +11,11 @@
+  * message transport — everything the screens actually depend on is genuine.
+  */
+ import { vi } from 'vitest';
++import type { AiMode, TenantAiPreferenceView } from '@neuropause/shared';
++import { AiPreferenceSetRequest, IpcChannel } from '@neuropause/shared';
++import { TenantAiPreferenceStore } from '@main/ai/tenantAiPreferenceStore';
++import { composeAiPreferenceView } from '@main/ai/tenantAiPreferenceCompose';
++import { TEST_TENANT_SCOPE } from '@main/tenancy/testScope';
+ 
+ type Handler = (payload: unknown) => unknown;
+ const routes = new Map<string, Handler>();
+@@ -18,6 +23,52 @@
+ export function route(channel: string, handler: Handler): void {
+   routes.set(channel, handler);
+ }
++
++/**
++ * Route `ai:preference.*` against a REAL tenant-owned store and the REAL rule.
++ * P13C ROUND 17g.
++ *
++ * D-5 moved first run off `ai:config.setMode` (platform-only, `cloud:operate`)
++ * and onto this pair. Both first-run harnesses still routed the old channels
++ * with `() => ({})`, so every test that clicked a processing button broke the
++ * moment D-5 landed — and nobody saw it, because nothing runs this suite.
++ *
++ * The store is the production class, tenant-bound to the test scope, over a
++ * real temp file. The view goes through `composeAiPreferenceView`, the same
++ * function production calls. A hand-written `{ effectiveMode: … }` here would
++ * have been quicker and would have put a SECOND copy of the intersection rule
++ * in the codebase — the exact thing `tenantAiPreferenceCompose.ts` says must
++ * never exist, since the direction two copies drift apart in is the direction
++ * that grants capability nobody authorized.
++ *
++ * `platform` states the install's half explicitly. Its default is the fresh
++ * install D-5 exists for: Private First, external consent OFF, zero platform
++ * operators — the condition under which a tenant asking for cloud AI must be
++ * told the platform will not honour it.
++ */
++export function routeTenantAiPreference(
++  filePath: string,
++  platform: { mode: AiMode; externalConsent: boolean } = {
++    mode: 'private_first',
++    externalConsent: false,
++  },
++): TenantAiPreferenceStore {
++  const store = new TenantAiPreferenceStore(filePath).bindScope(() => TEST_TENANT_SCOPE);
++  const view = (): TenantAiPreferenceView =>
++    composeAiPreferenceView({
++      platformMode: platform.mode,
++      platformExternalConsent: platform.externalConsent,
++      row: store.mine(),
++    });
++  route(IpcChannel.AiPreferenceGet, () => view());
++  route(IpcChannel.AiPreferenceSet, async (payload) => {
++    // The real request schema, so a contract drift fails here rather than
++    // being absorbed by a permissive stub.
++    await store.setMine(AiPreferenceSetRequest.parse(payload).mode);
++    return view();
++  });
++  return store;
++}
+ export function clearRoutes(): void {
+   routes.clear();
+   unrouted.length = 0;
+--- a/apps/desktop/ui-tests/firstRun.ui.test.tsx
++++ b/apps/desktop/ui-tests/firstRun.ui.test.tsx
+@@ -19,9 +19,10 @@
+ import React from 'react';
+ import { cleanup, render, screen, waitFor } from '@testing-library/react';
+ import userEvent from '@testing-library/user-event';
+-import { route, clearRoutes, unroutedChannels } from './setup';
++import { route, clearRoutes, unroutedChannels, routeTenantAiPreference } from './setup';
+ import { IpcChannel } from '@neuropause/shared';
+ import { createExperienceProfileService } from '@main/onboarding/experienceProfileService';
++import type { TenantAiPreferenceStore } from '@main/ai/tenantAiPreferenceStore';
+ import { FirstRunExperience } from '@renderer/firstRun/FirstRunExperience';
+ 
+ /**
+@@ -33,6 +34,7 @@
+ 
+ let dir: string;
+ let profile: ReturnType<typeof createExperienceProfileService>;
++let prefs: TenantAiPreferenceStore;
+ 
+ beforeEach(async () => {
+   cleanup();
+@@ -48,8 +50,15 @@
+   // A real probe result — the processing step must not imply a local model
+   // that is not there.
+   route(IpcChannel.AiConfigDetectOllama, () => ({ reachable: false, models: [] }));
+-  route(IpcChannel.AiConfigSetMode, () => ({}));
+-  route(IpcChannel.AiConfigSetExternalConsent, () => ({}));
++  /**
++   * P13C ROUND 17g. `AiConfigSetMode` and `AiConfigSetExternalConsent` were
++   * routed here and are no longer called by first run — D-5 moved it to
++   * `ai:preference.set`, which was not routed at all, so two tests below broke
++   * on 12 Aug and stayed broken because nothing runs this suite. Dead routes
++   * are deleted rather than left: a route nothing calls is indistinguishable
++   * from a route that works.
++   */
++  prefs = routeTenantAiPreference(join(dir, 'ai-preference.json'));
+ });
+ 
+ afterEach(async () => {
+@@ -187,4 +196,44 @@
+     await waitFor(() => expect(profile.get().state).toBe('skipped'));
+     expect(profile.get().attributes).toEqual([]);
+   });
++
++  /**
++   * THE NOTICE, OBSERVED. P13C ROUND 17g.
++   *
++   * The D-5 report listed "confirm the amber notice renders (one look)" as work
++   * remaining for a human. That look would have found nothing. The notice lives
++   * inside the processing step, and the step advanced in the same handler that
++   * set the flag, so it existed for the length of one IPC round trip and then
++   * unmounted. A saved preference the platform cannot honour, and a screen that
++   * moves on without saying so, is the silent no-op D-5 was written to prevent.
++   *
++   * This test is that look, made automatic, and made to fail if the flash ever
++   * comes back.
++   */
++  it('the cloud path saves, SAYS the platform will not honour it, and waits', async () => {
++    const user = userEvent.setup();
++    let landedOn: string | null | undefined;
++    render(<FirstRunExperience onDone={(l) => (landedOn = l)} onSignIn={noop} />);
++    await user.click(screen.getByRole('button', { name: 'Try Free Locally' }));
++    await user.click(await screen.findByRole('button', { name: 'Allow approved cloud AI' }));
++
++    // The preference really is written, through the real tenant boundary.
++    await waitFor(() => expect(prefs.mine()?.mode).toBe('private_first'));
++    await waitFor(() => expect(profile.get().aiModeChosen).toBe(true));
++
++    // …and the screen says so, where a person can read it.
++    const notice = await screen.findByRole('status');
++    expect(notice.textContent).toMatch(/has not enabled external processing/);
++    // Nothing FAILED. A restriction and an error are different events and must
++    // not be announced as the same one.
++    expect(screen.queryByRole('alert')).toBeNull();
++    // It has not skipped past: the choice screen is still on screen.
++    expect(screen.getByText('Where should your AI work?')).toBeTruthy();
++
++    // And it is not a dead end — which is the failure this decision began with.
++    await user.click(screen.getByRole('button', { name: 'Continue' }));
++    expect(await screen.findByRole('button', { name: 'Explore Business' })).toBeTruthy();
++    expect(landedOn).toBeUndefined();
++    expect(unroutedChannels()).toEqual([]);
++  });
+ });
+--- a/apps/desktop/ui-tests/reducedMotion.test.tsx
++++ b/apps/desktop/ui-tests/reducedMotion.test.tsx
+@@ -20,7 +20,7 @@
+ import React from 'react';
+ import { cleanup, render, screen, waitFor } from '@testing-library/react';
+ import userEvent from '@testing-library/user-event';
+-import { route, clearRoutes, unroutedChannels } from './setup';
++import { route, clearRoutes, unroutedChannels, routeTenantAiPreference } from './setup';
+ import { IpcChannel } from '@neuropause/shared';
+ import { initDecisions } from '@main/decisions/index';
+ import { DecisionRecordStore } from '@main/decisions/decisionService';
+@@ -87,8 +87,9 @@
+   route('dp:exportable', () => []);
+   route('connectors:list', () => []);
+   route(IpcChannel.AiConfigDetectOllama, () => ({ reachable: false, models: [] }));
+-  route(IpcChannel.AiConfigSetMode, () => ({}));
+-  route(IpcChannel.AiConfigSetExternalConsent, () => ({}));
++  // P13C ROUND 17g — since D-5 first run writes `ai:preference.set`, not
++  // `ai:config.setMode`. Real store, real rule; see `routeTenantAiPreference`.
++  routeTenantAiPreference(join(dir, 'ai-preference.json'));
+ });
+ 
+ afterEach(async () => {
+--- a/apps/desktop/ui-tests/relatedRecords.ui.test.tsx
++++ b/apps/desktop/ui-tests/relatedRecords.ui.test.tsx
+@@ -71,7 +71,22 @@
+   for (const moduleId of Object.keys(MODULES)) {
+     stores[moduleId] = new EnterpriseRecordStore(join(dir, `${moduleId}.json`), moduleId, moduleId).bindScope(() => TEST_TENANT_SCOPE);
+   }
+-  relationships = new RelationshipStore(join(dir, 'rel.json'));
++  /**
++   * BOUND, like every store above it. P13C ROUND 17g.
++   *
++   * `8e9bb90` (Program 13C Round 2) gave `RelationshipStore` a `TenantOwnership`
++   * and `link()` calls `requireTenant()`, which throws when no organization is
++   * active. This line did not gain the `.bindScope` its siblings on line 72
++   * already had, so all seven tests in this file have failed since 11 August —
++   * unnoticed, because `test:ui` runs in no workflow and no release gate.
++   *
++   * A REAL tenant, not an ambient bypass. `vitest.setup.ts` installs fallback
++   * scopes for nine subsystems and deliberately does not cover `TenantOwnership`
++   * itself; adding one there would scope every tenant-owned store in every test
++   * by default and quietly weaken the isolation proofs this program rests on.
++   * The narrow fix is the honest one.
++   */
++  relationships = new RelationshipStore(join(dir, 'rel.json')).bindScope(() => TEST_TENANT_SCOPE);
+   await Promise.all([...Object.values(stores).map((s) => s.load()), relationships.load()]);
+ 
+   engine = new RelationshipEngine({
+--- a/.github/workflows/desktop-ci.yml
++++ b/.github/workflows/desktop-ci.yml
+@@ -1,8 +1,17 @@
+ name: desktop-ci
+ 
+-# TD-4a (GA blocker): per-PR desktop CI. The desktop test suite is headless
+-# (Vitest unit/model tests for the main + renderer logic — not the Electron UI),
+-# so it runs on ubuntu and gates every change to the desktop app or shared types.
++# TD-4a (GA blocker): per-PR desktop CI. Both desktop suites are headless, so
++# they run on ubuntu and gate every change to the desktop app or shared types.
++#
++# P13C ROUND 17g — the UI suite was added here after fifteen rounds of security
++# certification ran against it while it was red. This comment previously read
++# "not the Electron UI", which was true of Electron and not true of `test:ui`:
++# that suite is jsdom + Testing Library, it mounts real components, and it runs
++# on ubuntu in under four seconds. It was excluded on a distinction that did not
++# apply to it, so `vitest run` (764 files) was the only gate and the ten
++# mounted-component tests ran in no workflow and no release. Two breakages sat
++# in it undetected — Round 2's tenancy binding and Round 17's D-5 channel move.
++# A suite nothing runs is not a gate; it is documentation that looks like one.
+ 
+ on:
+   push:
+@@ -33,5 +42,7 @@
+         run: npx eslint apps/desktop --max-warnings 0
+       - name: Test (desktop)
+         run: npm run test -w @neuropause/desktop
++      - name: UI test (desktop — mounted components, jsdom)
++        run: npm run test:ui -w @neuropause/desktop
+       - name: Build (desktop)
+         run: npm run build -w @neuropause/desktop

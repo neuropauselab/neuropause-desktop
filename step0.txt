@@ -1,0 +1,5 @@
+
+═══ doctl present and authenticated? ═══
+doctl version 1.164.0-release
+Error: GET https://api.digitalocean.com/v2/account: 401 (request "c1fe5cbd-2530-4619-b2e7-64c70d4b32f7") Unable to authenticate you
+NOT AUTHENTICATED  ->  doctl auth init

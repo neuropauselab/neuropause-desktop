@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { Session } from '@neuropause/shared';
 import { useShell } from '@renderer/state/ShellProvider';
@@ -16,7 +16,15 @@ import { PerformanceOverlay } from './PerformanceOverlay';
 import { PerfSampler } from '@renderer/state/PerfSampler';
 import { HomeView } from '@renderer/views/HomeView';
 import { OnboardingWizard } from '@renderer/onboarding/OnboardingWizard';
+import { FirstRunExperience } from '@renderer/firstRun/FirstRunExperience';
+import { setWorkspaceType } from '@renderer/firstRun/workspaceTypeStore';
+import { onExperienceProfileChanged } from '@renderer/firstRun/experienceProfileEvents';
+import type { ExperienceProfile } from '@neuropause/shared';
 import { SECTIONS, type SectionId } from './sections';
+import { PreviewBanner } from './PreviewBanner';
+import { TRANSITION, sectionVariants } from '@renderer/lib/motion';
+import { useDelayedFlag } from '@renderer/lib/useDelayedFlag';
+import { createScrollMemory, findScroller } from './scrollMemory';
 
 const log = createLogger('shell');
 
@@ -37,6 +45,31 @@ const OperationsView = lazy(() =>
 );
 const ConnectorsView = lazy(() =>
   import('@renderer/views/ConnectorsView').then((m) => ({ default: m.ConnectorsView })),
+);
+// Phase 6 — the Data Command Center (import · review · provenance · quality).
+const DataCommandCenterView = lazy(() =>
+  import('@renderer/dataCommandCenter/DataCommandCenterView').then((m) => ({
+    default: m.DataCommandCenterView,
+  })),
+);
+const MedicalDevicesView = lazy(() =>
+  import('@renderer/medicalDevices/MedicalDevicesView').then((m) => ({
+    default: m.MedicalDevicesView,
+  })),
+);
+const AiHomeView = lazy(() =>
+  import('@renderer/firstRun/AiHomeView').then((m) => ({ default: m.AiHomeView })),
+);
+const UnderstandView = lazy(() =>
+  import('@renderer/understanding/UnderstandView').then((m) => ({ default: m.UnderstandView })),
+);
+const HoldsView = lazy(() =>
+  import('@renderer/understanding/HoldsView').then((m) => ({ default: m.HoldsView })),
+);
+const OpportunitiesView = lazy(() =>
+  import('@renderer/opportunities/OpportunitiesView').then((m) => ({
+    default: m.OpportunitiesView,
+  })),
 );
 const MemoryView = lazy(() =>
   import('@renderer/views/MemoryView').then((m) => ({ default: m.MemoryView })),
@@ -165,10 +198,36 @@ const SandboxView = lazy(() =>
   import('@renderer/views/SandboxView').then((m) => ({ default: m.SandboxView })),
 );
 
+/**
+ * The section-loading fallback.
+ *
+ * Most lazy chunks resolve inside a couple of frames. Rendering a spinner
+ * unconditionally means the common case is a FLASH — a spinner that appears
+ * and vanishes before it can be read, which makes a fast app look unstable.
+ * So nothing is drawn under the threshold; past it the wait is real and gets
+ * acknowledged, fading in rather than snapping.
+ *
+ * The wrapper keeps `h-full` in both states so the region never collapses and
+ * re-expands underneath the content that is about to land.
+ */
 function ViewFallback(): JSX.Element {
+  const show = useDelayedFlag();
   return (
-    <div className="flex h-full items-center justify-center">
-      <Spinner />
+    <div className="flex h-full items-center justify-center" role="status" aria-live="polite">
+      <AnimatePresence>
+        {show && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={TRANSITION.quick}
+            className="flex flex-col items-center gap-2.5"
+          >
+            <Spinner />
+            <span className="sr-only">Loading this section</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -255,6 +314,44 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
     reset,
   ]);
 
+  // Private-First first-run experience: gate on the persisted profile. While
+  // `pending`, the full-screen experience renders INSTEAD of the workspace and
+  // the checklist wizard; a completed/skipped profile also feeds the
+  // workspace-type nav filter. Null = not yet loaded (render nothing extra).
+  const [experienceProfile, setExperienceProfile] = useState<ExperienceProfile | null>(null);
+  // Re-read when the profile is reset from inside the app (Understand →
+  // "Answer the setup questions"). Without this the shell keeps the profile it
+  // read at mount and the first-run takeover would not reappear until relaunch,
+  // making the button look broken.
+  const [profileEpoch, setProfileEpoch] = useState(0);
+  useEffect(() => onExperienceProfileChanged(() => setProfileEpoch((n) => n + 1)), []);
+  useEffect(() => {
+    ipc.firstRun
+      .get()
+      .then((p) => {
+        setExperienceProfile(p);
+        setWorkspaceType(p.workspaceType);
+      })
+      .catch((err: unknown) => {
+        // Fail OPEN to the legacy wizard, never to nothing: if this channel is
+        // unreachable (older main process still running, stale build), the
+        // pre-existing onboarding must keep behaving exactly as before.
+        // eslint-disable-next-line no-console
+        console.warn(
+          '[first-run] xp:profile.get failed — falling back to the legacy wizard. Is the main process up to date?',
+          err,
+        );
+        setExperienceProfile({
+          state: 'skipped',
+          workspaceType: null,
+          aiModeChosen: false,
+          attributes: [],
+          completedAt: null,
+          updatedAt: null,
+        });
+      });
+  }, [profileEpoch]);
+
   const renderView = (): JSX.Element => {
     switch (activeSection) {
       case 'mission-control':
@@ -283,6 +380,18 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
         return <OperationsView />;
       case 'connectors':
         return <ConnectorsView />;
+      case 'data-center':
+        return <DataCommandCenterView />;
+      case 'medical-devices':
+        return <MedicalDevicesView />;
+      case 'ai-home':
+        return <AiHomeView onNavigate={(id) => goToSection(id)} />;
+      case 'understand':
+        return <UnderstandView />;
+      case 'holds':
+        return <HoldsView />;
+      case 'opportunities':
+        return <OpportunitiesView />;
       case 'memory':
         return <MemoryView />;
       case 'enterprise':
@@ -360,24 +469,97 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
     }
   };
 
+  // RC Phase 1 (P4) — surface the registry's `preview` flag in-view, so entering a
+  // preview section by deep-link/command-palette (which bypasses the sidebar chip)
+  // still shows the honest preview context.
+  const activeMeta = SECTIONS.find((s) => s.id === activeSection);
+
+  // Phase 2 (IA) — reflect the active section in the window/document title so the OS
+  // window chrome matches the sidebar and page heading. Single source of truth: the
+  // section registry label; no breadcrumb system, no duplicate page-title chrome.
+  useEffect(() => {
+    const meta = SECTIONS.find((s) => s.id === activeSection);
+    document.title = meta?.label ? `NeuroPause — ${meta.label}` : 'NeuroPause';
+  }, [activeSection]);
+
+  /**
+   * Scroll memory across section changes.
+   *
+   * Leaving a long list halfway down and coming back to the top is the kind of
+   * small, constant cost that makes an app feel like a website. The offset is
+   * captured on the way OUT (the section's DOM still exists at that point) and
+   * applied on the way IN, after the incoming view has painted — restoring
+   * before layout sets `scrollTop` on an element that is still 0px tall, which
+   * silently does nothing.
+   *
+   * `MIN_REMEMBERED_OFFSET` in scrollMemory.ts is what keeps this from becoming
+   * the opposite annoyance: a section left at the top restores to the top,
+   * because that is not a position worth remembering.
+   */
+  const mainRef = useRef<HTMLElement | null>(null);
+  const scrollMemory = useRef(createScrollMemory());
+  const previousSection = useRef<SectionId | null>(null);
+
+  useEffect(() => {
+    const host = mainRef.current;
+    const leaving = previousSection.current;
+    previousSection.current = activeSection;
+    if (!host) return;
+
+    if (leaving && leaving !== activeSection) {
+      const scroller = findScroller(host);
+      if (scroller) scrollMemory.current.remember(leaving, scroller.scrollTop);
+    }
+
+    // Two frames: the first lets React commit the new subtree, the second lets
+    // the browser lay it out. Restoring inside one of them lands on a zero-
+    // height element and is lost.
+    let second = 0;
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => {
+        const scroller = findScroller(mainRef.current);
+        if (!scroller) return;
+        const target = scrollMemory.current.recall(activeSection);
+        // `auto`, never `smooth`: an animated scroll on arrival is motion the
+        // user did not ask for, and it fights them if they start scrolling.
+        scroller.scrollTo({ top: target, behavior: 'auto' });
+      });
+    });
+    return () => {
+      cancelAnimationFrame(first);
+      cancelAnimationFrame(second);
+    };
+  }, [activeSection]);
+
   return (
     <div className="app-bg flex h-full w-full flex-col text-ink">
       <Toolbar session={session} />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
-        <main className="min-w-0 flex-1 overflow-hidden">
-          <AnimatePresence mode="wait">
+        <main ref={mainRef} className="min-w-0 flex-1 overflow-hidden">
+          {/*
+            `mode="wait"` is deliberate: cross-fading two full sections at once
+            double-paints large trees and the overlap reads as a flicker rather
+            than a transition. The outgoing view leaves first (fast, on the
+            accelerating exit curve), then the incoming one settles.
+          */}
+          <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={activeSection}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              transition={{ duration: 0.16, ease: [0.2, 0.8, 0.2, 1] }}
-              className="h-full"
+              variants={sectionVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              className="flex h-full flex-col"
             >
-              <WorkspaceErrorBoundary name={activeSection}>
-                <Suspense fallback={<ViewFallback />}>{renderView()}</Suspense>
-              </WorkspaceErrorBoundary>
+              {activeMeta?.preview && (
+                <PreviewBanner label={activeMeta.label} />
+              )}
+              <div className="min-h-0 flex-1">
+                <WorkspaceErrorBoundary name={activeSection}>
+                  <Suspense fallback={<ViewFallback />}>{renderView()}</Suspense>
+                </WorkspaceErrorBoundary>
+              </div>
             </motion.div>
           </AnimatePresence>
         </main>
@@ -389,7 +571,29 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
         <VoiceWidget />
       </ErrorBoundary>
       <ErrorBoundary inline name="onboarding">
-        <OnboardingWizard onGoTo={goToSection} />
+        {experienceProfile?.state === 'pending' ? (
+          <FirstRunExperience
+            onDone={(landing) => {
+              ipc.firstRun
+                .get()
+                .then((p) => {
+                  setExperienceProfile(p);
+                  setWorkspaceType(p.workspaceType);
+                })
+                .catch(() => undefined);
+              if (landing) goToSection(landing);
+            }}
+            onSignIn={() => {
+              // The existing auth surface lives in Settings → Identity.
+              void ipc.firstRun.set({ state: 'skipped' }).then((p) => setExperienceProfile(p));
+              goToSection('settings');
+            }}
+          />
+        ) : experienceProfile ? (
+          // The guided checklist wizard runs AFTER the experience decided the
+          // product shape — never on top of it.
+          <OnboardingWizard onGoTo={goToSection} />
+        ) : null}
       </ErrorBoundary>
       {/* Always-mounted invisible runtime performance collector (feeds Diagnostics + the dev overlay). */}
       <ErrorBoundary inline name="perf-sampler">

@@ -160,26 +160,34 @@ export const ENTERPRISE_ACTIONS: Record<Exclude<EnterpriseActionType, 'exportRep
     return { value: { code: res.code, stdout: res.stdout }, raw: res };
   },
 
-  /* Desktop (reuses S2) */
+  /**
+   * Desktop (reuses S2).
+   *
+   * P13C Round 9 — F15. A step MAY name a `sessionId`, so a scenario that opens
+   * two windows can say which one it means. It may NOT name an owner: the
+   * channel resolves that from the tenant resolver, and a named id only ever
+   * selects among the caller's own sessions. `openDesktop` returns the id so a
+   * later step can reference it through `saveAs`.
+   */
   openDesktop: async (i, c) => {
-    await c.platform.desktop.open({ profile: str(i.profile) || 'temporary' });
-    c.emitLog('desktop session opened');
-    return {};
+    const handle = await c.platform.desktop.open({ profile: str(i.profile) || 'temporary', ...sessionRef(i) });
+    c.emitLog(`desktop session opened (${handle.sessionId})`);
+    return { value: { sessionId: handle.sessionId } };
   },
   clickUi: async (i, c) => {
     c.perf.desktopActions += 1;
-    const r = await c.platform.desktop.action({ type: 'click', selector: str(i.selector) });
+    const r = await c.platform.desktop.action({ type: 'click', selector: str(i.selector) }, sessionRef(i));
     return { value: r.assertion, raw: r };
   },
   typeUi: async (i, c) => {
     c.perf.desktopActions += 1;
-    const r = await c.platform.desktop.action({ type: 'type', selector: str(i.selector), text: str(i.text) } as DesktopAction);
+    const r = await c.platform.desktop.action({ type: 'type', selector: str(i.selector), text: str(i.text) } as DesktopAction, sessionRef(i));
     return { value: r.assertion, raw: r };
   },
   takeScreenshot: async (i, c) => {
     c.perf.desktopActions += 1;
     const name = str(i.name) || 'screenshot';
-    const shot = await c.platform.desktop.screenshot(name);
+    const shot = await c.platform.desktop.screenshot(name, sessionRef(i));
     c.attachArtifact({
       kind: 'screenshot',
       name: `${name}.png`,
@@ -216,6 +224,18 @@ export const ENTERPRISE_ACTIONS: Record<Exclude<EnterpriseActionType, 'exportRep
 
 /* ── helpers ── */
 const CONTROL_KEYS = new Set(['id', 'recordRef', 'record', 'moduleId', 'action', 'title', 'tags', 'fields']);
+
+/**
+ * The session a desktop step names, if it names one.
+ *
+ * Returns `undefined` rather than `{ sessionId: '' }` for an absent value, so
+ * "no session named" stays distinct from "named the empty string" — the channel
+ * treats the first as "my current session" and the second as a name it does not
+ * have, and collapsing them would turn a typo into somebody else's window.
+ */
+function sessionRef(input: Record<string, unknown>): { sessionId: string } | undefined {
+  return typeof input.sessionId === 'string' && input.sessionId !== '' ? { sessionId: input.sessionId } : undefined;
+}
 
 /** Extract module fields: explicit `input.fields`, else the input minus control keys. */
 function fieldsOf(input: Record<string, unknown>): Record<string, unknown> {

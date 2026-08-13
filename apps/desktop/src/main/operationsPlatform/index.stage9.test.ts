@@ -10,6 +10,14 @@ import { describe, expect, it } from 'vitest';
 import { IpcChannel } from '@neuropause/shared';
 import { initOperationsPlatform, type OperationsPlatformDeps } from './index';
 
+/**
+ * P13C ROUND 5 — the composed cache is tenant-keyed, so these suites name a
+ * tenant. Every existing TTL and memoization assertion keeps its meaning:
+ * repeated reads under ONE tenant must still be a single composition.
+ */
+const PLATFORM_SCOPE = { tenantId: 'org-test', workspaceId: 'ws-test' };
+const scope = (): typeof PLATFORM_SCOPE => PLATFORM_SCOPE;
+
 const T0 = Date.parse('2026-07-31T12:00:00.000Z');
 
 interface Harness {
@@ -26,6 +34,7 @@ function mkDeps(over: Partial<OperationsPlatformDeps> = {}): Harness {
   const sources: string[] = [];
   let produce: () => unknown = () => null;
   const deps: OperationsPlatformDeps = {
+  scope,
     insightReport: () => null,
     executionStats: () => {
       statReads += 1;

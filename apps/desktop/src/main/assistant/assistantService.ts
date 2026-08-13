@@ -71,6 +71,11 @@ import {
   resolveWorkSummary,
   type PlanTargets,
 } from './assistantModel';
+import { noModelRouting } from '@neuropause/shared';
+import {
+  resolveDeterministicAnswer,
+  type DeterministicPorts,
+} from './deterministicAnswers';
 import { renderReportMaterial } from './productivity';
 import type { ConversationStore } from './conversationStore';
 
@@ -102,6 +107,18 @@ export interface AssistantServiceDeps {
   }) => AiContextItem[];
   /** The EXISTING AI Engine. Never called without assembled context. */
   runAi: (req: AiEngineRequest) => Promise<AiEngineResponse>;
+  /**
+   * Deterministic-answer ports — the seam that answers lookup/aggregate
+   * questions from records and system data WITHOUT invoking any model.
+   * Optional: absent ports simply mean fewer questions resolve here.
+   */
+  deterministic?: DeterministicPorts;
+  /**
+   * Measured-intelligence sink for turns the AI ENGINE never saw ('none').
+   * Engine-backed turns are measured by the engine itself — recording them
+   * here too would double-count. Feeds the AI Usage / economics surface.
+   */
+  recordProcessing?: (location: 'none') => void;
   /** Audited executive-memory recall; the correlation id tags its audit event. */
   recallMemories?: (question: string, now: string, correlationId: string) => { title: string }[];
   /** Capture the exchange through the EXISTING conversation-memory governance. */
@@ -360,6 +377,39 @@ export class AssistantService {
       return { conversation, messageId };
     }
 
+    // ── Deterministic-first (the intelligence planner's first branch). A
+    // question with exactly one computable answer — arithmetic, the clock, a
+    // record aggregate — is answered HERE, from the owning service, and the
+    // AI engine is never invoked for it. A permission refusal is an answer
+    // too: falling through would let the model answer over data the records
+    // layer just refused to show.
+    if (this.deps.deterministic) {
+      const det = resolveDeterministicAnswer(input.text, this.deps.deterministic, now);
+      if (det) {
+        const envelope = baseEnvelope(correlationId, mode, intent, now);
+        envelope.text = det.answer;
+        envelope.reasoningSummary = det.reason;
+        envelope.findings = det.findings;
+        envelope.sources = det.sources;
+        envelope.grounded = true;
+        envelope.aiOffline = false;
+        envelope.confidence = 0.98;
+        envelope.processing = noModelRouting(
+          'private_first',
+          `${det.reason} (resolver: ${det.resolver})`,
+          now,
+        );
+        envelope.trace.phases = phases;
+        this.deps.recordProcessing?.('none');
+        const messageId = this.appendTurn(conversation, input.text, [], envelope, now);
+        publish('assistant.turn.deterministic', { resolver: det.resolver });
+        emitPhase('done');
+        this.inflight.delete(conversation.id);
+        await this.deps.store.upsert(conversation);
+        return { conversation, messageId };
+      }
+    }
+
     // ── Context collection (Stage 2 isolation: per-collector settle). ──
     emitPhase('context');
     const t0 = Date.now();
@@ -463,6 +513,9 @@ export class AssistantService {
         responseId: ai.responseId,
       };
       envelope.trace.audit.aiResponseId = ai.responseId;
+      // Where this turn's AI processing ACTUALLY ran — copied from the
+      // engine response, which carries the executing client's own stamp.
+      envelope.processing = ai.routing ?? null;
     } else {
       envelope.reasoningSummary = cfg.operational
         ? 'Monitor mode — deterministic operational snapshot; no model narrative by design.'
@@ -471,6 +524,16 @@ export class AssistantService {
       envelope.aiOffline = !cfg.reason;
       envelope.confidence = findings.length > 0 ? 0.9 : 0;
       if (cfg.operational) envelope.text = this.monitorText(snapshot);
+      // No model was invoked for this turn — an answer, not an absence: the
+      // findings were computed deterministically on this device.
+      envelope.processing = noModelRouting(
+        'private_first',
+        cfg.operational
+          ? 'No AI model ran — monitor mode computes its snapshot deterministically on this device.'
+          : 'No AI model ran for this turn — the result was computed deterministically on this device.',
+        now,
+      );
+      this.deps.recordProcessing?.('none');
     }
     // A grounded structured report keeps the turn grounded even when the model
     // is offline — the sections themselves are computed evidence (Stage 5).

@@ -9,6 +9,7 @@ import { SandboxExecutionStore } from './executionStore';
 import { SandboxArtifactStore } from './artifactStore';
 import { SandboxDatasetStore } from './datasetStore';
 import { SandboxExecutionEngine, type SandboxExecutor } from './executionEngine';
+import { TEST_TENANT_SCOPE } from '../tenancy/testScope';
 
 let seq = 0;
 function harness(opts: { concurrency?: number } = {}) {
@@ -19,11 +20,11 @@ function harness(opts: { concurrency?: number } = {}) {
   const advance = (ms: number): void => {
     t += ms;
   };
-  const workspaces = new SandboxWorkspaceStore(`${base}-w.json`, now);
-  const scenarios = new SandboxScenarioStore(`${base}-s.json`, now);
-  const executions = new SandboxExecutionStore(`${base}-e.json`, now);
-  const artifacts = new SandboxArtifactStore(`${base}-a.json`, now);
-  const datasets = new SandboxDatasetStore(`${base}-d.json`, now);
+  const workspaces = new SandboxWorkspaceStore(`${base}-w.json`, now).bindScope(() => TEST_TENANT_SCOPE);
+  const scenarios = new SandboxScenarioStore(`${base}-s.json`, now).bindScope(() => TEST_TENANT_SCOPE);
+  const executions = new SandboxExecutionStore(`${base}-e.json`, now).bindScope(() => TEST_TENANT_SCOPE);
+  const artifacts = new SandboxArtifactStore(`${base}-a.json`, now).bindScope(() => TEST_TENANT_SCOPE);
+  const datasets = new SandboxDatasetStore(`${base}-d.json`, now).bindScope(() => TEST_TENANT_SCOPE);
   const events: SandboxEvent[] = [];
   const engine = new SandboxExecutionEngine({ workspaces, scenarios, executions, artifacts, datasets, broadcast: (e) => events.push(e), now });
 

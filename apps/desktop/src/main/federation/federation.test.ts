@@ -22,6 +22,16 @@ afterAll(() => { delete process.env.NP_DEMO_SEEDS; });
 import { buildScalabilityReport } from './scalability/scalability';
 import type { FedPolicy } from '@neuropause/shared';
 
+/**
+ * P13C ROUND 4 — S-10. Federation records now name TWO organizations and the
+ * caller must be one of them, so these suites act AS the seeded organization.
+ * That keeps every existing assertion meaning what it meant: this file tests
+ * one organization's federation behaviour. Cross-tenant behaviour is asserted
+ * separately, with three organizations, in `tenancy/e2e/federation*.test.ts`.
+ */
+const SEED_ORG = { tenantId: 'org-default', workspaceId: 'ws-default' };
+const asSeedOrg = (): typeof SEED_ORG => SEED_ORG;
+
 let dir = '';
 const openStores: { flush: () => Promise<void> }[] = [];
 
@@ -42,19 +52,29 @@ afterEach(async () => {
 });
 
 async function makeFed(): Promise<FederationRuntimeStore> {
-  const s = new FederationRuntimeStore(join(dir, 'fed.json'), 'org-default', 'NeuroPause');
+  const s = new FederationRuntimeStore(join(dir, 'fed.json'), 'org-default', 'NeuroPause').bindScope(asSeedOrg);
   await s.load();
   openStores.push(s);
   return s;
 }
 async function makeExchange(): Promise<ExchangeStore> {
-  const s = new ExchangeStore(join(dir, 'exchange.json'));
+  const s = new ExchangeStore(join(dir, 'exchange.json'))
+    .bindScope(asSeedOrg)
+    // The demo fixtures include partner-scoped artifacts published by peers, so
+    // the seeded org must trust them for this suite to see what it saw before.
+    .bindTrustResolver(() => true)
+    // The seeded organization is us-east (see fedStore.applySeed).
+    .bindRegionResolver(() => 'us-east');
   await s.load();
   openStores.push(s);
   return s;
 }
 async function makeGov(): Promise<GlobalGovStore> {
-  const s = new GlobalGovStore(join(dir, 'gov.json'), 'org-default', 'NeuroPause');
+  const s = new GlobalGovStore(join(dir, 'gov.json'), 'org-default', 'NeuroPause')
+    .bindScope(asSeedOrg)
+    // `recordAction` now refuses a peer the caller does not federate with; this
+    // suite exercises the seeded federation, so every seeded peer counts.
+    .bindPeerResolver(() => true);
   await s.load();
   openStores.push(s);
   return s;
@@ -90,7 +110,13 @@ describe('FederationRuntimeStore', () => {
 
   it('invites an org and accepts an inbound invitation into an active peer with trust', async () => {
     const s = await makeFed();
-    const invite = s.inviteOrg({ name: 'Vertex Dynamics', trustLevel: 'verified' });
+    // P13C ROUND 12 — M-11: the target must be a resolvable directory row.
+    (s as unknown as { orgs: Map<string, unknown> }).orgs.set('org_vertex', {
+      id: 'org_vertex', name: 'Vertex Dynamics', slug: 'vertex-dynamics',
+      role: 'peer', status: 'active', regionId: 'us-east', trustLevel: 'basic',
+      joinedAt: new Date().toISOString(), sharedOut: 0, sharedIn: 0,
+    });
+    const invite = s.inviteOrg({ toOrg: 'org_vertex', trustLevel: 'verified' });
     expect(invite.direction).toBe('outbound');
     expect(invite.status).toBe('pending');
 
@@ -125,7 +151,7 @@ describe('FederationRuntimeStore', () => {
     expect(s.revokeShare(share!.id)).toBe(true);
     await s.flush();
 
-    const s2 = new FederationRuntimeStore(join(dir, 'fed.json'), 'org-default', 'NeuroPause');
+    const s2 = new FederationRuntimeStore(join(dir, 'fed.json'), 'org-default', 'NeuroPause').bindScope(asSeedOrg);
     await s2.load();
     openStores.push(s2);
     expect(s2.trustFor('org-helios')?.trustLevel).toBe('full');
@@ -149,17 +175,31 @@ describe('exchange signing', () => {
 /* ════════════════════════════ Organization exchange ═══════════════════════ */
 
 describe('ExchangeStore', () => {
-  it('seeds signed artifacts across kinds and verifies their signatures', async () => {
+  /**
+   * P13C ROUND 4 — this expected 6 and now expects 5, which is STRICTER rather
+   * than weaker.
+   *
+   * Six artifacts are seeded. The sixth — `EU Compliance Corpus`, published by
+   * Helios at `regional` scope in `eu-west` — is correctly invisible to a
+   * `us-east` organization, because that is what regional scope means. Under
+   * the old install-wide listing every scope was ignored and all six came back.
+   *
+   * The regional artifact is asserted visible to an eu-west caller in the
+   * three-organization suite, so the rule is proven in both directions rather
+   * than merely observed to deny here.
+   */
+  it('seeds signed artifacts and lists the ones this region may see', async () => {
     const s = await makeExchange();
     const arts = s.listArtifacts();
-    expect(arts.length).toBe(6);
+    expect(arts.length).toBe(5);
+    expect(arts.some((a) => a.name === 'EU Compliance Corpus')).toBe(false);
     for (const a of arts) expect(s.verifyVersion(a.id, a.currentVersionId)).toBe(true);
     expect(s.signingKeyId().startsWith('npfed_')).toBe(true);
   });
 
   it('publishes an artifact, adds a version, and verifies the new signature', async () => {
     const s = await makeExchange();
-    const art = s.publish({ kind: 'dashboard_template', name: 'Sales Board', summary: 'A board.', scope: 'private', publisherOrg: 'org-default', publisherOrgName: 'NeuroPause' });
+    const art = s.publish({ kind: 'dashboard_template', name: 'Sales Board', summary: 'A board.', scope: 'private', publisherOrgName: 'NeuroPause' });
     expect(s.verifyVersion(art.id, art.currentVersionId)).toBe(true);
     const v2 = s.publishVersion(art.id, '1.1.0', 'More widgets.');
     expect(v2?.versions.length).toBe(2);
@@ -168,7 +208,7 @@ describe('ExchangeStore', () => {
 
   it('rolls back to the previous published version', async () => {
     const s = await makeExchange();
-    const art = s.publish({ kind: 'workflow_template', name: 'Onboarding', summary: 'Flow.', scope: 'partner', publisherOrg: 'org-default', publisherOrgName: 'NeuroPause' });
+    const art = s.publish({ kind: 'workflow_template', name: 'Onboarding', summary: 'Flow.', scope: 'partner', publisherOrgName: 'NeuroPause' });
     const firstVersionId = art.currentVersionId;
     const v2 = s.publishVersion(art.id, '2.0.0', 'v2');
     expect(v2?.currentVersionId).not.toBe(firstVersionId);
@@ -184,8 +224,12 @@ describe('ExchangeStore', () => {
     expect(rated?.rating).toBe(4);
     expect(s.setVerification(art.id, 'verified')?.verification).toBe('verified');
     expect(s.setScope(art.id, 'public')?.scope).toBe('public');
+    // Five, not six — the scope summary now counts what this caller may SEE,
+    // and the eu-west regional artifact is not one of them. Unscoped, the
+    // `private` row of this summary was a count of every other organization's
+    // unpublished drafts.
     const scopes = s.scopeSummary();
-    expect(scopes.reduce((n, x) => n + x.artifacts, 0)).toBe(6);
+    expect(scopes.reduce((n, x) => n + x.artifacts, 0)).toBe(5);
   });
 });
 

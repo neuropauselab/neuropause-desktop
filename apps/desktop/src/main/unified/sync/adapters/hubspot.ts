@@ -155,6 +155,7 @@ function base(ctx: SyncContext, kind: UnifiedEntityKind, prefix: string, r: HsRe
   const updated = iso(r.updatedAt, created);
   return {
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind,
     sourceId: `${prefix}${r.id}`,
@@ -327,6 +328,7 @@ export function mapOwner(ctx: SyncContext, o: HsOwner): UnifiedEntity {
   const updated = iso(o.updatedAt, created);
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'contact',
     sourceId: `owner-${o.id}`,

@@ -12,13 +12,19 @@
  *   requestSync  → runAccountSync (+ enqueue retry if the failure was transient)
  *   retry queue  → runAccountSync (re-run, capped backoff)
  */
-import type { PlatformEventInput, UnifiedEntity } from '@neuropause/shared';
+import type { ConnectorId, PlatformEventInput, UnifiedEntity } from '@neuropause/shared';
 import { makeUnifiedId } from '../ids';
 import { AuthError, HttpClient, HttpError, NetworkError, RateLimitError, type RateGate } from './http';
+import { rateGateKey } from './rateLimiter';
 import type { ConnectorAdapter, SyncPage } from './adapterSdk';
+import type { TenantScope } from '@neuropause/shared';
+import { TenantDedupe } from '../../tenancy/tenantDedupe';
 import { RetryQueue } from './retryQueue';
 import type { SyncStateStore } from './syncStateStore';
 import { syncEvents } from './events';
+import { createLogger } from '../../logger';
+
+const log = createLogger('sync');
 
 /** Stop runaway paging if an adapter never reports `hasMore: false`. */
 const MAX_PAGES_PER_RESOURCE = 50;
@@ -29,7 +35,21 @@ export const MAX_CONCURRENT_SYNCS = 4;
 
 /** Everything the orchestrator depends on, injected so it can be tested. */
 export interface OrchestratorPorts {
-  upsertMany: (entities: UnifiedEntity[]) => Promise<{ created: number; updated: number; conflicts: number }>;
+  /**
+   * The organization this sync run acts for (P13B), or null when none resolves.
+   *
+   * A PORT, not a global read, and not a parameter on `run()`. It is a port
+   * because the orchestrator must not import the tenant resolver (that would
+   * couple the sync engine to the enterprise subsystem and break its
+   * standalone tests); it is not a parameter because a caller that can name the
+   * tenant is a caller that can name someone else's.
+   *
+   * Returning null STOPS the run. A sync with no owner would mint entities with
+   * no owner — invisible to everyone, re-created on every pass — so refusing is
+   * both the safe answer and the honest one.
+   */
+  activeTenantId: () => string | null;
+  upsertMany: (entities: UnifiedEntity[], expectedTenantId?: string) => Promise<{ created: number; updated: number; conflicts: number }>;
   markDeleted: (ids: string[], at: string) => Promise<number>;
   countForConnector: (connectorId: string) => number;
   syncState: SyncStateStore;
@@ -41,6 +61,25 @@ export interface OrchestratorPorts {
   rate: RateGate;
   /** P4.1 — whether sync is suppressed for this account (paused / disabled). Optional; defaults to false. */
   isSuppressed?: (connectorId: string, accountId: string) => boolean;
+  /**
+   * P9 — write a resource's entities into the governed business data.
+   *
+   * Optional so the orchestrator's own tests need not stand up a record store,
+   * and so a build without the Data Plane still syncs into the Unified store.
+   * A resource with no declared mapping returns zeroes; the orchestrator does
+   * not decide what is bridgeable.
+   *
+   * Deliberately runs AFTER `upsertMany`: the Unified store is the record of
+   * what the provider said, and it must not be conditional on the governed
+   * write succeeding.
+   */
+  bridge?: (input: {
+    connectorId: ConnectorId;
+    accountId: string;
+    resourceId: string;
+    syncRunId: string;
+    entities: UnifiedEntity[];
+  }) => Promise<{ created: number; updated: number; adopted: number; ambiguous: number; invalid: number }>;
 }
 
 export interface AccountSyncOutcome {
@@ -56,11 +95,92 @@ export interface AccountSyncOutcome {
   retryable: boolean;
   rateLimited: boolean;
   offline: boolean;
+  /**
+   * What reached the GOVERNED business data.
+   *
+   * Absent when no resource in this connector has a declared mapping — which
+   * is the honest representation of "this provider's data is searchable but
+   * is not business records".
+   */
+  bridged?: { created: number; updated: number; adopted: number; ambiguous: number; invalid: number };
+  /** Set when the sync succeeded but the governed write did not. */
+  bridgeError?: string | null;
 }
 
 export class SyncOrchestrator {
   private readonly retry: RetryQueue;
-  private readonly offlineConnectors = new Set<string>();
+  /**
+   * P13C ROUND 6 — THE OFFLINE EDGE, KEYED PER ACCOUNT.
+   *
+   * This was `Set<connectorId>` — `'github'`, `'slack'`, from the fixed adapter
+   * registry — while the `inFlight` map one line below already carried
+   * `connectorId::accountId`. The discriminator was in the file, on the adjacent
+   * line, and this set omitted it.
+   *
+   * `tick()` is driven by `forEachTenantBackground(..., { perWorkspace: true })`,
+   * so it runs back to back for every tenant×workspace with no switch announced.
+   * The first workspace whose GitHub went offline claimed `'github'`, and every
+   * other tenant's GitHub failure then published NO `connector.offline` event —
+   * which is what `eventNotifications` turns into the `connector-issue` inbox
+   * item. So the other tenants were simply never told their connector was down,
+   * and a silent absence looks exactly like health.
+   *
+   * The recovery path had the mirror defect: A's recovery `delete`d the flag and
+   * published `online` for A while B was still offline, and B's later genuine
+   * recovery then published nothing.
+   *
+   * Keyed on the ACCOUNT rather than the tenant, deliberately: an account belongs
+   * to exactly one workspace, which is a stronger statement than "belongs to this
+   * tenant", and it also fixes the collision between two accounts of the same
+   * provider inside ONE workspace — which was a real bug with no tenancy in it.
+   */
+  /**
+   * P13C ROUND 7 — BOUNDED, AND BOUNDED PER TENANT.
+   *
+   * Round 6 keyed this correctly and left it unbounded: a `Set` that only ever
+   * grew, holding one entry per account that had ever gone offline, including
+   * accounts long since disconnected. A leak is not a tenancy defect, but an
+   * unbounded structure in the sync engine is the kind of thing that gets
+   * "fixed" later by someone reaching for a global `slice()` — which is how the
+   * install-wide caps this program removed three times got there.
+   *
+   * It uses `TenantDedupe`, the primitive Round 6 defined, rather than a private
+   * TTL map. That is the point of having defined a class: the thirteenth site
+   * gets the eviction rule by using the type, not by remembering it.
+   *
+   * WHY EVICTION IS SAFE HERE. Losing an entry means the next failure publishes
+   * `connector.offline` AGAIN — a duplicate notification. It can never mean a
+   * tenant is not told, because "not told" would require the entry to survive
+   * when it should not, and eviction only removes. Re-delivery is the acceptable
+   * failure; silence is not. The cap is per tenant, so a workspace with fifty
+   * broken connectors rotates its own entries and never another tenant's.
+   *
+   * THE TTL IS A FRESHNESS RULE, NOT AN ISOLATION ONE. Twelve hours: an account
+   * that is still down half a day later is worth mentioning again, and an
+   * operator who dismissed the first notice has had time to act on it.
+   */
+  private readonly offlineConnectors = new TenantDedupe('sync-offline-announced', {
+    ttlMs: 12 * 60 * 60 * 1000,
+    maxPerTenant: 500,
+  });
+
+  /**
+   * The tenant this run acts for, as a scope.
+   *
+   * `workspaceId` is deliberately empty: the id below already carries the
+   * ACCOUNT, and an account belongs to exactly one workspace, so qualifying by
+   * workspace as well would partition the same fact twice. `TenantDedupe` keys on
+   * the tenant only, for the same reason.
+   */
+  private offlineScope(): TenantScope | null {
+    const tenantId = this.ports.activeTenantId();
+    return tenantId === null ? null : { tenantId, workspaceId: '' };
+  }
+
+  /** Same composite key as `inFlight`. An account is the unit of connectivity. */
+  private static accountKey(connectorId: string, accountId: string): string {
+    return `${connectorId}::${accountId}`;
+  }
   /** P4.1 — per-account in-flight guard: a second sync of the same account coalesces onto the first. */
   private readonly inFlight = new Map<string, Promise<AccountSyncOutcome>>();
 
@@ -171,8 +291,45 @@ export class SyncOrchestrator {
     const start = Date.now();
     const nowIso = new Date().toISOString();
 
+    /**
+     * P13B — resolve the owning tenant ONCE, before any provider call.
+     *
+     * Read here rather than per page so a workspace switch mid-run cannot make
+     * the first half of a sync land in one tenant and the second half in
+     * another. The whole run either belongs to one organization or does not
+     * happen.
+     */
+    const tenantId = this.ports.activeTenantId();
+    if (tenantId === null) {
+      /**
+       * RETRYABLE, not a hard failure. There is nothing wrong with the
+       * connector or the provider — the app simply has no active organization
+       * yet (cold start, signed out, a workspace still opening). Marking it
+       * terminal would leave the account looking broken until a manual retry;
+       * marking it retryable lets the normal schedule pick it up once a tenant
+       * resolves.
+       */
+      await this.ports.syncState.recordRun(connectorId, accountId, {
+        status: 'error',
+        lastError: 'No organization is active, so this sync has no owner.',
+      });
+      return {
+        ok: false,
+        hadAdapter: true,
+        ...zero,
+        durationMs: 0,
+        error: 'No organization is active, so this sync has no owner.',
+        retryable: true,
+        rateLimited: false,
+        offline: false,
+      };
+    }
+
     const http = new HttpClient(
-      connectorId,
+      // P13C ROUND 11 — M-8. Keyed on the CREDENTIAL, not the vendor: one
+      // shared RateLimiter serves every workspace, so a bare `connectorId` let
+      // one tenant's 429 stall every other tenant's sync for that provider.
+      rateGateKey(connectorId, accountId),
       async () => {
         const token = await this.ports.getAccessToken(connectorId, accountId);
         if (!token) throw new AuthError('no valid token');
@@ -186,6 +343,18 @@ export class SyncOrchestrator {
     let updated = 0;
     let deleted = 0;
     let conflicts = 0;
+    /**
+     * What reached the GOVERNED business data, counted separately.
+     *
+     * Separate from `created`/`updated` on purpose: those count Unified
+     * entities, and conflating them would make "1,200 records synced" read as
+     * "1,200 customers in your business data" when most resources have no
+     * mapping at all.
+     */
+    const bridged = { created: 0, updated: 0, adopted: 0, ambiguous: 0, invalid: 0 };
+    let bridgeError: string | null = null;
+    /** One id per account sync, carried into every bridged record's provenance. */
+    const syncRunId = `sync_${connectorId}_${accountId}_${Date.parse(nowIso) || 0}`;
 
     try {
       // Inside the try so a persistence error still lands in the catch and records a terminal status
@@ -199,21 +368,69 @@ export class SyncOrchestrator {
         let resDeleted = 0;
         let degraded: SyncPage['degraded'];
         for (;;) {
-          const page = await resource.pull({ connectorId, accountId, http, cursor, now: nowIso });
+          const page = await resource.pull({
+            tenantId,
+            connectorId,
+            accountId,
+            http,
+            cursor,
+            now: nowIso,
+          });
           if (page.entities.length > 0) {
-            const r = await this.ports.upsertMany(page.entities);
+            // P13B — assert the run's tenant is still active; see UnifiedStore.upsertMany.
+            const r = await this.ports.upsertMany(page.entities, tenantId);
             created += r.created;
             updated += r.updated;
             conflicts += r.conflicts;
             resCreated += r.created;
+
+            /**
+             * P9 — and into the governed business data.
+             *
+             * Failing to bridge must not fail the sync. The Unified store
+             * already holds what the provider said; losing a page of that
+             * because a destination module was momentarily unwritable would
+             * make the cursor advance over data nothing recorded.
+             */
+            if (this.ports.bridge) {
+              try {
+                const b = await this.ports.bridge({
+                  connectorId,
+                  accountId,
+                  resourceId: resource.id,
+                  syncRunId,
+                  entities: page.entities,
+                });
+                bridged.created += b.created;
+                bridged.updated += b.updated;
+                bridged.adopted += b.adopted;
+                bridged.ambiguous += b.ambiguous;
+                bridged.invalid += b.invalid;
+              } catch (err) {
+                bridgeError = err instanceof Error ? err.message : String(err);
+              }
+            }
           }
           if (page.deletedSourceIds && page.deletedSourceIds.length > 0) {
-            const ids = page.deletedSourceIds.map((sid) => makeUnifiedId(connectorId, accountId, resource.kind, sid));
+            const ids = page.deletedSourceIds.map((sid) => makeUnifiedId(tenantId, connectorId, accountId, resource.kind, sid));
             const d = await this.ports.markDeleted(ids, nowIso);
             deleted += d;
             resDeleted += d;
           }
           if (page.degraded) degraded = page.degraded;
+
+          /**
+           * The cursor does NOT advance when the governed write failed.
+           *
+           * It used to: the catch above recorded `bridgeError` and execution
+           * fell straight through to `setCursor`, so the next sync started
+           * AFTER the page it had failed to write and those records never
+           * reached the business data again — with `ok: true` returned and a
+           * log line as the only trace. Holding the cursor makes the next run
+           * replay the page, which the external-key idempotency makes safe.
+           */
+          if (bridgeError !== null) break;
+
           cursor = page.cursor;
           await this.ports.syncState.setCursor(connectorId, accountId, resource.id, cursor, nowIso);
           pages += 1;
@@ -234,7 +451,11 @@ export class SyncOrchestrator {
         });
       }
 
-      if (this.offlineConnectors.delete(connectorId)) {
+      // Recovery: clear the edge so the NEXT failure announces again, and tell
+      // this tenant it is back — only if this tenant was told it was down.
+      const recoveredKey = SyncOrchestrator.accountKey(connectorId, accountId);
+      if (this.offlineConnectors.hasSeen(this.offlineScope(), recoveredKey)) {
+        this.offlineConnectors.forget(this.offlineScope(), recoveredKey);
         this.ports.publish(syncEvents.online(connectorId, name, accountId));
       }
       if (created > 0) this.ports.publish(syncEvents.entityCreated(connectorId, name, accountId, created));
@@ -258,7 +479,27 @@ export class SyncOrchestrator {
         deadLetter: null, // a successful sync clears any prior dead-letter (replay recovered)
       });
       this.ports.publish(syncEvents.completed(connectorId, name, accountId, { created, updated, deleted, durationMs }));
-      return { ok: true, hadAdapter: true, created, updated, deleted, conflicts, durationMs, error: null, retryable: false, rateLimited: false, offline: false };
+
+      /**
+       * A bridge failure is reported, never swallowed and never fatal.
+       *
+       * The provider data IS synced — it is in the Unified store and on the
+       * timeline — so the run is a success. But "synced" and "in your business
+       * data" are different claims, and a run where the second one failed must
+       * not read as though both worked.
+       */
+      if (bridgeError !== null) {
+        log.warn('Sync completed but the governed write failed', {
+          connectorId,
+          accountId,
+          err: bridgeError,
+        });
+      }
+      if (bridged.created + bridged.updated + bridged.adopted > 0) {
+        log.info('Bridged into business data', { connectorId, accountId, ...bridged });
+      }
+
+      return { ok: true, hadAdapter: true, created, updated, deleted, conflicts, durationMs, error: null, retryable: false, rateLimited: false, offline: false, bridged, bridgeError };
     } catch (err) {
       const durationMs = Date.now() - start;
       const prevFailures = this.ports.syncState.get(connectorId, accountId).consecutiveFailures;
@@ -277,8 +518,9 @@ export class SyncOrchestrator {
       }
 
       if (err instanceof NetworkError) {
-        if (!this.offlineConnectors.has(connectorId)) {
-          this.offlineConnectors.add(connectorId);
+        // `claim` is has-then-add in one call: the two-step form is where this
+        // whole class of bug lived, in twelve places.
+        if (this.offlineConnectors.claim(this.offlineScope(), SyncOrchestrator.accountKey(connectorId, accountId))) {
           this.ports.publish(syncEvents.offline(connectorId, name, accountId));
         }
         await this.ports.syncState.recordRun(connectorId, accountId, {

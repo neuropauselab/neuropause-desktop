@@ -22,8 +22,29 @@ export interface WebhookProducerDeps {
 
 export function wireWebhookProducers(deps: WebhookProducerDeps): { dispose: () => void } {
   const sub = deps.subscribe((event) => {
+    /**
+     * P13C — THE EGRESS BOUNDARY. This loop is where a platform event becomes
+     * an outbound HTTP request to an address a user chose.
+     *
+     * It used to iterate EVERY enabled endpoint on the install and match only
+     * on category/type. The bus hands this subscriber the entire firehose —
+     * every tenant's events — so an endpoint registered by tenant B received
+     * tenant A's events, including `resource` and `metadata`, POSTed off the
+     * device. Worse, the payload builder strips `tenantId`, so the receiver
+     * could not even tell whose data it had been sent.
+     *
+     * The fan-out set is now selected BY THE EVENT'S OWN TENANT. Two properties
+     * follow, and both matter:
+     *
+     *   - An event can only reach endpoints its own tenant registered.
+     *   - An event with no tenant reaches NOTHING. That covers system events
+     *     and anything published before a tenant resolved. Fail-closed is the
+     *     only defensible default for a boundary whose mistakes are
+     *     irreversible: a read filter can be added tomorrow, but a payload
+     *     already delivered to a third party cannot be recalled.
+     */
     let enqueued = 0;
-    for (const wh of deps.store.enabledWebhooks()) {
+    for (const wh of deps.store.enabledWebhooksForTenant(event.tenantId)) {
       if (matchesSubscription(wh.subscription, event)) {
         deps.store.enqueue(wh.id, event, deps.now());
         enqueued += 1;

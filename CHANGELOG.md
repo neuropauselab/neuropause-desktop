@@ -4,7 +4,79 @@ All notable changes to NeuroPause are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [Semantic Versioning](https://semver.org/).
 
-## [1.0.0] — General Availability Execution (2026-07-24)
+
+## [Unreleased]
+
+_No unreleased changes; the current build is `1.0.0-rc.15`._
+
+## [1.0.0-rc.15] — Global Product RC: Pilot Readiness (2026-08-08)
+
+The Global Product RC program (pilot-readiness track), layered on the Phase 7/8 hardening recorded below. RC, not GA.
+
+- **Phase 1 — Pilot-credibility hardening:** the automation executor never reports success for a no-op; honest error and "Live" states in Business/Operations; in-view Preview banners; a state-model audit. (`claude/PHASE-1-PILOT-HARDENING.md`)
+- **Phase 2 — Information architecture + Apple-grade UX:** ~40 surfaces regrouped and relabelled into one coherent product with progressive disclosure; route IDs preserved. Naming collisions resolved — e.g. `opscenter`→**Operations**, `operations`→**Runtime**, `workforce-center`→**Workforce Admin**, `commercial-center`→**Commercial Center**, `product-ops`→**Release Ops**, `knowledge-center`→**Enterprise Knowledge**.
+- **Phase 3 — Desktop end-to-end certification:** auth, tenancy, authorization, AI Store, health, and failure/recovery certified against a real PostgreSQL 16 + Redis 7 + Express backend; established the local-first desktop / thin-cloud-plane architecture as documented truth.
+- **Phase 4 — Documentation & product enablement:** a 33-document governed set across user/admin/developer/enterprise/product/support/downloads, with zero-dependency `docs:validate` + `docs:build` tooling and honest maturity labelling throughout.
+- **Phase 5 — Enterprise pilot readiness:** legacy/operator documentation terminology reconciled to Phase-2 names (validator extended to cover it); pilot support runbook, acceptance criteria, test pack, feedback form, telemetry policy, and performance baseline; a product maturity matrix and release-blocker register; release-configuration, security, and version audits. Code signing, notarization, and update-feed hosting remain operator-credential-gated (documented, not faked).
+
+### Phase 8 — Release Candidate Hardening (2026-08-07)
+
+- **Data safety (Wave 1):** backup/restore now covers EVERY store — a store-path
+  registry with prefix patterns protects all certified enterprise-module stores
+  (present and future), executive decisions, governance, automations, assistant
+  conversations and feedback; the pre-migration snapshot inherits the same
+  coverage. New store envelope ends the parse-or-reset era: corrupt or
+  future-versioned stores are QUARANTINED beside themselves (bytes preserved),
+  never silently reset; stores stamp `schemaVersion` on write; migration 0002
+  stamps existing stores (data version 2). Rotating application log
+  (`logs/app.log`) — packaged builds finally produce runtime logs, picked up by
+  every support bundle; crashes.log and audit.log are rotation-bounded; support
+  bundles reveal in the file manager on generation.
+- **Release discipline (Wave 2):** the `internal` update channel is no longer
+  selectable (its feed was never published — a stored preference heals to
+  `beta`), with a channel↔published-feed test lock; `scripts/bump-version.cjs`
+  bumps both package.json files atomically; release verification runs in every
+  local package script (not just CI); mac universal packaging script added;
+  THIRD-PARTY-NOTICES generation wired into packaging; the current build's
+  changelog section is baked into build-info and surfaced in Release
+  Diagnostics.
+- Removed the spurious root `recharts` dependency (v3) that collided with the
+  desktop's v2 under the Phase 7 dashboards.
+
+### Phase 7 — Product Experience (2026-08-07)
+
+- Grouped sidebar (six labeled groups over 40 sections), status tokens regained
+  hue, Business family registry corrected to 13 families, 104-module rail with
+  type-to-filter, one shared EmptyState, Getting Started restored, dead design/
+  module removed. Live real-data dashboards for all 13 business families on a
+  validated chart kit (recharts). Details: `PHASE7-COMPLETION-REPORT.md`.
+
+## [1.0.0-rc.14] — Enterprise Completion: the Final Wave (2026-08-07)
+
+- **FW-1…FW-12:** modules 95 → **104 certified** across **13 families**. HR
+  spine: attendance/LOP → payroll proration → statutory ECR; leave + holiday
+  calendars; expense claims with GL accrual; shifts with expected-working-days;
+  recruitment pipeline whose Hire creates the employee; OKRs with derived
+  progress. Procurement: budget-gated AND vendor-contract-gated PO approval;
+  auto-reordering from the immutable stock ledger. Finance: bank-reconciliation
+  write-back (payments stamped as bank-evidenced), declining-balance
+  depreciation, treasury positions (cash + open AR − approved AP).
+- Certification lock updated 95 → 104; every increment additive with
+  byte-identical-when-omitted proofs.
+
+## [1.0.0-rc.2 … 1.0.0-rc.13] — Enterprise platform waves (2026-07-25 → 2026-08-06)
+
+> Backfilled by Phase 8: these twelve tagged RCs shipped the enterprise module
+> framework's growth (45 → 95 modules), the platform centers, knowledge/digital
+> twin surfaces, and release-engineering hardening — tagged without changelog
+> entries at the time. Program-level detail lives in the dated root reports and
+> the git history of each tag.
+
+## GA Execution Program (2026-07-24) — engineering milestone within the RC lineage
+
+> Phase 8 correction: this section was originally headed `[1.0.0]`, but no 1.0.0
+> was ever tagged or released — the version lineage is `1.0.0-rc.*`. The work
+> below is real and landed; only the version label was wrong.
 
 The **GA Execution Program**: engineering execution (not documentation) that closes
 the remaining verified GA blockers with real code and passing regression tests. The

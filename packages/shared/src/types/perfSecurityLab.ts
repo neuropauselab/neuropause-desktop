@@ -221,6 +221,14 @@ export interface RecoveryResult {
 
 export interface BenchmarkRecord {
   id: string;
+  /**
+   * The organization this measurement belongs to (P13C N3, second pass).
+   *
+   * A baseline is echoed verbatim into the next run's regression findings, so
+   * an unscoped store means one tenant's measured latency and memory numbers
+   * appear inside another tenant's certification report.
+   */
+  tenantId?: string | null;
   target: LabTargetKind;
   metric: string;
   version: string;

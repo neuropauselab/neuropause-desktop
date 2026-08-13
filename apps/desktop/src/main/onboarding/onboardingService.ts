@@ -11,6 +11,7 @@ import { promises as fs } from 'node:fs';
 import { dirname } from 'node:path';
 import type { OnboardingStatus, OnboardingStepId } from '@neuropause/shared';
 import { ONBOARDING_STEPS } from '@neuropause/shared';
+import { readStoreFile } from '../storage/storeEnvelope';
 
 interface OnboardingFileData {
   version: 1;
@@ -53,17 +54,18 @@ export function createOnboardingService(opts: {
 
   async function ensureLoaded(): Promise<void> {
     if (loaded) return;
-    try {
-      const raw = JSON.parse(
-        await fs.readFile(opts.filePath, 'utf8'),
-      ) as Partial<OnboardingFileData>;
+    // Phase 8 (8.3): envelope read — corrupt files are quarantined (preserved
+    // beside themselves), never silently treated as a fresh install.
+    const result = await readStoreFile<Partial<OnboardingFileData>>(opts.filePath);
+    if (result.state === 'loaded' && result.data) {
+      const raw = result.data;
       data = {
         version: 1,
         startedAt: raw.startedAt ?? null,
         completedAt: raw.completedAt ?? null,
         steps: raw.steps ?? {},
       };
-    } catch {
+    } else {
       data = emptyData();
     }
     loaded = true;

@@ -1,0 +1,2 @@
+Error: GET https://api.digitalocean.com/v2/account: 401 (request "3a654fa8-48ba-4991-b816-abc084bbc8ec") Unable to authenticate you
+NOT AUTHENTICATED — run: doctl auth init

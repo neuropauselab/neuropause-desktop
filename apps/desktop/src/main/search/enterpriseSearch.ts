@@ -18,6 +18,7 @@ import type {
   EnterpriseTimelineEntry,
   SearchSourceKind,
 } from '@neuropause/shared';
+import type { TenantScope } from '@neuropause/shared';
 import type { SearchBackend } from '../unified/searchBackend';
 import type { GraphStore } from '../graph/graphStore';
 import type { MemoryStore } from '../memory/memoryStore';
@@ -41,6 +42,26 @@ export interface EnterpriseSearchSources {
   entity: SearchBackend;
   graph: GraphStore;
   memory: MemoryStore;
+  /**
+   * The authority under which the memory leg may run (P13A). REQUIRED.
+   *
+   * Required rather than optional, and that is the entire mechanism. Memory is
+   * the one source here whose store enforces a per-viewer boundary, so a caller
+   * that fans out to it without establishing an authority is asking a question
+   * on nobody's behalf. Making the field optional would mean the compiler
+   * accepted exactly that call — which is how the memory leg came to be
+   * unscoped in the first place.
+   *
+   * `null` is a legitimate value meaning "no tenant resolved right now"
+   * (cold start, signed out, suspended member). It is spelled explicitly so
+   * that omitting the field and having no tenant are different acts: the first
+   * does not compile, the second returns no memory hits.
+   *
+   * Nothing is trusted from it beyond its presence. The store re-derives the
+   * real viewer from its own binding, so a forged scope passed here cannot
+   * widen a single result — see the `memoryScope` guard in `runEnterpriseSearch`.
+   */
+  memoryScope: TenantScope | null;
   /** Optional until the Enterprise Timeline is initialized. */
   timeline?: TimelineSearcher;
   /** Optional until the Federation Platform is initialized (P10). */
@@ -130,7 +151,25 @@ export function runEnterpriseSearch(
     groups.push({ source: 'graph', hits, total: hits.length });
   }
 
-  if (sources.includes('memory')) {
+  /**
+   * P13A — the memory leg runs only under a resolved authority.
+   *
+   * FAIL CLOSED, and note what is NOT happening here: this function does not
+   * filter memory hits by `memoryScope`, because a filter applied by the caller
+   * of a store is a filter the next caller can forget. The store's own
+   * `filterFor` is the boundary, and it reads its viewer from its own binding —
+   * so a FORGED `memoryScope` naming another tenant changes nothing about which
+   * memories come back. What this gate adds is refusal of the case the store
+   * cannot see: a fan-out issued when no tenant has resolved at all, which
+   * would otherwise reach `recall` and depend entirely on the store having been
+   * bound correctly.
+   *
+   * The group is still emitted, empty. Omitting it would make "search ran and
+   * memory had nothing" indistinguishable from "memory was not consulted".
+   */
+  if (sources.includes('memory') && sourcesApi.memoryScope === null) {
+    groups.push({ source: 'memory', hits: [], total: 0 });
+  } else if (sources.includes('memory')) {
     const res = sourcesApi.memory.recall({ text, limit: perLimit });
     backends.add(res.retriever);
     const hits = res.hits.map((h): EnterpriseSearchHit => ({

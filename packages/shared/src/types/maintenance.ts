@@ -14,7 +14,15 @@ export type MaintenanceDomain =
   | 'aiWorker'
   | 'plugin'
   | 'aiMemory'
-  | 'timeline';
+  | 'timeline'
+  // Phase 8 (RC hardening, 8.2): the two domains that carry the user's actual
+  // BUSINESS data — previously outside backup/restore entirely.
+  // `business` = every enterprise-module record store (all certified modules,
+  // present and future, via the enterprise-module-* prefix) + executive
+  // decisions, governance, automations, health history.
+  // `assistant` = assistant conversations + captured feedback.
+  | 'business'
+  | 'assistant';
 
 export type MigrationStepStatus = 'pending' | 'applied' | 'skipped' | 'failed' | 'rolledBack';
 

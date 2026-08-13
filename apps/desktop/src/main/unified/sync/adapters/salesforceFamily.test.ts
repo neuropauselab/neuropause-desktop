@@ -1,3 +1,4 @@
+import { makeUnifiedId } from '../../ids';
 /**
  * P5 — Increment 8: the Salesforce connector FAMILY (Accounts, Contacts, Leads, Opportunities, Cases,
  * Campaigns, Products, Users, Tasks, Events on one `salesforce` connector). Pure-node, fake HttpClient.
@@ -28,7 +29,7 @@ import {
 const INSTANCE = 'https://acme.my.salesforce.com';
 const ALL_OBJECTS = ['Account', 'Contact', 'Lead', 'Opportunity', 'Case', 'Campaign', 'Product2', 'User', 'Task', 'Event'];
 const NOW = '2026-07-13T00:00:00.000Z';
-const baseCtx = { connectorId: 'salesforce', accountId: 'a1', now: NOW } as const;
+const baseCtx = { tenantId: 'org-test', connectorId: 'salesforce', accountId: 'a1', now: NOW } as const;
 const pureCtx: SyncContext = { ...baseCtx, http: undefined as never, cursor: null };
 /** A cursor with the env pre-resolved (fresh `resolvedAt`), so a resource test skips userinfo + describeGlobal. */
 const enved = (extra: Record<string, unknown> = {}, objects: string[] = ALL_OBJECTS): string =>
@@ -126,7 +127,7 @@ describe('Salesforce mappers', () => {
   it('maps an Account → organization with a Lightning URL and SF type', () => {
     const e = mapAccount(pureCtx, INSTANCE, { Id: '001AA', Name: 'Acme', Industry: 'Tech', SystemModstamp: '2026-07-01T00:00:00.000+0000' });
     expect(e.kind).toBe('organization');
-    expect(e.id).toBe('salesforce:a1:organization:001AA');
+    expect(e.id).toBe(makeUnifiedId('org-test', 'salesforce', 'a1', 'organization', '001AA'));
     expect(e.url).toBe('https://acme.my.salesforce.com/lightning/r/Account/001AA/view');
     expect(e.metadata.sfType).toBe('Account');
   });
@@ -137,7 +138,7 @@ describe('Salesforce mappers', () => {
       LastModifiedDate: '2026-07-02T10:00:00.000+0000', CreatedDate: '2026-06-01T00:00:00.000+0000',
     });
     expect(e.kind).toBe('contact');
-    expect(e.containerId).toBe('salesforce:a1:organization:001AA'); // Contact.AccountId → Account (organization)
+    expect(e.containerId).toBe(makeUnifiedId('org-test', 'salesforce', 'a1', 'organization', '001AA')); // Contact.AccountId → Account (organization)
     expect(e.updatedAt).toBe('2026-07-02T10:00:00.000Z'); // +0000 normalized to Z
     expect(e.metadata.email).toBe('ada@acme.com');
   });
@@ -156,7 +157,7 @@ describe('Salesforce mappers', () => {
     const e = mapOpportunity(pureCtx, INSTANCE, { Id: '006OP', Name: 'Big Deal', StageName: 'Prospecting', Amount: 50000, AccountId: '001AA', CloseDate: '2026-09-01', IsWon: false });
     expect(e.kind).toBe('task');
     expect(e.status).toBe('Prospecting');
-    expect(e.containerId).toBe('salesforce:a1:organization:001AA');
+    expect(e.containerId).toBe(makeUnifiedId('org-test', 'salesforce', 'a1', 'organization', '001AA'));
     expect(e.metadata.amount).toBe(50000); // numeric scalar preserved
     expect(e.metadata.isWon).toBe(false);
   });
@@ -164,7 +165,7 @@ describe('Salesforce mappers', () => {
   it('maps a Case → task, a Campaign → project, a Product → document', () => {
     const c = mapCase(pureCtx, INSTANCE, { Id: '500C', Subject: 'Login broken', Status: 'New', CaseNumber: '00001234', AccountId: '001AA' });
     expect(c.kind).toBe('task');
-    expect(c.containerId).toBe('salesforce:a1:organization:001AA');
+    expect(c.containerId).toBe(makeUnifiedId('org-test', 'salesforce', 'a1', 'organization', '001AA'));
     const camp = mapCampaign(pureCtx, INSTANCE, { Id: '701K', Name: 'Summer Launch', Status: 'In Progress' });
     expect(camp.kind).toBe('project');
     const prod = mapProduct(pureCtx, INSTANCE, { Id: '01t9', Name: 'Widget', ProductCode: 'W-1', IsActive: true });

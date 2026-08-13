@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { selectableReleaseChannels } from '@neuropause/shared';
 import {
   UPDATE_CHANNELS,
   resolveChannel,
@@ -16,7 +17,9 @@ describe('updateChannels', () => {
 
   it('resolves known channels and defaults unknown input to stable', () => {
     expect(resolveChannel('beta')).toBe('beta');
-    expect(resolveChannel('internal')).toBe('internal');
+    // Phase 8 (8.5): a stored `internal` pref heals onto the published beta
+    // track — the pipeline has never published an internal feed.
+    expect(resolveChannel('internal')).toBe('beta');
     expect(resolveChannel('stable')).toBe('stable');
     expect(resolveChannel('nonsense')).toBe('stable');
     expect(resolveChannel(undefined)).toBe('stable');
@@ -80,5 +83,25 @@ describe('pickRollbackTarget', () => {
 
   it('returns null on empty history', () => {
     expect(pickRollbackTarget('1.0.0', [])).toBe(null);
+  });
+});
+
+// Phase 8 (RC hardening 8.5) — the channel↔published-feed lock. The release
+// workflows publish exactly `latest*.yml` (stable alias) and `beta*.yml`.
+// Every channel a user can RESOLVE TO must map onto one of those feeds, so a
+// selectable channel can never dead-end in silent update failure again.
+describe('channel ↔ published feed lock (Phase 8)', () => {
+  const PUBLISHED_FEEDS = ['latest', 'beta'];
+
+  it('every selectable channel maps to a feed the release pipeline publishes', () => {
+    for (const channel of selectableReleaseChannels()) {
+      expect(PUBLISHED_FEEDS).toContain(feedChannel(channel));
+    }
+  });
+
+  it('every resolvable input lands on a published feed (internal heals to beta)', () => {
+    for (const input of ['stable', 'beta', 'internal', 'nightly', undefined, 42]) {
+      expect(PUBLISHED_FEEDS).toContain(feedChannel(resolveChannel(input)));
+    }
   });
 });

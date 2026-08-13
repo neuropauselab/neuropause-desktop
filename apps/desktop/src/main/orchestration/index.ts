@@ -43,6 +43,7 @@ import { workforceIntelligence } from '../workforce/intelligence/workforceIntell
 import { GlobalOrchestrationService } from './orchestrationService';
 import type { OrchestrationRouteStep, OrchestrationState } from './orchestrationModel';
 import { withOrchestrationAuthz } from './orchestrationAuthz';
+import { activeTenantScope } from '../enterprise/index';
 
 const log = createLogger('global-orchestration');
 
@@ -196,7 +197,7 @@ function buildState(deps: GlobalOrchestrationDeps): OrchestrationState {
 }
 
 export function initGlobalOrchestration(deps: GlobalOrchestrationDeps): GlobalOrchestrationSubsystem {
-  const service = new GlobalOrchestrationService({ readState: () => buildState(deps) });
+  const service = new GlobalOrchestrationService({ scope: activeTenantScope, readState: () => buildState(deps) });
 
   // Invalidate the memoized snapshot when a backing store changes; the injected report/strategy/
   // knowledge/cloud accessors refresh via the service TTL. Renderer liveness reuses `ecosystem:event`.

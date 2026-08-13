@@ -9,9 +9,48 @@
  */
 import { config } from './config';
 import { createLogger } from './logger';
-import type { BackendState, RuntimeTelemetry } from '@neuropause/shared';
+import type {
+  BackendProbeError,
+  BackendReachability,
+  BackendState,
+  RuntimeTelemetry,
+} from '@neuropause/shared';
 
 const log = createLogger('runtime-telemetry');
+
+/**
+ * Classify a probe failure into the coarse public buckets.
+ *
+ * Returns `null` for anything unrecognized. That is deliberate: an unclassified
+ * failure reported as `{ reachable: false, lastError: null }` is honest, whereas
+ * guessing the nearest label would put a wrong cause in front of a user and in
+ * front of support. Program 13C exists because statuses were assigned by the
+ * proxy that was easiest to measure; this is the same mistake in miniature.
+ *
+ * Reads only `name` and `code`. The error's MESSAGE is never inspected and never
+ * propagated — undici embeds host, port and sometimes the resolved address in it,
+ * and this value crosses an unauthenticated channel.
+ */
+export function classifyProbeError(err: unknown): BackendProbeError | null {
+  const e = err as { name?: unknown; code?: unknown; cause?: { code?: unknown } } | null;
+  if (!e || typeof e !== 'object') return null;
+  const name = typeof e.name === 'string' ? e.name : '';
+  if (name === 'AbortError' || name === 'TimeoutError') return 'timeout';
+  const code = typeof e.code === 'string' ? e.code : typeof e.cause?.code === 'string' ? e.cause.code : '';
+  switch (code) {
+    case 'ENOTFOUND':
+    case 'EAI_AGAIN':
+      return 'dns';
+    case 'ECONNREFUSED':
+      return 'refused';
+    case 'ETIMEDOUT':
+    case 'UND_ERR_CONNECT_TIMEOUT':
+    case 'UND_ERR_HEADERS_TIMEOUT':
+      return 'timeout';
+    default:
+      return null;
+  }
+}
 
 export class RuntimeTelemetrySampler {
   private lastCpu = process.cpuUsage();
@@ -22,6 +61,17 @@ export class RuntimeTelemetrySampler {
   private backendLatencyMs: number | null = null;
   private lastProbeAt = 0;
   private consecutiveFailures = 0;
+
+  // ── F-7 reachability, kept SEPARATE from backendState on purpose ──
+  //
+  // `setBackendState()` lets other subsystems force the state — notably after an
+  // AUTH failure. `reachability()` is served over an unauthenticated channel, so
+  // it must answer "did the last /health probe succeed", never "did somebody's
+  // sign-in fail". Deriving it from backendState would leak the second through
+  // the first. These three fields are written ONLY by probeBackend().
+  private lastProbeOk: boolean | null = null;
+  private lastProbeCheckedAt: string | null = null;
+  private lastProbeError: BackendProbeError | null = null;
 
   constructor(private readonly now: () => number = Date.now) {}
 
@@ -70,17 +120,40 @@ export class RuntimeTelemetrySampler {
       });
       clearTimeout(timeout);
       this.backendLatencyMs = Date.now() - started;
+      this.lastProbeCheckedAt = new Date(this.now()).toISOString();
       if (res.ok) {
         this.backendState = 'connected';
         this.consecutiveFailures = 0;
+        this.lastProbeOk = true;
+        this.lastProbeError = null;
       } else {
         this.registerFailure();
+        this.lastProbeOk = false;
+        this.lastProbeError = 'http_error';
       }
     } catch (err) {
       this.backendLatencyMs = null;
       this.registerFailure();
+      this.lastProbeCheckedAt = new Date(this.now()).toISOString();
+      this.lastProbeOk = false;
+      this.lastProbeError = classifyProbeError(err);
       log.debug('backend probe failed', { err: String(err) });
     }
+  }
+
+  /**
+   * F-7 — the pre-authentication reachability answer.
+   *
+   * Exactly three fields, and it must stay exactly three. No URL, no host, no
+   * latency, no failure count, no org. `reachable` is false until a probe has
+   * actually succeeded, so "we have not checked yet" never renders as "fine".
+   */
+  reachability(): BackendReachability {
+    return {
+      reachable: this.lastProbeOk === true,
+      checkedAt: this.lastProbeCheckedAt,
+      lastError: this.lastProbeError,
+    };
   }
 
   private registerFailure(): void {

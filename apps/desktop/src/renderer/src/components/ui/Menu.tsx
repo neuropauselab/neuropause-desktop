@@ -103,7 +103,7 @@ export function MenuItem({
         close();
       }}
       className={cn(
-        'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-base outline-none transition fill-hover',
+        'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-base outline-none focus-visible:shadow-focus transition fill-hover',
         tone === 'danger' ? 'text-syspink' : 'text-ink',
       )}
     >

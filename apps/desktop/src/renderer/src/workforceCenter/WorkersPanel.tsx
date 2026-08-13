@@ -58,7 +58,7 @@ export function WorkersPanel(): JSX.Element {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search workers, roles, capabilities…"
-            className="flex-1 bg-transparent text-sm outline-none placeholder:text-faint"
+            className="flex-1 bg-transparent text-sm outline-none focus-visible:shadow-focus placeholder:text-faint"
           />
         </div>
         {filtered.length === 0 ? (

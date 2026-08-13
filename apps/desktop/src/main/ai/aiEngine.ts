@@ -13,8 +13,11 @@ import type {
   AiEngineRequest,
   AiEngineResponse,
   AiEvidence,
+  AiRoutingMetadata,
   AiUsageSummary,
+  ProcessingLocation,
 } from '@neuropause/shared';
+import { noModelRouting } from '@neuropause/shared';
 import type { ModelMessage } from './modelClient';
 import type { ModelRouter } from './modelRouter';
 import { PromptManager } from './promptManager';
@@ -32,6 +35,12 @@ export interface AiEngineOptions {
   log?: (msg: string, meta?: Record<string, unknown>) => void;
   now?: () => string;
   id?: () => string;
+  /**
+   * Measured-routing sink — called once per run with where the processing
+   * ACTUALLY happened (or 'none' for deterministic fallbacks). Feeds the AI
+   * Usage surface; optional so existing constructions are untouched.
+   */
+  recordRoute?: (location: ProcessingLocation) => void;
 }
 
 const DEFAULT_MAX_OUTPUT = 1024;
@@ -44,6 +53,7 @@ export class AiEngine {
   private readonly log: (msg: string, meta?: Record<string, unknown>) => void;
   private readonly now: () => string;
   private readonly newId: () => string;
+  private readonly recordRoute: (location: ProcessingLocation) => void;
 
   constructor(opts: AiEngineOptions) {
     this.router = opts.router;
@@ -53,6 +63,7 @@ export class AiEngine {
     this.log = opts.log ?? ((): void => {});
     this.now = opts.now ?? ((): string => new Date().toISOString());
     this.newId = opts.id ?? ((): string => `ai_${Math.random().toString(36).slice(2, 11)}`);
+    this.recordRoute = opts.recordRoute ?? ((): void => {});
   }
 
   isConfigured(): boolean {
@@ -81,7 +92,14 @@ export class AiEngine {
 
     // No configured model → deterministic fallback (keeps the app working).
     if (!client.isConfigured()) {
-      const resp = this.fallback(req, rendered.version, contextSources, contextEvidence, started);
+      const resp = this.fallback(
+        req,
+        rendered.version,
+        contextSources,
+        contextEvidence,
+        started,
+        'No AI model is configured, so no model ran — this result was computed deterministically on this device.',
+      );
       this.writeAudit(resp, 'fallback', undefined, req.correlationId);
       return resp;
     }
@@ -96,6 +114,10 @@ export class AiEngine {
       });
       const parsed = parseModelText(result.text);
       const costUsd = computeCostUsd(result.model, result.inputTokens, result.outputTokens);
+      // Routing metadata comes FROM THE EXECUTION when the client stamped one
+      // (the Private First composite does). A plain single-provider client
+      // yields none — reported as absent, never guessed.
+      const routing = (result as { routing?: AiRoutingMetadata }).routing;
       const resp: AiEngineResponse = {
         responseId: result.id,
         worker: req.worker,
@@ -110,7 +132,14 @@ export class AiEngine {
         latencyMs: Date.now() - started,
         contextSources,
         grounded: true,
+        ...(routing ? { routing } : {}),
       };
+      // Measure only what is known. Routed runs carry their own location; a
+      // bare Anthropic client is external by definition; a bare client whose
+      // endpoint the engine cannot see is NOT measured — recording a guess
+      // would poison the very statistics that exist to be trustworthy.
+      const measured = routing?.location ?? locationFromProvider(client.provider);
+      if (measured) this.recordRoute(measured);
       this.usage.add({
         worker: req.worker,
         model: result.model,
@@ -123,12 +152,27 @@ export class AiEngine {
     } catch (err) {
       const reason = err instanceof Error ? err.message : 'unknown error';
       this.log('ai.run.error', { worker: req.worker, promptId: req.promptId });
-      const resp = this.fallback(req, rendered.version, contextSources, contextEvidence, started);
+      // The error message is the routing engine's own refusal/attempt summary
+      // when routing was in play — carried into the metadata so "Why?" can
+      // answer with what actually happened, including that nothing escalated.
+      const resp = this.fallback(req, rendered.version, contextSources, contextEvidence, started, reason);
       this.writeAudit(resp, 'error', reason, req.correlationId);
       return resp;
     }
   }
 
+  /**
+   * Bind the tenant boundary for usage accounting. See `UsageTracker`.
+   *
+   * On the engine rather than reaching into `.usage` from outside, so the tracker
+   * stays private and there is one place a reviewer checks whether it is bound.
+   */
+  bindUsageScope(source: () => { tenantId: string } | null): this {
+    this.usage.bindScope(source);
+    return this;
+  }
+
+  /** THE CALLER'S usage. Never the install's. */
   usageSummary(): AiUsageSummary {
     return this.usage.summary();
   }
@@ -139,7 +183,9 @@ export class AiEngine {
     contextSources: AiContextSource[],
     evidence: AiEvidence[],
     started: number,
+    reason?: string,
   ): AiEngineResponse {
+    this.recordRoute('none');
     return {
       responseId: this.newId(),
       worker: req.worker,
@@ -154,6 +200,12 @@ export class AiEngine {
       latencyMs: Date.now() - started,
       contextSources,
       grounded: false,
+      routing: noModelRouting(
+        'private_first',
+        reason ??
+          'No AI model ran — this result was computed deterministically on this device.',
+        this.now(),
+      ),
     };
   }
 
@@ -184,6 +236,19 @@ export class AiEngine {
     };
     this.audit.record(rec);
   }
+}
+
+/**
+ * Location for a run served by a bare single-provider client (no composite).
+ * Anthropic is an external API by definition. Any other bare client's endpoint
+ * is invisible from here, so it yields null — measured as nothing rather than
+ * guessed. The Private First composite carries precise, endpoint-classified
+ * metadata, and `buildModelRouter` wraps every construction in it, so this
+ * fallback only serves the pre-reconfigure boot router.
+ */
+function locationFromProvider(provider: string): ProcessingLocation | null {
+  if (provider === 'anthropic') return 'external';
+  return null;
 }
 
 /** Flatten context items into a labelled, evidence-tagged block for the prompt. */

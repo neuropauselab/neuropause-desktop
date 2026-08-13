@@ -43,6 +43,7 @@ export function mapPerson(ctx: SyncContext, p: Person): UnifiedEntity {
   const updatedAt = p.metadata?.sources?.[0]?.updateTime ?? ctx.now;
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'contact',
     sourceId: p.resourceName,

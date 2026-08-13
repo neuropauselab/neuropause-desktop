@@ -1,0 +1,23 @@
+{
+  "name": "@neuropause/solution-packs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "NeuroPause Desktop Industry Integration Layer (IP-02) — a pure, dependency-light adapter that projects the canonical @neuropause/industry platform (SDK, 20 packs, config, low-code, copilots, compliance, connectors, analytics, governance) into desktop/mobile view-models, plus a desktop-local pack enable-state helper. Does NOT re-implement the Industry SDK/registry/config/marketplace.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@neuropause/industry": "*",
+    "zod": "^3.23.4"
+  },
+  "devDependencies": {
+    "vitest": "^1.6.1"
+  }
+}

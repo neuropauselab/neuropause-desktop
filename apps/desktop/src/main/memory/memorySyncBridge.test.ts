@@ -6,9 +6,25 @@ import { nextMemoryVersion, verifyHistoryIntegrity } from '@neuropause/shared';
 import type { MemoryState } from '@neuropause/shared';
 import { MemoryStore } from './memoryStore';
 import { memoryFieldsFromVersion, memoryVersionPayload, toSyncState } from './memorySyncAdapter';
+import { TEST_MEMORY_VIEWER } from '../tenancy/testScope';
 
 const NOW = '2026-07-06T00:00:00.000Z';
-const SCOPE = { orgId: 'org-1', deviceId: 'devA', userId: 'user-1' };
+
+/**
+ * P13A — the org is no longer the fixture's to choose.
+ *
+ * These tests used to pass `{ orgId: 'org-1', deviceId, userId }` into
+ * `remember`, which is exactly the caller-supplied ownership the program
+ * removed: the store now reads the org and the user from the resolved viewer
+ * and accepts only a device id, which is attribution rather than authority.
+ *
+ * `ORG` is therefore derived from the ambient test viewer rather than declared
+ * here. If it were still a literal, these assertions would pass while testing
+ * nothing — the store would be stamping `org-test` and the fixture would be
+ * asserting `org-1` against a value it had itself supplied.
+ */
+const SYNCED = { sync: { deviceId: 'devA' } };
+const ORG = TEST_MEMORY_VIEWER.tenantId;
 
 describe('memory sync adapter (pure)', () => {
   const item = {
@@ -98,9 +114,9 @@ describe('MemoryStore.remember — org scope (V6.6.2)', () => {
 
   it('with scope seeds an initial synced version', async () => {
     const store = await open(path);
-    const m = store.remember({ kind: 'note', title: 'A', content: 'shared' }, NOW, SCOPE);
+    const m = store.remember({ kind: 'note', title: 'A', content: 'shared' }, NOW, SYNCED);
     expect(m.sync).toBeDefined();
-    expect(m.sync?.orgId).toBe('org-1');
+    expect(m.sync?.orgId).toBe(ORG);
     expect(m.sync?.parentVersion).toBeNull();
     expect(m.sync?.deleted).toBe(false);
     expect(m.sync?.history).toHaveLength(1);
@@ -109,7 +125,7 @@ describe('MemoryStore.remember — org scope (V6.6.2)', () => {
 
   it('the seeded version is a valid, integrity-checked first version', async () => {
     const store = await open(path);
-    const m = store.remember({ kind: 'note', title: 'A', content: 'shared' }, NOW, SCOPE);
+    const m = store.remember({ kind: 'note', title: 'A', content: 'shared' }, NOW, SYNCED);
     const head = m.sync!.history[0];
     expect(head.parentVersion).toBeNull();
     expect(head.previousHash).toBeNull();
@@ -118,7 +134,7 @@ describe('MemoryStore.remember — org scope (V6.6.2)', () => {
 
   it('a scoped memory converts to a MemoryState with its head', async () => {
     const store = await open(path);
-    const m = store.remember({ kind: 'note', title: 'A', content: 'shared' }, NOW, SCOPE);
+    const m = store.remember({ kind: 'note', title: 'A', content: 'shared' }, NOW, SYNCED);
     const state = toSyncState(m);
     expect(state).not.toBeNull();
     expect(state?.memoryId).toBe(m.id);
@@ -151,7 +167,7 @@ describe('MemoryStore.update — append version for synced items (V6.6.2)', () =
 
   it('synced item + actor + content change appends a new version (never overwrites)', async () => {
     const store = await open(path);
-    const m = store.remember({ kind: 'note', title: 'A', content: 'v1 text' }, NOW, SCOPE);
+    const m = store.remember({ kind: 'note', title: 'A', content: 'v1 text' }, NOW, SYNCED);
     const firstVersionId = m.sync!.versionId;
     const updated = store.update(m.id, { content: 'v2 text' }, '2026-07-06T01:00:00.000Z', {
       deviceId: 'devA',
@@ -166,7 +182,7 @@ describe('MemoryStore.update — append version for synced items (V6.6.2)', () =
 
   it('the appended history stays a valid integrity-checked chain', async () => {
     const store = await open(path);
-    const m = store.remember({ kind: 'note', title: 'A', content: 'v1' }, NOW, SCOPE);
+    const m = store.remember({ kind: 'note', title: 'A', content: 'v1' }, NOW, SYNCED);
     const updated = store.update(m.id, { content: 'v2' }, '2026-07-06T01:00:00.000Z', {
       deviceId: 'devA',
       userId: 'user-1',
@@ -176,7 +192,7 @@ describe('MemoryStore.update — append version for synced items (V6.6.2)', () =
 
   it('synced item + actor + NO content change does not append a redundant version', async () => {
     const store = await open(path);
-    const m = store.remember({ kind: 'note', title: 'A', content: 'same' }, NOW, SCOPE);
+    const m = store.remember({ kind: 'note', title: 'A', content: 'same' }, NOW, SYNCED);
     const updated = store.update(m.id, { content: 'same' }, '2026-07-06T01:00:00.000Z', {
       deviceId: 'devA',
       userId: 'user-1',
@@ -186,7 +202,7 @@ describe('MemoryStore.update — append version for synced items (V6.6.2)', () =
 
   it('synced item WITHOUT actor patches locally and leaves history untouched', async () => {
     const store = await open(path);
-    const m = store.remember({ kind: 'note', title: 'A', content: 'v1' }, NOW, SCOPE);
+    const m = store.remember({ kind: 'note', title: 'A', content: 'v1' }, NOW, SYNCED);
     const updated = store.update(m.id, { metadata: { pinned: true } }, '2026-07-06T01:00:00.000Z');
     expect(updated?.metadata.pinned).toBe(true);
     expect(updated?.sync?.history).toHaveLength(1); // unchanged
@@ -229,7 +245,7 @@ describe('MemoryStore.forget — soft-delete for synced items (V6.6.2)', () => {
 
   it('soft-deletes a synced item: it stays as a tombstone, not removed', async () => {
     const store = await open(path);
-    const m = store.remember({ kind: 'note', title: 'A', content: 'shared' }, NOW, SCOPE);
+    const m = store.remember({ kind: 'note', title: 'A', content: 'shared' }, NOW, SYNCED);
     const firstVersionId = m.sync!.versionId;
     const n = store.forget([m.id], '2026-07-06T02:00:00.000Z', ACTOR);
     expect(n).toBe(1);
@@ -245,7 +261,7 @@ describe('MemoryStore.forget — soft-delete for synced items (V6.6.2)', () => {
 
   it('the tombstone is a valid chained delete version', async () => {
     const store = await open(path);
-    const m = store.remember({ kind: 'note', title: 'A', content: 'shared' }, NOW, SCOPE);
+    const m = store.remember({ kind: 'note', title: 'A', content: 'shared' }, NOW, SYNCED);
     store.forget([m.id], '2026-07-06T02:00:00.000Z', ACTOR);
     const t = store.get(m.id)!;
     const head = t.sync!.history.find((v) => v.versionId === t.sync!.versionId)!;
@@ -255,7 +271,7 @@ describe('MemoryStore.forget — soft-delete for synced items (V6.6.2)', () => {
 
   it('soft-deletes even without an actor (system fallback preserves history)', async () => {
     const store = await open(path);
-    const m = store.remember({ kind: 'note', title: 'A', content: 'shared' }, NOW, SCOPE);
+    const m = store.remember({ kind: 'note', title: 'A', content: 'shared' }, NOW, SYNCED);
     store.forget([m.id], '2026-07-06T02:00:00.000Z');
     const still = store.get(m.id);
     expect(still?.sync?.deleted).toBe(true);
@@ -271,8 +287,8 @@ describe('MemoryStore.forget — soft-delete for synced items (V6.6.2)', () => {
 
   it('tombstoned memory is excluded from recall and counts', async () => {
     const store = await open(path);
-    const keep = store.remember({ kind: 'note', title: 'Keep', content: 'alpha' }, NOW, SCOPE);
-    const drop = store.remember({ kind: 'note', title: 'Drop', content: 'beta' }, NOW, SCOPE);
+    const keep = store.remember({ kind: 'note', title: 'Keep', content: 'alpha' }, NOW, SYNCED);
+    const drop = store.remember({ kind: 'note', title: 'Drop', content: 'beta' }, NOW, SYNCED);
     store.forget([drop.id], '2026-07-06T02:00:00.000Z', ACTOR);
     const recalled = store.recall({ limit: 10 }).hits.map((h) => h.item.id);
     expect(recalled).toContain(keep.id);
@@ -282,7 +298,7 @@ describe('MemoryStore.forget — soft-delete for synced items (V6.6.2)', () => {
 
   it('forgetting an already-tombstoned item is idempotent', async () => {
     const store = await open(path);
-    const m = store.remember({ kind: 'note', title: 'A', content: 'shared' }, NOW, SCOPE);
+    const m = store.remember({ kind: 'note', title: 'A', content: 'shared' }, NOW, SYNCED);
     store.forget([m.id], '2026-07-06T02:00:00.000Z', ACTOR);
     store.forget([m.id], '2026-07-06T03:00:00.000Z', ACTOR);
     expect(store.get(m.id)?.sync?.history).toHaveLength(2); // no duplicate tombstone
@@ -323,7 +339,7 @@ describe('MemoryStore.applyMerged — incoming remote apply (V6.6.2)', () => {
     const v = nextMemoryVersion(head, {
       versionId,
       memoryId,
-      orgId: 'org-1',
+      orgId: ORG,
       timestamp: ts,
       deviceId: 'devB',
       userId: 'user-2',
@@ -331,7 +347,25 @@ describe('MemoryStore.applyMerged — incoming remote apply (V6.6.2)', () => {
       metadata: { title: 'A', kind: 'note', tags: [], entityRefs: [], occurredAt: ts, meta: {} },
       deleted: false,
     });
-    return { memoryId, orgId: 'org-1', head: v, history: [...history, v] };
+    return {
+      memoryId,
+      orgId: ORG,
+      head: v,
+      history: [...history, v],
+      /**
+       * P13A — an inbound payload must carry its own owner or it is refused.
+       * Stated explicitly here rather than defaulted, because "whose memory is
+       * this?" is the question the receiving device now answers before applying
+       * anything, and a fixture that left it implicit would be asserting the
+       * old behaviour.
+       */
+      owner: {
+        visibility: 'tenant' as const,
+        tenantId: ORG,
+        workspaceId: null,
+        userId: null,
+      },
+    };
   }
 
   it('adopts a brand-new remote memory this device has not seen', async () => {
@@ -347,7 +381,7 @@ describe('MemoryStore.applyMerged — incoming remote apply (V6.6.2)', () => {
 
   it('fast-forwards local to a newer remote edit', async () => {
     const store = await open(path);
-    const m = store.remember({ kind: 'note', title: 'A', content: 'v1' }, NOW, SCOPE);
+    const m = store.remember({ kind: 'note', title: 'A', content: 'v1' }, NOW, SYNCED);
     const state = toSyncState(store.get(m.id)!)!;
     const remote = remoteEdit(
       m.id,
@@ -365,7 +399,7 @@ describe('MemoryStore.applyMerged — incoming remote apply (V6.6.2)', () => {
 
   it('preserves both edits on a concurrent conflict (never overwrites)', async () => {
     const store = await open(path);
-    const m = store.remember({ kind: 'note', title: 'A', content: 'base' }, NOW, SCOPE);
+    const m = store.remember({ kind: 'note', title: 'A', content: 'base' }, NOW, SYNCED);
     // Local edit.
     store.update(m.id, { content: 'local edit' }, '2026-07-06T05:00:00.000Z', {
       deviceId: 'devA',

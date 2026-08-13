@@ -17,6 +17,33 @@ import type {
 } from '@neuropause/shared';
 import { createLogger } from '../../logger';
 import { demoSeedsEnabled } from '../../demoSeed';
+import type { TenantScope } from '@neuropause/shared';
+import { TenantOwnership } from '../../tenancy/tenantOwnedStore';
+import { declareStoreScope } from '../../tenancy/storeScope';
+
+/** P13C ROUND 9 — F17 SWEEP. The structural declaration this store never made. */
+declareStoreScope({
+  name: 'cloud-identity-federation',
+  scope: 'TENANT',
+  persistence: 'file',
+  authority: 'ORG_ROLE',
+  classification: 'CUSTOMER_DERIVED',
+  /** P13C ROUND 10 — the checkable form of the prose below. */
+  retentionScope: 'OWNER',
+  retentionAuthority: 'OWNER',
+  retention:
+    'No cap and no time-based eviction, so no write can evict anything to make room. The ONE ' +
+    'removal is `deleteConnection`, which runs only after `connection(id)` has resolved the row and ' +
+    "compared its `tenantId` to the caller's cloud tenant; a foreign id returns false. SCIM and MFA " +
+    'are one row per cloud tenant keyed BY that tenant and replaced in place by `requireCloudTenant()`, ' +
+    "which throws when unresolved rather than writing into somebody's partition. Nothing here can " +
+    "remove another organization's row.",
+  reason:
+    "One organization's identity configuration: SSO issuer, entity id, SSO URL, client id, email " +
+    'domains, attribute mapping, SCIM posture and MFA policy. Credential-adjacent (only a token ' +
+    'last-4 is retained, never a secret) and unambiguously that customer\'s. Binding is asserted ' +
+    'by the TenantOwnership this class holds.',
+});
 
 const log = createLogger('cloud-identity');
 
@@ -28,6 +55,82 @@ interface IdentityFile {
 }
 
 export class FederationStore extends EventEmitter {
+  /**
+   * P13C ROUND 6 — THE F10 BOUNDARY STOPPED AT THE `load()` CALL.
+   *
+   * Round 5 gave `TenancyStore` a real organization↔cloud-tenant mapping. This
+   * store is handed the result of that mapping ONCE, at boot —
+   * `federationStore.load(homeTenantId)` — and freezes it in a private field
+   * that never changes. Every per-caller operation then resolves through that
+   * constant:
+   *
+   *   createConnection()  stamped tenant B's SSO connection with tenant A's id
+   *   setScim/setMfa      wrote tenant B's posture into tenant A's record
+   *   summary()           showed every tenant the SEEDED org's SSO posture
+   *   listConnections()   returned every organization's `issuer`, `entityId`,
+   *                       `ssoUrl`, `clientId`, `domains` and attribute mapping
+   *   update/delete       took a bare id, so a `cloud:manage` holder in one
+   *                       tenant could DISABLE OR DELETE another tenant's SSO
+   *                       connection — an authentication-control mutation
+   *
+   * It is the same shape as `ORG_ID` under a different name: `homeTenantId` is
+   * derived from `ORG_ID` at the instance, and nothing ever read the `tenantId`
+   * field the records already carried.
+   *
+   * `homeTenantId` survives for what it is genuinely for — seeding, and the
+   * boot-time default before any caller exists. It authorizes nothing.
+   */
+  private readonly tenancy = new TenantOwnership('cloud-identity-federation');
+
+  /** Bind the tenant boundary. UNBOUND DENIES. Chainable. */
+  bindScope(source: () => TenantScope | null): this {
+    this.tenancy.bindScope(source);
+    return this;
+  }
+  hasScope(): boolean {
+    return this.tenancy.hasScope();
+  }
+
+  /**
+   * The CALLER'S cloud tenant id, resolved through the injected mapping.
+   *
+   * Injected rather than imported: `TenancyStore` owns the organization→cloud
+   * tenant mapping and importing it here would couple the two stores. Null means
+   * DENY — never the seeded org.
+   */
+  private callerCloudTenant: () => string | null = () => null;
+  bindCloudTenantResolver(resolver: () => string | null): this {
+    this.callerCloudTenant = resolver;
+    return this;
+  }
+  /** Unscoped ownership counts, for the migration inventory. */
+  ownershipCounts(): { total: number; assigned: number; unresolved: number } {
+    return this.tenancy.countOwnership(
+      [...this.connections.values()].map((c) => ({ tenantId: c.tenantId })),
+    );
+  }
+  /**
+   * The caller's cloud tenant, or a refusal.
+   *
+   * Writes throw where reads return empty — the rule the rest of this program
+   * uses — because a write with no tenant would have to invent one, and the
+   * invented one used to be the seeded organization's.
+   */
+  private requireCloudTenant(): string {
+    const id = this.callerCloudTenant();
+    if (id === null || id === '') {
+      throw new Error('No organization is active, so this identity record has no owner.');
+    }
+    return id;
+  }
+
+  /** Rows belonging to the caller's cloud tenant. The one filter. */
+  private mine<T extends { tenantId: string }>(rows: readonly T[]): T[] {
+    const mineId = this.callerCloudTenant();
+    if (mineId === null || mineId === '') return [];
+    return rows.filter((r) => r.tenantId === mineId);
+  }
+
   private connections = new Map<string, SsoConnection>();
   private scim = new Map<string, ScimConfig>();
   private mfa = new Map<string, MfaPolicy>();
@@ -135,23 +238,67 @@ export class FederationStore extends EventEmitter {
     while (this.persisting) await this.lastPersist;
   }
 
+  /**
+   * The CALLER'S SSO connections.
+   *
+   * P13C ROUND 6 — THIS BODY WAS NEVER FILTERED, while the header of this file
+   * asserted it had been. My own comment, written in this round, claimed the fix
+   * and the code returned `[...this.connections.values()]` — every organization's
+   * `issuer`, `entityId`, `ssoUrl`, `clientId` and `domains`. It was caught by the
+   * three-tenant test and by nothing else, which is the whole argument for
+   * writing the test: a comment is not evidence, including one I just wrote.
+   */
   listConnections(): SsoConnection[] {
-    return [...this.connections.values()].sort((a, b) => a.name.localeCompare(b.name));
+    return this.mine([...this.connections.values()]).sort((a, b) => a.name.localeCompare(b.name));
   }
+  /** One connection, IF the caller's cloud tenant owns it. */
   connection(id: string): SsoConnection | null {
-    return this.connections.get(id) ?? null;
+    const c = this.connections.get(id) ?? null;
+    return c !== null && this.mine([c]).length === 1 ? c : null;
   }
-  scimConfig(tenantId?: string): ScimConfig | null {
-    return this.scim.get(tenantId ?? this.homeTenantId) ?? null;
+  /**
+   * SCIM config for the CALLER'S cloud tenant.
+   *
+   * P13C ROUND 6 — THE OPTIONAL `tenantId` PARAMETER IS GONE. No production
+   * caller passed one (`cloud/index.ts` calls it bare in all three places), and
+   * an optional id argument on a scoped read is the "bare id authorizes" shape
+   * this program has removed from a dozen stores — it survives review precisely
+   * because nothing uses it yet.
+   */
+  scimConfig(): ScimConfig | null {
+    const key = this.callerCloudTenant();
+    return key === null || key === '' ? null : (this.scim.get(key) ?? null);
   }
-  mfaPolicy(tenantId?: string): MfaPolicy | null {
-    return this.mfa.get(tenantId ?? this.homeTenantId) ?? null;
+  /** MFA policy for the CALLER'S cloud tenant. See `scimConfig` on the dropped id. */
+  mfaPolicy(): MfaPolicy | null {
+    const key = this.callerCloudTenant();
+    return key === null || key === '' ? null : (this.mfa.get(key) ?? null);
   }
 
   summary(): IdentitySummary {
-    const conns = [...this.connections.values()];
-    const scim = this.scim.get(this.homeTenantId);
-    const mfa = this.mfa.get(this.homeTenantId);
+    /**
+     * P13C ROUND 6 — `[...this.connections.values()]`, UNFILTERED.
+     *
+     * The listing was scoped and the SUMMARY OVER THE SAME COLLECTION was not, so
+     * `connections`, `active` and `enforced` counted every organization's SSO. A
+     * count is not nothing here: "is SSO enforced" is a security posture claim,
+     * and reading another tenant's `true` tells this tenant it is protected when
+     * it is not. Same array, same file, two different answers — the shape a
+     * reviewer walks past because the neighbouring method is correct.
+     */
+    const conns = this.mine([...this.connections.values()]);
+    /**
+     * `scimConfig()` / `mfaPolicy()` — and NOT this, until now.
+     *
+     * `?? ''` is not a harmless default here: `''` is a POPULATED key. The boot
+     * seed writes under `homeTenantId`, and `cloud/index.ts` computes that as
+     * `home?.id ?? ''`, so on an install where `homeTenant()` is null at boot the
+     * seeded SCIM and MFA posture live at `''`. Every unresolved caller then read
+     * it back as its OWN `scimEnabled` / `mfaRequired` / `provisionedUsers` —
+     * a security-posture claim, sourced from a partition that belongs to nobody.
+     */
+    const scim = this.scimConfig();
+    const mfa = this.mfaPolicy();
     return {
       connections: conns.length,
       active: conns.filter((c) => c.status === 'active').length,
@@ -166,7 +313,7 @@ export class FederationStore extends EventEmitter {
     const id = `sso_${randomUUID()}`;
     const conn: SsoConnection = {
       id,
-      tenantId: this.homeTenantId,
+      tenantId: this.requireCloudTenant(),
       name: input.name,
       protocol: input.protocol,
       status: 'disabled',
@@ -185,7 +332,16 @@ export class FederationStore extends EventEmitter {
     return conn;
   }
 
+  /**
+   * Update one of the CALLER'S SSO connections.
+   *
+   * Took a bare payload id. Disabling or deleting another organization's SSO
+   * connection is an authentication-control mutation — the sharpest write on
+   * this surface, because it does not disclose anything and can lock a customer
+   * out of their own tenant.
+   */
   updateConnection(id: string, patch: Partial<Pick<SsoConnection, 'status' | 'enforced' | 'domains' | 'name'>>): SsoConnection | null {
+    if (this.connection(id) === null) return null;
     const c = this.connections.get(id);
     if (!c) return null;
     const next: SsoConnection = { ...c, ...patch };
@@ -199,7 +355,9 @@ export class FederationStore extends EventEmitter {
     return this.updateConnection(id, { status });
   }
 
+  /** Delete one of the CALLER'S SSO connections. Was a bare payload id. */
   deleteConnection(id: string): boolean {
+    if (this.connection(id) === null) return false;
     const ok = this.connections.delete(id);
     if (ok) {
       this.schedulePersist();
@@ -209,40 +367,40 @@ export class FederationStore extends EventEmitter {
   }
 
   setScim(enabled: boolean): ScimConfig {
-    const existing = this.scim.get(this.homeTenantId);
+    const existing = this.scim.get(this.callerCloudTenant() ?? '');
     const next: ScimConfig = {
-      tenantId: this.homeTenantId,
+      tenantId: this.requireCloudTenant(),
       status: enabled ? 'enabled' : 'disabled',
       tokenLast4: enabled ? randomUUID().slice(0, 4) : '',
       endpoint: existing?.endpoint ?? 'https://cloud.neuropause.app/scim/v2',
       provisioned: enabled ? existing?.provisioned ?? 0 : 0,
       lastSyncAt: enabled ? new Date().toISOString() : null,
     };
-    this.scim.set(this.homeTenantId, next);
+    this.scim.set(this.requireCloudTenant(), next);
     this.schedulePersist();
     this.emit('changed');
     return next;
   }
 
   recordScimSync(count: number): ScimConfig | null {
-    const existing = this.scim.get(this.homeTenantId);
+    const existing = this.scim.get(this.callerCloudTenant() ?? '');
     if (!existing || existing.status !== 'enabled') return existing ?? null;
     const next: ScimConfig = { ...existing, provisioned: existing.provisioned + count, lastSyncAt: new Date().toISOString() };
-    this.scim.set(this.homeTenantId, next);
+    this.scim.set(this.requireCloudTenant(), next);
     this.schedulePersist();
     this.emit('changed');
     return next;
   }
 
   setMfa(patch: { required?: boolean; methods?: MfaMethod[]; graceDays?: number }): MfaPolicy {
-    const existing = this.mfa.get(this.homeTenantId) ?? { tenantId: this.homeTenantId, required: false, methods: ['totp'], graceDays: 7 };
+    const existing = this.mfa.get(this.callerCloudTenant() ?? '') ?? { tenantId: this.requireCloudTenant(), required: false, methods: ['totp'] as MfaMethod[], graceDays: 7 };
     const next: MfaPolicy = {
-      tenantId: this.homeTenantId,
+      tenantId: this.requireCloudTenant(),
       required: patch.required ?? existing.required,
       methods: patch.methods ?? existing.methods,
       graceDays: patch.graceDays ?? existing.graceDays,
     };
-    this.mfa.set(this.homeTenantId, next);
+    this.mfa.set(this.requireCloudTenant(), next);
     this.schedulePersist();
     this.emit('changed');
     return next;

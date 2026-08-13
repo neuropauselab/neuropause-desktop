@@ -23,6 +23,7 @@ import {
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { createLogger } from '../logger';
 import { orgStore } from '../enterprise/org/orgInstance';
+import { activeTenantScope } from '../enterprise/index';
 import { workerRegistry } from '../workforce/registry/registryInstance';
 import { jobStore } from '../workforce/runtime/jobInstance';
 import { workforceIntelligence } from '../workforce/intelligence/workforceIntelligence';
@@ -115,11 +116,25 @@ function buildState(deps: EnterpriseTwinDeps): TwinState {
   const { health, risk, graph, dependencies, reportKpis } = projected;
 
   // Organization.
-  const orgs = safe(() => orgStore.listOrganizations()) ?? [];
-  const defaultOrg = orgs[0] ?? null;
-  const users = defaultOrg ? safe(() => orgStore.usersFor(defaultOrg.id)) ?? [] : [];
-  const units = defaultOrg ? safe(() => orgStore.unitsFor(defaultOrg.id)) ?? [] : [];
-  const org = { orgs: orgs.length, units: units.length, users: users.length, humans: users.filter((u) => u.kind === 'human').length, workers: users.filter((u) => u.kind === 'ai_worker').length };
+  /**
+   * P13C REMEDIATION — N6. This was `orgs[0]`, the first-inserted organization,
+   * so the twin reported THAT tenant's headcount, unit count and human/worker
+   * split to every caller. `buildState` is a lazy per-request read model, so
+   * resolving the caller's own tenant is enough to make each evaluation
+   * describe the right organization.
+   *
+   * `orgs.length` is also no longer reported from the install roster: telling a
+   * tenant how many organizations share the machine is a fact about other
+   * customers. A resolved caller counts one; an unresolved caller counts none.
+   */
+  const activeOrg = (() => {
+    const scope = activeTenantScope();
+    if (scope === null) return null;
+    return safe(() => orgStore.organization(scope.tenantId)) ?? null;
+  })();
+  const users = activeOrg ? safe(() => orgStore.usersFor(activeOrg.id)) ?? [] : [];
+  const units = activeOrg ? safe(() => orgStore.unitsFor(activeOrg.id)) ?? [] : [];
+  const org = { orgs: activeOrg ? 1 : 0, units: units.length, users: users.length, humans: users.filter((u) => u.kind === 'human').length, workers: users.filter((u) => u.kind === 'ai_worker').length };
 
   // Cloud (injected control plane service) + Application (deployments).
   const fleet = safe(() => deps.fleet());
@@ -189,7 +204,7 @@ function buildState(deps: EnterpriseTwinDeps): TwinState {
 }
 
 export function initEnterpriseTwin(deps: EnterpriseTwinDeps): EnterpriseTwinSubsystem {
-  const service = new TwinService({ readState: () => buildState(deps) });
+  const service = new TwinService({ scope: activeTenantScope, readState: () => buildState(deps) });
 
   // Invalidate the memoized snapshot when a backing signal changes; the injected report/cloud/strategy/
   // timeline sources refresh via the service TTL. Renderer liveness reuses the existing `ecosystem:event`.

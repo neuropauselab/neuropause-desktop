@@ -6,6 +6,15 @@ import { describe, expect, it } from 'vitest';
 import { IndustryPlatformService } from './industryService';
 import type { IndustryPlatformState } from './industryModel';
 
+/**
+ * P13C ROUND 3 — H-2. The memo is now keyed by tenant, so these tests must name
+ * one. A fixed scope keeps every existing memoization assertion meaningful:
+ * repeated reads under ONE tenant must still be O(1) cache hits, which is the
+ * property this file was written to protect and the fix must not cost.
+ */
+const TEST_SCOPE = { tenantId: 'org-test', workspaceId: 'ws-test' };
+const scope = (): typeof TEST_SCOPE => TEST_SCOPE;
+
 function baseState(over: Partial<IndustryPlatformState> = {}): IndustryPlatformState {
   return {
     workerIds: ['worker:finance', 'worker:operations', 'worker:procurement'],
@@ -25,7 +34,7 @@ function baseState(over: Partial<IndustryPlatformState> = {}): IndustryPlatformS
 
 describe('IndustryPlatformService', () => {
   it('composes every projection from the injected reader', () => {
-    const svc = new IndustryPlatformService({ readState: () => baseState() });
+    const svc = new IndustryPlatformService({ scope, readState: () => baseState() });
     expect(svc.overview().summary.totalSuites).toBe(12);
     expect(svc.suites()).toHaveLength(12);
     expect(svc.kpis().length).toBeGreaterThan(0);
@@ -37,8 +46,7 @@ describe('IndustryPlatformService', () => {
   it('memoizes the snapshot + projections and recomposes only after invalidate()', () => {
     const box = { value: baseState() };
     let reads = 0;
-    const svc = new IndustryPlatformService({
-      readState: () => {
+    const svc = new IndustryPlatformService({ scope, readState: () => {
         reads += 1;
         return box.value;
       },

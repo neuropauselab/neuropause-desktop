@@ -48,6 +48,7 @@ interface TasksResp {
 export function mapTaskList(ctx: SyncContext, l: TaskList): UnifiedEntity {
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'project',
     sourceId: l.id,
@@ -64,6 +65,7 @@ export function mapTask(ctx: SyncContext, listId: string, t: Task): UnifiedEntit
   const when = t.updated ?? ctx.now;
   return makeEntity({
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind: 'task',
     sourceId: t.id,
@@ -76,8 +78,8 @@ export function mapTask(ctx: SyncContext, listId: string, t: Task): UnifiedEntit
     status: t.status === 'completed' ? 'completed' : 'open',
     timestamp: t.due ?? null,
     endTimestamp: t.completed ?? null,
-    parentId: t.parent ? makeUnifiedId(ctx.connectorId, ctx.accountId, 'task', t.parent) : null,
-    containerId: makeUnifiedId(ctx.connectorId, ctx.accountId, 'project', listId),
+    parentId: t.parent ? makeUnifiedId(ctx.tenantId, ctx.connectorId, ctx.accountId, 'task', t.parent) : null,
+    containerId: makeUnifiedId(ctx.tenantId, ctx.connectorId, ctx.accountId, 'project', listId),
     metadata: {
       listId,
       completed: t.status === 'completed',

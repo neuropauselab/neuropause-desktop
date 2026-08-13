@@ -15,6 +15,32 @@ const TICK_MS = 60_000;
 
 export interface SchedulerDeps {
   scheduler?: SchedulerPort;
+  /**
+   * The organization a schedule belongs to. P13C ROUND 10, fresh red team — HIGH.
+   *
+   * REQUIRED, with no default. The schedule set was ONE install-wide Map with no
+   * tenant dimension anywhere: any organization Owner or Manager could enable a
+   * pipeline that "mutates real platform data", every other organization saw the
+   * flag flip, and when the tick fired it ran under NO PRINCIPAL — so
+   * `activeTenantScope` fell through to the SESSION and the pipeline executed
+   * against whichever tenant happened to be signed in at 02:00.
+   *
+   * An optional resolver would default to a single unscoped set, which is the
+   * defect. A composition root that cannot name an organization must not
+   * register a schedule.
+   */
+  tenantId: () => string | null;
+  /**
+   * Run `fn` under an explicit principal for `tenantId`. P13C ROUND 10.
+   *
+   * `taskScheduler.every` grew a `principals` option in Round 10 and NO CALL SITE
+   * PASSES IT — the port type below drops the parameter, so a caller could not
+   * supply one even if it wanted to. Rather than widen that port and leave the
+   * default fail-open, the schedule carries its owner and the tick runs each due
+   * entry under that owner explicitly. Returns false when no principal can be
+   * built, and a schedule that cannot name its principal DOES NOT RUN.
+   */
+  runAsOwner: (tenantId: string, fn: () => Promise<void>) => Promise<boolean>;
   runPipeline: (pipeline: PipelineKind, trigger: TriggerKind) => Promise<ValidationRun>;
   now: () => number;
   /** Injected wall clock (tests pass a fixed date). */
@@ -22,6 +48,14 @@ export interface SchedulerDeps {
 }
 
 export class ValidationScheduler {
+  /**
+   * The owner of each schedule id. P13C ROUND 10, fresh red team.
+   *
+   * Kept beside `schedules` rather than on `ScheduledValidation` because that
+   * type is shared with the renderer and an owner field on the wire is a fact
+   * about another tenant. `list()` and `setEnabled()` consult this first.
+   */
+  private readonly owners = new Map<string, string>();
   private readonly schedules = new Map<string, ScheduledValidation>();
   private readonly lastRunDay = new Map<string, string>();
   private readonly intervalLastFire = new Map<string, number>();
@@ -34,7 +68,12 @@ export class ValidationScheduler {
     this.seq += 1;
     const id = `sched-${pipeline}-${this.seq}`;
     const entry: ScheduledValidation = { id, pipeline, cadence, trigger, enabled: cadence.kind !== 'manual', lastRunAt: null, nextDueLabel: cadenceLabel(cadence) };
+    // P13C ROUND 10 — the owner is stamped from the resolver at registration.
+    // An unresolved registrant produces a schedule owned by nobody, which no
+    // caller can see and the tick will not run.
+    const owner = this.deps.tenantId();
     this.schedules.set(id, entry);
+    if (owner !== null && owner !== '') this.owners.set(id, owner);
     if (entry.enabled) this.ensureTick();
     return entry;
   }
@@ -65,23 +104,51 @@ export class ValidationScheduler {
         if (due) this.lastRunDay.set(entry.id, todayKey);
       }
       if (due) {
-        entry.lastRunAt = d.toISOString();
-        await this.deps.runPipeline(entry.pipeline, entry.trigger).catch(() => undefined);
+        /**
+         * P13C ROUND 10 — RUN AS THE OWNER, OR DO NOT RUN.
+         *
+         * This was a bare `await this.deps.runPipeline(...)` with no principal,
+         * so a pipeline that mutates real platform data executed inside
+         * whichever tenant was signed in when the tick fired.
+         */
+        const owner = this.owners.get(entry.id);
+        if (owner === undefined) continue;
+        const ran = await this.deps.runAsOwner(owner, async () => {
+          await this.deps.runPipeline(entry.pipeline, entry.trigger).catch(() => undefined);
+        });
+        if (ran) entry.lastRunAt = d.toISOString();
       }
     }
   }
 
+  /** THE CALLER'S OWN schedules. P13C ROUND 10 — was every tenant's. */
   list(): ScheduledValidation[] {
-    return [...this.schedules.values()];
+    const mine = this.deps.tenantId();
+    if (mine === null || mine === '') return [];
+    return [...this.schedules.values()].filter((e) => this.owners.get(e.id) === mine);
   }
+
+  /** The schedule the caller owns, or null. Ownership, not identity. */
+  private owned(id: string): ScheduledValidation | null {
+    const mine = this.deps.tenantId();
+    if (mine === null || mine === '') return null;
+    if (this.owners.get(id) !== mine) return null;
+    return this.schedules.get(id) ?? null;
+  }
+
   setEnabled(id: string, enabled: boolean): boolean {
-    const e = this.schedules.get(id);
+    // P13C ROUND 10 — a renderer-supplied schedule id is an identifier. It was
+    // resolved straight out of the shared Map, so one organization's Manager
+    // toggled a pipeline every other organization could see and be run by.
+    const e = this.owned(id);
     if (!e) return false;
     e.enabled = enabled;
     if (enabled) this.ensureTick();
     return true;
   }
   cancel(id: string): boolean {
+    if (this.owned(id) === null) return false;
+    this.owners.delete(id);
     return this.schedules.delete(id);
   }
   stop(): void {

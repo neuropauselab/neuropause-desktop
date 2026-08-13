@@ -11,13 +11,26 @@ import { TenancyStore } from './tenancy/tenancyStore';
 import { FederationStore } from './identity/federationStore';
 import { ApiPlatformStore } from './apiplatform/apiPlatformStore';
 
+/**
+ * P13C ROUND 6 — SSO connections and webhooks resolve the CALLER'S cloud
+ * tenant, not the one frozen at boot. These suites act as the tenant whose
+ * cloud-tenant id they seed with, so every existing assertion keeps its
+ * single-tenant meaning; cross-tenant behaviour is asserted with three
+ * organizations in `tenancy/e2e/cloudIdentityTenancy.test.ts`.
+ */
+const CLOUD_TENANT = 'tnt_home';
+const asCloudTenant = (): string => CLOUD_TENANT;
+const asOrgScope = (): { tenantId: string; workspaceId: string } => ({ tenantId: 'org-default', workspaceId: 'ws-default' });
+
 beforeAll(() => { delete process.env.NP_DEMO_SEEDS; }); // production default: no demo seeds
 
 const tmp = (name: string): string => join(tmpdir(), `np-prod-${randomUUID()}-${name}`);
 
 describe('cloud stores — production seed (no demo data)', () => {
   it('TenancyStore seeds ONLY the home tenant, with a real (zero-until-measured) storage footprint', async () => {
-    const s = new TenancyStore(tmp('tenancy.json'), 'org-x', 'Acme');
+    // P13C Round 5 — F10. Cloud tenants resolve through organizationId.
+    const asOrgX = (): { tenantId: string; workspaceId: string } => ({ tenantId: 'org-x', workspaceId: 'ws-x' });
+    const s = new TenancyStore(tmp('tenancy.json'), 'org-x', 'Acme').bindScope(asOrgX);
     await s.load();
     const tenants = s.listTenants();
     expect(tenants).toHaveLength(1);
@@ -30,15 +43,15 @@ describe('cloud stores — production seed (no demo data)', () => {
   });
 
   it('FederationStore (identity) seeds NO SSO connections (no fake active Okta)', async () => {
-    const s = new FederationStore(tmp('identity.json'));
-    await s.load('tnt_home');
+    const s = new FederationStore(tmp('identity.json')).bindScope(asOrgScope).bindCloudTenantResolver(asCloudTenant);
+    await s.load(CLOUD_TENANT);
     expect(s.listConnections()).toHaveLength(0);
     expect(s.summary().active).toBe(0);
   });
 
   it('ApiPlatformStore keeps rate-limit policies but seeds NO fabricated deployments/webhooks/APIs', async () => {
-    const s = new ApiPlatformStore(tmp('api.json'));
-    await s.load('tnt_home');
+    const s = new ApiPlatformStore(tmp('api.json')).bindScope(asOrgScope).bindCloudTenantResolver(asCloudTenant);
+    await s.load(CLOUD_TENANT);
     expect(s.listDeployments()).toHaveLength(0); // no fake 99.98% uptime fixtures
     expect(s.listWebhooks()).toHaveLength(0); // no fake 1,284 deliveries
     expect(s.listPublicApis()).toHaveLength(0); // no fake rps

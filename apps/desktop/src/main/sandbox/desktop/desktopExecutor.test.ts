@@ -11,6 +11,7 @@ import { SandboxDatasetStore } from '../datasetStore';
 import { SandboxExecutionEngine } from '../executionEngine';
 import { initDesktopAutomation } from './index';
 import { FakeDesktopDriver, type FakeDriverScript } from './fakeDriver';
+import { TEST_TENANT_SCOPE } from '../../tenancy/testScope';
 
 let seq = 0;
 function harness(script: FakeDriverScript) {
@@ -18,11 +19,11 @@ function harness(script: FakeDriverScript) {
   const dir = join(tmpdir(), `s2e-${Date.now()}-${seq}`);
   let t = 1000;
   const now = (): number => (t += 5);
-  const workspaces = new SandboxWorkspaceStore(`${dir}-w.json`, now);
-  const scenarios = new SandboxScenarioStore(`${dir}-s.json`, now);
-  const executions = new SandboxExecutionStore(`${dir}-e.json`, now);
-  const artifacts = new SandboxArtifactStore(`${dir}-a.json`, now);
-  const datasets = new SandboxDatasetStore(`${dir}-d.json`, now);
+  const workspaces = new SandboxWorkspaceStore(`${dir}-w.json`, now).bindScope(() => TEST_TENANT_SCOPE);
+  const scenarios = new SandboxScenarioStore(`${dir}-s.json`, now).bindScope(() => TEST_TENANT_SCOPE);
+  const executions = new SandboxExecutionStore(`${dir}-e.json`, now).bindScope(() => TEST_TENANT_SCOPE);
+  const artifacts = new SandboxArtifactStore(`${dir}-a.json`, now).bindScope(() => TEST_TENANT_SCOPE);
+  const datasets = new SandboxDatasetStore(`${dir}-d.json`, now).bindScope(() => TEST_TENANT_SCOPE);
   const engine = new SandboxExecutionEngine({ workspaces, scenarios, executions, artifacts, datasets, now });
   const driver = new FakeDesktopDriver(script);
   initDesktopAutomation({

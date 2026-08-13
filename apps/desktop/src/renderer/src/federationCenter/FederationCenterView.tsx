@@ -401,7 +401,7 @@ function SearchTab(): JSX.Element {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search organizations, packages, policies…"
-          className="flex-1 bg-transparent text-sm outline-none placeholder:text-faint"
+          className="flex-1 bg-transparent text-sm outline-none focus-visible:shadow-focus placeholder:text-faint"
         />
       </div>
       {searched && hits.length === 0 ? (

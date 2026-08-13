@@ -66,6 +66,14 @@ export function SdkDocsPanel(): JSX.Element {
   return (
     <div>
       <OpsPanel title="SDKs" subtitle="Build AI workers, connectors, plugins, and enterprise extensions">
+        {/* Phase 9 (certification fix): the packages below are the PLANNED developer
+            surface — none is published to a registry yet, and the REST base URL is
+            not yet live. Showing copy-paste install commands without this notice
+            misrepresented availability ("never expose unfinished features"). */}
+        <div className="mb-4 rounded-xl border border-[var(--hairline)] [background:var(--fill-1)] px-3 py-2 text-xs text-muted">
+          Preview of the planned SDK surface — these packages are not yet published and the hosted API
+          endpoint is not yet live. The in-process Enterprise API (this desktop) is the working surface today.
+        </div>
         {sdks.length === 0 ? (
           <EmptyState icon="package" title="Loading SDKs…" compact />
         ) : (

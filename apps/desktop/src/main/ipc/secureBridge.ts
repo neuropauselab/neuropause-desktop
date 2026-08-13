@@ -14,12 +14,12 @@
  * This is the boundary the renderer never crosses: it speaks only these typed
  * channels, never the backend directly.
  */
-import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { app, ipcMain } from 'electron';
 import type { ZodSchema } from 'zod';
 import type { EnterprisePermission, IpcChannelName, IpcResponseMap } from '@neuropause/shared';
 import { createLogger } from '../logger';
+import { createBoundedLog } from '../storage/boundedLog';
 import { isTrustedSenderFrame } from './router';
 
 const log = createLogger('secure-ipc');
@@ -97,13 +97,16 @@ function auditPath(): string {
   return join(app.getPath('userData'), 'logs', 'audit.log');
 }
 
-/** Fire-and-forget structured audit line; never blocks the IPC response. */
+/**
+ * Fire-and-forget structured audit line; never blocks the IPC response.
+ * Phase 8 (8.4): bounded — audit.log rotates at 5 MiB with 3 generations
+ * kept, so a long-lived install no longer grows it without limit while the
+ * recent privileged-action history (current + rotated, all inside logs/)
+ * still lands in every support bundle.
+ */
+const auditLog = createBoundedLog(auditPath, { maxBytes: 5 * 1024 * 1024, keep: 3 });
 function appendAudit(record: Record<string, unknown>): void {
-  const line = `${JSON.stringify({ at: new Date().toISOString(), ...record })}\n`;
-  void fs
-    .mkdir(join(app.getPath('userData'), 'logs'), { recursive: true })
-    .then(() => fs.appendFile(auditPath(), line))
-    .catch(() => undefined);
+  auditLog.append(JSON.stringify({ at: new Date().toISOString(), ...record }));
 }
 
 class IpcError extends Error {

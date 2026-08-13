@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type {
   ExecutiveKpi,
+  IndustryCatalogSnapshot,
   IndustryCollection,
   IndustryComplianceFramework,
   IndustryPlatformOverview,
@@ -37,6 +38,8 @@ type Tab = 'overview' | 'suites' | 'compliance' | 'collections' | 'readiness';
 export function IndustryCenterView(): JSX.Element {
   const [ready, setReady] = useState(false);
   const [data, setData] = useState<IndustryPlatformOverview | null>(null);
+  // IP-03b — the canonical Wave 9 catalog snapshot, bridged additively alongside the P13 projections.
+  const [snapshot, setSnapshot] = useState<IndustryCatalogSnapshot | null>(null);
   const [tab, setTab] = useState<Tab>('overview');
 
   const refresh = useCallback(async () => {
@@ -44,6 +47,11 @@ export function IndustryCenterView(): JSX.Element {
       setData(await ipc.industryPlatform.overview());
     } catch {
       /* keep last snapshot */
+    }
+    try {
+      setSnapshot(await ipc.industryPlatform.snapshot());
+    } catch {
+      /* canonical catalog optional — keep last */
     } finally {
       setReady(true);
     }
@@ -70,7 +78,8 @@ export function IndustryCenterView(): JSX.Element {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Industry Center</h1>
             <p className="mt-1 text-md text-muted">
-              Deployable industry solution packs — AI workers, connectors, compliance and KPIs — built on the one platform, no new runtime.
+              Deployable industry solution packs — AI workers, connectors, compliance and KPIs —
+              built on the one platform, no new runtime.
             </p>
           </div>
           <button
@@ -83,6 +92,16 @@ export function IndustryCenterView(): JSX.Element {
           </button>
         </div>
 
+        {snapshot ? (
+          <p className="mb-4 text-sm text-muted">
+            Canonical industry catalog:{' '}
+            <span className="font-medium text-ink">{snapshot.industries.length}</span> solution
+            packs ·{' '}
+            <span className="font-medium text-ink">{snapshot.readiness.liveVerifiedPct}%</span>{' '}
+            capabilities live-verified · v{snapshot.version}
+          </p>
+        ) : null}
+
         <nav className="mb-6 flex flex-wrap gap-1.5">
           {tabs.map((t) => (
             <button
@@ -91,7 +110,9 @@ export function IndustryCenterView(): JSX.Element {
               onClick={() => setTab(t.id)}
               className={cn(
                 'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition',
-                tab === t.id ? 'bg-white/10 text-ink' : 'text-muted hover:bg-white/5 hover:text-ink',
+                tab === t.id
+                  ? 'bg-white/10 text-ink'
+                  : 'text-muted hover:bg-white/5 hover:text-ink',
               )}
             >
               <Icon name={t.icon} size={15} />
@@ -103,13 +124,21 @@ export function IndustryCenterView(): JSX.Element {
         {!ready ? (
           <LoadingBlock label="Loading industry platform…" />
         ) : !data ? (
-          <EmptyState icon="package" title="Industry platform unavailable" hint="No industry-platform data could be loaded." />
+          <EmptyState
+            icon="package"
+            title="Industry platform unavailable"
+            hint="No industry-platform data could be loaded."
+          />
         ) : tab === 'overview' ? (
           <Overview data={data} />
         ) : tab === 'suites' ? (
           <Suites suites={data.suites} />
         ) : tab === 'compliance' ? (
-          <Compliance frameworks={data.compliance.frameworks} referenced={data.compliance.rulesReferenced} enabled={data.compliance.rulesEnabled} />
+          <Compliance
+            frameworks={data.compliance.frameworks}
+            referenced={data.compliance.rulesReferenced}
+            enabled={data.compliance.rulesEnabled}
+          />
         ) : tab === 'collections' ? (
           <Collections collections={data.collections} />
         ) : (
@@ -143,20 +172,48 @@ function Overview({ data }: { data: IndustryPlatformOverview }): JSX.Element {
   return (
     <div>
       <Grid cols={4}>
-        <Stat icon="package" label="Suites ready" value={`${s.ready}/${s.totalSuites}`} tone="green" hint={`${s.partial} partial · ${s.planned} planned`} />
-        <Stat icon="cpu" label="Workers available" value={`${s.workersAvailable}/${s.workersReferenced}`} tone="blue" />
-        <Stat icon="connectors" label="Connectors connected" value={`${s.connectorsConnected}/${s.connectorsReferenced}`} tone={s.connectorsConnected ? 'green' : 'orange'} />
-        <Stat icon="shield" label="Compliance frameworks" value={s.complianceFrameworks} tone="purple" />
+        <Stat
+          icon="package"
+          label="Suites ready"
+          value={`${s.ready}/${s.totalSuites}`}
+          tone="green"
+          hint={`${s.partial} partial · ${s.planned} planned`}
+        />
+        <Stat
+          icon="cpu"
+          label="Workers available"
+          value={`${s.workersAvailable}/${s.workersReferenced}`}
+          tone="blue"
+        />
+        <Stat
+          icon="connectors"
+          label="Connectors connected"
+          value={`${s.connectorsConnected}/${s.connectorsReferenced}`}
+          tone={s.connectorsConnected ? 'green' : 'orange'}
+        />
+        <Stat
+          icon="shield"
+          label="Compliance frameworks"
+          value={s.complianceFrameworks}
+          tone="purple"
+        />
       </Grid>
 
       <div className="mt-6">
         <KpiStrip kpis={data.kpis} />
       </div>
 
-      <OpsPanel title="Industry suites" subtitle="Deployment readiness by vertical" className="mt-6 mb-0">
+      <OpsPanel
+        title="Industry suites"
+        subtitle="Deployment readiness by vertical"
+        className="mt-6 mb-0"
+      >
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {data.suites.map((suite) => (
-            <div key={suite.id} className="flex items-center gap-2 rounded-xl border border-white/5 px-3 py-2">
+            <div
+              key={suite.id}
+              className="flex items-center gap-2 rounded-xl border border-white/5 px-3 py-2"
+            >
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/[0.06] text-muted">
                 <Icon name="package" size={15} />
               </span>
@@ -175,7 +232,19 @@ function Overview({ data }: { data: IndustryPlatformOverview }): JSX.Element {
 
 /* ── Suites ──────────────────────────────────────────────────────────────── */
 
-function RefSummary({ label, icon, active, total, verb }: { label: string; icon: IconName; active: number; total: number; verb: string }): JSX.Element {
+function RefSummary({
+  label,
+  icon,
+  active,
+  total,
+  verb,
+}: {
+  label: string;
+  icon: IconName;
+  active: number;
+  total: number;
+  verb: string;
+}): JSX.Element {
   const tone = total === 0 ? 'gray' : active === total ? 'green' : active > 0 ? 'orange' : 'gray';
   return (
     <div className="flex items-center gap-2 rounded-lg border border-white/5 px-2.5 py-1.5">
@@ -225,14 +294,35 @@ function SuiteCard({ suite }: { suite: IndustrySuite }): JSX.Element {
       </div>
 
       <div className="mt-3 space-y-1.5">
-        <RefSummary label="AI workers" icon="cpu" active={r.workers.available} total={r.workers.referenced} verb="active" />
-        <RefSummary label="Connectors" icon="connectors" active={r.connectors.connected} total={r.connectors.referenced} verb="connected" />
-        <RefSummary label="Compliance rules" icon="shield" active={r.compliance.enabled} total={r.compliance.referenced} verb="enabled" />
+        <RefSummary
+          label="AI workers"
+          icon="cpu"
+          active={r.workers.available}
+          total={r.workers.referenced}
+          verb="active"
+        />
+        <RefSummary
+          label="Connectors"
+          icon="connectors"
+          active={r.connectors.connected}
+          total={r.connectors.referenced}
+          verb="connected"
+        />
+        <RefSummary
+          label="Compliance rules"
+          icon="shield"
+          active={r.compliance.enabled}
+          total={r.compliance.referenced}
+          verb="enabled"
+        />
       </div>
 
       <div className="mt-3 flex flex-wrap gap-1">
         {suite.frameworks.map((f) => (
-          <span key={f.id} className="rounded-full border border-white/5 px-1.5 py-0.5 text-2xs text-faint">
+          <span
+            key={f.id}
+            className="rounded-full border border-white/5 px-1.5 py-0.5 text-2xs text-faint"
+          >
             {f.name}
           </span>
         ))}
@@ -260,7 +350,13 @@ function SuiteCard({ suite }: { suite: IndustrySuite }): JSX.Element {
 
 function Suites({ suites }: { suites: IndustrySuite[] }): JSX.Element {
   if (suites.length === 0) {
-    return <EmptyState icon="package" title="No industry suites" hint="Industry solution packs appear here." />;
+    return (
+      <EmptyState
+        icon="package"
+        title="No industry suites"
+        hint="Industry solution packs appear here."
+      />
+    );
   }
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -273,16 +369,33 @@ function Suites({ suites }: { suites: IndustrySuite[] }): JSX.Element {
 
 /* ── Compliance ──────────────────────────────────────────────────────────── */
 
-function Compliance({ frameworks, referenced, enabled }: { frameworks: IndustryComplianceFramework[]; referenced: number; enabled: number }): JSX.Element {
+function Compliance({
+  frameworks,
+  referenced,
+  enabled,
+}: {
+  frameworks: IndustryComplianceFramework[];
+  referenced: number;
+  enabled: number;
+}): JSX.Element {
   return (
     <div>
       <Grid cols={3}>
         <Stat icon="shield" label="Frameworks" value={frameworks.length} tone="purple" />
         <Stat icon="checklist" label="Rules referenced" value={referenced} />
-        <Stat icon="check" label="Rules enabled" value={`${enabled}/${referenced}`} tone={enabled === referenced ? 'green' : 'orange'} />
+        <Stat
+          icon="check"
+          label="Rules enabled"
+          value={`${enabled}/${referenced}`}
+          tone={enabled === referenced ? 'green' : 'orange'}
+        />
       </Grid>
 
-      <OpsPanel title="Compliance frameworks" subtitle="Frameworks mapped to the platform's generic governance controls — shows backing controls enabled, not a formal attestation" className="mt-6 mb-0">
+      <OpsPanel
+        title="Compliance frameworks"
+        subtitle="Frameworks mapped to the platform's generic governance controls — shows backing controls enabled, not a formal attestation"
+        className="mt-6 mb-0"
+      >
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {frameworks.map((f) => (
             <div key={f.id} className="rounded-2xl border border-[var(--hairline)] p-4">
@@ -301,7 +414,10 @@ function Compliance({ frameworks, referenced, enabled }: { frameworks: IndustryC
               <p className="mt-2 text-2xs text-muted">{f.description}</p>
               <div className="mt-2 flex flex-wrap gap-1">
                 {f.ruleRefs.map((ref) => (
-                  <span key={ref.id} className="inline-flex items-center gap-1 rounded-full border border-white/5 px-1.5 py-0.5 text-2xs text-faint">
+                  <span
+                    key={ref.id}
+                    className="inline-flex items-center gap-1 rounded-full border border-white/5 px-1.5 py-0.5 text-2xs text-faint"
+                  >
                     <StatusDot tone={refTone(ref)} />
                     {ref.id}
                   </span>
@@ -319,7 +435,11 @@ function Compliance({ frameworks, referenced, enabled }: { frameworks: IndustryC
 
 function Collections({ collections }: { collections: IndustryCollection[] }): JSX.Element {
   return (
-    <OpsPanel title="Industry collections" subtitle="Curated marketplace bundles per industry (published listings resolved live)" className="mb-0">
+    <OpsPanel
+      title="Industry collections"
+      subtitle="Curated marketplace bundles per industry (published listings resolved live)"
+      className="mb-0"
+    >
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {collections.map((c) => (
           <div key={c.id} className="rounded-2xl border border-[var(--hairline)] p-4">
@@ -337,7 +457,10 @@ function Collections({ collections }: { collections: IndustryCollection[] }): JS
             </div>
             <div className="mt-2 flex flex-col gap-1">
               {c.entries.map((e) => (
-                <div key={e.id} className="flex items-center gap-2 rounded-lg border border-white/5 px-2.5 py-1.5">
+                <div
+                  key={e.id}
+                  className="flex items-center gap-2 rounded-lg border border-white/5 px-2.5 py-1.5"
+                >
                   <Icon name={entityKindIcon(e.kind)} size={14} />
                   <span className="flex-1 truncate text-2xs text-muted">{e.label}</span>
                   <StatusBadge tone={refTone(e)} label={e.present ? 'published' : 'absent'} />
@@ -356,10 +479,17 @@ function Collections({ collections }: { collections: IndustryCollection[] }): JS
 function Readiness({ data }: { data: IndustryPlatformOverview }): JSX.Element {
   const suites = [...data.suites].sort((a, b) => b.readiness.activation - a.readiness.activation);
   return (
-    <OpsPanel title="Deployment readiness" subtitle="Per-industry platform coverage and live activation" className="mb-0">
+    <OpsPanel
+      title="Deployment readiness"
+      subtitle="Per-industry platform coverage and live activation"
+      className="mb-0"
+    >
       <div className="rounded-2xl border border-[var(--hairline)]">
         {suites.map((s) => (
-          <div key={s.id} className="flex items-center gap-4 border-b border-white/5 px-4 py-3 last:border-0">
+          <div
+            key={s.id}
+            className="flex items-center gap-4 border-b border-white/5 px-4 py-3 last:border-0"
+          >
             <div className="w-40 min-w-0">
               <div className="truncate text-sm font-medium">{s.name}</div>
               <div className="truncate text-2xs text-faint">{s.sector}</div>

@@ -6,6 +6,8 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
+    // P11 — every store needs a tenant. See vitest.setup.ts.
+    setupFiles: ['./vitest.setup.ts'],
     // Platform-core (main) tests, plus the renderer's PURE view-model logic under
     // `renderer/src/sandbox` (the Sandbox workspace's derivations) and `renderer/src/connectors`
     // (the Enterprise Connector Center's view-model — no DOM, no React), so those presentation
@@ -20,6 +22,8 @@ export default defineConfig({
       'src/renderer/src/infrastructure/**/*.test.ts',
       // P7.1 — the Enterprise Operations Center's pure view-model (no DOM, no React).
       'src/renderer/src/operationsCenter/**/*.test.ts',
+      // RC Phase 1 — the Operations command center's pure status derivation (no DOM, no React).
+      'src/renderer/src/operations/**/*.test.ts',
       // P8.6 — the Enterprise Workforce Center's pure view-model (no DOM, no React).
       'src/renderer/src/workforceCenter/**/*.test.ts',
       // P10 — the Federation Center's pure view-model (no DOM, no React).
@@ -99,6 +103,20 @@ export default defineConfig({
       // collected; the pattern is directory-wide like every entry above, so a
       // future test beside format.ts/cn.ts is picked up without another edit here.
       'src/renderer/src/lib/**/*.test.ts',
+      // Phase 6 — the Data Command Center's pure view-model (no DOM, no React).
+      // Every honesty rule the surface depends on (empty-vs-zero, hold reasons,
+      // "a run with failures is never a success") is decided here, so this is
+      // where they are asserted; the view is a projection with no logic.
+      'src/renderer/src/dataCommandCenter/**/*.test.ts',
+      // Medical Device Manufacturing Pack — the surface's view model.
+      'src/renderer/src/medicalDevices/**/*.test.ts',
+      // Private-First experience — first-run, routing badges, nav filtering.
+      'src/renderer/src/firstRun/**/*.test.ts',
+      // Understanding Profile — provenance rules, correction/confirmation, and
+      // the derivation of `system_derived` attributes from real counts. These
+      // are the rules that stop an inference becoming a fact, so they are
+      // asserted here rather than left to the view.
+      'src/renderer/src/understanding/**/*.test.ts',
     ],
   },
   resolve: {
@@ -107,6 +125,10 @@ export default defineConfig({
       // hold no matter where vitest is launched from — matching the `__dirname`
       // convention already used in backend/vitest.config.ts and electron.vite.config.ts.
       '@neuropause/shared': resolve(__dirname, '../../packages/shared/src/index.ts'),
+      '@neuropause/companion-protocol': resolve(
+        __dirname,
+        '../../packages/companion-protocol/src/index.ts',
+      ),
       // Safety net so an accidental `@renderer/*` import in a collected test still resolves.
       '@renderer': resolve(__dirname, 'src/renderer/src'),
     },

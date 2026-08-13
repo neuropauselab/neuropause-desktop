@@ -1,0 +1,4 @@
+# apps/mobile is a standalone Expo/React-Native project with its own ESLint
+# setup and is intentionally outside the desktop monorepo's lint. The release
+# gate (lint:release) already targets explicit desktop/backend/package dirs.
+apps/mobile/

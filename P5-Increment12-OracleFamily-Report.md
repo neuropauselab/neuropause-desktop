@@ -1,5 +1,12 @@
 # P5 — Increment 12: Oracle Fusion Cloud ERP Enterprise Connector Family
 
+> **Historical snapshot — superseded facts.** This report was written in the
+> `1.0.0-rc.1` era (bulk pass of 2026-07-24) and is retained as program history.
+> Authoritative current facts: **104 certified modules across 13 families**
+> (locked by `apps/desktop/src/main/enterprise/modules/moduleCertification.test.ts`),
+> version lineage `1.0.0-rc.14`. See `PHASE7-COMPLETION-REPORT.md` and the
+> Phase 8 reports for current state. Banner added by Phase 8 (8.11).
+
 **Status:** ✅ Production complete — all 6 validation gates green
 **Scope:** Oracle Fusion Cloud ERP becomes **ONE** connector family (`oracle`). No standalone connectors, no new subsystems.
 **Stop condition honored:** Work stops here. Microsoft Dynamics 365 has **not** been started.

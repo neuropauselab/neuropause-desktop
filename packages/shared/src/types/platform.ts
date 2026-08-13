@@ -104,6 +104,9 @@ export type PlatformEventType =
   // diagnostics / system
   | 'diagnostics.health_changed'
   | 'system.ready'
+  // Private-First first-run experience: a profile decision was recorded
+  // (metadata carries the event name only — never content).
+  | 'experience.decision'
   // automation (V4.8)
   | 'automation.completed'
   | 'automation.failed'
@@ -196,6 +199,39 @@ export type PlatformEventMeta = Record<string, string | number | boolean | null>
 export interface PlatformEvent {
   /** Globally unique id for this event instance. */
   id: string;
+  /**
+   * The organization this event happened in (P13B).
+   *
+   * Stamped once, at materialization, from the resolved tenant — never by the
+   * producer. Events are the SECOND input to every briefing: the Enterprise
+   * Timeline fuses scoped entities with this log, so an unowned event log made
+   * the whole briefing path unscoped no matter how well the entities were
+   * guarded. `actor.id`, `resource.id` and `metadata` all travel in an event.
+   *
+   * Absent means UNRESOLVED — belongs to no tenant and is shown to none.
+   * Events written before P13B, and events published with no active tenant
+   * (boot, background timers), are therefore invisible to tenant-facing reads
+   * while remaining in the durable log for local diagnostics.
+   */
+  tenantId?: string | null;
+  /**
+   * `system` marks an event that belongs to the PRODUCT rather than to any
+   * customer (P13C).
+   *
+   * Mirrors `MemoryVisibility.SYSTEM` deliberately, including the reasoning: a
+   * health check, an update poll or a runtime-supervisor alert carries no
+   * customer data by construction, so it is readable by any resolved viewer.
+   *
+   * It exists because P13B's fail-closed stamping had a real cost — a job with
+   * no principal published an unowned event, and the supervisor's CRITICAL
+   * alerts became invisible to everyone. The fix is not to make the timeline
+   * global; it is to let genuinely global work say so, under an explicit SYSTEM
+   * principal, and leave everything else owned or invisible.
+   *
+   * A producer cannot set this: it is stamped from the principal, and only a
+   * `system` principal produces it.
+   */
+  scopeKind?: 'tenant' | 'system';
   type: PlatformEventType;
   category: PlatformEventCategory;
   /** Schema version of this event type (starts at 1). */

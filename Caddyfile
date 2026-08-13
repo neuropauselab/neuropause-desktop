@@ -1,0 +1,25 @@
+# NeuroPause single-host edge.
+#
+# Caddy terminates TLS for api.neuropause033.com and proxies to the backend
+# container. Certificates are obtained and renewed automatically from Let's
+# Encrypt over HTTP-01, which is why port 80 must stay open and why the DNS
+# record must already point at this host BEFORE first start.
+#
+# Cloudflare must be DNS-only (grey cloud) for HTTP-01 to reach this server.
+
+api.neuropause033.com {
+	encode zstd gzip
+
+	# The backend listens on 4000 inside the compose network.
+	reverse_proxy backend:4000 {
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Real-IP {remote_host}
+	}
+
+	# Access log to stdout so `docker compose logs edge` is the single place to
+	# look when a request does not arrive.
+	log {
+		output stdout
+		format console
+	}
+}

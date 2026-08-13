@@ -12,6 +12,14 @@ import { IpcChannel } from '@neuropause/shared';
 import { initInsight, type InsightSubsystemDeps } from './index';
 import type { RawTimelineEvent } from '../enterprise/intelligence/enterpriseIntelligenceSubsystem';
 
+/**
+ * P13C ROUND 5 — the composed cache is tenant-keyed, so these suites name a
+ * tenant. Every existing TTL and memoization assertion keeps its meaning:
+ * repeated reads under ONE tenant must still be a single composition.
+ */
+const PLATFORM_SCOPE = { tenantId: 'org-test', workspaceId: 'ws-test' };
+const scope = (): typeof PLATFORM_SCOPE => PLATFORM_SCOPE;
+
 const T0 = Date.parse('2026-07-31T12:00:00.000Z');
 const iso = (msAgo: number): string => new Date(T0 - msAgo).toISOString();
 
@@ -99,6 +107,7 @@ function mkHarness(): Harness {
     jobsThrow: false,
   };
   const deps: InsightSubsystemDeps = {
+  scope,
     getResourceModel: () => null,
     getRelationshipModel: () => null,
     getEvents: () => state.events,

@@ -26,6 +26,7 @@ import { IntentService } from './intentService';
 import type { IntentBand } from '@neuropause/shared';
 import type { IntentGoalInput, IntentState } from './intentModel';
 import { withIntentAuthz } from './intentAuthz';
+import { activeTenantScope } from '../enterprise/index';
 
 const log = createLogger('intent');
 
@@ -117,7 +118,7 @@ function buildState(deps: IntentDeps): IntentState {
 }
 
 export function initIntent(deps: IntentDeps): IntentSubsystem {
-  const service = new IntentService({ readState: () => buildState(deps) });
+  const service = new IntentService({ scope: activeTenantScope, readState: () => buildState(deps) });
 
   // Invalidate the memoized snapshot when a backing store changes; the injected strategyOverview accessor
   // refreshes via its own TTL (workforce success + connector health feed the goals). Renderer liveness

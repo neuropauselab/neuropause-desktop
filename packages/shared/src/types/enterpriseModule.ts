@@ -17,6 +17,8 @@
  * main process, the renderer, and the tests without pulling in a runtime.
  */
 import type { EnterprisePermission } from './enterprise';
+import type { ActionAssessment } from './understanding';
+import type { SensitivityClass } from './sensitivity';
 
 /** Lifecycle status shared by every enterprise record. */
 export type EnterpriseRecordStatus = 'active' | 'archived' | 'deleted';
@@ -57,6 +59,32 @@ export interface EnterpriseEntity {
   /** Actor (email/id) that created / last-updated the record, if known. */
   createdBy: string | null;
   updatedBy: string | null;
+  /**
+   * THE TENANT THIS RECORD BELONGS TO.
+   *
+   * Optional in the TYPE only, so a file written before P11 still parses.
+   * Absent or empty means UNRESOLVED — the record's owner is not known, and an
+   * unresolved record is visible to NO tenant. It is not a placeholder for "the
+   * default tenant": assigning it would be a guess, the guess is silent, and
+   * afterwards it is indistinguishable from a correct answer.
+   *
+   * A top-level field rather than something inside `fields`, deliberately.
+   * `validateEnterpriseRecordInput` builds its output from the DECLARED fields
+   * only, so a scope routed through `fields` would be silently dropped unless
+   * all 106 module descriptors declared it — at which point it would be
+   * editable through the generic form and settable through the generic CRUD
+   * channel, i.e. a tenant could rewrite its own scope. `metadata` has the same
+   * problem and its own docstring already warns about smuggling ids through it.
+   */
+  tenantId?: string | null;
+  /**
+   * The workspace inside that tenant, when the record belongs to one.
+   *
+   * Absent means the record belongs to the tenant as a whole and is readable
+   * from every workspace in it. That is a real case, and it is also the shape a
+   * record has the moment a tenant claims it.
+   */
+  workspaceId?: string | null;
   metadata: EnterpriseRecordMeta;
 }
 
@@ -66,6 +94,18 @@ export interface EnterpriseRecordInput {
   fields?: Record<string, EnterpriseFieldValue>;
   tags?: string[];
   metadata?: EnterpriseRecordMeta;
+  /**
+   * The record being updated, or undefined on create.
+   *
+   * Added so a `validate` hook can enforce UNIQUENESS. Without it, a hook that
+   * refuses a duplicate product code refuses the record's own code the moment
+   * anyone edits an unrelated field on that record — the check has no way to
+   * tell "this code is taken" from "this code is taken by me". It is deliberately
+   * a first-class field and not a metadata key: metadata is merged into the
+   * persisted record, so smuggling an id through it would write bookkeeping into
+   * every module's stored data.
+   */
+  recordId?: string;
 }
 
 /** The kinds of field a module can declare. Drives validation + the form UI. */
@@ -106,6 +146,15 @@ export interface EnterpriseFieldDef {
    * the create/edit form (its value is derived by the module, e.g. a lead score).
    */
   readOnly?: boolean;
+  /**
+   * Declared sensitivity, when the key and label do not make it obvious.
+   *
+   * Advisory in one direction only: `classifyField` also derives a class from
+   * the name, and takes whichever is MORE restrictive. Declaring `normal` on a
+   * field called `apiKey` does not make it exportable. Most modules need not
+   * set this at all — it exists for fields whose name gives nothing away.
+   */
+  sensitive?: SensitivityClass;
 }
 
 /**
@@ -147,6 +196,22 @@ export interface EnterpriseModuleActionResult {
   message?: string;
   /** field/record-level error message on failure. */
   error?: string;
+  /**
+   * Present when the refusal is a POLICY conflict rather than bad input.
+   *
+   * The distinction matters and only the module knows it: "amount is required"
+   * is a mistake the user fixes in the form, while "the period is closed" is a
+   * rule no amount of authority overrides — it needs the world to change, not
+   * the field. Declaring it here lets the framework raise a durable hold for
+   * the second kind without guessing from an error string.
+   */
+  policy?: {
+    /** The rule, as the system names it. */
+    name: string;
+    /** Why it applies HERE — real, specific facts. */
+    facts: string[];
+    resolution: string;
+  };
 }
 
 /** A module descriptor plus live counts — the payload of `enterprise:modules`. */
@@ -192,6 +257,156 @@ export interface EnterpriseModuleMutationResult {
   record?: EnterpriseEntity;
   /** field key → message on validation/precondition failure (`_` for record-level). */
   errors?: Record<string, string>;
+  /**
+   * Present when a consequential operation was ASSESSED before execution and
+   * refused (or annotated). Deterministic — computed from real relationship
+   * links, never from a model. A refused delete carries this so the UI can
+   * show the evidence and the safer alternative.
+   */
+  assessment?: ActionAssessment;
+  /**
+   * The durable HOLD raised by a refused operation. Present alongside
+   * `assessment`; null when no hold store is wired (tests). The caller needs
+   * it to resolve the hold when it takes the safer alternative, so the pause
+   * does not outlive its own answer.
+   */
+  holdId?: string | null;
+}
+
+/* ── ERP document layer: the renderer-facing shapes ───────────────────────
+ * Mirrors of the main-process engine types, declared here so the renderer can
+ * read them without importing from `apps/desktop/src/main`. Kept structural —
+ * the handler returns the engine's own objects, and a drift between the two
+ * fails the desktop typecheck through `IpcResponseMap`. */
+
+/** One line on a business document. Money is a plain number of major units. */
+export interface DocumentLineView {
+  id: string;
+  lineNo: number;
+  description: string;
+  quantity: number;
+  unit: string | null;
+  unitPrice: number;
+  discountPercent: number | null;
+  discountAmount: number | null;
+  taxRatePercent: number | null;
+  currency: string;
+  /** quantity x unitPrice, before discount. */
+  gross: number;
+  discount: number;
+  /** gross - discount: the tax base. */
+  taxable: number;
+  tax: number;
+  total: number;
+  productId: string | null;
+  accountId: string | null;
+  warehouseId: string | null;
+}
+
+/** Totals DERIVED from the lines. Never stored on the record. */
+export interface DocumentTotalsView {
+  moduleId: string;
+  documentId: string;
+  documentType: string;
+  lineCount: number;
+  currency: string;
+  /** True when lines disagree on currency — a document must be single-currency. */
+  currencyMismatch: boolean;
+  gross: number;
+  discount: number;
+  taxable: number;
+  tax: number;
+  total: number;
+}
+
+/**
+ * What the document panel reads.
+ *
+ * `supported: false` means the module is not a line-item document at all —
+ * distinct from a document that simply has no lines yet. The UI must not offer
+ * a line editor for a master-data record.
+ */
+export interface DocumentLinesView {
+  supported: boolean;
+  documentType: string | null;
+  /** The permission required to edit lines, for an honest disabled state. */
+  editPermission: string | null;
+  lines: DocumentLineView[];
+  totals: DocumentTotalsView | null;
+}
+
+export interface ApprovalStepView {
+  id: string;
+  label: string;
+  roles: string[];
+  minAmount: number | null;
+}
+
+export interface ApprovalDecisionView {
+  stepId: string;
+  userId: string;
+  decision: 'approved' | 'rejected';
+  at: string;
+  note?: string;
+}
+
+/**
+ * Approval state for one document.
+ *
+ * `required: false` means the document type has no policy — again distinct
+ * from "a policy exists and nothing has been approved yet".
+ */
+export interface DocumentApprovalView {
+  required: boolean;
+  state: 'pending' | 'approved' | 'rejected' | 'blocked' | 'not_required';
+  amount: number;
+  requiredSteps: ApprovalStepView[];
+  satisfiedStepIds: string[];
+  nextStep: ApprovalStepView | null;
+  /** Why the state is what it is — shown verbatim; never paraphrased. */
+  reasons: string[];
+  decisions: ApprovalDecisionView[];
+  /**
+   * Whether THIS user may decide the next step, and if not, why. Segregation
+   * of duties is the usual reason, and saying so plainly is the point: a
+   * disabled button with no explanation reads as a bug.
+   */
+  canDecide: boolean;
+  blockedReason: string | null;
+  /** Statuses this document cannot enter until approval completes. */
+  gatedStatuses: string[];
+}
+
+/** Result of recording an approval decision. */
+export interface DocumentApprovalResult {
+  ok: boolean;
+  error: string | null;
+  approval: DocumentApprovalView | null;
+}
+
+/** What the renderer sends when replacing lines. Mirrors the Zod schema. */
+export interface DocumentLineInput {
+  productId?: string | null;
+  description?: string;
+  quantity: number;
+  unit?: string | null;
+  unitPrice?: number;
+  discountPercent?: number | null;
+  discountAmount?: number | null;
+  taxRatePercent?: number | null;
+  currency?: string;
+  accountId?: string | null;
+  warehouseId?: string | null;
+  projectId?: string | null;
+  costCenterId?: string | null;
+  batchId?: string | null;
+}
+
+/** Result of replacing a document's lines. */
+export interface DocumentLinesResult {
+  ok: boolean;
+  errors: { lineNo: number; errors: string[] }[];
+  view: DocumentLinesView | null;
 }
 
 export type EnterpriseModuleLifecycleAction =

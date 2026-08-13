@@ -26,6 +26,54 @@ import type {
 import { createLogger } from '../logger';
 import { validateManifest, satisfiesRange } from './manifest';
 import { pluginHost } from './pluginHost';
+import { declareStoreScope } from '../tenancy/storeScope';
+import { PLUGIN_STORE_NAME, assertPluginChannelAuthority } from './pluginAuthzGate';
+
+/** P13C ROUND 8 — the structural scope declaration. See tenancy/storeScope.ts. */
+declareStoreScope({
+  name: PLUGIN_STORE_NAME,
+  scope: 'PLATFORM_GLOBAL',
+  persistence: 'file',
+  authority: 'PLATFORM_OPERATOR',
+  classification: 'INSTALL_METADATA',
+  /**
+   * P13C ROUND 10. INSTALL is the only honest answer and it is not a finding:
+   * `PluginRecord` has no tenant field, an enabled plugin runs in-process for the
+   * whole install, and `declareStoreScope` refuses `OWNER` on a global scope for
+   * exactly that reason — there are no per-owner rows to keep.
+   *
+   * PLATFORM_OPERATOR is CHECKED here, not asserted: `remove` is reached only
+   * from `plugins:remove`, which is in `PLUGIN_MUTATION_CHANNELS`, and
+   * `assertPluginChannelAuthority()` on the line below this declaration throws at
+   * module load if any of those channels carries a permission an organization
+   * role can hold. So the retention authority named here is the one the gate
+   * enforces, not the one this comment hopes for.
+   */
+  retentionScope: 'INSTALL',
+  retentionAuthority: 'PLATFORM_OPERATOR',
+  retention:
+    'No cap, no TTL, no eviction. ONE removal, and it is deliberately install-wide: `remove(id)` ' +
+    'deletes `records[id]`, drops the in-memory `Loaded`, and `fs.rm`s the plugin root unless the ' +
+    'plugin is a dev-dir plugin loaded in place — so the plugin disappears for every tenant at ' +
+    'once, which is what uninstalling one shared executable extension means. `install()` also ' +
+    '`fs.rm`s the destination directory before copying, which removes the PREVIOUS copy of the ' +
+    'same plugin id and nothing else. `revoke()` removes one capability from one record, not a ' +
+    'row. Both removals are behind `cloud:operate` and that is enforced at composition by ' +
+    '`assertPluginChannelAuthority()`, not merely declared here.',
+  reason: "WHY GLOBAL: rows describe executable extensions installed on the machine; PluginRecord has no tenant field and an enabled plugin runs in-process for everyone. WHO MODIFIES: a platform operator, as of Round 8 Finding 2 — it was marketplace:manage, an organization role, so tenant A's admin could enable code running while tenant B's data was in memory. CROSS-TENANT COST: one registry; an uninstall affects every tenant.",
+});
+
+/**
+ * P13C ROUND 10 — NEW-H7. The declaration above is now CHECKED.
+ *
+ * Round 8 wrote `authority: 'PLATFORM_OPERATOR'` here and `plugins:grant` /
+ * `plugins:revoke` stayed on `marketplace:manage` — an organization role — for
+ * two more rounds, because nothing compared the two. This call is that
+ * comparison, and it runs at module load: every composition imports the plugin
+ * manager, so a channel that mutates this store on an organization permission
+ * stops the application from starting. See ./pluginAuthzGate.ts.
+ */
+assertPluginChannelAuthority();
 
 const log = createLogger('plugins');
 const MANIFEST_FILE = 'neuropause.plugin.json';
@@ -295,8 +343,32 @@ class PluginManager {
     return { ok: true };
   }
 
+  /**
+   * Grant a capability the plugin's MANIFEST DECLARED. P13C ROUND 10 — NEW-H7.
+   *
+   * This never consulted the manifest: any `RuntimePermissionKey` could be
+   * appended to `record.grantedPermissions`, so a caller could hand a plugin
+   * filesystem, network or host reach its author never asked for and no user
+   * ever saw at install time. `pluginHost` enforces capability checks against
+   * `grantedPermissions`, so the grant was the whole check.
+   *
+   * The manifest is the contract the install-time prompt shows and the only
+   * statement of intent that exists, so a grant outside it is not a grant — it
+   * is a rewrite of the plugin's contract by whoever called the channel. It
+   * throws rather than silently ignoring: a caller that asked for a capability
+   * and got a success response with nothing granted would be worse.
+   *
+   * Revoke is deliberately unrestricted: taking a capability away can only
+   * narrow what a plugin may do.
+   */
   async grant(id: string, permission: RuntimePermissionKey): Promise<PluginDto> {
     const loaded = this.require(id);
+    if (!loaded.manifest.permissions.includes(permission)) {
+      throw new Error(
+        `Plugin ${id} did not request "${permission}" in its manifest, so it cannot be granted. ` +
+          `Declared: ${loaded.manifest.permissions.join(', ') || '(none)'}.`,
+      );
+    }
     if (!loaded.record.grantedPermissions.includes(permission)) {
       loaded.record.grantedPermissions.push(permission);
       await this.persist();

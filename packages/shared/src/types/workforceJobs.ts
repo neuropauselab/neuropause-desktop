@@ -71,6 +71,14 @@ export interface JobLogEntry {
 }
 
 export interface Job {
+  /**
+   * The organization this belongs to (P13C Round 2).
+   *
+   * OPTIONAL so a file written before this round still parses. Absent means
+   * UNRESOLVED — visible to nobody, never back-filled to the active or first
+   * organization, because that guess is the defect the field exists to remove.
+   */
+  tenantId?: string | null;
   id: string;
   workerId: string;
   workerRole: WorkerRole;
@@ -165,6 +173,14 @@ export interface WorkflowStepRun {
 }
 
 export interface WorkflowRun {
+  /**
+   * The organization this belongs to (P13C Round 2).
+   *
+   * OPTIONAL so a file written before this round still parses. Absent means
+   * UNRESOLVED — visible to nobody, never back-filled to the active or first
+   * organization, because that guess is the defect the field exists to remove.
+   */
+  tenantId?: string | null;
   id: string;
   workflowId: string;
   status: WorkflowRunStatus;

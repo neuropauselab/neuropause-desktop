@@ -56,6 +56,10 @@ import { buildPortfolio } from './initiativePortfolio';
 import { buildObjectivesReport } from './objectiveModel';
 import { buildStrategyHealth } from './strategyHealth';
 import { answerStrategyQuestion, resolveStrategyQuestion, type StrategyQuestionContext } from './strategyModel';
+import { onWorkspaceSwitch } from '../tenancy/workspaceSwitchHub';
+import { TenantMemo } from '../tenancy/tenantMemo';
+import type { TenantScope } from '@neuropause/shared';
+import { TenantDedupe } from '../tenancy/tenantDedupe';
 
 const log = createLogger('strategy-platform');
 
@@ -64,6 +68,18 @@ const BUILD_TTL_MS = 3_000;
 /* ── deps (every read injected; all sync — Stage 10 composes, never fetches) ─ */
 
 export interface StrategyPlatformDeps {
+  /**
+   * P13C ROUND 5 — the tenant boundary for this subsystem's composed cache.
+   *
+   * INJECTED, not imported. `enterprise/index` reaches `app.getPath`, so
+   * importing `activeTenantScope` here drags Electron into a pure-model node
+   * test — a trap this program has now fallen into FOUR times, once per round.
+   * Worth stating as a rule rather than a note: a subsystem that unit-tests
+   * without Electron takes its resolver as a dep.
+   *
+   * Required, so a composition root that forgets it fails to compile.
+   */
+  scope: () => TenantScope | null;
   /** Stage 6 slices: domain bands, the overall band, the outcome loop. */
   insightDomains: () => { key: string; band: string; score: number | null }[] | null;
   insightOverallBand: () => string | null;
@@ -148,11 +164,27 @@ function pick(failures: Record<string, string>, systems: readonly string[]): Rec
 
 export function initStrategyPlatform(deps: StrategyPlatformDeps): StrategyPlatformSubsystem {
   const now = deps.now ?? ((): number => Date.now());
-  let cache: BuildArtifacts | null = null;
+  /**
+   * P13C ROUND 5 — KEYED BY TENANT.
+   *
+   * `let cache: BuildArtifacts | null` behind a short TTL, flushed on
+   * `onWorkspaceSwitch`. That listener cannot see the case this program has
+   * documented twice already: `deliveryEngine.tick()` runs `forEachTenant`, so
+   * each tenant's `produce()` fills the cache back to back with NO SWITCH
+   * ANNOUNCED, and an interactive read from another tenant inside the TTL is
+   * served the composed dashboard of whoever ran last.
+   *
+   * Round 3 fixed eleven services of this shape by name and Round 4 fixed a
+   * twelfth; these seven were the remainder. Keying rather than adding a second
+   * listener, because the key covers the fan-out and the listener does not.
+   */
+  const projectionCache = new TenantMemo<BuildArtifacts>('strategy-platform-projections', { ttlMs: BUILD_TTL_MS, now })
+    .bindScope(deps.scope);
 
-  const build = (): BuildArtifacts => {
+  const build = (): BuildArtifacts => projectionCache.state(compose);
+
+  const compose = (): BuildArtifacts => {
     const nowMs = now();
-    if (cache && nowMs - cache.at < BUILD_TTL_MS) return cache;
     const nowIso = new Date(nowMs).toISOString();
     const failures: Record<string, string> = {};
 
@@ -326,8 +358,7 @@ export function initStrategyPlatform(deps: StrategyPlatformDeps): StrategyPlatfo
     const dashboard = composeStrategyDashboard(dashInputs);
     const board = composeBoardReport(dashInputs);
 
-    cache = { at: nowMs, nowIso, objectives, portfolio, value, planning, capabilities, health, dashboard, board };
-    return cache;
+    return { at: nowMs, nowIso, objectives, portfolio, value, planning, capabilities, health, dashboard, board };
   };
 
   /* ── the assistant port (eleven questions; sync; same composed views) ────── */
@@ -350,7 +381,24 @@ export function initStrategyPlatform(deps: StrategyPlatformDeps): StrategyPlatfo
   };
 
   /* ── monitoring: ONE governed watch source (items only, never actions) ──── */
-  const deliveredWatch = new Set<string>();
+  /**
+   * P13C ROUND 6 — EDGE-TRIGGER STATE, KEYED BY TENANT.
+   *
+   * Was `new Set<string>()` holding bare recommendation ids, and `produce()`
+   * runs once per tenant under the delivery fan-out. The ids are deterministic
+   * constants, so the FIRST tenant in the fan-out claimed each one permanently
+   * and every other tenant's identical critical alert was dropped — forever, with
+   * no TTL and nothing to clear it.
+   *
+   * No content crossed. What crossed was the decision NOT to deliver, which is
+   * quieter than a disclosure and, for a critical alert, not obviously less
+   * serious: one customer stops receiving warnings because another received the
+   * same category first, and nothing looks wrong.
+   *
+   * `claim()` is one call rather than has-then-add, because has-then-add is
+   * where the bug lived in twelve places and a thirteenth would write it too.
+   */
+  const deliveredWatch = new TenantDedupe('strategy-watch');
   const watchSource: IntelligenceSource = {
     key: 'strategy-watch',
     label: 'Strategy Watch',
@@ -360,8 +408,7 @@ export function initStrategyPlatform(deps: StrategyPlatformDeps): StrategyPlatfo
       const items: IntelligenceItem[] = [];
       for (const r of b.dashboard.recommendations) {
         if (r.priority !== 'critical' && r.priority !== 'high') continue;
-        if (deliveredWatch.has(r.id)) continue;
-        deliveredWatch.add(r.id);
+        if (!deliveredWatch.claim(deps.scope(), r.id)) continue;
         items.push({
           id: `estrat:${r.id}`,
           title: r.title,
@@ -385,6 +432,23 @@ export function initStrategyPlatform(deps: StrategyPlatformDeps): StrategyPlatfo
   deps.registerSource(watchSource);
 
   /* ── the six read-only IPC channels (D-9; strategy:read, fail-closed) ────── */
+  /**
+   * P13C Round 2 — H7. DROP THE TENANT-DERIVED SNAPSHOT ON A TENANT SWITCH.
+   *
+   * This cache holds a fully composed, tenant-derived read model behind a short
+   * TTL, and it was cleared only in `dispose()`. Switching organization changes
+   * none of the backing stores this subsystem watches, so the memo survived the
+   * switch — and the renderer's reload after a switch lands INSIDE the TTL.
+   * Opening a dashboard right after switching is the single most common
+   * multi-tenant action there is, so the window was not theoretical.
+   *
+   * Registered on the same residue seam every other subsystem uses, rather than
+   * a second invalidation mechanism.
+   */
+  onWorkspaceSwitch(() => {
+    projectionCache.invalidate();
+  });
+
   const handlers: SecureHandlerDef[] = [
     {
       channel: IpcChannel.EstratObjectives,
@@ -444,7 +508,7 @@ export function initStrategyPlatform(deps: StrategyPlatformDeps): StrategyPlatfo
     boardReport: () => build().board,
     answerQuestion,
     dispose: () => {
-      cache = null;
+      projectionCache.invalidate();
     },
   };
 }

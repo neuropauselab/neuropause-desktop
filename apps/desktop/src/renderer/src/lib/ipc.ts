@@ -17,6 +17,8 @@ import {
   // A7 — the push half. See `packages/shared/src/ipc/broadcasts.ts`.
   type IpcBroadcastChannelName,
   type IpcBroadcastOf,
+  // Mobile M1-03 — Companion gateway status/device change signal.
+  type CompanionGatewayEvent,
   type InfraChangedEvent,
   type IpcStoreChangedEvent,
   type ThemeChangedEvent,
@@ -47,6 +49,30 @@ import {
   type UnifiedCounts,
   type SearchQuery,
   type GraphCounts,
+  // ── Private-First AI experience ──
+  type AiMode,
+  type TenantAiMode,
+  type WorkspaceType,
+  type UnderstandingAttribute,
+  type DocumentLineInput,
+  type DecisionRecord,
+  type DecisionRecordDetail,
+  type HoldCenterView,
+  type HoldOutcome,
+  type Opportunity,
+  type OpportunityCenterView,
+  type OpportunityExecuteResult,
+  type OpportunityStatus,
+  type Outcome,
+  type RelatedRecordsView,
+  type HoldRecord,
+  // ── Medical Device Manufacturing Pack ──
+  type LotCenterView,
+  type LotStatus,
+  type MedicalDeviceLotConsumeRequest,
+  type MedicalDeviceLotCreateRequest,
+  type MedicalDeviceLotShipRequest,
+  type TraceNodeType,
   type GraphNodesQuery,
   type GraphNeighborsQuery,
   type GraphSubgraphQuery,
@@ -94,6 +120,7 @@ import {
   type CloudOrgRole,
 } from '@neuropause/shared';
 import type {
+  HelpDocId,
   OrgUnitKind,
   OrgUserStatus,
   EnterprisePermission,
@@ -251,8 +278,21 @@ function subscribe<C extends IpcBroadcastChannelName>(
   return rawSubscribe(channel, listener as (payload: unknown) => void);
 }
 
+/** Exactly the scope the list view was showing, carried to the exporter. */
+export interface ExportScopeArg {
+  recordIds?: string[];
+  filters?: { field: string; value: string }[];
+  search?: string;
+}
+
 export const ipc = {
   auth: {
+    /**
+     * P13C F-8 — the OAuth providers the server has configured. Callable before
+     * sign-in. Returns `[]` when the backend is unreachable, so the screen
+     * offers email only rather than four buttons nobody can stand behind.
+     */
+    providers: () => invoke(IpcChannel.AuthProviders),
     getStatus: () => invoke(IpcChannel.AuthGetStatus),
     loginOAuth: (provider: OAuthProviderId) => invoke(IpcChannel.AuthLoginOAuth, { provider }),
     loginEmail: (email: string, password: string) =>
@@ -528,8 +568,13 @@ export const ipc = {
     // P6.1 — automation actions + global search.
     actions: (platformId?: string) =>
       invoke(IpcChannel.InfraActions, platformId ? { platformId } : {}),
-    action: (req: { platformId: string; accountId?: string; actionId: string; params?: Record<string, unknown>; confirmed?: boolean }) =>
-      invoke(IpcChannel.InfraAction, req),
+    action: (req: {
+      platformId: string;
+      accountId?: string;
+      actionId: string;
+      params?: Record<string, unknown>;
+      confirmed?: boolean;
+    }) => invoke(IpcChannel.InfraAction, req),
     search: (query: string, opts?: { platformId?: string; domain?: string; limit?: number }) =>
       invoke(IpcChannel.InfraSearch, { query, ...opts }),
     onEvent: (cb: (e: InfraChangedEvent) => void) => subscribe(IpcChannel.InfraEventBroadcast, cb),
@@ -560,8 +605,12 @@ export const ipc = {
   /** Phase 6 Stage 7 — the Enterprise Knowledge Platform (read-only; every
    *  channel RBAC-gated `knowledge:read` and cached ~3 s server-side). */
   kb: {
-    inventory: (req?: { classId?: string; authority?: string; lifecycle?: string; text?: string }) =>
-      invoke(IpcChannel.KbInventory, req ?? {}),
+    inventory: (req?: {
+      classId?: string;
+      authority?: string;
+      lifecycle?: string;
+      text?: string;
+    }) => invoke(IpcChannel.KbInventory, req ?? {}),
     matrix: () => invoke(IpcChannel.KbMatrix, {}),
     impact: (assetId: string) => invoke(IpcChannel.KbImpact, { assetId }),
     lineage: (decisionId?: string) =>
@@ -648,6 +697,8 @@ export const ipc = {
     topics: () => invoke(IpcChannel.KnowledgeTopics),
     related: (memoryId: string, limit?: number) =>
       invoke(IpcChannel.KnowledgeRelated, { memoryId, limit }),
+    /** Registered in main since P6-Stage7 but previously missing from this facade. */
+    health: () => invoke(IpcChannel.KnowledgeHealth),
   },
 
   /** Phase 6 Stage 1 — local workspace contexts (multi-workspace foundation). */
@@ -740,8 +791,15 @@ export const ipc = {
   },
 
   system: {
-    /** NeuroCore composed system-health snapshot (V5.0). */
+    /** NeuroCore composed system-health snapshot (V5.0). Authenticated. */
     health: () => invoke(IpcChannel.SystemHealthSnapshot),
+    /**
+     * P13C F-7 — backend reachability, callable BEFORE sign-in. Three fields,
+     * no topology; see `BackendReachability`. `refresh` re-probes for the login
+     * screen's Retry button instead of returning the throttled cache.
+     */
+    backendReachability: (refresh = false) =>
+      invoke(IpcChannel.BackendReachability, { refresh }),
   },
 
   supervisor: {
@@ -790,8 +848,13 @@ export const ipc = {
       invoke(IpcChannel.AssistantConversationDelete, { conversationId }),
     branch: (conversationId: string, messageId: string, now?: string) =>
       invoke(IpcChannel.AssistantConversationBranch, { conversationId, messageId, now }),
-    decideStep: (req: { conversationId: string; messageId: string; stepId: string; decision: 'approve' | 'reject'; note?: string | null }) =>
-      invoke(IpcChannel.AssistantPlanDecide, req),
+    decideStep: (req: {
+      conversationId: string;
+      messageId: string;
+      stepId: string;
+      decision: 'approve' | 'reject';
+      note?: string | null;
+    }) => invoke(IpcChannel.AssistantPlanDecide, req),
     cancel: (conversationId: string) => invoke(IpcChannel.AssistantCancel, { conversationId }),
     onEvent: (cb: (event: AssistantEvent) => void) =>
       subscribe(IpcChannel.AssistantEventBroadcast, cb),
@@ -808,6 +871,17 @@ export const ipc = {
       invoke(IpcChannel.NotificationsPrefsSet, patch),
     onEvent: (cb: (event: NotificationInboxEvent) => void) =>
       subscribe(IpcChannel.NotificationsEventBroadcast, cb),
+  },
+
+  /** Mobile M1-03 — the desktop Companion Gateway management surface (Settings → Companion). */
+  companion: {
+    status: () => invoke(IpcChannel.CompanionStatus),
+    devices: () => invoke(IpcChannel.CompanionDevices),
+    enable: (enabled: boolean) => invoke(IpcChannel.CompanionEnable, { enabled }),
+    revoke: (deviceId: string) => invoke(IpcChannel.CompanionRevoke, { deviceId }),
+    pairingQr: () => invoke(IpcChannel.CompanionPairingQr),
+    onEvent: (cb: (event: CompanionGatewayEvent) => void) =>
+      subscribe(IpcChannel.CompanionEventBroadcast, cb),
   },
 
   engineering: {
@@ -939,6 +1013,13 @@ export const ipc = {
       invoke(IpcChannel.EnterpriseWorkspaceCreate, { name, organizationId }),
     switchWorkspace: (id: string) => invoke(IpcChannel.EnterpriseWorkspaceSwitch, { id }),
 
+    // P13C Part 3 — multi-organization. Both lists are scoped SERVER-side to
+    // the signed-in member; the renderer receives only what it may see.
+    organizations: () => invoke(IpcChannel.EnterpriseOrganizationList),
+    createOrganization: (input: { name: string; description?: string; workspaceName?: string }) =>
+      invoke(IpcChannel.EnterpriseOrganizationCreate, input),
+    switchOrganization: (id: string) => invoke(IpcChannel.EnterpriseOrganizationSwitch, { id }),
+
     graph: () => invoke(IpcChannel.EnterpriseGraph),
     graphNeighbors: (id: string) => invoke(IpcChannel.EnterpriseGraphNeighbors, { id }),
 
@@ -982,15 +1063,26 @@ export const ipc = {
     /** Personalization — per-user Favorites / Recently-Opened / Saved Views (actor resolved server-side). */
     personalization: {
       get: () => invoke(IpcChannel.EnterprisePersonalizationGet),
-      favorite: (input: { id: string; kind?: string; label?: string; tab: string; query?: string }) =>
-        invoke(IpcChannel.EnterprisePersonalizationFavorite, input),
+      favorite: (input: {
+        id: string;
+        kind?: string;
+        label?: string;
+        tab: string;
+        query?: string;
+      }) => invoke(IpcChannel.EnterprisePersonalizationFavorite, input),
       recent: (input: { id: string; kind?: string; label?: string; tab: string; query?: string }) =>
         invoke(IpcChannel.EnterprisePersonalizationRecent, input),
       clearRecents: () => invoke(IpcChannel.EnterprisePersonalizationClearRecents),
-      saveView: (input: { id?: string; label: string; tab: string; query?: string; filters?: string }) =>
-        invoke(IpcChannel.EnterprisePersonalizationSaveView, input),
+      saveView: (input: {
+        id?: string;
+        label: string;
+        tab: string;
+        query?: string;
+        filters?: string;
+      }) => invoke(IpcChannel.EnterprisePersonalizationSaveView, input),
       deleteView: (id: string) => invoke(IpcChannel.EnterprisePersonalizationDeleteView, { id }),
-      renameView: (id: string, label: string) => invoke(IpcChannel.EnterprisePersonalizationRenameView, { id, label }),
+      renameView: (id: string, label: string) =>
+        invoke(IpcChannel.EnterprisePersonalizationRenameView, { id, label }),
     },
 
     onEvent: (cb: (e: IpcStoreChangedEvent) => void) =>
@@ -998,6 +1090,12 @@ export const ipc = {
   },
 
   /** Enterprise Module Framework — generic CRUD over any registered ERP module. */
+  // Phase 8 (8.14): bundled in-app documentation.
+  help: {
+    list: () => invoke(IpcChannel.HelpListDocs),
+    open: (doc: HelpDocId) => invoke(IpcChannel.HelpOpenDoc, { doc }),
+  },
+
   enterpriseModules: {
     list: () => invoke(IpcChannel.EnterpriseModulesList),
     records: (
@@ -1024,15 +1122,40 @@ export const ipc = {
         id,
         status,
       }),
-    remove: (moduleId: string, id: string) =>
+    remove: (moduleId: string, id: string, force?: boolean) =>
       invoke(IpcChannel.EnterpriseModuleDelete, {
         moduleId,
         id,
+        ...(force === undefined ? {} : { force }),
       }),
     summarize: (moduleId: string, id: string) =>
       invoke(IpcChannel.EnterpriseModuleSummarize, {
         moduleId,
         id,
+      }),
+    /** Line items + derived totals for a document. */
+    lines: (moduleId: string, id: string) =>
+      invoke(IpcChannel.EnterpriseModuleLines, { moduleId, id }),
+    /** Replace a document's lines. Totals are re-derived, never sent. */
+    setLines: (moduleId: string, id: string, lines: DocumentLineInput[]) =>
+      invoke(IpcChannel.EnterpriseModuleSetLines, { moduleId, id, lines }),
+    /** Approval state: required steps, what is satisfied, who may act next. */
+    approval: (moduleId: string, id: string) =>
+      invoke(IpcChannel.EnterpriseModuleApproval, { moduleId, id }),
+    /** Record an approval decision. Role eligibility and SoD are enforced. */
+    approve: (
+      moduleId: string,
+      id: string,
+      stepId: string,
+      decision: 'approved' | 'rejected',
+      note?: string,
+    ) =>
+      invoke(IpcChannel.EnterpriseModuleApprove, {
+        moduleId,
+        id,
+        stepId,
+        decision,
+        ...(note ? { note } : {}),
       }),
     action: (moduleId: string, id: string, action: string) =>
       invoke(IpcChannel.EnterpriseModuleAction, {
@@ -1182,6 +1305,8 @@ export const ipc = {
     compliance: () => invoke(IpcChannel.IndustryCompliance),
     collections: () => invoke(IpcChannel.IndustryCollections),
     readiness: () => invoke(IpcChannel.IndustryReadiness),
+    // IP-03b — the canonical Wave 9 catalog (@neuropause/industry) bridged to the desktop.
+    snapshot: () => invoke(IpcChannel.IndustrySnapshot),
     // Reuses the ecosystem subsystem's existing `ecosystem:event` broadcast for liveness.
     onEvent: (cb: () => void) => subscribe(IpcChannel.EcosystemEventBroadcast, () => cb()),
   },
@@ -1337,8 +1462,12 @@ export const ipc = {
   /* ── Enterprise Webhooks (P3.0, Increment 4) ── */
   webhooks: {
     list: () => invoke(IpcChannel.WebhookList),
-    create: (input: { label: string; url: string; categories?: PlatformEventCategory[]; types?: string[] }) =>
-      invoke(IpcChannel.WebhookCreate, input),
+    create: (input: {
+      label: string;
+      url: string;
+      categories?: PlatformEventCategory[];
+      types?: string[];
+    }) => invoke(IpcChannel.WebhookCreate, input),
     setEnabled: (id: string, enabled: boolean) =>
       invoke(IpcChannel.WebhookSetEnabled, { id, enabled }),
     remove: (id: string) => invoke(IpcChannel.WebhookDelete, { id }),
@@ -1443,7 +1572,7 @@ export const ipc = {
     invitations: () => invoke(IpcChannel.FedInvitations),
     trust: () => invoke(IpcChannel.FedTrust),
     shared: () => invoke(IpcChannel.FedShared),
-    inviteOrg: (input: { name: string; trustLevel: TrustLevel; message?: string }) =>
+    inviteOrg: (input: { toOrg: string; trustLevel: TrustLevel; message?: string }) =>
       invoke(IpcChannel.FedInviteOrg, input),
     respondInvite: (id: string, accept: boolean) =>
       invoke(IpcChannel.FedRespondInvite, { id, accept }),
@@ -1646,6 +1775,91 @@ export const ipc = {
     migrationStatus: () => invoke(IpcChannel.AiConfigMigrationStatus),
     migrate: () => invoke(IpcChannel.AiConfigMigrate),
     resetToEnv: () => invoke(IpcChannel.AiConfigResetToEnv),
+    /** Private First: the AI routing mode and external-processing consent. */
+    setMode: (mode: AiMode) => invoke(IpcChannel.AiConfigSetMode, { mode }),
+    setExternalConsent: (consent: boolean) =>
+      invoke(IpcChannel.AiConfigSetExternalConsent, { consent }),
+    /**
+     * P13C ROUND 17 · D-5 — the ORGANISATION's preference, not the install's.
+     *
+     * `setMode`/`setExternalConsent` above are `cloud:operate` and stay that
+     * way. These two are tenant RBAC (`org:read`/`org:manage`), which is why
+     * first-run can call them and could not call those.
+     *
+     * Both return the composed view — tenant, platform, effective — so a caller
+     * cannot render the preference as though it were in force.
+     */
+    preference: () => invoke(IpcChannel.AiPreferenceGet),
+    setPreference: (mode: TenantAiMode) => invoke(IpcChannel.AiPreferenceSet, { mode }),
+    /** The live routing picture — same assembly + planner a request uses. */
+    routingStatus: () => invoke(IpcChannel.AiRoutingStatus),
+    /** Measured routing usage. Counts, never inventions. */
+    routingUsage: () => invoke(IpcChannel.AiRoutingUsage),
+  },
+
+  /**
+   * First-run experience profile: workspace type + completion state.
+   * (`experience` is taken by the Experience Program's decision surface.)
+   */
+  firstRun: {
+    get: () => invoke(IpcChannel.ExperienceProfileGet),
+    set: (patch: {
+      workspaceType?: WorkspaceType;
+      state?: 'completed' | 'skipped';
+      aiModeChosen?: boolean;
+      attributes?: UnderstandingAttribute[];
+      removeKeys?: string[];
+    }) => invoke(IpcChannel.ExperienceProfileSet, patch),
+    /** Clear the profile and return to first run. */
+    reset: () => invoke(IpcChannel.ExperienceProfileReset),
+  },
+
+  /**
+   * Decision Records + NeuroPause Hold — the reconstruction trail over
+   * consequential actions, and the durable pauses awaiting a person.
+   */
+  decisionRecords: {
+    list: (limit?: number): Promise<DecisionRecord[]> =>
+      invoke(IpcChannel.DecisionRecordList, limit === undefined ? {} : { limit }),
+    get: (id: string): Promise<DecisionRecordDetail | null> =>
+      invoke(IpcChannel.DecisionRecordGet, { id }),
+  },
+
+  holds: {
+    list: (limit?: number): Promise<HoldCenterView> =>
+      invoke(IpcChannel.HoldList, limit === undefined ? {} : { limit }),
+    resolve: (id: string, outcome: HoldOutcome, note?: string): Promise<HoldRecord | null> =>
+      invoke(IpcChannel.HoldResolve, { id, outcome, ...(note ? { note } : {}) }),
+  },
+
+  opportunities: {
+    /** Recomputes on every call — there is no cached finding to go stale. */
+    list: (lookbackDays?: number): Promise<OpportunityCenterView> =>
+      invoke(IpcChannel.OpportunityList, lookbackDays === undefined ? {} : { lookbackDays }),
+    setStatus: (
+      id: string,
+      status: OpportunityStatus,
+      note?: string,
+    ): Promise<Opportunity | null> =>
+      invoke(IpcChannel.OpportunitySetStatus, { id, status, ...(note ? { note } : {}) }),
+    execute: (id: string): Promise<OpportunityExecuteResult> =>
+      invoke(IpcChannel.OpportunityExecute, { id }),
+    /** Derived live on every call — Refresh cannot be a no-op. */
+    outcome: (opportunityId: string): Promise<Outcome | null> =>
+      invoke(IpcChannel.OutcomeGet, { opportunityId }),
+  },
+
+  crossDomain: {
+    /**
+     * Everything connected to one record. Permission-filtered per module on
+     * every hop, so what comes back is what THIS account may see.
+     */
+    related: (recordId: string, moduleId: string, depth?: number): Promise<RelatedRecordsView> =>
+      invoke(IpcChannel.CrossDomainRelated, {
+        recordId,
+        moduleId,
+        ...(depth === undefined ? {} : { depth }),
+      }),
   },
 
   feedback: {
@@ -1696,7 +1910,12 @@ export const ipc = {
     datasets: (workspaceId?: string) => invoke(IpcChannel.SandboxDatasetList, { workspaceId }),
     enqueue: (
       scenarioId: string,
-      opts?: { version?: number; trigger?: ExecutionTrigger; priority?: ExecutionPriority; datasetId?: string },
+      opts?: {
+        version?: number;
+        trigger?: ExecutionTrigger;
+        priority?: ExecutionPriority;
+        datasetId?: string;
+      },
     ) => invoke(IpcChannel.SandboxExecutionEnqueue, { scenarioId, ...(opts ?? {}) }),
     cancel: (id: string) => invoke(IpcChannel.SandboxExecutionCancel, { id }),
     generateReport: (executionId: string) =>
@@ -1709,6 +1928,261 @@ export const ipc = {
     setSchedule: (id: string, enabled: boolean) =>
       invoke(IpcChannel.SandboxValidationScheduleSet, { id, enabled }),
     onEvent: (cb: (e: SandboxEvent) => void) => subscribe(IpcChannel.SandboxEventBroadcast, cb),
+  },
+
+  /**
+   * Phase 6 — Universal Enterprise Data Plane.
+   *
+   * Explicit methods only: the renderer never calls `invoke` with an arbitrary
+   * channel, and never hands the main process a filesystem PATH. The caller
+   * passes the CONTENT it already holds (base64), so an untrusted renderer
+   * cannot direct main to read an arbitrary location on disk.
+   */
+  data: {
+    /** What is this file, and can we read it? Cheap pre-flight; writes nothing. */
+    inspect: (filename: string, contentBase64: string) =>
+      invoke(IpcChannel.DataPlaneInspect, { filename, contentBase64 }),
+    /** Full analysis → a reviewable import plan. Still writes nothing. */
+    analyze: (filename: string, contentBase64: string) =>
+      invoke(IpcChannel.DataPlaneAnalyze, { filename, contentBase64 }),
+    /** Re-read a plan produced earlier in this session. */
+    plan: (planId: string) => invoke(IpcChannel.DataPlanePlan, { planId }),
+    /**
+     * Execute an approved plan. Approvals are explicit and per-table — an
+     * omitted table is NOT approved and will not be written.
+     */
+    import: (
+      planId: string,
+      approvals: {
+        tableName: string;
+        approved: boolean;
+        skipRows?: number[];
+        /**
+         * Per-row decisions taken in the preview. `update` touches an existing
+         * record.
+         *
+         * `expectRecordId` is part of the type on purpose. The contract accepts
+         * it and the importer enforces it, but this facade omitted it — so it
+         * worked only through structural assignability, and dropping it from
+         * the caller would silently disarm the only guard against overwriting a
+         * record the reviewer never approved, with `tsc` none the wiser.
+         */
+        rowActions?: {
+          rowIndex: number;
+          action: 'create' | 'update' | 'skip';
+          expectRecordId?: string;
+        }[];
+      }[],
+      reason?: string,
+    ) => invoke(IpcChannel.DataPlaneImport, { planId, approvals, ...(reason ? { reason } : {}) }),
+    history: (limit?: number) => invoke(IpcChannel.DataPlaneHistory, limit === undefined ? {} : { limit }),
+    run: (planId: string) => invoke(IpcChannel.DataPlaneRun, { planId }),
+    /** Where did this record come from? */
+    provenance: (recordId: string) => invoke(IpcChannel.DataPlaneProvenance, { recordId }),
+    mappings: (signature?: string) =>
+      invoke(IpcChannel.DataPlaneMappings, signature === undefined ? {} : { signature }),
+    saveMapping: (signature: string, entityId: string, columns: { header: string; fieldKey: string }[]) =>
+      invoke(IpcChannel.DataPlaneSaveMapping, { signature, entityId, columns }),
+    /** Correct what a file represents; re-plans the table from the raw source. */
+    reclassify: (
+      planId: string,
+      tableName: string,
+      entityId: string,
+      reason?: string,
+    ) =>
+      invoke(IpcChannel.DataPlaneReclassify, {
+        planId,
+        tableName,
+        entityId,
+        ...(reason ? { reason } : {}),
+      }),
+    /** One bounded, redacted page of prepared rows. */
+    preview: (
+      planId: string,
+      tableName: string,
+      opts: {
+        mode?: 'all' | 'valid' | 'warning' | 'invalid' | 'duplicate' | 'ambiguous';
+        search?: string;
+        offset?: number;
+        limit?: number;
+      } = {},
+    ) => invoke(IpcChannel.DataPlanePreview, { planId, tableName, ...opts }),
+    forgetMapping: (signature: string) => invoke(IpcChannel.DataPlaneForgetMapping, { signature }),
+    /** The canonical entities and the formats we deliberately cannot read. */
+    ontology: () => invoke(IpcChannel.DataPlaneOntology, {}),
+    /** Modules that actually hold records, with live counts. */
+    exportable: () => invoke(IpcChannel.DataPlaneExportable, {}),
+    /**
+     * Write a module's records to a file. The main process shows the save
+     * dialog, so the renderer never touches a path; a cancelled dialog comes
+     * back as `cancelled: true`, which is a normal outcome, not an error.
+     */
+    /**
+     * What an export WOULD cover — record count, field list, what is withheld
+     * and why. Computed by the same functions that perform the export, so the
+     * number on the button is the number in the file.
+     */
+    exportPlan: (
+      moduleId: string,
+      opts: {
+        scope?: ExportScopeArg;
+        fields?: string[];
+        includeRestricted?: boolean;
+      } = {},
+    ) => invoke(IpcChannel.DataPlaneExportPlan, { moduleId, ...opts }),
+    export: (
+      moduleId: string,
+      format: 'csv' | 'xlsx' | 'json',
+      opts: {
+        includeProvenance?: boolean;
+        scope?: ExportScopeArg;
+        fields?: string[];
+        /** Refused unless the actor may edit the module. Audited when granted. */
+        includeRestricted?: boolean;
+        /** Write a zip carrying the data plus `manifest.json`. */
+        withManifest?: boolean;
+      } = {},
+    ) => invoke(IpcChannel.DataPlaneExport, { moduleId, format, ...opts }),
+    /**
+     * Documents — FILES, kept as evidence.
+     *
+     * Distinct from `enterprise:module.*` on the `documents-registry` module
+     * (a record pointing at someone else's path) and from the ERP document
+     * layer (invoice/PO line items). Neither is replaced.
+     */
+    documents: {
+      capabilities: () => invoke(IpcChannel.DocumentCapabilities, {}),
+      list: (opts: { search?: string; kind?: string; status?: string; limit?: number } = {}) =>
+        invoke(IpcChannel.DocumentList, opts),
+      detail: (documentId: string) => invoke(IpcChannel.DocumentDetail, { documentId }),
+      /** Bytes cross as base64; the renderer never supplies a filesystem path. */
+      upload: (filename: string, contentBase64: string, mimeType?: string) =>
+        invoke(IpcChannel.DocumentUpload, {
+          filename,
+          contentBase64,
+          ...(mimeType ? { mimeType } : {}),
+        }),
+      /** Correct what a document IS. Re-extracts from the stored bytes. */
+      reclassify: (documentId: string, kind: string, reason?: string) =>
+        invoke(IpcChannel.DocumentReclassify, { documentId, kind, ...(reason ? { reason } : {}) }),
+      /** Override an extracted value. The original is kept, never overwritten. */
+      correct: (documentId: string, fieldKey: string, value: string | number | null, reason: string) =>
+        invoke(IpcChannel.DocumentCorrect, { documentId, fieldKey, value, reason }),
+      /** Confirm a link. Needs write access to the record being linked to. */
+      link: (
+        documentId: string,
+        moduleId: string,
+        recordId: string,
+        relationship: string,
+        basis: string,
+      ) => invoke(IpcChannel.DocumentLink, { documentId, moduleId, recordId, relationship, basis }),
+      remove: (documentId: string) => invoke(IpcChannel.DocumentDelete, { documentId }),
+    },
+    /**
+     * Identity — who a provider's object actually is, and who a background job
+     * is. The queue exists because the sync used to detect an ambiguous row,
+     * count it, and drop it: nobody was asked and the data never arrived.
+     */
+    identity: {
+      /** Questions waiting for a person. */
+      queue: (limit?: number) => invoke(IpcChannel.IdentityQueue, limit === undefined ? {} : { limit }),
+      /** Established links, optionally narrowed to one record's identities. */
+      list: (opts: { limit?: number; subjectId?: string } = {}) => invoke(IpcChannel.IdentityList, opts),
+      /**
+       * Answer one question. `subjectId` is required for `confirm` and is
+       * checked in the main process against the candidates that were OFFERED,
+       * so this cannot be used to link to an arbitrary record.
+       */
+      confirm: (matchId: string, decision: 'confirm' | 'create_new' | 'reject', subjectId?: string) =>
+        invoke(IpcChannel.IdentityConfirm, {
+          matchId,
+          decision,
+          ...(subjectId ? { subjectId } : {}),
+        }),
+      /** Break a link. Keeps both sides — the record's provenance still reads. */
+      unlink: (identityId: string, reason?: string) =>
+        invoke(IpcChannel.IdentityUnlink, { identityId, ...(reason ? { reason } : {}) }),
+      services: () => invoke(IpcChannel.IdentityServices, {}),
+      setServiceStatus: (serviceId: string, status: 'active' | 'disabled') =>
+        invoke(IpcChannel.IdentityServiceStatus, { serviceId, status }),
+    },
+    /**
+     * Cross-domain relationships: what the engine can link, what it has linked,
+     * and what still needs a person.
+     */
+    relationships: {
+      overview: () => invoke(IpcChannel.DataPlaneRelationshipOverview, {}),
+      queue: (limit?: number) =>
+        invoke(IpcChannel.DataPlaneRelationshipQueue, limit === undefined ? {} : { limit }),
+      /** Apply a reviewer's choice. Writes a business fact, so it is audited. */
+      decide: (pendingId: string, targetRecordId: string) =>
+        invoke(IpcChannel.DataPlaneRelationshipDecide, { pendingId, targetRecordId }),
+      skip: (pendingId: string) => invoke(IpcChannel.DataPlaneRelationshipSkip, { pendingId }),
+      /** Re-check parked references against the records that exist now. */
+      retry: () => invoke(IpcChannel.DataPlaneRelationshipRetry, {}),
+      graph: (recordId: string) => invoke(IpcChannel.DataPlaneRelationshipGraph, { recordId }),
+    },
+  },
+
+  /**
+   * Medical Device Manufacturing Pack.
+   *
+   * Product CREATE / UPDATE / DELETE are absent here on purpose — products are
+   * an Enterprise Module, so those go through `ipc.enterprise.module.*` like
+   * every other module's records. What lives here is what the generic surface
+   * cannot express: field-scoped product search, and every lot operation.
+   */
+  medicalDevice: {
+    /** The pack, its taxonomies resolved for this workspace, and live counts. */
+    pack: () => invoke(IpcChannel.MedicalDevicePack, {}),
+    products: {
+      search: (filters: {
+        query?: string;
+        family?: string;
+        category?: string;
+        material?: string;
+        status?: 'active' | 'inactive' | 'discontinued';
+        limit?: number;
+      } = {}) => invoke(IpcChannel.MedicalDeviceProductSearch, filters),
+      get: (productId: string) => invoke(IpcChannel.MedicalDeviceProductGet, { productId }),
+    },
+    lots: {
+      list: (query: { view?: LotCenterView; search?: string; productId?: string; limit?: number } = {}) =>
+        invoke(IpcChannel.MedicalDeviceLotList, query),
+      get: (lotId: string) => invoke(IpcChannel.MedicalDeviceLotGet, { lotId }),
+      create: (input: MedicalDeviceLotCreateRequest) => invoke(IpcChannel.MedicalDeviceLotCreate, input),
+      transition: (lotId: string, status: LotStatus, reason?: string) =>
+        invoke(IpcChannel.MedicalDeviceLotTransition, {
+          lotId,
+          status,
+          ...(reason ? { reason } : {}),
+        }),
+      split: (lotId: string, parts: { lotNumber: string; quantity: number }[]) =>
+        invoke(IpcChannel.MedicalDeviceLotSplit, { lotId, parts }),
+      /** Always refuses. Called so the reason is shown rather than inferred. */
+      merge: (lotIds: string[]) => invoke(IpcChannel.MedicalDeviceLotMerge, { lotIds }),
+      consume: (input: MedicalDeviceLotConsumeRequest) =>
+        invoke(IpcChannel.MedicalDeviceLotConsume, input),
+      move: (lotId: string, warehouseId: string) =>
+        invoke(IpcChannel.MedicalDeviceLotMove, { lotId, warehouseId }),
+      ship: (input: MedicalDeviceLotShipRequest) => invoke(IpcChannel.MedicalDeviceLotShip, input),
+    },
+    trace: {
+      /** Where did this go? */
+      forward: (nodeType: TraceNodeType, nodeId: string, maxDepth?: number) =>
+        invoke(IpcChannel.MedicalDeviceTraceForward, {
+          nodeType,
+          nodeId,
+          ...(maxDepth === undefined ? {} : { maxDepth }),
+        }),
+      /** What went into this? */
+      backward: (nodeType: TraceNodeType, nodeId: string, maxDepth?: number) =>
+        invoke(IpcChannel.MedicalDeviceTraceBackward, {
+          nodeType,
+          nodeId,
+          ...(maxDepth === undefined ? {} : { maxDepth }),
+        }),
+    },
   },
 };
 

@@ -44,6 +44,7 @@ import { snowflakeActions } from '../../infrastructure/snowflake/snowflakeAction
 import { databricksActions } from '../../infrastructure/databricks/databricksActions';
 import { iacActions } from '../../infrastructure/iac/iacActions';
 import { ALL_M365_ACTIONS } from '../../connectors/m365';
+import { TEST_TENANT_SCOPE } from '../../tenancy/testScope';
 
 const NOW = '2026-07-15T00:00:00.000Z';
 const NEW_ROLES = new Set(['executive', 'infrastructure', 'hr', 'procurement']);
@@ -198,7 +199,7 @@ describe('P8.4 execution bindings resolve to existing executor actions', () => {
 
 describe('P8.4 executable proposals are always approval-gated', () => {
   it('every execution proposal is governed to require_approval (never allow)', async () => {
-    const audit = new AuditLog(tempPath());
+    const audit = new AuditLog(tempPath()).bindScope(() => TEST_TENANT_SCOPE);
     await audit.load();
     stores.push(audit);
     const governance = new GovernanceRuntime(audit);
@@ -227,7 +228,7 @@ describe('P8.4 executable proposals are always approval-gated', () => {
   });
 
   it('forces approval for ANY execution-bearing proposal, even one under-declared as low-risk', async () => {
-    const audit = new AuditLog(tempPath());
+    const audit = new AuditLog(tempPath()).bindScope(() => TEST_TENANT_SCOPE);
     await audit.load();
     stores.push(audit);
     const governance = new GovernanceRuntime(audit);
@@ -307,8 +308,8 @@ function completedSession(over: Partial<ExecutionSession> = {}): ExecutionSessio
 describe('P8.4 real archetype executes through the WorkerRuntime', () => {
   it('Cloud Engineer: approve → running → settle succeeded via the infra executor', async () => {
     const registry = new WorkerRegistry(tempPath());
-    const audit = new AuditLog(tempPath());
-    const jobs = new JobStore(tempPath());
+    const audit = new AuditLog(tempPath()).bindScope(() => TEST_TENANT_SCOPE);
+    const jobs = new JobStore(tempPath()).bindScope(() => TEST_TENANT_SCOPE);
     stores.push(registry, audit, jobs);
     await registry.load();
     await audit.load();

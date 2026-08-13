@@ -14,7 +14,7 @@ import type {
   OrgUnit,
   OrgUser,
 } from '@neuropause/shared';
-import { ALL_ENTERPRISE_PERMISSIONS } from '@neuropause/shared';
+import { ALL_ENTERPRISE_PERMISSIONS, isPlatformOnlyPermission } from '@neuropause/shared';
 
 export const ORG_ID = 'org-default';
 export const OWNER_USER_ID = 'user-owner';
@@ -92,6 +92,13 @@ const READ_ONLY: EnterprisePermission[] = [
   'commercial:read',
   'experience:read',
   'intent:read',
+  // Medical Device Pack — reads only. Answering "where did this lot go?" is a
+  // question support, quality and regulatory staff must be able to ask without
+  // holding any right to change a batch, so the read scopes sit in the
+  // read-only role and the write scopes do not.
+  'medicalDevice:product.read',
+  'medicalDevice:lot.read',
+  'medicalDevice:traceability.read',
 ];
 
 const MEMBER: EnterprisePermission[] = [...READ_ONLY, 'workforce:operate'];
@@ -110,6 +117,11 @@ const MANAGER: EnterprisePermission[] = [
   'maintenance:manage',
   'sandbox:manage',
   'connectors:manage',
+  // Medical Device Pack — maintaining the catalogue and moving a batch through
+  // its lifecycle are operational responsibilities, so they land with Manager
+  // rather than Admin.
+  'medicalDevice:product.write',
+  'medicalDevice:lot.write',
 ];
 
 const ADMIN: EnterprisePermission[] = [
@@ -127,6 +139,79 @@ const ADMIN: EnterprisePermission[] = [
 
 const AI_WORKER: EnterprisePermission[] = ['workforce:read', 'intelligence:read'];
 
+/**
+ * The built-in roles, as DEFINITIONS rather than as rows.
+ *
+ * P13C Part 3 — extracted so a SECOND organization gets the same role set the
+ * seeded one has. A new tenant whose roles were invented at its creation site
+ * would drift from these the first time a permission is added here, and the
+ * drift would be silent: the new tenant's Admin would simply be missing a
+ * capability nobody thought to grant it.
+ *
+ * Ids are NOT part of the definition. The seeded organization uses the fixed
+ * `ROLE.*` ids because `reconcileBuiltInRoles` matches on them; a created
+ * organization generates its own, because roles are keyed by id in one map and
+ * two organizations sharing a role id would share a role.
+ */
+export interface BuiltInRoleSpec {
+  key: keyof typeof ROLE;
+  name: string;
+  description: string;
+  permissions: readonly EnterprisePermission[];
+}
+
+export const BUILT_IN_ROLE_SPECS: readonly BuiltInRoleSpec[] = [
+  {
+    key: 'owner',
+    name: 'Owner',
+    description: 'Full control of the organization and every workspace.',
+    /**
+     * P13C ROUND 7 — THE WILDCARD MEANS "EVERYTHING AN ORGANIZATION CAN DO".
+     *
+     * It used to mean everything, full stop, which made this line a silent grant
+     * channel: adding an install-level capability to `ALL_ENTERPRISE_PERMISSIONS`
+     * would have handed it to every organization's Owner on the next reconcile,
+     * and anyone can become an Owner by creating an organization.
+     *
+     * `PLATFORM_ONLY_PERMISSIONS` is filtered out here so that a capability
+     * declared install-level STAYS install-level. Admin (the explicit list below)
+     * never held it either, but only by omission — which is not a decision, it is
+     * an accident waiting for someone to tidy it up.
+     */
+    permissions: ALL_ENTERPRISE_PERMISSIONS.filter((p) => !isPlatformOnlyPermission(p)),
+  },
+  {
+    key: 'admin',
+    name: 'Admin',
+    description: 'Manage structure, people, and governance.',
+    permissions: ADMIN,
+  },
+  {
+    key: 'manager',
+    name: 'Manager',
+    description: 'Operate the workforce, approve actions, manage a team.',
+    permissions: MANAGER,
+  },
+  {
+    key: 'member',
+    name: 'Member',
+    description: 'Read access and the ability to run AI workers.',
+    permissions: MEMBER,
+  },
+  {
+    key: 'viewer',
+    name: 'Viewer',
+    description: 'Read-only visibility across the organization.',
+    permissions: READ_ONLY,
+  },
+  {
+    key: 'aiWorker',
+    name: 'AI Worker',
+    description: 'Constrained role held by governed AI workers.',
+    permissions: AI_WORKER,
+  },
+];
+
 export interface Seed {
   organizations: Organization[];
   units: OrgUnit[];
@@ -141,6 +226,17 @@ export function buildSeed(now = new Date().toISOString()): Seed {
     slug: 'neuropause',
     description:
       'The default workspace organization. Rename it, restructure it, and add your people.',
+    /**
+     * P11 — written EXPLICITLY, not left to the read-time default.
+     *
+     * `organizationStatus()` defaults an absent field to `active` so pre-P11
+     * files keep working, and the seed omitting it made that sentence false: the
+     * only organization every install has was relying on the compatibility
+     * default, so `organizationIsOperable` was hardcoded-true in practice and
+     * suspending a tenant was unrepresentable.
+     */
+    type: 'business',
+    status: 'active',
     createdAt: now,
     updatedAt: now,
     metadata: { seeded: true },
@@ -178,32 +274,16 @@ export function buildSeed(now = new Date().toISOString()): Seed {
     u(UNIT.support, 'department', 'Support', UNIT.operations),
   ];
 
-  const r = (
-    id: string,
-    name: string,
-    description: string,
-    permissions: EnterprisePermission[],
-  ): OrgRole => ({
-    id,
+  const roles: OrgRole[] = BUILT_IN_ROLE_SPECS.map((spec) => ({
+    id: ROLE[spec.key],
     orgId: ORG_ID,
-    name,
-    description,
-    permissions,
+    name: spec.name,
+    description: spec.description,
+    permissions: [...spec.permissions],
     builtIn: true,
     createdAt: now,
     updatedAt: now,
-  });
-
-  const roles: OrgRole[] = [
-    r(ROLE.owner, 'Owner', 'Full control of the organization and every workspace.', [
-      ...ALL_ENTERPRISE_PERMISSIONS,
-    ]),
-    r(ROLE.admin, 'Admin', 'Manage structure, people, and governance.', ADMIN),
-    r(ROLE.manager, 'Manager', 'Operate the workforce, approve actions, manage a team.', MANAGER),
-    r(ROLE.member, 'Member', 'Read access and the ability to run AI workers.', MEMBER),
-    r(ROLE.viewer, 'Viewer', 'Read-only visibility across the organization.', READ_ONLY),
-    r(ROLE.aiWorker, 'AI Worker', 'Constrained role held by governed AI workers.', AI_WORKER),
-  ];
+  }));
 
   const owner: OrgUser = {
     id: OWNER_USER_ID,

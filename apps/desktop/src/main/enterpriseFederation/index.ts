@@ -50,6 +50,8 @@ import { buildSharedKnowledge } from './sharedKnowledge';
 import { buildSharedOperations } from './sharedOperations';
 import { buildSharedStrategy } from './sharedStrategy';
 import { buildTrustReport } from './trustModel';
+import { TenantMemo } from '../tenancy/tenantMemo';
+import type { TenantScope } from '@neuropause/shared';
 
 const log = createLogger('enterprise-federation');
 
@@ -58,6 +60,17 @@ const BUILD_TTL_MS = 3_000;
 /* ── deps (every read injected; all sync — Stage 11 composes, never fetches) ─ */
 
 export interface EnterpriseFederationDeps {
+  /**
+   * P13C ROUND 3 — the tenant boundary for this subsystem's composed cache.
+   *
+   * INJECTED, not imported. `enterprise/index` reaches `app.getPath`, so
+   * importing `activeTenantScope` here would drag Electron into a pure-model
+   * node test — a trap this program has now fallen into three times. The
+   * composition root passes the same resolver every store reads.
+   *
+   * Required, so a root that forgets it fails to compile.
+   */
+  scope: () => TenantScope | null;
   /** P9-S2 federation runtime records. */
   fedHome: () => { id: string; name: string; regionId: string } | null;
   fedPeers: () => {
@@ -173,11 +186,30 @@ function pick(failures: Record<string, string>, systems: readonly string[]): Rec
 
 export function initEnterpriseFederation(deps: EnterpriseFederationDeps): EnterpriseFederationSubsystem {
   const now = deps.now ?? ((): number => Date.now());
-  let cache: BuildArtifacts | null = null;
+  /**
+   * P13C ROUND 3 — found by the sweep, in the ONE subsystem of eight that was
+   * missed.
+   *
+   * This was `let cache: BuildArtifacts | null` behind a 3s TTL, cleared only in
+   * `dispose()`. Seven sibling subsystems with the identical shape all register
+   * an `onWorkspaceSwitch` flush; this one never did, so a composed model of
+   * peers, trusts, shares, exchange artifacts, governance audit, knowledge
+   * assets, connectors, workers and executive KPIs survived an organization
+   * switch — and the renderer's reload after a switch lands inside 3s.
+   *
+   * Keyed rather than given the missing listener, because the listener is what
+   * the other seven have and it does not cover the background fan-out. A key
+   * covers both.
+   */
+  const memo = new TenantMemo<BuildArtifacts>('enterprise-federation-model', {
+    ttlMs: BUILD_TTL_MS,
+    now,
+  }).bindScope(deps.scope);
 
-  const build = (): BuildArtifacts => {
+  const build = (): BuildArtifacts => memo.state(compose);
+
+  const compose = (): BuildArtifacts => {
     const nowMs = now();
-    if (cache && nowMs - cache.at < BUILD_TTL_MS) return cache;
     const nowIso = new Date(nowMs).toISOString();
     const failures: Record<string, string> = {};
 
@@ -290,8 +322,7 @@ export function initEnterpriseFederation(deps: EnterpriseFederationDeps): Enterp
     }
     const board = composeFederationBoardReport(dashInputs);
 
-    cache = { at: nowMs, nowIso, partners, trust, exchange, sharing, dashboard, board };
-    return cache;
+    return { at: nowMs, nowIso, partners, trust, exchange, sharing, dashboard, board };
   };
 
   /* ── the assistant port (ten questions; sync; same composed pass) ────────── */
@@ -312,7 +343,39 @@ export function initEnterpriseFederation(deps: EnterpriseFederationDeps): Enterp
   };
 
   /* ── monitoring: ONE governed watch source (items only, never actions) ──── */
-  const deliveredWatch = new Set<string>();
+  /**
+   * P13C ROUND 5 — F8. DELIVERED-WATCH STATE, PER TENANT AND BOUNDED.
+   *
+   * One global `Set<string>` of recommendation ids, and `produce()` runs once
+   * per tenant under the delivery fan-out. Recommendation ids are
+   * tenant-independent constants (`efedrec:governance:pending-approvals` and
+   * friends), so the FIRST tenant in the fan-out claimed each id and every other
+   * tenant's identical item was suppressed — permanently, since nothing ever
+   * cleared it.
+   *
+   * No content crossed: each body is built from that tenant's own scoped
+   * `build()`. What crossed was the DECISION not to deliver. Cross-tenant
+   * suppression is quieter than cross-tenant disclosure and just as wrong — one
+   * customer stops receiving critical federation alerts because another
+   * customer received the same category first.
+   *
+   * Bounded on two axes, because a fix that leaks memory is not a fix: entries
+   * expire after a day (the source's own cadence, so re-delivery resumes the
+   * next cycle rather than never), and the whole structure is capped so a
+   * pathological tenant count cannot grow it without limit.
+   */
+  const WATCH_TTL_MS = 24 * 60 * 60 * 1000;
+  const WATCH_MAX_ENTRIES = 5_000;
+  const deliveredWatch = new Map<string, number>();
+  const watchKey = (tenantId: string, recId: string): string => JSON.stringify([tenantId, recId]);
+  const watchPrune = (nowMs: number): void => {
+    for (const [k, at] of deliveredWatch) if (nowMs - at >= WATCH_TTL_MS) deliveredWatch.delete(k);
+    while (deliveredWatch.size > WATCH_MAX_ENTRIES) {
+      const oldest = deliveredWatch.keys().next().value;
+      if (oldest === undefined) break;
+      deliveredWatch.delete(oldest);
+    }
+  };
   const watchSource: IntelligenceSource = {
     key: 'federation-watch',
     label: 'Federation Watch',
@@ -320,10 +383,19 @@ export function initEnterpriseFederation(deps: EnterpriseFederationDeps): Enterp
     produce: async (): Promise<IntelligenceItem[]> => {
       const b = build();
       const items: IntelligenceItem[] = [];
+      /**
+       * The tenant this pass is FOR. Under the delivery fan-out this is the
+       * running principal's organization, not whatever the UI has open.
+       */
+      const tenantId = deps.scope()?.tenantId ?? null;
+      if (tenantId === null) return items;
+      const nowMs = now();
+      watchPrune(nowMs);
       for (const r of b.dashboard.recommendations) {
         if (r.priority !== 'critical' && r.priority !== 'high') continue;
-        if (deliveredWatch.has(r.id)) continue;
-        deliveredWatch.add(r.id);
+        const key = watchKey(tenantId, r.id);
+        if (deliveredWatch.has(key)) continue;
+        deliveredWatch.set(key, nowMs);
         items.push({
           id: `efed:${r.id}`,
           title: r.title,
@@ -404,7 +476,7 @@ export function initEnterpriseFederation(deps: EnterpriseFederationDeps): Enterp
     boardReport: () => build().board,
     answerQuestion,
     dispose: () => {
-      cache = null;
+      memo.invalidate();
     },
   };
 }

@@ -29,10 +29,41 @@ export interface LaunchTarget {
   env?: Record<string, string>;
 }
 
+/**
+ * One path segment, with no way out of it.
+ *
+ * `profileKey` comes from the renderer, so `'../../other-tenant'` would otherwise
+ * be a directory traversal straight into another tenant's cookie jar — the
+ * boundary would exist and the caller would step around it.
+ */
+function safeSegment(raw: string): string {
+  const cleaned = raw.replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '_');
+  return cleaned === '' ? '_' : cleaned.slice(0, 120);
+}
+
 export interface SessionManagerDeps {
   driver: DesktopDriver;
   /** Base dir isolated profiles live under (e.g. <userData>/sandbox/profiles). */
   profilesDir: string;
+  /**
+   * The tenant a persistent browser profile belongs to, or null.
+   *
+   * P13C ROUND 7 — A FILESYSTEM PATH WAS THE BOUNDARY, AND IT HAD NONE.
+   *
+   * A persistent profile is a real Chromium user-data directory: cookies,
+   * localStorage, saved sessions, whatever the automation signed into. The path
+   * was `<userData>/sandbox/profiles/persistent/<profileKey ?? 'default'>` — no
+   * tenant segment — so two tenants running any `profile: 'persistent'` scenario
+   * without an explicit key shared ONE directory. That is not data disclosure; it
+   * is one tenant's automation inheriting another tenant's LOGGED-IN SESSIONS.
+   *
+   * The scenario spec above it was tenant-scoped the whole time. Every sweep in
+   * this program looked for stores and IPC handlers; a directory name is neither,
+   * which is exactly why it survived six of them.
+   *
+   * Injected, not imported — the Electron trap, five rounds running.
+   */
+  tenantId: () => string | null;
   launchTarget: LaunchTarget;
   now?: () => number;
 }
@@ -65,9 +96,28 @@ export class SessionManager {
 
   private async resolveProfileDir(opts: DesktopLaunchOptions): Promise<string> {
     if (opts.profile === 'persistent') {
-      const dir = join(this.deps.profilesDir, 'persistent', opts.profileKey ?? 'default');
-      await fs.mkdir(dir, { recursive: true });
-      return dir;
+      /**
+       * THE TENANT IS A PATH SEGMENT, AND AN UNRESOLVED TENANT GETS NO PERSISTENT
+       * PROFILE AT ALL.
+       *
+       * Falling back to a shared `'default'` directory is what the bug WAS. A run
+       * with no owner therefore gets a fresh, disposable profile instead: it
+       * still works, it just does not remember — which is the safe direction,
+       * because the alternative is remembering into a directory somebody else
+       * will open.
+       *
+       * `profileKey` remains caller-supplied and is now scoped BENEATH the
+       * tenant, so two tenants asking for the same key get different
+       * directories. It cannot escape: the segment is sanitized.
+       */
+      const tenantId = this.deps.tenantId();
+      if (tenantId !== null && tenantId !== '') {
+        const key = safeSegment(opts.profileKey ?? 'default');
+        const dir = join(this.deps.profilesDir, 'persistent', safeSegment(tenantId), key);
+        await fs.mkdir(dir, { recursive: true });
+        return dir;
+      }
+      // fall through to a fresh profile
     }
     // fresh / temporary — unique, isolated, removed on close.
     await fs.mkdir(this.deps.profilesDir, { recursive: true });

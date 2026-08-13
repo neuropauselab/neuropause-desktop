@@ -33,7 +33,7 @@ import {
 import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef, SecureHandlerDefFor } from '../ipc/secureBridge';
-import { ORG_ID } from '../enterprise/org/seed';
+import { activeTenantScope } from '../enterprise/index';
 import { marketplaceStore } from '../ecosystem/marketplace/marketplaceInstance';
 import { developerStore } from '../ecosystem/developer/developerInstance';
 import { installsStore } from '../ecosystem/exchange/installsInstance';
@@ -41,6 +41,8 @@ import { verifyManifest } from '../ecosystem/marketplace/pipeline';
 import { orgPolicyStore } from './instance';
 import { publisherTier, publisherTrust, type EntryInput } from './marketplaceModel';
 import { MarketplaceService, type CatalogSource, type ListingMeta } from './marketplaceService';
+import { TenantMemo } from '../tenancy/tenantMemo';
+import type { TenantScope } from '@neuropause/shared';
 
 const log = createLogger('marketplace');
 
@@ -49,6 +51,12 @@ export interface MarketplaceSubsystemDeps {
   appVersion: string;
   /** Route an approved worker install to the EXISTING P8.5 install service. */
   installWorker: (pkg: WorkerPackage) => WorkerInstallResult;
+  /**
+   * The tenant boundary for the marketplace POLICY. P13C Round 8 — Finding 3.
+   * Required and injected: an optional boundary on a governance rule defaults to
+   * a shared record, which is what the finding was.
+   */
+  scope: () => TenantScope | null;
 }
 
 export interface MarketplaceSubsystem {
@@ -70,7 +78,16 @@ function buildSource(): CatalogSource {
     versionsByListing.set(v.listingId, arr);
   }
   const installByListing = new Map<string, EntryInput['installStatus']>();
-  for (const inst of installsStore.forOrg(ORG_ID)) installByListing.set(inst.listingId, inst.status);
+  /**
+   * P13C REMEDIATION — FINDING 5. This was `forOrg(ORG_ID)`, so the marketplace
+   * showed every tenant the SEEDED organization's install status: which apps
+   * that customer had installed, and whether each was disabled. No tenant means
+   * no install badges, not somebody else's.
+   */
+  const orgId = activeTenantScope()?.tenantId ?? null;
+  if (orgId !== null) {
+    for (const inst of installsStore.forOrg(orgId)) installByListing.set(inst.listingId, inst.status);
+  }
 
   const orgKeyId = marketplaceStore.signingKeyId();
   let pubKey: KeyObject | null = null;
@@ -160,9 +177,35 @@ function buildSource(): CatalogSource {
 
 const READ: EnterprisePermission = 'marketplace:read';
 const MANAGE: EnterprisePermission = 'marketplace:manage';
-// Install routes to the worker installer → require the SAME authority as a direct worker
-// install (no privilege escalation via the marketplace).
-const INSTALL: EnterprisePermission = 'workforce:manage';
+/**
+ * P13C ROUND 10, FRESH RED TEAM — HIGH. THE SECOND DOOR.
+ *
+ * This was `workforce:manage`, and the comment above it said "require the SAME
+ * authority as a direct worker install (no privilege escalation via the
+ * marketplace)". That sentence was TRUE WHEN IT WAS WRITTEN and became false in
+ * Round 9, when F2 moved all six `workforce:*` install-lifecycle channels to
+ * `cloud:operate`. The front door moved; this one did not, and the comment kept
+ * asserting a parity that no longer held.
+ *
+ * `marketplace:install` reaches `marketplaceService.install` →
+ * `runtimeCore.installWorker` → `workforce.installWorkerPackage` →
+ * `installService.install(pkg)` — byte for byte the function
+ * `IpcChannel.WorkforceInstall` calls, writing the same install-wide
+ * `workforce-installs.json` and the same process-wide `WorkerRegistry`, both
+ * declared `INSTALL_GLOBAL` + `PLATFORM_OPERATOR`.
+ *
+ * `workforce:manage` is held by Admin and by the Owner wildcard, and anyone may
+ * create an organization and become its Owner — so this was a self-service
+ * grant over install-wide executable code.
+ *
+ * WHY `withWorkforceAuthz` DID NOT CATCH IT: that gate throws at composition for
+ * any unclassified `workforce:*` channel, and this channel is `marketplace:*`,
+ * registered with its own permission constant in its own file. A family gate
+ * cannot see a handler registered outside its family. That is the structural
+ * lesson, and `channelResourceAuthority.test.ts` now asserts the property by
+ * RESOURCE rather than by family.
+ */
+const INSTALL: EnterprisePermission = 'cloud:operate';
 
 /**
  * The seven read routes differ only in channel, schema and body, so they are built by
@@ -183,15 +226,33 @@ function read<C extends IpcChannelName>(
 }
 
 export async function initMarketplace(deps: MarketplaceSubsystemDeps): Promise<MarketplaceSubsystem> {
+  // P13C Round 8 — Finding 3. One policy per organization.
+  orgPolicyStore.bindScope(deps.scope);
   await orgPolicyStore.load();
 
   // Memoize the composed catalog snapshot; rebuild only when a backing store changes, so
   // reads are O(1) cache hits (a 100k-listing catalog composes once per change, not per call).
-  let snapshot: CatalogSource | null = null;
-  const source = (): CatalogSource => {
-    if (!snapshot) snapshot = buildSource();
-    return snapshot;
-  };
+  /**
+   * P13C ROUND 3 — found by the sweep. KEYED BY TENANT, and it had NO TTL.
+   *
+   * `buildSource()` reads `activeTenantScope()` and fills each listing's install
+   * badge from `installsStore.forOrg(orgId)`. The read was scoped — the earlier
+   * remediation is documented directly above — and the MEMO over it was left
+   * keyless with no expiry and invalidation only on a store 'changed' event.
+   *
+   * A tenant switch fires none of those events. So the first organization to
+   * open the marketplace fixed the snapshot for every organization afterwards,
+   * indefinitely: tenant B saw which applications tenant A had installed and
+   * whether each was disabled. Not a three-second race — persistent until a
+   * listing or installation changed.
+   *
+   * The long TTL is deliberate: composition is expensive and the store events
+   * remain the real freshness signal. The KEY is what makes it safe.
+   */
+  const memo = new TenantMemo<CatalogSource>('marketplace-catalog-snapshot', {
+    ttlMs: 5 * 60 * 1000,
+  }).bindScope(activeTenantScope);
+  const source = (): CatalogSource => memo.state(buildSource);
   const service = new MarketplaceService({
     source,
     policy: orgPolicyStore,
@@ -200,7 +261,7 @@ export async function initMarketplace(deps: MarketplaceSubsystemDeps): Promise<M
   });
 
   const onChange = (): void => {
-    snapshot = null; // invalidate → next read recomposes
+    memo.invalidate(); // invalidate → next read recomposes, per tenant
     deps.broadcast(IpcChannel.MarketplaceEventBroadcast, { at: Date.now() });
   };
   marketplaceStore.on('changed', onChange);

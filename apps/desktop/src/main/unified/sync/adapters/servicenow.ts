@@ -138,6 +138,7 @@ function base(ctx: SyncContext, baseUrl: string, table: string, kind: UnifiedEnt
   const updated = snToIso(rv(r, 'sys_updated_on'), created);
   return {
     connectorId: ctx.connectorId,
+    tenantId: ctx.tenantId,
     accountId: ctx.accountId,
     kind,
     sourceId: `${table}-${sysId}`,

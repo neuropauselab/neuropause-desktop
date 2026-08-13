@@ -9,6 +9,14 @@
 import { describe, expect, it } from 'vitest';
 import { initAnalyticsPlatform, type AnalyticsPlatformDeps } from './index';
 
+/**
+ * P13C ROUND 5 — the composed cache is tenant-keyed, so these suites name a
+ * tenant. Every existing TTL and memoization assertion keeps its meaning:
+ * repeated reads under ONE tenant must still be a single composition.
+ */
+const PLATFORM_SCOPE = { tenantId: 'org-test', workspaceId: 'ws-test' };
+const scope = (): typeof PLATFORM_SCOPE => PLATFORM_SCOPE;
+
 const T0 = Date.parse('2026-08-01T09:00:00.000Z');
 
 function mkDeps(): { deps: AnalyticsPlatformDeps; tick: () => void } {
@@ -47,6 +55,7 @@ function mkDeps(): { deps: AnalyticsPlatformDeps; tick: () => void } {
     likelihood: 0.4 + (i % 5) * 0.1,
   }));
   const deps: AnalyticsPlatformDeps = {
+  scope,
     executiveKpis: () => exec,
     processKpis: () => proc,
     p14Kpis: () => exec.slice(0, 6),

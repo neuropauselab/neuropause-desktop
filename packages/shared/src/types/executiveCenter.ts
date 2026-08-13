@@ -202,6 +202,14 @@ export type DecisionPriority = ExecRecoPriority;
  * recommendation vocabulary rather than inventing a parallel model.
  */
 export interface ExecutiveDecision {
+  /**
+   * The organization this belongs to (P13C Round 2).
+   *
+   * OPTIONAL so a file written before this round still parses. Absent means
+   * UNRESOLVED — visible to nobody, never back-filled to the active or first
+   * organization, because that guess is the defect the field exists to remove.
+   */
+  tenantId?: string | null;
   id: string;
   title: string;
   category: DecisionCategory;

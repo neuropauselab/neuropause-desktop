@@ -17,6 +17,7 @@ import type {
 import { FEEDBACK_CATEGORIES } from '@neuropause/shared';
 import { useShell } from '@renderer/state/ShellProvider';
 import { ipc } from '@renderer/lib/ipc';
+import { HELP_DOCS } from '@neuropause/shared';
 import { createLogger } from '@renderer/lib/logger';
 import { Button } from '@renderer/components/ui/Button';
 import { type SectionId } from '@renderer/shell/sections';
@@ -191,7 +192,7 @@ export function WelcomeView() {
           ))}
         </div>
         <textarea
-          className="surface mb-3 h-20 w-full resize-none rounded-xl p-3 text-sm text-ink outline-none"
+          className="surface mb-3 h-20 w-full resize-none rounded-xl p-3 text-sm text-ink outline-none focus-visible:shadow-focus"
           placeholder="What worked, what broke, what's missing…"
           value={fbMessage}
           onChange={(e) => {
@@ -265,6 +266,28 @@ export function WelcomeView() {
           >
             {pilot?.enabled ? 'Leave pilot' : 'Join pilot'}
           </Button>
+        </div>
+      </div>
+
+      {/* Phase 8 (8.14): the bundled documentation, one click from the product. */}
+      <div className="surface mt-4 rounded-2xl p-5">
+        <div className="text-sm font-medium text-ink">Documentation</div>
+        <p className="mt-1 text-xs text-muted">
+          Guides bundled with this build — they open in your default Markdown viewer.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {HELP_DOCS.map((d) => (
+            <Button
+              key={d.id}
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                ipc.help.open(d.id).catch(() => undefined);
+              }}
+            >
+              {d.title}
+            </Button>
+          ))}
         </div>
       </div>
 

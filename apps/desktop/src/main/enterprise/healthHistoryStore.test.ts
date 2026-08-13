@@ -4,6 +4,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { HealthHistoryStore } from './healthHistoryStore';
 
+/**
+ * P13C ROUND 5 — health datapoints are tenant-owned (the `overall` score is a
+ * function of one organization's headcount, licence runway and connector
+ * fleet), so this suite names an organization. Every existing assertion keeps
+ * its meaning as single-tenant behaviour; cross-tenant behaviour is asserted in
+ * `tenancy/e2e/unseamedStoreTenancy.test.ts`.
+ */
+const TEST_ORG = { tenantId: 'org-test', workspaceId: 'ws-test' };
+const asOrg = (): typeof TEST_ORG => TEST_ORG;
+
 const DAY = 86_400_000;
 
 describe('HealthHistoryStore', () => {
@@ -12,7 +22,7 @@ describe('HealthHistoryStore', () => {
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'np-health-'));
-    store = new HealthHistoryStore(join(dir, 'health-history.json'));
+    store = new HealthHistoryStore(join(dir, 'health-history.json')).bindScope(asOrg);
   });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -24,7 +34,7 @@ describe('HealthHistoryStore', () => {
       Array.from({ length: 25 }, (_, i) => store.record(60 + i, 70 + i, base + i * DAY)),
     );
     // A reload must see a valid, fully-written file.
-    const reloaded = new HealthHistoryStore(join(dir, 'health-history.json'));
+    const reloaded = new HealthHistoryStore(join(dir, 'health-history.json')).bindScope(asOrg);
     expect(reloaded.all().length).toBeGreaterThan(0);
   });
 
@@ -66,7 +76,7 @@ describe('HealthHistoryStore', () => {
   it('persists across store instances (same file)', async () => {
     const now = Date.UTC(2026, 0, 10);
     await store.record(65, 70, now);
-    const reopened = new HealthHistoryStore(join(dir, 'health-history.json'));
+    const reopened = new HealthHistoryStore(join(dir, 'health-history.json')).bindScope(asOrg);
     expect(reopened.all()).toHaveLength(1);
     expect(reopened.all()[0].engineering).toBe(70);
   });
