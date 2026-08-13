@@ -183,7 +183,19 @@ export class TimelineService {
   private pending: PlatformEvent[] = [];
   private timer: NodeJS.Timeout | null = null;
   private total = 0;
-  private writing = false;
+  /**
+   * Writes are serialized on a chain rather than guarded by a boolean.
+   *
+   * P13C — the boolean version made `flush()` return early whenever a write was
+   * already in flight, so `await flush()` was not a barrier. `export()` and
+   * `dispose()` both await it and then read the file, which meant a read could
+   * land before the append it was supposed to wait for. Under load that
+   * surfaced as `query()` and `export()` disagreeing — the exact F11 symptom
+   * the per-owner window above was written to remove, reintroduced one layer
+   * down in the persistence path. `dispose()` had the same hole, so the tail of
+   * the log could be dropped at shutdown.
+   */
+  private writeChain: Promise<void> = Promise.resolve();
 
   constructor(opts: TimelineOptions) {
     /**
@@ -278,20 +290,37 @@ export class TimelineService {
     return mine;
   }
 
-  /** Persist any pending events. Safe to call concurrently. */
+  /**
+   * Persist any pending events AND wait for any write already in flight.
+   *
+   * This is a barrier: when it resolves, every event appended before the call
+   * is on disk, or has been requeued because the disk refused it. Callers that
+   * read the file afterwards — `export()`, `dispose()` — depend on that.
+   */
   async flush(): Promise<void> {
-    if (this.writing || this.pending.length === 0) return;
-    this.writing = true;
-    const batch = this.pending;
-    this.pending = [];
-    try {
-      const payload = batch.map((e) => JSON.stringify(e)).join('\n') + '\n';
-      await fs.appendFile(this.path(), payload, 'utf8');
-    } catch {
-      // On failure, requeue so nothing is silently lost.
-      this.pending = batch.concat(this.pending);
-    } finally {
-      this.writing = false;
+    const run = this.writeChain.then(() => this.drain());
+    this.writeChain = run.catch(() => undefined);
+    await run;
+  }
+
+  /**
+   * Drain the pending queue, including events appended while an earlier batch
+   * was being written. On a write failure the batch is requeued and the drain
+   * stops rather than spinning: the interval timer retries, and a failing disk
+   * must not turn into a hot loop.
+   */
+  private async drain(): Promise<void> {
+    while (this.pending.length > 0) {
+      const batch = this.pending;
+      this.pending = [];
+      try {
+        const payload = batch.map((e) => JSON.stringify(e)).join('\n') + '\n';
+        await fs.appendFile(this.path(), payload, 'utf8');
+      } catch {
+        // On failure, requeue so nothing is silently lost.
+        this.pending = batch.concat(this.pending);
+        return;
+      }
     }
   }
 

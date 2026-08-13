@@ -34,3 +34,4 @@ G16   Both       Cross-platform: real binaries on both platforms
 G17   You        Production smoke: live end-to-end through the real API
 G18   You        Release provenance: installer hash referenced by the certification artifact
 G19   All        No critical defect: open-defect report empty
+G0f   You        Suite deterministic: full run green parallel AND --no-file-parallelism at the frozen commit
