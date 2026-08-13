@@ -104,3 +104,10 @@ against a branch the default branch does not contain is not provenance.
 
 DECISION OWNER: Saurabh. Merge forward and make main the truth, or retire main
 and name a release branch. Either is defensible. The present state is not.
+
+### O-6 · RESOLVED 2026-08-13
+feat/understanding-holds-motion-system merged into main (main now at d3e0ad9,
+pushed). The default branch carries the certified tree. Verified by
+`git diff 093f391 origin/main` — the merge preserved the branch content exactly.
+The gate consequence stands until the next freeze: G1 and G18 remain NOT RUN
+until a baseline is frozen ON main.
