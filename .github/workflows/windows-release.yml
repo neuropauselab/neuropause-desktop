@@ -72,15 +72,27 @@ jobs:
       - name: Package Windows
         env:
           NEUROPAUSE_BACKEND_URL: ${{ vars.NEUROPAUSE_BACKEND_URL || 'https://api.neuropause033.com' }}
+          SIGNING_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          SIGNING_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         working-directory: apps/desktop
-        # Signing is opt-in. We export the certificate vars ONLY when the secret is
-        # non-empty, so an unset/blank secret yields a clean unsigned build instead
-        # of electron-builder failing on a non-resolvable cert path. When a real
-        # cert secret is added, signing turns on automatically with no further edit.
+        # Signing is opt-in. The certificate vars are exported ONLY when the
+        # secret is non-empty, so an unset/blank secret yields a clean unsigned
+        # build instead of electron-builder failing on a non-resolvable cert
+        # path. Adding a real cert secret turns signing on with no further edit.
         run: |
-          if [ -n "${{ secrets.WIN_CSC_LINK }}" ]; then
-            export WIN_CSC_LINK="${{ secrets.WIN_CSC_LINK }}"
-            export WIN_CSC_KEY_PASSWORD="${{ secrets.WIN_CSC_KEY_PASSWORD }}"
+          # P13C ROUND 23 — SECRETS ARE NOT INTERPOLATED INTO SHELL SOURCE.
+          #
+          # An expression substituted inside a `run:` block becomes part of the
+          # script BEFORE bash sees it. GitHub masks the value in the log, but it
+          # is still shell SOURCE: a certificate blob containing a quote, a
+          # backtick or a command substitution changes what runs, and any shell
+          # trace added later prints the reconstructed line. Passing secrets
+          # through `env:` keeps them as variables the shell reads, never as code
+          # it parses. (This comment deliberately avoids the expression syntax
+          # itself — a comment in a run block is still interpolated.)
+          if [ -n "$SIGNING_CSC_LINK" ]; then
+            export WIN_CSC_LINK="$SIGNING_CSC_LINK"
+            export WIN_CSC_KEY_PASSWORD="$SIGNING_CSC_KEY_PASSWORD"
             echo "Signing enabled (WIN_CSC_LINK present)."
           else
             echo "No signing certificate secret; producing an unsigned build."
@@ -139,7 +151,13 @@ jobs:
       - name: Publish installer to neuropause033.com
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-        if: ${{ vars.PUBLISH_TO_SITE == 'true' && env.DEPLOY_SSH_KEY != '' }}
+        # P13C ROUND 23 — this condition read `env.DEPLOY_SSH_KEY != ''`, and a
+        # step's `if:` is evaluated BEFORE that step's own `env:` block exists.
+        # The reference resolved to empty on every run, so the guard was always
+        # false and these steps could never execute — a publish path that looked
+        # gated but was in fact unreachable. `secrets.` is available in a step
+        # `if:` and is what the check meant.
+        if: ${{ vars.PUBLISH_TO_SITE == 'true' && secrets.DEPLOY_SSH_KEY != '' }}
         continue-on-error: true
         shell: bash
         run: |
@@ -162,7 +180,13 @@ jobs:
       # present; the trailing curl proves the feed is actually reachable over
       # HTTPS (fails the release if the server hides /updates/).
       - name: Publish update feed to neuropause033.com
-        if: ${{ vars.PUBLISH_TO_SITE == 'true' && env.DEPLOY_SSH_KEY != '' && startsWith(github.ref, 'refs/tags/') }}
+        # P13C ROUND 23 — this condition read `env.DEPLOY_SSH_KEY != ''`, and a
+        # step's `if:` is evaluated BEFORE that step's own `env:` block exists.
+        # The reference resolved to empty on every run, so the guard was always
+        # false and these steps could never execute — a publish path that looked
+        # gated but was in fact unreachable. `secrets.` is available in a step
+        # `if:` and is what the check meant.
+        if: ${{ vars.PUBLISH_TO_SITE == 'true' && secrets.DEPLOY_SSH_KEY != '' && startsWith(github.ref, 'refs/tags/') }}
         continue-on-error: true
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}

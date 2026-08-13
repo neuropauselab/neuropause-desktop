@@ -91,11 +91,23 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_CSC_LINK: ${{ secrets.APPLE_CSC_LINK }}
+          APPLE_CSC_KEY_PASSWORD: ${{ secrets.APPLE_CSC_KEY_PASSWORD }}
         working-directory: apps/desktop
         run: |
-          if [ -n "${{ secrets.APPLE_CSC_LINK }}" ]; then
-            export CSC_LINK="${{ secrets.APPLE_CSC_LINK }}"
-            export CSC_KEY_PASSWORD="${{ secrets.APPLE_CSC_KEY_PASSWORD }}"
+          # P13C ROUND 23 — SECRETS ARE NOT INTERPOLATED INTO SHELL SOURCE.
+          #
+          # An expression substituted inside a `run:` block becomes part of the
+          # script BEFORE bash sees it. GitHub masks the value in the log, but it
+          # is still shell SOURCE: a certificate blob containing a quote, a
+          # backtick or a command substitution changes what runs, and any shell
+          # trace added later prints the reconstructed line. Passing secrets
+          # through `env:` keeps them as variables the shell reads, never as code
+          # it parses. (This comment deliberately avoids the expression syntax
+          # itself — a comment in a run block is still interpolated.)
+          if [ -n "$APPLE_CSC_LINK" ]; then
+            export CSC_LINK="$APPLE_CSC_LINK"
+            export CSC_KEY_PASSWORD="$APPLE_CSC_KEY_PASSWORD"
             echo "Signing enabled (APPLE_CSC_LINK present)."
           else
             export CSC_IDENTITY_AUTO_DISCOVERY=false
@@ -154,7 +166,13 @@ jobs:
       - name: Publish installer to neuropause033.com
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-        if: ${{ vars.PUBLISH_TO_SITE == 'true' && env.DEPLOY_SSH_KEY != '' }}
+        # P13C ROUND 23 — this condition read `env.DEPLOY_SSH_KEY != ''`, and a
+        # step's `if:` is evaluated BEFORE that step's own `env:` block exists.
+        # The reference resolved to empty on every run, so the guard was always
+        # false and these steps could never execute — a publish path that looked
+        # gated but was in fact unreachable. `secrets.` is available in a step
+        # `if:` and is what the check meant.
+        if: ${{ vars.PUBLISH_TO_SITE == 'true' && secrets.DEPLOY_SSH_KEY != '' }}
         continue-on-error: true
         shell: bash
         run: |
@@ -177,7 +195,13 @@ jobs:
       # secret is present; the trailing curl proves the feed is actually
       # reachable over HTTPS (fails the release if the server hides /updates/).
       - name: Publish update feed to neuropause033.com
-        if: ${{ vars.PUBLISH_TO_SITE == 'true' && env.DEPLOY_SSH_KEY != '' && startsWith(github.ref, 'refs/tags/') }}
+        # P13C ROUND 23 — this condition read `env.DEPLOY_SSH_KEY != ''`, and a
+        # step's `if:` is evaluated BEFORE that step's own `env:` block exists.
+        # The reference resolved to empty on every run, so the guard was always
+        # false and these steps could never execute — a publish path that looked
+        # gated but was in fact unreachable. `secrets.` is available in a step
+        # `if:` and is what the check meant.
+        if: ${{ vars.PUBLISH_TO_SITE == 'true' && secrets.DEPLOY_SSH_KEY != '' && startsWith(github.ref, 'refs/tags/') }}
         continue-on-error: true
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
