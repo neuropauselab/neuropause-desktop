@@ -132,3 +132,13 @@ decision. An installer hash referenced by a certification artifact is worthless
 if the version it carries was assigned by a hook nobody invoked.
 
 NOT DIAGNOSED. NOT FIXED. Mechanism to be identified in round23.
+
+### O-7 · CORRECTED 2026-08-13
+The claim "every commit in this repository carries one identity" was WRONG.
+`verify-freeze.sh` — written to check exactly this — printed 5c55995 authored by
+Dishant Dobariya <dishantdobariya91@gmail.com>, a second identity, and correctly
+withheld the single-identity note because it counts authors rather than trusting
+the assertion. The true, narrower finding: commits authored ON THAT MAC all carry
+Saurabh's configured git identity, so c25052d names the machine and not the
+person; PR merges through GitHub's UI carry the real account. The remedy is
+unchanged (per-user identity or signed commits); the diagnosis was overstated.
