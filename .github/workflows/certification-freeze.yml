@@ -41,6 +41,21 @@ jobs:
         with:
           node-version-file: '.nvmrc'
 
+      - name: 'Workflows parse, and no if: uses an unavailable context'
+        # P13C ROUND 25 — W-4. On 13 August both release workflows were edited
+        # to read `secrets.` inside a step `if:`, which GitHub rejects at load
+        # time — so neither could be dispatched, and the break surfaced only as
+        # an HTTP 422 the day someone tried to run one. Nothing in this
+        # repository had ever parsed a workflow file, so a pipeline that could
+        # not load was indistinguishable from a working one until it was needed.
+        #
+        # FIRST in this job, and in THIS job rather than a new one: a broken
+        # workflow cannot run the check on itself, so the check has to live in a
+        # file that is already loading. This job's own validity is proven by the
+        # fact that it ran at all; it then validates the two release workflows,
+        # which cannot validate themselves.
+        run: bash scripts/check-workflows.sh
+
       - name: Verify the freeze
         run: bash certification/verify-freeze.sh
 
