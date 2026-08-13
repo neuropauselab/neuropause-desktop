@@ -157,3 +157,29 @@ Unreachable backend now renders ONE banner — the F-7 notice with the failure
 class. The second banner ("Could not reach the NeuroPause backend. Is it
 running?") is suppressed via status.cause, not message matching. UI test 5/5.
 Screenshots at 20:25 show one banner where the 18:44 screenshots showed two.
+
+## O-10 — eight gate verdicts were recorded under the wrong identity
+
+Found 2026-08-13, at BASELINE-ee7e55790755.
+
+`git config user.email` was set **in this repository's own .git/config** to
+`neuropause033@gmail.com` (Saurabh Patel). Every commit of round24a, round24b
+and round24c therefore carries Saurabh as author, and the first recording of
+G0, G0b, G0c, G0d, G0e, G0f, G12 and G13 carries him as `recorded_by` — on
+records whose work was done by Dishant, including a G13 row whose own `owner`
+field says Dishant.
+
+This is O-7 in a worse form. O-7 said the repository cannot attribute a change
+to a person. This says it attributes them confidently to the wrong person, in
+a signed certification artifact, where nothing in the record contradicts it.
+
+The identity is corrected at repository scope and the eight verdicts are
+re-recorded, so `recorded_by` becomes true. `head_author` stays Saurabh,
+because the commits are immutable and rewriting them would change their SHAs
+and invalidate this baseline — a large operation to fix an attribution that is
+better stated than erased. The divergence between `head_author` and
+`recorded_by` on these eight rows IS the finding, and it is left visible.
+
+Open: nothing enforces that a commit's author is the person who did the work.
+A repository on a shared machine will keep producing this until the identity
+is checked by the recorder rather than trusted from git.

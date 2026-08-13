@@ -1,0 +1,151 @@
+{
+  "program": "13C",
+  "baseline_sha256": "2b5c1a0c3d72b966ac3df3312708bfca40ecae1d0067ab552c3a79eaf2aca391",
+  "source_commit": "5a1fd65301ea959d966f49bebf37891fc7b66f15",
+  "gates": [
+    {
+      "gate": "G0",
+      "status": "PASS",
+      "run_id": "RUN-20260813T144938Z-G0",
+      "source_sha": "5a1fd65301ea959d966f49bebf37891fc7b66f15",
+      "baseline_sha256": "2b5c1a0c3d72b966ac3df3312708bfca40ecae1d0067ab552c3a79eaf2aca391",
+      "head_commit": "5a1fd65301ea959d966f49bebf37891fc7b66f15",
+      "head_author": "Saurabh Patel <neuropause033@gmail.com>",
+      "recorded_by": "Saurabh Patel <neuropause033@gmail.com>",
+      "branch": "fix/round23-flush-barrier-recorder",
+      "environment": "node 20.20.2 (pin 20)",
+      "toolchain_matches_pin": true,
+      "recorded_at": "2026-08-13T14:49:38.452Z",
+      "command": "bash certification/freeze-baseline.sh; bash certification/verify-freeze.sh; bash certification/verify-freeze.test.sh",
+      "evidence": [
+        "source clean (certification/ excluded); FREEZE INTACT at commit 5a1fd65; certification tooling self-test PASS 13 FAIL 0 (O-5 four cases + O-7 ancestry/provenance, real scripts against throwaway repos)"
+      ]
+    },
+    {
+      "gate": "G0b",
+      "status": "PASS",
+      "run_id": "RUN-20260813T144938Z-G0b",
+      "source_sha": "5a1fd65301ea959d966f49bebf37891fc7b66f15",
+      "baseline_sha256": "2b5c1a0c3d72b966ac3df3312708bfca40ecae1d0067ab552c3a79eaf2aca391",
+      "head_commit": "5a1fd65301ea959d966f49bebf37891fc7b66f15",
+      "head_author": "Saurabh Patel <neuropause033@gmail.com>",
+      "recorded_by": "Saurabh Patel <neuropause033@gmail.com>",
+      "branch": "fix/round23-flush-barrier-recorder",
+      "environment": "node 20.20.2 (pin 20)",
+      "toolchain_matches_pin": true,
+      "recorded_at": "2026-08-13T14:49:38.590Z",
+      "command": "node --version; cat .nvmrc",
+      "evidence": [
+        "running major matches the pin; toolchain_matches_pin true on every row of this baseline"
+      ]
+    },
+    {
+      "gate": "G0c",
+      "status": "PASS",
+      "run_id": "RUN-20260813T144938Z-G0c",
+      "source_sha": "5a1fd65301ea959d966f49bebf37891fc7b66f15",
+      "baseline_sha256": "2b5c1a0c3d72b966ac3df3312708bfca40ecae1d0067ab552c3a79eaf2aca391",
+      "head_commit": "5a1fd65301ea959d966f49bebf37891fc7b66f15",
+      "head_author": "Saurabh Patel <neuropause033@gmail.com>",
+      "recorded_by": "Saurabh Patel <neuropause033@gmail.com>",
+      "branch": "fix/round23-flush-barrier-recorder",
+      "environment": "node 20.20.2 (pin 20)",
+      "toolchain_matches_pin": true,
+      "recorded_at": "2026-08-13T14:49:38.725Z",
+      "command": "npm run typecheck",
+      "evidence": [
+        "exit 0 across all workspaces at 5a1fd65; /tmp/np23/typecheck.log"
+      ]
+    },
+    {
+      "gate": "G0d",
+      "status": "PASS",
+      "run_id": "RUN-20260813T144938Z-G0d",
+      "source_sha": "5a1fd65301ea959d966f49bebf37891fc7b66f15",
+      "baseline_sha256": "2b5c1a0c3d72b966ac3df3312708bfca40ecae1d0067ab552c3a79eaf2aca391",
+      "head_commit": "5a1fd65301ea959d966f49bebf37891fc7b66f15",
+      "head_author": "Saurabh Patel <neuropause033@gmail.com>",
+      "recorded_by": "Saurabh Patel <neuropause033@gmail.com>",
+      "branch": "fix/round23-flush-barrier-recorder",
+      "environment": "node 20.20.2 (pin 20)",
+      "toolchain_matches_pin": true,
+      "recorded_at": "2026-08-13T14:49:38.860Z",
+      "command": "npm run lint",
+      "evidence": [
+        "eslint . --max-warnings 0, exit 0 at 5a1fd65; /tmp/np23/lint.log"
+      ]
+    },
+    {
+      "gate": "G0e",
+      "status": "PASS",
+      "run_id": "RUN-20260813T144938Z-G0e",
+      "source_sha": "5a1fd65301ea959d966f49bebf37891fc7b66f15",
+      "baseline_sha256": "2b5c1a0c3d72b966ac3df3312708bfca40ecae1d0067ab552c3a79eaf2aca391",
+      "head_commit": "5a1fd65301ea959d966f49bebf37891fc7b66f15",
+      "head_author": "Saurabh Patel <neuropause033@gmail.com>",
+      "recorded_by": "Saurabh Patel <neuropause033@gmail.com>",
+      "branch": "fix/round23-flush-barrier-recorder",
+      "environment": "node 20.20.2 (pin 20)",
+      "toolchain_matches_pin": true,
+      "recorded_at": "2026-08-13T14:49:38.995Z",
+      "command": "two deliberate regressions to LoginScreen.tsx, each reverted with git checkout",
+      "evidence": [
+        "control 1 (text-accent-fg -> text-white): 1 failed | 6 passed (7); control 2 (catalogue bypass): 3 failed | 4 passed (7); source clean after both reverts"
+      ]
+    },
+    {
+      "gate": "G0f",
+      "status": "PASS",
+      "run_id": "RUN-20260813T144939Z-G0f",
+      "source_sha": "5a1fd65301ea959d966f49bebf37891fc7b66f15",
+      "baseline_sha256": "2b5c1a0c3d72b966ac3df3312708bfca40ecae1d0067ab552c3a79eaf2aca391",
+      "head_commit": "5a1fd65301ea959d966f49bebf37891fc7b66f15",
+      "head_author": "Saurabh Patel <neuropause033@gmail.com>",
+      "recorded_by": "Saurabh Patel <neuropause033@gmail.com>",
+      "branch": "fix/round23-flush-barrier-recorder",
+      "environment": "node 20.20.2 (pin 20)",
+      "toolchain_matches_pin": true,
+      "recorded_at": "2026-08-13T14:49:39.143Z",
+      "command": "npm test -w @neuropause/desktop; then npx vitest run --root apps/desktop --no-file-parallelism",
+      "evidence": [
+        "parallel 773/773 files 8066/8066 tests plus UI 14/14 138/138; serial 773/773 8066/8066; all exits 0 at 5a1fd65"
+      ]
+    },
+    {
+      "gate": "G3",
+      "status": "BLOCKED",
+      "run_id": "RUN-20260813T144939Z-G3",
+      "source_sha": "5a1fd65301ea959d966f49bebf37891fc7b66f15",
+      "baseline_sha256": "2b5c1a0c3d72b966ac3df3312708bfca40ecae1d0067ab552c3a79eaf2aca391",
+      "head_commit": "5a1fd65301ea959d966f49bebf37891fc7b66f15",
+      "head_author": "Saurabh Patel <neuropause033@gmail.com>",
+      "recorded_by": "Saurabh Patel <neuropause033@gmail.com>",
+      "branch": "fix/round23-flush-barrier-recorder",
+      "environment": "node 20.20.2 (pin 20)",
+      "toolchain_matches_pin": true,
+      "recorded_at": "2026-08-13T14:49:39.280Z",
+      "blocker": "No server substrate. DigitalOcean account locked; the API terminates at a Cloudflare Tunnel on a laptop that sleeps.",
+      "owner": "Saurabh (account appeal or new provider), Dishant (deploy)",
+      "required_evidence": "DNS -> TCP -> TLS -> HTTP 200 /health against a host that stays up with no laptop open, from two networks",
+      "next_action": "deploy-single-host.sh, Caddyfile and docker-compose.edge.yml are written and provider-agnostic — one command once a host exists"
+    },
+    {
+      "gate": "G5",
+      "status": "PASS",
+      "run_id": "RUN-20260813T145841Z-G5",
+      "source_sha": "5a1fd65301ea959d966f49bebf37891fc7b66f15",
+      "baseline_sha256": "2b5c1a0c3d72b966ac3df3312708bfca40ecae1d0067ab552c3a79eaf2aca391",
+      "head_commit": "71e499dc04938a87f16f2209b31867bcb6d3f3f1",
+      "head_author": "Saurabh Patel <neuropause033@gmail.com>",
+      "recorded_by": "Saurabh Patel <neuropause033@gmail.com>",
+      "branch": "fix/round23-flush-barrier-recorder",
+      "environment": "node 20.20.2 (pin 20)",
+      "toolchain_matches_pin": true,
+      "recorded_at": "2026-08-13T14:58:41.828Z",
+      "command": "npm run dev:desktop against https://api.neuropause033.com; signed out, then signed in with email and password",
+      "evidence": [
+        "0 'Restored session from stored credentials' lines in the launch; auth_sessions 3 -> 4, exactly one new session; credential path exercised on the round23 build (authService/LoginScreen/AuthStatus all changed by round23, none of which a keychain restore touches). SUBSTRATE: docker-compose.prod.yml on a developer Mac behind a Cloudflare Tunnel, NOT a server."
+      ]
+    }
+  ]
+}
