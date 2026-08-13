@@ -1,0 +1,87 @@
+{
+  "program": "13C",
+  "baseline_sha256": "28766c3e7bbe44959c409bc2893f9ad3ab66afb3b4c5705a1f1d95c8bc8c29eb",
+  "source_commit": "5a918722a5b2b3ba1b2534851d5940ac271e660a",
+  "gates": [
+    {
+      "gate": "G0",
+      "status": "PASS",
+      "run_id": "RUN-20260813T113847Z-G0",
+      "source_sha": "5a918722a5b2b3ba1b2534851d5940ac271e660a",
+      "baseline_sha256": "28766c3e7bbe44959c409bc2893f9ad3ab66afb3b4c5705a1f1d95c8bc8c29eb",
+      "environment": "node 20.20.2 (pin 20)",
+      "toolchain_matches_pin": true,
+      "recorded_at": "2026-08-13T11:38:47.262Z",
+      "command": "bash freeze-baseline.sh",
+      "evidence": [
+        "source tree clean (certification/ excluded), baseline written at this commit"
+      ]
+    },
+    {
+      "gate": "G0b",
+      "status": "PASS",
+      "run_id": "RUN-20260813T113847Z-G0b",
+      "source_sha": "5a918722a5b2b3ba1b2534851d5940ac271e660a",
+      "baseline_sha256": "28766c3e7bbe44959c409bc2893f9ad3ab66afb3b4c5705a1f1d95c8bc8c29eb",
+      "environment": "node 20.20.2 (pin 20)",
+      "toolchain_matches_pin": true,
+      "recorded_at": "2026-08-13T11:38:47.370Z",
+      "command": "node --version; cat .nvmrc",
+      "evidence": [
+        "running major matches the pin"
+      ]
+    },
+    {
+      "gate": "G0c",
+      "status": "PASS",
+      "run_id": "RUN-20260813T113847Z-G0c",
+      "source_sha": "5a918722a5b2b3ba1b2534851d5940ac271e660a",
+      "baseline_sha256": "28766c3e7bbe44959c409bc2893f9ad3ab66afb3b4c5705a1f1d95c8bc8c29eb",
+      "environment": "node 20.20.2 (pin 20)",
+      "toolchain_matches_pin": true,
+      "recorded_at": "2026-08-13T11:38:47.484Z",
+      "command": "npm run typecheck",
+      "evidence": [
+        "0 errors, run after the freeze at this commit"
+      ]
+    },
+    {
+      "gate": "G0d",
+      "status": "PASS",
+      "run_id": "RUN-20260813T113847Z-G0d",
+      "source_sha": "5a918722a5b2b3ba1b2534851d5940ac271e660a",
+      "baseline_sha256": "28766c3e7bbe44959c409bc2893f9ad3ab66afb3b4c5705a1f1d95c8bc8c29eb",
+      "environment": "node 20.20.2 (pin 20)",
+      "toolchain_matches_pin": true,
+      "recorded_at": "2026-08-13T11:38:47.596Z",
+      "command": "npm run lint",
+      "evidence": [
+        "0 errors, run after the freeze at this commit"
+      ]
+    },
+    {
+      "gate": "G0e",
+      "status": "NOT RUN",
+      "run_id": "RUN-20260813T120854Z-G0e",
+      "source_sha": "5a918722a5b2b3ba1b2534851d5940ac271e660a",
+      "baseline_sha256": "28766c3e7bbe44959c409bc2893f9ad3ab66afb3b4c5705a1f1d95c8bc8c29eb",
+      "environment": "node 20.20.2 (pin 20)",
+      "toolchain_matches_pin": true,
+      "recorded_at": "2026-08-13T12:08:54.489Z"
+    },
+    {
+      "gate": "G0f",
+      "status": "FAIL",
+      "run_id": "RUN-20260813T120854Z-G0f",
+      "source_sha": "5a918722a5b2b3ba1b2534851d5940ac271e660a",
+      "baseline_sha256": "28766c3e7bbe44959c409bc2893f9ad3ab66afb3b4c5705a1f1d95c8bc8c29eb",
+      "environment": "node 20.20.2 (pin 20)",
+      "toolchain_matches_pin": true,
+      "recorded_at": "2026-08-13T12:08:54.599Z",
+      "command": "npm test -w @neuropause/desktop",
+      "evidence": [
+        "1 failed | 8054 passed; retentionScopeTenancy.test.ts:374 expected +0 to be 7; UI suite never ran (&& short-circuit)"
+      ]
+    }
+  ]
+}
