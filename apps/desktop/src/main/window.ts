@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { BrowserWindow, shell } from 'electron';
 import { config } from './config';
 import { loadWindowState, persistWindowState } from './windowState';
+import { macOsChromeOptions } from './windowChrome';
 
 export function createMainWindow(): BrowserWindow {
   const state = loadWindowState();
@@ -21,13 +22,7 @@ export function createMainWindow(): BrowserWindow {
     minHeight: 700,
     show: false,
     backgroundColor: '#0b0b0f',
-    // macOS: keep the native traffic lights but inset them so our custom,
-    // draggable title bar can host them. Ignored on other platforms.
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 18, y: 18 },
-    // Translucent material behind the UI for the glassmorphism shell (macOS).
-    vibrancy: 'under-window',
-    visualEffectState: 'active',
+    ...macOsChromeOptions(process.platform),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,

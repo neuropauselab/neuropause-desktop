@@ -724,6 +724,23 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
         holdId: hold.id,
       });
     },
+    /**
+     * P13C ROUND 25 — W-1. The hold above needs an owner, so on an install with
+     * no resolvable tenant it throws. That exception used to escape in place of
+     * the authorization error and tell the user the app could not record a hold,
+     * which is true and useless — the fact they needed was that no organization
+     * member is bound to their account.
+     *
+     * Swallowed at the gate, surfaced HERE, at warn: the refusal still reaches
+     * the renderer intact, and the fact that governance recording is degraded is
+     * in the log where an engineer reading a support bundle will find it.
+     */
+    onRefusalRecordFailed: ({ permission, error }) => {
+      log.warn('Permission refusal could not be recorded as a hold', {
+        permission,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    },
     activeOrgId: authorizationOrgId,
     usersFor: (orgId) => orgStore.usersFor(orgId),
     rolesFor: (orgId) => orgStore.rolesFor(orgId),

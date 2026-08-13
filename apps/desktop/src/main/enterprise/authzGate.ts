@@ -56,6 +56,29 @@ export interface ActorResolverDeps {
     held: readonly EnterprisePermission[];
     actorLabel: string;
   }) => void;
+  /**
+   * P13C ROUND 25 — W-1. THE RECORDER FAILED; THE DECISION STILL STANDS.
+   *
+   * `onPermissionRefused` writes a durable HOLD, and a hold needs an owner, so
+   * on an install with no resolvable tenant scope that write THROWS. It was
+   * called BEFORE the authorization error was raised, so its exception escaped
+   * in place of the real one and the user was told
+   *
+   *   "Cannot record a hold: no organization and workspace are active"
+   *
+   * instead of "No organization member is bound to this account." The second
+   * sentence names the actual condition; the first is an artefact of trying to
+   * file the paperwork about it. A diagnostic that replaces its own subject is
+   * worse than no diagnostic — this one pointed a Windows investigation at the
+   * data layer when the fault was in tenancy.
+   *
+   * Optional, and the default swallows rather than rethrows, because rethrowing
+   * IS the bug: an audit side effect must never veto an authorization outcome.
+   * Supplied by the composition root so the swallow is LOGGED rather than
+   * silent — a recorder that is failing has to stay visible to whoever reads
+   * the log.
+   */
+  onRefusalRecordFailed?: (input: { permission: EnterprisePermission; error: unknown }) => void;
   /** The org the active workspace is bound to — the scope of every handler. */
   activeOrgId: () => string;
   usersFor: (orgId: string) => OrgUser[];
@@ -166,6 +189,29 @@ export function decideOwnerClaim(
 export function createAuthorize(
   deps: ActorResolverDeps,
 ): (permission: EnterprisePermission) => void {
+  /**
+   * P13C ROUND 25 — W-1. RECORDING A REFUSAL CANNOT CHANGE THE REFUSAL.
+   *
+   * Every `onPermissionRefused` call in this function is a side effect of a
+   * decision that has ALREADY been made. Letting it throw does not undo the
+   * decision — it only substitutes a different exception for the one the caller
+   * was about to receive, which is how the true message got lost.
+   *
+   * One helper rather than three try/catch blocks, so a fourth refusal site
+   * added later cannot reintroduce the defect by forgetting to wrap itself.
+   */
+  const recordRefusal = (
+    permission: EnterprisePermission,
+    input: { held: readonly EnterprisePermission[]; actorLabel: string },
+  ): void => {
+    if (deps.onPermissionRefused === undefined) return;
+    try {
+      deps.onPermissionRefused({ permission, held: input.held, actorLabel: input.actorLabel });
+    } catch (error) {
+      deps.onRefusalRecordFailed?.({ permission, error });
+    }
+  };
+
   return (permission) => {
     const email = deps.sessionEmail();
     if (email === null) throw new Error('Sign in to continue.');
@@ -186,18 +232,13 @@ export function createAuthorize(
      */
     if (isPlatformOnlyPermission(permission)) {
       if (deps.isPlatformOperator?.(email) === true) return;
-      deps.onPermissionRefused?.({
-        permission,
-        held: [],
-        actorLabel: email,
-      });
+      recordRefusal(permission, { held: [], actorLabel: email });
       throw new AuthorizationError(permission);
     }
 
     const actor = resolveActor(deps);
     if (!actor) {
-      deps.onPermissionRefused?.({
-        permission,
+      recordRefusal(permission, {
         held: [],
         actorLabel: deps.sessionEmail() ?? 'This account',
       });
@@ -216,8 +257,7 @@ export function createAuthorize(
        * The throw is UNCHANGED. Every existing caller, and the secure bridge's
        * own error path, behave exactly as before; this only adds a record.
        */
-      deps.onPermissionRefused?.({
-        permission,
+      recordRefusal(permission, {
         held: [...effectivePermissions(actor.member, actor.roles)],
         actorLabel: actor.member.name || actor.member.email || 'This account',
       });
