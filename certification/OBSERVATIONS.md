@@ -83,3 +83,24 @@ instrumentation sits inside the directory that is not the tree under test.
 CONSEQUENCE: this baseline closes at 7/25. The next one RE-EARNS its verdicts
 by re-running them, not by copying them across — roughly ten minutes of
 scripted work plus one registration. That is the design working, not failing.
+
+## O-6 · the default branch is 14 release candidates behind the certified tree
+
+origin/main is at 1.0.0-rc.1, last moved 2026-08-05 by the repository's only
+merged pull request. The certified tree — feat/understanding-holds-motion-system
+at 1.0.0-rc.15 — is 225 commits ahead: 1177 files, 194,335 insertions.
+
+`git diff HEAD...origin/main` is EMPTY. main contains nothing this branch lacks,
+so merging forward is content-trivial.
+
+WHY IT MATTERS: main is the DEFAULT branch. A fresh clone, a CI job, or a release
+built without thinking gets rc.1 — containing none of F-6, F-7, F-8, F-9 or
+F-11b. A build from the default branch today would ship the exact
+backend-discovery defect this programme was started to fix.
+
+CONSEQUENCE FOR GATES: G1 (artifact hashes) and G18 (release provenance) must not
+be recorded until the default branch contains the certified tree. Provenance
+against a branch the default branch does not contain is not provenance.
+
+DECISION OWNER: Saurabh. Merge forward and make main the truth, or retire main
+and name a release branch. Either is defensible. The present state is not.
