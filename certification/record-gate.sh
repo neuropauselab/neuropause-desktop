@@ -161,14 +161,49 @@ if [ -n "$NOW_DIRTY" ]; then
   exit 3
 fi
 
-# ── Refusal 4 · HEAD moved ──────────────────────────────────────────────────
+# ── Refusal 4 · THE SOURCE MOVED — not merely HEAD ──────────────────────────
+#
+# O-5. This compared `git rev-parse HEAD` to the baseline commit, so COMMITTING
+# THE EVIDENCE closed the baseline: certification/ moves HEAD without changing a
+# line of source, and every later verdict was refused. Storing evidence and
+# recording evidence were mutually exclusive, which is not a policy anyone chose.
+#
+# The dirty-tree check above already excluded certification/ for exactly this
+# reason — the fix was applied to one of two adjacent checks and missed the
+# other. So: compare the SOURCE, on the same spec.
 NOW_COMMIT=$(git rev-parse HEAD)
-if [ "$NOW_COMMIT" != "$BASE_COMMIT" ]; then
-  echo "REFUSING — HEAD has moved since the baseline was frozen."
+
+# O-7 · ANCESTRY. A source diff of zero is not enough on its own: HEAD could sit
+# on a branch that never contained the baseline and happen to match. The baseline
+# must be IN this history, or the verdict describes a tree that merely resembles
+# the certified one.
+if ! git merge-base --is-ancestor "$BASE_COMMIT" HEAD 2>/dev/null; then
+  echo "REFUSING — the baseline commit is not an ancestor of HEAD."
   echo "  baseline: $BASE_COMMIT"
   echo "  HEAD:     $NOW_COMMIT"
-  echo "Re-freeze. This is the exact failure this programme repeated seven times."
+  echo "This branch does not contain the tree the evidence describes."
   exit 3
+fi
+
+if ! git diff --quiet "$BASE_COMMIT" HEAD "${SRC_DIRTY_SPEC[@]}"; then
+  echo "REFUSING — the SOURCE has changed since the baseline was frozen:"
+  git diff --stat "$BASE_COMMIT" HEAD "${SRC_DIRTY_SPEC[@]}" | tail -20
+  echo
+  echo "  baseline: $BASE_COMMIT"
+  echo "  HEAD:     $NOW_COMMIT"
+  echo "Re-freeze. Committing evidence is fine; committing source is not."
+  exit 3
+fi
+
+# O-7 · PROVENANCE. Name every commit that entered the branch after the freeze,
+# with its author. These are ALLOWED (the source is unchanged, checked above) but
+# they must not be invisible: c25052d entered a frozen branch, bumped the product
+# version, was tagged and pushed, and nothing in this programme noticed.
+SINCE_FREEZE="$(git log --format='%h %an <%ae> %s' "$BASE_COMMIT..HEAD" 2>/dev/null)"
+if [ -n "$SINCE_FREEZE" ]; then
+  echo "NOTE — commits added since the freeze (source unchanged):"
+  echo "$SINCE_FREEZE" | sed 's/^/  /'
+  echo
 fi
 
 # ── Refusal 5 · a PASS needs a command and evidence ─────────────────────────
@@ -187,11 +222,17 @@ fi
 NODE_RUNNING=$(node -v | tr -d 'v'); NODE_PIN=$(cat .nvmrc 2>/dev/null | tr -d '\n')
 RUN_ID="RUN-$(date -u +%Y%m%dT%H%M%SZ)-$GATE"
 
+HEAD_AUTHOR=$(git log -1 --format='%an <%ae>' HEAD)
+RECORDED_BY="$(git config user.name 2>/dev/null) <$(git config user.email 2>/dev/null)>"
+BRANCH_NAME=$(git branch --show-current)
+
 node - "$GATES" "$GATE" "$STATUS" "$CMD" "$EV" "$BLOCKER" "$OWNER" "$REQ_EVIDENCE" "$NEXT" \
-       "$RUN_ID" "$BASE_SHA" "$BASE_COMMIT" "$NODE_RUNNING" "$NODE_PIN" <<'RECNODE'
+       "$RUN_ID" "$BASE_SHA" "$BASE_COMMIT" "$NODE_RUNNING" "$NODE_PIN" \
+       "$NOW_COMMIT" "$HEAD_AUTHOR" "$RECORDED_BY" "$BRANCH_NAME" <<'RECNODE'
 const fs = require('fs');
 const [file, gate, status, cmd, ev, blocker, owner, required, next,
-       runId, baseSha, commit, nodeRunning, nodePin] = process.argv.slice(2);
+       runId, baseSha, commit, nodeRunning, nodePin,
+       headCommit, headAuthor, recordedBy, branchName] = process.argv.slice(2);
 
 let doc = { program: '13C', baseline_sha256: baseSha, source_commit: commit, gates: [] };
 if (fs.existsSync(file)) {
@@ -210,6 +251,14 @@ if (fs.existsSync(file)) {
 const row = {
   gate, status, run_id: runId,
   source_sha: commit, baseline_sha256: baseSha,
+  // O-7. WHO and WHERE, recorded rather than assumed. `recorded_by` is the git
+  // identity configured on the machine — which in this repository is the same
+  // for every author, and that is itself the finding. It is written as what it
+  // is, not dressed up as attribution it cannot provide.
+  head_commit: headCommit,
+  head_author: headAuthor,
+  recorded_by: recordedBy,
+  branch: branchName,
   environment: 'node ' + nodeRunning + ' (pin ' + nodePin + ')',
   toolchain_matches_pin: nodeRunning.split('.')[0] === String(nodePin).split('.')[0],
   recorded_at: new Date().toISOString(),
