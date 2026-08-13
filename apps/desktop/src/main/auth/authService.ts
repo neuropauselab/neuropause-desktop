@@ -13,7 +13,7 @@
 import { EventEmitter } from 'node:events';
 import { createHash, randomBytes } from 'node:crypto';
 import { shell } from 'electron';
-import type { AuthStatus, AuthProviderId, TokenPair, User } from '@neuropause/shared';
+import type { AuthErrorCause, AuthStatus, AuthProviderId, TokenPair, User } from '@neuropause/shared';
 import { config } from '../config';
 import { createLogger } from '../logger';
 import { secureStore } from '../security/secureStore';
@@ -43,6 +43,25 @@ function messageFor(err: unknown): string {
     return err.message;
   }
   return err instanceof Error ? err.message : 'Unexpected error';
+}
+
+/**
+ * P13C — O-4. The failure CLASS, so the renderer never has to match on message
+ * text to decide whether the F-7 notice has already explained the situation.
+ *
+ * A string comparison here would be exactly the kind of fragility this program
+ * keeps finding: today's `not.toContain('http')` matched `http_error`.
+ */
+function causeFor(err: unknown): AuthErrorCause {
+  if (err instanceof BackendError) {
+    return err.code === 'network_error' ? 'unreachable' : 'rejected';
+  }
+  return 'unknown';
+}
+
+/** Every error status carries both, so no caller can set one without the other. */
+function errorStatus(err: unknown): AuthStatus {
+  return { state: 'error', message: messageFor(err), cause: causeFor(err) };
 }
 
 class AuthService extends EventEmitter {
@@ -171,7 +190,7 @@ class AuthService extends EventEmitter {
       return status;
     } catch (err) {
       log.error('OAuth sign-in failed', messageFor(err));
-      return this.setStatus({ state: 'error', message: messageFor(err) });
+      return this.setStatus(errorStatus(err));
     } finally {
       loopback?.close();
     }
@@ -183,7 +202,7 @@ class AuthService extends EventEmitter {
       const auth = await backendClient.loginEmail(email, password);
       return await this.applyAuthResult(auth);
     } catch (err) {
-      return this.setStatus({ state: 'error', message: messageFor(err) });
+      return this.setStatus(errorStatus(err));
     }
   }
 
@@ -193,7 +212,7 @@ class AuthService extends EventEmitter {
       const auth = await backendClient.registerEmail(email, password);
       return await this.applyAuthResult(auth);
     } catch (err) {
-      return this.setStatus({ state: 'error', message: messageFor(err) });
+      return this.setStatus(errorStatus(err));
     }
   }
 

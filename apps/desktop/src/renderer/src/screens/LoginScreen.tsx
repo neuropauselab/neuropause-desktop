@@ -66,9 +66,26 @@ export function LoginScreen(): JSX.Element {
   const authenticating = status.state === 'authenticating';
   const busy = authenticating || submitting || pendingProvider !== null;
 
+  /**
+   * P13C — O-4. ONE failure is stated ONCE.
+   *
+   * The login screen used to render two banners for a single outage: the F-7
+   * reachability notice ("The service address could not be found on this
+   * network") and, immediately below it, the auth error ("Could not reach the
+   * NeuroPause backend. Is it running?"). Both were true. Together they read as
+   * two problems, and the second asks the reader to check something a founder
+   * who ran an installer has no way to check — the exact copy rule the notice
+   * was written to enforce, violated by the component underneath it.
+   *
+   * `cause === 'unreachable'` is suppressed here because the notice above owns
+   * that story and tells it with the failure class (dns / timeout / refused /
+   * http_error) rather than a generic sentence. Everything else — wrong
+   * password, a refusal from the service, local validation — still shows,
+   * because the notice says nothing about those.
+   */
   const banner = useMemo(() => {
     if (formError) return formError;
-    if (status.state === 'error') return status.message;
+    if (status.state === 'error' && status.cause !== 'unreachable') return status.message;
     return null;
   }, [formError, status]);
 
