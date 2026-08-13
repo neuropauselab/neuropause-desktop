@@ -23,6 +23,12 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
+    # P13C ROUND 25 — W-3. Evaluated at JOB level, where the `secrets` context
+    # is available. Holds a boolean, never the key: a step `if:` can read `env`,
+    # cannot read `secrets`, and must not need the secret's value to decide
+    # whether the secret exists.
+    env:
+      HAS_DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -151,13 +157,22 @@ jobs:
       - name: Publish installer to neuropause033.com
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-        # P13C ROUND 23 — this condition read `env.DEPLOY_SSH_KEY != ''`, and a
-        # step's `if:` is evaluated BEFORE that step's own `env:` block exists.
-        # The reference resolved to empty on every run, so the guard was always
-        # false and these steps could never execute — a publish path that looked
-        # gated but was in fact unreachable. `secrets.` is available in a step
-        # `if:` and is what the check meant.
-        if: ${{ vars.PUBLISH_TO_SITE == 'true' && secrets.DEPLOY_SSH_KEY != '' }}
+        # P13C ROUND 25 — W-3. THE ROUND 23 CORRECTION WAS ITSELF WRONG.
+        #
+        # Round 23 found this reading `env.DEPLOY_SSH_KEY != ''` against the
+        # step's OWN `env:` block, which a step `if:` cannot see — so the guard
+        # was always false and the publish path was unreachable. That diagnosis
+        # was right. The fix was not: it changed the reference to `secrets.`,
+        # and `secrets` is NOT an allowed context in `steps[*].if`. GitHub
+        # rejected the whole file with "Unrecognized named-value: 'secrets'",
+        # so from that commit onward the workflow would not parse and could not
+        # be dispatched at all — a repair that broke more than the defect.
+        #
+        # `HAS_DEPLOY_KEY` is computed in the JOB-level `env:` block, where
+        # `secrets` IS available, and holds only the boolean 'true'/'false'.
+        # The key itself stays in the step `env:` that needs it, so this does
+        # not widen the secret's exposure to every step in the job.
+        if: ${{ vars.PUBLISH_TO_SITE == 'true' && env.HAS_DEPLOY_KEY == 'true' }}
         continue-on-error: true
         shell: bash
         run: |
@@ -180,13 +195,22 @@ jobs:
       # present; the trailing curl proves the feed is actually reachable over
       # HTTPS (fails the release if the server hides /updates/).
       - name: Publish update feed to neuropause033.com
-        # P13C ROUND 23 — this condition read `env.DEPLOY_SSH_KEY != ''`, and a
-        # step's `if:` is evaluated BEFORE that step's own `env:` block exists.
-        # The reference resolved to empty on every run, so the guard was always
-        # false and these steps could never execute — a publish path that looked
-        # gated but was in fact unreachable. `secrets.` is available in a step
-        # `if:` and is what the check meant.
-        if: ${{ vars.PUBLISH_TO_SITE == 'true' && secrets.DEPLOY_SSH_KEY != '' && startsWith(github.ref, 'refs/tags/') }}
+        # P13C ROUND 25 — W-3. THE ROUND 23 CORRECTION WAS ITSELF WRONG.
+        #
+        # Round 23 found this reading `env.DEPLOY_SSH_KEY != ''` against the
+        # step's OWN `env:` block, which a step `if:` cannot see — so the guard
+        # was always false and the publish path was unreachable. That diagnosis
+        # was right. The fix was not: it changed the reference to `secrets.`,
+        # and `secrets` is NOT an allowed context in `steps[*].if`. GitHub
+        # rejected the whole file with "Unrecognized named-value: 'secrets'",
+        # so from that commit onward the workflow would not parse and could not
+        # be dispatched at all — a repair that broke more than the defect.
+        #
+        # `HAS_DEPLOY_KEY` is computed in the JOB-level `env:` block, where
+        # `secrets` IS available, and holds only the boolean 'true'/'false'.
+        # The key itself stays in the step `env:` that needs it, so this does
+        # not widen the secret's exposure to every step in the job.
+        if: ${{ vars.PUBLISH_TO_SITE == 'true' && env.HAS_DEPLOY_KEY == 'true' && startsWith(github.ref, 'refs/tags/') }}
         continue-on-error: true
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
