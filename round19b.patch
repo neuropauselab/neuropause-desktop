@@ -1,0 +1,258 @@
+--- a/apps/desktop/src/main/config.ts
++++ b/apps/desktop/src/main/config.ts
+@@ -6,6 +6,8 @@
+ import { app } from 'electron';
+ import { getBakedBackendUrl } from './buildInfo';
+ 
++const LOCAL_BACKEND_URL = 'http://127.0.0.1:4000';
++
+ function readUrl(name: string, fallback: string): string {
+   const raw = process.env[name];
+   if (!raw) return fallback;
+@@ -18,9 +20,33 @@
+   }
+ }
+ 
++/**
++ * The default backend URL for this run, before NEUROPAUSE_BACKEND_URL is applied.
++ *
++ * A PACKAGED build uses the URL baked at package time — that is the whole point
++ * of baking it. An UNPACKAGED (dev) run must not, and this is not theoretical:
++ * `scripts/generate-build-info.cjs` writes `resources/build-info.json` during
++ * packaging and leaves it in the working tree afterwards. It is gitignored, so it
++ * never shows up in `git status`, and `buildInfo.readGenerated()` finds it via
++ * `app.getAppPath()` in dev exactly as it does in a packaged build.
++ *
++ * Consequence, reproduced 13 Aug 2026 on a tree that had run `npm run package:win`:
++ * `npm run dev` logged `Starting in development mode { backendUrl:
++ * 'https://api.neuropause033.com' }`. A developer running a local backend on
++ * :4000 would have been silently authenticating against production.
++ *
++ * A dev run therefore defaults to the local backend. `NEUROPAUSE_BACKEND_URL`
++ * still overrides in both modes, which is the supported way to point a dev run
++ * at staging or production.
++ */
++function defaultBackendUrl(): string {
++  if (!app.isPackaged) return LOCAL_BACKEND_URL;
++  return getBakedBackendUrl() ?? LOCAL_BACKEND_URL;
++}
++
+ export const config = {
+   /** Base URL of the NeuroPause backend (must match the backend's PORT). */
+-  backendUrl: readUrl('NEUROPAUSE_BACKEND_URL', getBakedBackendUrl() ?? 'http://127.0.0.1:4000'),
++  backendUrl: readUrl('NEUROPAUSE_BACKEND_URL', defaultBackendUrl()),
+ 
+   /** How long we wait for the user to complete the browser OAuth flow. */
+   oauthTimeoutMs: 5 * 60 * 1000,
+--- /dev/null
++++ b/apps/desktop/src/main/config.test.ts
+@@ -0,0 +1,104 @@
++/**
++ * F-6 regression lock — a dev run must never inherit the packaged backend URL.
++ *
++ * `scripts/generate-build-info.cjs` writes `apps/desktop/resources/build-info.json`
++ * at package time and leaves it in the working tree. The file is gitignored, so it
++ * is invisible to `git status`, and `buildInfo.readGenerated()` resolves it in dev
++ * through `app.getAppPath()` exactly as in a packaged build.
++ *
++ * Reproduced 13 Aug 2026 before this fix: `npm run dev` on a tree that had run
++ * `npm run package:win` logged
++ *   `Starting in development mode { backendUrl: 'https://api.neuropause033.com' }`
++ * while a local backend was listening on :4000.
++ *
++ * Negative control: revert `defaultBackendUrl()` in config.ts to
++ * `getBakedBackendUrl() ?? 'http://127.0.0.1:4000'` and the first case below must
++ * FAIL with the production URL. If it still passes, this test proves nothing.
++ */
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
++
++const BAKED = 'https://api.neuropause033.com';
++const LOCAL = 'http://127.0.0.1:4000';
++
++const mockState = vi.hoisted(() => ({ packaged: false, baked: null as string | null }));
++
++vi.mock('electron', () => ({
++  app: {
++    get isPackaged() {
++      return mockState.packaged;
++    },
++  },
++}));
++
++vi.mock('./buildInfo', () => ({
++  getBakedBackendUrl: () => mockState.baked,
++}));
++
++async function loadConfig(): Promise<{ backendUrl: string; isDev: boolean }> {
++  vi.resetModules();
++  const mod = await import('./config');
++  return mod.config;
++}
++
++const savedEnv = process.env['NEUROPAUSE_BACKEND_URL'];
++
++beforeEach(() => {
++  delete process.env['NEUROPAUSE_BACKEND_URL'];
++  mockState.packaged = false;
++  mockState.baked = null;
++});
++
++afterEach(() => {
++  if (savedEnv === undefined) delete process.env['NEUROPAUSE_BACKEND_URL'];
++  else process.env['NEUROPAUSE_BACKEND_URL'] = savedEnv;
++});
++
++describe('config.backendUrl', () => {
++  it('a dev run ignores a leftover baked URL and stays local', async () => {
++    mockState.packaged = false;
++    mockState.baked = BAKED; // resources/build-info.json survived a package run
++    const config = await loadConfig();
++    expect(config.backendUrl).toBe(LOCAL);
++    expect(config.isDev).toBe(true);
++  });
++
++  it('a packaged build uses the baked URL — that is what baking is for', async () => {
++    mockState.packaged = true;
++    mockState.baked = BAKED;
++    const config = await loadConfig();
++    expect(config.backendUrl).toBe(BAKED);
++    expect(config.isDev).toBe(false);
++  });
++
++  it('a packaged build with nothing baked falls back to local', async () => {
++    mockState.packaged = true;
++    mockState.baked = null;
++    const config = await loadConfig();
++    expect(config.backendUrl).toBe(LOCAL);
++  });
++
++  it('NEUROPAUSE_BACKEND_URL still overrides a dev run', async () => {
++    mockState.packaged = false;
++    mockState.baked = BAKED;
++    process.env['NEUROPAUSE_BACKEND_URL'] = 'http://127.0.0.1:5555';
++    const config = await loadConfig();
++    expect(config.backendUrl).toBe('http://127.0.0.1:5555');
++  });
++
++  it('NEUROPAUSE_BACKEND_URL still overrides a packaged build', async () => {
++    mockState.packaged = true;
++    mockState.baked = BAKED;
++    process.env['NEUROPAUSE_BACKEND_URL'] = 'https://staging.example.com/';
++    const config = await loadConfig();
++    // trailing slash normalized away
++    expect(config.backendUrl).toBe('https://staging.example.com');
++  });
++
++  it('a malformed override does not win — it falls back to the mode default', async () => {
++    mockState.packaged = true;
++    mockState.baked = BAKED;
++    process.env['NEUROPAUSE_BACKEND_URL'] = 'not a url';
++    const config = await loadConfig();
++    expect(config.backendUrl).toBe(BAKED);
++  });
++});
+--- /dev/null
++++ b/certification/PROGRAM-13C-F6-DEV-BACKEND-URL.md
+@@ -0,0 +1,102 @@
++# PROGRAM 13C — F-6 · A dev run silently targets production
++
++**13 August 2026** · found while verifying the commands to start the app locally
++· amends `PROGRAM-13C-FINAL-CERTIFICATION.md` §1 (findings) and §2 (evidence pattern)
++
++---
++
++## Statement
++
++`npm run dev` on any tree that has ever run `npm run package` points the desktop
++application at **`https://api.neuropause033.com`**, not at the developer's local
++backend — with no warning, no prompt, and nothing in `git status`.
++
++Severity is not "wrong URL in dev". Sign-in, token refresh, device registration,
++organizations, billing and catalog all resolve through `config.backendUrl`
++(17 call sites). A developer believing they are testing locally is authenticating
++real credentials against, and writing to, the production service.
++
++---
++
++## Mechanism
++
++1. `apps/desktop/scripts/generate-build-info.cjs` writes
++   `apps/desktop/resources/build-info.json` at package time, containing
++   `"backendUrl": "https://api.neuropause033.com"`.
++2. That file is **correctly gitignored** — `.gitignore` carries it under
++   *"Generated at package time by generate-build-info.cjs; never commit"*. Being
++   gitignored is exactly why it is invisible: it never appears in `git status`,
++   survives branch switches, and survives `git clean` without `-x`.
++3. `buildInfo.readGenerated()` resolves it through `app.getAppPath()`. Its header
++   says *"absence is expected in dev"* — but it does not check `app.isPackaged`,
++   and in an `electron-vite dev` run `app.getAppPath()` is `apps/desktop`, so
++   candidate #3 (`<appPath>/resources/build-info.json`) hits.
++4. `config.ts:23` took `getBakedBackendUrl() ?? 'http://127.0.0.1:4000'` as its
++   default. The baked value wins in dev.
++
++Every step is individually reasonable. The defect is only visible where they meet.
++
++---
++
++## Evidence — runtime, not inference
++
++Container with PostgreSQL 16 + Redis 7 + the backend live on `:4000`
++(`/health` → `{"status":"ok","components":{"database":"up","redis":"up"}}`),
++Electron launched headless against the built main process.
++
++| Condition | `Starting in development mode { backendUrl: … }` |
++|---|---|
++| `build-info.json` present, no env var — **before fix** | `https://api.neuropause033.com` |
++| `NEUROPAUSE_BACKEND_URL=http://127.0.0.1:4000` | `http://127.0.0.1:4000` |
++| `build-info.json` removed, no env var | `http://127.0.0.1:4000` |
++| `build-info.json` present, no env var — **after fix** | `http://127.0.0.1:4000` |
++
++Rows 2 and 3 are the two workarounds available without a code change. Row 4 is
++the fix.
++
++---
++
++## Fix
++
++`config.ts` — a packaged build uses the baked URL (that is what baking is for);
++an unpackaged run defaults to local. `NEUROPAUSE_BACKEND_URL` still overrides in
++both modes, which stays the supported way to point a dev run at staging.
++
++`config.test.ts` — 6 tests. Negative control run: reverting the `app.isPackaged`
++guard makes case 1 fail with
++`expected 'https://api.neuropause033.com' to be 'http://127.0.0.1:4000'`, and
++restoring it returns 6/6. The test is therefore load-bearing, not decorative.
++
++---
++
++## Why this belongs in the certification record
++
++§2 of the certification names one recurring failure: **a status assigned by
++counting a proxy that was easier to measure than the thing.** Three instances were
++already recorded — adapters *written* vs *registered*; declarations vs coverage; a
++component *completing* vs the application *reaching* it.
++
++F-6 is the fourth, and its proxy is the most tempting of the four: *the source
++says the default is `127.0.0.1`.* It does. Reading `config.ts:23` — which I did —
++gives the local URL. Only executing it gives the production one, because the
++deciding input is a gitignored file in the working tree that no reading of the
++repository can see.
++
++**Rule for this class:** a configuration value that depends on filesystem state
++cannot be certified by reading the code that computes it. It has to be printed by
++a running process, in the state the operator will actually be in.
++
++The Round 17 runtime-evidence discipline was applied to features. It was not
++applied to configuration. It is now.
++
++---
++
++## Related, unresolved
++
++- F-4 (the sign-in wall) is unchanged. F-6 explains one way a local backend can be
++  running and the app *still* reports it cannot reach a backend — it was never
++  asked.
++- `neuropause033.com` still has no A record; `api.neuropause033.com` is
++  134.199.250.188. F-6 means dev runs have been reaching the second of those.
++- Any credential typed into a dev run since the first `npm run package` on that
++  tree should be treated as having been sent to production.

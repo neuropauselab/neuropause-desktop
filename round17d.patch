@@ -1,0 +1,1189 @@
+--- a/packages/shared/src/types/aiRouting.ts
++++ b/packages/shared/src/types/aiRouting.ts
+@@ -74,6 +74,103 @@
+   external: 'External Provider',
+ };
+ 
++/* ── tenant preference (P13C Round 17, decision D-5) ───────────────────────── */
++
++/**
++ * WHAT AN ORGANIZATION MAY ASK FOR — AND WHY IT IS TWO VALUES, NOT THREE.
++ *
++ * `ai:config.setMode` is `cloud:operate`: one `ai-config.json` per machine, and
++ * changing where AI work may run is an INSTALL-level act. That is correct and
++ * D-5 keeps it. But first-run asked every new user that platform question, and
++ * a fresh install has no platform operator by design, so onboarding dead-ended
++ * on its own authority model.
++ *
++ * The fix is a tenant preference that can only ever RESTRICT. It is deliberately
++ * a two-value type: `external` is not offered, so an organization asking to be
++ * elevated into direct external routing is not something the resolver refuses —
++ * it is something the type cannot express. Same idiom as the branded
++ * `TenantReadGrant` and `EnterpriseOrgGet`'s `EmptyRequest`: remove the
++ * parameter rather than guard it.
++ */
++export type TenantAiMode = 'local_only' | 'private_first';
++
++export const TENANT_AI_MODES = ['local_only', 'private_first'] as const;
++
++/**
++ * Permissiveness order over `AiMode`. Lower is stricter.
++ *
++ * The three modes are TOTALLY ORDERED, which is what makes the intersection a
++ * `min()` and its proof exhaustive rather than exemplary.
++ */
++const AI_MODE_RANK: Record<AiMode, number> = {
++  local_only: 0,
++  private_first: 1,
++  external: 2,
++};
++
++/**
++ * THE ONE RESOLVER. `effective = min(platform, tenant)`.
++ *
++ * The security property, stated as a law rather than a behaviour: for every
++ * platform policy P and every tenant preference T,
++ *
++ *     rank(effective(P, T)) <= rank(P)
++ *
++ * so a tenant can narrow what the platform permits and can never widen it.
++ * `resolveEffectiveAiMode` accepts a full `AiMode` on the tenant side only so
++ * that the law can be tested across all nine combinations including the value
++ * the store cannot persist — the proof covers inputs the product cannot produce,
++ * which is the point of a proof.
++ */
++export function resolveEffectiveAiMode(platform: AiMode, tenant: AiMode): AiMode {
++  return AI_MODE_RANK[tenant] < AI_MODE_RANK[platform] ? tenant : platform;
++}
++
++/**
++ * What a caller sees: the organization's own preference, the platform policy it
++ * is composed against, and the mode that actually applies.
++ *
++ * All three are returned together ON PURPOSE. A view that showed only the
++ * preference would let the UI claim "approved cloud AI" while the platform
++ * still routes everything locally — the silent no-op that makes a fix worse
++ * than the dead end it replaces.
++ */
++export interface TenantAiPreferenceView {
++  /** The organization's standing preference. Absent until it chooses one. */
++  tenantMode: TenantAiMode | null;
++  /** The install-wide policy, set only by a platform operator. */
++  platformMode: AiMode;
++  /**
++   * The platform's separate external-processing consent.
++   *
++   * P13C ROUND 17, CORRECTED AFTER A FRESH-INSTALL RUN. Mode alone does not
++   * decide whether external AI may be used: under `private_first`, external is
++   * a fallback that requires THIS flag, and it defaults to false. The first
++   * version of this view compared modes only, so a tenant choosing "approved
++   * cloud AI" on a default install saw `restrictedByPlatform: false` while
++   * external routing remained impossible — the silent no-op this view exists to
++   * prevent, reproduced by the very code meant to prevent it.
++   */
++  platformExternalConsent: boolean;
++  /** `min(platformMode, tenantMode)` — what requests will actually do. */
++  effectiveMode: AiMode;
++  /**
++   * True when the organization asked for external AI and cannot have it —
++   * because the platform's mode is stricter, its consent is off, or both.
++   *
++   * A tenant that chose `local_only` is never "restricted": it asked for the
++   * narrower thing and got it. Restriction means an UNFULFILLED intent, which
++   * is the only case the UI must speak up about.
++   */
++  restrictedByPlatform: boolean;
++  updatedAt: number | null;
++}
++
++/** Whether a value is a preference an organization is allowed to hold. */
++export function isTenantAiMode(value: unknown): value is TenantAiMode {
++  return value === 'local_only' || value === 'private_first';
++}
++
+ export const AI_MODE_DESCRIPTIONS: Record<AiMode, string> = {
+   private_first:
+     'Prefer processing on this device. Fall back to your private AI infrastructure if configured, and use an external provider only when you have enabled one.',
+--- a/packages/shared/src/ipc/channels.ts
++++ b/packages/shared/src/ipc/channels.ts
+@@ -1060,6 +1060,13 @@
+   // ── Private-First AI experience ──
+   /** Set the AI mode (private_first / local_only / external). */
+   AiConfigSetMode: 'ai:config.setMode',
++  /**
++   * P13C ROUND 17 · D-5. The ORGANISATION's AI preference, which can only
++   * restrict what `ai:config.setMode` (platform, `cloud:operate`) permits.
++   * Tenant RBAC — `org:read` / `org:manage` — never PUBLIC, never platform.
++   */
++  AiPreferenceGet: 'ai:preference.get',
++  AiPreferenceSet: 'ai:preference.set',
+   /** Grant or withdraw consent for external processing as a fallback. */
+   AiConfigSetExternalConsent: 'ai:config.setExternalConsent',
+   /** The live routing picture: mode, consent, per-route state, current plan. */
+@@ -1914,6 +1921,8 @@
+   IpcChannel.MedicalDeviceTraceBackward,
+   // ── Private-First AI experience ──
+   IpcChannel.AiConfigSetMode,
++  IpcChannel.AiPreferenceGet,
++  IpcChannel.AiPreferenceSet,
+   IpcChannel.AiConfigSetExternalConsent,
+   IpcChannel.AiRoutingStatus,
+   IpcChannel.AiRoutingUsage,
+--- a/packages/shared/src/ipc/contracts.ts
++++ b/packages/shared/src/ipc/contracts.ts
+@@ -1,6 +1,7 @@
+ import { z } from 'zod';
+ import { HELP_DOC_IDS } from '../types/helpDocs';
+ import { ONBOARDING_STEP_IDS } from '../types/onboarding';
++import { TENANT_AI_MODES } from '../types/aiRouting';
+ // Type-only (erased at compile time, so no runtime cycle with ../types).
+ import type { ConflictStrategy, SyncEntityType } from '../types/sync';
+ 
+@@ -3207,6 +3208,15 @@
+ export type AiSetModeRequest = z.infer<typeof AiSetModeRequest>;
+ 
+ export const AiSetExternalConsentRequest = z.object({ consent: z.boolean() }).strict();
++
++/**
++ * P13C ROUND 17 · D-5. The tenant preference, and the enum is the security
++ * boundary: `TENANT_AI_MODES` omits `'external'`, so an organization cannot
++ * even send a request asking to be elevated. Refusal is unnecessary because
++ * the request is unrepresentable.
++ */
++export const AiPreferenceSetRequest = z.object({ mode: z.enum(TENANT_AI_MODES) }).strict();
++export type AiPreferenceSetRequest = z.infer<typeof AiPreferenceSetRequest>;
+ export type AiSetExternalConsentRequest = z.infer<typeof AiSetExternalConsentRequest>;
+ 
+ /**
+--- a/packages/shared/src/ipc/responses.ts
++++ b/packages/shared/src/ipc/responses.ts
+@@ -54,7 +54,7 @@
+ import type { ExternalIdentity, IdentityMatch, ServiceIdentity } from '../types/identity';
+ import type { IpcChannelName } from './channels';
+ // ── Private-First AI experience ──
+-import type { AiRoutingStatusView, AiRoutingUsage } from '../types/aiRouting';
++import type { AiRoutingStatusView, AiRoutingUsage, TenantAiPreferenceView } from '../types/aiRouting';
+ import type { ExperienceProfile } from '../types/experienceProfile';
+ import type {
+   DecisionRecord,
+@@ -1506,6 +1506,8 @@
+   // ── Private-First AI experience ──
+   'ai:config.setMode': AiConfigDto;
+   'ai:config.setExternalConsent': AiConfigDto;
++  'ai:preference.get': TenantAiPreferenceView;
++  'ai:preference.set': TenantAiPreferenceView;
+   'ai:routing.status': AiRoutingStatusView;
+   'ai:routing.usage': AiRoutingUsage;
+   'xp:profile.get': ExperienceProfile;
+--- a/apps/desktop/src/main/enterprise/index.ts
++++ b/apps/desktop/src/main/enterprise/index.ts
+@@ -286,10 +286,12 @@
+ import { generateBriefing } from '../intelligence/briefingGenerator';
+ import { generateRecommendations } from '../recommendations/recommendationEngine';
+ import { healthHistoryStore } from './healthHistoryInstance';
++import { tenantAiPreferenceStore } from '../ai/tenantAiPreferenceInstance';
+ import { TenantDedupe } from '../tenancy/tenantDedupe';
+ 
+ const log = createLogger('enterprise');
+ 
++
+ export interface EnterpriseDeps {
+   broadcast: IpcBroadcaster;
+   /** Platform event publisher → timeline + Executive Center (module lifecycle). */
+@@ -508,6 +510,12 @@
+     // captured: the count must fall out of scope the moment a second org exists.
+     .bindOrganizationCount(() => orgStore.listOrganizations().length);
+   healthHistoryStore.bindScope(activeTenantScope);
++  /**
++   * P13C ROUND 17 · D-5. Bound here, beside the other tenant stores, which runs
++   * BELOW the startup gates after Round 17 relocated them. An unbound preference
++   * store now refuses the boot rather than answering `unowned-install`.
++   */
++  tenantAiPreferenceStore.bindScope(activeTenantScope);
+   await governanceStore.load();
+ 
+ 
+--- a/apps/desktop/src/main/backup/tenantArchive.ts
++++ b/apps/desktop/src/main/backup/tenantArchive.ts
+@@ -59,6 +59,13 @@
+  * registered source, the archive says so and the gate test reports it.
+  */
+ export const TENANT_DERIVED_DOMAINS = [
++  /**
++   * P13C ROUND 17 · D-5. The nineteenth domain, added because the store is
++   * genuinely tenant-derived — not removed to keep the ratio flattering. The
++   * denominator grows when the product grows; that is the whole design of this
++   * list.
++   */
++  'tenant-ai-preference',
+   'enterprise-module-records',
+   'executive-decisions',
+   'enterprise-governance',
+--- a/apps/desktop/src/main/backup/tenantDomainSources.ts
++++ b/apps/desktop/src/main/backup/tenantDomainSources.ts
+@@ -156,3 +156,33 @@
+     merge: async (grant, rows) => store.mergeForGrant(grant, rows as readonly T[]),
+   };
+ }
++
++/**
++ * TENANT AI PREFERENCE. P13C ROUND 17 · D-5.
++ *
++ * Domain nineteen, and the simplest adapter in the set precisely because the
++ * store was designed after the F22 seam existed: `ownerOf` is the row's own
++ * `tenantId`, which is also its primary key, so the archive's ownership check
++ * and the store's read filter examine the same field.
++ *
++ * The merge is where a tampered archive gets stopped a second time — the store
++ * drops any restored row whose mode is not a value a tenant may hold, so an
++ * edited archive claiming `external` cannot install a capability through the
++ * restore path even if it survives the manifest and integrity checks.
++ */
++export function tenantAiPreferenceSource<T extends { tenantId?: string | null }>(store: {
++  snapshotForGrant(grant: TenantReadGrant): T[];
++  mergeForGrant(grant: TenantReadGrant, rows: readonly T[]): Promise<number>;
++}): TenantDomainSource {
++  return {
++    domain: 'tenant-ai-preference',
++    storeName: 'tenant-ai-preference',
++    inMemoryCollection: true,
++    ownerOf: (row) => {
++      const owner = (row as T).tenantId;
++      return typeof owner === 'string' && owner !== '' ? owner : null;
++    },
++    snapshot: async (grant) => store.snapshotForGrant(grant),
++    merge: async (grant, rows) => store.mergeForGrant(grant, rows as readonly T[]),
++  };
++}
+--- a/apps/desktop/src/main/storage/storePaths.ts
++++ b/apps/desktop/src/main/storage/storePaths.ts
+@@ -42,6 +42,9 @@
+     'license-status.json',
+     // Mobile M1-03 — paired companion devices + gateway on/off (envelope-backed).
+     'companion-devices.json',
++    // P13C Round 17 (D-5) — the per-organization AI preference. Customer state,
++    // so it must be inside backup and inside pre-migration rollback like the rest.
++    'tenant-ai-preference.json',
+   ],
+   workspace: ['enterprise-workspaces.json', 'enterprise-org.json'],
+   knowledgeGraph: ['graph.json', 'unified-store.json'],
+--- a/apps/desktop/src/renderer/src/firstRun/FirstRunExperience.tsx
++++ b/apps/desktop/src/renderer/src/firstRun/FirstRunExperience.tsx
+@@ -15,7 +15,8 @@
+  */
+ import { useCallback, useEffect, useState } from 'react';
+ import { motion, useReducedMotion } from 'framer-motion';
+-import type { UnderstandingAttribute, WorkspaceType } from '@neuropause/shared';
++import type { AiMode, UnderstandingAttribute, WorkspaceType } from '@neuropause/shared';
++import { AI_MODE_LABELS } from '@neuropause/shared';
+ import {
+   ATTRIBUTE_STATUS_LABELS,
+   WORKSPACE_TYPES,
+@@ -45,6 +46,14 @@
+ }): JSX.Element {
+   const [step, setStep] = useState<Step>('welcome');
+   const [busy, setBusy] = useState(false);
++  /**
++   * P13C ROUND 17 · D-5. Three pieces of state so the screen can be HONEST:
++   * the error is surfaced instead of swallowed, and the effective mode is shown
++   * rather than the preference being displayed as if it were in force.
++   */
++  const [processingError, setProcessingError] = useState<string | null>(null);
++  const [effectiveMode, setEffectiveMode] = useState<AiMode | null>(null);
++  const [restrictedByPlatform, setRestrictedByPlatform] = useState(false);
+   const [chosenType, setChosenType] = useState<WorkspaceType | null>(null);
+   const [role, setRole] = useState<string | null>(null);
+   const [helpStyle, setHelpStyle] = useState<string | null>(null);
+@@ -76,16 +85,40 @@
+     }
+   }, [onDone]);
+ 
++  /**
++   * P13C ROUND 17 · D-5 — THE FIRST-RUN HIGH.
++   *
++   * This used to call `ai:config.setMode` and `ai:config.setExternalConsent`,
++   * with the comment "The ACTUAL routing configuration — not a stored marketing
++   * preference." The instinct was right and the authority tier was wrong: both
++   * are `cloud:operate`, `platformOperatorRegistry` deliberately never
++   * self-seeds, so on a fresh install the first call was refused, the catch
++   * swallowed it, and `setStep('workspace')` never ran. The user clicked and
++   * nothing happened. No install could complete onboarding.
++   *
++   * It now writes the ORGANISATION's preference through tenant RBAC. Still not
++   * a marketing flag — it is one half of the real routing decision — but it is
++   * the half a tenant is allowed to make. `min(platform, tenant)` does the rest.
++   */
+   const chooseProcessing = async (allowExternal: boolean): Promise<void> => {
+     setBusy(true);
++    setProcessingError(null);
+     try {
+-      // The ACTUAL routing configuration — not a stored marketing preference.
+-      await ipc.aiConfig.setMode('private_first');
+-      await ipc.aiConfig.setExternalConsent(allowExternal);
++      const view = await ipc.aiConfig.setPreference(allowExternal ? 'private_first' : 'local_only');
++      setEffectiveMode(view.effectiveMode);
++      setRestrictedByPlatform(view.restrictedByPlatform);
+       await ipc.firstRun.set({ aiModeChosen: true });
+       setStep('workspace');
+     } catch (err) {
+-      log.warn('Could not persist AI mode', { message: String(err) });
++      /**
++       * NOT SWALLOWED. The old catch logged to a console nobody was attached to
++       * and left the button inert — the failure mode that hid this bug for
++       * fourteen rounds. A refusal here is now visible and actionable.
++       */
++      log.warn('Could not persist AI preference', { message: String(err) });
++      setProcessingError(
++        'That choice could not be saved. You can continue and set it later in Settings.',
++      );
+     } finally {
+       setBusy(false);
+     }
+@@ -273,6 +306,32 @@
+                 onChoose={() => void chooseProcessing(true)}
+               />
+             </div>
++            {processingError !== null && (
++              <p
++                role="alert"
++                className="mt-6 rounded-lg border border-danger/40 bg-danger/10 px-4 py-3 text-center text-sm text-danger"
++              >
++                {processingError}
++              </p>
++            )}
++            {restrictedByPlatform && effectiveMode !== null && (
++              /**
++               * P13C ROUND 17 · D-5 · NO SILENT NO-OP.
++               *
++               * The organization asked for approved cloud AI and this install's
++               * platform policy does not currently permit it. Saying nothing here
++               * would replace a hard dead end with a lie, which is worse. The
++               * preference IS saved and becomes effective the moment a platform
++               * operator enables external processing.
++               */
++              <p className="mt-6 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-center text-sm text-warning">
++                Saved. Your organization permits approved cloud AI — but this
++                installation has not enabled external processing, so AI work stays
++                on this device. Effective mode: {AI_MODE_LABELS[effectiveMode]}. Your
++                choice takes effect automatically once a platform operator turns
++                external processing on.
++              </p>
++            )}
+             <p className="mt-6 text-center text-xs text-faint">
+               Default is Private First: local processing is preferred wherever it can serve the request.
+             </p>
+--- a/apps/desktop/src/renderer/src/lib/ipc.ts
++++ b/apps/desktop/src/renderer/src/lib/ipc.ts
+@@ -51,6 +51,7 @@
+   type GraphCounts,
+   // ── Private-First AI experience ──
+   type AiMode,
++  type TenantAiMode,
+   type WorkspaceType,
+   type UnderstandingAttribute,
+   type DocumentLineInput,
+@@ -1765,6 +1766,18 @@
+     setMode: (mode: AiMode) => invoke(IpcChannel.AiConfigSetMode, { mode }),
+     setExternalConsent: (consent: boolean) =>
+       invoke(IpcChannel.AiConfigSetExternalConsent, { consent }),
++    /**
++     * P13C ROUND 17 · D-5 — the ORGANISATION's preference, not the install's.
++     *
++     * `setMode`/`setExternalConsent` above are `cloud:operate` and stay that
++     * way. These two are tenant RBAC (`org:read`/`org:manage`), which is why
++     * first-run can call them and could not call those.
++     *
++     * Both return the composed view — tenant, platform, effective — so a caller
++     * cannot render the preference as though it were in force.
++     */
++    preference: () => invoke(IpcChannel.AiPreferenceGet),
++    setPreference: (mode: TenantAiMode) => invoke(IpcChannel.AiPreferenceSet, { mode }),
+     /** The live routing picture — same assembly + planner a request uses. */
+     routingStatus: () => invoke(IpcChannel.AiRoutingStatus),
+     /** Measured routing usage. Counts, never inventions. */
+--- a/apps/desktop/src/main/ai/aiAuthzGate.ts
++++ b/apps/desktop/src/main/ai/aiAuthzGate.ts
+@@ -65,6 +65,24 @@
+   [IpcChannel.AiConfigSetCredential]: 'cloud:operate',
+   [IpcChannel.AiConfigClearCredential]: 'cloud:operate',
+   [IpcChannel.AiConfigSetMode]: 'cloud:operate',
++  /**
++   * P13C ROUND 17 · D-5 — THE TENANT HALF, and it lives here rather than in
++   * the enterprise gate because the gate that owns a namespace must own every
++   * channel in it. The first attempt put these in
++   * `ENTERPRISE_CHANNEL_PERMISSIONS` and two invariants refused it: the
++   * enterprise gate rejects a channel outside its own namespace, and
++   * `runtimeAuthz.test` reported them unaccounted because `ai:` is not a
++   * self-gated prefix. Both were right.
++   *
++   * TENANT RBAC, deliberately NOT `cloud:operate`. The row above is the
++   * platform's standing policy for the machine; these two are one
++   * organization's preference, which can only ever narrow it — see
++   * `resolveEffectiveAiMode`. That difference is the whole of decision D-5, and
++   * it is the reason a fresh install can now complete onboarding without a
++   * platform operator existing.
++   */
++  [IpcChannel.AiPreferenceGet]: 'org:read',
++  [IpcChannel.AiPreferenceSet]: 'org:manage',
+   [IpcChannel.AiConfigSetExternalConsent]: 'cloud:operate',
+   [IpcChannel.AiConfigResetToEnv]: 'cloud:operate',
+   /**
+@@ -157,6 +175,7 @@
+   IpcChannel.AiConfigClearCredential,
+   IpcChannel.AiConfigSetMode,
+   IpcChannel.AiConfigSetExternalConsent,
++  IpcChannel.AiPreferenceSet,
+   IpcChannel.AiConfigResetToEnv,
+   IpcChannel.AiConfigMigrate,
+   IpcChannel.FounderAskV2,
+--- a/apps/desktop/src/main/ai/aiConfigIpc.ts
++++ b/apps/desktop/src/main/ai/aiConfigIpc.ts
+@@ -8,6 +8,7 @@
+ import {
+   EmptyRequest,
+   IpcChannel,
++  AiPreferenceSetRequest,
+   AiSetProviderRequest,
+   AiSetModelRequest,
+   AiSetCredentialRequest,
+@@ -28,6 +29,35 @@
+ } from '@neuropause/shared';
+ import type { SecureHandlerDef } from '../ipc/secureBridge';
+ import { withAiAuthz } from './aiAuthzGate';
++import { tenantAiPreferenceStore } from './tenantAiPreferenceInstance';
++import { aiPreferenceView } from './tenantAiPreferenceView';
++import { declareChannelResource } from '../ipc/channelResource';
++
++/**
++ * CHANNEL → STORE. P13C ROUND 17.
++ *
++ * The mechanism landed in Round 13 and shipped with no production declarations
++ * — the "coverage partial" line in five consecutive reports. These are the
++ * first two, and they are the right pair to open with: a channel reaching a
++ * CUSTOMER_DERIVED, TENANT-scoped store is exactly the shape the rule set was
++ * written to police.
++ */
++declareChannelResource({
++  channel: IpcChannel.AiPreferenceGet,
++  store: 'tenant-ai-preference',
++  effect: 'read',
++  reason:
++    "Returns the active organization's own AI preference composed against platform policy. " +
++    'Ambient scope is the only selector; the channel accepts no target id.',
++});
++declareChannelResource({
++  channel: IpcChannel.AiPreferenceSet,
++  store: 'tenant-ai-preference',
++  effect: 'mutate',
++  reason:
++    "Upserts the active organization's own preference row. It cannot widen platform policy: " +
++    "the request enum has no 'external' member.",
++});
+ import { engineManager } from './engineManager';
+ import { loadAiConfig, resolveAiMode, saveAiConfig } from './aiConfigStore';
+ import { credentialStore } from '../security/secureStore';
+@@ -223,6 +253,26 @@
+   return {
+     handlers: withAiAuthz([
+       { channel: IpcChannel.AiConfigGet, schema: EmptyRequest, handler: () => getConfig() },
++      /**
++       * P13C ROUND 17 · D-5 — the ORGANISATION's preference, beside the
++       * platform's config on purpose: the contrast is the point. Everything
++       * else in this array that writes takes `cloud:operate`. These two take
++       * `org:read` / `org:manage`, because a tenant preference can only narrow
++       * what the platform already permits and therefore is not a platform act.
++       *
++       * Neither accepts a target id, so ambient scope is the only selector and
++       * organization B has no parameter with which to address organization A.
++       */
++      { channel: IpcChannel.AiPreferenceGet, schema: EmptyRequest, handler: () => aiPreferenceView() },
++      {
++        channel: IpcChannel.AiPreferenceSet,
++        schema: AiPreferenceSetRequest,
++        audit: true,
++        handler: async (p) => {
++          await tenantAiPreferenceStore.setMine((p as AiPreferenceSetRequest).mode);
++          return aiPreferenceView();
++        },
++      },
+       { channel: IpcChannel.AiConfigHealth, schema: EmptyRequest, handler: () => getHealth() },
+       { channel: IpcChannel.AiConfigDetectOllama, schema: EmptyRequest, handler: () => detectOllama() },
+       {
+--- a/apps/desktop/src/main/ipc/runtimeAuthz.ts
++++ b/apps/desktop/src/main/ipc/runtimeAuthz.ts
+@@ -124,6 +124,17 @@
+   [IpcChannel.AiConfigSetModel]: 'cloud:operate',
+   [IpcChannel.AiConfigSetCredential]: 'cloud:operate',
+   [IpcChannel.AiConfigSetMode]: 'cloud:operate',
++  /**
++   * P13C ROUND 17 · D-5. Listed here AND in `AI_CHANNEL_AUTHORITY` because
++   * `ai:` is not a self-gated prefix: `withAiAuthz` cross-checks the two maps
++   * and throws when they disagree, so the duplication is a consistency check
++   * rather than a second source of truth.
++   *
++   * Tenant RBAC, NOT `cloud:operate`. The row above governs the machine; these
++   * govern one organization's preference, which can only narrow it.
++   */
++  [IpcChannel.AiPreferenceGet]: 'org:read',
++  [IpcChannel.AiPreferenceSet]: 'org:manage',
+   [IpcChannel.AiConfigSetExternalConsent]: 'cloud:operate',
+   /**
+    * P13C ROUND 3 — feedback came OFF the public allowlist.
+--- a/apps/desktop/src/main/tenancy/round14TenantArchive.test.ts
++++ b/apps/desktop/src/main/tenancy/round14TenantArchive.test.ts
+@@ -289,10 +289,21 @@
+     expect([...covered, ...gaps].sort()).toEqual([...TENANT_DERIVED_DOMAINS].sort());
+   });
+ 
+-  it('the denominator still names all eighteen tenant-derived domains', () => {
+-    // Guards the denominator itself: shrinking this list would make coverage
+-    // look complete without any domain becoming safer.
+-    expect(TENANT_DERIVED_DOMAINS.length).toBe(18);
++  it('the denominator still names every tenant-derived domain', () => {
++    /**
++     * Guards the denominator itself: shrinking this list would make coverage
++     * look complete without any domain becoming safer.
++     *
++     * P13C ROUND 17 — 18 → 19. `tenant-ai-preference` is a NEW tenant-derived
++     * store (decision D-5), so the denominator GREW. That is the direction this
++     * guard permits and the whole reason it is a number rather than a mood: a
++     * domain added must move it up, and a domain quietly deleted to flatter the
++     * ratio moves it down and fails here. The number is updated deliberately,
++     * in the same commit that adds the domain and its adapter — never to make a
++     * red test green.
++     */
++    expect(TENANT_DERIVED_DOMAINS.length).toBe(19);
++    expect(TENANT_DERIVED_DOMAINS).toContain('tenant-ai-preference');
+     for (const d of ['ai-memory-store', 'knowledge-graph', 'unified-entities', 'platform-timeline', 'enterprise-module-records']) {
+       expect(TENANT_DERIVED_DOMAINS).toContain(d);
+     }
+diff --git a/apps/desktop/src/main/ai/tenantAiPreferenceStore.ts b/apps/desktop/src/main/ai/tenantAiPreferenceStore.ts
+new file mode 100644
+--- /dev/null
++++ b/apps/desktop/src/main/ai/tenantAiPreferenceStore.ts
+@@ -0,0 +1,192 @@
++/**
++ * TENANT AI PREFERENCE. P13C ROUND 17 · DECISION D-5.
++ *
++ * WHY THIS STORE EXISTS
++ *
++ * First-run asked every new user *"Where should your AI work?"* and answered it
++ * by calling `ai:config.setMode` — which is `cloud:operate`, platform-only, one
++ * `ai-config.json` for the machine. `platformOperatorRegistry` deliberately
++ * refuses to self-seed (*"EMPTY MEANS NOBODY … no bootstrap-if-empty path"*), so
++ * a fresh install has no operator and both onboarding buttons were refused. Two
++ * independently correct decisions composing into a product nobody could set up.
++ *
++ * D-5 keeps the platform boundary and gives the organization its own preference.
++ *
++ * WHY NOT `experience-profile`, WHICH ALREADY HOLDS `aiModeChosen`
++ *
++ * Because its own declaration says `scope: 'USER'`, `authority: 'USER'`, and
++ * *"`experience:profile.set` and `experience:profile.reset` are on the PUBLIC
++ * channel list — no auth, no permission"*. Putting an organization's AI
++ * preference behind an unauthenticated channel would be a bypass of the very
++ * boundary D-5 exists to protect. The convenient home is the wrong one.
++ *
++ * WHAT IT CAN AND CANNOT SAY
++ *
++ * `TenantAiMode` is two values. `'external'` is not offered, so "elevate this
++ * organization into direct external routing" is not a request the resolver
++ * declines — it is a request the type cannot construct. The effective mode is
++ * always `min(platform, tenant)`; see `resolveEffectiveAiMode`.
++ *
++ * SHAPE
++ *
++ * `Record<orgId, {mode, updatedAt}>` — one row per organization, keyed by owner.
++ * The read filter and the removal boundary are therefore the same key, so they
++ * cannot drift apart, which is the property `enterprise-health-history` had to
++ * be rebuilt to obtain.
++ */
++import { promises as fs, readFileSync } from 'node:fs';
++import { dirname } from 'node:path';
++import type { TenantScope } from '@neuropause/shared';
++import { isTenantAiMode, type TenantAiMode } from '@neuropause/shared';
++import { TenantOwnership } from '../tenancy/tenantOwnedStore';
++import type { TenantReadGrant } from '../tenancy/tenantOwnedStore';
++import { declareStoreScope } from '../tenancy/storeScope';
++
++declareStoreScope({
++  name: 'tenant-ai-preference',
++  scope: 'TENANT',
++  persistence: 'file',
++  /** Set by the organization's Owner/Admin through `org:manage`. Never by the platform. */
++  authority: 'ORG_ROLE',
++  classification: 'CUSTOMER_DERIVED',
++  retentionScope: 'OWNER',
++  retentionAuthority: 'OWNER',
++  retention:
++    'ONE row per organization, keyed by `tenantId`. `set` upserts the caller\'s own row and ' +
++    '`mergeForGrant` replaces exactly the granted tenant\'s row — both address a single key, so ' +
++    'neither can reach another organization\'s preference. There is no list, no cap and no ' +
++    'eviction, so no write removes anything belonging to anyone else. The only removal is a ' +
++    'restore overwriting the granted tenant\'s own row with the archived one.',
++  reason:
++    'An organization\'s standing instruction about where its AI work may run. It is customer ' +
++    'state, not install telemetry: it is chosen by that organization\'s administrator, it ' +
++    'differs between tenants on one machine, and it is one half of the input to the routing ' +
++    'decision for that tenant\'s requests. The platform half lives in `ai-config.json` under ' +
++    '`cloud:operate` and is deliberately NOT here.',
++});
++
++export interface TenantAiPreferenceRow {
++  /** The owning organization. The key, and the only ownership evidence. */
++  tenantId: string;
++  mode: TenantAiMode;
++  updatedAt: number;
++}
++
++interface PreferenceFile {
++  preferences: TenantAiPreferenceRow[];
++}
++
++export class TenantAiPreferenceStore {
++  private readonly tenancy = new TenantOwnership('tenant-ai-preference');
++
++  private rows: TenantAiPreferenceRow[] = [];
++  private loaded = false;
++  private writeChain: Promise<void> = Promise.resolve();
++
++  constructor(private readonly filePath: string | null) {}
++
++  /** Bind the tenant boundary. UNBOUND DENIES. Chainable. */
++  bindScope(source: () => TenantScope | null): this {
++    this.tenancy.bindScope(source);
++    return this;
++  }
++  hasScope(): boolean {
++    return this.tenancy.hasScope();
++  }
++  /** Unscoped ownership counts, for the migration inventory. */
++  ownershipCounts(): { total: number; assigned: number; unresolved: number } {
++    return this.tenancy.countOwnership(this.rows);
++  }
++
++  private load(): void {
++    if (this.loaded) return;
++    this.loaded = true;
++    if (this.filePath === null) return;
++    try {
++      const parsed = JSON.parse(readFileSync(this.filePath, 'utf8')) as Partial<PreferenceFile>;
++      const list = Array.isArray(parsed.preferences) ? parsed.preferences : [];
++      // A row whose mode is not a value a tenant may hold is dropped rather than
++      // coerced: a file edited to say `external` must not become a capability.
++      this.rows = list.filter(
++        (r): r is TenantAiPreferenceRow =>
++          typeof r?.tenantId === 'string' && r.tenantId !== '' && isTenantAiMode(r.mode),
++      );
++    } catch {
++      this.rows = [];
++    }
++  }
++
++  private persist(): Promise<void> {
++    const run = this.writeChain.then(() => this.writeNow());
++    this.writeChain = run.catch(() => {});
++    return run;
++  }
++
++  private async writeNow(): Promise<void> {
++    if (this.filePath === null) return;
++    const tmp = `${this.filePath}.${process.pid}.${Date.now()}.tmp`;
++    await fs.mkdir(dirname(this.filePath), { recursive: true }).catch(() => {});
++    await fs.writeFile(tmp, JSON.stringify({ preferences: this.rows } as PreferenceFile), {
++      mode: 0o600,
++    });
++    await fs.rename(tmp, this.filePath);
++  }
++
++  /**
++   * The CALLER'S preference, or null when they have not chosen one.
++   *
++   * `onlyMine` rather than a lookup by a caller-supplied id: there is no id
++   * parameter to substitute, so the ambient scope is the only selector — the
++   * same shape `EnterpriseOrgGet` uses to make the M-11 class impossible.
++   */
++  mine(): TenantAiPreferenceRow | null {
++    this.load();
++    return this.tenancy.onlyMine(this.rows)[0] ?? null;
++  }
++
++  /**
++   * Upsert the caller's own preference.
++   *
++   * `requireTenant()` throws when no organization is active, matching every
++   * other write in this program: a row with no owner is a row nobody can read
++   * back, and inventing an owner is worse than refusing.
++   */
++  async setMine(mode: TenantAiMode, nowMs: number = Date.now()): Promise<TenantAiPreferenceRow> {
++    this.load();
++    const tenantId = this.tenancy.requireTenant();
++    const row: TenantAiPreferenceRow = { tenantId, mode, updatedAt: nowMs };
++    this.rows = [...this.rows.filter((r) => r.tenantId !== tenantId), row];
++    await this.persist();
++    return { ...row };
++  }
++
++  /* ── F22 tenant archive seam ─────────────────────────────────────────────
++   * Both take a `TenantReadGrant`, the branded type only `authorizeTenantRead`
++   * mints, so neither is an unscoped read anything can call.
++   */
++
++  snapshotForGrant(grant: TenantReadGrant): TenantAiPreferenceRow[] {
++    this.load();
++    return this.tenancy.onlyFor(grant, this.rows).map((r) => ({ ...r }));
++  }
++
++  /**
++   * Replace the granted tenant's row, leaving every other tenant's untouched.
++   *
++   * Memory is updated BEFORE the write because `persist()` serializes from
++   * memory — a disk-only merge would be erased by the next ordinary write.
++   * A restored row whose mode is not tenant-holdable is dropped, so a tampered
++   * archive cannot install `external` through the restore path.
++   */
++  async mergeForGrant(
++    grant: TenantReadGrant,
++    rows: readonly TenantAiPreferenceRow[],
++  ): Promise<number> {
++    this.load();
++    const others = this.rows.filter((r) => r.tenantId !== grant.tenantId);
++    const mine = rows.filter((r) => isTenantAiMode(r.mode)).map((r) => ({ ...r }));
++    this.rows = [...others, ...mine];
++    await this.persist();
++    return mine.length;
++  }
++}
+diff --git a/apps/desktop/src/main/ai/tenantAiPreferenceInstance.ts b/apps/desktop/src/main/ai/tenantAiPreferenceInstance.ts
+new file mode 100644
+--- /dev/null
++++ b/apps/desktop/src/main/ai/tenantAiPreferenceInstance.ts
+@@ -0,0 +1,15 @@
++import { join } from 'node:path';
++import { app } from 'electron';
++import { TenantAiPreferenceStore } from './tenantAiPreferenceStore';
++
++/**
++ * App-wide tenant AI preference store, persisted under userData.
++ *
++ * A module-level instance like `healthHistoryInstance`, so the composition root
++ * binds exactly one boundary — and so `assertAllTenantStoresBound` sees it. The
++ * binding happens in `enterprise/index.ts` beside the other tenant stores,
++ * which runs BELOW the relocated startup gates (Round 17).
++ */
++export const tenantAiPreferenceStore = new TenantAiPreferenceStore(
++  join(app.getPath('userData'), 'tenant-ai-preference.json'),
++);
+diff --git a/apps/desktop/src/main/ai/tenantAiPreferenceView.ts b/apps/desktop/src/main/ai/tenantAiPreferenceView.ts
+new file mode 100644
+--- /dev/null
++++ b/apps/desktop/src/main/ai/tenantAiPreferenceView.ts
+@@ -0,0 +1,72 @@
++/**
++ * THE COMPOSED ANSWER. P13C ROUND 17 · D-5.
++ *
++ * One function, because there must be exactly one place that combines the
++ * platform policy with the tenant preference. Two places would eventually
++ * disagree, and the direction they disagree in is the direction that grants
++ * capability nobody authorized.
++ *
++ * It returns all three values — tenant, platform, effective — plus
++ * `restrictedByPlatform`, so the UI is structurally unable to display "approved
++ * cloud AI" as if it were in force while the platform still routes everything
++ * locally. Replacing a hard dead end with a silent no-op would be a worse bug
++ * than the one D-5 is fixing.
++ */
++import type { TenantAiPreferenceView } from '@neuropause/shared';
++import { resolveEffectiveAiMode } from '@neuropause/shared';
++import { tenantAiPreferenceStore } from './tenantAiPreferenceInstance';
++import { loadAiConfig, resolveAiMode } from './aiConfigStore';
++
++export function aiPreferenceView(): TenantAiPreferenceView {
++  /**
++   * `mode` is nullable on disk — an install that predates the mode setting has
++   * none — so the platform side goes through `resolveAiMode`, the existing
++   * function that answers what an unset config actually behaves as. Reading
++   * `cfg.mode` directly would have made "unset" compose as `undefined` and the
++   * intersection meaningless.
++   */
++  const cfg = loadAiConfig();
++  /**
++   * `provider: null` means "defer to env/default", and `resolveAiMode` reads it
++   * to decide what an UNSET mode behaves as: a Claude setup already routes
++   * externally, anything else prefers local. A null provider is not Claude, so
++   * it takes the local-preferring branch — which is also the fail-safer of the
++   * two, and the direction to be wrong in if this ever changes.
++   */
++  const platformMode = resolveAiMode(cfg, cfg.provider ?? 'ollama');
++  const row = tenantAiPreferenceStore.mine();
++  /**
++   * NO PREFERENCE MEANS NO OPINION, NOT A DEFAULT.
++   *
++   * An organization that has never chosen gets the platform policy unchanged.
++   * Defaulting the absent case to `local_only` would look safer and would be a
++   * lie — it would silently restrict tenants who never expressed anything, and
++   * the product could not tell "chose local" from "has not chosen".
++   */
++  const effectiveMode =
++    row === null ? platformMode : resolveEffectiveAiMode(platformMode, row.mode);
++  /**
++   * CAN EXTERNAL AI ACTUALLY RUN? Two conditions, not one.
++   *
++   * `external` mode routes to the provider directly. `private_first` uses one
++   * only as a FALLBACK and only when `externalConsent` is set — a separate
++   * platform flag that defaults to false. Comparing modes alone therefore
++   * reports "not restricted" on a default install while external routing is
++   * impossible, which is the silent no-op this whole view exists to stop.
++   */
++  const externalPossible =
++    effectiveMode === 'external' || (effectiveMode === 'private_first' && cfg.externalConsent);
++  return {
++    tenantMode: row?.mode ?? null,
++    platformMode,
++    platformExternalConsent: cfg.externalConsent,
++    effectiveMode,
++    /**
++     * Only an UNFULFILLED intent counts. A tenant that chose `local_only`
++     * asked to be narrower and got exactly that; calling it "restricted" would
++     * cry wolf on the common, correct case and train the notice to be ignored.
++     */
++    restrictedByPlatform: row?.mode === 'private_first' && !externalPossible,
++    updatedAt: row?.updatedAt ?? null,
++  };
++}
+diff --git a/apps/desktop/src/main/tenancy/round17TenantAiPreference.test.ts b/apps/desktop/src/main/tenancy/round17TenantAiPreference.test.ts
+new file mode 100644
+--- /dev/null
++++ b/apps/desktop/src/main/tenancy/round17TenantAiPreference.test.ts
+@@ -0,0 +1,331 @@
++/**
++ * D-5 — TENANT AI PREFERENCE. P13C ROUND 17.
++ *
++ * THE FINDING THIS CLOSES
++ *
++ * First-run called `ai:config.setMode` — `cloud:operate`, platform-only — and a
++ * fresh install has no platform operator because `platformOperatorRegistry`
++ * deliberately never self-seeds. Both onboarding buttons were refused, the
++ * catch swallowed it, and no install could be set up. Two independently correct
++ * decisions composing into an unusable product; neither was wrong alone, which
++ * is why no unit test saw it and the first real launch found it in ninety
++ * seconds.
++ *
++ * THE SECURITY LAW THIS ENFORCES
++ *
++ *     for every platform policy P and every tenant preference T,
++ *     rank(effective(P, T)) <= rank(P)
++ *
++ * A tenant may narrow what the platform permits. It may never widen it. The
++ * three `AiMode` values are totally ordered, so the intersection is `min()` and
++ * the proof is EXHAUSTIVE — all nine combinations, including the one value the
++ * store cannot persist. A proof that covers inputs the product cannot produce
++ * is the only kind worth calling a proof.
++ */
++import { describe, expect, it, beforeEach, afterEach } from 'vitest';
++import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
++import { tmpdir } from 'node:os';
++import { join } from 'node:path';
++import {
++  AI_MODES,
++  TENANT_AI_MODES,
++  isTenantAiMode,
++  resolveEffectiveAiMode,
++  type AiMode,
++} from '@neuropause/shared';
++import { TenantAiPreferenceStore } from '../ai/tenantAiPreferenceStore';
++import { authorizeTenantRead } from './tenantOwnedStore';
++import { TENANT_DERIVED_DOMAINS } from '../backup/tenantArchive';
++
++const RANK: Record<AiMode, number> = { local_only: 0, private_first: 1, external: 2 };
++
++describe('D-5 — effective mode is the intersection, exhaustively', () => {
++  it('covers all nine platform × tenant combinations', () => {
++    /**
++     * Iterate in RANK order, not declaration order. `AI_MODES` is declared
++     * `['private_first','local_only','external']` — a UI ordering, not a
++     * permissiveness one — and pinning the expectation to it would make this
++     * proof break the day somebody reorders a dropdown.
++     */
++    const byRank = [...AI_MODES].sort((a, b) => RANK[a] - RANK[b]);
++    const rows = byRank.flatMap((platform) =>
++      byRank.map((tenant) => ({
++        platform,
++        tenant,
++        effective: resolveEffectiveAiMode(platform, tenant),
++      })),
++    );
++    expect(rows).toHaveLength(9);
++    expect(rows.map((r) => `${r.platform}|${r.tenant}=${r.effective}`)).toEqual([
++      'local_only|local_only=local_only',
++      'local_only|private_first=local_only',
++      'local_only|external=local_only',
++      'private_first|local_only=local_only',
++      'private_first|private_first=private_first',
++      'private_first|external=private_first',
++      'external|local_only=local_only',
++      'external|private_first=private_first',
++      'external|external=external',
++    ]);
++  });
++
++  it('THE LAW: effective is never more permissive than the platform', () => {
++    const violations = AI_MODES.flatMap((platform) =>
++      AI_MODES.filter((tenant) => RANK[resolveEffectiveAiMode(platform, tenant)] > RANK[platform]).map(
++        (tenant) => `${platform} widened by ${tenant}`,
++      ),
++    );
++    expect(violations, 'a tenant preference widened platform policy').toEqual([]);
++  });
++
++  it('is idempotent and order-independent where both agree', () => {
++    for (const m of AI_MODES) expect(resolveEffectiveAiMode(m, m)).toBe(m);
++  });
++});
++
++/**
++ * NC-D5-ELEVATE — the mandatory negative control.
++ *
++ * If `resolveEffectiveAiMode` is ever changed to prefer the tenant value, or to
++ * fall through to the tenant on a tie, this fails. It is the single assertion
++ * standing between D-5 and a tenant self-service escalation.
++ */
++describe('NC-D5-ELEVATE — a tenant cannot escalate itself', () => {
++  it('platform local_only + tenant private_first stays local_only', () => {
++    expect(resolveEffectiveAiMode('local_only', 'private_first')).toBe('local_only');
++  });
++  it('platform private_first + tenant local_only narrows to local_only', () => {
++    expect(resolveEffectiveAiMode('private_first', 'local_only')).toBe('local_only');
++  });
++  it("the tenant type cannot even express 'external'", () => {
++    expect([...TENANT_AI_MODES]).toEqual(['local_only', 'private_first']);
++    expect(isTenantAiMode('external')).toBe(false);
++    expect(isTenantAiMode('private_first')).toBe(true);
++  });
++});
++
++describe('D-5 — the store is tenant-owned', () => {
++  let dir: string;
++  let file: string;
++  let active: string | null;
++  let store: TenantAiPreferenceStore;
++
++  const asTenant = (id: string | null): void => {
++    active = id;
++  };
++
++  beforeEach(() => {
++    dir = mkdtempSync(join(tmpdir(), 'np-aipref-'));
++    file = join(dir, 'tenant-ai-preference.json');
++    active = 'org-a';
++    store = new TenantAiPreferenceStore(file).bindScope(() =>
++      active === null ? null : { tenantId: active, workspaceId: `ws-${active}` },
++    );
++  });
++  afterEach(() => rmSync(dir, { recursive: true, force: true }));
++
++  it('each organization reads only its own preference', async () => {
++    asTenant('org-a');
++    await store.setMine('local_only');
++    asTenant('org-b');
++    await store.setMine('private_first');
++    asTenant('org-c');
++    await store.setMine('local_only');
++
++    asTenant('org-a');
++    expect(store.mine()?.mode).toBe('local_only');
++    asTenant('org-b');
++    expect(store.mine()?.mode).toBe('private_first');
++    asTenant('org-c');
++    expect(store.mine()?.mode).toBe('local_only');
++  });
++
++  it('a write replaces only the writer’s row', async () => {
++    asTenant('org-a');
++    await store.setMine('local_only');
++    asTenant('org-b');
++    await store.setMine('private_first');
++    asTenant('org-a');
++    await store.setMine('private_first');
++
++    asTenant('org-b');
++    expect(store.mine()?.mode).toBe('private_first');
++    const onDisk = JSON.parse(readFileSync(file, 'utf8')) as {
++      preferences: { tenantId: string }[];
++    };
++    expect(onDisk.preferences.map((r) => r.tenantId).sort()).toEqual(['org-a', 'org-b']);
++  });
++
++  it('refuses a write when no organization is active — no unowned rows', async () => {
++    asTenant(null);
++    await expect(store.setMine('local_only')).rejects.toThrow();
++    expect(store.mine()).toBeNull();
++  });
++
++  it('reads nothing when no organization is active', async () => {
++    asTenant('org-a');
++    await store.setMine('private_first');
++    asTenant(null);
++    expect(store.mine()).toBeNull();
++  });
++
++  it("drops a hand-edited 'external' row rather than honouring it", () => {
++    writeFileSync(
++      file,
++      JSON.stringify({
++        preferences: [{ tenantId: 'org-a', mode: 'external', updatedAt: 1 }],
++      }),
++    );
++    const fresh = new TenantAiPreferenceStore(file).bindScope(() => ({
++      tenantId: 'org-a',
++      workspaceId: 'ws-a',
++    }));
++    expect(fresh.mine()).toBeNull();
++  });
++
++  it('an UNBOUND store denies — the startup gate is not the only guard', () => {
++    const unbound = new TenantAiPreferenceStore(file);
++    expect(unbound.hasScope()).toBe(false);
++    expect(unbound.mine()).toBeNull();
++  });
++});
++
++describe('D-5 — F22 seam', () => {
++  let dir: string;
++  let active: string;
++  let store: TenantAiPreferenceStore;
++
++  beforeEach(async () => {
++    dir = mkdtempSync(join(tmpdir(), 'np-aipref-f22-'));
++    active = 'org-a';
++    store = new TenantAiPreferenceStore(join(dir, 'p.json')).bindScope(() => ({
++      tenantId: active,
++      workspaceId: `ws-${active}`,
++    }));
++    for (const [id, mode] of [
++      ['org-a', 'local_only'],
++      ['org-b', 'private_first'],
++      ['org-c', 'local_only'],
++    ] as const) {
++      active = id;
++      await store.setMine(mode);
++    }
++    active = 'org-a';
++  });
++  afterEach(() => rmSync(dir, { recursive: true, force: true }));
++
++  it("A's snapshot contains A only", () => {
++    const grant = authorizeTenantRead({ tenantId: 'org-a', platformOperator: false }, 'org-a');
++    const snap = store.snapshotForGrant(grant);
++    expect(snap).toHaveLength(1);
++    expect(snap[0]?.tenantId).toBe('org-a');
++    expect(JSON.stringify(snap)).not.toContain('org-b');
++    expect(JSON.stringify(snap)).not.toContain('org-c');
++  });
++
++  it('restoring A leaves B and C untouched', async () => {
++    const grant = authorizeTenantRead({ tenantId: 'org-a', platformOperator: false }, 'org-a');
++    const archived = store.snapshotForGrant(grant);
++    active = 'org-a';
++    await store.setMine('private_first');
++    await store.mergeForGrant(grant, archived);
++
++    active = 'org-a';
++    expect(store.mine()?.mode).toBe('local_only');
++    active = 'org-b';
++    expect(store.mine()?.mode).toBe('private_first');
++    active = 'org-c';
++    expect(store.mine()?.mode).toBe('local_only');
++  });
++
++  it('a grant for A cannot be minted by B', () => {
++    expect(() =>
++      authorizeTenantRead({ tenantId: 'org-b', platformOperator: false }, 'org-a'),
++    ).toThrow();
++  });
++
++  it("a tampered archive claiming 'external' installs nothing", async () => {
++    const grant = authorizeTenantRead({ tenantId: 'org-a', platformOperator: false }, 'org-a');
++    const tampered = [{ tenantId: 'org-a', mode: 'external' as never, updatedAt: 2 }];
++    const merged = await store.mergeForGrant(grant, tampered);
++    expect(merged).toBe(0);
++    active = 'org-a';
++    expect(store.mine()).toBeNull();
++  });
++
++  it('is domain nineteen — the denominator grew, it was not edited', () => {
++    expect(TENANT_DERIVED_DOMAINS).toContain('tenant-ai-preference');
++    expect(TENANT_DERIVED_DOMAINS).toHaveLength(19);
++    expect(new Set(TENANT_DERIVED_DOMAINS).size).toBe(TENANT_DERIVED_DOMAINS.length);
++  });
++});
++
++/**
++ * CONSENT IS THE SECOND GATE — AND MY FIRST VERSION MISSED IT.
++ *
++ * `restrictedByPlatform` originally compared MODES only. On a default install
++ * the platform mode resolves to `private_first`, so a tenant choosing "approved
++ * cloud AI" produced `restricted: false` — no notice — while external routing
++ * remained impossible because `externalConsent` defaults to false and only a
++ * platform operator can set it. That is precisely the silent no-op the view was
++ * written to prevent, reproduced inside it. Caught by a real fresh-install run,
++ * not by any test that existed at the time.
++ *
++ * The rule is now: restricted means an UNFULFILLED INTENT. A tenant that chose
++ * `local_only` is never restricted — it asked to be narrower and got it — so
++ * the notice cannot cry wolf on the common correct case.
++ */
++describe('D-5 — restriction means unfulfilled intent, not a mode mismatch', () => {
++  const restricted = (
++    tenant: 'local_only' | 'private_first' | null,
++    platform: AiMode,
++    consent: boolean,
++  ): boolean => {
++    const effective = tenant === null ? platform : resolveEffectiveAiMode(platform, tenant);
++    const externalPossible =
++      effective === 'external' || (effective === 'private_first' && consent);
++    return tenant === 'private_first' && !externalPossible;
++  };
++
++  it('flags the default install: tenant wants cloud, consent is off', () => {
++    expect(restricted('private_first', 'private_first', false)).toBe(true);
++  });
++
++  it('clears once a platform operator grants consent', () => {
++    expect(restricted('private_first', 'private_first', true)).toBe(false);
++  });
++
++  it('flags a stricter platform even when consent is on', () => {
++    // Platform is local_only, so the intersection is local_only and no consent
++    // flag can make external reachable. The intent is unfulfilled either way.
++    expect(restricted('private_first', 'local_only', true)).toBe(true);
++  });
++
++  it('flags platform=external with consent off — the corner I got wrong first', () => {
++    /**
++     * I expected `false` here and the code said `true`. The code is right.
++     *
++     * Platform `external` routes directly, but the tenant narrowed to
++     * `private_first`, and the intersection moves the request into the regime
++     * where external is a FALLBACK requiring `externalConsent` — which is off.
++     * So the tenant's cloud intent is unfulfilled and the notice must appear.
++     * An odd configuration (external mode, consent withheld), and the
++     * conservative answer is the honest one: tell the user their choice is not
++     * taking effect, because it is not.
++     */
++    expect(restricted('private_first', 'external', false)).toBe(true);
++    expect(restricted('private_first', 'external', true)).toBe(false);
++  });
++
++  it('never flags a tenant that chose local_only — it asked for the narrower thing', () => {
++    for (const p of AI_MODES) {
++      for (const c of [true, false]) expect(restricted('local_only', p, c)).toBe(false);
++    }
++  });
++
++  it('never flags a tenant with no preference at all', () => {
++    for (const p of AI_MODES) {
++      for (const c of [true, false]) expect(restricted(null, p, c)).toBe(false);
++    }
++  });
++});

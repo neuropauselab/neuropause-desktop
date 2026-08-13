@@ -1,0 +1,1593 @@
+diff -ruN '--exclude=node_modules' '--exclude=*.log' '--exclude=dist' np-orig2/apps/desktop/src/main/ecosystem/marketplace/marketplaceStore.ts np/apps/desktop/src/main/ecosystem/marketplace/marketplaceStore.ts
+--- np-orig2/apps/desktop/src/main/ecosystem/marketplace/marketplaceStore.ts	2026-08-11 20:22:25.000000000 +0000
++++ np/apps/desktop/src/main/ecosystem/marketplace/marketplaceStore.ts	2026-08-12 07:39:16.615353496 +0000
+@@ -590,7 +590,24 @@
+     // may install another tenant's draft, which would confirm it exists.
+     const l = this.visibleListing(listingId);
+     if (!l) return null;
+-    const next = { ...l, installs: l.installs + 1 };
++    /**
++     * P13C ROUND 12 — M-12. ONE ADOPTION PER ORGANIZATION.
++     *
++     * This was `installs + 1` per call with no record of who, so adoption was
++     * unbounded self-inflation — and `rankCatalog` sorts on it. Idempotent now:
++     * a second install by the same organization returns the row unchanged.
++     *
++     * Fail closed on an unresolved caller: "nobody" is not an organization and
++     * must not get a vote in the count.
++     */
++    const who = this.publisher();
++    if (who === null) return null;
++    if (l.installedBy?.[who]) return l;
++    const next: MarketplaceListing = {
++      ...l,
++      installedBy: { ...(l.installedBy ?? {}), [who]: true },
++      installs: l.installs + 1,
++    };
+     this.listings.set(listingId, next);
+     this.schedulePersist();
+     this.emit('changed');
+@@ -601,10 +618,33 @@
+     // P13C ROUND 9 F1 — CONSUMER relation, same predicate as `install`.
+     const l = this.visibleListing(listingId);
+     if (!l) return null;
++    /**
++     * P13C ROUND 12 — M-12. ONE OPINION PER ORGANIZATION, CHANGEABLE.
++     *
++     * Every call used to be a new vote, so review-bombing another tenant's
++     * published listing was a loop over one channel. An organization may now
++     * change its mind — that is what a rating is — but it cannot vote twice.
++     *
++     * THE ARITHMETIC RUNS OFF THE STORED TOTALS, not off the map, so a legacy
++     * row's historical `ratingCount` / `ratingAvg` survive: a first vote from a
++     * new organization extends that baseline, and a revision adjusts the total
++     * by the delta while leaving the count alone. Recomputing purely from
++     * `ratings` would silently discard every pre-M-12 vote, which is data loss
++     * dressed up as a cleaner model.
++     */
++    const who = this.publisher();
++    if (who === null) return null;
+     const s = Math.max(1, Math.min(5, Math.round(stars)));
+-    const count = l.ratingCount + 1;
+-    const avg = (l.ratingAvg * l.ratingCount + s) / count;
+-    const next = { ...l, ratingCount: count, ratingAvg: Math.round(avg * 100) / 100 };
++    const prior = l.ratings?.[who];
++    const count = prior === undefined ? l.ratingCount + 1 : l.ratingCount;
++    const total = l.ratingAvg * l.ratingCount + (prior === undefined ? s : s - prior);
++    const avg = count === 0 ? 0 : total / count;
++    const next: MarketplaceListing = {
++      ...l,
++      ratings: { ...(l.ratings ?? {}), [who]: s },
++      ratingCount: count,
++      ratingAvg: Math.round(avg * 100) / 100,
++    };
+     this.listings.set(listingId, next);
+     this.schedulePersist();
+     this.emit('changed');
+diff -ruN '--exclude=node_modules' '--exclude=*.log' '--exclude=dist' np-orig2/apps/desktop/src/main/federation/federation.test.ts np/apps/desktop/src/main/federation/federation.test.ts
+--- np-orig2/apps/desktop/src/main/federation/federation.test.ts	2026-08-11 08:56:18.000000000 +0000
++++ np/apps/desktop/src/main/federation/federation.test.ts	2026-08-12 07:53:25.144114669 +0000
+@@ -110,7 +110,13 @@
+ 
+   it('invites an org and accepts an inbound invitation into an active peer with trust', async () => {
+     const s = await makeFed();
+-    const invite = s.inviteOrg({ name: 'Vertex Dynamics', trustLevel: 'verified' });
++    // P13C ROUND 12 — M-11: the target must be a resolvable directory row.
++    (s as unknown as { orgs: Map<string, unknown> }).orgs.set('org_vertex', {
++      id: 'org_vertex', name: 'Vertex Dynamics', slug: 'vertex-dynamics',
++      role: 'peer', status: 'active', regionId: 'us-east', trustLevel: 'basic',
++      joinedAt: new Date().toISOString(), sharedOut: 0, sharedIn: 0,
++    });
++    const invite = s.inviteOrg({ toOrg: 'org_vertex', trustLevel: 'verified' });
+     expect(invite.direction).toBe('outbound');
+     expect(invite.status).toBe('pending');
+ 
+diff -ruN '--exclude=node_modules' '--exclude=*.log' '--exclude=dist' np-orig2/apps/desktop/src/main/federation/index.ts np/apps/desktop/src/main/federation/index.ts
+--- np-orig2/apps/desktop/src/main/federation/index.ts	2026-08-11 10:11:23.000000000 +0000
++++ np/apps/desktop/src/main/federation/index.ts	2026-08-12 07:33:31.883204641 +0000
+@@ -235,7 +235,9 @@
+       audit: true,
+       handler: (p) => {
+         const r = p as FedInviteOrgRequest;
+-        return fedStore.inviteOrg({ name: r.name, trustLevel: r.trustLevel, message: r.message });
++        // P13C ROUND 12 — M-11. The target is the caller-supplied ID, which
++        // `inviteOrg` must RESOLVE against the directory; it is not authority.
++        return fedStore.inviteOrg({ toOrg: r.toOrg, trustLevel: r.trustLevel, message: r.message });
+       },
+     },
+     {
+diff -ruN '--exclude=node_modules' '--exclude=*.log' '--exclude=dist' np-orig2/apps/desktop/src/main/federation/runtime/fedStore.ts np/apps/desktop/src/main/federation/runtime/fedStore.ts
+--- np-orig2/apps/desktop/src/main/federation/runtime/fedStore.ts	2026-08-11 20:21:09.000000000 +0000
++++ np/apps/desktop/src/main/federation/runtime/fedStore.ts	2026-08-12 07:35:27.928235111 +0000
+@@ -496,18 +496,68 @@
+     };
+   }
+ 
+-  /** Invite another organization. The sender is the CALLER, never the seed. */
+-  inviteOrg(input: { name: string; trustLevel: TrustLevel; message?: string }): OrgInvitation {
++  /**
++   * Invite another organization. The sender is the CALLER, never the seed, and
++   * the RECIPIENT IS AN ID THE DIRECTORY RESOLVES — never a name the caller typed.
++   *
++   * P13C ROUND 12 — M-11.
++   *
++   * This used to compute `org-${slug(input.name)}` and write an invitation to
++   * it. The consequences, all real:
++   *
++   *   - Any caller could address any organization BY TYPING ITS NAME. The one
++   *     genuinely reachable target was `org-default`, the install's primary
++   *     tenant, because every other real id is `org_<uuid>` and the slug space
++   *     cannot intersect it.
++   *   - Two organizations named "Acme" collapsed onto one id, so whichever
++   *     tenant held it could accept an invitation intended for the other.
++   *   - A rename orphaned outstanding invitations; a deletion left a row that
++   *     would become live again if that id were ever reissued.
++   *   - Every other name minted an invitation to an id belonging to nobody: a
++   *     black hole the sender saw as "pending" forever, plus unbounded junk in
++   *     the persisted store.
++   *
++   * WHAT THIS DOES NOT PRETEND TO FIX, stated rather than implied. The directory
++   * resolved against holds the home organization plus whatever peers a
++   * relationship already introduced, so on a fresh install there is usually
++   * nobody to invite. That is the HONEST state of this feature, and it is what
++   * `tenancy/migrationInventory.ts` has described since Round 4 — *"real
++   * federation between two UI-created organizations is not currently
++   * expressible"*. The slug minting never implemented that capability; it
++   * fabricated an id so the call appeared to succeed. Refusing an unresolvable
++   * target makes the gap visible instead of writing a fake row. A real
++   * directory-exchange mechanism is a product decision, not a security patch.
++   *
++   * Escalation was already blocked downstream — `respondInvitation` refuses
++   * `accept` unless `inv.toOrg === me` — so what this closes is the unsolicited
++   * WRITE into another organization's inbox, carrying an attacker-chosen trust
++   * level and 500 characters of attacker-chosen message.
++   */
++  inviteOrg(input: { toOrg: string; trustLevel: TrustLevel; message?: string }): OrgInvitation {
+     const me = this.fed.requireCallerOrg();
++    const target = this.orgs.get(input.toOrg);
++    /**
++     * FAIL CLOSED, WITH ONE MESSAGE. "No such organization" and "not one you may
++     * address" are deliberately the same sentence: distinguishing them would let
++     * a caller enumerate which organization ids exist on the install, the same
++     * oracle `orgStore` and the runtime supervisor both refuse.
++     *
++     * Self-invitation is refused here too. It is what let a caller in
++     * `org-default` accept its own invitation and overwrite its own directory
++     * row with an attacker-supplied name, flipping `role` from home to peer.
++     */
++    if (!target || target.id === me) {
++      throw new Error('That organization is not available to invite.');
++    }
+     const id = `inv_${randomUUID()}`;
+-    const slug = input.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+-    const targetId = `org-${slug}`;
+     const invite: OrgInvitation = {
+       id,
+       fromOrg: me,
+       fromOrgName: this.orgs.get(me)?.name ?? me,
+-      toOrg: targetId,
+-      toOrgName: input.name,
++      toOrg: target.id,
++      // The RESOLVED record's name, never the payload's: a display string the
++      // caller typed must not become the recipient's identity in anyone's inbox.
++      toOrgName: target.name,
+       direction: 'outbound',
+       status: 'pending',
+       trustLevel: input.trustLevel,
+diff -ruN '--exclude=node_modules' '--exclude=*.log' '--exclude=dist' np-orig2/apps/desktop/src/main/ipc/runtimeAuthz.ts np/apps/desktop/src/main/ipc/runtimeAuthz.ts
+--- np-orig2/apps/desktop/src/main/ipc/runtimeAuthz.ts	2026-08-12 08:08:43.585380732 +0000
++++ np/apps/desktop/src/main/ipc/runtimeAuthz.ts	2026-08-12 07:56:13.074804082 +0000
+@@ -644,6 +644,81 @@
+   [IpcChannel.CrashGetStatus]: 'operations:read',
+   [IpcChannel.RegistryExport]: 'cloud:operate',
+   /**
++   * P13C ROUND 12 — PHASE 5. THE FINAL PUBLIC-ALLOWLIST SWEEP.
++   *
++   * Round 11 closed four MEDIUM findings that all lived in this list, and said
++   * the bucket was "smaller but not empty". It was not empty. A full sweep of
++   * every remaining entry against SCOPE + AUTHORITY + PAYLOAD + MUTABILITY found
++   * fourteen more, and nine of them are ONE DEFECT wearing different names:
++   *
++   *   A GENERATOR OVER THE TENANT CORPUS WAS ADMITTED AS "READ-ONLY".
++   *
++   * "Read-only" answers MUTABILITY. The allowlist rule is about the PAYLOAD.
++   * Every one of these reads the same `unified-entities` / `ai-memory-store` /
++   * timeline rows — declared TENANT + CUSTOMER_DERIVED — and returns record
++   * titles, body excerpts, actor labels and synthesised summaries, while the
++   * STORED form of the identical data is already gated `intelligence:read`:
++   *
++   *   `enterprise:timeline.export/.replay/.stats` — the same private `collect()`
++   *     as `enterprise:timeline.query`, which is gated. `export` is the strictly
++   *     WIDER door: unpaginated, every entry, body excerpt attached.
++   *   `briefing:generate`   — `unifiedStore.query({limit: 1_000_000})`, emitted as
++   *     "Meeting: <title>", "Document: <title>", with 140-char body excerpts.
++   *   `knowledge:related` / `.topics` / `.health` — a THIRD retrieval strategy
++   *     over `memoryStore.allItems()`, whose other two strategies (`memory:recall`,
++   *     `memory:semanticRecall`) are both `intelligence:read`. The A6 note in
++   *     this file already states the rule: "the gate belongs to the data, not to
++   *     the retrieval strategy."
++   *   `recommendations:generate` — carries `rationale`, `entityRefs`, `evidence`;
++   *     `decision:list` was pulled off this allowlist in Round 2 for exactly that
++   *     payload, and `decision:createFromRecommendation` turns these INTO those.
++   *   `voice:turn` — speaks `composeExecutiveSnapshot`, whose written form
++   *     (`ExecutiveCenterSnapshot`) is `intelligence:read`. The channel name says
++   *     voice; the payload is org intelligence.
++   *
++   * The remaining five are their own shapes:
++   *
++   *   `notifications:list` / `.markRead` — the inbox store DECLARES itself
++   *     TENANT + CUSTOMER_DERIVED and its own comment says "a notification BODY
++   *     carries business data — the delivered title interpolates the subject's
++   *     name". Admitted here as "per-user local data", which was true of the
++   *     PREFERENCES and never of the rows. `prefs.get/.set` stay public.
++   *   `platform:emit` — a PUBLIC WRITE into a TENANT + CUSTOMER_DERIVED store
++   *     whose authority is SYSTEM, i.e. rows the product produces and a caller
++   *     does not author. It let an unauthenticated renderer write timeline rows
++   *     with a chosen `resourceName`, read back later by the gated
++   *     `timeline.query` as observed activity — into an append-only log the
++   *     declaration says is "never trimmed", with no rate limit above it.
++   *   `crash:recommendations` — the THIRD door on the archive whose two siblings
++   *     were gated last round, and the M-7 comment block never mentioned it. Its
++   *     payload is advisories rather than records, but they are thresholded on
++   *     install-wide fault counts that move when another tenant's session
++   *     crashes, which is the inference clause.
++   *   `pilot:setEnabled` — a PUBLIC mutation of one install-global JSON. Lowest
++   *     severity here (the blast radius is a badge) and the only store in the
++   *     group with NO `declareStoreScope` at all, which is why nothing
++   *     structural caught it.
++   *
++   * `dashboard:read` for the per-user surfaces and `operations:read` /
++   * `intelligence:read` for the rest are all in the READ_ONLY base role, so no
++   * signed-in member loses a path. What changes is that a SIGNED-OUT context
++   * loses all of them.
++   */
++  [IpcChannel.EnterpriseTimelineExport]: 'intelligence:read',
++  [IpcChannel.EnterpriseTimelineReplay]: 'intelligence:read',
++  [IpcChannel.EnterpriseTimelineStats]: 'intelligence:read',
++  [IpcChannel.BriefingGenerate]: 'intelligence:read',
++  [IpcChannel.KnowledgeRelated]: 'intelligence:read',
++  [IpcChannel.KnowledgeTopics]: 'intelligence:read',
++  [IpcChannel.KnowledgeHealth]: 'intelligence:read',
++  [IpcChannel.RecommendationsGenerate]: 'intelligence:read',
++  [IpcChannel.VoiceTurn]: 'intelligence:read',
++  [IpcChannel.NotificationsList]: 'dashboard:read',
++  [IpcChannel.NotificationsMarkRead]: 'dashboard:read',
++  [IpcChannel.PlatformEmit]: 'dashboard:read',
++  [IpcChannel.CrashRecommendations]: 'operations:read',
++  [IpcChannel.PilotSetEnabled]: 'org:manage',
++  /**
+    * P13C ROUND 10 — NEW-M8. SEVEN CHANNELS THAT WERE PUBLIC **AND** GATED.
+    *
+    * Each of these carries a permission stamped by its family gate
+@@ -873,7 +948,6 @@
+    * inspecting the bytes, finding five genuinely install-level integers, and
+    * taking it off this list anyway. Same reasoning, third instance.
+    */
+-  IpcChannel.PlatformEmit,
+   // ── Unified knowledge read projections ──
+   IpcChannel.UnifiedGet,
+   IpcChannel.UnifiedCounts,
+@@ -893,16 +967,8 @@
+    */
+   IpcChannel.MemoryCounts,
+   // ── Knowledge reads ──
+-  IpcChannel.KnowledgeRelated,
+-  IpcChannel.KnowledgeTopics,
+-  IpcChannel.KnowledgeHealth,
+   // ── Enterprise timeline read projections (query is gated separately) ──
+-  IpcChannel.EnterpriseTimelineReplay,
+-  IpcChannel.EnterpriseTimelineStats,
+-  IpcChannel.EnterpriseTimelineExport,
+   // ── Daily intelligence generators (read-only) ──
+-  IpcChannel.BriefingGenerate,
+-  IpcChannel.RecommendationsGenerate,
+   /**
+    * ── Decision + automation read listings ──
+    *
+@@ -936,7 +1002,6 @@
+   IpcChannel.LicenseReportHealth,
+   IpcChannel.DeviceReportHealth,
+   IpcChannel.VoiceStatus,
+-  IpcChannel.VoiceTurn,
+   IpcChannel.DevicesList,
+   // Mobile M1-03 — companion gateway status + paired-device list are local reads.
+   IpcChannel.CompanionStatus,
+@@ -993,7 +1058,6 @@
+    * discloses nothing to anyone.
+    */
+   IpcChannel.CrashSetOptIn,
+-  IpcChannel.CrashRecommendations,
+   IpcChannel.CrashReport,
+   /**
+    * P13C ROUND 10 — NEW-M2. `ReleaseDiagnosticsGet` and
+@@ -1060,12 +1124,9 @@
+   // ── Phase 6 Stage 5 (D-8) — Notification Inbox + delivery preferences
+   // (per-user local data, the AiConfig sender-trust precedent; zod-validated,
+   // and `notifications:prefs.set` is bridge-audited on its handler def) ──
+-  IpcChannel.NotificationsList,
+-  IpcChannel.NotificationsMarkRead,
+   IpcChannel.NotificationsPrefsGet,
+   IpcChannel.NotificationsPrefsSet,
+   IpcChannel.PilotStatus,
+-  IpcChannel.PilotSetEnabled,
+   /**
+    * P13C ROUND 11 — M-5. THE FOUR UPDATER MUTATIONS WERE HERE. THE WORST OF
+    * THIS ROUND, because the resource is the APPLICATION BINARY ITSELF.
+diff -ruN '--exclude=node_modules' '--exclude=*.log' '--exclude=dist' np-orig2/apps/desktop/src/main/registry/registry.ts np/apps/desktop/src/main/registry/registry.ts
+--- np-orig2/apps/desktop/src/main/registry/registry.ts	2026-08-11 21:09:18.000000000 +0000
++++ np/apps/desktop/src/main/registry/registry.ts	2026-08-12 07:30:57.307224034 +0000
+@@ -517,11 +517,68 @@
+    */
+   export(): string {
+     const key = this.usageKey();
+-    const mine: RegistryFile = {
++    /**
++     * P13C ROUND 12 — M-10. THE ROWS ARE SCRUBBED, NOT JUST THE MAP.
++     *
++     * The Round 9 (F20) fix filtered `usageByTenant` to the caller's bucket and
++     * spread `...this.file` for everything else — so the RAW `entries` rows went
++     * out untouched, and `RegistryEntry` still carries `launchCount`,
++     * `lastLaunchedAt` and `usage` as the install-wide accumulation. The exact
++     * information this function deliberately withheld through one field, it
++     * handed over through another.
++     *
++     * THE FUNCTION CONTRADICTED ITSELF, which is why this is a finding rather
++     * than a judgement call about what a platform operator may see. The
++     * migration note in this file states the row counters "are visible to no
++     * organization" — true of `toDto`, false here. A false statement inside a
++     * security declaration blinds the next reviewer exactly as a missing one
++     * does.
++     *
++     * The rows are now projected through the SAME rule `toDto` applies: the
++     * caller's own counters, never the row's accumulation. Install metadata
++     * (`previousVersion`, `permissionGrants`, hashes) is deliberately KEPT — it
++     * is not tenant-derived, a re-import needs it, and this channel is
++     * `cloud:operate`. Stripping it would be hiding data rather than fixing a
++     * boundary.
++     */
++    const entries: Record<string, RegistryEntry> = {};
++    for (const [slug, e] of Object.entries(this.file.entries)) {
++      const mine = this.file.usageByTenant?.[key]?.[slug] ?? emptyUsage();
++      entries[slug] = {
++        ...e,
++        launchCount: mine.launchCount,
++        lastLaunchedAt: mine.lastLaunchedAt,
++        usage: {
++          launches: mine.launchCount,
++          totalActiveMs: mine.totalActiveMs,
++          lastSessionAt: mine.lastSessionAt,
++        },
++      };
++    }
++    const authorized: RegistryFile = {
+       ...this.file,
++      entries,
+       usageByTenant: { [key]: this.file.usageByTenant?.[key] ?? {} },
+     };
+-    return JSON.stringify(mine, null, 2);
++    return JSON.stringify(authorized, null, 2);
++  }
++
++  /**
++   * THE LOSSLESS SERIALIZATION. P13C ROUND 12 — M-10.
++   *
++   * `backup()` called `export()`, so a backup was silently SCRUBBED: it kept
++   * only the taker's `usageByTenant` bucket and dropped every other
++   * organization's launch history. `restore()` is `import(raw, {merge:false})`,
++   * so restoring such a backup writes that loss back as fact. A backup that
++   * quietly discards other tenants' data is a DATA-LOSS PATH, it existed before
++   * M-10, and narrowing `export()` further would only have deepened it.
++   *
++   * The two callers are therefore split by intent rather than sharing one
++   * function: a backup is lossless and platform-scoped; an export is what the
++   * caller is authorized to receive. Private — `backup()` is the only caller.
++   */
++  private serializeAll(): string {
++    return JSON.stringify(this.file, null, 2);
+   }
+ 
+   async import(data: string, opts: { merge?: boolean } = {}): Promise<number> {
+@@ -549,7 +606,9 @@
+     await fs.mkdir(dir, { recursive: true });
+     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+     const path = join(dir, `registry-${stamp}.json`);
+-    await fs.writeFile(path, this.export(), { mode: 0o600 });
++    // P13C ROUND 12 — M-10. LOSSLESS, not the authorized export view. A backup
++    // that drops other tenants' counters restores that loss as fact.
++    await fs.writeFile(path, this.serializeAll(), { mode: 0o600 });
+     log.info('Registry backed up', { path });
+     return path;
+   }
+diff -ruN '--exclude=node_modules' '--exclude=*.log' '--exclude=dist' np-orig2/apps/desktop/src/main/tenancy/e2e/federationSweepTenancy.test.ts np/apps/desktop/src/main/tenancy/e2e/federationSweepTenancy.test.ts
+--- np-orig2/apps/desktop/src/main/tenancy/e2e/federationSweepTenancy.test.ts	2026-08-11 08:58:54.000000000 +0000
++++ np/apps/desktop/src/main/tenancy/e2e/federationSweepTenancy.test.ts	2026-08-12 07:54:00.973115631 +0000
+@@ -36,6 +36,27 @@
+ 
+ const src = (): TenantScope | null => scope;
+ 
++/**
++ * P13C ROUND 12 — M-11. SEED A REAL DIRECTORY ROW, THEN INVITE ITS ID.
++ *
++ * These fixtures used to call `inviteOrg({ name: 'Bravo Co' })` and rely on the
++ * store SLUGIFYING that name into `org-bravo-co`. That derivation was the
++ * finding, so the fixtures were built on the defect — the same shape Round 10
++ * recorded when the certification suite for the accept-guard turned out to be
++ * using the very bypass it tested.
++ *
++ * A target now has to exist in the directory, which is what makes the id real.
++ */
++function seedPeer(f: FederationRuntimeStore, id: string, name: string): string {
++  (f as unknown as { orgs: Map<string, unknown> }).orgs.set(id, {
++    id, name, slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
++    role: 'peer', status: 'active', regionId: 'us-east', trustLevel: 'basic',
++    joinedAt: new Date().toISOString(), sharedOut: 0, sharedIn: 0,
++  });
++  return id;
++}
++
++
+ /* ── F1: the sender cannot accept its own invitation ────────────────────── */
+ 
+ describe('F1 — an invitation needs the RECIPIENT’s consent', () => {
+@@ -58,8 +79,29 @@
+   it('C cannot invite the primary organization and then accept on its behalf', async () => {
+     const fed = await makeFed();
+     scope = C;
+-    const invite = fed.inviteOrg({ name: 'Default', trustLevel: 'full' });
++    /**
++     * P13C ROUND 12 — M-11, AND THE HONEST LIMIT OF IT.
++     *
++     * The original attack was that C could address `org-default` BY TYPING
++     * "Default", because the store slugified a display name into an id. That is
++     * closed: the target is now resolved from the directory.
++     *
++     * It does NOT follow that C cannot invite `org-default` at all. The home
++     * organization is always a real directory row, so C can resolve it — and
++     * sending an invitation to an organization you can legitimately see is what
++     * an invitation IS. What M-11 removed is targeting by GUESSABLE STRING:
++     * spoofed names, duplicate-name collisions, renamed and deleted
++     * organizations, self-invitation, and the black-hole rows addressed to ids
++     * belonging to nobody.
++     *
++     * So the thing that actually protects the recipient here is unchanged and
++     * is what this case has always been about: CONSENT. C may ask; only
++     * `org-default` may accept.
++     */
++    const invite = fed.inviteOrg({ toOrg: 'org-default', trustLevel: 'full' });
+     expect(invite.toOrg).toBe('org-default');
++    // …and the name is the RESOLVED row's, not a string C supplied.
++    expect(invite.toOrgName).toBe('Default');
+ 
+     expect(fed.respondInvitation(invite.id, true)).toBeNull();
+     expect(fed.listTrust()).toEqual([]);
+@@ -72,7 +114,8 @@
+   it('the RECIPIENT can accept — the gate is not simply "no"', async () => {
+     const fed = await makeFed();
+     scope = A;
+-    const invite = fed.inviteOrg({ name: 'Bravo Co', trustLevel: 'full' });
++    const peer = seedPeer(fed, 'org_bravo', 'Bravo Co');
++    const invite = fed.inviteOrg({ toOrg: peer, trustLevel: 'full' });
+     scope = { tenantId: invite.toOrg, workspaceId: 'ws-p' };
+     expect(fed.respondInvitation(invite.id, true)?.status).toBe('accepted');
+     expect(fed.listTrust()).toHaveLength(1);
+@@ -82,7 +125,8 @@
+   it('the sender may WITHDRAW but not accept', async () => {
+     const fed = await makeFed();
+     scope = A;
+-    const invite = fed.inviteOrg({ name: 'Bravo Co', trustLevel: 'full' });
++    const peer = seedPeer(fed, 'org_bravo', 'Bravo Co');
++    const invite = fed.inviteOrg({ toOrg: peer, trustLevel: 'full' });
+     expect(fed.respondInvitation(invite.id, true)).toBeNull();
+     expect(fed.revokeInvitation(invite.id)?.status).toBe('revoked');
+   });
+@@ -90,7 +134,8 @@
+   it('a third party can neither accept nor withdraw', async () => {
+     const fed = await makeFed();
+     scope = A;
+-    const invite = fed.inviteOrg({ name: 'Bravo Co', trustLevel: 'full' });
++    const peer = seedPeer(fed, 'org_bravo', 'Bravo Co');
++    const invite = fed.inviteOrg({ toOrg: peer, trustLevel: 'full' });
+     scope = C;
+     expect(fed.respondInvitation(invite.id, true)).toBeNull();
+     expect(fed.revokeInvitation(invite.id)).toBeNull();
+@@ -100,7 +145,8 @@
+   it('the recipient may decline', async () => {
+     const fed = await makeFed();
+     scope = A;
+-    const invite = fed.inviteOrg({ name: 'Bravo Co', trustLevel: 'full' });
++    const peer = seedPeer(fed, 'org_bravo', 'Bravo Co');
++    const invite = fed.inviteOrg({ toOrg: peer, trustLevel: 'full' });
+     scope = { tenantId: invite.toOrg, workspaceId: 'ws-p' };
+     expect(fed.respondInvitation(invite.id, false)?.status).toBe('declined');
+   });
+diff -ruN '--exclude=node_modules' '--exclude=*.log' '--exclude=dist' np-orig2/apps/desktop/src/main/tenancy/e2e/federationTenancy.test.ts np/apps/desktop/src/main/tenancy/e2e/federationTenancy.test.ts
+--- np-orig2/apps/desktop/src/main/tenancy/e2e/federationTenancy.test.ts	2026-08-11 08:55:01.000000000 +0000
++++ np/apps/desktop/src/main/tenancy/e2e/federationTenancy.test.ts	2026-08-12 07:53:25.143827234 +0000
+@@ -41,6 +41,27 @@
+ const C: TenantScope = { tenantId: 'org-charlie', workspaceId: 'ws-c' };
+ 
+ const MARK_A = 'NP-ORG-A-731904';
++
++/**
++ * P13C ROUND 12 — M-11. SEED A REAL DIRECTORY ROW, THEN INVITE ITS ID.
++ *
++ * These fixtures used to call `inviteOrg({ name: 'Bravo Co' })` and rely on the
++ * store SLUGIFYING that name into `org-bravo-co`. That derivation was the
++ * finding, so the fixtures were built on the defect — the same shape Round 10
++ * recorded when the certification suite for the accept-guard turned out to be
++ * using the very bypass it tested.
++ *
++ * A target now has to exist in the directory, which is what makes the id real.
++ */
++function seedPeer(f: FederationRuntimeStore, id: string, name: string): string {
++  (f as unknown as { orgs: Map<string, unknown> }).orgs.set(id, {
++    id, name, slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
++    role: 'peer', status: 'active', regionId: 'us-east', trustLevel: 'basic',
++    joinedAt: new Date().toISOString(), sharedOut: 0, sharedIn: 0,
++  });
++  return id;
++}
++
+ const MARK_B = 'NP-ORG-B-518273';
+ 
+ let scope: TenantScope | null = A;
+@@ -78,7 +99,7 @@
+ /** A ↔ B federate. C is never involved. Returns the ids A and B now share. */
+ function federateAandB(): { invitationId: string } {
+   scope = A;
+-  const invite = fed.inviteOrg({ name: 'Bravo', trustLevel: 'full', message: MARK_A });
++  const invite = fed.inviteOrg({ toOrg: seedPeer(fed, 'org_bravo', 'Bravo'), trustLevel: 'full', message: MARK_A });
+   // The store derives the target id from the name; align B's identity with it so
+   // the two sides of the relationship are the same organization.
+   return { invitationId: invite.id };
+@@ -128,7 +149,10 @@
+     federateAandB();
+     scope = null;
+     expect(fed.listInvitations()).toEqual([]);
+-    expect(() => fed.inviteOrg({ name: 'Ghost', trustLevel: 'basic' })).toThrow(/no party/i);
++    // The target is seeded so this asserts the CALLER has no party — not that
++    // the target is unresolvable, which is a different refusal (M-11).
++    seedPeer(fed, 'org_ghost', 'Ghost');
++    expect(() => fed.inviteOrg({ toOrg: 'org_ghost', trustLevel: 'basic' })).toThrow(/no party/i);
+   });
+ });
+ 
+@@ -166,7 +190,7 @@
+    */
+   it('`role` is relative to the caller — everyone is home to themselves', () => {
+     scope = A;
+-    const invite = fed.inviteOrg({ name: 'Bravo Co', trustLevel: 'full' });
++    const invite = fed.inviteOrg({ toOrg: seedPeer(fed, 'org_bravo', 'Bravo Co'), trustLevel: 'full' });
+     const peerId = invite.toOrg;
+     scope = { tenantId: peerId, workspaceId: 'ws-peer' };
+     fed.respondInvitation(invite.id, true);
+@@ -204,7 +228,7 @@
+    */
+   function trustAtoB(): string {
+     scope = A;
+-    const invite = fed.inviteOrg({ name: 'Bravo Co', trustLevel: 'full' });
++    const invite = fed.inviteOrg({ toOrg: seedPeer(fed, 'org_bravo', 'Bravo Co'), trustLevel: 'full' });
+     const peerId = invite.toOrg;
+     scope = { tenantId: peerId, workspaceId: 'ws-peer' };
+     fed.respondInvitation(invite.id, true);
+@@ -249,7 +273,7 @@
+   /** A federates with B and shares one resource outbound. */
+   function shareAtoB(): { shareId: string; peerId: string } {
+     scope = A;
+-    const invite = fed.inviteOrg({ name: 'Bravo Co', trustLevel: 'full' });
++    const invite = fed.inviteOrg({ toOrg: seedPeer(fed, 'org_bravo', 'Bravo Co'), trustLevel: 'full' });
+     const peerId = invite.toOrg;
+     scope = { tenantId: peerId, workspaceId: 'ws-peer' };
+     fed.respondInvitation(invite.id, true); // the RECIPIENT accepts
+@@ -427,7 +451,7 @@
+ 
+   it('PARTNER needs a trust relationship, which C does not have', () => {
+     scope = A;
+-    const invite = fed.inviteOrg({ name: 'Bravo Co', trustLevel: 'full' });
++    const invite = fed.inviteOrg({ toOrg: seedPeer(fed, 'org_bravo', 'Bravo Co'), trustLevel: 'full' });
+     const partnerId = invite.toOrg;
+     scope = { tenantId: partnerId, workspaceId: 'ws-p' };
+     fed.respondInvitation(invite.id, true); // the RECIPIENT accepts
+diff -ruN '--exclude=node_modules' '--exclude=*.log' '--exclude=dist' np-orig2/apps/desktop/src/main/tenancy/round12AllowlistSweep.test.ts np/apps/desktop/src/main/tenancy/round12AllowlistSweep.test.ts
+--- np-orig2/apps/desktop/src/main/tenancy/round12AllowlistSweep.test.ts	1970-01-01 00:00:00.000000000 +0000
++++ np/apps/desktop/src/main/tenancy/round12AllowlistSweep.test.ts	2026-08-12 07:55:48.367530000 +0000
+@@ -0,0 +1,144 @@
++/**
++ * P13C ROUND 12 — PHASE 5. THE FINAL PUBLIC-ALLOWLIST SWEEP.
++ *
++ * Round 11 closed four MEDIUM findings that all lived in `PUBLIC_CHANNELS` and
++ * ended with the observation that the bucket was "smaller but not empty. The
++ * next finding is likely still in it." It was, fourteen times.
++ *
++ * NINE OF THE FOURTEEN ARE ONE DEFECT: a generator or projection over the
++ * tenant corpus admitted as "read-only", while the STORED form of the identical
++ * data is gated `intelligence:read`. "Read-only" answers MUTABILITY; the
++ * allowlist rule is about the PAYLOAD, and the two were being conflated.
++ *
++ * WHY A STRUCTURAL TEST CANNOT YET CATCH THIS CLASS, stated rather than
++ * claimed away. `assertAllChannelsClassified` checks that every channel IS
++ * classified; nothing checks that a classification MATCHES ITS PAYLOAD. The
++ * invariant that would catch the whole class — "no channel reaching a
++ * CUSTOMER_DERIVED store may appear in PUBLIC_CHANNELS" — needs a channel→store
++ * map that does not exist in this codebase, because handlers reach stores
++ * through closures the source cannot follow. That map is the honest next piece
++ * of work, and until it exists this suite is a NAMED LIST, which is weaker: it
++ * pins the fourteen that were found and cannot see a fifteenth.
++ */
++import { describe, expect, it } from 'vitest';
++import { IpcChannel } from '@neuropause/shared';
++import type { IpcChannelName } from '@neuropause/shared';
++import {
++  PUBLIC_CHANNELS,
++  RUNTIME_CHANNEL_PERMISSIONS,
++  channelsBothPublicAndGated,
++  withRuntimeAuthz,
++} from '../ipc/runtimeAuthz';
++
++/** The sweep, as a table: channel → the authority its payload requires. */
++const SWEPT = [
++  // ── The corpus-projection class ──────────────────────────────────────────
++  // Each reads TENANT + CUSTOMER_DERIVED rows and returns titles, body
++  // excerpts, actor labels or synthesised summaries of them.
++  [IpcChannel.EnterpriseTimelineExport, 'intelligence:read'],
++  [IpcChannel.EnterpriseTimelineReplay, 'intelligence:read'],
++  [IpcChannel.EnterpriseTimelineStats, 'intelligence:read'],
++  [IpcChannel.BriefingGenerate, 'intelligence:read'],
++  [IpcChannel.KnowledgeRelated, 'intelligence:read'],
++  [IpcChannel.KnowledgeTopics, 'intelligence:read'],
++  [IpcChannel.KnowledgeHealth, 'intelligence:read'],
++  [IpcChannel.RecommendationsGenerate, 'intelligence:read'],
++  [IpcChannel.VoiceTurn, 'intelligence:read'],
++  // ── Per-user surfaces whose OWNER is resolved server-side ────────────────
++  [IpcChannel.NotificationsList, 'dashboard:read'],
++  [IpcChannel.NotificationsMarkRead, 'dashboard:read'],
++  [IpcChannel.PlatformEmit, 'dashboard:read'],
++  // ── Install-wide fault archive / install-global mutation ─────────────────
++  [IpcChannel.CrashRecommendations, 'operations:read'],
++  [IpcChannel.PilotSetEnabled, 'org:manage'],
++] as const satisfies ReadonlyArray<readonly [IpcChannelName, string]>;
++
++describe('every swept channel is gated, and off the allowlist', () => {
++  it.each(SWEPT)('%s carries %s', (channel, permission) => {
++    expect(RUNTIME_CHANNEL_PERMISSIONS[channel]).toBe(permission);
++  });
++
++  it.each(SWEPT)('%s is NOT public', (channel) => {
++    expect(PUBLIC_CHANNELS.has(channel)).toBe(false);
++  });
++
++  it('none is both public and gated', () => {
++    const gated = Object.keys(RUNTIME_CHANNEL_PERMISSIONS).map((c) => ({ channel: c }));
++    expect(channelsBothPublicAndGated(gated as never, PUBLIC_CHANNELS)).toEqual([]);
++  });
++
++  it('the annotator actually stamps them — a table row is a claim, not a gate', () => {
++    const defs = SWEPT.map(([channel]) => ({ channel, schema: {}, handler: () => null }));
++    const gated = withRuntimeAuthz(defs);
++    for (const [i, [channel, permission]] of SWEPT.entries()) {
++      expect(gated[i]).toMatchObject({ channel, requireAuth: true, permission });
++    }
++  });
++});
++
++describe('the timeline family agrees with itself', () => {
++  /**
++   * The finding in one assertion: `query` was gated and `export` — the strictly
++   * WIDER door onto the same private `collect()` — was public. Three doors, one
++   * payload, and only one of them locked.
++   */
++  it('export, replay and stats carry the same lock as query', () => {
++    const query = RUNTIME_CHANNEL_PERMISSIONS[IpcChannel.EnterpriseTimelineQuery];
++    expect(query).toBe('intelligence:read');
++    for (const c of [
++      IpcChannel.EnterpriseTimelineExport,
++      IpcChannel.EnterpriseTimelineReplay,
++      IpcChannel.EnterpriseTimelineStats,
++    ]) {
++      expect(RUNTIME_CHANNEL_PERMISSIONS[c]).toBe(query);
++    }
++  });
++
++  /**
++   * `memory:recall` and `memory:semanticRecall` are two retrieval strategies
++   * over `ai-memory-store`; `knowledge:*` is a third. The rule this file already
++   * states — "the gate belongs to the data, not to the retrieval strategy" —
++   * asserted rather than left as a comment.
++   */
++  it('knowledge carries the same lock as the other memory retrieval strategies', () => {
++    const recall = RUNTIME_CHANNEL_PERMISSIONS[IpcChannel.MemoryRecall];
++    expect(recall).toBe('intelligence:read');
++    for (const c of [IpcChannel.KnowledgeRelated, IpcChannel.KnowledgeTopics, IpcChannel.KnowledgeHealth]) {
++      expect(RUNTIME_CHANNEL_PERMISSIONS[c]).toBe(recall);
++    }
++  });
++
++  it('all three crash-archive doors now agree', () => {
++    for (const c of [IpcChannel.CrashExport, IpcChannel.CrashGetStatus, IpcChannel.CrashRecommendations]) {
++      expect(RUNTIME_CHANNEL_PERMISSIONS[c]).toBe('operations:read');
++    }
++  });
++});
++
++describe('what deliberately stays public', () => {
++  /**
++   * The sweep is not "gate everything". Each of these was checked against the
++   * same test and passes it: the payload is install metadata or the caller's
++   * own machine preference, and several must work before an organization
++   * resolves.
++   */
++  it('notification PREFERENCES stay public — the rows did not', () => {
++    expect(PUBLIC_CHANNELS.has(IpcChannel.NotificationsPrefsGet)).toBe(true);
++    expect(PUBLIC_CHANNELS.has(IpcChannel.NotificationsPrefsSet)).toBe(true);
++  });
++
++  it('self-reporting and opt-in stay public', () => {
++    expect(PUBLIC_CHANNELS.has(IpcChannel.CrashReport)).toBe(true);
++    expect(PUBLIC_CHANNELS.has(IpcChannel.CrashSetOptIn)).toBe(true);
++  });
++
++  it('install metadata reads stay public', () => {
++    expect(PUBLIC_CHANNELS.has(IpcChannel.RegistryList)).toBe(true);
++    expect(PUBLIC_CHANNELS.has(IpcChannel.PermsList)).toBe(true);
++  });
++
++  it('the pilot STATUS read stays public — only the mutation moved', () => {
++    expect(PUBLIC_CHANNELS.has(IpcChannel.PilotStatus)).toBe(true);
++    expect(RUNTIME_CHANNEL_PERMISSIONS[IpcChannel.PilotSetEnabled]).toBe('org:manage');
++  });
++});
+diff -ruN '--exclude=node_modules' '--exclude=*.log' '--exclude=dist' np-orig2/apps/desktop/src/main/tenancy/round12FederationInvite.test.ts np/apps/desktop/src/main/tenancy/round12FederationInvite.test.ts
+--- np-orig2/apps/desktop/src/main/tenancy/round12FederationInvite.test.ts	1970-01-01 00:00:00.000000000 +0000
++++ np/apps/desktop/src/main/tenancy/round12FederationInvite.test.ts	2026-08-12 07:35:10.108942269 +0000
+@@ -0,0 +1,194 @@
++/**
++ * P13C ROUND 12 — M-11. A DISPLAY NAME IS NOT AN IDENTIFIER.
++ *
++ * `inviteOrg` computed its target as `org-${slug(input.name)}` and wrote an
++ * invitation to whatever that produced. So the recipient of a federation
++ * invitation — a record that appears in another organization's inbox carrying an
++ * attacker-chosen trust level and 500 characters of attacker-chosen message —
++ * was selected by a string the caller typed.
++ *
++ * Real organization ids are `org_<uuid>` (`orgStore`), so the minted `org-<slug>`
++ * space cannot intersect a genuine organization. There is exactly one exception,
++ * and it is the one that matters: the seeded `org-default`, reachable by anyone
++ * who types "Default".
++ *
++ * THE CODEBASE HAD ALREADY WRITTEN THIS DOWN. `tenancy/migrationInventory.ts`
++ * has said since Round 4: *"`inviteOrg` derives the target organization id from
++ * a display name, so the only ids it can address are hyphen-slugs — real
++ * federation between two UI-created organizations is not currently
++ * expressible."* Four rounds read that sentence and shipped, which is the same
++ * shape as `drStore` (Round 4 prose, closed in Round 10) and
++ * `connectorControlStore` (Round 8 prose, closed in Round 10). Prose is not a
++ * boundary.
++ *
++ * WHAT WAS ALREADY SAFE, so this suite does not claim credit for it:
++ * `respondInvitation` refuses `accept` unless `inv.toOrg === me`, and that is
++ * regression-tested in `federationSweepTenancy.test.ts`. The sender could never
++ * complete the federation alone. What it COULD do is write into a stranger's
++ * inbox, and mint unbounded junk rows addressed to nobody.
++ */
++import { afterEach, beforeEach, describe, expect, it } from 'vitest';
++import { promises as fs } from 'node:fs';
++import { tmpdir } from 'node:os';
++import { join } from 'node:path';
++import { randomUUID } from 'node:crypto';
++import type { TenantScope } from '@neuropause/shared';
++import { FederationRuntimeStore } from '../federation/runtime/fedStore';
++
++let dir: string;
++let fed: FederationRuntimeStore;
++let who: TenantScope | null = null;
++
++/** Real-shaped ids: `org_<uuid>`, which is what `orgStore` mints. */
++const A = { tenantId: `org_${randomUUID()}`, workspaceId: 'ws-a' };
++const B = { tenantId: `org_${randomUUID()}`, workspaceId: 'ws-b' };
++const C = { tenantId: `org_${randomUUID()}`, workspaceId: 'ws-c' };
++
++beforeEach(async () => {
++  dir = join(tmpdir(), `np-r12-fed-${randomUUID()}`);
++  await fs.mkdir(dir, { recursive: true });
++  // A is the home organization of this install.
++  fed = new FederationRuntimeStore(join(dir, 'fed.json'), A.tenantId, 'Alpha').bindScope(() => who);
++  await fed.load();
++  who = null;
++});
++afterEach(async () => {
++  // The store persists on a debounce, so a bare rm races the write it triggered.
++  // Same retry the Round 10 org-ownership suite uses.
++  await (fed as unknown as { flush?: () => Promise<void> }).flush?.();
++  await fs.rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 25 });
++});
++
++/** Put a real directory row in place, the way accepting an invitation does. */
++function seedDirectory(id: string, name: string): void {
++  (fed as unknown as { orgs: Map<string, unknown> }).orgs.set(id, {
++    id,
++    name,
++    slug: name.toLowerCase(),
++    role: 'peer',
++    status: 'active',
++    regionId: 'us-east',
++    trustLevel: 'basic',
++    joinedAt: new Date().toISOString(),
++    sharedOut: 0,
++    sharedIn: 0,
++  });
++}
++
++describe('the target is resolved by ID, never minted from a name', () => {
++  it('a resolvable peer CAN be invited — the gate is not "always no"', () => {
++    seedDirectory(B.tenantId, 'Beta');
++    who = A;
++    const inv = fed.inviteOrg({ toOrg: B.tenantId, trustLevel: 'basic' });
++    expect(inv.toOrg).toBe(B.tenantId);
++    expect(inv.fromOrg).toBe(A.tenantId);
++    // The name comes from the RESOLVED record, not from any payload.
++    expect(inv.toOrgName).toBe('Beta');
++  });
++
++  it('an unresolvable id is REFUSED, and writes nothing', () => {
++    who = A;
++    const before = fed.listInvitations().length;
++    expect(() => fed.inviteOrg({ toOrg: `org_${randomUUID()}`, trustLevel: 'full' })).toThrow(
++      /not available to invite/,
++    );
++    expect(fed.listInvitations()).toHaveLength(before);
++  });
++
++  it('THE OLD ATTACK: a slugified display name no longer addresses anybody', () => {
++    // `org-default` was the one real id the slug space could hit. Passing it as
++    // an id now resolves against the directory and finds nothing.
++    who = A;
++    expect(() => fed.inviteOrg({ toOrg: 'org-default', trustLevel: 'full' })).toThrow(
++      /not available to invite/,
++    );
++    expect(() => fed.inviteOrg({ toOrg: 'org-beta', trustLevel: 'full' })).toThrow(
++      /not available to invite/,
++    );
++  });
++
++  it('a caller cannot invite ITSELF — the reflexive case the accept guard missed', () => {
++    // Self-invitation let a caller accept its own invitation (toOrg === me) and
++    // overwrite its own directory row with an attacker-supplied name.
++    who = A;
++    expect(() => fed.inviteOrg({ toOrg: A.tenantId, trustLevel: 'full' })).toThrow(
++      /not available to invite/,
++    );
++  });
++
++  it('the refusal does not distinguish "no such org" from "not yours"', () => {
++    // One message, so a caller cannot enumerate which ids exist on the install —
++    // the same oracle `orgStore` and the runtime supervisor both refuse.
++    who = A;
++    const unknown = (() => {
++      try {
++        fed.inviteOrg({ toOrg: `org_${randomUUID()}`, trustLevel: 'basic' });
++      } catch (e) {
++        return (e as Error).message;
++      }
++      return '';
++    })();
++    const mine = (() => {
++      try {
++        fed.inviteOrg({ toOrg: A.tenantId, trustLevel: 'basic' });
++      } catch (e) {
++        return (e as Error).message;
++      }
++      return '';
++    })();
++    expect(unknown).toBe(mine);
++    expect(unknown).not.toMatch(/exist|unknown|yourself|self|permission/i);
++  });
++});
++
++describe('names cannot be used to steer the target', () => {
++  it('two organizations sharing a display name stay distinct', () => {
++    // Under slug-derivation both collapsed onto `org-acme`, so whichever tenant
++    // held that id could accept an invitation intended for the other.
++    seedDirectory(B.tenantId, 'Acme');
++    seedDirectory(C.tenantId, 'Acme');
++    who = A;
++    const toB = fed.inviteOrg({ toOrg: B.tenantId, trustLevel: 'basic' });
++    const toC = fed.inviteOrg({ toOrg: C.tenantId, trustLevel: 'basic' });
++    expect(toB.toOrg).toBe(B.tenantId);
++    expect(toC.toOrg).toBe(C.tenantId);
++    expect(toB.toOrg).not.toBe(toC.toOrg);
++  });
++
++  it('renaming an organization does not move an existing invitation', () => {
++    seedDirectory(B.tenantId, 'Beta');
++    who = A;
++    const inv = fed.inviteOrg({ toOrg: B.tenantId, trustLevel: 'basic' });
++    seedDirectory(B.tenantId, 'Beta Renamed');
++    const still = fed.listInvitations().find((i) => i.id === inv.id)!;
++    // The id is the anchor. Under name-derivation the target silently orphaned.
++    expect(still.toOrg).toBe(B.tenantId);
++  });
++
++  it('a removed organization cannot be invited afterwards', () => {
++    seedDirectory(B.tenantId, 'Beta');
++    who = A;
++    expect(() => fed.inviteOrg({ toOrg: B.tenantId, trustLevel: 'basic' })).not.toThrow();
++    (fed as unknown as { orgs: Map<string, unknown> }).orgs.delete(B.tenantId);
++    expect(() => fed.inviteOrg({ toOrg: B.tenantId, trustLevel: 'basic' })).toThrow(
++      /not available to invite/,
++    );
++  });
++});
++
++describe('the sender remains the caller, not the payload', () => {
++  it('B inviting C is filed as from B, even though A is the home org', () => {
++    seedDirectory(B.tenantId, 'Beta');
++    seedDirectory(C.tenantId, 'Gamma');
++    who = B;
++    const inv = fed.inviteOrg({ toOrg: C.tenantId, trustLevel: 'basic' });
++    expect(inv.fromOrg).toBe(B.tenantId);
++    expect(inv.toOrg).toBe(C.tenantId);
++  });
++
++  it('an unresolved caller cannot invite at all', () => {
++    seedDirectory(B.tenantId, 'Beta');
++    who = null;
++    expect(() => fed.inviteOrg({ toOrg: B.tenantId, trustLevel: 'basic' })).toThrow();
++  });
++});
+diff -ruN '--exclude=node_modules' '--exclude=*.log' '--exclude=dist' np-orig2/apps/desktop/src/main/tenancy/round12MarketplaceDedup.test.ts np/apps/desktop/src/main/tenancy/round12MarketplaceDedup.test.ts
+--- np-orig2/apps/desktop/src/main/tenancy/round12MarketplaceDedup.test.ts	1970-01-01 00:00:00.000000000 +0000
++++ np/apps/desktop/src/main/tenancy/round12MarketplaceDedup.test.ts	2026-08-12 07:38:55.382731976 +0000
+@@ -0,0 +1,235 @@
++/**
++ * P13C ROUND 12 — M-12. A VOTE WITH NO VOTER.
++ *
++ * `install()` was `installs + 1` and `rate()` was a running average, both with
++ * NO RECORD OF WHO. Every call was a fresh adoption and a fresh opinion.
++ *
++ * `ecosystem:listing.rate` is gated at `developer:manage` — a permission every
++ * Owner of every self-created organization holds — and a published listing is
++ * visible to all tenants by design (that is the marketplace). So tenant B could
++ * loop one channel and drive tenant A's published listing to `ratingAvg: 1.0,
++ * ratingCount: 100000`, or inflate its own to the top of `rankCatalog`, which
++ * sorts on `installs`. Neither handler carried `audit: true`, so the write was
++ * not even recorded.
++ *
++ * THE DIMENSION IS THE ORGANIZATION, and it is a decision. This store's only
++ * identity seam is `tenancy.scopeOrDeny()`, which resolves a tenant — there is
++ * no user seam here, and inventing one would be guessing at semantics the rest
++ * of the subsystem does not share. Per-org also matches how adoption is already
++ * counted next door: `exchange/analytics.downloads30d` counts per-organization
++ * `Installation` rows through `requireCallerOrgId`.
++ *
++ * WHAT IS DELIBERATELY NOT CHANGED. A published listing stays installable and
++ * rateable by every tenant. `marketplaceOwnership.test.ts` has a case named
++ * *"B CAN install and rate A's PUBLISHED listing — that is the marketplace"*,
++ * and it still passes. The finding was never that consumption crosses tenants;
++ * it was that consumption was unbounded and anonymous.
++ */
++import { afterEach, beforeEach, describe, expect, it } from 'vitest';
++import { promises as fs } from 'node:fs';
++import { tmpdir } from 'node:os';
++import { join } from 'node:path';
++import { randomUUID } from 'node:crypto';
++import type { TenantScope, ListingManifest } from '@neuropause/shared';
++import { MarketplaceStore } from '../ecosystem/marketplace/marketplaceStore';
++
++const A: TenantScope = { tenantId: 'org-a', workspaceId: 'ws-a' };
++const B: TenantScope = { tenantId: 'org-b', workspaceId: 'ws-b' };
++const C: TenantScope = { tenantId: 'org-c', workspaceId: 'ws-c' };
++
++const dirs: string[] = [];
++let store: MarketplaceStore;
++let who: TenantScope | null = null;
++let file: string;
++
++function manifest(version: string): ListingManifest {
++  return {
++    kind: 'app',
++    name: 'Fixture',
++    version,
++    entry: 'index.js',
++    permissions: [],
++    capabilities: [],
++    dependencies: [],
++    network: [],
++    metadata: {},
++  };
++}
++
++/** Create → version → submit → review → publish, as `scope`. */
++function publishAs(scope: TenantScope, name: string): string {
++  who = scope;
++  const listing = store.createListing({
++    kind: 'app',
++    slug: `${name.toLowerCase()}-${randomUUID().slice(0, 8)}`,
++    name,
++    summary: `${name} summary`,
++    category: 'writing',
++    pricing: { model: 'free', amount: 0, currency: 'USD' },
++  });
++  const version = store.addVersion(listing.id, manifest('1.0.0'), 'first');
++  store.submit(version!.id, 'tester');
++  store.review(version!.id, 'approved', 'tester', 'ok');
++  store.publish(version!.id, 'tester');
++  return listing.id;
++}
++
++beforeEach(async () => {
++  const dir = join(tmpdir(), `np-r12-market-${randomUUID()}`);
++  await fs.mkdir(dir, { recursive: true });
++  dirs.push(dir);
++  file = join(dir, 'marketplace.json');
++  store = new MarketplaceStore(file, 'dev-owner', []).bindScope(() => who);
++  await store.load();
++  who = null;
++});
++afterEach(async () => {
++  await store.flush?.();
++  for (const d of dirs.splice(0)) {
++    await fs.rm(d, { recursive: true, force: true, maxRetries: 5, retryDelay: 25 });
++  }
++});
++
++describe('one adoption per organization', () => {
++  it('A installing five times counts ONCE', () => {
++    const x = publishAs(A, 'Widget');
++    who = B;
++    for (let i = 0; i < 5; i += 1) store.install(x);
++    who = A;
++    expect(store.detail(x)!.listing.installs).toBe(1);
++  });
++
++  it('A, B and C each count once — three distinct adopters', () => {
++    const x = publishAs(A, 'Widget');
++    for (const scope of [A, B, C]) {
++      who = scope;
++      store.install(x);
++      store.install(x); // repeat, must not count
++    }
++    who = A;
++    expect(store.detail(x)!.listing.installs).toBe(3);
++  });
++
++  it('an unresolved caller cannot adopt at all', () => {
++    const x = publishAs(A, 'Widget');
++    who = null;
++    expect(store.install(x)).toBeNull();
++    who = A;
++    expect(store.detail(x)!.listing.installs).toBe(0);
++  });
++});
++
++describe('one opinion per organization, changeable', () => {
++  it('THE REVIEW-BOMB: B rating 100 times moves the count by one', () => {
++    const x = publishAs(A, 'Widget');
++    who = B;
++    for (let i = 0; i < 100; i += 1) store.rate(x, 1);
++    who = A;
++    const l = store.detail(x)!.listing;
++    expect(l.ratingCount).toBe(1);
++    expect(l.ratingAvg).toBe(1);
++  });
++
++  it('three organizations, three votes, correct arithmetic', () => {
++    const x = publishAs(A, 'Widget');
++    who = A;
++    store.rate(x, 5);
++    who = B;
++    store.rate(x, 4);
++    who = C;
++    store.rate(x, 3);
++
++    who = A;
++    const l = store.detail(x)!.listing;
++    expect(l.ratingCount).toBe(3);
++    expect(l.ratingAvg).toBe(4); // (5+4+3)/3
++  });
++
++  it('an organization may CHANGE its rating — count steady, average moves', () => {
++    const x = publishAs(A, 'Widget');
++    who = A;
++    store.rate(x, 5);
++    who = B;
++    store.rate(x, 1);
++    who = A;
++    expect(store.detail(x)!.listing.ratingAvg).toBe(3); // (5+1)/2
++
++    who = B;
++    store.rate(x, 5); // B changes its mind
++    who = A;
++    const l = store.detail(x)!.listing;
++    expect(l.ratingCount).toBe(2); // NOT 3
++    expect(l.ratingAvg).toBe(5); // (5+5)/2
++  });
++
++  it('an unresolved caller cannot vote', () => {
++    const x = publishAs(A, 'Widget');
++    who = null;
++    expect(store.rate(x, 1)).toBeNull();
++    who = A;
++    expect(store.detail(x)!.listing.ratingCount).toBe(0);
++  });
++
++  it('stars stay clamped to 1-5 per organization', () => {
++    const x = publishAs(A, 'Widget');
++    who = B;
++    store.rate(x, 99);
++    who = A;
++    expect(store.detail(x)!.listing.ratingAvg).toBe(5);
++    who = B;
++    store.rate(x, -7);
++    who = A;
++    expect(store.detail(x)!.listing.ratingAvg).toBe(1);
++    expect(store.detail(x)!.listing.ratingCount).toBe(1);
++  });
++});
++
++describe('a legacy row keeps its history — no silent migration loss', () => {
++  it('pre-M-12 totals survive, and new votes extend rather than replace them', () => {
++    const x = publishAs(A, 'Widget');
++    // Simulate a row written before `ratings` existed: real historical totals,
++    // no identity map. Recomputing from the map would erase all 40 votes.
++    const l = store.detail(x)!.listing;
++    (store as unknown as { listings: Map<string, unknown> }).listings.set(x, {
++      ...l,
++      ratingCount: 40,
++      ratingAvg: 4,
++      installs: 40,
++    });
++
++    who = B;
++    store.rate(x, 5);
++    who = A;
++    const after = store.detail(x)!.listing;
++    expect(after.ratingCount).toBe(41); // 40 legacy + B
++    expect(after.ratingAvg).toBe(4.02); // (4*40 + 5) / 41
++    expect(after.installs).toBe(40); // untouched by a rating
++
++    // And B still cannot vote twice on top of the legacy baseline.
++    who = B;
++    store.rate(x, 1);
++    who = A;
++    expect(store.detail(x)!.listing.ratingCount).toBe(41);
++  });
++});
++
++describe('the dedup survives a reload from disk', () => {
++  it('B cannot re-vote after the store is reopened', async () => {
++    const x = publishAs(A, 'Widget');
++    who = B;
++    store.rate(x, 5);
++    store.install(x);
++    await store.flush?.();
++
++    const reopened = new MarketplaceStore(file, 'dev-owner', []).bindScope(() => who);
++    await reopened.load();
++
++    who = B;
++    reopened.rate(x, 1); // a revision, not a new vote
++    reopened.install(x); // already adopted
++    who = A;
++    const l = reopened.detail(x)!.listing;
++    expect(l.ratingCount).toBe(1);
++    expect(l.installs).toBe(1);
++  });
++});
+diff -ruN '--exclude=node_modules' '--exclude=*.log' '--exclude=dist' np-orig2/apps/desktop/src/main/tenancy/round12RegistryExport.test.ts np/apps/desktop/src/main/tenancy/round12RegistryExport.test.ts
+--- np-orig2/apps/desktop/src/main/tenancy/round12RegistryExport.test.ts	1970-01-01 00:00:00.000000000 +0000
++++ np/apps/desktop/src/main/tenancy/round12RegistryExport.test.ts	2026-08-12 07:30:16.163989841 +0000
+@@ -0,0 +1,228 @@
++/**
++ * P13C ROUND 12 — M-10. THE EXPORT CONTRADICTED ITSELF.
++ *
++ * Round 9 (F20) established that per-app launch counters are cross-tenant
++ * activity data: how many times each organization launched each app, and when.
++ * It removed them from `registry:list` by making `toDto` read the CALLER'S
++ * bucket out of `usageByTenant` instead of the row's own accumulation.
++ *
++ * `export()` was fixed in the same round — but only halfway. It filtered
++ * `usageByTenant` to the caller's key and then spread `...this.file` for
++ * everything else, so the RAW `entries` rows went out untouched. `RegistryEntry`
++ * still carries `launchCount`, `lastLaunchedAt` and `usage` as the install-wide
++ * total. The one field the function withheld, another field disclosed.
++ *
++ * Round 11 gated the channel (`cloud:operate`), which bounded WHO could reach
++ * it. It did not touch the bytes. This closes the bytes.
++ *
++ * AND IT FIXES A DATA-LOSS PATH ON THE WAY. `backup()` called `export()`, so a
++ * backup kept only the taker's usage bucket and silently discarded every other
++ * organization's launch history — and `restore()` is `import(raw, {merge:false})`,
++ * which writes that loss back as fact. Splitting `serializeAll()` (lossless,
++ * backup) from `export()` (authorized view) is what makes narrowing the export
++ * safe; without the split, tightening the export would have deepened the loss.
++ */
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
++import { promises as fs } from 'node:fs';
++import { tmpdir } from 'node:os';
++import { join } from 'node:path';
++import { randomUUID } from 'node:crypto';
++
++let dir: string;
++
++vi.mock('electron', () => ({
++  app: { getPath: () => dir },
++}));
++
++const { registry } = await import('../registry/registry');
++
++const A = 'org-a';
++const B = 'org-b';
++const C = 'org-c';
++
++let who: string | null = null;
++const reg = registry;
++
++beforeEach(async () => {
++  dir = join(tmpdir(), `np-r12-reg-${randomUUID()}`);
++  await fs.mkdir(join(dir, 'registry'), { recursive: true });
++  // The singleton, bound through its real API — `bindUsageScope` is the seam
++  // `recordLaunch` and `export` both read.
++  reg.bindUsageScope(() => who);
++  await reg.load();
++  who = null;
++});
++afterEach(async () => {
++  await fs.rm(dir, { recursive: true, force: true });
++});
++
++/** Install one app, then record `n` launches as `tenant`. */
++async function seed(slug: string, launchesBy: Array<[string, number]>): Promise<void> {
++  who = null;
++  await reg.upsert({
++    slug,
++    name: `App ${slug}`,
++    appType: 'web',
++    installedVersion: '1.0.0',
++    channel: 'stable',
++    installLocation: null,
++    packageHash: null,
++    signatureKeyId: null,
++    hasSignature: false,
++    previousVersion: null,
++    previousPackageHash: null,
++    grantedPermissions: [],
++    permissionGrants: [],
++    launchCount: 0,
++    lastLaunchedAt: null,
++    installedAt: new Date().toISOString(),
++    lastUpdatedAt: null,
++    runtimeStatus: 'stopped',
++    healthStatus: 'unknown',
++    diskUsageBytes: null,
++    pinned: false,
++    favorite: false,
++    config: {},
++    usage: { launches: 0, totalActiveMs: 0, lastSessionAt: null },
++  } as never);
++  for (const [tenant, n] of launchesBy) {
++    who = tenant;
++    for (let i = 0; i < n; i += 1) await reg.recordLaunch(slug);
++  }
++  who = null;
++}
++
++describe('the export carries the CALLER’s counters, never the install total', () => {
++  it('A exporting sees A’s 3 launches, not the install-wide 3+7+11', async () => {
++    await seed('alpha-app', [[A, 3], [B, 7], [C, 11]]);
++
++    who = A;
++    const parsed = JSON.parse(reg.export()) as {
++      entries: Record<string, { launchCount: number; usage: { launches: number } }>;
++      usageByTenant: Record<string, unknown>;
++    };
++
++    const row = parsed.entries['alpha-app']!;
++    // THE FINDING, as one number. The raw row held 21.
++    expect(row.launchCount).toBe(3);
++    expect(row.usage.launches).toBe(3);
++
++    // And the map half stays filtered, as Round 9 established.
++    expect(Object.keys(parsed.usageByTenant)).toEqual([A]);
++  });
++
++  it('B and C each see only their own, from the same install', async () => {
++    await seed('alpha-app', [[A, 3], [B, 7], [C, 11]]);
++
++    who = B;
++    expect(
++      (JSON.parse(reg.export()) as { entries: Record<string, { launchCount: number }> })
++        .entries['alpha-app']!.launchCount,
++    ).toBe(7);
++
++    who = C;
++    expect(
++      (JSON.parse(reg.export()) as { entries: Record<string, { launchCount: number }> })
++        .entries['alpha-app']!.launchCount,
++    ).toBe(11);
++  });
++
++  it('the export bytes contain no other tenant’s id anywhere', async () => {
++    await seed('alpha-app', [[A, 3], [B, 7], [C, 11]]);
++    who = A;
++    const bytes = reg.export();
++    // The blunt check: a string search over the whole payload.
++    expect(bytes).not.toContain(B);
++    expect(bytes).not.toContain(C);
++  });
++
++  it('an unresolved caller exports zeroed counters, not the aggregate', async () => {
++    await seed('alpha-app', [[A, 3], [B, 7]]);
++    who = null;
++    const row = (JSON.parse(reg.export()) as { entries: Record<string, { launchCount: number }> })
++      .entries['alpha-app']!;
++    expect(row.launchCount).toBe(0);
++  });
++
++  it('install metadata SURVIVES — the fix is a boundary, not redaction', async () => {
++    // Scrubbing everything would make a re-import lossy and would be hiding
++    // data rather than closing a leak. Only the tenant-derived fields move.
++    await seed('alpha-app', [[A, 3]]);
++    who = A;
++    const row = (JSON.parse(reg.export()) as {
++      entries: Record<string, { slug: string; name: string; installedAt: string }>;
++    }).entries['alpha-app']!;
++    expect(row.slug).toBe('alpha-app');
++    expect(row.name).toBe('App alpha-app');
++    expect(row.installedAt).toBeTruthy();
++  });
++});
++
++describe('the backup stays LOSSLESS — the data-loss path this fix closes', () => {
++  it('a backup taken by A still contains B’s and C’s counters', async () => {
++    await seed('alpha-app', [[A, 3], [B, 7], [C, 11]]);
++
++    who = A;
++    const path = await reg.backup();
++    const saved = JSON.parse(await fs.readFile(path, 'utf8')) as {
++      entries: Record<string, { launchCount: number }>;
++      usageByTenant: Record<string, Record<string, { launchCount: number }>>;
++    };
++
++    // Every organization's bucket survives — restore() is merge:false, so a
++    // scrubbed backup would have written the loss back as fact.
++    expect(Object.keys(saved.usageByTenant).sort()).toEqual([A, B, C].sort());
++    expect(saved.usageByTenant[B]!['alpha-app']!.launchCount).toBe(7);
++    expect(saved.usageByTenant[C]!['alpha-app']!.launchCount).toBe(11);
++    // The row's own counter is NOT the live meter: since Round 9 (F20)
++    // `recordLaunch` writes only to `usageByTenant`, so on a post-F20 install
++    // the row stays at whatever it was migrated with. Asserted so the next
++    // reader does not mistake 0 for a lost count.
++    expect(saved.entries['alpha-app']!.launchCount).toBe(0);
++  });
++
++  /**
++   * THE ACTUAL LEAK SHAPE, exercised directly.
++   *
++   * `recordLaunch` has written only to `usageByTenant` since F20, so a row's
++   * `launchCount` is non-zero ONLY on an install migrated from a pre-F20
++   * `registry.json` — where it holds the install-wide accumulation frozen at
++   * migration. That is the data M-10 exported: historical, not live, and no
++   * less cross-tenant for being historical. The fix is worth having precisely
++   * because every long-lived install has it and no test could see it.
++   */
++  it('a MIGRATED legacy row’s install-wide counter is scrubbed from the export', async () => {
++    await seed('legacy-app', [[A, 3]]);
++    // Simulate the migrated state: a row carrying the pre-F20 aggregate.
++    await reg.patch('legacy-app', (e) => {
++      e.launchCount = 4242;
++      e.lastLaunchedAt = '2025-01-01T00:00:00.000Z';
++      e.usage = { launches: 4242, totalActiveMs: 999_999, lastSessionAt: '2025-01-01T00:00:00.000Z' };
++    });
++
++    who = A;
++    const row = (JSON.parse(reg.export()) as {
++      entries: Record<string, { launchCount: number; lastLaunchedAt: string | null; usage: { launches: number; totalActiveMs: number } }>;
++    }).entries['legacy-app']!;
++
++    // A's own three, not the migrated 4242.
++    expect(row.launchCount).toBe(3);
++    expect(row.usage.launches).toBe(3);
++    expect(row.usage.totalActiveMs).toBe(0);
++    expect(row.lastLaunchedAt).not.toBe('2025-01-01T00:00:00.000Z');
++    expect(reg.export()).not.toContain('4242');
++
++    // …and the lossless backup still carries it, so nothing is destroyed.
++    expect(await fs.readFile(await reg.backup(), 'utf8')).toContain('4242');
++  });
++
++  it('backup and export are genuinely different bytes', async () => {
++    await seed('alpha-app', [[A, 3], [B, 7]]);
++    who = A;
++    const exported = reg.export();
++    const backedUp = await fs.readFile(await reg.backup(), 'utf8');
++    expect(exported).not.toBe(backedUp);
++    expect(backedUp).toContain(B);
++    expect(exported).not.toContain(B);
++  });
++});
+diff -ruN '--exclude=node_modules' '--exclude=*.log' '--exclude=dist' np-orig2/apps/desktop/src/renderer/src/federation/FederationProvider.tsx np/apps/desktop/src/renderer/src/federation/FederationProvider.tsx
+--- np-orig2/apps/desktop/src/renderer/src/federation/FederationProvider.tsx	2026-07-18 09:17:07.000000000 +0000
++++ np/apps/desktop/src/renderer/src/federation/FederationProvider.tsx	2026-08-12 07:33:31.885010704 +0000
+@@ -81,7 +81,7 @@
+ 
+   refreshAll: () => Promise<void>;
+   // runtime actions
+-  inviteOrg: (input: { name: string; trustLevel: TrustLevel; message?: string }) => Promise<void>;
++  inviteOrg: (input: { toOrg: string; trustLevel: TrustLevel; message?: string }) => Promise<void>;
+   respondInvite: (id: string, accept: boolean) => Promise<void>;
+   setTrust: (input: { peerOrg: string; trustLevel?: TrustLevel; delegatedApproval?: boolean; canShareWorkers?: boolean; canShareData?: boolean }) => Promise<void>;
+   shareResource: (input: { kind: SharedResourceKind; name: string; peerOrg: string; access: ShareAccess }) => Promise<string | null>;
+@@ -255,7 +255,7 @@
+     };
+   }, [refreshAll, refreshLive]);
+ 
+-  const inviteOrg = useCallback(async (input: { name: string; trustLevel: TrustLevel; message?: string }) => { await ipc.federation.inviteOrg(input); await refreshLive(); }, [refreshLive]);
++  const inviteOrg = useCallback(async (input: { toOrg: string; trustLevel: TrustLevel; message?: string }) => { await ipc.federation.inviteOrg(input); await refreshLive(); }, [refreshLive]);
+   const respondInvite = useCallback(async (id: string, accept: boolean) => { await ipc.federation.respondInvite(id, accept); await refreshLive(); }, [refreshLive]);
+   const setTrustAction = useCallback(async (input: { peerOrg: string; trustLevel?: TrustLevel; delegatedApproval?: boolean; canShareWorkers?: boolean; canShareData?: boolean }) => { await ipc.federation.setTrust(input); await refreshLive(); }, [refreshLive]);
+   const shareResource = useCallback(async (input: { kind: SharedResourceKind; name: string; peerOrg: string; access: ShareAccess }) => {
+diff -ruN '--exclude=node_modules' '--exclude=*.log' '--exclude=dist' np-orig2/apps/desktop/src/renderer/src/federation/RuntimePanel.tsx np/apps/desktop/src/renderer/src/federation/RuntimePanel.tsx
+--- np-orig2/apps/desktop/src/renderer/src/federation/RuntimePanel.tsx	2026-07-18 09:17:07.000000000 +0000
++++ np/apps/desktop/src/renderer/src/federation/RuntimePanel.tsx	2026-08-12 07:34:01.936364518 +0000
+@@ -27,6 +27,14 @@
+   const peers = orgs.filter((o) => o.role === 'peer');
+   const activePeers = useMemo(() => peers.filter((p) => p.status === 'active'), [peers]);
+   const pendingInvites = invitations.filter((i) => i.status === 'pending');
++  /**
++   * P13C ROUND 12 — M-11. Everyone in the directory who is not us.
++   *
++   * On a fresh install this is usually empty, and the Invite button is
++   * disabled rather than offering a text box that fabricates an id. That is
++   * the honest state of federation today — see `fedStore.inviteOrg`.
++   */
++  const invitableOrgs = useMemo(() => orgs.filter((o) => o.role !== 'home'), [orgs]);
+ 
+   return (
+     <div>
+@@ -143,28 +151,52 @@
+         )}
+       </OpsPanel>
+ 
+-      {inviteOpen && <InviteModal onClose={() => setInviteOpen(false)} onInvite={inviteOrg} />}
++      {inviteOpen && (
++        <InviteModal
++          /* P13C ROUND 12 — M-11. Invitees are CHOSEN from the resolvable
++             directory, never typed. A name the user types is not an id, and
++             the store now refuses one it cannot resolve. */
++          candidates={invitableOrgs.map((o) => ({ id: o.id, name: o.name }))}
++          onClose={() => setInviteOpen(false)}
++          onInvite={inviteOrg}
++        />
++      )}
+       {shareOpen && <ShareModal peers={activePeers.map((p) => ({ id: p.id, name: p.name }))} onClose={() => setShareOpen(false)} onShare={shareResource} />}
+     </div>
+   );
+ }
+ 
+-function InviteModal({ onClose, onInvite }: { onClose: () => void; onInvite: (input: { name: string; trustLevel: TrustLevel; message?: string }) => Promise<void> }): JSX.Element {
+-  const [name, setName] = useState('');
++function InviteModal({ candidates, onClose, onInvite }: { candidates: { id: string; name: string }[]; onClose: () => void; onInvite: (input: { toOrg: string; trustLevel: TrustLevel; message?: string }) => Promise<void> }): JSX.Element {
++  const [toOrg, setToOrg] = useState(candidates[0]?.id ?? '');
+   const [trustLevel, setTrustLevel] = useState<TrustLevel>('basic');
+   const [message, setMessage] = useState('');
+   const [busy, setBusy] = useState(false);
+   const submit = async (): Promise<void> => {
+-    if (!name.trim()) return;
++    if (!toOrg) return;
+     setBusy(true);
+-    await onInvite({ name: name.trim(), trustLevel, message: message.trim() || undefined });
++    await onInvite({ toOrg, trustLevel, message: message.trim() || undefined });
+     setBusy(false);
+     onClose();
+   };
+   return (
+-    <Modal open title="Invite organization" subtitle="Send a federation invitation to a peer organization" onClose={onClose} footer={<><Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button><Button variant="primary" size="sm" onClick={() => void submit()} disabled={busy || !name.trim()}>Send invitation</Button></>}>
++    <Modal open title="Invite organization" subtitle="Send a federation invitation to a peer organization" onClose={onClose} footer={<><Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button><Button variant="primary" size="sm" onClick={() => void submit()} disabled={busy || !toOrg}>Send invitation</Button></>}>
+       <div className="space-y-3">
+-        <Field label="Organization name"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Vertex Dynamics" autoFocus /></Field>
++        {candidates.length === 0 ? (
++          /* Stated, not implied. Previously this was a free-text box whose value
++             was slugified into an organization id, so it always "worked" and
++             usually addressed nobody. An empty directory is the truth. */
++          <p className="text-sm text-muted">
++            No other organizations are resolvable from this install yet, so there is nobody to invite.
++          </p>
++        ) : (
++          <Field label="Organization">
++            <Select value={toOrg} onChange={(e) => setToOrg(e.target.value)}>
++              {candidates.map((c) => (
++                <option key={c.id} value={c.id}>{c.name}</option>
++              ))}
++            </Select>
++          </Field>
++        )}
+         <Field label="Initial trust level"><Select value={trustLevel} onChange={(e) => setTrustLevel(e.target.value as TrustLevel)}><option value="basic">Basic</option><option value="verified">Verified</option><option value="full">Full</option></Select></Field>
+         <Field label="Message" hint="Optional"><Textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={2} placeholder="Why you'd like to federate" /></Field>
+       </div>
+diff -ruN '--exclude=node_modules' '--exclude=*.log' '--exclude=dist' np-orig2/apps/desktop/src/renderer/src/lib/ipc.ts np/apps/desktop/src/renderer/src/lib/ipc.ts
+--- np-orig2/apps/desktop/src/renderer/src/lib/ipc.ts	2026-08-10 18:07:33.000000000 +0000
++++ np/apps/desktop/src/renderer/src/lib/ipc.ts	2026-08-12 07:33:31.884291862 +0000
+@@ -1558,7 +1558,7 @@
+     invitations: () => invoke(IpcChannel.FedInvitations),
+     trust: () => invoke(IpcChannel.FedTrust),
+     shared: () => invoke(IpcChannel.FedShared),
+-    inviteOrg: (input: { name: string; trustLevel: TrustLevel; message?: string }) =>
++    inviteOrg: (input: { toOrg: string; trustLevel: TrustLevel; message?: string }) =>
+       invoke(IpcChannel.FedInviteOrg, input),
+     respondInvite: (id: string, accept: boolean) =>
+       invoke(IpcChannel.FedRespondInvite, { id, accept }),
+diff -ruN '--exclude=node_modules' np-orig2/packages/shared/src/ipc/contracts.ts np/packages/shared/src/ipc/contracts.ts
+--- np-orig2/packages/shared/src/ipc/contracts.ts	2026-08-11 18:56:37.000000000 +0000
++++ np/packages/shared/src/ipc/contracts.ts	2026-08-12 07:32:27.651562038 +0000
+@@ -2064,8 +2064,30 @@
+ ]);
+ const BackupScopeZ = z.enum(['full', 'incremental']);
+ 
++/**
++ * P13C ROUND 12 — M-11. THE TARGET IS AN ID, NOT A DISPLAY NAME.
++ *
++ * This carried `name`, and `inviteOrg` turned it into an organization id by
++ * SLUGIFYING it: `org-${slug(name)}`. A display name is not an identifier and
++ * is certainly not an authority — anyone could address any organization by
++ * typing its name. The codebase said so itself, in
++ * `tenancy/migrationInventory.ts`, since Round 4: *"`inviteOrg` derives the
++ * target organization id from a display name … real federation between two
++ * UI-created organizations is not currently expressible."* Four rounds read
++ * that sentence and shipped.
++ *
++ * Real ids are `org_<uuid>` (see `orgStore`), so the minted `org-<slug>` space
++ * could never intersect a genuine organization — with exactly one exception,
++ * the seeded `org-default`, which is the install's primary tenant and the one
++ * worth attacking. Duplicate names collapsed onto one id; renames orphaned
++ * invitations; deletions left rows that would go live again if the id were
++ * reissued.
++ *
++ * `toOrg` matches `FedSetTrustRequest.peerOrg`, which has addressed peers by id
++ * all along — the convention already existed in this file.
++ */
+ export const FedInviteOrgRequest = z.object({
+-  name: z.string().min(1).max(120),
++  toOrg: FedId,
+   trustLevel: TrustLevelZ,
+   message: z.string().max(500).optional(),
+ });
+diff -ruN '--exclude=node_modules' np-orig2/packages/shared/src/types/ecosystem.ts np/packages/shared/src/types/ecosystem.ts
+--- np-orig2/packages/shared/src/types/ecosystem.ts	2026-08-11 14:03:25.000000000 +0000
++++ np/packages/shared/src/types/ecosystem.ts	2026-08-12 07:36:49.043556059 +0000
+@@ -296,6 +296,36 @@
+   installs: number;
+   ratingAvg: number;
+   ratingCount: number;
++  /**
++   * WHO HAS ADOPTED, AND WHO HAS VOTED. P13C ROUND 12 — M-12.
++   *
++   * `install()` and `rate()` were `installs + 1` and a running average with NO
++   * IDENTITY: every call was a fresh adoption and a fresh vote. Any tenant
++   * holding `developer:manage` in its own organization — which every Owner of
++   * every self-created organization holds — could loop `ecosystem:listing.rate`
++   * and drive another tenant's PUBLISHED listing to `ratingAvg: 1.0,
++   * ratingCount: 100000`, or inflate its own to the top of `rankCatalog`.
++   * Neither handler carried `audit: true`, so the write was not even recorded.
++   *
++   * THE DIMENSION IS THE ORGANIZATION, and that is a decision rather than a
++   * default. This store's only identity seam is `tenancy.scopeOrDeny()`, which
++   * resolves a tenant; it has no user seam, and inventing one here would be
++   * guessing at semantics the rest of the subsystem does not share. Per-org also
++   * matches how adoption is already counted next door:
++   * `exchange/analytics.downloads30d` counts per-organization `Installation`
++   * rows through `requireCallerOrgId`. One adoption and one opinion per
++   * organization.
++   *
++   * OPTIONAL, AND LEGACY ROWS ARE NOT REWRITTEN. A row written before these
++   * fields existed keeps its `installs` / `ratingCount` / `ratingAvg` exactly as
++   * they are, and the maps start empty — historical totals are preserved rather
++   * than recomputed from an identity nobody recorded. New activity is idempotent
++   * per organization from that baseline forward. Discarding the old scalars to
++   * make the model tidy would be destroying real data to fix a counting bug.
++   */
++  installedBy?: Record<string, true>;
++  /** `organizationId → stars (1-5)`. See `installedBy`. */
++  ratings?: Record<string, number>;
+   certified: boolean;
+   createdAt: string;
+   updatedAt: string;

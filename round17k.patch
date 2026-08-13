@@ -1,0 +1,130 @@
+--- a/apps/desktop/src/renderer/src/lib/motionAudit.test.ts
++++ b/apps/desktop/src/renderer/src/lib/motionAudit.test.ts
+@@ -30,7 +30,14 @@
+       continue;
+     }
+     if (!/\.tsx?$/.test(entry) || /\.test\.tsx?$/.test(entry)) continue;
+-    out.push({ path: path.slice(RENDERER_SRC.length + 1), source: readFileSync(path, 'utf8') });
++    out.push({
++      // P13C ROUND 17k — see storeScopeGate.test.ts: `slice()` keeps the OS separator,
++      // so on Windows every key below stopped matching and each justified file was
++      // reported BOTH as an unjustified offender and as a stale entry naming a file
++      // that no longer exists. The same file, accused of both at once.
++      path: path.slice(RENDERER_SRC.length + 1).replace(/\\/g, '/'),
++      source: readFileSync(path, 'utf8'),
++    });
+   }
+   return out;
+ }
+--- a/apps/desktop/src/renderer/src/lib/cssTokens.test.ts
++++ b/apps/desktop/src/renderer/src/lib/cssTokens.test.ts
+@@ -36,7 +36,9 @@
+     if (!/\.tsx?$/.test(entry) || entry.endsWith('.test.ts') || entry.endsWith('.test.tsx')) continue;
+     const source = readFileSync(path, 'utf8');
+     for (const match of source.matchAll(/var\((--[a-z0-9-]+)/gi)) {
+-      out.push({ token: match[1], file: path.slice(RENDERER_SRC.length + 1) });
++      // P13C ROUND 17k — `/` on every platform, so a failure message reads the same
++      // on Windows as it does here.
++      out.push({ token: match[1], file: path.slice(RENDERER_SRC.length + 1).replace(/\\/g, '/') });
+     }
+   }
+   return out;
+--- a/apps/desktop/src/main/tenancy/resolverAttachment.test.ts
++++ b/apps/desktop/src/main/tenancy/resolverAttachment.test.ts
+@@ -89,7 +89,8 @@
+     for (const path of sourceFiles(MAIN)) {
+       const src = readFileSync(path, 'utf8');
+       if (!src.includes('.bindScope(')) continue;
+-      const rel = path.slice(MAIN.length + 1);
++      // P13C ROUND 17k — `/` on every platform. See storeScopeGate.test.ts.
++      const rel = path.slice(MAIN.length + 1).replace(/\\/g, '/');
+       for (const arg of bindScopeArguments(src)) {
+         if (SESSION_ONLY.test(arg)) offenders.push(`${rel}  →  bindScope(${arg})`);
+       }
+--- a/apps/desktop/src/main/tenancy/storeScopeGate.test.ts
++++ b/apps/desktop/src/main/tenancy/storeScopeGate.test.ts
+@@ -287,7 +287,23 @@
+   it('a file that persists state either declares a scope or is listed as not-a-store', () => {
+     const undeclared: string[] = [];
+     for (const path of sourceFiles(MAIN)) {
+-      const rel = path.slice(MAIN.length + 1);
++      /**
++       * FORWARD SLASHES ON EVERY PLATFORM. P13C ROUND 17k.
++       *
++       * `slice()` leaves the OS separator in place, so on Windows this produced
++       * `backup\\backupManager.ts` while every key in NOT_A_STORE is written
++       * `backup/backupManager.ts`. The allow-list stopped matching and this gate
++       * reported four files as undeclared stores that have been declared for days.
++       *
++       * A path comparison IS the security control here: every exemption in this
++       * file is keyed by one. A separator is not a cosmetic detail when the string
++       * decides whether a store is exempt.
++       *
++       * `tenantStoreRegistry.test.ts` already carried exactly this `.replace`. One
++       * file knew; the knowledge never spread, and no Windows run existed to force
++       * the issue until the first founder build.
++       */
++      const rel = path.slice(MAIN.length + 1).replace(/\\/g, '/');
+       if (NOT_A_STORE[rel] !== undefined) continue;
+       const src = readFileSync(path, 'utf8');
+       if (!persistsState(src)) continue;
+@@ -318,7 +334,8 @@
+   it('a file that persists AND removes rows declares retentionScope and retentionAuthority', () => {
+     const missing: string[] = [];
+     for (const path of sourceFiles(MAIN)) {
+-      const rel = path.slice(MAIN.length + 1);
++      // P13C ROUND 17k — `/` on every platform; see above.
++      const rel = path.slice(MAIN.length + 1).replace(/\\/g, '/');
+       if (NOT_A_STORE[rel] !== undefined) continue;
+       const src = readFileSync(path, 'utf8');
+       if (!persistsState(src)) continue;
+--- a/apps/desktop/src/main/tenancy/storeClassification.test.ts
++++ b/apps/desktop/src/main/tenancy/storeClassification.test.ts
+@@ -425,10 +425,10 @@
+         const classification = /classification:\s*'(\w+)'/.exec(block)?.[1];
+         const global = scope === 'INSTALL_GLOBAL' || scope === 'PLATFORM_GLOBAL';
+         if (global && classification === 'CUSTOMER_DERIVED') {
+-          offenders.push(`${path.slice(MAIN.length + 1)}: ${scope} + CUSTOMER_DERIVED`);
++          offenders.push(`${path.slice(MAIN.length + 1).replace(/\\/g, '/')}: ${scope} + CUSTOMER_DERIVED`);
+         }
+         if (global && authority === 'ORG_ROLE') {
+-          offenders.push(`${path.slice(MAIN.length + 1)}: ${scope} + ORG_ROLE`);
++          offenders.push(`${path.slice(MAIN.length + 1).replace(/\\/g, '/')}: ${scope} + ORG_ROLE`);
+         }
+       }
+     }
+--- a/apps/desktop/src/main/connectors/tokenCore.test.ts
++++ b/apps/desktop/src/main/connectors/tokenCore.test.ts
+@@ -152,6 +152,32 @@
+       tokenType: 'Bearer',
+     });
+     const stat = await fs.stat(vaultFile());
++    /**
++     * POSIX ONLY, AND SAID OUT LOUD. P13C ROUND 17k.
++     *
++     * Windows has no POSIX permission bits. Node reports mode 0o666 for every
++     * file there and `chmod(0o600)` is a no-op, so this assertion measured 54
++     * (0o66) on the first Windows release run and failed — not because the
++     * vault regressed, but because the control it checks does not exist on that
++     * platform. Access control on Windows is an ACL, and `%APPDATA%` is already
++     * user-scoped.
++     *
++     * ANNOUNCED, NOT SKIPPED. A security assertion that quietly does not apply
++     * on a platform is indistinguishable from one that passes there, and the
++     * difference is the whole point. The line below appears in the Windows log
++     * so nobody reads a green run as proof of a file mode nobody checked.
++     *
++     * What still holds on Windows is the stronger property, asserted in the
++     * test above: the tokens are not in the file in readable form at all.
++     */
++    if (process.platform === 'win32') {
++      // eslint-disable-next-line no-console
++      console.log(
++        '[tokenCore] owner-only file mode NOT ASSERTED on win32 — POSIX mode bits do not ' +
++          'exist there. Vault contents remain encrypted (asserted separately).',
++      );
++      return;
++    }
+     // A world-readable credential file is a credential file in name only.
+     expect(stat.mode & 0o077).toBe(0);
+   });

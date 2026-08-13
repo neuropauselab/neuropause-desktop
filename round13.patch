@@ -1,0 +1,1067 @@
+diff -ruN '--exclude=node_modules' '--exclude=*.log' '--exclude=dist' np-o3/apps/desktop/src/main/ai/aiAuthzGate.ts np/apps/desktop/src/main/ai/aiAuthzGate.ts
+--- np-o3/apps/desktop/src/main/ai/aiAuthzGate.ts	2026-08-11 15:52:57.000000000 +0000
++++ np/apps/desktop/src/main/ai/aiAuthzGate.ts	2026-08-12 08:57:26.359902653 +0000
+@@ -93,6 +93,35 @@
+    * same question.
+    */
+   [IpcChannel.FounderAskV2]: 'intelligence:read',
++  /**
++   * P13C ROUND 13 — M-14. THE SIBLING THAT WAS LEFT BEHIND.
++   *
++   * `ai:engineering-analyze` builds its context from `unifiedStore`,
++   * `graphStore` and `memoryStore` — with `memoryScope: activeTenantScope()` —
++   * runs it through `aiEngine`, and returns `rootCause`, `engineeringRisk` and
++   * `recommendedAction`. That is an answer SYNTHESISED FROM THIS TENANT'S
++   * RECORDS, which is the exact sentence three lines above that moved
++   * `founder:ask-v2` off public.
++   *
++   * IT WAS KEPT PUBLIC ON THE WRONG AXIS. The note below called these
++   * "non-persisting derivations" — true, and it answers MUTABILITY. The
++   * allowlist rule is about the PAYLOAD. `founder:ask-v2` had two reasons to
++   * move (synthesis AND a memory write); this has the first, and the first was
++   * always the sufficient one. The comment even conceded the shape by naming the
++   * channel "so that decision has an address rather than a silence" — the
++   * address was right and the decision was wrong.
++   *
++   * SECOND REASON, INDEPENDENT OF DISCLOSURE: an unauthenticated caller could
++   * spend the install's configured model credential and ship retrieved tenant
++   * records to the configured destination, in a loop, with no rate limit above
++   * `runSecureHandler`.
++   *
++   * `founder:suggestions` STAYS PUBLIC, deliberately: it returns fixed question
++   * TEMPLATES plus coarse counts of the caller's own tenant, never record
++   * content. The two were named together in the old comment and they are not the
++   * same shape.
++   */
++  [IpcChannel.EngineeringAnalyze]: 'intelligence:read',
+ 
+   /* ── Deliberately open ─────────────────────────────────────────────────
+    * Reads of the machine's own AI posture, which the Settings screen needs before
+@@ -101,9 +130,12 @@
+    * `aiConfig:test` validates a candidate credential and PERSISTS NOTHING; the
+    * endpoint it dials is the stored `ollamaUrl` or Anthropic's fixed host, and
+    * changing that stored value now requires `cloud:operate`.
+-   * `founder:suggestions` and `ai:engineering-analyze` are non-persisting
+-   * derivations; they are left as the earlier rounds decided, and named here so
+-   * that decision has an address rather than a silence.
++   * `founder:suggestions` returns fixed question TEMPLATES plus coarse counts of
++   * the caller's own tenant — no record content — so it stays.
++   * `ai:engineering-analyze` WAS listed here on the same line, as a
++   * "non-persisting derivation". P13C ROUND 13 — M-14 moved it to
++   * `intelligence:read`: non-persisting answers mutability, and its payload is
++   * synthesised from tenant records. See its row above.
+    */
+   [IpcChannel.AiConfigGet]: 'PUBLIC',
+   [IpcChannel.AiConfigHealth]: 'PUBLIC',
+@@ -112,7 +144,6 @@
+   [IpcChannel.AiConfigTest]: 'PUBLIC',
+   [IpcChannel.AiRoutingStatus]: 'PUBLIC',
+   [IpcChannel.FounderSuggestions]: 'PUBLIC',
+-  [IpcChannel.EngineeringAnalyze]: 'PUBLIC',
+ };
+ 
+ /**
+diff -ruN '--exclude=node_modules' '--exclude=*.log' '--exclude=dist' np-o3/apps/desktop/src/main/ipc/channelResource.ts np/apps/desktop/src/main/ipc/channelResource.ts
+--- np-o3/apps/desktop/src/main/ipc/channelResource.ts	1970-01-01 00:00:00.000000000 +0000
++++ np/apps/desktop/src/main/ipc/channelResource.ts	2026-08-12 08:33:25.127905765 +0000
+@@ -0,0 +1,198 @@
++/**
++ * WHAT DOES THIS CHANNEL REACH? P13C ROUND 13 — PHASE 3.
++ *
++ * THE GAP THIS CLOSES, stated as the evidence that produced it.
++ *
++ * Every mechanism this program has built asks whether a channel IS CLASSIFIED.
++ * `assertAllChannelsClassified` returns the channels that are neither gated nor
++ * allowlisted. `channelsBothPublicAndGated` returns the ones that are both. The
++ * family gates cross-check each other against the central table.
++ *
++ * None of them can ask whether a classification is CORRECT — whether the
++ * authority on a channel matches the data its handler actually returns. So in
++ * Round 12 a single sweep found FOURTEEN public channels carrying tenant data,
++ * NINE of them one defect: a generator over the tenant corpus admitted as
++ * "read-only", while the stored form of the identical rows was already gated.
++ * Eleven rounds of review walked past them, because every automated check
++ * answered a question that was not the question.
++ *
++ * This is the third time the program has hit that shape: data → authority
++ * (Round 10), presence → attachment (Round 10), classified → correctly
++ * classified (here). The pattern is a gate that checks PRESENCE where it needed
++ * to check CORRESPONDENCE.
++ *
++ * THE MECHANISM
++ *
++ * A handler declares which STORE it reads or writes. The store already declares
++ * its own scope and classification (`declareStoreScope`). Joining the two makes
++ * the question mechanical:
++ *
++ *     channel → store → { scope, classification } + { public?, mutates? }
++ *
++ * and the rules below become checkable instead of reviewable.
++ *
++ * WHY A DECLARATION AND NOT A SOURCE SCAN. `storeScopeGate` can scan for
++ * persistence because writing a file is syntactically visible. What a handler
++ * REACHES is not: handlers close over injected ports, call through composition
++ * roots, and reach stores several frames deep. A regex would produce confident
++ * wrong answers, which is worse than no answer. So the link is declared, and the
++ * cost of declaring it is one line beside a handler that already has an
++ * authority decision written above it.
++ *
++ * WHAT THIS IS HONESTLY NOT, YET
++ *
++ * COVERAGE IS PARTIAL AND THE GAP IS THE POINT OF THIS PARAGRAPH. A channel with
++ * no declaration is invisible to these rules — the mechanism proves things about
++ * what it has been told, not about the whole surface. It is seeded here with the
++ * channels this program has already had to reason about, so the rules are
++ * exercised against real rows rather than fixtures, and every future sensitive
++ * handler should add one line.
++ *
++ * That makes this a FORCING FUNCTION, not a proof of completeness — the same
++ * status `storeScopeGate` states about itself. The round that calls it complete
++ * is the round that gets the next fourteen.
++ */
++import type { IpcChannelName } from '@neuropause/shared';
++import type { StoreScopeDeclaration } from '../tenancy/storeScope';
++
++/** What a handler does to the resource it reaches. */
++export type ChannelEffect = 'read' | 'mutate';
++
++export interface ChannelResourceDeclaration {
++  channel: IpcChannelName;
++  /**
++   * The `declareStoreScope` NAME of the store this handler reaches. Using the
++   * store's own declared name rather than a path is what lets the join happen:
++   * the scope and classification are read from the store's declaration, so this
++   * side cannot disagree with it.
++   */
++  store: string;
++  effect: ChannelEffect;
++  /** Why this channel touches this store. One line; it is read during review. */
++  reason: string;
++}
++
++const registry = new Map<IpcChannelName, ChannelResourceDeclaration>();
++
++/** Declare which store a channel reaches. Call at module load, beside the handler. */
++export function declareChannelResource(decl: ChannelResourceDeclaration): void {
++  if (decl.store.trim() === '') {
++    throw new Error(`Channel "${decl.channel}" must name the store it reaches.`);
++  }
++  if (decl.reason.trim() === '') {
++    throw new Error(`Channel "${decl.channel}" must say WHY it reaches "${decl.store}".`);
++  }
++  registry.set(decl.channel, decl);
++}
++
++/** Every declaration, sorted. For the gate test and the coverage report. */
++export function channelResourceDeclarations(): ChannelResourceDeclaration[] {
++  return [...registry.values()].sort((a, b) => a.channel.localeCompare(b.channel));
++}
++
++/** Test seam. Never called in production. */
++export function __resetChannelResourceRegistryForTests(): void {
++  registry.clear();
++}
++
++export interface ChannelResourceViolation {
++  channel: IpcChannelName;
++  store: string;
++  rule: string;
++  detail: string;
++}
++
++/**
++ * THE RULES. Each one is a finding this program actually shipped, made
++ * unrepresentable rather than reviewable.
++ *
++ * 1. PUBLIC + CUSTOMER_DERIVED  → the Round 12 class, all fourteen of them.
++ * 2. PUBLIC + mutate + INSTALL_GLOBAL   → the Round 11 updater / nps / pilot class.
++ * 3. PUBLIC + mutate + PLATFORM_GLOBAL  → strictly worse than 2.
++ * 4. PUBLIC + mutate + TENANT/WORKSPACE/USER → an unauthenticated write into a
++ *    scoped store (`platform:emit`, Round 12).
++ *
++ * A read of INSTALL_METADATA stays legal and public — that is the standard the
++ * codebase already argues for `plugins:list` and `registry:list`, and a rule
++ * that banned it would push stores into declaring scopes they do not have.
++ */
++export function channelResourceViolations(
++  publicChannels: ReadonlySet<IpcChannelName>,
++  storeDeclarations: readonly StoreScopeDeclaration[],
++): ChannelResourceViolation[] {
++  const byName = new Map(storeDeclarations.map((d) => [d.name, d]));
++  const out: ChannelResourceViolation[] = [];
++
++  for (const decl of channelResourceDeclarations()) {
++    if (!publicChannels.has(decl.channel)) continue;
++    const store = byName.get(decl.store);
++    if (!store) {
++      out.push({
++        channel: decl.channel,
++        store: decl.store,
++        rule: 'UNKNOWN_STORE',
++        detail:
++          `names a store with no \`declareStoreScope\`, so its scope and ` +
++          `classification cannot be checked. A public channel reaching an ` +
++          `unclassified store is the state this mechanism exists to refuse.`,
++      });
++      continue;
++    }
++
++    if (store.classification === 'CUSTOMER_DERIVED') {
++      out.push({
++        channel: decl.channel,
++        store: decl.store,
++        rule: 'PUBLIC_CUSTOMER_DERIVED',
++        detail:
++          `is PUBLIC and reaches CUSTOMER_DERIVED data. A public channel has no ` +
++          `auth and no permission, so a signed-out renderer receives it. Gate it ` +
++          `on the same authority the stored form of this data already carries.`,
++      });
++      continue;
++    }
++
++    if (decl.effect === 'mutate') {
++      if (store.scope === 'INSTALL_GLOBAL' || store.scope === 'PLATFORM_GLOBAL') {
++        out.push({
++          channel: decl.channel,
++          store: decl.store,
++          rule: 'PUBLIC_GLOBAL_MUTATION',
++          detail:
++            `is PUBLIC and MUTATES a ${store.scope} store. One shared resource on ` +
++            `the machine, changed by a caller who has not signed in.`,
++        });
++        continue;
++      }
++      if (store.scope === 'TENANT' || store.scope === 'WORKSPACE' || store.scope === 'USER') {
++        out.push({
++          channel: decl.channel,
++          store: decl.store,
++          rule: 'PUBLIC_SCOPED_MUTATION',
++          detail:
++            `is PUBLIC and MUTATES a ${store.scope} store. An unauthenticated ` +
++            `caller must not author rows into a scoped store — the owner would be ` +
++            `stamped from whatever context happened to be active.`,
++        });
++      }
++    }
++  }
++  return out;
++}
++
++/**
++ * Composition-time assertion. Throws rather than warns, for the reason
++ * `declareStoreScope` gives: a warning in a startup log is a thing nobody reads
++ * until after the incident.
++ */
++export function assertChannelResourceSafety(
++  publicChannels: ReadonlySet<IpcChannelName>,
++  storeDeclarations: readonly StoreScopeDeclaration[],
++): void {
++  const violations = channelResourceViolations(publicChannels, storeDeclarations);
++  if (violations.length === 0) return;
++  throw new Error(
++    `These PUBLIC channels reach data their classification does not permit:\n` +
++      violations.map((v) => `  ${v.channel} → ${v.store} [${v.rule}] ${v.detail}`).join('\n'),
++  );
++}
+diff -ruN '--exclude=node_modules' '--exclude=*.log' '--exclude=dist' np-o3/apps/desktop/src/main/ipc/runtimeAuthz.ts np/apps/desktop/src/main/ipc/runtimeAuthz.ts
+--- np-o3/apps/desktop/src/main/ipc/runtimeAuthz.ts	2026-08-12 08:57:46.853105095 +0000
++++ np/apps/desktop/src/main/ipc/runtimeAuthz.ts	2026-08-12 08:57:26.361832686 +0000
+@@ -719,6 +719,30 @@
+   [IpcChannel.CrashRecommendations]: 'operations:read',
+   [IpcChannel.PilotSetEnabled]: 'org:manage',
+   /**
++   * P13C ROUND 13 — M-14. Restated here so the central register is complete and
++   * the AI family gate's cross-check has something to agree WITH — the NEW-M8
++   * lesson: a channel classified in only one of the two tables is a channel a
++   * regression can move without either mechanism noticing.
++   */
++  [IpcChannel.EngineeringAnalyze]: 'intelligence:read',
++  /**
++   * P13C ROUND 13 — M-13. A PUBLIC WRITE TO A SHARED ROW.
++   *
++   * `registry:setFlags` mutated `pinned`/`favorite` on the install-global
++   * `RegistryEntry`, so tenant A un-pinning an app un-pinned it for tenant B,
++   * from a context with no authentication at all. Round 9 (F4) verified the
++   * PAYLOAD whitelist — the mutation can only reach those two fields — and that
++   * verification still holds. What it never resolved was the DESTINATION.
++   *
++   * `cloud:operate` would be the wrong lock: this is a per-user personalization,
++   * not a platform act, and gating it there takes the pin button away from every
++   * ordinary member. The fix is that the write now lands in the caller's own
++   * `flagsByTenant` bucket (see `registry.ts`), which makes the mutation
++   * genuinely tenant-local — and `dashboard:read` is the scope this file already
++   * uses for per-user surfaces whose owner is resolved server-side.
++   */
++  [IpcChannel.RegistrySetFlags]: 'dashboard:read',
++  /**
+    * P13C ROUND 10 — NEW-M8. SEVEN CHANNELS THAT WERE PUBLIC **AND** GATED.
+    *
+    * Each of these carries a permission stamped by its family gate
+@@ -840,7 +864,6 @@
+   // ── Local application registry reads ──
+   IpcChannel.RegistryList,
+   IpcChannel.RegistryGet,
+-  IpcChannel.RegistrySetFlags,
+   IpcChannel.RegistryStats,
+   /**
+    * P13C ROUND 11 — M-10. `RegistryExport` WAS HERE.
+@@ -989,7 +1012,6 @@
+   // P13C Round 10 — NEW-M8. `FounderAskV2` REMOVED: Round 9 gated it at
+   // `intelligence:read` in `ai/aiAuthzGate.ts` (it WRITES a memory through
+   // `captureFounderMemory`) and this row was left behind.
+-  IpcChannel.EngineeringAnalyze,
+   IpcChannel.FounderSuggestions,
+   /**
+    * ── NeuroCore + renderer→main state reports ──
+diff -ruN '--exclude=node_modules' '--exclude=*.log' '--exclude=dist' np-o3/apps/desktop/src/main/registry/registry.ts np/apps/desktop/src/main/registry/registry.ts
+--- np-o3/apps/desktop/src/main/registry/registry.ts	2026-08-12 08:57:46.853354773 +0000
++++ np/apps/desktop/src/main/registry/registry.ts	2026-08-12 08:31:07.154362642 +0000
+@@ -169,6 +169,26 @@
+    * constantly and stop being evidence of anything.
+    */
+   usageByTenant?: Record<string, Record<string, TenantUsage>>;
++  /**
++   * PER-TENANT DISPLAY FLAGS. P13C ROUND 13 — M-13.
++   *
++   * `pinned` and `favorite` lived on the shared `RegistryEntry`, so tenant A
++   * un-pinning an app un-pinned it for tenant B — on a channel with no auth at
++   * all. The file contradicted itself about this: one comment called them
++   * "shared by everyone who uses the install", another called them "per-user".
++   * The storage settled it, and the storage was wrong.
++   *
++   * Same shape as `usageByTenant`, and deliberately so: `{ [tenantId]: { [slug]:
++   * flags } }`, outside the checksummed `entries` map, with `''` for an
++   * unresolved caller — a partition that reaches nobody rather than a shared one.
++   *
++   * LEGACY IS PRESERVED, NOT REWRITTEN. A row's own `pinned`/`favorite` stays on
++   * disk and acts as the DEFAULT any tenant sees until that tenant sets its own.
++   * The historical value was never attributable to an organization, so promoting
++   * it to one would be inventing provenance; dropping it would silently unpin
++   * every app on every existing install.
++   */
++  flagsByTenant?: Record<string, Record<string, { pinned?: boolean; favorite?: boolean }>>;
+ }
+ 
+ function registryPath(): string {
+@@ -198,6 +218,7 @@
+     meta: { createdAt: now, updatedAt: now },
+     entries: {},
+     usageByTenant: {},
++    flagsByTenant: {},
+   };
+ }
+ 
+@@ -263,6 +284,22 @@
+     return this.tenantIdFor() ?? '';
+   }
+ 
++  /**
++   * This caller's display flags for one app. P13C ROUND 13 — M-13.
++   *
++   * Falls back to the row's legacy value, which is the pre-M-13 shared flag and
++   * is the honest default: it belonged to no organization, so it belongs to
++   * every organization until one overrides it.
++   */
++  private flagsFor(slug: string): { pinned: boolean; favorite: boolean } {
++    const own = this.file.flagsByTenant?.[this.usageKey()]?.[slug];
++    const row = this.file.entries[slug];
++    return {
++      pinned: own?.pinned ?? row?.pinned ?? false,
++      favorite: own?.favorite ?? row?.favorite ?? false,
++    };
++  }
++
+   /** This caller's counters for one app. Never another caller's. */
+   private usageFor(slug: string): TenantUsage {
+     return this.file.usageByTenant?.[this.usageKey()]?.[slug] ?? emptyUsage();
+@@ -301,6 +338,8 @@
+          * organization; each tenant starts counting its own from zero.
+          */
+         usageByTenant: parsed.usageByTenant ?? {},
++        // P13C ROUND 13 — M-13.
++        flagsByTenant: parsed.flagsByTenant ?? {},
+       });
+     } catch (err) {
+       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+@@ -352,10 +391,10 @@
+    */
+   get(slug: string): RegistryEntryDto | null {
+     const e = this.file.entries[slug];
+-    return e ? toDto(e, this.usageFor(slug)) : null;
++    return e ? toDto(e, this.usageFor(slug), this.flagsFor(slug)) : null;
+   }
+   list(): RegistryEntryDto[] {
+-    return Object.values(this.file.entries).map((e) => toDto(e, this.usageFor(e.slug)));
++    return Object.values(this.file.entries).map((e) => toDto(e, this.usageFor(e.slug), this.flagsFor(e.slug)));
+   }
+   isIntegrityOk(): boolean {
+     return this.integrityOk;
+@@ -395,7 +434,7 @@
+     this.ensureLoaded();
+     this.file.entries[entry.slug] = entry;
+     await this.persist();
+-    return toDto(entry, this.usageFor(entry.slug));
++    return toDto(entry, this.usageFor(entry.slug), this.flagsFor(entry.slug));
+   }
+ 
+   async patch(slug: string, fn: (e: RegistryEntry) => void): Promise<RegistryEntryDto | null> {
+@@ -404,7 +443,7 @@
+     if (!e) return null;
+     fn(e);
+     await this.persist();
+-    return toDto(e, this.usageFor(slug));
++    return toDto(e, this.usageFor(slug), this.flagsFor(slug));
+   }
+ 
+   async remove(slug: string): Promise<boolean> {
+@@ -449,13 +488,32 @@
+    */
+   private static readonly DISPLAY_FLAGS = ['pinned', 'favorite'] as const;
+ 
++  /**
++   * Set THIS CALLER'S display flags. P13C ROUND 13 — M-13.
++   *
++   * Was `patch(slug, e => e[key] = value)` — a write to the shared row, so one
++   * organization's pin was every organization's pin. The payload whitelist
++   * (`DISPLAY_FLAGS`) was verified in Round 9 and is preserved below; what was
++   * never resolved is that the DESTINATION was install-global.
++   *
++   * The shared row is no longer written at all: the legacy value stays as the
++   * default in `flagsFor`, and the caller's own bucket takes precedence.
++   */
+   async setFlags(slug: string, flags: { pinned?: boolean; favorite?: boolean }): Promise<RegistryEntryDto | null> {
+-    return this.patch(slug, (e) => {
+-      for (const key of Registry.DISPLAY_FLAGS) {
+-        const value = flags[key];
+-        if (value !== undefined) e[key] = value === true;
+-      }
+-    });
++    this.ensureLoaded();
++    if (!this.file.entries[slug]) return null;
++    const key = this.usageKey();
++    const current = this.flagsFor(slug);
++    const next: { pinned: boolean; favorite: boolean } = { ...current };
++    for (const f of Registry.DISPLAY_FLAGS) {
++      const value = flags[f];
++      if (value !== undefined) next[f] = value === true;
++    }
++    const byTenant = { ...(this.file.flagsByTenant ?? {}) };
++    byTenant[key] = { ...(byTenant[key] ?? {}), [slug]: next };
++    this.file.flagsByTenant = byTenant;
++    await this.persist();
++    return this.get(slug);
+   }
+ 
+   async setRuntimeStatus(slug: string, status: RuntimeStatus): Promise<void> {
+@@ -559,6 +617,15 @@
+       ...this.file,
+       entries,
+       usageByTenant: { [key]: this.file.usageByTenant?.[key] ?? {} },
++      /**
++       * P13C ROUND 13 — M-13 ADDED A SECOND PER-TENANT MAP, SO IT GETS THE SAME
++       * FILTER. `...this.file` is a spread: any new per-tenant field is exported
++       * in full unless it is named here. That is exactly how M-10 happened — one
++       * field filtered, another added later and forgotten — so the filter is
++       * applied in the same commit that adds the field, not in the round that
++       * finds it.
++       */
++      flagsByTenant: { [key]: this.file.flagsByTenant?.[key] ?? {} },
+     };
+     return JSON.stringify(authorized, null, 2);
+   }
+@@ -628,7 +695,17 @@
+  * an under-reported count is a cosmetic bug, an over-reported one is another
+  * organization's activity.
+  */
+-export function toDto(e: RegistryEntry, usage: TenantUsage = emptyUsage()): RegistryEntryDto {
++export function toDto(
++  e: RegistryEntry,
++  usage: TenantUsage = emptyUsage(),
++  /**
++   * P13C ROUND 13 — M-13. The CALLER'S display flags. Defaults to the row's own
++   * legacy values so an existing caller of this function is unchanged, and so a
++   * future caller that forgets to pass a bucket shows the shared default rather
++   * than someone else's choice.
++   */
++  flags: { pinned: boolean; favorite: boolean } = { pinned: e.pinned, favorite: e.favorite },
++): RegistryEntryDto {
+   return {
+     slug: e.slug,
+     name: e.name,
+@@ -648,8 +725,8 @@
+     runtimeStatus: e.runtimeStatus,
+     healthStatus: e.healthStatus,
+     diskUsageBytes: e.diskUsageBytes,
+-    pinned: e.pinned,
+-    favorite: e.favorite,
++    pinned: flags.pinned,
++    favorite: flags.favorite,
+     config: e.config,
+     usage: {
+       launches: usage.launchCount,
+diff -ruN '--exclude=node_modules' '--exclude=*.log' '--exclude=dist' np-o3/apps/desktop/src/main/tenancy/channelAuthorityTenancy.test.ts np/apps/desktop/src/main/tenancy/channelAuthorityTenancy.test.ts
+--- np-o3/apps/desktop/src/main/tenancy/channelAuthorityTenancy.test.ts	2026-08-11 15:52:05.000000000 +0000
++++ np/apps/desktop/src/main/tenancy/channelAuthorityTenancy.test.ts	2026-08-12 08:45:09.998915978 +0000
+@@ -384,8 +384,24 @@
+     [IpcChannel.AiConfigMigrationStatus, 'ai'],
+     [IpcChannel.AiConfigTest, 'ai'],
+     [IpcChannel.AiRoutingStatus, 'ai'],
++    /**
++     * `founder:suggestions` STAYS: fixed question TEMPLATES plus coarse counts of
++     * the caller's own tenant. No record content.
++     */
+     [IpcChannel.FounderSuggestions, 'ai'],
+-    [IpcChannel.EngineeringAnalyze, 'ai'],
++    /**
++     * P13C ROUND 13 — M-14. `EngineeringAnalyze` WAS IN THIS LIST, and this
++     * assertion is why the finding survived: the test encoded the earlier
++     * decision as a REQUIREMENT ("must stay open"), so the only way to reopen
++     * the question was to change the test.
++     *
++     * It is removed rather than re-pointed, because the channel is no longer an
++     * example of "a read that was public and should stay public". Its payload is
++     * synthesised from `unifiedStore` / `graphStore` / `memoryStore`, which is
++     * the same reason `founder:ask-v2` moved. The property this case tests — a
++     * genuinely open read still runs with no session — is unchanged and is still
++     * covered by the six entries above.
++     */
+   ];
+ 
+   it('the reads that were public are still public, and still run without a session', async () => {
+@@ -712,9 +728,20 @@
+       installedVersion: '99.0.0',
+     } as unknown as { pinned?: boolean; favorite?: boolean });
+ 
++    /**
++     * P13C ROUND 13 — M-13 MOVED WHERE THE FLAGS LAND, NOT WHETHER THEY ARE
++     * WHITELISTED.
++     *
++     * `setFlags` no longer writes `pinned`/`favorite` onto the shared row — they
++     * are per-tenant now — so the flags are read through the DTO, which is the
++     * caller's view. The property THIS CASE TESTS is unchanged and is the one
++     * that matters: nothing outside the two display flags reaches the row, and
++     * the raw-row assertions below are untouched.
++     */
++    const view = registry.get(SLUG)!;
++    expect(view.pinned).toBe(true);
++    expect(view.favorite).toBe(true);
+     const after = registry.getRaw(SLUG)!;
+-    expect(after.pinned).toBe(true);
+-    expect(after.favorite).toBe(true);
+     // Everything a compromise would want is untouched.
+     expect(after.grantedPermissions).toEqual(['filesystem_read']);
+     expect(after.permissionGrants).toEqual([]);
+@@ -730,7 +757,8 @@
+ 
+   it('a truthy non-boolean cannot land in the file, and an unknown slug creates nothing', async () => {
+     await registry.setFlags(SLUG, { pinned: 'yes' as unknown as boolean });
+-    expect(registry.getRaw(SLUG)!.pinned).toBe(false);
++    // P13C ROUND 13 — M-13: read the caller's projection, not the shared row.
++    expect(registry.get(SLUG)!.pinned).toBe(false);
+     expect(await registry.setFlags('com.example.absent', { pinned: true })).toBeNull();
+     expect(registry.getRaw('com.example.absent')).toBeNull();
+   });
+@@ -740,6 +768,14 @@
+     // A fresh load re-verifies the checksum over the entries it reads back.
+     await registry.load();
+     expect(registry.isIntegrityOk()).toBe(true);
+-    expect(registry.getRaw(SLUG)!.favorite).toBe(true);
++    /**
++     * P13C ROUND 13 — M-13. The flag now persists in `flagsByTenant`, which sits
++     * OUTSIDE the checksummed `entries` map — the same placement `usageByTenant`
++     * uses, and for the same reason: a value that changes on a user's click must
++     * not churn the integrity hash that exists to detect out-of-band edits to
++     * what is installed and what it may do. So this case asserts both halves:
++     * the checksum still verifies, AND the flag survived the reload.
++     */
++    expect(registry.get(SLUG)!.favorite).toBe(true);
+   });
+ });
+diff -ruN '--exclude=node_modules' '--exclude=*.log' '--exclude=dist' np-o3/apps/desktop/src/main/tenancy/round13AiAnalyzeAuthority.test.ts np/apps/desktop/src/main/tenancy/round13AiAnalyzeAuthority.test.ts
+--- np-o3/apps/desktop/src/main/tenancy/round13AiAnalyzeAuthority.test.ts	1970-01-01 00:00:00.000000000 +0000
++++ np/apps/desktop/src/main/tenancy/round13AiAnalyzeAuthority.test.ts	2026-08-12 08:57:18.554435272 +0000
+@@ -0,0 +1,58 @@
++/**
++ * P13C ROUND 13 — M-14. AN UNAUTHENTICATED LLM RUN OVER TENANT RECORDS.
++ *
++ * `ai:engineering-analyze` builds context from `unifiedStore`, `graphStore` and
++ * `memoryStore` (with `memoryScope: activeTenantScope()`), runs it through
++ * `aiEngine`, and returns `rootCause` / `engineeringRisk` / `recommendedAction`.
++ * It was PUBLIC in both the central register and the AI family gate.
++ *
++ * IT SURVIVED ON THE WRONG AXIS. The family gate justified it as a
++ * "non-persisting derivation" — true, and it answers MUTABILITY. The allowlist
++ * rule is about the PAYLOAD, and its sibling `founder:ask-v2` had already been
++ * moved off public for the identical reason ("answers are synthesised from this
++ * tenant's records"). That sibling had two reasons to move; this one had the
++ * first, which was always the sufficient one.
++ *
++ * AND THE TEST SUITE WAS HOLDING IT OPEN. `channelAuthorityTenancy` listed this
++ * channel under "the reads that were public are still public" with the message
++ * `must stay open`, so the earlier decision had been encoded as a REQUIREMENT.
++ * That row is removed, with the reasoning, in that file.
++ *
++ * Second reason, independent of disclosure: an unauthenticated caller could
++ * spend the install's configured model credential in a loop, shipping retrieved
++ * tenant records to the configured destination, with no rate limit above
++ * `runSecureHandler`.
++ */
++import { describe, expect, it } from 'vitest';
++import { IpcChannel } from '@neuropause/shared';
++import { AI_CHANNEL_AUTHORITY } from '../ai/aiAuthzGate';
++import { PUBLIC_CHANNELS, RUNTIME_CHANNEL_PERMISSIONS } from '../ipc/runtimeAuthz';
++
++describe('ai:engineering-analyze requires a session', () => {
++  it('the AI family gate classifies it intelligence:read, not PUBLIC', () => {
++    expect(AI_CHANNEL_AUTHORITY[IpcChannel.EngineeringAnalyze]).toBe('intelligence:read');
++  });
++
++  it('the central register agrees — one channel, one answer', () => {
++    // NEW-M8's lesson: a channel classified in only ONE of the two tables can be
++    // moved by a regression without either mechanism noticing.
++    expect(RUNTIME_CHANNEL_PERMISSIONS[IpcChannel.EngineeringAnalyze]).toBe('intelligence:read');
++  });
++
++  it('it is off the public allowlist', () => {
++    expect(PUBLIC_CHANNELS.has(IpcChannel.EngineeringAnalyze)).toBe(false);
++  });
++
++  it('it carries the SAME lock as founder:ask-v2, over the same corpus', () => {
++    expect(AI_CHANNEL_AUTHORITY[IpcChannel.EngineeringAnalyze]).toBe(
++      AI_CHANNEL_AUTHORITY[IpcChannel.FounderAskV2],
++    );
++  });
++
++  it('founder:suggestions STAYS public — it is not the same shape', () => {
++    // Fixed question templates plus coarse counts of the caller's own tenant.
++    // The two were named together in the old comment and should not have been.
++    expect(AI_CHANNEL_AUTHORITY[IpcChannel.FounderSuggestions]).toBe('PUBLIC');
++    expect(PUBLIC_CHANNELS.has(IpcChannel.FounderSuggestions)).toBe(true);
++  });
++});
+diff -ruN '--exclude=node_modules' '--exclude=*.log' '--exclude=dist' np-o3/apps/desktop/src/main/tenancy/round13ChannelStoreInvariant.test.ts np/apps/desktop/src/main/tenancy/round13ChannelStoreInvariant.test.ts
+--- np-o3/apps/desktop/src/main/tenancy/round13ChannelStoreInvariant.test.ts	1970-01-01 00:00:00.000000000 +0000
++++ np/apps/desktop/src/main/tenancy/round13ChannelStoreInvariant.test.ts	2026-08-12 08:32:55.527479060 +0000
+@@ -0,0 +1,200 @@
++/**
++ * P13C ROUND 13 — PHASE 3. THE INVARIANT THAT WOULD HAVE CAUGHT ROUND 12.
++ *
++ * Round 12's sweep found fourteen public channels carrying tenant data — nine of
++ * them one defect — and every automated mechanism in the repository passed the
++ * whole time. `assertAllChannelsClassified` asks *"is this channel classified?"*
++ * and the answer was yes for all fourteen. Nothing asked whether the
++ * classification MATCHED THE PAYLOAD.
++ *
++ * That is the third instance of one meta-shape in this program: a gate that
++ * checks PRESENCE where it needed to check CORRESPONDENCE. Data → authority
++ * (Round 10). Presence → attachment (Round 10). Classified → correctly
++ * classified (here).
++ *
++ * THE TEST THAT MATTERS IS THE SYNTHETIC ONE. A suite that only asserts today's
++ * fourteen channels is the named list Round 12 already shipped, and it cannot see
++ * a fifteenth. So the cases below build a channel that DOES NOT EXIST in the
++ * product, point it at a CUSTOMER_DERIVED store, and require the mechanism to
++ * refuse it. That is what makes this a rule rather than an inventory.
++ */
++import { afterEach, beforeEach, describe, expect, it } from 'vitest';
++import type { IpcChannelName } from '@neuropause/shared';
++import { IpcChannel } from '@neuropause/shared';
++import {
++  declareChannelResource,
++  channelResourceViolations,
++  assertChannelResourceSafety,
++  __resetChannelResourceRegistryForTests,
++} from '../ipc/channelResource';
++import type { StoreScopeDeclaration } from '../tenancy/storeScope';
++
++/** A CUSTOMER_DERIVED tenant store, the shape of `unified-entities`. */
++const CUSTOMER: StoreScopeDeclaration = {
++  name: 'fixture-customer-store',
++  scope: 'TENANT',
++  persistence: 'file',
++  authority: 'ORG_ROLE',
++  classification: 'CUSTOMER_DERIVED',
++  retention: 'per-tenant cap',
++  reason: 'the tenant’s own records',
++};
++
++/** Install metadata, the shape of `local-app-registry`. */
++const METADATA: StoreScopeDeclaration = {
++  name: 'fixture-metadata-store',
++  scope: 'INSTALL_GLOBAL',
++  persistence: 'file',
++  authority: 'PLATFORM_OPERATOR',
++  classification: 'INSTALL_METADATA',
++  retention: 'unbounded; rows describe the machine',
++  reason: 'one shared runtime on one machine',
++};
++
++const STORES = [CUSTOMER, METADATA];
++
++/** Stand-ins for channels; the rule never inspects the name. */
++const CH = IpcChannel.RegistryList as IpcChannelName;
++const OTHER = IpcChannel.RegistryGet as IpcChannelName;
++
++beforeEach(() => __resetChannelResourceRegistryForTests());
++afterEach(() => __resetChannelResourceRegistryForTests());
++
++describe('a NEW public channel onto customer data is refused automatically', () => {
++  it('PUBLIC + CUSTOMER_DERIVED is a violation', () => {
++    declareChannelResource({
++      channel: CH,
++      store: CUSTOMER.name,
++      effect: 'read',
++      reason: 'fixture: a projection over tenant records',
++    });
++    const v = channelResourceViolations(new Set([CH]), STORES);
++    expect(v).toHaveLength(1);
++    expect(v[0]!.rule).toBe('PUBLIC_CUSTOMER_DERIVED');
++  });
++
++  it('and the composition assertion THROWS on it', () => {
++    declareChannelResource({
++      channel: CH,
++      store: CUSTOMER.name,
++      effect: 'read',
++      reason: 'fixture',
++    });
++    expect(() => assertChannelResourceSafety(new Set([CH]), STORES)).toThrow(
++      /PUBLIC_CUSTOMER_DERIVED/,
++    );
++  });
++
++  it('the SAME channel gated is clean — the rule is about public, not about the data', () => {
++    declareChannelResource({
++      channel: CH,
++      store: CUSTOMER.name,
++      effect: 'read',
++      reason: 'fixture',
++    });
++    // Not in the public set = gated somewhere. No violation.
++    expect(channelResourceViolations(new Set<IpcChannelName>(), STORES)).toEqual([]);
++    expect(() => assertChannelResourceSafety(new Set<IpcChannelName>(), STORES)).not.toThrow();
++  });
++
++  it('PUBLIC + install metadata READ stays legal', () => {
++    // The `plugins:list` / `registry:list` standard. A rule that banned this
++    // would push stores into declaring scopes they do not have, which is worse.
++    declareChannelResource({
++      channel: CH,
++      store: METADATA.name,
++      effect: 'read',
++      reason: 'fixture: what this machine has installed',
++    });
++    expect(channelResourceViolations(new Set([CH]), STORES)).toEqual([]);
++  });
++});
++
++describe('public mutations are refused by scope', () => {
++  it('PUBLIC + mutate + INSTALL_GLOBAL is a violation (the updater / nps / pilot class)', () => {
++    declareChannelResource({
++      channel: CH,
++      store: METADATA.name,
++      effect: 'mutate',
++      reason: 'fixture: an install-wide write',
++    });
++    const v = channelResourceViolations(new Set([CH]), STORES);
++    expect(v[0]?.rule).toBe('PUBLIC_GLOBAL_MUTATION');
++  });
++
++  it('PUBLIC + mutate + TENANT is a violation (the platform:emit class)', () => {
++    declareChannelResource({
++      channel: CH,
++      store: CUSTOMER.name,
++      effect: 'mutate',
++      reason: 'fixture: authoring rows into a scoped store',
++    });
++    // Customer-derived is caught first and is the stronger statement.
++    expect(channelResourceViolations(new Set([CH]), STORES)[0]?.rule).toBe(
++      'PUBLIC_CUSTOMER_DERIVED',
++    );
++  });
++
++  it('a scoped, non-customer store still refuses a public write', () => {
++    const scopedMeta: StoreScopeDeclaration = {
++      ...METADATA,
++      name: 'fixture-scoped-meta',
++      scope: 'WORKSPACE',
++      authority: 'ORG_ROLE',
++    };
++    declareChannelResource({
++      channel: CH,
++      store: scopedMeta.name,
++      effect: 'mutate',
++      reason: 'fixture',
++    });
++    const v = channelResourceViolations(new Set([CH]), [...STORES, scopedMeta]);
++    expect(v[0]?.rule).toBe('PUBLIC_SCOPED_MUTATION');
++  });
++});
++
++describe('the mechanism fails closed on an unclassified store', () => {
++  it('a public channel naming a store with no declaration is a violation', () => {
++    // "I could not check this" must not read the same as "this is fine".
++    declareChannelResource({
++      channel: CH,
++      store: 'a-store-that-declares-nothing',
++      effect: 'read',
++      reason: 'fixture',
++    });
++    expect(channelResourceViolations(new Set([CH]), STORES)[0]?.rule).toBe('UNKNOWN_STORE');
++  });
++});
++
++describe('the declaration itself has to be honest', () => {
++  it('a declaration must name a store', () => {
++    expect(() =>
++      declareChannelResource({ channel: CH, store: '  ', effect: 'read', reason: 'x' }),
++    ).toThrow(/must name the store/);
++  });
++
++  it('a declaration must say why', () => {
++    expect(() =>
++      declareChannelResource({ channel: CH, store: CUSTOMER.name, effect: 'read', reason: ' ' }),
++    ).toThrow(/must say WHY/);
++  });
++});
++
++describe('several channels are evaluated independently', () => {
++  it('the clean one passes while the violating one is reported', () => {
++    declareChannelResource({
++      channel: CH,
++      store: METADATA.name,
++      effect: 'read',
++      reason: 'fixture: fine',
++    });
++    declareChannelResource({
++      channel: OTHER,
++      store: CUSTOMER.name,
++      effect: 'read',
++      reason: 'fixture: not fine',
++    });
++    const v = channelResourceViolations(new Set([CH, OTHER]), STORES);
++    expect(v.map((x) => x.channel)).toEqual([OTHER]);
++  });
++});
+diff -ruN '--exclude=node_modules' '--exclude=*.log' '--exclude=dist' np-o3/apps/desktop/src/main/tenancy/round13RegistryFlags.test.ts np/apps/desktop/src/main/tenancy/round13RegistryFlags.test.ts
+--- np-o3/apps/desktop/src/main/tenancy/round13RegistryFlags.test.ts	1970-01-01 00:00:00.000000000 +0000
++++ np/apps/desktop/src/main/tenancy/round13RegistryFlags.test.ts	2026-08-12 08:29:50.427483293 +0000
+@@ -0,0 +1,218 @@
++/**
++ * P13C ROUND 13 — M-13. A PER-USER PREFERENCE STORED ON A SHARED ROW.
++ *
++ * `pinned` and `favorite` lived on the install-global `RegistryEntry`, and
++ * `registry:setFlags` was PUBLIC — no auth, no permission. So tenant A
++ * un-pinning an app un-pinned it for tenant B, from a context that had not
++ * signed in.
++ *
++ * THE FILE CONTRADICTED ITSELF ABOUT THIS, which is why five rounds walked past
++ * it: `registry.ts` called the flags *"display flags shared by everyone who uses
++ * the install"* in one comment and *"per-user display flags"* in another. Round 9
++ * (F4) verified the payload WHITELIST — the mutation can only reach those two
++ * fields — and that verification was correct and is untouched. What it never
++ * asked was where the write LANDED.
++ *
++ * The fix follows `usageByTenant`, the pattern this same file already uses for
++ * the other per-tenant projection over a shared row. Legacy values are kept as
++ * the default rather than migrated: they belonged to no organization, so
++ * promoting them to one would invent provenance and dropping them would unpin
++ * every app on every existing install.
++ */
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
++import { promises as fs } from 'node:fs';
++import { tmpdir } from 'node:os';
++import { join } from 'node:path';
++import { randomUUID } from 'node:crypto';
++
++let dir: string;
++
++vi.mock('electron', () => ({ app: { getPath: () => dir } }));
++
++const { registry } = await import('../registry/registry');
++const { PUBLIC_CHANNELS, RUNTIME_CHANNEL_PERMISSIONS } = await import('../ipc/runtimeAuthz');
++const { IpcChannel } = await import('@neuropause/shared');
++
++const A = 'org-a';
++const B = 'org-b';
++const C = 'org-c';
++let who: string | null = null;
++const reg = registry;
++
++async function seed(slug: string): Promise<void> {
++  await reg.upsert({
++    slug,
++    name: `App ${slug}`,
++    appType: 'web',
++    installedVersion: '1.0.0',
++    channel: 'stable',
++    installLocation: null,
++    packageHash: null,
++    signatureKeyId: null,
++    hasSignature: false,
++    previousVersion: null,
++    previousPackageHash: null,
++    grantedPermissions: [],
++    permissionGrants: [],
++    launchCount: 0,
++    lastLaunchedAt: null,
++    installedAt: new Date().toISOString(),
++    lastUpdatedAt: null,
++    runtimeStatus: 'stopped',
++    healthStatus: 'unknown',
++    diskUsageBytes: null,
++    pinned: false,
++    favorite: false,
++    config: {},
++    usage: { launches: 0, totalActiveMs: 0, lastSessionAt: null },
++  } as never);
++}
++
++beforeEach(async () => {
++  dir = join(tmpdir(), `np-r13-reg-${randomUUID()}`);
++  await fs.mkdir(join(dir, 'registry'), { recursive: true });
++  reg.bindUsageScope(() => who);
++  await reg.load();
++  who = null;
++  await seed('widget');
++});
++afterEach(async () => {
++  await fs.rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 25 });
++});
++
++describe('a pin belongs to the organization that set it', () => {
++  it('A pins; B does not see it pinned', async () => {
++    who = A;
++    expect((await reg.setFlags('widget', { pinned: true }))?.pinned).toBe(true);
++    who = B;
++    expect(reg.get('widget')?.pinned).toBe(false);
++    who = A;
++    expect(reg.get('widget')?.pinned).toBe(true);
++  });
++
++  it('B pins independently; A is unchanged', async () => {
++    who = A;
++    await reg.setFlags('widget', { pinned: true });
++    who = B;
++    await reg.setFlags('widget', { pinned: true, favorite: true });
++
++    who = A;
++    expect(reg.get('widget')?.pinned).toBe(true);
++    expect(reg.get('widget')?.favorite).toBe(false);
++    who = B;
++    expect(reg.get('widget')?.favorite).toBe(true);
++  });
++
++  it('A UNPINNING does not unpin B — the original finding, exactly', async () => {
++    who = A;
++    await reg.setFlags('widget', { pinned: true });
++    who = B;
++    await reg.setFlags('widget', { pinned: true });
++
++    who = A;
++    await reg.setFlags('widget', { pinned: false });
++    expect(reg.get('widget')?.pinned).toBe(false);
++
++    who = B;
++    expect(reg.get('widget')?.pinned).toBe(true);
++  });
++
++  it('C, who set nothing, sees the default rather than A’s choice', async () => {
++    who = A;
++    await reg.setFlags('widget', { pinned: true, favorite: true });
++    who = C;
++    expect(reg.get('widget')?.pinned).toBe(false);
++    expect(reg.get('widget')?.favorite).toBe(false);
++  });
++
++  it('`list` agrees with `get` — one projection, not two', async () => {
++    who = A;
++    await reg.setFlags('widget', { pinned: true });
++    who = B;
++    expect(reg.list().find((e) => e.slug === 'widget')?.pinned).toBe(false);
++    who = A;
++    expect(reg.list().find((e) => e.slug === 'widget')?.pinned).toBe(true);
++  });
++});
++
++describe('legacy flags become the default, and are not destroyed', () => {
++  it('a pre-M-13 shared pin shows for every tenant until one overrides it', async () => {
++    // The migrated state: a row carrying a shared flag nobody owns.
++    await reg.patch('widget', (e) => {
++      e.pinned = true;
++    });
++
++    for (const scope of [A, B, C]) {
++      who = scope;
++      expect(reg.get('widget')?.pinned, `${scope} should inherit the legacy default`).toBe(true);
++    }
++
++    // A diverges; B and C keep the default.
++    who = A;
++    await reg.setFlags('widget', { pinned: false });
++    expect(reg.get('widget')?.pinned).toBe(false);
++    who = B;
++    expect(reg.get('widget')?.pinned).toBe(true);
++  });
++});
++
++describe('the split survives a reload from disk', () => {
++  it('A and B keep their independent flags after reopening', async () => {
++    who = A;
++    await reg.setFlags('widget', { pinned: true });
++    who = B;
++    await reg.setFlags('widget', { favorite: true });
++
++    await reg.load(); // re-read from disk
++
++    who = A;
++    expect(reg.get('widget')?.pinned).toBe(true);
++    expect(reg.get('widget')?.favorite).toBe(false);
++    who = B;
++    expect(reg.get('widget')?.pinned).toBe(false);
++    expect(reg.get('widget')?.favorite).toBe(true);
++  });
++});
++
++describe('M-13 must not reopen M-10 through a new field', () => {
++  /**
++   * `export()` is a spread of `...this.file`. Adding a second per-tenant map is
++   * exactly how M-10 happened — one field filtered, another added later and
++   * forgotten. The filter ships in the same change as the field.
++   */
++  it('the export carries only the caller’s flags bucket', async () => {
++    who = A;
++    await reg.setFlags('widget', { pinned: true });
++    who = B;
++    await reg.setFlags('widget', { favorite: true });
++
++    who = A;
++    const bytes = reg.export();
++    expect(bytes).not.toContain(B);
++    const parsed = JSON.parse(bytes) as { flagsByTenant: Record<string, unknown> };
++    expect(Object.keys(parsed.flagsByTenant)).toEqual([A]);
++  });
++
++  it('the lossless backup still holds every tenant’s flags', async () => {
++    who = A;
++    await reg.setFlags('widget', { pinned: true });
++    who = B;
++    await reg.setFlags('widget', { favorite: true });
++    const saved = JSON.parse(await fs.readFile(await reg.backup(), 'utf8')) as {
++      flagsByTenant: Record<string, unknown>;
++    };
++    expect(Object.keys(saved.flagsByTenant).sort()).toEqual([A, B].sort());
++  });
++});
++
++describe('the channel is no longer an unauthenticated mutation', () => {
++  it('registry:setFlags is gated at dashboard:read and is not public', () => {
++    expect(RUNTIME_CHANNEL_PERMISSIONS[IpcChannel.RegistrySetFlags]).toBe('dashboard:read');
++    expect(PUBLIC_CHANNELS.has(IpcChannel.RegistrySetFlags)).toBe(false);
++  });
++
++  it('the registry inventory READS stay public — only the write moved', () => {
++    expect(PUBLIC_CHANNELS.has(IpcChannel.RegistryList)).toBe(true);
++    expect(PUBLIC_CHANNELS.has(IpcChannel.RegistryGet)).toBe(true);
++  });
++});

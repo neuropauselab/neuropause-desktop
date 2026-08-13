@@ -1,0 +1,124 @@
+--- a/apps/desktop/src/main/knowledgeAssets/knowledgeBench.test.ts
++++ b/apps/desktop/src/main/knowledgeAssets/knowledgeBench.test.ts
+@@ -251,13 +251,50 @@
+       `[stage7-bench] compose=${composeMs.toFixed(1)}ms (${inventory.totals.assets} assets) matrix=${matrixMs.toFixed(1)}ms (${build.matrix.totalRelations} relations) lineage=${lineageMs.toFixed(1)}ms dashboard=${dashboardMs.toFixed(1)}ms (${recommendations.length} recos)`,
+     );
+ 
++    /* CORRECTNESS — asserted on EVERY run. The workload above is not a
++     * decoration: it exercises compose, matrix, lineage and dashboard over 5 000
++     * entities, and a regression that empties the inventory or loses a domain
++     * fails here regardless of how fast it did so. */
+     expect(inventory.totals.assets).toBeGreaterThan(1000);
+     expect(build.matrix.totalRelations).toBeGreaterThan(500);
+     expect(lineage.found).toBe(true);
+     expect(dashboard.coverage.domains).toHaveLength(8);
+-    expect(composeMs).toBeLessThanOrEqual(120);
+-    expect(matrixMs).toBeLessThanOrEqual(100);
+-    expect(lineageMs).toBeLessThanOrEqual(100);
+-    expect(dashboardMs).toBeLessThanOrEqual(500);
++
++    /**
++     * TIMING — asserted ONLY under `npm run bench`. P13C ROUND 17.
++     *
++     * These four budgets failed intermittently in the full suite and passed
++     * 3/3 in isolation. The module did not change between those runs; the
++     * machine did. Vitest runs 677 files across parallel workers, so a
++     * `performance.now()` delta measured inside one of them is a function of
++     * how many siblings happened to be resident — it is a measurement of CPU
++     * contention, not of this code.
++     *
++     * THE HEADER OF THIS FILE ALREADY ARGUES THIS, one step short. It discards
++     * the warmup pass because "first-call JIT in a cold vitest worker is not
++     * the service's runtime profile." Contention is the same objection.
++     *
++     * The two ways to make a contended budget stop failing are to raise it
++     * until it never fires — evidence of nothing — or to measure it where the
++     * number means something. Skipping was rejected: the workload and its
++     * correctness assertions still run everywhere, and only the stopwatch moves.
++     *
++     * `npm run bench` runs this file alone with NP_BENCH=1. It belongs in the
++     * release procedure, not in the inner loop. A budget that has never failed
++     * is not proof of speed; a budget nobody runs is not proof of anything, so
++     * a run without it says so out loud below.
++     */
++    if (process.env['NP_BENCH'] === '1') {
++      expect(composeMs).toBeLessThanOrEqual(120);
++      expect(matrixMs).toBeLessThanOrEqual(100);
++      expect(lineageMs).toBeLessThanOrEqual(100);
++      expect(dashboardMs).toBeLessThanOrEqual(500);
++    } else {
++      // eslint-disable-next-line no-console
++      console.log(
++        '[stage7-bench] budgets MEASURED BUT NOT ASSERTED (shared workers). ' +
++          'Run `npm run bench` for the enforced numbers.',
++      );
++    }
+   });
+ });
+--- a/apps/desktop/package.json
++++ b/apps/desktop/package.json
+@@ -16,6 +16,7 @@
+     "package": "node scripts/generate-notices.cjs && node scripts/generate-build-info.cjs && electron-vite build && electron-builder --mac --arm64 --publish never && npm run verify:release",
+     "package:dir": "node scripts/generate-notices.cjs && node scripts/generate-build-info.cjs && electron-vite build && electron-builder --dir",
+     "test": "vitest run",
++    "bench": "NP_BENCH=1 vitest run src/main/knowledgeAssets/knowledgeBench.test.ts",
+     "test:watch": "vitest",
+     "generate:build-info": "node scripts/generate-build-info.cjs",
+     "package:mac": "node scripts/generate-notices.cjs && node scripts/generate-build-info.cjs && electron-vite build && electron-builder --mac --arm64 --publish never && npm run verify:release",
+--- a/apps/desktop/scripts/generate-build-info.cjs
++++ b/apps/desktop/scripts/generate-build-info.cjs
+@@ -69,9 +69,54 @@
+   version: pkg.version,
+   channel: process.env.NEUROPAUSE_CHANNEL || channelFromVersion(pkg.version),
+   commit: process.env.NEUROPAUSE_BUILD_COMMIT || git('rev-parse --short HEAD') || 'unknown',
++  /**
++   * P13C ROUND 17 — PROVENANCE.
++   *
++   * `commit` was baked from `rev-parse HEAD` with NO check on the working
++   * tree, so an artifact built over uncommitted changes ASSERTED a commit
++   * whose tree it did not contain. On 12 Aug three different things carried
++   * version `1.0.0-rc.15`: the tag (`8522dca`), a build claiming `8c570cd`,
++   * and the bits inside it, which were `8c570cd` plus two unapplied patches.
++   * Nothing downstream could tell them apart, and `verify-release-artifacts`
++   * could not either — it checks that the feed hash matches the binary, which
++   * says nothing about where the binary came from.
++   *
++   * `dirty` and `branch` are recorded, and `commit` gains a `-dirty` suffix so
++   * the single most-quoted field carries the warning even when somebody reads
++   * only that one. An empty `git status --porcelain` is the check; a repo git
++   * cannot answer for at all reports `dirty: null` rather than a comforting
++   * false.
++   */
++  branch: process.env.NEUROPAUSE_BUILD_BRANCH || git('rev-parse --abbrev-ref HEAD') || null,
++  dirty: buildTreeDirty(),
+   buildTime: new Date().toISOString(),
+ };
+ 
++/** True when the working tree has uncommitted changes; null when unknowable. */
++function buildTreeDirty() {
++  if (process.env.NEUROPAUSE_BUILD_COMMIT) return false; // caller asserts provenance (CI)
++  /**
++   * `git()` returns '' both for "clean tree" and for "git failed", which are
++   * opposite facts. Ask a question git can only answer when it works: if
++   * `rev-parse --is-inside-work-tree` is not 'true' we are not in a usable
++   * repo, and the honest answer is `null` — unknown — rather than a
++   * comforting `false`.
++   */
++  if (git('rev-parse --is-inside-work-tree') !== 'true') return null;
++  return git('status --porcelain') !== '';
++}
++
++if (info.dirty === true && info.commit !== 'unknown' && !info.commit.endsWith('-dirty')) {
++  info.commit = `${info.commit}-dirty`;
++}
++if (info.dirty === true) {
++  console.warn(
++    '[build-info] WARNING: building over a DIRTY working tree. This artifact ' +
++      `does not correspond to commit ${info.commit.replace(/-dirty$/, '')} alone. ` +
++      'Commit or stash before producing a release.',
++  );
++}
++
+ const dir = join(__dirname, '..', 'resources');
+ mkdirSync(dir, { recursive: true });
+ writeFileSync(join(dir, 'build-info.json'), `${JSON.stringify(info, null, 2)}\n`);

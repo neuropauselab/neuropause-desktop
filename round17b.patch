@@ -1,0 +1,98 @@
+--- a/apps/desktop/src/main/infrastructure/resourceStore.ts
++++ b/apps/desktop/src/main/infrastructure/resourceStore.ts
+@@ -150,9 +150,37 @@
+    */
+   private readonly tenancy = new TenantOwnership('infrastructure-resources');
+ 
+-  /** Bind the tenant boundary. UNBOUND DENIES. Chainable. */
++  /**
++   * Bind the tenant boundary. UNBOUND DENIES. Chainable.
++   *
++   * P13C ROUND 17 — TWO BOUNDARIES, ONE CALL SITE.
++   *
++   * This class holds TWO registered tenant boundaries, not one: `tenancy` on
++   * the rows, and `graphCache` — a `TenantMemo`, which constructs its own
++   * `TenantOwnership` under the name `infrastructure-resource-graph`. Round 7
++   * bound the first and not the second, and `initInfrastructure` calls
++   * `.bindScope(deps.scope)` exactly once, on this method, so there was no
++   * second call site that could have caught it.
++   *
++   * The startup gate DID catch it — the first time it was ever allowed to run,
++   * after Round 17 moved it below the `init*()` calls it had been racing since
++   * Round 3. It was the only unbound store among 27 `TenantMemo` instances, and
++   * it had been masked for fourteen rounds by the thirteen ordering false
++   * positives that aborted composition before the honest check.
++   *
++   * IMPACT, STATED HONESTLY: an unbound memo fails CLOSED — `scopeOrDeny()`
++   * returns null, `state()` composes fresh and stores nothing, and the row
++   * filter beneath it was correctly bound the whole time. So this was never a
++   * cross-tenant read. It was a projection that silently never cached, and a
++   * keying protection that was never actually exercised for this one model.
++   *
++   * The binding happens HERE rather than at the composition root because the
++   * memo is this class's private field. A caller cannot be expected to know
++   * about a boundary it cannot see.
++   */
+   bindScope(source: () => TenantScope | null): this {
+     this.tenancy.bindScope(source);
++    this.graphCache.bindScope(source);
+     return this;
+   }
+   hasScope(): boolean {
+--- a/apps/desktop/src/main/tenancy/round17CompositionOrder.test.ts
++++ b/apps/desktop/src/main/tenancy/round17CompositionOrder.test.ts
+@@ -148,3 +148,54 @@
+     expect(nested.err.cause?.message).toBe('inner');
+   });
+ });
++
++/**
++ * THE STORE THE GATE FOUND ON ITS FIRST HONEST RUN.
++ *
++ * With the gates moved below every `init*()`, the thirteen ordering false
++ * positives vanished and exactly ONE name remained:
++ *
++ *     Tenant-scoped stores have no tenant boundary: infrastructure-resource-graph
++ *
++ * `ResourceStore` holds two registered boundaries — `tenancy` on the rows and a
++ * private `TenantMemo` on the composed graph — and `bindScope()` forwarded to
++ * only the first. `initInfrastructure` calls `.bindScope(deps.scope)` once, so
++ * no second call site existed to catch it. It was the only unbound memo of 27.
++ *
++ * It fails CLOSED (an unbound memo composes fresh and caches nothing, and the
++ * row filter beneath it was bound), so this is not a disclosure. It is a
++ * projection that never cached and a keying protection never exercised — found
++ * only because the gate was finally allowed to ask the question.
++ */
++describe('P13C Round 17 — ResourceStore binds BOTH of its boundaries', () => {
++  it('memoises per tenant once bound — same object within the TTL', async () => {
++    const { ResourceStore } = await import('../infrastructure/resourceStore');
++    const store = new ResourceStore(null).bindScope(() => ({
++      tenantId: 'org-a',
++      workspaceId: 'ws-a',
++    }));
++    await store.load();
++    expect(store.graph(1)).toBe(store.graph(1));
++  });
++
++  it('an UNBOUND store cannot memoise — the defect, reproduced', async () => {
++    const { ResourceStore } = await import('../infrastructure/resourceStore');
++    const store = new ResourceStore(null); // no bindScope
++    await store.load();
++    // No tenant resolves, so `TenantMemo.state` composes fresh and stores
++    // nothing. Distinct objects prove the cache is inert, which is exactly what
++    // shipped for fourteen rounds.
++    expect(store.graph(1)).not.toBe(store.graph(1));
++  });
++
++  it('reports the row boundary and the memo boundary independently', async () => {
++    const { ResourceStore } = await import('../infrastructure/resourceStore');
++    const unbound = new ResourceStore(null);
++    expect(unbound.hasScope()).toBe(false);
++    const bound = new ResourceStore(null).bindScope(() => ({
++      tenantId: 'org-b',
++      workspaceId: 'ws-b',
++    }));
++    expect(bound.hasScope()).toBe(true);
++  });
++});

@@ -1,0 +1,242 @@
+--- /dev/null
++++ b/apps/desktop/src/main/medicalDevice/traceStorePersist.test.ts
+@@ -0,0 +1,122 @@
++/**
++ * A BACKGROUND WRITE THAT FAILS MUST REACH SOMEBODY. P13C ROUND 17l.
++ *
++ * WHERE THIS CAME FROM
++ *
++ * The first Windows release build of NeuroPause reported 765 files / 8018
++ * tests, every one green, and failed anyway:
++ *
++ *   Unhandled Rejection
++ *   ENOENT: rename 'C:\…\np-md-import-…\trace.json.tmp' -> '…\trace.json'
++ *     at TraceEdgeStore.persist  traceStore.ts:113
++ *     at TraceEdgeStore.drainPersist  traceStore.ts:135
++ *
++ * The proximate cause was a test teardown that slept 25ms instead of awaiting
++ * `flush()`, and lost that guess on a runner 48x slower than the machine the
++ * guess was calibrated on. That is fixed where it belongs, in the teardown.
++ *
++ * But the reason a lost race could fail a build at all is this: `schedulePersist`
++ * assigned `drainPersist()` to a field and never observed it. On the ordinary
++ * write path nothing calls `flush()`, so a rejected background persist had no
++ * handler anywhere — it went to the process. In a test runner that fails the
++ * suite. In the packaged application it is an unhandled rejection in the
++ * Electron main process, from a store whose rows are, in its own words, "the
++ * evidence for a recall."
++ *
++ * It is the swallowing catch turned inside out. A swallowed error reaches
++ * nobody; an unobserved rejection reaches a global handler that cannot name the
++ * store or say what the user should do. Neither delivers the failure to someone
++ * who can act on it.
++ *
++ * SCOPE, STATED HONESTLY: 33 stores in `src/main` share the
++ * `this.lastPersist = this.drain*()` shape. This file fixes and proves the one
++ * that surfaced. The other 32 are recorded as D-8, not quietly left as fixed.
++ */
++import { describe, expect, it } from 'vitest';
++import { promises as fs } from 'node:fs';
++import { tmpdir } from 'node:os';
++import { join } from 'node:path';
++import { randomUUID } from 'node:crypto';
++import { TraceEdgeStore } from './traceStore';
++
++const T0 = '2026-08-12T00:00:00.000Z';
++
++const EDGE = {
++  tenantId: 'default',
++  kind: 'lot_of_product' as const,
++  from: { type: 'lot' as const, id: 'lot-1', label: 'LOT-1' },
++  to: { type: 'product' as const, id: 'prod-1', label: 'TR-1001' },
++  at: T0,
++};
++
++describe('TraceEdgeStore — a failed background write', () => {
++  it('is reported on `persist-failed` rather than leaking to the process', async () => {
++    // A path whose directory does not exist: the atomic write cannot even
++    // create its tmp file, so the persist rejects for a real reason rather
++    // than a mocked one.
++    const missing = join(tmpdir(), `np-trace-missing-${randomUUID()}`, 'trace.json');
++    const store = new TraceEdgeStore(missing);
++    await store.load();
++
++    const failures: { path: string; error: unknown }[] = [];
++    store.on('persist-failed', (f: { path: string; error: unknown }) => failures.push(f));
++
++    store.record(EDGE);
++
++    // `flush()` still rejects for a caller who explicitly waits — the
++    // background path reports, the deliberate path throws. Both, not either.
++    await expect(store.flush()).rejects.toThrow();
++
++    expect(failures).toHaveLength(1);
++    expect(failures[0]?.path).toBe(missing);
++    expect((failures[0]?.error as NodeJS.ErrnoException)?.code).toBe('ENOENT');
++  });
++
++  /**
++   * The negative control for the teardown half. Without an awaited `flush()`,
++   * removing the directory while a write is queued is exactly the race the
++   * Windows runner lost — and it is now observable rather than fatal.
++   */
++  it('survives its directory being removed mid-write, and says so', async () => {
++    const dir = join(tmpdir(), `np-trace-race-${randomUUID()}`);
++    await fs.mkdir(dir, { recursive: true });
++    const store = new TraceEdgeStore(join(dir, 'trace.json'));
++    await store.load();
++
++    const failures: unknown[] = [];
++    store.on('persist-failed', (f) => failures.push(f));
++
++    store.record(EDGE);
++    await fs.rm(dir, { recursive: true, force: true });
++    // The write may have completed before the removal on a fast machine, so the
++    // assertion is on the CLASS of outcome: it either succeeded or it reported.
++    // What it must never do is reject into nothing.
++    const settled = await store
++      .flush()
++      .then(() => 'resolved' as const)
++      .catch(() => 'rejected' as const);
++    expect(settled === 'resolved' || failures.length === 1).toBe(true);
++  });
++
++  it('flush() resolves when the write really can succeed', async () => {
++    const dir = join(tmpdir(), `np-trace-ok-${randomUUID()}`);
++    await fs.mkdir(dir, { recursive: true });
++    const file = join(dir, 'trace.json');
++    const store = new TraceEdgeStore(file);
++    await store.load();
++
++    const failures: unknown[] = [];
++    store.on('persist-failed', (f) => failures.push(f));
++
++    store.record(EDGE);
++    await store.flush();
++
++    // The point of awaiting flush() rather than sleeping: the bytes are on disk
++    // the instant it resolves, so teardown cannot race the rename.
++    const written = JSON.parse(await fs.readFile(file, 'utf8')) as { edges: unknown[] };
++    expect(written.edges).toHaveLength(1);
++    expect(failures).toEqual([]);
++
++    await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined);
++  });
++});
+--- a/apps/desktop/src/main/medicalDevice/traceStore.ts
++++ b/apps/desktop/src/main/medicalDevice/traceStore.ts
+@@ -125,7 +125,31 @@
+     this.dirty = true;
+     if (this.persisting) return;
+     this.persisting = true;
+-    this.lastPersist = this.drainPersist();
++    const run = this.drainPersist();
++    this.lastPersist = run;
++    /**
++     * A FAILED BACKGROUND WRITE MUST REACH SOMEBODY. P13C ROUND 17l.
++     *
++     * `drainPersist()` was assigned and never observed. `flush()` awaits it,
++     * but nothing calls `flush()` on the ordinary write path — so a background
++     * persist that rejected (disk full, permission lost, directory removed)
++     * became an UNHANDLED REJECTION in the Electron main process. That is the
++     * swallowing catch turned inside out: instead of the failure being hidden
++     * from everyone, it escapes to a global handler that cannot say which store
++     * failed or what the user should do. Neither delivers the error to someone
++     * who can act on it, which is the only thing that counts.
++     *
++     * `persist-failed`, NOT `error`: an EventEmitter with no listener for
++     * `'error'` re-throws, which would convert a recoverable write failure into
++     * a crash — the opposite of the intent.
++     *
++     * Attaching the handler here also leaves `lastPersist` rejecting, so a
++     * caller who explicitly `await store.flush()` still gets the error. The
++     * background path reports; the deliberate path still throws.
++     */
++    void run.catch((error: unknown) => {
++      this.emit('persist-failed', { path: this.filePath, error });
++    });
+   }
+ 
+   private async drainPersist(): Promise<void> {
+--- a/apps/desktop/src/main/medicalDevice/medicalDeviceImport.test.ts
++++ b/apps/desktop/src/main/medicalDevice/medicalDeviceImport.test.ts
+@@ -91,7 +91,25 @@
+ });
+ 
+ afterEach(async () => {
+-  await new Promise((r) => setTimeout(r, 25));
++  /**
++   * AWAIT THE WRITE QUEUE, DO NOT SLEEP AND HOPE. P13C ROUND 17l.
++   *
++   * Every store here writes atomically (tmp file, then rename). A `setTimeout`
++   * in teardown was a GUESS that the queue had drained. It held on an idle Mac
++   * and lost on the Windows runner, where the same suite takes 775s instead of
++   * 16s — the directory was removed out from under an in-flight rename and the
++   * ENOENT surfaced as an unhandled rejection that failed the build while all
++   * 8018 tests still reported green. The worst shape a flake can take: no
++   * failing test to point at.
++   *
++   * `medicalDeviceService.test.ts` replaced its own sleep with exactly this,
++   * for exactly this reason, and the change never reached its two neighbours.
++   */
++  await Promise.all([
++    products.store.flush(),
++    lots.store.flush(),
++    edges.flush(),
++  ]).catch(() => undefined);
+   await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined);
+ });
+ 
+--- a/apps/desktop/src/main/medicalDevice/medicalDeviceE2E.test.ts
++++ b/apps/desktop/src/main/medicalDevice/medicalDeviceE2E.test.ts
+@@ -62,6 +62,8 @@
+   movements: EnterpriseModule;
+   inventoryProducts: EnterpriseModule;
+   lotStore: EnterpriseModule;
++  /** Resolves when every store's write queue is empty. See the afterEach below. */
++  flush: () => Promise<void>;
+ }
+ 
+ async function boot(): Promise<App> {
+@@ -159,7 +161,17 @@
+     return (await handler.handler(parsed)) as T;
+   };
+ 
+-  return { dir, call, audits, movements, inventoryProducts, lotStore: deviceLots };
++  const flush = async (): Promise<void> => {
++    await Promise.all([
++      deviceProducts.store.flush(),
++      deviceLots.store.flush(),
++      inventoryProducts.store.flush(),
++      movements.store.flush(),
++      edges.flush(),
++    ]);
++  };
++
++  return { dir, call, audits, movements, inventoryProducts, lotStore: deviceLots, flush };
+ }
+ 
+ let app: App;
+@@ -167,7 +179,21 @@
+   app = await boot();
+ });
+ afterEach(async () => {
+-  await new Promise((r) => setTimeout(r, 25));
++  /**
++   * AWAIT THE WRITE QUEUE, DO NOT SLEEP AND HOPE. P13C ROUND 17l.
++   *
++   * Every store here writes atomically (tmp file, then rename). A `setTimeout`
++   * in teardown was a GUESS that the queue had drained. It held on an idle Mac
++   * and lost on the Windows runner, where the same suite takes 775s instead of
++   * 16s — the directory was removed out from under an in-flight rename and the
++   * ENOENT surfaced as an unhandled rejection that failed the build while all
++   * 8018 tests still reported green. The worst shape a flake can take: no
++   * failing test to point at.
++   *
++   * `medicalDeviceService.test.ts` replaced its own sleep with exactly this,
++   * for exactly this reason, and the change never reached its two neighbours.
++   */
++  await app.flush().catch(() => undefined);
+   await fs.rm(app.dir, { recursive: true, force: true }).catch(() => undefined);
+ });
+ 

@@ -1,0 +1,143 @@
+--- a/packages/shared/src/types/onboarding.ts
++++ b/packages/shared/src/types/onboarding.ts
+@@ -5,7 +5,33 @@
+  * uses the existing Connectors flow, the AI step the existing local AI stack —
+  * rather than duplicating them.
+  */
+-export type OnboardingStepId = 'welcome' | 'organization' | 'connectors' | 'ai_setup' | 'legal' | 'pilot';
++/**
++ * THE STEP IDS, ONCE. P13C ROUND 17.
++ *
++ * This was a hand-written union, and `OnboardingCompleteStepRequest` in
++ * `ipc/contracts.ts` was a hand-written `z.enum([...])` of the same field. The
++ * two lists disagreed by exactly one entry — `'legal'`, the EULA and privacy
++ * acknowledgement added in Phase 8 (8.13) — so the wizard's second step sent a
++ * value the bridge validator refused, and NO INSTALL COULD COMPLETE ONBOARDING.
++ * Nothing caught it: `completeStep(step: OnboardingStepId)` typechecks against
++ * the union, and the enum is a separate description that TypeScript never
++ * compares it to.
++ *
++ * The correct pattern already existed two lines above the drift, in the same
++ * file that carried it — `HELP_DOC_IDS` is a const tuple, `z.enum(HELP_DOC_IDS)`
++ * consumes it, and `HelpDocId` derives from it. Onboarding now does the same,
++ * so the validator and the type cannot disagree: there is one list.
++ */
++export const ONBOARDING_STEP_IDS = [
++  'welcome',
++  'legal',
++  'organization',
++  'connectors',
++  'ai_setup',
++  'pilot',
++] as const;
++
++export type OnboardingStepId = (typeof ONBOARDING_STEP_IDS)[number];
+ 
+ export interface OnboardingStepDefinition {
+   id: OnboardingStepId;
+--- a/packages/shared/src/ipc/contracts.ts
++++ b/packages/shared/src/ipc/contracts.ts
+@@ -1,5 +1,6 @@
+ import { z } from 'zod';
+ import { HELP_DOC_IDS } from '../types/helpDocs';
++import { ONBOARDING_STEP_IDS } from '../types/onboarding';
+ // Type-only (erased at compile time, so no runtime cycle with ../types).
+ import type { ConflictStrategy, SyncEntityType } from '../types/sync';
+ 
+@@ -2333,9 +2334,16 @@
+ export const LicenseOrgRequest = z.object({ orgId: z.string().min(1) });
+ export type LicenseOrgRequest = z.infer<typeof LicenseOrgRequest>;
+ 
+-// --- Onboarding ---
++/* --- Onboarding ---
++ * P13C ROUND 17. This enum was written out by hand and omitted `'legal'`, the
++ * step `ONBOARDING_STEPS` puts SECOND — so the wizard sent a value the bridge
++ * refused and onboarding could not be completed on any install. It now consumes
++ * the catalog's own tuple, the same way `HelpOpenDocRequest` consumes
++ * `HELP_DOC_IDS` (imported at the top of this file), so the validator and the
++ * `OnboardingStepId` type cannot drift again: they are one list.
++ */
+ export const OnboardingCompleteStepRequest = z.object({
+-  step: z.enum(['welcome', 'organization', 'connectors', 'ai_setup', 'pilot']),
++  step: z.enum(ONBOARDING_STEP_IDS),
+ });
+ export type OnboardingCompleteStepRequest = z.infer<typeof OnboardingCompleteStepRequest>;
+ 
+diff --git a/apps/desktop/src/main/ipc/round17ContractDrift.test.ts b/apps/desktop/src/main/ipc/round17ContractDrift.test.ts
+new file mode 100644
+--- /dev/null
++++ b/apps/desktop/src/main/ipc/round17ContractDrift.test.ts
+@@ -0,0 +1,73 @@
++/**
++ * WHEN A TYPE AND ITS VALIDATOR ARE TWO DESCRIPTIONS OF ONE THING.
++ * P13C ROUND 17.
++ *
++ * WHAT HAPPENED
++ *
++ * `ONBOARDING_STEPS` — the shared first-run catalog — lists six steps, with
++ * `'legal'` (the EULA and privacy acknowledgement, Phase 8 / 8.13) SECOND.
++ * `OnboardingCompleteStepRequest` listed five, hand-written, without it.
++ *
++ * The renderer calls `completeStep(step: OnboardingStepId)`. That typechecks —
++ * the union has all six. At runtime the bridge answered:
++ *
++ *     WARN (secure-ipc) Invalid payload { channel: 'onboarding:completeStep', issues: 1 }
++ *     IpcError: Invalid request for onboarding:completeStep
++ *
++ * on the second screen of the wizard, on every install, and there was no way
++ * past it. TypeScript could not see the disagreement because a Zod enum and a
++ * TS union are independent declarations that nothing compares.
++ *
++ * `ipc/responses.ts` opens with a long note about exactly this disease on the
++ * RESPONSE side — *"The two ends of every channel were typed independently,
++ * with nothing checking that they agreed — a cast is a claim, not a check."*
++ * That was closed for responses. This is the same disease on the REQUEST side,
++ * and it shipped a product that could not be set up.
++ *
++ * WHY THE FIX IS DERIVATION AND NOT "ADD THE MISSING WORD"
++ *
++ * Adding `'legal'` to the enum fixes today and leaves the mechanism intact for
++ * the seventh step. The catalog is now the single source: `ONBOARDING_STEP_IDS`
++ * is a const tuple, `z.enum()` consumes it, and `OnboardingStepId` derives from
++ * it. That pattern already existed in the same file — `HELP_DOC_IDS` — which is
++ * why this is a drift rather than a design gap.
++ *
++ * WHAT THIS TEST DOES THAT TYPES CANNOT
++ *
++ * It runs the real validator against every id in the real catalog. A future step
++ * added to `ONBOARDING_STEPS` but not accepted by the schema fails here, at
++ * build time, instead of on a user's second screen.
++ */
++import { describe, expect, it } from 'vitest';
++import {
++  ONBOARDING_STEPS,
++  ONBOARDING_STEP_IDS,
++  OnboardingCompleteStepRequest,
++} from '@neuropause/shared';
++
++describe('P13C Round 17 — onboarding step catalog vs its request validator', () => {
++  it('accepts every step the wizard can actually present', () => {
++    const rejected = ONBOARDING_STEPS.filter(
++      (s) => !OnboardingCompleteStepRequest.safeParse({ step: s.id }).success,
++    ).map((s) => s.id);
++    expect(
++      rejected,
++      `ONBOARDING_STEPS contains ${rejected.length} step(s) the bridge validator refuses. ` +
++        `A user reaching one of them cannot continue, and no type error is produced ` +
++        `because the union and the enum are separate declarations.`,
++    ).toEqual([]);
++  });
++
++  it("accepts 'legal' — the step that was missing, and the one that records EULA consent", () => {
++    expect(OnboardingCompleteStepRequest.safeParse({ step: 'legal' }).success).toBe(true);
++  });
++
++  it('the catalog and the id tuple describe the same set, in the same order', () => {
++    expect(ONBOARDING_STEPS.map((s) => s.id)).toEqual([...ONBOARDING_STEP_IDS]);
++  });
++
++  it('still refuses a step id that does not exist — the enum is not now open', () => {
++    expect(OnboardingCompleteStepRequest.safeParse({ step: 'not_a_step' }).success).toBe(false);
++    expect(OnboardingCompleteStepRequest.safeParse({ step: '' }).success).toBe(false);
++  });
++});
