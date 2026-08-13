@@ -142,3 +142,18 @@ the assertion. The true, narrower finding: commits authored ON THAT MAC all carr
 Saurabh's configured git identity, so c25052d names the machine and not the
 person; PR merges through GitHub's UI carry the real account. The remedy is
 unchanged (per-user identity or signed commits); the diagnosis was overstated.
+
+### O-3 · FIXED 2026-08-13, corroborated live
+Handler registered in bootstrap before createMainWindow(); registerSecureHandlers
+takes the channel over via ipcMain.removeHandler. Unit test 6/6.
+LIVE: slow start forced by an unreachable backend — 4 session-restore retries,
+totalMs 4596, ZERO "No handler registered". Negative control is the 13:09 run on
+the pre-round23 build: same condition, the error twice.
+STATED LIMIT: 4596ms, not the 11789ms of the original failure. The argument for
+the fix is ORDERING (no renderer can exist before the handler), not timing.
+
+### O-4 · FIXED 2026-08-13, observed on screen
+Unreachable backend now renders ONE banner — the F-7 notice with the failure
+class. The second banner ("Could not reach the NeuroPause backend. Is it
+running?") is suppressed via status.cause, not message matching. UI test 5/5.
+Screenshots at 20:25 show one banner where the 18:44 screenshots showed two.
