@@ -168,6 +168,13 @@ export async function runSecureHandler(
 
 export function registerSecureHandlers(defs: AnySecureHandlerDef[], deps: SecureBridgeDeps): void {
   for (const def of defs) {
+    // P13C O-3. `ipcMain.handle` THROWS on a channel that already has a handler,
+    // which is why the real handler could not simply replace a bootstrap-time
+    // placeholder. Removing first makes registration idempotent: the authority
+    // surface is unchanged (the same def, the same gate, the same audit), and a
+    // channel answered early by `earlyReachability.ts` is taken over here rather
+    // than colliding with it.
+    ipcMain.removeHandler(def.channel);
     ipcMain.handle(def.channel, async (event, rawPayload: unknown) => {
       const started = Date.now();
       try {

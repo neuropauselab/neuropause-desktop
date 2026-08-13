@@ -17,6 +17,7 @@ import { attachLogFileSink, createLogger } from './logger';
 import { createBoundedLog } from './storage/boundedLog';
 import { installContentSecurityPolicy } from './security/csp';
 import { registerIpcHandlers, setAllowedSenderOrigins } from './ipc/router';
+import { registerEarlyReachabilityHandler } from './ipc/earlyReachability';
 import { authService } from './auth/authService';
 import { createMainWindow, rendererDevUrl } from './window';
 import { buildAppMenu } from './menu';
@@ -85,6 +86,9 @@ async function bootstrap(): Promise<void> {
   setAllowedSenderOrigins(devUrl ? [new URL(devUrl).origin] : []);
 
   registerIpcHandlers();
+  // P13C O-3 — the reachability channel must answer before the window can ask.
+  // Runtime core replaces this with the sampler-backed handler when it is up.
+  registerEarlyReachabilityHandler();
   wireEventBridges();
 
   mainWindow = createMainWindow();
