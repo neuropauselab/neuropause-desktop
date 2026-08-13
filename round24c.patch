@@ -1,0 +1,183 @@
+--- a/apps/desktop/src/main/enterprise/index.ts
++++ b/apps/desktop/src/main/enterprise/index.ts
+@@ -104,7 +104,14 @@
+ import { createTenantContextResolver } from '../tenancy/tenantContext';
+ import { buildMigrationInventory, summarizeInventory } from '../tenancy/migrationInventory';
+ import type { MemoryViewer, TenantResolution, TenantScope } from '@neuropause/shared';
+-import { currentPrincipal, principalScope, resolveTenantScope } from '../tenancy/backgroundPrincipal';
++import {
++  currentPrincipal,
++  principalScope,
++  resolveTenantScope,
++  runAsPrincipal,
++  tenantPrincipal,
++  type BackgroundPrincipal,
++} from '../tenancy/backgroundPrincipal';
+ import {
+   forEachTenant,
+   tenantRuns,
+@@ -292,6 +299,9 @@
+ const log = createLogger('enterprise');
+ 
+ 
++/** P13C Round 24 — O-9. The identity every parked-reference retry pass carries. */
++const REFERENCE_RETRY_JOB_ID = 'enterprise:reference-retry';
++
+ export interface EnterpriseDeps {
+   broadcast: IpcBroadcaster;
+   /** Platform event publisher → timeline + Executive Center (module lifecycle). */
+@@ -1400,7 +1410,46 @@
+    * dozens of changes in a tick, and re-running the whole pending queue for
+    * each of them would be quadratic.
+    */
++  /**
++   * P13C ROUND 24 — O-9. THE CALL SITE ROUND 10 MISSED.
++   *
++   * This was ONE shared `retryTimer`, cleared and re-armed on every save on the
++   * install, with `engine.retryPending(null)` inside the callback. Both halves
++   * of that are the NEW-M10 defect `graph/index.ts` and `memory/index.ts` were
++   * fixed for, in a file that was never re-read against them:
++   *
++   *   1. WHOSE QUEUE RUNS WAS DECIDED AT FIRE TIME. `retryPending` reaches
++   *      `RelationshipStore.retryable()`, which filters through `onlyMine` —
++   *      i.e. through `activeTenantScope()` as it reads 400 ms LATER. A save by
++   *      A followed by a workspace switch ran A's retry pass over B's parked
++   *      references, and A's own parked references were never retried at all.
++   *      Nothing crosses: the store is owner-scoped on both the read and the
++   *      write, so this is the quiet failure — work that silently does not
++   *      happen — and not a disclosure.
++   *
++   *   2. ONE TENANT'S SAVE CANCELLED ANOTHER'S PENDING RETRY. `clearTimeout`
++   *      then re-arm means a second save always destroys the first save's
++   *      scheduled pass. Under sustained activity — a bulk conversion, an
++   *      import, two people working — the 400 ms window never elapses and the
++   *      parking queue is not drained by this path at all.
++   *
++   * The fix is the shape Round 10 established and is deliberately not a new
++   * one: capture the principal at ENQUEUE, key the pending set by owner so a
++   * debounce coalesces WITHIN a tenant and never ACROSS one, and never re-arm
++   * an armed timer. An unresolvable tenant is dropped rather than run as
++   * whoever is on screen.
++   */
++  const pendingReferenceRetries = new Map<string, BackgroundPrincipal>();
+   let retryTimer: NodeJS.Timeout | null = null;
++  const drainReferenceRetries = (): void => {
++    const engine = relationshipEngineRef();
++    const owners = [...pendingReferenceRetries.values()];
++    pendingReferenceRetries.clear();
++    if (!engine) return;
++    for (const principal of owners) {
++      void runAsPrincipal(principal, () => engine.retryPending(null)).catch(() => undefined);
++    }
++  };
+   const resolveReferencesFor = async (
+     moduleId: string,
+     record: EnterpriseEntity,
+@@ -1412,10 +1461,16 @@
+     } catch {
+       // A failed resolution must never fail the save that produced it.
+     }
+-    if (retryTimer) clearTimeout(retryTimer);
++    // Resolved HERE, in the saving caller's own context, which is the only
++    // moment at which the answer is knowable.
++    const principal = tenantPrincipal({ jobId: REFERENCE_RETRY_JOB_ID, scope: activeTenantScope() });
++    if (principal === null) return;
++    const key = `${principal.tenantId}::${principal.workspaceId ?? ''}`;
++    if (!pendingReferenceRetries.has(key)) pendingReferenceRetries.set(key, principal);
++    if (retryTimer) return; // armed already — re-arming is how a busy tenant starves everyone
+     retryTimer = setTimeout(() => {
+       retryTimer = null;
+-      void engine.retryPending(null).catch(() => undefined);
++      drainReferenceRetries();
+     }, 400);
+   };
+ 
+new file mode 100644
+--- /dev/null
++++ b/apps/desktop/src/main/tenancy/referenceRetryOwnership.test.ts
+@@ -0,0 +1,85 @@
++/**
++ * P13C ROUND 24 — O-9. THE CALL SITE ROUND 10 MISSED.
++ *
++ * `enterprise/index.ts` debounces the parked-reference retry pass behind a
++ * timer. Round 10 fixed this exact shape in `graph/index.ts`, `memory/index.ts`
++ * and `services/taskScheduler.ts` — capture the principal at enqueue, key the
++ * pending set by owner, never re-arm an armed timer — and this fourth site was
++ * not re-read against the fix. It kept ONE shared timer, cleared and re-armed on
++ * every save on the install, calling `engine.retryPending(null)` with no
++ * principal at all, so the queue that ran was whichever tenant happened to be
++ * signed in 400 ms later.
++ *
++ * WHAT CLASS OF EVIDENCE THIS FILE IS, STATED PLAINLY
++ *
++ * WIRED, not EXECUTED. `initEnterprise` reaches `app.getPath` and cannot be
++ * constructed in a node test, so — unlike the graph and memory halves of this
++ * fix, which `round10PrincipalsChannels.test.ts` drives behaviourally through
++ * `initGraph` — this suite reads the source and asserts the shape. That is a
++ * weaker claim and it is recorded as one: it proves the defect cannot silently
++ * return through an edit, and it does NOT prove the pass runs as the right
++ * tenant at runtime. G13 must not be recorded as EXECUTED on this file alone.
++ *
++ * The precedent for source-level invariants in this program is
++ * `migrationInventoryIntegrity.test.ts`, which pins store seams the same way.
++ */
++import { readFileSync } from 'node:fs';
++import { join } from 'node:path';
++import { describe, expect, it } from 'vitest';
++
++const SOURCE = readFileSync(join(__dirname, '..', 'enterprise', 'index.ts'), 'utf8');
++
++/** The debounce block, isolated so an assertion cannot pass on some other timer. */
++function retryBlock(): string {
++  const start = SOURCE.indexOf('const pendingReferenceRetries');
++  expect(start, 'the per-owner pending set is gone — the shared-timer defect is back').toBeGreaterThan(-1);
++  const end = SOURCE.indexOf('const resolveReferencesFor');
++  const tail = SOURCE.indexOf('};', SOURCE.indexOf('}, 400);'));
++  expect(end).toBeGreaterThan(start);
++  return SOURCE.slice(start, tail);
++}
++
++describe('O-9 — the parked-reference retry names its owner', () => {
++  it('captures a principal at enqueue rather than resolving one at fire time', () => {
++    const block = retryBlock();
++    expect(block).toContain('tenantPrincipal({ jobId: REFERENCE_RETRY_JOB_ID, scope: activeTenantScope() });');
++    // The capture must happen in `resolveReferencesFor`, which runs inside the
++    // saving caller's context — not inside the setTimeout callback.
++    const captureAt = block.indexOf('tenantPrincipal(');
++    const timerAt = block.indexOf('setTimeout(');
++    expect(captureAt).toBeGreaterThan(-1);
++    expect(timerAt).toBeGreaterThan(-1);
++    expect(captureAt, 'the principal is resolved inside the timer callback again').toBeLessThan(timerAt);
++  });
++
++  it('drops a change with no resolvable owner instead of running it as the reader', () => {
++    expect(retryBlock()).toContain('if (principal === null) return;');
++  });
++
++  it('runs each pending pass under its own captured principal', () => {
++    const block = retryBlock();
++    expect(block).toContain('runAsPrincipal(principal, () => engine.retryPending(null))');
++    // `retryPending` must not appear anywhere in this block OUTSIDE that wrapper.
++    const calls = block.match(/engine\.retryPending\(/g) ?? [];
++    expect(calls).toHaveLength(1);
++  });
++
++  it('coalesces WITHIN an owner and never ACROSS one', () => {
++    const block = retryBlock();
++    expect(block).toContain('`${principal.tenantId}::${principal.workspaceId ?? \'\'}`');
++    expect(block).toContain('pendingReferenceRetries.set(key, principal)');
++  });
++
++  it('never re-arms an armed timer, so one busy tenant cannot starve the rest', () => {
++    const block = retryBlock();
++    expect(block).toContain('if (retryTimer) return;');
++    expect(
++      block,
++      'clearTimeout on the shared retry timer is the starvation defect itself',
++    ).not.toContain('clearTimeout(retryTimer)');
++  });
++
++  it('the job identity is a named constant, not a string literal at the call site', () => {
++    expect(SOURCE).toContain("const REFERENCE_RETRY_JOB_ID = 'enterprise:reference-retry';");
++  });
++});

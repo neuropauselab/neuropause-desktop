@@ -104,7 +104,14 @@ import {
 import { createTenantContextResolver } from '../tenancy/tenantContext';
 import { buildMigrationInventory, summarizeInventory } from '../tenancy/migrationInventory';
 import type { MemoryViewer, TenantResolution, TenantScope } from '@neuropause/shared';
-import { currentPrincipal, principalScope, resolveTenantScope } from '../tenancy/backgroundPrincipal';
+import {
+  currentPrincipal,
+  principalScope,
+  resolveTenantScope,
+  runAsPrincipal,
+  tenantPrincipal,
+  type BackgroundPrincipal,
+} from '../tenancy/backgroundPrincipal';
 import {
   forEachTenant,
   tenantRuns,
@@ -291,6 +298,9 @@ import { TenantDedupe } from '../tenancy/tenantDedupe';
 
 const log = createLogger('enterprise');
 
+
+/** P13C Round 24 — O-9. The identity every parked-reference retry pass carries. */
+const REFERENCE_RETRY_JOB_ID = 'enterprise:reference-retry';
 
 export interface EnterpriseDeps {
   broadcast: IpcBroadcaster;
@@ -1400,7 +1410,46 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
    * dozens of changes in a tick, and re-running the whole pending queue for
    * each of them would be quadratic.
    */
+  /**
+   * P13C ROUND 24 — O-9. THE CALL SITE ROUND 10 MISSED.
+   *
+   * This was ONE shared `retryTimer`, cleared and re-armed on every save on the
+   * install, with `engine.retryPending(null)` inside the callback. Both halves
+   * of that are the NEW-M10 defect `graph/index.ts` and `memory/index.ts` were
+   * fixed for, in a file that was never re-read against them:
+   *
+   *   1. WHOSE QUEUE RUNS WAS DECIDED AT FIRE TIME. `retryPending` reaches
+   *      `RelationshipStore.retryable()`, which filters through `onlyMine` —
+   *      i.e. through `activeTenantScope()` as it reads 400 ms LATER. A save by
+   *      A followed by a workspace switch ran A's retry pass over B's parked
+   *      references, and A's own parked references were never retried at all.
+   *      Nothing crosses: the store is owner-scoped on both the read and the
+   *      write, so this is the quiet failure — work that silently does not
+   *      happen — and not a disclosure.
+   *
+   *   2. ONE TENANT'S SAVE CANCELLED ANOTHER'S PENDING RETRY. `clearTimeout`
+   *      then re-arm means a second save always destroys the first save's
+   *      scheduled pass. Under sustained activity — a bulk conversion, an
+   *      import, two people working — the 400 ms window never elapses and the
+   *      parking queue is not drained by this path at all.
+   *
+   * The fix is the shape Round 10 established and is deliberately not a new
+   * one: capture the principal at ENQUEUE, key the pending set by owner so a
+   * debounce coalesces WITHIN a tenant and never ACROSS one, and never re-arm
+   * an armed timer. An unresolvable tenant is dropped rather than run as
+   * whoever is on screen.
+   */
+  const pendingReferenceRetries = new Map<string, BackgroundPrincipal>();
   let retryTimer: NodeJS.Timeout | null = null;
+  const drainReferenceRetries = (): void => {
+    const engine = relationshipEngineRef();
+    const owners = [...pendingReferenceRetries.values()];
+    pendingReferenceRetries.clear();
+    if (!engine) return;
+    for (const principal of owners) {
+      void runAsPrincipal(principal, () => engine.retryPending(null)).catch(() => undefined);
+    }
+  };
   const resolveReferencesFor = async (
     moduleId: string,
     record: EnterpriseEntity,
@@ -1412,10 +1461,16 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     } catch {
       // A failed resolution must never fail the save that produced it.
     }
-    if (retryTimer) clearTimeout(retryTimer);
+    // Resolved HERE, in the saving caller's own context, which is the only
+    // moment at which the answer is knowable.
+    const principal = tenantPrincipal({ jobId: REFERENCE_RETRY_JOB_ID, scope: activeTenantScope() });
+    if (principal === null) return;
+    const key = `${principal.tenantId}::${principal.workspaceId ?? ''}`;
+    if (!pendingReferenceRetries.has(key)) pendingReferenceRetries.set(key, principal);
+    if (retryTimer) return; // armed already — re-arming is how a busy tenant starves everyone
     retryTimer = setTimeout(() => {
       retryTimer = null;
-      void engine.retryPending(null).catch(() => undefined);
+      drainReferenceRetries();
     }, 400);
   };
 
