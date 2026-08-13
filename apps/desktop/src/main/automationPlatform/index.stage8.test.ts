@@ -91,6 +91,11 @@ function mkDeps(over: Partial<AutomationPlatformDeps> = {}): Harness {
       fired.push({ ruleId, at });
       return Promise.resolve({ ok: true });
     },
+    // P13C Round 24 — O-8. A no-op recorder on purpose: these suites assert the
+    // IN-PROCESS once-per-occurrence guard, and a recorder that wrote back into
+    // `rule()` would quietly make them assert the durable one instead. The
+    // durable half has its own suite in tenancy/backgroundJobRestart.test.ts.
+    recordScheduledOccurrence: () => Promise.resolve(true),
     schedule: {
       every: (id, ms, fn) => {
         scheduled.push({ id, ms });

@@ -100,6 +100,29 @@ export interface AutomationRule {
     ok: boolean;
     message?: string;
   };
+  /**
+   * The schedule occurrence this rule has ALREADY been fired for (P13C Round 24,
+   * O-8). Absent means no scheduled fire has been recorded.
+   *
+   * WHY IT IS ON THE RULE AND NOT IN THE SCHEDULER
+   *
+   * The scheduler's `firedOccurrences` map is the once-per-occurrence guard, and
+   * it lives in the subsystem — so it is destroyed by the process boundary the
+   * guard most needs to survive. An `interval` schedule reports `due: true` on
+   * every tick by construction, which made that map the ONLY thing standing
+   * between a restart and a second execution of the same occurrence: relaunch
+   * inside the bucket and every interval rule fired again, once per restart, and
+   * a crash loop is a restart loop.
+   *
+   * It is deliberately NOT `lastRun.at`. `lastRun` records manual runs too, so
+   * reading it as the suppression source would let a 09:05 manual run cancel the
+   * 09:00 daily schedule for the rest of that day — a silent skip, which is the
+   * failure in the opposite direction and harder to notice.
+   *
+   * Stamped BEFORE the fire, matching the in-process guard exactly, so
+   * at-most-once is the same promise on both sides of a restart.
+   */
+  lastScheduledOccurrence?: string | null;
 }
 
 /** A validation problem found in a rule (field-scoped). */

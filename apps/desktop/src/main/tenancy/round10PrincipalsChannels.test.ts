@@ -308,6 +308,10 @@ function mkTickHarness(
       });
       return Promise.resolve({ ok: true });
     },
+    // P13C Round 24 — O-8. No-op: this suite is about WHOSE principal the fire
+    // runs under, not about occurrence durability, and a recorder that wrote
+    // back would change what the repeated ticks here are testing.
+    recordScheduledOccurrence: () => Promise.resolve(true),
     schedule: {
       every: (_id, _ms, fn) => {
         registered = fn;

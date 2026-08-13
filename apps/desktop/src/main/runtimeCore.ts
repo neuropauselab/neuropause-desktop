@@ -2958,6 +2958,12 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       const record = await getAutomationRunner().runRule(rule, event);
       return { ok: record.ok };
     },
+    // P13C Round 24 — O-8. The once-per-occurrence claim goes onto the PERSISTED
+    // rule, so a restart cannot re-fire an occurrence that already fired. The
+    // store scopes the write through its own `get(id)`, and the tick calls this
+    // inside the rule owner's principal — so the row it reaches is the owner's.
+    recordScheduledOccurrence: (ruleId, occurrenceKey) =>
+      automationStore.recordScheduledOccurrence(ruleId, occurrenceKey),
     schedule: {
       every: (id, ms, fn) => taskScheduler.every(id, ms, fn),
       cancel: (id) => taskScheduler.cancel(id),
