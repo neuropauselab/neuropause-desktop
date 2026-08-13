@@ -1,0 +1,51 @@
+name: certification-freeze
+
+# P13C — O-7. A COMMIT MUST NOT ENTER A FROZEN CERTIFICATION BRANCH UNNOTICED.
+#
+# On 2026-08-13 one did. It bumped the product version rc.15 -> rc.16, was
+# tagged `v1.0.0-rc.16`, pushed, and triggered five workflows including two
+# release builds. Nothing objected. `record-gate.sh` would have refused — but
+# the merge to `main` never went through the recorder, so there was no moment at
+# which anything asked the question.
+#
+# This workflow is that moment, moved to a place nobody has to remember to
+# invoke. Same lesson as Round 17i: a gate each caller must think to run is the
+# same defect as no gate, one indirection later.
+#
+# It FAILS only when the certified SOURCE has moved without a re-freeze.
+# Evidence commits under certification/ are expected and pass — that is O-5, and
+# it is why the check compares the source diff rather than the commit id.
+#
+# `fetch-depth: 0` is required: the check compares HEAD against the baseline
+# commit, which a shallow clone does not contain.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  freeze:
+    name: Is the certification freeze intact?
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Verify the freeze
+        run: bash certification/verify-freeze.sh
+
+      - name: Test the protection itself
+        # A check nobody tests is a check nobody can trust. This exercises the
+        # real scripts against throwaway repositories, including the exact shape
+        # of the commit that broke the freeze on 13 August.
+        run: bash certification/verify-freeze.test.sh
