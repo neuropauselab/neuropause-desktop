@@ -132,16 +132,22 @@ vi.mock('framer-motion', async () => {
     get: (_target, tag: string) => {
       if (!cache.has(tag)) {
         // Motion-only props would land on the DOM node and trigger React
-        // "unknown prop" warnings, so they are stripped here.
-        const Component: React.FC<Record<string, unknown>> = ({ children, ...props }) => {
-          const {
-            initial: _i, animate: _a, exit: _e, transition: _t, variants: _v,
-            whileHover: _wh, whileTap: _wt, layout: _l, layoutId: _li,
-            ...domProps
-          } = props as Record<string, unknown>;
-          return React.createElement(tag, domProps, children as React.ReactNode);
-        };
-        Component.displayName = `motion.${tag}`;
+        // "unknown prop" warnings, so they are stripped here. forwardRef
+        // (round 36): components hang refs on motion elements — the Modal
+        // focus trap needs its panel ref — and a plain function component
+        // silently drops them.
+        // eslint-disable-next-line react/display-name -- assigned right below the cast
+        const Component = React.forwardRef<HTMLElement, Record<string, unknown>>(
+          ({ children, ...props }, ref) => {
+            const {
+              initial: _i, animate: _a, exit: _e, transition: _t, variants: _v,
+              whileHover: _wh, whileTap: _wt, layout: _l, layoutId: _li,
+              ...domProps
+            } = props as Record<string, unknown>;
+            return React.createElement(tag, { ...domProps, ref }, children as React.ReactNode);
+          },
+        ) as unknown as React.FC<Record<string, unknown>>;
+        (Component as { displayName?: string }).displayName = `motion.${tag}`;
         cache.set(tag, Component);
       }
       return cache.get(tag);
@@ -153,3 +159,19 @@ vi.mock('framer-motion', async () => {
     AnimatePresence: ({ children }: { children?: React.ReactNode }) => children,
   };
 });
+
+// jsdom has no IntersectionObserver; store rails use it for lazy media.
+// A visible-immediately stub keeps those components mountable (round 36).
+class ImmediateIntersectionObserver {
+  constructor(private cb: IntersectionObserverCallback) {}
+  observe(target: Element): void {
+    this.cb(
+      [{ isIntersecting: true, target } as IntersectionObserverEntry],
+      this as unknown as IntersectionObserver,
+    );
+  }
+  unobserve(): void {}
+  disconnect(): void {}
+  takeRecords(): IntersectionObserverEntry[] { return []; }
+}
+(globalThis as { IntersectionObserver?: unknown }).IntersectionObserver ??= ImmediateIntersectionObserver;

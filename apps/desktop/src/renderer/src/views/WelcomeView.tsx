@@ -39,17 +39,30 @@ export function WelcomeView() {
   const [fbState, setFbState] = useState<'idle' | 'sending' | 'sent'>('idle');
   const [exportMsg, setExportMsg] = useState('');
   const [pilot, setPilot] = useState<PilotStatus | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [statusNonce, setStatusNonce] = useState(0);
 
   useEffect(() => {
+    /**
+     * P13C ROUND 36 — GATE 12. A failed status read used to leave `status`
+     * null FOREVER: the page said "Loading your checklist…" indefinitely
+     * under a fabricated "0 of 0 done" header. The failure now lands in an
+     * error branch with a retry; `statusError` and the loading state are
+     * mutually exclusive by construction.
+     */
+    setStatusError(null);
     ipc.onboarding
       .status()
       .then(setStatus)
-      .catch((err) => log.warn('Onboarding status unavailable', err));
+      .catch((err: unknown) => {
+        log.warn('Onboarding status unavailable', err);
+        setStatusError(err instanceof Error && err.message ? err.message : 'The checklist could not be loaded.');
+      });
     ipc.pilot
       .status()
       .then(setPilot)
       .catch((err) => log.warn('Pilot status unavailable', err));
-  }, []);
+  }, [statusNonce]);
 
   const goTo = (id: SectionId): void => {
     setSection(id);
@@ -97,9 +110,12 @@ export function WelcomeView() {
       <div className="surface rounded-2xl p-5">
         <div className="mb-4 flex items-center justify-between">
           <span className="text-sm font-medium text-ink">Getting started</span>
-          <span className="text-xs text-muted">
-            {done} of {total} done
-          </span>
+          {/* The count exists only when the checklist does — never "0 of 0". */}
+          {status !== null && (
+            <span className="text-xs text-muted">
+              {done} of {total} done
+            </span>
+          )}
         </div>
 
         {status ? (
@@ -151,6 +167,17 @@ export function WelcomeView() {
               );
             })}
           </ul>
+        ) : statusError !== null ? (
+          <div role="alert" className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
+            Your checklist could not be loaded — {statusError}{' '}
+            <button
+              type="button"
+              onClick={() => setStatusNonce((n) => n + 1)}
+              className="ml-1 underline underline-offset-2"
+            >
+              Retry
+            </button>
+          </div>
         ) : (
           <p className="text-sm text-muted">Loading your checklist…</p>
         )}

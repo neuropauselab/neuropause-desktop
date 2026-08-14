@@ -7,10 +7,30 @@
     color-scheme: dark;
 
     /* Deep-black + clear-white theme. Accent is white so primary UI reads as
-       black-on-white / white-on-black, per the single high-contrast palette. */
-    --accent: 255 255 255;
-    --accent-hover: 232 232 232;
-    --accent-fg: 0 0 0;
+       black-on-white / white-on-black, per the single high-contrast palette.
+
+       P13C ROUND 36 — GATE 12. THE ACCENT IS NOW A COLOR, NOT A TRIPLET.
+
+       `--accent` used to hold bare channels (`255 255 255`), valid ONLY inside
+       an `rgb(… / α)` wrapper — but 30+ call sites consumed it directly as a
+       color (`bg-[color:var(--accent,…)]`, `border-bottom:2px solid
+       var(--accent)`, SVG `stroke="var(--accent)"`). Because the property WAS
+       defined, their `#6366f1` fallbacks never fired; the declarations became
+       invalid-at-computed-value-time and silently resolved to nothing: the
+       Intent Home primary CTA rendered transparent, active-tab underlines and
+       selection rings vanished, chart bars were invisible. CSS does not warn.
+
+       The channels live in `--*-ch` (consumed by Tailwind's `channel()` and
+       the internal `rgb(var(--accent-ch) / α)` sites); `--accent` itself is
+       the wrapped color, same pattern `--good/--warn/--bad` always used — so
+       every direct-color consumer is valid by construction, and
+       `cssTokens.test.ts` now pins the type. */
+    --accent-ch: 255 255 255;
+    --accent: rgb(var(--accent-ch));
+    --accent-hover-ch: 232 232 232;
+    --accent-hover: rgb(var(--accent-hover-ch));
+    --accent-fg-ch: 0 0 0;
+    --accent-fg: rgb(var(--accent-fg-ch));
 
     /* Text — clear white with high-contrast secondaries (no faint greys). */
     --text: 255 255 255;
@@ -81,7 +101,7 @@
     --bg: var(--bg-from);
     --hover: var(--fill-1);
     --fill-3: rgba(255, 255, 255, 0.18);
-    --accent-soft-border: rgb(var(--accent) / 0.35);
+    --accent-soft-border: rgb(var(--accent-ch) / 0.35);
     --danger-soft-border: rgb(var(--c-pink) / 0.35);
 
     /* Text aliases. */
@@ -97,9 +117,12 @@
   /* .dark kept identical so the theme is always deep black regardless of the
      system color scheme or the in-app toggle. */
   .dark {
-    --accent: 255 255 255;
-    --accent-hover: 232 232 232;
-    --accent-fg: 0 0 0;
+    --accent-ch: 255 255 255;
+    --accent: rgb(var(--accent-ch));
+    --accent-hover-ch: 232 232 232;
+    --accent-hover: rgb(var(--accent-hover-ch));
+    --accent-fg-ch: 0 0 0;
+    --accent-fg: rgb(var(--accent-fg-ch));
 
     --text: 255 255 255;
     --text-2: 198 198 203;
@@ -162,7 +185,7 @@
     --bg: var(--bg-from);
     --hover: var(--fill-1);
     --fill-3: rgba(255, 255, 255, 0.18);
-    --accent-soft-border: rgb(var(--accent) / 0.35);
+    --accent-soft-border: rgb(var(--accent-ch) / 0.35);
     --danger-soft-border: rgb(var(--c-pink) / 0.35);
 
     /* Text aliases. */
@@ -289,7 +312,7 @@
   /* Fallback window background (used where vibrancy is unavailable). */
   .app-bg {
     background:
-      radial-gradient(1100px 560px at 50% -12%, rgb(var(--accent) / 0.12), transparent 62%),
+      radial-gradient(1100px 560px at 50% -12%, rgb(var(--accent-ch) / 0.12), transparent 62%),
       linear-gradient(180deg, var(--bg-from), var(--bg-to));
   }
 
@@ -412,7 +435,7 @@ a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid rgb(var(--accent) / 0.6);
+  outline: 2px solid rgb(var(--accent-ch) / 0.6);
   outline-offset: 2px;
   border-radius: 6px;
 }

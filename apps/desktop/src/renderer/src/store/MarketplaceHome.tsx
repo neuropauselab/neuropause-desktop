@@ -118,7 +118,7 @@ function Chip({
 }
 
 /** Paginated search results grid. */
-function SearchResults({
+export function SearchResults({
   query,
   category,
 }: {
@@ -129,12 +129,15 @@ function SearchResults({
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const reqId = useRef(0);
 
   // Reset + fetch first page whenever the query or category changes.
   useEffect(() => {
     const id = ++reqId.current;
     setItems(null);
+    setLoadError(null);
     setPage(1);
     void ipc.catalog
       .search({ q: query || undefined, category: category ?? undefined, sort: 'relevance', page: 1, pageSize: RESULTS_PAGE })
@@ -144,13 +147,20 @@ function SearchResults({
           setTotal(res.total);
         }
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         if (reqId.current === id) {
+          /**
+           * P13C ROUND 36 — GATE 12. A failed catalog read is NOT an empty
+           * catalog. This used to set `[]`, which rendered "No matching apps —
+           * try a different search or category": a backend outage presented
+           * as a successful search, with copy blaming the user's query.
+           */
           setItems([]);
           setTotal(0);
+          setLoadError(err instanceof Error && err.message ? err.message : 'The Store could not be reached.');
         }
       });
-  }, [query, category]);
+  }, [query, category, reloadNonce]);
 
   const loadMore = async (): Promise<void> => {
     const next = page + 1;
@@ -182,6 +192,24 @@ function SearchResults({
             <Skeleton className="mt-2 h-3 w-2/3" />
           </div>
         ))}
+      </div>
+    );
+  }
+
+  if (loadError !== null) {
+    // Round 36 — Gate 12: the failure is said, with the action that fixes it —
+    // never "No matching apps" over an outage.
+    return (
+      <div role="alert" className="rounded-2xl border border-danger/40 bg-danger/10 p-5 text-sm text-danger">
+        <div className="font-semibold">The Store could not load.</div>
+        <p className="mt-1 text-xs leading-relaxed">{loadError}</p>
+        <button
+          type="button"
+          onClick={() => setReloadNonce((n) => n + 1)}
+          className="mt-3 rounded-lg border border-danger/40 px-3 py-1.5 text-xs font-semibold hover:bg-danger/10"
+        >
+          Retry
+        </button>
       </div>
     );
   }

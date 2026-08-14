@@ -514,7 +514,7 @@ function DomainContent({
                         onChange={(e) => setScale(Number(e.target.value))}
                         aria-label="Interface scale"
                         className="h-1.5 flex-1 cursor-pointer"
-                        style={{ accentColor: 'rgb(var(--accent))' }}
+                        style={{ accentColor: 'rgb(var(--accent-ch))' }}
                       />
                       <span className="tabular w-10 text-right text-sm font-medium">{scale}%</span>
                     </div>

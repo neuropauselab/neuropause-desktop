@@ -2,21 +2,27 @@ import type { Session } from '@neuropause/shared';
 import { Icon } from '@renderer/components/ui/Icon';
 import { Kbd } from '@renderer/components/ui/controls';
 import { useShell } from '@renderer/state/ShellProvider';
+import { IS_MAC } from '@renderer/lib/platform';
 import { ThemeMenu } from './ThemeMenu';
 import { NotificationBell } from './NotificationBell';
 import { ConnectionIndicator } from './ConnectionIndicator';
 import { ProfileMenu } from './ProfileMenu';
 
 /**
- * The full-width macOS toolbar. The left padding clears the inset traffic
- * lights; the bar is a drag region except for the explicit controls. The
- * centre search field is the entry point to the command palette (⌘K).
+ * The full-width toolbar. On macOS the left padding clears the inset traffic
+ * lights; on Windows/Linux there are none (the W-2 fix restored the OS frame),
+ * so the gutter collapses — round 36 closed the renderer half of W-2, which
+ * used to render an 80px dead gap top-left of every screen on Windows. The bar
+ * is a drag region except for the explicit controls. The centre search field
+ * is the entry point to the command palette (⌘K).
  */
-export function Toolbar({ session }: { session: Session }): JSX.Element {
+export function Toolbar({ session, mac = IS_MAC }: { session: Session; mac?: boolean }): JSX.Element {
   const { toggleSidebar, sidebarCollapsed, openCommand } = useShell();
 
   return (
-    <header className="app-drag hairline-b relative z-30 flex h-12 shrink-0 items-center gap-2 pl-20 pr-3">
+    <header
+      className={`app-drag hairline-b relative z-30 flex h-12 shrink-0 items-center gap-2 pr-3 ${mac ? 'pl-20' : 'pl-3'}`}
+    >
       <div className="app-no-drag flex items-center gap-1.5">
         <button
           type="button"

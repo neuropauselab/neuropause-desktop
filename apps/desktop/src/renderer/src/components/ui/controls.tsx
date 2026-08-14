@@ -56,7 +56,7 @@ export function Avatar({ text, size = 28 }: { text: string; size?: number }): JS
         width: size,
         height: size,
         fontSize: size * 0.4,
-        background: 'linear-gradient(135deg, rgb(var(--accent)), rgb(var(--c-purple)))',
+        background: 'linear-gradient(135deg, rgb(var(--accent-ch)), rgb(var(--c-purple)))',
       }}
     >
       {text}

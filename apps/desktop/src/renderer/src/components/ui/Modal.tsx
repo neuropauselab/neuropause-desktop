@@ -3,10 +3,11 @@
  * NPDS surface every enterprise module uses for create/edit/detail. Escape and
  * backdrop-click close; motion follows the shared dialog feel.
  */
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { cn } from '@renderer/lib/cn';
+import { useFocusTrap } from '@renderer/lib/useFocusTrap';
 import { Icon } from './Icon';
 
 export function Modal({
@@ -35,6 +36,11 @@ export function Modal({
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
+  // Round 36 — Gate 12: aria-modal promised a trap the DOM never had. Tab now
+  // cycles inside the panel and focus returns to the opener on close.
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(panelRef, open);
+
   const maxWidth = size === 'sm' ? 420 : size === 'lg' ? 760 : 560;
 
   return (
@@ -53,6 +59,7 @@ export function Modal({
             aria-hidden
           />
           <motion.div
+            ref={panelRef}
             role="dialog"
             aria-modal="true"
             aria-label={title}

@@ -43,16 +43,26 @@ export function EnterpriseSearchPanel({ initialQuery = '' }: { initialQuery?: st
   const [loading, setLoading] = useState(false);
   const [enabled, setEnabled] = useState<Set<string>>(new Set(['entity', 'graph', 'memory', 'timeline', 'workers', 'policies', 'approvals', 'people']));
 
+  const [searchError, setSearchError] = useState<string | null>(null);
+
   const run = async (q: string): Promise<void> => {
     const query = q.trim();
     setSubmitted(query);
+    setSearchError(null);
     if (!query) { setResult(null); return; }
     setLoading(true);
     try {
       setResult(await ipc.search.enterprise({ text: query, limit: 8 }));
     } catch (err) {
+      /**
+       * P13C ROUND 36 — GATE 12. A search backend failure used to render as
+       * "No results for X — try a different term or enable more sources": a
+       * successful empty search, with copy misdirecting the user into blaming
+       * their query. The failure is now its own state.
+       */
       log.error('Search failed', err);
       setResult(null);
+      setSearchError(err instanceof Error && err.message ? err.message : 'Search is unavailable right now.');
     } finally {
       setLoading(false);
     }
@@ -114,6 +124,18 @@ export function EnterpriseSearchPanel({ initialQuery = '' }: { initialQuery?: st
         <Placeholder />
       ) : loading ? (
         <div className="rounded-2xl border border-dashed border-[var(--hairline)] p-10 text-center text-sm text-faint">Searching the organization…</div>
+      ) : searchError !== null ? (
+        <div role="alert" className="rounded-2xl border border-danger/40 bg-danger/10 p-8 text-center text-sm text-danger">
+          <div className="font-semibold">Search could not run.</div>
+          <p className="mt-1 text-xs leading-relaxed">{searchError}</p>
+          <button
+            type="button"
+            onClick={() => void run(submitted)}
+            className="mt-3 rounded-lg border border-danger/40 px-3 py-1.5 text-xs font-semibold hover:bg-danger/10"
+          >
+            Retry
+          </button>
+        </div>
       ) : totalShown === 0 ? (
         <div className="rounded-2xl border border-[var(--hairline)] p-10 text-center text-sm text-muted">
           No results for “{submitted}”. {result && result.total === 0 ? 'Connect tools and run AI workers to populate searchable records.' : 'Try a different term or enable more sources.'}

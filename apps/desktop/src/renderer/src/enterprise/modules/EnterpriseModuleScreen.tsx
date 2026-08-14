@@ -6,7 +6,7 @@
  * module exposes one — purely from `module.fields`. Finance, CRM, Sales, … all
  * reuse this exact screen with zero module-specific UI code.
  */
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type {
   ActionAssessment,
@@ -21,6 +21,7 @@ import { validateEnterpriseRecordInput } from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
 import { dialogVariants, overlayVariants } from '@renderer/lib/motion';
 import { cn } from '@renderer/lib/cn';
+import { useFocusTrap } from '@renderer/lib/useFocusTrap';
 import { Button } from '@renderer/components/ui/Button';
 import { Badge } from '@renderer/components/ui/controls';
 import { Toggle } from '@renderer/components/ui/controls';
@@ -521,6 +522,21 @@ function RecordDetail({
   // which renders here — evidence, recommendation and the safe alternative —
   // and only an explicit "Delete anyway" resends with force.
   const [deleteAssessment, setDeleteAssessment] = useState<ActionAssessment | null>(null);
+  /**
+   * Round 36 — Gate 12: the DESTRUCTIVE dialog is the one place a leaked Tab
+   * or a missing Escape is most dangerous. Focus is trapped while it is open,
+   * returns to the opener on close, and Escape cancels (never confirms).
+   */
+  const deleteDialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(deleteDialogRef, deleteAssessment !== null);
+  useEffect(() => {
+    if (deleteAssessment === null) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setDeleteAssessment(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [deleteAssessment]);
   // The refusal raises a durable HOLD in the main process. Holding onto its id
   // is what lets the safer route actually close the hold — otherwise archiving
   // would leave an open hold describing a problem the user already solved.
@@ -635,7 +651,9 @@ function RecordDetail({
               // scaling up from behind the scrim reads as "in front of what
               // you were doing", which is what a blocking assessment IS.
               <motion.div
+                ref={deleteDialogRef}
                 role="alertdialog"
+                aria-modal="true"
                 aria-label="High-risk delete"
                 variants={overlayVariants}
                 initial="initial"
