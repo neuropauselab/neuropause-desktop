@@ -58,6 +58,10 @@ class EngineManager {
         });
       } catch (err) {
         this.state = 'error';
+        // D-4 (round 35): keeping the prior router on failure is now SAFE —
+        // if the first reconfigure fails, the retained router is the
+        // fail-closed boot router (deterministic fallback, nothing external),
+        // not the old bare env-keyed cloud client this line used to preserve.
         log.error('AI engine reconfigure failed', { message: (err as Error).message });
       }
     });
