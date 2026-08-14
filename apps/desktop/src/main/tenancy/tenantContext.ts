@@ -514,12 +514,17 @@ export function createTenantContextResolver(deps: TenantContextDeps): TenantCont
         return { ok: false, refusal: refusalOf('tenant_not_operable') };
       }
       const wanted = email.trim().toLowerCase();
+      // O-11 (round 32): `typeof === 'string'` fails closed on the corrupt
+      // disk shape (email key erased, loads as undefined) — same predicate as
+      // resolveFull above. `!== null` alone called `.trim()` on undefined.
       const member =
         deps
           .usersFor(organization.id)
           .find(
             (m) =>
-              m.kind === 'human' && m.email !== null && m.email.trim().toLowerCase() === wanted,
+              m.kind === 'human' &&
+              typeof m.email === 'string' &&
+              m.email.trim().toLowerCase() === wanted,
           ) ?? null;
       if (member === null) {
         /**

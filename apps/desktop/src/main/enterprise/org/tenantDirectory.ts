@@ -78,11 +78,15 @@ export function memberIn(deps: TenantDirectoryDeps, orgId: string): OrgUser | nu
   if (email === null || email.trim() === '') return null;
   const wanted = email.trim().toLowerCase();
 
+  // O-11 (round 32): same fail-closed predicate as the tenant resolver — a
+  // corrupt row (email key erased on disk, reloads as undefined) must not
+  // throw out of the org/workspace switchers.
   const direct =
     deps
       .usersFor(orgId)
       .find(
-        (m) => m.kind === 'human' && m.email !== null && m.email.trim().toLowerCase() === wanted,
+        (m) =>
+          m.kind === 'human' && typeof m.email === 'string' && m.email.trim().toLowerCase() === wanted,
       ) ?? null;
   if (direct !== null) return direct.status === 'active' ? direct : null;
 

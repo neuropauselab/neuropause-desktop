@@ -56,7 +56,6 @@ function broadcast<C extends IpcBroadcastChannelName>(
 function showMainWindow(): void {
   if (!mainWindow || mainWindow.isDestroyed()) {
     mainWindow = createMainWindow();
-  startupMetrics.mark('window-created');
     return;
   }
   if (mainWindow.isMinimized()) mainWindow.restore();
@@ -92,6 +91,13 @@ async function bootstrap(): Promise<void> {
   wireEventBridges();
 
   mainWindow = createMainWindow();
+  // The mark belongs at the PRIMARY creation site. It used to sit only inside
+  // the tray-recreation branch of showMainWindow(), so a normal launch never
+  // recorded time-to-first-window — the one number startup diagnostics exist
+  // to capture. createMainWindow() is called from three sites; marking here
+  // and not in the recreation paths keeps the metric meaning "first window of
+  // this process", which is what boot analysis needs.
+  startupMetrics.mark('window-created');
 
   // Native menu bar: its accelerators dispatch commands to the renderer.
   Menu.setApplicationMenu(buildAppMenu((payload) => broadcast(IpcChannel.MenuCommand, payload)));
@@ -120,7 +126,10 @@ async function bootstrap(): Promise<void> {
       },
       restartRuntime: () => {
         app.relaunch();
-        app.exit(0);
+        // `app.quit()`, not `app.exit(0)`: exit() skips `before-quit`, which
+        // is where pending store flushes drain. A restart that loses the
+        // 300ms-debounced session snapshot is a restart that forgets state.
+        app.quit();
       },
       exit: () => app.quit(),
     },
@@ -150,10 +159,11 @@ if (!gotLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
+    // `showMainWindow` handles all three states this handler used to get
+    // wrong: a destroyed reference (macOS keeps the process alive with no
+    // window — `isMinimized()` on it THROWS), a closed window (recreate),
+    // and a minimized one (restore + show + focus).
+    showMainWindow();
   });
 
   app

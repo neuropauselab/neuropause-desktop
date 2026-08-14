@@ -179,9 +179,15 @@ export function resolveActor(deps: ActorResolverDeps): EnterpriseActor | null {
    * on the one field that makes it a tenant decision.
    */
   if (orgId === UNRESOLVED_TENANT) return null;
+  // O-11 (round 32): fails closed on a corrupt row whose email key was erased
+  // on disk and reloads as undefined — `!== null` alone threw a TypeError out
+  // of every permission-gated channel. Same predicate as the tenant resolver.
   const matched = deps
     .usersFor(orgId)
-    .find((m) => m.kind === 'human' && m.email !== null && m.email.trim().toLowerCase() === wanted);
+    .find(
+      (m) =>
+        m.kind === 'human' && typeof m.email === 'string' && m.email.trim().toLowerCase() === wanted,
+    );
   if (matched) return { member: matched, roles: deps.rolesFor(matched.orgId) };
   const owner = deps.ownerMember();
   if (!owner) return null;
