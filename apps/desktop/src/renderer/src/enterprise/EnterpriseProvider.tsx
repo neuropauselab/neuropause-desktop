@@ -79,7 +79,7 @@ interface EnterpriseContextValue {
   updateUnit: (input: { id: string; name?: string; parentId?: string | null; leadUserId?: string | null }) => Promise<void>;
   deleteUnit: (id: string) => Promise<void>;
   createUser: (input: { name: string; email?: string | null; title?: string; unitId?: string | null; roleIds?: string[] }) => Promise<void>;
-  updateUser: (input: { id: string; name?: string; title?: string; unitId?: string | null; roleIds?: string[]; status?: OrgUserStatus }) => Promise<void>;
+  updateUser: (input: { id: string; name?: string; email?: string | null; title?: string; unitId?: string | null; roleIds?: string[]; status?: OrgUserStatus }) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
   createRole: (input: { name: string; description?: string; permissions: EnterprisePermission[] }) => Promise<void>;
   // governance
