@@ -188,19 +188,35 @@ describe('THE EXPLOIT — the Round 9 takeover chain, step by step', () => {
     expect(ownerAfter.roleIds).toEqual(ownerBefore!.roleIds);
   });
 
-  it('setOwnerIdentity is the same takeover through a second door', () => {
-    const before = store.usersFor(A).find((u) => u.id === OWNER_USER_ID)!;
+  it('claimOwnerIdentity never rebinds a claimed owner — the second door stays shut', () => {
+    // Round 32 (O-12): the protection moved from caller scope into the claim
+    // rule itself. A claimed owner is never rebound, whatever scope is active.
+    expect(store.claimOwnerIdentity({ name: 'Real Owner', email: 'real@example.test' })).toBe(true);
     who = as(B);
-    store.setOwnerIdentity('Attacker', 'attacker@evil.test');
+    expect(store.claimOwnerIdentity({ name: 'Attacker', email: 'attacker@evil.test' })).toBe(false);
     const after = store.usersFor(A).find((u) => u.id === OWNER_USER_ID)!;
-    expect(after.email).toBe(before.email);
-    expect(after.name).toBe(before.name);
+    expect(after.email).toBe('real@example.test');
+    expect(after.name).toBe('Real Owner');
   });
 
-  it('the legitimate owner CAN still claim their own row — first-run must work', () => {
-    who = as(A);
-    store.setOwnerIdentity('Real Owner', 'real@example.test');
+  it('the first sign-in claims the owner with NO resolved tenant — the O-12 self-heal path', () => {
+    // The install-level rule must not depend on which workspace happens to be
+    // active, and must keep working while tenant resolution is refusing.
+    who = null;
+    expect(store.claimOwnerIdentity({ name: 'Real Owner', email: 'real@example.test' })).toBe(true);
     expect(store.usersFor(A).find((u) => u.id === OWNER_USER_ID)!.email).toBe('real@example.test');
+  });
+
+  it('a corrupt owner row (email undefined — the O-11 shape) is never claimable', () => {
+    who = as(A);
+    store.claimOwnerIdentity({ name: 'Real Owner', email: 'real@example.test' });
+    // Simulate the persisted O-11 corruption: the email key erased on disk.
+    const owner = store.usersFor(A).find((u) => u.id === OWNER_USER_ID)!;
+    const corrupt = { ...owner } as Partial<typeof owner>;
+    delete corrupt.email;
+    // Reach the map the way a corrupted load would have populated it.
+    (store as unknown as { users: Map<string, unknown> }).users.set(OWNER_USER_ID, corrupt);
+    expect(store.claimOwnerIdentity({ name: 'Next', email: 'next@example.test' })).toBe(false);
   });
 
   it('the attacker cannot delete the victim’s seeded units by constant id', () => {

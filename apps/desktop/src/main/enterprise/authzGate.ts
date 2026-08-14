@@ -209,9 +209,10 @@ export interface OwnerClaim {
  * the FIRST account to sign in claims it and becomes the permanent local root of
  * trust. Thereafter the SAME account only refreshes a changed display name, and a
  * DIFFERENT account never rebinds the owner — so no one can silently seize a
- * workspace by signing in. Ownership handoff is a deliberate admin action (an
- * owner-email `updateUser` by someone holding `people:manage`), not a side effect
- * of authentication.
+ * workspace by signing in. Ownership handoff is not possible through a member
+ * edit either — Round 32 (O-13) made `email` immutable on the owner row via
+ * `guardOwnerUserPatch` — so this claim rule is the ONLY writer of the owner's
+ * binding until a dedicated handoff flow exists.
  *
  * Pure and total: returns the identity to bind the owner to, or `null` to leave
  * the owner untouched.
@@ -537,16 +538,29 @@ export function canDeleteMember(userId: string, ownerUserId: string): boolean {
  * Strip the fields of a member update that would disarm the seeded owner
  * (roles and status are immutable on the root of trust). Non-owner patches
  * pass through untouched.
+ *
+ * P13C ROUND 32 — O-13. `email` JOINS THE IMMUTABLE SET.
+ *
+ * Membership is DECIDED by the address on this row (`tenantContext` matches the
+ * signed-in email against it), so rewriting it does not edit a profile field —
+ * it transfers the root of trust. Round 10 closed the cross-tenant door via
+ * store ownership and deliberately left the same-tenant one open as "handoff by
+ * `people:manage`". That made every `people:manage` holder silently equivalent
+ * to the Owner, because any of them could re-point this row at themselves.
+ *
+ * Decision (2026-08-14): the owner's binding changes ONLY through the
+ * first-claim rule (`decideOwnerClaim` / `orgStore.claimOwnerIdentity`).
+ * Ownership handoff, when it exists, will be a dedicated explicit flow — not a
+ * side effect of a member edit.
  */
-export function guardOwnerUserPatch<T extends { roleIds?: unknown; status?: unknown }>(
-  userId: string,
-  ownerUserId: string,
-  patch: T,
-): T {
+export function guardOwnerUserPatch<
+  T extends { roleIds?: unknown; status?: unknown; email?: unknown },
+>(userId: string, ownerUserId: string, patch: T): T {
   if (userId !== ownerUserId) return patch;
   const out = { ...patch };
   delete (out as Record<string, unknown>).roleIds;
   delete (out as Record<string, unknown>).status;
+  delete (out as Record<string, unknown>).email;
   return out;
 }
 

@@ -21,7 +21,8 @@ import type {
   TenantScope,
 } from '@neuropause/shared';
 import { createLogger } from '../../logger';
-import { buildSeed, OWNER_USER_ID } from './seed';
+import { buildSeed, ORG_ID as SEED_ORG_ID, OWNER_USER_ID } from './seed';
+import { decideOwnerClaim } from '../authzGate';
 import { declareStoreScope } from '../../tenancy/storeScope';
 import { registerTenantStore } from '../../tenancy/tenantOwnedStore';
 
@@ -152,7 +153,9 @@ export class OrgStore extends EventEmitter {
    *
    *   1. Create an organization. Anyone may; you are its Owner.
    *   2. Call `enterprise:org.updateUser` with `{ id: 'user-owner', email: <you> }`.
-   *      `guardOwnerUserPatch` strips `roleIds` and `status` — NOT `email`.
+   *      `guardOwnerUserPatch` stripped `roleIds` and `status` — NOT `email`.
+   *      (Round 32 / O-13 later closed the email door too, same-tenant included;
+   *      this narrative records the exploit as it existed in Round 9.)
    *   3. That row lives in the VICTIM's organization and holds `role-owner`.
    *   4. You are now the victim tenant's Owner.
    *
@@ -520,7 +523,32 @@ export class OrgStore extends EventEmitter {
     // membership is decided by email on this row. Was `this.users.get(id)`.
     const user = this.ownedUser(id);
     if (!user) return null;
-    const next: OrgUser = { ...user, ...patch, updatedAt: new Date().toISOString() };
+    /**
+     * P13C ROUND 31 — O-11. A PARTIAL PATCH MEANS "THESE FIELDS", NOT "THESE
+     * FIELDS PLUS UNDEFINED FOR THE REST".
+     *
+     * Object spread copies own enumerable keys REGARDLESS of value, so
+     * `{ ...user, ...{ email: undefined } }` SETS `email` to `undefined` — it
+     * does not leave the previous value alone. Every caller builds its patch as
+     * an object literal (see the `EnterpriseOrgUpdateUser` handler), so a
+     * request that simply omits a field arrives here carrying that field with
+     * the value `undefined`, and erases it.
+     *
+     * On the owner row that is not cosmetic. `email` is the key membership is
+     * decided by; `JSON.stringify` drops undefined, so the erasure survives a
+     * restart; and the resolver's `m.email !== null` check then called `.trim()`
+     * on it. One optional field left out of one member edit could take tenant
+     * resolution down for every subsequent request in the process.
+     *
+     * Deleting the key is right rather than coercing to null, because null is a
+     * MEANINGFUL value here — an unclaimed owner — so a patch that genuinely
+     * wants to clear a field says `null` and still can.
+     */
+    const applied: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(patch)) {
+      if (v !== undefined) applied[k] = v;
+    }
+    const next: OrgUser = { ...user, ...applied, updatedAt: new Date().toISOString() };
     this.users.set(id, next);
     this.touch();
     return next;
@@ -579,15 +607,56 @@ export class OrgStore extends EventEmitter {
     return true;
   }
 
-  /** Rename the seeded owner to the signed-in account (idempotent best-effort). */
-  setOwnerIdentity(name: string, email: string | null): void {
-    // P13C ROUND 10 NEW-H6 — OWNER_USER_ID is a compile-time constant naming a
-    // row in the SEEDED organization. Claiming it from another tenant's session
-    // is the takeover by a second door. Was `this.users.get(OWNER_USER_ID)`.
-    const owner = this.ownedUser(OWNER_USER_ID);
-    if (!owner) return;
-    this.users.set(owner.id, { ...owner, name, email, updatedAt: new Date().toISOString() });
+  /**
+   * Bind the seeded owner to the signed-in account, under the first-claim rule.
+   *
+   * P13C ROUND 32 — O-12. NARROW AUTHORITY, DECIDED HERE, NOT BY THE CALLER.
+   *
+   * The Round 10 version (`setOwnerIdentity`) went through `ownedUser`, which
+   * requires a RESOLVED caller tenant. That gate is right for every ordinary
+   * mutation and wrong for this one, twice over:
+   *
+   *  1. It made the claim depend on unrelated mutable state. Ownership is
+   *     "the first account to SIGN IN claims the seeded org" — an install-level
+   *     rule. Whether the active workspace happened to belong to the seeded
+   *     organization at that moment is not part of the rule, yet it decided the
+   *     outcome.
+   *  2. It made recovery impossible (O-12). Once tenant resolution refuses,
+   *     `scope()` is null, `ownedUser` returns null, and the only non-IPC
+   *     writer of the owner row silently no-ops for the life of the process —
+   *     the reason the Windows outage is permanent until a restart.
+   *
+   * The authority granted instead is EXACTLY the claim rule, not a general
+   * write: the decision lives inside this method (`decideOwnerClaim`), so no
+   * caller can use this path to bind an arbitrary identity to the row. The
+   * cross-tenant guard Round 10 added is preserved STRUCTURALLY rather than by
+   * caller scope — the method can only ever touch `OWNER_USER_ID` inside the
+   * SEEDED organization, both compile-time constants:
+   *
+   *  - a CLAIMED owner is never rebound to a different account (first-claim-wins);
+   *  - a CORRUPT row (email present but not string-or-null — the O-11 shape)
+   *    refuses rather than becoming claimable by whoever signs in next;
+   *  - an owner row that is missing, or somehow not in the seeded org, refuses.
+   *
+   * Returns true when a write happened, so the caller can log the claim.
+   */
+  claimOwnerIdentity(session: { name: string; email: string }): boolean {
+    const owner = this.users.get(OWNER_USER_ID);
+    if (!owner) return false;
+    if (owner.orgId !== SEED_ORG_ID) return false;
+    // The O-11 disk shape: an email key that was erased loads as undefined.
+    // Fail closed — a corrupt root of trust is repaired by support, not claimed.
+    if (owner.email !== null && typeof owner.email !== 'string') return false;
+    const claim = decideOwnerClaim({ name: owner.name, email: owner.email }, session);
+    if (!claim) return false;
+    this.users.set(owner.id, {
+      ...owner,
+      name: claim.name,
+      email: claim.email,
+      updatedAt: new Date().toISOString(),
+    });
     this.touch();
+    return true;
   }
 
   /**

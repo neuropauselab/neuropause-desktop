@@ -103,12 +103,18 @@ describe('OrgStore — syncWorkers', () => {
     expect(s.usersFor(ORG_ID).find((u) => u.workerId === 'w-fin')).toBeUndefined();
   });
 
-  it('renames the owner via setOwnerIdentity', async () => {
+  it('claims the owner via claimOwnerIdentity under the first-claim rule', async () => {
     const s = await newStore(tempPath());
-    s.setOwnerIdentity('Saurabh Patel', 'saurabh@example.com');
+    expect(s.claimOwnerIdentity({ name: 'Saurabh Patel', email: 'saurabh@example.com' })).toBe(true);
     const owner = s.user(OWNER_USER_ID);
     expect(owner?.name).toBe('Saurabh Patel');
     expect(owner?.email).toBe('saurabh@example.com');
+    // Same account with a new display name refreshes the name only.
+    expect(s.claimOwnerIdentity({ name: 'S. Patel', email: 'saurabh@example.com' })).toBe(true);
+    expect(s.user(OWNER_USER_ID)?.name).toBe('S. Patel');
+    // A different account never rebinds a claimed owner.
+    expect(s.claimOwnerIdentity({ name: 'Eve', email: 'eve@evil.test' })).toBe(false);
+    expect(s.user(OWNER_USER_ID)?.email).toBe('saurabh@example.com');
   });
 });
 
@@ -213,12 +219,17 @@ describe('OrgStore — ownership (NEW-H6)', () => {
     const victim = await newStore(path);
     const before = victim.user(OWNER_USER_ID)!;
     expect(before.orgId).toBe(ORG_ID);
+    // The legitimate first sign-in claims the row — the rule is install-level.
+    expect(victim.claimOwnerIdentity({ name: 'Real Owner', email: 'real@example.test' })).toBe(true);
+    await victim.flush();
 
     const attacker = await asAttacker(path);
     expect(attacker.updateUser(OWNER_USER_ID, { email: 'attacker@evil.test' })).toBeNull();
-    attacker.setOwnerIdentity('Attacker', 'attacker@evil.test');
+    // Round 32: the second door is shut by the claim rule itself — a claimed
+    // owner is never rebound, whatever scope the caller resolves to.
+    expect(attacker.claimOwnerIdentity({ name: 'Attacker', email: 'attacker@evil.test' })).toBe(false);
 
-    expect(attacker.user(OWNER_USER_ID)!.email).toBe(before.email);
+    expect(attacker.user(OWNER_USER_ID)!.email).toBe('real@example.test');
   });
 
   it('a foreign tenant cannot delete seeded units or members', async () => {

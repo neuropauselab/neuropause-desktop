@@ -359,19 +359,28 @@ describe('root-of-trust guards (lockout prevention)', () => {
     expect(canDeleteMember('someone-else', OWNER_ID)).toBe(true);
   });
 
-  it('strips roles/status from an owner patch but keeps profile fields', () => {
+  it('strips roles/status/email from an owner patch but keeps profile fields', () => {
+    // O-13: email joins the immutable set — membership is decided by it, so an
+    // in-tenant rewrite was an ownership transfer wearing a profile edit.
     const patch = guardOwnerUserPatch(OWNER_ID, OWNER_ID, {
       name: 'New Name',
+      email: 'usurper@evil.test',
       roleIds: [],
       status: 'suspended',
     });
     expect(patch).toEqual({ name: 'New Name' });
     expect('roleIds' in patch).toBe(false);
     expect('status' in patch).toBe(false);
+    expect('email' in patch).toBe(false);
   });
 
   it('passes non-owner patches through untouched', () => {
-    const patch = { name: 'X', roleIds: ['role-viewer'], status: 'suspended' as const };
+    const patch = {
+      name: 'X',
+      email: 'x@example.test',
+      roleIds: ['role-viewer'],
+      status: 'suspended' as const,
+    };
     expect(guardOwnerUserPatch('u-2', OWNER_ID, patch)).toEqual(patch);
   });
 

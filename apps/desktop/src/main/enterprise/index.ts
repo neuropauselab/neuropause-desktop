@@ -96,7 +96,6 @@ import {
   UNRESOLVED_TENANT,
   createAuthorize,
   createPermissionProbe,
-  decideOwnerClaim,
   guardBuiltInRolePatch,
   guardOwnerUserPatch,
   withEnterpriseAuthz,
@@ -364,6 +363,23 @@ export interface EnterpriseSubsystem {
  * before the stores load because `isLoaded()` is the first thing it checks — an
  * unread store refuses rather than answering from empty maps.
  */
+/**
+ * P13C ROUND 31 — W-10. HOW OFTEN THE REFUSAL DIAGNOSTIC IS ALLOWED TO SPEAK.
+ *
+ * `resolveFull()` is on the read path of every scoped store, so an install that
+ * cannot resolve its tenant refuses hundreds of times a minute. Logging each one
+ * would bury the line that matters under its own repetitions and turn a support
+ * bundle into a 200 MB file nobody opens.
+ *
+ * The policy: the TRANSITION always prints, because that is the measurement —
+ * the moment resolution stopped working and how long it had been working. After
+ * that, one line per reason per minute, each carrying how many it stands for, so
+ * the log says "still refusing, 4 100 times since the last line" rather than
+ * saying it 4 100 times. Recovery always prints, because it closes the bracket.
+ */
+const REFUSAL_LOG_INTERVAL_MS = 60_000;
+const refusalLogState = new Map<string, { lastAtMs: number; suppressed: number }>();
+
 const tenantContext = createTenantContextResolver({
   sessionEmail: () => {
     const st = authService.getStatus();
@@ -376,6 +392,46 @@ const tenantContext = createTenantContextResolver({
   usersFor: (orgId) => orgStore.usersFor(orgId),
   rolesFor: (orgId) => orgStore.rolesFor(orgId),
   ownerMember: () => orgStore.user(OWNER_USER_ID),
+  /**
+   * WHY THIS MOVED HERE FROM THE AUTHORIZATION GATE.
+   *
+   * Round 28 wired the same diagnostic into `createAuthorize`, and on the
+   * machine it was written for it printed nothing at all while five screens
+   * were showing the refusal. `livesync:status` takes the refusal from
+   * `resolveFull()` and throws it; it never reaches the gate. Neither does any
+   * caller that reads `scope()`, sees null, and gives up. Instrumenting a
+   * caller measures that caller — and there are many callers and one resolver.
+   *
+   * The payload is redacted inside the resolver, so no address can reach this
+   * function to be logged by accident.
+   */
+  onRefusal: (d) => {
+    const nowMs = Date.now();
+    const state = refusalLogState.get(d.reason);
+    if (!d.firstRefusalAfterSuccess && state !== undefined) {
+      if (nowMs - state.lastAtMs < REFUSAL_LOG_INTERVAL_MS) {
+        state.suppressed += 1;
+        return;
+      }
+    }
+    const suppressed = state?.suppressed ?? 0;
+    refusalLogState.set(d.reason, { lastAtMs: nowMs, suppressed: 0 });
+    log.warn(
+      d.firstRefusalAfterSuccess
+        ? 'Tenant resolution LOST — first refusal after a working session'
+        : 'Tenant refused',
+      { ...d, suppressedSinceLastLine: suppressed },
+    );
+  },
+  /**
+   * The other end of the interval. Today a restart is what produces this; when
+   * the root cause is fixed it will stop appearing, which is the regression
+   * signal.
+   */
+  onRecovered: (r) => {
+    refusalLogState.clear();
+    log.warn('Tenant resolution RECOVERED', r);
+  },
 });
 
 /**
@@ -531,18 +587,16 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
 
   // First-claim-wins ownership: the seeded owner ships unclaimed (email:null).
   // The first account to sign in claims it; the SAME account later only refreshes
-  // a changed display name; a DIFFERENT account never rebinds it (it resolves to
-  // no actor and fails closed). Ownership handoff is an explicit admin action.
-  // Runs at boot (restored session) and on every later sign-in.
+  // a changed display name; a DIFFERENT account never rebinds it. P13C ROUND 32
+  // (O-12): the decision now lives INSIDE `claimOwnerIdentity`, under its own
+  // narrow authority, so the claim no longer depends on the caller's resolved
+  // tenant — it runs at boot, on every later sign-in, and (critically) while
+  // tenant resolution is refusing, which is when the self-heal is needed.
   const bindOwner = (status: AuthStatus): void => {
     if (status.state !== 'authenticated') return;
     const u = status.session.user;
-    const owner = orgStore.user(OWNER_USER_ID);
-    const claim = decideOwnerClaim(
-      owner ? { name: owner.name, email: owner.email } : null,
-      { name: u.displayName ?? u.email, email: u.email },
-    );
-    if (claim) orgStore.setOwnerIdentity(claim.name, claim.email);
+    const claimed = orgStore.claimOwnerIdentity({ name: u.displayName ?? u.email, email: u.email });
+    if (claimed) log.info('Seeded owner bound to the signed-in account');
   };
   bindOwner(authService.getStatus());
   authService.on('statusChanged', bindOwner);
@@ -750,52 +804,23 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
      * on a request that succeeds.
      */
     tenantRefusal: () => {
-      const resolved = tenantContext.resolveFull();
-      if (resolved.ok) return null;
       /**
-       * P13C ROUND 28 — W-7. WHY THE MEMBERSHIP MATCH FAILED, WITHOUT THE ADDRESSES.
+       * P13C ROUND 31 — W-10. The Round 28 diagnostic that used to live here is
+       * gone, and its removal is the point rather than a tidy-up.
        *
-       * `not_a_member` fired on an install whose signed-in account IS the
-       * claimed owner, which the resolver's own logic says is impossible. The
-       * inputs to that comparison were invisible: the renderer shows the email
-       * IT cached at sign-in, the resolver reads `authService.getStatus()` in
-       * the MAIN process, and nothing ever printed either one.
+       * It re-read `authService.getStatus()`, the org store and the workspace
+       * store AFTER `resolveFull()` had already returned — a second sample of
+       * four mutable singletons. If any of them changed in between, the log
+       * described a state that had not produced the refusal it claimed to
+       * explain, and there would have been no way to tell from the output. It
+       * also only fired for callers that came through this gate, which the
+       * failing caller did not.
        *
-       * Logged as PREDICATES, never as addresses. `sessionMatchesOwner` is the
-       * entire question — if it is false while the UI shows the owner's own
-       * address, the two sessions have diverged and this is an auth defect, not
-       * a tenancy one. Domains are kept because a mismatch between accounts at
-       * the same domain and at different domains are different bugs; local
-       * parts are reduced to a length so no address is reconstructable from a
-       * support bundle.
+       * The resolver now reports from the values it actually used, on every
+       * path. This function is back to one job: pass the refusal through.
        */
-      if (resolved.refusal.reason === 'not_a_member') {
-        const st = authService.getStatus();
-        const sessionEmail =
-          st.state === 'authenticated' ? (st.session.user.email ?? null) : null;
-        const owner = orgStore.user(OWNER_USER_ID);
-        const wsId = workspaceStore.activeWorkspaceIdOrNull();
-        const ws = wsId === null ? null : workspaceStore.get(wsId);
-        const orgId = ws?.organizationId ?? null;
-        const members = orgId === null ? [] : orgStore.usersFor(orgId);
-        const shape = (e: string | null): string | null =>
-          e === null ? null : `${e.trim().toLowerCase().split('@')[0]?.length ?? 0}@${e.trim().toLowerCase().split('@')[1] ?? ''}`;
-        const norm = (e: string | null): string | null => (e === null ? null : e.trim().toLowerCase());
-        log.warn('Tenant refused: not_a_member — comparison inputs', {
-          authState: st.state,
-          sessionEmailShape: shape(sessionEmail),
-          ownerEmailShape: shape(owner?.email ?? null),
-          sessionMatchesOwner:
-            sessionEmail !== null && norm(sessionEmail) === norm(owner?.email ?? null),
-          ownerExists: owner !== null,
-          ownerOrgMatches: owner !== null && orgId !== null && owner.orgId === orgId,
-          activeWorkspaceId: wsId,
-          workspaceOrgId: orgId,
-          memberCount: members.length,
-          humanMembersWithEmail: members.filter((m) => m.kind === 'human' && m.email !== null).length,
-        });
-      }
-      return resolved.refusal;
+      const resolved = tenantContext.resolveFull();
+      return resolved.ok ? null : resolved.refusal;
     },
     activeOrgId: authorizationOrgId,
     usersFor: (orgId) => orgStore.usersFor(orgId),
