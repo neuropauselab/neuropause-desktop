@@ -5,7 +5,10 @@
 **Superseded artifacts:** the rc.17 build from `33b9173` (SHA-256
 `d07a7d02…572f`) and the rc.18 build from `ee3da3d` (SHA-256 `7acdf6c7…5f16a`)
 are both version-orphaned — do NOT use them. The current gate artifact is the
-**rc.19** build (hash recorded below after the final build); it additionally
+**rc.19** build — `NeuroPause-Setup.exe`, SHA-256
+`8f54b360eff13f073c6cb1d33657fc777f5d19e4af68744005958d80ee095962`,
+built from commit `ac2df21` (embedded build-info: `dirty: false`,
+`buildTime: 2026-08-14T11:18:59Z`); it additionally
 carries round 34 (AI providers: tenant-preference routing clamp, OpenAI,
 Ollama installed/running detection + consent-first model pull), so the
 acceptance matrix gains: AI provider setup, Ollama detection, and the
