@@ -1,18 +1,28 @@
-# WINDOWS ACCEPTANCE — ROUND 32 (commit 33b9173)
+# WINDOWS ACCEPTANCE — ROUNDS 32+33 (commit ee3da3d)
 
 ## Artifact under test
+
+**Superseded artifact:** the rc.17 build from `33b9173` (SHA-256 `d07a7d02…572f`)
+was version-orphaned by the rc.18 bump — do NOT use it. Current gate artifact:
 
 | Field | Value |
 |---|---|
 | Installer | `apps/desktop/dist/NeuroPause-Setup.exe` (NSIS, x64) |
-| Version | 1.0.0-rc.17 |
-| Size | 111,851,847 bytes (~107 MB) |
-| **SHA-256** | `d07a7d02414cad5d5e689fcf1e6e9ddd9effd91e920cfd67455544da233d572f` |
-| Update payload | `NeuroPause-1.0.0-rc.17-win.zip` — SHA-256 `e127db5f36caaa66cc16ee665a042797a0d6321a58eb411308523670b86a9059` |
-| Portable | `NeuroPause 1.0.0-rc.17.exe` — SHA-256 `7e705c37969642845d8d0ccde5d0751ee3fec3402395ffa74740bf285fd4f969` |
-| Provenance | Embedded `build-info.json`: `commit: 33b9173`, `branch: fix/round23-flush-barrier-recorder`, `dirty: false`, `buildTime: 2026-08-14T10:05:26.066Z` |
-| Built by | `npm run package:win` (in `apps/desktop`, macOS host, clean tree at HEAD=33b9173) |
-| Verified by | `node scripts/verify-release-artifacts.cjs --platform win` — 6/6 PASS; plus `grep -a -c` inside `app.asar` for the round-32 markers `claimOwnerIdentity` (2), `Tenant resolution LOST` (1), `Tenant resolution RECOVERED` (1), `suppressedSinceLastLine` (1) |
+| Version | 1.0.0-rc.18 |
+| Size | 111,852,099 bytes (~107 MB) |
+| **SHA-256** | `7acdf6c769ee4ac340f10f3f7a4a652e331a6bf9669285ad8aaf3e5264b5f16a` |
+| Update payload | `NeuroPause-1.0.0-rc.18-win.zip` |
+| Provenance | Embedded `build-info.json`: `commit: ee3da3d`, `branch: fix/round23-flush-barrier-recorder`, `dirty: false`, `buildTime: 2026-08-14T10:37:22.379Z` |
+| Built by | `npm run package:win` (in `apps/desktop`, macOS host, clean tree at HEAD=ee3da3d) |
+| Verified by | `node scripts/verify-release-artifacts.cjs --platform win` — 6/6 PASS; plus `grep -a` inside `app.asar` for the round-32/33 markers (`claimOwnerIdentity`, `Tenant resolution LOST/RECOVERED`, `quarantined-`, `refreshInFlight` — 16 hits) |
+
+This build additionally carries round 33: corrupt-store quarantine (org chart /
+workspaces / audit trail survive a torn write in a `.quarantined-<ts>` file —
+if the Windows machine's fault was a corrupt `org.json`, THIS build preserves
+the evidence instead of reseeding over it), the auth refresh-lifecycle fixes,
+and the O-11 fail-closed predicate at all four sites. Step A below gains one
+check: after launch, list `%APPDATA%\NeuroPause\*.quarantined-*` — any hit is
+the original corrupt file and belongs in the support bundle.
 
 Pre-commit builds of the same version were moved to `dist/pre-commit-archive/`
 before this build — an artifact matching the SHA-256 above is the ONLY one that
@@ -20,11 +30,11 @@ counts for this gate. On the Windows machine, verify before installing:
 
 ```powershell
 Get-FileHash .\NeuroPause-Setup.exe -Algorithm SHA256
-# must equal D07A7D02414CAD5D5E689FCF1E6E9DDD9EFFD91E920CFD67455544DA233D572F
+# must equal 7ACDF6C769EE4AC340F10F3F7A4A652E331A6BF9669285AD8AAF3E5264B5F16A
 ```
 
 In-app cross-check after install: the Release Diagnostics surface must show
-version `1.0.0-rc.17`, commit `33b9173`, dirty `false`.
+version `1.0.0-rc.18`, commit `ee3da3d`, dirty `false`.
 
 ## Log to capture
 
