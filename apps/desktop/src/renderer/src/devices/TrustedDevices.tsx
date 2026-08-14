@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { CloudOrganizationSummary, Device } from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
+import { fetchActiveCloudOrg, AMBIGUOUS_ORG_MESSAGE } from '@renderer/lib/activeOrg';
 import { cn } from '@renderer/lib/cn';
 import { Icon } from '@renderer/components/ui/Icon';
 import { Skeleton } from '@renderer/components/ui/Skeleton';
@@ -35,13 +36,19 @@ export function TrustedDevices(): JSX.Element {
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Round 36 — Gate 15: a failed self-registration is said, not silent.
+  const [registrationNote, setRegistrationNote] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    setRegistrationNote(null);
     setLoading(true);
     setError(null);
     try {
-      const orgs = await ipc.org.list().catch(() => [] as CloudOrganizationSummary[]);
-      const active = orgs?.[0] ?? null;
+      // Round 36 — Gate 15: this is a SECURITY surface — a failed org read
+      // must not render "no org / no devices" as if verified. Failures throw
+      // into the error state; ambiguity is said (shared FINDING-6 resolver).
+      const { orgs, active } = await fetchActiveCloudOrg();
+      if (active === null && orgs.length > 0) throw new Error(AMBIGUOUS_ORG_MESSAGE);
       setOrg(active);
       setOrgLoaded(true);
       if (!active) return;
@@ -53,7 +60,10 @@ export function TrustedDevices(): JSX.Element {
         // Activate the V6.5 NeuroCore device-trust signal for THIS device.
         void ipc.devices.reportHealth(device.trustStatus).catch(() => {});
       } catch {
-        // Registration failure shouldn't block showing the list.
+        // Round 36: registration failure no longer silently omits THIS device
+        // from its own trusted-devices list — the list still loads, but the
+        // condition is said.
+        setRegistrationNote('This device could not be registered right now — it may be missing from the list below.');
       }
       const list = await ipc.devices.list(active.orgId);
       setDevices(list ?? []);
@@ -107,6 +117,11 @@ export function TrustedDevices(): JSX.Element {
 
   return (
     <div className="overflow-hidden rounded-2xl border border-[var(--hairline)] [background:var(--fill-1)]">
+      {registrationNote && (
+        <p role="status" className="border-b border-[var(--hairline)] bg-amber-500/10 p-3 text-xs text-amber-400">
+          {registrationNote}
+        </p>
+      )}
       {devices.length === 0 ? (
         <p className="p-4 text-xs text-white/50">No devices registered yet.</p>
       ) : (

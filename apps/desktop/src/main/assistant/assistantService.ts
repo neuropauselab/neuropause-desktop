@@ -422,8 +422,11 @@ export class AssistantService {
     const retrieval = cfg.retrieval
       ? this.retrieve(input.text, intent, cfg.retrieval, now, correlationId, toolCalls)
       : { items: [] as AiContextItem[], unavailable: [] as AssistantUnavailable[] };
-    const recalled =
-      cfg.retrieval && this.deps.recallMemories ? this.safeRecall(input.text, now, correlationId) : [];
+    const recall =
+      cfg.retrieval && this.deps.recallMemories
+        ? this.safeRecall(input.text, now, correlationId)
+        : { memories: [] as { title: string }[], unavailable: [] as AssistantUnavailable[] };
+    const recalled = recall.memories;
     phases.push({ phase: 'retrieval', durationMs: Date.now() - t1 });
 
     // ── Deterministic findings (always present; the offline floor). ──
@@ -475,7 +478,13 @@ export class AssistantService {
     envelope.draft = draft;
     envelope.findings = findings;
     envelope.structured = productivity.structured;
-    envelope.unavailable = [...snapshot.unavailable, ...retrieval.unavailable, ...productivity.unavailable];
+    envelope.unavailable = [
+      ...snapshot.unavailable,
+      ...retrieval.unavailable,
+      // Round 36 — Gate 15: a failed memory recall is reported, not silent.
+      ...recall.unavailable,
+      ...productivity.unavailable,
+    ];
     envelope.navigation = targets.navigate ?? (intent.intent === 'search' && targets.searchQuery ? { section: 'search', query: targets.searchQuery } : null);
     envelope.sources = this.assembleSources(snapshot, retrieval.items, recalled.length);
     if (productivity.structured) {
@@ -927,11 +936,23 @@ export class AssistantService {
     }
   }
 
-  private safeRecall(text: string, now: string, correlationId: string): { title: string }[] {
+  /**
+   * P13C ROUND 36 — GATE 15. This was the ONE exception to this file's stated
+   * contract ("a failing subsystem becomes an explicit `unavailable` — never a
+   * silent zero", line 17): a memory-recall throw returned `[]` with no
+   * report, so the assistant answered ungrounded and told the user nothing.
+   * Same shape as the sibling `retrieve` catch, now with the same honesty.
+   */
+  private safeRecall(
+    text: string,
+    now: string,
+    correlationId: string,
+  ): { memories: { title: string }[]; unavailable: AssistantUnavailable[] } {
     try {
-      return this.deps.recallMemories!(text, now, correlationId);
-    } catch {
-      return [];
+      return { memories: this.deps.recallMemories!(text, now, correlationId), unavailable: [] };
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      return { memories: [], unavailable: [{ system: 'memory', reason }] };
     }
   }
 

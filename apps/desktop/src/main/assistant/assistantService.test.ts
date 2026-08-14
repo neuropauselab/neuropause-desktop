@@ -501,3 +501,21 @@ describe('conversation continuity + interrupt + branch', () => {
     expect(env.memoryCapture).toEqual({ outcome: 'stored', type: 'conversation' });
   });
 });
+
+/* ── P13C ROUND 36 — GATE 15: memory recall joins the honesty contract ────── */
+
+describe('memory recall honesty (round 36)', () => {
+  it('a throwing recallMemories becomes an explicit unavailable — never a silent zero', async () => {
+    const h = mkHarness({
+      recallMemories: () => {
+        throw new Error('memory store sealed');
+      },
+    });
+    const { conversation, messageId } = await h.service.ask({ text: 'summarize today' });
+    const env = conversation.messages.find((m) => m.id === messageId)!.envelope!;
+    // The one exception to the file's line-17 contract, closed: the failure
+    // is named, and the turn still completes grounded on everything else.
+    expect(env.unavailable.some((u) => u.system === 'memory' && /sealed/.test(u.reason))).toBe(true);
+    expect(env.trace.recalledMemories).toBe(0);
+  });
+});

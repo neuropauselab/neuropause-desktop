@@ -24,21 +24,29 @@ const RECORD_LIMIT = 400;
 
 export function FamilyDashboard({ family }: { family: BusinessFamilyGroup }): JSX.Element {
   const [data, setData] = useState<FamilyDashboardData | null>(null);
+  // Round 36 — Gate 15: modules whose record read FAILED (denied or faulted).
+  const [failedModules, setFailedModules] = useState<string[]>([]);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const familyKey = family.modules.map((m) => m.id).join(',');
 
   useEffect(() => {
     let alive = true;
     setData(null);
     void (async () => {
+      const failures: string[] = [];
       const entries = await Promise.all(
         family.modules.map(async (m) => {
           const rows = await ipc.enterpriseModules
             .records(m.id, { limit: RECORD_LIMIT })
-            .catch(() => [] as EnterpriseEntity[]);
+            .catch(() => {
+              failures.push(m.title ?? m.id);
+              return [] as EnterpriseEntity[];
+            });
           return [m.id, rows] as const;
         }),
       );
       if (!alive) return;
+      setFailedModules(failures);
       const byModule = new Map<string, EnterpriseEntity[]>(entries);
       setData(buildFamilyDashboard(family.meta.group, family.modules, byModule, new Date().toISOString()));
     })();
@@ -46,13 +54,40 @@ export function FamilyDashboard({ family }: { family: BusinessFamilyGroup }): JS
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [familyKey]);
+  }, [familyKey, reloadNonce]);
 
   if (data === null) {
     return (
       <Card variant="hairline">
         <SkeletonLines rows={3} />
       </Card>
+    );
+  }
+
+  if (failedModules.length > 0) {
+    /**
+     * Round 36 — Gate 15. The empty state below claims "this dashboard draws
+     * every number from live records" — asserting groundedness at the exact
+     * moment a read failed. A denied `finance:read` used to tell the user
+     * their finance module was EMPTY and invite them to create a first
+     * record. A failed read is its own state, and partial figures are never
+     * presented as authoritative totals.
+     */
+    return (
+      <div role="alert" className="rounded-2xl border border-danger/40 bg-danger/10 p-4 text-sm text-danger">
+        <div className="font-semibold">Some {family.meta.label} records could not be read.</div>
+        <p className="mt-1 text-xs leading-relaxed">
+          {failedModules.join(', ')} failed to load — the numbers below would be incomplete, so none are
+          shown. You may lack read permission for these modules.
+        </p>
+        <button
+          type="button"
+          onClick={() => setReloadNonce((n) => n + 1)}
+          className="mt-3 rounded-lg border border-danger/40 px-3 py-1.5 text-xs font-semibold hover:bg-danger/10"
+        >
+          Retry
+        </button>
+      </div>
     );
   }
 

@@ -28,10 +28,18 @@ export function AssistantHost({ onNavigate }: { onNavigate?: (id: SectionId) => 
   conversationRef.current = conversation?.id ?? null;
 
   const refreshList = useCallback((): void => {
+    // Round 36 — Gate 15: a failed conversation-list read used to render as
+    // "no conversations" — a user's history apparently gone, in silence. The
+    // failure now lands in the live-note channel the assistant surface
+    // already renders; the next successful refresh clears it.
     ipc.assistant
       .conversations()
       .then((r) => setSummaries(r.conversations))
-      .catch(() => setSummaries([]));
+      .catch((err: unknown) => {
+        setSummaries([]);
+        const reason = err instanceof Error && err.message ? err.message : 'the request failed';
+        setLiveNote(`Your conversations could not be loaded — ${reason}`);
+      });
   }, []);
 
   useEffect(() => {
@@ -119,14 +127,23 @@ export function AssistantHost({ onNavigate }: { onNavigate?: (id: SectionId) => 
     }
   }, [refreshList]);
 
+  // Round 36 — Gate 15: pick/pin/delete were silent no-ops on failure. One
+  // transient note (the live-note channel the user already watches) says so.
+  const sayFailed = useCallback((what: string) => {
+    return (err: unknown): void => {
+      const reason = err instanceof Error && err.message ? err.message : 'the request failed';
+      setLiveNote(`${what} failed — ${reason}`);
+    };
+  }, []);
+
   const onPick = useCallback((id: string): void => {
     ipc.assistant
       .conversation(id)
       .then((c) => {
         if (c) setConversation(c);
       })
-      .catch(() => undefined);
-  }, []);
+      .catch(sayFailed('Opening the conversation'));
+  }, [sayFailed]);
 
   const onNew = useCallback((): void => setConversation(null), []);
 
@@ -138,9 +155,9 @@ export function AssistantHost({ onNavigate }: { onNavigate?: (id: SectionId) => 
           if (c && c.id === conversationRef.current) setConversation(c);
           refreshList();
         })
-        .catch(() => undefined);
+        .catch(sayFailed(pinned ? 'Pinning' : 'Unpinning'));
     },
-    [refreshList],
+    [refreshList, sayFailed],
   );
 
   const onDelete = useCallback(
@@ -151,9 +168,9 @@ export function AssistantHost({ onNavigate }: { onNavigate?: (id: SectionId) => 
           if (conversationRef.current === id) setConversation(null);
           refreshList();
         })
-        .catch(() => undefined);
+        .catch(sayFailed('Deleting the conversation'));
     },
-    [refreshList],
+    [refreshList, sayFailed],
   );
 
   const onOpenNavigation = useCallback(

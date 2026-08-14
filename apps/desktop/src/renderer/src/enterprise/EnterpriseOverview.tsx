@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import type {
-  CloudOrganizationSummary,
   LiveSyncStatus,
   SystemHealthLevel,
   SystemHealthSnapshot,
 } from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
+import { fetchActiveCloudOrg, AMBIGUOUS_ORG_MESSAGE } from '@renderer/lib/activeOrg';
 import { cn } from '@renderer/lib/cn';
 import { Icon, type IconName } from '@renderer/components/ui/Icon';
 import { Skeleton } from '@renderer/components/ui/Skeleton';
@@ -58,11 +58,16 @@ export function EnterpriseOverview(): JSX.Element {
     setLoading(true);
     setError(null);
     try {
-      const orgs = await ipc.org.list().catch(() => [] as CloudOrganizationSummary[]);
-      const active = orgs?.[0] ?? null;
+      // Round 36 — Gate 15: the FINDING-6 `orgs[0]` guess is gone (shared
+      // resolver), and a failed org/device read throws into the error state
+      // instead of rendering "0 devices" as a real figure. The sync/health
+      // probes keep their null-degradation — null renders as unknown, which
+      // is honest, and both self-heal on the next poll.
+      const { orgs, active } = await fetchActiveCloudOrg();
+      if (active === null && orgs.length > 0) throw new Error(AMBIGUOUS_ORG_MESSAGE);
 
       const [devices, syncStatus, health] = await Promise.all([
-        active ? ipc.devices.list(active.orgId).catch(() => []) : Promise.resolve([]),
+        active ? ipc.devices.list(active.orgId) : Promise.resolve([]),
         ipc.cloud.liveSyncStatus().catch(() => null as LiveSyncStatus | null),
         ipc.system.health().catch(() => null as SystemHealthSnapshot | null),
       ]);
