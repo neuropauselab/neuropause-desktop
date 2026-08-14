@@ -18,6 +18,7 @@ import { createBoundedLog } from './storage/boundedLog';
 import { installContentSecurityPolicy } from './security/csp';
 import { registerIpcHandlers, setAllowedSenderOrigins } from './ipc/router';
 import { registerEarlyReachabilityHandler } from './ipc/earlyReachability';
+import { markRuntimeFailed, markRuntimeReady, safeInitFailureMessage } from './runtimeReadiness';
 import { authService } from './auth/authService';
 import { createMainWindow, rendererDevUrl } from './window';
 import { buildAppMenu } from './menu';
@@ -148,8 +149,23 @@ async function bootstrap(): Promise<void> {
     await initRuntimeCore({ broadcast });
     startupMetrics.mark('runtime-core-ready');
     log.info('Startup complete', startupMetrics.snapshot());
+    /**
+     * P13C ROUND 36 — GATE 1. The renderer has been up for seconds against
+     * base channels only; this transition + broadcast is what lets it retry
+     * anything that raced the ~650 secure channels (the sticky `xp:profile.get`
+     * class) the moment they exist.
+     */
+    broadcast(IpcChannel.RuntimeStateChanged, markRuntimeReady());
   } catch (err) {
     log.error('Runtime core failed to initialize', err);
+    /**
+     * P13C ROUND 36 — GATE 1. The window deliberately stays up, but the
+     * failure is no longer SILENT: the renderer gets the state over the base
+     * router (which registered before the window) and shows a real failure
+     * notice instead of rendering a complete UI over ~650 dead channels. The
+     * message is the sanitized first line only — the full error is in the log.
+     */
+    broadcast(IpcChannel.RuntimeStateChanged, markRuntimeFailed(safeInitFailureMessage(err)));
   }
 }
 

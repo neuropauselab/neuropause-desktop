@@ -30,6 +30,7 @@ import * as authHandlers from './handlers/auth';
 import * as appHandlers from './handlers/app';
 import * as workspaceCtxHandlers from './handlers/workspaceContexts';
 import { getActiveRuntimeService } from '../runtimeService';
+import { runtimeStateSnapshot } from '../runtimeReadiness';
 
 const log = createLogger('ipc');
 
@@ -54,6 +55,10 @@ const routes: Partial<Record<IpcChannelName, Route>> = {
     handle: (p) => authHandlers.registerEmail(p as EmailCredentialsRequest),
   },
   [IpcChannel.AuthLogout]: { schema: EmptyRequest, handle: () => authHandlers.logout() },
+
+  // Round 36 — Gate 1: answerable before the window opens (this router
+  // registers first), which is the entire point of the channel.
+  [IpcChannel.RuntimeState]: { schema: EmptyRequest, handle: () => runtimeStateSnapshot() },
 
   [IpcChannel.AppGetInfo]: { schema: EmptyRequest, handle: () => appHandlers.getAppInfo() },
   [IpcChannel.AppGetThemeSource]: {

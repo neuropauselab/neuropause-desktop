@@ -118,6 +118,7 @@ import type {
   AutomationRunRecord,
   Backup,
   BackendReachability,
+  RuntimeStateDto,
   BackupInfo,
   BackupValidation,
   BillingSummary,
@@ -690,6 +691,8 @@ export interface IpcResponseMap {
 
   // ── runtime ──
   'runtime:getLoginAtStartup': { enabled: boolean };
+  // Round 36 — Gate 1: served by the base router before the window opens.
+  'system:runtimeState': RuntimeStateDto;
   'runtime:setLoginAtStartup': { enabled: boolean };
 
   // ── timeline ──

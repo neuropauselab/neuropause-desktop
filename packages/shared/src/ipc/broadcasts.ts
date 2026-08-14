@@ -32,6 +32,7 @@ import type { MenuCommandPayload, TrayCommandPayload } from '../types/app';
 import type { ConnectorEvent, ConnectorSyncSnapshot } from '../types/connectors';
 import type { ConnectorLifecycleEvent } from '../types/connectorRuntime';
 import type { CompanionGatewayEvent } from '../types/companion';
+import type { RuntimeStateDto } from '../types/systemHealth';
 import type { ThemeSource } from './contracts';
 import type { EnterpriseModuleEvent } from '../types/enterpriseModule';
 import type { EnterpriseTimelineStats } from '../types/enterpriseTimeline';
@@ -122,6 +123,7 @@ export interface ThemeChangedEvent {
 export interface IpcBroadcastMap {
   'assistant:event': AssistantEvent;
   'auth:statusChanged': AuthStatus;
+  'system:runtimeStateChanged': RuntimeStateDto;
   'app:themeChanged': ThemeChangedEvent;
   'cloud:event': IpcStoreChangedEvent;
   'companion:event': CompanionGatewayEvent;
@@ -206,6 +208,7 @@ export type IpcBroadcaster = <C extends IpcBroadcastChannelName>(
 const BROADCAST_CHANNEL_WITNESS: Record<keyof IpcBroadcastMap, true> = {
   'assistant:event': true,
   'auth:statusChanged': true,
+  'system:runtimeStateChanged': true,
   'app:themeChanged': true,
   'cloud:event': true,
   'companion:event': true,

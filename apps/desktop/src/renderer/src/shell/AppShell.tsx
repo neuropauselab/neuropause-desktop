@@ -4,6 +4,7 @@ import type { Session } from '@neuropause/shared';
 import { useShell } from '@renderer/state/ShellProvider';
 import { useScale } from '@renderer/state/ScaleProvider';
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary';
+import { RuntimeFailureNotice } from './RuntimeFailureNotice';
 import { WorkspaceErrorBoundary } from '@renderer/components/WorkspaceErrorBoundary';
 import { Spinner } from '@renderer/components/Spinner';
 import { ipc } from '@renderer/lib/ipc';
@@ -325,20 +326,47 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
   // making the button look broken.
   const [profileEpoch, setProfileEpoch] = useState(0);
   useEffect(() => onExperienceProfileChanged(() => setProfileEpoch((n) => n + 1)), []);
+  /**
+   * P13C ROUND 36 — GATE 1. The sticky boot-window race, un-stuck.
+   *
+   * `xp:profile.get` is a SECURE runtime channel registered at the END of
+   * `initRuntimeCore`, while this shell mounts seconds earlier on a restored
+   * session. When the invoke raced the registration, the catch below pinned a
+   * wrong "skipped" profile for the ENTIRE session — this effect's only
+   * re-run trigger was an in-app profile reset. The ref records that the
+   * failure happened during the boot window; the runtime-ready broadcast
+   * (served by the base router, which cannot race) bumps `profileEpoch` once,
+   * re-running this exact effect the moment the channel actually exists.
+   */
+  const profileLoadRacedBoot = useRef(false);
+  useEffect(
+    () =>
+      ipc.runtime.onStateChanged((s) => {
+        if (s.state === 'ready' && profileLoadRacedBoot.current) {
+          profileLoadRacedBoot.current = false;
+          setProfileEpoch((n) => n + 1);
+        }
+      }),
+    [],
+  );
   useEffect(() => {
     ipc.firstRun
       .get()
       .then((p) => {
+        profileLoadRacedBoot.current = false;
         setExperienceProfile(p);
         setWorkspaceType(p.workspaceType);
       })
       .catch((err: unknown) => {
         // Fail OPEN to the legacy wizard, never to nothing: if this channel is
         // unreachable (older main process still running, stale build), the
-        // pre-existing onboarding must keep behaving exactly as before.
+        // pre-existing onboarding must keep behaving exactly as before. The
+        // runtime-ready retry above upgrades this from permanent to transient
+        // when the cause was the boot window.
+        profileLoadRacedBoot.current = true;
         // eslint-disable-next-line no-console
         console.warn(
-          '[first-run] xp:profile.get failed — falling back to the legacy wizard. Is the main process up to date?',
+          '[first-run] xp:profile.get failed — falling back to the legacy wizard until the runtime reports ready.',
           err,
         );
         setExperienceProfile({
@@ -534,6 +562,9 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
   return (
     <div className="app-bg flex h-full w-full flex-col text-ink">
       <Toolbar session={session} />
+      {/* Round 36 — Gate 1: a failed runtime init is SAID, not silently
+          rendered around. Renders nothing on a healthy boot. */}
+      <RuntimeFailureNotice />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
         <main ref={mainRef} className="min-w-0 flex-1 overflow-hidden">

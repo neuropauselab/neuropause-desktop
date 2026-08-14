@@ -186,6 +186,14 @@ export const IpcChannel = {
   /** Runtime launch-at-login preference (V4.2). */
   RuntimeGetLoginAtStartup: 'runtime:getLoginAtStartup',
   RuntimeSetLoginAtStartup: 'runtime:setLoginAtStartup',
+  /**
+   * Runtime-core init state (P13C round 36 — Gate 1). Served by the BASE
+   * router, which registers before the window opens, so it is answerable in
+   * the exact window it exists to describe. The broadcast fires on the
+   * starting→ready / starting→failed transition.
+   */
+  RuntimeState: 'system:runtimeState',
+  RuntimeStateChanged: 'system:runtimeStateChanged',
   TimelineQuery: 'timeline:query',
   TimelineStats: 'timeline:stats',
   TimelineExport: 'timeline:export',
@@ -1169,6 +1177,7 @@ export const INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.WindowClose,
   IpcChannel.RuntimeGetLoginAtStartup,
   IpcChannel.RuntimeSetLoginAtStartup,
+  IpcChannel.RuntimeState,
   IpcChannel.WorkspaceCtxBootstrap,
   IpcChannel.WorkspaceCtxList,
   IpcChannel.WorkspaceCtxCreate,
@@ -1184,6 +1193,7 @@ export const SUBSCRIBABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.ThemeChanged,
   IpcChannel.MenuCommand,
   IpcChannel.TrayCommand,
+  IpcChannel.RuntimeStateChanged,
 ];
 
 /** Runtime-core invokable channels (handled by the secure bridge). */

@@ -30,6 +30,7 @@ import {
   type AuthStatus,
   type MenuCommandPayload,
   type TrayCommandPayload,
+  type RuntimeStateDto,
   type ThemeSource,
   type ShellSnapshotDto,
   type WorkspaceTemplateId,
@@ -401,6 +402,15 @@ export const ipc = {
 
   /* ── Runtime ── */
   runtime: {
+    /**
+     * Round 36 — Gate 1: runtime-core init state. `state()` is served by the
+     * BASE router (registered before the window opens), so it is safe to call
+     * in the exact boot window it describes; the broadcast fires once on the
+     * starting→ready / starting→failed transition.
+     */
+    state: () => invoke(IpcChannel.RuntimeState),
+    onStateChanged: (cb: (payload: RuntimeStateDto) => void) =>
+      subscribe(IpcChannel.RuntimeStateChanged, cb),
     launch: (slug: string) => invoke(IpcChannel.RuntimeLaunch, { slug }),
     stop: (instanceId: string) => invoke(IpcChannel.RuntimeStop, { instanceId }),
     /** Launch-at-login preference (V4.2). */

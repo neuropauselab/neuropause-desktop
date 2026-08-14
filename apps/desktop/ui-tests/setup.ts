@@ -101,6 +101,12 @@ const bridge = {
     return handler(payload ?? {});
   },
   on: () => () => undefined,
+  // The preload's broadcast seam (round 36): components may subscribe; the
+  // harness delivers no events, so subscription paths are exercised only for
+  // registration/cleanup. Emitting is not modeled here on purpose — a test
+  // that needs an event to fire should drive the state through a routed
+  // invoke instead.
+  subscribe: () => () => undefined,
   send: () => undefined,
 };
 
