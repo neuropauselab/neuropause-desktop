@@ -292,6 +292,10 @@ export class EnterpriseRecordStore extends EventEmitter {
        * `flush()` still awaits the in-flight write, and callers that need the
        * bytes on disk still use it.
        */
+      // P13C round 33: re-mark dirty — the flag was cleared before the failed
+      // write, so without this the pending change would never be retried and a
+      // single transient ENOSPC/EPERM lost the mutation until the next edit.
+      this.dirty = true;
       log.error('Enterprise record store persist failed', {
         moduleId: this.moduleId,
         error: String(err),

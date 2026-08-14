@@ -21,6 +21,7 @@ import type {
   TenantScope,
 } from '@neuropause/shared';
 import { createLogger } from '../../logger';
+import { readStoreFile } from '../../storage/storeEnvelope';
 import { buildSeed, ORG_ID as SEED_ORG_ID, OWNER_USER_ID } from './seed';
 import { decideOwnerClaim } from '../authzGate';
 import { declareStoreScope } from '../../tenancy/storeScope';
@@ -243,16 +244,37 @@ export class OrgStore extends EventEmitter {
 
   async load(): Promise<void> {
     if (this.loaded) return;
-    try {
-      const raw = await fs.readFile(this.filePath, 'utf8');
-      const data = JSON.parse(raw) as Partial<OrgFile>;
+    /**
+     * P13C ROUND 33 — QUARANTINE, NEVER RESEED OVER A CORRUPT FILE.
+     *
+     * This store decides WHO EVERYONE IS, and its old load path was
+     * `catch { applySeed() }` — which cannot tell a first run from a truncated
+     * write, and whose seed schedules a persist that RENAMES THE DEMO DATA
+     * OVER the customer's real org chart: organizations, units, roles, every
+     * member row including the emails membership is decided by. One torn
+     * write, and the install silently becomes a fresh demo, permanently.
+     *
+     * `readStoreFile` (Phase 8's quarantine-not-reset envelope, adopted by 21
+     * stores and skipped by exactly the ones that mattered most) preserves the
+     * unreadable file beside itself for support/recovery; legacy un-stamped
+     * files still read as v1, so existing installs load unchanged.
+     */
+    const read = await readStoreFile<Partial<OrgFile>>(this.filePath);
+    if (read.state === 'loaded' && read.data !== null) {
+      const data = read.data;
       for (const o of data.organizations ?? []) if (o?.id) this.organizations.set(o.id, o);
       for (const u of data.units ?? []) if (u?.id) this.units.set(u.id, u);
       for (const r of data.roles ?? []) if (r?.id) this.roles.set(r.id, r);
       for (const u of data.users ?? []) if (u?.id) this.users.set(u.id, u);
       if (!data.seeded || this.organizations.size === 0) this.applySeed();
       else this.reconcileBuiltInRoles();
-    } catch {
+    } else {
+      if (read.state !== 'first-run') {
+        log.error('Org store unreadable — original preserved, starting from seed', {
+          state: read.state,
+          quarantinedTo: read.quarantinedTo,
+        });
+      }
       this.applySeed();
     }
     this.loaded = true;
@@ -324,6 +346,11 @@ export class OrgStore extends EventEmitter {
         await this.persist();
       }
     } catch (err) {
+      // The write failed AFTER `dirty` was cleared, so without this line the
+      // pending change would never be retried — a transient ENOSPC/EPERM
+      // silently lost the mutation until the next unrelated edit. Re-marking
+      // dirty means the next schedulePersist (or flush) tries again.
+      this.dirty = true;
       log.error('Org persist failed', { error: String(err) });
     } finally {
       this.persisting = false;

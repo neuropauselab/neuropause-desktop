@@ -11,6 +11,7 @@ import { promises as fs } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import type { Workspace } from '@neuropause/shared';
 import { createLogger } from '../../logger';
+import { readStoreFile } from '../../storage/storeEnvelope';
 import { ORG_ID } from '../org/seed';
 import { declareStoreScope } from '../../tenancy/storeScope';
 
@@ -49,13 +50,29 @@ export class WorkspaceStore extends EventEmitter {
 
   async load(): Promise<void> {
     if (this.loaded) return;
-    try {
-      const raw = await fs.readFile(this.filePath, 'utf8');
-      const data = JSON.parse(raw) as Partial<WorkspaceFile>;
+    /**
+     * P13C ROUND 33 — QUARANTINE, NEVER RESEED OVER A CORRUPT FILE.
+     *
+     * The old `catch { applySeed() }` could not tell a first run from a
+     * truncated or unreadable file, and `applySeed()` schedules a persist —
+     * so one torn write silently REPLACED every workspace on the install with
+     * the seed, destroying the original bytes. `readStoreFile` preserves the
+     * corrupt file beside itself (`.quarantined-<ts>`) for support/recovery
+     * and only then does the store fall back to the seed, loudly.
+     */
+    const read = await readStoreFile<Partial<WorkspaceFile>>(this.filePath);
+    if (read.state === 'loaded' && read.data !== null) {
+      const data = read.data;
       for (const w of data.workspaces ?? []) if (w?.id) this.workspaces.set(w.id, w);
       if (data.activeId && this.workspaces.has(data.activeId)) this.activeId = data.activeId;
       if (!data.seeded || this.workspaces.size === 0) this.applySeed();
-    } catch {
+    } else {
+      if (read.state !== 'first-run') {
+        log.error('Workspace store unreadable — original preserved, starting from seed', {
+          state: read.state,
+          quarantinedTo: read.quarantinedTo,
+        });
+      }
       this.applySeed();
     }
     /**
@@ -117,6 +134,9 @@ export class WorkspaceStore extends EventEmitter {
         await this.persist();
       }
     } catch (err) {
+      // Re-mark dirty: the flag was cleared before the failed write, so
+      // without this the pending change would never retry (P13C round 33).
+      this.dirty = true;
       log.error('Workspace persist failed', { error: String(err) });
     } finally {
       this.persisting = false;
