@@ -29,7 +29,7 @@ import { ipc } from '@renderer/lib/ipc';
 import { createLogger } from '@renderer/lib/logger';
 import { Button } from '@renderer/components/ui/Button';
 import { Icon } from '@renderer/components/ui/Icon';
-import { FIRST_RUN_COPY } from './experienceModel';
+import { FIRST_RUN_COPY, resumeStep } from './experienceModel';
 import { setWorkspaceType } from './workspaceTypeStore';
 
 const log = createLogger('first-run');
@@ -39,12 +39,20 @@ type Step = 'welcome' | 'processing' | 'workspace' | 'discovery' | 'understandin
 export function FirstRunExperience({
   onDone,
   onSignIn,
+  profile,
 }: {
   /** Called when the experience finishes or is skipped; the shell re-reads the profile. */
   onDone: (landing: 'ai-home' | null) => void;
   onSignIn: () => void;
+  /** The persisted profile — round 36: the flow RESUMES from it (Gate 13). */
+  profile?: { aiModeChosen: boolean; workspaceType: WorkspaceType | null } | null;
 }): JSX.Element {
-  const [step, setStep] = useState<Step>('welcome');
+  // Round 36 — Gate 13: the step derives from what is already persisted, so
+  // quitting mid-flow resumes where the user left off — the promise the
+  // service docstring has made since round 17, finally true.
+  const [step, setStep] = useState<Step>(() =>
+    profile ? resumeStep(profile) : 'welcome',
+  );
   const [busy, setBusy] = useState(false);
   /**
    * P13C ROUND 17 · D-5. Three pieces of state so the screen can be HONEST:
@@ -62,7 +70,7 @@ export function FirstRunExperience({
   const [actionError, setActionError] = useState<string | null>(null);
   const [effectiveMode, setEffectiveMode] = useState<AiMode | null>(null);
   const [restrictedByPlatform, setRestrictedByPlatform] = useState(false);
-  const [chosenType, setChosenType] = useState<WorkspaceType | null>(null);
+  const [chosenType, setChosenType] = useState<WorkspaceType | null>(profile?.workspaceType ?? null);
   const [role, setRole] = useState<string | null>(null);
   const [helpStyle, setHelpStyle] = useState<string | null>(null);
   const [workText, setWorkText] = useState('');
@@ -95,15 +103,29 @@ export function FirstRunExperience({
 
   const skip = useCallback(async (): Promise<void> => {
     setBusy(true);
+    setActionError(null);
     try {
       await ipc.firstRun.set({ state: 'skipped' });
+      // Round 36 — Gate 13: onDone only when the skip PERSISTED. It used to
+      // fire from a finally, so a failed write re-read a still-pending
+      // profile and the takeover re-rendered with no explanation — the exact
+      // silent-no-op class this screen's own comments were written against.
+      onDone(null);
     } catch (err) {
       log.warn('Could not persist skip', { message: String(err) });
+      setActionError('Skipping could not be saved. Please try again.');
     } finally {
       setBusy(false);
-      onDone(null);
     }
   }, [onDone]);
+
+  /** Round 36 — Gate 13: every step after welcome can go back. */
+  const goBack = useCallback((): void => {
+    setActionError(null);
+    setStep((s) =>
+      s === 'understanding' ? 'discovery' : s === 'discovery' ? 'workspace' : s === 'workspace' ? 'processing' : 'welcome',
+    );
+  }, []);
 
   /**
    * P13C ROUND 17 · D-5 — THE FIRST-RUN HIGH.
@@ -254,7 +276,11 @@ export function FirstRunExperience({
       await ipc.firstRun.set({ attributes, state: 'completed' });
       onDone('ai-home');
     } catch (err) {
+      // Round 36 — Gate 13: the FINAL button of onboarding must not go inert
+      // in silence. Its two siblings in this file already set the shared
+      // error; this one — the only one that completes the flow — did not.
       log.warn('Could not persist understanding', { message: String(err) });
+      setActionError('That could not be saved. Please try again.');
       setBusy(false);
     }
   };
@@ -298,6 +324,29 @@ export function FirstRunExperience({
       aria-label="Welcome to NeuroPause"
     >
       <div className="mx-auto w-full max-w-[760px] px-8 py-12">
+        {/* Round 36 — Gate 13: ONE error banner for the whole flow, at the
+            container. It used to render inside two of the five steps only, so
+            a failed skip (welcome) or a failed completion (understanding)
+            set the state and showed nothing. */}
+        {actionError !== null && (
+          <p
+            role="alert"
+            className="mb-4 rounded-lg border border-danger/40 bg-danger/10 px-4 py-3 text-center text-sm text-danger"
+          >
+            {actionError}
+          </p>
+        )}
+        {/* Round 36 — Gate 13: the flow is no longer one-way. */}
+        {step !== 'welcome' && (
+          <button
+            type="button"
+            onClick={goBack}
+            disabled={busy}
+            className="app-no-drag mb-4 inline-flex items-center gap-1 text-sm text-muted transition hover:text-ink disabled:opacity-50"
+          >
+            ← Back
+          </button>
+        )}
         {step === 'welcome' && (
           <motion.div {...fade} className="text-center">
             <h1 className="text-4xl font-semibold tracking-tight">{FIRST_RUN_COPY.headline}</h1>
@@ -389,14 +438,6 @@ export function FirstRunExperience({
                 onChoose={() => void chooseProcessing(true)}
               />
             </div>
-            {actionError !== null && (
-              <p
-                role="alert"
-                className="mt-6 rounded-lg border border-danger/40 bg-danger/10 px-4 py-3 text-center text-sm text-danger"
-              >
-                {actionError}
-              </p>
-            )}
             {restrictedByPlatform && effectiveMode !== null && (
               /**
                * P13C ROUND 17 · D-5 · NO SILENT NO-OP.
@@ -483,14 +524,6 @@ export function FirstRunExperience({
               * the same state. A click here that could not be persisted left
               * the button inert and the screen silent; it now says so.
               */}
-            {actionError !== null && (
-              <p
-                role="alert"
-                className="mt-6 rounded-lg border border-danger/40 bg-danger/10 px-4 py-3 text-center text-sm text-danger"
-              >
-                {actionError}
-              </p>
-            )}
           </motion.div>
         )}
 

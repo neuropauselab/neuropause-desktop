@@ -394,3 +394,26 @@ export const FIRST_RUN_COPY = {
   },
   workspaceQuestion: 'How do you want to use NeuroPause?',
 } as const;
+
+/* ── P13C ROUND 36 — GATE 13: resume where the user left off ──────────────── */
+
+export type FirstRunStep = 'welcome' | 'processing' | 'workspace' | 'discovery' | 'understanding';
+
+/**
+ * The step a PENDING profile resumes at, derived from what is already
+ * persisted. `experienceProfileService` has promised since round 17 that
+ * "quitting mid-flow loses nothing already chosen and the experience resumes
+ * where it left off" — but the step lived in `useState('welcome')` and never
+ * read the profile, so a user who quit after choosing Business + AI mode
+ * relaunched at the welcome headline and re-walked every screen. Pure, so the
+ * rule is testable: each persisted milestone advances past its own step, and
+ * an untouched profile starts at the beginning.
+ */
+export function resumeStep(profile: {
+  aiModeChosen: boolean;
+  workspaceType: string | null;
+}): FirstRunStep {
+  if (profile.workspaceType !== null) return 'discovery';
+  if (profile.aiModeChosen) return 'workspace';
+  return 'welcome';
+}

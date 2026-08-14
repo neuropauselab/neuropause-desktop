@@ -339,6 +339,13 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
    * re-running this exact effect the moment the channel actually exists.
    */
   const profileLoadRacedBoot = useRef(false);
+  // Round 36 — Gate 13: the Sign-In detour. Hides the first-run takeover
+  // WITHOUT persisting anything; cleared when the user leaves Settings, at
+  // which point the still-pending flow resumes at its persisted step.
+  const [signInDetour, setSignInDetour] = useState(false);
+  useEffect(() => {
+    if (signInDetour && activeSection !== 'settings') setSignInDetour(false);
+  }, [signInDetour, activeSection]);
   useEffect(
     () =>
       ipc.runtime.onStateChanged((s) => {
@@ -602,8 +609,9 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
         <VoiceWidget />
       </ErrorBoundary>
       <ErrorBoundary inline name="onboarding">
-        {experienceProfile?.state === 'pending' ? (
+        {experienceProfile?.state === 'pending' && !signInDetour ? (
           <FirstRunExperience
+            profile={experienceProfile}
             onDone={(landing) => {
               ipc.firstRun
                 .get()
@@ -615,12 +623,20 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
               if (landing) goToSection(landing);
             }}
             onSignIn={() => {
-              // The existing auth surface lives in Settings → Identity.
-              void ipc.firstRun.set({ state: 'skipped' }).then((p) => setExperienceProfile(p));
+              /**
+               * P13C ROUND 36 — GATE 13. Sign In is a DETOUR, not a forfeit.
+               * This used to write `state: 'skipped'` — a TERMINAL state —
+               * so a user who tapped Sign In on the welcome screen lost the
+               * AI-routing and workspace questions forever, from a button
+               * that promised authentication. The profile now stays pending;
+               * the takeover hides for the detour and returns (resuming at
+               * the right step) when the user leaves Settings.
+               */
+              setSignInDetour(true);
               goToSection('settings');
             }}
           />
-        ) : experienceProfile ? (
+        ) : experienceProfile && experienceProfile.state !== 'pending' ? (
           // The guided checklist wizard runs AFTER the experience decided the
           // product shape — never on top of it.
           <OnboardingWizard onGoTo={goToSection} />

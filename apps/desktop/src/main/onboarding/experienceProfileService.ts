@@ -11,7 +11,9 @@
  *
  * Partial writes are the point: each decision persists the moment it is made,
  * so quitting mid-flow loses nothing already chosen and the experience resumes
- * where it left off.
+ * where it left off. (The renderer half of that promise — deriving the resume
+ * step from this profile — landed in round 36 via `resumeStep`; before that,
+ * the step was component state and every relaunch replayed from welcome.)
  */
 import { promises as fs } from 'node:fs';
 import { dirname } from 'node:path';
