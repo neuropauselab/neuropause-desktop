@@ -68,6 +68,19 @@ class AuthService extends EventEmitter {
   private status: AuthStatus = { state: 'unauthenticated' };
   private accessToken: string | null = null;
   private accessTokenExpiresAt = 0;
+  /**
+   * P13C ROUND 33 — SINGLE-FLIGHT REFRESH.
+   *
+   * Refresh tokens rotate on every use and the backend treats a re-sent
+   * (already-consumed) token as theft: it revokes EVERY session for the user
+   * (`refresh_reused`). Six independent consumers call
+   * `getValidAccessToken()` per request, and one screen fires several
+   * concurrently — two calls that both observe an expired access token would
+   * both POST the same stored refresh token, and the second one burned the
+   * whole chain, deterministically, once per token lifetime. All concurrent
+   * callers now share one in-flight refresh.
+   */
+  private refreshInFlight: Promise<string | null> | null = null;
 
   /** Current snapshot the renderer can render. */
   getStatus(): AuthStatus {
@@ -107,8 +120,8 @@ class AuthService extends EventEmitter {
    * Rotation means a successful refresh yields (and persists) a new token.
    */
   async restoreSession(): Promise<void> {
-    const refreshToken = await secureStore.getRefreshToken();
-    if (!refreshToken) {
+    const stored = await secureStore.getRefreshToken();
+    if (!stored) {
       this.setStatus({ state: 'unauthenticated' });
       return;
     }
@@ -116,11 +129,24 @@ class AuthService extends EventEmitter {
     // backend may not be reachable for a moment. A transient network failure must
     // NOT log the user out — only a genuine auth rejection (invalid/expired
     // credentials) should clear the session. Retry network failures with backoff.
+    //
+    // P13C ROUND 33 — NEVER RE-SEND A CONSUMED REFRESH TOKEN. Refresh tokens
+    // rotate on use, and the backend treats a re-sent one as theft: it revokes
+    // every session for the user (`refresh_reused`). The old loop captured the
+    // stored token once and re-sent it on every retry — so when the REFRESH
+    // succeeded but the `me()` call that followed hit a network blip (the exact
+    // boot race this retry exists for), the second attempt burned the whole
+    // chain and a flaky boot signed the user out on every device. The refresh
+    // now happens at most once; retries after a successful rotation re-attempt
+    // only the `me()` read with the already-valid access token.
     const maxAttempts = 5;
+    let tokens: TokenPair | null = null;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        const { tokens } = await backendClient.refresh(refreshToken);
-        await this.applyTokens(tokens);
+        if (tokens === null) {
+          tokens = (await backendClient.refresh(stored)).tokens;
+          await this.applyTokens(tokens);
+        }
         const { user } = await backendClient.me(tokens.accessToken);
         this.setStatus({
           state: 'authenticated',
@@ -241,6 +267,18 @@ class AuthService extends EventEmitter {
       this.accessToken && Date.now() < this.accessTokenExpiresAt - config.accessTokenRefreshSkewMs;
     if (fresh) return this.accessToken;
 
+    // Single-flight: concurrent callers share one refresh instead of racing
+    // the same rotating token into the backend's reuse detector.
+    if (this.refreshInFlight) return this.refreshInFlight;
+    this.refreshInFlight = this.refreshAccessToken();
+    try {
+      return await this.refreshInFlight;
+    } finally {
+      this.refreshInFlight = null;
+    }
+  }
+
+  private async refreshAccessToken(): Promise<string | null> {
     const refreshToken = await secureStore.getRefreshToken();
     if (!refreshToken) return null;
     try {
@@ -248,7 +286,24 @@ class AuthService extends EventEmitter {
       await this.applyTokens(tokens);
       return tokens.accessToken;
     } catch (err) {
-      log.warn('Token refresh failed', messageFor(err));
+      /**
+       * P13C ROUND 33 — A TRANSIENT NETWORK ERROR MUST NOT DESTROY THE VAULT.
+       *
+       * This catch used to `clearSession()` for EVERY failure class, so ~14
+       * minutes after sign-in (access-token TTL), the first authenticated
+       * call made while offline — sleep, VPN drop, backend restart; often
+       * from an unattended background loop — deleted a still-valid refresh
+       * token and signed the user out. `restoreSession` was written to make
+       * exactly this network-vs-rejection distinction; apply the same rule
+       * here: keep the credentials on a network failure and let a later call
+       * (or the next launch) retry. Only a genuine rejection clears.
+       */
+      const isNetwork = err instanceof BackendError && err.status === 0;
+      if (isNetwork) {
+        log.warn('Token refresh failed on a network error; keeping credentials', messageFor(err));
+        return null;
+      }
+      log.warn('Token refresh rejected; clearing credentials', messageFor(err));
       await this.clearSession();
       this.setStatus({ state: 'unauthenticated' });
       return null;
