@@ -125,6 +125,35 @@ jobs:
       #
       # The build output is now saved BEFORE anything touches the network. No
       # step after this one can cost us the thing the job exists to produce.
+      # P13C ROUND 29 — W-8. THE INSTALLER, ON ITS OWN, FIRST.
+      #
+      # `neuropause-windows` below carries every output: two .exe files (the NSIS
+      # installer AND the portable build, ~111 MB each), the win .zip (~154 MB),
+      # the update feed and the blockmaps — 377 MB in total. Every diagnostic
+      # round trip in this programme has downloaded all of it to get at one file,
+      # and three of those downloads took longer than the build that produced
+      # them; two were abandoned as hung when they were merely large.
+      #
+      # ADDITIVE, deliberately. The full artifact keeps its name, its contents
+      # and its retention, so nothing that references it changes behaviour — the
+      # release path, the update feed and provenance are untouched. This is a
+      # second, smaller door to the same building:
+      #
+      #   gh run download <run> --name neuropause-windows-installer
+      #
+      # ~112 MB instead of 377 MB, which is the difference between a two-minute
+      # transfer and one that gets cancelled.
+      - name: Upload the installer on its own
+        uses: actions/upload-artifact@v4
+        with:
+          name: neuropause-windows-installer
+          path: |
+            apps/desktop/dist/NeuroPause-Setup.exe
+            apps/desktop/dist/NeuroPause-Setup.exe.blockmap
+            apps/desktop/dist/*.yml
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
