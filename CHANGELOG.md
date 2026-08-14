@@ -7,7 +7,53 @@ All notable changes to NeuroPause are documented here. The format is based on
 
 ## [Unreleased]
 
-_No unreleased changes; the current build is `1.0.0-rc.15`._
+_No unreleased changes; the current build is `1.0.0-rc.17`._
+
+## [1.0.0-rc.17] — Windows runtime and release-pipeline repair (2026-08-14)
+
+Program 13C rounds 24–26. No feature work; every entry is a defect found with a
+negative control taken from git rather than reconstructed.
+
+- **O-8 — a restart re-fired automation rules.** The scheduler's
+  once-per-occurrence guard lived only in memory, and an `interval` schedule
+  reports due on every tick by construction, so relaunching inside the bucket
+  re-executed an occurrence that had already fired — once per restart, and a
+  crash loop is a restart loop. The claim is now persisted on the rule and
+  written before the fire, so at-most-once means the same thing on both sides of
+  a restart.
+- **O-9 — the parked-reference retry ran as the wrong tenant.** One shared
+  debounce timer, cleared and re-armed on every save on the install, executed
+  the retry pass under whoever was signed in 400 ms later — and one tenant's
+  save cancelled another's pending pass, so under sustained activity the queue
+  was never drained by that path at all. Same shape Round 10 fixed in the graph,
+  memory and scheduler call sites; this fourth one was missed.
+- **W-1 — an audit write replaced the error it was recording.** A permission
+  refusal raises a durable hold; a hold needs an owner; with no tenant scope
+  that write threw and its exception escaped in place of the authorization
+  error. Users saw "Cannot record a hold…" instead of the sentence naming the
+  actual condition. Recording a refusal can no longer change the refusal.
+- **W-2 — Windows received a frameless window.** `titleBarStyle: 'hiddenInset'`
+  was applied unconditionally under a comment claiming it was ignored off macOS.
+  Windows degrades it to `hidden`, producing a window with no close, minimise or
+  maximise controls.
+- **W-3 — both release workflows were unparseable.** A guard referenced the
+  `secrets` context inside a step `if:`, which GitHub rejects at load time, so
+  neither `windows-release` nor `macos-release` could be dispatched.
+- **W-4 — CI now parses every workflow** and rejects unavailable contexts in
+  `if:`, because nothing in the repository had ever validated a workflow file.
+- **W-5 — eight tenant refusals reached callers as one sentence.** The resolver
+  distinguishes `not_signed_in`, `not_loaded`, `no_workspace`,
+  `workspace_orphaned`, `not_a_member`, `not_in_workspace`, `member_inactive`
+  and `tenant_not_operable`, each with its own text; the authorization gate
+  discarded all of them. Each now reaches the caller with its own message and a
+  stable code.
+- **O-10 — eight gate verdicts were recorded under the wrong identity**, because
+  the repository's own `.git/config` named a different author. Corrected, and
+  the divergence left visible in the certification record rather than erased.
+
+Version bumped from `1.0.0-rc.16` because two different Windows binaries were
+built under that version with different hashes, which makes release provenance
+unresolvable.
 
 ## [1.0.0-rc.15] — Global Product RC: Pilot Readiness (2026-08-08)
 
