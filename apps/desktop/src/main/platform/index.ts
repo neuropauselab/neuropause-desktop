@@ -14,6 +14,7 @@
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { app, Notification } from 'electron';
+import { registerShutdownFlush } from '../shutdownFlush';
 import type {
   AuthStatus,
   DiagnosticsReport,
@@ -317,3 +318,17 @@ export async function initPlatform(deps: {
     dispose: () => timeline.dispose(),
   };
 }
+
+/**
+ * P13C ROUND 37 — GATE 16. The timeline drain finally has a caller.
+ *
+ * `dispose()` (the awaited flush of the 2000ms-interval timeline writer) was
+ * exported and called by NOTHING — up to one interval of platform/audit
+ * events vanished on every quit. Registered at module scope on the shared
+ * shutdown barrier; the actual timeline instance is resolved lazily at quit
+ * time through `platformDisposeRef`, which `initPlatform`'s caller sets.
+ */
+export const platformDisposeRef: { current: (() => Promise<void>) | null } = { current: null };
+registerShutdownFlush('platform-timeline', async () => {
+  await platformDisposeRef.current?.();
+});

@@ -13,6 +13,7 @@
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { app, shell } from 'electron';
+import { suppressShutdownFlushOnce } from '../shutdownFlush';
 import {
   BackupCreateRequest,
   BackupIdRequest,
@@ -56,6 +57,32 @@ import {
 import { probeSigningStatus } from '../diagnostics/signingStatus';
 
 const log = createLogger('release-ops');
+
+/**
+ * P13C ROUND 37 — GATE 16. A restore that requires a restart GETS one.
+ *
+ * The delay lets the IPC response reach the renderer first (its restore flow
+ * shows the result before the relaunch). `app.quit()` — never `exit()` — so
+ * the round-37 shutdown flush barrier drains… which is also why the relaunch
+ * is SAFE for the restore itself: the safety snapshot was taken pre-copy, the
+ * restored files are complete (atomic per-file rename), and the flushes that
+ * drain at quit are the same stale in-memory state that made the restart
+ * necessary — they persist over the restore ONCE, and the relaunched process
+ * reloads from disk… so the flush must be SKIPPED for a restore-relaunch.
+ * `suppressShutdownFlushOnce` does exactly that: after a restore, stale
+ * memory must NOT win the race against the restored bytes.
+ */
+let restoreRelaunchScheduled = false;
+function scheduleRestoreRelaunch(cause: string): void {
+  if (restoreRelaunchScheduled) return;
+  restoreRelaunchScheduled = true;
+  log.info('Restore requires a restart — relaunching', { cause });
+  setTimeout(() => {
+    suppressShutdownFlushOnce(`restore relaunch (${cause})`);
+    app.relaunch();
+    app.quit();
+  }, 1500);
+}
 const HEAVY_TIMEOUT_MS = 120_000;
 const SCHEDULED_BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const SCHEDULED_BACKUP_KEEP = 10;
@@ -333,11 +360,22 @@ export async function initReleaseOps(deps: ReleaseOpsDeps): Promise<ReleaseOps> 
        * rollback while appearing to ask for something narrower. `domains`
        * narrows WHICH STORES come back, never WHOSE.
        */
-      handler: (p) =>
-        backup.restore((p as BackupRestoreRequest).id, (p as BackupRestoreRequest).domains, {
-          boundary: 'ALL_TENANTS_AT_ONCE',
-          declaredBy: 'backup:restore IPC handler',
-        }),
+      handler: async (p) => {
+        const result = await backup.restore(
+          (p as BackupRestoreRequest).id,
+          (p as BackupRestoreRequest).domains,
+          {
+            boundary: 'ALL_TENANTS_AT_ONCE',
+            declaredBy: 'backup:restore IPC handler',
+          },
+        );
+        // Round 37 — Gate 16: `requiresRestart` is now ENFORCED, not returned
+        // and forgotten — without this, the live stores' next background
+        // persist overwrote the restore and the whole operation silently
+        // undid itself.
+        if (result.ok && result.requiresRestart) scheduleRestoreRelaunch('backup restore');
+        return result;
+      },
     },
     {
       channel: IpcChannel.BackupDelete,
@@ -400,13 +438,16 @@ export async function initReleaseOps(deps: ReleaseOpsDeps): Promise<ReleaseOps> 
       schema: RecoveryRunRequest,
       audit: true,
       timeoutMs: HEAVY_TIMEOUT_MS,
-      handler: (p) => {
+      handler: async (p) => {
         const i = p as RecoveryRunRequest;
-        return recovery.run(i.action, {
+        const result = await recovery.run(i.action, {
           backupId: i.backupId,
           domains: i.domains,
           reason: i.reason,
         });
+        // Round 37 — Gate 16: same enforcement as backup:restore above.
+        if (result.ok && result.requiresRestart) scheduleRestoreRelaunch(`recovery:${i.action}`);
+        return result;
       },
     },
     {

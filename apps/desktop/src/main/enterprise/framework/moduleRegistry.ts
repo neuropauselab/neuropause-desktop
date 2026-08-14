@@ -135,6 +135,15 @@ export class EnterpriseModuleRegistry {
     return this.modules.size;
   }
 
+  /**
+   * P13C ROUND 37 — GATE 16. Drain every module store's pending background
+   * write. One registration on the shutdown barrier stands for all ~106
+   * stores, same shape as the one registry entry standing for them above.
+   */
+  async flushAll(): Promise<void> {
+    await Promise.allSettled([...this.modules.values()].map((m) => m.store.flush()));
+  }
+
   /** Descriptors + live counts for the registry-list channel. */
   async summaries(): Promise<EnterpriseModuleSummary[]> {
     const out: EnterpriseModuleSummary[] = [];

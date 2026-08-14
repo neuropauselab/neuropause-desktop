@@ -295,6 +295,8 @@ export class BackupManager {
       ok: false,
       restored: [],
       skipped: [],
+      requiresRestart: false, // nothing was written; nothing to pick up
+
       safetyBackupId: null,
       detail,
     });
@@ -348,7 +350,16 @@ export class BackupManager {
     const restored = new Set<MaintenanceDomain>();
     for (const { entry, src, dest } of planned) {
       await fs.mkdir(dirname(dest), { recursive: true });
-      await fs.copyFile(src, dest);
+      /**
+       * P13C ROUND 37 — GATE 16. Atomic per file: `copyFile` wrote the
+       * destination IN PLACE, so a crash or ENOSPC mid-restore left a
+       * truncated store file — which the quarantine machinery then treats as
+       * corrupt. tmp + rename means every restored file is either the old
+       * bytes or the complete new bytes, never a torn middle.
+       */
+      const tmp = `${dest}.restore-tmp`;
+      await fs.copyFile(src, tmp);
+      await fs.rename(tmp, dest);
       restored.add(entry.domain);
     }
 
@@ -359,6 +370,14 @@ export class BackupManager {
       skipped: [...skipped],
       safetyBackupId: safety.id,
       detail: null,
+      /**
+       * Round 37 — Gate 16: the restored files sit UNDER stores that already
+       * hold pre-restore state in memory; their next coalesced persist would
+       * overwrite the restore. The tenant-scoped path always modeled this
+       * (`tenantArchive.requiresRestart`); the install-wide path now does too,
+       * and the IPC layer enforces the relaunch.
+       */
+      requiresRestart: true,
     };
   }
 

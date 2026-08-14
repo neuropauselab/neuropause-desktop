@@ -84,6 +84,7 @@ import { governanceStore } from './governance/governanceInstance';
 import { OWNER_USER_ID, ROLE_TO_UNIT_ID } from './org/seed';
 import { provisionOrganization } from './org/provisionOrganization';
 import { announceWorkspaceSwitch } from '../tenancy/workspaceSwitchHub';
+import { registerShutdownFlush } from '../shutdownFlush';
 import { bindOrgIntelligenceScope } from './orgIntelligence';
 import {
   firstEnterableWorkspace,
@@ -584,6 +585,19 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   tenantAiPreferenceStore.bindScope(activeTenantScope);
   await governanceStore.load();
 
+  /**
+   * P13C ROUND 37 — GATE 16. The enterprise crown jewels join the shutdown
+   * flush barrier: each uses the coalesced background writer, so a quit that
+   * raced `schedulePersist` lost the last edit — an org-chart change, a
+   * governance toggle, the tenant AI preference — silently. The module-record
+   * stores register once via the registry below (after it exists).
+   */
+  registerShutdownFlush('org-store', () => orgStore.flush());
+  registerShutdownFlush('workspace-store', () => workspaceStore.flush());
+  registerShutdownFlush('governance-store', () => governanceStore.flush());
+  // (tenantAiPreferenceStore is write-through — setMine awaits persist — so it
+  // has nothing pending at quit and registers no flush.)
+
 
   // First-claim-wins ownership: the seeded owner ships unclaimed (email:null).
   // The first account to sign in claims it; the SAME account later only refreshes
@@ -926,6 +940,8 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   // Enterprise Module Framework: the reusable ERP foundation. Every module
   // registered into this registry inherits RBAC, audit, timeline events,
   // renderer broadcasts, and the generic CRUD IPC surface — nothing per-module.
+  // Round 37 — Gate 16: one barrier entry drains all ~106 module stores.
+  // (Registered right after construction below via modules.registry.)
   const modules = initEnterpriseModules({
     authorize,
     documents,
@@ -1172,6 +1188,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
    * checks for a seam cannot check what the seam is attached to.
    */
   modules.registry.bindScope(activeTenantScope);
+  registerShutdownFlush('enterprise-module-stores', () => modules.registry.flushAll());
 
   const registerModule = (m: EnterpriseModule): void => {
     modules.registry.register(documentIntegration.attach(m));

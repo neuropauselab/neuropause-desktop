@@ -105,7 +105,7 @@ import {
   PUBLIC_CHANNELS,
   assertAllChannelsClassified,
 } from './ipc/runtimeAuthz';
-import { initPlatform, registerDiagnosticProbes } from './platform';
+import { initPlatform, platformDisposeRef, registerDiagnosticProbes } from './platform';
 import { build } from './platform/producers';
 import { initConnectors } from './connectors';
 import { initUnified } from './unified';
@@ -426,6 +426,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   await pluginManager.load();
   // Platform core: event bus + timeline + subscribers + diagnostics.
   const platform = await initPlatform({ broadcast: deps.broadcast });
+  // Round 37 — Gate 16: give the shutdown barrier the live timeline drain.
+  platformDisposeRef.current = platform.dispose;
   // Connector Framework (NCF): SDK + OAuth engine + registry + lifecycle runtime.
   const connectors = await initConnectors({
     broadcast: deps.broadcast,

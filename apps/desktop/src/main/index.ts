@@ -19,6 +19,7 @@ import { installContentSecurityPolicy } from './security/csp';
 import { registerIpcHandlers, setAllowedSenderOrigins } from './ipc/router';
 import { registerEarlyReachabilityHandler } from './ipc/earlyReachability';
 import { markRuntimeFailed, markRuntimeReady, safeInitFailureMessage } from './runtimeReadiness';
+import { registerShutdownFlush, runShutdownFlush } from './shutdownFlush';
 import { authService } from './auth/authService';
 import { createMainWindow, rendererDevUrl } from './window';
 import { buildAppMenu } from './menu';
@@ -193,6 +194,8 @@ if (!gotLock) {
         keep: 2,
       });
       attachLogFileSink((line) => appLog.append(line));
+      // Round 37 — Gate 16: the log's own buffered tail drains at quit too.
+      registerShutdownFlush('app-log', () => appLog.flush());
       return bootstrap();
     })
     .catch((err) => {
@@ -210,6 +213,35 @@ if (!gotLock) {
   // Follow platform convention: stay resident on macOS until Cmd+Q.
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
+  });
+
+  /**
+   * P13C ROUND 37 — GATE 16. THE SHUTDOWN FLUSH BARRIER.
+   *
+   * 37 stores flush through coalesced background writers; before this, only
+   * ONE had a shutdown hook and everything else raced app exit — up to a
+   * debounce/interval of user state lost on every quit. `will-quit` fires
+   * after all windows are gone and before exit: the first pass defers the
+   * quit, drains every registered flush (time-boxed, failure-isolated —
+   * shutdown is not the moment to refuse), then quits for real.
+   */
+  let shutdownFlushed = false;
+  app.on('will-quit', (event) => {
+    if (shutdownFlushed) return;
+    event.preventDefault();
+    void runShutdownFlush()
+      .then((summary) => {
+        if (summary.failed.length > 0 || summary.timedOut.length > 0) {
+          log.warn('Shutdown flush completed with losses', summary);
+        } else {
+          log.info('Shutdown flush complete', summary);
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        shutdownFlushed = true;
+        app.quit();
+      });
   });
 }
 
