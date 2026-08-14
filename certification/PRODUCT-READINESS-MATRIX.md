@@ -1,0 +1,85 @@
+# NEUROPAUSE DESKTOP — PRODUCT READINESS MATRIX
+
+**Date:** 2026-08-14 · **Audit basis:** commit `33b9173` (+ round-33 working tree) · **Version:** 1.0.0-rc.18
+**Method:** nine parallel read-only domain audits over the actual repository (every claim carries file:line evidence in the per-domain reports), plus executed test suites, a live macOS launch, and a from-commit Windows build. Nothing below is inferred from documentation alone.
+
+**Legend:** GREEN = implemented + tested + verified · YELLOW = implemented, verification gaps · RED = broken/incomplete · GRAY = intentional future scope.
+
+---
+
+## A. THE 27 GATES
+
+| # | Gate | Status | Evidence / dominant finding |
+|---|---|---|---|
+| 1 | Bootstrap | **RED** | Boot ordering + gates GREEN (`round17CompositionOrder.test.ts`), but: ~650 runtime channels register last (`runtimeCore.ts:3994`) while the window opens seconds earlier — `xp:profile.get` race pins a wrong profile for the whole session (`AppShell.tsx:328-352`); `initRuntimeCore` failure is silent to the user (`index.ts:138-144`); no crash capture during boot. Round 33 fixed: second-instance crash, tray `app.exit` flush bypass, window-created metric. |
+| 2 | Auth/identity | **YELLOW** (was RED) | OAuth/PKCE/loopback + vault GREEN. Round 33 fixed the 3 HIGHs: offline refresh deleted the vault; boot-retry re-sent a consumed refresh token (revokes all the user's sessions server-side); no single-flight refresh. First `authService.test.ts` added (4 tests). Remaining: no re-restore on reachability recovery; renderer auth state machine untested. |
+| 3 | Organization/tenancy | **YELLOW** | Resolver chain + refusal vocabulary + W-10 diagnostics GREEN (live-verified on macOS: `LOST`/`RECOVERED` brackets in app.log). Round 33 extended the O-11 fail-closed predicate to `canSwitchTo`/`resolveActor`/`memberIn`. Remaining HIGHs: **provisioned-org owners are unprotected** (guards use the literal seeded `OWNER_USER_ID`; any Manager+ can take over a runtime-created org — `enterprise/index.ts:2043,2063`); provisioned Owner **role** is deletable (`builtIn:false`, `orgStore.ts:577`). |
+| 4 | Workspace | **YELLOW** | Store + switching + orphan refusal GREEN. HIGH: **split-brain switchers** — the visible sidebar switcher drives untenanted `workspace-ctx:switch` while the real tenant switch is buried in Settings (`WorkspaceSwitcher.tsx:19-21` vs `enterprise/index.ts:2172-2231`). |
+| 5 | Enterprise | **RED** | Handlers/stores strong; UI honesty is not: Administration has **no error state** across 17 loads (`AdministrationView.tsx:88-94`); **people CRUD is unreachable** — complete, audited backend, zero renderer callers; license validator exception **fails open to 'valid'** (`commercial/index.ts:78-84,129-132`); Customize nav toggle permanently hides 8 of 16 tabs (`lib.ts:155-187`). Round 33 fixed the CRITICAL audit-trail reseed. |
+| 6 | Business | **YELLOW** | `BusinessView` is the reference implementation (denial-vs-fault + retry). Family dashboards swallow denied reads into "No records yet — every number from live records" (`FamilyDashboard.tsx:35-38`); module screen has no catch on refresh/submit (`EnterpriseModuleScreen.tsx:124-133,340-361`). |
+| 7 | Data | **YELLOW** | Import/export engines + SoD + 218 passing tests GREEN; dp:history root cause (W-1) confirmed fixed and wired. HIGHs: `dp:provenance` returns **unredacted sensitive values** with `data:read` alone (`dataPlane/index.ts:826-833`, `importer.ts:720-735`); provenance write failure swallowed → import reports success with nothing on disk (`importer.ts:1151-1156`); "updated" runs render as "0 records imported" (`dataCommandCenterModel.ts:90`). |
+| 8 | AI/Assistant | **RED** | Assistant pipeline, fallback chain, worker execution GREEN. **The onboarding "On this device" choice does not change routing** — the tenant preference is written and displayed but no request path consumes it; fresh install + env API key routes externally after the user chose local (`aiConfigIpc.ts:268-274` never reconfigures; `providerManager.ts:91` reads platform config only; display and router disagree on the default provider). Settings cannot show or set the preference (`AiRoutingPanel.tsx:120`; `cloud:operate` held by no role). |
+| 9 | Connectivity | **GREEN** | Best-audited domain: OAuth, vault, coalesced refresh, reauth marking, health, permission gating, zero secrets in logs (grep-verified). YELLOW residuals: no logger redaction layer; Slack Socket Mode dead (`ws` shipped but never required — `connectors/index.ts:277-303`). |
+| 10 | Security | **YELLOW** | IPC pipeline (sender trust → auth → permission → Zod) GREEN; owner/role/tenant guards GREEN for the seeded org. Open: Gate-3 provisioned-org HIGHs; `workspace-ctx:*` channels unauthenticated by design but outside the classification invariant (`router.ts:136-150`); cloud org channels authorize on membership only (viewer can invite/remove — enforcement claimed server-side, unverified); dp:provenance disclosure (Gate 7). |
+| 11 | Database | **YELLOW** (was RED) | ~85 hand-rolled JSON stores, atomic writes. Round 33 fixed: **silent reseed-on-corrupt destroyed the org chart / workspaces / hash-chained audit trail** — all three now quarantine-not-reseed (`readStoreFile`), with tests; failed background writes re-mark dirty. Remaining REDs: connector/secret vaults still reset-on-corrupt and sit outside backup (`connectorVault.ts:132-144`, `secureStore.ts:36-40`); migrations run AFTER stores load (`runtimeCore.ts:425/758/1593`); ~40 of ~85 persisted paths outside `DOMAIN_FILES` backup registry. |
+| 12 | UI/UX | **RED** | 55 sections, zero dead routes, real design system. HIGHs: `var(--accent)` consumed raw at 15 sites → primary CTA renders transparent (`index.css:11` vs `IntentHomeView.tsx:206`); no focus trap in any modal; Windows shows the macOS traffic-light gutter unconditionally (`Toolbar.tsx:19`); ~16 error-hiding views (empty-state-on-failure). Two `preview` prototype surfaces (Enterprise, Marketplace) ship as top-level nav unmarked by tier. |
+| 13 | Onboarding | **RED** | Choices persist per-step, but the flow does not resume after quit (`FirstRunExperience.tsx:47` vs the service's own docstring); "Sign In" permanently forfeits onboarding (`AppShell.tsx:586-590`); final "Yes, continue" fails silently; no back paths; two stacked onboarding systems fire back-to-back. |
+| 14 | Navigation | **GREEN** | All 55 section ids have render cases (diffed registry↔switch); deep links sound; nav locks pinned by 39 tests. LOW: no registry↔switch parity test; `default:` falls back to the retired home view. |
+| 15 | Error handling | **RED** | Main process is disciplined (0 empty catches, 94.5% of 292 catch-defaults verified correct). The 16 hiding sites are concentrated exactly where users look: org.list→[] idiom ×5, Administration, family dashboards, enterprise search ("No results — try a different term" on outage), AI Store, assistant list. |
+| 16 | Recovery | **RED** | Session/workspace restart restoration GREEN. No shutdown flush for 36 of 37 stores (one `before-quit` handler; `platform.dispose()` never called); install-wide backup restore writes under live stores with nothing forcing the restart it needs (`backupManager.ts:349-353` — the tenant-scoped path models this correctly); interrupted-startup = silent degraded shell. |
+| 17 | Test suite | **GREEN** | Executed at round-33 tree: **781+3 main files / 8,155+13 tests + 14 UI files / 138 tests — all pass**; typecheck node+web clean; lint clean; test-config baseline 61 pre-existing errors (unchanged). Coverage shape: main process deep, **renderer components ~zero** (14 ui-test files; none mount Enterprise/Business/Administration/Organization/AppShell). |
+| 18 | E2E product test | **RED** | No end-to-end journey exists or was executed. The jsdom harness dispatches to real handlers (good) but no fresh-install → onboarding → import → restart journey is automated on the real app. |
+| 19 | macOS | **YELLOW** | Live launch verified at this commit: full subsystem bring-up, 19+721 IPC handlers, tenant `not_loaded`→`RECOVERED` in 24ms on second boot, no new errors across restart. Known boot-window artifacts (first-boot graph/memory rebuild ordering, identity first-run ERROR each boot). Full workflow click-through not automated. |
+| 20 | Windows | **RED (BLOCKED)** | From-commit installer built + verified + marker-checked (see K). **Zero runtime verification** — no Windows machine reachable. The `not_a_member` outage root cause remains unmeasured; W-10 diagnostics ship in the artifact to measure it. Procedure: `certification/WINDOWS-ACCEPTANCE-ROUND32.md`. |
+| 21 | Release engineering | **GREEN** (after fix) | Found + fixed this session: the working tree claimed 1.0.0-rc.17 while tag `v1.0.0-rc.17` = `e09df1e` (two binaries, one version — the exact `da36851` failure). Bumped to **1.0.0-rc.18** with CHANGELOG. Verifier + provenance stamping (commit/dirty in build-info) GREEN. |
+| 22 | Performance | **GRAY** | Not measured this session beyond boot timing (window in ~1s; runtime core seconds later — the Gate-1 race). `startupMetrics` now records window-created (round 33). No profiling performed; no verified performance defect to fix. |
+| 23 | Data integrity | **YELLOW** | Orphan refusals + cascades GREEN. Org creation not atomic across two stores with no repair/delete path (`provisionOrganization.ts`); no org/workspace name uniqueness; pre-P13A provenance rows invisible-by-design but presented as "No imports yet". |
+| 24 | Security regression | **YELLOW** | Strong negative suites exist (round9/round10/crossTenant/multiOrg). 14 named untested negative scenarios listed in the tenancy report — top: provisioned-owner takeover, corrupt-row through `resolveActor`, malformed payload at the bridge. |
+| 25 | Feature completeness | **GREEN** (sweep) | 0 TODO/FIXME in product source; every gap is declared, not hidden. 16 real incomplete items catalogued (top: Slack realtime dead code+dep, security capabilities `needs-backend`, 9 preview-only connectors, PDF extraction). |
+| 26 | Real user acceptance | **RED** | Not executable end-to-end this session (no Windows runtime; macOS interactive journey not automated). Friction points identified from source: onboarding non-resume, split-brain workspace switcher, silent admin failures, unreachable people CRUD. |
+| 27 | Final release gate | **RED** | See B. |
+
+**Tally: GREEN 5 · YELLOW 9 · RED 12 · GRAY 1.**
+
+---
+
+## B. PRODUCT STATUS: **NOT READY** → **READY FOR INTERNAL QA** (main process); **NOT READY** (renderer honesty + Windows runtime + AI routing promise)
+
+The main-process platform (tenancy, IPC authz, connectors, data engines, stores) is genuinely strong and deeply tested. What blocks release is concentrated and nameable:
+
+1. **AI routing promise broken** (Gate 8 — the product's core privacy claim).
+2. **Renderer honesty layer** (Gates 5/6/12/15 — ~16 views render failure as emptiness; admin has no error state).
+3. **Windows runtime unverified** (Gate 20 — machine-blocked, procedure ready).
+4. **Provisioned-org owner protection** (Gate 3 — in-tenant takeover for non-seeded orgs).
+5. **Vault corrupt-file handling + shutdown flush + restore-under-live-stores** (Gates 11/16 remnants).
+6. **Onboarding resume/forfeit** (Gate 13).
+
+---
+
+## C. ROUND 33 — FIXED THIS SESSION (all tested, full suite green)
+
+| Fix | Files | Tests |
+|---|---|---|
+| Quarantine-not-reseed for org chart, workspaces, governance audit trail (CRITICAL + 2 HIGH) | `orgStore.ts`, `workspaceStore.ts`, `governanceStore.ts` | `round33StoreQuarantine.test.ts` (6) |
+| Failed background write re-marks dirty (was: silent permanent loss) | same 3 + `enterpriseRecordStore.ts` | retry case in above |
+| Auth: network-failure refresh no longer deletes the vault; restore never re-sends a consumed token; single-flight refresh (3 HIGH) | `auth/authService.ts` | `auth/authService.test.ts` (4 — first direct coverage ever) |
+| O-11 fail-closed email predicate at the 3 remaining sites (`canSwitchTo`, `resolveActor`, `memberIn`) | `tenantContext.ts`, `authzGate.ts`, `tenantDirectory.ts` | existing round-31 suites + full regression |
+| `second-instance` crash + no-reopen; tray restart `app.exit`→`app.quit` (flush bypass); `window-created` metric at the real call site | `main/index.ts` | — (bootstrap file remains untested; noted Gate 1) |
+| Version collision: rc.17 tree vs published rc.17 tag → **1.0.0-rc.18** | both `package.json`, `CHANGELOG.md` | verifier |
+
+## D. TOP REMAINING BACKLOG (P1, evidence in the nine domain reports)
+
+1. AI routing: wire tenant preference into the route plan (`min(platform, tenant)` law exists and is tested; nothing calls it on the request path) + reconfigure on `setPreference` + reconcile display/router provider defaults. *Needs a design decision on per-tenant clamping at request time.*
+2. Provisioned-org owner row + Owner role protection (structural markers needed — guards currently key on seeded constants).
+3. `useActiveOrg()` hook distinguishing empty-vs-failed; adopt in the 5 org.list→[] sites; Administration error state; family-dashboard/module-screen/search error surfacing.
+4. Vaults (`connectorVault`, `secureStore`) → quarantine-not-reset; add to backup registry; decrypt-failure must not unlink unrelated secrets.
+5. `will-quit` flush barrier over all stores + `platform.dispose()`; restore-forces-restart on the install-wide path.
+6. Onboarding: resume from persisted profile; Sign-In must not forfeit; final-step error surfacing; Escape/back.
+7. dp:provenance redaction + module read gate (mirror `dp:preview`); provenance write failure must propagate.
+8. Boot: renderer ready-gate or early registration for `xp:profile.get`-class channels; composition-failure surface; crash capture during boot.
+9. Windows: run `WINDOWS-ACCEPTANCE-ROUND32.md` on the physical machine (artifact re-built as rc.18 required first — the rc.17-stamped gate artifact is now version-orphaned).
+10. `--accent` token type fix (15 sites) + focus traps + Windows toolbar gutter.
+
+---
+
+*Per-domain evidence reports (file:line for every claim) live in the session transcripts; this matrix is the integrated summary. Fixed items above are in the round-33 diff.*
