@@ -203,23 +203,34 @@ export type AiModeResolved = ReturnType<typeof resolveAiMode>;
  *   • `external`      — the user's explicit provider leads (their pre-mode
  *                       behaviour, preserved exactly), locals as fallback.
  */
-export async function buildModelRouter(): Promise<ModelRouter> {
+/**
+ * `fetchImpl` (round 35, live-provider verification) is a TEST SEAM ONLY: the
+ * wire-integration suite injects a transport that carries the clients' real
+ * requests to local HTTP servers speaking the exact vendor protocols, so the
+ * whole chain — config, vault keys, consent, tenant clamp, plan, composite,
+ * provenance — is exercised over real HTTP without vendor credentials.
+ * Production callers (engineManager) pass nothing and get global fetch.
+ */
+export async function buildModelRouter(
+  opts: { fetchImpl?: typeof fetch } = {},
+): Promise<ModelRouter> {
   const { cfg, mode, candidates } = await assembleRouteCandidates();
   const plan = planRoute(mode, candidates);
+  const fetchImpl = opts.fetchImpl;
 
   // Each cloud client is bound with its own real key; Ollama needs none.
   const anthropicKey = await cloudKeyFor('anthropic');
   const openaiKey = await cloudKeyFor('openai');
   const routes: BoundRoute[] = plan.attempts.map((candidate) => {
     if (candidate.provider === 'anthropic') {
-      return { candidate, client: new ClaudeModelClient({ apiKey: anthropicKey }) };
+      return { candidate, client: new ClaudeModelClient({ apiKey: anthropicKey, fetchImpl }) };
     }
     if (candidate.provider === 'openai') {
-      return { candidate, client: new OpenAiModelClient({ apiKey: openaiKey }) };
+      return { candidate, client: new OpenAiModelClient({ apiKey: openaiKey, fetchImpl }) };
     }
     return {
       candidate,
-      client: new OllamaModelClient({ baseUrl: candidate.endpoint ?? DEFAULT_OLLAMA_URL }),
+      client: new OllamaModelClient({ baseUrl: candidate.endpoint ?? DEFAULT_OLLAMA_URL, fetchImpl }),
     };
   });
 
