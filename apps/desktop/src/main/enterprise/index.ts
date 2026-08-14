@@ -741,6 +741,18 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
         message: error instanceof Error ? error.message : String(error),
       });
     },
+    /**
+     * P13C ROUND 26 — W-5. The gate reports WHICH refusal, not a generic one.
+     *
+     * `resolveFull()` already decided this and its answer was being discarded,
+     * so eight distinct conditions reached the renderer as one sentence.
+     * Consulted only on the refusal path, so the extra store read costs nothing
+     * on a request that succeeds.
+     */
+    tenantRefusal: () => {
+      const resolved = tenantContext.resolveFull();
+      return resolved.ok ? null : resolved.refusal;
+    },
     activeOrgId: authorizationOrgId,
     usersFor: (orgId) => orgStore.usersFor(orgId),
     rolesFor: (orgId) => orgStore.rolesFor(orgId),

@@ -30,10 +30,47 @@
  * explicit admin action (an owner-email `updateUser` under `people:manage`),
  * never an implicit consequence of a different account signing in.
  */
-import type { EnterprisePermission, IpcChannelName, OrgRole, OrgUser } from '@neuropause/shared';
+import type {
+  EnterprisePermission,
+  IpcChannelName,
+  OrgRole,
+  OrgUser,
+  TenantRefusal,
+} from '@neuropause/shared';
 import { IpcChannel } from '@neuropause/shared';
 import { isPlatformOnlyPermission } from '@neuropause/shared';
 import { AuthorizationError, can, effectivePermissions, requirePermission } from './authz';
+
+/**
+ * P13C ROUND 26 — W-5. THE SYSTEM KNEW WHY AND SAID SOMETHING ELSE.
+ *
+ * `resolveFull()` distinguishes EIGHT reasons a tenant cannot be resolved —
+ * `not_signed_in`, `not_loaded`, `no_workspace`, `workspace_orphaned`,
+ * `not_a_member`, `not_in_workspace`, `member_inactive`, `tenant_not_operable`
+ * — each with a plain-words message already written for a person to read.
+ *
+ * `createAuthorize` discarded all eight and threw one sentence: "No
+ * organization member is bound to this account." That sentence is TRUE of every
+ * one of them and USEFUL for exactly one. An install that never signed in, an
+ * install with no workspace, and an install whose workspace points at a deleted
+ * organization are three different faults with three different remedies, and
+ * they were indistinguishable from the outside — which is why diagnosing the
+ * Windows build required reading files off the machine instead of reading the
+ * error it printed.
+ *
+ * Carries `reason` as a stable code. Not a new error framework: the codes are
+ * the existing `TenantRefusalReason` union, and the messages are the existing
+ * `TENANT_REFUSAL_MESSAGE` table. Inventing a second vocabulary here would give
+ * one condition two names.
+ */
+export class TenantContextError extends Error {
+  readonly reason: TenantRefusal['reason'];
+  constructor(refusal: TenantRefusal) {
+    super(refusal.message);
+    this.name = 'TenantContextError';
+    this.reason = refusal.reason;
+  }
+}
 
 /** The resolved identity a permission check runs against. */
 export interface EnterpriseActor {
@@ -79,6 +116,15 @@ export interface ActorResolverDeps {
    * the log.
    */
   onRefusalRecordFailed?: (input: { permission: EnterprisePermission; error: unknown }) => void;
+  /**
+   * P13C ROUND 26 — W-5. WHY the tenant could not be resolved, when it could not.
+   *
+   * Returns the refusal `resolveFull()` produced, or null when a tenant IS
+   * resolvable and the missing actor is genuinely a membership problem. Optional
+   * so every existing test constructs the resolver unchanged; when absent the
+   * gate falls back to the original sentence, which is the pre-W-5 behaviour.
+   */
+  tenantRefusal?: () => TenantRefusal | null;
   /** The org the active workspace is bound to — the scope of every handler. */
   activeOrgId: () => string;
   usersFor: (orgId: string) => OrgUser[];
@@ -242,6 +288,16 @@ export function createAuthorize(
         held: [],
         actorLabel: deps.sessionEmail() ?? 'This account',
       });
+      /**
+       * P13C ROUND 26 — W-5. Say which of the eight it was.
+       *
+       * The membership sentence is kept as the fallback rather than deleted: it
+       * is the correct answer when a tenant DOES resolve and the account simply
+       * is not a member of it, and it is what a resolver with no `tenantRefusal`
+       * dep still produces.
+       */
+      const refusal = deps.tenantRefusal?.() ?? null;
+      if (refusal !== null) throw new TenantContextError(refusal);
       throw new Error('No organization member is bound to this account.');
     }
     if (!can(actor.member, actor.roles, permission)) {

@@ -1,0 +1,265 @@
+--- a/apps/desktop/src/main/enterprise/authzGate.ts
++++ b/apps/desktop/src/main/enterprise/authzGate.ts
+@@ -30,11 +30,48 @@
+  * explicit admin action (an owner-email `updateUser` under `people:manage`),
+  * never an implicit consequence of a different account signing in.
+  */
+-import type { EnterprisePermission, IpcChannelName, OrgRole, OrgUser } from '@neuropause/shared';
++import type {
++  EnterprisePermission,
++  IpcChannelName,
++  OrgRole,
++  OrgUser,
++  TenantRefusal,
++} from '@neuropause/shared';
+ import { IpcChannel } from '@neuropause/shared';
+ import { isPlatformOnlyPermission } from '@neuropause/shared';
+ import { AuthorizationError, can, effectivePermissions, requirePermission } from './authz';
+ 
++/**
++ * P13C ROUND 26 — W-5. THE SYSTEM KNEW WHY AND SAID SOMETHING ELSE.
++ *
++ * `resolveFull()` distinguishes EIGHT reasons a tenant cannot be resolved —
++ * `not_signed_in`, `not_loaded`, `no_workspace`, `workspace_orphaned`,
++ * `not_a_member`, `not_in_workspace`, `member_inactive`, `tenant_not_operable`
++ * — each with a plain-words message already written for a person to read.
++ *
++ * `createAuthorize` discarded all eight and threw one sentence: "No
++ * organization member is bound to this account." That sentence is TRUE of every
++ * one of them and USEFUL for exactly one. An install that never signed in, an
++ * install with no workspace, and an install whose workspace points at a deleted
++ * organization are three different faults with three different remedies, and
++ * they were indistinguishable from the outside — which is why diagnosing the
++ * Windows build required reading files off the machine instead of reading the
++ * error it printed.
++ *
++ * Carries `reason` as a stable code. Not a new error framework: the codes are
++ * the existing `TenantRefusalReason` union, and the messages are the existing
++ * `TENANT_REFUSAL_MESSAGE` table. Inventing a second vocabulary here would give
++ * one condition two names.
++ */
++export class TenantContextError extends Error {
++  readonly reason: TenantRefusal['reason'];
++  constructor(refusal: TenantRefusal) {
++    super(refusal.message);
++    this.name = 'TenantContextError';
++    this.reason = refusal.reason;
++  }
++}
++
+ /** The resolved identity a permission check runs against. */
+ export interface EnterpriseActor {
+   member: OrgUser;
+@@ -79,6 +116,15 @@
+    * the log.
+    */
+   onRefusalRecordFailed?: (input: { permission: EnterprisePermission; error: unknown }) => void;
++  /**
++   * P13C ROUND 26 — W-5. WHY the tenant could not be resolved, when it could not.
++   *
++   * Returns the refusal `resolveFull()` produced, or null when a tenant IS
++   * resolvable and the missing actor is genuinely a membership problem. Optional
++   * so every existing test constructs the resolver unchanged; when absent the
++   * gate falls back to the original sentence, which is the pre-W-5 behaviour.
++   */
++  tenantRefusal?: () => TenantRefusal | null;
+   /** The org the active workspace is bound to — the scope of every handler. */
+   activeOrgId: () => string;
+   usersFor: (orgId: string) => OrgUser[];
+@@ -242,6 +288,16 @@
+         held: [],
+         actorLabel: deps.sessionEmail() ?? 'This account',
+       });
++      /**
++       * P13C ROUND 26 — W-5. Say which of the eight it was.
++       *
++       * The membership sentence is kept as the fallback rather than deleted: it
++       * is the correct answer when a tenant DOES resolve and the account simply
++       * is not a member of it, and it is what a resolver with no `tenantRefusal`
++       * dep still produces.
++       */
++      const refusal = deps.tenantRefusal?.() ?? null;
++      if (refusal !== null) throw new TenantContextError(refusal);
+       throw new Error('No organization member is bound to this account.');
+     }
+     if (!can(actor.member, actor.roles, permission)) {
+--- a/apps/desktop/src/main/enterprise/index.ts
++++ b/apps/desktop/src/main/enterprise/index.ts
+@@ -741,6 +741,18 @@
+         message: error instanceof Error ? error.message : String(error),
+       });
+     },
++    /**
++     * P13C ROUND 26 — W-5. The gate reports WHICH refusal, not a generic one.
++     *
++     * `resolveFull()` already decided this and its answer was being discarded,
++     * so eight distinct conditions reached the renderer as one sentence.
++     * Consulted only on the refusal path, so the extra store read costs nothing
++     * on a request that succeeds.
++     */
++    tenantRefusal: () => {
++      const resolved = tenantContext.resolveFull();
++      return resolved.ok ? null : resolved.refusal;
++    },
+     activeOrgId: authorizationOrgId,
+     usersFor: (orgId) => orgStore.usersFor(orgId),
+     rolesFor: (orgId) => orgStore.rolesFor(orgId),
+new file mode 100644
+--- /dev/null
++++ b/apps/desktop/src/main/enterprise/tenantRefusalVisibility.test.ts
+@@ -0,0 +1,155 @@
++/**
++ * P13C ROUND 26 — W-5. EIGHT REASONS, ONE SENTENCE.
++ *
++ * `tenantContext.resolveFull()` distinguishes eight reasons a tenant cannot be
++ * resolved, each with plain-words text already written for a person to read.
++ * `createAuthorize` discarded every one of them and threw:
++ *
++ *   "No organization member is bound to this account."
++ *
++ * True of all eight. Useful for one. An install that never signed in, an
++ * install with no workspace, and an install whose workspace points at a deleted
++ * organization are three different faults with three different remedies — and
++ * from outside the process they were indistinguishable.
++ *
++ * That is not a cosmetic complaint. Diagnosing the Windows build required
++ * reading JSON files off the machine, twice, across several days, because the
++ * application would not say which of the eight it was. The information existed
++ * the whole time and was thrown away one function call before it was needed.
++ *
++ * These tests pin that each refusal arrives intact and carries a stable code.
++ */
++import { describe, expect, it } from 'vitest';
++import type { EnterprisePermission, OrgRole, OrgUser, TenantRefusal } from '@neuropause/shared';
++import { TENANT_REFUSAL_MESSAGE } from '@neuropause/shared';
++import { createAuthorize, TenantContextError, UNRESOLVED_TENANT } from './authzGate';
++import type { ActorResolverDeps } from './authzGate';
++
++const ORG = 'org-alpha';
++
++function member(over: Partial<OrgUser> = {}): OrgUser {
++  return {
++    id: 'user-1',
++    orgId: ORG,
++    name: 'Member One',
++    email: 'one@example.com',
++    kind: 'human',
++    status: 'active',
++    roleIds: ['role-viewer'],
++    unitId: null,
++    title: null,
++    createdAt: '2026-01-01T00:00:00.000Z',
++    ...over,
++  } as OrgUser;
++}
++
++function role(permissions: EnterprisePermission[]): OrgRole {
++  return { id: 'role-viewer', orgId: ORG, name: 'Viewer', description: '', permissions, builtIn: true } as OrgRole;
++}
++
++function deps(over: Partial<ActorResolverDeps> = {}): ActorResolverDeps {
++  return {
++    sessionEmail: () => 'one@example.com',
++    activeOrgId: () => ORG,
++    usersFor: () => [member()],
++    rolesFor: () => [role(['data:read'])],
++    ownerMember: () => null,
++    ...over,
++  };
++}
++
++/** Every reason the resolver can produce. If the union grows, this must too. */
++const REASONS: TenantRefusal['reason'][] = [
++  'not_signed_in',
++  'not_loaded',
++  'no_workspace',
++  'workspace_orphaned',
++  'not_a_member',
++  'not_in_workspace',
++  'member_inactive',
++  'tenant_not_operable',
++];
++
++describe('W-5 — the gate reports which tenant refusal occurred', () => {
++  it.each(REASONS)('%s reaches the caller with its own message and code', (reason) => {
++    const refusal: TenantRefusal = { reason, message: TENANT_REFUSAL_MESSAGE[reason] };
++    const authorize = createAuthorize(
++      deps({ activeOrgId: () => UNRESOLVED_TENANT, tenantRefusal: () => refusal }),
++    );
++
++    let thrown: unknown;
++    try {
++      authorize('data:read');
++    } catch (err) {
++      thrown = err;
++    }
++
++    expect(thrown).toBeInstanceOf(TenantContextError);
++    expect((thrown as TenantContextError).reason).toBe(reason);
++    expect((thrown as Error).message).toBe(TENANT_REFUSAL_MESSAGE[reason]);
++    // The generic sentence must NOT be what the caller sees any more.
++    expect((thrown as Error).message).not.toBe('No organization member is bound to this account.');
++  });
++
++  it('every reason has distinct text — otherwise the codes are the only signal', () => {
++    const messages = REASONS.map((r) => TENANT_REFUSAL_MESSAGE[r]);
++    expect(new Set(messages).size).toBe(REASONS.length);
++  });
++
++  it('a resolvable tenant with no matching member still gets the membership sentence', () => {
++    // This is the ONE case the old message was right about, and it must survive:
++    // the tenant resolves, so `tenantRefusal` returns null, and the fault really
++    // is that this account is not a member of it.
++    const authorize = createAuthorize(
++      deps({
++        usersFor: () => [],
++        ownerMember: () => member({ id: 'user-owner', email: 'someone.else@example.com' }),
++        tenantRefusal: () => null,
++      }),
++    );
++
++    expect(() => authorize('data:read')).toThrowError(
++      'No organization member is bound to this account.',
++    );
++  });
++
++  it('a resolver with no tenantRefusal dep behaves exactly as before', () => {
++    const authorize = createAuthorize(deps({ activeOrgId: () => UNRESOLVED_TENANT }));
++    expect(() => authorize('data:read')).toThrowError(
++      'No organization member is bound to this account.',
++    );
++  });
++
++  it('a permitted action is unaffected — the refusal path is never consulted', () => {
++    let consulted = 0;
++    const authorize = createAuthorize(
++      deps({
++        tenantRefusal: () => {
++          consulted += 1;
++          return null;
++        },
++      }),
++    );
++    expect(() => authorize('data:read')).not.toThrow();
++    expect(consulted).toBe(0);
++  });
++
++  it('a failing refusal recorder still cannot replace the tenant reason (W-1 holds)', () => {
++    const refusal: TenantRefusal = { reason: 'no_workspace', message: TENANT_REFUSAL_MESSAGE.no_workspace };
++    const authorize = createAuthorize(
++      deps({
++        activeOrgId: () => UNRESOLVED_TENANT,
++        tenantRefusal: () => refusal,
++        onPermissionRefused: () => {
++          throw new Error(
++            'Cannot record a hold: no organization and workspace are active, so it would have no owner.',
++          );
++        },
++      }),
++    );
++
++    // The exact Windows symptom: W-1 stops the hold write from winning, W-5
++    // makes what remains name the actual condition.
++    expect(() => authorize('data:read')).toThrowError(TENANT_REFUSAL_MESSAGE.no_workspace);
++  });
++});
