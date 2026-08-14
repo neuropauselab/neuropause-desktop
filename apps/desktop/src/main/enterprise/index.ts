@@ -84,6 +84,7 @@ import { governanceStore } from './governance/governanceInstance';
 import { OWNER_USER_ID, ROLE_TO_UNIT_ID } from './org/seed';
 import { provisionOrganization } from './org/provisionOrganization';
 import { announceWorkspaceSwitch } from '../tenancy/workspaceSwitchHub';
+import { announceTenantRecovery } from '../tenancy/tenantRecoveryHub';
 import { registerShutdownFlush } from '../shutdownFlush';
 import { bindOrgIntelligenceScope } from './orgIntelligence';
 import {
@@ -432,6 +433,11 @@ const tenantContext = createTenantContextResolver({
   onRecovered: (r) => {
     refusalLogState.clear();
     log.warn('Tenant resolution RECOVERED', r);
+    // Round 39 (Gate 26): subsystems that built tenant-derived plans during
+    // the refused window (the AI engine's boot-time router above all) rebuild
+    // now that resolution is real. Announced here because this resolver is the
+    // one place a recovery is decided — same ownership rule as the switch hub.
+    announceTenantRecovery();
   },
 });
 

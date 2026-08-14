@@ -101,14 +101,32 @@ const bridge = {
     return handler(payload ?? {});
   },
   on: () => () => undefined,
-  // The preload's broadcast seam (round 36): components may subscribe; the
-  // harness delivers no events, so subscription paths are exercised only for
-  // registration/cleanup. Emitting is not modeled here on purpose — a test
-  // that needs an event to fire should drive the state through a routed
-  // invoke instead.
-  subscribe: () => () => undefined,
+  // The preload's broadcast seam (round 36): components may subscribe. Since
+  // round 39 the harness can also DELIVER broadcasts via `emitBroadcast` —
+  // needed once components retry on the runtime-ready broadcast (Gate 1's
+  // seam), where the behavior under test IS the event arriving; state driven
+  // through a routed invoke cannot re-fire a push. Tests that need no events
+  // are unaffected: nothing is delivered unless a test emits.
+  subscribe: (channel: string, cb: (payload: unknown) => void) => {
+    let set = broadcastSubs.get(channel);
+    if (!set) {
+      set = new Set();
+      broadcastSubs.set(channel, set);
+    }
+    set.add(cb);
+    return () => {
+      set?.delete(cb);
+    };
+  },
   send: () => undefined,
 };
+
+const broadcastSubs = new Map<string, Set<(payload: unknown) => void>>();
+
+/** Deliver a broadcast to every subscribed component, as the preload would. */
+export function emitBroadcast(channel: string, payload: unknown): void {
+  for (const cb of broadcastSubs.get(channel) ?? []) cb(payload);
+}
 
 Object.defineProperty(globalThis, 'window', { value: globalThis.window ?? {}, writable: true });
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -159,6 +177,11 @@ vi.mock('framer-motion', async () => {
     AnimatePresence: ({ children }: { children?: React.ReactNode }) => children,
   };
 });
+
+// jsdom has no scrollIntoView; the assistant thread auto-scrolls with it.
+if (typeof HTMLElement !== 'undefined' && !HTMLElement.prototype.scrollIntoView) {
+  HTMLElement.prototype.scrollIntoView = () => undefined;
+}
 
 // jsdom has no IntersectionObserver; store rails use it for lazy media.
 // A visible-immediately stub keeps those components mountable (round 36).

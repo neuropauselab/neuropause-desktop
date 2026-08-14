@@ -12,6 +12,7 @@ import { aiEngine } from './engineInstance';
 import { buildModelRouter, resolveProviderId } from './providerManager';
 import type { AiProviderId } from './aiConfigStore';
 import { onWorkspaceSwitch } from '../tenancy/workspaceSwitchHub';
+import { onTenantRecovery } from '../tenancy/tenantRecoveryHub';
 import { createLogger } from '../logger';
 
 const log = createLogger('ai-engine-manager');
@@ -38,6 +39,19 @@ class EngineManager {
      * one-shot composition entry; reconfigure() is serialised and cheap.
      */
     onWorkspaceSwitch(() => {
+      void this.reconfigure();
+    });
+    /**
+     * P13C ROUND 39 — GATE 26. The boot-time reconfigure RACES composition:
+     * live-restart evidence showed it running inside the resolver's refused
+     * window (6ms before "Tenant resolution RECOVERED"), so the D-1 clamp read
+     * no preference row, the local candidate was dropped, and a local-only
+     * user with a Connected Ollama got "No AI model" for the whole session.
+     * Recovery is the missing third trigger, next to preference-set and
+     * workspace-switch: when resolution comes back, rebuild on what the
+     * tenant actually chose. reconfigure() is serialised and cheap.
+     */
+    onTenantRecovery(() => {
       void this.reconfigure();
     });
     await this.reconfigure();

@@ -27,6 +27,15 @@ export function AssistantHost({ onNavigate }: { onNavigate?: (id: SectionId) => 
   const conversationRef = useRef<string | null>(null);
   conversationRef.current = conversation?.id ?? null;
 
+  // Round 39 — Gate 26: `assistant:conversations` is a SECURE runtime channel
+  // registered at the end of composition, while this host mounts immediately
+  // when Assistant was the restored section — live evidence showed the load
+  // failing with "No handler registered" on a real relaunch and STAYING
+  // failed for the session. Same cure as AppShell's profile load (Gate 1):
+  // record that the failure raced the boot window and re-run once on the
+  // runtime-ready broadcast, which the base router serves and cannot race.
+  const listLoadRacedBoot = useRef(false);
+
   const refreshList = useCallback((): void => {
     // Round 36 — Gate 15: a failed conversation-list read used to render as
     // "no conversations" — a user's history apparently gone, in silence. The
@@ -34,8 +43,12 @@ export function AssistantHost({ onNavigate }: { onNavigate?: (id: SectionId) => 
     // already renders; the next successful refresh clears it.
     ipc.assistant
       .conversations()
-      .then((r) => setSummaries(r.conversations))
+      .then((r) => {
+        listLoadRacedBoot.current = false;
+        setSummaries(r.conversations);
+      })
       .catch((err: unknown) => {
+        listLoadRacedBoot.current = true;
         setSummaries([]);
         const reason = err instanceof Error && err.message ? err.message : 'the request failed';
         setLiveNote(`Your conversations could not be loaded — ${reason}`);
@@ -45,6 +58,18 @@ export function AssistantHost({ onNavigate }: { onNavigate?: (id: SectionId) => 
   useEffect(() => {
     refreshList();
   }, [refreshList]);
+
+  useEffect(
+    () =>
+      ipc.runtime.onStateChanged((s) => {
+        if (s.state === 'ready' && listLoadRacedBoot.current) {
+          listLoadRacedBoot.current = false;
+          setLiveNote(null);
+          refreshList();
+        }
+      }),
+    [refreshList],
+  );
 
   // Live progress: phase notes while a turn runs; step changes refresh the thread.
   useEffect(() => {
