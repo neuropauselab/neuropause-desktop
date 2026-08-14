@@ -1,9 +1,16 @@
-# WINDOWS ACCEPTANCE — ROUNDS 32+33 (commit ee3da3d)
+# WINDOWS ACCEPTANCE — ROUNDS 32+33+34
 
 ## Artifact under test
 
-**Superseded artifact:** the rc.17 build from `33b9173` (SHA-256 `d07a7d02…572f`)
-was version-orphaned by the rc.18 bump — do NOT use it. Current gate artifact:
+**Superseded artifacts:** the rc.17 build from `33b9173` (SHA-256
+`d07a7d02…572f`) and the rc.18 build from `ee3da3d` (SHA-256 `7acdf6c7…5f16a`)
+are both version-orphaned — do NOT use them. The current gate artifact is the
+**rc.19** build (hash recorded below after the final build); it additionally
+carries round 34 (AI providers: tenant-preference routing clamp, OpenAI,
+Ollama installed/running detection + consent-first model pull), so the
+acceptance matrix gains: AI provider setup, Ollama detection, and the
+"On this device" routing check. The table below describes the superseded rc.18
+build until re-stamped:
 
 | Field | Value |
 |---|---|

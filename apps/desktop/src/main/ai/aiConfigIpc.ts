@@ -16,6 +16,7 @@ import {
   AiSetExternalConsentRequest,
   AiSetModeRequest,
   AiTestRequest,
+  AiPullModelRequest,
   planRoute,
 } from '@neuropause/shared';
 import type {
@@ -25,8 +26,10 @@ import type {
   AiRoutingStatusView,
   AiRoutingUsage,
   OllamaDetectDto,
+  OllamaPullResultDto,
   AiTestResultDto,
 } from '@neuropause/shared';
+import { execFile } from 'node:child_process';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
 import { withAiAuthz } from './aiAuthzGate';
 import { tenantAiPreferenceStore } from './tenantAiPreferenceInstance';
@@ -58,12 +61,26 @@ declareChannelResource({
     "Upserts the active organization's own preference row. It cannot widen platform policy: " +
     "the request enum has no 'external' member.",
 });
+declareChannelResource({
+  channel: IpcChannel.AiConfigPullModel,
+  store: 'ai-config',
+  effect: 'read',
+  reason:
+    'Reads only the configured Ollama endpoint from ai-config. What it MUTATES is the local ' +
+    "Ollama service's own model store — external to NeuroPause, on this machine, on an explicit " +
+    'user action; no NeuroPause store is written.',
+});
 import { engineManager } from './engineManager';
 import { loadAiConfig, resolveAiMode, saveAiConfig } from './aiConfigStore';
 import { credentialStore } from '../security/secureStore';
-import { assembleRouteCandidates, resolveProviderId, ANTHROPIC_CREDENTIAL_ID } from './providerManager';
+import {
+  assembleRouteCandidates,
+  resolveProviderId,
+  ANTHROPIC_CREDENTIAL_ID,
+  OPENAI_CREDENTIAL_ID,
+} from './providerManager';
 import { routingUsageStore } from './routingUsageInstance';
-import { validateClaudeKey, validateOllama } from './connectionValidator';
+import { validateClaudeKey, validateOllama, validateOpenAiKey } from './connectionValidator';
 import { migrationStatus, migrateFromEnv, resetToEnvironment } from './migrationManager';
 import { ollamaProbe } from '../platform/aiHealthProbes';
 
@@ -78,15 +95,19 @@ export async function getConfig(): Promise<AiConfigDto> {
   const cfg = loadAiConfig();
   const { provider, source } = resolveProviderId();
   const status = engineManager.status();
-  // The renderer's question is "is a cloud key stored?", which does not depend
-  // on which provider is currently selected — the Private First fallback uses
-  // the key regardless of the selected provider.
-  const hasStoredKey = await credentialStore.hasSecret(ANTHROPIC_CREDENTIAL_ID);
+  // `hasStoredKey` predates the second cloud provider and keeps its original
+  // meaning — "is ANY cloud key stored" (the Private First fallback can use
+  // either). `storedKeys` answers it per provider for the Settings key field.
+  const storedKeys = {
+    anthropic: await credentialStore.hasSecret(ANTHROPIC_CREDENTIAL_ID),
+    openai: await credentialStore.hasSecret(OPENAI_CREDENTIAL_ID),
+  };
   return {
     provider,
     model: cfg.model,
     configured: status.configured,
-    hasStoredKey,
+    hasStoredKey: storedKeys.anthropic || storedKeys.openai,
+    storedKeys,
     state: status.state,
     source,
     mode: resolveAiMode(cfg, provider),
@@ -125,7 +146,7 @@ export async function routingStatus(): Promise<AiRoutingStatusView> {
     if (!candidate.configured) {
       state = 'not_configured';
       detail =
-        candidate.provider === 'anthropic'
+        candidate.location === 'external'
           ? 'No API key stored. Add one in Settings → AI to make this route available.'
           : 'Not configured.';
     } else if (!candidate.enabled && candidate.location === 'external') {
@@ -144,7 +165,12 @@ export async function routingStatus(): Promise<AiRoutingStatusView> {
     routes.push({
       location: candidate.location,
       provider: candidate.provider,
-      label: candidate.provider === 'ollama' ? 'Ollama' : 'Anthropic Claude',
+      label:
+        candidate.provider === 'ollama'
+          ? 'Ollama'
+          : candidate.provider === 'openai'
+            ? 'OpenAI'
+            : 'Anthropic Claude',
       state,
       detail,
       model: candidate.model,
@@ -172,27 +198,123 @@ export async function getHealth(): Promise<AiHealthDto> {
       latencyMs: check.latencyMs ?? null,
     };
   }
+  const cloudName = provider === 'openai' ? 'OpenAI' : 'Anthropic';
   const configured = engineManager.status().configured;
   return configured
-    ? { status: 'ok', detail: 'Anthropic API key configured', latencyMs: null }
-    : { status: 'down', detail: 'No Anthropic API key configured', latencyMs: null };
+    ? { status: 'ok', detail: `${cloudName} API key configured`, latencyMs: null }
+    : { status: 'down', detail: `No ${cloudName} API key configured`, latencyMs: null };
 }
 
-/** Detect a local Ollama server and list its installed models (best-effort, time-boxed). */
+/**
+ * Whether the `ollama` binary is installed on this machine, and its version.
+ *
+ * PATH-based via execFile, which is cross-platform (Windows resolves
+ * `ollama.exe` through the same search) and never involves a shell — the
+ * argument list is fixed, nothing user-controlled is executed. Time-boxed so a
+ * hung binary cannot stall the Settings surface; on any failure the answer is
+ * null ("could not determine"), never a false "not installed".
+ */
+async function detectOllamaBinary(): Promise<{ installed: boolean | null; version: string | null }> {
+  try {
+    const out = await new Promise<string>((resolve, reject) => {
+      execFile('ollama', ['--version'], { timeout: 2000, windowsHide: true }, (err, stdout) => {
+        if (err) reject(err);
+        else resolve(String(stdout));
+      });
+    });
+    const version = out.trim().replace(/^ollama version\s*/i, '') || null;
+    return { installed: true, version };
+  } catch (err) {
+    // ENOENT = genuinely not on PATH. Anything else (timeout, permission) is
+    // indeterminate and must not render as "not installed".
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') return { installed: false, version: null };
+    return { installed: null, version: null };
+  }
+}
+
+/**
+ * Detect the local Ollama installation AND service, listing installed models.
+ *
+ * Two independent probes run in parallel because they answer two different
+ * user questions: `installed` decides between "Install Ollama" and "Start
+ * Ollama", `reachable` decides whether models can be listed/used right now.
+ * Collapsing them into one boolean was the round-34 UX gap — "offline" told
+ * the user nothing about which action would fix it.
+ */
 export async function detectOllama(): Promise<OllamaDetectDto> {
   const baseUrl = ollamaBaseUrl();
+  const binaryProbe = detectOllamaBinary();
+  const serviceProbe = (async (): Promise<{ reachable: boolean; models: string[] }> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2500);
+    try {
+      const res = await fetch(`${baseUrl}/api/tags`, { signal: controller.signal });
+      if (!res.ok) return { reachable: false, models: [] };
+      const body = (await res.json().catch(() => ({}))) as { models?: Array<{ name?: string }> };
+      const models = Array.isArray(body.models)
+        ? body.models.map((m) => m.name ?? '').filter((n): n is string => n.length > 0)
+        : [];
+      return { reachable: true, models };
+    } catch {
+      return { reachable: false, models: [] };
+    } finally {
+      clearTimeout(timer);
+    }
+  })();
+  const [binary, service] = await Promise.all([binaryProbe, serviceProbe]);
+  return {
+    installed: service.reachable ? true : binary.installed,
+    version: binary.version,
+    reachable: service.reachable,
+    models: service.models,
+    endpoint: baseUrl,
+  };
+}
+
+/**
+ * Ask the local Ollama service to pull a model. Round 34.
+ *
+ * Runs ONLY on an explicit user action (the Download button in Settings /
+ * first-run shows size and asks first — phase-9 consent), talks only to the
+ * user's own Ollama service, and passes the model tag as a JSON field — never
+ * through a shell. `stream:false` blocks until the pull completes, so the
+ * timeout is generous; the renderer shows a busy state for the duration.
+ */
+async function pullOllamaModel(req: AiPullModelRequest): Promise<OllamaPullResultDto> {
+  const baseUrl = ollamaBaseUrl();
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 2500);
+  const timer = setTimeout(() => controller.abort(), 30 * 60_000);
   try {
-    const res = await fetch(`${baseUrl}/api/tags`, { signal: controller.signal });
-    if (!res.ok) return { reachable: false, models: [] };
-    const body = (await res.json().catch(() => ({}))) as { models?: Array<{ name?: string }> };
-    const models = Array.isArray(body.models)
-      ? body.models.map((m) => m.name ?? '').filter((n): n is string => n.length > 0)
-      : [];
-    return { reachable: true, models };
-  } catch {
-    return { reachable: false, models: [] };
+    const res = await fetch(`${baseUrl}/api/pull`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: req.model, stream: false }),
+      signal: controller.signal,
+    });
+    const body = (await res.json().catch(() => ({}))) as { status?: string; error?: string };
+    if (!res.ok || body.error) {
+      return {
+        ok: false,
+        detail: `Ollama could not pull "${req.model}": ${body.error ?? `HTTP ${res.status}`}`,
+        models: (await detectOllama()).models,
+      };
+    }
+    const after = await detectOllama();
+    return {
+      ok: true,
+      detail: `Model "${req.model}" is ready (${body.status ?? 'success'}).`,
+      models: after.models,
+    };
+  } catch (err) {
+    const aborted = (err as Error).name === 'AbortError';
+    return {
+      ok: false,
+      detail: aborted
+        ? `Pulling "${req.model}" timed out. Large models can take a while — check Ollama and try again.`
+        : `Could not reach Ollama at ${baseUrl} — is it running? Try: ollama serve`,
+      models: [],
+    };
   } finally {
     clearTimeout(timer);
   }
@@ -213,16 +335,21 @@ async function setModel(req: AiSetModelRequest): Promise<AiConfigDto> {
   return getConfig();
 }
 
+/** The vault id for a cloud provider's key. 'ollama' is unrepresentable in the contract. */
+function credentialIdFor(provider: 'claude' | 'openai'): string {
+  return provider === 'openai' ? OPENAI_CREDENTIAL_ID : ANTHROPIC_CREDENTIAL_ID;
+}
+
 /** Store a provider API key in the Secure Vault and hot-reconfigure. The key is never logged. */
 async function setCredential(req: AiSetCredentialRequest): Promise<AiConfigDto> {
-  await credentialStore.setSecret(ANTHROPIC_CREDENTIAL_ID, req.secret);
+  await credentialStore.setSecret(credentialIdFor(req.provider), req.secret);
   await engineManager.reconfigure();
   return getConfig();
 }
 
 /** Remove a provider API key from the Vault and hot-reconfigure. */
-async function clearCredential(_req: AiClearCredentialRequest): Promise<AiConfigDto> {
-  await credentialStore.deleteSecret(ANTHROPIC_CREDENTIAL_ID);
+async function clearCredential(req: AiClearCredentialRequest): Promise<AiConfigDto> {
+  await credentialStore.deleteSecret(credentialIdFor(req.provider));
   await engineManager.reconfigure();
   return getConfig();
 }
@@ -230,6 +357,14 @@ async function clearCredential(_req: AiClearCredentialRequest): Promise<AiConfig
 /** Validate a candidate provider/key WITHOUT persisting it (Settings "Test" button). */
 async function testConnection(req: AiTestRequest): Promise<AiTestResultDto> {
   if (req.provider === 'ollama') return validateOllama(ollamaBaseUrl());
+  if (req.provider === 'openai') {
+    const key =
+      req.secret ||
+      (await credentialStore.getSecret(OPENAI_CREDENTIAL_ID)) ||
+      process.env.OPENAI_API_KEY ||
+      '';
+    return validateOpenAiKey(key);
+  }
   const key =
     req.secret ||
     (await credentialStore.getSecret(ANTHROPIC_CREDENTIAL_ID)) ||
@@ -270,11 +405,26 @@ export function initAiConfig(): AiConfigSubsystem {
         audit: true,
         handler: async (p) => {
           await tenantAiPreferenceStore.setMine((p as AiPreferenceSetRequest).mode);
+          /**
+           * P13C ROUND 34 — D-1. This was, uniquely among every AI write in
+           * this file, the one that did NOT reconfigure the engine — so the
+           * preference onboarding saved changed the display and never the
+           * routing. The router's candidate assembly now clamps on this row
+           * (providerManager), and this reconfigure makes the clamp take
+           * effect on the very next request.
+           */
+          await engineManager.reconfigure();
           return aiPreferenceView();
         },
       },
       { channel: IpcChannel.AiConfigHealth, schema: EmptyRequest, handler: () => getHealth() },
       { channel: IpcChannel.AiConfigDetectOllama, schema: EmptyRequest, handler: () => detectOllama() },
+      {
+        channel: IpcChannel.AiConfigPullModel,
+        schema: AiPullModelRequest,
+        audit: true,
+        handler: (p) => pullOllamaModel(p as AiPullModelRequest),
+      },
       {
         channel: IpcChannel.AiConfigSetProvider,
         schema: AiSetProviderRequest,

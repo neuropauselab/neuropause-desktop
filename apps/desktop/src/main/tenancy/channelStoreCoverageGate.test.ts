@@ -47,13 +47,13 @@ const MAIN = join(fileURLToPath(new URL('.', import.meta.url)), '..');
  * only alongside declarations; a bare increase means a sensitive channel was
  * added and nobody said what it reaches.
  */
-const SENSITIVE_BASELINE = 194;
+const SENSITIVE_BASELINE = 195; // +1 round 34: aiConfig:pullModel (declared below the D-5 pair)
 
 /**
  * THE NUMERATOR. 2 as of P13C final certification — `ai:preference.get` and
  * `ai:preference.set`, added by D-5. This number may only go UP.
  */
-const DECLARED_BASELINE = 2;
+const DECLARED_BASELINE = 3; // +1 round 34: aiConfig:pullModel declares its ai-config read
 
 function sourceFiles(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {

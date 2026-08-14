@@ -4,7 +4,7 @@
  * only ever learns whether a key is stored (`hasStoredKey`), never its value.
  */
 
-export type AiProviderId = 'claude' | 'ollama';
+export type AiProviderId = 'claude' | 'ollama' | 'openai';
 
 export type AiRuntimeState = 'booting' | 'loading' | 'ready' | 'needs-setup' | 'error';
 
@@ -22,6 +22,13 @@ export interface AiConfigDto {
   configured: boolean;
   /** Whether an API key for the active provider is stored in the Secure Vault. */
   hasStoredKey: boolean;
+  /**
+   * Per-cloud-provider stored-key flags (never the keys). `hasStoredKey` above
+   * predates the second cloud provider and answers "is ANY cloud key stored";
+   * this answers it per provider so the Settings key field can tell the user
+   * which provider the stored key belongs to.
+   */
+  storedKeys: { anthropic: boolean; openai: boolean };
   /** Runtime lifecycle state of the engine. */
   state: AiRuntimeState;
   /** Provenance of the effective provider selection. */
@@ -46,7 +53,28 @@ export interface AiHealthDto {
 
 /** Result of probing a local Ollama server. */
 export interface OllamaDetectDto {
+  /**
+   * Whether the `ollama` binary is on this machine's PATH. Distinct from
+   * `reachable`: installed-but-not-running tells the user to START it, while
+   * not-installed tells them to INSTALL it — two different actions the UI must
+   * not collapse into one "offline". Null when the probe itself failed.
+   */
+  installed: boolean | null;
+  /** Installed version string from `ollama --version`, when installed. */
+  version: string | null;
+  /** Whether the Ollama HTTP service answered at the configured endpoint. */
   reachable: boolean;
+  models: string[];
+  /** The endpoint probed, for display. */
+  endpoint: string;
+}
+
+/** Result of asking the local Ollama service to pull a model (user-approved). */
+export interface OllamaPullResultDto {
+  ok: boolean;
+  /** Human-readable outcome; never contains credentials. */
+  detail: string;
+  /** Models installed after the pull completed (fresh list). */
   models: string[];
 }
 

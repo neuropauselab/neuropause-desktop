@@ -44,6 +44,29 @@ export async function validateClaudeKey(apiKey: string, fetchImpl: typeof fetch 
   );
 }
 
+const OPENAI_MODELS_URL = 'https://api.openai.com/v1/models';
+
+/** Validate an OpenAI API key by listing models. The key is never logged. */
+export async function validateOpenAiKey(apiKey: string, fetchImpl: typeof fetch = fetch): Promise<AiTestResultDto> {
+  if (!apiKey) return { ok: false, detail: 'No API key provided.', latencyMs: null };
+  const started = Date.now();
+  return timeBoxed(
+    8000,
+    async (signal) => {
+      const res = await fetchImpl(OPENAI_MODELS_URL, {
+        headers: { authorization: `Bearer ${apiKey}` },
+        signal,
+      });
+      const latencyMs = Date.now() - started;
+      if (res.ok) return { ok: true, detail: 'OpenAI API key is valid.', latencyMs };
+      if (res.status === 401) return { ok: false, detail: 'Invalid API key (401 Unauthorized).', latencyMs };
+      if (res.status === 429) return { ok: false, detail: 'Rate limited by OpenAI (429). Try again shortly.', latencyMs };
+      return { ok: false, detail: `OpenAI API returned HTTP ${res.status}.`, latencyMs };
+    },
+    () => ({ ok: false, detail: 'Could not reach the OpenAI API.', latencyMs: Date.now() - started }),
+  );
+}
+
 /** Validate a local Ollama server by probing its tags endpoint. */
 export async function validateOllama(baseUrl: string, fetchImpl: typeof fetch = fetch): Promise<AiTestResultDto> {
   const started = Date.now();

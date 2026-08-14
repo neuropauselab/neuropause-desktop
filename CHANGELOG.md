@@ -7,7 +7,37 @@ All notable changes to NeuroPause are documented here. The format is based on
 
 ## [Unreleased]
 
-_No unreleased changes; the current build is `1.0.0-rc.18`._
+_No unreleased changes; the current build is `1.0.0-rc.19`._
+
+## [1.0.0-rc.19] — AI providers: the privacy choice becomes real (2026-08-14)
+
+Program 13C round 34. Version bumped from `1.0.0-rc.18` because an rc.18
+binary was already built from `ee3da3d` — one version, one binary.
+
+- **The onboarding "On this device" choice now changes routing.** The tenant
+  AI preference was written and displayed for seventeen rounds while no
+  request path ever read it — a fresh install with an environment API key
+  routed to the cloud after the user chose local. The `min(platform, tenant)`
+  law now clamps the route plan inside the single candidate-assembly site the
+  router and the Settings surface share; the engine reconfigures when the
+  preference changes and on every workspace switch. The routing display and
+  the router also now compute the platform mode from the same resolution, so
+  the first-run restriction warning fires when it is true.
+- **OpenAI joins Anthropic and Ollama on the same provider contract.** One
+  `ModelClient` implementation (`Bearer` auth, per-provider error naming for
+  401/429), its own Secure Vault entry, per-provider key entry/test/removal in
+  Settings, a routed external candidate that leads when selected and falls
+  back under the same consent rules as Anthropic. No provider-specific
+  architecture anywhere else.
+- **Local AI setup distinguishes "install it" from "start it".** Detection now
+  probes the Ollama binary and the service independently and reports models;
+  Settings and first-run show the state with its own action — official
+  download page link (explicit user action, no silent installs), `ollama
+  serve` hint, or a model download list with sizes shown before any pull. A
+  model pull runs only on explicit approval, through Ollama's own API.
+- **Settings shows the organization preference** (read/set with tenant RBAC)
+  beside the platform mode, with the effective mode named; the AI settings
+  panel's actions no longer swallow refusals silently.
 
 ## [1.0.0-rc.18] — Tenant-resolution diagnostics and owner-row hardening (2026-08-14)
 

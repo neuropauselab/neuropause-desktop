@@ -50,7 +50,11 @@ describe('aiConfig IPC — getConfig (secret-free)', () => {
       'provider',
       'source',
       'state',
+      'storedKeys',
     ]);
+    // Round 34: the per-provider flags are BOOLEANS — the secret-free property
+    // this test exists to pin extends to the new field.
+    expect(dto.storedKeys).toEqual({ anthropic: false, openai: false });
   });
 
   it('reflects a stored key as a boolean, never the value', async () => {

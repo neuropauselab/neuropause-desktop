@@ -247,7 +247,7 @@ export class AiEngine {
  * fallback only serves the pre-reconfigure boot router.
  */
 function locationFromProvider(provider: string): ProcessingLocation | null {
-  if (provider === 'anthropic') return 'external';
+  if (provider === 'anthropic' || provider === 'openai') return 'external';
   return null;
 }
 

@@ -359,6 +359,7 @@ import type {
   ObjectivesReport,
   ObservabilityOverview,
   OllamaDetectDto,
+  OllamaPullResultDto,
   OnboardingStatus,
   OpenApiDocument,
   OperationalHealthView,
@@ -1340,6 +1341,7 @@ export interface IpcResponseMap {
   'aiConfig:get': AiConfigDto;
   'aiConfig:health': AiHealthDto;
   'aiConfig:detectOllama': OllamaDetectDto;
+  'aiConfig:pullModel': OllamaPullResultDto;
   'aiConfig:setProvider': AiConfigDto;
   'aiConfig:setModel': AiConfigDto;
   'aiConfig:setCredential': AiConfigDto;

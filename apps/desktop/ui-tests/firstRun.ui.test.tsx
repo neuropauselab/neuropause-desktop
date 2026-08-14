@@ -118,7 +118,10 @@ describe('First run persists real state at every step', () => {
     expect(await screen.findByText('Where should your AI work?')).toBeTruthy();
     // The probe is honest: no local model is reachable in this run, and the
     // card says so instead of implying one.
-    expect(await screen.findByText(/No local model server is reachable/)).toBeTruthy();
+    // Round 34 copy: the harness's detect stub answers unreachable with no
+    // installed flag, which renders as the not-set-up branch with an install
+    // link and a re-check action.
+    expect(await screen.findByText(/No local AI is set up yet/)).toBeTruthy();
 
     // Processing choice → context. The AI mode is written to the REAL config.
     await user.click(screen.getByRole('button', { name: 'Keep it on this device' }));

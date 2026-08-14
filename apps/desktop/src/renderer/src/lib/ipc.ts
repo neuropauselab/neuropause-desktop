@@ -1765,11 +1765,15 @@ export const ipc = {
     get: () => invoke(IpcChannel.AiConfigGet),
     health: () => invoke(IpcChannel.AiConfigHealth),
     detectOllama: () => invoke(IpcChannel.AiConfigDetectOllama),
+    /** Round 34: pull a local model through Ollama (explicit user action only). */
+    pullModel: (model: string) => invoke(IpcChannel.AiConfigPullModel, { model }),
     setProvider: (provider: AiProviderId) => invoke(IpcChannel.AiConfigSetProvider, { provider }),
     setModel: (model: string) => invoke(IpcChannel.AiConfigSetModel, { model }),
-    setCredential: (secret: string) =>
-      invoke(IpcChannel.AiConfigSetCredential, { provider: 'claude', secret }),
-    clearCredential: () => invoke(IpcChannel.AiConfigClearCredential, { provider: 'claude' }),
+    /** Round 34: credentials are per cloud provider ('claude' | 'openai'). */
+    setCredential: (provider: 'claude' | 'openai', secret: string) =>
+      invoke(IpcChannel.AiConfigSetCredential, { provider, secret }),
+    clearCredential: (provider: 'claude' | 'openai') =>
+      invoke(IpcChannel.AiConfigClearCredential, { provider }),
     test: (provider: AiProviderId, secret?: string) =>
       invoke(IpcChannel.AiConfigTest, { provider, secret }),
     migrationStatus: () => invoke(IpcChannel.AiConfigMigrationStatus),

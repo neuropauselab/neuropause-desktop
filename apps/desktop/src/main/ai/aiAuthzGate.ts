@@ -83,6 +83,15 @@ export const AI_CHANNEL_AUTHORITY: Readonly<Partial<Record<IpcChannelName, Chann
    */
   [IpcChannel.AiPreferenceGet]: 'org:read',
   [IpcChannel.AiPreferenceSet]: 'org:manage',
+  /**
+   * Round 34 — pulling a local model mutates install-level state (Ollama's
+   * model store on this disk) but is the LOCAL-AI setup path first-run needs,
+   * so it takes the same authority as the tenant preference write rather than
+   * `cloud:operate` (which no organization role can hold — the D-5 trap).
+   * The download itself happens on this machine, from Ollama's own registry,
+   * only after an explicit user action in the UI.
+   */
+  [IpcChannel.AiConfigPullModel]: 'org:manage',
   [IpcChannel.AiConfigSetExternalConsent]: 'cloud:operate',
   [IpcChannel.AiConfigResetToEnv]: 'cloud:operate',
   /**
@@ -176,6 +185,7 @@ export const AI_WRITE_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannel
   IpcChannel.AiConfigSetMode,
   IpcChannel.AiConfigSetExternalConsent,
   IpcChannel.AiPreferenceSet,
+  IpcChannel.AiConfigPullModel,
   IpcChannel.AiConfigResetToEnv,
   IpcChannel.AiConfigMigrate,
   IpcChannel.FounderAskV2,

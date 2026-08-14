@@ -2361,21 +2361,36 @@ export const OnboardingCompleteStepRequest = z.object({
 });
 export type OnboardingCompleteStepRequest = z.infer<typeof OnboardingCompleteStepRequest>;
 
-// --- AI configuration (M6 writes) ---
-export const AiSetProviderRequest = z.object({ provider: z.enum(['claude', 'ollama']) }).strict();
+// --- AI configuration (M6 writes; 'openai' added in P13C round 34) ---
+export const AiSetProviderRequest = z
+  .object({ provider: z.enum(['claude', 'ollama', 'openai']) })
+  .strict();
 export type AiSetProviderRequest = z.infer<typeof AiSetProviderRequest>;
 export const AiSetModelRequest = z.object({ model: z.string() }).strict();
 export type AiSetModelRequest = z.infer<typeof AiSetModelRequest>;
+// Credentials exist only for the CLOUD providers — 'ollama' is unrepresentable
+// here on purpose (a local server has no key to store or clear).
 export const AiSetCredentialRequest = z
-  .object({ provider: z.literal('claude'), secret: z.string().min(1) })
+  .object({ provider: z.enum(['claude', 'openai']), secret: z.string().min(1) })
   .strict();
 export type AiSetCredentialRequest = z.infer<typeof AiSetCredentialRequest>;
-export const AiClearCredentialRequest = z.object({ provider: z.literal('claude') }).strict();
+export const AiClearCredentialRequest = z
+  .object({ provider: z.enum(['claude', 'openai']) })
+  .strict();
 export type AiClearCredentialRequest = z.infer<typeof AiClearCredentialRequest>;
 export const AiTestRequest = z
-  .object({ provider: z.enum(['claude', 'ollama']), secret: z.string().optional() })
+  .object({ provider: z.enum(['claude', 'ollama', 'openai']), secret: z.string().optional() })
   .strict();
 export type AiTestRequest = z.infer<typeof AiTestRequest>;
+/**
+ * Pull a local model through the Ollama service (round 34). The model tag is a
+ * short registry name — never a URL and never a shell string; the main process
+ * passes it only as a JSON field to Ollama's own /api/pull.
+ */
+export const AiPullModelRequest = z
+  .object({ model: z.string().min(1).max(128).regex(/^[a-zA-Z0-9._:\/-]+$/) })
+  .strict();
+export type AiPullModelRequest = z.infer<typeof AiPullModelRequest>;
 
 // --- Feedback ---
 export const FeedbackSubmitRequest = z.object({

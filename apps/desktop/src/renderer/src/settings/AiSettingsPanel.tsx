@@ -1,9 +1,16 @@
 /**
- * AI settings panel (M7). Replaces the old read-only "Deployment-managed" row with
- * an in-app surface to choose the provider, enter/store an Anthropic key (in the OS
- * keychain via the main process — the key never comes back to the renderer), pick a
- * model, test the connection, and detect a local Ollama server. All state changes go
- * through ipc.aiConfig (M5/M6); the engine hot-reloads with no restart.
+ * AI settings panel (M7; providers extended in P13C round 34). An in-app surface
+ * to choose the provider (Anthropic, OpenAI, or local Ollama), enter/store cloud
+ * API keys (in the OS keychain via the main process — a key never comes back to
+ * the renderer), pick a model, test the connection, and manage the local Ollama
+ * runtime: detect installation vs service, list models, and pull a model after
+ * explicit user approval. All state changes go through ipc.aiConfig; the engine
+ * hot-reloads with no restart.
+ *
+ * Round 34 also fixed this panel's oldest defect: `withBusy` used to swallow
+ * every failure into `log.warn`, so a permission refusal on Save/Test/Detect
+ * was a silent no-op — the exact D-5 class the routing panel documents. Errors
+ * now land in a `role="alert"` banner, verbatim.
  */
 import { useEffect, useState } from 'react';
 import type {
@@ -12,6 +19,7 @@ import type {
   AiProviderId,
   AiTestResultDto,
   MigrationStatusDto,
+  OllamaDetectDto,
 } from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
 import { createLogger } from '@renderer/lib/logger';
@@ -24,15 +32,30 @@ const inputCls =
 const dot = (s: AiHealthDto['status']): string =>
   s === 'ok' ? 'bg-emerald-400' : s === 'degraded' ? 'bg-amber-400' : s === 'down' ? 'bg-red-400' : 'bg-muted';
 
+const PROVIDER_LABELS: Record<AiProviderId, string> = {
+  claude: 'Anthropic (Claude)',
+  openai: 'OpenAI',
+  ollama: 'Local (Ollama)',
+};
+
+/** Suggested local models for the pull action — size shown before any download. */
+const SUGGESTED_LOCAL_MODELS: Array<{ tag: string; note: string }> = [
+  { tag: 'llama3.2:3b', note: 'lightweight · ~2 GB download' },
+  { tag: 'llama3.1', note: 'balanced · ~4.7 GB download' },
+  { tag: 'qwen2.5:14b', note: 'advanced · ~9 GB download' },
+];
+
 export function AiSettingsPanel(): JSX.Element {
   const [cfg, setCfg] = useState<AiConfigDto | null>(null);
   const [health, setHealth] = useState<AiHealthDto | null>(null);
   const [keyInput, setKeyInput] = useState('');
   const [modelInput, setModelInput] = useState('');
-  const [ollama, setOllama] = useState<{ reachable: boolean; models: string[] } | null>(null);
+  const [ollama, setOllama] = useState<OllamaDetectDto | null>(null);
   const [test, setTest] = useState<AiTestResultDto | null>(null);
   const [migration, setMigration] = useState<MigrationStatusDto | null>(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pullNote, setPullNote] = useState<string | null>(null);
 
   const refresh = async (): Promise<void> => {
     try {
@@ -43,6 +66,7 @@ export function AiSettingsPanel(): JSX.Element {
       setMigration(await ipc.aiConfig.migrationStatus());
     } catch (err) {
       log.warn('AI config load failed', err);
+      setError(err instanceof Error && err.message ? err.message : 'AI configuration could not be loaded.');
     }
   };
 
@@ -53,10 +77,14 @@ export function AiSettingsPanel(): JSX.Element {
   const withBusy = async (fn: () => Promise<void>): Promise<void> => {
     setBusy(true);
     setTest(null);
+    setError(null);
     try {
       await fn();
     } catch (err) {
+      // The boundary message is already user-safe; render it verbatim — a
+      // refused mutation must never be a silent no-op.
       log.warn('AI settings action failed', err);
+      setError(err instanceof Error && err.message ? err.message : 'That did not work.');
     } finally {
       setBusy(false);
     }
@@ -65,6 +93,11 @@ export function AiSettingsPanel(): JSX.Element {
   if (!cfg) return <div className="px-3.5 py-3 text-2xs text-faint">Loading AI configuration…</div>;
 
   const provider = cfg.provider;
+  const cloudProvider: 'claude' | 'openai' | null =
+    provider === 'claude' || provider === 'openai' ? provider : null;
+  const storedKeyForProvider =
+    cloudProvider === 'openai' ? cfg.storedKeys.openai : cloudProvider === 'claude' ? cfg.storedKeys.anthropic : false;
+
   const chooseProvider = (p: AiProviderId): Promise<void> =>
     withBusy(async () => {
       setCfg(await ipc.aiConfig.setProvider(p));
@@ -72,14 +105,15 @@ export function AiSettingsPanel(): JSX.Element {
     });
   const saveKey = (): Promise<void> =>
     withBusy(async () => {
-      if (!keyInput.trim()) return;
-      setCfg(await ipc.aiConfig.setCredential(keyInput.trim()));
+      if (!keyInput.trim() || !cloudProvider) return;
+      setCfg(await ipc.aiConfig.setCredential(cloudProvider, keyInput.trim()));
       setKeyInput('');
       setHealth(await ipc.aiConfig.health());
     });
   const clearKey = (): Promise<void> =>
     withBusy(async () => {
-      setCfg(await ipc.aiConfig.clearCredential());
+      if (!cloudProvider) return;
+      setCfg(await ipc.aiConfig.clearCredential(cloudProvider));
       setHealth(await ipc.aiConfig.health());
     });
   const saveModel = (): Promise<void> =>
@@ -93,6 +127,14 @@ export function AiSettingsPanel(): JSX.Element {
   const detect = (): Promise<void> =>
     withBusy(async () => {
       setOllama(await ipc.aiConfig.detectOllama());
+    });
+  const pull = (tag: string): Promise<void> =>
+    withBusy(async () => {
+      setPullNote(`Downloading ${tag} — large models can take several minutes…`);
+      const res = await ipc.aiConfig.pullModel(tag);
+      setPullNote(res.detail);
+      setOllama(await ipc.aiConfig.detectOllama());
+      if (!res.ok) setError(res.detail);
     });
   const importEnv = (): Promise<void> =>
     withBusy(async () => {
@@ -131,7 +173,7 @@ export function AiSettingsPanel(): JSX.Element {
       </div>
 
       <div className="mb-3 flex gap-2" role="tablist" aria-label="AI provider">
-        {(['claude', 'ollama'] as AiProviderId[]).map((p) => (
+        {(['ollama', 'claude', 'openai'] as AiProviderId[]).map((p) => (
           <button
             key={p}
             type="button"
@@ -145,24 +187,33 @@ export function AiSettingsPanel(): JSX.Element {
                 : 'border-[var(--hairline)] text-muted hover:bg-white/5'
             }`}
           >
-            {p === 'claude' ? 'Anthropic (Claude)' : 'Local (Ollama)'}
+            {PROVIDER_LABELS[p]}
           </button>
         ))}
       </div>
 
-      {/* Claude: API key management */}
-      {provider === 'claude' ? (
+      {error ? (
+        <div
+          role="alert"
+          className="mb-3 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-2xs leading-relaxed text-danger"
+        >
+          {error}
+        </div>
+      ) : null}
+
+      {cloudProvider ? (
+        /* Cloud provider: API key management (per provider, keychain-backed) */
         <div className="mb-3 space-y-2">
           <div className="text-2xs text-faint">
-            {cfg.hasStoredKey
-              ? 'An Anthropic API key is stored securely in your OS keychain.'
-              : 'Add your Anthropic API key to enable cloud AI. It is stored in your OS keychain and never leaves this device except to call Anthropic.'}
+            {storedKeyForProvider
+              ? `An ${cloudProvider === 'openai' ? 'OpenAI' : 'Anthropic'} API key is stored securely in your OS keychain.`
+              : `Add your ${cloudProvider === 'openai' ? 'OpenAI' : 'Anthropic'} API key to enable cloud AI. It is stored in your OS keychain and never leaves this device except to call ${cloudProvider === 'openai' ? 'OpenAI' : 'Anthropic'}.`}
           </div>
           <div className="flex gap-2">
             <input
               type="password"
               autoComplete="off"
-              placeholder={cfg.hasStoredKey ? 'Replace stored key (sk-…)' : 'sk-…'}
+              placeholder={storedKeyForProvider ? 'Replace stored key (sk-…)' : 'sk-…'}
               value={keyInput}
               disabled={busy}
               onChange={(e) => setKeyInput(e.target.value)}
@@ -176,7 +227,7 @@ export function AiSettingsPanel(): JSX.Element {
             <Button variant="secondary" size="sm" disabled={busy} onClick={() => void runTest()}>
               Test connection
             </Button>
-            {cfg.hasStoredKey ? (
+            {storedKeyForProvider ? (
               <Button variant="ghost" size="sm" disabled={busy} onClick={() => void clearKey()}>
                 Remove key
               </Button>
@@ -184,24 +235,69 @@ export function AiSettingsPanel(): JSX.Element {
           </div>
         </div>
       ) : (
-        /* Ollama: detect local server */
+        /* Local AI: installation, service, models — three distinct states */
         <div className="mb-3 space-y-2">
           <div className="text-2xs text-faint">
-            Run models fully on-device with Ollama. Start it with <code>ollama serve</code>, then detect it here.
+            Run models fully on-device with Ollama. Local requests never leave this machine.
           </div>
           <div className="flex items-center gap-2">
             <Button variant="secondary" size="sm" disabled={busy} onClick={() => void detect()}>
-              Detect Ollama
+              Check local AI
             </Button>
             <Button variant="secondary" size="sm" disabled={busy} onClick={() => void runTest()}>
               Test connection
             </Button>
           </div>
           {ollama ? (
-            <div className="text-2xs text-faint">
-              {ollama.reachable
-                ? `Reachable · ${ollama.models.length} model(s): ${ollama.models.join(', ') || '—'}`
-                : 'Not reachable — is Ollama running?'}
+            <div className="space-y-1.5 text-2xs text-faint">
+              {ollama.reachable ? (
+                <div>
+                  <span className="text-emerald-400">Running</span>
+                  {ollama.version ? ` · v${ollama.version}` : ''} · {ollama.endpoint} ·{' '}
+                  {ollama.models.length > 0 ? `models: ${ollama.models.join(', ')}` : 'no models installed yet'}
+                </div>
+              ) : ollama.installed ? (
+                <div>
+                  <span className="text-amber-400">Installed but not running</span>
+                  {ollama.version ? ` (v${ollama.version})` : ''} — start it with <code>ollama serve</code>, then
+                  check again.
+                </div>
+              ) : ollama.installed === false ? (
+                <div>
+                  <span className="text-amber-400">Not installed.</span> Ollama is required for local AI — it runs
+                  entirely on this device.{' '}
+                  <a
+                    href="https://ollama.com/download"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-ink underline underline-offset-2"
+                  >
+                    Get Ollama
+                  </a>{' '}
+                  (opens the official download page), install it, then check again.
+                </div>
+              ) : (
+                <div>Could not determine the installation state. Check again, or start Ollama manually.</div>
+              )}
+              {ollama.reachable && ollama.models.length === 0 ? (
+                <div className="space-y-1 pt-1">
+                  <div>Choose a model to download — the download happens on your approval only:</div>
+                  <div className="flex flex-wrap gap-2 pt-0.5">
+                    {SUGGESTED_LOCAL_MODELS.map((m) => (
+                      <Button
+                        key={m.tag}
+                        variant="secondary"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => void pull(m.tag)}
+                      >
+                        {m.tag} · {m.note}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {pullNote ? <div role="status">{pullNote}</div> : null}
             </div>
           ) : null}
         </div>
@@ -211,7 +307,13 @@ export function AiSettingsPanel(): JSX.Element {
       <div className="mb-1 flex gap-2">
         <input
           type="text"
-          placeholder={provider === 'ollama' ? 'Model tag (e.g. llama3.1)' : 'Model override (optional)'}
+          placeholder={
+            provider === 'ollama'
+              ? 'Model tag (e.g. llama3.1)'
+              : provider === 'openai'
+                ? 'Model override (e.g. gpt-4o-mini)'
+                : 'Model override (optional)'
+          }
           value={modelInput}
           disabled={busy}
           onChange={(e) => setModelInput(e.target.value)}

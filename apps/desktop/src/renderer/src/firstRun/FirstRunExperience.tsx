@@ -13,7 +13,7 @@
  * local" claim (routing is Private First, and says exactly that), and Sign In
  * routes to the existing auth surface rather than pretending to be one.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import type { AiMode, UnderstandingAttribute, WorkspaceType } from '@neuropause/shared';
 import { AI_MODE_LABELS } from '@neuropause/shared';
@@ -69,17 +69,29 @@ export function FirstRunExperience({
   const [attributes, setAttributes] = useState<UnderstandingAttribute[]>([]);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
-  const [ollamaReachable, setOllamaReachable] = useState<boolean | null>(null);
+  const [localAi, setLocalAi] = useState<{
+    reachable: boolean;
+    installed: boolean | null;
+    models: number;
+  } | null>(null);
   const reducedMotion = useReducedMotion();
 
-  useEffect(() => {
+  const probeLocalAi = useCallback((): void => {
     // A real probe, so the processing step can say whether a local model is
-    // actually there — instead of implying one is.
+    // actually there — instead of implying one is. Round 34: installed and
+    // running are DIFFERENT answers ("install it" vs "start it"), the model
+    // count is shown instead of discarded, and the user can re-check after
+    // installing without restarting onboarding.
+    setLocalAi(null);
     ipc.aiConfig
       .detectOllama()
-      .then((d) => setOllamaReachable(d.reachable))
-      .catch(() => setOllamaReachable(false));
+      .then((d) => setLocalAi({ reachable: d.reachable, installed: d.installed, models: d.models.length }))
+      .catch(() => setLocalAi({ reachable: false, installed: null, models: 0 }));
   }, []);
+
+  useEffect(() => {
+    probeLocalAi();
+  }, [probeLocalAi]);
 
   const skip = useCallback(async (): Promise<void> => {
     setBusy(true);
@@ -325,11 +337,43 @@ export function FirstRunExperience({
                 title={FIRST_RUN_COPY.onDevice.title}
                 body={FIRST_RUN_COPY.onDevice.body}
                 footnote={
-                  ollamaReachable === null
-                    ? 'Checking for a local model…'
-                    : ollamaReachable
-                      ? 'A local model server is reachable on this device.'
-                      : 'No local model server is reachable right now — you can set one up later (for example, Ollama). Until then, AI requests will fail on this device rather than being sent anywhere.'
+                  localAi === null ? (
+                    'Checking for a local model…'
+                  ) : localAi.reachable ? (
+                    `A local model server is running on this device${
+                      localAi.models > 0
+                        ? ` with ${localAi.models} model${localAi.models === 1 ? '' : 's'} installed.`
+                        : ' — you can download a model in Settings → AI.'
+                    }`
+                  ) : (
+                    <>
+                      {localAi.installed
+                        ? 'Ollama is installed but not running — start it (ollama serve) and '
+                        : 'No local AI is set up yet. Ollama runs models entirely on this device — '}
+                      {localAi.installed ? null : (
+                        <>
+                          <a
+                            href="https://ollama.com/download"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline underline-offset-2"
+                          >
+                            get Ollama
+                          </a>
+                          , install it, then{' '}
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        className="app-no-drag underline underline-offset-2"
+                        onClick={probeLocalAi}
+                      >
+                        check again
+                      </button>
+                      . Until a local model exists, AI requests will fail on this device rather than being sent
+                      anywhere.
+                    </>
+                  )
                 }
                 cta="Keep it on this device"
                 busy={busy}
@@ -635,7 +679,7 @@ function ChoiceCard({
   icon: 'lock' | 'globe';
   title: string;
   body: string;
-  footnote: string;
+  footnote: ReactNode;
   cta: string;
   busy: boolean;
   onChoose: () => void;

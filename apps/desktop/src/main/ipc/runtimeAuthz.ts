@@ -135,6 +135,9 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
    */
   [IpcChannel.AiPreferenceGet]: 'org:read',
   [IpcChannel.AiPreferenceSet]: 'org:manage',
+  // Round 34 — local-model pull: install-level disk state, but the local-AI
+  // setup path first-run needs; same tenant-RBAC reasoning as the row above.
+  [IpcChannel.AiConfigPullModel]: 'org:manage',
   [IpcChannel.AiConfigSetExternalConsent]: 'cloud:operate',
   /**
    * P13C ROUND 3 — feedback came OFF the public allowlist.
