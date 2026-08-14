@@ -7,7 +7,37 @@ All notable changes to NeuroPause are documented here. The format is based on
 
 ## [Unreleased]
 
-_No unreleased changes; the current build is `1.0.0-rc.17`._
+_No unreleased changes; the current build is `1.0.0-rc.18`._
+
+## [1.0.0-rc.18] — Tenant-resolution diagnostics and owner-row hardening (2026-08-14)
+
+Program 13C rounds 31–32. Version bumped from `1.0.0-rc.17` because the rc.17
+tag points at `e09df1e` and these changes landed after it — the same rule that
+produced rc.17 itself: no two different binaries may claim one version.
+
+- **W-10 — the tenant resolver now reports its own refusals.** Every refusal
+  out of `resolveFull()` carries a redacted diagnostic (local email parts
+  reduced to a length, domains kept) built from the values the resolution
+  actually used. The transition is logged as `Tenant resolution LOST` with
+  `msSinceLastSuccess`; steady-state refusals are throttled to one line per
+  reason per minute with a suppressed-count; recovery closes the bracket with
+  the outage duration. This is the instrumentation for the Windows
+  `not_a_member` fault.
+- **O-11 — a member edit that omitted a field erased it.** `updateUser` spread
+  the handler's object-literal patch over the row, so an omitted `email`
+  arrived as `undefined` and was written — persistently, since JSON drops
+  `undefined` — removing the person from their own organization. The store now
+  drops `undefined` keys (an explicit `null` still clears), and the resolver's
+  membership predicate fails closed on non-string emails instead of throwing.
+- **O-12 — the owner-claim path has its own narrow authority.** The claim rule
+  moved inside `orgStore.claimOwnerIdentity`; cross-tenant safety is structural
+  (the seeded org and owner id are compile-time constants) rather than
+  caller-scope-dependent, so first-claim and same-account repair now run even
+  while tenant resolution is refusing. A corrupt owner row is never claimable.
+- **O-13 — the owner row's email is immutable through member edits.**
+  `guardOwnerUserPatch` strips `email` alongside `roleIds`/`status`: membership
+  is decided by that address, so an in-tenant rewrite was an ownership transfer
+  wearing a profile edit. Handoff, when it exists, will be a dedicated flow.
 
 ## [1.0.0-rc.17] — Windows runtime and release-pipeline repair (2026-08-14)
 
