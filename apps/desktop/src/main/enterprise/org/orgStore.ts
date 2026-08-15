@@ -22,7 +22,7 @@ import type {
 } from '@neuropause/shared';
 import { createLogger } from '../../logger';
 import { readStoreFile } from '../../storage/storeEnvelope';
-import { buildSeed, ORG_ID as SEED_ORG_ID, OWNER_USER_ID } from './seed';
+import { buildSeed, BUILT_IN_ROLE_SPECS, ORG_ID as SEED_ORG_ID, OWNER_USER_ID } from './seed';
 import { decideOwnerClaim } from '../authzGate';
 import { declareStoreScope } from '../../tenancy/storeScope';
 import { registerTenantStore } from '../../tenancy/tenantOwnedStore';
@@ -89,6 +89,12 @@ export interface CreateRoleInput {
   name: string;
   description: string;
   permissions: EnterprisePermission[];
+  /**
+   * Round 40: set ONLY by provisioning for the spec-derived role set. The IPC
+   * create-role schema has no such field, so callers over the wire cannot
+   * mint undeletable roles.
+   */
+  builtIn?: boolean;
 }
 
 /** A live worker summary, just enough to fold into the org chart. */
@@ -268,6 +274,7 @@ export class OrgStore extends EventEmitter {
       for (const u of data.users ?? []) if (u?.id) this.users.set(u.id, u);
       if (!data.seeded || this.organizations.size === 0) this.applySeed();
       else this.reconcileBuiltInRoles();
+      this.healProvisionedOwnerAnchors();
     } else {
       if (read.state !== 'first-run') {
         log.error('Org store unreadable — original preserved, starting from seed', {
@@ -314,6 +321,59 @@ export class OrgStore extends EventEmitter {
       if (!same) {
         this.roles.set(seedRole.id, { ...current, permissions: [...seedRole.permissions] });
         changed = true;
+      }
+    }
+    if (changed) this.schedulePersist();
+  }
+
+  /**
+   * P13C ROUND 40 — GATE 27. Provisioned-owner protection for PRE-round-40
+   * stores. Provisioning now records `Organization.ownerUserId` and marks the
+   * spec roles built-in at creation; organizations provisioned before that
+   * have neither, which is exactly the reported exploit surface: any Manager
+   * could edit/suspend/delete the creator, any Admin could delete the Owner
+   * role. On load:
+   *
+   *  1. A non-seeded organization without an owner anchor is healed from its
+   *     rows when UNAMBIGUOUS: exactly one human member titled 'Owner' holding
+   *     this org's role named 'Owner' (the shape provisioning always wrote).
+   *     Zero or several candidates → left unanchored and logged — inventing a
+   *     root of trust would be worse than admitting there isn't one.
+   *  2. Roles in non-seeded organizations whose name matches a built-in spec
+   *     are re-marked `builtIn` (provisioning created them from the specs but
+   *     `createRole` hardcoded false). A user-made custom role that reuses a
+   *     spec name is caught too — deliberate: freezing a role named 'Owner'
+   *     fails closed, deleting it fails open.
+   */
+  private healProvisionedOwnerAnchors(): void {
+    const specNames = new Set(BUILT_IN_ROLE_SPECS.map((s) => s.name));
+    let changed = false;
+    for (const role of this.roles.values()) {
+      if (role.orgId !== SEED_ORG_ID && !role.builtIn && specNames.has(role.name)) {
+        this.roles.set(role.id, { ...role, builtIn: true });
+        changed = true;
+      }
+    }
+    for (const org of this.organizations.values()) {
+      if (org.id === SEED_ORG_ID || org.ownerUserId) continue;
+      const ownerRoleIds = new Set(
+        [...this.roles.values()].filter((r) => r.orgId === org.id && r.name === 'Owner').map((r) => r.id),
+      );
+      const candidates = [...this.users.values()].filter(
+        (u) =>
+          u.orgId === org.id &&
+          u.kind === 'human' &&
+          u.title === 'Owner' &&
+          u.roleIds.some((id) => ownerRoleIds.has(id)),
+      );
+      if (candidates.length === 1 && candidates[0]) {
+        this.organizations.set(org.id, { ...org, ownerUserId: candidates[0].id });
+        changed = true;
+      } else {
+        log.warn('Provisioned organization has no unambiguous owner to anchor', {
+          orgId: org.id,
+          candidates: candidates.length,
+        });
       }
     }
     if (changed) this.schedulePersist();
@@ -443,6 +503,47 @@ export class OrgStore extends EventEmitter {
     this.organizations.set(org.id, org);
     this.touch();
     return org;
+  }
+
+  /**
+   * P13C ROUND 40 — GATE 27. The protected owner of a tenant, if it has one.
+   * Seeded organization → the compile-time root of trust; provisioned →
+   * whatever provisioning recorded (or the load-time heal derived).
+   */
+  ownerUserIdFor(orgId: string): string | null {
+    if (orgId === SEED_ORG_ID) return OWNER_USER_ID;
+    return this.organizations.get(orgId)?.ownerUserId ?? null;
+  }
+
+  /**
+   * The owner id the root-of-trust guards must compare a mutation TARGET
+   * against. Resolved from the target's OWN organization, so the guards hold
+   * in every tenant, not just the seeded one. A target with no resolvable
+   * anchor falls back to the seeded literal — exactly the pre-round-40
+   * behaviour, never less protection.
+   */
+  protectedOwnerIdForTarget(userId: string): string {
+    const target = this.users.get(userId);
+    const ownerId = target ? this.ownerUserIdFor(target.orgId) : null;
+    return ownerId ?? OWNER_USER_ID;
+  }
+
+  /**
+   * Record the provisioned owner, once. First-set-wins like the seeded claim
+   * rule: the anchor is written by provisioning in the same act that creates
+   * the owner row, and no later caller — not even another provisioning run —
+   * may re-point it. Refuses the seeded org (its anchor is compile-time), an
+   * already-anchored org, and a user outside the org.
+   */
+  assignProvisionedOwner(orgId: string, userId: string): boolean {
+    if (orgId === SEED_ORG_ID) return false;
+    const org = this.organizations.get(orgId);
+    if (!org || org.ownerUserId) return false;
+    const user = this.users.get(userId);
+    if (!user || user.orgId !== orgId) return false;
+    this.organizations.set(orgId, { ...org, ownerUserId: userId, updatedAt: new Date().toISOString() });
+    this.touch();
+    return true;
   }
 
   /**
@@ -601,7 +702,10 @@ export class OrgStore extends EventEmitter {
       name: input.name,
       description: input.description,
       permissions: input.permissions,
-      builtIn: false,
+      // Round 40: provisioning marks its spec-derived roles built-in (the
+      // Owner role above all — a deletable root of trust was the exploit).
+      // The IPC create-role handler never passes this; user roles stay custom.
+      builtIn: input.builtIn ?? false,
       createdAt: now,
       updatedAt: now,
     };

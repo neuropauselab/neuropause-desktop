@@ -135,7 +135,9 @@ export function CustomizePanel(): JSX.Element {
     try {
       // The owner row's email is immutable by design (round 32 / O-13): the
       // handler strips it, so it is not offered here either.
-      const isOwner = editingId === 'user-owner';
+      // Round 40: keyed on the tenant's RECORDED owner, so provisioned orgs
+      // show the same protections as the seeded one (fallback: seeded literal).
+      const isOwner = editingId === (org.organization?.ownerUserId ?? 'user-owner');
       await updateUser({
         id: editingId,
         name: editName.trim(),
@@ -243,7 +245,7 @@ export function CustomizePanel(): JSX.Element {
         )}
         <ul className="space-y-1.5">
           {org.users.filter((u) => u.kind === 'human').map((u) => {
-            const isOwner = u.id === 'user-owner';
+            const isOwner = u.id === (org.organization?.ownerUserId ?? 'user-owner');
             if (editingId === u.id) {
               return (
                 <li key={u.id} className="flex flex-wrap items-end gap-2 rounded-xl border border-accent/40 p-2.5">

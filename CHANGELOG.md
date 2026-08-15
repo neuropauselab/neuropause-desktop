@@ -7,7 +7,44 @@ All notable changes to NeuroPause are documented here. The format is based on
 
 ## [Unreleased]
 
-_No unreleased changes; the current build is `1.0.0-rc.19`._
+_No unreleased changes; the current build is `1.0.0-rc.20`._
+
+## [1.0.0-rc.20] — the release gate: every tenant gets a protected owner (2026-08-15)
+
+Program 13C rounds 35–40. Version bumped from `1.0.0-rc.19` because five
+rounds of fixes shipped since the rc.19 stamp — a build calling itself rc.19
+today would not be the rc.19 whose Windows installer hash is on record.
+
+### Security
+- **Provisioned organizations finally have a protected owner** (round 40, the
+  last release blocker). The root-of-trust guards were keyed on the seeded
+  literal `user-owner`, so in any runtime-created organization a Manager could
+  re-role, suspend, re-email, or delete the creator, and an Admin could delete
+  the Owner role (provisioning created every role `builtIn:false`).
+  Provisioning now records `Organization.ownerUserId` in the same act that
+  creates the owner and marks its spec-derived roles built-in; the user
+  patch/delete guards key on the target org's recorded owner; legacy stores
+  heal on load when the owner is unambiguous and say so when it is not.
+
+### Fixed
+- Boot-window races closed at their common root (rounds 36–39): the AI engine
+  rebuilds its router when tenant resolution recovers (a local-only user with
+  a running Ollama no longer boots into "No AI model"); the Assistant's
+  conversation list retries once on the runtime-ready broadcast.
+- The sidebar workspace switcher now fronts the real organization workspaces
+  through the membership-gated switch; the local tab-set list is labeled
+  "Views on this device"; the advertised ⌘1–9 shortcuts work.
+- Onboarding resumes at its persisted step; Sign-In is a detour, not a
+  forfeit; failed completion/skip writes are surfaced (round 36).
+- Shutdown flush barrier + atomic, restart-enforcing restore (round 37).
+- Administration, family dashboards, feature flags, subscriptions, trusted
+  devices, and assistant list reads surface failures instead of rendering
+  them as emptiness (rounds 36–38).
+
+### Added
+- End-to-end product journey suite (`productJourney.test.ts`, 8 phases) and
+  the driven-UI acceptance evidence for Gates 18/26.
+- `system:runtimeState` + ready broadcast; boot-window router fails closed.
 
 ## [1.0.0-rc.19] — AI providers: the privacy choice becomes real (2026-08-14)
 

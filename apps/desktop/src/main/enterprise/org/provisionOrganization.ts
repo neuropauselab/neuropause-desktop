@@ -39,6 +39,7 @@ export interface ProvisionDeps {
     name: string;
     description: string;
     permissions: EnterprisePermission[];
+    builtIn?: boolean;
   }) => OrgRole;
   createUser: (input: {
     orgId: string;
@@ -48,6 +49,13 @@ export interface ProvisionDeps {
     roleIds: string[];
   }) => OrgUser;
   createWorkspace: (name: string, organizationId: string) => Workspace;
+  /**
+   * Round 40 — Gate 27: record the creator as the tenant's PROTECTED owner
+   * (`Organization.ownerUserId`), in the same act that creates the row. This
+   * is what the root-of-trust guards key on; without it a provisioned org had
+   * no owner anybody could protect — the Round 9 takeover, one tenant over.
+   */
+  recordOwner: (orgId: string, userId: string) => void;
 }
 
 export interface ProvisionInput {
@@ -114,6 +122,10 @@ export function provisionOrganization(
       name: spec.name,
       description: spec.description,
       permissions: [...spec.permissions],
+      // Round 40: these ARE the built-in set for this tenant — same specs the
+      // seeded org ships with. Leaving them custom made the Owner role
+      // deletable, which silently de-permissioned the provisioned owner.
+      builtIn: true,
     }),
   );
   const ownerRole = roles[0];
@@ -131,6 +143,9 @@ export function provisionOrganization(
     title: 'Owner',
     roleIds: [ownerRole.id],
   });
+  // The anchor the owner guards key on — written here, before the workspace,
+  // so no moment exists where the tenant is enterable but ownerless.
+  deps.recordOwner(organization.id, owner.id);
 
   /**
    * `workspaceIds` is deliberately left ABSENT on the owner.

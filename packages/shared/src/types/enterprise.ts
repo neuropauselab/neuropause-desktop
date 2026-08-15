@@ -50,6 +50,15 @@ export interface Organization {
   type?: OrganizationType;
   /** Optional so a pre-P11 file parses; absent is read as `active`. */
   status?: OrganizationStatus;
+  /**
+   * The protected owner of this tenant — the root-of-trust member the owner
+   * guards key on (P13C round 40). For the seeded organization this is the
+   * compile-time `OWNER_USER_ID`; for provisioned organizations it is recorded
+   * once at provisioning (the creator) and never reassigned by member edits.
+   * Optional so pre-round-40 files parse; absent rows are healed on load from
+   * the provisioned owner's row where it is unambiguous.
+   */
+  ownerUserId?: string;
   createdAt: string;
   updatedAt: string;
   metadata: Record<string, unknown>;

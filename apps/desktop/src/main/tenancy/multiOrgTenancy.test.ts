@@ -73,12 +73,16 @@ class World {
           name: input.name,
           description: input.description,
           permissions: input.permissions,
-          builtIn: false,
+          builtIn: input.builtIn ?? false,
           createdAt: NOW,
           updatedAt: NOW,
         };
         this.roles.push(role);
         return role;
+      },
+      recordOwner: (orgId, userId) => {
+        const org = this.organizations.find((o) => o.id === orgId);
+        if (org) org.ownerUserId = userId;
       },
       createUser: (input) => {
         const user: OrgUser = {

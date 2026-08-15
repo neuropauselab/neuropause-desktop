@@ -2062,8 +2062,12 @@ function buildHandlers(): SecureHandlerDef[] {
       audit: true,
       handler: (p) => {
         const r = p as TUpdateUser;
-        // Root of trust: the seeded owner's roles/status are immutable.
-        const patch = guardOwnerUserPatch(r.id, OWNER_USER_ID, {
+        // Root of trust: the owner's roles/status/email are immutable — in
+        // EVERY tenant. Round 40: the guard is keyed on the TARGET's own
+        // organization's recorded owner (seeded literal for org-default,
+        // `Organization.ownerUserId` for provisioned tenants), closing the
+        // Manager-takes-over-a-provisioned-org hole.
+        const patch = guardOwnerUserPatch(r.id, orgStore.protectedOwnerIdForTarget(r.id), {
           name: r.name,
           email: r.email,
           title: r.title,
@@ -2082,8 +2086,9 @@ function buildHandlers(): SecureHandlerDef[] {
       audit: true,
       handler: (p) => {
         const r = p as TDeleteUser;
-        // Root of trust: the seeded owner can never be removed.
-        const ok = canDeleteMember(r.id, OWNER_USER_ID) && orgStore.deleteUser(r.id);
+        // Root of trust: the owner can never be removed — in EVERY tenant
+        // (round 40, same per-org keying as the patch guard above).
+        const ok = canDeleteMember(r.id, orgStore.protectedOwnerIdForTarget(r.id)) && orgStore.deleteUser(r.id);
         if (ok) audit('user.delete', r.id, 'Removed member');
         return orgBundle();
       },
@@ -2288,6 +2293,7 @@ function buildHandlers(): SecureHandlerDef[] {
             createRole: (input) => orgStore.createRole(input),
             createUser: (input) => orgStore.createUser(input),
             createWorkspace: (name, organizationId) => workspaceStore.create(name, organizationId),
+            recordOwner: (orgId, userId) => orgStore.assignProvisionedOwner(orgId, userId),
           },
           {
             name: r.name,
