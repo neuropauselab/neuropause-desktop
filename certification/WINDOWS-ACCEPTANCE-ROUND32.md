@@ -1,38 +1,32 @@
-# WINDOWS ACCEPTANCE — ROUNDS 32+33+34
-
-> **Round 40 (Gate 27) note:** the codebase has moved to **`1.0.0-rc.20`**
-> (tag `v1.0.0-rc.20`), which carries rounds 35–40 — including the
-> provisioned-owner protection and the boot-race fixes the rc.19 artifact
-> lacks. When a Windows machine becomes available, build a FRESH installer
-> from the `v1.0.0-rc.20` tag (`npm run package:win`, verify `dirty: false`)
-> and run this procedure against THAT artifact; the rc.19 build below remains
-> valid only as the last from-commit-verified Windows binary.
+# WINDOWS ACCEPTANCE — ROUNDS 32+33+34 (+40)
 
 ## Artifact under test
 
-**Superseded artifacts:** the rc.17 build from `33b9173` (SHA-256
-`d07a7d02…572f`) and the rc.18 build from `ee3da3d` (SHA-256 `7acdf6c7…5f16a`)
-are both version-orphaned — do NOT use them. The current gate artifact is the
-**rc.19** build — `NeuroPause-Setup.exe`, SHA-256
-`8f54b360eff13f073c6cb1d33657fc777f5d19e4af68744005958d80ee095962`,
-built from commit `ac2df21` (embedded build-info: `dirty: false`,
-`buildTime: 2026-08-14T11:18:59Z`); it additionally
-carries round 34 (AI providers: tenant-preference routing clamp, OpenAI,
-Ollama installed/running detection + consent-first model pull), so the
-acceptance matrix gains: AI provider setup, Ollama detection, and the
-"On this device" routing check. The table below describes the superseded rc.18
-build until re-stamped:
+**Superseded artifacts:** the rc.17 (`33b9173`, SHA-256 `d07a7d02…572f`),
+rc.18 (`ee3da3d`, `7acdf6c7…5f16a`) and rc.19 (`ac2df21`, `8f54b360…9962`,
+archived at `dist/release-archive/NeuroPause-Setup-rc.19.exe`) builds are all
+version-orphaned — do NOT use them. The current gate artifact is the
+**rc.20** build, made from the exact release tag in round 40:
 
 | Field | Value |
 |---|---|
 | Installer | `apps/desktop/dist/NeuroPause-Setup.exe` (NSIS, x64) |
-| Version | 1.0.0-rc.18 |
-| Size | 111,852,099 bytes (~107 MB) |
-| **SHA-256** | `7acdf6c769ee4ac340f10f3f7a4a652e331a6bf9669285ad8aaf3e5264b5f16a` |
-| Update payload | `NeuroPause-1.0.0-rc.18-win.zip` |
-| Provenance | Embedded `build-info.json`: `commit: ee3da3d`, `branch: fix/round23-flush-barrier-recorder`, `dirty: false`, `buildTime: 2026-08-14T10:37:22.379Z` |
-| Built by | `npm run package:win` (in `apps/desktop`, macOS host, clean tree at HEAD=ee3da3d) |
-| Verified by | `node scripts/verify-release-artifacts.cjs --platform win` — 6/6 PASS; plus `grep -a` inside `app.asar` for the round-32/33 markers (`claimOwnerIdentity`, `Tenant resolution LOST/RECOVERED`, `quarantined-`, `refreshInFlight` — 16 hits) |
+| Version | 1.0.0-rc.20 (tag `v1.0.0-rc.20`) |
+| Size | 111,864,376 bytes (~107 MB) |
+| **SHA-256** | `e861228f2af873a8d67036fbb0407a6e8acab07f3bb5b6f009815f824ac8bc90` |
+| Update payload | `NeuroPause-1.0.0-rc.20-win.zip` (SHA-256 `8d620eaa30475d1f8b5bf723413180e52d95bc1cce2662599ddd6a0606e2eddd`) |
+| Provenance | Embedded `build-info.json`: `commit: efe8196`, `branch: HEAD` (detached tag checkout — intentional), `dirty: false`, `buildTime: 2026-08-15T06:28:50.681Z` |
+| Built by | `npm run package:win` (in `apps/desktop`, macOS host, clean detached checkout of `v1.0.0-rc.20`) |
+| Verified by | `node scripts/verify-release-artifacts.cjs --platform win` — 6/6 PASS (feed v1.0.0-rc.20 ↔ binary sha512); plus `grep -a` inside `app.asar`: round-32/33 markers (`claimOwnerIdentity` 2, `Tenant resolution RECOVERED` 1, `quarantined-` 5, `refreshInFlight` 9) AND the round-37/39/40 markers (`Shutdown flush complete` 2, `announceTenantRecovery` 2, `assignProvisionedOwner` 2, `protectedOwnerIdForTarget` 3, `healProvisionedOwnerAnchors` 2); tenancy+enterprise+ai suites re-run from the tag: 257 files green |
+
+This build carries everything rc.19 had (round 34 AI providers: tenant clamp,
+OpenAI, Ollama detection + consent-first pull) PLUS rounds 35–40: fail-closed
+boot router, runtime-state broadcast + boot-window retries, onboarding resume,
+error-state honesty, shutdown flush barrier + restart-enforcing restore,
+recovery-triggered AI reconfigure (a local-only user with running Ollama gets
+LOCAL answers instead of "No AI model"), the unsplit workspace switcher, and
+provisioned-org owner protection. Section B gains checks 10–11 below for the
+new surfaces.
 
 This build additionally carries round 33: corrupt-store quarantine (org chart /
 workspaces / audit trail survive a torn write in a `.quarantined-<ts>` file —
@@ -48,11 +42,11 @@ counts for this gate. On the Windows machine, verify before installing:
 
 ```powershell
 Get-FileHash .\NeuroPause-Setup.exe -Algorithm SHA256
-# must equal 7ACDF6C769EE4AC340F10F3F7A4A652E331A6BF9669285AD8AAF3E5264B5F16A
+# must equal E861228F2AF873A8D67036FBB0407A6E8ACAB07F3BB5B6F009815F824AC8BC90
 ```
 
 In-app cross-check after install: the Release Diagnostics surface must show
-version `1.0.0-rc.18`, commit `ee3da3d`, dirty `false`.
+version `1.0.0-rc.20`, commit `efe8196`, dirty `false`.
 
 ## Log to capture
 
@@ -104,6 +98,17 @@ aside (keep it — it is evidence), then:
    - a member holding `people:manage` must NOT be able to become Owner by
      re-addressing the owner row — O-13;
    - member rename must not erase the member's email after restart — O-11.
+10. AI local routing (rounds 34+39): choose "Keep it on this device" during
+    first-run (or Settings → AI → Local Only). With Ollama running, an
+    Assistant question about the workspace must answer with the **Local**
+    provenance badge — NOT "No AI model" — including after a quit/relaunch
+    (the boot-race regression). Without Ollama, the answer must honestly say
+    AI is offline and nothing may leave the machine.
+11. Provisioned-org owner protection (round 40): create a second organization,
+    then as a `people:manage` member of it, attempt to edit the creator's
+    email/role/status and to delete the creator and the Owner role — every
+    attempt must be refused/stripped; the creator row survives untouched
+    after refresh and relaunch.
 
 **C. Bundle.** Return: `logs\` folder (both profiles), the noted screens, and
 the `Get-FileHash` output.
