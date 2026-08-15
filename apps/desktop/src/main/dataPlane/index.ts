@@ -75,7 +75,8 @@ import {
 import { matchExistingRecords, type PreparedRow } from './quality';
 import type { CellValue } from './parsers';
 import type { CanonicalEntity } from './ontology';
-import { applyImportPlan, ProvenanceStore, type ImportDecision } from './importer';
+import { ProvenanceStore, type ImportDecision, type ImportDeps } from './importer';
+import { governedImport } from '../cst/importTransition';
 import { MappingMemoryStore, applySavedMapping } from './mappingMemory';
 import { ONTOLOGY, entityById, requiresExplicitApproval } from './ontology';
 import { SUPPORTED_FORMATS, parseFile } from './parsers';
@@ -592,7 +593,10 @@ export function initDataPlane(deps: DataPlaneSubsystemDeps): DataPlaneSubsystem 
         }
 
         const correlationId = `dp_${plan.planId}`;
-        const { result, provenance: records } = await applyImportPlan(plan, decisions, {
+        // The effect's deps — UNCHANGED. `applyImportPlan` is preserved verbatim;
+        // it now runs only inside the CST kernel's `effect`, only on ALLOW + won
+        // claim + pre-state revalidation.
+        const importDeps: ImportDeps = {
           storeFor: deps.storeFor,
           actor: deps.actor,
           now: deps.now,
@@ -617,7 +621,30 @@ export function initDataPlane(deps: DataPlaneSubsystemDeps): DataPlaneSubsystem 
             const record = store?.get(recordId);
             return record !== null && record !== undefined && record.status !== 'deleted';
           },
+        };
+
+        // ── The ONE CST boundary (frozen @neuropause/cst 1.3.0). The kernel is the
+        // single governance verdict for this consequential transition; the effect
+        // above is unchanged. HOLD/DENY ⇒ nothing is written — never a fabricated
+        // success. See main/cst/importTransition.ts.
+        const governed = await governedImport({
+          plan,
+          decisions,
+          tenantId: deps.tenantId(),
+          actorId: deps.actor() ?? '',
+          policyVersion: 'dp-import-policy-1',
+          importDeps,
         });
+        if (governed.result === undefined || governed.provenance === undefined) {
+          // A governed refusal (HOLD/DENY) — surface the kernel's own reason so
+          // the refusal is legible, and assert nothing about the world.
+          const o = governed.outcome;
+          throw new Error(
+            `Import ${o.verdict} by governance (${o.reason}). Nothing was written.`,
+          );
+        }
+        const result = governed.result;
+        const records = governed.provenance;
 
         if (req.reason && approvingHighRisk) {
           deps.audit({

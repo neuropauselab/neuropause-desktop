@@ -58,6 +58,13 @@ coverage/
 *.tgz
 *.tar.gz
 
+# Desktop CST kernel is intentionally vendored and must be committed.
+# It is a hash-pinned, unpublished frozen dependency (@neuropause/cst,
+# SHA-256 293d056047346631c72dd117b50733162b5ae08448f3c2bdedd73703cbceb431)
+# that `apps/desktop/package.json` resolves via `file:vendor/...`. Excluding it
+# would make a fresh clone's `npm install` fail. This exception is intentional.
+!apps/desktop/vendor/neuropause-cst-1.3.0.tgz
+
 # Key material — never commit. Defence in depth; nothing matching these exists today.
 id_rsa*
 id_ed25519*

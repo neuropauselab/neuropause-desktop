@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@neuropause/companion-protocol": "*",
+    "@neuropause/cst": "file:vendor/neuropause-cst-1.3.0.tgz",
     "@neuropause/shared": "*",
     "@neuropause/solution-packs": "*",
     "electron-updater": "^6.8.9",
