@@ -1,5 +1,13 @@
 # WINDOWS ACCEPTANCE — ROUNDS 32+33+34
 
+> **Round 40 (Gate 27) note:** the codebase has moved to **`1.0.0-rc.20`**
+> (tag `v1.0.0-rc.20`), which carries rounds 35–40 — including the
+> provisioned-owner protection and the boot-race fixes the rc.19 artifact
+> lacks. When a Windows machine becomes available, build a FRESH installer
+> from the `v1.0.0-rc.20` tag (`npm run package:win`, verify `dirty: false`)
+> and run this procedure against THAT artifact; the rc.19 build below remains
+> valid only as the last from-commit-verified Windows binary.
+
 ## Artifact under test
 
 **Superseded artifacts:** the rc.17 build from `33b9173` (SHA-256
