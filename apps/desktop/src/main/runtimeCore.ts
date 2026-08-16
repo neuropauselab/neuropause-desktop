@@ -473,6 +473,14 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       if (principal !== null) return principal.workspaceId ?? '';
       return workspaceStore.activeWorkspaceIdOrNull() ?? '';
     },
+    // P13C Phase H — the authoritative actor identity for the governed mail.send
+    // transition, from the SAME identity authority the data plane uses (the
+    // authenticated session user). `null` when unauthenticated ⇒ the CST boundary
+    // DENIES (no send). Distinct from `workspaceId()` — tenant ≠ actor.
+    actor: () => {
+      const st = authService.getStatus();
+      return st.state === 'authenticated' ? (st.session.user.displayName ?? st.session.user.email) : null;
+    },
   });
   // Unified knowledge layer (UDM): canonical store + query engine + local search.
   const unified = await initUnified({ broadcast: deps.broadcast });
