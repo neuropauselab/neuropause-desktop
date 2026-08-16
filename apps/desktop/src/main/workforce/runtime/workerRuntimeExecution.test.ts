@@ -141,6 +141,10 @@ describe('WorkerRuntime approved-action execution', () => {
     // Approving moves the job to 'running' (dispatch fired), not straight to 'succeeded'.
     const approved = runtime.approveProposal(job.id, job.proposals[0].id, 'alice', null);
     expect(approved?.status).toBe('running');
+    // P13C Phase I-A.1 — the approval record binds the passed authoritative principal
+    // (INV-ACTOR-01) and the runtime clock (INV-TIME-01: `now` omitted ⇒ this.clock()).
+    expect(approved?.proposals[0].approval?.decidedBy).toBe('alice');
+    expect(approved?.proposals[0].approval?.decidedAt).toBe(NOW);
     await dispatched();
     const settled = runtime.getJob(job.id)!;
     expect(settled.status).toBe('succeeded');

@@ -55,6 +55,7 @@ import {
 import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
+import { resolveAuthoritativeApprover } from './approverAuthority';
 import { unifiedStore } from '../unified/storeInstance';
 import { graphStore } from '../graph/graphInstance';
 import { memoryStore } from '../memory/memoryInstance';
@@ -88,6 +89,17 @@ export interface WorkforceSubsystemDeps {
   publish?: (event: PlatformEventInput) => void;
   /** P8.5 — the running app/engine version, for worker-package compatibility checks. */
   appVersion: string;
+  /**
+   * P13C Phase I-A.1 — the AUTHORITATIVE approver principal for a governed
+   * approval decision (Boundary A). REQUIRED. Sourced from the application's
+   * identity authority (`authService` session `user.id`) via DI, exactly as the
+   * data-plane/connectors subsystems source `actor()` — NEVER from the renderer
+   * payload, and never the literal `'user'`. Returns `null` when no authenticated
+   * principal exists, in which case the approval/rejection seam fails closed (no
+   * authoritative governance decision; no fallback identity). Distinct from
+   * tenant/workspace: actor ≠ tenant ≠ workspace.
+   */
+  actor: () => string | null;
 }
 
 export interface WorkforceSubsystem {
@@ -372,7 +384,13 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
       schema: WorkforceProposalDecideRequest,
       handler: (p) => {
         const r = p as TWorkforceProposalDecideRequest;
-        return runtime.approveProposal(r.jobId, r.proposalId, 'user', r.note ?? null, r.now);
+        // P13C Phase I-A.1 — bind the AUTHORITATIVE approver principal (stable
+        // `user.id` via DI), never the renderer and never the literal `'user'`.
+        // Fail closed when identity is absent (no fallback). Authoritative approval
+        // time comes from the WorkerRuntime clock — the renderer `r.now` is NOT
+        // passed, so `approveProposal`'s trusted default clock applies.
+        const approver = resolveAuthoritativeApprover(deps.actor, 'approval');
+        return runtime.approveProposal(r.jobId, r.proposalId, approver, r.note ?? null);
       },
     },
     {
@@ -380,7 +398,11 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
       schema: WorkforceProposalDecideRequest,
       handler: (p) => {
         const r = p as TWorkforceProposalDecideRequest;
-        return runtime.rejectProposal(r.jobId, r.proposalId, 'user', r.note ?? null, r.now);
+        // P13C Phase I-A.1 — same authoritative-actor provenance for rejections:
+        // the stable `user.id` via DI, never `'user'`; authoritative runtime clock
+        // (no renderer `r.now`); fail closed when no authenticated principal exists.
+        const approver = resolveAuthoritativeApprover(deps.actor, 'rejection');
+        return runtime.rejectProposal(r.jobId, r.proposalId, approver, r.note ?? null);
       },
     },
     {

@@ -762,6 +762,14 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     broadcast: deps.broadcast,
     publish: platform.api.publish,
     appVersion: app.getVersion(),
+    // P13C Phase I-A.1 — the authoritative approver identity for governed approvals
+    // (Boundary A), from the SAME session identity authority the data plane and
+    // connectors use. Binds the stable `user.id` (not displayName/email/role, not
+    // tenant/workspace). `null` when unauthenticated ⇒ the approval seam fails closed.
+    actor: () => {
+      const st = authService.getStatus();
+      return st.state === 'authenticated' ? st.session.user.id : null;
+    },
   });
   // Enterprise Operating System: organization runtime + graph + governance +
   // multi-workspace isolation + the executive snapshot that rolls it all up.
