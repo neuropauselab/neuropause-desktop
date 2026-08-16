@@ -2377,7 +2377,10 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   const executionStore = new ExecutionStore(join(app.getPath('userData'), 'executions.json')).bindScope(activeTenantScope);
   const executeEngine = new ExecuteEngine({
     publish: publishPlatform,
-    persist: (session) => void executionStore.save(session),
+    // P13C I-A.3 Step 5 — RETURN the store's promise (do not discard it) so the engine
+    // can AWAIT durable completion before a governed consequential effect. Persistence
+    // is otherwise unchanged.
+    persist: (session) => executionStore.save(session),
     // P13C Round 2 — H5. Sessions carry their owner, so `activeSessions`,
     // `getHistory`, `stats` and `cancel` answer for the caller rather than the
     // install. Resolved through the one resolver, so a background execution
