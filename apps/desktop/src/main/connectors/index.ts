@@ -53,6 +53,12 @@ import { RateLimiter } from '../unified/sync/rateLimiter';
 import { HttpClient } from '../unified/sync/http';
 import { createM365Executor, ALL_M365_ACTIONS, type M365Executor } from './m365';
 import { governedSend, createGovernedSendPorts, type GovernedSendResult } from '../cst/sendTransition';
+import {
+  governedAction,
+  createGovernedActionPorts,
+  GOVERNED_ACTION_COHORT1,
+  type GovernedActionResult,
+} from '../cst/governedAction';
 import type { ConnectorWriteResult } from '@neuropause/shared';
 import { m365Draft } from './m365/aiDrafts';
 
@@ -129,6 +135,48 @@ function mapSendOutcome(g: GovernedSendResult, confirmed: boolean): ConnectorWri
         message: !confirmed
           ? 'This send modifies data and needs explicit confirmation.'
           : 'Held for reconciliation — a prior identical send is unconfirmed and was not re-sent.',
+        data,
+      };
+    case 'ESCALATE':
+      return { ok: false, message: 'Escalated for human review.', data };
+    case 'DENIED':
+    default:
+      return { ok: false, message: 'Not authorized — reconnect this account or check its permissions.', data };
+  }
+}
+
+/**
+ * P13C H-FINDING-4 — map a governed-action outcome onto ConnectorWriteResult, mirroring
+ * mapSendOutcome: an ACKNOWLEDGED provider acceptance is NEVER a verified business success, an
+ * UNKNOWN was transmitted-but-unconfirmed (never retried), and every governance refusal is `ok:false`.
+ */
+function mapActionOutcome(g: GovernedActionResult, confirmed: boolean): ConnectorWriteResult {
+  const data: Record<string, string | number | boolean | null> = { outcome: g.semanticOutcome };
+  switch (g.semanticOutcome) {
+    case 'ACKNOWLEDGED':
+      return {
+        ok: true, // provider acceptance — ACKNOWLEDGED, NOT verified business success
+        message: g.summary
+          ? `${g.summary} — accepted by Microsoft Graph (not independently verified).`
+          : 'Accepted by Microsoft Graph (not independently verified).',
+        data,
+      };
+    case 'UNKNOWN':
+      return {
+        ok: false,
+        message:
+          'Outcome UNKNOWN — the request was transmitted but no response was received; it was NOT retried. Reconcile before any retry.',
+        data,
+      };
+    case 'EXECUTION_FAILED':
+      return { ok: false, message: g.summary ?? 'Action failed — the provider rejected the request.', data };
+    case 'HOLD':
+      return {
+        ok: false,
+        requiresConfirmation: !confirmed,
+        message: !confirmed
+          ? 'This action modifies data and needs explicit confirmation.'
+          : 'Held for reconciliation — a prior identical action is unconfirmed and was not repeated.',
         data,
       };
     case 'ESCALATE':
@@ -327,6 +375,9 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
   // duplicate suppression only — NOT provider idempotency, NOT crash-durable
   // (in-memory; declared Node-20 limit).
   const m365SendPorts = createGovernedSendPorts();
+  // P13C H-FINDING-4 (Cohort 1) — process-lifetime CST stores for the governed-action adapter,
+  // separate from the send ports (distinct transition domain). NOT crash-durable (Node-20 limit).
+  const m365ActionPorts = createGovernedActionPorts();
   const mailSendAction = ALL_M365_ACTIONS.find((a) => a.id === 'mail.send') ?? null;
 
   // P5 — inbound webhook / realtime runtime. Verified deliveries (relay/tunnel) via handle() and
@@ -496,6 +547,32 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
             ports: m365SendPorts,
           });
           return mapSendOutcome(g, r.confirmed);
+        }
+        // P13C H-FINDING-4 (Cohort 1) — high-consequence non-mail.send write actions are governed
+        // through the SAME CST kernel via the parameterized governedAction adapter (authoritative
+        // identity/tenant, atomic process-lifetime admission/idempotency, denial-before-effect).
+        // Every OTHER action keeps the existing executor path unchanged.
+        if (GOVERNED_ACTION_COHORT1.has(r.actionId)) {
+          const cohortAction = ALL_M365_ACTIONS.find((a) => a.id === r.actionId);
+          if (cohortAction) {
+            const g = await governedAction({
+              action: cohortAction,
+              connectorId: r.connectorId,
+              accountId: r.accountId,
+              params: r.params,
+              confirmed: r.confirmed,
+              tenantId: deps.workspaceId(),
+              actorId: deps.actor() ?? '', // authoritative identity; null ⇒ DENY (no effect)
+              ownsAccount: m365OwnsAccount(r.connectorId, r.accountId),
+              grantedScopes: m365GrantedScopes(r.connectorId, r.accountId),
+              getToken: () => m365GetToken(r.connectorId, r.accountId),
+              makeHttp: (key, getToken, rate) => new HttpClient(key, getToken, rate),
+              rate: m365Rate,
+              now: () => new Date().toISOString(),
+              ports: m365ActionPorts,
+            });
+            return mapActionOutcome(g, r.confirmed);
+          }
         }
         return m365.execute(r.connectorId, r.accountId, r.actionId, r.params, r.confirmed);
       },
