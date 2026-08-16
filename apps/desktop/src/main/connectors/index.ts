@@ -59,6 +59,9 @@ import {
   GOVERNED_ACTION_COHORT1,
   type GovernedActionResult,
 } from '../cst/governedAction';
+import { DurableIdempotencyStore } from '../cst/durableIdempotencyStore';
+import { app } from 'electron';
+import { join } from 'node:path';
 import type { ConnectorWriteResult } from '@neuropause/shared';
 import { m365Draft } from './m365/aiDrafts';
 
@@ -375,9 +378,13 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
   // duplicate suppression only — NOT provider idempotency, NOT crash-durable
   // (in-memory; declared Node-20 limit).
   const m365SendPorts = createGovernedSendPorts();
-  // P13C H-FINDING-4 (Cohort 1) — process-lifetime CST stores for the governed-action adapter,
-  // separate from the send ports (distinct transition domain). NOT crash-durable (Node-20 limit).
-  const m365ActionPorts = createGovernedActionPorts();
+  // P13C H-FINDING-4 (Cohort 1, Option C) — the governed-action idempotency intent is DURABLE
+  // (single-process restart durability) via a Node-20-safe atomic-rename store under userData;
+  // the claim store stays in-memory (atomic single-winner is a within-process property). NOT
+  // fsync/power-loss durable, NOT cross-process. A corrupt store fails closed on construction.
+  const m365ActionPorts = createGovernedActionPorts(
+    new DurableIdempotencyStore(join(app.getPath('userData'), 'm365-governed-actions.json')),
+  );
   const mailSendAction = ALL_M365_ACTIONS.find((a) => a.id === 'mail.send') ?? null;
 
   // P5 — inbound webhook / realtime runtime. Verified deliveries (relay/tunnel) via handle() and

@@ -35,6 +35,7 @@ import {
   PolicyStore,
   ResourceStore,
   SystemTime,
+  type IdempotencyStorePort,
 } from '@neuropause/cst/dist/src/stores.js';
 import {
   approvalId as brandApprovalId,
@@ -99,14 +100,22 @@ export type ActionSemanticOutcome =
   | 'HOLD'
   | 'ESCALATE';
 
-/** Process-lifetime CST stores shared across governed-action calls (NOT crash-durable). */
+/**
+ * CST stores for the governed-action path. The CLAIM store is in-memory by design (atomic
+ * single-winner is a within-process property; a fresh process holds no in-flight claims). The
+ * IDEMPOTENCY store carries the durable single-use intent — inject a durable implementation
+ * (`DurableIdempotencyStore`) for single-process restart durability, or leave the default in-memory
+ * store for process-lifetime scope. H-FINDING-4 Option C.
+ */
 export interface GovernedActionPorts {
   readonly claims: ClaimStore;
-  readonly idempotency: IdempotencyStore;
+  readonly idempotency: IdempotencyStorePort;
 }
 
-export function createGovernedActionPorts(): GovernedActionPorts {
-  return { claims: new ClaimStore(), idempotency: new IdempotencyStore() };
+export function createGovernedActionPorts(
+  idempotency: IdempotencyStorePort = new IdempotencyStore(),
+): GovernedActionPorts {
+  return { claims: new ClaimStore(), idempotency };
 }
 
 export interface GovernedActionArgs {
