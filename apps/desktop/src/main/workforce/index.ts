@@ -70,14 +70,23 @@ import { Orchestrator } from './orchestrator';
 import { analyzeWorkflowHealth, criticalPath } from './planning/workflowAnalysis';
 import { planDelegation } from './planning/delegation';
 import { withWorkforceAuthz } from './authzGate';
-import { aggregateOutcome, bindingToRequest } from './execution/router';
+import { aggregateOutcome, governedRequests } from './execution/router';
 import { builtInSkills, registerBuiltInWorkers } from './workers';
 import { WorkerInstallService } from './install/installService';
 import { workerInstallStore, workerSigningKey } from './install/installInstance';
 import type { SkillImpl, WorkforceData, WorkforceNeighbor } from './sdk';
 import { runOutsidePrincipal } from '../tenancy/backgroundPrincipal';
+import { randomUUID } from 'node:crypto';
 
 const log = createLogger('workforce');
+
+/**
+ * P13C I-A.3 Step 3A — validity window for a transported Bound Decision Claim. Dispatch →
+ * submit → execute is effectively synchronous/in-process, so a bounded few-minute window
+ * amply covers a briefly-queued execution without being open-ended. Boundary B (a later gate)
+ * is what actually enforces expiry against this window.
+ */
+const CLAIM_TTL_MS = 5 * 60_000;
 
 export interface WorkforceSubsystemDeps {
   broadcast: IpcBroadcaster;
@@ -100,6 +109,19 @@ export interface WorkforceSubsystemDeps {
    * tenant/workspace: actor ≠ tenant ≠ workspace.
    */
   actor: () => string | null;
+  /**
+   * P13C I-A.3 Step 3A — authoritative runtime clock (epoch ms) used as a governed claim's
+   * `issuedAt`. Optional; defaults to the main-process `Date.now` (the authoritative runtime
+   * clock, never a renderer timestamp). Injectable only so tests can pin time.
+   */
+  now?: () => number;
+  /**
+   * P13C I-A.3 Step 3A — nonce source for a governed claim (single-use/audit id). Optional;
+   * defaults to `node:crypto` `randomUUID` — the SAME source the scheduler/workerRuntime/
+   * governance/orchestrator already use. Injectable only so tests can pin the nonce. Never
+   * renderer-supplied.
+   */
+  nonce?: () => string;
 }
 
 export interface WorkforceSubsystem {
@@ -188,6 +210,11 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
     publish: deps.publish,
   });
 
+  // P13C I-A.3 Step 3A — authoritative claim time + nonce for governed dispatch. Defaults are
+  // the main-process runtime clock and the standard node:crypto nonce source; never renderer.
+  const claimClock = deps.now ?? (() => Date.now());
+  const claimNonce = deps.nonce ?? randomUUID;
+
   // P8.3 — approved binding-carrying proposals execute through the ExecuteEngine.
   // `submitExecution` is late-bound (the engine is built after the workforce); until
   // it is set, approved actions stay advisory (job completes 'succeeded').
@@ -203,7 +230,29 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
       runtime.settleExecution(job.id, { ok: false, summary: null, error: 'Execution engine not ready', executionId: '', executor });
       return;
     }
-    void Promise.all(bindings.map((p) => submit(bindingToRequest(job, p)!)))
+    // P13C I-A.3 Step 3A — mint an authoritative Bound Decision Claim for each approved
+    // consequential binding and TRANSPORT it (with the same authoritative actor + tenant read
+    // here, at the synchronous approval dispatch) on the ExecutionRequest. Fail closed: if any
+    // binding cannot be governed, dispatch NOTHING — a consequential effect never runs without
+    // a claim. This gate transports only; it adds NO Boundary-B verification and NO consumption.
+    const governed = governedRequests(job, bindings, {
+      actor: deps.actor(),
+      tenantId: activeTenantScope()?.tenantId ?? null,
+      nowMs: claimClock(),
+      ttlMs: CLAIM_TTL_MS,
+      nonce: claimNonce,
+    });
+    if (!governed.ok) {
+      runtime.settleExecution(job.id, {
+        ok: false,
+        summary: null,
+        error: `Governance claim not minted (${governed.reason}); consequential execution refused`,
+        executionId: '',
+        executor,
+      });
+      return;
+    }
+    void Promise.all(governed.requests.map((req) => submit(req)))
       .then((sessions) => runtime.settleExecution(job.id, aggregateOutcome(sessions, executor)))
       .catch((err) =>
         runtime.settleExecution(job.id, {

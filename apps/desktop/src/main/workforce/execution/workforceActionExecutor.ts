@@ -10,6 +10,7 @@
  */
 import type { ExecutionBinding } from '@neuropause/shared';
 import type { ExecutionExecutor } from '../../executeEngine';
+import { verifyBoundaryB } from './boundaryB';
 
 /** Runs a binding on the matching existing executor; returns a compact result. */
 export type RunBinding = (
@@ -17,12 +18,27 @@ export type RunBinding = (
   confirmed: boolean,
 ) => Promise<{ ok: boolean; summary?: string; error?: string }>;
 
-/** Build the executor. Fails soft when a request carries no binding (defensive). */
-export function createWorkforceActionExecutor(runBinding: RunBinding): ExecutionExecutor {
+/**
+ * Build the executor. Fails soft when a request carries no binding (defensive).
+ *
+ * P13C I-A.3 Step 4 — BOUNDARY B. A request that carries a `binding` is a consequential worker
+ * action; it may reach `runBinding` ONLY after `verifyBoundaryB` independently validates the
+ * transported Bound Decision Claim against the actual binding + authoritative actor/tenant +
+ * temporal validity. A DENY returns a governance refusal and `runBinding` is NOT called (no
+ * consequential effect). `now` is the authoritative runtime clock (main-process `Date.now` by
+ * default; injectable for tests). Requests WITHOUT a binding never reach Boundary B — they
+ * soft-fail above, preserving the existing non-consequential/legacy behavior.
+ */
+export function createWorkforceActionExecutor(runBinding: RunBinding, now: () => number = Date.now): ExecutionExecutor {
   return async (req, ctx) => {
     const binding = (req.params?.binding ?? null) as ExecutionBinding | null;
     if (!binding || typeof binding.executor !== 'string') {
       return { ok: false, error: 'No execution binding on request' };
+    }
+    // Boundary B — enforce BEFORE the consequential executor is reachable. Deny ⇒ no runBinding.
+    const verdict = verifyBoundaryB(req, now());
+    if (!verdict.ok) {
+      return { ok: false, error: `Governance denied at Boundary B: ${verdict.reason}` };
     }
     ctx.setStep(1); // "Call connector"
     try {
