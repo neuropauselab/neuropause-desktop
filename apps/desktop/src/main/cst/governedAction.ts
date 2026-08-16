@@ -91,6 +91,22 @@ export const GOVERNED_ACTION_COHORT1: ReadonlySet<string> = new Set<string>([
   'drive.share',
 ]);
 
+/**
+ * P13C H-FINDING-4 Cohort 2A — the externally-VISIBLE / notification-capable remaining actions,
+ * governed through the SAME `governedAction` adapter + durable store as Cohort 1, at the same
+ * conservative C3 / IRREVERSIBLE tier (the adapter's uniform class is honest here: these can be
+ * externally communicative, and `calendar.update`'s external consequence depends on non-param-
+ * derivable server-side attendee state, so precise reversibility is NOT claimed). `calendar.create`
+ * sends invitations when attendees are present; `calendar.update` may notify existing attendees;
+ * `teams.createChannel` creates a team-visible channel. Cohort 2B (reversible internal mutations) is
+ * intentionally NOT included here.
+ */
+export const GOVERNED_ACTION_COHORT2A: ReadonlySet<string> = new Set<string>([
+  'calendar.create',
+  'calendar.update',
+  'teams.createChannel',
+]);
+
 export type ActionSemanticOutcome =
   | 'ACKNOWLEDGED'
   | 'UNKNOWN'

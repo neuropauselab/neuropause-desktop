@@ -57,6 +57,7 @@ import {
   governedAction,
   createGovernedActionPorts,
   GOVERNED_ACTION_COHORT1,
+  GOVERNED_ACTION_COHORT2A,
   type GovernedActionResult,
 } from '../cst/governedAction';
 import { DurableIdempotencyStore } from '../cst/durableIdempotencyStore';
@@ -555,11 +556,13 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
           });
           return mapSendOutcome(g, r.confirmed);
         }
-        // P13C H-FINDING-4 (Cohort 1) — high-consequence non-mail.send write actions are governed
-        // through the SAME CST kernel via the parameterized governedAction adapter (authoritative
-        // identity/tenant, atomic process-lifetime admission/idempotency, denial-before-effect).
-        // Every OTHER action keeps the existing executor path unchanged.
-        if (GOVERNED_ACTION_COHORT1.has(r.actionId)) {
+        // P13C H-FINDING-4 (Cohort 1 + Cohort 2A) — high-consequence non-mail.send write actions are
+        // governed through the SAME CST kernel via the parameterized governedAction adapter and the
+        // SAME durable m365ActionPorts (authoritative identity/tenant, canonical action identity,
+        // atomic + single-process-restart-durable admission, denial-before-effect). Cohort 2A
+        // (calendar.create/update, teams.createChannel) is governed at the same conservative
+        // C3/IRREVERSIBLE tier. Every OTHER action keeps the existing executor path unchanged.
+        if (GOVERNED_ACTION_COHORT1.has(r.actionId) || GOVERNED_ACTION_COHORT2A.has(r.actionId)) {
           const cohortAction = ALL_M365_ACTIONS.find((a) => a.id === r.actionId);
           if (cohortAction) {
             const g = await governedAction({
