@@ -128,6 +128,21 @@ export const GOVERNED_ACTION_COHORT2B_I: ReadonlySet<string> = new Set<string>([
 ]);
 
 /**
+ * P13C H-FINDING-4 Cohort 2B-ii — the OVERWRITE / partially-reversible remaining actions, governed
+ * through the SAME governedAction adapter + durable store. Their consequence can OVERWRITE existing
+ * state whose occupancy/prior values are SERVER-SIDE (not param-derivable), and source cannot prove a
+ * provider recovery path — so they are classified CONSERVATIVELY (drive.upload / drive.restoreVersion
+ * default to IRREVERSIBLE; contacts.update is DIFFICULT_TO_REVERSE, no version history). Governance is
+ * identical to Cohort-2B-i; only the honest higher-consequence label differs. No reversibility of the
+ * overwrite/loss and no provider version-retention are claimed.
+ */
+export const GOVERNED_ACTION_COHORT2B_II: ReadonlySet<string> = new Set<string>([
+  'drive.upload',
+  'drive.restoreVersion',
+  'contacts.update',
+]);
+
+/**
  * P13C H-FINDING-4 — per-action reversibility (honest CST evidence). DEFAULT is `IRREVERSIBLE`
  * (conservative), which preserves Cohort-1/2A/mail.send behavior unchanged. Reversibility is
  * DESCRIPTIVE evidence in the TransitionRequest — the kernel does not branch on it, and it is NOT part
@@ -144,6 +159,10 @@ const ACTION_REVERSIBILITY: ReadonlyMap<string, Reversibility> = new Map<string,
   ['drive.move', 'REVERSIBLE'],
   ['drive.createFolder', 'REVERSIBLE'],
   ['contacts.create', 'REVERSIBLE'],
+  // Cohort 2B-ii: contacts.update overwrites fields with NO version history (source-proven no recovery).
+  // drive.upload / drive.restoreVersion are NOT listed ⇒ they use the conservative IRREVERSIBLE default
+  // (overwrite recovery via OneDrive versions is not provable from this repository — do not over-claim).
+  ['contacts.update', 'DIFFICULT_TO_REVERSE'],
 ]);
 
 /** The honest reversibility class recorded for a governed action. Default `IRREVERSIBLE` (conservative)

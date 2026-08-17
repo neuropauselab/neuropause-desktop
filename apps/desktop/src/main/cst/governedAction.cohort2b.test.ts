@@ -81,10 +81,12 @@ describe('Cohort 2B-i — reversibility model (honest per-action)', () => {
       expect(reversibilityForAction(id)).toBe('IRREVERSIBLE');
     }
   });
-  it('Cohort-2B-ii remain IRREVERSIBLE-by-default (not classified here)', () => {
-    for (const id of ['drive.upload', 'drive.restoreVersion', 'contacts.update']) {
-      expect(reversibilityForAction(id)).toBe('IRREVERSIBLE');
-    }
+  it('Cohort-2B-ii classification: drive.upload / drive.restoreVersion IRREVERSIBLE, contacts.update DIFFICULT_TO_REVERSE', () => {
+    // drive.* use the conservative IRREVERSIBLE default (version recovery not repo-provable);
+    // contacts.update is DIFFICULT_TO_REVERSE (source-proven no version history) as of Cohort-2B-ii.
+    expect(reversibilityForAction('drive.upload')).toBe('IRREVERSIBLE');
+    expect(reversibilityForAction('drive.restoreVersion')).toBe('IRREVERSIBLE');
+    expect(reversibilityForAction('contacts.update')).toBe('DIFFICULT_TO_REVERSE');
   });
 });
 
