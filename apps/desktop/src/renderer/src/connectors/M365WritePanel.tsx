@@ -44,15 +44,23 @@ export function M365WritePanel({
   connectorId,
   accountId,
   snaps,
+  proposal,
 }: {
   connectorId: string;
   accountId: string | null;
   snaps: ConnectorSyncSnapshot[];
+  /**
+   * Wave-2 Slice-7 — an optional NeuroPause-validated action to REVIEW. The AI (as the human's representative)
+   * proposes which capability + concrete parameters; this prefills the compose fields so the human sees the exact
+   * recipient/subject/body that would be sent. NeuroPause proposes — it never confirms and never sends; the human's
+   * explicit "Confirm send" remains the sole consent, and the certified governed IPC path is unchanged.
+   */
+  proposal?: { to?: string; subject?: string; body?: string };
 }): JSX.Element {
   const snap = snaps.find((s) => s.accountId === accountId) ?? snaps[0];
-  const [to, setTo] = useState('');
-  const [subject, setSubject] = useState('');
-  const [body, setBody] = useState('');
+  const [to, setTo] = useState(proposal?.to ?? '');
+  const [subject, setSubject] = useState(proposal?.subject ?? '');
+  const [body, setBody] = useState(proposal?.body ?? '');
   const [instruction, setInstruction] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -138,6 +146,12 @@ export function M365WritePanel({
       )}
 
       <div className="rounded-xl border border-[var(--hairline)] p-3">
+        {proposal && (
+          <div role="note" className="mb-2 rounded-lg border border-sysblue/30 px-3 py-1.5 text-2xs text-sysblue">
+            Proposed by NeuroPause — review the exact recipient, subject and body below, then confirm. NeuroPause
+            proposes; it never sends without your confirmation.
+          </div>
+        )}
         <div className="mb-2 text-2xs text-faint">
           Compose an email. AI can draft the body — it never sends; every send needs your explicit confirmation.
         </div>

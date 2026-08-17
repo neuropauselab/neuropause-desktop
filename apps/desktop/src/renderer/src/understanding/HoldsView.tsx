@@ -13,7 +13,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import type { DecisionRecord, HoldCenterView, HoldRecord } from '@neuropause/shared';
+import type { DecisionRecord, ExecutionSession, HoldCenterView, HoldRecord, Job } from '@neuropause/shared';
 import {
   DECISION_RISK_LABELS,
   DECISION_RISK_RECOMMENDATIONS,
@@ -32,8 +32,15 @@ import { TRANSITION, listItemVariants, staggerDelay } from '@renderer/lib/motion
 import { SkeletonCards, SkeletonRegion } from '@renderer/components/ui/Skeleton';
 import { useAnimatedCount } from '@renderer/lib/useAnimatedCount';
 import {
+  buildActionLifecycle,
   buildEvidenceTimeline,
+  classifyExecutionSession,
   classifyHold,
+  correlateJobForSession,
+  correlateProposalForSession,
+  linkHoldToSession,
+  type LifecycleFact,
+  type LifecycleStage,
   type TimelineFact,
   type TimelineStep,
 } from './operatorConsole';
@@ -43,18 +50,30 @@ const log = createLogger('holds');
 export function HoldsView(): JSX.Element {
   const [view, setView] = useState<HoldCenterView | null>(null);
   const [records, setRecords] = useState<DecisionRecord[] | null>(null);
+  // Wave-2 Increment-3 — durable execution records, to authoritatively correlate a hold to its ExecutionSession
+  // by governed decisionId (worker OUTCOME_UNKNOWN holds carry it). Read-only; never used to execute anything.
+  const [sessions, setSessions] = useState<ExecutionSession[]>([]);
+  // Wave-2 Increment-4 — worker Jobs (and their proposals/approvals/verdicts), to compose the full AI → proposal →
+  // approval → governance → execution lifecycle. Correlated to a session ONLY by authoritative ids, same tenant.
+  const [jobs, setJobs] = useState<Job[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [denied, setDenied] = useState(false);
 
   const reload = useCallback(async (): Promise<void> => {
-    const [holds, decisions] = await Promise.allSettled([
+    const [holds, decisions, execSessions, workJobs] = await Promise.allSettled([
       ipc.holds.list(200),
       ipc.decisionRecords.list(200),
+      ipc.execute.sessions(),
+      ipc.workforce.jobs({ limit: 200 }),
     ]);
     if (holds.status === 'fulfilled') setView(holds.value);
     if (decisions.status === 'fulfilled') setRecords(decisions.value);
+    // Sessions and jobs are best-effort correlation context — a failure here only means links show as NOT_LINKED
+    // / NOT_AVAILABLE, never a fabricated link. RBAC/denial on holds is still the authoritative signal below.
+    if (execSessions.status === 'fulfilled') setSessions(execSessions.value.sessions);
+    if (workJobs.status === 'fulfilled') setJobs(workJobs.value.jobs);
     // A refusal here is RBAC doing its job, not a bug. Say which it is rather
     // than rendering an empty list that reads as "nothing ever happened".
     if (holds.status === 'rejected') {
@@ -187,6 +206,28 @@ export function HoldsView(): JSX.Element {
                                   · reconcile before any retry — do not blindly retry
                                 </span>
                               )}
+                              {/* Wave-2 Increment-3 — the correlated execution, joined ONLY by governed decisionId.
+                                  Honest NOT_LINKED when no authoritative join exists (never guessed). */}
+                              {(() => {
+                                const link = linkHoldToSession(hold, sessions);
+                                if (link.linkState !== 'LINKED' || !link.session) {
+                                  return (
+                                    <div className="mt-1 text-xs font-normal text-faint">
+                                      Execution: not linked — {link.reason}
+                                    </div>
+                                  );
+                                }
+                                const exec = classifyExecutionSession(link.session);
+                                return (
+                                  <div className="mt-1 text-xs font-normal text-muted">
+                                    Execution: {exec.label} — {exec.detail}
+                                  </div>
+                                );
+                              })()}
+                              {/* Wave-2 Increment-4 — the full AI → proposal → approval → governance → admission →
+                                  execution → outcome → hold → reconciliation lifecycle, composed from existing
+                                  records by AUTHORITATIVE ids only (never guessed, never cross-tenant). */}
+                              <LifecycleCard hold={hold} sessions={sessions} jobs={jobs} />
                             </div>
                           );
                         })()}
@@ -409,6 +450,70 @@ function EvidenceTimeline({ steps }: { steps: readonly TimelineStep[] }): JSX.El
         ))}
       </ol>
     </div>
+  );
+}
+
+/**
+ * Wave-2 Increment-4 — the composed action lifecycle for one open hold. Correlated ONLY by authoritative ids
+ * (session.decisionId ↔ hold.decisionId, session.id ↔ job.executionId, verdict.requestId ↔ session.decisionId),
+ * same tenant only. If no session links, there is nothing authoritative to compose — say so, never guess.
+ */
+const LIFECYCLE_TONE: Record<LifecycleFact, string> = {
+  OBSERVED: 'text-ink',
+  NOT_OBSERVED: 'text-faint',
+  NOT_VERIFIED: 'text-sysorange',
+  NOT_AVAILABLE: 'text-faint',
+  NOT_LINKED: 'text-faint',
+};
+const LIFECYCLE_TAG: Record<LifecycleFact, string> = {
+  OBSERVED: '',
+  NOT_OBSERVED: 'NOT OBSERVED',
+  NOT_VERIFIED: 'NOT VERIFIED',
+  NOT_AVAILABLE: 'NOT AVAILABLE',
+  NOT_LINKED: 'NOT LINKED',
+};
+function LifecycleCard({
+  hold,
+  sessions,
+  jobs,
+}: {
+  hold: HoldRecord;
+  sessions: readonly ExecutionSession[];
+  jobs: readonly Job[];
+}): JSX.Element | null {
+  const link = linkHoldToSession(hold, sessions);
+  // Without an authoritative session link there is no governed chain to compose. The execution line above already
+  // states NOT_LINKED honestly; inventing a lifecycle here would be exactly the guessing we refuse.
+  if (link.linkState !== 'LINKED' || !link.session) return null;
+  const job = correlateJobForSession(link.session, jobs);
+  const proposal = correlateProposalForSession(link.session, job);
+  const lifecycle = buildActionLifecycle({ session: link.session, job, proposal, hold });
+  return (
+    <details className="mt-2 rounded-xl border border-[var(--hairline)] px-3 py-2">
+      <summary className="cursor-pointer text-xs font-medium text-muted">
+        Full lifecycle — request → AI → proposal → approval → governance → execution → outcome
+      </summary>
+      <ol className="mt-2 space-y-1">
+        {lifecycle.stages.map((s: LifecycleStage) => (
+          <li key={s.key} className="flex flex-wrap items-baseline gap-x-2 text-sm">
+            <span className="w-24 shrink-0 text-xs uppercase tracking-wider text-faint">{s.label}</span>
+            <span className={cn('min-w-0 break-words', LIFECYCLE_TONE[s.fact])}>{s.value}</span>
+            {LIFECYCLE_TAG[s.fact] && (
+              <span className="rounded-full border border-[var(--hairline)] px-1.5 text-[10px] uppercase tracking-wider text-faint">
+                {LIFECYCLE_TAG[s.fact]}
+              </span>
+            )}
+          </li>
+        ))}
+      </ol>
+      {/* Technical ids stay here — never credentials/tokens, which no record above carries. */}
+      <div className="mt-2 border-t border-[var(--hairline)] pt-2 text-[11px] text-faint">
+        <div>Decision id: {link.session.decisionId ?? '—'}</div>
+        <div>Execution session: {link.session.id}</div>
+        {job && <div>Job id: {job.id}</div>}
+        {proposal && <div>Proposal id: {proposal.id}</div>}
+      </div>
+    </details>
   );
 }
 

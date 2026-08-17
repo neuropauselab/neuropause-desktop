@@ -62,6 +62,8 @@ import {
   type ConversationMemoryDeps,
 } from '../ai/conversationMemory';
 import { connectorService } from '../connectors/connectorService';
+import { capabilityDiscoveryService } from '../capabilities/capabilityDiscoveryInstance';
+import { projectCapabilitiesForAI } from '../capabilities/capabilityAiContext';
 import { automationStore } from '../enterprise/automationInstance';
 import { workerRegistry } from '../workforce/registry/registryInstance';
 import { jobStore } from '../workforce/runtime/jobInstance';
@@ -293,6 +295,9 @@ export function initAssistant(deps: AssistantSubsystemDeps): AssistantSubsystem 
         })),
       workers: () =>
         workerRegistry.summaries().map((w) => ({ id: w.id, name: w.name, role: w.role })),
+      // The live, tenant-scoped capability catalog composed from authoritative connector/account state. Read-only
+      // discovery metadata — no credential, no callable, no authority reaches the assistant/AI through this port.
+      capabilities: () => capabilityDiscoveryService.catalog(),
       timeline: (limit) => {
         const tl = getEnterpriseTimeline();
         if (!tl) throw new Error('enterprise timeline not initialized');
@@ -321,7 +326,10 @@ export function initAssistant(deps: AssistantSubsystemDeps): AssistantSubsystem 
       },
         getBriefing: () => brief,
       });
-      return builder.build(req);
+      // Ground the AI in the user's REAL, current capabilities — a read-only description (no credential, no callable,
+      // no authority). It makes the assistant capability-AWARE; it grants no execution.
+      const capabilityContext = projectCapabilitiesForAI(capabilityDiscoveryService.catalog());
+      return [...builder.build(req), ...capabilityContext];
     },
     runAi: (req) => aiEngine.run(req),
     recallMemories: (question, now, correlationId) =>

@@ -78,6 +78,7 @@ import {
 } from './deterministicAnswers';
 import { renderReportMaterial } from './productivity';
 import type { ConversationStore } from './conversationStore';
+import type { CapabilityCatalogView } from '../capabilities/capabilityDiscoveryService';
 
 /* ── Ports ─────────────────────────────────────────────────────────────────── */
 
@@ -85,6 +86,13 @@ export interface AssistantContextPorts {
   /** Local workspace contexts (id/name/active). */
   workspaces?: () => { active: { id: string; name: string } | null; count: number };
   connectors?: () => { id: string; connected: boolean; problem: string | null }[];
+  /**
+   * The live, tenant-scoped capability catalog — what this user's connected accounts can actually do (read/mutate,
+   * consequential, approval, availability, governed-certified or not). Discovery metadata only: no credential, no
+   * callable, no authority. Present so the assistant/AI knows the available capabilities before deciding anything;
+   * it never grants execution.
+   */
+  capabilities?: () => CapabilityCatalogView;
   executions?: () => { active: number };
   pendingApprovals?: () => number;
   automations?: () => { id: string; name: string; actionCount: number; active: boolean }[];
