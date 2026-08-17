@@ -10,7 +10,7 @@
  * No mocks — actions hit live Microsoft Graph.
  */
 import type { ConnectorWriteActionInfo, ConnectorWriteResult, PlatformEventInput } from '@neuropause/shared';
-import { AuthError, HttpClient, type RateGate } from '../../unified/sync/http';
+import { AuthError, HttpClient, NetworkError, type RateGate } from '../../unified/sync/http';
 import { rateGateKey } from '../../unified/sync/rateLimiter';
 import type { SyncStateStore } from '../../unified/sync/syncStateStore';
 import { writeEvents } from '../../unified/sync/events';
@@ -154,6 +154,13 @@ export class M365Executor {
       });
       this.deps.publish(writeEvents.failed(connectorId, name, accountId, actionId, message));
       this.deps.recordActivity(connectorId, accountId, 'error', `${action.label} failed: ${message}`);
+      // A NetworkError means the request was TRANSMITTED but no response was received — the external outcome is
+      // UNKNOWN, not a proven failure. Surface that class (in `data.outcome`) instead of collapsing it, so the
+      // governed worker path can raise a durable reconciliation hold and never blindly retry. Definite failures
+      // (HttpError/AuthError/input) stay as a plain failure. `ok` is false either way — UNKNOWN is never success.
+      if (err instanceof NetworkError) {
+        return { ok: false, message, data: { outcome: 'UNKNOWN' } };
+      }
       return { ok: false, message };
     }
   }

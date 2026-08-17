@@ -23,6 +23,11 @@ export interface M365UnknownHoldContext {
   /** Reconstructable identity of the consequential transition (CST transitionId) — the dedupe key. */
   readonly subject: string;
   readonly label: string;
+  /**
+   * The governed-decision id, when this UNKNOWN came from a claim-bearing (worker) execution — recorded on the
+   * hold so it correlates to the ExecutionSession (same decisionId). Absent for the IPC path (unchanged).
+   */
+  readonly decisionId?: string;
 }
 
 /** Build the `raiseHold` input for an M365 OUTCOME_UNKNOWN. Pure; the caller passes it to `raiseHold`. */
@@ -39,5 +44,6 @@ export function buildM365UnknownHoldInput(ctx: M365UnknownHoldContext): RaiseHol
     subject: ctx.subject,
     requestedAction: ctx.label,
     executed: 'Nothing confirmed — the outcome is unknown.',
+    ...(ctx.decisionId ? { decisionId: ctx.decisionId } : {}),
   };
 }

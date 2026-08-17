@@ -12,10 +12,16 @@ import type { ExecutionBinding } from '@neuropause/shared';
 import type { ExecutionExecutor } from '../../executeEngine';
 import { verifyBoundaryB } from './boundaryB';
 
-/** Runs a binding on the matching existing executor; returns a compact result. */
+/**
+ * Runs a binding on the matching existing executor; returns a compact result.
+ * `decisionId` (the verified BoundDecisionClaim decision, from Boundary B) is forwarded so the consequential
+ * executor can record it on a durable reconciliation hold when the external outcome is UNKNOWN — correlating the
+ * hold to the ExecutionSession (same decisionId). It grants no new authority; it is a correlation id only.
+ */
 export type RunBinding = (
   binding: ExecutionBinding,
   confirmed: boolean,
+  decisionId?: string,
 ) => Promise<{ ok: boolean; summary?: string; error?: string }>;
 
 /**
@@ -42,7 +48,9 @@ export function createWorkforceActionExecutor(runBinding: RunBinding, now: () =>
     }
     ctx.setStep(1); // "Call connector"
     try {
-      const res = await runBinding(binding, req.confirmed === true);
+      // Forward the verified decision id (Boundary B) so a consequential UNKNOWN can be held with a correlatable
+      // decisionId. Authority is unchanged — runBinding already gates on `confirmed`, and Boundary B already passed.
+      const res = await runBinding(binding, req.confirmed === true, verdict.decisionId);
       ctx.setStep(2); // "Record"
       return {
         ok: res.ok,

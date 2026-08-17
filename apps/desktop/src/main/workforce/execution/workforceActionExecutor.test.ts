@@ -38,14 +38,15 @@ describe('createWorkforceActionExecutor (Boundary B enforced)', () => {
   it('routes a GOVERNED binding to runBinding with the confirmed flag', async () => {
     const runBinding = vi.fn(async () => ({ ok: true, summary: 'stopped' }));
     const res = await exec(runBinding)(req(), ctx);
-    expect(runBinding).toHaveBeenCalledWith(BINDING, true);
+    // The verified decisionId is forwarded so a consequential UNKNOWN can be held (correlated to the session).
+    expect(runBinding).toHaveBeenCalledWith(BINDING, true, DECISION);
     expect(res).toEqual({ ok: true, summary: 'stopped', error: undefined });
   });
 
   it('forwards confirmed:false so a mutating gate can still reject', async () => {
     const runBinding = vi.fn(async () => ({ ok: false, error: 'needs confirmation' }));
     const res = await exec(runBinding)(req({ confirmed: false }), ctx);
-    expect(runBinding).toHaveBeenCalledWith(expect.anything(), false);
+    expect(runBinding).toHaveBeenCalledWith(expect.anything(), false, DECISION);
     expect(res.ok).toBe(false);
     expect(res.error).toBe('needs confirmation');
   });

@@ -2502,6 +2502,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   const runBinding = async (
     binding: ExecutionBinding,
     confirmed: boolean,
+    decisionId?: string,
   ): Promise<{ ok: boolean; summary?: string; error?: string }> => {
     switch (binding.executor) {
       case 'infra': {
@@ -2522,6 +2523,37 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
           binding.params ?? {},
           confirmed,
         );
+        // Worker OUTCOME_UNKNOWN → durable hold. When the M365 executor reports UNKNOWN (transmitted, response
+        // lost), raise a tenant-scoped reconciliation hold through the EXISTING raiseHold seam, correlated by the
+        // governed decisionId (= the ExecutionSession's decisionId). Strictly POST-outcome: it runs after the
+        // effect attempt, never calls action.run, and never turns UNKNOWN into success. Fail-closed: a hold-raise
+        // failure is logged but the outcome stays a non-success. No blind retry — resolution needs a new decision.
+        if (r.data?.outcome === 'UNKNOWN') {
+          if (decisionId) {
+            try {
+              raiseHold(
+                buildM365UnknownHoldInput({
+                  // tenantId/actor are informational only — the hold's tenant comes from holdStore's active scope
+                  // and the actor from raiseHold's authoritative authService accessor (never renderer-supplied).
+                  tenantId: activeTenantScope()?.tenantId ?? '',
+                  actor: null,
+                  connectorId: binding.target,
+                  accountId: binding.accountId ?? 'default',
+                  actionId: binding.actionId ?? '',
+                  subject: `m365-worker:${decisionId}`,
+                  label: `Microsoft 365: ${binding.actionId ?? 'action'} (worker)`,
+                  decisionId,
+                }),
+              );
+            } catch (holdErr) {
+              log.warn('Failed to raise worker M365 UNKNOWN hold', { message: String(holdErr) });
+            }
+          }
+          return {
+            ok: false,
+            error: 'Outcome unknown — the action was transmitted but not confirmed; held for reconciliation.',
+          };
+        }
         return {
           ok: r.ok,
           summary: r.message ?? undefined,

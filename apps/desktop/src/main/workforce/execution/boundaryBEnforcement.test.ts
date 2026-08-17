@@ -72,7 +72,8 @@ describe('Boundary B enforcement — valid path (control 18/20)', () => {
     const h = harness();
     const s = await h.engine.execute(validRequest());
     expect(h.runBinding).toHaveBeenCalledTimes(1); // effect reached
-    expect(h.runBinding).toHaveBeenCalledWith(BINDING, true);
+    // The verified decisionId is now forwarded to runBinding (so a consequential UNKNOWN can be held, correlated).
+    expect(h.runBinding).toHaveBeenCalledWith(BINDING, true, DECISION);
     expect(h.state.effects).toBe(1);
     expect(s.state).toBe('completed');
     expect(s.decisionId).toBe(DECISION); // Step-5 stamped the governed decision
