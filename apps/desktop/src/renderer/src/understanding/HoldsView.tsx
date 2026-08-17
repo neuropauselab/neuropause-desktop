@@ -21,6 +21,7 @@ import {
   HOLD_REASON_LABELS,
 } from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
+import { cn } from '@renderer/lib/cn';
 import { createLogger } from '@renderer/lib/logger';
 import { ViewHeader, ViewScroll } from '@renderer/components/ui/Page';
 import { Button } from '@renderer/components/ui/Button';
@@ -30,6 +31,12 @@ import { NoticeBlock } from '@renderer/dataCommandCenter/primitives';
 import { TRANSITION, listItemVariants, staggerDelay } from '@renderer/lib/motion';
 import { SkeletonCards, SkeletonRegion } from '@renderer/components/ui/Skeleton';
 import { useAnimatedCount } from '@renderer/lib/useAnimatedCount';
+import {
+  buildEvidenceTimeline,
+  classifyHold,
+  type TimelineFact,
+  type TimelineStep,
+} from './operatorConsole';
 
 const log = createLogger('holds');
 
@@ -163,6 +170,26 @@ export function HoldsView(): JSX.Element {
                         <p className="mt-1 max-w-[640px] text-sm leading-relaxed text-muted">
                           {hold.why}
                         </p>
+                        {/* Wave-1 Increment-3 — operator-facing state (plain words); technical reason stays below. */}
+                        {(() => {
+                          const op = classifyHold(hold);
+                          return (
+                            <div
+                              role="status"
+                              className={cn(
+                                'mt-1.5 text-sm font-medium',
+                                op.state === 'OUTCOME_UNKNOWN' ? 'text-sysorange' : 'text-ink',
+                              )}
+                            >
+                              {op.label}
+                              {op.reconciliationRequired && (
+                                <span className="ml-1 text-xs font-normal text-faint">
+                                  · reconcile before any retry — do not blindly retry
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
 
@@ -308,6 +335,16 @@ export function HoldsView(): JSX.Element {
                           )}
                           <Line label="What executed" value={r.executed} />
                           <Line label="Record id" value={r.id} />
+                          {/* Wave-1 Increment-3 — reconstructable evidence timeline; unavailable facts are said,
+                              never fabricated, and the external effect is never shown as verified. */}
+                          <EvidenceTimeline
+                            steps={buildEvidenceTimeline(
+                              r,
+                              r.holdId
+                                ? ([...open, ...(view?.resolved ?? [])].find((h) => h.id === r.holdId) ?? null)
+                                : null,
+                            )}
+                          />
                         </div>
                       </motion.div>
                     )}
@@ -337,6 +374,40 @@ function Block({ title, items }: { title: string; items: readonly string[] }): J
           ))
         )}
       </ul>
+    </div>
+  );
+}
+
+/** Wave-1 Increment-3 — the reconstructable evidence timeline for one consequential decision. */
+const FACT_TONE: Record<TimelineFact, string> = {
+  OBSERVED: 'text-ink',
+  NOT_OBSERVED: 'text-faint',
+  NOT_VERIFIED: 'text-sysorange',
+  NOT_AVAILABLE: 'text-faint',
+};
+const FACT_TAG: Record<TimelineFact, string> = {
+  OBSERVED: '',
+  NOT_OBSERVED: 'NOT OBSERVED',
+  NOT_VERIFIED: 'NOT VERIFIED',
+  NOT_AVAILABLE: 'NOT AVAILABLE',
+};
+function EvidenceTimeline({ steps }: { steps: readonly TimelineStep[] }): JSX.Element {
+  return (
+    <div className="mt-1">
+      <div className="text-xs uppercase tracking-wider text-faint">Evidence timeline</div>
+      <ol className="mt-1 space-y-1">
+        {steps.map((s) => (
+          <li key={s.key} className="flex flex-wrap items-baseline gap-x-2 text-sm">
+            <span className="text-xs uppercase tracking-wider text-faint">{s.label}:</span>
+            <span className={cn('min-w-0 break-words', FACT_TONE[s.fact])}>{s.value}</span>
+            {FACT_TAG[s.fact] && (
+              <span className="rounded-full border border-[var(--hairline)] px-1.5 text-[10px] uppercase tracking-wider text-faint">
+                {FACT_TAG[s.fact]}
+              </span>
+            )}
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }

@@ -209,6 +209,7 @@ import { outcomeRevisionStore } from './outcomes/instances';
 // executive decision workflow, and these are the governance RECORD/HOLD reads.
 import { initDecisions as initDecisionRecords } from './decisions';
 import { createHoldRaiser } from './decisions/raiseHold';
+import { buildM365UnknownHoldInput } from './decisions/m365UnknownHold';
 import { bindRelationshipEngine, bindRelationshipStore } from './crossDomain/instances';
 import {
   ambiguousIdentityHold,
@@ -1218,6 +1219,14 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         workspaceId: workspaceStore.activeWorkspaceIdForDisplay(),
       }),
   });
+
+  // Wave-1 Increment-2A — HOLD producer: an AUTHORITATIVE M365 IPC OUTCOME_UNKNOWN (transmitted, response lost)
+  // raises a durable hold through the existing raiseHold seam (tenant-scoped holdStore, reason
+  // `verification_unavailable`, deterministic subject = CST transitionId ⇒ repeated identical UNKNOWN dedupes to
+  // one hold). Records EVIDENCE after the governed outcome; never retries, never alters the CST decision. The
+  // mapping is the pure, unit-tested `buildM365UnknownHoldInput`. Wired here because both `connectors` and
+  // `raiseHold` now exist.
+  connectors.setUnknownHoldRaiser((input) => raiseHold(buildM365UnknownHoldInput(input)));
 
   /**
    * HOLD producer #6: `external_unavailable`.

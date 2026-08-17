@@ -11,6 +11,21 @@ import type { ConnectorSyncSnapshot } from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
 import { cn } from '@renderer/lib/cn';
 import { relativeTime } from './connectorLib';
+import {
+  classifyWriteOutcome,
+  EXECUTING_VIEW,
+  type M365OutcomeTone,
+  type M365OutcomeView,
+} from './m365Outcome';
+
+/** Honest tone → color mapping. UNKNOWN (warn) is deliberately distinct from FAILED/DENIED (error). */
+const TONE_CLASS: Record<M365OutcomeTone, string> = {
+  ok: 'text-sysgreen',
+  warn: 'text-sysorange',
+  error: 'text-sysred',
+  info: 'text-sysblue',
+  pending: 'text-faint',
+};
 
 function Title({ children }: { children: string }): JSX.Element {
   return <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">{children}</div>;
@@ -42,12 +57,14 @@ export function M365WritePanel({
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<M365OutcomeView | null>(null);
 
   const canWrite = accountId !== null;
 
   async function draft(): Promise<void> {
     if (!accountId) return;
     setBusy(true);
+    setOutcome(null);
     setStatus('Drafting…');
     try {
       const r = await ipc.connectors.m365Draft(connectorId, accountId, 'email', instruction || subject || 'Draft a short email', '');
@@ -64,18 +81,29 @@ export function M365WritePanel({
     if (!accountId) return;
     setBusy(true);
     setConfirming(false);
-    setStatus('Sending…');
+    setStatus(null);
+    setOutcome(EXECUTING_VIEW);
     try {
       const recipients = to.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
       const r = await ipc.connectors.m365Execute(connectorId, accountId, 'mail.send', { to: recipients, subject, body }, true);
-      setStatus(r.ok ? `Sent: ${r.message ?? 'ok'}` : `Not sent: ${r.message ?? 'failed'}`);
-      if (r.ok) {
+      const view = classifyWriteOutcome(r);
+      setOutcome(view);
+      // Clear the compose fields only on an honest provider acknowledgement — never on UNKNOWN/HELD/DENIED,
+      // so the operator keeps the exact content to reconcile or retry deliberately.
+      if (view.state === 'ACKNOWLEDGED') {
         setTo('');
         setSubject('');
         setBody('');
       }
     } catch {
-      setStatus('Send failed');
+      // A thrown IPC/transport error is an ambiguous outcome, NOT a proven no-effect. Treat as UNKNOWN.
+      setOutcome({
+        state: 'OUTCOME_UNKNOWN',
+        label: 'Outcome unknown',
+        detail: 'The request could not be confirmed (transport error). Reconcile the external state before any retry.',
+        tone: 'warn',
+        reconciliationRequired: true,
+      });
     } finally {
       setBusy(false);
     }
@@ -172,7 +200,18 @@ export function M365WritePanel({
               Send…
             </button>
           )}
-          {status && <div className={cn('text-2xs', status.startsWith('Not sent') || status.endsWith('failed') ? 'text-sysorange' : 'text-faint')}>{status}</div>}
+          {status && <div className={cn('text-2xs', status.endsWith('failed') ? 'text-sysorange' : 'text-faint')}>{status}</div>}
+          {outcome && (
+            <div role="status" className="rounded-lg [background:var(--fill-2)] px-3 py-2">
+              <div className={cn('text-2xs font-semibold', TONE_CLASS[outcome.tone])}>{outcome.label}</div>
+              <div className="mt-0.5 text-2xs text-faint">{outcome.detail}</div>
+              {outcome.reconciliationRequired && (
+                <div className="mt-1 text-2xs text-sysorange">
+                  Reconciliation required — check the external state; do not blindly retry.
+                </div>
+              )}
+            </div>
+          )}
           {!canWrite && <div className="text-2xs text-faint">Connect a Microsoft account to enable writes.</div>}
         </div>
       </div>

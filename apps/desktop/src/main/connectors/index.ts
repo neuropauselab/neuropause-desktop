@@ -96,6 +96,25 @@ export interface ConnectorSubsystemDeps {
   actor: () => string | null;
 }
 
+/**
+ * Wave-1 Increment-2A — a narrow, late-bound sink that turns an AUTHORITATIVE M365 IPC OUTCOME_UNKNOWN into a
+ * durable hold via the existing decisions HoldStore. Injected AFTER construction (the hold raiser is composed
+ * later than the connector subsystem in the runtime root), so the connector layer stays decoupled from the
+ * decisions module. It records governance EVIDENCE only — it never executes an M365 effect, never authorizes,
+ * and never alters the certified CST decision/admission. `tenantId`/`actor` are the SAME authoritative values the
+ * governed transition used (main-process identity/tenant); the renderer supplies none of them.
+ */
+export type M365UnknownHoldRaiser = (input: {
+  readonly tenantId: string;
+  readonly actor: string | null;
+  readonly connectorId: string;
+  readonly accountId: string;
+  readonly actionId: string;
+  /** Reconstructable identity of the consequential transition (the CST transitionId) — the dedupe key. */
+  readonly subject: string;
+  readonly label: string;
+}) => void;
+
 export interface ConnectorSubsystem {
   handlers: SecureHandlerDef[];
   /** The P4.1 Runtime Supervisor — exposed so later increments can wire richer sync signals into it. */
@@ -104,6 +123,12 @@ export interface ConnectorSubsystem {
   inboundWebhooks: InboundWebhookRouter;
   /** P8.3 — the confirmation-gated M365 write executor, for approved worker actions. */
   m365Executor: M365Executor;
+  /**
+   * Wave-1 Increment-2A — late-bind the sink that raises a durable hold on an AUTHORITATIVE M365 UNKNOWN outcome.
+   * Called once by the runtime root after both the connector subsystem and the hold raiser exist. Absent binding
+   * (e.g. in tests that never wire it) simply means no hold is raised — the certified outcome is unaffected.
+   */
+  setUnknownHoldRaiser: (raiser: M365UnknownHoldRaiser) => void;
   dispose: () => void;
 }
 
@@ -390,6 +415,36 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
   );
   const mailSendAction = ALL_M365_ACTIONS.find((a) => a.id === 'mail.send') ?? null;
 
+  // Wave-1 Increment-2A — the late-bound UNKNOWN→hold sink (see ConnectorSubsystem.setUnknownHoldRaiser). Null
+  // until the runtime root wires it; a null sink means no hold is raised and the certified outcome is unchanged.
+  let unknownHoldRaiser: M365UnknownHoldRaiser | null = null;
+  /**
+   * Raise a durable hold for an AUTHORITATIVE M365 OUTCOME_UNKNOWN. Runs AFTER the governed transition returned,
+   * so it is strictly post-outcome: it never touches `action.run`, the effect, `effectCalls`, or the CST verdict.
+   * `subject` is the CST transitionId (canonical-identity-derived) so a repeated identical UNKNOWN dedupes to one
+   * hold. Authoritative tenant/actor come from the same main-process seams the governed transition used.
+   */
+  const raiseM365UnknownHold = (
+    connectorId: string,
+    accountId: string,
+    actionId: string,
+    outcome: { readonly transitionId: unknown } | null,
+    label: string,
+  ): void => {
+    const raise = unknownHoldRaiser;
+    if (!raise) return;
+    const subject = outcome ? String(outcome.transitionId) : `m365:${connectorId}/${accountId}/${actionId}`;
+    raise({
+      tenantId: deps.workspaceId(),
+      actor: deps.actor(),
+      connectorId,
+      accountId,
+      actionId,
+      subject,
+      label,
+    });
+  };
+
   // P5 — inbound webhook / realtime runtime. Verified deliveries (relay/tunnel) via handle() and
   // pre-authenticated Socket Mode events via triggerSync() both funnel a targeted incremental sync
   // through the EXISTING connector sync path — no new pipeline. The router is exposed on the subsystem
@@ -556,6 +611,11 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
             now: () => new Date().toISOString(),
             ports: m365SendPorts,
           });
+          // Wave-1 Increment-2A — an authoritative UNKNOWN (transmitted, response lost) becomes a durable hold
+          // for reconciliation. Strictly post-outcome; it does not retry and does not alter the CST result.
+          if (g.semanticOutcome === 'UNKNOWN') {
+            raiseM365UnknownHold(r.connectorId, r.accountId, r.actionId, g.outcome, 'Send email (Microsoft 365)');
+          }
           return mapSendOutcome(g, r.confirmed);
         }
         // P13C H-FINDING-4 (Cohort 1 + 2A + 2B-i + 2B-ii) — non-mail.send write actions are governed
@@ -590,6 +650,10 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
               now: () => new Date().toISOString(),
               ports: m365ActionPorts,
             });
+            // Wave-1 Increment-2A — same UNKNOWN→durable-hold rule for the non-mail.send governed actions.
+            if (g.semanticOutcome === 'UNKNOWN') {
+              raiseM365UnknownHold(r.connectorId, r.accountId, r.actionId, g.outcome, `Microsoft 365: ${r.actionId}`);
+            }
             return mapActionOutcome(g, r.confirmed);
           }
         }
@@ -615,6 +679,10 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
     inboundWebhooks,
     // P8.3 — the confirmation-gated M365 write executor, so approved worker actions can run it.
     m365Executor: m365,
+    // Wave-1 Increment-2A — late-bind the authoritative UNKNOWN→hold sink (see raiseM365UnknownHold).
+    setUnknownHoldRaiser: (raiser) => {
+      unknownHoldRaiser = raiser;
+    },
     dispose: () => {
       slackSocket?.stop();
       supervisor.dispose();
