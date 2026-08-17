@@ -46,6 +46,7 @@ import {
   type Actor,
   type Approval,
   type Consequence,
+  type Reversibility,
   type TransitionOutcome,
   type TransitionRequest,
 } from '@neuropause/cst/dist/src/types.js';
@@ -106,6 +107,50 @@ export const GOVERNED_ACTION_COHORT2A: ReadonlySet<string> = new Set<string>([
   'calendar.update',
   'teams.createChannel',
 ]);
+
+/**
+ * P13C H-FINDING-4 Cohort 2B-i — REVERSIBLE internal data mutations (no external communication, no
+ * hard delete), governed through the SAME governedAction adapter + durable store. Unlike Cohort 1/2A,
+ * these are honestly REVERSIBLE (see `ACTION_REVERSIBILITY`), so they are NOT labelled irreversible.
+ * Cohort 2B-ii (drive.upload, drive.restoreVersion, contacts.update — overwrite / partially-reversible)
+ * is intentionally EXCLUDED and remains on the existing executor pending its own gate.
+ */
+export const GOVERNED_ACTION_COHORT2B_I: ReadonlySet<string> = new Set<string>([
+  'mail.saveDraft',
+  'mail.move',
+  'mail.markRead',
+  'mail.restore',
+  'mail.addAttachment',
+  'drive.rename',
+  'drive.move',
+  'drive.createFolder',
+  'contacts.create',
+]);
+
+/**
+ * P13C H-FINDING-4 — per-action reversibility (honest CST evidence). DEFAULT is `IRREVERSIBLE`
+ * (conservative), which preserves Cohort-1/2A/mail.send behavior unchanged. Reversibility is
+ * DESCRIPTIVE evidence in the TransitionRequest — the kernel does not branch on it, and it is NOT part
+ * of the idempotency key — so this map changes NEITHER action identity NOR admission, only the recorded
+ * reversibility class. Cohort-2B-i actions are REVERSIBLE (reversible internal mutations, source-verified).
+ */
+const ACTION_REVERSIBILITY: ReadonlyMap<string, Reversibility> = new Map<string, Reversibility>([
+  ['mail.saveDraft', 'REVERSIBLE'],
+  ['mail.move', 'REVERSIBLE'],
+  ['mail.markRead', 'REVERSIBLE'],
+  ['mail.restore', 'REVERSIBLE'],
+  ['mail.addAttachment', 'REVERSIBLE'],
+  ['drive.rename', 'REVERSIBLE'],
+  ['drive.move', 'REVERSIBLE'],
+  ['drive.createFolder', 'REVERSIBLE'],
+  ['contacts.create', 'REVERSIBLE'],
+]);
+
+/** The honest reversibility class recorded for a governed action. Default `IRREVERSIBLE` (conservative)
+ *  keeps Cohort-1/2A/mail.send unchanged. Not part of the idempotency key. */
+export function reversibilityForAction(actionId: string): Reversibility {
+  return ACTION_REVERSIBILITY.get(actionId) ?? 'IRREVERSIBLE';
+}
 
 export type ActionSemanticOutcome =
   | 'ACKNOWLEDGED'
@@ -242,7 +287,9 @@ export async function governedAction(args: GovernedActionArgs): Promise<Governed
     intent: `perform a single reviewer-confirmed ${action.id} via the connector`,
     expectedPostState,
     consequence,
-    reversibility: 'IRREVERSIBLE',
+    // Per-action reversibility (honest evidence); default IRREVERSIBLE preserves Cohort-1/2A behavior.
+    // NOT part of the idempotency key ⇒ does not affect action identity or admission.
+    reversibility: reversibilityForAction(action.id),
     policyVersion: POLICY_VERSION,
     idempotencyKey: idem,
     evidence: [],
