@@ -78,6 +78,9 @@ function wireEventBridges(): void {
   });
 }
 
+// Wave-2 Slice-14 — build-time constant (see electron.vite.config.ts `define`); false in every release build.
+declare const __NP_E2E__: boolean;
+
 async function bootstrap(): Promise<void> {
   startupMetrics.mark('app-ready');
   installContentSecurityPolicy();
@@ -167,6 +170,20 @@ async function bootstrap(): Promise<void> {
      * message is the sanitized first line only — the full error is in the log.
      */
     broadcast(IpcChannel.RuntimeStateChanged, markRuntimeFailed(safeInitFailureMessage(err)));
+  }
+
+  // Wave-2 Slice-14 — E2E seed + mock-Graph seam. `__NP_E2E__` folds to `false` in every release build, so this
+  // branch and its dynamic import are dead-code-eliminated (never shipped). NEUROPAUSE_E2E=1 is a second runtime
+  // guard so an e2e-capable build does not seed unless the Playwright harness explicitly asks. See e2e/e2eSeed.ts.
+  if (__NP_E2E__ && process.env.NEUROPAUSE_E2E === '1') {
+    try {
+      const { installE2eSeeds } = await import('./e2e/e2eSeed');
+      await installE2eSeeds();
+      // Anti-masquerade stamp: the window title carries `-e2e` so a seeded build is visibly not a release.
+      mainWindow?.setTitle('NeuroPause -e2e (seeded — not for release)');
+    } catch (err) {
+      log.error('E2E seed failed', err);
+    }
   }
 }
 

@@ -36,6 +36,10 @@ export default defineConfig({
     // Externalize real node_modules deps, but bundle the shared source.
     plugins: [externalizeDepsPlugin({ exclude: BUNDLED_WORKSPACE_PACKAGES })],
     resolve: { alias: sharedAlias },
+    // Wave-2 Slice-14 — a build-time constant that is TRUE only when the e2e app is built with NP_E2E_BUILD=1.
+    // Every release build (`electron-vite build` with no flag) folds it to `false`, so the e2e seed branch in
+    // src/main/index.ts and its dynamically-imported module are dead-code-eliminated and never ship.
+    define: { __NP_E2E__: JSON.stringify(process.env.NP_E2E_BUILD === '1') },
     build: {
       rollupOptions: {
         input: { index: resolve(__dirname, 'src/main/index.ts') },
