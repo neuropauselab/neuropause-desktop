@@ -88,6 +88,7 @@ const hasOpenConnectors = async (win) => (await win.getByRole('button', { name: 
   await newConversation(win);
   await shot(win, 'A1-assistant');
   await ask(win, 'send an email to test@example.com saying the demo is Friday');
+  await win.waitForFunction(() => [...document.querySelectorAll('button')].some((b) => /Open connectors/i.test(b.textContent || '')), undefined, { timeout: 12000 }).catch(() => {});
   await shot(win, 'A2-intent-reply');
   ok(await hasOpenConnectors(win), 'assistant produced a mail.send intent (Open connectors offered)');
 
@@ -139,6 +140,7 @@ const hasOpenConnectors = async (win) => (await win.getByRole('button', { name: 
   await gotoAssistant(win);
   await newConversation(win);
   await ask(win, 'Send an email saying the meeting is tomorrow');
+  await win.waitForFunction(() => /which email address/i.test(document.body.innerText), undefined, { timeout: 12000 }).catch(() => {});
   await shot(win, 'C1-clarify');
   const cText = await win.evaluate(() => document.body.innerText);
   ok(/which email address/i.test(cText), 'the assistant ASKS for the recipient (clarification)');
