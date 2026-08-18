@@ -77,7 +77,8 @@ import {
   type DeterministicPorts,
 } from './deterministicAnswers';
 import { renderReportMaterial } from './productivity';
-import { assistantMailSendIntent, referenceDrafter } from '../capabilities/assistantMailIntent';
+import { assistantMailSendIntent } from '../capabilities/assistantMailIntent';
+import { servingDraftMailer } from '../ai/brain/mailDraftGateway';
 import type { ConversationStore } from './conversationStore';
 import type { CapabilityCatalogView } from '../capabilities/capabilityDiscoveryService';
 
@@ -354,7 +355,11 @@ export class AssistantService {
     // M365WritePanel renders the proposal via the Slice-12 feed (one surface). The AI gains NO authority; the human
     // still confirms downstream through the certified path. Only the user's explicit live turn reaches here. ──
     if (!cfg.operational) {
-      const mail = assistantMailSendIntent(input.text, {}, referenceDrafter);
+      // BRAIN-1 ③ — the draft lane goes through the gateway's serving selector.
+      // Today it serves the deterministic referenceDrafter (zero-model); flipping
+      // to a real model is eval-gated (DECISIONS D-13). The deterministic guards
+      // in assistantMailSendIntent own `to`/action regardless of the drafter.
+      const mail = assistantMailSendIntent(input.text, {}, servingDraftMailer());
       if (mail.kind === 'INTENT') {
         const envelope = baseEnvelope(correlationId, mode, intent, now);
         envelope.text = `I've prepared an email to ${mail.params.to.join(', ')} for your review. Open the Microsoft 365 panel in the Connector Center — nothing is sent without your explicit confirmation.`;

@@ -97,6 +97,15 @@ describe('Processing badge', () => {
     });
   });
 
+  it('BRAIN-1 — names a model ONLY when one genuinely served', () => {
+    // A real model ran → the badge names it.
+    expect(processingBadge(meta({ location: 'local', model: 'llama3.1' }))?.modelName).toBe('llama3.1');
+    expect(processingBadge(meta({ location: 'external', model: 'claude-sonnet-4-6' }))?.modelName).toBe('claude-sonnet-4-6');
+    // Zero-model / deterministic path → NO model named (never invented).
+    expect(processingBadge(meta({ location: 'none', model: 'none' }))?.modelName).toBeNull();
+    expect(processingBadge(meta({ location: 'local', model: 'none' }))?.modelName).toBeNull();
+  });
+
   it('the Why answer is built from the execution metadata, attempts included', () => {
     const badge = processingBadge(
       meta({

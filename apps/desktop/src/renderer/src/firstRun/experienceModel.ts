@@ -102,6 +102,12 @@ export interface ProcessingBadgeModel {
   /** The full "Why?" answer, from the execution metadata only. */
   why: string;
   location: ProcessingLocation;
+  /**
+   * BRAIN-1 — the concrete model that served, named ONLY when one genuinely ran.
+   * Null for the zero-model / deterministic path (`referenceDrafter`, fallbacks),
+   * where `location`/`model` are 'none'. The badge never invents a model name.
+   */
+  modelName: string | null;
 }
 
 /**
@@ -122,6 +128,8 @@ export function processingBadge(meta: AiRoutingMetadata | null | undefined): Pro
     tone,
     why: explainRouting(meta),
     location: meta.location,
+    // Name a model only when one genuinely served; 'none'/deterministic → null.
+    modelName: meta.location === 'none' || meta.model === 'none' || meta.model.trim() === '' ? null : meta.model,
   };
 }
 
