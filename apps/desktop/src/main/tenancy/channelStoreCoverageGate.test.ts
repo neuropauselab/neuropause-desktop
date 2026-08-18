@@ -53,7 +53,7 @@ const SENSITIVE_BASELINE = 196; // +1 FG-1 (Wave-2 Slice 10): capability:m365.pr
  * THE NUMERATOR. 2 as of P13C final certification — `ai:preference.get` and
  * `ai:preference.set`, added by D-5. This number may only go UP.
  */
-const DECLARED_BASELINE = 3; // +1 round 34: aiConfig:pullModel declares its ai-config read
+const DECLARED_BASELINE = 4; // +1 FG-2 (Wave-2 Slice 11): capability:m365.propose declares its connector-accounts read (handler landed)
 
 function sourceFiles(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
