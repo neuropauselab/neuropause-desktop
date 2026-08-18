@@ -105,6 +105,9 @@ describe('parameter validation (untrusted AI data)', () => {
     ['unsupported field (accountId)', { to: 'a@b.com', accountId: 'acct-9' }],
     ['nested object body', { to: 'a@b.com', body: { evil: true } }],
     ['function body', { to: 'a@b.com', body: () => 'x' }],
+    // S12 comma hardening: in an ARRAY each element is ONE address; a comma inside one is malformed, not a separator.
+    ['array recipient with comma in local part', { to: ['a,b@c.com'], body: 'B' }],
+    ['array recipient smuggling two addresses', { to: ['a@b.com,c@d.com'], body: 'B' }],
   ] as const)('%s → INVALID_PARAMS', (_n, params) => {
     const r = P(params as Record<string, unknown>);
     expect(r.ok).toBe(false);
@@ -122,6 +125,33 @@ describe('parameter validation (untrusted AI data)', () => {
     const b = P({ to: ['a@b.com', 'c@d.com'] });
     expect(a.ok && b.ok && a.proposal.review.to).toEqual(['a@b.com', 'c@d.com']);
     if (b.ok) expect(b.proposal.review.to).toEqual(['a@b.com', 'c@d.com']);
+  });
+
+  describe('S12 comma hardening (prerequisite gate for S13 AI-supplied `to`)', () => {
+    it('an array recipient containing a comma is rejected with a comma-specific detail', () => {
+      const r = P({ to: ['a,b@c.com'] });
+      expect(r.ok).toBe(false);
+      if (!r.ok) {
+        expect(r.reason).toBe('INVALID_PARAMS');
+        expect(r.detail).toMatch(/must not contain a comma/);
+      }
+    });
+
+    it('a STRING with a comma still splits into separate addresses (comma = separator preserved)', () => {
+      const r = P({ to: 'a@b.com,c@d.com' });
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.proposal.review.to).toEqual(['a@b.com', 'c@d.com']);
+    });
+
+    it('no accepted recipient ever contains a comma → the panel comma-join round-trips safely', () => {
+      const r = P({ to: ['x@y.com', 'p@q.com'] });
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        for (const addr of r.proposal.review.to) expect(addr).not.toContain(',');
+        const panel = toWritePanelProposal(r.proposal);
+        expect(panel.to.split(', ')).toEqual(['x@y.com', 'p@q.com']);
+      }
+    });
   });
 });
 

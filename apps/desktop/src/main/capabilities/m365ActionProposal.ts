@@ -82,14 +82,22 @@ function clean(text: string, keepNewlines: boolean): string {
 
 function normalizeRecipients(raw: unknown): { ok: true; value: string[] } | { ok: false; detail: string } {
   let list: unknown[];
+  // In a STRING, a comma is the separator between addresses (split here). In an ARRAY, each element is ONE address,
+  // so a comma inside an element is not a separator — it is a malformed address. We reject it (see the loop below):
+  // `toWritePanelProposal` re-serializes recipients as a comma-joined string, so a comma buried in one address would
+  // silently split into two on any downstream re-parse. Fail closed (S12 hardening; prerequisite for S13's AI `to`).
+  let fromArray = false;
   if (typeof raw === 'string') list = raw.split(',');
-  else if (Array.isArray(raw)) list = raw;
+  else if (Array.isArray(raw)) { list = raw; fromArray = true; }
   else return { ok: false, detail: 'to must be a string or an array of strings' };
   const out: string[] = [];
   for (const item of list) {
     if (typeof item !== 'string') return { ok: false, detail: 'to contains a non-string recipient' };
     const addr = clean(item, false).trim();
     if (addr.length === 0) continue;
+    if (fromArray && addr.includes(',')) {
+      return { ok: false, detail: `recipient must not contain a comma: ${addr.slice(0, 60)}` };
+    }
     if (!EMAIL_RE.test(addr)) return { ok: false, detail: `invalid recipient: ${addr.slice(0, 60)}` };
     out.push(addr);
   }
