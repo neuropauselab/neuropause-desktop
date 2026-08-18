@@ -67,8 +67,11 @@ once — under human control. The e2e seed seam is NOT used for a real send (it 
   **ONLY AFTER S16's read-back oracle completes** — the oracle needs the consent (and a read scope) ALIVE to verify the
   sent message. Do **NOT** revoke consent or delete the app immediately post-send.
 - Interim safety holds regardless: the only recipient reachable was the operator's own mailbox (allowlist), and the
-  single-send latch prevents any further send. **Full containment (revoke consent + delete app + drop tokens) runs at
-  the END of S16** (Phase 4), recorded in evidence.
+  single-send latch prevents any further send. **Full containment (revoke consent + delete app registration + drop
+  tokens) runs at the END of S16** (Phase 4), recorded in evidence.
+- **The isolated S15 profile is additional containment.** The OAuth vault (encrypted tokens) AND the
+  `first-real-send.latch` live inside `$S15_PROFILE`, not your real profile. Deleting that directory after S16 removes
+  the tokens and the latch in one step — nothing S15 touched persists outside it.
 
 ## 7 · Evidence capture + vocabulary (conditions 5, 6, 7)
 
@@ -92,11 +95,27 @@ OAuth consent, and the real send are the human's keyboard gate.**
 
 ## 9 · GO / NO-GO CHECKLIST (hand-off — the human's keyboard session)
 
-Run mode A build: `NP_E2E_BUILD=1 npx electron-vite build`, then launch with
-`NEUROPAUSE_S15_APPPRINCIPAL=1 NEUROPAUSE_FIRST_REAL_SEND=1` (do NOT set `NEUROPAUSE_E2E=1` — the app HARD-FAILS at
-startup if you mix them, or if you set S15APPPRINCIPAL without FIRST_REAL_SEND).
+**Launch sequence (isolated profile — verified against source; run from `apps/desktop`):**
+```bash
+# 1. A DEDICATED, isolated profile. It holds the OAuth vault + the single-send latch. Deleting it after S16 is
+#    additional containment. It must NOT be your real ~/…/@neuropause/desktop profile (the app HARD-FAILS if it is).
+export S15_PROFILE="$HOME/Library/Application Support/NeuroPause-S15"
+
+# 2. Build the e2e-capable app:
+NP_E2E_BUILD=1 npx electron-vite build
+
+# 3. Launch: isolated userData + mode flags. Do NOT set NEUROPAUSE_E2E (the app HARD-FAILS if you mix mock+real, or
+#    if you set S15APPPRINCIPAL without FIRST_REAL_SEND).
+NEUROPAUSE_S15_APPPRINCIPAL=1 NEUROPAUSE_FIRST_REAL_SEND=1 \
+  npx electron --user-data-dir="$S15_PROFILE" out/main/index.js
+```
+Because the profile is fresh, a first-run **"Welcome to NeuroPause" modal** appears — the sign-in wall is
+auto-bypassed by the seeded principal; click through the Welcome (Get started → any Continue/Next → Done). The fresh
+profile also means the org is created fresh, so the seeded principal is a member (no `not_a_member`). Then: Connector
+Center → Microsoft → **Connect**.
 
 GO only when ALL are true:
+- [ ] Launched with `--user-data-dir="$S15_PROFILE"` — a **dedicated** dir, NOT your real `@neuropause/desktop` profile.
 - [ ] Dedicated **TEST** tenant (never a production identity); Tenant ID noted.
 - [ ] Single-tenant app registration; **delegated `Mail.Send` only** (+ `User.Read`, `offline_access`); nothing broader.
 - [ ] `NEUROPAUSE_MICROSOFT_ENTRA_CLIENT_ID` (app client ID) + `NEUROPAUSE_MICROSOFT_ENTRA_TENANT_ID` (test tenant GUID, not `common`) set in your shell/keychain — never committed. **No client secret** (PKCE public client).
