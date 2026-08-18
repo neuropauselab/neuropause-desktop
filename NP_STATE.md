@@ -4,8 +4,8 @@ Living, TRACKED working doc (committed each slice; excluded from the freeze sour
 ## Now
 - HEAD `96609d4` · FREEZE INTACT (`BASELINE-43dfbe3ff6f7`) · branch `cert/data-import-cst-integration`.
 - Suites (RUN against BASELINE-43dfbe3ff6f7): full main **8724/3 skipped** (823) · real-Electron e2e **13/13** (guard inert in mock mode) · guard+mode pins **16** · typecheck + lint clean · `verify-e2e-strip.sh` PASS (seed + guard absent from release).
-- Landed: Slices 1–14 + **S15 PRE-FLIGHT** (safety infra only; NO real send). S14 = real-Electron governed-loop e2e (mock Graph). S15 pre-flight = **FG-4** first-real-send guard hook (`connectors/index.ts`, compile-stripped, `b0ac3c5`) + `firstRealSendGuard` (allowlist all fields + durable single-send latch) + mode coupling (run mode A). INTACT bracket befabe0 → b0ac3c5 → ad81825. All 7 conditions folded in.
-- **Next: Slice 15 EXECUTION — first REAL email ⛔ human at keyboard.** Runbook + go/no-go checklist ready. HARD STOP before real credentials / OAuth / real send — the human's keyboard gate.
+- Landed: Slices 1–14 + **S15 EXECUTED**. S14 = real-Electron governed-loop e2e (mock Graph). S15 = first REAL send ATTEMPT at the operator's keyboard: **AUTHORIZED ✓ · SUBMITTED ✓ (Graph 202/ACKNOWLEDGED) · EXTERNALLY OBSERVED = PENDING** (automated read-back blocked by macOS Keychain, F-3). One email to the operator's own address; latch spent. FG-4 also fired live on a non-allowlisted attempt (negative proof). Profile-isolation guard landed (`996958d`, `--user-data-dir` required). Evidence: `…SLICE-15-FIRST-REAL-SEND-EVIDENCE.md`.
+- **Next: Slice 16 — read-back oracle** (match tuple: internetMessageId + recipient + subject/body fingerprint + timestamp window; must run in-session per F-3; Mail.Read already granted → no re-consent, F-2). Containment deferred to after S16.
 
 ## Change-control trail (S14)
 ```
