@@ -56,9 +56,10 @@ function seedAuthenticatedPrincipal(): void {
       accessTokenExpiresAt: now + HOUR_MS,
     },
   };
-  // No offline public login exists (loginEmail hits the backend); set the private session state directly. This is the
-  // identity-forging surface — it exists ONLY in this compile-stripped, NEUROPAUSE_E2E-gated module.
-  (authService as unknown as { status: AuthStatus }).status = status;
+  // No offline public login exists (loginEmail hits the backend); drive the private setStatus so it also EMITS
+  // 'statusChanged' — the main→renderer auth bridge relays that, and the renderer leaves the sign-in wall. This is
+  // the identity-forging surface — it exists ONLY in this compile-stripped, NEUROPAUSE_E2E-gated module.
+  (authService as unknown as { setStatus(s: AuthStatus): AuthStatus }).setStatus(status);
 }
 
 /** Seed a connected microsoft-entra account with the Mail.Send grant + a mock token, in the active workspace. */
