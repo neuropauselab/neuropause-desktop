@@ -19,8 +19,9 @@
  * as one: compile-stripped from every release build, and inert unless NEUROPAUSE_E2E=1. If either guard is ever
  * removed, this becomes a way to forge identity — do not weaken them.
  */
+import { app } from 'electron';
 import type { AuthStatus } from '@neuropause/shared';
-import type { E2eMode } from './e2eMode';
+import { looksLikeDefaultProfile, type E2eMode } from './e2eMode';
 import { createLogger } from '../logger';
 import { authService } from '../auth/authService';
 import { workspaceStore } from '../enterprise/workspace/workspaceInstance';
@@ -105,6 +106,14 @@ async function seedConnectedAccount(): Promise<void> {
  */
 export async function installE2eSeeds(mode: E2eMode): Promise<void> {
   if (mode === 'off') return;
+  // Slice-15 isolation safety (fail closed): app-principal (real-send) mode must run on a DEDICATED, isolated userData
+  // (`--user-data-dir=…`), never the real default profile — else the seeded principal collides with the real org
+  // (not_a_member) and the real profile is touched. Refuse rather than send there.
+  if (mode === 'app-principal' && looksLikeDefaultProfile(app.getPath('userData'))) {
+    log.error(`[${E2E_SEED_SENTINEL}] app-principal (real-send) mode on the DEFAULT profile (${app.getPath('userData')}) — REFUSING. Relaunch with an isolated --user-data-dir=<dedicated S15 dir>.`);
+    app.exit(1);
+    return;
+  }
   log.warn(`[${E2E_SEED_SENTINEL}] installing seeds — mode=${mode} — THIS MUST NEVER RUN IN A RELEASE BUILD`);
   // Both modes seed the app principal (the dead NeuroPause backend login; local-first is S17).
   seedAuthenticatedPrincipal();

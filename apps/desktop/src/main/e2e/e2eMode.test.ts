@@ -2,7 +2,7 @@
  * Slice-15 condition 1 — the e2e/real-send mode coupling HARD-FAILS on invalid flag combinations.
  */
 import { describe, expect, it } from 'vitest';
-import { resolveE2eMode, E2eModeError } from './e2eMode';
+import { resolveE2eMode, E2eModeError, looksLikeDefaultProfile } from './e2eMode';
 
 const env = (o: Record<string, string>): NodeJS.ProcessEnv => o as NodeJS.ProcessEnv;
 
@@ -30,5 +30,17 @@ describe('resolveE2eMode — mode coupling', () => {
 
   it('HARD-FAIL: NEUROPAUSE_E2E=1 together with FIRST_REAL_SEND=1 (never mock a real send)', () => {
     expect(() => resolveE2eMode(env({ NEUROPAUSE_E2E: '1', NEUROPAUSE_FIRST_REAL_SEND: '1' }))).toThrow(/mutually exclusive/);
+  });
+});
+
+describe('looksLikeDefaultProfile — isolation safety', () => {
+  it('flags the real default @neuropause/desktop userData (any base dir)', () => {
+    expect(looksLikeDefaultProfile('/Users/me/Library/Application Support/@neuropause/desktop')).toBe(true);
+    expect(looksLikeDefaultProfile('/tmp/@neuropause/desktop/')).toBe(true);
+    expect(looksLikeDefaultProfile('C:\\Users\\me\\AppData\\Roaming\\@neuropause\\desktop')).toBe(true);
+  });
+  it('passes an isolated S15 profile dir', () => {
+    expect(looksLikeDefaultProfile('/Users/me/Library/Application Support/NeuroPause-S15')).toBe(false);
+    expect(looksLikeDefaultProfile('/tmp/np-s15')).toBe(false);
   });
 });

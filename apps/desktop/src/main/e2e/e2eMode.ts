@@ -44,3 +44,13 @@ export function resolveE2eMode(env: NodeJS.ProcessEnv): E2eMode {
   if (e2e) return 'full-e2e';
   return 'off';
 }
+
+/**
+ * Slice-15 isolation safety: app-principal (real-send) mode must run on a DEDICATED, isolated userData
+ * (`--user-data-dir=…`), never the real default profile — otherwise the seeded principal collides with the real
+ * org (not_a_member) and the real profile is touched. This detects the default `@neuropause/desktop` userData path so
+ * the seed can HARD-FAIL and refuse to proceed. Pure string check (testable without electron).
+ */
+export function looksLikeDefaultProfile(userDataPath: string): boolean {
+  return /@neuropause[/\\]desktop[/\\]?$/i.test(userDataPath.trim());
+}
