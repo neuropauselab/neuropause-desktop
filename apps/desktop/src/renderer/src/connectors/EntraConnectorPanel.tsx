@@ -16,6 +16,7 @@ import { StatusDot } from '@renderer/operations/primitives';
 import type { OpsTone } from '@renderer/operations/lib';
 import { relativeTime } from './connectorLib';
 import { M365WritePanel } from './M365WritePanel';
+import { consumePendingMailProposal } from './m365ProposalHandoff';
 
 const STATE_TONE: Record<string, OpsTone> = {
   healthy: 'green',
@@ -116,18 +117,15 @@ export function EntraConnectorPanel({ dto }: { dto: ConnectorDto }): JSX.Element
   const [devSubject, setDevSubject] = useState('Monthly report');
   const [devBody, setDevBody] = useState('Attached is the monthly report.');
 
-  async function proposeDev(): Promise<void> {
+  // Shared by the dev trigger (Slice 12) and the assistant hand-off (Slice 13): call the Slice-12 propose feed with
+  // params and route the response into the panel. The producer re-validates every param; this never sends.
+  const runPropose = async (params: { to: unknown; subject: string; body: string }, purpose: string): Promise<void> => {
     const accountId = dto.accounts[0]?.id ?? null;
     setProposing(true);
     setRefusal(null);
     setProposeError(null);
     try {
-      const r = await ipc.connectors.m365Propose({
-        capabilityId: 'mail.send',
-        accountId,
-        purpose: 'dev-triggered proposal',
-        params: { to: devTo, subject: devSubject, body: devBody },
-      });
+      const r = await ipc.connectors.m365Propose({ capabilityId: 'mail.send', accountId, purpose, params });
       if (r.ok) {
         setProposal(r.proposal);
         setProposalKey((k) => k + 1);
@@ -143,6 +141,21 @@ export function EntraConnectorPanel({ dto }: { dto: ConnectorDto }): JSX.Element
     } finally {
       setProposing(false);
     }
+  };
+
+  // Slice-13 amendment 3 — consume an assistant-handed mail proposal EXACTLY ONCE on mount. The mailbox is
+  // read-and-clear, so a remount or back-navigation finds it empty: no re-fire, no refill from a stale intent.
+  useEffect(() => {
+    const handed = consumePendingMailProposal();
+    if (handed) {
+      void runPropose({ to: handed.to, subject: handed.subject, body: handed.body }, 'assistant-proposed mail.send');
+    }
+    // Mount-once: the mailbox guarantees at-most-one consumption; deps intentionally empty.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function proposeDev(): void {
+    void runPropose({ to: devTo, subject: devSubject, body: devBody }, 'dev-triggered proposal');
   }
 
   useEffect(() => {
