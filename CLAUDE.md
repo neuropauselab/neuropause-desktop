@@ -10,11 +10,11 @@ This file supersedes all prior prompt documents (OPERATION_ALIVE, WAVE3, FG1). R
 
 ## 1 · CURRENT STATE (Claude Code updates ONLY this section, at every slice completion)
 
-- HEAD: `c8e42f4` · FREEZE INTACT (`BASELINE-0df776a6a740`, baseline commit `5534c45`) · branch `cert/data-import-cst-integration`.
-- Landed: Slices 1–11. Slice 8 = pure producer `buildM365ActionProposal` + `toWritePanelProposal` (26/26). Slice 9 = frozen-delivery-gate proof (no non-frozen carrier). Slice 10 = FG-1: `capability:m365.propose` contract (frozen pair in channels.ts + contracts.ts; non-frozen authz `connectors:manage`; SENSITIVE_BASELINE 195→196), bracketed by INTACT 19e9dcd → 7fc53e2 → 8afb562. Slice 11 = FG-2: `runtimeCore` registration (2 frozen lines: import + `defs.push(...capabilityHandlers)`) — the channel is now LIVE-REGISTERED, data-only; landed `5534c45` with a pre-authorized non-frozen typing-fix fallback (TS2345 contravariance exposed on wiring), bracketed by INTACT 2668ab8 → 5534c45 → aff5d13.
-- Suites: main 8656 passed / 3 skipped (818 files) · typecheck clean · lint clean on the two FG-2 files.
-- Next: **Slice 12** — live delivery + `M365WritePanel.proposal` production feed (dev-triggered) + comma-in-address hardening with a pinned test. No frozen surface expected.
-- Housekeeping done: Slice-11 evidence committed (`c8e42f4`); the four living docs (CLAUDE.md / NP_STATE.md / BLOCKERS.md / DECISIONS.md) are now TRACKED and excluded from the freeze source spec by exact filename (DECISIONS D-5, supersedes D-4); committed each slice from here.
+- HEAD: `f9d9ef2` · FREEZE INTACT (`BASELINE-35431ae7446f`, baseline commit `e55a245`) · branch `cert/data-import-cst-integration`.
+- Landed: Slices 1–12. Slice 10 = FG-1: `capability:m365.propose` contract (frozen pair; non-frozen authz `connectors:manage`; SENSITIVE_BASELINE 195→196), INTACT 19e9dcd → 7fc53e2 → 8afb562. Slice 11 = FG-2: `runtimeCore` registration (2 frozen lines: import + `defs.push(...capabilityHandlers)`) — channel LIVE-REGISTERED, data-only; landed `5534c45` with a pre-authorized non-frozen typing-fix fallback (TS2345 contravariance on wiring), INTACT 2668ab8 → 5534c45 → aff5d13. Slice 12 = first production feed of the channel → `M365WritePanel` (dev-triggered `ipc.connectors.m365Propose`) + typed refusal/loading/transport UI + comma-in-address hardening; NON-frozen throughout via `rawInvoke` (DECISIONS D-6, avoids a frozen `responses.ts` touch).
+- Suites: main 8661 passed / 3 skipped (818 files) · UI 250 passed (32 files) · typecheck clean · lint clean on changed files.
+- Next: **Slice 13** — AI structured intent generator (`assistantMailSendIntent`) → the same propose path; injection-gated (hostile synced bodies → zero intents); golden set ≥30 with an honest accuracy report. The S12 comma gate is green, so AI may now supply `to`. No frozen surface expected.
+- Housekeeping done: Slice-12 evidence committed; the four living docs are TRACKED and excluded from the freeze source spec by exact filename (DECISIONS D-5); committed each slice.
 - Defect log (do not fix in passing): frozen `contracts.ts:2418` pre-existing lint escape (`AiPullModelRequest`). Frozen files are never touched outside an FG gate — four of the five most recent corpus defects came from well-intentioned amendment work.
 
 ## 2 · NON-NEGOTIABLES
