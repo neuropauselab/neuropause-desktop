@@ -1,9 +1,11 @@
 # SLICE 15 — First real email · EVIDENCE
 
-**Status: a single real-send ATTEMPT — LIVE-VERIFIED (Profile A — provider-side observed).** NOT a "success" claim, and
-NOT VERIFIED_SUCCESS (that awaits the S16 oracle's terminal outcome). Three separate outcomes, never collapsed:
-**AUTHORIZED ✓ · SUBMITTED ✓ · EXTERNALLY OBSERVED = provider-side CONFIRMED (Sent Items), destination-side deferred to
-S16.** One real email sent to the operator's own address; the single-send latch is now spent, by design.
+**Status: a single real-send ATTEMPT — LIVE-VERIFIED (Profile A) + EXTERNALLY OBSERVED.** Three separate outcomes, never
+collapsed into "SUCCESS": **AUTHORIZED ✓ · SUBMITTED ✓ · EXTERNALLY OBSERVED** — the S16 read-back oracle returned
+**VERIFIED_SUCCESS** (the message corroborated in the sender's Sent Items with its internetMessageId, bounce=none). One
+real email sent to the operator's own address; the single-send latch is now spent, by design. Provider dispatched;
+destination-side (Gmail receipt) recorded honestly below. Artifacts copied out to `certification/s15-artifacts/` before
+any containment.
 
 ## Run configuration
 - Run mode A (app-principal): app principal seeded (the dead NeuroPause login, pending S17). **Microsoft identity,
@@ -17,12 +19,16 @@ S16.** One real email sent to the operator's own address; the single-send latch 
 - **SUBMITTED ✓** — per the operator's UI: the M365WritePanel showed **ACKNOWLEDGED** ("accepted by Microsoft Graph;
   queued; delivery not independently verified") — Graph 202. (No 202 log line exists; the certified path does not log
   it — see finding F-4.)
-- **EXTERNALLY OBSERVED = provider-side CONFIRMED; destination-side DEFERRED.** By direct operator observation (Outlook
-  web screenshot), the message is in the sender mailbox's **Sent Items**: To `neuropause033@gmail.com`, subject/body
-  "NeuroPause S15 first real send, 18 Aug 2026", 5:53 PM IST = **12:23 UTC — matching the latch (12:23:02.996Z) exactly**.
-  Match tuple confirmed provider-side: recipient ✓, subject/body ✓, timestamp ✓; **internetMessageId deferred to the S16
-  oracle**. Destination-side delivery to Gmail is NOT yet independently confirmed (the operator's Gmail check /
-  the S16 read-back). This is provider-side observation, **not** delivery confirmation and **not** VERIFIED_SUCCESS.
+- **EXTERNALLY OBSERVED = VERIFIED_SUCCESS (S16 oracle, in-session, 2026-08-18T13:25:54.915Z).** The S16 read-back
+  oracle independently read the mailbox back and returned **TERMINAL=VERIFIED_SUCCESS on the first poll (attempts=1),
+  bounce=none**, with the full corroborated match tuple:
+  - recipient `neuropause033@gmail.com` ✓ · subject "NeuroPause S15 first real send, 18 Aug 2026" ✓ · timestamp in the
+    12:23 UTC window ✓ (matching the latch 12:23:02.996Z) · **internetMessageId
+    `<PN2P287MB15972D7FE523C60B482881E1F8A62@PN2P287MB1597.INDP287.PROD.OUTLOOK.COM>`**.
+  This is the **FIRST VERIFIED_SUCCESS in the product's history** — the message independently confirmed in the sender's
+  Sent Items, with no bounce/NDR. Basis: provider-side read-back (Sent Items corroboration + id) + inbox bounce-scan
+  (none). It is send-verification, not a positive DESTINATION receipt (Gmail); the earlier manual Outlook-web Sent Items
+  screenshot corroborates it directly.
 
 ## Confirmed params + exact UTC send time (from the latch, `first-real-send.latch`)
 ```
@@ -36,6 +42,32 @@ The operator first attempted a send to a NON-allowlisted address; FG-4 denied it
 address is permitted"). **Confirmed the latch was NOT written by that denial** — the allowlist check returns before the
 latch write, and the latch that exists records only the allowlisted `neuropause033@gmail.com` at 12:23:02.996Z. So the
 denial preserved the single attempt; the guard worked exactly as designed, in the field, unscripted.
+
+## The FIRST VERIFIED_SUCCESS (S16 oracle, in-session) — full tuple
+```
+[2026-08-18T13:25:54.915Z] TERMINAL=VERIFIED_SUCCESS
+  internetMessageId=<PN2P287MB15972D7FE523C60B482881E1F8A62@PN2P287MB1597.INDP287.PROD.OUTLOOK.COM>
+  bounce=none  attempts=1  — corroborated match in Sent Items (recipient + subject + timestamp)
+```
+- recipient `neuropause033@gmail.com` · subject "NeuroPause S15 first real send, 18 Aug 2026" (per the operator the sent
+  subject carried a trailing quote; the oracle matched on the normalized subject fingerprint) · timestamp in the 12:23
+  UTC window (latch 12:23:02.996Z) · internetMessageId as above. First poll (attempts=1), no bounce.
+
+## Latch — intact (no durability issue)
+`~/Library/Application Support/NeuroPause-S15/first-real-send.latch` is present (66 bytes, mtime = the send time),
+content `{"at":"2026-08-18T12:23:02.996Z","to":["neuropause033@gmail.com"]}`. A `find "*latch*"` that returned empty was
+a shell/terminal artifact — the file is verifiably present and unchanged. Copied to `certification/s15-artifacts/`.
+
+## Destination-side (honest)
+Provider **dispatched** the message (Sent Items + bounce=none). Destination-side receipt at Gmail is recorded as the
+operator states: **[arrived in <folder> / still not present]**. Beyond dispatch + no-bounce, **destination-side spam/
+filtering sits OUTSIDE our control boundary** — we do not and cannot certify what the receiving provider does with an
+accepted message; that is explicitly NOT GOVERNED here.
+
+## Evidence artifacts (copied out before containment)
+`certification/s15-artifacts/`: `first-real-send.latch` (the send/verify record) · `s16-verify-terminal.log` (the
+app.log excerpt with the VERIFIED_SUCCESS terminal line). There is no separate verification-store file — the oracle is
+pure and LOGS its terminal outcome; the log line IS the record (a persisted verification store is a future increment).
 
 ## Findings
 - **F-1 · SCOPE REALITY (least-privilege deviation).** The consent granted the FULL manifest scope set (~47 scopes:

@@ -1,7 +1,19 @@
 # SLICE 16 — Read-back verification oracle · EVIDENCE
 
-**Status: MOCK-PROVEN (oracle + fault injection); the first REAL VERIFIED_SUCCESS is the operator's in-session run
-(pending).** No frozen surface touched (no FG-5 — DECISIONS D-10). FREEZE INTACT.
+**Status: DONE — the FIRST VERIFIED_SUCCESS in the product's history, run in-session.** Mock-proven (oracle + fault
+injection) AND real-run confirmed. No frozen surface touched (no FG-5 — DECISIONS D-10). FREEZE INTACT.
+
+## THE FIRST VERIFIED_SUCCESS (real, in-session, 2026-08-18T13:25:54.915Z)
+```
+TERMINAL=VERIFIED_SUCCESS
+  internetMessageId=<PN2P287MB15972D7FE523C60B482881E1F8A62@PN2P287MB1597.INDP287.PROD.OUTLOOK.COM>
+  bounce=none  attempts=1  — corroborated match in Sent Items (recipient + subject + timestamp)
+```
+The oracle ran in the operator's live session against the real S15 message, decrypted the vault token (session-keyed,
+per D-10/F-3), read Sent Items + Inbox READ-ONLY, and on the FIRST poll corroborated the full tuple (recipient + subject
++ timestamp) and captured the real `internetMessageId` — with no bounce. **This is the master-assurance VERIFICATION
+step proven end-to-end against a real external effect.** Artifacts in `certification/s15-artifacts/`. It is
+send-verification (Sent Items + no bounce), not a positive destination receipt — destination filtering is NOT GOVERNED.
 
 ## What landed
 - **`verifyEffect` (pure oracle, non-frozen).** EXECUTED_ACK → VERIFY_PENDING → VERIFIED_SUCCESS | VERIFY_FAILED;
