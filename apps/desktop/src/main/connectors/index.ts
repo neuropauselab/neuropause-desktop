@@ -68,6 +68,10 @@ import { join } from 'node:path';
 import type { ConnectorWriteResult } from '@neuropause/shared';
 import { m365Draft } from './m365/aiDrafts';
 
+// Wave-2 Slice-15 (FG-4) — build-time constant (electron.vite.config.ts define); false in every release build, so the
+// first-real-send guard hook below is dead-code-eliminated and its chunk is never emitted.
+declare const __NP_E2E__: boolean;
+
 const log = createLogger('connectors');
 
 /** OAuth flows open the browser; allow well beyond the 5-minute auth window. */
@@ -594,6 +598,14 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
         // (NetworkError → UNKNOWN, HttpError/AuthError → EXECUTION_FAILED, 202 →
         // ACKNOWLEDGED). A 202 is ACKNOWLEDGED, never a verified business outcome.
         if (r.actionId === 'mail.send' && mailSendAction) {
+          // Wave-2 Slice-15 (FG-4) — the first-real-send safety guard, enforced BEFORE the executor. Compile-stripped
+          // from release (__NP_E2E__ false); dynamically imported so its chunk is dropped; inert unless
+          // NEUROPAUSE_FIRST_REAL_SEND=1. It NEVER weakens the certified path — it only REFUSES (allowlist + latch).
+          if (__NP_E2E__) {
+            const { firstRealSendGuard } = await import('./firstRealSendGuard');
+            const guard = firstRealSendGuard(r.params);
+            if (!guard.ok) return guard.refusal;
+          }
           const g = await governedSend({
             connectorId: r.connectorId,
             accountId: r.accountId,
