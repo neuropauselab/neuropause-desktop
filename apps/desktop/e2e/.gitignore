@@ -1,0 +1,2 @@
+# Regenerable e2e evidence (screenshots + Playwright trace). Re-created by running the spec.
+artifacts/
