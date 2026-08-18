@@ -549,10 +549,12 @@ describe('assistant mail.send intent detection', () => {
     expect(envOf(conversation, messageId).mailIntent ?? null).toBeNull();
   });
 
-  it('a send-shaped turn with no literal address does NOT emit mailIntent (unresolved recipient → falls through)', async () => {
+  it('a send-shaped turn with no literal address ASKS (clarification), never a mailIntent (rule 1)', async () => {
     const h = mkHarness();
-    const { conversation, messageId } = await h.service.ask({ text: 'Email finance the report.' });
-    expect(envOf(conversation, messageId).mailIntent ?? null).toBeNull();
+    const { conversation, messageId } = await h.service.ask({ text: 'Send an email saying the meeting is tomorrow.' });
+    const env = envOf(conversation, messageId);
+    expect(env.mailIntent ?? null).toBeNull();
+    expect(env.clarification).toMatch(/which email address/i);
   });
 
   it('an out-of-scope action turn does NOT emit mailIntent (deny-by-default)', async () => {

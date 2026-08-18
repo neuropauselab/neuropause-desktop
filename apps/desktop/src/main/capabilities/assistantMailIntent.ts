@@ -94,29 +94,35 @@ export function extractLiteralAddresses(text: string): string[] {
   return out;
 }
 
-/** A STRONG, unambiguous send phrase — the kind that beats an out-of-scope verb ("send an email about cancelling"). */
-function hasStrongSendPhrase(t: string): boolean {
+/**
+ * A DISPATCH verb commits to SENDING: send/reply/respond/forward, or email/message aimed at a recipient. `t` is
+ * lower-cased; capitalized recipient NAMES ("email Bob") are matched separately by hasNamedRecipientDispatch. A
+ * compose verb (draft/compose/write) is deliberately NOT here — see hasComposeVerb.
+ */
+function hasDispatchVerb(t: string): boolean {
   return (
     /\bsend\b[\s\S]{0,40}\b(e-?mails?|messages?|notes?)\b/.test(t) ||
     /\b(reply|respond)\b/.test(t) ||
-    /\b(write|compose|draft)\b[\s\S]{0,40}\b(e-?mails?|messages?|notes?)\b/.test(t) ||
     /\bforward\b[\s\S]{0,40}\b(e-?mails?|messages?)\b/.test(t) ||
-    /\bemail\b\s+(to\s+)?[a-z0-9._%+-]+@[a-z0-9.-]+/.test(t) // "email [to] a@b.com"
+    /\bemail\b\s+(to\s+)?([a-z0-9._%+-]+@|him\b|her\b|them\b|us\b|me\b|everyone\b|finance\b|marketing\b|sales\b|support\b|legal\b|hr\b|the\s+team\b|the\s+group\b|my\s+[a-z]+\b)/.test(t) ||
+    /\bmessage\b\s+(to\s+)?([a-z0-9._%+-]+@|him\b|her\b|them\b|us\b|me\b|my\s+[a-z]+\b)/.test(t)
   );
 }
 
-/** A BROADER read that this turn is ATTEMPTING a send (may still lack a resolvable recipient → clarification). */
-function looksLikeSendRequest(t: string): boolean {
-  if (hasStrongSendPhrase(t)) return true;
-  // "email <name/word>", "message <name>", "drop <name> a line" — a send attempt whose recipient may be a name.
-  return (
-    /\bemail\b\s+(to\s+)?[a-z]/.test(t) ||
-    /\b(send|write|compose|draft)\b[\s\S]{0,40}\b(e-?mail|message|note)\b/.test(t) ||
-    /\bmessage\b\s+[a-z]/.test(t)
-  );
+/** "email Bob" / "message Dana" — a capitalized recipient name. Checked on the ORIGINAL-case turn. */
+function hasNamedRecipientDispatch(originalTurn: string): boolean {
+  return /\b(email|message)\s+(to\s+)?[A-Z][a-z]+/.test(originalTurn);
 }
 
-/** Clear out-of-scope ACTION verbs. Deny-by-default: matched (and not a strong send) → UNSUPPORTED, fail-closed. */
+/**
+ * A COMPOSE verb (draft/compose/write an email) PREPARES content — the assistant's existing draft feature. It is a
+ * mail.send ONLY when a literal recipient address is present; without one it is NOT a send and must fall through.
+ */
+function hasComposeVerb(t: string): boolean {
+  return /\b(draft|compose|write)\b[\s\S]{0,40}\b(e-?mails?|messages?|notes?)\b/.test(t);
+}
+
+/** Clear out-of-scope ACTION verbs. Deny-by-default: matched (and not a mail dispatch) → UNSUPPORTED, fail-closed. */
 function hasOutOfScopeAction(t: string): boolean {
   const outOfScope =
     /\b(delete|erase|remove|archive|trash|unsubscribe|mark|flag|move|label)\b/.test(t) ||
@@ -126,9 +132,9 @@ function hasOutOfScopeAction(t: string): boolean {
     /\b(call|ring|dial|text|sms)\b/.test(t) ||
     /\bcreate\b[\s\S]{0,40}\b(event|meeting|task|file|folder|document|calendar)\b/.test(t) ||
     /\b(book|schedule)\b\s+(a|an|the)\b/.test(t);
-  // A clear, explicit email send beats an out-of-scope verb: the send may merely be ABOUT the other thing, and its
-  // unsupported part is simply never performed. We never route AROUND validation — we perform only the send.
-  return outOfScope && !hasStrongSendPhrase(t);
+  // A clear email DISPATCH beats an out-of-scope verb (the send may merely be ABOUT the other thing; its unsupported
+  // part is simply never performed). We never route AROUND validation — we perform only the send.
+  return outOfScope && !hasDispatchVerb(t);
 }
 
 function clampText(s: string, max: number): string {
@@ -155,19 +161,28 @@ export function assistantMailSendIntent(
     return { kind: 'UNSUPPORTED', detail: 'Only sending an email (mail.send) is supported right now.' };
   }
 
-  // 3 · TRIGGER DISCIPLINE — an intent requires an explicit send request in the USER TURN. Context cannot trigger.
-  if (!looksLikeSendRequest(lower)) {
+  // 3 · TRIGGER DISCIPLINE — a mail.send needs an explicit DISPATCH in the USER TURN (send/reply/forward, or
+  // email/message aimed at a recipient). A COMPOSE-only turn ("draft an email …") is the draft feature's job unless
+  // it names a literal recipient. Context can never trigger.
+  const dispatch = hasDispatchVerb(lower) || hasNamedRecipientDispatch(turn);
+  const compose = hasComposeVerb(lower);
+  if (!dispatch && !compose) {
     return { kind: 'NO_ACTION', detail: 'No explicit mail-send request in the user turn.' };
   }
 
   // 1 · RECIPIENT LITERALISM — recipients come only from addresses literally typed in the turn. Never the model,
-  // never `context`, never resolved from a name/alias/contact. A send attempt with no literal address must clarify.
+  // never `context`, never resolved from a name/alias/contact.
   const to = extractLiteralAddresses(turn);
   if (to.length === 0) {
-    return {
-      kind: 'NEEDS_CLARIFICATION',
-      question: 'Which email address should I send to? Please type the full address — I can’t look it up from a name.',
-    };
+    // A DISPATCH attempt with no recipient must ASK (never guess an address). A COMPOSE-only turn with no recipient
+    // is not a send at all — it falls through to the draft feature.
+    if (dispatch) {
+      return {
+        kind: 'NEEDS_CLARIFICATION',
+        question: 'Which email address should I send to? Please type the full address — I can’t look it up from a name.',
+      };
+    }
+    return { kind: 'NO_ACTION', detail: 'A compose request with no recipient is handled as a draft, not a send.' };
   }
 
   // The model DRAFTS subject/body (UNTRUSTED). Its output can never change `to` (already fixed above) or the action.

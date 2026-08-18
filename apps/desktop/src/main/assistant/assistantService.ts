@@ -370,6 +370,18 @@ export class AssistantService {
         await this.deps.store.upsert(conversation);
         return { conversation, messageId };
       }
+      // A send-shaped turn with an UNRESOLVED recipient (a name/alias, or none) never guesses an address (rule 1) —
+      // the assistant ASKS. No mailIntent, no proposal, no execution.
+      if (mail.kind === 'NEEDS_CLARIFICATION') {
+        const envelope = baseEnvelope(correlationId, mode, intent, now, { clarification: mail.question });
+        envelope.trace.phases = phases;
+        const messageId = this.appendTurn(conversation, input.text, [], envelope, now);
+        publish('assistant.turn.clarification', { intent: 'mail-send' });
+        emitPhase('done');
+        this.inflight.delete(conversation.id);
+        await this.deps.store.upsert(conversation);
+        return { conversation, messageId };
+      }
     }
 
     if (
