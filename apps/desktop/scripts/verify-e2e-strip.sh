@@ -29,16 +29,20 @@ fi
 FAIL=0
 # grep -c prints "0" AND exits 1 on no matches, so DON'T chain `|| echo 0` (it doubles the output). Take line 1.
 SENT_FILES=$(grep -rl "$SENTINEL" out/main/ 2>/dev/null | wc -l | tr -d ' ')
-CHUNK=$(ls out/main/chunks/ 2>/dev/null | grep -c 'e2eSeed'); CHUNK=$(printf '%s' "$CHUNK" | head -1)
+CHUNK=$(ls out/main/chunks/ 2>/dev/null | grep -cE 'e2eSeed|firstRealSendGuard'); CHUNK=$(printf '%s' "$CHUNK" | head -1)
 BRANCH=$(grep -c "NEUROPAUSE_E2E\|installE2eSeeds\|e2e-mock-access-token" out/main/index.js 2>/dev/null); BRANCH=$(printf '%s' "$BRANCH" | head -1)
+# Slice-15 first-real-send guard: its distinctive strings must be absent from every release-bundle file too.
+GUARD=$(grep -rl "RECIPIENT_NOT_ALLOWLISTED\|first-real-send.latch\|neuropause033@gmail.com\|firstRealSendGuard" out/main/ 2>/dev/null | wc -l | tr -d ' ')
 
-echo "  sentinel files in out/main : $SENT_FILES   (want 0)"
-echo "  e2eSeed chunk present      : $CHUNK   (want 0)"
-echo "  seam refs in main index.js : $BRANCH   (want 0)"
+echo "  sentinel files in out/main    : $SENT_FILES   (want 0)"
+echo "  e2eSeed/guard chunk present   : $CHUNK   (want 0)"
+echo "  seam refs in main index.js    : $BRANCH   (want 0)"
+echo "  first-real-send guard strings : $GUARD   (want 0)"
 
-[ "$SENT_FILES" = "0" ] || { echo "  -> LEAK: sentinel present in the release bundle"; FAIL=1; }
-[ "$CHUNK" = "0" ]      || { echo "  -> LEAK: e2eSeed chunk emitted in the release build"; FAIL=1; }
+[ "$SENT_FILES" = "0" ] || { echo "  -> LEAK: seed sentinel present in the release bundle"; FAIL=1; }
+[ "$CHUNK" = "0" ]      || { echo "  -> LEAK: e2eSeed/firstRealSendGuard chunk emitted in the release build"; FAIL=1; }
 [ "$BRANCH" = "0" ]     || { echo "  -> LEAK: seam branch references in main index.js"; FAIL=1; }
+[ "$GUARD" = "0" ]      || { echo "  -> LEAK: first-real-send guard present in the release bundle"; FAIL=1; }
 
 echo
 if [ "$FAIL" -eq 0 ]; then

@@ -175,14 +175,20 @@ async function bootstrap(): Promise<void> {
   // Wave-2 Slice-14 — E2E seed + mock-Graph seam. `__NP_E2E__` folds to `false` in every release build, so this
   // branch and its dynamic import are dead-code-eliminated (never shipped). NEUROPAUSE_E2E=1 is a second runtime
   // guard so an e2e-capable build does not seed unless the Playwright harness explicitly asks. See e2e/e2eSeed.ts.
-  if (__NP_E2E__ && process.env.NEUROPAUSE_E2E === '1') {
+  if (__NP_E2E__) {
     try {
-      const { installE2eSeeds } = await import('./e2e/e2eSeed');
-      await installE2eSeeds();
-      // Anti-masquerade stamp: the window title carries `-e2e` so a seeded build is visibly not a release.
-      mainWindow?.setTitle('NeuroPause -e2e (seeded — not for release)');
+      const { resolveE2eMode } = await import('./e2e/e2eMode');
+      const mode = resolveE2eMode(process.env); // HARD-FAILS (throws) on an invalid flag coupling — see e2eMode.ts
+      if (mode !== 'off') {
+        const { installE2eSeeds } = await import('./e2e/e2eSeed');
+        await installE2eSeeds(mode);
+        // Anti-masquerade stamp: window title carries `-e2e` + the mode so a seeded build is visibly not a release.
+        mainWindow?.setTitle(`NeuroPause -e2e (${mode} — not for release)`);
+      }
     } catch (err) {
-      log.error('E2E seed failed', err);
+      // HARD-FAIL at startup: an invalid mode coupling (or a seed failure) must NOT run.
+      log.error('E2E mode/seed failure — exiting', err);
+      app.exit(1);
     }
   }
 }

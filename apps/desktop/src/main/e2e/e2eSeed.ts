@@ -20,6 +20,7 @@
  * removed, this becomes a way to forge identity — do not weaken them.
  */
 import type { AuthStatus } from '@neuropause/shared';
+import type { E2eMode } from './e2eMode';
 import { createLogger } from '../logger';
 import { authService } from '../auth/authService';
 import { workspaceStore } from '../enterprise/workspace/workspaceInstance';
@@ -96,10 +97,19 @@ async function seedConnectedAccount(): Promise<void> {
   log.info(`[${E2E_SEED_SENTINEL}] seeded connected microsoft-entra account ${MOCK_ACCOUNT_ID} in ${workspaceId}`);
 }
 
-/** Install all e2e seams. Called once, post-runtime-init, only under the double guard. */
-export async function installE2eSeeds(): Promise<void> {
-  log.warn(`[${E2E_SEED_SENTINEL}] installing E2E seeds + mock Graph — THIS MUST NEVER RUN IN A RELEASE BUILD`);
-  installGraphMock();
+/**
+ * Install the seams for the resolved mode. Called once, post-runtime-init, only under the compile gate.
+ *  - full-e2e (Slice 14, mock): app principal + fake governed account + MOCK Graph.
+ *  - app-principal (Slice 15, real send): ONLY the app principal is seeded — NO fetch mock, NO fake account. The REAL
+ *    Microsoft OAuth connect creates the account and the REAL Graph is contacted; the first-real-send guard restricts it.
+ */
+export async function installE2eSeeds(mode: E2eMode): Promise<void> {
+  if (mode === 'off') return;
+  log.warn(`[${E2E_SEED_SENTINEL}] installing seeds — mode=${mode} — THIS MUST NEVER RUN IN A RELEASE BUILD`);
+  // Both modes seed the app principal (the dead NeuroPause backend login; local-first is S17).
   seedAuthenticatedPrincipal();
-  await seedConnectedAccount();
+  if (mode === 'full-e2e') {
+    installGraphMock();
+    await seedConnectedAccount();
+  }
 }
