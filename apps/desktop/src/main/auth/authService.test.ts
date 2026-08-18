@@ -83,6 +83,14 @@ vi.mock('./backendClient', () => ({
 
 vi.mock('./loopbackServer', () => ({ startLoopbackServer: vi.fn() }));
 
+// S17/FG-6: the device-local principal store, mocked so restoreSession's
+// no-token branch enters local mode without touching the real filesystem.
+vi.mock('./localPrincipalStore', () => ({
+  localPrincipalStore: {
+    loadOrCreate: async () => ({ id: 'device-1', displayName: 'Local User', createdAt: '2026-08-18T00:00:00.000Z' }),
+  },
+}));
+
 import { authService } from './authService';
 
 const USER = { id: 'u1', email: 'a@example.test', displayName: 'A' };
@@ -172,5 +180,31 @@ describe('round 33 — refresh is single-flight', () => {
     expect(t1).toBe('access-1');
     expect(t2).toBe('access-1');
     expect(t3).toBe('access-1');
+  });
+});
+
+describe('S17/FG-6 — local-first (no cloud account)', () => {
+  it('enterLocalMode flips status to local with a stable principal', async () => {
+    const s = await authService.enterLocalMode();
+    expect(s.state).toBe('local');
+    if (s.state === 'local') {
+      expect(s.principal.id).toBe('device-1');
+      expect(s.principal.displayName).toBe('Local User');
+    }
+    expect(authService.getStatus().state).toBe('local');
+  });
+
+  it('restoreSession with no stored token enters local mode — NOT the sign-in wall', async () => {
+    mockState.stored = null;
+    await authService.restoreSession();
+    expect(authService.getStatus().state).toBe('local');
+  });
+
+  it('restoreSession WITH a valid stored token still authenticates (local mode is only the no-account path)', async () => {
+    mockState.stored = 'refresh-0';
+    mockState.refreshImpl = () => rotated(1);
+    mockState.meImpl = () => ({ user: USER });
+    await authService.restoreSession();
+    expect(authService.getStatus().state).toBe('authenticated');
   });
 });

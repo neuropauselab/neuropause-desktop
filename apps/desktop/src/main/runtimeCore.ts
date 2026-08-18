@@ -84,6 +84,7 @@ import { join } from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import { createLogger } from './logger';
 import { authService } from './auth/authService';
+import { resolveGovernedActor, hasActivePrincipal } from './auth/governedActor';
 import { catalogClient } from './catalog/catalogClient';
 import { orgClient } from './organization/orgClient';
 import { registry } from './registry/registry';
@@ -479,10 +480,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     // transition, from the SAME identity authority the data plane uses (the
     // authenticated session user). `null` when unauthenticated ⇒ the CST boundary
     // DENIES (no send). Distinct from `workspaceId()` — tenant ≠ actor.
-    actor: () => {
-      const st = authService.getStatus();
-      return st.state === 'authenticated' ? (st.session.user.displayName ?? st.session.user.email) : null;
-    },
+    // S17/FG-6: a device-local principal is disclosed as `local:<id>`; a forged
+    // `local:` cloud id is denied (pin 1). See governedActor.ts.
+    actor: () => resolveGovernedActor(authService.getStatus(), (u) => u.displayName ?? u.email),
   });
   // Unified knowledge layer (UDM): canonical store + query engine + local search.
   const unified = await initUnified({ broadcast: deps.broadcast });
@@ -768,10 +768,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     // (Boundary A), from the SAME session identity authority the data plane and
     // connectors use. Binds the stable `user.id` (not displayName/email/role, not
     // tenant/workspace). `null` when unauthenticated ⇒ the approval seam fails closed.
-    actor: () => {
-      const st = authService.getStatus();
-      return st.state === 'authenticated' ? st.session.user.id : null;
-    },
+    // S17/FG-6: a device-local principal is disclosed as `local:<id>` in the minted
+    // admission (never cloud-authenticated); a forged `local:` cloud id is denied.
+    actor: () => resolveGovernedActor(authService.getStatus(), (u) => u.id),
   });
   // Enterprise Operating System: organization runtime + graph + governance +
   // multi-workspace isolation + the executive snapshot that rolls it all up.
@@ -3281,7 +3280,10 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // RBAC: channels annotated with `permission` (the enterprise family) are asserted
   // against the signed-in actor's org roles before dispatch.
   const secureBridgeDeps = {
-    isAuthenticated: () => authService.getStatus().state === 'authenticated',
+    // S17/FG-6: a device-local principal ALSO passes the RBAC dispatch gate — it
+    // resolves to the local owner member. Cloud calls stay token-gated (a local
+    // principal holds no access token), so this opens only local enterprise RBAC.
+    isAuthenticated: () => hasActivePrincipal(authService.getStatus()),
     authorize: enterprise.authorize,
   };
 

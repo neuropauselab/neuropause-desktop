@@ -45,6 +45,10 @@ export const DOMAIN_FILES: Record<MaintenanceDomain, string[]> = {
     // P13C Round 17 (D-5) — the per-organization AI preference. Customer state,
     // so it must be inside backup and inside pre-migration rollback like the rest.
     'tenant-ai-preference.json',
+    // S17/FG-6 — the device-local principal. Its id must be stable across
+    // restarts (owner claim + governed-actor correlation); backing it up lets a
+    // restore recover the id rather than mint a fresh one.
+    'local-principal.json',
   ],
   workspace: ['enterprise-workspaces.json', 'enterprise-org.json'],
   knowledgeGraph: ['graph.json', 'unified-store.json'],

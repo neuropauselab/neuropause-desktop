@@ -19,6 +19,7 @@ import { createLogger } from '../logger';
 import { secureStore } from '../security/secureStore';
 import { backendClient, BackendError } from './backendClient';
 import { startLoopbackServer } from './loopbackServer';
+import { localPrincipalStore } from './localPrincipalStore';
 
 const log = createLogger('auth');
 
@@ -116,13 +117,29 @@ class AuthService extends EventEmitter {
   }
 
   /**
+   * Enter device-local mode (S17 local-first). Loads-or-creates the stable
+   * LocalPrincipal from the local profile (id persisted → stable across
+   * restarts, FG-6 condition 2 / pin 3) and flips status to `local`. Holds no
+   * token, so cloud clients keep failing closed; enterprise RBAC + tenancy
+   * resolve locally. Idempotent.
+   */
+  async enterLocalMode(): Promise<AuthStatus> {
+    const principal = await localPrincipalStore.loadOrCreate();
+    log.info('Entering device-local mode (no cloud account)');
+    return this.setStatus({ state: 'local', principal });
+  }
+
+  /**
    * Attempts to restore a session on launch using the stored refresh token.
    * Rotation means a successful refresh yields (and persists) a new token.
    */
   async restoreSession(): Promise<void> {
     const stored = await secureStore.getRefreshToken();
     if (!stored) {
-      this.setStatus({ state: 'unauthenticated' });
+      // S17 local-first (FG-6): no stored account → the device-local principal,
+      // NOT the sign-in wall. Signing in later (the affordance) transitions
+      // local → authenticating → authenticated (DECISIONS D-11).
+      await this.enterLocalMode();
       return;
     }
     // The desktop app and backend start together (npm run dev), so at boot the

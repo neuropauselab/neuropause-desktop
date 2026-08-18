@@ -284,6 +284,7 @@ import { buildOrgGraph, orgGraphNeighbors } from './graph/orgGraph';
 import { evaluateCompliance, type ComplianceInput } from './governance/enterpriseGovernance';
 import { computeExecutiveSnapshot } from './dashboard/executiveDashboard';
 import { authService } from '../auth/authService';
+import { sessionEmailFor, principalDisplayName } from '../auth/localIdentity';
 import { workerRegistry } from '../workforce/registry/registryInstance';
 import { jobStore } from '../workforce/runtime/jobInstance';
 import { auditLog } from '../workforce/governance/auditInstance';
@@ -383,10 +384,9 @@ const REFUSAL_LOG_INTERVAL_MS = 60_000;
 const refusalLogState = new Map<string, { lastAtMs: number; suppressed: number }>();
 
 const tenantContext = createTenantContextResolver({
-  sessionEmail: () => {
-    const st = authService.getStatus();
-    return st.state === 'authenticated' ? st.session.user.email : null;
-  },
+  // S17/FG-6: authenticated → account email; local → synthetic non-routable
+  // `local-<id>@device.invalid`; else null → `not_signed_in`. See localIdentity.ts.
+  sessionEmail: () => sessionEmailFor(authService.getStatus()),
   isLoaded: () => workspaceStore.isLoaded(),
   activeWorkspaceId: () => workspaceStore.activeWorkspaceIdOrNull(),
   workspace: (id) => workspaceStore.get(id),
@@ -613,10 +613,14 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   // tenant — it runs at boot, on every later sign-in, and (critically) while
   // tenant resolution is refusing, which is when the self-heal is needed.
   const bindOwner = (status: AuthStatus): void => {
-    if (status.state !== 'authenticated') return;
-    const u = status.session.user;
-    const claimed = orgStore.claimOwnerIdentity({ name: u.displayName ?? u.email, email: u.email });
-    if (claimed) log.info('Seeded owner bound to the signed-in account');
+    // S17/FG-6: a device-local principal claims the unclaimed owner too, via the
+    // SAME synthetic email the membership check then matches. `null` (no active
+    // principal) → no claim. First-claim-wins still never rebinds a claimed row.
+    const email = sessionEmailFor(status);
+    if (email === null) return;
+    const name = principalDisplayName(status) ?? email;
+    const claimed = orgStore.claimOwnerIdentity({ name, email });
+    if (claimed) log.info('Owner bound to the active principal', { local: status.state === 'local' });
   };
   bindOwner(authService.getStatus());
   authService.on('statusChanged', bindOwner);
@@ -688,10 +692,9 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
 
   // RBAC: resolve the signed-in session to an org member and enforce the
   // per-channel permissions declared in authzGate on every enterprise call.
-  const sessionEmail = (): string | null => {
-    const st = authService.getStatus();
-    return st.state === 'authenticated' ? st.session.user.email : null;
-  };
+  // S17/FG-6: authenticated OR device-local principal resolves to a membership
+  // email (the local synthetic address matches the owner it claimed via bindOwner).
+  const sessionEmail = (): string | null => sessionEmailFor(authService.getStatus());
   /**
    * The organization RBAC is evaluated against. STRICT.
    *
