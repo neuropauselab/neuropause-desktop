@@ -155,6 +155,15 @@ describe('S34a · CLOSING PROOF', () => {
     expect((await actionRecord.query({ tenantId: 'tenant-A', transitionId: 't-u2' }))[0].verification).toBeNull();
   });
 
+  it('3b · NO_ACTOR terminal — a null actor is recorded as DENIED with an empty actor, never a false success', async () => {
+    // governedSend with a null actor DENIES; the record captures actor='' + outcome DENIED.
+    await actionRecord.observe(req(), gsr({ semanticOutcome: 'DENIED', verdict: 'DENY', executed: false, transitionId: 't-noactor' }), ctx({ actor: '' }));
+    const [rec] = await actionRecord.query({ tenantId: 'tenant-A', transitionId: 't-noactor' });
+    expect(rec.actor).toBe('');
+    expect(rec.outcome).toBe('DENIED');
+    expect(rec.executed).toBe(false);
+  });
+
   it('4 · VERIFICATION ATTACHMENT — attaches to the EXISTING record; an unknown transition creates NO new record', async () => {
     await actionRecord.observe(req(), gsr({ transitionId: 't-exist' }), ctx());
     const before = (await actionRecord.query({ tenantId: 'tenant-A' })).length;
