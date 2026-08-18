@@ -31,7 +31,7 @@ cd "$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "not a git repositor
 #
 # So certification/ is OUTPUT ABOUT the tree, not part of the tree under test.
 # Everything else must be clean.
-SRC_DIRTY_SPEC=(-- . ':(exclude)certification')
+SRC_DIRTY_SPEC=(-- . ':(exclude)certification' ':(exclude)CLAUDE.md' ':(exclude)NP_STATE.md' ':(exclude)BLOCKERS.md' ':(exclude)DECISIONS.md')
 
 DIRTY="$(git status --porcelain=v1 "${SRC_DIRTY_SPEC[@]}")"
 if [ -n "$DIRTY" ] && [ "$ALLOW_DIRTY" -eq 0 ]; then

@@ -33,7 +33,7 @@ BASE=certification/baseline.json
 
 # Same spec as freeze-baseline.sh and record-gate.sh. certification/ is OUTPUT
 # ABOUT the tree, not part of the tree under test — see the note in either.
-SRC_SPEC=(-- . ':(exclude)certification')
+SRC_SPEC=(-- . ':(exclude)certification' ':(exclude)CLAUDE.md' ':(exclude)NP_STATE.md' ':(exclude)BLOCKERS.md' ':(exclude)DECISIONS.md')
 
 if [ ! -f "$BASE" ]; then
   echo "NO BASELINE — $BASE does not exist. Nothing is frozen."
