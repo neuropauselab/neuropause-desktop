@@ -79,9 +79,35 @@ async function dismissDialogs(win) {
     // The full shell mounted (a device-local principal reaches the product), not
     // just a blank frame: the local display name is visible somewhere in the chrome.
     ok(body.trim().length > 40, 'the full product shell rendered (not a blank frame)');
+
+    // ── Phase 2 — a cloud-backed section shows HONEST ABSENCE, not a raw error ──
+    // Enter the local shell past first-run onboarding, then open Organization
+    // (the section that error'd "Sign in to manage organizations." in the live run).
+    for (const label of [/^Try Free Locally$/i, /^Skip setup for now$/i]) {
+      const b = win.locator('button', { hasText: label }).first();
+      try { if (await b.isVisible({ timeout: 1500 })) { await b.click(); await win.waitForTimeout(600); } } catch { /* not present */ }
+    }
+    await dismissDialogs(win);
+    const orgNav = win.locator('button', { hasText: /^Organization$/i }).first();
+    let orgReached = false;
+    try { if (await orgNav.isVisible({ timeout: 6000 })) { await orgNav.click(); orgReached = true; } } catch { /* nav not reachable */ }
+    if (orgReached) {
+      await win.waitForFunction(() => /unavailable while working locally/i.test(document.body.innerText), { timeout: 8000 }).catch(() => {});
+      await shot(win, 'local-mode-org');
+      const orgBody = await win.evaluate(() => document.body.innerText);
+      ok(/unavailable while working locally/i.test(orgBody), 'Organization shows HONEST cloud-absence in local mode');
+      ok(!/Sign in to manage organizations/i.test(orgBody), 'Organization does NOT show the raw "Sign in to manage organizations." error');
+      ok(!/Error invoking remote method/i.test(orgBody), 'no raw IPC error surfaced on the Organization page');
+    } else {
+      // Non-fatal: onboarding/nav not interactable in this run. The honest-absence
+      // derivation is proven deterministically by ui-tests/localModeAffordance.test.tsx.
+      console.log('  (note) Organization nav not reached (onboarding/nav not interactable) — honest-absence covered by the component test');
+    }
   } finally {
-    await app.close().catch(() => {});
-    fs.rmSync(PROFILE, { recursive: true, force: true });
+    // app.close() can hang on the shutdown-flush barrier; don't let teardown
+    // approach the hard timeout — race it and move on.
+    await Promise.race([app.close().catch(() => {}), new Promise((r) => setTimeout(r, 5000))]);
+    try { fs.rmSync(PROFILE, { recursive: true, force: true }); } catch { /* best effort */ }
   }
 
   clearTimeout(hardTimeout);

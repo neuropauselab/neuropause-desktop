@@ -24,6 +24,8 @@ vi.mock('@renderer/providers/AuthProvider', () => ({
 
 import { LocalModeBanner } from '@renderer/shell/LocalModeBanner';
 import { LoginScreen } from '@renderer/screens/LoginScreen';
+import { CloudUnavailableLocal } from '@renderer/shell/CloudUnavailableLocal';
+import { LocalModeConnectProvider } from '@renderer/shell/localModeConnect';
 
 beforeEach(() => {
   mockState.status = { state: 'unauthenticated' };
@@ -44,6 +46,34 @@ describe('LocalModeBanner (S17 affordance)', () => {
     render(<LocalModeBanner onConnect={onConnect} />);
     fireEvent.click(screen.getByRole('button', { name: /connect an account to sync/i }));
     expect(onConnect).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('CloudUnavailableLocal (S17 honest cloud absence)', () => {
+  it('states honest absence for the feature + offers the connect affordance', () => {
+    const connect = vi.fn();
+    render(
+      <LocalModeConnectProvider value={connect}>
+        <CloudUnavailableLocal feature="Organization management" />
+      </LocalModeConnectProvider>,
+    );
+    // Honest absence, NOT an error/red state, NOT "Sign in to manage organizations."
+    expect(screen.getByText(/Organization management is unavailable while working locally/i)).toBeTruthy();
+    expect(screen.queryByText(/sign in to manage/i)).toBeNull();
+    // The connect affordance is present and wired to the shell's connect action.
+    const btn = screen.getByRole('button', { name: /connect an account to sync/i });
+    fireEvent.click(btn);
+    expect(connect).toHaveBeenCalledTimes(1);
+  });
+
+  it('honors an explicit action override', () => {
+    render(
+      <LocalModeConnectProvider value={vi.fn()}>
+        <CloudUnavailableLocal feature="Billing" action={<span>custom cta</span>} />
+      </LocalModeConnectProvider>,
+    );
+    expect(screen.getByText('custom cta')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /connect an account to sync/i })).toBeNull();
   });
 });
 

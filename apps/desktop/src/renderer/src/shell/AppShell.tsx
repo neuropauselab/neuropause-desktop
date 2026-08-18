@@ -22,6 +22,8 @@ import { setWorkspaceType } from '@renderer/firstRun/workspaceTypeStore';
 import { onExperienceProfileChanged } from '@renderer/firstRun/experienceProfileEvents';
 import type { ExperienceProfile } from '@neuropause/shared';
 import { SECTIONS, type SectionId } from './sections';
+import { useIsLocalMode } from './useIsLocalMode';
+import { CloudUnavailableLocal } from './CloudUnavailableLocal';
 import { PreviewBanner } from './PreviewBanner';
 import { TRANSITION, sectionVariants } from '@renderer/lib/motion';
 import { useDelayedFlag } from '@renderer/lib/useDelayedFlag';
@@ -250,6 +252,8 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
     closeActiveTab,
   } = useShell();
   const { zoomIn, zoomOut, reset } = useScale();
+  // S17 — whole-section cloud surfaces show honest absence in local mode.
+  const localMode = useIsLocalMode();
 
   // Live refs so the once-subscribed menu handler always sees current values.
   const openRef = useRef(commandOpen);
@@ -406,9 +410,9 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
       case 'welcome':
         return <WelcomeView />;
       case 'organization':
-        return <OrganizationView />;
+        return localMode ? <CloudUnavailableLocal feature="Organization management" /> : <OrganizationView />;
       case 'store':
-        return <StoreView />;
+        return localMode ? <CloudUnavailableLocal feature="The AI Store" /> : <StoreView />;
       case 'workspace':
         return <WorkspaceView />;
       case 'operations':

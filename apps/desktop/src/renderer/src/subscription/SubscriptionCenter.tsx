@@ -10,6 +10,8 @@ import type {
 import { ipc } from '@renderer/lib/ipc';
 import { fetchActiveCloudOrg, AMBIGUOUS_ORG_MESSAGE } from '@renderer/lib/activeOrg';
 import { cn } from '@renderer/lib/cn';
+import { useIsLocalMode } from '@renderer/shell/useIsLocalMode';
+import { CloudUnavailableLocal } from '@renderer/shell/CloudUnavailableLocal';
 import { Icon, type IconName } from '@renderer/components/ui/Icon';
 import { Skeleton } from '@renderer/components/ui/Skeleton';
 
@@ -80,6 +82,13 @@ function fmtDate(iso: string | null): string {
 }
 
 export function SubscriptionCenter(): JSX.Element {
+  // S17 — billing/subscription is a cloud feature: honestly absent in local mode
+  // (no connected account), never a "Sign in to manage billing" error card.
+  if (useIsLocalMode()) return <CloudUnavailableLocal feature="Billing" />;
+  return <SubscriptionCenterContent />;
+}
+
+function SubscriptionCenterContent(): JSX.Element {
   const [org, setOrg] = useState<CloudOrganizationSummary | null>(null);
   const [orgLoaded, setOrgLoaded] = useState(false);
   const [status, setStatus] = useState<LicenseValidationStatus | null>(null);

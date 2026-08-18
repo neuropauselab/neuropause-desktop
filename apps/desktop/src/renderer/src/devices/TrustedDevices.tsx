@@ -5,6 +5,8 @@ import { fetchActiveCloudOrg, AMBIGUOUS_ORG_MESSAGE } from '@renderer/lib/active
 import { cn } from '@renderer/lib/cn';
 import { Icon } from '@renderer/components/ui/Icon';
 import { Skeleton } from '@renderer/components/ui/Skeleton';
+import { useIsLocalMode } from '@renderer/shell/useIsLocalMode';
+import { CloudUnavailableLocal } from '@renderer/shell/CloudUnavailableLocal';
 
 /**
  * Trusted Devices (V6.5). Registers THIS device on mount (identity assembled
@@ -30,6 +32,13 @@ function relativeTime(iso: string): string {
 }
 
 export function TrustedDevices(): JSX.Element {
+  // S17 — trusted-device management is a cloud feature: honestly absent in local
+  // mode (no connected account), never a "Sign in to manage devices" error card.
+  if (useIsLocalMode()) return <CloudUnavailableLocal feature="Device management" />;
+  return <TrustedDevicesContent />;
+}
+
+function TrustedDevicesContent(): JSX.Element {
   const [org, setOrg] = useState<CloudOrganizationSummary | null>(null);
   const [orgLoaded, setOrgLoaded] = useState(false);
   const [devices, setDevices] = useState<Device[]>([]);

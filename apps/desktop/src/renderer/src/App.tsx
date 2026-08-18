@@ -11,6 +11,7 @@ import { ToastProvider } from '@renderer/state/ToastProvider';
 import { ConnectionProvider } from '@renderer/state/ConnectionProvider';
 import { AppShell } from '@renderer/shell/AppShell';
 import { LocalModeBanner } from '@renderer/shell/LocalModeBanner';
+import { LocalModeConnectProvider } from '@renderer/shell/localModeConnect';
 import type { LocalPrincipal, Session } from '@neuropause/shared';
 
 /**
@@ -92,10 +93,12 @@ export default function App(): JSX.Element {
   if (status.state === 'local') {
     if (connecting) return <LoginScreen onDismiss={() => setConnecting(false)} />;
     return (
-      <Shell
-        session={localDisplaySession(status.principal)}
-        banner={<LocalModeBanner onConnect={() => setConnecting(true)} />}
-      />
+      <LocalModeConnectProvider value={() => setConnecting(true)}>
+        <Shell
+          session={localDisplaySession(status.principal)}
+          banner={<LocalModeBanner onConnect={() => setConnecting(true)} />}
+        />
+      </LocalModeConnectProvider>
     );
   }
 
