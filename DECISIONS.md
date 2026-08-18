@@ -1,6 +1,12 @@
 # DECISIONS.md — non-obvious technical decisions (living, now TRACKED)
 Per CLAUDE.md §3: context → decision → consequences. Newest first.
 
+## D-9 · Slice-15 pre-flight — run mode A + FG-4 first-real-send guard (compile-stripped)
+- **Run mode A (app-principal-only):** the app's own login hits the dead backend (local-first is S17), so the first real send seeds ONLY the app principal (disclosed, `-e2e` stamped) while the Microsoft identity/consent/token/send/admission are ALL real. A distinct flag `NEUROPAUSE_S15_APPPRINCIPAL=1` (never `NEUROPAUSE_E2E=1`); same `__NP_E2E__` compile gate + strip proof. Chosen over "do S17 first" because the first real send's value (real external effect + consent + admission) is achievable now with only the dead login seeded.
+- **FG-4 (frozen `connectors/index.ts`, landed `b0ac3c5`):** the recipient allowlist + single-send latch must fire BEFORE the executor, and the human can edit the panel's To field after propose — so a propose-layer guard can't cover a real send, and there is no non-frozen trusted seam between the IPC and `governedSend`. The frozen change is a 12-line compile-stripped, dynamically-imported gated hook that calls the NON-frozen `firstRealSendGuard`; it never weakens the certified path (only refuses).
+- **Conditions (7):** mode coupling HARD-FAILs (`resolveE2eMode` throws → `app.exit`); allowlist covers all recipient fields parsed as the executor sees them (cc/bcc/unparseable → DENIED, fail closed); structural absence (dynamic import, lazy latch, verify-e2e-strip extended, PASS); latch-before-send = at-most-once (a failed attempt consumes it); human evidence (screen-record + UTC + inbox screenshot); evidence vocabulary AUTHORIZED/SUBMITTED/EXTERNALLY-OBSERVED (never "SUCCESS", a single ATTEMPT); S16 matches on internetMessageId + recipient + subject/body fingerprint + timestamp window (never id alone).
+- **Consequences:** no real send performed — that is the human keyboard gate (S15 runbook + go/no-go). The guard is S15-milestone safety (S21 idempotency + S28 policy DSL supersede it later); compile-stripped from release so the shipped product is unaffected.
+
 ## D-8 · Slice-14 e2e seed seam — global-fetch mock (not the frozen makeHttp), double-gated, structurally absent
 - **Context:** the real-Electron e2e needs the certified executor to reach a MOCK Graph. The designed test seam is
   `makeHttp` at `connectors/index.ts:609` — but `connectors/index.ts` is a FROZEN surface; dev-gating it would need an FG gate.

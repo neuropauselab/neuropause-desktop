@@ -2,10 +2,10 @@
 Living, TRACKED working doc (committed each slice; excluded from the freeze source spec — see DECISIONS.md D-5). Mirror of CLAUDE.md §1 with operational detail.
 
 ## Now
-- HEAD `f254f2d` · FREEZE INTACT (`BASELINE-9f4d36abed4e`) · branch `cert/data-import-cst-integration`.
-- Suites (RUN against BASELINE-9f4d36abed4e): full main **8708/3 skipped** (821) · UI **254** (34) · real-Electron e2e **13/13** · typecheck + lint clean · `verify-e2e-strip.sh` PASS.
-- Landed: Slices 1–14. **Slice 14 COMPLETE — the loop closes at the real-application level (mock Graph):** a launched Electron app drives NL turn → intent → proposal → human confirm → certified executor → mock Graph → ACKNOWLEDGED, + hostile-context and ambiguity negatives. NON-frozen throughout: compile-stripped, double-gated e2e seed (`__NP_E2E__` + `NEUROPAUSE_E2E=1`) + global-fetch mock (avoids frozen `connectors/index.ts`; D-8). TEST-VERIFIED, NOT LIVE.
-- **Next: Slice 15 — first REAL email ⛔ human at keyboard.** Runbook prepared (`…SLICE-15-FIRST-REAL-SEND-RUNBOOK.md`). HARD STOP before real credentials / OAuth / real send.
+- HEAD `96609d4` · FREEZE INTACT (`BASELINE-43dfbe3ff6f7`) · branch `cert/data-import-cst-integration`.
+- Suites (RUN against BASELINE-43dfbe3ff6f7): full main **8724/3 skipped** (823) · real-Electron e2e **13/13** (guard inert in mock mode) · guard+mode pins **16** · typecheck + lint clean · `verify-e2e-strip.sh` PASS (seed + guard absent from release).
+- Landed: Slices 1–14 + **S15 PRE-FLIGHT** (safety infra only; NO real send). S14 = real-Electron governed-loop e2e (mock Graph). S15 pre-flight = **FG-4** first-real-send guard hook (`connectors/index.ts`, compile-stripped, `b0ac3c5`) + `firstRealSendGuard` (allowlist all fields + durable single-send latch) + mode coupling (run mode A). INTACT bracket befabe0 → b0ac3c5 → ad81825. All 7 conditions folded in.
+- **Next: Slice 15 EXECUTION — first REAL email ⛔ human at keyboard.** Runbook + go/no-go checklist ready. HARD STOP before real credentials / OAuth / real send — the human's keyboard gate.
 
 ## Change-control trail (S14)
 ```
