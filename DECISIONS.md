@@ -1,6 +1,21 @@
 # DECISIONS.md — non-obvious technical decisions (living, now TRACKED)
 Per CLAUDE.md §3: context → decision → consequences. Newest first.
 
+## D-8 · Slice-14 e2e seed seam — global-fetch mock (not the frozen makeHttp), double-gated, structurally absent
+- **Context:** the real-Electron e2e needs the certified executor to reach a MOCK Graph. The designed test seam is
+  `makeHttp` at `connectors/index.ts:609` — but `connectors/index.ts` is a FROZEN surface; dev-gating it would need an FG gate.
+- **Decision:** mock Graph by intercepting `globalThis.fetch` (only `graph.microsoft.com …/sendMail`) in a compile-gated
+  e2e-only main module (`src/main/e2e/e2eSeed.ts`). This touches NO frozen surface and weakens NO validation —
+  governedSend, the CST kernel, `scopesOk`, the actor check and admission all run unchanged; only the external HTTP
+  endpoint is redirected (exactly what `makeHttp` does in unit tests). Also seed a fake authenticated principal
+  (`authService.setStatus` — no offline login exists) + a fake governed account + vault token.
+- **Structural absence (the seeding-seam rule):** double gate — compile-time `__NP_E2E__` define (electron.vite.config.ts;
+  false unless `NP_E2E_BUILD=1`, which dead-code-eliminates the branch + drops the chunk) AND runtime `NEUROPAUSE_E2E=1`.
+  `scripts/verify-e2e-strip.sh` proves a release build contains none of it (PASS). Anti-masquerade: `-e2e` version +
+  window-title stamp. The fake-principal seam is treated as the identity-forging security surface it is.
+- **Consequences:** S14 lands with zero frozen touch. If S15's compiled-in recipient allowlist must sit inside a frozen
+  send path, THAT is gated separately (never smuggled). Evidence: SLICE-14 real-electron e2e doc.
+
 ## D-7 · Slice-13 surface = the ONE M365WritePanel via the S12 feed; the assistant→panel carrier is FG-3 (frozen)
 - **Context (rule 4 — ONE SURFACE):** the assistant-initiated mail flow must render its proposal ONLY in the Slice-7 `M365WritePanel`, through the Slice-12 propose feed — no new review surface, no second confirmation architecture. The trusted intent generator runs in MAIN; the panel renders in the RENDERER. So a structured `{to, subject, body}` must cross main→renderer.
 - **Problem:** `AssistantEnvelope` (in FROZEN `packages/shared`) has no structured mail field. `draft` is `{kind,text,note}` and `navigation.query` is a bare string — carrying `{to,subject,body}` through either would SMUGGLE structured, authority-relevant data through a string field. That is exactly "routing around a frozen boundary by weakening validation," which the Slice-13 rules forbid.
