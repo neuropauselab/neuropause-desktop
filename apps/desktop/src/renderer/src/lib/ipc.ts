@@ -14,6 +14,8 @@ import {
   // A7 — the response half of the IPC contract. See `packages/shared/src/ipc/responses.ts`.
   type IpcResponseChannelName,
   type IpcResponseOf,
+  // Wave-2 Slice-12 — the data-only capability-propose response (dev-triggered feed; see `m365Propose` below).
+  type CapabilityProposeM365ActionResponse,
   // A7 — the push half. See `packages/shared/src/ipc/broadcasts.ts`.
   type IpcBroadcastChannelName,
   type IpcBroadcastOf,
@@ -540,6 +542,28 @@ export const ipc = {
       instruction: string,
       context?: string,
     ) => invoke(IpcChannel.M365Draft, { connectorId, accountId, kind, instruction, context }),
+    /**
+     * Wave-2 Slice-12 — the FIRST production feed of `capability:m365.propose`. AI-proposed params are re-validated
+     * by the main-side data-only handler (Slice 11), which returns a reviewable `{to,subject,body}` proposal or a
+     * typed refusal. This never sends: the human still confirms downstream through `m365Execute` (the certified path).
+     *
+     * It uses `rawInvoke` rather than the typed `invoke`: the channel is already on the preload allowlist (FG-1) but
+     * has no `IpcResponseMap` entry, and adding one would touch FROZEN `packages/shared`. The response type is
+     * imported (reading a type is not a frozen-surface change), so the single `as` below is the honest wire→contract
+     * conversion — the same shape `invoke` performs, minus the map constraint. Deferred to a future FG if this ever
+     * needs to ship beyond the dev trigger. (DECISIONS D-6.)
+     */
+    m365Propose: (req: {
+      capabilityId: string;
+      accountId?: string | null;
+      purpose?: string;
+      params: Record<string, unknown>;
+    }): Promise<CapabilityProposeM365ActionResponse> => {
+      const settle = perfRecorder.ipcStart(String(IpcChannel.CapabilityProposeM365Action));
+      const promise = rawInvoke(IpcChannel.CapabilityProposeM365Action, req) as Promise<CapabilityProposeM365ActionResponse>;
+      promise.then(settle, settle);
+      return promise;
+    },
   },
 
   /* ── Unified Knowledge Layer (UDM) ── */

@@ -7,7 +7,7 @@
  * Nothing is fabricated — when nothing has synced yet it says so.
  */
 import { useEffect, useState } from 'react';
-import type { ConnectorDto, ConnectorSyncSnapshot } from '@neuropause/shared';
+import type { ConnectorDto, ConnectorSyncSnapshot, CapabilityProposeM365ActionResponse } from '@neuropause/shared';
 import { GRAPH_API_VERSION, M365_MODULE_IDS, computeIntegrationHealth, formatDurationMs } from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
 import { cn } from '@renderer/lib/cn';
@@ -89,8 +89,61 @@ function aggregateM365Modules(snaps: ConnectorSyncSnapshot[]): M365ModuleRow[] {
   });
 }
 
+/* ── Wave-2 Slice-12 — dev-triggered `capability:m365.propose` feed ───────────────────────────
+ * A DEV-only path that calls the data-only propose handler (Slice 11) and prefills the write panel
+ * with the NeuroPause-VALIDATED proposal. It never sends — the human still confirms through the
+ * certified `m365Execute` path. `import.meta.env.DEV` is falsy in packaged builds, so this never ships. */
+type ProposeRefusal = Extract<CapabilityProposeM365ActionResponse, { ok: false }>;
+
+/** Typed, human-readable text for each of the four refusal reasons. Inert — rendered as plain text, never HTML. */
+const REFUSAL_TEXT: Record<ProposeRefusal['reason'], string> = {
+  PRINCIPAL_UNRESOLVED: 'No resolved principal — sign in before proposing an action.',
+  CAPABILITY_NOT_SELECTED: 'That capability is not available on this account.',
+  UNSUPPORTED_ACTION: 'This action is not supported yet (the first slice is mail.send only).',
+  INVALID_PARAMS: 'The proposed parameters were rejected.',
+};
+
 export function EntraConnectorPanel({ dto }: { dto: ConnectorDto }): JSX.Element {
   const [snaps, setSnaps] = useState<ConnectorSyncSnapshot[]>([]);
+  // Slice-12 dev-propose state. `proposal` prefills M365WritePanel; `proposalKey` remounts it so a NEW proposal
+  // re-seeds the panel's field state (the panel reads `proposal` only in its useState initializers).
+  const [proposal, setProposal] = useState<{ to: string; subject: string; body: string } | null>(null);
+  const [proposalKey, setProposalKey] = useState(0);
+  const [proposing, setProposing] = useState(false);
+  const [refusal, setRefusal] = useState<ProposeRefusal | null>(null);
+  const [proposeError, setProposeError] = useState<string | null>(null);
+  const [devTo, setDevTo] = useState('finance@example.com');
+  const [devSubject, setDevSubject] = useState('Monthly report');
+  const [devBody, setDevBody] = useState('Attached is the monthly report.');
+
+  async function proposeDev(): Promise<void> {
+    const accountId = dto.accounts[0]?.id ?? null;
+    setProposing(true);
+    setRefusal(null);
+    setProposeError(null);
+    try {
+      const r = await ipc.connectors.m365Propose({
+        capabilityId: 'mail.send',
+        accountId,
+        purpose: 'dev-triggered proposal',
+        params: { to: devTo, subject: devSubject, body: devBody },
+      });
+      if (r.ok) {
+        setProposal(r.proposal);
+        setProposalKey((k) => k + 1);
+      } else {
+        // A typed, semantic refusal from the validator — one of the four reasons. Kept as DATA and shown inertly.
+        setProposal(null);
+        setRefusal(r);
+      }
+    } catch {
+      // A thrown IPC/transport error is NOT one of the four semantic refusals — surface it as a distinct error.
+      setProposal(null);
+      setProposeError('The proposal request could not reach the validator (transport error).');
+    } finally {
+      setProposing(false);
+    }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -199,8 +252,76 @@ export function EntraConnectorPanel({ dto }: { dto: ConnectorDto }): JSX.Element
         OneDrive isn’t set up yet.
       </p>
 
+      {/* Wave-2 Slice-12 — DEV-only trigger for the first production feed of capability:m365.propose. */}
+      {import.meta.env.DEV && (
+        <div className="mb-3 rounded-xl border border-dashed border-sysblue/40 p-3">
+          <div className="mb-2 flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wide text-sysblue">
+            <Icon name="code" size={12} /> Dev — propose via capability:m365.propose
+          </div>
+          <p className="mb-2 text-2xs text-faint">
+            Sends manual params to the data-only propose handler; the NeuroPause-validated proposal prefills the
+            panel below. This never sends — the human still confirms through the certified path.
+          </p>
+          <div className="space-y-1.5">
+            <input
+              aria-label="dev-propose-to"
+              className="w-full rounded-lg [background:var(--fill-2)] px-3 py-1.5 text-2xs text-ink outline-none focus-visible:shadow-focus placeholder:text-faint"
+              placeholder="To (dev)"
+              value={devTo}
+              onChange={(e) => setDevTo(e.target.value)}
+            />
+            <input
+              aria-label="dev-propose-subject"
+              className="w-full rounded-lg [background:var(--fill-2)] px-3 py-1.5 text-2xs text-ink outline-none focus-visible:shadow-focus placeholder:text-faint"
+              placeholder="Subject (dev)"
+              value={devSubject}
+              onChange={(e) => setDevSubject(e.target.value)}
+            />
+            <textarea
+              aria-label="dev-propose-body"
+              className="h-16 w-full resize-none rounded-lg [background:var(--fill-2)] px-3 py-1.5 text-2xs text-ink outline-none focus-visible:shadow-focus placeholder:text-faint"
+              placeholder="Body (dev)"
+              value={devBody}
+              onChange={(e) => setDevBody(e.target.value)}
+            />
+            <button
+              type="button"
+              className="w-full rounded-lg border border-sysblue/40 px-3 py-1.5 text-2xs font-medium text-sysblue outline-none focus-visible:shadow-focus disabled:opacity-50"
+              onClick={() => void proposeDev()}
+              disabled={proposing}
+            >
+              {proposing ? 'Proposing…' : 'Propose (dev)'}
+            </button>
+          </div>
+          {proposing && (
+            <div role="status" className="mt-2 text-2xs text-faint">
+              Validating the proposed action…
+            </div>
+          )}
+          {refusal && (
+            <div role="alert" className="mt-2 rounded-lg border border-sysorange/40 px-3 py-2 text-2xs">
+              <div className="font-semibold text-sysorange">Proposal refused — {refusal.reason}</div>
+              <div className="mt-0.5 text-faint">
+                {REFUSAL_TEXT[refusal.reason]} {refusal.detail}
+              </div>
+            </div>
+          )}
+          {proposeError && (
+            <div role="alert" className="mt-2 rounded-lg border border-sysorange/40 px-3 py-2 text-2xs text-sysorange">
+              {proposeError}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* P2.4 — audited, confirmation-gated Microsoft 365 writes + write-health */}
-      <M365WritePanel connectorId={dto.id} accountId={dto.accounts[0]?.id ?? null} snaps={snaps} />
+      <M365WritePanel
+        key={proposalKey}
+        connectorId={dto.id}
+        accountId={dto.accounts[0]?.id ?? null}
+        snaps={snaps}
+        proposal={proposal ?? undefined}
+      />
 
       {/* Permission viewer (granted status) */}
       <Title>Directory permissions</Title>
