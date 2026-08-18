@@ -59,12 +59,16 @@ once — under human control. The e2e seed seam is NOT used for a real send (it 
   click. The human reads the exact recipient/subject/body before confirming. No second confirmation surface.
 - The human — not Claude — clicks Confirm for the real send.
 
-## 6 · Rollback / containment
+## 6 · Rollback / containment — DEFERRED until after S16
 
-- If anything is wrong pre-send: cancel in the panel (no effect), or `connectorService.disconnect` (drops tokens from
-  the vault). Revoke the app's consent in the test tenant.
-- Post-send: the recipient is the operator's own mailbox, so containment is inherent. Delete the app registration +
-  revoke tokens to end the capability. No other mailbox can have been reached (allowlist).
+- **Pre-send only:** if anything is wrong, cancel in the panel (no effect) or `connectorService.disconnect` (drops vault
+  tokens). Safe at any time. Connect/consent retries are also safe — the latch guards only the send, not the connect.
+- **Containment is DEFERRED (S15 execution directive):** consent revocation and app-registration deletion execute
+  **ONLY AFTER S16's read-back oracle completes** — the oracle needs the consent (and a read scope) ALIVE to verify the
+  sent message. Do **NOT** revoke consent or delete the app immediately post-send.
+- Interim safety holds regardless: the only recipient reachable was the operator's own mailbox (allowlist), and the
+  single-send latch prevents any further send. **Full containment (revoke consent + delete app + drop tokens) runs at
+  the END of S16** (Phase 4), recorded in evidence.
 
 ## 7 · Evidence capture + vocabulary (conditions 5, 6, 7)
 
