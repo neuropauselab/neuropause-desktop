@@ -52,6 +52,7 @@ Every slice lands **vertical** — never frontend-only, never main-only:
 - **A layer touched without its test is not done.** Renderer work ships component + e2e tests; main work ships unit + contract tests; backend work ships migration + integration tests against real compose services (testcontainers), never mocks-as-backend.
 - **Declarations describe reality.** `declareChannelResource` and every governance artifact records what code *actually does*, verified by reading it — a predicted declaration is fiction.
 - **UI truth rule:** every status the renderer shows (Connected, Synced, Healthy, HELD, ACKNOWLEDGED, VERIFIED, NOT GOVERNED) is derived from evidence at the layer beneath, with a test asserting the derivation.
+- **AuthStatus exhaustiveness (FG-6 standing rule):** there is NO exhaustive `switch`/`assertNever` over `AuthStatus`, so the compiler is not a backstop. Every FUTURE consumer that narrows `AuthStatus` MUST handle `'local'` explicitly — no fall-through `else` may silently treat a device-local principal as signed-out. A deliberate deny gets a deliberate label (classify it accepts-local vs authenticated-only, deny-by-default for anything backend-bound). The `local:` and `@device.invalid` namespaces are reserved and never stripped (DECISIONS D-12).
 
 ## 5 · ROADMAP — SLICES 11–50
 
