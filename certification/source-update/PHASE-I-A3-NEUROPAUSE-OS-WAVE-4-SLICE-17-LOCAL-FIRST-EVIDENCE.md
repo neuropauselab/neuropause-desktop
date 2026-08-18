@@ -79,16 +79,34 @@ confirmations (all matched) and issued the literal token with five on-record con
 - Tests: `ui-tests/localModeAffordance.test.tsx` (3) — the affordance renders + CTA fires; `LoginScreen` shows the
   way-back ONLY when reached from local mode. UI suite **257 passed** (35 files); typecheck:web + lint clean.
 
-## Honest e2e status (NOT yet confirmed in-session)
-- `e2e/localMode.e2e.cjs` (`local-mode.spec`) is written — a plain RELEASE build (no `NP_E2E_BUILD`/seed), fresh
-  isolated profile, backend down; asserts the "Working locally" affordance is present and the sign-in wall is absent,
-  with a runbook. **An in-session launch against the release bundle exceeded the 2-minute shell budget** (a full app
-  boot with an unreachable backend is slow) — this is a heavy-launch timeout, **NOT** a proven pass or failure. So the
-  main + renderer-component layers are TEST-VERIFIED, but the fresh-profile end-to-end walkthrough (including any
-  first-run onboarding interaction) is **operator-runnable + UNCONFIRMED** — treated with the same honesty as the
-  S14/S15 operator-run specs. Do not claim "fully usable local mode" until the spec is green.
+## e2e — `local-mode.spec` GREEN (5/5, in-session, honest build)
+`e2e/localMode.e2e.cjs` — a plain RELEASE build (no `NP_E2E_BUILD`/seed → `__NP_E2E__` false), FRESH isolated profile,
+backend unreachable. **First run was against a STALE bundle** (built before the renderer branch landed) and showed the
+wall — a stale-build artifact, not a failure; caught via the captured screenshot. Rebuilt with the renderer branch and
+re-ran: **PASS, all 5 assertions:**
+```
+✓ window is not an e2e-seeded build (title: "NeuroPause")
+✓ the "Working locally" affordance is shown
+✓ the affordance offers to connect an account to sync
+✓ the sign-in WALL is NOT shown (it is dead in local mode)
+✓ the full product shell rendered (not a blank frame)
+PASS — the sign-in wall is dead; a fresh unseeded build is usable in local mode.
+```
+**The sign-in wall is dead** on a fresh, unseeded, offline build — S17's headline is proven end-to-end.
+
+### F-S17-1 · The captured screenshot shows the pre-existing first-run ONBOARDING over the mounted local shell
+The screenshot (`e2e/artifacts/local-mode.png`) is **not** the `LoginScreen` wall and **not** a blank frame — it is the
+pre-existing first-run onboarding ("Your AI. Your Data. Your Control." · **Try Free Locally** · Sign In · Skip setup for
+now) rendering ON TOP of the mounted local shell (the assertions matched because `LocalModeBanner`'s "Working locally"
+text + the shell are in the DOM beneath it, and the wall's "Sign in to your AI operating layer" is absent). So a fresh
+profile DOES enter local mode (FG-6), and this onboarding — which FG-6 is what makes actually functional (its "Try Free
+Locally" / "Skip setup" now lead into a real local principal instead of the dead wall) — is the intended S39 welcome.
+**Finding:** two local-first entry affordances now coexist — the onboarding's "Try Free Locally" and the in-shell
+`LocalModeBanner`. They are complementary (one-time welcome vs persistent in-shell reminder) but their messaging should
+be reconciled into ONE coherent local-first story at **S39 (first-run experience)**. Not a defect; a design-coherence
+item, logged.
 
 ## Remaining for S17 exit
-1. Run `local-mode.spec` to green (fresh profile, networking off) — confirm no first-run modal blocks the shell; capture
-   the walkthrough screenshot as PILOT-adjacent evidence.
-2. Graceful cloud absence audit (the 10 token-gated clients render "unavailable — working locally", no error-spam).
+1. Graceful cloud-absence audit — the 10 token-gated clients render "unavailable — working locally" rather than
+   error-spam. (Currently they fail closed at `getValidAccessToken`; the renderer degradation copy is the open item.)
+2. S39 reconciliation of the two local-first affordances (onboarding "Try Free Locally" ⇄ `LocalModeBanner`).
