@@ -15,15 +15,22 @@ once — under human control. The e2e seed seam is NOT used for a real send (it 
 ## 1 · Test tenant + consent
 
 - Use a **dedicated Microsoft 365 test tenant** (not a production/organizational tenant). One test mailbox.
-- Register an **Entra app** (client id + secret/redirect) with the **minimum** delegated scope for this action:
-  `Mail.Send` (+ `User.Read`, `offline_access` for token refresh). No broader mailbox scopes.
+- Register an **Entra app** — a **PKCE public client** (`authType: 'oauth2_pkce'`), so there is **NO client secret**.
+  Under **Authentication → Add a platform → "Mobile and desktop applications"**, register the redirect URI **verbatim**:
+  `http://127.0.0.1:42817/callback` (pinned loopback port 42817 + path `/callback`; it must match exactly).
+  **Do NOT create a client secret** — none exists in the code (`clientSecretEnv: null`).
+- **API permissions → Delegated**, minimum for this action: `Mail.Send` (+ `User.Read`, `offline_access` for token
+  refresh). No broader mailbox scopes.
 - The human personally completes the **OAuth consent** in a browser (⛔ Claude does not enter credentials or click
   consent). Consent is recorded (tenant, app id, scopes, timestamp, who consented).
 
 ## 2 · Real-credential setup (human performs)
 
-- Client id/secret live only in the human's environment / OS keychain via the existing `connectorVault` — never in
-  source, never committed, never in a log. `.env.example` documents the variable names only.
+- The code reads exactly two env vars (no secret — PKCE public client). Set them in your shell / OS keychain — never in
+  source, never committed, never logged:
+  - `NEUROPAUSE_MICROSOFT_ENTRA_CLIENT_ID` = your app registration's **Application (client) ID**.
+  - `NEUROPAUSE_MICROSOFT_ENTRA_TENANT_ID` = your **test tenant GUID**. It defaults to `common`, which a **single-tenant
+    app rejects (AADSTS50194)** — so set the GUID explicitly.
 - Connect the account through the **normal OAuth flow** (`connectorService.connect`) — NOT the e2e seed. This writes a
   real `ConnectedAccount` + real tokens to the vault, scoped to the active workspace.
 
@@ -88,7 +95,8 @@ startup if you mix them, or if you set S15APPPRINCIPAL without FIRST_REAL_SEND).
 GO only when ALL are true:
 - [ ] Dedicated **TEST** tenant (never a production identity); Tenant ID noted.
 - [ ] Single-tenant app registration; **delegated `Mail.Send` only** (+ `User.Read`, `offline_access`); nothing broader.
-- [ ] `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET` / `MICROSOFT_TENANT` set in your shell/keychain — never committed.
+- [ ] `NEUROPAUSE_MICROSOFT_ENTRA_CLIENT_ID` (app client ID) + `NEUROPAUSE_MICROSOFT_ENTRA_TENANT_ID` (test tenant GUID, not `common`) set in your shell/keychain — never committed. **No client secret** (PKCE public client).
+- [ ] App-registration redirect URI is **exactly** `http://127.0.0.1:42817/callback` under "Mobile and desktop applications".
 - [ ] Window title shows **`-e2e (app-principal — not for release)`** (confirms the seeded, non-release build).
 - [ ] `first-real-send.latch` does NOT exist in userData (a stale latch would block the send).
 - [ ] Screen recording started; you will capture the **exact UTC send time** and an **inbox screenshot**.
