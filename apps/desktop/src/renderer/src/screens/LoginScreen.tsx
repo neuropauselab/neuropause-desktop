@@ -32,7 +32,12 @@ const PROVIDER_CATALOGUE: { id: OAuthProviderId; label: string; Icon: typeof Goo
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export function LoginScreen(): JSX.Element {
+/**
+ * @param onDismiss — S17 local-first: when reached FROM local mode (the "connect
+ * an account" affordance), a way back to working locally. Absent = the classic
+ * first-run screen with no account yet.
+ */
+export function LoginScreen({ onDismiss }: { onDismiss?: () => void } = {}): JSX.Element {
   const { status, loginOAuth, loginEmail, registerEmail } = useAuth();
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
@@ -238,6 +243,20 @@ export function LoginScreen(): JSX.Element {
           {authenticating && status.provider !== 'email' ? (
             <p className="mt-4 text-center text-[12px] text-muted">
               Complete sign-in in your browser, then return here.
+            </p>
+          ) : null}
+
+          {/* S17 local-first: a way back to working locally (only when reached from local mode). */}
+          {onDismiss ? (
+            <p className="mt-4 text-center text-[12.5px] text-muted">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={onDismiss}
+                className="app-no-drag font-medium text-accent transition hover:text-accent-hover disabled:opacity-50"
+              >
+                Keep working locally
+              </button>
             </p>
           ) : null}
         </motion.div>
