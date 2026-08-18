@@ -1,7 +1,9 @@
 # BRAIN-1 — the brain gateway (draft lane) · EVIDENCE
 
-**Status: ② ③ ④ LANDED, non-frozen, no FG gate.** The draft lane keeps serving the deterministic `referenceDrafter`
-until the eval clears THE BAR + the operator's go (DECISIONS D-13). Zero-model mode is permanent. FREEZE INTACT.
+**Status: CLOSED — ①②③④ TEST-VERIFIED, non-frozen, no FG gate.** The draft lane keeps serving the deterministic
+`referenceDrafter` until the eval clears THE BAR + the operator's go on the comparative report (DECISIONS D-13; the flip
+gate is the operator's). Zero-model mode is permanent. Everything here is TEST-VERIFIED (deterministic; no model ran, no
+external effect). FREEZE INTACT.
 
 ## What the scout found (reshaped the slice)
 A near-complete gateway already exists — `AiEngine` → `ModelRouter` → `PrivateFirstClient` → Ollama(localhost default)/
