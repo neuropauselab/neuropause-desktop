@@ -1,9 +1,9 @@
 # SLICE 15 — First real email · EVIDENCE
 
-**Status: a single real-send ATTEMPT — LIVE-VERIFIED (Profile A — acknowledged).** NOT a "success" claim. Three
-separate outcomes, never collapsed: **AUTHORIZED ✓ · SUBMITTED ✓ · EXTERNALLY OBSERVED = pending the operator's
-own-mailbox check** (the automated read-back is blocked — see finding F-3). One real email attempted to the operator's
-own address; the single-send latch is now spent, by design.
+**Status: a single real-send ATTEMPT — LIVE-VERIFIED (Profile A — provider-side observed).** NOT a "success" claim, and
+NOT VERIFIED_SUCCESS (that awaits the S16 oracle's terminal outcome). Three separate outcomes, never collapsed:
+**AUTHORIZED ✓ · SUBMITTED ✓ · EXTERNALLY OBSERVED = provider-side CONFIRMED (Sent Items), destination-side deferred to
+S16.** One real email sent to the operator's own address; the single-send latch is now spent, by design.
 
 ## Run configuration
 - Run mode A (app-principal): app principal seeded (the dead NeuroPause login, pending S17). **Microsoft identity,
@@ -17,8 +17,12 @@ own address; the single-send latch is now spent, by design.
 - **SUBMITTED ✓** — per the operator's UI: the M365WritePanel showed **ACKNOWLEDGED** ("accepted by Microsoft Graph;
   queued; delivery not independently verified") — Graph 202. (No 202 log line exists; the certified path does not log
   it — see finding F-4.)
-- **EXTERNALLY OBSERVED = PENDING** — the automated Graph read-back could not run (F-3). Interim proof is the operator's
-  screenshot of the destination inbox (`neuropause033@gmail.com`); programmatic confirmation is S16's oracle.
+- **EXTERNALLY OBSERVED = provider-side CONFIRMED; destination-side DEFERRED.** By direct operator observation (Outlook
+  web screenshot), the message is in the sender mailbox's **Sent Items**: To `neuropause033@gmail.com`, subject/body
+  "NeuroPause S15 first real send, 18 Aug 2026", 5:53 PM IST = **12:23 UTC — matching the latch (12:23:02.996Z) exactly**.
+  Match tuple confirmed provider-side: recipient ✓, subject/body ✓, timestamp ✓; **internetMessageId deferred to the S16
+  oracle**. Destination-side delivery to Gmail is NOT yet independently confirmed (the operator's Gmail check /
+  the S16 read-back). This is provider-side observation, **not** delivery confirmation and **not** VERIFIED_SUCCESS.
 
 ## Confirmed params + exact UTC send time (from the latch, `first-real-send.latch`)
 ```
