@@ -191,6 +191,17 @@ async function bootstrap(): Promise<void> {
       app.exit(1);
     }
   }
+
+  // Wave-2 Slice-16 — in-session read-back verification runner. Compile-stripped from release (__NP_E2E__ false);
+  // NEUROPAUSE_VERIFY_S15-gated so a normal launch never runs it. READ-ONLY (Sent Items + Inbox of the own mailbox).
+  if (__NP_E2E__ && process.env.NEUROPAUSE_VERIFY_S15 === '1') {
+    try {
+      const { runS16Verification } = await import('./e2e/s16VerifyRun');
+      await runS16Verification();
+    } catch (err) {
+      log.error('S16 verification run failed', err);
+    }
+  }
 }
 
 // Enforce a single running instance; focus the existing window otherwise.
