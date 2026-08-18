@@ -482,6 +482,33 @@ export const M365DraftRequest = z.object({
 export type M365ActionExecuteRequest = z.infer<typeof M365ActionExecuteRequest>;
 export type M365DraftRequest = z.infer<typeof M365DraftRequest>;
 
+/**
+ * FG-1 (Wave-2 Slice 10) — request a NeuroPause-validated M365 action proposal (READ-ONLY; NEVER executes).
+ * `capabilityId`/`params` are the UNTRUSTED AI candidate; the main handler re-resolves the capability and the
+ * authoritative human principal server-side and re-validates the params (Slice-8 producer). Actor/tenant are NEVER
+ * carried here — they are resolved at the later, separate `M365ActionExecute` call. `confirmed` is not a field here.
+ */
+export const CapabilityProposeM365ActionRequest = z.object({
+  capabilityId: z.string().trim().min(1).max(64),
+  accountId: AccountIdSchema.nullable().optional(),
+  purpose: z.string().max(2000).optional(),
+  params: z.record(z.unknown()).default({}),
+});
+export type CapabilityProposeM365ActionRequest = z.infer<typeof CapabilityProposeM365ActionRequest>;
+
+/** FG-1 — the handler's DATA-ONLY response: the reviewable proposal + provenance, or a typed fail-closed refusal. */
+export type CapabilityProposeM365ActionResponse =
+  | {
+      ok: true;
+      proposal: { to: string; subject: string; body: string };
+      provenance: { capabilityId: string; accountId: string };
+    }
+  | {
+      ok: false;
+      reason: 'PRINCIPAL_UNRESOLVED' | 'CAPABILITY_NOT_SELECTED' | 'UNSUPPORTED_ACTION' | 'INVALID_PARAMS';
+      detail: string;
+    };
+
 /** P4.1 — an operator control command over a connector (or one of its accounts). */
 export const ConnectorControlRequest = z.object({
   connectorId: ConnectorIdSchema,

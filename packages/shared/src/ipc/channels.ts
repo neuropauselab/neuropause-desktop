@@ -224,6 +224,9 @@ export const IpcChannel = {
   M365ActionList: 'connectors:m365.actions',
   M365ActionExecute: 'connectors:m365.execute',
   M365Draft: 'connectors:m365.draft',
+  // FG-1 (Wave-2 Slice 10) — read-only: produce a NeuroPause-validated M365 action proposal for human review.
+  // DATA ONLY. The handler never executes, never sets `confirmed`, and has no path to the certified executor.
+  CapabilityProposeM365Action: 'capability:m365.propose',
 
   // ── unified knowledge layer (UDM) ──
   UnifiedQuery: 'unified:query',
@@ -1314,6 +1317,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.M365ActionList,
   IpcChannel.M365ActionExecute,
   IpcChannel.M365Draft,
+  IpcChannel.CapabilityProposeM365Action,
   IpcChannel.UnifiedQuery,
   IpcChannel.UnifiedGet,
   IpcChannel.UnifiedCounts,

@@ -47,7 +47,7 @@ const MAIN = join(fileURLToPath(new URL('.', import.meta.url)), '..');
  * only alongside declarations; a bare increase means a sensitive channel was
  * added and nobody said what it reaches.
  */
-const SENSITIVE_BASELINE = 195; // +1 round 34: aiConfig:pullModel (declared below the D-5 pair)
+const SENSITIVE_BASELINE = 196; // +1 FG-1 (Wave-2 Slice 10): capability:m365.propose gated (connectors:manage). Gated-but-UNDECLARED by design: an unhandled channel reaches no store, so a declaration would be fiction — declareChannelResource + DECLARED_BASELINE 3→4 land in Slice 11 with the handler.
 
 /**
  * THE NUMERATOR. 2 as of P13C final certification — `ai:preference.get` and

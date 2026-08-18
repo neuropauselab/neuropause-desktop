@@ -72,6 +72,10 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
    * plain-language summary written by the assistant and carries record titles.
    */
   [IpcChannel.ExecMemoryAudit]: 'intelligence:read',
+  // FG-1 (Wave-2 Slice 10) — the read-only M365 proposal producer. Gated at the SAME tier as the M365 write
+  // channel: no principal may stage a proposal it could not execute (propose is not a lower-tier probe of
+  // selection state). DATA ONLY — the handler never executes. Non-frozen accompaniment to the FG-1 frozen pair.
+  [IpcChannel.CapabilityProposeM365Action]: 'connectors:manage',
 
   /**
    * P13C Round 8 — a paired companion device belongs to one organization, and the
