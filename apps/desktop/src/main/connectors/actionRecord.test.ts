@@ -115,3 +115,91 @@ describe('S34a · action record — verification + query', () => {
     expect(existsSync(join(dir, 'action-records.json'))).toBe(true);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S34a CLOSING PROOF — the eight + query proof + observer invariant
+// ─────────────────────────────────────────────────────────────────────────────
+describe('S34a · CLOSING PROOF', () => {
+  it('1 · NORMAL — a governed send produces a record with the correct requestId/transitionId chain', async () => {
+    await actionRecord.observe(req(), gsr({ transitionId: 'm365-send:norm', requestId: 'req:norm:7' }), ctx());
+    const [rec] = await actionRecord.query({ tenantId: 'tenant-A', transitionId: 'm365-send:norm' });
+    expect(rec.requestId).toBe('req:norm:7');
+    expect(rec.transitionId).toBe('m365-send:norm');
+    expect(rec.admissionRef).toBe('m365-send:norm'); // the reference IS the transition
+  });
+
+  it('2 · OBSERVER FAILURE — the handler pattern (void observe().catch) never changes the send result', async () => {
+    // Mirror the frozen call site: void observe(...).catch(); return result;
+    let sendResult = 'ACKNOWLEDGED';
+    actionRecord.useDirForTests('/nonexistent/np/deep'); // force a persist failure
+    void actionRecord.observe(req(), gsr({}), ctx()).catch(() => {
+      sendResult = 'CORRUPTED';
+    });
+    // synchronous continuation — the send's result is returned regardless of the emit
+    expect(sendResult).toBe('ACKNOWLEDGED');
+    await new Promise((r) => setTimeout(r, 5)); // let the emit settle
+    expect(sendResult).toBe('ACKNOWLEDGED'); // emit failure logged a gap, never touched the result
+  });
+
+  it('3 · EVERY TERMINAL exercised — incl. VERIFIED_SUCCESS and VERIFIED_FAILED, never a false success', async () => {
+    await actionRecord.observe(req(), gsr({ transitionId: 't-vs' }), ctx());
+    await actionRecord.recordVerification('t-vs', { terminal: 'VERIFIED_SUCCESS', internetMessageId: '<a@h>', at: '2026-08-18T13:00:00Z' });
+    await actionRecord.observe(req(), gsr({ transitionId: 't-vf' }), ctx());
+    await actionRecord.recordVerification('t-vf', { terminal: 'VERIFIED_FAILED', internetMessageId: null, at: '2026-08-18T13:00:00Z' });
+    const vs = (await actionRecord.query({ tenantId: 'tenant-A', transitionId: 't-vs' }))[0];
+    const vf = (await actionRecord.query({ tenantId: 'tenant-A', transitionId: 't-vf' }))[0];
+    expect(vs.verification?.terminal).toBe('VERIFIED_SUCCESS');
+    expect(vf.verification?.terminal).toBe('VERIFIED_FAILED');
+    // UNKNOWN never auto-promotes: an observed UNKNOWN outcome stays UNKNOWN with no verification.
+    await actionRecord.observe(req(), gsr({ semanticOutcome: 'UNKNOWN', transitionId: 't-u2' }), ctx());
+    expect((await actionRecord.query({ tenantId: 'tenant-A', transitionId: 't-u2' }))[0].verification).toBeNull();
+  });
+
+  it('4 · VERIFICATION ATTACHMENT — attaches to the EXISTING record; an unknown transition creates NO new record', async () => {
+    await actionRecord.observe(req(), gsr({ transitionId: 't-exist' }), ctx());
+    const before = (await actionRecord.query({ tenantId: 'tenant-A' })).length;
+    await actionRecord.recordVerification('t-DOES-NOT-EXIST', { terminal: 'VERIFIED_SUCCESS', internetMessageId: null, at: 'x' });
+    const after = await actionRecord.query({ tenantId: 'tenant-A' });
+    expect(after).toHaveLength(before); // no phantom record was created
+  });
+
+  it('7 · LOCAL ACTOR INTEGRITY — local:<id> persists as the exact string through store AND query', async () => {
+    await actionRecord.observe(req(), gsr({ transitionId: 't-local' }), ctx({ actor: 'local:9f3c-abc-def' }));
+    const [rec] = await actionRecord.query({ tenantId: 'tenant-A', transitionId: 't-local' });
+    expect(rec.actor).toBe('local:9f3c-abc-def'); // no prefix stripping, no normalization
+  });
+
+  it('QUERY PROOF — the full chain is answerable from the store alone (no raw logs)', async () => {
+    await actionRecord.observe(
+      req({ to: ['dest@example.com'], subject: 'Q3 board update' }),
+      gsr({ transitionId: 'm365-send:full', requestId: 'req:full:9', verdict: 'ALLOW', executed: true, semanticOutcome: 'ACKNOWLEDGED' }),
+      ctx({ actor: 'user-owner', tenantId: 'tenant-A' }),
+    );
+    await actionRecord.recordVerification('m365-send:full', { terminal: 'VERIFIED_SUCCESS', internetMessageId: '<pn2@host>', at: '2026-08-18T13:25:54Z' });
+    const [rec] = await actionRecord.query({ tenantId: 'tenant-A', recipient: 'dest@example.com' });
+    // request → actor → tenant → connector/account → verdict → outcome → 202 → verification → evidence ref
+    expect(rec.requestId).toBe('req:full:9');
+    expect(rec.actor).toBe('user-owner');
+    expect(rec.tenantId).toBe('tenant-A');
+    expect(rec.connectorId).toBe('conn-1');
+    expect(rec.accountId).toBe('acct-1');
+    expect(rec.actionId).toBe('mail.send');
+    expect(rec.verdict).toBe('ALLOW');
+    expect(rec.executed).toBe(true);
+    expect(rec.outcome).toBe('ACKNOWLEDGED');
+    expect(rec.verification?.terminal).toBe('VERIFIED_SUCCESS');
+    expect(rec.verification?.internetMessageId).toBe('<pn2@host>');
+    expect(rec.admissionRef).toBe('m365-send:full');
+  });
+
+  it('INVARIANT — the record layer is an OBSERVER: no value-import back into governance/execution', () => {
+    const src = readFileSync(join(__dirname, 'actionRecord.ts'), 'utf8');
+    // The only cst reference is a TYPE import (erased at runtime); no value import from governance/execution.
+    const valueImports = src.match(/^import\s+(?!type\b)[^;]*from\s+'[^']*'/gm) ?? [];
+    for (const line of valueImports) {
+      expect(line).not.toMatch(/cst\/|governance|executor|governedSend|governedAction|boundDecisionClaim|CstKernel/);
+    }
+    // The cst import that DOES exist is type-only.
+    expect(src).toMatch(/import type \{ GovernedSendResult \} from '\.\.\/cst\/sendTransition'/);
+  });
+});

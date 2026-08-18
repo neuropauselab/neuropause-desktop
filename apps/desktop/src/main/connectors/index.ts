@@ -53,6 +53,7 @@ import { RateLimiter } from '../unified/sync/rateLimiter';
 import { HttpClient } from '../unified/sync/http';
 import { createM365Executor, ALL_M365_ACTIONS, type M365Executor } from './m365';
 import { governedSend, createGovernedSendPorts, type GovernedSendResult } from '../cst/sendTransition';
+import { actionRecord } from './actionRecord';
 import {
   governedAction,
   createGovernedActionPorts,
@@ -628,6 +629,10 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
           if (g.semanticOutcome === 'UNKNOWN') {
             raiseM365UnknownHold(r.connectorId, r.accountId, r.actionId, g.outcome, 'Send email (Microsoft 365)');
           }
+          // S34a (FG-5) — best-effort action-record OBSERVER: assemble the queryable evidence chain for THIS
+          // send. It is an observer, NEVER a gate — fire-and-forget + self-catching, so it can never block,
+          // delay, or alter the governed send or its response; a failed emit logs an evidence gap.
+          void actionRecord.observe(r, g, { actor: deps.actor() ?? '', tenantId: deps.workspaceId() }).catch(() => {});
           return mapSendOutcome(g, r.confirmed);
         }
         // P13C H-FINDING-4 (Cohort 1 + 2A + 2B-i + 2B-ii) — non-mail.send write actions are governed
