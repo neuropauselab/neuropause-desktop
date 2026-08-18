@@ -334,6 +334,14 @@ export interface AssistantEnvelope {
   findings: AssistantFinding[];
   recommendations: string[];
   draft: AssistantDraft | null;
+  /**
+   * Wave-2 Slice-13 — an assistant-detected mail.send candidate, carried structurally so the renderer can feed it
+   * into the EXISTING M365WritePanel via the Slice-12 propose feed (one surface, one confirmation). Additive +
+   * optional: null/absent on every non-mail turn and on envelopes predating this field. The AI has NO authority
+   * here — recipients are extracted LITERALLY from the user's turn by the trusted generator, params are re-validated
+   * by the propose producer before display, and the human still confirms through the certified path.
+   */
+  mailIntent?: { to: string[]; subject: string; body: string } | null;
   /** A navigation resolution the renderer executes (deep link into the shell). */
   navigation: { section: string; query: string | null } | null;
   /** Phase 6 Stage 5 — structured deterministic report (brief / meeting prep). */

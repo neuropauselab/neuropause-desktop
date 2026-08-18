@@ -77,6 +77,7 @@ import {
   type DeterministicPorts,
 } from './deterministicAnswers';
 import { renderReportMaterial } from './productivity';
+import { assistantMailSendIntent, referenceDrafter } from '../capabilities/assistantMailIntent';
 import type { ConversationStore } from './conversationStore';
 import type { CapabilityCatalogView } from '../capabilities/capabilityDiscoveryService';
 
@@ -345,6 +346,32 @@ export class AssistantService {
         resolveAnalyticsQuestion(input.text) !== null ||
         // Phase 6 Stage 13 — the ten digital-twin questions likewise.
         resolveTwinQuestion(input.text) !== null);
+
+    // ── Wave-2 Slice-13 — an explicit mail.send request becomes a schema-constrained candidate via the trusted,
+    // deterministic generator: recipients are extracted LITERALLY from THIS live turn (never resolved from names,
+    // contacts, or synced content), and the untrusted model only drafts subject/body. On a clear INTENT we hand the
+    // params to the renderer through `envelope.mailIntent` + a deep link to the Connector Center, where the EXISTING
+    // M365WritePanel renders the proposal via the Slice-12 feed (one surface). The AI gains NO authority; the human
+    // still confirms downstream through the certified path. Only the user's explicit live turn reaches here. ──
+    if (!cfg.operational) {
+      const mail = assistantMailSendIntent(input.text, {}, referenceDrafter);
+      if (mail.kind === 'INTENT') {
+        const envelope = baseEnvelope(correlationId, mode, intent, now);
+        envelope.text = `I've prepared an email to ${mail.params.to.join(', ')} for your review. Open the Microsoft 365 panel in the Connector Center — nothing is sent without your explicit confirmation.`;
+        envelope.mailIntent = { to: [...mail.params.to], subject: mail.params.subject, body: mail.params.body };
+        envelope.navigation = { section: 'connectors', query: null };
+        envelope.grounded = true;
+        envelope.confidence = 0.9;
+        envelope.trace.phases = phases;
+        const messageId = this.appendTurn(conversation, input.text, [], envelope, now);
+        publish('assistant.turn.mail-intent', { recipients: mail.params.to.length });
+        emitPhase('done');
+        this.inflight.delete(conversation.id);
+        await this.deps.store.upsert(conversation);
+        return { conversation, messageId };
+      }
+    }
+
     if (
       !cfg.operational &&
       !productivityResolved &&

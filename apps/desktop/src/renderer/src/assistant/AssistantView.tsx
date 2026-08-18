@@ -48,7 +48,11 @@ export interface AssistantViewProps {
   onNew: () => void;
   onTogglePin: (conversationId: string, pinned: boolean) => void;
   onDelete: (conversationId: string) => void;
-  onOpenNavigation: (section: string, query: string | null) => void;
+  onOpenNavigation: (
+    section: string,
+    query: string | null,
+    mailIntent?: { to: string[]; subject: string; body: string } | null,
+  ) => void;
 }
 
 export function AssistantView(props: AssistantViewProps): JSX.Element {
@@ -361,7 +365,7 @@ function AssistantReply({
 
       {/* Navigation resolution */}
       {env.navigation && (
-        <Button variant="secondary" icon="arrow-right" onClick={() => onOpenNavigation(env.navigation!.section, env.navigation!.query)}>
+        <Button variant="secondary" icon="arrow-right" onClick={() => onOpenNavigation(env.navigation!.section, env.navigation!.query, env.mailIntent ?? null)}>
           Open {env.navigation.section}
           {env.navigation.query ? ` — “${env.navigation.query.length > 40 ? `${env.navigation.query.slice(0, 37)}…` : env.navigation.query}”` : ''}
         </Button>

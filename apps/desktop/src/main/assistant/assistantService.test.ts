@@ -519,3 +519,45 @@ describe('memory recall honesty (round 36)', () => {
     expect(env.trace.recalledMemories).toBe(0);
   });
 });
+
+/* ── Wave-2 Slice-13 — mail.send intent detection on a live turn (data only, never sends) ───────── */
+
+describe('assistant mail.send intent detection', () => {
+  const envOf = (conversation: Awaited<ReturnType<AssistantService['ask']>>['conversation'], messageId: string) =>
+    conversation.messages.find((m) => m.id === messageId)!.envelope!;
+
+  it('a mail.send turn with a literal address sets envelope.mailIntent + a deep link to the connector center', async () => {
+    const h = mkHarness();
+    const { conversation, messageId } = await h.service.ask({ text: 'Email alice@example.com the quarterly report.' });
+    const env = envOf(conversation, messageId);
+    expect(env.mailIntent).toBeTruthy();
+    expect(env.mailIntent!.to).toEqual(['alice@example.com']);
+    expect(env.navigation).toEqual({ section: 'connectors', query: null });
+    // Detection only: nothing is executed here. The renderer routes it through the certified propose→confirm path.
+    expect(h.execRequests).toHaveLength(0);
+  });
+
+  it('recipients come from THIS turn only — exactly the literally-typed addresses (recipient literalism)', async () => {
+    const h = mkHarness();
+    const { conversation, messageId } = await h.service.ask({ text: 'Send an email to a@b.com and c@d.com about Friday.' });
+    expect(envOf(conversation, messageId).mailIntent!.to).toEqual(['a@b.com', 'c@d.com']);
+  });
+
+  it('a non-mail turn leaves mailIntent unset (no hijack of the normal pipeline)', async () => {
+    const h = mkHarness();
+    const { conversation, messageId } = await h.service.ask({ text: 'summarize today' });
+    expect(envOf(conversation, messageId).mailIntent ?? null).toBeNull();
+  });
+
+  it('a send-shaped turn with no literal address does NOT emit mailIntent (unresolved recipient → falls through)', async () => {
+    const h = mkHarness();
+    const { conversation, messageId } = await h.service.ask({ text: 'Email finance the report.' });
+    expect(envOf(conversation, messageId).mailIntent ?? null).toBeNull();
+  });
+
+  it('an out-of-scope action turn does NOT emit mailIntent (deny-by-default)', async () => {
+    const h = mkHarness();
+    const { conversation, messageId } = await h.service.ask({ text: 'Delete all emails from Bob.' });
+    expect(envOf(conversation, messageId).mailIntent ?? null).toBeNull();
+  });
+});

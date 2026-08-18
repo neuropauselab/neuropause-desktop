@@ -16,6 +16,7 @@ import { ipc } from '@renderer/lib/ipc';
 import type { SectionId } from '@renderer/shell/sections';
 import { setPendingSearchQuery } from '@renderer/search/searchHandoff';
 import { consumePendingAssistantQuery } from './assistantHandoff';
+import { setPendingMailProposal } from '@renderer/connectors/m365ProposalHandoff';
 import { AssistantView } from './AssistantView';
 
 export function AssistantHost({ onNavigate }: { onNavigate?: (id: SectionId) => void }): JSX.Element {
@@ -199,8 +200,15 @@ export function AssistantHost({ onNavigate }: { onNavigate?: (id: SectionId) => 
   );
 
   const onOpenNavigation = useCallback(
-    (section: string, query: string | null): void => {
+    (
+      section: string,
+      query: string | null,
+      mailIntent?: { to: string[]; subject: string; body: string } | null,
+    ): void => {
       if (section === 'search' && query) setPendingSearchQuery(query);
+      // Slice-13 — a mail.send intent detected this turn is handed to the ONE M365WritePanel via the Slice-12 feed.
+      // The mailbox is consumed once on EntraConnectorPanel mount; setting it here ties it to the clicked message.
+      if (section === 'connectors' && mailIntent) setPendingMailProposal(mailIntent);
       onNavigate?.(section as SectionId);
     },
     [onNavigate],
