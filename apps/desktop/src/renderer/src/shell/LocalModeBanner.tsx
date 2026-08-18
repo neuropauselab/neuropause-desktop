@@ -16,7 +16,7 @@ export function LocalModeBanner({ onConnect }: LocalModeBannerProps): JSX.Elemen
     <div
       role="status"
       aria-label="Working locally"
-      className="flex items-center justify-center gap-3 border-b border-[color:var(--border,#333)] bg-[color:var(--surface,#1a1a1a)] px-4 py-2 text-sm text-muted"
+      className="flex items-center justify-center gap-3 border-b border-[var(--hairline)] surface-raised px-4 py-2 text-sm text-muted"
     >
       <span>
         Working locally — your data stays on this device.
