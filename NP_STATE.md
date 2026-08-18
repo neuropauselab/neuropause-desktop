@@ -2,10 +2,10 @@
 Living, TRACKED working doc (committed each slice; excluded from the freeze source spec — see DECISIONS.md D-5). Mirror of CLAUDE.md §1 with operational detail.
 
 ## Now
-- HEAD `f9d9ef2` · FREEZE INTACT (`BASELINE-35431ae7446f`, baseline commit `e55a245`) · branch `cert/data-import-cst-integration`.
-- Suites (verified this session): main **8661 passed / 3 skipped** (818 files) · UI **250 passed** (32 files) · typecheck clean · lint clean on changed files.
-- Landed: Slices 1–12. Slice 11 = FG-2 (`runtimeCore` registration — channel LIVE-REGISTERED, data-only). Slice 12 = first production feed of `capability:m365.propose` → `M365WritePanel` (dev-triggered) + typed refusal/loading/transport UI + comma-in-address hardening. NON-frozen throughout (D-6).
-- **Next: Slice 13** — AI structured intent generator (`assistantMailSendIntent`) → the same propose path; injection-gated; golden set ≥30. The comma gate (S12) is green, so AI may now supply `to`.
+- HEAD `628ea72` · FREEZE INTACT (`BASELINE-329a95225ea7`, baseline commit `c15bec2`) · branch `cert/data-import-cst-integration`.
+- Suites: assistantMailIntent **38/38** (18 unit/adversarial + 20 golden) · earlier this session main **8661/3** (818) · UI **250** (32) · typecheck + lint clean.
+- Landed: Slices 1–12 + **Slice-13 safety core** (`c15bec2`): `assistantMailIntent.ts` — deterministic mail.send intent generator whose safety is model-INDEPENDENT (recipient literalism, context-inert, trigger discipline, deny-by-default scope). Golden set 37 cases per-category; binary safety = zero pass-throughs (hostile 9/9, out-of-scope 10/10).
+- **In flight: Slice 13 stopped at FG-3** (see BLOCKERS.md B-2) — the assistant→panel carrier needs an additive optional `AssistantEnvelope.mailIntent` field (frozen `packages/shared`). Gate presented; non-frozen wiring prepped to land on token. Rule-4 ONE-SURFACE: renders in the existing M365WritePanel via the S12 feed (D-7).
 
 ## Change-control trail
 ```
