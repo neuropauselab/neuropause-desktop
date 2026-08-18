@@ -2,30 +2,29 @@
 Living, TRACKED working doc (committed each slice; excluded from the freeze source spec — see DECISIONS.md D-5). Mirror of CLAUDE.md §1 with operational detail.
 
 ## Now
-- HEAD `628ea72` · FREEZE INTACT (`BASELINE-329a95225ea7`, baseline commit `c15bec2`) · branch `cert/data-import-cst-integration`.
-- Suites: assistantMailIntent **38/38** (18 unit/adversarial + 20 golden) · earlier this session main **8661/3** (818) · UI **250** (32) · typecheck + lint clean.
-- Landed: Slices 1–12 + **Slice-13 safety core** (`c15bec2`): `assistantMailIntent.ts` — deterministic mail.send intent generator whose safety is model-INDEPENDENT (recipient literalism, context-inert, trigger discipline, deny-by-default scope). Golden set 37 cases per-category; binary safety = zero pass-throughs (hostile 9/9, out-of-scope 10/10).
-- **In flight: Slice 13 stopped at FG-3** (see BLOCKERS.md B-2) — the assistant→panel carrier needs an additive optional `AssistantEnvelope.mailIntent` field (frozen `packages/shared`). Gate presented; non-frozen wiring prepped to land on token. Rule-4 ONE-SURFACE: renders in the existing M365WritePanel via the S12 feed (D-7).
+- HEAD `1ed71cc` · FREEZE INTACT (`BASELINE-52d9a12099f3`, baseline commit `de64dd0`) · branch `cert/data-import-cst-integration`.
+- Suites (RUN against BASELINE-52d9a12099f3): full main **8708/3 skipped** (821) · UI **254** (34) · typecheck + lint clean (incl. frozen `assistant.ts`).
+- Landed: Slices 1–13. **Slice 13 COMPLETE**: mail.send intent generator (safety model-INDEPENDENT) + FG-3 (`AssistantEnvelope.mailIntent`) + assistant→panel wiring (ask() → `mailIntent` → renderer hand-off → S12 feed → the ONE `M365WritePanel`). FG-3 INTACT bracket 92a99c8 → de64dd0 → 1ed71cc. Golden per-category positive 10/10 · ambiguous 8/8 · hostile 9/9 · out-of-scope 10/10 (zero pass-throughs). Hand-off consumed exactly once (amendment 3). Component/jsdom level — real-Electron Playwright is S14.
 
-## Change-control trail
+## Change-control trail (S13 / FG-3)
 ```
-c8e42f4  evidence(s11): FG-2 gate execution record        (certification/, freeze-safe)
-5aadbb5  governance(D-5): track 4 living docs + exclude from freeze source spec
-48c2cdf  alive(s12): comma-in-address hardening (producer) (NON-frozen source)
-014d163  freeze re-record #5 (INTACT, BASELINE-3a820f71d6d5)
-e55a245  alive(s12): first production feed capability:m365.propose (NON-frozen renderer + UI test)
-f9d9ef2  freeze re-record #6 (INTACT, BASELINE-35431ae7446f, baseline commit e55a245)
+c15bec2  alive(s13): mail.send intent generator + golden set (NON-frozen safety core)
+628ea72  freeze re-record #7 (INTACT, BASELINE-329a95225ea7)
+1aca9fa  gate(s13): present FG-3 (freeze-safe)
+7b075cc  alive(s13): renderer hand-off mailbox — FG-3 checkpoint (NON-frozen)
+92a99c8  freeze re-record — INTACT #1 (pre-frozen)
+de64dd0  FG-3: AssistantEnvelope.mailIntent + assistant→panel wiring (frozen field + coupled wiring)
+1ed71cc  freeze re-record — INTACT #2 (BASELINE-52d9a12099f3)
 ```
 
 ## Next 3 steps
-1. S13 — `assistantMailSendIntent(userTurn, context)` → schema-constrained intent → zod → the propose path. Generator gains zero authority; only the user's explicit live turn (never synced content). Golden set ≥30 with an honest accuracy report.
-2. Extend the AI-boundary corpus: hostile synced bodies → zero intents (permanent CI gate).
-3. S14 — full mock e2e in the real Electron app (Playwright): typed NL → intent → propose → panel → confirm → mock execute → admission.
+1. **S14** — full mock E2E in the REAL Electron app (Playwright): typed NL → intent → propose → panel → human-style confirm → certified executor → mock Graph → admission, with a captured recording. Negative e2e: hostile context → nothing appears; ambiguous → the assistant asks. ⛔ hard stop before S15 (anything real).
+2. Carry the S13 seams into the real-app run (assistant turn → `mailIntent` → hand-off → the ONE M365WritePanel → certified confirm).
+3. S15 prep (test-tenant + consent runbook) — human-gated.
 
-## Wired this slice (S12)
-- `capability:m365.propose` now has a real production caller: `ipc.connectors.m365Propose` (renderer) → the data-only handler → `M365WritePanel` prefill. Dev-triggered only (`import.meta.env.DEV`).
-- `M365WritePanel.proposal` prop (Slice 7) — now FED in production (dev trigger), remounted via `key` so a new proposal re-seeds fields.
-- Comma hardening green — the S13 prerequisite gate.
+## Wired this slice (S13)
+- `assistantMailSendIntent` has a real production caller: `AssistantService.ask()` — a mail.send turn sets `envelope.mailIntent` (recipients literal-from-turn) + a connectors deep link; detection only, no execution.
+- `AssistantEnvelope.mailIntent` (FG-3) → `AssistantHost` stashes into `m365ProposalHandoff` → `EntraConnectorPanel` consumes once → feeds the ONE `M365WritePanel` via the S12 feed (rule 4).
 
 ## Honest status
 Everything to date is **TEST-VERIFIED**, not LIVE. One connector (M365) has a governed consequential path; nothing executes without human confirmation; nothing external is effect-verified yet (Profile A). Backend down/empty; builds unsigned; NOT CERTIFIED (13C).
