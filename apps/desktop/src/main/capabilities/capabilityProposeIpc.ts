@@ -32,7 +32,9 @@ export const capabilityHandlers = withRuntimeAuthz([
   {
     channel: IpcChannel.CapabilityProposeM365Action,
     schema: CapabilityProposeM365ActionRequest,
-    handler: (req: CapabilityProposeM365ActionRequest): CapabilityProposeM365ActionResponse =>
+    // `req` arrives as `unknown` per the secure-handler def; the bridge has already validated it against `schema`
+    // before calling us, so the cast is safe — the standard connector-handler pattern.
+    handler: (req: unknown): CapabilityProposeM365ActionResponse =>
       runProposeM365Action(
         {
           resolveSelection: (r) => capabilityDiscoveryService.resolveSelection(r),
@@ -42,7 +44,7 @@ export const capabilityHandlers = withRuntimeAuthz([
           },
           scope: () => activeTenantScope(),
         },
-        req,
+        req as CapabilityProposeM365ActionRequest,
       ),
   },
 ]);

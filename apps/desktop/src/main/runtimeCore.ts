@@ -312,6 +312,7 @@ import { globalGovStore } from './federation/governance/globalGovInstance';
 import { workerInstallStore } from './workforce/install/installInstance';
 import { governanceStore } from './enterprise/governance/governanceInstance';
 import { workspaceStore } from './enterprise/workspace/workspaceInstance';
+import { capabilityHandlers } from './capabilities/capabilityProposeIpc';
 import { DEFAULT_PROMPTS } from './ai/promptManager';
 import { runEnterpriseSearch } from './search/enterpriseSearch';
 import { getFederationSearcher } from './federationPlatform/searcherInstance';
@@ -2148,6 +2149,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...platform.handlers);
   // Connector Framework IPC (list/connect/disconnect/reconnect/refresh/sync/health/logs).
   defs.push(...connectors.handlers);
+  // FG-2 — capability:m365.propose (data-only proposal producer; validates an AI candidate, never executes).
+  defs.push(...capabilityHandlers);
   // Unified knowledge layer IPC (query/get/counts/search).
   defs.push(...unified.handlers);
   // Sync engine IPC (sync-state snapshot for the health dashboard).
