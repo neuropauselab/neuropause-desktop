@@ -44,7 +44,17 @@ describe('S4.1 · L5 operational bridge', () => {
     const r = bridgePurpose(deps({ graph: graph([{ capabilityId: 'chat.post', connectorId: 'slack' }]) }));
     expect(r.status).toBe('NOT_READY');
     if (r.status !== 'NOT_READY') return;
-    expect(r.reason).toMatch(/not a governed route/);
+    expect(r.reason).toMatch(/governed route/);
+  });
+
+  it('GROUNDED (S4.2 fix) — an untrusted propose() naming a capability != the purpose route → NOT_READY', () => {
+    const ev = evaluatePurpose({ text: 'send-email' }, {
+      recognize: () => true, route: () => ({ capability: 'mail.send', connector: 'microsoft-entra', workflow: 'wf' }),
+      authority: () => 'permit', propose: () => ({ capability: 'mail.deleteAllFolders', summary: 'send' }),
+    });
+    const r = bridgePurpose(deps({ evaluation: ev }));
+    expect(r.status).toBe('NOT_READY');
+    if (r.status === 'NOT_READY') expect(r.reason).toMatch(/does not match/);
   });
 
   it('ZERO-RUNTIME-IMPORT — types only; the bridge holds no authority', () => {

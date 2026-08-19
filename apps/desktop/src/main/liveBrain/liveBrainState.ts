@@ -67,6 +67,8 @@ export interface LiveBrainState {
   readonly tenantId: string | null;
   /** S4.0 — true iff the substrates are PROVABLY one tenant (≥1 stamp, all agree, evidence matches). Deny-by-default. */
   readonly tenantProvable: boolean;
+  /** S4.2 fix — the reconciled tenant's proven workspace SCOPE (part of tenant identity). Null when unprovable. */
+  readonly tenantScope: string | null;
   readonly sections: {
     readonly workspace: StateSection;
     readonly capabilities: StateSection;
@@ -170,6 +172,7 @@ export function composeLiveBrainState(inputs: LiveBrainInputs): LiveBrainState {
   // A disputed scope is NOT resolved — the boolean a consumer branches on must not read "settled".
   const scopeResolved = !scopeConflict && (wsScope === true || capScope === true);
   const tenantId = tenantRec.tenant?.tenantId ?? inputs.workspace?.tenantId ?? null;
+  const tenantScope = tenantRec.tenant?.scope ?? null; // the PROVEN workspace scope (S4.2 scope-confinement fix)
 
   // Fail-closed: only trust routes when the graph's own scope resolves (defense-in-depth,
   // mirrors each rendered section's scopeResolved re-check).
@@ -355,7 +358,7 @@ export function composeLiveBrainState(inputs: LiveBrainInputs): LiveBrainState {
   };
   for (const s of Object.values(sections)) uncertainty[s.certainty] += 1;
 
-  return { scopeResolved, tenantId, tenantProvable, sections, conflicts, uncertainty };
+  return { scopeResolved, tenantId, tenantProvable, tenantScope, sections, conflicts, uncertainty };
 }
 
 function sec(

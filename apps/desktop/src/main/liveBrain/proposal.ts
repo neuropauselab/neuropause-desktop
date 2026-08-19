@@ -113,7 +113,6 @@ export interface ProposalRequest {
   readonly reversibility: 'reversible' | 'irreversible' | 'unknown';
   readonly expectedEffect: string;
   readonly evidence: readonly EvidenceRef[];
-  readonly freshnessWindowMs: number;
 }
 
 export interface ProposalDeps {
@@ -122,10 +121,12 @@ export interface ProposalDeps {
   readonly authorityFor: (capabilityId: string, target: ProposalTarget) => AuthorityRequirement;
   /** DERIVED verification plan (oracle registry). No oracle → UNVERIFIABLE. */
   readonly oracleFor: (capabilityId: string, params: Readonly<Record<string, unknown>>) => VerificationPlan;
-  /** Does an evidence ref resolve to a real record? */
-  readonly resolveEvidence: (ref: EvidenceRef) => boolean;
+  /** Resolve an evidence ref to its real record's TENANT, or null if it does not resolve. */
+  readonly resolveEvidence: (ref: EvidenceRef) => { readonly tenantId: string } | null;
   readonly policyFacts: readonly PolicyFact[];
   readonly nowMs: number;
+  /** GOVERNED staleness tolerance (a policy constant) — NOT request-controlled (S4.2 fix). */
+  readonly freshnessWindowMs: number;
   readonly stateHashAtReasoning: string;
   readonly currentStateHash: string;
 }
@@ -139,44 +140,63 @@ export type ProposalResult =
 export function buildProposal(request: ProposalRequest, deps: ProposalDeps): ProposalResult {
   const { state } = deps;
 
-  // (e) TENANT — form ONLY from a provably single-tenant state (S4.0). Deny-by-default.
-  if (!state.tenantProvable || state.tenantId === null) {
-    return { status: 'REFUSED', reason: 'tenant not provably single — no proposal object created' };
+  // (e) TENANT — form ONLY from a provably single-tenant state (S4.0). Reject reasons are GENERIC
+  // (they never echo the state's tenant/scope — S4.2 no-leak fix).
+  if (!state.tenantProvable || state.tenantId === null || state.tenantScope === null) {
+    return { status: 'REFUSED', reason: 'not a provably single tenant' };
   }
-  // Attack 9 — scope escalation: the target scope must equal the requested scope.
-  if (request.target.scope !== request.scope) {
-    return { status: 'REFUSED', reason: `scope escalation — requested scope ${request.scope}, target resolves to ${request.target.scope}` };
+  // Attack 9 — scope confinement: request AND target scope must equal the STATE's PROVEN scope
+  // (not merely each other — the S4.2 confused-deputy fix).
+  if (request.scope !== state.tenantScope || request.target.scope !== state.tenantScope) {
+    return { status: 'REFUSED', reason: 'scope escalation' };
   }
   // Attack 1 — cross-tenant target: the target tenant must be the state's tenant.
   if (request.target.tenantId !== state.tenantId) {
-    return { status: 'REFUSED', reason: `cross-tenant target — state tenant ${state.tenantId}, target ${request.target.tenantId}` };
+    return { status: 'REFUSED', reason: 'cross-tenant target' };
   }
   // Attack 7 — conflicting evidence: a conflicted state cannot produce a proposal.
   if (state.conflicts.length > 0) {
-    return { status: 'BLOCKED', reason: `unresolved conflict(s): ${state.conflicts.map((c) => c.about).join(', ')}` };
+    return { status: 'BLOCKED', reason: 'unresolved conflict in state' };
   }
-  // (c) EVIDENCE — every ref must resolve to a real record (attack 3).
-  const unresolved = request.evidence.find((e) => !deps.resolveEvidence(e));
-  if (unresolved) {
-    return { status: 'BLOCKED', reason: `evidence does not resolve to a real record: ${unresolved.kind}(${unresolved.id})` };
+  // (c) EVIDENCE — a proposal MUST be grounded (≥1 evidence), every ref must RESOLVE to a real record,
+  // and every record must belong to the STATE tenant (S4.2 cross-tenant-evidence fix).
+  if (request.evidence.length === 0) {
+    return { status: 'BLOCKED', reason: 'a proposal must cite at least one resolvable evidence record' };
+  }
+  for (const e of request.evidence) {
+    const resolved = deps.resolveEvidence(e);
+    if (resolved === null) return { status: 'BLOCKED', reason: 'evidence does not resolve to a real record' };
+    if (resolved.tenantId !== state.tenantId) return { status: 'BLOCKED', reason: 'evidence belongs to another tenant' };
   }
   // (d) EXPIRY — state changed since reasoning (attack 5) OR stale evidence (attack 4) → EXPIRED → HOLD.
+  // The freshness window is a GOVERNED deps constant (S4.2 fix), NOT request-controlled.
   if (deps.stateHashAtReasoning !== deps.currentStateHash) {
-    return { status: 'EXPIRED', reason: 'state changed since reasoning — HOLD (not governance-eligible)' };
+    return { status: 'EXPIRED', reason: 'state changed since reasoning' };
   }
   const evidenceAsOfMs = request.evidence.reduce((min, e) => Math.min(min, e.asOfMs), deps.nowMs);
-  const expiresAtMs = evidenceAsOfMs + request.freshnessWindowMs;
-  if (deps.nowMs > expiresAtMs) {
-    return { status: 'EXPIRED', reason: 'evidence older than freshness window — HOLD (not governance-eligible)' };
+  if (deps.nowMs > evidenceAsOfMs + deps.freshnessWindowMs) {
+    return { status: 'EXPIRED', reason: 'evidence older than the governed freshness window' };
   }
 
-  // (a) authorityRequired DERIVED; (b) verificationPlan DERIVED — the request cannot author either.
+  // (a) authorityRequired DERIVED; (b) verificationPlan DERIVED — then VALIDATED before embedding
+  // (S4.2 fix: a crafted deps cannot smuggle a self-authorizing authority or a spoofed plan).
   const authorityRequired = deps.authorityFor(request.proposedAction.capabilityId, request.target);
+  if (!authorityRequired.requiresApproval) {
+    return { status: 'BLOCKED', reason: 'a proposal must require human approval — the Brain never proposes an auto-approved action' };
+  }
   const verificationPlan = deps.oracleFor(request.proposedAction.capabilityId, request.proposedAction.params);
+  if (
+    (verificationPlan.verifiable !== false && verificationPlan.oracleId === null) ||
+    (verificationPlan.verifiable === false && verificationPlan.needs === null)
+  ) {
+    return { status: 'BLOCKED', reason: 'verification plan is internally inconsistent (claims verifiable with no oracle, or unverifiable with no stated need)' };
+  }
 
+  const expiresAtMs = evidenceAsOfMs + deps.freshnessWindowMs;
   const proposal: Proposal = {
-    // Deterministic id — same identity → same id (idempotent), no random/clock.
-    proposalId: `prop:${state.tenantId}:${request.purpose}:${request.proposedAction.capabilityId}:${evidenceAsOfMs}`,
+    // Deterministic + collision-resistant: includes a stable fingerprint of the executable core + target
+    // (S4.2 fix — two proposals with different params/account no longer alias to one id).
+    proposalId: `prop:${state.tenantId}:${request.purpose}:${bodyFingerprint(request)}:${evidenceAsOfMs}`,
     tenantId: state.tenantId,
     purpose: request.purpose,
     observation: request.observation,
@@ -193,7 +213,27 @@ export function buildProposal(request: ProposalRequest, deps: ProposalDeps): Pro
     reversibility: request.reversibility,
     expectedEffect: request.expectedEffect,
     verificationPlan,
-    expiry: { freshnessWindowMs: request.freshnessWindowMs, evidenceAsOfMs, builtAtMs: deps.nowMs, expiresAtMs },
+    expiry: { freshnessWindowMs: deps.freshnessWindowMs, evidenceAsOfMs, builtAtMs: deps.nowMs, expiresAtMs },
   };
   return { status: 'PROPOSED', proposal };
+}
+
+/** A stable, deterministic fingerprint of a proposal's executable core + target (no crypto import). */
+function bodyFingerprint(request: ProposalRequest): string {
+  return stableStringify({
+    capabilityId: request.proposedAction.capabilityId,
+    params: request.proposedAction.params,
+    target: request.target,
+    selectedOption: request.selectedOptionId,
+  });
+}
+
+/** Deterministic canonical serialization — object keys sorted recursively, so identical content → identical string. */
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  const entries = Object.keys(value as Record<string, unknown>)
+    .sort()
+    .map((k) => `${JSON.stringify(k)}:${stableStringify((value as Record<string, unknown>)[k])}`);
+  return `{${entries.join(',')}}`;
 }

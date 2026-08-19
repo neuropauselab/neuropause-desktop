@@ -42,14 +42,20 @@ export function bridgePurpose(deps: BridgeDeps): BridgeResult {
   const ev = deps.evaluation;
   const consentReady = ev.state === 'CONSENT_READY' && ev.proposal !== null;
 
+  // Ground to the purpose's OWN governed route, not global route membership (S4.2 fix): the L4 route
+  // whose `purpose` matches this purpose (exactly one), AND require the L5 proposal's capability to
+  // MATCH it. An untrusted `propose()` that names a different capability is rejected — nothing is
+  // inferred merely because a capability is technically routable elsewhere in the graph.
   const resolvedCap = ev.proposal?.capability ?? null;
-  const routed = new Set(deps.graph.scopeResolved ? deps.graph.routes.map((r) => r.capability) : []);
-  // The ONLY mappable capability is the purpose's resolved one, AND only if it is a governed route.
-  const capabilities = consentReady && resolvedCap !== null && routed.has(resolvedCap) ? [resolvedCap] : [];
+  const routesForPurpose = deps.graph.scopeResolved ? deps.graph.routes.filter((r) => r.purpose === (ev.purpose ?? '')) : [];
+  const routedCap = routesForPurpose.length === 1 ? routesForPurpose[0].capability : null;
+  const grounded = consentReady && routedCap !== null && resolvedCap === routedCap;
+  const capabilities = grounded && routedCap !== null ? [routedCap] : [];
 
   const constraints: string[] = [];
   if (!consentReady) constraints.push(`purpose not consent-ready (at ${ev.state})`);
-  if (resolvedCap !== null && !routed.has(resolvedCap)) constraints.push(`resolved capability ${resolvedCap} is not a governed route`);
+  if (routedCap === null) constraints.push('no single governed route resolves for this purpose');
+  else if (resolvedCap !== routedCap) constraints.push(`resolved capability ${resolvedCap ?? '(none)'} does not match the purpose's governed route ${routedCap}`);
 
   if (capabilities.length === 0) {
     return { status: 'NOT_READY', reason: constraints.join('; ') || 'no capability resolved for this purpose' };
