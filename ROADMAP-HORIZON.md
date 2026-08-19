@@ -1,4 +1,4 @@
-# ROADMAP-HORIZON.md — the long arc (phases 9–26) · DIRECTION, NOT ENTERED
+# ROADMAP-HORIZON.md — the long arc (Live-Brain-track LB-6 … LB-23) · DIRECTION, NOT ENTERED
 ### Recorded 19 Aug 2026 at the S4 opening. Living, TRACKED, freeze-excluded (D-5).
 
 **Status of this document: DIRECTION ONLY.** Nothing here is in §5 and nothing here is authorized to build. Each phase
@@ -27,34 +27,35 @@ is the horizon the current work aims at, so today's slices don't paint into a co
 Each capability is certified independently at each rung (S23 kit); a connector at rung C for one capability is not at
 rung C for another (the per-capability motto).
 
-## PHASES 9–26 (direction)
-- **9 · Operational-memory taxonomy** — a typed, tenant-scoped, evidence-backed memory of what happened and why; the
+## LIVE-BRAIN-TRACK STAGES (LB-6 … LB-23) — direction
+_LB- prefix denotes Live-Brain-track stages; these are NOT §5 slice numbers (which stay canonical + unique, e.g. S18/S23/S28)._
+- **LB-6 · Operational-memory taxonomy** — a typed, tenant-scoped, evidence-backed memory of what happened and why; the
   substrate every higher intelligence reads. Four data states everywhere (HAVE/NEED/UNKNOWN/UNAVAILABLE); no fabrication.
-- **10 · Change intelligence** — DECLARED vs OBSERVED over time → change records (drift, already scoped for L2 depth).
-- **11 · Drift intelligence** — declared/observed divergence as a first-class observation that feeds proposals, never an
+- **LB-7 · Change intelligence** — DECLARED vs OBSERVED over time → change records (drift, already scoped for L2 depth).
+- **LB-8 · Drift intelligence** — declared/observed divergence as a first-class observation that feeds proposals, never an
   auto-fix.
-- **12 · Incident intelligence** — a verified-failure / conflict / UNKNOWN becomes a tracked incident with evidence + a
+- **LB-9 · Incident intelligence** — a verified-failure / conflict / UNKNOWN becomes a tracked incident with evidence + a
   proposed (never executed) remediation.
-- **13 · Dependency intelligence** — the environment/relationship graph (device·app·service·account·connector·workflow·
+- **LB-10 · Dependency intelligence** — the environment/relationship graph (device·app·service·account·connector·workflow·
   data store·policy·capability·dependency·user·workspace·external system) with provenance per edge.
-- **14 · Product intelligence** — governed proposals about the product's own operation, traced to evidence.
-- **15 · Workforce intelligence** — coordination of AI workers by proposal: **work, ownership, deliverables, evidence —
+- **LB-11 · Product intelligence** — governed proposals about the product's own operation, traced to evidence.
+- **LB-12 · Workforce intelligence** — coordination of AI workers by proposal: **work, ownership, deliverables, evidence —
   never invasive personal monitoring** (constraint binding, verbatim).
-- **16 · Founder / operator intelligence** — a truthful executive view; proposals, never autonomous decisions.
-- **17 · Predictive intelligence** — ONLY after a verified history exists; a prediction traces to independently-verified
+- **LB-13 · Founder / operator intelligence** — a truthful executive view; proposals, never autonomous decisions.
+- **LB-14 · Predictive intelligence** — ONLY after a verified history exists; a prediction traces to independently-verified
   past outcomes + policy, and is a PROPOSAL under the same gates. Never a model guess presented as fact.
-- **18 · Self-assurance** — the system observes ITSELF through the ActionRecord pattern (recommendation → prediction →
+- **LB-15 · Self-assurance** — the system observes ITSELF through the ActionRecord pattern (recommendation → prediction →
   outcome → accuracy/FP/FN/UNKNOWN-rate), honest zero-baseline until real decisions flow.
-- **19 · The self-testing OS** — the assurance loop generates its own adversarial tests (the fleet pattern, D-15) as a
+- **LB-16 · The self-testing OS** — the assurance loop generates its own adversarial tests (the fleet pattern, D-15) as a
   standing gate, not a one-off. **Learning remains separate from governance change — the Brain must never rewrite its own
   constitution.**
-- **20 · The natural-language operating layer** — NL intent → structured proposal → the same governed pipeline; the model
+- **LB-17 · The natural-language operating layer** — NL intent → structured proposal → the same governed pipeline; the model
   is untrusted data (§6), never authority.
-- **21 · SDK / platform** — a certified connector-authoring kit (S23 generalized) so third parties climb the A–E ladder
+- **LB-18 · SDK / platform** — a certified connector-authoring kit (S23 generalized) so third parties climb the A–E ladder
   under the same constitution.
-- **22 · Multi-node** — the governed runtime across nodes; tenant isolation + read-back preserved across the boundary.
-- **23 · Edge** — governed execution at the edge with the same at-most-once + read-back guarantees; offline ≠ authority.
-- **24–26 · Reserved** — commercial scale, ecosystem, and the OS's own evolution; refreshed against reality when 9–23 have
+- **LB-19 · Multi-node** — the governed runtime across nodes; tenant isolation + read-back preserved across the boundary.
+- **LB-20 · Edge** — governed execution at the edge with the same at-most-once + read-back guarantees; offline ≠ authority.
+- **LB-21…LB-23 · Reserved** — commercial scale, ecosystem, and the OS's own evolution; refreshed against reality when LB-6…LB-20 have
   each earned a closed slice. Not detailed here to avoid predicting a substrate that does not yet exist.
 
 ## The rule this document exists to enforce

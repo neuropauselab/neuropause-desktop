@@ -7,6 +7,10 @@
 independent adversarial fleet (S4.2) hardened it. FREEZE INTACT. **⛔ HOLD: S5 (governance ALLOW/ASK/DENY wiring + the
 certified-executor-only path) is its own hard stop with its own review package — no execution wiring exists.**
 
+## Assurance statement (operator-directed, verbatim)
+> An independent adversarial fleet found real security failures; they were reproduced, corrected, and converted into
+> regression tests, and S4 was subsequently certified.
+
 ## The certified constitutional line
 **S4 CAN PROPOSE; IT CANNOT REACH EXECUTION.** A proposal is inert DATA that traces to evidence + policy; it holds no
 callable, token, credential, or `confirmed`; the producer has no import path into governance or execution. A proposal
