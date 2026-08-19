@@ -156,9 +156,13 @@ describe('L6-S2 · BrainContext — coherence with S1 + invariant', () => {
     expect(ctx.facts.find((f) => f.field === 'capability.mail.send')?.certainty).toBe('KNOWN');
   });
 
-  it('ZERO-RUNTIME-IMPORT (hardened) — only `import type`; no value, bare, or dynamic import', () => {
+  it('ZERO-RUNTIME-IMPORT (hardened) — types only + the ONE pure D-16 classifier; no value/bare/dynamic reach', () => {
     const src = readFileSync(join(__dirname, 'brainContext.ts'), 'utf8');
-    expect(src.match(/^import(?!\s+type\b)[^\n]*/gm) ?? []).toEqual([]);
+    const valueImports = src.match(/^import(?!\s+type\b)[^\n]*/gm) ?? [];
+    for (const line of valueImports) {
+      expect(line).toMatch(/from '\.\.\/verification\/verificationTerminals'/);
+      expect(line).not.toMatch(/cst\/|governedSend|governedAction|connectors\/index|executor|\{ actionRecord \}/);
+    }
     expect(src).not.toMatch(/\bimport\s*\(|\brequire\s*\(/);
   });
 });

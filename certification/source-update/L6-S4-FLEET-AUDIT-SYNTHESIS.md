@@ -108,6 +108,36 @@ FACT (is-permitted), never the CST admission verdict; zero-value-import pin exte
 (item 4).
 
 ---
+---
+## PART C — CORRECTION-PASS HARDENING (operator rulings 1–3, folded in)
+
+### C1 · Reproduce-first (F-5 pattern) — DEMONSTRATED RED→GREEN
+The fleet audit is recorded as the DISCOVERER. Each fake-green now has an explicit reproduction test, and the
+reproduce→fix→truthful cycle was **demonstrated live**: with the D-16 authority reverted to the buggy vocabulary
+(`FAILURE_TERMINALS` without `VERIFY_FAILED`) + the discovery section reverted to count `results.length`, **6 reproduction
+tests failed RED** — S1 (`VERIFY_FAILED` routed→CONFLICTING; non-routed failure→health; discovery all-UNKNOWN→UNKNOWN),
+S2 (`VERIFY_FAILED`→KNOWN; coherence), and the canonical classifier (`VERIFY_FAILED`→failure). Restoring the fix →
+**all GREEN** (no TEMP-BUG residue; full main 846 files / 8904 passed). Because D-16 makes classification a SINGLE
+authority, one revert reproduced F1 everywhere — a clean single-point demonstration.
+
+### C2 · Terminal vocabulary as LAW (D-16)
+`verification/verificationTerminals.ts` is the SINGLE classification authority
+(`SUCCESS_TERMINALS`/`FAILURE_TERMINALS`/`classifyTerminal`/`isSuccessTerminal`, deny-by-default). S1, S2 and S19
+`m365WriteStates` now IMPORT it; none redefines. An **ANTI-RE-ENTRY invariant** (`verificationTerminals.test.ts`) fails the
+build if any consumer source hardcodes a raw terminal literal — so this bug class cannot re-enter. The L6 zero-runtime-
+import pins are refined to permit exactly this one PURE value import (no reach). DECISIONS **D-16**.
+
+### C3 · Codebase-wide cross-check (ruling 2) — CLEAN BILL (a deliberate check is evidence)
+Every consumer of `ActionRecord.verification.terminal` was audited:
+- **`m365WriteStates` (S19)** — matched only `VERIFIED_SUCCESS` for `externallyObserved`; that IS the correct success
+  terminal, so no correctness bug — now routed through the canonical `isSuccessTerminal` (D-16).
+- **renderer `m365Outcome.ts` / `operatorConsole.ts`** — these consume a **DIFFERENT** vocabulary (the send
+  `semanticOutcome`: ACKNOWLEDGED/OUTCOME_UNKNOWN/HELD/DENIED/FAILED), NOT `verification.terminal`, and are already
+  scrupulously honest ("never fabricates VERIFIED_SUCCESS"; "ACKNOWLEDGED ≠ VERIFIED_SUCCESS"). Not in scope; no change.
+- **producers** (`verifyEffect`, `importTransition`, `sendTransition`, `governedAction`, `connectors/index`) legitimately
+  DEFINE their state unions — out of scope for the consumer-side law.
+Result: **the F1 bug class existed ONLY in the L6 consumers (now fixed); the rest of the codebase is clean.**
+
 ## Bottom line
 The independent fleet did exactly what a self-review could not: it falsified **two HIGH-severity fake-greens** (F1) plus
 nine further landed-code corrections, all now fixed with the pins re-pointed at the REAL vocabulary and re-run green. The

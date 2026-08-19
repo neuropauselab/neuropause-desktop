@@ -218,11 +218,14 @@ describe('L6-S1 · LiveBrainState — pins', () => {
     expect(total).toBe(Object.keys(s.sections).length);
   });
 
-  it('ZERO-RUNTIME-IMPORT (hardened) — only `import type`; no value, bare, or dynamic import into governance/execution', () => {
+  it('ZERO-RUNTIME-IMPORT (hardened) — types only + the ONE pure D-16 classifier; no governance/execution/store/bare/dynamic', () => {
     const src = readFileSync(join(__dirname, 'liveBrainState.ts'), 'utf8');
-    // Every top-level import line must be `import type …` — also catches bare side-effect imports.
-    expect(src.match(/^import(?!\s+type\b)[^\n]*/gm) ?? []).toEqual([]);
-    // No dynamic import()/require() that could pull a runtime module at call time.
-    expect(src).not.toMatch(/\bimport\s*\(|\brequire\s*\(/);
+    const valueImports = src.match(/^import(?!\s+type\b)[^\n]*/gm) ?? [];
+    // The ONLY permitted value import is the pure canonical terminal classifier (no side effects, no reach).
+    for (const line of valueImports) {
+      expect(line).toMatch(/from '\.\.\/verification\/verificationTerminals'/);
+      expect(line).not.toMatch(/cst\/|governedSend|governedAction|connectors\/index|executor|\{ actionRecord \}/);
+    }
+    expect(src).not.toMatch(/\bimport\s*\(|\brequire\s*\(/); // no dynamic import()/require()
   });
 });

@@ -30,6 +30,7 @@ import type { EnvironmentModel } from '../environmentModel/environmentModel';
 import type { PurposeEvaluation } from '../purposeEngine/purposeEngine';
 import type { DiscoveryRun } from '../environmentDiscovery/environmentDiscovery';
 import type { ActionRecord } from '../connectors/actionRecord';
+import { classifyTerminal, type TerminalClass } from '../verification/verificationTerminals';
 
 /** The five-valued uncertainty. First-class; UNKNOWN never silently becomes KNOWN/"okay". */
 export type Certainty = 'KNOWN' | 'UNKNOWN' | 'UNAVAILABLE' | 'CONFLICTING' | 'VERIFIED';
@@ -84,23 +85,14 @@ export interface LiveBrainState {
 }
 
 /**
- * Canonical verification-terminal classification. The REAL vocabulary that can reach
- * `ActionRecord.verification.terminal` (typed `string`, fed by `s16VerifyRun` = verifyEffect's
- * `VerifyState`, and by the import path):
- *   success    → VERIFIED_SUCCESS
- *   failure    → VERIFY_FAILED (send oracle) | VERIFIED_FAILURE (import)
- *   unresolved → HOLD | UNKNOWN | VERIFY_PENDING | EXECUTED_ACK | any UNRECOGNISED terminal
- * Deny-by-default: an unrecognised terminal is UNRESOLVED, NEVER "settled" (§2#9 — uncertainty
- * is never success). `null` verification = not yet verified (also unresolved for rollup purposes).
+ * Verification-terminal classification delegates to the CANONICAL D-16 authority
+ * (`verificationTerminals`). This module hardcodes NO terminal strings (anti-re-entry invariant).
+ * `null` verification = not yet verified; a terminal string classifies success/failure/unresolved,
+ * deny-by-default for anything unrecognised (§2#9 — uncertainty is never success).
  */
-const SUCCESS_TERMINALS = new Set(['VERIFIED_SUCCESS']);
-const FAILURE_TERMINALS = new Set(['VERIFY_FAILED', 'VERIFIED_FAILURE']);
-type VerifyClass = 'unverified' | 'success' | 'failure' | 'unresolved';
+type VerifyClass = 'unverified' | TerminalClass;
 function classifyVerification(v: ActionRecord['verification']): VerifyClass {
-  if (v === null) return 'unverified';
-  if (SUCCESS_TERMINALS.has(v.terminal)) return 'success';
-  if (FAILURE_TERMINALS.has(v.terminal)) return 'failure';
-  return 'unresolved'; // HOLD / UNKNOWN / VERIFY_PENDING / unrecognised — never settled
+  return v === null ? 'unverified' : classifyTerminal(v.terminal);
 }
 
 /** Health precedence: any conflict dominates; then blindness; then uncertainty; VERIFIED only when fully corroborated. */
@@ -146,7 +138,7 @@ export function composeLiveBrainState(inputs: LiveBrainInputs): LiveBrainState {
   );
 
   // ── Conflict check 2: L4 routes a capability the ActionRecord shows verified-FAILED. ──
-  // Uses the canonical classifier so the REAL failure terminal (VERIFY_FAILED) fires, not a literal.
+  // Uses the canonical D-16 classifier so the REAL failure terminal fires, not a hardcoded literal.
   for (const rec of inputs.actions) {
     if (routedCaps.has(rec.actionId) && classifyVerification(rec.verification) === 'failure') {
       conflicts.push({

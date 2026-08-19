@@ -14,6 +14,7 @@
  */
 import type { ActionRecord } from './actionRecord';
 import { actionRecord } from './actionRecord';
+import { isSuccessTerminal } from '../verification/verificationTerminals';
 
 export interface WriteStateCounts {
   /** A governed send was requested — one record exists. */
@@ -24,7 +25,7 @@ export interface WriteStateCounts {
   readonly executed: number;
   /** The provider accepted it — Graph 202 / ACKNOWLEDGED. */
   readonly providerAcknowledged: number;
-  /** An independent oracle corroborated it — VERIFIED_SUCCESS. */
+  /** An independent oracle corroborated it — a success terminal (per the D-16 authority). */
   readonly externallyObserved: number;
   /** The most recent record time, or null when there are none. */
   readonly lastAt: string | null;
@@ -43,7 +44,7 @@ export function deriveWriteStates(records: readonly ActionRecord[]): WriteStateC
     if (r.verdict === 'ALLOW') authorized += 1;
     if (r.executed === true) executed += 1;
     if (r.outcome === 'ACKNOWLEDGED') providerAcknowledged += 1;
-    if (r.verification?.terminal === 'VERIFIED_SUCCESS') externallyObserved += 1;
+    if (isSuccessTerminal(r.verification?.terminal)) externallyObserved += 1; // D-16 canonical authority
     if (lastAt === null || r.at > lastAt) lastAt = r.at;
   }
   return { requested, authorized, executed, providerAcknowledged, externallyObserved, lastAt };

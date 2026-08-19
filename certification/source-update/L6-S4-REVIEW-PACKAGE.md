@@ -36,6 +36,21 @@ conflicts = ∅).
 The property that makes this un-authoritative is not "it is a struct" but that **every authority-relevant value is
 re-derived by the trusted runtime and every retained authority-adjacent field is display-only**.
 
+**TENANT BINDING (confused-deputy lens, B1) — shown, not assumed.** Every evidence object cited above is asserted
+**single-tenant**: the worked case is `tenant = <state.tenantId>` with all six L6 inputs drawn from ONE tenant authority.
+The proposal producer **REFUSES to emit** (returns `[]` + an honest gap) if the state's evidence is not provably
+single-tenant — a tenant mismatch is a first-class CONFLICTING (never a silent join), and `PROPOSED ACTION.accountId` is
+re-resolved by governance against the SAME tenant, never taken from the proposal. So a background-principal / session-
+catalog split (Tenant A evidence, Tenant B target) cannot produce a proposal.
+
+**VERIFIABILITY HONESTY (verification-plan lens, B3) — the field SAYS when it cannot verify.** `VERIFICATION PLAN` carries an
+explicit state, never a false promise:
+- single-recipient `mail.send` → `{ verifiable:'send-corroboration', oracle:'verifyEffect', caveat:'≤~37s, no NDR — NOT a delivery receipt', productionWired:false }`;
+- multi-recipient `mail.send` → `{ verifiable:'per-recipient', note:'VERIFIED only when EVERY per-recipient target reaches success; else HOLD' }`;
+- any non-`mail.send` capability (the ~30 Profile-A cohort) → **`{ verifiable:false, reason:'UNOBSERVABLE — no oracle exists', needs:'a per-capability oracle' }`** — the proposal openly declares it **cannot be verified today** and names what is missing;
+- HOLD resolution → `{ needs:'S22 reconciler (unbuilt)' }`.
+A proposal NEVER claims verification it cannot perform.
+
 ---
 ## ITEM 4 · L5 OPERATIONAL BRIDGE — status, plan, sequencing recommendation
 
@@ -86,8 +101,14 @@ the read-model snapshot TYPES + `ActionRecord` as a TYPE + verifyEffect TYPES (`
    the producer NEVER sets `confirmed`. (S3's NO-PROPOSAL invariant is INVERTED for S4: the proposal object is authorized
    AS DATA, but every authority-adjacent field is proven display-only.)
 4. **Inherit D-14** — forbid `import { actionRecord }` and `.query(`; ActionRecord arrives as injected data.
-5. **Hostile-in → inert-out** — a hostile REQUIRED AUTHORITY ("already approved") or narrative changes nothing downstream;
-   params never sourced from evidence (S13 recipient-literalism); narrative fields control-stripped (`clean()`).
+5. **Hostile-in → inert-out (injection / untrusted-data lens, B5)** — proven at three points: (a) PROPOSED-ACTION params
+   are NEVER sourced from S2 evidence (S2 carries only fingerprints/counts — no recipient/body text to inject); recipients
+   come only from the operator's mandate (S13 recipient-literalism), so a hostile prior-ActionRecord recipient cannot be
+   proposed; (b) narrative fields (OBSERVATION/DIAGNOSIS/EXPECTED RESULT) are **inert display data** — control-char/
+   structure-stripped like `clean()`, never rendered as directives; (c) a hostile REQUIRED AUTHORITY ("already approved")
+   changes nothing — governance re-derives the approver and the confirmation UI foregrounds the AUTHORITATIVE params
+   (recipient, account, capability) literally, separate from the narrative, so a persuasive proposal cannot socially-
+   engineer the one human confirmation. Pinned by a hostile-input corpus test (the S31 injection corpus extended to S4).
 
 **TENANT PRECONDITION (fleet-audit B1 — the #1 blocker, HIGH):** before S4 produces from L6 state, the wiring MUST feed all
 six inputs from ONE tenant authority, add an authoritative `tenantId` to every snapshot (L2/L3/L4/L5), make a tenant

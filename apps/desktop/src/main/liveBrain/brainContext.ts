@@ -18,6 +18,7 @@
  * reads no store (S34a arrives as already-queried `ActionRecord[]`, the D-14 finding).
  */
 import type { Certainty, LiveBrainInputs } from './liveBrainState';
+import { classifyTerminal } from '../verification/verificationTerminals';
 
 /** Where a fact came from: the layer + the specific evidence object (never empty). */
 export interface Provenance {
@@ -52,17 +53,14 @@ function envCertainty(state: 'HAVE' | 'NEED' | 'UNKNOWN' | 'UNAVAILABLE'): Certa
 }
 
 /**
- * Canonical verification-terminal certainty — MUST match the REAL vocabulary (kept in sync with
- * S1's classifier): VERIFIED_SUCCESS → VERIFIED; VERIFY_FAILED / VERIFIED_FAILURE → KNOWN (a known
- * failure); HOLD / UNKNOWN / VERIFY_PENDING / unrecognised / null → UNKNOWN (unresolved).
- * Deny-by-default: an unrecognised terminal is UNKNOWN, NEVER laundered into a settled "verified" fact.
+ * Verification-terminal → S2 certainty, via the CANONICAL D-16 authority (`verificationTerminals`):
+ * success → VERIFIED; failure → KNOWN (a known failure); unresolved/null → UNKNOWN. This module
+ * hardcodes NO terminal strings (anti-re-entry invariant). Deny-by-default: unrecognised → UNKNOWN.
  */
-const SUCCESS_TERMINALS = new Set(['VERIFIED_SUCCESS']);
-const FAILURE_TERMINALS = new Set(['VERIFY_FAILED', 'VERIFIED_FAILURE']);
 function verificationCertainty(terminal: string | null): Certainty {
-  if (terminal !== null && SUCCESS_TERMINALS.has(terminal)) return 'VERIFIED';
-  if (terminal !== null && FAILURE_TERMINALS.has(terminal)) return 'KNOWN';
-  return 'UNKNOWN'; // null / HOLD / UNKNOWN / VERIFY_PENDING / unrecognised — unresolved, never settled
+  if (terminal === null) return 'UNKNOWN';
+  const cls = classifyTerminal(terminal);
+  return cls === 'success' ? 'VERIFIED' : cls === 'failure' ? 'KNOWN' : 'UNKNOWN';
 }
 
 export function assembleBrainContext(inputs: LiveBrainInputs): BrainContext {
