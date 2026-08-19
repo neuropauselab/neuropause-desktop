@@ -51,13 +51,20 @@ frozen touch, D-6/D-7/D-13). Proofs: `domainAggregate.test.ts` (5) + full main +
 unavailable, never a fabricated "0 customers"**, never an error. No cloud/backend needed. This is the same honest
 absence local mode shows everywhere (S17), carried into the domain rollup.
 
-## The renderer SURFACE — FG-8 (frozen, presented; NOT worked around)
-Surfacing the snapshot to the renderer requires carrying it on an `enterprise:*` response — and EVERY such response type
-is in FROZEN `packages/shared` (`enterprise:context` → `EnterpriseContext`, `enterprise:dashboard` → `ExecutiveSnapshot`,
-`enterprise:modules` → a bare `EnterpriseModuleSummary[]`). There is no non-frozen payload to extend. Per the directive
-(STOP + present the gate, never work around), this is **FG-8** (`FG-8-WORKSPACE-DOMAIN-SURFACE-GATE.md`): one additive
-optional `ExecutiveSnapshot.workspaceDomain` field, with the non-frozen `computeExecutiveSnapshot` join + renderer +
-truthful-surface test landing on the token. The production call-site
-(`workspaceDomainSnapshot({ moduleStore: (id) => enterprise.modules.get(id)?.store ?? null, scope: activeTenantScope })`)
-lands with FG-8. Until the token, the aggregate is closed + queryable in-process; the dashboard does not yet display it —
-honestly flagged, not silently claimed.
+## The renderer SURFACE — FG-8 LANDED (L1 SLICE-2 CLOSED)
+Every `enterprise:*` response is in FROZEN `packages/shared`, so surfacing the snapshot required a frozen change — presented
+as **FG-8** (not worked around) and landed on the token (`AUTHORIZED: FG-8 — ExecutiveSnapshot workspaceDomain rollup, per
+gate doc`; INTACT #1 `43324a2b013f` → INTACT #2 `BASELINE-be240c98d4f2`):
+- FROZEN: one additive optional `ExecutiveSnapshot.workspaceDomain` field (no field removed/renamed/retyped).
+- Non-frozen: the `enterprise:dashboard` handler joins `workspaceDomainSnapshot` over the REAL module registry (via a
+  module-level accessor `initEnterprise` populates) under `activeTenantScope` — the production call-site, one source of
+  truth. `toWorkspaceDomainField` carries states + counts VERBATIM. `WorkspaceDomainRollup` renders the STATE (present →
+  count; unavailable → "unavailable", never a fake 0; absent → nothing), mounted in `ExecutiveWorkspacePanel`.
+  Truthful-surface + fallback + **local-mode surface** ui-tests pin each displayed value to the snapshot.
+
+**L1 SLICE-2 CLOSED** — the domain rollup is now displayed, truthfully. With Slice-1 (the aggregate) this gives L1 two
+closed slices.
+
+## Live boundary (standing)
+M365 `mail.send` is the SINGLE live governed consequential capability until another earns its own governance + verification
+chain. This layer READS/aggregates governed state; it executes nothing.
