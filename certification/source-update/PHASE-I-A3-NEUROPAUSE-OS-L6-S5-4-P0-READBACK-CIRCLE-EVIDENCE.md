@@ -106,3 +106,18 @@ Send-verification, not a destination receipt (destination filtering remains NOT 
 the READ-ONLY oracle reaches a corroborated terminal from independent mailbox evidence. HOLD (UNRESOLVED) never
 auto-promotes to SUCCESS. The single live governed consequential capability is unchanged; this increment makes NO
 external contact and weakens NO validation.
+
+## CORRECTION (operator-required note, 19 Aug 2026 — appended; history above preserved, never rewritten)
+- **CLAIM (as originally reported):** "brainReview live in the confirm panel" — Phase 0 complete.
+- **DISCOVERY (pre-ceremony recon, same day):** the claim was true RENDERER-SIDE ONLY. No production caller invoked
+  the L6 stack from the propose path — nothing built a certified Proposal, nothing stashed, and the FG-10 gate always
+  SKIPped. The ceremony as then written would have executed a human-composed governed send, not a Brain-proposed
+  action. The divergence rule was honored: STOP → report to the operator → fix under the standing Phase-0 mandate.
+- **FIX (non-frozen):** `liveBrain/brainProposeLane.ts` + `runProposeM365ActionWithArtifact` + the async propose
+  handler (best-effort/additive-only) + shared `deriveAuthority`/`deriveOracle` exports + `L6-GATE ADMIT/REFUSE`
+  observability. Full detail in the ADDENDUM above.
+- **IN-APP PROOF:** `e2e/brainPropose.e2e.cjs` real-Electron PASS — propose → eight review fields → unedited execute →
+  `L6-GATE ADMIT` → read-back TERMINAL=VERIFIED_SUCCESS → a second identical send NOT re-admitted (single-use).
+- **COMMITS:** the lane `59f9087` ("alive(S5.4): honest correction — the Brain-propose lane, built and proven
+  in-app"); freeze re-record `2315d33` (INTACT, `BASELINE-413d2c24f7b2`).
+- The bound ceremony go stands, re-armed on this corrected reality (operator acceptance, 19 Aug 2026).
