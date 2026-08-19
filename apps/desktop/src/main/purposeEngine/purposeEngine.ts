@@ -19,6 +19,8 @@
  * so there is no import path from the Purpose Engine into L4, governance, or execution.
  */
 
+import type { TenantStamp } from '../tenancy/tenantStamp';
+
 /** The nine states. Six ascending rungs + three honest off-ramps. */
 export type PurposeState =
   // ascending ladder
@@ -81,6 +83,8 @@ export interface PurposeEvaluation {
   readonly purpose: string | null;
   readonly trace: readonly PurposeTraceEntry[];
   readonly proposal: PurposeProposal | null;
+  /** S4.0 tenant stamp — set by the assembler/wiring from the ONE authoritative context. */
+  readonly tenant?: TenantStamp;
 }
 
 export function evaluatePurpose(candidate: PurposeCandidate, sources: PurposeSources): PurposeEvaluation {

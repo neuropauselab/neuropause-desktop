@@ -223,7 +223,8 @@ describe('L6-S1 · LiveBrainState — pins', () => {
     const valueImports = src.match(/^import(?!\s+type\b)[^\n]*/gm) ?? [];
     // The ONLY permitted value import is the pure canonical terminal classifier (no side effects, no reach).
     for (const line of valueImports) {
-      expect(line).toMatch(/from '\.\.\/verification\/verificationTerminals'/);
+      // The ONLY permitted value imports are the two PURE authorities (D-16 terminals + S4.0 tenant reconciliation).
+      expect(line).toMatch(/from '\.\.\/(verification\/verificationTerminals|tenancy\/tenantStamp)'/);
       expect(line).not.toMatch(/cst\/|governedSend|governedAction|connectors\/index|executor|\{ actionRecord \}/);
     }
     expect(src).not.toMatch(/\bimport\s*\(|\brequire\s*\(/); // no dynamic import()/require()

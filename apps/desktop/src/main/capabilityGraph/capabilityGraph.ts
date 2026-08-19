@@ -18,6 +18,8 @@
  * DSL (it reads the existing RBAC/CST facts).
  */
 
+import type { TenantStamp } from '../tenancy/tenantStamp';
+
 /** A capability as the discovery service already describes it (input, read-only). */
 export interface DiscoveredCapabilityLite {
   readonly capability: string;
@@ -53,6 +55,8 @@ export interface CapabilityGraphSnapshot {
   readonly routes: readonly CapabilityRoute[];
   /** Everything excluded from routing, reported honestly. */
   readonly gaps: readonly CapabilityGap[];
+  /** S4.0 tenant stamp — set by the assembler/wiring from the ONE authoritative context; absent in the pure composer. */
+  readonly tenant?: TenantStamp;
 }
 
 export interface CapabilityGraphSources {

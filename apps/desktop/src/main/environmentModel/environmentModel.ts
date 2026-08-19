@@ -20,6 +20,8 @@
  * arrives ONLY through injected `sources` — no path into collection, discovery, or execution.
  */
 
+import type { TenantStamp } from '../tenancy/tenantStamp';
+
 /** The four environment states — the only classifications an element may hold. */
 export type ElementState =
   | 'HAVE' //        the environment affirmatively provides it (evidenced present)
@@ -54,6 +56,8 @@ export interface EnvironmentModel {
   readonly need: readonly string[];
   readonly unknown: readonly string[];
   readonly unavailable: readonly string[];
+  /** S4.0 tenant stamp — set by the assembler/wiring from the ONE authoritative context. */
+  readonly tenant?: TenantStamp;
 }
 
 export function composeEnvironmentModel(

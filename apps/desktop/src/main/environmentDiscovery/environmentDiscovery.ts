@@ -23,6 +23,7 @@
  * execution; every fact enters through injected `sources`.
  */
 import type { RequiredElement, EnvironmentModel } from '../environmentModel/environmentModel';
+import type { TenantStamp } from '../tenancy/tenantStamp';
 
 /** Stage 1→3: the purpose-bound request carrying ONLY the minimum required data. */
 export interface DiscoveryRequest {
@@ -67,6 +68,8 @@ export interface DiscoveryResult {
 export interface DiscoveryRun {
   readonly purpose: string;
   readonly results: readonly DiscoveryResult[];
+  /** S4.0 tenant stamp — set by the assembler/wiring from the ONE authoritative context. */
+  readonly tenant?: TenantStamp;
 }
 
 /**

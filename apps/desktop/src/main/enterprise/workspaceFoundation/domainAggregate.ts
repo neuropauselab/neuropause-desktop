@@ -19,6 +19,7 @@
  *   - present → a faithful scoped count that traces to its governed store.
  */
 import type { TenantScope } from '@neuropause/shared';
+import type { TenantStamp } from '../../tenancy/tenantStamp';
 
 /** A domain concept mapped to the governed module whose store holds it. */
 export interface DomainModuleSpec {
@@ -47,6 +48,8 @@ export interface WorkspaceDomainSnapshot {
   readonly tenantId: string | null;
   readonly slices: readonly DomainSlice[];
   readonly at: string;
+  /** S4.0 tenant stamp — set by the assembler/wiring from the ONE authoritative context. */
+  readonly tenant?: TenantStamp;
 }
 
 export interface WorkspaceDomainSources {

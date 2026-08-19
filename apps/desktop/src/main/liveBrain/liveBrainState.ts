@@ -31,6 +31,7 @@ import type { PurposeEvaluation } from '../purposeEngine/purposeEngine';
 import type { DiscoveryRun } from '../environmentDiscovery/environmentDiscovery';
 import type { ActionRecord } from '../connectors/actionRecord';
 import { classifyTerminal, type TerminalClass } from '../verification/verificationTerminals';
+import { reconcileTenant } from '../tenancy/tenantStamp';
 
 /** The five-valued uncertainty. First-class; UNKNOWN never silently becomes KNOWN/"okay". */
 export type Certainty = 'KNOWN' | 'UNKNOWN' | 'UNAVAILABLE' | 'CONFLICTING' | 'VERIFIED';
@@ -64,6 +65,8 @@ export interface LiveBrainInputs {
 export interface LiveBrainState {
   readonly scopeResolved: boolean;
   readonly tenantId: string | null;
+  /** S4.0 — true iff the substrates are PROVABLY one tenant (≥1 stamp, all agree, evidence matches). Deny-by-default. */
+  readonly tenantProvable: boolean;
   readonly sections: {
     readonly workspace: StateSection;
     readonly capabilities: StateSection;
@@ -110,6 +113,43 @@ export function composeLiveBrainState(inputs: LiveBrainInputs): LiveBrainState {
   const conflicts: Conflict[] = [];
   const conflicted = new Set<string>(); // section keys flagged CONFLICTING
 
+  // ── Conflict check 0: TENANT IDENTITY across substrates (S4.0 — the audit's #1 precondition) ──
+  // The substrates must be PROVABLY one tenant. A disagreement is first-class CONFLICTING; a proposal
+  // may not be formed from a mixed-tenant state (confused-deputy defense). Deny-by-default: no stamp → not provable.
+  const tenantRec = reconcileTenant([
+    inputs.workspace?.tenant,
+    inputs.capabilities?.tenant,
+    inputs.environment?.tenant,
+    inputs.purpose?.tenant,
+    inputs.discovery?.tenant,
+  ]);
+  let tenantProvable = tenantRec.provable;
+  if (tenantRec.conflict) {
+    conflicts.push({
+      about: 'tenant identity',
+      claims: [
+        { source: tenantRec.conflict.a.authoritySource, says: `${tenantRec.conflict.a.tenantId}/${tenantRec.conflict.a.scope}` },
+        { source: tenantRec.conflict.b.authoritySource, says: `${tenantRec.conflict.b.tenantId}/${tenantRec.conflict.b.scope}` },
+      ],
+    });
+    for (const k of ['workspace', 'capabilities', 'environment', 'purpose', 'discovery', 'evidence']) conflicted.add(k);
+  }
+  // Evidence (ActionRecords) must belong to the reconciled tenant — else the evidence is cross-tenant.
+  if (tenantProvable && tenantRec.tenant) {
+    const alien = inputs.actions.find((a) => a.tenantId !== tenantRec.tenant?.tenantId);
+    if (alien) {
+      conflicts.push({
+        about: 'tenant identity (evidence)',
+        claims: [
+          { source: 'reconciled tenant', says: tenantRec.tenant.tenantId },
+          { source: 'S34a evidence', says: alien.tenantId },
+        ],
+      });
+      conflicted.add('evidence');
+      tenantProvable = false;
+    }
+  }
+
   const wsScope = inputs.workspace?.scopeResolved ?? null;
   const capScope = inputs.capabilities?.scopeResolved ?? null;
 
@@ -129,7 +169,7 @@ export function composeLiveBrainState(inputs: LiveBrainInputs): LiveBrainState {
 
   // A disputed scope is NOT resolved — the boolean a consumer branches on must not read "settled".
   const scopeResolved = !scopeConflict && (wsScope === true || capScope === true);
-  const tenantId = inputs.workspace?.tenantId ?? null;
+  const tenantId = tenantRec.tenant?.tenantId ?? inputs.workspace?.tenantId ?? null;
 
   // Fail-closed: only trust routes when the graph's own scope resolves (defense-in-depth,
   // mirrors each rendered section's scopeResolved re-check).
@@ -315,7 +355,7 @@ export function composeLiveBrainState(inputs: LiveBrainInputs): LiveBrainState {
   };
   for (const s of Object.values(sections)) uncertainty[s.certainty] += 1;
 
-  return { scopeResolved, tenantId, sections, conflicts, uncertainty };
+  return { scopeResolved, tenantId, tenantProvable, sections, conflicts, uncertainty };
 }
 
 function sec(
