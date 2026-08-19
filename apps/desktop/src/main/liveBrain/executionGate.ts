@@ -38,11 +38,19 @@ export function deriveAuthority(capabilityId: string, target: ProposalTarget): A
   };
 }
 
-/** Shared oracle-registry derivation — mail.send → the S16 plan; else honestly UNVERIFIABLE. */
+/**
+ * S23 — the oracle registry's HONEST needs-statement per capability: what independent read-back would have to exist
+ * before this capability's effects could ever be VERIFIED. An entry here is an UNVERIFIABLE declaration, not an oracle.
+ */
+const ORACLE_NEEDS: Record<string, string> = {
+  'calendar.create': 'a calendar read-back oracle (event GET-by-id corroboration)',
+};
+
+/** Shared oracle-registry derivation — mail.send → the S16 plan; else honestly UNVERIFIABLE with its need stated. */
 export function deriveOracle(capabilityId: string): VerificationPlan {
   return capabilityId === 'mail.send'
     ? { verifiable: 'send-corroboration', oracleId: 'verifyEffect', note: 'send-corroboration, not delivery', needs: null, productionWired: false }
-    : { verifiable: false, oracleId: null, note: 'no oracle for this capability', needs: 'a per-capability oracle', productionWired: false };
+    : { verifiable: false, oracleId: null, note: 'no oracle for this capability', needs: ORACLE_NEEDS[capabilityId] ?? 'a per-capability oracle', productionWired: false };
 }
 
 export interface RuntimeExecuteDeps {

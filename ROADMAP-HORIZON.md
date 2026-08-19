@@ -84,6 +84,26 @@ _LB- prefix denotes Live-Brain-track stages; these are NOT §5 slice numbers (wh
 - **LB-21…LB-23 · Reserved** — commercial scale, ecosystem, and the OS's own evolution; refreshed against reality when LB-6…LB-20 have
   each earned a closed slice. Not detailed here to avoid predicting a substrate that does not yet exist.
 
+## RELEASE OVERLAY — the version ladder mapped onto the LB stages (RECORDED 19 Aug 2026; NOT ENTERED)
+Adopted from the advisor's ladder as DIRECTION language over the existing stages — no new wave numbers, no new
+architecture; every rung still enters only through the §5 five-field discipline.
+- **v0.9.0 – v0.9.2** — Live Brain productization · workspace + capability reality · system-aware context (the substrate
+  the L1–L6 arc has been building; polish and productize what is already proven).
+- **v0.9.3 – v0.9.7** — the LB-6 experience-memory arc (ExperienceRecord → fingerprint → six-valued outcome memory →
+  reproduction engine → failure intelligence → reproduction-before-repair), under §2 #15 and the language notes above.
+- **v1.0 — THE COMMERCIAL GATE.** Definition (recorded verbatim in intent): the twelve-component core with **ONE
+  unquestionably governed, observable, verifiable capability** — M365 `mail.send`, the proven loop (proposal → human
+  confirm → CST → admission → at-most-once execution → independent read-back → evidence). **"v1.0 does not need 100
+  connectors."** Everything outside the declared boundary ships explicitly NOT GOVERNED / NOT CERTIFIED (§2 #11, S47).
+- **v1.1 – v1.5** — validated knowledge · system self-awareness · LB-7 change intelligence · LB-8 drift intelligence ·
+  adaptive governance (policy evolution under S28-style compiled policies, never self-rewritten — LB-16 constraint).
+- **v2.0** — multi-capability (the S23 kit generalized across connectors/capabilities, each individually certified).
+- **v2.x** — the governed network (LB-19 multi-node · LB-20 edge · LB-18 SDK/platform).
+
+**ONE QUESTION EXPLICITLY OPEN — do not resolve here:** whether the full experience arc (v0.9.3–v0.9.7) lands BEFORE
+v1.0 (the advisor's sequencing) or v1.0 ships EARLIER on the proven loop alone. Decided by a §5 amendment AFTER the
+S5.4 ceremony, against the substrate as it then exists. Recording both orderings is direction, not a decision.
+
 ## The rule this document exists to enforce
 No phase above is built until it enters §5 with its five fields proven against the *real* substrate and the operator's
 per-layer approval. Recording the horizon is not entering it. Direction keeps today's work honest; it never authorizes
