@@ -53,6 +53,7 @@ import { RateLimiter } from '../unified/sync/rateLimiter';
 import { HttpClient } from '../unified/sync/http';
 import { createM365Executor, ALL_M365_ACTIONS, type M365Executor } from './m365';
 import { governedSend, createGovernedSendPorts, type GovernedSendResult } from '../cst/sendTransition';
+import { l6ExecutionGate } from '../liveBrain/executionGate';
 import { actionRecord } from './actionRecord';
 import {
   governedAction,
@@ -599,6 +600,11 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
         // (NetworkError → UNKNOWN, HttpError/AuthError → EXECUTION_FAILED, 202 →
         // ACKNOWLEDGED). A 202 is ACKNOWLEDGED, never a verified business outcome.
         if (r.actionId === 'mail.send' && mailSendAction) {
+          // FG-10 (S5.4 Phase 0) — L6 execution-time gate: for a Brain-proposal-driven send, re-derive
+          // admissibility (deny-by-default) BEFORE the FG-4 guard so a refused proposal never touches the latch.
+          // Non-L6 (no stashed proposal) → ok (skip): the existing assistant/deterministic path is unchanged.
+          const l6 = l6ExecutionGate(deps, r);
+          if (!l6.ok) return l6.refusal;
           // Wave-2 Slice-15 (FG-4) — the first-real-send safety guard, enforced BEFORE the executor. Compile-stripped
           // from release (__NP_E2E__ false); dynamically imported so its chunk is dropped; inert unless
           // NEUROPAUSE_FIRST_REAL_SEND=1. It NEVER weakens the certified path — it only REFUSES (allowlist + latch).
