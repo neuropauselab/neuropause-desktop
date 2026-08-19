@@ -116,6 +116,21 @@ commands · authority class · gate conditions · status.**
 - **NP-000 is SUSPENDED at step 1** — safety HELD, authority never exercised; restarts on the operator's say-so after
   §4 (archive + fresh profile). The bound go stands; the checklist is unchanged; Azure 1a–1c carry over.
 
+## NP-008 · App liveliness census & launch readiness (operator directive, 19 Aug 2026 night)
+- **Objective:** §1 read-only liveliness census of EVERY nav surface on a plain local-first THROWAWAY profile →
+  truth-table artifact; §2 fixes in truth-order (BROKEN → fake-as-real → substrate wiring → honest labels);
+  §3 LAUNCH-READINESS.md; §4 rules (zero real contact · FG gates for frozen · full main on renderer changes ·
+  deterministic work, no fleets · never push · one commit per coherent slice).
+- **Scope:** app-wide renderer/main NON-frozen. **Ceremony surfaces RESERVED:** the r2 profile, the app-principal
+  env, the mail-send path, the runbook/checklist — untouched. NP-000 stays SUSPENDED (resumes on the operator's
+  new tenant tomorrow; Azure 1a–1c to be redone there).
+- **Census result (§1):** 47/47 surfaces walked — BROKEN 0 · LIVE 29 · RENDERS-ONLY 14 (13 Preview-labeled, 1 not)
+  · GATED 2 · STUB 0. First-run claims all traced (the "local model server with 4 models" line is a REAL
+  `detectOllama()` probe). Findings F-N8-1…7 recorded in `certification/APP-LIVELINESS-CENSUS-2026-08-19.md`;
+  evidence JSON committed as `certification/np-008-census-report.json`.
+- **Authority class:** GREEN with GATE stops for anything frozen; zero external effects.
+- **Status: IN PROGRESS** — census committed; §2 truth-order fixes underway.
+
 ## NP-006 · Post-ceremony §5 amendment — experience-arc-vs-v1.0 sequencing
 - **Objective:** decide the ONE explicitly-open question (full experience arc before v1.0, or v1.0 earlier on the
   proven loop) by §5 amendment against the substrate as it then exists.

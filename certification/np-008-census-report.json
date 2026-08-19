@@ -1,0 +1,460 @@
+{
+  "startedAt": "2026-08-19T18:08:48.583Z",
+  "profile": "/var/folders/vm/16b_w9q179q4d6m4r3bhngd40000gn/T/np-census-HfMLKN",
+  "firstRun": {
+    "localModeEntered": true,
+    "e2eSeedAbsent": true,
+    "welcomeText": "Your AI. Your Data. Your Control.\n\nTry NeuroPause free and experience AI that can work locally on your computer — for personal productivity or professional business work.\n\nTry Free Locally\nSign In\nSkip setup for now",
+    "processingText": "← Back\nWhere should your AI work?\n\nThis sets real routing, not a preference label. You can change it any time in Settings → AI.\n\nOn this device\n\nYour local AI workspace is designed to keep supported processing on your device. AI runs through a local model; if none is available, requests fail here rather than being sent anywhere.\n\nA local model server is running on this device with 4 models installed.\n\nKeep it on this device\nWith approved cloud AI\n\nKeep Private First routing, and allow an external provider you enable as a fallback when no local model can serve a request.\n\nExternal providers are used only as a fallback, only once configured, and every response shows where it actually ran.\n\nAllow approved cloud AI\n\nDefault is Private First: local processing is preferred wherever it can serve the request.",
+    "workspaceText": "← Back\nHow do you want to use NeuroPause?\n\nOne product — this choice shapes the workspace, and you can change it later without losing anything.\n\nPersonal\n\nYour private AI workspace\n\nPersonal knowledge\nDocuments and notes\nPlanning and research\nPrivate AI conversations\nLocal files\nStart Personal\nProfessional\n\nYour private AI workspace for work\n\nBusiness documents and knowledge\nFinance and operations\nCustomers and projects\nBusiness analysis\nGoverned AI actions\nStart Professional\nBusiness / Enterprise\n\nAI for your organization\n\nPrivate and local AI\nBusiness data intelligence\nGovernance, permissions and audit\nProvenance and enterprise workflows\nAI workforce with controlled execution\nExplore Business",
+    "understandingText": "← Back\nHere’s what I’ve understood about you.\n\nThis is NeuroPause’s current understanding — not objective truth. Every line shows where it came from, and you can correct anything now or later.\n\nYOUR CONTEXT\nBusiness / Enterprise\nYou told us · You chose this during setup.\nCorrect\nYes, continue",
+    "completed": true
+  },
+  "surfaces": [
+    {
+      "id": "mission-control",
+      "label": "Mission Control",
+      "reached": true,
+      "text": "Mission Control\n\nLive overview of everything running in NeuroPause\n\nsystem unknown\n0/13 connectors up\n0 approvals pending\n0 audit records\nRefresh\n⌘K\nRUNNING NOW\n0\n0 automations live\nAI EMPLOYEES\n27\n0 healthy\nCONNECTORS UP\n0/13\nPENDING APPROVALS\n0\nSYSTEM SCORE\n83\nunknown\nTIMELINE EVENTS\n5\nCommand center\nOrganizations\nAI Workforce\nProjects\nTasks\nConnectors\nKnowledge\nAutomation\nGovernance\nTimeline\nExecutive Dashboards\nActivity timeline\nFull timeline\nexperience.decision\nsystem\njust now\nexperience.decision\nsystem\njust now\nexperience.decision\nsystem\njust now\nexperience.decision\nsystem\njust now\nsystem.ready\nsystem\njust now\nRunning now\nNothing running right now\n\nExecutions, live automations, and running apps appear here.\n\nConnector status\nOpen\nGitHub\ndisabled\nNotion\ndisabled\nSlack\ndisabled\nAtlassian\ndisabled\nGoogle Workspace\ndisabled\nMicrosoft Entra ID\ndisabled\nSalesforce\ndisabled\nHubSpot\ndisabled\nNotifications\nOpen\nYou're all caught up\n\nNotifications land here as reminders, summaries, and workflows fire.\n\nRecent files\nNo recent files yet\n\nWorkspace tabs and synced documents appear here as you work.\n\nSystem health\nOperations\n83\nunknown\n5 events/min\nRuntime\nunknown\nPlatform bus\nunknown\nAutomation\nhealthy\nVoice\nidle\nhealthy\nBackend\n5ms\nhealthy\nCloud sync\nhealthy",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "intent-home",
+      "label": "Today's Intent",
+      "reached": true,
+      "text": "Founder\nCEO\nCTO\nCFO\nCOO\nSales\nMarketing\nHR\nLegal\nOperations\n9 outcomes\n6 on track\n0 at risk\n3 off track\n2 blocked\nOverall progress 67%\nStrategic reasoning confidence 75%\nTODAY'S INTENT — WHAT MOST NEEDS YOU NOW\nExpand industry readiness\nOff track\n·\nAverage industry activation ≥ 60%\nPROGRESS TOWARD OUTCOME\n0%\nNow 0% · target 60%\nGrowth\nTarget horizon 365 days\n3 evidence signals\nBlocked by Raise workforce reliability\nNEXT BEST ACTION\nAdvance \"Expand industry readiness\"\nRequires approval — Side-effect approval (1 step).\nOpen in Strategy Center\nRISKS\nThis outcome is off track\nAverage industry activation ≥ 60% — now 0% of 60.\nBlocked by \"Raise workforce reliability\"\nA dependency is off track.\nAPPROVALS\nSide-effect approval\nRequires approval via \"Side-effect approval\" (1 step(s)) before execution.\n1 approval step.\nRECOMMENDATIONS\nNo strategic decisions are linked to this outcome right now.\nOBJECTIVES\nReady suites\n0%\nsuites in ready state: 0 suites / 12 suites\nTIMELINE\n25% checkpoint\n365 days · At risk\n50% checkpoint\n365 days · Off track\nTarget\n365 days · Off track\nDEPENDENCIES\nRaise workforce reliability\nBlocking\nEVIDENCE\nindustry:erp\nindustry:healthcare\nindustry:manufacturing\nReal platform signal ids backing this outcome's current value.\nNot shown for this outcome (no real per-intent source): AI workers · Connectors · Analytics. These panels are withheld rather than fabricated.\nYOUR OUTCOMES — PICK ONE TO FOCUS ITS WORKSPACE\nOff track\n365 days\nExpand industry readiness\n\nActivate industry solution suites across target verticals.\n\nAverage industry activation ≥ 60%\n0%\nBlocked by Raise workforce reliability\nOff track\n90 days\nRaise workforce reliability\n\nDrive the AI workforce job success rate above 90%.\n\nWorkforce success rate ≥ 90%\n0%\nNext: Advance \"Raise workforce reliability\"\nOff track\n180 days\nImprove cloud cost efficiency\n\nRaise utilization of paid cloud capacity so spend is not wasted on idle headroom (a measurable proxy for cost efficiency; P14 stores no baseline).\n\nCloud capacity utilization ≥ 70%\n3%\nNext: Advance \"Improve cloud cost efficiency\"\nOn track\n90 days\nRelieve capacity pressure\n\nKeep infrastructure capacity pressure in the low band.\n\nCapacity pressure score < 30\n100%\nBlocked by Improve cloud cost efficiency\nOn track\n30 days\nClose compliance control gaps\n\nEnable the governance controls backing each compliance framework across the estate.\n\nZero frameworks with control gaps\n100%\nOn track\nOn track\n90 days\nSustain enterprise health\n\nKeep the composite enterprise health score in the healthy band.\n\nEnterprise health score ≥ 80\n100%\nOn track\nOn track\n30 days\nDrive incidents to zero\n\nResolve and prevent open enterprise incidents.\n\nZero open incidents\n100%\nOn track\nOn track\nMulti-year\nEliminate single points of failure\n\nRemove architectural single points of failure across the enterprise graph.\n\nZero single points of failure\n100%\nOn track\nOn track\n90 days\nReduce enterprise risk\n\nBring the composite enterprise risk index into the healthy band.\n\nEnterprise risk index < 40\n100%\nOn track\nHOW THIS IS BUILT — EVERY VALUE TRACES TO A REAL SOURCE",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "search",
+      "label": "Search",
+      "reached": true,
+      "text": "Search\n\nOne search across every index — records, knowledge, activity, operations, business.\n\nSearch\nEverything\nDocs & messages\nKnowledge\nActivity\nOperations\nBusiness\nPeople\nNavigate\nSaved searches\n\nRun a search and press “Save search” to keep it here.\n\nRecent searches\n\nYour recent searches appear here (stored locally).",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "assistant",
+      "label": "Assistant",
+      "reached": true,
+      "text": "Assistant\n\nRetrieves first, reasons second, acts only after your approval — every answer explains itself.\n\nNew conversation\nAsk\nAnalyze\nPlan\nExecute\nMonitor\nQuick grounded answers. No actions are offered.\n\nAsk anything about your workspace — or ask it to do the work.\n\nAnswers are grounded in your connected data. Side-effecting steps always stop for your approval, and every response shows its sources, tool calls, and confidence.\n\nSummarize today's work\nFind every invoice overdue by 30 days\nShow connector problems\nLaunch the onboarding automation\nDraft a customer response\nPrepare tomorrow's meeting\nSend\nCONVERSATIONS\n\nNo conversations yet.",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "hub",
+      "label": "Work Hub",
+      "reached": true,
+      "text": "Work Hub\n\nYour workday — briefs, meetings, tasks, and what needs you — composed from your connected systems.\n\nRefresh\nToday\nMy Work\nExecutive\nToday's brief\nToday so far: a quiet period — nothing notable recorded.\nACTIVITY\n5 system events\nMeetings today\nNo more meetings today.\nPriorities & recommendations\nNo recommendations right now.\nNotifications\nOpen all\nYou're all caught up.\nProductivity timeline\nNothing recorded yet today.",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "ai-home",
+      "label": "Ask NeuroPause",
+      "reached": true,
+      "text": "What do you want to accomplish?\n\nAsk in your own words. Every answer shows where the AI actually ran — locally, on your private infrastructure, or through a provider you enabled.\n\nWhat needs your attention:\nNo items requiring attention.\nAsk NeuroPause\nReady — a local route will be tried first.\nAsk\nTRY YOUR FIRST TASK\nSummarize my documents\nFind the important tasks for today\nImport a spreadsheet",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "understand",
+      "label": "Understand",
+      "reached": true,
+      "text": "What NeuroPause understands\n\nA model of what you have told it — not objective truth. Every line shows where it came from, and you can correct or remove anything.\n\nAdd\nTHINGS KNOWN\n1\nCONFIRMED BY YOU\n1\nAWAITING CONFIRMATION\n0\nCONTEXT\nBusiness / Enterprise\nConfirmed by you\n\nYou stated or corrected these. NeuroPause treats them as your words.\n\nYOUR CONTEXT\nBusiness / Enterprise\nYou told us\nYou chose this during setup.\nCorrect\nForget\nThis profile stays on this device. NeuroPause uses it to make suggestions relevant — it never treats an inference as a fact, and nothing here is sent anywhere by reading this screen.",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "holds",
+      "label": "Holds",
+      "reached": true,
+      "text": "Holds & decisions\n\nA hold is not a failure — it is work NeuroPause understood but would not run without you. Below, the record of every consequential action and the evidence behind it.\n\nRefresh\nOpen holds\nNothing is on hold. NeuroPause raises a hold when it understands a request but cannot run it safely — you have no unresolved ones.\nDecision record\n\nEvery consequential action, with the evidence that was on screen at the time. Reconstructable — nothing here is regenerated after the fact.\n\nNo consequential decisions have been recorded yet. Records appear when an action is assessed before it runs — for example, deleting a record other records depend on.",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "opportunities",
+      "label": "Opportunities",
+      "reached": true,
+      "text": "Opportunities\n\nFindings derived from your own business records. Every figure here is arithmetic over orders you can open — nothing is estimated, projected or benchmarked.\n\nRefresh\nWhat NeuroPause found\n\nInsufficient evidence to identify a reliable opportunity — there are no purchase orders to analyse yet.\n\nNeuroPause will not invent a finding to fill this space. What it looked at is below, so you can see exactly why there is nothing to report rather than wondering whether the analysis ran.\n\nWhat was examined\nPurchase orders read\n0 in total; 0 fall inside the last 365 days.\nUsable for this comparison\n0 of those were committed orders carrying a product, supplier, quantity, unit cost and currency.\nProducts\n0 distinct products; 0 had more than one supplier and could be compared.\nDerived\nThis pass ran at 19/08/2026, 23:39:14. Nothing here is cached — Refresh recomputes it from your records.\nWHAT WOULD LET NEUROPAUSE SAY MORE\nNo purchase orders exist yet. Record purchases in Business → Procurement → Purchase Orders, or import them in Data, and this analysis runs on them automatically.",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "organization",
+      "label": "Organization",
+      "reached": true,
+      "text": "Organization management is unavailable while working locally\n\nThis needs a connected account. Your data stays on this device — connect an account to sync and turn it on.\n\nConnect an account to sync",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "enterprise",
+      "label": "Enterprise",
+      "reached": true,
+      "text": "Preview\nEnterprise runs on real code with in-memory or seeded data — not live production enterprise state · in active development.\nEnterprise\n\nThe operating system for your organization — command, decide, explore, and run the business with governed AI.\n\nLive\nCommand Center\nExecutive\nDecision Center\nOrg Structure\nOperations\nProcess Explorer\nProduction Schedule\nOperator Console\nRelationship Intelligence\nTrust Center\nFavorites\nModules\nSearch\nWorkspace\nBriefings\nCustomize\n\nDefault Workspace · NeuroPause — the organization at a glance, live.\n\nCustomize\nExecute\nOne pipeline for every execution.\nTask\nWorker\nAutomation\nDecision\nMemory\nVoice\nExecutive\nRuntime\nExecute\nACTIVE\n0\nQUEUED\n0\nCOMPLETED\n0\nFAILED\n0\nSUCCESS\n—\nAVG\n—\nSearch\nOrganization Health\n\nWatch\n\n65\nWATCH\nMembers\n1 people · 27 AI\n28\nOrg units\n13\nLeadership\nunits with a lead\n0%\nRisk\nElevated\nExecutive Intelligence\n\nDaily briefing\n\nOpen\nGROUNDED IN YOUR DATA\n\nToday: a quiet period — nothing notable recorded.\n\n0\nRecommendations\n1\nOpen risks\nAI Workforce\n\n27 workers\n\nDelegate\n0\nRunning\n27\nIdle\n50%\nAvg trust\n100%\nSuccess\nHealth\n0 healthy\n0\nProjects\n0\nTasks\n0\nDocuments\n0\nCustomers\n22\nConnectors\n0 connected\n5\nRecent activity\nlast 24h\nCritical Alerts\n\n1 active\n\nUnits have leaders\n13 unit(s) without a lead.\nInfo\nPending Approvals\n\nNothing waiting\n\nDecision Center\nNo governed actions are waiting for a decision.\nActive Projects\n\n0 in the graph\n\nExplore\nNo projects yet. Connect a tool like Linear, Jira, or Notion to populate projects.\nRecommendations\n\nNext best actions\n\nReview\nNo recommendations right now — they appear as the organization accrues activity.\n\nLive · synced to the Platform Event Bus",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "business",
+      "label": "Business",
+      "reached": true,
+      "text": "Business\n14 areas · 0 records\nFinance\n21\nSales\n7\nCRM\n8\nProcurement\n7\nInventory\n7\nWarehouse\n8\nManufacturing\n12\nMaintenance\n10\nHR & Payroll\n15\nProjects\n4\nHelpdesk\n1\nDocuments\n1\nExecutive\n3\nMedical Devices\n2\nFinance\n\nInvoices, payments and receivables.\n\n0\nRecords\n0\nActive\n21\nModules\nAI insights on records\noperations:manage\nNo Finance records yet\n\nThis dashboard draws every number from live records — create the first record with a quick action below and it fills in immediately.\n\nQUICK ACTIONS\nNew Accounting Period\nNew Bank Statement\nNew Budget\nNew Cash Flow Statement\nNew Ledger Account\nNew Credit Note\nNew Debit Note\nNew Exchange Rate\nNew Invoice\nNew Ratio Register\nNew Fixed Asset\nNew FX Exposure\nNew FX Revaluation\nNew Journal Entry\nNew AP Aging Report\nNew Payment\nNew Aging Report\nNew Tax Report\nNew Treasury Position\nNew Vendor Bill\nNew Vendor Payment\nMODULES\nAccounting Periods\n0\nBank Statements\n0\nBudgets\n0\nCash Flow Statement\n0\nChart of Accounts\n0\nCredit Notes\n0\nDebit Notes\n0\nExchange Rates\n0\nFinance\n0\nFinancial Ratios\n0\nFixed Assets\n0\nFX Exposure\n0\nFX Revaluation\n0\nJournal\n0\nPayables Aging\n0\nPayments\n0\nReceivables Aging\n0\nTax Reports\n0\nTreasury Positions\n0\nVendor Bills\n0\nVendor Payments\n0\nRECENT RECORDS\nNo records yet.\nRECENT ACTIVITY\nNo recent activity.\nFAVORITES\nStar a module to pin it here.",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "administration",
+      "label": "Administration",
+      "reached": true,
+      "text": "Enterprise Administration\n\nThe unified admin control center — organization, identity, security, compliance, AI, connectors & licensing.\n\nNeuroPause\n28 people · 6 roles\nOverview\nOrganization\nIdentity & Access\nRoles & Permissions\nSecurity\nCompliance & Audit\nAI Administration\nConnectors\nLicensing\nConfiguration\n1 of the administration panels could not load: Cloud organizations. What they show below is a fallback, not verified state.\nRetry\nAdministration at a glance\nNeuroPause\nOrganization\n13 org units\n28\nPeople\n0 cloud members\n6\nRoles\n6 built-in · 0 custom\n5/6\nCompliance\nchecks passing\n0\nSSO connections\nMFA optional\n22\nConnectors\n0 connected\n27\nAI workers\nfree\nLicense\n1/1 seats\nAdministrative gaps (recorded honestly)\n\nCapabilities not surfaced as in-app admin — never fabricated\n\nGroups\n· Identity\nNo group entity; org structure is business-unit / department / team, and SSO group claims map to roles.\nNot in-app\nLocations / sites\n· Identity\nThe org model has no location entity — units are business-unit / department / team only.\nNot in-app\nAdmin session list & revoke\n· Identity\nOnly self sign-out exists; the backend has no list-or-revoke-others session API.\nNot in-app\nGeneral secrets store\n· Security\nToken vaults are internal (encrypted, main-process only) and never exposed to IPC by design.\nNot in-app\nTLS / mTLS certificate store\n· Security\nOnly build code-signing status is surfaced; no managed TLS certificate store exists.\nNot in-app\nData-retention policy config\n· Compliance\nAudit trails use fixed caps; there is no retention configuration surface.\nNot in-app\nRisk register / thresholds\n· Compliance\nNo risk-config surface; the Trust Engine scores business entities, not an admin risk register.\nNot in-app\nAI cost / token budgets\n· AI\nAI usage is tracked in-memory only; there is no persisted budget or threshold config.\nNot in-app\nAI provider & model config\n· AI\nEnvironment / code-defined; shown read-only, never as a settable admin control.\nManaged / env\nSeat enforcement\n· Licensing\nSeats are displayed for administration but not enforced (no seat-cap gate).\nNot in-app\nStorage usage metering\n· Licensing\nA directory-size reader exists but is not wired to a live figure or an IPC channel.\nNot in-app\nNotification delivery preferences\n· Configuration\nA delivery-preference store exists but is not surfaced by any IPC channel.\nNot in-app\nOrg branding / white-label\n· Configuration\nNo org branding, logo, or white-label store exists (app theme is personal, not org-level).\nNot in-app\nOrg defaults\n· Configuration\nNo organization-defaults configuration store exists.\nNot in-app",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": [
+        "[2026-08-19T18:09:20.722Z] WARN (secure-ipc) IPC handler error { channel: 'org:list', message: 'Sign in to manage organizations.' }",
+        "Error occurred in handler for 'org:list': IpcError: Sign in to manage organizations."
+      ]
+    },
+    {
+      "id": "intelligence",
+      "label": "Intelligence",
+      "reached": true,
+      "text": "Enterprise Intelligence\n\nThe unified executive lens — one workspace over every intelligence surface, composed read-only.\n\nEnterprise health 100/100\nRisk 0/100 · 0 nodes\nOverview\nIntelligence Center\nExecutive\nBusiness\nOperations\nEngineering\nCommercial\nSecurity\nAI\nOrganization\nDeveloper\nExecutive KPI strip\n\n12 live KPIs — composed from the enterprise graph\n\nENTERPRISE HEALTH\n100/100\nAVAILABILITY\n100/100\nPERFORMANCE\n100/100\nSECURITY\n100/100\nCOMPLIANCE\n100/100\nRISK\n0/100\nCONFIDENCE\n0/100\nENTERPRISE RISK\n0/100\nCONFIGURATION IN-SYNC\n100%\nDRIFTED ITEMS\n0\nCAPACITY PRESSURE\n0/100\nOPEN INCIDENTS\n0\nEnterprise health & risk\n\nOverall 100/100 · mean of 7 scores 71/100\n\n100/100\nEnterprise health\nhealthy\n0/100\nEnterprise risk\nhealthy\n0\nGraph nodes\n0 edges\n0\nCross-domain links\nfull graph\nEnterprise Health\n100/100\nAvailability\n100/100\nPerformance\n100/100\nSecurity\n100/100\nCompliance\n100/100\nRisk\n0/100\nConfidence\n0/100\nKPI bands\n\nAttention across the strip\n\n11\nHealthy\n0\nWatch\n0\nAt risk\n1\nCritical\nIntelligence gaps (recorded honestly)\n\nExecutive metrics not sourced in-app — never fabricated\n\nCI pipeline & pass rate\n· engineering\nNo source-control CI reports into the app; the validation dashboard tracks sandbox scenario runs, not repository CI.\nRequires telemetry\nCode coverage %\n· engineering\nNo coverage instrumentation is wired to an IPC channel; coverage is measured in CI, off-device.\nRequires telemetry\nMRR / ARR\n· commercial\nMetering records session/cloud usage, not billing; there is no revenue aggregation over invoices.\nRequires aggregation\nChurn & retention\n· commercial\nNo time-series of subscription cancellations is aggregated; only current customer health is projected.\nRequires aggregation\nPer-plugin usage telemetry\n· developer\nEcosystem analytics count installs and listings; there is no per-plugin runtime usage meter.\nRequires telemetry\nNPS / CSAT\n· business\nNo survey or customer-feedback subsystem exists to source satisfaction scores.\nRequires architecture\nToken & cost budgets\n· ai\nAI usage is tracked in-memory for the session; there is no persisted per-model cost ledger or budget.\nRequires architecture\nCross-run SLA / uptime history\n· operations\nSystem health is a live snapshot; no historical SLA/uptime series is aggregated on-device.\nRequires aggregation",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "collaboration",
+      "label": "Collaboration",
+      "reached": true,
+      "text": "Enterprise Collaboration\n\nApprovals, workspaces & teams, the system activity feed, and your personal items — composed from existing services.\n\n0 workspaces · 0 teams\ndirectory\nOverview\nApprovals\nWorkspaces & Teams\nActivity\nMy Items\nCollaboration at a glance\n0\nPending approvals\n0 delegated · 0 jobs\n—\nWorkspaces\n0 active · 0 people\n—\nTeams\n0 members\n—\nRecent activity\naudit events\n3\nApproval chains\nenabled in governance\n0\nFavorites\n0\nRecents\n0\nSaved views\nCollaboration gaps (recorded honestly)\n\nSocial-collaboration capabilities the platform does not have in-app — never fabricated\n\nComments on records\n· Records\nNo comment entity or per-record thread store exists, and no IPC channel exposes record-level discussion.\nRequires architecture\nPresence (who’s online)\n· Presence\nNo realtime presence service exists — the app has no websocket heartbeat or session-presence signal, so who-is-online cannot be shown.\nRequires realtime architecture\nDiscussions & threads\n· Discussion\nNo threaded-conversation store or discussion entity exists anywhere in the platform.\nRequires architecture\nMentions (@user)\n· Discussion\nNo @-mention parsing, mention index, or mention inbox exists; audit actors are recorded but not addressable.\nRequires architecture\nNative tasks & assignments\n· Tasks\nNo first-class human task/assignment entity exists — “jobs” are AI-worker jobs, not assignable to-dos.\nRequires architecture\nShared / co-edited documents\n· Documents\nNo CRDT/OT co-editing engine exists; documents are connector-sourced and read-only in-app.\nRequires architecture",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "knowledge",
+      "label": "Knowledge",
+      "reached": true,
+      "text": "Knowledge\n\nOne lens over everything the organization knows — federated search, memory, the knowledge graph, the knowledge fabric, decisions & governance.\n\n0 memories\n0 topics · 22 graph nodes\nOverview\nSearch\nMemory\nGraph\nEnterprise Knowledge\nKnowledge Platform\nDecisions\nPolicies\nKnowledge at a glance\n0\nMemories\nAI Memory corpus\n0\nKnowledge topics\nclustered memories\n22\nGraph nodes\n0 edges\n0\nDecisions\nexecutive decisions\n6\nPolicies\ncompliance rules\nKnowledge gaps (recorded honestly)\n\nCapabilities not present in-app — verified absent, never fabricated\n\nCurated document store\n· Documents\nNo curated or editable document corpus exists — only read-only connector-synced documents surface through Enterprise Search and the graph; there is no in-app document library store.\nRequires architecture\nResearch library\n· Research Library\nNo research-library store or curation surface exists; research artifacts are not modeled as a first-class, browsable corpus.\nRequires architecture\nArchitecture / decision-record library\n· Architecture Library\nNo architecture-document or ADR library store exists; only connector-synced documents are reachable, read-only, via Search.\nRequires architecture\nPlaybooks\n· Playbooks\nNo playbook authoring or persistence surface exists in the platform.\nRequires architecture\nStandard operating procedures\n· SOPs\nNo SOP store or authoring surface exists; procedures are not a modeled entity.\nRequires architecture",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "automation-center",
+      "label": "Automation",
+      "reached": true,
+      "text": "Automation\n\nThe reuse-only lens over the automation rule engine — monitor, rules, business rules & AI jobs.\n\n0 rules\n0 active · 0 running\nMonitor\nRules\nBusiness Rules\nAI Jobs\nPlatform\nAutomation monitor\n\nLive snapshot of the rule engine\n\n0\nRunning\n0\nCompleted\n0\nFailed\n0\nPaused\n—\nRun success rate\n0 finished\n—\nAvg runtime\nRecent runs (0)\n\nExecution history (newest first)\n\nNo runs yet\n\nThe automation engine starts empty. Rules you build in the AI Workforce Automation Studio appear here once they run.\n\nAutomation gaps (recorded honestly)\n\nCapabilities the engine does not have yet — verified from source, never fabricated\n\nVisual workflow builder\n· Builder\nThis workspace has no in-app trigger → condition → action canvas. The AI Workforce \"Automation Studio\" is the real builder — this center deep-links there rather than rebuilding it.\nRequires architecture\nSchedule / cron triggers\n· Triggers\nCron expressions and free-form schedule labels are still unsupported — only the deterministic label subset fires (via the Stage 8 platform tick); anything else is flagged on the Platform tab, never guessed.\nRequires architecture\nAI-action execution\n· Actions\nThe `ai-summarize` / `ai-generate` action types are recorded as no-ops by the engine; no model call is made when they run.\nRequires architecture\nReusable automation templates\n· Rules\nThere is no rule-template catalog or clone-from-template surface; every rule is authored from scratch in the studio. (Versioned workflow playbooks are a Stage 8 Platform-tab capability, distinct from rule templates.)\nRequires architecture\nRun trend / timeseries analytics\n· Monitor\nThe monitor exposes point-in-time counters only; no historical timeseries or run-trend series is persisted or computed.\nRequires architecture",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "ai-operations",
+      "label": "AI Operations",
+      "reached": true,
+      "text": "AI Operations\n\nThe enterprise AI operating layer — plan, reason, orchestrate, simulate, decide, govern and learn, composed read-only over the platform’s existing capabilities.\n\nOverview\nPlanning\nReasoning\nOrchestration\nMemory\nSimulation\nDecisions\nAI Governance\nLearning\nExecutive\n\nThe operating loop, composed from existing platform capabilities. Each stage reads live data from the services that already own it; open a stage for detail and honest gaps.\n\nPLAN\nPlanning\nStrategy plan steps: 3\n3 honest gaps\nREASON\nReasoning\nReasoning findings: 1\n2 honest gaps\nORCHESTRATE\nOrchestration\nOrchestrators: 9\n4 honest gaps\nSIMULATE\nSimulation\nValidation runs: 0\n4 honest gaps\nDECIDE\nDecisions\nNo live data yet\n4 honest gaps\nGOVERN\nAI Governance\nAI policies: 4\n4 honest gaps\nLEARN\nLearning\nOperational metrics: 5\n3 honest gaps\nREMEMBER\nMemory\nMemory items: 0\n2 honest gaps\nOPTIMIZE\nExecutive\nOrg health: 57%\n2 honest gaps",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "extensibility",
+      "label": "Extensibility",
+      "reached": true,
+      "text": "Extensibility\n\nThe Platform Ecosystem control plane — how organizations, developers, partners and AI agents extend the platform, composed read-only with honest gaps.\n\nOverview\nExtensions\nDeveloper\nMarketplace\nAI Agents\nConnectors\nPartners\nGovernance\nAnalytics\n\nWho can extend the platform, and how safely — composed read-only from the surfaces that already own each capability. Open an area for detail and its honest gaps.\n\nExtensions\nNo live data yet\n3 honest gaps\nDeveloper\nDeveloper requests: 0\n4 honest gaps\nMarketplace\nMarketplace listings: 5\n4 honest gaps\nAI Agents\nAI agents: 27\n3 honest gaps\nConnectors\nConnectors: 22\n3 honest gaps\nPartners\nDeployment modes: 5\n4 honest gaps\nGovernance\nMarketplace policy: 0\n3 honest gaps\nAnalytics\nGateway requests: 0\n2 honest gaps",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "opscenter",
+      "label": "Operations",
+      "reached": true,
+      "text": "Operations\n\nThe enterprise command center — health, risk, dependencies, capacity, incidents and root cause across the unified Enterprise Graph.\n\nLive · soon\nHome\nIntelligence\nHealth\nRisk\nCapacity\nIncidents\nActions\nDependencies\nChange Impact\nRoot Cause\nGraph\nTimeline\nSearch\nDiagnostics\nPlatform\n100\nHEALTH\n0\nRISK\nEnterprise posture\nHEALTHY\n\n0 entities · 0 relationships across the unified Enterprise Graph. No open incidents · 0 single points of failure.\n\nOPEN INCIDENTS\n0\nCRITICAL ACTIONS\n0\nSPOFS\n0\nDRIFT IN-SYNC\n100%\nCAPACITY LOAD\n0\nGRAPH\n0\nActive incidents\n\n0 open · 0 total\n\nOpen\nNo incidents\n\nNo correlated incidents in the current window.\n\nPriority recommendations\n\nRanked across every engine\n\nOpen\nNothing urgent\n\nNo recommendations are open right now.\n\nTop risk contributors\n\nHighest-risk entities across all categories\n\nOpen\nNo elevated risks",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "developer",
+      "label": "Developer",
+      "reached": true,
+      "text": "Developer Portal\n\nBuild on NeuroPause — API keys, the publishing marketplace, the API gateway, SDKs, and billing.\n\nLive\nDashboard\nAPI Explorer\nAPI Reference\nWebhooks\nExtensions\nAPI Keys\nMarketplace\nAPI Gateway\nBilling\nSDKs & Docs\nDeveloper account\nsaurabhpatel\nlocal-3ac61e25-be60-4579-a078-d0737ec08481@device.invalid\nNeuroPause\nFree plan\nCurrent plan\nManage\nFree\nNo monthly fee\nIncluded requests\n1,000/mo\nRate limit\n60/min\nSeats\n1\nOverview\n\nLast 30 days of API and marketplace activity\n\n0\nAPI requests\n0%\nError rate\n0\nAPI keys\n0 OAuth app(s)\n5\nListings\n5\nPublished\n0\nIn review\nRequest trend\n\np95 0ms · 0 compute units\n\nNo requests yet\n\nSend a request through the API gateway to see traffic here.\n\nRecent activity\n\nMarketplace submission pipeline\n\nPublished version 0.4.1\npublished · seed · 44s ago\nSeed example — auto-approved.\nreview.approved · neuropause-review · 44s ago\nSigned with npsign_38ed32eccce3556e\nsigned · signer · 44s ago\nSecurity scan pass (0 finding(s))\nscan.pass · scanner · 44s ago\nSubmitted version 0.4.1 for review\nsubmitted · seed · 44s ago\nCreated version 0.4.1\nversion.created · developer · 44s ago\nPublished version 1.0.0\npublished · seed · 44s ago",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "industry-center",
+      "label": "Industry Center",
+      "reached": true,
+      "text": "Preview\nIndustry Center runs on real code with in-memory or seeded data — not live production enterprise state · in active development.\nIndustry Center\n\nDeployable industry solution packs — AI workers, connectors, compliance and KPIs — built on the one platform, no new runtime.\n\nCanonical industry catalog: 20 solution packs · 29% capabilities live-verified · v0.0.0-preview.1\n\nOverview\nIndustry Suites\nCompliance\nCollections\nReadiness\n0/12\nSuites ready\n0 partial · 12 planned\n18/18\nWorkers available\n0/12\nConnectors connected\n20\nCompliance frameworks\nIndustry suites\n12 suites\nDeployment-ready\n0/12 ready\nPlatform coverage\n100%\nDeployment activation\n0%\nConnectors connected\n0/12 connected\nIndustry suites\n\nDeployment readiness by vertical\n\nERP Suite\nEnterprise Resource Planning\nPlanned\nHealthcare Suite\nHealthcare & Life Sciences\nPlanned\nManufacturing Suite\nManufacturing & Industrial\nPlanned\nFinance Suite\nBanking & Financial Services\nPlanned\nRetail Suite\nRetail & Commerce\nPlanned\nSupply Chain Suite\nSupply Chain & Logistics\nPlanned\nEducation Suite\nEducation & Research\nPlanned\nLegal Suite\nLegal & Professional Services\nPlanned\nGovernment Suite\nGovernment & Public Sector\nPlanned\nConstruction Suite\nConstruction & Engineering\nPlanned\nEnergy Suite\nEnergy & Utilities\nPlanned\nTelecommunications Suite\nTelecommunications\nPlanned",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "strategy-center",
+      "label": "Strategy Center",
+      "reached": true,
+      "text": "Preview\nStrategy Center runs on real code with in-memory or seeded data — not live production enterprise state · in active development.\nStrategy Center\n\nAutonomous enterprise intelligence — plans, reasons, optimizes, and simulates over the live platform. Every recommendation is advisory, evidence-backed, approval-aware, and never auto-executed.\n\nOverview\nGoals\nPlanning\nReasoning\nOptimization\nSimulation\nDecisions\nEnterprise\n6/9\nGoals on track\n67% overall progress\n100/100\nEnterprise health\n0/100\nEnterprise risk\n1\nOpen decisions\n1 need approval\nGoals on track\n6/9\nOverall goal progress\n67%\nEnterprise health\n100/100\nEnterprise risk\n0/100\nOptimization opportunities\n0\nPotential monthly savings\nUSD 0\nOpen decisions\n1\nStrategic goals\n\nProgress against enterprise goals\n\nReduce enterprise risk\n100%\nSustain enterprise health\n100%\nRaise workforce reliability\n0%\nImprove cloud cost efficiency\n3%\nClose compliance control gaps\n100%\nRelieve capacity pressure\n100%\nDrive incidents to zero\n100%\nExpand industry readiness\n0%\nEliminate single points of failure\n100%\nCross-org collaboration\n\nGated by federation trust policy\n\nNo federated peers\n\nTrusted peers appear here when federation is configured.",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "twin-center",
+      "label": "Digital Twin Center",
+      "reached": true,
+      "text": "Preview\nDigital Twin Center runs on real code with in-memory or seeded data — not live production enterprise state · in active development.\nDigital Twin Center\n\nA living, read-only twin of the enterprise — every organization, worker, connector, cloud resource, package, and federation relationship, composed from the existing platform. It visualizes and models; it never executes.\n\nTwins\nTopology\nHealth Map\nChange Impact\nReplay\nScenarios\nCommand Center\nPlatform\n8\nDomain twins\n4 live\n69\nEntities\n100/100\nEnterprise health\n0\nCritical impact nodes\nEnterprise Twin\nHealthy\n100/100 health\n0\nentities\n\nThe whole enterprise as one composed graph (P7 Enterprise Intelligence).\n\nGraph nodes\n0\nGraph edges\n0\nCross-domain edges\n0\nRisk\n0/100\nsource: Enterprise Intelligence\nOrganization Twin\nHealthy\n1 org(s)\n28\nentities\n\nOrganizations, business units, teams, and people.\n\nOrganizations\n1\nUnits\n13\nPeople\n1\nAI workers\n27\nsource: Organization Runtime\nInfrastructure Twin\nAt risk\nprojected\ndegraded · 50/100\n0\nentities\n\nCloud fleet, regions, deployments, and spend.\n\nDeployments\n0/0 healthy\nRegions\n6\nMonthly spend\nUSD 0\nsource: Cloud Control Plane\nWorkforce Twin\nHealthy\n0/27 healthy\n27\nentities\n\nAI workers, their health, and job throughput.\n\nHealthy\n0\nDegraded\n0\nSuccess rate\n0%\nsource: AI Workforce\nApplication Twin\nWatch\nprojected\nNo deployments\n0\nentities\n\nDeployed services (a projection of control-plane deployments — no first-class app domain).\n\nDeployments\n0\nHealthy\n0\nAvg uptime\n0%\nsource: Cloud Control Plane (deployments)\nConnector Twin\nWatch\nprojected\n22 available, none connected\n0\nentities\n\nConnected integrations and their sync health.\n\nConnected\n0\nHealthy\n0\nDown\n0\nCatalog\n22\nsource: Connectors\nMarketplace Twin\nWatch\n3/5 certified\n5\nentities\n\nPublished marketplace packages and certification.\n\nPublished\n5\nCertified\n3\nsource: Marketplace\nFederation Twin\nWatch\nprojected\nNo federated peers\n0\nentities\n\nFederated peer organizations and trust relationships.\n\nPeers\n0\nActive\n0\nTrusted\n0\nsource: Federation\nStrategy Twin\nHealthy\n6/9 goals on track\n9\nentities\n\nStrategic goals, progress, and advisory decisions (P14 — never executed).\n\nOn track\n6/9\nProgress\n67%\nOpen decisions\n1\nsource: Strategy Platform",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "knowledge-center",
+      "label": "Enterprise Knowledge",
+      "reached": true,
+      "text": "Preview\nEnterprise Knowledge runs on real code with in-memory or seeded data — not live production enterprise state · in active development.\nEnterprise Knowledge\n\nA living, read-only knowledge fabric — every enterprise object related, classified, traced, and explained by composing the existing graph, timeline, strategy, twin, and memory. It enriches and explains; it never executes and adds no new graph, memory, or search.\n\nFabric\nRelationships\nClassification\nLineage\nEvidence\nGovernance\nAnalytics\nExplore\n133\nKnown entities\n13 sources\n0\nRelationships\n33\nExplanations\n85% evidenced\n100/100\nEnterprise health\nKnowledge sources\n\nEvery source is a projection of an existing system — no new store or index\n\nDigital Twin\nHealthy\nP15 Enterprise Digital Twin\n69\n52%\nAI Workforce\nHealthy\nAI Workforce (via Digital Twin)\n27\n20%\nConnector Metadata\nHealthy\nprojected\nConnector service\n22\n17%\nStrategy Platform\nHealthy\nP14 Autonomous Enterprise Intelligence\n10\n8%\nMarketplace\nHealthy\nEnterprise Marketplace catalog\n5\n4%\nTimeline\nHealthy\nPlatform event timeline\n5\n0%\nCloud Control Plane\nAt risk\nprojected\nCloud Control Plane (via Digital Twin)\n0\n0%\nDeveloper Platform\nWatch\nprojected\nP12 Developer Platform\n0\n0%\nFederation\nWatch\nprojected\nFederation trust runtime\n0\n0%\nEnterprise Graph\nWatch\nprojected\nP7 Enterprise Intelligence (unified graph summary)\n0\n0%\nIndustry Packs\nWatch\nprojected\nP13 Industry Solution Platform\n0\n0%\nAI Memory\nWatch\nprojected\nAI-Memory corpus (org memory)\n0\n0%\nRelationship Graph\nWatch\nprojected\nEnterprise Relationship graph (ERP FK topology)\n0\n0%\n\nEvery knowledge source is a projection of an existing platform system — the fabric adds no store, index, or copy of record. Timeline events are a signal, not an entity source, and are excluded from the entity total.",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "orchestration-center",
+      "label": "Orchestration",
+      "reached": true,
+      "text": "Preview\nOrchestration runs on real code with in-memory or seeded data — not live production enterprise state · in active development.\nGlobal Orchestration\n\nOne coordination layer over every system — enterprise goals routed to worker capability pools, load distribution, cloud/knowledge/cross-system coordination, and the six flows. It routes and visualizes; dispatch, approval, and execution stay with the existing runtimes.\n\nOrchestrators\nGoal Routing\nWorkforce\nCloud\nKnowledge\nCoordination\nGovernance\nVisualize\n9\nOrchestrators\n7 live\n3\nRoutable goals\n3 governed\n27\nWorkers\n100/100\nEnterprise health\nGlobal Orchestrator\nHealthy\nEvery enterprise capability\n35\nentities\nsource: Composed over all systems\nGoal Orchestrator\nHealthy\nEnterprise goals → workers\n3\nentities\nsource: P14 Strategy planning + approval\nWorkforce Orchestrator\nCritical\nWorkers across orgs/departments\n27\nentities\nsource: AI Workforce runtime\nCloud Orchestrator\nAt risk\nRegions / clusters / capacity\n6\nentities\nsource: P11 Cloud Control Plane\nKnowledge Orchestrator\nWatch\nContext/evidence to decisions\n33\nentities\nsource: P16 Knowledge Fabric\nMarketplace Orchestrator\nWatch\nPackage catalog\n5\nentities\nsource: Enterprise Marketplace\nFederation Orchestrator\nWatch\nidle\nCross-org peers + trust\n0\nentities\nsource: Federation runtime\nDeployment Orchestrator\nWatch\nidle\nService deployments\n0\nentities\nsource: P11 Cloud Control Plane\nOperations Orchestrator\nHealthy\nEnterprise health + governance\n100\nentities\nsource: P7 Enterprise Intelligence\nOrchestration flows\n\nSix coordination lanes — each projects volume + health from an existing system\n\nGoal Flow\n3\nStrategy Platform\nWorkforce\nWorker Flow\n0\nWorkforce\nExecution Runtime\nKnowledge Flow\n33\nKnowledge Fabric\nOrchestration Decisions\nCloud Flow\n0\nControl Plane\nDeployments\nMarketplace Flow\n0\nMarketplace\nInstalls\nFederation Flow\n0\nFederation\nPeer Orgs",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "network-center",
+      "label": "Intelligence Network",
+      "reached": true,
+      "text": "Preview\nIntelligence Network runs on real code with in-memory or seeded data — not live production enterprise state · in active development.\nIntelligence Network\n\nA trusted, governed intelligence exchange — organizations share sanitized recommendations, patterns, benchmarks, and templates through federation trust, never raw enterprise data. Knowledge stays local; only governed intelligence is exchanged.\n\nNetwork\nExchange\nBenchmarks\nInsight Registry\nTrust\nOrganizations\nCollective\nGovernance\n7\nExchange modules\n4 live\n1\nShareable intelligence\n1\nPublished insights\n0\nTrusted peers\n0 data-sharing\nBenchmark position: Above industry — 3 above, 1 below the industry reference.\nKnowledge Exchange\nWatch\nidle\nAggregate patterns + tags\n0\nsource: P16 Knowledge Fabric\nRecommendation Exchange\nHealthy\nSanitized recommendations\n1\nsource: P16 Knowledge Fabric\nBenchmark Exchange\nHealthy\nOrg vs industry position\n4\nsource: P13 Industry reference\nInsight Registry\nHealthy\nPublished artifacts / templates / packs\n1\nsource: Federation exchange + Marketplace\nTrust Exchange\nWatch\nidle\nConsent + policies\n0\nsource: Federation trust\nOrganization Intelligence\nWatch\nidle\nPer-peer posture\n0\nsource: Federation\nCollective Intelligence\nHealthy\nNetwork-wide trends\n0\nsource: Aggregate exchange",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "auto-ops-center",
+      "label": "Autonomous Operations",
+      "reached": true,
+      "text": "Preview\nAutonomous Operations runs on real code with in-memory or seeded data — not live production enterprise state · in active development.\nAutonomous Operations\n\nA closed-loop operations layer that observes, recommends, plans, and coordinates enterprise operations — while execution flows only through the existing ExecuteEngine and Workforce Runtime under the existing approval engine. Every operation exposes its reason, evidence, risk, expected outcome, rollback plan, and required approvals; nothing executes autonomously unless a policy explicitly permits it.\n\nOperations\nPlans\nExecution\nRecovery\nOptimization\nIncidents\nApprovals\nMonitoring\nAnalytics\nGovernance\n0\nOperational plans\n0 need approval\n0\nOpen incidents\n0\nOptimizations\n0\nPending approvals\n0 of 0 plans are policy-permitted for autonomous execution; the remaining 0 require approval. Nothing executes automatically otherwise.\nExecution Coordinator\nWatch\nidle\nActive + awaiting-approval executions\n0\nsource: ExecuteEngine + Workforce Runtime\nRecovery Manager\nHealthy\nidle\nRollback / retry / failover / escalation\n0\nsource: RuntimeSupervisor + recovery planner\nOptimization Manager\nHealthy\nidle\nCost / capacity / workflow\n0\nsource: P14 Strategy + P7 capacity\nIncident Manager\nHealthy\nidle\nOpen incidents + root cause\n0\nsource: P7 incident/root-cause\nApproval Coordinator\nHealthy\nPending approvals + chains\n0\nsource: Workforce + Federation + Enterprise\nMonitoring\nHealthy\nExecution / health / capacity / cost / SLA\n5\nsource: P7 + Cloud + Twin + Orchestration\nOperational Analytics\nWatch\nidle\nPlans / success / approvals\n0\nsource: Aggregate projections\nLive monitoring\n\nOverall operational index 100/100\n\nCost / quota headroom\nUSD0/mo\nCapacity headroom\n0 pressure\nCompliance posture\n100/100\nOperational health\n100/100\nSecurity posture\n0 risk",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "commercial-center",
+      "label": "Commercial Center",
+      "reached": true,
+      "text": "Preview\nCommercial Center runs on real code with in-memory or seeded data — not live production enterprise state · in active development.\nCommercial Center\n\nThe commercial layer — buy, deploy, license, operate, govern, and scale the platform. It unifies the existing billing, licensing, tenancy, org, and usage systems into customer-facing views; nothing here transacts — plan changes, charges, seat assignments, and provisioning flow through the existing billing engine and cloud control plane, and no payment secret is ever shown.\n\nCommercial\nSubscription\nLicensing\nBilling\nUsage\nDeployment\nCustomers\nAnalytics\nReleases\nAdministration\nGovernance\nFree\nCommercial tier\nactive\n1 / 1\nSeats\nUSD0\nEst. monthly\n100/100\nCustomer health\ncloud saas\nDeployment\n1 tenants · 1 regions\n22/100\nAdoption\nUSD0\nMonthly value (ROI)\nSubscription Management\nHealthy\n7-tier catalog + current plan\n7\nsource: Ecosystem billing + license validator\nLicense Management\nHealthy\nSeats + licenses\n1\nsource: Ecosystem billing + org members\nBilling Center\nHealthy\nInvoice + revenue\n1\nsource: Billing summary + marketplace revenue\nUsage Metering\nHealthy\nRequests / AI / quota / spend\n6\nsource: Gateway + AI FinOps + Cloud\nTenant Provisioning & Deployment\nHealthy\nTenants / regions / modes\n1\nsource: Cloud Control Plane\nCustomer Success\nHealthy\nHealth / onboarding / renewal\n7\nsource: P7 / org health + onboarding\nProduct Analytics\nCritical\nAdoption + ROI\n5\nsource: Platform / connector / worker / marketplace / knowledge\nRelease Center & Flags\nHealthy\nUpdates + feature flags\n5\nsource: Self-updater + feature flags\nOrganization Administration\nHealthy\nOrg / users / RBAC / policies\n28\nsource: Enterprise OS",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "product-ops",
+      "label": "Release Ops",
+      "reached": true,
+      "text": "Product Operations\n\nRelease, health, certification, commercial, deployment & support — one operational lens over the live platform.\n\nv42.8.1\nstable · unknown\nOverview\nRelease\nHealth\nQuality\nCommercial\nDeployment\nSupport\nMarketplace\nEngineering\nPlatform at a glance\nv42.8.1\nVersion · channel\nstable\n83\nSystem health\nunknown\n78%\nCapability maturity\n49/78 production-complete\n106\nEnterprise modules\n0 records\nCommercial\nCommercial Center\nENTERPRISE HEALTH\n100/100\nAVAILABILITY\n100/100\nPERFORMANCE\n100/100\nSECURITY\n100/100\nOperational gaps (recorded honestly)\n\nCapabilities not surfaced as in-app data — never fabricated\n\nTest results, coverage, typecheck, lint, regression history\n· Engineering\nCI/dev-time facts; the running app has no access to its own build pipeline. Only build identity (version/commit/channel/buildTime) is in-app.\nExternal / CI\nBuild-quality trend\n· Engineering\nProduced by CI; not tracked in-app.\nExternal / CI\nKnown issues / resolved issues\n· Support\nNo in-app issue store; local Feedback capture exists instead.\nNot in-app\nSupport articles / knowledge base\n· Support\nNo in-app KB; documentation is external.\nNot in-app\nRevenue, MRR, ARR, churn, customer count\n· Commercial\nNo SaaS MRR / ARR / churn or customer count; only a marketplace-purchase revenue ledger ($0 by default) exists, shown in the Commercial Center — not surfaced here.\nNot in-app\nInvoice history\n· Commercial\nOnly an on-demand computed draft invoice exists; no persisted invoice list.\nNot in-app\nPartner / reseller accounts\n· Commercial\nDemo-only fixture, disabled in production builds.\nNot in-app\nApp-version rollback / downgrade\n· Release\nThe updater runs with downgrade disabled; only data backup & restore is supported.\nNot in-app",
+      "errorBoundary": false,
+      "consoleErrors": [
+        "warning: %c[ipc] color:#ff9f0a IPC call failed — backup:list: Error invoking remote method 'backup:list': IpcError: Not authorized: missing permission \"cloud:operate\"."
+      ],
+      "mainLog": [
+        "[2026-08-19T18:09:47.281Z] WARN (secure-ipc) IPC handler error {",
+        "Error occurred in handler for 'backup:list': IpcError: Not authorized: missing permission \"cloud:operate\"."
+      ]
+    },
+    {
+      "id": "ecosystem",
+      "label": "Ecosystem",
+      "reached": true,
+      "text": "Preview\nEcosystem runs on real code with in-memory or seeded data — not live production enterprise state · in active development.\nEcosystem\n\nThe enterprise network — install AI workers, connectors, and templates, exchange packs across organizations, find partners, and track ecosystem health.\n\nLive\nWorkers\nConnectors\nTemplates\nExchange\nPartners\nAnalytics\nAI Worker Marketplace\n\nInstall governed AI workers, or share your own to the network\n\nShare a worker\n1\nWorker listings\n0\nInstalled\n0\nTotal installs\n1\nCertified\nResearch Analyst (Example)\nFree\n\nA read-only AI worker that summarizes projects and surfaces risks from your unified data.\n\n0\nUnrated\nNot installed\nInstall",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "cloud",
+      "label": "Cloud",
+      "reached": true,
+      "text": "Preview\nCloud runs on real code with in-memory or seeded data — not live production enterprise state · in active development.\nCloud\n\nThe distributed control plane — multi-tenant runtime across regions, identity federation, offline-first cloud sync, the API gateway as a service, and enterprise administration.\n\nLive\nTenants\nIdentity\nSync\nAPI Platform\nAdministration\nTenants\n\nOrganizations provisioned across regions, each isolated by namespace, encryption key, and data residency\n\nNew tenant\n1\nTenants\n1\nActive\n1\nRegions\n27\nAI workers\nTENANT\tTIER\tREGION\tSTATUS\tACTIONS\n\nNeuroPause\nHOME\nCreated 1m ago\n\t\nEnterprise\n\tUS East (Virginia)\t\nActive\n\tProtected\nStorage isolation\n\nEvery tenant has its own namespace, encryption key, and residency boundary\n\nTENANT\tNAMESPACE\tRESIDENCY\tOBJECTS\tSIZE\nNeuroPause\tnp-org-default\t\nUS\n\t0\t0 B\nRegions\n\nAvailable cloud regions\n\nUS East (Virginia)\nUS\nUS West (Oregon)\nUS\nEU West (Ireland)\nEU\nEU Central (Frankfurt)\nEU\nAsia Pacific (Mumbai)\nAPAC\nAsia Pacific (Singapore)\nAPAC\nProjects\n\nNeuroPause · home tenant\n\nAdd\nNo projects\nTeams & workers\n\nNeuroPause\n\nTEAMS\nNo teams yet.\nAI WORKERS (27)\nCEO — Chief Executive\nCFO — Chief Financial Officer\nChief Compliance Officer\nChief Data Officer\nCIO — Chief Information Officer\nCISO — Chief Information Security Officer\nCloud Engineer\nCOO — Chief Operating Officer\nCTO — Chief Technology Officer\nDatabase Engineer\nDevOps Engineer\nEngineering AI\nFinance AI\nFounder AI\nKubernetes Engineer\nLegal AI\nMarketing AI\nNetwork Engineer\nOperations AI\nPeople & HR AI\nPlatform Engineer\nProcurement AI\nResearch AI\nSales AI\nSecurity Engineer\nSite Reliability Engineer\nSupport AI",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "infrastructure",
+      "label": "Infrastructure",
+      "reached": true,
+      "text": "Cloud Platform Center\n\nInfrastructure control plane — discover cloud platforms, resources, and topology.\n\nRefresh\nOverview\nPlatforms\nResource Graph\nDiscovery\n10\nPlatforms\n0\nResources\n15\nDomains\n0\nAccounts\n10\nConfigured\n0\nDiscovering\n0\nDegraded\n0\nCritical resources\nAmazon Web Services\nNot configured\n\nDiscover AWS accounts across compute, networking, storage, databases, IAM, containers, serverless, and cost.\n\nIdentity\nCompute\nNetworking\nStorage\nDatabases\nContainers\nServerless\nMessaging\nMonitoring\nSecurity\nCost\nCertificates\nDNS\nSecrets\nMicrosoft Azure\nNot configured\n\nDiscover Azure subscriptions across compute, networking, storage, databases, identity, containers, and cost.\n\nIdentity\nCompute\nNetworking\nStorage\nDatabases\nContainers\nServerless\nMonitoring\nSecurity\nCost\nCertificates\nDNS\nSecrets\nGoogle Cloud\nNot configured\n\nDiscover GCP projects across compute, networking, storage, databases, IAM, GKE, and cost.\n\nIdentity\nCompute\nNetworking\nStorage\nDatabases\nContainers\nServerless\nMonitoring\nSecurity\nCost\nDNS\nSecrets\nKubernetes\nNot configured\n\nDiscover Kubernetes clusters across nodes, pods, deployments, services, and namespaces.\n\nCompute\nContainers\nNetworking\nStorage\nIdentity\nSecrets\nDocker\nNot configured\n\nDiscover Docker hosts across containers, images, networks, and volumes.\n\nContainers\nCompute\nNetworking\nStorage\nVMware vSphere\nNot configured\n\nDiscover VMware vSphere across virtual machines, hosts, clusters, datastores, and networks.\n\nCompute\nStorage\nNetworking\nCloudflare\nNot configured\n\nDiscover Cloudflare accounts across DNS, certificates, networking, security, edge compute, and storage.\n\nDNS\nCertificates\nNetworking\nSecurity\nServerless\nStorage\nSnowflake\nNot configured\n\nDiscover Snowflake accounts across warehouses, databases, schemas, tables, roles, and data pipelines.\n\nDatabases\nCompute\nStorage\nServerless\nIdentity\nSecurity\nDatabricks\nNot configured\n\nDiscover Databricks workspaces across clusters, SQL warehouses, jobs, Unity Catalog, notebooks, repos, and models.\n\nCompute\nDatabases\nStorage\nSecurity\nServerless\nInfrastructure as Code\nNot configured\n\nDiscover Terraform, OpenTofu, and Pulumi across projects, workspaces, stacks, modules, providers, resources, state, plans, and policies — with drift analysis.\n\nProvisioning",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "federation",
+      "label": "Federation",
+      "reached": true,
+      "text": "Preview\nFederation runs on real code with in-memory or seeded data — not live production enterprise state · in active development.\nFederation\n\nSecure collaboration across organizations — federated runtime, a signed organization exchange, marketplace scopes, global governance, observability, disaster recovery, and administration, with strict tenant isolation throughout.\n\nLive\nRuntime\nExchange\nMarketplace\nGovernance\nObservability\nRecovery\nAdministration\n1\nFederated orgs\n0 active peers\n0\nTrusted peers\n0\nShared out\n0\nShared in\nOrganizations\n\nThe home organization and federated peers\n\nInvite\nORGANIZATION\tROLE\tSTATUS\tTRUST\tREGION\tSHARED\n\nNeuroPause\nneuropause\n\t\nHome\n\t\nActive\n\t\nFull\n\tus-east\t—\nTrust relationships\n\nDelegated trust and sharing capabilities per peer\n\nNo trust relationships\n\nAccept an invitation to establish trust with a peer.\n\nShared resources\n\nProjects, workspaces, AI workers, policies, and connectors shared across the federation\n\nShare\nNothing shared yet\n\nShare a resource with a trusted peer.",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "store",
+      "label": "AI Store",
+      "reached": true,
+      "text": "The AI Store is unavailable while working locally\n\nThis needs a connected account. Your data stays on this device — connect an account to sync and turn it on.\n\nConnect an account to sync",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "marketplace",
+      "label": "Enterprise Marketplace",
+      "reached": true,
+      "text": "Preview\nEnterprise Marketplace runs on real code with in-memory or seeded data — not live production enterprise state · in active development.\nEnterprise Marketplace\n\nSigned, governed, versioned packages — workers, connectors, templates, and packs — for your organization.\n\nDiscover\nPublishers\nGovernance\n5\nPackages\n1\nPublishers\n0\nInstalls\n0\nUpdates\nCatalog · 5\nAll\nBlueprint\nWorker\nConnector\nAutomation Pack\nTemplate\nSOC 2 Governance Pack (Example)\nsaurabhpatel · v1.0.0\nResearch Analyst (Example)\nsaurabhpatel · v1.0.0\nGitHub Connector (Example)\nsaurabhpatel · v1.2.0\nInbox → Notion (Example)\nsaurabhpatel · v0.9.0\nMarkdown Export (Example)\nsaurabhpatel · v0.4.1\nSOC 2 Governance Pack (Example)\nOfficial\nstable\nBlueprint · v1.0.0 · saurabhpatel\n\nApproval chains, compliance rules, and an executive dashboard tuned for SOC 2 readiness.\n\nView\nTrust Center\nSignature\nSigned · verified\nPublisher tier\nOfficial\nSecurity scan\npass\nCompatible\nYes\nTrust score\n95%\nOrg policy: allow\nPackage\nType\nBlueprint\nCategory\nGovernance\nChannel\nstable\nInstalls\n0\nRating\n0.0 (0)\nDependencies\nnone",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "workspace",
+      "label": "Workspace",
+      "reached": true,
+      "text": "Open an app\n\nLaunch any AI app in its own tab, or press\n⌘\nK\nto search.\n\nAll\nWriting\nCoding\nImage\nVideo\nVoice\nResearch\nAutomation\nProductivity\nGPT\nChatGPT\nOpenAI\n\nConversational assistant for writing, analysis, and ideas.\n\nCl\nClaude\nAnthropic\n\nThoughtful assistant for long-form work and reasoning.\n\nGem\nGemini\nGoogle\n\nMultimodal model wired into Google’s knowledge.\n\nPx\nPerplexity\nPerplexity AI\n\nAnswer engine with live citations.\n\nCur\nCursor\nAnysphere\n\nThe AI-native code editor.\n\nCo\nGitHub Copilot\nGitHub\n\nPair-programmer in your editor and terminal.\n\nMj\nMidjourney\nMidjourney\n\nHigh-fidelity image generation.\n\nRw\nRunway\nRunway\n\nGenerative video and editing tools.\n\n11\nElevenLabs\nElevenLabs\n\nNatural speech synthesis and voice cloning.\n\nNo\nNotion AI\nNotion\n\nAI woven into your docs and wikis.\n\nZp\nZapier\nZapier\n\nConnect apps and automate workflows.\n\nFig\nFigma AI\nFigma\n\nDesign assistance on the canvas.",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "operations",
+      "label": "Runtime",
+      "reached": true,
+      "text": "Runtime\n\nThe command center for everything installed, running, and managed by NeuroPause.\n\nLive\nOverview\nInstalled\nSessions\nPlugins\nDownloads\nUpdates\nPermissions\nActivity\nHealth\nCollections\nKnowledge\nIntelligence\nMemory\nTraces\nSync Health\nDiagnostics\nRelease\nRecovery\nRuntime Overview\n\nEverything installed, running, and managed by NeuroPause\n\n0\nInstalled apps\n0\nRunning now\n0\nActive plugins\n0\nActive downloads\nSystem health\n\nLive status across the runtime\n\nOpen Health\nAll systems nominal\nDisk used by apps\n—\nTotal launches\n0\nPinned\n0\nFavorites\n0\nRecent activity\n\nLast launched applications\n\nAll apps\n\nNo applications installed yet.",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "workforce",
+      "label": "AI Workforce",
+      "reached": true,
+      "text": "AI Workforce\n\nNine governed AI workers that propose, await your approval, and act under policy — with full evidence and audit.\n\nLive\nMission Control\nWorkforce\nApprovals\nAutomation Studio\nAnalytics\nExecutive Chat\n27\nAI Workers\n27 idle\n0\nRunning Jobs\n0\nPending Jobs\n0 queued\n0\nWaiting Approvals\n100%\nOrg Health\n0 healthy · 27 new\n100%\nJob Success\n0 done\nWorkforce status\n\nEvery worker, live\n\nCEO — Chief Executive\n50%\nIdle\n·\nUnknown\nCFO — Chief Financial Officer\n50%\nIdle\n·\nUnknown\nChief Compliance Officer\n50%\nIdle\n·\nUnknown\nChief Data Officer\n50%\nIdle\n·\nUnknown\nCIO — Chief Information Officer\n50%\nIdle\n·\nUnknown\nCISO — Chief Information Security Officer\n50%\nIdle\n·\nUnknown\nCloud Engineer\n50%\nIdle\n·\nUnknown\nCOO — Chief Operating Officer\n50%\nIdle\n·\nUnknown\nCTO — Chief Technology Officer\n50%\nIdle\n·\nUnknown\nDatabase Engineer\n50%\nIdle\n·\nUnknown\nDevOps Engineer\n50%\nIdle\n·\nUnknown\nEngineering AI\n50%\nIdle\n·\nUnknown\nFinance AI\n50%\nIdle\n·\nUnknown\nFounder AI\n50%\nIdle\n·\nUnknown\nKubernetes Engineer\n50%\nIdle\n·\nUnknown\nLegal AI\n50%\nIdle\n·\nUnknown\nMarketing AI\n50%\nIdle\n·\nUnknown\nNetwork Engineer\n50%\nIdle\n·\nUnknown\nOperations AI\n50%\nIdle\n·\nUnknown\nPeople & HR AI\n50%\nIdle\n·\nUnknown\nPlatform Engineer\n50%\nIdle\n·\nUnknown\nProcurement AI\n50%\nIdle\n·\nUnknown\nResearch AI\n50%\nIdle\n·\nUnknown\nSales AI\n50%\nIdle\n·\nUnknown\nSecurity Engineer\n50%\nIdle\n·\nUnknown\nSite Reliability Engineer\n50%\nIdle\n·\nUnknown\nSupport AI\n50%\nIdle\n·\nUnknown\nAlerts\n\nAll clear\n\nNothing needs attention.\nRecent activity\n\nLatest jobs across the workforce\n\nNo jobs yet. Run a worker from the Workforce tab to see activity here.",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "workforce-center",
+      "label": "Workforce Admin",
+      "reached": true,
+      "text": "Workforce Admin\n\nManage the enterprise AI workforce — workers, installs, execution, health, and delegation.\n\nLive\nOverview\nWorkers\nInstall Manager\nExecution\nHealth\nDelegation\n27\nWorkers\n0 installed\n0\nRunning\n0 queued\n0\nAwaiting approval\n0%\nSuccess rate\n0%\nRoster health\n0\nInstalled packages\n0\nIn flight\nRecent activity\nNo activity yet\n\nRun a worker skill to see execution here.\n\nInstalled workers\nNo installed packages\n\nBuilt-in workers are always available; installed packages appear here.",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "connectors",
+      "label": "Connectors",
+      "reached": true,
+      "text": "Connector Center\n\nThe single control center for every integration — connect, manage, inspect, and discover connector families.\n\nOverview\nConnections\nMarketplace\n22\nConnectors\n0\nConnected\n6 configured\n0\nAccounts\n0\nNeed attention\nIntegration Health\n\nNo active integration syncs yet. Connect a connector to see live sync health, latency, objects synced, and errors here.\n\nAll connector families\nChatGPT\n0 accounts · idle\nDisconnected\nClaude\n0 accounts · idle\nDisconnected\nGemini\n0 accounts · idle\nDisconnected\nPerplexity\n0 accounts · idle\nDisconnected\nCursor\n0 accounts · idle\nDisconnected\nGitHub\n0 accounts · idle\nDisconnected\nNotion\n0 accounts · not configured\nNot configured\nSlack\n0 accounts · not configured\nNot configured\nCanva\n0 accounts · not configured\nNot configured\nFigma\n0 accounts · not configured\nNot configured\nAtlassian\n0 accounts · not configured\nNot configured\nLinear\n0 accounts · not configured\nNot configured\nZapier\n0 accounts · not configured\nNot configured\nGoogle Workspace\n0 accounts · not configured\nNot configured\nMicrosoft Entra ID\n0 accounts · not configured\nNot configured\nSalesforce\n0 accounts · not configured\nNot configured\nHubSpot\n0 accounts · not configured\nNot configured\nServiceNow\n0 accounts · not configured\nNot configured\nSAP S/4HANA\n0 accounts · not configured\nNot configured\nOracle Fusion Cloud ERP\n0 accounts · not configured\nNot configured\nMicrosoft Dynamics 365\n0 accounts · not configured\nNot configured\nWorkday\n0 accounts · not configured\nNot configured",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "data-center",
+      "label": "Data",
+      "reached": true,
+      "text": "Data\n\nBring your real business data into NeuroPause — identified, reviewed before anything is written, and traceable back to the row it came from.\n\nOverview\nImport\nExport\nDocuments\nIdentity\nRelationships\nHistory\nData Quality\nProvenance\nMappings\nCoverage\nNo enterprise data imported yet\n\nBring in Excel, CSV, TSV, JSON, XML, Word or text files. NeuroPause identifies what each table is, shows you where every column would go, and writes nothing until you approve it.\n\nImport your first file",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "medical-devices",
+      "label": "Medical Devices",
+      "reached": true,
+      "text": "Medical Devices\n\nYour device catalogue and the batches made from it — with a forward and backward trace built from records of what actually happened.\n\nRefresh\nProducts\nBatch / Lot\nTraceability\nProducts\n\nThe device catalogue. Classification here is your own configuration — NeuroPause makes no regulatory or certification claim about any product.\n\nNew product\nAll families\nTrauma\nSpine\nArthroscopy\nMaxillofacial\nHand & Foot\nHip Prosthesis\nExternal Fixators\nPins & Wires\nOrthopedic Instruments\nNo products yet\n\nAdd your first device, or import your catalogue through Data — a product code and a name are all that is required.\n\nMedical Device Manufacturing v1.0.0. Product master and batch/lot traceability for device manufacturing. Records what a manufacturer knows about its articles and batches; makes no regulatory or certification claim. Not provided in this build: Quality Center (NCR, CAPA, inspection records) — not implemented in this stage. Document control lifecycle — not implemented in this stage. Lot merge — deliberately unsupported; see the traceability documentation for why. Electronic signatures and records validation (21 CFR Part 11) — not implemented, not claimed. Any regulatory certification. This software is not validated software.",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "memory",
+      "label": "AI Memory",
+      "reached": true,
+      "text": "AI Memory\n\nSearch everything you've worked on across every app, in plain language.\n\n0 memories · updated 1m ago\nAll\n0\nDecisions\n0\nConversations\n0\nDocuments\n0\nTasks\n0\nMeetings\n0\nContext\n0\nRelationships\n0\nNotes\n0\nNothing remembered yet\n\nAs you work across connected apps, NeuroPause remembers sessions and outputs here automatically.",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "notifications",
+      "label": "Notifications",
+      "reached": true,
+      "text": "Notifications\n\nEverything the delivery engine sent — briefs, approvals, work updates, and alerts — with your delivery preferences.\n\nPreferences\nYou’re all caught up\n\nDelivered briefs, approvals, and alerts will show up here.",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "welcome",
+      "label": "Getting Started",
+      "reached": true,
+      "text": "EARLY ACCESS\nWelcome to NeuroPause\n\nYou are on the early-access build. Finish the checklist below to get the most out of the workspace — each item opens a surface that already exists in the app. Found something rough? The Operations view carries diagnostics and the support bundle.\n\nGetting started\n6 of 6 done\n✓\nWelcome to NeuroPause\nA quick tour of the workspace and what early access includes.\n✓\nReview the license & privacy notice\nRead the EULA and the privacy notice bundled with this build, then mark them reviewed.\n✓\nSet up your organization\nCreate or join the organization your work will live in.\n✓\nConnect your first source\nLink GitHub, Notion, Slack, or Calendar so the AI has real evidence.\n✓\nSet up the AI engine\nChoose your AI provider and add a key — or use local Ollama — in Settings.\n✓\nChoose pilot mode\nOpt in to pilot mode to share feedback and shape the product.\nShare feedback\nExport\n\nEarly-access feedback is saved locally and can be exported for support — nothing is sent anywhere automatically.\n\nbug\nidea\nquestion\npraise\nSend feedback\nPilot mode\nOFF\n\nMarks this install as part of the early-access pilot and emphasizes feedback. It does not change your update channel or enable unreleased features.\n\nJoin pilot\nDocumentation\n\nGuides bundled with this build — they open in your default Markdown viewer.\n\nQuick Start\nInstallation\nFinance Guide\nHR & Payroll Guide\nInventory & Procurement Guide\nPilot Orientation\nTroubleshooting\nLicense Agreement (EULA)\nPrivacy Notice\nThird-Party Notices\nOpen diagnostics & support\nRestart tour",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    },
+    {
+      "id": "settings",
+      "label": "Settings",
+      "reached": true,
+      "text": "Identity\nSecurity\nGovernance\nPrivacy\nAI\nWorkspace\nOrganization\nBusiness\nIntegrations\nCompanion\nDeveloper\nBilling\nSystem\nCapabilities\nIdentity\n\nProfile, organizations, roles, connected accounts\n\nACCOUNT\nSA\nsaurabhpatel\nlocal-3ac61e25-be60-4579-a078-d0737ec08481@device.invalid\nManaged\n\nYour name and email come from your authenticated account and are managed at your identity provider.\n\nACCESS\nOrganizations & membership\nOrganizations you belong to, members, and invitations.\nOpen\nRoles & permissions\nDefine roles and permissions (RBAC) for your organization.\nOpen\nConnected accounts\nLink Google, Microsoft, GitHub, Slack and more via OAuth.\nOpen",
+      "errorBoundary": false,
+      "consoleErrors": [],
+      "mainLog": []
+    }
+  ],
+  "harnessErrors": [],
+  "shellMounted": true,
+  "localModeBanner": true,
+  "tourSteps": [
+    "EARLY ACCESS SETUP · STEP 1 OF 6\nWelcome to NeuroPause\n\nA quick tour of the workspace and what early access includes.\n\nSkip tour\nContinue",
+    "EARLY ACCESS SETUP · STEP 2 OF 6\nReview the license & privacy notice\n\nRead the EULA and the privacy notice bundled with this build, then mark them reviewed.\n\nSkip tour\nOpen documents\nContinue",
+    "EARLY ACCESS SETUP · STEP 3 OF 6\nSet up your organization\n\nCreate or join the organization your work will live in.\n\nSkip tour\nOpen Organization\nContinue",
+    "EARLY ACCESS SETUP · STEP 4 OF 6\nConnect your first source\n\nLink GitHub, Notion, Slack, or Calendar so the AI has real evidence.\n\nSkip tour\nOpen Connectors\nContinue",
+    "EARLY ACCESS SETUP · STEP 5 OF 6\nSet up the AI engine\n\nChoose your AI provider and add a key — or use local Ollama — in Settings.\n\nSkip tour\nOpen Settings\nContinue",
+    "EARLY ACCESS SETUP · STEP 6 OF 6\nChoose pilot mode\n\nOpt in to pilot mode to share feedback and shape the product.\n\nSkip tour\nFinish"
+  ],
+  "overlayBeforeWalk": null,
+  "advancedOpened": true,
+  "finishedAt": "2026-08-19T18:10:15.046Z"
+}
