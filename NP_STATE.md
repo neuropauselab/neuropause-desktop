@@ -2,7 +2,7 @@
 Living, TRACKED working doc (committed each slice; excluded from the freeze source spec — see DECISIONS.md D-5). Mirror of CLAUDE.md §1 with operational detail.
 
 ## Now
-- HEAD `eddb325` · FREEZE INTACT (`BASELINE-1dbef0d5bbdf`) · branch `cert/data-import-cst-integration`.
+- HEAD `f7e5510` · FREEZE INTACT (`BASELINE-91ec052f2901`) · branch `cert/data-import-cst-integration`.
 - Suites (RUN against BASELINE-43dfbe3ff6f7): full main **8724/3 skipped** (823) · real-Electron e2e **13/13** (guard inert in mock mode) · guard+mode pins **16** · typecheck + lint clean · `verify-e2e-strip.sh` PASS (seed + guard absent from release).
 - Landed: Slices 1–14 + **S15 EXECUTED**. S14 = real-Electron governed-loop e2e (mock Graph). S15 = first REAL send ATTEMPT at the operator's keyboard: **AUTHORIZED ✓ · SUBMITTED ✓ (Graph 202/ACKNOWLEDGED) · EXTERNALLY OBSERVED = PENDING** (automated read-back blocked by macOS Keychain, F-3). One email to the operator's own address; latch spent. FG-4 also fired live on a non-allowlisted attempt (negative proof). Profile-isolation guard landed (`996958d`, `--user-data-dir` required). Evidence: `…SLICE-15-FIRST-REAL-SEND-EVIDENCE.md`.
 - **Slice 16 — DONE: FIRST VERIFIED_SUCCESS in product history.** Real in-session run (2026-08-18T13:25:54Z): TERMINAL=VERIFIED_SUCCESS, internetMessageId `<PN2P287MB1597…@…PROD.OUTLOOK.COM>`, bounce=none, attempts=1, corroborated Sent Items match. `verifyEffect` (17 pins incl. fault injection) + `m365ReadBack` + `s16VerifyRun`. No FG-5 (D-10); verify-e2e-strip PASS. Artifacts in `certification/s15-artifacts/`.
@@ -33,4 +33,4 @@ ef9c9f0  freeze re-record — INTACT (BASELINE-9f4d36abed4e)
 - Generator refined: dispatch vs compose (drafting no longer hijacked); assistant asks on ambiguity.
 
 ## Honest status
-Everything to date is **TEST-VERIFIED**, not LIVE. One connector (M365) has a governed consequential path; nothing executes without human confirmation; nothing external is effect-verified yet (Profile A). Backend down/empty; builds unsigned; NOT CERTIFIED (13C).
+Everything is **TEST-VERIFIED EXCEPT the S15/S16 chain, which is LIVE** — one real governed M365 send (provider-side observed) + its read-back VERIFIED_SUCCESS with captured internetMessageId. Destination receipt remains NOT GOVERNED; no other external effect exists. Nothing executes without human confirmation. Backend down/empty; builds unsigned; NOT CERTIFIED (13C). Mirror of CLAUDE §1 — that section is authoritative.
