@@ -11,9 +11,11 @@
 #   .only(                                  — focused tests (suite narrowing)
 #   as any                                  — type-system escape
 #   eslint-disable                          — lint escape
-#   empty catch                             — swallowed failures
+#   empty catch / no-op promise catch       — swallowed / suppressed failures
 #   timeout inflation                       — 5+ digit timeouts introduced
 #   removed/weakened assertions             — expect( lines removed in excess
+#   removed failure checks                  — throw lines removed in excess
+#   disabled validation                     — validate/parse calls removed in excess
 #   expected-output-only change             — ONLY test files changed (the
 #                                             implementation was not)
 #
@@ -50,12 +52,21 @@ items = []
 current = None
 removed_expects = {}
 added_expects = {}
+removed_throws = {}
+added_throws = {}
+removed_validations = {}
+added_validations = {}
 changed_files = []
+
+CODE_EXT = ('.ts', '.tsx', '.js', '.jsx', '.cjs', '.mjs')
 
 for line in diff.splitlines():
     if line.startswith('+++ b/'):
         current = line[6:]
         changed_files.append(current)
+        continue
+    # The scan targets are CODE constructs — documentation that MENTIONS the patterns is not a finding.
+    if current is None or not current.endswith(CODE_EXT):
         continue
     if line.startswith('+') and not line.startswith('+++'):
         text = line[1:]
@@ -71,16 +82,34 @@ for line in diff.splitlines():
             items.append((current, 'empty catch introduced (swallowed failure?)', text.strip()))
         if re.search(r'timeout[^0-9]{0,12}\d{5,}', text, re.IGNORECASE):
             items.append((current, 'large timeout introduced (inflation?)', text.strip()))
+        if re.search(r'\.catch\(\s*\(\s*\)\s*=>\s*(\{\s*\}|null|undefined)\s*\)', text):
+            items.append((current, 'no-op promise catch introduced (suppressed error?)', text.strip()))
         if 'expect(' in text:
             added_expects[current] = added_expects.get(current, 0) + 1
+        if re.search(r'\bthrow\b', text):
+            added_throws[current] = added_throws.get(current, 0) + 1
+        if re.search(r'\.(?:safeP|p)arse\(|\bvalidate\w*\(', text):
+            added_validations[current] = added_validations.get(current, 0) + 1
     elif line.startswith('-') and not line.startswith('---'):
         if 'expect(' in line:
             removed_expects[current] = removed_expects.get(current, 0) + 1
+        if re.search(r'\bthrow\b', line):
+            removed_throws[current] = removed_throws.get(current, 0) + 1
+        if re.search(r'\.(?:safeP|p)arse\(|\bvalidate\w*\(', line):
+            removed_validations[current] = removed_validations.get(current, 0) + 1
 
 for f, removed in removed_expects.items():
     added = added_expects.get(f, 0)
     if removed > added:
         items.append((f, f'assertions removed in excess ({removed} removed vs {added} added) — weakened test?', ''))
+for f, removed in removed_throws.items():
+    added = added_throws.get(f, 0)
+    if removed > added:
+        items.append((f, f'failure checks (throw) removed in excess ({removed} removed vs {added} added) — suppressed error path?', ''))
+for f, removed in removed_validations.items():
+    added = added_validations.get(f, 0)
+    if removed > added:
+        items.append((f, f'validation/parse calls removed in excess ({removed} removed vs {added} added) — disabled validation?', ''))
 
 real_files = [f for f in changed_files if f and f != '/dev/null']
 if real_files and all(re.search(r'\.test\.|__tests__|ui-tests/', f) for f in real_files):

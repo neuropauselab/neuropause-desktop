@@ -64,10 +64,20 @@ commands · authority class · gate conditions · status.**
   a crafted hostile diff → review items); freeze INTACT after the exclude-list update; queue seeded per §4.
 - **Verification:** script self-tests captured · `bash certification/verify-freeze.sh` INTACT · full main suite
   (no product source touched — run to prove it).
-- **Status: COMMITTED.** Self-tests: detector — frozen→STOP(2) · sensitive/effect→GATE(3) · clean→PROCEED(0) ·
-  mixed→frozen dominates; scanner — clean tree 0 findings · crafted hostile diff all 8 pattern classes caught.
-  YELLOW item reported: the three freeze scripts' exclude lists gained AUTONOMY.md + WORK_QUEUE.md (INTACT preserved).
-  Full main 858/8992/3 (no product source touched). Evidence: `…NP-005-DEV-LOOP-A0-A3-EVIDENCE.md`.
+- **Status: COMMITTED — reconciled to the CONSOLIDATED CONTROLLED-EXECUTION DIRECTIVE (same day).** The formal
+  directive refined the LITE build; AUTONOMY.md was rewritten to operationalize it in full (hierarchy + conflict-STOP ·
+  ceremony priority + the "beginning step 1" hard transition · authority wall + CONFIDENCE≠AUTHORITY · non-expansion +
+  DISCOVERED FOLLOW-UP · status semantics · YELLOW = stop-before-the-boundary with PROPOSAL+IMPACT+PLAN+TESTS+GATE
+  REQUEST · DEV-A1 pre-flight contract · detector UNKNOWN→STOP default + self-protection · scanner minimum targets +
+  no-green-by-suppression + §3.3 immutability · §5.1–5.11 execution rules · §6 evidence minimum + reproducibility
+  tuple · A4–A9 + §8 recorded). Detector gained the UNKNOWN safety default (out-of-repo/traversal path → UNKNOWN exit
+  5; unparseable metadata → REFUSE exit 4; frozen dominates) — self-tests 7/7. Scanner gained no-op-promise-catch ·
+  removed-throws-in-excess · removed-validation-in-excess + code-file scoping (docs MENTIONING patterns are not
+  findings — a permanently-noisy verifier corrodes like fake green) — self-tests: clean 0 · hostile 8 · hostile2 4.
+  Detector/scanner edits were authorized BY the directive itself (§2/§3 specify the behavior) — noted, not
+  self-approved. Original self-tests: detector frozen→STOP(2)/sensitive+effect→GATE(3)/clean→PROCEED(0); YELLOW
+  reported (freeze-script excludes +2 living docs, INTACT). Full main 858/8992/3 (no product source touched).
+  Evidence: `…NP-005-DEV-LOOP-A0-A3-EVIDENCE.md` (+ consolidation addendum).
 
 ## NP-006 · Post-ceremony §5 amendment — experience-arc-vs-v1.0 sequencing
 - **Objective:** decide the ONE explicitly-open question (full experience arc before v1.0, or v1.0 earlier on the

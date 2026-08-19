@@ -59,3 +59,30 @@ touched by this task).
 ## Standing
 The S5.4 ceremony HOLD stands exactly as presented (NP-000 outranks everything at step 1). The queue grows only by
 operator directive or approved proposal. A4–A9 wait for the other side of the ceremony.
+
+## ADDENDUM — reconciliation to the CONSOLIDATED CONTROLLED-EXECUTION DIRECTIVE (19 Aug 2026, same day)
+The operator's formal adoption directive refined the LITE build. Reconciled, all under the directive's own authority
+(the detector/scanner are sensitive-classified; their edits here are the ones the directive itself specifies — direct
+operator direction, not self-approval):
+- **AUTONOMY.md REWRITTEN** to operationalize the directive in full: §0.1 hierarchy with the conflict-STOP rule
+  (CLAUDE > AUTONOMY > WORK_QUEUE > TASK PLAN > WORKER INTERPRETATION; never silently reconciled) · §0.2 the
+  "beginning step 1" hard transition into CEREMONY MODE · §0.3 the authority wall + CONFIDENCE ≠ AUTHORITY family ·
+  §0.4/0.5 A0–A3-only + the non-expansion invariant + DISCOVERED FOLLOW-UP · §1.2 explicit status semantics ·
+  §1.3 YELLOW REDEFINED (investigate/prepare, STOP before the consequential boundary; required output PROPOSAL +
+  IMPACT + DIFF/CHANGE PLAN + TEST PLAN + GATE REQUEST) · §1.9 the DEV-A1 pre-flight contract (mandatory load list +
+  questions + sequence) · §2 detector UNKNOWN safety default + §2.3 self-protection · §3 scanner minimum targets +
+  §3.2 no-green-by-suppression + §3.3 immutability-during-ordinary-work · §5.1–5.11 (one-task-at-a-time · exceptional
+  states retained · verification ladder · UNKNOWN propagation · frozen touch · D-15 · source-control safety · commit
+  semantics · no self-certification · the loop cannot modify its own authority · memory never governs) · §6 evidence
+  minimum + the §6.1 reproducibility tuple · A4–A9 + §8 recorded in fuller form, NOT built.
+- **Gate detector (A2):** UNKNOWN safety default added — a path that is not plainly repo-relative (absolute, `~`,
+  traversal) → **UNKNOWN → STOP (exit 5)**; unparseable metadata → **REFUSE (exit 4)**; exit dominance FROZEN(2) >
+  UNKNOWN(5) > GATE(3) > PROCEED(0). **Self-tests 7/7 (captured):** frozen→2 · sensitive→3 · clean→0 ·
+  `/etc/passwd`→5 · `../outside/file.ts`→5 · frozen-dominates-unknown→2 · broken-JSON→4 (metadata restored
+  byte-identical afterward).
+- **Honesty scanner (A3):** three executable patterns added (no-op promise catch · throws removed in excess ·
+  validation/parse calls removed in excess) + CODE-FILE SCOPING (patterns are code constructs; documentation that
+  MENTIONS them is not a finding — discovered live when the scanner flagged AUTONOMY.md §3's own pattern list; a
+  permanently-noisy verifier corrodes like fake green). **Self-tests (captured):** docs-only working diff → 0
+  findings · hostile.diff → 8 findings (all original classes) · hostile2.diff → 4 findings (all new classes).
+- `verify-freeze.sh` **INTACT** after all edits (living docs + certification/ tooling only; zero product source).
