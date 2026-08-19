@@ -155,6 +155,22 @@ describe('L6-S1 · LiveBrainState — pins', () => {
     expect(composeLiveBrainState(inputs)).toEqual(out); // deterministic over the same inputs
   });
 
+  it('ACTIONRECORD INJECTION (D-14 finding, pinned) — S1 takes already-queried ActionRecord[], never the async store', () => {
+    const src = readFileSync(join(__dirname, 'liveBrainState.ts'), 'utf8');
+    // ActionRecord enters as a TYPE ONLY — the module never imports the disk-backed store singleton…
+    expect(src).toMatch(/import type \{[^}]*\bActionRecord\b[^}]*\} from '\.\.\/connectors\/actionRecord'/);
+    // …never imports the `actionRecord` value, and never calls the async `.query()`:
+    expect(src).not.toMatch(/import \{[^}]*\bactionRecord\b/);
+    expect(src).not.toMatch(/\.query\s*\(/);
+    // Functionally: a pre-built ActionRecord[] flows through as injected data.
+    const s = composeLiveBrainState({
+      ...base, workspace: realWorkspace(), capabilities: realCaps(),
+      actions: [action({ verification: { terminal: 'VERIFIED_SUCCESS', internetMessageId: '<x>', at: 't' } })],
+    });
+    expect(s.sections.evidence.certainty).toBe('VERIFIED');
+    expect((s.sections.evidence.detail as { verifiedSuccess: number }).verifiedSuccess).toBe(1);
+  });
+
   it('UNCERTAINTY CENSUS — the rollup counts every section exactly once', () => {
     const s = composeLiveBrainState({ ...base, workspace: realWorkspace(), capabilities: realCaps() });
     const total = Object.values(s.uncertainty).reduce((a, b) => a + b, 0);

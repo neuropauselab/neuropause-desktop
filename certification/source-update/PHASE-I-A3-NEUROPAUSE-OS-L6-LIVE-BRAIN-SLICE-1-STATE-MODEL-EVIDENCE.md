@@ -59,6 +59,13 @@ one CORRECTED up front (`actionRecord.query` is async/disk → S1 takes `ActionR
 purpose-bound-vs-ambient finding that answers the sequencing question: **S1 is buildable now; the re-present branch is NOT
 triggered.** No claim was papered.
 
+**Substitution accepted for S1 (operator, 19 Aug):** S1's five pins are mechanically testable, so the tests themselves are
+this slice's adversarial check; direct-read grounding + the self-authored review (transparently labeled with the abort
+diagnosis) satisfies S1's grounding need. **The independent 12-lens fleet audit is RESCHEDULED, not cancelled** — it runs
+UNINTERRUPTED before the **L6-S4 hard stop**, in a declared QUIET WINDOW or harness-isolated per **DECISIONS D-15**
+(mechanism stated at that launch), and its results fold into the S4 review package. Independence matters most where
+proposals begin — S4 wants adversarial eyes that are not the builder's.
+
 ## L6 Assurance — scaffolded from S1 (honest zero-baseline)
 S1 establishes the observation substrate the assurance loop will use: the `uncertainty` census + `conflicts` + the
 `evidence` section's independent-verification tally are the same ActionRecord-pattern signals the Brain will later use to
