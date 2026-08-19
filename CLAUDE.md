@@ -39,6 +39,7 @@ This file supersedes all prior prompt documents (OPERATION_ALIVE, WAVE3, FG1). R
 10. **Offline ≠ execution authority** unless an explicitly certified offline policy says otherwise.
 11. **Governance boundary honesty:** anything outside proven coverage is explicitly marked NOT GOVERNED — never silently treated as governed.
 12. **Secrets:** never invented, hardcoded, or committed. `.env.example` documents; real values arrive only at human gates.
+13. **The Brain proposes; it never reaches.** Live Brain (L6) is never granted LLM→shell, LLM→API, LLM→connector, or LLM→database. Its ONLY path to any external effect is **BRAIN → PROPOSAL → GOVERNANCE → NEUROPAUSE EXECUTION → EXTERNAL EFFECT → INDEPENDENT VERIFICATION → ACTION RECORD.** Its state model and reasoning hold ZERO execution or grant authority (zero-runtime-import into governance/execution, pinned). Model output inside the Brain is untrusted data (§6) and sets no identity, tenant, account, approval, or policy. Approved with L6-S1 (operator, 19 Aug 2026).
 
 ## 3 · OPERATING PROTOCOL
 

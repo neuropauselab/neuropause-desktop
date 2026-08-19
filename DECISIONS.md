@@ -1,6 +1,11 @@
 # DECISIONS.md — non-obvious technical decisions (living, now TRACKED)
 Per CLAUDE.md §3: context → decision → consequences. Newest first.
 
+## D-14 · Live Brain (L6) is DETERMINISTIC-FIRST — no LLM feeds any L6 slice until Phase E clears
+- **Context:** L6 "Live Brain" reads the L1–L5 read-models + the ActionRecord and (later slices) reasons and recommends. The name invites the assumption that a live LLM powers it. BRAIN-1's model is NOT flipped — the draft lane serves the deterministic `referenceDrafter` (zero-model, [[d-13]]), and the model flip is a separate operator gate (Phase E).
+- **Decision (operator-acknowledged, 19 Aug 2026):** L6-S1 through S3 are DETERMINISTIC derivations over the real read-models. "Live Brain" does NOT mean "live LLM." No model feeds any L6 slice until Phase E clears on the operator's explicit go per D-13's bar. If a model ever does feed L6 reasoning, its output is UNTRUSTED DATA under CLAUDE.md §6/§2#13 with ZERO authority — it sets no identity, tenant, account, approval, or policy, and the state model's zero-runtime-import into governance/execution holds regardless.
+- **Consequences:** L6-S1's `composeLiveBrainState` is a pure, synchronous, deterministic join — testable and honest by construction; no probabilistic component can make the Brain's *state* less than faithful. The §2#13 non-negotiable ("The Brain proposes; it never reaches.") pins the effect boundary independently of whether the reasoning is deterministic or model-served.
+
 ## D-13 · BRAIN-1 draft lane stays `referenceDrafter`-served until the eval clears THE BAR; LiteLLM reserved
 - **Context:** BRAIN-1 unifies model calls behind a gateway. The draft lane (S13 mail intent) has a `MailDrafter` seam; a real model could serve it, but a model must never gain recipient/action authority and must earn the lane.
 - **Decision (operator-set bar; the bar NEVER moves to fit a model):** the gateway + zod enforcement + one repair retry + honest `referenceDrafter` fallback land now (BRAIN-1 ②③), but the LIVE draft lane keeps serving the deterministic `referenceDrafter` until ④'s eval report clears, per candidate:
