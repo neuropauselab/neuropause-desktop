@@ -46,7 +46,8 @@ rung C for another (the per-capability motto).
 - **18 · Self-assurance** — the system observes ITSELF through the ActionRecord pattern (recommendation → prediction →
   outcome → accuracy/FP/FN/UNKNOWN-rate), honest zero-baseline until real decisions flow.
 - **19 · The self-testing OS** — the assurance loop generates its own adversarial tests (the fleet pattern, D-15) as a
-  standing gate, not a one-off.
+  standing gate, not a one-off. **Learning remains separate from governance change — the Brain must never rewrite its own
+  constitution.**
 - **20 · The natural-language operating layer** — NL intent → structured proposal → the same governed pipeline; the model
   is untrusted data (§6), never authority.
 - **21 · SDK / platform** — a certified connector-authoring kit (S23 generalized) so third parties climb the A–E ladder
