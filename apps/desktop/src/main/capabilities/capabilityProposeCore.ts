@@ -10,7 +10,7 @@
 import type { CapabilityProposeM365ActionRequest, CapabilityProposeM365ActionResponse } from '@neuropause/shared';
 import type { CapabilitySelectionOutcome } from './capabilityDiscoveryService';
 import { resolvePrincipal } from './capabilityPrincipal';
-import { buildM365ActionProposal, toWritePanelProposal } from './m365ActionProposal';
+import { buildM365ActionProposal, toWritePanelProposal, type M365ActionProposal } from './m365ActionProposal';
 
 export interface ProposeM365Deps {
   /** The authoritative, tenant-scoped capability resolver (re-resolves the AI-named capabilityId — never trusts it). */
@@ -26,6 +26,17 @@ export function runProposeM365Action(
   deps: ProposeM365Deps,
   req: CapabilityProposeM365ActionRequest,
 ): CapabilityProposeM365ActionResponse {
+  return runProposeM365ActionWithArtifact(deps, req).response;
+}
+
+/**
+ * S5.4 — same validation, but ALSO returns the validated internal artifact (null on refusal) so the handler can feed
+ * the Brain-propose lane from AUTHORITATIVE, validated values (never the raw request). The artifact never crosses IPC.
+ */
+export function runProposeM365ActionWithArtifact(
+  deps: ProposeM365Deps,
+  req: CapabilityProposeM365ActionRequest,
+): { response: CapabilityProposeM365ActionResponse; artifact: M365ActionProposal | null } {
   const selection = deps.resolveSelection({
     capabilityId: req.capabilityId,
     accountId: req.accountId ?? undefined,
@@ -33,10 +44,13 @@ export function runProposeM365Action(
   });
   const principal = resolvePrincipal({ subjectId: deps.subjectId(), scope: deps.scope() });
   const built = buildM365ActionProposal({ selection, principal, params: req.params });
-  if (!built.ok) return { ok: false, reason: built.reason, detail: built.detail };
+  if (!built.ok) return { response: { ok: false, reason: built.reason, detail: built.detail }, artifact: null };
   return {
-    ok: true,
-    proposal: toWritePanelProposal(built.proposal),
-    provenance: { capabilityId: built.proposal.capabilityId, accountId: built.proposal.accountId },
+    response: {
+      ok: true,
+      proposal: toWritePanelProposal(built.proposal),
+      provenance: { capabilityId: built.proposal.capabilityId, accountId: built.proposal.accountId },
+    },
+    artifact: built.proposal,
   };
 }

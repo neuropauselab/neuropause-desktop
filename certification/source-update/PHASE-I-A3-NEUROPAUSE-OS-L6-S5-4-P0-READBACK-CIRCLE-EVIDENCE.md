@@ -66,6 +66,41 @@ Final suite numbers: full main **855 files / 8970 passed / 3 skipped** · ui **3
 > **"the L6 circle is mock/test-verified in the running app; no real external effect has occurred; the first real
 > Brain-proposed action remains operator-gated."**
 
+## ADDENDUM (19 Aug 2026, pre-ceremony) — HONEST CORRECTION: the Brain-propose lane was missing; now built + proven
+**The gap (found in pre-ceremony recon, reported before any ceremony step):** the completion report above overclaimed
+"brainReview live in the confirm panel" — the RENDERER wiring was live and ui-tested, but NO production caller populated
+`response.brainReview`, stashed a proposal, or invoked the L6 stack from the propose path (the liveBrain modules' only
+production caller was the FG-10 gate itself, which therefore always SKIPped). The ceremony as written could not have
+executed steps 2/3 and step 5 would have been a human-composed governed send, not a Brain-proposed action. Per the
+divergence rule: STOP, report — then fix under the standing Phase-0 mandate (which explicitly included this wiring).
+
+**The fix (all non-frozen; the FG-9 field was already frozen-landed):**
+- `liveBrain/brainProposeLane.ts` (+7 pins) — composes the REAL substrate (workspace-domain snapshot · capability graph
+  over the real assurance predicate · S34a ActionRecords) into a `LiveBrainState`, drives the S4-certified
+  `buildProposal` from the VALIDATED producer artifact (never the raw request), stashes for the FG-10 gate, returns the
+  FG-9 fields. Alignment invariants pinned: tenancy key = the workspace id (the gate's own key); derivations are
+  LITERALLY the gate's exported `deriveAuthority`/`deriveOracle`; stash params are the EXACT execute shape (an operator
+  EDIT breaks the fingerprint → SKIP — an edited send is no longer the Brain's proposal); expiry (10-min governed
+  window) → observable DENIED at the gate; cross-tenant action evidence → tenant unprovable → NO proposal; propose-side
+  purity (no executor/CST/send-transition import).
+- `capabilityProposeCore.runProposeM365ActionWithArtifact` — same validation, also returns the internal artifact (never
+  crosses IPC). `capabilityProposeIpc` — async handler feeds the lane best-effort/additive-only: any lane refusal or
+  failure yields the response exactly as today, with no `brainReview`.
+- `executionGate.ts` — `deriveAuthority`/`deriveOracle` exported (single source, both sides); ADMIT/REFUSE now logged
+  (`L6-GATE ADMIT/REFUSE`) so a Brain-proposed send is distinguishable from a merely-governed one in the running app.
+
+**The in-app proof (`e2e/brainPropose.e2e.cjs` — real Electron, mock Graph, PASS 0 failed):** propose over the real
+channel → `brainReview` present, all eight fields, recipient named, honest plan → UNEDITED execute → ACKNOWLEDGED +
+**`L6-GATE ADMIT` in the main log** → independent read-back → **TERMINAL=VERIFIED_SUCCESS** → a second identical send
+is NOT re-admitted (exactly one ADMIT across two sends — single-use in-app). `mailReadBack.e2e.cjs` re-run PASS on the
+same bundle. Full main **856/8977/3** · ui **39/271** · typecheck node clean · lint clean · `verify-e2e-strip.sh`
+**PASS** with the lane confirmed PRESENT in the release bundle (production code) and the seams absent.
+
+**Honest notes:** (1) the lane's workspace-domain modules read UNAVAILABLE (the enterprise registry accessor is private
+to its runtime; the state is honest about it — never a fake count). (2) The execution gate's state-hash comparison
+remains the FG-10 placeholder (stable per tenant); drift protection at confirm = expiry + tenant + authority/oracle
+re-derivation. (3) The L6 tenancy key equals the WORKSPACE id, matching the live ActionRecord convention and the gate.
+
 ## Constitutional honesty
 Send-verification, not a destination receipt (destination filtering remains NOT GOVERNED). The mock proves the MACHINE:
 the READ-ONLY oracle reaches a corroborated terminal from independent mailbox evidence. HOLD (UNRESOLVED) never

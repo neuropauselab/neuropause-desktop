@@ -14,7 +14,12 @@ import { declareChannelResource } from '../ipc/channelResource';
 import { activeTenantScope } from '../enterprise';
 import { authService } from '../auth/authService';
 import { capabilityDiscoveryService } from './capabilityDiscoveryInstance';
-import { runProposeM365Action } from './capabilityProposeCore';
+import { runProposeM365ActionWithArtifact } from './capabilityProposeCore';
+import { runBrainProposeLane } from '../liveBrain/brainProposeLane';
+import { actionRecord } from '../connectors/actionRecord';
+import { createLogger } from '../logger';
+
+const log = createLogger('capability-propose');
 
 // What this handler ACTUALLY reads (verified from code): the active workspace's connected accounts, via the capability
 // catalog, to validate an AI-proposed mail.send. Read-only; it writes no store and performs no effect.
@@ -34,8 +39,9 @@ export const capabilityHandlers = withRuntimeAuthz([
     schema: CapabilityProposeM365ActionRequest,
     // `req` arrives as `unknown` per the secure-handler def; the bridge has already validated it against `schema`
     // before calling us, so the cast is safe — the standard connector-handler pattern.
-    handler: (req: unknown): CapabilityProposeM365ActionResponse =>
-      runProposeM365Action(
+    handler: async (req: unknown): Promise<CapabilityProposeM365ActionResponse> => {
+      const request = req as CapabilityProposeM365ActionRequest;
+      const { response, artifact } = runProposeM365ActionWithArtifact(
         {
           resolveSelection: (r) => capabilityDiscoveryService.resolveSelection(r),
           subjectId: () => {
@@ -44,7 +50,35 @@ export const capabilityHandlers = withRuntimeAuthz([
           },
           scope: () => activeTenantScope(),
         },
-        req as CapabilityProposeM365ActionRequest,
-      ),
+        request,
+      );
+      if (!response.ok || artifact === null) return response;
+      // S5.4 — the Brain-propose lane: composes the real substrate into a certified L6 Proposal from the VALIDATED
+      // artifact, stashes it for the FG-10 execution gate, and returns the FG-9 review fields. Best-effort and
+      // ADDITIVE-ONLY: any refusal/failure yields no `brainReview` and the response is exactly as today — the send
+      // may still proceed as a human-composed governed send; it is simply not Brain-proposed.
+      try {
+        const brainReview = await runBrainProposeLane(
+          {
+            capabilityId: artifact.capabilityId,
+            accountId: artifact.accountId,
+            to: artifact.review.to,
+            subject: artifact.review.subject,
+            body: artifact.review.body,
+            purpose: artifact.purpose,
+          },
+          {
+            scope: () => activeTenantScope(),
+            moduleStore: () => null, // the enterprise registry accessor is private to its runtime — honest UNAVAILABLE
+            actions: (tenantKey) => actionRecord.query({ tenantId: tenantKey }),
+            nowMs: () => Date.now(),
+          },
+        );
+        return brainReview === null ? response : { ...response, brainReview };
+      } catch (err) {
+        log.warn('Brain-propose lane failed — returning the propose response without brainReview', err);
+        return response;
+      }
+    },
   },
 ]);

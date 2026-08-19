@@ -18,11 +18,18 @@ import { gateL6Execution } from './proposalStore';
 import type { ExecutionDeps } from './proposalExecutionBoundary';
 import type { AuthorityRequirement, VerificationPlan, ProposalTarget } from './proposal';
 import { mutationAssuranceFor } from '../capabilities/liveCapabilitySources';
+import { createLogger } from '../logger';
+
+const log = createLogger('l6-gate');
 
 export type L6GateResult = { readonly ok: true } | { readonly ok: false; readonly refusal: ConnectorWriteResult };
 
-/** Shared authority derivation (RBAC/CST via L4) — the SINGLE source both propose and execute use. */
-function deriveAuthority(capabilityId: string, target: ProposalTarget): AuthorityRequirement {
+/**
+ * Shared authority derivation (RBAC/CST via L4) — the SINGLE source both propose and execute use.
+ * EXPORTED so the propose lane (`brainProposeLane`) builds with LITERALLY these functions — a proposal formed from any
+ * other derivation would fail the execution-time re-derivation comparison (deny-by-default), which is the point.
+ */
+export function deriveAuthority(capabilityId: string, target: ProposalTarget): AuthorityRequirement {
   return {
     requiresApproval: true,
     governanceStatus: mutationAssuranceFor(target.connector),
@@ -32,7 +39,7 @@ function deriveAuthority(capabilityId: string, target: ProposalTarget): Authorit
 }
 
 /** Shared oracle-registry derivation — mail.send → the S16 plan; else honestly UNVERIFIABLE. */
-function deriveOracle(capabilityId: string): VerificationPlan {
+export function deriveOracle(capabilityId: string): VerificationPlan {
   return capabilityId === 'mail.send'
     ? { verifiable: 'send-corroboration', oracleId: 'verifyEffect', note: 'send-corroboration, not delivery', needs: null, productionWired: false }
     : { verifiable: false, oracleId: null, note: 'no oracle for this capability', needs: 'a per-capability oracle', productionWired: false };
@@ -63,7 +70,11 @@ export function l6ExecutionGate(deps: RuntimeExecuteDeps, r: ExecuteRequestLike,
   };
   const gate = gateL6Execution({ tenantId, capabilityId: r.actionId, account: r.accountId, params: r.params }, execDeps);
   if (gate.gate === 'refuse') {
+    log.warn(`L6-GATE REFUSE capability=${r.actionId} tenant=${tenantId} — ${gate.reason}`);
     return { ok: false, refusal: { ok: false, message: 'L6 execution gate refused', data: { outcome: 'DENIED', reason: gate.reason } } };
   }
+  // Observability: ADMIT (a stashed L6 proposal re-derived clean and was consumed) is distinguishable from SKIP in the
+  // main log — the running-app proof that a send was Brain-PROPOSED, not merely governed. Never alters the outcome.
+  if (gate.gate === 'admit') log.info(`L6-GATE ADMIT capability=${gate.capabilityId} tenant=${tenantId}`);
   return { ok: true }; // 'admit' (proceed) or 'skip' (non-L6 / no stashed proposal — unchanged)
 }
