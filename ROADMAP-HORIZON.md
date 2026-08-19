@@ -31,6 +31,28 @@ rung C for another (the per-capability motto).
 _LB- prefix denotes Live-Brain-track stages; these are NOT §5 slice numbers (which stay canonical + unique, e.g. S18/S23/S28)._
 - **LB-6 · Operational-memory taxonomy** — a typed, tenant-scoped, evidence-backed memory of what happened and why; the
   substrate every higher intelligence reads. Four data states everywhere (HAVE/NEED/UNKNOWN/UNAVAILABLE); no fabrication.
+  **THE EXPERIENCE-MEMORY ARC (detailed design — RECORDED 19 Aug 2026 at Phase-0 acceptance; NOT ENTERED; the leading
+  candidate for the first post-ceremony arc; enters §5 only through the five-field discipline then; BUILD NONE OF IT NOW):**
+  1. **ExperienceRecord** — a tenant-scoped record of each governed attempt, chained to its ActionRecord evidence (never a
+     parallel store of authority; observation only).
+  2. **Reproduction fingerprint** — a re-derivable fingerprint of the attempt's conditions (tenant · capability · account ·
+     params-shape · substrate state), so "the same situation" is a provable claim, not a similarity guess.
+  3. **Six-valued outcome memory** — VERIFIED_SUCCESS / VERIFIED_FAILURE / UNKNOWN / DENIED / CANCELLED / EXPIRED. The full
+     honest vocabulary: refusals, cancellations, and expiries are remembered as first-class outcomes, never collapsed into
+     failure or dropped; UNKNOWN stays UNKNOWN (D-16 discipline extended to memory).
+  4. **Reproduction engine** — given a new intent, find provably-comparable past experiences by fingerprint; **similarity
+     NEVER auto-converts to certainty** — a match yields evidence for a proposal, never a prediction stated as fact and
+     never permission (§2 #15: memory informs governance; memory never becomes governance).
+  5. **Failure intelligence** — verified failures become queryable knowledge (what failed, under which conditions, with what
+     evidence), feeding proposals, never auto-remediation.
+  6. **Reproduction-before-repair** — no repair is proposed until the failure is REPRODUCED under the fingerprint (the
+     reproduce-first ruling generalized from test discipline to operational memory).
+  7. **Validated knowledge** — a memory claim is promoted to knowledge only after REPEATED INDEPENDENT evidence (never one
+     observation, never self-report); below that bar it stays labeled as unvalidated experience.
+  8. **System self-awareness** — the system's account of its own capabilities derives from validated knowledge of what it
+     has actually done and verified, not from its manifest or its plans.
+  Constitutional bound (standing, §2 #15): no stage of this arc ever sets authority, approval, `confirmed`, policy, or
+  admission; every consequential action re-derives authorization from the live substrate at execution time.
 - **LB-7 · Change intelligence** — DECLARED vs OBSERVED over time → change records (drift, already scoped for L2 depth).
 - **LB-8 · Drift intelligence** — declared/observed divergence as a first-class observation that feeds proposals, never an
   auto-fix.

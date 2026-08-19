@@ -57,6 +57,15 @@ as its verification step.** Recorded here as the deliberate gate rather than wir
   This is the S14 governed-send loop extended with its verifying half — the circle now closes end-to-end in the real
   Electron application, not merely at module level. Artifacts: `apps/desktop/e2e/artifacts/readback-{success,bounce,hold}.png`.
 
+## Completion claim (operator-required, verbatim)
+Final suite numbers: full main **855 files / 8970 passed / 3 skipped** · ui **39 files / 271 passed** ·
+`verifyGovernedSend.test.ts` 6/6 · `mockGraph.test.ts` 6/6 · typecheck node+web clean · lint clean ·
+`verify-e2e-strip.sh` **PASS** · real-Electron `mailReadBack.e2e.cjs` **PASS (0 failed, 3 launches)** — all RUN against
+`BASELINE-52008b68ddb5`; the state re-recorded INTACT at `BASELINE-d2d9a75b45bc`.
+
+> **"the L6 circle is mock/test-verified in the running app; no real external effect has occurred; the first real
+> Brain-proposed action remains operator-gated."**
+
 ## Constitutional honesty
 Send-verification, not a destination receipt (destination filtering remains NOT GOVERNED). The mock proves the MACHINE:
 the READ-ONLY oracle reaches a corroborated terminal from independent mailbox evidence. HOLD (UNRESOLVED) never
