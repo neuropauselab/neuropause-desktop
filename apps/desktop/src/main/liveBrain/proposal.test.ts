@@ -147,6 +147,13 @@ describe('S4.2 · proposal identity + no-leak + determinism', () => {
   it('DETERMINISTIC — same (request, deps) → identical proposal', () => {
     expect(buildProposal(request(), deps())).toEqual(buildProposal(request(), deps()));
   });
+  it('ZERO-AUTHORITY — a proposal is inert JSON data: fully serializable, no callable/executor/confirmed', () => {
+    const r = buildProposal(request(), deps());
+    expect(r.status).toBe('PROPOSED');
+    if (r.status !== 'PROPOSED') return;
+    expect(JSON.parse(JSON.stringify(r.proposal))).toEqual(r.proposal); // round-trips → no functions/callables
+    expect(JSON.stringify(r.proposal)).not.toMatch(/=>|\bfunction\b|"confirmed"|executor/);
+  });
   it('ZERO-RUNTIME-IMPORT — types only; no value/bare/dynamic import (the Brain never reaches)', () => {
     const src = readFileSync(join(__dirname, 'proposal.ts'), 'utf8');
     expect(src.match(/^import(?!\s+type\b)[^\n]*/gm) ?? []).toEqual([]);
