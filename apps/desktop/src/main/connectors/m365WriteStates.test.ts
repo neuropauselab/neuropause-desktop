@@ -103,4 +103,23 @@ describe('S19 · store-backed reader — every number derives from the ActionRec
     const b = await m365WriteStates('tenant-B');
     expect(b).toMatchObject({ requested: 1, providerAcknowledged: 1 });
   });
+
+  it('FULL CHAIN (§2) — observe → recordVerification → EXTERNALLY_OBSERVED goes 0→1 from the store alone', async () => {
+    const { actionRecord } = await import('./actionRecord');
+    const { m365WriteStates } = await import('./m365WriteStates');
+    actionRecord.useDirForTests(dir);
+    const gsr = () =>
+      ({ outcome: { transitionId: 'm365-send:ext', requestId: 'req:ext', verdict: 'ALLOW', executed: true }, semanticOutcome: 'ACKNOWLEDGED', effectCalls: 1, providerAck: true }) as never;
+    const req = () => ({ connectorId: 'microsoft-entra', accountId: 'a', actionId: 'mail.send', params: { to: ['dest@e.com'], subject: 's', body: 'b' } });
+
+    await actionRecord.observe(req(), gsr(), { actor: 'user-owner', tenantId: 'tenant-A' });
+    // Acknowledged but NOT yet observed — honest 0.
+    expect((await m365WriteStates('tenant-A')).externallyObserved).toBe(0);
+
+    // The S16 verify path attaches its terminal to the EXISTING record (prospective-only).
+    await actionRecord.recordVerification('m365-send:ext', { terminal: 'VERIFIED_SUCCESS', internetMessageId: '<pn2@host>', at: '2026-08-19T00:00:00Z' });
+
+    // Now the counter reflects a real verified effect — derived from the store, no inference.
+    expect((await m365WriteStates('tenant-A')).externallyObserved).toBe(1);
+  });
 });
