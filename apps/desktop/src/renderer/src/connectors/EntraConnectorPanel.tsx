@@ -16,6 +16,7 @@ import { StatusDot } from '@renderer/operations/primitives';
 import type { OpsTone } from '@renderer/operations/lib';
 import { relativeTime } from './connectorLib';
 import { M365WritePanel } from './M365WritePanel';
+import type { BrainReview } from './BrainReviewCard';
 import { consumePendingMailProposal } from './m365ProposalHandoff';
 
 const STATE_TONE: Record<string, OpsTone> = {
@@ -109,6 +110,7 @@ export function EntraConnectorPanel({ dto }: { dto: ConnectorDto }): JSX.Element
   // Slice-12 dev-propose state. `proposal` prefills M365WritePanel; `proposalKey` remounts it so a NEW proposal
   // re-seeds the panel's field state (the panel reads `proposal` only in its useState initializers).
   const [proposal, setProposal] = useState<{ to: string; subject: string; body: string } | null>(null);
+  const [brainReview, setBrainReview] = useState<BrainReview | null>(null); // FG-9 — L6 proposal review fields
   const [proposalKey, setProposalKey] = useState(0);
   const [proposing, setProposing] = useState(false);
   const [refusal, setRefusal] = useState<ProposeRefusal | null>(null);
@@ -128,15 +130,18 @@ export function EntraConnectorPanel({ dto }: { dto: ConnectorDto }): JSX.Element
       const r = await ipc.connectors.m365Propose({ capabilityId: 'mail.send', accountId, purpose, params });
       if (r.ok) {
         setProposal(r.proposal);
+        setBrainReview(r.brainReview ?? null); // FG-9 — verbatim, never re-derived here
         setProposalKey((k) => k + 1);
       } else {
         // A typed, semantic refusal from the validator — one of the four reasons. Kept as DATA and shown inertly.
         setProposal(null);
+        setBrainReview(null);
         setRefusal(r);
       }
     } catch {
       // A thrown IPC/transport error is NOT one of the four semantic refusals — surface it as a distinct error.
       setProposal(null);
+      setBrainReview(null);
       setProposeError('The proposal request could not reach the validator (transport error).');
     } finally {
       setProposing(false);
@@ -334,6 +339,7 @@ export function EntraConnectorPanel({ dto }: { dto: ConnectorDto }): JSX.Element
         accountId={dto.accounts[0]?.id ?? null}
         snaps={snaps}
         proposal={proposal ?? undefined}
+        brainReview={brainReview}
       />
 
       {/* Permission viewer (granted status) */}

@@ -8,6 +8,7 @@
  */
 import { useState } from 'react';
 import type { ConnectorSyncSnapshot } from '@neuropause/shared';
+import { BrainReviewCard, type BrainReview } from './BrainReviewCard';
 import { ipc } from '@renderer/lib/ipc';
 import { cn } from '@renderer/lib/cn';
 import {
@@ -44,6 +45,7 @@ export function M365WritePanel({
   accountId,
   snaps,
   proposal,
+  brainReview,
 }: {
   connectorId: string;
   accountId: string | null;
@@ -55,6 +57,8 @@ export function M365WritePanel({
    * explicit "Confirm send" remains the sole consent, and the certified governed IPC path is unchanged.
    */
   proposal?: { to?: string; subject?: string; body?: string };
+  /** FG-9 — a certified L6 proposal's eight review fields (display-only), rendered VERBATIM above the compose form. */
+  brainReview?: BrainReview | null;
 }): JSX.Element {
   const snap = snaps.find((s) => s.accountId === accountId) ?? snaps[0];
   const [to, setTo] = useState(proposal?.to ?? '');
@@ -163,6 +167,10 @@ export function M365WritePanel({
             proposes; it never sends without your confirmation.
           </div>
         )}
+        {/* FG-9 · S5.4 Phase 0 — the certified L6 proposal's eight review fields, rendered VERBATIM (display-only). */}
+        <div className="mb-2">
+          <BrainReviewCard review={brainReview} />
+        </div>
         <div className="mb-2 text-2xs text-faint">
           Compose an email. AI can draft the body — it never sends; every send needs your explicit confirmation.
         </div>
