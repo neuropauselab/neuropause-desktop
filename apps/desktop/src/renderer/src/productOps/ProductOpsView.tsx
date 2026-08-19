@@ -38,6 +38,7 @@ import { computeMaturity } from '@renderer/capability/capabilityRegistry';
 import {
   DEPLOYMENT_TARGETS,
   OPERATIONAL_GAPS,
+  describeLoadFailures,
   deriveReleaseReadiness,
   diagnosticTone,
   flagSourceLabel,
@@ -74,10 +75,16 @@ const EMPTY: Data = {
   backups: [], feedback: [], flags: [], modules: [], connectors: null, marketplace: [], commercial: null, deployment: null,
 };
 
-async function settled<T>(p: Promise<T>, fallback: T): Promise<T> {
+/**
+ * Per-source fallback that RECORDS the failure by name (NP-008 F-N8-3): a source
+ * that could not load — refused, unavailable, or failed — must surface in the
+ * honest banner instead of silently rendering its fallback as data.
+ */
+async function settled<T>(p: Promise<T>, fallback: T, name: string, failures: string[]): Promise<T> {
   try {
     return await p;
   } catch {
+    failures.push(name);
     return fallback;
   }
 }
@@ -86,27 +93,30 @@ export function ProductOpsView({ onOpenSection }: { onOpenSection?: (id: Section
   const [ready, setReady] = useState(false);
   const [tab, setTab] = useState<Tab>('overview');
   const [d, setD] = useState<Data>(EMPTY);
+  const [loadFailures, setLoadFailures] = useState<string[]>([]);
 
   const refresh = useCallback(async () => {
+    const failures: string[] = [];
     const [app, diag, health, supervisor, crash, crashRecs, safeMode, backups, feedback, flags, modules, connectors, marketplace, commercial, deployment] =
       await Promise.all([
-        settled(ipc.app.getInfo(), null),
-        settled(ipc.releaseOps.diagnostics(), null),
-        settled(ipc.system.health(), null),
-        settled(ipc.supervisor.status(), null),
-        settled(ipc.releaseOps.crashStatus(), null),
-        settled(ipc.releaseOps.crashRecommendations(), [] as RecoveryRecommendation[]),
-        settled(ipc.releaseOps.safeModeStatus(), null),
-        settled(ipc.releaseOps.listBackups(), [] as BackupInfo[]),
-        settled(ipc.feedback.list(), [] as FeedbackEntry[]),
-        settled(ipc.flags.get('free'), [] as FeatureFlagState[]),
-        settled(ipc.enterpriseModules.list(), [] as EnterpriseModuleSummary[]),
-        settled(ipc.connectors.stats(), null),
-        settled(ipc.marketplace.catalog(), [] as MarketplaceEntry[]),
-        settled(ipc.commercial.overview(), null),
-        settled(ipc.commercial.deployment(), null),
+        settled(ipc.app.getInfo(), null, 'App info', failures),
+        settled(ipc.releaseOps.diagnostics(), null, 'Release diagnostics', failures),
+        settled(ipc.system.health(), null, 'System health', failures),
+        settled(ipc.supervisor.status(), null, 'Supervisor', failures),
+        settled(ipc.releaseOps.crashStatus(), null, 'Crash status', failures),
+        settled(ipc.releaseOps.crashRecommendations(), [] as RecoveryRecommendation[], 'Crash recommendations', failures),
+        settled(ipc.releaseOps.safeModeStatus(), null, 'Safe mode', failures),
+        settled(ipc.releaseOps.listBackups(), [] as BackupInfo[], 'Backups', failures),
+        settled(ipc.feedback.list(), [] as FeedbackEntry[], 'Feedback', failures),
+        settled(ipc.flags.get('free'), [] as FeatureFlagState[], 'Feature flags', failures),
+        settled(ipc.enterpriseModules.list(), [] as EnterpriseModuleSummary[], 'Enterprise modules', failures),
+        settled(ipc.connectors.stats(), null, 'Connector stats', failures),
+        settled(ipc.marketplace.catalog(), [] as MarketplaceEntry[], 'Marketplace catalog', failures),
+        settled(ipc.commercial.overview(), null, 'Commercial overview', failures),
+        settled(ipc.commercial.deployment(), null, 'Deployment', failures),
       ]);
     setD({ app, diag, health, supervisor, crash, crashRecs, safeMode, backups, feedback, flags, modules, connectors, marketplace, commercial, deployment });
+    setLoadFailures(failures);
     setReady(true);
   }, []);
 
@@ -168,6 +178,23 @@ export function ProductOpsView({ onOpenSection }: { onOpenSection?: (id: Section
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-8 py-7">
+        {ready && loadFailures.length > 0 && (
+          // NP-008 F-N8-3 — the Administration honest-fallback pattern: refusals and
+          // failures are NAMED, so the zeros below read as fallback, not verified state.
+          <div
+            role="alert"
+            className="mb-5 flex flex-wrap items-center gap-3 rounded-xl border border-danger/40 bg-danger/10 px-4 py-2.5 text-xs leading-relaxed text-danger"
+          >
+            <span className="min-w-0 flex-1">{describeLoadFailures(loadFailures)}</span>
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              className="rounded-lg border border-danger/40 px-3 py-1 text-xs font-semibold text-danger hover:bg-danger/10"
+            >
+              Retry
+            </button>
+          </div>
+        )}
         {!ready ? (
           <LoadingBlock label="Loading product operations…" />
         ) : (

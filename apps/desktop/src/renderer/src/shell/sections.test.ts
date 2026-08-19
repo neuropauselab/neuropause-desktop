@@ -101,6 +101,9 @@ describe('navigation sections — production visibility', () => {
         'enterprise',
         'federation',
         'industry-center',
+        // NP-008 census F-N8-1: intent-home draws the seeded strategy goals (the
+        // strategy-center substrate, already Preview) — labeled to match the truth.
+        'intent-home',
         'knowledge-center',
         'marketplace',
         'network-center',
@@ -115,7 +118,6 @@ describe('navigation sections — production visibility', () => {
     const previewIds = new Set<string>(SECTIONS.filter((s) => s.preview).map((s) => s.id));
     for (const id of [
       'mission-control',
-      'intent-home',
       'search',
       'assistant',
       'hub',

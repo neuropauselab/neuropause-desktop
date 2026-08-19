@@ -22,6 +22,7 @@ import { initials } from '@renderer/lib/format';
 import { useTheme } from '@renderer/providers/ThemeProvider';
 import { useScale } from '@renderer/state/ScaleProvider';
 import { useAuth } from '@renderer/providers/AuthProvider';
+import { useIsLocalMode } from '@renderer/shell/useIsLocalMode';
 import type { ThemeSource } from '@neuropause/shared';
 import { SubscriptionCenter } from '@renderer/subscription/SubscriptionCenter';
 import { TrustedDevices } from '@renderer/devices/TrustedDevices';
@@ -293,6 +294,7 @@ function DomainContent({
   const { source, setSource } = useTheme();
   const { scale, setScale, reset, min, max } = useScale();
   const { logout } = useAuth();
+  const localMode = useIsLocalMode();
   const { user } = session;
   const name = user.displayName ?? user.email.split('@')[0];
 
@@ -312,8 +314,11 @@ function DomainContent({
                 <StateBadge />
               </div>
               <p className="mt-3 text-xs text-faint">
-                Your name and email come from your authenticated account and are managed at your
-                identity provider.
+                {localMode
+                  ? // NP-008 census F-N8-6: a device-local principal has NO identity provider —
+                    // the old copy claimed one. State the S17 truth instead.
+                    'This is a device-local identity — it exists only on this device, and no identity provider manages it. Connect an account to sync.'
+                  : 'Your name and email come from your authenticated account and are managed at your identity provider.'}
               </p>
             </Card>
           </Group>

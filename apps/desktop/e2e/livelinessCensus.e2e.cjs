@@ -31,7 +31,7 @@ fs.mkdirSync(ART, { recursive: true });
 /** Visible (non-hidden) sections, in SECTIONS order — mirrors shell/sections.ts. */
 const SURFACES = [
   { id: 'mission-control', label: 'Mission Control' },
-  { id: 'intent-home', label: "Today's Intent" },
+  { id: 'intent-home', label: "Today's Intent", preview: true }, // NP-008 F-N8-1: Preview-labeled
   { id: 'search', label: 'Search' },
   { id: 'assistant', label: 'Assistant' },
   { id: 'hub', label: 'Work Hub' },

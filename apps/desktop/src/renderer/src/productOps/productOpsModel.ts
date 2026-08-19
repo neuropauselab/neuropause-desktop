@@ -18,6 +18,17 @@ import type {
 import type { IconName } from '@renderer/components/ui/Icon';
 import type { OpsTone } from '@renderer/operations/lib';
 
+/* ── honest load-failure banner (NP-008 census F-N8-3) ──────────────────────────
+ * The view loads fifteen sources with per-source fallbacks. A fallback that is
+ * rendered as if it were data converts a refusal into a confident zero — the
+ * exact F-5 class ("0 backups" when the truth was "backup:list was refused").
+ * The failures are NAMED so the panels below read as fallback, not truth.      */
+
+export function describeLoadFailures(failures: readonly string[]): string | null {
+  if (failures.length === 0) return null;
+  return `${failures.length} of the operations panels could not load: ${failures.join(', ')}. What they show below is a fallback, not verified state.`;
+}
+
 /* ── status → tone/label maps (reuse the ops tone system) ───────────────────── */
 
 export function diagnosticTone(s: DiagnosticStatus): OpsTone {

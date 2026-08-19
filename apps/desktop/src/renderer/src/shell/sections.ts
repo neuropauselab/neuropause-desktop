@@ -123,7 +123,11 @@ export const SECTIONS: SectionDef[] = [
   // unification surface over EXISTING sections and IPC feeds (additive; every
   // tile loads independently and degrades to an explicit unavailable state).
   { id: 'mission-control', label: 'Mission Control', icon: 'gauge', phase: 23, placement: 'primary', group: 'today', description: 'Organization-wide operations at a glance — your command landing.' },
-  { id: 'intent-home', label: "Today's Intent", icon: 'command', phase: 22, placement: 'primary', group: 'today', description: 'Your strategic priorities and the outcomes that matter today.' },
+  // NP-008 census F-N8-1: this surface renders the SEEDED autonomous-intelligence
+  // goals — the same store its sibling strategy-center shows WITH a Preview label.
+  // Until a user can author real outcomes, presenting seeded strategy as "today's
+  // intent" without the label is fake-as-real; `preview` states the truth.
+  { id: 'intent-home', label: "Today's Intent", icon: 'command', phase: 22, placement: 'primary', group: 'today', preview: true, description: 'Your strategic priorities and the outcomes that matter today.' },
   // Phase 6 Stage 3 — Universal Search: one query across every existing index
   // (federated engine, app records, semantic memory, business modules). Additive;
   // placed after the two landing surfaces so their nav locks hold unchanged.
