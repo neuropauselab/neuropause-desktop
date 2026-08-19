@@ -4,7 +4,7 @@
  * governed store's already-SCOPED `count()`, so tenant isolation is inherited and
  * a missing/unregistered module degrades HONESTLY to UNAVAILABLE (never a fake 0).
  */
-import type { TenantScope } from '@neuropause/shared';
+import type { ExecutiveSnapshot, TenantScope } from '@neuropause/shared';
 import {
   composeWorkspaceDomain,
   type DomainModuleSpec,
@@ -55,4 +55,22 @@ export function registryDomainSources(deps: RegistryDomainDeps): WorkspaceDomain
 /** The live tenant-scoped domain snapshot over the real registry (READ/aggregate-only). */
 export function workspaceDomainSnapshot(deps: RegistryDomainDeps): WorkspaceDomainSnapshot {
   return composeWorkspaceDomain(DOMAIN_MODULES, registryDomainSources(deps));
+}
+
+/**
+ * Project the snapshot onto the FG-8 `ExecutiveSnapshot.workspaceDomain` field —
+ * states and counts carried VERBATIM (state fidelity), so an `unavailable` module
+ * stays `unavailable` end to end, never a fabricated 0.
+ */
+export function toWorkspaceDomainField(snap: WorkspaceDomainSnapshot): ExecutiveSnapshot['workspaceDomain'] {
+  return {
+    scopeResolved: snap.scopeResolved,
+    slices: snap.slices.map((s) => ({
+      domain: s.domain,
+      moduleId: s.moduleId,
+      label: s.label,
+      count: s.count,
+      state: s.state,
+    })),
+  };
 }

@@ -283,6 +283,12 @@ import { notificationScheduler } from '../services/notificationScheduler';
 import { buildOrgGraph, orgGraphNeighbors } from './graph/orgGraph';
 import { evaluateCompliance, type ComplianceInput } from './governance/enterpriseGovernance';
 import { computeExecutiveSnapshot } from './dashboard/executiveDashboard';
+import { workspaceDomainSnapshot, toWorkspaceDomainField, type ScopedCountStore } from './workspaceFoundation/domainSources';
+
+// FG-8 — the L1 Workspace Foundation domain rollup reads governed module stores.
+// The registry is init-local (inside initEnterprise); `buildHandlers` (module scope)
+// reaches it through this accessor, which initEnterprise populates. READ-only.
+let moduleStoreForWorkspaceDomain: (moduleId: string) => ScopedCountStore | null = () => null;
 import { authService } from '../auth/authService';
 import { sessionEmailFor, principalDisplayName } from '../auth/localIdentity';
 import { workerRegistry } from '../workforce/registry/registryInstance';
@@ -1197,6 +1203,8 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
    * checks for a seam cannot check what the seam is attached to.
    */
   modules.registry.bindScope(activeTenantScope);
+  // FG-8 — expose the scoped module stores to the module-scope dashboard handler (READ-only).
+  moduleStoreForWorkspaceDomain = (id) => modules.registry.get(id)?.store ?? null;
   registerShutdownFlush('enterprise-module-stores', () => modules.registry.flushAll());
 
   const registerModule = (m: EnterpriseModule): void => {
@@ -2439,7 +2447,15 @@ function buildHandlers(): SecureHandlerDef[] {
     {
       channel: IpcChannel.EnterpriseDashboard,
       schema: EmptyRequest,
-      handler: () => buildSnapshot(),
+      // FG-8 — attach the L1 Workspace Foundation domain rollup (READ/aggregate-only,
+      // over the governed module stores under the active tenant scope; states + counts
+      // verbatim, a domain with no store → 'unavailable', never a fabricated 0).
+      handler: () => ({
+        ...buildSnapshot(),
+        workspaceDomain: toWorkspaceDomainField(
+          workspaceDomainSnapshot({ moduleStore: moduleStoreForWorkspaceDomain, scope: activeTenantScope }),
+        ),
+      }),
     },
 
     // Process Explorer — read-only projections of the mined processes. No mining, no writes: both

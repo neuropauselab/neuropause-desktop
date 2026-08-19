@@ -673,4 +673,21 @@ export interface ExecutiveSnapshot {
   approvals: ApprovalsSummary;
   intelligence: IntelligenceSummary;
   operations: OperationsSummary;
+  /**
+   * OS-track L1 Workspace Foundation — the tenant-scoped domain rollup (people ·
+   * customers · projects · documents · … : per-domain scoped count + state), a
+   * READ/aggregate-only projection of the governed module stores. Present once
+   * wired; optional for older snapshots/builds. A domain with no store → state
+   * 'unavailable' (never a fabricated 0); unresolved scope → the field is absent.
+   */
+  workspaceDomain?: {
+    scopeResolved: boolean;
+    slices: {
+      domain: string;
+      moduleId: string;
+      label: string;
+      count: number;
+      state: 'present' | 'unavailable';
+    }[];
+  } | null;
 }
