@@ -29,10 +29,13 @@ fi
 FAIL=0
 # grep -c prints "0" AND exits 1 on no matches, so DON'T chain `|| echo 0` (it doubles the output). Take line 1.
 SENT_FILES=$(grep -rl "$SENTINEL" out/main/ 2>/dev/null | wc -l | tr -d ' ')
-CHUNK=$(ls out/main/chunks/ 2>/dev/null | grep -cE 'e2eSeed|firstRealSendGuard|e2eMode|s16VerifyRun'); CHUNK=$(printf '%s' "$CHUNK" | head -1)
-BRANCH=$(grep -c "NEUROPAUSE_E2E\|installE2eSeeds\|e2e-mock-access-token\|runS16Verification\|NEUROPAUSE_VERIFY_S15" out/main/index.js 2>/dev/null); BRANCH=$(printf '%s' "$BRANCH" | head -1)
-# Slice-15/16 gated strings must be absent from every release-bundle file too.
-GUARD=$(grep -rl "RECIPIENT_NOT_ALLOWLISTED\|first-real-send.latch\|neuropause033@gmail.com\|firstRealSendGuard\|NEUROPAUSE_S16_VERIFY_v1" out/main/ 2>/dev/null | wc -l | tr -d ' ')
+CHUNK=$(ls out/main/chunks/ 2>/dev/null | grep -cE 'e2eSeed|firstRealSendGuard|e2eMode|s16VerifyRun|mockGraph|e2eVerifyRun'); CHUNK=$(printf '%s' "$CHUNK" | head -1)
+BRANCH=$(grep -c "NEUROPAUSE_E2E\|installE2eSeeds\|e2e-mock-access-token\|runS16Verification\|NEUROPAUSE_VERIFY_S15\|runE2eVerification" out/main/index.js 2>/dev/null); BRANCH=$(printf '%s' "$BRANCH" | head -1)
+# Slice-15/16 + S5.4-P0 gated strings must be absent from every release-bundle file too. The mock-Graph read-back seam
+# (mockGraph) and the e2e read-back trigger (e2eVerifyRun) are e2e-only; the READ-ONLY orchestrator they delegate to
+# (verification/verifyGovernedSend) is production source and carries NO sentinel/latch/env — it is deliberately NOT in
+# this negative list (it ships when a production caller, e.g. the S22 reconciler, imports it).
+GUARD=$(grep -rl "RECIPIENT_NOT_ALLOWLISTED\|first-real-send.latch\|neuropause033@gmail.com\|firstRealSendGuard\|NEUROPAUSE_S16_VERIFY_v1\|NEUROPAUSE_MOCK_GRAPH_v1\|NEUROPAUSE_E2E_VERIFY_v1" out/main/ 2>/dev/null | wc -l | tr -d ' ')
 
 echo "  sentinel files in out/main    : $SENT_FILES   (want 0)"
 echo "  e2eSeed/guard chunk present   : $CHUNK   (want 0)"

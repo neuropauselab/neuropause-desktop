@@ -14,7 +14,7 @@ import { createLogger } from '../logger';
 import { connectorStore } from '../connectors/connectorStore';
 import { workspaceStore } from '../enterprise/workspace/workspaceInstance';
 import { makeM365GraphReader } from '../verification/m365ReadBack';
-import { verifyEffect, fingerprint, type VerificationTarget } from '../verification/verifyEffect';
+import { verifyGovernedSend } from '../verification/verifyGovernedSend';
 import { actionRecord } from '../connectors/actionRecord';
 
 export const S16_VERIFY_SENTINEL = 'NEUROPAUSE_S16_VERIFY_v1';
@@ -44,18 +44,17 @@ export async function runS16Verification(): Promise<void> {
   const sentMs = Date.parse(latch.at);
   const subject = process.env.NEUROPAUSE_VERIFY_SUBJECT ?? 'NeuroPause S15 first real send, 18 Aug 2026';
 
-  const target: VerificationTarget = {
-    internetMessageId: null, // the 202 carried none — corroborate on recipient + subject + timestamp
-    recipient: latch.to[0],
-    subjectFingerprint: fingerprint(subject),
-    bodyFingerprint: '',
-    sentAtWindow: { fromMs: sentMs - WINDOW_MS, toMs: sentMs + WINDOW_MS },
-  };
-
+  // The latch coupling lives ONLY here, in this compile-gated caller: it turns the spent latch + operator subject into
+  // a plain send ref, then delegates to the DE-GATED, READ-ONLY orchestrator (verifyGovernedSend), which has no latch,
+  // env, or identity of its own. The 202 carried no id — corroborate on recipient + subject + timestamp.
   const reader = makeM365GraphReader(workspaceId, 'microsoft-entra', account.id);
   const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
   try {
-    const result = await verifyEffect(target, { ...reader, now: () => Date.now(), sleep });
+    const result = await verifyGovernedSend(
+      { recipient: latch.to[0], subject, body: '', sentAtMs: sentMs, windowMs: WINDOW_MS },
+      reader,
+      { now: () => Date.now(), sleep },
+    );
     log.warn(
       `[${S16_VERIFY_SENTINEL}] TERMINAL=${result.state} internetMessageId=${result.matchedMessageId ?? 'n/a'} ` +
         `bounce=${result.bounceReason ?? 'none'} attempts=${result.attempts} — ${result.detail}`,

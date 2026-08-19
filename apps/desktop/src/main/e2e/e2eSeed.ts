@@ -27,21 +27,52 @@ import { authService } from '../auth/authService';
 import { workspaceStore } from '../enterprise/workspace/workspaceInstance';
 import { connectorStore } from '../connectors/connectorStore';
 import { connectorVault } from '../connectors/connectorVault';
+import {
+  createMockGraphState,
+  mockGraphResponse,
+  resolveVerifyOutcome,
+  type MockGraphState,
+} from './mockGraph';
 
 export const E2E_SEED_SENTINEL = 'NEUROPAUSE_E2E_SEED_v1'; // grep target to prove the module is/ isn't in a bundle
 const log = createLogger('e2e-seed');
 const MOCK_ACCOUNT_ID = 'e2e-entra-acct';
 const HOUR_MS = 3_600_000;
 
-/** Redirect ONLY Microsoft Graph sendMail to an in-process mock (202 Accepted, as the real Graph returns). */
+// The mock's captured-send state, shared with the compile-gated e2e verify runner so it can drive the READ-ONLY
+// read-back over the same in-process mock (send → ACK → read-back → terminal, all in-process, zero real contact).
+const mockGraphState: MockGraphState = createMockGraphState();
+export function getMockGraphState(): MockGraphState {
+  return mockGraphState;
+}
+
+/**
+ * Redirect Microsoft Graph to an in-process mock: the send (202) AND the READ-BACK Sent Items / Inbox GETs, so the
+ * REAL verification oracle reaches a real terminal in the e2e loop. Which terminal is chosen by NEUROPAUSE_E2E_VERIFY
+ * (success | bounce | hold). All shaping lives in the pure, unit-tested `mockGraph` module; this only bridges `fetch`.
+ */
 function installGraphMock(): void {
+  const outcome = resolveVerifyOutcome(process.env);
   const realFetch = globalThis.fetch.bind(globalThis);
   globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
-    if (/graph\.microsoft\.com/.test(url) && /sendMail/i.test(url)) {
-      log.info(`[${E2E_SEED_SENTINEL}] mock Graph intercepted: ${url}`);
-      // Graph /me/sendMail returns 202 Accepted with no body. Return a parseable empty object to be safe.
-      return new Response('{}', { status: 202, headers: { 'content-type': 'application/json', 'request-id': 'e2e-mock' } });
+    const bodyText = typeof init?.body === 'string' ? init.body : null;
+    const mock = mockGraphResponse(url, bodyText, mockGraphState, outcome, Date.now());
+    if (mock) {
+      log.info(`[${E2E_SEED_SENTINEL}] mock Graph intercepted: ${url} → HTTP ${mock.status}`);
+      // Once a governed send is captured, and only when the harness asked for the read-back leg, fire the READ-ONLY
+      // read-back over the REAL reader (its fetch loops back through this mock) so the circle closes in-process.
+      if (/sendMail/i.test(url) && process.env.NEUROPAUSE_E2E_VERIFY) {
+        setImmediate(() => {
+          void import('./e2eVerifyRun')
+            .then((m) => m.runE2eVerification())
+            .catch((err) => log.error(`[${E2E_SEED_SENTINEL}] read-back trigger failed`, err));
+        });
+      }
+      return new Response(mock.body, {
+        status: mock.status,
+        headers: { 'content-type': 'application/json', 'request-id': 'e2e-mock' },
+      });
     }
     return realFetch(input, init);
   }) as typeof fetch;
