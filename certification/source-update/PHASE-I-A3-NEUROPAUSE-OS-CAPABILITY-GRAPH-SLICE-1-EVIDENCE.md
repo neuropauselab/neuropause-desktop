@@ -1,14 +1,43 @@
 # OS-track L4 · Capability Graph — SLICE 1 (the OBSERVABLE OBJECT) · EVIDENCE
 
+> Preamble (standing): The intelligence proposes. The governance decides. The execution layer acts. The independent
+> verifier proves. The Action Record remembers.
+
 **Status: OBSERVABLE OBJECT LANDED — TEST-VERIFIED, non-frozen, no FG gate.** L4 needs neither S23 (Cert Kit) nor S28
 (Policy DSL) — it reads the REAL substrate that exists today. FREEZE INTACT.
 
+## SUBSTRATE REPORT — what is CERTIFIED today (from the scout; recorded first, per the directive)
+The graph derives its fields from what EXISTS; it records what is missing as MISSING with a pointer to the future slice.
+It NEVER invents kit fields or policy hooks that aren't built.
+- **EXISTS (real, read by the graph):**
+  - **M365 certification facts** — `mail.send` on `microsoft-entra` is the ONE `governed-certified` mutation: a governed
+    CST path (`governedSend`, `policyVersion:'m365-send-policy-1'`), the FG-4 first-real-send guard, the S16 read-back
+    oracle (`verifyEffect`), and S34a evidence (`actionRecord.observe`). Assurance predicate in code:
+    `mutationAssuranceFor(connectorId) === 'governed-certified'` (`liveCapabilitySources.ts`), the `CapabilityAssurance`
+    type (`capabilityDiscoveryService.ts`). Other write actions (calendar/drive/… cohorts) are `governance-not-proven`
+    and deliberately NOT AI-selectable.
+  - **BRAIN-1 lanes** — `draft` (serving the deterministic `referenceDrafter`; the model path is eval-gated, D-13),
+    `reason` (`aiEngine.run`), `embed` (reserved). Real lane registry + `modelRouter`/`providerManager` (today every
+    tier resolves to Claude; draft serves no live model yet).
+  - **Policy machinery that is LIVE** — channel-level RBAC (`RUNTIME_CHANNEL_PERMISSIONS`, deny-by-default, startup
+    fails if a consequential channel is unclassified), the CST decision inside `governedSend`, the `policyVersion` tag,
+    and `approvalRequired`.
+- **MISSING (roadmap, pointed at, never invented):**
+  - **S23 Connector Certification Kit** — no 14-field record type exists; "certified" today = a 1-bit assurance tag. The
+    graph records this as a MISSING enrichment → S23 (which would upgrade the tag to a 14-field record).
+  - **S28 Policy DSL** — no typed verbs / compiled-hashed policies. The graph reads the real RBAC/CST facts and records
+    the DSL as MISSING → S28 (which would enrich policy edge labels with `ALLOW`/`REQUIRE_*`/`LIMIT_*`).
+
 ## Dependency finding (honest)
-The scout confirmed: the S23 Connector Certification Kit and the S28 Policy DSL are **roadmap only — not built**. But L4
-Slice 1 does NOT need them: the REAL certification predicate already exists — `mutationAssuranceFor(connectorId) ===
-'governed-certified'` (the M365 `mail.send` vertical: governed CST + FG-4 guard + S16 oracle + S34a evidence) — and the
-BRAIN-1 lanes are real. S23 would later enrich the 1-bit assurance to a 14-field record; S28 would enrich policy edge
-labels. L4 routes over what is genuinely certified now and reports the rest as gaps.
+L4 Slice 1 does NOT need S23 or S28: the REAL certification predicate (`governed-certified`) already gates `mail.send` as
+the one routable mutation, and the RBAC/CST facts label policy honestly. S23/S28 would ENRICH (14-field records, policy
+verbs), not unblock. L4 routes over what is genuinely certified now and reports the rest as gaps.
+
+## Proposal-only invariant (pinned like the observer invariant)
+The graph PROPOSES routes; it cannot execute or grant. Structurally, `capabilityGraph.ts` imports NO execution/governance
+value (only its own types) — there is no import path from the graph into execution, exactly as the S34a ActionRecord is
+an observer with no path back into governance. (Slice-1 is a pure model; the live wiring will keep the same invariant,
+reading registries, never calling an executor.)
 
 ## The observable object
 `capabilityGraph/capabilityGraph.ts` — `composeCapabilityGraph(sources)` → a `CapabilityGraphSnapshot` (routes + gaps):

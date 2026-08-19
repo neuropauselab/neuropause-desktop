@@ -1,6 +1,12 @@
-# OS-track L1 · Workspace Foundation — SLICE 1 (the OBSERVABLE OBJECT) · EVIDENCE
+# OS-track L1 · Workspace Foundation — SLICE 1 (the domain aggregate) · EVIDENCE
 
-**Status: OBSERVABLE OBJECT LANDED — TEST-VERIFIED, non-frozen, no FG gate.** The first approved OS-track slice. FREEZE INTACT.
+**Status: L1's FIRST CLOSED SLICE — TEST-VERIFIED, non-frozen, no FG gate.** The domain aggregate (observable object +
+live wiring against real stores + local-mode honesty) is complete and closed. Its renderer SURFACE hit a frozen response
+type and is presented as **FG-8** (a distinct Slice-2), not worked around. This counts as L1's first closed slice for the
+L6 entry condition. FREEZE INTACT.
+
+> Preamble (standing): The intelligence proposes. The governance decides. The execution layer acts. The independent
+> verifier proves. The Action Record remembers.
 
 ## The observable object
 `enterprise/workspaceFoundation/domainAggregate.ts` — `composeWorkspaceDomain(specs, sources)` → a `WorkspaceDomainSnapshot`:
@@ -39,9 +45,19 @@ frozen touch, D-6/D-7/D-13). Proofs: `domainAggregate.test.ts` (5) + full main +
 - FAILURE/UNKNOWN: no scope → whole snapshot UNKNOWN even with a populated real store — never "all data".
 - CAPABILITY CONTRACT: composing the snapshot writes NOTHING to the real store (`count()` unchanged).
 
-## Remaining (completing increment, non-frozen surface)
-`workspaceDomainSnapshot({ moduleStore: (id) => enterprise.modules.get(id)?.store ?? null, scope: activeTenantScope })`
-is READY to wire in production. Surfacing it to the renderer rides an EXISTING `enterprise:*` handler (non-frozen; the
-registry is `this` in `buildModuleHandlers`) — the only thing that would force an FG gate is a brand-new IPC channel or a
-frozen response-type change, which is avoidable by extending a non-frozen handler payload. That production call-site +
-surface is the next increment; the observable object is now live-wireable and PROVEN against real stores.
+## LOCAL-MODE HONESTY (pinned)
+`domainSources.test.ts` → the aggregate under a local principal's tenant scope: the local tenant's records COUNT
+(`state: 'present'`), and a domain with no local store is `state: 'unavailable'` with `count: 0` — **the state says
+unavailable, never a fabricated "0 customers"**, never an error. No cloud/backend needed. This is the same honest
+absence local mode shows everywhere (S17), carried into the domain rollup.
+
+## The renderer SURFACE — FG-8 (frozen, presented; NOT worked around)
+Surfacing the snapshot to the renderer requires carrying it on an `enterprise:*` response — and EVERY such response type
+is in FROZEN `packages/shared` (`enterprise:context` → `EnterpriseContext`, `enterprise:dashboard` → `ExecutiveSnapshot`,
+`enterprise:modules` → a bare `EnterpriseModuleSummary[]`). There is no non-frozen payload to extend. Per the directive
+(STOP + present the gate, never work around), this is **FG-8** (`FG-8-WORKSPACE-DOMAIN-SURFACE-GATE.md`): one additive
+optional `ExecutiveSnapshot.workspaceDomain` field, with the non-frozen `computeExecutiveSnapshot` join + renderer +
+truthful-surface test landing on the token. The production call-site
+(`workspaceDomainSnapshot({ moduleStore: (id) => enterprise.modules.get(id)?.store ?? null, scope: activeTenantScope })`)
+lands with FG-8. Until the token, the aggregate is closed + queryable in-process; the dashboard does not yet display it —
+honestly flagged, not silently claimed.

@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   composeCapabilityGraph,
   type CapabilityGraphSources,
@@ -61,5 +63,15 @@ describe('Capability Graph · Slice 1 · the observable object', () => {
     expect(g.scopeResolved).toBe(false);
     expect(g.routes).toEqual([]);
     expect(g.gaps).toEqual([]);
+  });
+
+  it('PROPOSAL-ONLY INVARIANT — no import path from the graph into execution/governance', () => {
+    const src = readFileSync(join(__dirname, 'capabilityGraph.ts'), 'utf8');
+    const valueImports = src.match(/^import\s+(?!type\b)[^;]*from\s+'[^']*'/gm) ?? [];
+    for (const line of valueImports) {
+      expect(line).not.toMatch(/executor|governedSend|governedAction|cst\/|connectors\/index|CstKernel/);
+    }
+    // Slice-1 is a pure model: it imports nothing at runtime at all.
+    expect(valueImports).toEqual([]);
   });
 });

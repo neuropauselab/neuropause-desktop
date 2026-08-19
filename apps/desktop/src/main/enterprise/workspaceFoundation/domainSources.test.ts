@@ -59,6 +59,23 @@ describe('WF Slice 1 · LIVE WIRING — re-proven against REAL EnterpriseRecordS
     expect(snap.slices).toEqual([]); // never "all data"
   });
 
+  it('LOCAL-MODE HONESTY — under a local principal the snapshot scopes to the local tenant; a module with no local store is UNAVAILABLE, never an error or fake 0', () => {
+    // A device-local principal resolves to a real tenant scope (FG-6). The aggregate
+    // is scope-agnostic: it reads the local tenant's scoped counts and reports missing
+    // modules as UNAVAILABLE — the same honest absence local mode shows everywhere.
+    const localScope: TenantScope = { ...TEST_TENANT_SCOPE, tenantId: 'org-default' } as TenantScope;
+    const people = store('hr-employees', 'employee', () => localScope);
+    people.create({ title: 'LocalUser', fields: {} });
+    const snap = workspaceDomainSnapshot({ moduleStore: (id) => (id === 'hr-employees' ? people : null), scope: () => localScope, now: () => 'x' });
+    expect(snap.scopeResolved).toBe(true);
+    expect(snap.tenantId).toBe('org-default');
+    const by = Object.fromEntries(snap.slices.map((s) => [s.moduleId, s]));
+    expect(by['hr-employees']).toMatchObject({ state: 'present', count: 1 }); // the local tenant's real record
+    // No cloud/backend needed; a domain with no local store → UNAVAILABLE, not an error, not 0-as-present.
+    expect(by['crm-customers']).toMatchObject({ state: 'unavailable' });
+    expect(by['crm-customers'].count).toBe(0); // count is 0 but the STATE says unavailable — not a fake "0 customers"
+  });
+
   it('CAPABILITY CONTRACT — READ-only: composing the snapshot writes nothing to the real store', () => {
     const people = store('hr-employees', 'employee', () => TEST_TENANT_SCOPE);
     people.create({ title: 'Alice', fields: {} });
