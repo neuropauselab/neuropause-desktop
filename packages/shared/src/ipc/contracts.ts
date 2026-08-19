@@ -502,6 +502,22 @@ export type CapabilityProposeM365ActionResponse =
       ok: true;
       proposal: { to: string; subject: string; body: string };
       provenance: { capabilityId: string; accountId: string };
+      /**
+       * FG-9 (S5.2) — ADDITIVE OPTIONAL. When a certified Live-Brain (L6) proposal drives this response, the
+       * main handler projects its EIGHT review fields here VERBATIM for the ASK/confirm surface (BrainReviewCard).
+       * DISPLAY-ONLY DATA: no callable, no `confirmed`, no authority material; the renderer renders verbatim and
+       * never re-derives. Absent ⇒ the propose/confirm panel behaves exactly as today (additive-only fallback).
+       */
+      brainReview?: {
+        purpose: string;
+        target: string;
+        action: string;
+        risk: string;
+        evidenceRefs: string[];
+        expectedEffect: string;
+        verificationPlan: string;
+        expiry: string;
+      };
     }
   | {
       ok: false;
