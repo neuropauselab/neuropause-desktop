@@ -79,6 +79,43 @@ commands · authority class · gate conditions · status.**
   reported (freeze-script excludes +2 living docs, INTACT). Full main 858/8992/3 (no product source touched).
   Evidence: `…NP-005-DEV-LOOP-A0-A3-EVIDENCE.md` (+ consolidation addendum).
 
+## NP-007 · Fresh-Profile App-Principal Bootstrap Reconciliation (bounded divergence repair)
+- **Objective:** repair the S17×S15-seed ordering collision that BLOCKED the ceremony at step 1 on the fresh S54
+  profile; close the fresh-profile coverage gap in the real-Electron harnesses.
+- **Discovered failure (19 Aug 2026, ceremony step 1):** on a fresh isolated profile in app-principal mode, S17 local
+  mode enters first (`16:32:38.987 Entering device-local mode`), the enterprise bootstrap claims the org owner row for
+  the LOCAL principal (`16:32:39.020 Owner bound to the active principal { local: true }`), and the e2e seed swaps the
+  session to the app principal only afterwards (`16:32:39.448 installing seeds — mode=app-principal`) → permanent
+  `not_a_member`, fail-closed on every org-scoped channel (Connector Center unloadable; routing-choice save refused).
+- **Observed W-7 predicate (verbatim):** `reason: 'not_a_member', sessionEmailShape: '3@example.com',
+  activeWorkspaceId: 'workspace-default', workspaceFound: true, workspaceOrgId: 'org-default',
+  organizationFound: true, organizationOperable: true, memberCount: 28, humanMembersWithEmail: 1,
+  sessionMatchedAMember: false, ownerExists: true, ownerClaimed: true, ownerOrgMatches: true,
+  ownerEmailShape: '42@device.invalid', sessionMatchesOwner: false, memberStatus: null, memberInWorkspace: null`
+- **Safety result: FAIL-CLOSED.** No external effect · no OAuth exercised in-app (`accounts: 0`) · FG-4 latch not
+  written · no expiry started. The failed profile is EVIDENCE — ARCHIVED, never deleted; logs preserved at
+  `~/Desktop/S54-divergence-logs-2026-08-19`.
+- **IN SCOPE (pre-flight classified BEFORE edit):** `main/index.ts` (PROCEED) · `e2e/e2eSeed.ts` (GATE — granted by
+  this directive) · the fresh-profile Electron harness + existing harnesses (PROCEED) · associated tests · evidence.
+  Effect-freedom declared: all changes are compile-stripped e2e seams + harnesses; zero external effects.
+- **OUT OF SCOPE:** the owner-row policy and O-13 · frozen contracts · the authority model · OAuth behavior ·
+  production connectors · any real external effect · ceremony authorization. Any need to cross these → STOP → FG gate.
+- **Verification ladder (binding):** V1 reproduce-first on a fresh temp profile with the CURRENT build (the ordering
+  correction is a HYPOTHESIS until V1 confirms the mechanism) → V2 smallest ordering correction, e2e-flag-gated,
+  strip stays green and meaningful → V3 S17 non-regression pinned both ways → V4 the exact ceremony scenario green in
+  the fresh-profile harness → V5 full ladder to the FULL main suite + strip PASS.
+- **Authority class:** GATE_REQUIRED — granted (operator, 19 Aug 2026). **Status: COMMITTED — V1–V5 ALL GREEN.**
+  V1 reproduced-first (broken 5/5 on the CURRENT build, fresh temp profile) · V2 smallest ordering correction
+  (`installE2eSeedPrincipal` between restore and init; late seams unchanged) · V3 plain-profile S17 pins identical
+  pre/post (4/4) · V4 ceremony scenario fixed 5/5 (owner=app principal · zero not_a_member · connectors:list loads 22 ·
+  propose typed) + brainPropose & mailReadBack re-run GREEN on fresh temp profiles (coverage gap closed) · V5 full main
+  858/8992/3 · strip PASS · honesty scan 0. Findings: coverage gap CLOSED · title-stamp red herring → runbook step-1
+  pre-flight corrected (seed log line is authoritative) · DISCOVERED FOLLOW-UP: strip-grep belt-and-braces (out-of-scope
+  sensitive file; proposal only). Evidence: `…NP-007-FRESH-PROFILE-BOOTSTRAP-EVIDENCE.md` (ExperienceRecord-shaped,
+  document only).
+- **NP-000 is SUSPENDED at step 1** — safety HELD, authority never exercised; restarts on the operator's say-so after
+  §4 (archive + fresh profile). The bound go stands; the checklist is unchanged; Azure 1a–1c carry over.
+
 ## NP-006 · Post-ceremony §5 amendment — experience-arc-vs-v1.0 sequencing
 - **Objective:** decide the ONE explicitly-open question (full experience arc before v1.0, or v1.0 earlier on the
   proven loop) by §5 amendment against the substrate as it then exists.

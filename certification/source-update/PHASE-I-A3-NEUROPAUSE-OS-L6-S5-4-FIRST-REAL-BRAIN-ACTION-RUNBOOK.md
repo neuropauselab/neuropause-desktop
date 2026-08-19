@@ -49,6 +49,10 @@ OPERATOR steps and never triggers a MACHINE step that makes real contact.
    HARD-FAILS on the default profile). Confirm the FG-4 allowlist = the operator's OWN address
    (`neuropause033@gmail.com`), single-send latch armed, `NEUROPAUSE_FIRST_REAL_SEND=1`, no retry. Confirm
    `verify-freeze.sh` INTACT + suites green (read-only checks; Claude may direct, never supply credentials/consent).
+   **The AUTHORITATIVE armed-rail check (NP-007 correction):** the terminal/log line
+   `[NEUROPAUSE_E2E_SEED_v1] installing seed principal — mode=app-principal` — NOT the window title. The `-e2e` title
+   stamp is set once at startup and the renderer may overwrite `document.title` afterwards; its absence proves nothing
+   (the 19 Aug red herring). If the seed line is absent, STOP — the rail is not armed.
 2. **Brain proposes — MACHINE.** The app composes the real tenant's `LiveBrainState`, evaluates the purpose,
    `buildProposal` emits a certified `Proposal` (recipient = the operator's own address, from the operator's mandate —
    S13 literalism, never from evidence). `admitForExecution` → `ADMIT_FOR_ASK`. Nothing external is contacted.

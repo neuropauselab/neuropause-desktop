@@ -18,6 +18,7 @@
  */
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const { _electron: electron } = require('playwright-core');
 
 const APP_DIR = path.resolve(__dirname, '..');
@@ -47,8 +48,11 @@ async function waitForLog(logs, re, timeoutMs) {
 
 (async () => {
   const logs = [];
+  // NP-007: a FRESH temp profile — the proof must cover the fresh-profile bootstrap the ceremony uses, not the
+  // default dev profile's pre-existing org state (the 19 Aug coverage gap).
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'np-brainpropose-'));
   const app = await electron.launch({
-    args: [MAIN], cwd: APP_DIR,
+    args: [MAIN, `--user-data-dir=${profile}`], cwd: APP_DIR,
     env: { ...process.env, NODE_ENV: 'production', NP_E2E_BUILD: '1', NEUROPAUSE_E2E: '1', NEUROPAUSE_E2E_VERIFY: 'success' },
     timeout: 45_000,
   });
@@ -104,6 +108,7 @@ async function waitForLog(logs, re, timeoutMs) {
   const proc = app.process();
   await Promise.race([app.close().catch(() => {}), sleep(4000)]);
   try { proc.kill('SIGKILL'); } catch { /* gone */ }
+  try { fs.rmSync(profile, { recursive: true, force: true }); } catch { /* temp cleanup best-effort */ }
 
   console.log(`\n${failures.length === 0 ? 'PASS' : 'FAIL'} — ${failures.length} assertion(s) failed. Artifacts: ${ART}`);
   clearTimeout(hardTimeout);

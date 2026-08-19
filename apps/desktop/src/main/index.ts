@@ -146,6 +146,28 @@ async function bootstrap(): Promise<void> {
   // Attempt to silently restore a prior session from the keychain.
   await authService.restoreSession();
 
+  // NP-007 (compile-stripped like the seed itself): the e2e principal must be established BETWEEN restoreSession and
+  // the runtime/enterprise bootstrap — on a fresh profile, S17 local mode has just entered, and if the bootstrap runs
+  // first it binds the org owner row to the LOCAL principal, leaving the later-seeded session permanently
+  // not_a_member (the 19 Aug 2026 ceremony divergence; reproduced in e2e/freshProfileBootstrap.e2e.cjs). Mode
+  // resolution HARD-FAILS here, before any init, preserving the original coupling semantics.
+  let e2eMode: 'full-e2e' | 'app-principal' | 'off' = 'off';
+  if (__NP_E2E__) {
+    try {
+      const { resolveE2eMode } = await import('./e2e/e2eMode');
+      e2eMode = resolveE2eMode(process.env); // HARD-FAILS (throws) on an invalid flag coupling — see e2eMode.ts
+      if (e2eMode !== 'off') {
+        const { installE2eSeedPrincipal } = await import('./e2e/e2eSeed');
+        await installE2eSeedPrincipal(e2eMode);
+      }
+    } catch (err) {
+      // HARD-FAIL at startup: an invalid mode coupling (or a seed failure) must NOT run.
+      log.error('E2E mode/seed failure — exiting', err);
+      app.exit(1);
+      return;
+    }
+  }
+
   // Bring up the trusted execution layer: secure catalog IPC, the Local
   // Application Registry, the NeuroPause Package Service, the runtime, and the
   // background services. Failures here must not take down the window.
@@ -172,21 +194,17 @@ async function bootstrap(): Promise<void> {
     broadcast(IpcChannel.RuntimeStateChanged, markRuntimeFailed(safeInitFailureMessage(err)));
   }
 
-  // Wave-2 Slice-14 — E2E seed + mock-Graph seam. `__NP_E2E__` folds to `false` in every release build, so this
-  // branch and its dynamic import are dead-code-eliminated (never shipped). NEUROPAUSE_E2E=1 is a second runtime
-  // guard so an e2e-capable build does not seed unless the Playwright harness explicitly asks. See e2e/e2eSeed.ts.
-  if (__NP_E2E__) {
+  // Wave-2 Slice-14 — E2E LATE seams (mock Graph + fake governed account; they need the initialized runtime).
+  // `__NP_E2E__` folds to `false` in every release build, so this branch and its dynamic import are dead-code-
+  // eliminated (never shipped). The mode was resolved (and the PRINCIPAL seeded) BEFORE the bootstrap — NP-007.
+  if (__NP_E2E__ && e2eMode !== 'off') {
     try {
-      const { resolveE2eMode } = await import('./e2e/e2eMode');
-      const mode = resolveE2eMode(process.env); // HARD-FAILS (throws) on an invalid flag coupling — see e2eMode.ts
-      if (mode !== 'off') {
-        const { installE2eSeeds } = await import('./e2e/e2eSeed');
-        await installE2eSeeds(mode);
-        // Anti-masquerade stamp: window title carries `-e2e` + the mode so a seeded build is visibly not a release.
-        mainWindow?.setTitle(`NeuroPause -e2e (${mode} — not for release)`);
-      }
+      const { installE2eSeeds } = await import('./e2e/e2eSeed');
+      await installE2eSeeds(e2eMode);
+      // Anti-masquerade stamp: window title carries `-e2e` + the mode so a seeded build is visibly not a release.
+      mainWindow?.setTitle(`NeuroPause -e2e (${e2eMode} — not for release)`);
     } catch (err) {
-      // HARD-FAIL at startup: an invalid mode coupling (or a seed failure) must NOT run.
+      // HARD-FAIL at startup: a seed failure must NOT run.
       log.error('E2E mode/seed failure — exiting', err);
       app.exit(1);
     }

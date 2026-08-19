@@ -130,24 +130,40 @@ async function seedConnectedAccount(): Promise<void> {
 }
 
 /**
- * Install the seams for the resolved mode. Called once, post-runtime-init, only under the compile gate.
- *  - full-e2e (Slice 14, mock): app principal + fake governed account + MOCK Graph.
- *  - app-principal (Slice 15, real send): ONLY the app principal is seeded — NO fetch mock, NO fake account. The REAL
- *    Microsoft OAuth connect creates the account and the REAL Graph is contacted; the first-real-send guard restricts it.
+ * NP-007 · EARLY seed — the app principal, installed BETWEEN `restoreSession` and the runtime/enterprise bootstrap.
+ *
+ * WHY EARLY: on a fresh profile, S17's `restoreSession` enters device-local mode first; if the seed then swaps the
+ * session AFTER the enterprise bootstrap has bound the org owner row to that LOCAL principal, the seeded session is
+ * permanently `not_a_member` (owner email is immutable — O-13) and every org-scoped channel fail-closes. That is the
+ * 19 Aug 2026 ceremony divergence, reproduced in `e2e/freshProfileBootstrap.e2e.cjs` (V1). Establishing the principal
+ * here — after restore (so local entry cannot stomp it), before init (so the owner binds to the APP principal) —
+ * is the smallest ordering correction. Same compile gate, same runtime flags, same sentinel; release-absent.
  */
-export async function installE2eSeeds(mode: E2eMode): Promise<void> {
+export async function installE2eSeedPrincipal(mode: E2eMode): Promise<void> {
   if (mode === 'off') return;
   // Slice-15 isolation safety (fail closed): app-principal (real-send) mode must run on a DEDICATED, isolated userData
   // (`--user-data-dir=…`), never the real default profile — else the seeded principal collides with the real org
-  // (not_a_member) and the real profile is touched. Refuse rather than send there.
+  // (not_a_member) and the real profile is touched. Refuse rather than send there. Checked EARLY, before ANY seeding.
   if (mode === 'app-principal' && looksLikeDefaultProfile(app.getPath('userData'))) {
     log.error(`[${E2E_SEED_SENTINEL}] app-principal (real-send) mode on the DEFAULT profile (${app.getPath('userData')}) — REFUSING. Relaunch with an isolated --user-data-dir=<dedicated S15 dir>.`);
     app.exit(1);
     return;
   }
-  log.warn(`[${E2E_SEED_SENTINEL}] installing seeds — mode=${mode} — THIS MUST NEVER RUN IN A RELEASE BUILD`);
+  log.warn(`[${E2E_SEED_SENTINEL}] installing seed principal — mode=${mode} — THIS MUST NEVER RUN IN A RELEASE BUILD`);
   // Both modes seed the app principal (the dead NeuroPause backend login; local-first is S17).
   seedAuthenticatedPrincipal();
+}
+
+/**
+ * Install the LATE seams for the resolved mode. Called once, post-runtime-init, only under the compile gate.
+ *  - full-e2e (Slice 14, mock): fake governed account + MOCK Graph (both need the initialized workspace/runtime).
+ *  - app-principal (Slice 15, real send): nothing further — NO fetch mock, NO fake account. The REAL Microsoft OAuth
+ *    connect creates the account and the REAL Graph is contacted; the first-real-send guard restricts it.
+ * The app PRINCIPAL is NOT seeded here — that happens in `installE2eSeedPrincipal`, BEFORE the bootstrap (NP-007).
+ */
+export async function installE2eSeeds(mode: E2eMode): Promise<void> {
+  if (mode === 'off') return;
+  log.warn(`[${E2E_SEED_SENTINEL}] installing seeds — mode=${mode} — THIS MUST NEVER RUN IN A RELEASE BUILD`);
   if (mode === 'full-e2e') {
     installGraphMock();
     await seedConnectedAccount();

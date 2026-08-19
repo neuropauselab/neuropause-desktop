@@ -21,6 +21,7 @@
  */
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const { _electron: electron } = require('playwright-core');
 
 const APP_DIR = path.resolve(__dirname, '..');
@@ -55,8 +56,10 @@ async function waitForLog(logs, re, timeoutMs) {
 async function runCase({ knob, terminal }) {
   console.log(`\nREAD-BACK knob=${knob} — expect TERMINAL=${terminal}:`);
   const logs = [];
+  // NP-007: a FRESH temp profile per launch — the proof covers the fresh-profile bootstrap, not dev-profile state.
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), `np-readback-${knob}-`));
   const app = await electron.launch({
-    args: [MAIN], cwd: APP_DIR,
+    args: [MAIN, `--user-data-dir=${profile}`], cwd: APP_DIR,
     env: { ...process.env, NODE_ENV: 'production', NP_E2E_BUILD: '1', NEUROPAUSE_E2E: '1', NEUROPAUSE_E2E_VERIFY: knob },
     timeout: 45_000,
   });
@@ -87,6 +90,7 @@ async function runCase({ knob, terminal }) {
   const proc = app.process();
   await Promise.race([app.close().catch(() => {}), sleep(4000)]);
   try { proc.kill('SIGKILL'); } catch { /* gone */ }
+  try { fs.rmSync(profile, { recursive: true, force: true }); } catch { /* temp cleanup best-effort */ }
 }
 
 (async () => {
