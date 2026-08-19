@@ -139,7 +139,9 @@ commands · authority class · gate conditions · status.**
   FREEZE INTACT `BASELINE-1ac1c6b0bbbb` (zero frozen touches; two PRE-EXISTING frozen-surface lint errors recorded,
   untouched). Ceremony build preserved: LAST build is NP_E2E_BUILD=1, seed chunk + sentinel verified. Commits
   `6ec7a3d` · `e46e661` · `e24666e` · docs commit. Open: F-N8-4/7, F-N8-2 residual (opscenter/release-ops tiles),
-  N-1/N-3, follow-up proposals — all in LAUNCH-READINESS §Open items.
+  N-1/N-3, follow-up proposals — all in LAUNCH-READINESS §Open items. **Operator-ACCEPTED as closed (20 Aug 2026
+  morning). Ruling: the ActionRecord-answerability follow-up is a QUEUED PROPOSAL behind the S34a fence — DO NOT
+  BUILD; the operator rules on it after the ceremony.**
 
 ## NP-006 · Post-ceremony §5 amendment — experience-arc-vs-v1.0 sequencing
 - **Objective:** decide the ONE explicitly-open question (full experience arc before v1.0, or v1.0 earlier on the
