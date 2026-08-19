@@ -54,3 +54,12 @@ ef9c9f0  freeze re-record — INTACT (BASELINE-9f4d36abed4e)
 
 ## Honest status
 Everything is **TEST-VERIFIED EXCEPT the S15/S16 chain, which is LIVE** — one real governed M365 send (provider-side observed) + its read-back VERIFIED_SUCCESS with captured internetMessageId. Destination receipt remains NOT GOVERNED; no other external effect exists. Nothing executes without human confirmation. Backend down/empty; builds unsigned; NOT CERTIFIED (13C). Mirror of CLAUDE §1 — that section is authoritative.
+
+## NP-008 — App liveliness census & launch readiness (19–20 Aug 2026 night)
+Operator-directed, ceremony surfaces RESERVED (r2 profile, app-principal env, mail-send path, runbook untouched);
+NP-000 stays SUSPENDED. Census: 47/47 surfaces walked on a fresh throwaway local-first profile — BROKEN 0 · LIVE 29 ·
+RENDERS-ONLY 14 (all now Preview-labeled) · GATED 2. Truth-order fixes F-N8-1/2/3/5/6 landed and census-verified live
+(intent-home labeled; empty-graph notice; Release Ops refusals NAMED — the F-5 class; workforce copy; local-identity
+copy). Artifacts: certification/APP-LIVELINESS-CENSUS-2026-08-19.md · certification/LAUNCH-READINESS.md · census
+JSONs (pre/post). Full main 859/8996/3 · ui 41/278 · strip PASS · INTACT BASELINE-1ac1c6b0bbbb. Ceremony build
+preserved (last build NP_E2E_BUILD=1; seed chunk verified). Mirror of CLAUDE §1 — that section is authoritative.

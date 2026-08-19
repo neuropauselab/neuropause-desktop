@@ -129,7 +129,17 @@ commands · authority class · gate conditions · status.**
   `detectOllama()` probe). Findings F-N8-1…7 recorded in `certification/APP-LIVELINESS-CENSUS-2026-08-19.md`;
   evidence JSON committed as `certification/np-008-census-report.json`.
 - **Authority class:** GREEN with GATE stops for anything frozen; zero external effects.
-- **Status: IN PROGRESS** — census committed; §2 truth-order fixes underway.
+- **Status: COMMITTED — all three sections done, class changes census-verified live.** §2 fixes: F-N8-1 (intent-home
+  Preview-labeled) · F-N8-2 (empty-graph notice on Intelligence, pinned) · F-N8-3 (Release Ops refusals NAMED via
+  `describeLoadFailures` — the F-5 class, model + ui pins; live post-walk shows "1 of the operations panels could not
+  load: Backups") · F-N8-5 (workforce count-drift copy) · F-N8-6 (device-local identity truth in Settings). §2.3
+  verified ALREADY WIRED with pins (m365WriteStatesDisplay · workspaceDomainRollup · FG-9 brainReview); ActionRecord
+  read-model recorded as DISCOVERED FOLLOW-UP (S34a fence stands). §3 `certification/LAUNCH-READINESS.md`.
+  Verification: post-fix census 47/47 · full main **859/8996/3** · ui **41/278** · typecheck clean · strip PASS ·
+  FREEZE INTACT `BASELINE-1ac1c6b0bbbb` (zero frozen touches; two PRE-EXISTING frozen-surface lint errors recorded,
+  untouched). Ceremony build preserved: LAST build is NP_E2E_BUILD=1, seed chunk + sentinel verified. Commits
+  `6ec7a3d` · `e46e661` · `e24666e` · docs commit. Open: F-N8-4/7, F-N8-2 residual (opscenter/release-ops tiles),
+  N-1/N-3, follow-up proposals — all in LAUNCH-READINESS §Open items.
 
 ## NP-006 · Post-ceremony §5 amendment — experience-arc-vs-v1.0 sequencing
 - **Objective:** decide the ONE explicitly-open question (full experience arc before v1.0, or v1.0 earlier on the
