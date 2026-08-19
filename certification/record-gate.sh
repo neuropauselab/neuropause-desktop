@@ -150,7 +150,7 @@ fi
 # it. Writing baseline.json dirties the worktree and committing it moves HEAD,
 # so without this exclusion the workflow has no fixed point and cannot run at
 # all. Found by running it, not by reading it.
-SRC_DIRTY_SPEC=(-- . ':(exclude)certification' ':(exclude)CLAUDE.md' ':(exclude)NP_STATE.md' ':(exclude)BLOCKERS.md' ':(exclude)DECISIONS.md')
+SRC_DIRTY_SPEC=(-- . ':(exclude)certification' ':(exclude)CLAUDE.md' ':(exclude)NP_STATE.md' ':(exclude)BLOCKERS.md' ':(exclude)DECISIONS.md' ':(exclude)ROADMAP-HORIZON.md')
 NOW_DIRTY="$(git status --porcelain=v1 "${SRC_DIRTY_SPEC[@]}")"
 if [ -n "$NOW_DIRTY" ]; then
   echo "REFUSING — the SOURCE tree is dirty NOW (certification/ excluded):"
