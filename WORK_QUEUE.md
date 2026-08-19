@@ -192,8 +192,13 @@ them). The master strategic order is recorded below under provisional M-prefixed
   are DONE and feed the master report; its read-side spine work maps into Phases B/E). Flagged for confirmation.
 
 ## §58 FIRST ACTION — READ-ONLY RECON → MASTER READINESS REPORT
-- Status: IN PROGRESS. Composed from committed evidence (NP-008 product census · NP-010 connector + data censuses ·
-  CLAUDE §1 Live Brain arc) + a 3-auditor read-only recon workflow (live-brain stages vs the §6 checklist · website
-  + P/P/E experience classification · identity/registration substrate vs the seven-identity model). Output:
-  certification/NEUROPAUSE-OS-MASTER-READINESS-REPORT.md + machine-readable LIVE_BRAIN_READINESS /
-  PRODUCT_EXPERIENCE_READINESS / CONNECTOR_PLATFORM_READINESS JSONs. NO CODE until the report exists.
+- **Status: COMMITTED.** `certification/NEUROPAUSE-OS-MASTER-READINESS-REPORT.md` (§A–F) + the three
+  machine-readable files (`LIVE_BRAIN_READINESS.json` · `PRODUCT_EXPERIENCE_READINESS.json` ·
+  `CONNECTOR_PLATFORM_READINESS.json`). Headlines: Live Brain propose loop TEST-VERIFIED mock with pinned
+  zero-authority boundaries, **4 PARTIAL stages** (S2/S3 built-but-unwired · lane workspace feed null · S22
+  reconciler missing) and 2 recorded-only; **§45 GATE VERDICT: NOT sufficient for connector expansion (M-008+)**
+  — Phase-A closes first. Product: app census-honest; **website fails §31 on 11 claims (F-MR-1)** and never
+  advertises the certified capability. Identity: CONNECTOR/CONNECTION/CAPABILITY(M365) ids real; SYSTEM/
+  INSTALLATION/REGISTRATION fragmentary; ORACLE registry missing; no RegistrationProvider abstraction. New
+  findings F-MR-1..9 in the report. Recommended order: NP-000 ceremony → M-002a/b/c (S2+S3 wire · real workspace
+  feed · S22 reconciler) ∥ Phase-B website truth pass (touches no Brain substrate).
