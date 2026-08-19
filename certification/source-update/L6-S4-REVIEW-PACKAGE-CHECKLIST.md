@@ -7,7 +7,7 @@ Assembling as work proceeds — status updated per slice.
 | # | Required content | Status |
 |---|---|---|
 | 1 | **Uninterrupted 12-lens fleet audit** — run in a declared QUIET WINDOW or harness-isolated per **D-15** (mechanism STATED at launch); results folded in: confirmed claims → verification (positive results), falsified claims → corrected. | ⏳ PENDING — runs at the S4 gate; needs the operator's quiet window. Not started (correctly — a fleet now would abort). |
-| 2 | **S2 + S3 evidence summaries** with every pin named and green. | ⏳ PENDING — S2/S3 building report-and-continue. |
+| 2 | **S2 + S3 evidence summaries** with every pin named and green. | ✅ READY — S2 (`…SLICE-2-CONTEXT-ASSEMBLY`, 7 pins green) + S3 (`…SLICE-3-REASONING`, 8 pins green) landed, full main green, FREEZE INTACT. |
 | 3 | **Proposal schema demonstrated** on a real deterministic example over real state: OBSERVATION → DIAGNOSIS → OPTION → PROPOSED ACTION → REQUIRED AUTHORITY → EXPECTED RESULT → VERIFICATION PLAN, with the evidence-object and policy-fact trace fields POPULATED. | ⏳ PENDING — worked design example prepared at the S4 gate (design artifact, not landed proposal code). |
 | 4 | **L5 operational-bridge dependency status** — S4 consumes it; if not built, the presentation includes its PLAN rather than assuming it. | ⏳ PENDING — bridge is a Phase B slice; status + plan captured at the gate. Current: NOT BUILT. |
 | 5 | **Zero-authority proof extended to S4's shape** — proposals are DATA; no import path from the Brain into governance or execution (the §2#13 boundary, pinned for the proposal producer). | ⏳ PENDING — extended at the S4 gate; the S1/S2/S3 zero-runtime-import pins are its foundation. |
