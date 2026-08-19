@@ -1,8 +1,8 @@
 {
   "program": "13C",
-  "certification_id": "CERT-f681197",
-  "frozen_at_utc": "2026-08-19T08:05:18Z",
-  "source": { "commit": "f681197c05f4ab5a6f8d45c7be4f47bd4c38b5d2", "branch": "cert/data-import-cst-integration", "worktree_clean": true, "clean_excludes": ["certification/"] },
+  "certification_id": "CERT-84d2f6c",
+  "frozen_at_utc": "2026-08-19T09:01:56Z",
+  "source": { "commit": "84d2f6c6677e839d96e38617bf458ee1354bf3b1", "branch": "cert/data-import-cst-integration", "worktree_clean": true, "clean_excludes": ["certification/"] },
   "versions": {
     "desktop": "1.0.0-rc.20", "backend": "0.1.0", "electron": "42.8.1",
     "node_running": "20.20.2", "node_pinned": "20", "npm": "10.8.2"
