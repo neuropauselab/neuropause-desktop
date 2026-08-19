@@ -14,11 +14,24 @@ Proves, once: the WHOLE governed chain is alive end to end for a Brain-proposed 
 moves to EXTERNALLY_OBSERVED. Does NOT prove: destination delivery (send-corroboration ≠ delivery, §2#14); any second
 capability; any autonomy.
 
-## PREREQUISITES (all required before the ceremony; each its own gate)
-1. **Production wiring exists (FG-gated).** S5.4 cannot execute until the L6 chain is wired into the running app: the
-   propose handler populates `brainReview` from a certified `Proposal`; `admitForExecution` gates the ASK; the confirm →
-   CST → admission → `governedSend` path is reached; the read-back is production-wired (`s16VerifyRun` is E2E-gated today).
-   This wiring touches frozen IPC → **an FG gate (or gates) presented and honored FIRST.** It is NOT built yet.
+## ⚑ PHASE 0 — RUNNING-APP MOCK PROOF (FIRST; before ANY ceremony step; NO real contact)
+Before a single real-contact step, the WHOLE circle is demonstrated **IN THE RUNNING APP, in mock**:
+- **Wire** L6's certified proposal into the REAL propose → confirm → CST → admission → `governedSend` path: the propose
+  handler populates `brainReview` (FG-9) from a certified `Proposal`; `admitForExecution` gates the ASK; the confirm panel
+  renders the eight review fields; confirm → CST binds → admission → a **MOCK** executor → **MOCK** read-back →
+  `recordVerification` → the five-state panel moves.
+- **Prove it end to end in the real-Electron harness** (extending the S14 harness), with VERIFIED_SUCCESS / VERIFY_FAILED /
+  HOLD each exercised in the running app. Wire the production read-back (`s16VerifyRun` is E2E-gated today) so
+  `ActionRecord.verification` is populated (§2#14).
+- **Any frozen touch (IPC channels/contracts) → an FG gate presented and honored FIRST.** (The Brain propose flow may
+  reuse the FG-9 `brainReview` field + the existing `capability:m365.propose` channel; a new trigger channel would be a
+  new FG gate.)
+- Phase 0 is MOCK (no real contact) → it proceeds report-and-continue; it is the hard **PRECONDITION** for the ceremony.
+
+**No real contact until Phase 0 has demonstrated the whole circle in mock in the running app. It is NOT built yet.**
+
+## PREREQUISITES FOR THE CEREMONY (real contact — all required, each its own gate)
+1. **Phase 0 complete** — the running-app mock proof above, green.
 2. **Fresh app registration + consent (operator, at the keyboard).** The S15 registration was deleted (containment
    complete). A NEW Azure app registration is created and consented by the operator; the operator supplies credentials.
    Claude never handles credentials or consent (prohibited).
@@ -54,6 +67,7 @@ capability; any autonomy.
   reconciliation, never a retry, never a claimed success.
 
 ## STATUS: ⛔ HELD
-S5.4 is **not executable today** — prerequisite 1 (the production wiring, FG-gated) is not built. Awaiting the operator's
-direction on whether to build that wiring next (report-and-continue, with its FG gate(s)), and — only when all
-prerequisites are met — the explicit go to run the ceremony.
+S5.4 is **not executable today** — **PHASE 0 (the running-app mock proof) is not built.** The ceremony (real contact)
+never begins before Phase 0 is green in the running app AND the registration/consent/allowlist prerequisites are met AND
+the operator gives an explicit go. Awaiting the operator's direction on whether to build **PHASE 0** next
+(report-and-continue, mock-only, presenting FG gates for any frozen touch).

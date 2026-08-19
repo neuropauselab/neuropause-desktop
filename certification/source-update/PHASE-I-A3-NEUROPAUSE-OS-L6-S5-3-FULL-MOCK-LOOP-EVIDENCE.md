@@ -7,14 +7,22 @@
 REAL modules with the external boundaries mocked. FREEZE INTACT. **⛔ HARD STOP after S5.3 — the S5.4 real-send is its own
 ceremony (fresh registration + consent + allowlist/latch renewed + explicit operator go); nothing here builds toward it.**
 
-## Honest scope (what this is, and is not)
-S5.3 is a full-loop **INTEGRATION test** (`s5MockLoop.test.ts`) that wires the REAL modules end to end —
-`composeLiveBrainState → buildProposal → admitForExecution → actionRecord.observe → verifyEffect → recordVerification →
-m365WriteStates` — with the ONLY mocks at the external boundaries (the executor result + the Graph reader). It proves the
-CHAIN works deterministically with zero real contact. It is **NOT** a Playwright real-Electron UI e2e: that requires the
-PRODUCTION WIRING (the L6 chain into the running app — the propose handler populating `brainReview`, the panel, the confirm
-channel), which does not exist yet and is a larger integration (the production call-site + likely more frozen IPC → FG
-gates). That real-Electron UI e2e is the remaining step, recorded here and NOT claimed as done.
+## Claim (operator scope ruling — module level, never "e2e")
+**Full chain proven at MODULE LEVEL over the REAL modules; ZERO real contact.** `s5MockLoop.test.ts` wires
+`composeLiveBrainState → buildProposal → admitForExecution → actionRecord.observe → verifyEffect (mock Graph reader) →
+recordVerification → deriveWriteStates` — the ONLY mocks are the executor result + the Graph reader. All three verification
+terminals are exercised, and **the five-state movement is asserted from the STORE alone** (`m365WriteStates` over the
+`ActionRecord` store). This is NOT claimed as a running-app proof.
+
+**STORE → PANEL is transitively proven** (not re-asserted here): the five-state panel derives every displayed value from
+this same store under the **FG-7 truthful-surface pins** (each panel number pinned to its source; FG-8/FG-9 the same). So
+proving the store moves proves the panel moves — without an app run.
+
+## NOT BUILT — the production L6 wiring (the explicit next increment)
+The **production L6 wiring** — the app call-site → the propose handler populating `brainReview` → the panel → the
+confirm channel — is **NOT BUILT**. The running-app proof (the whole circle demonstrated IN THE APP, in mock, extending
+the S14 harness) is **moved to S5.4 PHASE 0**, and any frozen touch there is behind an **FG gate**. It is recorded here as
+not done — never claimed as an "e2e".
 
 ## The loop, exercised (each an assertion)
 | step | REAL module | mocked? |
@@ -41,11 +49,12 @@ Each uses the REAL `verifyEffect` corroboration/bounce/backoff logic + the REAL 
 `s5MockLoop.test.ts` (4) + full main (**851 files, 8946 passed / 3 skipped**) + typecheck node + lint clean.
 
 ## Remaining (before real contact — its own gates)
-- The **real-Electron UI e2e** (Playwright) + the **production wiring** (L6 → propose handler → panel → execute), touching
-  frozen IPC → **FG gate(s)** — a larger integration slice, NOT done here.
-- The **production read-back wiring** (`s16VerifyRun` is E2E-gated today) so `ActionRecord.verification` is populated in
-  release, per §2#14.
-- **S5.4 · the first Brain-proposed real action** — the ceremony below.
+- **S5.4 PHASE 0** (moved to the FRONT of S5.4): wire L6's certified proposal into the REAL propose → confirm → CST path
+  and demonstrate the whole circle **IN THE RUNNING APP in mock** (extending the S14 harness), presenting **FG gates** for
+  any frozen touch — BEFORE any ceremony step. The production read-back wiring (`s16VerifyRun` is E2E-gated today) so
+  `ActionRecord.verification` is populated in release (§2#14) lands here.
+- **S5.4 · the ceremony** — the first Brain-proposed real action, only AFTER Phase 0's running-app mock proof + the
+  registration/consent/allowlist prerequisites + the explicit operator go.
 
 ## Live boundary (standing)
 M365 `mail.send` is the SINGLE live governed consequential capability. S5.3 makes ZERO external contact; every external
