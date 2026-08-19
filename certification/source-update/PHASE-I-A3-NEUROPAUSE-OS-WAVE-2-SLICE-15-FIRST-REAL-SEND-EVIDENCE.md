@@ -92,10 +92,19 @@ pure and LOGS its terminal outcome; the log line IS the record (a persisted veri
 - **F-6 · `org:list` "Sign in to manage organizations" on the isolated profile** — harmless, expected: org management
   requires backend auth (which is down); unrelated to the send path.
 
-## Containment (DEFERRED — runbook §6)
-Consent + app registration stay ALIVE until S16's read-back completes (the oracle needs them). The isolated S15 profile
-holds the OAuth vault + the latch; deleting it after S16 is one-step containment. **The latch stays — no retry. Any
-further real send is a deliberate future decision through Claude.**
+## Containment (COMPLETE — 2026-08-19, operator at keyboard; runbook §6)
+Consent + app registration were kept ALIVE only until S16's read-back completed (the oracle needed them). S16 is DONE
+(VERIFIED_SUCCESS, evidence copied out — see `certification/s15-artifacts/`), so containment was executed. **Operator-reported
+(human keyboard), 2026-08-19 — the three steps:**
+1. **Enterprise application deleted → consent REVOKED.** The tenant's OAuth grant to the S15 app is gone; the ~47-scope
+   token (F-1) can no longer be minted.
+2. **App registration deleted.** The application identity itself is removed — no client that could request consent remains.
+3. **S15 profile removed (`rm -rf ~/Library/Application Support/NeuroPause-S15`).** The isolated profile that held the OAuth
+   vault + the single-send latch is gone; evidence was copied out first (artifacts intact).
+
+Containment does not weaken the record: the evidence artifacts were copied out BEFORE deletion, and the freeze-tracked
+proofs are unaffected. **The latch was spent and now its store is deleted — no retry is possible. Any further real send is
+a deliberate future decision through Claude, requiring a fresh app registration + consent at the operator's keyboard.**
 
 ## Operator evidence to fold in (pending)
 - The destination inbox screenshot (`neuropause033@gmail.com`) — delivery confirmation (→ EXTERNALLY OBSERVED).
