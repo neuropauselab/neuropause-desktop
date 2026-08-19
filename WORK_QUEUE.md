@@ -143,6 +143,22 @@ commands · authority class · gate conditions · status.**
   morning). Ruling: the ActionRecord-answerability follow-up is a QUEUED PROPOSAL behind the S34a fence — DO NOT
   BUILD; the operator rules on it after the ceremony.**
 
+## NP-010 · BUSINESS REALITY PROGRAM (operator directive v1, 20 Aug 2026)
+- **Objective:** the two-axis frame — READ-WIDE (observation-class ingestion: consent-scoped, provenanced, honestly
+  labeled) vs WRITE-DEEP (every outbound action consequential-class: proposal+ASK until it individually passes the
+  S23 kit). §1 connector reality census + business-data map (two artifacts, FIRST, read-only) · §2 universal
+  ingestion spine (file-based first, zero credentials) · §3 ERP/financial core (READ+COMPUTE+DRAFT only, evidence
+  lineage on every number) · §4 connector revival ladder (ranked; OPERATOR chooses order; each rung its own kit run)
+  · §5 Brain over business data (proposal-side ONLY; the overdue-invoice reminder class, riding certified mail.send
+  AFTER the ceremony) · §6 LAUNCH-READINESS business edition.
+- **Scope/rules (§7):** NP-000 FIRST IN LINE, its surfaces reserved; pauses the moment the operator begins step 1 ·
+  real credentials/consent/live connections ONLY at the operator's keyboard · file ingestion needs none and may
+  proceed fully · FG gates for frozen · D-15 quiet window for any fleet · full main per renderer rule · one commit
+  per slice · never push · ingested ≠ verified, drafted ≠ sent, kit-complete ≠ certified.
+- **Authority class:** GREEN read-side; every write capability GATE_REQUIRED via its own S23 kit run.
+- **Status: IN PROGRESS — §1 census sweeps running (read-only).** Nothing is built before the two truth artifacts
+  exist.
+
 ## NP-006 · Post-ceremony §5 amendment — experience-arc-vs-v1.0 sequencing
 - **Objective:** decide the ONE explicitly-open question (full experience arc before v1.0, or v1.0 earlier on the
   proven loop) by §5 amendment against the substrate as it then exists.
