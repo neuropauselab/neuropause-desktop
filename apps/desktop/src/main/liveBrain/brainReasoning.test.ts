@@ -10,18 +10,19 @@ import { composeCapabilityGraph } from '../capabilityGraph/capabilityGraph';
 import { capabilityGraphSources } from '../capabilityGraph/liveSources';
 import { composeEnvironmentModel } from '../environmentModel/environmentModel';
 import { TEST_TENANT_SCOPE } from '../tenancy/testScope';
+import type { TenantScope } from '@neuropause/shared';
 
-const realWorkspace = () =>
+const realWorkspace = (scoped = true) =>
   composeWorkspaceDomain([{ domain: 'people', moduleId: 'hr-employees', label: 'People' }], {
-    scope: () => TEST_TENANT_SCOPE, now: () => '2026-08-19T00:00:00.000Z', moduleCount: () => 3,
+    scope: () => (scoped ? TEST_TENANT_SCOPE : null), now: () => '2026-08-19T00:00:00.000Z', moduleCount: () => 3,
   });
-const realCaps = () =>
+const realCaps = (scoped = true) =>
   composeCapabilityGraph(capabilityGraphSources({
     mutations: () => [
       { capabilityId: 'mail.send', connectorId: 'microsoft-entra' }, // routes
       { capabilityId: 'chat.post', connectorId: 'slack' }, // not-governed gap
     ],
-    scope: () => true,
+    scope: () => scoped,
   }));
 const realEnv = (probe: 'present' | 'absent' | 'unknown') =>
   composeEnvironmentModel('send-email', [{ id: 'mail.send', kind: 'capability', label: 'mail.send' }], { probe: () => probe });
@@ -75,6 +76,20 @@ describe('L6-S3 · reasoning — what changed is UNKNOWN without a prior (never 
     expect(r.whatChanged.determinable).toBe(true);
     expect(r.whatChanged.changes.some((c) => c.statement.includes('action.act_9'))).toBe(true);
   });
+
+  it('a prior from a DIFFERENT subject (tenant) → determinable false, never a fabricated temporal delta (fleet-audit fix)', () => {
+    const otherTenant = composeWorkspaceDomain([{ domain: 'people', moduleId: 'hr-employees', label: 'People' }], {
+      scope: () => ({ ...TEST_TENANT_SCOPE, tenantId: 'other-tenant' }) as TenantScope,
+      now: () => '2026-08-19T00:00:00.000Z',
+      moduleCount: () => 3,
+    });
+    const now = { ...base, workspace: realWorkspace(), capabilities: realCaps() };
+    const prevOther = { ...base, workspace: otherTenant, capabilities: realCaps() };
+    const r = reasonOver(now, prevOther);
+    expect(r.whatChanged.determinable).toBe(false);
+    expect(r.whatChanged.note).toMatch(/different subject|tenant/i);
+    expect(r.whatChanged.changes).toEqual([]);
+  });
 });
 
 describe('L6-S3 · reasoning — the boundary before S4 (analysis, not proposals)', () => {
@@ -85,18 +100,22 @@ describe('L6-S3 · reasoning — the boundary before S4 (analysis, not proposals
     expect(couldMail?.statement).toMatch(/COULD be proposed at S4.*not a proposal/i);
     expect(clean.could.some((s) => s.cites.includes('capability.chat.post'))).toBe(false); // not-governed → never "could"
 
-    // A capability in conflict is EXCLUDED from "could".
+    // A capability in conflict (real VERIFY_FAILED terminal) is EXCLUDED from "could".
     const conflicted = reasonOver({
       ...base, workspace: realWorkspace(), capabilities: realCaps(),
-      actions: [action({ verification: { terminal: 'VERIFIED_FAILURE', internetMessageId: null, at: 't' } })],
+      actions: [action({ verification: { terminal: 'VERIFY_FAILED', internetMessageId: null, at: 't' } })],
     });
     expect(conflicted.could.some((s) => s.cites.includes('capability.mail.send'))).toBe(false);
+
+    // SCOPE-DISPUTE gate (fleet-audit fix): a routable cap under a disputed scope is NOT offered as "could".
+    const scopeDisputed = reasonOver({ ...base, workspace: realWorkspace(false), capabilities: realCaps(true) });
+    expect(scopeDisputed.could.some((s) => s.cites.includes('capability.mail.send'))).toBe(false);
   });
 
   it('"should-not" enforces governance-boundary honesty, conflicts, and UNKNOWN-not-okay', () => {
     const r = reasonOver({
       ...base, workspace: realWorkspace(), capabilities: realCaps(), environment: realEnv('unknown'),
-      actions: [action({ verification: { terminal: 'VERIFIED_FAILURE', internetMessageId: null, at: 't' } })],
+      actions: [action({ verification: { terminal: 'VERIFY_FAILED', internetMessageId: null, at: 't' } })],
     });
     expect(r.shouldNot.some((s) => s.statement.includes('not governed'))).toBe(true); // chat.post
     expect(r.shouldNot.some((s) => /must NOT be treated as settled/i.test(s.statement))).toBe(true); // conflict
@@ -114,9 +133,9 @@ describe('L6-S3 · reasoning — the boundary before S4 (analysis, not proposals
 });
 
 describe('L6-S3 · reasoning — invariant', () => {
-  it('ZERO-RUNTIME-IMPORT — reasons over injected state/context; imports only TYPES (no path into governance/execution)', () => {
+  it('ZERO-RUNTIME-IMPORT (hardened) — only `import type`; no value, bare, or dynamic import into governance/execution', () => {
     const src = readFileSync(join(__dirname, 'brainReasoning.ts'), 'utf8');
-    const valueImports = src.match(/^import\s+(?!type\b)[^;]*from\s+'[^']*'/gm) ?? [];
-    expect(valueImports).toEqual([]);
+    expect(src.match(/^import(?!\s+type\b)[^\n]*/gm) ?? []).toEqual([]);
+    expect(src).not.toMatch(/\bimport\s*\(|\brequire\s*\(/);
   });
 });

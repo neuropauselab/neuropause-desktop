@@ -51,6 +51,20 @@ function envCertainty(state: 'HAVE' | 'NEED' | 'UNKNOWN' | 'UNAVAILABLE'): Certa
   return state === 'UNKNOWN' ? 'UNKNOWN' : state === 'UNAVAILABLE' ? 'UNAVAILABLE' : 'KNOWN';
 }
 
+/**
+ * Canonical verification-terminal certainty — MUST match the REAL vocabulary (kept in sync with
+ * S1's classifier): VERIFIED_SUCCESS → VERIFIED; VERIFY_FAILED / VERIFIED_FAILURE → KNOWN (a known
+ * failure); HOLD / UNKNOWN / VERIFY_PENDING / unrecognised / null → UNKNOWN (unresolved).
+ * Deny-by-default: an unrecognised terminal is UNKNOWN, NEVER laundered into a settled "verified" fact.
+ */
+const SUCCESS_TERMINALS = new Set(['VERIFIED_SUCCESS']);
+const FAILURE_TERMINALS = new Set(['VERIFY_FAILED', 'VERIFIED_FAILURE']);
+function verificationCertainty(terminal: string | null): Certainty {
+  if (terminal !== null && SUCCESS_TERMINALS.has(terminal)) return 'VERIFIED';
+  if (terminal !== null && FAILURE_TERMINALS.has(terminal)) return 'KNOWN';
+  return 'UNKNOWN'; // null / HOLD / UNKNOWN / VERIFY_PENDING / unrecognised — unresolved, never settled
+}
+
 export function assembleBrainContext(inputs: LiveBrainInputs): BrainContext {
   const facts: ProvenancedFact[] = [];
 
@@ -132,8 +146,7 @@ export function assembleBrainContext(inputs: LiveBrainInputs): BrainContext {
     for (const rec of inputs.actions) {
       const term = rec.verification?.terminal ?? null;
       const value = term === null ? `${rec.outcome} / unverified` : `${rec.outcome} / verified ${term}`;
-      const c: Certainty = term === 'VERIFIED_SUCCESS' ? 'VERIFIED' : term === null ? 'UNKNOWN' : 'KNOWN';
-      facts.push(fact(`action.${rec.id}`, value, c, 'S34a', `ActionRecord(${rec.id})`));
+      facts.push(fact(`action.${rec.id}`, value, verificationCertainty(term), 'S34a', `ActionRecord(${rec.id})`));
     }
   }
 

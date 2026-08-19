@@ -106,6 +106,19 @@ describe('L6-S2 · BrainContext — PROVENANCE PER FIELD over real read-models',
     expect(c('action.act_9')).toBe('VERIFIED');
     expect(c('environment.mail.send')).toBe('UNKNOWN'); // probed 'unknown'
   });
+
+  it('verification terminals classified against the REAL vocabulary — HOLD→UNKNOWN, VERIFY_FAILED→KNOWN, VERIFIED_SUCCESS→VERIFIED', () => {
+    const at = (terminal: string | null) => {
+      const rec = terminal === null ? action() : action({ verification: { terminal, internetMessageId: null, at: 't' } });
+      const ctx = assembleBrainContext({ ...base, workspace: realWorkspace(), capabilities: realCaps(), actions: [rec] });
+      return ctx.facts.find((f) => f.field === `action.${rec.id}`)?.certainty;
+    };
+    expect(at('VERIFIED_SUCCESS')).toBe('VERIFIED');
+    expect(at('VERIFY_FAILED')).toBe('KNOWN'); // a known failure — not a success
+    expect(at('HOLD')).toBe('UNKNOWN'); // unresolved — NOT laundered to KNOWN
+    expect(at('SOMETHING_UNRECOGNISED')).toBe('UNKNOWN'); // deny-by-default
+    expect(at(null)).toBe('UNKNOWN'); // unverified
+  });
 });
 
 describe('L6-S2 · BrainContext — failure / fail-closed', () => {
@@ -135,7 +148,7 @@ describe('L6-S2 · BrainContext — coherence with S1 + invariant', () => {
       ...base,
       workspace: realWorkspace(),
       capabilities: realCaps(),
-      actions: [action({ verification: { terminal: 'VERIFIED_FAILURE', internetMessageId: null, at: 't' } })],
+      actions: [action({ verification: { terminal: 'VERIFY_FAILED', internetMessageId: null, at: 't' } })],
     };
     expect(composeLiveBrainState(inputs).sections.capabilities.certainty).toBe('CONFLICTING');
     // …while the ATOMIC L4 fact "mail.send routable" stays KNOWN (L4 alone says so). Different granularities, both honest.
@@ -143,9 +156,9 @@ describe('L6-S2 · BrainContext — coherence with S1 + invariant', () => {
     expect(ctx.facts.find((f) => f.field === 'capability.mail.send')?.certainty).toBe('KNOWN');
   });
 
-  it('ZERO-RUNTIME-IMPORT — assembles from injected read-models; imports only TYPES', () => {
+  it('ZERO-RUNTIME-IMPORT (hardened) — only `import type`; no value, bare, or dynamic import', () => {
     const src = readFileSync(join(__dirname, 'brainContext.ts'), 'utf8');
-    const valueImports = src.match(/^import\s+(?!type\b)[^;]*from\s+'[^']*'/gm) ?? [];
-    expect(valueImports).toEqual([]);
+    expect(src.match(/^import(?!\s+type\b)[^\n]*/gm) ?? []).toEqual([]);
+    expect(src).not.toMatch(/\bimport\s*\(|\brequire\s*\(/);
   });
 });

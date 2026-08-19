@@ -66,6 +66,16 @@ UNINTERRUPTED before the **L6-S4 hard stop**, in a declared QUIET WINDOW or harn
 (mechanism stated at that launch), and its results fold into the S4 review package. Independence matters most where
 proposals begin — S4 wants adversarial eyes that are not the builder's.
 
+## Fleet-audit corrections (folded in — see `L6-S4-FLEET-AUDIT-SYNTHESIS.md`)
+The independent 12-lens audit (D-15 quiet window) falsified real defects in the as-first-landed S1/S2/S3; all were fixed
++ the suite re-run before proceeding. Key S1 corrections: a **canonical verification-terminal classifier** (the real
+oracle emits `VERIFY_FAILED`, not `VERIFIED_FAILURE`; `HOLD`/`UNKNOWN`/`VERIFY_PENDING`/unrecognised → UNKNOWN,
+deny-by-default) so a verified-failure or unresolved verification is no longer laundered into "okay"; the **discovery
+section** now reflects per-result UNKNOWN; **health** folds in `incidents` + `pendingWork`; `scopeResolved` is false when
+disputed; `routedCaps` is scope-guarded; the **`authority` section is renamed `governedPaths`** (route existence, not
+principal permission); and the zero-runtime-import pins are hardened (bare + dynamic imports). Tests re-pointed at the
+REAL terminal vocabulary so the pins bite (liveBrain suite 27→34).
+
 ## L6 Assurance — scaffolded from S1 (honest zero-baseline)
 S1 establishes the observation substrate the assurance loop will use: the `uncertainty` census + `conflicts` + the
 `evidence` section's independent-verification tally are the same ActionRecord-pattern signals the Brain will later use to

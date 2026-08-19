@@ -9,6 +9,7 @@ import { composeCapabilityGraph } from '../capabilityGraph/capabilityGraph';
 import { capabilityGraphSources } from '../capabilityGraph/liveSources';
 import { composeEnvironmentModel } from '../environmentModel/environmentModel';
 import { evaluatePurpose } from '../purposeEngine/purposeEngine';
+import { runDiscovery } from '../environmentDiscovery/environmentDiscovery';
 import { TEST_TENANT_SCOPE } from '../tenancy/testScope';
 
 const realWorkspace = (scoped = true) =>
@@ -31,6 +32,13 @@ const realEnv = (probe: 'present' | 'absent' | 'unknown') =>
     probe: () => probe,
   });
 
+// A real discovery run where every element resolves to `authority` → the DiscoveredState given.
+const realDiscovery = (authority: 'granted' | 'denied' | 'unknown') =>
+  runDiscovery(
+    { purpose: 'send-email', minimumRequired: [{ id: 'mail.send', kind: 'capability', label: 'mail.send' }] },
+    { authorize: () => authority, collect: (e) => ({ elementId: e.id, present: true }) },
+  );
+
 const consentReadyPurpose = () =>
   evaluatePurpose(
     { text: 'send-email' },
@@ -48,6 +56,7 @@ const action = (o: Partial<ActionRecord> = {}): ActionRecord => ({
   recipients: { to: ['a@b.com'], cc: [], bcc: [] }, subjectFingerprint: '', bodyFingerprint: '',
   verdict: 'admit', executed: true, outcome: 'ACKNOWLEDGED', admissionRef: 'tr', verification: null, ...o,
 });
+const verified = (terminal: string): ActionRecord['verification'] => ({ terminal, internetMessageId: null, at: 't' });
 
 const base: LiveBrainInputs = {
   workspace: null, capabilities: null, environment: null, purpose: null, discovery: null, actions: [],
@@ -56,16 +65,13 @@ const base: LiveBrainInputs = {
 describe('L6-S1 · LiveBrainState — the five-valued uncertainty over REAL read-models', () => {
   it('ambient KNOWN + evidence VERIFIED — a resolved workspace/graph with an independently verified action', () => {
     const s = composeLiveBrainState({
-      ...base,
-      workspace: realWorkspace(),
-      capabilities: realCaps(),
-      actions: [action({ verification: { terminal: 'VERIFIED_SUCCESS', internetMessageId: '<x>', at: 't' } })],
+      ...base, workspace: realWorkspace(), capabilities: realCaps(),
+      actions: [action({ verification: verified('VERIFIED_SUCCESS') })],
     });
     expect(s.scopeResolved).toBe(true);
     expect(s.sections.workspace.certainty).toBe('KNOWN');
     expect(s.sections.capabilities.certainty).toBe('KNOWN');
     expect(s.sections.evidence.certainty).toBe('VERIFIED');
-    // purpose-bound layers absent → UNAVAILABLE, never fabricated:
     expect(s.sections.environment.certainty).toBe('UNAVAILABLE');
     expect(s.sections.purpose.certainty).toBe('UNAVAILABLE');
     expect(s.conflicts).toEqual([]);
@@ -77,17 +83,14 @@ describe('L6-S1 · LiveBrainState — the five-valued uncertainty over REAL read
     expect(s.tenantId).toBeNull();
     expect(s.sections.workspace.certainty).toBe('UNAVAILABLE');
     expect(s.sections.capabilities.certainty).toBe('UNAVAILABLE');
-    expect(s.sections.health.certainty).toBe('UNAVAILABLE'); // partially blind, not "okay"
+    expect(s.sections.health.certainty).toBe('UNAVAILABLE');
   });
 
   it('UNKNOWN NEVER BECOMES "PROBABLY OKAY" — an undetermined environment keeps health UNKNOWN', () => {
     const s = composeLiveBrainState({
-      ...base,
-      workspace: realWorkspace(),
-      capabilities: realCaps(),
-      environment: realEnv('unknown'), // one element undetermined
-      purpose: consentReadyPurpose(),
-      actions: [action()], // no verification → evidence KNOWN, not UNAVAILABLE
+      ...base, workspace: realWorkspace(), capabilities: realCaps(),
+      environment: realEnv('unknown'), purpose: consentReadyPurpose(),
+      actions: [action({ verification: verified('VERIFIED_SUCCESS') })], // resolved, so environment is the driver
     });
     expect(s.sections.environment.certainty).toBe('UNKNOWN');
     expect(s.sections.health.certainty).toBe('UNKNOWN');
@@ -100,46 +103,87 @@ describe('L6-S1 · LiveBrainState — the five-valued uncertainty over REAL read
   });
 });
 
+describe('L6-S1 · LiveBrainState — verification terminals classified against the REAL vocabulary (fleet-audit fix)', () => {
+  it('an UNRESOLVED terminal (HOLD) is NEVER laundered to okay — evidence + pendingWork + health all UNKNOWN', () => {
+    const s = composeLiveBrainState({
+      ...base, workspace: realWorkspace(), capabilities: realCaps(),
+      actions: [action({ verification: verified('HOLD') })],
+    });
+    expect(s.sections.evidence.certainty).toBe('UNKNOWN'); // not KNOWN/"verified HOLD"
+    expect(s.sections.pendingWork.certainty).toBe('UNKNOWN'); // HOLD counts as unresolved, not settled
+    expect(s.sections.health.certainty).toBe('UNKNOWN');
+  });
+
+  it('a REAL verified FAILURE (VERIFY_FAILED) on a routed capability → CONFLICTING + incident + health CONFLICTING', () => {
+    const s = composeLiveBrainState({
+      ...base, workspace: realWorkspace(), capabilities: realCaps(), // routes mail.send
+      actions: [action({ actionId: 'mail.send', verification: verified('VERIFY_FAILED') })],
+    });
+    expect(s.conflicts.some((c) => c.about.includes('usability'))).toBe(true); // the real terminal now fires
+    expect(s.sections.capabilities.certainty).toBe('CONFLICTING');
+    expect(s.sections.evidence.certainty).toBe('CONFLICTING');
+    expect(s.sections.incidents.certainty).toBe('CONFLICTING');
+    expect(s.sections.health.certainty).toBe('CONFLICTING');
+  });
+
+  it('a verified FAILURE on a NON-routed capability still pulls health down (incidents folded into health)', () => {
+    const s = composeLiveBrainState({
+      ...base, workspace: realWorkspace(), capabilities: realCaps(),
+      actions: [action({ actionId: 'chat.post', verification: verified('VERIFY_FAILED') })], // not a routed cap
+    });
+    expect(s.conflicts).toEqual([]); // no cross-substrate conflict (not routed)
+    expect(s.sections.incidents.certainty).toBe('CONFLICTING'); // but a verified failure IS an incident
+    expect(s.sections.health.certainty).toBe('CONFLICTING'); // and health reflects it (no green pixel over a failure)
+  });
+
+  it('an unverified action (null) is unresolved, never settled — evidence + health UNKNOWN', () => {
+    const s = composeLiveBrainState({ ...base, workspace: realWorkspace(), capabilities: realCaps(), actions: [action()] });
+    expect(s.sections.evidence.certainty).toBe('UNKNOWN');
+    expect(s.sections.health.certainty).toBe('UNKNOWN');
+  });
+});
+
+describe('L6-S1 · LiveBrainState — discovery per-result state (fleet-audit fix)', () => {
+  it('an all-UNKNOWN discovery run makes the discovery section UNKNOWN and health UNKNOWN, never KNOWN', () => {
+    const s = composeLiveBrainState({
+      ...base, workspace: realWorkspace(), capabilities: realCaps(),
+      discovery: realDiscovery('unknown'), // every result → AUTHORITY_UNKNOWN → state UNKNOWN
+      actions: [action({ verification: verified('VERIFIED_SUCCESS') })], // evidence resolved, so discovery drives health
+    });
+    expect(s.sections.discovery.certainty).toBe('UNKNOWN');
+    expect(s.sections.health.certainty).toBe('UNKNOWN');
+  });
+});
+
 describe('L6-S1 · LiveBrainState — CONFLICTING is detected and SURFACED, never auto-reconciled', () => {
-  it('scope conflict — L1 and L4 disagree on tenant resolution; both claims kept', () => {
+  it('scope conflict — L1 and L4 disagree; both claims kept; scopeResolved is NOT "settled"', () => {
     const s = composeLiveBrainState({ ...base, workspace: realWorkspace(true), capabilities: realCaps(false) });
     const c = s.conflicts.find((x) => x.about === 'tenant scope resolution');
     expect(c).toBeDefined();
     expect(c?.claims.map((cl) => cl.says).sort()).toEqual(['scopeResolved=false', 'scopeResolved=true']);
     expect(s.sections.workspace.certainty).toBe('CONFLICTING');
     expect(s.sections.capabilities.certainty).toBe('CONFLICTING');
-  });
-
-  it('routed-but-verified-failed — L4 says usable, S34a says it failed; conflict surfaced', () => {
-    const s = composeLiveBrainState({
-      ...base,
-      workspace: realWorkspace(),
-      capabilities: realCaps(), // routes mail.send
-      actions: [action({ verification: { terminal: 'VERIFIED_FAILURE', internetMessageId: null, at: 't' } })],
-    });
-    const c = s.conflicts.find((x) => x.about.includes('usability'));
-    expect(c).toBeDefined();
-    expect(c?.claims).toHaveLength(2); // BOTH sides retained — not reconciled to one
-    expect(s.sections.capabilities.certainty).toBe('CONFLICTING');
-    expect(s.sections.evidence.certainty).toBe('CONFLICTING');
-    expect(s.sections.incidents.certainty).toBe('CONFLICTING');
+    expect(s.scopeResolved).toBe(false); // a disputed scope is not resolved
   });
 
   it('environment-vs-capability — L2 says NEED (absent), L4 says routed (present); conflict surfaced', () => {
     const s = composeLiveBrainState({
-      ...base,
-      workspace: realWorkspace(),
-      capabilities: realCaps(),
-      environment: realEnv('absent'), // mail.send → NEED
+      ...base, workspace: realWorkspace(), capabilities: realCaps(), environment: realEnv('absent'),
     });
-    const c = s.conflicts.find((x) => x.about.includes('presence'));
-    expect(c).toBeDefined();
+    expect(s.conflicts.some((x) => x.about.includes('presence'))).toBe(true);
     expect(s.sections.environment.certainty).toBe('CONFLICTING');
     expect(s.sections.capabilities.certainty).toBe('CONFLICTING');
   });
 });
 
 describe('L6-S1 · LiveBrainState — pins', () => {
+  it('governedPaths (renamed from "authority") reflects L4 route existence, not principal permission', () => {
+    const s = composeLiveBrainState({ ...base, workspace: realWorkspace(), capabilities: realCaps() });
+    expect(s.sections.governedPaths.certainty).toBe('KNOWN');
+    expect(s.sections.governedPaths.summary).toMatch(/governed PATH/);
+    expect(s.sections.governedPaths.summary).not.toMatch(/authorized|permission grant|approved/i);
+  });
+
   it('PROVENANCE — every section names its originating layer', () => {
     const s = composeLiveBrainState({ ...base, workspace: realWorkspace(), capabilities: realCaps(), actions: [action()] });
     expect(s.sections.workspace.source).toContain('L1');
@@ -151,21 +195,18 @@ describe('L6-S1 · LiveBrainState — pins', () => {
   it('PURE JOIN / NO STORE — synchronous, deterministic, no I/O', () => {
     const inputs: LiveBrainInputs = { ...base, workspace: realWorkspace(), capabilities: realCaps(), actions: [action()] };
     const out = composeLiveBrainState(inputs);
-    expect(out).not.toBeInstanceOf(Promise); // no async store access
-    expect(composeLiveBrainState(inputs)).toEqual(out); // deterministic over the same inputs
+    expect(out).not.toBeInstanceOf(Promise);
+    expect(composeLiveBrainState(inputs)).toEqual(out);
   });
 
   it('ACTIONRECORD INJECTION (D-14 finding, pinned) — S1 takes already-queried ActionRecord[], never the async store', () => {
     const src = readFileSync(join(__dirname, 'liveBrainState.ts'), 'utf8');
-    // ActionRecord enters as a TYPE ONLY — the module never imports the disk-backed store singleton…
     expect(src).toMatch(/import type \{[^}]*\bActionRecord\b[^}]*\} from '\.\.\/connectors\/actionRecord'/);
-    // …never imports the `actionRecord` value, and never calls the async `.query()`:
     expect(src).not.toMatch(/import \{[^}]*\bactionRecord\b/);
     expect(src).not.toMatch(/\.query\s*\(/);
-    // Functionally: a pre-built ActionRecord[] flows through as injected data.
     const s = composeLiveBrainState({
       ...base, workspace: realWorkspace(), capabilities: realCaps(),
-      actions: [action({ verification: { terminal: 'VERIFIED_SUCCESS', internetMessageId: '<x>', at: 't' } })],
+      actions: [action({ verification: verified('VERIFIED_SUCCESS') })],
     });
     expect(s.sections.evidence.certainty).toBe('VERIFIED');
     expect((s.sections.evidence.detail as { verifiedSuccess: number }).verifiedSuccess).toBe(1);
@@ -177,9 +218,11 @@ describe('L6-S1 · LiveBrainState — pins', () => {
     expect(total).toBe(Object.keys(s.sections).length);
   });
 
-  it('ZERO-RUNTIME-IMPORT — the state model imports only TYPES (no path into governance/execution)', () => {
+  it('ZERO-RUNTIME-IMPORT (hardened) — only `import type`; no value, bare, or dynamic import into governance/execution', () => {
     const src = readFileSync(join(__dirname, 'liveBrainState.ts'), 'utf8');
-    const valueImports = src.match(/^import\s+(?!type\b)[^;]*from\s+'[^']*'/gm) ?? [];
-    expect(valueImports).toEqual([]);
+    // Every top-level import line must be `import type …` — also catches bare side-effect imports.
+    expect(src.match(/^import(?!\s+type\b)[^\n]*/gm) ?? []).toEqual([]);
+    // No dynamic import()/require() that could pull a runtime module at call time.
+    expect(src).not.toMatch(/\bimport\s*\(|\brequire\s*\(/);
   });
 });

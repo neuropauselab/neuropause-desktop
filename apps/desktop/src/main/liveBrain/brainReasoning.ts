@@ -56,6 +56,16 @@ function changeReport(current: BrainContext, previous?: BrainContext): ChangeRep
   if (previous === undefined) {
     return { determinable: false, note: 'no prior context — change is UNKNOWN, not assumed stable', changes: [] };
   }
+  // Subject-identity guard: a field-level diff is only a TEMPORAL change if both contexts describe
+  // the SAME subject. A prior from a different tenant/scope would mislabel cross-subject differences
+  // as change — so refuse it honestly (UNKNOWN), mirroring the no-prior path.
+  if (previous.tenantId !== current.tenantId || previous.scopeResolved !== current.scopeResolved) {
+    return {
+      determinable: false,
+      note: 'prior context describes a different subject (tenant/scope) — change is UNKNOWN, not a temporal delta',
+      changes: [],
+    };
+  }
   const prev = new Map(previous.facts.map((f) => [f.field, f]));
   const cur = new Map(current.facts.map((f) => [f.field, f]));
   const changes: ReasonedStatement[] = [];
@@ -95,14 +105,19 @@ export function reason(state: LiveBrainState, context: BrainContext, previous?: 
   );
   if (!state.scopeResolved) why.push(say('ambient substrates are UNAVAILABLE because no tenant scope resolved', ['section:workspace', 'section:capabilities']));
 
-  // could — POINTERS to where S4 would propose (routable, not-conflicted capabilities). NOT proposals.
-  const conflictedCaps = new Set(
-    state.conflicts.flatMap((c) => (c.about.startsWith('capability') ? [c.about] : [])),
+  // could — POINTERS to where S4 would propose (routable, non-conflicted capabilities). NOT proposals.
+  // A disputed SCOPE taints the whole capability view → no routable pointer is trustworthy. Otherwise
+  // exclude only the EXACT capability ids that are in conflict (exact id, not a substring match).
+  const scopeDisputed = state.conflicts.some((c) => c.about === 'tenant scope resolution');
+  const conflictedCapIds = new Set(
+    state.conflicts.map((c) => c.about.match(/^capability "(.+?)"/)?.[1]).filter((id): id is string => id !== undefined),
   );
-  const could = facts
-    .filter((f) => f.field.startsWith('capability.') && f.value.startsWith('routable'))
-    .filter((f) => ![...conflictedCaps].some((a) => a.includes(f.field.slice('capability.'.length))))
-    .map((f) => say(`${f.field} is routable — an action here COULD be proposed at S4 (analysis only, not a proposal)`, [f.field]));
+  const could = scopeDisputed
+    ? []
+    : facts
+        .filter((f) => f.field.startsWith('capability.') && f.value.startsWith('routable'))
+        .filter((f) => !conflictedCapIds.has(f.field.slice('capability.'.length)))
+        .map((f) => say(`${f.field} is routable — an action here COULD be proposed at S4 (analysis only, not a proposal)`, [f.field]));
 
   // should-not — prohibitions from governance-boundary honesty + conflicts + uncertainty.
   const shouldNot: ReasonedStatement[] = [];
