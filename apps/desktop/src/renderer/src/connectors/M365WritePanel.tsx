@@ -10,7 +10,6 @@ import { useState } from 'react';
 import type { ConnectorSyncSnapshot } from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
 import { cn } from '@renderer/lib/cn';
-import { relativeTime } from './connectorLib';
 import {
   classifyWriteOutcome,
   EXECUTING_VIEW,
@@ -119,8 +118,6 @@ export function M365WritePanel({
 
   const m = snap
     ? {
-        last: snap.lastWriteAt ? relativeTime(snap.lastWriteAt) : 'never',
-        writes: String(snap.writeCount ?? 0),
         failed: String(snap.failedWrites ?? 0),
         pending: String(snap.pendingWrites ?? 0),
         retry: String(snap.writeRetryDepth ?? 0),
@@ -128,15 +125,29 @@ export function M365WritePanel({
         quota: snap.apiQuotaRemaining != null ? String(snap.apiQuotaRemaining) : '—',
       }
     : null;
+  // S19 (FG-7) — the TRUTHFUL five write states, each derived from the S34a
+  // ActionRecord (via the snapshot join). Retires the disjoint "Writes/Last write"
+  // counter. Absent (older snapshot / no writes) → honest absence, never a fake 0.
+  const ws = snap?.writeStates ?? null;
 
   return (
     <section className="mb-6">
       <Title>Microsoft 365 writes</Title>
 
+      {/* S19 — the five truthful states, each provably derived from the ActionRecord. */}
+      {ws ? (
+        <div className="mb-3 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+          <Metric label="Requested" value={String(ws.requested)} />
+          <Metric label="Authorized" value={String(ws.authorized)} />
+          <Metric label="Executed" value={String(ws.executed)} />
+          <Metric label="Provider acknowledged" value={String(ws.providerAcknowledged)} />
+          <Metric label="Externally observed" value={String(ws.externallyObserved)} />
+        </div>
+      ) : (
+        <div className="mb-3 text-2xs text-faint">No governed writes yet.</div>
+      )}
       {m && (
         <div className="mb-3 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-          <Metric label="Last write" value={m.last} />
-          <Metric label="Writes" value={m.writes} />
           <Metric label="Failed" value={m.failed} />
           <Metric label="Pending" value={m.pending} />
           <Metric label="Retry queue" value={m.retry} />

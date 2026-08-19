@@ -54,9 +54,21 @@ export function deriveWriteStates(records: readonly ActionRecord[]): WriteStateC
  * ActionRecord source of truth. Every number here PROVABLY derives from a
  * governed send that actually happened — never from a code path the send skips.
  */
-export async function m365WriteStates(tenantId: string): Promise<WriteStateCounts> {
+export async function m365WriteStates(
+  tenantId: string,
+  connectorId?: string,
+  accountId?: string,
+): Promise<WriteStateCounts> {
   const records = await actionRecord.query({ tenantId });
   // Today only governed mail.send emits to the action record; that IS the M365
   // write. Deriving from the recorded governed sends, not a disjoint counter.
-  return deriveWriteStates(records.filter((r) => r.actionId === 'mail.send'));
+  // Optional connector/account narrowing lets a per-account panel show its own states.
+  return deriveWriteStates(
+    records.filter(
+      (r) =>
+        r.actionId === 'mail.send' &&
+        (connectorId === undefined || r.connectorId === connectorId) &&
+        (accountId === undefined || r.accountId === accountId),
+    ),
+  );
 }

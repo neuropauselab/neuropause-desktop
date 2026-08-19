@@ -18,6 +18,7 @@ import { connectorStore } from '../../connectors/connectorStore';
 import { CONNECTOR_MANIFESTS, MANIFEST_BY_ID } from '../../connectors/manifests';
 import { unifiedStore } from '../storeInstance';
 import { activeTenantScope } from '../../enterprise';
+import { m365WriteStates } from '../../connectors/m365WriteStates';
 import { syncStateStore } from './syncStateInstance';
 import { stateToSnapshot } from './syncStateStore';
 import { SyncOrchestrator, type OrchestratorPorts } from './orchestrator';
@@ -148,12 +149,51 @@ export async function initSync(deps: SyncSubsystemDeps): Promise<SyncSubsystem> 
       stateToSnapshot(syncStateStore.get(c, a), orchestrator.retrySize(c, a)),
     );
 
+  /**
+   * S19 (FG-7) — join the TRUTHFUL five write states onto each Microsoft 365
+   * snapshot from the single S34a ActionRecord source of truth. The tenantId is
+   * resolved SYNCHRONOUSLY by the caller (inside its principal context); this
+   * async step only needs the id string. No parallel counting: the old disjoint
+   * `writeCount` is retired in the panel.
+   */
+  const withWriteStates = async (
+    snaps: ConnectorSyncSnapshot[],
+    tenantId: string | null,
+  ): Promise<ConnectorSyncSnapshot[]> => {
+    if (tenantId === null) return snaps;
+    return Promise.all(
+      snaps.map(async (s) => {
+        if (s.connectorId !== 'microsoft-entra') return s;
+        const w = await m365WriteStates(tenantId, s.connectorId, s.accountId);
+        return {
+          ...s,
+          writeStates: {
+            requested: w.requested,
+            authorized: w.authorized,
+            executed: w.executed,
+            providerAcknowledged: w.providerAcknowledged,
+            externallyObserved: w.externallyObserved,
+          },
+        };
+      }),
+    );
+  };
+
   // Re-broadcast sync-state changes so the dashboard refreshes live.
   // P13C Round 7 — `changed` fires synchronously inside the per-workspace sync
   // fan-out, so `connectedAccounts()` and `syncStateStore.get()` resolve to the
   // RUN'S workspace. Same pattern as the six sibling broadcasts.
-  const onStateChanged = (): void =>
-    deps.broadcast(IpcChannel.ConnectorSyncState, runOutsidePrincipal(() => snapshots()));
+  const onStateChanged = (): void => {
+    // Resolve the snapshots + tenant SYNCHRONOUSLY inside the principal context;
+    // the write-state join is async but only needs the tenantId string.
+    const { snaps, tenantId } = runOutsidePrincipal(() => ({
+      snaps: snapshots(),
+      tenantId: activeTenantScope()?.tenantId ?? null,
+    }));
+    void withWriteStates(snaps, tenantId).then((enriched) =>
+      deps.broadcast(IpcChannel.ConnectorSyncState, enriched),
+    );
+  };
   syncStateStore.on('changed', onStateChanged);
 
   /**
@@ -186,7 +226,11 @@ export async function initSync(deps: SyncSubsystemDeps): Promise<SyncSubsystem> 
       schema: ConnectorSyncStateRequest,
       requireAuth: true,
       permission: 'connectors:read', // P4.1 RBAC
-      handler: (p) => snapshots((p as TConnectorSyncStateRequest).connectorId),
+      handler: async (p) =>
+        withWriteStates(
+          snapshots((p as TConnectorSyncStateRequest).connectorId),
+          activeTenantScope()?.tenantId ?? null,
+        ),
     },
   ];
 

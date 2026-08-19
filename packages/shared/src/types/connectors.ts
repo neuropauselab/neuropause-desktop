@@ -376,6 +376,20 @@ export interface ConnectorSyncSnapshot {
   writeRetryDepth?: number;
   lastWriteLatencyMs?: number | null;
   apiQuotaRemaining?: number | null;
+  /**
+   * S19 — the five TRUTHFUL write states, DERIVED from the S34a ActionRecord store
+   * (one source of truth). Present once any governed M365 write has been recorded;
+   * optional for older state and older builds. Replaces the disjoint `writeCount`
+   * in the panel (F-5): each number provably derives from a governed send that
+   * actually happened, not from a code path the send skips.
+   */
+  writeStates?: {
+    requested: number;
+    authorized: number;
+    executed: number;
+    providerAcknowledged: number;
+    externallyObserved: number;
+  } | null;
   /** P4.1 — true when the account's sync exhausted its retry budget and was dead-lettered (needs replay). */
   deadLettered?: boolean;
   /** P4.1 — the last error that caused the dead-letter, if any. */
