@@ -27,9 +27,21 @@ capability-contract tests.
 The façade is a new `main` module reading existing stores + importing canonical shared types (reading a type is not a
 frozen touch, D-6/D-7/D-13). Proofs: `domainAggregate.test.ts` (5) + full main + typecheck node + lint clean.
 
-## Remaining (next increment, non-frozen)
-The LIVE wiring — bind the sources to the real `EnterpriseModuleRegistry` (`registry.get(id)?.store.count()`) under
-`activeTenantScope`, with the verified real `moduleId` strings, and surface the snapshot via an EXISTING `enterprise:*`
-channel (e.g. `enterprise:modules`/`enterprise:context`, non-frozen handlers) — reuse, not a new channel. A brand-new IPC
-channel would be the only thing forcing an FG gate; the scout confirmed the whole façade path is otherwise non-frozen.
-The observable object + its acceptance proofs land first (this slice); the live registry/channel wiring follows.
+## LIVE WIRING — re-proven against REAL stores (`domainSources.ts` + `domainSources.test.ts`, 4)
+`registryDomainSources(deps)` binds the aggregate's sources to the registry: `moduleCount(id) = moduleStore(id)?.count()
+?? null` (null = UNAVAILABLE). `workspaceDomainSnapshot(deps)` composes over `DOMAIN_MODULES` (real ids: `hr-employees`,
+`crm-customers`, `leads`, `opportunities`, `projects`, `documents`). READ-only — it only calls the store's already-SCOPED
+`count()`. The five acceptance fields are RE-PROVEN against **real `EnterpriseRecordStore` instances** (not fixtures):
+- VERIFICATION: each domain count === the real `store.count()` (people = 3, customers = 1) — a faithful projection.
+- UNAVAILABLE: a domain with no registered store → `state: 'unavailable'`, distinct from present-but-empty.
+- COLLECTION BOUNDARY: a record created under a DIFFERENT scope never counts — tenant isolation inherited from the
+  store's scoped `count()` (a two-scope test).
+- FAILURE/UNKNOWN: no scope → whole snapshot UNKNOWN even with a populated real store — never "all data".
+- CAPABILITY CONTRACT: composing the snapshot writes NOTHING to the real store (`count()` unchanged).
+
+## Remaining (completing increment, non-frozen surface)
+`workspaceDomainSnapshot({ moduleStore: (id) => enterprise.modules.get(id)?.store ?? null, scope: activeTenantScope })`
+is READY to wire in production. Surfacing it to the renderer rides an EXISTING `enterprise:*` handler (non-frozen; the
+registry is `this` in `buildModuleHandlers`) — the only thing that would force an FG gate is a brand-new IPC channel or a
+frozen response-type change, which is avoidable by extending a non-frozen handler payload. That production call-site +
+surface is the next increment; the observable object is now live-wireable and PROVEN against real stores.
