@@ -53,6 +53,10 @@ _LB- prefix denotes Live-Brain-track stages; these are NOT §5 slice numbers (wh
      has actually done and verified, not from its manifest or its plans.
   Constitutional bound (standing, §2 #15): no stage of this arc ever sets authority, approval, `confirmed`, policy, or
   admission; every consequential action re-derives authorization from the live substrate at execution time.
+  Language notes (operator, 19 Aug 2026 — adopted as LANGUAGE, not architecture): the honest product-language for this
+  arc when it enters is **"computational resilience"** — strength from remembered, verified experience, with no claim of
+  feeling. And explicitly: governance verdicts (DENIED / CANCELLED / EXPIRED) enter experience memory as FIRST-CLASS
+  outcomes WITHOUT passing through execution — DENIED is not FAILURE; CANCELLED is not FAILURE.
 - **LB-7 · Change intelligence** — DECLARED vs OBSERVED over time → change records (drift, already scoped for L2 depth).
 - **LB-8 · Drift intelligence** — declared/observed divergence as a first-class observation that feeds proposals, never an
   auto-fix.
