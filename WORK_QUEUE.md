@@ -165,3 +165,35 @@ commands · authority class · gate conditions · status.**
 - **Dependencies:** **blocked on NP-000** (the ceremony).
 - **Authority class:** **AUTHORITY_REQUIRED** (operator decision; five-field amendment discipline).
 - **Status: QUEUED (BLOCKED on NP-000).**
+
+---
+
+## MASTER DIRECTIVE HORIZON (adopted 20 Aug 2026 — "MASTER CONTROLLED DEVELOPMENT + PRODUCTIZATION DIRECTIVE")
+Phase order (binding unless the operator re-rules): **A Live Brain completion → B OS product experience → C system
+registration + canonical identity → D connector/capability/oracle registries → E personal → F professional →
+G enterprise connectors → H multi-connector ecosystem → I dev-automation maturity.** First objective is ONE coherent
+governed OS (working Live Brain, one proven capability, truthful UX, reusable connector abstraction) — never
+connector count. NP-000/S5.4 remains ABSOLUTE priority; "beginning step 1" stops everything.
+
+**⚠ NUMBERING COLLISION — OPERATOR RULING REQUIRED.** The directive's §44 strategic queue reuses IDs NP-001…NP-030
+that are COMMITTED HISTORY here (NP-001 S23 kit · NP-002 calendar dry run · NP-005 A0–A3 · NP-007 bootstrap repair ·
+NP-008 liveliness census · NP-010 Business Reality). Committed IDs are never renumbered (evidence docs reference
+them). The master strategic order is recorded below under provisional M-prefixed IDs pending the operator's ruling:
+- M-001 Live Brain completion audit (GREEN — §58 recon RUNNING) · M-002 Live Brain remaining closed slices ·
+  M-003 experience/memory boundary (memory never authority) · M-004 OS product-experience audit · M-005 P/P/E UX
+  model · M-006 system identity foundation · M-007 registration interface · M-008 canonical connector resolution ·
+  M-009 M365 connector reference NP-CON-M365-000001 · M-010 mail.send capability ref NP-CAP-M365-MAIL-SEND-0001 ·
+  M-011 mail.send oracle ref NP-ORACLE-M365-MAIL-SEND-0001 · M-012 test connection ref NP-CONN-M365-TEST-000001 ·
+  M-013 master connector resolution · M-014/016/018 tier priority studies · M-015/017/019 first tier connectors ·
+  M-020 second-connector abstraction proof · M-021 website catalog · M-022–024 P/P/E product surfaces · M-025–029
+  lifecycle/versioning/revocation/experience/multi-connector governance. HORIZON ONLY — entered one task at a time.
+- **Gate:** LIVE_BRAIN_READINESS must read sufficiently complete before M-008+ (connector platform) begins.
+- **Sequencing note:** NP-010 (Business Reality) §2–§6 are RE-SEQUENCED under this order (its §1 census artifacts
+  are DONE and feed the master report; its read-side spine work maps into Phases B/E). Flagged for confirmation.
+
+## §58 FIRST ACTION — READ-ONLY RECON → MASTER READINESS REPORT
+- Status: IN PROGRESS. Composed from committed evidence (NP-008 product census · NP-010 connector + data censuses ·
+  CLAUDE §1 Live Brain arc) + a 3-auditor read-only recon workflow (live-brain stages vs the §6 checklist · website
+  + P/P/E experience classification · identity/registration substrate vs the seven-identity model). Output:
+  certification/NEUROPAUSE-OS-MASTER-READINESS-REPORT.md + machine-readable LIVE_BRAIN_READINESS /
+  PRODUCT_EXPERIENCE_READINESS / CONNECTOR_PLATFORM_READINESS JSONs. NO CODE until the report exists.
