@@ -23,6 +23,7 @@ import {
   routingUsagePercentages,
 } from '@neuropause/shared';
 import type { SectionDef, SectionId } from '@renderer/shell/sections';
+import { LOCAL_FIRST_STORY } from '../localFirst/story';
 
 /* ── workspace-type navigation ─────────────────────────────────────────────── */
 
@@ -387,9 +388,9 @@ export function attentionSummary(items: readonly AttentionItem[]): string {
 
 export const FIRST_RUN_COPY = {
   headline: 'Your AI. Your Data. Your Control.',
-  supporting:
-    'Try NeuroPause free and experience AI that can work locally on your computer — for personal productivity or professional business work.',
-  primaryCta: 'Try Free Locally',
+  // S39 (F-S17-1): the DOOR half of the single local-first story (localFirst/story.ts) — a door, not a claim.
+  supporting: LOCAL_FIRST_STORY.doorSupporting,
+  primaryCta: LOCAL_FIRST_STORY.door,
   secondaryCta: 'Sign In',
   processingQuestion: 'Where should your AI work?',
   onDevice: {
