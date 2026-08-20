@@ -477,3 +477,100 @@ advisory's three values) — never minted alongside.**
 | **TWO READS NEVER RUN** | (a) what the runtime supervisor's `subsystem:"backend"` probe actually CHECKS; (b) what **S18** is in §5. **Until both land, nobody says anything further about the backend's state.** | Blocking a claim, not a defect |
 
 **F-P23** files as an instance of **F-P24**. **F-P21** files against **P5** and the proof standard.
+
+## §7 · P0 AND P4-MIN LANDED · P1 AWAITING CONTROLLED REPRODUCTION (20 Aug 2026)
+
+### §7.1 · P0 — THE CLOSING STATEMENT (adopted verbatim; supersedes any r3-incident framing)
+
+> **"The latent fail-open scope fallback has been removed from the connection path. The r3 ceremony did not
+> demonstrate that this defect was exercised. The current implementation fails closed when the provider supplies
+> no usable scope list, while the distinction between UNKNOWN and genuinely empty grant remains unresolved under
+> FG-13."**
+
+Bracket: INTACT #1 (`b0d8b55`) → checkpoint `0879b7a` → **isolated P0 `8076598`** → re-record → INTACT #2
+(`BASELINE-e92649b5fa1f`) → `43874e3`. Adversarial mutation PROVEN: fallback restored → 2 failed; reverted → 6
+passed.
+
+### §7.2 · P4-MIN — ADMITTED ON MERIT, NOT ON ROI
+
+**THE ADMISSION REASON IS F-P24:** a governance system that cannot prove its refusals is unauditable **as
+governance**. The investigative benefit is a **CONSEQUENCE, not a REASON**.
+
+> **SCOPE OF THE PRINCIPLE (operator clarification, so it does not become a blanket brake):** an instrumental
+> justification is disqualifying for **BEHAVIOUR CHANGES**. **Characterization pins are exempt — they change
+> nothing.**
+
+Landed as `log.warn(\`propose refused — ${response.reason}\`)`, **REASON ONLY**. The `detail` enumeration ordered
+before the change is why:
+
+| Reason | `detail` source | Untrusted content? |
+|---|---|---|
+| `PRINCIPAL_UNRESOLVED` | `principal.reason` — `'NOT_AUTHENTICATED' \| 'NO_TENANT'` | No — closed literal |
+| `CAPABILITY_NOT_SELECTED` | `binding.status` — selection-outcome literal | No — closed literal |
+| `UNSUPPORTED_ACTION` | `` `${binding.executor}:${binding.actionId}` `` — registry-derived | No |
+| **`INVALID_PARAMS`** | `review.detail` — 8 variants | **YES — two interpolate a RECIPIENT ADDRESS** (`m365ActionProposal.ts:99,101`, `addr.slice(0,60)`); a third carries an untrusted parameter key |
+
+And `redactCredentialText` would **not** protect it: NP-013 scoped it to credentials and **pinned that an email
+shape survives** (round-31 W-7). So the requirement became a finding, and the emitter logs no `detail` at all.
+
+Bracket kept **separate from P0's** — forensically, so the record preserves the distinction between **the
+authority-integrity correction** and **the diagnostic instrumentation introduced to localize P1**.
+
+### §7.3 · THE BUILD BOUNDARY (Pin D, 5 → 6)
+
+**The preserved 20 Aug log was produced by a FIVE-emitter build.** Historical negatives about the 12:44–12:49Z
+window stand under the **old** map and are NOT re-derived by the flip; only **forward** negatives use the new one.
+From this build on, silence at the propose boundary means "no refusal occurred" — which it did **not** mean on 20
+August. **Comment-blindness retro-check, run before the flip: raw 5, code-only 5 — UNCHANGED.**
+
+### §7.4 · ADDED TO THE NON-EQUIVALENCE FAMILY
+
+> **REFUSAL OBSERVED ≠ GOVERNANCE CORRECTNESS ≠ EXECUTION ≠ EXTERNAL EFFECT ≠ VERIFICATION**
+
+The P4 emitter can establish that a refusal **occurred**. It cannot establish that the refusal was **correct**, and
+it certainly cannot establish that the external world **changed**.
+
+> **MODEL OUTPUT ≠ BRAIN PROPOSAL ≠ BRAIN REVIEW ≠ AUTHORIZATION** — filed here too, as non-equivalences, never
+> staged as a pipeline. **A NON-EQUIVALENCE IS NOT A PIPELINE**: staging it invites "we are at stage 3, nearly
+> there" reasoning about authority, which is the exact failure the family exists to prevent. **Family A is held as
+> non-equivalences until its vocabulary stops moving.**
+
+### §7.5 · P1 IS NOT AN INVESTIGATION
+
+> **P1 = AWAITING CONTROLLED REPRODUCTION.**
+
+The historical A/B event is **CLOSED AS UNKNOWN and is not reopened**; only the **mechanism** question is
+scheduled. The word "investigation" invites more archaeology, which is exactly what was capped.
+
+**Required phrasing, verbatim, in every report:** *"A silent unresolved-TENANT-SCOPE branch EXISTS and is CAPABLE
+of producing the observed result, but the ceremony evidence does not establish that it occurred."*
+
+### §7.6 · THE REPRODUCTION — PRE-REGISTERED NOW, RUN LATER, **NOT AUTHORIZED**
+
+**Decision tree, declared before the run:**
+```
+DID A PROPOSAL ATTEMPT OCCUR?
+  ├── NO  → investigate handoff / navigation
+  └── YES
+       ├── refusal emitted → record the exact reason
+       └── success emitted → follow the artifact / review path
+```
+**Fifth row, which has paid off every time:** anything bearing on something else is recorded as **its own finding**,
+never forced into the tree.
+
+**SAFETY CONFIGURATION — the gap F-P13 names, closed before the run rather than after.** A reproduction plan with
+no device-level protection is protected by discipline, and **discipline failed on 20 August**:
+
+1. **Quit r2 AND r3, VERIFIED BY PROCESS LIST** — F-P13's gate, applied for the first time rather than recorded.
+2. **PRE-ARM THE LATCH** — create `first-real-send.latch` in the new profile **before launching**. FG-4 checks
+   `existsSync` and returns *before* the `writeFileSync`, so a pre-placed latch makes any send refuse and is not
+   rewritten by the attempt.
+3. **REBUILD FIRST** — r3 runs the 16:12 build and P4-MIN's emitter does not exist in it.
+4. **HARD STOP before Send.**
+
+### §7.7 · F-P25 — RECORDED, NOT FIXED
+
+`verify-freeze.sh` **conflates "a frozen surface changed" with "the baseline is behind HEAD."** `ANCESTRY OK` is
+computed, named, and then **flattened at the message** — the same **COMPUTED-NAMED-DISCARDED** shape as
+`resolveFull`. **An alarm that fires identically for a violation and for a routine step is not an alarm.** It fired
+`FREEZE BROKEN` during the P0 bracket for the routine reason. Fix direction noted, not taken.
