@@ -723,3 +723,90 @@ reproduction.**
 
 **NO FURTHER CODE CHANGE BEFORE THE RUN** — not the `:81` emitter, not Option A, not F-P25's exit states, not the
 closed-set discriminant.
+
+## §10 · ATTEMPT 1 — A CLOSED RECORD AGAINST `f309451` (20 Aug 2026)
+
+**`f309451` IS NOT EDITED.** The corrected procedure is a **new file**, `P1-REPRODUCTION-RUNBOOK-v2.md`.
+
+```
+f309451 → attempt 1 → §1.1 FAILED → F-P29 → STOP
+        → AMENDMENT → NEW COMMITTED RUNBOOK (v2) → attempt 2
+```
+
+> **A RECORD OF WHAT WAS DONE MUST POINT AT THE DOCUMENT AS IT WAS, NOT AS IT BECAME.** F-P27's lesson applied to
+> ourselves: editing the procedure after its gate failed would contaminate the record of the attempt that failed.
+
+### §10.1 · ATTEMPT 1 — WHAT HAPPENED
+
+Executed §1.1 verbatim. `ps aux | grep -c` printed **5**, then 4. **STOPPED, as instructed** — no latch pre-arm,
+no content verification, no launch, no navigation. **The decision tree was never reached.**
+
+Enumeration showed **r2's main killed successfully**, **r3's main (PID 92727, started 17:38:36) surviving**, and
+**three helpers respawned at 22:32:26 — after the kill.**
+
+### §10.2 · F-P29 — PROCESS-IDENTITY GATE AMBIGUITY
+
+The §1.1 assertion counts Electron **helper** processes as well as the NeuroPause-S54 **main**, so a non-zero
+result does not establish that a main survives, while a transient helper population makes the gate unstable. **The
+gate must identify and count ONLY mains, excluding `--type=` helpers, and require an exact zero.**
+
+**THE PRECISION THAT TRAVELS WITH IT:** F-P29 does **not** say the runbook was unsafe in outcome. It says the
+**predicate was insufficiently discriminating**. The gate **failed safely** — a main was in fact still alive.
+**IMPRECISE AND CORRECT.**
+
+**The sharpening (operator):** the predicate **cannot produce a false negative** — a main is always counted — so
+it produces **only false positives**, and **FALSE POSITIVES ON A SAFETY GATE ARE DANGEROUS THROUGH HABITUATION,
+NOT THROUGH LOGIC.**
+
+> **LAW: A SAFETY GATE MUST TEST THE EXACT DANGEROUS STATE, NOT MERELY A CORRELATED PROCESS SIGNATURE.**
+> Filed with **THE INSTRUMENT IS PART OF THE SYSTEM UNDER TEST** — the specific form and the general form together.
+
+### §10.3 · F-P30 — THE SHUTDOWN COMPLETED AND THE PROCESS DID NOT EXIT
+
+Established **from the log, not from a second attempt** — the pre-registration (item 1) was answered by an
+observation that already existed. `logs/app.log`, r3:
+
+```
+17:02:26.841Z ERROR (crash-reporter) Crash captured {"category":"plugin","kind":"child-process-gone","message":"killed"}
+17:02:26.846Z ERROR (crash-reporter) Crash captured {"category":"renderer","kind":"render-process-gone","message":"killed"}
+17:02:27.341Z INFO  (main) Shutdown flush complete {"ran":7,"failed":[],"timedOut":[],"durationMs":2}
+17:02:58.994Z INFO  (runtime-supervisor) recovery attempt …          ← 31s later, normal operation resumes
+…continues to 17:08:59.333Z, then silence
+```
+
+**SIGTERM killed the helpers; the main entered `will-quit`, ran all seven flushes cleanly in 2ms, logged the
+summary, called `app.quit()` — and kept running supervisor timers for ~6.5 minutes before exiting.** It left
+orphaned helpers that outlived it briefly. No second `Shutdown flush` line exists.
+
+**PRE-REGISTERED OBSERVABLE, now confirmed:** the artifact that shows the barrier ran is
+`INFO (main) Shutdown flush complete {ran, failed, timedOut, durationMs}` in `logs/app.log`, emitted on the clean
+path and as `WARN … completed with losses` on the lossy one (`index.ts:286-290`). Seven flushes are registered:
+`app-log`, `org-store`, `workspace-store`, `governance-store`, `enterprise-module-stores`, `platform-timeline`,
+`workspace-contexts`.
+
+**THE LATCHED-BARRIER DEFECT that rides with F-P30:** `index.ts:280-282` sets `shutdownFlushed = true` after the
+first pass and `will-quit` early-returns thereafter — **so a second quit issued in that window flushes nothing.**
+Snapshot *before* any further quit, not after.
+
+**OUTCOME NOT IN THE PRE-REGISTERED SET, recorded under the fifth row rather than forced into a branch:** the
+result was neither `MAIN_COUNT = 0` (clean exit) nor a persistent `MAIN_COUNT = 1` requiring escalation. It was a
+**DELAYED EXIT** — ~6.5 minutes, unattended, with no operator close and no SIGKILL. **The operator's step 3 became
+moot: there was nothing left to close.**
+
+### §10.4 · A LABEL OF MINE, CORRECTED BY EVIDENCE
+
+The 22:40:47 profile capture was recorded as a **LIVE-MUTATING CAPTURE**, conservatively, on the assumption the
+main was still alive. A post-exit snapshot taken afterwards produced a **byte-identical manifest**
+(`52f64db2…5bfe5f1`, 101 files both times), so **the process had already exited and the capture was clean, not
+live-mutating.** The label is corrected rather than left standing — a conservative label that the evidence
+contradicts is still a wrong label.
+
+### §10.5 · STATE AT CLOSE
+
+`MAIN_COUNT = 0`, independently observed with the **corrected mains-only assertion**. All NeuroPause-S54
+processes, mains and helpers, have exited. Evidence preserved: `final-logs-before-quit/` (r3 159,218 b / 1,326
+lines, sha `a67817ba…adfa56c`; r2 byte-identical to the 18:55 copy), `snapshot-r3-postexit/` + manifest, and the
+earlier `snapshot-r3`, `snapshot-r2`, `artifact-1612` packs — all **OPERATOR-PRIVATE** per F-P28.
+
+**Nothing proceeds to latch pre-arm, launch, navigation or reproduction.** Attempt 2 runs against **v2**, on the
+operator's word, at a fresh sitting.
