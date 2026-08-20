@@ -156,8 +156,14 @@ commands · authority class · gate conditions · status.**
   proceed fully · FG gates for frozen · D-15 quiet window for any fleet · full main per renderer rule · one commit
   per slice · never push · ingested ≠ verified, drafted ≠ sent, kit-complete ≠ certified.
 - **Authority class:** GREEN read-side; every write capability GATE_REQUIRED via its own S23 kit run.
-- **Status: IN PROGRESS — §1 census sweeps running (read-only).** Nothing is built before the two truth artifacts
-  exist.
+- **Status: COMMITTED — §1–§6 all closed (operator re-ruled §2–§6 to run, 20 Aug 2026).** §1 censuses `45a0970` ·
+  §2 transaction-class ingestion + honesty label `df17ac6` (12 entities; 'verified' unassignable, pinned) ·
+  §3 evidence lineage on AR aging `bf39fb5` (one pure rule, tile law live) · §4 revival ladder `1b29368`
+  (**AWAITING OPERATOR ORDER RULING**) · §5 Brain business facts + reminder drafter `59cca40` (proposal-side only;
+  recipient-from-mandate REFUSAL pinned; **lane wiring = explicit post-ceremony gate**) · §6
+  `certification/LAUNCH-READINESS-BUSINESS.md`. Final suites: full main 862/9010/3 · ui 41/278 · honesty scans 0 ·
+  FREEZE INTACT · zero frozen touches · zero external effects. Follow-ups recorded in §6 (aggregation importer,
+  lineage expansion, GST formats, F-MR-5).
 
 ## NP-006 · Post-ceremony §5 amendment — experience-arc-vs-v1.0 sequencing
 - **Objective:** decide the ONE explicitly-open question (full experience arc before v1.0, or v1.0 earlier on the
