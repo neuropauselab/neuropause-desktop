@@ -185,6 +185,23 @@ commands · authority class · gate conditions · status.**
   NOT built until the token. Invoice-lifecycle evidence model: approved as recorded (paid ← payment reference
   exists; sent requires a certified send).
 
+## NP-012 · Concentric Architecture adoption — REFERENCE + AUDIT track (operator directive, 20 Aug 2026)
+- **Objective:** §0 commit the spec as ARCHITECTURE.md · §1 canonize non-equivalences · §2 gap audit →
+  ARCHITECTURE-MAPPING.md · §3 ranked proposals (operator chooses; zero code without ruling) · §4 status language.
+  NOT a rebuild license; yields to NP-000 and the in-flight NP-011 slices.
+- **Status: PART A COMMITTED · §0 + PART B BLOCKED on the spec text.** The Concentric spec document was not found
+  in the repo/workspace (searched); ARCHITECTURE.md and the ring-dependent audit rows wait for the operator to
+  supply it — a canonical reference is transcribed, never reconstructed. DONE now: §1 fifteen-line table fully
+  classified (14 already-law/behavior + 2 recorded-modeling; **PAYMENT ≠ AUTHORITY canonized as CLAUDE §2 #16**,
+  before any Razorpay work exists) · both vocabulary rulings recorded (D-16 sole verification vocabulary;
+  spec five-value set = state assessment only, mapped onto `Certainty` side-by-side; NP-CON-/NP-CAP- ids from the
+  ladder onward, existing ids aliased) · Part-A element audit (tenant-DENY CONFIRMED · authn≠authz CONFIRMED ·
+  credential boundary CONFIRMED w/ naming-DIVERGENT + F-MR-7 gap · observation ladder ABSENT-as-unified ·
+  nine-timestamp model ABSENT) · §3 preliminary ranking presented · §4 language verbatim:
+  **NP-000 = HOLD; pre-execution divergence FIXED (NP-007, supersedes the advisor doc §9); hold reason = TENANT
+  AVAILABILITY only; "NP-011 progress is never evidence of NP-000 readiness — the real external-effect proof
+  passes independently."** All in `certification/ARCHITECTURE-MAPPING.md`.
+
 ## NP-006 · Post-ceremony §5 amendment — experience-arc-vs-v1.0 sequencing
 - **Objective:** decide the ONE explicitly-open question (full experience arc before v1.0, or v1.0 earlier on the
   proven loop) by §5 amendment against the substrate as it then exists.
