@@ -64,9 +64,17 @@ directions unnoticed).
 
 **THE EVIDENCE HIERARCHY — the rungs a claim can stand on:**
 
-> **DECLARED → CONSUMED → ENFORCED → TESTED → ADVERSARIAL → OBSERVED → VERIFIED**
+> **DECLARED → REACHABLE → CONSUMED → ENFORCED → TESTED → ADVERSARIAL → OBSERVED → VERIFIED**
 
 > **THE RULE, verbatim: "NeuroPause should never silently treat a lower rung as a higher one."**
+
+**REACHABLE inserted between DECLARED and CONSUMED (operator ruling, 20 Aug 2026, P0/P1 directive):** *you cannot
+consume what you cannot reach.* It is one rung of the SAME hierarchy — deliberately **not** a parallel
+DECLARED ≠ REACHABLE ≠ OBSERVED ≠ VERIFIED vocabulary, under the same anti-fork discipline that governs the single
+`Certainty` authority (NP-018) and the report classes. The rung earned its existence empirically: the FG-9 eight-field
+review is DECLARED, has an operator-reachable surface, and on the ceremony build was **not** reachable through the
+DEV-gated control the runbook named — a gap the old ladder had no rung to express, because it could only say
+"declared" or "consumed" and the truth was neither.
 
 Silently is the operative word: standing on a lower rung is honest when it is *labelled* as that rung. The whole
 NP-016 record exists to keep those labels attached (KNOWN-with-source / CONFLICTING / ABSENT-with-reason /
@@ -232,7 +240,240 @@ Ranked by risk-reduction per effort, each a bounded slice, none touching NP-000'
 ## §4 · STATUS LANGUAGE (recorded verbatim, corrections folded)
 
 NP-000's recorded status = **HOLD**; the pre-execution divergence is **FIXED** (NP-007 closed with evidence — the
-advisor doc's §9 predates that and is superseded); the current hold reason is **TENANT AVAILABILITY only**.
+advisor doc's §9 predates that and is superseded). **HOLD REASON UPDATED 20 Aug 2026 (operator): no longer tenant
+availability — an EXECUTED-AND-EMPTY propose lane (P1). The sitting converted from a ceremony sitting to a findings
+sitting.**
 **"NP-011 progress is never evidence of NP-000 readiness — the real external-effect proof passes independently."**
 IMPORT ≠ APPROVAL ≠ POSTING is tested explicitly in slice B (`aggregatedImports.test.ts`: `approvedAt` empty +
 draft pins), never inferred from code structure.
+
+## §5 · THE FINDINGS SITTING (20 Aug 2026) — F-P8…F-P17, and the vocabulary rule they forced
+
+### §5.0 · MAPPING PRINCIPLE — THE GRANTED/TENANT DISAMBIGUATION (operator ruling, binding)
+
+Two unrelated authorities shared the bare word **"scope"**, and that single collision produced **five
+mislocalizations in one sitting** — every one of them a fault placed downstream of where it actually was.
+
+| Term | Means | Lives in | Programme item |
+|---|---|---|---|
+| **GRANTED SCOPE** | OAuth permissions actually conferred by the provider | `connectorService.ts:632` · `grantedScopes` · `m365/executor.ts:33` · `cst/sendTransition.ts:113` | **P0** |
+| **TENANT SCOPE** | Tenancy identity `{tenantId, workspaceId}` | `TenantScope` · `activeTenantScope` · `brainProposeLane.ts:81` | **P1** |
+
+> **THE CANONICAL EVIDENCE LADDER IS §0.3's AND ONLY §0.3's** — DECLARED → REACHABLE → CONSUMED → ENFORCED →
+> TESTED → ADVERSARIAL → OBSERVED → VERIFIED. **Any advisory diagram that differs is a PROPOSAL, not a
+> correction, and is reconciled against this document before anything acts on it.** (Operator ruling, 20 Aug 2026,
+> after the ladder took four shapes in four consecutive documents — dropping TESTED and ADVERSARIAL twice, which
+> are the red-first rungs the programme rests on. A vocabulary that has taken four shapes in four documents is not
+> a vocabulary, it is a draft.)
+
+> **THE BARE WORD "DRAFT" IS BANNED** alongside "scope". Two paths share it — **GOVERNED DRAFT**
+> (`referenceDrafter` → Proposal/BrainReview → governance) and **PRODUCT DRAFT** (`aiEngine`/Ollama → editable
+> draft → human composition) — and one closed claim already straddled the collision. That is F-P8. Always
+> GOVERNED DRAFT or PRODUCT DRAFT.
+
+> **THE BARE WORD "SCOPE" IS BANNED** in reports, rulings, log lines, pin names and commit messages. Always
+> GRANTED SCOPE or TENANT SCOPE. This is the REACHABILITY family's own lesson — *a declared thing and a reachable
+> thing were allowed to share one name* — turned back on our own vocabulary. **No renames in source were made when
+> this rule was adopted;** it governs documents and new code first, and any source rename is its own presented slice.
+
+### §5.1 · THE TWO LAW FAMILIES — kept separate, deliberately
+
+They are not one law. Conflating them is what let an authority defect and a reachability defect be discussed in the
+same breath as though one analysis served both.
+
+**AUTHORITY family** — *what the system may be permitted to do.*
+§2 #16 (payment is never authority) · connection is never permission · **requested GRANTED SCOPE is never granted
+GRANTED SCOPE**.
+> **Proposed general law (operator's go pending before §2 entry): PRESENCE IN THE SYSTEM IS NEVER AUTHORITY.**
+> §2 #16 becomes a corollary of it, as does the requested-vs-granted pair below.
+
+**REACHABILITY family** — *what the system can actually get to.*
+§2 #18's corollary (a declared governance capability is not a reachable governance path) · F-N17-4 · the DEV gate ·
+source-vs-build.
+> **Its statement: A DECLARED THING AND A REACHABLE THING WERE ALLOWED TO SHARE ONE NAME.**
+
+### §5.2 · THE ROWS
+
+| ID | Finding | Family | Rung reached | Status |
+|---|---|---|---|---|
+| **F-P8** | The P2.4 AI-draft path is structurally OUTSIDE the authority boundary and functionally UPSTREAM of it. Model output reaches a send-capable form with nothing between. Item 3 alone is a wording defect; item 4 alone is a validation gap; **composed, they are a boundary crossed by CONTENT where the architecture only ever pinned CONTROL.** | AUTHORITY (adjacent) | OBSERVED | **OPEN** — own row, own remedy |
+| **F-P9** | The record carries two clocks under one set of numbers. Log stamps are UTC; the sitting reported them as wall-clock (IST, +5:30). Artifacts are fine; the record's legibility is not. **No single clock, no run id tying a log line to a run.** | — (P2) | OBSERVED | **OPEN — this IS P2** |
+| **F-P10** | The runbook violated §2 #17: written against SOURCE, never against the built ARTIFACT, which is why its step 2 names a DEV-gated control. | REACHABILITY | OBSERVED | **OPEN**; corollary pending go: *a document that describes the repository is not a document that describes the artifact* |
+| **F-P11** | A fail-closed path that leaves no evidence is indistinguishable from a path that never ran. `brainProposeLane.ts:81` has SOURCE, CONSUMER, INVARIANT and **no EVIDENCE**. "Silent-honest" conflates two virtues: honest about authority, silent about occurrence. | — (P1) | SOURCE-PROVEN | **OPEN**; elevation pending go: *a refusal must be observable or it is not auditable* |
+| **F-P12** | The handoff mailbox has NO expiry and is never cleared on navigation, while the proposal it produces carries a 10-minute `Expires`. A fresh proposal can always be minted from a stale intent — **the expiry discipline exists on one side of the handoff only, which makes `Expires` partly decorative.** | REACHABILITY | SOURCE-PROVEN | **OPEN** |
+| **F-P13** | **A PER-PROFILE SAFETY DEVICE DOES NOT PROTECT A MULTI-INSTANCE DESKTOP.** The FG-4 latch is per-profile; a second instance on a different profile carries its own absent one. Two instances ran for 20 hours. Had the 18:19 Confirm landed in the r2 window there would have been **no latch and a real send would have gone out.** Root cause: the launch sequence said "quit old app instances" and gave it no verification step. **A STATED PRECONDITION WITHOUT A CHECK IS NOT A PRECONDITION.** | AUTHORITY | OBSERVED (near-miss) | **OPEN — the sitting's most serious.** Protocol change: a process-list check becomes a step-1 gate equal in standing to the seed line; the ceremony cannot begin with a second instance live |
+| **F-P14** | Fourth REACHABILITY instance: the button labelled **"Open connectors"** does not open the Microsoft panel — it lands on the connector list and the Microsoft card must additionally be clicked. **A control named for a destination it does not reach.** | REACHABILITY | SOURCE-PROVEN | **OPEN** |
+| **F-P15** | `workspaceStore.isLoaded()` is **MONOTONIC** — `loaded` is assigned `true` at exactly one site and never back to `false`; `load()` early-returns once loaded. The observed order was SUCCEED (18:14) → FAIL (18:17), so **`not_loaded` is EXCLUDED BY DIRECTION** and the load-race hypothesis is dead. **Something genuinely changed in the window.** | — (P1) | SOURCE-PROVEN | **ANSWERED — negative** |
+| **F-P16** | `resolveTenantScope` branches on ambient async context (`storage.getStore() ? principalScope() : session()`). The only producer is `runWithPrincipal` (`backgroundPrincipal.ts:109`), used by background fan-out callers; **IPC handlers are not among them.** Both panel mounts took the `session()` branch. **EXCLUDED.** | — (P1) | SOURCE-PROVEN | **ANSWERED — negative** |
+| **F-P17** | TENANT-SCOPE-null does **not** account for the zero counter row. `unified/sync/index.ts:163` returns snapshots unchanged on a null tenant scope, so `writeStates` would be **absent** and `M365WritePanel.tsx:135,151` would render **"No governed writes yet."** Zeros were observed instead ⇒ `writeStates` was present ⇒ the tenant scope resolved on that read. **P2's `workspaceId`-vs-`tenantId` diagnosis is NOT downgraded.** | — (P2) | SOURCE-PROVEN (display law); discrimination rests on the operator's observation of zeros rather than the sentence | **ANSWERED — P2 stands** |
+
+### §5.3 · P1 LOCALIZED — INTERMITTENT SILENT TENANT-SCOPE DENIAL
+
+**The renderer is innocent.** `setBrainReview` was called with `null` and `BrainReviewCard.tsx:24` did exactly what
+it is specified to do. The break is `brainProposeLane.ts:81`, in the main process.
+
+**The defect is LOSS OF DIAGNOSTIC STATE.** `resolveFull()` computes a typed refusal drawn from an authoritative
+**EIGHT**-member union (`packages/shared/src/types/tenancy.ts:98`) — `not_signed_in · not_loaded · no_workspace ·
+workspace_orphaned · not_a_member · not_in_workspace · member_inactive · tenant_not_operable` — and
+`tenantContext.ts:497`'s `scope()` flattens **every one of them to `null`**; `:81` then discards that null again.
+Two lossy hops, and the answer P1 needs existed at the first one.
+
+**PRECEDENT — the same defect was already repaired once, elsewhere.** P13C Round 26 **W-5**: *"`resolveFull()`
+already decided this and its answer was being discarded, so eight distinct conditions reached the renderer as one
+sentence"* (`enterprise/index.ts:830`). The repair shipped as the optional `tenantRefusal?: () => TenantRefusal |
+null` accessor on the authz-gate deps (`authzGate.ts:127`), implemented as a single `resolveFull()` consultation on
+the refusal path only.
+
+**ANTI-PATTERN — established by P13C Round 31 W-10, and binding on the P1 envelope.** The Round 28 diagnostic that
+re-read `authService.getStatus()`, the org store and the workspace store *after* `resolveFull()` had returned was
+**removed, and its removal is the point**: a second sample of four mutable singletons *"described a state that had
+not produced the refusal it claimed to explain, and there would have been no way to tell from the output."*
+**The P1 repair must report from the values the resolver actually used — never re-sample.**
+
+### §5.4 · CORRELATION IDENTITY — WHAT EXISTS, AND WHAT DOES NOT (P1-B / the P2 spine question)
+
+| Boundary | Identity field | Source | Consumer | Semantic meaning |
+|---|---|---|---|---|
+| **Request** | `requestId` = `req:<idem>:<epochMs>` | CST kernel mint; surfaced by **FG-12** on `GovernedSendResult.requestId` | `actionRecord` observer → `ActionRecord.requestId` + `requestTime` | The kernel's request-construction instant, embedded at mint, read verbatim. **Never** a proxy for authorization or execution time |
+| **Tenant** | `TenantScope.tenantId` | `tenantContext.resolveFull()` → `context.tenantId` | scoped stores; `unified/sync/index.ts:191,232` (counter READ) | Organization/tenant identity |
+| **Workspace** | `TenantScope.workspaceId` | the SAME `resolveFull()` call | `brainProposeLane.ts:83` tenant key; the ActionRecord's `tenantId` column (**written as workspaceId**) | Active workspace identity |
+| **Tenant scope** | `TenantScope {tenantId, workspaceId}` | `activeTenantScope()` → `resolveTenantScope(() => tenantContext.scope())` | lane `:81`, the sync join, every scoped store | The two-field tenancy identity. **A null erases both fields AND the reason** |
+| **Proposal** | `proposalId` = `prop:<tenantId>:<purpose>:<bodyFingerprint>:<evidenceAsOfMs>` (`proposal.ts:199`) | `buildProposal` — **derived and deterministic, not minted** | stashed in `proposalStore` under a **different** key: `tenantId::capabilityId::account::canon(params)` | Content-derived proposal identity |
+| **Action record** | `ActionRecord.id` = `act_<uuid>`; also `transitionId`, `admissionRef` | `actionRecord.observe` | `actionRecord.query`, `m365WriteStates` | Durable evidence-row identity |
+
+> **AMENDED 20 Aug 2026 — the earlier "none exists" is WITHDRAWN.** An authoritative correlation identity **DOES**
+> exist at the assistant boundary: every envelope carries a `correlationId` (`asst_…`, minted by `baseEnvelope`),
+> observed in both stored ceremony turns. **It is DISCARDED at the handoff boundary** — `PendingMailIntent` is
+> `{to, subject, body}` only. So this is a **PROPAGATION candidate, never a MINTING one**, exactly as the rule
+> demands. The cost is measured, not hypothetical: had it been carried, the six-mislocalization spiral of 20 Aug
+> would have been a single lookup.
+>
+> **AND THE LAW THAT CONSTRAINS ITS PROPAGATION — CORRELATION IS FOR EVIDENCE, NEVER FOR AUTHORIZATION.** The
+> content-derived match is what makes edit→SKIP work, and it **fired live in production on 20 Aug**, refusing to
+> attribute the 18:19 send to the stashed proposal because the params differed. A `correlationId` match would have
+> said "same run" where the operator had edited the body — precisely what edit→SKIP exists to catch. The id may
+> travel alongside; **the content-derived match remains the SOLE basis for attributing an execution to a
+> proposal.** If anything ever branches on `correlationId` for the gate, that is a governance change under §2 #18
+> and it takes a presented envelope. (This is NP-017's lesson verbatim: completing a spec must not weaken a
+> governed refusal as a side effect.)
+
+> **The rest of the chain remains a negative: NO SINGLE IDENTIFIER SPANS IT.** `ActionRecord` carries **no**
+> `proposalId` (verified: the field does not exist in the store or the written record), the proposal→execution link
+> is re-derived from content rather than carried by identity (which is precisely what makes edit→SKIP work), the IPC
+> layer mints **no** correlation id at all, and **FG-12's `requestId` begins at `governedSend`** — it does not reach
+> back to PROPOSE, BRAIN REVIEW or HUMAN DECISION.
+>
+> Per the standing rule — *EXISTING AUTHORITATIVE ID → PROPAGATE, never NEED CORRELATION → MINT ONE* — **this is
+> reported and STOPPED, not solved.** `requestId` is a candidate spine for execution→evidence only; the earlier
+> boundaries have no identity to propagate and none was invented to complete the shape.
+
+### §5.5 · THE CONSTRAINING PRINCIPLE ON ANY P1 REMEDY (operator ruling, standing law)
+
+> **A REMEDY THAT WORKS UNDER EVERY HYPOTHESIS IS NOT EVIDENCE FOR ANY OF THEM.**
+
+A readiness gate would make the symptom disappear whether the cause is a load race or a non-monotonic `isLoaded` —
+and under the second it would **MASK a worse defect**. **No readiness gate.** Establish the cause first. This is the
+inverse of red-first, and F-P15 is why it earned its place: the load-race hypothesis was the intuitive one and the
+source killed it.
+
+## §6 · THE INVESTIGATION CLOSES (20 Aug 2026) — locked state, closed questions, corrected order
+
+### §6.1 · THE A/B QUESTION IS CLOSED AS UNKNOWN, AND IT IS NOT REOPENED
+
+> **THE HISTORICAL EVENT OF 18:16:59 IS PERMANENTLY UNKNOWN.** It is recorded as UNKNOWN, it is an **honest
+> terminal state**, and it is not reopened.
+
+The operator pre-ruled that if the artifacts did not settle whether the 18:16:59 navigation used the assistant's
+"Open connectors" button or the sidebar, it closes. The LevelDB `np.activeSection` trace was the last cheap
+immutable evidence and returned **row 3 of the pre-registered table — insufficient to distinguish** — exactly as
+declared *before* the file was opened. No handoff key can exist (the mailbox is a renderer module variable, never
+persisted) and no record names a navigation mechanism.
+
+**P1 therefore stops being an investigation.** The **EVENT** question is closed. The **MECHANISM** question — does
+a second consumption work — moves to a **diagnostic re-run** under instrumentation. Nobody restarts the
+archaeology.
+
+**THE REQUIRED P1 PHRASING, to be used verbatim in every report from here:**
+
+> *"A silent unresolved-TENANT-SCOPE branch EXISTS and is CAPABLE of producing the observed result, but the
+> ceremony evidence does not establish that it occurred."*
+
+### §6.2 · LOCKED STATE
+
+| Item | State |
+|---|---|
+| **P0** | **LATENT defect — NOT observed in r3** |
+| r3 granted scopes | **OBSERVED** (real token response) |
+| **P1** | **UNLOCALIZED** |
+| **P2** correlation | **ESTABLISHED** |
+| **P3** | OPEN |
+| **F-P24** | **OBSERVED** |
+| External effect | **PROHIBITED** |
+| Frozen kernel | **UNCHANGED** |
+| Complete NP-000 chain | **NOT ESTABLISHED — no retrospective upgrade** |
+
+### §6.3 · THE P0 CORRECTION — THE FALLBACK NEVER FIRED
+
+The claim that `connectorService.ts:632` fabricated a grant from the manifest is **corrected**. The signature does
+not match: `manifest.oauth.scopes` is **22** entries; r3 stored **21** — *the same list minus `offline_access`*.
+Microsoft consumes `offline_access` to mint a refresh token and does not echo it in the granted `scope` claim, so
+**the stored set is the fingerprint of a real token response.** Had the fallback fired, the stored set would equal
+the manifest exactly, `offline_access` included.
+
+**So `tokens.scopes` was non-empty, the fallback did not fire, and the panel displays genuinely granted scopes.**
+The 21-vs-7 discrepancy is **manifest over-request** — the already-recorded F-1 / F-N16-5 minimization item — not
+storage fabrication. The fail-open branch is real and **latent**, one provider behaviour away from firing.
+
+*Method note, recorded as the night's own lesson: a discrepancy was observed and the code path capable of
+producing it was reached for, without first checking whether that path's SIGNATURE matched. The `offline_access`
+delta is the signature, and it exonerated the code.*
+
+### §6.4 · CORRECTED PROGRAMME ORDER — P4 IS A PRECONDITION FOR P1, NOT ITS SUCCESSOR
+
+> **P0 → P4-MIN → DIAGNOSTIC RE-RUN → P1 → P2 → P3 → P4-FULL → P5 ceremony → read-back → verification**
+
+**P1 cannot be localized without the evidence P4 produces.** The A/B question was unanswerable *precisely because
+refusals leave no trace*. P1-before-P4 buys another archaeology round; P4-before-P1 lets a diagnostic re-run answer
+P1 in ninety seconds. The split mirrors P0's:
+
+- **P4-MIN** — the propose path emits on refusal. One emitter, or un-gate the existing DEV refusal surface.
+  Decision-neutral, no type change.
+- **P4-FULL** — the three-record model, a design slice with its own gate.
+
+**F-P24's future model (adopted):** GOVERNANCE (`ALLOW/ASK/DENY/HOLD`) separate from EXECUTION
+(`NOT_STARTED/STARTED/COMPLETED/FAILED`) separate from VERIFICATION. A DENY becomes fully auditable as
+`governance=DENY, execution=NOT_STARTED, verification=NOT_APPLICABLE`, and **must never be converted into
+`execution_failed`.** **BINDING CAVEAT:** the VERIFICATION third is **RECONCILED against D-16's
+`verificationTerminals.ts` single authority and NP-018's `Certainty` set (which includes `STALE`, absent from the
+advisory's three values) — never minted alongside.**
+
+### §6.5 · STANDING LAWS ADDED BY THIS INVESTIGATION
+
+- **Never promote a plausible explanation into a localized failure** until the causal episode and evidence
+  identity establish the connection.
+- **RUN A ≠ RUN B UNLESS THE EVIDENCE CHAIN ESTABLISHES THEIR RELATIONSHIP.** No longer theoretical — this
+  investigation is the proof.
+- **INSTRUMENTED SILENCE IS EVIDENCE; UNINSTRUMENTED SILENCE IS NOT.** Before reasoning about silence on any path,
+  establish whether that path is instrumented.
+- **UNLOCATED ABSENCE IS NOT EVIDENCE.** Absence of a key proves nothing unless the store is known to write it.
+- **AN UNRESOLVED CONTRADICTION IS A FINDING, NOT A DEFECT TO BE SMOOTHED.** Do not repair either side to make them
+  agree. Pairs with the vacuous-green rule: one forbids a test that cannot fail, the other a story that cannot be
+  wrong.
+- **EXPECTED ≠ CORRECT.** A governance system that mints no record when it refuses is behaving as built, not
+  behaving correctly.
+- **A STATED PRECONDITION WITHOUT A CHECK IS NOT A PRECONDITION.** (F-P13.)
+- **I READ A PARTIAL ENUMERATION AS AN EXHAUSTIVE ONE** — recorded by the operator as their own, alongside
+  premise-dropping in transit, as the failure family behind six mislocalizations in one sitting.
+- **Do not make NeuroPause appear more complete.** Make each boundary truthful, causally attributable,
+  independently testable, and explicit about what remains unknown.
+
+### §6.6 · FINDINGS-WITHOUT-A-LANE REGISTER (standing — these evaporate between rounds otherwise)
+
+| ID | Finding | Why it has no lane |
+|---|---|---|
+| **F-P13** | The FG-4 latch is **per-profile**; a second instance on another profile carries its own absent one. Two instances ran 20 hours; an 18:19 Confirm in the r2 window would have sent for real. **The process-list check becomes a step-1 VERIFIED ceremony gate, equal in standing to the seed line.** | Ceremony protocol, not a P-slot |
+| **F-P19** | `capabilityProposeIpc.ts:48-52` narrows `AuthStatus` with a bare ternary whose else-branch swallows `'local'` — a **CLAUDE §4 standing-rule violation**, an unlabelled deny. **Triggers a §2/§4/§5 ENFORCEMENT AUDIT: which rules have enforcement and which are prose.** | Cross-cutting; the audit has no owner |
+| **FULL-LOCAL DIRECTIVE** | Local-first means the whole stack, not only the desktop. **Recorded, not designed.** | No slice exists |
+| **TWO READS NEVER RUN** | (a) what the runtime supervisor's `subsystem:"backend"` probe actually CHECKS; (b) what **S18** is in §5. **Until both land, nobody says anything further about the backend's state.** | Blocking a claim, not a defect |
+
+**F-P23** files as an instance of **F-P24**. **F-P21** files against **P5** and the proof standard.
