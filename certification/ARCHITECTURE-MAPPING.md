@@ -92,6 +92,24 @@ identifier grammar**, are both authored at **ladder rung 2 (the calendar.create 
 reversibility-on-record gains a real consumer and the calendar read-back oracle forces the naming question
 honestly — and presented there for the operator's approval. Nothing is invented before then.
 
+## §0.4 · NP-012 PROGRAM COMPLETE (20 Aug 2026) — the closing achievement, recorded verbatim
+
+Ten items closed, zero freeze breaks: NP-013 · NP-014 · NP-015 · F-N16-1 · NP-016 · NP-019 (stopped and mapped)
+· NP-020 reconciliation (F-N16-2/3/4) · FG-12 · NP-017 (determined) · NP-018.
+
+> **"NeuroPause now distinguishes the existence of evidence, the semantic state of evidence, the freshness of
+> evidence, and the governance consequences of that evidence — without allowing an unconsumed field or
+> unreachable mechanism to masquerade as an operational control."**
+> — advisor review, adopted verbatim by operator ruling, 20 Aug 2026
+
+Each clause has its slice: **existence** (NP-016's KNOWN-with-source / ABSENT-with-reason / SOURCE_REQUIRED
+record) · **semantic state** (CONFLICTING surfaced, never resolved by preference) · **freshness** (NP-015's
+temporal model, NP-019's refusal to invent phase instants, NP-018's STALE-vs-UNKNOWN) · **governance
+consequences** (§2 #18, F-N16-1's discovery invariant, NP-017's validity guard). And the negative half is the
+harder half: the FIELD LIFECYCLE ladder (§0.3), the reversibility MOVE RULE (§0.2), the VALIDITY GUARD, and
+F-N17-4's *"a declared governance capability is not the same thing as a reachable governance path"* exist
+precisely so nothing unconsumed or unreachable can pass itself off as a control.
+
 ## §1 · THE FIFTEEN-LINE TABLE ⇄ CLAUDE.md §2 (complete — spec §0 lists all fifteen + PAYMENT ≠ AUTHORITY verbatim)
 
 | # | Non-equivalence | Verdict | Cross-reference / pin |

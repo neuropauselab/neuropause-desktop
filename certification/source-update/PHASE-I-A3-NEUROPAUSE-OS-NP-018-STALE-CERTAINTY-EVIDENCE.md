@@ -17,14 +17,19 @@ requirement.** Collapsing them would destroy the only information separating "we
 saw this, and the requirement says that is no longer good enough". Both the type's doc comment and three pins
 carry the distinction, including one that asserts the two are never interchangeable for the same input.
 
-A consequence worth stating: **an unusable observation time is UNKNOWN, never STALE.** We cannot say a fact has
-aged if we cannot say when it was observed — pinned for `null`, `undefined` and `NaN`.
+A consequence worth stating, recorded verbatim by operator ruling (20 Aug 2026):
+
+> **"An unusable observation time is UNKNOWN, never STALE — we cannot say a fact aged if we cannot say when it
+> was seen."**
+
+Pinned for `null`, `undefined` and `NaN`.
 
 ## WINDOW SEMANTICS — a requirement, never a default (designed in-slice, reasoning recorded)
 
 **There is deliberately NO default max-age.** The reasoning, recorded at the function and pinned:
 
-> A freshness requirement is a property of the CONSUMER that needs the fact to be current — not of the fact.
+> **"A freshness requirement is a property of the consumer, not of the fact."** (recorded verbatim by operator
+> ruling, 20 Aug 2026)
 
 So the requirement is supplied by the caller. **No declared requirement ⇒ nothing is ever STALE**, however old
 the observation (pinned against a 25-year-old timestamp, for `null`, `undefined` and omitted). A pin also asserts
@@ -55,8 +60,11 @@ so a future reshuffle fails a test rather than passing quietly.
 
 **The compiler participated.** `uncertainty: Record<Certainty, number>` failed to compile the moment the union
 grew — the census had to count all six or the build broke. That is the type system enforcing the census's
-honesty, and it is recorded here because it is exactly the backstop CLAUDE §4 says does *not* exist for
-`AuthStatus`.
+honesty, and it is exactly the backstop CLAUDE §4 says does *not* exist for `AuthStatus`.
+
+> **RECORDED AS A CANDIDATE FUTURE SLICE (operator, 20 Aug 2026) — recorded, NOT queued:** *bring `AuthStatus`
+> under the same `Record`-census pattern*, so that adding a status value breaks the build until every consumer
+> counts it — the backstop §4 currently says is absent there.
 
 ## §2 #18 OPERATIONAL TEST — applied to this slice, answered with evidence
 
