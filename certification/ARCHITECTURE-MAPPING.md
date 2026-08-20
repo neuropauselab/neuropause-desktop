@@ -4,11 +4,28 @@
 > Preamble (standing): The intelligence proposes. The governance decides. The execution layer acts. The independent
 > verifier proves. The Action Record remembers.
 
-**Source status:** the Concentric Systems Architecture document itself was NOT found in the repo or workspace
-(searched: repo-wide + Desktop for "concentric"/ring definitions/advisor doc). PART B rows await the operator
-pasting the spec; ARCHITECTURE.md (§0) is likewise blocked — a canonical reference is committed only from the
-source text, never reconstructed. What IS in hand: the master directive's enumerations, which fully define the
-fifteen-line table and several element families.
+**Source status (merged directive, 20 Aug 2026):** the repository does not contain the canonical Concentric
+specification text; per the SOURCE-INTEGRITY RULE nothing is invented — every spec-absent detail carries
+**STATUS = SOURCE_REQUIRED** (never UNKNOWN → ASSUMED → CANONICAL). The operator supplies the spec next; it
+lands VERBATIM as `certification/ARCHITECTURE-SPEC.md` (attribution: operator-supplied, 2026-08-20), after which
+the SOURCE_REQUIRED rows are transcribed FROM it and re-classified. Whatever the spec still does not define
+stays SOURCE_REQUIRED honestly.
+
+## §0 · THE PRIMARY RULING — the Concentric model is a DEPENDENCY RULE, not a diagram
+
+Adopted as NeuroPause OS's structural organization (operator, 20 Aug 2026): **outer components may consume inner
+contracts; inner components never depend on outer application-specific components.** New connectors arrive as
+adapters + registered capabilities against the EXISTING governance/execution/verification contracts — "new
+connector → new adapter → existing governance", never "new connector → modify constitution". Authority is an
+INNER property: connectivity ≠ authority · registration ≠ authorization · capability ≠ permission · proposal ≠
+execution · execution ≠ external effect · external effect ≠ verified outcome · observation ≠ cause · inference ≠
+evidence · learning ≠ authority · PAYMENT ≠ AUTHORITY (§2 #16). The Live Brain and every AI provider (Claude
+included) remain structurally OUTSIDE the authority boundary, adapter-replaceable; the masterConnector is a
+RESOLUTION mechanism, never an authority mechanism. Four states never blur: **STRUCTURAL ARCHITECTURE ≠
+SPECIFICATION CONTENT ≠ IMPLEMENTATION ≠ CERTIFICATION** — nothing is certified by being documented.
+*Existing evidence already consistent with the rule:* zero Brain→governance runtime imports (6 pins); the only
+inner→outer-adjacent crossing is the authorized FG-10 direction (execution consults the gate); M365 specifics
+live in `connectors/m365/`, not the kernel; the §50 second-connector test exists precisely to falsify this rule.
 
 ## §1 · THE FIFTEEN-LINE TABLE ⇄ CLAUDE.md §2 (complete)
 
@@ -67,12 +84,15 @@ registry when it lands (M-008+). No mass rename, ever.
 | Observation type ladder (event/observation/measurement/state/inference/claim) | **ABSENT as a unified ladder** | fragments exist (platform events, ActionRecords, understanding attributes with stated/inferred status, health snapshots) — no typed ladder unifies them |
 | Nine-timestamp temporal model | **ABSENT** | records carry 2–4 stamps (createdAt/updatedAt/importedAt/generatedAt); the nine-field model does not exist; exact fields await the spec |
 
-## PART B · BLOCKED ON THE SPEC TEXT (listed, never guessed)
+## PART B · SOURCE_REQUIRED (listed, never guessed — awaiting `ARCHITECTURE-SPEC.md`)
 
 Rings 0–6 (boundary definitions + the ring diagram) · the identity OBJECT SET · the context model · the
 cross-cutting controls list · the 16-field capability record's exact fields · the nine timestamp names · the
-observation-ladder type semantics. **ARCHITECTURE.md (§0) is not committed until the operator supplies the spec
-text** — a canonical reference is transcribed, not reconstructed.
+observation-ladder type semantics. Each is **STATUS = SOURCE_REQUIRED**: the canonical reference is transcribed
+from the operator-supplied text, never reconstructed. On arrival: commit verbatim → transcribe these rows FROM
+it → re-run CONFIRMED/PARTIAL/ABSENT/DIVERGENT against the real text. "Do not introduce a second competing
+verification state machine" is doubly law (§3 of the merged directive + Ruling 1 above). NP-007 remains a
+recorded ENGINEERING issue — never reinterpreted as an architecture problem.
 
 ## §3 · PRELIMINARY ranking (finalized after Part B; ZERO code without the operator's ruling)
 
