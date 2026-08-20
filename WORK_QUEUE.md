@@ -342,6 +342,26 @@ commands · authority class · gate conditions · status.**
   ordering proof. Enters the queue only by a future operator ruling. **Nothing built.**
   Evidence: `PHASE-I-A3-NEUROPAUSE-OS-NP-019-TEMPORAL-SEMANTIC-MAPPING-EVIDENCE.md`.
 
+## NP-020 · F-N16-2/3/4 RECONCILIATION SLICE (operator-ruled, opened 20 Aug 2026)
+- **Method (binding):** DISCOVER → COMPARE AUTHORITATIVE SOURCES → IDENTIFY CONFLICT → TRACE TO REAL
+  ENFORCEMENT → CLASSIFY → ONLY THEN PROPOSE. A finding may legitimately end CONFLICTING or SOURCE_REQUIRED with
+  no implementation authorized. Real runtime sources wherever available; never a one-item fixture; no test
+  weakening; UNKNOWN stays UNKNOWN; unrelated discoveries recorded as findings, never fixed in-slice.
+- **F-N16-2 — CLASSIFIED + RULING ACCEPTED:** MISSING SOURCE over a contract LABEL, not a semantic conflict.
+  Decisive observation: `policyVersion` is RECORDED, never COMPARED (the kernel's sole use is an evidence-label
+  interpolation; pinned negatively). Measured over the complete catalog: 34 actions / 29 mutating —
+  governedSend 1, governedAction 28, unrouted 5 (all reads); every mutating action is governed. The
+  disagreement is uniform and one-sided (null vs named); no action carries two different NAMED values.
+  **NO normalization.** Evidence: `…F-N16-2-AUTHORITY-DETERMINATION-EVIDENCE.md` (10 pins).
+- **F-N16-3 (reversibility) — IN PROGRESS** (opened once 2 was classified, per ruling).
+- **F-N16-4 (oracle identity) — QUEUED** (after 3).
+- **AT THE SLICE'S CLOSE:** ONE BUNDLE of both GATE-class `executionGate.ts` diffs — (a) the F-N16-2
+  documentation correction at `AuthorityRequirement.policyVersion`, (b) the F-N16-1 gate-lambda collapse onto
+  the shared certification authority — presented TOGETHER, verbatim, applied only on the operator's go.
+- **RECORDED UNRULED, LINKED TO S28:** the action→policy registry question (a Policy DSL is where such a
+  registry would earn existence). Not a floating unknown; not built.
+- **Status: OPEN — F-N16-3 in progress.**
+
 ## NP-006 · Post-ceremony §5 amendment — experience-arc-vs-v1.0 sequencing
 - **Objective:** decide the ONE explicitly-open question (full experience arc before v1.0, or v1.0 earlier on the
   proven loop) by §5 amendment against the substrate as it then exists.
