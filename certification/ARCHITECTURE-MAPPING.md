@@ -50,6 +50,25 @@ never loosen the boundary.** F-N16-1 was closed exactly that way (advisor conver
 S5.1 predicate was untouched, discovery became ACTION-level, and `deriveAuthority`'s one-argument call site keeps
 the authority path byte-identical.
 
+## §0.2 · STANDING RULES FROM THE RECONCILIATION SLICE (operator-ruled, 20 Aug 2026)
+
+**THE REVERSIBILITY MOVE RULE.** `Proposal.reversibility` is caller-authored — it sits on `ProposalRequest`,
+unlike `authorityRequired` and `verificationPlan`, which were deliberately given no request field so they could
+not be injected. It is inert today (nothing reads it for a decision), so the exposure is zero. **The moment
+reversibility gains ANY consumer that reads it for a decision, the field MUST move to the derived side like its
+two neighbours — via a PRESENTED GATE, never in place.** Inert-but-injectable is a debt; the negative pins in
+`vocabularyReconciliation.test.ts` hold its interest at zero and fire the requirement if a reader appears.
+
+**WHY THE DIVERGENCE SURVIVED (recorded as the general lesson):** *nothing could fail because nothing consumes
+it.* Two live values for `calendar.create` pointed in opposite directions for as long as they did precisely
+because no code path read either one. An unconsumed field is not a safe field — it is an unfalsifiable one.
+
+**VOCABULARY EARNS EXISTENCE WHEN SOMETHING CONSUMES IT.** Both SOURCE_REQUIRED questions from the slice have
+their source NAMED rather than left floating: the reversibility **value space**, and oracle-id **ownership +
+identifier grammar**, are both authored at **ladder rung 2 (the calendar.create kit run)** — the first place
+reversibility-on-record gains a real consumer and the calendar read-back oracle forces the naming question
+honestly — and presented there for the operator's approval. Nothing is invented before then.
+
 ## §1 · THE FIFTEEN-LINE TABLE ⇄ CLAUDE.md §2 (complete — spec §0 lists all fifteen + PAYMENT ≠ AUTHORITY verbatim)
 
 | # | Non-equivalence | Verdict | Cross-reference / pin |

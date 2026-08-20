@@ -62,7 +62,9 @@ consequence depends on non-param-derivable server-side attendee state, so precis
 claimed"), while the proposal value **asserts the opposite as a flat literal**. For `mail.send` the two agree —
 but by two independent hardcodes plus a third in the lane, never by derivation.
 
-**The divergence went unnoticed precisely because nothing consumes either value: nothing could fail.**
+**THE REASON THE DIVERGENCE SURVIVED (recorded, operator-ruled 20 Aug 2026): *nothing could fail because
+nothing consumes it.*** Two live values pointed in opposite directions for as long as they did precisely because
+no code path read either one. An unconsumed field is not a safe field — it is an unfalsifiable one.
 
 ## CLASSIFICATION — two answers, because there are two questions
 
@@ -84,10 +86,16 @@ SOURCE_REQUIRED — collapsing would invent it), or "fixing" the calendar.create
 test fixture on a capability with no production propose lane; changing it would edit an expectation rather than
 a source of truth). The determination pins stand as the anti-drift guard.
 
-**Recorded for a future ruling, not proposed now:** the moment ANYTHING branches on reversibility, the
-proposal-side value becomes an untrusted caller-authored input — it sits on `ProposalRequest`, unlike its
-neighbours `authorityRequired` and `verificationPlan`, which were deliberately given no request field so they
-could not be injected. That is a §6 exposure that does not exist today and must not be created accidentally.
+**THE INJECTION EARLY-WARNING — NOW LAW (operator ruling, 20 Aug 2026).** The proposal-side value is
+caller-authored: it sits on `ProposalRequest`, unlike `authorityRequired` and `verificationPlan`, which were
+deliberately given no request field so they could not be injected. It is inert today, so the exposure is zero.
+**Inert-but-injectable is a debt; this pins its interest at zero.** Landed: negative pins asserting NO decision
+site reads a reversibility value (the no-ALLOW-string pattern), that the execution boundary re-derives authority
+and oracle while never touching reversibility, and that the only reader in the whole main process is a DISPLAY
+projection. Recorded in ARCHITECTURE-MAPPING §0.2 as THE REVERSIBILITY MOVE RULE: **the moment reversibility
+gains any consumer that reads it for a decision, the field MUST move to the derived side like its two
+neighbours — via a PRESENTED GATE, never in place.** The test's own docstring says so, so a future failure reads
+as the requirement firing rather than a stale assertion.
 
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -131,6 +139,11 @@ is descriptive, not functional** (no resolution depends on either string).
 
 - **F-N16-4a:** `productionWired: false` is hardcoded on BOTH branches of `deriveOracle` and no path ever sets
   it true, so the human-facing label always reads "not production-wired".
+  **RUNBOOK NOTE (operator, 20 Aug 2026) — ceremony-relevant, resolved:** the label is **stale-safe
+  understatement** — the read-back IS production-wired since Phase 0 — and the ceremony's **step-3 expectation
+  already lists that exact string**, so the ceremony proceeds CONSISTENT with what the app will display. The
+  label truth-up joins the **post-ceremony** queue; it is deliberately NOT changed before the sitting, because
+  changing a string the runbook expects would be the riskier act.
 - **F-N16-4b:** the `VerificationPlan` union declares a `'per-recipient'` value that no producer emits.
 - **F-N16-4c:** `e2eVerifyRun` (the mock twin) calls the identical orchestrator/reader pair but writes **no
   ActionRecord verification and therefore no provenance** — whether that is deliberate (a mock path must leave
@@ -151,14 +164,33 @@ absent oracle stating its need; no identifier grammar.
 Full main **871 files / 9125 passed / 3 skipped** · typecheck clean · lint clean · gate-detector PROCEED (run
 before the file was written).
 
+## Honesty-scanner review item — EXPLAINED (never silently green)
+
+> REVIEW ITEM · (diff-wide) — ONLY test files changed — expected-output edited instead of the implementation?
+> [apps/desktop/src/main/capabilities/vocabularyReconciliation.test.ts]
+
+**Correct state, and the scanner is right to ask.** (1) Nothing was weakened — the diff is purely ADDITIVE (new
+determination pins + the injection early-warning block); no pre-existing assertion changed. (2) A test-only diff
+is the RULED outcome: this slice's mandate was DISCOVER → COMPARE → CLASSIFY, and *"a finding may legitimately
+end CONFLICTING or DIVERGENT with no implementation authorized."* Both findings did. (3) The one implementation
+change these findings could motivate — the `executionGate` bundle — is GATE-class and is PRESENTED, not applied.
+Writing production code here would violate the ruling, not satisfy it.
+
 ## GATE STATUS
 
-None required (test-only, PROCEED-class). Nothing added to the `executionGate.ts` bundle by these two findings.
+None required for the determinations (test-only, PROCEED-class). **The `executionGate.ts` BUNDLE is PRESENTED
+and unapplied** — `EXECUTIONGATE-BUNDLE-PRESENTATION.md`, two diffs (A: the F-N16-1 gate-lambda collapse onto
+the shared certification authority; B: the F-N16-2 documentation correction at `deriveAuthority`). Neither
+F-N16-3 nor F-N16-4 added anything to it. Awaiting the operator's go.
 
 ## REMAINING UNKNOWN
 
-- The canonical reversibility vocabulary and the relationship between the two slots — **SOURCE_REQUIRED**, spec
-  silent, operator's to rule.
+- The canonical reversibility vocabulary and the relationship between the two slots — **SOURCE_REQUIRED, SOURCE
+  NAMED (operator ruling): authored at LADDER RUNG 2 (the calendar.create kit run)** — the first place
+  reversibility-on-record gains a real consumer — and presented there for approval. *Vocabulary earns existence
+  when something consumes it.*
 - Whether `calendar.create`'s two values should be reconciled at all before anything consumes them.
-- Which layer owns `oracle_id`, and what an oracle identifier's grammar should be — **SOURCE_REQUIRED**.
+- Which layer owns `oracle_id`, and what an oracle identifier's grammar should be — **SOURCE_REQUIRED, SOURCE
+  NAMED (operator ruling): the same LADDER RUNG 2**, when the calendar read-back oracle forces the naming
+  question honestly. Nothing invented before then.
 - Whether the `method`/`oracle` split (rule vs reader) is the intended contract or an accident.

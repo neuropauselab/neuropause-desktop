@@ -124,6 +124,60 @@ describe('F-N16-3 · COMPARE — the two vocabularies disagree TODAY, and point 
   });
 });
 
+/* ══════ F-N16-3 · THE INJECTION EARLY-WARNING (operator ruling, 20 Aug 2026) ══════ */
+
+/**
+ * `Proposal.reversibility` is CALLER-AUTHORED: it sits on `ProposalRequest`,
+ * unlike its neighbours `authorityRequired` and `verificationPlan`, which were
+ * deliberately given NO request field so they could not be injected. Today it
+ * is inert — nothing reads it for any decision — so the exposure is zero.
+ *
+ * **Inert-but-injectable is a debt. This pin holds its interest at zero.**
+ *
+ * THE LAW (operator-ruled, recorded in ARCHITECTURE-MAPPING): the moment
+ * reversibility gains ANY consumer that reads it for a decision, the field
+ * MUST move to the derived side like `authorityRequired` and
+ * `verificationPlan` — **via a presented gate, never in place.** If you are
+ * here because this test failed, that is the requirement firing, not a stale
+ * assertion: do not delete it, do not narrow it. Derive the value, or gate it.
+ */
+describe('F-N16-3 · INJECTION EARLY-WARNING — reversibility must not become an authority input', () => {
+  const DECISION_SITES = [
+    'liveBrain/proposalExecutionBoundary.ts', // the one gate that inspects a Proposal
+    'liveBrain/executionGate.ts',
+    'liveBrain/proposalStore.ts',
+    'liveBrain/brainProposeLane.ts',
+    'cst/sendTransition.ts',
+    'cst/governedAction.ts',
+    'capabilities/capabilityProposeCore.ts',
+    'capabilities/m365ActionProposal.ts',
+  ];
+
+  it('NO decision site reads a reversibility value for any purpose', () => {
+    for (const f of DECISION_SITES) {
+      const src = read(MAIN, ...f.split('/'));
+      // Producing a value is allowed (a literal assignment); READING one is not.
+      const reads = (src.match(/\.reversibility\b/g) ?? []).length;
+      expect({ file: f, reads }, `${f} must not READ reversibility`).toEqual({ file: f, reads: 0 });
+    }
+  });
+
+  it('the execution boundary re-derives authority and oracle, and never consults reversibility', () => {
+    const boundary = read(MAIN, 'liveBrain', 'proposalExecutionBoundary.ts');
+    expect(boundary).toMatch(/authorityFor/); // it DOES re-derive these…
+    expect(boundary).toMatch(/oracleFor/);
+    expect(boundary).not.toMatch(/reversib/i); // …and does not touch this one at all
+  });
+
+  it('the only reader in the whole main process is a DISPLAY projection', () => {
+    // toBrainReview interpolates it into a human-facing string. If a second
+    // reader ever appears, the list below stops matching and this fails.
+    const review = read(MAIN, 'liveBrain', 'toBrainReview.ts');
+    expect(review).toMatch(/\.reversibility\b/);
+    expect(review).toMatch(/risk:/); // it lands in the Risk display row, not a branch
+  });
+});
+
 /* ═══════════════════════ F-N16-4 · ORACLE IDENTITY ═══════════════════════ */
 
 describe('F-N16-4 · DISCOVER — what each identifier actually names', () => {
