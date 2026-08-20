@@ -273,6 +273,15 @@ commands · authority class · gate conditions · status.**
   designed in-slice with honest defaults + recorded reasoning. Brain-substrate change = its own slice, FULL main
   suite. **Status: QUEUED.**
 
+## NP-019 · Temporal completion — authorization_time + execution_time (operator-ruled 20 Aug 2026)
+- **Objective:** `authorization_time` + `execution_time` on the evidence record, COPIED VERBATIM from the CST
+  kernel's own `TransitionOutcome.timeline` stamps (decided / claimed / executionStarted / executionCompleted).
+- **Bounds (operator, binding):** times copied verbatim, NEVER synthesized; historical records without them
+  stay **ABSENT** (the NP-015 absent≠null tri-state); **additive only**, store-side mapping preferred; **if any
+  frozen surface turns out to be required (the FG-5 emit site or contracts) → STOP and present the FG gate
+  instead**; sensitive-class diffs presented verbatim in the report, envelope style.
+- **Sequence:** AFTER NP-016. **Status: QUEUED (ruled, bounded).**
+
 ## NP-006 · Post-ceremony §5 amendment — experience-arc-vs-v1.0 sequencing
 - **Objective:** decide the ONE explicitly-open question (full experience arc before v1.0, or v1.0 earlier on the
   proven loop) by §5 amendment against the substrate as it then exists.
