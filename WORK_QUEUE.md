@@ -231,7 +231,14 @@ commands · authority class · gate conditions · status.**
 - **Objective:** ONE named `constitutionalInvariants.test.ts` asserting RULE-001..012 through the existing pins'
   seams; RULE-012's provenance gaps close IN-SLICE; RULE-008 asserted VACUOUS-BY-CONSTRUCTION with recorded
   linkage in the test AND the horizon doc: when learning code enters (LB-6), the test MUST flip vacuous→real as
-  an ENTRY CRITERION of that arc. **Status: QUEUED.**
+  an ENTRY CRITERION of that arc.
+- **Status: CLOSED (TEST-VERIFIED).** 26 tests, all through REAL seams (D-15 recon fleet extracted the fixtures;
+  26/26 first run); RULE-012 provenance closed (optional `provenance{source,method,oracle}` on
+  ActionRecordVerification + the production s16VerifyRun call site supplies it, both pinned); RULE-008 vacuous +
+  linkage recorded in test AND ROADMAP-HORIZON LB-6 (entry criterion, both directions); cst/ imported only,
+  never touched. Full main 867/9061/3. verify-e2e-strip deliberately NOT re-run (it rebuilds out/ as release;
+  the armed ceremony build stays the LAST build — seed chunk verified present).
+  Evidence: `PHASE-I-A3-NEUROPAUSE-OS-NP-014-CONSTITUTIONAL-INVARIANT-SUITE-EVIDENCE.md`. **Next: NP-015.**
 
 ## NP-015 · Nine-timestamp completion (slice 3 of 6)
 - **Objective:** additive ActionRecord fields (event_time, effect_time, request_time); effect_time populated

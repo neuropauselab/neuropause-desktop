@@ -53,6 +53,11 @@ _LB- prefix denotes Live-Brain-track stages; these are NOT §5 slice numbers (wh
      has actually done and verified, not from its manifest or its plans.
   Constitutional bound (standing, §2 #15): no stage of this arc ever sets authority, approval, `confirmed`, policy, or
   admission; every consequential action re-derives authorization from the live substrate at execution time.
+  **ENTRY CRITERION (NP-014 ruling, operator, 20 Aug 2026 — RULE-008 linkage):** `constitutionalInvariants.test.ts`
+  asserts RULE-008 ("learning cannot create authorization") VACUOUS-BY-CONSTRUCTION today — it PROVES no learning
+  code exists. The moment any stage of this arc lands code, that assertion FAILS BY DESIGN, and flipping RULE-008
+  from vacuous to a REAL adversarial test (learning output driven at the authority seams → refused) is an ENTRY
+  CRITERION of this arc — not a follow-up, a gate. The arc does not proceed on a red or vacuously-green RULE-008.
   Language notes (operator, 19 Aug 2026 — adopted as LANGUAGE, not architecture): the honest product-language for this
   arc when it enters is **"computational resilience"** — strength from remembered, verified experience, with no claim of
   feeling. And explicitly: governance verdicts (DENIED / CANCELLED / EXPIRED) enter experience memory as FIRST-CLASS

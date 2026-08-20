@@ -49,10 +49,29 @@ declareStoreScope({
     'CROSS-TENANT COST: none — reads are tenant-filtered; nothing is removed.',
 });
 
+/**
+ * NP-014 / RULE-012 ("verification evidence must have provenance",
+ * ARCHITECTURE-SPEC §53): a verification terminal now names WHO observed it
+ * and HOW — the caller that ran the oracle, the corroboration method, and the
+ * oracle identity. Optional so no historical record is invalidated (a record
+ * written before this field existed is honest about lacking it — never
+ * back-filled); the PRODUCTION caller supplying it is pinned in
+ * `constitutionalInvariants.test.ts`.
+ */
+export interface ActionRecordVerificationProvenance {
+  /** Which runner performed the read-back (e.g. 's16VerifyRun'). */
+  readonly source: string;
+  /** The corroboration method (never id-alone; the oracle's matching rule). */
+  readonly method: string;
+  /** The oracle identity (e.g. 'm365ReadBack:sentItems+inbox'). */
+  readonly oracle: string;
+}
+
 export interface ActionRecordVerification {
   readonly terminal: string;
   readonly internetMessageId: string | null;
   readonly at: string;
+  readonly provenance?: ActionRecordVerificationProvenance;
 }
 
 export interface ActionRecord {
