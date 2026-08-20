@@ -72,12 +72,6 @@ export async function runS16Verification(): Promise<void> {
         terminal: result.state,
         internetMessageId: result.matchedMessageId ?? null,
         at: new Date().toISOString(),
-        // NP-014 / RULE-012: verification evidence names its provenance.
-        provenance: {
-          source: 's16VerifyRun',
-          method: 'corroborated-read-back (recipient+subject+timestamp window; never id alone)',
-          oracle: 'm365ReadBack:sentItems+inbox',
-        },
       });
       log.warn(`[${S16_VERIFY_SENTINEL}] verification attached to ${match.transitionId} (${result.state})`);
     } else {
