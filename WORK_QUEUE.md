@@ -194,7 +194,10 @@ commands · authority class · gate conditions · status.**
 - **Objective:** §0 commit the spec as ARCHITECTURE.md · §1 canonize non-equivalences · §2 gap audit →
   ARCHITECTURE-MAPPING.md · §3 ranked proposals (operator chooses; zero code without ruling) · §4 status language.
   NOT a rebuild license; yields to NP-000 and the in-flight NP-011 slices.
-- **Status: AUDIT COMPLETE — awaiting the operator's §3 ruling (zero code without it).** The canonical spec
+- **Status: CLOSED — §3 RULED (operator, 20 Aug 2026): ranking APPROVED with sequence and bounds → NP-013…NP-018
+  seeded below; slice 7 (ASK surface to ten fields) DEFERRED-RECORDED (waits for a natural FG-gate companion or
+  the operator's explicit call — NOT queued). Ring-4 safe-direction divergence + stage-inversion + Part C
+  affirmed as recorded. The spec-file correction commended on the record.** The canonical spec
   arrived (operator-supplied, 2026-08-20) and is committed VERBATIM as `certification/ARCHITECTURE-SPEC.md`
   (per the merged directive the filename is ARCHITECTURE-SPEC.md, superseding §0's ARCHITECTURE.md name) —
   body extracted byte-for-byte from the operator's message (sha256 `c10fd5f8…`, "One important correction"
@@ -212,6 +215,35 @@ commands · authority class · gate conditions · status.**
   **NP-000 = HOLD; pre-execution divergence FIXED (NP-007, supersedes the advisor doc §9); hold reason = TENANT
   AVAILABILITY only; "NP-011 progress is never evidence of NP-000 readiness — the real external-effect proof
   passes independently."** All in `certification/ARCHITECTURE-MAPPING.md`.
+
+## NP-013 · Credential-boundary completion (NP-012 §3 ruling, slice 1 of 6)
+- **Objective:** desktop log redaction at the logger boundary (closes F-MR-7) + the adversarial RULE-009 pin
+  (credential material in connector metadata → refused/stripped, proven at the real persistence path).
+- **Bounds (operator):** zero frozen touch. **Authority class:** effect-free (logs + tests). **Status: NEXT.**
+
+## NP-014 · Constitutional invariant suite (slice 2 of 6)
+- **Objective:** ONE named `constitutionalInvariants.test.ts` asserting RULE-001..012 through the existing pins'
+  seams; RULE-012's provenance gaps close IN-SLICE; RULE-008 asserted VACUOUS-BY-CONSTRUCTION with recorded
+  linkage in the test AND the horizon doc: when learning code enters (LB-6), the test MUST flip vacuous→real as
+  an ENTRY CRITERION of that arc. **Status: QUEUED.**
+
+## NP-015 · Nine-timestamp completion (slice 3 of 6)
+- **Objective:** additive ActionRecord fields (event_time, effect_time, request_time); effect_time populated
+  from the provider read-back WHERE THE ORACLE SUPPLIES IT — honestly null where it doesn't, never derived.
+  **Status: QUEUED.**
+
+## NP-016 · Capability-record completion in the S23 kit (slice 4 of 6)
+- **Objective:** kit artifact to the 16-field shape + Ruling-2 aliases. The risk_class FIELD exists; its VALUES
+  stay SOURCE_REQUIRED per Part C — no invented taxonomy. Full exercise arrives with ladder rung 2
+  (calendar.create) post-ceremony. **Status: QUEUED.**
+
+## NP-017 · Typed-relationship field completion (slice 5 of 6)
+- **Objective:** valid_from / valid_to / source_evidence / confidence per link (dataPlane). **Status: QUEUED.**
+
+## NP-018 · STALE as a first-class state assessment (slice 6 of 6)
+- **Objective:** EXTENDS the single `Certainty` authority — no second vocabulary, no fork, ever. Window semantics
+  designed in-slice with honest defaults + recorded reasoning. Brain-substrate change = its own slice, FULL main
+  suite. **Status: QUEUED.**
 
 ## NP-006 · Post-ceremony §5 amendment — experience-arc-vs-v1.0 sequencing
 - **Objective:** decide the ONE explicitly-open question (full experience arc before v1.0, or v1.0 earlier on the
