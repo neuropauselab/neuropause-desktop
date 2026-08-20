@@ -50,6 +50,29 @@ never loosen the boundary.** F-N16-1 was closed exactly that way (advisor conver
 S5.1 predicate was untouched, discovery became ACTION-level, and `deriveAuthority`'s one-argument call site keeps
 the authority path byte-identical.
 
+## §0.3 · THE FIELD LIFECYCLE and THE EVIDENCE HIERARCHY (advisor review, operator-adopted 20 Aug 2026)
+
+**THE FIELD LIFECYCLE — a field becomes a load-bearing control only at the end of this ladder:**
+
+> **FIELD → CONSUMER → DECISION → ENFORCEMENT → ADVERSARIAL TEST → EVIDENCE**
+
+A declared field is not a control. A consumed field is not a decision. A decision is not enforcement. Enforcement
+untested adversarially is untested. **Only after the last rung is a field load-bearing** — and the reconciliation
+slice is what this ladder looks like applied: `policyVersion` stops at CONSUMER (a label, never a decision);
+reversibility stops at FIELD (no consumer at all, which is exactly why two live values could point in opposite
+directions unnoticed).
+
+**THE EVIDENCE HIERARCHY — the rungs a claim can stand on:**
+
+> **DECLARED → CONSUMED → ENFORCED → TESTED → ADVERSARIAL → OBSERVED → VERIFIED**
+
+> **THE RULE, verbatim: "NeuroPause should never silently treat a lower rung as a higher one."**
+
+Silently is the operative word: standing on a lower rung is honest when it is *labelled* as that rung. The whole
+NP-016 record exists to keep those labels attached (KNOWN-with-source / CONFLICTING / ABSENT-with-reason /
+SOURCE_REQUIRED), and the §14 temporal work is the same discipline over time (`effect_time` is OBSERVED;
+`authorization_time` is not even DECLARED, and says so).
+
 ## §0.2 · STANDING RULES FROM THE RECONCILIATION SLICE (operator-ruled, 20 Aug 2026)
 
 **THE REVERSIBILITY MOVE RULE.** `Proposal.reversibility` is caller-authored — it sits on `ProposalRequest`,
@@ -122,7 +145,7 @@ same landing.
 | Connector → capability → connection separation (spec §7, §24–26) | **CONFIRMED (M365 vertical)** | manifests / action ids / `ConnectedAccount` — three real object kinds (CONNECTOR-REALITY.md); capability ids coarse outside M365 (PARTIAL breadth) |
 | Declared-vs-observed assessments (spec §13) | **PARTIAL** | declared manifests vs observed connection/health exists per-connector; ONE systematic drift instance already caught (F-MR-2); no unified assessment vocabulary in code; STALE absent |
 | Initiative → intention → purpose → need (spec §17–20) | **PARTIAL (upgraded from RECORDED-ONLY)** | the spec defines all four stages; ours: `purpose` is real on every proposal + `purposeBridge.ts` (purpose→capability candidates); initiative/intention/need do not exist as objects — 1 of 4 stages modeled |
-| Typed relationships w/ evidence + confidence (spec §21: 7 fields) | **PARTIAL** | source/relationship_type/target real (36 typed keys + 3 chains, dataPlane); valid_from/valid_to ABSENT; source_evidence ≈ provenance-adjacent; confidence at classification, not per-link — 3 of 7 fields |
+| Typed relationships w/ evidence + confidence (spec §21: 7 fields) | **PARTIAL — 4 of 7 real, 1 partial, 2 absent (CORRECTED by NP-017)** | source/relationship_type/target real and at the **ENFORCEMENT + ADVERSARIAL TEST** rung (a governed delete is REFUSED while an incoming link exists) · **confidence IS per-link** — `confidence: number` on every row; the earlier row here said "at classification, not per-LINK" and was WRONG, corrected against the declaration and now pinned · source_evidence PARTIAL (a de-normalized cluster: sourceField/sourceValue/method/decidedBy/correlationId/reason; no provenance-record id, no sourceTrust) · **valid_from/valid_to BELOW FIELD** and **BLOCKED, not merely missing**: the one enforcement consumes link EXISTENCE, so an expiring link is a lapsing refusal — adding validity is a GOVERNANCE change needing its own ruling. `at` is last-resolved-at (overwritten every re-resolution), so no honest valid_from derives from it. VALIDITY GUARD pinned (`relationshipFieldDetermination.test.ts`) |
 | Live Brain scope (spec §22) | **CONFIRMED (mock)** | spec's permitted list (aggregation…proposal generation) and its prohibition ("must not become the final authorization mechanism") match §2 #13 exactly; LIVE_BRAIN_READINESS.json; propose-only + zero-runtime-import pinned; 4 PARTIAL stages recorded there |
 | Capability record (spec §23: 16 fields) | **PARTIAL (~11 of 16, now counted against the real list)** | present: capability_id, connector_id, version(display), input_schema (zod), side_effects (mutates flag), authority_requirements (1-bit predicate), executor, verification_method (plan), oracle_id (on VerificationPlan — null-honest), lifecycle_state (derived), certification_state (predicate). Absent/weak: output_schema, preconditions, risk_class (taxonomy undefined, Part C), scope_requirements per-capability, reversibility on the RECORD (exists on proposals). No unified registry record — S23 kit artifacts stand in |
 | Observation type ladder (spec §8–12: event/observation/measurement/state/inference/claim) | **ABSENT as a unified ladder** | fragments exist (platform events, ActionRecords, understanding attributes with stated/inferred status, health snapshots, AI usage measurements with §11-shaped fields); no typed ladder unifies them; spec §12's "derivation rule must be explicit" is our UI-truth rule (§4) in behavior |

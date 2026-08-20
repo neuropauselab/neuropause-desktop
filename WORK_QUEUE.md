@@ -287,7 +287,22 @@ commands · authority class · gate conditions · status.**
   then NP-017, NP-018.**
 
 ## NP-017 · Typed-relationship field completion (slice 5 of 6)
-- **Objective:** valid_from / valid_to / source_evidence / confidence per link (dataPlane). **Status: QUEUED.**
+- **Objective (as queued):** valid_from / valid_to / source_evidence / confidence per link (dataPlane).
+- **Status: DETERMINED — NO FIELD ADDED; A GUARD ADDED. Awaiting an operator ruling on validity.** Applying the
+  §0.3 FIELD LIFECYCLE ladder before writing changed the slice: **4 of 7 §21 fields are already real** (and
+  **confidence IS per-link** — my earlier mapping row said otherwise and was WRONG; corrected against the
+  declaration and pinned). **THE HAZARD:** exactly ONE consequential decision consumes a link — a governed
+  DELETE is refused while an incoming link exists — and it consumes EXISTENCE, never an attribute (structural:
+  the decision layer is typed over `IncomingLink`, which carries no confidence/method/timestamp, and the mapper
+  drops them). **So `valid_to` is not metadata: an expiring link is a LAPSING REFUSAL.** Adding validity would
+  weaken a governed refusal as a side effect of a data-model change → **BLOCKED pending a governance ruling**
+  (recommended framing: an expired link still refuses, unless the operator rules otherwise). Landed instead:
+  the **VALIDITY GUARD** + determination pins (14, green) whose docstring says a failure means validity was
+  added and needs its own ruling + presented gate. `source_evidence` has a safe increment (carry the
+  ProvenanceRecord id + sourceTrust) — **not built**, it should land with the consumer that wants it.
+  `confidence` needs nothing: safety lives UPSTREAM in the resolver, so a threshold would be redundant.
+  Findings F-N17-1..5 recorded (incl. the CST kernel's UNREACHABLE relationship-freshness gate, SOURCE_REQUIRED).
+  Full main 872/9145/3. Evidence: `…NP-017-RELATIONSHIP-FIELD-DETERMINATION-EVIDENCE.md`. **Next: NP-018.**
 
 ## NP-018 · STALE as a first-class state assessment (slice 6 of 6)
 - **Objective:** EXTENDS the single `Certainty` authority — no second vocabulary, no fork, ever. Window semantics

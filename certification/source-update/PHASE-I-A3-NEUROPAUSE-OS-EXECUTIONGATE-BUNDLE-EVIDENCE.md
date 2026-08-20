@@ -78,6 +78,17 @@ for, and what this bundle removes.
 Also: typecheck node clean · lint clean · **honesty scan 0 findings** (the diff now touches implementation, so
 the earlier test-only review item does not arise).
 
+## The precise claim (advisor review, adopted verbatim by operator ruling)
+
+> **"The reconciliation slice changed the policy-consumption topology while preserving the certified behavioral
+> baseline and frozen boundary."**
+
+Each clause is evidenced above: *topology changed* — the certification predicate now has one home consumed by
+both discovery and the boundary, and `policyVersion` is labelled at its point of production; *behavioral
+baseline preserved* — full main 871/9128/3, identical to the pre-bundle count, with RULE-002/003 driving this
+exact predicate unmodified; *frozen boundary preserved* — nothing frozen was touched by this bundle, and the
+GATE-class file was edited only after the presented go.
+
 ## Why this closes the reconciliation slice
 
 F-N16-1 tightened discovery to the boundary's answer but left two copies of the predicate, watched by a pin.
