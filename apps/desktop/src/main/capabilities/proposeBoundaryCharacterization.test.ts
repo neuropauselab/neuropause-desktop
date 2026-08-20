@@ -48,6 +48,25 @@
  * COMMENT-BLINDNESS RETRO-CHECK (run before the flip, operator-ordered): the map was
  * re-derived with block and line comments stripped. Raw 5, code-only 5 — **UNCHANGED**. No
  * count was ever inflated by a comment, so every negative that rested on the map holds.
+ *
+ * ── LEVEL RE-DERIVATION (F-P35, 21 Aug 2026) ─────────────────────────────────────────────
+ *
+ * **INSTRUMENTED SILENCE IS EVIDENCE ONLY IF THE INSTRUMENT CAN REACH THE SINK.**
+ *
+ * F-P35 exposed an assumption this pin rested on without ever asserting it: it counted
+ * emitters WITHOUT DISTINGUISHING THEIR LEVEL, and `logger.ts` gates the FILE SINK at
+ * `>= info` UNCONDITIONALLY (`:156`), with the console threshold additionally raised to
+ * `info` under NODE_ENV=production (`:73`). **An emitter at `debug` is not an emitter in the
+ * ceremony build** — `runtimeTelemetry`'s `log.debug('backend probe failed', …)` is exactly
+ * that, and it is why six days of probe failures left no trace.
+ *
+ * RE-DERIVED, and the answer is the good one: **all six propose-path emitters are `warn` or
+ * `info`. ZERO sit at `debug`.** So every negative that rests on this map HOLDS — including
+ * the load-bearing one, that a lane success emits `:166` at `info` and no second stash line
+ * exists anywhere in the preserved 470-line log.
+ *
+ * The pin now asserts LEVEL, not merely presence, so a future emitter added at `debug` fails
+ * here rather than silently converting an argument-from-silence into an argument-from-nothing.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -94,7 +113,7 @@ describe('PIN C · artifact-null is not an independent path — it is exactly !r
 describe('PIN D · the propose path emitter map — every silence argument depends on this', () => {
   const EXPECTED: ReadonlyArray<{ file: readonly string[]; emitters: number }> = [
     { file: ['capabilities', 'capabilityProposeIpc.ts'], emitters: 2 }, // P4-MIN refusal warn + the lane catch
-    { file: ['liveBrain', 'brainProposeLane.ts'], emitters: 4 }, // :92 :109 :162 :166
+    { file: ['liveBrain', 'brainProposeLane.ts'], emitters: 4 }, // :92 :109 :162 warn · :166 info
     { file: ['capabilities', 'capabilityProposeCore.ts'], emitters: 0 },
     { file: ['liveBrain', 'proposal.ts'], emitters: 0 },
     { file: ['liveBrain', 'liveBrainState.ts'], emitters: 0 },
@@ -115,6 +134,28 @@ describe('PIN D · the propose path emitter map — every silence argument depen
   it('the WHOLE propose path has exactly SIX emitters — the FORWARD map (five before P4-MIN)', () => {
     const total = EXPECTED.reduce((n, e) => n + count(read(...e.file)), 0);
     expect(total).toBe(6);
+  });
+
+  it('EVERY emitter is at a level the FILE SINK accepts — none at debug (F-P35)', () => {
+    // logger.ts gates the file sink at >= info UNCONDITIONALLY, and raises the console
+    // threshold to info under NODE_ENV=production. An emitter at `debug` therefore leaves no
+    // trace in a ceremony build, and any negative resting on its silence would be void.
+    const levels: string[] = [];
+    for (const e of EXPECTED) {
+      const src = read(...e.file).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+      for (const m of src.matchAll(/log\.(info|warn|error|debug)\(/g)) levels.push(m[1]);
+    }
+    expect(levels).toHaveLength(6);
+    expect(levels.filter((l) => l === 'debug')).toEqual([]);
+    // The load-bearing one specifically: the lane's SUCCESS emitter must be sink-reachable,
+    // because "no second stash line exists in the preserved log" depends on it entirely.
+    const lane = read('liveBrain', 'brainProposeLane.ts');
+    expect(lane).toMatch(/log\.info\(`Brain proposal stashed/);
+  });
+
+  it('the FILE SINK gate itself is still >= info — the premise of the test above', () => {
+    const lg = read('logger.ts');
+    expect(lg).toMatch(/fileSink && LEVEL_ORDER\[level\] >= LEVEL_ORDER\.info/);
   });
 });
 

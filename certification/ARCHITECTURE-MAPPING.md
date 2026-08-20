@@ -910,3 +910,91 @@ Razorpay work deliberately — that foresight is wasted if the rule is still pro
 | **Containment** | **NOW EXISTS** — `certification/CONTAINMENT-PROCEDURE.md`, predictive, with UNKNOWN steps named rather than invented |
 
 **Two of the three missing procedures had already bitten us. The third was written before it could.**
+
+## §12 · F-P35, THE LEVEL RE-DERIVATION, AND THE LIVE PROBE (21 Aug 2026)
+
+### §12.1 · F-P35 — UNRECORDABLE, NOT DISCARDED. The fifth variant, and the worst.
+
+The probe's catch does **not** collapse the reason. It computes it (`classifyProbeError`), stores it
+(`lastProbeError`) and surfaces it (`reachability().lastError`). **It is the *log* that cannot survive:**
+
+```js
+this.lastProbeError = classifyProbeError(err);
+log.debug('backend probe failed', { err: String(err) });   // the only log of the reason
+```
+
+`logger.ts:73` raises the console threshold to `info` under `NODE_ENV=production`, and `:156` gates the **file
+sink at `>= info` UNCONDITIONALLY**. The r3 ceremony ran production. **The line reached neither sink.**
+
+> **COMPUTED · NAMED · RETAINED · SURFACED — AND LOGGED AT A LEVEL THAT CANNOT BE RECORDED.** It is worse than
+> the `resolveFull`/`scope()` shape precisely because **it looks instrumented.** A reader auditing the source
+> finds a diagnostic and moves on.
+
+**And a genuine discard rides inside it:** `classifyProbeError` returns **`null`** for anything unrecognised — a
+`TypeError`, an absent `fetch`, a malformed URL — and **`null` is also the value the field holds when there was no
+error at all.** The most interesting failure class is stored as indistinguishable from health. **Same conflation
+shape as P0's `[]` (told-nothing vs granted-nothing) — NP-016's defect class, third instance.**
+
+### §12.2 · PIN D RE-DERIVED BY LEVEL — **NO NEGATIVE IS VOID**
+
+F-P35 voided an *assumption* Pin D rested on without asserting: it counted emitters without distinguishing
+`debug` from `warn`/`info`. **An emitter at `debug` is not an emitter in the ceremony build.**
+
+Re-derived: `capabilityProposeIpc` **warn, warn** · `brainProposeLane` **warn, warn, warn, info** · the other four
+files **zero**. **Total 6, at debug: 0.**
+
+> **Every negative resting on the emitter map HOLDS** — including the load-bearing one: the lane's success emitter
+> `:166` is at **`info`**, reaches the file sink, and no second stash line exists anywhere in the preserved
+> 470-line log.
+
+Pin D now **asserts LEVEL, not presence**, plus a pin that the sink gate itself is still `>= info`, with the rule
+in its docstring: **INSTRUMENTED SILENCE IS EVIDENCE ONLY IF THE INSTRUMENT CAN REACH THE SINK.** 17/17 green.
+
+### §12.3 · THE LIVE PROBE — **ok:true. The failure was specific to r3.**
+
+Observed rather than reconstructed, on throwaway profiles, mains-only gate zero before each launch, pointed at the
+dev stack, artifact never rebuilt. **Three variants, ~100 s each:**
+
+| Variant | Seed | Backend URL | Recovery attempts | Catalog |
+|---|---|---|---|---|
+| A | off | :4010 (dev) | **zero** | reachable, 20 apps |
+| B | **on** (3 seed lines) | :4010 (dev) | **zero** | reachable |
+| C — **the exact r3 configuration** | **on** | **default :4000 (prod)** | **zero** | reachable, **0 apps** |
+
+The supervisor only logs when a subsystem is failing, so **zero lines = nothing failing.** **The r3 configuration
+reproduced exactly does not reproduce the failure.** r3 logged 43 backend `ok:false` and zero `ok:true`; the same
+build, same URL, same seed, same `NODE_ENV` now produces none. **Cause remains unestablished and is now known to
+be environment-specific rather than structural.** Not fixed, as ruled.
+
+*Incidental but decision-relevant: against **:4000 the catalog returns 0 apps**, against :4010 it returns 20 — the
+prod database has no catalog data. That is a fact for the prod/dev ruling, not a defect.*
+
+*Boundary note: `electron-vite` declares no `outDir`, so `npm run dev:desktop` would have written to `out/` and
+overwritten the 22:18 ceremony artifact. **Dev-from-source was therefore substituted** with a run of the existing
+artifact — which is the source built, carries P4-MIN, and is what attempt 2 will run. Artifact mtime and seed-chunk
+sha256 verified byte-identical afterwards.*
+
+### §12.4 · ADDED TO THE NON-EQUIVALENCE FAMILY
+
+> **EVIDENCE IS NOT AUTHORITY.** From `draftOverdueReminder`'s own docstring: `mandate.to` is the operator's word,
+> and the builder never derives a recipient from the fact, the party, or any record content. **A record showing an
+> overdue invoice for customer X does not authorize emailing X.** It sits beside *memory is not permission*
+> (§2 #15) and *payment is not authority* (§2 #16) as the same law over a third input.
+
+### §12.5 · THE DECLARED-VS-BOUND TEMPLATE
+
+The backend printed `${env.PUBLIC_BACKEND_URL} (port ${env.PORT})` — a **configured** value presented as an
+observed fact, so a run on 4010 announced itself on 4000. **Correction to the earlier record: it was never
+hardcoded**, and that distinction is the finding — a hardcoded string is a typo; a configured value presented as
+an observation is the claim-language family.
+
+> **TEMPLATE, for any process announcing itself: distinguish what it BOUND from what it was told to DECLARE**, and
+> print the declaration only when the two disagree.
+
+### §12.6 · ERP CLASSIFICATION (tier-2 vs ladder)
+
+- **`draftOverdueReminder` — LADDER.** Returns a candidate carrying **`capabilityId: 'mail.send'`**. Governed
+  action. Stays unwired. Not tier-2 and not touched.
+- **`composeBusinessFacts` — TIER-2.** Pure, read-only, `UNAVAILABLE`-honest. **But wiring it to a view is blocked
+  by the FROZEN IPC contract, not by tier** — hence the proposal in
+  `PROPOSAL-READ-ONLY-IPC-GATE-CLASS.md`. Nothing was wired.
