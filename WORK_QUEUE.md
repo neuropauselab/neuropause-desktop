@@ -246,7 +246,19 @@ commands · authority class · gate conditions · status.**
 ## NP-015 · Nine-timestamp completion (slice 3 of 6)
 - **Objective:** additive ActionRecord fields (event_time, effect_time, request_time); effect_time populated
   from the provider read-back WHERE THE ORACLE SUPPLIES IT — honestly null where it doesn't, never derived.
-  **Status: QUEUED.**
+- **Status: CLOSED (TEST-VERIFIED).** Discipline pinned throughout: *a time we were not told is ABSENT, not
+  approximated.* `requestTime` READ from the kernel-minted requestId (strict end-anchored ISO + parse check;
+  legacy/epoch/truncated → null, never a guess) · `eventTime` supplied only by a caller that observed one —
+  honestly NULL on the governed send path, never borrowed from the request · `effectTime` = the provider's
+  `sentDateTime` carried verbatim out of the oracle (`VerifyResult.observedEffectAt`), null on bounce/HOLD;
+  optional-AND-nullable so ABSENT (pre-field, never back-filled) stays distinct from NULL (ran, none supplied).
+  NP-014's authorized call-site diff landed byte-identical and its source pin is restored. Both sensitive
+  diffs additive-only inside the envelope and presented verbatim in the evidence; the untouched verification
+  suite passing unmodified is the no-behavior-change proof. 13 new pins; full main 868/9074/3.
+  **Recorded, NOT built (outside the envelope):** the CST kernel's `TransitionOutcome.timeline` already stamps
+  decided/claimed/executionStarted/executionCompleted/verified — a real source for authorization_time and
+  execution_time, and the natural next temporal slice if the operator rules it.
+  Evidence: `PHASE-I-A3-NEUROPAUSE-OS-NP-015-NINE-TIMESTAMP-EVIDENCE.md`. **Next: NP-016.**
 
 ## NP-016 · Capability-record completion in the S23 kit (slice 4 of 6)
 - **Objective:** kit artifact to the 16-field shape + Ruling-2 aliases. The risk_class FIELD exists; its VALUES

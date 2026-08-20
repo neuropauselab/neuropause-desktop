@@ -62,6 +62,16 @@ export interface VerifyResult {
   readonly bounceReason: string | null;
   readonly attempts: number;
   readonly detail: string;
+  /**
+   * NP-015 — `effect_time` (ARCHITECTURE-SPEC §14): WHEN THE PROVIDER SAYS THE
+   * EFFECT OCCURRED, carried out VERBATIM from the corroborated Sent Items row
+   * (`SentItem.sentDateTime`). Null on every non-corroborated path — a bounce,
+   * a HOLD, or any state where no provider row was matched. It is NEVER our
+   * clock, never the verification time, never inferred from the window: an
+   * effect time we were not TOLD is absent, not approximated. Carrying it out
+   * changes no matching, no schedule, no read — the row was already found.
+   */
+  readonly observedEffectAt: string | null;
 }
 
 const DEFAULT_BACKOFF = [0, 2000, 5000, 10000, 20000] as const;
@@ -123,15 +133,15 @@ export async function verifyEffect(
     for (const msg of inbox) {
       const reason = bounceReason(msg, target);
       if (reason) {
-        return { state: 'VERIFY_FAILED', matchedMessageId: null, bounceReason: reason, attempts: i + 1, detail: `bounce/NDR observed: ${reason}` };
+        return { state: 'VERIFY_FAILED', matchedMessageId: null, bounceReason: reason, attempts: i + 1, detail: `bounce/NDR observed: ${reason}`, observedEffectAt: null };
       }
     }
     const sent = await deps.readSentItems();
     const hit = sent.find((m) => matchesTuple(m, target));
     if (hit) {
-      return { state: 'VERIFIED_SUCCESS', matchedMessageId: hit.internetMessageId, bounceReason: null, attempts: i + 1, detail: 'corroborated match in Sent Items (recipient + subject + timestamp' + (target.internetMessageId ? ' + id)' : ')') };
+      return { state: 'VERIFIED_SUCCESS', matchedMessageId: hit.internetMessageId, bounceReason: null, attempts: i + 1, detail: 'corroborated match in Sent Items (recipient + subject + timestamp' + (target.internetMessageId ? ' + id)' : ')'), observedEffectAt: hit.sentDateTime ?? null };
     }
   }
   // UNKNOWN → HOLD. UNRESOLVED never auto-promotes.
-  return { state: 'HOLD', matchedMessageId: null, bounceReason: null, attempts: schedule.length, detail: 'not observed after bounded backoff — UNKNOWN, held for reconciliation (never auto-promoted to SUCCESS)' };
+  return { state: 'HOLD', matchedMessageId: null, bounceReason: null, attempts: schedule.length, detail: 'not observed after bounded backoff — UNKNOWN, held for reconciliation (never auto-promoted to SUCCESS)', observedEffectAt: null };
 }

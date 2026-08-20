@@ -70,15 +70,46 @@ export interface ActionRecordVerificationProvenance {
 export interface ActionRecordVerification {
   readonly terminal: string;
   readonly internetMessageId: string | null;
+  /** `verification_time` (§14) — when the ORACLE RAN. Never the effect's time. */
   readonly at: string;
   readonly provenance?: ActionRecordVerificationProvenance;
+  /**
+   * NP-015 — `effect_time` (§14): when the PROVIDER says the external effect
+   * occurred, verbatim from the corroborated read-back row. Optional AND
+   * nullable, and the distinction is deliberate: ABSENT = written before this
+   * field existed (never back-filled); NULL = this verification ran and the
+   * oracle supplied no effect time (a HOLD, a bounce, or a reader that does
+   * not report one). Never our clock, never inferred from `at`.
+   */
+  readonly effectTime?: string | null;
 }
 
 export interface ActionRecord {
   readonly id: string;
+  /** `record_time` (§14) — when THIS ROW WAS WRITTEN. Never the effect's time. */
   readonly at: string;
   readonly requestId: string;
   readonly transitionId: string;
+  /**
+   * NP-015 — `request_time` (§14): when the governed REQUEST was stamped by
+   * the transition kernel, READ (never re-clocked) from the requestId the
+   * kernel minted — `req:<idem>:<stamp>`. Null when that stamp is absent or
+   * is not a parseable instant (a legacy id, or a caller whose clock port
+   * returns a non-ISO value): the observer states what it was told, and says
+   * nothing where it was told nothing.
+   */
+  readonly requestTime?: string | null;
+  /**
+   * NP-015 — `event_time` (§14): when the real-world event that OCCASIONED
+   * this action occurred — deliberately distinct from request_time, because
+   * "A happened before B" is not "A caused B" (§14). Supplied by a caller that
+   * genuinely observed such an event; **null on today's only production path**
+   * (the governed send carries no upstream event stamp — an operator's confirm
+   * is not timestamped into the payload). Present-and-null is the honest
+   * state: the concept is modeled, the value is absent, and nothing fabricates
+   * one from the request or the clock.
+   */
+  readonly eventTime?: string | null;
   /** The governed actor VERBATIM (D-12 namespace, e.g. `local:<id>`), never stripped. */
   readonly actor: string;
   readonly tenantId: string;
@@ -115,6 +146,12 @@ interface ExecuteRequestLike {
 interface ObserveContext {
   readonly actor: string;
   readonly tenantId: string;
+  /**
+   * NP-015 — `event_time` (§14), supplied ONLY by a caller that genuinely
+   * observed the occasioning event. Omitted by the governed send path (which
+   * has none), so the record honestly stores null.
+   */
+  readonly eventTime?: string | null;
 }
 
 interface Persisted {
@@ -125,6 +162,21 @@ interface Persisted {
 function fingerprint(text: unknown): string {
   const norm = typeof text === 'string' ? text.toLowerCase().replace(/\s+/g, ' ').trim() : '';
   return norm === '' ? '' : createHash('sha256').update(norm).digest('hex').slice(0, 16);
+}
+
+/**
+ * NP-015 — `request_time` (§14), READ out of the kernel-minted requestId
+ * (`req:<idem>:<stamp>`). Deliberately strict: it accepts ONLY a trailing
+ * ISO-8601 instant that also parses, anchored at the end (the ISO stamp
+ * carries its own colons, and `idem` may carry colons too, so neither a
+ * left- nor a right-split is safe). Anything else — a legacy id, an epoch
+ * clock port, a truncated id — yields NULL rather than a guess. This reads a
+ * value the kernel really stamped; it never re-clocks and never approximates.
+ */
+export function requestTimeFrom(requestId: string): string | null {
+  const m = /:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2}))$/.exec(requestId);
+  if (!m) return null;
+  return Number.isFinite(Date.parse(m[1])) ? m[1] : null;
 }
 
 /** Normalize a recipient field that may be a string[], a comma string, or absent. */
@@ -190,8 +242,12 @@ class ActionRecordStore {
       const params = request.params ?? {};
       const record: ActionRecord = {
         id: `act_${randomUUID()}`,
-        at: new Date().toISOString(),
+        at: new Date().toISOString(), // record_time — this row's write
         requestId,
+        // NP-015 §14: read from the kernel's own stamp; null when unstamped.
+        requestTime: requestTimeFrom(requestId),
+        // NP-015 §14: only a caller that OBSERVED an event supplies one.
+        eventTime: ctx.eventTime ?? null,
         transitionId,
         actor: ctx.actor, // verbatim — never stripped (D-12)
         tenantId: ctx.tenantId,
