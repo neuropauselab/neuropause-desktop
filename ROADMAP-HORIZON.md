@@ -108,3 +108,29 @@ S5.4 ceremony, against the substrate as it then exists. Recording both orderings
 No phase above is built until it enters §5 with its five fields proven against the *real* substrate and the operator's
 per-layer approval. Recording the horizon is not entering it. Direction keeps today's work honest; it never authorizes
 tomorrow's.
+
+## ID-NAMESPACE MAPPING (operator RULING 2, 20 Aug 2026 — the ONE table)
+CLAUDE.md §5 S-numbers are canonical, unique, supreme. Colliding IDs from directives/advisor documents carry
+namespace prefixes. Applied mapping:
+
+| Namespace | Meaning | Collision resolved |
+|---|---|---|
+| S-nn | CLAUDE §5 roadmap slices | CANONICAL — nothing remaps these |
+| NP-nnn | WORK_QUEUE tasks (committed history keeps its numbers forever) | NP-000…NP-010 = the existing queue meanings |
+| M-nnn | The MASTER DIRECTIVE §44 strategic horizon (its "NP-001…NP-030" renumbered) | master-NP-001→M-001 … master-NP-029→M-029, recorded in WORK_QUEUE §MASTER HORIZON. Identity, not collision: master-NP-000 ≡ NP-000 (same ceremony) — NOT remapped |
+| LB-n | Live-Brain roadmap stages (recorded-not-entered) | already namespaced; unchanged |
+| MR-n | Master-recon findings (written as F-MR-n in the report; F-MR-n ≡ MR-n) | unchanged |
+| F-N8-n / F-N10-n | NP-008 census / NP-010 census findings | no collisions; unchanged |
+| FG-n / D-nn / O-nn / W-n | frozen gates / decisions / owner-row observations / diagnostic predicates | untouched namespaces |
+
+No collision resisted the rule; none needed individual escalation.
+
+## LADDER ORDER (operator RULING 1, 20 Aug 2026)
+1. **mail.send** — certified; NP-000 completes its first Brain-proposed real action.
+2. **calendar.create** — SECOND, immediately post-ceremony (cheapest full kit run; same connector; oracle =
+   event GET-by-id; proves connector-certified ≠ every-action-certified by certifying a SECOND action on the
+   SAME connector).
+3. **Razorpay payment-link** — THIRD, the second-CONNECTOR abstraction test (new auth model, new oracle class,
+   money-adjacent; full kit PLUS its own ceremony-class first real action when its turn comes).
+Everything else BELOW THE LINE, refusing at the boundary, until the operator re-ranks. **No rung begins until
+after NP-000.**

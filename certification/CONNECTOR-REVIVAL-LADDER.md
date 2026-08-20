@@ -23,4 +23,4 @@ operator certifies it (kit-complete ≠ certified); one capability per run; the 
 certification from a sibling capability (§49); if a rung requires M365-specific branching in the kernel, STOP —
 that is the §50 architectural-defect signal, not something to patch around.
 
-**Status: AWAITING THE OPERATOR'S ORDER RULING.** No rung is entered until chosen.
+**Status: OPERATOR-RULED (20 Aug 2026):** mail.send (ceremony) → calendar.create (2nd, immediately post-ceremony) → Razorpay payment-link (3rd, the second-connector abstraction test w/ its own ceremony-class first real action). Everything else below the line until re-ranked. No rung begins until after NP-000.
