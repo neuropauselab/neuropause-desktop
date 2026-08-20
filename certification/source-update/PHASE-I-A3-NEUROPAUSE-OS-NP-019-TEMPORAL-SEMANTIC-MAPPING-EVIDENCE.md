@@ -16,6 +16,22 @@ ruled objective. Zero frozen touch. NP-000 = HOLD unchanged.
 
 The mapping step ran first, and it is the reason nothing was written.
 
+## THE MAPPING TABLE (recorded verbatim by operator ruling, 20 Aug 2026)
+
+**Status: MAPPED / BLOCKED · IMPLEMENTATION NONE · TREE CLEAN · FREEZE INTACT.**
+**Result: no safe temporal source exists for `authorization_time` or `execution_time`.**
+
+| §14 field | Verdict | Why |
+|---|---|---|
+| `request_time` | **ABSENT** | requestId not carried through `GovernedSendResult` |
+| `event_time` | **ABSENT** | no authoritative source |
+| `authorization_time` | **ABSENT** | `decided` precedes approval and exists on HOLD/DENY |
+| `execution_time` | **ABSENT** | logical-clock state, not measured time |
+| `effect_time` | **SUPPORTED** | provider `sentDateTime` |
+| `verification_time` | **SUPPORTED** | the oracle run |
+
+> **THE PRINCIPLE LINE: "timeline key exists ≠ real timestamp was measured."**
+
 ## SOURCE EVENT → SEMANTIC FIELD: the mapping, and where it fails
 
 ### Step 1 — what each stamp brackets (read from the kernel implementation)

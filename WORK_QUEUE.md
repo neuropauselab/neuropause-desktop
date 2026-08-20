@@ -331,8 +331,15 @@ commands · authority class · gate conditions · status.**
   the DESCRIPTION was not. Root cause recorded as a standing lesson: NP-015's pins used a hand-built fixture
   carrying `outcome.requestId` — more generous than reality. A REALITY pin driving the real path now asserts the
   true shape. The fix needs a FROZEN `cst/sendTransition.ts` change → **FG GATE PRESENTED, awaiting the token.**
-- **PROPOSED, not built:** a phase-reached ledger (which phases were reached, verbatim from key presence) — the
-  one thing the timeline CAN honestly support. Outside the ruled objective; awaiting the operator's decision.
+- **OPERATOR RULING (20 Aug 2026):** status **MAPPED / BLOCKED · IMPLEMENTATION NONE**. Mapping table recorded
+  verbatim in the evidence; principle line canonized: **"timeline key exists ≠ real timestamp was measured."**
+- **F-N19-2: OPEN / GATE_REQUIRED.** The REALITY pin is RETAINED. Fix prepared as **FG-12 (PREPARE ONLY, NOT
+  APPLIED)** — `certification/source-update/FG-12-GATE-GOVERNEDSENDRESULT-REQUESTID.md`, all fourteen ruled
+  items; ruled shape `readonly requestId?: string` assigned VERBATIM from the transition request's own id.
+  Awaiting the operator's read-only confirmations + literal token. **Never mixed into the reconciliation slice.**
+- **NP-019b · PHASE-REACHED LEDGER — PROPOSED / NOT BUILT** (supersedes the earlier approval, operator 20 Aug
+  2026): presence of a phase key = that phase was REACHED; it is **NOT** a timestamp, duration, causality, or
+  ordering proof. Enters the queue only by a future operator ruling. **Nothing built.**
   Evidence: `PHASE-I-A3-NEUROPAUSE-OS-NP-019-TEMPORAL-SEMANTIC-MAPPING-EVIDENCE.md`.
 
 ## NP-006 · Post-ceremony §5 amendment — experience-arc-vs-v1.0 sequencing
