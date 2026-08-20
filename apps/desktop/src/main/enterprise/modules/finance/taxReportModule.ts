@@ -39,6 +39,7 @@ import {
   defineEnterpriseModule,
   type EnterpriseModule,
 } from '../../framework';
+import { deriveSourceLineage } from './sourceLineage';
 
 /** The declarative description of a tax report — drives store, CRUD, and the UI. */
 export const TAX_REPORT_DESCRIPTOR: EnterpriseModuleDescriptor = {
@@ -76,6 +77,8 @@ export const TAX_REPORT_DESCRIPTOR: EnterpriseModuleDescriptor = {
     },
     { key: 'generatedAt', label: 'Generated At', type: 'text', readOnly: true, column: false },
     { key: 'note', label: 'Note', type: 'textarea', readOnly: true, column: false },
+    // NP-011 C — the tile law: the GST snapshot names BOTH registers it derives from.
+    { key: 'sourceLineage', label: 'Evidence Lineage', type: 'textarea', readOnly: true, column: false },
   ],
 };
 
@@ -147,6 +150,8 @@ export function createTaxReportModule(
         result.values.lines = JSON.stringify(report.lines);
         result.values.note = report.note;
         result.values.status = 'generated';
+        // NP-011 C: the GST snapshot names both registers it derives from.
+        result.values.sourceLineage = `${deriveSourceLineage(journalStore.list(), 'journal entries').sentence} ${deriveSourceLineage(invoiceStore.list(), 'invoices').sentence}`;
         result.values.generatedAt = new Date().toISOString();
         return result;
       },

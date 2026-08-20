@@ -40,6 +40,7 @@ import {
   defineEnterpriseModule,
   type EnterpriseModule,
 } from '../../framework';
+import { deriveSourceLineage } from './sourceLineage';
 
 /** The declarative description of a cash flow statement — drives store, CRUD, and the UI. */
 export const CASH_FLOW_DESCRIPTOR: EnterpriseModuleDescriptor = {
@@ -66,6 +67,8 @@ export const CASH_FLOW_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'reconciled', label: 'Reconciled', type: 'text', readOnly: true },
     { key: 'entryCount', label: 'Entries', type: 'number', readOnly: true, default: 0, column: false },
     { key: 'note', label: 'Note', type: 'textarea', readOnly: true, column: false },
+    // NP-011 C — the tile law: the statement names the register it derives from.
+    { key: 'sourceLineage', label: 'Evidence Lineage', type: 'textarea', readOnly: true, column: false },
     { key: 'generatedAt', label: 'Generated At', type: 'text', readOnly: true, column: false },
   ],
 };
@@ -145,6 +148,8 @@ export function createCashFlowModule(
                   ? '; reconciles to the actual change in cash'
                   : '; DOES NOT reconcile to the actual change in cash — review account cash-flow tags') +
                 '. Untagged accounts default by class (equity → financing, else operating); tag fixed-asset / long-term-debt accounts to refine the split.';
+        // NP-011 C: the cash position names the journal register it derives from.
+        result.values.sourceLineage = deriveSourceLineage(journalStore.list(), 'journal entries').sentence;
         result.values.generatedAt = new Date().toISOString();
         return result;
       },
