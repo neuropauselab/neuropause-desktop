@@ -353,14 +353,35 @@ commands · authority class · gate conditions · status.**
   governedSend 1, governedAction 28, unrouted 5 (all reads); every mutating action is governed. The
   disagreement is uniform and one-sided (null vs named); no action carries two different NAMED values.
   **NO normalization.** Evidence: `…F-N16-2-AUTHORITY-DETERMINATION-EVIDENCE.md` (10 pins).
-- **F-N16-3 (reversibility) — IN PROGRESS** (opened once 2 was classified, per ruling).
-- **F-N16-4 (oracle identity) — QUEUED** (after 3).
+- **F-N16-3 (reversibility) — CLASSIFIED, TWO ANSWERS.** Decisive negative: NO governance/authorization/
+  admission/identity/execution decision branches on reversibility in EITHER vocabulary; the kernel never reads
+  it, it is not in the idempotency key, and — proven by driving a real governedSend — **the CST value never
+  reaches durable evidence at all** (absent from the outcome envelope, the kernel log, and the ActionRecord).
+  (1) **The vocabulary question = SOURCE_REQUIRED:** the spec sanctions two slots at two grains (§23 + §28) but
+  defines NO value space for either and NO relationship — no collapse authorized, none proposed. (2) **The
+  calendar.create values = CONFLICTING:** IRREVERSIBLE (CST, a conservative default whose comment explicitly
+  DISCLAIMS the claim) vs 'reversible' (proposal, a flat literal) — opposite directions, no reconciling
+  mechanism; descriptive not functional, which is why nothing failed. mail.send agrees via THREE independent
+  hardcodes, never derivation.
+- **F-N16-4 (oracle identity) — CLASSIFIED: NOT a conflict.** Two DISTINCT mechanisms at two layers, each
+  correctly named for its layer: `verifyEffect` = the pure RULE (zero I/O); `m365ReadBack:sentItems+inbox` =
+  the READER + its two sources. Neither file names itself; the orchestrator actually called
+  (`verifyGovernedSend`) is named by NEITHER. **`oracleId` is never a lookup key** — no id→implementation
+  registry exists; implementations arrive by static import — so a mismatch is DESCRIPTIVE, not functional (its
+  one load-bearing use is a drift token in the canon-equality check, both sides from the same derivation).
+  Residual **SOURCE_REQUIRED**: which layer owns `oracle_id`, and the absence of any identifier grammar (the two
+  live ids are not even the same KIND of name). Never silently merged.
+- **Findings recorded, NOT fixed in-slice:** F-N16-3a (governedAction's comment claims a "recorded reversibility
+  class" that nothing records) · F-N16-3b (importTransition's unjustified `REVERSIBLE` for data.import) ·
+  F-N16-4a (`productionWired: false` hardcoded on both branches, never set true) · F-N16-4b (`'per-recipient'`
+  declared but never produced) · F-N16-4c (the mock runner writes no provenance at all).
+  Evidence: `…F-N16-3-4-VOCABULARY-DETERMINATION-EVIDENCE.md` (18 pins).
 - **AT THE SLICE'S CLOSE:** ONE BUNDLE of both GATE-class `executionGate.ts` diffs — (a) the F-N16-2
   documentation correction at `AuthorityRequirement.policyVersion`, (b) the F-N16-1 gate-lambda collapse onto
   the shared certification authority — presented TOGETHER, verbatim, applied only on the operator's go.
 - **RECORDED UNRULED, LINKED TO S28:** the action→policy registry question (a Policy DSL is where such a
   registry would earn existence). Not a floating unknown; not built.
-- **Status: OPEN — F-N16-3 in progress.**
+- **Status: ALL THREE FINDINGS CLASSIFIED. Awaiting the operator on: the SOURCE_REQUIRED vocabulary rulings, and the executionGate BUNDLE (presented at the slice's close).**
 
 ## NP-006 · Post-ceremony §5 amendment — experience-arc-vs-v1.0 sequencing
 - **Objective:** decide the ONE explicitly-open question (full experience arc before v1.0, or v1.0 earlier on the
