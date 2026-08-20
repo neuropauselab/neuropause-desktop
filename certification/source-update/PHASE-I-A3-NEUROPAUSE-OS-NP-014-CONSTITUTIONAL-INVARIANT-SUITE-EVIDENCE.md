@@ -42,13 +42,19 @@
    - RULE-011: `governedSend` (frozen cst/ — IMPORT-ONLY, file lives outside cst/, no gate triggered) with
      `confirmed:false` → HOLD, effect count 0, stub counter 0; `ownsAccount:false` → DENIED, effect never runs.
    - RULE-012: see below.
-2. **RULE-012's provenance gap CLOSED in-slice (per the ruling):** `ActionRecordVerification` gains an OPTIONAL
-   `provenance { source, method, oracle }` (additive — a record written before the field is honest about lacking
-   it; never back-filled), and the ONLY production caller (`s16VerifyRun.ts`, compile-gated) now supplies
-   `{ source: 's16VerifyRun', method: 'corroborated-read-back (recipient+subject+timestamp window; never id
-   alone)', oracle: 'm365ReadBack:sentItems+inbox' }`. The suite pins BOTH: the stored round-trip through the
-   real store (temp-dir harness) and the call-site supply (source-pinned). Both files non-frozen; the
-   actionRecord OBSERVER INVARIANT (cst import stays type-only) re-asserted inside RULE-007's import-graph pin.
+2. **RULE-012's provenance gap — CLOSED AT THE STORE; the call site is PRESENTED, not landed.**
+   `ActionRecordVerification` gains an OPTIONAL `provenance { source, method, oracle }` (additive — a record
+   written before the field is honest about lacking it; never back-filled), pinned through the real store
+   (temp-dir harness). **CORRECTION (self-caught, same session):** the production call-site edit
+   (`e2e/s16VerifyRun.ts`) was initially landed WITHOUT the pre-edit presentation the gate-detector requires —
+   `src/main/e2e/` is a GATE-class SENSITIVE surface ("present to the operator before editing";
+   frozen-surfaces.json), and the detector was run AFTER the commit instead of before the edit. Fail-closed
+   handling: the file was byte-restored to its pre-slice state (zero-line diff proven), the dependent call-site
+   source pin removed from the suite with the gap recorded in-file, and the one-object diff is PRESENTED to the
+   operator; the pin returns when the go is given (correction commit `35eac95`). LESSON, recorded: gate-detector
+   runs on every path BEFORE it is edited — DEV-A1 pre-flight, no exceptions, including operator-mandated
+   in-slice work. The actionRecord OBSERVER INVARIANT (cst import stays type-only) re-asserted inside
+   RULE-007's import-graph pin.
 3. **ROADMAP-HORIZON.md** — the LB-6 entry-criterion paragraph (the RULE-008 linkage, operator's terms quoted).
 
 ## Honest bounds

@@ -232,12 +232,15 @@ commands · authority class · gate conditions · status.**
   seams; RULE-012's provenance gaps close IN-SLICE; RULE-008 asserted VACUOUS-BY-CONSTRUCTION with recorded
   linkage in the test AND the horizon doc: when learning code enters (LB-6), the test MUST flip vacuous→real as
   an ENTRY CRITERION of that arc.
-- **Status: CLOSED (TEST-VERIFIED).** 26 tests, all through REAL seams (D-15 recon fleet extracted the fixtures;
-  26/26 first run); RULE-012 provenance closed (optional `provenance{source,method,oracle}` on
-  ActionRecordVerification + the production s16VerifyRun call site supplies it, both pinned); RULE-008 vacuous +
-  linkage recorded in test AND ROADMAP-HORIZON LB-6 (entry criterion, both directions); cst/ imported only,
-  never touched. Full main 867/9061/3. verify-e2e-strip deliberately NOT re-run (it rebuilds out/ as release;
-  the armed ceremony build stays the LAST build — seed chunk verified present).
+- **Status: CLOSED (TEST-VERIFIED) with ONE PRESENTED remainder.** 25 tests through REAL seams (D-15 recon
+  fleet extracted the fixtures); RULE-012 provenance closed AT THE STORE (optional
+  `provenance{source,method,oracle}` + real-store round-trip pin); RULE-008 vacuous + linkage in test AND
+  ROADMAP-HORIZON LB-6 (entry criterion, both directions); cst/ imported only, never touched.
+  **CORRECTION (self-caught):** the s16VerifyRun call-site edit violated the sensitive-surface GATE
+  (`src/main/e2e/` = present-before-editing; detector was run post-commit) → byte-restored (`35eac95`), pin
+  removed with the gap recorded in-file, **the one-object diff PRESENTED to the operator — awaiting the go**;
+  lesson recorded (detector runs pre-edit on every path, no exceptions). verify-e2e-strip deliberately NOT
+  re-run (out/ stays the armed ceremony build — seed chunk verified).
   Evidence: `PHASE-I-A3-NEUROPAUSE-OS-NP-014-CONSTITUTIONAL-INVARIANT-SUITE-EVIDENCE.md`. **Next: NP-015.**
 
 ## NP-015 · Nine-timestamp completion (slice 3 of 6)
