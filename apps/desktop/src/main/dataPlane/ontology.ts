@@ -6,7 +6,7 @@
  * an EXISTING module id and EXISTING descriptor field keys — this layer adds a
  * routing vocabulary, it does not fork the ERP data model.
  *
- * SCOPE (honest): fourteen canonical entities are implemented — the original
+ * SCOPE (honest): fifteen canonical entities are implemented — the original
  * eight (Finance, CRM, HR, Inventory, Procurement, Projects), two contributed
  * by the Medical Device pack, two transaction-class entities added by NP-010
  * §2 (payment, sales_order), and two AGGREGATION-SHAPED entities added by
@@ -15,7 +15,9 @@
  * source (Tally vouchers, bank-transaction tables) into flat rows whose
  * `Lines (JSON)` cell carries the shared line shapes the modules already
  * parse. Imported journal entries land as DRAFTS — the `post` action's full
- * guard is the GL gate. Adding a flat entity remains a data-only change below.
+ * guard is the GL gate. NP-011 also adds vendor_bill (fed flat by the GSTR-2B
+ * extractor; DRAFTS — the `approve` action stays the gate). Adding a flat
+ * entity remains a data-only change below.
  */
 
 export type CanonicalDomain =
@@ -302,6 +304,30 @@ export const ONTOLOGY: readonly CanonicalEntity[] = [
       { key: 'entryDate', label: 'Date', type: 'date', shape: 'date', synonyms: ['date', 'entry date', 'voucher date', 'journal date'] },
       { key: 'memo', label: 'Memo', type: 'text', synonyms: ['memo', 'narration', 'description', 'particulars'] },
       { key: 'lines', label: 'Lines (JSON)', type: 'text', required: true, synonyms: ['lines json', 'lines', 'journal lines', 'ledger entries json', 'entries json'] },
+    ],
+  },
+  {
+    // NP-011 — purchase-side documents from GST return files (GSTR-2B) or any
+    // flat purchase register. Imports are DRAFTS; the `approve` action is the
+    // gate, and the exact filing amounts ride in Notes verbatim.
+    id: 'vendor_bill',
+    label: 'Vendor Bill',
+    plural: 'Vendor Bills',
+    domain: 'finance',
+    moduleId: 'finance-vendor-bills',
+    titleField: 'billNumber',
+    risk: 'high',
+    nameHints: ['vendor bill', 'vendor bills', 'purchase register', 'purchases', 'gstr', 'gstr 2b', 'gstr2b', 'supplier invoice', 'supplier invoices', 'bills'],
+    identityKeys: [['billNumber', 'vendorGstin'], ['billNumber']],
+    fields: [
+      { key: 'billNumber', label: 'Bill #', type: 'text', required: true, shape: 'code', identity: true, synonyms: ['bill number', 'bill no', 'invoice number', 'invoice no', 'inum', 'document number'] },
+      { key: 'vendor', label: 'Vendor', type: 'text', required: true, synonyms: ['vendor', 'vendor name', 'supplier', 'supplier name', 'trade name', 'party', 'party name'] },
+      { key: 'vendorGstin', label: 'Vendor GSTIN', type: 'text', shape: 'code', synonyms: ['vendor gstin', 'gstin', 'ctin', 'supplier gstin', 'gst number'] },
+      { key: 'amount', label: 'Subtotal', type: 'number', required: true, shape: 'money', synonyms: ['subtotal', 'taxable value', 'txval', 'amount', 'net amount', 'taxable amount'] },
+      { key: 'taxRate', label: 'Tax Rate %', type: 'number', synonyms: ['tax rate', 'gst rate', 'tax percent', 'tax %'] },
+      { key: 'billDate', label: 'Bill Date', type: 'date', shape: 'date', synonyms: ['bill date', 'invoice date', 'date', 'document date'] },
+      { key: 'dueDate', label: 'Due', type: 'date', shape: 'date', synonyms: ['due date', 'due', 'payment due'] },
+      { key: 'notes', label: 'Notes', type: 'text', synonyms: ['notes', 'note', 'remarks', 'source amounts'] },
     ],
   },
   {

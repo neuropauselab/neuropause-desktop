@@ -184,3 +184,84 @@ export function extractTallyVouchers(xmlText: string): ParsedTable | null {
     truncated: false,
   };
 }
+
+/* ── GSTR-2B (GST portal JSON) extraction ─────────────────────────────────────── */
+
+interface Gstr2bInvoice {
+  inum?: unknown;
+  dt?: unknown;
+  txval?: unknown;
+  igst?: unknown;
+  cgst?: unknown;
+  sgst?: unknown;
+  cess?: unknown;
+}
+interface Gstr2bSupplier {
+  ctin?: unknown;
+  trdnm?: unknown;
+  inv?: unknown;
+}
+
+function asRecord(v: unknown): Record<string, unknown> | null {
+  return v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+}
+
+/** GST portal dates are DD-MM-YYYY. */
+function gstDate(raw: string): string {
+  const m = /^(\d{1,2})-(\d{1,2})-(\d{4})$/.exec(raw.trim());
+  return m ? `${m[3]}-${m[2]!.padStart(2, '0')}-${m[1]!.padStart(2, '0')}` : raw.trim();
+}
+
+/**
+ * Detect a GSTR-2B return file (root → data? → docdata → b2b[] of
+ * {ctin, trdnm, inv[]}) and emit one flat VENDOR-BILL DRAFT row per invoice.
+ * The derived Tax Rate % is an approximation for the module's tax math; the
+ * EXACT source amounts (taxable, IGST/CGST/SGST/cess) are preserved verbatim
+ * in Notes so nothing is lost to rounding. Bills land as DRAFTS — the
+ * `approve` action stays the gate. Returns null for non-GSTR JSON.
+ */
+export function extractGstr2bBills(root: unknown): ParsedTable | null {
+  const r0 = asRecord(root);
+  if (!r0) return null;
+  const data = asRecord(r0.data) ?? r0;
+  const docdata = asRecord(data.docdata) ?? data;
+  const b2b = docdata.b2b;
+  if (!Array.isArray(b2b) || b2b.length === 0) return null;
+
+  const rows: CellValue[][] = [];
+  for (const supplierRaw of b2b) {
+    const supplier = asRecord(supplierRaw) as Gstr2bSupplier | null;
+    if (!supplier || typeof supplier.ctin !== 'string' || !Array.isArray(supplier.inv)) continue;
+    const vendor =
+      typeof supplier.trdnm === 'string' && supplier.trdnm.trim() !== '' ? supplier.trdnm.trim() : supplier.ctin;
+    for (const invRaw of supplier.inv) {
+      const inv = asRecord(invRaw) as Gstr2bInvoice | null;
+      if (!inv || typeof inv.inum !== 'string') continue;
+      const txval = num(inv.txval as CellValue);
+      const igst = num(inv.igst as CellValue);
+      const cgst = num(inv.cgst as CellValue);
+      const sgst = num(inv.sgst as CellValue);
+      const cess = num(inv.cess as CellValue);
+      const tax = igst + cgst + sgst;
+      const taxRate = txval > 0 ? Math.round((tax / txval) * 10000) / 100 : 0;
+      rows.push([
+        inv.inum,
+        vendor,
+        supplier.ctin,
+        txval,
+        taxRate,
+        gstDate(String(inv.dt ?? '')),
+        `GSTR-2B source amounts (verbatim): taxable ${txval}, IGST ${igst}, CGST ${cgst}, SGST ${sgst}, cess ${cess}. Tax Rate % above is derived for the module's tax math; these figures are the filing truth.`,
+      ]);
+    }
+  }
+  if (rows.length === 0) return null;
+  return {
+    name: 'GSTR-2B vendor bills',
+    headers: ['Bill Number', 'Vendor', 'Vendor GSTIN', 'Subtotal', 'Tax Rate %', 'Bill Date', 'Notes'],
+    rows,
+    headerRowIndex: null,
+    firstDataRowIndex: 1,
+    truncated: false,
+  };
+}

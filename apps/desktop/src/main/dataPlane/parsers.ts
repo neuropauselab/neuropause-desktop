@@ -12,7 +12,7 @@
  */
 import { openZip, looksLikeZip, ZipError } from './zipReader';
 import { eachElement, decodeXml, textOf, stripTags } from './xmlScanner';
-import { extractTallyVouchers, foldBankStatementTable } from './aggregations';
+import { extractGstr2bBills, extractTallyVouchers, foldBankStatementTable } from './aggregations';
 
 export type CellValue = string | number | boolean | null;
 
@@ -561,6 +561,11 @@ function parseJson(text: string): ParsedDocument {
   } catch (err) {
     throw new ParseError(`Invalid JSON: ${(err as Error).message}`);
   }
+  // NP-011: GST-portal return files (GSTR-2B) are supplier→invoice nested, not
+  // array-of-objects — the dedicated extractor emits one flat vendor-bill row
+  // per document, exact source tax amounts preserved in Notes.
+  const gstr = extractGstr2bBills(doc);
+  if (gstr) return { format: 'json', kind: 'tabular', tables: [gstr], text: null, warnings: [] };
   const tables: ParsedTable[] = [];
   collectJsonTables(doc, '', tables);
   return {

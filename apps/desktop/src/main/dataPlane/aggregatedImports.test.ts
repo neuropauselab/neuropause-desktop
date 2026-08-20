@@ -244,3 +244,137 @@ describe('aggregated imports through the real pipeline', () => {
     expect(jv.metadata.importSourceTrust).toBe('unverified-source');
   });
 });
+
+/* ── NP-011 slice B: GSTR-2B → vendor-bill DRAFTS ─────────────────────────── */
+
+import { extractGstr2bBills } from './aggregations';
+
+const GSTR_2B = JSON.stringify({
+  data: {
+    docdata: {
+      b2b: [
+        {
+          ctin: '22AAAAA0000A1Z5',
+          trdnm: 'Supplies Co',
+          inv: [
+            { inum: 'SC-901', dt: '03-08-2026', val: 1180, txval: 1000, igst: 180, cgst: 0, sgst: 0, cess: 0 },
+            { inum: 'SC-902', dt: '05-08-2026', val: 590, txval: 500, igst: 0, cgst: 45, sgst: 45, cess: 0 },
+          ],
+        },
+      ],
+    },
+  },
+});
+
+describe('NP-011 slice B — GSTR-2B extraction (pure)', () => {
+  it('emits one vendor-bill row per document; derived rate approximate, source amounts verbatim in Notes', () => {
+    const t = extractGstr2bBills(JSON.parse(GSTR_2B))!;
+    expect(t).not.toBeNull();
+    expect(t.rows).toHaveLength(2);
+    const [billNo, vendor, gstin, subtotal, rate, date, notes] = t.rows[0]! as (string | number)[];
+    expect(billNo).toBe('SC-901');
+    expect(vendor).toBe('Supplies Co');
+    expect(gstin).toBe('22AAAAA0000A1Z5');
+    expect(subtotal).toBe(1000);
+    expect(rate).toBe(18);
+    expect(date).toBe('2026-08-03');
+    expect(String(notes)).toContain('taxable 1000, IGST 180, CGST 0, SGST 0, cess 0');
+    expect(String(notes)).toContain('these figures are the filing truth');
+  });
+
+  it('returns null for JSON that is not a GST return', () => {
+    expect(extractGstr2bBills({ customers: [{ name: 'Acme' }] })).toBeNull();
+    expect(extractGstr2bBills([1, 2, 3])).toBeNull();
+  });
+});
+
+describe('NP-011 slice B — GSTR-2B through the real pipeline', () => {
+  let dir: string;
+  let stores: Map<string, EnterpriseRecordStore>;
+  let sub: DataPlaneSubsystem;
+
+  const BILL_DESCRIPTOR: EnterpriseModuleDescriptor = {
+    id: 'finance-vendor-bills',
+    title: 'Vendor Bills',
+    singular: 'Vendor Bill',
+    plural: 'Vendor Bills',
+    icon: 'doc',
+    description: 'test',
+    titleField: 'billNumber',
+    permissions: { read: 'operations:read', write: 'operations:manage' },
+    fields: [
+      { key: 'billNumber', label: 'Bill #', type: 'text', required: true },
+      { key: 'vendor', label: 'Vendor', type: 'text', required: true },
+      { key: 'vendorGstin', label: 'Vendor GSTIN', type: 'text' },
+      { key: 'amount', label: 'Subtotal', type: 'number', required: true },
+      { key: 'taxRate', label: 'Tax Rate %', type: 'number' },
+      { key: 'billDate', label: 'Bill Date', type: 'date' },
+      { key: 'notes', label: 'Notes', type: 'textarea' },
+    ],
+  };
+
+  const call = async (channel: IpcChannelName, payload: unknown): Promise<unknown> => {
+    const handler = sub.handlers.find((h) => h.channel === channel);
+    if (!handler) throw new Error(`no handler for ${channel}`);
+    return handler.handler(handler.schema.parse(payload));
+  };
+
+  beforeEach(async () => {
+    dir = join(tmpdir(), `np-gstr-${randomUUID()}`);
+    await fs.mkdir(dir, { recursive: true });
+    const granted = new Set<EnterprisePermission>(['data:read', 'data:import', 'data:approve', 'operations:read', 'operations:manage']);
+    stores = new Map([
+      [
+        'finance-vendor-bills',
+        new EnterpriseRecordStore(join(dir, 'bills.json'), 'finance-vendor-bills', 'finance-vendor-bills').bindScope(() => TEST_TENANT_SCOPE),
+      ],
+    ]);
+    await Promise.all([...stores.values()].map((s) => s.load()));
+    sub = initDataPlane({
+      userDataDir: dir,
+      storeFor: (id) => stores.get(id) ?? null,
+      actor: () => ACTOR,
+      tenantId: () => TEST_TENANT_SCOPE.tenantId,
+      now: () => T0,
+      audit: () => undefined,
+      authorize: (permission) => {
+        if (!granted.has(permission)) throw new Error(`Missing permission ${permission}`);
+      },
+      modules: () => [BILL_DESCRIPTOR],
+      saveExport: async (name) => `/tmp/${name}`,
+      onImported: () => undefined,
+    });
+    sub.relationships.bindScope(() => ({ tenantId: TEST_TENANT_SCOPE.tenantId, workspaceId: TEST_TENANT_SCOPE.workspaceId }));
+  });
+
+  afterEach(async () => {
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  it('GSTR-2B JSON → vendor-bill DRAFTS with the honesty label; the approve action stays the gate', async () => {
+    const plan = (await call(IpcChannel.DataPlaneAnalyze, {
+      filename: 'GSTR2B_082026.json',
+      contentBase64: Buffer.from(GSTR_2B, 'utf8').toString('base64'),
+    })) as DataPlanePlanSummary;
+    expect(plan.tables).toHaveLength(1);
+    expect(plan.tables[0]!.entityId).toBe('vendor_bill');
+    expect(plan.tables[0]!.requiresApproval).toBe(true);
+
+    const run = (await call(IpcChannel.DataPlaneImport, {
+      planId: plan.planId,
+      approvals: plan.tables.map((t) => ({ tableName: t.tableName, approved: true })),
+      reason: 'Downloaded from the GST portal.',
+    })) as DataPlaneRunResult;
+    expect(run.tables[0]!.status).toBe('imported');
+
+    const bills = stores.get('finance-vendor-bills')!.list();
+    expect(bills).toHaveLength(2);
+    const b1 = bills.find((r) => r.title === 'SC-901')!;
+    expect(b1.fields.vendorGstin).toBe('22AAAAA0000A1Z5');
+    expect(b1.fields.amount).toBe(1000);
+    expect(String(b1.fields.notes)).toContain('filing truth');
+    // DRAFTS: no approval stamp exists — the module's approve action is the gate.
+    expect(String(b1.fields.approvedAt ?? '')).toBe('');
+    expect(b1.metadata.importSourceTrust).toBe('unverified-source');
+  });
+});
