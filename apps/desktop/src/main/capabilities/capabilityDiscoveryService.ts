@@ -120,8 +120,15 @@ export interface CapabilitySources {
   accounts(): readonly ConnectedAccount[];
   /** The connectors' self-describing action catalogs (e.g. sanitized M365 actions). */
   actionSources(): readonly ConnectorActionSource[];
-  /** Authoritative assurance for a connector's MUTATIONS. Declared by the wiring from certification facts. */
-  mutationAssurance(connectorId: string): CapabilityAssurance;
+  /**
+   * Authoritative assurance for a MUTATION. Declared by the wiring from
+   * certification facts.
+   *
+   * F-N16-1: the capability id is passed because certification is per-ACTION,
+   * never per-connector — a source that answers from the connector alone
+   * would let one certified action vouch for its uncertified siblings.
+   */
+  mutationAssurance(connectorId: string, capabilityId: string): CapabilityAssurance;
 }
 
 function classifySelectability(
@@ -183,7 +190,7 @@ export class CapabilityDiscoveryService {
 
   private project(cap: DiscoveredCapability): AssistantCapability {
     const executionAssurance: CapabilityExecutionAssurance =
-      cap.operation === 'mutate' ? this.sources.mutationAssurance(cap.connectorId) : 'not-applicable';
+      cap.operation === 'mutate' ? this.sources.mutationAssurance(cap.connectorId, cap.capabilityId) : 'not-applicable';
     const { aiSelectable, unavailableReason } = classifySelectability(cap, executionAssurance);
     return {
       capabilityId: cap.capabilityId,

@@ -277,6 +277,12 @@ commands · authority class · gate conditions · status.**
   · F-N16-2 derived vs enforced authority disagree (policyVersion null vs 'm365-action-policy-1') · F-N16-3 two
   reversibility vocabularies · F-N16-4 two oracle identities for one oracle · F-N16-5 manifest consent scopes
   omit the action scopes (manifest-minimization, consistent with live S15 F-1).
+- **OPERATOR RULING on the five (20 Aug 2026):** F-N16-1 JUMPS THE QUEUE (done, below) · **F-N16-2/3/4 form ONE
+  reconciliation slice AFTER NP-019** — the two-vocabularies disease, each collapsing to a SINGLE named
+  authority, D-16 pattern: **map, never fork**, with re-entry invariant pins so a second vocabulary cannot come
+  back · **F-N16-5 is its own deliberate work item, POST-CEREMONY**, tied to the S15 F-1 broad-token finding,
+  because it touches the real consent surface and will not be rushed.
+- **ORDER RULED:** F-N16-1 fix → NP-019 → the 2/3/4 reconciliation slice → NP-017 → NP-018.
   Evidence: `PHASE-I-A3-NEUROPAUSE-OS-NP-016-CAPABILITY-RECORD-EVIDENCE.md`. **Next: NP-019 (ruled after NP-016),
   then NP-017, NP-018.**
 
@@ -287,6 +293,22 @@ commands · authority class · gate conditions · status.**
 - **Objective:** EXTENDS the single `Certainty` authority — no second vocabulary, no fork, ever. Window semantics
   designed in-slice with honest defaults + recorded reasoning. Brain-substrate change = its own slice, FULL main
   suite. **Status: QUEUED.**
+
+## F-N16-1 · Action-level certification at discovery (operator-ruled QUEUE JUMP, 20 Aug 2026)
+- **Objective:** the discovery layer's certification/selectability answers become ACTION-level, so an uncertified
+  sibling can no longer inherit the certified action's standing.
+- **Status: CLOSED (TEST-VERIFIED).** ONE named authority created (`CERTIFIED_CONSEQUENTIAL_CAPABILITIES` +
+  `isCertifiedConsequentialCapability`) rather than a third copy of the inline gate lambda — the same
+  two-vocabularies disease the operator ruled against in the next breath. `mutationAssuranceFor(connectorId,
+  capabilityId?)`: WITH an action id it answers the action-level question, WITHOUT one the connector-level one
+  (§24, documented) — which is exactly why **the boundary is byte-untouched**: `deriveAuthority`,
+  `brainProposeLane` and the L4 graph all call it with ONE argument, so their outputs are provably identical.
+  Discovery's one call site now passes the capability id. Acceptance met: the divergence pin flipped
+  CONFLICTING→KNOWN 'not-certified' with both predicates driven live; the REAL service over the REAL catalog now
+  yields certified = aiSelectable = exactly `['mail.send']`; `resolveSelection('calendar.create')` →
+  GOVERNANCE_NOT_PROVEN. ANTI-FORK pin holds the gate's inline lambda against the named set.
+  Full main 869/9096/3 · UI 42/279 · gate-detector run BEFORE every edit (all PROCEED).
+  Evidence: `PHASE-I-A3-NEUROPAUSE-OS-F-N16-1-ACTION-LEVEL-CERTIFICATION-EVIDENCE.md`. **Next: NP-019.**
 
 ## NP-019 · Temporal completion — authorization_time + execution_time (operator-ruled 20 Aug 2026)
 - **Objective:** `authorization_time` + `execution_time` on the evidence record, COPIED VERBATIM from the CST

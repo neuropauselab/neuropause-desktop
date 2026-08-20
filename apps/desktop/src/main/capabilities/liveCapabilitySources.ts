@@ -40,9 +40,52 @@ export function sanitizeM365Action(action: WriteAction): ConnectorWriteActionInf
   };
 }
 
-/** Conservative, fact-based assurance: only the certified M365 path is governed-certified for mutations. */
-export function mutationAssuranceFor(connectorId: string): CapabilityAssurance {
-  return connectorId === M365_CONNECTOR_ID ? 'governed-certified' : 'governance-not-proven';
+/**
+ * THE certified-consequential capability set — one named authority.
+ *
+ * F-N16-1: this predicate previously existed only as an inline lambda inside
+ * the L6 execution gate (plus a verbatim copy in a test), while discovery
+ * answered a CONNECTOR-level question — so `calendar.create` read
+ * `governed-certified` and `aiSelectable` at discovery while the S5.1 boundary
+ * refused it. Deny-by-default held where it counts, but the discovery layer
+ * was claiming a standing the boundary denies, which is the one place that
+ * class of untruth must never live.
+ *
+ * Naming it ONCE here is deliberate: a third copy would be the same disease.
+ * The gate's inline lambda is pinned AGAINST this set (see the agreement pin
+ * in `capabilityRecord.test.ts`) so the two cannot drift apart unnoticed, and
+ * collapsing the gate onto this export is the ruled reconciliation slice's
+ * work (that file is a GATE-class surface and its diff is presented, not
+ * slipped in).
+ *
+ * A capability enters this set ONLY with a live certified chain behind it
+ * (S11–S16 for `mail.send`). Kit-complete is not certified; a governed
+ * executor is not certified; a certified CONNECTOR is not certified (§24).
+ */
+export const CERTIFIED_CONSEQUENTIAL_CAPABILITIES: readonly string[] = ['mail.send'];
+
+/** Is THIS ACTION certified for governed execution? (Not "is its connector".) */
+export function isCertifiedConsequentialCapability(capabilityId: string): boolean {
+  return CERTIFIED_CONSEQUENTIAL_CAPABILITIES.includes(capabilityId);
+}
+
+/**
+ * Conservative, fact-based assurance for MUTATIONS.
+ *
+ * Two questions, one function, and the argument list says which is being
+ * asked. WITH a `capabilityId` this answers the ACTION-level question — the
+ * only one that can honestly justify showing a capability as governed. WITHOUT
+ * one it answers the CONNECTOR-level question, which per ARCHITECTURE-SPEC §24
+ * does NOT mean any particular action is certified; callers that pass only a
+ * connector are asking about the integration, not about an action, and must
+ * not present the answer as an action's standing.
+ */
+export function mutationAssuranceFor(connectorId: string, capabilityId?: string): CapabilityAssurance {
+  if (connectorId !== M365_CONNECTOR_ID) return 'governance-not-proven';
+  if (capabilityId !== undefined && !isCertifiedConsequentialCapability(capabilityId)) {
+    return 'governance-not-proven';
+  }
+  return 'governed-certified';
 }
 
 /** Build the discovery service's `CapabilitySources` from live-state readers. Pure — no store/Electron access. */

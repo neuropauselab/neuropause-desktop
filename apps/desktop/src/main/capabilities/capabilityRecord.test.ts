@@ -27,9 +27,17 @@ import {
 } from './certificationKit';
 import { CANONICAL_ALIASES, canonicalFor, existingFor } from './canonicalAliases';
 import { deriveAuthority, deriveOracle } from '../liveBrain/executionGate';
-import { M365_CONNECTOR_ID, mutationAssuranceFor } from './liveCapabilitySources';
+import {
+  buildCapabilitySources,
+  CERTIFIED_CONSEQUENTIAL_CAPABILITIES,
+  isCertifiedConsequentialCapability,
+  M365_CONNECTOR_ID,
+  mutationAssuranceFor,
+} from './liveCapabilitySources';
+import { CapabilityDiscoveryService, type AssistantCapability } from './capabilityDiscoveryService';
 import { MANIFEST_BY_ID } from '../connectors/manifests';
 import { ALL_M365_ACTIONS } from '../connectors/m365';
+import type { ConnectedAccount } from '@neuropause/shared';
 import type { CapabilityCertificationRecord } from './certificationKit';
 import { z } from 'zod';
 
@@ -138,24 +146,34 @@ const calendarObservations: CapabilityObservations = {
   oracleId: [], // none exists
   certificationState: [
     { value: 'not-certified', source: 'liveBrain/executionGate.ts → isCertifiedConsequential (per-CAPABILITY)' },
-    { value: 'certified', source: 'capabilities/liveCapabilitySources.ts → mutationAssuranceFor (per-CONNECTOR)' },
+    // F-N16-1 FIXED: discovery now asks the ACTION-level question, so this
+    // reading agrees instead of contradicting. The reading is taken LIVE below.
+    {
+      value: mutationAssuranceFor(M365_CONNECTOR_ID, 'calendar.create') === 'governed-certified' ? 'certified' : 'not-certified',
+      source: 'capabilities/liveCapabilitySources.ts → mutationAssuranceFor (per-ACTION)',
+    },
   ],
 };
 
-describe('§23 record — calendar.create (the dry run), and the divergences it exposes', () => {
+describe('§23 record — calendar.create (the dry run), and what the record exposes', () => {
   const record: CapabilityRecord = composeCapabilityRecord(calendarObservations);
 
-  it('F-N16-1: certification_state CONFLICTS — the connector says certified, the capability boundary says not', () => {
-    expect(record.certificationState.state).toBe('CONFLICTING');
-    if (record.certificationState.state === 'CONFLICTING') {
-      expect(record.certificationState.note).toMatch(/disagree/);
-      expect(record.certificationState.readings.map((r) => r.value).sort()).toEqual(['certified', 'not-certified']);
-    }
-    // The divergence is REAL, not a fixture artifact — both predicates, driven live:
-    expect(mutationAssuranceFor(M365_CONNECTOR_ID)).toBe('governed-certified');
+  it('F-N16-1 FIXED: discovery and the boundary now AGREE — certification_state corroborates instead of conflicting', () => {
+    // Was CONFLICTING (connector-keyed discovery said certified while the S5.1
+    // boundary refused); the discovery layer is now ACTION-level, so the two
+    // readings corroborate into one honest answer.
+    expect(record.certificationState).toMatchObject({ state: 'KNOWN', value: 'not-certified' });
+    expect(conflictingFields(record)).toEqual([]);
+    expect(capabilityRecordFindings(record).find((f) => f.artifact === 'field:certificationState')?.ok).toBe(true);
+
+    // Driven LIVE, both predicates — the agreement is code, not fixture:
+    expect(mutationAssuranceFor(M365_CONNECTOR_ID, 'calendar.create')).toBe('governance-not-proven');
     expect(isCertifiedConsequential('calendar.create')).toBe(false);
-    // …and the record reports it as a DEFECT rather than a pass.
-    expect(capabilityRecordFindings(record).find((f) => f.artifact === 'field:certificationState')?.ok).toBe(false);
+    // …while the certified action is unaffected, and the CONNECTOR-level
+    // question still answers about the connector (§24 — it means the
+    // integration is registered, never that an action is certified).
+    expect(mutationAssuranceFor(M365_CONNECTOR_ID, 'mail.send')).toBe('governed-certified');
+    expect(mutationAssuranceFor(M365_CONNECTOR_ID)).toBe('governed-certified');
   });
 
   it('the oracle fields are honestly ABSENT and carry what is NEEDED — never a blank', () => {
@@ -181,6 +199,71 @@ describe('§23 record — calendar.create (the dry run), and the divergences it 
   it('the record still requires human approval for the uncertified capability — deny-by-default is not weakened', () => {
     if (record.authorityRequirements.state === 'KNOWN') {
       expect(record.authorityRequirements.value.requiresApproval).toBe(true);
+    }
+  });
+});
+
+/* ────── F-N16-1: the fix, driven end-to-end through the REAL discovery service ────── */
+
+describe('F-N16-1 — discovery answers the ACTION-level question, exactly as the boundary rules', () => {
+  const account = {
+    id: 'acct-1', connectorId: M365_CONNECTOR_ID, workspaceId: 'ws-A', label: 'ada@contoso.com',
+    externalId: null, avatarUrl: null, status: 'connected', health: 'healthy', grantedScopes: ['Mail.Send'],
+    connectedAt: '2026-08-20T00:00:00.000Z', lastSyncAt: null, lastSyncState: 'never',
+    accessTokenExpiresAt: null, error: null,
+  } as unknown as ConnectedAccount;
+
+  /** The REAL production wiring: real M365 actions, real assurance predicate. */
+  const service = new CapabilityDiscoveryService(
+    buildCapabilitySources({
+      activeWorkspaceId: () => 'ws-A',
+      connectedAccounts: () => [account],
+      m365Actions: () => ALL_M365_ACTIONS,
+    }),
+  );
+  const byId = (id: string): AssistantCapability | undefined =>
+    service.catalog().capabilities.find((c) => c.capabilityId === id);
+
+  it('calendar.create is NOT governed-certified and NOT aiSelectable at discovery — the claim the boundary denies is gone', () => {
+    const cal = byId('calendar.create');
+    expect(cal).toBeTruthy();
+    expect(cal?.executionAssurance).toBe('governance-not-proven');
+    expect(cal?.aiSelectable).toBe(false);
+    expect(cal?.unavailableReason).toMatch(/not yet governed/i);
+  });
+
+  it('the certified capability is unaffected — mail.send still reads governed-certified and selectable', () => {
+    const mail = byId('mail.send');
+    expect(mail?.executionAssurance).toBe('governed-certified');
+    expect(mail?.aiSelectable).toBe(true);
+  });
+
+  it('EVERY uncertified mutating action now reads governance-not-proven — mail.send does not vouch for its siblings', () => {
+    const mutating = service.catalog().capabilities.filter((c) => c.operation === 'mutate');
+    expect(mutating.length).toBeGreaterThan(5); // the real catalog, not a fixture of one
+    const certified = mutating.filter((c) => c.executionAssurance === 'governed-certified');
+    expect(certified.map((c) => c.capabilityId)).toEqual(['mail.send']);
+    expect(mutating.filter((c) => c.aiSelectable).map((c) => c.capabilityId)).toEqual(['mail.send']);
+  });
+
+  it('selection REFUSES the uncertified capability with GOVERNANCE_NOT_PROVEN — discovery and the boundary now agree', () => {
+    const out = service.resolveSelection({ capabilityId: 'calendar.create', accountId: 'acct-1', purpose: 'p' });
+    expect(out.status).toBe('GOVERNANCE_NOT_PROVEN');
+    expect(out.capability).toBeNull();
+    // …and the boundary's own predicate is untouched and still says the same thing.
+    expect(isCertifiedConsequential('calendar.create')).toBe(false);
+  });
+
+  it('ANTI-FORK: the gate\'s inline predicate and the named certified set must not drift apart', () => {
+    // The L6 gate still carries its own inline lambda (its file is a GATE-class
+    // surface; collapsing it onto the shared export is the ruled reconciliation
+    // slice). Until then, this pin fails the moment either side changes alone.
+    const gateSrc = readFileSync(join(__dirname, '..', 'liveBrain', 'executionGate.ts'), 'utf8');
+    expect(gateSrc).toMatch(/isCertifiedConsequential:\s*\(c\)\s*=>\s*c === 'mail\.send'/);
+    expect([...CERTIFIED_CONSEQUENTIAL_CAPABILITIES]).toEqual(['mail.send']);
+    for (const id of CERTIFIED_CONSEQUENTIAL_CAPABILITIES) {
+      expect(isCertifiedConsequentialCapability(id)).toBe(true);
+      expect(gateSrc).toContain(`c === '${id}'`);
     }
   });
 });
