@@ -63,3 +63,8 @@ RENDERS-ONLY 14 (all now Preview-labeled) · GATED 2. Truth-order fixes F-N8-1/2
 copy). Artifacts: certification/APP-LIVELINESS-CENSUS-2026-08-19.md · certification/LAUNCH-READINESS.md · census
 JSONs (pre/post). Full main 859/8996/3 · ui 41/278 · strip PASS · INTACT BASELINE-1ac1c6b0bbbb. Ceremony build
 preserved (last build NP_E2E_BUILD=1; seed chunk verified). Mirror of CLAUDE §1 — that section is authoritative.
+
+## NP-010 Business Reality §1–§6 + Master §58 recon (20 Aug 2026)
+Closed per operator re-ruling. Commits 45a0970 · fdb3be7 · df17ac6 · bf39fb5 · 1b29368 · 59cca40 · e675113;
+freeze re-record 5b725dc (INTACT BASELINE-2e38108d17b7). Ladder awaits operator ruling; §5 lane wiring is an
+explicit post-ceremony gate. Mirror of CLAUDE §1 — that section is authoritative.
