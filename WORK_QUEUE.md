@@ -317,7 +317,23 @@ commands · authority class · gate conditions · status.**
   stay **ABSENT** (the NP-015 absent≠null tri-state); **additive only**, store-side mapping preferred; **if any
   frozen surface turns out to be required (the FG-5 emit site or contracts) → STOP and present the FG gate
   instead**; sensitive-class diffs presented verbatim in the report, envelope style.
-- **Sequence:** AFTER NP-016. **Status: QUEUED (ruled, bounded).**
+- **Sequence:** AFTER NP-016.
+- **Status: STOPPED AT THE MAPPING STEP — NOTHING WRITTEN; awaiting the operator.** The ruled first step
+  (SEMANTIC MAPPING FIRST) returned a NEGATIVE result, empirically: `SystemTime.now()` returns a base frozen at
+  construction, so a real governedSend's timeline carries **1 distinct value across all 6 stamps, spread 0ms** —
+  a PHASE-REACHED LEDGER under a logical clock, not phase instants. Mapping `claimed`→authorization_time or
+  `executionStarted`→execution_time would stamp the request-construction moment onto phases never measured
+  (nearest-timestamp-fills-empty-field). Two further non-equivalences: `decided` is stamped on paths that then
+  HOLD/DENY (never an authorization time); the kernel's `verified` is its own post-state check, NOT the
+  independent oracle. Both fields therefore stay honestly ABSENT.
+- **F-N19-2 (self-caught, corrected):** the same probe showed `TransitionOutcome` carries NO `requestId`, so the
+  observer stores `''` and **NP-015's `requestTime` is structurally NULL in production**. The field was honest;
+  the DESCRIPTION was not. Root cause recorded as a standing lesson: NP-015's pins used a hand-built fixture
+  carrying `outcome.requestId` — more generous than reality. A REALITY pin driving the real path now asserts the
+  true shape. The fix needs a FROZEN `cst/sendTransition.ts` change → **FG GATE PRESENTED, awaiting the token.**
+- **PROPOSED, not built:** a phase-reached ledger (which phases were reached, verbatim from key presence) — the
+  one thing the timeline CAN honestly support. Outside the ruled objective; awaiting the operator's decision.
+  Evidence: `PHASE-I-A3-NEUROPAUSE-OS-NP-019-TEMPORAL-SEMANTIC-MAPPING-EVIDENCE.md`.
 
 ## NP-006 · Post-ceremony §5 amendment — experience-arc-vs-v1.0 sequencing
 - **Objective:** decide the ONE explicitly-open question (full experience arc before v1.0, or v1.0 earlier on the

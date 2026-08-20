@@ -16,6 +16,14 @@ sensitive touch; the boundary's deny-by-default byte-untouched. NP-000 = HOLD un
 > exactly as the S5.1 boundary rules. The existing divergence pin flipping RED→GREEN is the acceptance test; the
 > boundary's deny-by-default stays byte-untouched; full main suite.
 
+## The invariant this closure establishes (recorded by operator ruling, 20 Aug 2026)
+
+> **"Discovery must not claim stronger capability standing than the actual governance boundary can establish."**
+
+And its direction of repair, which is part of the invariant: **tighten discovery, never loosen the boundary.**
+Advisor convergence is recorded here — the independent prescription (a separately bounded task; do not loosen
+S5.1; tighten discovery) is exactly the shape of the fix that landed.
+
 ## The defect, precisely
 
 `mutationAssuranceFor` answered a CONNECTOR-level question (`microsoft-entra` → `governed-certified`), and the

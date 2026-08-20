@@ -33,6 +33,23 @@ live in `connectors/m365/`, not the kernel; the §50 second-connector test exist
 Spec §67 names the same property as "progressive restriction of authority"; spec §69's closing principle
 ("capability may increase without increasing execution authority") is the §0 rule stated as an invariant.
 
+## §0.1 · PRINCIPLES (adopted verbatim by operator ruling, 20 Aug 2026)
+
+> **"NeuroPause OS does not merely store capability metadata; it preserves the provenance and epistemic state of
+> every capability claim."**
+
+The NP-016 record is this principle in code: every field carries KNOWN-with-its-source / CONFLICTING /
+ABSENT-with-its-reason / SOURCE_REQUIRED, and `risk_class` + `lifecycle_state` are typed `never` so the compiler
+refuses a value the spec has not defined.
+
+> **THE DISCOVERY INVARIANT (F-N16-1):** *"Discovery must not claim stronger capability standing than the actual
+> governance boundary can establish."*
+
+Direction of repair is part of the invariant: when discovery and the boundary disagree, **tighten discovery —
+never loosen the boundary.** F-N16-1 was closed exactly that way (advisor convergence recorded 20 Aug 2026): the
+S5.1 predicate was untouched, discovery became ACTION-level, and `deriveAuthority`'s one-argument call site keeps
+the authority path byte-identical.
+
 ## §1 · THE FIFTEEN-LINE TABLE ⇄ CLAUDE.md §2 (complete — spec §0 lists all fifteen + PAYMENT ≠ AUTHORITY verbatim)
 
 | # | Non-equivalence | Verdict | Cross-reference / pin |
@@ -90,7 +107,7 @@ same landing.
 | Live Brain scope (spec §22) | **CONFIRMED (mock)** | spec's permitted list (aggregation…proposal generation) and its prohibition ("must not become the final authorization mechanism") match §2 #13 exactly; LIVE_BRAIN_READINESS.json; propose-only + zero-runtime-import pinned; 4 PARTIAL stages recorded there |
 | Capability record (spec §23: 16 fields) | **PARTIAL (~11 of 16, now counted against the real list)** | present: capability_id, connector_id, version(display), input_schema (zod), side_effects (mutates flag), authority_requirements (1-bit predicate), executor, verification_method (plan), oracle_id (on VerificationPlan — null-honest), lifecycle_state (derived), certification_state (predicate). Absent/weak: output_schema, preconditions, risk_class (taxonomy undefined, Part C), scope_requirements per-capability, reversibility on the RECORD (exists on proposals). No unified registry record — S23 kit artifacts stand in |
 | Observation type ladder (spec §8–12: event/observation/measurement/state/inference/claim) | **ABSENT as a unified ladder** | fragments exist (platform events, ActionRecords, understanding attributes with stated/inferred status, health snapshots, AI usage measurements with §11-shaped fields); no typed ladder unifies them; spec §12's "derivation rule must be explicit" is our UI-truth rule (§4) in behavior |
-| Nine-timestamp temporal model (spec §14) | **PARTIAL — better-founded after NP-015 (5 of 9 now ON the evidence record, as named fields)** | ON the ActionRecord: `requestTime` (read from the kernel-minted requestId, null when unstamped), `eventTime` (caller-supplied; honestly NULL on the governed send path — no upstream event stamp exists), `at` = record_time; on its verification: `at` = verification_time, `effectTime` = the provider's own instant carried verbatim from the corroborated read-back (null on bounce/HOLD). Proposal-side: builtAtMs (proposal_time) + evidenceAsOfMs (observation_time). STILL ABSENT as record fields: authorization_time, execution_time — **but a real source now stands identified**: the CST kernel's `TransitionOutcome.timeline` stamps decided/claimed/executionStarted/executionCompleted/verified (recorded finding, outside NP-015's ruled envelope, not built). Discipline pinned: a time we were not told is ABSENT, never approximated; §14's "precedence is not causation" is why event_time stays structurally distinct from request_time rather than being back-filled from it |
+| Nine-timestamp temporal model (spec §14) | **PARTIAL — better-founded after NP-015 (5 of 9 now ON the evidence record, as named fields)** | ON the ActionRecord: `requestTime` (read from the kernel-minted requestId, null when unstamped), `eventTime` (caller-supplied; honestly NULL on the governed send path — no upstream event stamp exists), `at` = record_time; on its verification: `at` = verification_time, `effectTime` = the provider's own instant carried verbatim from the corroborated read-back (null on bounce/HOLD). Proposal-side: builtAtMs (proposal_time) + evidenceAsOfMs (observation_time). STILL ABSENT as record fields: authorization_time, execution_time — and **NP-019 proved they cannot be honestly sourced from the CST timeline**: `SystemTime.now()` returns a base frozen at construction, so all six stamps (requested/decided/claimed/executionStarted/executionCompleted/verified) carry ONE identical value (empirically: 1 distinct value of 6, spread 0ms). The timeline is a PHASE-REACHED LEDGER under a logical clock, not phase instants; mapping it would stamp the request-construction moment onto phases never measured. Two further non-equivalences found: `decided` is stamped on paths that then HOLD/DENY (so it is not an authorization time at all), and the kernel's `verified` is its own post-state check, NOT the independent read-back oracle. **F-N19-2 (self-caught):** `requestTime` is structurally NULL in production too — `TransitionOutcome` carries no `requestId`, so the observer stores `''`; the field is honest, the earlier DESCRIPTION was not, and a REALITY pin now asserts the true shape. Surfacing the requestId needs a FROZEN `cst/` change → FG gate, presented not applied. Discipline pinned: a time we were not told is ABSENT, never approximated; §14's "precedence is not causation" is why event_time stays structurally distinct from request_time rather than being back-filled from it |
 
 ## PART B · Formerly SOURCE_REQUIRED — transcribed FROM the committed spec and classified
 

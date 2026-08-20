@@ -185,3 +185,55 @@ describe('the evidence record carries each instant from its own source', () => {
     expect(src).not.toMatch(/effectTime:\s*new Date\(/);
   });
 });
+
+/* ───────────── the REALITY pin (F-N19-2) — what the real path actually stores ───────────── */
+
+/**
+ * NP-019 found that NP-015's own pins used a hand-built `GovernedSendResult`
+ * carrying `outcome.requestId` — a fixture MORE GENEROUS THAN REALITY. The real
+ * `TransitionOutcome` has no `requestId` field at all (it lives on the
+ * transition REQUEST, which never comes back), so the observer stores `''` and
+ * `requestTime` is therefore structurally NULL on every real governed send.
+ *
+ * The FIELD behaved exactly as designed — null, never a guess — but the claim
+ * "request_time is read from the kernel stamp" described a path that does not
+ * fire today. This pin drives the REAL `governedSend` so the true production
+ * shape is asserted, not assumed, and cannot silently drift back into an
+ * optimistic fixture. Closing the gap requires surfacing the requestId on
+ * `GovernedSendResult` — a FROZEN surface (`cst/`) — so it waits for an FG
+ * gate rather than a workaround.
+ */
+describe('F-N19-2 — request_time against the REAL governed-send path', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'np019-reality-'));
+    actionRecord.useDirForTests(dir);
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('the real TransitionOutcome carries NO requestId — so requestId is "" and requestTime is honestly null', async () => {
+    const { createGovernedSendPorts, governedSend } = await import('./cst/sendTransition');
+    const g = await governedSend({
+      connectorId: 'm365', accountId: 'acct-1',
+      action: { id: 'mail.send', label: 'Send', domain: 'mail', scopes: ['Mail.Send'], mutates: true, run: async () => ({ ok: true, summary: 'sent' }) },
+      params: { to: ['a@example.com'], subject: 'Hi', body: 'yo' },
+      confirmed: true, tenantId: 'org-test', actorId: 'sender@np.example',
+      policyVersion: 'm365-send-policy-1', ownsAccount: true, grantedScopes: ['Mail.Send'],
+      getToken: async () => 'tok',
+      makeHttp: () => ({ postJson: async () => ({ data: {}, headers: {}, status: 202 }) }),
+      rate: {}, now: () => new Date().toISOString(), ports: createGovernedSendPorts(),
+    } as never);
+
+    expect((g.outcome as unknown as Record<string, unknown>).requestId).toBeUndefined();
+
+    await actionRecord.observe(
+      { connectorId: 'microsoft-entra', accountId: 'acct-1', actionId: 'mail.send', params: { to: ['a@example.com'], subject: 'Hi', body: 'yo' } },
+      g,
+      { actor: 'local:x', tenantId: 'org-test' },
+    );
+    const [rec] = await actionRecord.query({ tenantId: 'org-test' });
+    expect(rec.requestId).toBe('');          // the honest consequence
+    expect(rec.requestTime).toBeNull();      // …and no time is invented from it
+    expect(rec.transitionId.length).toBeGreaterThan(0); // the identity that IS carried back
+  });
+});

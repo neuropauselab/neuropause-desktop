@@ -36,7 +36,19 @@ approximated.* Every field below is either read from a stamp someone else really
 
 1. **`request_time`** — `ActionRecord.requestTime` (PROCEED-class file). READ from the kernel-minted
    `requestId` (`req:<idem>:<stamp>`) by `requestTimeFrom()`, a strict end-anchored ISO matcher that also
-   requires `Date.parse` to succeed. Deliberately strict because BOTH halves of the id carry colons (the idem
+   requires `Date.parse` to succeed.
+
+   > **⚠ CORRECTION (NP-019, same day — F-N19-2, self-caught).** This description overstated what the field
+   > does TODAY. Driving the REAL `governedSend` into the REAL observer showed that `TransitionOutcome` carries
+   > **no `requestId` field at all** (it lives on the transition REQUEST and never comes back), so the observer
+   > stores `requestId: ''` and **`requestTime` is structurally NULL on every real governed send**. The FIELD
+   > behaved exactly as designed — null, never a guess — but the sentence above describes a path that does not
+   > fire in production. Root cause, recorded as a standing lesson: the pins below used a hand-built
+   > `GovernedSendResult` fixture carrying `outcome.requestId` — **a fixture more generous than reality** — which
+   > is why a green suite hid it. A REALITY pin driving the real path now asserts the true shape
+   > (`requestId === ''`, `requestTime === null`). The real fix requires surfacing the requestId on
+   > `GovernedSendResult` in FROZEN `cst/sendTransition.ts`, so it is PRESENTED as an FG gate, never worked
+   > around. See `…NP-019-TEMPORAL-SEMANTIC-MAPPING-EVIDENCE.md`. Deliberately strict because BOTH halves of the id carry colons (the idem
    may, and an ISO stamp always does), so neither a left- nor a right-split is safe. A legacy id, an epoch
    clock port, or a truncated id yields **null**, never a guess. It never re-clocks.
 2. **`event_time`** — `ActionRecord.eventTime`, supplied only by a caller that genuinely observed the
