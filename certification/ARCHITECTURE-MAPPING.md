@@ -810,3 +810,103 @@ earlier `snapshot-r3`, `snapshot-r2`, `artifact-1612` packs — all **OPERATOR-P
 
 **Nothing proceeds to latch pre-arm, launch, navigation or reproduction.** Attempt 2 runs against **v2**, on the
 operator's word, at a fresh sitting.
+
+## §11 · F-P31 … F-P34, THE UNIFORMITY RULE, AND TWO UNRULED QUESTIONS (20 Aug 2026)
+
+### §11.1 · F-P31 — THE SHUTDOWN FLUSH IS SPENT ONCE, INVISIBLY, AND THE COST IS DATA LOSS
+
+**Distinct from F-P30** (which is the delayed exit) and recorded separately because its consequence differs.
+`index.ts:280-282` latches `shutdownFlushed = true` after the first `will-quit` pass and early-returns
+thereafter — **so a second quit flushes nothing, and says nothing.**
+
+> **Same SPENT-ONCE shape as the FG-4 latch — but the FG-4 latch's spend is VISIBLE (a file on disk) and its
+> consequence is a REFUSAL. This latch's spend is INVISIBLE and its consequence is DATA LOSS.**
+
+Seven stores drain at that barrier (`app-log`, `org-store`, `workspace-store`, `governance-store`,
+`enterprise-module-stores`, `platform-timeline`, `workspace-contexts`). Losing them silently is precisely the
+defect P13C Round 37 Gate 16 built the barrier to fix. **Filed in the F-P24 family** — a governance system that
+cannot prove what it did. Recorded, not fixed.
+
+### §11.2 · HONEST LABELS, NOT SAFE LABELS
+
+The 22:40:47 capture was labelled **LIVE-MUTATING** conservatively, on the assumption the main was still alive. A
+post-exit snapshot produced a **byte-identical manifest**, so the capture was clean.
+
+> **THE RULE IS SYMMETRIC.** This programme has guarded against optimistic claims from its first line — and this
+> is **the first pessimistic one to be wrong.** A cautious label the evidence contradicts is still a wrong label,
+> and it corrupts a record exactly as an optimistic one does. **Label what is established, in the direction the
+> evidence points.**
+
+### §11.3 · UNIFORMITY IS NOT CORROBORATION — the seventh instrument-defect instance
+
+The FG-gate-doc sweep printed `*** NO FILE ***` for **all nine rows**. A zsh regex error had killed the loop body,
+so every row failed identically. It nearly became the headline finding *"twelve gates closed, not one gate doc
+exists"* — **which is false: gate docs exist** for FG-5/6/7/8/11/12 as named files plus FG-1/2/3/4/9/10 inside
+their evidence docs.
+
+> **WHEN EVERY ROW OF A SWEEP RETURNS THE SAME ANSWER, THAT IS AS LIKELY TO MEAN THE SWEEP IS BROKEN AS THAT THE
+> ANSWER IS UNIFORM.**
+
+Filed with **THE INSTRUMENT IS PART OF THE SYSTEM UNDER TEST** — seventh instance, joining `grep -c` returning 0
+for a nonexistent path (Pin D), the comment-blind adversarial pin, the over-broad refresh-path regex, F-P29's
+helper-counting gate, F-P25's flattened `ANCESTRY OK`, and `redactCredentialText` cited beyond its pins (F-P26).
+
+### §11.4 · THE RECON FINDINGS *(numbering assigned by me — correct it if it diverges from your intent)*
+
+**F-P32 — THE LEGACY DOCUMENT BLOCK. ESCALATED.** 24 `.md` files landed in ONE commit on 2026-08-07
+(`feat(rc): Phase 8 Wave 5`), never touched since, predating the entire certification programme. The bounded
+sweep of `NeuroPause_DueDiligence_Report.md` (203,080 b / 1,710 lines) returns **106 claim-verb hits — one per 16
+lines** — with `certified` ×25, `proven` ×24, `complete` ×32, `verified` ×45, and language like *"Implemented,
+uniformly real"*, *"Production readiness: High"*.
+
+> **AND IT CARRIES A SIXTH NAMING COLLISION, on this programme's most load-bearing word.** It claims **"104
+> certified modules"**, **"95 certified modules"**, **"20 certified modules"** — where *certified* means passing
+> `moduleCertification.test.ts`, a registry-shape gate. The programme's own position is **ONE certified
+> capability**. Both use the word. **MODULE-CERTIFIED ≠ CAPABILITY-CERTIFIED**, and a due-diligence reader has no
+> way to tell them apart.
+>
+> Decisive corroboration that the two vocabularies never met: **`mail.send` appears 0 times and `read-back` 0
+> times** in 203 KB. The document does not mention the one thing that is certified in this programme's sense.
+
+**It reads as a capability brochure and gets its own slice.** Joins GRANTED/TENANT scope and GOVERNED/PRODUCT
+draft in the REACHABILITY family's naming-collision set.
+
+**F-P33 — CLAUDE §1's HEADER WAS STALE BY ~30 COMMITS.** It read HEAD `96609d4` / `BASELINE-43dfbe3ff6f7` while
+actual HEAD was `db7caf3` and the baseline `6ae9696`. **The document that opens every session misstated where the
+session starts.** REPAIRED, with the recurrence rule written into §1: the header is re-written in the same edit as
+the narrative, and **`verify-freeze.sh` SUPERSEDES it** — if the two disagree, the script wins.
+
+**F-P34 — `BLOCKERS.md` WAS A BLIND ENTRY POINT.** 1,430 bytes, two days stale, against ~34 findings — and the
+session ritual reads it every time. **An entry point that is blind is worse than no entry point, because it is
+trusted.** REPAIRED as an entry point that names the four ship-blocking items, the holds, and where the full
+register lives.
+
+### §11.5 · RECORDED, DELIBERATELY NOT RESOLVED
+
+**TWO RULE SYSTEMS EXIST, AND WHICH IS AUTHORITATIVE ON DIVERGENCE IS UNRULED.** ARCHITECTURE-SPEC §53's
+`RULE-001..012` carries **26 real pins** (`constitutionalInvariants.test.ts`); CLAUDE §2 carries **eighteen
+non-negotiables**. They overlap without being congruent — RULE-007 ≈ §2 #15, RULE-003 ≈ §2 #8, RULE-006 ≈ §2
+#9/#14, RULE-011 ≈ §2 #7. **The question is noted; it is not answered here.**
+
+**THE ENFORCEMENT SHAPE (§2, eighteen rules):** ~**10 PINNED** (#6 #8 #9 #11 #12 #13 #14 #15 #17 #18) ·
+**1 SCRIPT-enforced** (#1, via `gate-detector.sh` + `verify-freeze.sh` + `frozen-surfaces.json`) · ~**7 PROSE**
+(#2 #3 #4 #5 #7* #10 #16). **§4's AuthStatus exhaustiveness is PROSE — proven so by F-P19**, and by our own ladder
+sits at **DECLARED**, two rungs below where it has been treated. *Caveat: the sweep produced keyword CANDIDATES,
+not verdicts; #7 is unverified and several hits were plainly false positives. Resolving each is severity-gate
+work, not recon.*
+
+**§2 #16 (PAYMENT ≠ AUTHORITY) IS PROSE, AND RAZORPAY IS LADDER RUNG 3.** Recorded as a **rung-3 precondition**:
+the rule must gain enforcement before, not after, the first payment capability exists. It was canonized before any
+Razorpay work deliberately — that foresight is wasted if the rule is still prose when the work arrives.
+
+### §11.6 · THE MISSING-PROCEDURE SWEEP (F-P27 reciprocal)
+
+| Referenced | File? |
+|---|---|
+| FG gate docs (§2 #1) | **EXIST** — see §11.3's correction |
+| `ROADMAP-HORIZON`, `WORK_QUEUE`, `AUTONOMY`, OS-tracks amendment | **EXIST** |
+| The ceremony runbook / "nine steps" | **NO FILE** — F-P27 |
+| The ceremony launch sequence | **NO FILE** — its missing verification step *is* F-P13 |
+| **Containment** | **NOW EXISTS** — `certification/CONTAINMENT-PROCEDURE.md`, predictive, with UNKNOWN steps named rather than invented |
+
+**Two of the three missing procedures had already bitten us. The third was written before it could.**

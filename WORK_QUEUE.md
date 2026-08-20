@@ -7,6 +7,14 @@ commands · authority class · gate conditions · status.**
 ---
 
 ## NP-000 · S5.4 CEREMONY — first real Brain-proposed action
+
+> **⚠️ THIS ENTRY IS STALE (flagged 20 Aug 2026, deliberately NOT rewritten).** The hold reason below has
+> been re-ruled TWICE since it was written: tenant availability → an executed-and-empty propose lane → **the
+> unresolved P1 contradiction**. P1 is now **AWAITING CONTROLLED REPRODUCTION**, not an investigation, and the
+> historical A/B event of 18:16:59 is **CLOSED AS UNKNOWN**. The step-9 language below also predates the
+> F-P13 process-list gate and the F-P29 mains-only predicate. **Authority: `BLOCKERS.md` and
+> `certification/ARCHITECTURE-MAPPING.md` §5–§11 supersede this entry. Flagged rather than rewritten so the
+> record still points at the entry as it was.**
 - **Objective:** one real governed send, Brain-proposed, at the operator's keyboard, per the FINAL CEREMONY CHECKLIST
   (runbook `…L6-S5-4-FIRST-REAL-BRAIN-ACTION-RUNBOOK.md`, 9 steps, OPERATOR vs MACHINE marked).
 - **Scope:** the checklist only; one email to the operator's own address; single-send; no retry; containment same sitting.
