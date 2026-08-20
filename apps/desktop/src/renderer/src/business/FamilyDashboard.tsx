@@ -17,13 +17,16 @@ import { EmptyState } from '@renderer/components/ui/EmptyState';
 import { SkeletonLines } from '@renderer/components/ui/Skeleton';
 import { ChartCard, NpBars, NpDonut, NpLine, TrendCard } from '@renderer/components/charts/ChartKit';
 import type { BusinessFamilyGroup } from './businessModel';
-import { buildFamilyDashboard, type FamilyDashboardData } from '@neuropause/shared';
+import { buildFamilyDashboard, deriveSourceLineage, type FamilyDashboardData } from '@neuropause/shared';
 
 /** Per-module fetch ceiling — local-first volumes; honest, not sampled silently. */
 const RECORD_LIMIT = 400;
 
 export function FamilyDashboard({ family }: { family: BusinessFamilyGroup }): JSX.Element {
   const [data, setData] = useState<FamilyDashboardData | null>(null);
+  // NP-011 / FG-11 — the Intelligence-tile law on the family band: the numbers
+  // name what they were computed over, via the ONE shared lineage rule.
+  const [lineage, setLineage] = useState<string | null>(null);
   // Round 36 — Gate 15: modules whose record read FAILED (denied or faulted).
   const [failedModules, setFailedModules] = useState<string[]>([]);
   const [reloadNonce, setReloadNonce] = useState(0);
@@ -48,6 +51,7 @@ export function FamilyDashboard({ family }: { family: BusinessFamilyGroup }): JS
       if (!alive) return;
       setFailedModules(failures);
       const byModule = new Map<string, EnterpriseEntity[]>(entries);
+      setLineage(deriveSourceLineage(entries.flatMap(([, rows]) => rows), 'records').sentence);
       setData(buildFamilyDashboard(family.meta.group, family.modules, byModule, new Date().toISOString()));
     })();
     return () => {
@@ -104,6 +108,8 @@ export function FamilyDashboard({ family }: { family: BusinessFamilyGroup }): JS
 
   return (
     <div className="space-y-4" aria-label={`${family.meta.label} dashboard`}>
+      {/* NP-011/FG-11 — the tile law: every number below names its register. */}
+      {lineage !== null && <p className="text-xs text-faint">{lineage}</p>}
       {/* Real headline numbers */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {data.kpis.slice(0, 4).map((kpi, i) => (

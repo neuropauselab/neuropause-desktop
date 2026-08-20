@@ -3,7 +3,12 @@
  * rendered claim derives from evidence, with a test asserting the derivation).
  */
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { EnterpriseEntity } from '@neuropause/shared';
+// Imported through the main-side path deliberately: these pins running
+// UNCHANGED against the FG-11 re-export is the byte-equivalence proof that
+// the shared move preserved the rule.
 import { deriveSourceLineage } from './sourceLineage';
 
 function record(metadata: Record<string, unknown>, tags: string[] = []): EnterpriseEntity {
@@ -65,5 +70,18 @@ describe('deriveSourceLineage (NP-010 §3)', () => {
   it('a pre-§2 import stamp without a trust label defaults to unverified-source, never verified', () => {
     const l = deriveSourceLineage([record({ importSourceFile: 'old-import.xlsx' })], 'record(s)');
     expect(l.importedFiles[0]!.trust).toBe('unverified-source');
+  });
+});
+
+// FG-11 — ONE RULE, ZERO COPIES. The invariant that keeps a second
+// implementation from re-entering: main's module is a thin re-export and
+// carries none of the rule's machinery.
+describe('FG-11 one-rule invariant', () => {
+  it('main holds no implementation — only the re-export from @neuropause/shared', () => {
+    const src = readFileSync(join(__dirname, 'sourceLineage.ts'), 'utf8');
+    expect(src).toMatch(/export \{ deriveSourceLineage \} from '@neuropause\/shared'/);
+    expect(src).not.toContain('Computed over'); // the sentence template lives only in shared
+    expect(src).not.toContain('new Map'); // no derivation machinery here
+    expect(src).not.toContain('for (const record'); // no record loop here
   });
 });
