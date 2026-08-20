@@ -263,7 +263,22 @@ commands · authority class · gate conditions · status.**
 ## NP-016 · Capability-record completion in the S23 kit (slice 4 of 6)
 - **Objective:** kit artifact to the 16-field shape + Ruling-2 aliases. The risk_class FIELD exists; its VALUES
   stay SOURCE_REQUIRED per Part C — no invented taxonomy. Full exercise arrives with ladder rung 2
-  (calendar.create) post-ceremony. **Status: QUEUED.**
+  (calendar.create) post-ceremony.
+- **Status: CLOSED (TEST-VERIFIED).** Every field carries a STATE, never a bare value (KNOWN-with-source /
+  CONFLICTING / ABSENT-with-reason / SOURCE_REQUIRED); `risk_class` + `lifecycle_state` are typed `never` so the
+  COMPILER refuses to populate them — the ruling made structural. Kit purity (zero runtime imports) preserved;
+  the seven-artifact record + runKitChecks untouched, all prior pins green. Ruling-2 aliases: exactly TWO rows
+  (the certified vertical, spec-exemplified); assigning canonical numbers to the other 21 connectors / 33 actions
+  is a registry decision, not a fact — everything else answers null. THE INVARIANT PINNED: resolving an alias
+  grants nothing (both predicates asked with canonical names refuse). 17 pins; full main 869/9091/3.
+- **FIVE FINDINGS the record exposed (recorded, NOT fixed — each names the module a fix touches):** F-N16-1
+  certification_state genuinely CONFLICTS for calendar.create (connector-keyed assurance says certified +
+  aiSelectable; the capability boundary refuses — F-5 truth-order class, both predicates driven live in the pin)
+  · F-N16-2 derived vs enforced authority disagree (policyVersion null vs 'm365-action-policy-1') · F-N16-3 two
+  reversibility vocabularies · F-N16-4 two oracle identities for one oracle · F-N16-5 manifest consent scopes
+  omit the action scopes (manifest-minimization, consistent with live S15 F-1).
+  Evidence: `PHASE-I-A3-NEUROPAUSE-OS-NP-016-CAPABILITY-RECORD-EVIDENCE.md`. **Next: NP-019 (ruled after NP-016),
+  then NP-017, NP-018.**
 
 ## NP-017 · Typed-relationship field completion (slice 5 of 6)
 - **Objective:** valid_from / valid_to / source_evidence / confidence per link (dataPlane). **Status: QUEUED.**
