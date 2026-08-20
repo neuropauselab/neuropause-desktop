@@ -85,7 +85,16 @@ The smallest correction that removes the *appearance* of conflict without invent
    the mapping here would be exactly the invention the source-integrity rule forbids.
 
 Item 1 touches `liveBrain/executionGate.ts` — a **GATE-class sensitive surface** — so even that comment change
-is presented, not applied, if the operator wants it.
+is presented, not applied.
+
+**OPERATOR RULING (20 Aug 2026):** the classification is ACCEPTED (missing source over a contract label, not a
+semantic conflict; **NO normalization** — merging the literals would manufacture a policy identity that does not
+exist). The documentation correction is **APPROVED FOR PRESENTATION and BUNDLED** with the earlier-deferred
+gate-lambda collapse (F-N16-1's anti-fork deferral): **both GATE-class `executionGate.ts` diffs are presented
+TOGETHER, verbatim, as ONE bundle at the reconciliation slice's close**, and neither is applied without the
+operator's go. The **action→policy registry question is recorded UNRULED and LINKED TO S28's scope** — a Policy
+DSL is where such a registry would earn its existence (CLAUDE §5, Wave 7). It is not a floating unknown and it
+is not built.
 
 ## TEST EVIDENCE
 

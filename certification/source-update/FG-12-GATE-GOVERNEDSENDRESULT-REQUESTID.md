@@ -112,9 +112,39 @@ missing the value, and no migration invents one.
 5. `verify-e2e-strip` at the next window where `out/` is not ceremony-reserved.
 
 **Note on `requestTimeFrom`:** production ids embed `time.now()` which is a NUMBER (epoch ms), not ISO, so the
-current strict ISO matcher would still answer null. Whether to extend it to accept an epoch stamp is a SEPARATE
-decision requiring its own ruling — it is deliberately NOT part of this gate, and this gate does not claim to
-make `request_time` populate on its own.
+current strict ISO matcher answers null on its own. **RULED (operator, 20 Aug 2026): the matcher extension folds
+IN as this gate's NON-FROZEN ACCOMPANIMENT** — see §15.
+
+## 15 · NON-FROZEN ACCOMPANIMENT (ruled to land WITH this gate, not before it)
+
+**Ruling, quoted:** *"EXTEND the requestTime parser to read the kernel's epoch-embedded id — because that epoch
+is the request-construction instant, the ONE thing the frozen clock truthfully measured."*
+
+**Semantics, stated plainly (to be repeated verbatim in the closing evidence):**
+
+> `requestTime` is **the kernel's request-construction instant, embedded at mint, read verbatim.** It is
+> **never** a proxy for authorization time or execution time.
+
+This is precisely what NP-019 proved the frozen clock DOES measure honestly: `SystemTime`'s base is
+`Date.now()` at construction, and the request id is minted from it in the same breath. Every LATER phase stamp
+repeats that same base and therefore measures nothing — which is why `authorization_time` and `execution_time`
+stay ABSENT while this one value is real.
+
+**Conditions honored (each ruled):**
+1. **Conservative parse anchored to the documented id format.** `req:<idem>:<stamp>` — accept a trailing
+   digits-only epoch, in a plausible range (bounded below by a fixed floor and above by a fixed ceiling, so a
+   counter like `1`, a truncated id, or a far-future/garbage number yields **null, never a guess**). The
+   existing ISO branch is retained unchanged, so both mint formats are read and neither is inferred.
+2. **Pinned via the REALITY pin against real kernel-minted ids on the real path** — the existing
+   `F-N19-2` describe block inverts: it currently asserts `requestId === ''` / `requestTime === null`; after
+   this bracket it asserts the real id flows through and `requestTime` equals the epoch the kernel actually
+   minted (compared against the id's own embedded value, not a recomputed clock).
+3. **Evidence states the semantics plainly** — the sentence above, verbatim.
+
+**Files:** `apps/desktop/src/main/connectors/actionRecord.ts` (`requestTimeFrom`) +
+`apps/desktop/src/main/temporalModel.test.ts` (the REALITY pin inversion). Both PROCEED-class; gate-detector to
+be run before either edit. They land in the accompaniment commit AFTER the isolated frozen commit, per the §2.2
+choreography — never mixed into it.
 
 ## 11 · Proof no alternate path is used
 
