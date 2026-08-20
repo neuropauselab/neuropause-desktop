@@ -60,6 +60,11 @@ child is refused. **No time-dependent use exists**: no traversal is date-filtere
 
 > **`valid_to` is not a metadata field here. The one enforcement consumes link EXISTENCE — so "this link is no
 > longer valid" is semantically "this refusal no longer applies."**
+>
+> **"An expiring link is a lapsing refusal."**
+> **"A weak link refuses exactly as hard as a strong one."**
+>
+> (Both recorded verbatim by operator ruling, 20 Aug 2026.)
 
 Adding temporal validity to links, then filtering by it anywhere on the read path, would **weaken a governed
 refusal as a side effect of a data-model change** — a delete that is refused today would proceed tomorrow,
@@ -81,11 +86,12 @@ a presented gate — do not delete this test to make it pass.*
 
 ## PROPOSED — nothing applied, for the operator's ruling
 
-1. **valid_from / valid_to: BLOCKED pending a governance ruling** on the delete assessor's treatment of an
-   expired link. Recommended framing when it comes: validity should be *additive-and-ignored* by the assessor
-   (an expired link still refuses) unless the operator rules otherwise — the safe default is that a governed
-   refusal never lapses silently.
-2. **source_evidence: a safe, honest increment exists** — carry the `ProvenanceRecord` id (and the NP-010
+1. **valid_from / valid_to — RULED (operator, 20 Aug 2026): NOT BUILT.** *A field lands with the consumer that
+   earns it, and none exists.* **The VALIDITY GUARD is permanent law.** If validity is ever built, the default
+   is **ADDITIVE-AND-IGNORED by the delete assessor — an expired link still refuses; a governed refusal never
+   lapses silently** — and making expiry lapse the refusal is a NEW GOVERNANCE RULE requiring its own policy
+   definition → evidence → adversarial tests → presented gate (CLAUDE §2 #18).
+2. **source_evidence — RULED: DEFERRED to its first real consumer.** A safe, honest increment exists — carry the `ProvenanceRecord` id (and the NP-010
    `sourceTrust` label) onto the link, so a link can name the import that produced it rather than only its
    correlation id. It touches no decision (the assessor cannot see it), and it raises source_evidence from a
    de-normalized cluster to a referenced record. **Not built** — it is still a new field on a store, and the
@@ -102,7 +108,10 @@ a presented gate — do not delete this test to make it pass.*
 - **F-N17-3** a link outlives its endpoints: deleting a target does not touch the link; the read path detects
   the dangling end at render time and shows `(deleted record …)`, counted as `brokenLinks`. Honest by design
   ("a broken edge is shown rather than hidden"), recorded because it interacts with any future validity model.
-- **F-N17-4** the CST kernel HAS a relationship-freshness gate (STALE → HOLD) that is **unreachable**: all three
+- **F-N17-4 — STAYS SOURCE_REQUIRED (operator-ruled), with the principle recorded verbatim:**
+  > **"A declared governance capability is not the same thing as a reachable governance path."**
+
+  The CST kernel HAS a relationship-freshness gate (STALE → HOLD) that is **unreachable**: all three
   desktop adapters omit `relationships` and construct `PolicyStore` without `relationshipActions`, so the
   assessment is always NOT_APPLICABLE. Whether dataPlane links are *meant* to feed it is unsettled — and the
   shapes do not line up today (`RelationshipRef` wants `observedAt: number` + `epistemicStatus`; the link has an

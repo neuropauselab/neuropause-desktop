@@ -33,8 +33,56 @@ import type { ActionRecord } from '../connectors/actionRecord';
 import { classifyTerminal, type TerminalClass } from '../verification/verificationTerminals';
 import { reconcileTenant } from '../tenancy/tenantStamp';
 
-/** The five-valued uncertainty. First-class; UNKNOWN never silently becomes KNOWN/"okay". */
-export type Certainty = 'KNOWN' | 'UNKNOWN' | 'UNAVAILABLE' | 'CONFLICTING' | 'VERIFIED';
+/**
+ * The SIX-valued uncertainty — ONE authority, extended, never forked.
+ * First-class; UNKNOWN never silently becomes KNOWN/"okay".
+ *
+ * NP-018 added `STALE`, and the distinction it carries is binding:
+ *
+ *   **UNKNOWN** — the system CANNOT ESTABLISH the current fact.
+ *   **STALE**   — evidence EXISTS but is no longer sufficiently current for
+ *                 THE REQUIRED FRESHNESS CONDITION.
+ *
+ * They are not degrees of the same thing. UNKNOWN is blindness; STALE is
+ * sight that has aged past a stated requirement. Collapsing them would lose
+ * the only information that distinguishes "we have never seen this" from "we
+ * saw this, and the requirement says that is no longer good enough" — and it
+ * is the requirement, not the age, that makes a fact stale (see
+ * `assessFreshness`: no declared requirement ⇒ nothing is ever STALE).
+ */
+export type Certainty = 'KNOWN' | 'UNKNOWN' | 'UNAVAILABLE' | 'CONFLICTING' | 'VERIFIED' | 'STALE';
+
+/**
+ * NP-018 — the ONLY producer of `STALE`. Pure; no clock of its own.
+ *
+ * WINDOW SEMANTICS, and the reasoning (recorded rather than defaulted):
+ * there is deliberately **no default max-age**. A freshness requirement is a
+ * property of the CONSUMER that needs the fact to be current, not of the fact,
+ * so it is supplied by the caller. When no requirement is declared
+ * (`maxAgeMs` null/undefined), the answer is the caller's own `fresh` value —
+ * nothing is ever stale by accident, and no window is invented here. An
+ * unusable `observedAtMs` (absent or unparseable) is **UNKNOWN**, never
+ * STALE: we cannot say an observation has aged if we cannot say when it was
+ * made.
+ *
+ * Boundary: age STRICTLY GREATER than the requirement is stale. At exactly
+ * the limit the requirement is still met.
+ */
+export function assessFreshness(args: {
+  readonly observedAtMs: number | null | undefined;
+  readonly nowMs: number;
+  /** The consumer's requirement. Null/undefined ⇒ no freshness condition ⇒ never STALE. */
+  readonly maxAgeMs?: number | null;
+  /** What this fact would be if it were fresh (KNOWN by default; VERIFIED where corroborated). */
+  readonly fresh?: Certainty;
+}): Certainty {
+  const fresh = args.fresh ?? 'KNOWN';
+  if (args.observedAtMs === null || args.observedAtMs === undefined || !Number.isFinite(args.observedAtMs)) {
+    return 'UNKNOWN'; // no observation time ⇒ blindness, not aging
+  }
+  if (args.maxAgeMs === null || args.maxAgeMs === undefined) return fresh; // no requirement ⇒ no staleness
+  return args.nowMs - args.observedAtMs > args.maxAgeMs ? 'STALE' : fresh;
+}
 
 /** One section of the operational state. `source` names the originating layer(s) — S2 deepens this to per-field evidence provenance. */
 export interface StateSection {
@@ -100,12 +148,22 @@ function classifyVerification(v: ActionRecord['verification']): VerifyClass {
   return v === null ? 'unverified' : classifyTerminal(v.terminal);
 }
 
-/** Health precedence: any conflict dominates; then blindness; then uncertainty; VERIFIED only when fully corroborated. */
+/**
+ * Health precedence: any conflict dominates; then blindness; then uncertainty;
+ * then STALENESS; VERIFIED only when fully corroborated.
+ *
+ * NP-018 — where STALE sits, and why: the rollup returns the WORST section, and
+ * STALE is strictly MORE informative than UNKNOWN (evidence exists) while
+ * strictly LESS than KNOWN (it has aged past a stated requirement). So it ranks
+ * BELOW UNKNOWN and ABOVE KNOWN: a state with one stale section is not blind,
+ * and it is not simply known either.
+ */
 function rollupCertainty(sections: readonly StateSection[]): Certainty {
   const has = (c: Certainty): boolean => sections.some((s) => s.certainty === c);
   if (has('CONFLICTING')) return 'CONFLICTING';
   if (has('UNAVAILABLE')) return 'UNAVAILABLE';
   if (has('UNKNOWN')) return 'UNKNOWN';
+  if (has('STALE')) return 'STALE';
   // No uncertainty anywhere: VERIFIED only if at least one section is VERIFIED and none merely KNOWN-without-proof.
   if (has('VERIFIED') && !has('KNOWN')) return 'VERIFIED';
   return 'KNOWN';
@@ -355,6 +413,7 @@ export function composeLiveBrainState(inputs: LiveBrainInputs): LiveBrainState {
     UNAVAILABLE: 0,
     CONFLICTING: 0,
     VERIFIED: 0,
+    STALE: 0,
   };
   for (const s of Object.values(sections)) uncertainty[s.certainty] += 1;
 

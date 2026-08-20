@@ -306,8 +306,25 @@ commands · authority class · gate conditions · status.**
 
 ## NP-018 · STALE as a first-class state assessment (slice 6 of 6)
 - **Objective:** EXTENDS the single `Certainty` authority — no second vocabulary, no fork, ever. Window semantics
-  designed in-slice with honest defaults + recorded reasoning. Brain-substrate change = its own slice, FULL main
-  suite. **Status: QUEUED.**
+  designed in-slice with honest defaults + recorded reasoning. Brain-substrate change = FULL main suite.
+- **Status: CLOSED (TEST-VERIFIED).** `STALE` added to the EXISTING six-valued `Certainty` union (no parallel
+  type, no enum, no shadow union — pinned; the assessor is the only producer, occurrence-bounded).
+  **BINDING DISTINCTION preserved in vocabulary + docs + pins:** UNKNOWN = cannot establish the fact; STALE =
+  evidence exists but is no longer sufficiently current for the required freshness condition — never
+  interchangeable, and an unusable observation time is UNKNOWN, never STALE. **WINDOW SEMANTICS: a requirement,
+  never a default** — no default max-age exists (a freshness requirement belongs to the CONSUMER, not the fact);
+  no requirement ⇒ never stale, however old; the strictly-greater boundary and the no-magic-number property are
+  both pinned. Assessor is pure with no clock of its own. **Rollup precedence: CONFLICTING → UNAVAILABLE →
+  UNKNOWN → STALE → VERIFIED/KNOWN** (staleness is not blindness), pinned by index. The COMPILER enforced the
+  census (`Record<Certainty, number>` failed to build until all six were counted). **§2 #18 test applied and
+  answered NO** (proposal expiry is a separate mechanism that never reads Certainty; the boundary reads no
+  certainty; zero-runtime-import intact) ⇒ no gate required, none taken. **Honest bound: no production caller
+  declares a freshness requirement yet, so nothing is STALE in the running system today** — the first real
+  requirement arrives with its consumer; a window was not invented to make the value look live.
+  Full main **873/9160/3** · UI 42/279. Evidence: `…NP-018-STALE-CERTAINTY-EVIDENCE.md`.
+- **THE NP-012 §3 RANKING IS NOW COMPLETE** — NP-013 · NP-014 · NP-015 · F-N16-1 · NP-016 · NP-019(stopped,
+  mapped) · NP-020 reconciliation · FG-12 · NP-017(determined) · NP-018. Slice 7 (ASK surface to ten fields)
+  remains DEFERRED-RECORDED by ruling.
 
 ## F-N16-1 · Action-level certification at discovery (operator-ruled QUEUE JUMP, 20 Aug 2026)
 - **Objective:** the discovery layer's certification/selectability answers become ACTION-level, so an uncertified
