@@ -126,6 +126,13 @@ export interface GovernedSendResult {
   readonly effectCalls: number;
   /** true ONLY when a provider 202 acknowledgement was received. Never implies verified. */
   readonly providerAck: boolean;
+  /**
+   * The transition REQUEST's own id, surfaced verbatim so the evidence
+   * observer can record it. The kernel's outcome envelope does not carry it,
+   * so without this the Action Record stores an empty requestId (F-N19-2).
+   * Optional: a caller compiled before this field existed is unaffected.
+   */
+  readonly requestId?: string;
   readonly summary?: string;
 }
 
@@ -287,6 +294,7 @@ export async function governedSend(args: GovernedSendArgs): Promise<GovernedSend
     semanticOutcome: classifySend(outcome, sendSignal),
     effectCalls,
     providerAck,
+    requestId: request.requestId,
     ...(summary ? { summary } : {}),
   };
 }
