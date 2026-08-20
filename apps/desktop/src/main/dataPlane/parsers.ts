@@ -12,6 +12,7 @@
  */
 import { openZip, looksLikeZip, ZipError } from './zipReader';
 import { eachElement, decodeXml, textOf, stripTags } from './xmlScanner';
+import { extractTallyVouchers, foldBankStatementTable } from './aggregations';
 
 export type CellValue = string | number | boolean | null;
 
@@ -572,6 +573,13 @@ function parseJson(text: string): ParsedDocument {
 }
 
 function parseXmlDoc(text: string): ParsedDocument {
+  // NP-011: Tally exports (ENVELOPE→TALLYMESSAGE→VOUCHER) are voucher-shaped,
+  // not record-shaped — the generic repeated-element heuristic would mangle
+  // them. The dedicated extractor emits one row per voucher with its ledger
+  // lines pre-folded into the shared GlJournalLine JSON shape.
+  const tally = extractTallyVouchers(text);
+  if (tally) return { format: 'xml', kind: 'tabular', tables: [tally], text: null, warnings: [] };
+
   // Find the most frequent repeated element and treat it as the record shape.
   const counts = new Map<string, number>();
   const re = /<([A-Za-z_][-A-Za-z0-9_.]*)(\s[^>]*)?>/g;
@@ -648,6 +656,16 @@ const UNSUPPORTED_REASON: Partial<Record<SourceFormat, string>> = {
  * state instead of an empty success.
  */
 export function parseFile(filename: string, buf: Buffer): ParsedDocument {
+  const doc = parseFileRaw(filename, buf);
+  if (doc.kind !== 'tabular') return doc;
+  // NP-011: aggregation-shaped sources. A bank-transaction table folds into ONE
+  // statement row (lines pre-serialized in the shared BankStatementLine shape);
+  // anything that does not match the conservative signature passes through.
+  const tables = doc.tables.map((t) => foldBankStatementTable(t, filename) ?? t);
+  return tables === doc.tables ? doc : { ...doc, tables };
+}
+
+function parseFileRaw(filename: string, buf: Buffer): ParsedDocument {
   const format = detectFormat(filename, buf);
 
   if (!SUPPORTED_FORMATS.includes(format)) {

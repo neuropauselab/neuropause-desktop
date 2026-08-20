@@ -165,6 +165,20 @@ commands · authority class · gate conditions · status.**
   FREEZE INTACT · zero frozen touches · zero external effects. Follow-ups recorded in §6 (aggregation importer,
   lineage expansion, GST formats, F-MR-5).
 
+## NP-011 · Aggregation-shaped ingestion + lineage extension (operator green-light, 20 Aug 2026)
+- **Objective:** (a) the aggregation-shaped importer — Tally XML vouchers · bank-statement CSV · GST files;
+  (b) the lineage rule extended to cash position, GST summaries, and the Business dashboard tiles (FG gate
+  presented if renderer/shared placement requires it); (c) invoice lifecycle evidence model approved as recorded.
+- **Mechanism (a):** extractors PRE-FOLD sources into flat tables whose `Lines (JSON)` cell carries the SHARED
+  line shapes the destination modules already parse — no importer surgery, no second write path. Imported
+  journal entries are DRAFTS; the `post` action's full guard (accounts · balance · closed periods) is the GL
+  gate — ingestion stays observation-class.
+- **Status: IN PROGRESS.** Slice A COMMITTED: `dataPlane/aggregations.ts` (bank fold, conservative detection,
+  deposits-positive; Tally voucher extractor, negative-is-debit, first-occurrence text) + parseFile/parseXmlDoc
+  hooks + ontology entities `journal_entry`/`bank_statement` (14 canonical now) + pure + e2e tests. dataPlane
+  226/226 · full main 863/9015/3 · ui 41/278 · scan 0. NEXT: slice B GST return files (GSTR-2B JSON → vendor-bill
+  DRAFTS) · slice C lineage extension + FG gate doc for the shared placement of `deriveSourceLineage`.
+
 ## NP-006 · Post-ceremony §5 amendment — experience-arc-vs-v1.0 sequencing
 - **Objective:** decide the ONE explicitly-open question (full experience arc before v1.0, or v1.0 earlier on the
   proven loop) by §5 amendment against the substrate as it then exists.

@@ -6,15 +6,16 @@
  * an EXISTING module id and EXISTING descriptor field keys — this layer adds a
  * routing vocabulary, it does not fork the ERP data model.
  *
- * SCOPE (honest): twelve canonical entities are implemented — the original
+ * SCOPE (honest): fourteen canonical entities are implemented — the original
  * eight (Finance, CRM, HR, Inventory, Procurement, Projects), two contributed
- * by the Medical Device pack, and two transaction-class entities added by
- * NP-010 §2 (payment, sales_order — both flat row-shaped destinations).
- * Deliberately NOT implemented: journal entries and bank statements — their
- * destination modules are MULTI-LINE shapes (a `lines` JSON column + derived
- * totals), so a flat row→record import would be dishonest; they need an
- * aggregation-shaped import (many source rows → one record), recorded as an
- * NP-010 follow-up. Adding a flat entity remains a data-only change below.
+ * by the Medical Device pack, two transaction-class entities added by NP-010
+ * §2 (payment, sales_order), and two AGGREGATION-SHAPED entities added by
+ * NP-011 (journal_entry, bank_statement): their destination modules are
+ * multi-line shapes, so dedicated extractors in aggregations.ts pre-fold the
+ * source (Tally vouchers, bank-transaction tables) into flat rows whose
+ * `Lines (JSON)` cell carries the shared line shapes the modules already
+ * parse. Imported journal entries land as DRAFTS — the `post` action's full
+ * guard is the GL gate. Adding a flat entity remains a data-only change below.
  */
 
 export type CanonicalDomain =
@@ -281,6 +282,46 @@ export const ONTOLOGY: readonly CanonicalEntity[] = [
       { key: 'receivedDate', label: 'Received', type: 'date', shape: 'date', synonyms: ['payment date', 'received date', 'receipt date', 'date', 'transaction date', 'value date'] },
       { key: 'transactionRef', label: 'Transaction Ref', type: 'text', shape: 'code', synonyms: ['transaction ref', 'transaction id', 'txn id', 'utr', 'ref no', 'reference no', 'cheque no', 'cheque number'] },
       { key: 'bankAccount', label: 'Bank Account', type: 'text', synonyms: ['bank account', 'account', 'bank', 'deposit to', 'deposit account'] },
+    ],
+  },
+  {
+    // NP-011 — aggregation-shaped: one row per Tally voucher (or hand-built
+    // journal sheet), ledger lines pre-folded to GlJournalLine JSON. Imports
+    // land as DRAFTS; posting (the GL gate) re-validates everything.
+    id: 'journal_entry',
+    label: 'Journal Entry',
+    plural: 'Journal Entries',
+    domain: 'finance',
+    moduleId: 'finance-journal-entries',
+    titleField: 'entryNumber',
+    risk: 'high',
+    nameHints: ['journal', 'journals', 'journal entry', 'journal entries', 'voucher', 'vouchers', 'tally', 'day book', 'daybook'],
+    identityKeys: [['entryNumber']],
+    fields: [
+      { key: 'entryNumber', label: 'Entry #', type: 'text', required: true, shape: 'code', identity: true, synonyms: ['entry number', 'entry no', 'voucher number', 'voucher no', 'journal number', 'journal no', 'je number', 'je no'] },
+      { key: 'entryDate', label: 'Date', type: 'date', shape: 'date', synonyms: ['date', 'entry date', 'voucher date', 'journal date'] },
+      { key: 'memo', label: 'Memo', type: 'text', synonyms: ['memo', 'narration', 'description', 'particulars'] },
+      { key: 'lines', label: 'Lines (JSON)', type: 'text', required: true, synonyms: ['lines json', 'lines', 'journal lines', 'ledger entries json', 'entries json'] },
+    ],
+  },
+  {
+    // NP-011 — aggregation-shaped: one row per statement, transactions
+    // pre-folded to BankStatementLine JSON (deposits positive). Reconciliation
+    // stays the module's deterministic action.
+    id: 'bank_statement',
+    label: 'Bank Statement',
+    plural: 'Bank Statements',
+    domain: 'finance',
+    moduleId: 'finance-bank-statements',
+    titleField: 'statementNumber',
+    risk: 'high',
+    nameHints: ['bank statement', 'bank statements', 'statement', 'bank', 'account statement', 'passbook'],
+    identityKeys: [['statementNumber']],
+    fields: [
+      { key: 'statementNumber', label: 'Statement #', type: 'text', required: true, shape: 'code', identity: true, synonyms: ['statement number', 'statement no', 'stmt no', 'stmt'] },
+      { key: 'bankAccount', label: 'Bank Account', type: 'text', required: true, synonyms: ['bank account', 'account', 'account number', 'bank'] },
+      { key: 'statementDate', label: 'Statement Date', type: 'date', shape: 'date', synonyms: ['statement date', 'date', 'period end', 'as of'] },
+      { key: 'lines', label: 'Lines (JSON)', type: 'text', required: true, synonyms: ['lines json', 'lines', 'transactions json', 'transactions'] },
     ],
   },
   {
