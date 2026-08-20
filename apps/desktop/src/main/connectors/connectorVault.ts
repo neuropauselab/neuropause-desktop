@@ -162,11 +162,27 @@ export const connectorVault = {
       log.warn('Encryption unavailable; cannot decrypt connector tokens');
       return null;
     }
+    let plain: string;
     try {
-      const plain = safeStorage.decryptString(Buffer.from(cipher, 'base64'));
-      return JSON.parse(plain) as AccountTokens;
+      plain = safeStorage.decryptString(Buffer.from(cipher, 'base64'));
     } catch (err) {
       log.error('Failed to decrypt connector tokens; dropping entry', err);
+      await this.delete(workspaceId, connectorId, accountId);
+      return null;
+    }
+    try {
+      return JSON.parse(plain) as AccountTokens;
+    } catch (err) {
+      /**
+       * NP-013 — the parse failure is logged by NAME ONLY, never the Error:
+       * `plain` is DECRYPTED TOKEN MATERIAL, and V8's SyntaxError message
+       * embeds an excerpt of the string it failed to parse. One try over
+       * decrypt+parse put that excerpt into console + app.log on a
+       * decrypt-succeeds/parse-fails state (keychain rotation garbage).
+       */
+      log.error('Decrypted connector tokens failed to parse; dropping entry', {
+        name: err instanceof Error ? err.name : typeof err,
+      });
       await this.delete(workspaceId, connectorId, accountId);
       return null;
     }

@@ -112,4 +112,49 @@ describe('SlackSocketMode', () => {
     sockets[0]!.emit('close', {});
     expect(timers).toHaveLength(0);
   });
+
+  /**
+   * NP-013 — the two failure logs redact AT THE CALL SITE (the mailer idiom):
+   * the opener holds the xapp- app token and the ctor error can echo the WSS
+   * ticket URL (`?ticket=…` — a bearer-ish one-time credential). Neither may
+   * reach a console argument.
+   */
+  it('open/construction failures never log the app token or the WSS ticket', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const timers: Array<() => void> = [];
+    const sm = new SlackSocketMode({
+      appToken: 'xapp-1-A0-secret9876543210',
+      openConnection: () =>
+        Promise.reject(new Error('apps.connections.open rejected token xapp-1-A0-secret9876543210')),
+      connect: () => {
+        throw new Error('bad url wss://wss.slack.com/link?ticket=abc123def456ghi789&app_id=A0');
+      },
+      onEvent: vi.fn(),
+      backoffMs: [10],
+      setTimer: (fn) => {
+        timers.push(fn);
+      },
+    });
+    await sm.start(); // opener rejects → warn #1
+    const smOk = new SlackSocketMode({
+      appToken: 'xapp-1-A0-secret9876543210',
+      openConnection: () => Promise.resolve('wss://wss.slack.com/link?ticket=abc123def456ghi789&app_id=A0'),
+      connect: () => {
+        throw new Error('bad url wss://wss.slack.com/link?ticket=abc123def456ghi789&app_id=A0');
+      },
+      onEvent: vi.fn(),
+      backoffMs: [10],
+      setTimer: (fn) => {
+        timers.push(fn);
+      },
+    });
+    await smOk.start(); // ctor throws → warn #2
+    expect(warnSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+    for (const args of warnSpy.mock.calls) {
+      const flat = JSON.stringify(args);
+      expect(flat).not.toContain('xapp-1-A0-secret9876543210');
+      expect(flat).not.toContain('ticket=abc123def456ghi789');
+    }
+    warnSpy.mockRestore();
+  });
 });

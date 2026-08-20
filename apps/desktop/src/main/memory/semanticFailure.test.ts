@@ -24,6 +24,12 @@ describe('safeDetail', () => {
     );
   });
 
+  it('NP-013: redacts a wss:// ticket URL query — a Socket Mode ticket is a bearer-ish one-time credential', () => {
+    expect(safeDetail('bad url wss://wss.slack.com/link?ticket=abc123def456ghi789&app_id=A0', 'x')).toBe(
+      'bad url wss://wss.slack.com/link?[redacted]',
+    );
+  });
+
   it('redacts a token-like run without eating ordinary words', () => {
     const detail = safeDetail(
       'session eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9 rejected by the authorization service',

@@ -4,7 +4,9 @@
  * This is the companion to the encrypted vault: the vault holds tokens, this
  * holds everything else about a connection (label, status, granted scopes, sync
  * timestamps). Persisted as plain JSON in userData because it contains no
- * secrets — only what the Connectors UI renders.
+ * secrets — only what the Connectors UI renders. Since NP-013 that sentence is
+ * ENFORCED, not assumed: both doors (load + upsert) scrub credential-shaped
+ * values through `metadataCredentialGuard` (RULE-009).
  */
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
@@ -12,6 +14,7 @@ import { app } from 'electron';
 import type { ConnectedAccount, SyncState } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import { declareStoreScope } from '../tenancy/storeScope';
+import { scrubAccountMetadata } from './metadataCredentialGuard';
 
 /** P13C ROUND 8 — the structural scope declaration. See tenancy/storeScope.ts. */
 declareStoreScope({
@@ -48,15 +51,34 @@ class ConnectorStore {
     return `${connectorId}::${accountId}`;
   }
 
-  /** Loads persisted accounts once. Safe to call repeatedly. */
+  /**
+   * Loads persisted accounts once. Safe to call repeatedly.
+   *
+   * NP-013 / RULE-009 — the READ door scrubs too: a credential-shaped value
+   * already on disk (smuggled before the guard existed, or hand-edited) must
+   * not round-trip forever. If anything was scrubbed, the cleaned set is
+   * persisted back immediately so the file itself stops carrying the bytes.
+   */
   async load(): Promise<void> {
     if (this.loaded) return;
+    let scrubbedOnLoad = false;
     try {
       const raw = await fs.readFile(storePath(), 'utf8');
       const list = JSON.parse(raw) as ConnectedAccount[];
       if (Array.isArray(list)) {
         for (const a of list) {
-          if (a && a.id && a.connectorId) this.accounts.set(this.key(a.connectorId, a.id), a);
+          if (a && a.id && a.connectorId) {
+            const { account, scrubbedFields } = scrubAccountMetadata(a);
+            if (scrubbedFields.length > 0) {
+              scrubbedOnLoad = true;
+              log.warn('RULE-009: credential-shaped material scrubbed from stored connector metadata', {
+                connectorId: account.connectorId,
+                accountId: account.id,
+                fields: scrubbedFields,
+              });
+            }
+            this.accounts.set(this.key(account.connectorId, account.id), account);
+          }
         }
       }
     } catch (err) {
@@ -65,6 +87,7 @@ class ConnectorStore {
       }
     }
     this.loaded = true;
+    if (scrubbedOnLoad) await this.persist();
   }
 
   private async persist(): Promise<void> {
@@ -171,11 +194,27 @@ class ConnectorStore {
     return this.accounts.get(this.key(connectorId, accountId)) ?? null;
   }
 
-  /** Inserts or replaces an account and persists. */
+  /**
+   * Inserts or replaces an account and persists.
+   *
+   * NP-013 / RULE-009 — THE WRITE DOOR. `patch`/`setSync`/`persistConnected`
+   * and the e2e seed all route through here, so scrubbing this one method
+   * guards every metadata write. Scrub, never refuse: a hostile provider must
+   * not be able to DoS the connection flow by shaping its workspace name like
+   * a token. The evidence line names the FIELD, never the value.
+   */
   async upsert(account: ConnectedAccount): Promise<ConnectedAccount> {
-    this.accounts.set(this.key(account.connectorId, account.id), account);
+    const { account: safe, scrubbedFields } = scrubAccountMetadata(account);
+    if (scrubbedFields.length > 0) {
+      log.warn('RULE-009: credential-shaped material scrubbed from connector metadata', {
+        connectorId: safe.connectorId,
+        accountId: safe.id,
+        fields: scrubbedFields,
+      });
+    }
+    this.accounts.set(this.key(safe.connectorId, safe.id), safe);
     await this.persist();
-    return account;
+    return safe;
   }
 
   /** Applies a partial update to an existing account. */

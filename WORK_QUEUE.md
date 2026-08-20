@@ -219,7 +219,13 @@ commands · authority class · gate conditions · status.**
 ## NP-013 · Credential-boundary completion (NP-012 §3 ruling, slice 1 of 6)
 - **Objective:** desktop log redaction at the logger boundary (closes F-MR-7) + the adversarial RULE-009 pin
   (credential material in connector metadata → refused/stripped, proven at the real persistence path).
-- **Bounds (operator):** zero frozen touch. **Authority class:** effect-free (logs + tests). **Status: NEXT.**
+- **Bounds (operator):** zero frozen touch. **Authority class:** effect-free (logs + tests).
+- **Status: CLOSED (TEST-VERIFIED).** Boundary enforced in `logger.ts` (ONE credential-text rule + shared
+  secret-key classifier; console and file sink receive the SAME redacted payload; the W-7 predicate SURVIVES,
+  pinned); RULE-009 enforced at BOTH connectorStore doors (scrub-not-refuse; real-disk adversarial pins);
+  vault decrypt/parse try split (plaintext excerpt leak dead); slackSocketMode call-site redaction + safeDetail
+  wss-ticket gap closed (found BY the adversarial pin). 46 pins; full main 866/9035/3; zero frozen touch.
+  Evidence: `PHASE-I-A3-NEUROPAUSE-OS-NP-013-CREDENTIAL-BOUNDARY-EVIDENCE.md`. **Next: NP-014.**
 
 ## NP-014 · Constitutional invariant suite (slice 2 of 6)
 - **Objective:** ONE named `constitutionalInvariants.test.ts` asserting RULE-001..012 through the existing pins'

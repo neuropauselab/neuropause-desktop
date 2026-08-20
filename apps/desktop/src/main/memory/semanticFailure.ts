@@ -80,7 +80,9 @@ export function safeDetail(message: string | undefined, fallback: string): strin
   if (!raw) return fallback;
   const redacted = raw
     .replace(/Bearer\s+\S+/gi, 'Bearer [redacted]')
-    .replace(/(https?:\/\/[^\s?#]+)[?#]\S*/gi, '$1?[redacted]')
+    // NP-013: wss too — a Slack Socket Mode ticket URL (`wss://…?ticket=…`)
+    // is a bearer-ish one-time credential and shorter than TOKEN_LIKE's floor.
+    .replace(/((?:https?|wss?):\/\/[^\s?#]+)[?#]\S*/gi, '$1?[redacted]')
     .replace(TOKEN_LIKE, '[redacted]')
     .replace(/\s+/g, ' ')
     .trim();
