@@ -194,9 +194,15 @@ commands · authority class · gate conditions · status.**
 - **Objective:** §0 commit the spec as ARCHITECTURE.md · §1 canonize non-equivalences · §2 gap audit →
   ARCHITECTURE-MAPPING.md · §3 ranked proposals (operator chooses; zero code without ruling) · §4 status language.
   NOT a rebuild license; yields to NP-000 and the in-flight NP-011 slices.
-- **Status: PART A COMMITTED · §0 + PART B BLOCKED on the spec text.** The Concentric spec document was not found
-  in the repo/workspace (searched); ARCHITECTURE.md and the ring-dependent audit rows wait for the operator to
-  supply it — a canonical reference is transcribed, never reconstructed. DONE now: §1 fifteen-line table fully
+- **Status: AUDIT COMPLETE — awaiting the operator's §3 ruling (zero code without it).** The canonical spec
+  arrived (operator-supplied, 2026-08-20) and is committed VERBATIM as `certification/ARCHITECTURE-SPEC.md`
+  (per the merged directive the filename is ARCHITECTURE-SPEC.md, superseding §0's ARCHITECTURE.md name) —
+  body extracted byte-for-byte from the operator's message (sha256 `c10fd5f8…`, "One important correction"
+  included); a first from-memory write was caught and REPLACED before commit. Part B transcribed FROM the text
+  and classified (17 rows) · Part A re-checked (nine-timestamp ABSENT→PARTIAL-scattered; capability record
+  counted ~11/16 against the real field list; initiative-chain RECORDED→PARTIAL 1-of-4) · Part C = what the
+  spec itself leaves undefined, kept SOURCE_REQUIRED · §3 FINALIZED (7 ranked slices) and presented for ruling.
+  Previously DONE: §1 fifteen-line table fully
   classified (14 already-law/behavior + 2 recorded-modeling; **PAYMENT ≠ AUTHORITY canonized as CLAUDE §2 #16**,
   before any Razorpay work exists) · both vocabulary rulings recorded (D-16 sole verification vocabulary;
   spec five-value set = state assessment only, mapped onto `Certainty` side-by-side; NP-CON-/NP-CAP- ids from the
