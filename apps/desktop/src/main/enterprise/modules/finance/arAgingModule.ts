@@ -36,6 +36,7 @@ import {
   defineEnterpriseModule,
   type EnterpriseModule,
 } from '../../framework';
+import { deriveSourceLineage } from './sourceLineage';
 
 /** The declarative description of an aging report — drives store, CRUD, and the UI. */
 export const AR_AGING_DESCRIPTOR: EnterpriseModuleDescriptor = {
@@ -62,6 +63,9 @@ export const AR_AGING_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'rows', label: 'Invoice Breakdown (JSON)', type: 'textarea', readOnly: true, column: false },
     { key: 'generatedAt', label: 'Generated At', type: 'text', readOnly: true, column: false },
     { key: 'note', label: 'Note', type: 'textarea', readOnly: true, column: false },
+    // NP-010 §3 — the tile law: the snapshot names what it was computed over,
+    // source by source, carrying the §2 honesty label.
+    { key: 'sourceLineage', label: 'Evidence Lineage', type: 'textarea', readOnly: true, column: false },
   ],
 };
 
@@ -107,7 +111,8 @@ export function createArAgingModule(
           };
         }
 
-        const aging = deriveArAging(invoiceStore.list().map(invoiceFromRecord), asOfMs);
+        const invoiceRecords = invoiceStore.list();
+        const aging = deriveArAging(invoiceRecords.map(invoiceFromRecord), asOfMs);
         const priorCount = store.list().filter((r) => str(r.fields.asOfDate) === asOfDate).length;
         result.values.asOfDate = asOfDate;
         result.values.reportNumber = `AR-AGING-${asOfDate}-${priorCount + 1}`;
@@ -123,6 +128,9 @@ export function createArAgingModule(
           aging.invoiceCount === 0
             ? 'no open receivables at the as-of date — the report is empty, not fabricated'
             : `derived from ${aging.invoiceCount} open invoice(s) at ${asOfDate}; payables aging arrives with the vendor-bill module`;
+        // NP-010 §3: the lineage describes the register the buckets derive
+        // from — files (with the §2 trust label), connector rows, hand entry.
+        result.values.sourceLineage = deriveSourceLineage(invoiceRecords, 'invoice(s)').sentence;
         result.values.generatedAt = new Date().toISOString();
         return result;
       },
