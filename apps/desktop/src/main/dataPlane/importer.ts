@@ -121,10 +121,22 @@ export interface ConnectorOrigin {
   linkage: 'created' | 'adopted';
 }
 
+/**
+ * NP-010 §2 — the honesty label every ingested object carries.
+ * `unverified-source`: the data came from a user-supplied file or a single
+ * uncorroborated source; NeuroPause has NOT verified it against anything.
+ * `verified`: reserved for corroboration against an independent source — NO
+ * code path assigns it today (pinned in businessTransactions.test.ts), so the
+ * label can never claim more than the substrate proves.
+ */
+export type SourceTrust = 'unverified-source' | 'verified';
+
 export interface ProvenanceRecord {
   recordId: string;
   moduleId: string;
   planId: string;
+  /** NP-010 §2 honesty label — see SourceTrust. */
+  sourceTrust: SourceTrust;
   /**
    * The tenant this provenance belongs to (P13A).
    *
@@ -564,6 +576,7 @@ async function importTable(
           recordId: target,
           moduleId: table.moduleId,
           planId: plan.planId,
+          sourceTrust: 'unverified-source',
           sourceFile: plan.sourceFile,
           sourceTable: table.tableName,
           sourceRow: row.sourceRow,
@@ -586,6 +599,10 @@ async function importTable(
         metadata: {
           importKey,
           importPlanId: plan.planId,
+          // NP-010 §2 honesty label, on the record itself so every consumer
+          // (modules, exports, the Brain's substrate) can see what ingestion
+          // did and did not verify.
+          importSourceTrust: 'unverified-source',
           importSourceFile: plan.sourceFile,
           importSourceTable: table.tableName,
           importSourceRow: row.sourceRow,
@@ -602,6 +619,7 @@ async function importTable(
         recordId: record.id,
         moduleId: table.moduleId,
         planId: plan.planId,
+        sourceTrust: 'unverified-source',
         sourceFile: plan.sourceFile,
         sourceTable: table.tableName,
         sourceRow: row.sourceRow,

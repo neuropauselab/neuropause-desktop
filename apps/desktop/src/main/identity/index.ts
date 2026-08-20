@@ -280,6 +280,8 @@ export function initIdentity(deps: IdentitySubsystemDeps): IdentitySubsystem {
       recordId,
       moduleId: match.destinationModuleId,
       planId: `identity_${match.id}`,
+      // NP-010 §2: identity adoption matches records, it does not verify them.
+      sourceTrust: 'unverified-source',
       sourceFile: `${match.provider} (${match.providerEntityType})`,
       sourceTable: match.providerEntityType,
       sourceRow: 1,

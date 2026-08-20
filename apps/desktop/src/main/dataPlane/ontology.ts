@@ -6,11 +6,15 @@
  * an EXISTING module id and EXISTING descriptor field keys — this layer adds a
  * routing vocabulary, it does not fork the ERP data model.
  *
- * SCOPE (honest): eight canonical entities are implemented, chosen to cover the
- * cross-domain import journey (Finance, CRM, HR, Inventory, Procurement,
- * Projects). The remaining canonical entities named in the Phase 6 charter are
- * NOT implemented here; adding one is a data-only change to ONTOLOGY below,
- * which is the point of the design.
+ * SCOPE (honest): twelve canonical entities are implemented — the original
+ * eight (Finance, CRM, HR, Inventory, Procurement, Projects), two contributed
+ * by the Medical Device pack, and two transaction-class entities added by
+ * NP-010 §2 (payment, sales_order — both flat row-shaped destinations).
+ * Deliberately NOT implemented: journal entries and bank statements — their
+ * destination modules are MULTI-LINE shapes (a `lines` JSON column + derived
+ * totals), so a flat row→record import would be dishonest; they need an
+ * aggregation-shaped import (many source rows → one record), recorded as an
+ * NP-010 follow-up. Adding a flat entity remains a data-only change below.
  */
 
 export type CanonicalDomain =
@@ -20,6 +24,7 @@ export type CanonicalDomain =
   | 'inventory'
   | 'procurement'
   | 'projects'
+  | 'sales'
   // Contributed by the Medical Device Manufacturing industry pack. A domain,
   // not a tenant: the entities below are what any device manufacturer keeps,
   // and nothing in them names a specific company.
@@ -252,6 +257,54 @@ export const ONTOLOGY: readonly CanonicalEntity[] = [
       { key: 'startDate', label: 'Starts', type: 'date', shape: 'date', synonyms: ['start date', 'starts', 'begin date', 'kickoff'] },
       { key: 'endDate', label: 'Ends', type: 'date', shape: 'date', synonyms: ['end date', 'ends', 'finish date', 'due date', 'target date'] },
       { key: 'percentComplete', label: 'Complete %', type: 'number', synonyms: ['percent complete', 'complete', 'progress', 'completion'] },
+    ],
+  },
+  {
+    // NP-010 §2 — transaction class. Customer receipts from bank/accounting
+    // exports (Zoho/QuickBooks payment CSVs). Money → HIGH, never auto-imported.
+    id: 'payment',
+    label: 'Payment',
+    plural: 'Payments',
+    domain: 'finance',
+    moduleId: 'finance-payments',
+    titleField: 'paymentNumber',
+    risk: 'high',
+    nameHints: ['payment', 'payments', 'receipt', 'receipts', 'collection', 'collections', 'payments received', 'customer payment', 'settlement'],
+    identityKeys: [['paymentNumber'], ['transactionRef'], ['invoiceRef', 'receivedDate', 'amount']],
+    fields: [
+      { key: 'paymentNumber', label: 'Payment #', type: 'text', required: true, shape: 'code', identity: true, synonyms: ['payment no', 'payment number', 'payment id', 'receipt no', 'receipt number', 'voucher no', 'reference'] },
+      { key: 'invoiceRef', label: 'Invoice', type: 'text', required: true, synonyms: ['invoice', 'invoice no', 'invoice number', 'against invoice', 'invoice ref', 'bill no', 'bill number'] },
+      { key: 'customer', label: 'Customer', type: 'text', synonyms: ['customer', 'customer name', 'party', 'party name', 'client', 'received from', 'payer'] },
+      { key: 'amount', label: 'Amount', type: 'number', required: true, shape: 'money', synonyms: ['amount', 'payment amount', 'amount received', 'received', 'paid amount', 'value'] },
+      { key: 'currency', label: 'Currency', type: 'text', shape: 'code', synonyms: ['currency', 'curr', 'ccy'] },
+      { key: 'method', label: 'Method', type: 'text', synonyms: ['method', 'payment method', 'mode', 'payment mode', 'pay mode', 'instrument'] },
+      { key: 'receivedDate', label: 'Received', type: 'date', shape: 'date', synonyms: ['payment date', 'received date', 'receipt date', 'date', 'transaction date', 'value date'] },
+      { key: 'transactionRef', label: 'Transaction Ref', type: 'text', shape: 'code', synonyms: ['transaction ref', 'transaction id', 'txn id', 'utr', 'ref no', 'reference no', 'cheque no', 'cheque number'] },
+      { key: 'bankAccount', label: 'Bank Account', type: 'text', synonyms: ['bank account', 'account', 'bank', 'deposit to', 'deposit account'] },
+    ],
+  },
+  {
+    // NP-010 §2 — transaction class. Closes the recorded limitation where an
+    // orders CSV classified as CUSTOMERS and imported junk customer records
+    // (see importToRelated.test.ts). Revenue-bearing document → HIGH.
+    id: 'sales_order',
+    label: 'Sales Order',
+    plural: 'Sales Orders',
+    domain: 'sales',
+    moduleId: 'sales-orders',
+    titleField: 'orderNumber',
+    risk: 'high',
+    nameHints: ['sales order', 'sales orders', 'order', 'orders', 'order book', 'open orders', 'so'],
+    identityKeys: [['orderNumber']],
+    fields: [
+      { key: 'orderNumber', label: 'Order #', type: 'text', required: true, shape: 'code', identity: true, synonyms: ['order no', 'order number', 'so no', 'so number', 'sales order', 'sales order no', 'order id', 'document number'] },
+      { key: 'customer', label: 'Customer', type: 'text', required: true, synonyms: ['customer', 'customer name', 'party', 'party name', 'client', 'buyer', 'account'] },
+      { key: 'orderDate', label: 'Order Date', type: 'date', shape: 'date', synonyms: ['order date', 'so date', 'date', 'document date', 'booking date'] },
+      { key: 'expectedDeliveryDate', label: 'Expected Delivery', type: 'date', shape: 'date', synonyms: ['delivery date', 'expected delivery', 'ship by', 'promised date', 'due date'] },
+      { key: 'product', label: 'Product (SKU)', type: 'text', shape: 'code', synonyms: ['product', 'sku', 'item', 'item code', 'product code', 'material'] },
+      { key: 'orderedQty', label: 'Ordered Qty', type: 'number', synonyms: ['qty', 'quantity', 'ordered qty', 'order quantity', 'order qty'] },
+      { key: 'warehouse', label: 'Warehouse', type: 'text', synonyms: ['warehouse', 'location', 'site', 'store'] },
+      { key: 'total', label: 'Total', type: 'number', shape: 'money', synonyms: ['total', 'order total', 'amount', 'order value', 'grand total', 'value'] },
     ],
   },
   {

@@ -154,12 +154,14 @@ describe('import review — override, preview, row actions, identity', () => {
   /* ── 1. Entity override ────────────────────────────────────────────────── */
 
   describe('entity override', () => {
-    it('an orders file really does misclassify — this is the gap', async () => {
+    it('an orders file classifies as SALES_ORDER — the old misclassify gap is closed (NP-010 §2)', async () => {
       const plan = await analyze('orders.csv', ORDERS);
-      // Not an assertion about what SHOULD happen; a lock on the known
-      // behaviour the override exists to rescue. If the ontology ever grows a
-      // sales-order entity this fails, which is the right time to revisit it.
-      expect(plan.tables[0]!.entityId).toBe('customer');
+      // This test USED to lock the known misclassification (orders → junk
+      // customers) that the override existed to rescue, with the comment "if
+      // the ontology ever grows a sales-order entity this fails, which is the
+      // right time to revisit it." That time is NP-010 §2: the entity exists,
+      // the gap is closed, and this lock now holds the CORRECT verdict shut.
+      expect(plan.tables[0]!.entityId).toBe('sales_order');
     });
 
     it('recomputes mapping, validation and the plan from the raw source', async () => {
@@ -204,10 +206,12 @@ describe('import review — override, preview, row actions, identity', () => {
 
       const table = after.tables[0]!;
       expect(table.classificationMethod).toBe('reviewer');
-      // "We thought Customer, a person said Employee" is the whole point.
-      expect(table.detectedEntityId).toBe('customer');
+      // "We thought Sales Order, a person said Employee" is the whole point —
+      // the detector's verdict updated to the NP-010 §2 truth, the recording
+      // machinery unchanged.
+      expect(table.detectedEntityId).toBe('sales_order');
       expect(table.detectedConfidence).toBeGreaterThan(0);
-      expect(table.override?.fromEntityId).toBe('customer');
+      expect(table.override?.fromEntityId).toBe('sales_order');
       expect(table.override?.toEntityId).toBe('employee');
       expect(table.override?.by).toBe(ACTOR);
       expect(table.override?.reason).toBe('Staff.');
