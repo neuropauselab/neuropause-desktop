@@ -183,7 +183,12 @@ commands · authority class · gate conditions · status.**
   registers). **Slice C-renderer: GATE_REQUIRED** — FG-11 presented
   (`certification/source-update/FG-11-GATE-SHARED-SOURCE-LINEAGE.md`, verbatim diff + confirmations); tile wiring
   NOT built until the token. Invoice-lifecycle evidence model: approved as recorded (paid ← payment reference
-  exists; sent requires a certified send).
+  exists; sent requires a certified send). **Slice C-renderer CLOSED — FG-11 token honored** (bracket
+  `b2d6c46` frozen-isolated → `705057a` accompaniment → INTACT #2 `BASELINE-61cede6a036a` @ `8529a19`; one rule
+  zero copies pinned; tile law live on the family bands; evidence
+  `…FG-11-SHARED-SOURCE-LINEAGE-EVIDENCE.md` quoting the token). **NP-011 CLOSED.** Precision language on the
+  record: "NP-011's implementation green-light is complete with FG-11; the ceremony green-light is separate —
+  NP-000 remains independently held."
 
 ## NP-012 · Concentric Architecture adoption — REFERENCE + AUDIT track (operator directive, 20 Aug 2026)
 - **Objective:** §0 commit the spec as ARCHITECTURE.md · §1 canonize non-equivalences · §2 gap audit →
