@@ -629,7 +629,30 @@ export class ConnectorService extends EventEmitter {
       avatarUrl: null,
       status: 'connected',
       health: 'healthy',
-      grantedScopes: tokens.scopes.length ? tokens.scopes : (manifest.oauth?.scopes ?? []),
+      /**
+       * P0 — REQUESTED GRANTED SCOPE IS NOT GRANTED GRANTED SCOPE.
+       *
+       * This read `tokens.scopes.length ? tokens.scopes : (manifest.oauth?.scopes ?? [])`, so a token
+       * response that omitted its scope list caused the manifest — what we ASKED FOR — to be recorded as
+       * what we were GIVEN. Both `m365/executor.ts` and the CST send transition consume this field, so a
+       * fabricated grant would have been checked against a fiction: fail-OPEN on authority, the inverse of
+       * CLAUDE §2 #8, and the AUTHORITY family's own law that presence in the system is never authority.
+       *
+       * An absent scope list is UNKNOWN, and an unknown granted-scope set must REFUSE. Storing `[]` refuses
+       * at the executor's least-privilege check (`missing.length > 0` → a named "Missing Graph
+       * permission(s)" denial), so the refusal is fail-closed AND loud.
+       *
+       * HONEST BOUND, stated rather than glossed: `ConnectedAccount.grantedScopes` is `string[]` in the
+       * FROZEN shared contract, so `[]` cannot distinguish "we were told nothing" from "we were granted
+       * nothing". **This trades a FAIL-OPEN LIE for a FAIL-CLOSED CONFLATION** — a net safety gain and a
+       * lateral honesty move. Modelling UNKNOWN properly needs a nullable field and is queued as FG-13.
+       *
+       * NOT changed: the refresh path's `tokens.scopes.length ? tokens.scopes : existing.grantedScopes`.
+       * RFC 6749 §5.1 makes `scope` optional on refresh when it is identical to the original grant, so
+       * clearing it there would break every working connection at its first refresh. Carrying forward is
+       * correct semantics — and once this line is honest, it carries forward an honest value.
+       */
+      grantedScopes: tokens.scopes,
       connectedAt: now(),
       lastSyncAt: null,
       lastSyncState: 'never',
