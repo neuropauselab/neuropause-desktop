@@ -176,8 +176,14 @@ commands · authority class · gate conditions · status.**
 - **Status: IN PROGRESS.** Slice A COMMITTED: `dataPlane/aggregations.ts` (bank fold, conservative detection,
   deposits-positive; Tally voucher extractor, negative-is-debit, first-occurrence text) + parseFile/parseXmlDoc
   hooks + ontology entities `journal_entry`/`bank_statement` (14 canonical now) + pure + e2e tests. dataPlane
-  226/226 · full main 863/9015/3 · ui 41/278 · scan 0. NEXT: slice B GST return files (GSTR-2B JSON → vendor-bill
-  DRAFTS) · slice C lineage extension + FG gate doc for the shared placement of `deriveSourceLineage`.
+  226/226 · full main 863/9015/3 · ui 41/278 · scan 0. **Slice B COMMITTED** (`387b8b3`): GSTR-2B recognizer →
+  vendor-bill DRAFTS (15th canonical entity; derived rate stated as approximation; EXACT filing amounts verbatim
+  in Notes — "these figures are the filing truth"; approvedAt empty pinned — approve is the gate). **Slice C-main
+  COMMITTED** (`b3ecd8c`): lineage stamped by cash-flow + tax-report generators (GST snapshot names BOTH
+  registers). **Slice C-renderer: GATE_REQUIRED** — FG-11 presented
+  (`certification/source-update/FG-11-GATE-SHARED-SOURCE-LINEAGE.md`, verbatim diff + confirmations); tile wiring
+  NOT built until the token. Invoice-lifecycle evidence model: approved as recorded (paid ← payment reference
+  exists; sent requires a certified send).
 
 ## NP-006 · Post-ceremony §5 amendment — experience-arc-vs-v1.0 sequencing
 - **Objective:** decide the ONE explicitly-open question (full experience arc before v1.0, or v1.0 earlier on the
