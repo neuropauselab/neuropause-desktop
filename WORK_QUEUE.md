@@ -376,12 +376,20 @@ commands · authority class · gate conditions · status.**
   F-N16-4a (`productionWired: false` hardcoded on both branches, never set true) · F-N16-4b (`'per-recipient'`
   declared but never produced) · F-N16-4c (the mock runner writes no provenance at all).
   Evidence: `…F-N16-3-4-VOCABULARY-DETERMINATION-EVIDENCE.md` (18 pins).
-- **AT THE SLICE'S CLOSE:** ONE BUNDLE of both GATE-class `executionGate.ts` diffs — (a) the F-N16-2
-  documentation correction at `AuthorityRequirement.policyVersion`, (b) the F-N16-1 gate-lambda collapse onto
-  the shared certification authority — presented TOGETHER, verbatim, applied only on the operator's go.
+- **THE BUNDLE: APPLIED on the operator's go (20 Aug 2026).** Both GATE-class `executionGate.ts` diffs landed
+  as ONE commit: (a) the gate-lambda COLLAPSE onto the shared certification authority — there is now ONE value,
+  shared, not two copies that agree; (b) the comment-only correction at `deriveAuthority`'s `policyVersion`
+  (not one byte of expression). The ANTI-FORK pin FLIPPED in the same bracket to assert the import and to pin
+  the inline copy ABSENT — the acceptance test, as ruled. Six-step plan walked: detector BEFORE the edit
+  (GATE, authorized) · one commit · pin flipped · 29 files/366 tests green across the predicate-driving suites ·
+  **full main 871/9128/3 — IDENTICAL to the pre-bundle count, the no-behavior-change proof** · UI 42/279 ·
+  honesty 0 · FREEZE INTACT. Evidence: `…EXECUTIONGATE-BUNDLE-EVIDENCE.md` (go quoted verbatim).
 - **RECORDED UNRULED, LINKED TO S28:** the action→policy registry question (a Policy DSL is where such a
   registry would earn existence). Not a floating unknown; not built.
-- **Status: ALL THREE FINDINGS CLASSIFIED. Awaiting the operator on: the SOURCE_REQUIRED vocabulary rulings, and the executionGate BUNDLE (presented at the slice's close).**
+- **Status: CLOSED.** Three findings classified with zero normalizations; the bundle applied on the go; both
+  SOURCE_REQUIRED questions keep their status with their SOURCE NAMED (ladder rung 2 — vocabulary earns
+  existence when something consumes it). Slice lesson recorded: **an unconsumed field is not a safe field, it is
+  an unfalsifiable one.** **Next in the ruled order: NP-017, then NP-018.**
 
 ## NP-006 · Post-ceremony §5 amendment — experience-arc-vs-v1.0 sequencing
 - **Objective:** decide the ONE explicitly-open question (full experience arc before v1.0, or v1.0 earlier on the

@@ -254,17 +254,22 @@ describe('F-N16-1 — discovery answers the ACTION-level question, exactly as th
     expect(isCertifiedConsequential('calendar.create')).toBe(false);
   });
 
-  it('ANTI-FORK: the gate\'s inline predicate and the named certified set must not drift apart', () => {
-    // The L6 gate still carries its own inline lambda (its file is a GATE-class
-    // surface; collapsing it onto the shared export is the ruled reconciliation
-    // slice). Until then, this pin fails the moment either side changes alone.
+  it('COLLAPSED: the gate CONSUMES the named certified authority — the fork is gone, not merely watched', () => {
+    // Was an ANTI-FORK source-scan holding the gate's inline lambda against the
+    // named set (F-N16-1 deferred the collapse because executionGate.ts is a
+    // GATE-class surface). The bundle landed on the operator's go, so the pin
+    // now asserts the STRONGER property: there is one value, shared — not two
+    // copies that happen to agree.
     const gateSrc = readFileSync(join(__dirname, '..', 'liveBrain', 'executionGate.ts'), 'utf8');
-    expect(gateSrc).toMatch(/isCertifiedConsequential:\s*\(c\)\s*=>\s*c === 'mail\.send'/);
+    expect(gateSrc).toMatch(/isCertifiedConsequential:\s*isCertifiedConsequentialCapability/);
+    expect(gateSrc).toMatch(/import\s*\{[^}]*isCertifiedConsequentialCapability[^}]*\}\s*from\s*'\.\.\/capabilities\/liveCapabilitySources'/);
+    // The inline copy must not return in any form.
+    expect(gateSrc).not.toMatch(/isCertifiedConsequential:\s*\(c\)\s*=>/);
+    expect(gateSrc).not.toMatch(/c === 'mail\.send'/);
+    // And the one authority still says exactly what it said before the collapse.
     expect([...CERTIFIED_CONSEQUENTIAL_CAPABILITIES]).toEqual(['mail.send']);
-    for (const id of CERTIFIED_CONSEQUENTIAL_CAPABILITIES) {
-      expect(isCertifiedConsequentialCapability(id)).toBe(true);
-      expect(gateSrc).toContain(`c === '${id}'`);
-    }
+    expect(isCertifiedConsequentialCapability('mail.send')).toBe(true);
+    expect(isCertifiedConsequentialCapability('calendar.create')).toBe(false);
   });
 });
 

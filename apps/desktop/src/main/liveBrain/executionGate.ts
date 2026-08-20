@@ -17,7 +17,7 @@ import type { ConnectorWriteResult } from '@neuropause/shared';
 import { gateL6Execution } from './proposalStore';
 import type { ExecutionDeps } from './proposalExecutionBoundary';
 import type { AuthorityRequirement, VerificationPlan, ProposalTarget } from './proposal';
-import { mutationAssuranceFor } from '../capabilities/liveCapabilitySources';
+import { isCertifiedConsequentialCapability, mutationAssuranceFor } from '../capabilities/liveCapabilitySources';
 import { createLogger } from '../logger';
 
 const log = createLogger('l6-gate');
@@ -34,6 +34,21 @@ export function deriveAuthority(capabilityId: string, target: ProposalTarget): A
     requiresApproval: true,
     governanceStatus: mutationAssuranceFor(target.connector),
     requiredGate: 'human-confirm + CST admission',
+    /**
+     * A recorded CONTRACT LABEL — never an authority input (F-N16-2).
+     *
+     * `null` means "no source for this capability", not "no policy": there is
+     * no action→policy registry to consult, so only the one case with a known
+     * literal is named. The ENFORCING paths carry their own values
+     * (`connectors/index.ts` for the send path, `cst/governedAction.ts` for the
+     * cohorts) and those are authoritative for "under which contract did this
+     * execute" — this one answers only "what does the proposal claim".
+     *
+     * Nothing decides on it: the CST kernel's sole use interpolates it into an
+     * evidence label, never a comparison, and `boundDecisionClaim` deliberately
+     * excludes it (I-A3-STEP2-FINDING-1 — weaker provenance must not be
+     * represented as stronger). Pinned in `authorityReconciliation.test.ts`.
+     */
     policyVersion: capabilityId === 'mail.send' ? 'm365-send-policy-1' : null,
   };
 }
@@ -74,7 +89,9 @@ export function l6ExecutionGate(deps: RuntimeExecuteDeps, r: ExecuteRequestLike,
     stateHashAtProposal: stateHash,
     authorityFor: deriveAuthority,
     oracleFor: deriveOracle,
-    isCertifiedConsequential: (c) => c === 'mail.send',
+    // ONE named authority — the same predicate discovery uses (F-N16-1). A
+    // second copy of this rule is how discovery and the boundary drifted apart.
+    isCertifiedConsequential: isCertifiedConsequentialCapability,
   };
   const gate = gateL6Execution({ tenantId, capabilityId: r.actionId, account: r.accountId, params: r.params }, execDeps);
   if (gate.gate === 'refuse') {
