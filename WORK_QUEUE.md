@@ -333,7 +333,8 @@ commands · authority class · gate conditions · status.**
   true shape. The fix needs a FROZEN `cst/sendTransition.ts` change → **FG GATE PRESENTED, awaiting the token.**
 - **OPERATOR RULING (20 Aug 2026):** status **MAPPED / BLOCKED · IMPLEMENTATION NONE**. Mapping table recorded
   verbatim in the evidence; principle line canonized: **"timeline key exists ≠ real timestamp was measured."**
-- **F-N19-2: OPEN / GATE_REQUIRED.** The REALITY pin is RETAINED. Fix prepared as **FG-12 (PREPARE ONLY, NOT
+- **F-N19-2: CLOSED with the FG-12 bracket (20 Aug 2026).** The correction trail stays (NP-015's ⚠ CORRECTION
+  block + CLAUDE §2 #17). Previously: The REALITY pin is RETAINED. Fix prepared as **FG-12 (PREPARE ONLY, NOT
   APPLIED)** — `certification/source-update/FG-12-GATE-GOVERNEDSENDRESULT-REQUESTID.md`, all fourteen ruled
   items; ruled shape `readonly requestId?: string` assigned VERBATIM from the transition request's own id.
   Awaiting the operator's read-only confirmations + literal token. **Never mixed into the reconciliation slice.**
