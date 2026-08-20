@@ -52,6 +52,34 @@ export const capabilityHandlers = withRuntimeAuthz([
         },
         request,
       );
+      /**
+       * P4-MIN — A REFUSAL MUST BE OBSERVABLE OR IT IS NOT AUDITABLE (F-P24).
+       *
+       * THE ADMISSION REASON is that a governance system which cannot prove its refusals is
+       * unauditable AS GOVERNANCE. That this also makes future investigation cheaper is a
+       * CONSEQUENCE, not the reason — an instrumental justification is how scope creep enters
+       * a governed programme.
+       *
+       * Until this line, `capabilityProposeCore` emitted nothing (zero emitters) and the
+       * renderer's typed refusal surface sat inside the `import.meta.env.DEV` block, so a
+       * production propose refusal was silent in the log AND invisible on screen at the same
+       * time. That dual silence is F-P24's instance here.
+       *
+       * REASON ONLY — `detail` is deliberately NOT logged. Enumerated across all four reason
+       * literals: PRINCIPAL_UNRESOLVED carries `'NOT_AUTHENTICATED' | 'NO_TENANT'`,
+       * CAPABILITY_NOT_SELECTED carries a selection-status literal, and UNSUPPORTED_ACTION
+       * carries `executor:actionId` from the registry — all closed sets. But INVALID_PARAMS
+       * carries request-derived text, and two of its branches interpolate a RECIPIENT ADDRESS
+       * (`m365ActionProposal.ts:99,101` — `addr.slice(0, 60)`), with a third carrying an
+       * untrusted parameter key. `redactCredentialText` would NOT protect it: NP-013 scoped it
+       * to credentials and PINNED that an email shape survives (the round-31 W-7 predicate).
+       * So the reason alone is logged — it answers the pre-registered question ("refusal
+       * emitted → record the exact reason") and carries no untrusted text at all.
+       *
+       * DECISION-NEUTRAL: this reads `response`, changes no branch, and returns nothing
+       * different. It changes what is RECORDED, never what is DECIDED.
+       */
+      if (!response.ok) log.warn(`propose refused — ${response.reason}`);
       if (!response.ok || artifact === null) return response;
       // S5.4 — the Brain-propose lane: composes the real substrate into a certified L6 Proposal from the VALIDATED
       // artifact, stashes it for the FG-10 execution gate, and returns the FG-9 review fields. Best-effort and

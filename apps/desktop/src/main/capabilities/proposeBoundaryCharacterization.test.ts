@@ -28,6 +28,26 @@
  * this map. INSTRUMENTED SILENCE IS EVIDENCE; UNINSTRUMENTED SILENCE IS NOT — so if an
  * emitter is ADDED OR REMOVED, every argument that rests on silence must be RE-DERIVED,
  * and this pin failing is the signal to do it.
+ *
+ * ── THE BUILD BOUNDARY (recorded 20 Aug 2026, when P4-MIN flipped this pin) ──────────────
+ *
+ * **The preserved 20 Aug ceremony log was produced by a FIVE-emitter build.** P4-MIN added
+ * the sixth (`capabilityProposeIpc`'s refusal warn), so the map below describes builds from
+ * that change FORWARD.
+ *
+ *   - **HISTORICAL negatives — every silence argument about the 12:44–12:49Z window — stand
+ *     under the OLD five-emitter map** and are NOT re-derived by this flip. They were correct
+ *     for the build that produced the log.
+ *   - **FORWARD negatives use the map below.** A propose refusal now emits, so from this build
+ *     on, silence at the propose boundary means "no refusal occurred" — which it did NOT mean
+ *     on 20 August.
+ *
+ * Confusing the two would attribute a property of the new build to the old log.
+ * RUN A ≠ RUN B UNLESS THE EVIDENCE CHAIN ESTABLISHES THEIR RELATIONSHIP.
+ *
+ * COMMENT-BLINDNESS RETRO-CHECK (run before the flip, operator-ordered): the map was
+ * re-derived with block and line comments stripped. Raw 5, code-only 5 — **UNCHANGED**. No
+ * count was ever inflated by a comment, so every negative that rested on the map holds.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -73,7 +93,7 @@ describe('PIN C · artifact-null is not an independent path — it is exactly !r
 
 describe('PIN D · the propose path emitter map — every silence argument depends on this', () => {
   const EXPECTED: ReadonlyArray<{ file: readonly string[]; emitters: number }> = [
-    { file: ['capabilities', 'capabilityProposeIpc.ts'], emitters: 1 }, // the catch at :79 only
+    { file: ['capabilities', 'capabilityProposeIpc.ts'], emitters: 2 }, // P4-MIN refusal warn + the lane catch
     { file: ['liveBrain', 'brainProposeLane.ts'], emitters: 4 }, // :92 :109 :162 :166
     { file: ['capabilities', 'capabilityProposeCore.ts'], emitters: 0 },
     { file: ['liveBrain', 'proposal.ts'], emitters: 0 },
@@ -92,8 +112,47 @@ describe('PIN D · the propose path emitter map — every silence argument depen
     });
   }
 
-  it('the WHOLE propose path has exactly FIVE emitters — the number the P1 negatives rest on', () => {
+  it('the WHOLE propose path has exactly SIX emitters — the FORWARD map (five before P4-MIN)', () => {
     const total = EXPECTED.reduce((n, e) => n + count(read(...e.file)), 0);
-    expect(total).toBe(5);
+    expect(total).toBe(6);
+  });
+});
+
+/**
+ * P4-MIN — the refusal emitter. Admitted because A REFUSAL MUST BE OBSERVABLE OR IT IS NOT
+ * AUDITABLE (F-P24), not because it makes investigation cheaper.
+ *
+ * REFUSAL OBSERVED ≠ GOVERNANCE CORRECTNESS ≠ EXECUTION ≠ EXTERNAL EFFECT ≠ VERIFICATION.
+ * This emitter can establish that a refusal OCCURRED. It cannot establish that the refusal was
+ * CORRECT, and it certainly cannot establish that the external world changed.
+ */
+describe('P4-MIN · the propose refusal is observable, and carries REASON ONLY', () => {
+  const IPC = read('capabilities', 'capabilityProposeIpc.ts');
+  const IPC_CODE = IPC.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+  it('a refusal emits, and the emitter precedes the early return', () => {
+    const emit = IPC_CODE.indexOf('log.warn(`propose refused');
+    const ret = IPC_CODE.indexOf('if (!response.ok || artifact === null) return response;');
+    expect(emit).toBeGreaterThan(-1);
+    expect(emit).toBeLessThan(ret);
+  });
+
+  it('REASON ONLY — `detail` is never interpolated into the emitted line', () => {
+    const line = IPC_CODE.split('\n').find((l) => l.includes('propose refused')) ?? '';
+    expect(line).toMatch(/\$\{response\.reason\}/);
+    expect(line).not.toMatch(/detail/);
+  });
+
+  it('WHY reason-only: INVALID_PARAMS detail can carry a RECIPIENT ADDRESS', () => {
+    // The two interpolations that made `detail` unloggable without a redaction design.
+    const PROP = read('capabilities', 'm365ActionProposal.ts');
+    expect(PROP).toMatch(/recipient must not contain a comma: \$\{addr\.slice\(0, 60\)\}/);
+    expect(PROP).toMatch(/invalid recipient: \$\{addr\.slice\(0, 60\)\}/);
+    // And the NP-013 redactor deliberately does NOT protect an email shape (round-31 W-7).
+    expect(read('logger.ts')).toMatch(/12@example\.com/);
+  });
+
+  it('DECISION-NEUTRAL — the early-return condition is byte-unchanged', () => {
+    expect(IPC_CODE).toContain('if (!response.ok || artifact === null) return response;');
   });
 });
