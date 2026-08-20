@@ -31,11 +31,18 @@ describe('request_time — read out of the kernel-minted requestId', () => {
     expect(requestTimeFrom('req:idem:2026-08-18T12:23:44+05:30')).toBe('2026-08-18T12:23:44+05:30');
   });
 
+  it('FG-12 §15: reads the EPOCH mint format too — the production shape', () => {
+    // The production kernel clock returns epoch ms, so a real id ends `:<digits>`.
+    expect(requestTimeFrom('req:m365-send:abc:1755518624512')).toBe(new Date(1755518624512).toISOString());
+  });
+
   it('answers NULL for every id that carries no parseable instant — a guess is never better than an absence', () => {
-    expect(requestTimeFrom('req:abc:1')).toBeNull();               // epoch/counter clock port
-    expect(requestTimeFrom('req:abc:1755518624512')).toBeNull();   // epoch millis
+    expect(requestTimeFrom('req:abc:1')).toBeNull();               // a counter, not a time
+    expect(requestTimeFrom('req:abc:1755518624')).toBeNull();      // seconds precision — not our mint
+    expect(requestTimeFrom('req:abc:99999999999999999')).toBeNull(); // out of plausible range
     expect(requestTimeFrom('legacy-request-id')).toBeNull();       // pre-stamp id
     expect(requestTimeFrom('req:abc:2026-13-45T99:99:99Z')).toBeNull(); // shaped but not a real instant
+    expect(requestTimeFrom('req:abc:12ab5518624512')).toBeNull();  // digits-ONLY, anchored
     expect(requestTimeFrom('')).toBeNull();
   });
 
@@ -189,21 +196,21 @@ describe('the evidence record carries each instant from its own source', () => {
 /* ───────────── the REALITY pin (F-N19-2) — what the real path actually stores ───────────── */
 
 /**
- * NP-019 found that NP-015's own pins used a hand-built `GovernedSendResult`
- * carrying `outcome.requestId` — a fixture MORE GENEROUS THAN REALITY. The real
- * `TransitionOutcome` has no `requestId` field at all (it lives on the
- * transition REQUEST, which never comes back), so the observer stores `''` and
- * `requestTime` is therefore structurally NULL on every real governed send.
+ * THE REALITY PIN — inverted by FG-12, which is its acceptance test.
  *
- * The FIELD behaved exactly as designed — null, never a guess — but the claim
- * "request_time is read from the kernel stamp" described a path that does not
- * fire today. This pin drives the REAL `governedSend` so the true production
- * shape is asserted, not assumed, and cannot silently drift back into an
- * optimistic fixture. Closing the gap requires surfacing the requestId on
- * `GovernedSendResult` — a FROZEN surface (`cst/`) — so it waits for an FG
- * gate rather than a workaround.
+ * It was written when NP-019 found that NP-015's own pins used a hand-built
+ * `GovernedSendResult` carrying `outcome.requestId` — a fixture MORE GENEROUS
+ * THAN REALITY — and it asserted the true broken shape (`requestId === ''`,
+ * `requestTime === null`), because the kernel's outcome envelope carries no
+ * requestId and the fix needed a FROZEN change.
+ *
+ * FG-12 surfaced the id on the RESULT (not the outcome — the outcome envelope
+ * is unchanged), the observer now reads it, and the epoch mint format is
+ * parsed. So this pin now asserts the POPULATED production shape — and it
+ * compares against the id's OWN EMBEDDED VALUE, never a recomputed clock, so
+ * it can only pass if the stored instant really is the one the kernel minted.
  */
-describe('F-N19-2 — request_time against the REAL governed-send path', () => {
+describe('F-N19-2 — request_time against the REAL governed-send path (FG-12: now populated)', () => {
   let dir: string;
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'np019-reality-'));
@@ -211,9 +218,9 @@ describe('F-N19-2 — request_time against the REAL governed-send path', () => {
   });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-  it('the real TransitionOutcome carries NO requestId — so requestId is "" and requestTime is honestly null', async () => {
+  const realSend = async (): Promise<{ readonly requestId?: string; readonly outcome: unknown }> => {
     const { createGovernedSendPorts, governedSend } = await import('./cst/sendTransition');
-    const g = await governedSend({
+    return governedSend({
       connectorId: 'm365', accountId: 'acct-1',
       action: { id: 'mail.send', label: 'Send', domain: 'mail', scopes: ['Mail.Send'], mutates: true, run: async () => ({ ok: true, summary: 'sent' }) },
       params: { to: ['a@example.com'], subject: 'Hi', body: 'yo' },
@@ -223,17 +230,45 @@ describe('F-N19-2 — request_time against the REAL governed-send path', () => {
       makeHttp: () => ({ postJson: async () => ({ data: {}, headers: {}, status: 202 }) }),
       rate: {}, now: () => new Date().toISOString(), ports: createGovernedSendPorts(),
     } as never);
+  };
 
-    expect((g.outcome as unknown as Record<string, unknown>).requestId).toBeUndefined();
+  it('the id is surfaced on the RESULT — and the OUTCOME envelope is still untouched', async () => {
+    const g = await realSend();
+    expect(typeof g.requestId).toBe('string');
+    expect(g.requestId).toMatch(/^req:/);
+    // FG-12 added nothing to the kernel's envelope; that shape is unchanged.
+    expect((g.outcome as Record<string, unknown>).requestId).toBeUndefined();
+  });
 
+  it('the observer records the real id, and request_time equals the instant embedded IN THAT ID', async () => {
+    const g = await realSend();
     await actionRecord.observe(
       { connectorId: 'microsoft-entra', accountId: 'acct-1', actionId: 'mail.send', params: { to: ['a@example.com'], subject: 'Hi', body: 'yo' } },
-      g,
+      g as never,
       { actor: 'local:x', tenantId: 'org-test' },
     );
     const [rec] = await actionRecord.query({ tenantId: 'org-test' });
-    expect(rec.requestId).toBe('');          // the honest consequence
-    expect(rec.requestTime).toBeNull();      // …and no time is invented from it
-    expect(rec.transitionId.length).toBeGreaterThan(0); // the identity that IS carried back
+
+    expect(rec.requestId).toBe(g.requestId);
+    expect(rec.requestId).not.toBe('');
+
+    // The comparison that makes this a real proof: the stored time is derived
+    // from the ID ITSELF, never from a clock read at assertion time.
+    const embedded = /:(\d{10,15})$/.exec(rec.requestId)?.[1];
+    expect(embedded, 'the production id must carry an epoch stamp').toBeTruthy();
+    expect(rec.requestTime).toBe(new Date(Number(embedded)).toISOString());
+    expect(rec.requestTime).not.toBeNull();
+  });
+
+  it('an id with no parseable stamp still stores NULL — the gate did not weaken the discipline', async () => {
+    const g = await realSend();
+    await actionRecord.observe(
+      { connectorId: 'microsoft-entra', accountId: 'acct-1', actionId: 'mail.send', params: {} },
+      { ...(g as object), requestId: 'req:legacy:not-a-time' } as never,
+      { actor: 'local:x', tenantId: 'org-legacy' },
+    );
+    const [rec] = await actionRecord.query({ tenantId: 'org-legacy' });
+    expect(rec.requestId).toBe('req:legacy:not-a-time');
+    expect(rec.requestTime).toBeNull();
   });
 });

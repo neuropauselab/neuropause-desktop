@@ -174,10 +174,31 @@ function fingerprint(text: unknown): string {
  * value the kernel really stamped; it never re-clocks and never approximates.
  */
 export function requestTimeFrom(requestId: string): string | null {
-  const m = /:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2}))$/.exec(requestId);
-  if (!m) return null;
-  return Number.isFinite(Date.parse(m[1])) ? m[1] : null;
+  const iso = /:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2}))$/.exec(requestId);
+  if (iso) return Number.isFinite(Date.parse(iso[1])) ? iso[1] : null;
+  /**
+   * FG-12 §15 — the SECOND mint format. The production kernel clock returns
+   * EPOCH MILLISECONDS, so a real id ends `:<digits>`; that epoch is the
+   * request-construction instant — the one thing the frozen logical clock
+   * truthfully measured (NP-019). Read verbatim, converted only in
+   * representation, never re-clocked.
+   *
+   * Conservative by construction: digits ONLY, anchored at the end, and inside
+   * a plausible range. A counter (`:1`), a seconds-precision stamp, a
+   * truncated id, or a far-future number is NOT a request time — it yields
+   * null, never a guess.
+   */
+  const epoch = /:(\d{10,15})$/.exec(requestId);
+  if (!epoch) return null;
+  const ms = Number(epoch[1]);
+  if (!Number.isFinite(ms) || ms < EPOCH_FLOOR_MS || ms > EPOCH_CEILING_MS) return null;
+  return new Date(ms).toISOString();
 }
+
+/** 2001-09-09 — below this an epoch-ms value is implausible (or is seconds). */
+const EPOCH_FLOOR_MS = 1_000_000_000_000;
+/** 2286-11-20 — above this a 13-digit ms value is out of any plausible range. */
+const EPOCH_CEILING_MS = 9_999_999_999_999;
 
 /** Normalize a recipient field that may be a string[], a comma string, or absent. */
 function recipientList(v: unknown): string[] {
@@ -238,7 +259,13 @@ class ActionRecordStore {
     try {
       const outcome = (result as unknown as { outcome?: unknown }).outcome;
       transitionId = outcomeString(outcome, 'transitionId');
-      const requestId = outcomeString(outcome, 'requestId');
+      /**
+       * FG-12 — the requestId is surfaced on the RESULT, not the outcome: the
+       * kernel's envelope never carried it, which is why this stored `''` and
+       * request_time was structurally null (F-N19-2). The outcome is still read
+       * as a fallback so a caller predating the field behaves exactly as before.
+       */
+      const requestId = outcomeString(result, 'requestId') || outcomeString(outcome, 'requestId');
       const params = request.params ?? {};
       const record: ActionRecord = {
         id: `act_${randomUUID()}`,
