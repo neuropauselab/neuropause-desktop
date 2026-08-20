@@ -313,6 +313,7 @@ export * from './infra/resourceGraphBridge';
 export * from './infra/action';
 // Mobile M1 — business view-models shared by renderer, Companion Gateway, and the mobile app.
 export * from './business/familyDashboardModel';
+export * from './business/sourceLineage';
 // Mobile M1 — companion (mobile) DTOs for the desktop gateway's Settings surface.
 export * from './types/companion';
 // P7 — Enterprise Intelligence (pure engines composed over the existing graphs/timeline; the runtime consumes these).
