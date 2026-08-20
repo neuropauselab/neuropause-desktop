@@ -574,3 +574,77 @@ no device-level protection is protected by discipline, and **discipline failed o
 computed, named, and then **flattened at the message** — the same **COMPUTED-NAMED-DISCARDED** shape as
 `resolveFull`. **An alarm that fires identically for a violation and for a routine step is not an alarm.** It fired
 `FREEZE BROKEN` during the P0 bracket for the routine reason. Fix direction noted, not taken.
+
+## §8 · F-P26, F-P27, AND THE 22:18 REBUILD (20 Aug 2026, unattended)
+
+### §8.1 · F-P26 — A REDACTOR'S GUARANTEE IS BOUNDED BY WHAT ITS PINS PRESERVE
+
+> **THE CREDENTIAL REDACTOR IS PINNED TO PRESERVE EMAIL SHAPES, SO IT IS NOT A PII REDACTOR AND MUST NEVER BE
+> CITED AS ONE.**
+>
+> **CITING A REDACTOR WITHOUT CITING ITS PINS IS A FALSE ASSURANCE.** Relying on `redactCredentialText` for the
+> P4-MIN emitter would have leaked recipient addresses **while looking protected** — worse than no redactor,
+> because it buys a false sense of coverage.
+
+**THE AUDIT (read-only, ordered by the operator). The result is not a list of sites — it is a choke point:**
+
+| Site | Reach | Guarantee |
+|---|---|---|
+| `logger.ts:147-148` (`emit`) | **EVERY log call in the main process**, message *and* payload, before **both** console and file sink | credentials only |
+| `connectors/metadataCredentialGuard.ts:41,43` | connector metadata at **both `connectorStore` doors — persisted to `connectors.json` on disk** | credentials only |
+
+**So the guarantee is UNIVERSAL IN REACH AND NARROW IN KIND**: every logged string and every persisted connector
+metadata string is credential-safe and **PII-unsafe**, and nothing in the codebase distinguishes those two claims.
+The bound is explicit and deliberate — `logger.redaction.test.ts` pins that `12@example.com` **must SURVIVE** (the
+round-31 W-7 predicate), and NP-013's record notes the account **email label survives, pinned**. Recorded; nothing
+fixed.
+
+**DESIGN DIRECTION, so nobody later "fixes" this by adding `detail` back:**
+
+> **PREFER A CLOSED-SET DISCRIMINANT OVER A REDACTED FREE-TEXT FIELD.** Emit *which* `INVALID_PARAMS` variant
+> fired — never the interpolated value. Redacting free text is fragile, as F-P26 proves; a closed set is
+> structurally safe. **That is P4-FULL, not now.**
+
+**AND IT RE-PRICES OPTION A.** The recipient-carrying `detail` **already crosses IPC and sits in renderer state**;
+it renders nowhere *only* because the refusal surface is inside the DEV gate. **Moving that closing tag would put
+recipient addresses on a production screen.** Option A is not "zero new code, zero risk" — it inherits the exact
+PII question the emitter just failed, and now needs the same enumeration plus a ruling on what the surface may
+display, **on top of** its §4 UI-truth tests. Its envelope is updated accordingly and it stays deferred.
+
+### §8.2 · THE WORKED EXAMPLE — ASSERTION IS NOT ESTABLISHMENT
+
+The advisory **asserted** "no sensitive payload" as a requirement. The first P4-MIN envelope **asserted** `detail`
+was safe because it already crossed IPC. **Both assertions were wrong. Only the enumeration found the leak.**
+Cite this whenever the enumerate-before-asserting rule needs defending.
+
+### §8.3 · F-P27 — THE CEREMONY RUNBOOK EXISTS IN NO FILE
+
+The "nine steps" referenced across several directives were **presented in-session and never committed**. A
+repo-wide search finds **no runbook file and no `OPERATOR-ACTION` marker anywhere in `certification/`**. So the
+ceremony's own procedure lives only in transcript — unversioned, unreviewable, and impossible to pin against the
+artifact. **This is the F-P10 family with the document missing entirely rather than merely describing the wrong
+thing.** `P1-REPRODUCTION-RUNBOOK.md` is the first ceremony-class procedure committed as a file. No nine-check
+list was invented to fill the gap.
+
+### §8.4 · THE 22:18 REBUILD — VERIFIED BY CONTENT
+
+`NP_E2E_BUILD=1 npx electron-vite build`. INTACT before and after; git tree clean throughout (a build is not a
+source change).
+
+**CUSTODY FIRST, unprompted and worth stating:** the 16:12 build **is the artifact that produced the preserved
+20 Aug log**, and rebuilding overwrites it. It was snapshotted before the rebuild —
+`~/NeuroPause-S54-r3-evidence/artifact-1612/`, **87 files**, manifest sha256 `d6e3a948…0fcae96`. The provenance
+chain from log to binary survives.
+
+| | 16:12 | 22:18 |
+|---|---|---|
+| `main/index.js` sha256 | `5c79aac8…3b1ffda` (6,581,330 b) | `ee5e8e99…0e138c0` (6,583,130 b) |
+| P4-MIN emitter (`propose refused`) | **absent (0)** | **present (1)** |
+| seed sentinel (`installE2eSeedPrincipal`) | 2 | 2 |
+| seed chunk | `e2eSeed-NKS_iH8j.js` | `e2eSeed-NKS_iH8j.js` |
+| seed chunk sha256 | `a54bc5b2…daf29` | **`a54bc5b2…daf29` — IDENTICAL** |
+
+> **THE SEED CHUNK DID NOT CHANGE, AND §1 NEEDS NO CORRECTION THIS TIME.** The prediction was that it would change
+> again; the artifact says otherwise, because a content-hashed chunk name is a hash of **that chunk's** content and
+> the seed module did not change. This is verification-by-content producing the *opposite* of the expected answer —
+> which is the whole reason the rule exists. Recorded rather than assumed in either direction.
