@@ -648,3 +648,78 @@ chain from log to binary survives.
 > again; the artifact says otherwise, because a content-hashed chunk name is a hash of **that chunk's** content and
 > the seed module did not change. This is verification-by-content producing the *opposite* of the expected answer —
 > which is the whole reason the rule exists. Recorded rather than assumed in either direction.
+
+## §9 · F-P27 REACHES BACKWARDS · F-P28 · AND TWO WORKED EXAMPLES (20 Aug 2026)
+
+### §9.1 · F-P27's DEEPER FORM — AND WHAT IT INVALIDATES RETROSPECTIVELY
+
+> **A document that describes the repository is not a document that describes the artifact — and A PROCEDURE THAT
+> EXISTS ONLY IN TRANSCRIPT IS NOT A DOCUMENT AT ALL.** It cannot be versioned, diffed, pinned or reviewed.
+
+**IT REACHES BACKWARDS.** Every ruling made during the 20 Aug sitting about *"the runbook says X"* — **R3 ruled
+twice**, the DEV-gate contradiction, *"corrected post-ceremony only"* — was a ruling about **a recollection of a
+conversation, not a document.** The "nine steps" never existed as a file.
+
+**The governing law was already on the books: RECORD SUPERSEDES RECOLLECTION.** It was applied to a
+`bodyFingerprint` (R5) and **never once to the procedure itself.** The strictness was aimed at the evidence and
+not at the instrument used to gather it.
+
+`certification/P1-REPRODUCTION-RUNBOOK.md` is the **first ceremony-class procedure ever committed as a file** in
+this programme. No nine-check list was fabricated to fill the gap — a plausible invented list would have looked
+authoritative and been fiction.
+
+### §9.2 · F-P28 — THE EVIDENCE PACKS HAVE NO DISCLOSURE CLASSIFICATION
+
+F-P26 established that the single redactor is **universal in reach and narrow in kind**. The step the audit did
+not take:
+
+> **THE EVIDENCE PACKS INHERIT THAT PII-UNSAFETY AND CARRY NO DISCLOSURE CLASSIFICATION.**
+
+| Pack | Files | Contains, at minimum |
+|---|---|---|
+| `snapshot-r3/` | 95 | account email (connector label), connector state, granted scopes, action records, assistant conversation text incl. **recipient addresses** in stored `mailIntent` |
+| `snapshot-r2/` | 96 | same classes, pre-16:12 binary's profile |
+| `artifact-1612/` | 87 | compiled binary; no user data, but it is the **provenance anchor** for the above |
+
+They have been handled all evening as **neutral, shareable artifacts** — quoted from, hashed, and discussed as if
+disclosure-free. **Any future decision to attach one to a report or hand one to an advisor discloses whatever is
+in it**, and the stored `mailIntent` objects are known to carry `to: ['neuropause033@gmail.com']` verbatim.
+
+**Classification recorded, nothing fixed:** these are **OPERATOR-PRIVATE**. They may be hashed, cited by manifest,
+and reasoned about; **they are not attachable without a disclosure decision by the operator.** This is a custody
+question, not a code one.
+
+### §9.3 · WORKED EXAMPLE — ASSERTION IS NOT ESTABLISHMENT *(see also §8.2)*
+
+The advisory **asserted** "no sensitive payload." The first P4-MIN envelope **asserted** `detail` was safe because
+it already crossed IPC. **Both were wrong; only the enumeration found the leak.**
+
+### §9.4 · WORKED EXAMPLE — A PRE-REGISTERED INSTRUCTION MUST NOT ASSUME ITS OWN RESULT
+
+The rebuild instruction read: *"report the seed-chunk hash — **it will change again**, and §1 must be corrected in
+the same pass."*
+
+> **THAT IS AN INSTRUCTION WITH THE ANSWER BAKED IN.** The correct form is *"verify the hash and correct §1 **IF**
+> it changed."*
+
+The hash did **not** change (`a54bc5b2…daf29`, identical across both builds) because a content-hashed chunk name
+hashes *that chunk's* content and the seed module was untouched. **§1 was left uncorrected because it was still
+accurate.** Recorded by the operator as their own error, and as a small instance of the failure the whole sitting
+fought: *a pre-registration that assumes its result is not a pre-registration.*
+
+### §9.5 · P4-MIN-b — QUEUED, WITH ITS SCOPE FAULT NAMED
+
+An emitter at `brainProposeLane:81` is admissible on **exactly** the same F-P24 merit as P4-MIN: a refusal must be
+observable, `:81` **is** a refusal, and a warn changes what is RECORDED not what is DECIDED — so it is **not** the
+lane repair the failure-first rule forbids.
+
+> **Which means P4-MIN's scope was drawn at "one emitter" rather than at "no refusal on this path is silent" —
+> and that is A SCOPE DRAWN BY CONVENIENCE**, the same fault correctly named in the admission reasoning,
+> reappearing in the scoping. Recorded by the operator as theirs.
+
+**Held anyway, for a defensible reason: the reproduction's observation surface must not change again before the
+run**, and the resolver already covers that branch (uncorrelated — §9's Amendment 2). **P4-MIN-b lands AFTER the
+reproduction.**
+
+**NO FURTHER CODE CHANGE BEFORE THE RUN** — not the `:81` emitter, not Option A, not F-P25's exit states, not the
+closed-set discriminant.

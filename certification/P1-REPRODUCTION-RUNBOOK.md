@@ -76,34 +76,78 @@ NODE_ENV=production NP_E2E_BUILD=1 NEUROPAUSE_E2E=1 \
 *observed* r3 behaviour (the seed log line appeared, so `NEUROPAUSE_E2E=1` was set) — it is a reconstruction of the
 conditions, not a transcript of them. **Step 1 remains the seed LOG LINE, not the window title.**
 
+> **AMENDMENT 4 — THE CONSEQUENCE, SPELLED OUT RATHER THAN LEFT AS A CAVEAT:**
+>
+> **THE REPRODUCTION TESTS THE MECHANISM UNDER A RECONSTRUCTED ENVIRONMENT, NOT THE EPISODE. A NEGATIVE RESULT
+> DOES NOT EXONERATE THE 20 AUGUST CONDITIONS.**
+>
+> If this run produces a proposal cleanly, that establishes the mechanism works *here*. It says nothing about what
+> happened on 20 August, which is **CLOSED AS UNKNOWN** and stays closed.
+
 ## 3 · THE PROCEDURE
+
+> **AMENDMENT 3 — EXACTLY ONE NAVIGATION MECHANISM, DECLARED IN ADVANCE.** On 20 August the mechanism was the
+> uncontrolled variable, and that is precisely why the episode is unknowable. **The declared mechanism for this
+> run is the assistant's "Open connectors" button, and nothing else.** Do not use the sidebar, a keyboard
+> shortcut, a restored session, a deep link, or a back-navigation to reach the connectors section. If the section
+> is reached by any other means, **the run is void — abandon it and restart on a fresh profile.**
 
 1. Ask the assistant, in one turn, for a mail send — the same shape as 20 Aug.
 2. Confirm the reply carries the navigation affordance.
-3. Click **"Open connectors"**. *(This is the button whose use on 20 Aug is permanently unknown. Using it here is
-   the point.)*
-4. Select the **Microsoft** connector card — the panel mounts only on the detail view, not on the section.
+3. Click **"Open connectors"** — **the one declared mechanism.** *(This is the button whose use on 20 Aug is
+   permanently unknown. Using it here, and only it, is the point.)*
+4. Select the **Microsoft** connector card in the connector list. The panel mounts only on the **detail** view,
+   not on the section — so this click is required, and it is an **in-section selection**, not a second section
+   navigation. On a fresh profile `selectedId` starts null and auto-selects the first connector, which may not be
+   Microsoft; select it by clicking the card.
 5. **OBSERVE AND STOP.** Record whether the eight-field review card renders, whether the compose form prefills,
    and what the log emits.
+
+> **KEEP THE WINDOW QUIET.** From launch to observation, perform **no other activity in the app** — no other
+> panel, no sync trigger, no settings change. Attribution in step 4's tree depends on it (see Amendment 2).
 
 ## 4 · PRE-REGISTERED DECISION TREE — *declared before the run*
 
 ```
 DID A PROPOSAL ATTEMPT OCCUR?
-  ├── NO  → investigate handoff / navigation
-  └── YES
-       ├── refusal emitted → record the EXACT reason
-       └── success emitted → follow the artifact / review path
+  ├── `propose refused — <REASON>`            → P4-MIN fired. Record the EXACT reason.
+  ├── `Brain proposal stashed …` (INFO)       → success. Follow the artifact / review path.
+  ├── one of the lane's THREE warns           → :92 / :109 / :162. Record which.
+  └── NEITHER LOGS  → AMENDMENT 1: this is not vague. It is EXACTLY TWO possibilities:
+        (a) NO PROPOSE CALL WAS MADE  — the handoff was not consumed; or
+        (b) brainProposeLane :81 FIRED — response.ok true, artifact non-null, the lane
+            returned null on an unresolved TENANT SCOPE, and NOTHING is emitted on the
+            propose path. P4-MIN closed the `!response.ok` half of the dual silence;
+            :81 REMAINS SILENT and is queued as P4-MIN-b, deliberately not landed before
+            this run.
+      DISCRIMINATE (a) FROM (b) WITH THE RESOLVER LINES — see Amendment 2.
 ```
 
 **Fifth row, which has paid off on every artifact read so far:** anything bearing on something **other** than this
 question is recorded as **its own finding**, never forced into the tree.
+
+> **AMENDMENT 2 — THE :81 BRANCH IS COVERED BUT UNCORRELATED.**
+>
+> The resolver logs **every** tenant refusal through its single `refuse()` helper, and suppression cannot hide a
+> `firstRefusalAfterSuccess: true` line. **So if :81 fires, a resolver WARN WILL appear.**
+>
+> **But that WARN says a tenant refusal occurred — NOT that it occurred FOR THE PROPOSE.** That is P2's absence
+> again: no correlation identity ties a resolver line to a propose call.
+>
+> **PRE-REGISTERED, so it cannot be over-read after the fact:**
+> - Resolver tenant lines are **part of the observation set** and are recorded verbatim.
+> - **A resolver WARN is NOT evidence of a propose refusal.** It is evidence that *something* could not resolve a
+>   tenant.
+> - Attribution is **BY EXCLUSION ONLY**, and only because the window is kept quiet: with no other activity, a
+>   resolver line in the window is *most plausibly* the propose — **plausibly, not established.**
+> - **No resolver line + no propose emission ⇒ branch (a)**, no propose call was made.
 
 **Read the emission with:**
 ```bash
 grep -nE 'propose refused|brain-propose-lane|Tenant refused|Tenant resolution RECOVERED' \
   $PROFILE/logs/app.log
 ```
+Then read **every line** of the window rather than only the greps — that discipline has surprised us three times.
 
 **REFUSAL OBSERVED ≠ GOVERNANCE CORRECTNESS ≠ EXECUTION ≠ EXTERNAL EFFECT ≠ VERIFICATION.** The emitter
 establishes that a refusal **occurred**. It cannot establish that the refusal was **correct**, and it certainly
