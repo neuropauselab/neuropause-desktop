@@ -19,6 +19,7 @@ import type { ExecutionDeps } from './proposalExecutionBoundary';
 import type { AuthorityRequirement, VerificationPlan, ProposalTarget } from './proposal';
 import { isCertifiedConsequentialCapability, mutationAssuranceFor } from '../capabilities/liveCapabilitySources';
 import { createLogger } from '../logger';
+import { actionRecord, type GovernanceVerdict } from '../connectors/actionRecord';
 
 const log = createLogger('l6-gate');
 
@@ -70,11 +71,20 @@ export function deriveOracle(capabilityId: string): VerificationPlan {
 
 export interface RuntimeExecuteDeps {
   workspaceId(): string | null;
+  /**
+   * ROUTE A (F-P24) — OPTIONAL BY NECESSITY, NOT BY PREFERENCE. The production call site already supplies this
+   * (the same `deps` object the send observer reads), so production rows carry a real actor. It is optional so
+   * that existing callers passing only `workspaceId` keep type-checking unchanged — widening it to required
+   * would have edited a dozen existing assertions to buy nothing.
+   */
+  actor?(): string | null;
 }
 export interface ExecuteRequestLike {
   readonly actionId: string;
   readonly accountId: string;
   readonly params: Readonly<Record<string, unknown>>;
+  /** ROUTE A — present on every production request; optional here for the same reason as `actor`. */
+  readonly connectorId?: string;
 }
 
 export function l6ExecutionGate(deps: RuntimeExecuteDeps, r: ExecuteRequestLike, nowMs?: number): L6GateResult {
@@ -94,10 +104,47 @@ export function l6ExecutionGate(deps: RuntimeExecuteDeps, r: ExecuteRequestLike,
     isCertifiedConsequential: isCertifiedConsequentialCapability,
   };
   const gate = gateL6Execution({ tenantId, capabilityId: r.actionId, account: r.accountId, params: r.params }, execDeps);
+  /**
+   * ROUTE A (F-P24) — MINT THE GOVERNANCE EVIDENCE WHERE THE GOVERNANCE DECISION IS MADE.
+   *
+   * §2 #19 keeps GOVERNANCE, EXECUTION and VERIFICATION as separate evidence classes. The observer at
+   * `connectors/index.ts:641` is EXECUTION-class — it runs after `governedSend` returns and its subject is what
+   * the executor did — and **a governance decision that produced no execution has nothing for it to observe.**
+   * Recording it there would borrow an execution emitter to carry a governance fact, which is the collapse that
+   * law forbids. So the record is minted here, at the moment the fact becomes true.
+   *
+   * DECISION-NEUTRAL BY CONSTRUCTION: fire-and-forget and self-catching, exactly the shape of the `:641`
+   * observer. It returns nothing, alters no branch, and **the gate's return value is byte-identical for all
+   * three outcomes** — a throwing store cannot change what this function decides.
+   *
+   * `admit` mints nothing HERE on purpose: an admitted send proceeds to `governedSend` and is recorded by the
+   * execution-class observer. Emitting for it would double-record one action.
+   */
+  const emitGovernance = (verdict: GovernanceVerdict): void => {
+    void actionRecord
+      .observeGovernance(
+        { connectorId: r.connectorId ?? '', accountId: r.accountId, actionId: r.actionId, params: r.params },
+        verdict,
+        { actor: deps.actor?.() ?? '', tenantId },
+      )
+      .catch(() => {});
+  };
   if (gate.gate === 'refuse') {
     log.warn(`L6-GATE REFUSE capability=${r.actionId} tenant=${tenantId} — ${gate.reason}`);
+    emitGovernance('DENY');
     return { ok: false, refusal: { ok: false, message: 'L6 execution gate refused', data: { outcome: 'DENIED', reason: gate.reason } } };
   }
+  /**
+   * A SKIP IS NOT A REFUSAL, AND THIS RECORD MUST NOT SAY IT WAS.
+   *
+   * F-P48: the gate did not DECIDE — the proposal lookup missed and the send proceeds. Writing `DENY` here would
+   * assert a refusal that never happened and make an **ungated send look governed**, which is strictly worse than
+   * the present silence. `NOT_EVALUATED` is a record whose purpose is to make **the ABSENCE of a decision**
+   * visible. The two cases are told apart by the VERDICT FIELD, never by prose.
+   *
+   * This makes the skip VISIBLE. It does not make it refuse — F-P48 stays open until that behaviour is ruled.
+   */
+  if (gate.gate === 'skip') emitGovernance('NOT_EVALUATED');
   // Observability: ADMIT (a stashed L6 proposal re-derived clean and was consumed) is distinguishable from SKIP in the
   // main log — the running-app proof that a send was Brain-PROPOSED, not merely governed. Never alters the outcome.
   if (gate.gate === 'admit') log.info(`L6-GATE ADMIT capability=${gate.capabilityId} tenant=${tenantId}`);

@@ -13,7 +13,7 @@
  * is reported honestly: 0 until S16 `verifyEffect` feeds `recordVerification`.
  */
 import type { ActionRecord } from './actionRecord';
-import { actionRecord } from './actionRecord';
+import { actionRecord, EXECUTION_NOT_STARTED } from './actionRecord';
 import { isSuccessTerminal } from '../verification/verificationTerminals';
 
 export interface WriteStateCounts {
@@ -33,13 +33,25 @@ export interface WriteStateCounts {
 
 /** Pure derivation of the five states from action records (the testable core). */
 export function deriveWriteStates(records: readonly ActionRecord[]): WriteStateCounts {
+  /**
+   * ROUTE A (F-P24) — GOVERNANCE ROWS ARE EXCLUDED, AND THE REASON IS CLAIM-LANGUAGE, NOT TIDINESS.
+   *
+   * These five states describe **WRITE ATTEMPTS THAT REACHED THE EXECUTOR.** A governance refusal never became
+   * one — its execution is NOT_STARTED — so counting it as `requested` would claim a write was requested when
+   * none was. **That is the F-5 defect in the very counter built to fix F-5**, which is why the filter is here
+   * rather than at the call site: any caller of the pure core gets the truthful answer.
+   *
+   * WIDENING the funnel to show governance events as their own state is a DIFFERENT product decision — it would
+   * make this counter mean "governance events" rather than "writes" — and is deliberately NOT taken here.
+   */
+  const attempted = records.filter((r) => r.outcome !== EXECUTION_NOT_STARTED);
   let requested = 0;
   let authorized = 0;
   let executed = 0;
   let providerAcknowledged = 0;
   let externallyObserved = 0;
   let lastAt: string | null = null;
-  for (const r of records) {
+  for (const r of attempted) {
     requested += 1;
     if (r.verdict === 'ALLOW') authorized += 1;
     if (r.executed === true) executed += 1;

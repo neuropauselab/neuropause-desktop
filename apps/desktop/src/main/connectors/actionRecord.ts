@@ -91,6 +91,26 @@ export interface ActionRecordVerification {
   readonly effectTime?: string | null;
 }
 
+/**
+ * ROUTE A (F-P24) — the EXECUTION-class marker for a row whose execution never started.
+ *
+ * ONE definition, imported by every reader, because a second copy is how the counter and the store drift apart
+ * (F-N16-1: a third copy was refused). It is a value of the existing `outcome` field, deliberately NOT a new
+ * column: no schema change, and rows written before Route A are untouched and unreclassified.
+ */
+export const EXECUTION_NOT_STARTED = 'NOT_STARTED';
+
+/** A governance decision that produced no execution. `NOT_EVALUATED` is NOT a refusal — see `observeGovernance`. */
+export type GovernanceVerdict = 'DENY' | 'NOT_EVALUATED';
+
+/** The minimum a governance row needs. Narrower than `ExecuteRequestLike`: there is no result to describe. */
+export interface GovernanceObserveRequest {
+  readonly connectorId: string;
+  readonly accountId: string;
+  readonly actionId: string;
+  readonly params?: Readonly<Record<string, unknown>>;
+}
+
 export interface ActionRecord {
   readonly id: string;
   /**
@@ -282,6 +302,67 @@ class ActionRecordStore {
     const tmp = `${p}.tmp`;
     await fs.writeFile(tmp, payload, 'utf8');
     await fs.rename(tmp, p);
+  }
+
+  /**
+   * ROUTE A (F-P24) — BEST-EFFORT **GOVERNANCE-CLASS** observer: a decision that produced NO EXECUTION.
+   *
+   * §2 #19 keeps GOVERNANCE, EXECUTION and VERIFICATION as separate evidence classes and forbids collapsing one
+   * into another. This row is `governance = <verdict> · execution = NOT_STARTED · verification = NOT_APPLICABLE`,
+   * and **a governance DENY is NEVER converted into `execution_failed`** — nothing was attempted.
+   *
+   * ── A SKIP IS NOT A REFUSAL ──────────────────────────────────────────────────────────────────────────────────
+   * `NOT_EVALUATED` exists because F-P48's finding is that the gate **did not decide**: the lookup missed and the
+   * send proceeded. Recording that as `DENY` would assert a refusal that never happened and make an **ungated send
+   * look governed** — worse than the present silence, because silence is at least honestly empty. This row's
+   * purpose is to make **the ABSENCE of a decision** visible, never to invent one. The two cases are separated by
+   * the `verdict` FIELD, never by prose in a message.
+   *
+   * `transitionId` and `admissionRef` are `''` — the **established** absent representation in this store (see
+   * `observe`, which defaults the same way when an outcome carries none), not a new one and not a minted id. A
+   * refusal never reaches the CST, so no transition exists; fabricating one would create a second id-space.
+   */
+  async observeGovernance(
+    request: GovernanceObserveRequest,
+    verdict: GovernanceVerdict,
+    ctx: ObserveContext,
+  ): Promise<void> {
+    try {
+      const params = request.params ?? {};
+      const record: ActionRecord = {
+        id: `act_${randomUUID()}`,
+        at: new Date().toISOString(), // record_time — this row's write
+        requestId: '', // no execution request was ever minted
+        requestTime: null, // NP-015: a time we were not told is ABSENT, never approximated
+        eventTime: ctx.eventTime ?? null,
+        transitionId: '', // no transition exists — the established absent form, never minted
+        actor: ctx.actor, // verbatim (D-12)
+        tenantId: ctx.tenantId, // WORKSPACE id, per F-P45 — the key the writer writes
+        connectorId: request.connectorId,
+        accountId: request.accountId,
+        actionId: request.actionId,
+        recipients: {
+          to: recipientList(params.to),
+          cc: recipientList(params.cc),
+          bcc: recipientList(params.bcc),
+        },
+        subjectFingerprint: fingerprint(params.subject),
+        bodyFingerprint: fingerprint(params.body),
+        verdict,
+        executed: false,
+        outcome: EXECUTION_NOT_STARTED,
+        admissionRef: '',
+        verification: null,
+      };
+      await this.ensureLoaded();
+      this.records.push(record);
+      await this.persist();
+    } catch (err) {
+      log.warn(
+        `[ACTION_RECORD] governance emit failed — evidence gap for ${request.actionId} (${verdict})`,
+        err instanceof Error ? err.message : String(err),
+      );
+    }
   }
 
   /**

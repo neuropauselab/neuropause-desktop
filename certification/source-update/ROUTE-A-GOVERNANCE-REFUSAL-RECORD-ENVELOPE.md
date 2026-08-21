@@ -14,6 +14,21 @@ never applied — still taken) · FG-14 closed (`c563cdd`) · FG-15 closed (`b5f
 
 ---
 
+## 0 · SEQUENCING — **ROUTE A LANDS FIRST, F-P48 SECOND, NEVER TOGETHER.** BOTH REASONS, RECORDED.
+
+**REASON 1 — ORDERING.** F-P48 makes the gate **REFUSE where it previously proceeded.** Landing it first would
+mean those refusals **mint nothing** — F-P24's exact defect, **freshly created by F-P48's own fix.** A fix that
+manufactures the defect it is adjacent to is a regression wearing a repair's clothes.
+
+**REASON 2 — AND THIS IS THE ONE SOMEONE WILL LATER MISTAKE FOR CEREMONY, so it is written down first:**
+**YOU CANNOT PROVE A CHANGE IS DECISION-NEUTRAL IN THE SAME COMMIT AS A CHANGE THAT ALTERS DECISIONS.**
+Route A's acceptance criterion is *the gate's return is byte-identical for all three outcomes* — that is the
+entire proof that adding evidence changed no behaviour. **F-P48 breaks that criterion BY CONSTRUCTION**, because
+its whole purpose is to make one of those outcomes return something different. Combined, neither change is
+provable: the neutrality claim has no baseline and the behaviour change has no isolation. **This is not
+procedural tidiness — it is the difference between a proof and an assertion**, and merging them destroys the only
+instrument that could have caught a mistake in either.
+
 ## 1 · THE SITE, AND WHY IT IS THE BETTER ONE RATHER THAN A WORKAROUND
 
 **MINTS:** `liveBrain/executionGate.ts` — **GATE** class. **RECEIVES:** `connectors/actionRecord.ts` — **PROCEED**
