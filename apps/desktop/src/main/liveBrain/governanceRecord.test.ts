@@ -73,20 +73,22 @@ afterEach(() => {
 });
 
 /**
- * The emit is fire-and-forget, so the read must be SEQUENCED AFTER IT — and the settle MUST come before the
- * FIRST query, not between polls.
+ * Reads the store back with NO settle delay — and that is a RECORD OF A CLOSED DEFECT (F-P52), not an accident.
  *
- * **WHY, AND IT IS A REAL DEFECT THIS FILE FOUND RATHER THAN A TEST QUIRK (see the register's `''`/race rows):**
- * `ActionRecordStore.ensureLoaded()` is not concurrency-safe — `if (this.loaded) return;` then `await` the file
- * read, then `this.records = <parsed>`, with no in-flight memo. Two callers that both arrive while `loaded` is
- * false both read the file, and **the second assignment overwrites whatever the first pushed in between.**
- * Polling immediately after the emit races it and loses the row.
+ * **THIS FUNCTION USED TO WAIT 60 ms, AND THE WAIT WAS A WORKAROUND.** When these pins were first written they
+ * polled immediately, lost, and read zero rows. The cause was not the test: `ActionRecordStore.ensureLoaded()`
+ * had **no in-flight memo**, so the fire-and-forget emit and the query each performed their own first read and
+ * **the second assignment overwrote the row the first had pushed.** The settle hid it by letting the writer
+ * finish alone.
  *
- * Waiting first is NOT narrowing an assertion — every criterion below is still asserted in full. It sequences the
- * observation after a deliberately asynchronous write, which is the only honest way to observe one.
+ * F-P52 fixed the loader (one shared in-flight load) and **the settle was then REMOVED AND THESE PINS RE-RUN
+ * WITHOUT IT** — the honest closure test, and the only way to know the workaround was for that defect and not
+ * another. They pass immediately, because the emit registers its `await` on the shared load before the query
+ * does, so its push is ordered first.
+ *
+ * If this ever needs a delay again, something regressed in the store — do not re-add one; measure why.
  */
 async function rows(): Promise<readonly ActionRecord[]> {
-  await new Promise((res) => setTimeout(res, 60));
   return (await actionRecord.query({ tenantId: WS })) as readonly ActionRecord[];
 }
 

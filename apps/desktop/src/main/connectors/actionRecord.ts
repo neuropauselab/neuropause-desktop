@@ -277,23 +277,44 @@ class ActionRecordStore {
   private records: ActionRecord[] = [];
   private loaded = false;
   private dirOverride: string | null = null;
+  /** F-P52 — the single in-flight load, shared by every concurrent caller. Reset whenever the source changes. */
+  private loading: Promise<void> | null = null;
 
   /** Test seam — point the store at a temp dir (no app dependency). */
   useDirForTests(dir: string): void {
     this.dirOverride = dir;
     this.loaded = false;
     this.records = [];
+    // F-P52 — MANDATORY with the memo: a promise from the PREVIOUS directory would resolve instantly and skip
+    // the new one's read entirely, serving stale rows. The memo's lifetime is the source's lifetime.
+    this.loading = null;
   }
 
   private path(): string {
     return join(this.dirOverride ?? app.getPath('userData'), FILE);
   }
 
+  /**
+   * F-P52 — ONE IN-FLIGHT LOAD, SHARED. Concurrent callers await the SAME read instead of each performing one.
+   *
+   * THE DEFECT: this method used to `await` the file read and then assign `this.records`. Two callers arriving
+   * while `loaded` was false both read, and **the second assignment overwrote whatever the first had pushed in
+   * between** — and because `persist()` serialises `this.records`, the next write put the truncated set on disk.
+   * The row was gone from memory AND from the file. The production interleaving is ordinary: the send observer
+   * at `connectors/index.ts:641` is fire-and-forget and the panel counter queries on sync events, so a send
+   * racing a first panel refresh after app start is exactly the shape.
+   *
+   * The memo changes WHEN a read resolves, never WHAT any caller decides: the same bytes are parsed into the
+   * same array, and a caller that would have loaded still loads. It is decision-neutral by construction.
+   */
   private async ensureLoaded(): Promise<void> {
     if (this.loaded) return;
-    const read = await readStoreFile<Persisted>(this.path());
-    this.records = read.state === 'loaded' && read.data && Array.isArray(read.data.records) ? read.data.records : [];
-    this.loaded = true;
+    this.loading ??= (async () => {
+      const read = await readStoreFile<Persisted>(this.path());
+      this.records = read.state === 'loaded' && read.data && Array.isArray(read.data.records) ? read.data.records : [];
+      this.loaded = true;
+    })();
+    await this.loading;
   }
 
   private async persist(): Promise<void> {
