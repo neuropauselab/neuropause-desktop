@@ -58,6 +58,19 @@ would have really been sent; only the proof would be permanently out of reach.
 > have stopped a two-recipient send.** That is the definition of incidental protection (§2 #31), and writing the
 > requirement down is what converts it into a control.
 
+> ⚠️ **THIS IS AN OPERATOR PRECONDITION, NOT A SYSTEM CONSTRAINT — do not read it as one.**
+> **The product does NOT refuse a two-recipient email, and it SHOULD NOT.** A two-recipient email is a perfectly
+> good email; only **our read-back oracle** is narrow, and *a capability limit is not a requirement* (§5.0g) —
+> refusing the user's mail because our verifier cannot cope would be **making the user pay for our
+> incompleteness.**
+>
+> **THE REQUIREMENT IS THE CEREMONY'S, NOT THE SYSTEM'S: the ceremony exists to produce a VERIFIED send, so its
+> own send must be one the oracle can corroborate.** Any other send in the product may be addressed however the
+> user likes — it will simply be **unverifiable, and today indistinguishable from unverified** (F-P55).
+>
+> A later reader who mistakes this line for a system rule will "discover" a validation gap that is not one, and
+> may close it by adding a refusal the product must not have.
+
 ### 1.1 · QUIT AND VERIFY — MAINS ONLY, EXACT ZERO *(F-P13's gate, EXECUTED — it already exists)*
 
 ```bash

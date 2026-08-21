@@ -595,6 +595,37 @@ before the lookup runs. Structure follows the distinction rather than decorating
 **two names for one rule**; this forbids **one name for two rules.** Both are the single failure of letting the
 vocabulary drift from the thing it describes.
 
+#### THE CLEANEST WORKED EXAMPLE — **A CAPABILITY LIMIT IS NOT A REQUIREMENT** (operator, self-corrected, 22 Aug 2026)
+
+A scoping ruling for F-P8 read *"exactly one `to`"* as a consumer requirement, sourced from the read-back oracle.
+**It was a conflation of VERIFIABILITY with VALIDITY, and the correction is exact:**
+
+> **THE ORACLE DOES NOT REQUIRE ONE RECIPIENT — IT CAN ONLY HANDLE ONE.**
+
+**§2 #27 says derive the expectation from the consumer. It does NOT say that every constraint a consumer exhibits
+is a requirement.** A consumer has two kinds of constraint and they point in opposite directions:
+
+| | what it means | what it licenses |
+|---|---|---|
+| **REQUIREMENT** | *the consumer cannot do its job unless the input has this property* | enforce it upstream |
+| **CAPABILITY LIMIT** | *the consumer cannot cope with inputs it is nonetheless correct to receive* | **fix the consumer, or record the gap — never charge the input** |
+
+**THE READ-BACK NEEDS ONE RECIPIENT TO DO ITS JOB; THE SEND DOES NOT NEED ONE RECIPIENT TO BE A GOOD SEND.**
+
+**THE PRODUCT CONSEQUENCE IS WHY IT MATTERS RATHER THAN BEING A NICETY: REFUSING A USER'S TWO-RECIPIENT EMAIL
+BECAUSE OUR ORACLE IS NARROW IS MAKING THE USER PAY FOR OUR INCOMPLETENESS.** The user's email was never wrong;
+our verifier is. Enforcing it upstream would have taken an internal limitation and dressed it as a governance
+rule — **the most durable kind of error, because it arrives wearing the vocabulary of safety.**
+
+**HOW IT WAS CAUGHT, AND THIS IS THE PART WORTH KEEPING:** the site measurement reported a *semantic interaction*
+— that `constitutionalInvariants.test.ts:264`'s *"proceeds as HUMAN-COMPOSED"* would become conditional — and
+**flagged it without resolving it**, per the ruling. **That unresolved flag is what surfaced the error.** A pass
+that had quietly resolved the tension in favour of the new rule would have shipped the conflation with a green
+suite behind it. **Reporting an interaction you cannot resolve is not incompleteness; it is the mechanism.**
+
+**THE TEST THIS ADDS to §5.0g's *what question does this name answer?*: WHOSE INCOMPLETENESS IS THIS?** If the
+answer is *ours*, the constraint belongs in a finding about our component — never in a check on the user's input.
+
 ### §5.1 · THE TWO LAW FAMILIES — kept separate, deliberately
 
 They are not one law. Conflating them is what let an authority defect and a reachability defect be discussed in the
