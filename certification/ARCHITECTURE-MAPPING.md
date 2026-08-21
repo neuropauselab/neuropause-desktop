@@ -437,6 +437,47 @@ REACHABLE reads as finished. **REACHABLE is the rung at which work most often st
 done.** Sibling of §2 #19's *observable is not recorded* and F-N17-4's *a declared governance capability is not
 the same thing as a reachable governance path* — the same distinction, one rung further along.
 
+### §5.0e · THE FIFTY-SECTION DIRECTIVE — NOT EXECUTED, AND WHY THE PATTERN IS NOW THREE DEEP (21 Aug 2026)
+
+A fifty-section reconciliation directive was superseded by its own author and **deliberately not executed**. The
+reasons are recorded because the pattern repeats, not because one directive was wrong.
+
+**1 · STALE PREMISE — THE THIRD IN THIS ARC.** Its anchor was `HEAD 2ffeefa`; `68e3349` and `09759f4` had already
+landed. A directive that pins an anchor is doing the right thing; the failure mode is the *gap between authoring
+and execution*, which is exactly what §2 #21 names for findings and #20 for documents. **Same disease, third
+carrier: the instruction outlived the codebase it described.**
+
+**2 · IT RE-ASKED WHAT HAD ALREADY BEEN ANSWERED *AND ACTED ON*.** Its §13, §17 and §22 re-opened questions
+established from source in the same session — **one of them fixed roughly an hour before the directive was
+written.** Re-measuring is cheap and usually right; the cost here is different: **re-asking a settled question
+invites a second answer, and a second answer to a settled question is how a corrected record gets un-corrected.**
+
+**3 · IT INSTRUCTED THE PRESERVATION OF A GOVERNANCE STATE THAT DOES NOT EXIST — THE FOURTH APPEARANCE OF THE
+CONJURED REGISTER, AND THE FIRST AS A *PRESERVATION INSTRUCTION*.** Measured across every `.md`/`.ts`/`.json`
+outside `node_modules`: `DECISIONS CONFIRMED` **0 files** · `D-9 / V5` **0** · `SEG-01` **0** ·
+`PROMOTION BLOCKED` **0** · `IMPLEMENTATION AUTHORITY` **0**. `D-ART` resolves to **2 files, both of which are the
+worker's own packet, labelled PROPOSED / NOT ADOPTED** — an artifact citing itself as precedent.
+
+> **CORRECTION TO THE RULING'S OWN PREMISE (§2 #22 applied to the operator's claim, verified rather than
+> inherited): `D-1…D-9` ARE REAL.** They are `DECISIONS.md` entries — D-1 re-record the freeze baseline · D-2
+> channel gated-but-undeclared · D-3 `capability:m365.propose` at `connectors:manage` · D-4/D-5 living docs ·
+> D-6 `rawInvoke` propose feed · D-7 the S12 surface · D-8 the e2e seed seam · D-9 Slice-15 run mode A + FG-4.
+> The directive said those subjects *"name artifacts with zero files"*; **they do not.** What is conjured is
+> everything ATTACHED to them: the confirmation count, `V5`, the promotion block, the authority state.
+> **THAT MIXTURE IS MORE DANGEROUS THAN A WHOLLY INVENTED ONE — the real half lends its credibility to the
+> invented half**, and "preserve D-1…D-9" reads as verifiable precisely because nine of the nouns check out.
+> It is also the ninth naming collision resurfacing: a conjured decision set wearing the real `D-` prefix.
+
+**THE LAW THIS ADDS TO §5.0's CONJURED-APPARATUS RULE:** *a governance apparatus can be conjured entirely in
+conversation and then cited as though it constrains* — **and a PRESERVATION INSTRUCTION is how it acquires the
+appearance of continuity.** Being told to *preserve* a state implies it was once established; nothing in the
+instruction offers to prove it, and complying would produce a report asserting the state survived. **Two rounds of
+that and the conjured object has a provenance.** The defence is not skepticism about the operator — it is §2 #22:
+**every claim carries its origin, and `NOT_ESTABLISHED` is a legitimate answer to a preservation order.**
+
+**WHAT WAS CARRIED FORWARD, because most of it was good:** its §28 ORIGIN CLASSIFICATION and its §39 THREE-FAILURE
+DISTINCTION are now **CLAUDE §2 #22 and #23** — method, not a one-off.
+
 ### §5.1 · THE TWO LAW FAMILIES — kept separate, deliberately
 
 They are not one law. Conflating them is what let an authority defect and a reachability defect be discussed in the
