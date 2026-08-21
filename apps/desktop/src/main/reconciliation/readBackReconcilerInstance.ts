@@ -84,12 +84,34 @@ class ReadBackReconcilerService implements BackgroundService {
    */
   async tick(): Promise<void> {
     const deps = realDeps();
+    /**
+     * F-P42 · ACCOMMODATION, NOT DESIGN — the two lines that unblock F-P39.
+     *
+     * `perWorkspace: true` because the WRITER keys evidence by workspace id
+     * (`connectors/index.ts:641` → `deps.workspaceId()`), and the non-perWorkspace branch supplies
+     * `tenantId: organization.id` with `workspaceId: ''` — two different namespaces, separately seeded
+     * (`workspace-default` vs `org-default`), with NO mapping at the query boundary. Reading
+     * `run.scope.tenantId` therefore matched zero rows on every tick, forever.
+     *
+     * **The reader conforms to a deviating writer.** The convention across the repository is unanimous —
+     * ~25 tenancy files and canonical `testScope.ts` all write `{tenantId: 'org-*', workspaceId: 'ws-*'}` —
+     * so `connectors/index.ts:641` is the outlier, not this reader. We conform anyway BECAUSE re-keying
+     * existing records is a migration that would retroactively change what every stored record means,
+     * including the first real send. That is governance-class and is not done here.
+     *
+     * **THE WRITER'S DEVIATION REMAINS AN OPEN DEFECT WITH A MIGRATION OWED (F-P42).** What ends this
+     * accommodation is that migration — its own gate, its own ruling. Not this line.
+     *
+     * Two other readers already conform: `liveBrain/brainProposeLane.ts:83` (with an explicit ALIGNMENT
+     * comment) and the compile-stripped `e2e/s16VerifyRun.ts:68`. The two that do NOT conform are this
+     * reconciler and the counter row (`m365WriteStates` via `unified/sync/index.ts`), and both read zero.
+     */
     await forEachTenantBackground('readback-reconciler', async (run) => {
-      const summary = await reconcileTenant(run.scope.tenantId, deps);
+      const summary = await reconcileTenant(run.scope.workspaceId, deps);
       if (summary.considered > 0) {
         log.info('Reconciliation pass', { ...summary });
       }
-    });
+    }, { perWorkspace: true });
   }
 }
 

@@ -310,6 +310,41 @@ mislocalizations in one sitting** — every one of them a fault placed downstrea
 > Collision list, now eight: GRANTED/TENANT scope · GOVERNED/PRODUCT draft · MODULE/CAPABILITY certified ·
 > declared-vs-reachable · source-vs-build · "Open connectors" · DECISION/DIMENSION · **RECORD-FINGERPRINT/MATCH-KEY**.
 
+> **THE `D-` PREFIX, RE-COLLIDED — NINTH COLLISION (operator, 21 Aug 2026).** A directive labelled its five
+> rulings **D1…D5** while `DECISIONS.md` already held **D-1…D-16**, tracked and cited, on entirely unrelated
+> subjects (D-1 freeze baseline · D-9 Slice-15 pre-flight · D-16 verification-terminal vocabulary). Renamed at
+> source to **F-P39-R1 … F-P39-R5**.
+>
+> **The provenance is the point, and the operator recorded it against himself:** the collision was made *in the
+> directive that banned the bare word "fingerprint" for being the eighth.* §5.0 already carried the reserved-`D-`
+> rule (DECISION/DIMENSION, seventh collision) and it did not prevent this. **The programme's most reliable
+> source of error is its own vocabulary, and it re-proved that while ruling about it.**
+>
+> Rule restated with teeth: **`D-` is reserved for `DECISIONS.md` entries. A new ruling set takes a namespaced
+> prefix tied to its finding (`F-P39-R1`), never a bare `D-N`.** Dimensions remain `DIM-*`.
+
+> **A GOVERNANCE APPARATUS CAN BE CONJURED ENTIRELY IN CONVERSATION AND THEN CITED AS THOUGH IT CONSTRAINS.**
+> (Operator, 21 Aug 2026.) **THREE** such registers were cited as binding within one session and **none existed
+> in the repository**: `D-ART-01…20` (0 hits before a packet created that day), `PHASE 1D / PHASE 1E` (0 hits,
+> ever), and a `D-1…D-9` set whose subjects — `command-center.html`, `approval-guard`, `observations.source`,
+> `evidence.verdict`, `AssuranceVerdict` — resolve to **0 files each**.
+>
+> The failure mode is not that a register is *wrong*; it is that **a register with no repository referent cannot
+> be falsified**, so citing it feels like constraint while imposing none. Sibling of §2 #17 (*pin against the
+> real path*) at the governance layer: **cite against the real corpus, not a convenient one.**
+> **TEST:** before a register constrains anything, `grep` it. Zero hits ⇒ it is a proposal, not a constraint.
+>
+> **PERG corpus (`docs/governance/`, 14 files, 24 Jul, all TRACKED):** referenced by **zero** of the five control
+> documents. **TRACKED ≠ REFERENCED ≠ AUTHORITATIVE.** `EXECUTIVE-GOVERNANCE.md §4` defines a real ADR structure
+> (`PERG-ADR-NNN`; immutable once Accepted; *"an ADR with no cited evidence is not accepted"*; owner is a role,
+> never a person) that **has never been used** — its three rules independently restate §2 #5 and the `f309451`
+> ruling. **OPERATOR RULING: ADOPT THE ADR DISCIPLINE, NOT NECESSARILY THE CORPUS.** The home question stays open.
+> **`RELEASE-GOVERNANCE.md` carries two findings in one document:** its scope section claims *"only `1.0.0-rc.1`
+> has shipped"* while tags `v1.0.0-rc.2…rc.20` exist (**F-P33's shape** — a stale anchor read as current), and it
+> "elevates" `RELEASE-CHECKLIST.md`, which is **ABSENT** (**F-P27's shape** — a procedure that exists only by
+> reference). **F-P39's relation to artifact provenance is UNREGISTERED, not parallel** — "parallel" was a word
+> the source did not support, and the correction is the operator's, accepted.
+
 ### §5.0b · SET-LEVEL PROPERTIES REQUIRE SET-LEVEL TESTS
 
 > **A PROPERTY THAT HOLDS OF EVERY MEMBER NEED NOT HOLD OF THE SET. INDIVIDUALLY-GREEN PINS ARE NOT EVIDENCE

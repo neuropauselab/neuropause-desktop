@@ -69,11 +69,47 @@
 >   preserved. `verify-e2e-strip.sh` deliberately NOT run for the same reason.
 > - **NOT F-P41 closed.** It rides with F-P39 and is not fixed alone.
 >
-> ### THE SEVEN CRITERIA — MEASURED
+> ### REVISION 3 — THE F-P42 UNBLOCKING (21 Aug 2026). **ACCOMMODATION, NOT DESIGN.**
+>
+> F-P39 was implemented and **inert**: the reconciler matched zero rows on every tick. The cause is **F-P42** —
+> the evidence store's scope key is **written as a workspace id** (`connectors/index.ts:641` → `deps.workspaceId()`)
+> and **read as an organization id** by the reconciler and by the counter row. Two separately-seeded namespaces
+> (`workspace-default` / `org-default`), **no mapping at the query boundary**.
+>
+> **THE FIX IS TWO LINES**, inside this envelope, not a new gate: request `{ perWorkspace: true }` on the
+> fan-out, and read `run.scope.workspaceId` — the key that branch already carries. It resolves B1 and B2 together,
+> because the non-perWorkspace branch supplied `workspaceId: ''` from the same line.
+>
+> **STATED AS THE OPERATOR REQUIRED — ACCOMMODATION, NOT DESIGN:**
+> - **Readers conform to the writer's key BECAUSE migration is governance-class, not because the writer is right.**
+> - **THE READER CONFORMS TO A DEVIATING WRITER.** The convention is unanimous — ~25 tenancy files and canonical
+>   `testScope.ts` all write `{tenantId:'org-*', workspaceId:'ws-*'}`. `connectors/index.ts:641` is the outlier.
+> - **THE WRITER'S DEVIATION REMAINS AN OPEN DEFECT WITH A MIGRATION OWED (F-P42).**
+> - **What ends it:** a migration rewriting the key on existing records — its own gate, its own ruling. Not this line.
+>
+> **§19 ITEM 2 STAYS FAIL.** The fix makes production reachability **POSSIBLE, never PROVEN**.
+> `executionGate.ts:67-68` `productionWired: false` is **correct and untouched**; it flips on a real run, never by hand.
+>
+> **§19 ITEM 6 IS PARTIAL, NOT PASS — and that is deliberate.** `fanOutIdentity.test.ts` drives the REAL
+> `forEachTenant`, the REAL perWorkspace branch, REAL principals and the REAL store, with the key derived
+> **independently on both sides** (writer: `currentPrincipal()?.workspaceId`, the two lines `runtimeCore.ts:474-478`
+> runs; reader: `run.scope.workspaceId`). The regression pin proves it is load-bearing: **the old key finds 0.**
+> But `realDeps()` is module-private and `forEachTenantBackground` binds the live singletons, so the composition
+> root is still not executed by any test. **Claiming PASS here would be the same error wearing new clothes.**
+>
+> ### ⚠ MEASUREMENT SNAPSHOT (21 Aug) — **NOT THE ACCEPTANCE SET** (operator ruling R-C)
+>
+> **THE ACCEPTANCE SET IS §19's TEN ∪ the operator's EIGHT.** This seven-row table is a snapshot of what was
+> measured on one day and must never again be read as acceptance. **§19 was never withdrawn, and it caught two
+> failures this table missed** — item 2 (`productionWired` never re-derived) and item 6 (tenant isolation was
+> never driven through the real fan-out, which is exactly how F-P42 hid).
+>
+> **PRECEDENCE RULE, so three sets never coexist unruled again:** §19 ∪ the operator's eight is the acceptance
+> set; any later table is a snapshot unless it says otherwise **and supersedes §19 by name**.
 >
 > | # | Criterion | Verdict | Evidence |
 > |---|---|---|---|
-> | 1 | ZERO frozen surfaces touched | **PASS** | None of the 8 frozen paths modified; pinned by `fp39Closure.test.ts` |
+> | 1 | **PROPERTY: zero frozen surfaces, and evidence production gated by nothing.** MECHANISM: `serviceManager` | **PASS** | None of the 8 frozen paths modified; pinned by `fp39Closure.test.ts`. **Operator ruling R-B: the original mechanism (`deliveryEngine.register`) was wrong; the property stands.** `deliveryEngine.ts:140` `if (!prefs.enabled) return;` and `:145` `mutedSources` mean a **notification preference could silently switch off evidence production**. **LAW: EVIDENCE PRODUCTION MUST NEVER BE GATED BY A USER PREFERENCE — a preference is a UX affordance; evidence is a governance obligation.** |
 > | 2 | DECISION-NEUTRAL | **PASS** | Suite **without** new tests: 9218 passed / 3 skipped (9221). **With**: 9243 / 3 (9246). Delta **exactly 25** = the new tests. Zero assertions changed |
 > | 3 | Single-flight keyed on the hold | **PASS** | Overlapping passes ⇒ `reads === 1`, one attempt, one skip, map does not leak |
 > | 4 | Mutation test | **PASS** | Registration removed ⇒ **25 → 24 pass / 1 fail**; restored byte-identically ⇒ 25 |
