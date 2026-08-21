@@ -276,6 +276,33 @@ mislocalizations in one sitting** — every one of them a fault placed downstrea
 > thing were allowed to share one name* — turned back on our own vocabulary. **No renames in source were made when
 > this rule was adopted;** it governs documents and new code first, and any source rename is its own presented slice.
 
+### §5.0b · SET-LEVEL PROPERTIES REQUIRE SET-LEVEL TESTS
+
+> **A PROPERTY THAT HOLDS OF EVERY MEMBER NEED NOT HOLD OF THE SET. INDIVIDUALLY-GREEN PINS ARE NOT EVIDENCE
+> ABOUT THE COLLECTION THEY BELONG TO.**
+
+**THE WORKED EXAMPLE IS F-P24**, and it is worth stating in full because every part of it was working as designed:
+
+- the FG-4 guard **correctly** refused the 18:19 send;
+- it refuses **before** the executor, so the S34a observer **correctly** never ran;
+- the observer is fed by one gated line in `connectors/index.ts` that **correctly** only fires on the send path;
+- `capabilityProposeCore` emits nothing, **correctly**, because it is a pure data-in/data-out core;
+- the renderer's typed refusal surface sits inside the DEV block, **as its authors placed it**;
+- `runtimeTelemetry` logs its probe reason at `debug`, **a defensible level for a per-15s poll**.
+
+**Six mechanisms. Not one of them is defective on its own terms.** Every per-mechanism review passes. And the
+aggregate is a governance system that **cannot prove it refused** — no evidence row, no log line, no on-screen
+explanation, for a refusal that genuinely happened.
+
+**No per-mechanism test could ever have found it**, because each mechanism satisfies its own contract. The
+question that finds it is asked of the *set*: *given a governed refusal, what does this system retain?* That query
+has no owner in a per-change discipline, and it is exactly the shape the read-only IPC class's review trigger is
+built to force (§ the proposal's review trigger: the two pins must be green **as a set**, because a set-level
+query can fail while every individual pin passes).
+
+**Corollary for how findings are counted:** an aggregate defect has no single site, so it will not appear in any
+file's review and cannot be assigned to any one commit. It is found only by asking a question no component owns.
+
 ### §5.1 · THE TWO LAW FAMILIES — kept separate, deliberately
 
 They are not one law. Conflating them is what let an authority defect and a reachability defect be discussed in the
