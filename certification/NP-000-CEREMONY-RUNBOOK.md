@@ -145,10 +145,22 @@ herring**, recorded as such after NP-007.
 5. **OBSERVE AND STOP.** Record: whether the eight-field review card rendered · whether the compose form
    prefilled · what the log emitted.
 
-> **F-P21 APPLIES HERE AND IS UNFIXED.** **The eight-field review leaves NO DURABLE TRACE.** `brainReview` crosses
-> IPC, renders, and is never persisted. **So step 5's central observation rests on operator transcription — the
-> weakest evidence source in the chain.** Photograph or screen-record the panel. This is stated rather than
-> papered over: it is a Bucket-1 blocker whose fix is emitter work, authorized separately.
+> **F-P21 APPLIES HERE. THE MITIGATION IS A SPECIFICATION, NOT AN INSTRUCTION TO "RECORD SOMETHING".**
+> **The eight-field review leaves NO DURABLE TRACE** — `brainReview` crosses IPC, renders, and is never
+> persisted — so step 5's central observation rests on operator capture, the weakest evidence source in the chain.
+> **A vague capture instruction inherits the wrong-window failure mode**, which is exactly how the 20 Aug sitting
+> lost the ability to say which panel it was looking at.
+>
+> **THE CAPTURE SPECIFICATION — all four, or the capture is not evidence:**
+> 1. **WHOLE SCREEN, NOT THE WINDOW.** Window chrome must be visible, so the capture proves *which window* it is.
+> 2. **A VISIBLE CLOCK IN FRAME** — menu-bar clock or a second display — so frames are correlatable to the log.
+> 3. **RECORDING STARTS BEFORE THE CARD RENDERS** and runs unbroken **through the hard stop**. A recording that
+>    starts after the render cannot show that the render happened.
+> 4. **THE FILE IS HASHED AND ENTERS CUSTODY AS OPERATOR-PRIVATE** — `shasum -a 256`, manifest beside the other
+>    packs. **It will contain the recipient address** (F-P28 applies).
+>
+> **F-P21 is BLOCKS-MITIGATED, exactly as F-P13 is: THE MITIGATION EXISTS — EXECUTE IT, DO NOT REBUILD IT.** The
+> code fix (persisting the review) is queued as emitter work, authorized separately.
 
 **READ THE EMISSION:**
 ```bash
@@ -178,6 +190,12 @@ here so it is not mistaken for a validated procedure:
 > **evidence copied out BEFORE containment**, because containment is destructive by design.
 
 **It does not un-send.** Containment ends future reach; it does not reach backwards.
+
+> **THE REVOCATION PARADOX — why that label cannot be removed before the first ceremony:**
+> **CONTAINMENT CAN ONLY BE VALIDATED BY PERFORMING IT, AND PERFORMING IT REQUIRES HAVING SENT.**
+> There is no order of operations that validates it in advance. It is filed in the register's **§E** as an open
+> question with *"nothing would settle it, before the first ceremony"* — **not as a defect**, because it is not
+> one, and not as something to be fixed by writing more of the document.
 
 ---
 
