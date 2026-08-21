@@ -247,6 +247,25 @@ ruling — so this is reported, not designed around.
 `provenance: { source: 'readBackReconciler', method, oracle: deps.oracleId }`, with
 `oracleId = 'm365ReadBack:sentItems+inbox'`.
 
+### RULINGS APPLIED 21 Aug 2026 — R2 AND R5 CONDITION 1 ARE CLOSED BY DECISION, NOT BY WORK
+
+**R2 — RETIRED BY RULING.** *"Not implemented, not deferred: retired, because the fix it asked for would now be a
+regression."* Kept visible with its reason: R2 asked that subject not be a limb; **D2 aligned the fingerprint
+codomains, so the limb works, and removing `subjectMatchKey` would delete it.** R2 is not a debt.
+
+**R5 CONDITION 1 — WITHDRAWN by its author.** *"The full-tuple key is correct now that the subject limb works. My
+specification was right for a two-limb world that no longer exists."* The wider recipient-within-interval key was
+the safer choice **only while the subject limb was unusable**; with three working limbs the full tuple is correct.
+
+**BOTH ARE §2 #25's WORKED EXAMPLE — the fourth expiring class, caught by the worker rather than the author.**
+Neither was wrong when made; both expired the moment D2 landed, and **a ruling expires silently because nothing
+about it invites re-measurement.**
+
+**R5 CONDITION 2 — RECORD, DO NOT FIX.** Not-found and ambiguous are **OBSERVABLE BUT NOT RECORDED — F-P24's own
+shape one level down**, distinguished only in `detail`/`method` prose while both return `HOLD`. A distinct
+terminal is **governance-class under §2 #18**, and **NP-017 applies: a field lands with the consumer that earns
+it.** **Nothing branches on the distinction today**, so nothing earns it yet. Recorded, unfixed, by ruling.
+
 **THE RESIDUAL, IN MY WORDS.** The query shape is now pinned, so R5's *gate* — "it waits on the Graph adapter" —
 is genuinely lifted. What remains is not adapter work at all: **R5's mechanism is already in production and
 already switched on; what is wrong is the width of its uniqueness key and the flattening of two different
