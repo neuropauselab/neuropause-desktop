@@ -86,6 +86,16 @@ grep -c 'installE2eSeedPrincipal' $A  # MUST be 2 — the seed rail
 Built 2026-08-20 22:18:45 · `index.js` sha256 `ee5e8e99…0e138c0` · seed chunk `e2eSeed-NKS_iH8j.js` sha256
 `a54bc5b2…daf29`. **Re-verify by content if anything is rebuilt; do not assume a hash changed or did not.**
 
+> **⚠️ HAZARD — `npm run dev:desktop` OVERWRITES THIS ARTIFACT.** `electron-vite` declares no `outDir`, so dev
+> mode builds straight into `apps/desktop/out/`. **Do not run it before attempt 2.** It was protected until
+> 21 Aug only by nobody typing that command.
+>
+> **CUSTODY COPY:** `~/NeuroPause-S54-r3-evidence/artifact-2218/` — 87 files, manifest
+> `MANIFEST-artifact-2218.sha256` (`b3c7a899…5e79fad`). The 16:12 predecessor is beside it at `artifact-1612/`
+> (`d6e3a948…0fcae96`), so the pair brackets both builds: 16:12 has **zero** occurrences of `propose refused`,
+> 22:18 has **one**. If `out/` is destroyed, restore from the 2218 copy rather than rebuilding — a rebuild is a
+> different artifact.
+
 ### 1.4 · HARD STOP BEFORE SEND
 
 **The run ends at the propose observation. Nothing is confirmed. Nothing is sent.** A second external effect is

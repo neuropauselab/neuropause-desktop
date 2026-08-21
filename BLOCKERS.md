@@ -50,6 +50,16 @@
 - **F-P32** — the 2026-08-07 legacy document block (24 files, one commit, never revised) **ESCALATED**; see §11.
 - **Containment** — `certification/CONTAINMENT-PROCEDURE.md` now exists but carries **UNKNOWN** steps.
 
+## ⚠️ HAZARDS — commands that destroy something irreplaceable
+
+- **`npm run dev:desktop` overwrites `apps/desktop/out/`** — `electron-vite` declares no `outDir`. That directory
+  holds the **22:18 artifact attempt 2 runs against**. Custody copy at
+  `~/NeuroPause-S54-r3-evidence/artifact-2218/` (manifest `b3c7a899…5e79fad`); restore from it rather than
+  rebuilding, because a rebuild is a different artifact.
+- **The prod database has no landed backup path** (S18's pgBackRest/restore-drill is not built). A verified dump
+  is in custody at `~/NeuroPause-S54-r3-evidence/prod-db-backup/` (`e5c36a1e…86feb5c`) — **that is a snapshot, not
+  a backup system.**
+
 ## 📋 STANDING PROCESS RULES EARNED THE HARD WAY
 
 - **NO OPERATOR-IN-THE-LOOP STEP AT THE END OF A LONG SITTING.**
@@ -61,6 +71,8 @@
 - **RECORD SUPERSEDES RECOLLECTION** — including for procedures (F-P27).
 - **A SAFETY GATE MUST TEST THE EXACT DANGEROUS STATE, NOT A CORRELATED SIGNATURE** (F-P29).
 - **HONEST LABELS, NOT SAFE LABELS** — a pessimistic label the evidence contradicts is still a wrong label.
+- **AN UNVERIFIED BACKUP IS NOT A BACKUP** — read the rows back out of the archive; an exit code is not evidence.
+- **INSTRUMENTED SILENCE IS EVIDENCE ONLY IF THE INSTRUMENT CAN REACH THE SINK** (F-P35).
 
 ## ⏭️ NEXT
 

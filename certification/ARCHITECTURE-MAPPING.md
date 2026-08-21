@@ -998,3 +998,62 @@ an observation is the claim-language family.
 - **`composeBusinessFacts` — TIER-2.** Pure, read-only, `UNAVAILABLE`-honest. **But wiring it to a view is blocked
   by the FROZEN IPC contract, not by tier** — hence the proposal in
   `PROPOSAL-READ-ONLY-IPC-GATE-CLASS.md`. Nothing was wired.
+
+## §13 · F-P35 CLOSED · THE ARTIFACT BRACKET · AND FOUR RECORDS (21 Aug 2026)
+
+### §13.1 · F-P35 — **CLOSED. ENVIRONMENT-SPECIFIC, CAUSE PERMANENTLY UNKNOWN, NOT REOPENED.**
+
+The fourth and last variant tested the only untested input: **the r3 profile itself**, from a working copy, exact
+r3 configuration (22:18 artifact · `NODE_ENV=production` · `NP_E2E_BUILD=1` · `NEUROPAUSE_E2E=1` · default
+`:4000`).
+
+| # | profile | seed | URL | recovery attempts |
+|---|---|---|---|---|
+| A | throwaway | off | :4010 | **zero** |
+| B | throwaway | on | :4010 | **zero** |
+| C | throwaway | on | **:4000 (r3 config)** | **zero** |
+| **D** | **r3 COPY** | on | **:4000** | **zero** — 165 new log lines, none a failure |
+
+r3 logged **43 `ok:false` and zero `ok:true`**. Four variants, including its own profile, produce **none**.
+
+> **F-P35 CLOSES as environment-specific — machine state at the time — and is NOT REOPENED.** The probe's
+> unrecordable-diagnostic defect (§12.1) stands on its own and is unfixed by ruling.
+
+**Custody proven, not asserted:** the original r3 profile hashed **`52f64db2…5bfe5f1` before and after**,
+byte-identical; latch intact; `snapshot-r3-postexit` untouched; artifact mtime `22:18:45` unchanged; working copy
+removed.
+
+### §13.2 · THE ARTIFACT BRACKET — BOTH BUILDS IN CUSTODY
+
+| build | location | `main/index.js` sha256 | `propose refused` |
+|---|---|---|---|
+| 16:12 | `artifact-1612/` (manifest `d6e3a948…0fcae96`) | `5c79aac8…3b1ffda` | **0** |
+| **22:18** | **`artifact-2218/`** (manifest `b3c7a899…5e79fad`) | `ee5e8e99…0e138c0` | **1** |
+
+87 files each; seed chunk `e2eSeed-NKS_iH8j.js` (`a54bc5b2…daf29`) identical across both. **Attempt 2's artifact
+now exists in two places.** Recorded in the v2 runbook and BLOCKERS.
+
+### §13.3 · FOUR RECORDS
+
+**AN UNVERIFIED BACKUP IS NOT A BACKUP.** The prod dump's rows were read back **out of the archive** — users 3,
+orgs 1, memberships 1, sessions 194 — rather than trusting `pg_dump`'s exit code. **Same shape as *an unobserved
+render is not a demonstration*.** Into the standing rules.
+
+**`npm run dev:desktop` OVERWRITES `out/`.** `electron-vite` declares no `outDir`. The 22:18 artifact was
+protected until 21 Aug **only by nobody typing that command** — a stated precondition with no check, F-P13's shape
+on a build artifact. Now a named hazard in BLOCKERS and the v2 runbook, with the custody copy as the remedy.
+
+**THE DEFAULT CONFIGURATION SHOWS AN EMPTY MARKETPLACE.** `:4000` (prod) returns **0 apps**; `:4010` (dev) returns
+**20**. Observed in three separate launches. **A product consequence of the port collision, not a bug** — it
+belongs to the operator's prod/dev ruling, and it means the desktop's out-of-the-box default currently presents an
+empty catalog.
+
+**THE TWO-PHENOMENA TEMPTATION, AND WHY IT WAS KILLED.** It is tempting to join F-P35 and the A/B question into
+one story — both are unexplained, both concern the same r3 session, both closed as unknown. **They are different
+classes and must not be joined:**
+
+> **The probe is an IRREPRODUCIBLE PHENOMENON — it can be attempted again, and was, four times.
+> A/B is an UNOBSERVED HISTORICAL FACT — it happened once and no instrument recorded it.**
+
+One closed by *failing to reproduce*; the other closed because *nothing can reproduce a past click*. Recorded so
+nobody later treats a single explanation as covering both.

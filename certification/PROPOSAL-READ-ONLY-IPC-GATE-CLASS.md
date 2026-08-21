@@ -78,3 +78,33 @@ about it.
 
 **Recommended if adopted:** a standing register of every change admitted under this class, so the count is visible
 and the class can be audited as a set — the F-P32 lesson, applied before the block accumulates rather than after.
+
+## THE REVIEW TRIGGER — because a register without one becomes the thing it was built to prevent
+
+> **F-P32 IS a register with no trigger.** Twenty-four files landed in one commit on 2026-08-07 and sat unreviewed
+> for two weeks, and nobody discovered it until a recon looked. A list that nothing forces anyone to read is not a
+> control; it is a second place for the same problem to accumulate quietly.
+
+**The trigger, named concretely — BOTH conditions, whichever comes first:**
+
+1. **EVERY FIFTH ADMISSION.** A count is unambiguous and needs no judgement. Five is small enough that a review is
+   cheap and large enough that it is not ceremony on every change.
+2. **AT EVERY SEVERITY GATE**, unconditionally, even if only one change was admitted since the last one — because
+   the severity gate is the moment the programme asks what is ship-blocking, and an unreviewed class is exactly
+   the kind of thing that should not answer "nothing" by default.
+
+**WHAT THE REVIEW ACTUALLY CHECKS — and the second item is the one that matters:**
+
+- **Conditions 1 and 2, re-verified per admitted change, against current source.** Not against the change as
+  described at admission time. A field admitted as additive-optional may since have been made required; a handler
+  admitted as read-only may since have grown a write. **The register records what was true then; the review
+  establishes what is true now.**
+- **THE TWO PINS, GREEN AS A SET — NOT INDIVIDUALLY.** Each admission ships pins that no governance decision reads
+  *its* field and nothing branches on *its* field. Run per-change, those pass forever while the class as a whole
+  drifts. **The set-level question is the real one: does any governance decision now read ANY field admitted under
+  this class, and does anything branch on ANY of them for authority?** That is a different query, it can fail when
+  every individual pin passes, and it is what a per-change discipline structurally cannot see.
+
+**If a review cannot be run** — the register is missing, the pins do not exist as a set, or a change cannot be
+located — **the class is suspended for new admissions until it can.** A gate whose audit is impossible has already
+stopped being a gate.
