@@ -269,6 +269,12 @@ mislocalizations in one sitting** — every one of them a fault placed downstrea
 > after the ladder took four shapes in four consecutive documents — dropping TESTED and ADVERSARIAL twice, which
 > are the red-first rungs the programme rests on. A vocabulary that has taken four shapes in four documents is not
 > a vocabulary, it is a draft.)
+>
+> **EXTENDED 21 Aug 2026 (operator ruling): `SHIPPED` and `BELIEVABLE` are ruled ONTO this ladder —
+> DECLARED ≠ REACHABLE ≠ SHIPPED ≠ BELIEVABLE.** Recorded in full at **§5.0d**, deliberately as an extension of
+> THIS ladder rather than a fifth shape of it. SHIPPED asks whether the installed artifact contains the path (the
+> rung compile-stripping breaks); BELIEVABLE asks whether its result can be trusted once it runs. **The worked
+> example is F-P39: wired, unstripped, unflagged, reachable — and blocked from being believed.**
 
 > **THE PREFIX `D-` IS RESERVED FOR DECISIONS, AND DIMENSIONS ARE `DIM-`.** `DECISIONS.md` carries **D-1…D-16**
 > as decisions. Any dimensional axis is named **DIM-1…DIM-n**, never `D-anything` — "D-9 the decision" and
@@ -399,6 +405,37 @@ evidenced. Which is why every finding must name the law it violates — a findin
 The chain also says what CLOSED means: **a correction that has been verified**, not a correction that has been
 applied. F-P33 is closed because the header was repaired *and* the recurrence rule pins it; F-P35 is closed as
 ENVIRONMENT-SPECIFIC because four reproductions failed, which is a verification of a negative rather than of a fix.
+
+### §5.0d · THE LADDER GAINS A RUNG — **SHIPPED, AND BELIEVABLE** (operator ruling, 21 Aug 2026)
+
+**DECLARED ≠ REACHABLE ≠ SHIPPED ≠ BELIEVABLE.**
+
+**RECONCILED AGAINST §0.3, NOT FORKED FROM IT.** §0.3's ruling is that the canonical evidence ladder is its own
+and only its own, *"and any advisory diagram that differs is a PROPOSAL, not a correction"* — a rule written after
+the ladder took four shapes in four documents. So this is recorded as an **extension the operator ruled onto the
+canonical ladder**, not a second vocabulary competing with it: `DECLARED → REACHABLE → CONSUMED → ENFORCED →
+TESTED → ADVERSARIAL → OBSERVED → VERIFIED` gains **SHIPPED** (does the artifact a user installs contain it?) and
+**BELIEVABLE** (can its result be trusted once it runs?). One ladder, two more rungs. *Anyone finding a second
+ladder elsewhere should reconcile it here before acting on it.*
+
+**WHY THE TWO NEW RUNGS ARE NOT THE SAME QUESTION.** SHIPPED and REACHABLE come apart at compile-stripping: for
+two days `verifyGovernedSend` was reachable in the repository and **absent from the release build**, which is the
+whole of F-P39's original statement. BELIEVABLE comes apart from all of them at the point where a path *runs* and
+its answer still cannot be relied upon.
+
+**THE WORKED EXAMPLE — F-P39 at `2ffeefa`, in one sentence:** *the read-back is wired, unstripped, unflagged and
+reachable — **and it is blocked from being believed**.* Every earlier rung passes. `readBackReconciler.ts:33`
+imports it, `runtimeCore.ts:4072` starts it, `verify-e2e-strip.sh` does not remove it. And yet the adapter it
+depends on has **never been executed by anything**, its query shape is **unfalsifiable by the existing mock**
+(`mockGraph.ts:127,130` dispatches on a folder-path regex and parses no `$select` — F-P49), and until `68e3349`
+the terminal it would write was **read back through the wrong namespace**. **A path that runs but whose result
+cannot be trusted is not the same as a path that does not run** — and the register must be able to say which one
+it is holding, because the two have completely different remedies.
+
+**THE FAILURE MODE THIS RUNG EXISTS TO STOP:** wiring is visible and satisfying, so a slice that achieves
+REACHABLE reads as finished. **REACHABLE is the rung at which work most often stops and is most often reported as
+done.** Sibling of §2 #19's *observable is not recorded* and F-N17-4's *a declared governance capability is not
+the same thing as a reachable governance path* — the same distinction, one rung further along.
 
 ### §5.1 · THE TWO LAW FAMILIES — kept separate, deliberately
 
