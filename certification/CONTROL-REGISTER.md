@@ -75,6 +75,7 @@
 | **F-MR-2** | *(master readiness)* | OPEN | **CANNOT-CLASSIFY** | UNKNOWN |
 | **F-MR-5** | *(master readiness)* | OPEN | **CANNOT-CLASSIFY** | UNKNOWN |
 | **F-MR-7** | Credential boundary | CLOSED (NP-013) | RECORD | §2 #12 *secrets* |
+| **F-P39** | **The read-back has NO PRODUCTION CALLER — step 6 of the ceremony does not exist in production.** `verifyGovernedSend`'s only non-test importers are two `__NP_E2E__`-gated, compile-stripped e2e modules; `deriveOracle` declares `productionWired: false`; the recorded S22 production caller is not built. **The ceremony as built ends at PROVIDER_ACKNOWLEDGED.** | OPEN | **BLOCKS-SEND** — supersedes the read-back-terminal item | §2 #14 *universal read-back*; F-N17-4's *declared ≠ reachable*, at the worst site in the chain |
 | **F-P37** | Instrumentation density is inversely correlated with proximity to external effect — the four silent sites are the four closest to the world, and the well-instrumented middle is the newest code. Mechanism: instrumentation correlates with **when the code was written**, not with what it can do. | OPEN — prediction untested | RECORD | *set-level properties require set-level tests* (it is a property of the corpus, not of any file) |
 | **F-P38** | **The operator's confirm — the only human authority in the system — leaves no direct durable trace.** No `confirmed` field on `ActionRecord`; consent is inferable only from `verdict: ALLOW` via RULE-011's unconfirmed→HOLD pin, and cannot say who confirmed or when. | OPEN | **BLOCKS-SEND** (c) — pending operator ruling | *a refusal must be observable…* extended: **an authorization must be observable** |
 | **F-P36** | Real account data — 3 users, 1 org, 194 sessions — lives in a local container with **no restore drill and no landed backup path**. A verified dump is in custody (`e5c36a1e…86feb5c`); **that is a snapshot, not a backup system.** **S18** is the unlanded slice that would provide both. | OPEN | BLOCKS-PRODUCT | *an unverified backup is not a backup* — and its unmet half: a backup with no restore drill is unproven |
@@ -135,6 +136,7 @@ not carried into the register).
 | *citing a redactor without citing its pins is a false assurance* | **F-P26** | **PROSE** |
 | the vocabulary bans — GRANTED/TENANT, GOVERNED/PRODUCT, MODULE/CAPABILITY, **DECISION/DIMENSION** | **F-P32** | **PROSE** |
 | **CANNOT-CLASSIFY IS A BUCKET, NOT A CLASS** — a row unclassifiable *because nobody has established the fact* belongs in **§E**, not in §A | — | **PROSE** (structural: §E exists) |
+| **OBSERVABLE IS NOT RECORDED** — the log is diagnostic, the evidence store is the record; F-P24's requirement means the **ActionRecord** | **F-P24, F-P39** | **PROSE** |
 | *containment can only be validated by performing it, and performing it requires having sent* | — | **PROSE** — recorded in §E and in `CONTAINMENT-PROCEDURE.md` |
 | the canonical evidence ladder (DECLARED → REACHABLE → … → VERIFIED) | F-MR-1 | **PROSE** |
 | *no operator-in-the-loop step at the end of a long sitting* | — | **PROSE** (v2 runbook §0) |

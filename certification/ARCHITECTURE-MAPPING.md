@@ -1176,3 +1176,70 @@ Brain lane, the L6 gate — is the **newest** code.
 **TESTABLE PREDICTION, not tested here:** the same pattern should appear anywhere else old frozen code sits near a
 consequence — the `governedAction` path for the 28 non-`mail.send` write actions is the obvious place to look.
 **Do not test it now.**
+
+## §15 · F-P39 — **THE READ-BACK HAS NO PRODUCTION CALLER. STEP 6 DOES NOT EXIST IN PRODUCTION.** (21 Aug 2026)
+
+The contingent read came back **NO**, and the envelope was **not drafted**. Adding a recorder to a function
+nobody calls is vacuous-green — the defect Pin C nearly was.
+
+**ESTABLISHED FROM SOURCE:**
+
+- `verifyGovernedSend`'s **only** non-test importers are **`src/main/e2e/s16VerifyRun.ts`** and
+  **`src/main/e2e/e2eVerifyRun.ts`**. Both are `__NP_E2E__`-gated and live under `src/main/e2e/`, **compile-stripped
+  from every release build**. Every other reference is a test.
+- **The code declares it about itself.** `executionGate.ts:67`, a static literal in `deriveOracle`:
+  ```js
+  { verifiable: 'send-corroboration', oracleId: 'verifyEffect', note: 'send-corroboration, not delivery',
+    needs: null, productionWired: false }
+  ```
+- CLAUDE §1 recorded *"the S22 reconciler is its production caller"* as an explicit **no-orphan gate** — a
+  forward-looking claim about a caller that would exist. **S22 (Wave 5) is not built.** The gate pointed at a
+  future and has been read since as if it pointed at a present.
+
+*Honest bound on one check: `grep 'verifyGovernedSend'` returns 0 in the 22:18 bundle, but that build is minified
+and internal names are manglable, so **the bundle grep is NOT probative** and the conclusion rests on the source
+facts above, not on it.*
+
+### §15.1 · WHAT THIS IS — F-N17-4's FAMILY AT THE WORST SITE IN THE CHAIN
+
+> **A DECLARED GOVERNANCE CAPABILITY IS NOT THE SAME THING AS A REACHABLE GOVERNANCE PATH** — and here the
+> unreachable path is **INDEPENDENT VERIFICATION**, the last link of §2 #14's universal read-back and the step
+> that separates *submitted* from *verified*.
+
+**It is a much larger finding than F-P24-scoped**, and it changes what the ceremony can claim: **the ceremony as
+built ends at PROVIDER_ACKNOWLEDGED.** Step 6 is not a step that runs and forgets — **it is a step that does not
+run.**
+
+### §15.2 · S16's VERIFIED_SUCCESS — RECLASSIFIED, NOT WITHDRAWN
+
+**The provider-side observation stands.** A real message reached Sent Items with a captured
+`internetMessageId`; that was observed and is not in question.
+
+> **THE CORRECTION IS TO WHAT THE VERIFICATION RECORD PROVES.** The terminal was produced by
+> `e2e/s16VerifyRun.ts` — a **compile-gated harness runner**. So S16's VERIFIED_SUCCESS is
+> **HARNESS-PRODUCED, NOT PRODUCT-PRODUCED.** It demonstrates that the *oracle works*; it does **not**
+> demonstrate that *the product verifies*.
+
+**This is not a withdrawal of S16.** It is the same distinction the programme has enforced everywhere else:
+*an unobserved render is not a demonstration*, and a harness result is not a product capability.
+
+### §15.3 · OBSERVABLE IS NOT RECORDED — into §2, with F-P24 amended
+
+> **OBSERVABLE IS NOT RECORDED.** The log is **diagnostic**; the **evidence store is the record**. A requirement
+> for durable evidence is not satisfied by an emitter, and F-P24 is amended to name **which artifact** it means:
+> **the ActionRecord**, not `app.log`.
+
+**WORKED EXAMPLE — the FG-10 gate's REFUSE:** it emits at `warn` (`executionGate.ts:98`) and **mints nothing**.
+So it is fully observable in the log and **entirely absent from the evidence store** — *an ActionRecord audit sees
+a ceremony that never refused.*
+
+### §15.4 · F-P38 — THE CONSENT TRACE, AND WHAT MITIGATES IT TODAY
+
+**The only human authority in the system leaves no direct durable trace.** No `confirmed` field on
+`ActionRecord`; consent is inferable from `verdict: ALLOW` via RULE-011's unconfirmed→HOLD pin, and **cannot say
+WHO confirmed or WHEN**. **BLOCKS-PRODUCT** — deliberately not mixed into a send-blocking envelope, so the
+ceremony does not wait on a product fix.
+
+**NP-000's mitigation is F-P21's screen recording plus the RULE-011 inference.** Recorded plainly: **that is
+adequate for one supervised operator at a keyboard, and for nothing beyond that.** It does not scale to a second
+operator, an unsupervised run, or any audit that must attribute consent to a person.
