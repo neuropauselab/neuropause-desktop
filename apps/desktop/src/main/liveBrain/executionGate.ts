@@ -103,7 +103,6 @@ export function l6ExecutionGate(deps: RuntimeExecuteDeps, r: ExecuteRequestLike,
     // second copy of this rule is how discovery and the boundary drifted apart.
     isCertifiedConsequential: isCertifiedConsequentialCapability,
   };
-  const gate = gateL6Execution({ tenantId, capabilityId: r.actionId, account: r.accountId, params: r.params }, execDeps);
   /**
    * ROUTE A (F-P24) — MINT THE GOVERNANCE EVIDENCE WHERE THE GOVERNANCE DECISION IS MADE.
    *
@@ -129,6 +128,38 @@ export function l6ExecutionGate(deps: RuntimeExecuteDeps, r: ExecuteRequestLike,
       )
       .catch(() => {});
   };
+  /**
+   * F-P48 — GOVERN THE IDENTITY CONDITION, NOT THE LOOKUP RESULT.
+   *
+   * **THIS REFUSAL IS NOT ABOUT THE PROPOSAL. IT IS ABOUT THE PRECONDITION FOR ASKING ABOUT THE PROPOSAL.**
+   *
+   * An unresolved workspace makes the proposal key meaningless, so a lookup MISS carries no information: we did
+   * not fail to find a proposal — we were never in a position to look. Previously that miss fell through to SKIP
+   * and the send PROCEEDED. **A gate that skips on a key miss is not a gate, it is a lookup with a permissive
+   * default**, and the miss happened exactly when identity was least certain.
+   *
+   * WHY `IDENTITY_UNRESOLVED` IS NOT ONE OF `proposalExecutionBoundary`'s SEVEN: those answer *why was this
+   * proposal rejected*; this answers *why was no proposal question asked*. **They cannot share an enum because
+   * they cannot share a moment** — the seven are reachable only AFTER `takeProposal` returns a proposal, this
+   * only BEFORE it is called. Not `NO_PROPOSAL` either: the legitimate skip also has no proposal, so the name
+   * would describe both cases and distinguish neither.
+   *
+   * BEFORE THE LOOKUP, DELIBERATELY: after it, the two skips are indistinguishable.
+   *
+   * `deps.workspaceId()` is TOTAL in production (`runtimeCore.ts:474-478` coalesces twice), so `''` IS the
+   * unresolved signal and the `??` above is untouched. `''` and `null` are treated identically, because **an
+   * empty id is an unresolved id wearing a string** — the rule `connectorVault.clear()` already learned after a
+   * missing workspace once wiped every workspace's credentials.
+   *
+   * THE LEGITIMATE SKIP IS UNAFFECTED and that is the whole point: a human-composed send from
+   * `M365WritePanel.tsx:106` arrives with a RESOLVED workspace and no proposal, and still proceeds.
+   */
+  if (tenantId === '') {
+    log.warn(`L6-GATE REFUSE capability=${r.actionId} — IDENTITY_UNRESOLVED (no workspace resolved)`);
+    emitGovernance('DENY');
+    return { ok: false, refusal: { ok: false, message: 'L6 execution gate refused', data: { outcome: 'DENIED', reason: 'IDENTITY_UNRESOLVED' } } };
+  }
+  const gate = gateL6Execution({ tenantId, capabilityId: r.actionId, account: r.accountId, params: r.params }, execDeps);
   if (gate.gate === 'refuse') {
     log.warn(`L6-GATE REFUSE capability=${r.actionId} tenant=${tenantId} — ${gate.reason}`);
     emitGovernance('DENY');

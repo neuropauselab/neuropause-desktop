@@ -437,6 +437,30 @@ REACHABLE reads as finished. **REACHABLE is the rung at which work most often st
 done.** Sibling of §2 #19's *observable is not recorded* and F-N17-4's *a declared governance capability is not
 the same thing as a reachable governance path* — the same distinction, one rung further along.
 
+#### THE EVIDENCE SUB-LADDER: **OBSERVABLE ≠ RECORDED ≠ RETRIEVABLE** (operator, 21 Aug 2026)
+
+§2 #19 already separates the first two — *the log is diagnostic; the evidence store is the record.* **A third rung
+sits after them, and it is the one nobody checks: a row can be written, durable and correct, and still be
+UNREACHABLE BY EVERY QUERY THE PRODUCT ACTUALLY ISSUES.**
+
+**THE WORKED EXAMPLE, which is a consequence of a fix rather than a defect in one:** F-P48's refusal mints its
+governance row keyed by the **empty workspace** — because that is what identity resolution returned, and it is
+honest. **Every alternative is worse: inventing a workspace fabricates identity; skipping the row re-creates the
+silence F-P24 exists to end; keying it to a "default" workspace attributes a refusal to a tenant that did not
+cause it.** So the `''` key is **RULED AND KEPT.**
+
+**And its consequence is stated rather than discovered later: NOTHING QUERIES `''`.** Every reader — the counter,
+the reconciler, any panel — scans by a legitimate workspace id. **The row is durable and invisible.**
+
+> **RULING: any future audit surface must include unresolved-key rows EXPLICITLY, never by workspace scan.**
+> A workspace-scanning audit will report *"no refusals"* with total confidence, because it asked every workspace
+> that exists and none of them owns the row. **That is a complete search of the wrong space (§2 #30) wearing an
+> audit's clothes.**
+
+**Why this belongs on the ladder rather than in a single finding:** RETRIEVABLE is a distinct rung with a distinct
+failure. A system can pass OBSERVABLE (it logged), pass RECORDED (it persisted), and still fail the only question
+that matters — *can anyone get it back?*
+
 ### §5.0e · THE FIFTY-SECTION DIRECTIVE — NOT EXECUTED, AND WHY THE PATTERN IS NOW THREE DEEP (21 Aug 2026)
 
 A fifty-section reconciliation directive was superseded by its own author and **deliberately not executed**. The
