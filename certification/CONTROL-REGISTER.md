@@ -1,6 +1,27 @@
 # THE CONTROL REGISTER
 ### The four-class register · 21 Aug 2026 · **Entries were MOVED, not rewritten — every one keeps its original wording**
 
+> # ⚠ THIS DOCUMENT IS **DESCRIPTIVE**. IT IS NOT NORMATIVE FOR GATE STATE.
+> **Ruled by the operator, 21 Aug 2026.** Recorded in the register's own header so it can never again claim
+> standing it was never granted.
+>
+> **GATE STATE IS NORMATIVE ONLY IN `CLAUDE.md` §1.** This register and `BLOCKERS.md` are **INDEXES**.
+> - Where an index disagrees with §1 → **§1 WINS**, and the index is corrected.
+> - Where **§1 is SILENT** → the state is **`NOT_ESTABLISHED`** until the operator rules and it is **entered in §1**.
+>   Silence is not an implicit OPEN and not an implicit CLOSED. An index may not fill a gap in §1 by writing one.
+>
+> **WHY THIS WAS NEEDED (the establishing negative, 21 Aug 2026):** `AUTONOMY.md:14` states the only hierarchy in
+> the repository — `CLAUDE.md > AUTONOMY.md > WORK_QUEUE.md > TASK PLAN > WORKER INTERPRETATION` — and **the
+> certification corpus is on none of its five rungs.** This file is referenced by **zero** of CLAUDE.md,
+> AUTONOMY.md, WORK_QUEUE.md, NP_STATE.md (each proven present before the grep was read as absence; the `register`
+> hits in CLAUDE.md are `## 6 · GATE REGISTRY`, a **naming collision, not a reference**). The only path here is
+> transitive and one link deep: `CLAUDE.md:73` ritual → `BLOCKERS.md:4-5` → this file. **A document nothing
+> authoritative names cannot adjudicate anything**, and for two days it was treated as if it could.
+>
+> **THE RULE THAT SETTLES RECENCY:** this register was 2h05m newer than `BLOCKERS.md` when they disagreed, and
+> that fact is **worth nothing**. **RECENCY IS NOT AUTHORITY.** Newer prose describing an unchanged defect is
+> still prose. Compare against **§1 and the source**, never against a timestamp.
+
 > **MODEL (`ARCHITECTURE-MAPPING.md` §5.0c):**
 > **CONSTITUTION → REQUIREMENT → IMPLEMENTATION → OBSERVATION → FINDING → CORRECTION → VERIFICATION → CLOSED**
 >
@@ -14,10 +35,29 @@
 > **BUCKET-1 CRITERION:** without fixing it, **(a)** an unintended external effect could occur, **OR (b)** an
 > intended one could not be proven, **OR (c)** the ceremony's own evidence would be untrustworthy.
 >
-> **BUCKET 1 IS SIX: P1 · F-P27 · F-P8 · F-P21 · F-P24 (scoped) · F-P31.** Four more fold into two of those
-> fixes — **F-P10 and F-P14 into F-P27**, **F-P11 and F-P23 into F-P24** — and are marked as folding rather than
-> as separate blockers. **F-P13 is BLOCKS-MITIGATED: its gate exists in the v2 runbook and must be EXECUTED, not
-> built.** Every remaining row is filled; the default is RECORD.
+> ~~**BUCKET 1 IS SIX: P1 · F-P27 · F-P8 · F-P21 · F-P24 (scoped) · F-P31.**~~ **← STALE. SUPERSEDED 21 Aug 2026.**
+> The six-list is struck rather than deleted, because the *drift* is itself evidence: it named F-P21 as a blocker
+> while this register's own row bucketed it BLOCKS-MITIGATED, and it omitted two live BLOCKS-SEND rows. **A summary
+> that disagrees with the rows it summarizes is a defect in the summary.**
+>
+> > ### **BUCKET 1 = P1 · F-P8 · F-P39.** *(operator, 21 Aug 2026 — normative in `CLAUDE.md` §1)*
+>
+> **The arithmetic, ruled item by item:**
+> - **F-P21 → BLOCKS-MITIGATED.** The row at `:46` was right; the six-list was stale. Execute the capture spec.
+> - **F-P31 → REOPENED, correctly.** **A PROCEDURAL MITIGATION IS NEVER A CLOSURE.** `index.ts` still latches
+>   `shutdownFlushed = true`; a runbook paragraph telling a human to work around a defect leaves the defect
+>   untouched. **CLOSED means the correction was VERIFIED** — nothing less closes a row.
+> - **F-P10 → CLOSED.** It was a defect **IN the document**, and the document was corrected. When the artifact of
+>   the finding *is* the document, correcting the document *is* the fix. (This is the exception that proves the
+>   next line's rule, and the two must never be confused.)
+> - **F-P14 → REOPENED as BLOCKS-PRODUCT.** A defect in the **PRODUCT** that the document merely describes.
+>   **DOCUMENTING A DEFECT DOES NOT FIX IT.** Naming the broken navigation in a runbook does not repair the
+>   navigation semantics. Now `CLAUDE.md` §2 #20's closing clause.
+> - **F-P27, F-P24 (scoped), F-P13** — no longer Bucket 1 under the ruled membership above. **F-P13 remains
+>   BLOCKS-MITIGATED**: its gate exists in the v2 runbook and must be **EXECUTED, not built.**
+>
+> **Bucket membership is PRIORITY, never STATUS.** A row leaving Bucket 1 is not a row that closed. Every remaining
+> row is filled; the default is RECORD.
 >
 > ### **BUCKET-1 STATUS DOES NOT RELEASE A HELD ITEM.**
 > **P1 is a blocker AND attempt 2 stays held.** The gate determines what RISES; **it does not consume the held
@@ -34,11 +74,11 @@
 |---|---|---|---|---|
 | **F-P8** | Model output reaches a send-capable form with nothing between — a boundary crossed by CONTENT where the architecture only pinned CONTROL | OPEN | **BLOCKS-SEND** (a) | *AI output is untrusted data* (§2 #6); *the validating path and the serving path are different paths* |
 | **F-P9** | The record carries two clocks under one set of numbers; no run id ties a log line to a run | OPEN | RECORD | *correlation is for evidence, never for authorization*; the proof standard's one-run-id requirement |
-| **F-P10** | The runbook was written against SOURCE, never against the built ARTIFACT | **REOPENED 21 Aug.** The *documentation* instance closed (one runbook now written against the artifact); the **systemic** instance did not — certification still records no source→build→artifact→runtime→run identity chain. **I closed a finding on the strength of closing one document.** | **BLOCKS-SEND** — folds into F-P27 | §2 #17 *pin against the real path*; *a document describing the repository is not one describing the artifact* |
+| **F-P10** | The runbook was written against SOURCE, never against the built ARTIFACT | **CLOSED 21 Aug (operator ruling).** The finding's artifact **WAS the document**, and the document was corrected — one runbook now written against the artifact. Where the defect *is* the document, correcting the document *is* the fix. ⟵ *My 21 Aug REOPEN was over-correction: having just been wrong the other way on F-P14, I applied "documentation cannot close a code question" to a finding that was never a code question.* **The systemic gap it gestured at — no source→build→artifact→runtime→run identity chain in certification — is REAL but is NOT this row**; it is recorded separately rather than kept alive under a closed finding's number. | CLOSED | §2 #17 *pin against the real path*; *a document describing the repository is not one describing the artifact* |
 | **F-P11** | A fail-closed path that leaves no evidence is indistinguishable from a path that never ran | OPEN | **BLOCKS-SEND** — folds into F-P24 | *a refusal must be observable or it is not auditable* |
 | **F-P12** | The handoff mailbox has no expiry while its proposal carries a 10-minute `Expires` | OPEN | RECORD | **NO RECORDED LAW** — candidate missing law: *an expiry on one side of a handoff is not an expiry* |
 | **F-P13** | A per-profile safety device does not protect a multi-instance desktop | OPEN | **BLOCKS-MITIGATED** — gate exists; EXECUTE, do not build | *a stated precondition without a check is not a precondition* |
-| **F-P14** | "Open connectors" does not open the Microsoft panel | **REOPENED 21 Aug.** Naming the behaviour in a runbook documents it; it does not repair the navigation semantics. Documentation cannot close a code question. | **BLOCKS-SEND** — folds into F-P27 | *a declared thing and a reachable thing were allowed to share one name* (REACHABILITY family) |
+| **F-P14** | "Open connectors" does not open the Microsoft panel | **REOPENED 21 Aug — stands (operator ruling).** Naming the behaviour in a runbook documents it; it does not repair the navigation semantics. **DOCUMENTING A DEFECT DOES NOT FIX IT** (now `CLAUDE.md` §2 #20). The defect is in the **PRODUCT**; the document merely describes it. | **BLOCKS-PRODUCT** — *re-bucketed 21 Aug; no longer "folds into F-P27", because F-P27 is a documentation finding and this is not* | *a declared thing and a reachable thing were allowed to share one name* (REACHABILITY family) |
 | **F-P15** | `isLoaded` monotonic ⇒ `not_loaded` excluded by direction | CLOSED (negative) | RECORD | — |
 | **F-P16** | `resolveTenantScope` branch stable; IPC handlers take `session()` | CLOSED (negative) | RECORD | — |
 | **F-P17** | Tenant-scope-null does not account for the zero counter row | CLOSED (negative) | RECORD | — |

@@ -28,14 +28,30 @@
 **Criterion:** without fixing it, (a) an unintended external effect could occur, (b) an intended one could not be
 proven, or (c) the ceremony's own evidence would be untrustworthy.
 
+> **⚠ THIS TABLE IS AN INDEX, NOT THE AUTHORITY.** Gate state is normative only in **`CLAUDE.md` §1**; where this
+> file and §1 disagree, **§1 wins** and this file is corrected. Where §1 is silent, the state is
+> **`NOT_ESTABLISHED`** — not an implied OPEN, not an implied CLOSED. *(Operator ruling, 21 Aug 2026; the same
+> ruling put the long-form version in `certification/CONTROL-REGISTER.md`'s header.)*
+
 | # | Item | Why | State |
 |---|---|---|---|
 | 1 | **P1** | (b) the propose path's status is unknown | closes when **attempt 2** runs |
-| 2 | **F-P27** | (c) no committed ceremony runbook | **CLOSED 21 Aug** — F-P10 + F-P14 folded in |
-| 3 | **F-P8** | (a) no content validation on the governed send path | OPEN — own pass |
-| 4 | **F-P21** | (b)(c) the eight-field review leaves no durable trace | OPEN — emitter work, authorized separately |
-| 5 | **F-P24** *(scoped)* | (c) governed decision points on the ceremony path must emit | OPEN — F-P11 + F-P23 folded in. **NOT P4-FULL** |
-| 6 | **F-P31** | (c) a second quit loses the evidence | **CLOSED 21 Aug** — procedural |
+| 2 | **F-P8** | (a) no content validation on the governed send path | OPEN — own pass |
+| 3 | **F-P39** | (b) **the read-back has NO PRODUCTION CALLER — ceremony step 6 does not exist in the shipped product**; an intended effect cannot be proven by the artifact a user installs | OPEN — **ESTABLISHED-NEGATIVE**; implementation envelope drawn 21 Aug |
+
+**RE-RULED 21 Aug 2026 — BUCKET 1 = P1 · F-P8 · F-P39.** The previous six-row table is replaced, not amended,
+because four of its rows moved and two live blockers were missing from it. What changed and why:
+
+- **F-P39 ENTERS** — it was carrying `BLOCKS-SEND` in the register while appearing in no Bucket-1 list anywhere.
+- **F-P27 LEAVES** (closed) · **F-P21 → BLOCKS-MITIGATED** (execute the capture spec; the register's own row said
+  so all along and the summary contradicted it) · **F-P24 (scoped) → not Bucket 1** · **F-P13 stays
+  BLOCKS-MITIGATED** — the mains-only gate **exists** and must be **EXECUTED, not built**.
+- **F-P31 → REOPENED, correctly. Its old "CLOSED — procedural" cell was the defect.** `index.ts` still latches
+  `shutdownFlushed = true`. **A PROCEDURAL MITIGATION IS NEVER A CLOSURE; CLOSED means the correction was
+  VERIFIED.**
+- **F-P10 → CLOSED** (the finding's artifact *was* the document) · **F-P14 → REOPENED as BLOCKS-PRODUCT**
+  (**DOCUMENTING A DEFECT DOES NOT FIX IT** — now `CLAUDE.md` §2 #20). They no longer "fold into F-P27": one is
+  closed on its own terms and the other is a product defect, not a documentation one.
 
 **F-P13 · BLOCKS-MITIGATED** — the mains-only gate **exists**; it must be **EXECUTED, not built**.
 
