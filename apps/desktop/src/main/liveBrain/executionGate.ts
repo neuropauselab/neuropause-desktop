@@ -159,6 +159,46 @@ export function l6ExecutionGate(deps: RuntimeExecuteDeps, r: ExecuteRequestLike,
     emitGovernance('DENY');
     return { ok: false, refusal: { ok: false, message: 'L6 execution gate refused', data: { outcome: 'DENIED', reason: 'IDENTITY_UNRESOLVED' } } };
   }
+  /**
+   * F-P8 (scoped) — REJECT LOCALLY WHAT THE PROVIDER WILL REJECT ANYWAY.
+   *
+   * A send with no recipient is a MALFORMED REQUEST: Graph requires at least one, so dispatching it means making
+   * an external call to Microsoft for something that cannot succeed. The refusal is GOVERNANCE-CLASS — the
+   * system declined to act, execution NOT_STARTED — and never an execution failure, because nothing was
+   * attempted (§2 #19). That is also why the check cannot live in `mail.ts`/`actionSdk.ts`: inside `action.run`
+   * a throw becomes EXECUTION_FAILED, and the evidence would then say the send was attempted and failed.
+   *
+   * ── AT LEAST ONE, NEVER EXACTLY ONE ──────────────────────────────────────────────────────────────────────
+   * The read-back oracle can only corroborate a single-recipient send, but that is a **CAPABILITY LIMIT, NOT A
+   * REQUIREMENT**: a two-recipient email is a perfectly good email, and refusing it would make the user pay for
+   * our verifier's incompleteness. Multi-recipient sends PROCEED here and are simply unverifiable — F-P55's
+   * subject, not this rule's.
+   *
+   * ── WHY THIS RULE AND NOT THE OTHER TWO ON THE PROPOSE LANE ──────────────────────────────────────────────
+   * `m365ActionProposal.ts` also checks ADDRESS FORMAT (:101) and caps MAX_RECIPIENTS (:105). Both stay there:
+   *   ADDRESS FORMAT — a format check CAN BE WRONG IN THE COSTLY DIRECTION. Graph rejecting a bad address costs
+   *     nothing; us rejecting a good one stops the user sending. **REJECT LOCALLY ONLY WHERE LOCAL REJECTION
+   *     CANNOT BE WRONG** — an empty recipient list is the only one of the three that qualifies.
+   *   MAX_RECIPIENTS — a PRODUCT POLICY, not a provider requirement, and policy belongs where policy is decided.
+   * Recorded here so a future reader does not "complete" the transfer and reintroduce a corrected error.
+   *
+   * ── THE REASON/DETAIL SPLIT ──────────────────────────────────────────────────────────────────────────────
+   * A REASON NAMES THE QUESTION FOR AN AUDITOR ("is this a well-formed request?"); A DETAIL NAMES THE FIELD FOR
+   * A DEVELOPER. So a second well-formedness rule extends the detail rather than multiplying the enum into a
+   * list of symptoms. The detail is VERBATIM from `m365ActionProposal.ts:104`, so the propose lane and the
+   * execute lane state one rule in one sentence.
+   *
+   * **THE DETAIL IS THE RULE, NEVER THE VALUE — NO REQUEST-DERIVED TEXT, EVER (pinned).** F-P26: NP-013's
+   * `redactCredentialText` is PINNED to preserve email shapes, so an interpolated address would look protected
+   * and would not be. Interpolating the offending value is the obvious next step for the next rule, and it is
+   * the step this pin exists to stop.
+   */
+  const to = r.params.to;
+  if (!Array.isArray(to) || to.filter((a) => typeof a === 'string' && a.trim() !== '').length === 0) {
+    log.warn(`L6-GATE REFUSE capability=${r.actionId} — MALFORMED_REQUEST (no recipient)`);
+    emitGovernance('DENY');
+    return { ok: false, refusal: { ok: false, message: 'L6 execution gate refused', data: { outcome: 'DENIED', reason: 'MALFORMED_REQUEST', detail: 'at least one recipient is required' } } };
+  }
   const gate = gateL6Execution({ tenantId, capabilityId: r.actionId, account: r.accountId, params: r.params }, execDeps);
   if (gate.gate === 'refuse') {
     log.warn(`L6-GATE REFUSE capability=${r.actionId} tenant=${tenantId} — ${gate.reason}`);

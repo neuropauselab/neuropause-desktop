@@ -1,7 +1,21 @@
 # F-P8 · REJECT LOCALLY WHAT THE PROVIDER WILL REJECT ANYWAY — GATE-CLASS ENVELOPE
 
-**STATUS: PRESENTED, NOT APPLIED.** No file modified. `executionGate.ts` only. **FG-16 stays FREE** — GATE-class
-presented diff, not a frozen gate.
+**STATUS: APPLIED 22 Aug 2026** under GATE-class choreography — detector before, INTACT both sides, isolated
+commit, full suites. `executionGate.ts` only, one hunk, zero frozen surfaces. **FG-16 stays FREE.**
+
+**THREE RULINGS FOLDED IN BEFORE APPLICATION:** the reason **`MALFORMED_REQUEST`** approved, with the
+reason/detail split stated in the docstring — **a reason names the QUESTION for an auditor, a detail names the
+FIELD for a developer**; the **detail guard pinned** — *no request-derived text in the detail, ever* (F-P26:
+`redactCredentialText` preserves email shapes, so a leaked address **would look protected and would not be**);
+and the two remaining propose-lane rules held back **on different grounds**, recorded in-code so a later reader
+does not complete the transfer — **address format because a format check can be wrong in the costly direction**
+(*reject locally only where local rejection cannot be wrong*), **MAX_RECIPIENTS because it is product policy, not
+a provider requirement.**
+
+**OUTCOME: 888 files / 9286 passed / 5 skipped** vs 887 / 9278 / 5 — **delta exactly the 8 new pins, ZERO existing
+tests changed result.** Typecheck 0, lint 0.
+
+*(The sections below are the envelope as presented, preserved.)*
 
 ---
 
