@@ -112,6 +112,13 @@ export function EntraConnectorPanel({ dto }: { dto: ConnectorDto }): JSX.Element
   const [proposal, setProposal] = useState<{ to: string; subject: string; body: string } | null>(null);
   const [brainReview, setBrainReview] = useState<BrainReview | null>(null); // FG-9 — L6 proposal review fields
   const [proposalKey, setProposalKey] = useState(0);
+  /**
+   * FG-14 — the ORIGINATING CAUSAL EPISODE identity handed over with the intent. Held as evidence
+   * lineage only: it is forwarded to the execute request so the ActionRecord can name the episode.
+   * It never selects an account, never gates the propose call, and never authorizes the send.
+   * `null` means causal identity unavailable — never substituted from another id.
+   */
+  const [correlationId, setCorrelationId] = useState<string | null>(null);
   const [proposing, setProposing] = useState(false);
   const [refusal, setRefusal] = useState<ProposeRefusal | null>(null);
   const [proposeError, setProposeError] = useState<string | null>(null);
@@ -153,6 +160,8 @@ export function EntraConnectorPanel({ dto }: { dto: ConnectorDto }): JSX.Element
   useEffect(() => {
     const handed = consumePendingMailProposal();
     if (handed) {
+      // FG-14 — carried verbatim; absence stays absent.
+      setCorrelationId(handed.correlationId ?? null);
       void runPropose({ to: handed.to, subject: handed.subject, body: handed.body }, 'assistant-proposed mail.send');
     }
     // Mount-once: the mailbox guarantees at-most-one consumption; deps intentionally empty.
@@ -340,6 +349,7 @@ export function EntraConnectorPanel({ dto }: { dto: ConnectorDto }): JSX.Element
         snaps={snaps}
         proposal={proposal ?? undefined}
         brainReview={brainReview}
+        correlationId={correlationId ?? undefined}
       />
 
       {/* Permission viewer (granted status) */}

@@ -533,8 +533,19 @@ export const ipc = {
       actionId: string,
       params: Record<string, unknown>,
       confirmed: boolean,
+      /** FG-14 — causal episode identity, evidence only. Omitted when unavailable; never substituted. */
+      correlationId?: string,
     ) =>
-      invoke(IpcChannel.M365ActionExecute, { connectorId, accountId, actionId, params, confirmed }),
+      invoke(IpcChannel.M365ActionExecute, {
+        connectorId,
+        accountId,
+        actionId,
+        params,
+        confirmed,
+        // FG-14 — omitted entirely when unavailable, so "absent" reaches the contract as absent
+        // rather than as an empty string that a downstream reader could mistake for an identity.
+        ...(correlationId === undefined ? {} : { correlationId }),
+      }),
     m365Draft: (
       connectorId: string,
       accountId: string,

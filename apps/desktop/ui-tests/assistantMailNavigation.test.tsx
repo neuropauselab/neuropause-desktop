@@ -76,6 +76,15 @@ describe('Slice 13 — assistant navigation forwards the mail intent', () => {
       />,
     );
     fireEvent.click(screen.getByRole('button', { name: /Open connectors/i }));
-    expect(onOpenNavigation).toHaveBeenCalledWith('connectors', null, { to: ['alice@example.com'], subject: 'Report', body: 'Attached.' });
+    // FG-14 — the callback gained a FOURTH argument: the originating causal-episode identity
+    // (`AssistantEnvelope.correlationId`), forwarded verbatim as evidence lineage. This assertion is
+    // STRENGTHENED, not relaxed: it still pins that mailIntent is forwarded, and now also pins that
+    // the causal identity travels with it. The fixture envelope's correlationId is asserted by value.
+    expect(onOpenNavigation).toHaveBeenCalledWith(
+      'connectors',
+      null,
+      { to: ['alice@example.com'], subject: 'Report', body: 'Attached.' },
+      'c1', // the fixture envelope's correlationId (:16) — asserted BY VALUE, not by shape
+    );
   });
 });

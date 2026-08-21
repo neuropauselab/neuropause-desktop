@@ -204,11 +204,15 @@ export function AssistantHost({ onNavigate }: { onNavigate?: (id: SectionId) => 
       section: string,
       query: string | null,
       mailIntent?: { to: string[]; subject: string; body: string } | null,
+      // FG-14 — the envelope's own correlationId, forwarded verbatim as evidence lineage.
+      correlationId?: string,
     ): void => {
       if (section === 'search' && query) setPendingSearchQuery(query);
       // Slice-13 — a mail.send intent detected this turn is handed to the ONE M365WritePanel via the Slice-12 feed.
       // The mailbox is consumed once on EntraConnectorPanel mount; setting it here ties it to the clicked message.
-      if (section === 'connectors' && mailIntent) setPendingMailProposal(mailIntent);
+      if (section === 'connectors' && mailIntent) {
+        setPendingMailProposal(correlationId === undefined ? mailIntent : { ...mailIntent, correlationId });
+      }
       onNavigate?.(section as SectionId);
     },
     [onNavigate],

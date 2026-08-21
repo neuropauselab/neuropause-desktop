@@ -12,13 +12,27 @@ export interface PendingMailIntent {
   to: string[];
   subject: string;
   body: string;
+  /**
+   * FG-14 — the ORIGINATING CAUSAL EPISODE identity (`AssistantEnvelope.correlationId`), carried
+   * verbatim. EVIDENCE ONLY: the mailbox TRANSPORTS lineage, it does not govern. This value never
+   * selects a tenant, connector, account or capability and never decides whether a proposal is
+   * permitted. ABSENT means causal identity unavailable — never a fallback to another id.
+   */
+  correlationId?: string;
 }
 
 let pending: PendingMailIntent | null = null;
 
 export function setPendingMailProposal(intent: PendingMailIntent): void {
   // Copy so a later mutation of the caller's object cannot change what the panel will consume.
-  pending = { to: [...intent.to], subject: intent.subject, body: intent.body };
+  // Object-literal reconstruction is a structural whitelist — anything not named here is dropped,
+  // which is precisely how the causal identity was lost before FG-14. Keep this list exhaustive.
+  pending = {
+    to: [...intent.to],
+    subject: intent.subject,
+    body: intent.body,
+    ...(intent.correlationId === undefined ? {} : { correlationId: intent.correlationId }),
+  };
 }
 
 /** Read and clear (one-shot). A second call returns null — the guarantee behind amendment 3. */

@@ -468,6 +468,25 @@ export const M365ActionExecuteRequest = z.object({
   actionId: z.string().trim().min(1).max(64),
   params: z.record(z.unknown()).default({}),
   confirmed: z.boolean().default(false),
+  /**
+   * FG-14 — the ORIGINATING CAUSAL EPISODE identity (F-P40). ADDITIVE AND OPTIONAL.
+   *
+   * EVIDENCE ONLY. It answers "which causal episode produced this evidence?" and NOTHING else.
+   * It MUST NOT authorize, govern, select a tenant/connector/account/capability, establish
+   * execution, or establish verification — CORRELATION IS FOR EVIDENCE, NEVER FOR AUTHORIZATION.
+   *
+   * It is DISTINCT from the two identities the kernel already mints and must never replace either:
+   *   `idem`      = sha256(tenant|connector|account|action|params) — DUPLICATE-EFFECT identity
+   *   `requestId` = `req:${idem}:${now}`                           — EXECUTION-REQUEST identity
+   * `correlationId` never enters `idem`, so two causally distinct episodes requesting the SAME
+   * effect keep the same idempotency key while remaining separable in evidence.
+   *
+   * ABSENT means CAUSAL IDENTITY UNAVAILABLE — never "no episode existed", and never a licence to
+   * fall back to requestId/transitionId/idem/actor/tenantId. Optional so every pre-FG-14 caller
+   * parses unchanged (this schema is deliberately non-strict; unknown keys are stripped, which is
+   * exactly why the field has to be declared here rather than smuggled through).
+   */
+  correlationId: z.string().trim().min(1).max(128).optional(),
 });
 
 /** P2.4 — ask the existing AI engine to draft/summarize (never sends; returns text for the user to confirm). */

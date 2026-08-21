@@ -46,6 +46,7 @@ export function M365WritePanel({
   snaps,
   proposal,
   brainReview,
+  correlationId,
 }: {
   connectorId: string;
   accountId: string | null;
@@ -59,6 +60,12 @@ export function M365WritePanel({
   proposal?: { to?: string; subject?: string; body?: string };
   /** FG-9 — a certified L6 proposal's eight review fields (display-only), rendered VERBATIM above the compose form. */
   brainReview?: BrainReview | null;
+  /**
+   * FG-14 — the ORIGINATING CAUSAL EPISODE identity (F-P40), forwarded to the governed execute
+   * request as EVIDENCE LINEAGE. It does not change what is sent, does not gate the confirm, and
+   * carries no authority: the human's explicit "Confirm send" remains the sole consent.
+   */
+  correlationId?: string;
 }): JSX.Element {
   const snap = snaps.find((s) => s.accountId === accountId) ?? snaps[0];
   const [to, setTo] = useState(proposal?.to ?? '');
@@ -96,7 +103,7 @@ export function M365WritePanel({
     setOutcome(EXECUTING_VIEW);
     try {
       const recipients = to.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
-      const r = await ipc.connectors.m365Execute(connectorId, accountId, 'mail.send', { to: recipients, subject, body }, true);
+      const r = await ipc.connectors.m365Execute(connectorId, accountId, 'mail.send', { to: recipients, subject, body }, true, correlationId);
       const view = classifyWriteOutcome(r);
       setOutcome(view);
       // Clear the compose fields only on an honest provider acknowledgement — never on UNKNOWN/HELD/DENIED,

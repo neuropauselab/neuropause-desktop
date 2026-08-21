@@ -52,6 +52,8 @@ export interface AssistantViewProps {
     section: string,
     query: string | null,
     mailIntent?: { to: string[]; subject: string; body: string } | null,
+    /** FG-14 — `AssistantEnvelope.correlationId`, passed verbatim. Evidence lineage, never authority. */
+    correlationId?: string,
   ) => void;
 }
 
@@ -365,7 +367,7 @@ function AssistantReply({
 
       {/* Navigation resolution */}
       {env.navigation && (
-        <Button variant="secondary" icon="arrow-right" onClick={() => onOpenNavigation(env.navigation!.section, env.navigation!.query, env.mailIntent ?? null)}>
+        <Button variant="secondary" icon="arrow-right" onClick={() => onOpenNavigation(env.navigation!.section, env.navigation!.query, env.mailIntent ?? null, env.correlationId)}>
           Open {env.navigation.section}
           {env.navigation.query ? ` — “${env.navigation.query.length > 40 ? `${env.navigation.query.slice(0, 37)}…` : env.navigation.query}”` : ''}
         </Button>

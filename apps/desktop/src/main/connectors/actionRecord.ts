@@ -86,6 +86,24 @@ export interface ActionRecordVerification {
 
 export interface ActionRecord {
   readonly id: string;
+  /**
+   * FG-14 (F-P40) — the ORIGINATING CAUSAL EPISODE identity (`asst_<uuid>`), stored VERBATIM.
+   *
+   * ANSWERS: "which causal episode produced this evidence?" — and nothing else. It is NOT
+   * authority, NOT consent, NOT proof of execution, NOT proof of verification. It is distinct from
+   * every other id on this row and must never be derived from or substituted by them:
+   *   `requestId`    = the concrete EXECUTION REQUEST (`req:<idem>:<mint-instant>`)
+   *   `transitionId` = `m365-send:<idem>` — CONTENT-addressed, collides across causally distinct runs
+   *   `admissionRef` = the same value as `transitionId`
+   * Two runs with identical parameters share `idem`/`transitionId` by design; `correlationId` is
+   * what keeps them separable as evidence.
+   *
+   * OPTIONAL, and absence is meaningful: a record written before FG-14, or one whose send did not
+   * originate from an assistant episode (manual composition, dev propose), carries no causal
+   * identity. That means CAUSAL IDENTITY UNAVAILABLE — never "no episode existed", and never a
+   * licence to fabricate one or fall back to another id.
+   */
+  readonly correlationId?: string;
   /** `record_time` (§14) — when THIS ROW WAS WRITTEN. Never the effect's time. */
   readonly at: string;
   readonly requestId: string;
@@ -141,6 +159,12 @@ interface ExecuteRequestLike {
   accountId: string;
   actionId: string;
   params?: Record<string, unknown>;
+  /**
+   * FG-14 — the ORIGINATING CAUSAL EPISODE identity, read from the execute request the observer
+   * already receives. The CST kernel is deliberately NOT on this path: correlation is EVIDENCE, so
+   * it travels request -> evidence and never enters governance, `idem`, or `requestId`.
+   */
+  correlationId?: string;
 }
 
 interface ObserveContext {
@@ -269,6 +293,10 @@ class ActionRecordStore {
       const params = request.params ?? {};
       const record: ActionRecord = {
         id: `act_${randomUUID()}`,
+        // FG-14 — verbatim from the request. No transform, no hash, no default, no fallback.
+        ...(typeof request.correlationId === 'string' && request.correlationId.length > 0
+          ? { correlationId: request.correlationId }
+          : {}),
         at: new Date().toISOString(), // record_time — this row's write
         requestId,
         // NP-015 §14: read from the kernel's own stamp; null when unstamped.
