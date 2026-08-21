@@ -497,6 +497,26 @@ invites planning for every branch of it; the register records *what is already m
 those branches before a word is written. **Length is therefore diagnostic — it measures the distance between the
 author's model and the register**, which is exactly what §2 #21 and #22 exist to close.
 
+---
+
+#### THE FIFTH — the advisory (21 Aug 2026): **the count is not the point, the DIAGNOSIS is**
+
+Its stale premise was ordinary — *"next slice is F-P52"*, when F-P52 had landed at `4beb8bc`. Five is enough of a
+pattern to stop counting and name the mechanism:
+
+> **IT READS REPORTS, NOT THE REGISTER. A REPORT DESCRIBES A MOMENT; THE REGISTER DESCRIBES NOW. A DOCUMENT THAT
+> REASONS FROM REPORTS WILL ALWAYS BE AS STALE AS THE LAST REPORT IT READ.**
+
+This is why the earlier four looked like carelessness and were not. A report is an accurate artifact — it was true
+when written — so reasoning from it *feels* like reasoning from evidence, and the staleness is invisible from
+inside the document. **The lag is not an error rate; it is a structural property of the input.** It also explains
+the length correlation recorded above: a document reasoning from reports must plan for branches the register has
+already closed.
+
+**THE ONE-LINE FIX, and it is genuinely one line: STATE `HEAD` AND VERIFY IT BEFORE WRITING A DIRECTIVE.** Cheap,
+mechanical, and it converts an invisible failure into a visible mismatch — the same move §2 #21 makes for
+findings and §2 #20 for documents.
+
 **CARRIED FORWARD, because they are good:** its consumer-derived pin discipline (already **CLAUDE §2 #27**), and
 its **§56 rule — DO NOT INVENT A MATRIX ROW FOR A STATE THE ARCHITECTURE MAKES IMPOSSIBLE.** That last one is a
 sibling of NP-016's *the compiler refuses to populate it*: a matrix with a row for an unreachable state teaches
@@ -528,6 +548,28 @@ find it" and "we could not have found it" as the same fact. **That is the same e
 and §2 #29's four-green-signals: a mechanism reporting cleanly about a question it was never in a position to
 answer.** Sibling of F-P48's own law — *a gate that skips on a key miss is not a gate, it is a lookup with a
 permissive default* — this states the remedy where that states the defect.
+
+### §5.0g · **SEMANTIC ADJACENCY IS NOT SAMENESS** (operator, 21 Aug 2026) — beside the vocabulary bans
+
+**Two names that mean nearly the same thing are not the same name, and reusing one for the other is how a
+vocabulary loses the distinction it was built to carry.** The pull is always efficiency: a term exists, it is
+close enough, and inventing another feels like duplication. **But a term carries its ORIGIN and its READERS**, and
+importing it into a second context imports the first context's meaning along with it.
+
+**THE CASE THAT CANONIZED IT:** `boundDecisionClaimMint.ts:73` refuses an empty tenant with `NO_TENANT`, and
+F-P48 needed a refusal for an unresolved identity. Adjacent to the point of near-identity — **and rejected**,
+because that reason lives on the **workforce router**, not the governed-send path, so reusing it would put one
+name on two boundaries and make a future reader believe the same check ran in both.
+
+**THE TEST, which is about the QUESTION and not the value:** *what question does this name answer?*
+`proposalExecutionBoundary`'s seven answer **why was this proposal rejected**; `IDENTITY_UNRESOLVED` answers
+**why was no proposal question asked**. Same field, same shape, **different question — therefore a different
+vocabulary**, and the seven stay reachable only after a proposal is found while the new one is reachable only
+before the lookup runs. Structure follows the distinction rather than decorating it.
+
+**Sibling of F-N16-1** (*one named authority; a third copy was refused*) from the other direction: F-N16-1 forbids
+**two names for one rule**; this forbids **one name for two rules.** Both are the single failure of letting the
+vocabulary drift from the thing it describes.
 
 ### §5.1 · THE TWO LAW FAMILIES — kept separate, deliberately
 
