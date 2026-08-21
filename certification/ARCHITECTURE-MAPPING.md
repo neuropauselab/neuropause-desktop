@@ -478,6 +478,57 @@ that and the conjured object has a provenance.** The defence is not skepticism a
 **WHAT WAS CARRIED FORWARD, because most of it was good:** its §28 ORIGIN CLASSIFICATION and its §39 THREE-FAILURE
 DISTINCTION are now **CLAUDE §2 #22 and #23** — method, not a one-off.
 
+---
+
+#### THE FOURTH — the 79-section F-P48 directive (21 Aug 2026), superseded by its own author, NOT EXECUTED
+
+Three stale premises, all measurable at the moment it was written: its **anchor was `ae0e28c`** while `55bcfd2`
+and `4beb8bc` had landed · it listed **ROUTE A as NOT APPLIED**, when Route A was applied at `55bcfd2` · it named
+**F-P50 as the next worker-assigned finding**, when F-P50, F-P51 and F-P52 had all been assigned since.
+
+**THE GENERALISATION, which is the useful part and is the operator's own:**
+
+> **THE DIRECTIVE'S LENGTH IS INVERSELY RELATED TO HOW MUCH IS ACTUALLY UNKNOWN. A LONG DIRECTIVE AGAINST A SMALL
+> UNKNOWN IS A SIGN THE AUTHOR IS REASONING FROM A REPORT RATHER THAN FROM THE REGISTER.**
+
+Seventy-nine sections were authored against an unknown that turned out to be **three source reads**, all of which
+resolved in a single pass. The tell is structural rather than stylistic: a report describes a *situation* and
+invites planning for every branch of it; the register records *what is already measured* and collapses most of
+those branches before a word is written. **Length is therefore diagnostic — it measures the distance between the
+author's model and the register**, which is exactly what §2 #21 and #22 exist to close.
+
+**CARRIED FORWARD, because they are good:** its consumer-derived pin discipline (already **CLAUDE §2 #27**), and
+its **§56 rule — DO NOT INVENT A MATRIX ROW FOR A STATE THE ARCHITECTURE MAKES IMPOSSIBLE.** That last one is a
+sibling of NP-016's *the compiler refuses to populate it*: a matrix with a row for an unreachable state teaches
+every later reader that the state is reachable, and someone eventually writes code to handle it.
+
+### §5.0f · F-P48's FIX, STATED AS LAW (adopted verbatim, 21 Aug 2026)
+
+> **DO NOT GOVERN THE LOOKUP RESULT.**
+> **GOVERN THE IDENTITY CONDITION THAT MAKES THE LOOKUP RESULT MEANINGFUL.**
+
+**PROPOSAL-MISSING MEANS NEITHER `REFUSE` NOR `SKIP` BY ITSELF.** It is one observation with two causes, and the
+cause is not in the observation:
+
+| identity | proposal | correct outcome |
+|---|---|---|
+| **RESOLVED** | absent | **LEGITIMATE SKIP** — this send was never Brain-proposed |
+| **UNRESOLVED** | absent | **GOVERNANCE FAILURE → REFUSE** — the lookup was asked a meaningless question |
+
+**THE PROHIBITION:** *do not write `if (!proposal) return refusal` unless proposal-absence and identity-absence
+are PROVEN IDENTICAL.* **The evidence says they are not** — and it is measured, not argued:
+`M365WritePanel.tsx:106` → `IpcChannel.M365ActionExecute` → `connectors/index.ts:593` reaches the gate with a
+**resolved** workspace and no proposal on every ordinary human-composed send, because the only production
+`stashProposal` caller is `brainProposeLane.ts:165`. **That is the primary send path in the product; a blanket
+`skip → deny` would break it.**
+
+**WHY THIS GENERALISES BEYOND F-P48.** A lookup miss is evidence about **the key** as much as about **the table**,
+and a key derived from an unresolved identity makes the miss uninformative. Governing the miss treats "we did not
+find it" and "we could not have found it" as the same fact. **That is the same error as §2 #23's three failures
+and §2 #29's four-green-signals: a mechanism reporting cleanly about a question it was never in a position to
+answer.** Sibling of F-P48's own law — *a gate that skips on a key miss is not a gate, it is a lookup with a
+permissive default* — this states the remedy where that states the defect.
+
 ### §5.1 · THE TWO LAW FAMILIES — kept separate, deliberately
 
 They are not one law. Conflating them is what let an authority defect and a reachability defect be discussed in the

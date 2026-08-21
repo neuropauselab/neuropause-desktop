@@ -180,6 +180,33 @@ never clicks Confirm.**
 
 ---
 
+### 4.1 · **VERIFY THE EVIDENCE ROW IS ON DISK BEFORE QUITTING** — OPERATOR-ACTION *(F-P53's mitigation, EXECUTED not built)*
+
+⛔ **DO THIS BEFORE ANY QUIT, AND BEFORE CONTAINMENT.** Containment removes the profile; a record that never
+reached disk is unrecoverable after it, and **the whole point of the ceremony is the evidence, not the email.**
+
+**WHY IT IS A STEP AND NOT A CODE FIX (yet):** `action-records.json` is written by a **`void`-detached** observer
+(frozen `connectors/index.ts:641`) and is **absent from the flush barrier**, so **a record lost before its first
+persist is invisible** (F-P53). The ceremony's shape is exactly the risk: **write the evidence fire-and-forget,
+then quit** — against F-P30's delayed exit and F-P31's spent-once flush. The code fix (register `action-records`
+in the flush barrier) is **queued, S20 territory**; until it lands, the barrier is a human reading the file.
+
+```
+# In the SAME profile directory the ceremony ran in — do NOT quit first.
+cat "<PROFILE>/action-records.json" | python3 -m json.tool | grep -c '"actionId": "mail.send"'
+```
+
+**PASS = the row for THIS send is present, with its `verdict`, `outcome` and `at`.** Read the content; a non-empty
+file is not the same as a file containing *this* row.
+
+**IF IT IS ABSENT: DO NOT QUIT. DO NOT RUN CONTAINMENT.** The send happened and its evidence did not; quitting
+converts a recoverable in-memory row into a permanent gap. Wait, re-read, and record the outcome either way.
+
+> **`the 12:17 row survived` IS NOT DURABILITY — IT IS ONE OBSERVATION OF A RACE THAT WAS NOT RUN AGAINST A QUIT.**
+> That row is the reason this step exists, not evidence that the step is unnecessary.
+
+---
+
 ## 5 · IMMEDIATELY AFTER A REAL SEND — CONTAINMENT
 
 **`certification/CONTAINMENT-PROCEDURE.md` is the immediate next step**, and it carries its own label, repeated
