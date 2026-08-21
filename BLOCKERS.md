@@ -23,7 +23,28 @@
 | **`first-real-send.latch`** | **PRESERVED** at `~/NeuroPause-S54-r3/`. Never deleted, never re-armed. | operator only |
 | **Frozen surfaces** | **UNCHANGED.** Any touch needs an FG gate + literal token + §2.2 choreography. | operator token |
 
-## 🔴 SHIP-BLOCKING — the four
+## 🔴 BUCKET 1 — BLOCKS THE FIRST REAL SEND (operator-assigned 21 Aug)
+
+**Criterion:** without fixing it, (a) an unintended external effect could occur, (b) an intended one could not be
+proven, or (c) the ceremony's own evidence would be untrustworthy.
+
+| # | Item | Why | State |
+|---|---|---|---|
+| 1 | **P1** | (b) the propose path's status is unknown | closes when **attempt 2** runs |
+| 2 | **F-P27** | (c) no committed ceremony runbook | **CLOSED 21 Aug** — F-P10 + F-P14 folded in |
+| 3 | **F-P8** | (a) no content validation on the governed send path | OPEN — own pass |
+| 4 | **F-P21** | (b)(c) the eight-field review leaves no durable trace | OPEN — emitter work, authorized separately |
+| 5 | **F-P24** *(scoped)* | (c) governed decision points on the ceremony path must emit | OPEN — F-P11 + F-P23 folded in. **NOT P4-FULL** |
+| 6 | **F-P31** | (c) a second quit loses the evidence | **CLOSED 21 Aug** — procedural |
+
+**F-P13 · BLOCKS-MITIGATED** — the mains-only gate **exists**; it must be **EXECUTED, not built**.
+
+> **BUCKET-1 STATUS DOES NOT RELEASE A HELD ITEM.** P1 is a blocker **and** attempt 2 stays held. The gate
+> determines what rises; it does not consume the held queue.
+
+**Full assignment for all 43 findings: `certification/CONTROL-REGISTER.md` §A.**
+
+## 🔴 THE ORIGINAL FOUR (superseded by the bucket assignment above)
 
 1. **P1 · silent unresolved-TENANT-SCOPE branch.** *Required phrasing:* **"a silent unresolved-TENANT-SCOPE
    branch EXISTS and is CAPABLE of producing the observed result, but the ceremony evidence does not establish

@@ -7,9 +7,24 @@
 > A finding is **the gap between a law and an implementation, made visible by an observation.** So every finding
 > names the law it violates; one that names none is either a **missing law** or **not a finding**.
 
-> **⚠️ SEVERITY COLUMN IS THE OPERATOR'S.** The gate's stated totals are **6 BLOCKS-SEND · 4 BLOCKS-PRODUCT ·
-> 4 CANNOT-CLASSIFY**, but the **per-finding assignment was never supplied**, so every row reads **UNASSIGNED**.
-> Claude does not fill this column. It is here to be filled, not inferred.
+> **SEVERITY ASSIGNED BY THE OPERATOR, 21 Aug 2026.** Recorded here rather than left in conversation — *"I stated
+> the totals and never wrote the mapping into the register; an unassigned column gets filled by whoever speaks
+> next."*
+>
+> **BUCKET-1 CRITERION:** without fixing it, **(a)** an unintended external effect could occur, **OR (b)** an
+> intended one could not be proven, **OR (c)** the ceremony's own evidence would be untrustworthy.
+>
+> **BUCKET 1 IS SIX: P1 · F-P27 · F-P8 · F-P21 · F-P24 (scoped) · F-P31.** Four more fold into two of those
+> fixes — **F-P10 and F-P14 into F-P27**, **F-P11 and F-P23 into F-P24** — and are marked as folding rather than
+> as separate blockers. **F-P13 is BLOCKS-MITIGATED: its gate exists in the v2 runbook and must be EXECUTED, not
+> built.** Every remaining row is filled; the default is RECORD.
+>
+> ### **BUCKET-1 STATUS DOES NOT RELEASE A HELD ITEM.**
+> **P1 is a blocker AND attempt 2 stays held.** The gate determines what RISES; **it does not consume the held
+> queue.** A finding reaching Bucket 1 is a statement about priority, never an authorization.
+
+> **P1 is not an F-numbered row** — it is tracked in §C/BLOCKERS as *AWAITING CONTROLLED REPRODUCTION*, bucket
+> **BLOCKS-SEND (b)**, and **closes when attempt 2 runs**.
 
 ---
 
@@ -17,49 +32,49 @@
 
 | ID | Statement | Status | Bucket | Law it violates |
 |---|---|---|---|---|
-| **F-P8** | Model output reaches a send-capable form with nothing between — a boundary crossed by CONTENT where the architecture only pinned CONTROL | OPEN | UNASSIGNED | *AI output is untrusted data* (§2 #6); *the validating path and the serving path are different paths* |
-| **F-P9** | The record carries two clocks under one set of numbers; no run id ties a log line to a run | OPEN | UNASSIGNED | *correlation is for evidence, never for authorization*; the proof standard's one-run-id requirement |
-| **F-P10** | The runbook was written against SOURCE, never against the built ARTIFACT | OPEN | UNASSIGNED | §2 #17 *pin against the real path*; *a document describing the repository is not one describing the artifact* |
-| **F-P11** | A fail-closed path that leaves no evidence is indistinguishable from a path that never ran | OPEN | UNASSIGNED | *a refusal must be observable or it is not auditable* |
-| **F-P12** | The handoff mailbox has no expiry while its proposal carries a 10-minute `Expires` | OPEN | UNASSIGNED | **NO RECORDED LAW** — candidate missing law: *an expiry on one side of a handoff is not an expiry* |
-| **F-P13** | A per-profile safety device does not protect a multi-instance desktop | OPEN | UNASSIGNED | *a stated precondition without a check is not a precondition* |
-| **F-P14** | "Open connectors" does not open the Microsoft panel | OPEN | UNASSIGNED | *a declared thing and a reachable thing were allowed to share one name* (REACHABILITY family) |
-| **F-P15** | `isLoaded` monotonic ⇒ `not_loaded` excluded by direction | CLOSED (negative) | — | — |
-| **F-P16** | `resolveTenantScope` branch stable; IPC handlers take `session()` | CLOSED (negative) | — | — |
-| **F-P17** | Tenant-scope-null does not account for the zero counter row | CLOSED (negative) | — | — |
-| **F-P19** | `capabilityProposeIpc.ts:48-52` narrows `AuthStatus` with a bare ternary swallowing `'local'` | OPEN | UNASSIGNED | §4 *AuthStatus exhaustiveness* — **PROSE, no enforcement** |
-| **F-P21** | *(files against P5 and the proof standard)* | OPEN | UNASSIGNED | the proof standard |
-| **F-P23** | *(files as an instance of F-P24)* | OPEN | UNASSIGNED | *a refusal must be observable or it is not auditable* |
-| **F-P24** | Governance mints no record when it refuses — by design, and that is the defect | OPEN | UNASSIGNED | *a refusal must be observable…*; **and *set-level properties require set-level tests*** |
-| **F-P25** | `verify-freeze.sh` conflates "a frozen surface changed" with "the baseline is behind HEAD" | OPEN | UNASSIGNED | *a safety gate must test the exact dangerous state*; *the instrument is part of the system under test* |
-| **F-P26** | The credential redactor is pinned to preserve email shapes, so it is not a PII redactor | OPEN | UNASSIGNED | *citing a redactor without citing its pins is a false assurance* |
-| **F-P27** | The ceremony runbook existed in no file; the "nine steps" lived only in transcript | OPEN | UNASSIGNED | *record supersedes recollection*; *a procedure existing only in transcript is not a document* |
-| **F-P28** | The evidence packs inherit PII-unsafety and carry no disclosure classification | CLOSED (classified OPERATOR-PRIVATE) | — | *the packs inherit the redactor's bound* (F-P26) |
-| **F-P29** | Process-identity gate ambiguity — the predicate counted helpers as well as mains | CLOSED | — | *a safety gate must test the exact dangerous state* |
-| **F-P30** | Shutdown completed and the process did not exit (~6.5 min delayed exit) | CLOSED (recorded) | — | **NO RECORDED LAW** — a property of the runtime, not a violation |
-| **F-P31** | The shutdown flush is spent once, invisibly; a second quit flushes nothing and the cost is data loss | OPEN | UNASSIGNED | *a refusal must be observable…* (F-P24 family); *expected ≠ correct* |
-| **F-P32** | The 2026-08-07 legacy document block — 24 files, one commit, unreviewed; **MODULE-CERTIFIED ≠ CAPABILITY-CERTIFIED** | OPEN — **ESCALATED** | UNASSIGNED | the vocabulary bans (§5.0); *never silently treat a lower rung as a higher one* |
-| **F-P33** | CLAUDE §1's header was stale by ~30 commits | CLOSED (repaired + recurrence rule) | — | *record supersedes recollection* |
-| **F-P34** | `BLOCKERS.md` was a blind entry point | CLOSED (rewritten) | — | *an entry point that is blind is worse than no entry point* |
-| **F-P35** | The probe's reason is computed, named, retained, surfaced — and logged at a level that cannot be recorded; `classifyProbeError` returns `null`, also the no-error value | **ENVIRONMENT-SPECIFIC** (cause permanently unknown, not reopened); **the unrecordable-diagnostic defect is OPEN** | UNASSIGNED | *instrumented silence is evidence only if the instrument can reach the sink*; NP-016 conflation class |
-| **F-N16-1** | Discovery claimed connector-level certification for every mutating action | CLOSED | — | *the discovery invariant* (§0.1) |
-| **F-N16-2** | Derived vs enforced authority disagree (`policyVersion` null vs named) | **NOT-A-DEFECT** — missing source over a contract label | — | — |
-| **F-N16-3** | Two reversibility vocabularies | OPEN — value space `SOURCE_REQUIRED`; `calendar.create` values CONFLICTING | UNASSIGNED | *vocabulary earns existence when something consumes it* (§0.2) |
-| **F-N16-3a** | Reversibility sub-finding | OPEN | UNASSIGNED | as F-N16-3 |
-| **F-N16-4** | Two oracle identities for one oracle | **NOT-A-DEFECT** — two mechanisms at two layers, descriptive | — | — |
-| **F-N16-5** | Manifest consent scopes omit action scopes (manifest over-request) | OPEN | UNASSIGNED | *requested scope is never granted scope* (AUTHORITY family) |
-| **F-N17-4** | *"A declared governance capability is not the same thing as a reachable governance path"* — the CST relationship-freshness gate is unreachable | OPEN `SOURCE_REQUIRED` | UNASSIGNED | §2 #18's corollary (REACHABILITY family) |
-| **F-N19-2** | `requestId` structurally null in production; a fixture more generous than reality hid it | CLOSED (FG-12) | — | §2 #17 *pin against the real path* |
-| **F-N8-1** | Intent-home seeded strategy unlabelled | CLOSED | — | §4 UI truth rule |
-| **F-N8-2** | Intelligence empty-graph notice absent | CLOSED | — | §4 UI truth rule |
-| **F-N8-3** | Release Ops refusals shown as zeros, not named — the F-5 class | CLOSED | — | §2 #11 *governance boundary honesty* |
-| **F-N8-5** | Workforce "Nine" copy-drift | CLOSED | — | §4 UI truth rule |
-| **F-N8-6** | Device-local identity claimed an identity provider | CLOSED | — | §4 AuthStatus / UI truth rule |
-| **F-S17-1** | Onboarding "Try Free Locally" ⇄ `LocalModeBanner` reconciliation | CLOSED (S39) | — | §4 UI truth rule |
-| **F-MR-1** | Website fails §31 on 11 claims | OPEN | UNASSIGNED | *never silently treat a lower rung as a higher one* |
-| **F-MR-2** | *(master readiness)* | OPEN | UNASSIGNED | UNKNOWN |
-| **F-MR-5** | *(master readiness)* | OPEN | UNASSIGNED | UNKNOWN |
-| **F-MR-7** | Credential boundary | CLOSED (NP-013) | — | §2 #12 *secrets* |
+| **F-P8** | Model output reaches a send-capable form with nothing between — a boundary crossed by CONTENT where the architecture only pinned CONTROL | OPEN | **BLOCKS-SEND** (a) | *AI output is untrusted data* (§2 #6); *the validating path and the serving path are different paths* |
+| **F-P9** | The record carries two clocks under one set of numbers; no run id ties a log line to a run | OPEN | RECORD | *correlation is for evidence, never for authorization*; the proof standard's one-run-id requirement |
+| **F-P10** | The runbook was written against SOURCE, never against the built ARTIFACT | **CLOSED** 21 Aug — folded into F-P27's fix | **BLOCKS-SEND** — folds into F-P27 | §2 #17 *pin against the real path*; *a document describing the repository is not one describing the artifact* |
+| **F-P11** | A fail-closed path that leaves no evidence is indistinguishable from a path that never ran | OPEN | **BLOCKS-SEND** — folds into F-P24 | *a refusal must be observable or it is not auditable* |
+| **F-P12** | The handoff mailbox has no expiry while its proposal carries a 10-minute `Expires` | OPEN | RECORD | **NO RECORDED LAW** — candidate missing law: *an expiry on one side of a handoff is not an expiry* |
+| **F-P13** | A per-profile safety device does not protect a multi-instance desktop | OPEN | **BLOCKS-MITIGATED** — gate exists; EXECUTE, do not build | *a stated precondition without a check is not a precondition* |
+| **F-P14** | "Open connectors" does not open the Microsoft panel | **CLOSED** 21 Aug — named in runbook §3, folded into F-P27's fix | **BLOCKS-SEND** — folds into F-P27 | *a declared thing and a reachable thing were allowed to share one name* (REACHABILITY family) |
+| **F-P15** | `isLoaded` monotonic ⇒ `not_loaded` excluded by direction | CLOSED (negative) | RECORD | — |
+| **F-P16** | `resolveTenantScope` branch stable; IPC handlers take `session()` | CLOSED (negative) | RECORD | — |
+| **F-P17** | Tenant-scope-null does not account for the zero counter row | CLOSED (negative) | RECORD | — |
+| **F-P19** | `capabilityProposeIpc.ts:48-52` narrows `AuthStatus` with a bare ternary swallowing `'local'` | OPEN | BLOCKS-PRODUCT | §4 *AuthStatus exhaustiveness* — **PROSE, no enforcement** |
+| **F-P21** | *(files against P5 and the proof standard)* | OPEN | **BLOCKS-SEND** (b)(c) | the proof standard |
+| **F-P23** | *(files as an instance of F-P24)* | OPEN | **BLOCKS-SEND** — folds into F-P24 | *a refusal must be observable or it is not auditable* |
+| **F-P24** | Governance mints no record when it refuses — by design, and that is the defect | OPEN | **BLOCKS-SEND** (c) — SCOPED | *a refusal must be observable…*; **and *set-level properties require set-level tests*** |
+| **F-P25** | `verify-freeze.sh` conflates "a frozen surface changed" with "the baseline is behind HEAD" | OPEN | RECORD | *a safety gate must test the exact dangerous state*; *the instrument is part of the system under test* |
+| **F-P26** | The credential redactor is pinned to preserve email shapes, so it is not a PII redactor | OPEN | RECORD | *citing a redactor without citing its pins is a false assurance* |
+| **F-P27** | The ceremony runbook existed in no file; the "nine steps" lived only in transcript | **CLOSED** 21 Aug — `NP-000-CEREMONY-RUNBOOK.md`; written against the artifact, preconditions checkable | **BLOCKS-SEND** (c) — *was* | *record supersedes recollection*; *a procedure existing only in transcript is not a document* |
+| **F-P28** | The evidence packs inherit PII-unsafety and carry no disclosure classification | CLOSED (classified OPERATOR-PRIVATE) | RECORD | *the packs inherit the redactor's bound* (F-P26) |
+| **F-P29** | Process-identity gate ambiguity — the predicate counted helpers as well as mains | CLOSED | RECORD | *a safety gate must test the exact dangerous state* |
+| **F-P30** | Shutdown completed and the process did not exit (~6.5 min delayed exit) | CLOSED (recorded) | RECORD | **NO RECORDED LAW** — a property of the runtime, not a violation |
+| **F-P31** | The shutdown flush is spent once, invisibly; a second quit flushes nothing and the cost is data loss | **CLOSED** 21 Aug — procedural mitigation in runbook §1.2, consequence stated in the step | **BLOCKS-SEND** (c) — *was* | *a refusal must be observable…* (F-P24 family); *expected ≠ correct* |
+| **F-P32** | The 2026-08-07 legacy document block — 24 files, one commit, unreviewed; **MODULE-CERTIFIED ≠ CAPABILITY-CERTIFIED** | OPEN — **ESCALATED** | BLOCKS-PRODUCT | the vocabulary bans (§5.0); *never silently treat a lower rung as a higher one* |
+| **F-P33** | CLAUDE §1's header was stale by ~30 commits | CLOSED (repaired + recurrence rule) | RECORD | *record supersedes recollection* |
+| **F-P34** | `BLOCKERS.md` was a blind entry point | CLOSED (rewritten) | RECORD | *an entry point that is blind is worse than no entry point* |
+| **F-P35** | The probe's reason is computed, named, retained, surfaced — and logged at a level that cannot be recorded; `classifyProbeError` returns `null`, also the no-error value | **ENVIRONMENT-SPECIFIC** (cause permanently unknown, not reopened); **the unrecordable-diagnostic defect is OPEN** | RECORD (residual) | *instrumented silence is evidence only if the instrument can reach the sink*; NP-016 conflation class |
+| **F-N16-1** | Discovery claimed connector-level certification for every mutating action | CLOSED | RECORD | *the discovery invariant* (§0.1) |
+| **F-N16-2** | Derived vs enforced authority disagree (`policyVersion` null vs named) | **NOT-A-DEFECT** — missing source over a contract label | RECORD | — |
+| **F-N16-3** | Two reversibility vocabularies | OPEN — value space `SOURCE_REQUIRED`; `calendar.create` values CONFLICTING | RECORD for rung 1 · **BLOCKS rung 2** | *vocabulary earns existence when something consumes it* (§0.2) |
+| **F-N16-3a** | Reversibility sub-finding | OPEN | RECORD for rung 1 · **BLOCKS rung 2** | as F-N16-3 |
+| **F-N16-4** | Two oracle identities for one oracle | **NOT-A-DEFECT** — two mechanisms at two layers, descriptive | RECORD | — |
+| **F-N16-5** | Manifest consent scopes omit action scopes (manifest over-request) | OPEN | RECORD | *requested scope is never granted scope* (AUTHORITY family) |
+| **F-N17-4** | *"A declared governance capability is not the same thing as a reachable governance path"* — the CST relationship-freshness gate is unreachable | OPEN `SOURCE_REQUIRED` | **CANNOT-CLASSIFY** | §2 #18's corollary (REACHABILITY family) |
+| **F-N19-2** | `requestId` structurally null in production; a fixture more generous than reality hid it | CLOSED (FG-12) | RECORD | §2 #17 *pin against the real path* |
+| **F-N8-1** | Intent-home seeded strategy unlabelled | CLOSED | RECORD | §4 UI truth rule |
+| **F-N8-2** | Intelligence empty-graph notice absent | CLOSED | RECORD | §4 UI truth rule |
+| **F-N8-3** | Release Ops refusals shown as zeros, not named — the F-5 class | CLOSED | RECORD | §2 #11 *governance boundary honesty* |
+| **F-N8-5** | Workforce "Nine" copy-drift | CLOSED | RECORD | §4 UI truth rule |
+| **F-N8-6** | Device-local identity claimed an identity provider | CLOSED | RECORD | §4 AuthStatus / UI truth rule |
+| **F-S17-1** | Onboarding "Try Free Locally" ⇄ `LocalModeBanner` reconciliation | CLOSED (S39) | RECORD | §4 UI truth rule |
+| **F-MR-1** | Website fails §31 on 11 claims | OPEN | BLOCKS-PRODUCT | *never silently treat a lower rung as a higher one* |
+| **F-MR-2** | *(master readiness)* | OPEN | **CANNOT-CLASSIFY** | UNKNOWN |
+| **F-MR-5** | *(master readiness)* | OPEN | **CANNOT-CLASSIFY** | UNKNOWN |
+| **F-MR-7** | Credential boundary | CLOSED (NP-013) | RECORD | §2 #12 *secrets* |
 
 **Also closed, not F-numbered:** **P0** granted-scope fail-open (latent, never exercised) · **P4-MIN** propose-refusal emitter.
 
