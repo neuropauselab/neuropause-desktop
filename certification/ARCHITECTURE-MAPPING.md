@@ -1243,3 +1243,85 @@ ceremony does not wait on a product fix.
 **NP-000's mitigation is F-P21's screen recording plus the RULE-011 inference.** Recorded plainly: **that is
 adequate for one supervised operator at a keyboard, and for nothing beyond that.** It does not scale to a second
 operator, an unsupervised run, or any audit that must attribute consent to a person.
+
+## §16 · BOUNDARY-REPAIR RECONNAISSANCE (21 Aug 2026) — read-only, 6 agents, every claim cited
+
+**Build health:** vitest **877 files / 9197 passed / 3 skipped** · typecheck node+web **CLEAN** · honesty scanner
+**0** · tree **clean** at `fad19d2` on `cert/data-import-cst-integration` · artifact `out/main/index.js` 22:18:45,
+6,583,130 b, `propose refused` ×1.
+
+**`verify-freeze.sh` reports FREEZE BROKEN — and it is a LIVE F-P25 INSTANCE.** `ANCESTRY OK`; `SOURCE FAIL` lists
+four files changed since baseline `6ae9696`: `.gitignore`, `apps/backend/src/index.ts`,
+`proposeBoundaryCharacterization.test.ts`, `np-local-up.sh`. **None is a frozen surface.** The condition is
+*baseline behind HEAD*, not *frozen surface changed* — the two states the script flattens into one message. The
+underlying omission is mine: source landed across the local-first sittings and the baseline was never re-recorded.
+
+### §16.1 · THREE REGISTER ROWS WERE WRONG — MINE
+
+**F-P10, F-P14 and F-P31 were marked CLOSED on 21 Aug. All three are REOPENED.** In each case I closed the
+**documentation** instance and marked the **finding** closed:
+
+- **F-P31** — `index.ts` still latches `shutdownFlushed = true`. **A PROCEDURAL MITIGATION IS NOT A CODE FIX.**
+  The runbook paragraph tells a human to work around the defect; the defect is untouched.
+- **F-P10** — one runbook is now written against the artifact. Certification still records no
+  source→build→artifact→runtime→run identity chain.
+- **F-P14** — naming the behaviour documents it. **Documentation cannot close a code question.**
+
+This is the *characterization ≠ localization* discipline failing on the register itself, and it would have silently
+removed three items from the repair programme.
+
+### §16.2 · THE CONTROL MODEL — 15 STAGES, THREE GAPS
+
+Thirteen stages are production-live with durable records where claimed. The gaps:
+
+- **GAP A — stages 11 (read-back) + 12 (verification) have no production caller.** Double-gated at
+  `index.ts:214-218` on `__NP_E2E__` **and** `NEUROPAUSE_VERIFY_S15==='1'`. **The cycle does not close in a
+  release build.** (= F-P39, now with its gating site named.)
+- **GAP B — stage 14 (correction) is RAISE-ONLY.** `HoldStore.resolve` is reached in production solely through
+  the operator IPC `decisions/index.ts:88`. **UNKNOWN→HOLD is real and durable; HOLD→terminal is not automated.**
+- **GAP C — stage 15 (automation) does not exist for the governed path.** `automationEngine.ts` is a pure
+  evaluator/planner with no executor; the sole `governedSend` production call site is the human-confirm handler.
+
+**F-P41 — and this is the sharp one: stage 13 measures a state stage 12 can never produce.** `m365WriteStates`
+is live and derives `EXTERNALLY_OBSERVED` from terminals nothing in production can write.
+
+**Correction to a standing assumption:** the propose stage is **NOT** dev-only. `runPropose` has two callers —
+the DEV-gated button *and* the assistant-handoff `useEffect` at `EntraConnectorPanel.tsx:152-160`, which ships.
+
+### §16.3 · P2 — THE DISCARD POINT, AND WHY IT IS NOT PLUMBING
+
+**`AssistantView.tsx:368`** forwards `env.mailIntent` while **`env.correlationId` sits on the same object and is
+dropped**. Four downstream types then have no slot: `PendingMailIntent`, the propose request, the execute request,
+`ActionRecord` (`grep -in correlation actionRecord.ts` → **0**, file present, 343 lines).
+
+**F-P40 — the deeper obstacle.** `sendTransition.ts:165` mints `idem = sha256(tenant|connector|account|action|
+JSON(params))`, and **every id reaching `ActionRecord` derives from it**. The governed lineage is
+**content-addressed, not request-addressed**: two identical turns yield indistinguishable `requestId`/
+`transitionId` stems, and `admissionRef` is literally assigned `transitionId` — **three columns, one value.**
+So **RUN A ≠ RUN B fails at the identity layer by construction**, and P2 cannot be discharged by threading a field
+through; it needs an operator ruling on whether a request-addressed identity may exist alongside the
+content-addressed one.
+
+### §16.4 · CONFIRMED WITHOUT CHANGE
+
+**P0** (`connectorService.ts:655`, pinned by the enumerating adversarial test) · **FG-13** (`connectors.ts:198-199`
+non-optional, non-nullable) · **P4-MIN** (`capabilityProposeIpc.ts:82`, `warn`, `detail` absent from the file) ·
+**P4-MIN-b** (`brainProposeLane.ts:80-81` silent early return; 4 log sites in the file, **zero at debug**) ·
+**F-P23** (`secureBridge.ts:187` writes `ok: true` on the try-path — `ok` reflects *handler completion*, never
+governance outcome; refusals `return` rather than throw).
+
+**Two corrections to my own prior records:**
+1. **P0's "refresh-path carry-forward" is MISLABELLED — including in the comment I wrote.** `connectorService.ts:359`
+   sits in **`reconnect()`**, not `refresh()`; `doRefreshTokens` never touches `grantedScopes` at all. The
+   carry-forward lives on the **re-authorization** path.
+2. **FG-13 has a SECOND conflation at the same field:** `connectors/index.ts:396` `?? []` means an **absent
+   account** also collapses to `[]` — indistinguishable from both "granted nothing" and "told nothing".
+
+### §16.5 · DOCUMENT-SET DEFECTS
+
+**`CLAUDE.md` — the constitution — references neither `CONTROL-REGISTER.md` nor either runbook** (grep: 0 hits;
+control greps sane). The session ritual is CLAUDE→NP_STATE→BLOCKERS→verify-freeze, so the register is reachable
+only one hop further. **`NP_STATE.md` — the ritual's SECOND read — stops at NP-010** while §1 runs to NP-020, and
+contains **0** occurrences of `F-P*`. F-P34's own rule applies: *an entry point that is blind is worse than no
+entry point, because it is trusted.* **§2 now holds NINETEEN rules; the mapping and register both still say
+"eighteen"**, so the enforcement-shape audit was computed over a stale rule set.
