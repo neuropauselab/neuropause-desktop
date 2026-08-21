@@ -151,20 +151,35 @@ export async function initSync(deps: SyncSubsystemDeps): Promise<SyncSubsystem> 
 
   /**
    * S19 (FG-7) — join the TRUTHFUL five write states onto each Microsoft 365
-   * snapshot from the single S34a ActionRecord source of truth. The tenantId is
+   * snapshot from the single S34a ActionRecord source of truth. The key is
    * resolved SYNCHRONOUSLY by the caller (inside its principal context); this
    * async step only needs the id string. No parallel counting: the old disjoint
    * `writeCount` is retired in the panel.
+   *
+   * ── F-P45 · THE KEY IS A WORKSPACE ID, AND THE PARAMETER SAYS SO ────────────────────────────────────────────
+   * This read previously passed `activeTenantScope()?.tenantId` — the ORGANIZATION id — to a store whose rows are
+   * written under the WORKSPACE id (`connectors/index.ts:641` → `deps.workspaceId()`). Two separately-seeded
+   * namespaces with no mapping at the query boundary, so **every counter read zero on every call, forever** — and
+   * `EXTERNALLY_OBSERVED` was pinned to 0 by construction no matter what the read-back reconciler recorded.
+   *
+   * The parameter is named `workspaceId` deliberately. The persisted column is still called `tenantId` and that
+   * RENAME IS OWED AND NOT DONE HERE (it is governance-class and needs its own gate); naming the local truthfully
+   * is what stops the next reader repeating the substitution. **The value was never the defect — the name was.**
+   *
+   * `activeTenantScope()` resolves the workspace from the SAME two authorities in the SAME precedence as the
+   * writer's `deps.workspaceId()`: the background principal when one is bound, else the `workspaceStore` session
+   * (`backgroundPrincipal.ts:167`, `tenantContext.ts:480`). That is why the two keys meet, and the regression pin
+   * derives each side independently rather than asserting the equality into place.
    */
   const withWriteStates = async (
     snaps: ConnectorSyncSnapshot[],
-    tenantId: string | null,
+    workspaceId: string | null,
   ): Promise<ConnectorSyncSnapshot[]> => {
-    if (tenantId === null) return snaps;
+    if (workspaceId === null) return snaps;
     return Promise.all(
       snaps.map(async (s) => {
         if (s.connectorId !== 'microsoft-entra') return s;
-        const w = await m365WriteStates(tenantId, s.connectorId, s.accountId);
+        const w = await m365WriteStates(workspaceId, s.connectorId, s.accountId);
         return {
           ...s,
           writeStates: {
@@ -186,11 +201,12 @@ export async function initSync(deps: SyncSubsystemDeps): Promise<SyncSubsystem> 
   const onStateChanged = (): void => {
     // Resolve the snapshots + tenant SYNCHRONOUSLY inside the principal context;
     // the write-state join is async but only needs the tenantId string.
-    const { snaps, tenantId } = runOutsidePrincipal(() => ({
+    const { snaps, workspaceId } = runOutsidePrincipal(() => ({
       snaps: snapshots(),
-      tenantId: activeTenantScope()?.tenantId ?? null,
+      // F-P45 — the evidence store is WORKSPACE-keyed. See `withWriteStates`.
+      workspaceId: activeTenantScope()?.workspaceId ?? null,
     }));
-    void withWriteStates(snaps, tenantId).then((enriched) =>
+    void withWriteStates(snaps, workspaceId).then((enriched) =>
       deps.broadcast(IpcChannel.ConnectorSyncState, enriched),
     );
   };
@@ -229,7 +245,12 @@ export async function initSync(deps: SyncSubsystemDeps): Promise<SyncSubsystem> 
       handler: async (p) =>
         withWriteStates(
           snapshots((p as TConnectorSyncStateRequest).connectorId),
-          activeTenantScope()?.tenantId ?? null,
+          // F-P45 — MINIMUM ACCOMPANIMENT, not scope creep (§2 #2). `withWriteStates` has TWO callers: this
+          // on-demand IPC read and the live broadcast above. Correcting only one would leave the shared
+          // parameter carrying a different namespace per caller — the panel would read 0 on first load and
+          // real counts on the next sync event, or the reverse. An inconsistent contract is a worse defect
+          // than the one being fixed, so both callers move together or neither does.
+          activeTenantScope()?.workspaceId ?? null,
         ),
     },
   ];
