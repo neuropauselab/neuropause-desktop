@@ -37,6 +37,27 @@ check*; this is its sibling and it is about **the human, not the machine**. A fr
 
 ## 1 · SAFETY CONFIGURATION
 
+### 1.0 · **THE SEND'S SHAPE — ONE RECIPIENT, NON-EMPTY SUBJECT** — OPERATOR-ACTION *(F-P55's precondition)*
+
+⛔ **THE CEREMONY'S SEND MUST BE ADDRESSED TO EXACTLY ONE RECIPIENT, WITH A NON-EMPTY SUBJECT.**
+No `cc`. No `bcc`. Not two addresses in the `to` field.
+
+**THIS IS NOT STYLE — STEP 6 CANNOT SUCCEED WITHOUT IT.** The read-back oracle requires exactly one `to`, reads
+no `cc`/`bcc` (`RECIPIENT_NOT_REPRESENTABLE`) and needs a non-empty subject fingerprint (`NO_SUBJECT_EVIDENCE`).
+Outside that shape there is **no representable verification target**, so the send is corroborable by nothing.
+
+**THE CONSEQUENCE, WHICH IS WHY IT IS A PRECONDITION AND NOT A NOTE:** a two-recipient ceremony send would
+produce an uncorroborable result **that looks exactly like a verification failure.** The terminal would read
+UNKNOWN or HOLD — the same thing the operator would see if Graph were unreachable or the read-back had not yet
+observed the message. **So the operator would be debugging the wrong thing: hunting a transient fault that does
+not exist, on the one run that matters, with the latch already spent and no second attempt available.** The email
+would have really been sent; only the proof would be permanently out of reach.
+
+> **THE 12:17 SEND SATISFIED THIS BY ACCIDENT, NOT BY INSTRUCTION.** It was single-recipient with a subject
+> because that is what the operator happened to type — **nothing in the procedure required it, and nothing would
+> have stopped a two-recipient send.** That is the definition of incidental protection (§2 #31), and writing the
+> requirement down is what converts it into a control.
+
 ### 1.1 · QUIT AND VERIFY — MAINS ONLY, EXACT ZERO *(F-P13's gate, EXECUTED — it already exists)*
 
 ```bash
