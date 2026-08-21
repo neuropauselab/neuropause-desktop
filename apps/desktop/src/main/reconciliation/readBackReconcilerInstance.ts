@@ -82,8 +82,20 @@ class ReadBackReconcilerService implements BackgroundService {
    * (`backgroundFanOut.ts:211-228`), so one tenant's expired token cannot silence another's reconciliation —
    * which is §2 #9's requirement provided structurally rather than by convention.
    */
-  async tick(): Promise<void> {
-    const deps = realDeps();
+  async tick(injected?: ReconcilerDeps): Promise<void> {
+    /**
+     * §19-6 — INJECT AT THE BOUNDARY, DO NOT EXPORT THE PRIVATE.
+     *
+     * `realDeps` stays module-private. Exporting a private to make it testable weakens encapsulation to buy
+     * coverage; an optional parameter defaulting to it does not. This is the seam `verifyGovernedSend` already
+     * uses for `ReadBackReader` — precedent in-file — and it is decision-neutral: production calls `tick()` with
+     * no argument, so the default runs and behaviour is byte-identical to before.
+     *
+     * What it buys: calling `tick()` with no argument now EXECUTES `realDeps()` inside a test for the first time
+     * — proving the composition root constructs in the real module graph — while `tick(deps)` drives the real
+     * `forEachTenantBackground` with controlled deps.
+     */
+    const deps = injected ?? realDeps();
     /**
      * F-P42 · ACCOMMODATION, NOT DESIGN — the two lines that unblock F-P39.
      *
