@@ -24,6 +24,33 @@ interface GraphMessage {
 
 const addr = (r?: GraphRecipient): string => r?.emailAddress?.address ?? '';
 
+/**
+ * FG-15 — THE REQUESTS, CONSTRUCTIBLE WITHOUT EXECUTING THE READER (F-P49's neighbourhood).
+ *
+ * These exist so the query shape can be pinned by a contract test with NO network, NO credentials and NO vault
+ * stub. Before this seam the URLs were inline template literals inside the async closure, and `get` reaches
+ * `connectorVault.get()` BEFORE `fetch` — so observing the constructed request required stubbing two things, and
+ * a pin built that way would assert the query shape only through mocks it supplied itself.
+ *
+ * They are pure: no inputs, no I/O, same string every call. `makeM365GraphReader` below is their only caller, so
+ * there is ONE definition of each request and no second copy to drift (F-N16-1's rule — a third copy was refused).
+ *
+ * THE $select LISTS ARE LOAD-BEARING, NOT DECORATION. Every field named here is CONSUMED by the read-back:
+ *   internetMessageId — the corroboration id; absent ⇒ every terminal degrades to UNKNOWN
+ *   toRecipients      — a tuple limb in `verifyEffect`
+ *   sentDateTime      — read VERBATIM as the provider instant (NP-015); an untimeable row cannot corroborate
+ *   subject/bodyPreview — the fingerprints
+ * The existing mock cannot protect them: `e2e/mockGraph.ts` dispatches on a folder-path regex and parses no
+ * `$select`, so it would keep returning a field the adapter had stopped requesting while every test stayed green.
+ */
+export function sentItemsQuery(): string {
+  return `${GRAPH}/me/mailFolders/sentitems/messages?$top=25&$select=subject,toRecipients,sentDateTime,internetMessageId,bodyPreview&$orderby=sentDateTime%20desc`;
+}
+
+export function inboxQuery(): string {
+  return `${GRAPH}/me/mailFolders/inbox/messages?$top=25&$select=subject,from,receivedDateTime,bodyPreview&$orderby=receivedDateTime%20desc`;
+}
+
 /** Build a read-only Graph reader for one connected account. Re-reads the token per call (it may refresh). */
 export function makeM365GraphReader(workspaceId: string, connectorId: string, accountId: string): {
   readSentItems: () => Promise<SentItem[]>;
@@ -40,9 +67,7 @@ export function makeM365GraphReader(workspaceId: string, connectorId: string, ac
 
   return {
     readSentItems: async (): Promise<SentItem[]> => {
-      const rows = await get(
-        `${GRAPH}/me/mailFolders/sentitems/messages?$top=25&$select=subject,toRecipients,sentDateTime,internetMessageId,bodyPreview&$orderby=sentDateTime%20desc`,
-      );
+      const rows = await get(sentItemsQuery());
       return rows.map((m) => ({
         internetMessageId: m.internetMessageId ?? null,
         toRecipients: (m.toRecipients ?? []).map(addr).filter(Boolean),
@@ -52,9 +77,7 @@ export function makeM365GraphReader(workspaceId: string, connectorId: string, ac
       }));
     },
     readInbox: async (): Promise<InboxItem[]> => {
-      const rows = await get(
-        `${GRAPH}/me/mailFolders/inbox/messages?$top=25&$select=subject,from,receivedDateTime,bodyPreview&$orderby=receivedDateTime%20desc`,
-      );
+      const rows = await get(inboxQuery());
       return rows.map((m) => ({
         from: addr(m.from),
         subject: m.subject ?? '',
