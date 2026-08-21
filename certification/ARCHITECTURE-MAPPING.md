@@ -1123,3 +1123,56 @@ classes and must not be joined:**
 
 One closed by *failing to reproduce*; the other closed because *nothing can reproduce a past click*. Recorded so
 nobody later treats a single explanation as covering both.
+
+## §14 · F-P24 RECORDEDNESS — THE SCOPE IS SMALLER THAN THE SILENCE (21 Aug 2026)
+
+**The requirement is DURABLE EVIDENCE, not a log line.** Read-only pass over the four silent sites plus the
+operator's confirm, against the frozen send path's actual ordering:
+
+```
+l6ExecutionGate(deps, r);   if (!l6.ok)    return l6.refusal;     ← BEFORE governedSend AND observe
+if (__NP_E2E__) { guard = firstRealSendGuard(r.params);
+                            if (!guard.ok) return guard.refusal; } ← BEFORE governedSend AND observe
+const g = await governedSend({ … confirmed: r.confirmed … });
+void actionRecord.observe(r, g, …);                                ← UNCONDITIONAL, after governedSend
+```
+
+| Site | Verdict values | Recorded? | Where | All branches? |
+|---|---|---|---|---|
+| **CST `governedSend` verdict** | ALLOW / HOLD / DENY | **YES** | `ActionRecord.verdict` — `observe` reads `outcomeString(outcome,'verdict')` at `actionRecord.ts:291` with **no branch filter**, and the call is unconditional after `governedSend` | **ALL** |
+| **Executor scope check** | DENY (missing permission) | **YES, partially** | the refusal is an executor-port result inside `governedSend`, classified into `semanticOutcome` and stored as `ActionRecord.outcome` + `executed` | **ALL — but the REASON is not recorded**, only the classified outcome. *Which* scope was missing is lost |
+| **FG-4 guard** | DENY | **NO — and the trace that exists is dishonest** | `audit.log` only: `{"channel":"connectors:m365.execute","ok":true,"durationMs":1}` — **`ok:true` for a refusal.** The denial is recoverable **only by inferring it from a 1 ms duration** against the 557 ms real send | **none** |
+| **Read-back terminal** | VERIFIED / HOLD / FAILED | **NO — not in production** | `recordVerification` has exactly one caller, `e2e/s16VerifyRun.ts`, which is **compile-stripped from release**. The store treats all terminals identically; **nothing calls it** | **none — not even success** |
+| **OPERATOR CONFIRM** | given / not given | **NO — inferable only** | there is **no `confirmed` field** on `ActionRecord`. Consent is inferable from `verdict: ALLOW`, because RULE-011 pins unconfirmed → HOLD | **inference, not record.** It cannot say *who* confirmed or *when* |
+
+### §14.1 · THE VERDICTS, BY THE RULE
+
+- **CST verdict — RECORDED ON ALL BRANCHES ⇒ NO WORK.** **The CST is NOT an FG gate; it is a note.** A log line
+  beside a record that already exists would open a frozen file for nothing.
+- **Executor scope check — RECORDED ⇒ NO NEW EMITTER.** The residue is that the *reason* is dropped: a
+  **record-content** question, not an instrumentation one.
+- **FG-4 guard — RECORDED BUT DISHONEST ⇒ F-P23's class.** *The fix is the record's wording, not a new emitter.*
+- **Read-back terminal — NOT RECORDED AT ALL ⇒ REAL GAP.** Gate class **GATE** (`verification/`).
+- **Operator confirm — NOT RECORDED ⇒ REAL GAP**, and its own finding: **the only human authority in the system
+  leaves no direct trace.**
+
+### §14.2 · A FIFTH SITE, NOT ON THE OPERATOR'S LIST
+
+**The FG-10 L6 gate's REFUSE returns before `governedSend` and before `observe`** — identical shape to FG-4. A
+refused Brain proposal mints **no ActionRecord**. It at least *emits* (`executionGate.ts:98`, `warn`), so it is
+observable in the log while absent from the evidence store. **Recorded; it belongs to whatever envelope covers
+FG-4.**
+
+### §14.3 · F-P37 — INSTRUMENTATION DENSITY IS INVERSELY CORRELATED WITH PROXIMITY TO EXTERNAL EFFECT
+
+**The four silent sites are the four closest to the world.** The well-instrumented middle — the propose path, the
+Brain lane, the L6 gate — is the **newest** code.
+
+> **PROBABLE MECHANISM: instrumentation correlates with WHEN THE CODE WAS WRITTEN, not with WHAT IT CAN DO.**
+> The observability discipline this programme developed arrived *after* the send path was built, and was applied
+> going forward rather than backward. The result is an inverse gradient: the nearer a site is to a real external
+> effect, the older it is, and the quieter.
+
+**TESTABLE PREDICTION, not tested here:** the same pattern should appear anywhere else old frozen code sits near a
+consequence — the `governedAction` path for the 28 non-`mail.send` write actions is the obvious place to look.
+**Do not test it now.**

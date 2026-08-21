@@ -75,6 +75,8 @@
 | **F-MR-2** | *(master readiness)* | OPEN | **CANNOT-CLASSIFY** | UNKNOWN |
 | **F-MR-5** | *(master readiness)* | OPEN | **CANNOT-CLASSIFY** | UNKNOWN |
 | **F-MR-7** | Credential boundary | CLOSED (NP-013) | RECORD | §2 #12 *secrets* |
+| **F-P37** | Instrumentation density is inversely correlated with proximity to external effect — the four silent sites are the four closest to the world, and the well-instrumented middle is the newest code. Mechanism: instrumentation correlates with **when the code was written**, not with what it can do. | OPEN — prediction untested | RECORD | *set-level properties require set-level tests* (it is a property of the corpus, not of any file) |
+| **F-P38** | **The operator's confirm — the only human authority in the system — leaves no direct durable trace.** No `confirmed` field on `ActionRecord`; consent is inferable only from `verdict: ALLOW` via RULE-011's unconfirmed→HOLD pin, and cannot say who confirmed or when. | OPEN | **BLOCKS-SEND** (c) — pending operator ruling | *a refusal must be observable…* extended: **an authorization must be observable** |
 | **F-P36** | Real account data — 3 users, 1 org, 194 sessions — lives in a local container with **no restore drill and no landed backup path**. A verified dump is in custody (`e5c36a1e…86feb5c`); **that is a snapshot, not a backup system.** **S18** is the unlanded slice that would provide both. | OPEN | BLOCKS-PRODUCT | *an unverified backup is not a backup* — and its unmet half: a backup with no restore drill is unproven |
 
 **Also closed, not F-numbered:** **P0** granted-scope fail-open (latent, never exercised) · **P4-MIN** propose-refusal emitter.
