@@ -1325,3 +1325,86 @@ only one hop further. **`NP_STATE.md` — the ritual's SECOND read — stops at 
 contains **0** occurrences of `F-P*`. F-P34's own rule applies: *an entry point that is blind is worse than no
 entry point, because it is trusted.* **§2 now holds NINETEEN rules; the mapping and register both still say
 "eighteen"**, so the enforcement-shape audit was computed over a stale rule set.
+
+## §17 · RECON PART 2 — D1–D12, MEASUREMENT, QUESTION AUDIT, AND THE DO-NOT-TOUCH LIST (21 Aug 2026)
+
+Read-only. Extends §16 to cover §36's A–Z. **No code modified.**
+
+### §17.1 · F-P43 — THE MEASUREMENT MODEL DOES NOT EXIST ON THE GOVERNED PATH
+
+§27's vocabulary, searched across `apps/desktop/src` + `packages` (non-test):
+
+`baselineTime` **0** · `neuroPauseTime` **0** · `humanInterventionTime` **0** · `waitTime` **0** ·
+`verificationTime` **0** · `correctionTime` **0** · `repeatCount` **0**.
+`computeTime` and `automationRate` exist in **six files, ALL preview packages** —
+`manufacturingDigitalTwin.ts`, `capacityScheduler.ts`, `routing.ts`, `timePhasedMrp.ts`,
+`automation/analytics.ts`, `automation/dashboards.ts` — i.e. the 41 NOT-CERTIFIED / NOT-LIVE set.
+
+**On the governed path the only timing captured is `durationMs` at `secureBridge.ts:187/196`, and it measures
+IPC HANDLER COMPLETION, not work.** It is the same field that made a 1 ms FG-4 refusal distinguishable from a
+557 ms send only by coincidence (F-P23).
+
+> **LAW** §37 / §27 — the claim must emerge from measured runs.
+> **REQUIREMENT** per repeated work item: baseline, elapsed, human-intervention, compute, wait, verification,
+> correction, repeat count, automation rate.
+> **IMPLEMENTATION** none on the governed path; the vocabulary lives only in uncertified preview packages.
+> **OBSERVATION** the greps above, with the preview-package locus named.
+> **FINDING F-P43 — there is no measurement substrate, so no time-saving claim can be computed from records.**
+> **REQUIRED CORRECTION** a measurement record class, sequenced AFTER the evidence classes exist (a meter over a
+> chain that cannot prove its own outcome measures nothing).
+> **VERIFICATION** two runs of one work item producing two comparable measured records.
+
+### §17.2 · F-P25 IS SHARPER THAN STATED — verify-freeze.sh NEVER TESTS FROZEN SURFACES
+
+`grep -c "frozen-surfaces" certification/verify-freeze.sh` → **0**. The script compares **all** source to the
+baseline; the frozen-list test lives in a *different* script (`gate-detector.sh`).
+
+> **So it does not CONFLATE the two conditions — it only ever tests ONE of them.** It cannot emit
+> `FROZEN_CHANGED` because it never computes it. What it does compute — `ANCESTRY OK/FAIL` and `SOURCE OK/FAIL`
+> — it prints in the body and then **flattens into two terminal verdicts** (`FREEZE INTACT` / `FREEZE BROKEN`).
+> The current live state proves it: `ANCESTRY OK` + four **non-frozen** files changed → `FREEZE BROKEN`.
+
+§20's five machine-readable states therefore require **adding** a frozen-surface test, not merely splitting an
+existing one.
+
+### §17.3 · THE QUESTION AUDIT PARTLY EXISTS — DO NOT REBUILD IT
+
+`assistantMailSendIntent.ts` already implements §5's question-audit boundary for one capability:
+**`NEEDS_CLARIFICATION`** on ambiguity (`:54`), **`UNSUPPORTED`** on out-of-scope action verbs (`:55`, `:125`,
+`:161`), deny-by-default scope, with recipient literalism and trigger discipline. **It is a real question audit,
+narrow in scope.** The gap is that it is per-capability and produces no durable record — not that it is absent.
+
+### §17.4 · D1–D12 COVERAGE ON THE ONE GOVERNED RECORD (`ActionRecord`)
+
+| | Dimension | Coverage | Evidence |
+|---|---|---|---|
+| **D1** | Subject/entity | **✓** | `connectorId`, `accountId`, `actionId`, `recipients` |
+| **D2** | Purpose | **✗** | `purpose` exists on the *proposal*, never reaches the record |
+| **D3** | Context | **✗** | no environment/state capture |
+| **D4** | Identity/correlation | **✗** | 0 occurrences of `correlation`; ids are content-derived (**F-P40**) |
+| **D5** | Intent | **partial** | subject/body **fingerprints** only — a digest, not intent |
+| **D6** | Evidence | **partial** | `verification.provenance{source,method,oracle}` exists but is never written in production |
+| **D7** | Authority | **✓** | `verdict`, `actor` |
+| **D8** | Capability/action | **✓** | `actionId` |
+| **D9** | State/result | **partial** | `verdict` + `executed` + `outcome` present but **not separated into three classes** (F-P24) |
+| **D10** | Verification | **structural only** | field exists; **no production writer** (F-P39) |
+| **D11** | Time/resource | **partial** | `requestTime`/`eventTime`/`effectTime`/`at`; `authorization_time` and `execution_time` **ABSENT** by NP-019 ruling; **no resource or cost dimension at all** |
+| **D12** | Correction/learning | **✗** | nothing |
+
+**Four of twelve fully covered.** The absent ones cluster exactly where the programme's open findings already sit
+— D4 (P2/F-P40), D9 (F-P24), D10 (F-P39), D11-resource (F-P43), D12 (Gap B/C).
+
+### §17.5 · Z — ALREADY SOLVED. DO NOT TOUCH.
+
+| Item | Why it must not be reopened |
+|---|---|
+| **P0** connect-path fail-open | corrected + pinned by an **enumerating adversarial** test that whitelists both assignment lines |
+| **P4-MIN** refusal emitter | landed, `warn`, `detail` deliberately absent — re-adding detail would leak recipients (F-P26) |
+| **The question audit** (`assistantMailSendIntent`) | real, narrow, working — §17.3 |
+| **`actionRecord.observe` branch coverage** | already fires on **all** `governedSend` verdicts; the gap is upstream returns, not the observer |
+| **CST verdict durability** | `verdict` recorded on all branches — **not an FG gate; a note** (§14) |
+| **D-16 / NP-018 `Certainty` incl. STALE** | the single verification vocabulary — **never mint alongside** |
+| **The FG-4 latch** | preserved; §12 explicitly forbids disturbing it |
+| **P4-MIN-b** (`:81`) | HELD until the controlled reproduction |
+| **`brainProposeLane` emitters** | 4 sites, **zero at debug** — already sink-reachable |
+| **The 22:18 artifact** | custody copy `artifact-2218/`; `npm run dev:desktop` would destroy it |
