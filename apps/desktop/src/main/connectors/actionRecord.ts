@@ -16,9 +16,16 @@
  */
 import { join } from 'node:path';
 import { promises as fs } from 'node:fs';
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { app } from 'electron';
 import type { GovernedSendResult } from '../cst/sendTransition';
+// D2 (operator ruling, 21 Aug 2026) — the RECORD-FINGERPRINT rule moved to ONE named authority so a
+// read-back reconciler can hash what it OBSERVES with the identical rule instead of copying it. The
+// unchanged pins over the persisted file (`actionRecord.test.ts:86-87,92-94`) are the byte-equivalence proof.
+import { recordFingerprint } from '../evidence/recordFingerprint';
+// D-16 consumer-side classification authority. PURE — no store, no Electron, no reach into
+// governance or execution, so it does not weaken the OBSERVER invariant pinned at actionRecord.test.ts:204.
+import { classifyTerminal } from '../verification/verificationTerminals';
 import { readStoreFile, envelopeStamp } from '../storage/storeEnvelope';
 import { declareStoreScope } from '../tenancy/storeScope';
 import { createLogger } from '../logger';
@@ -183,10 +190,13 @@ interface Persisted {
   records: ActionRecord[];
 }
 
-function fingerprint(text: unknown): string {
-  const norm = typeof text === 'string' ? text.toLowerCase().replace(/\s+/g, ' ').trim() : '';
-  return norm === '' ? '' : createHash('sha256').update(norm).digest('hex').slice(0, 16);
-}
+/**
+ * D2 — this was a PRIVATE `fingerprint` whose name collided with the oracle's MATCH-KEY function of the
+ * same name and a different codomain (the eighth naming collision, ARCHITECTURE-MAPPING §5.0). The rule
+ * itself is unchanged and now lives in `evidence/recordFingerprint.ts`; this alias keeps the two call
+ * sites below reading naturally while there is exactly ONE definition in the repository.
+ */
+const fingerprint = recordFingerprint;
 
 /**
  * NP-015 — `request_time` (§14), READ out of the kernel-minted requestId
@@ -335,13 +345,49 @@ class ActionRecordStore {
     }
   }
 
-  /** Attach a verification terminal to the record of a prior send. Best-effort. */
-  async recordVerification(transitionId: string, terminal: ActionRecordVerification): Promise<void> {
+  /**
+   * Attach a verification terminal to the record of a prior send. Best-effort — never throws.
+   *
+   * ── D3 · MONOTONICITY (operator ruling, 21 Aug 2026) ───────────────────────────────────────────────────────
+   * **AN OBSERVATION FAILURE DOWNGRADES CERTAINTY, NEVER THE RECORDED TERMINAL.** A `VERIFIED_SUCCESS` is a fact
+   * about the world — the message was corroborated in Sent Items. A later read that fails to find it is a
+   * FAILURE TO OBSERVE, not a change in the fact. Before this rule, line 347 was an unconditional overwrite, so
+   * a transient Graph hiccup on a reconciler re-run silently rewrote a corroborated success to `HOLD`, with no
+   * history and no log. UNRESOLVED → settled is the whole point of reconciliation and is allowed; settled →
+   * anything is REFUSED and logged.
+   *
+   * Settled→settled (a late NDR arriving after a corroborated send) is ALSO refused, deliberately: it is a
+   * genuinely different question — D-16's `VERIFIED_SUCCESS` is send-corroboration, never delivery — and
+   * resolving it needs its own ruling. **No policy is invented here.** This matches the oracle's own contract
+   * (`verifyEffect.ts:125-127` returns a prior terminal without re-polling).
+   *
+   * ── D3 · TENANT ISOLATION ──────────────────────────────────────────────────────────────────────────────────
+   * `tenantId` is REQUIRED and matched. Before it, this was the one method on the singleton with no tenant
+   * argument, and `.find()` scanned every tenant's rows — a confused-deputy surface (S32 class). The mechanism
+   * that made it reachable rather than theoretical: `transitionId` is CONTENT-ADDRESSED
+   * (`m365-send:<sha256(tenant|connector|account|action|params)>`, `cst/sendTransition.ts:165-169,212`), so it
+   * COLLIDES BY CONSTRUCTION for two sends with identical parameters. Tenant is inside that hash, so a
+   * cross-tenant collision needs equal tenants — but isolation rested entirely on that hash input rather than on
+   * any code here, and an evidence layer must not depend on a hash's contents for its access control.
+   */
+  async recordVerification(
+    tenantId: string,
+    transitionId: string,
+    terminal: ActionRecordVerification,
+  ): Promise<void> {
     try {
       await this.ensureLoaded();
-      const rec = this.records.find((r) => r.transitionId === transitionId);
+      const rec = this.records.find((r) => r.tenantId === tenantId && r.transitionId === transitionId);
       if (!rec) {
         log.warn(`[ACTION_RECORD] verification for unknown transition ${transitionId} — evidence gap`);
+        return;
+      }
+      const settled = rec.verification != null && classifyTerminal(rec.verification.terminal) !== 'unresolved';
+      if (settled) {
+        // Never silent: the refusal is itself evidence that a re-read disagreed with a settled fact.
+        log.warn(
+          `[ACTION_RECORD] MONOTONICITY — refusing to replace settled terminal ${rec.verification?.terminal} with ${terminal.terminal} for ${transitionId}`,
+        );
         return;
       }
       rec.verification = terminal;

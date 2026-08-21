@@ -1,4 +1,92 @@
-# F-P39 — PRODUCTION READ-BACK · IMPLEMENTATION ENVELOPE
+# F-P39 — PRODUCTION READ-BACK · IMPLEMENTATION ENVELOPE (REVISED + BUILT)
+
+> ## REVISION 2 — 21 Aug 2026, after the eight rulings. **BUILT AND GREEN.**
+>
+> D1/D2/D3 resolved every blocker in §9 and the slice was implemented. **Two things in Revision 1 were WRONG and
+> are corrected here rather than quietly edited:**
+>
+> **CORRECTION 1 — §6's host was wrong.** Revision 1 proposed `deliveryEngine.register`, following the committed
+> `9cb933c` precedent. Reading the host disproved it: `DeliveryEngine.tick()` returns early on
+> `prefs.enabled === false` and skips any source in `prefs.mutedSources`. **A NOTIFICATION PREFERENCE COULD HAVE
+> SILENTLY SWITCHED OFF EVIDENCE PRODUCTION.** The reconciler is registered on `serviceManager` instead — its
+> service list is non-frozen and `serviceManager.startAll(...)` is already called from frozen
+> `runtimeCore.ts:4072`. Ruling J is satisfied either way: **zero frozen lines.**
+>
+> **CORRECTION 2 — "the raw subject exists nowhere durable" was FALSE.** It exists in exactly one production
+> store: `assistant-conversations.json` (`assistant/index.ts:162`, written at `assistantService.ts:366`). My
+> first sweep missed it. **The design is unchanged, but the reason is now a DELIBERATE REFUSAL rather than an
+> absence:** it covers only assistant-lane sends (the ceremony's compose-form path writes nothing there), it
+> needs an optional `correlationId` to link, it is a different evidence class (§2 #19), and **a user clearing
+> their conversation history would silently disable verification** — the same defect class as Correction 1.
+>
+> **RULING D1 — THE INTERVAL, as ruled.** `requestTime ≤ effect ≤ at`, both endpoints real measured instants on
+> the record, never collapsed to a point, either endpoint null ⇒ UNKNOWN. **NOT an FG-12 violation, and this is
+> the whole ruling: `requestTime` is used as A BOUND THAT EXECUTION PROVABLY EXCEEDS, never as a proxy for
+> execution time.** The recon that justified it: `new SystemTime()` is **per-transition**
+> (`sendTransition.ts:192`, inside `governedSend`'s body), so NP-019's frozen-at-construction is scoped to ONE
+> call and the lower bound is genuinely this send's own construction instant. Typical width **200 ms – 2 s**.
+>
+> **THE WIDTH BOUND IS LOAD-BEARING, NOT DECORATIVE — and the mechanism is named.** `RateLimiter.acquire` sleeps
+> **before** `fetch` on a provider-supplied `Retry-After` with **no ceiling**, shared across all 33 M365 write
+> actions on the account (`rateLimiter.ts:54-61`, `http.ts:86-92`). A single `Retry-After: 86400` puts a
+> legitimately-minted `requestTime` **hours** before its own `at`. The ruling predicted this exact failure mode.
+> Bound = **120 s**, derived from the transport (`REQUEST_TIMEOUT_MS = 60_000`, ×2 headroom), not chosen for feel.
+>
+> **RULING D2 — CLASSIFIED, NOT NORMALIZED.** The operator's read is CONFIRMED from source: RECORD-FINGERPRINT is
+> a TAMPER-EVIDENCE device (one-way sha256-16, pinned so the evidence file holds no subject text);
+> MATCH-KEY is a COMPARISON device (normalized plaintext). Neither side weakened. The subject limb is carried in
+> the RECORD-FINGERPRINT codomain — **hash the observation, compare hashes.** Eighth collision recorded in
+> ARCHITECTURE-MAPPING §5.0. The rule now has **ONE** definition (`evidence/recordFingerprint.ts`); a third copy
+> was refused, per F-N16-1.
+>
+> **RULING D3 — BOTH FIXES LANDED.** Monotonicity (a settled terminal is never replaced; the refusal is LOGGED,
+> not silent) and a required tenant argument. Settled→settled is also refused deliberately — a late NDR is a
+> different question and needs its own ruling. **No policy invented.**
+>
+> **RULING D4 — NOT RULED, AND NOT NEEDED.** Proposed: a verification-absence predicate plus non-tenant narrowing
+> on `ActionRecordQuery`. **Nothing reads it today** — the reconciler filters in memory exactly as
+> `m365WriteStates.ts:63` and `s16VerifyRun.ts:68` already do. **No governance decision could consume it:** the
+> query is a read projection, no decision site imports it, and adding a predicate changes what is FOUND, never
+> what is PERMITTED. It is a performance/ergonomics change on a store with tens of rows. **Recommendation: do not
+> build it until a consumer earns it** (§0.3's field-lifecycle ladder, and NP-017's lesson that a field lands
+> with the consumer that earns it).
+>
+> **ONE FINDING BEYOND THE RULINGS, built because the tuple demanded it:** `verifyEffect` took the FIRST matching
+> row and asked no question about the second. Safe for a tuple carrying a unique id; **unsafe for the
+> store-driven tuple**, where two sends with identical parameters are indistinguishable by construction. Opt-in
+> `requireUniqueMatch` ⇒ two matches yield HOLD. **AMBIGUITY IS NOT CORROBORATION.**
+>
+> ### WHAT THIS SLICE DOES **NOT** ESTABLISH (criterion 5, in its own words)
+> - **NOT production Graph observation.** `makeM365GraphReader` has still never been executed by any test, and
+>   the mock cannot falsify its query shape (`mockGraph.ts:84-109` ignores `$select`). Every pin here injects a
+>   reader. **TEST-VERIFIED at the orchestration layer; the adapter that talks to Graph remains unexercised.**
+> - **NOT subject corroboration in the oracle's original sense.** Corroboration is recipient + subject-hash +
+>   measured interval, with body honestly vacuous and no `internetMessageId` as input.
+> - **NOT HOLD resolution.** HOLD is terminal here (ruling G). Nothing resolves it. S22 remains open.
+> - **NOT crash-durability.** The stores beneath are unflushed and unfsync'd; a record lost before its first
+>   persist is invisible to this reconciler and always will be. **S20, not this slice.**
+> - **NOT a real-Electron run.** No app was launched and `out/` was not rebuilt — the armed ceremony build is
+>   preserved. `verify-e2e-strip.sh` deliberately NOT run for the same reason.
+> - **NOT F-P41 closed.** It rides with F-P39 and is not fixed alone.
+>
+> ### THE SEVEN CRITERIA — MEASURED
+>
+> | # | Criterion | Verdict | Evidence |
+> |---|---|---|---|
+> | 1 | ZERO frozen surfaces touched | **PASS** | None of the 8 frozen paths modified; pinned by `fp39Closure.test.ts` |
+> | 2 | DECISION-NEUTRAL | **PASS** | Suite **without** new tests: 9218 passed / 3 skipped (9221). **With**: 9243 / 3 (9246). Delta **exactly 25** = the new tests. Zero assertions changed |
+> | 3 | Single-flight keyed on the hold | **PASS** | Overlapping passes ⇒ `reads === 1`, one attempt, one skip, map does not leak |
+> | 4 | Mutation test | **PASS** | Registration removed ⇒ **25 → 24 pass / 1 fail**; restored byte-identically ⇒ 25 |
+> | 5 | States what it does NOT establish | **PASS** | The six bullets above |
+> | 6 | No new vocabulary, no NPA-*, D1–D12 unchanged | **PASS** | `DECISIONS.md` untouched; no NPA-* anywhere; RECORD-FINGERPRINT/MATCH-KEY was **ordered by D2**, not invented |
+> | 7 | Width bound pinned; exceeding ⇒ UNKNOWN | **PASS** | `MAX_CORROBORATION_WIDTH_MS = 120_000`; over-wide ⇒ HOLD with **zero provider reads** |
+>
+> **Suites at close:** full main **880 files / 9243 passed / 3 skipped** · typecheck node+web clean · lint clean
+> except the pre-existing frozen-path error §1 already logs · honesty scan **0** · **FREEZE INTACT**.
+
+---
+
+# F-P39 — PRODUCTION READ-BACK · IMPLEMENTATION ENVELOPE (REVISION 1)
 
 **Drawn 21 Aug 2026 · against `CERT-c563cdd` / `BASELINE-7e65fe38ccc8` · FREEZE INTACT (ANCESTRY OK · SOURCE OK)**
 **Status: DRAWN, NOT APPROVED. Nothing in this document has been implemented.**

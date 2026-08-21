@@ -117,7 +117,7 @@ describe('S19 · store-backed reader — every number derives from the ActionRec
     expect((await m365WriteStates('tenant-A')).externallyObserved).toBe(0);
 
     // The S16 verify path attaches its terminal to the EXISTING record (prospective-only).
-    await actionRecord.recordVerification('m365-send:ext', { terminal: 'VERIFIED_SUCCESS', internetMessageId: '<pn2@host>', at: '2026-08-19T00:00:00Z' });
+    await actionRecord.recordVerification('tenant-A', 'm365-send:ext', { terminal: 'VERIFIED_SUCCESS', internetMessageId: '<pn2@host>', at: '2026-08-19T00:00:00Z' });
 
     // Now the counter reflects a real verified effect — derived from the store, no inference.
     expect((await m365WriteStates('tenant-A')).externallyObserved).toBe(1);

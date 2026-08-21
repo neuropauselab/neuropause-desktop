@@ -31,11 +31,33 @@ export interface GovernedSendRef {
   readonly subject: string;
   /** Body text used ONLY to derive a comparison fingerprint. It is never re-sent. Empty ⇒ body is not corroborated. */
   readonly body: string;
+  /** Centre of the legacy point±half-width window. Ignored when `sentAtWindow` is supplied. */
   readonly sentAtMs: number;
   /** The 202 carries no id; when a later stage learns one it may be passed, but it is never sufficient ALONE. */
   readonly internetMessageId?: string | null;
   /** Half-width of the timestamp corroboration window (ms). Default 10 min, matching the in-session runner. */
   readonly windowMs?: number;
+  /**
+   * D1 (operator ruling, 21 Aug 2026) — THE INTERVAL FORM. An explicit `[fromMs, toMs]` bounded by two REAL
+   * MEASURED INSTANTS, supplied instead of a centre and a radius.
+   *
+   * WHY IT IS NOT AN NP-019 VIOLATION, AND WHY IT IS NOT AN FG-12 ONE EITHER — this is the whole ruling:
+   * NP-019 refused `authorization_time` and `execution_time` because they were POINT claims with NO source.
+   * This is an INTERVAL claim with TWO sources. **`requestTime` is used here as A BOUND THAT EXECUTION
+   * PROVABLY EXCEEDS — never as a proxy for execution time.** The send cannot have happened before the request
+   * that caused it was constructed, and cannot have happened after the row observing its result was written.
+   * Neither endpoint is a guess, and the interval is NEVER collapsed to a point.
+   *
+   * If either endpoint is unavailable the caller must yield UNKNOWN — never widen to infinity, never narrow to
+   * a guess. Width is bounded (`maxWidthMs`); exceeding the bound yields UNKNOWN, never VERIFIED.
+   */
+  readonly sentAtWindow?: { readonly fromMs: number; readonly toMs: number };
+  /** D2 — subject limb in the RECORD-FINGERPRINT codomain, for a caller driven from the evidence store. */
+  readonly subjectMatchKey?: string;
+  /** D1 — maximum permitted interval width (ms). Exceeding it yields UNKNOWN → HOLD. */
+  readonly maxWidthMs?: number;
+  /** Two rows matching one tuple ⇒ UNKNOWN → HOLD rather than first-match. */
+  readonly requireUniqueMatch?: boolean;
 }
 
 /** The READ-ONLY reader the orchestrator drives. Exactly the shape `makeM365GraphReader` returns. */
@@ -57,12 +79,17 @@ const DEFAULT_WINDOW_MS = 10 * 60_000;
  */
 export function buildVerificationTarget(ref: GovernedSendRef): VerificationTarget {
   const half = ref.windowMs ?? DEFAULT_WINDOW_MS;
+  // D1 — the INTERVAL form wins when supplied; otherwise the legacy centre±half-width, byte-for-byte as before.
+  const sentAtWindow = ref.sentAtWindow ?? { fromMs: ref.sentAtMs - half, toMs: ref.sentAtMs + half };
   return {
     internetMessageId: ref.internetMessageId ?? null,
     recipient: ref.recipient,
     subjectFingerprint: fingerprint(ref.subject),
     bodyFingerprint: fingerprint(ref.body),
-    sentAtWindow: { fromMs: ref.sentAtMs - half, toMs: ref.sentAtMs + half },
+    sentAtWindow,
+    ...(ref.subjectMatchKey !== undefined ? { subjectMatchKey: ref.subjectMatchKey } : {}),
+    ...(ref.maxWidthMs !== undefined ? { maxWidthMs: ref.maxWidthMs } : {}),
+    ...(ref.requireUniqueMatch !== undefined ? { requireUniqueMatch: ref.requireUniqueMatch } : {}),
   };
 }
 

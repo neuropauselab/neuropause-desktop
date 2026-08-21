@@ -160,7 +160,7 @@ describe('the evidence record carries each instant from its own source', () => {
 
   it('effect_time attaches to the verification, distinct from the verification time itself', async () => {
     await actionRecord.observe(request, gsr('req:m365-send:acct-1:2026-08-18T12:20:00.000Z'), { actor: 'local:x', tenantId: 'tenant-A' });
-    await actionRecord.recordVerification('t-np015', {
+    await actionRecord.recordVerification('tenant-A', 't-np015', {
       terminal: 'VERIFIED_SUCCESS', internetMessageId: '<msg-123@np>',
       at: '2026-08-18T13:25:54.000Z',            // when the ORACLE RAN
       effectTime: '2026-08-18T12:23:44.512Z',    // when the PROVIDER says it happened
@@ -177,7 +177,7 @@ describe('the evidence record carries each instant from its own source', () => {
 
   it('a HOLD verification stores effect_time NULL — an unobserved effect has no time', async () => {
     await actionRecord.observe(request, gsr('req:m365-send:acct-1:2026-08-18T12:20:00.000Z'), { actor: 'local:x', tenantId: 'tenant-A' });
-    await actionRecord.recordVerification('t-np015', {
+    await actionRecord.recordVerification('tenant-A', 't-np015', {
       terminal: 'HOLD', internetMessageId: null, at: '2026-08-18T13:25:54.000Z', effectTime: null,
     });
     const [rec] = await actionRecord.query({ tenantId: 'tenant-A', transitionId: 't-np015' });
@@ -185,7 +185,9 @@ describe('the evidence record carries each instant from its own source', () => {
     expect(rec.verification?.effectTime).toBeNull();
   });
 
-  it('the PRODUCTION caller passes the oracle\'s instant through untouched (source-pinned)', () => {
+  // RULING D — RELABELLED. Same defect as its sibling in `constitutionalInvariants.test.ts`: the title claimed a
+  // production property while the body reads the compile-stripped `e2e/s16VerifyRun.ts`. Assertion unchanged.
+  it('the compile-stripped e2e caller passes the oracle\'s instant through untouched (source-pinned; NOT a production path — F-P39)', () => {
     const src = readFileSync(join(__dirname, 'e2e', 's16VerifyRun.ts'), 'utf8');
     expect(src).toContain('effectTime: result.observedEffectAt');
     // It must NOT re-clock: no `new Date()` on the effectTime line.

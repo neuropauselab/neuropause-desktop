@@ -201,13 +201,16 @@ describe('F-N16-4 · DISCOVER — what each identifier actually names', () => {
     expect(recorder).toContain("oracle: 'm365ReadBack:sentItems+inbox'");
   });
 
-  it('the ORCHESTRATOR that is actually called is named by NEITHER identifier', () => {
+  // RULING D (TIER 2) — "actually called" was a runtime claim over a compile-stripped file. Narrowed to what
+  // the body actually reads. Assertion unchanged.
+  it('the ORCHESTRATOR the e2e runner delegates to is named by NEITHER identifier', () => {
     const recorder = read(MAIN, 'e2e', 's16VerifyRun.ts');
     expect(recorder).toContain('verifyGovernedSend'); // what it calls
     expect(recorder).not.toMatch(/oracle:\s*'[^']*verifyGovernedSend/); // never in the identity
   });
 
-  it('the registry names the RULE, and the record names the READER — two layers, two answers', () => {
+  // RULING D (TIER 2) — "the record" implied a durable production record; the body reads e2e source. Narrowed.
+  it('the registry names the RULE, and the e2e recording site names the READER — two layers, two answers', () => {
     expect(deriveOracle('mail.send').oracleId).toBe('verifyEffect');
     const recorder = read(MAIN, 'e2e', 's16VerifyRun.ts');
     expect(recorder).toContain("oracle: 'm365ReadBack:sentItems+inbox'");

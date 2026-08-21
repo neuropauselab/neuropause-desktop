@@ -98,7 +98,7 @@ describe('S34a · action record — no content copy + actor verbatim (condition 
 describe('S34a · action record — verification + query', () => {
   it('T-4 · a verification terminal attaches to the same record by transitionId', async () => {
     await actionRecord.observe(req(), gsr({ transitionId: 't-verify' }), ctx());
-    await actionRecord.recordVerification('t-verify', { terminal: 'VERIFIED_SUCCESS', internetMessageId: '<id@host>', at: '2026-08-18T13:25:54Z' });
+    await actionRecord.recordVerification('tenant-A', 't-verify', { terminal: 'VERIFIED_SUCCESS', internetMessageId: '<id@host>', at: '2026-08-18T13:25:54Z' });
     const [rec] = await actionRecord.query({ tenantId: 'tenant-A', transitionId: 't-verify' });
     expect(rec.verification?.terminal).toBe('VERIFIED_SUCCESS');
     expect(rec.verification?.internetMessageId).toBe('<id@host>');
@@ -143,9 +143,9 @@ describe('S34a · CLOSING PROOF', () => {
 
   it('3 · EVERY TERMINAL exercised — incl. VERIFIED_SUCCESS and VERIFIED_FAILED, never a false success', async () => {
     await actionRecord.observe(req(), gsr({ transitionId: 't-vs' }), ctx());
-    await actionRecord.recordVerification('t-vs', { terminal: 'VERIFIED_SUCCESS', internetMessageId: '<a@h>', at: '2026-08-18T13:00:00Z' });
+    await actionRecord.recordVerification('tenant-A', 't-vs', { terminal: 'VERIFIED_SUCCESS', internetMessageId: '<a@h>', at: '2026-08-18T13:00:00Z' });
     await actionRecord.observe(req(), gsr({ transitionId: 't-vf' }), ctx());
-    await actionRecord.recordVerification('t-vf', { terminal: 'VERIFIED_FAILED', internetMessageId: null, at: '2026-08-18T13:00:00Z' });
+    await actionRecord.recordVerification('tenant-A', 't-vf', { terminal: 'VERIFIED_FAILED', internetMessageId: null, at: '2026-08-18T13:00:00Z' });
     const vs = (await actionRecord.query({ tenantId: 'tenant-A', transitionId: 't-vs' }))[0];
     const vf = (await actionRecord.query({ tenantId: 'tenant-A', transitionId: 't-vf' }))[0];
     expect(vs.verification?.terminal).toBe('VERIFIED_SUCCESS');
@@ -167,7 +167,7 @@ describe('S34a · CLOSING PROOF', () => {
   it('4 · VERIFICATION ATTACHMENT — attaches to the EXISTING record; an unknown transition creates NO new record', async () => {
     await actionRecord.observe(req(), gsr({ transitionId: 't-exist' }), ctx());
     const before = (await actionRecord.query({ tenantId: 'tenant-A' })).length;
-    await actionRecord.recordVerification('t-DOES-NOT-EXIST', { terminal: 'VERIFIED_SUCCESS', internetMessageId: null, at: 'x' });
+    await actionRecord.recordVerification('tenant-A', 't-DOES-NOT-EXIST', { terminal: 'VERIFIED_SUCCESS', internetMessageId: null, at: 'x' });
     const after = await actionRecord.query({ tenantId: 'tenant-A' });
     expect(after).toHaveLength(before); // no phantom record was created
   });
@@ -184,7 +184,7 @@ describe('S34a · CLOSING PROOF', () => {
       gsr({ transitionId: 'm365-send:full', requestId: 'req:full:9', verdict: 'ALLOW', executed: true, semanticOutcome: 'ACKNOWLEDGED' }),
       ctx({ actor: 'user-owner', tenantId: 'tenant-A' }),
     );
-    await actionRecord.recordVerification('m365-send:full', { terminal: 'VERIFIED_SUCCESS', internetMessageId: '<pn2@host>', at: '2026-08-18T13:25:54Z' });
+    await actionRecord.recordVerification('tenant-A', 'm365-send:full', { terminal: 'VERIFIED_SUCCESS', internetMessageId: '<pn2@host>', at: '2026-08-18T13:25:54Z' });
     const [rec] = await actionRecord.query({ tenantId: 'tenant-A', recipient: 'dest@example.com' });
     // request → actor → tenant → connector/account → verdict → outcome → 202 → verification → evidence ref
     expect(rec.requestId).toBe('req:full:9');

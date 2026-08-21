@@ -22,6 +22,10 @@ import { notificationScheduler } from './notificationScheduler';
 import { pluginLoader } from './pluginLoader';
 import { appUpdater } from './appUpdater';
 import { companionGatewayService } from '../companion/gatewayService';
+// F-P39 — the production read-back caller. Registered HERE rather than on deliveryEngine because a
+// delivery source is gated by user notification preferences, and a preference must never be able to
+// switch off evidence production. `startAll` below is already called from runtimeCore — zero frozen lines.
+import { readBackReconciler } from '../reconciliation/readBackReconcilerInstance';
 
 const log = createLogger('services');
 
@@ -132,6 +136,9 @@ class ServiceManager {
       // Mobile M1-03 — the companion LAN gateway (no-op until initCompanion binds it
       // and only listens when the user has enabled it in Settings).
       companionGatewayService,
+      // F-P39 — read-back verification. Independent of every other service: it reads the evidence store,
+      // classifies, records a terminal, and stops. It never executes and never resolves a HOLD.
+      readBackReconciler,
     ];
   }
 

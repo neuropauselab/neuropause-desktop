@@ -82,7 +82,7 @@ async function runLoop(kind: 'success' | 'fail' | 'hold'): Promise<{ terminal: s
   // mock read-back (real verifyEffect, mock Graph reader):
   const target: VerificationTarget = { internetMessageId: null, recipient: 'op@ex.com', subjectFingerprint: fingerprint('hi'), bodyFingerprint: fingerprint('hello'), sentAtWindow: { fromMs: 0, toMs: Number.MAX_SAFE_INTEGER } };
   const verify = await verifyEffect(target, mockGraph(kind));
-  await actionRecord.recordVerification('tr-1', { terminal: verify.state, internetMessageId: verify.matchedMessageId, at: '2026-08-19T00:00:02.000Z' });
+  await actionRecord.recordVerification('tenant-A', 'tr-1', { terminal: verify.state, internetMessageId: verify.matchedMessageId, at: '2026-08-19T00:00:02.000Z' });
   const states = await m365WriteStates('tenant-A');
   return { terminal: verify.state, externallyObserved: states.externallyObserved, requested: states.requested, providerAcknowledged: states.providerAcknowledged };
 }

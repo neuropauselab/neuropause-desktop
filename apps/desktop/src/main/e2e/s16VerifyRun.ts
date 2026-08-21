@@ -68,7 +68,11 @@ export async function runS16Verification(): Promise<void> {
     const recs = await actionRecord.query({ tenantId: workspaceId, recipient: latch.to[0] });
     const match = recs.filter((r) => r.outcome === 'ACKNOWLEDGED').slice(-1)[0];
     if (match) {
-      await actionRecord.recordVerification(match.transitionId, {
+      // D3 — `recordVerification` now REQUIRES the tenant. It previously matched on transitionId alone and
+      // scanned every tenant's rows; transitionId is content-addressed and collides by construction, so the
+      // isolation rested on a hash's inputs rather than on code. `workspaceId` is the same tenant key already
+      // used for the query two lines above.
+      await actionRecord.recordVerification(workspaceId, match.transitionId, {
         terminal: result.state,
         internetMessageId: result.matchedMessageId ?? null,
         at: new Date().toISOString(),

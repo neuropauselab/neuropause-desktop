@@ -287,6 +287,29 @@ mislocalizations in one sitting** — every one of them a fault placed downstrea
 > thing were allowed to share one name* — turned back on our own vocabulary. **No renames in source were made when
 > this rule was adopted;** it governs documents and new code first, and any source rename is its own presented slice.
 
+> **THE BARE WORD "FINGERPRINT" IS BANNED — EIGHTH COLLISION.** (Operator ruling D2, 21 Aug 2026.) Two functions
+> named `fingerprint` exist, **with different codomains and different jobs**, and the collision is what made F-P39
+> look like a one-line fix for a day:
+>
+> | Term | Is | Lives in | Job |
+> |---|---|---|---|
+> | **RECORD-FINGERPRINT** | `sha256(normalized).slice(0,16)` — **one-way hex** | `connectors/actionRecord.ts:186-189` | **TAMPER-EVIDENCE.** Proves a stored row was not altered, while guaranteeing the evidence file holds **no subject or body text** (pinned: `actionRecord.test.ts:86-87,92-94`) |
+> | **MATCH-KEY** | `lowercase → collapse whitespace → trim` — **comparable plaintext** | `verification/verifyEffect.ts:80-82` | **COMPARISON.** Lets an observed provider row be tested against a target |
+>
+> **THE CLASSIFICATION, RULED: this is NOT a divergence and must NOT be normalized.** Two different jobs wearing
+> one word. **The record's one-wayness is evidence FOR that reading, not a defect to fix** — it is deliberate,
+> pinned, and load-bearing for the privacy property of the evidence store. Neither side is weakened to make a
+> match possible. *Consistent with F-N16-4's disposition: two mechanisms at two layers are DESCRIPTIVE, not
+> CONFLICTING.*
+>
+> **The consequence, stated plainly rather than engineered around:** a comparison driven from the evidence store
+> must be performed **in the RECORD-FINGERPRINT codomain** (hash the observation, compare hashes) — never by
+> teaching the record to store comparable plaintext. **Where that is not available, SUBJECT IS NOT A LIMB, and
+> the corroboration is honestly weaker rather than falsely complete.**
+>
+> Collision list, now eight: GRANTED/TENANT scope · GOVERNED/PRODUCT draft · MODULE/CAPABILITY certified ·
+> declared-vs-reachable · source-vs-build · "Open connectors" · DECISION/DIMENSION · **RECORD-FINGERPRINT/MATCH-KEY**.
+
 ### §5.0b · SET-LEVEL PROPERTIES REQUIRE SET-LEVEL TESTS
 
 > **A PROPERTY THAT HOLDS OF EVERY MEMBER NEED NOT HOLD OF THE SET. INDIVIDUALLY-GREEN PINS ARE NOT EVIDENCE

@@ -461,7 +461,7 @@ describe('RULE-012 — verification evidence must have provenance', () => {
       gsr,
       { actor: 'user-owner', tenantId: 'tenant-A' },
     );
-    await actionRecord.recordVerification('t-verify', {
+    await actionRecord.recordVerification('tenant-A', 't-verify', {
       terminal: 'VERIFIED_SUCCESS', internetMessageId: '<id@host>', at: '2026-08-18T13:25:54Z',
       provenance: {
         source: 's16VerifyRun',
@@ -482,7 +482,13 @@ describe('RULE-012 — verification evidence must have provenance', () => {
    * operator before editing"); the one-object diff was presented verbatim and
    * authorized by the operator (20 Aug 2026, NP-014 go).
    */
-  it('the PRODUCTION caller supplies provenance at its recordVerification call site (source-pinned)', () => {
+  // RULING D (operator, 21 Aug 2026) — RELABELLED. This title said "the PRODUCTION caller" while the body reads
+  // `e2e/s16VerifyRun.ts`, which is COMPILE-STRIPPED from release. It passed identically whether or not the code
+  // shipped, so it could never fail for the reason its name implied — a FALSE GREEN of the §2 #17 / F-N19-2
+  // family. The assertion is unchanged and still useful as drift detection over a GATE-class file; only the
+  // claim is corrected. (The genuine production caller now exists — `reconciliation/readBackReconciler.ts` —
+  // and is pinned at runtime in `reconciliation/readBackReconciler.test.ts`, not by source text.)
+  it('the compile-stripped e2e caller supplies provenance at its recordVerification call site (source-pinned; NOT a production path — F-P39)', () => {
     const src = readFileSync(join(__dirname, 'e2e', 's16VerifyRun.ts'), 'utf8');
     expect(src).toMatch(/recordVerification\([\s\S]{0,600}?provenance:\s*\{/);
     expect(src).toContain("oracle: 'm365ReadBack:sentItems+inbox'");
