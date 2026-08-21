@@ -1207,6 +1207,18 @@ register lives.
 non-negotiables**. They overlap without being congruent — RULE-007 ≈ §2 #15, RULE-003 ≈ §2 #8, RULE-006 ≈ §2
 #9/#14, RULE-011 ≈ §2 #7. **The question is noted; it is not answered here.**
 
+> **CORRECTION TO THE COLUMN ITSELF, 22 Aug 2026 — `#6` IS LISTED AS PINNED, AND FOR THE `mail.send` EXECUTE PATH
+> IT IS PROSE.** §2 #6 says *AI output is untrusted data* — a rule whose subject is **AI output**. Measured
+> (F-P8): **that path cannot identify which content is AI's.** The renderer merges the model's draft into the
+> human's field (`M365WritePanel.tsx:89` `setBody(r.text)`), the gate's SKIP is byte-identical for drafted and
+> hand-typed sends, and `correlationId` is contractually barred from governing. **A rule that cannot name its
+> subject at the point of enforcement cannot be enforced there, whatever pins exist elsewhere** — the pins that
+> earned #6 its PINNED mark are on the *propose* and *gateway* lanes, and the execute lane is the one that sends.
+> **This is a finding about the RULE, not about the code** (CLAUDE §2 #33), and it is why the column is corrected
+> rather than the code changed. **It also revises the audit's own caveat in a specific way: the sweep produced
+> candidates by keyword, and #6 matched on lanes where the subject IS identifiable — a complete search of the
+> wrong space (§2 #30) inside the enforcement audit itself.**
+
 **THE ENFORCEMENT SHAPE (§2, eighteen rules):** ~**10 PINNED** (#6 #8 #9 #11 #12 #13 #14 #15 #17 #18) ·
 **1 SCRIPT-enforced** (#1, via `gate-detector.sh` + `verify-freeze.sh` + `frozen-surfaces.json`) · ~**7 PROSE**
 (#2 #3 #4 #5 #7* #10 #16). **§4's AuthStatus exhaustiveness is PROSE — proven so by F-P19**, and by our own ladder
