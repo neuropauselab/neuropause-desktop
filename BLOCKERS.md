@@ -1,9 +1,11 @@
 # BLOCKERS — NeuroPause OS
 ### Read at every session ritual, after CLAUDE.md and NP_STATE.md. Current as of 20 Aug 2026.
 
-> **THIS FILE IS AN ENTRY POINT, NOT A REGISTER.** The complete findings register — F-P8 … F-P34 and every
-> earlier F-N/F-S finding — lives in **`certification/ARCHITECTURE-MAPPING.md` §5–§11**, with the
-> **FINDINGS-WITHOUT-A-LANE** register at §6.6.
+> **THIS FILE IS AN ENTRY POINT, NOT A REGISTER.** The register is
+> **`certification/CONTROL-REGISTER.md`** — four classes (A findings · B constitution · C held · D operator
+> decisions), with every finding naming the law it violates and every law carrying its open findings and its
+> enforcement (PINNED / SCRIPT / PROSE). The narrative record remains in
+> **`certification/ARCHITECTURE-MAPPING.md` §5–§13**, with FINDINGS-WITHOUT-A-LANE at §6.6.
 >
 > **Why it was rewritten:** it sat at 1,430 bytes and two days stale while ~34 findings accumulated, and the
 > session ritual reads it every time. **An entry point that is blind is worse than no entry point, because it is

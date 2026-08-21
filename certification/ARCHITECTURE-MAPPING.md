@@ -247,6 +247,10 @@ sitting.**
 IMPORT ≠ APPROVAL ≠ POSTING is tested explicitly in slice B (`aggregatedImports.test.ts`: `approvedAt` empty +
 draft pins), never inferred from code structure.
 
+> **THE REGISTER IN GATE-READY FORM IS `certification/CONTROL-REGISTER.md`.** §5–§13 below are the NARRATIVE
+> record — how each finding was established. The register is the four-class sort, the finding↔law linkage and the
+> enforcement column. Entries were moved, not rewritten.
+
 ## §5 · THE FINDINGS SITTING (20 Aug 2026) — F-P8…F-P17, and the vocabulary rule they forced
 
 ### §5.0 · MAPPING PRINCIPLE — THE GRANTED/TENANT DISAMBIGUATION (operator ruling, binding)
@@ -265,6 +269,13 @@ mislocalizations in one sitting** — every one of them a fault placed downstrea
 > after the ladder took four shapes in four consecutive documents — dropping TESTED and ADVERSARIAL twice, which
 > are the red-first rungs the programme rests on. A vocabulary that has taken four shapes in four documents is not
 > a vocabulary, it is a draft.)
+
+> **THE PREFIX `D-` IS RESERVED FOR DECISIONS, AND DIMENSIONS ARE `DIM-`.** `DECISIONS.md` carries **D-1…D-16**
+> as decisions. Any dimensional axis is named **DIM-1…DIM-n**, never `D-anything` — "D-9 the decision" and
+> "D9 Governance the dimension" would collide inside the register that is being made load-bearing.
+> **SEVENTH COLLISION.** The collision list is the most reliable predictor of error this programme has:
+> GRANTED/TENANT scope · GOVERNED/PRODUCT draft · MODULE/CAPABILITY certified · declared-vs-reachable ·
+> source-vs-build · "Open connectors" · and now DECISION/DIMENSION.
 
 > **THE BARE WORD "DRAFT" IS BANNED** alongside "scope". Two paths share it — **GOVERNED DRAFT**
 > (`referenceDrafter` → Proposal/BrainReview → governance) and **PRODUCT DRAFT** (`aiEngine`/Ollama → editable
@@ -302,6 +313,34 @@ query can fail while every individual pin passes).
 
 **Corollary for how findings are counted:** an aggregate defect has no single site, so it will not appear in any
 file's review and cannot be assigned to any one commit. It is found only by asking a question no component owns.
+
+### §5.0c · THE REGISTER'S MODEL — WHAT A FINDING *IS*
+
+Nothing in the repo has ever stated this, and the register cannot be load-bearing without it:
+
+> **CONSTITUTION → REQUIREMENT → IMPLEMENTATION → OBSERVATION → FINDING → CORRECTION → VERIFICATION → CLOSED**
+
+**A FINDING IS THE GAP BETWEEN A LAW AND AN IMPLEMENTATION, MADE VISIBLE BY AN OBSERVATION.** It is not a bug
+report and not an opinion: it is the named distance between what the constitution requires and what the code does,
+evidenced. Which is why every finding must name the law it violates — a finding that names none is either a
+**missing law** or **not a finding at all**.
+
+**WORKED EXAMPLE — F-P9:**
+
+| stage | value |
+|---|---|
+| CONSTITUTION | *correlation is for evidence, never for authorization* — and the proof standard's one-run-id requirement |
+| REQUIREMENT | one identity correlates a log line to the run that produced it |
+| IMPLEMENTATION | the assistant mints `correlationId`; **the handoff carries `{to, subject, body}` and drops it** |
+| OBSERVATION | the 20 Aug sitting could not tie the 12:44:16 stash to any particular mount |
+| FINDING | **F-P9** — the record carries two clocks under one set of numbers and no run id |
+| CORRECTION | *not taken* — propagation candidate, never a minted id |
+| VERIFICATION | *pending* |
+| STATUS | **OPEN** |
+
+The chain also says what CLOSED means: **a correction that has been verified**, not a correction that has been
+applied. F-P33 is closed because the header was repaired *and* the recurrence rule pins it; F-P35 is closed as
+ENVIRONMENT-SPECIFIC because four reproductions failed, which is a verification of a negative rather than of a fix.
 
 ### §5.1 · THE TWO LAW FAMILIES — kept separate, deliberately
 
