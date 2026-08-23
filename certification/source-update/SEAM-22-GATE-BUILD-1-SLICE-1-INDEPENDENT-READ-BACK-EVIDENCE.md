@@ -75,3 +75,17 @@ This document + the pins above. The slice's own read-back: the independence pin 
 **CLOSED (TEST-VERIFIED).** Custody note: this slice is the first repository mutation of the SEAM
 programme; pre-change FREEZE INTACT was captured (baseline `40616b9` = HEAD, ANCESTRY OK · SOURCE OK)
 and no frozen or sensitive path was touched.
+
+---
+
+## ADDENDUM · SLICE 1b — §21 MAXIMAL INDEPENDENCE (same sitting)
+The recon fleet's read-back agent identified the honest gap in slice 1's independence: `readBack()`
+reads through the live singleton, whose `ensureLoaded` memoizes — an in-process read of memory, not of
+the file. Landed (single purpose, non-frozen): `createActionRecordReader(dir)` in
+`connectors/actionRecord.ts` — a **READ-ONLY** fresh reader (exposes `query` only; cannot observe,
+verify, or persist) over the identical envelope/load path and identical filter semantics (no forked
+parser, §56) — and `readBackFromDisk(dir, scopeKey, ref)` in `reconciliation/readBack.ts`. **Pinned:**
+with the singleton deliberately pointed elsewhere, `readBackFromDisk` still reconstructs the persisted
+truth (the divergence-catching form an operator surface should use); the reader is runtime-verified
+write-free. 14 readBack pins total; focused+adjacent 60/60; tsc node clean; lint clean; full main suite
+re-run recorded in §1.

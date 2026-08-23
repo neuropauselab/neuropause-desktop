@@ -35,7 +35,7 @@
  * that ends that accommodation is its own gated slice, not this one.
  */
 import type { ActionRecord, ActionRecordVerification } from '../connectors/actionRecord';
-import { actionRecord, EXECUTION_NOT_STARTED } from '../connectors/actionRecord';
+import { actionRecord, createActionRecordReader, EXECUTION_NOT_STARTED } from '../connectors/actionRecord';
 import { classifyTerminal, isSuccessTerminal } from '../verification/verificationTerminals';
 
 /** How the caller names the action being asked about. At least one field required. */
@@ -227,6 +227,26 @@ export async function readBack(scopeTenantId: string, ref: ReadBackRef): Promise
   // Push the supported filters down to the store; correlationId is matched here
   // (the store's query has no correlationId filter — evidence stays untouched).
   const records = await actionRecord.query({
+    tenantId: scopeTenantId,
+    ...(ref.requestId !== undefined ? { requestId: ref.requestId } : {}),
+    ...(ref.transitionId !== undefined ? { transitionId: ref.transitionId } : {}),
+  });
+  return reconstructReadBack(records, ref);
+}
+
+/**
+ * §21 MAXIMAL INDEPENDENCE: read through a FRESH instance over the persisted
+ * file in `dir` — never the live singleton's memoized memory. This is the form
+ * an operator surface should use (pass the profile's userData dir): it can
+ * catch a divergence between what the running process believes and what the
+ * durable evidence actually says.
+ */
+export async function readBackFromDisk(dir: string, scopeTenantId: string, ref: ReadBackRef): Promise<ReadBackReport> {
+  if (ref.requestId === undefined && ref.transitionId === undefined && ref.correlationId === undefined) {
+    return { ref, matches: 0, rows: [], notPersisted: NOT_PERSISTED };
+  }
+  const reader = createActionRecordReader(dir);
+  const records = await reader.query({
     tenantId: scopeTenantId,
     ...(ref.requestId !== undefined ? { requestId: ref.requestId } : {}),
     ...(ref.transitionId !== undefined ? { transitionId: ref.transitionId } : {}),

@@ -12,7 +12,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { actionRecord } from '../connectors/actionRecord';
 import type { GovernedSendResult } from '../cst/sendTransition';
-import { readBack, reconstructReadBack } from './readBack';
+import { createActionRecordReader } from '../connectors/actionRecord';
+import { readBack, readBackFromDisk, reconstructReadBack } from './readBack';
 
 const WS = 'ws-readback-a';
 const OTHER_WS = 'ws-readback-b';
@@ -209,6 +210,26 @@ describe('SEAM-22 · independent read-back (§20–§21)', () => {
     const report = await readBack(WS, { transitionId: 't-durable' });
     expect(report.matches).toBe(1);
     expect(report.rows[0].finalStatus).toBe('VERIFIED_SUCCESS');
+  });
+
+  it('§21 MAXIMAL INDEPENDENCE: readBackFromDisk reads the FILE through a fresh instance, not the live singleton', async () => {
+    const dirA = freshDir();
+    actionRecord.useDirForTests(dirA);
+    await actionRecord.observe(sendRequest(), sendResult({ transitionId: 't-disk' }), { actor: 'a', tenantId: WS });
+    // Re-point the live singleton elsewhere — its memory now knows nothing of dirA.
+    actionRecord.useDirForTests(freshDir());
+    expect((await readBack(WS, { transitionId: 't-disk' })).matches).toBe(0); // the singleton view
+    const fromDisk = await readBackFromDisk(dirA, WS, { transitionId: 't-disk' });
+    expect(fromDisk.matches).toBe(1); // the persisted truth, read fresh
+    expect(fromDisk.rows[0].finalStatus).toBe('PROVIDER_ACKNOWLEDGED');
+  });
+
+  it('the fresh reader is READ-ONLY shaped — it exposes query and nothing that writes', () => {
+    const reader = createActionRecordReader(freshDir());
+    expect(typeof reader.query).toBe('function');
+    expect('observe' in reader).toBe(false);
+    expect('recordVerification' in reader).toBe(false);
+    expect('observeGovernance' in reader).toBe(false);
   });
 
   it('states its evidence limits: the NOT_PERSISTED fields are named, never fabricated', async () => {

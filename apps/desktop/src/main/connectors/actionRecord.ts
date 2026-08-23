@@ -517,3 +517,19 @@ class ActionRecordStore {
 }
 
 export const actionRecord = new ActionRecordStore();
+
+/**
+ * SEAM-22 §21 — a READ-ONLY, FRESH reader over a specific directory's persisted
+ * evidence. Exists so the independent read-back can read THE FILE (through the
+ * same envelope rules and the same `query` filter semantics — never a forked
+ * parser) rather than the live singleton's memoized memory. The returned surface
+ * deliberately exposes `query` only: a reader cannot observe, verify, or persist.
+ */
+export interface ActionRecordReader {
+  query(filter: ActionRecordQuery): Promise<ActionRecord[]>;
+}
+export function createActionRecordReader(dir: string): ActionRecordReader {
+  const store = new ActionRecordStore();
+  store.useDirForTests(dir); // the dir-override seam — identical load path, fresh cache
+  return { query: (filter) => store.query(filter) };
+}
