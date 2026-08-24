@@ -28,6 +28,111 @@ const ENTRA_TENANT = (process.env[ENTRA_TENANT_ENV] ?? '').trim() || 'common';
 const ENTRA_AUTHORITY = `https://login.microsoftonline.com/${ENTRA_TENANT}/oauth2/v2.0`;
 
 /**
+ * Microsoft 365 delegated scopes, partitioned BY CAPABILITY instead of kept as one flat union.
+ *
+ * WHY (SEAM-B.18): the connect flow requested every product domain's permissions at once — mail
+ * send/write, files write, directory read, Teams — regardless of which capability the user actually
+ * needed. A purpose that only creates a contact was still forced to obtain `Mail.Send`, and a consent
+ * screen cannot describe less than what is requested. Partitioning makes the REQUESTED AUTHORITY a
+ * function of the declared profile, so a narrow purpose can ask narrowly.
+ *
+ * AUTHORITY ≠ CAPABILITY ≠ EFFECT. Narrowing this list narrows only what may EVER BE ASKED FOR; it
+ * never widens what may be done. A granted scope still buys nothing on its own: `M365Executor`
+ * re-checks each action's own `scopes` against the granted set (m365/executor.ts) and refuses with an
+ * honest "Missing Graph permission(s)" message, and the CST kernel remains the runtime decision
+ * authority for every mutating action.
+ *
+ * All scopes here are DELEGATED (the signed-in user's own data). No application/app-only permission
+ * appears in any profile, and this connector is a public client (`clientSecretEnv: null`, PKCE).
+ */
+const M365_PROTOCOL_SCOPES = ['openid', 'profile', 'email', 'offline_access', 'User.Read'];
+const M365_DIRECTORY_SCOPES = ['User.Read.All', 'Group.Read.All', 'Directory.Read.All'];
+const M365_MAIL_SCOPES = ['Mail.Read', 'Mail.ReadWrite', 'Mail.Send'];
+const M365_CALENDAR_SCOPES = ['Calendars.Read', 'Calendars.ReadWrite'];
+const M365_FILES_SCOPES = ['Files.Read', 'Files.ReadWrite.All'];
+const M365_CONTACTS_SCOPES = ['Contacts.Read', 'Contacts.ReadWrite'];
+/** The Teams channel scopes (ChannelMessage.Send / Channel.Create / ChannelMember.Read.All) need admin consent. */
+const M365_TEAMS_SCOPES = [
+  'Team.ReadBasic.All',
+  'Chat.ReadWrite',
+  'ChannelMessage.Send',
+  'Channel.Create',
+  'ChannelMember.Read.All',
+];
+
+/** Capability-specific scope sets, exported so a test can assert the boundary rather than restate it. */
+export const M365_SCOPE_SETS: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  protocol: M365_PROTOCOL_SCOPES,
+  directory: M365_DIRECTORY_SCOPES,
+  mail: M365_MAIL_SCOPES,
+  calendar: M365_CALENDAR_SCOPES,
+  files: M365_FILES_SCOPES,
+  contacts: M365_CONTACTS_SCOPES,
+  teams: M365_TEAMS_SCOPES,
+});
+
+/**
+ * Named request profiles. `full` is the historical union — the product's every-capability default, so
+ * an existing installation's behaviour is unchanged. `contacts` is the minimum a contacts-only purpose
+ * requires: the protocol scopes the sign-in itself uses plus the contacts capability, and nothing else.
+ */
+export const M365_SCOPE_PROFILE_ENV = 'NEUROPAUSE_M365_SCOPE_PROFILE';
+export type M365ScopeProfile = 'full' | 'contacts';
+
+export function m365ScopesForProfile(profile: M365ScopeProfile): string[] {
+  return profile === 'contacts'
+    ? [...M365_PROTOCOL_SCOPES, ...M365_CONTACTS_SCOPES]
+    : [
+        ...M365_PROTOCOL_SCOPES,
+        ...M365_DIRECTORY_SCOPES,
+        ...M365_MAIL_SCOPES,
+        ...M365_CALENDAR_SCOPES,
+        ...M365_FILES_SCOPES,
+        ...M365_CONTACTS_SCOPES,
+        ...M365_TEAMS_SCOPES,
+      ];
+}
+
+/**
+ * Resolve the profile from the environment. An unset or unrecognised value resolves to `full` — the
+ * behaviour every existing installation already has — because a typo must never silently disable
+ * working product capabilities. A narrow ceremony therefore states its profile EXPLICITLY, and the
+ * operator still reads the consent screen before granting (a broader screen than the stated profile is
+ * itself the stop condition).
+ */
+export function resolveM365ScopeProfile(raw: string | undefined): M365ScopeProfile {
+  return (raw ?? '').trim().toLowerCase() === 'contacts' ? 'contacts' : 'full';
+}
+
+const ENTRA_SCOPE_PROFILE = resolveM365ScopeProfile(process.env[M365_SCOPE_PROFILE_ENV]);
+const ENTRA_OAUTH_SCOPES = m365ScopesForProfile(ENTRA_SCOPE_PROFILE);
+
+/**
+ * The consent DESCRIPTION shown in the connector card. Derived from the same resolved profile, so the
+ * card can never describe access the app does not request (the UI-truth rule): a contacts-profile
+ * install shows Contacts + Offline, not Mail/Files/Directory/Teams.
+ */
+const M365_SCOPE_DESCRIPTIONS: Readonly<Record<string, { label: string; description: string }>> = Object.freeze({
+  'User.Read.All': { label: 'Users', description: "Read your organization's user directory." },
+  'Group.Read.All': { label: 'Groups', description: "Read your organization's groups." },
+  'Directory.Read.All': {
+    label: 'Directory',
+    description: 'Read directory data (organization and memberships).',
+  },
+  'Mail.Read': { label: 'Outlook Mail', description: 'Read your inbox mail (headers and preview).' },
+  'Calendars.Read': { label: 'Calendar', description: 'Read your calendar events.' },
+  'Files.Read': { label: 'OneDrive', description: 'Read your OneDrive files and folders.' },
+  'Contacts.Read': { label: 'Contacts', description: 'Read your personal contacts.' },
+  'Team.ReadBasic.All': { label: 'Teams', description: 'Read the Teams you belong to.' },
+  offline_access: { label: 'Offline', description: 'Keep the connection alive in the background.' },
+});
+
+const ENTRA_DISPLAY_SCOPES = ENTRA_OAUTH_SCOPES.filter((id) => id in M365_SCOPE_DESCRIPTIONS).map((id) => ({
+  id,
+  ...M365_SCOPE_DESCRIPTIONS[id],
+}));
+
+/**
  * ServiceNow instance base. Unlike every other provider, ServiceNow's OAuth endpoints AND its REST API all
  * live on the CUSTOMER'S OWN instance host, so the instance subdomain must be known before OAuth. Set
  * NEUROPAUSE_SERVICENOW_INSTANCE to it (e.g. `dev12345` or `acme`); read at runtime exactly like the Entra
@@ -537,55 +642,18 @@ export const CONNECTOR_MANIFESTS: ConnectorManifest[] = [
     version: '1.0.0',
     authType: 'oauth2_pkce',
     capabilities: ['activities', 'messages', 'calendar', 'events', 'files'],
-    scopes: [
-      { id: 'User.Read.All', label: 'Users', description: "Read your organization's user directory." },
-      { id: 'Group.Read.All', label: 'Groups', description: "Read your organization's groups." },
-      {
-        id: 'Directory.Read.All',
-        label: 'Directory',
-        description: 'Read directory data (organization and memberships).',
-      },
-      { id: 'Mail.Read', label: 'Outlook Mail', description: 'Read your inbox mail (headers and preview).' },
-      { id: 'Calendars.Read', label: 'Calendar', description: 'Read your calendar events.' },
-      { id: 'Files.Read', label: 'OneDrive', description: 'Read your OneDrive files and folders.' },
-      { id: 'Contacts.Read', label: 'Contacts', description: 'Read your personal contacts.' },
-      { id: 'Team.ReadBasic.All', label: 'Teams', description: 'Read the Teams you belong to.' },
-      {
-        id: 'offline_access',
-        label: 'Offline',
-        description: 'Keep the connection alive in the background.',
-      },
-    ],
+    // SEAM-B.18: derived from the SAME resolved profile as the OAuth request below, so the card can
+    // never describe access that is not requested.
+    scopes: ENTRA_DISPLAY_SCOPES,
     oauth: {
       authorizeUrl: `${ENTRA_AUTHORITY}/authorize`,
       tokenUrl: `${ENTRA_AUTHORITY}/token`,
       revokeUrl: null,
-      scopes: [
-        'openid',
-        'profile',
-        'email',
-        'offline_access',
-        'User.Read',
-        'User.Read.All',
-        'Group.Read.All',
-        'Directory.Read.All',
-        'Mail.Read',
-        'Calendars.Read',
-        'Files.Read',
-        'Contacts.Read',
-        'Team.ReadBasic.All',
-        // P2.4 — Microsoft 365 write scopes (audited, confirmation-gated). All delegated; the Teams
-        // channel scopes (ChannelMessage.Send / Channel.Create / ChannelMember.Read.All) need admin consent.
-        'Mail.ReadWrite',
-        'Mail.Send',
-        'Calendars.ReadWrite',
-        'Files.ReadWrite.All',
-        'Contacts.ReadWrite',
-        'Chat.ReadWrite',
-        'ChannelMessage.Send',
-        'Channel.Create',
-        'ChannelMember.Read.All',
-      ],
+      // P2.4 — Microsoft 365 write scopes are audited and confirmation-gated; all delegated.
+      // SEAM-B.18 — the requested set is now the resolved capability PROFILE (see M365_SCOPE_SETS
+      // above), not a flat union: `full` (default, unchanged behaviour) or `contacts` (protocol +
+      // contacts only). One source of truth — the request and the card both derive from it.
+      scopes: ENTRA_OAUTH_SCOPES,
       scopeSeparator: ' ',
       usePkce: true,
       tokenAuthStyle: 'body',
