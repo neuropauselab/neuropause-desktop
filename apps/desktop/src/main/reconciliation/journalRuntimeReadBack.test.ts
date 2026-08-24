@@ -59,7 +59,11 @@ describe.runIf(DIR !== '')('SEAM-B.10 · runtime evidence read-back (fresh reade
 
     const store = join(DIR, 'enterprise-module-finance-journal-entries.json');
     expect(existsSync(store)).toBe(true);
-    expect(readFileSync(store, 'utf8')).toContain('JE-B10-01');
+    // Profile-agnostic (B.10 profiles carry JE-B10-*, B.13 packaged profiles JE-B13-*):
+    // the probe entries share the JE-B prefix, and a governed post stamps postedAt.
+    const bytes = readFileSync(store, 'utf8');
+    expect(bytes).toContain('"entryNumber":"JE-B');
+    expect(bytes).toContain('"postedAt":"');
   });
 });
 
