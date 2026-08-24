@@ -387,3 +387,139 @@ discovered before a ceremony is worth more than a finding filed after one.**
 **GATE 2 — the first governed `POST /me/contacts` and its read-back — remains separate, closed, and
 unauthorized.** Credential establishment would not license it: a token does not establish permission
 beyond its measured claims, and a consent screen does not establish provider-side effect.
+
+---
+
+# ADDENDUM · 25 Aug 2026 — RE-MEASUREMENT UNDER A RE-ISSUED DIRECTIVE
+
+**Why this is an addendum and not a second evidence file.** The B.22 directive was re-issued
+verbatim. Its §0 states `Current HEAD: 6d3af31` — the **pre-B.22** HEAD — so its premise predates the
+work that landed against it (§2 #21, §2 #25: a directive's premise expires when work lands against
+it). B.22 is closed at `183a7f2`. I did not reopen it, did not re-run its identical 15-agent fleet
+against byte-identical source, and did not write a duplicate record. What I did do is **re-measure**,
+because a measurement is a claim with a date.
+
+**VERDICT UNCHANGED: `CREDENTIAL_CONSENT_NOT_ESTABLISHED`.**
+
+**GATE 0 re-run, all pass:** artifact `c357a426…` / 6,617,224 B / mtime unchanged · armed `out/`
+`e40a47a2…` (86 files, seed chunk) · B.13 dmg `d4d5802f…` · asar `4add8d3f…` · governed hashes 7/7 ·
+git status unchanged · **parity verifier 13/13, true exit 0** · **boundary 17/17**. No custody drift.
+
+**GATE 1 measured, not assumed: still not performed.** All three env vars UNSET · no new ceremony
+profile · **no `connector-vault.bin` anywhere newer than the B.22 close** (a consent would have
+produced one) · `.env.entra` mtime still 2026-07-10. **The `6d3af31 → 183a7f2` delta is docs-only —
+CLAUDE.md plus the B.22 evidence, zero source change** — which is what licenses carrying the prior
+fleet's conclusions forward rather than re-deriving them.
+
+**RECON_STATUS = COMPLETE (6/7).** A focused fleet was run on the *first* fleet's explicitly recorded
+`NOT_ESTABLISHED` items — new work, not a re-run. **One agent died on an API error**
+(`recon:default-userdata`), so its question is recorded below as unmeasured rather than answered:
+§2 #23 — *not reachable*, *reachable but never executed*, and *never measured* are different objects.
+
+## A1 · CORRECTION — F-B22-2 IS REFUTED AS STATED, BY MY OWN RE-MEASUREMENT
+
+I wrote: *"path A is instantiated, not hypothetical."* **That is false at HEAD, and the superseded
+text stays visible above.** The fleet challenged it and I verified the correction first-hand:
+
+| Profile | scopes | `workspaceId` | holds `Contacts.ReadWrite` | selectable? |
+|---|---|---|---|---|
+| `Electron` | 3 | **PRESENT** (claimed) | **no** | yes |
+| `NeuroPause-Mock` | 3 | **PRESENT** (claimed) | **no** | yes |
+| `@neuropause.p13c-bak-…/desktop` | **46** | **ABSENT — UNCLAIMED** | **yes** | **no** |
+
+`connectorStore.all()` returns `[]` when no workspace is bound and otherwise filters
+`a.workspaceId === workspace` (`connectorStore.ts:125-128`); `unclaimed()` is a **separate** read
+whose docstring says such rows are *"deliberately not adopted into the active workspace — that is the
+guess this change removes"* (`:168-174`). **So the one row that holds `Contacts.ReadWrite` can never
+reach `accounts[0]`, and the two rows that can be selected do not hold it** — a `contacts.create` on
+either would be refused loudly by the executor's scope gate.
+
+**Corrected statement:** the dangerous combination — *a selectable row that already holds
+`Contacts.ReadWrite`* — **does not exist on disk today**. F-B22-3's *mechanism* claim survives
+intact (the code would accept such a row silently, and that asymmetry against `mail.send` is real);
+what is withdrawn is the claim that it is currently **instantiated**. The fresh-profile requirement
+still stands, but its honest justification is now the two *claimed* 3-scope rows plus the general
+mechanism — not the 46-scope backup row I pointed at.
+
+**And the ordering itself is INCIDENTAL PROTECTION, not a mechanism (§2 #31)** — a sharper result
+than my original finding. `accounts[0]` is the first-inserted **claimed** row of that connector **in
+the active workspace** (Map insertion order — not `connectedAt`, which nothing on the path reads).
+No code declares the ordering, no docstring mentions it, and **no test pins it**: the only
+multi-account store test deliberately `.sort()`s both sides and is explicitly order-independent, so
+**a `.sort()` added at `toDto` would silently change which account the ceremony sends from and zero
+assertions would fail.**
+
+## A2 · CORRECTION — F-B22-4's "zero entries" WAS MEASURED ON AN INCOMPLETE SEARCH SPACE
+
+I wrote: *"both `build-info.json` files on disk … carry `connectorClientIds: {}` — zero entries."*
+**There are FOUR product `build-info.json` files, and two of them — the 15-Aug rc.20 artifacts under
+`apps/desktop/dist/` — each carry ONE baked client id.** Neither is the entra key and neither sits on
+a ceremony candidate path, so **the ceremony verdict is unchanged** — but the statement was false as
+stated because I never examined `dist/`.
+
+**This is my second §2 #30 failure in this seam** (the first was scoping the `.env` search to
+`apps/desktop`). Both had the same shape: a confident negative over a space narrower than the claim.
+Recorded as a pattern, not as two incidents.
+
+## A3 · NEW — F-B22-6: THE GUARD EXISTS FOR THE SIBLING FIELD AND NOT FOR THIS ONE
+
+The strongest new finding, because it carries its own precedent. The *same* leak was found and fixed
+for `backendUrl`: `config.ts:23-41` documents a **13-Aug-2026 reproduction in which a leftover
+`build-info.json` made `npm run dev` authenticate against production**, and the fix was
+`defaultBackendUrl() { if (!app.isPackaged) return LOCAL_BACKEND_URL; … }` — present verbatim in the
+artifact. **`credentials.ts:32` consumes `getBakedClientId()` with no `app.isPackaged` guard at all.**
+
+So the client-id channel never received the equivalent protection, and in **dev** it is reachable:
+`npm run dev` / `electron .` from `apps/desktop` sets appPath to `apps/desktop`, making candidate 3
+`apps/desktop/resources/build-info.json` — **which exists today** (0 keys). Under §2 #31 today's
+safety is incidental: **name the mechanism enforcing it — there is none; name the assertion that
+fails when it breaks — there is none, because no test or verifier anywhere inspects
+`connectorClientIds`.** A hardening gate with a ready-made pattern to copy. **Not fixed here** — this
+seam authorizes no source change.
+
+## A4 · NEW — F-B22-7: THE PERMISSION VIEWER CANNOT SHOW EXCESS AUTHORITY
+
+`EntraConnectorPanel.tsx:358-378` renders the permission list by iterating **`dto.scopes` — the
+resolved profile's *described* set** — marking each granted or not. So under the contacts profile a
+46-scope account renders **7 rows, and its 39 excess scopes render nowhere.** The one surface that
+looks like it would show a user "this account holds more than you think" structurally cannot. A
+UI-truth finding in the §4 sense; recorded, not fixed.
+
+## A5 · B1 SHARPENED — half of it was wrong in my favour
+
+B1 said no record binds an account to a profile *and* implied the data is unavailable. **The
+mechanism half is confirmed** (repo-wide census: `scopeProfile`, `consentProfile`, `profileMismatch`,
+`requestedScopes`, `excessScopes` all occur **0** times; every production `grantedScopes` read is a
+lower-bound subset check or a count). **The data half is false as stated:** `grantedScopes` **is**
+persisted (`packages/shared/src/types/connectors.ts:199`) and `m365ScopesForProfile` is pure, so the
+operationally decisive predicate — *does this row hold scopes outside the resolved profile's set?* —
+**is computable today with no schema change.** What is genuinely absent is narrower: the consent-time
+**profile label** and the **requested** set (the request exists only in the authorize URL and is
+never logged). Honest bound on any such check: `grantedScopes` stores `[]` when the provider omits
+`scope`, conflating *told nothing* with *granted nothing* — sound but incomplete.
+
+## A6 · CLOSED — tenant injection is LOW and is not being inflated
+
+Extracting the compiled authority construction and evaluating it against adversarial tenant strings
+with real URL parsing: **the host cannot be moved off `login.microsoftonline.com`.** Path-segment
+manipulation is possible and unencoded (an inconsistency with the sibling path that does use
+`encodeURIComponent`), but the decisive property holds. The variable is operator-set only; no product
+path writes it. Recorded as LOW, no action.
+
+## A7 · NOT_ESTABLISHED — carried forward honestly
+
+- **Which profile a launch WITHOUT `--user-data-dir` would use.** The assigned agent died mid-run;
+  the question is **unmeasured, not answered**. It matters only if the operator omits the flag, which
+  the runbook forbids — but it is not closed, and I am not closing it by inference.
+- **Which registration `.env.entra`'s client id names, and whether it still exists** (needs the value
+  or a network call — both forbidden). Unchanged from the main record.
+- Whether any connectors.json changed since B.22: mtimes all predate it, but no independent custody
+  record exists for them.
+
+## A8 · Accounting for the addendum
+
+`SOURCE_CHANGES 0 · BUILD_COUNT_DELTA 0 · NETWORK_CALLS 0 · EXTERNAL_EFFECT 0 · GRAPH_EFFECT 0 ·
+SECRET_LEAK 0 · GATE_2 NOT_STARTED · COHORT_API_EFFECT NOT_VERIFIED.` No maturity edge advanced.
+**FIRST BROKEN EDGE unchanged: ARTIFACT → CREDENTIAL.** The next single action remains §26 above,
+with one amendment: the fresh-profile step's justification is corrected per A1 — it remains
+**mandatory**, on the general mechanism and the two claimed rows, not on the 46-scope row.
