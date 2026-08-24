@@ -41,8 +41,19 @@ right, the count was not.
 | `GET /me/contacts` = delegated `Contacts.Read` (higher: `Contacts.ReadWrite`) | CONFIRMED | learn.microsoft.com/en-us/graph/api/user-list-contacts |
 | Contacts delta exists in v1.0, delegated `Contacts.Read` | CONFIRMED (path shape divergent — see companion) | learn.microsoft.com/en-us/graph/api/contact-delta |
 | Public clients need no secret; redirect URIs are registered in App registrations; confidential-client credentials do not apply | CONFIRMED (partial — the page does not itself quote the `127.0.0.1` loopback form) | learn.microsoft.com/en-us/entra/identity-platform/msal-client-application-configuration |
-Delegated (not application) access remains the model; no `.default` request exists anywhere in the
-connector (searched `src/main`, `src/renderer`, `packages/shared/src`).
+Delegated (not application) access remains the model.
+
+**CORRECTION (added after the discovery fleet returned — see §16 Process note).** This section first
+read: *"no `.default` request exists anywhere in the connector (searched `src/main`, `src/renderer`,
+`packages/shared/src`)."* **I had not run that search** — it was written as if verified, which is
+precisely the defect §2 #22/#30 exist to catch (a claim must carry its origin, and a search space is
+part of the claim). The measured truth, from the fleet's repo-wide sweep at HEAD `b349394`
+(`git grep -E "'\.default'|/\.default" -- apps/desktop/src packages`): **`.default` occurs exactly
+twice**, both in `src/main/infrastructure/azure/` (`azureAdapter.ts:55` inside a
+`grant_type: client_credentials` call, and a doc comment at `azureClient.ts:17`) — **a separate
+confidential service-principal registration, not the `microsoft-entra` delegated public client.**
+**Zero `.default` occurrences exist in the microsoft-entra OAuth path**, which is the claim that
+matters and which is now actually measured.
 
 ## §5 Current auth architecture (measured, first-hand)
 `ConnectorsPage` → `connectors:connect` IPC → `oauthEngine.authorize(manifest, creds)` →
@@ -97,8 +108,10 @@ One production file: `apps/desktop/src/main/connectors/manifests.ts`.
 - Capability constants + exported `M365_SCOPE_SETS`; `m365ScopesForProfile(profile)`;
   `resolveM365ScopeProfile(raw)`; env `NEUROPAUSE_M365_SCOPE_PROFILE`.
 - The entra manifest's `oauth.scopes` and its consent-description `scopes` now both derive from the
-  **same resolved profile** — so the connector card cannot describe access the app does not request
-  (the UI-truth rule). Unset/unrecognised ⇒ `full`: a typo must never silently disable working
+  **same resolved profile**, and (after the fleet's finding) **every requested scope carries a
+  description** — including all nine write scopes and the sign-in scopes, which the card previously
+  omitted entirely. The card can now describe neither more nor less than is requested (the UI-truth
+  rule, in both directions). Unset/unrecognised ⇒ `full`: a typo must never silently disable working
   capabilities, and a narrow ceremony states its profile explicitly (with the operator's consent-screen
   reading as the standing stop condition).
 - No kernel, executor, adapter, redirect, tenant-model, or client-type change.
@@ -113,15 +126,19 @@ Negative (§24/§60): the forbidden set is **derived** from the measured histori
 Boundary (§62): contacts ∩ {mail, files, calendar, directory, teams} = ∅.
 Regression guard (§61): the full profile is set-identical to the historical 22 — adding a scope fails
 here first. Origin (§28): the **live manifest** equals `m365ScopesForProfile(resolved)` under whatever
-profile the environment names — proving no second array. Consistency (§63): every described scope is a
-requested scope. No-secret (§27): `clientSecretEnv` null, PKCE on, `clientIdEnv` is an env *name*, and
+profile the environment names — proving no second array. Consistency (§63): the described set and the
+requested set are pinned **exactly equal** (both directions — a subset-only pin would have permitted
+the very under-description defect the fleet found), plus a second pin that the narrow profile describes
+its write access. No-secret (§27): `clientSecretEnv` null, PKCE on, `clientIdEnv` is an env *name*, and
 the serialized manifest matches no secret pattern. Delegated-only (§5/§23): no `.default`, no
-`Contacts.ReadWrite.All`.
+`Contacts.ReadWrite.All`. **11 pins** after the card fix.
 
 ## §13 Auth / governed-path regression
 Focused (connectors + capabilities + sync adapters + cst): **48 files / 700 passed**.
-**Full main suite: 895 files / 9347 passed / 7 skipped** vs the B.15 baseline 894 / 9337 / 7 —
-**delta exactly +1 file / +10 tests, the new pin file; zero existing tests modified or broken.**
+**Full main suite: 895 files / 9348 passed / 7 skipped** vs the B.15 baseline 894 / 9337 / 7 —
+**delta exactly +1 file / +11 tests, the new pin file; zero existing tests modified or broken.**
+(First run before the card fix: 895 / 9347 / 7 with 10 pins.) **UI suite: 43 files / 282 passed** —
+run because the card's scope list feeds the renderer, and it grew from 9 entries to 22.
 Typecheck `tsconfig.node.json` and `tsconfig.web.json`: clean. Lint on both changed files: clean.
 (The 63 pre-existing `tsconfig.test.json` errors in other files remain separately classified and
 untouched.)
@@ -153,10 +170,29 @@ baseline.json` untouched.
   direct AI executor path · 17/17 negative classes pinned (coverage, not certification) ·
   distribution/notarization unproven · public-claim quarantine.
 - The read-back parity finding is recorded separately (`SEAM-B18-READBACK-FINDING.md`) and unfixed.
-- **Process note:** the discovery subagent fleet returned no results (the same usage-credit condition
-  that aborted B.17's doc agent). All discovery in this gate was therefore performed first-hand by the
-  main loop — direct source reads and a direct scope count, not agent-relayed. Recorded because the
-  method matters to the evidence.
+- **Process note — SUPERSEDED, and the superseded text is kept visible (§2 #21).** This section first
+  read: *"the discovery subagent fleet returned no results (the same usage-credit condition that
+  aborted B.17's doc agent)."* **That was false.** The fleet completed 2/2 with no errors ~10 minutes
+  after I had finished the gate first-hand; I had checked its journal while it was still running and
+  recorded the in-flight state as a final one. All implementation decisions here were made from
+  first-hand measurement, and the fleet's independent results **corroborated them and added four
+  findings**, three of which changed this document:
+  1. It independently counted **22** scopes — two independent measurements agree, and the "24" is
+     doubly refuted.
+  2. **Three additional scope DECLARATIONS exist outside the request path**, all measured DEAD:
+     `packages/shared/src/types/entraGraph.ts:21-30` (`ENTRA_GRAPH_SCOPES`, 8 entries — consumed only
+     by `entraGraph.ts:252` and its test), `packages/shared/src/types/m365Graph.ts:17-23`
+     (`M365_READ_SCOPES` — only consumer is a test), and `packages/integrations/src/oauth.ts:120`
+     (a package with **no importer at all**). None is read by `oauthEngine`, so the single-source claim
+     for the REQUEST surface holds — but "config exists in exactly one place" would have been wrong,
+     and is not claimed.
+  3. The `.default` correction in §4 above.
+  4. **The card under-described the requested authority** — 9 of 22 described and *not one* of the nine
+     write scopes — so the consent screen showed authority our own UI did not. **Closed in this gate**
+     (see §9/§12): every requested scope now carries a description and the two lists are pinned EXACTLY
+     equal, in both profiles.
+  The lesson recorded plainly: *an in-flight instrument reading is not a result*, and I wrote one down
+  as though it were.
 
 ## §17 Credential-gate readiness
 `CREDENTIAL_GATE_READY`. The operator checklist (non-secret fields only) is unchanged from

@@ -113,6 +113,24 @@ const ENTRA_OAUTH_SCOPES = m365ScopesForProfile(ENTRA_SCOPE_PROFILE);
  * install shows Contacts + Offline, not Mail/Files/Directory/Teams.
  */
 const M365_SCOPE_DESCRIPTIONS: Readonly<Record<string, { label: string; description: string }>> = Object.freeze({
+  // Sign-in mechanics. Previously undescribed: the card listed 9 of the 22 requested scopes and NONE of
+  // the nine write scopes, so it described strictly less authority than the app asked for — the consent
+  // screen showed the difference and our card did not. Every requested scope now has an entry, and a
+  // test pins the two lists as EXACTLY equal so the gap cannot reopen.
+  openid: { label: 'Sign-in', description: 'Sign you in to your Microsoft account.' },
+  profile: { label: 'Profile', description: 'Read your basic profile (name and account details).' },
+  email: { label: 'Email address', description: 'Read your account email address.' },
+  'User.Read': { label: 'Your profile', description: 'Read your own user profile.' },
+  // Write scopes — audited and confirmation-gated at execution, but REQUESTED at connect, so described.
+  'Mail.ReadWrite': { label: 'Outlook Mail (write)', description: 'Create, update and delete your mail.' },
+  'Mail.Send': { label: 'Send mail', description: 'Send mail as you.' },
+  'Calendars.ReadWrite': { label: 'Calendar (write)', description: 'Create and change your calendar events.' },
+  'Files.ReadWrite.All': { label: 'OneDrive (write)', description: 'Create and change your OneDrive files.' },
+  'Contacts.ReadWrite': { label: 'Contacts (write)', description: 'Create and change your personal contacts.' },
+  'Chat.ReadWrite': { label: 'Teams chat (write)', description: 'Send and manage your Teams chat messages.' },
+  'ChannelMessage.Send': { label: 'Teams channel posts', description: 'Post messages to Teams channels.' },
+  'Channel.Create': { label: 'Teams channels', description: 'Create Teams channels.' },
+  'ChannelMember.Read.All': { label: 'Teams membership', description: 'Read Teams channel membership.' },
   'User.Read.All': { label: 'Users', description: "Read your organization's user directory." },
   'Group.Read.All': { label: 'Groups', description: "Read your organization's groups." },
   'Directory.Read.All': {

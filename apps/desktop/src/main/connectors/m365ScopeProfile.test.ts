@@ -111,11 +111,21 @@ describe('SEAM-B.18 · one source of truth for what is asked', () => {
     expect(entra?.oauth?.scopes).toEqual(m365ScopesForProfile(resolved));
   });
 
-  it('CONSISTENCY (§63): the connector card describes only scopes that are actually requested (UI truth)', () => {
+  it('CONSISTENCY (§63): the card describes EXACTLY the requested scopes — neither more nor less (UI truth)', () => {
     const requested = entra?.oauth?.scopes ?? [];
     const described = (entra?.scopes ?? []).map((s) => s.id);
     expect(described.length).toBeGreaterThan(0);
-    for (const id of described) expect(requested).toContain(id);
+    // Both directions. `described ⊆ requested` alone would let the card UNDER-state authority — the
+    // measured pre-B.18 defect: 9 of 22 described, and not one of the nine write scopes among them.
+    expect(sorted(described)).toEqual(sorted(requested));
+  });
+
+  it('the under-description defect stays closed for the narrow profile too — a contacts install describes its WRITE access', () => {
+    // The card must not say only "Read your personal contacts" while Contacts.ReadWrite is requested.
+    expect(contactsScopes).toContain('Contacts.ReadWrite');
+    const describedIds = (entra?.scopes ?? []).map((s) => s.id);
+    const resolved = resolveM365ScopeProfile(process.env[M365_SCOPE_PROFILE_ENV]);
+    for (const scope of m365ScopesForProfile(resolved)) expect(describedIds).toContain(scope);
   });
 
   it('NO SECRET (§27): the desktop connector stays a public client — no secret env, no embedded credential', () => {
