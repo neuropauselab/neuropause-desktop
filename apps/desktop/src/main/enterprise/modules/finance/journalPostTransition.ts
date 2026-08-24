@@ -74,6 +74,9 @@ const ACTION = 'finance.journal.post';
  */
 export const JOURNAL_POST_POLICY_VERSION = 'finance-journal-post-policy-1';
 
+/** Per-process attempt counter — same-millisecond attempts still mint distinct transition ids. */
+let attemptSeq = 0;
+
 /** What the domain effect reports back — `wrote` only when ITS write won the CAS. */
 export interface JournalPostEffectResult {
   readonly accepted: boolean;
@@ -161,9 +164,19 @@ export async function governedJournalPost(args: GovernedJournalPostArgs): Promis
   const idem = brandIdempotencyKey(
     createHash('sha256').update(`${tenantId}|${entryId}|${expectedRev}`).digest('hex'),
   );
-  const transitionId = brandTransitionId(`journal-post:${entryId}:${expectedRev}`);
 
   const time = new SystemTime();
+  // SEAM-B.9 (measured on persisted evidence): the transition id must be unique
+  // PER ATTEMPT, not per logical post — a refused attempt does not advance the
+  // row's revision, so a retry at the same rev would otherwise reuse the id and
+  // the evidence store's terminal attachment (first match on tenant+transition)
+  // would pin the retry's terminal onto the REFUSAL's row. The idempotency key
+  // above — not this id — carries the logical-post identity, so replay
+  // semantics are unchanged; a DONE-replay returns the ORIGINAL outcome whose
+  // envelope carries the original attempt's id.
+  const transitionId = brandTransitionId(
+    `journal-post:${entryId}:${expectedRev}:${time.now()}-${(attemptSeq += 1)}`,
+  );
   const purpose = `Post journal entry ${entryNumber} to the general ledger`;
 
   // The explicit post request by an authenticated, RBAC-passed actor IS the C3
@@ -259,7 +272,10 @@ export async function governedJournalPost(args: GovernedJournalPostArgs): Promis
   return {
     outcome,
     semanticOutcome: classifyJournalPost(outcome, effectReport),
-    transitionId: String(transitionId),
+    // The ENVELOPE's id, not this call's mint: on a DONE-replay the kernel
+    // returns the ORIGINAL outcome, and evidence (observed under the envelope
+    // id) must be addressed by that same id — never a fresh one (SEAM-B.9).
+    transitionId: String(outcome.transitionId),
     requestId: String(request.requestId),
   };
 }

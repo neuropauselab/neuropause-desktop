@@ -67,7 +67,8 @@ describe('JOURNAL-B8 · governedJournalPost (the adapter against the real kernel
     expect(r.outcome.verdict).toBe('ALLOW');
     expect(r.outcome.executed).toBe(true);
     expect(r.outcome.outcomeClass).toBe('VERIFIED_SUCCESS');
-    expect(r.transitionId).toBe('journal-post:je-1:3');
+    // SEAM-B.9: the id is unique PER ATTEMPT (entry:rev prefix + attempt suffix).
+    expect(r.transitionId).toMatch(/^journal-post:je-1:3:/);
     expect(w.posted).toBe(true);
     expect(w.rev).toBe(4);
   });
@@ -229,7 +230,8 @@ describe('JOURNAL-B8 · runAction("post") — governance is LOAD-BEARING at the 
     expect(outcomes[0].result.outcome.verdict).toBe('ALLOW');
     expect(outcomes[0].result.outcome.executed).toBe(true);
     expect(outcomes[0].result.semanticOutcome).toBe('VERIFIED_SUCCESS');
-    expect(outcomes[0].result.transitionId).toBe(`journal-post:${rec.id}:${draftRev}`);
+    // SEAM-B.9: per-attempt id — the entry:rev prefix is stable, the suffix is the attempt.
+    expect(outcomes[0].result.transitionId).toMatch(new RegExp(`^journal-post:${rec.id}:${draftRev}:`));
     expect(outcomes[0].postedAt).toBe(T0);
   });
 
