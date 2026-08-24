@@ -85,17 +85,42 @@ concept is added.
 **NOT EXECUTED.** No placeholder values are recorded.
 
 ## 18 · Read-back design (per B.18's finding, kept visible)
-**Primary oracle: `GET /me/contacts/{id}`** using the id returned by the 201 — the documented
-per-contact read. **Secondary: `GET /me/contacts`** (documented list shape, `$select`/`$top`).
+**CORRECTED after the discovery fleet landed — the superseded text is kept visible (§2 #21).**
+This section first read: *"Primary oracle: `GET /me/contacts/{id}` using the id returned by the 201 —
+the documented per-contact read."* **That oracle does not exist in this repository.** Measured by the
+fleet over a stated search space and confirmed against source: the five production `me/contacts` URL
+constructions are `POST /me/contacts`, `PATCH /me/contacts/{id}`, `DELETE /me/contacts/{id}`,
+`GET /me/contacts` + `$search`, `GET /me/contacts` + `$select&$top=200`, plus the collection delta —
+**no `GET` by contact id exists anywhere**; the only id-bearing paths are the two mutations. I had
+specified a Graph endpoint that Microsoft documents but this product cannot currently call.
+
+**Corrected primary oracle: the documented list read already implemented as `contacts.detectDuplicates`**
+— `GET /me/contacts?$select=id,displayName,givenName,surname,emailAddresses&$top=200` — matching the
+created id and the ceremony markers within the returned collection. It is a documented shape, it is a
+governed cohort READ action, and it is inside the contacts profile's grant.
+**Secondary:** `GET /me/contacts` (list). A per-id read would require new code and therefore a separate
+implementation gate — it is not assumed here.
+
+**And a second correction of scope, measured by the fleet:** the product's verification machinery is
+wired for `mail.send` **only**, at three independent layers (the reconciler's row predicate
+`actionId === 'mail.send'`, the oracle's query shape, and the target type), with
+`executionGate.ts:68` still carrying `productionWired: false` for `verifyEffect`. **Nothing about
+product verification is wired for contacts.** So the §19 predicate below is a **ceremony-level
+comparison performed against the documented read** — it is explicitly *not* the product's verification
+pipeline, and this gate does not claim otherwise. Wiring product verification for contacts would be its
+own gate.
 `contacts.search`'s `$search` shape remains **undocumented for this resource** and is explicitly **not**
 the primary oracle; the sync delta path's divergence from the documented folder-scoped shape likewise
 stands unfixed and visible (`SEAM-B18-READBACK-FINDING.md`).
 
 ## 19 · Verification predicate — FIXED BEFORE EXECUTION (§43)
 `VERIFIED_SUCCESS` **iff all** of: provider status `201` · response carries a non-empty contact `id` ·
-read-back status `200` · `readBack.id === createdId` · `givenName === "SEAM-B16"` ·
-`surname === "COHORT-LIVE-B16-001"` · the contact belongs to the authenticated ceremony account's own
-default Contacts folder · no contradictory observation. Anything less is **not** VERIFIED_SUCCESS:
+the corrected read-back (§18) returns `200` · **exactly one** returned contact has
+`id === createdId` · `givenName === "SEAM-B16"` · `surname === "COHORT-LIVE-B16-001"` · the contact
+belongs to the authenticated ceremony account's own default Contacts folder · no contradictory
+observation. (Predicate updated only where §18's oracle correction forced it — the match is now made
+within the documented collection read rather than by a per-id fetch; it is still fixed before any
+result exists.) Anything less is **not** VERIFIED_SUCCESS:
 201-without-read-back is `EXTERNAL_EFFECT_OBSERVED / NOT_VERIFIED`; timeout after dispatch is
 `UNKNOWN` with **no automatic retry** (B.15: TIMEOUT_IS_NOT_CANCELLATION); read-back mismatch is
 `VERIFICATION_FAILED`; marker already present before execution is `PREEXISTING_MARKER` → stop.
@@ -148,6 +173,17 @@ and no claim is made about what it did or did not find. It was **not incorporate
 this gate depends on it: every measurement above was taken first-hand (direct source reads, direct
 artifact greps, and the executed pin file). If its results land later and contradict anything here,
 the correction belongs in the register, not in a quiet edit.
+
+**RECONCILED — the fleet returned 2/2 shortly after the commit, and that rule was applied.**
+It **corroborated** the absent-primitives finding with a stronger sweep than mine (`EvidenceEnvelope`
+**0 matches repo-wide, any file type**; `MicroTrace`/`NeuroChain` **0 code matches**, only two
+documentation lines that themselves record the absence) and the artifact/boundary measurements.
+It **contradicted one committed claim**: the primary read-back oracle I specified,
+`GET /me/contacts/{id}`, **does not exist in this product** — §18 is corrected above, and the
+consequence (the ceremony verifies against the documented list read, and product verification is
+mail.send-only at three layers) is recorded there rather than quietly patched. The lesson stands in the
+other direction this time: *waiting for the instrument would have been cheaper than correcting the
+record* — but correcting it is what keeps the record worth reading.
 
 ## 25 · First broken edge
 **SOURCE → BUILD → ARTIFACT** — upstream of the credential gate. B.18 moved the blocker from
