@@ -51,6 +51,45 @@ import {
   type EnterpriseModule,
   type EnterpriseModuleActionContext,
 } from '../../framework';
+import {
+  JOURNAL_POST_POLICY_VERSION,
+  createJournalPostPorts,
+  governedJournalPost,
+  type GovernedJournalPostResult,
+  type JournalPostPorts,
+} from './journalPostTransition';
+
+/**
+ * SEAM-B.8 — one outcome event per governed post attempt, emitted to the
+ * OPTIONAL evidence observer. Best-effort by contract (§2 #19 / FG-5 shape):
+ * the observer must never block or alter the post, and its failure is the
+ * observer's evidence gap, never the action's.
+ */
+export interface JournalPostOutcomeEvent {
+  readonly entryId: string;
+  readonly entryNumber: string;
+  /** `ctx.actor()` verbatim ('' when the session had none). */
+  readonly actor: string;
+  /** The row's own org tenant id ('' when the row predates tenancy stamping). */
+  readonly tenantId: string;
+  /** The row's workspace id — the ActionRecord evidence key per F-P45. */
+  readonly workspaceId: string;
+  readonly expectedRev: number;
+  /**
+   * The durable row's stamped posting instant when THIS attempt's write won,
+   * read from the written row — else null (NP-015: a time we were not told is
+   * ABSENT, never approximated).
+   */
+  readonly postedAt: string | null;
+  readonly result: GovernedJournalPostResult;
+}
+
+/** Injection seam for the Electron instance layer (durable ports + evidence). */
+export interface JournalPostGovernanceOptions {
+  /** Module-lifetime kernel ports; inject a durable idempotency store in production. */
+  readonly ports?: JournalPostPorts;
+  readonly onOutcome?: (event: JournalPostOutcomeEvent) => void | Promise<void>;
+}
 
 /** The declarative description of a journal entry — drives store, CRUD, and the UI. */
 export const JOURNAL_ENTRY_DESCRIPTOR: EnterpriseModuleDescriptor = {
@@ -144,8 +183,15 @@ function resolveLineAccounts(
 export function createJournalEntryModule(
   storePath: string,
   accountStore: EnterpriseRecordStore,
+  governance?: JournalPostGovernanceOptions,
 ): EnterpriseModule {
   const store = new EnterpriseRecordStore(storePath, JOURNAL_ENTRIES_MODULE_ID, JOURNAL_ENTRY_KIND);
+
+  // SEAM-B.8: EVERY construction is governed — there is no ungoverned variant.
+  // The parameter injects DURABILITY (idempotency file) and EVIDENCE (ActionRecord
+  // observer), never the decision itself; omitting it yields in-memory ports with
+  // identical kernel semantics within one process lifetime.
+  const governancePorts = governance?.ports ?? createJournalPostPorts();
 
   /** Every posted, non-deleted entry — the ledger the balances derive from. */
   function postedLedger() {
@@ -320,22 +366,107 @@ export function createJournalEntryModule(
               }
             }
           }
-          const updated = store.update(record.id, {
-            fields: {
-              postedAt: actionCtx.now(),
-              entryDate: bookedDate,
-              status: 'posted',
-              totalDebits: totals.debits,
-              totalCredits: totals.credits,
+          // ── SEAM-B.8: the write itself crosses the sanctioned CST boundary ──
+          // The guards above awaited (accounts/periods loads), so `record` may be
+          // stale. Anchor the CAS on a FRESH durable revision; the conditional
+          // write re-checks it in the same synchronous section as the write.
+          const fresh = store.get(record.id);
+          if (!fresh || fresh.status === 'deleted') return { ok: false, error: 'Journal entry not found.' };
+          if (str(fresh.fields.postedAt)) {
+            return { ok: false, message: `${entry.entryNumber} is already posted.` };
+          }
+          const expectedRev = fresh.rev;
+          const written: { row: EnterpriseEntity | null } = { row: null };
+          const governed = await governedJournalPost({
+            entryId: record.id,
+            entryNumber: entry.entryNumber,
+            tenantId: str(fresh.tenantId),
+            actorId: actionCtx.actor() ?? '',
+            expectedRev,
+            policyVersion: JOURNAL_POST_POLICY_VERSION,
+            ports: governancePorts,
+            effect: async () => {
+              // SYNCHRONOUS CAS — re-read, re-check, write with no await between:
+              // atomic on the main-process event loop (the substrate's real
+              // concurrency model; there is no multi-process CAS to pretend to).
+              const cur = store.get(record.id);
+              if (!cur || cur.status === 'deleted' || str(cur.fields.postedAt) || cur.rev !== expectedRev) {
+                return { accepted: false, wrote: false, stale: true };
+              }
+              written.row = store.update(record.id, {
+                fields: {
+                  postedAt: actionCtx.now(),
+                  entryDate: bookedDate,
+                  status: 'posted',
+                  totalDebits: totals.debits,
+                  totalCredits: totals.credits,
+                },
+                actor: actionCtx.actor(),
+                now: actionCtx.now(),
+              });
+              return written.row
+                ? { accepted: true, wrote: true, stale: false }
+                : { accepted: false, wrote: false, stale: true };
             },
-            actor: actionCtx.actor(),
-            now: actionCtx.now(),
+            observe: () => {
+              const cur = store.get(record.id);
+              return cur ? { posted: str(cur.fields.postedAt) !== '', rev: cur.rev } : null;
+            },
           });
-          if (!updated) return { ok: false, error: 'Journal entry not found.' };
-          const self = actionCtx.moduleFor(JOURNAL_ENTRIES_MODULE_ID);
-          if (self) actionCtx.emit(self, 'updated', updated);
-          await reconcileAccounts(parsed.lines.map((l) => l.account), actionCtx);
-          return { ok: true, message: `Journal entry ${entry.entryNumber} posted (balanced ${totals.debits}).` };
+
+          // Evidence observer — best-effort by contract: a failure here is the
+          // observer's evidence gap, never the post's (§2 #19 / FG-5 shape).
+          if (governance?.onOutcome) {
+            try {
+              await governance.onOutcome({
+                entryId: record.id,
+                entryNumber: entry.entryNumber,
+                actor: actionCtx.actor() ?? '',
+                tenantId: str(fresh.tenantId),
+                workspaceId: str(fresh.workspaceId),
+                expectedRev,
+                postedAt: written.row ? str(written.row.fields.postedAt) || null : null,
+                result: governed,
+              });
+            } catch (error) {
+              // Deliberate best-effort catch (§2 #19/#29): an observer failure
+              // must never block or alter the post — but never silently either
+              // (the FG-5 precedent): the evidence gap is logged.
+              console.warn('[JOURNAL_POST] evidence observer failed — evidence gap (post unaffected):', error);
+            }
+          }
+
+          // If the conditional write took effect, the world changed — emit and
+          // reconcile REGARDLESS of the verification class, so account totals
+          // never drift from the ledger truth. The ActionResult still reports
+          // the honest classification below.
+          if (written.row) {
+            const self = actionCtx.moduleFor(JOURNAL_ENTRIES_MODULE_ID);
+            if (self) actionCtx.emit(self, 'updated', written.row);
+            await reconcileAccounts(parsed.lines.map((l) => l.account), actionCtx);
+          }
+
+          const sem = governed.semanticOutcome;
+          if (sem === 'VERIFIED_SUCCESS') {
+            // Includes the idempotent replay (duplicateSuppressed): the original
+            // verified outcome is reported and no second write occurred.
+            return { ok: true, message: `Journal entry ${entry.entryNumber} posted (balanced ${totals.debits}).` };
+          }
+          if (sem === 'STALE_RESOURCE') {
+            return { ok: false, message: `${entry.entryNumber} changed while posting — reload and try again.` };
+          }
+          if (sem === 'HOLD' || sem === 'DENY' || sem === 'ESCALATE') {
+            return {
+              ok: false,
+              message: `Posting ${entry.entryNumber} was refused by governance (${sem}: ${governed.outcome.reason}) — nothing was written.`,
+            };
+          }
+          // UNKNOWN / DEVIATION / VERIFIED_FAILURE — never promoted to success
+          // (§2 #9/#14): the write may or may not have taken effect; say so.
+          return {
+            ok: false,
+            message: `Posting ${entry.entryNumber} could not be verified (${sem}) — check the entry state before retrying.`,
+          };
         }
 
         if (action === 'reverse') {
