@@ -138,6 +138,32 @@ result, and **not incorporated**; both questions were answered first-hand (the t
 read directly, and the emitted bundle was inspected directly). If it lands and contradicts anything
 here, the correction belongs in the register.
 
+**RECONCILED (§18, applied immediately on completion). No contradictions — it corroborated every
+judgment, in three independent ways:**
+1. **New script justified**, with a sharper articulation than mine: `verify-e2e-strip.sh` is *text but
+   rebuilds*; `verify-release-artifacts.cjs` is *no-build but content-blind by construction* (its only
+   content check is feed-digest ≡ file-digest — tamper detection, never semantic parity). The needed
+   check — read-only text measurement of an existing artifact — is the intersection **neither**
+   occupies.
+2. **Minification is OFF for the main process by bundler default** (`minify: false` in electron-vite
+   2.3.0's main preset), which is *why* the identifiers survived — my finding was empirical, this is
+   the mechanism behind it.
+3. **It independently recommended the harness design I had already built** — "extract the compiled text
+   and evaluate it — FEASIBLE, LOWEST RISK, RECOMMENDED" — and explained why the alternative
+   (`node:vm` + stubbed `require`) is *not* acceptable: the release bundle exports nothing, so reaching
+   the logic would mean executing the whole entry against a faked Electron surface (208 `electron.app.*`
+   references, module-scope side effects, background services starting), converting a read-only
+   measurement into **an uncontrolled partial launch**. It cites the same contiguous block this
+   verifier extracts (`out-seam-b20/main/index.js:62699-62728`).
+4. It re-verified the four absent primitives at HEAD with counts: **0 code occurrences each**, every
+   tracked mention being documentation that records their absence.
+
+**One non-blocking improvement recorded, deliberately NOT acted on (scope discipline):** the recon notes
+that `verify-release-artifacts.cjs` uses an *injectable-IO + exported-pure-function +
+`require.main === module`* shape, which makes a verifier unit-testable by the suite. This verifier is a
+straight CLI and is therefore not covered by the test suite — a durability gap, not a correctness one.
+Refactoring it belongs in a later gate, not in a closed one.
+
 ## 37 · Maturity impact
 **`COHORT_API_EFFECT` remains NOT_VERIFIED** — nothing live happened. Improved: **artifact assurance**
 (source authority → governed build → measured executable). Unchanged: module E4 · composition E3 ·
