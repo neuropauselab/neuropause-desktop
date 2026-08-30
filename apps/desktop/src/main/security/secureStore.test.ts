@@ -158,3 +158,43 @@ describe('vault coexistence — refresh token and credentials share one file saf
     expect(await secureStore.getRefreshToken()).toBe('rt-rotated');
   });
 });
+
+describe('P13C GATE 11 — a corrupt vault is QUARANTINED, not reset', () => {
+  it('preserves the corrupt bytes and does not destroy the token on the next write', async () => {
+    // A good token exists…
+    await secureStore.setRefreshToken('rt-precious');
+    expect(await secureStore.getRefreshToken()).toBe('rt-precious');
+
+    // …then the vault file is corrupted on disk (truncated/garbage — not valid JSON).
+    await fs.writeFile(vaultPath(), '{ this is not json', 'utf8');
+
+    // A read no longer throws and no longer silently returns the token, BUT the
+    // corrupt bytes are preserved to a quarantine sibling rather than lost.
+    expect(await secureStore.getRefreshToken()).toBeNull();
+    const quarantined = (await fs.readdir(mockState.userDataDir)).filter((n) =>
+      n.startsWith('vault.bin.quarantined-'),
+    );
+    expect(quarantined).toHaveLength(1);
+    expect(await fs.readFile(join(mockState.userDataDir, quarantined[0]!), 'utf8')).toBe(
+      '{ this is not json',
+    );
+
+    // The subsequent write creates a fresh vault; it must NOT have overwritten the
+    // corrupt file in place (that was the reset-on-corrupt data-loss bug).
+    await secureStore.setRefreshToken('rt-new');
+    expect(await secureStore.getRefreshToken()).toBe('rt-new');
+    // still exactly one quarantine copy, its bytes intact.
+    const still = (await fs.readdir(mockState.userDataDir)).filter((n) =>
+      n.startsWith('vault.bin.quarantined-'),
+    );
+    expect(still).toHaveLength(1);
+  });
+
+  it('a missing vault is first-run (empty), NOT quarantined', async () => {
+    expect(await secureStore.getRefreshToken()).toBeNull();
+    const quarantined = (await fs.readdir(mockState.userDataDir)).filter((n) =>
+      n.includes('.quarantined-'),
+    );
+    expect(quarantined).toHaveLength(0);
+  });
+});

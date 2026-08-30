@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { app, safeStorage } from 'electron';
 import { createLogger } from '../logger';
 import { declareStoreScope } from '../tenancy/storeScope';
+import { quarantineFile } from '../storage/storeEnvelope';
 
 /** P13C ROUND 9 — F18. The structural scope declaration. See tenancy/storeScope.ts. */
 declareStoreScope({
@@ -132,7 +133,24 @@ async function readVault(): Promise<VaultFile> {
     return { schemaVersion: parsed.schemaVersion, workspaces: parsed.workspaces ?? {}, legacy: parsed.legacy ?? {} };
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { workspaces: {}, legacy: {} };
-    log.warn('Failed to read connector vault; treating as empty', err);
+    /**
+     * P13C GATE 11 — QUARANTINE, DO NOT RESET. This branch used to `return {}`
+     * on any unreadable/unparseable vault, and the very next `writeVault`
+     * (any connect/disconnect) then atomically overwrote the file — SILENTLY
+     * DESTROYING EVERY STORED CREDENTIAL, with no copy and no signal. A corrupt
+     * secret store is exactly where reset-on-corrupt is most damaging.
+     *
+     * Now the offending bytes are preserved to `<file>.quarantined-<ts>` (the
+     * same round-33 machinery every other store uses), so the credentials can be
+     * recovered/forensically inspected or a good copy restored from backup
+     * (Gate 11 also adds the vault to the backup registry). The live map starts
+     * empty — the file genuinely could not be read — but nothing is destroyed.
+     */
+    const quarantinedTo = await quarantineFile(vaultPath());
+    log.error('Connector vault unreadable — QUARANTINED, not reset', {
+      quarantinedTo,
+      error: String(err),
+    });
     return { workspaces: {}, legacy: {} };
   }
 }

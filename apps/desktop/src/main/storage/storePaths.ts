@@ -49,6 +49,16 @@ export const DOMAIN_FILES: Record<MaintenanceDomain, string[]> = {
     // restarts (owner claim + governed-actor correlation); backing it up lets a
     // restore recover the id rather than mint a fresh one.
     'local-principal.json',
+    // P13C GATE 11 — the two SECRET vaults were outside backup: a corruption or
+    // an accidental delete lost every credential with no restore path, and (with
+    // the quarantine fix) a quarantined vault had no good copy to recover from.
+    // Both hold ONLY safeStorage (OS-keychain) ciphertext — a backup copy is
+    // undecryptable on any other machine, so including them adds same-machine
+    // restore durability without widening the secret's blast radius. `vault.bin`
+    // is the app refresh token + provider secrets; `connector-vault.bin` is the
+    // per-workspace connector tokens.
+    'vault.bin',
+    'connector-vault.bin',
   ],
   workspace: ['enterprise-workspaces.json', 'enterprise-org.json'],
   knowledgeGraph: ['graph.json', 'unified-store.json'],

@@ -65,6 +65,14 @@ describe('store-path registry (backup coverage lock)', () => {
     expect(covered('migration-audit.json')).toBe(false);
   });
 
+  it('P13C GATE 11 — the two secret vaults are inside backup', () => {
+    // Both were outside the registry: a corruption or delete lost every
+    // credential with no restore path. They hold only safeStorage ciphertext,
+    // so a same-machine backup is meaningful and off-machine copies are inert.
+    expect(covered('vault.bin')).toBe(true);
+    expect(covered('connector-vault.bin')).toBe(true);
+  });
+
   it('every domain except database has local files, and business/assistant are live domains', () => {
     expect(LOCAL_DOMAINS).toContain('business');
     expect(LOCAL_DOMAINS).toContain('assistant');
