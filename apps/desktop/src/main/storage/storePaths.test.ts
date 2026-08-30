@@ -73,6 +73,49 @@ describe('store-path registry (backup coverage lock)', () => {
     expect(covered('connector-vault.bin')).toBe(true);
   });
 
+  it('P13C GATE 11 (round 43) — customer/tenant/audit data stores are now inside backup', () => {
+    // These were persisted but outside backup AND pre-migration rollback: a
+    // corruption or delete lost tenant records or the audit trail that proves
+    // what happened to them, with no restore path.
+    const nowCovered = [
+      // customer records + governed-action evidence + audit trails
+      'decision-records.json',
+      'holds.json',
+      'opportunity-decisions.json',
+      'outcome-revisions.json',
+      'erp-document-lines.json',
+      'erp-approvals.json',
+      'medical-device-traceability.json',
+      'data-plane-provenance.json',
+      'data-plane-mappings.json',
+      'data-plane-relationships.json',
+      'notification-inbox.json',
+      'action-records.json',
+      'm365-governed-actions.json',
+      'connector-controls.json',
+      'enterprise-personalization.json',
+      'platform-operators.json',
+      'marketplace-policy.json',
+      'documents.json',
+      // configuration/state
+      'experience-profile.json',
+      'ai-config.json',
+      'ai-routing-usage.json',
+      'identity.json',
+      'workspace-contexts.json',
+      'webhooks.json',
+      'delivery-preferences.json',
+      'sync-state.json',
+      'memory-audit.json',
+    ];
+    for (const file of nowCovered) {
+      expect(covered(file), `"${file}" is still outside every backup domain`).toBe(true);
+    }
+    // Directory entries sweep their contents.
+    expect(covered('documents')).toBe(true);
+    expect(covered('sandbox')).toBe(true);
+  });
+
   it('every domain except database has local files, and business/assistant are live domains', () => {
     expect(LOCAL_DOMAINS).toContain('business');
     expect(LOCAL_DOMAINS).toContain('assistant');

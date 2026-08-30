@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { MigrationEngine, type MigrationDefinition, type MigrationEngineDeps } from './migrationEngine';
+import {
+  MigrationEngine,
+  shouldRelaunchAfterMigration,
+  type MigrationDefinition,
+  type MigrationEngineDeps,
+} from './migrationEngine';
 
 function makeDeps(overrides: Partial<MigrationEngineDeps> = {}): {
   deps: MigrationEngineDeps;
@@ -105,5 +110,58 @@ describe('MigrationEngine', () => {
     });
     await new MigrationEngine(deps).run();
     expect(ran).toEqual(['new']);
+  });
+});
+
+describe('shouldRelaunchAfterMigration (Gate 11 — migrations run after stores load)', () => {
+  it('an UPGRADE that transformed data relaunches so stores reload migrated bytes', async () => {
+    // v1 → v2, one transforming step applied.
+    const { deps } = makeDeps({
+      getCurrentVersion: async () => 1,
+      definitions: [def('0002', 2, () => undefined)],
+    });
+    const report = await new MigrationEngine(deps).run();
+    expect(report.ok).toBe(true);
+    expect(report.fromVersion).toBe(1);
+    expect(shouldRelaunchAfterMigration(report)).toBe(true);
+  });
+
+  it('a FRESH install (fromVersion 0) does NOT relaunch on first boot', async () => {
+    // No prior version: stamps baseline + 0002, but there is no already-loaded
+    // data of consequence to be staled — a first-boot restart would be noise.
+    const { deps } = makeDeps({
+      getCurrentVersion: async () => 0,
+      definitions: [def('0001', 1, () => undefined), def('0002', 2, () => undefined)],
+    });
+    const report = await new MigrationEngine(deps).run();
+    expect(report.fromVersion).toBe(0);
+    expect(shouldRelaunchAfterMigration(report)).toBe(false);
+  });
+
+  it('a no-op boot (already up to date) does not relaunch', async () => {
+    const { deps } = makeDeps({ getCurrentVersion: async () => 2, definitions: [def('0002', 2, () => undefined)] });
+    const report = await new MigrationEngine(deps).run();
+    expect(report.steps).toHaveLength(0);
+    expect(shouldRelaunchAfterMigration(report)).toBe(false);
+  });
+
+  it('a baseline-only stamp (toVersion 1) does not relaunch — nothing was transformed', async () => {
+    const { deps } = makeDeps({ getCurrentVersion: async () => 0, definitions: [def('0001', 1, () => undefined)] });
+    const report = await new MigrationEngine(deps).run();
+    expect(shouldRelaunchAfterMigration(report)).toBe(false);
+  });
+
+  it('a FAILED (recovered) migration never relaunches — the data was restored', async () => {
+    const { deps } = makeDeps({
+      getCurrentVersion: async () => 1,
+      definitions: [
+        def('0002', 2, () => {
+          throw new Error('boom');
+        }),
+      ],
+    });
+    const report = await new MigrationEngine(deps).run();
+    expect(report.ok).toBe(false);
+    expect(shouldRelaunchAfterMigration(report)).toBe(false);
   });
 });

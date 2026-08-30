@@ -59,12 +59,25 @@ export const DOMAIN_FILES: Record<MaintenanceDomain, string[]> = {
     // per-workspace connector tokens.
     'vault.bin',
     'connector-vault.bin',
+    // P13C Gate 11 (round 43) — customer-facing configuration/state stores that
+    // were persisted but outside backup AND outside pre-migration rollback. Each
+    // has exactly one production creator (verified). A file that does not exist
+    // on a given install is simply skipped by `filesForPath`, so listing them is
+    // purely additive.
+    'experience-profile.json', // onboarding profile (resume + AI-mode choice)
+    'ai-config.json', // provider/model configuration
+    'ai-routing-usage.json', // per-location usage counters
+    'identity.json', // device identity evidence
+    'workspace-contexts.json', // per-user "views on this device"
+    'webhooks.json', // configured inbound webhooks
+    'delivery-preferences.json', // executive-summary delivery prefs
+    'sync-state.json', // unified sync cursors/state
   ],
   workspace: ['enterprise-workspaces.json', 'enterprise-org.json'],
   knowledgeGraph: ['graph.json', 'unified-store.json'],
   aiWorker: ['workforce-registry.json', 'workforce-jobs.json', 'workforce-audit.json'],
   plugin: ['plugins.json', 'plugins', 'plugin-data'],
-  aiMemory: ['memory.json'],
+  aiMemory: ['memory.json', 'memory-audit.json'],
   timeline: ['timeline'],
   // The user's business records — every enterprise-module store, by prefix.
   business: [
@@ -73,6 +86,30 @@ export const DOMAIN_FILES: Record<MaintenanceDomain, string[]> = {
     'enterprise-governance.json',
     'automations.json',
     'health-history.json',
+    // P13C Gate 11 (round 43) — customer records, governed-action evidence and
+    // audit trails that were persisted but outside backup + pre-migration
+    // rollback. Losing any of these silently loses tenant data or the trail that
+    // proves what happened to it.
+    'decision-records.json', // governed decision records
+    'holds.json', // governance holds awaiting resolution
+    'opportunity-decisions.json',
+    'outcome-revisions.json',
+    'erp-document-lines.json', // ERP document line items
+    'erp-approvals.json', // ERP approval trail
+    'medical-device-traceability.json', // regulated traceability records
+    'data-plane-provenance.json', // import provenance (the audit trail itself)
+    'data-plane-mappings.json', // remembered column→field mappings
+    'data-plane-relationships.json', // resolved cross-record relationships
+    'notification-inbox.json',
+    'action-records.json', // connector action evidence store
+    'm365-governed-actions.json', // governed M365 action ledger
+    'connector-controls.json',
+    'enterprise-personalization.json',
+    'platform-operators.json',
+    'marketplace-policy.json',
+    'documents.json', // document metadata
+    'documents', // document blobs (directory)
+    'sandbox', // sandbox workspaces/scenarios/executions/artifacts/datasets/validation/lab (directory)
   ],
   assistant: ['assistant-conversations.json', 'feedback.json'],
 };

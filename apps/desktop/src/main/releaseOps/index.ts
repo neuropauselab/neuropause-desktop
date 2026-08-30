@@ -44,7 +44,7 @@ import { registry } from '../registry/registry';
 import { connectorService } from '../connectors/connectorService';
 import { pluginManager } from '../plugins/pluginManager';
 import { packageService } from '../nps/packageService';
-import { MigrationEngine } from '../migration/migrationEngine';
+import { MigrationEngine, shouldRelaunchAfterMigration } from '../migration/migrationEngine';
 import { MIGRATIONS } from '../migration/migrations';
 import { BackupManager, LOCAL_DOMAINS } from '../backup/backupManager';
 import { RecoveryService } from '../recovery/recoveryService';
@@ -218,10 +218,25 @@ export async function initReleaseOps(deps: ReleaseOpsDeps): Promise<ReleaseOps> 
     });
     const report = await engine.run();
     await appendAudit(report);
-    if (!report.ok)
+    if (!report.ok) {
       log.error('Startup migration failed — data restored to prior version', {
         steps: report.steps.length,
       });
+      return;
+    }
+    // The stores loaded their pre-migration shape earlier in boot; a transforming
+    // migration just changed those bytes on disk, so the live instances are now
+    // stale and their next persist would overwrite the migration. Relaunch so
+    // every store reloads from the migrated bytes — the same mechanism the
+    // restore path uses. Gated to genuine upgrades (see the helper), so a fresh
+    // install does not restart on first boot.
+    if (shouldRelaunchAfterMigration(report)) {
+      log.info('Data migration applied — relaunching so stores reload migrated bytes', {
+        from: report.fromVersion,
+        to: report.toVersion,
+      });
+      scheduleRestoreRelaunch('data migration');
+    }
   }
 
   // ── release diagnostics + support bundle data providers ──
