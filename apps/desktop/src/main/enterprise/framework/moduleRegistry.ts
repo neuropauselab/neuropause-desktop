@@ -198,6 +198,19 @@ export class EnterpriseModuleRegistry {
         actions: m.hooks.runAction ? (m.descriptor.actions ?? []) : [],
       });
     }
+    /**
+     * GATE 6 (round 49) — TOTAL FILTERING IS A REFUSAL, NOT AN EMPTY LIST.
+     * With modules registered but NONE readable, returning `[]` made the
+     * Business workspace render "No business areas yet — nothing is shown that
+     * has no real backing", a lie on both counts: the modules exist, and the
+     * reason they are invisible is permissions. Say so. (A genuinely empty
+     * registry — no modules built in — still returns `[]` honestly.)
+     */
+    if (out.length === 0 && this.modules.size > 0) {
+      throw new Error(
+        'None of the business modules are readable with your current permissions.',
+      );
+    }
     return out;
   }
 }

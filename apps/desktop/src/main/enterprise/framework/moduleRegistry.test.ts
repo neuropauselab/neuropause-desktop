@@ -174,6 +174,25 @@ describe('registry', () => {
     );
   });
 
+  /**
+   * GATE 6 (round 49) — total filtering is a REFUSAL, never an empty list.
+   * With modules registered but none readable, `[]` rendered the Business
+   * workspace as "No business areas yet" — a permissions problem disguised as
+   * an empty install. The list now refuses with a named permission message
+   * (which the Business error state classifies as a denial: lock, no retry).
+   */
+  it('refuses when EVERY module is filtered — a permissions problem is never "no modules"', async () => {
+    deny = 'operations:read'; // the only registered module's read permission
+    await expect(handler(IpcChannel.EnterpriseModulesList)({})).rejects.toThrow(
+      /None of the business modules are readable/,
+    );
+  });
+
+  it('a genuinely EMPTY registry still returns [] honestly', async () => {
+    const empty = new EnterpriseModuleRegistry();
+    await expect(empty.readableSummaries(() => undefined)).resolves.toEqual([]);
+  });
+
   it('lists a module once its read permission is held (the gate is not "always hide")', async () => {
     const hrPath = join(tmpdir(), `np-erp-hr2-${randomUUID()}.json`);
     paths.push(hrPath);
