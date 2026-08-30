@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useFocusTrap } from '@renderer/lib/useFocusTrap';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { NpsProgressEvent, StoreAppDetail } from '@neuropause/shared';
 import { cn } from '@renderer/lib/cn';
@@ -58,6 +59,17 @@ export function InstallFlow({
   const [phase, setPhase] = useState<Phase>('review');
   const [event, setEvent] = useState<NpsProgressEvent | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // GATE 12 (round 50) — the install dialog traps focus, and Escape closes
+  // it exactly as the backdrop click always did.
+  const trapRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(trapRef, true);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   // Live progress for the stepper animation.
   useEffect(() => {
@@ -106,6 +118,10 @@ export function InstallFlow({
         exit={{ opacity: 0, scale: 0.98 }}
         transition={{ duration: 0.18, ease: [0.2, 0.8, 0.2, 1] }}
         onClick={(e) => e.stopPropagation()}
+        ref={trapRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Install ${app.name}`}
         className="glass-panel relative w-full max-w-[460px] rounded-3xl p-6"
       >
         {/* Header */}

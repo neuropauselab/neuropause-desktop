@@ -7,7 +7,8 @@
  * the welcome checklist picks up whatever remains. "Skip tour" dismisses without
  * marking steps complete. All state lives in the main process via ipc.onboarding.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useFocusTrap } from '@renderer/lib/useFocusTrap';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { OnboardingStatus } from '@neuropause/shared';
 import type { OnboardingStepId } from '@neuropause/shared';
@@ -29,6 +30,21 @@ export function OnboardingWizard({ onGoTo }: { onGoTo: (section: SectionId) => v
   const [status, setStatus] = useState<OnboardingStatus | null>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  // GATE 12 (round 50) — focus stays inside the wizard while it is open.
+  const trapRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(trapRef, open);
+  // GATE 12 (round 50) — Escape takes the same recorded dismiss path as the
+  // "Skip tour" button (never a silent vanish; the dismissal is persisted).
+  // Declared BEFORE the early return (rules-of-hooks); the body guards on
+  // `open`, so the later-declared `dismiss` is only reached when initialized.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape' && !busy) void dismiss();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
 
   useEffect(() => {
     let mounted = true;
@@ -103,6 +119,7 @@ export function OnboardingWizard({ onGoTo }: { onGoTo: (section: SectionId) => v
         aria-label="Welcome to NeuroPause"
       >
         <motion.div
+          ref={trapRef}
           className="surface w-[440px] max-w-[calc(100vw-48px)] rounded-2xl p-6 shadow-xl"
           initial={{ opacity: 0, scale: 0.96, y: 8 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}

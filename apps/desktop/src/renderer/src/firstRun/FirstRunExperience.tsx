@@ -13,7 +13,8 @@
  * local" claim (routing is Private First, and says exactly that), and Sign In
  * routes to the existing auth surface rather than pretending to be one.
  */
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useFocusTrap } from '@renderer/lib/useFocusTrap';
 import { motion, useReducedMotion } from 'framer-motion';
 import type { AiMode, UnderstandingAttribute, WorkspaceType } from '@neuropause/shared';
 import { AI_MODE_LABELS } from '@neuropause/shared';
@@ -310,8 +311,15 @@ export function FirstRunExperience({
     ? {}
     : { initial: { opacity: 0, y: 8 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.25 } };
 
+  // GATE 12 (round 50) — the takeover traps focus for its whole life.
+  // Escape deliberately does NOT close it: this is a required flow with an
+  // explicit Skip; a stray key must not dismiss consent-bearing steps.
+  const trapRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(trapRef, true);
+
   return (
     <div
+      ref={trapRef}
       // `app-bg` is the app's own opaque window background (deep black +
       // accent glow). It has to be an OPAQUE class, not a translucent
       // `--surface-*` token: first run is a full takeover, and anything

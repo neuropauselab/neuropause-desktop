@@ -3,7 +3,8 @@
  * labelled form fields, styled inputs, and code blocks with copy. Built on the
  * app's existing tokens so they sit naturally beside the Operations primitives.
  */
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useFocusTrap } from '@renderer/lib/useFocusTrap';
 import { cn } from '@renderer/lib/cn';
 import { Icon } from '@renderer/components/ui/Icon';
 
@@ -22,6 +23,9 @@ export function Modal({
   children: ReactNode;
   footer?: ReactNode;
 }): JSX.Element | null {
+  // GATE 12 (round 50) — focus stays inside while open; restored on close.
+  const trapRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(trapRef, open);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent): void => {
@@ -35,7 +39,7 @@ export function Modal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} aria-hidden />
-      <div role="dialog" aria-modal className="surface-raised relative z-10 flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl shadow-card">
+      <div ref={trapRef} role="dialog" aria-modal className="surface-raised relative z-10 flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl shadow-card">
         <div className="flex items-start justify-between gap-3 border-b border-[var(--hairline)] px-5 py-4">
           <div>
             <h3 className="text-base font-semibold tracking-tight">{title}</h3>
