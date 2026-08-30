@@ -29,6 +29,40 @@ import { RuntimeService, setActiveRuntimeService } from './runtimeService';
 
 const log = createLogger('main');
 
+/**
+ * GATE 1 (round 48) — BOOT-WINDOW CRASH CAPTURE.
+ *
+ * Before this, the main process had NO `uncaughtException`/`unhandledRejection`
+ * handlers: a crash during the boot window (or any time after) was a silent
+ * process death — no log line, no flush, nothing for a support bundle to read.
+ * Both handlers are LOCAL-ONLY (they write to the app log, never send
+ * anything anywhere — crash-report consent is a separate, opt-in toggle and is
+ * untouched). An uncaught exception quits through `app.quit()` so the Gate-16
+ * flush barrier still drains pending writes on the way down — strictly better
+ * than the default hard crash. The `crashed` latch prevents a quit loop if the
+ * quit path itself throws. Rejections are logged, never fatal (Node warns by
+ * default; a background subsystem's failed promise must not take the app down).
+ */
+let crashed = false;
+process.on('uncaughtException', (err) => {
+  try {
+    log.error('Uncaught exception (main process)', err);
+  } catch {
+    /* the logger itself may be the casualty — still attempt the orderly quit */
+  }
+  if (!crashed) {
+    crashed = true;
+    app.quit();
+  }
+});
+process.on('unhandledRejection', (reason) => {
+  try {
+    log.error('Unhandled rejection (main process)', reason);
+  } catch {
+    /* never rethrow from a crash handler */
+  }
+});
+
 let mainWindow: BrowserWindow | null = null;
 let runtimeService: RuntimeService | null = null;
 

@@ -33,10 +33,21 @@ const summary = (id: string, title: string): Record<string, unknown> => ({
   pinned: false,
 });
 
-describe('AssistantHost boot race (round 39 — Gate 26)', () => {
-  it('a boot-window list failure retries on the runtime-ready broadcast', async () => {
+describe('AssistantHost boot race (round 39 — Gate 26; round 48 — the chokepoint absorbs it)', () => {
+  /**
+   * ROUND 48 UPDATE. The boot-window retry now lives at the ipc `invoke`
+   * chokepoint (lib/ipc.ts), so a boot-raced list never REJECTS at all — it
+   * waits for the runtime-ready signal and retries invisibly. The round-39
+   * behavior this test used to pin (error banner → broadcast → reload) is
+   * strictly improved: the banner never appears, the history simply arrives
+   * when composition finishes. AssistantHost's own belt-and-braces retry
+   * remains for any failure shape the chokepoint declines.
+   */
+  it('a boot-window list failure resolves after the runtime-ready broadcast — no banner ever shown', async () => {
     let registered = false;
+    let calls = 0;
     route(IpcChannel.AssistantConversations, () => {
+      calls += 1;
       if (!registered) {
         throw new Error("No handler registered for 'assistant:conversations'");
       }
@@ -44,11 +55,10 @@ describe('AssistantHost boot race (round 39 — Gate 26)', () => {
     });
 
     render(<AssistantHost />);
-    await waitFor(() => {
-      expect(
-        screen.getByText(/Your conversations could not be loaded — .*No handler registered/),
-      ).toBeTruthy();
-    });
+    // The load is PENDING inside the chokepoint — the honest failure banner is
+    // never needed, because the failure never escapes.
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.queryByText(/could not be loaded/)).toBeNull();
 
     // Composition finishes; the ready broadcast fires (base router, no race).
     registered = true;
@@ -58,6 +68,7 @@ describe('AssistantHost boot race (round 39 — Gate 26)', () => {
       expect(screen.getByText('Quarterly imports')).toBeTruthy();
     });
     expect(screen.queryByText(/could not be loaded/)).toBeNull();
+    expect(calls).toBe(2); // one raced attempt + exactly one retry
   });
 
   it('a ready broadcast after a successful load does not refetch', async () => {

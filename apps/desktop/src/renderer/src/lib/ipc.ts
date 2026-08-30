@@ -164,6 +164,70 @@ const log = createLogger('ipc');
 const loggedFailures = new Set<string>();
 
 const rawInvoke = window.neuropause.invoke;
+
+/**
+ * GATE 1 (round 48) — THE BOOT-WINDOW RETRY, AT THE ONE PLACE EVERY CALL PASSES.
+ *
+ * The window deliberately opens before `initRuntimeCore()` finishes (round 36
+ * kept that ordering), so for a moment the ~720 secure channels do not exist
+ * and any surface that invokes on mount fails with "No handler registered".
+ * Round 36/39 taught exactly TWO consumers (the AppShell profile load and the
+ * Assistant list) to retry on the ready broadcast; a live fresh-profile boot
+ * still showed ELEVEN other channels failing once at first paint
+ * (notifications:list, voice:status, xp:profile.get, livesync:status,
+ * intent:board/workspaces/governance, update:getStatus, onboarding:status,
+ * org:list, flags:get).
+ *
+ * The general fix lives here instead of in eleven components: a rejection that
+ * says "No handler registered" DURING the boot window means the handler never
+ * ran at all — retrying is safe for reads AND mutations alike, because nothing
+ * executed. The retry waits for the runtime-ready signal (the round-36
+ * broadcast, plus an immediate state query on the BASE router to close the
+ * missed-event race), retries ONCE, and gives up honestly when the runtime
+ * FAILED, when the wait times out, or when the retry fails again (a genuinely
+ * unregistered channel must still surface, not loop).
+ */
+const NO_HANDLER_RE = /No handler registered/;
+let bootRetryTimeoutMs = 20_000;
+let runtimeReadyWait: Promise<'ready' | 'failed' | 'timeout'> | null = null;
+
+/** Test seam: shorten the wait so a timeout path is testable. */
+export function __setBootRetryTimeoutForTests(ms: number): void {
+  bootRetryTimeoutMs = ms;
+  runtimeReadyWait = null;
+}
+
+function awaitRuntimeReady(): Promise<'ready' | 'failed' | 'timeout'> {
+  if (runtimeReadyWait) return runtimeReadyWait;
+  runtimeReadyWait = new Promise((resolve) => {
+    let done = false;
+    let off: () => void = () => undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const settle = (r: 'ready' | 'failed' | 'timeout'): void => {
+      if (done) return;
+      done = true;
+      off();
+      if (timer !== undefined) clearTimeout(timer);
+      resolve(r);
+    };
+    off = rawSubscribe(IpcChannel.RuntimeStateChanged, (p: unknown) => {
+      const s = p as RuntimeStateDto;
+      if (s?.state === 'ready') settle('ready');
+      else if (s?.state === 'failed') settle('failed');
+    });
+    if (!done) timer = setTimeout(() => settle('timeout'), bootRetryTimeoutMs);
+    // The missed-event race: ready may have happened BEFORE this subscription.
+    // `system:runtimeState` rides the base router, registered before the
+    // window, so it is safe in the exact window it describes.
+    void (rawInvoke(IpcChannel.RuntimeState) as Promise<RuntimeStateDto>)
+      .then((s) => {
+        if (s?.state === 'ready') settle('ready');
+        else if (s?.state === 'failed') settle('failed');
+      })
+      .catch(() => undefined);
+  });
+  return runtimeReadyWait;
+}
 /**
  * The IPC entrypoint every namespace below uses.
  *
@@ -202,7 +266,21 @@ function invoke<C extends IpcResponseChannelName>(
   // Attribution has to be a link in the returned chain, not another detached
   // branch: a detached handler would race the caller's own `.catch`, and the
   // whole point is that the caller sees the attributed error.
-  return promise.catch((err: unknown) => {
+  return promise.catch(async (err: unknown) => {
+    // GATE 1 (round 48): a boot-window "No handler registered" means the
+    // handler NEVER RAN — retry once after the runtime comes up. If the
+    // runtime FAILED, the wait timed out, or the retry fails again (a channel
+    // that genuinely does not exist), the original failure surfaces honestly.
+    if (err instanceof Error && NO_HANDLER_RE.test(err.message)) {
+      const outcome = await awaitRuntimeReady();
+      if (outcome === 'ready') {
+        try {
+          return (await rawInvoke(channel, payload)) as IpcResponseOf<C>;
+        } catch {
+          // fall through to the original, attributed failure
+        }
+      }
+    }
     const attributed = attributeIpcChannel(err, String(channel));
     if (!loggedFailures.has(String(channel))) {
       loggedFailures.add(String(channel));
