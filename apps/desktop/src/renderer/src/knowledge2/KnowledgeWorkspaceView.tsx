@@ -79,33 +79,43 @@ const SOURCE_META: Record<SearchSourceKind, { label: string; icon: IconName }> =
   federation: { label: 'Federation', icon: 'globe' },
 };
 
-async function settled<T>(p: Promise<T>, fallback: T): Promise<T> {
-  try {
-    return await p;
-  } catch {
-    return fallback;
-  }
-}
-
 export function KnowledgeWorkspaceView(): JSX.Element {
   const { setSection } = useShell();
   const [ready, setReady] = useState(false);
   const [tab, setTab] = useState<Tab>('overview');
   const [d, setD] = useState<Data>(EMPTY);
+  /**
+   * GATE 15 (round 47) — which sources FAILED, by name. `settled()` used to
+   * swallow every failure into its fallback, so a denied or broken read
+   * rendered as empty tiles and zero counts — an all-clear the data never
+   * gave. Partial degradation is kept (one failed source must not blank the
+   * others), but the failure is now SAID.
+   */
+  const [failedSources, setFailedSources] = useState<string[]>([]);
 
   const refresh = useCallback(async () => {
+    const failures: string[] = [];
+    const settled = async <T,>(label: string, p: Promise<T>, fallback: T): Promise<T> => {
+      try {
+        return await p;
+      } catch {
+        failures.push(label);
+        return fallback;
+      }
+    };
     const [memory, topics, graph, orgGraph, fabric, decisions, traces, governance, compliance] = await Promise.all([
-      settled(ipc.memory.counts(), null),
-      settled(ipc.knowledge.topics(), { topics: [], total: 0 } as KnowledgeTopics),
-      settled(ipc.graph.counts(), null),
-      settled(ipc.enterprise.graph(), null),
-      settled(ipc.knowledgeFabric.overview(), null),
-      settled(ipc.decisions.list(), { decisions: [] as ExecutiveDecision[] }),
-      settled(ipc.governance.list(), { decisions: [], total: 0 } as GovernanceTraceList),
-      settled(ipc.enterprise.governanceConfig(), null),
-      settled(ipc.enterprise.compliance(), [] as ComplianceFinding[]),
+      settled('AI memory', ipc.memory.counts(), null),
+      settled('Topics', ipc.knowledge.topics(), { topics: [], total: 0 } as KnowledgeTopics),
+      settled('Knowledge graph', ipc.graph.counts(), null),
+      settled('Organization graph', ipc.enterprise.graph(), null),
+      settled('Knowledge fabric', ipc.knowledgeFabric.overview(), null),
+      settled('Decisions', ipc.decisions.list(), { decisions: [] as ExecutiveDecision[] }),
+      settled('Governance traces', ipc.governance.list(), { decisions: [], total: 0 } as GovernanceTraceList),
+      settled('Governance config', ipc.enterprise.governanceConfig(), null),
+      settled('Compliance', ipc.enterprise.compliance(), [] as ComplianceFinding[]),
     ]);
     setD({ memory, topics, graph, orgGraph, fabric, decisions: decisions.decisions, traces, governance, compliance });
+    setFailedSources(failures);
     setReady(true);
   }, []);
 
@@ -173,6 +183,22 @@ export function KnowledgeWorkspaceView(): JSX.Element {
           <LoadingBlock label="Loading knowledge…" />
         ) : (
           <div className="mx-auto" style={{ maxWidth: 1120 }}>
+            {failedSources.length > 0 && (
+              <div role="alert" className="mb-4 rounded-2xl border border-danger/40 bg-danger/10 p-4 text-sm text-danger">
+                <div className="font-semibold">Some knowledge sources could not be read.</div>
+                <p className="mt-1 text-xs leading-relaxed">
+                  {failedSources.join(', ')} failed to load — their tiles show no data, not an all-clear. You
+                  may lack read permission, or the source may be down.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void refresh()}
+                  className="mt-3 rounded-lg border border-danger/40 px-3 py-1.5 text-xs font-semibold hover:bg-danger/10"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
             {tab === 'overview' && <OverviewTab d={d} />}
             {tab === 'search' && <SearchTab />}
             {tab === 'memory' && <MemoryTab d={d} go={go} />}
@@ -290,6 +316,13 @@ function SearchTab(): JSX.Element {
   const [q, setQ] = useState('');
   const [result, setResult] = useState<EnterpriseSearchResult | null>(null);
   const [searching, setSearching] = useState(false);
+  /**
+   * GATE 15 (round 47) — a FAILED federated search is its own state, never
+   * "No matches". `.catch(() => null)` rendered a backend outage as an honest-
+   * looking empty result for the exact term the user typed.
+   */
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [retryNonce, setRetryNonce] = useState(0);
   const seq = useRef(0);
 
   useEffect(() => {
@@ -297,22 +330,31 @@ function SearchTab(): JSX.Element {
     if (!term) {
       setResult(null);
       setSearching(false);
+      setSearchError(null);
       return;
     }
     let alive = true;
     setSearching(true);
     const id = ++seq.current;
     const timer = setTimeout(async () => {
-      const res = await ipc.search.enterprise({ text: term, limit: 8 }).catch(() => null);
-      if (!alive || id !== seq.current) return;
-      setResult(res);
-      setSearching(false);
+      try {
+        const res = await ipc.search.enterprise({ text: term, limit: 8 });
+        if (!alive || id !== seq.current) return;
+        setResult(res);
+        setSearchError(null);
+      } catch (err) {
+        if (!alive || id !== seq.current) return;
+        setResult(null);
+        setSearchError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (alive && id === seq.current) setSearching(false);
+      }
     }, 200);
     return () => {
       alive = false;
       clearTimeout(timer);
     };
-  }, [q]);
+  }, [q, retryNonce]);
 
   const summary = summarizeSearch(result);
   const totalsBySource = new Map(summary.bySource.map((s) => [s.source, s.total]));
@@ -352,6 +394,18 @@ function SearchTab(): JSX.Element {
         <EmptyState icon="search" title="Search across every knowledge source" hint="Entities, knowledge graph, AI memory, timeline and federation — one ranked list." />
       ) : searching && !result ? (
         <LoadingBlock label="Searching…" />
+      ) : searchError !== null ? (
+        <div role="alert" className="rounded-2xl border border-danger/40 bg-danger/10 p-4 text-sm text-danger">
+          <div className="font-semibold">Search failed — this is not an empty result.</div>
+          <p className="mt-1 text-xs leading-relaxed">{searchError}</p>
+          <button
+            type="button"
+            onClick={() => setRetryNonce((n) => n + 1)}
+            className="mt-3 rounded-lg border border-danger/40 px-3 py-1.5 text-xs font-semibold hover:bg-danger/10"
+          >
+            Retry
+          </button>
+        </div>
       ) : !result || result.hits.length === 0 ? (
         <EmptyState icon="search" title="No matches" hint={`Nothing found for “${q.trim()}”.`} />
       ) : (

@@ -41,6 +41,14 @@ function fmtNext(iso: string | null, nowMs: number): string {
 export function IntegrationHealthPanel(): JSX.Element | null {
   const [snapshots, setSnapshots] = useState<ConnectorSyncSnapshot[]>([]);
   const [loaded, setLoaded] = useState(false);
+  /**
+   * GATE 15 (round 47) — a FAILED sync-state read is named, never rendered as
+   * the honest-looking "No active integration syncs yet". The empty state
+   * promises "connect a connector to see live sync health" — over a failed
+   * read that promise is a lie: the syncs may exist and be invisible.
+   */
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryNonce, setRetryNonce] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -49,20 +57,28 @@ export function IntegrationHealthPanel(): JSX.Element | null {
       .then((s) => {
         if (alive) {
           setSnapshots(s);
+          setLoadError(null);
           setLoaded(true);
         }
       })
-      .catch(() => {
-        if (alive) setLoaded(true);
+      .catch((err: unknown) => {
+        if (alive) {
+          setLoadError(err instanceof Error ? err.message : String(err));
+          setLoaded(true);
+        }
       });
     const off = ipc.connectors.onSyncState((s) => {
-      if (alive) setSnapshots(s);
+      if (alive) {
+        setSnapshots(s);
+        // A live broadcast IS a successful read — the failure state is stale.
+        setLoadError(null);
+      }
     });
     return () => {
       alive = false;
       off();
     };
-  }, []);
+  }, [retryNonce]);
 
   if (!loaded) return null;
 
@@ -93,7 +109,19 @@ export function IntegrationHealthPanel(): JSX.Element | null {
         )}
       </div>
 
-      {snapshots.length === 0 ? (
+      {loadError !== null && snapshots.length === 0 ? (
+        <div role="alert" className="rounded-xl border border-danger/40 bg-danger/10 p-3 text-xs text-danger">
+          <div className="font-semibold">Sync health could not be read.</div>
+          <p className="mt-1 leading-relaxed">{loadError} — active syncs may exist and be invisible here.</p>
+          <button
+            type="button"
+            onClick={() => setRetryNonce((n) => n + 1)}
+            className="mt-2 rounded-lg border border-danger/40 px-2.5 py-1 text-2xs font-semibold hover:bg-danger/10"
+          >
+            Retry
+          </button>
+        </div>
+      ) : snapshots.length === 0 ? (
         <p className="text-xs text-white/45">
           No active integration syncs yet. Connect a connector to see live sync health, latency, objects
           synced, and errors here.

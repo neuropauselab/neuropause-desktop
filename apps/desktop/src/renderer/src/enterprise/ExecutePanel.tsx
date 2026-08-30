@@ -90,10 +90,23 @@ export function ExecutePanel(): JSX.Element {
   const [active, setActive] = useState<ExecutionSession[]>([]);
   const [stats, setStats] = useState<ExecutionStats | null>(null);
   const [history, setHistory] = useState<ExecutionSession[]>([]);
+  /**
+   * GATE 15 (round 47) — a FAILED target read is named, never rendered as
+   * "no targets available": with the list swallowed into [], a denied read
+   * disabled Execute with no explanation. And the sessions/history poll's
+   * failures were fully silent — the feed simply froze. `feedError` is sticky
+   * while polls fail and self-clears on the first success, so a 2.5s poll
+   * cannot flap the banner.
+   */
+  const [targetsError, setTargetsError] = useState<string | null>(null);
+  const [feedError, setFeedError] = useState<string | null>(null);
+
+  const describe = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
   // Load selectable targets when switching to a target-based mode.
   useEffect(() => {
     let alive = true;
+    setTargetsError(null);
     if (mode === 'automation') {
       ipc.automations
         ?.list?.()
@@ -107,7 +120,11 @@ export function ExecutePanel(): JSX.Element {
           setTargets(list);
           setSelected(list.find((t) => !t.disabled)?.id ?? '');
         })
-        .catch(() => setTargets([]));
+        .catch((err: unknown) => {
+          if (!alive) return;
+          setTargets([]);
+          setTargetsError(describe(err));
+        });
     } else if (mode === 'decision') {
       ipc.decisions
         ?.list?.()
@@ -120,7 +137,11 @@ export function ExecutePanel(): JSX.Element {
           setTargets(list);
           setSelected(list[0]?.id ?? '');
         })
-        .catch(() => setTargets([]));
+        .catch((err: unknown) => {
+          if (!alive) return;
+          setTargets([]);
+          setTargetsError(describe(err));
+        });
     } else if (mode === 'worker') {
       ipc.workforce
         ?.workers?.()
@@ -134,7 +155,11 @@ export function ExecutePanel(): JSX.Element {
           setTargets(list);
           setSelected(list.find((t) => !t.disabled)?.id ?? '');
         })
-        .catch(() => setTargets([]));
+        .catch((err: unknown) => {
+          if (!alive) return;
+          setTargets([]);
+          setTargetsError(describe(err));
+        });
     } else {
       setTargets([]);
       setSelected('');
@@ -150,12 +175,13 @@ export function ExecutePanel(): JSX.Element {
       .then((s) => {
         setActive(s?.sessions ?? []);
         setStats(s?.stats ?? null);
+        setFeedError(null);
       })
-      .catch(() => {});
+      .catch((err: unknown) => setFeedError(describe(err)));
     ipc.execute
       ?.history?.()
       .then((h) => setHistory(h?.records ?? []))
-      .catch(() => {});
+      .catch((err: unknown) => setFeedError(describe(err)));
   }, []);
 
   useEffect(() => {
@@ -310,6 +336,20 @@ export function ExecutePanel(): JSX.Element {
           )}
         </button>
       </div>
+
+      {targetsError !== null && (
+        <p role="alert" className="mt-3 rounded-lg border border-danger/40 bg-danger/10 p-2.5 text-xs text-danger">
+          The {mode} list could not be loaded — {targetsError}. This is a failed read, not
+          &ldquo;no {mode}s exist&rdquo;.
+        </p>
+      )}
+
+      {feedError !== null && (
+        <p role="alert" className="mt-3 rounded-lg border border-danger/40 bg-danger/10 p-2.5 text-xs text-danger">
+          Live sessions &amp; history cannot be refreshed — {feedError}. The lists below may be stale;
+          they will resume when the read recovers.
+        </p>
+      )}
 
       {error && (
         <p className="mt-3 rounded-lg border border-white/10 bg-white/5 p-2.5 text-xs text-white/70">
