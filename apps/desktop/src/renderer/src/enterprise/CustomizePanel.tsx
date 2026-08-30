@@ -59,6 +59,13 @@ export function CustomizePanel(): JSX.Element {
   const [roleName, setRoleName] = useState('');
   const [rolePerms, setRolePerms] = useState<Set<EnterprisePermission>>(new Set(['org:read', 'dashboard:read']));
   const [busy, setBusy] = useState(false);
+  // GATE 5 — E-11. Units, roles and governance toggles used to fail SILENTLY:
+  // add/create were try/finally with no catch, and delete/toggle were
+  // fire-and-forget `void` calls, so a denied mutation was a no-op with no
+  // explanation. Each section now surfaces its refusal verbatim, like People.
+  const [unitError, setUnitError] = useState<string | null>(null);
+  const [roleError, setRoleError] = useState<string | null>(null);
+  const [governanceError, setGovernanceError] = useState<string | null>(null);
 
   const toggleNav = (id: string): void => {
     setNav((prev) => {
@@ -73,20 +80,35 @@ export function CustomizePanel(): JSX.Element {
     });
   };
 
+  const describeMutationError = (err: unknown): string =>
+    err instanceof Error && err.message ? err.message : 'That did not work.';
+
   const addUnit = async (): Promise<void> => {
     if (!unitName.trim()) return;
     setBusy(true);
+    setUnitError(null);
     try {
       await createUnit({ kind: unitKind, name: unitName.trim(), parentId: unitParent || null });
       setUnitName('');
       setUnitParent('');
+    } catch (err) {
+      setUnitError(describeMutationError(err));
     } finally {
       setBusy(false);
     }
   };
 
-  const describePeopleError = (err: unknown): string =>
-    err instanceof Error && err.message ? err.message : 'That did not work.';
+  const removeUnit = async (id: string): Promise<void> => {
+    setBusy(true);
+    setUnitError(null);
+    try {
+      await deleteUnit(id);
+    } catch (err) {
+      setUnitError(describeMutationError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const addPerson = async (): Promise<void> => {
     if (!personName.trim()) return;
@@ -102,7 +124,7 @@ export function CustomizePanel(): JSX.Element {
       setPersonEmail('');
       setPersonTitle('');
     } catch (err) {
-      setPeopleError(describePeopleError(err));
+      setPeopleError(describeMutationError(err));
     } finally {
       setBusy(false);
     }
@@ -114,7 +136,7 @@ export function CustomizePanel(): JSX.Element {
     try {
       await deleteUser(id);
     } catch (err) {
-      setPeopleError(describePeopleError(err));
+      setPeopleError(describeMutationError(err));
     } finally {
       setBusy(false);
     }
@@ -146,7 +168,7 @@ export function CustomizePanel(): JSX.Element {
       });
       setEditingId(null);
     } catch (err) {
-      setPeopleError(describePeopleError(err));
+      setPeopleError(describeMutationError(err));
     } finally {
       setBusy(false);
     }
@@ -155,12 +177,40 @@ export function CustomizePanel(): JSX.Element {
   const addRole = async (): Promise<void> => {
     if (!roleName.trim()) return;
     setBusy(true);
+    setRoleError(null);
     try {
       await createRole({ name: roleName.trim(), permissions: [...rolePerms] });
       setRoleName('');
       setRolePerms(new Set(['org:read', 'dashboard:read']));
+    } catch (err) {
+      setRoleError(describeMutationError(err));
     } finally {
       setBusy(false);
+    }
+  };
+
+  /**
+   * Governance toggles. A denied toggle used to be a fire-and-forget `void`
+   * call: the switch did not move and nothing said why — on the surface that
+   * decides which approval chains and compliance rules are ENFORCED. The
+   * refusal is now shown; the toggle state stays derived from the backend's
+   * answer (the provider only updates it on success), never optimistic.
+   */
+  const toggleChain = async (id: string, enabled: boolean): Promise<void> => {
+    setGovernanceError(null);
+    try {
+      await setChain(id, enabled);
+    } catch (err) {
+      setGovernanceError(describeMutationError(err));
+    }
+  };
+
+  const toggleRule = async (id: string, enabled: boolean): Promise<void> => {
+    setGovernanceError(null);
+    try {
+      await setRule(id, enabled);
+    } catch (err) {
+      setGovernanceError(describeMutationError(err));
     }
   };
 
@@ -218,6 +268,9 @@ export function CustomizePanel(): JSX.Element {
           </select>
           <button type="button" disabled={busy || !unitName.trim()} onClick={() => void addUnit()} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg disabled:opacity-40"><Icon name="plus" size={13} /> Add</button>
         </div>
+        {unitError && (
+          <p role="alert" className="mb-2 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-2xs leading-relaxed text-danger">{unitError}</p>
+        )}
         <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
           {org.units.map((u) => {
             const lead = u.leadUserId ? org.users.find((x) => x.id === u.leadUserId) : null;
@@ -225,7 +278,7 @@ export function CustomizePanel(): JSX.Element {
               <li key={u.id} className="flex items-center gap-2 rounded-lg border border-[var(--hairline)] px-2.5 py-1.5">
                 <span className={cn('flex h-6 w-6 items-center justify-center rounded-md', TINT_TONE.blue)}><Icon name="layers" size={12} /></span>
                 <div className="min-w-0 flex-1"><div className="truncate text-sm text-ink">{u.name}</div><div className="text-2xs text-faint">{unitKindLabel(u.kind)}{lead ? ` · ${lead.name}` : ''}</div></div>
-                <button type="button" onClick={() => void deleteUnit(u.id)} className="text-faint fill-hover hover:text-syspink" title="Delete unit"><Icon name="trash" size={13} /></button>
+                <button type="button" disabled={busy} onClick={() => void removeUnit(u.id)} className="text-faint fill-hover hover:text-syspink" title="Delete unit"><Icon name="trash" size={13} /></button>
               </li>
             );
           })}
@@ -293,6 +346,9 @@ export function CustomizePanel(): JSX.Element {
             })}
           </div>
         </div>
+        {roleError && (
+          <p role="alert" className="mb-2 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-2xs leading-relaxed text-danger">{roleError}</p>
+        )}
         <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
           {org.roles.map((r) => (
             <li key={r.id} className="flex items-center gap-2 rounded-lg border border-[var(--hairline)] px-2.5 py-1.5">
@@ -304,6 +360,9 @@ export function CustomizePanel(): JSX.Element {
       </OpsPanel>
 
       {/* Governance: approval chains + compliance rules */}
+      {governanceError && (
+        <p role="alert" className="mb-2 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-2xs leading-relaxed text-danger">{governanceError}</p>
+      )}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <OpsPanel title="Approval chains" subtitle="Who must sign off">
           {!governance || governance.approvalChains.length === 0 ? (
@@ -313,7 +372,7 @@ export function CustomizePanel(): JSX.Element {
               {governance.approvalChains.map((c) => (
                 <li key={c.id} className="flex items-center gap-2 rounded-lg border border-[var(--hairline)] px-2.5 py-2">
                   <div className="min-w-0 flex-1"><div className="truncate text-sm text-ink">{c.name}</div><div className="truncate text-2xs text-faint">{c.steps.length} step(s) · {c.description}</div></div>
-                  <Toggle on={c.enabled} onClick={() => void setChain(c.id, !c.enabled)} />
+                  <Toggle on={c.enabled} onClick={() => void toggleChain(c.id, !c.enabled)} />
                 </li>
               ))}
             </ul>
@@ -328,7 +387,7 @@ export function CustomizePanel(): JSX.Element {
               {governance.complianceRules.map((r) => (
                 <li key={r.id} className="flex items-center gap-2 rounded-lg border border-[var(--hairline)] px-2.5 py-2">
                   <div className="min-w-0 flex-1"><div className="truncate text-sm text-ink">{r.name}</div><div className="truncate text-2xs text-faint">{titleCase(r.category)} · {r.severity}</div></div>
-                  <Toggle on={r.enabled} onClick={() => void setRule(r.id, !r.enabled)} />
+                  <Toggle on={r.enabled} onClick={() => void toggleRule(r.id, !r.enabled)} />
                 </li>
               ))}
             </ul>

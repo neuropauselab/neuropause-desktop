@@ -18,6 +18,14 @@ export function DecisionCenterPanel({ onNavigate }: { onNavigate: (tab: Enterpri
   const [openId, setOpenId] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  /**
+   * GATE 5 — E-11. A failed approve/reject/delegate is SAID, never a silent
+   * no-op. This is a governance surface: a reviewer who clicks Approve, gets a
+   * permission denial, and sees nothing will walk away believing the governed
+   * action was approved. The refusal is shown verbatim and the decision card
+   * stays open so the reviewer can retry or escalate.
+   */
+  const [actError, setActError] = useState<string | null>(null);
 
   const pending = useMemo<PendingItem[]>(() => {
     const out: PendingItem[] = [];
@@ -43,8 +51,12 @@ export function DecisionCenterPanel({ onNavigate }: { onNavigate: (tab: Enterpri
     return out.slice(0, 6);
   };
 
+  const describeActError = (err: unknown): string =>
+    err instanceof Error && err.message ? err.message : 'That did not work.';
+
   const act = async (item: PendingItem, kind: 'approve' | 'reject' | 'changes' | 'escalate'): Promise<void> => {
     setBusy(true);
+    setActError(null);
     try {
       const text = note.trim();
       if (kind === 'approve') await approve(item.job.id, item.proposal.id, text || undefined);
@@ -53,6 +65,9 @@ export function DecisionCenterPanel({ onNavigate }: { onNavigate: (tab: Enterpri
       else await reject(item.job.id, item.proposal.id, `Escalated for owner review: ${text || 'flagged by reviewer'}`);
       setOpenId(null);
       setNote('');
+    } catch (err) {
+      // The decision was NOT recorded. Say so; keep the card open.
+      setActError(describeActError(err));
     } finally {
       setBusy(false);
     }
@@ -60,10 +75,13 @@ export function DecisionCenterPanel({ onNavigate }: { onNavigate: (tab: Enterpri
 
   const onDelegate = async (item: PendingItem): Promise<void> => {
     setBusy(true);
+    setActError(null);
     try {
       await delegate(item.job.workerId, item.job.skillId);
       setOpenId(null);
       setNote('');
+    } catch (err) {
+      setActError(describeActError(err));
     } finally {
       setBusy(false);
     }
@@ -108,7 +126,7 @@ export function DecisionCenterPanel({ onNavigate }: { onNavigate: (tab: Enterpri
                         <Icon name="clock" size={12} /> proposed {relativeTime(job.createdAt)}
                       </div>
                       {!open && (
-                        <button type="button" onClick={() => { setOpenId(proposal.id); setNote(''); }} className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg">
+                        <button type="button" onClick={() => { setOpenId(proposal.id); setNote(''); setActError(null); }} className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg">
                           Review decision <Icon name="chevron-right" size={13} />
                         </button>
                       )}
@@ -149,13 +167,18 @@ export function DecisionCenterPanel({ onNavigate }: { onNavigate: (tab: Enterpri
                         className="w-full resize-none rounded-xl border border-[var(--hairline)] [background:var(--fill-1)] px-3 py-2 text-sm text-ink outline-none placeholder:text-faint focus-visible:shadow-focus"
                       />
 
+                      {actError && (
+                        <p role="alert" className="mt-3 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-2xs leading-relaxed text-danger">
+                          This decision was NOT recorded — {actError}
+                        </p>
+                      )}
                       <div className="mt-3 flex flex-wrap items-center gap-2">
                         <Action icon="check" label="Approve" tone="green" onClick={() => void act(item, 'approve')} disabled={busy} />
                         <Action icon="undo" label="Request changes" tone="orange" onClick={() => void act(item, 'changes')} disabled={busy} />
                         <Action icon="arrow-up" label="Escalate" tone="blue" onClick={() => void act(item, 'escalate')} disabled={busy} />
                         <Action icon="cpu" label="Delegate to worker" tone="purple" onClick={() => void onDelegate(item)} disabled={busy} />
                         <Action icon="close" label="Reject" tone="red" onClick={() => void act(item, 'reject')} disabled={busy} />
-                        <button type="button" onClick={() => { setOpenId(null); setNote(''); }} className="ml-auto rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted fill-hover hover:text-ink">Cancel</button>
+                        <button type="button" onClick={() => { setOpenId(null); setNote(''); setActError(null); }} className="ml-auto rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted fill-hover hover:text-ink">Cancel</button>
                       </div>
                     </div>
                   )}
