@@ -16,6 +16,7 @@ import {
   authorizeCloudOrgRole,
   CLOUD_ORG_MANAGERS,
   CLOUD_ORG_DENIED,
+  deviceRevokeRequiresManagerRole,
 } from './cloudOrgAuthorize';
 import type { CloudMembershipRow } from './cloudOrgAuthorize';
 
@@ -89,6 +90,32 @@ describe('fail-closed refusals — one opaque message for all', () => {
 });
 
 /**
+ * Device revocation: revoking THIS machine is self-service; revoking ANY OTHER
+ * device in the org is administrative (managers only). The Trusted Devices screen
+ * lists every device in the org with a Revoke button, and `DevicesRevoke` accepts
+ * an arbitrary `deviceId`, so before this a viewer could revoke a colleague's
+ * device.
+ */
+describe('device revocation — own machine is self-service, others need a manager', () => {
+  const OWN = 'device-this-machine';
+
+  it('revoking the caller’s OWN current device does NOT require a manager (self-service)', () => {
+    expect(deviceRevokeRequiresManagerRole(OWN, OWN)).toBe(false);
+  });
+
+  it('revoking ANOTHER device REQUIRES a manager — the finding: membership was not enough', () => {
+    expect(deviceRevokeRequiresManagerRole('device-someone-else', OWN)).toBe(true);
+  });
+
+  it('fail-safe: an unknown/blank own-device id forces the manager gate (the stricter side)', () => {
+    expect(deviceRevokeRequiresManagerRole('device-anything', '')).toBe(true);
+    expect(deviceRevokeRequiresManagerRole('device-anything', '   ')).toBe(true);
+    // Two blanks must NOT be treated as "your own device".
+    expect(deviceRevokeRequiresManagerRole('', '')).toBe(true);
+  });
+});
+
+/**
  * The wiring pin: the mutating cloud-org handlers must call `requireCloudOrgRole`
  * with `CLOUD_ORG_MANAGERS`, and the reads must stay on `requireCloudOrgMembership`.
  * `runtimeCore.ts` cannot be imported in a unit test (it pulls in Electron and
@@ -116,8 +143,26 @@ describe('runtimeCore wiring pin', () => {
       expect(before, `${mut} must be role-gated`).toContain('requireCloudOrgRole');
     }
     // No mutating call is reached only by the membership-only guard: assert the
-    // role guard appears at least as many times as the 8 mutations.
+    // role guard appears at least as many times as the 8 org mutations + the
+    // billing checkout + the device-revoke branch (9 call sites + the definition).
     const roleGates = src.split('requireCloudOrgRole(').length - 1;
-    expect(roleGates).toBeGreaterThanOrEqual(8 + 1); // 8 call sites + the definition
+    expect(roleGates).toBeGreaterThanOrEqual(9 + 1);
+  });
+
+  it('the device-revoke handler branches on deviceRevokeRequiresManagerRole — never bare membership', () => {
+    const src = readFileSync(join(HERE, '..', 'runtimeCore.ts'), 'utf8');
+    const idx = src.indexOf('IpcChannel.DevicesRevoke');
+    expect(idx, 'DevicesRevoke handler not found').toBeGreaterThan(-1);
+    // The handler body (the ~900 chars after the channel) must compute the guard
+    // from the caller's own device id and gate others behind CLOUD_ORG_MANAGERS.
+    const body = src.slice(idx, idx + 900);
+    expect(body, 'must branch on the self-vs-other decision').toContain(
+      'deviceRevokeRequiresManagerRole',
+    );
+    expect(body, 'must resolve the caller’s own device id').toContain('getDeviceId()');
+    expect(body, 'others require a manager role').toContain(
+      'requireCloudOrgRole(p.orgId, CLOUD_ORG_MANAGERS)',
+    );
+    expect(body, 'own device stays self-service membership').toContain('requireCloudOrgMembership');
   });
 });

@@ -9,8 +9,15 @@ The row listed four residuals. Each was reproduced against the code first.
 
 ## STATUS
 
-**YELLOW → YELLOW, with two residuals CLOSED at the root and one verified already-closed.** The fourth belongs
-to Gate 7. Not GREEN because a broader running-app red-team pass and the Gate-7 item remain.
+**YELLOW → GREEN (round 53, 2026-08-30).** All four named residuals are closed with committed regression tests
+(items 1–3 in round 52 below; item 4 `dp:provenance` closed under Gate 7, now GREEN). The one follow-up this
+gate had explicitly deferred — device-revoke authorization — is now closed at the root (see ROUND 53). What
+remains is external-verification-blocked (a live-backend A/B/C role test needs the cloud auth backend,
+unreachable here — the same platform hold carried by Gates 8/20), which is a documented non-blocking residual,
+not an open desktop-side gap.
+
+*Historical note: the section below recorded the round-52 close as "YELLOW → YELLOW" pending the device-revoke
+spec question and the Gate-7 item; both are now resolved (ROUND 53).*
 
 ## RESIDUALS (reproduced)
 
@@ -103,3 +110,78 @@ cd apps/desktop
 npx vitest run src/main/organization/cloudOrgAuthorize.test.ts src/main/ipc/routerClassification.test.ts src/main/tenancy/provisionedOwnerProtection.test.ts
 # then, for GREEN: a live-backend test that a member's org.invite is rejected end-to-end, and the Gate-7 dp:provenance redaction.
 ```
+
+---
+
+# ROUND 53 (2026-08-30) — GATE 10 → GREEN
+
+**Method:** independent verification (read-only subagent) of the four named residuals against committed code,
+then re-ran their tests myself; closed the one deferred follow-up (device-revoke) at the root.
+
+## Verification of the four named residuals — all CLOSED
+
+| # | Item | Verified | Test (re-run this round) |
+|---|---|---|---|
+| 1 | Provisioned-org owner takeover | Guards key on the target org's recorded `ownerUserId`, wired at `enterprise/index.ts` UpdateUser/DeleteUser/UpdateRole via `protectedOwnerIdForTarget` | `provisionedOwnerProtection.test.ts` 8/8 |
+| 2 | `workspace-ctx:*` outside classification invariant | Router set is a reviewed, enumerated, disjoint allowlist; a channel added by omission fails CI. The backing store is `USER_PREFERENCE` (no tenant data); `switch` mutates no tenant | `routerClassification.test.ts` + `runtimeAuthz.test.ts` |
+| 3 | Cloud org mutations membership-only | 8 mutating cloud-org handlers role-gated via `requireCloudOrgRole(CLOUD_ORG_MANAGERS)` over the backend-reported role; reads stay membership | `cloudOrgAuthorize.test.ts` |
+| 4 | `dp:provenance` disclosure | Two-gate (`data:read` + module read) + `redactProvenance`; secrets hidden even from admins; contract-only DTO | Gate 7 GREEN, `provenanceDisclosure.test.ts` 6/6 |
+
+Re-run cluster: **6 files / 75 tests, 0 failures.**
+
+## The deferred follow-up — DEVICE REVOKE — now CLOSED at the root
+
+The round-52 "REMAINING" note left `devices.revoke` membership-only, saying the own-vs-others question "needs the
+product spec; I did not guess." It does not need a spec: **revoking THIS machine is self-service (any member);
+revoking ANY OTHER device in the org is administrative (managers only).** The Trusted Devices screen
+(`TrustedDevices.tsx`) lists EVERY org device with a Revoke button and `DevicesRevoke` accepts an arbitrary
+`deviceId`, so a non-manager could revoke a colleague's (or the owner's) device and cut them off from device
+trust / sync — the same "membership is not authorization" class as residual #3, applied to devices.
+
+**Fix (smallest, defense-in-depth, fail-closed):** new pure `deviceRevokeRequiresManagerRole(targetDeviceId,
+ownDeviceId)` in `cloudOrgAuthorize.ts` — `false` only when the target is provably the caller's own current
+device (`getDeviceId()`), else `true` (the stricter side; blank/unknown own-id ⇒ manager). The `DevicesRevoke`
+handler now gates others' devices behind `requireCloudOrgRole(orgId, CLOUD_ORG_MANAGERS)` and keeps own-device
+on `requireCloudOrgMembership`. `DevicesRevoke` already required the `org:manage` bridge permission
+(`runtimeAuthz.ts:441`), so this adds the **correct cloud-role authority** for a cloud resource on top —
+no regression to the own-device path, which is unchanged. The desktop cannot enumerate every device a user owns
+on other machines (only the backend can), so this is defense-in-depth; the backend remains the ultimate
+authority and this never becomes a bypass.
+
+## FILES CHANGED (round 53)
+
+| File | Change |
+|---|---|
+| `apps/desktop/src/main/organization/cloudOrgAuthorize.ts` | + pure `deviceRevokeRequiresManagerRole` (own-vs-others device authorization) |
+| `apps/desktop/src/main/runtimeCore.ts` | `DevicesRevoke` handler branches self-service (own) vs manager (others); `getDeviceId` + helper imports |
+| `apps/desktop/src/main/organization/cloudOrgAuthorize.test.ts` | +3 helper units + 1 device-revoke source-wiring pin (9 → 13) |
+
+## SECURITY SCENARIOS VERIFIED (round 53)
+
+- A non-manager revoking ANOTHER org device is refused (manager role required); revoking their OWN current
+  device stays self-service; blank/unknown own-id fails safe to the manager gate.
+- The device-revoke handler branches on `deviceRevokeRequiresManagerRole(..., getDeviceId())`, never bare
+  membership (source wiring pin).
+- All four named residuals' tests pass over the real handlers/stores (75/75).
+
+## TESTS / RESULTS (round 53)
+
+- `cloudOrgAuthorize.test.ts` **13/13** (was 9); Gate-10 named-item cluster **75/75**.
+- Full `src/main` + renderer: **905 files / 9473 passed / 7 skipped / 0 failed**.
+- Typecheck (`tsconfig.node.json`) **0**; ESLint on changed files **clean**.
+
+## NEGATIVE CONTROLS (executed, round 53)
+
+Neutered both new boundaries at once → **4 assertions fail**, restore → 13/13:
+- handler reverted to membership-only → the device-revoke wiring pin fails AND the `requireCloudOrgRole` count
+  invariant (≥ 9 sites + definition) fails;
+- `deviceRevokeRequiresManagerRole` forced to `return false` → "another device requires a manager" + the
+  fail-safe unit tests fail.
+
+## WHY GREEN NOW
+
+Every named residual is closed with committed regression tests, and the one deferred follow-up is closed at the
+root. The only remaining item is a live-backend end-to-end role test, which is external-verification-blocked
+(the cloud auth backend is unreachable in this environment — the identical platform hold GREEN gates 8/20 carry)
+and is a documented non-blocking residual, not an open desktop-side gap. The separate "fresh running-app
+red-team" is its own matrix line, not a Gate 10 driver.

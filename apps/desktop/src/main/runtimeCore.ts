@@ -92,6 +92,7 @@ import {
   authorizeCloudOrgRole,
   CloudOrgAuthorizationError,
   CLOUD_ORG_MANAGERS,
+  deviceRevokeRequiresManagerRole,
   type CloudMembershipRow,
 } from './organization/cloudOrgAuthorize';
 import { registry } from './registry/registry';
@@ -198,7 +199,7 @@ import { companionDeviceStore } from './companion/deviceRegistryInstance';
 import { tenantAiPreferenceStore } from './ai/tenantAiPreferenceInstance';
 import { assertAllStoreScopesBound } from './tenancy/storeScope';
 import type { Organization } from '@neuropause/shared';
-import { setLiveSyncActiveOrg } from './cloud/livesync/liveSyncInstance';
+import { setLiveSyncActiveOrg, getDeviceId } from './cloud/livesync/liveSyncInstance';
 import { initDataPlane } from './dataPlane';
 import { initDocuments } from './documents';
 import { initIdentity, type ServiceAuthorizer } from './identity';
@@ -2343,9 +2344,16 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push({
     channel: IpcChannel.DevicesRevoke,
     schema: DevicesRevokeRequest,
-    handler: (payload: unknown) => {
+    // GATE 10 — membership is not authorization on the device surface either.
+    // Revoking THIS machine is self-service (any member); revoking any OTHER
+    // device in the org is administrative (managers only). Both guards fail
+    // closed; the backend remains the ultimate authority (defense in depth).
+    handler: async (payload: unknown) => {
       const p = payload as { orgId: string; deviceId: string };
-      return requireCloudOrgMembership(p.orgId).then((id) => deviceClient.revoke(id, p.deviceId));
+      const id = deviceRevokeRequiresManagerRole(p.deviceId, getDeviceId())
+        ? await requireCloudOrgRole(p.orgId, CLOUD_ORG_MANAGERS)
+        : await requireCloudOrgMembership(p.orgId);
+      return deviceClient.revoke(id, p.deviceId);
     },
   });
   // V6.5: renderer reports THIS device's trust status (it holds the active org)
