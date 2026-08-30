@@ -132,6 +132,69 @@ describe('registry', () => {
       write: 'operations:manage',
     });
   });
+
+  /**
+   * GATE 5 — B-1. `EnterpriseModulesList` used to return EVERY module with its
+   * live record count regardless of the caller's per-module read permission.
+   * A count is not a value, but "how many employees are there" and "which
+   * business systems does this company run" are both answers the caller may not
+   * be entitled to — the same disclosure `dp:exportable` closed. The list must
+   * omit a module whose read permission the caller does not hold, exactly as
+   * `dp:module.list`/`get` refuse it one module at a time.
+   */
+  it('omits a module the caller cannot read — the count is not theirs to see', async () => {
+    // A second module with its OWN read permission.
+    const hrPath = join(tmpdir(), `np-erp-hr-${randomUUID()}.json`);
+    paths.push(hrPath);
+    const hrStore = new EnterpriseRecordStore(hrPath, 'hr-employees', 'employee').bindScope(
+      () => TEST_TENANT_SCOPE,
+    );
+    await hrStore.load();
+    registry.register(
+      defineEnterpriseModule({
+        descriptor: {
+          ...DESCRIPTOR,
+          id: 'hr-employees',
+          title: 'Employees',
+          plural: 'Employees',
+          singular: 'Employee',
+          permissions: { read: 'people:read', write: 'people:manage' },
+        },
+        store: hrStore,
+      }),
+    );
+
+    // The caller can read finance (operations:read) but NOT people:read.
+    deny = 'people:read';
+    const summaries = (await handler(IpcChannel.EnterpriseModulesList)({})) as Array<{ id: string }>;
+    const ids = summaries.map((s) => s.id);
+    expect(ids).toContain('finance');
+    expect(ids, 'hr-employees leaked into the module list without people:read').not.toContain(
+      'hr-employees',
+    );
+  });
+
+  it('lists a module once its read permission is held (the gate is not "always hide")', async () => {
+    const hrPath = join(tmpdir(), `np-erp-hr2-${randomUUID()}.json`);
+    paths.push(hrPath);
+    const hrStore = new EnterpriseRecordStore(hrPath, 'hr-employees', 'employee').bindScope(
+      () => TEST_TENANT_SCOPE,
+    );
+    await hrStore.load();
+    registry.register(
+      defineEnterpriseModule({
+        descriptor: {
+          ...DESCRIPTOR,
+          id: 'hr-employees',
+          permissions: { read: 'people:read', write: 'people:manage' },
+        },
+        store: hrStore,
+      }),
+    );
+    deny = null; // everything granted
+    const summaries = (await handler(IpcChannel.EnterpriseModulesList)({})) as Array<{ id: string }>;
+    expect(summaries.map((s) => s.id).sort()).toEqual(['finance', 'hr-employees']);
+  });
 });
 
 describe('create', () => {

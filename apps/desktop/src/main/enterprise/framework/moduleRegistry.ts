@@ -144,10 +144,51 @@ export class EnterpriseModuleRegistry {
     await Promise.allSettled([...this.modules.values()].map((m) => m.store.flush()));
   }
 
-  /** Descriptors + live counts for the registry-list channel. */
+  /**
+   * Descriptors + live counts.
+   *
+   * Returns EVERY module — this is the trusted internal view (dashboards,
+   * companion families, aggregates). The IPC list channel filters this by the
+   * CALLER's per-module read permission via `readableSummaries` (GATE 5 B-1):
+   * the record count is a disclosure and must never name a module the caller
+   * cannot read.
+   */
   async summaries(): Promise<EnterpriseModuleSummary[]> {
     const out: EnterpriseModuleSummary[] = [];
     for (const m of this.modules.values()) {
+      await m.store.load();
+      out.push({
+        ...m.descriptor,
+        recordCount: m.store.count(),
+        activeCount: m.store.count('active'),
+        aiSummary: Boolean(m.hooks.summarize),
+        actions: m.hooks.runAction ? (m.descriptor.actions ?? []) : [],
+      });
+    }
+    return out;
+  }
+
+  /**
+   * GATE 5 — B-1. The summaries the CALLER is entitled to see, filtered by each
+   * module's own declared read permission. The `EnterpriseModulesList` channel
+   * is gated at the coarse `operations:read` (the right to use the enterprise
+   * surface at all), but a module also declares its OWN read permission and its
+   * record COUNT is a disclosure — "how many employees are there", "which
+   * business systems does this company run" — exactly what `dp:exportable`
+   * refuses. `dp:module.list`/`get` authorize per module one at a time; the LIST
+   * applies the same gate. Deny-by-default: a thrown `authorize` omits the
+   * module rather than surfacing it.
+   */
+  async readableSummaries(
+    authorize: EnterpriseModuleContext['authorize'],
+  ): Promise<EnterpriseModuleSummary[]> {
+    const out: EnterpriseModuleSummary[] = [];
+    for (const m of this.modules.values()) {
+      try {
+        authorize(m.descriptor.permissions.read);
+      } catch {
+        continue;
+      }
       await m.store.load();
       out.push({
         ...m.descriptor,
@@ -334,9 +375,12 @@ export function buildModuleHandlers(
       channel: IpcChannel.EnterpriseModulesList,
       schema: EmptyRequest,
       requireAuth: true,
-      // Metadata-only listing of available modules — any enterprise reader.
+      // Gated at the coarse enterprise-reader permission here; each module is
+      // ALSO filtered by its own read permission inside `summaries` (GATE 5
+      // B-1), so the list — and its record counts — never names a module the
+      // caller cannot read.
       permission: ENTERPRISE_CHANNEL_PERMISSIONS[IpcChannel.EnterpriseModulesList],
-      handler: () => registry.summaries(),
+      handler: () => registry.readableSummaries((p) => ctx.authorize(p)),
     },
     {
       channel: IpcChannel.EnterpriseModuleList,
