@@ -13,12 +13,20 @@ import { app } from 'electron';
 import { join } from 'node:path';
 import { DecisionRecordStore, type IncomingLink } from './decisionService';
 import { HoldStore } from './holdStore';
+import { registerShutdownFlush } from '../shutdownFlush';
 
 export const decisionRecordStore = new DecisionRecordStore(
   join(app.getPath('userData'), 'decision-records.json'),
 );
 
 export const holdStore = new HoldStore(join(app.getPath('userData'), 'holds.json'));
+
+// GATE 16 (round 46) — governed decision records and HOLDS are evidence; their
+// append-only writers coalesce, so drain them at quit/suspend. A hold lost to a
+// raced write is a governance question the restart cannot answer.
+registerShutdownFlush('decision-stores', async () => {
+  await Promise.allSettled([decisionRecordStore.flush(), holdStore.flush()]);
+});
 
 let linkReader: ((recordId: string) => IncomingLink[]) | null = null;
 

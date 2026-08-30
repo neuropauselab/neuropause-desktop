@@ -69,6 +69,26 @@ export async function runShutdownFlush(perEntryTimeoutMs = 3000): Promise<Shutdo
     suppressedReason = null;
     return { ran: 0, failed: [], timedOut: [], durationMs: 0, suppressed: reason };
   }
+  return drain(perEntryTimeoutMs);
+}
+
+/**
+ * GATE 16 (round 46) — the SUSPEND flush. A lid close or OS sleep never fires
+ * `will-quit`, so before this every coalesced write raced the freeze (and a
+ * battery death while asleep lost it outright). Same drain, one difference:
+ * a pending restore-relaunch suppression is RESPECTED but NOT consumed — the
+ * one-shot flag belongs to the quit it was armed for, and a suspend racing
+ * that window must neither flush stale pre-restore state nor eat the flag
+ * (which would let the relaunch-quit flush it instead).
+ */
+export async function runSuspendFlush(perEntryTimeoutMs = 3000): Promise<ShutdownFlushSummary> {
+  if (suppressedReason !== null) {
+    return { ran: 0, failed: [], timedOut: [], durationMs: 0, suppressed: suppressedReason };
+  }
+  return drain(perEntryTimeoutMs);
+}
+
+async function drain(perEntryTimeoutMs: number): Promise<ShutdownFlushSummary> {
   const started = Date.now();
   const failed: string[] = [];
   const timedOut: string[] = [];

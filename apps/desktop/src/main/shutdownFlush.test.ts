@@ -12,6 +12,7 @@ import {
   __resetShutdownFlushForTests,
   registerShutdownFlush,
   runShutdownFlush,
+  runSuspendFlush,
   shutdownFlushNames,
   suppressShutdownFlushOnce,
 } from './shutdownFlush';
@@ -79,5 +80,65 @@ describe('shutdown flush barrier', () => {
     const second = await runShutdownFlush();
     expect(second.suppressed).toBeUndefined();
     expect(calls).toBe(1); // normal quits flush again
+  });
+
+  /**
+   * GATE 16 (round 46) — the SUSPEND flush. A lid close never fires
+   * `will-quit`; the suspend drain closes that loss window with the same
+   * registry, isolation, and time-box.
+   */
+  describe('suspend flush', () => {
+    it('drains every registered flush, like the quit barrier', async () => {
+      const ran: string[] = [];
+      registerShutdownFlush('a', () => {
+        ran.push('a');
+      });
+      registerShutdownFlush('b', async () => {
+        ran.push('b');
+      });
+      const summary = await runSuspendFlush();
+      expect(ran.sort()).toEqual(['a', 'b']);
+      expect(summary).toMatchObject({ ran: 2, failed: [], timedOut: [] });
+    });
+
+    it('RESPECTS a pending restore suppression WITHOUT consuming it', async () => {
+      let calls = 0;
+      registerShutdownFlush('store', () => {
+        calls += 1;
+      });
+      suppressShutdownFlushOnce('restore relaunch (test)');
+
+      // A suspend racing the restore-relaunch window must not flush stale
+      // pre-restore memory over the restored bytes…
+      const suspend = await runSuspendFlush();
+      expect(suspend.suppressed).toContain('restore relaunch');
+      expect(calls).toBe(0);
+
+      // …and must not EAT the one-shot flag: the relaunch quit it was armed
+      // for is still suppressed.
+      const quit = await runShutdownFlush();
+      expect(quit.suppressed).toContain('restore relaunch');
+      expect(calls).toBe(0);
+
+      // After the armed quit consumed it, everything flushes normally again.
+      const next = await runSuspendFlush();
+      expect(next.suppressed).toBeUndefined();
+      expect(calls).toBe(1);
+    });
+
+    it('isolates a thrower and time-boxes a hang, like the quit barrier', async () => {
+      const ran: string[] = [];
+      registerShutdownFlush('bad', () => {
+        throw new Error('disk sealed');
+      });
+      registerShutdownFlush('hung', () => new Promise<void>(() => undefined));
+      registerShutdownFlush('good', () => {
+        ran.push('good');
+      });
+      const summary = await runSuspendFlush(50);
+      expect(ran).toEqual(['good']);
+      expect(summary.failed).toEqual(['bad']);
+      expect(summary.timedOut).toEqual(['hung']);
+    });
   });
 });

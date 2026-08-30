@@ -46,6 +46,7 @@ import { exchangeStore } from './exchange/exchangeInstance';
 import { globalGovStore } from './governance/globalGovInstance';
 import { observabilityStore } from './observability/observabilityInstance';
 import { drStore } from './dr/drInstance';
+import { registerShutdownFlush } from '../shutdownFlush';
 import { buildObservability, type ObsInput } from './observability/observability';
 import { buildFedAdmin } from './admin/fedAdmin';
 import { buildScalabilityReport, type ScalabilityInput } from './scalability/scalability';
@@ -156,6 +157,18 @@ function adminOverview() {
 }
 
 export async function initFederation(deps: FederationDeps): Promise<FederationSubsystem> {
+  // GATE 16 (round 46) — these stores coalesce writes in memory; drain them on the
+  // shutdown/suspend barrier so a quit or lid close never loses the last mutation.
+  registerShutdownFlush('federation-stores', async () => {
+    await Promise.allSettled([
+      fedStore.flush(),
+      exchangeStore.flush(),
+      globalGovStore.flush(),
+      observabilityStore.flush(),
+      drStore.flush(),
+    ]);
+  });
+
   /**
    * P13C ROUND 4 — S-10. BIND BEFORE LOAD.
    *

@@ -609,6 +609,17 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   registerShutdownFlush('governance-store', () => governanceStore.flush());
   // (tenantAiPreferenceStore is write-through — setMine awaits persist — so it
   // has nothing pending at quit and registers no flush.)
+  // GATE 16 (round 46) — the adjacent stores this file already composes: each
+  // coalesces writes, none was on the barrier.
+  registerShutdownFlush('enterprise-adjacent-stores', async () => {
+    await Promise.allSettled([
+      personalizationStore.flush(),
+      approvalStore.flush(),
+      traceEdgeStore.flush(),
+      opportunityDecisionStore.flush(),
+      outcomeRevisionStore.flush(),
+    ]);
+  });
 
 
   // First-claim-wins ownership: the seeded owner ships unclaimed (email:null).

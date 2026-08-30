@@ -17,6 +17,7 @@ import { createLogger } from './logger';
 import { RuntimeTray, type RuntimeTrayActions, type RuntimeTrayState } from './runtimeTray';
 import { loadLoginAtStartup, persistLoginAtStartup } from './runtimePreferences';
 import { reactToPowerEvent, type RuntimePowerEvent } from './runtimePower';
+import { runSuspendFlush } from './shutdownFlush';
 
 export { reactToPowerEvent, type RuntimePowerEvent } from './runtimePower';
 
@@ -57,6 +58,21 @@ export class RuntimeService {
       if (recover) {
         // Tell the renderer to reconnect voice/automation after wake/unlock.
         this.deps.broadcast(IpcChannel.TrayCommand, { action: 'start-listening' });
+      }
+      if (event === 'suspend') {
+        // GATE 16 (round 46) — a lid close or OS sleep never fires `will-quit`,
+        // so drain every registered flush now: a battery death while asleep, or
+        // an OS-initiated shutdown from sleep, loses nothing. Best-effort and
+        // time-boxed; the drain must never block the suspend itself.
+        void runSuspendFlush()
+          .then((s) => {
+            if (s.failed.length > 0 || s.timedOut.length > 0) {
+              log.warn('Suspend flush incomplete', s);
+            } else {
+              log.info('Suspend flush complete', { ran: s.ran, durationMs: s.durationMs });
+            }
+          })
+          .catch(() => undefined);
       }
       log.info(`power event: ${event}`, { recover });
     };

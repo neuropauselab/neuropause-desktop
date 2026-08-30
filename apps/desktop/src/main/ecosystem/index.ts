@@ -81,6 +81,7 @@ import { PLAN_CATALOG, planFor, computeInvoice, billingSummary } from './billing
 import { installsStore } from './exchange/installsInstance';
 import { packsStore } from './exchange/packsInstance';
 import { partnersStore } from './exchange/partnersInstance';
+import { registerShutdownFlush } from '../shutdownFlush';
 import { computeEcosystemAnalytics } from './exchange/analytics';
 import { workerRegistry } from '../workforce/registry/registryInstance';
 import { OWNER_USER_ID } from '../enterprise/org/seed';
@@ -438,6 +439,20 @@ export function gatewayAuditEntries(limit: number): GatewayAuditEntry[] {
 }
 
 export async function initEcosystem(deps: EcosystemDeps): Promise<EcosystemSubsystem> {
+  // GATE 16 (round 46) — these stores coalesce writes in memory; drain them on the
+  // shutdown/suspend barrier so a quit or lid close never loses the last mutation.
+  registerShutdownFlush('ecosystem-stores', async () => {
+    await Promise.allSettled([
+      developerStore.flush(),
+      marketplaceStore.flush(),
+      gatewayStore.flush(),
+      billingStore.flush(),
+      installsStore.flush(),
+      packsStore.flush(),
+      partnersStore.flush(),
+    ]);
+  });
+
   /**
    * P13C ROUND 3 — H-3. BIND BEFORE LOAD.
    *

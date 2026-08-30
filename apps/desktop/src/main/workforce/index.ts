@@ -74,6 +74,7 @@ import { aggregateOutcome, governedRequests } from './execution/router';
 import { builtInSkills, registerBuiltInWorkers } from './workers';
 import { WorkerInstallService } from './install/installService';
 import { workerInstallStore, workerSigningKey } from './install/installInstance';
+import { registerShutdownFlush } from '../shutdownFlush';
 import type { SkillImpl, WorkforceData, WorkforceNeighbor } from './sdk';
 import { runOutsidePrincipal } from '../tenancy/backgroundPrincipal';
 import { randomUUID } from 'node:crypto';
@@ -150,6 +151,17 @@ export interface WorkforceSubsystem {
 }
 
 export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<WorkforceSubsystem> {
+  // GATE 16 (round 46) — these stores coalesce writes in memory; drain them on the
+  // shutdown/suspend barrier so a quit or lid close never loses the last mutation.
+  registerShutdownFlush('workforce-stores', async () => {
+    await Promise.allSettled([
+      workerRegistry.flush(),
+      auditLog.flush(),
+      jobStore.flush(),
+      workerInstallStore.flush(),
+    ]);
+  });
+
   /**
    * P13C Round 2 — H3. The workforce stores join the bound set.
    *
