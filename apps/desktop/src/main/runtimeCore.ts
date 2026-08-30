@@ -32,6 +32,7 @@ import type {
   ExecutionRequest,
   LicenseState,
   BillingPlanId,
+  CloudOrgRole,
   DeviceTrustStatus,
 } from '@neuropause/shared';
 import {
@@ -87,6 +88,12 @@ import { authService } from './auth/authService';
 import { resolveGovernedActor, hasActivePrincipal } from './auth/governedActor';
 import { catalogClient } from './catalog/catalogClient';
 import { orgClient } from './organization/orgClient';
+import {
+  authorizeCloudOrgRole,
+  CloudOrgAuthorizationError,
+  CLOUD_ORG_MANAGERS,
+  type CloudMembershipRow,
+} from './organization/cloudOrgAuthorize';
 import { registry } from './registry/registry';
 import { packageService } from './nps/packageService';
 import { supervisor } from './runtime/supervisor';
@@ -393,6 +400,37 @@ async function requireCloudOrgMembership(orgId: string): Promise<string> {
     throw new Error('That organization is not available to you.');
   }
   return orgId;
+}
+
+/**
+ * Assert the caller holds one of `allowed` ROLES in the named cloud organization.
+ *
+ * P13C GATE 10 — MEMBERSHIP IS NOT AUTHORIZATION. `requireCloudOrgMembership`
+ * proves the caller belongs to the org; it does NOT prove they may MUTATE it.
+ * Every mutating cloud-org channel — `org.update`, `org.invite`,
+ * `org.changeRole`, `org.removeMember`, the workspace create/rename/delete trio,
+ * and billing — was guarded by membership alone, so a `viewer` or plain `member`
+ * could invite or remove other members and rename workspaces. The desktop
+ * "claimed server-side enforcement, unverified"; this makes the check real on
+ * the client too — defense in depth, fail-closed.
+ *
+ * It does NOT invent authority: the role it enforces is the one the BACKEND
+ * itself reports for this user in `orgClient.list()` (`CloudOrganizationSummary.role`),
+ * the same call `requireCloudOrgMembership` already trusts. The backend remains
+ * the ultimate authority; an unreachable backend refuses (never a bypass), and a
+ * role outside `allowed` refuses with the same opaque message so nothing about
+ * the org or the caller's standing leaks.
+ */
+async function requireCloudOrgRole(orgId: string, allowed: readonly CloudOrgRole[]): Promise<string> {
+  let mine: CloudMembershipRow[];
+  try {
+    mine = (await orgClient.list()) as unknown as CloudMembershipRow[];
+  } catch {
+    // FAIL CLOSED: an unreachable backend must never be a bypass. An empty list
+    // reaching the pure check matches no membership and refuses.
+    throw new CloudOrgAuthorizationError();
+  }
+  return authorizeCloudOrgRole(mine, orgId, allowed);
 }
 
 function activeOrgForReadModel(): Organization | null {
@@ -1742,7 +1780,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       requireAuth: true,
       handler: (p) => {
         const r = p as { orgId: string; name: string };
-        return requireCloudOrgMembership(r.orgId).then((id) => orgClient.update(id, r.name));
+        return requireCloudOrgRole(r.orgId, CLOUD_ORG_MANAGERS).then((id) => orgClient.update(id, r.name));
       },
     },
     {
@@ -1762,7 +1800,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
           email: string;
           role: 'owner' | 'admin' | 'member' | 'viewer';
         };
-        return requireCloudOrgMembership(r.orgId).then((id) =>
+        return requireCloudOrgRole(r.orgId, CLOUD_ORG_MANAGERS).then((id) =>
           orgClient.invite(id, { email: r.email, role: r.role }),
         );
       },
@@ -1783,7 +1821,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
           membershipId: string;
           role: 'owner' | 'admin' | 'member' | 'viewer';
         };
-        return requireCloudOrgMembership(r.orgId).then((id) =>
+        return requireCloudOrgRole(r.orgId, CLOUD_ORG_MANAGERS).then((id) =>
           orgClient.changeRole(id, r.membershipId, r.role),
         );
       },
@@ -1794,7 +1832,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       requireAuth: true,
       handler: (p) => {
         const r = p as { orgId: string; membershipId: string };
-        return requireCloudOrgMembership(r.orgId).then((id) =>
+        return requireCloudOrgRole(r.orgId, CLOUD_ORG_MANAGERS).then((id) =>
           orgClient.removeMember(id, r.membershipId),
         );
       },
@@ -1812,7 +1850,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       requireAuth: true,
       handler: (p) => {
         const r = p as { orgId: string; name: string };
-        return requireCloudOrgMembership(r.orgId).then((id) =>
+        return requireCloudOrgRole(r.orgId, CLOUD_ORG_MANAGERS).then((id) =>
           orgClient.createWorkspace(id, r.name),
         );
       },
@@ -1823,7 +1861,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       requireAuth: true,
       handler: (p) => {
         const r = p as { orgId: string; workspaceId: string; name: string };
-        return requireCloudOrgMembership(r.orgId).then((id) =>
+        return requireCloudOrgRole(r.orgId, CLOUD_ORG_MANAGERS).then((id) =>
           orgClient.updateWorkspace(id, r.workspaceId, r.name),
         );
       },
@@ -1834,7 +1872,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       requireAuth: true,
       handler: (p) => {
         const r = p as { orgId: string; workspaceId: string };
-        return requireCloudOrgMembership(r.orgId).then((id) =>
+        return requireCloudOrgRole(r.orgId, CLOUD_ORG_MANAGERS).then((id) =>
           orgClient.deleteWorkspace(id, r.workspaceId),
         );
       },
@@ -2277,7 +2315,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       // Money. The membership check matters more here than anywhere else in
       // this family: without it a signed-in account could start a checkout
       // against another organization's billing account.
-      const orgId = await requireCloudOrgMembership(p.orgId);
+      // P13C GATE 10 — billing is a management action; require owner/admin, not
+      // mere membership. Money must not be movable by a viewer.
+      const orgId = await requireCloudOrgRole(p.orgId, CLOUD_ORG_MANAGERS);
       const result = await billingClient.checkout(orgId, p.plan, p.seats);
       if (result.checkoutUrl) void shell.openExternal(result.checkoutUrl);
       return result;
