@@ -108,6 +108,14 @@ export function EnterpriseModuleScreen({
 }): JSX.Element {
   const [records, setRecords] = useState<EnterpriseEntity[]>([]);
   const [loading, setLoading] = useState(true);
+  /**
+   * A FAILED/denied record read is named, never shown as "No … yet". The empty
+   * state invites the user to create a first record; rendering it over a
+   * permission denial or a backend fault tells them their data is gone and asks
+   * them to recreate it. Distinct from `records.length === 0`, which is honest
+   * emptiness.
+   */
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState(initialQuery);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [page, setPage] = useState(0);
@@ -128,6 +136,10 @@ export function EnterpriseModuleScreen({
       setRecords(
         await ipc.enterpriseModules.records(module.id, { search: query || undefined, limit: 1000 }),
       );
+      setLoadError(null);
+    } catch (err) {
+      // A denied or failed read is surfaced, not swallowed into emptiness.
+      setLoadError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -204,6 +216,21 @@ export function EnterpriseModuleScreen({
           <Skeleton className="h-10" />
           <Skeleton className="h-10" />
           <Skeleton className="h-10" />
+        </div>
+      ) : loadError !== null ? (
+        <div role="alert" className="rounded-2xl border border-danger/40 bg-danger/10 p-4 text-sm text-danger">
+          <div className="font-semibold">{module.plural} could not be loaded.</div>
+          <p className="mt-1 text-xs leading-relaxed">
+            {loadError} — you may lack read permission for this module. Nothing was created; retry when the
+            problem is resolved.
+          </p>
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            className="mt-3 rounded-lg border border-danger/40 px-3 py-1.5 text-xs font-semibold hover:bg-danger/10"
+          >
+            Retry
+          </button>
         </div>
       ) : filtered.length === 0 ? (
         <EmptyState
@@ -356,6 +383,11 @@ function ModuleForm({
         return;
       }
       onSaved();
+    } catch (err) {
+      // A thrown save — a permission denial that rejects, or an IPC/transport
+      // failure — used to escape uncaught: the modal stayed open with no reason
+      // shown. Surface it in the form's own error slot.
+      setErrors({ _: err instanceof Error ? err.message : String(err) });
     } finally {
       setSaving(false);
     }
