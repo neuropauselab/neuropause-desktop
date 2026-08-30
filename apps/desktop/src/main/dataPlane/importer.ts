@@ -1169,8 +1169,18 @@ export class ProvenanceStore {
   private persist(): Promise<void> {
     // Serialised: two concurrent syncs writing the same file interleaved a
     // stale snapshot over a fresh one even with unique temp names.
-    this.writeChain = this.writeChain.then(() => this.writeNow()).catch(() => undefined);
-    return this.writeChain;
+    //
+    // The caller MUST learn the fate of its own write. The previous form ended
+    // the chain in `.catch(() => undefined)` and returned that swallowed
+    // promise, so `append` resolved successfully even when `writeNow` threw —
+    // an import then reported success with the provenance trail only in memory
+    // and nothing (or a stale file) on disk, lost on the next restart. Now the
+    // caller awaits `mine`, which REJECTS on a failed write; the chain used to
+    // sequence the NEXT writer swallows separately, so one failed write does
+    // not poison a later one's turn.
+    const mine = this.writeChain.then(() => this.writeNow());
+    this.writeChain = mine.catch(() => undefined);
+    return mine;
   }
 
   private async writeNow(): Promise<void> {

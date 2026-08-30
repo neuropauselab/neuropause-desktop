@@ -124,7 +124,12 @@ export function OverviewPanel({
               <Td>
                 <StatusPill tone={r.tone}>{r.statusLabel}</StatusPill>
               </Td>
-              <Td className="tabular-nums">{r.imported.toLocaleString()}</Td>
+              <Td className="tabular-nums">
+                {r.imported.toLocaleString()}
+                {r.updated > 0 && (
+                  <span className="text-muted"> · {r.updated.toLocaleString()} updated</span>
+                )}
+              </Td>
               <Td className="text-right">
                 <Button size="sm" variant="ghost" onClick={() => onOpenRun(r.planId)}>
                   Details

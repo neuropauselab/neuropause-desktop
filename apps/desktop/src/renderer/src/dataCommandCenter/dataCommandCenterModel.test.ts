@@ -200,6 +200,35 @@ describe('buildOverview', () => {
     expect(by('imports')).toBe(2);
   });
 
+  it('an update-only run is NOT rendered as "0 records imported" (Gate 7)', () => {
+    const model = buildOverview([
+      run({ planId: 'u', totals: { imported: 0, updated: 3, skipped: 0, failed: 0, duplicates: 0, needsReview: 0 } }),
+    ]);
+    const by = (k: string): number => model.metrics.find((m) => m.key === k)?.value ?? -1;
+    expect(by('imported')).toBe(0);
+    expect(by('updated')).toBe(3);
+    // The headline names the updates rather than claiming zero work was done.
+    expect(model.headline).toContain('3 updated');
+    // The recent row carries the update count so the "Records" column is honest.
+    expect(model.recent[0]?.updated).toBe(3);
+  });
+
+  it('sums updated across runs and omits it from the headline when there are none', () => {
+    const model = buildOverview([
+      run({ planId: 'a', totals: { imported: 5, updated: 2, skipped: 0, failed: 0, duplicates: 0, needsReview: 0 } }),
+      run({ planId: 'b', totals: { imported: 4, updated: 1, skipped: 0, failed: 0, duplicates: 0, needsReview: 0 } }),
+    ]);
+    expect(model.metrics.find((m) => m.key === 'updated')?.value).toBe(3);
+    expect(model.headline).toContain('9 records imported');
+    expect(model.headline).toContain('3 updated');
+
+    const noUpdates = buildOverview([
+      run({ planId: 'c', totals: { imported: 4, updated: 0, skipped: 0, failed: 0, duplicates: 0, needsReview: 0 } }),
+    ]);
+    expect(noUpdates.headline).not.toContain('updated');
+    expect(noUpdates.recent[0]?.updated).toBe(0);
+  });
+
   it('counts tables held for approval as awaiting', () => {
     const model = buildOverview([
       run({

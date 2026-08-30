@@ -58,6 +58,8 @@ export interface OverviewModel {
     statusLabel: string;
     tone: 'good' | 'warn' | 'bad' | 'neutral';
     imported: number;
+    /** Existing records overwritten by an explicit per-row decision. */
+    updated: number;
   }[];
   /** Plain-language summary for the top of the page. */
   headline: string;
@@ -88,6 +90,11 @@ export function buildOverview(history: readonly DataPlaneRunResult[]): OverviewM
   }
 
   const imported = history.reduce((n, r) => n + r.totals.imported, 0);
+  // Existing records overwritten by an explicit per-row decision. An
+  // update-only run has `imported: 0` and `updated: N`; counting only
+  // `imported` rendered a real run as "0 records imported" — the work was done
+  // and the dashboard denied it.
+  const updated = history.reduce((n, r) => n + (r.totals.updated ?? 0), 0);
   const failed = history.reduce((n, r) => n + r.totals.failed, 0);
   const needsReview = history.reduce((n, r) => n + r.totals.needsReview, 0);
   const duplicates = history.reduce((n, r) => n + r.totals.duplicates, 0);
@@ -98,6 +105,13 @@ export function buildOverview(history: readonly DataPlaneRunResult[]): OverviewM
 
   const metrics: OverviewMetric[] = [
     { key: 'imported', label: 'Records imported', value: imported, tone: 'good' },
+    {
+      key: 'updated',
+      label: 'Records updated',
+      value: updated,
+      tone: updated > 0 ? 'good' : 'neutral',
+      ...(updated > 0 ? { hint: 'Existing records overwritten by an explicit per-row decision' } : {}),
+    },
     {
       key: 'review',
       label: 'Needs review',
@@ -136,13 +150,20 @@ export function buildOverview(history: readonly DataPlaneRunResult[]): OverviewM
     statusLabel: RUN_STATUS_LABEL[r.status],
     tone: RUN_STATUS_TONE[r.status],
     imported: r.totals.imported,
+    updated: r.totals.updated ?? 0,
   }));
 
+  // Both created and updated are real work; the headline used to name only the
+  // former, so an update-only import read as "0 records imported".
+  const changedPhrase =
+    updated > 0
+      ? `${imported.toLocaleString()} records imported · ${updated.toLocaleString()} updated`
+      : `${imported.toLocaleString()} records imported`;
   const attention = needsReview + awaiting + failed;
   const headline =
     attention === 0
-      ? `${imported.toLocaleString()} records imported. Nothing needs your attention.`
-      : `${imported.toLocaleString()} records imported · ${attention.toLocaleString()} need your attention.`;
+      ? `${changedPhrase}. Nothing needs your attention.`
+      : `${changedPhrase} · ${attention.toLocaleString()} need your attention.`;
 
   return { empty: false, metrics, recent, headline };
 }
