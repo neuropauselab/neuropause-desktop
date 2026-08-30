@@ -208,3 +208,182 @@ describe('S17/FG-6 — local-first (no cloud account)', () => {
     expect(authService.getStatus().state).toBe('authenticated');
   });
 });
+
+describe('P13C GATE 1 — no backend-dependent sign-in dead end', () => {
+  /**
+   * THE OFFLINE-RETURNING-USER WALL. A user who previously connected a cloud
+   * account launches with the backend unreachable. `restoreSession` used to set
+   * `unauthenticated` here, and `App.tsx` renders that fallback as `LoginScreen`
+   * with NO `onDismiss` — an escape-less sign-in wall, reached with no server.
+   *
+   * The fix degrades to the device-local principal instead: cloud is absent
+   * right now, which is exactly S17's no-reachable-account case. The status must
+   * be `local` (the full shell, with a "connect an account" affordance), NOT
+   * `unauthenticated`.
+   */
+  it('a network failure across every attempt enters local mode, not the wall', async () => {
+    mockState.stored = 'refresh-offline';
+    mockState.refreshImpl = () => {
+      throw new MockBackendError(0, 'network_error');
+    };
+    await authService.restoreSession();
+    expect(authService.getStatus().state).toBe('local');
+    expect(authService.getStatus().state).not.toBe('unauthenticated');
+  }, 15_000);
+
+  it('DEGRADING TO LOCAL DOES NOT CLEAR THE VAULT — the cloud session restores later', async () => {
+    // Fail-closed AND recoverable: the refresh token is untouched, so a later
+    // online launch (or the in-shell connect affordance) restores the account.
+    mockState.stored = 'refresh-keep';
+    mockState.refreshImpl = () => {
+      throw new MockBackendError(0, 'network_error');
+    };
+    await authService.restoreSession();
+    expect(authService.getStatus().state).toBe('local');
+    expect(mockState.stored).toBe('refresh-keep');
+  }, 15_000);
+
+  it('a GENUINE auth rejection still clears and does NOT fall back to local — local is the OFFLINE answer only', async () => {
+    // The discriminating negative: local fallback must not swallow a real
+    // credential rejection. An invalid/revoked token clears the vault and lands
+    // on `unauthenticated` (re-authenticate), never silently drops to local.
+    mockState.stored = 'refresh-revoked';
+    mockState.refreshImpl = () => {
+      throw new MockBackendError(401, 'invalid_grant');
+    };
+    await authService.restoreSession();
+    expect(authService.getStatus().state).toBe('unauthenticated');
+    expect(mockState.stored).toBeNull();
+  });
+
+  /**
+   * F-4 RETIREMENT. The certification blocker was "a fresh install opens on a
+   * sign-in screen and cannot reach the product." On this branch a fresh
+   * profile has no stored token, so `restoreSession` enters local mode and the
+   * product is reachable with no backend. Pinned so a regression re-opens F-4
+   * loudly rather than silently.
+   */
+  it('F-4 — a fresh install (no stored token, backend never contacted) reaches local mode', async () => {
+    mockState.stored = null;
+    // No refreshImpl / meImpl: the backend is never even called on this path.
+    await authService.restoreSession();
+    expect(mockState.refreshCalls).toEqual([]); // proves the backend was not contacted
+    expect(authService.getStatus().state).toBe('local');
+  });
+});
+
+describe('P13C GATE 2 — re-restore on reachability recovery', () => {
+  /**
+   * THE MISSING HALF. The offline-returning user degrades to local mode with a
+   * valid token (the Gate-1 fix above). Nothing used to re-attempt the cloud
+   * restore when the backend came back, so they stayed local for the whole
+   * session. `retryCloudRestore` closes that — wired to the backend-reachable
+   * edge — while staying fail-closed and never re-sending the rotating token.
+   */
+
+  it('SINGLE-FLIGHT: two concurrent restoreSession calls POST the rotating token exactly ONCE (no refresh_reused)', async () => {
+    // Without the guard, the second overlapping restore re-sends the consumed
+    // token — which the backend treats as theft and answers by revoking every
+    // session on every device. This is the security regression this guard exists
+    // for, and it becomes reachable the moment a runtime re-restore trigger exists.
+    mockState.stored = 'refresh-concurrent';
+    let refreshes = 0;
+    mockState.refreshImpl = () => {
+      refreshes += 1;
+      return rotated(refreshes);
+    };
+    mockState.meImpl = () => ({ user: USER });
+    await Promise.all([authService.restoreSession(), authService.restoreSession()]);
+    expect(refreshes).toBe(1);
+    expect(mockState.refreshCalls).toEqual(['refresh-concurrent']); // POSTed once
+    expect(authService.getStatus().state).toBe('authenticated');
+  });
+
+  it('recovers a degraded local session: backend reachable again → local promotes to authenticated', async () => {
+    // Precondition: the exact offline-degraded state (local + a stored token).
+    mockState.stored = 'refresh-offline';
+    await authService.enterLocalMode();
+    expect(authService.getStatus().state).toBe('local');
+    // Connectivity returns; the reachable edge fires retryCloudRestore.
+    mockState.refreshImpl = () => rotated(1);
+    mockState.meImpl = () => ({ user: USER });
+    await authService.retryCloudRestore();
+    expect(authService.getStatus().state).toBe('authenticated');
+    expect(mockState.stored).toBe('refresh-1'); // rotated token persisted
+  });
+
+  it('END-TO-END: offline launch degrades to local, then a reachable edge restores the cloud session', async () => {
+    mockState.stored = 'refresh-e2e';
+    mockState.refreshImpl = () => {
+      throw new MockBackendError(0, 'network_error');
+    };
+    await authService.restoreSession(); // offline across all retries → local, token kept
+    expect(authService.getStatus().state).toBe('local');
+    expect(mockState.stored).toBe('refresh-e2e');
+    // Backend comes back.
+    mockState.refreshImpl = () => rotated(1);
+    mockState.meImpl = () => ({ user: USER });
+    await authService.retryCloudRestore();
+    expect(authService.getStatus().state).toBe('authenticated');
+  }, 15_000);
+
+  it('NO-OP when already authenticated — never re-POSTs the token from a live session', async () => {
+    mockState.stored = 'refresh-auth';
+    mockState.refreshImpl = () => rotated(1);
+    mockState.meImpl = () => ({ user: USER });
+    await authService.restoreSession();
+    expect(authService.getStatus().state).toBe('authenticated');
+    const callsBefore = mockState.refreshCalls.length;
+    await authService.retryCloudRestore();
+    expect(authService.getStatus().state).toBe('authenticated');
+    expect(mockState.refreshCalls.length).toBe(callsBefore); // no extra POST
+  });
+
+  it('NO-OP for a genuine local-first user (local, NO token) — the backend is never contacted', async () => {
+    mockState.stored = null;
+    await authService.enterLocalMode();
+    await authService.retryCloudRestore();
+    expect(mockState.refreshCalls).toEqual([]);
+    expect(authService.getStatus().state).toBe('local');
+  });
+
+  it('a network error during re-restore STAYS local and keeps the token (waits for the next edge)', async () => {
+    mockState.stored = 'refresh-flap';
+    await authService.enterLocalMode();
+    mockState.refreshImpl = () => {
+      throw new MockBackendError(0, 'network_error');
+    };
+    await authService.retryCloudRestore();
+    expect(authService.getStatus().state).toBe('local'); // never walled
+    expect(mockState.stored).toBe('refresh-flap'); // token preserved
+  });
+
+  it('a GENUINE rejection during re-restore clears the dead token but STAYS local — never an escape-less wall', async () => {
+    // The reverse-wall guard: a background reachability probe must never convert
+    // a working local session into the escape-less sign-in screen. The invalid
+    // token is cleared (so it is not retried forever) but the app stays local.
+    mockState.stored = 'refresh-revoked';
+    await authService.enterLocalMode();
+    mockState.refreshImpl = () => {
+      throw new MockBackendError(401, 'invalid_grant');
+    };
+    await authService.retryCloudRestore();
+    expect(authService.getStatus().state).toBe('local');
+    expect(authService.getStatus().state).not.toBe('unauthenticated'); // NOT the wall
+    expect(mockState.stored).toBeNull(); // dead token cleared
+  });
+
+  it('concurrent retryCloudRestore calls share one run — the token is POSTed once', async () => {
+    mockState.stored = 'refresh-race';
+    await authService.enterLocalMode();
+    let refreshes = 0;
+    mockState.refreshImpl = () => {
+      refreshes += 1;
+      return rotated(refreshes);
+    };
+    mockState.meImpl = () => ({ user: USER });
+    await Promise.all([authService.retryCloudRestore(), authService.retryCloudRestore()]);
+    expect(refreshes).toBe(1);
+    expect(authService.getStatus().state).toBe('authenticated');
+  });
+});

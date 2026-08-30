@@ -21,6 +21,7 @@ import { registerEarlyReachabilityHandler } from './ipc/earlyReachability';
 import { markRuntimeFailed, markRuntimeReady, safeInitFailureMessage } from './runtimeReadiness';
 import { registerShutdownFlush, runShutdownFlush } from './shutdownFlush';
 import { authService } from './auth/authService';
+import { onBackendReachable } from './backendReachabilityHub';
 import { createMainWindow, rendererDevUrl } from './window';
 import { buildAppMenu } from './menu';
 import { initRuntimeCore } from './runtimeCore';
@@ -179,6 +180,16 @@ async function bootstrap(): Promise<void> {
 
   // Attempt to silently restore a prior session from the keychain.
   await authService.restoreSession();
+
+  // P13C Gate 2 — re-restore on reachability recovery. If the launch above
+  // degraded to device-local mode because the backend was unreachable, retry the
+  // cloud restore the moment the backend becomes reachable again. `retryCloudRestore`
+  // is a no-op unless the app is in local mode with a stored token, and is
+  // single-flighted, so this can never disturb an authenticated/logged-out user
+  // or re-send the rotating refresh token.
+  onBackendReachable(() => {
+    void authService.retryCloudRestore();
+  });
 
   // NP-007 (compile-stripped like the seed itself): the e2e principal must be established BETWEEN restoreSession and
   // the runtime/enterprise bootstrap — on a fresh profile, S17 local mode has just entered, and if the bootstrap runs

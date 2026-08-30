@@ -82,6 +82,18 @@ class AuthService extends EventEmitter {
    * callers now share one in-flight refresh.
    */
   private refreshInFlight: Promise<string | null> | null = null;
+  /**
+   * P13C GATE 2 — SINGLE-FLIGHT RESTORE.
+   *
+   * `restoreSession` refreshes the rotating token, and a re-restore can now be
+   * TRIGGERED at runtime (when the backend becomes reachable again), not only
+   * once at boot. Two overlapping restores would both read the same stored
+   * token and both POST it — the second is a consumed-token reuse, which the
+   * backend punishes by revoking every session on every device (`refresh_reused`,
+   * the same catastrophe the round-33 single-flight refresh exists to prevent).
+   * All restore entry points (boot + reachability retry) share one in-flight run.
+   */
+  private restoreInFlight: Promise<void> | null = null;
 
   /** Current snapshot the renderer can render. */
   getStatus(): AuthStatus {
@@ -131,9 +143,88 @@ class AuthService extends EventEmitter {
 
   /**
    * Attempts to restore a session on launch using the stored refresh token.
-   * Rotation means a successful refresh yields (and persists) a new token.
+   * Single-flighted so it can never overlap itself (or a reachability retry) and
+   * re-send the rotating token. Rotation means a successful refresh yields (and
+   * persists) a new token.
    */
   async restoreSession(): Promise<void> {
+    if (this.restoreInFlight) return this.restoreInFlight;
+    this.restoreInFlight = this.doRestoreSession();
+    try {
+      await this.restoreInFlight;
+    } finally {
+      this.restoreInFlight = null;
+    }
+  }
+
+  /**
+   * Re-attempt a cloud restore after the backend becomes reachable again.
+   *
+   * P13C GATE 2 — RE-RESTORE ON REACHABILITY RECOVERY. A user who launched
+   * offline degraded to device-local mode (the network branch of
+   * `doRestoreSession` below) with a valid refresh token still in the vault.
+   * Nothing used to re-attempt the cloud restore when connectivity returned, so
+   * they stayed local for the whole session. This is wired to the
+   * backend-reachable edge (`runtimeTelemetry` → `backendReachabilityHub`) and
+   * acts ONLY from the degraded state:
+   *
+   *   - a NO-OP unless status is `local` AND a refresh token is stored, so it
+   *     can never disturb an authenticated session, a deliberately logged-out
+   *     user, or a genuine local-first user — and never contacts the backend in
+   *     those cases;
+   *   - single-flighted with `restoreSession`, so it can never re-send the
+   *     rotating token;
+   *   - CRUCIALLY, unlike boot restore, a genuine rejection here does NOT wall:
+   *     the user is comfortably working locally, so an invalid token is cleared
+   *     but the app STAYS local (a background probe must never bump a working
+   *     user to an escape-less sign-in screen). Success promotes local →
+   *     authenticated.
+   */
+  async retryCloudRestore(): Promise<void> {
+    if (this.status.state !== 'local') return;
+    if (this.restoreInFlight) return this.restoreInFlight;
+    this.restoreInFlight = this.doRetryCloudRestore();
+    try {
+      await this.restoreInFlight;
+    } finally {
+      this.restoreInFlight = null;
+    }
+  }
+
+  private async doRetryCloudRestore(): Promise<void> {
+    const stored = await secureStore.getRefreshToken();
+    if (!stored) return; // genuine local-first: nothing to restore, no backend contact
+    try {
+      const { tokens } = await backendClient.refresh(stored);
+      await this.applyTokens(tokens);
+      const { user } = await backendClient.me(tokens.accessToken);
+      this.setStatus({
+        state: 'authenticated',
+        session: { user, accessTokenExpiresAt: tokens.accessTokenExpiresAt },
+      });
+      log.info('Re-restored cloud session after the backend became reachable');
+    } catch (err) {
+      const isNetwork = err instanceof BackendError && err.status === 0;
+      if (isNetwork) {
+        // The backend went away again mid-restore: stay local, keep the token,
+        // and wait for the next reachable edge. No status change.
+        log.warn('Cloud re-restore hit a network error; staying in local mode', messageFor(err));
+        return;
+      }
+      // Genuine rejection: the stored token is invalid/revoked. Clear it so a
+      // dead token is not re-tried on every future edge — but STAY local. A
+      // background reachability probe must never convert a working local session
+      // into an escape-less sign-in wall; the user reconnects via the affordance.
+      log.warn(
+        'Cloud re-restore rejected; clearing the invalid token and staying local',
+        messageFor(err),
+      );
+      await this.clearSession();
+      await this.enterLocalMode();
+    }
+  }
+
+  private async doRestoreSession(): Promise<void> {
     const stored = await secureStore.getRefreshToken();
     if (!stored) {
       // S17 local-first (FG-6): no stored account → the device-local principal,
@@ -184,11 +275,24 @@ class AuthService extends EventEmitter {
         if (isNetwork) {
           // Still unreachable after retries: keep credentials so a later launch (or
           // reconnect) can restore the session. Do not clear — the session is valid.
+          //
+          // GATE 1 (Program 13C) — DEGRADE TO LOCAL, NOT TO A WALL. Setting
+          // `unauthenticated` here dropped a returning user onto `LoginScreen`,
+          // and App.tsx renders that fallback with NO `onDismiss`, so there was
+          // no "Keep working locally" escape — an offline launch became a
+          // backend-dependent dead end. S17's whole premise is that the absence
+          // of a reachable cloud account yields the device-local principal, not
+          // the sign-in wall. A valid-but-unreachable session is exactly that
+          // case: cloud is absent right now. So enter local mode, which grants
+          // NO cloud access (a distinct `@device.invalid` principal) and asserts
+          // no authenticated session — fail-closed is preserved — while leaving
+          // the stored refresh token untouched so a later online launch, or the
+          // in-shell "connect an account" affordance, restores the cloud session.
           log.warn(
-            'Backend still unreachable after retries; keeping credentials for a later attempt',
+            'Backend still unreachable after retries; entering device-local mode and keeping credentials for a later attempt',
             messageFor(err),
           );
-          this.setStatus({ state: 'unauthenticated' });
+          await this.enterLocalMode();
           return;
         }
         // Genuine auth failure — the stored session is invalid, so clear it.

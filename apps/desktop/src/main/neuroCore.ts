@@ -18,6 +18,7 @@ import {
 } from '@neuropause/shared';
 import { createLogger } from './logger';
 import { RuntimeTelemetrySampler } from './runtimeTelemetry';
+import { announceBackendReachable } from './backendReachabilityHub';
 
 const log = createLogger('neurocore');
 
@@ -58,7 +59,9 @@ export interface NeuroCoreDeps {
 
 export class NeuroCore {
   private lastSnapshot: SystemHealthSnapshot | null = null;
-  private readonly telemetry = new RuntimeTelemetrySampler();
+  // P13C Gate 2 — announce the backend-reachable edge so the auth service can
+  // re-restore a cloud session for a user who launched offline into local mode.
+  private readonly telemetry = new RuntimeTelemetrySampler(Date.now, announceBackendReachable);
 
   constructor(private readonly deps: NeuroCoreDeps) {}
 

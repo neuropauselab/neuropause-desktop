@@ -73,7 +73,15 @@ export class RuntimeTelemetrySampler {
   private lastProbeCheckedAt: string | null = null;
   private lastProbeError: BackendProbeError | null = null;
 
-  constructor(private readonly now: () => number = Date.now) {}
+  /**
+   * `onReachabilityRecovered` fires on the (recovering|disconnected) → connected
+   * EDGE (P13C Gate 2). Injected rather than importing the hub directly so the
+   * sampler stays dependency-free and unit-testable with a plain spy.
+   */
+  constructor(
+    private readonly now: () => number = Date.now,
+    private readonly onReachabilityRecovered?: () => void,
+  ) {}
 
   /** CPU% since the last sample, normalized by elapsed wall-clock + core count. */
   private sampleCpuPercent(): number {
@@ -122,10 +130,15 @@ export class RuntimeTelemetrySampler {
       this.backendLatencyMs = Date.now() - started;
       this.lastProbeCheckedAt = new Date(this.now()).toISOString();
       if (res.ok) {
+        const wasReachable = this.backendState === 'connected';
         this.backendState = 'connected';
         this.consecutiveFailures = 0;
         this.lastProbeOk = true;
         this.lastProbeError = null;
+        // Fire the reachability edge exactly once per recovery — on the
+        // transition into connected, never on every healthy probe — so a
+        // subscriber (the auth re-restore) reacts to the recovery, not the state.
+        if (!wasReachable) this.onReachabilityRecovered?.();
       } else {
         this.registerFailure();
         this.lastProbeOk = false;
