@@ -56,6 +56,13 @@ export interface ProvisionDeps {
    * no owner anybody could protect — the Round 9 takeover, one tenant over.
    */
   recordOwner: (orgId: string, userId: string) => void;
+  /**
+   * GATE 23 — undo a partial provision. Called if any step AFTER the
+   * organization row is created throws, so a failed provision never leaves an
+   * org with no workspace (a tenant nobody can enter or clean up). Best-effort:
+   * a failure here is logged by the caller, never masks the original error.
+   */
+  rollback?: (orgId: string) => void;
 }
 
 export interface ProvisionInput {
@@ -110,6 +117,27 @@ export function provisionOrganization(
 
   const organization = deps.createOrganization(name, input.description?.trim() ?? '');
 
+  // From here on, every step writes rows that reference `organization.id`. If any
+  // of them throws, the org is already committed, so undo it — an org with no
+  // workspace is a tenant nobody can enter and nobody can clean up (GATE 23).
+  try {
+    return provisionInto(deps, input, organization, email);
+  } catch (err) {
+    try {
+      deps.rollback?.(organization.id);
+    } catch {
+      // Best-effort: the original failure is the one worth reporting.
+    }
+    throw err;
+  }
+}
+
+function provisionInto(
+  deps: ProvisionDeps,
+  input: ProvisionInput,
+  organization: Organization,
+  email: string,
+): ProvisionResult {
   /**
    * The same role set the seeded organization has, with this tenant's own ids.
    *

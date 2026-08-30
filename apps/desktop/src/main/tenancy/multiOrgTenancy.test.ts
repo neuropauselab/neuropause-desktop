@@ -235,6 +235,58 @@ describe('Phase 18 — creating an organization provisions a USABLE tenant', () 
     ).toThrow(/needs a name/);
   });
 
+  /**
+   * GATE 23 — provisioning writes across two stores with no transaction. If a
+   * later step (here the workspace) fails, the org, roles and owner are already
+   * committed, and without a rollback that is a tenant nobody can enter (the
+   * resolver keys the tenant off the workspace) or clean up. The provision now
+   * undoes itself.
+   */
+  it('rolls the org back when a later step fails — no orphan tenant is left behind', () => {
+    const w = new World();
+    const deps: ProvisionDeps = {
+      ...w.provisionDeps(),
+      createWorkspace: () => {
+        throw new Error('disk full');
+      },
+      rollback: (orgId) => {
+        w.organizations = w.organizations.filter((o) => o.id !== orgId);
+        w.roles = w.roles.filter((r) => r.orgId !== orgId);
+        w.users = w.users.filter((u) => u.orgId !== orgId);
+      },
+    };
+    expect(() => provisionOrganization(deps, { name: 'Doomed', ownerEmail: ALICE })).toThrow(/disk full/);
+    // The original error propagates AND nothing is left behind.
+    expect(w.organizations).toHaveLength(0);
+    expect(w.roles).toHaveLength(0);
+    expect(w.users).toHaveLength(0);
+    expect(w.workspaces).toHaveLength(0);
+  });
+
+  it('a successful provision never calls rollback', () => {
+    const w = new World();
+    let rolledBack = 0;
+    const deps: ProvisionDeps = { ...w.provisionDeps(), rollback: () => (rolledBack += 1) };
+    provisionOrganization(deps, { name: 'Fine', ownerEmail: ALICE });
+    expect(rolledBack).toBe(0);
+    expect(w.organizations).toHaveLength(1);
+    expect(w.workspaces).toHaveLength(1);
+  });
+
+  it('a rollback that itself throws does not mask the original failure', () => {
+    const w = new World();
+    const deps: ProvisionDeps = {
+      ...w.provisionDeps(),
+      createWorkspace: () => {
+        throw new Error('the real failure');
+      },
+      rollback: () => {
+        throw new Error('cleanup also failed');
+      },
+    };
+    expect(() => provisionOrganization(deps, { name: 'X', ownerEmail: ALICE })).toThrow(/the real failure/);
+  });
+
   it('derives a readable owner name when the session has none', () => {
     expect(ownerNameFromEmail('alice@a.example')).toBe('alice');
   });

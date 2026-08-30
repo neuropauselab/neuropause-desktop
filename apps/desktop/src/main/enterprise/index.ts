@@ -2305,6 +2305,19 @@ function buildHandlers(): SecureHandlerDef[] {
             createUser: (input) => orgStore.createUser(input),
             createWorkspace: (name, organizationId) => workspaceStore.create(name, organizationId),
             recordOwner: (orgId, userId) => orgStore.assignProvisionedOwner(orgId, userId),
+            // GATE 23 — undo a partial provision (org committed, a later step
+            // failed) so no un-enterable, un-cleanable tenant is left behind.
+            rollback: (orgId) => {
+              try {
+                orgStore.removeProvisionedOrganization(orgId);
+                log.warn('Rolled back a failed organization provision', { organizationId: orgId });
+              } catch (err) {
+                log.error('Failed to roll back a partial organization provision', {
+                  organizationId: orgId,
+                  message: err instanceof Error ? err.message : String(err),
+                });
+              }
+            },
           },
           {
             name: r.name,

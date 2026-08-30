@@ -166,6 +166,28 @@ describe('resolveActor', () => {
     const world = { session: 'someone@else.dev', users: [], roles: [ownerRole], owner: null };
     expect(resolveActor(depsOf(world))).toBeNull();
   });
+
+  /**
+   * GATE 24 — a corrupt member row must fail closed at the resolver, never crash
+   * and never grant. The email can reload as a non-string when a store row was
+   * hand-edited or truncated; the `typeof m.email === 'string'` guard skips it.
+   * This pins that behavior at the authz resolver itself (previously only tested
+   * one layer away, through the tenant resolver).
+   */
+  it('a corrupt row (non-string email) is skipped — no crash, no grant', () => {
+    const corrupt = { ...member('u-corrupt', null, ['role-owner']), email: undefined as unknown as string };
+    // The owner is CLAIMED, so first-claim-wins denies any unmatched session.
+    const world = { session: 'anything@np.dev', users: [owner, corrupt], roles: [ownerRole], owner };
+    expect(() => resolveActor(depsOf(world))).not.toThrow();
+    expect(resolveActor(depsOf(world))).toBeNull();
+  });
+
+  it('a corrupt row cannot be matched by coercion (numeric email)', () => {
+    const corrupt = { ...member('u-corrupt', null, ['role-owner']), email: 12 as unknown as string };
+    // A claimed owner exists; the numeric "12" must never coerce into a match.
+    const world = { session: '12', users: [owner, corrupt], roles: [ownerRole], owner };
+    expect(resolveActor(depsOf(world))).toBeNull();
+  });
 });
 
 describe('decideOwnerClaim (first-claim-wins)', () => {

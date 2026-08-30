@@ -51,6 +51,43 @@ describe('OrgStore — seed', () => {
   });
 });
 
+describe('OrgStore — removeProvisionedOrganization (GATE 23 rollback)', () => {
+  it('removes ONLY the named org and its rows, leaving the seeded org intact', async () => {
+    const s = await newStore(tempPath());
+    const seededUsers = s.usersFor(ORG_ID).length;
+    const seededRoles = s.rolesFor(ORG_ID).length;
+
+    const org = s.createOrganization('Doomed Co');
+    s.createRole({ orgId: org.id, name: 'Owner', description: '', permissions: [], builtIn: true });
+    s.createUser({ orgId: org.id, name: 'Owner', title: 'Owner', email: 'o@doomed.test' });
+    expect(s.organization(org.id)).not.toBeNull();
+    expect(s.rolesFor(org.id)).toHaveLength(1);
+    expect(s.usersFor(org.id)).toHaveLength(1);
+
+    s.removeProvisionedOrganization(org.id);
+
+    // The doomed org and everything it owned are gone…
+    expect(s.organization(org.id)).toBeNull();
+    expect(s.rolesFor(org.id)).toHaveLength(0);
+    expect(s.usersFor(org.id)).toHaveLength(0);
+    // …and the seeded org is byte-for-byte unaffected.
+    expect(s.organization(ORG_ID)).not.toBeNull();
+    expect(s.usersFor(ORG_ID)).toHaveLength(seededUsers);
+    expect(s.rolesFor(ORG_ID)).toHaveLength(seededRoles);
+  });
+
+  it('REFUSES to remove the seeded organization', async () => {
+    const s = await newStore(tempPath());
+    expect(() => s.removeProvisionedOrganization(ORG_ID)).toThrow(/seeded organization cannot be removed/i);
+    expect(s.organization(ORG_ID)).not.toBeNull();
+  });
+
+  it('is a no-op for an unknown org id', async () => {
+    const s = await newStore(tempPath());
+    expect(() => s.removeProvisionedOrganization('org_does_not_exist')).not.toThrow();
+  });
+});
+
 describe('OrgStore — CRUD', () => {
   it('creates, updates, and deletes units (re-parenting children)', async () => {
     const s = await newStore(tempPath());

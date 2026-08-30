@@ -149,4 +149,35 @@ describe('SEAM-B.15 · Target B — the secure-bridge timeout path', () => {
     await expect(runSecureHandler(def, {}, DEPS)).resolves.toEqual({ ok: true, attempt: 2 });
     expect(ran).toBe(2);
   });
+
+  /**
+   * GATE 24 — a malformed payload is refused by the bridge's Zod validation
+   * BEFORE the handler runs. Previously every `runSecureHandler` test drove
+   * authority/timeout with a valid payload; the `Invalid request for <channel>`
+   * path was never asserted through the real bridge.
+   */
+  it('a MALFORMED payload is rejected by Zod at the bridge — the handler never runs', async () => {
+    let ran = 0;
+    const def = probeDef(() => {
+      ran += 1;
+      return { ok: true };
+    }, 1_000);
+    // The def's schema is `z.object({}).strict()`, so an unexpected key fails.
+    await expect(runSecureHandler(def, { unexpected: 'x' }, DEPS)).rejects.toThrow(
+      `Invalid request for ${CHANNEL}`,
+    );
+    expect(ran).toBe(0);
+  });
+
+  it('a malformed payload from an UNAUTHENTICATED caller is still refused — neither gate lets it through', async () => {
+    let ran = 0;
+    const def = probeDef(() => {
+      ran += 1;
+      return { ok: true };
+    }, 1_000);
+    await expect(
+      runSecureHandler(def, { unexpected: 'x' }, { isAuthenticated: () => false }),
+    ).rejects.toThrow();
+    expect(ran).toBe(0);
+  });
 });

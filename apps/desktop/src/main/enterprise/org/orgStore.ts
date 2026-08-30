@@ -506,6 +506,30 @@ export class OrgStore extends EventEmitter {
   }
 
   /**
+   * GATE 23 — remove a just-provisioned organization and everything it owns.
+   *
+   * Provisioning a second organization writes across TWO stores (this one and
+   * the workspace store) with no transaction. If a later step fails, the org,
+   * its roles and its owner row are already committed here — an "organization
+   * with no workspace" that cannot be entered (the resolver keys the tenant off
+   * the workspace) and cannot be cleaned up. This is the rollback the provision
+   * flow calls on failure. It removes ONLY rows whose `orgId` matches, plus the
+   * org row itself, and REFUSES the seeded organization outright — it is never a
+   * general delete path and is not exposed over IPC.
+   */
+  removeProvisionedOrganization(orgId: string): void {
+    if (orgId === SEED_ORG_ID) {
+      throw new Error('The seeded organization cannot be removed.');
+    }
+    if (!this.organizations.has(orgId)) return;
+    for (const [id, u] of this.users) if (u.orgId === orgId) this.users.delete(id);
+    for (const [id, r] of this.roles) if (r.orgId === orgId) this.roles.delete(id);
+    for (const [id, unit] of this.units) if (unit.orgId === orgId) this.units.delete(id);
+    this.organizations.delete(orgId);
+    this.touch();
+  }
+
+  /**
    * P13C ROUND 40 — GATE 27. The protected owner of a tenant, if it has one.
    * Seeded organization → the compile-time root of trust; provisioned →
    * whatever provisioning recorded (or the load-time heal derived).
