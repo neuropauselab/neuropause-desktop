@@ -34,10 +34,19 @@ import type {
   DataPlaneExportPlan,
   DataPlanePreview,
   DataPlaneProvenance,
+  DataPlaneFieldProvenance,
   DataPlaneRunResult,
   DataPlaneSavedMapping,
   EnterpriseModuleDescriptor,
   EnterprisePermission,
+  SensitivityClass,
+} from '@neuropause/shared';
+import {
+  classifyField,
+  classifyFieldName,
+  moreRestrictive,
+  sensitivityReason,
+  REDACTED_MARKER,
 } from '@neuropause/shared';
 import {
   DataPlaneAnalyzeRequest,
@@ -75,7 +84,7 @@ import {
 import { matchExistingRecords, type PreparedRow } from './quality';
 import type { CellValue } from './parsers';
 import type { CanonicalEntity } from './ontology';
-import { ProvenanceStore, type ImportDecision, type ImportDeps } from './importer';
+import { ProvenanceStore, type ImportDecision, type ImportDeps, type ProvenanceRecord } from './importer';
 import { governedImport } from '../cst/importTransition';
 import { MappingMemoryStore, applySavedMapping } from './mappingMemory';
 import { ONTOLOGY, entityById, requiresExplicitApproval } from './ontology';
@@ -291,6 +300,73 @@ function buildPreview(
           }
         : null,
     })),
+  };
+}
+
+/**
+ * Redact a provenance record for return across IPC — the same governance the
+ * preview and the export apply, in the one place provenance leaves main.
+ *
+ * `dp:provenance` used to return the raw `ProvenanceRecord`: `fields[].original`
+ * handed the exact salary, bank account and PAN to any `data:read` caller —
+ * whether or not they could read the module — while `dp:preview` redacted the
+ * same value and the export refused it. It also shipped internal `tenantId`,
+ * `workspaceId`, connector-origin and `sourceTrust` fields the
+ * `DataPlaneProvenance` contract does not declare.
+ *
+ * Two rules, mirroring `selectableFields`/`dp:export`:
+ *   - a field VALUE is derived-classified (`classifyField`, using the module
+ *     descriptor's key + label and, as a floor, the source header): `secret` is
+ *     never shown, `restricted` only when the caller can administer the module,
+ *     `normal` always. Both `original` and `transformation` (which embeds the
+ *     value) are redacted together — redacting one and not the other reads as
+ *     though the value was handled.
+ *   - only the declared contract crosses the wire, built field by field, so no
+ *     internal is disclosed by accident.
+ *
+ * `descriptor === null` means the module is not in this build, so the read
+ * permission cannot be checked — fail closed and hide every value.
+ */
+export function redactProvenance(
+  record: ProvenanceRecord,
+  descriptor: EnterpriseModuleDescriptor | null,
+  mayAdminister: boolean,
+): DataPlaneProvenance {
+  const defByKey = new Map((descriptor?.fields ?? []).map((f) => [f.key, f]));
+  const fields: DataPlaneFieldProvenance[] = record.fields.map((f) => {
+    const def = defByKey.get(f.field);
+    const cls: SensitivityClass =
+      descriptor === null
+        ? 'secret'
+        : moreRestrictive(
+            def ? classifyField(def) : classifyField({ key: f.field, label: f.column }),
+            // The source header is a floor: a column named "Bank A/c" mapped to
+            // a generic key must still be hidden.
+            classifyFieldName(f.column),
+          );
+    const hide = cls === 'secret' || (cls === 'restricted' && !mayAdminister);
+    return {
+      field: f.field,
+      column: f.column,
+      original: hide ? REDACTED_MARKER : f.original,
+      transformation: hide
+        ? f.transformation === null
+          ? null
+          : `hidden — ${sensitivityReason(cls) || 'sensitive field'}`
+        : f.transformation,
+    };
+  });
+  return {
+    recordId: record.recordId,
+    moduleId: record.moduleId,
+    planId: record.planId,
+    sourceFile: record.sourceFile,
+    sourceTable: record.sourceTable,
+    sourceRow: record.sourceRow,
+    confidence: record.confidence,
+    approvedBy: record.approvedBy,
+    importedAt: record.importedAt,
+    fields,
   };
 }
 
@@ -854,8 +930,33 @@ export function initDataPlane(deps: DataPlaneSubsystemDeps): DataPlaneSubsystem 
       schema: DataPlaneProvenanceRequest,
       requireAuth: true,
       handler: async (p): Promise<DataPlaneProvenance | null> => {
+        // Two gates, exactly as `dp:export`: `data:read` is the right to use the
+        // data surface at all; the module's OWN read permission is the right to
+        // see THAT data, and administering it is the right to see restricted
+        // values. Provenance must not be a way around either.
+        deps.authorize('data:read');
         await provenance.load();
-        return provenance.forRecord((p as DataPlaneProvenanceRequest).recordId);
+        const record = provenance.forRecord((p as DataPlaneProvenanceRequest).recordId);
+        // A record id is a reference, not an authorization — `forRecord` is
+        // tenant-scoped, so another tenant's id is already null here.
+        if (record === null) return null;
+
+        const descriptor = deps.modules().find((m) => m.id === record.moduleId) ?? null;
+        let mayAdminister = false;
+        if (descriptor !== null) {
+          // A module you cannot read cannot be traced — refused, not silently
+          // redacted, the same as the export refuses it.
+          deps.authorize(descriptor.permissions.read);
+          try {
+            deps.authorize(descriptor.permissions.write);
+            mayAdminister = true;
+          } catch {
+            mayAdminister = false;
+          }
+        }
+        // Unknown module (descriptor === null): the read permission cannot be
+        // checked, so `redactProvenance` fails closed and hides every value.
+        return redactProvenance(record, descriptor, mayAdminister);
       },
     },
     {
