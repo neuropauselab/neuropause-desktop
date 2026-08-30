@@ -103,6 +103,7 @@ import {
   withEnterpriseAuthz,
 } from './authzGate';
 import { createTenantContextResolver } from '../tenancy/tenantContext';
+import { decideRefusalLog, type RefusalLogState } from '../tenancy/refusalLogThrottle';
 import { buildMigrationInventory, summarizeInventory } from '../tenancy/migrationInventory';
 import type { MemoryViewer, TenantResolution, TenantScope } from '@neuropause/shared';
 import {
@@ -386,8 +387,10 @@ export interface EnterpriseSubsystem {
  * the log says "still refusing, 4 100 times since the last line" rather than
  * saying it 4 100 times. Recovery always prints, because it closes the bracket.
  */
-const REFUSAL_LOG_INTERVAL_MS = 60_000;
-const refusalLogState = new Map<string, { lastAtMs: number; suppressed: number }>();
+// GATE 3 (round 52) — the W-10 emission policy is now a pure, unit-tested
+// decision (see tenancy/refusalLogThrottle.ts). This callback stays the thin
+// Electron-side wiring: decide, then log.
+const refusalLogState = new Map<string, RefusalLogState>();
 
 const tenantContext = createTenantContextResolver({
   // S17/FG-6: authenticated → account email; local → synthetic non-routable
@@ -414,22 +417,9 @@ const tenantContext = createTenantContextResolver({
    * function to be logged by accident.
    */
   onRefusal: (d) => {
-    const nowMs = Date.now();
-    const state = refusalLogState.get(d.reason);
-    if (!d.firstRefusalAfterSuccess && state !== undefined) {
-      if (nowMs - state.lastAtMs < REFUSAL_LOG_INTERVAL_MS) {
-        state.suppressed += 1;
-        return;
-      }
-    }
-    const suppressed = state?.suppressed ?? 0;
-    refusalLogState.set(d.reason, { lastAtMs: nowMs, suppressed: 0 });
-    log.warn(
-      d.firstRefusalAfterSuccess
-        ? 'Tenant resolution LOST — first refusal after a working session'
-        : 'Tenant refused',
-      { ...d, suppressedSinceLastLine: suppressed },
-    );
+    const decision = decideRefusalLog(refusalLogState, d.reason, d.firstRefusalAfterSuccess, Date.now());
+    if (!decision.emit) return;
+    log.warn(decision.label, { ...d, suppressedSinceLastLine: decision.suppressedSinceLastLine });
   },
   /**
    * The other end of the interval. Today a restart is what produces this; when
