@@ -115,6 +115,19 @@ const FEATURE_MANIFEST = [
     why: 'Round-40 owner-row hardening that B9/B11 spot-check.',
   },
   {
+    // The RUNTIME marker for B9/B11: unlike the `protectedOwnerIdForTarget`
+    // identifier above (which proves the guard SHIPS), this string is emitted to
+    // app.log at boot when the device-local principal claims the owner row
+    // (`enterprise/index.ts` bindOwner → claimOwnerIdentity). It is boot-time and
+    // GUI-free, so the acceptance runner can CAPTURE B9/B11 from the log without
+    // any interactive driving — closing the "B11 was never reported" gap.
+    id: 'owner-claim-boot-log',
+    marker: 'Owner bound to the active principal',
+    source: 'apps/desktop/src/main/enterprise/index.ts',
+    acceptanceItems: ['B9', 'B11'],
+    why: 'The device-local owner-row claim, logged at boot; B9/B11 read it from app.log with no GUI.',
+  },
+  {
     id: 'shutdown-flush-barrier',
     marker: 'Shutdown flush complete',
     source: 'apps/desktop/src/main/index.ts',

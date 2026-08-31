@@ -231,3 +231,72 @@ Windows execution itself is available on this host — QEMU and the Windows 11
 ARM64 guest from the rc.20 session are both still present, and the in-repo
 `run-windows-vm` skill drives them. "Machine-blocked" is no longer the accurate
 description of this gate; **artifact-blocked** is.
+
+
+---
+
+# ROUND 63 AMENDMENT — B9/B11 ARE BOOT-LOG-CAPTURABLE (no GUI); B5/B6 remain interactive
+
+**Date:** 2026-08-31 · Base HEAD `b356682`. Scope: Gate 20 only. No product code changed (an independent
+Windows-specific defect hunt found none — see below).
+
+## Independent Windows-specific defect hunt — NONE FOUND
+
+B5/B6/B9/B11 were traced for genuine Windows-specific defects: filesystem paths use `path.join`/injected bases
+(no hardcoded `/`); the window loads via `loadFile` (no hand-built `file://` from a `C:\` path); the CSV importer
+drops `\r` and strips the BOM (`dataPlane/parsers.ts`), so a Windows CRLF/Excel CSV parses correctly; every
+`darwin` branch has a correct Windows path (the W-2 title-bar/gutter fixes hold); B9/B11 owner-row logic is pure
+in-memory main-process code with no path/platform dependency. **Import ingests file CONTENT as base64 over IPC
+(`dp:import`) with no native open-dialog, and export's `saveExport` is an injected dependency** — so B5 is
+automatable without a POSIX/native dialog. **Verdict: the four items are platform-safe; the residual is execution,
+not code.**
+
+## The B11 "never reported" gap, diagnosed to its root and closed on the capture side
+
+B11 (provisioned-owner protection) and B9 (owner-row hardening) execute at BOOT, not through the GUI: `bindOwner`
+(`enterprise/index.ts:632`) runs `claimOwnerIdentity` at startup and, when the device-local principal claims the
+unclaimed owner row on a fresh profile, emits **`INFO (enterprise) Owner bound to the active principal {local:true}`**.
+This is GUI-free and appears in `app.log` on the first fresh-profile launch. B11 was "never reported" for a
+mechanical reason, now fixed: the acceptance runner greps the boot-health matrix but never grepped this line, and
+in the rc.21 run it scrolled out of the captured `app.interactive.tail400.log` (400-line tail) while the earlier
+launches ran.
+
+**Code-resolvable fixes landed (verifiable on this host):**
+- `scripts/verify-acceptance-artifact.cjs` — new manifest entry `owner-claim-boot-log`, marker
+  `'Owner bound to the active principal'`, source `enterprise/index.ts`, acceptanceItems `['B9','B11']`. This is a
+  RUNTIME string (minification-durable) that complements the `protectedOwnerIdForTarget` identifier: the pre-flight
+  now confirms the artifact ships the owner-claim log line B9/B11 are read from.
+- `acceptanceArtifactParity.test.ts` — its data-driven anti-rot pin auto-covers the new marker (asserts it still
+  exists in `enterprise/index.ts`); **10/10 green** on this host.
+
+## Runner step for the next Windows session (the guest runner is a protected skill file — apply this line)
+
+In `run-windows-vm/guest/acceptance-runner.ps1`, in the FIRST-LAUNCH (fresh-profile) block, right after the
+`org.runtime.ready` line, add — grepping the fresh-boot log while it is still the live `$log`:
+
+```powershell
+# B9/B11: device-local owner-row claim, logged at boot, no GUI. Fresh profile => must be >= 1.
+Say ("owner.bound=" + (Grep 'Owner bound to the active principal'))
+```
+
+PASS for B9/B11 on the next run = `owner.bound >= 1` in the first-launch block on a genuinely fresh profile
+(`%APPDATA%\@neuropause\desktop` renamed aside first). `owner.bound=0` means the owner was not claimed and B9/B11
+are NOT satisfied — fail closed, do not infer.
+
+## What still needs the operator's interactive Windows session
+
+- **B5 (import / export)** and **B6 (Business / Assistant responding to input)** need the flows *triggered* — no
+  boot-log line stands in for them. They are IPC-drivable (base64 import, injectable export, IPC-backed Business/
+  Assistant), so a future automated harness (Playwright `_electron` → `window.neuropause.invoke`, the proven macOS
+  `journalPackaged.e2e.cjs` pattern, run on the guest) could drive them without the framebuffer; until that exists
+  they are driven by hand. The QEMU framebuffer being smaller than the app window is the harness knob to raise for
+  manual driving.
+- Graceful `Shutdown flush complete` still needs a driven `app.quit` (menu/Alt+F4), not a force-kill.
+
+## Status
+
+Gate 20 stays **YELLOW**. No product defect exists; B1–B4/B7/B8/B10 are PASS on real Windows (rc.21, round 62);
+B9/B11 are now capturable from the boot log with the runner line above; B5/B6 need one interactive Windows
+session. GREEN needs that session run against an artifact that passes the pre-flight (rc.21 does). This host has no
+way to drive the Windows guest (the QEMU VM is on the operator's Mac), so the run is operator-executed — the same
+external-execution shape as S15 and Gate 8's live keys, not a code gap.
