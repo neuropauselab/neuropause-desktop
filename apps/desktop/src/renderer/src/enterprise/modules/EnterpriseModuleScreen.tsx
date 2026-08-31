@@ -459,6 +459,23 @@ function ModuleForm({
   );
 }
 
+/**
+ * D-7b — the message for a mutation the boundary REFUSED BY RESOLVING.
+ *
+ * `EnterpriseModuleMutationResult.errors` is `field key -> message`, with `_`
+ * documented as the record-level key. This reads that structure; it never
+ * inspects English prose, so it cannot drift into classifying refusals by
+ * regex -- the defect D-6 exists to prevent.
+ */
+function describeMutationFailure(
+  result: { errors?: Record<string, string> },
+  fallback: string,
+): string {
+  const errors = result.errors;
+  if (!errors) return fallback;
+  return errors._ ?? Object.values(errors)[0] ?? fallback;
+}
+
 const RISK_TONE: Record<string, BadgeTone> = { low: 'green', medium: 'orange', high: 'pink' };
 
 function AiSummarySection({
@@ -538,6 +555,12 @@ function RecordDetail({
 }): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [actionMsg, setActionMsg] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
+  /**
+   * D-7b — the DELETE/ARCHIVE failure channel, deliberately separate from
+   * `actionMsg`: `runAction` clears that slot on every custom action, so a hold
+   * notice parked there would be erased by an unrelated click.
+   */
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const act = async (fn: () => Promise<unknown>): Promise<void> => {
     setBusy(true);
@@ -575,6 +598,7 @@ function RecordDetail({
   const [holdId, setHoldId] = useState<string | null>(null);
   const requestDelete = async (force: boolean): Promise<void> => {
     setBusy(true);
+    setActionError(null);
     try {
       const result = await ipc.enterpriseModules.remove(module.id, record.id, force);
       if (!result.ok && result.assessment) {
@@ -582,9 +606,22 @@ function RecordDetail({
         setHoldId(result.holdId ?? null);
         return;
       }
+      // A refusal WITHOUT an assessment used to fall straight through to
+      // `onChanged()` — the modal closed and the row looked deleted when the
+      // delete had been refused. The channel refuses by RESOLVING `{ok:false}`,
+      // so no catch ever saw it.
+      if (!result.ok) {
+        setActionError(describeMutationFailure(result, 'The record could not be deleted.'));
+        return;
+      }
       setDeleteAssessment(null);
       setHoldId(null);
       onChanged();
+    } catch (err) {
+      // The permission gate for this channel is enforced in the handler and
+      // THROWS. Rendered verbatim: re-wording a refusal here would mean
+      // classifying it by regex on English prose.
+      setActionError(err instanceof Error && err.message ? err.message : 'The request failed.');
     } finally {
       setBusy(false);
     }
@@ -593,22 +630,49 @@ function RecordDetail({
   /** Archive instead — then close the hold that recommended exactly this. */
   const takeAlternative = async (): Promise<void> => {
     setBusy(true);
+    setActionError(null);
     try {
-      await ipc.enterpriseModules.setStatus(module.id, record.id, 'archived');
+      const archived = await ipc.enterpriseModules.setStatus(module.id, record.id, 'archived');
+      // THE ARCHIVE IS NOT ASSUMED. This channel refuses by RESOLVING
+      // `{ok:false}`, and the result used to be discarded — so a refused archive
+      // still closed the hold with the note "Archived instead of deleting",
+      // which would have been a false statement written into governance
+      // evidence. Nothing is claimed about the hold until the archive is real.
+      if (!archived.ok) {
+        setActionError(describeMutationFailure(archived, 'The record could not be archived.'));
+        return;
+      }
       if (holdId) {
-        await ipc.holds
+        const closed = await ipc.holds
           .resolve(
             holdId,
             'took_alternative',
             'Archived instead of deleting; every link keeps resolving.',
           )
-          // A hold that cannot be closed must not fail the archive that already
-          // happened — the Holds screen can still resolve it by hand.
-          .catch(() => undefined);
+          // A hold that cannot be closed must still never fail the archive that
+          // already happened — that part of the original reasoning stands. What
+          // changed is that the outcome is no longer discarded: `hold:resolve`
+          // answers `HoldRecord | null`, and an unknown, already-resolved or
+          // out-of-scope hold RESOLVES with null, so the catch never ran for the
+          // most likely failure. Both shapes collapse to "not closed" here.
+          .catch(() => null);
+        if (!closed) {
+          // The archive DID happen; only the hold is still open. `onRefresh`
+          // updates the list WITHOUT unmounting this component, so the message
+          // survives to be read — `onChanged()` would call `setDetail(null)` and
+          // render it zero frames.
+          setActionError(
+            'Archived. The related hold could not be closed and is still open — closing it needs governance permission.',
+          );
+          onRefresh?.();
+          return;
+        }
       }
       setDeleteAssessment(null);
       setHoldId(null);
       onChanged();
+    } catch (err) {
+      setActionError(err instanceof Error && err.message ? err.message : 'The request failed.');
     } finally {
       setBusy(false);
     }
@@ -741,6 +805,14 @@ function RecordDetail({
                       this link will show a gap until it is restored.
                     </p>
                   </div>
+                  {actionError !== null && (
+                    <div
+                      role="alert"
+                      className="mt-3 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger"
+                    >
+                      {actionError}
+                    </div>
+                  )}
                   <div className="mt-4 flex flex-wrap justify-end gap-2">
                     <Button size="sm" onClick={() => setDeleteAssessment(null)} disabled={busy}>
                       Cancel
@@ -775,6 +847,14 @@ function RecordDetail({
         </>
       }
     >
+      {deleteAssessment === null && actionError !== null && (
+        <div
+          role="alert"
+          className="mb-3 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger"
+        >
+          {actionError}
+        </div>
+      )}
       {actionMsg && (
         <div
           className={`mb-3 rounded-md px-3 py-2 text-sm ${

@@ -163,7 +163,7 @@ Among them, these **user-initiated silent writes are NOT closed by this work**:
 
 | Site | Write |
 |---|---|
-| `enterprise/modules/EnterpriseModuleScreen.tsx:599` | `ipc.holds.resolve` — **governance-class**: the archive lands but the hold that recommended it can stay open, unsaid |
+| ~~`enterprise/modules/EnterpriseModuleScreen.tsx:599`~~ | **CLOSED 2026-08-31** — see the D-7b section below |
 | `state/ConnectionProvider.tsx:117 / :120 / :129` | `resumeSync` / `pauseSync` / `syncNow` — the "Sync paused" toast sits inside `.then`, so a failure produces neither toast nor error |
 | `enterprise/EnterpriseView.tsx:135 / :142` | `personalization.favorite` / `saveView` |
 | `business/BusinessFamilySection.tsx:162` | `personalization.favorite` |
@@ -177,3 +177,121 @@ with D-7b, once the remaining true positives are closed.
 
 **No claim is made** that the silent-write class is eliminated, that non-renderer swallows were
 audited, or that any main-process behaviour changed.
+
+
+---
+
+# D-7b · SITE 1 — `EnterpriseModuleScreen` delete/archive/hold — **CLOSED**
+
+**Date:** 2026-08-31 · **Base HEAD:** `43ba6c7` · Scope: this site only.
+
+## ROOT CAUSE — three defects, and only the first was filed
+
+The register named `EnterpriseModuleScreen:599`, the `.catch(() => undefined)` on
+`ipc.holds.resolve`. Tracing the path found that catch was **not even the dominant failure**.
+
+**1 · The hold outcome was discarded, and the likeliest failure never reached the catch.**
+`hold:resolve` answers `HoldRecord | null` (`responses.ts:1540`) and returns **null** for an
+unknown, already-resolved or out-of-scope hold — `holdStore.ts:67-70`, pinned as *intended*
+behaviour by `decisionsIpc.test.ts:171-174` (*"an unknown id is null, not a throw"*). The call site
+awaited it and discarded the value, so for the most likely case the `.catch` never ran and the
+renderer could not tell "hold closed" from "hold still open". Worse, because the handler **resolves**,
+`secureBridge` records the audit row as `ok: true` — *a refusal audited as a success.*
+
+**2 · The archive result was discarded too — a false claim in governance evidence.**
+`enterprise:module.setStatus` refuses by RESOLVING `{ok:false}` (`moduleRegistry.ts:603`,
+reachable for a concurrently-deleted or out-of-scope record). The result was never read, so a
+**refused** archive still closed the hold with the note *"Archived instead of deleting; every link
+keeps resolving."* That is a false statement written into a durable governance record.
+
+**3 · A refused delete was mistaken for a deletion.** `requestDelete` handled `!ok` **with** an
+assessment, then fell through to `onChanged()` for every other case — so `{ok:false}` without an
+assessment closed the modal as though the record had been deleted.
+
+## THE EXACT WRITE PATH
+
+```
+row click -> setDetail(r)            EnterpriseModuleScreen.tsx:269
+  -> <RecordDetail>                  :329   (mounted only while `detail !== null`)
+    Delete            -> requestDelete(false) -> ipc.enterpriseModules.remove
+                         -> IpcChannel.EnterpriseModuleDelete 'enterprise:module.delete'
+                         -> moduleRegistry.ts:609  (requireAuth, audit, in-handler ctx.authorize -> THROWS)
+    Archive instead   -> takeAlternative()      -> ipc.enterpriseModules.setStatus
+                         -> IpcChannel.EnterpriseModuleSetStatus 'enterprise:module.setStatus'
+                         -> moduleRegistry.ts:563  (refuses by RESOLVING {ok:false})
+                       then                      -> ipc.holds.resolve
+                         -> IpcChannel.HoldResolve 'hold:resolve'
+                         -> decisions/index.ts:83 (static 'governance:manage'; REJECTS on denial,
+                                                   RESOLVES null on unknown/already-resolved)
+```
+
+**Why a message alone would not have worked.** `onChanged` is
+`() => { setDetail(null); void refresh(); }` (`:337-340`) and `RecordDetail` is mounted behind
+`{detail && …}` (`:328`). Under React 18.3.1 automatic batching the unmount and the message land in
+the **same render pass**, so the message renders **zero frames** — green at the state layer, invisible
+to the user. The fix therefore does not call `onChanged()` on a failure, mirroring
+`ModuleForm.submit` (`:377-393`), which already returns early and keeps its modal open. Where the
+archive succeeded and only the hold failed, `onRefresh()` refreshes the list **without** unmounting.
+
+**A role note, measured rather than assumed:** the seeded **Manager** role holds `crm:manage` but not
+`governance:manage` (`enterprise/org/seed.ts:105-130`), so a Manager can archive and cannot resolve
+the hold. The original comment's fallback — *"the Holds screen can still resolve it by hand"* — is
+**false for exactly that user**, since `HoldsView` hits the same gate. The new message says closing
+the hold needs governance permission rather than sending them on an errand that will also fail.
+
+**What did NOT change:** a hold that cannot be closed still never fails the archive that already
+happened. That half of the original reasoning was correct and is preserved.
+
+## FILES CHANGED
+
+```
+MOD  src/renderer/src/enterprise/modules/EnterpriseModuleScreen.tsx
+NEW  ui-tests/silentWriteD7bEnterpriseModule.test.tsx      8 pins
+```
+
+`describeMutationFailure` reads the boundary's own `errors` map (`_` is the documented record-level
+key) — **no English prose is parsed**, so it cannot drift into the regex classification D-6 exists to
+prevent. Rejections are rendered verbatim. A dedicated `actionError` state was added rather than
+reusing `actionMsg`, which `runAction` clears on every custom action.
+
+## TESTS AND CHECKS
+
+| Check | Result |
+|---|---|
+| New D-7b pins | **8/8** (first run) |
+| Full UI suite | **381 passed / 64 files** (from 373/63 — delta exactly the new file) |
+| Full main suite | **9579 passed / 7 skipped — unchanged** |
+| `tsc` node / web | **exit 0 / exit 0** |
+| `eslint src ui-tests` | 1 error, **pre-existing**, frozen `cst/sendTransition.negative.test.ts:16` |
+| `electron-vite build` | **exit 0**, 2.87s |
+
+**Negative controls — all four fired; file restored byte-identically (sha256):**
+
+| Control | Mutation | Result |
+|---|---|---|
+| NC-D7b-A | discard the hold outcome again | **3 fail** |
+| NC-D7b-B | stop checking the archive result | **1 fail** |
+| NC-D7b-C | let a refused delete fall through | **1 fail** |
+| NC-D7b-D | call `onChanged()` on the hold-failure path | **3 fail** |
+
+**NC-D7b-D is the one that matters most:** it reproduces the unmount empirically. With `onChanged()`
+restored on that path the message is destroyed in the same render pass — so the claim that a
+state-only fix would have been invisible is **measured, not argued**.
+
+**Success controls** assert the hold and delete channels were actually reached (`resolveCalls === 1`,
+`deleteCalls === 1`). The D-7 work was bitten by a route bound to a non-existent constant that made a
+refusal test pass on an UNROUTED throw; here the friendly method is `remove` while the constant is
+`EnterpriseModuleDelete`, so the same trap was live and the controls exclude it.
+
+## REMAINING D-7b SITES — still OPEN
+
+| Site | Write |
+|---|---|
+| `state/ConnectionProvider.tsx:117 / :120 / :129` | `resumeSync` / `pauseSync` / `syncNow` — the "Sync paused" toast sits inside `.then`, so a failure yields neither toast nor error |
+| `enterprise/EnterpriseView.tsx:135 / :142` | `personalization.favorite` / `saveView` |
+| `business/BusinessFamilySection.tsx:162` | `personalization.favorite` |
+| `views/WelcomeView.tsx` (nested) | the pilot step's inner `completeStep(...).catch(() => undefined)` |
+
+**A finding recorded, not fixed** (outside this site's scope): because `hold:resolve` refuses by
+resolving, `secureBridge` audits a refused hold-close as `ok: true`. The renderer now reports it, but
+the **audit record still says success** — an evidence-layer defect needing its own gate.
