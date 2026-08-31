@@ -15,6 +15,7 @@ import {
   purchaseRequestFromRecord,
 } from '@neuropause/shared';
 import type { EnterpriseModuleActionContext } from '../../framework';
+import { childCorrelationMeta, rootMetaIfUnset } from '../../framework';
 
 export const CREATE_PO_ACTION = 'createPurchaseOrder';
 export const RECEIVE_GOODS_ACTION = 'receiveGoods';
@@ -55,6 +56,8 @@ export async function convertRequestToPurchaseOrder(
   const order = ordersModule.store.create({
     title: deriveRecordTitle(ordersModule.descriptor, validation.values),
     fields: validation.values,
+    // Transaction-graph spine: the PO is caused by the purchase request.
+    metadata: childCorrelationMeta(request, PURCHASE_REQUESTS_MODULE_ID),
     actor: ctx.actor(),
     now: ctx.now(),
   });
@@ -62,6 +65,8 @@ export async function convertRequestToPurchaseOrder(
 
   const updated = requestsModule.store.update(request.id, {
     fields: { convertedOrder: order.id, status: 'ordered' },
+    // Root the transaction at the request when it is a genuine origin.
+    metadata: rootMetaIfUnset(request, PURCHASE_REQUESTS_MODULE_ID),
     actor: ctx.actor(),
     now: ctx.now(),
   });
@@ -106,6 +111,9 @@ export async function convertPurchaseOrderToReceipt(
   const receipt = receiptsModule.store.create({
     title: deriveRecordTitle(receiptsModule.descriptor, validation.values),
     fields: validation.values,
+    // Transaction-graph spine: the goods receipt is caused by the purchase order,
+    // inheriting the request→PO chain.
+    metadata: childCorrelationMeta(order, PURCHASE_ORDERS_MODULE_ID),
     actor: ctx.actor(),
     now: ctx.now(),
   });
@@ -113,6 +121,8 @@ export async function convertPurchaseOrderToReceipt(
 
   const updated = ordersModule.store.update(order.id, {
     fields: { convertedReceipt: receipt.id, status: 'received' },
+    // Root at the PO when it was created directly (no request).
+    metadata: rootMetaIfUnset(order, PURCHASE_ORDERS_MODULE_ID),
     actor: ctx.actor(),
     now: ctx.now(),
   });

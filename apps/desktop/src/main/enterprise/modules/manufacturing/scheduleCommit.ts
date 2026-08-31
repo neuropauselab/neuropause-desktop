@@ -24,6 +24,7 @@ import {
   validateEnterpriseRecordInput,
 } from '@neuropause/shared';
 import type { EnterpriseModuleActionContext } from '../../framework';
+import { childCorrelationMeta, rootMetaIfUnset } from '../../framework';
 
 export const COMMIT_SCHEDULE_ACTION = 'commitSchedule';
 
@@ -82,6 +83,9 @@ export async function commitScheduleForOrder(
     const rec = scheduleModule.store.create({
       title: deriveRecordTitle(scheduleModule.descriptor, validation.values),
       fields: validation.values,
+      // Transaction-graph spine: every schedule is caused by the production order
+      // (fan-out — each child shares the order's correlationId).
+      metadata: childCorrelationMeta(orderRecord, PRODUCTION_ORDERS_MODULE_ID),
       actor: ctx.actor(),
       now: ctx.now(),
     });
@@ -91,6 +95,8 @@ export async function commitScheduleForOrder(
 
   const updated = ordersModule.store.update(orderRecord.id, {
     fields: { scheduleCommitted: createdIds.join(',') },
+    // Root the transaction at the production order when it is a genuine origin.
+    metadata: rootMetaIfUnset(orderRecord, PRODUCTION_ORDERS_MODULE_ID),
     actor: ctx.actor(),
     now: ctx.now(),
   });
