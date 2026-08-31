@@ -183,6 +183,14 @@ if (typeof HTMLElement !== 'undefined' && !HTMLElement.prototype.scrollIntoView)
   HTMLElement.prototype.scrollIntoView = () => undefined;
 }
 
+// jsdom has no Element.scrollTo either; AppShell restores scroll position with it
+// (scroll memory, AppShell.tsx). Without this stub a full-App mount throws an async
+// `scroller.scrollTo is not a function` from the restore timer. Same jsdom-gap class
+// as scrollIntoView above.
+if (typeof Element !== 'undefined' && !Element.prototype.scrollTo) {
+  Element.prototype.scrollTo = () => undefined;
+}
+
 // jsdom has no IntersectionObserver; store rails use it for lazy media.
 // A visible-immediately stub keeps those components mountable (round 36).
 class ImmediateIntersectionObserver {

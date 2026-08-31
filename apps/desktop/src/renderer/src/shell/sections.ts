@@ -163,7 +163,7 @@ export const SECTIONS: SectionDef[] = [
   { id: 'decision-center', label: 'Decision Center', icon: 'sparkles', phase: 21, placement: 'primary', group: 'today', hidden: true },
   { id: 'home', label: 'Home', icon: 'home', phase: 2, placement: 'primary', group: 'today', hidden: true },
   { id: 'organization', label: 'Organization', icon: 'user', phase: 10, placement: 'primary', group: 'business', description: 'Manage your organization — members, workspaces, and roles.' },
-  { id: 'enterprise', label: 'Enterprise', icon: 'grid', phase: 7, placement: 'primary', group: 'business', preview: true, description: 'The executive command center — decisions, org, operations, and governed AI.' },
+  { id: 'enterprise', label: 'Enterprise', icon: 'grid', phase: 7, placement: 'primary', group: 'business', preview: true, tier: 'advanced', description: 'The executive command center — decisions, org, operations, and governed AI.' },
   // Business Workspace (EBS v1.0): a family-grouped presentation over the existing enterprise modules.
   { id: 'business', label: 'Business', icon: 'layers', phase: 7, placement: 'primary', group: 'business', description: 'Your business modules — finance, sales, CRM, HR, projects, and more.' },
   // Enterprise Administration v1.0 — a reuse-only admin control center over existing services.
@@ -197,7 +197,7 @@ export const SECTIONS: SectionDef[] = [
   { id: 'federation', label: 'Federation', icon: 'layers', phase: 9, placement: 'primary', group: 'platform', preview: true, tier: 'advanced', description: 'Cross-organization federation — trust, sharing, and exchange.' },
   { id: 'federation-center', label: 'Federation Center', icon: 'globe', phase: 10, placement: 'primary', group: 'platform', hidden: true },
   { id: 'store', label: 'AI Store', icon: 'store', phase: 3, placement: 'primary', group: 'workspace', description: 'Discover, install, and launch AI apps.' },
-  { id: 'marketplace', label: 'Enterprise Marketplace', icon: 'store', phase: 9, placement: 'primary', group: 'workspace', preview: true, description: 'Signed, governed packages — workers, connectors, templates, and packs.' },
+  { id: 'marketplace', label: 'Enterprise Marketplace', icon: 'store', phase: 9, placement: 'primary', group: 'workspace', preview: true, tier: 'advanced', description: 'Signed, governed packages — workers, connectors, templates, and packs.' },
   { id: 'workspace', label: 'Workspace', icon: 'workspace', phase: 2, placement: 'primary', group: 'workspace' },
   { id: 'operations', label: 'Runtime', icon: 'cpu', phase: 3, placement: 'primary', group: 'platform', description: 'Installed apps, plugins, runtime sessions, downloads, updates, and permissions.', tier: 'advanced' },
   { id: 'workforce', label: 'AI Workforce', icon: 'cpu', phase: 6, placement: 'primary', group: 'ai', description: 'Run and supervise AI workers — approvals, automations, and the executive assistant.' },

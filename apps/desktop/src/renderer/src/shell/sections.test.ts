@@ -255,14 +255,21 @@ describe('Phase 2 IA — progressive disclosure tiers', () => {
       'industry-center', 'strategy-center', 'twin-center', 'knowledge-center', 'orchestration-center',
       'network-center', 'auto-ops-center', 'commercial-center', 'ecosystem', 'federation', 'developer',
       'extensibility', 'product-ops', 'cloud', 'infrastructure', 'operations', 'sandbox', 'workforce-center',
+      // GATE 12 (round 57 decision): the two preview surfaces that used to sit in
+      // the primary nav are demoted here for consistency with every other preview.
+      'enterprise', 'marketplace',
     ]) {
       expect(byId(id)?.tier, `section "${id}" should be advanced`).toBe('advanced');
     }
   });
 
   it('never collapses a daily / core surface behind Advanced', () => {
+    // GATE 12 (round 57 decision): `enterprise` moved OUT of this core list — it
+    // is a preview surface and is now demoted to Advanced with the other preview
+    // sections (see the "preview-tier placement" block below). `business`,
+    // `organization` etc. remain the production business surfaces in the default nav.
     for (const id of [
-      'mission-control', 'intent-home', 'search', 'assistant', 'hub', 'enterprise', 'business',
+      'mission-control', 'intent-home', 'search', 'assistant', 'hub', 'business',
       'organization', 'knowledge', 'memory', 'store', 'connectors', 'workforce', 'opscenter',
       'notifications', 'settings',
     ]) {
@@ -321,5 +328,43 @@ describe('Phase 6 — Data Command Center', () => {
   it('does not collide with the AI Memory or Connectors surfaces', () => {
     expect(dataCenter?.label).not.toBe(SECTIONS.find((s) => s.id === 'memory')?.label);
     expect(dataCenter?.label).not.toBe(SECTIONS.find((s) => s.id === 'connectors')?.label);
+  });
+});
+
+// GATE 12 (round 57) — preview-tier nav placement, DECIDED.
+//
+// The matrix left this open: `enterprise` and `marketplace` were the only two
+// `preview: true` sections still in the PRIMARY sidebar, while every other
+// preview surface was already behind the Advanced disclosure. The decision
+// (demote both to Advanced) makes the rule uniform: preview features are opt-in
+// under Advanced, so the default sidebar shows production-ready surfaces to an
+// enterprise buyer — while the visible "Preview" badge, the command palette and
+// universal search keep every preview surface honest and reachable. The lone
+// intentional exception is `intent-home`, the preview Today landing.
+describe('Gate 12 — preview-tier nav placement (decided: demote to Advanced)', () => {
+  const byId = (id: string): (typeof SECTIONS)[number] | undefined => SECTIONS.find((s) => s.id === id);
+
+  it('every preview section is behind Advanced — the ONLY exception is the intent-home landing', () => {
+    const previewInPrimaryNav = SECTIONS.filter(
+      (s) => s.preview && s.tier !== 'advanced' && !s.hidden,
+    ).map((s) => s.id);
+    expect(previewInPrimaryNav).toEqual(['intent-home']);
+  });
+
+  it('enterprise and marketplace are specifically demoted to Advanced (the decision)', () => {
+    expect(byId('enterprise')?.tier).toBe('advanced');
+    expect(byId('marketplace')?.tier).toBe('advanced');
+  });
+
+  it('demotion is placement only — both stay preview-badged, visible (reachable), and functional', () => {
+    for (const id of ['enterprise', 'marketplace']) {
+      expect(byId(id)?.preview, `${id} keeps its Preview badge`).toBe(true);
+      expect(byId(id)?.hidden, `${id} is not hidden — palette + search still reach it`).toBeFalsy();
+    }
+  });
+
+  it('CONTROL: a production business surface (business) stays in the default nav, never demoted', () => {
+    expect(byId('business')?.preview).toBeUndefined();
+    expect(byId('business')?.tier === 'advanced').toBe(false);
   });
 });
