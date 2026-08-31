@@ -561,5 +561,77 @@ Verified through the REAL `ToastProvider` + REAL `BusinessFamilySection` rendere
 
 | Site | Write |
 |---|---|
-| `views/WelcomeView.tsx` (nested) | the pilot step's inner `completeStep(...).catch(() => undefined)` |
+| ~~`views/WelcomeView.tsx` (nested)~~ | **CLOSED 2026-08-31** — D-7b Site 5, see the section below |
+| `enterprise/PersonalizationPanel.tsx:58` | `personalization.favorite` (Remove) — silent via unhandled rejection in its `run` helper |
+
+
+---
+
+# D-7b · SITE 5 — `WelcomeView` nested pilot `completeStep` — **CLOSED**
+
+**Date:** 2026-08-31 · **Base HEAD:** `07024b3` · Scope: `views/WelcomeView.tsx` only (the pilot toggle's nested write). Sites 1–4 untouched.
+
+## ROOT CAUSE
+
+The "Join pilot" button (`WelcomeView.tsx` ~300-321) runs two writes in sequence:
+
+```
+ipc.pilot.setEnabled(next)                       // PRIMARY — turn pilot mode on/off
+  .then((p) => {
+    setPilot(p);                                  // badge → "On", button → "Leave pilot"
+    if (next) {
+      ipc.onboarding.completeStep('pilot')        // SECONDARY — mark the checklist step done
+        .then(setStatus)
+        .catch(() => undefined);                  // <-- Site 5: swallowed
+    }
+  })
+  .catch((err) => { log.warn(...); setActionError('Pilot mode could not be changed. It is unchanged.'); });
+```
+
+The nested `completeStep('pilot')` is **fire-and-forget** inside the `setEnabled` success handler. Its `.catch(() => undefined)` swallowed every rejection — so when pilot mode was successfully enabled (`setPilot(p)` ran, the badge flipped to "On") but marking the `'pilot'` checklist step failed, the user saw **nothing** and the step silently stayed incomplete on disk, reappearing unchecked on the next load. `completeStep` REJECTS on failure (persist I/O, timeout, store read); it never resolves a failure shape, so a `.catch` is the complete surface. `OnboardingCompleteStep` is a **public, unaudited, install-scoped** channel (`runtimeAuthz.ts` public allowlist; no `permission`/`requireAuth`/`audit`; the service writes one per-install file with no actor/tenant/org) — so surfacing its error changes no auth/tenancy/consent/audit/fail-closed boundary.
+
+## THE FIX
+
+The nested `.catch` now surfaces the failure through the screen's **existing** `actionError` `role="alert"` slot (`WelcomeView.tsx:124-130`) — the same channel `complete()` and `restartTour()` already use — with a **truthful** message: *"Pilot mode is on, but the setup step could not be marked done. Please try again."* This is the load-bearing constraint: the message must NOT reuse the outer catch's "Pilot mode could not be changed" (the toggle **did** succeed — `setEnabled` resolved and `setPilot(p)` ran). A `log.warn` is added beside it (the D-7 "set beside the log" pattern). `setPilot(p)` and `.then(setStatus)` are preserved exactly, so success behavior is unchanged; and `setActionError(null)` is added at the top of the toggle's onClick so a stale error can't linger beside a fresh "On" badge — consistency with `complete`/`restartTour`, which already clear at the top.
+
+## RECORDED, NOT FIXED (out of this site's scope)
+
+- The mount reads `onboarding.status()` / `pilot.status()` are load-on-mount (the status read already has its own `statusError` + retry).
+- The feedback **export** (`:221`) and **submit** (`:267`) paths are a separate, lower-severity concern (feedback, not the onboarding checklist) and leave **no persisted inconsistency** — left for their own work item, not this site.
+- The `enterprise/PersonalizationPanel.tsx:58` sibling (Remove-favorite) remains open.
+
+## FILES CHANGED
+
+```
+MOD  src/renderer/src/views/WelcomeView.tsx            pilot toggle: nested completeStep swallow → actionError (truthful msg + log); clear actionError at top; setPilot/.then(setStatus) unchanged
+NEW  ui-tests/silentWriteD7bWelcomePilot.test.tsx      2 pins (failure announced + truthful; success preserved)
+```
+
+Renderer-only; no main-process file touched.
+
+## TESTS AND CHECKS
+
+| Check | Result |
+|---|---|
+| New D-7b Site 5 pins | **2/2** (failure announced + success preserved) |
+| Full UI suite | **399 passed / 68 files** (from 397/67 — delta exactly the new file) |
+| Full main suite | **9579 passed / 7 skipped — unchanged** (renderer-only change) |
+| `tsc` node / web | **exit 0 / exit 0** |
+| `eslint` on changed files | **clean** |
+| `electron-vite build` | **exit 0** |
+
+**Negative control — fired; file restored byte-identically (sha256 `329e8b29…`):**
+
+| Control | Mutation | Result |
+|---|---|---|
+| NC | the nested `catch` restored to `() => undefined` (swallow again) | **1 fail** (the "announced" failure test; the success test still passes, as it must) |
+
+## USER-VISIBLE BEHAVIOUR (rendered, not state-level)
+
+Verified through the REAL `WelcomeView` rendered in jsdom with routed IPC (the repo's established rendered-UX harness; a real Electron run is not possible in the Linux CI sandbox). After clicking "Join pilot" with the toggle succeeding but the step-mark failing: the badge/button reflect "On"/"Leave pilot" (the toggle really happened) AND a persistent, screen-reader-announced banner (`role="alert"`) says the setup step could not be marked done — never claiming the toggle failed. On full success the step is marked done and no banner appears.
+
+## REMAINING D-7b SITES — still OPEN
+
+| Site | Write |
+|---|---|
 | `enterprise/PersonalizationPanel.tsx:58` | `personalization.favorite` (Remove) — silent via unhandled rejection in its `run` helper |

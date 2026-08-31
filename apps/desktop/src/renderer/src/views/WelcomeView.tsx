@@ -299,16 +299,27 @@ export function WelcomeView() {
             disabled={!pilot}
             onClick={() => {
               if (!pilot) return;
+              setActionError(null); // clear any stale action error before this write (matches complete/restartTour)
               const next = !pilot.enabled;
               ipc.pilot
                 .setEnabled(next)
                 .then((p) => {
                   setPilot(p);
                   if (next) {
+                    // D-7b Site 5 — the toggle already SUCCEEDED here (setEnabled resolved,
+                    // setPilot ran, the badge shows "On"); only the secondary "mark the
+                    // pilot step done" write can still fail. The old `.catch(() => undefined)`
+                    // swallowed it, so the checklist step silently stayed incomplete and
+                    // reappeared unchecked on reload. Surface it through the same
+                    // `actionError` role="alert" slot the other writes use — with a message
+                    // that does NOT claim the toggle failed (it did not).
                     ipc.onboarding
                       .completeStep('pilot')
                       .then(setStatus)
-                      .catch(() => undefined);
+                      .catch((err) => {
+                        log.warn('Could not mark the pilot step done', err);
+                        setActionError('Pilot mode is on, but the setup step could not be marked done. Please try again.');
+                      });
                   }
                 })
                 .catch((err) => {
