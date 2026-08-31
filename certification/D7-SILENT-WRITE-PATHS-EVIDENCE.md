@@ -418,6 +418,77 @@ still shows "Sync paused" (`role="status"`, polite) exactly as before.
 
 | Site | Write |
 |---|---|
-| `enterprise/EnterpriseView.tsx:135 / :142` | `personalization.favorite` / `saveView` |
+| ~~`enterprise/EnterpriseView.tsx:135 / :142`~~ | **CLOSED 2026-08-31** — D-7b Site 3, see the section below |
 | `business/BusinessFamilySection.tsx:162` | `personalization.favorite` |
 | `views/WelcomeView.tsx` (nested) | the pilot step's inner `completeStep(...).catch(() => undefined)` |
+| `enterprise/PersonalizationPanel.tsx:58` | `personalization.favorite` (Remove) — newly found; fails silently via unhandled rejection in its `run` helper, a different mechanism |
+
+
+---
+
+# D-7b · SITE 3 — `EnterpriseView` favorite / save-view — **CLOSED**
+
+**Date:** 2026-08-31 · **Base HEAD:** `a0e1fae` · Scope: `enterprise/EnterpriseView.tsx` only. Sites 1 and 2 untouched.
+
+## ROOT CAUSE
+
+The Enterprise header carries two user-initiated writes (`EnterpriseView.tsx`):
+
+```
+toggleFavoriteCurrent :134  ipc.enterprise.personalization.favorite({...}).then(setPersonalization).catch(() => undefined)   ← star button :193
+saveCurrentView       :140  ipc.enterprise.personalization.saveView({...}).then(setPersonalization).catch(() => undefined)   ← pin button :202
+```
+
+Both channels are `dashboard:read` + `requireAuth` (`enterprise/authzGate.ts:453/456`, stamped requireAuth at `:524-526`), enforced at the secure-bridge boundary (`secureBridge.ts:144-168`), which **throws** on a not-signed-in / non-member / RBAC-denied / untrusted-sender request → the `invoke` promise rejects. The pure shared mutators never throw and never return a failure shape, so **every renderer-visible failure of these two writes is a rejection** — and `.catch(() => undefined)` swallowed all of them. A denied user clicked the star / pin and got no state change and no message: indistinguishable from a dead control.
+
+## THE FIX
+
+Each `.catch` now calls a shared `reportPersonalizationFailure(title, dedupeKey, err)` that raises an `error` toast — rendered `role="alert"` / `aria-live="assertive"` and persistent (`ToastProvider.tsx:154-155`) — carrying the boundary message **verbatim** (the D-6 `invoke` wrapper already restored the clean text; `EnterpriseUnavailable` in the same file renders `message` the same way). Per-action dedupe keys (`enterprise-favorite` / `enterprise-saveview`) so the two failures coexist rather than overwrite. The success arm `.then(setPersonalization)` — which fills the star (`isFavorite`) and refreshes saved views — is unchanged; the toast is purely additive on the failure arm, so it can never fire on a success and there is no optimistic state to roll back.
+
+A toast was chosen over an inline banner because the writes fire from a compact icon-button header with no natural inline slot; the screen's only inline error channel (`EnterpriseUnavailable`) means "the surface failed to LOAD" and renders only in `error && !ready`, so reusing it for a write failure while the surface is loaded would render nowhere — the "fake fix" the D-7 Welcome case documents. This matches the D-7b Site 2 (`ConnectionProvider`) precedent for header/menu writes.
+
+## RECORDED, NOT FIXED (out of this site's scope)
+
+- **`recent` visit tracking** (`EnterpriseView.tsx:104/:123`) is a SECONDARY effect of a navigation that has already succeeded (`setTab`), so it stays deliberately silent — the same disposition the D-7 evidence gave the WelcomeView nested pilot write.
+- **`personalization.get`** (`:86`) is a background READ on mount, not a user write.
+- **Disk-persist failure is swallowed MAIN-side.** `personalizationStore.apply` returns the updated in-memory state and fires persistence fire-and-forget; `persist()` catches its own error with `log.error('Personalization persist failed')` (`personalizationStore.ts:108-109`) and never rejects. So a disk-write failure cannot reach the renderer — a main-side concern, out of scope for a renderer-only fix.
+- **Newly-found sibling: `enterprise/PersonalizationPanel.tsx:58`** (the Remove-favorite button) also fails silently, but by a DIFFERENT mechanism — an unhandled rejection through its `run` helper, not `.catch(() => undefined)` — and in a different file. Recorded for its own site; not touched here.
+
+## FILES CHANGED
+
+```
+MOD  src/renderer/src/enterprise/EnterpriseView.tsx        favorite/saveView: swallow → announced error toast (verbatim, per-action dedupe); success arm unchanged
+NEW  ui-tests/silentWriteD7bEnterpriseView.test.tsx        5 pins
+```
+
+Renderer-only; no main-process file touched.
+
+## TESTS AND CHECKS
+
+| Check | Result |
+|---|---|
+| New D-7b Site 3 pins | **5/5** |
+| Full UI suite | **394 passed / 66 files** (from 389/65 — delta exactly the new file) |
+| Full main suite | **9579 passed / 7 skipped — unchanged** (renderer-only change) |
+| `tsc` node / web | **exit 0 / exit 0** |
+| `eslint` on changed files | **clean** |
+| `electron-vite build` | **exit 0** |
+
+**Negative controls — both fired; file restored byte-identically (sha256 `8107cb45…`):**
+
+| Control | Mutation | Result |
+|---|---|---|
+| NC-1 | `reportPersonalizationFailure` neutered to swallow again | **4 fail** (both failure-announce tests + bare-string + coexist) |
+| NC-2 | both actions collapsed to one shared dedupe key | **1 fail** (the favorite+saveView coexist test) |
+
+## USER-VISIBLE BEHAVIOUR (rendered, not state-level)
+
+Verified through the REAL `ToastProvider` + REAL `EnterpriseRoot` rendered in jsdom (providers mocked into an error state so the body is the light `EnterpriseUnavailable` while the header buttons render; the repo's established rendered-UX harness — a real Electron run is not possible in the Linux CI sandbox). A refused favorite or save-view now shows a persistent, screen-reader-announced error banner (`role="alert"`, `aria-live="assertive"`) carrying the boundary's own message; a successful favorite still fills the star (button relabels "Add to favorites" → "Remove from favorites") with no error.
+
+## REMAINING D-7b SITES — still OPEN
+
+| Site | Write |
+|---|---|
+| `business/BusinessFamilySection.tsx:162` | `personalization.favorite` |
+| `views/WelcomeView.tsx` (nested) | the pilot step's inner `completeStep(...).catch(() => undefined)` |
+| `enterprise/PersonalizationPanel.tsx:58` | `personalization.favorite` (Remove) — silent via unhandled rejection in its `run` helper |

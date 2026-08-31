@@ -3,6 +3,7 @@ import { cn } from '@renderer/lib/cn';
 import { Icon, type IconName } from '@renderer/components/ui/Icon';
 import { ipc } from '@renderer/lib/ipc';
 import { useShell } from '@renderer/state/ShellProvider';
+import { useToast } from '@renderer/state/ToastProvider';
 import { emptyPersonalizationState, isFavorite, type PersonalizationState } from '@neuropause/shared';
 import { EnterpriseProvider, useEnterprise } from './EnterpriseProvider';
 import { PersonalizationPanel } from './PersonalizationPanel';
@@ -68,6 +69,7 @@ export function EnterpriseRoot({
 function EnterpriseInner({ initialTab }: { initialTab: EnterpriseTab }): JSX.Element {
   const { ready, error, denied, refreshAll, jobs } = useEnterprise();
   const { enterpriseTab, clearEnterpriseTab } = useShell();
+  const toast = useToast();
   const [tab, setTab] = useState<EnterpriseTab>(initialTab);
   const [searchQuery, setSearchQuery] = useState('');
   const [navVersion, setNavVersion] = useState(0);
@@ -131,18 +133,43 @@ function EnterpriseInner({ initialTab }: { initialTab: EnterpriseTab }): JSX.Ele
 
   const canPersonalize = tab !== 'personalize';
   const currentFavorited = isFavorite(personalization, `tab:${tab}`);
+
+  /**
+   * D-7b Site 3 — a refused favorite / save-view must SPEAK.
+   *
+   * `personalization.favorite` / `saveView` are `dashboard:read` + requireAuth,
+   * so a not-signed-in, non-member, or under-permissioned actor is REJECTED at
+   * the secure-bridge boundary; the old `.catch(() => undefined)` swallowed it,
+   * so the star / pin click did nothing and said nothing. The success arm
+   * (`setPersonalization`, which flips the star and refreshes saved views) is
+   * left exactly as it was — the toast is purely additive on the failure arm, so
+   * it can never fire on a success and there is no optimistic state to roll back.
+   * The boundary message is rendered VERBATIM (the D-6 `invoke` wrapper already
+   * restored the clean text; `EnterpriseUnavailable` renders `message` the same
+   * way), and each action carries its own dedupe key so the two failures never
+   * overwrite one another. NOTE: the `recent` visit-tracking writes above are a
+   * SECONDARY effect of a navigation that has already succeeded (`setTab`), so
+   * they stay deliberately silent, per the D-7 precedent.
+   */
+  const reportPersonalizationFailure = (title: string, dedupeKey: string, err: unknown): void => {
+    toast.error(title, {
+      message: err instanceof Error && err.message ? err.message : 'The request failed.',
+      dedupeKey,
+    });
+  };
   const toggleFavoriteCurrent = (): void => {
+    const removing = currentFavorited;
     ipc.enterprise.personalization
       .favorite({ id: `tab:${tab}`, kind: 'surface', label: TAB_LABEL[tab] ?? tab, tab, query: tab === 'search' ? searchQuery : undefined })
       .then(setPersonalization)
-      .catch(() => undefined);
+      .catch((err) => reportPersonalizationFailure(removing ? 'Couldn’t remove favorite' : 'Couldn’t add favorite', 'enterprise-favorite', err));
   };
   const saveCurrentView = (): void => {
     const label = (TAB_LABEL[tab] ?? tab) + (tab === 'search' && searchQuery ? `: ${searchQuery}` : '');
     ipc.enterprise.personalization
       .saveView({ label, tab, query: tab === 'search' ? searchQuery : '', filters: '' })
       .then(setPersonalization)
-      .catch(() => undefined);
+      .catch((err) => reportPersonalizationFailure('Couldn’t save view', 'enterprise-saveview', err));
   };
 
   const pendingApprovals = jobs.reduce(
