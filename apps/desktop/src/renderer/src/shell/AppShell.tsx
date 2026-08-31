@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { Fragment, lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { Session } from '@neuropause/shared';
 import { useShell } from '@renderer/state/ShellProvider';
@@ -22,6 +22,7 @@ import { onExperienceProfileChanged } from '@renderer/firstRun/experienceProfile
 import type { ExperienceProfile } from '@neuropause/shared';
 import { SECTIONS, type SectionId } from './sections';
 import { useIsLocalMode } from './useIsLocalMode';
+import { useTenantSwitchEpoch } from './useTenantSwitchEpoch';
 import { CloudUnavailableLocal } from './CloudUnavailableLocal';
 import { PreviewBanner } from './PreviewBanner';
 import { TRANSITION, sectionVariants } from '@renderer/lib/motion';
@@ -322,6 +323,9 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
   // `pending`, the full-screen experience renders INSTEAD of the workspace and
   // the checklist wizard; a completed/skipped profile also feeds the
   // workspace-type nav filter. Null = not yet loaded (render nothing extra).
+  // GATE 26 (round 61): increments once per REAL org-workspace switch; keys the
+  // view host below so the mounted surface refetches under the new tenant.
+  const tenantEpoch = useTenantSwitchEpoch();
   const [experienceProfile, setExperienceProfile] = useState<ExperienceProfile | null>(null);
   // Re-read when the profile is reset from inside the app (Understand →
   // "Answer the setup questions"). Without this the shell keeps the profile it
@@ -599,7 +603,20 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
               )}
               <div className="min-h-0 flex-1">
                 <WorkspaceErrorBoundary name={activeSection}>
-                  <Suspense fallback={<ViewFallback />}>{renderView()}</Suspense>
+                  {/*
+                   * GATE 26 (round 61): the view is keyed on the tenant epoch so a
+                   * REAL org-workspace switch remounts it and it refetches under the
+                   * new tenant. Before this, a switch remounted nothing and mounted
+                   * surfaces kept rendering the PREVIOUS tenant's data until the user
+                   * navigated — a UI-truth violation, though never a tenancy breach
+                   * (the record store re-resolves scope per call and fails closed).
+                   * Keyed HERE rather than on ShellProvider so the sidebar, the active
+                   * section and shell state all survive the switch: the user stays
+                   * where they were and the numbers become true.
+                   */}
+                  <Suspense fallback={<ViewFallback />}>
+                    <Fragment key={`tenant-${tenantEpoch}`}>{renderView()}</Fragment>
+                  </Suspense>
                 </WorkspaceErrorBoundary>
               </div>
             </motion.div>
