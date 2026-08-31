@@ -26,6 +26,7 @@ import {
   productComputedStock,
   productFromRecord,
 } from '@neuropause/shared';
+import { postMovementToGl } from './inventoryGlBridge';
 import {
   EnterpriseRecordStore,
   defineEnterpriseModule,
@@ -166,6 +167,17 @@ export function createStockMovementModule(
           }
         } catch {
           // Advisory only — the movement and reconciliation above already stand.
+        }
+        // ERP seam #1: a valued movement posts its balanced entry into the GL
+        // (Dr/Cr from the movement's own qty × unit cost), idempotent per
+        // movement. ADVISORY like the reorder above — a GL failure (or the GL
+        // module simply not being wired) must never unwind the ledger write, so
+        // it is contained here rather than propagated.
+        try {
+          await postMovementToGl(movementFromRecord(event.record), event.record.id, event.record.status, ctx);
+        } catch {
+          // Advisory only — the physical movement + reconcile already stand; the
+          // GL entry is idempotent, so a later re-run can still post it.
         }
       },
       summarize: async (record): Promise<EnterpriseRecordSummary> => {
