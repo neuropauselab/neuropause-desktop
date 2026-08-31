@@ -13,6 +13,7 @@
  *   - Progress is a STAGE, never a fabricated percentage.
  */
 import { DP_MAX_CONTENT_BASE64 } from '@neuropause/shared';
+import { DENIAL_CODE, denialCodeOf } from '@renderer/lib/ipcError';
 import type {
   DataPlaneColumnMapping,
   DataPlaneOntologyEntity,
@@ -595,14 +596,22 @@ export function buildQualityIssues(history: readonly DataPlaneRunResult[]): Qual
 export function friendlyError(err: unknown): { title: string; detail: string; canRetry: boolean } {
   const raw = err instanceof Error ? err.message : String(err ?? 'Unknown error');
 
-  if (/sign in/i.test(raw)) {
+  // D-6: the CODE decides. The prose test survives only as a fallback for a
+  // rejection that carries no code (the REST gateway path, or a surface that
+  // rejects before the stamping bridge) — never consulted when a code exists.
+  const denial = denialCodeOf(err);
+  if (denial === DENIAL_CODE.NOT_AUTHENTICATED || (denial === null && /sign in/i.test(raw))) {
     return {
       title: 'You need to sign in',
       detail: 'Sign in to import enterprise data.',
       canRetry: false,
     };
   }
-  if (/permission|not permitted|data:approve|data:import/i.test(raw)) {
+  if (
+    denial === DENIAL_CODE.MISSING_PERMISSION ||
+    denial === DENIAL_CODE.NOT_A_MEMBER ||
+    (denial === null && /permission|not permitted|data:approve|data:import/i.test(raw))
+  ) {
     return {
       title: 'Permission required',
       detail: raw.includes('data:approve')

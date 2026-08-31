@@ -42,6 +42,7 @@ import type {
 } from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
 import { createLogger } from '@renderer/lib/logger';
+import { isDeniedError } from '@renderer/lib/ipcError';
 
 const log = createLogger('enterprise');
 
@@ -56,6 +57,13 @@ interface EnterpriseContextValue {
   ready: boolean;
   /** Set when the initial full load failed, so the view shows an honest unavailable state. */
   error: string | null;
+  /**
+   * D-6: whether `error` was a REFUSAL OF AUTHORITY, classified from the error
+   * object at the catch while its machine code was still readable. Consumers
+   * must branch on this rather than re-testing `error` prose downstream, where
+   * the code is gone.
+   */
+  denied: boolean;
   snapshot: ExecutiveSnapshot | null;
   org: OrgBundle;
   graph: OrgGraph | null;
@@ -97,6 +105,7 @@ const EMPTY_ORG: OrgBundle = { organization: null, units: [], roles: [], users: 
 export function EnterpriseProvider({ children }: { children: ReactNode }): JSX.Element {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [denied, setDenied] = useState(false);
   const [snapshot, setSnapshot] = useState<ExecutiveSnapshot | null>(null);
   const [org, setOrg] = useState<OrgBundle>(EMPTY_ORG);
   const [graph, setGraph] = useState<OrgGraph | null>(null);
@@ -145,6 +154,7 @@ export function EnterpriseProvider({ children }: { children: ReactNode }): JSX.E
       // Honest failure: surface it so the view stops showing "Connecting…" and
       // never renders confident all-clear zeros over data that failed to load.
       setError(err instanceof Error ? err.message : 'Failed to load enterprise data');
+      setDenied(isDeniedError(err));
     }
   }, []);
 
@@ -251,6 +261,7 @@ export function EnterpriseProvider({ children }: { children: ReactNode }): JSX.E
     () => ({
       ready,
       error,
+      denied,
       snapshot,
       org,
       graph,
@@ -281,7 +292,7 @@ export function EnterpriseProvider({ children }: { children: ReactNode }): JSX.E
       createWorkspace,
     }),
     [
-      ready, error, snapshot, org, graph, governance, compliance, audit, workspaces, activeWorkspace,
+      ready, error, denied, snapshot, org, graph, governance, compliance, audit, workspaces, activeWorkspace,
       workers, jobs, recommendations, connectorStats, refreshAll, approve, reject, delegate,
       runWorkflow, createUnit, updateUnit, deleteUnit, createUser, updateUser, deleteUser,
       createRole, setChain, setRule, switchWorkspace, createWorkspace,

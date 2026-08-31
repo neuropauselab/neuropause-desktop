@@ -8,7 +8,7 @@
 import { perfRecorder } from '@renderer/lib/perf/perfRecorder';
 import { createLogger } from '@renderer/lib/logger';
 // A7 — channel attribution for a rejected call. See `./ipcError.ts`.
-import { attributeIpcChannel, describeIpcFailure } from '@renderer/lib/ipcError';
+import { attributeDenialCode, attributeIpcChannel, describeIpcFailure } from '@renderer/lib/ipcError';
 import {
   IpcChannel,
   // A7 — the response half of the IPC contract. See `packages/shared/src/ipc/responses.ts`.
@@ -281,7 +281,11 @@ function invoke<C extends IpcResponseChannelName>(
         }
       }
     }
-    const attributed = attributeIpcChannel(err, String(channel));
+    // D-6: take the denial code off the wire and restore the clean message,
+    // BEFORE attribution and before anything is logged or displayed. The stamp
+    // is transport and must not survive past this frame.
+    const decoded = attributeDenialCode(err);
+    const attributed = attributeIpcChannel(decoded, String(channel));
     if (!loggedFailures.has(String(channel))) {
       loggedFailures.add(String(channel));
       log.warn(`IPC call failed — ${describeIpcFailure(attributed)}`);

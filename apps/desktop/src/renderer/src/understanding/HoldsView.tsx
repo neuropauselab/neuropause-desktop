@@ -44,6 +44,7 @@ import {
   type TimelineFact,
   type TimelineStep,
 } from './operatorConsole';
+import { isDeniedError } from '@renderer/lib/ipcError';
 
 const log = createLogger('holds');
 
@@ -78,7 +79,12 @@ export function HoldsView(): JSX.Element {
     // than rendering an empty list that reads as "nothing ever happened".
     if (holds.status === 'rejected') {
       log.warn('Holds unavailable', { message: String(holds.reason) });
-      setDenied(true);
+      // D-6: ANY rejection used to set `denied`, so a crash or a timeout told
+      // the user their role lacked access — a confident false claim about their
+      // account, and the worst version of the prose problem rather than a
+      // milder one. Now the machine code decides, with the same prose fallback
+      // every other surface uses when a rejection carries no code.
+      setDenied(isDeniedError(holds.reason));
     }
   }, []);
 

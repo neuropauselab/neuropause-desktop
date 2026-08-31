@@ -46,6 +46,7 @@ import { SkeletonCards, SkeletonRegion } from '@renderer/components/ui/Skeleton'
 import { TRANSITION, listItemVariants, staggerDelay } from '@renderer/lib/motion';
 import { useAnimatedCount } from '@renderer/lib/useAnimatedCount';
 import { OutcomeSection } from './OutcomeSection';
+import { isDeniedError } from '@renderer/lib/ipcError';
 
 const log = createLogger('opportunities');
 
@@ -106,9 +107,11 @@ export function OpportunitiesView(): JSX.Element {
       // false claim about their account.
       const message = String(err);
       log.warn('Opportunities unavailable', { message });
-      setDenied(/not authori|permission|procurement:read|Sign in/i.test(message));
+      // D-6: one classification, code-first, computed once.
+      const denied = isDeniedError(err);
+      setDenied(denied);
       setError(
-        /not authori|permission|procurement:read|Sign in/i.test(message)
+        denied
           ? null
           : 'Opportunities could not be loaded. This is a fault, not a permission problem — nothing about your records has changed.',
       );

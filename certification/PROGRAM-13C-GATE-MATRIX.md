@@ -22,7 +22,7 @@ Baseline commit `927b7bf` · certification changes in `round18.patch` ·
 | — | D-5 AI policy intersection | **PASS** | `vitest run src/main/tenancy/round17TenantAiPreference.test.ts src/main/ai/tenantAiPreferenceCompose.test.ts` | Linux container | 9/9 exhaustive intersection + 7 composition tests + `NC-D5-ELEVATE` negative control. |
 | — | F22 tenant-domain coverage | **PARTIAL** | `vitest run src/main/tenancy/f22ProductionCoverage.test.ts` | Linux container | Denominator 19 correct. Production registration **0/19 before this run, 6/19 after**; 13 uncovered and reported. |
 | — | Channel → store | **PARTIAL** | `vitest run src/main/tenancy/channelStoreCoverageGate.test.ts` | Linux container | **2/194 = 1.0%**; 192 undeclared. Ratchet gate added. |
-| — | D-6 authorization error contract | **NOT TESTED** | — | — | Not implemented. Denials cross IPC as English prose; 3 renderer sites classify by regex. |
+| — | D-6 authorization error contract | **PASS** (was NOT TESTED; 2026-08-31) | `vitest run src/main/ipc/denialCodeContract.test.ts` + `vitest run --config vitest.ui.config.ts ui-tests/denialContractD6.test.tsx` | Linux container / macOS | **CLOSED — see `D6-AUTHORIZATION-ERROR-CONTRACT-EVIDENCE.md`.** Root cause was not "unimplemented": main already threw TYPED denials (`AuthorizationError` carrying `permission`; `TenantContextError` carrying the 8-valued `TenantRefusalReason`), and `secureBridge.ts`'s catch flattened them to `new IpcError(err.message)` one frame before the boundary, after which Electron serializes only `message`. Measured blast radius was **8 renderer sites, not 3** — incl. `HoldsView.tsx:79-81`, which set `denied` on ANY rejection, so a crash told the user their role lacked access. A 432-file sweep for all 8 tenant reason codes and all 6 canonical denial sentences returned **zero** renderer hits: there was no discriminant at all. Fix: `classifyDenial` reads the TYPE (and reuses `TenantContextError.reason` rather than inventing a parallel vocabulary — mapping only the **five of eight** reasons that are genuinely authority answers; `not_loaded`/`no_workspace`/`workspace_orphaned` stay faults, because calling a cold start "you lack access" is a false claim); the code rides out as a stripped message prefix and is re-attached at the renderer's existing single `invoke` chokepoint. Prose matching survives as an explicit FALLBACK only where no code is present (the REST gateway calls `runSecureHandler` directly), so no denial banner regresses to blank. 25 pins (20 contract + 5 end-to-end through the REAL `BusinessView`); the central pair sends the SAME wording — matching none of the replaced regexes — stamped ⇒ denial state, unstamped ⇒ fault state. Negative controls both restored byte-identically. Full main 913/9542/7 (delta exactly +20), UI 59/359 (+5), tsc node+web clean, `electron-vite build` exit 0. `packages/shared/` (FROZEN) untouched. |
 | — | D-7 silent write paths | **PARTIAL** | `vitest run --config vitest.ui.config.ts` | Linux container | 4 of 10 closed (Round 17h) with negative controls NC-17h-A/B. Six remain. |
 | — | Backend scope | **NOT TESTED** | `vitest run --config vitest.integration.config.ts` | Linux container + Postgres 16 + Redis 7 | Confirmed IN SCOPE (`orgClient.ts:43`, `backendClient.ts:40`). 2 files / 17 tests pass; that is a smoke test, not a certification. 0 commits since 10 Aug. |
 | — | Fresh running-app red team | **NOT TESTED** | — | — | Requires the running application. |
@@ -43,7 +43,9 @@ Baseline commit `927b7bf` · certification changes in `round18.patch` ·
 ## Decision
 
 Required gates 1, 3, 4, 5, 6, 7, 10 are not all PASS. Channel→store is not
-complete. D-6 is not implemented. The red team was not run.
+complete. **D-6 was closed on 2026-08-31** (see the row above and
+`D6-AUTHORIZATION-ERROR-CONTRACT-EVIDENCE.md`); this paragraph is preserved as
+the state it described at the time. The red team was not run.
 
 ```
 PROGRAM 13C  =  NOT CERTIFIED

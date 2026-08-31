@@ -77,6 +77,139 @@ export function isIpcChannelError(err: unknown): err is IpcChannelError {
   return err instanceof Error && ipcChannelOf(err) !== null;
 }
 
+/* ------------------------------------------------------------------------- *
+ * D-6 — THE AUTHORIZATION ERROR CONTRACT (renderer side)
+ * ------------------------------------------------------------------------- *
+ *
+ * THE DEFECT, quoted from the certification: *"authorization outcomes are
+ * distinguishable only by matching English prose. Rewording a message silently
+ * changes renderer behaviour."* Seven renderer sites grew their own regex —
+ * `/not authorized|permission|forbidden|denied/i` and friends — over sentences
+ * the main process happened to write.
+ *
+ * The main process was never the problem: `enterprise/authz.ts` throws a typed
+ * `AuthorizationError` carrying the missing permission. `secureBridge.ts`
+ * flattened it to a message one frame before the boundary, and, as the header
+ * of this file already records, Electron serializes only `message`.
+ *
+ * So the code travels in the message and is taken off HERE, at the same single
+ * chokepoint that already attaches channel attribution — and the clean message
+ * is restored, so the ~80 sites rendering `err.message` see exactly the text
+ * they saw before. The stamp is transport; it must never reach a screen.
+ *
+ * WHY THIS VOCABULARY IS DUPLICATED IN MAIN (`main/ipc/denialCode.ts`) and must
+ * not be "fixed" by merging: renderer resolves `@renderer/*`, main resolves
+ * `@neuropause/shared`, and `packages/shared/` is a FROZEN surface — there is
+ * no non-frozen module both sides can import. `denialCodeContract.test.ts`
+ * reads both files and fails if they drift, so the duplicate is checked rather
+ * than merely hoped for.
+ */
+
+/** The closed set of authorization outcomes. Mirrors `main/ipc/denialCode.ts`. */
+export const DENIAL_CODE = {
+  NOT_AUTHENTICATED: 'not-authenticated',
+  MISSING_PERMISSION: 'missing-permission',
+  NOT_A_MEMBER: 'not-a-member',
+  AUTHZ_UNAVAILABLE: 'authz-unavailable',
+  UNTRUSTED_SENDER: 'untrusted-sender',
+} as const;
+
+export type DenialCode = (typeof DENIAL_CODE)[keyof typeof DENIAL_CODE];
+export const DENIAL_CODES: readonly DenialCode[] = Object.values(DENIAL_CODE);
+
+/** The wire prefix. Mirrors `main/ipc/denialCode.ts`. */
+export const DENIAL_STAMP_OPEN = 'NPDENY:';
+/** Delimits the code from the message. Mirrors `main/ipc/denialCode.ts`. */
+export const DENIAL_STAMP_CLOSE = '|';
+
+const DENIAL_PROP = 'ipcDenialCode';
+
+/** Split a stamped message into its code and the original text. */
+export function unstampDenial(message: string): { code: DenialCode | null; message: string } {
+  if (!message.startsWith(DENIAL_STAMP_OPEN)) return { code: null, message };
+  const rest = message.slice(DENIAL_STAMP_OPEN.length);
+  for (const code of DENIAL_CODES) {
+    if (rest.startsWith(`${code}${DENIAL_STAMP_CLOSE}`))
+      return { code, message: rest.slice(code.length + DENIAL_STAMP_CLOSE.length) };
+  }
+  // A stamp we do not recognise is NOT a denial we may act on, and its text is
+  // not safe to display as-is. Report no code and hand back the remainder so a
+  // future code added in main degrades to "unclassified failure" rather than to
+  // a leaked wire prefix on screen.
+  const cut = rest.indexOf(DENIAL_STAMP_CLOSE);
+  return { code: null, message: cut === -1 ? rest : rest.slice(cut + DENIAL_STAMP_CLOSE.length) };
+}
+
+/**
+ * Take the denial code off a rejection, restore its clean message, and record
+ * the code on the error.
+ *
+ * The message rewrite is the one place this module touches `message`, and it is
+ * a restoration, not a change: the text after this call is byte-for-byte what
+ * the main process produced before stamping. Same object, same stack, same
+ * identity — every existing consumer is unaffected.
+ */
+export function attributeDenialCode<E>(err: E): E {
+  if (!(err instanceof Error)) return err;
+  const { code, message } = unstampDenial(err.message);
+  if (code === null && message === err.message) return err;
+  try {
+    err.message = message;
+  } catch {
+    /* a frozen error keeps its stamped message rather than losing the rejection */
+  }
+  if (code !== null && Object.isExtensible(err) && !(DENIAL_PROP in err)) {
+    try {
+      Object.defineProperty(err, DENIAL_PROP, {
+        value: code,
+        enumerable: true,
+        writable: false,
+        configurable: false,
+      });
+    } catch {
+      /* best-effort, exactly as channel attribution is */
+    }
+  }
+  return err;
+}
+
+/** The denial code carried by a rejection, or `null` when it is not a denial. */
+export function denialCodeOf(err: unknown): DenialCode | null {
+  if (typeof err !== 'object' || err === null) return null;
+  const value = (err as Record<string, unknown>)[DENIAL_PROP];
+  return typeof value === 'string' && (DENIAL_CODES as readonly string[]).includes(value)
+    ? (value as DenialCode)
+    : null;
+}
+
+/**
+ * Legacy prose fallback — the union of the seven regexes this contract replaces.
+ *
+ * Kept deliberately, and deliberately SECOND. Not every denial in the product
+ * flows through the stamping bridge yet (the REST gateway calls
+ * `runSecureHandler` directly, and some surfaces reject before it), so removing
+ * the prose path would turn a working denial banner into a blank screen — the
+ * exact failure class Gate 15 exists to prevent. It is a fallback, not the
+ * contract: when a code is present it is never consulted.
+ */
+function looksLikeDenialProse(message: string): boolean {
+  return /not authori[sz]|permission|forbidden|denied|sign in/i.test(message);
+}
+
+/**
+ * Was this rejection a refusal of authority, as opposed to a broken call?
+ *
+ * CODE FIRST, PROSE ONLY AS FALLBACK. This is the whole point of D-6: with a
+ * code present, rewording any message cannot change the answer.
+ */
+export function isDeniedError(err: unknown): boolean {
+  if (denialCodeOf(err) !== null) return true;
+  // An error that carried a RECOGNISED code and was classified above is done;
+  // reaching here means no code, so fall back to the prose the sites used before.
+  const message = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
+  return message.length > 0 && looksLikeDenialProse(message);
+}
+
 /**
  * A one-line description of a failed call, for logs.
  *

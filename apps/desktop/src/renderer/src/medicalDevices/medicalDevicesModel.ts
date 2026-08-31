@@ -22,6 +22,7 @@ import {
   LOT_STATUS_LABELS,
   round6,
 } from '@neuropause/shared';
+import { DENIAL_CODE, denialCodeOf } from '@renderer/lib/ipcError';
 
 export type Tone = 'good' | 'warn' | 'bad' | 'neutral';
 
@@ -332,7 +333,9 @@ export function emptyMessage(
 /** A failure the user can read. Never a stack, never a channel name. */
 export function friendlyError(err: unknown): { title: string; detail: string } {
   const message = err instanceof Error ? err.message : String(err);
-  if (/permission/i.test(message)) {
+  // D-6: code-first; the prose test is the no-code fallback only.
+  const denial = denialCodeOf(err);
+  if (denial === DENIAL_CODE.MISSING_PERMISSION || (denial === null && /permission/i.test(message))) {
     return {
       title: 'You do not have access to this',
       detail: 'Your role does not include the medical device scope this needs. An administrator can grant it.',

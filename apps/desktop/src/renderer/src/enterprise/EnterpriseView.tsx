@@ -23,6 +23,7 @@ import { ProfiledSection } from '@renderer/components/perf/ProfiledSection';
 import { CustomizePanel } from './CustomizePanel';
 import { EnterpriseModulesHub } from './modules/EnterpriseModulesHub';
 import { loadNavPrefs, type EnterpriseTab } from './lib';
+import { isDeniedError } from '@renderer/lib/ipcError';
 
 interface TabDef {
   id: EnterpriseTab;
@@ -65,7 +66,7 @@ export function EnterpriseRoot({
 }
 
 function EnterpriseInner({ initialTab }: { initialTab: EnterpriseTab }): JSX.Element {
-  const { ready, error, refreshAll, jobs } = useEnterprise();
+  const { ready, error, denied, refreshAll, jobs } = useEnterprise();
   const { enterpriseTab, clearEnterpriseTab } = useShell();
   const [tab, setTab] = useState<EnterpriseTab>(initialTab);
   const [searchQuery, setSearchQuery] = useState('');
@@ -247,7 +248,7 @@ function EnterpriseInner({ initialTab }: { initialTab: EnterpriseTab }): JSX.Ele
         </nav>
 
         {error && !ready ? (
-          <EnterpriseUnavailable message={error} onRetry={() => void refreshAll()} />
+          <EnterpriseUnavailable message={error} denied={denied} onRetry={() => void refreshAll()} />
         ) : (
           <>
             {tab === 'command' && <CommandCenterPanel onNavigate={navigate} />}
@@ -305,11 +306,15 @@ function EnterpriseInner({ initialTab }: { initialTab: EnterpriseTab }): JSX.Ele
 function EnterpriseUnavailable({
   message,
   onRetry,
+  denied: deniedFromCaller,
 }: {
   message: string;
   onRetry: () => void;
+  denied?: boolean;
 }): JSX.Element {
-  const denied = /not authorized|permission|forbidden|denied/i.test(message);
+  // D-6: the provider classified this from the error object at the catch; the
+  // string test remains only for a caller that has just a message.
+  const denied = deniedFromCaller ?? isDeniedError(message);
   return (
     <div className="mx-auto max-w-xl rounded-2xl border border-[var(--hairline)] p-8 text-center">
       <span

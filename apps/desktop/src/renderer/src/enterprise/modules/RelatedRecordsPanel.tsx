@@ -28,6 +28,7 @@ import { NoticeBlock } from '@renderer/dataCommandCenter/primitives';
 import { SkeletonCards, SkeletonRegion } from '@renderer/components/ui/Skeleton';
 import { CSS_TRANSITION } from '@renderer/lib/motion';
 import { cn } from '@renderer/lib/cn';
+import { isDeniedError } from '@renderer/lib/ipcError';
 
 const log = createLogger('related-records');
 
@@ -74,7 +75,9 @@ export function RelatedRecordsPanel({
         // A refusal and a fault are different answers, and telling someone
         // "you lack permission" when the truth was a crash is a confident
         // false claim about their account.
-        if (/not authori|permission|Sign in/i.test(message)) setDenied(true);
+        // D-6: `isDeniedError` reads the machine code when present and falls
+        // back to the same prose test only when the rejection carries none.
+        if (isDeniedError(err)) setDenied(true);
         else setError('Related records could not be loaded. This is a fault, not an empty result.');
       } finally {
         setBusy(false);
