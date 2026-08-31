@@ -164,7 +164,7 @@ Among them, these **user-initiated silent writes are NOT closed by this work**:
 | Site | Write |
 |---|---|
 | ~~`enterprise/modules/EnterpriseModuleScreen.tsx:599`~~ | **CLOSED 2026-08-31** — see the D-7b section below |
-| `state/ConnectionProvider.tsx:117 / :120 / :129` | `resumeSync` / `pauseSync` / `syncNow` — the "Sync paused" toast sits inside `.then`, so a failure produces neither toast nor error |
+| ~~`state/ConnectionProvider.tsx:117 / :120 / :129`~~ | **CLOSED 2026-08-31** — D-7b Site 2, see the section below |
 | `enterprise/EnterpriseView.tsx:135 / :142` | `personalization.favorite` / `saveView` |
 | `business/BusinessFamilySection.tsx:162` | `personalization.favorite` |
 | `views/WelcomeView.tsx` (nested) | the pilot step's inner `completeStep(...).catch(() => undefined)` — the primary write succeeds, so the checklist tick is a secondary effect; left deliberately |
@@ -287,7 +287,7 @@ refusal test pass on an UNROUTED throw; here the friendly method is `remove` whi
 
 | Site | Write |
 |---|---|
-| `state/ConnectionProvider.tsx:117 / :120 / :129` | `resumeSync` / `pauseSync` / `syncNow` — the "Sync paused" toast sits inside `.then`, so a failure yields neither toast nor error |
+| ~~`state/ConnectionProvider.tsx:117 / :120 / :129`~~ | **CLOSED 2026-08-31** — see the D-7b Site 2 section below |
 | `enterprise/EnterpriseView.tsx:135 / :142` | `personalization.favorite` / `saveView` |
 | `business/BusinessFamilySection.tsx:162` | `personalization.favorite` |
 | `views/WelcomeView.tsx` (nested) | the pilot step's inner `completeStep(...).catch(() => undefined)` |
@@ -295,3 +295,129 @@ refusal test pass on an UNROUTED throw; here the friendly method is `remove` whi
 **A finding recorded, not fixed** (outside this site's scope): because `hold:resolve` refuses by
 resolving, `secureBridge` audits a refused hold-close as `ok: true`. The renderer now reports it, but
 the **audit record still says success** — an evidence-layer defect needing its own gate.
+
+
+---
+
+# D-7b · SITE 2 — `ConnectionProvider` resume / pause / sync-now — **CLOSED**
+
+**Date:** 2026-08-31 · **Base HEAD:** `a5e41c8` · Scope: this site only. Site 1 was not touched.
+
+## ROOT CAUSE
+
+`ConnectionProvider` exposes three user-initiated actions (`ConnectionIndicator.tsx:75/77/79`
+drives them from the connection menu). All three called a cloud IPC write and swallowed **every**
+failure with `.catch(() => undefined)`:
+
+```
+resumeSync  :117  ipc.cloud.liveSyncSetOnline(true).then(applySync).catch(() => undefined)
+pauseSync   :120  ipc.cloud.liveSyncSetOnline(false).then(s => { applySync(s); info('Sync paused', …) }).catch(() => undefined)
+syncNow     :129  ipc.cloud.liveSyncNow().then(applySync).catch(() => undefined)
+```
+
+**These channels REJECT on refusal.** `LiveSyncSetOnline` and `LiveSyncNow` are both `cloud:manage`
+(`cloud/controlPlane/cloudAuthz.ts:77-78`), enforced at the secure-bridge boundary
+(`secureBridge.ts:152-157`), which **throws** on denial → the `invoke` promise rejects
+(`lib/ipc.ts:259-295`). A dead/timed-out channel rejects too. So a signed-in user without
+`cloud:manage` — the menu items render regardless (`ConnectionIndicator.tsx:74-79`) — clicked
+Resume / Pause / Sync-now and got **nothing**: no state change, no message.
+
+**The filed defect (the misplaced pause toast) was real and is the sharpest case.** `pauseSync`'s
+`info('Sync paused', …)` sat **inside `.then`**, so on rejection it never fired *and* the `.catch`
+said nothing — a failed pause was completely silent, in both channels.
+
+**A second, quieter false claim was found while tracing.** With no active org, `liveSyncSetOnline`
+resolves `EMPTY_SYNC_STATUS` — which has **`online: true`** (`livesync/engine.ts:178-186`,
+`liveSyncService.ts:182`). The old `.then` fired `info('Sync paused')` **unconditionally**, so a
+no-op resolve announced a pause that never happened — the D-7b class (*stop claiming a success you
+did not have*) one layer down from the reported bug.
+
+## THE EXACT WRITE PATH
+
+```
+connection menu → Resume/Pause/Sync-now   ConnectionIndicator.tsx:75/77/79
+  resumeSync/pauseSync → ipc.cloud.liveSyncSetOnline(bool)
+     → IpcChannel.LiveSyncSetOnline 'livesync:setOnline'   (cloud:manage; secureBridge THROWS on denial)
+     → liveSync.setOnline → scheduler.setOnline (returns SyncStatus; EMPTY_SYNC_STATUS.online===true when no org)
+  syncNow    → ipc.cloud.liveSyncNow()
+     → IpcChannel.LiveSyncNow 'livesync:now'               (cloud:manage; secureBridge THROWS on denial)
+     → liveSync.syncNow → scheduler.syncNow (Promise<SyncStatus>; engine RESOLVES state:'error' on transport failure)
+```
+
+**Why the boundary message is rendered VERBATIM.** `invoke` has already decoded the D-6 denial code
+and restored the clean, user-safe message before it reaches the renderer (`lib/ipc.ts:284-292`;
+`secureBridge.ts:219` never emits internal detail), so re-wording it here would mean classifying a
+refusal by regex on English prose — the defect D-6 exists to stop. There is no second redaction layer
+in the renderer, and none is needed: these two channels emit only curated strings, and their engine
+handlers never throw crafted messages.
+
+## THE FIX
+
+Each action now `await`s the write inside a `try` **scoped to the write alone**, so a success-path
+side-effect (a `setState`, a toast) can never raise a false failure toast. On rejection it calls a
+shared `reportSyncFailure(title, dedupeKey, err)` that raises an `error` toast — which the
+ToastProvider renders `role="alert"` / `aria-live="assertive"` and persists (`ToastProvider.tsx:154-155`).
+No Retry is offered (a denied toggle would only be denied again). Three deliberate choices:
+
+- **Per-action dedupe keys** (`sync-pause` / `sync-resume` / `sync-now`), distinct from the existing
+  `connection` key. `enqueueToast` replaces in place on a matching key
+  (`packages/shared/.../uxInfra.ts:52-59`), so a single shared key would erase a pause failure the
+  instant a resume failure landed. Distinct keys let both coexist and neither clobbers the offline
+  banner.
+- **The pause "success" toast is gated on `status.online === false`** — the no-active-org no-op no
+  longer claims "Sync paused".
+- **Bare-string rejection fallback** — a non-`Error` rejection yields "The request failed.", never an
+  empty alert.
+
+**Recorded, NOT fixed (out of this site's scope):** `syncNow`'s engine RESOLVES a transport failure
+as `SyncStatus{state:'error'}` rather than rejecting (`livesync/engine.ts:279-302`), so a `.catch`
+structurally cannot see it; that path is surfaced by the pre-existing degraded-connection warning
+(`ConnectionProvider.tsx:110`, keyed `connection`), not by this catch. No claim is made that it is
+covered here. `CloudProvider.tsx`'s separate `syncNow`/`setSyncOnline` (a different provider, reached
+via `useCloud()`) lets rejections escape as unhandled promises via `void` — a **different site**, out
+of scope.
+
+## FILES CHANGED
+
+```
+MOD  src/renderer/src/state/ConnectionProvider.tsx        resume/pause/syncNow: scoped catch → announced error toast; pause toast gated on online===false; per-action dedupe keys
+NEW  ui-tests/silentWriteD7bConnection.test.tsx           8 pins
+```
+
+No main-process file touched; renderer-only change.
+
+## TESTS AND CHECKS
+
+| Check | Result |
+|---|---|
+| New D-7b Site 2 pins | **8/8** |
+| Full UI suite | **389 passed / 65 files** (from 381/64 — delta exactly the new file) |
+| Full main suite | **9579 passed / 7 skipped — unchanged** (renderer-only change) |
+| `tsc` node / web | **exit 0 / exit 0** |
+| `eslint` on changed files | **clean** |
+| `electron-vite build` | **exit 0** |
+
+**Negative controls — all three fired; file restored byte-identically (sha256 `9c684cbb…`):**
+
+| Control | Mutation | Result |
+|---|---|---|
+| NC-1 | `reportSyncFailure` neutered to swallow again | **5 fail** (all four failure-announce tests + the coexist test) |
+| NC-2 | pause toast gate removed (`if (true)`) | **1 fail** (the no-active-org no-op test) |
+| NC-3 | all three collapsed to one shared dedupe key | **1 fail** (the pause+resume coexist test) |
+
+## USER-VISIBLE BEHAVIOUR (rendered, not state-level)
+
+Verified through the REAL `ToastProvider` + REAL `ConnectionProvider` rendered in jsdom (the repo's
+established rendered-UX harness; a real Electron run is not possible in the Linux CI sandbox):
+a refused Resume / Pause / Sync-now now shows a persistent, screen-reader-announced error banner
+(`role="alert"`, `aria-live="assertive"`) carrying the boundary's own message; a failed pause shows
+that error and **no** "Sync paused"; a no-op pause (no active org) shows **neither**; a real pause
+still shows "Sync paused" (`role="status"`, polite) exactly as before.
+
+## REMAINING D-7b SITES — still OPEN
+
+| Site | Write |
+|---|---|
+| `enterprise/EnterpriseView.tsx:135 / :142` | `personalization.favorite` / `saveView` |
+| `business/BusinessFamilySection.tsx:162` | `personalization.favorite` |
+| `views/WelcomeView.tsx` (nested) | the pilot step's inner `completeStep(...).catch(() => undefined)` |

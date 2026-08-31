@@ -113,21 +113,72 @@ export function ConnectionProvider({ children }: { children: ReactNode }): JSX.E
   }, [assessment, error, warning, success, pingOnce]);
 
   const reconnect = useCallback(() => { void pingOnce(); void refreshSync(); }, [pingOnce, refreshSync]);
-  const resumeSync = useCallback(() => {
-    void ipc.cloud.liveSyncSetOnline(true).then(applySync).catch(() => undefined);
-  }, [applySync]);
-  const pauseSync = useCallback(() => {
-    void ipc.cloud
-      .liveSyncSetOnline(false)
-      .then((s) => {
-        applySync(s);
-        info('Sync paused', { message: 'Background sync is paused — changes stay local until you resume.', actionLabel: 'Undo', onAction: resumeSync });
-      })
-      .catch(() => undefined);
-  }, [applySync, info, resumeSync]);
-  const syncNow = useCallback(() => {
-    void ipc.cloud.liveSyncNow().then(applySync).catch(() => undefined);
-  }, [applySync]);
+
+  /**
+   * D-7b Site 2 — a refused sync action must SPEAK, and a pause must never claim
+   * a success it did not have.
+   *
+   * `ipc.cloud.liveSyncSetOnline` / `liveSyncNow` REJECT on refusal: the
+   * permission gate (`cloud:manage`) throws at the secure-bridge boundary, and a
+   * dead or timed-out channel throws too. The old `.catch(() => undefined)`
+   * swallowed every one — so a click did nothing and said nothing — and because
+   * `pauseSync`'s "Sync paused" toast sat INSIDE `.then`, a failed pause produced
+   * neither the toast nor an error.
+   *
+   * The boundary message is surfaced VERBATIM: the D-6 `invoke` wrapper has
+   * already decoded the denial code and restored the clean text, so re-wording it
+   * here would mean classifying a refusal by regex on English prose — the defect
+   * D-6 exists to stop. An `error` toast announces (role="alert",
+   * aria-live="assertive") and persists; no Retry is offered, because a denied
+   * toggle would only be denied again. Each `try` is scoped to the awaited write
+   * alone, so a success-path side-effect (a state set, a toast) can never raise a
+   * false failure toast. Each action carries its own dedupe key, so a pause
+   * failure and a resume failure never overwrite one another and neither clobbers
+   * the 'connection' banner.
+   */
+  const reportSyncFailure = useCallback(
+    (title: string, dedupeKey: string, err: unknown) =>
+      error(title, {
+        message: err instanceof Error && err.message ? err.message : 'The request failed.',
+        dedupeKey,
+      }),
+    [error],
+  );
+  const resumeSync = useCallback(async () => {
+    try {
+      applySync(await ipc.cloud.liveSyncSetOnline(true));
+    } catch (err) {
+      reportSyncFailure('Couldn’t resume sync', 'sync-resume', err);
+    }
+  }, [applySync, reportSyncFailure]);
+  const pauseSync = useCallback(async () => {
+    let status: Awaited<ReturnType<typeof ipc.cloud.liveSyncSetOnline>>;
+    try {
+      status = await ipc.cloud.liveSyncSetOnline(false);
+    } catch (err) {
+      reportSyncFailure('Couldn’t pause sync', 'sync-pause', err);
+      return;
+    }
+    applySync(status);
+    // Announce "paused" ONLY when the engine reports egress actually stopped.
+    // With no active org the toggle resolves EMPTY_SYNC_STATUS (online:true) — a
+    // no-op, not a pause — so claiming "Sync paused" there would be a false
+    // statement (the D-7b class: stop claiming a success you did not have).
+    if (!status.online) {
+      info('Sync paused', {
+        message: 'Background sync is paused — changes stay local until you resume.',
+        actionLabel: 'Undo',
+        onAction: () => void resumeSync(),
+      });
+    }
+  }, [applySync, info, resumeSync, reportSyncFailure]);
+  const syncNow = useCallback(async () => {
+    try {
+      applySync(await ipc.cloud.liveSyncNow());
+    } catch (err) {
+      reportSyncFailure('Couldn’t sync now', 'sync-now', err);
+    }
+  }, [applySync, reportSyncFailure]);
 
   const value: ConnectionContextValue = { assessment, sync, syncPaused, reconnect, pauseSync, resumeSync, syncNow };
   return <ConnectionContext.Provider value={value}>{children}</ConnectionContext.Provider>;
