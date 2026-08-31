@@ -489,6 +489,77 @@ Verified through the REAL `ToastProvider` + REAL `EnterpriseRoot` rendered in js
 
 | Site | Write |
 |---|---|
-| `business/BusinessFamilySection.tsx:162` | `personalization.favorite` |
+| ~~`business/BusinessFamilySection.tsx:162`~~ | **CLOSED 2026-08-31** — D-7b Site 4, see the section below |
+| `views/WelcomeView.tsx` (nested) | the pilot step's inner `completeStep(...).catch(() => undefined)` |
+| `enterprise/PersonalizationPanel.tsx:58` | `personalization.favorite` (Remove) — silent via unhandled rejection in its `run` helper |
+
+
+---
+
+# D-7b · SITE 4 — `BusinessFamilySection` module favorite — **CLOSED**
+
+**Date:** 2026-08-31 · **Base HEAD:** `519d6df` · Scope: `business/BusinessFamilySection.tsx` only. Sites 1–3 untouched.
+
+## ROOT CAUSE
+
+`FamilyLanding`'s per-module star button (`BusinessFamilySection.tsx:239`) called `toggleFavorite`, which did:
+
+```
+:162  const state = await ipc.enterprise.personalization
+        .favorite({ id: businessFavoriteId(m.id), kind: BUSINESS_FAVORITE_KIND, label: m.title, tab: 'business' })
+        .catch(() => null);
+      if (state) { setFavorites(...) }
+```
+
+The channel is `EnterprisePersonalizationFavorite` — `dashboard:read` + `requireAuth` (`enterprise/authzGate.ts:453`, requireAuth at `:521-527`) — the SAME write closed in D-7b Site 3. It rejects on a not-signed-in / non-member / RBAC-denied / untrusted / timeout request; the pure store mutator never throws or returns a failure shape, so every renderer-visible failure is a rejection. `.catch(() => null)` turned that into `null`, the `if (state)` guard skipped, and the click produced no state change and no message — the star (derived from `favorites`) never moved. Silent.
+
+## THE FIX
+
+`toggleFavorite` now `await`s the write inside a `try` scoped to the write alone; on rejection it raises an `error` toast via `useToast` — rendered `role="alert"` / `aria-live="assertive"` and persistent (`ToastProvider.tsx:154-155`) — carrying the boundary message **verbatim** (the D-6 `invoke` wrapper already restored the clean text). The dedupe key is **per module** (`business-favorite:<id>`) so failures on different modules coexist rather than overwrite. The success arm (`setFavorites` filtering the returned state) is unchanged and runs after the try, so it can never trigger a false failure toast; there is no optimistic update, so the star correctly stays put on failure. The button now passes its current `fav` state to `toggleFavorite` so the message names the direction ("Couldn't favorite X" / "Couldn't remove X from favorites").
+
+A toast was chosen over an inline banner because the star is a 14px icon in a dense per-module list row with no natural inline slot — matching the D-7b Site 3 precedent for the identical `personalization.favorite` write.
+
+## RECORDED, NOT FIXED (out of this site's scope)
+
+- The reads at `:130` (`enterpriseModules.records`), `:142` (`enterpriseTimeline.query`), `:148` (`personalization.get`) are load-on-mount reads with `.catch` fallbacks, not user-initiated writes.
+- A disk-persist failure is swallowed MAIN-side (`personalizationStore.ts:108-109`, `log.error`) and never reaches the renderer.
+- The `enterprise/PersonalizationPanel.tsx:58` sibling (Remove-favorite) fails silently by a different mechanism (unhandled rejection in its `run` helper) in a different file — left for its own site.
+
+## FILES CHANGED
+
+```
+MOD  src/renderer/src/business/BusinessFamilySection.tsx   toggleFavorite: swallow → announced error toast (verbatim, per-module dedupe); success arm unchanged; button passes fav
+NEW  ui-tests/silentWriteD7bBusinessFamily.test.tsx        3 pins
+MOD  ui-tests/businessGate6.test.tsx                        wrap BusinessView renders in ToastProvider (the component now needs it, as it always does in the real app); same 5 pins, no behavioral change
+```
+
+Renderer-only; no main-process file touched.
+
+## TESTS AND CHECKS
+
+| Check | Result |
+|---|---|
+| New D-7b Site 4 pins | **3/3** |
+| `businessGate6.test.tsx` (accommodated) | **5/5** (unchanged count) |
+| Full UI suite | **397 passed / 67 files** (from 394/66 — delta exactly the new file) |
+| Full main suite | **9579 passed / 7 skipped — unchanged** (renderer-only change) |
+| `tsc` node / web | **exit 0 / exit 0** |
+| `eslint` on changed files | **clean** |
+| `electron-vite build` | **exit 0** |
+
+**Negative control — fired; file restored byte-identically (sha256 `4338156b…`):**
+
+| Control | Mutation | Result |
+|---|---|---|
+| NC-1 | the `catch` neutered to swallow again (no toast) | **2 fail** (both failure-announce tests; the success test still passes, as it must) |
+
+## USER-VISIBLE BEHAVIOUR (rendered, not state-level)
+
+Verified through the REAL `ToastProvider` + REAL `BusinessFamilySection` rendered in jsdom (the repo's established rendered-UX harness; a real Electron run is not possible in the Linux CI sandbox). A refused module favorite now shows a persistent, screen-reader-announced error banner (`role="alert"`, `aria-live="assertive"`) carrying the boundary's own message; a successful favorite still relabels the star (`Favorite Invoices` → `Unfavorite Invoices`, icon `star` → `star-fill`) with no error.
+
+## REMAINING D-7b SITES — still OPEN
+
+| Site | Write |
+|---|---|
 | `views/WelcomeView.tsx` (nested) | the pilot step's inner `completeStep(...).catch(() => undefined)` |
 | `enterprise/PersonalizationPanel.tsx:58` | `personalization.favorite` (Remove) — silent via unhandled rejection in its `run` helper |

@@ -23,6 +23,16 @@ vi.mock('@renderer/state/ShellProvider', () => ({
 }));
 
 import { BusinessView } from '@renderer/business/BusinessView';
+// BusinessView → BusinessFamilySection → FamilyLanding now uses useToast (D-7b Site 4),
+// so it must mount under a ToastProvider, as it always does in the real app (App.tsx).
+import { ToastProvider } from '@renderer/state/ToastProvider';
+
+const renderBusiness = (): ReturnType<typeof render> =>
+  render(
+    <ToastProvider>
+      <BusinessView />
+    </ToastProvider>,
+  );
 
 beforeEach(() => {
   cleanup();
@@ -34,7 +44,7 @@ describe('BusinessView states (Gate 6, round 49)', () => {
     route(IpcChannel.EnterpriseModulesList, () => {
       throw new Error('Not authorized: this workspace belongs to an organization you are not a member of.');
     });
-    render(<BusinessView />);
+    renderBusiness();
     expect(await screen.findByText('You don’t have access to Business')).toBeTruthy();
     // A denial offers no useless retry — the caller lacks access, not luck.
     expect(screen.queryByRole('button', { name: /Try again/ })).toBeNull();
@@ -47,7 +57,7 @@ describe('BusinessView states (Gate 6, round 49)', () => {
       if (calls === 1) throw new Error('backend unavailable');
       return [];
     });
-    render(<BusinessView />);
+    renderBusiness();
     expect(await screen.findByText('Couldn’t load the Business workspace')).toBeTruthy();
 
     await userEvent.setup().click(screen.getByRole('button', { name: /Try again/ }));
@@ -59,14 +69,14 @@ describe('BusinessView states (Gate 6, round 49)', () => {
     route(IpcChannel.EnterpriseModulesList, () => {
       throw new Error('None of the business modules are readable with your current permissions.');
     });
-    render(<BusinessView />);
+    renderBusiness();
     expect(await screen.findByText('You don’t have access to Business')).toBeTruthy();
     expect(screen.queryByText('No business areas yet')).toBeNull();
   });
 
   it('a genuinely empty registry renders the honest empty state', async () => {
     route(IpcChannel.EnterpriseModulesList, () => []);
-    render(<BusinessView />);
+    renderBusiness();
     expect(await screen.findByText('No business areas yet')).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
   });
@@ -90,7 +100,7 @@ describe('BusinessView states (Gate 6, round 49)', () => {
         actions: [],
       },
     ]);
-    render(<BusinessView />);
+    renderBusiness();
     await waitFor(() => expect(screen.queryByText('No business areas yet')).toBeNull());
     expect(screen.getAllByText(/Finance/).length).toBeGreaterThan(0);
   });
