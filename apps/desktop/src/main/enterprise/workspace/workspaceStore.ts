@@ -238,7 +238,29 @@ export class WorkspaceStore extends EventEmitter {
    * changed in P11 is that the caller now actually does, and no longer accepts
    * the value from the renderer: see `enterprise/index.ts`.
    */
+  /**
+   * GATE 23 — workspace names are unique case-insensitively WITHIN a tenant
+   * (organizationId). Fails closed with a user-facing message. The tenant scope
+   * is the workspace's own `organizationId` (no cross-store lookup); `exceptId`
+   * lets a rename keep its own name. The seed path writes via
+   * `this.workspaces.set` directly, so the seeded 'Default Workspace' never trips
+   * this. Two tenants may each hold a same-named workspace — the scope is the org.
+   */
+  private assertNameFreeInTenant(name: string, organizationId: string, exceptId?: string): void {
+    const wanted = name.trim().toLowerCase();
+    for (const ws of this.workspaces.values()) {
+      if (
+        ws.organizationId === organizationId &&
+        ws.id !== exceptId &&
+        ws.name.trim().toLowerCase() === wanted
+      ) {
+        throw new Error(`A workspace named "${name.trim()}" already exists in this organization.`);
+      }
+    }
+  }
+
   create(name: string, organizationId: string): Workspace {
+    this.assertNameFreeInTenant(name, organizationId);
     const now = new Date().toISOString();
     const ws: Workspace = {
       id: `workspace_${randomUUID()}`,
@@ -266,6 +288,9 @@ export class WorkspaceStore extends EventEmitter {
   rename(id: string, name: string): Workspace | null {
     const ws = this.workspaces.get(id);
     if (!ws) return null;
+    // GATE 23 — a rename must not collide with a SIBLING in the same tenant
+    // (excluding this workspace's own row, so renaming to the same/cased name is fine).
+    this.assertNameFreeInTenant(name, ws.organizationId, id);
     const next: Workspace = { ...ws, name, updatedAt: new Date().toISOString() };
     this.workspaces.set(id, next);
     this.schedulePersist();

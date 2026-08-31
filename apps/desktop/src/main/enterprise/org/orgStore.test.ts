@@ -88,6 +88,37 @@ describe('OrgStore — removeProvisionedOrganization (GATE 23 rollback)', () => 
   });
 });
 
+// GATE 23 — organization names are unique case-insensitively GLOBALLY.
+describe('OrgStore — name uniqueness (Gate 23)', () => {
+  it('rejects a duplicate organization name globally — fail closed', async () => {
+    const s = await newStore(tempPath());
+    s.createOrganization('Northwind Health');
+    expect(() => s.createOrganization('Northwind Health')).toThrow(
+      /An organization named "Northwind Health" already exists\./,
+    );
+    // The second create did not land — exactly one 'Northwind Health' exists.
+    expect(s.listOrganizations().filter((o) => o.name === 'Northwind Health')).toHaveLength(1);
+  });
+
+  it('rejects a case-insensitive / whitespace duplicate — including the seeded org name', async () => {
+    const s = await newStore(tempPath());
+    // Seeded org is 'NeuroPause'; a cased/padded variant must be refused.
+    expect(() => s.createOrganization('  neuropause ')).toThrow(/already exists/);
+    // And a second custom org collides case-insensitively with the first.
+    s.createOrganization('Alpha Industries');
+    expect(() => s.createOrganization('ALPHA INDUSTRIES')).toThrow(/already exists/);
+  });
+
+  it('allows a unique organization name (the gate is not "always no")', async () => {
+    const s = await newStore(tempPath());
+    const a = s.createOrganization('Globex');
+    const b = s.createOrganization('Initech');
+    expect(a.name).toBe('Globex');
+    expect(b.name).toBe('Initech');
+    expect(a.id).not.toBe(b.id);
+  });
+});
+
 describe('OrgStore — CRUD', () => {
   it('creates, updates, and deletes units (re-parenting children)', async () => {
     const s = await newStore(tempPath());

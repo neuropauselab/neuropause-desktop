@@ -479,15 +479,24 @@ export class OrgStore extends EventEmitter {
    * indistinguishable from a pre-P11 one, and the default exists only for data
    * that predates the field.
    *
-   * Honest note: this method still has no caller and no IPC channel, so a second
-   * tenant cannot be created from the product yet. It is correct rather than
-   * reachable, and the report says so.
+   * GATE 23 — organization names are unique case-insensitively GLOBALLY. There
+   * is one tenant per Organization, so "global" is across every org this store
+   * holds. A duplicate fails closed with a user-facing message. The seed path
+   * (`applySeed`/`buildSeed`) writes via `this.organizations.set` directly, so
+   * seeded names never trip this check. (Reached in-product via
+   * `provisionOrganization` → `EnterpriseOrganizationCreate`.)
    */
   createOrganization(
     name: string,
     description = '',
     type: Organization['type'] = 'business',
   ): Organization {
+    const wanted = name.trim().toLowerCase();
+    for (const existing of this.organizations.values()) {
+      if (existing.name.trim().toLowerCase() === wanted) {
+        throw new Error(`An organization named "${name.trim()}" already exists.`);
+      }
+    }
     const now = new Date().toISOString();
     const org: Organization = {
       id: `org_${randomUUID()}`,
