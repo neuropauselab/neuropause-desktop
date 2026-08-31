@@ -7,7 +7,49 @@ All notable changes to NeuroPause are documented here. The format is based on
 
 ## [Unreleased]
 
-_No unreleased changes; the current build is `1.0.0-rc.20`._
+_No unreleased changes; the current build is `1.0.0-rc.21`._
+
+## [1.0.0-rc.21] — release discipline, enforced by the suite (2026-08-31)
+
+Version bumped from `1.0.0-rc.20` because **392 commits** shipped after the
+rc.20 stamp. A build calling itself rc.20 today would not be the rc.20 whose
+Windows installer hash (`e861228f…8bc90`) is on record — the same `da36851`
+failure class this project has now caught three times, each catch later and
+larger than the last (rc.17→rc.18, rc.19→rc.20, and this one at 392 commits).
+
+### Added
+- **The failure class is now caught by the suite, not by eye.**
+  `releaseDiscipline.test.ts` treats a version as **spent** once a tag exists
+  for it: if `v<version>` is bound to a commit and HEAD is not that commit, the
+  tree is a version orphan and the test fails with the exact remedy. It also
+  refuses a CHANGELOG that claims "no unreleased changes" while commits sit past
+  the tag. `verify:release` structurally could not catch either — it compares an
+  update feed to the binaries beside it, so a stale-version build is perfectly
+  self-consistent and passes.
+- **`verify:release` gained the version-parity check** it was missing: the
+  update feed's version must equal the version the manifests declare.
+- **`verify-acceptance-artifact.cjs`** — binds an acceptance artifact to the
+  feature set the acceptance procedure assumes it has, so a machine session is
+  never spent discovering a limitation of the build (Gate 20).
+
+### Fixed
+- **A tenant switch now refreshes what is on screen** (Gate 26). The shell
+  remounted on a local *view* change but not on an *organization workspace*
+  change, so after switching tenants every already-mounted surface kept
+  rendering the previous tenant's data — the Business record counts, the Data
+  import history, module screens — until the user happened to navigate. The
+  view is now keyed on a tenant epoch driven by the existing
+  `enterprise:event` broadcast, so the numbers become true while the sidebar,
+  the active section and shell state all survive the switch. This was a display
+  correctness defect, never a data-access one: the record store re-resolves
+  scope on every call and fails closed, and the switch itself is
+  membership-gated.
+
+### Documentation
+- Windows acceptance re-based on local-first mode: sign-in is a detour, not a
+  precondition, so B3/B5/B6/B9 are drivable with no backend at all. The rc.20
+  residuals were misattributed to a missing cloud backend when the real cause
+  was that rc.20 predates local-first mode by three days.
 
 ## [1.0.0-rc.20] — the release gate: every tenant gets a protected owner (2026-08-15)
 
