@@ -127,6 +127,11 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
   [IpcChannel.AiConfigSetProvider]: 'cloud:operate',
   [IpcChannel.AiConfigSetModel]: 'cloud:operate',
   [IpcChannel.AiConfigSetCredential]: 'cloud:operate',
+  // P13C — moved off PUBLIC_CHANNELS: it reads the stored vault credential and
+  // spends against it. `org:manage` rather than `cloud:operate` because the same
+  // channel also serves a bare localhost Ollama probe, and `cloud:operate` is
+  // platform-only. Full reasoning at its row in ai/aiAuthzGate.ts.
+  [IpcChannel.AiConfigTest]: 'org:manage',
   [IpcChannel.AiConfigSetMode]: 'cloud:operate',
   /**
    * P13C ROUND 17 · D-5. Listed here AND in `AI_CHANNEL_AUTHORITY` because
@@ -1117,7 +1122,9 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   IpcChannel.AiConfigHealth,
   IpcChannel.AiConfigDetectOllama,
 
-  IpcChannel.AiConfigTest,
+  // P13C — `AiConfigTest` REMOVED from the allowlist: it is now gated at
+  // `cloud:operate`. A channel is open or it is guarded; leaving a stale row
+  // here would make it BOTH, which the classification check refuses.
   IpcChannel.AiConfigMigrationStatus,
   // P13C Round 10 — NEW-M8. `AiConfigMigrate` REMOVED: Round 9 (F21) gated it at
   // `cloud:operate` in `ai/aiAuthzGate.ts` — it writes the install's provider,

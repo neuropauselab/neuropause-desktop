@@ -483,7 +483,17 @@ export function initAiConfig(): AiConfigSubsystem {
         audit: true,
         handler: (p) => clearCredential(p as AiClearCredentialRequest),
       },
-      { channel: IpcChannel.AiConfigTest, schema: AiTestRequest, handler: (p) => testConnection(p as AiTestRequest) },
+      {
+        // P13C — audited alongside its authority change. For a cloud provider
+        // this reads the stored vault credential and makes a billable request,
+        // which is a consequential decision; its sibling `setCredential` is
+        // audited and this was not, so neither a successful spend nor a refusal
+        // left any durable record. CLAUDE.md §2 #19.
+        channel: IpcChannel.AiConfigTest,
+        schema: AiTestRequest,
+        audit: true,
+        handler: (p) => testConnection(p as AiTestRequest),
+      },
       {
         // Mode changes are audited: "when did requests start being allowed to
         // leave the device" is a question the audit trail must answer.

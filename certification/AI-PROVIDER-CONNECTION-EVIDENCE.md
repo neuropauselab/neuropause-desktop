@@ -166,12 +166,22 @@ across 200/401/429/500, and that an empty key never reaches the network at all.
    OpenAI keys, which are an external dependency. The gated tests exist and
    **skip rather than fake**: 3 skipped in `liveProviderVerification.test.ts`.
 3. **Recorded, not fixed** (found during review, outside this fix's scope):
-   `aiConfig:test` is a PUBLIC unauthenticated channel that falls back to the
+   ~~`aiConfig:test` is a PUBLIC unauthenticated channel that falls back to the
    stored vault key and makes a live provider call — a key-validity oracle and
-   unmetered spend, though it cannot exfiltrate the key; `resetToEnvironment`
-   deletes only the Anthropic credential, so a stored OpenAI key survives a
-   "reset"; a `safeStorage`-unavailable save fails silently with the typed key
-   discarded and no error shown.
+   unmetered spend, though it cannot exfiltrate the key;~~ **CLOSED
+   2026-08-31** — the channel is now gated at `org:manage` and removed from
+   `PUBLIC_CHANNELS`. (`cloud:operate`, its credential-writing siblings' lock,
+   was tried first and reverted: it is platform-only, so it would have put the
+   channel's bare localhost Ollama probe behind platform-operator authority —
+   the same D-5 trap `AiConfigPullModel` already avoided.) Reproduced first,
+   then pinned by
+   `ai/aiConfigTestAuthority.test.ts`. The vault fallback is deliberately kept,
+   because Settings legitimately tests an already-saved key. See
+   `AI-CONFIG-TEST-AUTHORITY-EVIDENCE.md`. The superseded statement is kept
+   visible rather than deleted (§2 #21).
+   **Still open:** `resetToEnvironment` deletes only the Anthropic credential,
+   so a stored OpenAI key survives a "reset"; a `safeStorage`-unavailable save
+   fails silently with the typed key discarded and no error shown.
 
 **No gate row is marked PASS by this document.** The credential-leak defect is
 fixed and pinned; local and cloud live verification remain outstanding.

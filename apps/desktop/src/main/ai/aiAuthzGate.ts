@@ -63,6 +63,40 @@ export const AI_CHANNEL_AUTHORITY: Readonly<Partial<Record<IpcChannelName, Chann
   [IpcChannel.AiConfigSetProvider]: 'cloud:operate',
   [IpcChannel.AiConfigSetModel]: 'cloud:operate',
   [IpcChannel.AiConfigSetCredential]: 'cloud:operate',
+  /**
+   * P13C — `aiConfig:test` WAS 'PUBLIC': no auth, no permission. Its handler
+   * falls back to the STORED vault credential when the caller supplies no
+   * secret, then makes a real request to the provider. Unauthenticated, that is
+   * a KEY-VALIDITY ORACLE (learn whether the install's key works without ever
+   * holding it) and UNMETERED SPEND (every call is billable). It could not
+   * exfiltrate the key -- the response is {ok, detail, latencyMs} -- so this
+   * closes the oracle and the spend, not a key-disclosure hole.
+   *
+   * WHY `org:manage` AND NOT `cloud:operate`, which its credential-writing
+   * siblings carry. THE CHANNEL SERVES TWO DIFFERENT ACTIONS AND THE AUTHORITY
+   * IS PER-CHANNEL, SO IT MUST COVER THE WEAKER ONE HONESTLY. `testConnection`
+   * short-circuits at `aiConfigIpc.ts:395`: `provider === 'ollama'` is a bare
+   * GET against `http://localhost:11434` -- no vault read, no cloud host, no
+   * spend, no oracle. `cloud:operate` is in `PLATFORM_ONLY_PERMISSIONS`, which
+   * NO organization role can hold, so gating there would have put a localhost
+   * probe behind platform-operator authority and broken local-first setup for
+   * every ordinary user -- while `aiConfig:detectOllama` (PUBLIC) and
+   * `aiConfig:pullModel` (`org:manage`) kept working on the same screen.
+   *
+   * That is the D-5 trap named twelve lines above, and `AiConfigPullModel`
+   * already answered it for exactly this local-AI setup path by taking
+   * `org:manage`. This channel takes the same authority for the same reason.
+   *
+   * WHAT THIS DOES AND DOES NOT BUY. It closes the reported defect: the caller
+   * must now be a real principal holding org-management authority, so an
+   * untrusted or unauthenticated renderer can no longer drive the oracle or the
+   * spend. It does NOT reach `cloud:operate` parity on the cloud branch -- an
+   * org manager can still validity-probe a stored key. Recorded rather than
+   * hidden, and consistent with how this product already gates
+   * credential-spending AI paths (`m365Draft` runs a full completion against
+   * the same vault key under `connectors:read`).
+   */
+  [IpcChannel.AiConfigTest]: 'org:manage',
   [IpcChannel.AiConfigClearCredential]: 'cloud:operate',
   [IpcChannel.AiConfigSetMode]: 'cloud:operate',
   /**
@@ -154,9 +188,13 @@ export const AI_CHANNEL_AUTHORITY: Readonly<Partial<Record<IpcChannelName, Chann
    * Reads of the machine's own AI posture, which the Settings screen needs before
    * any organization has resolved, and which carry no tenant content:
    *   get / health / detectOllama / migrationStatus / routing.status.
-   * `aiConfig:test` validates a candidate credential and PERSISTS NOTHING; the
-   * endpoint it dials is the stored `ollamaUrl` or Anthropic's fixed host, and
-   * changing that stored value now requires `cloud:operate`.
+   * `aiConfig:test` WAS LISTED HERE, justified as "validates a candidate
+   * credential and PERSISTS NOTHING". The justification was wrong about the
+   * code, and the error is worth keeping visible: the handler only tests a
+   * CANDIDATE when the caller supplies one, and otherwise falls back to the
+   * STORED vault credential. Non-persisting was also the wrong axis -- reading a
+   * secret and spending against it needs no write to be consequential. Moved to
+   * `cloud:operate`; see its row above.
    * `founder:suggestions` returns fixed question TEMPLATES plus coarse counts of
    * the caller's own tenant — no record content — so it stays.
    * `ai:engineering-analyze` WAS listed here on the same line, as a
@@ -168,7 +206,6 @@ export const AI_CHANNEL_AUTHORITY: Readonly<Partial<Record<IpcChannelName, Chann
   [IpcChannel.AiConfigHealth]: 'PUBLIC',
   [IpcChannel.AiConfigDetectOllama]: 'PUBLIC',
   [IpcChannel.AiConfigMigrationStatus]: 'PUBLIC',
-  [IpcChannel.AiConfigTest]: 'PUBLIC',
   [IpcChannel.AiRoutingStatus]: 'PUBLIC',
   [IpcChannel.FounderSuggestions]: 'PUBLIC',
 };

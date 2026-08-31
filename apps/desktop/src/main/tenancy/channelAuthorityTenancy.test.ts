@@ -382,7 +382,22 @@ describe('the open surface did not shrink by accident', () => {
     [IpcChannel.AiConfigHealth, 'ai'],
     [IpcChannel.AiConfigDetectOllama, 'ai'],
     [IpcChannel.AiConfigMigrationStatus, 'ai'],
-    [IpcChannel.AiConfigTest, 'ai'],
+    /**
+     * P13C — `AiConfigTest` WAS IN THIS LIST, and this assertion is the same
+     * mechanism that kept M-14 alive below: it encoded "public" as a
+     * REQUIREMENT, so the finding could only surface by changing the test.
+     *
+     * It is removed rather than re-pointed, because it is no longer an example
+     * of "a read that was public and should stay public" -- it is not a read.
+     * With no `secret` in the payload it falls back to the STORED vault
+     * credential and makes a live, billable provider request, which
+     * unauthenticated is a key-validity oracle plus unmetered spend. Now gated
+     * at `cloud:operate` with the rest of the credential-touching family; the
+     * boundary is pinned in `ai/aiConfigTestAuthority.test.ts`.
+     *
+     * The property this case tests -- a genuinely open read still runs with no
+     * session -- is unchanged and still covered by the entries above.
+     */
     [IpcChannel.AiRoutingStatus, 'ai'],
     /**
      * `founder:suggestions` STAYS: fixed question TEMPLATES plus coarse counts of
