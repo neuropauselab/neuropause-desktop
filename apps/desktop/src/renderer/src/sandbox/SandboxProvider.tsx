@@ -264,30 +264,39 @@ export function SandboxProvider({ children }: { children: ReactNode }): JSX.Elem
   }, []);
 
   const generateReport = useCallback(async (executionId: string) => {
+    setError(null);
     try {
       await ipc.sandbox.generateReport(executionId);
       await selectExecution(executionId);
       await refreshLive();
     } catch (err) {
       log.error('Failed to generate report', err);
+      setError('The report could not be generated.');
     }
   }, [selectExecution, refreshLive]);
 
   const cancelExecution = useCallback(async (id: string) => {
+    setError(null);
     try {
       await ipc.sandbox.cancel(id);
       await refreshLive();
     } catch (err) {
       log.error('Failed to cancel execution', err);
+      setError('The execution could not be cancelled.');
     }
   }, [refreshLive]);
 
   const setSchedule = useCallback(async (id: string, enabled: boolean) => {
+    setError(null);
     try {
       await ipc.sandbox.setSchedule(id, enabled);
       await refreshLive();
     } catch (err) {
       log.error('Failed to toggle schedule', err);
+      // `Toggle` is fully controlled off `summary`, which never updated because
+      // `refreshLive()` sits after the throwing call -- so the switch genuinely
+      // is still in its prior position and the message can say so.
+      setError('The schedule could not be changed. It is unchanged.');
     }
   }, [refreshLive]);
 

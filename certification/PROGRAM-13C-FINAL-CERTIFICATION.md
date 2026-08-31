@@ -242,7 +242,7 @@ not "fixed" by moving the number, because the number is not the problem.
 | **F22 · tenant-domain coverage** | **PARTIAL** | Denominator 19 correct. Production registration 0/19 before this run, **6/19 after**, 13 uncovered and reported as such. |
 | **Channel → store** | **PARTIAL** | **2/194 = 1.0%.** Ratchet gate added. |
 | **D-6 · authorization error contract** | **NOT TESTED** | Not implemented this run. Denials still cross the IPC boundary as English prose; three renderer sites classify by copy-pasted regex. |
-| **D-7 · silent write paths** | **PARTIAL** | 4 of 10 closed in Round 17h with negative controls. Six remain: `OperationsProvider:371`, `SandboxProvider:271/280/289`, `WorkspaceContextProvider:90`, `WelcomeView:75`. |
+| **D-7 · silent write paths** | **CLOSED for the six named paths** (2026-08-31) | The six are resolved: four fixed (`OperationsProvider.setFlags` incl. its resolved-`null` refusal mode, `SandboxProvider.generateReport`/`.setSchedule`, `WelcomeView.restartTour` + 2 unlisted siblings), and two re-classified with evidence — `cancelExecution` has no caller in 3,707 files, and `WorkspaceContextProvider:90` is a debounced background layout save that cannot surface in place, whose real user-driven counterpart (`WorkspaceSwitcher`'s catch-less `run` helper) is fixed. 14 pins, 4 negative controls, UI 359→373, main unchanged. **D-7b OPEN** — an AST census shows the original ten undercounted; see `D7-SILENT-WRITE-PATHS-EVIDENCE.md`. |
 | **Backend scope** | **NOT TESTED** | F-3. Confirmed in scope; never examined. |
 | **Fresh running-app red team** | **NOT TESTED** | Requires a running application. |
 
@@ -284,7 +284,7 @@ What was NOT done, and why it was not done, matters as much as what was:
    queue identity, and real backup/restore have no runtime evidence.
 5. **D-6 open** — authorization outcomes are distinguishable only by matching
    English prose. Rewording a message silently changes renderer behaviour.
-6. **Six silent write paths** — a click is refused and the screen says nothing.
+6. ~~**Six silent write paths** — a click is refused and the screen says nothing.~~ **CLOSED 2026-08-31 for the six named** (see `D7-SILENT-WRITE-PATHS-EVIDENCE.md`); the CLASS is not eliminated — D-7b records the sites the original census missed.
 7. **D-9 benchmark portability** — a wall-clock budget calibrated on one laptop,
    enforced by no CI.
 

@@ -57,6 +57,13 @@ export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }): JSX.El
   // popover opens. `null` while loading; a failure keeps its message.
   const [orgWorkspaces, setOrgWorkspaces] = useState<OrgWorkspaceRow[] | null>(null);
   const [orgError, setOrgError] = useState<string | null>(null);
+  /**
+   * D-7 — the VIEW-ACTION channel. `orgError` reports a failed organization
+   * LOAD and renders under the organization heading; a failed create / rename /
+   * delete / switch is a different event in a different section, so it gets its
+   * own channel rendered where the action was taken.
+   */
+  const [viewError, setViewError] = useState<string | null>(null);
 
   const loadOrgWorkspaces = useCallback(async (): Promise<void> => {
     try {
@@ -128,8 +135,14 @@ export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }): JSX.El
 
   const run = async (fn: () => Promise<void>): Promise<void> => {
     setBusy(true);
+    setViewError(null);
     try {
       await fn();
+    } catch (err) {
+      // Rendered VERBATIM: `secureBridge` already scrubs internal detail before a
+      // message leaves main, and re-wording it here would mean classifying the
+      // failure by regex on English prose -- which is what D-6 exists to stop.
+      setViewError(err instanceof Error && err.message ? err.message : 'The request failed.');
     } finally {
       setBusy(false);
     }
@@ -248,6 +261,11 @@ export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }): JSX.El
           <div className="text-faint px-2 pb-1 pt-1 text-[10px] font-medium uppercase tracking-wide">
             Views on this device
           </div>
+          {viewError !== null && (
+            <div role="alert" className="text-danger px-2 pb-1 text-xs">
+              {viewError}
+            </div>
+          )}
           {workspaces.map((w, idx) => (
             <div key={w.id} className="group flex items-center gap-1">
               {renamingId === w.id ? (

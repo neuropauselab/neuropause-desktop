@@ -367,13 +367,34 @@ export function OperationsProvider({ children }: { children: ReactNode }): JSX.E
   const setFlags = useCallback(
     async (slug: string, flags: { pinned?: boolean; favorite?: boolean }) => {
       try {
-        await ipc.registry.setFlags(slug, flags);
+        const res = await ipc.registry.setFlags(slug, flags);
+        // TWO failure modes, not one. An unknown slug is a refusal that RESOLVES
+        // (`registry:setFlags` answers `RegistryEntryDto | null`), so the catch
+        // below never runs and the write silently did not happen -- then
+        // `refreshRegistry()` repaints the old state and the star looks like it
+        // simply bounced back.
+        if (!res) {
+          appendLog({
+            source: 'registry',
+            kind: 'flags',
+            title: `Update failed: ${slug}`,
+            detail: 'No registry entry for this app; the flag was not saved.',
+            tone: 'red',
+          });
+        }
       } catch (err) {
         log.warn('setFlags failed', { message: (err as Error).message });
+        appendLog({
+          source: 'registry',
+          kind: 'flags',
+          title: `Update failed: ${slug}`,
+          detail: (err as Error).message,
+          tone: 'red',
+        });
       }
       void refreshRegistry();
     },
-    [refreshRegistry],
+    [refreshRegistry, appendLog],
   );
 
   /* ── plugin actions ── */

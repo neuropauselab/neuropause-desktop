@@ -40,6 +40,16 @@ export function WelcomeView() {
   const [exportMsg, setExportMsg] = useState('');
   const [pilot, setPilot] = useState<PilotStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
+  /**
+   * D-7 — the ACTION channel, deliberately separate from `statusError`.
+   *
+   * `statusError` means "the checklist could not be LOADED" and renders inside
+   * the `{status ? ... : statusError ? ...}` ternary, i.e. only when there is no
+   * checklist. A failed WRITE happens while the checklist is showing, so that arm
+   * is never reached -- reusing that state would have set a value nothing renders.
+   * One channel for every action on this view, named for the action, not the step.
+   */
+  const [actionError, setActionError] = useState<string | null>(null);
   const [statusNonce, setStatusNonce] = useState(0);
 
   useEffect(() => {
@@ -70,12 +80,14 @@ export function WelcomeView() {
 
   const complete = async (step: OnboardingStepId, section?: SectionId) => {
     setBusy(true);
+    setActionError(null);
     try {
       const next = await ipc.onboarding.completeStep(step);
       setStatus(next);
       if (section) goTo(section);
     } catch (err) {
       log.warn('Could not complete step', err);
+      setActionError('That step could not be marked done. Please try again.');
     } finally {
       setBusy(false);
     }
@@ -83,10 +95,12 @@ export function WelcomeView() {
 
   const restartTour = async () => {
     setBusy(true);
+    setActionError(null);
     try {
       setStatus(await ipc.onboarding.reset());
     } catch (err) {
       log.warn('Could not reset onboarding', err);
+      setActionError('The tour could not be restarted. Nothing was changed.');
     } finally {
       setBusy(false);
     }
@@ -106,6 +120,15 @@ export function WelcomeView() {
         workspace — each item opens a surface that already exists in the app. Found something rough?
         The Operations view carries diagnostics and the support bundle.
       </p>
+
+      {actionError !== null && (
+        <div
+          role="alert"
+          className="mb-4 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger"
+        >
+          {actionError}
+        </div>
+      )}
 
       <div className="surface rounded-2xl p-5">
         <div className="mb-4 flex items-center justify-between">
@@ -288,7 +311,10 @@ export function WelcomeView() {
                       .catch(() => undefined);
                   }
                 })
-                .catch((err) => log.warn('Could not update pilot mode', err));
+                .catch((err) => {
+                  log.warn('Could not update pilot mode', err);
+                  setActionError('Pilot mode could not be changed. It is unchanged.');
+                });
             }}
           >
             {pilot?.enabled ? 'Leave pilot' : 'Join pilot'}
