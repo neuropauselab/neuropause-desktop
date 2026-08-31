@@ -85,3 +85,109 @@ cd apps/desktop
 npx vitest run src/renderer/src/shell/sections.test.ts
 npx vitest run -c vitest.ui.config.ts ui-tests/previewNavPlacement.test.tsx
 ```
+
+
+---
+
+# GATE 12 — UI/UX · re-examination + genuine closure (2026-08-31, base HEAD `bfea8de`)
+
+**Directive:** close Gate 12 *genuinely, not cosmetically* — re-examine the Enterprise/Marketplace nav
+placement with the strongest existing architecture, fix real UI/UX defects, and pin the decision.
+
+## THE PLACEMENT DECISION — RE-EXAMINED AND CONFIRMED (not reversed)
+
+Two independent audits (nav-duplication/architecture + reachability/UI-truth/a11y) both concluded the round-57
+**demotion of `enterprise` + `marketplace` to the Advanced disclosure is the strongest, most consistent option**,
+and reversing it would be wrong:
+
+- After the demotion, `intent-home` is provably the **only** primary preview surface — every other preview
+  section is already `tier:'advanced'`, so demotion makes the honesty rule uniform (measured in `sections.ts`).
+- The **production** storefront `store` ("AI Store") stays primary; only the **preview** `marketplace`
+  ("Enterprise Marketplace") drops — the honest consumer-vs-preview split.
+- No sidebar group is emptied (`business` keeps 6, `workspace` keeps 8 incl. `store`; the always-empty
+  `platform` group is pre-existing and filtered out by `Sidebar.tsx`).
+- Demotion *reduces* the aggregate-vs-detail overlap (Enterprise's command-center tabs vs the standalone
+  Organization/Business/Administration/Operations sections) by removing the aggregate from the primary nav.
+- Promoting `enterprise` to primary is deferred to when it sheds `preview:true` — not an importance question.
+
+**No duplicate navigation was created or found reachable from two visible entries** (verified: each
+`activeSection` maps to exactly one view; hidden/superseded sections route but never appear in sidebar, palette,
+or search).
+
+## THE REAL GAP THAT KEPT GATE 12 *COSMETICALLY* CLOSED — NOW FIXED
+
+The round-57 justification was *"placement only — nothing hidden; both stay reachable via the command palette
+and universal search."* That reachability half was **true in code but tested only by a data proxy**
+(`sections.test.ts` asserted `advanced ⇒ !hidden`, then *assumed* the palette/search filter on `hidden` alone).
+A future `tier` filter on `CommandPalette.tsx` or `searchModel.fromSection` would have **silently broken the
+demoted surfaces' reachability with every existing test still green.** That is the difference between cosmetic
+and genuine closure, and it is now pinned end-to-end.
+
+## FINDINGS FIXED THIS ROUND
+
+1. **Reachability is now tested through the REAL channels** (was: untested proxy).
+   - `ui-tests/previewNavReachability.test.tsx` (new, driven-UI over the real App/AppShell/CommandPalette):
+     opens the palette exactly as the shell does (`menu:command` broadcast), and proves **Enterprise** and
+     **Enterprise Marketplace** appear as real "Go to" commands and navigate on select, while a **hidden**
+     section (`control-plane`) never does. (Query-echo hand-off commands are filtered out of the assertions.)
+   - `search/searchModel.test.ts` (+2): the **real** `enterprise`/`marketplace` SectionDefs (advanced+preview)
+     flow through the real `fromSection` mapper to a non-null section hit; a **real** hidden section maps to
+     null. Premise-guarded (asserts they are actually `tier:'advanced'`+`preview`) so it can't pass vacuously.
+
+2. **The two preview storefronts had near-identical descriptions — a "which do I click?" IA hazard — now
+   differentiated** (`sections.ts`): `marketplace` → *"Signed, governed packages — publisher trust and org-wide
+   install policy"* (its Governance/Publishers job); `ecosystem` → *"The org storefront and partner exchange —
+   discover and share workers, connectors, and templates"* (its storefront/Exchange/Partners job). Pinned by a
+   new distinctness test in `sections.test.ts` (distinct + job-differentiated along governance vs storefront).
+   Descriptions are purely presentational (SectionDef doc) — no route/id/lock depends on them.
+
+## RECORDED, NOT FIXED (out of this gate's scope, no defect to the user)
+
+- `business` ↔ Enterprise→Modules render the same surface — an **aggregate-vs-detail** pattern, and the demotion
+  already removes the double-visibility. Not duplicate *navigation* (one sidebar entry each).
+- Icon reuse (`store`/`globe`/`database` each on 3 sections) and the `opscenter` "Operations" label vs the
+  Enterprise "Operations" tab — cosmetic; both mitigated by the demotion (Enterprise is under Advanced).
+- Advanced disclosure is a flat ~20-item list — a future sub-grouping opportunity; not a defect.
+- Sidebar a11y verified CORRECT: Preview badge is `aria-hidden` with the meaning carried by the button
+  `aria-label` (`… — Preview`); the Advanced disclosure has `aria-expanded`/`aria-controls`; groups are labelled.
+
+## TESTS / RESULTS
+
+- `sections.test.ts` **44** (+1 storefront-distinctness); `searchModel.test.ts` **+2** (real-registry reachability
+  + hidden negative control); `previewNavReachability.test.tsx` **3/3** (new); `previewNavPlacement.test.tsx`
+  **3/3** (unchanged, still green).
+- Full main suite: **917 files / 9582 passed / 7 skipped / 0 failed** (delta exactly +3 = the new main-suite pins).
+- Full UI suite: **70 files / 405 passed / 0 failed** (delta exactly +3 = `previewNavReachability`).
+- Typecheck node **0** / web **0**; ESLint on changed files **clean**; `electron-vite build` **exit 0**.
+
+## NEGATIVE CONTROLS (executed; source restored byte-identically)
+
+| Control | Mutation | Result |
+|---|---|---|
+| NC-A | `CommandPalette` section filter adds `&& sct.tier !== 'advanced'` (demoted surfaces dropped from palette) | previewNavReachability **2 fail** (Enterprise + Marketplace no longer reachable); restore → 3 pass |
+| NC-B | `searchModel.fromSection` also drops `tier==='advanced'` (demoted surfaces dropped from search) | searchModel **1 fail** (real-registry reachability); restore → pass |
+
+Both prove the reachability pins are load-bearing: they catch the exact regression (a `tier` filter) that would
+silently defeat the round-57 "still reachable" claim. `CommandPalette.tsx` sha256 `d84f0449…` and `searchModel.ts`
+sha256 `dde6a8a9…` verified identical after restore.
+
+## USER WORKFLOWS VERIFIED (driven UI, macOS/local)
+
+- Default sidebar hides Enterprise + Enterprise Marketplace, keeps production Business + AI Store (existing).
+- Expanding "Advanced" reveals both, Preview-badged (existing).
+- **Command palette:** typing "Enterprise Marketplace" / "Enterprise" surfaces the demoted surface as a "Go to"
+  command; selecting it navigates (palette closes). A hidden section never appears (new).
+- **Universal search:** the real advanced+preview section defs map to real section hits via the production mapper;
+  a hidden section never does (new).
+
+## WINDOWS-ONLY RESIDUAL (unchanged, machine-blocked under Gate 20)
+
+The Windows visual pass — `backdrop-filter` cost + Segoe type metrics — remains the only Gate-12 item that needs
+Windows hardware. It is not a code item and is not resolvable on macOS/Linux.
+
+## GATE 12 RESULT
+
+**GREEN — genuinely closed.** The placement decision is confirmed as the strongest architecture; the reachability
+half of its honesty claim is now pinned end-to-end (palette + search, real channels, premise-guarded,
+negative-controlled); and the one real IA defect found (indistinguishable storefront descriptions) is fixed and
+pinned. No permissions/tenancy/security/consent/routing weakened; no other GREEN gate touched.

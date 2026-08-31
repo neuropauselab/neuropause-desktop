@@ -367,4 +367,24 @@ describe('Gate 12 — preview-tier nav placement (decided: demote to Advanced)',
     expect(byId('business')?.preview).toBeUndefined();
     expect(byId('business')?.tier === 'advanced').toBe(false);
   });
+
+  // The two preview storefronts (Enterprise Marketplace vs Ecosystem) previously
+  // carried near-identical "workers, connectors, templates, …" descriptions — a
+  // "which one do I click?" hazard, since both are the palette/tooltip subtitle a
+  // user reads to tell them apart. Their jobs differ: Marketplace = governed
+  // packages (publisher trust + org install policy); Ecosystem = the storefront +
+  // partner exchange. Pin that they read distinctly along that axis.
+  it('the two storefronts (marketplace, ecosystem) carry DISTINCT, job-differentiated descriptions', () => {
+    const mkt = byId('marketplace')?.description ?? '';
+    const eco = byId('ecosystem')?.description ?? '';
+    expect(mkt.length).toBeGreaterThan(0);
+    expect(eco.length).toBeGreaterThan(0);
+    expect(mkt).not.toEqual(eco);
+    // Marketplace's distinct job: governance / publisher trust / install policy.
+    expect(mkt).toMatch(/govern|publisher|policy/i);
+    // Ecosystem's distinct job: storefront / partner exchange.
+    expect(eco).toMatch(/storefront|exchange|partner/i);
+    // And they no longer share the old ambiguous "packages" vs "storefront for" collision:
+    expect(mkt).not.toMatch(/storefront/i);
+  });
 });

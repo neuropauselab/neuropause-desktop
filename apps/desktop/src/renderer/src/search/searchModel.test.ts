@@ -30,6 +30,7 @@ import {
   SEARCH_HISTORY_CAP,
   type UnifiedSearchItem,
 } from './searchModel';
+import { SECTION_BY_ID } from '@renderer/shell/sections';
 
 const NOW = Date.parse('2026-07-30T12:00:00Z');
 const HOUR = 3_600_000;
@@ -100,6 +101,34 @@ describe('mappers are defensive', () => {
     expect(fromSection({ id: 'memory', label: 'AI Memory' }, 'memory')?.type).toBe('section');
     expect(fromSection({ id: 'home', label: 'Home', hidden: true }, 'home')).toBeNull(); // hidden sections never leak
     expect(fromModuleRecord({ id: 'inv1', title: 'INV-0042', status: 'open', updatedAt: '2026-07-30T09:00:00Z' }, 'finance.invoice', 'Invoices')?.type).toBe('business');
+  });
+});
+
+// Gate 12 (round 57): `enterprise` + `marketplace` were demoted to the Advanced
+// disclosure, justified as "placement only — still reachable via the command
+// palette AND universal search." Universal search reaches a section through
+// `fromSection`, which drops ONLY `hidden` (never `tier`/`preview`). Pin that
+// against the REAL registry so a future tier/preview filter on the search mapper
+// — which would silently break the demoted surfaces' reachability — fails here.
+describe('Gate 12 — demoted preview sections stay reachable via universal search (real registry)', () => {
+  it('advanced + preview sections (enterprise, marketplace) still map to a section hit', () => {
+    const enterprise = SECTION_BY_ID.enterprise;
+    const marketplace = SECTION_BY_ID.marketplace;
+    // Guard the premise so this cannot pass vacuously if the registry changes.
+    expect(enterprise.tier).toBe('advanced');
+    expect(enterprise.preview).toBe(true);
+    expect(marketplace.tier).toBe('advanced');
+    expect(marketplace.preview).toBe(true);
+    // The real defs flow through the real mapper to a real section hit.
+    expect(fromSection(enterprise, enterprise.label)?.id).toBe('enterprise');
+    expect(fromSection(enterprise, enterprise.label)?.type).toBe('section');
+    expect(fromSection(marketplace, marketplace.label)?.id).toBe('marketplace');
+  });
+
+  it('a REAL hidden section is never a search target (negative control: control-plane)', () => {
+    const cp = SECTION_BY_ID['control-plane'];
+    expect(cp.hidden).toBe(true); // premise guard
+    expect(fromSection(cp, cp.label)).toBeNull();
   });
 });
 
