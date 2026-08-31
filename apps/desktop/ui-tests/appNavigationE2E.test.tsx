@@ -88,7 +88,8 @@ function routeBoot(): void {
     completedAt: '2026-08-18T00:00:00.000Z',
     updatedAt: '2026-08-18T00:00:00.000Z',
   }));
-  // firstRun:false → the OnboardingWizard renders null (no blocking dialog).
+  // Onboarding status routed for completeness (Getting Started reads it); no
+  // onboarding overlay mounts in the shell now (Gate 13 consolidated to first-run only).
   route(IpcChannel.OnboardingStatus, () => ({
     firstRun: false,
     startedAt: null,

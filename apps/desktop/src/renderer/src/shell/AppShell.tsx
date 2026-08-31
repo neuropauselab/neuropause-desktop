@@ -16,7 +16,6 @@ import { VoiceWidget } from '../voice/VoiceWidget';
 import { PerformanceOverlay } from './PerformanceOverlay';
 import { PerfSampler } from '@renderer/state/PerfSampler';
 import { HomeView } from '@renderer/views/HomeView';
-import { OnboardingWizard } from '@renderer/onboarding/OnboardingWizard';
 import { FirstRunExperience } from '@renderer/firstRun/FirstRunExperience';
 import { setWorkspaceType } from '@renderer/firstRun/workspaceTypeStore';
 import { onExperienceProfileChanged } from '@renderer/firstRun/experienceProfileEvents';
@@ -369,15 +368,16 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
         setWorkspaceType(p.workspaceType);
       })
       .catch((err: unknown) => {
-        // Fail OPEN to the legacy wizard, never to nothing: if this channel is
-        // unreachable (older main process still running, stale build), the
-        // pre-existing onboarding must keep behaving exactly as before. The
-        // runtime-ready retry above upgrades this from permanent to transient
-        // when the cause was the boot window.
+        // Fail OPEN to the product, never to a stuck takeover: if this channel is
+        // unreachable (older main process still running, stale build), treat the
+        // profile as already-settled (`skipped`) so the shell renders with NO
+        // onboarding surface, rather than trapping the user behind the first-run
+        // takeover. The runtime-ready retry above upgrades this from permanent to
+        // transient when the cause was the boot window (it re-runs this load).
         profileLoadRacedBoot.current = true;
         // eslint-disable-next-line no-console
         console.warn(
-          '[first-run] xp:profile.get failed — falling back to the legacy wizard until the runtime reports ready.',
+          '[first-run] xp:profile.get failed — showing the shell without onboarding until the runtime reports ready.',
           err,
         );
         setExperienceProfile({
@@ -640,11 +640,16 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
               goToSection('settings');
             }}
           />
-        ) : experienceProfile && experienceProfile.state !== 'pending' ? (
-          // The guided checklist wizard runs AFTER the experience decided the
-          // product shape — never on top of it.
-          <OnboardingWizard onGoTo={goToSection} />
         ) : null}
+        {/*
+          GATE 13 (round 58) — ONE onboarding journey. The first-run experience
+          above is the single onboarding flow; the separate "Welcome to NeuroPause"
+          checklist modal that used to pop the instant first-run finished has been
+          removed (it did no setup — a pure tour that duplicated the journey the
+          user had just completed). Its checklist content lives on, un-popped, as
+          the persistent Getting Started section (WelcomeView), still backed by the
+          same `onboarding:*` service.
+        */}
       </ErrorBoundary>
       {/* Always-mounted invisible runtime performance collector (feeds Diagnostics + the dev overlay). */}
       <ErrorBoundary inline name="perf-sampler">

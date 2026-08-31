@@ -2,19 +2,19 @@
  * P13C ROUND 50 — GATE 12. THE FIVE REMAINING HAND-ROLLED OVERLAYS TRAP FOCUS.
  *
  * Round 36 gave the shared `Modal` (and the destructive-delete alertdialog) a
- * real focus trap; the audit's other five hand-rolled overlays kept announcing
+ * real focus trap; the audit's other hand-rolled overlays kept announcing
  * `aria-modal` while Tab walked straight out into the shell:
  *   1. the first-run takeover (`FirstRunExperience`)
- *   2. the onboarding wizard (`OnboardingWizard`)
- *   3. the sandbox inspector drawer (`sandbox/panels/shared` `Drawer`)
- *   4. the AI-Store install dialog (`InstallFlow` — which also never declared
+ *   2. the sandbox inspector drawer (`sandbox/panels/shared` `Drawer`)
+ *   3. the AI-Store install dialog (`InstallFlow` — which also never declared
  *      `role="dialog"` at all)
- *   5. the Developer Portal modal (`developer/primitives` `Modal`)
- * All five now use the round-36 `useFocusTrap`; Escape closes the dismissible
- * four through their existing close paths (parity with backdrop clicks and, in
- * the wizard's case, the RECORDED dismiss), while the first-run takeover
- * deliberately does NOT close on Escape — it is a required flow with an
- * explicit Skip. Every suite includes the negative: focus cannot escape.
+ *   4. the Developer Portal modal (`developer/primitives` `Modal`)
+ * All now use the round-36 `useFocusTrap`; Escape closes the dismissible ones
+ * through their existing close paths (parity with backdrop clicks), while the
+ * first-run takeover deliberately does NOT close on Escape — it is a required
+ * flow with an explicit Skip. Every suite includes the negative: focus cannot
+ * escape. (Gate 13, round 58: the onboarding-wizard overlay was removed when the
+ * second onboarding system was consolidated away — see AppShell.)
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import React, { useState } from 'react';
@@ -25,7 +25,6 @@ import { IpcChannel } from '@neuropause/shared';
 import { Drawer } from '@renderer/sandbox/panels/shared';
 import { Modal as DevModal } from '@renderer/developer/primitives';
 import { InstallFlow } from '@renderer/store/InstallFlow';
-import { OnboardingWizard } from '@renderer/onboarding/OnboardingWizard';
 import { FirstRunExperience } from '@renderer/firstRun/FirstRunExperience';
 
 beforeEach(() => {
@@ -121,44 +120,10 @@ describe('AI-Store InstallFlow (Gate 12, round 50)', () => {
   });
 });
 
-describe('OnboardingWizard (Gate 12, round 50)', () => {
-  function routeWizard(): { dismissed: () => number } {
-    let dismissed = 0;
-    const status = {
-      firstRun: true,
-      dismissed: false,
-      nextStep: 's1',
-      steps: [
-        { id: 's1', title: 'Connect a tool', description: 'Pick your first connector.', done: false },
-        { id: 's2', title: 'Meet the assistant', description: 'Say hello.', done: false },
-      ],
-    };
-    route(IpcChannel.OnboardingStatus, () => status);
-    route(IpcChannel.OnboardingStart, () => status);
-    route(IpcChannel.OnboardingDismiss, () => {
-      dismissed += 1;
-      return { ...status, dismissed: true };
-    });
-    return { dismissed: () => dismissed };
-  }
-
-  it('traps focus while open', async () => {
-    routeWizard();
-    render(<OnboardingWizard onGoTo={() => undefined} />);
-    const dialog = await screen.findByRole('dialog', { name: 'Welcome to NeuroPause' });
-    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
-    assertTrapped(dialog);
-  });
-
-  it('Escape takes the RECORDED dismiss path — never a silent vanish', async () => {
-    const probe = routeWizard();
-    render(<OnboardingWizard onGoTo={() => undefined} />);
-    await screen.findByRole('dialog', { name: 'Welcome to NeuroPause' });
-    fireEvent.keyDown(window, { key: 'Escape' });
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    expect(probe.dismissed()).toBe(1); // persisted, not just hidden
-  });
-});
+// NOTE (Gate 13, round 58): the OnboardingWizard overlay + its focus-trap block
+// were REMOVED here when the second, back-to-back onboarding system was
+// consolidated away (the component no longer exists). The other four overlays
+// below/above keep their round-50 focus-trap coverage unchanged.
 
 describe('FirstRunExperience takeover (Gate 12, round 50)', () => {
   vi.stubGlobal('scrollTo', () => undefined);
