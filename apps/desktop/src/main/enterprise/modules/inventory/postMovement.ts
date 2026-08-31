@@ -6,9 +6,10 @@
  * (reserve/ship) and Procurement (goods receipt) both go through here — no domain
  * ever writes stock directly.
  */
-import type { EnterpriseEntity, MovementType } from '@neuropause/shared';
+import type { EnterpriseEntity, EnterpriseRecordMeta, MovementType } from '@neuropause/shared';
 import { STOCK_MOVEMENTS_MODULE_ID, deriveRecordTitle } from '@neuropause/shared';
 import type { EnterpriseModuleActionContext } from '../../framework';
+import { childCorrelationMeta } from '../../framework';
 
 export interface StockMovementInput {
   movementNumber: string;
@@ -53,9 +54,22 @@ export async function postStockMovement(
     },
   });
   if (!validation.ok) return null;
+  // Transaction-graph spine: the movement inherits the correlation of the
+  // document that caused it — the reference the caller already supplied. So a
+  // movement shipped for a sales order, or received against a PO, joins the same
+  // business transaction as its source. Best-effort: an unresolvable reference
+  // simply leaves the movement unstamped (still a valid ledger entry).
+  let correlation: EnterpriseRecordMeta | undefined;
+  const sourceModule = input.referenceModule ? ctx.moduleFor(input.referenceModule) : null;
+  if (sourceModule && input.referenceRecord) {
+    await sourceModule.store.load();
+    const source = sourceModule.store.get(input.referenceRecord);
+    if (source) correlation = childCorrelationMeta(source, input.referenceModule);
+  }
   const record = mv.store.create({
     title: deriveRecordTitle(mv.descriptor, validation.values),
     fields: validation.values,
+    ...(correlation ? { metadata: correlation } : {}),
     actor: ctx.actor(),
     now: ctx.now(),
   });

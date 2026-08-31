@@ -26,6 +26,7 @@ import {
   quoteFromRecord,
 } from '@neuropause/shared';
 import type { EnterpriseModuleActionContext } from '../../framework';
+import { childCorrelationMeta, rootMetaIfUnset } from '../../framework';
 
 /** The descriptor action key the Quotes module surfaces for conversion. */
 export const CONVERT_TO_ORDER_ACTION = 'convertToOrder';
@@ -92,6 +93,9 @@ export async function convertQuoteToOrder(
   const order = ordersModule.store.create({
     title: deriveRecordTitle(ordersModule.descriptor, validation.values),
     fields: validation.values,
+    // Transaction-graph spine: the order is caused by the quote, so it joins (or
+    // starts, if the quote had none) the quote's business transaction.
+    metadata: childCorrelationMeta(quote, QUOTES_MODULE_ID),
     actor: ctx.actor(),
     now: ctx.now(),
   });
@@ -102,6 +106,10 @@ export async function convertQuoteToOrder(
   // Timeline. The pricing stamps are unaffected by the status/ref change.
   const updatedQuote = quotesModule.store.update(quote.id, {
     fields: { convertedOrder: order.id, status: 'converted' },
+    // Stamp the quote as the transaction root when it is not already part of one,
+    // so a genuine origin self-identifies in a trace (a quote raised from a lead
+    // keeps its inherited chain — `rootMetaIfUnset` returns {} in that case).
+    metadata: rootMetaIfUnset(quote, QUOTES_MODULE_ID),
     actor: ctx.actor(),
     now: ctx.now(),
   });
@@ -168,6 +176,10 @@ export async function convertOrderToInvoice(
   const invoice = invoiceModule.store.create({
     title: deriveRecordTitle(invoiceModule.descriptor, validation.values),
     fields: validation.values,
+    // Transaction-graph spine: the invoice is caused by the order, inheriting the
+    // order's correlation — so the invoice (and everything the invoice posts to
+    // the GL) sits in the same transaction as the quote and the order.
+    metadata: childCorrelationMeta(order, ORDERS_MODULE_ID),
     actor: ctx.actor(),
     now: ctx.now(),
   });
@@ -179,6 +191,9 @@ export async function convertOrderToInvoice(
   // audit + Timeline.
   const updatedOrder = ordersModule.store.update(order.id, {
     fields: { convertedInvoice: invoice.id },
+    // Root the transaction at the order when it was created directly (no quote);
+    // an order raised from a quote keeps its inherited chain (returns {}).
+    metadata: rootMetaIfUnset(order, ORDERS_MODULE_ID),
     actor: ctx.actor(),
     now: ctx.now(),
   });

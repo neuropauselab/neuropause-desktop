@@ -18,7 +18,7 @@
  *   - everything no-ops gracefully when the GL modules are not registered
  *     (tests that wire only invoice+payment stay valid).
  */
-import type { EnterpriseEntity } from '@neuropause/shared';
+import type { EnterpriseEntity, EnterpriseRecordMeta } from '@neuropause/shared';
 import {
   FINANCE_MODULE_ID,
   FX_GAINLOSS_ACCOUNT,
@@ -54,6 +54,7 @@ import {
   type GlJournalLine,
 } from '@neuropause/shared';
 import type { EnterpriseModule, EnterpriseModuleActionContext } from '../../framework';
+import { childCorrelationMeta } from '../../framework';
 
 function str(v: unknown): string {
   return v === null || v === undefined ? '' : String(v);
@@ -167,9 +168,22 @@ export async function applyGlDerivedEntries(
       },
     });
     if (!validated.ok) continue; // unresolvable lines — nothing to record yet
+    // Transaction-graph spine: the journal entry inherits the correlation of the
+    // record it posts for (the source the derived entry already names), so the
+    // financial consequence sits in the same business transaction as the invoice,
+    // bill, or stock movement that caused it. Best-effort: an unresolvable source
+    // leaves the entry unstamped (still a valid, balanced posting).
+    let correlation: EnterpriseRecordMeta | undefined;
+    const sourceModule = derived.sourceModule ? ctx.moduleFor(derived.sourceModule) : null;
+    if (sourceModule && derived.sourceRef) {
+      await sourceModule.store.load();
+      const source = sourceModule.store.get(derived.sourceRef);
+      if (source) correlation = childCorrelationMeta(source, derived.sourceModule);
+    }
     const draft = journal.store.create({
       title: derived.entryNumber,
       fields: validated.values,
+      ...(correlation ? { metadata: correlation } : {}),
       actor: 'system:gl-posting',
       now: ctx.now(),
     });
