@@ -214,6 +214,43 @@ export async function getHealth(): Promise<AiHealthDto> {
  * hung binary cannot stall the Settings surface; on any failure the answer is
  * null ("could not determine"), never a false "not installed".
  */
+/**
+ * Extract the version from `ollama --version` output.
+ *
+ * THE DEFECT THIS FIXES, reproduced on a real machine: the old parse was
+ * an anchored replace of a leading "ollama version" prefix, which assumes a
+ * single line beginning with that prefix. When the binary is installed but the
+ * SERVICE IS DOWN the real output is two warning lines —
+ *
+ *   Warning: could not connect to a running Ollama instance
+ *   Warning: client version is 0.30.7
+ *
+ * — so the anchored regex matched nothing, the whole two-line warning became the
+ * "version", and Settings rendered:
+ *
+ *   Installed but not running (vWarning: could not connect to a running Ollama
+ *   instance\nWarning: client version is 0.30.7)
+ *
+ * That is worst exactly where it hurts most: the installed-but-not-running state
+ * is the one where the user needs a clear next step, not a warning pasted into a
+ * version field.
+ *
+ * Scans every line for a version number and takes the first, covering both the
+ * running form ("ollama version is X") and the down form ("client version is
+ * X"). Returns null when no version can be found — an honest "could not
+ * determine" rather than echoing diagnostic prose into the UI.
+ */
+export function parseOllamaVersion(out: string): string | null {
+  for (const line of String(out).split(/\r?\n/)) {
+    // The capture must START WITH A DIGIT. Without that guard the optional
+    // "is" is itself a plausible \S+ and "ollama version is 0.30.7" parses as
+    // the version "is" — which the first draft of this function did.
+    const m = /version\s+(?:is\s+)?v?(\d[\w.+-]*)/i.exec(line.trim());
+    if (m?.[1]) return m[1].replace(/[.,;]+$/, '');
+  }
+  return null;
+}
+
 async function detectOllamaBinary(): Promise<{ installed: boolean | null; version: string | null }> {
   try {
     const out = await new Promise<string>((resolve, reject) => {
@@ -222,8 +259,7 @@ async function detectOllamaBinary(): Promise<{ installed: boolean | null; versio
         else resolve(String(stdout));
       });
     });
-    const version = out.trim().replace(/^ollama version\s*/i, '') || null;
-    return { installed: true, version };
+    return { installed: true, version: parseOllamaVersion(out) };
   } catch (err) {
     // ENOENT = genuinely not on PATH. Anything else (timeout, permission) is
     // indeterminate and must not render as "not installed".

@@ -57,7 +57,10 @@ export class OllamaModelClient implements ModelClient {
     for (const m of req.messages) messages.push({ role: m.role, content: m.content });
 
     const res = await this.post(req.model, messages, req.maxOutputTokens);
-    const json = (await res.json()) as OllamaResponse;
+    // A local Ollama behind a proxy, or a truncated response, can return
+    // non-JSON. Without this guard the user saw a raw V8 SyntaxError instead of
+    // the clean, actionable message this module builds two lines below.
+    const json = (await res.json().catch(() => ({}))) as OllamaResponse;
     if (!res.ok || json.error) {
       throw new Error(`Ollama request failed: ${json.error ?? `HTTP ${res.status}`}`);
     }

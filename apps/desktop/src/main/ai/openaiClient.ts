@@ -12,6 +12,7 @@
  * `role: 'system'` message — the same shape ollamaClient uses.
  */
 import type { ModelClient, ModelRequest, ModelResult } from './modelClient';
+import { assertHeaderSafeApiKey, redactProviderError } from './apiKeyGuard';
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 
@@ -51,6 +52,7 @@ export class OpenAiModelClient implements ModelClient {
       throw new Error('OpenAI client is not configured (no API key).');
     }
     const controller = new AbortController();
+    assertHeaderSafeApiKey(this.apiKey);
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
       const messages = [
@@ -90,6 +92,12 @@ export class OpenAiModelClient implements ModelClient {
         inputTokens: json.usage?.prompt_tokens ?? 0,
         outputTokens: json.usage?.completion_tokens ?? 0,
       };
+    } catch (err) {
+      // Second layer. The guard above stops the known shape; this stops the
+      // next one. Any provider/SDK throw is re-raised with credential-shaped
+      // material scrubbed, because this message is copied verbatim into the
+      // routing envelope, rendered in the assistant, and persisted to disk.
+      throw redactProviderError(err);
     } finally {
       clearTimeout(timer);
     }

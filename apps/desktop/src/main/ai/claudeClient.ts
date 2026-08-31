@@ -5,6 +5,7 @@
  * is false and the engine falls back to its deterministic path.
  */
 import type { ModelClient, ModelRequest, ModelResult } from './modelClient';
+import { assertHeaderSafeApiKey, redactProviderError } from './apiKeyGuard';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
@@ -44,6 +45,10 @@ export class ClaudeModelClient implements ModelClient {
     if (!this.isConfigured()) {
       throw new Error('Claude client is not configured (no ANTHROPIC_API_KEY).');
     }
+    // Refuse a key that cannot be a header value BEFORE the request is built:
+    // the SDK's own TypeError for that case embeds the key verbatim, and this
+    // client's throw propagates into the assistant UI and is persisted.
+    assertHeaderSafeApiKey(this.apiKey);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
@@ -62,7 +67,9 @@ export class ClaudeModelClient implements ModelClient {
         }),
         signal: controller.signal,
       });
-      const json = (await res.json()) as AnthropicResponse;
+      // Same guard as the OpenAI client: a gateway/proxy error page is not JSON,
+      // and a raw SyntaxError tells the user nothing about their provider.
+      const json = (await res.json().catch(() => ({}))) as AnthropicResponse;
       if (!res.ok || json.error) {
         // Surface the provider's error reason — never the key.
         const reason = json.error?.message ?? `HTTP ${res.status}`;
@@ -79,6 +86,12 @@ export class ClaudeModelClient implements ModelClient {
         inputTokens: json.usage?.input_tokens ?? 0,
         outputTokens: json.usage?.output_tokens ?? 0,
       };
+    } catch (err) {
+      // Second layer. The guard above stops the known shape; this stops the
+      // next one. Any provider/SDK throw is re-raised with credential-shaped
+      // material scrubbed, because this message is copied verbatim into the
+      // routing envelope, rendered in the assistant, and persisted to disk.
+      throw redactProviderError(err);
     } finally {
       clearTimeout(timer);
     }

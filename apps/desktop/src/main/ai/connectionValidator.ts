@@ -8,6 +8,7 @@
  * 401 ⇒ bad key. Ollama: a GET /api/tags reachability probe.
  */
 import type { AiTestResultDto } from '@neuropause/shared';
+import { INVALID_KEY_DETAIL, isHeaderSafeApiKey } from './apiKeyGuard';
 
 const ANTHROPIC_MODELS_URL = 'https://api.anthropic.com/v1/models';
 const ANTHROPIC_VERSION = '2023-06-01';
@@ -27,6 +28,10 @@ async function timeBoxed<T>(ms: number, run: (signal: AbortSignal) => Promise<T>
 /** Validate an Anthropic API key by listing models. The key is never logged. */
 export async function validateClaudeKey(apiKey: string, fetchImpl: typeof fetch = fetch): Promise<AiTestResultDto> {
   if (!apiKey) return { ok: false, detail: 'No API key provided.', latencyMs: null };
+  // A key carrying a control character cannot be a header value. Say so, rather
+  // than letting the request throw and reporting the generic "could not reach"
+  // -- and rather than letting a provider SDK echo the key back in a TypeError.
+  if (!isHeaderSafeApiKey(apiKey)) return { ok: false, detail: INVALID_KEY_DETAIL, latencyMs: null };
   const started = Date.now();
   return timeBoxed(
     8000,
@@ -38,6 +43,13 @@ export async function validateClaudeKey(apiKey: string, fetchImpl: typeof fetch 
       const latencyMs = Date.now() - started;
       if (res.ok) return { ok: true, detail: 'Anthropic API key is valid.', latencyMs };
       if (res.status === 401) return { ok: false, detail: 'Invalid API key (401 Unauthorized).', latencyMs };
+      // A 429 is a WORKING key that is momentarily rate limited — the opposite
+      // advice from a bad key. Reporting it as a bare status told the user
+      // nothing and invited them to go re-check a key that was fine. OpenAI
+      // below has always said this; Anthropic did not, and the asymmetry was
+      // invisible to the mocked tests because they never drove a 429 here.
+      if (res.status === 429)
+        return { ok: false, detail: 'Rate limited by Anthropic (429). Try again shortly.', latencyMs };
       return { ok: false, detail: `Anthropic API returned HTTP ${res.status}.`, latencyMs };
     },
     () => ({ ok: false, detail: 'Could not reach the Anthropic API.', latencyMs: Date.now() - started }),
@@ -49,6 +61,7 @@ const OPENAI_MODELS_URL = 'https://api.openai.com/v1/models';
 /** Validate an OpenAI API key by listing models. The key is never logged. */
 export async function validateOpenAiKey(apiKey: string, fetchImpl: typeof fetch = fetch): Promise<AiTestResultDto> {
   if (!apiKey) return { ok: false, detail: 'No API key provided.', latencyMs: null };
+  if (!isHeaderSafeApiKey(apiKey)) return { ok: false, detail: INVALID_KEY_DETAIL, latencyMs: null };
   const started = Date.now();
   return timeBoxed(
     8000,
