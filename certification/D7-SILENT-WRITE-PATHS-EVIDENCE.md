@@ -630,8 +630,76 @@ Renderer-only; no main-process file touched.
 
 Verified through the REAL `WelcomeView` rendered in jsdom with routed IPC (the repo's established rendered-UX harness; a real Electron run is not possible in the Linux CI sandbox). After clicking "Join pilot" with the toggle succeeding but the step-mark failing: the badge/button reflect "On"/"Leave pilot" (the toggle really happened) AND a persistent, screen-reader-announced banner (`role="alert"`) says the setup step could not be marked done — never claiming the toggle failed. On full success the step is marked done and no banner appears.
 
-## REMAINING D-7b SITES — still OPEN
+## REMAINING D-7b SITES
 
-| Site | Write |
+**None — D-7b is COMPLETE.** `enterprise/PersonalizationPanel.tsx:58` was the last enumerated site; **CLOSED 2026-08-31** (Site 6, see the section below).
+
+
+---
+
+# D-7b · SITE 6 — `PersonalizationPanel` shared write helper — **CLOSED (D-7b COMPLETE)**
+
+**Date:** 2026-08-31 · **Base HEAD:** `4c560c8` · Scope: `enterprise/PersonalizationPanel.tsx` only. Sites 1–5 untouched.
+
+## ROOT CAUSE
+
+`PersonalizationPanel` funnels all four of its writes — Remove-favorite (`:58`, the named Site 6), Clear-recents (`:69`), Rename-view (`:111`), Delete-view (`:118`) — through one shared helper that had **no catch**:
+
+```
+const run = async (key, op) => { setBusy(key); try { onMutate(await op()); } finally { setBusy(null); } };
+```
+
+The channels are the same `dashboard:read` + requireAuth `ipc.enterprise.personalization.*` family as Sites 3/4, and they REJECT on failure (not-signed-in, RBAC denial, untrusted sender, invalid payload, timeout; the pure store mutators never throw or return a failure shape). On rejection `await op()` threw, `onMutate` was skipped, `finally` cleared the spinner, and the rejection escaped **UNHANDLED** — the click did nothing and said nothing. The component had **no error surface at all** (no error state, no toast). This is the same shape as the D-7 `WorkspaceSwitcher` helper (a shared `run` with no catch), fixed the same way.
+
+## THE FIX
+
+The shared `run` helper is fixed at the root (one catch closes all four writes), gaining a per-action `label` argument:
+
+```
+const run = async (key, label, op) => {
+  setBusy(key);
+  let next: PersonalizationState;
+  try { next = await op(); }
+  catch (err) { raiseError(label, { message: <verbatim>, dedupeKey: `personalize:${key}` }); return; }
+  finally { setBusy(null); }
+  onMutate(next);
+};
+```
+
+Every failure now surfaces through `useToast().error` — rendered `role="alert"` / `aria-live="assertive"` and persistent — with the boundary message **verbatim** (the D-6 `invoke` wrapper already restored the clean text) and a **per-action+item** dedupe key (`personalize:unfav:<id>` / `:clear` / `:rename:<id>` / `:del:<id>`) so failures on different rows coexist. Each caller passes a truthful label ("Couldn't remove favorite" / "clear recents" / "rename view" / "delete view"). **The `try` is write-scoped**: `onMutate(next)` runs *after* the try, so a `setState` throw can never raise a false failure toast, and on failure `onMutate` is not called — the list is left exactly as it was (it is driven by `state`/`onMutate`, never optimistically). A bare-string rejection falls back to "The request failed." so the alert is never empty.
+
+Actor-scoped write (`currentActorId()` server-side); nothing user-supplied crosses a tenant boundary; renderer-only, purely additive on the failure arm — no auth/tenancy/consent/audit/fail-closed boundary touched.
+
+## FILES CHANGED
+
+```
+MOD  src/renderer/src/enterprise/PersonalizationPanel.tsx   run helper: unhandled rejection → announced error toast (verbatim, per-action label + dedupe); write-scoped try; success onMutate unchanged; 4 callers pass a label
+NEW  ui-tests/silentWriteD7bPersonalizationPanel.test.tsx   3 pins
+```
+
+Renderer-only; no main-process file touched.
+
+## TESTS AND CHECKS
+
+| Check | Result |
 |---|---|
-| `enterprise/PersonalizationPanel.tsx:58` | `personalization.favorite` (Remove) — silent via unhandled rejection in its `run` helper |
+| New D-7b Site 6 pins | **3/3** (refused Remove announced + no mutate; bare-string non-empty; success lifts state, no alert) |
+| Full UI suite | **402 passed / 69 files** (from 399/68 — delta exactly the new file) |
+| Full main suite | **9579 passed / 7 skipped — unchanged** (renderer-only change) |
+| `tsc` node / web | **exit 0 / exit 0** |
+| `eslint` on changed files | **clean** |
+| `electron-vite build` | **exit 0** |
+
+**Negative control — fired; file restored byte-identically (sha256 `6e7551e9…`):**
+
+| Control | Mutation | Result |
+|---|---|---|
+| NC | the shared `run` restored to the no-catch (unhandled-rejection) form | **2 fail** (both failure-announce tests; the success test still passes, as it must) |
+
+## USER-VISIBLE BEHAVIOUR (rendered, not state-level)
+
+Verified through the REAL `ToastProvider` + REAL `PersonalizationPanel` rendered in jsdom (the repo's established rendered-UX harness; a real Electron run is not possible in the Linux CI sandbox). A refused "Remove" now shows a persistent, screen-reader-announced banner (`role="alert"`, `aria-live="assertive"`) with the boundary's own message, the favorite row stays put (removal did not happen), and no state is lifted; a successful "Remove" lifts the favorite-free state up via `onMutate` with no banner.
+
+## REMAINING D-7b SITES
+
+**None — D-7b is COMPLETE.** All six enumerated sites are CLOSED: Site 1 `EnterpriseModuleScreen` · Site 2 `ConnectionProvider` · Site 3 `EnterpriseView` · Site 4 `BusinessFamilySection` · Site 5 `WelcomeView` pilot · Site 6 `PersonalizationPanel`. Recorded-not-fixed, separate lower-severity items outside the D-7b enumeration (no persisted inconsistency): the `WelcomeView` feedback export/submit paths.
