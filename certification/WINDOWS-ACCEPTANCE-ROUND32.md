@@ -121,3 +121,113 @@ or the fault no longer reproduces on the machine that showed it (state which).
 Anything else is FAIL with the log attached. Unit tests, typecheck, and the
 build itself are necessary but NOT sufficient — this gate closes only on
 Windows runtime evidence.
+
+---
+
+# ROUND 61 AMENDMENT — WHY THE rc.20 RUN COULD NOT FINISH, AND WHAT CHANGES
+
+## The correction
+
+The rc.20 run recorded B3/B5/B6/B9 as *"gated behind signing in, which needs the
+cloud auth backend — unavailable in this offline VM."* **That diagnosis was
+wrong about the product.** It was correct about that binary only.
+
+Measured in the staging tree the rc.20 installer was built from
+(`apps/desktop/dist/win-unpacked/resources/app.asar`, 58,543,363 B):
+
+| Marker | Count | Meaning |
+|---|---|---|
+| `Sign in to your AI operating layer` | 1 | the sign-in wall **is** in rc.20 |
+| `Working locally` | **0** | local-first mode is **not** |
+| `device.invalid` | **0** | the device-local principal namespace is **not** |
+| `LocalModeBanner` | **0** | — |
+| `dp:history` / `dp:import` / `dp:export` | 5 / 6 / 16 | the import & export flows **are** present |
+| `assistant:conversations` | 5 | the Assistant read path **is** present |
+| `protectedOwnerIdForTarget` | 3 | round-40 owner hardening **is** present |
+
+The flows B5/B6/B9 exercise all shipped in rc.20. **Only the way in was
+missing.** rc.20 was cut from `efe8196` on **2026-08-15**; local-first mode
+(S17) landed in `89f3c45` on **2026-08-18** — three days later. The acceptance
+artifact is now **390 commits** behind HEAD.
+
+So step B1's *"first launch → sign in"* was an instruction the binary could not
+satisfy offline, and no check caught that before a machine session was spent on
+it. The residuals were attributed to a missing backend when the real cause was
+a missing entry path.
+
+Instrument note: the bundle is **not minified** (verified independently), and
+the markers above are string literals with positive controls in the same pass
+(`local-` 22, `No AI model` 15), so the zeros are genuine absences rather than
+mangling. Scope limit, stated deliberately: these are facts about the **staging
+tree**, not about bytes extracted from `NeuroPause-Setup.exe` — NSIS cannot be
+unpacked on the macOS host (no 7-Zip in any form), so installer-payload
+identity is available only from a Windows run. The Windows guest independently
+read `version=1.0.0-rc.20 commit=efe8196 dirty=False` from the installed app,
+which corroborates the staging tree at the provenance level.
+
+## Mandatory pre-flight (new — run this BEFORE booking a machine session)
+
+```bash
+cd apps/desktop
+node scripts/verify-acceptance-artifact.cjs --resources <staging-resources-dir>
+```
+
+It exits non-zero and names the acceptance items that are **not drivable** on
+the artifact. Against rc.20 it reports, in milliseconds, exactly the set the
+last Windows session discovered by hand:
+
+```
+ACCEPTANCE ITEMS NOT DRIVABLE ON THIS ARTIFACT: B1, B3, B5, B6, B9
+```
+
+Never spend a machine session on items this check has already excluded — they
+will fail for want of the feature, not for want of the platform.
+
+## Section B is re-based: local-first, no backend required
+
+**B1 is REPLACED.** *Old:* "Fresh installation → first launch → sign in."
+*New:* **"Fresh installation → first launch → the app enters device-local mode
+with no account and no wall; the shell mounts."** The banner reads *"Working
+locally — your data stays on this device."*
+
+Sign-in is now a **detour, not a precondition**. Every item below is drivable
+with `backendUrl: null` on an artifact that contains local-first mode:
+
+- **B3 active tenant context** — resolves through the device-local principal
+  (`local-<id>@device.invalid`) and `workspace-default`. PASS = no persistent
+  `Tenant refused` after the boot-window bracket.
+- **B5 import / export** — the Data section is reachable from the sidebar in
+  local mode; the `dp:*` handlers are tenant-scoped, not auth-scoped.
+- **B6 Business / Assistant** — both render in local mode. With Ollama running,
+  B10's Local-badged answer is driven here too; without it, the honest offline
+  refusal is the expected result.
+- **B9 owner-row hardening** — the local principal claims the owner row on
+  first run, so O-11/O-13 and the round-40 provisioned-owner guards are all
+  exercisable offline.
+
+Items that genuinely still require a signed-in cloud session are **only** those
+that read or write cloud state, and they are recorded as such rather than
+folded into the B-item list.
+
+## Two gaps in the rc.20 record, now named
+
+- **B10 and B11 were never reported at all** — neither as PASS nor as residual.
+  B11 is the round-40 provisioned-owner protection, i.e. §B item 4, the last
+  release blocker. It has never been driven on Windows and was not recorded as
+  undriven. Both must appear explicitly in the next run's results.
+- The graceful `Shutdown flush complete` line still needs a driven `app.quit`
+  (tray/menu), not a force-kill.
+
+## Artifact requirement for the next run
+
+The next Windows session must use an artifact that **passes the pre-flight
+above**, which rc.20 does not. That artifact does not exist yet: producing it
+requires the release-discipline bump first (the tree currently declares
+`1.0.0-rc.20` while sitting 390 commits past the `v1.0.0-rc.20` tag — see Gate
+27), because building at the current stamp would emit a second, different
+binary calling itself rc.20. **Order: bump version → build → pre-flight → run.**
+
+Windows execution itself is available on this host — QEMU and the Windows 11
+ARM64 guest from the rc.20 session are both still present, and the in-repo
+`run-windows-vm` skill drives them. "Machine-blocked" is no longer the accurate
+description of this gate; **artifact-blocked** is.
