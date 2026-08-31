@@ -5,10 +5,13 @@ import { AppGlyph } from '@renderer/components/ui/AppGlyph';
 import { getAppOrFallback } from '@renderer/data/catalog';
 import type { WorkspaceTab } from '@renderer/state/ShellProvider';
 
+// UI-truth: these describe what THIS canvas will do once Connectors (Phase 4)
+// lands — they are NOT present capabilities, so the copy is forward-looking to
+// match the disclosure below. (Whole-product audit, 2026-08-31.)
 const CAPABILITIES: { icon: IconName; title: string; body: string }[] = [
-  { icon: 'play', title: 'Live sessions', body: 'Run the app in an embedded, signed-in session.' },
-  { icon: 'activity', title: 'Activity sync', body: 'Your work here flows into your timeline.' },
-  { icon: 'memory', title: 'Recall', body: 'Everything stays searchable in AI Memory.' },
+  { icon: 'play', title: 'Live sessions', body: 'Will run the app in an embedded, signed-in session.' },
+  { icon: 'activity', title: 'Activity sync', body: 'Your work here will flow into your timeline.' },
+  { icon: 'memory', title: 'Recall', body: 'Will become searchable in AI Memory.' },
 ];
 
 /**
@@ -57,7 +60,10 @@ export function AppTabContent({ tab }: { tab: WorkspaceTab }): JSX.Element {
           </p>
         </div>
 
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="mt-6 text-xs font-medium uppercase tracking-wide text-faint">
+          Planned for this canvas — arrives with Connectors (Phase 4)
+        </div>
+        <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
           {CAPABILITIES.map((c) => (
             <div key={c.title} className="surface-raised rounded-2xl p-4">
               <span className="flex h-8 w-8 items-center justify-center rounded-lg [background:var(--fill-2)] text-muted">
