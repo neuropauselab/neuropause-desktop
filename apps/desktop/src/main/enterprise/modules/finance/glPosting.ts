@@ -54,20 +54,34 @@ import {
   type GlJournalLine,
 } from '@neuropause/shared';
 import { evaluateGoodsBill } from './goodsBillMatch';
-import type { EnterpriseModule, EnterpriseModuleActionContext } from '../../framework';
+import type { EnterpriseModuleActionContext } from '../../framework';
 import { childCorrelationMeta } from '../../framework';
 
 function str(v: unknown): string {
   return v === null || v === undefined ? '' : String(v);
 }
 
-/** Seed the four control accounts — only when the chart is completely empty. */
-async function seedControlAccountsIfEmpty(
-  accounts: EnterpriseModule,
-  ctx: EnterpriseModuleActionContext,
-): Promise<void> {
+/**
+ * Seed the canonical finance CONTROL accounts — but ONLY when the chart is
+ * completely empty, so an operator's customized chart is never overwritten nor
+ * forced to adopt canonical codes. This is a DELIBERATE, pinned policy
+ * (`glAutoPosting`: "a non-empty customized chart WITHOUT the canonical accounts
+ * — the seed must not run, the post must not force"): a posting that cannot
+ * resolve a control account PAUSES and retries later rather than mutating a
+ * customized chart.
+ *
+ * ERP Session 13: exported and given a ctx-only signature so the boot initializer
+ * (`ensureCanonicalChart`) can seed the chart AT BOOT, on the empty chart, BEFORE
+ * any stock activity lazily ensures stock accounts and makes the chart non-empty.
+ * That fixes the fresh-install fragility (stock-first suppressing control-account
+ * seeding) WITHOUT changing this on-posting empty-only policy. Reads the FROZEN
+ * canonical chart constants — no chart-surface change, no new account numbers.
+ */
+export async function seedControlAccountsIfEmpty(ctx: EnterpriseModuleActionContext): Promise<void> {
+  const accounts = ctx.moduleFor(LEDGER_ACCOUNTS_MODULE_ID);
+  if (!accounts) return;
   await accounts.store.load();
-  if (accounts.store.count() > 0) return;
+  if (accounts.store.count() > 0) return; // empty-only — respect a customized chart
   for (const control of [
     ...Object.values(GL_CONTROL_ACCOUNTS),
     ...Object.values(GL_PAYABLE_CONTROL_ACCOUNTS),
@@ -151,7 +165,7 @@ export async function applyGlDerivedEntries(
   const accounts = ctx.moduleFor(LEDGER_ACCOUNTS_MODULE_ID);
   if (!journal || !accounts || !journal.hooks.runAction) return; // GL not wired — no-op
   await journal.store.load();
-  await seedControlAccountsIfEmpty(accounts, ctx);
+  await seedControlAccountsIfEmpty(ctx);
   for (const derived of entries) {
     const exists = journal.store
       .list()

@@ -15,7 +15,7 @@ import type { EnterpriseModule, EnterpriseModuleActionContext } from '../enterpr
 import { DocumentLineStore } from './documentLines';
 import { DocumentIntegration, type DocumentSpec, type PostingContext } from './documentAdapter';
 import { DOCUMENT_SPECS, ADOPTED_MODULE_IDS, BILL_APPROVAL_POLICY } from './documentSpecs';
-import { deriveGoodsReceiptPosting, STOCK_ACCOUNTS, type PostingDerivation } from './postingRules';
+import { deriveGoodsReceiptPosting, deriveSupplierBillPosting, STOCK_ACCOUNTS, type PostingDerivation } from './postingRules';
 import { DEFAULT_SPEND_POLICY } from './approvalEngine';
 
 const T0 = '2026-08-08T12:00:00.000Z';
@@ -199,36 +199,20 @@ describe('accounting fires from real lifecycle transitions', () => {
     expect(audit.some((a) => a.action === 'document.procurement-receipts.posting.refused')).toBe(true);
   });
 
-  it('refuses a supplier bill whose three-way match did not pass', async () => {
-    await integration.setLines('finance-vendor-bills', 'BILL-1', [
-      { productId: 'SKU-1', description: 'Widget', quantity: 10, unitPrice: 25 },
-    ]);
-    const attached = integration.attach(fakeModule('finance-vendor-bills'));
-    await attached.hooks.onChange?.(
-      {
-        action: 'status_changed',
-        record: record({ id: 'BILL-1', moduleId: 'finance-vendor-bills', status: 'posted', fields: { matchState: 'MISMATCH', matchedValue: 250 } }),
-      },
-      ctx,
-    );
-    expect(posted).toHaveLength(0);
-    expect(integration.refusedPostings()[0]?.reason).toMatch(/MISMATCH|only a MATCHED bill/i);
+  // ERP Session 13: the finance-vendor-bills adapter posting leg is RETIRED (it
+  // never fired in production; the live vendor-bill path is the sole owner). The
+  // supplier-bill DERIVATION is asserted directly; live GRNI relief is proven in
+  // session11VendorBillP2P / session12PartialP2P.
+  it('the supplier-bill derivation refuses a bill whose three-way match did not pass', () => {
+    const d = deriveSupplierBillPosting({ billId: 'BILL-1', matchedValue: 250, billedValue: 250, matchState: 'MISMATCH' });
+    expect(d.ok).toBe(false);
+    expect(d.refusedReason ?? '').toMatch(/MISMATCH|only a MATCHED bill/i);
   });
 
-  it('posts a MATCHED supplier bill, clearing GRNI', async () => {
-    await integration.setLines('finance-vendor-bills', 'BILL-2', [
-      { productId: 'SKU-1', description: 'Widget', quantity: 10, unitPrice: 25 },
-    ]);
-    const attached = integration.attach(fakeModule('finance-vendor-bills'));
-    await attached.hooks.onChange?.(
-      {
-        action: 'status_changed',
-        record: record({ id: 'BILL-2', moduleId: 'finance-vendor-bills', status: 'posted', fields: { matchState: 'MATCHED', matchedValue: 250 } }),
-      },
-      ctx,
-    );
-    expect(posted).toHaveLength(1);
-    expect(posted[0]!.derivation.lines.find((l) => l.account === STOCK_ACCOUNTS.grni)?.debit).toBe(250);
+  it('the supplier-bill derivation clears GRNI for a MATCHED bill', () => {
+    const d = deriveSupplierBillPosting({ billId: 'BILL-2', matchedValue: 250, billedValue: 250, matchState: 'MATCHED' });
+    expect(d.ok).toBe(true);
+    expect(d.lines.find((l) => l.account === STOCK_ACCOUNTS.grni)?.debit).toBe(250);
   });
 
   it('posts COGS when a shipment dispatches', async () => {
@@ -336,24 +320,17 @@ describe('procure-to-pay through the adapter', () => {
     const receipt = integration.attach(fakeModule('procurement-receipts'));
     await receipt.hooks.onChange?.({ action: 'status_changed', record: record({ id: 'GR-7', status: 'received' }) }, ctx);
 
-    await integration.setLines('finance-vendor-bills', 'BILL-7', [
-      { productId: 'SKU-1', description: 'Widget', quantity: 100, unitPrice: 10 },
-    ]);
-    const bill = integration.attach(fakeModule('finance-vendor-bills'));
-    await bill.hooks.onChange?.(
-      {
-        action: 'status_changed',
-        record: record({ id: 'BILL-7', moduleId: 'finance-vendor-bills', status: 'posted', fields: { matchState: 'MATCHED', matchedValue: 1000 } }),
-      },
-      ctx,
-    );
-
     const accrued = posted[0]!.derivation.lines.filter((l) => l.account === STOCK_ACCOUNTS.grni).reduce((n, l) => n + l.credit, 0);
-    const cleared = posted[1]!.derivation.lines.filter((l) => l.account === STOCK_ACCOUNTS.grni).reduce((n, l) => n + l.debit, 0);
     expect(accrued).toBe(1000);
+
+    // ERP Session 13: the bill posting leg is retired; the matched-bill derivation
+    // clears exactly the accrued GRNI (the live path is proven in session11/12).
+    const bill = deriveSupplierBillPosting({ billId: 'BILL-7', matchedValue: 1000, billedValue: 1000, matchState: 'MATCHED' });
+    expect(bill.ok).toBe(true);
+    const cleared = bill.lines.filter((l) => l.account === STOCK_ACCOUNTS.grni).reduce((n, l) => n + l.debit, 0);
     expect(cleared).toBe(1000);
     expect(accrued - cleared).toBe(0);
-    expect(integration.postings()).toHaveLength(2);
+    expect(integration.postings()).toHaveLength(1); // only the receipt posts via the adapter now
   });
 
   it('the standalone posting rule and the adapter agree', () => {

@@ -166,6 +166,7 @@ import { productModule } from './modules/inventory/productModuleInstance';
 import { warehouseModule } from './modules/inventory/warehouseModuleInstance';
 import { stockMovementModule } from './modules/inventory/stockMovementModuleInstance';
 import { recoverAllMultiLineTransactions } from './modules/inventory/multiLineRecovery';
+import { ensureCanonicalChart } from './modules/finance/controlChart';
 import { lotModule } from './modules/inventory/lotModuleInstance';
 // ── Medical Device Manufacturing Pack (Industry Pack layer) ──
 import {
@@ -1385,6 +1386,19 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
       log.warn('Could not build the tenant migration inventory', {
         err: err instanceof Error ? err.message : String(err),
       });
+    });
+
+  // ERP Session 13 — ensure the canonical control chart (finance CONTROL accounts
+  // + inventory/production STOCK accounts) is available at boot, in the active
+  // tenant scope, BEFORE any transaction. Idempotent (create-missing) and safely
+  // re-invocable per tenant, so stock activity can never suppress finance-account
+  // initialization. Contained: a seeding failure never blocks boot. This is the
+  // authoritative init path; the GL posting seam also self-heals via
+  // `ensureControlAccounts`.
+  void ensureCanonicalChart(modules.actionContext)
+    .then(() => log.info('Canonical control chart ensured'))
+    .catch((err: unknown) => {
+      log.warn('Canonical control-chart initialization skipped', { err: err instanceof Error ? err.message : String(err) });
     });
 
   // ERP Session 8 — best-effort startup recovery of any multi-line transaction

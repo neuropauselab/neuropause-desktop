@@ -28,7 +28,7 @@ import { applyGlDerivedEntries } from '../enterprise/modules/finance/glPosting';
 import { DocumentIntegration } from './documentAdapter';
 import { DocumentLineStore } from './documentLines';
 import { DOCUMENT_SPECS } from './documentSpecs';
-import { STOCK_ACCOUNTS } from './postingRules';
+import { STOCK_ACCOUNTS, deriveSupplierBillPosting } from './postingRules';
 import { ensureStockAccounts } from './stockAccounts';
 
 const T0 = '2026-08-08T12:00:00.000Z';
@@ -180,24 +180,22 @@ describe('goods receipt posts GRNI into the REAL journal', () => {
 });
 
 describe('procure-to-pay reconciles in the REAL ledger', () => {
-  it('GRNI accrued by the receipt is cleared exactly by the matched bill', async () => {
+  // ERP Session 13: the dormant adapter posting leg for `finance-vendor-bills`
+  // is retired (it never fired in production). The supplier-bill derivation is
+  // exercised DIRECTLY through the real journal here; the LIVE vendor-bill GRNI
+  // relief (goods bills, cumulative partial) is proven end-to-end in
+  // session11VendorBillP2P and session12PartialP2P.
+  it('GRNI accrued by the receipt is cleared exactly by the matched bill (derivation)', async () => {
     await integration.setLines('procurement-receipts', 'GR-9', [
       { productId: 'SKU-1', description: 'Widget', quantity: 100, unitPrice: 10 },
     ]);
     await fire('procurement-receipts', doc({ id: 'GR-9', status: 'received' }));
 
-    await integration.setLines('finance-vendor-bills', 'BILL-9', [
-      { productId: 'SKU-1', description: 'Widget', quantity: 100, unitPrice: 10 },
-    ]);
-    await fire(
-      'finance-vendor-bills',
-      doc({
-        id: 'BILL-9',
-        moduleId: 'finance-vendor-bills',
-        kind: 'vendorBill',
-        status: 'posted',
-        fields: { matchState: 'MATCHED', matchedValue: 1000 },
-      }),
+    const d = deriveSupplierBillPosting({ billId: 'BILL-9', matchedValue: 1000, billedValue: 1000, matchState: 'MATCHED' });
+    expect(d.ok).toBe(true);
+    await applyGlDerivedEntries(
+      [{ entryNumber: d.reference, memo: d.memo, lines: d.lines, sourceModule: 'finance-vendor-bills', sourceRef: 'BILL-9' }],
+      ctx,
     );
 
     const grni = ledger(STOCK_ACCOUNTS.grni);
@@ -210,25 +208,14 @@ describe('procure-to-pay reconciles in the REAL ledger', () => {
     expect(ledger(STOCK_ACCOUNTS.inventory).debit).toBe(1000);
   });
 
-  it('a MISMATCHED bill leaves GRNI outstanding and posts no payable', async () => {
+  it('a MISMATCHED bill refuses at the derivation and leaves GRNI outstanding', async () => {
     await integration.setLines('procurement-receipts', 'GR-10', [
       { productId: 'SKU-1', description: 'Widget', quantity: 10, unitPrice: 10 },
     ]);
     await fire('procurement-receipts', doc({ id: 'GR-10', status: 'received' }));
 
-    await integration.setLines('finance-vendor-bills', 'BILL-10', [
-      { productId: 'SKU-1', description: 'Widget', quantity: 10, unitPrice: 10 },
-    ]);
-    await fire(
-      'finance-vendor-bills',
-      doc({
-        id: 'BILL-10',
-        moduleId: 'finance-vendor-bills',
-        kind: 'vendorBill',
-        status: 'posted',
-        fields: { matchState: 'MISMATCH', matchedValue: 100 },
-      }),
-    );
+    const d = deriveSupplierBillPosting({ billId: 'BILL-10', matchedValue: 100, billedValue: 100, matchState: 'MISMATCH' });
+    expect(d.ok).toBe(false); // fail closed: a non-MATCHED bill never posts
 
     expect(ledger(STOCK_ACCOUNTS.grni).credit).toBe(100); // still accrued
     expect(ledger(STOCK_ACCOUNTS.grni).debit).toBe(0); // never cleared

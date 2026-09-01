@@ -21,7 +21,6 @@ import {
   deriveGoodsReceiptPosting,
   deriveMaterialIssuePosting,
   deriveProductionCompletionPosting,
-  deriveSupplierBillPosting,
 } from './postingRules';
 
 /** Field on a receipt line carrying the agreed purchase price, if stamped. */
@@ -85,26 +84,17 @@ export const DOCUMENT_SPECS: readonly DocumentSpec[] = [
       amountField: 'total',
       gatedStatuses: ['approved', 'posted', 'paid'],
     },
-    // NOTE (ERP Session 10): this supplier-bill posting leg is DORMANT on a
-    // running device — the document adapter posts on the record-level status,
-    // which is always 'active', never the domain 'posted'. It is deliberately
-    // RETAINED (not retired) for now: retiring the only GRNI-relief derivation
-    // before its live replacement exists would remove the mechanism AND its
-    // coverage. Consolidating to a single vendor-bill posting owner travels WITH
-    // the operator-gated live GRNI-relief wiring (which needs the vendor bill to
-    // carry line items for a correct line-level three-way match). Its account
-    // codes now follow the Session 10 chart alignment (AP 2000, not 2100).
-    postOn: {
-      // Clears GRNI for what was matched; the match state is stamped by the
-      // three-way match. A non-MATCHED bill refuses inside the posting rule.
-      posted: (ctx) =>
-        deriveSupplierBillPosting({
-          billId: ctx.record.id,
-          matchedValue: numberField(ctx.record.fields.matchedValue, ctx.totals.total),
-          billedValue: ctx.totals.total,
-          matchState: String(ctx.record.fields.matchState ?? 'MISMATCH'),
-        }),
-    },
+    // ERP Session 13: the supplier-bill POSTING leg is RETIRED. Vendor-bill GL
+    // posting now has ONE authoritative live owner — the finance vendor-bill path
+    // (`handleVendorBillChangeForGl`): a PO-sourced goods bill relieves GRNI via
+    // the Session 11/12 line-level three-way match; a service bill books
+    // Operating Expense. The former adapter `postOn.posted` leg
+    // (`deriveSupplierBillPosting`) never fired in production — the document
+    // adapter keys `postOn` on the record-level status, which is always 'active',
+    // never the domain 'posted' — so removing it changes no live posting and
+    // eliminates the only mechanism that could ever have become a second posting
+    // owner. The pure derivation remains unit-tested in `erp/erp.test.ts`.
+    // Approval gating (a separate, live mechanism) is unchanged.
   },
 
   // ── Sales ──────────────────────────────────────────────────────────────
