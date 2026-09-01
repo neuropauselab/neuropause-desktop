@@ -165,6 +165,7 @@ import { revenueForecastModule } from './modules/sales/revenueForecastModuleInst
 import { productModule } from './modules/inventory/productModuleInstance';
 import { warehouseModule } from './modules/inventory/warehouseModuleInstance';
 import { stockMovementModule } from './modules/inventory/stockMovementModuleInstance';
+import { recoverAllMultiLineTransactions } from './modules/inventory/multiLineRecovery';
 import { lotModule } from './modules/inventory/lotModuleInstance';
 // ── Medical Device Manufacturing Pack (Industry Pack layer) ──
 import {
@@ -1384,6 +1385,19 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
       log.warn('Could not build the tenant migration inventory', {
         err: err instanceof Error ? err.message : String(err),
       });
+    });
+
+  // ERP Session 8 — best-effort startup recovery of any multi-line transaction
+  // interrupted by a crash (bounded scan of the small document/order stores, not
+  // the ledger). Runs in the active tenant scope and is safely re-invocable
+  // per-tenant. Contained: a recovery failure never blocks boot.
+  void recoverAllMultiLineTransactions(modules.actionContext)
+    .then((results) => {
+      const changed = results.filter((r) => r.changed).length;
+      if (changed > 0) log.info('Recovered interrupted multi-line transactions', { changed, scanned: results.length });
+    })
+    .catch((err: unknown) => {
+      log.warn('Multi-line transaction recovery failed', { err: err instanceof Error ? err.message : String(err) });
     });
 
   await Promise.all([

@@ -62,6 +62,7 @@ export async function voidPostedMovement(
 ): Promise<boolean> {
   const mv = ctx.moduleFor(STOCK_MOVEMENTS_MODULE_ID);
   if (!mv) return false;
+  ctx.authorize(mv.descriptor.permissions.write); // compensation/recovery is authorized, never a bypass
   await mv.store.load();
   const rec = mv.store.get(movementId);
   if (!rec || str(rec.fields.status) === 'void') return false;
