@@ -42,7 +42,7 @@ import {
   deriveProductionCompletionPosting,
   type PostingDerivation,
 } from '../../../erp/postingRules';
-import { ensureStockAccounts } from '../../../erp/stockAccounts';
+import { ensureCanonicalChart } from '../finance/controlChart';
 import { applyGlDerivedEntries, reverseGlEntry } from '../finance/glPosting';
 
 const round2 = (n: number): number => Math.round(n * 100) / 100;
@@ -176,6 +176,14 @@ export async function postMovementToGl(
   }
   const entries = deriveMovementGlPostings(movement, movementId);
   if (entries.length === 0) return;
-  await ensureStockAccounts(ctx);
+  // ERP Session 14: ensure the CANONICAL chart CONTROL-FIRST (finance control
+  // accounts before stock accounts), not just the stock accounts. This closes the
+  // dynamic-tenant boundary: a tenant not covered by the boot seed whose first
+  // activity is a stock movement no longer has stock seeding make the chart
+  // non-empty before its control accounts are seeded (which used to permanently
+  // suppress them and refuse a later cash/expense posting). Control seeding stays
+  // empty-only (customized-chart policy preserved); it runs in this movement's own
+  // tenant scope. `ensureCanonicalChart` = seedControlAccountsIfEmpty → ensureStockAccounts.
+  await ensureCanonicalChart(ctx);
   await applyGlDerivedEntries(entries, ctx);
 }

@@ -455,6 +455,7 @@ const tenantContext = createTenantContextResolver({
  * subsystems can register a cache flush without importing a module that reaches
  * `app.getPath` and drags Electron into their pure-model tests.
  */
+import { onWorkspaceSwitch } from '../tenancy/workspaceSwitchHub';
 export { onWorkspaceSwitch } from '../tenancy/workspaceSwitchHub';
 
 /**
@@ -1388,18 +1389,33 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
       });
     });
 
-  // ERP Session 13 — ensure the canonical control chart (finance CONTROL accounts
-  // + inventory/production STOCK accounts) is available at boot, in the active
-  // tenant scope, BEFORE any transaction. Idempotent (create-missing) and safely
-  // re-invocable per tenant, so stock activity can never suppress finance-account
-  // initialization. Contained: a seeding failure never blocks boot. This is the
-  // authoritative init path; the GL posting seam also self-heals via
-  // `ensureControlAccounts`.
-  void ensureCanonicalChart(modules.actionContext)
-    .then(() => log.info('Canonical control chart ensured'))
+  // ERP Session 13/14 — ensure the canonical control chart (finance CONTROL
+  // accounts + inventory/production STOCK accounts) for EVERY operable tenant at
+  // boot, each under its own principal-pinned scope via forEachTenantBackground,
+  // so a multi-tenant host seeds all tenants — not only the one active at boot.
+  // Control seeding stays empty-only (customized-chart policy preserved); a
+  // seeding failure is captured per tenant and never blocks boot.
+  void forEachTenantBackground('ensure-canonical-chart', () => ensureCanonicalChart(modules.actionContext))
+    .then((outcomes) => {
+      const seeded = outcomes.filter((o) => o.ok).length;
+      log.info('Canonical control chart ensured per tenant', { seeded, tenants: outcomes.length });
+    })
     .catch((err: unknown) => {
       log.warn('Canonical control-chart initialization skipped', { err: err instanceof Error ? err.message : String(err) });
     });
+
+  // ERP Session 14 — a tenant activated/switched to AFTER boot is initialized on
+  // activation: seed its canonical chart in the newly-active scope. Best-effort
+  // (the switch hub is fire-and-forget by contract). The stock-posting seam
+  // (inventoryGlBridge → ensureCanonicalChart, control-first) remains the
+  // DETERMINISTIC backstop, so this activation seed is a proactive optimization,
+  // not the guarantee — and it changes no accounting policy (control seeding is
+  // empty-only).
+  onWorkspaceSwitch(() => {
+    void ensureCanonicalChart(modules.actionContext).catch((err: unknown) => {
+      log.warn('Per-tenant chart initialization on activation skipped', { err: err instanceof Error ? err.message : String(err) });
+    });
+  });
 
   // ERP Session 8 — best-effort startup recovery of any multi-line transaction
   // interrupted by a crash (bounded scan of the small document/order stores, not
