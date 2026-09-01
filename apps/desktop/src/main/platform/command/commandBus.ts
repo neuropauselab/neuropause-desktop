@@ -24,13 +24,14 @@
  * the durability of the idempotency+event+outbox differs.
  */
 import type { TenantScope } from '@neuropause/shared';
-import { CUSTOMERS_MODULE_ID, IpcChannel, ORDERS_MODULE_ID, PURCHASE_REQUESTS_MODULE_ID } from '@neuropause/shared';
+import { CUSTOMERS_MODULE_ID, GOODS_RECEIPTS_MODULE_ID, IpcChannel, ORDERS_MODULE_ID, PURCHASE_REQUESTS_MODULE_ID } from '@neuropause/shared';
 import {
   buildModuleHandlers,
   type EnterpriseModuleContext,
   type EnterpriseModuleRegistry,
 } from '../../enterprise/framework';
 import { CREATE_PO_ACTION } from '../../enterprise/modules/procurement/conversion';
+import { POST_RECEIPT_ACTION } from '../../enterprise/modules/procurement/goodsReceiptModule';
 import type { DomainEventLog } from './domainEventLog';
 import type { CommandIdempotencyStore } from './commandIdempotency';
 import type { DurableCommandJournal, TxExecuteResult } from './durableCommandJournal';
@@ -93,12 +94,17 @@ async function route(cmd: DomainCommand, deps: CommandDispatchDeps, call: Handle
   const prStore = () => deps.registry.get(PURCHASE_REQUESTS_MODULE_ID)?.store;
   const who = () => deps.ctx.actor() ?? 'system';
   const now = () => deps.ctx.now();
-  const action = async (act: string): Promise<{ ok: boolean; message?: string; error?: string }> =>
-    (await call(IpcChannel.EnterpriseModuleAction, {
-      moduleId: PURCHASE_REQUESTS_MODULE_ID,
-      id: cmd.target?.id,
-      action: act,
-    })) as { ok: boolean; message?: string; error?: string };
+  const moduleAction = async (
+    moduleId: string,
+    id: string | undefined,
+    act: string,
+  ): Promise<{ ok: boolean; message?: string; error?: string }> =>
+    (await call(IpcChannel.EnterpriseModuleAction, { moduleId, id, action: act })) as {
+      ok: boolean;
+      message?: string;
+      error?: string;
+    };
+  const action = (act: string) => moduleAction(PURCHASE_REQUESTS_MODULE_ID, cmd.target?.id, act);
 
   switch (cmd.type) {
     case 'CreatePurchaseRequest': {
@@ -175,6 +181,27 @@ async function route(cmd: DomainCommand, deps: CommandDispatchDeps, call: Handle
           aggregateType: 'SalesOrder',
           rollback: async () => { deps.registry.get(ORDERS_MODULE_ID)?.store.softDelete(id, { actor: who(), now: now() }); },
         },
+      );
+    }
+    case 'PostGoodsReceipt': {
+      // ERP Session 23 — post an EXISTING goods receipt against its PO through the SAME governed
+      // path (reuses the goods-receipt `post` action → postMultiLineReceipt → per-line valued
+      // `receive` movement + Dr Inventory / Cr GRNI, all-or-nothing; no new inventory store, no
+      // `stock += X`, no invented accounting). The economic effect is DOUBLE-GUARDED against
+      // duplication: the module refuses to re-post a `received` receipt (document-level idempotency)
+      // AND the durable journal keys on the command's idempotency key (command-level).
+      const id = str(cmd.target?.id);
+      const r = await moduleAction(GOODS_RECEIPTS_MODULE_ID, id, POST_RECEIPT_ACTION);
+      if (!r.ok) return no(r.error ?? r.message ?? 'RECEIPT_POST_REFUSED');
+      // The receipt's posted movement ids are stamped back onto the record — read them for the event.
+      const gr = deps.registry.get(GOODS_RECEIPTS_MODULE_ID)?.store.get(id);
+      // NO auto-rollback: a posted receipt is a REAL inventory movement (Dr Inventory / Cr GRNI),
+      // and reversing it is a governed decision, never a silent soft-delete. At-most-once is
+      // guaranteed WITHOUT compensation — the module's `received` status guard refuses any re-post,
+      // so a commit-failure retry cannot double the effect (it is refused, not re-executed).
+      return ok(
+        { id, movements: str(gr?.fields.receiptMovements) },
+        { aggregateId: id, aggregateType: 'GoodsReceipt' },
       );
     }
     default:

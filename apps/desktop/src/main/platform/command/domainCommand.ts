@@ -22,7 +22,10 @@ export type DomainCommandType =
   | 'RejectPurchaseRequest'
   | 'ConvertPurchaseRequestToPO'
   // ERP Session 21 — Sales domain becomes another consumer of the same platform.
-  | 'CreateSalesOrder';
+  | 'CreateSalesOrder'
+  // ERP Session 23 — the next procurement step: post a goods receipt against a PO
+  // (governed at the command layer; reuses the existing receipt→movement→GRNI engine).
+  | 'PostGoodsReceipt';
 
 /** Where a command originated. Descriptive only — it grants nothing. */
 export type CommandSource = 'electron' | 'web' | 'mobile' | 'api' | 'agent' | 'test';
@@ -85,7 +88,8 @@ export type DomainEventType =
   | 'PurchaseRequestApproved'
   | 'PurchaseRequestRejected'
   | 'PurchaseRequestConvertedToPO'
-  | 'SalesOrderCreated';
+  | 'SalesOrderCreated'
+  | 'GoodsReceiptPosted';
 
 export interface CommandResult {
   ok: boolean;
@@ -109,6 +113,7 @@ export const EVENT_FOR_COMMAND: Record<DomainCommandType, DomainEventType> = {
   RejectPurchaseRequest: 'PurchaseRequestRejected',
   ConvertPurchaseRequestToPO: 'PurchaseRequestConvertedToPO',
   CreateSalesOrder: 'SalesOrderCreated',
+  PostGoodsReceipt: 'GoodsReceiptPosted',
 };
 
 /**
@@ -123,4 +128,5 @@ export const PERMISSION_FOR_COMMAND: Record<DomainCommandType, EnterprisePermiss
   RejectPurchaseRequest: 'procurement:manage',
   ConvertPurchaseRequestToPO: 'procurement:manage',
   CreateSalesOrder: 'sales:manage',
+  PostGoodsReceipt: 'procurement:manage',
 };
