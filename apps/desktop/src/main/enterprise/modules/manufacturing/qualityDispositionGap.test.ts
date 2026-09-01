@@ -1,14 +1,13 @@
 /**
- * ERP Session 4 — QA disposition → inventory: RED-GAP REPRODUCTION (characterization).
+ * ERP Session 4 boundary characterization (gap CLOSED by Session 7-Fix #99).
  *
- * This pins the CURRENT, truthful behavior: a Quality Inspection disposition
- * (pass/fail/rework/reject) posts NO stock movement and NO GL entry, and the
- * inspection carries no product/warehouse of its own — so a rejected quantity is
- * never taken out of (or held in) inventory. It is executable evidence of the
- * RED gap, and a guard: when the disposition→inventory behavior is decided and
- * implemented (Session 4-fix), these assertions are the ones that must flip, and
- * they must flip DELIBERATELY (not by a naive reuse of the scrap path). See
- * certification/ERP-SESSION4-QA-DISPOSITION-DECISION.md for the pending decision.
+ * The QA scrap disposition is now implemented (final-stage FAIL → scrap; see
+ * session7FixMultiLine.test.ts for the full behavior). What these pins protect is
+ * the BOUNDARY the decision (Option 1a) drew: simply CREATING an inspection with a
+ * failing result does NOT move stock — scrap is the explicit, governed
+ * `postDisposition` action, and the inspection carries no product/warehouse of its
+ * own (it resolves them from the linked production order). So a disposition never
+ * silently mutates inventory on save.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { promises as fs } from 'node:fs';
@@ -96,8 +95,8 @@ const createIn = (moduleId: string, fields: Record<string, unknown>) =>
   handler(IpcChannel.EnterpriseModuleCreate)({ moduleId, fields }) as Promise<{ ok: boolean; record?: EnterpriseEntity; errors?: Record<string, string> }>;
 const listOf = (moduleId: string) => registry.get(moduleId)!.store.list().filter((r) => r.status !== 'deleted');
 
-describe('Session 4 RED gap — a QA disposition has no inventory or GL effect today', () => {
-  it('a rejected inspection posts NO stock movement and NO journal entry', async () => {
+describe('Session 4 boundary — creating an inspection never auto-moves stock (scrap is an explicit action)', () => {
+  it('a rejected inspection, on CREATE, posts NO stock movement and NO journal entry', async () => {
     // A product exists in stock; the inspection rejects 5 units.
     await createIn('inventory-products', { sku: 'FG-1', name: 'Finished', standardCost: 20 });
     const insp = await createIn(QUALITY_INSPECTIONS_MODULE_ID, {
@@ -130,8 +129,8 @@ describe('Session 4 RED gap — a QA disposition has no inventory or GL effect t
     const fieldKeys = QUALITY_INSPECTION_DESCRIPTOR.fields.map((f) => f.key);
     expect(fieldKeys).not.toContain('product');
     expect(fieldKeys).not.toContain('warehouse');
-    expect(fieldKeys).toContain('productionOrder'); // free text, unresolved today
-    // And the module exposes no action to post a disposition.
-    expect(QUALITY_INSPECTION_DESCRIPTOR.actions ?? []).toHaveLength(0);
+    expect(fieldKeys).toContain('productionOrder'); // product/warehouse resolve from the order
+    // Scrap is an EXPLICIT governed action (not auto-applied on save).
+    expect((QUALITY_INSPECTION_DESCRIPTOR.actions ?? []).map((a) => a.key)).toContain('postDisposition');
   });
 });

@@ -156,7 +156,7 @@ import { activityModule } from './modules/crm/activityModuleInstance';
 import { customerHealthModule } from './modules/crm/customerHealthModuleInstance';
 import { customerTimelineModule } from './modules/crm/customerTimelineModuleInstance';
 import { quoteModule } from './modules/sales/quoteModuleInstance';
-import { orderModule } from './modules/sales/orderModuleInstance';
+import { orderModule, multiLineDispatchModule } from './modules/sales/orderModuleInstance';
 import { contractModule } from './modules/sales/contractModuleInstance';
 import { pricingRuleModule } from './modules/sales/pricingRuleModuleInstance';
 import { commissionPlanModule } from './modules/sales/commissionPlanModuleInstance';
@@ -222,6 +222,7 @@ import {
   goodsReceiptModule,
   rfqModule,
   supplierPerformanceModule,
+  multiLineReceiptModule,
 } from './modules/procurement/procurementInstances';
 import {
   zoneModule,
@@ -1292,6 +1293,8 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   registerModule(purchaseRequestModule); // Procurement → Purchase Requests
   registerModule(purchaseOrderModule); // Procurement → Purchase Orders
   registerModule(goodsReceiptModule); // Procurement → Goods Receipts
+  registerModule(multiLineReceiptModule); // Procurement → Multi-Line Goods Receipts (Session 7-Fix)
+  registerModule(multiLineDispatchModule); // Sales → Multi-Line Dispatches (Session 7-Fix)
   registerModule(rfqModule); // Procurement → RFQs (quotation cycle → PO award)
   registerModule(supplierPerformanceModule); // Procurement → Supplier Performance (scorecard registers)
   registerModule(zoneModule); // Warehouse → Zones

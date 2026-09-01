@@ -33,11 +33,11 @@ import {
   type EnterpriseModuleActionContext,
 } from '../../framework';
 import {
-  postConsumption,
   postOutput,
   postReservation,
   postReservationRelease,
 } from './manufacturingMovements';
+import { postMovementLinesAtomic } from '../inventory/multiLineMovements';
 import { settleProductionVariance } from './productionVarianceSettlement';
 import { COMMIT_SCHEDULE_ACTION, commitScheduleForOrder } from './scheduleCommit';
 import { proposeScheduleForOrder } from './scheduleProposalLink';
@@ -217,37 +217,40 @@ export function createProductionOrderModule(storePath: string, aiRunner?: Produc
           if (order.status !== 'released') return { ok: false, message: `Allocate material before starting (it is ${order.status}).` };
           const bom = await resolveBom(ctx, order.bom);
           if (!bom || bom.components.length === 0) return { ok: false, message: `BOM "${order.bom}" has no components.` };
-          const consumptionIds: string[] = [];
-          for (const component of bom.components) {
-            const qty = componentConsumption(component, order.productionQuantity, bom.waste);
-            if (qty <= 0) continue;
-            const consumed = await postConsumption(ctx, {
-              movementNumber: `MV-${order.orderNumber}-${component.sku}-CON`,
-              product: component.sku,
+          // Session 7-Fix: consume every component ATOMICALLY. If any line fails,
+          // the shared seam compensates every consumed line (Session 6 reversal),
+          // so an order never starts with a partially consumed BOM (business-level
+          // all-or-nothing; the stores are not a single DB transaction).
+          const lines = bom.components
+            .map((component) => ({
+              sku: component.sku,
+              quantity: componentConsumption(component, order.productionQuantity, bom.waste),
               warehouse: order.warehouse,
-              quantity: qty,
-              referenceModule: PRODUCTION_ORDERS_MODULE_ID,
-              referenceRecord: order.id,
-              reason: `Production ${order.orderNumber} consumption`,
-            });
-            if (!consumed) return { ok: false, error: `Could not consume component ${component.sku}.` };
-            consumptionIds.push(consumed.id);
-            // Release the reservation held for this component (material is now consumed).
+            }))
+            .filter((l) => l.quantity > 0);
+          const consumption = await postMovementLinesAtomic(
+            ctx,
+            { module: PRODUCTION_ORDERS_MODULE_ID, recordId: order.id, number: order.orderNumber, type: 'production_consumption', reason: `Production ${order.orderNumber} consumption` },
+            lines,
+          );
+          if (!consumption.ok) return { ok: false, error: consumption.message };
+          // Release the reservations held for the consumed components (net-zero).
+          for (const line of lines) {
             await postReservationRelease(ctx, {
-              movementNumber: `MV-${order.orderNumber}-${component.sku}-REL`,
-              product: component.sku,
-              warehouse: order.warehouse,
-              quantity: qty,
+              movementNumber: `MV-${order.orderNumber}-${line.sku}-REL`,
+              product: line.sku,
+              warehouse: line.warehouse,
+              quantity: line.quantity,
               referenceModule: PRODUCTION_ORDERS_MODULE_ID,
               referenceRecord: order.id,
               reason: `Production ${order.orderNumber} reservation release`,
             });
           }
           emitSelf(
-            store.update(record.id, { fields: { status: 'running', consumptionMovements: consumptionIds.join(',') }, actor: ctx.actor(), now: ctx.now() }),
+            store.update(record.id, { fields: { status: 'running', consumptionMovements: consumption.movementIds.join(',') }, actor: ctx.actor(), now: ctx.now() }),
             ctx,
           );
-          return { ok: true, message: `Started ${order.orderNumber}; consumed ${consumptionIds.length} component(s).` };
+          return { ok: true, message: `Started ${order.orderNumber}; consumed ${consumption.movementIds.length} component(s).` };
         }
 
         if (action === COMPLETE_ACTION) {

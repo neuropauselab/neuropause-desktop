@@ -11,6 +11,7 @@ import type {
   QualityInspection,
 } from '@neuropause/shared';
 import {
+  PRODUCTION_ORDERS_MODULE_ID,
   QUALITY_INSPECTIONS_MODULE_ID,
   QUALITY_INSPECTION_KIND,
   calculateQualityScore,
@@ -19,6 +20,11 @@ import {
   validateEnterpriseRecordInput,
 } from '@neuropause/shared';
 import { EnterpriseRecordStore, defineEnterpriseModule, type EnterpriseModule } from '../../framework';
+import { postStockMovement } from '../inventory/postMovement';
+
+/** The QA action that disposes a FINAL-stage failure as scrap (ERP #99 Option 1a). */
+export const POST_DISPOSITION_ACTION = 'postDisposition';
+const str = (v: unknown): string => (v === null || v === undefined ? '' : String(v));
 
 const num = (v: unknown): number => (typeof v === 'number' ? v : Number(String(v ?? '')) || 0);
 
@@ -32,8 +38,10 @@ export const QUALITY_INSPECTION_DESCRIPTOR: EnterpriseModuleDescriptor = {
   group: 'Manufacturing',
   titleField: 'inspectionNumber',
   permissions: { read: 'manufacturing:read', write: 'manufacturing:manage' },
+  actions: [{ key: POST_DISPOSITION_ACTION, label: 'Post Disposition', icon: 'shield' }],
   fields: [
     { key: 'inspectionNumber', label: 'Inspection #', type: 'text', required: true, placeholder: 'QC-0001' },
+    { key: 'scrapMovement', label: 'Scrap Movement', type: 'text', column: false, readOnly: true },
     { key: 'productionOrder', label: 'Production Order', type: 'text', placeholder: 'MO-0001' },
     {
       key: 'stage',
@@ -110,6 +118,48 @@ export function createQualityModule(storePath: string, aiRunner?: QualityAiRunne
           });
         }
         return result;
+      },
+      // ERP #99 Option 1a — a FINAL-stage QA FAIL becomes scrap: post a negative
+      // stock adjustment (Session 5-Fix standard cost → Dr 5010 / Cr 1300 via seam
+      // #1) for the failed quantity, resolving product/warehouse from the linked
+      // production order. Intermediate stages are NOT scrapped. Idempotent (a
+      // deterministic scrap movement, guarded by `scrapMovement`).
+      runAction: async (action, record, ctx) => {
+        if (action !== POST_DISPOSITION_ACTION) return { ok: false, error: `Unknown action "${action}".` };
+        const insp = qualityInspectionFromRecord(record);
+        if (insp.stage !== 'final') {
+          return { ok: true, message: `Disposition recorded — ${insp.stage.replace('_', '-')} stage does not scrap.` };
+        }
+        if (insp.result !== 'fail' && insp.result !== 'reject') {
+          return { ok: true, message: `Disposition ${insp.result} — no scrap.` };
+        }
+        if (insp.failedQuantity <= 0) return { ok: true, message: 'No failed quantity to scrap.' };
+        if (str(record.fields.scrapMovement)) return { ok: false, message: 'This inspection has already been scrapped.' };
+
+        const ordersModule = ctx.moduleFor(PRODUCTION_ORDERS_MODULE_ID);
+        if (!ordersModule) return { ok: false, error: 'Production Orders module unavailable — cannot resolve what to scrap.' };
+        await ordersModule.store.load();
+        const orderRec = ordersModule.store.list().find((r) => str(r.fields.orderNumber) === insp.productionOrder && r.status !== 'deleted');
+        if (!orderRec) return { ok: false, error: `Production order "${insp.productionOrder}" not found — cannot resolve product/warehouse.` };
+        const product = str(orderRec.fields.product);
+        const warehouse = str(orderRec.fields.warehouse);
+        if (!product || !warehouse) return { ok: false, message: 'The production order has no product/warehouse to scrap.' };
+
+        const scrap = await postStockMovement(ctx, {
+          movementNumber: `MV-QA-${insp.inspectionNumber}-SCRAP`,
+          type: 'adjustment',
+          product,
+          warehouse,
+          quantity: -insp.failedQuantity, // negative → write-down → Dr 5010 / Cr 1300
+          referenceModule: QUALITY_INSPECTIONS_MODULE_ID,
+          referenceRecord: record.id,
+          reason: `QA scrap — inspection ${insp.inspectionNumber} (final ${insp.result})`,
+        });
+        if (!scrap) return { ok: false, error: 'Could not post the scrap movement.' };
+        const updated = store.update(record.id, { fields: { scrapMovement: scrap.id }, actor: ctx.actor(), now: ctx.now() });
+        const self = ctx.moduleFor(QUALITY_INSPECTIONS_MODULE_ID);
+        if (updated && self) ctx.emit(self, 'updated', updated);
+        return { ok: true, message: `Scrapped ${insp.failedQuantity} of ${product} from inspection ${insp.inspectionNumber}.` };
       },
       summarize: async (record): Promise<EnterpriseRecordSummary> => {
         const inspection = qualityInspectionFromRecord(record);
