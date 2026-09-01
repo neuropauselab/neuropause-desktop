@@ -14,6 +14,7 @@ export type ApplicationErrorCode =
   | 'CONFLICT'
   | 'IDEMPOTENCY_REPLAY'
   | 'NOT_FOUND'
+  | 'APPROVAL_REQUIRED'
   | 'TRANSIENT_FAILURE';
 
 /** Fixed, client-safe messages — no internal detail, ever. */
@@ -26,6 +27,7 @@ const SAFE_MESSAGE: Record<ApplicationErrorCode, string> = {
   CONFLICT: 'The operation conflicts with the current state of the resource.',
   IDEMPOTENCY_REPLAY: 'This request was already processed; the original result is returned.',
   NOT_FOUND: 'The requested resource was not found.',
+  APPROVAL_REQUIRED: 'This operation requires approval before it can proceed.',
   TRANSIENT_FAILURE: 'A temporary failure occurred. Please retry.',
 };
 
@@ -59,6 +61,12 @@ export function mapCommandError(error: string | undefined): ApplicationErrorCode
     case 'COMMAND_FAILED':
     case 'NO_IDEMPOTENCY_BACKEND':
       return 'TRANSIENT_FAILURE';
+    case 'APPROVAL_REQUIRED':
+      return 'APPROVAL_REQUIRED';
+    case 'CUSTOMER_NOT_FOUND':
+      // A referenced customer master record is invisible in the caller's tenant
+      // scope (foreign or absent — indistinguishable by design) → not found.
+      return 'NOT_FOUND';
     default:
       if (error && /not found/i.test(error)) return 'NOT_FOUND';
       return 'CONFLICT'; // action refusals (…_REFUSED, precondition messages) → state conflict

@@ -40,6 +40,7 @@ import {
   defineEnterpriseModule,
   type EnterpriseModule,
 } from '../../framework';
+import { parsePurchaseOrderLines, purchaseOrderSubtotal } from '../../../erp/procurementLines';
 import { CONVERT_TO_INVOICE_ACTION, convertOrderToInvoice } from './conversion';
 import {
   RESERVE_STOCK_ACTION,
@@ -72,6 +73,16 @@ export const ORDER_DESCRIPTOR: EnterpriseModuleDescriptor = {
   fields: [
     { key: 'orderNumber', label: 'Order Number', type: 'text', required: true, placeholder: 'SO-0001' },
     { key: 'customer', label: 'Customer', type: 'text', required: true, placeholder: 'Acme Inc.' },
+    // ERP Session 21 — the CRM customer master record this order is for. The
+    // CreateSalesOrder command validates it against the tenant-scoped customer
+    // master (a foreign-tenant customer is invisible). The free-text `customer`
+    // above stays a display label.
+    { key: 'customerRef', label: 'Customer (ref)', type: 'text', column: false, placeholder: 'Customer master id' },
+    // ERP Session 21 — multi-line sales order (the Session 16 line convention).
+    // When present, this JSON array of {sku, quantity, unitPrice} is the order
+    // content and the total is derived from it (Σ qty × unit price — arithmetic,
+    // not a pricing policy). Absent → the single-product header (backward compatible).
+    { key: 'lines', label: 'Lines (JSON)', type: 'textarea', column: false, placeholder: '[{"sku":"SKU-A","quantity":10,"unitPrice":5}]' },
     { key: 'contact', label: 'Contact', type: 'text', column: false },
     {
       key: 'status',
@@ -190,6 +201,10 @@ export function createOrderModule(storePath: string, aiRunner?: OrderAiRunner): 
       validate: (input: EnterpriseRecordInput) => {
         const result = validateEnterpriseRecordInput(ORDER_DESCRIPTOR, input);
         if (result.ok) {
+          // ERP Session 21 — a multi-line order derives its total from its lines
+          // (Σ qty × unit price). Single-product orders (no lines) are unchanged.
+          const soLines = parsePurchaseOrderLines(result.values.lines);
+          if (soLines.length > 0) result.values.total = purchaseOrderSubtotal(soLines);
           Object.assign(result.values, orderComputedFields(projectValues(result.values)));
         }
         return result;

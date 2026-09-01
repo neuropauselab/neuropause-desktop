@@ -24,7 +24,7 @@
  * the durability of the idempotency+event+outbox differs.
  */
 import type { TenantScope } from '@neuropause/shared';
-import { IpcChannel, PURCHASE_REQUESTS_MODULE_ID } from '@neuropause/shared';
+import { CUSTOMERS_MODULE_ID, IpcChannel, ORDERS_MODULE_ID, PURCHASE_REQUESTS_MODULE_ID } from '@neuropause/shared';
 import {
   buildModuleHandlers,
   type EnterpriseModuleContext,
@@ -78,7 +78,7 @@ function validateEnvelope(cmd: DomainCommand): string | null {
   if (!cmd.correlationId) return 'MISSING_CORRELATION_ID';
   if (!cmd.idempotencyKey) return 'MISSING_IDEMPOTENCY_KEY';
   // Every command except a create acts on a target entity.
-  if (cmd.type !== 'CreatePurchaseRequest' && !cmd.target?.id) return 'MISSING_TARGET';
+  if (cmd.type !== 'CreatePurchaseRequest' && cmd.type !== 'CreateSalesOrder' && !cmd.target?.id) return 'MISSING_TARGET';
   return null;
 }
 
@@ -143,6 +143,37 @@ async function route(cmd: DomainCommand, deps: CommandDispatchDeps, call: Handle
             prStore()?.update(id, { fields: { status: 'approved', convertedOrder: '' }, actor: who(), now: now() });
             if (poId) deps.registry.get('procurement-orders')?.store.softDelete(poId, { actor: who(), now: now() });
           },
+        },
+      );
+    }
+    case 'CreateSalesOrder': {
+      // Deny-by-default: a create is ALWAYS `pending` — a client can never mint a
+      // shipped/fulfilled order by supplying `status` on the envelope.
+      //
+      // CROSS-TENANT SAFETY (§16): a `customerRef`, when supplied, must resolve in
+      // the caller's OWN tenant-scoped customer master. `store.get` applies
+      // `scopeOrDeny`, so a customer belonging to another tenant is indistinguish-
+      // able from one that does not exist (both `null`) → refused. There is no
+      // path by which a Sales Order references a foreign tenant's customer.
+      const customerRef = str(cmd.payload.customerRef).trim();
+      if (customerRef) {
+        const customers = deps.registry.get(CUSTOMERS_MODULE_ID)?.store;
+        if (customers) await customers.load();
+        if (!customers?.get(customerRef)) return no('CUSTOMER_NOT_FOUND');
+      }
+      const r = (await call(IpcChannel.EnterpriseModuleCreate, {
+        moduleId: ORDERS_MODULE_ID,
+        fields: { ...cmd.payload, status: 'pending' },
+      })) as { ok: boolean; record?: { id: string } };
+      if (!(r.ok && r.record)) return no('VALIDATION_FAILED');
+      const id = r.record.id;
+      // Compensation (case C): if the durable commit fails, soft-delete the order.
+      return ok(
+        { id },
+        {
+          aggregateId: id,
+          aggregateType: 'SalesOrder',
+          rollback: async () => { deps.registry.get(ORDERS_MODULE_ID)?.store.softDelete(id, { actor: who(), now: now() }); },
         },
       );
     }

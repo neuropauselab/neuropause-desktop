@@ -12,14 +12,17 @@
  * Modular-monolith-first: this contract lives in-process and routes to the
  * existing enterprise module framework. No microservice, no message broker.
  */
+import type { EnterprisePermission } from '@neuropause/shared';
 
-/** The four governed procurement commands this session implements end-to-end. */
+/** The governed commands this platform implements end-to-end. */
 export type DomainCommandType =
   | 'CreatePurchaseRequest'
   | 'SubmitPurchaseRequest'
   | 'ApprovePurchaseRequest'
   | 'RejectPurchaseRequest'
-  | 'ConvertPurchaseRequestToPO';
+  | 'ConvertPurchaseRequestToPO'
+  // ERP Session 21 — Sales domain becomes another consumer of the same platform.
+  | 'CreateSalesOrder';
 
 /** Where a command originated. Descriptive only — it grants nothing. */
 export type CommandSource = 'electron' | 'web' | 'mobile' | 'api' | 'agent' | 'test';
@@ -81,7 +84,8 @@ export type DomainEventType =
   | 'PurchaseRequestSubmitted'
   | 'PurchaseRequestApproved'
   | 'PurchaseRequestRejected'
-  | 'PurchaseRequestConvertedToPO';
+  | 'PurchaseRequestConvertedToPO'
+  | 'SalesOrderCreated';
 
 export interface CommandResult {
   ok: boolean;
@@ -104,6 +108,7 @@ export const EVENT_FOR_COMMAND: Record<DomainCommandType, DomainEventType> = {
   ApprovePurchaseRequest: 'PurchaseRequestApproved',
   RejectPurchaseRequest: 'PurchaseRequestRejected',
   ConvertPurchaseRequestToPO: 'PurchaseRequestConvertedToPO',
+  CreateSalesOrder: 'SalesOrderCreated',
 };
 
 /**
@@ -111,10 +116,11 @@ export const EVENT_FOR_COMMAND: Record<DomainCommandType, DomainEventType> = {
  * by the Purchase Request module's WRITE permission — resolved through the same
  * `ctx.authorize` engine every enterprise action uses (no second authz engine).
  */
-export const PERMISSION_FOR_COMMAND: Record<DomainCommandType, 'procurement:manage'> = {
+export const PERMISSION_FOR_COMMAND: Record<DomainCommandType, EnterprisePermission> = {
   CreatePurchaseRequest: 'procurement:manage',
   SubmitPurchaseRequest: 'procurement:manage',
   ApprovePurchaseRequest: 'procurement:manage',
   RejectPurchaseRequest: 'procurement:manage',
   ConvertPurchaseRequestToPO: 'procurement:manage',
+  CreateSalesOrder: 'sales:manage',
 };
