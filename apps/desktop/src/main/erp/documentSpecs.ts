@@ -85,6 +85,15 @@ export const DOCUMENT_SPECS: readonly DocumentSpec[] = [
       amountField: 'total',
       gatedStatuses: ['approved', 'posted', 'paid'],
     },
+    // NOTE (ERP Session 10): this supplier-bill posting leg is DORMANT on a
+    // running device — the document adapter posts on the record-level status,
+    // which is always 'active', never the domain 'posted'. It is deliberately
+    // RETAINED (not retired) for now: retiring the only GRNI-relief derivation
+    // before its live replacement exists would remove the mechanism AND its
+    // coverage. Consolidating to a single vendor-bill posting owner travels WITH
+    // the operator-gated live GRNI-relief wiring (which needs the vendor bill to
+    // carry line items for a correct line-level three-way match). Its account
+    // codes now follow the Session 10 chart alignment (AP 2000, not 2100).
     postOn: {
       // Clears GRNI for what was matched; the match state is stamped by the
       // three-way match. A non-MATCHED bill refuses inside the posting rule.
@@ -110,7 +119,7 @@ export const DOCUMENT_SPECS: readonly DocumentSpec[] = [
       shipped: (ctx) =>
         deriveCogsPosting({
           dispatchId: ctx.record.id,
-          method: 'weighted_average',
+          method: 'standard',
           lines: ctx.lines.map((l) => ({
             productId: l.productId,
             quantity: l.quantity,
@@ -120,7 +129,7 @@ export const DOCUMENT_SPECS: readonly DocumentSpec[] = [
       dispatched: (ctx) =>
         deriveCogsPosting({
           dispatchId: ctx.record.id,
-          method: 'weighted_average',
+          method: 'standard',
           lines: ctx.lines.map((l) => ({
             productId: l.productId,
             quantity: l.quantity,

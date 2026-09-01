@@ -33,6 +33,7 @@ export const STOCK_ACCOUNT_DEFS: readonly StockAccountDef[] = [
   { code: STOCK_ACCOUNTS.inventoryAdjustment, name: 'Inventory Adjustments', accountClass: 'expense' },
   { code: STOCK_ACCOUNTS.materialVariance, name: 'Material Usage Variance', accountClass: 'expense' },
   { code: STOCK_ACCOUNTS.productionVariance, name: 'Production Variance', accountClass: 'expense' },
+  { code: STOCK_ACCOUNTS.purchasePriceVariance, name: 'Purchase Price Variance', accountClass: 'expense' },
 ];
 
 /**

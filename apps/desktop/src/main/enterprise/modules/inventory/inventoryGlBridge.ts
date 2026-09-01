@@ -98,7 +98,10 @@ export function deriveMovementGlPostings(movement: StockMovement, movementId: st
         deriveCogsPosting({
           dispatchId: movementId,
           lines: [{ productId: movement.product, quantity: qty, unitCost: unitCost > 0 ? unitCost : null }],
-          method: 'weighted_average',
+          // Costing basis is standard cost (Session 5-Fix): postMovement resolves
+          // the movement's unit cost from the product's standardCost. Labelled
+          // truthfully so no report claims a weighted-average it does not compute.
+          method: 'standard',
         }),
       );
     case 'production_consumption':
