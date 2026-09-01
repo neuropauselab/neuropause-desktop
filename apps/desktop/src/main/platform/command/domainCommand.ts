@@ -25,7 +25,10 @@ export type DomainCommandType =
   | 'CreateSalesOrder'
   // ERP Session 23 — the next procurement step: post a goods receipt against a PO
   // (governed at the command layer; reuses the existing receipt→movement→GRNI engine).
-  | 'PostGoodsReceipt';
+  | 'PostGoodsReceipt'
+  // ERP Session 25 — approve a supplier invoice (vendor bill): the fail-closed three-way
+  // match (PO↔GR↔Bill) → GRNI relief / AP, reusing the existing match engine + tolerance.
+  | 'ApproveSupplierInvoice';
 
 /** Where a command originated. Descriptive only — it grants nothing. */
 export type CommandSource = 'electron' | 'web' | 'mobile' | 'api' | 'agent' | 'test';
@@ -89,7 +92,8 @@ export type DomainEventType =
   | 'PurchaseRequestRejected'
   | 'PurchaseRequestConvertedToPO'
   | 'SalesOrderCreated'
-  | 'GoodsReceiptPosted';
+  | 'GoodsReceiptPosted'
+  | 'SupplierInvoiceApproved';
 
 export interface CommandResult {
   ok: boolean;
@@ -114,6 +118,7 @@ export const EVENT_FOR_COMMAND: Record<DomainCommandType, DomainEventType> = {
   ConvertPurchaseRequestToPO: 'PurchaseRequestConvertedToPO',
   CreateSalesOrder: 'SalesOrderCreated',
   PostGoodsReceipt: 'GoodsReceiptPosted',
+  ApproveSupplierInvoice: 'SupplierInvoiceApproved',
 };
 
 /**
@@ -129,4 +134,6 @@ export const PERMISSION_FOR_COMMAND: Record<DomainCommandType, EnterprisePermiss
   ConvertPurchaseRequestToPO: 'procurement:manage',
   CreateSalesOrder: 'sales:manage',
   PostGoodsReceipt: 'procurement:manage',
+  // The vendor-bill module's declared write permission (operations:manage) governs approval.
+  ApproveSupplierInvoice: 'operations:manage',
 };

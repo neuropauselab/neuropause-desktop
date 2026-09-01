@@ -24,7 +24,7 @@
  * the durability of the idempotency+event+outbox differs.
  */
 import type { TenantScope } from '@neuropause/shared';
-import { CUSTOMERS_MODULE_ID, GOODS_RECEIPTS_MODULE_ID, IpcChannel, ORDERS_MODULE_ID, PURCHASE_REQUESTS_MODULE_ID } from '@neuropause/shared';
+import { CUSTOMERS_MODULE_ID, GOODS_RECEIPTS_MODULE_ID, IpcChannel, ORDERS_MODULE_ID, PURCHASE_REQUESTS_MODULE_ID, VENDOR_BILLS_MODULE_ID } from '@neuropause/shared';
 import {
   buildModuleHandlers,
   type EnterpriseModuleContext,
@@ -202,6 +202,24 @@ async function route(cmd: DomainCommand, deps: CommandDispatchDeps, call: Handle
       return ok(
         { id, movements: str(gr?.fields.receiptMovements) },
         { aggregateId: id, aggregateType: 'GoodsReceipt' },
+      );
+    }
+    case 'ApproveSupplierInvoice': {
+      // ERP Session 25 — approve an EXISTING vendor bill (supplier invoice) through the SAME governed
+      // path. Reuses the vendor-bill `approve` action → the fail-closed three-way match (PO↔GR↔Bill,
+      // billed ≤ received cumulative, with the existing DEFAULT_TOLERANCE — no new policy) → GRNI relief
+      // / AP booking. Double-guarded against duplication: the module refuses to re-approve a non-draft
+      // bill (now serialized per-PO, S25) AND the durable journal keys on the command's idempotency key.
+      const id = str(cmd.target?.id);
+      const r = await moduleAction(VENDOR_BILLS_MODULE_ID, id, 'approve');
+      if (!r.ok) return no(r.error ?? r.message ?? 'INVOICE_APPROVE_REFUSED');
+      const bill = deps.registry.get(VENDOR_BILLS_MODULE_ID)?.store.get(id);
+      // NO auto-rollback: an approved goods bill relieves GRNI / books AP — a real accounting effect
+      // whose reversal is a governed operation, never a silent soft-delete. At-most-once is guaranteed
+      // WITHOUT compensation: the non-draft status guard refuses any re-approve.
+      return ok(
+        { id, status: str(bill?.fields.approvedAt ? 'approved' : bill?.status) },
+        { aggregateId: id, aggregateType: 'SupplierInvoice' },
       );
     }
     default:

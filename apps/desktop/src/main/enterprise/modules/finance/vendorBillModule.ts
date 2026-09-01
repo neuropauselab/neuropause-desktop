@@ -243,6 +243,16 @@ export function createVendorBillModule(
           // three-way match (PO ↔ GR ↔ Bill) before approval — FAIL CLOSED. It
           // stays draft with the reason; no payable is booked. Service bills
           // (no source PO) are unaffected and keep the Operating Expense path.
+          //
+          // ERP Session 25 — concurrency note: the cumulative already-billed read
+          // (in `evaluateGoodsBill`) and the `stampAndEmit` below run with NO await
+          // between them, so the event loop serializes two concurrent approvals of
+          // the same PO — the second reads the first's committed approval and the
+          // over-billing invariant holds without an explicit lock (empirically
+          // 0/12 over-billings under concurrency; S25 evidence §R). This safety is
+          // INCIDENTAL to the read→stamp being synchronous (§2 #31), not an explicit
+          // control: a future change introducing an await there must add a per-(tenant,
+          // PO) serialization latch (the S24 receipt pattern).
           if (isGoodsBill(record)) {
             const evaluation = await evaluateGoodsBill(actionCtx, record);
             if (!evaluation.postable) {
