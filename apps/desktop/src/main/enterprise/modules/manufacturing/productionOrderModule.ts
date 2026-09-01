@@ -38,6 +38,7 @@ import {
   postReservation,
   postReservationRelease,
 } from './manufacturingMovements';
+import { settleProductionVariance } from './productionVarianceSettlement';
 import { COMMIT_SCHEDULE_ACTION, commitScheduleForOrder } from './scheduleCommit';
 import { proposeScheduleForOrder } from './scheduleProposalLink';
 
@@ -140,6 +141,21 @@ export function createProductionOrderModule(storePath: string, aiRunner?: Produc
     descriptor: PRODUCTION_ORDER_DESCRIPTOR,
     store,
     hooks: {
+      // ERP Session 5-Fix: when an order reaches 'completed' (via the classic
+      // COMPLETE action here, or the MES path emitting an order update), settle
+      // the production variance ONCE — clear residual WIP to 5910 from the order's
+      // own movements. Idempotent + contained: a GL failure never unwinds the
+      // physical completion, and a re-fired change never double-posts.
+      onChange: async (event, ctx) => {
+        if (event.record.status === 'deleted') return;
+        if (str(event.record.fields.status) !== 'completed') return;
+        try {
+          await settleProductionVariance(event.record, ctx);
+        } catch {
+          // Advisory only — the completion + finished-goods movement already stand;
+          // the variance entry is idempotent, so a later change can still post it.
+        }
+      },
       summarize: async (record): Promise<EnterpriseRecordSummary> => {
         const order = productionOrderFromRecord(record);
         const ai = aiRunner ? await aiRunner(order).catch(() => null) : null;

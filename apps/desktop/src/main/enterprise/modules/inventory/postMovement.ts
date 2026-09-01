@@ -7,9 +7,37 @@
  * ever writes stock directly.
  */
 import type { EnterpriseEntity, EnterpriseRecordMeta, MovementType } from '@neuropause/shared';
-import { STOCK_MOVEMENTS_MODULE_ID, deriveRecordTitle } from '@neuropause/shared';
+import { PRODUCTS_MODULE_ID, STOCK_MOVEMENTS_MODULE_ID, deriveRecordTitle } from '@neuropause/shared';
 import type { EnterpriseModuleActionContext } from '../../framework';
 import { childCorrelationMeta } from '../../framework';
+
+const str = (v: unknown): string => (v === null || v === undefined ? '' : String(v));
+
+/**
+ * Standard-cost policy (ERP Session 5) — the ONE place a movement's unit cost is
+ * resolved, so receipt, issue, production consumption/output and adjustments are
+ * all valued on the same basis and the GL bridge is never starved of cost.
+ *
+ * A positive unitCost the caller supplied is authoritative (it already knows the
+ * cost). Otherwise the cost is the product's standard cost, read from the
+ * Products module by SKU or record id. A product with no standard cost resolves
+ * to 0 — an honest "uncosted" movement that posts no GL entry (the derivations
+ * refuse at zero value), never a guessed number.
+ */
+async function resolveStandardUnitCost(
+  ctx: EnterpriseModuleActionContext,
+  input: StockMovementInput,
+): Promise<number> {
+  if (typeof input.unitCost === 'number' && input.unitCost > 0) return input.unitCost;
+  const products = ctx.moduleFor(PRODUCTS_MODULE_ID);
+  if (!products) return input.unitCost ?? 0;
+  await products.store.load();
+  const rec =
+    products.store.list().find((r) => str(r.fields.sku) === input.product) ??
+    products.store.get(input.product);
+  const std = rec ? Number(rec.fields.standardCost ?? 0) : 0;
+  return Number.isFinite(std) && std > 0 ? std : input.unitCost ?? 0;
+}
 
 export interface StockMovementInput {
   movementNumber: string;
@@ -38,6 +66,9 @@ export async function postStockMovement(
   if (!mv) return null;
   ctx.authorize(mv.descriptor.permissions.write); // requires inventory:manage
   await mv.store.load();
+  // Standard-cost policy: resolve the unit cost centrally (ERP Session 5) so the
+  // GL bridge values every movement on one basis instead of the old unitCost=0.
+  const unitCost = await resolveStandardUnitCost(ctx, input);
   const validation = mv.hooks.validate({
     fields: {
       movementNumber: input.movementNumber,
@@ -46,7 +77,7 @@ export async function postStockMovement(
       warehouse: input.warehouse,
       fromWarehouse: input.fromWarehouse ?? '',
       quantity: input.quantity,
-      unitCost: input.unitCost ?? 0,
+      unitCost,
       status: 'posted',
       referenceModule: input.referenceModule,
       referenceRecord: input.referenceRecord,
