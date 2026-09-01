@@ -15,6 +15,7 @@ import type {
 import {
   PURCHASE_ORDERS_MODULE_ID,
   PURCHASE_ORDER_KIND,
+  SUPPLIERS_MODULE_ID,
   calculatePurchaseTotal,
   evaluateBudgetControl,
   evaluateContractGate,
@@ -43,6 +44,7 @@ export const PURCHASE_ORDER_DESCRIPTOR: EnterpriseModuleDescriptor = {
   titleField: 'poNumber',
   permissions: { read: 'procurement:read', write: 'procurement:manage' },
   actions: [
+    { key: 'assignSupplier', label: 'Assign Supplier', icon: 'store' },
     { key: 'approve', label: 'Approve', icon: 'check' },
     { key: 'send', label: 'Send', icon: 'upload' },
     { key: 'cancel', label: 'Cancel', icon: 'close' },
@@ -52,6 +54,10 @@ export const PURCHASE_ORDER_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'poNumber', label: 'PO Number', type: 'text', required: true, placeholder: 'PO-0001' },
     { key: 'supplier', label: 'Supplier', type: 'text', placeholder: 'Acme Supplies' },
     { key: 'product', label: 'Product (SKU)', type: 'text', placeholder: 'SKU-0001' },
+    // ERP Session 18 — the supplier master record id this PO sources from. The
+    // free-text `supplier` above is set by the governed `assignSupplier` action,
+    // which validates this ref against the tenant's Supplier master.
+    { key: 'supplierRef', label: 'Supplier (ref)', type: 'text', column: false, placeholder: 'Supplier master id' },
     { key: 'warehouse', label: 'Warehouse', type: 'text', column: false, placeholder: 'WH-01' },
     { key: 'quantity', label: 'Quantity', type: 'number', min: 0 },
     { key: 'unitCost', label: 'Unit Cost', type: 'number', min: 0, format: 'currency', column: false },
@@ -170,6 +176,30 @@ export function createPurchaseOrderModule(
       },
       runAction: async (action, record, ctx) => {
         if (action === RECEIVE_GOODS_ACTION) return convertPurchaseOrderToReceipt(record, ctx);
+        // ERP Session 18 — GOVERNED PO-stage supplier assignment. Supplier is
+        // assigned at the PO stage (Session 17 established the PR carries no
+        // supplier-selection policy). The `supplierRef` is validated against the
+        // tenant-scoped Supplier master: a foreign supplier is invisible (denied),
+        // and a suspended/inactive supplier cannot be assigned. No sourcing /
+        // ranking / RFQ policy is invented.
+        if (action === 'assignSupplier') {
+          const supplierRef = str(record.fields.supplierRef).trim();
+          if (!supplierRef) return { ok: false, message: 'Set a supplier reference before assigning.' };
+          const suppliers = ctx.moduleFor(SUPPLIERS_MODULE_ID);
+          if (!suppliers) return { ok: false, error: 'Supplier master is unavailable.' };
+          await suppliers.store.load();
+          const supplier = suppliers.store.get(supplierRef); // tenant-scoped — a foreign supplier is invisible
+          if (!supplier || supplier.status === 'deleted') return { ok: false, message: 'Supplier not found in this workspace.' };
+          const sStatus = str(supplier.fields.status);
+          if (sStatus === 'suspended' || sStatus === 'inactive') {
+            return { ok: false, message: `Cannot assign a ${sStatus} supplier.` };
+          }
+          const bound = store.update(record.id, { fields: { supplier: str(supplier.fields.name) }, actor: ctx.actor(), now: ctx.now() });
+          if (!bound) return { ok: false, error: 'Purchase order not found.' };
+          const selfMod = ctx.moduleFor(PURCHASE_ORDERS_MODULE_ID);
+          if (selfMod) ctx.emit(selfMod, 'updated', bound);
+          return { ok: true, message: `Supplier ${str(supplier.fields.name)} assigned to ${str(record.fields.poNumber)}.` };
+        }
         const target = poTransition(action, str(record.fields.status));
         if (!target) return { ok: false, message: `Cannot ${action} a purchase order that is ${str(record.fields.status)}.` };
         // FW-5 (ADDITIVE): approval consults the named Finance budget. No

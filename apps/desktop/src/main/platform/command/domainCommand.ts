@@ -50,6 +50,9 @@ export interface DomainCommand {
   source: CommandSource;
 }
 
+/** The schema version stamped on every durable domain event (ERP Session 18). */
+export const EVENT_SCHEMA_VERSION = 1;
+
 /** A domain event produced by a successful command. Immutable + attributable. */
 export interface DomainEvent {
   eventId: string;
@@ -57,12 +60,21 @@ export interface DomainEvent {
   tenantId: string;
   /** The aggregate the event is about (e.g. the Purchase Request id). */
   aggregateId: string;
+  /** The aggregate kind (ERP Session 18 — hardened envelope). */
+  aggregateType?: string;
   correlationId: string;
+  /** The command/event that caused this one (ERP Session 18). */
+  causationId?: string;
+  /** Event envelope schema version (ERP Session 18). */
+  schemaVersion?: number;
   actor: string;
   at: string;
   /** Small, event-specific detail (ids, status). No secrets, no payloads echoed. */
   detail: Record<string, unknown>;
 }
+
+/** Outbox delivery lifecycle (ERP Session 18). */
+export type OutboxStatus = 'PENDING' | 'PROCESSING' | 'DELIVERED' | 'RETRYABLE';
 
 export type DomainEventType =
   | 'PurchaseRequestCreated'

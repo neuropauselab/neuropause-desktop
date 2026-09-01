@@ -15,6 +15,13 @@
  * layer uses. The bus adds only what is genuinely new — the canonical envelope,
  * principal-derived tenancy, idempotency, and the named domain event. There is
  * no second authorization engine and no second audit trail.
+ *
+ * ERP Session 18 — the bus supports TWO idempotency/event backends, chosen by the
+ * caller: the in-memory pair (`idempotency` + `events`, Session 17) OR a durable
+ * `journal` (Session 18) that commits the idempotency record, the domain event
+ * and the outbox entry as ONE atomic write, compensating the state mutation if
+ * the commit fails. The routing/authorization/transaction logic is identical; only
+ * the durability of the idempotency+event+outbox differs.
  */
 import type { TenantScope } from '@neuropause/shared';
 import { IpcChannel, PURCHASE_REQUESTS_MODULE_ID } from '@neuropause/shared';
@@ -26,6 +33,7 @@ import {
 import { CREATE_PO_ACTION } from '../../enterprise/modules/procurement/conversion';
 import type { DomainEventLog } from './domainEventLog';
 import type { CommandIdempotencyStore } from './commandIdempotency';
+import type { DurableCommandJournal, TxExecuteResult } from './durableCommandJournal';
 import {
   EVENT_FOR_COMMAND,
   PERMISSION_FOR_COMMAND,
@@ -39,8 +47,20 @@ export interface CommandDispatchDeps {
   ctx: EnterpriseModuleContext;
   /** Authoritative tenant scope from the PRINCIPAL. Never read from the command. */
   resolveScope: () => TenantScope | null;
-  events: DomainEventLog;
-  idempotency: CommandIdempotencyStore;
+  /** In-memory idempotency + events (Session 17). Used when `journal` is absent. */
+  events?: DomainEventLog;
+  idempotency?: CommandIdempotencyStore;
+  /** Durable idempotency + event + outbox (Session 18). Preferred when present. */
+  journal?: DurableCommandJournal;
+}
+
+/** A routed command's result + the metadata the durable journal needs to commit. */
+interface RouteOutcome {
+  result: CommandResult;
+  aggregateId?: string;
+  aggregateType?: string;
+  /** Compensate the state mutation if the durable commit fails (case C). */
+  rollback?: () => Promise<void>;
 }
 
 const str = (v: unknown): string => (v === null || v === undefined ? '' : String(v));
@@ -64,9 +84,15 @@ function validateEnvelope(cmd: DomainCommand): string | null {
 
 type HandlerCall = (channel: string, payload: unknown) => Promise<unknown>;
 
-async function route(cmd: DomainCommand, deps: CommandDispatchDeps, call: HandlerCall): Promise<CommandResult> {
-  const ok = (data: Record<string, unknown>): CommandResult => ({ ok: true, commandId: cmd.commandId, type: cmd.type, data });
-  const no = (error: string): CommandResult => fail(cmd, error);
+async function route(cmd: DomainCommand, deps: CommandDispatchDeps, call: HandlerCall): Promise<RouteOutcome> {
+  const ok = (data: Record<string, unknown>, extra: Omit<RouteOutcome, 'result'> = {}): RouteOutcome => ({
+    result: { ok: true, commandId: cmd.commandId, type: cmd.type, data },
+    ...extra,
+  });
+  const no = (error: string): RouteOutcome => ({ result: fail(cmd, error) });
+  const prStore = () => deps.registry.get(PURCHASE_REQUESTS_MODULE_ID)?.store;
+  const who = () => deps.ctx.actor() ?? 'system';
+  const now = () => deps.ctx.now();
   const action = async (act: string): Promise<{ ok: boolean; message?: string; error?: string }> =>
     (await call(IpcChannel.EnterpriseModuleAction, {
       moduleId: PURCHASE_REQUESTS_MODULE_ID,
@@ -82,28 +108,43 @@ async function route(cmd: DomainCommand, deps: CommandDispatchDeps, call: Handle
         moduleId: PURCHASE_REQUESTS_MODULE_ID,
         fields: { ...cmd.payload, status: 'draft' },
       })) as { ok: boolean; record?: { id: string } };
-      return r.ok && r.record ? ok({ id: r.record.id }) : no('VALIDATION_FAILED');
+      if (!(r.ok && r.record)) return no('VALIDATION_FAILED');
+      const id = r.record.id;
+      // Compensation (case C): if the durable commit fails, soft-delete the PR.
+      return ok({ id }, { aggregateId: id, aggregateType: 'PurchaseRequest', rollback: async () => { prStore()?.softDelete(id, { actor: who(), now: now() }); } });
     }
-    case 'SubmitPurchaseRequest': {
-      const r = await action('submit');
-      return r.ok ? ok({ id: str(cmd.target?.id) }) : no(r.error ?? r.message ?? 'SUBMIT_REFUSED');
-    }
-    case 'ApprovePurchaseRequest': {
-      const r = await action('approve');
-      return r.ok ? ok({ id: str(cmd.target?.id) }) : no(r.error ?? r.message ?? 'APPROVE_REFUSED');
-    }
+    case 'SubmitPurchaseRequest':
+    case 'ApprovePurchaseRequest':
     case 'RejectPurchaseRequest': {
-      const r = await action('reject');
-      return r.ok ? ok({ id: str(cmd.target?.id) }) : no(r.error ?? r.message ?? 'REJECT_REFUSED');
+      const act = cmd.type === 'SubmitPurchaseRequest' ? 'submit' : cmd.type === 'ApprovePurchaseRequest' ? 'approve' : 'reject';
+      const id = str(cmd.target?.id);
+      const priorStatus = str(prStore()?.get(id)?.fields.status);
+      const r = await action(act);
+      if (!r.ok) return no(r.error ?? r.message ?? `${act.toUpperCase()}_REFUSED`);
+      // Compensation (case C): revert the status flip.
+      return ok({ id }, { aggregateId: id, aggregateType: 'PurchaseRequest', rollback: async () => { prStore()?.update(id, { fields: { status: priorStatus }, actor: who(), now: now() }); } });
     }
     case 'ConvertPurchaseRequestToPO': {
+      const id = str(cmd.target?.id);
       const r = await action(CREATE_PO_ACTION);
       if (!r.ok) return no(r.error ?? r.message ?? 'CONVERT_REFUSED');
       // The PO id is stamped onto the PR by the conversion — read it back for the
       // event/result (an internal read of the just-written record, not a govern-
       // ed cross-tenant query).
-      const pr = deps.registry.get(PURCHASE_REQUESTS_MODULE_ID)?.store.get(str(cmd.target?.id));
-      return ok({ id: str(cmd.target?.id), purchaseOrderId: str(pr?.fields.convertedOrder) });
+      const pr = prStore()?.get(id);
+      const poId = str(pr?.fields.convertedOrder);
+      // Compensation (case C): revert the PR and soft-delete the created PO.
+      return ok(
+        { id, purchaseOrderId: poId },
+        {
+          aggregateId: id,
+          aggregateType: 'PurchaseRequest',
+          rollback: async () => {
+            prStore()?.update(id, { fields: { status: 'approved', convertedOrder: '' }, actor: who(), now: now() });
+            if (poId) deps.registry.get('procurement-orders')?.store.softDelete(poId, { actor: who(), now: now() });
+          },
+        },
+      );
     }
     default:
       return no('UNKNOWN_COMMAND');
@@ -127,34 +168,63 @@ export async function dispatchCommand(cmd: DomainCommand, deps: CommandDispatchD
   if (cmd.tenantId && cmd.tenantId !== scope.tenantId) return fail(cmd, 'CROSS_TENANT_CLAIM');
   if (cmd.workspaceId && scope.workspaceId && cmd.workspaceId !== scope.workspaceId) return fail(cmd, 'CROSS_WORKSPACE_CLAIM');
 
-  return deps.idempotency.run(scope.tenantId, cmd.idempotencyKey, async () => {
-    // AUTHORIZATION at the domain boundary — reuses the one `ctx.authorize`
-    // engine, fail-closed. The delegated module handler authorizes again
-    // (defense in depth); this is the command's own explicit gate.
+  // AUTHORIZATION + the governed transaction, shared by both backends. Returns a
+  // RouteOutcome; authorization failure is a fail-closed result, never an
+  // exception. Runs INSIDE the idempotency boundary so a replay never re-authorizes
+  // or re-executes.
+  const authorizeAndRoute = async (): Promise<RouteOutcome> => {
     try {
       deps.ctx.authorize(PERMISSION_FOR_COMMAND[cmd.type]);
     } catch {
-      return fail(cmd, 'UNAUTHORIZED');
+      return { result: fail(cmd, 'UNAUTHORIZED') };
     }
-
     const handlers = buildModuleHandlers(deps.registry, deps.ctx);
     const call: HandlerCall = (channel, payload) => {
       const def = handlers.find((d) => d.channel === channel);
       if (!def) throw new Error(`no handler for channel ${channel}`);
       return (def.handler as (p: unknown) => Promise<unknown>)(payload);
     };
-
-    let result: CommandResult;
     try {
-      result = await route(cmd, deps, call);
+      return await route(cmd, deps, call);
     } catch (err) {
-      return fail(cmd, err instanceof Error ? err.message : 'COMMAND_FAILED');
+      return { result: fail(cmd, err instanceof Error ? err.message : 'COMMAND_FAILED') };
     }
+  };
 
-    // A domain event is emitted ONLY on a successful state change — immutable,
-    // tenant-scoped, correlated, attributable (§8).
+  // DURABLE PATH (Session 18): the journal commits idempotency + event + outbox
+  // as one atomic write and compensates the state on a failed commit.
+  if (deps.journal) {
+    return deps.journal.run({
+      tenantId: scope.tenantId,
+      idempotencyKey: cmd.idempotencyKey,
+      commandId: cmd.commandId,
+      commandType: cmd.type,
+      correlationId: cmd.correlationId,
+      causationId: cmd.commandId,
+      actor: cmd.actor,
+      source: cmd.source,
+      execute: async (): Promise<TxExecuteResult> => {
+        const routed = await authorizeAndRoute();
+        if (!routed.result.ok) return { ok: false, error: routed.result.error };
+        return {
+          ok: true,
+          data: routed.result.data,
+          aggregateId: routed.aggregateId,
+          aggregateType: routed.aggregateType,
+          rollback: routed.rollback,
+        };
+      },
+    });
+  }
+
+  // IN-MEMORY PATH (Session 17): idempotency wraps; the event is appended on success.
+  if (!deps.idempotency || !deps.events) return fail(cmd, 'NO_IDEMPOTENCY_BACKEND');
+  const events = deps.events;
+  return deps.idempotency.run(scope.tenantId, cmd.idempotencyKey, async () => {
+    const routed = await authorizeAndRoute();
+    const result = routed.result;
     if (result.ok) {
-      result.event = deps.events.append({
+      result.event = events.append({
         type: EVENT_FOR_COMMAND[cmd.type],
         tenantId: scope.tenantId,
         aggregateId: str(result.data?.id ?? cmd.target?.id),
