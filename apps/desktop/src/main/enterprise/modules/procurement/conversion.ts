@@ -48,6 +48,10 @@ export async function convertRequestToPurchaseOrder(
       budget: pr.budget,
       status: 'draft',
       sourceRequest: request.id,
+      // ERP Session 17 — carry the PR's multi-line content VERBATIM to the PO, so
+      // PR line i ↔ PO line i is deterministic and no quantity is inflated during
+      // conversion. Absent (single-product PR) → unchanged.
+      ...(str(request.fields.lines).trim() ? { lines: str(request.fields.lines) } : {}),
     },
   });
   if (!validation.ok) {
