@@ -416,7 +416,7 @@ export async function handleVendorBillChangeForGl(
   if (live) {
     const goods = await evaluateGoodsBill(ctx, event.record);
     if (goods.isGoods) {
-      if (!(goods.matched && goods.reliefLines)) return;
+      if (!(goods.postable && goods.reliefLines)) return;
       expected = goods.reliefLines;
     }
   }

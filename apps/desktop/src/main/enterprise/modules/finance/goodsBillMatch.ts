@@ -23,6 +23,7 @@ import {
   GOODS_RECEIPTS_MODULE_ID,
   PURCHASE_ORDERS_MODULE_ID,
   STOCK_MOVEMENTS_MODULE_ID,
+  VENDOR_BILLS_MODULE_ID,
   type EnterpriseEntity,
   type GlJournalLine,
 } from '@neuropause/shared';
@@ -88,7 +89,8 @@ export type GoodsBillState =
 
 export interface GoodsBillEvaluation {
   isGoods: boolean;
-  matched: boolean;
+  /** True when the bill may post (MATCHED or a legitimate PARTIAL). */
+  postable: boolean;
   state: GoodsBillState;
   reasons: string[];
   receivedValue: number;
@@ -132,7 +134,7 @@ function matchLine(
 
 const notGoods = (): GoodsBillEvaluation => ({
   isGoods: false,
-  matched: false,
+  postable: false,
   state: 'SERVICE',
   reasons: [],
   receivedValue: 0,
@@ -143,7 +145,7 @@ const notGoods = (): GoodsBillEvaluation => ({
 
 const held = (state: GoodsBillState, reasons: string[]): GoodsBillEvaluation => ({
   isGoods: true,
-  matched: false,
+  postable: false,
   state,
   reasons,
   receivedValue: 0,
@@ -187,7 +189,10 @@ export async function evaluateGoodsBill(
     return held('LINES_INCONSISTENT', [`Bill lines sum to ${lineSum} but the subtotal is ${subtotal}.`]);
   }
 
-  // Received value = actual accrued GRNI, read back from the receipt movements.
+  // Accrued GRNI per SKU, read back from the actual posted receipt movements —
+  // the GRNI really accrued, so relief nets to zero even if the product's
+  // standard cost later changes. Aggregated across ALL of the PO's receipts
+  // (partial + multiple receipts).
   const receiptsModule = ctx.moduleFor(GOODS_RECEIPTS_MODULE_ID);
   const movementsModule = ctx.moduleFor(STOCK_MOVEMENTS_MODULE_ID);
   if (!receiptsModule || !movementsModule) return held('NO_RECEIPT', ['Receipt/movement modules are unavailable.']);
@@ -197,9 +202,8 @@ export async function evaluateGoodsBill(
     .list()
     .filter((r) => r.status !== 'deleted' && str(r.fields.purchaseOrder) === po.id && str(r.fields.status) === 'received');
 
-  let receivedValue = 0;
-  const receiptLines: DocumentLine[] = [];
-  let rl = 0;
+  const receivedQty = new Map<string, number>();
+  const accruedValue = new Map<string, number>();
   for (const receipt of receipts) {
     const mv = movementsModule.store.get(str(receipt.fields.receiptMovement));
     if (!mv || mv.status === 'deleted') continue;
@@ -207,16 +211,54 @@ export async function evaluateGoodsBill(
     const q = num(mv.fields.quantity);
     const uc = num(mv.fields.unitCost);
     if (q <= 0) continue;
-    receivedValue = round2(receivedValue + q * uc);
-    receiptLines.push(matchLine('goodsReceipt', (rl += 1), str(receipt.fields.product), q, uc, str(fields.currency)));
+    const sku = str(receipt.fields.product);
+    receivedQty.set(sku, round2((receivedQty.get(sku) ?? 0) + q));
+    accruedValue.set(sku, round2((accruedValue.get(sku) ?? 0) + q * uc));
   }
-  if (receivedValue <= 0 || receiptLines.length === 0) {
+  const totalReceived = [...receivedQty.values()].reduce((n, q) => n + q, 0);
+  if (totalReceived <= 0) {
     return held('NO_RECEIPT', ['No received-and-posted goods for this purchase order to match against.']);
   }
 
+  // CUMULATIVE billing: quantity already billed on prior POSTED (approved/paid)
+  // bills for this PO, derived from their line items (no new field). This bill
+  // therefore matches against the REMAINING receivable, and cumulative billed can
+  // never exceed cumulative received. Cancelled/draft bills do not consume it.
+  const alreadyBilled = new Map<string, number>();
+  const billsModule = ctx.moduleFor(VENDOR_BILLS_MODULE_ID);
+  if (billsModule) {
+    await billsModule.store.load();
+    const poRefs = new Set([po.id, str(po.fields.poNumber).trim()].filter((s) => s !== ''));
+    for (const other of billsModule.store.list()) {
+      if (other.id === record.id || other.status === 'deleted') continue;
+      const st = str(other.fields.status);
+      if (st !== 'approved' && st !== 'paid') continue; // only posted bills consume received qty
+      if (!poRefs.has(str(other.fields.sourcePurchaseOrder).trim())) continue;
+      for (const l of parseBillLines(other.fields.lines)) {
+        alreadyBilled.set(l.sku, round2((alreadyBilled.get(l.sku) ?? 0) + l.quantity));
+      }
+    }
+  }
+
+  /** Accrued GRNI per unit for a SKU (pool allocated by quantity; = standard cost when constant). */
+  const perUnit = (sku: string): number => {
+    const q = receivedQty.get(sku) ?? 0;
+    return q > 0 ? (accruedValue.get(sku) ?? 0) / q : 0;
+  };
+
+  // Feed the EXISTING three-way match engine the REMAINING receivable (received −
+  // already billed): billed ≤ remaining → MATCHED (bills the rest) or PARTIAL
+  // (bills part) — both postable for their portion; billed > remaining → MISMATCH,
+  // fail closed. No second matcher.
   const orderLines: DocumentLine[] = [
     matchLine('purchaseOrder', 1, str(po.fields.product), num(po.fields.quantity), num(po.fields.unitCost), str(po.fields.currency)),
   ];
+  const receiptLines: DocumentLine[] = [];
+  let rl = 0;
+  for (const [sku, q] of receivedQty) {
+    const remaining = Math.max(0, round2(q - (alreadyBilled.get(sku) ?? 0)));
+    receiptLines.push(matchLine('goodsReceipt', (rl += 1), sku, remaining, perUnit(sku), str(fields.currency)));
+  }
   const billLines: DocumentLine[] = billLinesParsed.map((l, i) =>
     matchLine('bill', i + 1, l.sku, l.quantity, l.unitPrice, str(fields.currency)),
   );
@@ -231,18 +273,26 @@ export async function evaluateGoodsBill(
     billLines,
   });
 
-  // Functional-currency amounts for the posting (rate default 1 → equals entered).
+  // A partial bill is legitimate: MATCHED (bills the whole remaining) and PARTIAL
+  // (bills part of it) both post their portion; everything else fails closed.
+  const postable = match.state === 'MATCHED' || match.state === 'PARTIAL';
+
   const rate = num(fields.exchangeRate) > 0 ? num(fields.exchangeRate) : 1;
   const billedExTax = round2(subtotal * rate);
   const taxAmount = round2(num(fields.taxAmount) * rate);
+  // GRNI relieved for THIS bill = its billed quantity × the accrued per-unit rate.
+  // Cumulative relief across all of a PO's bills therefore sums to the accrued
+  // pool exactly, so GRNI nets to zero once fully billed. (Base currency, as
+  // accrued; PPV = billedExTax − relief absorbs price and, for a foreign bill, FX.)
+  const reliefValue = round2(billLinesParsed.reduce((n, l) => n + l.quantity * perUnit(l.sku), 0));
 
-  if (!match.postable) {
+  if (!postable) {
     return {
       isGoods: true,
-      matched: false,
+      postable: false,
       state: match.state,
       reasons: match.reasons.length > 0 ? match.reasons : [`Three-way match state ${match.state}.`],
-      receivedValue,
+      receivedValue: reliefValue,
       billedExTax,
       taxAmount,
       reliefLines: null,
@@ -251,7 +301,7 @@ export async function evaluateGoodsBill(
 
   const derivation = deriveGoodsBillPosting({
     billId: str(fields.billNumber) || record.id,
-    receivedValue,
+    receivedValue: reliefValue,
     billedExTax,
     taxAmount,
     taxAccount: GL_PAYABLE_CONTROL_ACCOUNTS.gstInputCredit.code,
@@ -259,10 +309,10 @@ export async function evaluateGoodsBill(
   if (!derivation.ok) {
     return {
       isGoods: true,
-      matched: false,
+      postable: false,
       state: 'MISMATCH',
       reasons: [derivation.refusedReason ?? 'GRNI-relief derivation refused.'],
-      receivedValue,
+      receivedValue: reliefValue,
       billedExTax,
       taxAmount,
       reliefLines: null,
@@ -271,10 +321,10 @@ export async function evaluateGoodsBill(
 
   return {
     isGoods: true,
-    matched: true,
-    state: 'MATCHED',
+    postable: true,
+    state: match.state,
     reasons: [],
-    receivedValue,
+    receivedValue: reliefValue,
     billedExTax,
     taxAmount,
     reliefLines: derivation.lines,

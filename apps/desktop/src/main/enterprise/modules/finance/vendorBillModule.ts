@@ -245,7 +245,7 @@ export function createVendorBillModule(
           // (no source PO) are unaffected and keep the Operating Expense path.
           if (isGoodsBill(record)) {
             const evaluation = await evaluateGoodsBill(actionCtx, record);
-            if (!evaluation.matched) {
+            if (!evaluation.postable) {
               return {
                 ok: false,
                 message: `Bill ${bill.billNumber} held — three-way match not satisfied (${evaluation.state}).${evaluation.reasons.length ? ' ' + evaluation.reasons.join(' ') : ''}`,
