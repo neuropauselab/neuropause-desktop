@@ -107,6 +107,9 @@ export const PURCHASE_ORDER_DESCRIPTOR: EnterpriseModuleDescriptor = {
     },
     { key: 'approvedBy', label: 'Approved By', type: 'text', column: false },
     { key: 'sourceRequest', label: 'Source Request', type: 'text', column: false, readOnly: true },
+    // ERP Session 19 — the RFQ this PO was awarded from (RFQ → Quote → PO
+    // traceability). Set by the RFQ award; absent for a directly-created PO.
+    { key: 'sourceRfq', label: 'Source RFQ', type: 'text', column: false, readOnly: true },
     { key: 'convertedReceipt', label: 'Goods Receipt', type: 'text', column: false, readOnly: true },
   ],
 };

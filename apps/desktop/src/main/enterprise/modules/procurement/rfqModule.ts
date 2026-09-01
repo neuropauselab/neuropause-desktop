@@ -248,6 +248,10 @@ export function createRfqModule(
             currency: str(record.fields.currency) || 'USD',
             expectedDelivery: rfq.neededBy ?? '',
             sourceRequest: rfq.sourceRequest,
+            // ERP Session 19 — RFQ → Quote → PO traceability: the awarded PO
+            // carries a back-reference to the RFQ it was won from, alongside the
+            // winning quote (supplier + unitCost) already stamped above.
+            sourceRfq: record.id,
           };
           const validation = poModule.hooks.validate({ fields: poFields });
           if (!validation.ok) {
