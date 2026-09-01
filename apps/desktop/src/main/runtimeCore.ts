@@ -322,6 +322,7 @@ import { workerInstallStore } from './workforce/install/installInstance';
 import { governanceStore } from './enterprise/governance/governanceInstance';
 import { workspaceStore } from './enterprise/workspace/workspaceInstance';
 import { capabilityHandlers } from './capabilities/capabilityProposeIpc';
+import { buildPlatformCommandHandlers } from './ipc/handlers/platformCommandIpc';
 import { DEFAULT_PROMPTS } from './ai/promptManager';
 import { runEnterpriseSearch } from './search/enterpriseSearch';
 import { getFederationSearcher } from './federationPlatform/searcherInstance';
@@ -2189,6 +2190,10 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...connectors.handlers);
   // FG-2 — capability:m365.propose (data-only proposal producer; validates an AI candidate, never executes).
   defs.push(...capabilityHandlers);
+  // FG-ERP-LIVE-IPC — platform:command.dispatch (ERP Session 22): the LIVE entry to the governed platform
+  // command bus (Application Boundary → authorization → policy → workflow → durable transaction → event →
+  // outbox → audit). Reuses the enterprise registry + the one RBAC gate; per-command authz is inside the bus.
+  defs.push(...buildPlatformCommandHandlers({ registry: enterprise.modules, allows: enterprise.allows }));
   // Unified knowledge layer IPC (query/get/counts/search).
   defs.push(...unified.handlers);
   // Sync engine IPC (sync-state snapshot for the health dashboard).

@@ -544,6 +544,35 @@ export type CapabilityProposeM365ActionResponse =
       detail: string;
     };
 
+/**
+ * FG-ERP-LIVE-IPC (ERP Session 22) — the LIVE governed platform command envelope from a client.
+ *
+ * `operation` is an UNTRUSTED string, validated against the known command set by the command bus (deny-by-default →
+ * VALIDATION_ERROR for an unknown operation). `payload` is UNTRUSTED command input, never authority. `claimedTenantId`
+ * is a CLAIM validated against the server-resolved principal and rejected on mismatch — it is NEVER authoritative.
+ * Actor and tenant are resolved SERVER-SIDE (authenticated session + active scope), never from this envelope.
+ */
+export const PlatformCommandDispatchRequest = z.object({
+  operation: z.string().trim().min(1).max(64),
+  target: z.string().trim().max(200).optional(),
+  payload: z.record(z.unknown()).default({}),
+  idempotencyKey: z.string().trim().min(1).max(200),
+  correlationId: z.string().trim().max(200).optional(),
+  claimedTenantId: z.string().trim().max(200).optional(),
+});
+export type PlatformCommandDispatchRequest = z.infer<typeof PlatformCommandDispatchRequest>;
+
+/** FG-ERP-LIVE-IPC — the client-safe response: closed error contract only, no internal detail ever. */
+export type PlatformCommandDispatchResponse = {
+  ok: boolean;
+  data?: Record<string, unknown>;
+  replayed?: boolean;
+  error?: { code: string; message: string };
+  requestId: string;
+  correlationId: string;
+  operation: string;
+};
+
 /** P4.1 — an operator control command over a connector (or one of its accounts). */
 export const ConnectorControlRequest = z.object({
   connectorId: ConnectorIdSchema,

@@ -228,6 +228,13 @@ export const IpcChannel = {
   // DATA ONLY. The handler never executes, never sets `confirmed`, and has no path to the certified executor.
   CapabilityProposeM365Action: 'capability:m365.propose',
 
+  // FG-ERP-LIVE-IPC (ERP Session 22) — the LIVE entry point for the governed platform command bus. A renderer
+  // dispatches a canonical DomainCommand through this ONE channel → the Application Boundary → the command bus
+  // (authorization → policy → workflow → durable transaction → event → outbox → audit). The handler is authenticated
+  // (requireAuth) and performs the FINE per-command RBAC inside the command bus (PERMISSION_FOR_COMMAND); it never
+  // accesses a store directly, never sets identity/tenant from the renderer, and never bypasses the command bus.
+  PlatformCommandDispatch: 'platform:command.dispatch',
+
   // ── unified knowledge layer (UDM) ──
   UnifiedQuery: 'unified:query',
   UnifiedGet: 'unified:get',
@@ -1318,6 +1325,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.M365ActionExecute,
   IpcChannel.M365Draft,
   IpcChannel.CapabilityProposeM365Action,
+  IpcChannel.PlatformCommandDispatch,
   IpcChannel.UnifiedQuery,
   IpcChannel.UnifiedGet,
   IpcChannel.UnifiedCounts,

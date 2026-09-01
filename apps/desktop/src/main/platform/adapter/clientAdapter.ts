@@ -184,3 +184,17 @@ export class AIAdapter extends ClientAdapter {
     return 'agent';
   }
 }
+
+/**
+ * The adapter the live desktop uses (ERP Session 22, FG-ERP-LIVE-IPC). Source
+ * `'electron'` is attribution only — it grants nothing; governance is identical
+ * to every other adapter. This class carries no Electron import (the string
+ * `'electron'` is a label, not a dependency), so `platform/adapter` stays
+ * Electron-free; the Electron-coupled composition (principal resolver, journal,
+ * audit sink) lives in the IPC layer that constructs this adapter.
+ */
+export class ElectronClientAdapter extends ClientAdapter {
+  protected source(): 'electron' {
+    return 'electron';
+  }
+}
