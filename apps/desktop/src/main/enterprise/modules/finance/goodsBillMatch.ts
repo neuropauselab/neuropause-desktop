@@ -31,6 +31,7 @@ import type { EnterpriseModuleActionContext } from '../../framework';
 import { threeWayMatch, type MatchState } from '../../../erp/threeWayMatch';
 import type { DocumentLine, LineDocumentType } from '../../../erp/documentLines';
 import { deriveGoodsBillPosting } from '../../../erp/postingRules';
+import { parsePurchaseOrderLines } from '../../../erp/procurementLines';
 
 const str = (v: unknown): string => (v === null || v === undefined ? '' : String(v));
 const num = (v: unknown): number => {
@@ -202,16 +203,24 @@ export async function evaluateGoodsBill(
     .list()
     .filter((r) => r.status !== 'deleted' && str(r.fields.purchaseOrder) === po.id && str(r.fields.status) === 'received');
 
+  // ERP Session 16 — aggregate received value from the ACTUAL `receive`
+  // movements that reference this PO's receipts, reading the SKU from each
+  // movement. This unifies single-product receipts (one movement per receipt)
+  // and multi-line receipts (one movement per line) with no second path: a
+  // legacy receipt has exactly one movement whose product equals its header, so
+  // the result is byte-identical to the prior single-movement read.
   const receivedQty = new Map<string, number>();
   const accruedValue = new Map<string, number>();
-  for (const receipt of receipts) {
-    const mv = movementsModule.store.get(str(receipt.fields.receiptMovement));
-    if (!mv || mv.status === 'deleted') continue;
+  const receiptIds = new Set(receipts.map((r) => r.id));
+  for (const mv of movementsModule.store.list()) {
+    if (mv.status === 'deleted') continue;
     if (str(mv.fields.type) !== 'receive' || str(mv.fields.status) === 'void') continue;
+    if (str(mv.fields.referenceModule) !== GOODS_RECEIPTS_MODULE_ID) continue;
+    if (!receiptIds.has(str(mv.fields.referenceRecord))) continue;
     const q = num(mv.fields.quantity);
     const uc = num(mv.fields.unitCost);
     if (q <= 0) continue;
-    const sku = str(receipt.fields.product);
+    const sku = str(mv.fields.product);
     receivedQty.set(sku, round2((receivedQty.get(sku) ?? 0) + q));
     accruedValue.set(sku, round2((accruedValue.get(sku) ?? 0) + q * uc));
   }
@@ -250,9 +259,14 @@ export async function evaluateGoodsBill(
   // already billed): billed ≤ remaining → MATCHED (bills the rest) or PARTIAL
   // (bills part) — both postable for their portion; billed > remaining → MISMATCH,
   // fail closed. No second matcher.
-  const orderLines: DocumentLine[] = [
-    matchLine('purchaseOrder', 1, str(po.fields.product), num(po.fields.quantity), num(po.fields.unitCost), str(po.fields.currency)),
-  ];
+  // ERP Session 16 — the order side of the match is the PO's lines when it has
+  // them (one order line per SKU), else the single-product header. This is what
+  // lets a multi-SKU bill match: every billed SKU has an order line to match.
+  const orderPoLines = parsePurchaseOrderLines(po.fields.lines);
+  const orderLines: DocumentLine[] =
+    orderPoLines.length > 0
+      ? orderPoLines.map((l, i) => matchLine('purchaseOrder', i + 1, l.sku, l.quantity, l.unitPrice, str(po.fields.currency)))
+      : [matchLine('purchaseOrder', 1, str(po.fields.product), num(po.fields.quantity), num(po.fields.unitCost), str(po.fields.currency))];
   const receiptLines: DocumentLine[] = [];
   let rl = 0;
   for (const [sku, q] of receivedQty) {

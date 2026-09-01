@@ -28,6 +28,7 @@ import {
   type EnterpriseModule,
 } from '../../framework';
 import { RECEIVE_GOODS_ACTION, convertPurchaseOrderToReceipt } from './conversion';
+import { parsePurchaseOrderLines, purchaseOrderSubtotal } from '../../../erp/procurementLines';
 
 const str = (v: unknown): string => (v === null || v === undefined ? '' : String(v));
 
@@ -54,6 +55,11 @@ export const PURCHASE_ORDER_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'warehouse', label: 'Warehouse', type: 'text', column: false, placeholder: 'WH-01' },
     { key: 'quantity', label: 'Quantity', type: 'number', min: 0 },
     { key: 'unitCost', label: 'Unit Cost', type: 'number', min: 0, format: 'currency', column: false },
+    // ERP Session 16 — multi-line PO. When present, this JSON array of
+    // {sku, quantity, unitPrice} is the authoritative order content and the
+    // subtotal is derived from it. Absent → the single-product header above
+    // (fully backward compatible). Reuses the vendor-bill `lines` convention.
+    { key: 'lines', label: 'Lines (JSON)', type: 'textarea', column: false, placeholder: '[{"sku":"SKU-A","quantity":10,"unitPrice":5}]' },
     { key: 'subtotal', label: 'Subtotal', type: 'number', min: 0, format: 'currency' },
     { key: 'discount', label: 'Discount', type: 'number', min: 0, format: 'currency', column: false },
     { key: 'tax', label: 'Tax', type: 'number', min: 0, format: 'currency', column: false },
@@ -136,7 +142,14 @@ export function createPurchaseOrderModule(
     hooks: {
       validate: (input: EnterpriseRecordInput) => {
         const result = validateEnterpriseRecordInput(PURCHASE_ORDER_DESCRIPTOR, input);
-        if (result.ok) result.values.total = calculatePurchaseTotal(projectValues(result.values));
+        if (result.ok) {
+          // ERP Session 16 — a multi-line PO derives its subtotal from its lines
+          // (Σ ordered qty × unit price), so the deterministic total below is the
+          // sum of the line amounts. A single-product PO (no lines) is unchanged.
+          const poLines = parsePurchaseOrderLines(result.values.lines);
+          if (poLines.length > 0) result.values.subtotal = purchaseOrderSubtotal(poLines);
+          result.values.total = calculatePurchaseTotal(projectValues(result.values));
+        }
         return result;
       },
       summarize: async (record): Promise<EnterpriseRecordSummary> => {
