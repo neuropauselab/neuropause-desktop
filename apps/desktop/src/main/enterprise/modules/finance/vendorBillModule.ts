@@ -37,6 +37,7 @@ import {
   type EnterpriseModule,
 } from '../../framework';
 import { handleVendorBillChangeForGl } from './glPosting';
+import { evaluateGoodsBill, isGoodsBill } from './goodsBillMatch';
 
 /** The declarative description of a vendor bill — drives store, CRUD, and the UI. */
 export const VENDOR_BILL_DESCRIPTOR: EnterpriseModuleDescriptor = {
@@ -108,6 +109,11 @@ export const VENDOR_BILL_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'approvedAt', label: 'Approved At', type: 'text', readOnly: true, column: false },
     { key: 'cancelledAt', label: 'Cancelled At', type: 'text', readOnly: true, column: false },
     { key: 'notes', label: 'Notes', type: 'textarea', column: false, placeholder: 'Optional notes…' },
+    // ERP Session 11: durable line items for a PO-sourced (goods) bill.
+    // JSON: [{ "sku": "SKU-1", "quantity": 10, "unitPrice": 25, "taxRatePercent": 18 }].
+    // Optional at creation; REQUIRED to post a goods bill (a PO-sourced bill fails
+    // the three-way match — and therefore cannot be approved — without them).
+    { key: 'lines', label: 'Line Items (JSON)', type: 'textarea', column: false, placeholder: '[{"sku":"SKU-1","quantity":10,"unitPrice":25}]' },
   ],
 };
 
@@ -167,6 +173,31 @@ export function createVendorBillModule(
         const billRate = Number(result.values.exchangeRate ?? 1) > 0 ? Number(result.values.exchangeRate ?? 1) : 1;
         result.values.functionalTotal = Math.round(amount * billRate) + Math.round(taxAmount * billRate);
         result.values.status = deriveStatus(result.values);
+        // ERP Session 11: if line items are present, they must be well-formed
+        // (valid JSON array; each line a SKU + positive quantity + non-negative
+        // price). Absent lines stay valid — a goods bill can be drafted without
+        // them, but cannot be approved until it carries a matchable set.
+        const linesRaw = str(result.values.lines).trim();
+        if (linesRaw) {
+          let parsedLines: unknown;
+          try {
+            parsedLines = JSON.parse(linesRaw);
+          } catch {
+            errors.lines = 'Line items must be valid JSON.';
+          }
+          if (!errors.lines && !Array.isArray(parsedLines)) errors.lines = 'Line items must be a JSON array.';
+          if (!errors.lines && Array.isArray(parsedLines)) {
+            for (let i = 0; i < parsedLines.length; i++) {
+              const l = (parsedLines[i] ?? {}) as Record<string, unknown>;
+              const sku = String(l.sku ?? l.productId ?? '').trim();
+              const q = Number(l.quantity ?? 0);
+              const up = Number(l.unitPrice ?? l.price ?? 0);
+              if (!sku) { errors.lines = `Line ${i + 1}: a product SKU is required.`; break; }
+              if (!(q > 0)) { errors.lines = `Line ${i + 1}: quantity must be greater than zero.`; break; }
+              if (!(up >= 0)) { errors.lines = `Line ${i + 1}: unit price must not be negative.`; break; }
+            }
+          }
+        }
         if (Object.keys(errors).length > 0) return { ok: false, errors, values: result.values };
         return result;
       },
@@ -208,9 +239,25 @@ export function createVendorBillModule(
 
         if (action === 'approve') {
           if (bill.status !== 'draft') return { ok: false, message: `Cannot approve a bill that is ${bill.status}.` };
+          // ERP Session 11: a PO-sourced (goods) bill must pass the line-level
+          // three-way match (PO ↔ GR ↔ Bill) before approval — FAIL CLOSED. It
+          // stays draft with the reason; no payable is booked. Service bills
+          // (no source PO) are unaffected and keep the Operating Expense path.
+          if (isGoodsBill(record)) {
+            const evaluation = await evaluateGoodsBill(actionCtx, record);
+            if (!evaluation.matched) {
+              return {
+                ok: false,
+                message: `Bill ${bill.billNumber} held — three-way match not satisfied (${evaluation.state}).${evaluation.reasons.length ? ' ' + evaluation.reasons.join(' ') : ''}`,
+              };
+            }
+          }
           const updated = stampAndEmit({ approvedAt: actionCtx.now() });
           if (!updated) return { ok: false, error: 'Bill not found.' };
-          return { ok: true, message: `Bill ${bill.billNumber} approved — payable booked.` };
+          return {
+            ok: true,
+            message: `Bill ${bill.billNumber} approved — ${isGoodsBill(record) ? 'GRNI relieved' : 'payable booked'}.`,
+          };
         }
         if (action === 'cancel') {
           if (bill.status === 'cancelled') return { ok: false, message: 'Already cancelled.' };

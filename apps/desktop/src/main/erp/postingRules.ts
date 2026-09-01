@@ -165,6 +165,63 @@ export function deriveSupplierBillPosting(input: SupplierBillPosting): PostingDe
   return finish(reference, `Supplier bill ${input.billId}`, lines);
 }
 
+export interface GoodsBillPosting {
+  billId: string;
+  /** GRNI actually accrued for the matched receipts (standard-cost basis, functional). */
+  receivedValue: number;
+  /** Billed subtotal, ex-tax, in functional currency. */
+  billedExTax: number;
+  /** Billed tax, functional currency (0 when none). */
+  taxAmount: number;
+  /** The input-tax account for the tax leg (finance chart, e.g. GST Input Credit 1200). */
+  taxAccount: string;
+}
+
+/**
+ * ERP Session 11 — a MATCHED goods vendor bill relieves GRNI and recognizes the
+ * standard-vs-actual purchase price variance, on the live finance path:
+ *
+ *   Dr GRNI 2150                 (relieve the accrued receipt liability, at standard)
+ *   Dr Input Tax                 (recoverable tax, if any)
+ *   Dr/Cr Purchase Price Variance 5920   (billed − received; Dr when unfavourable)
+ *   Cr Accounts Payable 2000     (total owed the supplier)
+ *
+ * GRNI is relieved at exactly the accrued (standard-cost) value, so a full
+ * receipt→bill cycle nets GRNI to zero. The price difference is PPV — the costing
+ * BASIS never changes (standard cost stays standard cost). PPV direction follows
+ * the existing production-variance convention: paying MORE than standard is an
+ * unfavourable Dr; less is a favourable Cr. A bill with no accrued receipt value
+ * refuses (goods must have been received before their GRNI can be relieved).
+ */
+export function deriveGoodsBillPosting(input: GoodsBillPosting): PostingDerivation {
+  const reference = `GBILL-${input.billId}`;
+  const received = round2(input.receivedValue);
+  const billed = round2(input.billedExTax);
+  const tax = round2(input.taxAmount);
+  if (received <= 0) {
+    return refuse(reference, 'No accrued goods-received value to relieve — a goods bill cannot post before its receipt.');
+  }
+  if (billed <= 0) return refuse(reference, 'Bill has no value.');
+
+  const lines: GlJournalLine[] = [
+    { account: STOCK_ACCOUNTS.grni, debit: received, credit: 0, memo: 'Clear goods-received-not-invoiced' },
+  ];
+  if (tax > 0) {
+    lines.push({ account: input.taxAccount, debit: tax, credit: 0, memo: 'Recoverable input tax' });
+  }
+  // Purchase price variance = billed (actual) − received (standard). Unfavourable
+  // (paid more than standard) is a debit; favourable is a credit. The standard-cost
+  // basis is unchanged — this line only records the difference.
+  const variance = round2(billed - received);
+  if (variance > 0) {
+    lines.push({ account: STOCK_ACCOUNTS.purchasePriceVariance, debit: variance, credit: 0, memo: 'Unfavourable purchase price variance' });
+  } else if (variance < 0) {
+    lines.push({ account: STOCK_ACCOUNTS.purchasePriceVariance, debit: 0, credit: Math.abs(variance), memo: 'Favourable purchase price variance' });
+  }
+  lines.push({ account: STOCK_ACCOUNTS.accountsPayable, debit: 0, credit: round2(billed + tax), memo: 'Supplier payable' });
+  return finish(reference, `Goods bill ${input.billId} (GRNI relief${variance !== 0 ? ' + PPV' : ''})`, lines);
+}
+
 // ---------------------------------------------------------------------------
 // Inventory / COGS
 // ---------------------------------------------------------------------------

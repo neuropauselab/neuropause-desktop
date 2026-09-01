@@ -53,6 +53,7 @@ import {
   type GlDerivedEntry,
   type GlJournalLine,
 } from '@neuropause/shared';
+import { evaluateGoodsBill } from './goodsBillMatch';
 import type { EnterpriseModule, EnterpriseModuleActionContext } from '../../framework';
 import { childCorrelationMeta } from '../../framework';
 
@@ -402,13 +403,30 @@ export async function handleVendorBillChangeForGl(
   const fxSubtotal = rate === 1 ? bill.amount : Math.round(bill.amount * rate);
   const fxTax = rate === 1 ? bill.taxAmount : Math.round(bill.taxAmount * rate);
   const fxTotal = rate === 1 ? bill.total : fxSubtotal + fxTax;
+  const live = bill.status === 'approved' || bill.status === 'paid';
+  // ERP Session 11: a PO-sourced (goods) bill relieves GRNI + PPV instead of
+  // booking Operating Expense. This changes the DERIVED LINES only — the
+  // idempotent base/adjust/reverse machinery, the journal seam and CST are all
+  // downstream and unchanged (a cancellation reverses whatever lines were booked).
+  // A service bill (no source PO) keeps the Operating Expense derivation. An
+  // approved goods bill whose three-way match is NOT satisfied posts nothing
+  // (fail closed) — the approve action already gates it, so this is a defensive
+  // backstop that never books an unmatched goods payable.
+  let expected = glBillExpectedLines(fxSubtotal, fxTax, fxTotal);
+  if (live) {
+    const goods = await evaluateGoodsBill(ctx, event.record);
+    if (goods.isGoods) {
+      if (!(goods.matched && goods.reliefLines)) return;
+      expected = goods.reliefLines;
+    }
+  }
   // Since W1.11, SETTLEMENT is booked by Vendor Payments (JE-VPAY-*, one entry
   // per payment, partial-capable) — the bill carries only the approval leg.
   const decisions = leg({
-    live: bill.status === 'approved' || bill.status === 'paid',
+    live,
     base: glBillEntryNumber(number),
     memo: `Bill ${number} approved`,
-    expected: glBillExpectedLines(fxSubtotal, fxTax, fxTotal),
+    expected,
   });
   await applyGlDerivedEntries(decisions, ctx);
 }
