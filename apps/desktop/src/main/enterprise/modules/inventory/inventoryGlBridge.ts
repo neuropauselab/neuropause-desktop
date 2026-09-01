@@ -43,7 +43,7 @@ import {
   type PostingDerivation,
 } from '../../../erp/postingRules';
 import { ensureStockAccounts } from '../../../erp/stockAccounts';
-import { applyGlDerivedEntries } from '../finance/glPosting';
+import { applyGlDerivedEntries, reverseGlEntry } from '../finance/glPosting';
 
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
@@ -150,16 +150,27 @@ export function deriveMovementGlPostings(movement: StockMovement, movementId: st
  *
  * Ensures the stock/production control accounts exist first (idempotent), then
  * posts through the journal via `applyGlDerivedEntries` (which no-ops if the GL
- * module is not wired, and skips an already-posted entry number). A void
- * movement is skipped — reversing a posted entry is a separate, governed seam.
+ * module is not wired, and skips an already-posted entry number).
+ *
+ * VOID (ERP Session 6): a voided movement REVERSES its posted `MOV-<id>` entry —
+ * an explicit, append-only `MOV-<id>-REV` that negates the original, so the GL
+ * follows the inventory reconciler (which already excludes void from balances).
+ * Idempotent, so a duplicate/replayed void never double-reverses. Void is read
+ * from the MOVEMENT's own status (posted|void), not the record's lifecycle status.
  */
 export async function postMovementToGl(
   movement: StockMovement,
   movementId: string,
-  status: string,
   ctx: EnterpriseModuleActionContext,
 ): Promise<void> {
-  if (status === 'void') return;
+  if (movement.status === 'void') {
+    await reverseGlEntry(ctx, `MOV-${movementId}`, {
+      reason: `Reversal of MOV-${movementId} (movement voided)`,
+      sourceModule: STOCK_MOVEMENTS_MODULE_ID,
+      sourceRef: movementId,
+    });
+    return;
+  }
   const entries = deriveMovementGlPostings(movement, movementId);
   if (entries.length === 0) return;
   await ensureStockAccounts(ctx);

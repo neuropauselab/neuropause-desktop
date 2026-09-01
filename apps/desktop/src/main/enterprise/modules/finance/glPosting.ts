@@ -192,6 +192,48 @@ export async function applyGlDerivedEntries(
   }
 }
 
+/**
+ * Reverse a previously-posted GL entry (ERP Session 6) by posting a compensating
+ * `<entryNumber>-REV` that swaps every debit/credit of the ORIGINAL — so it
+ * reverses the EXACT amount that was booked, at the original cost, whatever the
+ * accounts (GRNI / COGS / WIP / FG / Inventory). Append-only, like the finance
+ * `-REV` machinery: the original entry is never modified. Idempotent — it no-ops
+ * if the base entry was never posted, or if its reversal already exists — so a
+ * duplicate or replayed void can never post a second reversal.
+ */
+export async function reverseGlEntry(
+  ctx: EnterpriseModuleActionContext,
+  baseEntryNumber: string,
+  opts: { reason: string; sourceModule: string; sourceRef: string },
+): Promise<boolean> {
+  const journalModule = ctx.moduleFor(JOURNAL_ENTRIES_MODULE_ID);
+  if (!journalModule) return false; // GL not wired — nothing to reverse
+  await journalModule.store.load();
+  const revNumber = `${baseEntryNumber}-REV`;
+  const entries = journalModule.store.list().filter((r) => r.status !== 'deleted');
+  const original = entries.find((r) => str(r.fields.entryNumber) === baseEntryNumber);
+  if (!original) return false; // nothing was posted for this reference
+  if (entries.some((r) => str(r.fields.entryNumber) === revNumber)) return false; // already reversed
+  let originalLines: GlJournalLine[];
+  try {
+    originalLines = JSON.parse(str(original.fields.lines) || '[]') as GlJournalLine[];
+  } catch {
+    return false;
+  }
+  const reversed: GlJournalLine[] = originalLines.map((l) => ({
+    account: l.account,
+    debit: l.credit,
+    credit: l.debit,
+    memo: `Reversal — ${l.memo ?? ''}`.trim(),
+  }));
+  if (reversed.length === 0) return false;
+  await applyGlDerivedEntries(
+    [{ entryNumber: revNumber, memo: opts.reason, lines: reversed, sourceModule: opts.sourceModule, sourceRef: opts.sourceRef }],
+    ctx,
+  );
+  return true;
+}
+
 /** The journal's current entries — numbers plus parsed lines (loaded). */
 async function existingJournal(
   ctx: EnterpriseModuleActionContext,

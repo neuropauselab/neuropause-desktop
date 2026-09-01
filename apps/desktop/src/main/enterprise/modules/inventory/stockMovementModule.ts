@@ -174,7 +174,7 @@ export function createStockMovementModule(
         // module simply not being wired) must never unwind the ledger write, so
         // it is contained here rather than propagated.
         try {
-          await postMovementToGl(movementFromRecord(event.record), event.record.id, event.record.status, ctx);
+          await postMovementToGl(movementFromRecord(event.record), event.record.id, ctx);
         } catch {
           // Advisory only — the physical movement + reconcile already stand; the
           // GL entry is idempotent, so a later re-run can still post it.
