@@ -61,6 +61,27 @@ export interface CommittedCommand {
   committedAt: string;
 }
 
+/**
+ * ERP Session 40 — a durable COMMAND INTENT (intent-first / transactional-outbox recovery, S39
+ * Option A). Reserved DURABLY (IN_FLIGHT) BEFORE the domain effect runs; removed once the command
+ * has committed (the committed record supersedes it) or legitimately failed in-process. A crash
+ * between reservation and commit leaves it IN_FLIGHT with a PRIOR process's `bootEpoch` and no
+ * committed record — provably orphaned — which boot reconciliation transitions to HOLD so the
+ * command is never silently re-executed. The state space is IN_FLIGHT | HOLD only (no new delivery
+ * state). Keyed by `${tenantId}::${idempotencyKey}` so it is intrinsically tenant-scoped.
+ */
+export interface CommandIntent {
+  id: string; // `${tenantId}::${idempotencyKey}`
+  tenantId: string;
+  idempotencyKey: string;
+  state: 'IN_FLIGHT' | 'HOLD';
+  /** The process that reserved it — a nonce (not a clock), reused from S38 to tell active from orphaned. */
+  bootEpoch: string;
+  reservedAt: string;
+  /** Present only for HOLD — a human-readable reconciliation reason (never a path or secret). */
+  reason?: string;
+}
+
 export interface TxExecuteResult {
   ok: boolean;
   data?: Record<string, unknown>;
@@ -95,17 +116,37 @@ export class DurableCommandJournal {
    * (current epoch) from one a dead process left behind (any other epoch). A nonce, not a clock.
    */
   private readonly bootEpoch = randomUUID();
+  /**
+   * ERP Session 40 — the durable COMMAND INTENT ledger, co-located beside the journal file and using
+   * the SAME `DurableJsonStore` primitive (S33 atomic + serialized). Not a second idempotency engine:
+   * it holds only the transient IN_FLIGHT marker + any orphaned HOLD, keyed by `${tenant}::${key}`.
+   */
+  private readonly intents: DurableJsonStore<CommandIntent>;
+  /**
+   * ERP Session 40 — whether intent-first dual-write recovery is active. TRUE in production (the
+   * default). A dedicated NEGATIVE-CONTROL test constructs the journal with `false` to prove the
+   * intent reservation is LOAD-BEARING: with it off, the S39 duplicate-on-retry failure returns.
+   * Production NEVER sets this false.
+   */
+  private readonly intentRecovery: boolean;
 
-  constructor(filePath: string) {
+  constructor(filePath: string, opts: { intentRecovery?: boolean } = {}) {
     this.store = new DurableJsonStore<CommittedCommand>(filePath);
+    this.intents = new DurableJsonStore<CommandIntent>(filePath.replace(/\.json$/, '.intents.json'));
+    this.intentRecovery = opts.intentRecovery !== false;
   }
 
   async load(): Promise<void> {
     await this.store.load();
+    // S40 — also hydrate the intent ledger so reads (e.g. `heldIntents` via S35) are current after a
+    // fresh boot. Probe-guarded: never `load` (and thus quarantine → empty) a CORRUPT ledger — that
+    // would lose orphaned intents; `run`/`reconcileOrphanedIntents` fail closed on a corrupt ledger.
+    if ((await this.intents.probe()).ok) await this.intents.load();
   }
   /** Re-read from disk — simulates a fresh process after a restart. */
   async reload(): Promise<void> {
     await this.store.reload();
+    await this.intents.reload();
   }
 
   private key(tenantId: string, idempotencyKey: string): string {
@@ -129,7 +170,30 @@ export class DurableCommandJournal {
   async run(input: JournalRunInput): Promise<CommandResult> {
     await this.store.load();
     const existing = this.findCommitted(input.tenantId, input.idempotencyKey);
-    if (existing) return this.replay(existing);
+    if (existing) return this.replay(existing); // COMMITTED replay — authoritative, independent of intents
+
+    // ERP Session 40 — INTENT-FIRST HOLD check (S39 Option A). A durable intent with no committed
+    // record means a prior attempt reserved (and may have run the domain effect) but did not commit.
+    // If it is HOLD, or IN_FLIGHT from a PRIOR process (different bootEpoch) — provably orphaned by a
+    // crash, since the single-instance app's in-flight map is empty at restart — it must NOT execute
+    // again: return the governed reconciliation result. An IN_FLIGHT intent from THIS process (same
+    // epoch) is an active in-flight execution, handled below by the in-memory single-flight map.
+    const intentId = this.intentId(input.tenantId, input.idempotencyKey);
+    if (this.intentRecovery) {
+      // FAIL CLOSED on a corrupt intent ledger: `probe` is a RAW read that NEVER quarantines (unlike
+      // `load`, which would silently empty a corrupt file and LOSE an orphaned intent → fail open). A
+      // present-but-unparseable ledger means we cannot prove no in-flight command exists for a NEW
+      // command, so we refuse to execute (a committed command already replayed above, unaffected).
+      const probe = await this.intents.probe();
+      if (!probe.ok) return { ok: false, commandId: input.commandId, type: input.commandType, error: 'RECONCILIATION_REQUIRED' };
+      await this.intents.load();
+      const intent = this.intents.get(intentId);
+      if (intent && intent.state === 'HOLD') return this.holdResult(input);
+      if (intent && intent.state === 'IN_FLIGHT' && intent.bootEpoch !== this.bootEpoch) {
+        await this.holdIntent(intent); // transition the crash-orphan → HOLD (once)
+        return this.holdResult(input);
+      }
+    }
 
     const k = this.key(input.tenantId, input.idempotencyKey);
     const running = this.inflight.get(k);
@@ -140,9 +204,16 @@ export class DurableCommandJournal {
       const committedNow = this.findCommitted(input.tenantId, input.idempotencyKey);
       if (committedNow) return this.replay(committedNow);
 
+      // RESERVE the intent DURABLY, keyed by (tenant, key), BEFORE the domain effect runs. A crash
+      // after this point but before the journal commit leaves this IN_FLIGHT with THIS bootEpoch,
+      // which a future process (different epoch) reconciles to HOLD rather than re-executing.
+      if (this.intentRecovery) await this.reserveIntent(input.tenantId, input.idempotencyKey);
+
       const outcome = await input.execute();
       if (!outcome.ok) {
-        // No commit → no event, no outbox (case B). Failure stays retryable.
+        // No commit → no event, no outbox (case B). The domain effect did not commit; the intent is
+        // a transient marker for an in-process attempt, so clear it — the failure stays retryable.
+        if (this.intentRecovery) await this.intents.delete(intentId);
         return { ok: false, commandId: input.commandId, type: input.commandType, error: outcome.error ?? 'COMMAND_FAILED' };
       }
 
@@ -179,8 +250,15 @@ export class DurableCommandJournal {
         } catch {
           /* compensation best-effort; the commit failure is the reported error */
         }
+        // In-process commit failure: clear the intent (retryable). A CRASH here instead would leave
+        // the intent IN_FLIGHT for boot reconciliation → HOLD (never a silent re-execute).
+        if (this.intentRecovery) await this.intents.delete(intentId);
         return { ok: false, commandId: input.commandId, type: input.commandType, error: 'COMMIT_FAILED' };
       }
+      // Committed: the durable record now supersedes the intent as the authoritative idempotency
+      // record, so the transient intent marker is cleared (best-effort; a crash before this leaves a
+      // stale IN_FLIGHT that boot reconciliation clears once it sees the committed record).
+      if (this.intentRecovery) await this.intents.delete(intentId);
       return { ok: true, commandId: input.commandId, type: input.commandType, data: record.result, event };
     })();
 
@@ -282,8 +360,77 @@ export class DurableCommandJournal {
     return { reclaimed: ids.length, ids };
   }
 
+  // ── ERP Session 40 — intent-first dual-write recovery (S39 Option A) ──────────
+
+  private intentId(tenantId: string, idempotencyKey: string): string {
+    return `${tenantId}::${idempotencyKey}`;
+  }
+
+  /** Reserve the durable IN_FLIGHT intent BEFORE the domain effect. Stamped with this process's epoch. */
+  private async reserveIntent(tenantId: string, idempotencyKey: string): Promise<void> {
+    await this.intents.put({
+      id: this.intentId(tenantId, idempotencyKey),
+      tenantId,
+      idempotencyKey,
+      state: 'IN_FLIGHT',
+      bootEpoch: this.bootEpoch,
+      reservedAt: new Date().toISOString(),
+    });
+  }
+
+  /** Transition a crash-orphaned IN_FLIGHT intent → HOLD (idempotent: already-HOLD is a no-op). */
+  private async holdIntent(intent: CommandIntent): Promise<void> {
+    if (intent.state === 'HOLD') return;
+    await this.intents.put({ ...intent, state: 'HOLD', reason: 'reconciliation required after unclean shutdown' });
+  }
+
+  /** The governed reconciliation result for a held command — never re-executes the domain effect. */
+  private holdResult(input: JournalRunInput): CommandResult {
+    return { ok: false, commandId: input.commandId, type: input.commandType, error: 'RECONCILIATION_REQUIRED' };
+  }
+
+  /**
+   * BOOT-TIME intent reconciliation (S39 Option A, reusing the S38 boot seam). For every IN_FLIGHT
+   * intent left by a PRIOR process (different `bootEpoch`): if its command DID commit (a committed
+   * record exists) the intent is a stale marker → cleared; otherwise it is a crash-orphan → HOLD, so
+   * a later same-key dispatch returns RECONCILIATION_REQUIRED instead of silently re-executing.
+   * Idempotent (a second boot finds them already HOLD, or already cleared). Never re-executes anything.
+   */
+  async reconcileOrphanedIntents(): Promise<{ held: string[]; cleared: string[]; corrupt?: true }> {
+    await this.store.load();
+    // FAIL CLOSED: never `load` (and thus quarantine → empty) a corrupt intent ledger, which would
+    // lose orphaned intents. A corrupt ledger is left untouched; `run` refuses new commands until it
+    // is repaired (a committed command still replays).
+    const probe = await this.intents.probe();
+    if (!probe.ok) return { held: [], cleared: [], corrupt: true };
+    await this.intents.load();
+    const held: string[] = [];
+    const cleared: string[] = [];
+    for (const intent of this.intents.all()) {
+      if (intent.state !== 'IN_FLIGHT') continue; // already HOLD → leave it
+      if (intent.bootEpoch === this.bootEpoch) continue; // active in THIS process — never reclaim
+      if (this.findCommitted(intent.tenantId, intent.idempotencyKey)) {
+        await this.intents.delete(intent.id); // it committed; the marker is stale
+        cleared.push(intent.id);
+      } else {
+        await this.holdIntent(intent); // crash-orphan → HOLD
+        held.push(intent.id);
+      }
+    }
+    return { held, cleared };
+  }
+
+  /** Tenant-scoped read of held (reconciliation-required) intents — for S35 observability. No paths/secrets. */
+  heldIntents(tenantId: string): readonly { id: string; idempotencyKey: string; state: string; reason?: string; reservedAt: string }[] {
+    return this.intents
+      .all()
+      .filter((i) => i.tenantId === tenantId && i.state === 'HOLD')
+      .map((i) => ({ id: i.id, idempotencyKey: i.idempotencyKey, state: i.state, ...(i.reason ? { reason: i.reason } : {}), reservedAt: i.reservedAt }));
+  }
+
   async destroy(): Promise<void> {
     this.inflight.clear();
     await this.store.destroy();
+    await this.intents.destroy();
   }
 }

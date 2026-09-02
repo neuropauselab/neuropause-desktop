@@ -137,9 +137,12 @@ export function buildPlatformCommandDispatchDef(deps: PlatformCommandDispatchDep
   // a reconciliation failure never throws to the caller and never blocks a business command.
   if (deps.reconcileStaleProcessingOnBoot && deps.outboxConsumer) {
     const consumer = deps.outboxConsumer;
-    drainChain = drainChain.then(() =>
-      deps.journal.reconcileStaleProcessing().catch(() => ({ reclaimed: 0, ids: [] as string[] })),
-    );
+    // ERP Session 40 — FIRST reconcile crash-orphaned command INTENTS (IN_FLIGHT with no committed
+    // record from a dead process → HOLD; never re-executes the domain command), THEN S38's stale
+    // PROCESSING recovery, THEN drain — all ordered through the same S31 latch. Best-effort.
+    drainChain = drainChain
+      .then(() => deps.journal.reconcileOrphanedIntents().catch(() => ({ held: [] as string[], cleared: [] as string[] })))
+      .then(() => deps.journal.reconcileStaleProcessing().catch(() => ({ reclaimed: 0, ids: [] as string[] })));
     void drainOutbox(consumer);
   }
 

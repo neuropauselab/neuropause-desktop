@@ -119,5 +119,20 @@ export function buildDeliveryOperations(
   // corroborating figure only (the journal's DELIVERED count is the authority for state).
   const sinkDelivered = deliveredLog ? deliveredLog.count(tenantId) : 0;
 
-  return { ok: true, data: { tenantId, limit, counts, sinkDelivered, deliveries } };
+  // ERP Session 40 — surface crash-orphaned commands HELD for reconciliation (intent-first recovery),
+  // tenant-scoped and sanitized (ids/reason/reservedAt only — no filesystem paths, no secrets), so the
+  // operator can see a command that a crash left in RECONCILIATION_REQUIRED rather than re-executed.
+  const held = journal.heldIntents(tenantId);
+
+  return {
+    ok: true,
+    data: {
+      tenantId,
+      limit,
+      counts: { ...counts, heldReconciliations: held.length },
+      sinkDelivered,
+      deliveries,
+      heldReconciliations: held.slice(0, limit),
+    },
+  };
 }

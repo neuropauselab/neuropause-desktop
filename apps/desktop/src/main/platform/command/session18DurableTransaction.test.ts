@@ -192,7 +192,16 @@ describe('S18 · atomicity of state + event + outbox', () => {
   });
 
   it('C · durable commit fails → state is compensated (rolled back); no event, no outbox', async () => {
-    const spy = vi.spyOn(DurableJsonStore.prototype, 'put').mockRejectedValueOnce(new Error('disk full'));
+    // ERP Session 40 — intent-first recovery adds an intent `put` BEFORE the journal commit, so a
+    // blanket `mockRejectedValueOnce` would now fire on the intent reserve. Target the durable COMMIT
+    // this test is named for: a CommittedCommand carries an `event`; the intent record does not.
+    const origPut = DurableJsonStore.prototype.put;
+    const spy = vi
+      .spyOn(DurableJsonStore.prototype, 'put')
+      .mockImplementation(async function (this: DurableJsonStore<{ id: string }>, rec: { id: string }) {
+        if (rec && typeof rec === 'object' && 'event' in rec) throw new Error('disk full');
+        return origPut.call(this, rec);
+      } as typeof DurableJsonStore.prototype.put);
     const r = await dispatch(mkCmd('CreatePurchaseRequest', { payload: { requestNumber: 'PR-C', lines: prLines }, idem: 'failC' }));
     expect(r.ok).toBe(false);
     expect(r.error).toBe('COMMIT_FAILED');

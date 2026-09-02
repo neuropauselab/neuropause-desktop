@@ -160,6 +160,20 @@ export class DurableJsonStore<T extends { id: string }> {
     }
   }
 
+  /**
+   * Remove ONE record by id and persist ATOMICALLY (ERP Session 40). Serialized on the same per-store
+   * write chain as `put` (S33), so a delete can never race a concurrent put/delete on the same store.
+   * A missing id is a no-op. Used by the command journal's intent ledger to clear a transient intent
+   * marker once its command has committed (or legitimately failed) — reaches exactly its own record,
+   * never a cap or a cross-tenant sweep.
+   */
+  async delete(id: string): Promise<void> {
+    await this.load();
+    if (!this.records.has(id)) return;
+    this.records.delete(id);
+    await this.enqueue(() => this.persistNow());
+  }
+
   /** Test/reset only — remove the backing file and clear memory. Serialized after pending writes. */
   async destroy(): Promise<void> {
     await this.enqueue(async () => {

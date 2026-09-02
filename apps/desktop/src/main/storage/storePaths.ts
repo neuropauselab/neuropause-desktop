@@ -107,6 +107,7 @@ export const DOMAIN_FILES: Record<MaintenanceDomain, string[]> = {
     // confirmation. Losing the journal silently loses every ERP command's dedupe
     // key, event and delivery state with no restore path.
     'platform-command-journal.json', // S18 durable command journal (idempotency + event + outbox)
+    'platform-command-journal.intents.json', // S40 command-intent ledger (IN_FLIGHT / HOLD; crash-recovery)
     'platform-delivered-events.json', // S31 delivered-event sink (outbox delivery confirmation)
     'medical-device-traceability.json', // regulated traceability records
     'data-plane-provenance.json', // import provenance (the audit trail itself)
