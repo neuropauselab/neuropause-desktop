@@ -22,6 +22,9 @@ const path = require('node:path');
 
 const APP_DIR = path.resolve(__dirname, '..');
 const ALT_MAIN = path.join(APP_DIR, 'out-seam-s45/main/index.js');
+// S48 — the SAME journey drives the PACKAGED artifact when NP_APP_BIN points at the .app binary
+// (executablePath form); default remains the alternate build (positional-main form).
+const APP_BIN = process.env.NP_APP_BIN || '';
 const ART = path.join(APP_DIR, 'e2e-artifacts');
 
 function out(k, v) { console.log(`S47 ${k} = ${JSON.stringify(v)}`); }
@@ -30,15 +33,20 @@ function assert(c, m) { if (!c) fail(m); out('PASS', m); }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
-  if (!fs.existsSync(ALT_MAIN)) fail(`alternate build missing: ${ALT_MAIN}`);
+  if (!APP_BIN && !fs.existsSync(ALT_MAIN)) fail(`alternate build missing: ${ALT_MAIN}`);
+  if (APP_BIN && !fs.existsSync(APP_BIN)) fail(`packaged binary missing: ${APP_BIN}`);
   fs.mkdirSync(ART, { recursive: true });
-  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'np-s47-ui-'));
+  const profile = process.env.NP_PROFILE_DIR || fs.mkdtempSync(path.join(os.tmpdir(), 'np-s47-ui-'));
+  fs.mkdirSync(profile, { recursive: true });
   const t0 = Date.now();
   const app = await electron.launch({
-    args: [ALT_MAIN, `--user-data-dir=${profile}`],
+    ...(APP_BIN ? { executablePath: APP_BIN } : {}),
+    args: [...(APP_BIN ? [] : [ALT_MAIN]), `--user-data-dir=${profile}`],
     env: { ...process.env, NP_E2E_BUILD: '', NEUROPAUSE_E2E: '', ELECTRON_RENDERER_URL: '', NODE_ENV: 'production' },
     timeout: 60_000,
   });
+  out('MODE', APP_BIN ? `PACKAGED (${APP_BIN})` : 'alternate build');
+  out('PROFILE', profile);
   const win = await app.firstWindow({ timeout: 45_000 });
   await win.waitForLoadState('domcontentloaded');
 
@@ -196,7 +204,7 @@ async function main() {
     throw e;
   } finally {
     await app.close().catch(() => undefined);
-    fs.rmSync(profile, { recursive: true, force: true });
+    if (!process.env.NP_KEEP_PROFILE) fs.rmSync(profile, { recursive: true, force: true });
   }
 }
 main().catch((e) => { console.error(e); process.exitCode = 1; }).finally(() => setTimeout(() => process.exit(process.exitCode ?? 0), 3000));

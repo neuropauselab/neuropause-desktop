@@ -26,7 +26,10 @@ const path = require('node:path');
 
 const APP_DIR = path.resolve(__dirname, '..');
 const ALT_MAIN = path.join(APP_DIR, 'out-seam-s45/main/index.js');
+// S48 — NP_APP_BIN points the SAME chain harness at the PACKAGED artifact.
+const APP_BIN = process.env.NP_APP_BIN || '';
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function out(k, v) { console.log(`S45 ${k} = ${JSON.stringify(v)}`); }
 function fail(m) { console.error(`S45 FAIL: ${m}`); process.exitCode = 1; throw new Error(m); }
 function assert(c, m) { if (!c) fail(m); out('PASS', m); }
@@ -40,7 +43,8 @@ async function main() {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'np-s45-o2c-'));
   const logs = [];
   const app = await electron.launch({
-    args: [ALT_MAIN, `--user-data-dir=${profile}`],
+    ...(APP_BIN ? { executablePath: APP_BIN } : {}),
+    args: [...(APP_BIN ? [] : [ALT_MAIN]), `--user-data-dir=${profile}`],
     env: { ...process.env, NP_E2E_BUILD: '', NEUROPAUSE_E2E: '', ELECTRON_RENDERER_URL: '', NODE_ENV: 'production' },
     timeout: 60_000,
   });
@@ -50,8 +54,14 @@ async function main() {
     const win = await app.firstWindow({ timeout: 45_000 });
     const userData = await app.evaluate(({ app: a }) => a.getPath('userData'));
     assert(fs.realpathSync(userData) === fs.realpathSync(profile), 'ISOLATED profile is the running userData');
-    for (const re of [/Enterprise OS ready/, /Runtime core ready/]) {
-      assert(await waitForLog(logs, re, 30_000), `BOOT_LOG ${re}`);
+    if (!APP_BIN) {
+      for (const re of [/Enterprise OS ready/, /Runtime core ready/]) {
+        assert(await waitForLog(logs, re, 30_000), `BOOT_LOG ${re}`);
+      }
+    } else {
+      // Packaged mode routes logs to the file sink, not stdout; boot is proven by the
+      // bridge answering below (every dispatch requires the runtime core to be up).
+      await sleep(4000);
     }
     const bridge = (ch, payload) =>
       win.evaluate(([c, p]) => window.neuropause.invoke(c, p), [ch, payload]);
