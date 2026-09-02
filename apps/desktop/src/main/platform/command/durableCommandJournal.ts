@@ -36,6 +36,17 @@ export interface OutboxState {
   attempts: number;
   lastError?: string;
   deliveredAt?: string;
+  /**
+   * ERP Session 38 — the PROCESS BOOT EPOCH that set this record to PROCESSING. Stamped by
+   * `markProcessing`; a fresh journal instance (a new process) generates a new epoch. It is the
+   * reliable, non-arbitrary staleness signal for crash recovery: a PROCESSING record whose epoch
+   * is NOT the current process's epoch was necessarily set by a process that is no longer running
+   * (single-instance app), so it is provably ABANDONED and safe to reclaim. A record set PROCESSING
+   * by the CURRENT process carries the current epoch and is ACTIVE — never reclaimed. Optional
+   * because pre-S38 records (and non-PROCESSING states) carry no epoch; absent is treated as stale
+   * (it predates this process). This is an identity nonce, NOT a timestamp — no clock, no threshold.
+   */
+  processingEpoch?: string;
 }
 
 /** One committed command: idempotency + event + outbox, atomic. */
@@ -77,6 +88,13 @@ let eventSeq = 0;
 export class DurableCommandJournal {
   private readonly store: DurableJsonStore<CommittedCommand>;
   private readonly inflight = new Map<string, Promise<CommandResult>>();
+  /**
+   * ERP Session 38 — this process instance's boot epoch. Generated ONCE per journal construction,
+   * i.e. once per process (runtimeCore builds one journal). Stamped onto every record `markProcessing`
+   * transitions, so `reconcileStaleProcessing` can tell a record THIS process is actively delivering
+   * (current epoch) from one a dead process left behind (any other epoch). A nonce, not a clock.
+   */
+  private readonly bootEpoch = randomUUID();
 
   constructor(filePath: string) {
     this.store = new DurableJsonStore<CommittedCommand>(filePath);
@@ -215,7 +233,9 @@ export class DurableCommandJournal {
   async markProcessing(id: string): Promise<void> {
     const rec = this.store.get(id);
     if (!rec || rec.outbox.status === 'DELIVERED') return;
-    await this.setOutbox(id, { ...rec.outbox, status: 'PROCESSING', attempts: rec.outbox.attempts + 1 });
+    // Stamp THIS process's boot epoch so crash-recovery can distinguish an actively-processing
+    // record (current epoch) from one a dead process orphaned (any other/absent epoch). ERP S38.
+    await this.setOutbox(id, { ...rec.outbox, status: 'PROCESSING', attempts: rec.outbox.attempts + 1, processingEpoch: this.bootEpoch });
   }
   async markDelivered(id: string): Promise<void> {
     const rec = this.store.get(id);
@@ -226,6 +246,40 @@ export class DurableCommandJournal {
     const rec = this.store.get(id);
     if (!rec || rec.outbox.status === 'DELIVERED') return;
     await this.setOutbox(id, { ...rec.outbox, status: 'RETRYABLE', lastError: error });
+  }
+
+  /**
+   * ERP Session 38 — BOOT-TIME RECOVERY of crash-orphaned PROCESSING outbox records (S37 Finding 1).
+   *
+   * A record left `PROCESSING` by an unclean termination is excluded from `pendingOutbox` (PENDING |
+   * RETRYABLE only), so the relay never re-drives it — it is orphaned. This transitions such a record
+   * back to `RETRYABLE` so the EXISTING `pendingOutbox` → `dispatchOutbox` → consumer → DeliveredEventLog
+   * machinery retries it. It creates NO new state, NO new queue, NO recovery-specific delivery path, and
+   * never invokes a consumer or marks DELIVERED itself.
+   *
+   * STALE CRITERION (the central safety invariant): a `PROCESSING` record is reclaimed ONLY when its
+   * `processingEpoch` is not this process's `bootEpoch` — i.e. it was set PROCESSING by a process that
+   * is no longer running (single-instance app), so it is provably ABANDONED. A record set PROCESSING by
+   * the CURRENT process (current epoch) is ACTIVE and is NEVER reclaimed. This is not an age threshold
+   * and reads no clock, so it cannot false-positive on a slow-but-live delivery. Intended to run ONCE at
+   * boot, BEFORE the first drain, so no `PROCESSING` this process created can exist yet.
+   *
+   * Durable + idempotent: each transition is one atomic `DurableJsonStore` write (S33); a partial failure
+   * leaves the other records untouched and valid; a second run reclaims nothing (the records are now
+   * RETRYABLE, not PROCESSING). `attempts` is NOT incremented (reclaiming is not a delivery attempt — the
+   * next `markProcessing` on re-drive increments it). Tenant attribution is preserved verbatim.
+   */
+  async reconcileStaleProcessing(): Promise<{ reclaimed: number; ids: string[] }> {
+    await this.store.load();
+    const stale = this.store
+      .all()
+      .filter((r) => r.outbox.status === 'PROCESSING' && r.outbox.processingEpoch !== this.bootEpoch);
+    const ids: string[] = [];
+    for (const rec of stale) {
+      await this.setOutbox(rec.id, { ...rec.outbox, status: 'RETRYABLE', lastError: 'reclaimed after unclean shutdown' });
+      ids.push(rec.id);
+    }
+    return { reclaimed: ids.length, ids };
   }
 
   async destroy(): Promise<void> {

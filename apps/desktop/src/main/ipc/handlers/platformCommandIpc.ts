@@ -81,6 +81,14 @@ export interface PlatformCommandDispatchDeps {
    * `runtimeIdentity.isReady`. Absent ⇒ treated as ready (a bare injectable-seam harness is "up").
    */
   runtimeReady?: () => boolean;
+  /**
+   * OPTIONAL boot-time crash-recovery (ERP Session 38). When true (production wiring only), the def
+   * runs ONE `reconcileStaleProcessing` pass at composition — BEFORE the first drain — to reclaim
+   * PROCESSING outbox records orphaned by an unclean shutdown (→ RETRYABLE), then drains so the
+   * existing relay re-delivers them. Absent/false ⇒ no boot recovery (the S17–S37 seam tests keep
+   * their exact behavior). Only active alongside an `outboxConsumer`.
+   */
+  reconcileStaleProcessingOnBoot?: boolean;
 }
 
 let operationalReadSeq = 0;
@@ -120,6 +128,21 @@ export function buildPlatformCommandDispatchDef(deps: PlatformCommandDispatchDep
     drainChain = drainChain.then(run, run);
     return drainChain;
   };
+
+  // ERP Session 38 — BOOT-TIME crash-orphaned PROCESSING recovery (S37 Finding 1). Runs ONCE at
+  // composition (boot), BEFORE the first drain: reclaim stale PROCESSING → RETRYABLE (only records
+  // whose boot epoch is not this process's — i.e. left by a dead process, never an active delivery),
+  // then drain so the EXISTING relay re-delivers them (and any PENDING a prior unclean shutdown left).
+  // Ordered through the SAME S31 drain latch, so a later dispatch's drain never races it. Best-effort:
+  // a reconciliation failure never throws to the caller and never blocks a business command.
+  if (deps.reconcileStaleProcessingOnBoot && deps.outboxConsumer) {
+    const consumer = deps.outboxConsumer;
+    drainChain = drainChain.then(() =>
+      deps.journal.reconcileStaleProcessing().catch(() => ({ reclaimed: 0, ids: [] as string[] })),
+    );
+    void drainOutbox(consumer);
+  }
+
   return {
     channel: IpcChannel.PlatformCommandDispatch,
     schema: PlatformCommandDispatchRequest,
@@ -272,5 +295,5 @@ export function buildPlatformCommandHandlers(deps: PlatformCommandHandlerDeps): 
 
   // ERP Session 34 — the authoritative runtime-initialized signal for the health/readiness probe.
   const runtimeReady = (): boolean => runtimeIdentity.isReady();
-  return [buildPlatformCommandDispatchDef({ registry: deps.registry, journal, audit, resolvePrincipal, outboxConsumer, deliveredLog, runtimeReady })];
+  return [buildPlatformCommandDispatchDef({ registry: deps.registry, journal, audit, resolvePrincipal, outboxConsumer, deliveredLog, runtimeReady, reconcileStaleProcessingOnBoot: true })];
 }
