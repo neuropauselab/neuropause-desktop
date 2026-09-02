@@ -603,6 +603,34 @@ export const ipc = {
       promise.then(settle, settle);
       return promise;
     },
+    /**
+     * GOVERNED SALES ORDER CREATE (ERP Session 43) — the FIRST renderer WRITE through the governed
+     * command spine, closing the S42 exposure gap (the certified path was "correct but dark"). Reuses
+     * the EXISTING `platform:command.dispatch` channel + the `CreateSalesOrder` domain command (S21):
+     * the write flows renderer → secure preload → Application Boundary → command bus → `sales:manage`
+     * RBAC → durable intent/journal → Sales Order module persistence → domain event → outbox →
+     * governance audit, returning the client-safe `{ ok, data:{ id }, error:{ code, message } }`
+     * contract. NO new channel, command, journal, or engine.
+     *
+     * `idempotencyKey` is caller-supplied and STABLE across retries of the SAME submission, so a
+     * double-submit or a transport retry REPLAYS to exactly ONE durable order. Tenant + actor are
+     * resolved SERVER-SIDE from the authenticated session — never sent from the renderer (no
+     * renderer tenant authority). `status` is forced to `pending` by the command route; a client can
+     * never mint a shipped/fulfilled order by supplying `status` in `fields`.
+     */
+    createSalesOrder: (
+      fields: Record<string, unknown>,
+      idempotencyKey: string,
+    ): Promise<PlatformCommandDispatchResponse> => {
+      const settle = perfRecorder.ipcStart(String(IpcChannel.PlatformCommandDispatch));
+      const promise = rawInvoke(IpcChannel.PlatformCommandDispatch, {
+        operation: 'CreateSalesOrder',
+        payload: fields,
+        idempotencyKey,
+      }) as Promise<PlatformCommandDispatchResponse>;
+      promise.then(settle, settle);
+      return promise;
+    },
   },
   timeline: {
     query: (q?: TimelineQuery) => invoke(IpcChannel.TimelineQuery, q ?? {}),

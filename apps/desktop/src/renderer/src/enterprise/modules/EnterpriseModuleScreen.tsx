@@ -17,7 +17,7 @@ import type {
   EnterpriseRecordInput,
   EnterpriseRecordSummary,
 } from '@neuropause/shared';
-import { validateEnterpriseRecordInput } from '@neuropause/shared';
+import { validateEnterpriseRecordInput, ORDERS_MODULE_ID } from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
 import { dialogVariants, overlayVariants } from '@renderer/lib/motion';
 import { cn } from '@renderer/lib/cn';
@@ -362,6 +362,11 @@ function ModuleForm({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
+  // S43 — a STABLE idempotency key for a governed create, minted ONCE per form instance. A retry of
+  // the SAME create (a transport failure the user resubmits, a double-submit) reuses this key and
+  // REPLAYS to exactly one durable Sales Order; a fresh create (a new form mount) mints a new key.
+  const governedKey = useRef<string>(`so-create-${crypto.randomUUID()}`);
+
   const set = (key: string, value: string | boolean): void =>
     setState((s) => ({ ...s, [key]: value }));
 
@@ -374,6 +379,21 @@ function ModuleForm({
     }
     setSaving(true);
     try {
+      // S43 — a Sales Order CREATE is routed through the GOVERNED command spine, not the
+      // non-governed module CRUD door. This is the ONE ERP write the production UI drives through
+      // `platform:command.dispatch` → Application Boundary → command bus → `sales:manage` RBAC →
+      // durable intent/journal → Sales Order persistence → domain event → outbox → governance audit.
+      // Every OTHER module (and every Sales Order EDIT) keeps the existing CRUD path unchanged, so
+      // this governed create can NEVER double-write through `enterprise:module.create`.
+      if (mode === 'create' && module.id === ORDERS_MODULE_ID) {
+        const gov = await ipc.platform.createSalesOrder(input.fields ?? {}, governedKey.current);
+        if (!gov.ok) {
+          setErrors({ _: gov.error?.message ?? 'Could not create the sales order.' });
+          return;
+        }
+        onSaved();
+        return;
+      }
       const res =
         mode === 'create'
           ? await ipc.enterpriseModules.create(module.id, input)
