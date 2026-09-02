@@ -24,7 +24,7 @@
  * the durability of the idempotency+event+outbox differs.
  */
 import type { TenantScope } from '@neuropause/shared';
-import { CUSTOMERS_MODULE_ID, FINANCE_MODULE_ID, GOODS_RECEIPTS_MODULE_ID, IpcChannel, ORDERS_MODULE_ID, PAYMENTS_MODULE_ID, PURCHASE_REQUESTS_MODULE_ID, VENDOR_BILLS_MODULE_ID, VENDOR_PAYMENTS_MODULE_ID } from '@neuropause/shared';
+import { CUSTOMERS_MODULE_ID, FINANCE_MODULE_ID, GOODS_RECEIPTS_MODULE_ID, IpcChannel, ORDERS_MODULE_ID, PAYMENTS_MODULE_ID, PURCHASE_REQUESTS_MODULE_ID, QUOTES_MODULE_ID, VENDOR_BILLS_MODULE_ID, VENDOR_PAYMENTS_MODULE_ID } from '@neuropause/shared';
 import {
   buildModuleHandlers,
   type EnterpriseModuleContext,
@@ -334,6 +334,35 @@ async function route(cmd: DomainCommand, deps: CommandDispatchDeps, call: Handle
           aggregateId: id,
           aggregateType: 'CustomerPayment',
           rollback: async () => { deps.registry.get(PAYMENTS_MODULE_ID)?.store.softDelete(id, { actor: who(), now: now() }); },
+        },
+      );
+    }
+    case 'ConvertQuoteToSalesOrder': {
+      // ERP Session 45 — convert an accepted quote into a Sales Order through the SAME governed
+      // path. Reuses the quote `convertToOrder` action verbatim: only an `accepted` quote converts
+      // (a draft/expired/converted quote is refused by the action's own guard), the order is minted
+      // `pending` with the same validate hook the governed create uses, and the quote is retained +
+      // cross-linked (`convertedOrder`, status `converted`). This closes the S45 bypass where the
+      // conversion ran ONLY through the legacy `enterprise:module.action` door — no journal,
+      // idempotency, event, or outbox. Exact precedent: ConvertPurchaseRequestToPO.
+      const id = str(cmd.target?.id);
+      const r = await moduleAction(QUOTES_MODULE_ID, id, 'convertToOrder');
+      if (!r.ok) return no(r.error ?? r.message ?? 'QUOTE_CONVERT_REFUSED');
+      // The order id is stamped back onto the quote by the conversion — read it for the event.
+      const quote = deps.registry.get(QUOTES_MODULE_ID)?.store.get(id);
+      const orderId = str(quote?.fields.convertedOrder);
+      // Compensation (case C): if the durable commit fails, revert the quote and soft-delete the
+      // order — mirroring ConvertPurchaseRequestToPO. The order is still `pending` (no stock, no
+      // GL), so the soft-delete reverses the full effect.
+      return ok(
+        { id, orderId },
+        {
+          aggregateId: id,
+          aggregateType: 'Quote',
+          rollback: async () => {
+            deps.registry.get(QUOTES_MODULE_ID)?.store.update(id, { fields: { status: 'accepted', convertedOrder: '' }, actor: who(), now: now() });
+            if (orderId) deps.registry.get(ORDERS_MODULE_ID)?.store.softDelete(orderId, { actor: who(), now: now() });
+          },
         },
       );
     }

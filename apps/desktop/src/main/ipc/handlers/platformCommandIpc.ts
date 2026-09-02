@@ -40,6 +40,7 @@ import { activeTenantScope } from '../../enterprise';
 import { governanceStore } from '../../enterprise/governance/governanceInstance';
 import { workspaceStore } from '../../enterprise/workspace/workspaceInstance';
 import { authService } from '../../auth/authService';
+import { resolveGovernedActor } from '../../auth/governedActor';
 import { DurableCommandJournal } from '../../platform/command/durableCommandJournal';
 import { dispatchOutbox, type OutboxConsumer } from '../../platform/command/outboxDispatcher';
 import { DeliveredEventLog } from '../../platform/command/deliveredEventLog';
@@ -296,14 +297,24 @@ export function buildPlatformCommandHandlers(deps: PlatformCommandHandlerDeps): 
     });
   };
 
-  // Resolve the AUTHORITATIVE principal server-side. Fail-closed: no authenticated session or
-  // no resolvable tenant ⇒ null ⇒ the application boundary returns UNAUTHENTICATED. The
-  // permission set is derived from the REAL RBAC predicate (`enterprise.allows`), never claimed.
+  // Resolve the AUTHORITATIVE principal server-side. Fail-closed: no governed actor or no
+  // resolvable tenant ⇒ null ⇒ the application boundary returns UNAUTHENTICATED. The permission
+  // set is derived from the REAL RBAC predicate (`enterprise.allows`), never claimed.
+  //
+  // ERP Session 45 — the DEVICE-LOCAL principal is handled EXPLICITLY (CLAUDE §4 AuthStatus law:
+  // no fall-through may treat `local` as signed-out). Before this, every governed platform
+  // command returned UNAUTHENTICATED in local-first mode while the legacy module doors accepted
+  // the same local principal — pushing local users onto the exact bypass S45 closes. The
+  // platform commands are device-local data operations, already permitted to the local principal
+  // through the module doors, so the classification is accepts-local. `resolveGovernedActor` is
+  // the ONE named authority (FG-6/D-12): authenticated → email/id (reserved local namespace
+  // forgery-denied), local → `local:<id>`, wall → null.
   const resolvePrincipal = (): Principal | null => {
     const status = authService.getStatus();
     const scope = activeTenantScope();
-    if (status.state !== 'authenticated' || !scope || !scope.tenantId) return null;
-    const actor = status.session.user.email ?? status.session.user.id;
+    if (!scope || !scope.tenantId) return null;
+    const actor = resolveGovernedActor(status, (u) => u.email ?? u.id);
+    if (!actor) return null;
     const permissions = ALL_ENTERPRISE_PERMISSIONS.filter((p) => deps.allows(p));
     return {
       actor,

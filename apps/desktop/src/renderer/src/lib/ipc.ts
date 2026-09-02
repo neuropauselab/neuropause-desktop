@@ -631,6 +631,53 @@ export const ipc = {
       promise.then(settle, settle);
       return promise;
     },
+    /**
+     * GOVERNED O2C RECORD ACTIONS (ERP Session 45) — the remaining dark commands go live. Each
+     * helper dispatches an EXISTING bus command (S27–S29 + S45) over the EXISTING
+     * `platform:command.dispatch` channel against an EXISTING record (`target`), so the write
+     * flows through the same Application Boundary → per-command RBAC → durable intent/journal →
+     * domain event → outbox → governance audit spine as the S43 create. Tenant + actor are
+     * server-resolved; the record id is a TARGET, never authority — the command's own module
+     * status machine still guards the transition. `idempotencyKey` is stable per user gesture.
+     */
+    dispatchRecordCommand: (
+      operation:
+        | 'ShipSalesOrder'
+        | 'InvoiceSalesOrder'
+        | 'IssueCustomerInvoice'
+        | 'ConvertQuoteToSalesOrder',
+      recordId: string,
+      idempotencyKey: string,
+    ): Promise<PlatformCommandDispatchResponse> => {
+      const settle = perfRecorder.ipcStart(String(IpcChannel.PlatformCommandDispatch));
+      const promise = rawInvoke(IpcChannel.PlatformCommandDispatch, {
+        operation,
+        target: recordId,
+        payload: {},
+        idempotencyKey,
+      }) as Promise<PlatformCommandDispatchResponse>;
+      promise.then(settle, settle);
+      return promise;
+    },
+    /**
+     * GOVERNED CUSTOMER RECEIPT (ERP Session 45) — a CLEARED receipt books real Dr Cash / Cr AR,
+     * so it is created through the governed `ReceiveCustomerPayment` command (which force-sets
+     * `status: 'cleared'` server-side), never the CRUD door. Pending/void records stay on the
+     * legacy create (no GL effect at creation) — recorded policy, not silently narrowed.
+     */
+    receiveCustomerPayment: (
+      fields: Record<string, unknown>,
+      idempotencyKey: string,
+    ): Promise<PlatformCommandDispatchResponse> => {
+      const settle = perfRecorder.ipcStart(String(IpcChannel.PlatformCommandDispatch));
+      const promise = rawInvoke(IpcChannel.PlatformCommandDispatch, {
+        operation: 'ReceiveCustomerPayment',
+        payload: fields,
+        idempotencyKey,
+      }) as Promise<PlatformCommandDispatchResponse>;
+      promise.then(settle, settle);
+      return promise;
+    },
   },
   timeline: {
     query: (q?: TimelineQuery) => invoke(IpcChannel.TimelineQuery, q ?? {}),

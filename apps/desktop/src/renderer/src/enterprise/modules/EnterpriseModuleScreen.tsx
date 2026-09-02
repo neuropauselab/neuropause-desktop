@@ -17,7 +17,13 @@ import type {
   EnterpriseRecordInput,
   EnterpriseRecordSummary,
 } from '@neuropause/shared';
-import { validateEnterpriseRecordInput, ORDERS_MODULE_ID } from '@neuropause/shared';
+import {
+  validateEnterpriseRecordInput,
+  FINANCE_MODULE_ID,
+  ORDERS_MODULE_ID,
+  PAYMENTS_MODULE_ID,
+  QUOTES_MODULE_ID,
+} from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
 import { dialogVariants, overlayVariants } from '@renderer/lib/motion';
 import { cn } from '@renderer/lib/cn';
@@ -66,8 +72,15 @@ function toFormState(fields: EnterpriseFieldDef[], record?: EnterpriseEntity): F
 
 function formToInput(fields: EnterpriseFieldDef[], state: FormState): EnterpriseRecordInput {
   const values: Record<string, EnterpriseFieldValue> = {};
-  for (const f of fields)
+  // S45 — readOnly fields are NOT rendered, so their form-state value is a snapshot frozen at
+  // form-open. Sending that snapshot back is stale data: a lifecycle action (or payment
+  // reconciliation) landing while an edit modal is open would make the save carry — and the
+  // machine-owned-status guard rightly refuse — a value the user never touched. Omit them; the
+  // update door merges the CURRENT stored value and creates fill declared defaults.
+  for (const f of fields) {
+    if (f.readOnly) continue;
     values[f.key] = f.type === 'boolean' ? Boolean(state[f.key]) : (state[f.key] as string);
+  }
   return { fields: values };
 }
 
@@ -364,8 +377,10 @@ function ModuleForm({
 
   // S43 — a STABLE idempotency key for a governed create, minted ONCE per form instance. A retry of
   // the SAME create (a transport failure the user resubmits, a double-submit) reuses this key and
-  // REPLAYS to exactly one durable Sales Order; a fresh create (a new form mount) mints a new key.
-  const governedKey = useRef<string>(`so-create-${crypto.randomUUID()}`);
+  // REPLAYS to exactly one durable record; a fresh create (a new form mount) mints a new key.
+  // S45 — shared by the governed Sales Order AND customer receipt creates (a form instance only
+  // ever creates one record, so one key per mount stays one key per submission).
+  const governedKey = useRef<string>(`gov-create-${crypto.randomUUID()}`);
 
   const set = (key: string, value: string | boolean): void =>
     setState((s) => ({ ...s, [key]: value }));
@@ -394,12 +409,42 @@ function ModuleForm({
         onSaved();
         return;
       }
+      // S45 — a CLEARED customer receipt books real Dr Cash / Cr AR, so it is created through the
+      // governed `ReceiveCustomerPayment` command (status force-set 'cleared' server-side, same
+      // journal/idempotency/event/outbox/audit spine as the S43 create). Pending/void records keep
+      // the CRUD path — they carry no GL effect at creation (recorded policy, not narrowed here).
+      if (
+        mode === 'create' &&
+        module.id === PAYMENTS_MODULE_ID &&
+        String((input.fields ?? {}).status ?? 'cleared') === 'cleared'
+      ) {
+        const gov = await ipc.platform.receiveCustomerPayment(input.fields ?? {}, governedKey.current);
+        if (!gov.ok) {
+          setErrors({ _: gov.error?.message ?? 'Could not record the receipt.' });
+          return;
+        }
+        onSaved();
+        return;
+      }
       const res =
         mode === 'create'
           ? await ipc.enterpriseModules.create(module.id, input)
           : await ipc.enterpriseModules.update(module.id, record!.id, input);
       if (!res.ok) {
-        setErrors(res.errors ?? { _: 'Could not save.' });
+        // S45 — an error keyed to a field this form does not RENDER (e.g. the machine-owned
+        // `status` refusal from a non-form caller's write racing this edit) would otherwise be
+        // invisible: the modal stayed open with no message. Fold unrendered-key errors into the
+        // form-level slot so every refusal is seen.
+        const raw = res.errors ?? { _: 'Could not save.' };
+        const rendered = new Set(module.fields.filter((f) => !f.readOnly).map((f) => f.key));
+        const errs: Record<string, string> = {};
+        const hidden: string[] = [];
+        for (const [k, v] of Object.entries(raw)) {
+          if (k === '_' || rendered.has(k)) errs[k] = v;
+          else hidden.push(v);
+        }
+        if (hidden.length) errs._ = [errs._, ...hidden].filter(Boolean).join(' ');
+        setErrors(errs);
         return;
       }
       onSaved();
@@ -700,10 +745,51 @@ function RecordDetail({
 
   // Custom record actions (e.g. Convert Lead → Customer). The list is refreshed
   // behind the modal, which stays open to show the deterministic result message.
+  //
+  // S45 — the CONSEQUENTIAL O2C lifecycle actions are routed through the GOVERNED command spine
+  // (`platform:command.dispatch` → Application Boundary → per-command RBAC → durable journal →
+  // domain event → outbox → governance audit) instead of the legacy `enterprise:module.action`
+  // door. The command routes wrap the SAME module actions, so behavior is identical — what changes
+  // is that the write is journaled, idempotent, and crash-recoverable. Every OTHER module action
+  // (reserve stock, pick list, convert lead, fulfill/close/cancel, …) keeps the existing path.
   const runAction = async (key: string): Promise<void> => {
+    const governedOp =
+      module.id === ORDERS_MODULE_ID && key === 'ship'
+        ? ('ShipSalesOrder' as const)
+        : module.id === ORDERS_MODULE_ID && key === 'convertToInvoice'
+          ? ('InvoiceSalesOrder' as const)
+          : module.id === FINANCE_MODULE_ID && key === 'issue'
+            ? ('IssueCustomerInvoice' as const)
+            : module.id === QUOTES_MODULE_ID && key === 'convertToOrder'
+              ? ('ConvertQuoteToSalesOrder' as const)
+              : null;
     setBusy(true);
     setActionMsg(null);
     try {
+      if (governedOp) {
+        // One key per user gesture: a double-click is blocked by `busy`, a crash mid-flight is
+        // recovered by the journal's intent HOLD, and a deliberate LATER retry is a NEW gesture
+        // (new key) answered truthfully by the module status machine ("already shipped"), never
+        // masked by a stale replayed success.
+        const gov = await ipc.platform.dispatchRecordCommand(
+          governedOp,
+          record.id,
+          `${governedOp}-${record.id}-${crypto.randomUUID()}`,
+        );
+        const done: Record<string, string> = {
+          ShipSalesOrder: 'Order shipped.',
+          InvoiceSalesOrder: 'Invoice generated.',
+          IssueCustomerInvoice: 'Invoice issued.',
+          ConvertQuoteToSalesOrder: 'Quote converted to a sales order.',
+        };
+        setActionMsg(
+          gov.ok
+            ? { tone: 'ok', text: done[governedOp] ?? 'Done.' }
+            : { tone: 'error', text: gov.error?.message ?? 'Action failed.' },
+        );
+        onRefresh?.();
+        return;
+      }
       const res = await ipc.enterpriseModules.action(module.id, record.id, key);
       setActionMsg(
         res.ok

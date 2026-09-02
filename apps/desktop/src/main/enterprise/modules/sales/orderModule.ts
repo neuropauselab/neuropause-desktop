@@ -92,6 +92,10 @@ export const ORDER_DESCRIPTOR: EnterpriseModuleDescriptor = {
       default: 'pending',
       badge: true,
       filterable: true,
+      // ERP Session 45 — machine-owned: born `pending` (default fills on create), transitions
+      // only through the lifecycle actions. The form never offers a hand-set status again
+      // (a hand-set `shipped` moved no stock); the validate hook enforces the same on edit.
+      readOnly: true,
       options: [
         { value: 'pending', label: 'Pending', tone: 'orange' },
         { value: 'shipped', label: 'Shipped', tone: 'blue' },
@@ -201,6 +205,29 @@ export function createOrderModule(storePath: string, aiRunner?: OrderAiRunner): 
       validate: (input: EnterpriseRecordInput) => {
         const result = validateEnterpriseRecordInput(ORDER_DESCRIPTOR, input);
         if (result.ok) {
+          // ERP Session 45 — the order status machine OWNS lifecycle transitions. An EDIT
+          // (recordId present ⇒ the EnterpriseModuleUpdate door) must never hand-set `status`:
+          // a hand-flipped `shipped` moves NO stock and silently becomes invoiceable — the
+          // corruption S45's zero-bypass audit found. Transitions happen ONLY through the
+          // lifecycle actions (Ship / Fulfill / Close / Cancel), which apply the guarded
+          // deterministic patches. Creates (no recordId) are unaffected, the conversion path
+          // validates create-shaped input (no recordId), and the lifecycle actions themselves
+          // never re-enter this hook — so this guard hits exactly the edit door.
+          if (input.recordId) {
+            const prior = store.get(input.recordId);
+            // A STATUS-LESS stored record (importer-minted rows bypass this hook and may carry
+            // no status) has no machine state to protect — the default fill backfills `pending`
+            // and the edit must not be refused, or the record is permanently un-editable.
+            const priorStatus = String(prior?.fields.status ?? '');
+            const nextStatus = result.values.status;
+            if (prior && priorStatus !== '' && typeof nextStatus === 'string' && nextStatus !== priorStatus) {
+              return {
+                ok: false,
+                values: result.values,
+                errors: { status: 'Order status changes only through the lifecycle actions (Ship, Fulfill, Close, Cancel).' },
+              };
+            }
+          }
           // ERP Session 21 — a multi-line order derives its total from its lines
           // (Σ qty × unit price). Single-product orders (no lines) are unchanged.
           const soLines = parsePurchaseOrderLines(result.values.lines);

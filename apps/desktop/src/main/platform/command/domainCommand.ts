@@ -44,7 +44,12 @@ export type DomainCommandType =
   // ERP Session 29 — record a customer receipt against an invoice: a cleared customer payment →
   // Dr Cash / Cr AR + settle the invoice, reusing the existing customer-payment engine (no new
   // receipt/AR/cash engine, no invented settlement policy).
-  | 'ReceiveCustomerPayment';
+  | 'ReceiveCustomerPayment'
+  // ERP Session 45 — convert an accepted quote into a Sales Order through the governed spine,
+  // closing the S45 bypass where conversion created orders via direct store.create around the
+  // governed create door. Reuses the existing quote `convertToOrder` action verbatim (accepted-only
+  // guard, cross-linking, validate hook) — exact precedent: ConvertPurchaseRequestToPO.
+  | 'ConvertQuoteToSalesOrder';
 
 /** Where a command originated. Descriptive only — it grants nothing. */
 export type CommandSource = 'electron' | 'web' | 'mobile' | 'api' | 'agent' | 'test';
@@ -114,7 +119,8 @@ export type DomainEventType =
   | 'SalesOrderShipped'
   | 'SalesOrderInvoiced'
   | 'CustomerInvoiceIssued'
-  | 'CustomerPaymentReceived';
+  | 'CustomerPaymentReceived'
+  | 'QuoteConvertedToSalesOrder';
 
 export interface CommandResult {
   ok: boolean;
@@ -145,6 +151,7 @@ export const EVENT_FOR_COMMAND: Record<DomainCommandType, DomainEventType> = {
   InvoiceSalesOrder: 'SalesOrderInvoiced',
   IssueCustomerInvoice: 'CustomerInvoiceIssued',
   ReceiveCustomerPayment: 'CustomerPaymentReceived',
+  ConvertQuoteToSalesOrder: 'QuoteConvertedToSalesOrder',
 };
 
 /**
@@ -173,4 +180,7 @@ export const PERMISSION_FOR_COMMAND: Record<DomainCommandType, EnterprisePermiss
   IssueCustomerInvoice: 'operations:manage',
   // The customer-payment module's declared write permission (operations:manage) governs receipts.
   ReceiveCustomerPayment: 'operations:manage',
+  // The quote module's declared write permission (sales:manage) governs conversion — the same
+  // permission the legacy `convertToOrder` module action demanded, so nobody gains or loses access.
+  ConvertQuoteToSalesOrder: 'sales:manage',
 };

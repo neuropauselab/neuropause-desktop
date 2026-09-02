@@ -96,6 +96,10 @@ export const INVOICE_DESCRIPTOR: EnterpriseModuleDescriptor = {
       default: 'draft',
       badge: true,
       filterable: true,
+      // ERP Session 45 — machine-owned: born `draft` (default fills on create); `issued` via the
+      // governed Issue action (books GL), payment states derived from receipts, `cancelled` via
+      // Cancel. The form never offers a hand-set status; the validate hook enforces it on edit.
+      readOnly: true,
       options: [
         { value: 'draft', label: 'Draft', tone: 'neutral' },
         { value: 'issued', label: 'Issued', tone: 'blue' },
@@ -183,6 +187,28 @@ export function createInvoiceModule(storePath: string, aiRunner?: InvoiceAiRunne
       validate: (input: EnterpriseRecordInput) => {
         const result = validateEnterpriseRecordInput(INVOICE_DESCRIPTOR, input);
         if (result.ok) {
+          // ERP Session 45 — the ECONOMIC status boundary is action-owned. An EDIT (recordId
+          // present ⇒ the EnterpriseModuleUpdate door) must never HAND-SET `status`: crossing
+          // draft→issued books real Dr AR / Cr Revenue GL outside the governed `issue` action,
+          // and cancelling reverses GL outside `cancel`. The comparison runs on the SUPPLIED
+          // (pre-derivation) status — the DERIVATION below stays free to move payment states
+          // (draft/issued → partially_paid/paid from recorded receipts), which is the module's
+          // pinned, defined behavior.
+          if (input.recordId) {
+            const prior = store.get(input.recordId);
+            // A STATUS-LESS stored record (importer-minted rows bypass this hook and may carry
+            // no status) has no machine state to protect — the default fill backfills `draft`
+            // and the edit must not be refused, or the record is permanently un-editable.
+            const priorStatus = String(prior?.fields.status ?? '');
+            const supplied = result.values.status;
+            if (prior && priorStatus !== '' && typeof supplied === 'string' && supplied !== priorStatus) {
+              return {
+                ok: false,
+                values: result.values,
+                errors: { status: 'Invoice status changes only through the Issue and Cancel actions (payment states are derived from receipts).' },
+              };
+            }
+          }
           const invoice = projectValues(result.values);
           Object.assign(result.values, invoiceComputedFields(invoice));
           result.values.status = deriveStoredInvoiceStatus(invoice.status, invoice);
