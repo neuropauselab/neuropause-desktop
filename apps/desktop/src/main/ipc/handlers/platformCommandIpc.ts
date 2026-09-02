@@ -49,7 +49,20 @@ import { computePlatformHealth } from '../../platform/command/platformHealth';
 import { runtimeIdentity } from '../../runtimeIdentity';
 import { ElectronClientAdapter, type ClientRequest } from '../../platform/adapter/clientAdapter';
 import type { Principal } from '../../platform/application/requestContext';
+import type { HeldCommandIntent } from '../../decisions/heldCommandHold';
 import { registerShutdownFlush } from '../../shutdownFlush';
+
+/**
+ * ERP Session 44 — a READ-ONLY view of the production journal's crash-orphaned HELD intents, keyed by
+ * tenant. The journal is constructed once inside `buildPlatformCommandHandlers` (below) and is otherwise
+ * private; this narrow reader is the ONLY thing it exposes, so the held-command HOLD surfacing service
+ * (`decisions/heldCommandHoldService.ts`) reads the SAME journal instance without a second journal, and
+ * without any mutation handle. Absent (before composition, or in the S17–S43 seam tests) ⇒ [].
+ */
+let heldIntentReader: ((tenantId: string) => readonly HeldCommandIntent[]) | null = null;
+export function heldCommandIntentsFor(tenantId: string): readonly HeldCommandIntent[] {
+  return heldIntentReader?.(tenantId) ?? [];
+}
 
 export interface PlatformCommandHandlerDeps {
   /** The LIVE enterprise module registry (`enterprise.modules`) — reused, not rebuilt. */
@@ -249,6 +262,10 @@ export function buildPlatformCommandDispatchDef(deps: PlatformCommandDispatchDep
 export function buildPlatformCommandHandlers(deps: PlatformCommandHandlerDeps): SecureHandlerDef[] {
   // Durable idempotency + transaction + event + outbox (Session 18), one file under userData.
   const journal = new DurableCommandJournal(join(app.getPath('userData'), 'platform-command-journal.json'));
+
+  // ERP Session 44 — publish the read-only held-intents view of THIS journal so the surfacing service can
+  // map crash-orphaned HOLDs into the canonical Hold Center. One journal; a read handle, never a mutation one.
+  heldIntentReader = (tenantId: string) => journal.heldIntents(tenantId);
 
   // PRODUCTION OUTBOX SINK (ERP Session 31): the durable, tenant-scoped, idempotent read-model the
   // at-least-once relay delivers into. Closes the "outbox written but never drained in production"
