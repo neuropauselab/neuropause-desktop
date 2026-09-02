@@ -249,6 +249,24 @@ async function route(cmd: DomainCommand, deps: CommandDispatchDeps, call: Handle
         },
       );
     }
+    case 'ShipSalesOrder': {
+      // ERP Session 27 — ship an EXISTING sales order through the SAME governed path. Reuses the
+      // sales-order `ship` action: the order status machine (`orderActionPatch`) guards the transition
+      // (a cancelled/already-shipped/closed order returns no patch → refused), then `shipOrderStock`
+      // issues on-hand and releases any reservation via the shared movement seam. No new shipment/
+      // inventory store, no `stock -= X`, no invented shipping/partial-shipment policy.
+      const id = str(cmd.target?.id);
+      const r = await moduleAction(ORDERS_MODULE_ID, id, 'ship');
+      if (!r.ok) return no(r.error ?? r.message ?? 'SHIP_REFUSED');
+      const so = deps.registry.get(ORDERS_MODULE_ID)?.store.get(id);
+      // NO auto-rollback: shipping issues a real inventory movement; reversing it is a governed
+      // operation, never a silent soft-delete. At-most-once is guaranteed by the status machine —
+      // the order is now `shipped`, so a commit-failure retry is refused, not re-executed.
+      return ok(
+        { id, status: str(so?.fields.status) },
+        { aggregateId: id, aggregateType: 'SalesOrder' },
+      );
+    }
     default:
       return no('UNKNOWN_COMMAND');
   }

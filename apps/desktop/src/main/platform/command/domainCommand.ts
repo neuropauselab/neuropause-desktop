@@ -31,7 +31,10 @@ export type DomainCommandType =
   | 'ApproveSupplierInvoice'
   // ERP Session 26 — pay an approved supplier invoice: record a cleared vendor payment
   // (partials accumulate; overpayment refused) → Dr AP / Cr Cash + settle, reusing the engine.
-  | 'PaySupplierInvoice';
+  | 'PaySupplierInvoice'
+  // ERP Session 27 — Order-to-Cash: ship a sales order (issue on-hand + release reservation),
+  // guarded by the order status machine, reusing the existing sales/inventory engine.
+  | 'ShipSalesOrder';
 
 /** Where a command originated. Descriptive only — it grants nothing. */
 export type CommandSource = 'electron' | 'web' | 'mobile' | 'api' | 'agent' | 'test';
@@ -97,7 +100,8 @@ export type DomainEventType =
   | 'SalesOrderCreated'
   | 'GoodsReceiptPosted'
   | 'SupplierInvoiceApproved'
-  | 'SupplierInvoicePaid';
+  | 'SupplierInvoicePaid'
+  | 'SalesOrderShipped';
 
 export interface CommandResult {
   ok: boolean;
@@ -124,6 +128,7 @@ export const EVENT_FOR_COMMAND: Record<DomainCommandType, DomainEventType> = {
   PostGoodsReceipt: 'GoodsReceiptPosted',
   ApproveSupplierInvoice: 'SupplierInvoiceApproved',
   PaySupplierInvoice: 'SupplierInvoicePaid',
+  ShipSalesOrder: 'SalesOrderShipped',
 };
 
 /**
@@ -143,4 +148,6 @@ export const PERMISSION_FOR_COMMAND: Record<DomainCommandType, EnterprisePermiss
   ApproveSupplierInvoice: 'operations:manage',
   // The vendor-payment module's declared write permission (operations:manage) governs payment.
   PaySupplierInvoice: 'operations:manage',
+  // The sales-order module's declared write permission (sales:manage) governs shipment.
+  ShipSalesOrder: 'sales:manage',
 };
