@@ -476,6 +476,18 @@ function ModuleForm({
     >
       <div className="space-y-3.5">
         {errors._ && <p className="text-sm text-syspink">{errors._}</p>}
+        {/* S47 pilot fence (visibility, not policy): editing an ISSUED-family invoice's economic
+            fields books real GL ADJUSTMENT entries — deliberate glPosting drift-correction
+            behavior whose governance is the OPEN reversal-policy memo. The fence makes the
+            defined behavior VISIBLE before the user saves; it blocks nothing. */}
+        {mode === 'edit' &&
+          module.id === FINANCE_MODULE_ID &&
+          ['issued', 'partially_paid', 'paid'].includes(String(record?.fields.status ?? '')) && (
+            <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+              This invoice is issued. Changing its amounts books general-ledger adjustment
+              entries.
+            </p>
+          )}
         {module.fields
           .filter((f) => !f.readOnly)
           .map((f) => (

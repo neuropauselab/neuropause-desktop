@@ -86,7 +86,12 @@ export function Modal({
             </div>
             <div className="max-h-[60vh] overflow-y-auto px-5 py-4">{children}</div>
             {footer && (
-              <div className="flex items-center justify-end gap-2 border-t border-[var(--hairline)] px-5 py-3.5">
+              // S47 — `flex-wrap`: a record with many lifecycle actions (a Sales Order carries
+              // Reserve Stock / Fulfil from Warehouse / Ship / Fulfill / Close / Cancel /
+              // Generate Invoice + the standard footer) overflowed this row horizontally at a
+              // REAL window size, hiding the primary next action (Ship) entirely — found by the
+              // S47 click-only journey harness. Wrapping keeps every action visible.
+              <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--hairline)] px-5 py-3.5">
                 {footer}
               </div>
             )}
