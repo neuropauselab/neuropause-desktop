@@ -209,6 +209,12 @@ export function createInvoiceModule(storePath: string, aiRunner?: InvoiceAiRunne
               };
             }
           }
+          // S55 census note — edit-door amountPaid changes drive the payment-state
+          // derivation below and are PINNED as defined behavior (invoiceModule.test.ts
+          // 'derives partially_paid / paid from recorded payment on edit', preserved
+          // deliberately by S45). A fence here was attempted and REVERTED against that
+          // pin: whether manual settlement recording becomes a governed command belongs
+          // to the O2C reversal/settlement decision memo, not to a mechanical fence.
           const invoice = projectValues(result.values);
           Object.assign(result.values, invoiceComputedFields(invoice));
           result.values.status = deriveStoredInvoiceStatus(invoice.status, invoice);

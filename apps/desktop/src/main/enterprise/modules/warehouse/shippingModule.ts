@@ -21,6 +21,7 @@ import {
   orderComputedFields,
   orderFromRecord,
   shippingFromRecord,
+  validateEnterpriseRecordInput,
 } from '@neuropause/shared';
 import {
   EnterpriseRecordStore,
@@ -133,6 +134,33 @@ export function createShippingModule(storePath: string): EnterpriseModule {
     descriptor: SHIPPING_DESCRIPTOR,
     store,
     hooks: {
+      // S55 — the census found this document family wholly unfenced: hand-setting
+      // `shipped`/`delivered` faked a shipment (no stock issue, no order advance — those
+      // happen only inside the Ship action), and UN-setting `shipped` re-armed Ship into
+      // DUPLICATE stock issues and order advances. Crossings involving shipped/delivered
+      // are action-owned (Ship / Mark Delivered); pending ↔ cancelled edits stay free
+      // (no economic effect; the S49 free-lane rule). Status-less importer rows exempt;
+      // the actions write via the raw store and never re-enter this hook.
+      validate: (input) => {
+        const result = validateEnterpriseRecordInput(SHIPPING_DESCRIPTOR, input);
+        if (result.ok && input.recordId) {
+          const prior = store.get(input.recordId);
+          const priorStatus = String(prior?.fields.status ?? '');
+          const next = result.values.status;
+          const stamped = (s: string): boolean => s === 'shipped' || s === 'delivered';
+          if (
+            prior && priorStatus !== '' && typeof next === 'string' && next !== priorStatus &&
+            (stamped(priorStatus) || stamped(next))
+          ) {
+            return {
+              ok: false,
+              values: result.values,
+              errors: { status: 'Shipment states change only through the Ship and Mark Delivered actions (shipping issues real stock).' },
+            };
+          }
+        }
+        return result;
+      },
       runAction: async (action, record, ctx) => {
         const shipment = shippingFromRecord(record);
 

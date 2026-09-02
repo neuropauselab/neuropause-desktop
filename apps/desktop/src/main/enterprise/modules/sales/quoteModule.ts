@@ -205,6 +205,32 @@ export function createQuoteModule(
       validate: (input: EnterpriseRecordInput) => {
         const result = validateEnterpriseRecordInput(QUOTE_DESCRIPTOR, input);
         if (result.ok) {
+          // S55 — the census found the quote wholly unfenced: editing a CONVERTED quote
+          // back to 'accepted' while blanking convertedOrder re-armed the governed
+          // ConvertQuoteToSalesOrder into a DUPLICATE sales order (its guard reads token +
+          // status only). Fence exactly the conversion-stamped state and its token — the
+          // S50 received/convertedReceipt shape; draft/sent/accepted/rejected/expired
+          // edits stay free (no action owns them; restricting them would invent policy).
+          // Status-less importer rows exempt; the conversion writes via the raw store.
+          if (input.recordId) {
+            const prior = store.get(input.recordId);
+            const priorStatus = String(prior?.fields.status ?? '');
+            const next = String(result.values.status ?? '');
+            if (prior && priorStatus !== '' && next !== priorStatus && (priorStatus === 'converted' || next === 'converted')) {
+              return {
+                ok: false,
+                values: result.values,
+                errors: { status: 'A quote becomes converted only through Convert to Order — the conversion state cannot be edited.' },
+              };
+            }
+            if (prior && String(result.values.convertedOrder ?? '') !== String(prior.fields.convertedOrder ?? '')) {
+              return {
+                ok: false,
+                values: result.values,
+                errors: { convertedOrder: 'This link is stamped by Convert to Order and cannot be edited.' },
+              };
+            }
+          }
           const quote = projectValues(result.values);
           result.values.total = calculateQuoteTotal(quote);
           result.values.marginPct = calculateQuoteMargin(quote).percent;

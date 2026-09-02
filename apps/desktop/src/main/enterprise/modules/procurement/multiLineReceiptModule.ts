@@ -17,6 +17,7 @@ import type {
   EnterpriseModuleDescriptor,
   EnterpriseRecordSummary,
 } from '@neuropause/shared';
+import { validateEnterpriseRecordInput } from '@neuropause/shared';
 import { EnterpriseRecordStore, defineEnterpriseModule, type EnterpriseModule } from '../../framework';
 import { postMovementLinesAtomic, type MovementLineInput } from '../inventory/multiLineMovements';
 
@@ -80,6 +81,30 @@ export function createMultiLineReceiptModule(storePath: string): EnterpriseModul
     descriptor: MULTILINE_RECEIPT_DESCRIPTOR,
     store,
     hooks: {
+      // S55 — the S49 fence covered only the single goodsReceiptModule; this multi-line
+      // twin had the same hole: an edit-door flip received→draft re-armed receiveLines
+      // into DUPLICATE valued receive movements (Dr Inventory / Cr GRNI per line).
+      // Crossings involving `received` are action-owned; draft ↔ failed edits stay free.
+      // Status-less importer rows exempt; the action writes via the raw store.
+      validate: (input) => {
+        const result = validateEnterpriseRecordInput(MULTILINE_RECEIPT_DESCRIPTOR, input);
+        if (result.ok && input.recordId) {
+          const prior = store.get(input.recordId);
+          const priorStatus = String(prior?.fields.status ?? '');
+          const next = result.values.status;
+          if (
+            prior && priorStatus !== '' && typeof next === 'string' && next !== priorStatus &&
+            (priorStatus === 'received' || next === 'received')
+          ) {
+            return {
+              ok: false,
+              values: result.values,
+              errors: { status: 'Receiving happens through the Receive Lines action (it books the real movements) — this status cannot be set by editing.' },
+            };
+          }
+        }
+        return result;
+      },
       runAction: async (action, record, ctx) => {
         if (action !== RECEIVE_LINES_ACTION) return { ok: false, error: `Unknown action "${action}".` };
         if (str(record.fields.status) === 'received') {

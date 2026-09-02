@@ -228,6 +228,26 @@ export function createOrderModule(storePath: string, aiRunner?: OrderAiRunner): 
               };
             }
           }
+          // S55 — conversion/fulfilment idempotency TOKENS are edit-immutable (the S50
+          // convertedReceipt shape): clearing order.convertedInvoice re-armed Generate
+          // Invoice into a DUPLICATE invoice (the guard reads only the token,
+          // conversion.ts 'Already invoiced'), and clearing pickList re-armed Fulfil from
+          // Warehouse into a duplicate pick document. The conversions stamp via the raw
+          // store and never re-enter this hook.
+          if (input.recordId) {
+            const prior = store.get(input.recordId);
+            if (prior) {
+              for (const token of ['convertedInvoice', 'pickList'] as const) {
+                if (String(result.values[token] ?? '') !== String(prior.fields[token] ?? '')) {
+                  return {
+                    ok: false,
+                    values: result.values,
+                    errors: { [token]: 'This link is stamped by its lifecycle action and cannot be edited.' },
+                  };
+                }
+              }
+            }
+          }
           // ERP Session 21 — a multi-line order derives its total from its lines
           // (Σ qty × unit price). Single-product orders (no lines) are unchanged.
           const soLines = parsePurchaseOrderLines(result.values.lines);

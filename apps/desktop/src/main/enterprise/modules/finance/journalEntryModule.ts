@@ -251,6 +251,21 @@ export function createJournalEntryModule(
         if (!result.ok) return result;
         const errors: Record<string, string> = {};
 
+        // S55 — STORE-ANCHORED half (the census-found forgeable-token class): the input
+        // half below reads the MERGED payload, so a crafted update supplying postedAt:''
+        // cleared the token, forced status 'draft', and silently dropped a POSTED entry
+        // out of the books (reconcileAccounts derives balances from postedLedger). The
+        // STORED stamp is the authority — certified S46/S49 fence shape, prior via store.get.
+        if (input.recordId) {
+          const prior = store.get(input.recordId);
+          if (prior && str(prior.fields.postedAt)) {
+            return {
+              ok: false,
+              errors: { _: 'Posted entries are immutable — post a reversing entry instead.' },
+              values: result.values,
+            };
+          }
+        }
         // postedAt is stamped exclusively by the `post` action (which bypasses
         // this hook by design). Reaching validate WITH a postedAt therefore means
         // an edit of a posted entry (or a forged create) — both are refused.

@@ -214,6 +214,19 @@ export function createPaymentModule(
         if (!result.ok) return result;
         // FW-8: a bank-reconciled payment is bank-evidenced settled fact — a
         // finalized statement line vouches for it. Immutable through edits.
+        // S55 — STORE-ANCHORED half (census-found forgeable token): the input half
+        // below reads the merged payload, so bankReconciledAt:'' blanked the stamp
+        // and the guard passed. The stored stamp is the authority.
+        if (input.recordId) {
+          const prior = store.get(input.recordId);
+          if (prior && String(prior.fields.bankReconciledAt ?? '')) {
+            return {
+              ok: false,
+              errors: { _: 'This payment is bank-reconciled against a finalized statement — bank-evidenced payments are immutable.' },
+              values: result.values,
+            };
+          }
+        }
         if (String(input.fields?.bankReconciledAt ?? '')) {
           return {
             ok: false,

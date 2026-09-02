@@ -14,6 +14,7 @@ import type {
   EnterpriseModuleDescriptor,
   EnterpriseRecordSummary,
 } from '@neuropause/shared';
+import { validateEnterpriseRecordInput } from '@neuropause/shared';
 import { EnterpriseRecordStore, defineEnterpriseModule, type EnterpriseModule } from '../../framework';
 import { postMovementLinesAtomic } from '../inventory/multiLineMovements';
 import { parseReceiptLines } from '../procurement/multiLineReceiptModule';
@@ -59,6 +60,30 @@ export function createMultiLineDispatchModule(storePath: string): EnterpriseModu
     descriptor: MULTILINE_DISPATCH_DESCRIPTOR,
     store,
     hooks: {
+      // S55 — document idempotency here is ONLY the status guard: an edit-door flip
+      // dispatched→draft re-armed dispatchLines into a SECOND set of valued issue
+      // movements (duplicate Dr COGS / Cr Inventory per line). Crossings involving
+      // `dispatched` are action-owned; draft ↔ failed edits stay free (the defined
+      // retry lane). Status-less importer rows exempt; the action writes via the raw store.
+      validate: (input) => {
+        const result = validateEnterpriseRecordInput(MULTILINE_DISPATCH_DESCRIPTOR, input);
+        if (result.ok && input.recordId) {
+          const prior = store.get(input.recordId);
+          const priorStatus = String(prior?.fields.status ?? '');
+          const next = result.values.status;
+          if (
+            prior && priorStatus !== '' && typeof next === 'string' && next !== priorStatus &&
+            (priorStatus === 'dispatched' || next === 'dispatched')
+          ) {
+            return {
+              ok: false,
+              values: result.values,
+              errors: { status: 'Dispatching happens through the Dispatch Lines action (it books the real movements) — this status cannot be set by editing.' },
+            };
+          }
+        }
+        return result;
+      },
       runAction: async (action, record, ctx) => {
         if (action !== DISPATCH_LINES_ACTION) return { ok: false, error: `Unknown action "${action}".` };
         if (str(record.fields.status) === 'dispatched') {

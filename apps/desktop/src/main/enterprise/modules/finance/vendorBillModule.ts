@@ -142,6 +142,35 @@ export function createVendorBillModule(
       validate: (input: EnterpriseRecordInput): EnterpriseRecordValidation => {
         const result = validateEnterpriseRecordInput(VENDOR_BILL_DESCRIPTOR, input);
         if (!result.ok) return result;
+        // S55 — the bill's STATUS is derivation-protected (deriveStatus below overrides any
+        // supplied value from the MARKERS) — which made the MARKERS the real status surface,
+        // and they were edit-writable: clearing approvedAt was a silent approval reversal
+        // that left the Dr Expense/Cr AP booking ORPHANED (glPosting live=false → no
+        // reversal, and reconcileBill AGREES with the forged markers); setting paidDate
+        // faked settlement with zero payments. Markers move only through the approve/cancel
+        // actions and the payment reconciler — all raw-store writers that never re-enter
+        // this hook. Edit-door marker changes are refused wholesale.
+        if (input.recordId) {
+          const prior = store.get(input.recordId);
+          if (prior) {
+            for (const marker of ['approvedAt', 'cancelledAt', 'paidDate'] as const) {
+              if (String(result.values[marker] ?? '') !== String(prior.fields[marker] ?? '')) {
+                return {
+                  ok: false,
+                  errors: { [marker]: 'Bill lifecycle markers are stamped by the Approve/Cancel actions and payment reconciliation — they cannot be edited.' },
+                  values: result.values,
+                };
+              }
+            }
+            if (Number(result.values.amountPaid ?? 0) !== Number(prior.fields.amountPaid ?? 0)) {
+              return {
+                ok: false,
+                errors: { amountPaid: 'Amount paid is derived from recorded vendor payments — record a payment instead of editing it.' },
+                values: result.values,
+              };
+            }
+          }
+        }
         // Phase 9: a named source PO must be REAL (id or PO number).
         if (purchaseOrderStore) {
           const ref = String(result.values.sourcePurchaseOrder ?? '').trim();

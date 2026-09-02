@@ -10,6 +10,12 @@ asarUnpack:
 files:
 - out/**/*
 - package.json
+# S55 (S54 hygiene observation): the asar packs workspace-package node_modules whose
+# trees carry 87 *.test.ts files (~0.31MB). Raw TypeScript cannot be require()d and the
+# measured bundles contain zero requires of any .ts path, so exclusion is runtime-safe.
+# Deliberately NOT excluding src/*.ts wholesale — workspace deps declare TS mains and
+# the vendored CST kernel's runtime files must stay (a broader exclusion is unproven).
+- '!**/*.test.ts'
 extraResources:
 - from: resources/build-info.json
   to: build-info.json

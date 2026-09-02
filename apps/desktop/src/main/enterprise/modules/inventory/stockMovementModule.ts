@@ -25,6 +25,7 @@ import {
   movementTypeLabel,
   productComputedStock,
   productFromRecord,
+  validateEnterpriseRecordInput,
 } from '@neuropause/shared';
 import { postMovementToGl } from './inventoryGlBridge';
 import {
@@ -146,6 +147,48 @@ export function createStockMovementModule(
     descriptor: STOCK_MOVEMENT_DESCRIPTOR,
     store,
     hooks: {
+      // S55 — the module's own contract ('the IMMUTABLE stock ledger — corrections by
+      // compensating movement, history never rewritten') had no enforcement: editing a
+      // POSTED movement's quantity re-derived on-hand stock while the GL side stayed at
+      // the original amount (the bridge is idempotent per movement id with no adjustment
+      // machinery) — silent stock-vs-books divergence. Enforcing a declared contract is
+      // not invented policy. The ONE coherent correction path stays open: posted → void
+      // with every economic field unchanged (void reverses the GL); void is terminal.
+      // Creates (no recordId) and status-less importer rows are untouched.
+      validate: (input) => {
+        const result = validateEnterpriseRecordInput(STOCK_MOVEMENT_DESCRIPTOR, input);
+        if (result.ok && input.recordId) {
+          const prior = store.get(input.recordId);
+          const priorStatus = String(prior?.fields.status ?? '');
+          if (prior && priorStatus === 'posted') {
+            for (const key of ['movementNumber', 'type', 'product', 'warehouse', 'fromWarehouse', 'quantity', 'unitCost'] as const) {
+              if (String(result.values[key] ?? '') !== String(prior.fields[key] ?? '')) {
+                return {
+                  ok: false,
+                  values: result.values,
+                  errors: { [key]: 'The stock ledger is immutable — correct a posted movement with a compensating movement, never by rewriting it.' },
+                };
+              }
+            }
+            const next = String(result.values.status ?? '');
+            if (next !== 'posted' && next !== 'void') {
+              return {
+                ok: false,
+                values: result.values,
+                errors: { status: 'A posted movement can only be voided (which reverses its ledger effect).' },
+              };
+            }
+          }
+          if (prior && priorStatus === 'void' && String(result.values.status ?? '') !== 'void') {
+            return {
+              ok: false,
+              values: result.values,
+              errors: { status: 'A voided movement is terminal — its reversal is already booked. Post a new movement instead.' },
+            };
+          }
+        }
+        return result;
+      },
       // Source-of-truth reconciliation: every movement re-derives the product's
       // materialized stock from the full ledger (create, edit, or void).
       onChange: async (event, ctx) => {

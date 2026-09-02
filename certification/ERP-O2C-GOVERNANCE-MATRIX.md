@@ -1,4 +1,23 @@
-# ERP O2C GOVERNANCE MATRIX — Session 45 (+ S46 closures, S49 buy-side, S50 PO hardening)
+# ERP O2C GOVERNANCE MATRIX — Session 45 (+ S46 closures, S49 buy-side, S50 PO hardening, S55 closure pass)
+
+## S55 UPDATE — fourteen census-found gaps closed in four classes (see SESSION55-ENTERPRISE-GOVERNANCE-CLOSURE.md)
+- **Store-anchored token guards:** journal `postedAt` (un-posting GL blocked) · period `closedAt`
+  (edit-door reopen blocked) · payment `bankReconciledAt` (FW-8 forgery closed) — the input-anchored
+  guards read the merged payload and were clearable by a crafted `''`.
+- **Marker/token immutability:** vendor-bill markers (silent approval reversal orphaned GL — closed) ·
+  order `convertedInvoice`/`pickList` (duplicate invoice / pick re-arm — closed) · quote conversion
+  state + token (duplicate SO via the GOVERNED command — closed) · received-GR invariant inputs +
+  supplier (F-S50-5 closed).
+- **Posting re-arm fences:** warehouse shipping (was WHOLLY unfenced) · multi-line dispatch ·
+  multi-line receipt (outside the S49 fence) · the stock ledger's own declared immutability contract
+  (posted rows: void-only) · GR post vs CANCELLED PO (F-S50-1's closable half; the DRAFT half is
+  memo'd commitment authority).
+- **One delete door:** SetStatus-'deleted' refused (it skipped the Delete door's assessment + record).
+- NEW memo: `DECISION-MEMO-DEEP-FINANCE-HR-AUTHORITY.md` (HR chain incl. expense-claim self-approval ·
+  fixed assets · stock adjustments/cycle counts · period-reopen authority · draft-PO receiving ·
+  credit/debit-note re-measurement). Invoice `amountPaid` edit: fence attempted and REVERTED against
+  the certified S45 pin — folded into the O2C memo's settlement scope.
+- Decision-neutrality measured: full main = S54 + exactly the 13 new pins; zero existing tests changed.
 
 ## S50 UPDATE — the PO status machine is CENSUSED and its measured holes fenced (see SESSION50-PROCUREMENT-SURFACE-HARDENING.md)
 - S49's "PO status machine remains descriptive/legacy — YELLOW, no economic bypass found" is

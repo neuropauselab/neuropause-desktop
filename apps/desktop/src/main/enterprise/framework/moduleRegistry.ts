@@ -601,6 +601,18 @@ export function buildModuleHandlers(
         const module = resolve(registry, r.moduleId);
         ctx.authorize(module.descriptor.permissions.write);
         await module.store.load();
+        // S55 — 'deleted' via SetStatus was a SECOND delete door: it skipped the Delete
+        // door's dependency assessment, refusal-without-force, and decision record while
+        // producing the same terminal state and the same downstream GL-reversal
+        // consequences. One governed delete path exists; this door refuses and points at
+        // it (measured: no production or test caller used SetStatus-'deleted' — the
+        // refusal strands nothing).
+        if (r.status === 'deleted') {
+          return {
+            ok: false as const,
+            errors: { _: 'Deletion goes through the Delete door (it assesses dependencies and records the decision) — not through a status change.' },
+          };
+        }
         // APPROVAL GATE. This is where a purchase order becomes "approved" or a
         // bill becomes "paid", and until now it went straight to the store: the
         // approval/SoD engine existed, declared policies for these very
@@ -632,7 +644,9 @@ export function buildModuleHandlers(
           now: ctx.now(),
         });
         if (!record) return { ok: false as const, errors: { _: 'Invalid status transition.' } };
-        await fan(module, r.status === 'deleted' ? 'deleted' : 'status_changed', record);
+        // 'deleted' is refused above, so this door only ever fans status_changed —
+        // the compiler proves the old 'deleted' branch unreachable.
+        await fan(module, 'status_changed', record);
         return { ok: true as const, record };
       },
     },

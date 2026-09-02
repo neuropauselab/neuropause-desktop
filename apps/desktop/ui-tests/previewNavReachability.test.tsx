@@ -88,7 +88,26 @@ async function mountShell(): Promise<void> {
 
 async function openPalette(): Promise<HTMLElement> {
   // Exactly how the shell opens it: the menu/⌘K accelerator fires `menu:command`.
-  emitBroadcast(IpcChannel.MenuCommand, { action: 'command-palette' });
+  // S55 (the S51/S53-observed parallel-load flake, diagnosed): the shell attaches its
+  // onCommand listener in a useEffect (AppShell.tsx:271) — post-paint — so under full-suite
+  // load a SINGLE early emit can fire before attachment and is lost forever; waiting longer
+  // can never help. A human presses ⌘K only once the window is interactive, so the lost
+  // event is a harness artifact, not a product defect. The emit is retried until the dialog
+  // mounts; the assertion (the REAL broadcast opens the REAL palette) is unchanged.
+  // TOGGLE hazard (census-diagnosed): `command-palette` TOGGLES (AppShell.tsx:275
+  // setCommandOpen(!openRef.current)), so a blind re-emit can CLOSE a palette whose open
+  // committed between the find timeout and the catch. Emit only when the DOM shows no
+  // palette; the loop converges because each emit is gated on observed absence.
+  for (let attempt = 0; attempt < 9; attempt++) {
+    if (!screen.queryByRole('dialog', { name: 'Command palette' })) {
+      emitBroadcast(IpcChannel.MenuCommand, { action: 'command-palette' });
+    }
+    try {
+      return await screen.findByRole('dialog', { name: 'Command palette' }, { timeout: 700 });
+    } catch {
+      /* not open yet — loop (re-emit only if still absent) */
+    }
+  }
   return screen.findByRole('dialog', { name: 'Command palette' });
 }
 

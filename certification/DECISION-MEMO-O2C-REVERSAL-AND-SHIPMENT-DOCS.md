@@ -29,6 +29,11 @@ the legacy `enterprise:module.*` doors (RBAC + module guards, but no command jou
   bypassing the order status machine (fulfill is only legal from `shipped`) and the S45 validate
   guard. This is the strongest reason the decision cannot stay open indefinitely: whichever way it
   goes, the cross-module direct write should route through the machine.
+  > **ADDENDUM (S55, §2 #21 — statement expired when work landed against it):** the sharpened
+  > direct-write item was CLOSED IN S46 — the ship action now routes through the canonical
+  > `orderActionPatch` table (pending→shipped→fulfilled; illegal/closed/cancelled refused) and the
+  > matrix records it GREEN. The POLICY question of this section (shipment documents as governed
+  > commands vs order-level ship as the single governed operation) remains OPEN and unchanged.
 
 ## 3 · Payment status edits (pending → cleared) and pending/void creation
 
