@@ -40,7 +40,11 @@ export type DomainCommandType =
   | 'InvoiceSalesOrder'
   // ERP Session 28 — issue a draft customer invoice → the DEFINED Dr AR / Cr Sales Revenue journal,
   // reusing the finance-invoice `issue` action + its GL bridge (no new AR/GL engine).
-  | 'IssueCustomerInvoice';
+  | 'IssueCustomerInvoice'
+  // ERP Session 29 — record a customer receipt against an invoice: a cleared customer payment →
+  // Dr Cash / Cr AR + settle the invoice, reusing the existing customer-payment engine (no new
+  // receipt/AR/cash engine, no invented settlement policy).
+  | 'ReceiveCustomerPayment';
 
 /** Where a command originated. Descriptive only — it grants nothing. */
 export type CommandSource = 'electron' | 'web' | 'mobile' | 'api' | 'agent' | 'test';
@@ -109,7 +113,8 @@ export type DomainEventType =
   | 'SupplierInvoicePaid'
   | 'SalesOrderShipped'
   | 'SalesOrderInvoiced'
-  | 'CustomerInvoiceIssued';
+  | 'CustomerInvoiceIssued'
+  | 'CustomerPaymentReceived';
 
 export interface CommandResult {
   ok: boolean;
@@ -139,6 +144,7 @@ export const EVENT_FOR_COMMAND: Record<DomainCommandType, DomainEventType> = {
   ShipSalesOrder: 'SalesOrderShipped',
   InvoiceSalesOrder: 'SalesOrderInvoiced',
   IssueCustomerInvoice: 'CustomerInvoiceIssued',
+  ReceiveCustomerPayment: 'CustomerPaymentReceived',
 };
 
 /**
@@ -165,4 +171,6 @@ export const PERMISSION_FOR_COMMAND: Record<DomainCommandType, EnterprisePermiss
   // mint invoices (convertOrderToInvoice also asserts the Finance write scope internally).
   InvoiceSalesOrder: 'operations:manage',
   IssueCustomerInvoice: 'operations:manage',
+  // The customer-payment module's declared write permission (operations:manage) governs receipts.
+  ReceiveCustomerPayment: 'operations:manage',
 };
