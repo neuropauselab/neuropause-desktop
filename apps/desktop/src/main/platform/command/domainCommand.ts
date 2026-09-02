@@ -34,7 +34,13 @@ export type DomainCommandType =
   | 'PaySupplierInvoice'
   // ERP Session 27 — Order-to-Cash: ship a sales order (issue on-hand + release reservation),
   // guarded by the order status machine, reusing the existing sales/inventory engine.
-  | 'ShipSalesOrder';
+  | 'ShipSalesOrder'
+  // ERP Session 28 — Order-to-Cash: raise a customer invoice from a shipped order (draft, amount =
+  // order total, tax not re-applied), reusing the sales `convertToInvoice` conversion. No AR yet.
+  | 'InvoiceSalesOrder'
+  // ERP Session 28 — issue a draft customer invoice → the DEFINED Dr AR / Cr Sales Revenue journal,
+  // reusing the finance-invoice `issue` action + its GL bridge (no new AR/GL engine).
+  | 'IssueCustomerInvoice';
 
 /** Where a command originated. Descriptive only — it grants nothing. */
 export type CommandSource = 'electron' | 'web' | 'mobile' | 'api' | 'agent' | 'test';
@@ -101,7 +107,9 @@ export type DomainEventType =
   | 'GoodsReceiptPosted'
   | 'SupplierInvoiceApproved'
   | 'SupplierInvoicePaid'
-  | 'SalesOrderShipped';
+  | 'SalesOrderShipped'
+  | 'SalesOrderInvoiced'
+  | 'CustomerInvoiceIssued';
 
 export interface CommandResult {
   ok: boolean;
@@ -129,6 +137,8 @@ export const EVENT_FOR_COMMAND: Record<DomainCommandType, DomainEventType> = {
   ApproveSupplierInvoice: 'SupplierInvoiceApproved',
   PaySupplierInvoice: 'SupplierInvoicePaid',
   ShipSalesOrder: 'SalesOrderShipped',
+  InvoiceSalesOrder: 'SalesOrderInvoiced',
+  IssueCustomerInvoice: 'CustomerInvoiceIssued',
 };
 
 /**
@@ -150,4 +160,9 @@ export const PERMISSION_FOR_COMMAND: Record<DomainCommandType, EnterprisePermiss
   PaySupplierInvoice: 'operations:manage',
   // The sales-order module's declared write permission (sales:manage) governs shipment.
   ShipSalesOrder: 'sales:manage',
+  // Raising/issuing a customer invoice mints a Finance record + books AR, governed by the
+  // invoice module's declared write permission (operations:manage) — a sales-only actor cannot
+  // mint invoices (convertOrderToInvoice also asserts the Finance write scope internally).
+  InvoiceSalesOrder: 'operations:manage',
+  IssueCustomerInvoice: 'operations:manage',
 };

@@ -24,7 +24,7 @@
  * the durability of the idempotency+event+outbox differs.
  */
 import type { TenantScope } from '@neuropause/shared';
-import { CUSTOMERS_MODULE_ID, GOODS_RECEIPTS_MODULE_ID, IpcChannel, ORDERS_MODULE_ID, PURCHASE_REQUESTS_MODULE_ID, VENDOR_BILLS_MODULE_ID, VENDOR_PAYMENTS_MODULE_ID } from '@neuropause/shared';
+import { CUSTOMERS_MODULE_ID, FINANCE_MODULE_ID, GOODS_RECEIPTS_MODULE_ID, IpcChannel, ORDERS_MODULE_ID, PURCHASE_REQUESTS_MODULE_ID, VENDOR_BILLS_MODULE_ID, VENDOR_PAYMENTS_MODULE_ID } from '@neuropause/shared';
 import {
   buildModuleHandlers,
   type EnterpriseModuleContext,
@@ -265,6 +265,48 @@ async function route(cmd: DomainCommand, deps: CommandDispatchDeps, call: Handle
       return ok(
         { id, status: str(so?.fields.status) },
         { aggregateId: id, aggregateType: 'SalesOrder' },
+      );
+    }
+    case 'InvoiceSalesOrder': {
+      // ERP Session 28 — raise a customer invoice from an EXISTING shipped order through the SAME
+      // governed path. Reuses the sales-order `convertToInvoice` action → `convertOrderToInvoice`:
+      // eligibility guard (shipped/fulfilled/closed only — a pending/cancelled order is refused),
+      // already-invoiced guard, Finance write authz, and a DRAFT invoice whose amount = the order
+      // total (tax NOT re-applied — the order total is already final). No new invoice store, no
+      // invented pricing/tax/numbering/terms policy. A DRAFT invoice posts NOTHING to the GL — AR is
+      // booked only when the invoice is ISSUED (see IssueCustomerInvoice).
+      const id = str(cmd.target?.id);
+      const r = await moduleAction(ORDERS_MODULE_ID, id, 'convertToInvoice');
+      if (!r.ok) return no(r.error ?? r.message ?? 'INVOICE_REFUSED');
+      // The invoice id is stamped back onto the order by the conversion — read it for the event.
+      const order = deps.registry.get(ORDERS_MODULE_ID)?.store.get(id);
+      const invoiceId = str(order?.fields.convertedInvoice);
+      // NO auto-rollback needed: a draft invoice carries no economic effect, and at-most-once is
+      // guaranteed by the order's `convertedInvoice` guard — a commit-failure retry finds the order
+      // already invoiced and is refused, not re-executed. (Reversal, if ever needed, is the invoice
+      // `cancel` action, never a silent soft-delete.)
+      return ok(
+        { id, invoiceId, status: 'draft' },
+        { aggregateId: id, aggregateType: 'SalesOrder' },
+      );
+    }
+    case 'IssueCustomerInvoice': {
+      // ERP Session 28 — issue an EXISTING draft customer invoice through the SAME governed path.
+      // Reuses the finance-invoice `issue` action: the invoice status machine guards the transition
+      // (a non-draft/cancelled invoice returns no patch → refused), then `onChange` →
+      // `handleInvoiceChangeForGl` posts the DEFINED Dr Accounts Receivable (1100) / Cr Sales Revenue
+      // (4000) journal (control accounts auto-seeded on an empty chart). No new AR/GL engine, no
+      // invented revenue-recognition/tax/FX policy.
+      const id = str(cmd.target?.id);
+      const r = await moduleAction(FINANCE_MODULE_ID, id, 'issue');
+      if (!r.ok) return no(r.error ?? r.message ?? 'INVOICE_ISSUE_REFUSED');
+      const inv = deps.registry.get(FINANCE_MODULE_ID)?.store.get(id);
+      // NO auto-rollback: issuing books a real Dr AR / Cr Revenue journal — reversing it is a governed
+      // operation (the invoice `cancel` action revokes the GL), never a silent soft-delete. At-most-once
+      // is guaranteed WITHOUT compensation — the status guard refuses any re-issue.
+      return ok(
+        { id, status: str(inv?.fields.status) },
+        { aggregateId: id, aggregateType: 'CustomerInvoice' },
       );
     }
     default:
