@@ -70,6 +70,11 @@ export class DeliveredEventLog {
     });
   }
 
+  /** READ-ONLY health probe (S34): is the durable sink file present + parseable? Never mutates. */
+  probeHealth(): Promise<{ ok: boolean; state: 'ok' | 'first-run' | 'corrupt' }> {
+    return this.store.probe();
+  }
+
   /** Tenant-scoped read — never returns another tenant's delivered events. */
   delivered(tenantId: string): DeliveredEventRecord[] {
     return this.store.all().filter((r) => r.tenantId === tenantId);

@@ -573,6 +573,20 @@ export const ipc = {
       promise.then(settle, settle);
       return promise;
     },
+    /**
+     * ERP Session 34 — governed platform health / readiness probe. Read-only over real runtime +
+     * persistence state (same governed channel + `rawInvoke` precedent; no frozen change).
+     */
+    health: (): Promise<PlatformCommandDispatchResponse> => {
+      const settle = perfRecorder.ipcStart(String(IpcChannel.PlatformCommandDispatch));
+      const promise = rawInvoke(IpcChannel.PlatformCommandDispatch, {
+        operation: 'QueryPlatformHealth',
+        payload: {},
+        idempotencyKey: `health-${Date.now().toString(36)}`,
+      }) as Promise<PlatformCommandDispatchResponse>;
+      promise.then(settle, settle);
+      return promise;
+    },
   },
   timeline: {
     query: (q?: TimelineQuery) => invoke(IpcChannel.TimelineQuery, q ?? {}),

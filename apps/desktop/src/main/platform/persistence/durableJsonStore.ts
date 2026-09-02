@@ -142,6 +142,24 @@ export class DurableJsonStore<T extends { id: string }> {
     return [...this.records.values()];
   }
 
+  /**
+   * READ-ONLY health probe (ERP Session 34). Reports whether the backing file is present and
+   * parseable WITHOUT mutating anything — deliberately a RAW read rather than `readStoreFile`, which
+   * quarantines (renames) a corrupt file. A missing file is a healthy first run (an empty store). A
+   * present-but-unparseable file is a real persistence problem. One small-file read, cheap enough to
+   * run on demand; never writes, never quarantines, never loads into memory.
+   */
+  async probe(): Promise<{ ok: boolean; state: 'ok' | 'first-run' | 'corrupt' }> {
+    try {
+      const raw = await fs.readFile(this.filePath, 'utf8');
+      JSON.parse(raw);
+      return { ok: true, state: 'ok' };
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return { ok: true, state: 'first-run' };
+      return { ok: false, state: 'corrupt' };
+    }
+  }
+
   /** Test/reset only — remove the backing file and clear memory. Serialized after pending writes. */
   async destroy(): Promise<void> {
     await this.enqueue(async () => {

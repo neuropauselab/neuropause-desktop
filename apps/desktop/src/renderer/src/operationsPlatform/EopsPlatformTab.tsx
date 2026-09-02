@@ -22,6 +22,7 @@ import { ipc } from '@renderer/lib/ipc';
 import { Icon } from '@renderer/components/ui/Icon';
 import { OpsPanel, StatusBadge } from '@renderer/operations/primitives';
 import { OperationalHistoryPanel } from './OperationalHistoryPanel';
+import { PlatformHealthPanel } from './PlatformHealthPanel';
 import { EmptyState, Grid, LoadingBlock } from '@renderer/operationsCenter/primitives';
 import {
   continuityRows,
@@ -328,6 +329,7 @@ export function EopsPlatformTab(): JSX.Element {
         </OpsPanel>
       )}
 
+      <PlatformHealthPanel />
       <OperationalHistoryPanel />
     </>
   );

@@ -44,6 +44,8 @@ import { DurableCommandJournal } from '../../platform/command/durableCommandJour
 import { dispatchOutbox, type OutboxConsumer } from '../../platform/command/outboxDispatcher';
 import { DeliveredEventLog } from '../../platform/command/deliveredEventLog';
 import { OPERATIONAL_READ_OPERATIONS, buildOperationalHistory } from '../../platform/command/operationalRead';
+import { computePlatformHealth } from '../../platform/command/platformHealth';
+import { runtimeIdentity } from '../../runtimeIdentity';
 import { ElectronClientAdapter, type ClientRequest } from '../../platform/adapter/clientAdapter';
 import type { Principal } from '../../platform/application/requestContext';
 import { registerShutdownFlush } from '../../shutdownFlush';
@@ -73,6 +75,11 @@ export interface PlatformCommandDispatchDeps {
    * surface includes delivered-event status. Absent ⇒ the read still returns command + outbox status.
    */
   deliveredLog?: DeliveredEventLog;
+  /**
+   * OPTIONAL authoritative runtime-initialized signal (ERP Session 34). Production passes
+   * `runtimeIdentity.isReady`. Absent ⇒ treated as ready (a bare injectable-seam harness is "up").
+   */
+  runtimeReady?: () => boolean;
 }
 
 let operationalReadSeq = 0;
@@ -142,6 +149,32 @@ export function buildPlatformCommandDispatchDef(deps: PlatformCommandDispatchDep
         const read = buildOperationalHistory(deps.journal, deps.deliveredLog, principal.tenantId, (request.payload ?? {}) as Record<string, unknown>);
         if (!read.ok) return fail('VALIDATION_ERROR', read.error);
         return { ok: true, data: read.data, requestId, correlationId, operation: request.operation };
+      }
+
+      // GOVERNED HEALTH / READINESS PROBE (ERP Session 34). A read-only operation that reports the
+      // platform's liveness + readiness from REAL runtime + persistence state. It never enters the
+      // command bus / journal.run, mints no event, writes no outbox entry, and mutates nothing. It is
+      // INFRASTRUCTURE-level: the response carries no tenant business data, so it is not tenant-scoped
+      // in content — but it is still operator-authenticated (`requireAuth` + `operations:read`), never
+      // a public endpoint (this is an Electron enterprise app, not a web service). Answers even when
+      // NOT ready — that is the point: the operator queries it to LEARN the platform is not ready.
+      if (request.operation === 'QueryPlatformHealth') {
+        const requestId = mintReadRequestId();
+        const correlationId = (request.correlationId ?? '').trim() || requestId;
+        const fail = (code: string, message: string): PlatformCommandDispatchResponse =>
+          ({ ok: false, error: { code, message }, requestId, correlationId, operation: request.operation });
+        const principal = deps.resolvePrincipal();
+        if (!principal || !principal.tenantId) return fail('UNAUTHENTICATED', 'Not authenticated.');
+        if (!principal.permissions.includes('operations:read')) return fail('UNAUTHORIZED', 'Health read is not permitted for this role.');
+        if (request.claimedTenantId && request.claimedTenantId !== principal.tenantId) {
+          return fail('TENANT_SCOPE_VIOLATION', 'Tenant claim does not match the resolved principal.');
+        }
+        const health = await computePlatformHealth({
+          journal: deps.journal,
+          ...(deps.deliveredLog ? { deliveredLog: deps.deliveredLog } : {}),
+          runtimeReady: deps.runtimeReady ?? ((): boolean => true),
+        });
+        return { ok: true, data: health as unknown as Record<string, unknown>, requestId, correlationId, operation: request.operation };
       }
 
       const r = await adapter.submit(request);
@@ -229,5 +262,7 @@ export function buildPlatformCommandHandlers(deps: PlatformCommandHandlerDeps): 
     };
   };
 
-  return [buildPlatformCommandDispatchDef({ registry: deps.registry, journal, audit, resolvePrincipal, outboxConsumer, deliveredLog })];
+  // ERP Session 34 — the authoritative runtime-initialized signal for the health/readiness probe.
+  const runtimeReady = (): boolean => runtimeIdentity.isReady();
+  return [buildPlatformCommandDispatchDef({ registry: deps.registry, journal, audit, resolvePrincipal, outboxConsumer, deliveredLog, runtimeReady })];
 }

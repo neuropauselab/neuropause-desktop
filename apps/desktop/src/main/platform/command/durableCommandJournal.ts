@@ -200,6 +200,11 @@ export class DurableCommandJournal {
       .filter((r) => (r.outbox.status === 'PENDING' || r.outbox.status === 'RETRYABLE') && (tenantId === undefined || r.tenantId === tenantId));
   }
 
+  /** READ-ONLY health probe (S34): is the durable journal file present + parseable? Never mutates. */
+  probeHealth(): Promise<{ ok: boolean; state: 'ok' | 'first-run' | 'corrupt' }> {
+    return this.store.probe();
+  }
+
   private async setOutbox(id: string, next: OutboxState): Promise<void> {
     const rec = this.store.get(id);
     if (!rec) return;
