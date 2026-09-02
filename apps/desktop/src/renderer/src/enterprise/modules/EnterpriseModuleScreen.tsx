@@ -47,6 +47,8 @@ import { Skeleton } from '@renderer/components/ui/Skeleton';
 import { Icon, type IconName } from '@renderer/components/ui/Icon';
 import { DocumentPanel } from './DocumentPanel';
 import { RelatedRecordsPanel } from './RelatedRecordsPanel';
+import { LinesEditor, linesEditorFor } from './LinesEditor';
+import { ReferenceField, referenceFieldFor } from './ReferenceField';
 
 type BadgeTone = 'neutral' | 'accent' | 'blue' | 'green' | 'orange' | 'purple' | 'teal' | 'pink';
 const BADGE_TONES = new Set<BadgeTone>([
@@ -532,7 +534,25 @@ function ModuleForm({
               help={f.help}
               error={errors[f.key]}
             >
-              {f.type === 'textarea' ? (
+              {/* S50 — census-registered procurement fields get structured editors in place
+                  of raw JSON / free-text ids. Both serialize into the SAME form-state key,
+                  so the submitted payload shape is unchanged (renderer-only retirement). */}
+              {linesEditorFor(module.id, f.key) ? (
+                <LinesEditor
+                  id={`f-${f.key}`}
+                  config={linesEditorFor(module.id, f.key)!}
+                  value={String(state[f.key] ?? '')}
+                  onChange={(v) => set(f.key, v)}
+                />
+              ) : referenceFieldFor(module.id, f.key) ? (
+                <ReferenceField
+                  id={`f-${f.key}`}
+                  config={referenceFieldFor(module.id, f.key)!}
+                  value={String(state[f.key] ?? '')}
+                  placeholder={f.placeholder}
+                  onChange={(v) => set(f.key, v)}
+                />
+              ) : f.type === 'textarea' ? (
                 <Textarea
                   id={`f-${f.key}`}
                   value={String(state[f.key] ?? '')}

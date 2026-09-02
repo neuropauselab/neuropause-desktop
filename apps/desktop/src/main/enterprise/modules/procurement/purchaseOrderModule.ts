@@ -151,6 +151,58 @@ export function createPurchaseOrderModule(
     hooks: {
       validate: (input: EnterpriseRecordInput) => {
         const result = validateEnterpriseRecordInput(PURCHASE_ORDER_DESCRIPTOR, input);
+        // ERP Session 50 — the PO status-machine census closed two measured edit-door holes.
+        // Entering `approved`/`sent` is ALREADY gated by the document-adapter approval engine
+        // (`canEnterStatus`, spend policy) at the update door, so it is deliberately NOT
+        // duplicated here. What that gate does not cover:
+        //   1. `received` — stamped ONLY by the Receive Goods conversion (raw store write,
+        //      hooks never re-enter). Hand-setting it fakes a receipt-linked state; un-setting
+        //      it misstates a physically received order and re-arms `cancel`, which the action
+        //      itself refuses for received orders.
+        //   2. approved/sent → draft — a silent approval reversal (the S49 PR precedent).
+        //      The defined correction path is Cancel + recreate; cancelled → draft stays FREE
+        //      as the recovery path (no un-cancel action exists — same reasoning as the PR
+        //      resubmit lane), and draft → cancelled stays free (identical semantics to the
+        //      ungated `cancel` action). A status-less stored row (importer shape) is exempt.
+        if (result.ok && input.recordId) {
+          const prior = store.get(input.recordId);
+          const priorStatus = str(prior?.fields.status ?? '');
+          const next = str(result.values.status);
+          if (prior && priorStatus !== '' && next !== priorStatus) {
+            if (priorStatus === 'received' || next === 'received') {
+              return {
+                ok: false,
+                values: result.values,
+                errors: { status: 'Goods are received through the Receive Goods action — a receipt cannot be hand-set or un-set by editing the order.' },
+              };
+            }
+            if ((priorStatus === 'approved' || priorStatus === 'sent') && next === 'draft') {
+              return {
+                ok: false,
+                values: result.values,
+                errors: { status: 'An approved purchase order cannot be silently reverted to draft — use the Cancel action and create a new order.' },
+              };
+            }
+          }
+          // `convertedReceipt` is the Receive-Goods IDEMPOTENCY TOKEN (conversion.ts refuses a
+          // second receipt only through it). It is readOnly in the RENDERER only — the S45
+          // formToInput omits it, and the update door merges the stored value, so a normal edit
+          // never reaches this guard. A crafted payload that CLEARS it on a received order
+          // re-arms Receive Goods (a second receipt → post → duplicated movements); one that
+          // SETS it fakes a receipt linkage and blocks the legitimate receive. Both refused.
+          // The conversion itself writes via the raw store and never re-enters validate.
+          if (prior) {
+            const priorReceipt = str(prior.fields.convertedReceipt ?? '');
+            const nextReceipt = str(result.values.convertedReceipt ?? '');
+            if (nextReceipt !== priorReceipt) {
+              return {
+                ok: false,
+                values: result.values,
+                errors: { convertedReceipt: 'The goods-receipt link is stamped by the Receive Goods action and cannot be edited.' },
+              };
+            }
+          }
+        }
         if (result.ok) {
           // ERP Session 16 — a multi-line PO derives its subtotal from its lines
           // (Σ ordered qty × unit price), so the deterministic total below is the

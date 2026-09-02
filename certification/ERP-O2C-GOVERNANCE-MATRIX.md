@@ -1,4 +1,21 @@
-# ERP O2C GOVERNANCE MATRIX — Session 45 (+ S46 closures, S49 buy-side)
+# ERP O2C GOVERNANCE MATRIX — Session 45 (+ S46 closures, S49 buy-side, S50 PO hardening)
+
+## S50 UPDATE — the PO status machine is CENSUSED and its measured holes fenced (see SESSION50-PROCUREMENT-SURFACE-HARDENING.md)
+- S49's "PO status machine remains descriptive/legacy — YELLOW, no economic bypass found" is
+  SUPERSEDED BY MEASUREMENT (§2 #21): the census found the edit door composed with `receiveGoods`
+  into a real economic path (hand-set `received` from a never-approved PO → conversion → GR → post
+  → real stock + GRNI) and `convertedReceipt` (the receive idempotency token) edit-clearable →
+  double movements. **NOW FENCED** at PO validate: `received` crossings refused both directions;
+  approved/sent→draft reversal refused (releases budget commitment silently; Cancel + recreate is
+  the loud path); `convertedReceipt` edit-immutable. `cancelled→draft` (recovery) and
+  `draft→cancelled` stay FREE; entry into approved/sent stays with the LIVE spend-policy
+  `canEnterStatus` gate — the only live spend-policy enforcement for POs (split-door finding
+  F-S50-2, recorded).
+- REFERENCE PICKERS (census-backed, renderer-only): supplierRef/budgetRef/contractRef on POs,
+  sourcePurchaseOrder + vendor on bills, billRef on vendor payments, supplier on POs — canonical
+  ids via the existing tenant-scoped list door; name-keyed fields stay free text with suggestions.
+- LINES (JSON) textarea RETIRED for PR/PO/bill/GR — structured editor over the SAME canonical
+  `fields.lines` JSON (DocumentPanel adoption measured as a desync hazard and refused).
 
 ## S49 UPDATE — the PROCUREMENT chain joins the governed spine (see SESSION49-PROCUREMENT-GOVERNED-UI-CLOSURE.md)
 - PR create/submit/approve/reject/convert · GR post · bill approve · CLEARED vendor payment: all now

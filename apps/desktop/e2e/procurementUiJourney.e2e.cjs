@@ -85,11 +85,17 @@ async function main() {
     await sleep(500);
     assert(true, 'Procurement family reached');
 
-    // ── governed PR create (quick action) ──
+    // ── governed PR create (quick action) — S50: structured lines, no JSON typed ──
     await clickByName('New Purchase Request');
     const field = modal().getByLabel(/^Request #/i).first();
     await field.waitFor({ state: 'visible', timeout: 8000 });
     await field.fill('PR-PILOT-1');
+    await modal().getByRole('button', { name: 'Add line', exact: true }).click();
+    await modal().getByLabel('Line 1 SKU').fill('SKU-PILOT');
+    await modal().getByLabel('Line 1 quantity').fill('10');
+    await modal().getByLabel('Line 1 unit price').fill('5');
+    await modal().getByText(/Subtotal \(derived\)/i).waitFor({ state: 'visible', timeout: 5000 });
+    assert(true, 'S50: structured line entered through the editor — no JSON typed');
     await modal().getByRole('button', { name: 'Create', exact: true }).click();
     await win.getByText('PR-PILOT-1').first().waitFor({ state: 'visible', timeout: 10_000 });
     assert(true, 'purchase request created (governed CreatePurchaseRequest): PR-PILOT-1');
@@ -116,6 +122,15 @@ async function main() {
     else await win.getByRole('button', { name: /^Purchase Orders$/ }).first().click({ timeout: 8000 });
     await win.getByText(/PO-|PR-PILOT-1/).first().waitFor({ state: 'visible', timeout: 10_000 });
     assert(true, 'the created Purchase Order is visible in Purchase Orders');
+
+    // ── S50: the PO carries the CONVERTED LINES (total derived main-side from the PR's
+    //    structured lines: 10 × 5 = 50) and the Source Request back-link ──
+    await win.getByText('PO-PR-PILOT-1').first().click();
+    await modal().getByText(/50\.00/).first().waitFor({ state: 'visible', timeout: 10_000 });
+    assert(true, 'S50: PO total 50.00 derived from the structured lines carried PR → PO');
+    await modal().getByText(/Source Request/i).first().waitFor({ state: 'visible', timeout: 8000 });
+    assert(true, 'S50: PO detail shows the Source Request reference linkage');
+    await win.keyboard.press('Escape');
 
     out('RESULT', 'REAL-USER PROCUREMENT JOURNEY COMPLETED BY CLICKS ALONE — zero developer intervention');
   } catch (e) {
