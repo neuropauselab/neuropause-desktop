@@ -1,7 +1,24 @@
-# ERP O2C GOVERNANCE MATRIX — Session 45
+# ERP O2C GOVERNANCE MATRIX — Session 45 (+ S46 closures)
 
 **HEAD at certification:** see ERP-SESSION45-O2C-REAL-USER-CERTIFICATION.md · All rows measured from
 source (file:line in the session report), not asserted. Vocabulary is the repository's own.
+
+## S46 UPDATE — three material adversarial-door rows CLOSED (see ERP-SESSION46-O2C-UNCONDITIONAL-PILOT-GO.md)
+
+- **warehouse-shipping `ship` → order status:** was MATERIAL (direct `store.update` hand-jump
+  pending→fulfilled, bypassing the status machine). **NOW GREEN** — routed through the canonical
+  `orderActionPatch` table (pending→shipped→fulfilled); illegal/closed/cancelled orders refused.
+- **legacy `enterprise:module.action` accepts governed keys:** was KNOWN LIMIT ("no main-side
+  boundary"). **NOW GREEN** — a server-side, unforgeable `INTERNAL_ACTION_ORIGIN` token admits the
+  command bus only; the renderer path is `.strict()`-parsed and cannot forge it; external governed-key
+  calls refused. RBAC unchanged.
+- **payment pending→cleared EDIT (row 18):** was YELLOW (create pending → edit cleared mints cash GL).
+  **NOW GREEN (fenced)** — the payment validate hook refuses the into-`cleared` edit; clearing goes
+  through the governed `ReceiveCustomerPayment`. The `ClearCustomerPayment` policy question stays OPEN.
+
+**Still YELLOW / pilot-fenced (defined-legacy, memo-tracked, NOT happy-path bypasses):** issued-invoice
+economic-field edit GL adjustments; issued-invoice / cleared-payment DELETE GL reversals; importer
+validate-bypass ingestion. **Remaining RED on the pilot-critical O2C workflow: none.**
 
 Legend — **GREEN**: full governed path (UI → preload → `platform:command.dispatch` → Application
 Boundary → command bus → per-command RBAC → durable journal/idempotency → event → outbox → audit →

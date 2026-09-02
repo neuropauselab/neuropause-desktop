@@ -50,3 +50,20 @@ the legacy `enterprise:module.*` doors (RBAC + module guards, but no command jou
 All three remain exactly as the repository defines them — reachable, RBAC-guarded, module-guarded,
 audited by the bridge — and are excluded from the pilot-critical GREEN set with operators informed.
 Nothing was silently narrowed or invented.
+
+## S46 UPDATE (still OPEN)
+
+- **Payment clearing (§3): MECHANICALLY FENCED, policy still OPEN.** S46 closes the "create pending →
+  edit to `cleared`" shortcut: the payment `validate` hook now REFUSES an edit-door transition INTO
+  `cleared` (the GL-booking state), forcing clearing through the governed `ReceiveCustomerPayment`
+  command. The policy question — should there be a distinct governed `ClearCustomerPayment` for an
+  existing pending row — stays OPEN. Reversal/void of a cleared payment is untouched (this memo).
+- **Warehouse shipment→order status (§2): CLOSED (technical).** S46 routes the warehouse `ship`
+  action's linked-order status change through the canonical `orderActionPatch` table
+  (pending→shipped→fulfilled), never a hand-set jump; an illegal/closed/cancelled order is refused.
+  The remaining shipment-DOCUMENT governance question (do shipment docs become governed commands)
+  stays OPEN.
+- **Issued-invoice economic-field edits + issued-invoice DELETE: STILL OPEN, PILOT-FENCED.** These are
+  DEFINED `glPosting` behaviors (drift-correction adjustments / reversal). S46 did NOT mechanically
+  block them — blocking defined accounting behavior requires the reversal-policy decision. They stay a
+  pilot fence (no economic-field edits / no deletes on issued invoices) until this memo is decided.

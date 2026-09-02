@@ -41,7 +41,7 @@ import {
   type EnterprisePermission,
   type PlatformEventInput,
 } from '@neuropause/shared';
-import { EnterpriseModuleRegistry, buildModuleHandlers, createLifecycleEmitter } from './moduleRegistry';
+import { EnterpriseModuleRegistry, INTERNAL_ACTION_ORIGIN, buildModuleHandlers, createLifecycleEmitter } from './moduleRegistry';
 import { globalRef, readCorrelation, traceTransactionGraph } from './transactionGraph';
 import type { SecureHandlerDef } from '../../ipc/secureBridge';
 import { createQuoteModule } from '../modules/sales/quoteModule';
@@ -101,7 +101,7 @@ function handler(handlers: SecureHandlerDef[], channel: string): (p: unknown) =>
 const create = (h: SecureHandlerDef[], moduleId: string, fields: Record<string, unknown>) =>
   handler(h, IpcChannel.EnterpriseModuleCreate)({ moduleId, fields }) as Promise<{ ok: boolean; record?: EnterpriseEntity; errors?: Record<string, string> }>;
 const act = (h: SecureHandlerDef[], moduleId: string, id: string, action: string) =>
-  handler(h, IpcChannel.EnterpriseModuleAction)({ moduleId, id, action }) as Promise<{ ok: boolean; message?: string; error?: string }>;
+  handler(h, IpcChannel.EnterpriseModuleAction)({ moduleId, id, action, origin: INTERNAL_ACTION_ORIGIN }) as Promise<{ ok: boolean; message?: string; error?: string }>;
 
 beforeEach(() => {
   rec = { publish: [], audit: [], broadcast: [], authorized: [] };

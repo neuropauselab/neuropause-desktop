@@ -26,7 +26,7 @@ import {
   type PlatformEventInput,
 } from '@neuropause/shared';
 import type { SecureHandlerDef } from '../../../ipc/secureBridge';
-import { EnterpriseModuleRegistry, buildModuleHandlers } from '../../framework';
+import { EnterpriseModuleRegistry, INTERNAL_ACTION_ORIGIN, buildModuleHandlers } from '../../framework';
 import { createProductModule } from './productModule';
 import { createWarehouseModule } from './warehouseModule';
 import { createStockMovementModule } from './stockMovementModule';
@@ -316,7 +316,7 @@ describe('Sales integration (orders reserve + ship stock via movements)', () => 
     expect(p).toMatchObject({ currentStock: 100, reservedStock: 10, availableStock: 90 });
 
     // Ship → issue 10 + release the reservation
-    const shipped = (await handler(IpcChannel.EnterpriseModuleAction)({ moduleId: 'sales-orders', id: orderId, action: 'ship' })) as { ok: boolean };
+    const shipped = (await handler(IpcChannel.EnterpriseModuleAction)({ moduleId: 'sales-orders', id: orderId, action: 'ship', origin: INTERNAL_ACTION_ORIGIN })) as { ok: boolean };
     expect(shipped.ok).toBe(true);
     p = productFromRecord(products.store.get(productId) as EnterpriseEntity);
     expect(p).toMatchObject({ currentStock: 90, reservedStock: 0, availableStock: 90 });

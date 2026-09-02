@@ -17,6 +17,7 @@ import {
   PICK_LISTS_MODULE_ID,
   SHIPPING_MODULE_ID,
   SHIPPING_KIND,
+  orderActionPatch,
   orderComputedFields,
   orderFromRecord,
   shippingFromRecord,
@@ -29,25 +30,46 @@ import {
 } from '../../framework';
 import { netReserved, postIssue, postReservationRelease } from './warehouseMovements';
 
-/** Close the loop: mark the shipment's Sales Order fulfilled (status write only). */
-async function fulfillLinkedOrder(ctx: EnterpriseModuleActionContext, salesOrderId: string, quantity: number): Promise<void> {
+/**
+ * Close the loop: advance the shipment's Sales Order toward `fulfilled` — through the CANONICAL,
+ * guarded status machine, NEVER a hand-set status.
+ *
+ * ERP Session 46 — the S45 adversarial sweep found this path hand-set `status: 'fulfilled'` via a
+ * direct cross-module `store.update`, jumping `pending → fulfilled` — a transition the order status
+ * machine FORBIDS (the legal chain is pending → shipped → fulfilled). That silently produced an order
+ * in a state the lifecycle actions could never reach, and it bypassed the S45 edit guard entirely.
+ *
+ * The fix reuses `orderActionPatch` — the ONE canonical transition table the order module's own
+ * lifecycle actions use — walking the legal chain (ship, then fulfill) and applying only guarded
+ * patches. A `deleted`/`closed`/`cancelled`/already-`fulfilled` order yields NO legal advance and is
+ * left untouched: the machine refuses the jump the old code forced. Stock was already issued by the
+ * shipment itself, so this drives STATUS ONLY (no `ship` side-effect, no double issue). The write
+ * still asserts `sales:manage`.
+ */
+async function advanceLinkedOrderToFulfilled(ctx: EnterpriseModuleActionContext, salesOrderId: string, quantity: number): Promise<void> {
   if (!salesOrderId) return;
   const ordersModule = ctx.moduleFor(ORDERS_MODULE_ID);
   if (!ordersModule) return;
   await ordersModule.store.load();
-  const rec = ordersModule.store.get(salesOrderId);
+  let rec = ordersModule.store.get(salesOrderId);
   if (!rec || rec.status === 'deleted') return;
-  const order = orderFromRecord(rec);
-  if (order.status !== 'pending' && order.status !== 'shipped') return; // only open orders
   ctx.authorize(ordersModule.descriptor.permissions.write); // requires sales:manage
-  const patch = { status: 'fulfilled', fulfilledQty: quantity || order.orderedQty, deliveredDate: ctx.now().slice(0, 10) };
-  const merged = orderFromRecord({ ...rec, fields: { ...rec.fields, ...patch } });
-  const updated = ordersModule.store.update(rec.id, {
-    fields: { ...patch, ...orderComputedFields(merged) },
-    actor: ctx.actor(),
-    now: ctx.now(),
-  });
-  if (updated) ctx.emit(ordersModule, 'updated', updated);
+  for (const step of ['ship', 'fulfill'] as const) {
+    const order = orderFromRecord(rec);
+    if (order.status === 'fulfilled') break;
+    const patch = orderActionPatch(step, order, ctx.now()); // null ⇒ illegal from here → never forced
+    if (!patch) continue;
+    if (step === 'fulfill' && quantity) patch.fulfilledQty = quantity;
+    const merged = orderFromRecord({ ...rec, fields: { ...rec.fields, ...patch } });
+    const updated = ordersModule.store.update(rec.id, {
+      fields: { ...patch, ...orderComputedFields(merged) },
+      actor: ctx.actor(),
+      now: ctx.now(),
+    });
+    if (!updated) break;
+    ctx.emit(ordersModule, 'updated', updated);
+    rec = updated;
+  }
 }
 
 export const SHIP_ACTION = 'ship';
@@ -149,8 +171,9 @@ export function createShippingModule(storePath: string): EnterpriseModule {
             }),
             ctx,
           );
-          // Close the loop — mark the linked Sales Order fulfilled (status only, no re-issue).
-          await fulfillLinkedOrder(ctx, shipment.salesOrder, shipment.quantity);
+          // Close the loop — advance the linked Sales Order through the CANONICAL status machine
+          // (pending → shipped → fulfilled), status only, no re-issue. Never a hand-set jump (S46).
+          await advanceLinkedOrderToFulfilled(ctx, shipment.salesOrder, shipment.quantity);
           return { ok: true, message: `Shipped ${shipment.quantity} of ${shipment.product} from ${shipment.warehouse}.` };
         }
 

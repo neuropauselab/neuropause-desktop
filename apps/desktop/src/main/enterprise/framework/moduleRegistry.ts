@@ -36,8 +36,10 @@ import type {
   DocumentLinesResult,
   DocumentLinesView,
 } from '@neuropause/shared';
+import { randomUUID } from 'node:crypto';
 import {
   EmptyRequest,
+  FINANCE_MODULE_ID,
   IpcChannel,
   ModuleActionRequest,
   ModuleCreateRequest,
@@ -52,9 +54,38 @@ import {
   ModuleApproveRequest,
   ModuleLinesRequest,
   ModuleSetLinesRequest,
+  ORDERS_MODULE_ID,
+  QUOTES_MODULE_ID,
   deriveRecordTitle,
 } from '@neuropause/shared';
 import type { SecureHandlerDef } from '../../ipc/secureBridge';
+
+/**
+ * ERP Session 46 — the ORIGIN BOUNDARY for actions that now have a governed command equivalent.
+ *
+ * S43–S45 routed the O2C lifecycle actions (Ship / Generate-Invoice / Issue / Convert-Quote) through the
+ * governed `platform:command.dispatch` spine, but the RENDERER routing is only a courtesy: the legacy
+ * `enterprise:module.action` door still accepted those same verbs from any authorized dispatcher, so a
+ * caller could bypass the journal/idempotency/event/outbox/audit by hitting the legacy channel directly.
+ *
+ * The fix is a SERVER-SIDE origin discriminator, never a renderer-provided flag:
+ *   • `INTERNAL_ACTION_ORIGIN` is a per-process random token, module-private (NOT in `@neuropause/shared`,
+ *     so no renderer/agent can import it) and unguessable.
+ *   • The command bus (and only the command bus) passes it when it internally invokes `moduleAction` for a
+ *     governed key — it calls `def.handler` DIRECTLY, so the token reaches the handler.
+ *   • The renderer path is `ModuleActionRequest.parse()` at the secure bridge, and that schema is
+ *     `.strict()`, so an `origin` field on a renderer request is REJECTED outright — the marker cannot be
+ *     forged across the IPC boundary.
+ * Result: the governed keys execute ONLY through the command bus; every external invocation is refused.
+ */
+export const INTERNAL_ACTION_ORIGIN = `internal:${randomUUID()}`;
+
+/** Actions that MUST go through the governed command path — refused on the legacy door from an external caller. */
+const GOVERNED_ONLY_ACTIONS: Record<string, ReadonlySet<string>> = {
+  [ORDERS_MODULE_ID]: new Set(['ship', 'convertToInvoice']),
+  [FINANCE_MODULE_ID]: new Set(['issue']),
+  [QUOTES_MODULE_ID]: new Set(['convertToOrder']),
+};
 import { ENTERPRISE_CHANNEL_PERMISSIONS } from '../authzGate';
 import type {
   EnterpriseModule,
@@ -674,6 +705,17 @@ export function buildModuleHandlers(
         ctx.authorize(module.descriptor.permissions.write);
         if (!module.hooks.runAction || !(module.descriptor.actions ?? []).some((a) => a.key === r.action)) {
           return { ok: false, error: `Unknown action "${r.action}".` };
+        }
+        // ERP Session 46 — the ORIGIN BOUNDARY. A now-governed action executes ONLY through the command
+        // bus, which passes `INTERNAL_ACTION_ORIGIN` by calling this handler directly. An EXTERNAL caller
+        // (renderer / agent / REST — whose payload was `.strict()`-parsed at the bridge and therefore
+        // CANNOT carry an `origin` field) is refused, so the governed journal/idempotency/event/outbox/
+        // audit path is the only way to perform it. RBAC still applied above; this is an ADDITIONAL gate.
+        if (
+          GOVERNED_ONLY_ACTIONS[r.moduleId]?.has(r.action) &&
+          (p as { origin?: unknown }).origin !== INTERNAL_ACTION_ORIGIN
+        ) {
+          return { ok: false, error: `"${r.action}" must be performed through its governed command, not the legacy action door.` };
         }
         await module.store.load();
         const record = module.store.get(r.id);

@@ -221,6 +221,23 @@ export function createPaymentModule(
             values: result.values,
           };
         }
+        // ERP Session 46 — the transition INTO `cleared` books real GL (Dr Cash / Cr AR via the onChange
+        // reconciler), so it must go through the governed `ReceiveCustomerPayment` command, never a plain
+        // edit. An EDIT (recordId present ⇒ the update door) that moves a NON-cleared payment into `cleared`
+        // is refused — closing the "create pending → edit to cleared" shortcut that minted cash GL around
+        // the command spine. A cleared receipt created through the governed command has no prior record on
+        // that path and is unaffected; a status-less importer row is not compared; voiding/reversal stays a
+        // separate, memo-tracked policy decision.
+        if (input.recordId) {
+          const priorStatus = String(store.get(input.recordId)?.fields.status ?? '');
+          if (priorStatus !== '' && priorStatus !== 'cleared' && String(result.values.status) === 'cleared') {
+            return {
+              ok: false,
+              errors: { status: 'Clearing a payment books cash — record it through New Payment (cleared), not by editing the status.' },
+              values: result.values,
+            };
+          }
+        }
         const payment = projectValues(result.values);
         const errors: Record<string, string> = {};
 

@@ -27,6 +27,7 @@ import type { TenantScope } from '@neuropause/shared';
 import { CUSTOMERS_MODULE_ID, FINANCE_MODULE_ID, GOODS_RECEIPTS_MODULE_ID, IpcChannel, ORDERS_MODULE_ID, PAYMENTS_MODULE_ID, PURCHASE_REQUESTS_MODULE_ID, QUOTES_MODULE_ID, VENDOR_BILLS_MODULE_ID, VENDOR_PAYMENTS_MODULE_ID } from '@neuropause/shared';
 import {
   buildModuleHandlers,
+  INTERNAL_ACTION_ORIGIN,
   type EnterpriseModuleContext,
   type EnterpriseModuleRegistry,
 } from '../../enterprise/framework';
@@ -100,7 +101,11 @@ async function route(cmd: DomainCommand, deps: CommandDispatchDeps, call: Handle
     id: string | undefined,
     act: string,
   ): Promise<{ ok: boolean; message?: string; error?: string }> =>
-    (await call(IpcChannel.EnterpriseModuleAction, { moduleId, id, action: act })) as {
+    // ERP Session 46 — stamp the SERVER-SIDE internal-origin token so the legacy action door admits a
+    // now-governed action from the command bus (and ONLY the command bus). The token is module-private and
+    // unforgeable; the renderer path is `.strict()`-parsed and cannot carry it, so external callers are
+    // refused. Harmless on non-governed actions (the door only checks the token for the governed keys).
+    (await call(IpcChannel.EnterpriseModuleAction, { moduleId, id, action: act, origin: INTERNAL_ACTION_ORIGIN })) as {
       ok: boolean;
       message?: string;
       error?: string;
