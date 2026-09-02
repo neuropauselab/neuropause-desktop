@@ -43,6 +43,7 @@ import { authService } from '../../auth/authService';
 import { DurableCommandJournal } from '../../platform/command/durableCommandJournal';
 import { dispatchOutbox, type OutboxConsumer } from '../../platform/command/outboxDispatcher';
 import { DeliveredEventLog } from '../../platform/command/deliveredEventLog';
+import { OPERATIONAL_READ_OPERATIONS, buildOperationalHistory } from '../../platform/command/operationalRead';
 import { ElectronClientAdapter, type ClientRequest } from '../../platform/adapter/clientAdapter';
 import type { Principal } from '../../platform/application/requestContext';
 import { registerShutdownFlush } from '../../shutdownFlush';
@@ -67,7 +68,15 @@ export interface PlatformCommandDispatchDeps {
    * idempotent). Absent ⇒ no drain (the S17–S30 injectable-seam tests keep their exact behavior).
    */
   outboxConsumer?: OutboxConsumer;
+  /**
+   * OPTIONAL S31 delivered-event sink (ERP Session 32). When provided, the governed operational READ
+   * surface includes delivered-event status. Absent ⇒ the read still returns command + outbox status.
+   */
+  deliveredLog?: DeliveredEventLog;
 }
+
+let operationalReadSeq = 0;
+const mintReadRequestId = (): string => `oread_${Date.now().toString(36)}_${(operationalReadSeq++).toString(36)}`;
 
 /**
  * Build the `platform:command.dispatch` SecureHandlerDef from FULLY-INJECTED deps. This is the
@@ -111,7 +120,31 @@ export function buildPlatformCommandDispatchDef(deps: PlatformCommandDispatchDep
     requireAuth: true,
     handler: async (req: unknown): Promise<PlatformCommandDispatchResponse> => {
       // `req` was validated against `PlatformCommandDispatchRequest` by the bridge before this call.
-      const r = await adapter.submit(req as ClientRequest);
+      const request = req as ClientRequest;
+
+      // GOVERNED OPERATIONAL READ (ERP Session 32). A read operation is answered on a READ branch that
+      // NEVER enters the command bus / `journal.run` — it mints no domain event, commits no durable
+      // transaction, writes no outbox entry, mutates nothing. It still enforces the full governed
+      // posture: server-resolved principal, RBAC (`operations:read`), tenant derived from the principal
+      // (a renderer-claimed tenant is validated and rejected on mismatch), bounded pagination, and a
+      // sanitized projection that never leaks payloads/secrets.
+      if (OPERATIONAL_READ_OPERATIONS.has(request.operation)) {
+        const requestId = mintReadRequestId();
+        const correlationId = (request.correlationId ?? '').trim() || requestId;
+        const fail = (code: string, message: string): PlatformCommandDispatchResponse =>
+          ({ ok: false, error: { code, message }, requestId, correlationId, operation: request.operation });
+        const principal = deps.resolvePrincipal();
+        if (!principal || !principal.tenantId) return fail('UNAUTHENTICATED', 'Not authenticated.');
+        if (!principal.permissions.includes('operations:read')) return fail('UNAUTHORIZED', 'Operational read is not permitted for this role.');
+        if (request.claimedTenantId && request.claimedTenantId !== principal.tenantId) {
+          return fail('TENANT_SCOPE_VIOLATION', 'Tenant claim does not match the resolved principal.');
+        }
+        const read = buildOperationalHistory(deps.journal, deps.deliveredLog, principal.tenantId, (request.payload ?? {}) as Record<string, unknown>);
+        if (!read.ok) return fail('VALIDATION_ERROR', read.error);
+        return { ok: true, data: read.data, requestId, correlationId, operation: request.operation };
+      }
+
+      const r = await adapter.submit(request);
       // PRODUCTION OUTBOX DELIVERY (ERP Session 31): after a governed write commits its durable
       // outbox entry, drain PENDING/RETRYABLE deliveries through the existing at-least-once relay.
       // BEST-EFFORT AND FAIL-OPEN FOR THE BUSINESS COMMAND: a delivery failure must never fail or
@@ -196,5 +229,5 @@ export function buildPlatformCommandHandlers(deps: PlatformCommandHandlerDeps): 
     };
   };
 
-  return [buildPlatformCommandDispatchDef({ registry: deps.registry, journal, audit, resolvePrincipal, outboxConsumer })];
+  return [buildPlatformCommandDispatchDef({ registry: deps.registry, journal, audit, resolvePrincipal, outboxConsumer, deliveredLog })];
 }

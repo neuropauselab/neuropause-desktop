@@ -136,6 +136,7 @@ import type {
   PlatformEventCategory,
   NotificationInboxEvent,
   NotificationsPrefsSetRequest,
+  PlatformCommandDispatchResponse,
 } from '@neuropause/shared';
 
 type OAuthProviderId = Exclude<AuthProviderId, 'email'>;
@@ -554,6 +555,24 @@ export const ipc = {
         resourceId: resource?.id,
         resourceName: resource?.name,
       }),
+    /**
+     * ERP Session 32 — the governed operational READ surface. A tenant-safe, bounded, sanitized read
+     * of platform command history + outbox/delivery status over the durable command journal + the S31
+     * delivered-event sink. Reuses the EXISTING `platform:command.dispatch` channel (already on the
+     * preload allowlist, FG-ERP-LIVE-IPC) with a READ operation the main handler answers WITHOUT the
+     * command bus and WITHOUT any durable write. Uses `rawInvoke` (the `m365Propose` precedent) because
+     * the channel has no `IpcResponseMap` entry and adding one would touch FROZEN `packages/shared`.
+     */
+    operationalHistory: (params: { limit?: number; outboxStatus?: string } = {}): Promise<PlatformCommandDispatchResponse> => {
+      const settle = perfRecorder.ipcStart(String(IpcChannel.PlatformCommandDispatch));
+      const promise = rawInvoke(IpcChannel.PlatformCommandDispatch, {
+        operation: 'QueryOperationalHistory',
+        payload: params,
+        idempotencyKey: `oread-${Date.now().toString(36)}`,
+      }) as Promise<PlatformCommandDispatchResponse>;
+      promise.then(settle, settle);
+      return promise;
+    },
   },
   timeline: {
     query: (q?: TimelineQuery) => invoke(IpcChannel.TimelineQuery, q ?? {}),
