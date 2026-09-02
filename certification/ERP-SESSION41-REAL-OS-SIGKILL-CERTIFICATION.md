@@ -80,10 +80,31 @@ New: `e2e/sigkillCrashChild.ts` + `e2e/sigkillCrashRecovery.e2e.cjs` (in-session
 
 Confirmed unchanged and singular: ONE Electron application, ONE secure preload bridge, ONE `platform:command.dispatch` channel, ONE Application Boundary, ONE Command Bus, ONE `DurableCommandJournal`, ONE intent/idempotency mechanism, ONE outbox, ONE `DeliveredEventLog`, ONE `DurableJsonStore` primitive, ONE S38 boot reconciliation path, ONE S40 intent recovery path, ONE audit path. No new database / WAL / queue / lock framework / transaction engine / recovery engine / shadow store / microservice — this session added only test harnesses.
 
+## 17b · PACKAGED ELECTRON EXECUTION (macOS operator run — EXECUTED)
+
+Run by the operator on **macOS/arm64, Electron via node v20.20.2**, against a real build
+(`out-seam-s41/main/index.js`, `electron-vite build`):
+- **In-session node harness re-run on macOS: `92 passed, 0 failed`** — the platform-command core
+  certification reproduced exactly on macOS (identical to the Linux run).
+- **Packaged Electron phase 1:** `PASS packaged app booted` · `PASS governed IPC door reachable` ·
+  `[sending real OS SIGKILL to Electron pid 78116]` — a REAL OS `SIGKILL` was delivered to the REAL
+  packaged Electron process.
+- **Packaged Electron phase 2:** `PASS packaged app RELAUNCHED cleanly after real OS SIGKILL (survived;
+  no crash-loop on a corrupt store)` → **`PACKAGED RESULT: PASS`**. The governed health read is
+  auth-gated on a fresh local profile (`ok:false`), which is expected and not a corruption signal.
+
+**Honest scope of the packaged run:** phase 2 was launched on a fresh profile dir, so it certifies that
+the packaged Electron process SURVIVES a real SIGKILL and reboots cleanly (the S38/S40 boot
+reconciliation runs without crash-looping). It does NOT, by itself, exercise same-profile recovery of
+pending governed durable state — because a fresh local profile is auth-gated and holds no governed
+command state to recover. That deep recovery correctness (same-directory, all windows, no duplicate
+effect) is certified by the node harness against the IDENTICAL production code, on both Linux and macOS.
+
 ## 18 · FINAL GREEN / YELLOW / GRAY STATUS
 
 - 🟢 **GREEN** — the platform-command core (journal + intent + outbox + delivered sink) survives a REAL OS `SIGKILL` at every crash window with the expected S38/S40 semantics: no duplicate business effect, no duplicate committed command, no duplicate delivery, durable intent, preserved tenant, valid JSON, exactly-once *domain effect* per idempotency key, at-least-once delivery with an idempotent consumer, explicit HOLD/RECONCILIATION_REQUIRED for the ambiguous dual-write case. Stable across 5 repetitions.
-- 🟡 **YELLOW (residual, operator step)** — the REAL PACKAGED ELECTRON GUI process kill on macOS. Cannot run off-macOS (the Electron binary is macOS); `e2e/sigkillPackaged.e2e.cjs` is provided and syntax-valid, to be executed on the Mac (commands in §Mac handoff). This closes the "real kill" concern for the production persistence/recovery CODE now; the packaged-GUI wrapper is the remaining acceptance step.
+- 🟢 **GREEN (packaged Electron process, EXECUTED on macOS)** — the REAL packaged Electron process was killed with a REAL OS `SIGKILL` (pid 78116) and the packaged app **relaunched cleanly** (survived, no crash-loop on a corrupt store): `PACKAGED RESULT: PASS`. The standing YELLOW ("real OS SIGKILL packaged-runtime") is **CLOSED**: a real kill of the real packaged Electron process is proven, and the deep S38/S40 recovery semantics are certified by the node harness against the identical production code on both platforms.
+- ⚪ **GRAY (narrow, honest residual)** — same-profile recovery of *pending governed durable state* inside the packaged Electron app after a kill is not exercised end-to-end, because a fresh local profile is auth-gated (no governed command state to recover). It is covered at the code level by the node harness; a full packaged version would need an authenticated account fixture (a future integration test, not a crash-recovery defect).
 - ⚪ **GRAY** — none.
 - 🔴 **RED** — none.
 
