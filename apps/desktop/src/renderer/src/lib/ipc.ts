@@ -645,7 +645,15 @@ export const ipc = {
         | 'ShipSalesOrder'
         | 'InvoiceSalesOrder'
         | 'IssueCustomerInvoice'
-        | 'ConvertQuoteToSalesOrder',
+        | 'ConvertQuoteToSalesOrder'
+        // ERP Session 49 — the procurement lifecycle joins the same governed spine (all five
+        // commands existed since S17/S23/S25; S49 wires the production UI to them).
+        | 'SubmitPurchaseRequest'
+        | 'ApprovePurchaseRequest'
+        | 'RejectPurchaseRequest'
+        | 'ConvertPurchaseRequestToPO'
+        | 'PostGoodsReceipt'
+        | 'ApproveSupplierInvoice',
       recordId: string,
       idempotencyKey: string,
     ): Promise<PlatformCommandDispatchResponse> => {
@@ -672,6 +680,43 @@ export const ipc = {
       const settle = perfRecorder.ipcStart(String(IpcChannel.PlatformCommandDispatch));
       const promise = rawInvoke(IpcChannel.PlatformCommandDispatch, {
         operation: 'ReceiveCustomerPayment',
+        payload: fields,
+        idempotencyKey,
+      }) as Promise<PlatformCommandDispatchResponse>;
+      promise.then(settle, settle);
+      return promise;
+    },
+    /**
+     * GOVERNED PURCHASE REQUEST CREATE (ERP Session 49) — the buy-side twin of the S43 Sales
+     * Order create. `status` is forced to `draft` by the command route (a client can never mint
+     * a pre-approved request); tenant + actor are server-resolved.
+     */
+    createPurchaseRequest: (
+      fields: Record<string, unknown>,
+      idempotencyKey: string,
+    ): Promise<PlatformCommandDispatchResponse> => {
+      const settle = perfRecorder.ipcStart(String(IpcChannel.PlatformCommandDispatch));
+      const promise = rawInvoke(IpcChannel.PlatformCommandDispatch, {
+        operation: 'CreatePurchaseRequest',
+        payload: fields,
+        idempotencyKey,
+      }) as Promise<PlatformCommandDispatchResponse>;
+      promise.then(settle, settle);
+      return promise;
+    },
+    /**
+     * GOVERNED SUPPLIER PAYMENT (ERP Session 49) — a CLEARED vendor payment books real
+     * Dr AP / Cr Cash, so it is created through the governed `PaySupplierInvoice` command
+     * (status force-set `cleared` server-side; overpayment/duplicate-ref refused by the
+     * vendor-payment engine). Pending/void records keep the CRUD path (no GL at creation).
+     */
+    paySupplierInvoice: (
+      fields: Record<string, unknown>,
+      idempotencyKey: string,
+    ): Promise<PlatformCommandDispatchResponse> => {
+      const settle = perfRecorder.ipcStart(String(IpcChannel.PlatformCommandDispatch));
+      const promise = rawInvoke(IpcChannel.PlatformCommandDispatch, {
+        operation: 'PaySupplierInvoice',
         payload: fields,
         idempotencyKey,
       }) as Promise<PlatformCommandDispatchResponse>;

@@ -1,4 +1,12 @@
-# ERP O2C GOVERNANCE MATRIX — Session 45 (+ S46 closures)
+# ERP O2C GOVERNANCE MATRIX — Session 45 (+ S46 closures, S49 buy-side)
+
+## S49 UPDATE — the PROCUREMENT chain joins the governed spine (see SESSION49-PROCUREMENT-GOVERNED-UI-CLOSURE.md)
+- PR create/submit/approve/reject/convert · GR post · bill approve · CLEARED vendor payment: all now
+  UI-wired to their existing S17/S23/S25/S26 commands (was YELLOW/defined-legacy).
+- NEW GUARDS: PR edits cannot cross the approved/ordered authority boundary (resubmit path preserved);
+  GR edits cannot enter/leave `received`; vendor-payment edit-door clearing refused (the S46 customer
+  fence applied to its buy-side twin). Status-less importer rows exempt everywhere.
+- PO status machine remains descriptive/legacy — YELLOW, no economic bypass found through it.
 
 **HEAD at certification:** see ERP-SESSION45-O2C-REAL-USER-CERTIFICATION.md · All rows measured from
 source (file:line in the session report), not asserted. Vocabulary is the repository's own.

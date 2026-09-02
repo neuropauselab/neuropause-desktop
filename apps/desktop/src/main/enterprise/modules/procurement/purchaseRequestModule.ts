@@ -9,6 +9,7 @@ import {
   PURCHASE_REQUEST_KIND,
   purchaseRequestFromRecord,
 } from '@neuropause/shared';
+import { validateEnterpriseRecordInput } from '@neuropause/shared';
 import {
   EnterpriseRecordStore,
   defineEnterpriseModule,
@@ -87,6 +88,40 @@ export function createPurchaseRequestModule(storePath: string): EnterpriseModule
     descriptor: PURCHASE_REQUEST_DESCRIPTOR,
     store,
     hooks: {
+      // ERP Session 49 — the AUTHORITY boundary is action-owned. An EDIT (recordId present ⇒
+      // the EnterpriseModuleUpdate door) must never move a request ACROSS the approved/ordered
+      // boundary: hand-setting `approved` skips the governed approval, hand-setting `ordered`
+      // fakes a conversion, and hand-UN-setting either silently reverses an authority decision
+      // (or dangles the PO cross-link). Edits AMONG draft/pending/rejected stay free — that is
+      // the defined resubmit path (no `resubmit` action exists), so blocking it would invent a
+      // restriction. Lifecycle actions mutate the store directly and never re-enter this hook;
+      // creates (no recordId) and status-less importer rows are unaffected.
+      validate: (input) => {
+        const result = validateEnterpriseRecordInput(PURCHASE_REQUEST_DESCRIPTOR, input);
+        if (result.ok && input.recordId) {
+          const prior = store.get(input.recordId);
+          const priorStatus = String(prior?.fields.status ?? '');
+          const next = result.values.status;
+          const authority = (s: unknown): boolean => s === 'approved' || s === 'ordered';
+          if (
+            prior &&
+            priorStatus !== '' &&
+            typeof next === 'string' &&
+            next !== priorStatus &&
+            (authority(next) || authority(priorStatus))
+          ) {
+            return {
+              ok: false,
+              values: result.values,
+              errors: {
+                status:
+                  'Approval and conversion happen through the Approve and Create Purchase Order actions — this status cannot be set by editing.',
+              },
+            };
+          }
+        }
+        return result;
+      },
       runAction: async (action, record, ctx) => {
         if (action === CREATE_PO_ACTION) return convertRequestToPurchaseOrder(record, ctx);
         const pr = purchaseRequestFromRecord(record);

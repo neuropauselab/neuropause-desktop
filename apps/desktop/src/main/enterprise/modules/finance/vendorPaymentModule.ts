@@ -172,6 +172,21 @@ export function createVendorPaymentModule(
         const result = validateEnterpriseRecordInput(VENDOR_PAYMENT_DESCRIPTOR, input);
         if (!result.ok) return result;
         const errors: Record<string, string> = {};
+        // ERP Session 49 — the buy-side twin of the S46 customer-payment fence: an EDIT-door
+        // transition INTO `cleared` books real Dr AP / Cr Cash via onChange, around the governed
+        // `PaySupplierInvoice` command. Clearing goes only through the governed command. Creates
+        // are untouched (no recordId) and a status-less importer row is not compared.
+        if (input.recordId) {
+          const prior = store.get(input.recordId);
+          const priorStatus = String(prior?.fields.status ?? '');
+          if (prior && priorStatus !== '' && priorStatus !== 'cleared' && result.values.status === 'cleared') {
+            return {
+              ok: false,
+              values: result.values,
+              errors: { status: 'Clearing a vendor payment books the ledger — record it as a governed cleared payment instead of editing this one.' },
+            };
+          }
+        }
         const payment = vendorPaymentFromRecord({
           id: '',
           moduleId: VENDOR_PAYMENTS_MODULE_ID,

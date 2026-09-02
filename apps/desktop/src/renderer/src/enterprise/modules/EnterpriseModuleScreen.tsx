@@ -20,11 +20,18 @@ import type {
 import {
   validateEnterpriseRecordInput,
   FINANCE_MODULE_ID,
+  GOODS_RECEIPTS_MODULE_ID,
   ORDERS_MODULE_ID,
   PAYMENTS_MODULE_ID,
+  PURCHASE_REQUESTS_MODULE_ID,
   QUOTES_MODULE_ID,
+  VENDOR_BILLS_MODULE_ID,
+  VENDOR_PAYMENTS_MODULE_ID,
 } from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
+
+/** The governed record-command union — derived from the ONE ipc helper, never duplicated. */
+type GovernedRecordOp = Parameters<typeof ipc.platform.dispatchRecordCommand>[0];
 import { dialogVariants, overlayVariants } from '@renderer/lib/motion';
 import { cn } from '@renderer/lib/cn';
 import { useFocusTrap } from '@renderer/lib/useFocusTrap';
@@ -426,6 +433,32 @@ function ModuleForm({
         onSaved();
         return;
       }
+      // S49 — the buy-side governed creates, exactly the S43/S45 pattern:
+      // a Purchase Request is born `draft` through the governed command; a CLEARED vendor
+      // payment (Dr AP / Cr Cash) goes through PaySupplierInvoice. Pending/void vendor
+      // payments keep the CRUD path — no GL at creation.
+      if (mode === 'create' && module.id === PURCHASE_REQUESTS_MODULE_ID) {
+        const gov = await ipc.platform.createPurchaseRequest(input.fields ?? {}, governedKey.current);
+        if (!gov.ok) {
+          setErrors({ _: gov.error?.message ?? 'Could not create the purchase request.' });
+          return;
+        }
+        onSaved();
+        return;
+      }
+      if (
+        mode === 'create' &&
+        module.id === VENDOR_PAYMENTS_MODULE_ID &&
+        String((input.fields ?? {}).status ?? 'cleared') === 'cleared'
+      ) {
+        const gov = await ipc.platform.paySupplierInvoice(input.fields ?? {}, governedKey.current);
+        if (!gov.ok) {
+          setErrors({ _: gov.error?.message ?? 'Could not record the payment.' });
+          return;
+        }
+        onSaved();
+        return;
+      }
       const res =
         mode === 'create'
           ? await ipc.enterpriseModules.create(module.id, input)
@@ -765,16 +798,24 @@ function RecordDetail({
   // is that the write is journaled, idempotent, and crash-recoverable. Every OTHER module action
   // (reserve stock, pick list, convert lead, fulfill/close/cancel, …) keeps the existing path.
   const runAction = async (key: string): Promise<void> => {
-    const governedOp =
-      module.id === ORDERS_MODULE_ID && key === 'ship'
-        ? ('ShipSalesOrder' as const)
-        : module.id === ORDERS_MODULE_ID && key === 'convertToInvoice'
-          ? ('InvoiceSalesOrder' as const)
-          : module.id === FINANCE_MODULE_ID && key === 'issue'
-            ? ('IssueCustomerInvoice' as const)
-            : module.id === QUOTES_MODULE_ID && key === 'convertToOrder'
-              ? ('ConvertQuoteToSalesOrder' as const)
-              : null;
+    // S45 (O2C) + S49 (procurement): the (module, action) → governed-command routing table.
+    // Every entry wraps the SAME module action the legacy door ran — behavior identical, but the
+    // write is journaled, idempotent, event-emitting, and crash-recoverable. Actions absent from
+    // this table keep the existing legacy path unchanged.
+    const GOVERNED: Record<string, Record<string, GovernedRecordOp>> = {
+      [ORDERS_MODULE_ID]: { ship: 'ShipSalesOrder', convertToInvoice: 'InvoiceSalesOrder' },
+      [FINANCE_MODULE_ID]: { issue: 'IssueCustomerInvoice' },
+      [QUOTES_MODULE_ID]: { convertToOrder: 'ConvertQuoteToSalesOrder' },
+      [PURCHASE_REQUESTS_MODULE_ID]: {
+        submit: 'SubmitPurchaseRequest',
+        approve: 'ApprovePurchaseRequest',
+        reject: 'RejectPurchaseRequest',
+        createPurchaseOrder: 'ConvertPurchaseRequestToPO',
+      },
+      [GOODS_RECEIPTS_MODULE_ID]: { post: 'PostGoodsReceipt' },
+      [VENDOR_BILLS_MODULE_ID]: { approve: 'ApproveSupplierInvoice' },
+    };
+    const governedOp = GOVERNED[module.id]?.[key] ?? null;
     setBusy(true);
     setActionMsg(null);
     try {
@@ -793,6 +834,12 @@ function RecordDetail({
           InvoiceSalesOrder: 'Invoice generated.',
           IssueCustomerInvoice: 'Invoice issued.',
           ConvertQuoteToSalesOrder: 'Quote converted to a sales order.',
+          SubmitPurchaseRequest: 'Request submitted.',
+          ApprovePurchaseRequest: 'Request approved.',
+          RejectPurchaseRequest: 'Request rejected.',
+          ConvertPurchaseRequestToPO: 'Purchase order created.',
+          PostGoodsReceipt: 'Receipt posted — stock received.',
+          ApproveSupplierInvoice: 'Supplier invoice approved.',
         };
         setActionMsg(
           gov.ok
