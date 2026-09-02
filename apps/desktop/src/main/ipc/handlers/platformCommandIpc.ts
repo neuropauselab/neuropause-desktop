@@ -44,6 +44,7 @@ import { DurableCommandJournal } from '../../platform/command/durableCommandJour
 import { dispatchOutbox, type OutboxConsumer } from '../../platform/command/outboxDispatcher';
 import { DeliveredEventLog } from '../../platform/command/deliveredEventLog';
 import { OPERATIONAL_READ_OPERATIONS, buildOperationalHistory } from '../../platform/command/operationalRead';
+import { buildDeliveryOperations } from '../../platform/command/deliveryOperations';
 import { computePlatformHealth } from '../../platform/command/platformHealth';
 import { runtimeIdentity } from '../../runtimeIdentity';
 import { ElectronClientAdapter, type ClientRequest } from '../../platform/adapter/clientAdapter';
@@ -146,7 +147,14 @@ export function buildPlatformCommandDispatchDef(deps: PlatformCommandDispatchDep
         if (request.claimedTenantId && request.claimedTenantId !== principal.tenantId) {
           return fail('TENANT_SCOPE_VIOLATION', 'Tenant claim does not match the resolved principal.');
         }
-        const read = buildOperationalHistory(deps.journal, deps.deliveredLog, principal.tenantId, (request.payload ?? {}) as Record<string, unknown>);
+        const params = (request.payload ?? {}) as Record<string, unknown>;
+        // Route to the matching read projection. `QueryDeliveryOperations` (ERP Session 35) is the
+        // delivery-failure drill-down — a SIBLING read on this SAME governed branch (same principal,
+        // RBAC, tenant validation, bounded/sanitized projection), never a new channel or command.
+        const read =
+          request.operation === 'QueryDeliveryOperations'
+            ? buildDeliveryOperations(deps.journal, deps.deliveredLog, principal.tenantId, params)
+            : buildOperationalHistory(deps.journal, deps.deliveredLog, principal.tenantId, params);
         if (!read.ok) return fail('VALIDATION_ERROR', read.error);
         return { ok: true, data: read.data, requestId, correlationId, operation: request.operation };
       }

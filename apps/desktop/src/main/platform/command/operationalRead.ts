@@ -18,12 +18,19 @@
 import type { CommittedCommand, DurableCommandJournal } from './durableCommandJournal';
 import type { DeliveredEventLog } from './deliveredEventLog';
 
-/** The operations this read surface answers — anything else is not a read (falls to the write path). */
-export const OPERATIONAL_READ_OPERATIONS: ReadonlySet<string> = new Set(['QueryOperationalHistory']);
+/**
+ * The operations this read surface answers — anything else is not a read (falls to the write path).
+ * `QueryDeliveryOperations` (ERP Session 35) is the delivery-failure drill-down; it is a SIBLING read
+ * on this SAME branch (no new channel/command/bus), routed to `buildDeliveryOperations`.
+ */
+export const OPERATIONAL_READ_OPERATIONS: ReadonlySet<string> = new Set([
+  'QueryOperationalHistory',
+  'QueryDeliveryOperations',
+]);
 
-const MAX_LIMIT = 100;
-const DEFAULT_LIMIT = 25;
-const OUTBOX_STATUSES: ReadonlySet<string> = new Set(['PENDING', 'PROCESSING', 'DELIVERED', 'RETRYABLE']);
+export const MAX_LIMIT = 100;
+export const DEFAULT_LIMIT = 25;
+export const OUTBOX_STATUSES: ReadonlySet<string> = new Set(['PENDING', 'PROCESSING', 'DELIVERED', 'RETRYABLE']);
 
 export interface OperationalReadParams {
   limit?: unknown;
@@ -35,13 +42,13 @@ export type OperationalReadResult =
   | { ok: false; error: string };
 
 /** Clamp any client-supplied limit into (0, MAX] — a non-integer / non-positive / oversized value is bounded, never trusted, never unbounded. */
-function boundLimit(v: unknown): number {
+export function boundLimit(v: unknown): number {
   const n = Number(v);
   if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) return DEFAULT_LIMIT;
   return Math.min(n, MAX_LIMIT);
 }
 
-const trimError = (e: unknown): string => String(e).slice(0, 200);
+export const trimError = (e: unknown): string => String(e).slice(0, 200);
 
 /** Operator-safe projection of a committed command — ids/type/actor/status/timestamps only, no payloads. */
 function sanitizeCommand(rec: CommittedCommand): Record<string, unknown> {

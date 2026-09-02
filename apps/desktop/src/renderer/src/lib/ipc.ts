@@ -587,6 +587,22 @@ export const ipc = {
       promise.then(settle, settle);
       return promise;
     },
+    /**
+     * ERP Session 35 — governed DELIVERY OPERATIONS drill-down. A tenant-safe, bounded, sanitized
+     * read of outbox/delivery FAILURES (pending / retrying / delivered) over the durable command
+     * journal's outbox state. Same governed channel + `rawInvoke` precedent as S32/S34; read-only,
+     * no frozen change, no new channel/command. `status` optionally narrows to one outbox status.
+     */
+    deliveryOperations: (params: { limit?: number; status?: string } = {}): Promise<PlatformCommandDispatchResponse> => {
+      const settle = perfRecorder.ipcStart(String(IpcChannel.PlatformCommandDispatch));
+      const promise = rawInvoke(IpcChannel.PlatformCommandDispatch, {
+        operation: 'QueryDeliveryOperations',
+        payload: params,
+        idempotencyKey: `delivops-${Date.now().toString(36)}`,
+      }) as Promise<PlatformCommandDispatchResponse>;
+      promise.then(settle, settle);
+      return promise;
+    },
   },
   timeline: {
     query: (q?: TimelineQuery) => invoke(IpcChannel.TimelineQuery, q ?? {}),
