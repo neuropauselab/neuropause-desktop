@@ -96,6 +96,18 @@ export const DOMAIN_FILES: Record<MaintenanceDomain, string[]> = {
     'outcome-revisions.json',
     'erp-document-lines.json', // ERP document line items
     'erp-approvals.json', // ERP approval trail
+    // ERP Session 36 — the governed platform command spine (Sessions 18/31) was
+    // persisted but OUTSIDE backup AND pre-migration rollback, exactly the class
+    // this registry closes. Both are DurableJsonStore files under the data dir with
+    // one production creator each (ipc/handlers/platformCommandIpc.ts:
+    // buildPlatformCommandHandlers). They MUST be captured together (one domain,
+    // one coherent snapshot pass, all-or-nothing restore): the journal holds every
+    // committed command's idempotency result + immutable domain event + outbox
+    // delivery state, and the delivered-event sink is its downstream at-least-once
+    // confirmation. Losing the journal silently loses every ERP command's dedupe
+    // key, event and delivery state with no restore path.
+    'platform-command-journal.json', // S18 durable command journal (idempotency + event + outbox)
+    'platform-delivered-events.json', // S31 delivered-event sink (outbox delivery confirmation)
     'medical-device-traceability.json', // regulated traceability records
     'data-plane-provenance.json', // import provenance (the audit trail itself)
     'data-plane-mappings.json', // remembered column→field mappings
