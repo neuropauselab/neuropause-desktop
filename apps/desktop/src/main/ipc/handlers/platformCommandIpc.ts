@@ -41,8 +41,11 @@ import { governanceStore } from '../../enterprise/governance/governanceInstance'
 import { workspaceStore } from '../../enterprise/workspace/workspaceInstance';
 import { authService } from '../../auth/authService';
 import { DurableCommandJournal } from '../../platform/command/durableCommandJournal';
+import { dispatchOutbox, type OutboxConsumer } from '../../platform/command/outboxDispatcher';
+import { DeliveredEventLog } from '../../platform/command/deliveredEventLog';
 import { ElectronClientAdapter, type ClientRequest } from '../../platform/adapter/clientAdapter';
 import type { Principal } from '../../platform/application/requestContext';
+import { registerShutdownFlush } from '../../shutdownFlush';
 
 export interface PlatformCommandHandlerDeps {
   /** The LIVE enterprise module registry (`enterprise.modules`) — reused, not rebuilt. */
@@ -58,6 +61,12 @@ export interface PlatformCommandDispatchDeps {
   audit: (e: { action: string; target: string; summary: string }) => void;
   /** Resolves the AUTHORITATIVE principal server-side, or null (fail-closed → UNAUTHENTICATED). */
   resolvePrincipal: () => Principal | null;
+  /**
+   * OPTIONAL production outbox delivery consumer (ERP Session 31). When provided, the handler drains
+   * the durable outbox best-effort after each dispatch (at-least-once; the consumer MUST be
+   * idempotent). Absent ⇒ no drain (the S17–S30 injectable-seam tests keep their exact behavior).
+   */
+  outboxConsumer?: OutboxConsumer;
 }
 
 /**
@@ -73,6 +82,27 @@ export function buildPlatformCommandDispatchDef(deps: PlatformCommandDispatchDep
     audit: deps.audit,
     authenticator: { resolvePrincipal: deps.resolvePrincipal },
   });
+
+  // SERIALIZED OUTBOX DRAIN (ERP Session 31). An outbox relay is a SINGLE drain loop, never N
+  // concurrent drains: concurrent drains race on the durable single-file stores (the delivered-event
+  // sink + the journal's outbox state) and can lose or duplicate a delivery. Reproduced first (the
+  // S31 CONCURRENCY test failed intermittently — one delivered row lost — before this latch). A
+  // per-handler chained-promise latch (the S24/S28 pattern) runs drains strictly one-at-a-time, and
+  // each drain loops until the outbox is empty so an entry committed while a prior drain was mid-flight
+  // is still delivered by the tail drain. At-least-once + idempotent consumer make this exactly-once
+  // in effect; it never blocks concurrent COMMITS, only the (fast) delivery pass.
+  let drainChain: Promise<unknown> = Promise.resolve();
+  const drainOutbox = (consumer: OutboxConsumer): Promise<unknown> => {
+    const run = async (): Promise<void> => {
+      // Loop until nothing is left PENDING/RETRYABLE, so a commit that landed during a prior pass
+      // is picked up by this one rather than waiting for the next dispatch.
+      for (let pass = 0; pass < 100 && deps.journal.pendingOutbox().length > 0; pass += 1) {
+        await dispatchOutbox(deps.journal, consumer);
+      }
+    };
+    drainChain = drainChain.then(run, run);
+    return drainChain;
+  };
   return {
     channel: IpcChannel.PlatformCommandDispatch,
     schema: PlatformCommandDispatchRequest,
@@ -82,6 +112,20 @@ export function buildPlatformCommandDispatchDef(deps: PlatformCommandDispatchDep
     handler: async (req: unknown): Promise<PlatformCommandDispatchResponse> => {
       // `req` was validated against `PlatformCommandDispatchRequest` by the bridge before this call.
       const r = await adapter.submit(req as ClientRequest);
+      // PRODUCTION OUTBOX DELIVERY (ERP Session 31): after a governed write commits its durable
+      // outbox entry, drain PENDING/RETRYABLE deliveries through the existing at-least-once relay.
+      // BEST-EFFORT AND FAIL-OPEN FOR THE BUSINESS COMMAND: a delivery failure must never fail or
+      // alter the command response — the durable outbox retains the undelivered entry as RETRYABLE
+      // and the next dispatch (or the shutdown drain) retries it. No tenant filter is needed: the
+      // consumer attributes each delivery to the EVENT's own tenant, so a shared-process drain never
+      // crosses tenants.
+      if (deps.outboxConsumer) {
+        try {
+          await drainOutbox(deps.outboxConsumer);
+        } catch {
+          // swallow — evidence delivery is never on the business command's critical path
+        }
+      }
       // Map to the client-safe contract (deliberately omits the internal domain event).
       return {
         ok: r.ok,
@@ -105,6 +149,18 @@ export function buildPlatformCommandDispatchDef(deps: PlatformCommandDispatchDep
 export function buildPlatformCommandHandlers(deps: PlatformCommandHandlerDeps): SecureHandlerDef[] {
   // Durable idempotency + transaction + event + outbox (Session 18), one file under userData.
   const journal = new DurableCommandJournal(join(app.getPath('userData'), 'platform-command-journal.json'));
+
+  // PRODUCTION OUTBOX SINK (ERP Session 31): the durable, tenant-scoped, idempotent read-model the
+  // at-least-once relay delivers into. Closes the "outbox written but never drained in production"
+  // gap. Reuses the journal's own durable-store primitive — NOT a second outbox/event/audit engine.
+  const deliveredLog = new DeliveredEventLog(join(app.getPath('userData'), 'platform-delivered-events.json'));
+  const outboxConsumer: OutboxConsumer = (event) => deliveredLog.record(event);
+
+  // Drain any outbox entries still PENDING/RETRYABLE at shutdown (e.g. a delivery that failed and
+  // was left RETRYABLE), reusing the established shutdown-flush registry. Best-effort by design.
+  registerShutdownFlush('platform-command-outbox', async () => {
+    await dispatchOutbox(journal, outboxConsumer).catch(() => undefined);
+  });
 
   // Attribution for the audit line — the authenticated actor, or 'owner' when local/degraded.
   const actorName = (): string => {
@@ -140,5 +196,5 @@ export function buildPlatformCommandHandlers(deps: PlatformCommandHandlerDeps): 
     };
   };
 
-  return [buildPlatformCommandDispatchDef({ registry: deps.registry, journal, audit, resolvePrincipal })];
+  return [buildPlatformCommandDispatchDef({ registry: deps.registry, journal, audit, resolvePrincipal, outboxConsumer })];
 }
