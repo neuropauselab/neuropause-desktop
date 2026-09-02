@@ -7,7 +7,17 @@ All notable changes to NeuroPause are documented here. The format is based on
 
 ## [Unreleased]
 
-_No unreleased changes; the current build is `1.0.0-rc.21`._
+_No unreleased changes; the current build is `1.0.0-rc.22`._
+
+## [1.0.0-rc.22] — first packaged artifact carrying S49+S50 procurement governance (2026-09-03)
+
+Version bumped from `1.0.0-rc.21` because the rc.21 artifact predates ERP sessions 49–50: the
+governed procurement UI closure (eight buy-side commands wired, PR/GR/vendor-payment edit
+fences) and the procurement surface hardening (PO received/reversal/`convertedReceipt` fences,
+census-backed reference pickers, the structured Lines editor replacing raw JSON). rc.22 is the
+first shippable artifact to contain them; its packaged acceptance record is
+`certification/SESSION51-PRODUCTION-PACKAGED-ACCEPTANCE.md` (signed, notarization pending
+operator credentials).
 
 ## [1.0.0-rc.21] — release discipline, enforced by the suite (2026-08-31)
 
