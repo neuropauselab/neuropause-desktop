@@ -39,7 +39,10 @@ async function waitForLog(logs, re, ms) {
 }
 
 async function main() {
-  if (!fs.existsSync(ALT_MAIN)) fail(`alternate build missing: ${ALT_MAIN} (build it first)`);
+  // S53 — with NP_APP_BIN the packaged binary is the launch target and the mac alternate
+  // build is irrelevant (the S48 packaged runs only passed this check because out-seam-s45
+  // happened to exist on the mac — masked precondition, exposed by the Windows guest).
+  if (!APP_BIN && !fs.existsSync(ALT_MAIN)) fail(`alternate build missing: ${ALT_MAIN} (build it first)`);
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'np-s45-o2c-'));
   const logs = [];
   const app = await electron.launch({

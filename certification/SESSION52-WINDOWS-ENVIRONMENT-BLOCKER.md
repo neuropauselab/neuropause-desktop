@@ -1,5 +1,18 @@
 # SESSION 52 — WINDOWS ENVIRONMENT BLOCKER
 
+> **CORRECTED 2026-09-03 (S53, §2 #20/#21/#30 — superseded text kept visible below): THIS
+> BLOCKER'S PREMISE WAS FALSE. A fully-installed Windows 11 ARM64 QEMU VM existed the whole
+> time at `~/vm-win11/` (35 GiB qcow2, EFI firmware, launch/keystroke/screenshot tooling, and
+> the operator's own Gate-20 rc.20/rc.21 acceptance scripts, last used 31 Aug).** The S52
+> environment sweep was a COMPLETE SEARCH OF THE WRONG SPACE: it checked hypervisor .apps,
+> `.utm` bundles, `prlctl/vmrun/VBoxManage/utmctl/tart/wine` — and never `qemu-system-*`,
+> which sits in `/opt/homebrew/bin`, nor disk images outside UTM's container. Third recorded
+> instance of the confident-negative-over-narrow-space pattern (after the two in SEAM-B.22-R).
+> What remains TRUE from this record: the packaging evidence, the artifact hashes, the
+> UNSIGNED measurement, and the CI-needs-push constraint. What is WITHDRAWN: "no genuine
+> Windows execution environment is available." S53 executed the acceptance on that VM —
+> see `SESSION53-WINDOWS-REAL-RUNTIME-ACCEPTANCE.md`.
+
 **Status: `WINDOWS_EXECUTION_ENVIRONMENT_NOT_AVAILABLE` — acceptance STOPPED before fabrication.**
 Packaging itself succeeded (see SESSION52-WINDOWS-PACKAGED-ACCEPTANCE.md); this record states
 exactly why the ACCEPTANCE half cannot honestly run, measured not assumed.
