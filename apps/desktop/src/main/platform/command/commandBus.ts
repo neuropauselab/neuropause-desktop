@@ -24,7 +24,7 @@
  * the durability of the idempotency+event+outbox differs.
  */
 import type { TenantScope } from '@neuropause/shared';
-import { CUSTOMERS_MODULE_ID, GOODS_RECEIPTS_MODULE_ID, IpcChannel, ORDERS_MODULE_ID, PURCHASE_REQUESTS_MODULE_ID, VENDOR_BILLS_MODULE_ID } from '@neuropause/shared';
+import { CUSTOMERS_MODULE_ID, GOODS_RECEIPTS_MODULE_ID, IpcChannel, ORDERS_MODULE_ID, PURCHASE_REQUESTS_MODULE_ID, VENDOR_BILLS_MODULE_ID, VENDOR_PAYMENTS_MODULE_ID } from '@neuropause/shared';
 import {
   buildModuleHandlers,
   type EnterpriseModuleContext,
@@ -79,7 +79,8 @@ function validateEnvelope(cmd: DomainCommand): string | null {
   if (!cmd.correlationId) return 'MISSING_CORRELATION_ID';
   if (!cmd.idempotencyKey) return 'MISSING_IDEMPOTENCY_KEY';
   // Every command except a create acts on a target entity.
-  if (cmd.type !== 'CreatePurchaseRequest' && cmd.type !== 'CreateSalesOrder' && !cmd.target?.id) return 'MISSING_TARGET';
+  const isCreate = cmd.type === 'CreatePurchaseRequest' || cmd.type === 'CreateSalesOrder' || cmd.type === 'PaySupplierInvoice';
+  if (!isCreate && !cmd.target?.id) return 'MISSING_TARGET';
   return null;
 }
 
@@ -220,6 +221,32 @@ async function route(cmd: DomainCommand, deps: CommandDispatchDeps, call: Handle
       return ok(
         { id, status: str(bill?.fields.approvedAt ? 'approved' : bill?.status) },
         { aggregateId: id, aggregateType: 'SupplierInvoice' },
+      );
+    }
+    case 'PaySupplierInvoice': {
+      // ERP Session 26 — pay an approved supplier invoice by RECORDING a cleared vendor payment
+      // through the SAME governed create path. Reuses the vendor-payment engine verbatim: its
+      // validate refuses overpayment (cumulative cleared + this > bill total), a duplicate
+      // transaction ref, and paying a draft/cancelled bill; its `onChange` books Dr Accounts
+      // Payable / Cr Cash and settles the bill (partials accumulate; `paidDate` when covered).
+      // Deny-by-default: the payment is always `cleared` — a client cannot record a void/pending
+      // "payment" via this command. No new AP/payment store, no invented settlement/discount policy.
+      const r = (await call(IpcChannel.EnterpriseModuleCreate, {
+        moduleId: VENDOR_PAYMENTS_MODULE_ID,
+        fields: { ...cmd.payload, status: 'cleared' },
+      })) as { ok: boolean; record?: { id: string } };
+      if (!(r.ok && r.record)) return no('VALIDATION_FAILED');
+      const id = r.record.id;
+      // Compensation (case C): if the durable commit fails, soft-delete the payment — the payment
+      // module's `onChange` reconciler then un-pays the bill and reverses the GL (its defined
+      // "voiding un-pays" behavior), so this is a clean create-compensation, not a silent reversal.
+      return ok(
+        { id },
+        {
+          aggregateId: id,
+          aggregateType: 'SupplierPayment',
+          rollback: async () => { deps.registry.get(VENDOR_PAYMENTS_MODULE_ID)?.store.softDelete(id, { actor: who(), now: now() }); },
+        },
       );
     }
     default:

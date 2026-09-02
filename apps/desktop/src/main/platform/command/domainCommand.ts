@@ -28,7 +28,10 @@ export type DomainCommandType =
   | 'PostGoodsReceipt'
   // ERP Session 25 — approve a supplier invoice (vendor bill): the fail-closed three-way
   // match (PO↔GR↔Bill) → GRNI relief / AP, reusing the existing match engine + tolerance.
-  | 'ApproveSupplierInvoice';
+  | 'ApproveSupplierInvoice'
+  // ERP Session 26 — pay an approved supplier invoice: record a cleared vendor payment
+  // (partials accumulate; overpayment refused) → Dr AP / Cr Cash + settle, reusing the engine.
+  | 'PaySupplierInvoice';
 
 /** Where a command originated. Descriptive only — it grants nothing. */
 export type CommandSource = 'electron' | 'web' | 'mobile' | 'api' | 'agent' | 'test';
@@ -93,7 +96,8 @@ export type DomainEventType =
   | 'PurchaseRequestConvertedToPO'
   | 'SalesOrderCreated'
   | 'GoodsReceiptPosted'
-  | 'SupplierInvoiceApproved';
+  | 'SupplierInvoiceApproved'
+  | 'SupplierInvoicePaid';
 
 export interface CommandResult {
   ok: boolean;
@@ -119,6 +123,7 @@ export const EVENT_FOR_COMMAND: Record<DomainCommandType, DomainEventType> = {
   CreateSalesOrder: 'SalesOrderCreated',
   PostGoodsReceipt: 'GoodsReceiptPosted',
   ApproveSupplierInvoice: 'SupplierInvoiceApproved',
+  PaySupplierInvoice: 'SupplierInvoicePaid',
 };
 
 /**
@@ -136,4 +141,6 @@ export const PERMISSION_FOR_COMMAND: Record<DomainCommandType, EnterprisePermiss
   PostGoodsReceipt: 'procurement:manage',
   // The vendor-bill module's declared write permission (operations:manage) governs approval.
   ApproveSupplierInvoice: 'operations:manage',
+  // The vendor-payment module's declared write permission (operations:manage) governs payment.
+  PaySupplierInvoice: 'operations:manage',
 };
