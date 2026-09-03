@@ -371,6 +371,46 @@ async function route(cmd: DomainCommand, deps: CommandDispatchDeps, call: Handle
         },
       );
     }
+    // ── ERP Session 57 — the O2C reversal/settlement PROMOTION set ─────────────────────
+    // Each case wraps an EXISTING module action VERBATIM (guards, GL semantics, refusals all
+    // the module's own — every reversal books COMPENSATING entries via glPosting, history is
+    // never deleted) and adds the spine. No rollback closures: each action is itself the
+    // domain-level terminal (a failed durable commit surfaces as the command's failure; the
+    // idempotent GL bridge prevents double effects on retry) — the PostGoodsReceipt precedent.
+    case 'CancelCustomerInvoice': {
+      const r = await moduleAction(FINANCE_MODULE_ID, str(cmd.target?.id), 'cancel');
+      if (!r.ok) return no(r.error ?? r.message ?? 'INVOICE_CANCEL_REFUSED');
+      return ok({ id: str(cmd.target?.id) }, { aggregateId: str(cmd.target?.id), aggregateType: 'CustomerInvoice' });
+    }
+    case 'IssueCreditNote':
+    case 'CancelCreditNote': {
+      const act = cmd.type === 'IssueCreditNote' ? 'issue' : 'cancel';
+      const r = await moduleAction('finance-credit-notes', str(cmd.target?.id), act);
+      if (!r.ok) return no(r.error ?? r.message ?? 'CREDIT_NOTE_REFUSED');
+      return ok({ id: str(cmd.target?.id) }, { aggregateId: str(cmd.target?.id), aggregateType: 'CreditNote' });
+    }
+    case 'IssueDebitNote':
+    case 'CancelDebitNote': {
+      const act = cmd.type === 'IssueDebitNote' ? 'issue' : 'cancel';
+      const r = await moduleAction('finance-debit-notes', str(cmd.target?.id), act);
+      if (!r.ok) return no(r.error ?? r.message ?? 'DEBIT_NOTE_REFUSED');
+      return ok({ id: str(cmd.target?.id) }, { aggregateId: str(cmd.target?.id), aggregateType: 'DebitNote' });
+    }
+    case 'ClearCustomerPayment': {
+      const r = await moduleAction(PAYMENTS_MODULE_ID, str(cmd.target?.id), 'clear');
+      if (!r.ok) return no(r.error ?? r.message ?? 'PAYMENT_CLEAR_REFUSED');
+      return ok({ id: str(cmd.target?.id) }, { aggregateId: str(cmd.target?.id), aggregateType: 'CustomerPayment' });
+    }
+    case 'ClearVendorPayment': {
+      const r = await moduleAction(VENDOR_PAYMENTS_MODULE_ID, str(cmd.target?.id), 'clear');
+      if (!r.ok) return no(r.error ?? r.message ?? 'PAYMENT_CLEAR_REFUSED');
+      return ok({ id: str(cmd.target?.id) }, { aggregateId: str(cmd.target?.id), aggregateType: 'VendorPayment' });
+    }
+    case 'ShipShipmentDocument': {
+      const r = await moduleAction('warehouse-shipping', str(cmd.target?.id), 'ship');
+      if (!r.ok) return no(r.error ?? r.message ?? 'SHIPMENT_SHIP_REFUSED');
+      return ok({ id: str(cmd.target?.id) }, { aggregateId: str(cmd.target?.id), aggregateType: 'ShipmentDocument' });
+    }
     default:
       return no('UNKNOWN_COMMAND');
   }

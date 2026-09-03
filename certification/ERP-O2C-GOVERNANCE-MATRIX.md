@@ -1,4 +1,21 @@
-# ERP O2C GOVERNANCE MATRIX — Session 45 (+ S46 closures, S49 buy-side, S50 PO hardening, S55 closure pass)
+# ERP O2C GOVERNANCE MATRIX — Session 45 (+ S46, S49, S50, S55, S57 policy closure)
+
+## S57 UPDATE — the business-policy gate (see SESSION57-BUSINESS-POLICY-CLOSURE-CERTIFICATION.md)
+- **PROMOTED to the governed spine, semantics VERBATIM (the S45/S49 promotion class — nothing
+  invented):** `CancelCustomerInvoice` · `IssueCreditNote`/`CancelCreditNote` ·
+  `IssueDebitNote`/`CancelDebitNote` · `ClearCustomerPayment`/`ClearVendorPayment` (NEW `clear`
+  module actions carrying the previously-defined pending→cleared transition — the fences had left
+  pending payments with NO clearing path) · `ShipShipmentDocument`. All UI-routed via the S43/S45
+  table; every reversal books COMPENSATING entries, history never deleted.
+- **SoD ENFORCED from the repo's own declared principle:** expense-claim self-approval refused
+  (`creator_cannot_approve`); creator-reject stays open; importer rows uncompared.
+- **DELIBERATELY STILL POLICY-BLOCKED (addenda filed, decisions named):** Sales-Order approval
+  (choose interpretation A, or supply threshold+role) · partial credit notes / reopen-paid /
+  cleared-payment reversal · payroll/disbursement/fixed-asset/adjustment/period-reopen authority ·
+  draft-PO receiving. Each now needs ONE operator sentence; implementation is mechanical.
+- One certified pin updated WITH documented justification (payments module now exposes exactly
+  the `clear` action); zero other test changes. Origin-fence extension for the newly governed
+  keys stays the recorded YELLOW (consistent with the S49 procurement posture).
 
 ## S55 UPDATE — fourteen census-found gaps closed in four classes (see SESSION55-ENTERPRISE-GOVERNANCE-CLOSURE.md)
 - **Store-anchored token guards:** journal `postedAt` (un-posting GL blocked) · period `closedAt`

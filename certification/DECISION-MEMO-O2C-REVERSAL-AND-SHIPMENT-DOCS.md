@@ -1,6 +1,20 @@
 # DECISION MEMO — O2C REVERSALS + SHIPMENT-DOCUMENT GOVERNANCE + PAYMENT STATUS EDITS
 
-**Session:** ERP S45 · **Status:** OPEN — human decisions required · **Class:** business policy, NOT invented
+**Session:** ERP S45 · **Status:** LARGELY CLOSED BY S57 PROMOTION — residual semantics OPEN
+
+> **S57 ADDENDUM (2026-09-03): THE MECHANISM HALF IS CLOSED; the semantic half stays open.**
+> Every reversal/settlement operation with DEFINED semantics was promoted to the governed spine
+> with those semantics VERBATIM (the S45/S49 promotion precedent — no semantics invented):
+> `CancelCustomerInvoice` (the compensating GL revoke), `IssueCreditNote`/`CancelCreditNote`/
+> `IssueDebitNote`/`CancelDebitNote` (the notes' own GL), `ClearCustomerPayment`/
+> `ClearVendorPayment` (a new `clear` module action carrying the previously-defined
+> pending→cleared transition the S46/S49 fences had left with NO legitimate path), and
+> `ShipShipmentDocument` (§2's scope question is thereby settled in practice: shipment documents
+> ARE governed operations). History is never deleted — every reversal books compensating entries.
+> **STILL OPEN (semantics that do not exist to promote):** partial credit notes · reopening a
+> paid invoice · reversal/void of a CLEARED payment · issued-invoice economic-field ADJ edits and
+> DELETE-door reversals (defined-legacy, unchanged) · importer economic rows. Those wait on
+> operator semantics, exactly as before.
 
 Three related policies the S45 closure deliberately did NOT decide. Each is currently reachable through
 the legacy `enterprise:module.*` doors (RBAC + module guards, but no command journal/idempotency/outbox).

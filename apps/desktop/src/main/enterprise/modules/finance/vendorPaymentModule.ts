@@ -54,6 +54,9 @@ export const VENDOR_PAYMENT_DESCRIPTOR: EnterpriseModuleDescriptor = {
   group: 'Finance',
   titleField: 'paymentNumber',
   permissions: { read: 'operations:read', write: 'operations:manage' },
+  // S57 — the governed clearing affordance (routes to ClearVendorPayment; the S49 fence
+  // made edit-door clearing impossible, which left pending payments with NO clearing path).
+  actions: [{ key: 'clear', label: 'Clear', icon: 'check' }],
   fields: [
     { key: 'paymentNumber', label: 'Payment #', type: 'text', required: true, placeholder: 'VPAY-0001' },
     { key: 'billRef', label: 'Vendor Bill', type: 'text', required: true, placeholder: 'Bill number or id' },
@@ -232,6 +235,22 @@ export function createVendorPaymentModule(
 
         if (Object.keys(errors).length > 0) return { ok: false, errors, values: result.values };
         return result;
+      },
+      // S57 — the DEFINED pending→cleared transition, relocated from the fenced edit door to
+      // an explicit action (semantics unchanged; onChange below reconciles the bill and books
+      // Dr AP / Cr Cash exactly as it always did). Reached through the governed
+      // ClearVendorPayment command; void/cleared rows refuse.
+      runAction: async (action, record, actionCtx) => {
+        if (action !== 'clear') return { ok: false, error: `Unknown action "${action}".` };
+        const status = str(record.fields.status);
+        if (status !== 'pending') {
+          return { ok: false, message: `Only a pending payment can be cleared — this one is ${status || 'status-less'}.` };
+        }
+        const updated = store.update(record.id, { fields: { status: 'cleared' }, actor: actionCtx.actor(), now: actionCtx.now() });
+        if (!updated) return { ok: false, error: 'Payment not found.' };
+        const self = actionCtx.moduleFor(VENDOR_PAYMENTS_MODULE_ID);
+        if (self) actionCtx.emit(self, 'updated', updated);
+        return { ok: true, message: `Payment ${str(record.fields.paymentNumber)} cleared — the bill reconciled and cash booked.` };
       },
       // The source-of-truth inversion: reconcile the bill from the cleared
       // ledger, then flow the payment into the General Ledger.

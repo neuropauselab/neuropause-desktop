@@ -2,6 +2,15 @@
 
 **Session:** ERP S45 · **Status:** OPEN — human decision required · **Class:** business policy, NOT invented
 
+> **S57 ADDENDUM (2026-09-03): RE-EXAMINED AND DELIBERATELY LEFT OPEN.** The S57 policy-closure
+> gate re-searched the repository for decision material: no sales-side threshold, role chain, or
+> approval binding exists anywhere (the quote discount-ceiling `approvalStatus` is computed but
+> consumed by no enforcement point — binding it would require an approver definition that does
+> not exist). Interpretations A/B/C below remain exactly open. **The one decision S57 needs from
+> the operator: choose A (current state IS the policy — the memo closes as DECIDED-NO-APPROVAL),
+> or supply B/C's threshold + decider role — implementation is then one bounded session on the
+> existing approval engine.** Nothing was invented; the safest temporary state stays in force.
+
 ## Unresolved policy
 
 Whether Sales Orders require an approval step (submit → approve/reject → confirm) before they can

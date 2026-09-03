@@ -19,12 +19,15 @@ import type {
 } from '@neuropause/shared';
 import {
   validateEnterpriseRecordInput,
+  CREDIT_NOTES_MODULE_ID,
+  DEBIT_NOTES_MODULE_ID,
   FINANCE_MODULE_ID,
   GOODS_RECEIPTS_MODULE_ID,
   ORDERS_MODULE_ID,
   PAYMENTS_MODULE_ID,
   PURCHASE_REQUESTS_MODULE_ID,
   QUOTES_MODULE_ID,
+  SHIPPING_MODULE_ID,
   VENDOR_BILLS_MODULE_ID,
   VENDOR_PAYMENTS_MODULE_ID,
 } from '@neuropause/shared';
@@ -824,8 +827,14 @@ function RecordDetail({
     // this table keep the existing legacy path unchanged.
     const GOVERNED: Record<string, Record<string, GovernedRecordOp>> = {
       [ORDERS_MODULE_ID]: { ship: 'ShipSalesOrder', convertToInvoice: 'InvoiceSalesOrder' },
-      [FINANCE_MODULE_ID]: { issue: 'IssueCustomerInvoice' },
+      [FINANCE_MODULE_ID]: { issue: 'IssueCustomerInvoice', cancel: 'CancelCustomerInvoice' },
       [QUOTES_MODULE_ID]: { convertToOrder: 'ConvertQuoteToSalesOrder' },
+      // ERP Session 57 — the reversal/settlement promotion set (existing semantics, new spine).
+      [CREDIT_NOTES_MODULE_ID]: { issue: 'IssueCreditNote', cancel: 'CancelCreditNote' },
+      [DEBIT_NOTES_MODULE_ID]: { issue: 'IssueDebitNote', cancel: 'CancelDebitNote' },
+      [PAYMENTS_MODULE_ID]: { clear: 'ClearCustomerPayment' },
+      [VENDOR_PAYMENTS_MODULE_ID]: { clear: 'ClearVendorPayment' },
+      [SHIPPING_MODULE_ID]: { ship: 'ShipShipmentDocument' },
       [PURCHASE_REQUESTS_MODULE_ID]: {
         submit: 'SubmitPurchaseRequest',
         approve: 'ApprovePurchaseRequest',
@@ -860,6 +869,14 @@ function RecordDetail({
           ConvertPurchaseRequestToPO: 'Purchase order created.',
           PostGoodsReceipt: 'Receipt posted — stock received.',
           ApproveSupplierInvoice: 'Supplier invoice approved.',
+          CancelCustomerInvoice: 'Invoice cancelled — the ledger reversal is booked.',
+          IssueCreditNote: 'Credit note issued.',
+          CancelCreditNote: 'Credit note cancelled.',
+          IssueDebitNote: 'Debit note issued.',
+          CancelDebitNote: 'Debit note cancelled.',
+          ClearCustomerPayment: 'Payment cleared — cash booked and the invoice reconciled.',
+          ClearVendorPayment: 'Payment cleared — the bill reconciled and cash booked.',
+          ShipShipmentDocument: 'Shipment shipped — stock issued.',
         };
         setActionMsg(
           gov.ok

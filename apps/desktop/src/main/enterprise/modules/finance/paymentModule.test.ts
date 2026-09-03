@@ -306,7 +306,7 @@ describe('invoice reconciliation (payments are the source of truth)', () => {
 });
 
 describe('AI summary', () => {
-  it('exposes aiSummary=true and no custom actions', async () => {
+  it('exposes aiSummary=true and exactly the S57 governed-clear action', async () => {
     const summaries = (await handler(IpcChannel.EnterpriseModulesList)({})) as Array<{
       id: string;
       aiSummary: boolean;
@@ -314,7 +314,10 @@ describe('AI summary', () => {
     }>;
     const pay = summaries.find((s) => s.id === 'finance-payments');
     expect(pay).toMatchObject({ aiSummary: true });
-    expect(pay?.actions).toEqual([]);
+    // S57 policy delta, deliberate: the module gained ONE action — `clear`, the governed
+    // ClearCustomerPayment affordance (the S46 fence had left pending payments with no
+    // clearing path). The pin stays exact so any FURTHER action addition fails here first.
+    expect(pay?.actions).toEqual([{ key: 'clear', label: 'Clear', icon: 'check' }]);
   });
 
   it('falls back to a deterministic summary; health stays deterministic', async () => {

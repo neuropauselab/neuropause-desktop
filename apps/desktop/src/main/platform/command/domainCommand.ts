@@ -49,7 +49,25 @@ export type DomainCommandType =
   // closing the S45 bypass where conversion created orders via direct store.create around the
   // governed create door. Reuses the existing quote `convertToOrder` action verbatim (accepted-only
   // guard, cross-linking, validate hook) — exact precedent: ConvertPurchaseRequestToPO.
-  | 'ConvertQuoteToSalesOrder';
+  | 'ConvertQuoteToSalesOrder'
+  // ERP Session 57 — the O2C reversal/settlement PROMOTION set. Each wraps an EXISTING module
+  // action or defined transition VERBATIM (semantics unchanged — every one is a compensating
+  // path: invoice/note cancel books GL reversal entries, never deletes history) and adds the
+  // spine (journal, idempotency, event, outbox, audit). The memo's still-open semantic
+  // questions (partial credit notes, reopening a paid invoice) stay POLICY-BLOCKED — these
+  // commands carry only the defined full-document behavior.
+  | 'CancelCustomerInvoice'
+  | 'IssueCreditNote'
+  | 'CancelCreditNote'
+  | 'IssueDebitNote'
+  | 'CancelDebitNote'
+  // Clearing an EXISTING pending payment books the same Dr Cash / Cr AR (customer) or
+  // Dr AP / Cr Cash (vendor) the S46/S49 fences reserved for governed paths — this command IS
+  // that governed path (a new `clear` module action carries the defined transition).
+  | 'ClearCustomerPayment'
+  | 'ClearVendorPayment'
+  // Shipment-document ship: real stock issue + linked-order advance (existing action verbatim).
+  | 'ShipShipmentDocument';
 
 /** Where a command originated. Descriptive only — it grants nothing. */
 export type CommandSource = 'electron' | 'web' | 'mobile' | 'api' | 'agent' | 'test';
@@ -120,7 +138,15 @@ export type DomainEventType =
   | 'SalesOrderInvoiced'
   | 'CustomerInvoiceIssued'
   | 'CustomerPaymentReceived'
-  | 'QuoteConvertedToSalesOrder';
+  | 'QuoteConvertedToSalesOrder'
+  | 'CustomerInvoiceCancelled'
+  | 'CreditNoteIssued'
+  | 'CreditNoteCancelled'
+  | 'DebitNoteIssued'
+  | 'DebitNoteCancelled'
+  | 'CustomerPaymentCleared'
+  | 'VendorPaymentCleared'
+  | 'ShipmentDocumentShipped';
 
 export interface CommandResult {
   ok: boolean;
@@ -152,6 +178,14 @@ export const EVENT_FOR_COMMAND: Record<DomainCommandType, DomainEventType> = {
   IssueCustomerInvoice: 'CustomerInvoiceIssued',
   ReceiveCustomerPayment: 'CustomerPaymentReceived',
   ConvertQuoteToSalesOrder: 'QuoteConvertedToSalesOrder',
+  CancelCustomerInvoice: 'CustomerInvoiceCancelled',
+  IssueCreditNote: 'CreditNoteIssued',
+  CancelCreditNote: 'CreditNoteCancelled',
+  IssueDebitNote: 'DebitNoteIssued',
+  CancelDebitNote: 'DebitNoteCancelled',
+  ClearCustomerPayment: 'CustomerPaymentCleared',
+  ClearVendorPayment: 'VendorPaymentCleared',
+  ShipShipmentDocument: 'ShipmentDocumentShipped',
 };
 
 /**
@@ -183,4 +217,14 @@ export const PERMISSION_FOR_COMMAND: Record<DomainCommandType, EnterprisePermiss
   // The quote module's declared write permission (sales:manage) governs conversion — the same
   // permission the legacy `convertToOrder` module action demanded, so nobody gains or loses access.
   ConvertQuoteToSalesOrder: 'sales:manage',
+  // S57 — each promotion inherits its module's declared write permission verbatim
+  // (the same permission the legacy action door demanded; nobody gains or loses access).
+  CancelCustomerInvoice: 'operations:manage',
+  IssueCreditNote: 'operations:manage',
+  CancelCreditNote: 'operations:manage',
+  IssueDebitNote: 'operations:manage',
+  CancelDebitNote: 'operations:manage',
+  ClearCustomerPayment: 'operations:manage',
+  ClearVendorPayment: 'operations:manage',
+  ShipShipmentDocument: 'warehouse:manage',
 };

@@ -61,6 +61,9 @@ export const PAYMENT_DESCRIPTOR: EnterpriseModuleDescriptor = {
   titleField: 'paymentNumber',
   // Reuses the Finance write scope — payments are a finance capability.
   permissions: { read: 'operations:read', write: 'operations:manage' },
+  // S57 — the governed clearing affordance (routes to ClearCustomerPayment; the S46 fence
+  // made edit-door clearing impossible, which left pending payments with NO clearing path).
+  actions: [{ key: 'clear', label: 'Clear', icon: 'check' }],
   fields: [
     { key: 'paymentNumber', label: 'Payment #', type: 'text', required: true, placeholder: 'PAY-0001' },
     { key: 'invoiceRef', label: 'Invoice', type: 'text', required: true, placeholder: 'Invoice id or number' },
@@ -291,6 +294,22 @@ export function createPaymentModule(
       // settlement into the General Ledger (Dr Cash / Cr AR + realized FX,
       // W6-B4.5) — the same reconcile-then-post pattern the Vendor Payments
       // module already uses. A no-op when the GL modules are not wired.
+      // S57 — the DEFINED pending→cleared transition, relocated from the fenced edit door to
+      // an explicit action (semantics unchanged: the status flip; onChange below books
+      // Dr Cash / Cr AR and settles the invoice exactly as it always did). Reached through
+      // the governed ClearCustomerPayment command; void/cleared rows refuse.
+      runAction: async (action, record, actionCtx) => {
+        if (action !== 'clear') return { ok: false, error: `Unknown action "${action}".` };
+        const status = String(record.fields.status ?? '');
+        if (status !== 'pending') {
+          return { ok: false, message: `Only a pending payment can be cleared — this one is ${status || 'status-less'}.` };
+        }
+        const updated = store.update(record.id, { fields: { status: 'cleared' }, actor: actionCtx.actor(), now: actionCtx.now() });
+        if (!updated) return { ok: false, error: 'Payment not found.' };
+        const self = actionCtx.moduleFor(PAYMENTS_MODULE_ID);
+        if (self) actionCtx.emit(self, 'updated', updated);
+        return { ok: true, message: `Payment ${String(record.fields.paymentNumber ?? '')} cleared — cash booked and the invoice reconciled.` };
+      },
       onChange: async (_event, ctx) => {
         await reconcileInvoice(str(_event.record.fields.invoiceRef), ctx);
         await handlePaymentChangeForGl(_event, ctx);

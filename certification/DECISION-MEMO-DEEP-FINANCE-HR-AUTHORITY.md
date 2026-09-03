@@ -1,6 +1,17 @@
 # DECISION MEMO — DEEP-FINANCE + HR AUTHORITY GOVERNANCE
 
-**Session:** ERP S55 · **Status:** OPEN — human decisions required · **Class:** business policy, NOT invented
+**Session:** ERP S55 · **Status:** PARTIALLY CLOSED BY S57 — remainder OPEN
+
+> **S57 ADDENDUM (2026-09-03), per-item classification:**
+> **CLOSED (existing declared principle enforced — not invented):** expense-claim SELF-APPROVAL
+> is now refused (`creator_cannot_approve`, the repo's own BILL_APPROVAL_POLICY SoD vocabulary,
+> applied at the approve branch; creator-REJECT stays open as withdrawal; creator-less importer
+> rows uncompared). **CLOSED via the S57 promotion set:** credit/debit-note governance (§4).
+> **REMAIN OPEN (no thresholds/roles/chains exist anywhere to enforce):** payroll post +
+> salary-disbursement approval (§1 rest) · fixed assets · stock adjustments/cycle counts ·
+> period-REOPEN authority (§2) · draft-PO receiving (§3 — still needs the PO approve/send
+> commitment decision). Each needs one operator sentence naming threshold/role; implementation
+> is then mechanical on the existing approval engine.
 
 The S55 repository-wide census found these ECONOMIC/AUTHORITY surfaces live on the legacy action
 door with coarse RBAC and NO approval policy, NO SoD, NO governed command, and (until now) NO

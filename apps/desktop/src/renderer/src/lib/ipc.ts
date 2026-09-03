@@ -653,7 +653,17 @@ export const ipc = {
         | 'RejectPurchaseRequest'
         | 'ConvertPurchaseRequestToPO'
         | 'PostGoodsReceipt'
-        | 'ApproveSupplierInvoice',
+        | 'ApproveSupplierInvoice'
+        // ERP Session 57 — the reversal/settlement promotion set (existing action semantics
+        // wrapped verbatim; S57 wires the production UI to them).
+        | 'CancelCustomerInvoice'
+        | 'IssueCreditNote'
+        | 'CancelCreditNote'
+        | 'IssueDebitNote'
+        | 'CancelDebitNote'
+        | 'ClearCustomerPayment'
+        | 'ClearVendorPayment'
+        | 'ShipShipmentDocument',
       recordId: string,
       idempotencyKey: string,
     ): Promise<PlatformCommandDispatchResponse> => {
