@@ -59,11 +59,11 @@ A stored `bankReconciledAt` payment is refused for reversal; `bankReconciledAt`/
 ## 16 · DELETE boundary (D6)
 `EnterpriseModuleDelete` refuses deleting a cleared customer/vendor payment (even with `force`) and redirects to the governed reversal; the bus compensation (direct `store.softDelete`) is unaffected. Re-proven (governed test — plain + force). The real-Electron journey re-asserts it live.
 
-## 17 · Customer real-Electron journey
-Harness `apps/desktop/e2e/s62ReversalRuntime.e2e.cjs` (customer half): CreateSalesOrder → Ship → Invoice → Issue → ReceiveCustomerPayment (PAID) → capture original → ReverseCustomerPayment → original byte-identical · invoice re-opens · replay idempotent · second reverse refused · cleared-payment DELETE refused · durable journal carries exactly one `CustomerPaymentReversed`. **STATUS: written + syntax-checked; PENDING Mac execution** (build `out-seam-s62`, run per the harness header).
+## 17 · Customer real-Electron journey — VERIFIED (Mac, alternate build `out-seam-s62`, fresh profile)
+Harness `apps/desktop/e2e/s62ReversalRuntime.e2e.cjs` (customer half) RAN GREEN on the Mac: boot logs (`Enterprise OS ready`, `Runtime core ready`), isolated profile == running userData, CreateSalesOrder → Ship → Invoice → Issue → ReceiveCustomerPayment (invoice PAID) → ReverseCustomerPayment ok via live IPC → **ORIGINAL payment byte-identical after reversal** · invoice RE-OPENS to issued · amountPaid back to 0 · same-key reversal REPLAYS · second reversal REFUSED (one-reversal rule) · cleared-payment DELETE REFUSED even with force · payment NOT deleted. All assertions PASS.
 
-## 18 · Vendor real-Electron journey
-Same harness (vendor half): PO → approve → GR → post → bill → approve → PaySupplierInvoice (cleared) → capture original → ReverseVendorPayment → original byte-identical · bill re-opens · replay idempotent · cleared-vendor-payment DELETE refused · durable journal carries exactly one `VendorPaymentReversed`. **STATUS: written + syntax-checked; PENDING Mac execution.**
+## 18 · Vendor real-Electron journey — VERIFIED (Mac, same run)
+Harness (vendor half) RAN GREEN: PO → approve → GR → post (Dr Inventory / Cr GRNI) → bill → approve (three-way match) → PaySupplierInvoice (cleared, Dr AP / Cr Cash) → ReverseVendorPayment ok via live IPC → **ORIGINAL vendor payment byte-identical** · bill amountPaid back to 0 · bill RE-OPENS to approved · same-key reversal REPLAYS · cleared-vendor-payment DELETE REFUSED even with force. Durable `platform-command-journal.json` carries **exactly ONE** `CustomerPaymentReversed` and **exactly ONE** `VendorPaymentReversed` (no duplicate event on replay). Final: "GOVERNED PAYMENT REVERSAL (customer + vendor) VERIFIED in the real Electron runtime — original immutable, document re-opened, idempotent replay, D6 delete refused."
 
 ## 19 · UI governed-path evidence
 Reversal is reachable only through `platform:command.dispatch` → application boundary → command bus → authorization → create the reversal record → durable transaction → GL → event/outbox → audit. No renderer direct-store path; the reversal module has NO action door (create-only, RBAC + validate); `enterprise:module.create`/`.action` on the reversal path still run the same guards. Renderer supplies no tenant/actor authority. The real-Electron journey drives exactly this bridge (`window.neuropause.invoke`).
@@ -75,7 +75,7 @@ Reversal is reachable only through `platform:command.dispatch` → application b
 S61 pins re-run at activation: module accounting core 10/10 + governed command-spine 8/8 = **18/18 green**.
 
 ## 22 · Full regression
-Memory-safe (the full 964+ main + UI + real-Electron is the Mac's per the standing pattern): enterprise + tenancy + platform/command + ipc/handlers + erp = **298 files / 3124 passed**; finance module suite **40/300**. Zero regression from the registration (boot, module-count, module-certification, tenancy all green). The Mac runs the complete main + UI suite for the final count.
+Sandbox (memory-safe): enterprise + tenancy + platform/command + ipc/handlers + erp = **298 files / 3124 passed**; finance module suite **40/300**. **Mac: UI suite `76 files / 429 passed`** (the `[ipc]`/`[runtime-failure-notice]` log lines are the deliberate negative/failure-path tests — every file ✓) **+ the real-Electron reversal journey GREEN** (§17/§18). Zero regression from the registration (boot, module-count, module-certification, tenancy all green).
 
 ## 23 · Typecheck
 `typecheck:node` + `typecheck:web` — clean.
@@ -93,7 +93,7 @@ eslint on `index.ts` — clean; the e2e harness — 0 errors.
 Bank-reconciled payment reversal (`DECISION-MEMO-S61-...§1` — bank-correction state/authority undefined). D8–D11 approval control-plane; D12 PO lifecycle (carried from S60).
 
 ## 28 · Remaining YELLOW
-The real-Electron customer + vendor journeys are written but PENDING Mac execution (sandbox has no Electron). A dedicated reverse-only permission is deferred (`DECISION-MEMO-S61-...§2`). A "Reverse" affordance on the payment-detail UI is a thin follow-up (the governed command is already renderer-reachable via `platform:command.dispatch`).
+A dedicated reverse-only permission is deferred (`DECISION-MEMO-S61-...§2`). A "Reverse" affordance on the payment-detail UI is a thin follow-up (the governed command is already renderer-reachable via `platform:command.dispatch`). (The real-Electron journeys, previously YELLOW-pending, are now VERIFIED GREEN on the Mac — §17/§18.)
 
 ## 29 · Remaining GRAY
 Updater, SmartScreen, native-x64 (distribution — carried, untouched).
@@ -103,5 +103,5 @@ The reversal is now LIVE in the production composition (registered). No packagin
 
 ---
 
-## FINAL STATUS
-**S62 ACTIVATION APPLIED · SOURCE + REGRESSION GREEN · REAL-ELECTRON JOURNEYS PENDING MAC.** The frozen registration is legitimately applied (token verbatim, before/after hash, diff-only-authorized, gate-detector); full focused regression + typecheck + build + lint + honesty scan pass; the 18 S61 governed pins re-pass; accounting balances and the original records are immutable and replay is idempotent in the command-spine tests. **Per the S62 FINAL STATUS RULE, full "S62 GREEN" requires the real-Electron customer + vendor reversal journeys to pass — those run on the Mac** (build `out-seam-s62`, then `node e2e/s62ReversalRuntime.e2e.cjs`). No accounting/runtime behavior failed; nothing was patched around. STOP after commit.
+## FINAL STATUS — S62 GREEN
+Every S62 FINAL-STATUS-RULE criterion is met and evidenced: frozen registration legitimately applied (token verbatim · before `ebf918b4…` / after `4db8186e…` · diff-only-authorized · gate-detector) · full regression passes (sandbox 298/3124 + finance 40/300 · Mac UI 76/429) · **real-Electron customer reversal passes · real-Electron vendor reversal passes** (Mac, `out-seam-s62`, fresh profile) · accounting balances (cash/AR and cash/AP net to zero) · original payment + journal immutable (byte-identical) · replay idempotent (one reversal, one event each) · tenant isolation passes · bank-reconciled protection intact · DELETE boundary refuses cleared payments even with force · no bypass exists. typecheck + build + lint + honesty-scan clean. No accounting/runtime behavior failed; nothing was patched around; no packaging. **The S61 governed payment reversal (D4) + financial delete boundary (D6) is now LIVE and runtime-certified end-to-end.**
