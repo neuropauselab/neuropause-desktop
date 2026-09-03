@@ -13,7 +13,7 @@
 import { describe, it, expect } from 'vitest';
 import { governedSend, createGovernedSendPorts, type GovernedSendArgs } from './sendTransition';
 import { AuthError, HttpError, NetworkError, RateLimitError, type HttpClient, type RateGate } from '../unified/sync/http';
-import { ActionInputError, type WriteAction, type WriteActionResult } from '../connectors/m365/actionSdk';
+import { ActionInputError, type WriteAction } from '../connectors/m365/actionSdk';
 import { ALL_M365_ACTIONS } from '../connectors/m365';
 
 const RATE = {} as unknown as RateGate;

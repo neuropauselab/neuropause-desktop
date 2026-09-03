@@ -2479,7 +2479,7 @@ export type AiTestRequest = z.infer<typeof AiTestRequest>;
  * passes it only as a JSON field to Ollama's own /api/pull.
  */
 export const AiPullModelRequest = z
-  .object({ model: z.string().min(1).max(128).regex(/^[a-zA-Z0-9._:\/-]+$/) })
+  .object({ model: z.string().min(1).max(128).regex(/^[a-zA-Z0-9._:/-]+$/) })
   .strict();
 export type AiPullModelRequest = z.infer<typeof AiPullModelRequest>;
 
