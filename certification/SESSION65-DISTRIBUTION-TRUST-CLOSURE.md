@@ -98,3 +98,37 @@ DR is deliberately **not** folded into distribution trust and is **not** claimed
 - **PENDING DRILL:** disaster recovery (not conflated, not claimed).
 
 No product failure is implied by the blocked branches: they are external/operator prerequisites (Apple credentials, an Authenticode certificate, the updater ruling + host, a DR drill), each named exactly. No ERP behavior was changed to green the matrix; no credential, certificate, endpoint, or reputation evidence was fabricated. **The distribution-trust dimensions that have actual evidence are GREEN; the rest are honestly recorded as their true operator prerequisites and STOP there.**
+
+---
+
+## ADDENDUM — S65 re-run on the ACTUAL host (2026-09-03; §2 #20 environment correction)
+
+**CORRECTION (source wins over document):** the section above states *"this environment is
+Linux aarch64"* and therefore **inherited** functional acceptance by byte-identity. Measured
+this session: the host is **`Darwin arm64` / macOS 26.5.2 (25F84)`** — the same Mac that holds
+the Developer ID keychain identity and drives the Windows VM. The prior pass's verdicts are all
+CONFIRMED; what changes is that the Mac-only branches, previously *inherited*, are now
+**directly measured** — and one dimension the prior pass left open is now closed.
+
+**Directly measured this session (all confirm the prior verdicts):**
+- **Mac notary credentials** — `APPLE_ID`/`APPLE_APP_SPECIFIC_PASSWORD`/`APPLE_TEAM_ID`/`APPLE_API_KEY`
+  all absent; notary keychain profile absent; no ASC `.p8`. → **NOTARIZATION OPERATOR-BLOCKED** (measured, not inherited).
+- **Mac code-signing on the rc.24 app** — `codesign -dv`: Developer ID Application (Dishant
+  Dobariya, J3G89MY3QG), `flags=0x10000(runtime)`; `codesign --verify --deep --strict` exit 0. → **GREEN, measured.**
+- **Gatekeeper (the prior pass left this "pending re-check") — NOW MEASURED:** `spctl -a -vv` =
+  **`rejected` / `source=Unnotarized Developer ID`.** This is the concrete confirmation that
+  notarization is the exact and only blocker to Gatekeeper acceptance — measured, not inferred.
+- **Windows Authenticode cert** — `CSC_*`/`WIN_CSC_*` absent, no `.pfx`. → **OPERATOR-BLOCKED, measured.**
+- **Functional acceptance — MEASURED (not inherited) against the rc.24 packaged binary on this Mac:**
+  reversal journey **39 PASS + RESULT** (customer + vendor reversal, original immutable, document
+  re-opens, idempotent replay, D6 cleared-payment delete refused, + the four S64 reversal-record
+  delete-negatives) · restart/durability **4/4 + RESULT** with `platform-command-journal.json`
+  **byte-identical across the restart (`cmp` clean)**. The prior pass could only cite these by
+  byte-identity; they are now re-run evidence on the same certified bytes.
+
+**Net effect on the matrix: unchanged verdicts, upgraded evidence class.** macOS notarization
+and Windows Authenticode remain **OPERATOR-BLOCKED** (now measured on the real host, with the
+Gatekeeper rejection captured); SmartScreen **GRAY**; updater **POLICY/OPERATOR DECISION
+REQUIRED**; DR **PENDING DRILL**; custody + payload integrity + functional acceptance **GREEN**,
+the last now *measured this session* rather than inherited. No credential/certificate/endpoint
+fabricated; no source touched; the prior pass's text preserved above.
