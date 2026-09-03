@@ -208,6 +208,29 @@ export function createInvoiceModule(storePath: string, aiRunner?: InvoiceAiRunne
                 errors: { status: 'Invoice status changes only through the Issue and Cancel actions (payment states are derived from receipts).' },
               };
             }
+            // ERP Session 60 (D5) — GOVERN economic adjustment. Once an invoice leaves `draft` it has
+            // booked real Dr AR / Cr Revenue GL, so silently editing an economic field (amount / taxRate /
+            // exchangeRate) on the update door would post an UNGOVERNED GL adjustment and rewrite posted
+            // history. The governed adjustment mechanism is the existing credit note (reduce) / debit note
+            // (increase) — separately identifiable, authorized, compensating GL, cumulative-capped,
+            // auditable (S57/S59). A draft invoice stays freely editable (no GL yet); the amountPaid-driven
+            // payment-state derivation is untouched (only the priced economic inputs are fenced).
+            if (prior && priorStatus !== '' && priorStatus !== 'draft') {
+              // Only a field the caller ACTUALLY supplied can be an economic edit — an omitted
+              // field (default-filled or absent from the payload) is never treated as a change to
+              // 0, mirroring the status guard above which acts only on a supplied value.
+              const suppliedFields = input.fields ?? {};
+              const changed = (['amount', 'taxRate', 'exchangeRate'] as const)
+                .filter((k) => k in suppliedFields)
+                .find((k) => Number(result.values[k] ?? 0) !== Number(prior.fields[k] ?? 0));
+              if (changed) {
+                return {
+                  ok: false,
+                  values: result.values,
+                  errors: { [changed]: 'A posted invoice cannot be economically edited — raise a credit note (to reduce) or debit note (to increase) so the adjustment is governed, compensating, and auditable.' },
+                };
+              }
+            }
           }
           // S55 census note — edit-door amountPaid changes drive the payment-state
           // derivation below and are PINNED as defined behavior (invoiceModule.test.ts
