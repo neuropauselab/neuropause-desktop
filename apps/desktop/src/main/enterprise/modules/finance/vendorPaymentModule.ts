@@ -26,7 +26,6 @@ import type {
   EnterpriseRecordValidation,
 } from '@neuropause/shared';
 import {
-  VENDOR_BILLS_MODULE_ID,
   VENDOR_PAYMENTS_MODULE_ID,
   VENDOR_PAYMENT_KIND,
   isDuplicateVendorTransaction,
@@ -42,6 +41,7 @@ import {
   type EnterpriseModuleActionContext,
 } from '../../framework';
 import { handleVendorPaymentChangeForGl } from './glPosting';
+import { reconcileBillFromLedger } from './paymentReconcile';
 
 /** The declarative description of a vendor payment — drives store, CRUD, and the UI. */
 export const VENDOR_PAYMENT_DESCRIPTOR: EnterpriseModuleDescriptor = {
@@ -135,36 +135,16 @@ export function createVendorPaymentModule(
 ): EnterpriseModule {
   const store = new EnterpriseRecordStore(storePath, VENDOR_PAYMENTS_MODULE_ID, VENDOR_PAYMENT_KIND);
 
-  /** Re-derive the referenced bill's paid state from the cleared ledger + persist it. */
+  /**
+   * Re-derive the referenced bill's paid state from the cleared ledger + persist
+   * it. ERP Session 61 — delegates to the ONE shared reconciliation so the
+   * customer payment, vendor payment, and governed reversal paths all derive
+   * paid state identically (a reversed vendor payment is excluded, re-opening the
+   * bill without mutating the original). Byte-identical to the pre-S61 inline
+   * derivation when no reversal records exist.
+   */
   async function reconcileBill(ref: string, ctx: EnterpriseModuleActionContext): Promise<void> {
-    if (!ref) return;
-    const billModule = ctx.moduleFor(VENDOR_BILLS_MODULE_ID);
-    if (!billModule) return;
-    await billModule.store.load();
-    const billRecord = findBill(billModule.store, ref);
-    if (!billRecord) return;
-    const bill = vendorBillFromRecord(billRecord);
-    const ledger = store.list().map(vendorPaymentFromRecord);
-    const amountPaid = sumClearedVendorPayments([billRecord.id, bill.billNumber], ledger);
-    const fullyPaid = Math.round((amountPaid - bill.total) * 100) >= 0 && bill.total > 0;
-    const paidDate = fullyPaid ? (str(billRecord.fields.paidDate) || ctx.now().slice(0, 10)) : '';
-    const unchanged =
-      Math.round((bill.amountPaid - amountPaid) * 100) === 0 &&
-      str(billRecord.fields.paidDate) === paidDate;
-    if (unchanged) return;
-    const status = str(billRecord.fields.cancelledAt)
-      ? 'cancelled'
-      : paidDate
-        ? 'paid'
-        : str(billRecord.fields.approvedAt)
-          ? 'approved'
-          : 'draft';
-    const updated = billModule.store.update(billRecord.id, {
-      fields: { amountPaid, paidDate, status },
-      actor: ctx.actor(),
-      now: ctx.now(),
-    });
-    if (updated) ctx.emit(billModule, 'updated', updated);
+    await reconcileBillFromLedger(store, ref, ctx);
   }
 
   return defineEnterpriseModule({

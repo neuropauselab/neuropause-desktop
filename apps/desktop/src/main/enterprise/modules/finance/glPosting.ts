@@ -579,6 +579,47 @@ export async function handlePaymentChangeForGl(
 }
 
 /**
+ * ERP Session 61 — GOVERNED PAYMENT REVERSAL GL. A payment-reversal record books
+ * the COMPENSATING accounting for an already-cleared customer or vendor payment
+ * WITHOUT mutating the original payment. It reuses the EXACT `decideLifecycle`
+ * revocation path that already fires when a payment is voided/soft-deleted: one
+ * cumulative `${base}-REV` entry that mirrors EVERYTHING booked under the
+ * original payment's base entry (cash, AR/AP, and any realized-FX line), at the
+ * original booked amounts — an exact unwind, no invented accounting, no new
+ * balancing accounts. Idempotent by construction: the `-REV` guard books once
+ * (the base must exist and not already be reversed) and never again on replay.
+ * The original journal entry is never deleted or overwritten.
+ */
+export async function handlePaymentReversalForGl(
+  event: { record: EnterpriseEntity },
+  ctx: EnterpriseModuleActionContext,
+): Promise<void> {
+  const journalModule = ctx.moduleFor(JOURNAL_ENTRIES_MODULE_ID);
+  if (!journalModule) return; // GL not wired — no-op
+  if (event.record.status === 'deleted') return; // a removed reversal record posts nothing
+  const f = event.record.fields;
+  const kind = str(f.originalKind);
+  const number = str(f.originalPaymentNumber).trim();
+  if (!number || (kind !== 'customer' && kind !== 'vendor')) return;
+  const base = kind === 'vendor' ? glVendorPaymentEntryNumber(number) : glPaymentEntryNumber(number);
+  const label = kind === 'vendor' ? 'Vendor payment' : 'Payment';
+  const journal = await existingJournal(ctx);
+  const decisions = decideLifecycle({
+    live: false,
+    revoked: true,
+    baseEntryNumber: base,
+    memoSubject: `${label} ${number}`,
+    revokedReason: `${label} ${number} reversed`,
+    baseDecisions: [],
+    expectedLines: [],
+    journal,
+    sourceModule: event.record.moduleId,
+    sourceRef: event.record.id,
+  });
+  await applyGlDerivedEntries(decisions, ctx);
+}
+
+/**
  * FX revaluation lifecycle → derived GL work (W6-B7). A generated revaluation
  * record posts TWO real journal entries through the same idempotent seam: the
  * period-end revaluation (Dr/Cr AR vs 7811) dated the period end, and its exact

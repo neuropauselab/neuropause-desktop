@@ -25,13 +25,11 @@ import type {
   SalesPayment,
 } from '@neuropause/shared';
 import {
-  FINANCE_MODULE_ID,
   PAYMENTS_MODULE_ID,
   PAYMENT_KIND,
   calculateInvoiceAmount,
   calculatePaidAmount,
   calculatePaymentHealth,
-  deriveInvoiceAmountPaid,
   formatInvoiceAmount,
   invoiceFromRecord,
   isDuplicateTransaction,
@@ -48,6 +46,7 @@ import {
   type EnterpriseModuleActionContext,
 } from '../../framework';
 import { handlePaymentChangeForGl } from './glPosting';
+import { reconcileInvoiceFromLedger } from './paymentReconcile';
 
 /** The declarative description of a payment — drives store, CRUD, and the UI. */
 export const PAYMENT_DESCRIPTOR: EnterpriseModuleDescriptor = {
@@ -178,32 +177,16 @@ export function createPaymentModule(
 ): EnterpriseModule {
   const store = new EnterpriseRecordStore(storePath, PAYMENTS_MODULE_ID, PAYMENT_KIND);
 
-  /** Re-derive the referenced invoice's paid amount from the ledger + persist it. */
+  /**
+   * Re-derive the referenced invoice's paid amount from the ledger + persist it.
+   * ERP Session 61 — delegates to the ONE shared reconciliation so the customer
+   * payment, vendor payment, and governed reversal paths all derive `amountPaid`
+   * identically (a reversed payment is excluded, re-opening the invoice without
+   * mutating the original). With no reversal records this is byte-identical to
+   * the pre-S61 inline derivation the finance suites pin.
+   */
   async function reconcileInvoice(ref: string, ctx: EnterpriseModuleActionContext): Promise<void> {
-    if (!ref) return;
-    const invModule = ctx.moduleFor(FINANCE_MODULE_ID);
-    if (!invModule) return;
-    await invModule.store.load();
-    const invRecord = findInvoice(invModule.store, ref);
-    if (!invRecord) return;
-    const invoice = invoiceFromRecord(invRecord);
-    // Sum applied (non-void, non-deleted) payments that reference this invoice by
-    // either its id or its number.
-    const ledger = store
-      .list()
-      .map(paymentFromRecord)
-      .filter((p) => p.invoiceRef === invRecord.id || p.invoiceRef === invoice.number);
-    const amountPaid = deriveInvoiceAmountPaid(ledger);
-    // Re-derive the invoice through ITS OWN validate hook (status/outstanding/total).
-    const merged = { ...invRecord.fields, amountPaid };
-    const validation = invModule.hooks.validate({ fields: merged });
-    const values = validation.ok ? validation.values : merged;
-    const updated = invModule.store.update(invRecord.id, {
-      fields: values,
-      actor: ctx.actor(),
-      now: ctx.now(),
-    });
-    if (updated) ctx.emit(invModule, 'updated', updated);
+    await reconcileInvoiceFromLedger(store, ref, ctx);
   }
 
   return defineEnterpriseModule({

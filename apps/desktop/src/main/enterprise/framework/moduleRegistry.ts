@@ -55,7 +55,9 @@ import {
   ModuleLinesRequest,
   ModuleSetLinesRequest,
   ORDERS_MODULE_ID,
+  PAYMENTS_MODULE_ID,
   QUOTES_MODULE_ID,
+  VENDOR_PAYMENTS_MODULE_ID,
   deriveRecordTitle,
 } from '@neuropause/shared';
 import type { SecureHandlerDef } from '../../ipc/secureBridge';
@@ -85,6 +87,29 @@ const GOVERNED_ONLY_ACTIONS: Record<string, ReadonlySet<string>> = {
   [ORDERS_MODULE_ID]: new Set(['ship', 'convertToInvoice']),
   [FINANCE_MODULE_ID]: new Set(['issue']),
   [QUOTES_MODULE_ID]: new Set(['convertToOrder']),
+};
+
+/**
+ * ERP Session 61 (D6) — the FINANCIAL DELETE BOUNDARY. Financial history is never
+ * physically deleted (the delete door is soft-only), but soft-deleting an
+ * economically-active record hides it while its posted GL persists AND, for a
+ * cleared payment, the reconciler's void/delete path would silently reverse it —
+ * a backdoor around the governed reversal. So a record that is economically
+ * active is REFUSED here (independent of `force`) and the caller is directed to
+ * the governed reversal. Scoped to what D4 makes reversible (cleared customer /
+ * vendor payments); the internal command-bus compensation uses `store.softDelete`
+ * DIRECTLY and never passes through this door, so it is unaffected. The predicate
+ * returns a redirect message when the record must not be deleted, else null.
+ */
+const ECONOMIC_DELETE_GUARD: Record<string, (record: { fields: Record<string, unknown> }) => string | null> = {
+  [PAYMENTS_MODULE_ID]: (r) =>
+    String(r.fields.status ?? '') === 'cleared'
+      ? 'A cleared payment carries a posted cash/AR effect — it cannot be deleted. Reverse it through the governed payment reversal so the accounting is compensated and auditable.'
+      : null,
+  [VENDOR_PAYMENTS_MODULE_ID]: (r) =>
+    String(r.fields.status ?? '') === 'cleared'
+      ? 'A cleared vendor payment carries a posted cash/AP effect — it cannot be deleted. Reverse it through the governed payment reversal so the accounting is compensated and auditable.'
+      : null,
 };
 import { ENTERPRISE_CHANNEL_PERMISSIONS } from '../authzGate';
 import type {
@@ -663,6 +688,14 @@ export function buildModuleHandlers(
         const existing = module.store.get(r.id);
         if (!existing || existing.status === 'deleted') {
           return { ok: false as const, errors: { _: 'Record not found.' } };
+        }
+        // ERP Session 61 (D6) — FINANCIAL DELETE BOUNDARY. An economically-active record (a cleared
+        // payment) must never be deleted through this door — that would hide posted GL and, via the
+        // reconciler's void/delete path, act as a backdoor reversal. Refuse (independent of `force`)
+        // and direct to the governed reversal. History is preserved; the reversal is the only path.
+        const economicRefusal = ECONOMIC_DELETE_GUARD[r.moduleId]?.(existing) ?? null;
+        if (economicRefusal) {
+          return { ok: false as const, errors: { _: economicRefusal } };
         }
         // Governed delete: assess dependencies BEFORE mutating. A record with
         // real relationship links refuses without an explicit force flag and

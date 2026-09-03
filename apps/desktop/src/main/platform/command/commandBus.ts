@@ -406,6 +406,29 @@ async function route(cmd: DomainCommand, deps: CommandDispatchDeps, call: Handle
       if (!r.ok) return no(r.error ?? r.message ?? 'PAYMENT_CLEAR_REFUSED');
       return ok({ id: str(cmd.target?.id) }, { aggregateId: str(cmd.target?.id), aggregateType: 'VendorPayment' });
     }
+    case 'ReverseCustomerPayment':
+    case 'ReverseVendorPayment': {
+      // ERP Session 61 (D4) — reverse an already-cleared payment by CREATING a separate, immutable
+      // reversal record through the SAME governed create path. The original payment is never mutated;
+      // the reversal module's guards refuse a non-cleared, bank-reconciled, foreign-tenant, nonexistent,
+      // or already-reversed original, and its onChange books the compensating `${base}-REV` GL and
+      // re-opens the invoice/bill. `originalKind` is set from the COMMAND TYPE, never the payload.
+      const kind = cmd.type === 'ReverseVendorPayment' ? 'vendor' : 'customer';
+      const originalPaymentId = str(cmd.target?.id);
+      const r = (await call(IpcChannel.EnterpriseModuleCreate, {
+        moduleId: 'finance-payment-reversals',
+        fields: { originalKind: kind, originalPaymentId, reason: str(cmd.payload.reason) },
+      })) as { ok: boolean; record?: { id: string } };
+      if (!(r.ok && r.record)) return no('PAYMENT_REVERSAL_REFUSED');
+      // NO auto-rollback: a reversal books a real compensating journal + re-opens the document —
+      // undoing it is itself a governed decision, never a silent soft-delete. At-most-once is
+      // guaranteed WITHOUT compensation by the module's "already reversed" guard (a commit-failure
+      // retry is refused, not re-executed).
+      return ok(
+        { id: r.record.id, originalPaymentId },
+        { aggregateId: originalPaymentId, aggregateType: kind === 'vendor' ? 'VendorPayment' : 'CustomerPayment' },
+      );
+    }
     case 'ShipShipmentDocument': {
       const r = await moduleAction('warehouse-shipping', str(cmd.target?.id), 'ship');
       if (!r.ok) return no(r.error ?? r.message ?? 'SHIPMENT_SHIP_REFUSED');

@@ -66,6 +66,11 @@ export type DomainCommandType =
   // that governed path (a new `clear` module action carries the defined transition).
   | 'ClearCustomerPayment'
   | 'ClearVendorPayment'
+  // ERP Session 61 (D4) — reverse an already-cleared customer/vendor payment through a SEPARATE
+  // governed reversal record: the original payment stays immutable, a compensating `${base}-REV`
+  // entry unwinds the settlement, and the invoice/bill re-opens. At most one reversal per payment.
+  | 'ReverseCustomerPayment'
+  | 'ReverseVendorPayment'
   // Shipment-document ship: real stock issue + linked-order advance (existing action verbatim).
   | 'ShipShipmentDocument';
 
@@ -146,6 +151,8 @@ export type DomainEventType =
   | 'DebitNoteCancelled'
   | 'CustomerPaymentCleared'
   | 'VendorPaymentCleared'
+  | 'CustomerPaymentReversed'
+  | 'VendorPaymentReversed'
   | 'ShipmentDocumentShipped';
 
 export interface CommandResult {
@@ -185,6 +192,8 @@ export const EVENT_FOR_COMMAND: Record<DomainCommandType, DomainEventType> = {
   CancelDebitNote: 'DebitNoteCancelled',
   ClearCustomerPayment: 'CustomerPaymentCleared',
   ClearVendorPayment: 'VendorPaymentCleared',
+  ReverseCustomerPayment: 'CustomerPaymentReversed',
+  ReverseVendorPayment: 'VendorPaymentReversed',
   ShipShipmentDocument: 'ShipmentDocumentShipped',
 };
 
@@ -226,5 +235,13 @@ export const PERMISSION_FOR_COMMAND: Record<DomainCommandType, EnterprisePermiss
   CancelDebitNote: 'operations:manage',
   ClearCustomerPayment: 'operations:manage',
   ClearVendorPayment: 'operations:manage',
+  // S61 — reversal reuses the finance write permission (`operations:manage`), the same the whole
+  // finance command family requires. Reversal is separated from EDIT structurally, not by a distinct
+  // permission: it is a distinct governed command that mints a SEPARATE immutable record and never
+  // mutates the original (the edit door cannot reverse). A finer reverse-only authority would be a
+  // frozen `EnterprisePermission` addition (FG gate) or the D8–D11 approval control-plane — both out
+  // of S61 scope; see DECISION-MEMO-S61-PAYMENT-REVERSAL-ACCOUNTING.md.
+  ReverseCustomerPayment: 'operations:manage',
+  ReverseVendorPayment: 'operations:manage',
   ShipShipmentDocument: 'warehouse:manage',
 };
