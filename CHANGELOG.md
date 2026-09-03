@@ -7,7 +7,18 @@ All notable changes to NeuroPause are documented here. The format is based on
 
 ## [Unreleased]
 
-_No unreleased changes; the current build is `1.0.0-rc.22`._
+_No unreleased changes; the current build is `1.0.0-rc.23`._
+
+## [1.0.0-rc.23] — the S55 governance-closure fence set ships (2026-09-03)
+
+Version bumped from `1.0.0-rc.22` because the rc.22 artifacts predate ERP session 55: fourteen
+census-found governance gaps fenced in four classes (store-anchored token guards for journal
+`postedAt` / period `closedAt` / payment `bankReconciledAt`; marker and conversion-token
+immutability across bills, orders, quotes and received goods receipts; posting re-arm fences for
+shipping, multi-line dispatch/receipt and the stock ledger's declared immutability; the
+SetStatus-'deleted' second delete door closed) plus the packed-test-source exclusion. rc.23 is
+the first shippable artifact to contain them; its promotion record is
+`certification/SESSION56-S55-ARTIFACT-PROMOTION-CERTIFICATION.md`.
 
 ## [1.0.0-rc.22] — first packaged artifact carrying S49+S50 procurement governance (2026-09-03)
 

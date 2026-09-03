@@ -1,6 +1,6 @@
 {
   "name": "@neuropause/desktop",
-  "version": "1.0.0-rc.22",
+  "version": "1.0.0-rc.23",
   "private": true,
   "description": "NeuroPause Desktop — the AI operating layer (Electron + React + TypeScript).",
   "author": "NeuroPause",
